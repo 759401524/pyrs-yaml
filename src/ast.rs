@@ -213,6 +213,49 @@ impl Hash for CustomNode {
 }
 
 impl CustomNode {
+    /// Create a plain scalar with default settings (no comment, anchor, tag; Clip chomping)
+    pub fn plain_scalar(value: impl Into<String>) -> Self {
+        CustomNode::Scalar {
+            value: value.into(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: Chomping::Clip,
+        }
+    }
+
+    /// Create a block-style mapping with no metadata
+    pub fn plain_mapping(pairs: IndexMap<CustomNode, CustomNode>) -> Self {
+        CustomNode::Mapping {
+            pairs,
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        }
+    }
+
+    /// Create a block-style sequence with no metadata
+    pub fn plain_sequence(items: Vec<CustomNode>) -> Self {
+        CustomNode::Sequence {
+            items,
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        }
+    }
+
+    /// Create a null node with no metadata
+    pub fn plain_null() -> Self {
+        CustomNode::Null {
+            comment: None,
+            anchor: None,
+            tag: None,
+        }
+    }
+
     /// Get the comment attached to this node
     pub fn comment(&self) -> Option<&Comment> {
         match self {

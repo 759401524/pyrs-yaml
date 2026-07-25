@@ -1,4 +1,4 @@
-use crate::ast::{Chomping, CustomNode, ScalarStyle};
+use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
 
 /// Serialization options
 pub struct SerializeOptions {
@@ -37,7 +37,6 @@ pub fn to_yaml_with_options(node: &CustomNode, options: &SerializeOptions) -> St
     serializer.output
 }
 
-#[allow(dead_code)]
 struct Serializer {
     output: String,
     indent_size: usize,
@@ -50,6 +49,27 @@ impl Serializer {
             output: String::new(),
             indent_size: options.indent_size,
             sort_keys: options.sort_keys,
+        }
+    }
+
+    fn write_anchor_tag(&mut self, anchor: &Option<String>, tag: &Option<Tag>) {
+        if let Some(anchor_name) = anchor {
+            self.output.push('&');
+            self.output.push_str(anchor_name);
+            self.output.push(' ');
+        }
+        if let Some(t) = tag {
+            self.output.push_str(&t.to_string());
+            self.output.push(' ');
+        }
+    }
+
+    fn write_inline_comment(&mut self, comment: &Option<Comment>) {
+        if let Some(c) = comment {
+            if !c.standalone {
+                self.output.push_str("  # ");
+                self.output.push_str(&c.text);
+            }
         }
     }
 
@@ -80,31 +100,11 @@ impl Serializer {
                 chomping,
             } => {
                 self.write_indent(indent_level);
+                self.write_anchor_tag(anchor, tag);
 
-                // Write anchor if present
-                if let Some(anchor_name) = anchor {
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
-                    self.output.push(' ');
-                }
-
-                // Write tag if present
-                if let Some(t) = tag {
-                    self.output.push_str(&t.to_string());
-                    self.output.push(' ');
-                }
-
-                // Write scalar with appropriate style
                 let formatted = self.format_scalar(value, style, chomping);
                 self.output.push_str(&formatted);
-
-                // Write line-end comment
-                if let Some(c) = comment {
-                    if !c.standalone {
-                        self.output.push_str("  # ");
-                        self.output.push_str(&c.text);
-                    }
-                }
+                self.write_inline_comment(comment);
 
                 self.output.push('\n');
             }
@@ -130,28 +130,14 @@ impl Serializer {
                         }
                     }
                     self.output.push('}');
-                    // Write comment if present
-                    if let Some(c) = comment {
-                        if !c.standalone {
-                            self.output.push_str("  # ");
-                            self.output.push_str(&c.text);
-                        }
-                    }
+                    self.write_inline_comment(comment);
                     self.output.push('\n');
                 } else {
                     // Block style (original logic)
                 // Write anchor and tag if present (but not if in value context - they were already output)
                 if !in_value_context && (anchor.is_some() || tag.is_some()) {
                     self.write_indent(indent_level);
-                    if let Some(anchor_name) = anchor {
-                        self.output.push('&');
-                        self.output.push_str(anchor_name);
-                        self.output.push(' ');
-                    }
-                    if let Some(t) = tag {
-                        self.output.push_str(&t.to_string());
-                        self.output.push(' ');
-                    }
+                    self.write_anchor_tag(anchor, tag);
                     self.output.push('\n');
                 }
 
@@ -251,28 +237,14 @@ impl Serializer {
                         }
                     }
                     self.output.push(']');
-                    // Write comment if present
-                    if let Some(c) = comment {
-                        if !c.standalone {
-                            self.output.push_str("  # ");
-                            self.output.push_str(&c.text);
-                        }
-                    }
+                    self.write_inline_comment(comment);
                     self.output.push('\n');
                 } else {
                     // Block style (original logic)
                     // Write anchor and tag if present (but not if in value context)
                     if !in_value_context && (anchor.is_some() || tag.is_some()) {
                         self.write_indent(indent_level);
-                        if let Some(anchor_name) = anchor {
-                            self.output.push('&');
-                            self.output.push_str(anchor_name);
-                            self.output.push(' ');
-                        }
-                        if let Some(t) = tag {
-                            self.output.push_str(&t.to_string());
-                            self.output.push(' ');
-                        }
+                        self.write_anchor_tag(anchor, tag);
                         self.output.push('\n');
                     }
 
@@ -312,26 +284,10 @@ impl Serializer {
                 tag,
             } => {
                 self.write_indent(indent_level);
-
-                if let Some(anchor_name) = anchor {
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
-                    self.output.push(' ');
-                }
-
-                if let Some(t) = tag {
-                    self.output.push_str(&t.to_string());
-                    self.output.push(' ');
-                }
+                self.write_anchor_tag(anchor, tag);
 
                 self.output.push_str("null");
-
-                if let Some(c) = comment {
-                    if !c.standalone {
-                        self.output.push_str("  # ");
-                        self.output.push_str(&c.text);
-                    }
-                }
+                self.write_inline_comment(comment);
 
                 self.output.push('\n');
             }
@@ -357,13 +313,7 @@ impl Serializer {
     fn format_scalar_for_key(&self, node: &CustomNode) -> String {
         match node {
             CustomNode::Scalar { value, style, chomping, .. } => {
-                match style {
-                    ScalarStyle::Plain => self.format_plain_scalar(value),
-                    ScalarStyle::SingleQuoted => self.format_single_quoted_scalar(value),
-                    ScalarStyle::DoubleQuoted => self.format_double_quoted_scalar(value),
-                    ScalarStyle::Literal => self.format_literal_scalar(value, chomping),
-                    ScalarStyle::Folded => self.format_folded_scalar(value, chomping),
-                }
+                self.format_scalar(value, style, chomping)
             }
             _ => "null".to_string(),
         }
@@ -478,15 +428,7 @@ impl Serializer {
     fn serialize_flow_value(&mut self, node: &CustomNode) {
         match node {
             CustomNode::Scalar { value, style, anchor, tag, .. } => {
-                if let Some(anchor_name) = anchor {
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
-                    self.output.push(' ');
-                }
-                if let Some(t) = tag {
-                    self.output.push_str(&t.to_string());
-                    self.output.push(' ');
-                }
+                self.write_anchor_tag(anchor, tag);
                 let formatted = match style {
                     ScalarStyle::Plain => self.format_plain_scalar(value),
                     ScalarStyle::SingleQuoted => self.format_single_quoted_scalar(value),
@@ -497,27 +439,11 @@ impl Serializer {
                 self.output.push_str(&formatted);
             }
             CustomNode::Null { anchor, tag, .. } => {
-                if let Some(anchor_name) = anchor {
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
-                    self.output.push(' ');
-                }
-                if let Some(t) = tag {
-                    self.output.push_str(&t.to_string());
-                    self.output.push(' ');
-                }
+                self.write_anchor_tag(anchor, tag);
                 self.output.push_str("null");
             }
             CustomNode::Mapping { pairs, anchor, tag, .. } => {
-                if let Some(anchor_name) = anchor {
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
-                    self.output.push(' ');
-                }
-                if let Some(t) = tag {
-                    self.output.push_str(&t.to_string());
-                    self.output.push(' ');
-                }
+                self.write_anchor_tag(anchor, tag);
                 self.output.push('{');
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     if i > 0 {
@@ -530,15 +456,7 @@ impl Serializer {
                 self.output.push('}');
             }
             CustomNode::Sequence { items, anchor, tag, .. } => {
-                if let Some(anchor_name) = anchor {
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
-                    self.output.push(' ');
-                }
-                if let Some(t) = tag {
-                    self.output.push_str(&t.to_string());
-                    self.output.push(' ');
-                }
+                self.write_anchor_tag(anchor, tag);
                 self.output.push('[');
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {

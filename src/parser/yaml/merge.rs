@@ -1,4 +1,4 @@
-use crate::ast::{Chomping, CustomNode, ScalarStyle};
+use crate::ast::CustomNode;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
@@ -59,14 +59,7 @@ fn resolve_mapping_merges(
     pairs: &mut IndexMap<CustomNode, CustomNode>,
     anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
 ) {
-    let merge_key = CustomNode::Scalar {
-        value: "<<".to_string(),
-        style: ScalarStyle::Plain,
-        comment: None,
-        anchor: None,
-        tag: None,
-        chomping: Chomping::Clip,
-    };
+    let merge_key = CustomNode::plain_scalar("<<");
 
     // Check if merge key exists and collect merge data
     let merge_data = if let Some(merge_value) = pairs.get(&merge_key) {
@@ -134,14 +127,7 @@ mod tests {
     use crate::parser::parse;
 
     fn make_scalar(value: &str) -> CustomNode {
-        CustomNode::Scalar {
-            value: value.to_string(),
-            style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
-            chomping: Chomping::Clip,
-        }
+        CustomNode::plain_scalar(value)
     }
 
     fn get_mapping(node: &CustomNode) -> &IndexMap<CustomNode, CustomNode> {

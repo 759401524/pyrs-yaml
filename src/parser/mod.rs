@@ -12,29 +12,11 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
     parse_with_options(yaml, true)
 }
 
-/// Parse options for controlling YAML parsing behavior
-pub struct ParseOptions {
-    /// Whether to resolve merge keys (<<) after parsing. Default: true.
-    pub resolve_merges: bool,
-}
-
-impl Default for ParseOptions {
-    fn default() -> Self {
-        Self {
-            resolve_merges: true,
-        }
-    }
-}
-
 /// Parse a YAML string with options
 pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode, String> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
-        return Ok(CustomNode::Null {
-            comment: None,
-            anchor: None,
-            tag: None,
-        });
+        return Ok(CustomNode::plain_null());
     }
 
     // Extract comments and anchors from raw text before parsing
@@ -50,11 +32,7 @@ pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode
         .map_err(|e| format!("YAML parse error: {}", e))?;
 
     // Get the parsed node (handle empty documents)
-    let mut node = receiver.result.unwrap_or(CustomNode::Null {
-        comment: None,
-        anchor: None,
-        tag: None,
-    });
+    let mut node = receiver.result.unwrap_or(CustomNode::plain_null());
 
     // Resolve merge keys (<<) after parsing (if enabled)
     if resolve_merges {
@@ -85,11 +63,7 @@ pub fn parse_all(yaml: &str) -> Result<Vec<CustomNode>, String> {
     let docs = receiver.documents;
     if docs.is_empty() {
         // Single document — return as-is
-        let mut node = receiver.result.unwrap_or(CustomNode::Null {
-            comment: None,
-            anchor: None,
-            tag: None,
-        });
+        let mut node = receiver.result.unwrap_or(CustomNode::plain_null());
         resolve_merge_keys(&mut node);
         return Ok(vec![node]);
     }
@@ -319,9 +293,8 @@ impl<'a> AstReceiver<'a> {
                 if current_key.is_none() {
                     // This is a key
                     **current_key = Some(node);
-                } else {
+                } else if let Some(key) = current_key.take() {
                     // This is a value - insert the pair
-                    let key = current_key.take().unwrap();
                     if let Some(ParseState::Mapping { pairs, .. }) = self.stack.last_mut() {
                         pairs.insert(key, node);
                     }
@@ -335,6 +308,18 @@ impl<'a> AstReceiver<'a> {
                 self.result = Some(node);
             }
         }
+    }
+
+    /// Detect flow style by checking if the byte at the span position matches the expected character
+    fn detect_flow_style(&self, span: &Span, expected_byte: u8) -> bool {
+        let line = span.start.line() - 1;
+        if line < self.line_offsets.len() {
+            let byte_offset = self.line_offsets[line] + span.start.col();
+            if byte_offset < self.yaml_text.len() {
+                return self.yaml_text.as_bytes()[byte_offset] == expected_byte;
+            }
+        }
+        false
     }
 }
 
@@ -392,20 +377,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::MappingStart(anchor_id, tag) => {
                 let line = span.start.line() - 1;
-
-                // Detect flow style: check if the character at the start position is '{'
-                let flow_style = if line < self.line_offsets.len() {
-                    let start = self.line_offsets[line];
-                    let col = span.start.col();
-                    let byte_offset = start + col;
-                    if byte_offset < self.yaml_text.len() {
-                        self.yaml_text.as_bytes()[byte_offset] == b'{'
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
+                let flow_style = self.detect_flow_style(&span, b'{');
 
                 // Find standalone comments before this line
                 let standalone = self.find_standalone_before_line(line);
@@ -458,20 +430,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::SequenceStart(anchor_id, tag) => {
                 let line = span.start.line() - 1;
-
-                // Detect flow style: check if the character at the start position is '['
-                let flow_style = if line < self.line_offsets.len() {
-                    let start = self.line_offsets[line];
-                    let col = span.start.col();
-                    let byte_offset = start + col;
-                    if byte_offset < self.yaml_text.len() {
-                        self.yaml_text.as_bytes()[byte_offset] == b'['
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
+                let flow_style = self.detect_flow_style(&span, b'[');
 
                 // Find standalone comments before this line
                 let standalone = self.find_standalone_before_line(line);

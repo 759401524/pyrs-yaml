@@ -44,24 +44,27 @@ serde_json = "1.0"
   - `comment`：记录行尾注释或独立行注释。
   - `anchor` / `alias`：记录锚点名称和别名引用。
   - `tag`：记录 YAML 标签。
+  - `flow_style`：Mapping/Sequence 区分 flow (`{}`/`[]`) 和 block 风格。
 - **数据结构**：Mapping 必须使用 `IndexMap<CustomNode, CustomNode>` 以保持顺序。
+- **构造函数**：使用 `CustomNode::plain_scalar()` / `plain_mapping()` / `plain_sequence()` / `plain_null()` 创建无元数据的节点，禁止手动拼写 6 字段样板代码。
 
 ### 3.2 解析器 (`src/parser/`)
 - **规则**：基于 saphyr-parser 的 Event API 构建 AST。
 - **模块结构**（单一职责原则）：
   ```
   src/parser/
-  ├── mod.rs              # 核心解析逻辑 (AstReceiver)
+  ├── mod.rs              # 核心解析逻辑 (AstReceiver), flow 风格检测
   └── yaml/
-      ├── comment.rs      # 注释提取与匹配
+      ├── comment.rs      # 注释与锚点提取（从原始文本扫描）
       ├── merge.rs        # 合并键 (<<) 解析
       ├── scalar.rs       # 转义序列 & chomping 检测
-      └── types.rs        # YAML 1.2 类型解析
+      └── types.rs        # YAML 1.2 类型解析（仅在 lib.rs 的 PyO3 层使用）
   ```
 
 ### 3.3 序列化器 (`src/serializer.rs`)
 - **规则**：完全掌控输出格式，禁止依赖任何第三方 dump 函数。
 - **状态管理**：必须维护 `current_indent_level`（当前缩进层级）和 `indent_size`（每层空格数，通常为 2）。
+- **辅助方法**：使用 `write_anchor_tag()` / `write_inline_comment()` / `serialize_flow_value()` 等提取方法，避免重复代码。
 
 ---
 

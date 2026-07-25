@@ -98,36 +98,30 @@ pub fn resolve_yaml_type(value: &str) -> YamlType {
     YamlType::Str(value.to_string())
 }
 
-/// Format a YAML 1.2 type back to string for serialization
-pub fn format_yaml_type(ty: &YamlType) -> String {
-    match ty {
-        YamlType::Null => "null".to_string(),
-        YamlType::Bool(true) => "true".to_string(),
-        YamlType::Bool(false) => "false".to_string(),
-        YamlType::Int(val) => val.to_string(),
-        YamlType::Float(val) => {
-            if val.is_infinite() {
-                if *val > 0.0 {
-                    ".inf".to_string()
-                } else {
-                    "-.inf".to_string()
-                }
-            } else if val.is_nan() {
-                ".nan".to_string()
-            } else if *val == val.floor() && val.abs() < 1e15 {
-                // Format as integer if it's a whole number
-                format!("{}", *val as i64)
-            } else {
-                val.to_string()
-            }
-        }
-        YamlType::Str(s) => s.clone(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn format_yaml_type(ty: &YamlType) -> String {
+        match ty {
+            YamlType::Null => "null".to_string(),
+            YamlType::Bool(true) => "true".to_string(),
+            YamlType::Bool(false) => "false".to_string(),
+            YamlType::Int(val) => val.to_string(),
+            YamlType::Float(val) => {
+                if val.is_infinite() {
+                    if *val > 0.0 { ".inf".to_string() } else { "-.inf".to_string() }
+                } else if val.is_nan() {
+                    ".nan".to_string()
+                } else if *val == val.floor() && val.abs() < 1e15 {
+                    format!("{}", *val as i64)
+                } else {
+                    val.to_string()
+                }
+            }
+            YamlType::Str(s) => s.clone(),
+        }
+    }
 
     #[test]
     fn test_resolve_null_variants() {

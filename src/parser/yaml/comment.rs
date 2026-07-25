@@ -1,4 +1,3 @@
-use crate::ast::Comment;
 
 /// A comment extracted from the raw YAML text
 #[derive(Debug, Clone)]
@@ -137,59 +136,6 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
     anchors
 }
 
-/// Find an inline comment on the same line at a column after `after_col`
-pub fn find_inline_comment(
-    comments: &[RawComment],
-    start_idx: &mut usize,
-    line: usize,
-    after_col: usize,
-) -> Option<Comment> {
-    while *start_idx < comments.len() {
-        let c = &comments[*start_idx];
-        if c.line > line {
-            return None;
-        }
-        if c.line < line {
-            *start_idx += 1;
-            continue;
-        }
-        // Same line
-        if c.col > after_col && !c.standalone {
-            let comment = Comment {
-                text: c.text.clone(),
-                standalone: false,
-            };
-            *start_idx += 1;
-            return Some(comment);
-        }
-        *start_idx += 1;
-    }
-    None
-}
-
-/// Find the next standalone comment before a given line
-pub fn find_standalone_comment_before(
-    comments: &[RawComment],
-    start_idx: &mut usize,
-    before_line: usize,
-) -> Option<Comment> {
-    let mut result = None;
-    while *start_idx < comments.len() {
-        let c = &comments[*start_idx];
-        if c.line >= before_line {
-            break;
-        }
-        if c.standalone {
-            result = Some(Comment {
-                text: c.text.clone(),
-                standalone: true,
-            });
-        }
-        *start_idx += 1;
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,32 +190,6 @@ mod tests {
         assert_eq!(anchors.len(), 2);
         assert_eq!(anchors[0].name, "foo");
         assert_eq!(anchors[1].name, "bar");
-    }
-
-    #[test]
-    fn test_find_inline_comment() {
-        let comments = vec![
-            RawComment { line: 0, col: 10, text: "inline".to_string(), standalone: false },
-            RawComment { line: 1, col: 0, text: "standalone".to_string(), standalone: true },
-        ];
-        let mut idx = 0;
-        let result = find_inline_comment(&comments, &mut idx, 0, 5);
-        assert!(result.is_some());
-        let c = result.unwrap();
-        assert_eq!(c.text, "inline");
-        assert!(!c.standalone);
-    }
-
-    #[test]
-    fn test_find_standalone_comment_before() {
-        let comments = vec![
-            RawComment { line: 0, col: 0, text: "top".to_string(), standalone: true },
-            RawComment { line: 2, col: 0, text: "bottom".to_string(), standalone: true },
-        ];
-        let mut idx = 0;
-        let result = find_standalone_comment_before(&comments, &mut idx, 2);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().text, "top");
     }
 
     #[test]
