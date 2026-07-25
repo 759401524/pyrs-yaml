@@ -64,26 +64,24 @@ impl Serializer {
             CustomNode::Mapping {
                 pairs,
                 comment,
-                anchor,
+                anchor: _,
             } => {
-                // Write anchor if present
-                if let Some(anchor_name) = anchor {
-                    self.write_indent(indent_level);
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
-                    self.output.push('\n');
-                }
-
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     self.write_indent(indent_level);
                     self.output.push_str(&self.format_scalar_for_key(key));
-                    self.output.push_str(": ");
+                    self.output.push(':');
 
                     // Check if value needs to be on next line
                     if self.needs_newline_for_value(value) {
+                        // If the value node has an anchor, write it after the colon
+                        if let Some(anchor_name) = value.anchor() {
+                            self.output.push_str(" &");
+                            self.output.push_str(anchor_name);
+                        }
                         self.output.push('\n');
                         self.serialize_node_internal(value, indent_level + 1, i == pairs.len() - 1);
                     } else {
+                        self.output.push(' ');
                         self.serialize_node_internal(value, 0, i == pairs.len() - 1);
                     }
                 }
@@ -189,11 +187,8 @@ impl Serializer {
 
     fn format_plain_scalar(&self, value: &str) -> String {
         // Check if the value needs quoting
+        // Note: true/false/null/~ are valid plain scalars in YAML
         if value.is_empty()
-            || value == "null"
-            || value == "~"
-            || value == "true"
-            || value == "false"
             || value.contains(':')
             || value.contains('#')
             || value.starts_with('-')

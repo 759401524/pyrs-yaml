@@ -1,0 +1,54 @@
+# Application Configuration
+# This file demonstrates round-trip parsing
+
+app:
+  name: my-application  # Application name
+  version: "1.0.0"  # Semantic version
+
+# Database configuration
+database: &db-config
+  host: localhost
+  port: 5432
+  pool:
+    min: 5
+    max: 20
+
+# Development overrides
+development:
+  <<: *db-config
+  host: dev-db.local
+  debug: true
+
+# Server settings
+server:
+  host: 0.0.0.0
+  port: 8080
+  ssl: false
+
+# Multi-line strings
+description: >
+  This is a long description
+  that spans multiple lines
+  and will be folded into
+  a single line.
+
+code: |
+  function hello() {
+    console.log("Hello, World!");
+    return true;
+  }
+
+# Lists
+features:
+  - authentication
+  - authorization
+  - logging
+
+# Nested structure
+logging:
+  level: info
+  handlers:
+    - type: console
+      colorize: true
+    - type: file
+      path: /var/log/app.log
