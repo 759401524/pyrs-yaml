@@ -2,7 +2,7 @@
 Test error recovery improvements for YAML test suite
 """
 
-import pyamlium_custom
+import pyyaml_rs
 
 
 def test_specific_failures():
@@ -30,7 +30,7 @@ def test_specific_failures():
         print(f'=== {test_id} ===')
         print(f'YAML: {repr(yaml_str[:80])}')
         try:
-            doc = pyamlium_custom.parse(yaml_str)
+            doc = pyyaml_rs.parse(yaml_str)
             print(f'Result: PASS')
             results['pass'] += 1
         except Exception as e:
@@ -57,7 +57,7 @@ def test_flow_constructs():
     for test_id, yaml_str in test_cases:
         print(f'=== {test_id} ===')
         try:
-            doc = pyamlium_custom.parse(yaml_str)
+            doc = pyyaml_rs.parse(yaml_str)
             print(f'PASS: {doc.to_yaml()[:50]}')
             results['pass'] += 1
         except Exception as e:
@@ -87,7 +87,7 @@ def test_multiline_scalars():
     for test_id, yaml_str in test_cases:
         print(f'=== {test_id} ===')
         try:
-            doc = pyamlium_custom.parse(yaml_str)
+            doc = pyyaml_rs.parse(yaml_str)
             output = doc.to_yaml()
             print(f'PASS: {repr(output[:50])}')
             results['pass'] += 1

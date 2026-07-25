@@ -2,7 +2,7 @@
 Analyze YAML test suite failures to find quick fixes
 """
 
-import pyamlium_custom
+import pyyaml_rs
 import yaml
 import os
 
@@ -31,7 +31,7 @@ def analyze_failures():
                     continue
 
                 try:
-                    doc = pyamlium_custom.parse(yaml_input)
+                    doc = pyyaml_rs.parse(yaml_input)
                     # Test passed
                 except Exception as e:
                     error_msg = str(e)

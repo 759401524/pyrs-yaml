@@ -1,4 +1,4 @@
-import pyamlium_custom
+import pyyaml_rs
 
 
 def test_roundtrip_with_comments():
@@ -6,15 +6,10 @@ def test_roundtrip_with_comments():
     yaml_str = """# Top comment
 key: value  # Inline comment
 """
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     result = doc.to_yaml()
-    print("=== Input ===")
-    print(yaml_str)
-    print("=== Output ===")
-    print(result)
-    print("=== Match ===")
-    print(yaml_str == result)
-    # Note: comments may not be perfectly preserved yet
+    assert "# Top comment" in result
+    assert "key: value" in result
 
 
 def test_roundtrip_with_anchors():
@@ -27,12 +22,12 @@ production:
   <<: *defaults
   host: prod.example.com
 """
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     result = doc.to_yaml()
-    print("=== Anchors Input ===")
-    print(yaml_str)
-    print("=== Anchors Output ===")
-    print(result)
+    assert "defaults" in result
+    assert "timeout" in result
+    assert "retries" in result
+    assert "prod.example.com" in result
 
 
 def test_roundtrip_multiline():
@@ -46,12 +41,11 @@ folded: >
   this is
   folded text
 """
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     result = doc.to_yaml()
-    print("=== Multi-line Input ===")
-    print(yaml_str)
-    print("=== Multi-line Output ===")
-    print(result)
+    assert "literal" in result
+    assert "line 1" in result
+    assert "folded" in result
 
 
 def test_roundtrip_complex():
@@ -64,39 +58,30 @@ database:
   host: localhost
   port: 5432
 """
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     result = doc.to_yaml()
-    print("=== Complex Input ===")
-    print(yaml_str)
-    print("=== Complex Output ===")
-    print(result)
-    print("=== Values preserved ===")
-    print(f"server.name: {doc.get('server')}")
-    print(f"database.host: {doc.get('database')}")
+    assert "server" in result
+    assert "web-server" in result
+    assert "database" in result
+    assert "localhost" in result
+    server = doc.get("server")
+    database = doc.get("database")
+    assert server is not None
+    assert database is not None
 
 
 def test_from_file():
     """Test parsing from file"""
-    try:
-        doc = pyamlium_custom.parse_file("tests/roundtrip.yaml")
-        result = doc.to_yaml()
-        print("=== File Parse Success ===")
-        print(f"Root type: {doc.root_type()}")
-        print(f"App name: {doc.get('app')}")
-        print(f"Database: {doc.get('database')}")
-        print(f"First 500 chars of output:")
-        print(result[:500])
-    except Exception as e:
-        print(f"Error: {e}")
+    doc = pyyaml_rs.parse_file("tests/roundtrip.yaml")
+    result = doc.to_yaml()
+    assert result is not None
+    assert len(result) > 0
+    assert doc.root_type() is not None
 
 
 if __name__ == "__main__":
     test_roundtrip_with_comments()
-    print("\n" + "="*60 + "\n")
     test_roundtrip_with_anchors()
-    print("\n" + "="*60 + "\n")
     test_roundtrip_multiline()
-    print("\n" + "="*60 + "\n")
     test_roundtrip_complex()
-    print("\n" + "="*60 + "\n")
     test_from_file()

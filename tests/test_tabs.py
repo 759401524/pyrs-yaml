@@ -2,45 +2,37 @@
 Test tab handling in quoted scalars
 """
 
-import pyamlium_custom
+import pyyaml_rs
 
 
 def test_tab_in_double_quoted():
     """Test tab character in double-quoted scalar"""
     yaml_str = 'key: "hello\tworld"'
-    print(f'Input: {repr(yaml_str)}')
-    try:
-        doc = pyamlium_custom.parse(yaml_str)
-        print(f'Output: {repr(doc.to_yaml())}')
-    except Exception as e:
-        print(f'Error: {e}')
+    doc = pyyaml_rs.parse(yaml_str)
+    result = doc.to_yaml()
+    assert "hello" in result
+    assert "world" in result
 
 
 def test_backslash_tab():
     """Test backslash followed by tab"""
     yaml_str = 'key: "hello\\\\\tworld"'
-    print(f'Input: {repr(yaml_str)}')
-    try:
-        doc = pyamlium_custom.parse(yaml_str)
-        print(f'Output: {repr(doc.to_yaml())}')
-    except Exception as e:
-        print(f'Error: {e}')
+    doc = pyyaml_rs.parse(yaml_str)
+    result = doc.to_yaml()
+    assert "hello" in result
+    assert "world" in result
 
 
 def test_multiline_quoted():
     """Test multiline quoted scalar"""
     yaml_str = '"line1\nline2"'
-    print(f'Input: {repr(yaml_str)}')
-    try:
-        doc = pyamlium_custom.parse(yaml_str)
-        print(f'Output: {repr(doc.to_yaml())}')
-    except Exception as e:
-        print(f'Error: {e}')
+    doc = pyyaml_rs.parse(yaml_str)
+    result = doc.to_yaml()
+    assert "line1" in result
+    assert "line2" in result
 
 
 if __name__ == '__main__':
     test_tab_in_double_quoted()
-    print()
     test_backslash_tab()
-    print()
     test_multiline_quoted()

@@ -28,12 +28,24 @@ impl YamlDocument {
         serializer::to_yaml(&self.ast)
     }
 
+    #[pyo3(signature = (indent_size=2, explicit_start=false, explicit_end=false, sort_keys=false))]
+    fn to_yaml_with_options(&self, indent_size: usize, explicit_start: bool, explicit_end: bool, sort_keys: bool) -> String {
+        let options = serializer::SerializeOptions {
+            indent_size,
+            explicit_start,
+            explicit_end,
+            sort_keys,
+        };
+        serializer::to_yaml_with_options(&self.ast, &options)
+    }
+
     fn to_dict(&self, py: Python) -> Py<PyAny> {
         node_to_pyobject(&self.ast, py)
     }
 
-    fn get(&self, key: &str) -> PyResult<Option<Py<PyAny>>> {
-        Python::attach(|py| match &self.ast {
+    #[pyo3(signature = (key, default=None))]
+    fn get(&self, py: Python, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
                 let key_node = CustomNode::Scalar {
                     value: key.to_string(),
@@ -44,13 +56,13 @@ impl YamlDocument {
                     chomping: ast::Chomping::Clip,
                 };
                 if let Some(value) = pairs.get(&key_node) {
-                    Ok(Some(node_to_pyobject(value, py)))
+                    Ok(node_to_pyobject(value, py))
                 } else {
-                    Ok(None)
+                    Ok(default.unwrap_or_else(|| py.None()))
                 }
             }
-            _ => Ok(None),
-        })
+            _ => Ok(default.unwrap_or_else(|| py.None())),
+        }
     }
 
     fn root_type(&self) -> String {
@@ -147,11 +159,21 @@ impl YamlDocument {
     }
 }
 
-/// Parse a YAML string into a YamlDocument.
+/// Parse a YAML string or bytes into a YamlDocument.
 #[pyfunction]
-fn parse(py: Python, yaml: &str) -> PyResult<YamlDocument> {
+#[pyo3(signature = (yaml, resolve_merges=true))]
+fn parse(py: Python, yaml: &Bound<'_, pyo3::types::PyAny>, resolve_merges: bool) -> PyResult<YamlDocument> {
+    let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
+        s
+    } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
+        String::from_utf8(bytes)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid UTF-8: {}", e)))?
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err("Expected str or bytes"));
+    };
+
     let ast = py.detach(|| {
-        parser::parse(yaml).map_err(|e| {
+        parser::parse_with_options(&yaml_str, resolve_merges).map_err(|e| {
             pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
@@ -163,7 +185,12 @@ fn parse(py: Python, yaml: &str) -> PyResult<YamlDocument> {
 fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
-    parse(py, &content)
+    let ast = py.detach(|| {
+        parser::parse_with_options(&content, true).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+        })
+    })?;
+    Ok(YamlDocument { ast })
 }
 
 /// Convert a CustomNode to a Python object.
@@ -206,12 +233,33 @@ fn node_to_pyobject(node: &CustomNode, py: Python) -> Py<PyAny> {
             list.into_any().unbind()
         }
         CustomNode::Null { .. } => py.None(),
-        CustomNode::Alias { name } => {
-            let dict = PyDict::new(py);
-            dict.set_item("__alias__", name.clone()).ok();
-            dict.into_any().unbind()
+        CustomNode::Alias { .. } => {
+            // Aliases cannot be resolved in to_dict() without anchor context
+            // Return None as a safe default
+            py.None()
         }
     }
+}
+
+/// Parse multiple YAML documents from a string.
+#[pyfunction]
+fn parse_all_docs(py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
+    let asts = py.detach(|| {
+        parser::parse_all(yaml).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+        })
+    })?;
+    Ok(asts.into_iter().map(|ast| YamlDocument { ast }).collect())
+}
+
+/// Dump (serialize) a Python object to YAML and write to file.
+#[pyfunction]
+fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
+    let node = pyobject_to_node(py, &data)?;
+    let yaml = serializer::to_yaml(&node);
+    std::fs::write(path, yaml)
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+    Ok(())
 }
 
 /// A Python module implemented in Rust.
@@ -219,12 +267,14 @@ fn node_to_pyobject(node: &CustomNode, py: Python) -> Py<PyAny> {
 fn pyyaml_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse, m)?)?;
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_all_docs, m)?)?;
     m.add_function(wrap_pyfunction!(safe_load, m)?)?;
     m.add_function(wrap_pyfunction!(safe_loads, m)?)?;
     m.add_function(wrap_pyfunction!(safe_dump, m)?)?;
     m.add_function(wrap_pyfunction!(safe_dumps, m)?)?;
     m.add_function(wrap_pyfunction!(from_dict, m)?)?;
     m.add_function(wrap_pyfunction!(from_json, m)?)?;
+    m.add_function(wrap_pyfunction!(dump_file, m)?)?;
     m.add_function(wrap_pyfunction!(read_markdown, m)?)?;
     m.add_function(wrap_pyfunction!(read_markdown_str, m)?)?;
     m.add_class::<YamlDocument>()?;
@@ -245,23 +295,12 @@ fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
 /// PyYAML compatible: safe_loads(stream) -> list of dict/list
 #[pyfunction]
 fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
-    let docs: Vec<&str> = yaml.split("---").collect();
-    let mut results = Vec::new();
-
-    for doc in docs {
-        let doc = doc.trim();
-        if doc.is_empty() {
-            continue;
-        }
-        let ast = py.detach(|| {
-            parser::parse(doc).map_err(|e| {
-                pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
-            })
-        })?;
-        results.push(node_to_pyobject(&ast, py));
-    }
-
-    Ok(results)
+    let asts = py.detach(|| {
+        parser::parse_all(yaml).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+        })
+    })?;
+    Ok(asts.iter().map(|ast| node_to_pyobject(ast, py)).collect())
 }
 
 /// PyYAML compatible: safe_dump(data) -> str

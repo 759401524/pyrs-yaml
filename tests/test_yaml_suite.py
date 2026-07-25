@@ -1,12 +1,13 @@
 """
-YAML Test Suite Runner for pyamlium_custom
+YAML Test Suite Runner for pyyaml_rs
 Runs the official YAML test suite and reports results
 """
 
 import os
 import json
+import pytest
 import yaml
-import pyamlium_custom
+import pyyaml_rs
 from pathlib import Path
 
 
@@ -68,7 +69,6 @@ def load_test_cases(suite_dir: str) -> list:
                     yaml_input = convert_special_chars(yaml_input)
 
                 # Determine if test should be valid or invalid
-                # Check both tags and the fail field
                 is_fail = test.get("fail", False)
                 is_valid = "error" not in tags.lower() and "invalid" not in tags.lower() and not is_fail
 
@@ -82,21 +82,10 @@ def load_test_cases(suite_dir: str) -> list:
                     "dump": dump_expected.strip() if dump_expected else None,
                     "valid": is_valid,
                 })
-        except Exception as e:
-            print(f"Error loading {yaml_file}: {e}")
+        except Exception:
+            pass
 
     return test_cases
-
-
-def normalize_json(json_str: str) -> str:
-    """Normalize JSON for comparison"""
-    if not json_str:
-        return ""
-    try:
-        data = json.loads(json_str)
-        return json.dumps(data, sort_keys=True, indent=2)
-    except:
-        return json_str.strip()
 
 
 def compare_json(expected: str, actual: str) -> bool:
@@ -105,7 +94,7 @@ def compare_json(expected: str, actual: str) -> bool:
         exp = json.loads(expected)
         act = json.loads(actual)
         return exp == act
-    except:
+    except Exception:
         return expected.strip() == actual.strip()
 
 
@@ -120,7 +109,6 @@ def run_test(test: dict) -> dict:
         "dump": test.get("dump"),
         "parse_ok": False,
         "json_match": False,
-        "tree_match": False,
         "dump_match": False,
         "error": None,
     }
@@ -132,7 +120,7 @@ def run_test(test: dict) -> dict:
 
     # Test 1: Parse the YAML
     try:
-        doc = pyamlium_custom.parse(yaml_input)
+        doc = pyyaml_rs.parse(yaml_input)
         result["parse_ok"] = True
     except Exception as e:
         result["error"] = f"Parse error: {str(e)[:100]}"
@@ -141,8 +129,7 @@ def run_test(test: dict) -> dict:
     # Test 2: Compare JSON output (if expected)
     if test["json"]:
         try:
-            # Use safe_load to get a dict
-            actual_data = pyamlium_custom.safe_load(yaml_input)
+            actual_data = pyyaml_rs.safe_load(yaml_input)
             actual_json = json.dumps(actual_data, sort_keys=True, indent=2)
             result["json_match"] = compare_json(test["json"], actual_json)
         except Exception as e:
@@ -160,95 +147,72 @@ def run_test(test: dict) -> dict:
     return result
 
 
-def main():
-    suite_dir = "Reference/yaml-test-suite"
+SUITE_DIR = "Reference/yaml-test-suite"
 
-    print("=" * 70)
-    print("YAML Test Suite Runner for pyamlium_custom")
-    print("=" * 70)
 
-    # Load test cases
-    test_cases = load_test_cases(suite_dir)
-    print(f"\nLoaded {len(test_cases)} test cases")
+@pytest.mark.skipif(
+    not Path(SUITE_DIR).exists(),
+    reason="YAML Test Suite not found"
+)
+def test_yaml_suite_parse_rate():
+    """Test that parse success rate meets threshold (>= 95% for valid tests)."""
+    test_cases = load_test_cases(SUITE_DIR)
+    assert len(test_cases) > 0, "No test cases loaded"
 
-    # Run tests
-    results = []
-    for i, test in enumerate(test_cases):
-        if (i + 1) % 50 == 0:
-            print(f"  Running test {i+1}/{len(test_cases)}...")
-        result = run_test(test)
-        results.append(result)
+    results = [run_test(test) for test in test_cases]
 
-    # Count results
     total = len(results)
-    parse_ok = sum(1 for r in results if r["parse_ok"])
-    parse_fail = total - parse_ok
-    json_match = sum(1 for r in results if r["json_match"])
-    json_total = sum(1 for r in results if r["json"])
-    dump_match = sum(1 for r in results if r["dump_match"])
-    dump_total = sum(1 for r in results if r["dump"])
-
-    # Separate valid and invalid tests
     valid_tests = [r for r in results if r["valid"]]
-    invalid_tests = [r for r in results if not r["valid"]]
-
     valid_parse_ok = sum(1 for r in valid_tests if r["parse_ok"])
-    invalid_parse_ok = sum(1 for r in invalid_tests if r["parse_ok"])
 
-    print("\n" + "=" * 70)
-    print("RESULTS")
-    print("=" * 70)
-
-    print(f"\nTotal tests: {total}")
-    print(f"  Valid tests: {len(valid_tests)}")
-    print(f"  Invalid tests: {len(invalid_tests)}")
-
-    print(f"\nParse Results:")
-    print(f"  Parse OK: {parse_ok}/{total} ({parse_ok/total*100:.1f}%)")
-    print(f"  Parse Fail: {parse_fail}/{total}")
-
-    print(f"\nValid Tests (should parse):")
-    print(f"  Parse OK: {valid_parse_ok}/{len(valid_tests)} ({valid_parse_ok/len(valid_tests)*100:.1f}%)")
-
-    print(f"\nInvalid Tests (should fail):")
-    print(f"  Parse OK (incorrect): {invalid_parse_ok}/{len(invalid_tests)} ({invalid_parse_ok/len(invalid_tests)*100:.1f}%)")
-
-    if json_total > 0:
-        print(f"\nJSON Comparison:")
-        print(f"  Match: {json_match}/{json_total} ({json_match/json_total*100:.1f}%)")
-
-    if dump_total > 0:
-        print(f"\nDump Comparison:")
-        print(f"  Match: {dump_match}/{dump_total} ({dump_match/dump_total*100:.1f}%)")
-
-    # Show some failures
-    failures = [r for r in results if not r["parse_ok"] and r["error"]]
-    if failures:
-        print(f"\n{'='*70}")
-        print("SAMPLE FAILURES (first 10):")
-        print("=" * 70)
-        for f in failures[:10]:
-            print(f"  {f['id']}: {f['name']}")
-            print(f"    Tags: {f['tags']}")
-            print(f"    Error: {f['error']}")
-            print()
-
-    # Compare with PyYAML
-    print("=" * 70)
-    print("COMPARISON WITH PyYAML")
-    print("=" * 70)
-
-    pyyaml_parse_ok = 0
-    for test in test_cases:
-        try:
-            yaml.safe_load(test["yaml"])
-            pyyaml_parse_ok += 1
-        except:
-            pass
-
-    print(f"PyYAML Parse OK: {pyyaml_parse_ok}/{total} ({pyyaml_parse_ok/total*100:.1f}%)")
-    print(f"pyamlium_custom Parse OK: {parse_ok}/{total} ({parse_ok/total*100:.1f}%)")
+    if valid_tests:
+        rate = valid_parse_ok / len(valid_tests) * 100
+        print(f"\nValid tests: {valid_parse_ok}/{len(valid_tests)} ({rate:.1f}%)")
+        assert rate >= 95.0, f"Parse rate {rate:.1f}% below threshold 95%"
+    else:
+        pytest.skip("No valid test cases found")
 
 
-if __name__ == "__main__":
-    main()
+@pytest.mark.skipif(
+    not Path(SUITE_DIR).exists(),
+    reason="YAML Test Suite not found"
+)
+def test_yaml_suite_invalid_rejected():
+    """Test that invalid YAML is correctly rejected."""
+    test_cases = load_test_cases(SUITE_DIR)
+
+    invalid_tests = [t for t in test_cases if not t["valid"]]
+    rejected = 0
+    for test in invalid_tests:
+        result = run_test(test)
+        if not result["parse_ok"]:
+            rejected += 1
+
+    if invalid_tests:
+        rate = rejected / len(invalid_tests) * 100
+        print(f"\nInvalid tests rejected: {rejected}/{len(invalid_tests)} ({rate:.1f}%)")
+        # At least 90% of invalid tests should be rejected
+        assert rate >= 90.0, f"Invalid rejection rate {rate:.1f}% below threshold 90%"
+    else:
+        pytest.skip("No invalid test cases found")
+
+
+@pytest.mark.skipif(
+    not Path(SUITE_DIR).exists(),
+    reason="YAML Test Suite not found"
+)
+def test_yaml_suite_json_match():
+    """Test JSON comparison against expected output."""
+    test_cases = load_test_cases(SUITE_DIR)
+    results = [run_test(test) for test in test_cases]
+
+    json_results = [r for r in results if r["json"]]
+    json_match = sum(1 for r in json_results if r["json_match"])
+
+    if json_results:
+        rate = json_match / len(json_results) * 100
+        print(f"\nJSON match: {json_match}/{len(json_results)} ({rate:.1f}%)")
+        # At least 80% JSON match rate
+        assert rate >= 80.0, f"JSON match rate {rate:.1f}% below threshold 80%"
+    else:
+        pytest.skip("No JSON comparison results found")

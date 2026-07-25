@@ -102,3 +102,81 @@ pub fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
 
     Chomping::Clip
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unescape_newlines() {
+        assert_eq!(unescape_double_quoted(r#"hello\nworld"#), "hello\nworld");
+    }
+
+    #[test]
+    fn test_unescape_tabs() {
+        assert_eq!(unescape_double_quoted(r"hello\tworld"), "hello\tworld");
+    }
+
+    #[test]
+    fn test_unescape_unicode() {
+        assert_eq!(unescape_double_quoted(r"\u0041"), "A");
+    }
+
+    #[test]
+    fn test_unescape_hex() {
+        assert_eq!(unescape_double_quoted(r"\x41"), "A");
+    }
+
+    #[test]
+    fn test_unescape_backslash() {
+        assert_eq!(unescape_double_quoted(r"hello\\world"), r"hello\world");
+    }
+
+    #[test]
+    fn test_unescape_double_quote() {
+        assert_eq!(unescape_double_quoted(r#"hello\"world"#), r#"hello"world"#);
+    }
+
+    #[test]
+    fn test_unescape_line_continuation() {
+        assert_eq!(
+            unescape_double_quoted("hello\\\n  world"),
+            "helloworld"
+        );
+    }
+
+    #[test]
+    fn test_detect_chomping_strip() {
+        let yaml = "key: |-\n  content";
+        let chomping = detect_chomping(yaml, 1);
+        assert_eq!(chomping, Chomping::Strip);
+    }
+
+    #[test]
+    fn test_detect_chomping_keep() {
+        let yaml = "key: |+\n  content";
+        let chomping = detect_chomping(yaml, 1);
+        assert_eq!(chomping, Chomping::Keep);
+    }
+
+    #[test]
+    fn test_detect_chomping_clip() {
+        let yaml = "key: |\n  content";
+        let chomping = detect_chomping(yaml, 1);
+        assert_eq!(chomping, Chomping::Clip);
+    }
+
+    #[test]
+    fn test_detect_chomping_folded_strip() {
+        let yaml = "key: >-\n  content";
+        let chomping = detect_chomping(yaml, 1);
+        assert_eq!(chomping, Chomping::Strip);
+    }
+
+    #[test]
+    fn test_detect_chomping_default() {
+        let yaml = "key: value";
+        let chomping = detect_chomping(yaml, 0);
+        assert_eq!(chomping, Chomping::Clip);
+    }
+}

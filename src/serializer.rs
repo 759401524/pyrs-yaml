@@ -1,22 +1,55 @@
 use crate::ast::{Chomping, CustomNode, ScalarStyle};
 
+/// Serialization options
+pub struct SerializeOptions {
+    pub indent_size: usize,
+    pub explicit_start: bool,
+    pub explicit_end: bool,
+    pub sort_keys: bool,
+}
+
+impl Default for SerializeOptions {
+    fn default() -> Self {
+        Self {
+            indent_size: 2,
+            explicit_start: false,
+            explicit_end: false,
+            sort_keys: false,
+        }
+    }
+}
+
 /// Serialize a CustomNode AST back to YAML string
 pub fn to_yaml(node: &CustomNode) -> String {
-    let mut serializer = Serializer::new();
+    to_yaml_with_options(node, &SerializeOptions::default())
+}
+
+/// Serialize with custom options
+pub fn to_yaml_with_options(node: &CustomNode, options: &SerializeOptions) -> String {
+    let mut serializer = Serializer::new(options);
+    if options.explicit_start {
+        serializer.output.push_str("---\n");
+    }
     serializer.serialize_node_internal(node, 0, false, false);
+    if options.explicit_end {
+        serializer.output.push_str("...\n");
+    }
     serializer.output
 }
 
+#[allow(dead_code)]
 struct Serializer {
     output: String,
     indent_size: usize,
+    sort_keys: bool,
 }
 
 impl Serializer {
-    fn new() -> Self {
+    fn new(options: &SerializeOptions) -> Self {
         Self {
             output: String::new(),
-            indent_size: 2,
+            indent_size: options.indent_size,
+            sort_keys: options.sort_keys,
         }
     }
 
@@ -96,7 +129,26 @@ impl Serializer {
                     self.output.push('\n');
                 }
 
-                for (i, (key, value)) in pairs.iter().enumerate() {
+                // Collect pairs, optionally sorted
+                let pairs_vec: Vec<(&CustomNode, &CustomNode)> = if self.sort_keys {
+                    let mut v: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
+                    v.sort_by(|a, b| {
+                        let ka = match a.0 {
+                            CustomNode::Scalar { value, .. } => value.as_str(),
+                            _ => "",
+                        };
+                        let kb = match b.0 {
+                            CustomNode::Scalar { value, .. } => value.as_str(),
+                            _ => "",
+                        };
+                        ka.cmp(kb)
+                    });
+                    v
+                } else {
+                    pairs.iter().collect()
+                };
+
+                for (i, (key, value)) in pairs_vec.iter().enumerate() {
                     // Check if key is a complex key (mapping or sequence)
                     let is_complex_key = matches!(
                         key,
@@ -133,12 +185,12 @@ impl Serializer {
                         self.serialize_node_internal(
                             value,
                             indent_level + 1,
-                            i == pairs.len() - 1,
+                            i == pairs_vec.len() - 1,
                             true,
                         );
                     } else {
                         self.output.push(' ');
-                        self.serialize_node_internal(value, 0, i == pairs.len() - 1, true);
+                        self.serialize_node_internal(value, 0, i == pairs_vec.len() - 1, true);
                     }
                 }
 
@@ -252,13 +304,13 @@ impl Serializer {
 
     fn format_scalar_for_key(&self, node: &CustomNode) -> String {
         match node {
-            CustomNode::Scalar { value, style, .. } => {
-                // Keys are typically plain or quoted
+            CustomNode::Scalar { value, style, chomping, .. } => {
                 match style {
                     ScalarStyle::Plain => self.format_plain_scalar(value),
                     ScalarStyle::SingleQuoted => self.format_single_quoted_scalar(value),
                     ScalarStyle::DoubleQuoted => self.format_double_quoted_scalar(value),
-                    _ => self.format_plain_scalar(value),
+                    ScalarStyle::Literal => self.format_literal_scalar(value, chomping),
+                    ScalarStyle::Folded => self.format_folded_scalar(value, chomping),
                 }
             }
             _ => "null".to_string(),

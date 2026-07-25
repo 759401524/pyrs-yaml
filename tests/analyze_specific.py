@@ -4,7 +4,7 @@ Analyze specific failing tests
 
 import yaml
 import os
-import pyamlium_custom
+import pyyaml_rs
 
 
 def convert_special_chars(text):
@@ -54,7 +54,7 @@ def main():
                     print(f'  {repr(line)}')
 
                 try:
-                    doc = pyamlium_custom.parse(yaml_input)
+                    doc = pyyaml_rs.parse(yaml_input)
                     print(f'OK')
                 except Exception as e:
                     print(f'Error: {str(e)[:100]}')

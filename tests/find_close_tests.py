@@ -5,7 +5,7 @@ Find tests that are close to passing
 import yaml
 import os
 import json
-import pyamlium_custom
+import pyyaml_rs
 
 
 def convert_special_chars(text: str) -> str:
@@ -49,7 +49,7 @@ def find_close_tests():
                 yaml_input = convert_special_chars(yaml_input)
 
                 try:
-                    doc = pyamlium_custom.parse(yaml_input)
+                    doc = pyyaml_rs.parse(yaml_input)
                     # Parsed OK, check if JSON matches
                     json_expected = test.get('json', '')
                     if json_expected:

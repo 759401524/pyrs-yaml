@@ -4,7 +4,7 @@ Analyze whitespace-related YAML test failures
 
 import yaml
 import os
-import pyamlium_custom
+import pyyaml_rs
 
 
 def analyze_whitespace_failures():
@@ -38,7 +38,7 @@ def analyze_whitespace_failures():
                     continue
 
                 try:
-                    doc = pyamlium_custom.parse(yaml_input)
+                    doc = pyyaml_rs.parse(yaml_input)
                 except Exception as e:
                     failures.append({
                         'id': f.replace('.yaml', ''),

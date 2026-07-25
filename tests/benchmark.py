@@ -1,5 +1,5 @@
 """
-Benchmark: pyamlium_custom vs pyyaml vs yamlium
+Benchmark: pyyaml_rs vs pyyaml vs yamlium
 Compare parsing speed, serialization speed, and feature support
 """
 
@@ -10,11 +10,11 @@ from typing import Any, Dict, List
 
 # Import libraries
 try:
-    import pyamlium_custom
+    import pyyaml_rs
     HAS_PYAML = True
 except ImportError:
     HAS_PYAML = False
-    print("pyamlium_custom not installed")
+    print("pyyaml_rs not installed")
 
 try:
     import yaml as pyyaml
@@ -152,12 +152,12 @@ def benchmark_parse(yaml_str: str, iterations: int = 100) -> Dict[str, float]:
             times = []
             for _ in range(iterations):
                 start = time.perf_counter()
-                pyamlium_custom.parse(yaml_str)
+                pyyaml_rs.parse(yaml_str)
                 end = time.perf_counter()
                 times.append(end - start)
-            results['pyamlium_custom'] = statistics.mean(times) * 1000  # ms
+            results['pyyaml_rs'] = statistics.mean(times) * 1000  # ms
         except Exception as e:
-            results['pyamlium_custom'] = f"Error: {e}"
+            results['pyyaml_rs'] = f"Error: {e}"
 
     if HAS_PYYAML:
         try:
@@ -192,14 +192,14 @@ def benchmark_to_yaml(iterations: int = 100) -> Dict[str, float]:
 
     # Parse once, then benchmark serialization
     if HAS_PYAML:
-        doc = pyamlium_custom.parse(MEDIUM_YAML)
+        doc = pyyaml_rs.parse(MEDIUM_YAML)
         times = []
         for _ in range(iterations):
             start = time.perf_counter()
             doc.to_yaml()
             end = time.perf_counter()
             times.append(end - start)
-        results['pyamlium_custom'] = statistics.mean(times) * 1000
+        results['pyyaml_rs'] = statistics.mean(times) * 1000
 
     if HAS_PYYAML:
         data = pyyaml.safe_load(MEDIUM_YAML)
@@ -235,10 +235,10 @@ def test_roundtrip(yaml_str: str) -> Dict[str, bool]:
     results = {}
 
     if HAS_PYAML:
-        doc = pyamlium_custom.parse(yaml_str)
+        doc = pyyaml_rs.parse(yaml_str)
         output = doc.to_yaml()
         # Check if key features are preserved
-        results['pyamlium_custom'] = True  # Our library preserves everything
+        results['pyyaml_rs'] = True  # Our library preserves everything
 
     if HAS_PYYAML:
         try:
@@ -278,10 +278,10 @@ def test_features() -> Dict[str, Dict[str, bool]]:
 
         if HAS_PYAML:
             try:
-                doc = pyamlium_custom.parse(yaml_str)
-                results[feature]['pyamlium_custom'] = True
+                doc = pyyaml_rs.parse(yaml_str)
+                results[feature]['pyyaml_rs'] = True
             except:
-                results[feature]['pyamlium_custom'] = False
+                results[feature]['pyyaml_rs'] = False
 
         if HAS_PYYAML:
             try:
@@ -306,13 +306,13 @@ def test_features() -> Dict[str, Dict[str, bool]]:
 
 def main():
     print("=" * 70)
-    print("YAML Library Benchmark: pyamlium_custom vs pyyaml vs yamlium")
+    print("YAML Library Benchmark: pyyaml_rs vs pyyaml vs yamlium")
     print("=" * 70)
     print()
 
     # Check available libraries
     print("Available libraries:")
-    print(f"  - pyamlium_custom: {'✓' if HAS_PYAML else '✗'}")
+    print(f"  - pyyaml_rs: {'✓' if HAS_PYAML else '✗'}")
     print(f"  - pyyaml: {'✓' if HAS_PYYAML else '✗'}")
     print(f"  - yamlium: {'✓' if HAS_YAMLIUM else '✗'}")
     print()
@@ -373,7 +373,7 @@ def main():
         pass
 
     print("""
-pyamlium_custom:
+pyyaml_rs:
   - Full YAML 1.2 support
   - Perfect round-trip (comments, anchors, tags, chomping)
   - Custom AST for advanced manipulation

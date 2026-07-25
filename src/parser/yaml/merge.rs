@@ -127,3 +127,83 @@ fn resolve_mapping_merges(
         resolve_merges_recursive(value, anchors);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse;
+
+    fn make_scalar(value: &str) -> CustomNode {
+        CustomNode::Scalar {
+            value: value.to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: Chomping::Clip,
+        }
+    }
+
+    fn get_mapping(node: &CustomNode) -> &IndexMap<CustomNode, CustomNode> {
+        match node {
+            CustomNode::Mapping { pairs, .. } => pairs,
+            _ => panic!("expected Mapping"),
+        }
+    }
+
+    fn get_scalar_value(node: &CustomNode) -> &str {
+        match node {
+            CustomNode::Scalar { value, .. } => value,
+            _ => panic!("expected Scalar"),
+        }
+    }
+
+    #[test]
+    fn test_single_merge() {
+        let yaml = "defaults: &defaults\n  timeout: 30\nprod:\n  <<: *defaults\n  host: x";
+        let mut root = parse(yaml).unwrap();
+        resolve_merge_keys(&mut root);
+
+        let pairs = get_mapping(&root);
+        let prod = pairs.get(&make_scalar("prod")).unwrap();
+        let prod_pairs = get_mapping(prod);
+
+        assert_eq!(get_scalar_value(prod_pairs.get(&make_scalar("timeout")).unwrap()), "30");
+        assert_eq!(get_scalar_value(prod_pairs.get(&make_scalar("host")).unwrap()), "x");
+    }
+
+    #[test]
+    fn test_multiple_merge() {
+        let yaml = "base1: &b1\n  a: 1\nbase2: &b2\n  b: 2\ncurrent:\n  <<: [*b1, *b2]\n  c: 3";
+        let mut root = parse(yaml).unwrap();
+        resolve_merge_keys(&mut root);
+
+        let pairs = get_mapping(&root);
+        let current = pairs.get(&make_scalar("current")).unwrap();
+        let current_pairs = get_mapping(current);
+
+        assert_eq!(get_scalar_value(current_pairs.get(&make_scalar("a")).unwrap()), "1");
+        assert_eq!(get_scalar_value(current_pairs.get(&make_scalar("b")).unwrap()), "2");
+        assert_eq!(get_scalar_value(current_pairs.get(&make_scalar("c")).unwrap()), "3");
+    }
+
+    #[test]
+    fn test_merge_override_order() {
+        let yaml = "base: &base\n  x: 1\n  y: 2\nderived:\n  <<: *base\n  y: 99";
+        let mut root = parse(yaml).unwrap();
+        resolve_merge_keys(&mut root);
+
+        let pairs = get_mapping(&root);
+        let derived = pairs.get(&make_scalar("derived")).unwrap();
+        let derived_pairs = get_mapping(derived);
+
+        // Local key overrides merged key
+        assert_eq!(get_scalar_value(derived_pairs.get(&make_scalar("x")).unwrap()), "1");
+        assert_eq!(get_scalar_value(derived_pairs.get(&make_scalar("y")).unwrap()), "99");
+
+        // Verify order: merged keys first, then overrides
+        let keys: Vec<&CustomNode> = derived_pairs.keys().collect();
+        assert_eq!(get_scalar_value(keys[0]), "x");
+        assert_eq!(get_scalar_value(keys[1]), "y");
+    }
+}

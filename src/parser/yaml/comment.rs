@@ -163,3 +163,86 @@ pub fn find_standalone_comment_before(
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_inline_comment() {
+        let yaml = "key: value  # comment";
+        let comments = extract_comments(yaml);
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].text, "comment");
+        assert!(!comments[0].standalone);
+        assert_eq!(comments[0].line, 0);
+    }
+
+    #[test]
+    fn test_extract_standalone_comment() {
+        let yaml = "# standalone\nkey: value";
+        let comments = extract_comments(yaml);
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].text, "standalone");
+        assert!(comments[0].standalone);
+        assert_eq!(comments[0].line, 0);
+    }
+
+    #[test]
+    fn test_comment_in_string_ignored() {
+        let yaml = "key: 'has # inside'";
+        let comments = extract_comments(yaml);
+        assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn test_comment_in_double_quoted_string_ignored() {
+        let yaml = r#"key: "has # inside""#;
+        let comments = extract_comments(yaml);
+        assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn test_extract_anchors() {
+        let yaml = "defaults: &defaults\n  key: value";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "defaults");
+        assert_eq!(anchors[0].line, 0);
+    }
+
+    #[test]
+    fn test_extract_multiple_anchors() {
+        let yaml = "a: &foo 1\nb: &bar 2";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 2);
+        assert_eq!(anchors[0].name, "foo");
+        assert_eq!(anchors[1].name, "bar");
+    }
+
+    #[test]
+    fn test_find_inline_comment() {
+        let comments = vec![
+            RawComment { line: 0, col: 10, text: "inline".to_string(), standalone: false },
+            RawComment { line: 1, col: 0, text: "standalone".to_string(), standalone: true },
+        ];
+        let mut idx = 0;
+        let result = find_inline_comment(&comments, &mut idx, 0, 5);
+        assert!(result.is_some());
+        let c = result.unwrap();
+        assert_eq!(c.text, "inline");
+        assert!(!c.standalone);
+    }
+
+    #[test]
+    fn test_find_standalone_comment_before() {
+        let comments = vec![
+            RawComment { line: 0, col: 0, text: "top".to_string(), standalone: true },
+            RawComment { line: 2, col: 0, text: "bottom".to_string(), standalone: true },
+        ];
+        let mut idx = 0;
+        let result = find_standalone_comment_before(&comments, &mut idx, 2);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().text, "top");
+    }
+}

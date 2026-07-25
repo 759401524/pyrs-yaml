@@ -2,7 +2,7 @@
 Test the specific 3RLN case
 """
 
-import pyamlium_custom
+import pyyaml_rs
 
 
 def test_3rln():
@@ -18,7 +18,7 @@ def test_3rln():
     print()
 
     try:
-        doc = pyamlium_custom.parse(yaml_converted)
+        doc = pyyaml_rs.parse(yaml_converted)
         print(f'Output: {repr(doc.to_yaml())}')
     except Exception as e:
         print(f'Error: {e}')
@@ -27,7 +27,7 @@ def test_3rln():
     yaml_simple = '"2 leading\n    tab"'
     print(f'\nSimple: {repr(yaml_simple)}')
     try:
-        doc = pyamlium_custom.parse(yaml_simple)
+        doc = pyyaml_rs.parse(yaml_simple)
         print(f'Output: {repr(doc.to_yaml())}')
     except Exception as e:
         print(f'Error: {e}')

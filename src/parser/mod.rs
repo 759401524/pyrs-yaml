@@ -9,6 +9,25 @@ use yaml::*;
 
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
+    parse_with_options(yaml, true)
+}
+
+/// Parse options for controlling YAML parsing behavior
+pub struct ParseOptions {
+    /// Whether to resolve merge keys (<<) after parsing. Default: true.
+    pub resolve_merges: bool,
+}
+
+impl Default for ParseOptions {
+    fn default() -> Self {
+        Self {
+            resolve_merges: true,
+        }
+    }
+}
+
+/// Parse a YAML string with options
+pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode, String> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(CustomNode::Null {
@@ -37,10 +56,49 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
         tag: None,
     });
 
-    // Resolve merge keys (<<) after parsing
-    resolve_merge_keys(&mut node);
+    // Resolve merge keys (<<) after parsing (if enabled)
+    if resolve_merges {
+        resolve_merge_keys(&mut node);
+    }
 
     Ok(node)
+}
+
+/// Parse multiple YAML documents from a single string using saphyr document events
+pub fn parse_all(yaml: &str) -> Result<Vec<CustomNode>, String> {
+    // Handle empty YAML
+    if yaml.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let raw_comments = extract_comments(yaml);
+    let raw_anchors = extract_anchors(yaml);
+
+    let mut receiver = AstReceiver::new(yaml, raw_comments, raw_anchors);
+    let mut parser = SaphyrParser::new_from_str(yaml);
+
+    parser
+        .load(&mut receiver, true)
+        .map_err(|e| format!("YAML parse error: {}", e))?;
+
+    // Collect all documents from receiver
+    let docs = receiver.documents;
+    if docs.is_empty() {
+        // Single document — return as-is
+        let mut node = receiver.result.unwrap_or(CustomNode::Null {
+            comment: None,
+            anchor: None,
+            tag: None,
+        });
+        resolve_merge_keys(&mut node);
+        return Ok(vec![node]);
+    }
+
+    let mut results: Vec<CustomNode> = docs;
+    for node in &mut results {
+        resolve_merge_keys(node);
+    }
+    Ok(results)
 }
 
 /// Convert saphyr tag to our Tag format
@@ -79,6 +137,8 @@ struct AstReceiver<'a> {
     comment_idx: usize,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
+    /// Completed documents (for multi-doc parsing)
+    documents: Vec<CustomNode>,
     /// Current anchor ID to name mapping
     anchors: std::collections::HashMap<usize, String>,
     /// Next anchor name to use (from raw text, in order)
@@ -94,11 +154,13 @@ enum ParseState {
         pairs: IndexMap<CustomNode, CustomNode>,
         current_key: Box<Option<CustomNode>>,
         anchor_id: usize,
+        tag: Option<Tag>,
     },
     /// Building a sequence
     Sequence {
         items: Vec<CustomNode>,
         anchor_id: usize,
+        tag: Option<Tag>,
     },
 }
 
@@ -111,6 +173,7 @@ impl<'a> AstReceiver<'a> {
             comment_idx: 0,
             stack: Vec::new(),
             result: None,
+            documents: Vec::new(),
             anchors: std::collections::HashMap::new(),
             next_anchor_name: 0,
             pending_standalone_comment: None,
@@ -260,9 +323,14 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
         match event {
             Event::StreamStart
             | Event::StreamEnd
-            | Event::DocumentStart(_)
-            | Event::DocumentEnd => {
+            | Event::DocumentStart(_) => {
                 // Ignore these events
+            }
+            Event::DocumentEnd => {
+                // Clone the completed document for multi-doc support
+                if let Some(ref doc) = self.result {
+                    self.documents.push(doc.clone());
+                }
             }
             Event::Scalar(value, style, anchor_id, tag) => {
                 let line = span.start.line() - 1; // Convert to 0-indexed
@@ -302,7 +370,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
 
                 self.push_node(node);
             }
-            Event::MappingStart(anchor_id, _tag) => {
+            Event::MappingStart(anchor_id, tag) => {
                 let line = span.start.line() - 1;
 
                 // Find standalone comments before this line
@@ -315,10 +383,14 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     }
                 }
 
+                // Handle tag
+                let tag_obj = tag.map(|t| convert_tag(&t));
+
                 self.stack.push(ParseState::Mapping {
                     pairs: IndexMap::new(),
                     current_key: Box::new(None),
                     anchor_id,
+                    tag: tag_obj,
                 });
 
                 // Store standalone comment for when we pop
@@ -330,7 +402,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::MappingEnd => {
                 if let Some(ParseState::Mapping {
-                    pairs, anchor_id, ..
+                    pairs, anchor_id, tag, ..
                 }) = self.stack.pop()
                 {
                     // Get anchor name from self.anchors
@@ -343,7 +415,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                         pairs,
                         comment,
                         anchor,
-                        tag: None,
+                        tag,
                     };
                     self.push_node(mapping);
                 }
@@ -362,11 +434,12 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
 
                 // Handle tag
-                let _tag_obj = tag.map(|t| convert_tag(&t));
+                let tag_obj = tag.map(|t| convert_tag(&t));
 
                 self.stack.push(ParseState::Sequence {
                     items: Vec::new(),
                     anchor_id,
+                    tag: tag_obj,
                 });
 
                 // Store standalone comment for when we pop
@@ -376,7 +449,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::SequenceEnd => {
                 if let Some(ParseState::Sequence {
-                    items, anchor_id, ..
+                    items, anchor_id, tag, ..
                 }) = self.stack.pop()
                 {
                     // Get anchor name from self.anchors
@@ -389,7 +462,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                         items,
                         comment,
                         anchor,
-                        tag: None,
+                        tag,
                     };
                     self.push_node(seq);
                 }

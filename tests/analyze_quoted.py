@@ -4,7 +4,7 @@ Analyze quoted scalar failures
 
 import yaml
 import os
-import pyamlium_custom
+import pyyaml_rs
 
 
 def convert_special_chars(text: str) -> str:
@@ -48,7 +48,7 @@ def analyze_quoted_failures():
                 yaml_input = convert_special_chars(yaml_input)
 
                 try:
-                    doc = pyamlium_custom.parse(yaml_input)
+                    doc = pyyaml_rs.parse(yaml_input)
                 except Exception as e:
                     error = str(e)
                     if 'quoted scalar' in error or 'escape' in error:

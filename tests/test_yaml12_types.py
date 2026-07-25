@@ -1,4 +1,4 @@
-import pyamlium_custom
+import pyyaml_rs
 
 
 def test_yaml12_booleans():
@@ -10,7 +10,7 @@ false_val: false
 False_val: False
 FALSE_val: FALSE
 '''
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     assert doc.get("true_val") is True
     assert doc.get("True_val") is True
     assert doc.get("TRUE_val") is True
@@ -27,7 +27,7 @@ NULL_val: NULL
 tilde_val: ~
 empty_val:
 '''
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     assert doc.get("null_val") is None
     assert doc.get("Null_val") is None
     assert doc.get("NULL_val") is None
@@ -42,7 +42,7 @@ negative: -17
 octal: 0o14
 hex: 0x0C
 '''
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     assert doc.get("decimal") == 42
     assert doc.get("negative") == -17
     assert doc.get("octal") == 12  # 0o14 = 12
@@ -56,7 +56,7 @@ negative: -0.5
 scientific: 6.022e23
 negative_sci: -1.0e-3
 '''
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     assert abs(doc.get("basic") - 3.14) < 1e-10
     assert abs(doc.get("negative") - (-0.5)) < 1e-10
     assert abs(doc.get("scientific") - 6.022e23) < 1e10
@@ -68,7 +68,7 @@ def test_yaml12_infinity():
     yaml_str = '''inf: .inf
 neg_inf: -.inf
 '''
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     import math
     assert math.isinf(doc.get("inf")) and doc.get("inf") > 0
     assert math.isinf(doc.get("neg_inf")) and doc.get("neg_inf") < 0
@@ -78,7 +78,7 @@ def test_yaml12_nan():
     """Test YAML 1.2 NaN"""
     yaml_str = '''nan: .nan
 '''
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     import math
     assert math.isnan(doc.get("nan"))
 
@@ -90,7 +90,7 @@ integer: 42
 float: 3.14
 null_val: null
 '''
-    doc = pyamlium_custom.parse(yaml_str)
+    doc = pyyaml_rs.parse(yaml_str)
     output = doc.to_yaml()
     # Verify the types are preserved in output
     assert "true" in output
