@@ -90,7 +90,7 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
                 // Found an anchor
                 let anchor_start = col_idx + 1;
                 let mut anchor_name = String::new();
-                for (i, c) in line[anchor_start..].char_indices() {
+                for (_i, c) in line[anchor_start..].char_indices() {
                     if c.is_alphanumeric() || c == '_' || c == '-' {
                         anchor_name.push(c);
                     } else {

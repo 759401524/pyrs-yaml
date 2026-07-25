@@ -135,9 +135,7 @@ pub enum CustomNode {
         tag: Option<Tag>,
     },
     /// Alias reference (*alias)
-    Alias {
-        name: String,
-    },
+    Alias { name: String },
 }
 
 impl Hash for CustomNode {
@@ -366,6 +364,13 @@ mod tests {
     fn test_tag_formatting() {
         assert_eq!(Tag::primary("str").to_string(), "!!str");
         assert_eq!(Tag::local("custom").to_string(), "!custom");
-        assert_eq!(Tag { handle: "!".to_string(), suffix: "".to_string() }.to_string(), "!");
+        assert_eq!(
+            Tag {
+                handle: "!".to_string(),
+                suffix: "".to_string()
+            }
+            .to_string(),
+            "!"
+        );
     }
 }

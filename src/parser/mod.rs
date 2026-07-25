@@ -2,7 +2,9 @@ pub mod yaml;
 
 use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
 use indexmap::IndexMap;
-use saphyr_parser::{Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver};
+use saphyr_parser::{
+    Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
+};
 use yaml::*;
 
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
@@ -75,7 +77,6 @@ struct AstReceiver<'a> {
     raw_comments: Vec<RawComment>,
     raw_anchors: Vec<RawAnchor>,
     comment_idx: usize,
-    anchor_idx: usize,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
     /// Current anchor ID to name mapping
@@ -91,7 +92,7 @@ enum ParseState {
     /// Building a mapping
     Mapping {
         pairs: IndexMap<CustomNode, CustomNode>,
-        current_key: Option<CustomNode>,
+        current_key: Box<Option<CustomNode>>,
         anchor_id: usize,
     },
     /// Building a sequence
@@ -108,7 +109,6 @@ impl<'a> AstReceiver<'a> {
             raw_comments,
             raw_anchors,
             comment_idx: 0,
-            anchor_idx: 0,
             stack: Vec::new(),
             result: None,
             anchors: std::collections::HashMap::new(),
@@ -179,12 +179,7 @@ impl<'a> AstReceiver<'a> {
     }
 
     /// Create a scalar node from value and style
-    fn create_scalar(
-        &mut self,
-        value: &str,
-        style: &SaphyrScalarStyle,
-        line: usize,
-    ) -> CustomNode {
+    fn create_scalar(&mut self, value: &str, style: &SaphyrScalarStyle, line: usize) -> CustomNode {
         let scalar_style = match style {
             SaphyrScalarStyle::Plain => ScalarStyle::Plain,
             SaphyrScalarStyle::SingleQuoted => ScalarStyle::SingleQuoted,
@@ -237,12 +232,10 @@ impl<'a> AstReceiver<'a> {
     /// Push a node to the current context
     fn push_node(&mut self, node: CustomNode) {
         match self.stack.last_mut() {
-            Some(ParseState::Mapping {
-                current_key, ..
-            }) => {
+            Some(ParseState::Mapping { current_key, .. }) => {
                 if current_key.is_none() {
                     // This is a key
-                    *current_key = Some(node);
+                    **current_key = Some(node);
                 } else {
                     // This is a value - insert the pair
                     let key = current_key.take().unwrap();
@@ -265,7 +258,10 @@ impl<'a> AstReceiver<'a> {
 impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
     fn on_event(&mut self, event: Event<'a>, span: Span) {
         match event {
-            Event::StreamStart | Event::StreamEnd | Event::DocumentStart(_) | Event::DocumentEnd => {
+            Event::StreamStart
+            | Event::StreamEnd
+            | Event::DocumentStart(_)
+            | Event::DocumentEnd => {
                 // Ignore these events
             }
             Event::Scalar(value, style, anchor_id, tag) => {
@@ -278,15 +274,12 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
 
                 // Attach standalone comment if found
                 if let Some(comment) = standalone {
-                    match &mut node {
-                        CustomNode::Scalar { comment: c, .. } => {
-                            // If there's already an inline comment, keep it
-                            // Otherwise, use the standalone comment
-                            if c.is_none() {
-                                *c = Some(comment);
-                            }
+                    if let CustomNode::Scalar { comment: c, .. } = &mut node {
+                        // If there's already an inline comment, keep it
+                        // Otherwise, use the standalone comment
+                        if c.is_none() {
+                            *c = Some(comment);
                         }
-                        _ => {}
                     }
                 }
 
@@ -294,51 +287,37 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 if anchor_id != 0 {
                     if let Some(name) = self.next_anchor_name_from_raw() {
                         self.anchors.insert(anchor_id, name.clone());
-                        match &mut node {
-                            CustomNode::Scalar { anchor, .. } => {
-                                *anchor = Some(name);
-                            }
-                            _ => {}
+                        if let CustomNode::Scalar { anchor, .. } = &mut node {
+                            *anchor = Some(name);
                         }
                     }
                 }
 
                 // Handle tag
                 if let Some(tag) = tag {
-                    match &mut node {
-                        CustomNode::Scalar { tag: t, .. } => {
-                            *t = Some(convert_tag(&tag));
-                        }
-                        _ => {}
+                    if let CustomNode::Scalar { tag: t, .. } = &mut node {
+                        *t = Some(convert_tag(&tag));
                     }
                 }
 
                 self.push_node(node);
             }
-            Event::MappingStart(anchor_id, tag) => {
+            Event::MappingStart(anchor_id, _tag) => {
                 let line = span.start.line() - 1;
 
                 // Find standalone comments before this line
                 let standalone = self.find_standalone_before_line(line);
 
                 // Handle anchor - use next raw anchor name
-                let anchor_name = if anchor_id != 0 {
+                if anchor_id != 0 {
                     if let Some(name) = self.next_anchor_name_from_raw() {
                         self.anchors.insert(anchor_id, name.clone());
-                        Some(name)
-                    } else {
-                        None
                     }
-                } else {
-                    None
-                };
-
-                // Handle tag
-                let tag_obj = tag.map(|t| convert_tag(&t));
+                }
 
                 self.stack.push(ParseState::Mapping {
                     pairs: IndexMap::new(),
-                    current_key: None,
+                    current_key: Box::new(None),
                     anchor_id,
                 });
 
@@ -350,7 +329,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
             }
             Event::MappingEnd => {
-                if let Some(ParseState::Mapping { pairs, anchor_id, .. }) = self.stack.pop() {
+                if let Some(ParseState::Mapping {
+                    pairs, anchor_id, ..
+                }) = self.stack.pop()
+                {
                     // Get anchor name from self.anchors
                     let anchor = self.anchors.get(&anchor_id).cloned();
 
@@ -393,7 +375,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
             }
             Event::SequenceEnd => {
-                if let Some(ParseState::Sequence { items, anchor_id, .. }) = self.stack.pop() {
+                if let Some(ParseState::Sequence {
+                    items, anchor_id, ..
+                }) = self.stack.pop()
+                {
                     // Get anchor name from self.anchors
                     let anchor = self.anchors.get(&anchor_id).cloned();
 
@@ -416,9 +401,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     .cloned()
                     .unwrap_or_else(|| format!("alias_{}", anchor_id));
 
-                let node = CustomNode::Alias {
-                    name: alias_name,
-                };
+                let node = CustomNode::Alias { name: alias_name };
                 self.push_node(node);
             }
             Event::Nothing => {}

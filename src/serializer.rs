@@ -20,7 +20,13 @@ impl Serializer {
         }
     }
 
-    fn serialize_node_internal(&mut self, node: &CustomNode, indent_level: usize, _is_last: bool, in_value_context: bool) {
+    fn serialize_node_internal(
+        &mut self,
+        node: &CustomNode,
+        indent_level: usize,
+        _is_last: bool,
+        in_value_context: bool,
+    ) {
         // Handle standalone comments first
         if let Some(comment) = node.comment() {
             if comment.standalone {
@@ -92,7 +98,10 @@ impl Serializer {
 
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     // Check if key is a complex key (mapping or sequence)
-                    let is_complex_key = matches!(key, CustomNode::Mapping { .. } | CustomNode::Sequence { .. });
+                    let is_complex_key = matches!(
+                        key,
+                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                    );
 
                     if is_complex_key {
                         // Complex key: use ? indicator
@@ -121,7 +130,12 @@ impl Serializer {
                             self.output.push_str(&t.to_string());
                         }
                         self.output.push('\n');
-                        self.serialize_node_internal(value, indent_level + 1, i == pairs.len() - 1, true);
+                        self.serialize_node_internal(
+                            value,
+                            indent_level + 1,
+                            i == pairs.len() - 1,
+                            true,
+                        );
                     } else {
                         self.output.push(' ');
                         self.serialize_node_internal(value, 0, i == pairs.len() - 1, true);
@@ -165,7 +179,12 @@ impl Serializer {
 
                     if self.needs_newline_for_sequence_item(item) {
                         self.output.push('\n');
-                        self.serialize_node_internal(item, indent_level + 1, i == items.len() - 1, false);
+                        self.serialize_node_internal(
+                            item,
+                            indent_level + 1,
+                            i == items.len() - 1,
+                            false,
+                        );
                     } else {
                         // For simple items, they go on the same line as the dash
                         // Don't pass indent_level to avoid extra indentation
@@ -337,11 +356,17 @@ impl Serializer {
     }
 
     fn needs_newline_for_value(&self, node: &CustomNode) -> bool {
-        matches!(node, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
+        matches!(
+            node,
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+        )
     }
 
     fn needs_newline_for_sequence_item(&self, node: &CustomNode) -> bool {
-        matches!(node, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
+        matches!(
+            node,
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+        )
     }
 }
 

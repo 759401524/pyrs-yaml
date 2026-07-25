@@ -1,7 +1,7 @@
 /// Test saphyr-parser against YAML test suite
 #[cfg(test)]
 mod yaml_suite_saphyr_tests {
-    use saphyr_parser::{Parser, EventReceiver, Event};
+    use saphyr_parser::{Event, EventReceiver, Parser};
     use std::fs;
     use std::path::Path;
 
@@ -48,7 +48,11 @@ mod yaml_suite_saphyr_tests {
                 Ok(_) => success += 1,
                 Err(e) => {
                     if errors.len() < 10 {
-                        errors.push(format!("{}: {}", path.file_stem().unwrap().to_str().unwrap(), e));
+                        errors.push(format!(
+                            "{}: {}",
+                            path.file_stem().unwrap().to_str().unwrap(),
+                            e
+                        ));
                     }
                 }
             }

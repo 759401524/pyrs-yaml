@@ -1,7 +1,7 @@
 /// Test saphyr-parser integration
 #[cfg(test)]
 mod saphyr_tests {
-    use saphyr_parser::{Parser, EventReceiver, Event};
+    use saphyr_parser::{Event, EventReceiver, Parser};
 
     struct EventSink<'a> {
         events: Vec<Event<'a>>,

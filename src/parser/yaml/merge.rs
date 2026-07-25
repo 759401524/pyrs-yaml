@@ -37,9 +37,7 @@ fn collect_anchors(
     anchors: &mut HashMap<String, IndexMap<CustomNode, CustomNode>>,
 ) {
     match node {
-        CustomNode::Mapping {
-            pairs, anchor, ..
-        } => {
+        CustomNode::Mapping { pairs, anchor, .. } => {
             if let Some(anchor_name) = anchor {
                 anchors.insert(anchor_name.clone(), pairs.clone());
             }

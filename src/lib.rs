@@ -67,9 +67,11 @@ impl YamlDocument {
 #[pyfunction]
 fn parse(py: Python, yaml: &str) -> PyResult<YamlDocument> {
     // Release GIL during parsing
-    let ast = py.allow_threads(|| parser::parse(yaml).map_err(|e| {
-        pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
-    }))?;
+    let ast = py.allow_threads(|| {
+        parser::parse(yaml).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+        })
+    })?;
 
     Ok(YamlDocument { ast })
 }
@@ -152,9 +154,11 @@ fn pyamlium_custom(m: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Parse a YAML string and return Python dict/list
 #[pyfunction]
 fn safe_load(py: Python, yaml: &str) -> PyResult<PyObject> {
-    let ast = py.allow_threads(|| parser::parse(yaml).map_err(|e| {
-        pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
-    }))?;
+    let ast = py.allow_threads(|| {
+        parser::parse(yaml).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+        })
+    })?;
 
     Ok(node_to_pyobject(&ast))
 }
@@ -172,9 +176,11 @@ fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<PyObject>> {
         if doc.is_empty() {
             continue;
         }
-        let ast = py.allow_threads(|| parser::parse(doc).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
-        }))?;
+        let ast = py.allow_threads(|| {
+            parser::parse(doc).map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+            })
+        })?;
         results.push(node_to_pyobject(&ast));
     }
 
@@ -222,7 +228,11 @@ fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
             tag: None,
         }),
         serde_json::Value::Bool(b) => {
-            let s = if *b { "true".to_string() } else { "false".to_string() };
+            let s = if *b {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            };
             Ok(CustomNode::Scalar {
                 value: s,
                 style: ast::ScalarStyle::Plain,
@@ -316,8 +326,9 @@ fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<PyObject>, 
 
             // Parse the frontmatter as YAML
             if !frontmatter.is_empty() {
-                let ast = parser::parse(frontmatter)
-                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e)))?;
+                let ast = parser::parse(frontmatter).map_err(|e| {
+                    pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+                })?;
                 return Ok((Some(node_to_pyobject(&ast)), markdown_content.to_string()));
             }
         }
@@ -382,7 +393,11 @@ fn pyobject_to_node(py: Python, obj: &PyObject) -> PyResult<CustomNode> {
 
     // Try as bool (must be before int/float check)
     if let Ok(b) = obj.extract::<bool>() {
-        let value = if b { "true".to_string() } else { "false".to_string() };
+        let value = if b {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        };
         return Ok(CustomNode::Scalar {
             value,
             style: ast::ScalarStyle::Plain,
@@ -430,7 +445,7 @@ fn pyobject_to_node(py: Python, obj: &PyObject) -> PyResult<CustomNode> {
     }
 
     Err(pyo3::exceptions::PyValueError::new_err(
-        "Unsupported Python type for YAML conversion"
+        "Unsupported Python type for YAML conversion",
     ))
 }
 
