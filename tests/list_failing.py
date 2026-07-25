@@ -1,11 +1,10 @@
 """
-Analyze remaining failing valid tests
+List all failing valid tests
 """
 
 import yaml
 import os
 import pyamlium_custom
-from collections import defaultdict
 
 
 def convert_special_chars(text):
@@ -16,6 +15,7 @@ def convert_special_chars(text):
     text = text.replace('\u2014\u2014\u00bb', '\t')
     text = text.replace('\u2014\u00bb', '\t')
     text = text.replace('\u00bb', '\t')
+    text = text.replace('\u220e', '')
     return text
 
 
@@ -58,28 +58,18 @@ def main():
                         'id': f.replace('.yaml', ''),
                         'name': test.get('name', ''),
                         'tags': tags,
-                        'error': str(e)[:120],
-                        'yaml': yaml_input,
+                        'error': str(e)[:100],
                     })
         except:
             pass
 
-    print(f'Total failing: {len(failing)}')
+    print(f'Failing valid tests: {len(failing)}')
     print()
 
-    # Group by test ID
-    by_id = defaultdict(list)
-    for f in failing:
-        by_id[f['id']].append(f)
-
-    for test_id, tests in sorted(by_id.items()):
-        name = tests[0]['name']
-        tags = tests[0]['tags']
-        error = tests[0]['error']
-        print(f'=== {test_id}: {name[:50]} ===')
-        print(f'  Tags: {tags}')
-        print(f'  Subtests: {len(tests)}')
-        print(f'  Error: {error}')
+    for item in failing:
+        print(f'{item["id"]}: {item["name"][:50]}')
+        print(f'  Tags: {item["tags"]}')
+        print(f'  Error: {item["error"]}')
         print()
 
 

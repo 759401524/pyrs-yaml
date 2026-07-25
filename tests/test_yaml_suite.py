@@ -31,7 +31,7 @@ def convert_special_chars(text: str) -> str:
     text = text.replace('\u2016\u00bb', '\t')  # ‖» = tab
     
     text = text.replace('\u21b5', '\n')  # ↵ = newline
-    text = text.replace('\u221e', '')  # ∎ = no final newline (remove)
+    text = text.replace('\u220e', '')  # ∎ = no final newline (remove)
     text = text.replace('\u2190', '\r')  # ← = carriage return
     text = text.replace('\u21d4', '\xef\xbb\xbf')  # ⇔ = BOM
 
