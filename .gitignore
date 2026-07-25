@@ -9,3 +9,6 @@ node/
 bun/
 mise/
 Reference/
+*.pyd
+*.pdb
+.mimocode/
