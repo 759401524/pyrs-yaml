@@ -1,0 +1,11 @@
+/target
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+Cargo.lock
+*.egg-info/
+node/
+bun/
+mise/
+Reference/

@@ -1,0 +1,13 @@
+[package]
+name = "pyamlium_custom"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pyamlium_custom"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module"] }
+indexmap = { version = "2.2", features = ["serde"] }
+yaml-rust2 = "0.9"

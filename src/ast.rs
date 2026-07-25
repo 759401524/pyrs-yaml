@@ -1,0 +1,229 @@
+use indexmap::IndexMap;
+use std::hash::{Hash, Hasher};
+
+/// Scalar style preservation for round-trip support
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScalarStyle {
+    /// Plain scalar (no quotes)
+    Plain,
+    /// Single-quoted scalar
+    SingleQuoted,
+    /// Double-quoted scalar
+    DoubleQuoted,
+    /// Literal block scalar (|)
+    Literal,
+    /// Folded block scalar (>)
+    Folded,
+}
+
+impl Hash for ScalarStyle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+    }
+}
+
+/// Comment attached to a node
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Comment {
+    /// The comment text (without # prefix)
+    pub text: String,
+    /// Whether this is a standalone line comment (true) or line-end comment (false)
+    pub standalone: bool,
+}
+
+impl Hash for Comment {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.text.hash(state);
+        self.standalone.hash(state);
+    }
+}
+
+/// Custom AST node with full metadata for round-trip support
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CustomNode {
+    Scalar {
+        value: String,
+        style: ScalarStyle,
+        comment: Option<Comment>,
+        anchor: Option<String>,
+    },
+    Mapping {
+        pairs: IndexMap<CustomNode, CustomNode>,
+        comment: Option<Comment>,
+        anchor: Option<String>,
+    },
+    Sequence {
+        items: Vec<CustomNode>,
+        comment: Option<Comment>,
+        anchor: Option<String>,
+    },
+    Null {
+        comment: Option<Comment>,
+        anchor: Option<String>,
+    },
+    /// Alias reference (*alias)
+    Alias {
+        name: String,
+    },
+}
+
+impl Hash for CustomNode {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            CustomNode::Scalar {
+                value,
+                style,
+                comment,
+                anchor,
+            } => {
+                state.write_u8(0);
+                value.hash(state);
+                style.hash(state);
+                comment.hash(state);
+                anchor.hash(state);
+            }
+            CustomNode::Mapping {
+                pairs,
+                comment,
+                anchor,
+            } => {
+                state.write_u8(1);
+                for (k, v) in pairs {
+                    k.hash(state);
+                    v.hash(state);
+                }
+                comment.hash(state);
+                anchor.hash(state);
+            }
+            CustomNode::Sequence {
+                items,
+                comment,
+                anchor,
+            } => {
+                state.write_u8(2);
+                for item in items {
+                    item.hash(state);
+                }
+                comment.hash(state);
+                anchor.hash(state);
+            }
+            CustomNode::Null { comment, anchor } => {
+                state.write_u8(3);
+                comment.hash(state);
+                anchor.hash(state);
+            }
+            CustomNode::Alias { name } => {
+                state.write_u8(4);
+                name.hash(state);
+            }
+        }
+    }
+}
+
+impl CustomNode {
+    /// Get the comment attached to this node
+    pub fn comment(&self) -> Option<&Comment> {
+        match self {
+            CustomNode::Scalar { comment, .. }
+            | CustomNode::Mapping { comment, .. }
+            | CustomNode::Sequence { comment, .. }
+            | CustomNode::Null { comment, .. } => comment.as_ref(),
+            CustomNode::Alias { .. } => None,
+        }
+    }
+
+    /// Set the comment on this node
+    pub fn set_comment(&mut self, new_comment: Comment) {
+        match self {
+            CustomNode::Scalar { comment, .. }
+            | CustomNode::Mapping { comment, .. }
+            | CustomNode::Sequence { comment, .. }
+            | CustomNode::Null { comment, .. } => {
+                *comment = Some(new_comment);
+            }
+            CustomNode::Alias { .. } => {}
+        }
+    }
+
+    /// Get the anchor name if present
+    pub fn anchor(&self) -> Option<&str> {
+        match self {
+            CustomNode::Scalar { anchor, .. }
+            | CustomNode::Mapping { anchor, .. }
+            | CustomNode::Sequence { anchor, .. }
+            | CustomNode::Null { anchor, .. } => anchor.as_deref(),
+            CustomNode::Alias { .. } => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scalar_creation() {
+        let node = CustomNode::Scalar {
+            value: "hello".to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+        };
+        assert_eq!(node.comment(), None);
+        assert_eq!(node.anchor(), None);
+    }
+
+    #[test]
+    fn test_scalar_with_comment() {
+        let node = CustomNode::Scalar {
+            value: "world".to_string(),
+            style: ScalarStyle::DoubleQuoted,
+            comment: Some(Comment {
+                text: "a greeting".to_string(),
+                standalone: false,
+            }),
+            anchor: None,
+        };
+        assert_eq!(node.comment().unwrap().text, "a greeting");
+        assert!(!node.comment().unwrap().standalone);
+    }
+
+    #[test]
+    fn test_mapping_preserves_order() {
+        let key1 = CustomNode::Scalar {
+            value: "b".to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+        };
+        let key2 = CustomNode::Scalar {
+            value: "a".to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+        };
+        let val = CustomNode::Scalar {
+            value: "1".to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+        };
+
+        let mut pairs = IndexMap::new();
+        pairs.insert(key1.clone(), val.clone());
+        pairs.insert(key2.clone(), val.clone());
+
+        let mapping = CustomNode::Mapping {
+            pairs,
+            comment: None,
+            anchor: None,
+        };
+
+        // Verify order is preserved (insertion order)
+        if let CustomNode::Mapping { pairs, .. } = &mapping {
+            let keys: Vec<&CustomNode> = pairs.keys().collect();
+            assert_eq!(keys[0].clone(), key1);
+            assert_eq!(keys[1].clone(), key2);
+        }
+    }
+}
