@@ -79,8 +79,8 @@ fn node_to_pyobject(node: &CustomNode) -> PyObject {
             // Use YAML 1.2 type resolution for plain scalars
             match style {
                 ast::ScalarStyle::Plain => {
-                    use parser::resolve_yaml_type;
-                    use parser::YamlType;
+                    use parser::yaml::resolve_yaml_type;
+                    use parser::yaml::YamlType;
                     match resolve_yaml_type(value) {
                         YamlType::Null => py.None().into_py(py),
                         YamlType::Bool(b) => b.into_py(py),
