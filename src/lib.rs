@@ -19,6 +19,11 @@ impl YamlDocument {
         serializer::to_yaml(&self.ast)
     }
 
+    /// Convert the AST to a Python dict/list
+    fn to_dict(&self, _py: Python) -> PyObject {
+        node_to_pyobject(&self.ast)
+    }
+
     /// Get a value by key (for mapping root)
     fn get(&self, key: &str) -> PyResult<Option<PyObject>> {
         match &self.ast {
