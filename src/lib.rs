@@ -130,6 +130,10 @@ fn pyamlium_custom(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(safe_loads, m)?)?;
     m.add_function(wrap_pyfunction!(safe_dump, m)?)?;
     m.add_function(wrap_pyfunction!(safe_dumps, m)?)?;
+    m.add_function(wrap_pyfunction!(from_dict, m)?)?;
+    m.add_function(wrap_pyfunction!(from_json, m)?)?;
+    m.add_function(wrap_pyfunction!(read_markdown, m)?)?;
+    m.add_function(wrap_pyfunction!(read_markdown_str, m)?)?;
     m.add_class::<YamlDocument>()?;
     Ok(())
 }
@@ -180,6 +184,137 @@ fn safe_dump(py: Python, data: PyObject) -> PyResult<String> {
 #[pyfunction]
 fn safe_dumps(py: Python, data: PyObject) -> PyResult<String> {
     safe_dump(py, data)
+}
+
+/// Convert a Python dict to YAML string (yamlium compatible)
+#[pyfunction]
+fn from_dict(py: Python, data: PyObject) -> PyResult<String> {
+    let node = pyobject_to_node(py, &data)?;
+    Ok(serializer::to_yaml(&node))
+}
+
+/// Convert a JSON string to YAML string (yamlium compatible)
+#[pyfunction]
+fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
+    let json_value: serde_json::Value = serde_json::from_str(json_str)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+
+    let node = json_value_to_node(&json_value)?;
+    Ok(serializer::to_yaml(&node))
+}
+
+/// Convert a serde_json Value to CustomNode
+fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
+    match value {
+        serde_json::Value::Null => Ok(CustomNode::Null {
+            comment: None,
+            anchor: None,
+            tag: None,
+        }),
+        serde_json::Value::Bool(b) => {
+            let s = if *b { "true".to_string() } else { "false".to_string() };
+            Ok(CustomNode::Scalar {
+                value: s,
+                style: ast::ScalarStyle::Plain,
+                comment: None,
+                anchor: None,
+                tag: None,
+                chomping: ast::Chomping::Clip,
+            })
+        }
+        serde_json::Value::Number(n) => {
+            let s = if let Some(i) = n.as_i64() {
+                i.to_string()
+            } else if let Some(f) = n.as_f64() {
+                f.to_string()
+            } else {
+                n.to_string()
+            };
+            Ok(CustomNode::Scalar {
+                value: s,
+                style: ast::ScalarStyle::Plain,
+                comment: None,
+                anchor: None,
+                tag: None,
+                chomping: ast::Chomping::Clip,
+            })
+        }
+        serde_json::Value::String(s) => Ok(CustomNode::Scalar {
+            value: s.clone(),
+            style: ast::ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: ast::Chomping::Clip,
+        }),
+        serde_json::Value::Array(arr) => {
+            let mut items = Vec::new();
+            for item in arr {
+                items.push(json_value_to_node(item)?);
+            }
+            Ok(CustomNode::Sequence {
+                items,
+                comment: None,
+                anchor: None,
+                tag: None,
+            })
+        }
+        serde_json::Value::Object(map) => {
+            let mut pairs = IndexMap::new();
+            for (key, value) in map {
+                let key_node = CustomNode::Scalar {
+                    value: key.clone(),
+                    style: ast::ScalarStyle::Plain,
+                    comment: None,
+                    anchor: None,
+                    tag: None,
+                    chomping: ast::Chomping::Clip,
+                };
+                let value_node = json_value_to_node(value)?;
+                pairs.insert(key_node, value_node);
+            }
+            Ok(CustomNode::Mapping {
+                pairs,
+                comment: None,
+                anchor: None,
+                tag: None,
+            })
+        }
+    }
+}
+
+/// Read YAML frontmatter from a markdown file (yamlium compatible)
+/// Returns (frontmatter_dict, content_string)
+#[pyfunction]
+fn read_markdown(py: Python, path: &str) -> PyResult<(Option<PyObject>, String)> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+
+    read_markdown_str(py, &content)
+}
+
+/// Read YAML frontmatter from a markdown string
+#[pyfunction]
+fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<PyObject>, String)> {
+    let content = content.trim_start();
+
+    // Check for --- frontmatter separator
+    if let Some(rest) = content.strip_prefix("---") {
+        if let Some(end_idx) = rest.find("---") {
+            let frontmatter = rest[..end_idx].trim();
+            let markdown_content = rest[end_idx + 3..].trim();
+
+            // Parse the frontmatter as YAML
+            if !frontmatter.is_empty() {
+                let ast = parser::parse(frontmatter)
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e)))?;
+                return Ok((Some(node_to_pyobject(&ast)), markdown_content.to_string()));
+            }
+        }
+    }
+
+    // No frontmatter found
+    Ok((None, content.to_string()))
 }
 
 /// Convert a Python object to a CustomNode

@@ -168,8 +168,8 @@ impl Serializer {
                         self.serialize_node_internal(item, indent_level + 1, i == items.len() - 1, false);
                     } else {
                         // For simple items, they go on the same line as the dash
-                        // Use indent_level for proper indentation of subsequent items
-                        self.serialize_node_internal(item, indent_level, i == items.len() - 1, false);
+                        // Don't pass indent_level to avoid extra indentation
+                        self.serialize_node_internal(item, 0, i == items.len() - 1, false);
                     }
                 }
 

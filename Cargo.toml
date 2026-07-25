@@ -11,3 +11,4 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.21", features = ["extension-module"] }
 indexmap = { version = "2.2", features = ["serde"] }
 yaml-rust2 = "0.9"
+serde_json = "1.0"
