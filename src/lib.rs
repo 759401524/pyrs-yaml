@@ -76,21 +76,17 @@ fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
 fn node_to_pyobject(node: &CustomNode) -> PyObject {
     Python::with_gil(|py| match node {
         CustomNode::Scalar { value, style, .. } => {
-            // Try to parse as Python types
+            // Use YAML 1.2 type resolution for plain scalars
             match style {
                 ast::ScalarStyle::Plain => {
-                    if value == "null" || value == "~" || value.is_empty() {
-                        py.None().into_py(py)
-                    } else if value == "true" {
-                        true.into_py(py)
-                    } else if value == "false" {
-                        false.into_py(py)
-                    } else if let Ok(n) = value.parse::<i64>() {
-                        n.into_py(py)
-                    } else if let Ok(n) = value.parse::<f64>() {
-                        n.into_py(py)
-                    } else {
-                        value.clone().into_py(py)
+                    use parser::resolve_yaml_type;
+                    use parser::YamlType;
+                    match resolve_yaml_type(value) {
+                        YamlType::Null => py.None().into_py(py),
+                        YamlType::Bool(b) => b.into_py(py),
+                        YamlType::Int(n) => n.into_py(py),
+                        YamlType::Float(f) => f.into_py(py),
+                        YamlType::Str(s) => s.into_py(py),
                     }
                 }
                 _ => value.clone().into_py(py),
