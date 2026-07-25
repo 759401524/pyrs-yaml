@@ -60,7 +60,6 @@ use pyo3::prelude::*;
 /// Python wrapper for the parsed YAML document.
 ///
 /// This struct provides methods to access and manipulate the parsed YAML data.
-/// It supports Python's mapping protocol for dict-like access.
 ///
 /// # Examples
 ///
@@ -70,7 +69,6 @@ use pyo3::prelude::*;
 /// doc = pyyaml_rs.parse("key: value")
 /// print(doc.to_yaml())  # key: value
 /// print(doc.get("key"))  # value
-/// print(doc["key"])  # value (dict-like access)
 /// ```
 #[pyclass]
 struct YamlDocument {
@@ -84,6 +82,15 @@ impl YamlDocument {
     /// # Returns
     ///
     /// A YAML string representation of the document.
+    ///
+    /// # Examples
+    ///
+    /// ```python
+    /// import pyyaml_rs
+    ///
+    /// doc = pyyaml_rs.parse("key: value")
+    /// assert doc.to_yaml() == "key: value\n"
+    /// ```
     fn to_yaml(&self) -> String {
         serializer::to_yaml(&self.ast)
     }
@@ -93,6 +100,16 @@ impl YamlDocument {
     /// # Returns
     ///
     /// A Python object (dict for mappings, list for sequences, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```python
+    /// import pyyaml_rs
+    ///
+    /// doc = pyyaml_rs.parse("key: value")
+    /// data = doc.to_dict()
+    /// assert data == {"key": "value"}
+    /// ```
     fn to_dict(&self, _py: Python) -> PyObject {
         node_to_pyobject(&self.ast)
     }
@@ -106,6 +123,16 @@ impl YamlDocument {
     /// # Returns
     ///
     /// The value associated with the key, or None if not found.
+    ///
+    /// # Examples
+    ///
+    /// ```python
+    /// import pyyaml_rs
+    ///
+    /// doc = pyyaml_rs.parse("name: Alice\nage: 30")
+    /// assert doc.get("name") == "Alice"
+    /// assert doc.get("age") == 30
+    /// ```
     fn get(&self, key: &str) -> PyResult<Option<PyObject>> {
         match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
@@ -132,6 +159,15 @@ impl YamlDocument {
     /// # Returns
     ///
     /// One of: "scalar", "mapping", "sequence", "null", "alias"
+    ///
+    /// # Examples
+    ///
+    /// ```python
+    /// import pyyaml_rs
+    ///
+    /// doc = pyyaml_rs.parse("key: value")
+    /// assert doc.root_type() == "mapping"
+    /// ```
     fn root_type(&self) -> String {
         match &self.ast {
             CustomNode::Scalar { .. } => "scalar".to_string(),
@@ -139,109 +175,6 @@ impl YamlDocument {
             CustomNode::Sequence { .. } => "sequence".to_string(),
             CustomNode::Null { .. } => "null".to_string(),
             CustomNode::Alias { .. } => "alias".to_string(),
-        }
-    }
-
-    /// String representation for debugging.
-    fn __repr__(&self) -> String {
-        format!("YamlDocument({})", self.to_yaml())
-    }
-
-    /// String representation for display.
-    fn __str__(&self) -> String {
-        self.to_yaml()
-    }
-
-    /// Enable 'in' operator for mappings.
-    fn __contains__(&self, key: &str) -> bool {
-        match &self.ast {
-            CustomNode::Mapping { pairs, .. } => {
-                let key_node = CustomNode::Scalar {
-                    value: key.to_string(),
-                    style: ast::ScalarStyle::Plain,
-                    comment: None,
-                    anchor: None,
-                    tag: None,
-                    chomping: ast::Chomping::Clip,
-                };
-                pairs.contains_key(&key_node)
-            }
-            _ => false,
-        }
-    }
-
-    /// Enable len() function for mappings and sequences.
-    fn __len__(&self) -> usize {
-        match &self.ast {
-            CustomNode::Mapping { pairs, .. } => pairs.len(),
-            CustomNode::Sequence { items, .. } => items.len(),
-            _ => 0,
-        }
-    }
-
-    /// Enable iteration over mappings (yields keys) or sequences (yields items).
-    fn __iter__<'py>(&self, py: Python<'py>) -> PyResult<PyObject> {
-        match &self.ast {
-            CustomNode::Mapping { pairs, .. } => {
-                let keys: Vec<PyObject> = pairs.keys()
-                    .map(|k| node_to_pyobject(k))
-                    .collect();
-                Ok(keys.into_py(py))
-            }
-            CustomNode::Sequence { items, .. } => {
-                let values: Vec<PyObject> = items.iter()
-                    .map(|v| node_to_pyobject(v))
-                    .collect();
-                Ok(values.into_py(py))
-            }
-            _ => Ok(Vec::<PyObject>::new().into_py(py)),
-        }
-    }
-
-    /// Enable subscript access (doc["key"] or doc[0]).
-    fn __getitem__<'py>(&self, py: Python<'py>, key: PyObject) -> PyResult<PyObject> {
-        match &self.ast {
-            CustomNode::Mapping { pairs, .. } => {
-                if let Ok(key_str) = key.extract::<String>(py) {
-                    let key_node = CustomNode::Scalar {
-                        value: key_str,
-                        style: ast::ScalarStyle::Plain,
-                        comment: None,
-                        anchor: None,
-                        tag: None,
-                        chomping: ast::Chomping::Clip,
-                    };
-                    if let Some(value) = pairs.get(&key_node) {
-                        Ok(node_to_pyobject(value))
-                    } else {
-                        Err(pyo3::exceptions::PyKeyError::new_err(
-                            "Key not found"
-                        ))
-                    }
-                } else {
-                    Err(pyo3::exceptions::PyTypeError::new_err(
-                        "Key must be a string"
-                    ))
-                }
-            }
-            CustomNode::Sequence { items, .. } => {
-                if let Ok(idx) = key.extract::<usize>(py) {
-                    if idx < items.len() {
-                        Ok(node_to_pyobject(&items[idx]))
-                    } else {
-                        Err(pyo3::exceptions::PyIndexError::new_err(
-                            "Index out of range"
-                        ))
-                    }
-                } else {
-                    Err(pyo3::exceptions::PyTypeError::new_err(
-                        "Index must be an integer"
-                    ))
-                }
-            }
-            _ => Err(pyo3::exceptions::PyTypeError::new_err(
-                "YamlDocument is not subscriptable"
-            ))
         }
     }
 }
