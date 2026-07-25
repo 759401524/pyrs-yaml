@@ -2,6 +2,11 @@ pub mod ast;
 pub mod parser;
 pub mod serializer;
 
+#[cfg(test)]
+mod test_saphyr;
+#[cfg(test)]
+mod test_yaml_suite_saphyr;
+
 use ast::CustomNode;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
