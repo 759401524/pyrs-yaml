@@ -15,6 +15,7 @@ use ast::CustomNode;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use std::collections::HashMap;
 
 /// Python wrapper for the parsed YAML document.
 #[pyclass]
@@ -40,7 +41,9 @@ impl YamlDocument {
     }
 
     fn to_dict(&self, py: Python) -> PyResult<Py<PyAny>> {
-        node_to_pyobject(&self.ast, py)
+        let mut anchors = HashMap::new();
+        collect_anchors(&self.ast, &mut anchors);
+        node_to_pyobject_with_anchors(&self.ast, py, &anchors)
     }
 
     #[pyo3(signature = (key, default=None))]
@@ -172,8 +175,57 @@ fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
     Ok(YamlDocument { ast })
 }
 
-/// Convert a CustomNode to a Python object.
+/// Collect all anchor→node mappings for alias resolution
+fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<String, &'a CustomNode>) {
+    if let Some(name) = node.anchor() {
+        anchors.insert(name.to_string(), node);
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs {
+                collect_anchors(key, anchors);
+                collect_anchors(value, anchors);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                collect_anchors(item, anchors);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Convert a CustomNode to a Python object with alias resolution.
+fn node_to_pyobject_with_anchors(
+    node: &CustomNode,
+    py: Python,
+    anchors: &HashMap<String, &CustomNode>,
+) -> PyResult<Py<PyAny>> {
+    match node {
+        CustomNode::Alias { name } => {
+            if let Some(target) = anchors.get(name) {
+                node_to_pyobject_with_anchors(target, py, anchors)
+            } else {
+                Ok(py.None())
+            }
+        }
+        _ => node_to_pyobject_inner(node, py, anchors),
+    }
+}
+
+/// Convert a CustomNode to a Python object (no alias resolution).
 fn node_to_pyobject(node: &CustomNode, py: Python) -> PyResult<Py<PyAny>> {
+    let anchors = HashMap::new();
+    node_to_pyobject_inner(node, py, &anchors)
+}
+
+/// Inner conversion logic shared by both paths.
+fn node_to_pyobject_inner(
+    node: &CustomNode,
+    py: Python,
+    anchors: &HashMap<String, &CustomNode>,
+) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar { value, style, .. } => {
             match style {
@@ -199,21 +251,20 @@ fn node_to_pyobject(node: &CustomNode, py: Python) -> PyResult<Py<PyAny>> {
                     CustomNode::Scalar { value, .. } => value.clone(),
                     _ => format!("{:?}", key),
                 };
-                dict.set_item(key_str, node_to_pyobject(value, py)?).ok();
+                dict.set_item(key_str, node_to_pyobject_with_anchors(value, py, anchors)?).ok();
             }
             Ok(dict.into_any().unbind())
         }
         CustomNode::Sequence { items, .. } => {
             let list = pyo3::types::PyList::empty(py);
             for item in items {
-                list.append(node_to_pyobject(item, py)?).ok();
+                list.append(node_to_pyobject_with_anchors(item, py, anchors)?).ok();
             }
             Ok(list.into_any().unbind())
         }
         CustomNode::Null { .. } => Ok(py.None()),
         CustomNode::Alias { .. } => {
-            // Aliases cannot be resolved in to_dict() without anchor context
-            // Return None as a safe default
+            // Should be handled by node_to_pyobject_with_anchors, but fallback
             Ok(py.None())
         }
     }
@@ -267,7 +318,9 @@ fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
             pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
-    node_to_pyobject(&ast, py)
+    let mut anchors = HashMap::new();
+    collect_anchors(&ast, &mut anchors);
+    node_to_pyobject_with_anchors(&ast, py, &anchors)
 }
 
 /// PyYAML compatible: safe_loads(stream) -> list of dict/list
@@ -278,7 +331,11 @@ fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
             pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
-    asts.iter().map(|ast| node_to_pyobject(ast, py)).collect()
+    asts.iter().map(|ast| {
+        let mut anchors = HashMap::new();
+        collect_anchors(ast, &mut anchors);
+        node_to_pyobject_with_anchors(ast, py, &anchors)
+    }).collect()
 }
 
 /// PyYAML compatible: safe_dump(data) -> str
