@@ -3,7 +3,7 @@ use crate::ast::{CustomNode, ScalarStyle};
 /// Serialize a CustomNode AST back to YAML string
 pub fn to_yaml(node: &CustomNode) -> String {
     let mut serializer = Serializer::new();
-    serializer.serialize_node_internal(node, 0, false);
+    serializer.serialize_node_internal(node, 0, false, false);
     serializer.output
 }
 
@@ -20,7 +20,7 @@ impl Serializer {
         }
     }
 
-    fn serialize_node_internal(&mut self, node: &CustomNode, indent_level: usize, _is_last: bool) {
+    fn serialize_node_internal(&mut self, node: &CustomNode, indent_level: usize, _is_last: bool, in_value_context: bool) {
         // Handle standalone comments first
         if let Some(comment) = node.comment() {
             if comment.standalone {
@@ -37,6 +37,7 @@ impl Serializer {
                 style,
                 comment,
                 anchor,
+                tag,
             } => {
                 self.write_indent(indent_level);
 
@@ -44,6 +45,12 @@ impl Serializer {
                 if let Some(anchor_name) = anchor {
                     self.output.push('&');
                     self.output.push_str(anchor_name);
+                    self.output.push(' ');
+                }
+
+                // Write tag if present
+                if let Some(t) = tag {
+                    self.output.push_str(&t.to_string());
                     self.output.push(' ');
                 }
 
@@ -64,25 +71,59 @@ impl Serializer {
             CustomNode::Mapping {
                 pairs,
                 comment,
-                anchor: _,
+                anchor,
+                tag,
             } => {
-                for (i, (key, value)) in pairs.iter().enumerate() {
+                // Write anchor and tag if present (but not if in value context - they were already output)
+                if !in_value_context && (anchor.is_some() || tag.is_some()) {
                     self.write_indent(indent_level);
-                    self.output.push_str(&self.format_scalar_for_key(key));
+                    if let Some(anchor_name) = anchor {
+                        self.output.push('&');
+                        self.output.push_str(anchor_name);
+                        self.output.push(' ');
+                    }
+                    if let Some(t) = tag {
+                        self.output.push_str(&t.to_string());
+                        self.output.push(' ');
+                    }
+                    self.output.push('\n');
+                }
+
+                for (i, (key, value)) in pairs.iter().enumerate() {
+                    // Check if key is a complex key (mapping or sequence)
+                    let is_complex_key = matches!(key, CustomNode::Mapping { .. } | CustomNode::Sequence { .. });
+
+                    if is_complex_key {
+                        // Complex key: use ? indicator
+                        self.write_indent(indent_level);
+                        self.output.push_str("? ");
+                        // For complex keys, we need to serialize at the same indent level
+                        // but the key content should be indented relative to the ?
+                        self.serialize_node_internal(key, indent_level, false, false);
+                    } else {
+                        // Simple key
+                        self.write_indent(indent_level);
+                        self.output.push_str(&self.format_scalar_for_key(key));
+                    }
+
                     self.output.push(':');
 
                     // Check if value needs to be on next line
-                    if self.needs_newline_for_value(value) {
-                        // If the value node has an anchor, write it after the colon
+                    if self.needs_newline_for_value(value) || is_complex_key {
+                        // If the value node has an anchor or tag, write it after the colon
                         if let Some(anchor_name) = value.anchor() {
                             self.output.push_str(" &");
                             self.output.push_str(anchor_name);
                         }
+                        if let Some(t) = value.tag() {
+                            self.output.push(' ');
+                            self.output.push_str(&t.to_string());
+                        }
                         self.output.push('\n');
-                        self.serialize_node_internal(value, indent_level + 1, i == pairs.len() - 1);
+                        self.serialize_node_internal(value, indent_level + 1, i == pairs.len() - 1, true);
                     } else {
                         self.output.push(' ');
-                        self.serialize_node_internal(value, 0, i == pairs.len() - 1);
+                        self.serialize_node_internal(value, 0, i == pairs.len() - 1, true);
                     }
                 }
 
@@ -100,12 +141,20 @@ impl Serializer {
                 items,
                 comment,
                 anchor,
+                tag,
             } => {
-                // Write anchor if present
-                if let Some(anchor_name) = anchor {
+                // Write anchor and tag if present (but not if in value context)
+                if !in_value_context && (anchor.is_some() || tag.is_some()) {
                     self.write_indent(indent_level);
-                    self.output.push('&');
-                    self.output.push_str(anchor_name);
+                    if let Some(anchor_name) = anchor {
+                        self.output.push('&');
+                        self.output.push_str(anchor_name);
+                        self.output.push(' ');
+                    }
+                    if let Some(t) = tag {
+                        self.output.push_str(&t.to_string());
+                        self.output.push(' ');
+                    }
                     self.output.push('\n');
                 }
 
@@ -115,9 +164,11 @@ impl Serializer {
 
                     if self.needs_newline_for_sequence_item(item) {
                         self.output.push('\n');
-                        self.serialize_node_internal(item, indent_level + 1, i == items.len() - 1);
+                        self.serialize_node_internal(item, indent_level + 1, i == items.len() - 1, false);
                     } else {
-                        self.serialize_node_internal(item, 0, i == items.len() - 1);
+                        // For simple items, they go on the same line as the dash
+                        // Use indent_level for proper indentation of subsequent items
+                        self.serialize_node_internal(item, indent_level, i == items.len() - 1, false);
                     }
                 }
 
@@ -131,7 +182,11 @@ impl Serializer {
                     }
                 }
             }
-            CustomNode::Null { comment, anchor } => {
+            CustomNode::Null {
+                comment,
+                anchor,
+                tag,
+            } => {
                 self.write_indent(indent_level);
 
                 if let Some(anchor_name) = anchor {
@@ -140,11 +195,16 @@ impl Serializer {
                     self.output.push(' ');
                 }
 
+                if let Some(t) = tag {
+                    self.output.push_str(&t.to_string());
+                    self.output.push(' ');
+                }
+
                 self.output.push_str("null");
 
                 if let Some(c) = comment {
                     if !c.standalone {
-                        self.output.push_str(" # ");
+                        self.output.push_str("  # ");
                         self.output.push_str(&c.text);
                     }
                 }
@@ -268,6 +328,7 @@ impl Serializer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Tag;
     use indexmap::IndexMap;
 
     #[test]
@@ -277,6 +338,7 @@ mod tests {
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
+            tag: None,
         };
         assert_eq!(to_yaml(&node), "hello\n");
     }
@@ -291,8 +353,21 @@ mod tests {
                 standalone: false,
             }),
             anchor: None,
+            tag: None,
         };
         assert_eq!(to_yaml(&node), "value  # a comment\n");
+    }
+
+    #[test]
+    fn test_serialize_scalar_with_tag() {
+        let node = CustomNode::Scalar {
+            value: "42".to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: Some(Tag::primary("int")),
+        };
+        assert_eq!(to_yaml(&node), "!!int 42\n");
     }
 
     #[test]
@@ -302,12 +377,14 @@ mod tests {
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
+            tag: None,
         };
         let value = CustomNode::Scalar {
             value: "value".to_string(),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
+            tag: None,
         };
 
         let mut pairs = IndexMap::new();
@@ -317,8 +394,54 @@ mod tests {
             pairs,
             comment: None,
             anchor: None,
+            tag: None,
         };
 
         assert_eq!(to_yaml(&node), "key: value\n");
+    }
+
+    #[test]
+    fn test_serialize_complex_key() {
+        let key = CustomNode::Sequence {
+            items: vec![
+                CustomNode::Scalar {
+                    value: "key1".to_string(),
+                    style: ScalarStyle::Plain,
+                    comment: None,
+                    anchor: None,
+                    tag: None,
+                },
+                CustomNode::Scalar {
+                    value: "key2".to_string(),
+                    style: ScalarStyle::Plain,
+                    comment: None,
+                    anchor: None,
+                    tag: None,
+                },
+            ],
+            comment: None,
+            anchor: None,
+            tag: None,
+        };
+        let value = CustomNode::Scalar {
+            value: "value".to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+        };
+
+        let mut pairs = IndexMap::new();
+        pairs.insert(key, value);
+
+        let node = CustomNode::Mapping {
+            pairs,
+            comment: None,
+            anchor: None,
+            tag: None,
+        };
+
+        let output = to_yaml(&node);
+        assert!(output.contains("? "));
     }
 }

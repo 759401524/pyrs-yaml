@@ -38,6 +38,53 @@ impl Hash for Comment {
     }
 }
 
+/// YAML tag (e.g., !!str, !!int, !custom)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tag {
+    /// The handle (e.g., "!!" or "!") - empty for verbatim tags
+    pub handle: String,
+    /// The suffix (e.g., "str", "int", "null")
+    pub suffix: String,
+}
+
+impl Tag {
+    /// Create a local tag (!suffix)
+    pub fn local(suffix: &str) -> Self {
+        Self {
+            handle: "!".to_string(),
+            suffix: suffix.to_string(),
+        }
+    }
+
+    /// Create a primary tag (!!suffix)
+    pub fn primary(suffix: &str) -> Self {
+        Self {
+            handle: "!!".to_string(),
+            suffix: suffix.to_string(),
+        }
+    }
+
+    /// Format tag for output
+    pub fn to_string(&self) -> String {
+        if self.handle == "!" && self.suffix.is_empty() {
+            "!".to_string()
+        } else if self.handle == "!!" {
+            format!("!!{}", self.suffix)
+        } else if self.handle == "!" {
+            format!("!{}", self.suffix)
+        } else {
+            format!("{}{}", self.handle, self.suffix)
+        }
+    }
+}
+
+impl Hash for Tag {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.suffix.hash(state);
+    }
+}
+
 /// Custom AST node with full metadata for round-trip support
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomNode {
@@ -46,20 +93,24 @@ pub enum CustomNode {
         style: ScalarStyle,
         comment: Option<Comment>,
         anchor: Option<String>,
+        tag: Option<Tag>,
     },
     Mapping {
         pairs: IndexMap<CustomNode, CustomNode>,
         comment: Option<Comment>,
         anchor: Option<String>,
+        tag: Option<Tag>,
     },
     Sequence {
         items: Vec<CustomNode>,
         comment: Option<Comment>,
         anchor: Option<String>,
+        tag: Option<Tag>,
     },
     Null {
         comment: Option<Comment>,
         anchor: Option<String>,
+        tag: Option<Tag>,
     },
     /// Alias reference (*alias)
     Alias {
@@ -75,17 +126,20 @@ impl Hash for CustomNode {
                 style,
                 comment,
                 anchor,
+                tag,
             } => {
                 state.write_u8(0);
                 value.hash(state);
                 style.hash(state);
                 comment.hash(state);
                 anchor.hash(state);
+                tag.hash(state);
             }
             CustomNode::Mapping {
                 pairs,
                 comment,
                 anchor,
+                tag,
             } => {
                 state.write_u8(1);
                 for (k, v) in pairs {
@@ -94,11 +148,13 @@ impl Hash for CustomNode {
                 }
                 comment.hash(state);
                 anchor.hash(state);
+                tag.hash(state);
             }
             CustomNode::Sequence {
                 items,
                 comment,
                 anchor,
+                tag,
             } => {
                 state.write_u8(2);
                 for item in items {
@@ -106,11 +162,17 @@ impl Hash for CustomNode {
                 }
                 comment.hash(state);
                 anchor.hash(state);
+                tag.hash(state);
             }
-            CustomNode::Null { comment, anchor } => {
+            CustomNode::Null {
+                comment,
+                anchor,
+                tag,
+            } => {
                 state.write_u8(3);
                 comment.hash(state);
                 anchor.hash(state);
+                tag.hash(state);
             }
             CustomNode::Alias { name } => {
                 state.write_u8(4);
@@ -155,6 +217,30 @@ impl CustomNode {
             CustomNode::Alias { .. } => None,
         }
     }
+
+    /// Get the tag if present
+    pub fn tag(&self) -> Option<&Tag> {
+        match self {
+            CustomNode::Scalar { tag, .. }
+            | CustomNode::Mapping { tag, .. }
+            | CustomNode::Sequence { tag, .. }
+            | CustomNode::Null { tag, .. } => tag.as_ref(),
+            CustomNode::Alias { .. } => None,
+        }
+    }
+
+    /// Set the tag on this node
+    pub fn set_tag(&mut self, new_tag: Tag) {
+        match self {
+            CustomNode::Scalar { tag, .. }
+            | CustomNode::Mapping { tag, .. }
+            | CustomNode::Sequence { tag, .. }
+            | CustomNode::Null { tag, .. } => {
+                *tag = Some(new_tag);
+            }
+            CustomNode::Alias { .. } => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -168,9 +254,23 @@ mod tests {
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
+            tag: None,
         };
         assert_eq!(node.comment(), None);
         assert_eq!(node.anchor(), None);
+        assert_eq!(node.tag(), None);
+    }
+
+    #[test]
+    fn test_scalar_with_tag() {
+        let node = CustomNode::Scalar {
+            value: "42".to_string(),
+            style: ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: Some(Tag::primary("int")),
+        };
+        assert_eq!(node.tag().unwrap().suffix, "int");
     }
 
     #[test]
@@ -183,6 +283,7 @@ mod tests {
                 standalone: false,
             }),
             anchor: None,
+            tag: None,
         };
         assert_eq!(node.comment().unwrap().text, "a greeting");
         assert!(!node.comment().unwrap().standalone);
@@ -195,18 +296,21 @@ mod tests {
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
+            tag: None,
         };
         let key2 = CustomNode::Scalar {
             value: "a".to_string(),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
+            tag: None,
         };
         let val = CustomNode::Scalar {
             value: "1".to_string(),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
+            tag: None,
         };
 
         let mut pairs = IndexMap::new();
@@ -217,6 +321,7 @@ mod tests {
             pairs,
             comment: None,
             anchor: None,
+            tag: None,
         };
 
         // Verify order is preserved (insertion order)
@@ -225,5 +330,12 @@ mod tests {
             assert_eq!(keys[0].clone(), key1);
             assert_eq!(keys[1].clone(), key2);
         }
+    }
+
+    #[test]
+    fn test_tag_formatting() {
+        assert_eq!(Tag::primary("str").to_string(), "!!str");
+        assert_eq!(Tag::local("custom").to_string(), "!custom");
+        assert_eq!(Tag { handle: "!".to_string(), suffix: "".to_string() }.to_string(), "!");
     }
 }

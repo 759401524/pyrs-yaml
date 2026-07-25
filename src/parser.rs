@@ -1,4 +1,4 @@
-use crate::ast::{Comment, CustomNode, ScalarStyle};
+use crate::ast::{Comment, CustomNode, ScalarStyle, Tag};
 use indexmap::IndexMap;
 use yaml_rust2::scanner::{Marker, Scanner, Token, TokenType, TScalarStyle};
 
@@ -55,7 +55,12 @@ fn extract_comments(yaml: &str) -> Vec<RawComment> {
 }
 
 /// Find an inline comment on the same line at a column after `after_col`
-fn find_inline_comment(comments: &[RawComment], start_idx: &mut usize, line: usize, after_col: usize) -> Option<Comment> {
+fn find_inline_comment(
+    comments: &[RawComment],
+    start_idx: &mut usize,
+    line: usize,
+    after_col: usize,
+) -> Option<Comment> {
     while *start_idx < comments.len() {
         let c = &comments[*start_idx];
         if c.line > line {
@@ -80,7 +85,11 @@ fn find_inline_comment(comments: &[RawComment], start_idx: &mut usize, line: usi
 }
 
 /// Find the next standalone comment before a given line
-fn find_standalone_comment_before(comments: &[RawComment], start_idx: &mut usize, before_line: usize) -> Option<Comment> {
+fn find_standalone_comment_before(
+    comments: &[RawComment],
+    start_idx: &mut usize,
+    before_line: usize,
+) -> Option<Comment> {
     let mut result = None;
     while *start_idx < comments.len() {
         let c = &comments[*start_idx];
@@ -137,10 +146,6 @@ impl TokenParser {
         self.tokens.get(self.pos).map(|(_, t)| t)
     }
 
-    fn peek_marker(&self) -> Option<&Marker> {
-        self.tokens.get(self.pos).map(|(m, _)| m)
-    }
-
     fn next(&mut self) -> Option<&TokenType> {
         let token = self.tokens.get(self.pos).map(|(_, t)| t);
         if token.is_some() {
@@ -186,6 +191,25 @@ impl TokenParser {
             line,
         );
 
+        // Check for tag and anchor in any order
+        let mut pending_tag = None;
+        let mut pending_anchor = None;
+
+        // YAML allows anchor and tag in any order before the node
+        loop {
+            match self.peek().cloned() {
+                Some(TokenType::Tag(handle, suffix)) => {
+                    self.next();
+                    pending_tag = Some(Tag { handle, suffix });
+                }
+                Some(TokenType::Anchor(name)) => {
+                    self.next();
+                    pending_anchor = Some(name);
+                }
+                _ => break,
+            }
+        }
+
         match self.peek().cloned() {
             Some(TokenType::Scalar(style, value)) => {
                 let scalar_value = value.clone();
@@ -208,15 +232,23 @@ impl TokenParser {
                     value: scalar_value,
                     style: scalar_style,
                     comment,
-                    anchor: None,
+                    anchor: pending_anchor,
+                    tag: pending_tag,
                 })
             }
             Some(TokenType::BlockMappingStart) => {
                 self.next();
                 let mut mapping = self.parse_mapping()?;
-                // Attach standalone comment to the mapping
                 if let Some(s) = standalone {
                     mapping.set_comment(s);
+                }
+                if let Some(t) = pending_tag {
+                    mapping.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Mapping { anchor, .. } = &mut mapping {
+                        *anchor = Some(a);
+                    }
                 }
                 Ok(mapping)
             }
@@ -226,6 +258,14 @@ impl TokenParser {
                 if let Some(s) = standalone {
                     seq.set_comment(s);
                 }
+                if let Some(t) = pending_tag {
+                    seq.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Sequence { anchor, .. } = &mut seq {
+                        *anchor = Some(a);
+                    }
+                }
                 Ok(seq)
             }
             Some(TokenType::FlowMappingStart) => {
@@ -234,6 +274,14 @@ impl TokenParser {
                 if let Some(s) = standalone {
                     mapping.set_comment(s);
                 }
+                if let Some(t) = pending_tag {
+                    mapping.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Mapping { anchor, .. } = &mut mapping {
+                        *anchor = Some(a);
+                    }
+                }
                 Ok(mapping)
             }
             Some(TokenType::FlowSequenceStart) => {
@@ -241,6 +289,14 @@ impl TokenParser {
                 let mut seq = self.parse_flow_sequence()?;
                 if let Some(s) = standalone {
                     seq.set_comment(s);
+                }
+                if let Some(t) = pending_tag {
+                    seq.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Sequence { anchor, .. } = &mut seq {
+                        *anchor = Some(a);
+                    }
                 }
                 Ok(seq)
             }
@@ -258,41 +314,23 @@ impl TokenParser {
             }
             Some(TokenType::BlockEnd) => {
                 self.next();
-                if let Some(s) = standalone {
-                    Ok(CustomNode::Null {
-                        comment: Some(s),
-                        anchor: None,
-                    })
-                } else {
-                    Ok(CustomNode::Null {
-                        comment: None,
-                        anchor: None,
-                    })
-                }
+                Ok(CustomNode::Null {
+                    comment: standalone,
+                    anchor: pending_anchor,
+                    tag: pending_tag,
+                })
             }
             Some(TokenType::Alias(name)) => {
                 let alias_name = name.clone();
                 self.next();
-                Ok(CustomNode::Alias { name: alias_name })
-            }
-            Some(TokenType::Anchor(name)) => {
-                let anchor_name = name.clone();
-                self.next();
-                let mut node = self.parse_node()?;
-                match &mut node {
-                    CustomNode::Scalar { anchor, .. }
-                    | CustomNode::Mapping { anchor, .. }
-                    | CustomNode::Sequence { anchor, .. }
-                    | CustomNode::Null { anchor, .. } => {
-                        *anchor = Some(anchor_name);
-                    }
-                    _ => {}
-                }
-                Ok(node)
+                Ok(CustomNode::Alias {
+                    name: alias_name,
+                })
             }
             None => Ok(CustomNode::Null {
-                comment: None,
-                anchor: None,
+                comment: standalone,
+                anchor: pending_anchor,
+                tag: pending_tag,
             }),
             _ => {
                 self.next();
@@ -300,8 +338,9 @@ impl TokenParser {
                     self.parse_node()
                 } else {
                     Ok(CustomNode::Null {
-                        comment: None,
-                        anchor: None,
+                        comment: standalone,
+                        anchor: pending_anchor,
+                        tag: pending_tag,
                     })
                 }
             }
@@ -351,6 +390,7 @@ impl TokenParser {
                         style: key_style,
                         comment: key_comment.or(standalone),
                         anchor: None,
+                        tag: None,
                     };
 
                     if let Some(TokenType::Value) = self.peek() {
@@ -370,10 +410,11 @@ impl TokenParser {
             pairs,
             comment: None,
             anchor: None,
+            tag: None,
         })
     }
 
-    /// Parse a key in a key-value pair (handles Key token + scalar)
+    /// Parse a key in a key-value pair (handles Key token + scalar or complex key)
     fn parse_key_for_pair(&mut self) -> Result<CustomNode, String> {
         // Collect standalone comments before this key
         let (line, _col) = self.marker_line_col(0);
@@ -382,6 +423,24 @@ impl TokenParser {
             &mut self.comment_idx,
             line,
         );
+
+        // Check for tag and anchor before key in any order
+        let mut pending_tag = None;
+        let mut pending_anchor = None;
+
+        loop {
+            match self.peek().cloned() {
+                Some(TokenType::Tag(handle, suffix)) => {
+                    self.next();
+                    pending_tag = Some(Tag { handle, suffix });
+                }
+                Some(TokenType::Anchor(name)) => {
+                    self.next();
+                    pending_anchor = Some(name);
+                }
+                _ => break,
+            }
+        }
 
         match self.peek().cloned() {
             Some(TokenType::Scalar(style, key_value)) => {
@@ -394,14 +453,93 @@ impl TokenParser {
                     value: key_str,
                     style: key_style,
                     comment: standalone,
-                    anchor: None,
+                    anchor: pending_anchor,
+                    tag: pending_tag,
                 })
+            }
+            Some(TokenType::BlockMappingStart) => {
+                self.next();
+                let mut mapping = self.parse_mapping()?;
+                if let Some(s) = standalone {
+                    mapping.set_comment(s);
+                }
+                if let Some(t) = pending_tag {
+                    mapping.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Mapping { anchor, .. } = &mut mapping {
+                        *anchor = Some(a);
+                    }
+                }
+                Ok(mapping)
+            }
+            Some(TokenType::BlockSequenceStart) => {
+                self.next();
+                let mut seq = self.parse_sequence()?;
+                if let Some(s) = standalone {
+                    seq.set_comment(s);
+                }
+                if let Some(t) = pending_tag {
+                    seq.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Sequence { anchor, .. } = &mut seq {
+                        *anchor = Some(a);
+                    }
+                }
+                Ok(seq)
+            }
+            Some(TokenType::FlowMappingStart) => {
+                self.next();
+                let mut mapping = self.parse_flow_mapping()?;
+                if let Some(s) = standalone {
+                    mapping.set_comment(s);
+                }
+                if let Some(t) = pending_tag {
+                    mapping.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Mapping { anchor, .. } = &mut mapping {
+                        *anchor = Some(a);
+                    }
+                }
+                Ok(mapping)
+            }
+            Some(TokenType::FlowSequenceStart) => {
+                self.next();
+                let mut seq = self.parse_flow_sequence()?;
+                if let Some(s) = standalone {
+                    seq.set_comment(s);
+                }
+                if let Some(t) = pending_tag {
+                    seq.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    if let CustomNode::Sequence { anchor, .. } = &mut seq {
+                        *anchor = Some(a);
+                    }
+                }
+                Ok(seq)
             }
             _ => {
                 // Complex key - parse as node
                 let mut node = self.parse_node()?;
                 if let Some(s) = standalone {
                     node.set_comment(s);
+                }
+                if let Some(t) = pending_tag {
+                    node.set_tag(t);
+                }
+                if let Some(a) = pending_anchor {
+                    match &mut node {
+                        CustomNode::Scalar { anchor, .. }
+                        | CustomNode::Mapping { anchor, .. }
+                        | CustomNode::Sequence { anchor, .. }
+                        | CustomNode::Null { anchor, .. } => {
+                            *anchor = Some(a);
+                        }
+                        _ => {}
+                    }
                 }
                 Ok(node)
             }
@@ -412,7 +550,7 @@ impl TokenParser {
     fn parse_value_for_pair(&mut self) -> Result<CustomNode, String> {
         if let Some(TokenType::Value) = self.peek() {
             // Get position of Value token
-            let (_val_line, val_col) = self.marker_line_col(0);
+            let (_val_line, _val_col) = self.marker_line_col(0);
             self.next();
 
             // Get position of the value scalar
@@ -422,7 +560,10 @@ impl TokenParser {
             let mut node = self.parse_node()?;
 
             // If the value is a scalar, look for inline comment after it
-            if let CustomNode::Scalar { value, comment, .. } = &mut node {
+            if let CustomNode::Scalar {
+                value, comment, ..
+            } = &mut node
+            {
                 if comment.is_none() {
                     let inline = find_inline_comment(
                         &self.raw_comments,
@@ -468,6 +609,7 @@ impl TokenParser {
                         style: key_style,
                         comment: None,
                         anchor: None,
+                        tag: None,
                     };
                     pairs.insert(key, value);
                 }
@@ -485,6 +627,7 @@ impl TokenParser {
             pairs,
             comment: None,
             anchor: None,
+            tag: None,
         })
     }
 
@@ -519,6 +662,7 @@ impl TokenParser {
             items,
             comment: None,
             anchor: None,
+            tag: None,
         })
     }
 
@@ -548,6 +692,7 @@ impl TokenParser {
             items,
             comment: None,
             anchor: None,
+            tag: None,
         })
     }
 
@@ -593,6 +738,35 @@ mod tests {
         assert!(result.is_ok());
         if let Ok(CustomNode::Sequence { items, .. }) = result {
             assert_eq!(items.len(), 2);
+        }
+    }
+
+    #[test]
+    fn test_parse_tag() {
+        let yaml = "key: !!str value";
+        let result = parse(yaml);
+        assert!(result.is_ok());
+        if let Ok(CustomNode::Mapping { pairs, .. }) = result {
+            for (k, v) in pairs {
+                if let CustomNode::Scalar { value, .. } = k {
+                    if value == "key" {
+                        if let CustomNode::Scalar { tag, .. } = v {
+                            assert!(tag.is_some());
+                            assert_eq!(tag.unwrap().suffix, "str");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_complex_key() {
+        let yaml = "? [key1, key2]\n: value";
+        let result = parse(yaml);
+        assert!(result.is_ok());
+        if let Ok(CustomNode::Mapping { pairs, .. }) = result {
+            assert_eq!(pairs.len(), 1);
         }
     }
 }

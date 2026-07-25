@@ -27,6 +27,7 @@ impl YamlDocument {
                     style: ast::ScalarStyle::Plain,
                     comment: None,
                     anchor: None,
+                    tag: None,
                 };
                 if let Some(value) = pairs.get(&key_node) {
                     Ok(Some(node_to_pyobject(value)))
