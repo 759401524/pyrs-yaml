@@ -1,10 +1,15 @@
 [package]
-name = "pyamlium_custom"
+name = "pyyaml-rs"
 version = "0.1.0"
 edition = "2021"
+description = "High-performance Python YAML library with perfect round-trip support"
+license = "MIT"
+repository = "https://github.com/user/pyyaml-rs"
+keywords = ["yaml", "python", "pyo3", "round-trip", "high-performance"]
+categories = ["parser-implementations", "encoding"]
 
 [lib]
-name = "pyamlium_custom"
+name = "pyyaml_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -12,3 +17,7 @@ pyo3 = { version = "0.21", features = ["extension-module"] }
 indexmap = { version = "2.2", features = ["serde"] }
 saphyr-parser = "0.0.11"
 serde_json = "1.0"
+
+[profile.release]
+lto = true
+codegen-units = 1

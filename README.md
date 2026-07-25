@@ -1,4 +1,4 @@
-# pyamlium_custom
+# pyyaml-rs
 
 A high-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.
 
@@ -13,25 +13,25 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 ## Installation
 
 ```bash
-pip install pyamlium-custom
+pip install pyyaml-rs
 ```
 
 ## Quick Start
 
 ```python
-import pyamlium_custom
+import pyyaml_rs
 
 # Parse YAML
-doc = pyamlium_custom.parse("key: value")
+doc = pyyaml_rs.parse("key: value")
 print(doc.to_yaml())  # key: value
 
 # PyYAML compatible API
-data = pyamlium_custom.safe_load("key: value")
+data = pyyaml_rs.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # Round-trip preserves comments
 original = "# Comment\nkey: value  # inline\n"
-doc = pyamlium_custom.parse(original)
+doc = pyyaml_rs.parse(original)
 assert doc.to_yaml() == original  # True
 ```
 
@@ -55,10 +55,10 @@ assert doc.to_yaml() == original  # True
 
 ```python
 # Parse YAML string
-doc = pyamlium_custom.parse(yaml_str)
+doc = pyyaml_rs.parse(yaml_str)
 
 # Parse YAML file
-doc = pyamlium_custom.parse_file("config.yaml")
+doc = pyyaml_rs.parse_file("config.yaml")
 
 # Convert to YAML string
 yaml_str = doc.to_yaml()
@@ -74,30 +74,30 @@ doc.root_type()  # "mapping", "sequence", "scalar", "null"
 
 ```python
 # Load YAML to dict
-data = pyamlium_custom.safe_load(yaml_str)
+data = pyyaml_rs.safe_load(yaml_str)
 
 # Load multiple documents
-docs = pyamlium_custom.safe_loads(yaml_str)
+docs = pyyaml_rs.safe_loads(yaml_str)
 
 # Dump dict to YAML
-yaml_str = pyamlium_custom.safe_dump(data)
+yaml_str = pyyaml_rs.safe_dump(data)
 
 # Convert dict to YAML
-yaml_str = pyamlium_custom.from_dict(data)
+yaml_str = pyyaml_rs.from_dict(data)
 
 # Convert JSON to YAML
-yaml_str = pyamlium_custom.from_json(json_str)
+yaml_str = pyyaml_rs.from_json(json_str)
 
 # Extract YAML frontmatter from markdown
-frontmatter, content = pyamlium_custom.read_markdown("post.md")
+frontmatter, content = pyyaml_rs.read_markdown("post.md")
 ```
 
 ## Performance
 
 Compared to PyYAML (with LibYAML C extension):
 
-| Operation | pyamlium_custom | PyYAML | Speedup |
-|-----------|-----------------|--------|---------|
+| Operation | pyyaml-rs | PyYAML | Speedup |
+|-----------|-----------|--------|---------|
 | Parse (simple) | 0.003 ms | 0.074 ms | 25x |
 | Parse (medium) | 0.013 ms | 0.367 ms | 28x |
 | Parse (large) | 0.886 ms | 22.375 ms | 25x |
