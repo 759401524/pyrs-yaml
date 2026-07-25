@@ -56,7 +56,7 @@ impl Serializer {
                 }
 
                 // Write scalar with appropriate style
-                let formatted = self.format_scalar(value, style);
+                let formatted = self.format_scalar(value, style, chomping);
                 self.output.push_str(&formatted);
 
                 // Write line-end comment
@@ -221,13 +221,13 @@ impl Serializer {
         }
     }
 
-    fn format_scalar(&self, value: &str, style: &ScalarStyle) -> String {
+    fn format_scalar(&self, value: &str, style: &ScalarStyle, chomping: &Chomping) -> String {
         match style {
             ScalarStyle::Plain => self.format_plain_scalar(value),
             ScalarStyle::SingleQuoted => self.format_single_quoted_scalar(value),
             ScalarStyle::DoubleQuoted => self.format_double_quoted_scalar(value),
-            ScalarStyle::Literal => self.format_literal_scalar(value),
-            ScalarStyle::Folded => self.format_folded_scalar(value),
+            ScalarStyle::Literal => self.format_literal_scalar(value, chomping),
+            ScalarStyle::Folded => self.format_folded_scalar(value, chomping),
         }
     }
 
@@ -290,12 +290,22 @@ impl Serializer {
         format!("\"{}\"", escaped)
     }
 
-    fn format_literal_scalar(&self, value: &str) -> String {
-        format!("|\n{}", self.add_base_indent(value, 0))
+    fn format_literal_scalar(&self, value: &str, chomping: &Chomping) -> String {
+        let indicator = match chomping {
+            Chomping::Strip => "|-",
+            Chomping::Clip => "|",
+            Chomping::Keep => "|+",
+        };
+        format!("{}\n{}", indicator, self.add_base_indent(value, 0))
     }
 
-    fn format_folded_scalar(&self, value: &str) -> String {
-        format!(">\n{}", self.add_base_indent(value, 0))
+    fn format_folded_scalar(&self, value: &str, chomping: &Chomping) -> String {
+        let indicator = match chomping {
+            Chomping::Strip => ">-",
+            Chomping::Clip => ">",
+            Chomping::Keep => ">+",
+        };
+        format!("{}\n{}", indicator, self.add_base_indent(value, 0))
     }
 
     fn add_base_indent(&self, value: &str, base_indent: usize) -> String {

@@ -54,6 +54,40 @@ fn extract_comments(yaml: &str) -> Vec<RawComment> {
     comments
 }
 
+/// Detect chomping indicator from raw YAML text
+/// The chomping indicator appears on the line before the block scalar content
+/// Looks for |- or |+ or >- or >+ patterns
+fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
+    let lines: Vec<&str> = yaml.lines().collect();
+
+    // Look at the line before the content for the block scalar indicator
+    // The indicator could be on the same line as the key or on a previous line
+    for check_line in (0..=content_line).rev() {
+        if check_line >= lines.len() {
+            continue;
+        }
+        let line_text = lines[check_line];
+
+        // Look for | or > followed by - or +
+        for (i, ch) in line_text.char_indices() {
+            if ch == '|' || ch == '>' {
+                let remaining = &line_text[i + 1..];
+                if remaining.starts_with('-') {
+                    return Chomping::Strip;
+                } else if remaining.starts_with('+') {
+                    return Chomping::Keep;
+                }
+                // Found the indicator without chomping, stop looking
+                if remaining.is_empty() || remaining.starts_with(|c: char| c.is_whitespace()) {
+                    return Chomping::Clip;
+                }
+            }
+        }
+    }
+
+    Chomping::Clip
+}
+
 /// Find an inline comment on the same line at a column after `after_col`
 fn find_inline_comment(
     comments: &[RawComment],
@@ -121,7 +155,7 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
     }
 
     let raw_comments = extract_comments(yaml);
-    let mut parser = TokenParser::new(tokens_with_pos, raw_comments);
+    let mut parser = TokenParser::new(tokens_with_pos, raw_comments, yaml.to_string());
     parser.parse_document()
 }
 
@@ -130,15 +164,17 @@ struct TokenParser {
     pos: usize,
     raw_comments: Vec<RawComment>,
     comment_idx: usize,
+    yaml_text: String,
 }
 
 impl TokenParser {
-    fn new(tokens: Vec<(Marker, TokenType)>, raw_comments: Vec<RawComment>) -> Self {
+    fn new(tokens: Vec<(Marker, TokenType)>, raw_comments: Vec<RawComment>, yaml_text: String) -> Self {
         Self {
             tokens,
             pos: 0,
             raw_comments,
             comment_idx: 0,
+            yaml_text,
         }
     }
 
@@ -228,13 +264,20 @@ impl TokenParser {
                 // Inline comment wins over standalone
                 let comment = inline.or(standalone);
 
+                // Detect chomping for block scalars (Literal or Folded)
+                let chomping = if matches!(scalar_style, ScalarStyle::Literal | ScalarStyle::Folded) {
+                    detect_chomping(&self.yaml_text, line)
+                } else {
+                    Chomping::Clip
+                };
+
                 Ok(CustomNode::Scalar {
                     value: scalar_value,
                     style: scalar_style,
                     comment,
                     anchor: pending_anchor,
                     tag: pending_tag,
-                    chomping: Chomping::Clip,
+                    chomping,
                 })
             }
             Some(TokenType::BlockMappingStart) => {
