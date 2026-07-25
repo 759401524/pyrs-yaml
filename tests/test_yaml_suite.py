@@ -16,11 +16,20 @@ def convert_special_chars(text: str) -> str:
         return text
 
     # Convert special whitespace indicators
+    # Order matters - longer sequences first
     text = text.replace('\u2423', ' ')  # ␣ = space
-    text = text.replace('\u2016\u2016\u2016\u00bb', '\t')  # ———» = tab
-    text = text.replace('\u2016\u2016\u00bb', '\t')  # —» = tab
-    text = text.replace('\u2016\u00bb', '\t')  # —» = tab
+    
+    # Tab indicators (em dashes + right angle bracket)
+    text = text.replace('\u2014\u2014\u2014\u00bb', '\t')  # ———» = tab
+    text = text.replace('\u2014\u2014\u00bb', '\t')  # ——» = tab
+    text = text.replace('\u2014\u00bb', '\t')  # —» = tab
     text = text.replace('\u00bb', '\t')  # » = tab
+    
+    # Also handle double vertical line variants
+    text = text.replace('\u2016\u2016\u2016\u00bb', '\t')  # ‖‖‖» = tab
+    text = text.replace('\u2016\u2016\u00bb', '\t')  # ‖‖» = tab
+    text = text.replace('\u2016\u00bb', '\t')  # ‖» = tab
+    
     text = text.replace('\u21b5', '\n')  # ↵ = newline
     text = text.replace('\u221e', '')  # ∎ = no final newline (remove)
     text = text.replace('\u2190', '\r')  # ← = carriage return
