@@ -43,8 +43,18 @@ yaml-rust2 = "0.9"
   - `anchor` / `alias`：记录锚点名称和别名引用。
 - **数据结构**：Mapping 必须使用 `IndexMap<CustomNode, CustomNode>` 以保持顺序。
 
-### 3.2 解析器 (`src/parser.rs`)
+### 3.2 解析器 (`src/parser/`)
 - **规则**：基于 Token 流构建 AST。
+- **模块结构**（单一职责原则）：
+  ```
+  src/parser/
+  ├── mod.rs              # 核心解析逻辑 (TokenParser)
+  └── yaml/
+      ├── comment.rs      # 注释提取与匹配
+      ├── merge.rs        # 合并键 (<<) 解析
+      ├── scalar.rs       # 转义序列 & chomping 检测
+      └── types.rs        # YAML 1.2 类型解析
+  ```
 - **实现路径**：
   1. 使用 `yaml-rust2::yaml::Scanner` 获取 Token 流（如 `Token::Scalar`, `Token::Comment`, `Token::MappingStart`）。
   2. 编写状态机或递归下降解析器，将 Token 流转换为 `CustomNode`。
