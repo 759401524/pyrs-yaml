@@ -16,6 +16,29 @@ pub enum ScalarStyle {
     Folded,
 }
 
+/// Chomping indicator for block scalars (YAML 1.2)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Chomping {
+    /// Strip chomping (-): final newline is stripped
+    Strip,
+    /// Clip chomping (default): single final newline kept
+    Clip,
+    /// Keep chomping (+): all newlines preserved
+    Keep,
+}
+
+impl Default for Chomping {
+    fn default() -> Self {
+        Chomping::Clip
+    }
+}
+
+impl Hash for Chomping {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+    }
+}
+
 impl Hash for ScalarStyle {
     fn hash<H: Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
@@ -94,6 +117,8 @@ pub enum CustomNode {
         comment: Option<Comment>,
         anchor: Option<String>,
         tag: Option<Tag>,
+        /// Chomping indicator for block scalars (|+, |-, >+, >-)
+        chomping: Chomping,
     },
     Mapping {
         pairs: IndexMap<CustomNode, CustomNode>,
@@ -127,6 +152,7 @@ impl Hash for CustomNode {
                 comment,
                 anchor,
                 tag,
+                chomping,
             } => {
                 state.write_u8(0);
                 value.hash(state);
@@ -134,6 +160,7 @@ impl Hash for CustomNode {
                 comment.hash(state);
                 anchor.hash(state);
                 tag.hash(state);
+                chomping.hash(state);
             }
             CustomNode::Mapping {
                 pairs,
@@ -255,6 +282,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
         assert_eq!(node.comment(), None);
         assert_eq!(node.anchor(), None);
@@ -269,6 +297,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: Some(Tag::primary("int")),
+            chomping: Chomping::Clip,
         };
         assert_eq!(node.tag().unwrap().suffix, "int");
     }
@@ -284,6 +313,7 @@ mod tests {
             }),
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
         assert_eq!(node.comment().unwrap().text, "a greeting");
         assert!(!node.comment().unwrap().standalone);
@@ -297,6 +327,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
         let key2 = CustomNode::Scalar {
             value: "a".to_string(),
@@ -304,6 +335,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
         let val = CustomNode::Scalar {
             value: "1".to_string(),
@@ -311,6 +343,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
 
         let mut pairs = IndexMap::new();

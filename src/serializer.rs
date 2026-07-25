@@ -1,4 +1,4 @@
-use crate::ast::{CustomNode, ScalarStyle};
+use crate::ast::{Chomping, CustomNode, ScalarStyle};
 
 /// Serialize a CustomNode AST back to YAML string
 pub fn to_yaml(node: &CustomNode) -> String {
@@ -38,6 +38,7 @@ impl Serializer {
                 comment,
                 anchor,
                 tag,
+                chomping,
             } => {
                 self.write_indent(indent_level);
 
@@ -339,6 +340,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
         assert_eq!(to_yaml(&node), "hello\n");
     }
@@ -354,6 +356,7 @@ mod tests {
             }),
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
         assert_eq!(to_yaml(&node), "value  # a comment\n");
     }
@@ -366,6 +369,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: Some(Tag::primary("int")),
+            chomping: Chomping::Clip,
         };
         assert_eq!(to_yaml(&node), "!!int 42\n");
     }
@@ -378,6 +382,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
         let value = CustomNode::Scalar {
             value: "value".to_string(),
@@ -385,6 +390,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
 
         let mut pairs = IndexMap::new();
@@ -410,6 +416,7 @@ mod tests {
                     comment: None,
                     anchor: None,
                     tag: None,
+                    chomping: Chomping::Clip,
                 },
                 CustomNode::Scalar {
                     value: "key2".to_string(),
@@ -417,6 +424,7 @@ mod tests {
                     comment: None,
                     anchor: None,
                     tag: None,
+                    chomping: Chomping::Clip,
                 },
             ],
             comment: None,
@@ -429,6 +437,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            chomping: Chomping::Clip,
         };
 
         let mut pairs = IndexMap::new();

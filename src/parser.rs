@@ -1,4 +1,4 @@
-use crate::ast::{Comment, CustomNode, ScalarStyle, Tag};
+use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
 use indexmap::IndexMap;
 use yaml_rust2::scanner::{Marker, Scanner, Token, TokenType, TScalarStyle};
 
@@ -234,6 +234,7 @@ impl TokenParser {
                     comment,
                     anchor: pending_anchor,
                     tag: pending_tag,
+                    chomping: Chomping::Clip,
                 })
             }
             Some(TokenType::BlockMappingStart) => {
@@ -391,6 +392,7 @@ impl TokenParser {
                         comment: key_comment.or(standalone),
                         anchor: None,
                         tag: None,
+                        chomping: Chomping::Clip,
                     };
 
                     if let Some(TokenType::Value) = self.peek() {
@@ -455,6 +457,7 @@ impl TokenParser {
                     comment: standalone,
                     anchor: pending_anchor,
                     tag: pending_tag,
+                    chomping: Chomping::Clip,
                 })
             }
             Some(TokenType::BlockMappingStart) => {
@@ -610,6 +613,7 @@ impl TokenParser {
                         comment: None,
                         anchor: None,
                         tag: None,
+                        chomping: Chomping::Clip,
                     };
                     pairs.insert(key, value);
                 }

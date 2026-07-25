@@ -28,6 +28,7 @@ impl YamlDocument {
                     comment: None,
                     anchor: None,
                     tag: None,
+                    chomping: ast::Chomping::Clip,
                 };
                 if let Some(value) = pairs.get(&key_node) {
                     Ok(Some(node_to_pyobject(value)))
