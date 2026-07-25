@@ -88,6 +88,75 @@ fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
     Chomping::Clip
 }
 
+/// Unescape a double-quoted YAML string
+fn unescape_double_quoted(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('r') => result.push('\r'),
+                Some('t') => result.push('\t'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some('/') => result.push('/'),
+                Some('0') => result.push('\0'),
+                Some('a') => result.push('\x07'),
+                Some('b') => result.push('\x08'),
+                Some('f') => result.push('\x0C'),
+                Some('e') => result.push('\x1B'),
+                Some(' ') => result.push(' '),
+                Some('\n') => {
+                    // Line continuation - skip whitespace
+                    while let Some(&next) = chars.clone().peekable().peek() {
+                        if next.is_whitespace() {
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                Some('u') => {
+                    // Unicode escape: \uXXXX
+                    let hex: String = chars.by_ref().take(4).collect();
+                    if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
+                        if let Some(c) = char::from_u32(code_point) {
+                            result.push(c);
+                        }
+                    }
+                }
+                Some('U') => {
+                    // Unicode escape: \UXXXXXXXX
+                    let hex: String = chars.by_ref().take(8).collect();
+                    if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
+                        if let Some(c) = char::from_u32(code_point) {
+                            result.push(c);
+                        }
+                    }
+                }
+                Some('x') => {
+                    // Hex escape: \xXX
+                    let hex: String = chars.by_ref().take(2).collect();
+                    if let Ok(code_point) = u8::from_str_radix(&hex, 16) {
+                        result.push(code_point as char);
+                    }
+                }
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
 /// Find an inline comment on the same line at a column after `after_col`
 fn find_inline_comment(
     comments: &[RawComment],
@@ -248,8 +317,15 @@ impl TokenParser {
 
         match self.peek().cloned() {
             Some(TokenType::Scalar(style, value)) => {
-                let scalar_value = value.clone();
                 let scalar_style = Self::map_style(&style);
+
+                // Unescape double-quoted strings
+                let scalar_value = if matches!(style, TScalarStyle::DoubleQuoted) {
+                    unescape_double_quoted(&value)
+                } else {
+                    value.clone()
+                };
+
                 let (line, col) = self.marker_line_col(0);
                 self.next();
 

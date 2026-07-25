@@ -284,6 +284,15 @@ impl Serializer {
                 '\n' => escaped.push_str("\\n"),
                 '\r' => escaped.push_str("\\r"),
                 '\t' => escaped.push_str("\\t"),
+                '\0' => escaped.push_str("\\0"),
+                '\x08' => escaped.push_str("\\b"),
+                '\x0C' => escaped.push_str("\\f"),
+                '\x1B' => escaped.push_str("\\e"),
+                '/' => escaped.push_str("\\/"),
+                _ if c.is_control() => {
+                    // Unicode escape for control characters
+                    escaped.push_str(&format!("\\u{:04x}", c as u32));
+                }
                 _ => escaped.push(c),
             }
         }
