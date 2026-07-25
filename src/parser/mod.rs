@@ -132,6 +132,8 @@ fn convert_tag(tag: &saphyr_parser::Tag) -> Tag {
 /// Event receiver that builds CustomNode AST
 struct AstReceiver<'a> {
     yaml_text: &'a str,
+    /// Pre-computed byte offsets for each line start (O(1) line access)
+    line_offsets: Vec<usize>,
     raw_comments: Vec<RawComment>,
     raw_anchors: Vec<RawAnchor>,
     comment_idx: usize,
@@ -166,8 +168,17 @@ enum ParseState {
 
 impl<'a> AstReceiver<'a> {
     fn new(yaml_text: &'a str, raw_comments: Vec<RawComment>, raw_anchors: Vec<RawAnchor>) -> Self {
+        // Pre-compute line start offsets for O(1) line access
+        let mut line_offsets = Vec::with_capacity(64);
+        line_offsets.push(0);
+        for (i, byte) in yaml_text.bytes().enumerate() {
+            if byte == b'\n' {
+                line_offsets.push(i + 1);
+            }
+        }
         Self {
             yaml_text,
+            line_offsets,
             raw_comments,
             raw_anchors,
             comment_idx: 0,
@@ -268,8 +279,15 @@ impl<'a> AstReceiver<'a> {
         // Find inline comment - look for comment on the same line after the value
         // The value typically starts at column 0 for keys, or after ": " for values
         // We need to find the position after the value ends
-        let value_end_col = if line < self.yaml_text.lines().count() {
-            let line_text = self.yaml_text.lines().nth(line).unwrap_or("");
+        let value_end_col = if line < self.line_offsets.len() {
+            let start = self.line_offsets[line];
+            let end = if line + 1 < self.line_offsets.len() {
+                // Exclude the trailing \n from the line
+                self.line_offsets[line + 1].saturating_sub(1)
+            } else {
+                self.yaml_text.len()
+            };
+            let line_text = &self.yaml_text[start..end];
             // Find where the value ends by looking for the comment
             if let Some(comment_pos) = line_text.find('#') {
                 comment_pos
