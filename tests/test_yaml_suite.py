@@ -10,6 +10,25 @@ import pyamlium_custom
 from pathlib import Path
 
 
+def convert_special_chars(text: str) -> str:
+    """Convert special Unicode characters to actual characters"""
+    if not text:
+        return text
+
+    # Convert special whitespace indicators
+    text = text.replace('\u2423', ' ')  # ␣ = space
+    text = text.replace('\u2016\u2016\u2016\u00bb', '\t')  # ———» = tab
+    text = text.replace('\u2016\u2016\u00bb', '\t')  # —» = tab
+    text = text.replace('\u2016\u00bb', '\t')  # —» = tab
+    text = text.replace('\u00bb', '\t')  # » = tab
+    text = text.replace('\u21b5', '\n')  # ↵ = newline
+    text = text.replace('\u221e', '')  # ∎ = no final newline (remove)
+    text = text.replace('\u2190', '\r')  # ← = carriage return
+    text = text.replace('\u21d4', '\xef\xbb\xbf')  # ⇔ = BOM
+
+    return text
+
+
 def load_test_cases(suite_dir: str) -> list:
     """Load all test cases from the YAML test suite"""
     test_cases = []
@@ -34,6 +53,10 @@ def load_test_cases(suite_dir: str) -> list:
                 json_expected = test.get("json", "")
                 tree_expected = test.get("tree", "")
                 dump_expected = test.get("dump", "")
+
+                # Convert special characters in YAML input
+                if yaml_input:
+                    yaml_input = convert_special_chars(yaml_input)
 
                 # Determine if test should be valid or invalid
                 is_valid = "error" not in tags.lower() and "invalid" not in tags.lower()
