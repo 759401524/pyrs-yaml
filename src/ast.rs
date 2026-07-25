@@ -122,12 +122,16 @@ pub enum CustomNode {
         comment: Option<Comment>,
         anchor: Option<String>,
         tag: Option<Tag>,
+        /// Whether this mapping uses flow style ({key: value}) vs block style
+        flow_style: bool,
     },
     Sequence {
         items: Vec<CustomNode>,
         comment: Option<Comment>,
         anchor: Option<String>,
         tag: Option<Tag>,
+        /// Whether this sequence uses flow style ([item]) vs block style
+        flow_style: bool,
     },
     Null {
         comment: Option<Comment>,
@@ -162,6 +166,7 @@ impl Hash for CustomNode {
                 comment,
                 anchor,
                 tag,
+                flow_style,
             } => {
                 state.write_u8(1);
                 for (k, v) in pairs {
@@ -171,12 +176,14 @@ impl Hash for CustomNode {
                 comment.hash(state);
                 anchor.hash(state);
                 tag.hash(state);
+                flow_style.hash(state);
             }
             CustomNode::Sequence {
                 items,
                 comment,
                 anchor,
                 tag,
+                flow_style,
             } => {
                 state.write_u8(2);
                 for item in items {
@@ -185,6 +192,7 @@ impl Hash for CustomNode {
                 comment.hash(state);
                 anchor.hash(state);
                 tag.hash(state);
+                flow_style.hash(state);
             }
             CustomNode::Null {
                 comment,
@@ -350,6 +358,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            flow_style: false,
         };
 
         // Verify order is preserved (insertion order)

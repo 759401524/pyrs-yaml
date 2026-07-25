@@ -39,7 +39,7 @@ impl YamlDocument {
         serializer::to_yaml_with_options(&self.ast, &options)
     }
 
-    fn to_dict(&self, py: Python) -> Py<PyAny> {
+    fn to_dict(&self, py: Python) -> PyResult<Py<PyAny>> {
         node_to_pyobject(&self.ast, py)
     }
 
@@ -56,7 +56,7 @@ impl YamlDocument {
                     chomping: ast::Chomping::Clip,
                 };
                 if let Some(value) = pairs.get(&key_node) {
-                    Ok(node_to_pyobject(value, py))
+                    Ok(node_to_pyobject(value, py)?)
                 } else {
                     Ok(default.unwrap_or_else(|| py.None()))
                 }
@@ -111,11 +111,11 @@ impl YamlDocument {
     fn __iter__<'py>(&self, _py: Python<'py>) -> PyResult<Py<PyAny>> {
         Python::attach(|py| match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
-                let keys: Vec<Py<PyAny>> = pairs.keys().map(|k| node_to_pyobject(k, py)).collect();
+                let keys: Vec<Py<PyAny>> = pairs.keys().map(|k| node_to_pyobject(k, py)).collect::<PyResult<Vec<_>>>()?;
                 Ok(keys.into_pyobject(py)?.into_any().unbind())
             }
             CustomNode::Sequence { items, .. } => {
-                let values: Vec<Py<PyAny>> = items.iter().map(|v| node_to_pyobject(v, py)).collect();
+                let values: Vec<Py<PyAny>> = items.iter().map(|v| node_to_pyobject(v, py)).collect::<PyResult<Vec<_>>>()?;
                 Ok(values.into_pyobject(py)?.into_any().unbind())
             }
             _ => Ok(Vec::<Py<PyAny>>::new().into_pyobject(py)?.into_any().unbind()),
@@ -135,7 +135,7 @@ impl YamlDocument {
                         chomping: ast::Chomping::Clip,
                     };
                     if let Some(value) = pairs.get(&key_node) {
-                        Ok(node_to_pyobject(value, py))
+                        Ok(node_to_pyobject(value, py)?)
                     } else {
                         Err(pyo3::exceptions::PyKeyError::new_err("Key not found"))
                     }
@@ -146,7 +146,7 @@ impl YamlDocument {
             CustomNode::Sequence { items, .. } => {
                 if let Ok(idx) = key.bind(py).extract::<usize>() {
                     if idx < items.len() {
-                        Ok(node_to_pyobject(&items[idx], py))
+                        Ok(node_to_pyobject(&items[idx], py)?)
                     } else {
                         Err(pyo3::exceptions::PyIndexError::new_err("Index out of range"))
                     }
@@ -194,24 +194,23 @@ fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
 }
 
 /// Convert a CustomNode to a Python object.
-fn node_to_pyobject(node: &CustomNode, py: Python) -> Py<PyAny> {
+fn node_to_pyobject(node: &CustomNode, py: Python) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar { value, style, .. } => {
             match style {
                 ast::ScalarStyle::Plain => {
                     use parser::yaml::{resolve_yaml_type, YamlType};
                     match resolve_yaml_type(value) {
-                        YamlType::Null => py.None(),
+                        YamlType::Null => Ok(py.None()),
                         YamlType::Bool(b) => {
-                            // Convert bool to PyObject directly
-                            pyo3::types::PyBool::new(py, b).to_owned().into_any().unbind()
+                            Ok(pyo3::types::PyBool::new(py, b).to_owned().into_any().unbind())
                         }
-                        YamlType::Int(n) => n.into_pyobject(py).unwrap().into_any().unbind(),
-                        YamlType::Float(f) => f.into_pyobject(py).unwrap().into_any().unbind(),
-                        YamlType::Str(s) => s.into_pyobject(py).unwrap().into_any().unbind(),
+                        YamlType::Int(n) => Ok(n.into_pyobject(py)?.into_any().unbind()),
+                        YamlType::Float(f) => Ok(f.into_pyobject(py)?.into_any().unbind()),
+                        YamlType::Str(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
                     }
                 }
-                _ => value.clone().into_pyobject(py).unwrap().into_any().unbind(),
+                _ => Ok(value.clone().into_pyobject(py)?.into_any().unbind()),
             }
         }
         CustomNode::Mapping { pairs, .. } => {
@@ -221,22 +220,22 @@ fn node_to_pyobject(node: &CustomNode, py: Python) -> Py<PyAny> {
                     CustomNode::Scalar { value, .. } => value.clone(),
                     _ => format!("{:?}", key),
                 };
-                dict.set_item(key_str, node_to_pyobject(value, py)).ok();
+                dict.set_item(key_str, node_to_pyobject(value, py)?).ok();
             }
-            dict.into_any().unbind()
+            Ok(dict.into_any().unbind())
         }
         CustomNode::Sequence { items, .. } => {
             let list = pyo3::types::PyList::empty(py);
             for item in items {
-                list.append(node_to_pyobject(item, py)).ok();
+                list.append(node_to_pyobject(item, py)?).ok();
             }
-            list.into_any().unbind()
+            Ok(list.into_any().unbind())
         }
-        CustomNode::Null { .. } => py.None(),
+        CustomNode::Null { .. } => Ok(py.None()),
         CustomNode::Alias { .. } => {
             // Aliases cannot be resolved in to_dict() without anchor context
             // Return None as a safe default
-            py.None()
+            Ok(py.None())
         }
     }
 }
@@ -289,7 +288,7 @@ fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
             pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
-    Ok(node_to_pyobject(&ast, py))
+    node_to_pyobject(&ast, py)
 }
 
 /// PyYAML compatible: safe_loads(stream) -> list of dict/list
@@ -300,7 +299,7 @@ fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
             pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
-    Ok(asts.iter().map(|ast| node_to_pyobject(ast, py)).collect())
+    asts.iter().map(|ast| node_to_pyobject(ast, py)).collect()
 }
 
 /// PyYAML compatible: safe_dump(data) -> str
@@ -347,7 +346,7 @@ fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
         serde_json::Value::Array(arr) => {
             let mut items = Vec::new();
             for item in arr { items.push(json_value_to_node(item)?); }
-            Ok(CustomNode::Sequence { items, comment: None, anchor: None, tag: None })
+            Ok(CustomNode::Sequence { items, comment: None, anchor: None, tag: None, flow_style: false })
         }
         serde_json::Value::Object(map) => {
             let mut pairs = IndexMap::new();
@@ -356,7 +355,7 @@ fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
                 let value_node = json_value_to_node(value)?;
                 pairs.insert(key_node, value_node);
             }
-            Ok(CustomNode::Mapping { pairs, comment: None, anchor: None, tag: None })
+            Ok(CustomNode::Mapping { pairs, comment: None, anchor: None, tag: None, flow_style: false })
         }
     }
 }
@@ -384,7 +383,7 @@ fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<Py<PyAny>>,
                     let ast = parser::parse(frontmatter).map_err(|e| {
                         pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
                     })?;
-                    Ok((Some(node_to_pyobject(&ast, py)), markdown_content.to_string()))
+                    Ok((Some(node_to_pyobject(&ast, py)?), markdown_content.to_string()))
                 });
             }
         }
@@ -411,7 +410,7 @@ fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
             let value_node = pyobject_to_node(py, &value.into_any().unbind())?;
             pairs.insert(key_node, value_node);
         }
-        return Ok(CustomNode::Mapping { pairs, comment: None, anchor: None, tag: None });
+        return Ok(CustomNode::Mapping { pairs, comment: None, anchor: None, tag: None, flow_style: false });
     }
 
     if let Ok(list) = obj.cast::<pyo3::types::PyList>() {
@@ -419,7 +418,7 @@ fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         for item in list.iter() {
             items.push(pyobject_to_node(py, &item.into_any().unbind())?);
         }
-        return Ok(CustomNode::Sequence { items, comment: None, anchor: None, tag: None });
+        return Ok(CustomNode::Sequence { items, comment: None, anchor: None, tag: None, flow_style: false });
     }
 
     if let Ok(b) = obj.extract::<bool>() {

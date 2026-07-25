@@ -44,8 +44,8 @@ pub fn extract_comments(yaml: &str) -> Vec<RawComment> {
                 continue;
             }
             if ch == '#' && !in_single_quote && !in_double_quote {
-                let comment_text = line[col_idx + 1..].trim().to_string();
-                let is_standalone = line[..col_idx].trim().is_empty();
+                let comment_text = line.get(col_idx + 1..).unwrap_or("").trim().to_string();
+                let is_standalone = line.get(..col_idx).unwrap_or("").trim().is_empty();
                 comments.push(RawComment {
                     line: line_idx,
                     col: col_idx,
@@ -58,6 +58,12 @@ pub fn extract_comments(yaml: &str) -> Vec<RawComment> {
     }
 
     comments
+}
+
+/// Check if a character is a valid unquoted anchor name character.
+/// YAML 1.2 allows any character except whitespace and flow indicators: `{}[],`
+fn is_valid_anchor_char(c: char) -> bool {
+    !c.is_whitespace() && c != '{' && c != '}' && c != '[' && c != ']' && c != ','
 }
 
 /// Extract anchors from raw YAML text
@@ -88,15 +94,35 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
             }
             if ch == '&' && !in_single_quote && !in_double_quote {
                 // Found an anchor
-                let anchor_start = col_idx + 1;
+                let anchor_start_byte = col_idx + ch.len_utf8();
+                let rest = &line[anchor_start_byte..];
+
                 let mut anchor_name = String::new();
-                for (_i, c) in line[anchor_start..].char_indices() {
-                    if c.is_alphanumeric() || c == '_' || c == '-' {
-                        anchor_name.push(c);
-                    } else {
-                        break;
+                let mut chars = rest.char_indices();
+
+                // Check for quoted anchor name: &"name"
+                if let Some((_, first)) = chars.next() {
+                    if first == '"' {
+                        // Quoted anchor: scan until closing quote
+                        for (_, c) in chars.by_ref() {
+                            if c == '"' {
+                                break;
+                            }
+                            anchor_name.push(c);
+                        }
+                    } else if is_valid_anchor_char(first) {
+                        // Unquoted anchor: scan until invalid character
+                        anchor_name.push(first);
+                        for (_, c) in chars.by_ref() {
+                            if is_valid_anchor_char(c) {
+                                anchor_name.push(c);
+                            } else {
+                                break;
+                            }
+                        }
                     }
                 }
+
                 if !anchor_name.is_empty() {
                     anchors.push(RawAnchor {
                         line: line_idx,
@@ -244,5 +270,53 @@ mod tests {
         let result = find_standalone_comment_before(&comments, &mut idx, 2);
         assert!(result.is_some());
         assert_eq!(result.unwrap().text, "top");
+    }
+
+    #[test]
+    fn test_extract_anchor_with_dot() {
+        let yaml = "key: &anchor.name value";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "anchor.name");
+    }
+
+    #[test]
+    fn test_extract_quoted_anchor() {
+        let yaml = r#"key: &"quoted anchor" value"#;
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "quoted anchor");
+    }
+
+    #[test]
+    fn test_extract_anchor_with_colon() {
+        let yaml = "key: &anchor:name value";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "anchor:name");
+    }
+
+    #[test]
+    fn test_extract_anchor_with_hash() {
+        let yaml = "key: &anchor#name value";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "anchor#name");
+    }
+
+    #[test]
+    fn test_extract_anchor_stops_at_flow_indicator() {
+        let yaml = "key: &anchor{sub}";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "anchor");
+    }
+
+    #[test]
+    fn test_extract_anchor_stops_at_comma() {
+        let yaml = "key: &anchor, next";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "anchor");
     }
 }

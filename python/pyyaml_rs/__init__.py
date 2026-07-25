@@ -17,12 +17,14 @@ from .pyyaml_rs import (
     YamlDocument,
     parse,
     parse_file,
+    parse_all_docs,
     safe_load,
     safe_loads,
     safe_dump,
     safe_dumps,
     from_dict,
     from_json,
+    dump_file,
     read_markdown,
     read_markdown_str,
 )
@@ -31,14 +33,16 @@ __all__ = [
     "YamlDocument",
     "parse",
     "parse_file",
+    "parse_all_docs",
     "safe_load",
     "safe_loads",
     "safe_dump",
     "safe_dumps",
     "from_dict",
     "from_json",
+    "dump_file",
     "read_markdown",
     "read_markdown_str",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

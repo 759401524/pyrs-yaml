@@ -113,7 +113,33 @@ impl Serializer {
                 comment,
                 anchor,
                 tag,
+                flow_style,
+                ..
             } => {
+                if *flow_style {
+                    // Flow style: { key: value, key2: value2 }
+                    self.output.push('{');
+                    if !pairs.is_empty() {
+                        for (i, (key, value)) in pairs.iter().enumerate() {
+                            if i > 0 {
+                                self.output.push_str(", ");
+                            }
+                            self.output.push_str(&self.format_scalar_for_key(key));
+                            self.output.push_str(": ");
+                            self.serialize_flow_value(value);
+                        }
+                    }
+                    self.output.push('}');
+                    // Write comment if present
+                    if let Some(c) = comment {
+                        if !c.standalone {
+                            self.output.push_str("  # ");
+                            self.output.push_str(&c.text);
+                        }
+                    }
+                    self.output.push('\n');
+                } else {
+                    // Block style (original logic)
                 // Write anchor and tag if present (but not if in value context - they were already output)
                 if !in_value_context && (anchor.is_some() || tag.is_some()) {
                     self.write_indent(indent_level);
@@ -203,56 +229,82 @@ impl Serializer {
                         self.output.push('\n');
                     }
                 }
+                } // end block style
             }
             CustomNode::Sequence {
                 items,
                 comment,
                 anchor,
                 tag,
+                flow_style,
+                ..
             } => {
-                // Write anchor and tag if present (but not if in value context)
-                if !in_value_context && (anchor.is_some() || tag.is_some()) {
-                    self.write_indent(indent_level);
-                    if let Some(anchor_name) = anchor {
-                        self.output.push('&');
-                        self.output.push_str(anchor_name);
-                        self.output.push(' ');
+                if *flow_style {
+                    // Flow style: [ item1, item2 ]
+                    self.output.push('[');
+                    if !items.is_empty() {
+                        for (i, item) in items.iter().enumerate() {
+                            if i > 0 {
+                                self.output.push_str(", ");
+                            }
+                            self.serialize_flow_value(item);
+                        }
                     }
-                    if let Some(t) = tag {
-                        self.output.push_str(&t.to_string());
-                        self.output.push(' ');
+                    self.output.push(']');
+                    // Write comment if present
+                    if let Some(c) = comment {
+                        if !c.standalone {
+                            self.output.push_str("  # ");
+                            self.output.push_str(&c.text);
+                        }
                     }
                     self.output.push('\n');
-                }
-
-                for (i, item) in items.iter().enumerate() {
-                    self.write_indent(indent_level);
-                    self.output.push_str("- ");
-
-                    if self.needs_newline_for_sequence_item(item) {
-                        self.output.push('\n');
-                        self.serialize_node_internal(
-                            item,
-                            indent_level + 1,
-                            i == items.len() - 1,
-                            false,
-                        );
-                    } else {
-                        // For simple items, they go on the same line as the dash
-                        // Don't pass indent_level to avoid extra indentation
-                        self.serialize_node_internal(item, 0, i == items.len() - 1, false);
-                    }
-                }
-
-                // Write sequence comment
-                if let Some(c) = comment {
-                    if !c.standalone {
+                } else {
+                    // Block style (original logic)
+                    // Write anchor and tag if present (but not if in value context)
+                    if !in_value_context && (anchor.is_some() || tag.is_some()) {
                         self.write_indent(indent_level);
-                        self.output.push_str("# ");
-                        self.output.push_str(&c.text);
+                        if let Some(anchor_name) = anchor {
+                            self.output.push('&');
+                            self.output.push_str(anchor_name);
+                            self.output.push(' ');
+                        }
+                        if let Some(t) = tag {
+                            self.output.push_str(&t.to_string());
+                            self.output.push(' ');
+                        }
                         self.output.push('\n');
                     }
-                }
+
+                    for (i, item) in items.iter().enumerate() {
+                        self.write_indent(indent_level);
+                        self.output.push_str("- ");
+
+                        if self.needs_newline_for_sequence_item(item) {
+                            self.output.push('\n');
+                            self.serialize_node_internal(
+                                item,
+                                indent_level + 1,
+                                i == items.len() - 1,
+                                false,
+                            );
+                        } else {
+                            // For simple items, they go on the same line as the dash
+                            // Don't pass indent_level to avoid extra indentation
+                            self.serialize_node_internal(item, 0, i == items.len() - 1, false);
+                        }
+                    }
+
+                    // Write sequence comment
+                    if let Some(c) = comment {
+                        if !c.standalone {
+                            self.write_indent(indent_level);
+                            self.output.push_str("# ");
+                            self.output.push_str(&c.text);
+                            self.output.push('\n');
+                        }
+                    }
+                } // end block style
             }
             CustomNode::Null {
                 comment,
@@ -408,10 +460,11 @@ impl Serializer {
     }
 
     fn needs_newline_for_value(&self, node: &CustomNode) -> bool {
-        matches!(
-            node,
-            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-        )
+        match node {
+            CustomNode::Mapping { flow_style, .. } => !flow_style,
+            CustomNode::Sequence { flow_style, .. } => !flow_style,
+            _ => false,
+        }
     }
 
     fn needs_newline_for_sequence_item(&self, node: &CustomNode) -> bool {
@@ -419,6 +472,87 @@ impl Serializer {
             node,
             CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
         )
+    }
+
+    /// Serialize a value in flow context (no trailing newline)
+    fn serialize_flow_value(&mut self, node: &CustomNode) {
+        match node {
+            CustomNode::Scalar { value, style, anchor, tag, .. } => {
+                if let Some(anchor_name) = anchor {
+                    self.output.push('&');
+                    self.output.push_str(anchor_name);
+                    self.output.push(' ');
+                }
+                if let Some(t) = tag {
+                    self.output.push_str(&t.to_string());
+                    self.output.push(' ');
+                }
+                let formatted = match style {
+                    ScalarStyle::Plain => self.format_plain_scalar(value),
+                    ScalarStyle::SingleQuoted => self.format_single_quoted_scalar(value),
+                    ScalarStyle::DoubleQuoted => self.format_double_quoted_scalar(value),
+                    ScalarStyle::Literal => self.format_literal_scalar(value, &Chomping::Clip),
+                    ScalarStyle::Folded => self.format_folded_scalar(value, &Chomping::Clip),
+                };
+                self.output.push_str(&formatted);
+            }
+            CustomNode::Null { anchor, tag, .. } => {
+                if let Some(anchor_name) = anchor {
+                    self.output.push('&');
+                    self.output.push_str(anchor_name);
+                    self.output.push(' ');
+                }
+                if let Some(t) = tag {
+                    self.output.push_str(&t.to_string());
+                    self.output.push(' ');
+                }
+                self.output.push_str("null");
+            }
+            CustomNode::Mapping { pairs, anchor, tag, .. } => {
+                if let Some(anchor_name) = anchor {
+                    self.output.push('&');
+                    self.output.push_str(anchor_name);
+                    self.output.push(' ');
+                }
+                if let Some(t) = tag {
+                    self.output.push_str(&t.to_string());
+                    self.output.push(' ');
+                }
+                self.output.push('{');
+                for (i, (key, value)) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.output.push_str(&self.format_scalar_for_key(key));
+                    self.output.push_str(": ");
+                    self.serialize_flow_value(value);
+                }
+                self.output.push('}');
+            }
+            CustomNode::Sequence { items, anchor, tag, .. } => {
+                if let Some(anchor_name) = anchor {
+                    self.output.push('&');
+                    self.output.push_str(anchor_name);
+                    self.output.push(' ');
+                }
+                if let Some(t) = tag {
+                    self.output.push_str(&t.to_string());
+                    self.output.push(' ');
+                }
+                self.output.push('[');
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.serialize_flow_value(item);
+                }
+                self.output.push(']');
+            }
+            CustomNode::Alias { name } => {
+                self.output.push('*');
+                self.output.push_str(name);
+            }
+        }
     }
 }
 
@@ -497,6 +631,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            flow_style: false,
         };
 
         assert_eq!(to_yaml(&node), "key: value\n");
@@ -526,6 +661,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            flow_style: false,
         };
         let value = CustomNode::Scalar {
             value: "value".to_string(),
@@ -544,6 +680,7 @@ mod tests {
             comment: None,
             anchor: None,
             tag: None,
+            flow_style: false,
         };
 
         let output = to_yaml(&node);

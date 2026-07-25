@@ -628,14 +628,33 @@ class TestRoundTrip:
         output = doc.to_yaml()
         assert "?" in output or "key1" in output
 
-    @pytest.mark.xfail(reason="Flow collections {} and [] not supported in AST yet")
     def test_roundtrip_empty_mapping(self):
         original = "{}\n"
         doc = pyyaml_rs.parse(original)
         assert doc.to_yaml() == original
 
-    @pytest.mark.xfail(reason="Flow collections {} and [] not supported in AST yet")
     def test_roundtrip_empty_sequence(self):
         original = "[]\n"
+        doc = pyyaml_rs.parse(original)
+        assert doc.to_yaml() == original
+
+    def test_roundtrip_flow_mapping(self):
+        original = "{a: 1, b: 2}\n"
+        doc = pyyaml_rs.parse(original)
+        assert doc.to_yaml() == original
+
+    def test_roundtrip_flow_sequence(self):
+        original = "[1, 2, 3]\n"
+        doc = pyyaml_rs.parse(original)
+        assert doc.to_yaml() == original
+
+    def test_roundtrip_flow_nested(self):
+        original = "{a: [1, 2], b: {c: 3}}\n"
+        doc = pyyaml_rs.parse(original)
+        assert doc.to_yaml() == original
+
+    def test_roundtrip_flow_mixed_with_block(self):
+        """Flow mapping as a value inside block mapping"""
+        original = "key: {a: 1, b: 2}\n"
         doc = pyyaml_rs.parse(original)
         assert doc.to_yaml() == original

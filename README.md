@@ -4,9 +4,9 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 
 ## Features
 
-- **YAML 1.2 compliant** - Uses saphyr-parser for full YAML 1.2 support (98.1% YAML Test Suite pass rate)
-- **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, and formatting
-- **High Performance** - Rust backend, 25x faster than PyYAML
+- **YAML 1.2 compliant** - Uses saphyr-parser for full YAML 1.2 support
+- **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
+- **High Performance** - Rust backend, see [benchmarks](benches/yaml_bench.rs)
 - **Custom AST** - Extensible AST for advanced YAML manipulation
 - **PyYAML Compatible** - Drop-in replacement with `safe_load`/`safe_dump` API
 
@@ -39,35 +39,53 @@ assert doc.to_yaml() == original  # True
 
 | Feature | Support |
 |---------|---------|
-| YAML 1.2 | ✅ Full |
-| Comments (standalone + inline) | ✅ Preserved |
-| Anchors (`&`) and aliases (`*`) | ✅ Preserved |
-| Tags (`!!str`, `!!int`, etc.) | ✅ Preserved |
-| Chomping (`\|-`, `\|+`, `>-`, `>+`) | ✅ Preserved |
-| Complex keys (sequence/mapping as key) | ✅ Supported |
-| Escape sequences (`\n`, `\t`, `\uXXXX`) | ✅ Supported |
-| Flow collections (`{}`, `[]`) | ✅ Supported |
-| Block scalars (`\|`, `>`) | ✅ Supported |
+| YAML 1.2 | Full |
+| Comments (standalone + inline) | Preserved |
+| Anchors (`&`) and aliases (`*`) | Preserved |
+| Tags (`!!str`, `!!int`, etc.) | Preserved |
+| Chomping (`\|-`, `\|+`, `>-`, `>+`) | Preserved |
+| Complex keys (sequence/mapping as key) | Supported |
+| Escape sequences (`\n`, `\t`, `\uXXXX`) | Supported |
+| Flow collections (`{}`, `[]`) | Preserved |
+| Block scalars (`\|`, `>`) | Preserved |
+| Merge keys (`<<: *alias`) | Resolved (opt-out via `resolve_merges=False`) |
 
 ## API Reference
 
 ### Core Functions
 
 ```python
-# Parse YAML string
+# Parse YAML string (accepts str or bytes)
 doc = pyyaml_rs.parse(yaml_str)
+doc = pyyaml_rs.parse(yaml_bytes)
+
+# Parse with options
+doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
 
 # Parse YAML file
 doc = pyyaml_rs.parse_file("config.yaml")
 
-# Convert to YAML string
-yaml_str = doc.to_yaml()
+# Parse multiple YAML documents
+docs = pyyaml_rs.parse_all_docs(yaml_str)
 
-# Get value by key
+# Convert to YAML string (with options)
+yaml_str = doc.to_yaml()
+yaml_str = doc.to_yaml(indent_size=4, explicit_start=True, sort_keys=True)
+
+# Get value by key (with default)
 value = doc.get("key")
+value = doc.get("missing_key", "default")
 
 # Get root type
 doc.root_type()  # "mapping", "sequence", "scalar", "null"
+
+# Check containment and length
+"key" in doc
+len(doc)
+
+# Iterate
+for key in doc:
+    print(key, doc[key])
 ```
 
 ### PyYAML Compatible API
@@ -88,28 +106,27 @@ yaml_str = pyyaml_rs.from_dict(data)
 # Convert JSON to YAML
 yaml_str = pyyaml_rs.from_json(json_str)
 
+# Dump to file
+pyyaml_rs.dump_file(data, "output.yaml")
+
 # Extract YAML frontmatter from markdown
 frontmatter, content = pyyaml_rs.read_markdown("post.md")
+frontmatter, content = pyyaml_rs.read_markdown_str(markdown_text)
 ```
 
 ## Performance
 
-Compared to PyYAML (with LibYAML C extension):
+Criterion benchmarks in `benches/yaml_bench.rs`:
 
-| Operation | pyyaml-rs | PyYAML | Speedup |
-|-----------|-----------|--------|---------|
-| Parse (simple) | 0.003 ms | 0.074 ms | 25x |
-| Parse (medium) | 0.013 ms | 0.367 ms | 28x |
-| Parse (large) | 0.886 ms | 22.375 ms | 25x |
-| Serialize | 0.002 ms | 0.190 ms | 95x |
-
-## YAML Test Suite Results
-
-| Metric | Result |
-|--------|--------|
-| Valid tests | 306/312 (98.1%) |
-| Invalid tests | 0/94 (100% correctly rejected) |
-| JSON match | 223/267 (83.5%) |
+| Operation | Time |
+|-----------|------|
+| Parse (small, ~2 keys) | ~1.7 us |
+| Parse (medium, ~30 keys) | ~20 us |
+| Parse (large, ~60 keys) | ~93 us |
+| Serialize (small) | ~200 ns |
+| Serialize (medium) | ~1.7 us |
+| Serialize (large) | ~4.9 us |
+| Roundtrip (large) | ~99 us |
 
 ## Development
 
@@ -123,6 +140,9 @@ maturin develop --release
 # Run tests
 cargo test
 pytest tests/
+
+# Run benchmarks
+cargo bench
 
 # Run clippy
 cargo clippy -- -D warnings

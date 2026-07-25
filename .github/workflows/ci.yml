@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Install dependencies
+        run: pip install pytest
+
+      - name: Run cargo tests
+        run: cargo test
+
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Build and install
+        run: maturin develop --release
+
+      - name: Run Python tests
+        run: pytest tests/ -v --ignore=tests/benchmark.py --ignore=tests/analyze_failing.py --ignore=tests/analyze_failures.py --ignore=tests/analyze_quoted.py --ignore=tests/analyze_remaining.py --ignore=tests/analyze_specific.py --ignore=tests/analyze_whitespace.py --ignore=tests/find_close_tests.py --ignore=tests/list_failing.py

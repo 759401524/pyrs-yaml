@@ -157,12 +157,14 @@ enum ParseState {
         current_key: Box<Option<CustomNode>>,
         anchor_id: usize,
         tag: Option<Tag>,
+        flow_style: bool,
     },
     /// Building a sequence
     Sequence {
         items: Vec<CustomNode>,
         anchor_id: usize,
         tag: Option<Tag>,
+        flow_style: bool,
     },
 }
 
@@ -391,6 +393,20 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             Event::MappingStart(anchor_id, tag) => {
                 let line = span.start.line() - 1;
 
+                // Detect flow style: check if the character at the start position is '{'
+                let flow_style = if line < self.line_offsets.len() {
+                    let start = self.line_offsets[line];
+                    let col = span.start.col();
+                    let byte_offset = start + col;
+                    if byte_offset < self.yaml_text.len() {
+                        self.yaml_text.as_bytes()[byte_offset] == b'{'
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
                 // Find standalone comments before this line
                 let standalone = self.find_standalone_before_line(line);
 
@@ -409,6 +425,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     current_key: Box::new(None),
                     anchor_id,
                     tag: tag_obj,
+                    flow_style,
                 });
 
                 // Store standalone comment for when we pop
@@ -420,7 +437,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::MappingEnd => {
                 if let Some(ParseState::Mapping {
-                    pairs, anchor_id, tag, ..
+                    pairs, anchor_id, tag, flow_style, ..
                 }) = self.stack.pop()
                 {
                     // Get anchor name from self.anchors
@@ -434,12 +451,27 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                         comment,
                         anchor,
                         tag,
+                        flow_style,
                     };
                     self.push_node(mapping);
                 }
             }
             Event::SequenceStart(anchor_id, tag) => {
                 let line = span.start.line() - 1;
+
+                // Detect flow style: check if the character at the start position is '['
+                let flow_style = if line < self.line_offsets.len() {
+                    let start = self.line_offsets[line];
+                    let col = span.start.col();
+                    let byte_offset = start + col;
+                    if byte_offset < self.yaml_text.len() {
+                        self.yaml_text.as_bytes()[byte_offset] == b'['
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
 
                 // Find standalone comments before this line
                 let standalone = self.find_standalone_before_line(line);
@@ -458,6 +490,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     items: Vec::new(),
                     anchor_id,
                     tag: tag_obj,
+                    flow_style,
                 });
 
                 // Store standalone comment for when we pop
@@ -467,7 +500,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::SequenceEnd => {
                 if let Some(ParseState::Sequence {
-                    items, anchor_id, tag, ..
+                    items, anchor_id, tag, flow_style, ..
                 }) = self.stack.pop()
                 {
                     // Get anchor name from self.anchors
@@ -481,6 +514,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                         comment,
                         anchor,
                         tag,
+                        flow_style,
                     };
                     self.push_node(seq);
                 }
