@@ -68,7 +68,9 @@ def load_test_cases(suite_dir: str) -> list:
                     yaml_input = convert_special_chars(yaml_input)
 
                 # Determine if test should be valid or invalid
-                is_valid = "error" not in tags.lower() and "invalid" not in tags.lower()
+                # Check both tags and the fail field
+                is_fail = test.get("fail", False)
+                is_valid = "error" not in tags.lower() and "invalid" not in tags.lower() and not is_fail
 
                 test_cases.append({
                     "id": test_id,
