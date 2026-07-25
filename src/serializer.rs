@@ -54,7 +54,7 @@ impl Serializer {
                 // Write line-end comment
                 if let Some(c) = comment {
                     if !c.standalone {
-                        self.output.push_str(" # ");
+                        self.output.push_str("  # ");
                         self.output.push_str(&c.text);
                     }
                 }
@@ -292,7 +292,7 @@ mod tests {
             }),
             anchor: None,
         };
-        assert_eq!(to_yaml(&node), "value # a comment\n");
+        assert_eq!(to_yaml(&node), "value  # a comment\n");
     }
 
     #[test]
