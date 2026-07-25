@@ -3,6 +3,7 @@ pub mod parser;
 pub mod serializer;
 
 use ast::CustomNode;
+use indexmap::IndexMap;
 use pyo3::prelude::*;
 
 /// Python wrapper for the parsed YAML document
@@ -125,8 +126,167 @@ fn node_to_pyobject(node: &CustomNode) -> PyObject {
 fn pyamlium_custom(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse, m)?)?;
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
+    m.add_function(wrap_pyfunction!(safe_load, m)?)?;
+    m.add_function(wrap_pyfunction!(safe_loads, m)?)?;
+    m.add_function(wrap_pyfunction!(safe_dump, m)?)?;
+    m.add_function(wrap_pyfunction!(safe_dumps, m)?)?;
     m.add_class::<YamlDocument>()?;
     Ok(())
+}
+
+/// PyYAML compatible: safe_load(stream) -> dict/list
+/// Parse a YAML string and return Python dict/list
+#[pyfunction]
+fn safe_load(py: Python, yaml: &str) -> PyResult<PyObject> {
+    let ast = py.allow_threads(|| parser::parse(yaml).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+    }))?;
+
+    Ok(node_to_pyobject(&ast))
+}
+
+/// PyYAML compatible: safe_loads(stream) -> list of dict/list
+/// Parse multiple YAML documents
+#[pyfunction]
+fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<PyObject>> {
+    // Split by document separators and parse each
+    let docs: Vec<&str> = yaml.split("---").collect();
+    let mut results = Vec::new();
+
+    for doc in docs {
+        let doc = doc.trim();
+        if doc.is_empty() {
+            continue;
+        }
+        let ast = py.allow_threads(|| parser::parse(doc).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+        }))?;
+        results.push(node_to_pyobject(&ast));
+    }
+
+    Ok(results)
+}
+
+/// PyYAML compatible: safe_dump(data) -> str
+/// Serialize a Python dict/list to YAML string
+#[pyfunction]
+fn safe_dump(py: Python, data: PyObject) -> PyResult<String> {
+    let node = pyobject_to_node(py, &data)?;
+    Ok(serializer::to_yaml(&node))
+}
+
+/// PyYAML compatible: safe_dumps(data) -> str
+/// Alias for safe_dump
+#[pyfunction]
+fn safe_dumps(py: Python, data: PyObject) -> PyResult<String> {
+    safe_dump(py, data)
+}
+
+/// Convert a Python object to a CustomNode
+fn pyobject_to_node(py: Python, obj: &PyObject) -> PyResult<CustomNode> {
+    let obj = obj.bind(py);
+
+    if obj.is_none() {
+        return Ok(CustomNode::Null {
+            comment: None,
+            anchor: None,
+            tag: None,
+        });
+    }
+
+    // Try as dict
+    if let Ok(dict) = obj.downcast::<pyo3::types::PyDict>() {
+        let mut pairs = IndexMap::new();
+        for (key, value) in dict.iter() {
+            let key_node = if let Ok(key_str) = key.extract::<String>() {
+                CustomNode::Scalar {
+                    value: key_str,
+                    style: ast::ScalarStyle::Plain,
+                    comment: None,
+                    anchor: None,
+                    tag: None,
+                    chomping: ast::Chomping::Clip,
+                }
+            } else {
+                pyobject_to_node(py, &key.into_py(py))?
+            };
+            let value_node = pyobject_to_node(py, &value.into_py(py))?;
+            pairs.insert(key_node, value_node);
+        }
+        return Ok(CustomNode::Mapping {
+            pairs,
+            comment: None,
+            anchor: None,
+            tag: None,
+        });
+    }
+
+    // Try as list
+    if let Ok(list) = obj.downcast::<pyo3::types::PyList>() {
+        let mut items = Vec::new();
+        for item in list.iter() {
+            items.push(pyobject_to_node(py, &item.into_py(py))?);
+        }
+        return Ok(CustomNode::Sequence {
+            items,
+            comment: None,
+            anchor: None,
+            tag: None,
+        });
+    }
+
+    // Try as bool (must be before int/float check)
+    if let Ok(b) = obj.extract::<bool>() {
+        let value = if b { "true".to_string() } else { "false".to_string() };
+        return Ok(CustomNode::Scalar {
+            value,
+            style: ast::ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: ast::Chomping::Clip,
+        });
+    }
+
+    // Try as int
+    if let Ok(n) = obj.extract::<i64>() {
+        return Ok(CustomNode::Scalar {
+            value: n.to_string(),
+            style: ast::ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: ast::Chomping::Clip,
+        });
+    }
+
+    // Try as float
+    if let Ok(f) = obj.extract::<f64>() {
+        return Ok(CustomNode::Scalar {
+            value: f.to_string(),
+            style: ast::ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: ast::Chomping::Clip,
+        });
+    }
+
+    // Try as string
+    if let Ok(s) = obj.extract::<String>() {
+        return Ok(CustomNode::Scalar {
+            value: s,
+            style: ast::ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: ast::Chomping::Clip,
+        });
+    }
+
+    Err(pyo3::exceptions::PyValueError::new_err(
+        "Unsupported Python type for YAML conversion"
+    ))
 }
 
 #[cfg(test)]

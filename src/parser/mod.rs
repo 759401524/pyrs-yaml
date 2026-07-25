@@ -1,6 +1,6 @@
 pub mod yaml;
 
-use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
+use crate::ast::{Chomping, CustomNode, ScalarStyle, Tag};
 use indexmap::IndexMap;
 use yaml_rust2::scanner::{Marker, Scanner, Token, TokenType, TScalarStyle};
 use yaml::*;

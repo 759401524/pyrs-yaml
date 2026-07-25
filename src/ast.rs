@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 
 /// Scalar style preservation for round-trip support
@@ -17,20 +18,15 @@ pub enum ScalarStyle {
 }
 
 /// Chomping indicator for block scalars (YAML 1.2)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Chomping {
     /// Strip chomping (-): final newline is stripped
     Strip,
     /// Clip chomping (default): single final newline kept
+    #[default]
     Clip,
     /// Keep chomping (+): all newlines preserved
     Keep,
-}
-
-impl Default for Chomping {
-    fn default() -> Self {
-        Chomping::Clip
-    }
 }
 
 impl Hash for Chomping {
@@ -86,17 +82,18 @@ impl Tag {
             suffix: suffix.to_string(),
         }
     }
+}
 
-    /// Format tag for output
-    pub fn to_string(&self) -> String {
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.handle == "!" && self.suffix.is_empty() {
-            "!".to_string()
+            write!(f, "!")
         } else if self.handle == "!!" {
-            format!("!!{}", self.suffix)
+            write!(f, "!!{}", self.suffix)
         } else if self.handle == "!" {
-            format!("!{}", self.suffix)
+            write!(f, "!{}", self.suffix)
         } else {
-            format!("{}{}", self.handle, self.suffix)
+            write!(f, "{}{}", self.handle, self.suffix)
         }
     }
 }
