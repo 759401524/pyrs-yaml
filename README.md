@@ -70,7 +70,7 @@ docs = pyyaml_rs.parse_all_docs(yaml_str)
 
 # Convert to YAML string (with options)
 yaml_str = doc.to_yaml()
-yaml_str = doc.to_yaml(indent_size=4, explicit_start=True, sort_keys=True)
+yaml_str = doc.to_yaml_with_options(indent_size=4, explicit_start=True, sort_keys=True)
 
 # Get value by key (with default)
 value = doc.get("key")
@@ -112,6 +112,13 @@ pyyaml_rs.dump_file(data, "output.yaml")
 # Extract YAML frontmatter from markdown
 frontmatter, content = pyyaml_rs.read_markdown("post.md")
 frontmatter, content = pyyaml_rs.read_markdown_str(markdown_text)
+
+# i18n language management
+pyyaml_rs.set_language("zh-CN")
+pyyaml_rs.get_language()  # "zh-CN"
+pyyaml_rs.list_languages()  # ["en", "zh-CN"]
+pyyaml_rs.detect_language()  # auto-detect from environment
+pyyaml_rs.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
 ```
 
 ## Performance

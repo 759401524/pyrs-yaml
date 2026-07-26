@@ -1,0 +1,139 @@
+site_name: pyyaml-rs
+site_url: https://github.com/MuLong/pyyaml-rs
+site_description: High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3
+site_author: MuLong
+repo_url: https://github.com/MuLong/pyyaml-rs
+repo_name: MuLong/pyyaml-rs
+edit_uri_template: https://github.com/MuLong/pyyaml-rs/edit/main/docs/{path}
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.path
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - search.share
+    - content.code.annotate
+    - content.code.copy
+    - content.tooltips
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [python]
+          options:
+            show_source: true
+            show_signature: true
+            show_docstring_attributes: true
+            show_root_heading: true
+            show_root_toc_entry: false
+            heading_level: 3
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            docstring_section_style: table
+            docstring_style: google
+            signature_crossrefs: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - admonition
+  - toc:
+      permalink: true
+      baselevel: 1
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      use_pygments: true
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/MuLong/pyyaml-rs
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/pyyaml-rs/
+  analytics:
+    provider: false
+  consent:
+    title: Cookie consent
+    description: >-
+      We use cookies to recognize you when you visit our websites.
+      That's what gives us the ability to personalize content for you.
+      You can opt out at any time.
+  status:
+    new: New
+    deprecated: Deprecated
+  version:
+    provider: mike
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: installation.md
+      - Quick Start: quick-start.md
+      - Features: features.md
+  - User Guide:
+      - Parsing YAML: guides/parsing.md
+      - Serialization: guides/serialization.md
+      - PyYAML Compatibility: guides/pyyaml-compat.md
+      - Round-Trip Preservation: guides/round-trip.md
+      - Markdown Frontmatter: guides/frontmatter.md
+      - i18n Error Messages: guides/i18n.md
+  - API Reference:
+      - Module Reference: api/reference.md
+      - YamlDocument Class: api/yaml-document.md
+      - Exceptions: api/exceptions.md
+  - Performance:
+      - Benchmarks: performance/benchmarks.md
+      - Comparison: performance/comparison.md
+  - Contributing:
+      - Development Setup: contributing/setup.md
+      - Architecture: contributing/architecture.md
+      - Coding Standards: contributing/standards.md
+      - Running Tests: contributing/tests.md
+  - Changelog: changelog.md
+  - License: license.md

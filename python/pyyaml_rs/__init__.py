@@ -33,6 +33,8 @@ from .pyyaml_rs import (
     set_language,
     get_language,
     list_languages,
+    detect_language,
+    negotiate_language,
 )
 
 __all__ = [
@@ -55,6 +57,8 @@ __all__ = [
     "set_language",
     "get_language",
     "list_languages",
+    "detect_language",
+    "negotiate_language",
 ]
 
 __version__ = "0.2.0"
