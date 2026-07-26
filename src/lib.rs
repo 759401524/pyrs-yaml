@@ -465,10 +465,10 @@ mod pyyaml_rs {
 
     /// 解析包含多个 YAML 文档的字符串（以 `---` 分隔）。
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str") -> "list[YamlDocument]")]
-    fn parse_all_docs(py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
+    #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true) -> "list[YamlDocument]")]
+    fn parse_all_docs(py: Python, yaml: &str, resolve_merges: bool) -> PyResult<Vec<YamlDocument>> {
         let asts = py.detach(|| {
-            super::parser::parse_all(yaml).map_err(|e| {
+            super::parser::parse_all_with_options(yaml, resolve_merges).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error("yaml-parse-error", &[("detail", &e.to_string())]))
             })
         })?;

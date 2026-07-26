@@ -71,20 +71,26 @@ pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode
     Ok(node)
 }
 
-/// 解析包含多个 YAML 文档的字符串（以 `---` 分隔）。
+/// 解析包含多个 YAML 文档的字符串（以 `---` 分隔），支持 `resolve_merges` 选项。
 ///
 /// # Arguments
 /// * `yaml` - 包含一个或多个 YAML 文档的字符串。
+/// * `resolve_merges` - 是否在解析后解析合并键（`<<`）。
 ///
 /// # Returns
 /// `CustomNode` 列表，每个文档对应一个元素。
 /// 空内容返回空列表，单文档也返回单元素列表。
 ///
 /// # Errors
-/// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
+/// 返回 `Err(String)`，格式为 `"YAML parse error: document #{doc_index} at <行号>:<列号>: <消息>"`。
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
 pub fn parse_all(yaml: &str) -> Result<Vec<CustomNode>, String> {
+    parse_all_with_options(yaml, true)
+}
+
+/// 解析包含多个 YAML 文档的字符串，支持选项。
+pub fn parse_all_with_options(yaml: &str, resolve_merges: bool) -> Result<Vec<CustomNode>, String> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(Vec::new());
@@ -105,13 +111,17 @@ pub fn parse_all(yaml: &str) -> Result<Vec<CustomNode>, String> {
     if docs.is_empty() {
         // Single document — return as-is
         let mut node = receiver.result.unwrap_or(CustomNode::plain_null());
-        resolve_merge_keys(&mut node);
+        if resolve_merges {
+            resolve_merge_keys(&mut node);
+        }
         return Ok(vec![node]);
     }
 
     let mut results: Vec<CustomNode> = docs;
     for node in &mut results {
-        resolve_merge_keys(node);
+        if resolve_merges {
+            resolve_merge_keys(node);
+        }
     }
     Ok(results)
 }

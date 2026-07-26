@@ -41,15 +41,55 @@ struct Serializer {
     output: String,
     indent_size: usize,
     sort_keys: bool,
+    /// Pre-computed indent strings for levels 0..max_cached (avoids `repeat()` on every call)
+    indent_cache: Vec<String>,
+    /// Max depth we've cached; grown on demand
+    max_cached: usize,
 }
 
 impl Serializer {
     fn new(options: &SerializeOptions) -> Self {
+        let mut cache = Vec::with_capacity(64);
+        cache.push(String::new()); // level 0 = empty
         Self {
             output: String::new(),
             indent_size: options.indent_size,
             sort_keys: options.sort_keys,
+            indent_cache: cache,
+            max_cached: 0,
         }
+    }
+
+    /// Ensure indent_cache has an entry for the given level, then write it to output.
+    /// Does not return a reference to avoid overlapping borrows.
+    fn write_indent(&mut self, level: usize) {
+        if level > self.max_cached {
+            let base_indent = " ".repeat(self.indent_size);
+            let mut last = &self.indent_cache[self.max_cached];
+            for _ in self.max_cached + 1..=level {
+                let next = format!("{}{}", last, base_indent);
+                self.indent_cache.push(next);
+                last = self.indent_cache.last().unwrap();
+            }
+            self.max_cached = level;
+        }
+        self.output.push_str(&self.indent_cache[level]);
+    }
+
+    /// Ensure indent_cache has an entry for the given level, then return a reference to it.
+    fn get_indent(&mut self, level: usize) -> &str {
+        if level > self.max_cached {
+            // Grow cache to the requested level
+            let base_indent = " ".repeat(self.indent_size);
+            let mut last = &self.indent_cache[self.max_cached];
+            for _ in self.max_cached + 1..=level {
+                let next = format!("{}{}", last, base_indent);
+                self.indent_cache.push(next);
+                last = self.indent_cache.last().unwrap();
+            }
+            self.max_cached = level;
+        }
+        &self.indent_cache[level]
     }
 
     /// 写入锚点（`&name`）和标签（`!!type`）前缀。
@@ -105,8 +145,7 @@ impl Serializer {
                 self.write_indent(indent_level);
                 self.write_anchor_tag(anchor, tag);
 
-                let formatted = self.format_scalar(value, style, chomping);
-                self.output.push_str(&formatted);
+                self.write_scalar(value, style, chomping);
                 self.write_inline_comment(comment);
 
                 self.output.push('\n');
@@ -127,7 +166,7 @@ impl Serializer {
                             if i > 0 {
                                 self.output.push_str(", ");
                             }
-                            self.output.push_str(&self.format_scalar_for_key(key));
+                            self.write_scalar_for_key(key);
                             self.output.push_str(": ");
                             self.serialize_flow_value(value);
                         }
@@ -180,7 +219,7 @@ impl Serializer {
                     } else {
                         // Simple key
                         self.write_indent(indent_level);
-                        self.output.push_str(&self.format_scalar_for_key(key));
+                        self.write_scalar_for_key(key);
                     }
 
                     self.output.push(':');
@@ -303,31 +342,31 @@ impl Serializer {
         }
     }
 
-    /// 根据标量风格和 chomping 指示符格式化标量值。
-    fn format_scalar(&self, value: &str, style: &ScalarStyle, chomping: &Chomping) -> String {
+    /// Write a scalar value directly to output based on style and chomping.
+    fn write_scalar(&mut self, value: &str, style: &ScalarStyle, chomping: &Chomping) {
         match style {
-            ScalarStyle::Plain => self.format_plain_scalar(value),
-            ScalarStyle::SingleQuoted => self.format_single_quoted_scalar(value),
-            ScalarStyle::DoubleQuoted => self.format_double_quoted_scalar(value),
-            ScalarStyle::Literal => self.format_literal_scalar(value, chomping),
-            ScalarStyle::Folded => self.format_folded_scalar(value, chomping),
+            ScalarStyle::Plain => self.write_plain_scalar(value),
+            ScalarStyle::SingleQuoted => self.write_single_quoted_scalar(value),
+            ScalarStyle::DoubleQuoted => self.write_double_quoted_scalar(value),
+            ScalarStyle::Literal => self.write_literal_scalar(value, chomping),
+            ScalarStyle::Folded => self.write_folded_scalar(value, chomping),
         }
     }
 
-    /// 格式化映射键，非标量键返回 `"null"`。
-    fn format_scalar_for_key(&self, node: &CustomNode) -> String {
+    /// Write a scalar formatted as a mapping key.
+    fn write_scalar_for_key(&mut self, node: &CustomNode) {
         match node {
             CustomNode::Scalar { value, style, chomping, .. } => {
-                self.format_scalar(value, style, chomping)
+                self.write_scalar(value, style, chomping)
             }
-            _ => "null".to_string(),
+            _ => {
+                self.output.push_str("null");
+            }
         }
     }
 
-    /// 格式化普通标量，需要时自动转为双引号风格。
-    fn format_plain_scalar(&self, value: &str) -> String {
-        // Check if the value needs quoting
-        // Note: true/false/null/~ are valid plain scalars in YAML
+    /// Write a plain scalar, quoting if necessary.
+    fn write_plain_scalar(&mut self, value: &str) {
         if value.is_empty()
             || value.contains(':')
             || value.contains('#')
@@ -342,83 +381,89 @@ impl Serializer {
             || value.starts_with('`')
             || value.contains('\n')
         {
-            self.format_double_quoted_scalar(value)
+            self.write_double_quoted_scalar(value);
         } else {
-            value.to_string()
+            self.output.push_str(value);
         }
     }
 
-    /// 格式化单引号标量，单引号通过双写转义。
-    fn format_single_quoted_scalar(&self, value: &str) -> String {
-        // Escape single quotes by doubling them
-        let escaped = value.replace('\'', "''");
-        format!("'{}'", escaped)
-    }
-
-    /// 格式化双引号标量，转义特殊字符和控制字符。
-    fn format_double_quoted_scalar(&self, value: &str) -> String {
-        let mut escaped = String::new();
+    /// Write a single-quoted scalar (single quotes escaped by doubling).
+    fn write_single_quoted_scalar(&mut self, value: &str) {
+        self.output.push('\'');
         for c in value.chars() {
-            match c {
-                '\\' => escaped.push_str("\\\\"),
-                '"' => escaped.push_str("\\\""),
-                '\n' => escaped.push_str("\\n"),
-                '\r' => escaped.push_str("\\r"),
-                '\t' => escaped.push_str("\\t"),
-                '\0' => escaped.push_str("\\0"),
-                '\x08' => escaped.push_str("\\b"),
-                '\x0C' => escaped.push_str("\\f"),
-                '\x1B' => escaped.push_str("\\e"),
-                '/' => escaped.push_str("\\/"),
-                _ if c.is_control() => {
-                    // Unicode escape for control characters
-                    escaped.push_str(&format!("\\u{:04x}", c as u32));
-                }
-                _ => escaped.push(c),
+            if c == '\'' {
+                self.output.push_str("''");
+            } else {
+                self.output.push(c);
             }
         }
-        format!("\"{}\"", escaped)
+        self.output.push('\'');
     }
 
-    /// 格式化字面量块标量（`|`），添加基础缩进。
-    fn format_literal_scalar(&self, value: &str, chomping: &Chomping) -> String {
+    /// Write a double-quoted scalar with escape sequences.
+    fn write_double_quoted_scalar(&mut self, value: &str) {
+        self.output.push('"');
+        for c in value.chars() {
+            match c {
+                '\\' => self.output.push_str("\\\\"),
+                '"' => self.output.push_str("\\\""),
+                '\n' => self.output.push_str("\\n"),
+                '\r' => self.output.push_str("\\r"),
+                '\t' => self.output.push_str("\\t"),
+                '\0' => self.output.push_str("\\0"),
+                '\x08' => self.output.push_str("\\b"),
+                '\x0C' => self.output.push_str("\\f"),
+                '\x1B' => self.output.push_str("\\e"),
+                '/' => self.output.push_str("\\/"),
+                _ if c.is_control() => {
+                    self.output.push_str(&format!("\\u{:04x}", c as u32));
+                }
+                _ => self.output.push(c),
+            }
+        }
+        self.output.push('"');
+    }
+
+    /// Write a literal block scalar (`|`) with chomping indicator.
+    fn write_literal_scalar(&mut self, value: &str, chomping: &Chomping) {
         let indicator = match chomping {
             Chomping::Strip => "|-",
             Chomping::Clip => "|",
             Chomping::Keep => "|+",
         };
-        format!("{}\n{}", indicator, self.add_base_indent(value, 0))
+        self.output.push_str(indicator);
+        self.output.push('\n');
+        self.write_base_indent(value, 1);
     }
 
-    /// 格式化折叠块标量（`>`），添加基础缩进。
-    fn format_folded_scalar(&self, value: &str, chomping: &Chomping) -> String {
+    /// Write a folded block scalar (`>`) with chomping indicator.
+    fn write_folded_scalar(&mut self, value: &str, chomping: &Chomping) {
         let indicator = match chomping {
             Chomping::Strip => ">-",
             Chomping::Clip => ">",
             Chomping::Keep => ">+",
         };
-        format!("{}\n{}", indicator, self.add_base_indent(value, 0))
+        self.output.push_str(indicator);
+        self.output.push('\n');
+        self.write_base_indent(value, 1);
     }
 
-    /// 为块标量内容的每一行添加指定的基础缩进。
-    fn add_base_indent(&self, value: &str, base_indent: usize) -> String {
-        let indent = " ".repeat(base_indent + self.indent_size);
-        value
-            .lines()
-            .map(|line| {
-                if line.is_empty() {
-                    String::new()
-                } else {
-                    format!("{}{}", indent, line)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
-    /// 写入指定缩进级别的空格。
-    fn write_indent(&mut self, level: usize) {
-        self.output.push_str(&" ".repeat(level * self.indent_size));
+    /// Write each line of the block scalar content with base indentation appended.
+    /// Writes directly to output (no intermediate Vec or join).
+    fn write_base_indent(&mut self, value: &str, base_indent: usize) {
+        let indent = self.get_indent(base_indent);
+        let indent = indent.to_string();
+        let mut first = true;
+        for line in value.lines() {
+            if !first {
+                self.output.push('\n');
+            }
+            if !line.is_empty() {
+                self.output.push_str(&indent);
+                self.output.push_str(line);
+            }
+            first = false;
+        }
     }
 
     /// 判断值节点是否需要换行显示（非 flow 风格的映射/序列）。
@@ -443,14 +488,7 @@ impl Serializer {
         match node {
             CustomNode::Scalar { value, style, anchor, tag, .. } => {
                 self.write_anchor_tag(anchor, tag);
-                let formatted = match style {
-                    ScalarStyle::Plain => self.format_plain_scalar(value),
-                    ScalarStyle::SingleQuoted => self.format_single_quoted_scalar(value),
-                    ScalarStyle::DoubleQuoted => self.format_double_quoted_scalar(value),
-                    ScalarStyle::Literal => self.format_literal_scalar(value, &Chomping::Clip),
-                    ScalarStyle::Folded => self.format_folded_scalar(value, &Chomping::Clip),
-                };
-                self.output.push_str(&formatted);
+                self.write_scalar(value, style, &Chomping::Clip);
             }
             CustomNode::Null { anchor, tag, .. } => {
                 self.write_anchor_tag(anchor, tag);
@@ -463,7 +501,7 @@ impl Serializer {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.output.push_str(&self.format_scalar_for_key(key));
+                    self.write_scalar_for_key(key);
                     self.output.push_str(": ");
                     self.serialize_flow_value(value);
                 }
