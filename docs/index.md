@@ -61,4 +61,4 @@ assert doc.to_yaml() == original
 
 **[Get Started →](quick-start.md)**
 **[Browse API Reference →](api/reference.md)**
-**[View on GitHub →](https://github.com/MuLong/pyyaml-rs)**
+**[View on GitHub →](https://github.com/759401524/pyyaml-rs)**

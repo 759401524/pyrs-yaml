@@ -1,10 +1,10 @@
 site_name: pyyaml-rs
-site_url: https://github.com/MuLong/pyyaml-rs
+site_url: https://github.com/759401524/pyyaml-rs
 site_description: High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3
-site_author: MuLong
-repo_url: https://github.com/MuLong/pyyaml-rs
-repo_name: MuLong/pyyaml-rs
-edit_uri_template: https://github.com/MuLong/pyyaml-rs/edit/main/docs/{path}
+site_author: MuLong <759401524@qq.com>
+repo_url: https://github.com/759401524/pyyaml-rs
+repo_name: 759401524/pyyaml-rs
+edit_uri_template: https://github.com/759401524/pyyaml-rs/edit/main/docs/{path}
 docs_dir: docs
 
 theme:
@@ -93,7 +93,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/MuLong/pyyaml-rs
+      link: https://github.com/759401524/pyyaml-rs
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/pyyaml-rs/
   analytics:

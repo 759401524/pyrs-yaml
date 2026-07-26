@@ -11,7 +11,7 @@ license = {text = "MIT OR Apache-2.0"}
 requires-python = ">=3.9"
 keywords = ["yaml", "parser", "round-trip", "high-performance", "rust"]
 authors = [
-    {name = "MuLong"}
+    {name = "MuLong", email = "759401524@qq.com"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -31,10 +31,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/MuLong/pyyaml-rs"
-Documentation = "https://github.com/MuLong/pyyaml-rs#readme"
-Repository = "https://github.com/MuLong/pyyaml-rs"
-Issues = "https://github.com/MuLong/pyyaml-rs/issues"
+Homepage = "https://github.com/759401524/pyyaml-rs"
+Documentation = "https://github.com/759401524/pyyaml-rs#readme"
+Repository = "https://github.com/759401524/pyyaml-rs"
+Issues = "https://github.com/759401524/pyyaml-rs/issues"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

@@ -2,12 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
+  PYO3_NO_PYTHON: 1
 
 jobs:
   test:
