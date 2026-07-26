@@ -83,7 +83,7 @@ def load_test_cases(suite_dir: str) -> list:
                     "valid": is_valid,
                 })
         except Exception:
-            pass
+            continue
 
     return test_cases
 
@@ -167,7 +167,6 @@ def test_yaml_suite_parse_rate():
 
     if valid_tests:
         rate = valid_parse_ok / len(valid_tests) * 100
-        print(f"\nValid tests: {valid_parse_ok}/{len(valid_tests)} ({rate:.1f}%)")
         assert rate >= 95.0, f"Parse rate {rate:.1f}% below threshold 95%"
     else:
         pytest.skip("No valid test cases found")
@@ -190,8 +189,6 @@ def test_yaml_suite_invalid_rejected():
 
     if invalid_tests:
         rate = rejected / len(invalid_tests) * 100
-        print(f"\nInvalid tests rejected: {rejected}/{len(invalid_tests)} ({rate:.1f}%)")
-        # At least 90% of invalid tests should be rejected
         assert rate >= 90.0, f"Invalid rejection rate {rate:.1f}% below threshold 90%"
     else:
         pytest.skip("No invalid test cases found")
@@ -211,8 +208,6 @@ def test_yaml_suite_json_match():
 
     if json_results:
         rate = json_match / len(json_results) * 100
-        print(f"\nJSON match: {json_match}/{len(json_results)} ({rate:.1f}%)")
-        # At least 80% JSON match rate
         assert rate >= 80.0, f"JSON match rate {rate:.1f}% below threshold 80%"
     else:
         pytest.skip("No JSON comparison results found")

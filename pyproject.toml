@@ -43,3 +43,14 @@ module-name = "pyyaml_rs"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with -m 'not slow')",
+    "i18n: marks tests that check internationalization",
+]
+filterwarnings = [
+    "error::pytest.PytestReturnNotNoneWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+log_cli = "true"
+log_cli_level = "WARNING"
