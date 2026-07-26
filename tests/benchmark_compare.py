@@ -6,13 +6,13 @@ import io
 import time
 
 import yaml as pyyaml
-from ruamel.yaml import YAML as RuamelYAML
+from ruamel.yaml import YAML
 
 import pyyaml_rs
 
 # ── Ruamel helpers ─────────────────────────────────────────────────────────
 
-_ruamel_yaml = RuamelYAML()
+_ruamel_yaml = YAML()
 
 
 def ruamel_load(s):
@@ -224,7 +224,7 @@ def main():
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyyaml-rs: {pyyaml_rs.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
-    print(f"  ruamel:    {RuamelYAML.__module__}")
+    print(f"  ruamel:    {YAML.__module__}")
     print()
 
     for label, yaml_str in [
@@ -237,21 +237,21 @@ def main():
         print("─" * 75)
 
         # pyyaml-rs
-        p = timed(lambda: pyyaml_rs.parse(yaml_str))
-        s = timed(lambda: pyyaml_rs.parse(yaml_str).to_yaml())
-        r = timed(lambda: pyyaml_rs.parse(yaml_str).to_yaml())
+        p = timed(lambda yaml_str=yaml_str: pyyaml_rs.parse(yaml_str))
+        s = timed(lambda yaml_str=yaml_str: pyyaml_rs.parse(yaml_str).to_yaml())
+        r = timed(lambda yaml_str=yaml_str: pyyaml_rs.parse(yaml_str).to_yaml())
         print(f"  pyyaml-rs       parse={p[0]:8.2f}ms  serialize={s[0]:8.2f}ms  roundtrip={r[0]:8.2f}ms")
 
         # PyYAML
-        p2 = timed(lambda: pyyaml.safe_load(yaml_str))
-        s2 = timed(lambda: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)))
-        r2 = timed(lambda: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)))
+        p2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_load(yaml_str))
+        s2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)))
+        r2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)))
         print(f"  PyYAML          parse={p2[0]:8.2f}ms  serialize={s2[0]:8.2f}ms  roundtrip={r2[0]:8.2f}ms")
 
         # ruamel.yaml
-        p3 = timed(lambda: ruamel_load(yaml_str))
-        s3 = timed(lambda: ruamel_dump(ruamel_load(yaml_str)))
-        r3 = timed(lambda: ruamel_dump(ruamel_load(yaml_str)))
+        p3 = timed(lambda yaml_str=yaml_str: ruamel_load(yaml_str))
+        s3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)))
+        r3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)))
         print(f"  ruamel.yaml     parse={p3[0]:8.2f}ms  serialize={s3[0]:8.2f}ms  roundtrip={r3[0]:8.2f}ms")
         print()
 

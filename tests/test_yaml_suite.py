@@ -47,7 +47,7 @@ def load_test_cases(suite_dir: str) -> list:
 
     for yaml_file in sorted(src_dir.glob("*.yaml")):
         try:
-            with open(yaml_file, encoding="utf-8") as f:
+            with yaml_file.open(encoding="utf-8") as f:
                 content = yaml.safe_load(f)
 
             if not content or not isinstance(content, list):
@@ -161,7 +161,7 @@ def test_yaml_suite_parse_rate():
 
     results = [run_test(test) for test in test_cases]
 
-    total = len(results)
+    _ = len(results)
     valid_tests = [r for r in results if r["valid"]]
     valid_parse_ok = sum(1 for r in valid_tests if r["parse_ok"])
 

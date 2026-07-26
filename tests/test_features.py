@@ -2,8 +2,8 @@
 Feature tests — Markdown frontmatter, read_markdown.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pyyaml_rs
 
@@ -26,20 +26,20 @@ class TestReadMarkdown:
 
     def test_read_markdown_empty_frontmatter(self):
         md = "---\n---\n# Content"
-        frontmatter, content = pyyaml_rs.read_markdown_str(md)
+        frontmatter, _content = pyyaml_rs.read_markdown_str(md)
         assert frontmatter is None
 
     def test_read_markdown_file(self):
-        test_file = os.path.join(tempfile.gettempdir(), "test_readme.md")
-        with open(test_file, "w") as f:
+        test_file = str(Path(tempfile.gettempdir()) / "test_readme.md")
+        with Path(test_file).open("w") as f:
             f.write("---\ntitle: Test\n---\nContent")
         try:
-            frontmatter, content = pyyaml_rs.read_markdown(test_file)
+            frontmatter, _content = pyyaml_rs.read_markdown(test_file)
             assert frontmatter is not None
             assert frontmatter["title"] == "Test"
         finally:
-            if os.path.exists(test_file):
-                os.remove(test_file)
+            if Path(test_file).exists():
+                Path(test_file).unlink()
 
     def test_from_dict_nested(self):
         """Test from_dict with deeply nested structures."""

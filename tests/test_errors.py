@@ -2,8 +2,8 @@
 Error handling tests — YamlParseError, YamlTypeError, IO errors, edge cases.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -18,15 +18,15 @@ class TestFileIO:
     """Test file reading functionality"""
 
     def test_parse_file(self):
-        test_file = os.path.join(tempfile.gettempdir(), "test_parse.yaml")
-        with open(test_file, "w") as f:
+        test_file = str(Path(tempfile.gettempdir()) / "test_parse.yaml")
+        with Path(test_file).open("w") as f:
             f.write("key: value\nlist:\n  - a\n  - b")
         try:
             doc = pyyaml_rs.parse_file(test_file)
             assert doc.get("key") == "value"
         finally:
-            if os.path.exists(test_file):
-                os.remove(test_file)
+            if Path(test_file).exists():
+                Path(test_file).unlink()
 
     def test_parse_file_nonexistent(self):
         with pytest.raises(OSError):

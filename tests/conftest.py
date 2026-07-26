@@ -1,50 +1,1 @@
-import os
-import tempfile
-
-import pytest
-
-import pyyaml_rs
-
-
-@pytest.fixture(autouse=True)
-def reset_language():
-    pyyaml_rs.set_language("en")
-    yield
-    pyyaml_rs.set_language("en")
-
-
-@pytest.fixture
-def yaml_strings():
-    return {
-        "simple_mapping": "key: value",
-        "nested_mapping": "parent:\n  child: grandchild",
-        "sequence": "- a\n- b\n- c",
-        "mixed": "name: test\nitems:\n  - 1\n  - 2\nflag: true",
-        "multiline_scalar": "description: |\n  Line one\n  Line two",
-        "quoted_scalar": 'message: "hello world"',
-        "empty_document": "",
-        "with_comment": "key: value  # a comment",
-        "anchor": "defaults: &defaults\n  timeout: 30\nref: *defaults",
-        "merge_key": "base: &base\n  a: 1\nb: &b\n  <<: *base\n  b: 2",
-        "flow_mapping": "{key: value, num: 42}",
-        "flow_sequence": "[a, b, c]",
-        "null_value": "key: null",
-        "empty_mapping": "{}",
-        "empty_sequence": "[]",
-    }
-
-
-@pytest.fixture
-def temp_yaml_file(yaml_strings):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        filepath = os.path.join(tmpdir, "test.yaml")
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(yaml_strings["simple_mapping"])
-        yield filepath
-
-
-@pytest.fixture
-def language_context():
-    original = pyyaml_rs.get_language()
-    yield
-    pyyaml_rs.set_language(original)
+import tempfilefrom pathlib import Pathimport pytestimport pyyaml_rs@pytest.fixture(autouse=True)def reset_language():    pyyaml_rs.set_language("en")    yield    pyyaml_rs.set_language("en")@pytest.fixturedef yaml_strings():    return {        "simple_mapping": "key: value",        "nested_mapping": "parent:\n  child: grandchild",        "sequence": "- a\n- b\n- c",        "mixed": "name: test\nitems:\n  - 1\n  - 2\nflag: true",        "multiline_scalar": "description: |\n  Line one\n  Line two",        "quoted_scalar": 'message: "hello world"',        "empty_document": "",        "with_comment": "key: value  # a comment",        "anchor": "defaults: &defaults\n  timeout: 30\nref: *defaults",        "merge_key": "base: &base\n  a: 1\nb: &b\n  <<: *base\n  b: 2",        "flow_mapping": "{key: value, num: 42}",        "flow_sequence": "[a, b, c]",        "null_value": "key: null",        "empty_mapping": "{}",        "empty_sequence": "[]",    }@pytest.fixturedef temp_yaml_file(yaml_strings):    with tempfile.TemporaryDirectory() as tmpdir:        filepath = str(Path(tmpdir) / "test.yaml")        with Path(filepath).open("w", encoding="utf-8") as f:            f.write(yaml_strings["simple_mapping"])        yield filepath@pytest.fixturedef language_context():    original = pyyaml_rs.get_language()    yield    pyyaml_rs.set_language(original)
