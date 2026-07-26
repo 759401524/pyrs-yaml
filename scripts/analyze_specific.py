@@ -2,8 +2,10 @@
 Analyze specific failing tests
 """
 
-import yaml
 import os
+
+import yaml
+
 import pyyaml_rs
 
 
@@ -31,7 +33,7 @@ def main():
             continue
 
         try:
-            with open(os.path.join(suite_dir, f), 'r') as fh:
+            with open(os.path.join(suite_dir, f)) as fh:
                 content = yaml.safe_load(fh)
 
             if not content or not isinstance(content, list):
@@ -49,13 +51,13 @@ def main():
 
                 name = test.get('name', '')
                 print(f'=== {test_id}: {name[:50]} ===')
-                print(f'YAML:')
+                print('YAML:')
                 for line in yaml_input.split('\n')[:5]:
-                    print(f'  {repr(line)}')
+                    print(f'  {line!r}')
 
                 try:
                     doc = pyyaml_rs.parse(yaml_input)
-                    print(f'OK')
+                    print('OK')
                 except Exception as e:
                     print(f'Error: {str(e)[:100]}')
                 print()

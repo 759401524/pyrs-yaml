@@ -6,8 +6,8 @@ import os
 import tempfile
 
 import pytest
-import pyyaml_rs
 
+import pyyaml_rs
 
 # ============================================================================
 # File I/O Errors

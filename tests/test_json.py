@@ -3,8 +3,8 @@ JSON/YAML conversion tests — from_dict, from_json.
 """
 
 import pytest
-import pyyaml_rs
 
+import pyyaml_rs
 
 # ============================================================================
 # From Dict

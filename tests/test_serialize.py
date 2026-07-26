@@ -2,9 +2,7 @@
 YAML serialization and PyYAML-compatible API tests.
 """
 
-import pytest
 import pyyaml_rs
-
 
 # ============================================================================
 # Serialization

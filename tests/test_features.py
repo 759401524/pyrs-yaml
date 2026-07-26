@@ -5,7 +5,6 @@ Feature tests — Markdown frontmatter, read_markdown.
 import os
 import tempfile
 
-import pytest
 import pyyaml_rs
 
 

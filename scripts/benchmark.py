@@ -3,10 +3,9 @@ Benchmark: pyyaml_rs vs pyyaml vs yamlium
 Compare parsing speed, serialization speed, and feature support
 """
 
-import time
-import sys
 import statistics
-from typing import Any, Dict, List
+import time
+from typing import Dict
 
 # Import libraries
 try:

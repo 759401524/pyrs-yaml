@@ -2,8 +2,9 @@
 Comprehensive benchmark: pyyaml-rs vs PyYAML vs ruamel.yaml
 """
 
-import time
 import io
+import time
+
 import yaml as pyyaml
 from ruamel.yaml import YAML as RuamelYAML
 

@@ -2,8 +2,10 @@
 List all failing valid tests
 """
 
-import yaml
 import os
+
+import yaml
+
 import pyyaml_rs
 
 
@@ -28,7 +30,7 @@ def main():
             continue
 
         try:
-            with open(os.path.join(suite_dir, f), 'r') as fh:
+            with open(os.path.join(suite_dir, f)) as fh:
                 content = yaml.safe_load(fh)
 
             if not content or not isinstance(content, list):

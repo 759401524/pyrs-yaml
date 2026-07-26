@@ -2,9 +2,7 @@
 Core YAML parsing tests — parsing only (no serialization).
 """
 
-import pytest
 import pyyaml_rs
-
 
 # ============================================================================
 # Basic Parsing

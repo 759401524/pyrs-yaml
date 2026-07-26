@@ -2,7 +2,6 @@
 Round-trip preservation tests — parse → serialize → parse identity.
 """
 
-import pytest
 import pyyaml_rs
 
 

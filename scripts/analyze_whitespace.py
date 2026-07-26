@@ -2,8 +2,10 @@
 Analyze whitespace-related YAML test failures
 """
 
-import yaml
 import os
+
+import yaml
+
 import pyyaml_rs
 
 
@@ -16,7 +18,7 @@ def analyze_whitespace_failures():
             continue
 
         try:
-            with open(os.path.join(suite_dir, f), 'r') as fh:
+            with open(os.path.join(suite_dir, f)) as fh:
                 content = yaml.safe_load(fh)
 
             if not content or not isinstance(content, list):
@@ -66,9 +68,9 @@ def main():
         print(f'ID: {f["id"]}')
         print(f'Name: {f["name"][:60]}')
         print(f'Tags: {f["tags"]}')
-        print(f'YAML:')
+        print('YAML:')
         for line in f['yaml'].split('\n')[:5]:
-            print(f'  {repr(line)}')
+            print(f'  {line!r}')
         print(f'Error: {f["error"]}')
         print()
 

@@ -2,9 +2,11 @@
 Analyze YAML test suite failures to find quick fixes
 """
 
-import pyyaml_rs
-import yaml
 import os
+
+import yaml
+
+import pyyaml_rs
 
 
 def analyze_failures():
@@ -16,7 +18,7 @@ def analyze_failures():
             continue
 
         try:
-            with open(os.path.join(suite_dir, f), 'r') as fh:
+            with open(os.path.join(suite_dir, f)) as fh:
                 content = yaml.safe_load(fh)
 
             if not content or not isinstance(content, list):
@@ -105,7 +107,7 @@ def main():
             print(f'  Name: {item["name"][:60]}')
             print(f'  Tags: {item["tags"]}')
             print(f'  Error: {item["error"][:100]}')
-            print(f'  YAML preview:')
+            print('  YAML preview:')
             for line in item['yaml'].split('\n')[:3]:
                 print(f'    {line}')
             print()

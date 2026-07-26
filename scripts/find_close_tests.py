@@ -2,9 +2,11 @@
 Find tests that are close to passing
 """
 
-import yaml
-import os
 import json
+import os
+
+import yaml
+
 import pyyaml_rs
 
 
@@ -28,7 +30,7 @@ def find_close_tests():
             continue
 
         try:
-            with open(os.path.join(suite_dir, f), 'r') as fh:
+            with open(os.path.join(suite_dir, f)) as fh:
                 content = yaml.safe_load(fh)
 
             if not content or not isinstance(content, list):

@@ -3,12 +3,13 @@ YAML Test Suite Runner for pyyaml_rs
 Runs the official YAML test suite and reports results
 """
 
-import os
 import json
+from pathlib import Path
+
 import pytest
 import yaml
+
 import pyyaml_rs
-from pathlib import Path
 
 
 def convert_special_chars(text: str) -> str:
@@ -19,18 +20,18 @@ def convert_special_chars(text: str) -> str:
     # Convert special whitespace indicators
     # Order matters - longer sequences first
     text = text.replace('\u2423', ' ')  # ␣ = space
-    
+
     # Tab indicators (em dashes + right angle bracket)
     text = text.replace('\u2014\u2014\u2014\u00bb', '\t')  # ———» = tab
     text = text.replace('\u2014\u2014\u00bb', '\t')  # ——» = tab
     text = text.replace('\u2014\u00bb', '\t')  # —» = tab
     text = text.replace('\u00bb', '\t')  # » = tab
-    
+
     # Also handle double vertical line variants
     text = text.replace('\u2016\u2016\u2016\u00bb', '\t')  # ‖‖‖» = tab
     text = text.replace('\u2016\u2016\u00bb', '\t')  # ‖‖» = tab
     text = text.replace('\u2016\u00bb', '\t')  # ‖» = tab
-    
+
     text = text.replace('\u21b5', '\n')  # ↵ = newline
     text = text.replace('\u220e', '')  # ∎ = no final newline (remove)
     text = text.replace('\u2190', '\r')  # ← = carriage return
@@ -46,7 +47,7 @@ def load_test_cases(suite_dir: str) -> list:
 
     for yaml_file in sorted(src_dir.glob("*.yaml")):
         try:
-            with open(yaml_file, "r", encoding="utf-8") as f:
+            with open(yaml_file, encoding="utf-8") as f:
                 content = yaml.safe_load(f)
 
             if not content or not isinstance(content, list):
