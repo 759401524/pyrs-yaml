@@ -12,6 +12,9 @@ mod test_saphyr;
 #[cfg(test)]
 mod test_yaml_suite_saphyr;
 
+// rust-i18n 初始化
+rust_i18n::i18n!();
+
 use ast::CustomNode;
 use indexmap::IndexMap;
 use pyo3::prelude::*;

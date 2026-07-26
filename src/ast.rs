@@ -130,7 +130,7 @@ pub enum CustomNode {
         comment: Option<Comment>,
         anchor: Option<String>,
         tag: Option<Tag>,
-        /// Whether this sequence uses flow style ([item]) vs block style
+        /// Whether this sequence uses flow style (\[item\]) vs block style
         flow_style: bool,
     },
     Null {
