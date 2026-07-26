@@ -10,6 +10,7 @@ from typing import Dict
 # Import libraries
 try:
     import pyyaml_rs
+
     HAS_PYAML = True
 except ImportError:
     HAS_PYAML = False
@@ -17,6 +18,7 @@ except ImportError:
 
 try:
     import yaml as pyyaml
+
     HAS_PYYAML = True
 except ImportError:
     HAS_PYYAML = False
@@ -24,6 +26,7 @@ except ImportError:
 
 try:
     from yamlium import parse as yamlium_parse
+
     HAS_YAMLIUM = True
 except ImportError:
     HAS_YAMLIUM = False
@@ -121,9 +124,14 @@ empty:
 null_value: null
 """
 
-LARGE_YAML = """
+LARGE_YAML = (
+    """
 # Large document for performance testing
-""".strip() + "\n" + "\n".join([f"""
+""".strip()
+    + "\n"
+    + "\n".join(
+        [
+            f"""
 item_{i}:
   id: {i}
   name: "Item {i}"
@@ -135,12 +143,17 @@ item_{i}:
     created: "2024-01-{i:02d}"
     updated: "2024-01-{i:02d}"
     author: "user{i}"
-""" for i in range(100)])
+"""
+            for i in range(100)
+        ]
+    )
+)
 
 
 # ============================================================================
 # Benchmark Functions
 # ============================================================================
+
 
 def benchmark_parse(yaml_str: str, iterations: int = 100) -> Dict[str, float]:
     """Benchmark parsing speed"""
@@ -154,9 +167,9 @@ def benchmark_parse(yaml_str: str, iterations: int = 100) -> Dict[str, float]:
                 pyyaml_rs.parse(yaml_str)
                 end = time.perf_counter()
                 times.append(end - start)
-            results['pyyaml_rs'] = statistics.mean(times) * 1000  # ms
+            results["pyyaml_rs"] = statistics.mean(times) * 1000  # ms
         except Exception as e:
-            results['pyyaml_rs'] = f"Error: {e}"
+            results["pyyaml_rs"] = f"Error: {e}"
 
     if HAS_PYYAML:
         try:
@@ -166,9 +179,9 @@ def benchmark_parse(yaml_str: str, iterations: int = 100) -> Dict[str, float]:
                 pyyaml.safe_load(yaml_str)
                 end = time.perf_counter()
                 times.append(end - start)
-            results['pyyaml'] = statistics.mean(times) * 1000  # ms
+            results["pyyaml"] = statistics.mean(times) * 1000  # ms
         except Exception as e:
-            results['pyyaml'] = f"Error: {e}"
+            results["pyyaml"] = f"Error: {e}"
 
     if HAS_YAMLIUM:
         try:
@@ -178,9 +191,9 @@ def benchmark_parse(yaml_str: str, iterations: int = 100) -> Dict[str, float]:
                 yamlium_parse(yaml_str)
                 end = time.perf_counter()
                 times.append(end - start)
-            results['yamlium'] = statistics.mean(times) * 1000  # ms
+            results["yamlium"] = statistics.mean(times) * 1000  # ms
         except Exception as e:
-            results['yamlium'] = f"Error: {e}"
+            results["yamlium"] = f"Error: {e}"
 
     return results
 
@@ -198,7 +211,7 @@ def benchmark_to_yaml(iterations: int = 100) -> Dict[str, float]:
             doc.to_yaml()
             end = time.perf_counter()
             times.append(end - start)
-        results['pyyaml_rs'] = statistics.mean(times) * 1000
+        results["pyyaml_rs"] = statistics.mean(times) * 1000
 
     if HAS_PYYAML:
         data = pyyaml.safe_load(MEDIUM_YAML)
@@ -208,7 +221,7 @@ def benchmark_to_yaml(iterations: int = 100) -> Dict[str, float]:
             pyyaml.dump(data, default_flow_style=False)
             end = time.perf_counter()
             times.append(end - start)
-        results['pyyaml'] = statistics.mean(times) * 1000
+        results["pyyaml"] = statistics.mean(times) * 1000
 
     if HAS_YAMLIUM:
         try:
@@ -219,12 +232,12 @@ def benchmark_to_yaml(iterations: int = 100) -> Dict[str, float]:
                 doc.to_yaml()
                 end = time.perf_counter()
                 times.append(end - start)
-            results['yamlium'] = statistics.mean(times) * 1000
+            results["yamlium"] = statistics.mean(times) * 1000
         except Exception as e:
-            results['yamlium'] = f"Error: {e}"
+            results["yamlium"] = f"Error: {e}"
             end = time.perf_counter()
             times.append(end - start)
-        results['yamlium'] = statistics.mean(times) * 1000
+        results["yamlium"] = statistics.mean(times) * 1000
 
     return results
 
@@ -237,23 +250,23 @@ def test_roundtrip(yaml_str: str) -> Dict[str, bool]:
         doc = pyyaml_rs.parse(yaml_str)
         output = doc.to_yaml()
         # Check if key features are preserved
-        results['pyyaml_rs'] = True  # Our library preserves everything
+        results["pyyaml_rs"] = True  # Our library preserves everything
 
     if HAS_PYYAML:
         try:
             data = pyyaml.safe_load(yaml_str)
             output = pyyaml.dump(data, default_flow_style=False)
             # pyyaml loses comments
-            results['pyyaml'] = '# ' not in yaml_str or '# ' in output
+            results["pyyaml"] = "# " not in yaml_str or "# " in output
         except:
-            results['pyyaml'] = False
+            results["pyyaml"] = False
 
     if HAS_YAMLIUM:
         try:
             doc = yamlium_parse(yaml_str)
-            results['yamlium'] = True
+            results["yamlium"] = True
         except:
-            results['yamlium'] = False
+            results["yamlium"] = False
 
     return results
 
@@ -261,14 +274,14 @@ def test_roundtrip(yaml_str: str) -> Dict[str, bool]:
 def test_features() -> Dict[str, Dict[str, bool]]:
     """Test feature support"""
     features = {
-        'comments': '# comment\nkey: value',
-        'anchors': 'defaults: &d\n  timeout: 30\nprod:\n  <<: *d',
-        'tags': 'name: !!str John\nage: !!int 30',
-        'chomping': 'key: |-\n  line1\n  line2',
-        'complex_keys': '? [a, b]\n: value',
-        'escape_sequences': 'text: "hello\\nworld"',
-        'multi_line_literal': 'key: |\n  line1\n  line2',
-        'multi_line_folded': 'key: >\n  this is\n  folded',
+        "comments": "# comment\nkey: value",
+        "anchors": "defaults: &d\n  timeout: 30\nprod:\n  <<: *d",
+        "tags": "name: !!str John\nage: !!int 30",
+        "chomping": "key: |-\n  line1\n  line2",
+        "complex_keys": "? [a, b]\n: value",
+        "escape_sequences": 'text: "hello\\nworld"',
+        "multi_line_literal": "key: |\n  line1\n  line2",
+        "multi_line_folded": "key: >\n  this is\n  folded",
     }
 
     results = {}
@@ -278,23 +291,23 @@ def test_features() -> Dict[str, Dict[str, bool]]:
         if HAS_PYAML:
             try:
                 doc = pyyaml_rs.parse(yaml_str)
-                results[feature]['pyyaml_rs'] = True
+                results[feature]["pyyaml_rs"] = True
             except:
-                results[feature]['pyyaml_rs'] = False
+                results[feature]["pyyaml_rs"] = False
 
         if HAS_PYYAML:
             try:
                 pyyaml.safe_load(yaml_str)
-                results[feature]['pyyaml'] = True
+                results[feature]["pyyaml"] = True
             except:
-                results[feature]['pyyaml'] = False
+                results[feature]["pyyaml"] = False
 
         if HAS_YAMLIUM:
             try:
                 yamlium_parse(yaml_str)
-                results[feature]['yamlium'] = True
+                results[feature]["yamlium"] = True
             except:
-                results[feature]['yamlium'] = False
+                results[feature]["yamlium"] = False
 
     return results
 
@@ -302,6 +315,7 @@ def test_features() -> Dict[str, Dict[str, bool]]:
 # ============================================================================
 # Main Benchmark
 # ============================================================================
+
 
 def main():
     print("=" * 70)
@@ -321,10 +335,17 @@ def main():
     print("PARSE BENCHMARKS (lower is better)")
     print("=" * 70)
 
-    for name, yaml_str in [("Simple", SIMPLE_YAML), ("Medium", MEDIUM_YAML), ("Complex", COMPLEX_YAML), ("Large (100 items)", LARGE_YAML)]:
+    for name, yaml_str in [
+        ("Simple", SIMPLE_YAML),
+        ("Medium", MEDIUM_YAML),
+        ("Complex", COMPLEX_YAML),
+        ("Large (100 items)", LARGE_YAML),
+    ]:
         print(f"\n{name} YAML:")
         results = benchmark_parse(yaml_str, iterations=50)
-        for lib, time_ms in sorted(results.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else float('inf')):
+        for lib, time_ms in sorted(
+            results.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else float("inf")
+        ):
             if isinstance(time_ms, (int, float)):
                 print(f"  {lib:20s}: {time_ms:.3f} ms")
             else:

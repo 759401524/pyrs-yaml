@@ -8,6 +8,7 @@ import pyyaml_rs
 # Basic Parsing
 # ============================================================================
 
+
 class TestBasicParsing:
     """Test basic YAML parsing functionality"""
 
@@ -63,6 +64,7 @@ class TestBasicParsing:
 # Quote Styles
 # ============================================================================
 
+
 class TestQuoteStyles:
     """Test different quote styles preservation"""
 
@@ -90,6 +92,7 @@ class TestQuoteStyles:
 # ============================================================================
 # YAML 1.2 Type Resolution
 # ============================================================================
+
 
 class TestYaml12Types:
     """Test YAML 1.2 type resolution"""
@@ -122,17 +125,20 @@ class TestYaml12Types:
     def test_infinity(self):
         doc = pyyaml_rs.parse("key: .inf")
         import math
+
         assert math.isinf(doc.get("key"))
 
     def test_nan(self):
         doc = pyyaml_rs.parse("key: .nan")
         import math
+
         assert math.isnan(doc.get("key"))
 
 
 # ============================================================================
 # Tags
 # ============================================================================
+
 
 class TestTags:
     """Test YAML tag support"""
@@ -156,6 +162,7 @@ class TestTags:
 # ============================================================================
 # Block Scalars
 # ============================================================================
+
 
 class TestBlockScalars:
     """Test block scalar support"""
@@ -190,6 +197,7 @@ class TestBlockScalars:
 # Complex Keys
 # ============================================================================
 
+
 class TestComplexKeys:
     """Test complex key support"""
 
@@ -207,6 +215,7 @@ class TestComplexKeys:
 # ============================================================================
 # Anchors and Aliases (parsing + resolution)
 # ============================================================================
+
 
 class TestAnchorsAliases:
     """Test anchor and alias support"""
@@ -232,6 +241,7 @@ class TestAnchorsAliases:
 # ============================================================================
 # Comments (parsing only — round-trip in test_roundtrip.py)
 # ============================================================================
+
 
 class TestComments:
     """Test comment parsing"""

@@ -10,6 +10,7 @@ import pyyaml_rs
 # From Dict
 # ============================================================================
 
+
 class TestFromDict:
     """Test from_dict function"""
 
@@ -35,6 +36,7 @@ class TestFromDict:
 # ============================================================================
 # From JSON
 # ============================================================================
+
 
 class TestFromJson:
     """Test from_json function"""

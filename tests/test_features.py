@@ -43,13 +43,7 @@ class TestReadMarkdown:
 
     def test_from_dict_nested(self):
         """Test from_dict with deeply nested structures."""
-        data = {
-            "app": {
-                "name": "myapp",
-                "version": "1.0"
-            },
-            "features": ["auth", "logging"]
-        }
+        data = {"app": {"name": "myapp", "version": "1.0"}, "features": ["auth", "logging"]}
         yaml_str = pyyaml_rs.from_dict(data)
         assert "app:" in yaml_str
         assert "name: myapp" in yaml_str

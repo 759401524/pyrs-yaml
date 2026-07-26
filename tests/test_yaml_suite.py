@@ -19,23 +19,23 @@ def convert_special_chars(text: str) -> str:
 
     # Convert special whitespace indicators
     # Order matters - longer sequences first
-    text = text.replace('\u2423', ' ')  # ␣ = space
+    text = text.replace("\u2423", " ")  # ␣ = space
 
     # Tab indicators (em dashes + right angle bracket)
-    text = text.replace('\u2014\u2014\u2014\u00bb', '\t')  # ———» = tab
-    text = text.replace('\u2014\u2014\u00bb', '\t')  # ——» = tab
-    text = text.replace('\u2014\u00bb', '\t')  # —» = tab
-    text = text.replace('\u00bb', '\t')  # » = tab
+    text = text.replace("\u2014\u2014\u2014\u00bb", "\t")  # ———» = tab
+    text = text.replace("\u2014\u2014\u00bb", "\t")  # ——» = tab
+    text = text.replace("\u2014\u00bb", "\t")  # —» = tab
+    text = text.replace("\u00bb", "\t")  # » = tab
 
     # Also handle double vertical line variants
-    text = text.replace('\u2016\u2016\u2016\u00bb', '\t')  # ‖‖‖» = tab
-    text = text.replace('\u2016\u2016\u00bb', '\t')  # ‖‖» = tab
-    text = text.replace('\u2016\u00bb', '\t')  # ‖» = tab
+    text = text.replace("\u2016\u2016\u2016\u00bb", "\t")  # ‖‖‖» = tab
+    text = text.replace("\u2016\u2016\u00bb", "\t")  # ‖‖» = tab
+    text = text.replace("\u2016\u00bb", "\t")  # ‖» = tab
 
-    text = text.replace('\u21b5', '\n')  # ↵ = newline
-    text = text.replace('\u220e', '')  # ∎ = no final newline (remove)
-    text = text.replace('\u2190', '\r')  # ← = carriage return
-    text = text.replace('\u21d4', '\xef\xbb\xbf')  # ⇔ = BOM
+    text = text.replace("\u21b5", "\n")  # ↵ = newline
+    text = text.replace("\u220e", "")  # ∎ = no final newline (remove)
+    text = text.replace("\u2190", "\r")  # ← = carriage return
+    text = text.replace("\u21d4", "\xef\xbb\xbf")  # ⇔ = BOM
 
     return text
 
@@ -73,16 +73,18 @@ def load_test_cases(suite_dir: str) -> list:
                 is_fail = test.get("fail", False)
                 is_valid = "error" not in tags.lower() and "invalid" not in tags.lower() and not is_fail
 
-                test_cases.append({
-                    "id": test_id,
-                    "name": name,
-                    "tags": tags,
-                    "yaml": yaml_input,
-                    "json": json_expected.strip() if json_expected else None,
-                    "tree": tree_expected.strip() if tree_expected else None,
-                    "dump": dump_expected.strip() if dump_expected else None,
-                    "valid": is_valid,
-                })
+                test_cases.append(
+                    {
+                        "id": test_id,
+                        "name": name,
+                        "tags": tags,
+                        "yaml": yaml_input,
+                        "json": json_expected.strip() if json_expected else None,
+                        "tree": tree_expected.strip() if tree_expected else None,
+                        "dump": dump_expected.strip() if dump_expected else None,
+                        "valid": is_valid,
+                    }
+                )
         except Exception:
             continue
 
@@ -151,10 +153,7 @@ def run_test(test: dict) -> dict:
 SUITE_DIR = "Reference/yaml-test-suite"
 
 
-@pytest.mark.skipif(
-    not Path(SUITE_DIR).exists(),
-    reason="YAML Test Suite not found"
-)
+@pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
 def test_yaml_suite_parse_rate():
     """Test that parse success rate meets threshold (>= 95% for valid tests)."""
     test_cases = load_test_cases(SUITE_DIR)
@@ -173,10 +172,7 @@ def test_yaml_suite_parse_rate():
         pytest.skip("No valid test cases found")
 
 
-@pytest.mark.skipif(
-    not Path(SUITE_DIR).exists(),
-    reason="YAML Test Suite not found"
-)
+@pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
 def test_yaml_suite_invalid_rejected():
     """Test that invalid YAML is correctly rejected."""
     test_cases = load_test_cases(SUITE_DIR)
@@ -195,10 +191,7 @@ def test_yaml_suite_invalid_rejected():
         pytest.skip("No invalid test cases found")
 
 
-@pytest.mark.skipif(
-    not Path(SUITE_DIR).exists(),
-    reason="YAML Test Suite not found"
-)
+@pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
 def test_yaml_suite_json_match():
     """Test JSON comparison against expected output."""
     test_cases = load_test_cases(SUITE_DIR)

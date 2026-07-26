@@ -8,6 +8,7 @@ import pyyaml_rs
 # Serialization
 # ============================================================================
 
+
 class TestSerialization:
     """Test YAML serialization"""
 
@@ -32,6 +33,7 @@ class TestSerialization:
 # ============================================================================
 # PyYAML Compatible API
 # ============================================================================
+
 
 class TestPyyamlCompatible:
     """Test pyyaml-compatible API"""

@@ -12,23 +12,23 @@ import pyyaml_rs
 def convert_special_chars(text):
     if not text:
         return text
-    text = text.replace('\u2423', ' ')
-    text = text.replace('\u2014\u2014\u2014\u00bb', '\t')
-    text = text.replace('\u2014\u2014\u00bb', '\t')
-    text = text.replace('\u2014\u00bb', '\t')
-    text = text.replace('\u00bb', '\t')
+    text = text.replace("\u2423", " ")
+    text = text.replace("\u2014\u2014\u2014\u00bb", "\t")
+    text = text.replace("\u2014\u2014\u00bb", "\t")
+    text = text.replace("\u2014\u00bb", "\t")
+    text = text.replace("\u00bb", "\t")
     return text
 
 
 def main():
-    suite_dir = 'Reference/yaml-test-suite/src'
-    tests_to_check = ['2G84', '5GBF', 'B3HG']
+    suite_dir = "Reference/yaml-test-suite/src"
+    tests_to_check = ["2G84", "5GBF", "B3HG"]
 
     for f in sorted(os.listdir(suite_dir)):
-        if not f.endswith('.yaml'):
+        if not f.endswith(".yaml"):
             continue
 
-        test_id = f.replace('.yaml', '')
+        test_id = f.replace(".yaml", "")
         if test_id not in tests_to_check:
             continue
 
@@ -43,27 +43,27 @@ def main():
                 if not isinstance(test, dict):
                     continue
 
-                yaml_input = test.get('yaml', '')
+                yaml_input = test.get("yaml", "")
                 if not yaml_input:
                     continue
 
                 yaml_input = convert_special_chars(yaml_input)
 
-                name = test.get('name', '')
-                print(f'=== {test_id}: {name[:50]} ===')
-                print('YAML:')
-                for line in yaml_input.split('\n')[:5]:
-                    print(f'  {line!r}')
+                name = test.get("name", "")
+                print(f"=== {test_id}: {name[:50]} ===")
+                print("YAML:")
+                for line in yaml_input.split("\n")[:5]:
+                    print(f"  {line!r}")
 
                 try:
                     doc = pyyaml_rs.parse(yaml_input)
-                    print('OK')
+                    print("OK")
                 except Exception as e:
-                    print(f'Error: {str(e)[:100]}')
+                    print(f"Error: {str(e)[:100]}")
                 print()
         except:
             pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

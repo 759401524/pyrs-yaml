@@ -13,6 +13,7 @@ import pyyaml_rs
 # File I/O Errors
 # ============================================================================
 
+
 class TestFileIO:
     """Test file reading functionality"""
 
@@ -35,6 +36,7 @@ class TestFileIO:
 # ============================================================================
 # Edge Cases
 # ============================================================================
+
 
 class TestEdgeCases:
     """Test edge cases and special scenarios"""
@@ -71,6 +73,7 @@ class TestEdgeCases:
 # ============================================================================
 # Custom Exception Types
 # ============================================================================
+
 
 class TestCustomExceptions:
     """Test custom exception types for precise error handling"""

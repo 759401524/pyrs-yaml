@@ -14,15 +14,18 @@ import pyyaml_rs
 
 _ruamel_yaml = RuamelYAML()
 
+
 def ruamel_load(s):
     """Load YAML with ruamel.yaml."""
     return _ruamel_yaml.load(s)
+
 
 def ruamel_dump(data):
     """Dump with ruamel.yaml."""
     stream = io.StringIO()
     _ruamel_yaml.dump(data, stream)
     return stream.getvalue()
+
 
 # ── Test data ──────────────────────────────────────────────────────────────
 
@@ -130,8 +133,8 @@ formatted: >
 
 chomped: |+
   Keep all trailing newlines
-  
-  
+
+
 stripped: |-
   Remove all trailing newlines
 
@@ -191,12 +194,14 @@ monitoring:
 
 # ── Benchmark helpers ─────────────────────────────────────────────────────
 
+
 def bench(fn, rounds=200):
     """Run fn rounds times, return median in ms."""
     times = sorted(time.perf_counter() - time.perf_counter() or fn() for _ in range(rounds))
     times = sorted([time.perf_counter() - (t0 := time.perf_counter()) + (fn(), t0)[1] for _ in range(rounds)])
     median = times[len(times) // 2]
     return median * 1000
+
 
 def timed(fn, rounds=200):
     """Return (median_ms, min_ms, max_ms) for fn called rounds times."""
@@ -208,7 +213,9 @@ def timed(fn, rounds=200):
     times.sort()
     return times[len(times) // 2] * 1000, times[0] * 1000, times[-1] * 1000
 
+
 # ── Main ───────────────────────────────────────────────────────────────────
+
 
 def main():
     print("=" * 75)
@@ -220,9 +227,11 @@ def main():
     print(f"  ruamel:    {RuamelYAML.__module__}")
     print()
 
-    for label, yaml_str in [("SMALL (~100 B)", SMALL_YAML),
-                            ("MEDIUM (~500 B)", MEDIUM_YAML),
-                            ("LARGE (~2 KB)", LARGE_YAML)]:
+    for label, yaml_str in [
+        ("SMALL (~100 B)", SMALL_YAML),
+        ("MEDIUM (~500 B)", MEDIUM_YAML),
+        ("LARGE (~2 KB)", LARGE_YAML),
+    ]:
         print("─" * 75)
         print(f"  {label}")
         print("─" * 75)
@@ -262,15 +271,21 @@ def main():
 
     # pyyaml-rs
     out1 = pyyaml_rs.parse(rt_yaml).to_yaml()
-    print(f"  pyyaml-rs:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}")
+    print(
+        f"  pyyaml-rs:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}"
+    )
 
     # PyYAML
     out2 = pyyaml.safe_dump(pyyaml.safe_load(rt_yaml))
-    print(f"  PyYAML:        comments={'# Comments everywhere' in out2}  anchors={'&defaults' in out2}  tags={'!!str' in out2}")
+    print(
+        f"  PyYAML:        comments={'# Comments everywhere' in out2}  anchors={'&defaults' in out2}  tags={'!!str' in out2}"
+    )
 
     # ruamel.yaml
     out3 = ruamel_dump(ruamel_load(rt_yaml))
-    print(f"  ruamel.yaml:   comments={'# Comments everywhere' in out3}  anchors={'&defaults' in out3}  tags={'!!str' in out3}")
+    print(
+        f"  ruamel.yaml:   comments={'# Comments everywhere' in out3}  anchors={'&defaults' in out3}  tags={'!!str' in out3}"
+    )
     print()
 
     # ── Feature support comparison ───────────────────────────────────────
@@ -296,7 +311,7 @@ def main():
     ]
 
     print(f"  {'Feature':35s} {'pyyaml-rs':12s} {'PyYAML':10s} {'ruamel':10s}")
-    print(f"  {'-'*67}")
+    print(f"  {'-' * 67}")
     for name, pyr, pyr2, ruamel in features:
         pyr_m = "✅" if pyr else "❌"
         pyr2_m = "✅" if pyr2 else "❌"
@@ -307,6 +322,7 @@ def main():
     print("=" * 75)
     print("  Benchmark complete.")
     print("=" * 75)
+
 
 if __name__ == "__main__":
     main()
