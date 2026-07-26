@@ -32,6 +32,7 @@ from .pyyaml_rs import (
     read_markdown_str,
     set_language,
     get_language,
+    list_languages,
 )
 
 __all__ = [
@@ -53,6 +54,7 @@ __all__ = [
     "read_markdown_str",
     "set_language",
     "get_language",
+    "list_languages",
 ]
 
 __version__ = "0.2.0"

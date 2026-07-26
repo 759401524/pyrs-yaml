@@ -447,7 +447,14 @@ fn set_language(lang: &str) -> PyResult<()> {
 #[pyfunction]
 #[pyo3(signature = ())]
 fn get_language() -> &'static str {
-    i18n::get_language()
+    i18n::get_language_static()
+}
+
+/// 列出所有支持的语言。
+#[pyfunction]
+#[pyo3(signature = ())]
+fn list_languages() -> Vec<&'static str> {
+    i18n::list_languages()
 }
 
 /// A Python module implemented in Rust.
@@ -461,6 +468,7 @@ fn pyyaml_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // 注册 i18n 函数
     m.add_function(wrap_pyfunction!(set_language, m)?)?;
     m.add_function(wrap_pyfunction!(get_language, m)?)?;
+    m.add_function(wrap_pyfunction!(list_languages, m)?)?;
 
     m.add_function(wrap_pyfunction!(parse, m)?)?;
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;

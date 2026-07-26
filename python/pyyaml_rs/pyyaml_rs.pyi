@@ -261,7 +261,7 @@ def read_markdown_str(content: str) -> Tuple[Optional[Dict[str, Any]], str]:
     ...
 
 def set_language(lang: str) -> None:
-    `
+    """
     Set the language for error messages.
 
     Args:
@@ -269,14 +269,23 @@ def set_language(lang: str) -> None:
 
     Raises:
         ValueError: If the language is not supported.
-    `
+    """
     ...
 
 def get_language() -> str:
-    `
+    """
     Get the current language for error messages.
 
     Returns:
         The current language code (default: "en").
-    `
+    """
+    ...
+
+def list_languages() -> list[str]:
+    """
+    List all supported languages.
+
+    Returns:
+        List of language codes (e.g., ["en", "zh-CN"]).
+    """
     ...
