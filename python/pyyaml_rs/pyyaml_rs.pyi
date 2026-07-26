@@ -259,3 +259,24 @@ def read_markdown_str(content: str) -> Tuple[Optional[Dict[str, Any]], str]:
         If no frontmatter is found, frontmatter is None.
     """
     ...
+
+def set_language(lang: str) -> None:
+    `
+    Set the language for error messages.
+
+    Args:
+        lang: Language code, supports "en" and "zh-CN"
+
+    Raises:
+        ValueError: If the language is not supported.
+    `
+    ...
+
+def get_language() -> str:
+    `
+    Get the current language for error messages.
+
+    Returns:
+        The current language code (default: "en").
+    `
+    ...

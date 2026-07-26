@@ -5,14 +5,5 @@ __pycache__/
 .pytest_cache/
 Cargo.lock
 *.egg-info/
-node/
-bun/
-mise/
-Reference/
 *.pyd
 *.pdb
-.mimocode/
-openspec/
-docs/superpowers/
-.comet/
-CLAUDE.md
