@@ -658,3 +658,52 @@ class TestRoundTrip:
         original = "key: {a: 1, b: 2}\n"
         doc = pyyaml_rs.parse(original)
         assert doc.to_yaml() == original
+
+
+# ============================================================================
+# 18. Custom Exception Types (TDD Red phase)
+# ============================================================================
+
+
+class TestCustomExceptions:
+    """Test custom exception types for precise error handling."""
+
+    def test_yaml_parse_error_exists(self):
+        """YamlParseError should be importable."""
+        assert hasattr(pyyaml_rs, "YamlParseError")
+
+    def test_yaml_serialize_error_exists(self):
+        """YamlSerializeError should be importable."""
+        assert hasattr(pyyaml_rs, "YamlSerializeError")
+
+    def test_yaml_type_error_exists(self):
+        """YamlTypeError should be importable."""
+        assert hasattr(pyyaml_rs, "YamlTypeError")
+
+    def test_parse_error_is_value_error(self):
+        """YamlParseError should inherit from ValueError."""
+        assert issubclass(pyyaml_rs.YamlParseError, ValueError)
+
+    def test_serialize_error_is_value_error(self):
+        """YamlSerializeError should inherit from ValueError."""
+        assert issubclass(pyyaml_rs.YamlSerializeError, ValueError)
+
+    def test_type_error_is_type_error(self):
+        """YamlTypeError should inherit from TypeError."""
+        assert issubclass(pyyaml_rs.YamlTypeError, TypeError)
+
+    def test_parse_error_can_be_caught(self):
+        """YamlParseError can be caught by except ValueError."""
+        try:
+            pyyaml_rs.parse("{{invalid yaml")
+        except ValueError:
+            pass  # Expected
+
+    def test_parse_error_is_custom_type(self):
+        """Raised parse error is specifically YamlParseError."""
+        try:
+            pyyaml_rs.parse("{{invalid yaml")
+        except pyyaml_rs.YamlParseError:
+            pass  # Expected
+        except Exception:
+            pytest.fail("Should raise YamlParseError, not generic exception")

@@ -6,6 +6,20 @@ This module provides type hints for the pyyaml_rs native module.
 
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, overload
 
+__version__: str
+
+class YamlParseError(ValueError):
+    """YAML parsing error (inherits from ValueError)."""
+    ...
+
+class YamlSerializeError(ValueError):
+    """YAML serialization error (inherits from ValueError)."""
+    ...
+
+class YamlTypeError(TypeError):
+    """YAML type conversion error (inherits from TypeError)."""
+    ...
+
 class YamlDocument:
     """
     A parsed YAML document.

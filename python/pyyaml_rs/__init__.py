@@ -15,6 +15,9 @@ Example:
 
 from .pyyaml_rs import (
     YamlDocument,
+    YamlParseError,
+    YamlSerializeError,
+    YamlTypeError,
     parse,
     parse_file,
     parse_all_docs,
@@ -31,6 +34,9 @@ from .pyyaml_rs import (
 
 __all__ = [
     "YamlDocument",
+    "YamlParseError",
+    "YamlSerializeError",
+    "YamlTypeError",
     "parse",
     "parse_file",
     "parse_all_docs",

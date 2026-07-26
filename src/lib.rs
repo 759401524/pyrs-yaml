@@ -18,6 +18,11 @@ use pyo3::types::PyDict;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+// 自定义 Python 异常类型
+pyo3::create_exception!(pyyaml_rs, YamlParseError, pyo3::exceptions::PyValueError);
+pyo3::create_exception!(pyyaml_rs, YamlSerializeError, pyo3::exceptions::PyValueError);
+pyo3::create_exception!(pyyaml_rs, YamlTypeError, pyo3::exceptions::PyTypeError);
+
 /// Python wrapper for the parsed YAML document.
 #[pyclass]
 struct YamlDocument {
@@ -176,7 +181,7 @@ impl YamlDocument {
                         Err(pyo3::exceptions::PyKeyError::new_err(format!("Key '{}' not found", key_str)))
                     }
                 } else {
-                    Err(pyo3::exceptions::PyTypeError::new_err("Key must be a string"))
+                    Err(YamlTypeError::new_err("Key must be a string"))
                 }
             }
             CustomNode::Sequence { items, .. } => {
@@ -187,10 +192,10 @@ impl YamlDocument {
                         Err(pyo3::exceptions::PyIndexError::new_err(format!("Index {} out of range (len={})", idx, items.len())))
                     }
                 } else {
-                    Err(pyo3::exceptions::PyTypeError::new_err("Index must be an integer"))
+                    Err(YamlTypeError::new_err("Index must be an integer"))
                 }
             }
-            _ => Err(pyo3::exceptions::PyTypeError::new_err("YamlDocument is not subscriptable")),
+            _ => Err(YamlTypeError::new_err("YamlDocument is not subscriptable")),
         }
     }
 }
@@ -223,14 +228,14 @@ fn parse(py: Python, yaml: &Bound<'_, pyo3::types::PyAny>, resolve_merges: bool)
         s
     } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
         String::from_utf8(bytes)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid UTF-8: {}", e)))?
+            .map_err(|e| YamlParseError::new_err(format!("Invalid UTF-8: {}", e)))?
     } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err("Expected str or bytes"));
+        return Err(YamlTypeError::new_err("Expected str or bytes"));
     };
 
     let ast = py.detach(|| {
         parser::parse_with_options(&yaml_str, resolve_merges).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+            YamlParseError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
     Ok(YamlDocument { ast })
@@ -255,7 +260,7 @@ fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
     let ast = py.detach(|| {
         parser::parse_with_options(&content, true).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+            YamlParseError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
     Ok(YamlDocument { ast })
@@ -384,7 +389,7 @@ fn node_to_pyobject_inner(
 fn parse_all_docs(py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
     let asts = py.detach(|| {
         parser::parse_all(yaml).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+            YamlParseError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
     Ok(asts.into_iter().map(|ast| YamlDocument { ast }).collect())
@@ -413,6 +418,11 @@ fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
 /// A Python module implemented in Rust.
 #[pymodule]
 fn pyyaml_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // 注册自定义异常类型
+    m.add("YamlParseError", m.py().get_type::<YamlParseError>())?;
+    m.add("YamlSerializeError", m.py().get_type::<YamlSerializeError>())?;
+    m.add("YamlTypeError", m.py().get_type::<YamlTypeError>())?;
+
     m.add_function(wrap_pyfunction!(parse, m)?)?;
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;
     m.add_function(wrap_pyfunction!(parse_all_docs, m)?)?;
@@ -445,7 +455,7 @@ fn pyyaml_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
     let ast = py.detach(|| {
         parser::parse(yaml).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+            YamlParseError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
     let mut anchors = HashMap::new();
@@ -470,7 +480,7 @@ fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
 fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
     let asts = py.detach(|| {
         parser::parse_all(yaml).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+            YamlParseError::new_err(format!("YAML parse error: {}", e))
         })
     })?;
     asts.iter().map(|ast| {
@@ -549,7 +559,7 @@ fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
 #[pyfunction]
 fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
     let json_value: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+        .map_err(|e| YamlParseError::new_err(format!("JSON parse error: {}", e)))?;
     let node = json_value_to_node(&json_value)?;
     Ok(serializer::to_yaml(&node))
 }
@@ -627,7 +637,7 @@ fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<Py<PyAny>>,
             if !frontmatter.is_empty() {
                 return Python::attach(|py| {
                     let ast = parser::parse(frontmatter).map_err(|e| {
-                        pyo3::exceptions::PyValueError::new_err(format!("YAML parse error: {}", e))
+                        YamlParseError::new_err(format!("YAML parse error: {}", e))
                     })?;
                     Ok((Some(node_to_pyobject(&ast, py)?), markdown_content.to_string()))
                 });
@@ -683,7 +693,7 @@ fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         return Ok(CustomNode::plain_scalar(s));
     }
 
-    Err(pyo3::exceptions::PyValueError::new_err("Unsupported Python type for YAML conversion"))
+    Err(YamlTypeError::new_err("Unsupported Python type for YAML conversion"))
 }
 
 #[cfg(test)]

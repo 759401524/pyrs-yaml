@@ -12,3 +12,7 @@ Reference/
 *.pyd
 *.pdb
 .mimocode/
+openspec/
+docs/superpowers/
+.comet/
+CLAUDE.md
