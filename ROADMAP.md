@@ -16,7 +16,7 @@
 
 ## Upcoming
 
-### v0.3.0 — In Progress
+### v0.3.0 — 2026-07-27 ✅
 - [ ] Multi-document YAML support (`parse_all_docs()`) — partial, refine error handling
 - [ ] Performance improvements — reduce serialization overhead for large documents
 - [ ] Additional i18n language packs — expand beyond zh-CN and en
