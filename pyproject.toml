@@ -41,14 +41,11 @@ features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "pyyaml_rs"
 
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-
-[[tool.uv.index]]
-url = "https://mirrors.cernet.edu.cn/pypi/web/simple"
-
 [dependency-groups]
 dev = [
+    "maturin>=1.0,<2.0",
+    "pytest>=8.0",
+    "pytest-benchmark>=4.0",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.7",
     "mkdocstrings-python>=1.18.2",
