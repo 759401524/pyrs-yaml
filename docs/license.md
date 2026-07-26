@@ -9,7 +9,7 @@ at your option.
 
 ## MIT License
 
-```
+```text
 Copyright (c) 2025 MuLong
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,7 +33,7 @@ SOFTWARE.
 
 ## Apache License, Version 2.0
 
-```
+```text
 Copyright 2025 MuLong
 
 Licensed under the Apache License, Version 2.0 (the "License");

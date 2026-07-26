@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2025-07-26
 
 ### Added
+
 - Flow collections (`{}`/`[]`) round-trip support with `flow_style` field on Mapping/Sequence AST nodes
 - `parse()` accepts both `str` and `bytes` input
 - `parse()` supports `resolve_merges` parameter to opt out of merge key expansion
@@ -21,12 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `__version__` attribute, `py.typed` PEP 561 marker
 
 ### Fixed
+
 - Alias resolution in `to_dict()` and `safe_load()` — aliases now resolve to referenced values instead of `None`
 - `safe_loads()` no longer uses naive `split("---")` — uses saphyr's document events
 - Mapping/Sequence tags no longer discarded during parsing
 - `format_scalar_for_key()` now handles Literal/Folded block scalar styles
 
 ### Changed
+
 - Upgraded PyO3 from 0.21 to 0.29
 - Replaced 15+ boilerplate `CustomNode` constructions with `plain_scalar()`/`plain_mapping()`/`plain_sequence()`/`plain_null()` constructors
 - Serializer extracted `write_anchor_tag()` and `write_inline_comment()` helpers
@@ -38,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-07-25
 
 ### Added
+
 - Initial release with YAML 1.2 compliance via saphyr-parser
 - Custom AST with full metadata (comments, anchors, tags, chomping, scalar styles)
 - Round-trip preservation of comments, anchors, tags, and formatting

@@ -4,7 +4,7 @@ pyyaml-rs uses a modular architecture designed for performance and correctness.
 
 ## Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                     Python Layer                        │
 │  ┌─────────────────────────────────────────────────────┐│
@@ -47,6 +47,7 @@ The **CustomNode** enum is the heart of pyyaml-rs:
 - **Alias** — alias reference (name only)
 
 **Why Custom AST?**
+
 - Standard YAML parsers discard metadata (comments, formatting)
 - Custom AST preserves everything needed for round-trip
 - Extensible for future features (custom node types, metadata)
@@ -62,6 +63,7 @@ Built on **saphyr-parser** (YAML 1.2 compliant):
 - **`yaml/types.rs`** — YAML 1.2 type resolution (null, bool, int, float)
 
 **Key Design Decisions:**
+
 - Event-based API (not token-based) — better for structured output
 - Two-pass parsing: first extract comments/anchors, then parse events
 - Merge key resolution happens after parsing (configurable)
@@ -76,6 +78,7 @@ Custom serializer that reconstructs YAML from the AST:
 - **`write_inline_comment()`** — Helper for inline comment output
 
 **Key Design Decisions:**
+
 - No third-party emitter — full control over output format
 - Indent-level state management for nested structures
 - Chomping indicator handling for block scalars
@@ -93,7 +96,7 @@ Inline `#[pymodule] mod pyyaml_rs` with:
 
 ### Parse Flow
 
-```
+```text
 YAML String
     │
     ▼
@@ -111,7 +114,7 @@ CustomNode (AST)
 
 ### Serialize Flow
 
-```
+```text
 CustomNode (AST)
     │
     ▼

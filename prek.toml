@@ -1,0 +1,67 @@
+# Prek configuration — Git hooks for pyyaml-rs
+# Run `prek install --prepare-hooks` to install the Git shims.
+# Run `prek run --all-files` to manually trigger all hooks.
+
+default_stages = ["pre-commit"]
+default_install_hook_types = ["pre-commit"]
+minimum_prek_version = "0.1.0"
+
+# Exclude generated and cache directories
+exclude = { glob = ["target/**", "dist/**", ".venv/**", ".pytest_cache/**", ".benchmarks/**", "site/**", "node_modules/**"] }
+
+# Priorities: format first, then lint, then tests
+[priorities]
+format = 0
+checks = 10
+
+# ── Built-in fast hooks (zero network, zero setup) ──────────────────────────
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-added-large-files", priority = "checks" },
+  { id = "check-merge-conflict", priority = "checks" },
+  { id = "check-yaml", priority = "checks" },
+  { id = "check-toml", priority = "checks" },
+  { id = "detect-private-key", priority = "checks" },
+  { id = "trailing-whitespace", priority = "format" },
+]
+
+# ── Rust: cargo fmt + clippy ────────────────────────────────────────────────
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt"
+language = "system"
+entry = "cargo fmt -- --check"
+files = "\\.(rs|toml|lock)$"
+pass_filenames = false
+priority = "format"
+
+[[repos.hooks]]
+id = "cargo-clippy"
+name = "cargo clippy"
+language = "system"
+entry = "cargo clippy -- -D warnings"
+files = "\\.(rs|toml|lock)$"
+pass_filenames = false
+priority = "checks"
+
+# ── Python: ruff lint + format ──────────────────────────────────────────────
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.16.0"
+hooks = [
+  { id = "ruff", args = ["--fix"], priority = "checks" },
+  { id = "ruff-format", priority = "format" },
+]
+
+# ── Markdown: rumdl lint + format ───────────────────────────────────────────
+[[repos]]
+repo = "https://github.com/rvben/rumdl-pre-commit"
+rev = "v0.2.43"
+hooks = [
+  { id = "rumdl", priority = "checks" },
+  { id = "rumdl-fmt", priority = "format" },
+]

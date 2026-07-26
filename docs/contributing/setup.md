@@ -38,7 +38,7 @@ cargo bench
 
 ## Project Structure
 
-```
+```text
 pyyaml-rs/
 ├── src/
 │   ├── lib.rs              # PyO3 module definition

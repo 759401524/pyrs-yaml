@@ -22,6 +22,7 @@ to_yaml() -> str
 **Returns:** The complete YAML document string, ending with a newline.
 
 **Example:**
+
 ```python
 doc = pyyaml_rs.parse("key: value")
 print(doc.to_yaml())  # key: value\n
@@ -41,12 +42,14 @@ to_yaml_with_options(
 ```
 
 **Parameters:**
+
 - `indent_size` — Spaces per indent level (default: 2)
 - `explicit_start` — Add `---` at document start (default: False)
 - `explicit_end` — Add `...` at document end (default: False)
 - `sort_keys` — Sort keys alphabetically (default: False)
 
 **Example:**
+
 ```python
 yaml_str = doc.to_yaml_with_options(
     indent_size=4,
@@ -66,6 +69,7 @@ to_dict() -> dict[str, Any] | list[Any]
 **Returns:** Native Python types. Anchors (`&name`) are inlined, aliases (`*name`) are replaced with actual values. Scalars are converted to Python native types (bool/int/float/str/None).
 
 **Example:**
+
 ```python
 data = doc.to_dict()
 print(data["key"])  # value
@@ -81,12 +85,14 @@ get(key: str, default: Any = None) -> Any
 ```
 
 **Parameters:**
+
 - `key` — The key to look up
 - `default` — Value to return if key not found (default: None)
 
 **Returns:** The value, or `default` if not found (or if root is not a mapping).
 
 **Example:**
+
 ```python
 value = doc.get("key")
 value = doc.get("missing", "fallback")
@@ -103,6 +109,7 @@ root_type() -> str
 **Returns:** One of `"scalar"`, `"mapping"`, `"sequence"`, `"null"`, `"alias"`.
 
 **Example:**
+
 ```python
 print(doc.root_type())  # "mapping"
 ```
@@ -119,6 +126,7 @@ doc[0]          # For sequences
 ```
 
 **Raises:**
+
 - `KeyError` — Key not found in mapping
 - `IndexError` — Index out of range for sequence
 - `TypeError` — Document not subscriptable

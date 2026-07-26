@@ -14,6 +14,7 @@ class YamlParseError(ValueError):
 **Inherits from:** `ValueError`
 
 **Example:**
+
 ```python
 try:
     doc = pyyaml_rs.parse("invalid: yaml: [")
@@ -23,6 +24,7 @@ except pyyaml_rs.YamlParseError as e:
 ```
 
 **Can be caught as:**
+
 ```python
 except ValueError as e:  # Also works
 ```
@@ -39,6 +41,7 @@ class YamlSerializeError(ValueError):
 **Inherits from:** `ValueError`
 
 **Example:**
+
 ```python
 try:
     yaml_str = pyyaml_rs.safe_dump(some_unsupported_type)
@@ -58,6 +61,7 @@ class YamlTypeError(TypeError):
 **Inherits from:** `TypeError`
 
 **Example:**
+
 ```python
 try:
     pyyaml_rs.parse(123)  # Expected str or bytes

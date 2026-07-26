@@ -51,7 +51,7 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 
 ## Summary
 
-### Choose pyyaml-rs when:
+### Choose pyyaml-rs when
 
 - **Performance matters** — 25–40× faster than PyYAML
 - **Round-trip preservation is critical** — preserves comments, anchors, tags
@@ -59,13 +59,13 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 - **You need type hints** — full `.pyi` stubs
 - **You want a single wheel** — ABI3 works across Python 3.9–3.13
 
-### Choose PyYAML when:
+### Choose PyYAML when
 
 - You're already using it and don't need round-trip preservation
 - You need maximum compatibility with existing code
 - Performance is not a concern
 
-### Choose ruamel.yaml when:
+### Choose ruamel.yaml when
 
 - You need the most feature-complete YAML parser
 - You're doing complex YAML manipulation
@@ -89,6 +89,7 @@ import pyyaml_rs as yaml
 ```
 
 Most code will work without changes. The main differences:
+
 1. Round-trip output will preserve comments and formatting
 2. Error messages are more detailed and can be localized
 3. Performance will be significantly better

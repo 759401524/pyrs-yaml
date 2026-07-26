@@ -13,16 +13,19 @@ parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```
 
 **Parameters:**
+
 - `yaml` — YAML content as `str` or `bytes`
 - `resolve_merges` — Whether to resolve merge keys (`<<: *alias`) after parsing (default: `True`)
 
 **Returns:** A `YamlDocument` containing the parsed YAML
 
 **Raises:**
+
 - `YamlParseError` — Invalid YAML syntax
 - `TypeError` — Input is not `str` or `bytes`
 
 **Example:**
+
 ```python
 doc = pyyaml_rs.parse("key: value")
 doc = pyyaml_rs.parse(b"key: value")
@@ -38,15 +41,18 @@ parse_file(path: str) -> YamlDocument
 ```
 
 **Parameters:**
+
 - `path` — Path to the YAML file
 
 **Returns:** A `YamlDocument`
 
 **Raises:**
+
 - `IOError` — File not found or unreadable
 - `YamlParseError` — Invalid YAML
 
 **Example:**
+
 ```python
 doc = pyyaml_rs.parse_file("config.yaml")
 ```
@@ -62,6 +68,7 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 **Returns:** A list of `YamlDocument` objects
 
 **Example:**
+
 ```python
 docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
 ```
@@ -79,6 +86,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 **Equivalent to:** `yaml.safe_load()` in PyYAML
 
 **Example:**
+
 ```python
 data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
 ```

@@ -49,6 +49,9 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.7",
     "mkdocstrings-python>=1.18.2",
+    "ruff>=0.14.0",
+    "rumdl>=0.2.43",
+    "prek>=0.1.0",
 ]
 
 [tool.pytest.ini_options]
@@ -64,3 +67,37 @@ filterwarnings = [
 ]
 log_cli = "true"
 log_cli_level = "WARNING"
+
+# =============================================================================
+# Ruff — Python linter (Markdown linting handled by rumdl)
+# =============================================================================
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+respect-gitignore = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "N", "B", "SIM", "LOG", "PYI", "PTH", "RUF"]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pyyaml_rs"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# =============================================================================
+# Prek — Git hooks runner (config lives in prek.toml)
+# =============================================================================

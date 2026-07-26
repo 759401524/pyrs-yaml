@@ -1,0 +1,25 @@
+# rumdl configuration — Markdown linting for pyyaml-rs
+# https://rumdl.dev/configuration/
+
+[global]
+extend-disable = ["MD013"]  # line length handled by general formatting
+
+exclude = [
+    ".git",
+    ".github",
+    "site",
+    "dist",
+    "target",
+    ".venv",
+    ".pytest_cache",
+    ".benchmarks",
+    "node_modules",
+]
+
+respect-gitignore = true
+
+[per-file-ignores]
+# CLAUDE.md: no H1 heading, uses <comet-ambient-resume> HTML tags
+"CLAUDE.md" = ["MD033", "MD041"]
+# AGENTS.md: uses <comet-ambient-resume> HTML tags
+"AGENTS.md" = ["MD033"]

@@ -29,6 +29,7 @@ serde_json = "1.0"
 ```
 
 🚨 **绝对禁止**：
+
 - **禁止** 使用 `serde_yaml`、`serde_yml` 或任何基于 `serde` 的 YAML 库。
 - **禁止** 使用 `yaml-rust2` 的高级 API `YamlLoader::load_from_str()`。
 
@@ -37,6 +38,7 @@ serde_json = "1.0"
 ## 3. 核心架构规范
 
 ### 3.1 自定义 AST (`src/ast.rs`)
+
 - **规则**：AST 节点 (`CustomNode`) 必须包含足够的元数据以支持 Round-Trip。
 - **必须包含的元数据**：
   - `ScalarStyle`：区分 Plain, SingleQuoted, DoubleQuoted, Literal (`|`), Folded (`>`)。
@@ -49,9 +51,11 @@ serde_json = "1.0"
 - **构造函数**：使用 `CustomNode::plain_scalar()` / `plain_mapping()` / `plain_sequence()` / `plain_null()` 创建无元数据的节点，禁止手动拼写 6 字段样板代码。
 
 ### 3.2 解析器 (`src/parser/`)
+
 - **规则**：基于 saphyr-parser 的 Event API 构建 AST。
 - **模块结构**（单一职责原则）：
-  ```
+
+  ```text
   src/parser/
   ├── mod.rs              # 核心解析逻辑 (AstReceiver), flow 风格检测
   └── yaml/
@@ -62,6 +66,7 @@ serde_json = "1.0"
   ```
 
 ### 3.3 序列化器 (`src/serializer.rs`)
+
 - **规则**：完全掌控输出格式，禁止依赖任何第三方 dump 函数。
 - **状态管理**：必须维护 `current_indent_level`（当前缩进层级）和 `indent_size`（每层空格数，通常为 2）。
 - **辅助方法**：使用 `write_anchor_tag()` / `write_inline_comment()` / `serialize_flow_value()` 等提取方法，避免重复代码。
@@ -71,13 +76,16 @@ serde_json = "1.0"
 ## 4. Rust 与 PyO3 编码规范
 
 ### 4.1 错误处理
+
 - **禁止** 在业务逻辑中使用 `.unwrap()` 或 `.expect()`。
 - **必须** 将所有可能失败的 Rust 操作映射为 Python 异常。
 
 ### 4.2 GIL 与性能
+
 - **规则**：在进行耗时的纯 Rust 计算时，**必须释放 Python GIL**。
 
 ### 4.3 文档规范
+
 - 所有公开函数必须有 `///` 文档注释
 - 包含 `# Arguments`、`# Returns`、`# Errors`、`# Examples` 部分
 - 使用 `cargo clippy -- -D warnings` 确保无警告
@@ -87,6 +95,7 @@ serde_json = "1.0"
 ## 5. 测试驱动开发
 
 ### 5.1 测试用例设计原则
+
 1. **Round-Trip 断言**：最核心的测试。
 2. **边缘情况覆盖**：特殊字符、多行字符串、锚点、空值等。
 
