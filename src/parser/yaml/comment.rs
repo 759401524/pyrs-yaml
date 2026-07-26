@@ -1,22 +1,37 @@
 
-/// A comment extracted from the raw YAML text
+/// 从原始 YAML 文本中提取的注释信息。
 #[derive(Debug, Clone)]
 pub struct RawComment {
+    /// 注释所在行（0 起始）
     pub line: usize,
+    /// 注释起始列（0 起始，`#` 字符的位置）
     pub col: usize,
+    /// 注释文本（不含 `#` 前缀和前导空格）
     pub text: String,
+    /// `true` 表示独立行注释（行首仅有注释），`false` 表示行尾注释
     pub standalone: bool,
 }
 
-/// An anchor extracted from the raw YAML text
+/// 从原始 YAML 文本中提取的锚点信息。
 #[derive(Debug, Clone)]
 pub struct RawAnchor {
+    /// 锚点所在行（0 起始）
     pub line: usize,
+    /// 锚点起始列（0 起始，`&` 字符的位置）
     pub col: usize,
+    /// 锚点名称（不含 `&` 前缀）
     pub name: String,
 }
 
-/// Extract comments from raw YAML text by scanning line by line
+/// 从原始 YAML 文本中逐行扫描提取所有注释。
+///
+/// 正确处理单引号和双引号内的 `#` 字符（视为字符串内容而非注释）。
+///
+/// # Arguments
+/// * `yaml` - 原始 YAML 文本。
+///
+/// # Returns
+/// 按行号和列号排序的 `RawComment` 列表。
 pub fn extract_comments(yaml: &str) -> Vec<RawComment> {
     let mut comments = Vec::new();
 
@@ -65,7 +80,16 @@ fn is_valid_anchor_char(c: char) -> bool {
     !c.is_whitespace() && c != '{' && c != '}' && c != '[' && c != ']' && c != ','
 }
 
-/// Extract anchors from raw YAML text
+/// 从原始 YAML 文本中逐行扫描提取所有锚点定义（`&name`）。
+///
+/// 支持非引号锚点名（字母、数字、`-`、`_`、`.`、`:`、`#` 等）和引号锚点名（`&"name"`）。
+/// 锚点名在遇到空白或流指示符（`{}[],`）时终止。
+///
+/// # Arguments
+/// * `yaml` - 原始 YAML 文本。
+///
+/// # Returns
+/// 按出现顺序排列的 `RawAnchor` 列表。
 pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
     let mut anchors = Vec::new();
 

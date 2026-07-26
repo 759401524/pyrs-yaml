@@ -1,6 +1,21 @@
 use crate::ast::Chomping;
 
-/// Unescape a double-quoted YAML string
+/// 反转义双引号 YAML 字符串中的转义序列。
+///
+/// 支持的转义序列：`\n`, `\r`, `\t`, `\\`, `\"`, `\/`, `\0`, `\a`, `\b`,
+/// `\f`, `\e`, `\ `（空格），行续接（`\` + 换行），`\uXXXX`（Unicode），`\UXXXXXXXX`（Unicode），`\xXX`（十六进制）。
+///
+/// # Arguments
+/// * `s` - 包含转义序列的字符串（不含外层双引号）。
+///
+/// # Returns
+/// 反转义后的字符串。
+///
+/// # Examples
+/// ```ignore
+/// assert_eq!(unescape_double_quoted(r#"hello\nworld"#), "hello\nworld");
+/// assert_eq!(unescape_double_quoted(r"\u0041"), "A");
+/// ```
 pub fn unescape_double_quoted(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars();
@@ -69,9 +84,16 @@ pub fn unescape_double_quoted(s: &str) -> String {
     result
 }
 
-/// Detect chomping indicator from raw YAML text
-/// The chomping indicator appears on the line before the block scalar content
-/// Looks for |- or |+ or >- or >+ patterns
+/// 从原始 YAML 文本中检测块标量的 chomping 指示符。
+///
+/// 从 `content_line`（0 起始）向上扫描，查找 `|-`、`|+`、`>-`、`>+` 或 `|`、`>` 模式。
+///
+/// # Arguments
+/// * `yaml` - 原始 YAML 文本。
+/// * `content_line` - 块标量内容起始行号（**0 起始**）。
+///
+/// # Returns
+/// 检测到的 `Chomping` 值：`Strip`（`-`）、`Keep`（`+`）或默认 `Clip`。
 pub fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
     let lines: Vec<&str> = yaml.lines().collect();
 

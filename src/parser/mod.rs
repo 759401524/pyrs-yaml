@@ -7,11 +7,40 @@ use saphyr_parser::{
 };
 use yaml::*;
 
+/// 使用 saphyr-parser 解析 YAML 字符串为 `CustomNode` AST。
+///
+/// # Arguments
+/// * `yaml` - YAML 内容字符串。
+///
+/// # Returns
+/// 成功时返回解析后的 AST 根节点，空内容返回 `Null` 节点。
+///
+/// # Errors
+/// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
+///
+/// # Examples
+/// ```ignore
+/// let ast = pyyaml_rs::parser::parse("key: value").unwrap();
+/// ```
+///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
     parse_with_options(yaml, true)
 }
 
+/// 使用选项解析 YAML 字符串。
+///
+/// # Arguments
+/// * `yaml` - YAML 内容字符串。
+/// * `resolve_merges` - 是否在解析后解析合并键（`<<`）。
+///   合并键会将源映射的键值对合并到目标映射中。
+///
+/// # Returns
+/// 成功时返回解析后的 AST 根节点。
+///
+/// # Errors
+/// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
+///
 /// Parse a YAML string with options
 pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode, String> {
     // Handle empty YAML
@@ -42,6 +71,18 @@ pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode
     Ok(node)
 }
 
+/// 解析包含多个 YAML 文档的字符串（以 `---` 分隔）。
+///
+/// # Arguments
+/// * `yaml` - 包含一个或多个 YAML 文档的字符串。
+///
+/// # Returns
+/// `CustomNode` 列表，每个文档对应一个元素。
+/// 空内容返回空列表，单文档也返回单元素列表。
+///
+/// # Errors
+/// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
+///
 /// Parse multiple YAML documents from a single string using saphyr document events
 pub fn parse_all(yaml: &str) -> Result<Vec<CustomNode>, String> {
     // Handle empty YAML
@@ -324,6 +365,7 @@ impl<'a> AstReceiver<'a> {
 }
 
 impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
+    /// 处理 saphyr 解析器事件，构建 AST 节点并管理解析栈。
     fn on_event(&mut self, event: Event<'a>, span: Span) {
         match event {
             Event::StreamStart

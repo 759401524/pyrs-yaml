@@ -16,6 +16,7 @@ use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Python wrapper for the parsed YAML document.
 #[pyclass]
@@ -25,10 +26,24 @@ struct YamlDocument {
 
 #[pymethods]
 impl YamlDocument {
+    /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
+    ///
+    /// # Returns
+    /// 完整的 YAML 文档字符串，末尾包含换行符。
     fn to_yaml(&self) -> String {
         serializer::to_yaml(&self.ast)
     }
 
+    /// 使用自定义选项将文档序列化为 YAML 字符串。
+    ///
+    /// # Arguments
+    /// * `indent_size` - 每层缩进的空格数，默认 2。
+    /// * `explicit_start` - 是否在文档开头添加 `---`。
+    /// * `explicit_end` - 是否在文档末尾添加 `...`。
+    /// * `sort_keys` - 是否按键名排序（不保留原始顺序）。
+    ///
+    /// # Returns
+    /// 完整的 YAML 文档字符串。
     #[pyo3(signature = (indent_size=2, explicit_start=false, explicit_end=false, sort_keys=false))]
     fn to_yaml_with_options(&self, indent_size: usize, explicit_start: bool, explicit_end: bool, sort_keys: bool) -> String {
         let options = serializer::SerializeOptions {
@@ -40,12 +55,26 @@ impl YamlDocument {
         serializer::to_yaml_with_options(&self.ast, &options)
     }
 
+    /// 将文档转换为 Python 字典/列表，自动解析锚点引用。
+    ///
+    /// 锚点（`&name`）指向的节点会被内联展开，别名（`*name`）会被替换为实际值。
+    /// 标量值会根据 YAML 1.2 类型规则自动转换为 Python 原生类型（bool/int/float/str/None）。
     fn to_dict(&self, py: Python) -> PyResult<Py<PyAny>> {
         let mut anchors = HashMap::new();
         collect_anchors(&self.ast, &mut anchors);
-        node_to_pyobject_with_anchors(&self.ast, py, &anchors)
+        let mut visited = HashSet::new();
+        node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited)
     }
 
+    /// 获取映射中指定键的值。
+    ///
+    /// # Arguments
+    /// * `key` - 要查找的键名（字符串）。
+    /// * `default` - 键不存在时返回的默认值，默认为 `None`。
+    ///
+    /// # Returns
+    /// 键对应的值，或 `default`（若未提供则返回 `None`）。
+    /// 如果根节点不是映射，也返回 `default`。
     #[pyo3(signature = (key, default=None))]
     fn get(&self, py: Python, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
         match &self.ast {
@@ -61,6 +90,10 @@ impl YamlDocument {
         }
     }
 
+    /// 返回文档根节点的类型名称。
+    ///
+    /// # Returns
+    /// 可能的返回值：`"scalar"`, `"mapping"`, `"sequence"`, `"null"`, `"alias"`。
     fn root_type(&self) -> String {
         match &self.ast {
             CustomNode::Scalar { .. } => "scalar".to_string(),
@@ -71,14 +104,23 @@ impl YamlDocument {
         }
     }
 
+    /// 返回调试表示字符串，格式为 `YamlDocument(<yaml>)`。
     fn __repr__(&self) -> String {
         format!("YamlDocument({})", self.to_yaml())
     }
 
+    /// 返回 YAML 字符串表示。
     fn __str__(&self) -> String {
         self.to_yaml()
     }
 
+    /// 检查映射是否包含指定键。
+    ///
+    /// # Arguments
+    /// * `key` - 要检查的键名。
+    ///
+    /// # Returns
+    /// 如果根节点是映射且包含该键返回 `true`，否则返回 `false`。
     fn __contains__(&self, key: &str) -> bool {
         match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
@@ -89,6 +131,10 @@ impl YamlDocument {
         }
     }
 
+    /// 返回映射的键值对数量或序列的元素数量。
+    ///
+    /// # Returns
+    /// 对于映射和序列返回元素数，其他类型返回 0。
     fn __len__(&self) -> usize {
         match &self.ast {
             CustomNode::Mapping { pairs, .. } => pairs.len(),
@@ -97,6 +143,7 @@ impl YamlDocument {
         }
     }
 
+    /// 迭代文档内容。映射迭代键，序列迭代值，其他类型返回空列表。
     fn __iter__<'py>(&self, _py: Python<'py>) -> PyResult<Py<PyAny>> {
         Python::attach(|py| match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
@@ -111,15 +158,22 @@ impl YamlDocument {
         })
     }
 
+    /// 通过下标访问文档内容。
+    ///
+    /// # Arguments
+    /// * `key` - 映射使用字符串键，序列使用整数索引。
+    ///
+    /// # Errors
+    /// 返回 `KeyError`（映射键不存在）、`IndexError`（索引越界）或 `TypeError`（类型不支持下标访问）。
     fn __getitem__<'py>(&self, py: Python<'py>, key: Py<PyAny>) -> PyResult<Py<PyAny>> {
         match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
                 if let Ok(key_str) = key.bind(py).extract::<String>() {
-                    let key_node = CustomNode::plain_scalar(key_str);
+                    let key_node = CustomNode::plain_scalar(key_str.clone());
                     if let Some(value) = pairs.get(&key_node) {
                         Ok(node_to_pyobject(value, py)?)
                     } else {
-                        Err(pyo3::exceptions::PyKeyError::new_err("Key not found"))
+                        Err(pyo3::exceptions::PyKeyError::new_err(format!("Key '{}' not found", key_str)))
                     }
                 } else {
                     Err(pyo3::exceptions::PyTypeError::new_err("Key must be a string"))
@@ -130,7 +184,7 @@ impl YamlDocument {
                     if idx < items.len() {
                         Ok(node_to_pyobject(&items[idx], py)?)
                     } else {
-                        Err(pyo3::exceptions::PyIndexError::new_err("Index out of range"))
+                        Err(pyo3::exceptions::PyIndexError::new_err(format!("Index {} out of range (len={})", idx, items.len())))
                     }
                 } else {
                     Err(pyo3::exceptions::PyTypeError::new_err("Index must be an integer"))
@@ -141,6 +195,26 @@ impl YamlDocument {
     }
 }
 
+/// 解析 YAML 字符串或字节流，返回 `YamlDocument` 对象。
+///
+/// # Arguments
+/// * `yaml` - YAML 内容，可以是 `str` 或 `bytes`（必须为有效 UTF-8）。
+/// * `resolve_merges` - 是否解析合并键（`<<`），默认为 `true`。
+///
+/// # Returns
+/// 解析后的 `YamlDocument` 对象，可进行序列化和类型查询。
+///
+/// # Errors
+/// 输入不是 `str`/`bytes` 时抛出 `TypeError`，
+/// UTF-8 编码无效时抛出 `ValueError`，
+/// YAML 语法错误时抛出 `ValueError`（包含行号和列号）。
+///
+/// # Examples
+/// ```python
+/// import pyyaml_rs
+/// doc = pyyaml_rs.parse("key: value")
+/// print(doc["key"])  # "value"
+/// ```
 /// Parse a YAML string or bytes into a YamlDocument.
 #[pyfunction]
 #[pyo3(signature = (yaml, resolve_merges=true))]
@@ -162,6 +236,18 @@ fn parse(py: Python, yaml: &Bound<'_, pyo3::types::PyAny>, resolve_merges: bool)
     Ok(YamlDocument { ast })
 }
 
+/// 解析 YAML 文件，返回 `YamlDocument` 对象。
+///
+/// # Arguments
+/// * `path` - YAML 文件的路径。
+///
+/// # Returns
+/// 解析后的 `YamlDocument` 对象。
+///
+/// # Errors
+/// 文件不存在或不可读时抛出 `IOError`，
+/// YAML 语法错误时抛出 `ValueError`。
+///
 /// Parse a YAML file.
 #[pyfunction]
 fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
@@ -175,7 +261,7 @@ fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
     Ok(YamlDocument { ast })
 }
 
-/// Collect all anchor→node mappings for alias resolution
+/// 递归遍历 AST，收集所有锚点到节点的映射，用于别名解析。
 fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<String, &'a CustomNode>) {
     if let Some(name) = node.anchor() {
         anchors.insert(name.to_string(), node);
@@ -196,35 +282,43 @@ fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<String, &'a C
     }
 }
 
-/// Convert a CustomNode to a Python object with alias resolution.
+/// 将 `CustomNode` 转换为 Python 对象，解析别名引用（`*alias`）为实际值。
 fn node_to_pyobject_with_anchors(
     node: &CustomNode,
     py: Python,
     anchors: &HashMap<String, &CustomNode>,
+    visited: &mut HashSet<usize>,
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Alias { name } => {
             if let Some(target) = anchors.get(name) {
-                node_to_pyobject_with_anchors(target, py, anchors)
+                let addr = std::ptr::addr_of!(*target) as usize;
+                if visited.contains(&addr) {
+                    return Ok(py.None());
+                }
+                visited.insert(addr);
+                node_to_pyobject_with_anchors(target, py, anchors, visited)
             } else {
                 Ok(py.None())
             }
         }
-        _ => node_to_pyobject_inner(node, py, anchors),
+        _ => node_to_pyobject_inner(node, py, anchors, visited),
     }
 }
 
-/// Convert a CustomNode to a Python object (no alias resolution).
+/// 将 `CustomNode` 转换为 Python 对象，不解析别名（别名节点返回 `None`）。
 fn node_to_pyobject(node: &CustomNode, py: Python) -> PyResult<Py<PyAny>> {
     let anchors = HashMap::new();
-    node_to_pyobject_inner(node, py, &anchors)
+    let mut visited = HashSet::new();
+    node_to_pyobject_inner(node, py, &anchors, &mut visited)
 }
 
-/// Inner conversion logic shared by both paths.
+/// 内部转换逻辑，被 `node_to_pyobject` 和 `node_to_pyobject_with_anchors` 共用。
 fn node_to_pyobject_inner(
     node: &CustomNode,
     py: Python,
     anchors: &HashMap<String, &CustomNode>,
+    visited: &mut HashSet<usize>,
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar { value, style, .. } => {
@@ -251,14 +345,18 @@ fn node_to_pyobject_inner(
                     CustomNode::Scalar { value, .. } => value.clone(),
                     _ => format!("{:?}", key),
                 };
-                dict.set_item(key_str, node_to_pyobject_with_anchors(value, py, anchors)?).ok();
+                // SAFETY: set_item only fails if key is unhashable or value type mismatch,
+                // which cannot happen here since we control both key (String) and value (Py<PyAny>) types
+                dict.set_item(key_str, node_to_pyobject_with_anchors(value, py, anchors, visited)?).ok();
             }
             Ok(dict.into_any().unbind())
         }
         CustomNode::Sequence { items, .. } => {
             let list = pyo3::types::PyList::empty(py);
             for item in items {
-                list.append(node_to_pyobject_with_anchors(item, py, anchors)?).ok();
+                // SAFETY: append only fails on type mismatch,
+                // which cannot happen here since we control the value (Py<PyAny>) type
+                list.append(node_to_pyobject_with_anchors(item, py, anchors, visited)?).ok();
             }
             Ok(list.into_any().unbind())
         }
@@ -270,6 +368,17 @@ fn node_to_pyobject_inner(
     }
 }
 
+/// 解析包含多个 YAML 文档的字符串（以 `---` 分隔）。
+///
+/// # Arguments
+/// * `yaml` - 包含一个或多个 YAML 文档的字符串。
+///
+/// # Returns
+/// `YamlDocument` 对象列表，每个文档对应一个元素。
+///
+/// # Errors
+/// YAML 语法错误时抛出 `ValueError`。
+///
 /// Parse multiple YAML documents from a string.
 #[pyfunction]
 fn parse_all_docs(py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
@@ -281,6 +390,16 @@ fn parse_all_docs(py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
     Ok(asts.into_iter().map(|ast| YamlDocument { ast }).collect())
 }
 
+/// 将 Python 对象序列化为 YAML 并写入文件。
+///
+/// # Arguments
+/// * `data` - 要序列化的 Python 对象（dict/list/str/int/float/bool/None）。
+/// * `path` - 输出文件路径。
+///
+/// # Errors
+/// 不支持的 Python 类型时抛出 `ValueError`，
+/// 文件写入失败时抛出 `IOError`。
+///
 /// Dump (serialize) a Python object to YAML and write to file.
 #[pyfunction]
 fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
@@ -310,6 +429,17 @@ fn pyyaml_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+/// PyYAML 兼容接口：解析 YAML 字符串并返回原生 Python 对象。
+///
+/// # Arguments
+/// * `yaml` - YAML 内容字符串。
+///
+/// # Returns
+/// 解析后的 Python 对象（dict/list/str/int/float/bool/None）。
+///
+/// # Errors
+/// YAML 语法错误时抛出 `ValueError`。
+///
 /// PyYAML compatible: safe_load(stream) -> dict/list
 #[pyfunction]
 fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
@@ -320,9 +450,21 @@ fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
     })?;
     let mut anchors = HashMap::new();
     collect_anchors(&ast, &mut anchors);
-    node_to_pyobject_with_anchors(&ast, py, &anchors)
+    let mut visited = HashSet::new();
+    node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited)
 }
 
+/// PyYAML 兼容接口：解析多个 YAML 文档并返回原生 Python 对象列表。
+///
+/// # Arguments
+/// * `yaml` - 包含一个或多个 YAML 文档的字符串。
+///
+/// # Returns
+/// Python 对象列表，每个文档对应一个元素。
+///
+/// # Errors
+/// YAML 语法错误时抛出 `ValueError`。
+///
 /// PyYAML compatible: safe_loads(stream) -> list of dict/list
 #[pyfunction]
 fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
@@ -334,10 +476,22 @@ fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
     asts.iter().map(|ast| {
         let mut anchors = HashMap::new();
         collect_anchors(ast, &mut anchors);
-        node_to_pyobject_with_anchors(ast, py, &anchors)
+        let mut visited = HashSet::new();
+        node_to_pyobject_with_anchors(ast, py, &anchors, &mut visited)
     }).collect()
 }
 
+/// PyYAML 兼容接口：将 Python 对象序列化为 YAML 字符串。
+///
+/// # Arguments
+/// * `data` - 要序列化的 Python 对象（dict/list/str/int/float/bool/None）。
+///
+/// # Returns
+/// 格式化的 YAML 字符串。
+///
+/// # Errors
+/// 不支持的 Python 类型时抛出 `ValueError`。
+///
 /// PyYAML compatible: safe_dump(data) -> str
 #[pyfunction]
 fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
@@ -345,12 +499,34 @@ fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
     Ok(serializer::to_yaml(&node))
 }
 
+/// PyYAML 兼容接口：将 Python 对象序列化为 YAML 字符串（`safe_dump` 的别名）。
+///
+/// # Arguments
+/// * `data` - 要序列化的 Python 对象。
+///
+/// # Returns
+/// 格式化的 YAML 字符串。
+///
+/// # Errors
+/// 不支持的 Python 类型时抛出 `ValueError`。
+///
 /// PyYAML compatible: safe_dumps(data) -> str
 #[pyfunction]
 fn safe_dumps(py: Python, data: Py<PyAny>) -> PyResult<String> {
     safe_dump(py, data)
 }
 
+/// 将 Python 字典/列表转换为 YAML 字符串。
+///
+/// # Arguments
+/// * `data` - Python 对象（dict/list/str/int/float/bool/None）。
+///
+/// # Returns
+/// 格式化的 YAML 字符串。
+///
+/// # Errors
+/// 不支持的 Python 类型时抛出 `ValueError`。
+///
 /// Convert a Python dict to YAML string.
 #[pyfunction]
 fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
@@ -358,6 +534,17 @@ fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
     Ok(serializer::to_yaml(&node))
 }
 
+/// 将 JSON 字符串转换为 YAML 字符串。
+///
+/// # Arguments
+/// * `json_str` - 合法的 JSON 字符串。
+///
+/// # Returns
+/// 等价的 YAML 格式字符串。
+///
+/// # Errors
+/// JSON 语法错误时抛出 `ValueError`。
+///
 /// Convert a JSON string to YAML string.
 #[pyfunction]
 fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
@@ -367,6 +554,7 @@ fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
     Ok(serializer::to_yaml(&node))
 }
 
+/// 将 `serde_json::Value` 转换为 `CustomNode` AST 节点。
 fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
     match value {
         serde_json::Value::Null => Ok(CustomNode::plain_null()),
@@ -394,6 +582,18 @@ fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
     }
 }
 
+/// 从 Markdown 文件中读取 YAML frontmatter（`---` 包裹的部分）。
+///
+/// # Arguments
+/// * `path` - Markdown 文件路径。
+///
+/// # Returns
+/// `(Option[dict], str)` 元组：第一个元素是解析后的 frontmatter 字典（无 frontmatter 时为 `None`），
+/// 第二个元素是去除 frontmatter 后的 Markdown 正文。
+///
+/// # Errors
+/// 文件读取失败时抛出 `IOError`，YAML frontmatter 语法错误时抛出 `ValueError`。
+///
 /// Read YAML frontmatter from a markdown file.
 #[pyfunction]
 fn read_markdown(py: Python, path: &str) -> PyResult<(Option<Py<PyAny>>, String)> {
@@ -402,6 +602,18 @@ fn read_markdown(py: Python, path: &str) -> PyResult<(Option<Py<PyAny>>, String)
     read_markdown_str(py, &content)
 }
 
+/// 从 Markdown 字符串中读取 YAML frontmatter（`---` 包裹的部分）。
+///
+/// # Arguments
+/// * `content` - Markdown 内容字符串。
+///
+/// # Returns
+/// `(Option[dict], str)` 元组：第一个元素是解析后的 frontmatter 字典（无 frontmatter 时为 `None`），
+/// 第二个元素是去除 frontmatter 后的 Markdown 正文。
+///
+/// # Errors
+/// YAML frontmatter 语法错误时抛出 `ValueError`。
+///
 /// Read YAML frontmatter from a markdown string.
 #[pyfunction]
 fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<Py<PyAny>>, String)> {
@@ -426,6 +638,7 @@ fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<Py<PyAny>>,
     Ok((None, content.to_string()))
 }
 
+/// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None。
 fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
     let obj = obj.bind(py);
 

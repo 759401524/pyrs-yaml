@@ -52,6 +52,7 @@ impl Serializer {
         }
     }
 
+    /// 写入锚点（`&name`）和标签（`!!type`）前缀。
     fn write_anchor_tag(&mut self, anchor: &Option<String>, tag: &Option<Tag>) {
         if let Some(anchor_name) = anchor {
             self.output.push('&');
@@ -64,6 +65,7 @@ impl Serializer {
         }
     }
 
+    /// 写入行内注释（`  # text`），跳过独立行注释。
     fn write_inline_comment(&mut self, comment: &Option<Comment>) {
         if let Some(c) = comment {
             if !c.standalone {
@@ -73,6 +75,7 @@ impl Serializer {
         }
     }
 
+    /// 核心递归序列化方法，处理所有节点类型的缩进和格式化。
     fn serialize_node_internal(
         &mut self,
         node: &CustomNode,
@@ -300,6 +303,7 @@ impl Serializer {
         }
     }
 
+    /// 根据标量风格和 chomping 指示符格式化标量值。
     fn format_scalar(&self, value: &str, style: &ScalarStyle, chomping: &Chomping) -> String {
         match style {
             ScalarStyle::Plain => self.format_plain_scalar(value),
@@ -310,6 +314,7 @@ impl Serializer {
         }
     }
 
+    /// 格式化映射键，非标量键返回 `"null"`。
     fn format_scalar_for_key(&self, node: &CustomNode) -> String {
         match node {
             CustomNode::Scalar { value, style, chomping, .. } => {
@@ -319,6 +324,7 @@ impl Serializer {
         }
     }
 
+    /// 格式化普通标量，需要时自动转为双引号风格。
     fn format_plain_scalar(&self, value: &str) -> String {
         // Check if the value needs quoting
         // Note: true/false/null/~ are valid plain scalars in YAML
@@ -342,12 +348,14 @@ impl Serializer {
         }
     }
 
+    /// 格式化单引号标量，单引号通过双写转义。
     fn format_single_quoted_scalar(&self, value: &str) -> String {
         // Escape single quotes by doubling them
         let escaped = value.replace('\'', "''");
         format!("'{}'", escaped)
     }
 
+    /// 格式化双引号标量，转义特殊字符和控制字符。
     fn format_double_quoted_scalar(&self, value: &str) -> String {
         let mut escaped = String::new();
         for c in value.chars() {
@@ -372,6 +380,7 @@ impl Serializer {
         format!("\"{}\"", escaped)
     }
 
+    /// 格式化字面量块标量（`|`），添加基础缩进。
     fn format_literal_scalar(&self, value: &str, chomping: &Chomping) -> String {
         let indicator = match chomping {
             Chomping::Strip => "|-",
@@ -381,6 +390,7 @@ impl Serializer {
         format!("{}\n{}", indicator, self.add_base_indent(value, 0))
     }
 
+    /// 格式化折叠块标量（`>`），添加基础缩进。
     fn format_folded_scalar(&self, value: &str, chomping: &Chomping) -> String {
         let indicator = match chomping {
             Chomping::Strip => ">-",
@@ -390,6 +400,7 @@ impl Serializer {
         format!("{}\n{}", indicator, self.add_base_indent(value, 0))
     }
 
+    /// 为块标量内容的每一行添加指定的基础缩进。
     fn add_base_indent(&self, value: &str, base_indent: usize) -> String {
         let indent = " ".repeat(base_indent + self.indent_size);
         value
@@ -405,10 +416,12 @@ impl Serializer {
             .join("\n")
     }
 
+    /// 写入指定缩进级别的空格。
     fn write_indent(&mut self, level: usize) {
         self.output.push_str(&" ".repeat(level * self.indent_size));
     }
 
+    /// 判断值节点是否需要换行显示（非 flow 风格的映射/序列）。
     fn needs_newline_for_value(&self, node: &CustomNode) -> bool {
         match node {
             CustomNode::Mapping { flow_style, .. } => !flow_style,
@@ -417,6 +430,7 @@ impl Serializer {
         }
     }
 
+    /// 判断序列项是否需要换行显示（映射或序列类型）。
     fn needs_newline_for_sequence_item(&self, node: &CustomNode) -> bool {
         matches!(
             node,
@@ -424,7 +438,7 @@ impl Serializer {
         )
     }
 
-    /// Serialize a value in flow context (no trailing newline)
+    /// 在 flow 上下文中序列化值（不追加换行符）。
     fn serialize_flow_value(&mut self, node: &CustomNode) {
         match node {
             CustomNode::Scalar { value, style, anchor, tag, .. } => {

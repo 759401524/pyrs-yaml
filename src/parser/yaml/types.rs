@@ -13,7 +13,31 @@ pub enum YamlType {
     Str(String),
 }
 
-/// Resolve a plain scalar to its YAML 1.2 type
+/// 将普通标量字符串解析为 YAML 1.2 类型。
+///
+/// 解析优先级（从高到低）：
+/// 1. Null（空字符串、`null`/`Null`/`NULL`/`~`）
+/// 2. Bool（`true`/`True`/`TRUE`/`false`/`False`/`FALSE`）
+/// 3. Infinity（`.inf`/`inf`/`-inf` 等，大小写不敏感）
+/// 4. NaN（`.nan`/`nan`/`NaN` 等）
+/// 5. 八进制整数（`0o` 前缀）
+/// 6. 十六进制整数（`0x` 前缀）
+/// 7. 浮点数（包含 `.` 或 `e`/`E`）
+/// 8. 十进制整数
+/// 9. 字符串（默认回退）
+///
+/// # Arguments
+/// * `value` - 待解析的标量字符串。
+///
+/// # Returns
+/// 解析后的 `YamlType` 枚举值。
+///
+/// # Examples
+/// ```ignore
+/// assert_eq!(resolve_yaml_type("null"), YamlType::Null);
+/// assert_eq!(resolve_yaml_type("42"), YamlType::Int(42));
+/// assert_eq!(resolve_yaml_type("hello"), YamlType::Str("hello".into()));
+/// ```
 pub fn resolve_yaml_type(value: &str) -> YamlType {
     let trimmed = value.trim();
 

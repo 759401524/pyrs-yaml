@@ -213,7 +213,23 @@ impl Hash for CustomNode {
 }
 
 impl CustomNode {
-    /// Create a plain scalar with default settings (no comment, anchor, tag; Clip chomping)
+    /// 创建一个无元数据的普通标量节点。
+    ///
+    /// 使用 `ScalarStyle::Plain` 和 `Chomping::Clip` 默认值，不附加注释、锚点或标签。
+    ///
+    /// # Arguments
+    /// * `value` - 标量文本值，支持任何实现了 `Into<String>` 的类型。
+    ///
+    /// # Returns
+    /// 返回一个 `CustomNode::Scalar` 变体，所有元数据字段为 `None`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::CustomNode;
+    ///
+    /// let node = CustomNode::plain_scalar("hello");
+    /// assert_eq!(node.comment(), None);
+    /// ```
     pub fn plain_scalar(value: impl Into<String>) -> Self {
         CustomNode::Scalar {
             value: value.into(),
@@ -225,7 +241,25 @@ impl CustomNode {
         }
     }
 
-    /// Create a block-style mapping with no metadata
+    /// 创建一个无元数据的块风格映射节点。
+    ///
+    /// 键值对顺序由 `IndexMap` 保证，不会进行排序或重新排列。
+    ///
+    /// # Arguments
+    /// * `pairs` - 保持插入顺序的键值对映射。
+    ///
+    /// # Returns
+    /// 返回一个 `CustomNode::Mapping` 变体，`flow_style` 为 `false`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::CustomNode;
+    /// use indexmap::IndexMap;
+    ///
+    /// let mut pairs = IndexMap::new();
+    /// pairs.insert(CustomNode::plain_scalar("key"), CustomNode::plain_scalar("value"));
+    /// let node = CustomNode::plain_mapping(pairs);
+    /// ```
     pub fn plain_mapping(pairs: IndexMap<CustomNode, CustomNode>) -> Self {
         CustomNode::Mapping {
             pairs,
@@ -236,7 +270,21 @@ impl CustomNode {
         }
     }
 
-    /// Create a block-style sequence with no metadata
+    /// 创建一个无元数据的块风格序列节点。
+    ///
+    /// # Arguments
+    /// * `items` - 序列中的子节点列表。
+    ///
+    /// # Returns
+    /// 返回一个 `CustomNode::Sequence` 变体，`flow_style` 为 `false`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::CustomNode;
+    ///
+    /// let items = vec![CustomNode::plain_scalar("a"), CustomNode::plain_scalar("b")];
+    /// let node = CustomNode::plain_sequence(items);
+    /// ```
     pub fn plain_sequence(items: Vec<CustomNode>) -> Self {
         CustomNode::Sequence {
             items,
@@ -247,7 +295,18 @@ impl CustomNode {
         }
     }
 
-    /// Create a null node with no metadata
+    /// 创建一个无元数据的空值节点。
+    ///
+    /// # Returns
+    /// 返回一个 `CustomNode::Null` 变体，所有元数据字段为 `None`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::CustomNode;
+    ///
+    /// let node = CustomNode::plain_null();
+    /// assert!(matches!(node, CustomNode::Null { .. }));
+    /// ```
     pub fn plain_null() -> Self {
         CustomNode::Null {
             comment: None,
@@ -256,7 +315,21 @@ impl CustomNode {
         }
     }
 
-    /// Get the comment attached to this node
+    /// 获取节点附加的注释。
+    ///
+    /// # Returns
+    /// 返回 `Some(&Comment)` 如果节点有注释，否则返回 `None`。
+    /// `Alias` 变体始终返回 `None`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::{CustomNode, Comment};
+    ///
+    /// let mut node = CustomNode::plain_scalar("value");
+    /// assert_eq!(node.comment(), None);
+    /// node.set_comment(Comment { text: "note".into(), standalone: false });
+    /// assert!(node.comment().is_some());
+    /// ```
     pub fn comment(&self) -> Option<&Comment> {
         match self {
             CustomNode::Scalar { comment, .. }
@@ -267,7 +340,21 @@ impl CustomNode {
         }
     }
 
-    /// Set the comment on this node
+    /// 设置节点的注释。
+    ///
+    /// # Arguments
+    /// * `new_comment` - 要附加的注释对象。
+    ///
+    /// 对 `Alias` 变体调用此方法是空操作。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::{CustomNode, Comment};
+    ///
+    /// let mut node = CustomNode::plain_scalar("hello");
+    /// node.set_comment(Comment { text: "greeting".into(), standalone: false });
+    /// assert_eq!(node.comment().unwrap().text, "greeting");
+    /// ```
     pub fn set_comment(&mut self, new_comment: Comment) {
         match self {
             CustomNode::Scalar { comment, .. }
@@ -280,7 +367,26 @@ impl CustomNode {
         }
     }
 
-    /// Get the anchor name if present
+    /// 获取节点的锚点名称。
+    ///
+    /// # Returns
+    /// 返回 `Some(&str)` 锚点名称，或 `None` 表示无锚点。
+    /// `Alias` 变体始终返回 `None`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::CustomNode;
+    ///
+    /// let node = CustomNode::Scalar {
+    ///     value: "42".into(),
+    ///     style: Default::default(),
+    ///     comment: None,
+    ///     anchor: Some("my_anchor".into()),
+    ///     tag: None,
+    ///     chomping: Default::default(),
+    /// };
+    /// assert_eq!(node.anchor(), Some("my_anchor"));
+    /// ```
     pub fn anchor(&self) -> Option<&str> {
         match self {
             CustomNode::Scalar { anchor, .. }
@@ -291,7 +397,26 @@ impl CustomNode {
         }
     }
 
-    /// Get the tag if present
+    /// 获取节点的 YAML 标签。
+    ///
+    /// # Returns
+    /// 返回 `Some(&Tag)` 如果节点有标签，否则返回 `None`。
+    /// `Alias` 变体始终返回 `None`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::{CustomNode, Tag};
+    ///
+    /// let node = CustomNode::Scalar {
+    ///     value: "42".into(),
+    ///     style: Default::default(),
+    ///     comment: None,
+    ///     anchor: None,
+    ///     tag: Some(Tag::primary("int")),
+    ///     chomping: Default::default(),
+    /// };
+    /// assert_eq!(node.tag().unwrap().suffix, "int");
+    /// ```
     pub fn tag(&self) -> Option<&Tag> {
         match self {
             CustomNode::Scalar { tag, .. }
@@ -302,7 +427,21 @@ impl CustomNode {
         }
     }
 
-    /// Set the tag on this node
+    /// 设置节点的 YAML 标签。
+    ///
+    /// # Arguments
+    /// * `new_tag` - 要附加的标签对象。
+    ///
+    /// 对 `Alias` 变体调用此方法是空操作。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::{CustomNode, Tag};
+    ///
+    /// let mut node = CustomNode::plain_scalar("42");
+    /// node.set_tag(Tag::primary("int"));
+    /// assert_eq!(node.tag().unwrap().suffix, "int");
+    /// ```
     pub fn set_tag(&mut self, new_tag: Tag) {
         match self {
             CustomNode::Scalar { tag, .. }
