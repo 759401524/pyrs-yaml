@@ -176,87 +176,87 @@ impl Serializer {
                     self.output.push('\n');
                 } else {
                     // Block style (original logic)
-                // Write anchor and tag if present (but not if in value context - they were already output)
-                if !in_value_context && (anchor.is_some() || tag.is_some()) {
-                    self.write_indent(indent_level);
-                    self.write_anchor_tag(anchor, tag);
-                    self.output.push('\n');
-                }
-
-                // Collect pairs, optionally sorted
-                let pairs_vec: Vec<(&CustomNode, &CustomNode)> = if self.sort_keys {
-                    let mut v: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
-                    v.sort_by(|a, b| {
-                        let ka = match a.0 {
-                            CustomNode::Scalar { value, .. } => value.as_str(),
-                            _ => "",
-                        };
-                        let kb = match b.0 {
-                            CustomNode::Scalar { value, .. } => value.as_str(),
-                            _ => "",
-                        };
-                        ka.cmp(kb)
-                    });
-                    v
-                } else {
-                    pairs.iter().collect()
-                };
-
-                for (i, (key, value)) in pairs_vec.iter().enumerate() {
-                    // Check if key is a complex key (mapping or sequence)
-                    let is_complex_key = matches!(
-                        key,
-                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-                    );
-
-                    if is_complex_key {
-                        // Complex key: use ? indicator
+                    // Write anchor and tag if present (but not if in value context - they were already output)
+                    if !in_value_context && (anchor.is_some() || tag.is_some()) {
                         self.write_indent(indent_level);
-                        self.output.push_str("? ");
-                        // For complex keys, we need to serialize at the same indent level
-                        // but the key content should be indented relative to the ?
-                        self.serialize_node_internal(key, indent_level, false, false);
-                    } else {
-                        // Simple key
-                        self.write_indent(indent_level);
-                        self.write_scalar_for_key(key);
+                        self.write_anchor_tag(anchor, tag);
+                        self.output.push('\n');
                     }
 
-                    self.output.push(':');
+                    // Collect pairs, optionally sorted
+                    let pairs_vec: Vec<(&CustomNode, &CustomNode)> = if self.sort_keys {
+                        let mut v: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
+                        v.sort_by(|a, b| {
+                            let ka = match a.0 {
+                                CustomNode::Scalar { value, .. } => value.as_str(),
+                                _ => "",
+                            };
+                            let kb = match b.0 {
+                                CustomNode::Scalar { value, .. } => value.as_str(),
+                                _ => "",
+                            };
+                            ka.cmp(kb)
+                        });
+                        v
+                    } else {
+                        pairs.iter().collect()
+                    };
 
-                    // Check if value needs to be on next line
-                    if self.needs_newline_for_value(value) || is_complex_key {
-                        // If the value node has an anchor or tag, write it after the colon
-                        if let Some(anchor_name) = value.anchor() {
-                            self.output.push_str(" &");
-                            self.output.push_str(anchor_name);
-                        }
-                        if let Some(t) = value.tag() {
-                            self.output.push(' ');
-                            self.output.push_str(&t.to_string());
-                        }
-                        self.output.push('\n');
-                        self.serialize_node_internal(
-                            value,
-                            indent_level + 1,
-                            i == pairs_vec.len() - 1,
-                            true,
+                    for (i, (key, value)) in pairs_vec.iter().enumerate() {
+                        // Check if key is a complex key (mapping or sequence)
+                        let is_complex_key = matches!(
+                            key,
+                            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
                         );
-                    } else {
-                        self.output.push(' ');
-                        self.serialize_node_internal(value, 0, i == pairs_vec.len() - 1, true);
-                    }
-                }
 
-                // Write mapping comment
-                if let Some(c) = comment {
-                    if !c.standalone {
-                        self.write_indent(indent_level);
-                        self.output.push_str("# ");
-                        self.output.push_str(&c.text);
-                        self.output.push('\n');
+                        if is_complex_key {
+                            // Complex key: use ? indicator
+                            self.write_indent(indent_level);
+                            self.output.push_str("? ");
+                            // For complex keys, we need to serialize at the same indent level
+                            // but the key content should be indented relative to the ?
+                            self.serialize_node_internal(key, indent_level, false, false);
+                        } else {
+                            // Simple key
+                            self.write_indent(indent_level);
+                            self.write_scalar_for_key(key);
+                        }
+
+                        self.output.push(':');
+
+                        // Check if value needs to be on next line
+                        if self.needs_newline_for_value(value) || is_complex_key {
+                            // If the value node has an anchor or tag, write it after the colon
+                            if let Some(anchor_name) = value.anchor() {
+                                self.output.push_str(" &");
+                                self.output.push_str(anchor_name);
+                            }
+                            if let Some(t) = value.tag() {
+                                self.output.push(' ');
+                                self.output.push_str(&t.to_string());
+                            }
+                            self.output.push('\n');
+                            self.serialize_node_internal(
+                                value,
+                                indent_level + 1,
+                                i == pairs_vec.len() - 1,
+                                true,
+                            );
+                        } else {
+                            self.output.push(' ');
+                            self.serialize_node_internal(value, 0, i == pairs_vec.len() - 1, true);
+                        }
                     }
-                }
+
+                    // Write mapping comment
+                    if let Some(c) = comment {
+                        if !c.standalone {
+                            self.write_indent(indent_level);
+                            self.output.push_str("# ");
+                            self.output.push_str(&c.text);
+                            self.output.push('\n');
+                        }
+                    }
                 } // end block style
             }
             CustomNode::Sequence {
@@ -356,9 +356,12 @@ impl Serializer {
     /// Write a scalar formatted as a mapping key.
     fn write_scalar_for_key(&mut self, node: &CustomNode) {
         match node {
-            CustomNode::Scalar { value, style, chomping, .. } => {
-                self.write_scalar(value, style, chomping)
-            }
+            CustomNode::Scalar {
+                value,
+                style,
+                chomping,
+                ..
+            } => self.write_scalar(value, style, chomping),
             _ => {
                 self.output.push_str("null");
             }
@@ -486,7 +489,13 @@ impl Serializer {
     /// 在 flow 上下文中序列化值（不追加换行符）。
     fn serialize_flow_value(&mut self, node: &CustomNode) {
         match node {
-            CustomNode::Scalar { value, style, anchor, tag, .. } => {
+            CustomNode::Scalar {
+                value,
+                style,
+                anchor,
+                tag,
+                ..
+            } => {
                 self.write_anchor_tag(anchor, tag);
                 self.write_scalar(value, style, &Chomping::Clip);
             }
@@ -494,7 +503,9 @@ impl Serializer {
                 self.write_anchor_tag(anchor, tag);
                 self.output.push_str("null");
             }
-            CustomNode::Mapping { pairs, anchor, tag, .. } => {
+            CustomNode::Mapping {
+                pairs, anchor, tag, ..
+            } => {
                 self.write_anchor_tag(anchor, tag);
                 self.output.push('{');
                 for (i, (key, value)) in pairs.iter().enumerate() {
@@ -507,7 +518,9 @@ impl Serializer {
                 }
                 self.output.push('}');
             }
-            CustomNode::Sequence { items, anchor, tag, .. } => {
+            CustomNode::Sequence {
+                items, anchor, tag, ..
+            } => {
                 self.write_anchor_tag(anchor, tag);
                 self.output.push('[');
                 for (i, item) in items.iter().enumerate() {

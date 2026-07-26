@@ -1,4 +1,3 @@
-
 /// 从原始 YAML 文本中提取的注释信息。
 #[derive(Debug, Clone)]
 pub struct RawComment {

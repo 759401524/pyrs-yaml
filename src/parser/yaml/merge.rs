@@ -154,8 +154,14 @@ mod tests {
         let prod = pairs.get(&make_scalar("prod")).unwrap();
         let prod_pairs = get_mapping(prod);
 
-        assert_eq!(get_scalar_value(prod_pairs.get(&make_scalar("timeout")).unwrap()), "30");
-        assert_eq!(get_scalar_value(prod_pairs.get(&make_scalar("host")).unwrap()), "x");
+        assert_eq!(
+            get_scalar_value(prod_pairs.get(&make_scalar("timeout")).unwrap()),
+            "30"
+        );
+        assert_eq!(
+            get_scalar_value(prod_pairs.get(&make_scalar("host")).unwrap()),
+            "x"
+        );
     }
 
     #[test]
@@ -168,9 +174,18 @@ mod tests {
         let current = pairs.get(&make_scalar("current")).unwrap();
         let current_pairs = get_mapping(current);
 
-        assert_eq!(get_scalar_value(current_pairs.get(&make_scalar("a")).unwrap()), "1");
-        assert_eq!(get_scalar_value(current_pairs.get(&make_scalar("b")).unwrap()), "2");
-        assert_eq!(get_scalar_value(current_pairs.get(&make_scalar("c")).unwrap()), "3");
+        assert_eq!(
+            get_scalar_value(current_pairs.get(&make_scalar("a")).unwrap()),
+            "1"
+        );
+        assert_eq!(
+            get_scalar_value(current_pairs.get(&make_scalar("b")).unwrap()),
+            "2"
+        );
+        assert_eq!(
+            get_scalar_value(current_pairs.get(&make_scalar("c")).unwrap()),
+            "3"
+        );
     }
 
     #[test]
@@ -184,8 +199,14 @@ mod tests {
         let derived_pairs = get_mapping(derived);
 
         // Local key overrides merged key
-        assert_eq!(get_scalar_value(derived_pairs.get(&make_scalar("x")).unwrap()), "1");
-        assert_eq!(get_scalar_value(derived_pairs.get(&make_scalar("y")).unwrap()), "99");
+        assert_eq!(
+            get_scalar_value(derived_pairs.get(&make_scalar("x")).unwrap()),
+            "1"
+        );
+        assert_eq!(
+            get_scalar_value(derived_pairs.get(&make_scalar("y")).unwrap()),
+            "99"
+        );
 
         // Verify order: merged keys first, then overrides
         let keys: Vec<&CustomNode> = derived_pairs.keys().collect();

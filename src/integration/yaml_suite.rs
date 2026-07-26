@@ -1,5 +1,4 @@
 /// Saphyr-parser against YAML test suite integration test
-
 use saphyr_parser::Parser;
 use std::path::Path;
 
@@ -59,10 +58,7 @@ fn test_yaml_test_suite() {
     eprintln!("  Total: {}", total);
     eprintln!("  Success: {}", success);
     eprintln!("  Failed: {}", total - success);
-    eprintln!(
-        "  Rate: {:.1}%",
-        success as f64 / total as f64 * 100.0
-    );
+    eprintln!("  Rate: {:.1}%", success as f64 / total as f64 * 100.0);
 
     if !errors.is_empty() {
         eprintln!("\nSample errors:");

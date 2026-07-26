@@ -161,10 +161,7 @@ mod tests {
 
     #[test]
     fn test_unescape_line_continuation() {
-        assert_eq!(
-            unescape_double_quoted("hello\\\n  world"),
-            "helloworld"
-        );
+        assert_eq!(unescape_double_quoted("hello\\\n  world"), "helloworld");
     }
 
     #[test]

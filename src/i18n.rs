@@ -262,8 +262,8 @@ fn parse_language_list(input: &str) -> Vec<String> {
 pub fn validate_translations() -> Result<(), String> {
     // 读取 en.yml 获取所有 key
     let en_path = concat!(env!("CARGO_MANIFEST_DIR"), "/locales/en.yml");
-    let en_content = std::fs::read_to_string(en_path)
-        .map_err(|e| format!("Failed to read en.yml: {}", e))?;
+    let en_content =
+        std::fs::read_to_string(en_path).map_err(|e| format!("Failed to read en.yml: {}", e))?;
 
     let en_keys: Vec<&str> = en_content
         .lines()
@@ -273,9 +273,7 @@ pub fn validate_translations() -> Result<(), String> {
         .collect();
 
     // 检查其他语言文件
-    let other_files = [
-        concat!(env!("CARGO_MANIFEST_DIR"), "/locales/zh-CN.yml"),
-    ];
+    let other_files = [concat!(env!("CARGO_MANIFEST_DIR"), "/locales/zh-CN.yml")];
 
     let mut errors = Vec::new();
 
@@ -295,10 +293,7 @@ pub fn validate_translations() -> Result<(), String> {
                 .collect();
 
             if !missing.is_empty() {
-                errors.push(format!(
-                    "Missing keys in {:?}: {:?}",
-                    file_path, missing
-                ));
+                errors.push(format!("Missing keys in {:?}: {:?}", file_path, missing));
             }
         } else {
             errors.push(format!("File not found: {:?}", file_path));
@@ -393,14 +388,8 @@ mod tests {
     #[test]
     fn test_negotiate_language_priority() {
         // 第一个匹配的语言优先
-        assert_eq!(
-            negotiate_language(&["zh-CN", "en"], "fr"),
-            "zh-CN"
-        );
-        assert_eq!(
-            negotiate_language(&["en", "zh-CN"], "fr"),
-            "en"
-        );
+        assert_eq!(negotiate_language(&["zh-CN", "en"], "fr"), "zh-CN");
+        assert_eq!(negotiate_language(&["en", "zh-CN"], "fr"), "en");
     }
 
     #[test]

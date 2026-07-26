@@ -134,7 +134,11 @@ mod tests {
             YamlType::Int(val) => val.to_string(),
             YamlType::Float(val) => {
                 if val.is_infinite() {
-                    if *val > 0.0 { ".inf".to_string() } else { "-.inf".to_string() }
+                    if *val > 0.0 {
+                        ".inf".to_string()
+                    } else {
+                        "-.inf".to_string()
+                    }
                 } else if val.is_nan() {
                     ".nan".to_string()
                 } else if *val == val.floor() && val.abs() < 1e15 {
@@ -204,29 +208,30 @@ mod tests {
     #[test]
     fn test_resolve_infinity_nan() {
         assert_eq!(resolve_yaml_type(".inf"), YamlType::Float(f64::INFINITY));
-        assert_eq!(resolve_yaml_type("-.inf"), YamlType::Float(f64::NEG_INFINITY));
+        assert_eq!(
+            resolve_yaml_type("-.inf"),
+            YamlType::Float(f64::NEG_INFINITY)
+        );
         assert!(resolve_yaml_type(".nan").is_nan_value());
         assert!(resolve_yaml_type("nan").is_nan_value());
     }
 
     #[test]
     fn test_resolve_string() {
-        assert_eq!(resolve_yaml_type("hello"), YamlType::Str("hello".to_string()));
-        assert_eq!(resolve_yaml_type("12abc"), YamlType::Str("12abc".to_string()));
+        assert_eq!(
+            resolve_yaml_type("hello"),
+            YamlType::Str("hello".to_string())
+        );
+        assert_eq!(
+            resolve_yaml_type("12abc"),
+            YamlType::Str("12abc".to_string())
+        );
     }
 
     #[test]
     fn test_format_roundtrip() {
         let cases = vec![
-            "null",
-            "true",
-            "false",
-            "42",
-            "-10",
-            "3.14",
-            ".inf",
-            "-.inf",
-            ".nan",
+            "null", "true", "false", "42", "-10", "3.14", ".inf", "-.inf", ".nan",
         ];
         for input in cases {
             let resolved = resolve_yaml_type(input);

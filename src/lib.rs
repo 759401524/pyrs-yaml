@@ -22,7 +22,11 @@ use std::collections::HashSet;
 
 // 自定义 Python 异常类型
 pyo3::create_exception!(pyyaml_rs, YamlParseError, pyo3::exceptions::PyValueError);
-pyo3::create_exception!(pyyaml_rs, YamlSerializeError, pyo3::exceptions::PyValueError);
+pyo3::create_exception!(
+    pyyaml_rs,
+    YamlSerializeError,
+    pyo3::exceptions::PyValueError
+);
 pyo3::create_exception!(pyyaml_rs, YamlTypeError, pyo3::exceptions::PyTypeError);
 
 /// A Python module implemented in Rust.
@@ -71,7 +75,13 @@ mod pyyaml_rs {
         /// # Returns
         /// 完整的 YAML 文档字符串。
         #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false) -> "str")]
-        fn to_yaml_with_options(&self, indent_size: usize, explicit_start: bool, explicit_end: bool, sort_keys: bool) -> String {
+        fn to_yaml_with_options(
+            &self,
+            indent_size: usize,
+            explicit_start: bool,
+            explicit_end: bool,
+            sort_keys: bool,
+        ) -> String {
             let options = super::serializer::SerializeOptions {
                 indent_size,
                 explicit_start,
@@ -186,7 +196,10 @@ mod pyyaml_rs {
                         .collect::<PyResult<Vec<_>>>()?;
                     Ok(values.into_pyobject(py)?.into_any().unbind())
                 }
-                _ => Ok(Vec::<Py<PyAny>>::new().into_pyobject(py)?.into_any().unbind()),
+                _ => Ok(Vec::<Py<PyAny>>::new()
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind()),
             })
         }
 
@@ -205,12 +218,16 @@ mod pyyaml_rs {
                         if let Some(value) = pairs.get(&key_node) {
                             Ok(node_to_pyobject(value, py)?)
                         } else {
-                            Err(pyo3::exceptions::PyKeyError::new_err(
-                                format_i18n_error("key-not-found", &[("key", key_str.as_str())]),
-                            ))
+                            Err(pyo3::exceptions::PyKeyError::new_err(format_i18n_error(
+                                "key-not-found",
+                                &[("key", key_str.as_str())],
+                            )))
                         }
                     } else {
-                        Err(YamlTypeError::new_err(format_i18n_error("key-not-string", &[])))
+                        Err(YamlTypeError::new_err(format_i18n_error(
+                            "key-not-string",
+                            &[],
+                        )))
                     }
                 }
                 CustomNode::Sequence { items, .. } => {
@@ -227,10 +244,16 @@ mod pyyaml_rs {
                             )))
                         }
                     } else {
-                        Err(YamlTypeError::new_err(format_i18n_error("index-not-integer", &[])))
+                        Err(YamlTypeError::new_err(format_i18n_error(
+                            "index-not-integer",
+                            &[],
+                        )))
                     }
                 }
-                _ => Err(YamlTypeError::new_err(format_i18n_error("not-subscriptable", &[]))),
+                _ => Err(YamlTypeError::new_err(format_i18n_error(
+                    "not-subscriptable",
+                    &[],
+                ))),
             }
         }
     }
@@ -297,26 +320,22 @@ mod pyyaml_rs {
         visited: &mut HashSet<usize>,
     ) -> PyResult<Py<PyAny>> {
         match node {
-            CustomNode::Scalar { value, style, .. } => {
-                match style {
-                    ast::ScalarStyle::Plain => {
-                        use parser::yaml::{resolve_yaml_type, YamlType};
-                        match resolve_yaml_type(value) {
-                            YamlType::Null => Ok(py.None()),
-                            YamlType::Bool(b) => {
-                                Ok(pyo3::types::PyBool::new(py, b)
-                                    .to_owned()
-                                    .into_any()
-                                    .unbind())
-                            }
-                            YamlType::Int(n) => Ok(n.into_pyobject(py)?.into_any().unbind()),
-                            YamlType::Float(f) => Ok(f.into_pyobject(py)?.into_any().unbind()),
-                            YamlType::Str(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
-                        }
+            CustomNode::Scalar { value, style, .. } => match style {
+                ast::ScalarStyle::Plain => {
+                    use parser::yaml::{resolve_yaml_type, YamlType};
+                    match resolve_yaml_type(value) {
+                        YamlType::Null => Ok(py.None()),
+                        YamlType::Bool(b) => Ok(pyo3::types::PyBool::new(py, b)
+                            .to_owned()
+                            .into_any()
+                            .unbind()),
+                        YamlType::Int(n) => Ok(n.into_pyobject(py)?.into_any().unbind()),
+                        YamlType::Float(f) => Ok(f.into_pyobject(py)?.into_any().unbind()),
+                        YamlType::Str(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
                     }
-                    _ => Ok(value.clone().into_pyobject(py)?.into_any().unbind()),
                 }
-            }
+                _ => Ok(value.clone().into_pyobject(py)?.into_any().unbind()),
+            },
             CustomNode::Mapping { pairs, .. } => {
                 let dict = PyDict::new(py);
                 for (key, value) in pairs {
@@ -388,7 +407,10 @@ mod pyyaml_rs {
             return Ok(CustomNode::plain_scalar(s));
         }
 
-        Err(YamlTypeError::new_err(format_i18n_error("unsupported-type", &[])))
+        Err(YamlTypeError::new_err(format_i18n_error(
+            "unsupported-type",
+            &[],
+        )))
     }
 
     /// 将 `serde_json::Value` 转换为 `CustomNode` AST 节点。
@@ -410,8 +432,10 @@ mod pyyaml_rs {
             }
             serde_json::Value::String(s) => Ok(CustomNode::plain_scalar(s.clone())),
             serde_json::Value::Array(arr) => {
-                let items: Vec<CustomNode> =
-                    arr.iter().map(json_value_to_node).collect::<Result<_, _>>()?;
+                let items: Vec<CustomNode> = arr
+                    .iter()
+                    .map(json_value_to_node)
+                    .collect::<Result<_, _>>()?;
                 Ok(CustomNode::plain_sequence(items))
             }
             serde_json::Value::Object(map) => {
@@ -435,15 +459,25 @@ mod pyyaml_rs {
         let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
             s
         } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
-            String::from_utf8(bytes)
-                .map_err(|e| YamlParseError::new_err(format_i18n_error("invalid-utf8", &[("detail", &e.to_string())])))?
+            String::from_utf8(bytes).map_err(|e| {
+                YamlParseError::new_err(format_i18n_error(
+                    "invalid-utf8",
+                    &[("detail", &e.to_string())],
+                ))
+            })?
         } else {
-            return Err(YamlTypeError::new_err(format_i18n_error("expected-str-or-bytes", &[])));
+            return Err(YamlTypeError::new_err(format_i18n_error(
+                "expected-str-or-bytes",
+                &[],
+            )));
         };
 
         let ast = py.detach(|| {
             super::parser::parse_with_options(&yaml_str, resolve_merges).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error("yaml-parse-error", &[("detail", &e.to_string())]))
+                YamlParseError::new_err(format_i18n_error(
+                    "yaml-parse-error",
+                    &[("detail", &e.to_string())],
+                ))
             })
         })?;
         Ok(YamlDocument { ast })
@@ -454,10 +488,17 @@ mod pyyaml_rs {
     #[pyo3(signature = (path: "str") -> "YamlDocument")]
     fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
         let ast = py.detach(|| {
-            let content = std::fs::read_to_string(path)
-                .map_err(|e| pyo3::exceptions::PyIOError::new_err(format_i18n_error("file-read-error", &[("detail", &e.to_string()), ("path", path)])))?;
+            let content = std::fs::read_to_string(path).map_err(|e| {
+                pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                    "file-read-error",
+                    &[("detail", &e.to_string()), ("path", path)],
+                ))
+            })?;
             super::parser::parse_with_options(&content, true).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error("yaml-parse-error", &[("detail", &e.to_string())]))
+                YamlParseError::new_err(format_i18n_error(
+                    "yaml-parse-error",
+                    &[("detail", &e.to_string())],
+                ))
             })
         })?;
         Ok(YamlDocument { ast })
@@ -469,7 +510,10 @@ mod pyyaml_rs {
     fn parse_all_docs(py: Python, yaml: &str, resolve_merges: bool) -> PyResult<Vec<YamlDocument>> {
         let asts = py.detach(|| {
             super::parser::parse_all_with_options(yaml, resolve_merges).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error("yaml-parse-error", &[("detail", &e.to_string())]))
+                YamlParseError::new_err(format_i18n_error(
+                    "yaml-parse-error",
+                    &[("detail", &e.to_string())],
+                ))
             })
         })?;
         Ok(asts.into_iter().map(|ast| YamlDocument { ast }).collect())
@@ -481,7 +525,10 @@ mod pyyaml_rs {
     fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
         let ast = py.detach(|| {
             super::parser::parse(yaml).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error("yaml-parse-error", &[("detail", &e.to_string())]))
+                YamlParseError::new_err(format_i18n_error(
+                    "yaml-parse-error",
+                    &[("detail", &e.to_string())],
+                ))
             })
         })?;
         let mut anchors = HashMap::new();
@@ -496,7 +543,10 @@ mod pyyaml_rs {
     fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
         let asts = py.detach(|| {
             super::parser::parse_all(yaml).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error("yaml-parse-error", &[("detail", &e.to_string())]))
+                YamlParseError::new_err(format_i18n_error(
+                    "yaml-parse-error",
+                    &[("detail", &e.to_string())],
+                ))
             })
         })?;
         asts.iter()
@@ -536,8 +586,12 @@ mod pyyaml_rs {
     #[pyfunction]
     #[pyo3(signature = (json_str: "str") -> "str")]
     fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
-        let json_value: serde_json::Value = serde_json::from_str(json_str)
-            .map_err(|e| YamlParseError::new_err(format_i18n_error("json-parse-error", &[("detail", &e.to_string())])))?;
+        let json_value: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+            YamlParseError::new_err(format_i18n_error(
+                "json-parse-error",
+                &[("detail", &e.to_string())],
+            ))
+        })?;
         let node = json_value_to_node(&json_value)?;
         Ok(super::serializer::to_yaml(&node))
     }
@@ -548,8 +602,12 @@ mod pyyaml_rs {
     fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
         let node = pyobject_to_node(py, &data)?;
         let yaml = super::serializer::to_yaml(&node);
-        std::fs::write(path, yaml)
-            .map_err(|e| pyo3::exceptions::PyIOError::new_err(format_i18n_error("file-write-error", &[("detail", &e.to_string()), ("path", path)])))?;
+        std::fs::write(path, yaml).map_err(|e| {
+            pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                "file-write-error",
+                &[("detail", &e.to_string()), ("path", path)],
+            ))
+        })?;
         Ok(())
     }
 
@@ -558,8 +616,12 @@ mod pyyaml_rs {
     #[pyo3(signature = (path: "str") -> "tuple[dict[str, Any] | None, str]")]
     fn read_markdown(py: Python, path: &str) -> PyResult<(Option<Py<PyAny>>, String)> {
         let content = py.detach(|| {
-            std::fs::read_to_string(path)
-                .map_err(|e| pyo3::exceptions::PyIOError::new_err(format_i18n_error("file-read-error", &[("detail", &e.to_string()), ("path", path)])))
+            std::fs::read_to_string(path).map_err(|e| {
+                pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                    "file-read-error",
+                    &[("detail", &e.to_string()), ("path", path)],
+                ))
+            })
         })?;
         read_markdown_str(py, &content)
     }
@@ -578,9 +640,15 @@ mod pyyaml_rs {
                 if !frontmatter.is_empty() {
                     return Python::attach(|py| {
                         let ast = super::parser::parse(frontmatter).map_err(|e| {
-                            YamlParseError::new_err(format_i18n_error("yaml-parse-error", &[("detail", &e.to_string())]))
+                            YamlParseError::new_err(format_i18n_error(
+                                "yaml-parse-error",
+                                &[("detail", &e.to_string())],
+                            ))
                         })?;
-                        Ok((Some(node_to_pyobject(&ast, py)?), markdown_content.to_string()))
+                        Ok((
+                            Some(node_to_pyobject(&ast, py)?),
+                            markdown_content.to_string(),
+                        ))
                     });
                 }
             }
@@ -594,10 +662,13 @@ mod pyyaml_rs {
     #[pyo3(signature = (lang: "str") -> "None")]
     fn set_language(lang: &str) -> PyResult<()> {
         i18n::set_language(lang).map_err(|_| {
-            pyo3::exceptions::PyValueError::new_err(format_i18n_error("unsupported-language", &[
-                ("lang", lang),
-                ("supported", &format!("{:?}", i18n::SUPPORTED_LANGUAGES)),
-            ]))
+            pyo3::exceptions::PyValueError::new_err(format_i18n_error(
+                "unsupported-language",
+                &[
+                    ("lang", lang),
+                    ("supported", &format!("{:?}", i18n::SUPPORTED_LANGUAGES)),
+                ],
+            ))
         })
     }
 

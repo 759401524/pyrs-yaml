@@ -378,9 +378,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
     /// 处理 saphyr 解析器事件，构建 AST 节点并管理解析栈。
     fn on_event(&mut self, event: Event<'a>, span: Span) {
         match event {
-            Event::StreamStart
-            | Event::StreamEnd
-            | Event::DocumentStart(_) => {
+            Event::StreamStart | Event::StreamEnd | Event::DocumentStart(_) => {
                 // Ignore these events
             }
             Event::DocumentEnd => {
@@ -461,7 +459,11 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::MappingEnd => {
                 if let Some(ParseState::Mapping {
-                    pairs, anchor_id, tag, flow_style, ..
+                    pairs,
+                    anchor_id,
+                    tag,
+                    flow_style,
+                    ..
                 }) = self.stack.pop()
                 {
                     // Get anchor name from self.anchors
@@ -511,7 +513,11 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::SequenceEnd => {
                 if let Some(ParseState::Sequence {
-                    items, anchor_id, tag, flow_style, ..
+                    items,
+                    anchor_id,
+                    tag,
+                    flow_style,
+                    ..
                 }) = self.stack.pop()
                 {
                     // Get anchor name from self.anchors
