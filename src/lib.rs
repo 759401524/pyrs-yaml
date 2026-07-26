@@ -261,10 +261,11 @@ fn parse(py: Python, yaml: &Bound<'_, pyo3::types::PyAny>, resolve_merges: bool)
 ///
 /// Parse a YAML file.
 #[pyfunction]
+#[pyo3(signature = (path))]
 fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
     let ast = py.detach(|| {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
         parser::parse_with_options(&content, true).map_err(|e| {
             YamlParseError::new_err(msg("yaml-parse-error", &[("detail", &e.to_string())]))
         })
@@ -392,6 +393,7 @@ fn node_to_pyobject_inner(
 ///
 /// Parse multiple YAML documents from a string.
 #[pyfunction]
+#[pyo3(signature = (yaml))]
 fn parse_all_docs(py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
     let asts = py.detach(|| {
         parser::parse_all(yaml).map_err(|e| {
@@ -413,6 +415,7 @@ fn parse_all_docs(py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
 ///
 /// Dump (serialize) a Python object to YAML and write to file.
 #[pyfunction]
+#[pyo3(signature = (data, path))]
 fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
     let node = pyobject_to_node(py, &data)?;
     let yaml = serializer::to_yaml(&node);
@@ -442,6 +445,7 @@ fn set_language(lang: &str) -> PyResult<()> {
 
 /// 获取当前错误消息语言。
 #[pyfunction]
+#[pyo3(signature = ())]
 fn get_language() -> &'static str {
     i18n::get_language()
 }
@@ -487,6 +491,7 @@ fn pyyaml_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///
 /// PyYAML compatible: safe_load(stream) -> dict/list
 #[pyfunction]
+#[pyo3(signature = (yaml))]
 fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
     let ast = py.detach(|| {
         parser::parse(yaml).map_err(|e| {
@@ -512,6 +517,7 @@ fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
 ///
 /// PyYAML compatible: safe_loads(stream) -> list of dict/list
 #[pyfunction]
+#[pyo3(signature = (yaml))]
 fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
     let asts = py.detach(|| {
         parser::parse_all(yaml).map_err(|e| {
@@ -539,6 +545,7 @@ fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
 ///
 /// PyYAML compatible: safe_dump(data) -> str
 #[pyfunction]
+#[pyo3(signature = (data))]
 fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
     let node = pyobject_to_node(py, &data)?;
     Ok(serializer::to_yaml(&node))
@@ -557,6 +564,7 @@ fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
 ///
 /// PyYAML compatible: safe_dumps(data) -> str
 #[pyfunction]
+#[pyo3(signature = (data))]
 fn safe_dumps(py: Python, data: Py<PyAny>) -> PyResult<String> {
     safe_dump(py, data)
 }
@@ -574,6 +582,7 @@ fn safe_dumps(py: Python, data: Py<PyAny>) -> PyResult<String> {
 ///
 /// Convert a Python dict to YAML string.
 #[pyfunction]
+#[pyo3(signature = (data))]
 fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
     let node = pyobject_to_node(py, &data)?;
     Ok(serializer::to_yaml(&node))
@@ -592,6 +601,7 @@ fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
 ///
 /// Convert a JSON string to YAML string.
 #[pyfunction]
+#[pyo3(signature = (json_str))]
 fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
     let json_value: serde_json::Value = serde_json::from_str(json_str)
         .map_err(|e| YamlParseError::new_err(msg("json-parse-error", &[("detail", &e.to_string())])))?;
@@ -641,9 +651,12 @@ fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
 ///
 /// Read YAML frontmatter from a markdown file.
 #[pyfunction]
+#[pyo3(signature = (path))]
 fn read_markdown(py: Python, path: &str) -> PyResult<(Option<Py<PyAny>>, String)> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+    let content = py.detach(|| {
+        std::fs::read_to_string(path)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))
+    })?;
     read_markdown_str(py, &content)
 }
 
@@ -661,6 +674,7 @@ fn read_markdown(py: Python, path: &str) -> PyResult<(Option<Py<PyAny>>, String)
 ///
 /// Read YAML frontmatter from a markdown string.
 #[pyfunction]
+#[pyo3(signature = (content))]
 fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<Py<PyAny>>, String)> {
     let content = content.trim_start();
 
