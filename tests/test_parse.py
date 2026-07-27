@@ -264,3 +264,27 @@ class TestComments:
         output = doc.to_yaml()
         assert "# Comment" in output
         assert "# inline" in output
+
+
+# ============================================================================
+# Multi-document Parsing
+# ============================================================================
+
+
+class TestParseAllDocs:
+    """Test parse_all_docs function"""
+
+    def test_parse_all_docs_single(self):
+        docs = pyyaml_rs.parse_all_docs("key: value")
+        assert len(docs) == 1
+        assert docs[0].get("key") == "value"
+
+    def test_parse_all_docs_multiple(self):
+        docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
+        assert len(docs) == 2
+        assert docs[0].get("a") == 1
+        assert docs[1].get("b") == 2
+
+    def test_parse_all_docs_empty(self):
+        docs = pyyaml_rs.parse_all_docs("")
+        assert len(docs) == 0
