@@ -1,44 +1,73 @@
 # Roadmap
 
+All versions are tracked here with release dates and delivered features.
+
+---
+
 ## Released
+
+### v0.4.0 — 2026-07-27 ✅
+
+- **Version unification** — `Cargo.toml` is the single source of truth; `pyproject.toml` uses `dynamic = ["version"]`; `__version__` uses `importlib.metadata`
+- **132 gap-filling tests** across all public APIs (i18n, bytes, unicode, flow collections, merge keys, anchor on non-scalar nodes, etc.)
+- **i18n function tests** — `set_language`, `get_language`, `list_languages`, `detect_language`, `negotiate_language`
+- **`parse_all_docs`** dedicated test suite and test coverage for `parse_file`, `to_yaml_with_options`, `to_dict`, `YamlDocument` dunder methods
+- **`safe_load`/`safe_loads`** feature coverage — anchors, merge keys, block scalars, flow collections, special floats, type resolution
+- **YAML Test Suite individual case tests** — octal, hex, scientific notation, NaN, infinity, merge keys, block scalar strip, flow collections
+- **Pre-commit hooks** — `ruff`, `cargo fmt`, `cargo clippy`, markdown linting via `prek`
+
+### v0.3.0 — 2025-07-27 ✅
+
+- **NumPy ndarray serialization** — `safe_dump()`/`safe_dumps()`/`from_dict()`/`dump_file()` support `numpy.ndarray` of all dimensions (0-D through N-D)
+  - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
+  - Zero-copy Rust dispatch via `numpy` crate (`PyUntypedArray` + `PyArrayDyn`)
+  - GIL released during slice iteration for large arrays
+  - Complex numbers serialized as `(re+imj)` strings
+- **Flow collections** (`{}`/`[]`) round-trip with `flow_style` field on AST nodes
+- **Quoted scalars** — `quoted_scalar()` constructor, negative number round-trip fixed
+- **`parse()` accepts `bytes`**, `parse_all_docs()`, `to_yaml_with_options()`
+- **`resolve_merges`** parameter to control merge key expansion
+- **Comprehensive NumPy test suite** — 42 tests across all dtypes and dimensions
+- **CI matrix** (3 OS × 4 Python versions), Criterion benchmarks, full `.pyi` stubs
 
 ### v0.2.0 — 2025-07-26 ✅
 
-- Flow collections (`{}`/`[]`) round-trip
-- `parse()` accepts `str` and `bytes`; `resolve_merges` option
-- `to_yaml_with_options()` with indent, start/end markers, sort_keys
+- Flow collections round-trip, `parse()` accepts `str`/`bytes`, `resolve_merges` option
+- `to_yaml_with_options()` with indent/start/end markers/sort_keys
 - `get()` default values, `dump_file()`, `parse_all_docs()`
-- Criterion benchmarks, CI matrix, i18n, `read_markdown`, `from_json`, `from_dict`
-- Inline `#[pymodule]` for `pyo3-introspection` compatibility
-- All `#[pyo3(signature)]` attributes with Python type annotations
-- `experimental-inspect` feature enabled
-- Full `.pyi` stubs with type annotations
-- Anchor name parsing expanded to full YAML 1.2 spec
+- Criterion benchmarks, i18n (`zh-CN`, `en`), `read_markdown`, `from_json`, `from_dict`
+- All `#[pyo3(signature)]` attributes, `py.typed` PEP 561 marker
 
-## Upcoming
+### v0.1.0 — 2025-07-25 ✅
 
-### v0.3.0 — 2026-07-27 ✅
+- Initial release with saphyr-parser (YAML 1.2, 98.1% test suite pass rate)
+- Custom AST with full round-trip metadata (comments, anchors, tags, chomping, scalar styles)
+- PyYAML-compatible API (`safe_load`/`safe_dump`), `from_dict`/`from_json`, `read_markdown`
+- Block scalars with chomping, escape sequences, complex keys, merge key resolution
 
-- [ ] Multi-document YAML support (`parse_all_docs()`) — partial, refine error handling
-- [ ] Performance improvements — reduce serialization overhead for large documents
-- [ ] Additional i18n language packs — expand beyond zh-CN and en
+---
 
-### v0.4.0 — Planned
+## In Progress
 
-- [ ] **NumPy array support** — native `numpy.ndarray` serialization/deserialization via `__array_interface__` or `__array_struct__` hook
-  - Parse YAML with `!!numpy/ndarray` tag to reconstruct arrays
-  - Serialize NumPy arrays preserving dtype, shape, and memory layout
-  - Support for array slicing, strided views, and structured dtypes
-  - [Reference](https://numpy.org/doc/stable/reference/arrays.interface.html)
+### v0.5.0 — Planned
 
-### v0.5.0 — Future
+- **YAML 1.2 schema profiles** — restrict/extend type resolution per use case (e.g., strict mode for config files)
+- **Custom tag ecosystem** — plugin system for user-defined YAML tags with Python callbacks
+- **Streaming parser** — event-based low-memory parsing for multi-GB YAML documents via `saphyr-parser` event API
+- **WASM build target** — `wasm32-unknown-unknown` compilation via maturin, enabling browser/WASM execution
+- **Async serialization** — non-blocking `safe_dump_async()` for large documents using Python coroutines
 
-- [ ] Schema validation — JSON Schema-like validation for YAML documents
-- [ ] Streaming parser — low-memory parsing for multi-GB YAML files
-- [ ] Custom tag ecosystem — plugin system for user-defined YAML tags
+### v0.6.0 — Research / Future
+
+- **JSON Schema ↔ YAML schema validation** — declarative document validation layer
+- **Incremental re-parse** — modify a subset of a parsed document without re-serializing the whole tree
+- **Faster round-trip** — optimize serializer hot-path for block-style output (target: 50× over PyYAML)
+
+---
 
 ## Research
 
-- [ ] WebAssembly build target — run pyyaml-rs in browser/WASM environments
-- [ ] Async serialization — non-blocking `to_yaml_async()` for large documents
-- [ ] YAML 1.2 schema profiles — restrict/extend type resolution per use case
+- [ ] YAML 1.2 schema profiles — feasibility explored via saphyr-parser's tag resolution hooks
+- [ ] WASM build target — maturin supports `wasm32-unknown-unknown`; requires `pyo3` 0.21+
+- [ ] Async serialization — Python `asyncio` integration via `py.allow_threads` on GIL release
+- [ ] Schema validation plugins — custom tag ecosystem can serve as validation infrastructure
