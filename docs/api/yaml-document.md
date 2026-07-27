@@ -114,6 +114,100 @@ root_type() -> str
 print(doc.root_type())  # "mapping"
 ```
 
+### `to_json()`
+
+Serialize the document to a JSON string.
+
+```python
+to_json(indent: int = 2) -> str
+```
+
+**Parameters:**
+
+- `indent` — JSON indentation spaces (default: 2)
+
+**Returns:** A JSON string of the document contents.
+
+**Example:**
+
+```python
+doc = pyyaml_rs.parse("a: 1\nb: hello")
+json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
+```
+
+### `validate()`
+
+Validate the document contents against a JSON Schema.
+
+```python
+validate(schema: str | dict[str, Any]) -> None
+```
+
+**Parameters:**
+
+- `schema` — JSON Schema as either a JSON string or a Python dict
+
+**Returns:** `None` on success.
+
+**Raises:**
+
+- `YamlValidateError` — Document does not conform to the schema
+
+**Example:**
+
+```python
+doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
+
+# From JSON string
+doc.validate('{"type": "object", "required": ["name"]}')
+```
+
+### `source()`
+
+Return the original YAML source text used to create this document.
+
+```python
+source() -> str | None
+```
+
+**Returns:** The original YAML string, or `None` if the document was not created via `parse()` (e.g. from `from_dict()`).
+
+**Example:**
+
+```python
+doc = pyyaml_rs.parse("key: value")
+print(doc.source())  # "key: value"
+```
+
+### `reparse()`
+
+Re-parse the stored source text in place, allowing schema or merge behavior changes.
+
+```python
+reparse(resolve_merges: bool = True, schema: str = "core") -> None
+```
+
+**Parameters:**
+
+- `resolve_merges` — Whether to resolve `<<: *alias` merge keys (default: `True`)
+- `schema` — Type resolution schema: `"core"`, `"json"`, `"failsafe"`, or `"yaml1.1"` (default: `"core"`)
+
+**Raises:**
+
+- `TypeError` — No source text stored
+- `YamlParseError` — Re-parsing failed
+
+**Example:**
+
+```python
+doc = pyyaml_rs.parse("x: on")
+print(doc.get("x"))  # "on" (string, core schema)
+
+doc.reparse(schema="yaml1.1")
+print(doc.get("x"))  # True (bool, yaml1.1 schema)
+```
+
 ## Dunder Methods
 
 ### `__getitem__()`
