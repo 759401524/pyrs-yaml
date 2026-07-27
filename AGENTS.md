@@ -143,6 +143,90 @@ numpy = "0.29"
 <!-- Managed by Comet. Edits inside this block may be replaced by comet init/update. -->
 <!-- Contract: comet.resume_probe.v2 -->
 
+## 8. Type Stub Rules (PyO3 v0.29 `experimental-inspect`)
+
+所有面向 Python 的接口必须遵守以下规则，确保类型推断、IDE 补全和 mypy 检查正确工作。
+
+### 8.1 `#[pyo3(signature)]` 强制要求
+
+**每个 `#[pyfunction]` 和 `#[pymethods]` 方法都必须使用 `#[pyo3(signature = "...")]` 标注类型，且类型必须用双引号包裹。**
+
+```rust
+// ✅ 正确
+#[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true) -> "YamlDocument")]
+fn parse(...) -> YamlDocument { ... }
+
+// ✅ 复杂类型
+#[pyo3(signature = (on_event: "Callable[[dict[str, Any]], bool] | None" = None) -> "StreamIterator | None")]
+fn parse_stream(...) -> StreamIterator { ... }
+
+// ❌ 错误 — 未标注类型
+#[pyfunction]
+fn parse(...) -> YamlDocument { ... }
+
+// ❌ 错误 — 未用双引号包裹
+#[pyo3(signature = (yaml: str) -> YamlDocument)]  // 编译错误
+```
+
+### 8.2 `INPUT_TYPE` / `OUTPUT_TYPE` 必须实现
+
+**所有自定义 PyO3 类型（`#[pyclass]`、自定义异常）都必须实现 `FromPyObject::INPUT_TYPE` 和 `IntoPyObject::OUTPUT_TYPE` trait**，否则 `maturin generate-stubs` 无法生成正确的 `.pyi` 类型注解。
+
+```rust
+use pyo3::types::PyAnyMethods;
+use pyo3::{FromPyObject, IntoPyObject, PyAny, PyResult};
+
+// YamlDocument 是输出类型
+impl IntoPyObject for YamlDocument {
+    const OUTPUT_TYPE: &'static str = "YamlDocument";
+}
+
+// 异常类型
+impl IntoPyObject for YamlParseError {
+    const OUTPUT_TYPE: &'static str = "YamlParseError";
+}
+
+impl IntoPyObject for YamlSerializeError {
+    const OUTPUT_TYPE: &'static str = "YamlSerializeError";
+}
+
+impl IntoPyObject for YamlTypeError {
+    const OUTPUT_TYPE: &'static str = "YamlTypeError";
+}
+
+// StreamIterator 是输出类型
+impl IntoPyObject for StreamIterator {
+    const OUTPUT_TYPE: &'static str = "StreamIterator";
+}
+```
+
+### 8.3 自动化 Stub 生成
+
+**优先使用 `maturin build --generate-stubs` 生成 `.pyi` 文件，而非手动编写。** 手动维护的 `.pyi` 文件必须在 `Cargo.toml` 中显式配置 `build = "maturin"` 并确保与 `maturin build --generate-stubs` 的输出一致。
+
+- `maturin develop --generate-stubs` — 开发时自动同步
+- `maturin build --generate-stubs` — 发布时生成
+- `maturin generate-stubs --output stubs` — 单独生成
+
+### 8.4 PEP561 标记
+
+**`python/pyyaml_rs/py.typed` 必须始终存在**（空文件即可）。这是 mypy 识别该包支持类型检查的必要标记。
+
+### 8.5 泛型类型
+
+- `.pyi` 中泛型类使用 `from typing import Generic, TypeVar`（Python 3.11 及更早）或 `class Car[W]`（Python 3.12+）
+- Rust 中使用 `#[pyclass(generic)]` 启用运行时 `__class_getitem__`
+- 不需要的泛型不要在 `.pyi` 中声明
+
+### 8.6 禁止事项
+
+- **禁止** 使用 `#[pymodule_init]` — 会导致模块被标记为 incomplete（`def __getattr__(name: str) -> Incomplete: ...`）
+- **禁止** 省略 `#[pyo3(signature)]` 中的类型注解
+- **禁止** 使用 `#[pymodule]` function 形式声明模块（必须使用 inline `mod` 形式）
+- **禁止** 修改 `.pyi` 文件时不同步更新 Rust 签名
+
+---
+
 ## Comet Ambient Resume
 
 在这个仓库中，开始处理需要改动或调查的任务前，如果可能存在活跃 Comet workflow，把当前用户请求传入只读探针：`comet resume-probe . --stdin --json`。
