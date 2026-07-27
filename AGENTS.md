@@ -26,6 +26,9 @@ saphyr-parser = "0.0.11"
 
 # serde_json: JSON 转换支持
 serde_json = "1.0"
+
+# numpy: NumPy ndarray 类型擦除与零拷贝切片访问
+numpy = "0.29"
 ```
 
 🚨 **绝对禁止**：

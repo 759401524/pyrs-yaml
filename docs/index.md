@@ -22,6 +22,7 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyyaml-rs d
 - **Type hints** — PEP 561 compliant with full `.pyi` stubs
 - **ABI3** — single wheel works across Python 3.9–3.13
 - **i18n error messages** — `set_language("zh-CN")` for bilingual error reporting
+- **NumPy ndarray support** — serialize `numpy.ndarray` of any dimension to YAML with zero-copy Rust dispatch
 
 ## Quick Start
 

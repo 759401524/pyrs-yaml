@@ -49,7 +49,54 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
-## Additional Features
+## NumPy ndarray Support
+
+pyyaml-rs can serialize `numpy.ndarray` objects of any dimension directly to YAML:
+
+```python
+import numpy as np
+import pyyaml_rs
+
+# 1-D array
+arr = np.array([1, 2, 3], dtype="int32")
+yaml_str = pyyaml_rs.safe_dump(arr)
+# - 1
+# - 2
+# - 3
+
+# 2-D matrix
+matrix = np.array([[1, 2], [3, 4]], dtype="float64")
+yaml_str = pyyaml_rs.safe_dump(matrix)
+# -
+#   - 1.0
+#   - 2.0
+# -
+#   - 3.0
+#   - 4.0
+
+# Round-trip
+loaded = pyyaml_rs.safe_load(yaml_str)
+assert loaded == [[1.0, 2.0], [3.0, 4.0]]
+```
+
+### Supported dtypes
+
+| Type | Rust Backend | YAML Output |
+|------|-------------|-------------|
+| `int8/16/32/64` | `PyUntypedArray` → `PyArrayDyn<i8/i16/i32/i64>` | Plain integer (quoted if negative) |
+| `uint8/16/32/64` | `PyUntypedArray` → `PyArrayDyn<u8/u16/u32/u64>` | Plain integer |
+| `float32/64` | `PyUntypedArray` → `PyArrayDyn<f32/f64>` | Plain float (quoted if negative) |
+| `complex64/128` | `PyUntypedArray` → `PyArrayDyn<Complex64/Complex32>` | `(re+imj)` string |
+| `bool` | `PyUntypedArray` → `PyArrayDyn<bool>` | `true` / `false` |
+| `nan` / `inf` | — | `NaN` / `.inf` / `-.inf` |
+
+### Notes
+
+- **Zero-copy**: Uses the `numpy` Rust crate's `PyUntypedArray` for type-erased array access, then dispatches to the correct typed `PyArrayDyn<T>` for zero-copy slice iteration
+- **GIL released**: Slice iteration runs outside the GIL for maximum performance on large arrays
+- **Negative numbers**: YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative values are automatically quoted and correctly parsed back during round-trip
+- **0-D arrays**: Reshaped to 1-D and serialized as a single-item list
+- **Complex numbers**: YAML has no native complex type; serialized as `(re+imj)` strings. `safe_load` returns them as strings, not Python `complex`
 
 - **Markdown frontmatter extraction** — `read_markdown()` for blog/content tools
 - **JSON ↔ YAML conversion** — `from_json()` / `from_dict()`

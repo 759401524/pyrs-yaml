@@ -7,6 +7,7 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 - **YAML 1.2 compliant** - Uses saphyr-parser for full YAML 1.2 support
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - **High Performance** - Rust backend, see [benchmarks](benches/yaml_bench.rs)
+- **NumPy ndarray support** - `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` serialize `numpy.ndarray` of any dimension (0-D through N-D) with zero-copy Rust dispatch
 - **Custom AST** - Extensible AST for advanced YAML manipulation
 - **PyYAML Compatible** - Drop-in replacement with `safe_load`/`safe_dump` API
 
@@ -35,6 +36,36 @@ doc = pyyaml_rs.parse(original)
 assert doc.to_yaml() == original  # True
 ```
 
+### NumPy ndarray support
+
+```python
+import numpy as np
+import pyyaml_rs
+
+# 1-D array
+arr = np.array([1, 2, 3], dtype="int32")
+yaml_str = pyyaml_rs.safe_dump(arr)
+print(yaml_str)
+# - 1
+# - 2
+# - 3
+
+# 2-D matrix
+matrix = np.array([[1, 2], [3, 4]], dtype="float64")
+yaml_str = pyyaml_rs.safe_dump(matrix)
+print(yaml_str)
+# -
+#   - 1.0
+#   - 2.0
+# -
+#   - 3.0
+#   - 4.0
+
+# Round-trip
+loaded = pyyaml_rs.safe_load(yaml_str)
+assert loaded == [[1.0, 2.0], [3.0, 4.0]]
+```
+
 ## Features Supported
 
 | Feature | Support |
@@ -49,6 +80,7 @@ assert doc.to_yaml() == original  # True
 | Flow collections (`{}`, `[]`) | Preserved |
 | Block scalars (`\|`, `>`) | Preserved |
 | Merge keys (`<<: *alias`) | Resolved (opt-out via `resolve_merges=False`) |
+| **NumPy ndarray** | **Full (0-D through N-D)** |
 
 ## API Reference
 

@@ -33,7 +33,7 @@
 use std::cell::RefCell;
 
 /// 支持的语言列表
-pub const SUPPORTED_LANGUAGES: &[&str] = &["en", "zh-CN"];
+pub const SUPPORTED_LANGUAGES: &[&str] = &["en", "zh-CN", "ja-JP", "ko-KR"];
 
 // 当前语言状态
 thread_local! {
@@ -63,6 +63,8 @@ pub fn get_language_static() -> &'static str {
     match lang.as_str() {
         "en" => "en",
         "zh-CN" => "zh-CN",
+        "ja-JP" => "ja-JP",
+        "ko-KR" => "ko-KR",
         _ => "en",
     }
 }
@@ -272,8 +274,12 @@ pub fn validate_translations() -> Result<(), String> {
         .filter(|key| !key.is_empty())
         .collect();
 
-    // 检查其他语言文件
-    let other_files = [concat!(env!("CARGO_MANIFEST_DIR"), "/locales/zh-CN.yml")];
+    // 检查所有语言文件
+    let other_files = [
+        concat!(env!("CARGO_MANIFEST_DIR"), "/locales/zh-CN.yml"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/locales/ja-JP.yml"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/locales/ko-KR.yml"),
+    ];
 
     let mut errors = Vec::new();
 
@@ -336,7 +342,9 @@ mod tests {
         let langs = list_languages();
         assert!(langs.contains(&"en"));
         assert!(langs.contains(&"zh-CN"));
-        assert_eq!(langs.len(), 2);
+        assert!(langs.contains(&"ja-JP"));
+        assert!(langs.contains(&"ko-KR"));
+        assert_eq!(langs.len(), 4);
     }
 
     #[test]
