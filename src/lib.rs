@@ -336,8 +336,8 @@ mod pyyaml_rs {
                         | ast::ScalarStyle::SingleQuoted
                         | ast::ScalarStyle::DoubleQuoted
                 ) {
-                    use parser::yaml::{resolve_yaml_type, YamlType};
-                    match resolve_yaml_type(value) {
+                    use parser::yaml::{resolve_yaml_type, YamlSchema, YamlType};
+                    match resolve_yaml_type(value, YamlSchema::Core) {
                         YamlType::Null => Ok(py.None()),
                         YamlType::Bool(b) => Ok(pyo3::types::PyBool::new(py, b)
                             .to_owned()
