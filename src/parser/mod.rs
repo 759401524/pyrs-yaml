@@ -1,4 +1,7 @@
+pub mod stream;
 pub mod yaml;
+
+pub use crate::parser::stream::{parse_stream, StreamEvent, StreamEventType};
 
 use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
 use indexmap::IndexMap;
