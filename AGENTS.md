@@ -15,11 +15,11 @@
 
 ```toml
 [dependencies]
-# PyO3: 必须包含 "extension-module" 特性
-pyo3 = { version = "0.21", features = ["extension-module"] }
+# PyO3: 必须包含 "extension-module" + "experimental-inspect" 特性
+pyo3 = { version = "0.29", features = ["extension-module", "experimental-inspect", "abi3-py39"] }
 
 # indexmap: 用于保证 Mapping (字典) 的插入/解析顺序
-indexmap = { version = "2.2", features = ["serde"] }
+indexmap = "2.7"
 
 # saphyr-parser: YAML 1.2 完全合规的解析器 (Event-based API)
 saphyr-parser = "0.0.11"
@@ -29,12 +29,47 @@ serde_json = "1.0"
 
 # numpy: NumPy ndarray 类型擦除与零拷贝切片访问
 numpy = "0.29"
+
+# rust-i18n: 国际化错误消息
+rust-i18n = "4.2"
 ```
 
 🚨 **绝对禁止**：
 
 - **禁止** 使用 `serde_yaml`、`serde_yml` 或任何基于 `serde` 的 YAML 库。
 - **禁止** 使用 `yaml-rust2` 的高级 API `YamlLoader::load_from_str()`。
+- **禁止** 使用 `pip`、`python -m pip` 安装依赖或运行测试 — Python 环境由 `uv` 统一管理。
+
+### 2.1 Python 环境管理
+
+**必须使用 `uv`** 进行所有 Python 相关操作：
+
+```bash
+# 运行 Python 测试
+uv run pytest tests/ -v
+
+# 安装/升级 Python 依赖
+uv add <package>
+uv remove <package>
+
+# 开发安装（构建 Rust + 安装 Python 包）
+uv run maturin develop --release
+
+# 构建 wheel
+uv run maturin build --release
+```
+
+**命令前缀规则**：
+
+| 命令类型 | 前缀 | 示例 |
+| :--- | :--- | :--- |
+| Python 工具（pytest、maturin） | `uv run` | `uv run pytest tests/` |
+| Rust 工具（cargo） | **无** | `cargo clippy -- -D warnings` |
+| Rust 工具（cargo）+ release | **无** | `cargo build --release` |
+
+- **Python 相关命令** 必须加 `uv run` 前缀，确保在正确的虚拟环境中执行。
+- **Rust 相关命令**（`cargo`）直接运行，不加 `uv run`。
+- 禁止直接调用系统 Python 或 `.venv` 中的解释器，统一通过 `uv run` 管理。
 
 ---
 
@@ -143,11 +178,26 @@ numpy = "0.29"
 <!-- Managed by Comet. Edits inside this block may be replaced by comet init/update. -->
 <!-- Contract: comet.resume_probe.v2 -->
 
-## 8. Type Stub Rules (PyO3 v0.29 `experimental-inspect`)
+## Comet Ambient Resume
+
+在这个仓库中，开始处理需要改动或调查的任务前，如果可能存在活跃 Comet workflow，把当前用户请求传入只读探针：`comet resume-probe . --stdin --json`。
+
+- 如果用户通过宿主明确调用任意 Comet Skill（例如 `@comet`、`/comet`、`@comet-native` 或 `/comet-hotfix`），显式调用优先于本恢复协议；不要运行 resume probe，直接进入被调用的 Skill。
+- 只信任返回的 `workflow`、`skill` 和 `entrySource`；它们只由项目配置或无配置兼容回退决定。不得扫描或切换另一套 workflow。
+- 如果 probe 返回 `auto_resume`，简短说明选中的 active change，并进入 `nextCommand` 指向的永久入口。不要把状态命令当作恢复入口直接推进。
+- 如果 probe 返回 `ask_user`，只问一个简短问题并等待用户回复。
+- 如果当前请求未明确调用 Comet Skill，且 probe 返回 `out_of_scope` 或 `none`，不要进入 Comet workflow。
+- 如果配置或状态无效且没有 `nextCommand`，停止并报告原因；不要猜测另一个 workflow。
+- 不能只因为存在 active change 就把无关任务挂到该 change。Native 的未提交改动由 Native 入口检查，不由探针自动归因。
+</comet-ambient-resume>
+
+---
+
+## 10. Type Stub Rules (PyO3 v0.29 `experimental-inspect`)
 
 所有面向 Python 的接口必须遵守以下规则，确保类型推断、IDE 补全和 mypy 检查正确工作。
 
-### 8.1 `#[pyo3(signature)]` 强制要求
+### 10.1 `#[pyo3(signature)]` 强制要求
 
 **每个 `#[pyfunction]` 和 `#[pymethods]` 方法都必须使用 `#[pyo3(signature = "...")]` 标注类型，且类型必须用双引号包裹。**
 
@@ -165,12 +215,12 @@ fn parse_stream(...) -> StreamIterator { ... }
 fn parse(...) -> YamlDocument { ... }
 
 // ❌ 错误 — 未用双引号包裹
-#[pyo3(signature = (yaml: str) -> YamlDocument)]  // 编译错误
+#[pyo3(signature = (yaml: str) -> "YamlDocument")]  // 编译错误
 ```
 
-### 8.2 `INPUT_TYPE` / `OUTPUT_TYPE` 必须实现
+### 10.2 `INPUT_TYPE` / `OUTPUT_TYPE` 必须实现
 
-**所有自定义 PyO3 类型（`#[pyclass]`、自定义异常）都必须实现 `FromPyObject::INPUT_TYPE` 和 `IntoPyObject::OUTPUT_TYPE` trait**，否则 `maturin generate-stubs` 无法生成正确的 `.pyi` 类型注解。
+**所有自定义 PyO3 类型（`#[pyclass]`、自定义异常）都必须实现 `FromPyObject::INPUT_TYPE` 和 `IntoPyObject::OUTPUT_TYPE` trait**，否则 `uv run maturin generate-stubs` 无法生成正确的 `.pyi` 类型注解。
 
 ```rust
 use pyo3::types::PyAnyMethods;
@@ -200,42 +250,27 @@ impl IntoPyObject for StreamIterator {
 }
 ```
 
-### 8.3 自动化 Stub 生成
+### 10.3 自动化 Stub 生成
 
-**优先使用 `maturin build --generate-stubs` 生成 `.pyi` 文件，而非手动编写。** 手动维护的 `.pyi` 文件必须在 `Cargo.toml` 中显式配置 `build = "maturin"` 并确保与 `maturin build --generate-stubs` 的输出一致。
+**优先使用 `uv run maturin build --generate-stubs` 生成 `.pyi` 文件，而非手动编写。** 手动维护的 `.pyi` 文件必须在 `Cargo.toml` 中显式配置 `build = "maturin"` 并确保与 `uv run maturin build --generate-stubs` 的输出一致。
 
-- `maturin develop --generate-stubs` — 开发时自动同步
-- `maturin build --generate-stubs` — 发布时生成
-- `maturin generate-stubs --output stubs` — 单独生成
+- `uv run maturin develop --generate-stubs` — 开发时自动同步
+- `uv run maturin build --generate-stubs` — 发布时生成
+- `uv run maturin generate-stubs --output stubs` — 单独生成
 
-### 8.4 PEP561 标记
+### 10.4 PEP561 标记
 
 **`python/pyyaml_rs/py.typed` 必须始终存在**（空文件即可）。这是 mypy 识别该包支持类型检查的必要标记。
 
-### 8.5 泛型类型
+### 10.5 泛型类型
 
 - `.pyi` 中泛型类使用 `from typing import Generic, TypeVar`（Python 3.11 及更早）或 `class Car[W]`（Python 3.12+）
 - Rust 中使用 `#[pyclass(generic)]` 启用运行时 `__class_getitem__`
 - 不需要的泛型不要在 `.pyi` 中声明
 
-### 8.6 禁止事项
+### 10.6 禁止事项
 
 - **禁止** 使用 `#[pymodule_init]` — 会导致模块被标记为 incomplete（`def __getattr__(name: str) -> Incomplete: ...`）
 - **禁止** 省略 `#[pyo3(signature)]` 中的类型注解
 - **禁止** 使用 `#[pymodule]` function 形式声明模块（必须使用 inline `mod` 形式）
 - **禁止** 修改 `.pyi` 文件时不同步更新 Rust 签名
-
----
-
-## Comet Ambient Resume
-
-在这个仓库中，开始处理需要改动或调查的任务前，如果可能存在活跃 Comet workflow，把当前用户请求传入只读探针：`comet resume-probe . --stdin --json`。
-
-- 如果用户通过宿主明确调用任意 Comet Skill（例如 `@comet`、`/comet`、`@comet-native` 或 `/comet-hotfix`），显式调用优先于本恢复协议；不要运行 resume probe，直接进入被调用的 Skill。
-- 只信任返回的 `workflow`、`skill` 和 `entrySource`；它们只由项目配置或无配置兼容回退决定。不得扫描或切换另一套 workflow。
-- 如果 probe 返回 `auto_resume`，简短说明选中的 active change，并进入 `nextCommand` 指向的永久入口。不要把状态命令当作恢复入口直接推进。
-- 如果 probe 返回 `ask_user`，只问一个简短问题并等待用户回复。
-- 如果当前请求未明确调用 Comet Skill，且 probe 返回 `out_of_scope` 或 `none`，不要进入 Comet workflow。
-- 如果配置或状态无效且没有 `nextCommand`，停止并报告原因；不要猜测另一个 workflow。
-- 不能只因为存在 active change 就把无关任务挂到该 change。Native 的未提交改动由 Native 入口检查，不由探针自动归因。
-</comet-ambient-resume>

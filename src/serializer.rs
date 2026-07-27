@@ -66,10 +66,10 @@ impl Serializer {
         if level > self.max_cached {
             let base_indent = " ".repeat(self.indent_size);
             let mut last = &self.indent_cache[self.max_cached];
-            for _ in self.max_cached + 1..=level {
+            for i in 1..=(level - self.max_cached) {
                 let next = format!("{}{}", last, base_indent);
                 self.indent_cache.push(next);
-                last = self.indent_cache.last().unwrap();
+                last = &self.indent_cache[self.max_cached + i];
             }
             self.max_cached = level;
         }
@@ -79,13 +79,12 @@ impl Serializer {
     /// Ensure indent_cache has an entry for the given level, then return a reference to it.
     fn get_indent(&mut self, level: usize) -> &str {
         if level > self.max_cached {
-            // Grow cache to the requested level
             let base_indent = " ".repeat(self.indent_size);
             let mut last = &self.indent_cache[self.max_cached];
-            for _ in self.max_cached + 1..=level {
+            for i in 1..=(level - self.max_cached) {
                 let next = format!("{}{}", last, base_indent);
                 self.indent_cache.push(next);
-                last = self.indent_cache.last().unwrap();
+                last = &self.indent_cache[self.max_cached + i];
             }
             self.max_cached = level;
         }
