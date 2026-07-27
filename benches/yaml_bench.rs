@@ -1,4 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use pyyaml_rs::parser::yaml::YamlSchema;
 
 const SMALL_YAML: &str = "key: value\nname: test\n";
 
@@ -132,32 +133,32 @@ folded: >
 fn bench_parse(c: &mut Criterion) {
     let mut group = c.benchmark_group("parse");
     group.bench_function("small", |b| {
-        b.iter(|| pyyaml_rs::parser::parse(SMALL_YAML).unwrap());
+        b.iter(|| pyyaml_rs::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap());
     });
     group.bench_function("medium", |b| {
-        b.iter(|| pyyaml_rs::parser::parse(MEDIUM_YAML).unwrap());
+        b.iter(|| pyyaml_rs::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap());
     });
     group.bench_function("large", |b| {
-        b.iter(|| pyyaml_rs::parser::parse(LARGE_YAML).unwrap());
+        b.iter(|| pyyaml_rs::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap());
     });
     group.bench_function("anchors", |b| {
-        b.iter(|| pyyaml_rs::parser::parse(ANCHOR_YAML).unwrap());
+        b.iter(|| pyyaml_rs::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap());
     });
     group.bench_function("comments", |b| {
-        b.iter(|| pyyaml_rs::parser::parse(COMMENT_YAML).unwrap());
+        b.iter(|| pyyaml_rs::parser::parse(COMMENT_YAML, YamlSchema::Core).unwrap());
     });
     group.bench_function("block_scalars", |b| {
-        b.iter(|| pyyaml_rs::parser::parse(BLOCK_SCALAR_YAML).unwrap());
+        b.iter(|| pyyaml_rs::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap());
     });
     group.finish();
 }
 
 fn bench_serialize(c: &mut Criterion) {
-    let small_ast = pyyaml_rs::parser::parse(SMALL_YAML).unwrap();
-    let medium_ast = pyyaml_rs::parser::parse(MEDIUM_YAML).unwrap();
-    let large_ast = pyyaml_rs::parser::parse(LARGE_YAML).unwrap();
-    let anchor_ast = pyyaml_rs::parser::parse(ANCHOR_YAML).unwrap();
-    let block_ast = pyyaml_rs::parser::parse(BLOCK_SCALAR_YAML).unwrap();
+    let small_ast = pyyaml_rs::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    let medium_ast = pyyaml_rs::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    let large_ast = pyyaml_rs::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let anchor_ast = pyyaml_rs::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap();
+    let block_ast = pyyaml_rs::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap();
 
     let mut group = c.benchmark_group("serialize");
     group.bench_function("small", |b| {
@@ -182,19 +183,19 @@ fn bench_roundtrip(c: &mut Criterion) {
     let mut group = c.benchmark_group("roundtrip");
     group.bench_function("small", |b| {
         b.iter(|| {
-            let ast = pyyaml_rs::parser::parse(SMALL_YAML).unwrap();
+            let ast = pyyaml_rs::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
             pyyaml_rs::serializer::to_yaml(&ast)
         });
     });
     group.bench_function("medium", |b| {
         b.iter(|| {
-            let ast = pyyaml_rs::parser::parse(MEDIUM_YAML).unwrap();
+            let ast = pyyaml_rs::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
             pyyaml_rs::serializer::to_yaml(&ast)
         });
     });
     group.bench_function("large", |b| {
         b.iter(|| {
-            let ast = pyyaml_rs::parser::parse(LARGE_YAML).unwrap();
+            let ast = pyyaml_rs::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
             pyyaml_rs::serializer::to_yaml(&ast)
         });
     });

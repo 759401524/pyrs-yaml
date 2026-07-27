@@ -1,3 +1,16 @@
+/// YAML schema profile controlling implicit type resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YamlSchema {
+    /// No implicit resolution — every plain scalar is a string.
+    Failsafe,
+    /// JSON-compatible subset (no inf, nan, 0x, 0o).
+    Json,
+    /// YAML 1.2 Core — default behavior.
+    Core,
+    /// YAML 1.1 — adds legacy boolean lexemes (yes/no, on/off, y/n).
+    Yaml11,
+}
+
 /// YAML 1.2 type resolution for plain scalars
 #[derive(Debug, Clone, PartialEq)]
 pub enum YamlType {
@@ -13,113 +26,11 @@ pub enum YamlType {
     Str(String),
 }
 
-/// 将普通标量字符串解析为 YAML 1.2 类型。
+/// Resolve a plain scalar as YAML 1.2 Core (legacy single-argument API).
 ///
-/// 解析优先级（从高到低）：
-/// 1. Null（空字符串、`null`/`Null`/`NULL`/`~`）
-/// 2. Bool（`true`/`True`/`TRUE`/`false`/`False`/`FALSE`）
-/// 3. Infinity（`.inf`/`inf`/`-inf` 等，大小写不敏感）
-/// 4. NaN（`.nan`/`nan`/`NaN` 等）
-/// 5. 八进制整数（`0o` 前缀）
-/// 6. 十六进制整数（`0x` 前缀）
-/// 7. 浮点数（包含 `.` 或 `e`/`E`）
-/// 8. 十进制整数
-/// 9. 字符串（默认回退）
-///
-/// # Arguments
-/// * `value` - 待解析的标量字符串。
-///
-/// # Returns
-/// 解析后的 `YamlType` 枚举值。
-///
-/// # Examples
-/// ```ignore
-/// assert_eq!(resolve_yaml_type("null"), YamlType::Null);
-/// assert_eq!(resolve_yaml_type("42"), YamlType::Int(42));
-/// assert_eq!(resolve_yaml_type("hello"), YamlType::Str("hello".into()));
-/// ```
+/// Preferred callers should use `resolve_yaml_type(value, schema)` from `schema.rs`.
 pub fn resolve_yaml_type(value: &str) -> YamlType {
-    let trimmed = value.trim();
-
-    // Null values (YAML 1.2)
-    if trimmed.is_empty()
-        || trimmed == "null"
-        || trimmed == "Null"
-        || trimmed == "NULL"
-        || trimmed == "~"
-    {
-        return YamlType::Null;
-    }
-
-    // Boolean values (YAML 1.2 - only true/false are valid)
-    if trimmed == "true" || trimmed == "True" || trimmed == "TRUE" {
-        return YamlType::Bool(true);
-    }
-    if trimmed == "false" || trimmed == "False" || trimmed == "FALSE" {
-        return YamlType::Bool(false);
-    }
-
-    // Infinity
-    if trimmed == ".inf"
-        || trimmed == ".Inf"
-        || trimmed == ".INF"
-        || trimmed == "inf"
-        || trimmed == "Inf"
-        || trimmed == "INF"
-    {
-        return YamlType::Float(f64::INFINITY);
-    }
-    if trimmed == "-.inf"
-        || trimmed == "-.Inf"
-        || trimmed == "-.INF"
-        || trimmed == "-inf"
-        || trimmed == "-Inf"
-        || trimmed == "-INF"
-    {
-        return YamlType::Float(f64::NEG_INFINITY);
-    }
-
-    // NaN
-    if trimmed == ".nan"
-        || trimmed == ".NaN"
-        || trimmed == ".NAN"
-        || trimmed == "nan"
-        || trimmed == "NaN"
-        || trimmed == "NAN"
-    {
-        return YamlType::Float(f64::NAN);
-    }
-
-    // Octal integer (0o prefix)
-    if trimmed.starts_with("0o") || trimmed.starts_with("0O") {
-        let octal_str = &trimmed[2..];
-        if let Ok(val) = i64::from_str_radix(octal_str, 8) {
-            return YamlType::Int(val);
-        }
-    }
-
-    // Hexadecimal integer (0x prefix)
-    if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
-        let hex_str = &trimmed[2..];
-        if let Ok(val) = i64::from_str_radix(hex_str, 16) {
-            return YamlType::Int(val);
-        }
-    }
-
-    // Float with decimal point or exponent
-    if trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E') {
-        if let Ok(val) = trimmed.parse::<f64>() {
-            return YamlType::Float(val);
-        }
-    }
-
-    // Decimal integer
-    if let Ok(val) = trimmed.parse::<i64>() {
-        return YamlType::Int(val);
-    }
-
-    // Default: string
-    YamlType::Str(value.to_string())
+    crate::parser::yaml::schema::resolve_yaml_type(value, YamlSchema::Core)
 }
 
 #[cfg(test)]
@@ -252,8 +163,8 @@ mod tests {
 
 #[cfg(test)]
 impl YamlType {
-    /// Check if this is a NaN value (since f64 NaN != NaN)
-    fn is_nan_value(&self) -> bool {
+    /// Check if this is a NaN value (since f64 NaN != NaN via PartialEq)
+    pub fn is_nan_value(&self) -> bool {
         match self {
             YamlType::Float(v) => v.is_nan(),
             _ => false,
