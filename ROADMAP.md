@@ -51,8 +51,6 @@ All versions are tracked here with release dates and delivered features.
 
 ### v0.6.0 — Planned
 
-- **Custom tag ecosystem** — plugin system for user-defined YAML tags with Python callbacks
-- **WASM build target** — `wasm32-unknown-unknown` compilation via maturin, enabling browser/WASM execution
 - **Async serialization** — non-blocking `safe_dump_async()` for large documents using Python coroutines
 - **JSON Schema ↔ YAML schema validation** — declarative document validation layer
 - **Incremental re-parse** — modify a subset of a parsed document without re-serializing the whole tree
@@ -64,7 +62,5 @@ All versions are tracked here with release dates and delivered features.
 
 ## Research
 
-- [ ] YAML 1.2 schema profiles — feasibility explored via saphyr-parser's tag resolution hooks
-- [ ] WASM build target — maturin supports `wasm32-unknown-unknown`; requires `pyo3` 0.21+
 - [ ] Async serialization — Python `asyncio` integration via `py.allow_threads` on GIL release
-- [ ] Schema validation plugins — custom tag ecosystem can serve as validation infrastructure
+- [ ] Schema validation layer — JSON Schema ↔ YAML schema declarative validation
