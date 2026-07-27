@@ -1,6 +1,7 @@
 pub mod yaml;
 
 use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
+use crate::parser::yaml::YamlSchema;
 use indexmap::IndexMap;
 use saphyr_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
@@ -24,8 +25,8 @@ use yaml::*;
 /// ```
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
-pub fn parse(yaml: &str) -> Result<CustomNode, String> {
-    parse_with_options(yaml, true)
+pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, String> {
+    parse_with_options(yaml, true, schema)
 }
 
 /// 使用选项解析 YAML 字符串。
@@ -42,7 +43,11 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 /// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
 ///
 /// Parse a YAML string with options
-pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode, String> {
+pub fn parse_with_options(
+    yaml: &str,
+    resolve_merges: bool,
+    _schema: YamlSchema,
+) -> Result<CustomNode, String> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(CustomNode::plain_null());
@@ -85,12 +90,16 @@ pub fn parse_with_options(yaml: &str, resolve_merges: bool) -> Result<CustomNode
 /// 返回 `Err(String)`，格式为 `"YAML parse error: document #{doc_index} at <行号>:<列号>: <消息>"`。
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
-pub fn parse_all(yaml: &str) -> Result<Vec<CustomNode>, String> {
-    parse_all_with_options(yaml, true)
+pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, String> {
+    parse_all_with_options(yaml, true, schema)
 }
 
 /// 解析包含多个 YAML 文档的字符串，支持选项。
-pub fn parse_all_with_options(yaml: &str, resolve_merges: bool) -> Result<Vec<CustomNode>, String> {
+pub fn parse_all_with_options(
+    yaml: &str,
+    resolve_merges: bool,
+    _schema: YamlSchema,
+) -> Result<Vec<CustomNode>, String> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(Vec::new());
@@ -554,10 +563,11 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::yaml::YamlSchema;
 
     #[test]
     fn test_parse_simple_scalar() {
-        let result = parse("hello");
+        let result = parse("hello", YamlSchema::Core);
         assert!(result.is_ok());
         if let Ok(CustomNode::Scalar { value, style, .. }) = result {
             assert_eq!(value, "hello");
@@ -568,7 +578,7 @@ mod tests {
     #[test]
     fn test_parse_mapping() {
         let yaml = "key: value";
-        let result = parse(yaml);
+        let result = parse(yaml, YamlSchema::Core);
         assert!(result.is_ok());
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             assert_eq!(pairs.len(), 1);
@@ -578,7 +588,7 @@ mod tests {
     #[test]
     fn test_parse_sequence() {
         let yaml = "- item1\n- item2";
-        let result = parse(yaml);
+        let result = parse(yaml, YamlSchema::Core);
         assert!(result.is_ok());
         if let Ok(CustomNode::Sequence { items, .. }) = result {
             assert_eq!(items.len(), 2);
@@ -588,7 +598,7 @@ mod tests {
     #[test]
     fn test_parse_tag() {
         let yaml = "name: !!str John";
-        let result = parse(yaml);
+        let result = parse(yaml, YamlSchema::Core);
         assert!(result.is_ok());
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             for (k, v) in pairs {
@@ -607,7 +617,7 @@ mod tests {
     #[test]
     fn test_parse_complex_key() {
         let yaml = "? [key1, key2]\n: value";
-        let result = parse(yaml);
+        let result = parse(yaml, YamlSchema::Core);
         assert!(result.is_ok());
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             assert_eq!(pairs.len(), 1);
@@ -616,7 +626,7 @@ mod tests {
 
     #[test]
     fn test_parse_empty() {
-        let result = parse("");
+        let result = parse("", YamlSchema::Core);
         assert!(result.is_ok());
         assert!(matches!(result.unwrap(), CustomNode::Null { .. }));
     }
@@ -624,7 +634,7 @@ mod tests {
     #[test]
     fn test_parse_anchor() {
         let yaml = "defaults: &defaults\n  timeout: 30";
-        let result = parse(yaml);
+        let result = parse(yaml, YamlSchema::Core);
         assert!(result.is_ok());
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             for (k, v) in pairs {

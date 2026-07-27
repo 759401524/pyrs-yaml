@@ -124,7 +124,7 @@ fn resolve_mapping_merges(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parse;
+    use crate::parser::{parse, yaml::YamlSchema};
 
     fn make_scalar(value: &str) -> CustomNode {
         CustomNode::plain_scalar(value)
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn test_single_merge() {
         let yaml = "defaults: &defaults\n  timeout: 30\nprod:\n  <<: *defaults\n  host: x";
-        let mut root = parse(yaml).unwrap();
+        let mut root = parse(yaml, YamlSchema::Core).unwrap();
         resolve_merge_keys(&mut root);
 
         let pairs = get_mapping(&root);
@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_multiple_merge() {
         let yaml = "base1: &b1\n  a: 1\nbase2: &b2\n  b: 2\ncurrent:\n  <<: [*b1, *b2]\n  c: 3";
-        let mut root = parse(yaml).unwrap();
+        let mut root = parse(yaml, YamlSchema::Core).unwrap();
         resolve_merge_keys(&mut root);
 
         let pairs = get_mapping(&root);
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn test_merge_override_order() {
         let yaml = "base: &base\n  x: 1\n  y: 2\nderived:\n  <<: *base\n  y: 99";
-        let mut root = parse(yaml).unwrap();
+        let mut root = parse(yaml, YamlSchema::Core).unwrap();
         resolve_merge_keys(&mut root);
 
         let pairs = get_mapping(&root);

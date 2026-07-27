@@ -19,6 +19,7 @@ use numpy::{
     dtype, Complex32, Complex64, PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyUntypedArray,
     PyUntypedArrayMethods,
 };
+use parser::yaml::YamlSchema;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
@@ -56,6 +57,7 @@ mod pyyaml_rs {
     #[pyclass]
     struct YamlDocument {
         ast: CustomNode,
+        schema: YamlSchema,
     }
 
     #[pymethods]
@@ -103,7 +105,7 @@ mod pyyaml_rs {
             let mut anchors = HashMap::new();
             collect_anchors(&self.ast, &mut anchors);
             let mut visited = HashSet::new();
-            node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited)
+            node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited, self.schema)
         }
 
         /// 获取映射中指定键的值。
@@ -121,7 +123,7 @@ mod pyyaml_rs {
                 CustomNode::Mapping { pairs, .. } => {
                     let key_node = CustomNode::plain_scalar(key);
                     if let Some(value) = pairs.get(&key_node) {
-                        Ok(node_to_pyobject(value, py)?)
+                        Ok(node_to_pyobject(value, py, self.schema)?)
                     } else {
                         Ok(default.unwrap_or_else(|| py.None()))
                     }
@@ -185,18 +187,19 @@ mod pyyaml_rs {
 
         /// 迭代文档内容。映射迭代键，序列迭代值，其他类型返回空列表。
         fn __iter__<'py>(&self, _py: Python<'py>) -> PyResult<Py<PyAny>> {
+            let schema = self.schema;
             Python::attach(|py| match &self.ast {
                 CustomNode::Mapping { pairs, .. } => {
                     let keys: Vec<Py<PyAny>> = pairs
                         .keys()
-                        .map(|k| node_to_pyobject(k, py))
+                        .map(|k| node_to_pyobject(k, py, schema))
                         .collect::<PyResult<Vec<_>>>()?;
                     Ok(keys.into_pyobject(py)?.into_any().unbind())
                 }
                 CustomNode::Sequence { items, .. } => {
                     let values: Vec<Py<PyAny>> = items
                         .iter()
-                        .map(|v| node_to_pyobject(v, py))
+                        .map(|v| node_to_pyobject(v, py, schema))
                         .collect::<PyResult<Vec<_>>>()?;
                     Ok(values.into_pyobject(py)?.into_any().unbind())
                 }
@@ -215,12 +218,13 @@ mod pyyaml_rs {
         /// # Errors
         /// 返回 `KeyError`（映射键不存在）、`IndexError`（索引越界）或 `TypeError`（类型不支持下标访问）。
         fn __getitem__<'py>(&self, py: Python<'py>, key: Py<PyAny>) -> PyResult<Py<PyAny>> {
+            let schema = self.schema;
             match &self.ast {
                 CustomNode::Mapping { pairs, .. } => {
                     if let Ok(key_str) = key.bind(py).extract::<String>() {
                         let key_node = CustomNode::plain_scalar(key_str.clone());
                         if let Some(value) = pairs.get(&key_node) {
-                            Ok(node_to_pyobject(value, py)?)
+                            Ok(node_to_pyobject(value, py, schema)?)
                         } else {
                             Err(pyo3::exceptions::PyKeyError::new_err(format_i18n_error(
                                 "key-not-found",
@@ -237,7 +241,7 @@ mod pyyaml_rs {
                 CustomNode::Sequence { items, .. } => {
                     if let Ok(idx) = key.bind(py).extract::<usize>() {
                         if idx < items.len() {
-                            Ok(node_to_pyobject(&items[idx], py)?)
+                            Ok(node_to_pyobject(&items[idx], py, schema)?)
                         } else {
                             Err(pyo3::exceptions::PyIndexError::new_err(format_i18n_error(
                                 "index-out-of-range",
@@ -263,6 +267,26 @@ mod pyyaml_rs {
     }
 
     // ---- helper functions (not exposed to Python) ----
+
+    /// Parse a schema string into YamlSchema.
+    ///
+    /// Supported values: "core", "yaml.org,2002", "YamlOrg2002" → Core
+    /// "json", "yaml.org,2002:json" → Json
+    /// "failsafe", "yaml.org,2002:failsafe" → Failsafe
+    /// "yaml1.1", "1.1", "yaml.org,2002:yaml1.1" → Yaml11
+    fn parse_schema(raw: &str) -> PyResult<YamlSchema> {
+        let s = raw.to_lowercase();
+        match s.as_str() {
+            "core" | "yaml.org,2002" | "yamorg2002" => Ok(YamlSchema::Core),
+            "json" | "yaml.org,2002:json" => Ok(YamlSchema::Json),
+            "failsafe" | "yaml.org,2002:failsafe" => Ok(YamlSchema::Failsafe),
+            "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(YamlSchema::Yaml11),
+            _ => Err(YamlTypeError::new_err(format!(
+                "Unsupported schema '{}'. Supported: core, json, failsafe, yaml1.1",
+                raw
+            ))),
+        }
+    }
 
     /// 递归遍历 AST，收集所有锚点到节点的映射，用于别名解析。
     fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<String, &'a CustomNode>) {
@@ -291,6 +315,7 @@ mod pyyaml_rs {
         py: Python,
         anchors: &HashMap<String, &CustomNode>,
         visited: &mut HashSet<usize>,
+        schema: YamlSchema,
     ) -> PyResult<Py<PyAny>> {
         match node {
             CustomNode::Alias { name } => {
@@ -300,20 +325,20 @@ mod pyyaml_rs {
                         return Ok(py.None());
                     }
                     visited.insert(addr);
-                    node_to_pyobject_with_anchors(target, py, anchors, visited)
+                    node_to_pyobject_with_anchors(target, py, anchors, visited, schema)
                 } else {
                     Ok(py.None())
                 }
             }
-            _ => node_to_pyobject_inner(node, py, anchors, visited),
+            _ => node_to_pyobject_inner(node, py, anchors, visited, schema),
         }
     }
 
     /// 将 `CustomNode` 转换为 Python 对象，不解析别名（别名节点返回 `None`）。
-    fn node_to_pyobject(node: &CustomNode, py: Python) -> PyResult<Py<PyAny>> {
+    fn node_to_pyobject(node: &CustomNode, py: Python, schema: YamlSchema) -> PyResult<Py<PyAny>> {
         let anchors = HashMap::new();
         let mut visited = HashSet::new();
-        node_to_pyobject_inner(node, py, &anchors, &mut visited)
+        node_to_pyobject_inner(node, py, &anchors, &mut visited, schema)
     }
 
     /// 内部转换逻辑，被 `node_to_pyobject` 和 `node_to_pyobject_with_anchors` 共用。
@@ -322,6 +347,7 @@ mod pyyaml_rs {
         py: Python,
         anchors: &HashMap<String, &CustomNode>,
         visited: &mut HashSet<usize>,
+        schema: YamlSchema,
     ) -> PyResult<Py<PyAny>> {
         match node {
             CustomNode::Scalar { value, style, .. } => {
@@ -336,8 +362,8 @@ mod pyyaml_rs {
                         | ast::ScalarStyle::SingleQuoted
                         | ast::ScalarStyle::DoubleQuoted
                 ) {
-                    use parser::yaml::{resolve_yaml_type, YamlSchema, YamlType};
-                    match resolve_yaml_type(value, YamlSchema::Core) {
+                    use parser::yaml::{resolve_yaml_type, YamlType};
+                    match resolve_yaml_type(value, schema) {
                         YamlType::Null => Ok(py.None()),
                         YamlType::Bool(b) => Ok(pyo3::types::PyBool::new(py, b)
                             .to_owned()
@@ -358,7 +384,7 @@ mod pyyaml_rs {
                         CustomNode::Scalar { value, .. } => value.clone(),
                         _ => format!("{:?}", key),
                     };
-                    let val = node_to_pyobject_with_anchors(value, py, anchors, visited)?;
+                    let val = node_to_pyobject_with_anchors(value, py, anchors, visited, schema)?;
                     dict.set_item(key_str, val).ok();
                 }
                 Ok(dict.into_any().unbind())
@@ -366,7 +392,7 @@ mod pyyaml_rs {
             CustomNode::Sequence { items, .. } => {
                 let list = pyo3::types::PyList::empty(py);
                 for item in items {
-                    let val = node_to_pyobject_with_anchors(item, py, anchors, visited)?;
+                    let val = node_to_pyobject_with_anchors(item, py, anchors, visited, schema)?;
                     list.append(val).ok();
                 }
                 Ok(list.into_any().unbind())
@@ -577,8 +603,13 @@ mod pyyaml_rs {
 
     /// 解析 YAML 字符串或字节流，返回 `YamlDocument` 对象。
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true) -> "YamlDocument")]
-    fn parse(py: Python, yaml: &Bound<'_, PyAny>, resolve_merges: bool) -> PyResult<YamlDocument> {
+    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core") -> "YamlDocument")]
+    fn parse(
+        py: Python,
+        yaml: &Bound<'_, PyAny>,
+        resolve_merges: bool,
+        schema: &str,
+    ) -> PyResult<YamlDocument> {
         let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
             s
         } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
@@ -595,21 +626,26 @@ mod pyyaml_rs {
             )));
         };
 
+        let schema_enum = parse_schema(schema)?;
         let ast = py.detach(|| {
-            super::parser::parse_with_options(&yaml_str, resolve_merges).map_err(|e| {
+            super::parser::parse_with_options(&yaml_str, resolve_merges, schema_enum).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error(
                     "yaml-parse-error",
                     &[("detail", &e.to_string())],
                 ))
             })
         })?;
-        Ok(YamlDocument { ast })
+        Ok(YamlDocument {
+            ast,
+            schema: schema_enum,
+        })
     }
 
     /// 解析 YAML 文件，返回 `YamlDocument` 对象。
     #[pyfunction]
-    #[pyo3(signature = (path: "str") -> "YamlDocument")]
-    fn parse_file(py: Python, path: &str) -> PyResult<YamlDocument> {
+    #[pyo3(signature = (path: "str", schema: "str" = "core") -> "YamlDocument")]
+    fn parse_file(py: Python, path: &str, schema: &str) -> PyResult<YamlDocument> {
+        let schema_enum = parse_schema(schema)?;
         let ast = py.detach(|| {
             let content = std::fs::read_to_string(path).map_err(|e| {
                 pyo3::exceptions::PyIOError::new_err(format_i18n_error(
@@ -617,37 +653,53 @@ mod pyyaml_rs {
                     &[("detail", &e.to_string()), ("path", path)],
                 ))
             })?;
-            super::parser::parse_with_options(&content, true).map_err(|e| {
+            super::parser::parse_with_options(&content, true, schema_enum).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error(
                     "yaml-parse-error",
                     &[("detail", &e.to_string())],
                 ))
             })
         })?;
-        Ok(YamlDocument { ast })
+        Ok(YamlDocument {
+            ast,
+            schema: schema_enum,
+        })
     }
 
     /// 解析包含多个 YAML 文档的字符串（以 `---` 分隔）。
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true) -> "list[YamlDocument]")]
-    fn parse_all_docs(py: Python, yaml: &str, resolve_merges: bool) -> PyResult<Vec<YamlDocument>> {
+    #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core") -> "list[YamlDocument]")]
+    fn parse_all_docs(
+        py: Python,
+        yaml: &str,
+        resolve_merges: bool,
+        schema: &str,
+    ) -> PyResult<Vec<YamlDocument>> {
+        let schema_enum = parse_schema(schema)?;
         let asts = py.detach(|| {
-            super::parser::parse_all_with_options(yaml, resolve_merges).map_err(|e| {
+            super::parser::parse_all_with_options(yaml, resolve_merges, schema_enum).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error(
                     "yaml-parse-error",
                     &[("detail", &e.to_string())],
                 ))
             })
         })?;
-        Ok(asts.into_iter().map(|ast| YamlDocument { ast }).collect())
+        Ok(asts
+            .into_iter()
+            .map(|ast| YamlDocument {
+                ast,
+                schema: schema_enum,
+            })
+            .collect())
     }
 
     /// PyYAML 兼容接口：解析 YAML 字符串并返回原生 Python 对象。
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str") -> "dict[str, Any] | list[Any]")]
-    fn safe_load(py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
+    #[pyo3(signature = (yaml: "str", schema: "str" = "core") -> "dict[str, Any] | list[Any]")]
+    fn safe_load(py: Python, yaml: &str, schema: &str) -> PyResult<Py<PyAny>> {
+        let schema_enum = parse_schema(schema)?;
         let ast = py.detach(|| {
-            super::parser::parse(yaml).map_err(|e| {
+            super::parser::parse(yaml, schema_enum).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error(
                     "yaml-parse-error",
                     &[("detail", &e.to_string())],
@@ -657,15 +709,16 @@ mod pyyaml_rs {
         let mut anchors = HashMap::new();
         collect_anchors(&ast, &mut anchors);
         let mut visited = HashSet::new();
-        node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited)
+        node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
     }
 
     /// PyYAML 兼容接口：解析多个 YAML 文档并返回原生 Python 对象列表。
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str") -> "list[dict[str, Any] | list[Any]]")]
-    fn safe_loads(py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
+    #[pyo3(signature = (yaml: "str", schema: "str" = "core") -> "list[dict[str, Any] | list[Any]]")]
+    fn safe_loads(py: Python, yaml: &str, schema: &str) -> PyResult<Vec<Py<PyAny>>> {
+        let schema_enum = parse_schema(schema)?;
         let asts = py.detach(|| {
-            super::parser::parse_all(yaml).map_err(|e| {
+            super::parser::parse_all(yaml, schema_enum).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error(
                     "yaml-parse-error",
                     &[("detail", &e.to_string())],
@@ -677,7 +730,7 @@ mod pyyaml_rs {
                 let mut anchors = HashMap::new();
                 collect_anchors(ast, &mut anchors);
                 let mut visited = HashSet::new();
-                node_to_pyobject_with_anchors(ast, py, &anchors, &mut visited)
+                node_to_pyobject_with_anchors(ast, py, &anchors, &mut visited, schema_enum)
             })
             .collect()
     }
@@ -736,8 +789,12 @@ mod pyyaml_rs {
 
     /// 从 Markdown 文件中读取 YAML frontmatter。
     #[pyfunction]
-    #[pyo3(signature = (path: "str") -> "tuple[dict[str, Any] | None, str]")]
-    fn read_markdown(py: Python, path: &str) -> PyResult<(Option<Py<PyAny>>, String)> {
+    #[pyo3(signature = (path: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]")]
+    fn read_markdown(
+        py: Python,
+        path: &str,
+        schema: &str,
+    ) -> PyResult<(Option<Py<PyAny>>, String)> {
         let content = py.detach(|| {
             std::fs::read_to_string(path).map_err(|e| {
                 pyo3::exceptions::PyIOError::new_err(format_i18n_error(
@@ -746,14 +803,19 @@ mod pyyaml_rs {
                 ))
             })
         })?;
-        read_markdown_str(py, &content)
+        read_markdown_str(py, &content, schema)
     }
 
     /// 从 Markdown 字符串中读取 YAML frontmatter。
     #[pyfunction]
-    #[pyo3(signature = (content: "str") -> "tuple[dict[str, Any] | None, str]")]
-    fn read_markdown_str(_py: Python, content: &str) -> PyResult<(Option<Py<PyAny>>, String)> {
+    #[pyo3(signature = (content: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]")]
+    fn read_markdown_str(
+        _py: Python,
+        content: &str,
+        schema: &str,
+    ) -> PyResult<(Option<Py<PyAny>>, String)> {
         let content = content.trim_start();
+        let schema_enum = parse_schema(schema)?;
 
         if let Some(rest) = content.strip_prefix("---") {
             if let Some(end_idx) = rest.find("---") {
@@ -762,14 +824,14 @@ mod pyyaml_rs {
 
                 if !frontmatter.is_empty() {
                     return Python::attach(|py| {
-                        let ast = super::parser::parse(frontmatter).map_err(|e| {
+                        let ast = super::parser::parse(frontmatter, schema_enum).map_err(|e| {
                             YamlParseError::new_err(format_i18n_error(
                                 "yaml-parse-error",
                                 &[("detail", &e.to_string())],
                             ))
                         })?;
                         Ok((
-                            Some(node_to_pyobject(&ast, py)?),
+                            Some(node_to_pyobject(&ast, py, schema_enum)?),
                             markdown_content.to_string(),
                         ))
                     });
@@ -828,10 +890,12 @@ mod pyyaml_rs {
 
 #[cfg(test)]
 mod tests {
+    use super::parser::{parse, yaml::YamlSchema};
+
     #[test]
     fn test_parse_and_serialize() {
         let yaml = "key: value";
-        let ast = super::parser::parse(yaml).unwrap();
+        let ast = parse(yaml, YamlSchema::Core).unwrap();
         let output = super::serializer::to_yaml(&ast);
         assert_eq!(output, "key: value\n");
     }
