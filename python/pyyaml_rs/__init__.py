@@ -13,12 +13,19 @@ Example:
     value
 """
 
+from .async_dump import (
+    safe_dump_async,
+    safe_dumps_async,
+    safe_load_async,
+    safe_loads_async,
+)
 from .pyyaml_rs import (
     StreamIterator,
     YamlDocument,
     YamlParseError,
     YamlSerializeError,
     YamlTypeError,
+    YamlValidateError,
     detect_language,
     dump_file,
     from_dict,
@@ -45,6 +52,7 @@ __all__ = [
     "YamlParseError",
     "YamlSerializeError",
     "YamlTypeError",
+    "YamlValidateError",
     "detect_language",
     "dump_file",
     "from_dict",
@@ -59,9 +67,13 @@ __all__ = [
     "read_markdown",
     "read_markdown_str",
     "safe_dump",
+    "safe_dump_async",
     "safe_dumps",
+    "safe_dumps_async",
     "safe_load",
+    "safe_load_async",
     "safe_loads",
+    "safe_loads_async",
     "set_language",
 ]
 
