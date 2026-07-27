@@ -1240,7 +1240,6 @@ source = { editable = "." }
 dependencies = [
     { name = "jsonschema", version = "4.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "jsonschema", version = "4.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "pytest-asyncio" },
 ]
 
 [package.dev-dependencies]
@@ -1256,16 +1255,14 @@ dev = [
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "prek" },
     { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "pytest-benchmark" },
     { name = "ruff" },
     { name = "rumdl" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "jsonschema", specifier = ">=4.25.1" },
-    { name = "pytest-asyncio", specifier = "==0.23.8" },
-]
+requires-dist = [{ name = "jsonschema", specifier = ">=4.25.1" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1276,6 +1273,7 @@ dev = [
     { name = "numpy", specifier = ">=1.16.0" },
     { name = "prek", specifier = ">=0.1.0" },
     { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "pytest-benchmark", specifier = ">=4.0" },
     { name = "ruff", specifier = ">=0.14.0" },
     { name = "rumdl", specifier = ">=0.2.43" },
