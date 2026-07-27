@@ -81,6 +81,7 @@ All error messages include contextual information:
 | Key not found | `"Key not found: <key>"` |
 | Index out of range | `"Index out of range: <index> (len: <len>)"` |
 | Unsupported type | `"Unsupported type for YAML conversion"` |
+| ndarray unsupported dtype | `"Unsupported type for YAML conversion"` |
 
 ## i18n Support
 
