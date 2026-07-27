@@ -684,7 +684,10 @@ mod pyyaml_rs {
     }
 
     /// Convert a `StreamEvent` to a Python dict.
-    fn stream_event_to_py_dict(py: Python<'_>, event: &StreamEvent) -> PyResult<Py<PyAny>> {
+    fn stream_event_to_py_dict<'a>(
+        py: Python<'a>,
+        event: &StreamEvent,
+    ) -> PyResult<Bound<'a, PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("line", event.line)?;
         dict.set_item("column", event.column)?;
@@ -807,7 +810,7 @@ mod pyyaml_rs {
             }
         }
 
-        Ok(dict.into_any().unbind())
+        Ok(dict)
     }
 
     /// Stream-parse a YAML string, yielding events one at a time.
@@ -824,7 +827,7 @@ mod pyyaml_rs {
     /// # Returns
     /// A `StreamIterator` in generator mode, or `None` in callback mode.
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, on_event: "Any" = None))]
+    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, on_event: "Callable[[dict[str, Any]], bool] | None" = None) -> "StreamIterator | None")]
     fn parse_stream(
         py: Python,
         yaml: &Bound<'_, PyAny>,
@@ -897,7 +900,7 @@ mod pyyaml_rs {
             slf
         }
 
-        fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        fn __next__<'a>(&mut self, py: Python<'a>) -> PyResult<Option<Bound<'a, PyDict>>> {
             if self.index < self.events.len() {
                 let event = &self.events[self.index];
                 self.index += 1;
