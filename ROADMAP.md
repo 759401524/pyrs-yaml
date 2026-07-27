@@ -49,19 +49,16 @@ All versions are tracked here with release dates and delivered features.
 
 ## In Progress
 
-### v0.5.0 — Planned
+### v0.6.0 — Planned
 
-- **YAML 1.2 schema profiles** — restrict/extend type resolution per use case (e.g., strict mode for config files)
 - **Custom tag ecosystem** — plugin system for user-defined YAML tags with Python callbacks
-- **Streaming parser** — event-based low-memory parsing for multi-GB YAML documents via `saphyr-parser` event API
 - **WASM build target** — `wasm32-unknown-unknown` compilation via maturin, enabling browser/WASM execution
 - **Async serialization** — non-blocking `safe_dump_async()` for large documents using Python coroutines
-
-### v0.6.0 — Research / Future
-
 - **JSON Schema ↔ YAML schema validation** — declarative document validation layer
 - **Incremental re-parse** — modify a subset of a parsed document without re-serializing the whole tree
 - **Faster round-trip** — optimize serializer hot-path for block-style output (target: 50× over PyYAML)
+
+### v0.7.0 — Research / Future
 
 ---
 
