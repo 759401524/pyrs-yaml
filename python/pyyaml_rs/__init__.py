@@ -14,6 +14,7 @@ Example:
 """
 
 from .pyyaml_rs import (
+    StreamIterator,
     YamlDocument,
     YamlParseError,
     YamlSerializeError,
@@ -28,6 +29,7 @@ from .pyyaml_rs import (
     parse,
     parse_all_docs,
     parse_file,
+    parse_stream,
     read_markdown,
     read_markdown_str,
     safe_dump,
@@ -38,6 +40,7 @@ from .pyyaml_rs import (
 )
 
 __all__ = [
+    "StreamIterator",
     "YamlDocument",
     "YamlParseError",
     "YamlSerializeError",
@@ -52,6 +55,7 @@ __all__ = [
     "parse",
     "parse_all_docs",
     "parse_file",
+    "parse_stream",
     "read_markdown",
     "read_markdown_str",
     "safe_dump",

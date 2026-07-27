@@ -40,6 +40,7 @@ pyo3::create_exception!(pyyaml_rs, YamlTypeError, pyo3::exceptions::PyTypeError)
 mod pyyaml_rs {
     use super::*;
 
+    use super::parser::{StreamEvent, StreamEventType};
     #[pymodule_export]
     use super::YamlParseError;
     #[pymodule_export]
@@ -680,6 +681,231 @@ mod pyyaml_rs {
                 node_to_pyobject_with_anchors(ast, py, &anchors, &mut visited)
             })
             .collect()
+    }
+
+    /// Convert a `StreamEvent` to a Python dict.
+    fn stream_event_to_py_dict(py: Python<'_>, event: &StreamEvent) -> PyResult<Py<PyAny>> {
+        let dict = PyDict::new(py);
+        dict.set_item("line", event.line)?;
+        dict.set_item("column", event.column)?;
+
+        match &event.event_type {
+            StreamEventType::StreamStart => {
+                dict.set_item("type", "stream_start")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+            StreamEventType::StreamEnd => {
+                dict.set_item("type", "stream_end")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+            StreamEventType::DocumentStart => {
+                dict.set_item("type", "document_start")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+            StreamEventType::DocumentEnd => {
+                dict.set_item("type", "document_end")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+            StreamEventType::Scalar {
+                value,
+                style,
+                anchor,
+                tag,
+            } => {
+                dict.set_item("type", "scalar")?;
+                dict.set_item("value", value)?;
+                dict.set_item(
+                    "style",
+                    match style {
+                        ast::ScalarStyle::Plain => "plain",
+                        ast::ScalarStyle::SingleQuoted => "single_quoted",
+                        ast::ScalarStyle::DoubleQuoted => "double_quoted",
+                        ast::ScalarStyle::Literal => "literal",
+                        ast::ScalarStyle::Folded => "folded",
+                    },
+                )?;
+                if let Some(a) = anchor {
+                    dict.set_item("anchor", a)?;
+                } else {
+                    dict.set_item("anchor", py.None())?;
+                }
+                if let Some(t) = tag {
+                    dict.set_item("tag", format!("{}{}", t.handle, t.suffix))?;
+                } else {
+                    dict.set_item("tag", py.None())?;
+                }
+            }
+            StreamEventType::MappingStart { anchor, tag } => {
+                dict.set_item("type", "mapping_start")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                if let Some(a) = anchor {
+                    dict.set_item("anchor", a)?;
+                } else {
+                    dict.set_item("anchor", py.None())?;
+                }
+                if let Some(t) = tag {
+                    dict.set_item("tag", format!("{}{}", t.handle, t.suffix))?;
+                } else {
+                    dict.set_item("tag", py.None())?;
+                }
+            }
+            StreamEventType::MappingEnd => {
+                dict.set_item("type", "mapping_end")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+            StreamEventType::SequenceStart { anchor, tag } => {
+                dict.set_item("type", "sequence_start")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                if let Some(a) = anchor {
+                    dict.set_item("anchor", a)?;
+                } else {
+                    dict.set_item("anchor", py.None())?;
+                }
+                if let Some(t) = tag {
+                    dict.set_item("tag", format!("{}{}", t.handle, t.suffix))?;
+                } else {
+                    dict.set_item("tag", py.None())?;
+                }
+            }
+            StreamEventType::SequenceEnd => {
+                dict.set_item("type", "sequence_end")?;
+                dict.set_item("value", py.None())?;
+                dict.set_item("style", py.None())?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+            StreamEventType::Alias { name } => {
+                dict.set_item("type", "alias")?;
+                dict.set_item("value", name)?;
+                dict.set_item("style", py.None())?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+            StreamEventType::Comment { text, standalone } => {
+                dict.set_item("type", "comment")?;
+                dict.set_item("value", text)?;
+                dict.set_item("style", if *standalone { "standalone" } else { "inline" })?;
+                dict.set_item("anchor", py.None())?;
+                dict.set_item("tag", py.None())?;
+            }
+        }
+
+        Ok(dict.into_any().unbind())
+    }
+
+    /// Stream-parse a YAML string, yielding events one at a time.
+    ///
+    /// In generator mode (no callback), returns a `StreamIterator` that
+    /// yields event dicts. In callback mode, calls `on_event` for each
+    /// event and returns `None`.
+    ///
+    /// # Arguments
+    /// * `yaml` - YAML content string or bytes.
+    /// * `resolve_merges` - Whether to resolve merge keys (currently unused in streaming mode).
+    /// * `on_event` - Optional callback called per event. Return `False` to stop iteration.
+    ///
+    /// # Returns
+    /// A `StreamIterator` in generator mode, or `None` in callback mode.
+    #[pyfunction]
+    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, on_event: "Any" = None))]
+    fn parse_stream(
+        py: Python,
+        yaml: &Bound<'_, PyAny>,
+        resolve_merges: bool,
+        on_event: Option<Py<PyAny>>,
+    ) -> PyResult<Py<PyAny>> {
+        let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
+            s
+        } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
+            String::from_utf8(bytes).map_err(|e| {
+                YamlParseError::new_err(format_i18n_error(
+                    "invalid-utf8",
+                    &[("detail", &e.to_string())],
+                ))
+            })?
+        } else {
+            return Err(YamlTypeError::new_err(format_i18n_error(
+                "expected-str-or-bytes",
+                &[],
+            )));
+        };
+
+        if let Some(callback) = on_event {
+            let events = py.detach(|| {
+                super::parser::parse_stream(&yaml_str, resolve_merges).map_err(|e| {
+                    YamlParseError::new_err(format_i18n_error(
+                        "yaml-parse-error",
+                        &[("detail", &e.to_string())],
+                    ))
+                })
+            })?;
+
+            Python::attach(|py| -> PyResult<()> {
+                let cb = callback.bind(py);
+                for event in &events {
+                    let py_event = stream_event_to_py_dict(py, event)?;
+                    let should_continue: bool = cb.call1((py_event,))?.extract()?;
+                    if !should_continue {
+                        break;
+                    }
+                }
+                Ok(())
+            })?;
+            Ok(py.None())
+        } else {
+            let events = py.detach(|| {
+                super::parser::parse_stream(&yaml_str, resolve_merges).map_err(|e| {
+                    YamlParseError::new_err(format_i18n_error(
+                        "yaml-parse-error",
+                        &[("detail", &e.to_string())],
+                    ))
+                })
+            })?;
+
+            let iter = StreamIterator { events, index: 0 };
+            Ok(iter.into_pyobject(py)?.into_any().unbind())
+        }
+    }
+
+    /// Iterator class for stream parsing events.
+    #[pyclass]
+    struct StreamIterator {
+        events: Vec<StreamEvent>,
+        index: usize,
+    }
+
+    #[pymethods]
+    impl StreamIterator {
+        fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+            slf
+        }
+
+        fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+            if self.index < self.events.len() {
+                let event = &self.events[self.index];
+                self.index += 1;
+                Ok(Some(stream_event_to_py_dict(py, event)?))
+            } else {
+                Ok(None)
+            }
+        }
     }
 
     /// PyYAML 兼容接口：将 Python 对象序列化为 YAML 字符串。
