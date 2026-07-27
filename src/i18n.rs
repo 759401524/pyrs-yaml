@@ -2,7 +2,7 @@
 //!
 //! # 架构
 //!
-//! 使用 rust-i18n 作为 i18n 后端，翻译文件存储在 `locales/` 目录下（YAML 格式）。
+//! 使用 rust-i18n 作为 i18n 后端，翻译文件存储在 `src/i18n/locales/` 目录下（YAML 格式）。
 //! 通过 `t!()` 宏实现编译时 key 检查，`format_message()` 提供动态 key 查找接口。
 //! 占位符格式为 `%{key}`，例如 `yaml-parse-error: "错误: %{detail}"`。
 //!
@@ -81,7 +81,7 @@ pub fn list_languages() -> Vec<&'static str> {
 /// 调用时会将 `%{detail}` 替换为实际的参数值。
 ///
 /// # Arguments
-/// * `key` - 消息键，对应 `locales/` 目录下 YAML 文件中的条目名称。
+/// * `key` - 消息键，对应 `src/i18n/locales/` 目录下 YAML 文件中的条目名称。
 /// * `args` - 格式化参数 (键, 值) 对，格式为 `("key", "value")`，
 ///   其中 `key` 对应模板中的 `%{key}` 占位符名称，`value` 为替换值。
 ///
@@ -263,7 +263,7 @@ fn parse_language_list(input: &str) -> Vec<String> {
 #[cfg(test)]
 pub fn validate_translations() -> Result<(), String> {
     // 读取 en.yml 获取所有 key
-    let en_path = concat!(env!("CARGO_MANIFEST_DIR"), "/locales/en.yml");
+    let en_path = concat!(env!("CARGO_MANIFEST_DIR"), "/src/i18n/locales/en.yml");
     let en_content =
         std::fs::read_to_string(en_path).map_err(|e| format!("Failed to read en.yml: {}", e))?;
 
@@ -276,9 +276,9 @@ pub fn validate_translations() -> Result<(), String> {
 
     // 检查所有语言文件
     let other_files = [
-        concat!(env!("CARGO_MANIFEST_DIR"), "/locales/zh-CN.yml"),
-        concat!(env!("CARGO_MANIFEST_DIR"), "/locales/ja-JP.yml"),
-        concat!(env!("CARGO_MANIFEST_DIR"), "/locales/ko-KR.yml"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/i18n/locales/zh-CN.yml"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/i18n/locales/ja-JP.yml"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/i18n/locales/ko-KR.yml"),
     ];
 
     let mut errors = Vec::new();

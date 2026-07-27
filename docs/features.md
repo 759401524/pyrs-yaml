@@ -49,6 +49,50 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
+## Async I/O
+
+Non-blocking serialization and parsing via `asyncio`:
+
+```python
+import asyncio
+import pyyaml_rs
+
+async def main():
+    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
+    data = await pyyaml_rs.safe_loads_async(yaml)
+    print(data)  # {'a': 1}
+
+asyncio.run(main())
+```
+
+Available functions: `safe_dumps_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async`.
+
+## JSON Schema Validation
+
+Validate parsed YAML documents against JSON Schema:
+
+```python
+doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
+
+# Schema as JSON string
+doc.validate('{"type": "object", "required": ["name"]}')
+```
+
+Raises `YamlValidateError` on validation failure.
+
+## Incremental Re-parse
+
+Re-parse stored source text in place with different options:
+
+```python
+doc = pyyaml_rs.parse("x: on")
+print(doc.get("x"))  # "on" (string, core schema)
+
+doc.reparse(schema="yaml1.1")
+print(doc.get("x"))  # True (bool, yaml1.1 schema)
+```
+
 ## NumPy ndarray Support
 
 pyyaml-rs can serialize `numpy.ndarray` objects of any dimension directly to YAML:
@@ -119,3 +163,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | Complex keys | ✅ Supported |
 | Escape sequences | ✅ Supported |
 | Multi-document | ✅ Supported |
+| **Async I/O** | **✅ `safe_*_async`** |
+| **JSON Schema validation** | **✅ `doc.validate()`** |
+| **Incremental re-parse** | **✅ `doc.reparse()`** |
+| **JSON export** | **✅ `doc.to_json()`** |

@@ -38,27 +38,27 @@ Measured at the Rust level (no Python overhead):
 
 | Operation | Time |
 |-----------|------|
-| Parse (small) | 1.64 µs |
-| Parse (medium) | 12.3 µs |
-| Parse (large) | 37.7 µs |
-| Parse (anchors) | 10.8 µs |
-| Parse (comments) | 5.3 µs |
-| Parse (block scalars) | 3.1 µs |
-| Serialize (small) | 206 ns |
-| Serialize (medium) | 1.91 µs |
-| Serialize (large) | 4.76 µs |
-| Serialize (anchors) | 1.35 µs |
-| Serialize (block scalars) | 820 ns |
-| Round-trip (small) | 1.93 µs |
-| Round-trip (medium) | 14.4 µs |
-| Round-trip (large) | 42.7 µs |
+| Parse (small) | 1.67 µs |
+| Parse (medium) | 11.9 µs |
+| Parse (large) | 37.3 µs |
+| Parse (anchors) | 10.4 µs |
+| Parse (comments) | 5.4 µs |
+| Parse (block scalars) | 3.0 µs |
+| Serialize (small) | 148 ns |
+| Serialize (medium) | 845 ns |
+| Serialize (large) | 2.23 µs |
+| Serialize (anchors) | 649 ns |
+| Serialize (block scalars) | 388 ns |
+| Round-trip (small) | 1.88 µs |
+| Round-trip (medium) | 13.0 µs |
+| Round-trip (large) | 39.3 µs |
 
 ## Key Takeaways
 
 1. **pyyaml-rs is consistently 25–40× faster than PyYAML** across all operations
 2. **pyyaml-rs is 4–10× faster than ruamel.yaml** while matching its round-trip features
 3. **Rust-side parsing** is extremely fast — small documents parse in ~1.6 µs
-4. **Serialization** is even faster — small documents serialize in ~206 ns
+4. **Serialization** is even faster — small documents serialize in ~148 ns
 5. **The speed advantage compounds** with larger documents
 
 ## Notes

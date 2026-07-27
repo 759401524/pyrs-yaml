@@ -69,6 +69,29 @@ except pyyaml_rs.YamlTypeError as e:
     print(f"Type error: {e}")
 ```
 
+## YamlValidateError
+
+Raised when JSON Schema validation fails via `YamlDocument.validate()`.
+
+```python
+class YamlValidateError(ValueError):
+    """JSON Schema validation error (inherits from ValueError)."""
+```
+
+**Inherits from:** `ValueError`
+
+**Example:**
+
+```python
+doc = pyyaml_rs.parse("name: Alice")
+schema = {"type": "object", "required": ["name", "email"]}
+try:
+    doc.validate(schema)
+except pyyaml_rs.YamlValidateError as e:
+    print(f"Validation error: {e}")
+    # Output: "Validation error: 'email' is a required property"
+```
+
 ## Error Message Format
 
 All error messages include contextual information:
@@ -82,6 +105,7 @@ All error messages include contextual information:
 | Index out of range | `"Index out of range: <index> (len: <len>)"` |
 | Unsupported type | `"Unsupported type for YAML conversion"` |
 | ndarray unsupported dtype | `"Unsupported type for YAML conversion"` |
+| Schema validation failure | `"<jsonschema error message>"` |
 
 ## i18n Support
 

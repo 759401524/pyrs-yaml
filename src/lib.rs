@@ -11,7 +11,7 @@ pub mod serializer;
 mod integration;
 
 // rust-i18n 初始化
-rust_i18n::i18n!();
+rust_i18n::i18n!("src/i18n/locales");
 
 use ast::CustomNode;
 use indexmap::IndexMap;
@@ -33,6 +33,7 @@ pyo3::create_exception!(
     pyo3::exceptions::PyValueError
 );
 pyo3::create_exception!(pyyaml_rs, YamlTypeError, pyo3::exceptions::PyTypeError);
+pyo3::create_exception!(pyyaml_rs, YamlValidateError, pyo3::exceptions::PyValueError);
 
 /// A Python module implemented in Rust.
 ///
@@ -48,6 +49,8 @@ mod pyyaml_rs {
     use super::YamlSerializeError;
     #[pymodule_export]
     use super::YamlTypeError;
+    #[pymodule_export]
+    use super::YamlValidateError;
 
     /// 格式化 i18n 错误消息，将翻译模板中的占位符替换为实际值。
     fn format_i18n_error(key: &str, args: &[(&str, &str)]) -> String {
@@ -59,6 +62,7 @@ mod pyyaml_rs {
     struct YamlDocument {
         ast: CustomNode,
         schema: YamlSchema,
+        source: Option<String>,
     }
 
     #[pymethods]
@@ -264,6 +268,119 @@ mod pyyaml_rs {
                     &[],
                 ))),
             }
+        }
+
+        /// 返回文档的原始 YAML 源文本。
+        ///
+        /// 当 `YamlDocument` 通过 `parse()` 或 `parse_file()` 创建时，
+        /// 原始 YAML 字符串会被保存以便后续使用 `reparse()`。
+        ///
+        /// # Returns
+        /// 原始 YAML 字符串，若不存在则返回 `None`。
+        fn source(&self) -> Option<&str> {
+            self.source.as_deref()
+        }
+
+        /// 根据存储的原始 YAML 源重新解析文档。
+        ///
+        /// 当文档源文本已被外部修改后，调用此方法可以重新解析，
+        /// 将新的 AST 反映到 `YamlDocument` 中。
+        ///
+        /// # Arguments
+        /// * `resolve_merges` - 是否解析 `<<` 合并键，默认 `true`。
+        /// * `schema` - 类型解析 Schema，默认为 `"core"`。
+        ///
+        /// # Returns
+        /// 返回 `None`（原地修改 `YamlDocument`）。
+        ///
+        /// # Errors
+        /// 如果未保存源文本（如通过 `parse()` 从字节流创建）则抛出 `YamlTypeError`；
+        /// 解析失败时抛出 `YamlParseError`。
+        #[pyo3(signature = (resolve_merges: "bool" = true, schema: "str" = "core") -> "None")]
+        fn reparse(&mut self, py: Python, resolve_merges: bool, schema: &str) -> PyResult<()> {
+            let source = self.source.as_ref().ok_or_else(|| {
+                YamlTypeError::new_err(format_i18n_error("no-source-to-reparse", &[]))
+            })?;
+            let schema_enum = parse_schema(schema)?;
+            let new_ast = py.detach(|| {
+                super::parser::parse_with_options(source, resolve_merges, schema_enum).map_err(
+                    |e| {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.to_string())],
+                        ))
+                    },
+                )
+            })?;
+            self.ast = new_ast;
+            self.schema = schema_enum;
+            Ok(())
+        }
+
+        /// 将文档内容转换为 JSON 格式。
+        ///
+        /// 使用 `json.dumps` 序列化后再解析，确保输出为标准 JSON。
+        ///
+        /// # Arguments
+        /// * `indent` - JSON 缩进空格数，默认为 `2`。
+        ///
+        /// # Returns
+        /// JSON 字符串。
+        #[pyo3(signature = (indent: "int" = 2) -> "str")]
+        fn to_json(&self, py: Python, indent: usize) -> PyResult<String> {
+            let obj = self.to_dict(py)?;
+            let json_module = py.import("json")?;
+            let kw = PyDict::new(py);
+            kw.set_item("indent", indent)?;
+            let s = json_module
+                .call_method("dumps", (obj,), Some(&kw))?
+                .extract()?;
+            Ok(s)
+        }
+
+        /// 验证文档内容是否符合 JSON Schema。
+        ///
+        /// 调用 Python `jsonschema.validate` 进行验证。如果文档内容
+        /// 不符合 Schema，则抛出 `YamlValidateError`。
+        ///
+        /// # Arguments
+        /// * `schema` - JSON Schema 描述，可以是：
+        ///   - `str`：Schema 的 JSON 字符串
+        ///   - `dict[str, Any]`：Schema 的 Python 字典
+        ///
+        /// # Returns
+        /// 验证成功返回 `None`。
+        ///
+        /// # Errors
+        /// 验证失败时抛出 `YamlValidateError`，错误消息包含 JSON Schema
+        /// 库报告的详细错误路径和描述。
+        #[pyo3(signature = (schema: "str | dict[str, Any]") -> "None")]
+        fn validate(&self, py: Python, schema: &Bound<'_, PyAny>) -> PyResult<()> {
+            let instance = self.to_dict(py)?;
+
+            let schema_obj: Bound<'_, PyAny> = if let Ok(schema_str) = schema.extract::<String>() {
+                let json_module = py.import("json")?;
+                json_module.call_method("loads", (schema_str,), None)?
+            } else {
+                schema.clone()
+            };
+
+            let jsonschema = py.import("jsonschema")?;
+            let validate_fn = jsonschema.getattr("validate")?;
+            let kw = PyDict::new(py);
+            kw.set_item("instance", instance)?;
+            kw.set_item("schema", schema_obj)?;
+            validate_fn.call((), Some(&kw)).map_err(|e| {
+                let msg = e
+                    .value(py)
+                    .getattr("message")
+                    .ok()
+                    .and_then(|m| m.extract::<String>().ok())
+                    .unwrap_or_else(|| e.to_string());
+                YamlValidateError::new_err(msg)
+            })?;
+
+            Ok(())
         }
     }
 
@@ -639,6 +756,7 @@ mod pyyaml_rs {
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
+            source: Some(yaml_str),
         })
     }
 
@@ -647,13 +765,13 @@ mod pyyaml_rs {
     #[pyo3(signature = (path: "str", schema: "str" = "core") -> "YamlDocument")]
     fn parse_file(py: Python, path: &str, schema: &str) -> PyResult<YamlDocument> {
         let schema_enum = parse_schema(schema)?;
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                "file-read-error",
+                &[("detail", &e.to_string()), ("path", path)],
+            ))
+        })?;
         let ast = py.detach(|| {
-            let content = std::fs::read_to_string(path).map_err(|e| {
-                pyo3::exceptions::PyIOError::new_err(format_i18n_error(
-                    "file-read-error",
-                    &[("detail", &e.to_string()), ("path", path)],
-                ))
-            })?;
             super::parser::parse_with_options(&content, true, schema_enum).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error(
                     "yaml-parse-error",
@@ -664,6 +782,7 @@ mod pyyaml_rs {
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
+            source: Some(content),
         })
     }
 
@@ -690,6 +809,7 @@ mod pyyaml_rs {
             .map(|ast| YamlDocument {
                 ast,
                 schema: schema_enum,
+                source: Some(yaml.to_string()),
             })
             .collect())
     }

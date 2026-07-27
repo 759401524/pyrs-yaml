@@ -147,6 +147,55 @@ Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or 
 dump_file(data: Any, path: str) -> None
 ```
 
+## Async Functions
+
+Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
+
+### `safe_dumps_async()`
+
+Serialize a Python object to YAML string (async).
+
+```python
+async def safe_dumps_async(data: Any) -> str
+```
+
+### `safe_dump_async()`
+
+Serialize a Python object to stdout as YAML (async).
+
+```python
+async def safe_dump_async(data: Any) -> None
+```
+
+### `safe_loads_async()`
+
+Parse a YAML string into native Python objects (async).
+
+```python
+async def safe_loads_async(yaml: str, schema: str = "core") -> Any
+```
+
+### `safe_load_async()`
+
+Parse a YAML string into native Python objects (async).
+
+```python
+async def safe_load_async(yaml: str, schema: str = "core") -> Any
+```
+
+**Example:**
+
+```python
+import asyncio, pyyaml_rs
+
+async def main():
+    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
+    data = await pyyaml_rs.safe_loads_async(yaml)
+    print(data)  # {'a': 1}
+
+asyncio.run(main())
+```
+
 ## Markdown Frontmatter
 
 ### `read_markdown()`
@@ -216,9 +265,10 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlParseError` — YAML parsing error (inherits from `ValueError`)
 - `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
 - `YamlTypeError` — Type conversion error (inherits from `TypeError`)
+- `YamlValidateError` — JSON Schema validation error (inherits from `ValueError`)
 
 ## Version
 
 ```python
-__version__ = "0.2.0"
+__version__ = "0.6.0"
 ```

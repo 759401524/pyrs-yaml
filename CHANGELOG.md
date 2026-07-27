@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-27
+
+### Added
+
+- **Async serialization** — `safe_dumps_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async` via `asyncio.run_in_executor` (`python/pyyaml_rs/async_dump.py`)
+- **JSON Schema validation** — `YamlValidateError` exception + `YamlDocument.validate(schema)` method (accepts `str` or `dict`); delegates to Python `jsonschema` module
+- **`YamlDocument.to_json()`** — serialize document to JSON string (uses Python `json.dumps`)
+- **Incremental re-parse** — `YamlDocument` now stores source text (`doc.source()`); `doc.reparse(resolve_merges=True, schema="core")` re-parses in-place
+- **29 new tests** across `test_async.py` (8), `test_validate.py` (14), `test_reparse.py` (7)
+
+### Changed
+
+- `YamlValidateError` registered as new custom exception (inherits `ValueError`)
+- `rust_i18n::i18n!` macro path updated to `"src/i18n/locales"`
+- `validate_translations()` test paths updated to match new locale directory
+
+### Removed
+
+- Deleted redundant `src/i18n/en.ftl`, `src/i18n/zh-CN.ftl` (never referenced by rust-i18n)
+- Moved `locales/*.yml` → `src/i18n/locales/` (co-located with i18n module)
+
+### Dependency Changes
+
+- Runtime dependency: `jsonschema>=4.25.1`
+- Dev dependency: `pytest-asyncio>=0.23` (moved from runtime, no longer pinned)
+
+## [0.5.0] - 2026-07-27
+
+### Fixed
+
+- **`Serializer::write_node`** — `.unwrap()` on `values.iter().next().unwrap()` in `block_mapping`/`block_sequence` replaced with safe indexed access to eliminate potential panic on edge-case ASTs
+- **`YAML_SCHEMA` constant** — typo `yamorg2002` corrected to `yamlorg2002` (matches YAML 1.2 spec URL)
+- **Development documentation** — `AGENTS.md` updated with mandatory `uv run` prefix for Python commands and direct `cargo` for Rust commands
+
 ## [0.4.0] - 2026-07-27
 
 ### Added

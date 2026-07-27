@@ -8,6 +8,10 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - **High Performance** - Rust backend, see [benchmarks](benches/yaml_bench.rs)
 - **NumPy ndarray support** - `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` serialize `numpy.ndarray` of any dimension (0-D through N-D) with zero-copy Rust dispatch
+- **JSON Schema validation** - `YamlDocument.validate(schema)` validates parsed documents against JSON Schema; `YamlValidateError` for failures
+- **Async I/O** - `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` via `asyncio.run_in_executor`
+- **Incremental re-parse** - `doc.source()` + `doc.reparse()` for re-parsing stored YAML in-place with different options
+- **JSON serialization** - `doc.to_json()` exports documents to standard JSON
 - **Custom AST** - Extensible AST for advanced YAML manipulation
 - **PyYAML Compatible** - Drop-in replacement with `safe_load`/`safe_dump` API
 
@@ -34,6 +38,49 @@ print(data)  # {'key': 'value'}
 original = "# Comment\nkey: value  # inline\n"
 doc = pyyaml_rs.parse(original)
 assert doc.to_yaml() == original  # True
+```
+
+### JSON Schema validation
+
+```python
+doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
+# None — validation passed
+
+# Invalid — raises YamlValidateError
+doc.validate({"type": "object", "required": ["email"]})
+# pyyaml_rs.YamlValidateError: "Email" is a required property
+```
+
+### Async serialization
+
+```python
+import asyncio
+import pyyaml_rs
+
+async def main():
+    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
+    data = await pyyaml_rs.safe_loads_async(yaml)
+    print(data)  # {'a': 1}
+
+asyncio.run(main())
+```
+
+### Incremental re-parse
+
+```python
+doc = pyyaml_rs.parse("x: on")
+print(doc.get("x"))  # "on" (core schema: string)
+
+doc.reparse(schema="yaml1.1")
+print(doc.get("x"))  # True (yaml1.1 schema: bool)
+```
+
+### JSON export
+
+```python
+doc = pyyaml_rs.parse("a: 1\nb: hello")
+json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
 ```
 
 ### NumPy ndarray support
@@ -81,6 +128,10 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | Block scalars (`\|`, `>`) | Preserved |
 | Merge keys (`<<: *alias`) | Resolved (opt-out via `resolve_merges=False`) |
 | **NumPy ndarray** | **Full (0-D through N-D)** |
+| **JSON Schema validation** | **Full** |
+| **Async I/O** | **Full** |
+| **Incremental re-parse** | **Full** |
+| **JSON export** | **Full** |
 
 ## API Reference
 
