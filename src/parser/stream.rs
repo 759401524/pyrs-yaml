@@ -1,5 +1,7 @@
 use crate::ast::{Comment, ScalarStyle, Tag};
-use crate::parser::yaml::{extract_anchors, extract_comments, RawAnchor, RawComment};
+use crate::parser::yaml::{
+    extract_anchors, extract_comments, unescape_double_quoted, RawAnchor, RawComment,
+};
 use saphyr_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
@@ -415,59 +417,6 @@ fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
         },
         suffix: t.suffix.to_string(),
     })
-}
-
-/// Unescape double-quoted YAML scalar strings.
-///
-/// Handles the common YAML escape sequences: `\\`, `\"`, `\n`, `\r`, `\t`,
-/// `\b`, `\f`, `\/`, `\xNN` and `\uNNNN` hex escapes.
-fn unescape_double_quoted(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('r') => result.push('\r'),
-                Some('t') => result.push('\t'),
-                Some('\\') => result.push('\\'),
-                Some('"') => result.push('"'),
-                Some('/') => result.push('/'),
-                Some('b') => result.push('\u{08}'),
-                Some('f') => result.push('\u{0C}'),
-                Some('x') => {
-                    let hex: String = chars.by_ref().take(2).collect();
-                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                        result.push(byte as char);
-                    } else {
-                        result.push('\\');
-                        result.push('x');
-                        result.push_str(&hex);
-                    }
-                }
-                Some('u') => {
-                    let hex: String = chars.by_ref().take(4).collect();
-                    if let Ok(code) = u32::from_str_radix(&hex, 16) {
-                        if let Some(ch) = char::from_u32(code) {
-                            result.push(ch);
-                        } else {
-                            result.push_str(&format!("\\u{}", hex));
-                        }
-                    } else {
-                        result.push_str(&format!("\\u{}", hex));
-                    }
-                }
-                Some(other) => {
-                    result.push('\\');
-                    result.push(other);
-                }
-                None => result.push('\\'),
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
 }
 
 /// Parse a YAML string into a stream of `StreamEvent`s.
