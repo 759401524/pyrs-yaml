@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-27
+
+### Added
+
+- **132 new gap-filling tests** — comprehensive coverage for previously untested APIs
+- **i18n function tests** — `set_language`, `get_language`, `list_languages`, `detect_language`, `negotiate_language`
+- **`parse_all_docs`** dedicated test suite — single doc, multiple docs, empty, comments
+- **`parse_file` success case tests** — basic parsing, comments preservation, file-not-found error
+- **`to_yaml_with_options` tests** — `explicit_start`, `explicit_end`, `indent_size`, `sort_keys` order preservation
+- **`to_dict()` method tests** — scalar root, nested, list, bool, null, anchor resolution, empty mapping/sequence
+- **YamlDocument dunder method tests** — `__repr__`, `__str__`, `__contains__`, `__len__`, `__iter__`, `__getitem__`, `root_type()`
+- **Bytes input tests** — `parse(b"key: value")`, UTF-8 bytes, invalid UTF-8 error
+- **Unicode & special character tests** — CJK, emoji, roundtrip, CRLF line endings, duplicate keys
+- **`safe_load`/`safe_loads` feature coverage** — anchors, merge keys, block scalars, flow collections, special floats, type resolution
+- **`from_dict` edge cases** — special characters in keys, nested lists, None values, empty dict/list
+- **`from_json` round-trip** — nested structures, arrays, invalid JSON error
+- **`dump_file` tests** — success path, invalid path error
+- **YAML Test Suite individual case tests** — octal, hex, scientific notation, NaN, infinity, merge keys, explicit/implicit keys, bool/null variants, block scalar strip (`|-`), flow collections
+- **`resolve_merges` parameter tests** — preserving `<<` when disabled, resolving by default
+- **Flow collections roundtrip** — root-level and nested flow mapping/sequence
+- **Anchor on non-scalar nodes** — mapping anchors (`&defaults`) and sequence anchors (`&items`)
+- **Sequence indexing tests** — positive index, out-of-range error
+- **Merge key integration** — roundtrip with resolved and unresolved merge keys
+- **Tag preservation** — `!!seq` and `!!map` tag test coverage
+- **Comment preservation** — inline and standalone comment tests on complex structures
+
+### Changed
+
+- Fixed version sync: `python/pyyaml_rs/__init__.py` `__version__` updated from 0.2.0 to 0.4.0 to match Cargo.toml/pyproject.toml
+- Removed stale 0.2.0 wheel artifacts from `dist/`
+
 ## [0.3.0] - 2025-07-27
 
 ### Added
