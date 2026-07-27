@@ -97,7 +97,6 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **Negative numbers**: YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative values are automatically quoted and correctly parsed back during round-trip
 - **0-D arrays**: Reshaped to 1-D and serialized as a single-item list
 - **Complex numbers**: YAML has no native complex type; serialized as `(re+imj)` strings. `safe_load` returns them as strings, not Python `complex`
-
 - **Markdown frontmatter extraction** — `read_markdown()` for blog/content tools
 - **JSON ↔ YAML conversion** — `from_json()` / `from_dict()`
 - **Multi-document parsing** — `parse_all_docs()`
