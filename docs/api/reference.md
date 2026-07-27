@@ -106,24 +106,26 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 Serialize a Python object to YAML.
 
 ```python
-safe_dump(data: dict[str, Any] | list[Any]) -> str
+safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
 **Equivalent to:** `yaml.safe_dump()` in PyYAML
+
+**Supported input types:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, and **`numpy.ndarray`** (all dimensions and numeric dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
 ### `safe_dumps()`
 
 Alias for `safe_dump()`.
 
 ```python
-safe_dumps(data: dict[str, Any] | list[Any]) -> str
+safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
 ## Conversion Functions
 
 ### `from_dict()`
 
-Convert a Python dict to YAML string.
+Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value inside the dict.
 
 ```python
 from_dict(data: dict[str, Any]) -> str
@@ -139,7 +141,7 @@ from_json(json_str: str) -> str
 
 ### `dump_file()`
 
-Serialize a Python object to YAML and write to file.
+Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or `numpy.ndarray`.
 
 ```python
 dump_file(data: Any, path: str) -> None

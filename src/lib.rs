@@ -15,6 +15,10 @@ rust_i18n::i18n!();
 
 use ast::CustomNode;
 use indexmap::IndexMap;
+use numpy::{
+    dtype, Complex32, Complex64, PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyUntypedArray,
+    PyUntypedArrayMethods,
+};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
@@ -320,8 +324,18 @@ mod pyyaml_rs {
         visited: &mut HashSet<usize>,
     ) -> PyResult<Py<PyAny>> {
         match node {
-            CustomNode::Scalar { value, style, .. } => match style {
-                ast::ScalarStyle::Plain => {
+            CustomNode::Scalar { value, style, .. } => {
+                // Plain scalars always get type resolution.
+                // Quoted scalars (Single/Double) also get type resolution for round-trip correctness
+                // — the serializer may quote negative numbers (YAML 1.2 block-sequence restriction),
+                // and they should parse back as numbers.
+                // Literal/Folded block scalars are always strings.
+                if matches!(
+                    style,
+                    ast::ScalarStyle::Plain
+                        | ast::ScalarStyle::SingleQuoted
+                        | ast::ScalarStyle::DoubleQuoted
+                ) {
                     use parser::yaml::{resolve_yaml_type, YamlType};
                     match resolve_yaml_type(value) {
                         YamlType::Null => Ok(py.None()),
@@ -333,9 +347,10 @@ mod pyyaml_rs {
                         YamlType::Float(f) => Ok(f.into_pyobject(py)?.into_any().unbind()),
                         YamlType::Str(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
                     }
+                } else {
+                    Ok(value.clone().into_pyobject(py)?.into_any().unbind())
                 }
-                _ => Ok(value.clone().into_pyobject(py)?.into_any().unbind()),
-            },
+            }
             CustomNode::Mapping { pairs, .. } => {
                 let dict = PyDict::new(py);
                 for (key, value) in pairs {
@@ -361,7 +376,110 @@ mod pyyaml_rs {
         }
     }
 
-    /// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None。
+    /// 将 NumPy ndarray 序列化为嵌套 YAML 列表（通过 `__array_interface__`）。
+    ///
+    /// 使用 numpy crate 的 `PyUntypedArray` 读取 shape 和 dtype，
+    /// 根据 dtype 分派到对应 Rust 类型的 `PyArray1<T>`，
+    /// 通过 `as_slice()` 获取 `&[T]` 切片，释放 GIL 后转换为 `CustomNode`。
+    ///
+    /// 支持：int8/16/32/64、uint8/16/32/64、float32/64、complex64/128、bool。
+    /// 0-D 标量数组直接返回标量节点。
+    ///
+    /// # Arguments
+    /// * `py` — Python GIL 上下文
+    /// * `obj` — Python 对象（NumPy ndarray）
+    ///
+    /// # Returns
+    /// 成功时返回嵌套的 `CustomNode`，失败时返回 `None`。
+    fn ndarray_to_node(py: Python, obj: &Bound<'_, PyAny>) -> Option<CustomNode> {
+        let arr = obj.cast::<PyUntypedArray>().ok()?;
+
+        // 0-D 标量：reshape(1) → 1-D，递归处理
+        if arr.ndim() == 0 {
+            let reshape = obj.getattr("reshape").ok()?;
+            let tuple_cls = py.import("builtins").ok()?.getattr("tuple").ok()?;
+            let shape_arg = tuple_cls.call1((1usize,)).ok()?;
+            let reshaped = reshape.call1((shape_arg,)).ok()?;
+            return ndarray_to_node(py, &reshaped);
+        }
+        let shape = arr.shape();
+        let total = shape.iter().product::<usize>();
+
+        // 空数组
+        if total == 0 {
+            return Some(CustomNode::plain_sequence(Vec::new()));
+        }
+
+        macro_rules! dispatch_dtype {
+            ($ty:ty, $to_scalar:expr) => {
+                if arr.dtype().is_equiv_to(&dtype::<$ty>(py)) {
+                    let typed = arr.cast::<PyArrayDyn<$ty>>().ok()?;
+                    let slice = unsafe { typed.as_slice() }.ok()?;
+                    let flat =
+                        py.detach(|| slice.iter().map($to_scalar).collect::<Vec<CustomNode>>());
+                    let mut result = flat;
+                    for &dim in shape[1..].iter().rev() {
+                        result = nest_ndarray_sequence(result, dim);
+                    }
+                    // shape[1..] 处理除根维度外的嵌套；plain_sequence 包装根维度
+                    return Some(CustomNode::plain_sequence(result));
+                }
+            };
+        }
+
+        dispatch_dtype!(i8, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(i16, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(i32, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(i64, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(u8, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(u16, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(u32, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(u64, |v| CustomNode::plain_scalar(v.to_string()));
+        dispatch_dtype!(f32, |v| CustomNode::plain_scalar(if v.is_nan() {
+            "NaN".to_string()
+        } else {
+            v.to_string()
+        }));
+        dispatch_dtype!(f64, |v| CustomNode::plain_scalar(if v.is_nan() {
+            "NaN".to_string()
+        } else {
+            v.to_string()
+        }));
+        dispatch_dtype!(bool, |v| CustomNode::plain_scalar(if *v {
+            "true"
+        } else {
+            "false"
+        }));
+        dispatch_dtype!(Complex64, |c| CustomNode::plain_scalar(format!(
+            "({}+{}j)",
+            c.re, c.im
+        )));
+        dispatch_dtype!(Complex32, |c| CustomNode::plain_scalar(format!(
+            "({}+{}j)",
+            c.re, c.im
+        )));
+
+        None
+    }
+
+    /// 将展平的 `Vec<CustomNode>` 按 `dim` 嵌套一层。
+    ///
+    /// # Arguments
+    /// * `flat` — 展平的节点列表
+    /// * `dim` — 嵌套维度大小
+    ///
+    /// # Returns
+    /// 嵌套后的 `Vec<CustomNode>`，每个元素是 `CustomNode::Sequence`。
+    fn nest_ndarray_sequence(flat: Vec<CustomNode>, dim: usize) -> Vec<CustomNode> {
+        if dim == 0 {
+            return vec![CustomNode::plain_sequence(Vec::new())];
+        }
+        flat.chunks(dim)
+            .map(|chunk| CustomNode::plain_sequence(chunk.to_vec()))
+            .collect()
+    }
+
+    /// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None/ndarray。
     fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         let obj = obj.bind(py);
 
@@ -405,6 +523,11 @@ mod pyyaml_rs {
 
         if let Ok(s) = obj.extract::<String>() {
             return Ok(CustomNode::plain_scalar(s));
+        }
+
+        // NumPy ndarray 支持：通过 `__array_interface__` 序列化
+        if let Some(node) = ndarray_to_node(py, obj) {
+            return Ok(node);
         }
 
         Err(YamlTypeError::new_err(format_i18n_error(

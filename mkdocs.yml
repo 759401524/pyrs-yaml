@@ -123,6 +123,7 @@ nav:
       - Round-Trip Preservation: guides/round-trip.md
       - Markdown Frontmatter: guides/frontmatter.md
       - i18n Error Messages: guides/i18n.md
+      - NumPy ndarray: guides/numpy.md
   - API Reference:
       - Module Reference: api/reference.md
       - YamlDocument Class: api/yaml-document.md

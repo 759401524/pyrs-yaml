@@ -117,6 +117,48 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
+## 8. NumPy ndarray Support
+
+pyyaml-rs can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
+
+```python
+import numpy as np
+import pyyaml_rs
+
+# 1-D array
+arr = np.array([1, 2, 3], dtype="int32")
+yaml_str = pyyaml_rs.safe_dump(arr)
+print(yaml_str)
+# - 1
+# - 2
+# - 3
+
+# 2-D matrix
+matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
+yaml_str = pyyaml_rs.safe_dump(matrix)
+print(yaml_str)
+# -
+#   - 1.0
+#   - 2.0
+# -
+#   - 3.0
+#   - 4.0
+
+# Round-trip preserves values
+loaded = pyyaml_rs.safe_load(yaml_str)
+assert loaded == [[1.0, 2.0], [3.0, 4.0]]
+```
+
+### Supported NumPy dtypes
+
+| NumPy dtype | YAML output | Notes |
+|-------------|-------------|-------|
+| `int8/16/32/64` | Plain integer | Quoted if negative |
+| `uint8/16/32/64` | Plain integer | — |
+| `float32/64` | Plain float | Quoted if negative |
+| `complex64/128` | `(re+imj)` string | No native YAML complex type |
+| `bool` | `true` / `false` | — |
+
 ## Next Steps
 
 - **[Features](features.md)** — Explore all supported YAML features

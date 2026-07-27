@@ -26,6 +26,9 @@ saphyr-parser = "0.0.11"
 
 # serde_json: JSON 转换支持
 serde_json = "1.0"
+
+# numpy: NumPy ndarray 类型擦除与零拷贝切片访问
+numpy = "0.29"
 ```
 
 🚨 **绝对禁止**：
@@ -123,6 +126,18 @@ serde_json = "1.0"
 
 > **💡 Agent 终极心法**：
 > "我是 YAML 格式的绝对掌控者。我使用 saphyr-parser 实现 YAML 1.2 合规，通过自定义 AST 记忆灵魂（注释与格式），通过序列化器重塑肉身。我的代码没有 `.unwrap()`，我的测试覆盖所有边缘情况。"
+
+## 8. 提交规范
+
+**禁止跳过 pre-commit hook**：所有提交必须通过 pre-commit 检查。不得使用 `git commit --no-verify`。
+
+标准工作流：
+
+1. `git add` — 暂存变更文件
+2. `git commit` — pre-commit hook 自动运行（cargo fmt, clippy, ruff 等）
+3. 所有 hook 通过后推送
+
+如果 hook 失败，修复问题后重新提交。
 
 <comet-ambient-resume>
 <!-- Managed by Comet. Edits inside this block may be replaced by comet init/update. -->

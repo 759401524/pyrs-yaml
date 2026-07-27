@@ -56,11 +56,13 @@ pytest tests/ --benchmark-only --benchmark-json=results.json
 | `test_parse.py` | Parsing, data types, special chars |
 | `test_serialize.py` | Serialization, round-trips |
 | `test_edge_cases.py` | Edge cases, error handling |
-| `test_features.py` | Feature-specific tests |
+| `test_errors.py` | Custom exception types, file I/O |
+| `test_features.py` | Markdown frontmatter, from_dict/from_json |
 | `test_json.py` | JSON ↔ YAML conversion |
 | `test_tabs.py` | Tab handling |
 | `test_yaml_suite.py` | YAML Test Suite integration |
 | `test_performance.py` | Performance sanity checks |
+| **`test_numpy.py`** | **NumPy ndarray serialization (0-D through N-D, all dtypes)** |
 
 ## CI Testing
 

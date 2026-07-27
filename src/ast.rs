@@ -241,6 +241,34 @@ impl CustomNode {
         }
     }
 
+    /// 创建一个单引号风格的标量节点（用于表示负数等需要引号的值）。
+    ///
+    /// 使用 `ScalarStyle::SingleQuoted` 和默认元数据。
+    ///
+    /// # Arguments
+    /// * `value` - 标量文本值。
+    ///
+    /// # Returns
+    /// 返回一个 `CustomNode::Scalar` 变体，style 为 `SingleQuoted`。
+    ///
+    /// # Examples
+    /// ```ignore
+    /// use pyyaml_rs::ast::CustomNode;
+    ///
+    /// // YAML 输出: '-100'
+    /// let node = CustomNode::quoted_scalar("-100");
+    /// ```
+    pub fn quoted_scalar(value: impl Into<String>) -> Self {
+        CustomNode::Scalar {
+            value: value.into(),
+            style: ScalarStyle::SingleQuoted,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: Chomping::Clip,
+        }
+    }
+
     /// 创建一个无元数据的块风格映射节点。
     ///
     /// 键值对顺序由 `IndexMap` 保证，不会进行排序或重新排列。

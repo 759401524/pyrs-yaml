@@ -8,6 +8,7 @@ Set up your environment to contribute to pyyaml-rs.
 - **Rust** ≥ 1.70 (via [rustup](https://rustup.rs/))
 - **Git**
 - **uv** (recommended) or **pip**
+- **NumPy** — required for running the NumPy serialization test suite (`pytest tests/test_numpy.py`)
 
 ## Clone and Install
 

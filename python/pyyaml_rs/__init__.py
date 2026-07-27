@@ -61,4 +61,15 @@ __all__ = [
     "set_language",
 ]
 
-__version__ = "0.2.0"
+try:
+    from importlib.metadata import version as _version
+except Exception:
+
+    def _version(name: str) -> str:
+        return "unknown"
+
+
+def __getattr__(name: str) -> str:
+    if name == "__version__":
+        return _version("pyyaml-rs")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

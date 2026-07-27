@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyyaml-rs"
-version = "0.3.0"
+dynamic = ["version"]
 description = "High-performance Python YAML library with perfect round-trip support"
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
@@ -46,6 +46,7 @@ dev = [
     "maturin>=1.0,<2.0",
     "pytest>=8.0",
     "pytest-benchmark>=4.0",
+    "numpy>=1.16.0",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.7",
     "mkdocstrings-python>=1.18.2",

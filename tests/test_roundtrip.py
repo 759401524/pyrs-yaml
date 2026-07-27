@@ -132,3 +132,16 @@ class TestRoundTrip:
         original = "key: {a: 1, b: 2}\n"
         doc = pyyaml_rs.parse(original)
         assert doc.to_yaml() == original
+
+    def test_roundtrip_merge_key_unresolved(self):
+        """Merge keys (<<) preserved when resolve_merges=False"""
+        original = "base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2\n"
+        doc = pyyaml_rs.parse(original, resolve_merges=False)
+        assert "<<" in doc.to_yaml()
+
+    def test_roundtrip_resolve_merges_default(self):
+        """Merge keys resolved by default in round-trip"""
+        doc = pyyaml_rs.parse("base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2\n")
+        child = doc.get("child")
+        assert child["x"] == 1
+        assert child["y"] == 2
