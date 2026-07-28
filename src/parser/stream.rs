@@ -336,16 +336,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
 
 /// Convert a saphyr-parser Tag to our Tag format.
 fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
-    tag.map(|t| Tag {
-        handle: if t.handle == "tag:yaml.org,2002:" {
-            "!!".to_string()
-        } else if t.handle == "!" {
-            "!".to_string()
-        } else {
-            t.handle.to_string()
-        },
-        suffix: t.suffix.to_string(),
-    })
+    tag.map(|t| super::convert_tag(t).clone())
 }
 
 /// Parse a YAML string into a stream of `StreamEvent`s.

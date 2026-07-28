@@ -142,7 +142,7 @@ pub fn parse_all_with_options(
 }
 
 /// Convert saphyr tag to our Tag format
-fn convert_tag(tag: &saphyr_parser::Tag) -> Tag {
+pub(crate) fn convert_tag(tag: &saphyr_parser::Tag) -> Tag {
     // saphyr uses full URIs like "tag:yaml.org,2002:str"
     // We need to convert back to short form like "!!str"
     let handle = &tag.handle;
