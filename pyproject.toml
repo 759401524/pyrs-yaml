@@ -36,9 +36,6 @@ classifiers = [
 dependencies = [
 ]
 
-[project.optional-dependencies]
-jsonschema = ["jsonschema>=4.25.1"]
-
 [project.urls]
 Homepage = "https://github.com/759401524/pyyaml-rs"
 Documentation = "https://github.com/759401524/pyyaml-rs#readme"
@@ -60,16 +57,26 @@ zig = true
 interpreter = "3.8"
 
 [dependency-groups]
-dev = [
-    "maturin>=1.0,<2.0",
+test = [
     "pytest>=8.0",
     "pytest-benchmark>=4.0",
     "pytest-asyncio>=0.23",
     "numpy>=1.16.0",
+    "jsonschema>=4.18.0,<4.25.1; python_version < '3.9'",
+    "jsonschema>=4.25.1; python_version >= '3.9'",
+]
+lint = [
+    "ruff>=0.5.0,<0.10.0; python_version < '3.9'",
+    "ruff>=0.14.0; python_version >= '3.9'",
+]
+dev = [
+    "maturin>=1.0,<2.0",
+    {include-group = "test"},
+    {include-group = "lint"},
+]
+docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.7",
-    "mkdocstrings-python>=1.18.2",
-    "ruff>=0.14.0",
-    "rumdl>=0.2.43",
-    "prek>=0.1.0",
+    "mkdocstrings-python>=1.9.0,<1.12.0; python_version < '3.9'",
+    "mkdocstrings-python>=1.18.2; python_version >= '3.9'",
 ]
