@@ -36,6 +36,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      - name: Create virtualenv
+        run: uv venv .venv
+
       - name: Build and install
         uses: PyO3/maturin-action@v1
         with:
