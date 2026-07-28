@@ -10,7 +10,11 @@ import tempfile
 from pathlib import Path
 
 import tomli_w
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python < 3.11
 
 LOCALES = [
     {"code": "en", "name": "English", "lang": "en"},
