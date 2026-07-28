@@ -107,7 +107,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Create virtualenv
-        run: uv venv .venv --python python3.14t
+        run: uv venv .venv
 
       - name: Run cargo tests
         env:
@@ -124,7 +124,7 @@ jobs:
           args: --release
 
       - name: Install Python test dependencies
-        run: uv pip install -q pytest pytest-asyncio
+        run: uv pip install -q pytest pytest-asyncio jsonschema
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py -k "not numpy"
