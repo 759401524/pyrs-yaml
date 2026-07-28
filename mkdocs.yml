@@ -4,7 +4,7 @@ site_description: High-performance Python YAML library with perfect round-trip s
 site_author: MuLong <759401524@qq.com>
 repo_url: https://github.com/759401524/pyyaml-rs
 repo_name: 759401524/pyyaml-rs
-edit_uri: https://github.com/759401524/pyyaml-rs/edit/main/docs/{lang}{path}?lang={lang}
+edit_uri: https://github.com/759401524/pyyaml-rs/edit/main/docs/{locale}{path}?lang={locale}
 docs_dir: docs
 
 theme:
@@ -66,16 +66,22 @@ plugins:
             signature_crossrefs: true
             show_symbol_type_heading: true
             show_symbol_type_toc: true
-
-i18n:
-  default_lang: en
-  alternate_languages:
-    - lang: zh-CN
-      url: /zh-CN/
-    - lang: ja-JP
-      url: /ja-JP/
-    - lang: ko-KR
-      url: /ko-KR/
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+        - locale: ja
+          name: 日本語
+          build: true
+        - locale: ko
+          name: 한국어
+          build: true
 
 markdown_extensions:
   - tables
