@@ -10,3 +10,4 @@ __pycache__/
 /.benchmarks/
 /site/
 docs/audit-plan.md
+docs/experiments/

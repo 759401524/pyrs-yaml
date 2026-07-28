@@ -74,11 +74,10 @@ dev = [
     "maturin>=1.0,<2.0",
     {include-group = "test"},
     {include-group = "lint"},
+    {include-group = "docs"},
 ]
 docs = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.7",
-    "mkdocs-static-i18n>=1.0.0",
-    "mkdocstrings-python>=1.9.0,<1.12.0; python_version < '3.9'",
-    "mkdocstrings-python>=1.18.2; python_version >= '3.9'",
+    "mkdocstrings-python>=1.11.1",
+    "tomli-w>=1.0.0",
+    "zensical>=0.0.2",
 ]
