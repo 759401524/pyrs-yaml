@@ -10,3 +10,4 @@ Cargo.lock
 /dist/
 /.benchmarks/
 /site/
+docs/audit-plan.md
