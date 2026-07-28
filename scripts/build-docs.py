@@ -68,10 +68,24 @@ def main():
         if not build_locale(locale):
             success = False
     if success:
+        _create_root_redirect()
         print("\nAll locales built successfully!")
     else:
         print("\nSome locales failed to build.", file=sys.stderr)
         sys.exit(1)
+
+
+def _create_root_redirect():
+    site_dir = PROJECT_ROOT / "site"
+    site_dir.mkdir(parents=True, exist_ok=True)
+    html = """<!DOCTYPE html>
+<meta charset="utf-8">
+<title>pyrs-yaml</title>
+<meta http-equiv="refresh" content="0; URL=/pyrs-yaml/en/">
+<link rel="canonical" href="/pyrs-yaml/en/">
+"""
+    (site_dir / "index.html").write_text(html, encoding="utf-8")
+    print("  Created root redirect: / -> /en/")
 
 
 if __name__ == "__main__":
