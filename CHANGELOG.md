@@ -11,13 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Python 3.13, 3.14 and 3.15 support** — PyO3 `abi3-py38` wheel covers Python 3.8-3.15 (GIL build); `abi3t` + `abi3t-py315` provide free-threaded stable ABI
 - **Free-threaded CPython (no-GIL) support** — `#[pymodule(gil_used = false)]` declares module as thread-safe for free-threaded Python; `Py_GIL_DISABLED` cfg flag gates numpy (rust-numpy has no free-threaded support yet — numpy feature must be disabled for free-threaded builds via `--no-default-features`)
-- **CI free-threaded job** — new `test-freethreaded` workflow job validates compilation and tests against Python 3.15t
+- **CI free-threaded job** — new `test-freethreaded` workflow job validates compilation and tests against Python 3.13t
 - **`pyo3-build-config` build dependency** — enables `#[cfg(Py_GIL_DISABLED)]`, `#[cfg(Py_3_15)]` etc. compiler flags via `build.rs`
 - **`numpy` made optional** — feature-gated behind `numpy` feature (default enabled); excluded automatically under `Py_GIL_DISABLED`
 
 ### Changed
 
-- CI Python matrix expanded: 3.9-3.15 across ubuntu, windows, macos
+- CI Python matrix expanded: 3.9-3.14 across ubuntu, windows, macos
 - Stable ABI: `abi3-py39` → `abi3-py38` (wider Python support), added `abi3t` + `abi3t-py315` (free-threaded stable ABI)
 - `pyproject.toml` classifiers updated with 3.13, 3.14, 3.15 entries
 
