@@ -1,6 +1,6 @@
 # Development Setup
 
-Set up your environment to contribute to pyyaml-rs.
+Set up your environment to contribute to pyrs-yaml.
 
 ## Prerequisites
 
@@ -13,8 +13,8 @@ Set up your environment to contribute to pyyaml-rs.
 ## Clone and Install
 
 ```bash
-git clone https://github.com/759401524/pyyaml-rs.git
-cd pyyaml-rs
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
 
 # Using uv (recommended)
 uv sync
@@ -40,7 +40,7 @@ cargo bench
 ## Project Structure
 
 ```text
-pyyaml-rs/
+pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 module entry
 │   ├── ast.rs              # Custom AST (CustomNode)
@@ -63,7 +63,7 @@ pyyaml-rs/
 │   │   ├── python_types.rs # Python → CustomNode conversion
 │   │   └── stream_events.rs# Stream event types
 │   └── integration/        # Integration test helpers
-├── python/pyyaml_rs/
+├── python/pyrs_yaml/
 │   ├── __init__.py         # Python package init
 │   ├── py.typed            # PEP 561 marker
 │   └── async_dump.py       # Async dump utilities

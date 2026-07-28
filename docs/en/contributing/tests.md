@@ -1,6 +1,6 @@
 # Running Tests
 
-pyyaml-rs has both Rust unit tests and Python integration tests.
+pyrs-yaml has both Rust unit tests and Python integration tests.
 
 ## Rust Tests
 
@@ -43,7 +43,7 @@ pytest tests/test_parse.py
 pytest tests/ -k "comment"
 
 # Run with coverage
-pytest tests/ --cov=pyyaml_rs --cov-report=term-missing
+pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
 
 # Run benchmarks
 pytest tests/ --benchmark-only --benchmark-json=results.json
@@ -91,12 +91,12 @@ mod tests {
 ### Python Test
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 import pytest
 
 class TestNewFeature:
     def test_basic(self):
-        result = pyyaml_rs.parse("key: value")
+        result = pyrs_yaml.parse("key: value")
         assert result.get("key") == "value"
 
     def test_edge_case(self):

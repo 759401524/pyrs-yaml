@@ -1,4 +1,4 @@
-# pyyaml-rs
+# pyrs-yaml
 
 A high-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.
 
@@ -18,49 +18,49 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 ## Installation
 
 ```bash
-pip install pyyaml-rs
+pip install pyrs-yaml
 ```
 
 ## Quick Start
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # Parse YAML
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value
 
 # PyYAML compatible API
-data = pyyaml_rs.safe_load("key: value")
+data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # Round-trip preserves comments
 original = "# Comment\nkey: value  # inline\n"
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original  # True
 ```
 
 ### JSON Schema validation
 
 ```python
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 # None — validation passed
 
 # Invalid — raises YamlValidateError
 doc.validate({"type": "object", "required": ["email"]})
-# pyyaml_rs.YamlValidateError: "Email" is a required property
+# pyrs_yaml.YamlValidateError: "Email" is a required property
 ```
 
 ### Async serialization
 
 ```python
 import asyncio
-import pyyaml_rs
+import pyrs_yaml
 
 async def main():
-    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
-    data = await pyyaml_rs.safe_loads_async(yaml)
+    yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
+    data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())
@@ -69,7 +69,7 @@ asyncio.run(main())
 ### Incremental re-parse
 
 ```python
-doc = pyyaml_rs.parse("x: on")
+doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (core schema: string)
 
 doc.reparse(schema="yaml1.1")
@@ -79,7 +79,7 @@ print(doc.get("x"))  # True (yaml1.1 schema: bool)
 ### JSON export
 
 ```python
-doc = pyyaml_rs.parse("a: 1\nb: hello")
+doc = pyrs_yaml.parse("a: 1\nb: hello")
 json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
 ```
 
@@ -87,11 +87,11 @@ json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
 
 ```python
 import numpy as np
-import pyyaml_rs
+import pyrs_yaml
 
 # 1-D array
 arr = np.array([1, 2, 3], dtype="int32")
-yaml_str = pyyaml_rs.safe_dump(arr)
+yaml_str = pyrs_yaml.safe_dump(arr)
 print(yaml_str)
 # - 1
 # - 2
@@ -99,7 +99,7 @@ print(yaml_str)
 
 # 2-D matrix
 matrix = np.array([[1, 2], [3, 4]], dtype="float64")
-yaml_str = pyyaml_rs.safe_dump(matrix)
+yaml_str = pyrs_yaml.safe_dump(matrix)
 print(yaml_str)
 # -
 #   - 1.0
@@ -109,7 +109,7 @@ print(yaml_str)
 #   - 4.0
 
 # Round-trip
-loaded = pyyaml_rs.safe_load(yaml_str)
+loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
@@ -139,17 +139,17 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 ```python
 # Parse YAML string (accepts str or bytes)
-doc = pyyaml_rs.parse(yaml_str)
-doc = pyyaml_rs.parse(yaml_bytes)
+doc = pyrs_yaml.parse(yaml_str)
+doc = pyrs_yaml.parse(yaml_bytes)
 
 # Parse with options
-doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 
 # Parse YAML file
-doc = pyyaml_rs.parse_file("config.yaml")
+doc = pyrs_yaml.parse_file("config.yaml")
 
 # Parse multiple YAML documents
-docs = pyyaml_rs.parse_all_docs(yaml_str)
+docs = pyrs_yaml.parse_all_docs(yaml_str)
 
 # Convert to YAML string (with options)
 yaml_str = doc.to_yaml()
@@ -175,33 +175,33 @@ for key in doc:
 
 ```python
 # Load YAML to dict
-data = pyyaml_rs.safe_load(yaml_str)
+data = pyrs_yaml.safe_load(yaml_str)
 
 # Load multiple documents
-docs = pyyaml_rs.safe_loads(yaml_str)
+docs = pyrs_yaml.safe_loads(yaml_str)
 
 # Dump dict to YAML
-yaml_str = pyyaml_rs.safe_dump(data)
+yaml_str = pyrs_yaml.safe_dump(data)
 
 # Convert dict to YAML
-yaml_str = pyyaml_rs.from_dict(data)
+yaml_str = pyrs_yaml.from_dict(data)
 
 # Convert JSON to YAML
-yaml_str = pyyaml_rs.from_json(json_str)
+yaml_str = pyrs_yaml.from_json(json_str)
 
 # Dump to file
-pyyaml_rs.dump_file(data, "output.yaml")
+pyrs_yaml.dump_file(data, "output.yaml")
 
 # Extract YAML frontmatter from markdown
-frontmatter, content = pyyaml_rs.read_markdown("post.md")
-frontmatter, content = pyyaml_rs.read_markdown_str(markdown_text)
+frontmatter, content = pyrs_yaml.read_markdown("post.md")
+frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text)
 
 # i18n language management
-pyyaml_rs.set_language("zh-CN")
-pyyaml_rs.get_language()  # "zh-CN"
-pyyaml_rs.list_languages()  # ["en", "zh-CN"]
-pyyaml_rs.detect_language()  # auto-detect from environment
-pyyaml_rs.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
+pyrs_yaml.set_language("zh-CN")
+pyrs_yaml.get_language()  # "zh-CN"
+pyrs_yaml.list_languages()  # ["en", "zh-CN"]
+pyrs_yaml.detect_language()  # auto-detect from environment
+pyrs_yaml.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
 ```
 
 ## Performance

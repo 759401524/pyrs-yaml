@@ -5,7 +5,7 @@ lang: zh
 
 ## 架构
 
-pyyaml-rs 使用为性能和正确性设计的模块化架构。
+pyrs-yaml 使用为性能和正确性设计的模块化架构。
 
 ### 概述
 
@@ -13,7 +13,7 @@ pyyaml-rs 使用为性能和正确性设计的模块化架构。
 ┌─────────────────────────────────────────────────────────┐
 │                     Python 层                           │
 │  ┌─────────────────────────────────────────────────────┐│
-│  │               pyyaml_rs 模块                        ││
+│  │               pyrs_yaml 模块                        ││
 │  │  parse() | safe_load() | dump_file() | ...          ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │ PyO3 绑定                       │
@@ -43,7 +43,7 @@ pyyaml-rs 使用为性能和正确性设计的模块化架构。
 
 #### 1. `src/ast.rs` — 自定义 AST
 
-**CustomNode** 枚举是 pyyaml-rs 的核心：
+**CustomNode** 枚举是 pyrs-yaml 的核心：
 
 - **Scalar** — 带样式（plain、引号、字面量、折叠）、注释、锚点、标签、chomping
 - **Mapping** — 用于键顺序保留的 `IndexMap`、flow_style 标志
@@ -90,7 +90,7 @@ pyyaml-rs 使用为性能和正确性设计的模块化架构。
 
 #### 4. `src/lib.rs` — PyO3 模块
 
-内联 `#[pymodule] mod pyyaml_rs`：
+内联 `#[pymodule] mod pyrs_yaml`：
 
 - **`YamlDocument`** — `CustomNode` 的 `#[pyclass]` 包装器
 - **异常** — 自定义错误的 `create_exception!` 宏

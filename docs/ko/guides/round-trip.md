@@ -5,7 +5,7 @@ lang: ko
 
 ## 순환 보존
 
-이것은 pyyaml-rs의 **핵심 기능** — Python YAML 라이브러리 중에서 독보적인 특징입니다.
+이것은 pyrs-yaml의 **핵심 기능** — Python YAML 라이브러리 중에서 독보적인 특징입니다.
 
 ### 순환 보존이란?
 
@@ -28,7 +28,7 @@ api:
   endpoint: /api/v1
 """
 
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # 모든 포맷과 메타데이터가 보존됨
@@ -53,7 +53,7 @@ assert "<<: *db" in output
 | 플로우/블록 스타일 | ✅ | `[]`/`{}` vs 블록 보존됨 |
 | 키 순서 | ✅ | `IndexMap`이 순서 보장 |
 
-### PyYAML vs pyyaml-rs 순환 보존
+### PyYAML vs pyrs-yaml 순환 보존
 
 ```python
 original = "# 주석\nkey: value  # 인라인\n"
@@ -62,8 +62,8 @@ original = "# 주석\nkey: value  # 인라인\n"
 yaml.safe_dump(yaml.safe_load(original))
 # 출력: 'key: value\n'  ❌
 
-# pyyaml-rs: 모든 것을 보존
-doc = pyyaml_rs.parse(original)
+# pyrs-yaml: 모든 것을 보존
+doc = pyrs_yaml.parse(original)
 doc.to_yaml()
 # 출력: '# 주석\nkey: value  # 인라인\n'  ✅
 ```
@@ -74,8 +74,8 @@ doc.to_yaml()
 
 | 라이브러리 | 순환 보존 (대용량) | 주석 | 앵커 | 태그 |
 |-----------|------------------|------|------|------|
-| **pyyaml-rs** | **0.08 ms** | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
 | PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
 | ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
 
-**pyyaml-rs는 PyYAML보다 37배, ruamel.yaml보다 85배 빠르면서** 모든 것을 보존합니다.
+**pyrs-yaml는 PyYAML보다 37배, ruamel.yaml보다 85배 빠르면서** 모든 것을 보존합니다.

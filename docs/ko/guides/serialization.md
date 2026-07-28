@@ -12,7 +12,7 @@ Python 객체와 `YamlDocument` 인스턴스를 YAML 문자열로 변환합니�
 #### `YamlDocument.to_yaml()`
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 yaml_str = doc.to_yaml()
 print(yaml_str)  # key: value\n
 ```
@@ -20,7 +20,7 @@ print(yaml_str)  # key: value\n
 #### `YamlDocument.to_yaml_with_options()`
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 
 # 사용자 정의 들여쓰기와 문서 마커
 yaml_str = doc.to_yaml_with_options(
@@ -35,7 +35,7 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 # dict를 YAML 문자열로 변환
-yaml_str = pyyaml_rs.safe_dump({
+yaml_str = pyrs_yaml.safe_dump({
     "database": {
         "host": "localhost",
         "port": 5432
@@ -43,7 +43,7 @@ yaml_str = pyyaml_rs.safe_dump({
 })
 
 # safe_dumps (별칭)도 사용 가능
-yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
+yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ```
 
 ### Python 객체를 YAML로 변환
@@ -51,7 +51,7 @@ yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
 #### `from_dict()`
 
 ```python
-yaml_str = pyyaml_rs.from_dict({
+yaml_str = pyrs_yaml.from_dict({
     "name": "Alice",
     "age": 30,
     "tags": ["admin", "user"]
@@ -61,14 +61,14 @@ yaml_str = pyyaml_rs.from_dict({
 #### `from_json()`
 
 ```python
-yaml_str = pyyaml_rs.from_json('{"key": "value"}')
+yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 ```
 
 #### `dump_file()`
 
 ```python
 # Python 객체를 직접 YAML 파일에 쓰기
-pyyaml_rs.dump_file({
+pyrs_yaml.dump_file({
     "config": {
         "debug": True,
         "log_level": "info"
@@ -105,7 +105,7 @@ api:
   <<: *db
 """
 
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # 주석, 앵커, 병합 키가 보존됨

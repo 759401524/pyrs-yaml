@@ -10,8 +10,8 @@
 The package is not yet published on PyPI. To install from source:
 
 ```bash
-git clone https://github.com/759401524/pyyaml-rs.git
-cd pyyaml-rs
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
@@ -20,13 +20,13 @@ The package is built as an **ABI3 wheel**, meaning a single wheel works across P
 ## Quick Check
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # Check version
-print(pyyaml_rs.__version__)
+print(pyrs_yaml.__version__)
 
 # Quick smoke test
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 assert doc.to_yaml() == "key: value\n"
 print("✓ Installation verified")
 ```

@@ -1,6 +1,6 @@
 # Module Reference
 
-Complete API reference for the `pyyaml_rs` module.
+Complete API reference for the `pyrs_yaml` module.
 
 ## Core Functions
 
@@ -27,9 +27,9 @@ parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse("key: value")
-doc = pyyaml_rs.parse(b"key: value")
-doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
+doc = pyrs_yaml.parse("key: value")
+doc = pyrs_yaml.parse(b"key: value")
+doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 ```
 
 ### `parse_file()`
@@ -54,7 +54,7 @@ parse_file(path: str) -> YamlDocument
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse_file("config.yaml")
+doc = pyrs_yaml.parse_file("config.yaml")
 ```
 
 ### `parse_all_docs()`
@@ -70,7 +70,7 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 **Example:**
 
 ```python
-docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
+docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
 ## PyYAML-Compatible Functions
@@ -88,7 +88,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 **Example:**
 
 ```python
-data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
+data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 ```
 
 ### `safe_loads()`
@@ -186,11 +186,11 @@ async def safe_load_async(yaml: str, schema: str = "core") -> Any
 **Example:**
 
 ```python
-import asyncio, pyyaml_rs
+import asyncio, pyrs_yaml
 
 async def main():
-    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
-    data = await pyyaml_rs.safe_loads_async(yaml)
+    yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
+    data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())

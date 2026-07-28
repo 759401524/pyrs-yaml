@@ -7,11 +7,11 @@ lang: ko
 
 ### 개요
 
-`YamlDocument`는 pyyaml-rs의 핵심 클래스로, 파싱된 YAML 문서를 보유합니다. `IndexMap` 기반의 사용자 정의 AST를 사용하여 **100% 순환 보존**, **완전한 키 순서 유지**, **중첩 주석 보유**, **상세 메타데이터**를 구현합니다.
+`YamlDocument`는 pyrs-yaml의 핵심 클래스로, 파싱된 YAML 문서를 보유합니다. `IndexMap` 기반의 사용자 정의 AST를 사용하여 **100% 순환 보존**, **완전한 키 순서 유지**, **중첩 주석 보유**, **상세 메타데이터**를 구현합니다.
 
 ```python
 class YamlDocument:
-    """pyyaml-rs의 핵심 클래스."""
+    """pyrs-yaml의 핵심 클래스."""
     # ... C 확장으로 구현 ...
 ```
 
@@ -19,7 +19,7 @@ class YamlDocument:
 
 #### `YamlDocument()`
 
-내부 생성자. 사용자가 직접 호출하지 않습니다. `pyyaml_rs.parse()`에서 반환됩니다.
+내부 생성자. 사용자가 직접 호출하지 않습니다. `pyrs_yaml.parse()`에서 반환됩니다.
 
 ### 프로퍼티
 
@@ -64,7 +64,7 @@ to_yaml(
 **예시:**
 
 ```python
-doc = pyyaml_rs.parse("key: value\n# comment")
+doc = pyrs_yaml.parse("key: value\n# comment")
 yaml_str = doc.to_yaml()
 ```
 
@@ -81,7 +81,7 @@ to_dict() -> dict[str, Any] | list[Any]
 **예시:**
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 data = doc.to_dict()  # {'key': 'value'}
 ```
 
@@ -150,7 +150,7 @@ source_text() -> str
 키 (매핑) 또는 인덱스 (시퀀스)로 접근합니다.
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
 
@@ -206,18 +206,18 @@ doc1 == doc2  # True or False
 **예시:**
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # 매핑
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 print(doc["name"])  # Alice
 print(len(doc))     # 2
 
 # 시퀀스
-doc = pyyaml_rs.parse("- item1\n- item2")
+doc = pyrs_yaml.parse("- item1\n- item2")
 print(doc[0])  # item1
 
 # 중첩 접근
-doc = pyyaml_rs.parse("user:\n  name: Alice")
+doc = pyrs_yaml.parse("user:\n  name: Alice")
 print(doc["user"]["name"])  # Alice
 ```

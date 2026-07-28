@@ -5,7 +5,7 @@ lang: ko
 
 ## 테스트 실행
 
-pyyaml-rs는 Rust 유닛 테스트와 Python 통합 테스트를 모두 보유하고 있습니다.
+pyrs-yaml는 Rust 유닛 테스트와 Python 통합 테스트를 모두 보유하고 있습니다.
 
 ### Rust 테스트
 
@@ -48,7 +48,7 @@ pytest tests/test_parse.py
 pytest tests/ -k "comment"
 
 # 커버리지와 함께 실행
-pytest tests/ --cov=pyyaml_rs --cov-report=term-missing
+pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
 
 # 벤치마크 실행
 pytest tests/ --benchmark-only --benchmark-json=results.json
@@ -96,12 +96,12 @@ mod tests {
 #### Python 테스트
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 import pytest
 
 class TestNewFeature:
     def test_basic(self):
-        result = pyyaml_rs.parse("key: value")
+        result = pyrs_yaml.parse("key: value")
         assert result.get("key") == "value"
 
     def test_edge_case(self):

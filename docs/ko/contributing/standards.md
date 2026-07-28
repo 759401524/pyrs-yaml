@@ -5,7 +5,7 @@ lang: ko
 
 ## 코드 표준
 
-pyyaml-rs에 기여할 때 다음 표준을 따르세요.
+pyrs-yaml에 기여할 때 다음 표준을 따르세요.
 
 ### Rust
 
@@ -52,7 +52,7 @@ let content = std::fs::read_to_string(path).unwrap();
 ///
 /// # Examples
 /// ```
-/// let ast = pyyaml_rs::parser::parse("key: value").unwrap();
+/// let ast = pyrs_yaml::parser::parse("key: value").unwrap();
 /// ```
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 ```

@@ -30,10 +30,10 @@ tags: [yaml, python, rust]
 Markdown ファイルからフロントメータをパースします：
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # (frontmatter_dict, content_string) を返す
-frontmatter, content = pyyaml_rs.read_markdown("post.md")
+frontmatter, content = pyrs_yaml.read_markdown("post.md")
 
 print(frontmatter)
 # {'title': 'ブログ記事', 'author': 'Alice', 'date': '2024-01-15', 'tags': ['yaml', 'python', 'rust']}
@@ -56,7 +56,7 @@ tags: [tech]
 コンテンツここ。
 """
 
-frontmatter, content = pyyaml_rs.read_markdown_str(markdown_text)
+frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text)
 
 if frontmatter:
     print(f"タイトル: {frontmatter['title']}")
@@ -71,7 +71,7 @@ else:
 ファイル/文字列にフロントメータがない場合：
 
 ```python
-frontmatter, content = pyyaml_rs.read_markdown("no-frontmatter.md")
+frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
 
 # frontmatter は None、content は全文
 assert frontmatter is None
@@ -84,7 +84,7 @@ assert content == "通常の Markdown コンテンツ。"
 
 ```python
 # ブログ一覧用のメタデータを抽出
-frontmatter, _ = pyyaml_rs.read_markdown("draft.md")
+frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
 if frontmatter.get("published", False):
     print(f"公開済み記事: {frontmatter['title']}")
 else:
@@ -98,7 +98,7 @@ else:
 import glob
 
 for path in glob.glob("posts/*.md"):
-    meta, content = pyyaml_rs.read_markdown(path)
+    meta, content = pyrs_yaml.read_markdown(path)
     # meta とコンテンツでテンプレートをレンダリング
 ```
 
@@ -107,7 +107,7 @@ for path in glob.glob("posts/*.md"):
 ```python
 # フロントメータの構造を検証
 required_fields = ["title", "author", "date"]
-frontmatter, _ = pyyaml_rs.read_markdown("article.md")
+frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 
 for field in required_fields:
     assert field in frontmatter, f"必須フィールドがありません: {field}"

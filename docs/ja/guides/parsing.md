@@ -5,16 +5,16 @@ lang: ja
 
 ## YAML のパース
 
-このガイドでは、pyyaml-rs で YAML をパースするすべての方法を説明します。
+このガイドでは、pyrs-yaml で YAML をパースするすべての方法を説明します。
 
 ### 基本パース
 
 #### YAML 文字列のパース
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
@@ -22,13 +22,13 @@ print(doc.get("key"))  # value
 
 ```python
 # マージキーの解決を無効化（<<: *alias をそのまま保持）
-doc = pyyaml_rs.parse(yaml_text, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_text, resolve_merges=False)
 ```
 
 #### YAML ファイルのパース
 
 ```python
-doc = pyyaml_rs.parse_file("config.yaml")
+doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
@@ -44,7 +44,7 @@ name: first
 name: second
 """
 
-docs = pyyaml_rs.parse_all_docs(yaml_text)
+docs = pyrs_yaml.parse_all_docs(yaml_text)
 print(len(docs))  # 2
 print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
@@ -54,11 +54,11 @@ print(docs[1].get("name"))  # second
 
 ```python
 # ネイティブ Python 型を返す（dict, list, str, int など）
-data = pyyaml_rs.safe_load("key: value")
+data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # 複数ドキュメント
-docs = pyyaml_rs.safe_loads("a: 1\n---\nb: 2")
+docs = pyrs_yaml.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
@@ -70,22 +70,22 @@ print(len(docs))  # 2
 
 ```python
 # str と bytes の両方を受け付ける
-doc1 = pyyaml_rs.parse("key: value")
-doc2 = pyyaml_rs.parse(b"key: value")
+doc1 = pyrs_yaml.parse("key: value")
+doc2 = pyrs_yaml.parse(b"key: value")
 ```
 
 ### エラーハンドリング
 
 ```python
 try:
-    doc = pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(f"パースエラー: {e}")
 ```
 
 ### サポートされるデータ型
 
-pyyaml-rs はすべての YAML 1.2 スカラータイプを正しくパースします。
+pyrs-yaml はすべての YAML 1.2 スカラータイプを正しくパースします。
 
 | 型 | 例 | Python 型 |
 |---|-----|----------|

@@ -5,7 +5,7 @@ lang: zh
 
 ## 运行测试
 
-pyyaml-rs 同时具有 Rust 单元测试和 Python 集成测试。
+pyrs-yaml 同时具有 Rust 单元测试和 Python 集成测试。
 
 ### Rust 测试
 
@@ -48,7 +48,7 @@ pytest tests/test_parse.py
 pytest tests/ -k "comment"
 
 # 带覆盖率运行
-pytest tests/ --cov=pyyaml_rs --cov-report=term-missing
+pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
 
 # 运行基准测试
 pytest tests/ --benchmark-only --benchmark-json=results.json
@@ -96,12 +96,12 @@ mod tests {
 #### Python 测试
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 import pytest
 
 class TestNewFeature:
     def test_basic(self):
-        result = pyyaml_rs.parse("key: value")
+        result = pyrs_yaml.parse("key: value")
         assert result.get("key") == "value"
 
     def test_edge_case(self):

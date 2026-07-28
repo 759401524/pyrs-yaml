@@ -11,7 +11,7 @@ lang: zh
 
 ```python
 import numpy as np
-import pyyaml_rs as y
+import pyrs_yaml as y
 
 # 1-D 数组
 arr = np.array([1, 2, 3], dtype="int32")

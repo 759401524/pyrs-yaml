@@ -1,5 +1,5 @@
-//! Python bindings for pyyaml-rs — YamlDocument, StreamIterator, and all
-//! Python-facing functions exposed via the `pyyaml_rs` PyO3 module.
+//! Python bindings for pyrs-yaml — YamlDocument, StreamIterator, and all
+//! Python-facing functions exposed via the `pyrs_yaml` PyO3 module.
 
 pub mod convert;
 pub mod stream_events;
@@ -28,9 +28,9 @@ use self::stream_events::stream_event_to_py_dict;
 
 /// A Python module implemented in Rust.
 ///
-/// pyyaml-rs: high-performance YAML parsing with perfect round-trip support.
+/// pyrs-yaml: high-performance YAML parsing with perfect round-trip support.
 #[pymodule(gil_used = false)]
-mod pyyaml_rs {
+mod pyrs_yaml {
     use super::*;
 
     // ---- exceptions ----

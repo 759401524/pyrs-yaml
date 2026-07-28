@@ -1,12 +1,12 @@
 """
-pyyaml-rs: High-performance Python YAML library with perfect round-trip support.
+pyrs-yaml: High-performance Python YAML library with perfect round-trip support.
 
 This module provides a Rust-backed YAML parser and serializer that preserves
 comments, anchors, tags, and formatting during round-trip conversions.
 
 Example:
-    >>> import pyyaml_rs
-    >>> doc = pyyaml_rs.parse("key: value")
+    >>> import pyrs_yaml
+    >>> doc = pyrs_yaml.parse("key: value")
     >>> print(doc.to_yaml())
     key: value
     >>> print(doc.get("key"))
@@ -18,7 +18,7 @@ from .async_dump import (
     safe_load_async,
     safe_loads_async,
 )
-from .pyyaml_rs import (
+from .pyrs_yaml import (
     StreamIterator,
     YamlDocument,
     YamlParseError,
@@ -83,5 +83,5 @@ except Exception:
 
 def __getattr__(name: str) -> str:
     if name == "__version__":
-        return _version("pyyaml-rs")
+        return _version("pyrs-yaml")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

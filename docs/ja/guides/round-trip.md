@@ -5,7 +5,7 @@ lang: ja
 
 ## 往復保存
 
-これは pyyaml-rs の**最大の特徴** — Python YAML ライブラリの中でユニークな点です。
+これは pyrs-yaml の**最大の特徴** — Python YAML ライブラリの中でユニークな点です。
 
 ### 往復保存とは？
 
@@ -28,7 +28,7 @@ api:
   endpoint: /api/v1
 """
 
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # すべてのフォーマットとメタデータが保持される
@@ -53,7 +53,7 @@ assert "<<: *db" in output
 | フロー/ブロックスタイル | ✅ | `[]`/`{}` vs ブロックが保持される |
 | キーの順序 | ✅ | `IndexMap` が順序を保証 |
 
-### PyYAML vs pyyaml-rs 往復保存
+### PyYAML vs pyrs-yaml 往復保存
 
 ```python
 original = "# コメント\nkey: value  # 行末\n"
@@ -62,8 +62,8 @@ original = "# コメント\nkey: value  # 行末\n"
 yaml.safe_dump(yaml.safe_load(original))
 # 出力: 'key: value\n'  ❌
 
-# pyyaml-rs: すべて保持される
-doc = pyyaml_rs.parse(original)
+# pyrs-yaml: すべて保持される
+doc = pyrs_yaml.parse(original)
 doc.to_yaml()
 # 出力: '# コメント\nkey: value  # 行末\n'  ✅
 ```
@@ -74,8 +74,8 @@ doc.to_yaml()
 
 | ライブラリ | 往復保存 (大) | コメント | アンカー | タグ |
 |-----------|-------------|---------|---------|------|
-| **pyyaml-rs** | **0.08 ms** | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
 | PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
 | ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
 
-**pyyaml-rs は PyYAML より 37 倍速く、ruamel.yaml より 85 倍速く**、すべてを保持します。
+**pyrs-yaml は PyYAML より 37 倍速く、ruamel.yaml より 85 倍速く**、すべてを保持します。

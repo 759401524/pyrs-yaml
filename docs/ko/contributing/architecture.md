@@ -5,7 +5,7 @@ lang: ko
 
 ## 아키텍처
 
-pyyaml-rs는 성능과 정확성을 위해 설계된 모듈화된 아키텍처를 사용합니다.
+pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처를 사용합니다.
 
 ### 개요
 
@@ -13,7 +13,7 @@ pyyaml-rs는 성능과 정확성을 위해 설계된 모듈화된 아키텍처�
 ┌─────────────────────────────────────────────────────────┐
 │                     Python 레이어                        │
 │  ┌─────────────────────────────────────────────────────┐│
-│  │               pyyaml_rs 모듈                        ││
+│  │               pyrs_yaml 모듈                        ││
 │  │  parse() | safe_load() | dump_file() | ...          ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │ PyO3 바인딩                     │
@@ -43,7 +43,7 @@ pyyaml-rs는 성능과 정확성을 위해 설계된 모듈화된 아키텍처�
 
 #### 1. `src/ast.rs` — 사용자 정의 AST
 
-**CustomNode** 열거형은 pyyaml-rs의 핵심입니다:
+**CustomNode** 열거형은 pyrs-yaml의 핵심입니다:
 
 - **Scalar** — 스타일 (plain, 따옴표, 리터럴, 폴드), 주석, 앵커, 태그, 청핑 포함
 - **Mapping** — 키 순서 유지를 위한 `IndexMap`, flow_style 플래그
@@ -90,7 +90,7 @@ AST에서 YAML를 재구성하는 사용자 정의 직렬화기:
 
 #### 4. `src/lib.rs` — PyO3 모듈
 
-인라인 `#[pymodule] mod pyyaml_rs`:
+인라인 `#[pymodule] mod pyrs_yaml`:
 
 - **`YamlDocument`** — `CustomNode`의 `#[pyclass]` 래퍼
 - **예외** — 사용자 정의 오류를 위한 `create_exception!` 매크로

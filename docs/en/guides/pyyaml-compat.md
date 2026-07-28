@@ -1,6 +1,6 @@
 # PyYAML Compatibility
 
-pyyaml-rs provides a **drop-in replacement** for PyYAML, making migration straightforward.
+pyrs-yaml provides a **drop-in replacement** for PyYAML, making migration straightforward.
 
 ## Simple Migration
 
@@ -11,27 +11,27 @@ data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 
 # After
-import pyyaml_rs as yaml
+import pyrs_yaml as yaml
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
 
 ## Compatible API
 
-| PyYAML Function | pyyaml-rs Equivalent | Notes |
+| PyYAML Function | pyrs-yaml Equivalent | Notes |
 |-----------------|---------------------|-------|
-| `yaml.safe_load()` | `pyyaml_rs.safe_load()` | ✅ Identical |
-| `yaml.safe_loads()` | `pyyaml_rs.safe_loads()` | ✅ Identical |
-| `yaml.safe_dump()` | `pyyaml_rs.safe_dump()` | ✅ Identical |
-| `yaml.safe_dumps()` | `pyyaml_rs.safe_dumps()` | ✅ Identical |
-| `yaml.load()` | `pyyaml_rs.safe_load()` | ⚠️ Use safe variant |
-| `yaml.dump()` | `pyyaml_rs.safe_dump()` | ⚠️ Use safe variant |
+| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | ✅ Identical |
+| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | ✅ Identical |
+| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | ✅ Identical |
+| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | ✅ Identical |
+| `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ Use safe variant |
+| `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ Use safe variant |
 
 ## Key Differences
 
-### What pyyaml-rs Does Better
+### What pyrs-yaml Does Better
 
-| Feature | PyYAML | pyyaml-rs |
+| Feature | PyYAML | pyrs-yaml |
 |---------|--------|-----------|
 | Round-trip preservation | ❌ Loses comments/anchors | ✅ Preserves everything |
 | Performance | Baseline | **25–40× faster** |
@@ -41,14 +41,14 @@ yaml_str = yaml.safe_dump(data)
 
 ### What to Watch For
 
-1. **Anchor/alias handling**: PyYAML loses anchors on round-trip; pyyaml-rs preserves them
-2. **Comment position**: pyyaml-rs may reorder some comments in complex nested structures
+1. **Anchor/alias handling**: PyYAML loses anchors on round-trip; pyrs-yaml preserves them
+2. **Comment position**: pyrs-yaml may reorder some comments in complex nested structures
 3. **Flow style**: Both preserve, but output formatting may differ slightly
-4. **Error messages**: pyyaml-rs uses i18n error messages with more context
+4. **Error messages**: pyrs-yaml uses i18n error messages with more context
 
 ## Migration Checklist
 
-- [ ] Replace `import yaml` with `import pyyaml_rs as yaml`
+- [ ] Replace `import yaml` with `import pyrs_yaml as yaml`
 - [ ] Test all YAML parsing/saving workflows
 - [ ] Verify round-trip output matches expectations
 - [ ] Check anchor/alias behavior (if used)
@@ -69,12 +69,12 @@ def save_config(data, path):
         yaml.safe_dump(data, f)
 
 # New code
-import pyyaml_rs
+import pyrs_yaml
 
 def load_config(path):
-    return pyyaml_rs.parse_file(path).to_dict()
+    return pyrs_yaml.parse_file(path).to_dict()
 
 def save_config(data, path):
-    doc = pyyaml_rs.parse(pyyaml_rs.safe_dump(data))
-    pyyaml_rs.dump_file(data, path)
+    doc = pyrs_yaml.parse(pyrs_yaml.safe_dump(data))
+    pyrs_yaml.dump_file(data, path)
 ```

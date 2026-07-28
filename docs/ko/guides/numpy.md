@@ -11,7 +11,7 @@ NumPy 배열을 YAML 리스트로 직렬화합니다. 제로 복사 Rust 처리�
 
 ```python
 import numpy as np
-import pyyaml_rs as y
+import pyrs_yaml as y
 
 # 1차원 배열
 arr = np.array([1, 2, 3], dtype="int32")

@@ -1,4 +1,4 @@
-# Agent 开发指南：`pyyaml-rs`
+# Agent 开发指南：`pyrs-yaml`
 
 ## 1. 项目愿景与核心目标
 
@@ -263,7 +263,7 @@ impl IntoPyObject for StreamIterator {
 
 ### 10.4 PEP561 标记
 
-**`python/pyyaml_rs/py.typed` 必须始终存在**（空文件即可）。这是 mypy 识别该包支持类型检查的必要标记。
+**`python/pyrs_yaml/py.typed` 必须始终存在**（空文件即可）。这是 mypy 识别该包支持类型检查的必要标记。
 
 ### 10.5 泛型类型
 

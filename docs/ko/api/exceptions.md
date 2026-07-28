@@ -5,7 +5,7 @@ lang: ko
 
 ## 예외
 
-pyyaml-rs는 오류 처리를 위해 세 가지 사용자 정의 예외 클래스를 정의합니다.
+pyrs-yaml는 오류 처리를 위해 세 가지 사용자 정의 예외 클래스를 정의합니다.
 
 ### YamlParseError
 
@@ -22,8 +22,8 @@ class YamlParseError(ValueError):
 
 ```python
 try:
-    doc = pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(f"파싱 오류: {e}")
 ```
 
@@ -47,8 +47,8 @@ class YamlSerializeError(ValueError):
 
 ```python
 try:
-    result = pyyaml_rs.safe_dump(float('inf'))
-except pyyaml_rs.YamlSerializeError as e:
+    result = pyrs_yaml.safe_dump(float('inf'))
+except pyrs_yaml.YamlSerializeError as e:
     print(f"직렬화 오류: {e}")
 ```
 
@@ -67,8 +67,8 @@ class YamlTypeError(TypeError):
 
 ```python
 try:
-    result = pyyaml_rs.safe_dump(object())  # 변환 불가능한 타입
-except pyyaml_rs.YamlTypeError as e:
+    result = pyrs_yaml.safe_dump(object())  # 변환 불가능한 타입
+except pyrs_yaml.YamlTypeError as e:
     print(f"타입 오류: {e}")
 ```
 
@@ -87,9 +87,9 @@ class YamlValidateError(ValueError):
 
 ```python
 try:
-    doc = pyyaml_rs.parse("age: not_a_number")
+    doc = pyrs_yaml.parse("age: not_a_number")
     doc.validate(schema={"type": "object", "properties": {"age": {"type": "number"}}})
-except pyyaml_rs.YamlValidateError as e:
+except pyrs_yaml.YamlValidateError as e:
     print(f"검증 오류: {e}")
 ```
 
@@ -109,12 +109,12 @@ except pyyaml_rs.YamlValidateError as e:
 오류 메시지를 현지화할 수 있습니다:
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
-pyyaml_rs.set_language("zh-CN")  # 중국어
+pyrs_yaml.set_language("zh-CN")  # 중국어
 try:
-    pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(e)  # 중국어 오류 메시지
 ```
 
@@ -123,12 +123,12 @@ except pyyaml_rs.YamlParseError as e:
 ```python
 # 구체적인 예외 캡처
 try:
-    doc = pyyaml_rs.parse(yaml_content)
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse(yaml_content)
+except pyrs_yaml.YamlParseError as e:
     logger.error(f"YAML 파싱 오류: {e}")
     # 오류 메시지 파싱
     error_str = str(e)  # "Invalid YAML: line 1, column 15: ..."
-except pyyaml_rs.YamlTypeError as e:
+except pyrs_yaml.YamlTypeError as e:
     logger.error(f"타입 오류: {e}")
 ```
 

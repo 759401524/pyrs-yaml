@@ -1,6 +1,6 @@
 # Round-Trip Preservation
 
-This is pyyaml-rs's **killing feature** — what makes it unique among Python YAML libraries.
+This is pyrs-yaml's **killing feature** — what makes it unique among Python YAML libraries.
 
 ## What is Round-Trip Preservation?
 
@@ -23,7 +23,7 @@ api:
   endpoint: /api/v1
 """
 
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # All formatting and metadata preserved
@@ -48,7 +48,7 @@ assert "<<: *db" in output
 | Flow/block style | ✅ | `[]`/`{}` vs block preserved |
 | Key order | ✅ | `IndexMap` guarantees order |
 
-## PyYAML vs pyyaml-rs Round-Trip
+## PyYAML vs pyrs-yaml Round-Trip
 
 ```python
 original = "# Comment\nkey: value  # inline\n"
@@ -57,8 +57,8 @@ original = "# Comment\nkey: value  # inline\n"
 yaml.safe_dump(yaml.safe_load(original))
 # Output: 'key: value\n'  ❌
 
-# pyyaml-rs: preserves everything
-doc = pyyaml_rs.parse(original)
+# pyrs-yaml: preserves everything
+doc = pyrs_yaml.parse(original)
 doc.to_yaml()
 # Output: '# Comment\nkey: value  # inline\n'  ✅
 ```
@@ -69,8 +69,8 @@ Round-trip performance vs competitors:
 
 | Library | Round-trip (large) | Comments | Anchors | Tags |
 |---------|-------------------|----------|---------|------|
-| **pyyaml-rs** | **0.08 ms** | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
 | PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
 | ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
 
-**pyyaml-rs is 37× faster than PyYAML and 85× faster than ruamel.yaml** while preserving everything.
+**pyrs-yaml is 37× faster than PyYAML and 85× faster than ruamel.yaml** while preserving everything.

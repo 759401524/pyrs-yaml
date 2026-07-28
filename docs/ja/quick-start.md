@@ -5,7 +5,7 @@ lang: ja
 
 ## クイックスタート
 
-このガイドでは、pyyaml-rs を数分で使い始める方法を説明します。
+このガイドでは、pyrs-yaml を数分で使い始める方法を説明します。
 
 ### 1. インストール
 
@@ -18,10 +18,10 @@ uv run --frozen maturin develop --release
 ### 2. YAML のパース
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # Parse a YAML string
-doc = pyyaml_rs.parse("""
+doc = pyrs_yaml.parse("""
 name: Alice
 age: 30
 email: alice@example.com
@@ -37,7 +37,7 @@ print(doc.get("email"))   # alice@example.com
 
 ```python
 # Use safe_load for PyYAML-compatible behavior
-data = pyyaml_rs.safe_load("""
+data = pyrs_yaml.safe_load("""
 users:
   - name: Alice
     role: admin
@@ -54,7 +54,7 @@ print(type(data["users"]))       # <class 'list'>
 
 ```python
 # Convert a Python dict back to YAML
-yaml_str = pyyaml_rs.safe_dump({
+yaml_str = pyrs_yaml.safe_dump({
     "database": {
         "host": "localhost",
         "port": 5432,
@@ -71,7 +71,7 @@ print(yaml_str)
 ### 5. フォーマットの保持（ラウンドトリップ）
 
 ```python
-# The key advantage of pyyaml-rs
+# The key advantage of pyrs-yaml
 original = """
 # Server configuration
 server:
@@ -90,7 +90,7 @@ api:
 """
 
 # Parse and re-serialize — comments and anchors preserved
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # The output matches the input (or is semantically equivalent)
@@ -102,7 +102,7 @@ assert "&db" in output
 
 ```python
 # Parse a YAML file directly
-doc = pyyaml_rs.parse_file("config.yaml")
+doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
@@ -120,22 +120,22 @@ name: config2
 value: 2
 """
 
-docs = pyyaml_rs.parse_all_docs(yaml_text)
+docs = pyrs_yaml.parse_all_docs(yaml_text)
 print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
 ## 8. NumPy ndarray サポート
 
-pyyaml-rs は `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます。これは科学データ、モデルの重み、または多次元配列を人間が読める形式に保存するのに便利です。
+pyrs-yaml は `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます。これは科学データ、モデルの重み、または多次元配列を人間が読める形式に保存するのに便利です。
 
 ```python
 import numpy as np
-import pyyaml_rs
+import pyrs_yaml
 
 # 1-D array
 arr = np.array([1, 2, 3], dtype="int32")
-yaml_str = pyyaml_rs.safe_dump(arr)
+yaml_str = pyrs_yaml.safe_dump(arr)
 print(yaml_str)
 # - 1
 # - 2
@@ -143,7 +143,7 @@ print(yaml_str)
 
 # 2-D matrix
 matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
-yaml_str = pyyaml_rs.safe_dump(matrix)
+yaml_str = pyrs_yaml.safe_dump(matrix)
 print(yaml_str)
 # -
 #   - 1.0
@@ -153,7 +153,7 @@ print(yaml_str)
 #   - 4.0
 
 # Round-trip preserves values
-loaded = pyyaml_rs.safe_load(yaml_str)
+loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 

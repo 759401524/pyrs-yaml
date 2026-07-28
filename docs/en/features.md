@@ -1,14 +1,14 @@
 # Features
 
-pyyaml-rs is designed to be a **drop-in replacement** for PyYAML while adding powerful features that PyYAML lacks.
+pyrs-yaml is designed to be a **drop-in replacement** for PyYAML while adding powerful features that PyYAML lacks.
 
 ## YAML 1.2 Compliance
 
-Powered by **saphyr-parser**, pyyaml-rs achieves **98.1% pass rate** on the YAML Test Suite.
+Powered by **saphyr-parser**, pyrs-yaml achieves **98.1% pass rate** on the YAML Test Suite.
 
 ## Perfect Round-Trip
 
-Unlike PyYAML, pyyaml-rs **preserves all formatting and metadata**:
+Unlike PyYAML, pyrs-yaml **preserves all formatting and metadata**:
 
 - **Comments** — standalone and inline
 - **Anchors** (`&name`) and **aliases** (`*name`)
@@ -21,7 +21,7 @@ Unlike PyYAML, pyyaml-rs **preserves all formatting and metadata**:
 
 Rust backend delivers **25–40× speedup** over PyYAML:
 
-| Operation | pyyaml-rs | PyYAML |
+| Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
 | Parse (large) | 0.07 ms | 1.83 ms |
 | Serialize (large) | 0.08 ms | 2.96 ms |
@@ -41,7 +41,7 @@ The **CustomNode** AST gives you full control over YAML structure:
 Drop-in replacement with familiar API:
 
 ```python
-import pyyaml_rs as yaml  # Use as 'yaml' for easy migration
+import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
 yaml.safe_dump(data)
@@ -55,11 +55,11 @@ Non-blocking serialization and parsing via `asyncio`:
 
 ```python
 import asyncio
-import pyyaml_rs
+import pyrs_yaml
 
 async def main():
-    yaml = await pyyaml_rs.safe_dump_async({"a": 1})
-    data = await pyyaml_rs.safe_loads_async(yaml)
+    yaml = await pyrs_yaml.safe_dump_async({"a": 1})
+    data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())
@@ -72,7 +72,7 @@ Available functions: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 Validate parsed YAML documents against JSON Schema:
 
 ```python
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
 # Schema as JSON string
@@ -86,7 +86,7 @@ Raises `YamlValidateError` on validation failure.
 Re-parse stored source text in place with different options:
 
 ```python
-doc = pyyaml_rs.parse("x: on")
+doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
 doc.reparse(schema="yaml1.1")
@@ -95,22 +95,22 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 ## NumPy ndarray Support
 
-pyyaml-rs can serialize `numpy.ndarray` objects of any dimension directly to YAML:
+pyrs-yaml can serialize `numpy.ndarray` objects of any dimension directly to YAML:
 
 ```python
 import numpy as np
-import pyyaml_rs
+import pyrs_yaml
 
 # 1-D array
 arr = np.array([1, 2, 3], dtype="int32")
-yaml_str = pyyaml_rs.safe_dump(arr)
+yaml_str = pyrs_yaml.safe_dump(arr)
 # - 1
 # - 2
 # - 3
 
 # 2-D matrix
 matrix = np.array([[1, 2], [3, 4]], dtype="float64")
-yaml_str = pyyaml_rs.safe_dump(matrix)
+yaml_str = pyrs_yaml.safe_dump(matrix)
 # -
 #   - 1.0
 #   - 2.0
@@ -119,7 +119,7 @@ yaml_str = pyyaml_rs.safe_dump(matrix)
 #   - 4.0
 
 # Round-trip
-loaded = pyyaml_rs.safe_load(yaml_str)
+loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
