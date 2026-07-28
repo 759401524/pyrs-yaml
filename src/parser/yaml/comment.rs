@@ -199,54 +199,12 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
         let mut escaped = false;
 
         for (col_idx, ch) in line.char_indices() {
-            if escaped {
-                escaped = false;
-                continue;
-            }
-            if ch == '\\' && (in_single_quote || in_double_quote) {
-                escaped = true;
-                continue;
-            }
-            if ch == '\'' && !in_double_quote {
-                in_single_quote = !in_single_quote;
-                continue;
-            }
-            if ch == '"' && !in_single_quote {
-                in_double_quote = !in_double_quote;
+            if is_string_char(&mut in_single_quote, &mut in_double_quote, &mut escaped, ch) {
                 continue;
             }
             if ch == '&' && !in_single_quote && !in_double_quote {
-                // Found an anchor
-                let anchor_start_byte = col_idx + ch.len_utf8();
-                let rest = &line[anchor_start_byte..];
-
-                let mut anchor_name = String::new();
-                let mut chars = rest.char_indices();
-
-                // Check for quoted anchor name: &"name"
-                if let Some((_, first)) = chars.next() {
-                    if first == '"' {
-                        // Quoted anchor: scan until closing quote
-                        for (_, c) in chars.by_ref() {
-                            if c == '"' {
-                                break;
-                            }
-                            anchor_name.push(c);
-                        }
-                    } else if is_valid_anchor_char(first) {
-                        // Unquoted anchor: scan until invalid character
-                        anchor_name.push(first);
-                        for (_, c) in chars.by_ref() {
-                            if is_valid_anchor_char(c) {
-                                anchor_name.push(c);
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if !anchor_name.is_empty() {
+                let rest = &line[col_idx + 1..];
+                if let Some(anchor_name) = scan_anchor_name(rest) {
                     anchors.push(RawAnchor {
                         line: line_idx,
                         col: col_idx,
@@ -258,6 +216,67 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
     }
 
     anchors
+}
+
+/// Advance quote/escape state machine for a single character.
+/// Returns `true` if the character was consumed (quote toggle or escape start).
+fn is_string_char(
+    in_single_quote: &mut bool,
+    in_double_quote: &mut bool,
+    escaped: &mut bool,
+    ch: char,
+) -> bool {
+    if *escaped {
+        *escaped = false;
+        return true;
+    }
+    if ch == '\\' && (*in_single_quote || *in_double_quote) {
+        *escaped = true;
+        return true;
+    }
+    if ch == '\'' && !*in_double_quote {
+        *in_single_quote = !*in_single_quote;
+        return true;
+    }
+    if ch == '"' && !*in_single_quote {
+        *in_double_quote = !*in_double_quote;
+        return true;
+    }
+    false
+}
+
+/// Scan an anchor name from the text after `&`.
+/// Handles both quoted (`&"name"`) and unquoted (`&name`) forms.
+fn scan_anchor_name(rest: &str) -> Option<String> {
+    let mut chars = rest.char_indices();
+    let first = chars.next()?.1;
+
+    let mut anchor_name = String::new();
+    if first == '"' {
+        for (_, c) in chars {
+            if c == '"' {
+                break;
+            }
+            anchor_name.push(c);
+        }
+    } else if is_valid_anchor_char(first) {
+        anchor_name.push(first);
+        for (_, c) in chars {
+            if is_valid_anchor_char(c) {
+                anchor_name.push(c);
+            } else {
+                break;
+            }
+        }
+    } else {
+        return None;
+    }
+
+    if anchor_name.is_empty() {
+        None
+    } else {
+        Some(anchor_name)
+    }
 }
 
 #[cfg(test)]
