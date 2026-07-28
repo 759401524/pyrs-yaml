@@ -24,6 +24,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 // 自定义 Python 异常类型
 pyo3::create_exception!(pyyaml_rs, YamlParseError, pyo3::exceptions::PyValueError);
@@ -62,7 +63,7 @@ mod pyyaml_rs {
     struct YamlDocument {
         ast: CustomNode,
         schema: YamlSchema,
-        source: Option<String>,
+        source: Option<Arc<str>>,
     }
 
     #[pymethods]
@@ -756,7 +757,7 @@ mod pyyaml_rs {
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
-            source: Some(yaml_str),
+            source: Some(Arc::from(yaml_str)),
         })
     }
 
@@ -782,7 +783,7 @@ mod pyyaml_rs {
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
-            source: Some(content),
+            source: Some(Arc::from(content)),
         })
     }
 
@@ -809,7 +810,7 @@ mod pyyaml_rs {
             .map(|ast| YamlDocument {
                 ast,
                 schema: schema_enum,
-                source: Some(yaml.to_string()),
+                source: Some(Arc::from(yaml)),
             })
             .collect())
     }
