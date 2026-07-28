@@ -1,0 +1,153 @@
+[project]
+site_name = "pyyaml-rs"
+site_url = "https://759401524.github.io/pyyaml-rs/"
+site_description = "High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3"
+site_author = "MuLong <759401524@qq.com>"
+repo_url = "https://github.com/759401524/pyyaml-rs"
+repo_name = "759401524/pyyaml-rs"
+docs_dir = "docs/en"
+site_dir = "site/en"
+edit_uri = "https://github.com/759401524/pyyaml-rs/edit/main/docs/"
+nav = [
+    {"Home" = "index.md"},
+    {"Getting Started" = [
+        {"Installation" = "installation.md"},
+        {"Quick Start" = "quick-start.md"},
+        {"Features" = "features.md"},
+    ]},
+    {"User Guide" = [
+        {"Parsing YAML" = "guides/parsing.md"},
+        {"Serialization" = "guides/serialization.md"},
+        {"PyYAML Compatibility" = "guides/pyyaml-compat.md"},
+        {"Round-Trip Preservation" = "guides/round-trip.md"},
+        {"Markdown Frontmatter" = "guides/frontmatter.md"},
+        {"i18n Error Messages" = "guides/i18n.md"},
+        {"NumPy ndarray" = "guides/numpy.md"},
+    ]},
+    {"API Reference" = [
+        {"Module Reference" = "api/reference.md"},
+        {"YamlDocument Class" = "api/yaml-document.md"},
+        {"Exceptions" = "api/exceptions.md"},
+    ]},
+    {"Performance" = [
+        {"Benchmarks" = "performance/benchmarks.md"},
+        {"Comparison" = "performance/comparison.md"},
+    ]},
+    {"Contributing" = [
+        {"Development Setup" = "contributing/setup.md"},
+        {"Architecture" = "contributing/architecture.md"},
+        {"Coding Standards" = "contributing/standards.md"},
+        {"Running Tests" = "contributing/tests.md"},
+    ]},
+    {"Changelog" = "changelog.md"},
+    {"License" = "license.md"},
+]
+
+[project.theme]
+name = "material"
+language = "en"
+variant = "classic"
+features = [
+    "navigation.tracking",
+    "navigation.path",
+    "navigation.indexes",
+    "navigation.sections",
+    "navigation.top",
+    "search.highlight",
+    "search.suggest",
+    "search.share",
+    "content.code.annotate",
+    "content.code.copy",
+    "content.tooltips",
+    "toc.follow",
+]
+
+[project.theme.font]
+text = "Inter"
+code = "JetBrains Mono"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "deep orange"
+accent = "deep orange"
+
+[project.theme.palette.toggle]
+icon = "material/brightness-7"
+name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "deep orange"
+accent = "deep orange"
+
+[project.theme.palette.toggle]
+icon = "material/brightness-4"
+name = "Switch to light mode"
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+[project.plugins.search]
+# Use default search configuration
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["python"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+show_source = true
+show_signature = true
+show_docstring_attributes = true
+show_root_heading = true
+show_root_toc_entry = false
+heading_level = 3
+members_order = "source"
+merge_init_into_class = true
+separate_signature = true
+docstring_section_style = "table"
+docstring_style = "google"
+signature_crossrefs = true
+show_symbol_type_heading = true
+show_symbol_type_toc = true
+
+[project.markdown_extensions]
+tables = {}
+fenced_code = {}
+admonition = {}
+
+[project.markdown_extensions.toc]
+permalink = true
+baselevel = 1
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+
+[project.extra]
+social = [
+    {icon = "fontawesome/brands/github", link = "https://github.com/759401524/pyyaml-rs"},
+    {icon = "fontawesome/brands/python", link = "https://pypi.org/project/pyyaml-rs/"},
+]
+alternate = [
+    {name = "English", link = "/pyyaml-rs/en/", lang = "en"},
+    {name = "中文", link = "/pyyaml-rs/zh/", lang = "zh"},
+    {name = "日本語", link = "/pyyaml-rs/ja/", lang = "ja"},
+    {name = "한국어", link = "/pyyaml-rs/ko/", lang = "ko"},
+]
+
+[project.extra.analytics]
+provider = false
+
+[project.extra.consent]
+title = "Cookie consent"
+description = "We use cookies to recognize you when we visit our websites. That's what gives us the ability to personalize content for you. You can opt out at any time."
+
+[project.extra.status]
+new = "New"
+deprecated = "Deprecated"
+
+[project.extra.version]
+provider = "mike"
