@@ -4,7 +4,7 @@ site_description: High-performance Python YAML library with perfect round-trip s
 site_author: MuLong <759401524@qq.com>
 repo_url: https://github.com/759401524/pyyaml-rs
 repo_name: 759401524/pyyaml-rs
-edit_uri_template: https://github.com/759401524/pyyaml-rs/edit/main/docs/{path}
+edit_uri: https://github.com/759401524/pyyaml-rs/edit/main/docs/{lang}{path}?lang={lang}
 docs_dir: docs
 
 theme:
@@ -67,6 +67,16 @@ plugins:
             show_symbol_type_heading: true
             show_symbol_type_toc: true
 
+i18n:
+  default_lang: en
+  alternate_languages:
+    - lang: zh-CN
+      url: /zh-CN/
+    - lang: ja-JP
+      url: /ja-JP/
+    - lang: ko-KR
+      url: /ko-KR/
+
 markdown_extensions:
   - tables
   - fenced_code
@@ -101,7 +111,7 @@ extra:
   consent:
     title: Cookie consent
     description: >-
-      We use cookies to recognize you when you visit our websites.
+      We use cookies to recognize you when we visit our websites.
       That's what gives us the ability to personalize content for you.
       You can opt out at any time.
   status:
@@ -111,30 +121,30 @@ extra:
     provider: mike
 
 nav:
-  - Home: index.md
+  - Home: en/index.md
   - Getting Started:
-      - Installation: installation.md
-      - Quick Start: quick-start.md
-      - Features: features.md
+      - Installation: en/installation.md
+      - Quick Start: en/quick-start.md
+      - Features: en/features.md
   - User Guide:
-      - Parsing YAML: guides/parsing.md
-      - Serialization: guides/serialization.md
-      - PyYAML Compatibility: guides/pyyaml-compat.md
-      - Round-Trip Preservation: guides/round-trip.md
-      - Markdown Frontmatter: guides/frontmatter.md
-      - i18n Error Messages: guides/i18n.md
-      - NumPy ndarray: guides/numpy.md
+      - Parsing YAML: en/guides/parsing.md
+      - Serialization: en/guides/serialization.md
+      - PyYAML Compatibility: en/guides/pyyaml-compat.md
+      - Round-Trip Preservation: en/guides/round-trip.md
+      - Markdown Frontmatter: en/guides/frontmatter.md
+      - i18n Error Messages: en/guides/i18n.md
+      - NumPy ndarray: en/guides/numpy.md
   - API Reference:
-      - Module Reference: api/reference.md
-      - YamlDocument Class: api/yaml-document.md
-      - Exceptions: api/exceptions.md
+      - Module Reference: en/api/reference.md
+      - YamlDocument Class: en/api/yaml-document.md
+      - Exceptions: en/api/exceptions.md
   - Performance:
-      - Benchmarks: performance/benchmarks.md
-      - Comparison: performance/comparison.md
+      - Benchmarks: en/performance/benchmarks.md
+      - Comparison: en/performance/comparison.md
   - Contributing:
-      - Development Setup: contributing/setup.md
-      - Architecture: contributing/architecture.md
-      - Coding Standards: contributing/standards.md
-      - Running Tests: contributing/tests.md
-  - Changelog: changelog.md
-  - License: license.md
+      - Development Setup: en/contributing/setup.md
+      - Architecture: en/contributing/architecture.md
+      - Coding Standards: en/contributing/standards.md
+      - Running Tests: en/contributing/tests.md
+  - Changelog: en/changelog.md
+  - License: en/license.md

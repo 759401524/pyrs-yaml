@@ -83,14 +83,14 @@ Run `cargo clippy -- -D warnings` — treat all warnings as errors.
 ```python
 def parse(yaml: str, resolve_merges: bool = True) -> YamlDocument:
     """Parse a YAML string into a YamlDocument.
-    
+
     Args:
         yaml: A string containing YAML content
         resolve_merges: Whether to resolve merge keys (default: True)
-    
+
     Returns:
         A YamlDocument containing the parsed YAML
-    
+
     Raises:
         YamlParseError: If the YAML is invalid
     """
