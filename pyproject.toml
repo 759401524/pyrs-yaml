@@ -45,9 +45,12 @@ Repository = "https://github.com/759401524/pyyaml-rs"
 Issues = "https://github.com/759401524/pyyaml-rs/issues"
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
-python-source = "python"
+bindings = "pyo3"
 module-name = "pyyaml_rs"
+python-source = "python"
+features = ["pyo3/extension-module"]
+strip = true
+auditwheel = "repair"
 
 [tool.maturin.generate-ci.github]
 platforms = ["linux", "windows", "macos"]
