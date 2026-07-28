@@ -3,22 +3,35 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["*"]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
-  PYO3_BUILD_EXTENSION_MODULE: 1
 
 jobs:
   test:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -27,28 +40,91 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Install dependencies
-        run: uv sync --frozen --all-extras --dev
+      - name: Create virtualenv
+        run: uv venv .venv
 
       - name: Run cargo tests
         if: matrix.os != 'macos-latest'
+        env:
+          PYO3_PYTHON: python
         run: cargo test --locked
 
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
 
       - name: Build and install
-        run: uv run maturin develop --release
+        uses: PyO3/maturin-action@v1
+        with:
+          command: develop
+          args: --release
+
+      - name: Install Python test dependencies
+        run: uv pip install -q pytest pytest-asyncio numpy jsonschema
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py
+
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build abi3 wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --find-interpreter --out dist
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/
+
+  test-freethreaded:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Set up free-threaded Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14t"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Create virtualenv
+        run: uv venv .venv
+
+      - name: Run cargo tests
+        env:
+          PYO3_PYTHON: python3.14t
+        run: cargo test --locked
+
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Build and install free-threaded wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: develop
+          args: --release
+
+      - name: Install Python test dependencies
+        run: uv pip install -q pytest pytest-asyncio jsonschema
+
+      - name: Run Python tests
+        run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py -k "not numpy"

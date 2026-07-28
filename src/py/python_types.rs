@@ -2,6 +2,8 @@
 
 use super::super::YamlTypeError;
 use super::convert::format_i18n_error;
+
+#[cfg(feature = "numpy")]
 use super::ndarray::ndarray_to_node;
 use crate::ast::CustomNode;
 
@@ -55,6 +57,7 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         return Ok(CustomNode::plain_scalar(s));
     }
 
+    #[cfg(feature = "numpy")]
     if let Some(node) = ndarray_to_node(py, obj) {
         return Ok(node);
     }

@@ -2,9 +2,12 @@
 //! Python-facing functions exposed via the `pyyaml_rs` PyO3 module.
 
 pub mod convert;
-pub mod ndarray;
-pub mod python_types;
 pub mod stream_events;
+
+#[cfg(feature = "numpy")]
+pub mod ndarray;
+
+pub mod python_types;
 
 use crate::ast::CustomNode;
 use crate::parser::yaml::YamlSchema;
@@ -26,7 +29,7 @@ use self::stream_events::stream_event_to_py_dict;
 /// A Python module implemented in Rust.
 ///
 /// pyyaml-rs: high-performance YAML parsing with perfect round-trip support.
-#[pymodule]
+#[pymodule(gil_used = false)]
 mod pyyaml_rs {
     use super::*;
 
