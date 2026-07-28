@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["*"]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -63,17 +67,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build wheels
+      - name: Build abi3 wheels
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --find-interpreter
+          args: --release --find-interpreter --out dist
 
-      - name: Upload wheel
+      - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
-          path: target/wheels/
+          path: dist/
 
   test-freethreaded:
     runs-on: ubuntu-latest
@@ -85,20 +89,32 @@ jobs:
         with:
           components: clippy
 
+      - name: Set up free-threaded Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13t"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
       - name: Run cargo tests
         run: cargo test --locked
 
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
 
-      - name: Build free-threaded wheel
+      - name: Build and install free-threaded wheel
         uses: PyO3/maturin-action@v1
         with:
           command: develop
           args: --release -i python3.13t
 
       - name: Install Python test dependencies
-        run: pip install -q pytest pytest-asyncio
+        run: uv pip install -q pytest pytest-asyncio
 
       - name: Run Python tests
         run: pytest tests/ -v --ignore=tests/benchmark_compare.py -k "not numpy"
