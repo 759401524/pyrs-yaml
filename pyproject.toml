@@ -30,8 +30,10 @@ classifiers = [
     "Topic :: Text Processing :: Markup :: YAML",
 ]
 dependencies = [
-    "jsonschema>=4.25.1",
 ]
+
+[project.optional-dependencies]
+jsonschema = ["jsonschema>=4.25.1"]
 
 [project.urls]
 Homepage = "https://github.com/759401524/pyyaml-rs"

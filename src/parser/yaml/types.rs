@@ -8,7 +8,7 @@ pub enum YamlSchema {
     /// YAML 1.2 Core — default behavior.
     Core,
     /// YAML 1.1 — adds legacy boolean lexemes (yes/no, on/off, y/n).
-    Yaml11,
+    Yaml1_1,
 }
 
 /// YAML 1.2 type resolution for plain scalars
@@ -26,16 +26,11 @@ pub enum YamlType {
     Str(String),
 }
 
-/// Resolve a plain scalar as YAML 1.2 Core (legacy single-argument API).
-///
-/// Preferred callers should use `resolve_yaml_type(value, schema)` from `schema.rs`.
-pub fn resolve_yaml_type(value: &str) -> YamlType {
-    crate::parser::yaml::schema::resolve_yaml_type(value, YamlSchema::Core)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::yaml::schema::resolve_yaml_type;
+    use crate::parser::yaml::YamlSchema;
 
     fn format_yaml_type(ty: &YamlType) -> String {
         match ty {
@@ -64,53 +59,86 @@ mod tests {
 
     #[test]
     fn test_resolve_null_variants() {
-        assert_eq!(resolve_yaml_type(""), YamlType::Null);
-        assert_eq!(resolve_yaml_type("null"), YamlType::Null);
-        assert_eq!(resolve_yaml_type("Null"), YamlType::Null);
-        assert_eq!(resolve_yaml_type("NULL"), YamlType::Null);
-        assert_eq!(resolve_yaml_type("~"), YamlType::Null);
+        assert_eq!(resolve_yaml_type("", YamlSchema::Core), YamlType::Null);
+        assert_eq!(resolve_yaml_type("null", YamlSchema::Core), YamlType::Null);
+        assert_eq!(resolve_yaml_type("Null", YamlSchema::Core), YamlType::Null);
+        assert_eq!(resolve_yaml_type("NULL", YamlSchema::Core), YamlType::Null);
+        assert_eq!(resolve_yaml_type("~", YamlSchema::Core), YamlType::Null);
     }
 
     #[test]
     fn test_resolve_bool() {
-        assert_eq!(resolve_yaml_type("true"), YamlType::Bool(true));
-        assert_eq!(resolve_yaml_type("True"), YamlType::Bool(true));
-        assert_eq!(resolve_yaml_type("TRUE"), YamlType::Bool(true));
-        assert_eq!(resolve_yaml_type("false"), YamlType::Bool(false));
-        assert_eq!(resolve_yaml_type("False"), YamlType::Bool(false));
-        assert_eq!(resolve_yaml_type("FALSE"), YamlType::Bool(false));
+        assert_eq!(
+            resolve_yaml_type("true", YamlSchema::Core),
+            YamlType::Bool(true)
+        );
+        assert_eq!(
+            resolve_yaml_type("True", YamlSchema::Core),
+            YamlType::Bool(true)
+        );
+        assert_eq!(
+            resolve_yaml_type("TRUE", YamlSchema::Core),
+            YamlType::Bool(true)
+        );
+        assert_eq!(
+            resolve_yaml_type("false", YamlSchema::Core),
+            YamlType::Bool(false)
+        );
+        assert_eq!(
+            resolve_yaml_type("False", YamlSchema::Core),
+            YamlType::Bool(false)
+        );
+        assert_eq!(
+            resolve_yaml_type("FALSE", YamlSchema::Core),
+            YamlType::Bool(false)
+        );
     }
 
     #[test]
     fn test_resolve_int_decimal() {
-        assert_eq!(resolve_yaml_type("42"), YamlType::Int(42));
-        assert_eq!(resolve_yaml_type("-10"), YamlType::Int(-10));
-        assert_eq!(resolve_yaml_type("0"), YamlType::Int(0));
+        assert_eq!(resolve_yaml_type("42", YamlSchema::Core), YamlType::Int(42));
+        assert_eq!(
+            resolve_yaml_type("-10", YamlSchema::Core),
+            YamlType::Int(-10)
+        );
+        assert_eq!(resolve_yaml_type("0", YamlSchema::Core), YamlType::Int(0));
     }
 
     #[test]
     fn test_resolve_int_octal() {
-        assert_eq!(resolve_yaml_type("0o10"), YamlType::Int(8));
-        assert_eq!(resolve_yaml_type("0O77"), YamlType::Int(63));
+        assert_eq!(
+            resolve_yaml_type("0o10", YamlSchema::Core),
+            YamlType::Int(8)
+        );
+        assert_eq!(
+            resolve_yaml_type("0O77", YamlSchema::Core),
+            YamlType::Int(63)
+        );
     }
 
     #[test]
     fn test_resolve_int_hex() {
-        assert_eq!(resolve_yaml_type("0xFF"), YamlType::Int(255));
-        assert_eq!(resolve_yaml_type("0X0A"), YamlType::Int(10));
+        assert_eq!(
+            resolve_yaml_type("0xFF", YamlSchema::Core),
+            YamlType::Int(255)
+        );
+        assert_eq!(
+            resolve_yaml_type("0X0A", YamlSchema::Core),
+            YamlType::Int(10)
+        );
     }
 
     #[test]
     fn test_resolve_float() {
-        match resolve_yaml_type("3.14") {
+        match resolve_yaml_type("3.14", YamlSchema::Core) {
             YamlType::Float(v) => assert!((v - 3.14).abs() < 1e-10),
             other => panic!("expected Float, got {:?}", other),
         }
-        match resolve_yaml_type("1e10") {
+        match resolve_yaml_type("1e10", YamlSchema::Core) {
             YamlType::Float(v) => assert!((v - 1e10).abs() < 1.0),
             other => panic!("expected Float, got {:?}", other),
         }
-        match resolve_yaml_type("-1.5E-3") {
+        match resolve_yaml_type("-1.5E-3", YamlSchema::Core) {
             YamlType::Float(v) => assert!((v - (-1.5e-3)).abs() < 1e-10),
             other => panic!("expected Float, got {:?}", other),
         }
@@ -118,23 +146,26 @@ mod tests {
 
     #[test]
     fn test_resolve_infinity_nan() {
-        assert_eq!(resolve_yaml_type(".inf"), YamlType::Float(f64::INFINITY));
         assert_eq!(
-            resolve_yaml_type("-.inf"),
+            resolve_yaml_type(".inf", YamlSchema::Core),
+            YamlType::Float(f64::INFINITY)
+        );
+        assert_eq!(
+            resolve_yaml_type("-.inf", YamlSchema::Core),
             YamlType::Float(f64::NEG_INFINITY)
         );
-        assert!(resolve_yaml_type(".nan").is_nan_value());
-        assert!(resolve_yaml_type("nan").is_nan_value());
+        assert!(resolve_yaml_type(".nan", YamlSchema::Core).is_nan_value());
+        assert!(resolve_yaml_type("nan", YamlSchema::Core).is_nan_value());
     }
 
     #[test]
     fn test_resolve_string() {
         assert_eq!(
-            resolve_yaml_type("hello"),
+            resolve_yaml_type("hello", YamlSchema::Core),
             YamlType::Str("hello".to_string())
         );
         assert_eq!(
-            resolve_yaml_type("12abc"),
+            resolve_yaml_type("12abc", YamlSchema::Core),
             YamlType::Str("12abc".to_string())
         );
     }
@@ -145,9 +176,9 @@ mod tests {
             "null", "true", "false", "42", "-10", "3.14", ".inf", "-.inf", ".nan",
         ];
         for input in cases {
-            let resolved = resolve_yaml_type(input);
+            let resolved = resolve_yaml_type(input, YamlSchema::Core);
             let formatted = format_yaml_type(&resolved);
-            let re_resolved = resolve_yaml_type(&formatted);
+            let re_resolved = resolve_yaml_type(&formatted, YamlSchema::Core);
             assert_eq!(
                 format!("{:?}", resolved),
                 format!("{:?}", re_resolved),

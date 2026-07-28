@@ -171,7 +171,7 @@ pub fn resolve_yaml_type(value: &str, schema: YamlSchema) -> YamlType {
         YamlSchema::Failsafe => resolve_failsafe(value),
         YamlSchema::Json => resolve_json_type(value),
         YamlSchema::Core => resolve_core_type(value),
-        YamlSchema::Yaml11 => resolve_yaml11_type(value),
+        YamlSchema::Yaml1_1 => resolve_yaml11_type(value),
     }
 }
 
@@ -353,7 +353,7 @@ mod tests {
             YamlType::Int(31)
         );
         assert_eq!(
-            resolve_yaml_type("yes", YamlSchema::Yaml11),
+            resolve_yaml_type("yes", YamlSchema::Yaml1_1),
             YamlType::Bool(true)
         );
         assert_eq!(

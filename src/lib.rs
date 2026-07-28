@@ -392,14 +392,14 @@ mod pyyaml_rs {
     /// Supported values: "core", "yaml.org,2002", "YamlOrg2002" → Core
     /// "json", "yaml.org,2002:json" → Json
     /// "failsafe", "yaml.org,2002:failsafe" → Failsafe
-    /// "yaml1.1", "1.1", "yaml.org,2002:yaml1.1" → Yaml11
+    /// "yaml1.1", "1.1", "yaml.org,2002:yaml1.1" → Yaml1_1
     fn parse_schema(raw: &str) -> PyResult<YamlSchema> {
         let s = raw.to_lowercase();
         match s.as_str() {
             "core" | "yaml.org,2002" | "yamlorg2002" => Ok(YamlSchema::Core),
             "json" | "yaml.org,2002:json" => Ok(YamlSchema::Json),
             "failsafe" | "yaml.org,2002:failsafe" => Ok(YamlSchema::Failsafe),
-            "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(YamlSchema::Yaml11),
+            "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(YamlSchema::Yaml1_1),
             _ => Err(YamlTypeError::new_err(format!(
                 "Unsupported schema '{}'. Supported: core, json, failsafe, yaml1.1",
                 raw
