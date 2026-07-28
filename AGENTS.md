@@ -168,7 +168,7 @@ uv run maturin build --release
 
 标准工作流：
 
-1. `git add` — 暂存变更文件
+1. `git add <file>` — 暂存变更文件（禁止使用 `git add -A`）
 2. `git commit` — pre-commit hook 自动运行（cargo fmt, clippy, ruff 等）
 3. 所有 hook 通过后推送
 
