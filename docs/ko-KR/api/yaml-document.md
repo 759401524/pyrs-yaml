@@ -1,23 +1,24 @@
 # ---
+
 ---
 
 title: YamlDocument Class
 lang: ko-KR
 
-# YamlDocument 클래스
+## YamlDocument 클래스
 
 The `YamlDocument` class represents a parsed YAML document with full metadata preservation.
 
-## 개요
+### 개요
 
 ```python
 class YamlDocument:
     """A parsed YAML document with perfect round-trip support."""
 ```
 
-## Methods
+### Methods
 
-### `to_yaml()`
+#### `to_yaml()`
 
 Convert the document back to a YAML string.
 
@@ -34,7 +35,7 @@ doc = pyyaml_rs.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 ```
 
-### `to_yaml_with_options()`
+#### `to_yaml_with_options()`
 
 Convert to YAML with custom options.
 
@@ -64,7 +65,7 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
-### `to_dict()`
+#### `to_dict()`
 
 Convert to a Python dict/list, resolving alias references.
 
@@ -82,7 +83,7 @@ print(data["key"])  # value
 print(type(data))   # <class 'dict'>
 ```
 
-### `get()`
+#### `get()`
 
 Get a value by key (for mapping roots).
 
@@ -104,7 +105,7 @@ value = doc.get("key")
 value = doc.get("missing", "fallback")
 ```
 
-### `root_type()`
+#### `root_type()`
 
 Get the root node type as a string.
 
@@ -120,7 +121,7 @@ root_type() -> str
 print(doc.root_type())  # "mapping"
 ```
 
-### `to_json()`
+#### `to_json()`
 
 Serialize the document to a JSON string.
 
@@ -141,7 +142,7 @@ doc = pyyaml_rs.parse("a: 1\nb: hello")
 json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
 ```
 
-### `validate()`
+#### `validate()`
 
 Validate the document contents against a JSON Schema.
 
@@ -169,7 +170,7 @@ doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 doc.validate('{"type": "object", "required": ["name"]}')
 ```
 
-### `source()`
+#### `source()`
 
 Return the original YAML source text used to create this document.
 
@@ -186,7 +187,7 @@ doc = pyyaml_rs.parse("key: value")
 print(doc.source())  # "key: value"
 ```
 
-### `reparse()`
+#### `reparse()`
 
 Re-parse the stored source text in place, allowing schema or merge behavior changes.
 
@@ -214,9 +215,9 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-## Dunder Methods
+### Dunder Methods
 
-### `__getitem__()`
+#### `__getitem__()`
 
 Access by key (mapping) or index (sequence).
 
@@ -231,7 +232,7 @@ doc[0]          # For sequences
 - `IndexError` — Index out of range for sequence
 - `TypeError` — Document not subscriptable
 
-### `__contains__()`
+#### `__contains__()`
 
 Check if a key exists.
 
@@ -239,7 +240,7 @@ Check if a key exists.
 "key" in doc  # Returns bool
 ```
 
-### `__len__()`
+#### `__len__()`
 
 Get the number of items.
 
@@ -247,7 +248,7 @@ Get the number of items.
 len(doc)  # Number of keys (mapping) or items (sequence)
 ```
 
-### `__iter__()`
+#### `__iter__()`
 
 Iterate over keys (mapping) or values (sequence).
 
@@ -256,7 +257,7 @@ for key in doc:
     print(key, doc[key])
 ```
 
-### `__repr__()`
+#### `__repr__()`
 
 Debug representation.
 
@@ -264,7 +265,7 @@ Debug representation.
 repr(doc)  # "YamlDocument(<yaml>...)"
 ```
 
-### `__str__()`
+#### `__str__()`
 
 String representation.
 
@@ -272,7 +273,7 @@ String representation.
 str(doc)  # Same as doc.to_yaml()
 ```
 
-## Example
+### Example
 
 ```python
 import pyyaml_rs

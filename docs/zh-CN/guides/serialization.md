@@ -1,16 +1,17 @@
 # ---
+
 ---
 
 title: Serialization
 lang: zh-CN
 
-# 序列化
+## 序列化
 
 Convert Python objects and `YamlDocument` instances to YAML strings.
 
-## Basic 序列化
+### Basic 序列化
 
-### YamlDocument.to_yaml()
+#### YamlDocument.to_yaml()
 
 ```python
 doc = pyyaml_rs.parse("key: value")
@@ -18,7 +19,7 @@ yaml_str = doc.to_yaml()
 print(yaml_str)  # key: value\n
 ```
 
-### YamlDocument.to_yaml_with_options()
+#### YamlDocument.to_yaml_with_options()
 
 ```python
 doc = pyyaml_rs.parse("key: value")
@@ -32,7 +33,7 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
-### PyYAML-Compatible 序列化
+#### PyYAML-Compatible 序列化
 
 ```python
 # Dict to YAML string
@@ -47,9 +48,9 @@ yaml_str = pyyaml_rs.safe_dump({
 yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
 ```
 
-## Convert Python Objects to YAML
+### Convert Python Objects to YAML
 
-### from_dict()
+#### from_dict()
 
 ```python
 yaml_str = pyyaml_rs.from_dict({
@@ -59,13 +60,13 @@ yaml_str = pyyaml_rs.from_dict({
 })
 ```
 
-### from_json()
+#### from_json()
 
 ```python
 yaml_str = pyyaml_rs.from_json('{"key": "value"}')
 ```
 
-### dump_file()
+#### dump_file()
 
 ```python
 # Write Python object directly to YAML file
@@ -77,7 +78,7 @@ pyyaml_rs.dump_file({
 }, "output.yaml")
 ```
 
-## Supported Input Types
+### Supported Input Types
 
 | Python Type | YAML Output |
 |-------------|-------------|
@@ -89,7 +90,7 @@ pyyaml_rs.dump_file({
 | `bool` | `true` / `false` |
 | `None` | `null` |
 
-## 往返保留
+### 往返保留
 
 ```python
 # The key advantage: formatting is preserved

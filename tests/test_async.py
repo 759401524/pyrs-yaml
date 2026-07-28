@@ -5,9 +5,9 @@ import asyncio
 import pyyaml_rs
 
 
-async def test_safe_dumps_async():
+async def test_safe_dump():
     data = {"a": 1, "b": [2, 3]}
-    yaml = await pyyaml_rs.safe_dumps_async(data)
+    yaml = pyyaml_rs.safe_dump(data)
     assert isinstance(yaml, str)
     result = pyyaml_rs.safe_load(yaml)
     assert result == data
@@ -15,7 +15,7 @@ async def test_safe_dumps_async():
 
 async def test_safe_dump_async():
     """safe_dump_async writes to stdout; verify async dispatch works."""
-    result = await pyyaml_rs.safe_dumps_async({"x": 1})
+    result = pyyaml_rs.safe_dump({"x": 1})
     assert result is not None
     assert pyyaml_rs.safe_load(result) == {"x": 1}
 
@@ -52,7 +52,7 @@ async def test_safe_loads_async_error():
 
 async def test_concurrent_async():
     async def dump_one(i):
-        return await pyyaml_rs.safe_dumps_async({"i": i})
+        return pyyaml_rs.safe_dump({"i": i})
 
     results = await asyncio.gather(*(dump_one(i) for i in range(50)))
     for i, yaml in enumerate(results):
@@ -61,7 +61,7 @@ async def test_concurrent_async():
 
 async def test_concurrent_mixed():
     async def roundtrip(i):
-        yaml = await pyyaml_rs.safe_dumps_async({"n": i})
+        yaml = pyyaml_rs.safe_dump({"n": i})
         return await pyyaml_rs.safe_loads_async(yaml)
 
     results = await asyncio.gather(*(roundtrip(i) for i in range(30)))
@@ -71,7 +71,7 @@ async def test_concurrent_mixed():
 
 async def main():
     for name, fn in [
-        ("safe_dumps_async", test_safe_dumps_async),
+        ("safe_dump", test_safe_dump),
         ("safe_dump_async", test_safe_dump_async),
         ("safe_loads_async", test_safe_loads_async),
         ("safe_load_async", test_safe_load_async),

@@ -1,14 +1,15 @@
 # ---
+
 ---
 
 title: Exceptions
 lang: ja-JP
 
-# 例外
+## 例外
 
 pyyaml-rs defines three custom exception classes for error handling.
 
-## YamlParseError
+### YamlParseError
 
 Raised when YAML parsing fails.
 
@@ -35,7 +36,7 @@ except pyyaml_rs.YamlParseError as e:
 except ValueError as e:  # Also works
 ```
 
-## YamlSerializeError
+### YamlSerializeError
 
 Raised when YAML serialization fails.
 
@@ -55,7 +56,7 @@ except pyyaml_rs.YamlSerializeError as e:
     print(f"Serialize error: {e}")
 ```
 
-## YamlTypeError
+### YamlTypeError
 
 Raised when a type conversion error occurs.
 
@@ -75,7 +76,7 @@ except pyyaml_rs.YamlTypeError as e:
     print(f"Type error: {e}")
 ```
 
-## YamlValidateError
+### YamlValidateError
 
 Raised when JSON Schema validation fails via `YamlDocument.validate()`.
 
@@ -98,7 +99,7 @@ except pyyaml_rs.YamlValidateError as e:
     # Output: "Validation error: 'email' is a required property"
 ```
 
-## Error Message Format
+### Error Message Format
 
 All error messages include contextual information:
 
@@ -113,7 +114,7 @@ All error messages include contextual information:
 | ndarray unsupported dtype | `"Unsupported type for YAML conversion"` |
 | Schema validation failure | `"<jsonschema error message>"` |
 
-## i18n Support
+### i18n Support
 
 Error messages can be localized:
 
@@ -127,7 +128,7 @@ except pyyaml_rs.YamlParseError as e:
     # Chinese: "YAML 解析错误: 第 1 行, 第 14 列: ..."
 ```
 
-## Best Practices
+### Best Practices
 
 ```python
 import pyyaml_rs

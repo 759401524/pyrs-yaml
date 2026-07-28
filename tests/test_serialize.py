@@ -61,5 +61,5 @@ class TestPyyamlCompatible:
 
     def test_safe_dumps(self):
         data = {"key": "value"}
-        output = pyyaml_rs.safe_dumps(data)
+        output = pyyaml_rs.safe_dump(data)
         assert "key: value" in output

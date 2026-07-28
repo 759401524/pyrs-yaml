@@ -1,18 +1,19 @@
 # ---
+
 ---
 
 title: Features
 lang: ko-KR
 
-# 기능
+## 기능
 
 pyyaml-rs is designed to be a **drop-in replacement** for PyYAML while adding powerful features that PyYAML lacks.
 
-## YAML 1.2 Compliance
+### YAML 1.2 Compliance
 
 Powered by **saphyr-parser**, pyyaml-rs achieves **98.1% pass rate** on the YAML Test Suite.
 
-## Perfect Round-Trip
+### Perfect Round-Trip
 
 Unlike PyYAML, pyyaml-rs **preserves all formatting and metadata**:
 
@@ -23,7 +24,7 @@ Unlike PyYAML, pyyaml-rs **preserves all formatting and metadata**:
 - **Scalar styles** (plain, single-quoted, double-quoted, literal, folded)
 - **Flow/block formatting** — `[]`/`{}` vs block style preserved
 
-## 성능
+### 성능
 
 Rust backend delivers **25–40× speedup** over PyYAML:
 
@@ -33,7 +34,7 @@ Rust backend delivers **25–40× speedup** over PyYAML:
 | Serialize (large) | 0.08 ms | 2.96 ms |
 | Round-trip | 0.08 ms | 2.98 ms |
 
-## Custom AST
+### Custom AST
 
 The **CustomNode** AST gives you full control over YAML structure:
 
@@ -42,7 +43,7 @@ The **CustomNode** AST gives you full control over YAML structure:
 - Build YAML from scratch with full formatting control
 - Advanced use cases: template engines, config generators, code formatters
 
-## PyYAML 호환성
+### PyYAML 호환성
 
 Drop-in replacement with familiar API:
 
@@ -55,7 +56,7 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
-## Async I/O
+### Async I/O
 
 Non-blocking serialization and parsing via `asyncio`:
 
@@ -73,7 +74,7 @@ asyncio.run(main())
 
 Available functions: `safe_dumps_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async`.
 
-## JSON Schema Validation
+### JSON Schema Validation
 
 Validate parsed YAML documents against JSON Schema:
 
@@ -87,7 +88,7 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 Raises `YamlValidateError` on validation failure.
 
-## Incremental Re-parse
+### Incremental Re-parse
 
 Re-parse stored source text in place with different options:
 
@@ -99,7 +100,7 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-## NumPy ndarray Support
+### NumPy ndarray Support
 
 pyyaml-rs can serialize `numpy.ndarray` objects of any dimension directly to YAML:
 
@@ -129,7 +130,7 @@ loaded = pyyaml_rs.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-### Supported dtypes
+#### Supported dtypes
 
 | Type | Rust Backend | YAML Output |
 |------|-------------|-------------|
@@ -140,7 +141,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `bool` | `PyUntypedArray` → `PyArrayDyn<bool>` | `true` / `false` |
 | `nan` / `inf` | — | `NaN` / `.inf` / `-.inf` |
 
-### Notes
+#### Notes
 
 - **Zero-copy**: Uses the `numpy` Rust crate's `PyUntypedArray` for type-erased array access, then dispatches to the correct typed `PyArrayDyn<T>` for zero-copy slice iteration
 - **GIL released**: Slice iteration runs outside the GIL for maximum performance on large arrays
@@ -153,7 +154,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **i18n error messages** — `set_language("zh-CN")` for bilingual errors
 - **Type hints** — Full `.pyi` stubs for IDE support
 
-## Supported YAML Constructs
+### Supported YAML Constructs
 
 | Feature | Support |
 |---------|---------|

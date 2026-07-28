@@ -1,6 +1,7 @@
 use crate::ast::{Comment, ScalarStyle, Tag};
 use crate::parser::yaml::{
-    extract_anchors, extract_comments, unescape_double_quoted, RawAnchor, RawComment,
+    compute_line_offsets, extract_anchors, extract_comments, unescape_double_quoted,
+    CommentAnchorTracker,
 };
 use saphyr_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
@@ -74,28 +75,6 @@ pub enum StreamEventType {
     },
 }
 
-/// Pre-compute the byte offset of the start of each line in the given text.
-///
-/// The returned vector has one entry per line, where `line_offsets[line]`
-/// is the byte offset of the first byte of that line in `yaml`.
-///
-/// # Arguments
-/// * `yaml` - The raw YAML text.
-///
-/// # Returns
-/// A vector of byte offsets, one per line. The length is `number_of_lines + 1`
-/// (the extra entry is the offset past the final character, for convenience).
-fn compute_line_offsets(yaml: &str) -> Vec<usize> {
-    let mut offsets = Vec::with_capacity(64);
-    offsets.push(0);
-    for (i, byte) in yaml.bytes().enumerate() {
-        if byte == b'\n' {
-            offsets.push(i + 1);
-        }
-    }
-    offsets
-}
-
 /// Event receiver that collects `StreamEvent`s from saphyr-parser.
 ///
 /// Mirrors the pattern used by `AstReceiver` in `parser::mod.rs` but
@@ -106,82 +85,24 @@ fn compute_line_offsets(yaml: &str) -> Vec<usize> {
 pub struct StreamReceiver<'a> {
     yaml_text: &'a str,
     line_offsets: Vec<usize>,
-    raw_comments: Vec<RawComment>,
-    raw_anchors: Vec<RawAnchor>,
-    comment_idx: usize,
+    comment_anchor_tracker: CommentAnchorTracker,
     events: Vec<StreamEvent>,
     pending_standalone_comment: Option<Comment>,
     anchors: HashMap<usize, String>,
-    next_anchor_name: usize,
 }
 
 impl<'a> StreamReceiver<'a> {
     fn new(yaml_text: &'a str) -> Self {
-        let line_offsets = compute_line_offsets(yaml_text);
-        let raw_comments = extract_comments(yaml_text);
-        let raw_anchors = extract_anchors(yaml_text);
         Self {
             yaml_text,
-            line_offsets,
-            raw_comments,
-            raw_anchors,
-            comment_idx: 0,
+            line_offsets: compute_line_offsets(yaml_text),
+            comment_anchor_tracker: CommentAnchorTracker::new(
+                extract_comments(yaml_text),
+                extract_anchors(yaml_text),
+            ),
             events: Vec::new(),
             pending_standalone_comment: None,
             anchors: HashMap::new(),
-            next_anchor_name: 0,
-        }
-    }
-
-    fn find_inline_comment(&mut self, line: usize, after_col: usize) -> Option<Comment> {
-        let saved_idx = self.comment_idx;
-        while self.comment_idx < self.raw_comments.len() {
-            let c = &self.raw_comments[self.comment_idx];
-            if c.line > line {
-                break;
-            }
-            if c.line < line {
-                self.comment_idx += 1;
-                continue;
-            }
-            if c.col >= after_col && !c.standalone {
-                let comment = Comment {
-                    text: c.text.clone(),
-                    standalone: false,
-                };
-                return Some(comment);
-            }
-            self.comment_idx += 1;
-        }
-        self.comment_idx = saved_idx;
-        None
-    }
-
-    fn find_standalone_before_line(&mut self, line: usize) -> Option<Comment> {
-        let mut result = None;
-        while self.comment_idx < self.raw_comments.len() {
-            let c = &self.raw_comments[self.comment_idx];
-            if c.line >= line {
-                break;
-            }
-            if c.standalone {
-                result = Some(Comment {
-                    text: c.text.clone(),
-                    standalone: true,
-                });
-            }
-            self.comment_idx += 1;
-        }
-        result
-    }
-
-    fn next_anchor_name_from_raw(&mut self) -> Option<String> {
-        if self.next_anchor_name < self.raw_anchors.len() {
-            let name = self.raw_anchors[self.next_anchor_name].name.clone();
-            self.next_anchor_name += 1;
-            Some(name)
-        } else {
-            None
         }
     }
 
@@ -241,7 +162,9 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                 });
             }
             Event::Scalar(value, style, anchor_id, tag) => {
-                let standalone = self.find_standalone_before_line(line);
+                let standalone = self
+                    .comment_anchor_tracker
+                    .find_standalone_before_line(line);
                 if let Some(comment) = standalone {
                     self.pending_standalone_comment = Some(comment);
                     self.emit_pending_comment(line, column);
@@ -278,10 +201,12 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                     value.len()
                 };
 
-                let inline = self.find_inline_comment(line, value_end_col);
+                let inline = self
+                    .comment_anchor_tracker
+                    .find_inline_comment(line, value_end_col);
 
                 let anchor = if anchor_id != 0 {
-                    self.next_anchor_name_from_raw()
+                    self.comment_anchor_tracker.next_anchor_name()
                 } else {
                     None
                 };
@@ -314,13 +239,15 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                 }
             }
             Event::MappingStart(anchor_id, tag) => {
-                let standalone = self.find_standalone_before_line(line);
+                let standalone = self
+                    .comment_anchor_tracker
+                    .find_standalone_before_line(line);
                 if let Some(comment) = standalone {
                     self.pending_standalone_comment = Some(comment);
                 }
 
                 let anchor = if anchor_id != 0 {
-                    self.next_anchor_name_from_raw()
+                    self.comment_anchor_tracker.next_anchor_name()
                 } else {
                     None
                 };
@@ -350,13 +277,15 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                 });
             }
             Event::SequenceStart(anchor_id, tag) => {
-                let standalone = self.find_standalone_before_line(line);
+                let standalone = self
+                    .comment_anchor_tracker
+                    .find_standalone_before_line(line);
                 if let Some(comment) = standalone {
                     self.pending_standalone_comment = Some(comment);
                 }
 
                 let anchor = if anchor_id != 0 {
-                    self.next_anchor_name_from_raw()
+                    self.comment_anchor_tracker.next_anchor_name()
                 } else {
                     None
                 };
@@ -426,8 +355,6 @@ fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
 ///
 /// # Arguments
 /// * `yaml` - The YAML content string.
-/// * `resolve_merges` - Reserved for future use. Currently has no effect
-///   on the streaming output.
 ///
 /// # Returns
 /// Success: a `Vec<StreamEvent>` representing the complete event stream.
@@ -435,12 +362,10 @@ fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
 ///
 /// # Examples
 /// ```ignore
-/// let events = parse_stream("key: value", true).unwrap();
+/// let events = parse_stream("key: value").unwrap();
 /// assert!(!events.is_empty());
 /// ```
-pub fn parse_stream(yaml: &str, resolve_merges: bool) -> Result<Vec<StreamEvent>, String> {
-    let _ = resolve_merges;
-
+pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, String> {
     if yaml.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -461,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_stream_start_and_end() {
-        let events = parse_stream("hello", true).unwrap();
+        let events = parse_stream("hello").unwrap();
         assert!(!events.is_empty());
         assert!(matches!(
             &events[0].event_type,
@@ -475,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_stream_simple_scalar() {
-        let events = parse_stream("hello", true).unwrap();
+        let events = parse_stream("hello").unwrap();
         let scalar = events
             .iter()
             .find(|e| matches!(&e.event_type, StreamEventType::Scalar { .. }));
@@ -496,7 +421,7 @@ mod tests {
 
     #[test]
     fn test_stream_mapping() {
-        let events = parse_stream("key: value", true).unwrap();
+        let events = parse_stream("key: value").unwrap();
         let mapping_starts: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::MappingStart { .. }))
@@ -511,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_stream_sequence() {
-        let events = parse_stream("- item1\n- item2", true).unwrap();
+        let events = parse_stream("- item1\n- item2").unwrap();
         let seq_starts: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::SequenceStart { .. }))
@@ -526,7 +451,7 @@ mod tests {
 
     #[test]
     fn test_stream_scalar_with_anchor() {
-        let events = parse_stream("key: &anchor value", true).unwrap();
+        let events = parse_stream("key: &anchor value").unwrap();
         let scalars: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Scalar { .. }))
@@ -541,7 +466,7 @@ mod tests {
 
     #[test]
     fn test_stream_scalar_with_tag() {
-        let events = parse_stream("key: !!str value", true).unwrap();
+        let events = parse_stream("key: !!str value").unwrap();
         let scalars: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Scalar { .. }))
@@ -556,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_stream_alias() {
-        let events = parse_stream("a: &x 1\nb: *x", true).unwrap();
+        let events = parse_stream("a: &x 1\nb: *x").unwrap();
         let alias_events: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Alias { .. }))
@@ -569,7 +494,7 @@ mod tests {
 
     #[test]
     fn test_stream_standalone_comment() {
-        let events = parse_stream("# standalone comment\nkey: value", true).unwrap();
+        let events = parse_stream("# standalone comment\nkey: value").unwrap();
         let comment_events: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Comment { .. }))
@@ -583,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_stream_inline_comment() {
-        let events = parse_stream("key: value  # inline comment", true).unwrap();
+        let events = parse_stream("key: value  # inline comment").unwrap();
         let comment_events: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Comment { .. }))
@@ -597,13 +522,13 @@ mod tests {
 
     #[test]
     fn test_stream_empty_yaml() {
-        let events = parse_stream("", true).unwrap();
+        let events = parse_stream("").unwrap();
         assert!(events.is_empty());
     }
 
     #[test]
     fn test_stream_multiple_documents() {
-        let events = parse_stream("---\nkey1: val1\n---\nkey2: val2", true).unwrap();
+        let events = parse_stream("---\nkey1: val1\n---\nkey2: val2").unwrap();
         let doc_starts: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::DocumentStart))
@@ -613,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_stream_single_quoted_scalar() {
-        let events = parse_stream("key: 'value'", true).unwrap();
+        let events = parse_stream("key: 'value'").unwrap();
         let scalars: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Scalar { .. }))
@@ -627,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_stream_double_quoted_scalar() {
-        let events = parse_stream(r#"key: "value""#, true).unwrap();
+        let events = parse_stream(r#"key: "value""#).unwrap();
         let scalars: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Scalar { .. }))
@@ -641,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_stream_literal_scalar() {
-        let events = parse_stream("key: |\n  line1\n  line2", true).unwrap();
+        let events = parse_stream("key: |\n  line1\n  line2").unwrap();
         let scalars: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Scalar { .. }))
@@ -654,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_stream_folded_scalar() {
-        let events = parse_stream("key: >\n  line1\n  line2", true).unwrap();
+        let events = parse_stream("key: >\n  line1\n  line2").unwrap();
         let scalars: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::Scalar { .. }))
@@ -667,7 +592,7 @@ mod tests {
 
     #[test]
     fn test_stream_nested_mapping() {
-        let events = parse_stream("a:\n  b: 1\n  c: 2", true).unwrap();
+        let events = parse_stream("a:\n  b: 1\n  c: 2").unwrap();
         let mapping_starts: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::MappingStart { .. }))
@@ -677,7 +602,7 @@ mod tests {
 
     #[test]
     fn test_stream_nested_sequence() {
-        let events = parse_stream("- - a\n  - b\n- c", true).unwrap();
+        let events = parse_stream("- - a\n  - b\n- c").unwrap();
         let seq_starts: Vec<&StreamEvent> = events
             .iter()
             .filter(|e| matches!(&e.event_type, StreamEventType::SequenceStart { .. }))
@@ -687,7 +612,7 @@ mod tests {
 
     #[test]
     fn test_stream_line_column() {
-        let events = parse_stream("key: value", true).unwrap();
+        let events = parse_stream("key: value").unwrap();
         for event in &events {
             assert!(event.line < 100);
         }

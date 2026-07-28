@@ -1,14 +1,15 @@
 # ---
+
 ---
 
 title: PyYAML Compatibility
 lang: zh-CN
 
-# 与 PyYAML 兼容
+## 与 PyYAML 兼容
 
 pyyaml-rs provides a **drop-in replacement** for PyYAML, making migration straightforward.
 
-## Simple Migration
+### Simple Migration
 
 ```python
 # Before
@@ -22,7 +23,7 @@ data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
 
-## Compatible API
+### Compatible API
 
 | PyYAML Function | pyyaml-rs Equivalent | Notes |
 |-----------------|---------------------|-------|
@@ -33,9 +34,9 @@ yaml_str = yaml.safe_dump(data)
 | `yaml.load()` | `pyyaml_rs.safe_load()` | ⚠️ Use safe variant |
 | `yaml.dump()` | `pyyaml_rs.safe_dump()` | ⚠️ Use safe variant |
 
-## Key Differences
+### Key Differences
 
-### What pyyaml-rs Does Better
+#### What pyyaml-rs Does Better
 
 | Feature | PyYAML | pyyaml-rs |
 |---------|--------|-----------|
@@ -45,14 +46,14 @@ yaml_str = yaml.safe_dump(data)
 | ABI3 wheel | N/A | ✅ Single wheel for all Python versions |
 | i18n errors | ❌ English only | ✅ English + Chinese |
 
-### What to Watch For
+#### What to Watch For
 
 1. **Anchor/alias handling**: PyYAML loses anchors on round-trip; pyyaml-rs preserves them
 2. **Comment position**: pyyaml-rs may reorder some comments in complex nested structures
 3. **Flow style**: Both preserve, but output formatting may differ slightly
 4. **Error messages**: pyyaml-rs uses i18n error messages with more context
 
-## Migration Checklist
+### Migration Checklist
 
 - [ ] Replace `import yaml` with `import pyyaml_rs as yaml`
 - [ ] Test all YAML parsing/saving workflows
@@ -60,7 +61,7 @@ yaml_str = yaml.safe_dump(data)
 - [ ] Check anchor/alias behavior (if used)
 - [ ] Review error handling for custom error messages
 
-## Example Migration
+### Example Migration
 
 ```python
 # Old code

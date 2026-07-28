@@ -15,7 +15,6 @@ Example:
 
 from .async_dump import (
     safe_dump_async,
-    safe_dumps_async,
     safe_load_async,
     safe_loads_async,
 )
@@ -40,7 +39,6 @@ from .pyyaml_rs import (
     read_markdown,
     read_markdown_str,
     safe_dump,
-    safe_dumps,
     safe_load,
     safe_loads,
     set_language,
@@ -68,8 +66,6 @@ __all__ = [
     "read_markdown_str",
     "safe_dump",
     "safe_dump_async",
-    "safe_dumps",
-    "safe_dumps_async",
     "safe_load",
     "safe_load_async",
     "safe_loads",

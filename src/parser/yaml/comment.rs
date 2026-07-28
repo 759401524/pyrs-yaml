@@ -1,3 +1,27 @@
+use crate::ast::Comment;
+
+/// Pre-compute the byte offset of the start of each line in the given text.
+///
+/// The returned vector has one entry per line, where `line_offsets[line]`
+/// is the byte offset of the first byte of that line in `yaml`.
+///
+/// # Arguments
+/// * `yaml` - The raw YAML text.
+///
+/// # Returns
+/// A vector of byte offsets, one per line. The length is `number_of_lines + 1`
+/// (the extra entry is the offset past the final character, for convenience).
+pub fn compute_line_offsets(yaml: &str) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(64);
+    offsets.push(0);
+    for (i, byte) in yaml.bytes().enumerate() {
+        if byte == b'\n' {
+            offsets.push(i + 1);
+        }
+    }
+    offsets
+}
+
 /// 从原始 YAML 文本中提取的注释信息。
 #[derive(Debug, Clone)]
 pub struct RawComment {
@@ -9,6 +33,83 @@ pub struct RawComment {
     pub text: String,
     /// `true` 表示独立行注释（行首仅有注释），`false` 表示行尾注释
     pub standalone: bool,
+}
+
+/// 锚点名称跟踪器，封装 `extract_anchors` 的可变状态。
+#[derive(Debug)]
+pub struct CommentAnchorTracker {
+    raw_comments: Vec<RawComment>,
+    raw_anchors: Vec<RawAnchor>,
+    comment_idx: usize,
+    next_anchor_name: usize,
+}
+
+impl CommentAnchorTracker {
+    pub fn new(raw_comments: Vec<RawComment>, raw_anchors: Vec<RawAnchor>) -> Self {
+        Self {
+            raw_comments,
+            raw_anchors,
+            comment_idx: 0,
+            next_anchor_name: 0,
+        }
+    }
+
+    /// Find inline comment on a given line after a column.
+    pub fn find_inline_comment(&mut self, line: usize, after_col: usize) -> Option<Comment> {
+        let saved_idx = self.comment_idx;
+
+        while self.comment_idx < self.raw_comments.len() {
+            let c = &self.raw_comments[self.comment_idx];
+            if c.line > line {
+                break;
+            }
+            if c.line < line {
+                self.comment_idx += 1;
+                continue;
+            }
+            if c.col >= after_col && !c.standalone {
+                let comment = Comment {
+                    text: c.text.clone(),
+                    standalone: false,
+                };
+                return Some(comment);
+            }
+            self.comment_idx += 1;
+        }
+
+        self.comment_idx = saved_idx;
+        None
+    }
+
+    /// Find standalone comments before a given line.
+    pub fn find_standalone_before_line(&mut self, line: usize) -> Option<Comment> {
+        let mut result = None;
+        while self.comment_idx < self.raw_comments.len() {
+            let c = &self.raw_comments[self.comment_idx];
+            if c.line >= line {
+                break;
+            }
+            if c.standalone {
+                result = Some(Comment {
+                    text: c.text.clone(),
+                    standalone: true,
+                });
+            }
+            self.comment_idx += 1;
+        }
+        result
+    }
+
+    /// Get next anchor name from raw text (in order).
+    pub fn next_anchor_name(&mut self) -> Option<String> {
+        if self.next_anchor_name < self.raw_anchors.len() {
+            let name = self.raw_anchors[self.next_anchor_name].name.clone();
+            self.next_anchor_name += 1;
+            Some(name)
+        } else {
+            None
+        }
+    }
 }
 
 /// 从原始 YAML 文本中提取的锚点信息。

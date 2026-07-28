@@ -1,15 +1,17 @@
 # ---
+
 ---
+
 title: Parsing YAML
 lang: ko-KR
 
-# YAML 파싱
+## YAML 파싱
 
 This guide covers all ways to parse YAML with pyyaml-rs.
 
-## Basic Parsing
+### Basic Parsing
 
-### Parse a YAML String
+#### Parse a YAML String
 
 ```python
 import pyyaml_rs
@@ -18,21 +20,21 @@ doc = pyyaml_rs.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
-### Parse with Options
+#### Parse with Options
 
 ```python
 # Disable merge key resolution (keep <<: *alias as-is)
 doc = pyyaml_rs.parse(yaml_text, resolve_merges=False)
 ```
 
-### Parse a YAML File
+#### Parse a YAML File
 
 ```python
 doc = pyyaml_rs.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### Parse Multiple Documents
+#### Parse Multiple Documents
 
 ```python
 # YAML with --- separators
@@ -50,7 +52,7 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
-## PyYAML-Compatible Parsing
+### PyYAML-Compatible Parsing
 
 ```python
 # Returns native Python types (dict, list, str, int, etc.)
@@ -62,7 +64,7 @@ docs = pyyaml_rs.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
-## Acceptable Input Types
+### Acceptable Input Types
 
 - `str` — standard YAML string
 - `bytes` — valid UTF-8 encoded bytes
@@ -74,7 +76,7 @@ doc1 = pyyaml_rs.parse("key: value")
 doc2 = pyyaml_rs.parse(b"key: value")
 ```
 
-## Error Handling
+### Error Handling
 
 ```python
 try:
@@ -83,7 +85,7 @@ except pyyaml_rs.YamlParseError as e:
     print(f"Parse error: {e}")
 ```
 
-## Supported Data Types
+### Supported Data Types
 
 pyyaml-rs correctly parses all YAML 1.2 scalar types:
 

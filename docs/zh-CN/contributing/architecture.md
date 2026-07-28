@@ -1,14 +1,15 @@
 # ---
+
 ---
 
 title: Architecture
 lang: zh-CN
 
-# 架构
+## 架构
 
 pyyaml-rs uses a modular architecture designed for performance and correctness.
 
-## 概述
+### 概述
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -40,9 +41,9 @@ pyyaml-rs uses a modular architecture designed for performance and correctness.
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Module 架构
+### Module 架构
 
-### 1. `src/ast.rs` — Custom AST
+#### 1. `src/ast.rs` — Custom AST
 
 The **CustomNode** enum is the heart of pyyaml-rs:
 
@@ -58,7 +59,7 @@ The **CustomNode** enum is the heart of pyyaml-rs:
 - Custom AST preserves everything needed for round-trip
 - Extensible for future features (custom node types, metadata)
 
-### 2. `src/parser/` — YAML Parser
+#### 2. `src/parser/` — YAML Parser
 
 Built on **saphyr-parser** (YAML 1.2 compliant):
 
@@ -74,7 +75,7 @@ Built on **saphyr-parser** (YAML 1.2 compliant):
 - Two-pass parsing: first extract comments/anchors, then parse events
 - Merge key resolution happens after parsing (configurable)
 
-### 3. `src/serializer.rs` — YAML Serializer
+#### 3. `src/serializer.rs` — YAML Serializer
 
 Custom serializer that reconstructs YAML from the AST:
 
@@ -89,7 +90,7 @@ Custom serializer that reconstructs YAML from the AST:
 - Indent-level state management for nested structures
 - Chomping indicator handling for block scalars
 
-### 4. `src/lib.rs` — PyO3 Module
+#### 4. `src/lib.rs` — PyO3 Module
 
 Inline `#[pymodule] mod pyyaml_rs` with:
 
@@ -98,9 +99,9 @@ Inline `#[pymodule] mod pyyaml_rs` with:
 - **Functions** — `parse`, `safe_load`, `dump_file`, etc.
 - **i18n** — `rust-i18n` integration for bilingual errors
 
-## Data Flow
+### Data Flow
 
-### Parse Flow
+#### Parse Flow
 
 ```text
 YAML String
@@ -118,7 +119,7 @@ YAML String
 CustomNode (AST)
 ```
 
-### Serialize Flow
+#### Serialize Flow
 
 ```text
 CustomNode (AST)
@@ -136,7 +137,7 @@ CustomNode (AST)
 YAML String
 ```
 
-## 性能 Characteristics
+### 性能 Characteristics
 
 | Operation | Complexity | Notes |
 |-----------|-----------|-------|
@@ -146,7 +147,7 @@ YAML String
 | Merge resolution | O(n × m) | Where n = docs, m = merges per doc |
 | Comment extraction | O(n) | Single pass over raw text |
 
-## Dependencies
+### Dependencies
 
 | Crate | Purpose |
 |-------|---------|

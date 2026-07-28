@@ -994,17 +994,15 @@ mod pyyaml_rs {
     ///
     /// # Arguments
     /// * `yaml` - YAML content string or bytes.
-    /// * `resolve_merges` - Whether to resolve merge keys (currently unused in streaming mode).
     /// * `on_event` - Optional callback called per event. Return `False` to stop iteration.
     ///
     /// # Returns
     /// A `StreamIterator` in generator mode, or `None` in callback mode.
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, on_event: "Callable[[dict[str, Any]], bool] | None" = None) -> "StreamIterator | None")]
+    #[pyo3(signature = (yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None) -> "StreamIterator | None")]
     fn parse_stream(
         py: Python,
         yaml: &Bound<'_, PyAny>,
-        resolve_merges: bool,
         on_event: Option<Py<PyAny>>,
     ) -> PyResult<Py<PyAny>> {
         let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
@@ -1025,7 +1023,7 @@ mod pyyaml_rs {
 
         if let Some(callback) = on_event {
             let events = py.detach(|| {
-                super::parser::parse_stream(&yaml_str, resolve_merges).map_err(|e| {
+                super::parser::parse_stream(&yaml_str).map_err(|e| {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
                         &[("detail", &e.to_string())],
@@ -1047,7 +1045,7 @@ mod pyyaml_rs {
             Ok(py.None())
         } else {
             let events = py.detach(|| {
-                super::parser::parse_stream(&yaml_str, resolve_merges).map_err(|e| {
+                super::parser::parse_stream(&yaml_str).map_err(|e| {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
                         &[("detail", &e.to_string())],
@@ -1090,13 +1088,6 @@ mod pyyaml_rs {
     fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
         let node = pyobject_to_node(py, &data)?;
         Ok(super::serializer::to_yaml(&node))
-    }
-
-    /// PyYAML 兼容接口：将 Python 对象序列化为 YAML 字符串（`safe_dump` 的别名）。
-    #[pyfunction]
-    #[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
-    fn safe_dumps(py: Python, data: Py<PyAny>) -> PyResult<String> {
-        safe_dump(py, data)
     }
 
     /// 将 Python 字典/列表转换为 YAML 字符串。

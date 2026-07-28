@@ -1,16 +1,17 @@
 # ---
+
 ---
 
 title: Comparison with Other Libraries
 lang: ja-JP
 
-# 比較 with Other Libraries
+## 比較 with Other Libraries
 
 pyyaml-rs compared against the two most popular Python YAML libraries.
 
-## パフォーマンス 比較
+### パフォーマンス 比較
 
-### Parse Speed (Large YAML, ~2 KB)
+#### Parse Speed (Large YAML, ~2 KB)
 
 | Library | Time | Speedup |
 |---------|------|---------|
@@ -18,7 +19,7 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 | PyYAML | 1.83 ms | 26× slower |
 | ruamel.yaml | 4.26 ms | 61× slower |
 
-### Serialize Speed (Large YAML, ~2 KB)
+#### Serialize Speed (Large YAML, ~2 KB)
 
 | Library | Time | Speedup |
 |---------|------|---------|
@@ -26,7 +27,7 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 | PyYAML | 2.96 ms | 37× slower |
 | ruamel.yaml | 6.74 ms | 84× slower |
 
-### Round-Trip Speed (Large YAML, ~2 KB)
+#### Round-Trip Speed (Large YAML, ~2 KB)
 
 | Library | Time | Speedup |
 |---------|------|---------|
@@ -34,7 +35,7 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 | PyYAML | 2.98 ms | 37× slower |
 | ruamel.yaml | 6.79 ms | 85× slower |
 
-## Feature 比較
+### Feature 比較
 
 | Feature | pyyaml-rs | PyYAML | ruamel.yaml |
 |---------|-----------|--------|-------------|
@@ -55,9 +56,9 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 | **Rust backend** | ✅ | ❌ | ❌ |
 | **パフォーマンス** | 🚀 Fastest | 🐌 Slow | 🐌 Slow |
 
-## Summary
+### Summary
 
-### Choose pyyaml-rs when
+#### Choose pyyaml-rs when
 
 - **パフォーマンス matters** — 25–40× faster than PyYAML
 - **Round-trip preservation is critical** — preserves comments, anchors, tags
@@ -65,19 +66,19 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 - **You need type hints** — full `.pyi` stubs
 - **You want a single wheel** — ABI3 works across Python 3.9–3.13
 
-### Choose PyYAML when
+#### Choose PyYAML when
 
 - You're already using it and don't need round-trip preservation
 - You need maximum compatibility with existing code
 - パフォーマンス is not a concern
 
-### Choose ruamel.yaml when
+#### Choose ruamel.yaml when
 
 - You need the most feature-complete YAML parser
 - You're doing complex YAML manipulation
 - パフォーマンス is not a concern (it's the slowest option)
 
-## Migration Path
+### Migration Path
 
 ```python
 # Step 1: Install

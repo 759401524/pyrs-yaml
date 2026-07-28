@@ -10,7 +10,6 @@ Example:
     >>> import pyyaml_rs
     >>>
     >>> async def main():
-    ...     yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
     ...     await pyyaml_rs.safe_dump_async({"a": 1})
 
 Example:

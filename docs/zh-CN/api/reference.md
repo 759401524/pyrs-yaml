@@ -1,16 +1,17 @@
 # ---
+
 ---
 
 title: Module Reference
 lang: zh-CN
 
-# 模块参考
+## 模块参考
 
 Complete API reference for the `pyyaml_rs` module.
 
-## Core Functions
+### Core Functions
 
-### `parse()`
+#### `parse()`
 
 解析 YAML 字符串 or bytes into a `YamlDocument`.
 
@@ -38,7 +39,7 @@ doc = pyyaml_rs.parse(b"key: value")
 doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
 ```
 
-### `parse_file()`
+#### `parse_file()`
 
 Parse a YAML file.
 
@@ -63,7 +64,7 @@ parse_file(path: str) -> YamlDocument
 doc = pyyaml_rs.parse_file("config.yaml")
 ```
 
-### `parse_all_docs()`
+#### `parse_all_docs()`
 
 解析多个 YAML 文档 from a string.
 
@@ -79,9 +80,9 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-## PyYAML-Compatible Functions
+### PyYAML-Compatible Functions
 
-### `safe_load()`
+#### `safe_load()`
 
 Parse YAML and return native Python types.
 
@@ -97,7 +98,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
 ```
 
-### `safe_loads()`
+#### `safe_loads()`
 
 解析多个 YAML 文档.
 
@@ -107,7 +108,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 
 **Equivalent to:** `yaml.safe_loads()` in PyYAML
 
-### `safe_dump()`
+#### `safe_dump()`
 
 Serialize a Python object to YAML.
 
@@ -119,7 +120,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 
 **Supported input types:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, and **`numpy.ndarray`** (all dimensions and numeric dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
-### `safe_dumps()`
+#### `safe_dumps()`
 
 Alias for `safe_dump()`.
 
@@ -127,9 +128,9 @@ Alias for `safe_dump()`.
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-## Conversion Functions
+### Conversion Functions
 
-### `from_dict()`
+#### `from_dict()`
 
 Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value inside the dict.
 
@@ -137,7 +138,7 @@ Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value in
 from_dict(data: dict[str, Any]) -> str
 ```
 
-### `from_json()`
+#### `from_json()`
 
 Convert a JSON string to YAML string.
 
@@ -145,7 +146,7 @@ Convert a JSON string to YAML string.
 from_json(json_str: str) -> str
 ```
 
-### `dump_file()`
+#### `dump_file()`
 
 Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or `numpy.ndarray`.
 
@@ -153,11 +154,11 @@ Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or 
 dump_file(data: Any, path: str) -> None
 ```
 
-## Async Functions
+### Async Functions
 
 Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
 
-### `safe_dumps_async()`
+#### `safe_dumps_async()`
 
 Serialize a Python object to YAML string (async).
 
@@ -165,7 +166,7 @@ Serialize a Python object to YAML string (async).
 async def safe_dumps_async(data: Any) -> str
 ```
 
-### `safe_dump_async()`
+#### `safe_dump_async()`
 
 Serialize a Python object to stdout as YAML (async).
 
@@ -173,7 +174,7 @@ Serialize a Python object to stdout as YAML (async).
 async def safe_dump_async(data: Any) -> None
 ```
 
-### `safe_loads_async()`
+#### `safe_loads_async()`
 
 解析 YAML 字符串 into native Python objects (async).
 
@@ -181,7 +182,7 @@ async def safe_dump_async(data: Any) -> None
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 ```
 
-### `safe_load_async()`
+#### `safe_load_async()`
 
 解析 YAML 字符串 into native Python objects (async).
 
@@ -202,9 +203,9 @@ async def main():
 asyncio.run(main())
 ```
 
-## Markdown 前端元数据
+### Markdown 前端元数据
 
-### `read_markdown()`
+#### `read_markdown()`
 
 Extract YAML frontmatter from a Markdown file.
 
@@ -214,7 +215,7 @@ read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
 
 **Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
 
-### `read_markdown_str()`
+#### `read_markdown_str()`
 
 Extract YAML frontmatter from a Markdown string.
 
@@ -222,9 +223,9 @@ Extract YAML frontmatter from a Markdown string.
 read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
 ```
 
-## i18n Functions
+### i18n Functions
 
-### `set_language()`
+#### `set_language()`
 
 Set the language for error messages.
 
@@ -234,7 +235,7 @@ set_language(lang: str) -> None
 
 Supported: `"en"`, `"zh-CN"`
 
-### `get_language()`
+#### `get_language()`
 
 Get the current language.
 
@@ -242,7 +243,7 @@ Get the current language.
 get_language() -> str
 ```
 
-### `list_languages()`
+#### `list_languages()`
 
 List all supported languages.
 
@@ -250,7 +251,7 @@ List all supported languages.
 list_languages() -> list[str]
 ```
 
-### `detect_language()`
+#### `detect_language()`
 
 Auto-detect user's preferred language from environment variables.
 
@@ -258,7 +259,7 @@ Auto-detect user's preferred language from environment variables.
 detect_language() -> str
 ```
 
-### `negotiate_language()`
+#### `negotiate_language()`
 
 BCP 47 language negotiation.
 
@@ -266,14 +267,14 @@ BCP 47 language negotiation.
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-## 异常
+### 异常
 
 - `YamlParseError` — YAML parsing error (inherits from `ValueError`)
 - `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
 - `YamlTypeError` — Type conversion error (inherits from `TypeError`)
 - `YamlValidateError` — JSON Schema validation error (inherits from `ValueError`)
 
-## Version
+### Version
 
 ```python
 __version__ = "0.6.0"

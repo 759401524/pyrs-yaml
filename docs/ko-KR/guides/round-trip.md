@@ -1,14 +1,15 @@
 # ---
+
 ---
 
 title: Round-Trip Preservation
 lang: ko-KR
 
-# 往返保存
+## 往返保存
 
 This is pyyaml-rs's **killing feature** — what makes it unique among Python YAML libraries.
 
-## What is 往返保存?
+### What is 往返保存?
 
 Round-trip preservation means: **parse YAML → modify → serialize back → output is identical (or semantically equivalent) to the input.**
 
@@ -39,7 +40,7 @@ assert "&db" in output
 assert "<<: *db" in output
 ```
 
-## What Gets Preserved
+### What Gets Preserved
 
 | Element | Preserved? | Notes |
 |---------|------------|-------|
@@ -54,7 +55,7 @@ assert "<<: *db" in output
 | Flow/block style | ✅ | `[]`/`{}` vs block preserved |
 | Key order | ✅ | `IndexMap` guarantees order |
 
-## PyYAML vs pyyaml-rs Round-Trip
+### PyYAML vs pyyaml-rs Round-Trip
 
 ```python
 original = "# Comment\nkey: value  # inline\n"
@@ -69,7 +70,7 @@ doc.to_yaml()
 # Output: '# Comment\nkey: value  # inline\n'  ✅
 ```
 
-## 성능
+### 성능
 
 Round-trip performance vs competitors:
 

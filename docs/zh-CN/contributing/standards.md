@@ -1,22 +1,23 @@
 # ---
+
 ---
 
 title: Coding Standards
 lang: zh-CN
 
-# 编码标准
+## 编码标准
 
 Follow these standards when contributing to pyyaml-rs.
 
-## Rust
+### Rust
 
-### Style
+#### Style
 
 - Use `cargo fmt` before committing
 - Follow [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
 - Use `#[allow(unused_imports)]` only when necessary (tests, feature flags)
 
-### Error Handling
+#### Error Handling
 
 - **Never use `.unwrap()` or `.expect()`** in business logic
 - Convert all Rust errors to Python exceptions
@@ -32,7 +33,7 @@ let content = std::fs::read_to_string(path)
 let content = std::fs::read_to_string(path).unwrap();
 ```
 
-### Documentation
+#### Documentation
 
 - All public functions must have `///` doc comments
 - Include `# Arguments`, `# Returns`, `# Errors`, `# Examples` sections
@@ -58,7 +59,7 @@ let content = std::fs::read_to_string(path).unwrap();
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 ```
 
-### GIL Management
+#### GIL Management
 
 - Release GIL during heavy computation using `py.detach()` or `py.allow_threads()`
 - Never hold GIL during file I/O or parsing
@@ -74,13 +75,13 @@ let ast = py.detach(|| {
 let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 ```
 
-### Clippy
+#### Clippy
 
 Run `cargo clippy -- -D warnings` — treat all warnings as errors.
 
-## Python
+### Python
 
-### Style
+#### Style
 
 - Follow [PEP 8](https://peps.python.org/pep-0008/)
 - Use type hints everywhere
@@ -102,20 +103,20 @@ def parse(yaml: str, resolve_merges: bool = True) -> YamlDocument:
     """
 ```
 
-### Testing
+#### Testing
 
 - Write tests before code (TDD)
 - Use `pytest` with fixtures where appropriate
 - Test edge cases: empty input, special characters, large documents
 - Include round-trip assertions
 
-## Git
+### Git
 
 - Commit messages in imperative mood: "Add feature X", not "Added feature X"
 - One logical change per commit
 - Run `cargo test` and `pytest tests/` before committing
 
-## Documentation
+### Documentation
 
 - Update docs when changing behavior
 - Use code examples that can be copy-pasted and run

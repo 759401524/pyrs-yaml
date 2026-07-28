@@ -1,14 +1,15 @@
 # ---
+
 ---
 
 title: Running Tests
 lang: ko-KR
 
-# 테스트 실행
+## 테스트 실행
 
 pyyaml-rs has both Rust unit tests and Python integration tests.
 
-## Rust Tests
+### Rust Tests
 
 ```bash
 # Run all Rust tests
@@ -26,14 +27,14 @@ cargo test -- --nocapture
 cargo test --test integration
 ```
 
-### Test Coverage
+#### Test Coverage
 
 - **`src/ast.rs`** — Node construction, metadata, equality
 - **`src/parser/`** — Parsing various YAML constructs
 - **`src/serializer.rs`** — 직렬화 round-trips
 - **`src/integration/`** — YAML Test Suite integration
 
-## Python Tests
+### Python Tests
 
 ```bash
 # Run all Python tests
@@ -55,7 +56,7 @@ pytest tests/ --cov=pyyaml_rs --cov-report=term-missing
 pytest tests/ --benchmark-only --benchmark-json=results.json
 ```
 
-### Test Files
+#### Test Files
 
 | File | Coverage |
 |------|----------|
@@ -70,7 +71,7 @@ pytest tests/ --benchmark-only --benchmark-json=results.json
 | `test_performance.py` | 성능 sanity checks |
 | **`test_numpy.py`** | **NumPy ndarray serialization (0-D through N-D, all dtypes)** |
 
-## CI Testing
+### CI Testing
 
 GitHub Actions runs on every push and PR:
 
@@ -78,9 +79,9 @@ GitHub Actions runs on every push and PR:
 - **Python**: `pytest tests/` on 4 Python versions × 3 OSes
 - **Maturin**: Build wheel for each Python version
 
-## Adding New Tests
+### Adding New Tests
 
-### Rust Test
+#### Rust Test
 
 ```rust
 #[cfg(test)]
@@ -94,7 +95,7 @@ mod tests {
 }
 ```
 
-### Python Test
+#### Python Test
 
 ```python
 import pyyaml_rs
@@ -110,7 +111,7 @@ class TestNewFeature:
         pass
 ```
 
-## Test Categories
+### Test Categories
 
 - **Unit tests** — Individual functions, small inputs
 - **Integration tests** — Full parse → serialize round-trips

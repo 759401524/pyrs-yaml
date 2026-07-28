@@ -1,17 +1,18 @@
 # ---
+
 ---
 
 title: Installation
 lang: ko-KR
 
-# 설치
+## 설치
 
-## Requirements
+### Requirements
 
 - **Python** ≥ 3.9 (CPython)
 - **Platform**: Linux, macOS, Windows
 
-## pip install
+### pip install
 
 ```bash
 pip install pyyaml-rs
@@ -19,7 +20,7 @@ pip install pyyaml-rs
 
 The package is published as an **ABI3 wheel**, meaning a single wheel works across Python 3.9 through 3.13 — no recompilation needed.
 
-## Development 설치
+### Development 설치
 
 To install from source (for development or testing):
 
@@ -30,7 +31,7 @@ pip install maturin
 maturin develop --release
 ```
 
-## Verify 설치
+### Verify 설치
 
 ```python
 import pyyaml_rs

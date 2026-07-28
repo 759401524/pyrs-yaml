@@ -1,13 +1,15 @@
 # ---
+
 ---
+
 title: Markdown Frontmatter
 lang: zh-CN
 
-# Markdown 前端元数据
+## Markdown 前端元数据
 
 Extract YAML frontmatter from Markdown files and strings.
 
-## What is Frontmatter?
+### What is Frontmatter?
 
 Frontmatter is a YAML block at the top of Markdown files, wrapped between `---` delimiters. Commonly used in blog platforms, static site generators, and content management systems.
 
@@ -25,7 +27,7 @@ tags: [yaml, python, rust]
 This is the content.
 ```
 
-## read_markdown()
+### read_markdown()
 
 Parse frontmatter from a Markdown file:
 
@@ -42,7 +44,7 @@ print(content)
 # "# Hello World\n\nThis is the content.\n"
 ```
 
-## read_markdown_str()
+### read_markdown_str()
 
 Parse frontmatter from a Markdown string:
 
@@ -66,7 +68,7 @@ else:
     print("No frontmatter found")
 ```
 
-## No Frontmatter
+### No Frontmatter
 
 If the file/string has no frontmatter:
 
@@ -78,9 +80,9 @@ assert frontmatter is None
 assert content == "Just regular markdown content."
 ```
 
-## Common Use Cases
+### Common Use Cases
 
-### Blog Platforms
+#### Blog Platforms
 
 ```python
 # Extract metadata for blog listing
@@ -91,7 +93,7 @@ else:
     print("Draft post")
 ```
 
-### Static Site Generators
+#### Static Site Generators
 
 ```python
 # Process all markdown files
@@ -102,7 +104,7 @@ for path in glob.glob("posts/*.md"):
     # Render template with meta and content
 ```
 
-### Content Management
+#### Content Management
 
 ```python
 # Validate frontmatter structure

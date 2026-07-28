@@ -1,20 +1,21 @@
 # ---
+
 ---
 
 title: Benchmarks
 lang: zh-CN
 
-# 基准测试
+## 基准测试
 
 性能 benchmarks for pyyaml-rs, measured on the author's machine (Windows 11, Python 3.12).
 
-## Methodology
+### Methodology
 
 - **Tool:** Criterion (Rust) + `time.perf_counter()` (Python)
 - **Rounds:** 200 iterations per benchmark
 - **Metric:** Median time in milliseconds
 
-## Parse 性能
+### Parse 性能
 
 | YAML Size | pyyaml-rs | PyYAML | ruamel.yaml | Speedup vs PyYAML |
 |-----------|-----------|--------|-------------|-------------------|
@@ -22,7 +23,7 @@ lang: zh-CN
 | Medium (~500 B) | 0.03 ms | 0.75 ms | 1.74 ms | **28×** |
 | Large (~2 KB) | 0.07 ms | 1.83 ms | 4.26 ms | **26×** |
 
-## Serialize 性能
+### Serialize 性能
 
 | YAML Size | pyyaml-rs | PyYAML | ruamel.yaml | Speedup vs PyYAML |
 |-----------|-----------|--------|-------------|-------------------|
@@ -30,7 +31,7 @@ lang: zh-CN
 | Medium (~500 B) | 0.03 ms | 1.21 ms | 2.83 ms | **40×** |
 | Large (~2 KB) | 0.08 ms | 2.96 ms | 6.74 ms | **37×** |
 
-## Round-Trip 性能
+### Round-Trip 性能
 
 | YAML Size | pyyaml-rs | PyYAML | ruamel.yaml | Speedup vs PyYAML |
 |-----------|-----------|--------|-------------|-------------------|
@@ -38,7 +39,7 @@ lang: zh-CN
 | Medium (~500 B) | 0.03 ms | 1.20 ms | 2.88 ms | **39×** |
 | Large (~2 KB) | 0.08 ms | 2.98 ms | 6.79 ms | **37×** |
 
-## Rust-Side 基准测试 (Criterion)
+### Rust-Side 基准测试 (Criterion)
 
 Measured at the Rust level (no Python overhead):
 
@@ -59,7 +60,7 @@ Measured at the Rust level (no Python overhead):
 | Round-trip (medium) | 13.0 µs |
 | Round-trip (large) | 39.3 µs |
 
-## Key Takeaways
+### Key Takeaways
 
 1. **pyyaml-rs is consistently 25–40× faster than PyYAML** across all operations
 2. **pyyaml-rs is 4–10× faster than ruamel.yaml** while matching its round-trip features
@@ -67,7 +68,7 @@ Measured at the Rust level (no Python overhead):
 4. **序列化** is even faster — small documents serialize in ~148 ns
 5. **The speed advantage compounds** with larger documents
 
-## Notes
+### Notes
 
 - 基准测试 measured on a single machine; absolute times may vary
 - Relative speedups (×N) are consistent across hardware

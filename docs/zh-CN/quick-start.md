@@ -1,19 +1,21 @@
 # ---
+
 ---
+
 title: Quick Start
 lang: zh-CN
 
-# 快速开始
+## 快速开始
 
 本指南将帮助您在几分钟内快速上手 pyyaml-rs。
 
-## 1. Install
+### 1. Install
 
 ```bash
 pip install pyyaml-rs
 ```
 
-## 2. Parse YAML
+### 2. Parse YAML
 
 ```python
 import pyyaml_rs
@@ -31,7 +33,7 @@ print(doc.get("age"))     # 30
 print(doc.get("email"))   # alice@example.com
 ```
 
-## 3. Convert to Python Objects
+### 3. Convert to Python Objects
 
 ```python
 # Use safe_load for PyYAML-compatible behavior
@@ -48,7 +50,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))       # <class 'list'>
 ```
 
-## 4. Serialize to YAML
+### 4. Serialize to YAML
 
 ```python
 # Convert a Python dict back to YAML
@@ -66,7 +68,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-## 5. Preserve Formatting (Round-Trip)
+### 5. Preserve Formatting (Round-Trip)
 
 ```python
 # The key advantage of pyyaml-rs
@@ -96,7 +98,7 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-## 6. Read YAML from Files
+### 6. Read YAML from Files
 
 ```python
 # Parse a YAML file directly
@@ -104,7 +106,7 @@ doc = pyyaml_rs.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-## 7. Multiple Documents
+### 7. Multiple Documents
 
 ```python
 # Parse multiple YAML documents
@@ -123,7 +125,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 8. NumPy ndarray Support
+### 8. NumPy ndarray Support
 
 pyyaml-rs can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
 
@@ -155,7 +157,7 @@ loaded = pyyaml_rs.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-### 支持的 NumPy 数据类型
+#### 支持的 NumPy 数据类型
 
 | NumPy dtype | YAML output | Notes |
 |-------------|-------------|-------|
@@ -165,7 +167,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` string | No native YAML complex type |
 | `bool` | `true` / `false` | — |
 
-## 下一步
+### 下一步
 
 - **[功能特性](features.md)** — Explore all supported YAML features
 - **[Parsing Guide](guides/parsing.md)** — Advanced parsing options

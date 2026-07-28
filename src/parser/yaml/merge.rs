@@ -7,7 +7,7 @@ use std::collections::HashMap;
 pub fn resolve_merge_keys(node: &mut CustomNode) {
     // First, collect all anchor names and their mappings
     let mut anchors: HashMap<String, IndexMap<CustomNode, CustomNode>> = HashMap::new();
-    collect_anchors(node, &mut anchors);
+    collect_anchor_mappings(node, &mut anchors);
 
     // Then, resolve merge keys
     resolve_merges_recursive(node, &anchors);
@@ -31,8 +31,9 @@ fn resolve_merges_recursive(
     }
 }
 
-/// Collect all anchors and their mappings from the AST
-fn collect_anchors(
+/// Collect all anchor names and their mapping pairs from the AST.
+/// Used for resolving merge keys (`<<`).
+fn collect_anchor_mappings(
     node: &CustomNode,
     anchors: &mut HashMap<String, IndexMap<CustomNode, CustomNode>>,
 ) {
@@ -42,12 +43,12 @@ fn collect_anchors(
                 anchors.insert(anchor_name.clone(), pairs.clone());
             }
             for (_key, value) in pairs {
-                collect_anchors(value, anchors);
+                collect_anchor_mappings(value, anchors);
             }
         }
         CustomNode::Sequence { items, .. } => {
             for item in items {
-                collect_anchors(item, anchors);
+                collect_anchor_mappings(item, anchors);
             }
         }
         _ => {}

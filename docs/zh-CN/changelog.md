@@ -1,19 +1,20 @@
 # ---
+
 ---
 
 title: Changelog
 lang: zh-CN
 
-# 变更日志
+## 变更日志
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a 变更日志](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2025-07-27
+### [0.3.0] - 2025-07-27
 
-### Added
+#### Added
 
 - **NumPy ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
   - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
@@ -26,17 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Type resolution for quoted scalars** — `resolve_yaml_type` now applied to `SingleQuoted`/`DoubleQuoted` scalars for correct round-trip of quoted negative numbers
 - **Comprehensive NumPy test suite** — 42 tests covering all dtypes, dimensions (0-D through 4-D), negative numbers, infinity, NaN, empty arrays, and edge cases
 
-### Fixed
+#### Fixed
 
 - **Negative number round-trip** — YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative numbers are now quoted during serialization and correctly parsed back as integers/floats
 - **N-D array support** — replaced `PyArray1<T>` with `PyArrayDyn<T>` to support arrays of any dimension, not just 1-D
 - **Correct nesting depth** — multi-dimensional arrays now produce exactly N levels of nesting (shape[1..] handles inner dimensions, root dimension wrapped by `plain_sequence`)
 
-### Changed
+#### Changed
 
 - Added `numpy` crate (v0.29) as a dependency for ndarray type dispatch
 
-### Added
+#### Added
 
 - Flow collections (`{}`/`[]`) round-trip support with `flow_style` field on Mapping/Sequence AST nodes
 - `parse()` accepts both `str` and `bytes` input
@@ -55,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown frontmatter extraction: `read_markdown()`, `read_markdown_str()`
 - JSON ↔ YAML conversion: `from_json()`, `from_dict()`
 
-### Fixed
+#### Fixed
 
 - Alias resolution in `to_dict()` and `safe_load()` — aliases now resolve to referenced values instead of `None`
 - `safe_loads()` no longer uses naive `split("---")` — uses saphyr's document events
@@ -63,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `format_scalar_for_key()` now handles Literal/Folded block scalar styles
 - Exception types now properly exported from inline `#[pymodule]` via `#[pymodule_export]`
 
-### Changed
+#### Changed
 
 - Upgraded PyO3 from 0.21 to 0.29
 - Replaced 15+ boilerplate `CustomNode` constructions with `plain_scalar()`/`plain_mapping()`/`plain_sequence()`/`plain_null()` constructors
@@ -75,9 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `#[pymodule]` refactored to inline module for `pyo3-introspection` compatibility
 - All `#[pyo3(signature)]` attributes now include Python type annotations
 
-## [0.1.0] - 2025-07-25
+### [0.1.0] - 2025-07-25
 
-### Added
+#### Added
 
 - Initial release with YAML 1.2 compliance via saphyr-parser
 - Custom AST with full metadata (comments, anchors, tags, chomping, scalar styles)

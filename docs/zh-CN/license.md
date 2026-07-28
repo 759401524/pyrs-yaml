@@ -1,10 +1,11 @@
 # ---
+
 ---
 
 title: License
 lang: zh-CN
 
-# 许可证
+## 许可证
 
 pyyaml-rs is dual-licensed under either:
 
@@ -13,7 +14,7 @@ pyyaml-rs is dual-licensed under either:
 
 at your option.
 
-## MIT 许可证
+### MIT 许可证
 
 ```text
 Copyright (c) 2025 MuLong
@@ -37,7 +38,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Apache 许可证, Version 2.0
+### Apache 许可证, Version 2.0
 
 ```text
 Copyright 2025 MuLong
@@ -55,14 +56,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## Why Dual 许可证?
+### Why Dual 许可证?
 
 The dual license gives users flexibility:
 
 - **MIT** is simpler and more permissive for most use cases
 - **Apache 2.0** includes an express patent grant, which provides additional legal protection
 
-## Dependencies
+### Dependencies
 
 pyyaml-rs depends on the following open-source projects:
 

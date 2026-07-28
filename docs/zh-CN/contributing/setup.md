@@ -1,14 +1,15 @@
 # ---
+
 ---
 
 title: Development Setup
 lang: zh-CN
 
-# 开发设置
+## 开发设置
 
 Set up your environment to contribute to pyyaml-rs.
 
-## Prerequisites
+### Prerequisites
 
 - **Python** ≥ 3.9 (CPython)
 - **Rust** ≥ 1.70 (via [rustup](https://rustup.rs/))
@@ -16,7 +17,7 @@ Set up your environment to contribute to pyyaml-rs.
 - **uv** (recommended) or **pip**
 - **NumPy** — required for running the NumPy serialization test suite (`pytest tests/test_numpy.py`)
 
-## Clone and Install
+### Clone and Install
 
 ```bash
 git clone https://github.com/MuLong/pyyaml-rs.git
@@ -30,7 +31,7 @@ pip install maturin
 maturin develop --release
 ```
 
-## Verify 安装
+### Verify 安装
 
 ```bash
 # Run Rust tests
@@ -43,7 +44,7 @@ pytest tests/
 cargo bench
 ```
 
-## Project Structure
+### Project Structure
 
 ```text
 pyyaml-rs/
@@ -67,7 +68,7 @@ pyyaml-rs/
 └── docs/                   # Documentation (mkdocs)
 ```
 
-## Build Commands
+### Build Commands
 
 ```bash
 # Build Python extension
@@ -80,7 +81,7 @@ maturin build --release --out dist
 cargo build
 ```
 
-## Development Workflow
+### Development Workflow
 
 1. **Write tests first** (TDD)
 2. **Implement changes** in `src/`

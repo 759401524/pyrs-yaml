@@ -9,7 +9,10 @@ use indexmap::IndexMap;
 use saphyr_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
-use yaml::*;
+use yaml::{
+    compute_line_offsets, detect_chomping, extract_anchors, extract_comments, resolve_merge_keys,
+    unescape_double_quoted, CommentAnchorTracker, RawAnchor, RawComment,
+};
 
 /// 使用 saphyr-parser 解析 YAML 字符串为 `CustomNode` AST。
 ///
@@ -171,17 +174,13 @@ struct AstReceiver<'a> {
     yaml_text: &'a str,
     /// Pre-computed byte offsets for each line start (O(1) line access)
     line_offsets: Vec<usize>,
-    raw_comments: Vec<RawComment>,
-    raw_anchors: Vec<RawAnchor>,
-    comment_idx: usize,
+    comment_anchor_tracker: CommentAnchorTracker,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
     /// Completed documents (for multi-doc parsing)
     documents: Vec<CustomNode>,
     /// Current anchor ID to name mapping
     anchors: std::collections::HashMap<usize, String>,
-    /// Next anchor name to use (from raw text, in order)
-    next_anchor_name: usize,
     /// Pending standalone comment for the next node
     pending_standalone_comment: Option<Comment>,
 }
@@ -208,86 +207,15 @@ enum ParseState {
 impl<'a> AstReceiver<'a> {
     fn new(yaml_text: &'a str, raw_comments: Vec<RawComment>, raw_anchors: Vec<RawAnchor>) -> Self {
         // Pre-compute line start offsets for O(1) line access
-        let mut line_offsets = Vec::with_capacity(64);
-        line_offsets.push(0);
-        for (i, byte) in yaml_text.bytes().enumerate() {
-            if byte == b'\n' {
-                line_offsets.push(i + 1);
-            }
-        }
         Self {
             yaml_text,
-            line_offsets,
-            raw_comments,
-            raw_anchors,
-            comment_idx: 0,
+            line_offsets: compute_line_offsets(yaml_text),
+            comment_anchor_tracker: CommentAnchorTracker::new(raw_comments, raw_anchors),
             stack: Vec::new(),
             result: None,
             documents: Vec::new(),
             anchors: std::collections::HashMap::new(),
-            next_anchor_name: 0,
             pending_standalone_comment: None,
-        }
-    }
-
-    /// Find inline comment on a given line after a column
-    fn find_inline_comment(&mut self, line: usize, after_col: usize) -> Option<Comment> {
-        // Save current position
-        let saved_idx = self.comment_idx;
-
-        while self.comment_idx < self.raw_comments.len() {
-            let c = &self.raw_comments[self.comment_idx];
-            if c.line > line {
-                break;
-            }
-            if c.line < line {
-                self.comment_idx += 1;
-                continue;
-            }
-            // Same line - check if it's after the column
-            if c.col >= after_col && !c.standalone {
-                let comment = Comment {
-                    text: c.text.clone(),
-                    standalone: false,
-                };
-                // Don't advance comment_idx - we might need this comment again
-                return Some(comment);
-            }
-            self.comment_idx += 1;
-        }
-
-        // Restore position if no comment found
-        self.comment_idx = saved_idx;
-        None
-    }
-
-    /// Find standalone comments before a given line
-    fn find_standalone_before_line(&mut self, line: usize) -> Option<Comment> {
-        let mut result = None;
-        while self.comment_idx < self.raw_comments.len() {
-            let c = &self.raw_comments[self.comment_idx];
-            if c.line >= line {
-                break;
-            }
-            if c.standalone {
-                result = Some(Comment {
-                    text: c.text.clone(),
-                    standalone: true,
-                });
-            }
-            self.comment_idx += 1;
-        }
-        result
-    }
-
-    /// Get next anchor name from raw text (in order)
-    fn next_anchor_name_from_raw(&mut self) -> Option<String> {
-        if self.next_anchor_name < self.raw_anchors.len() {
-            let name = self.raw_anchors[self.next_anchor_name].name.clone();
-            self.next_anchor_name += 1;
-            Some(name)
-        } else {
-            None
         }
     }
 
@@ -337,7 +265,9 @@ impl<'a> AstReceiver<'a> {
             value.len()
         };
 
-        let inline = self.find_inline_comment(line, value_end_col);
+        let inline = self
+            .comment_anchor_tracker
+            .find_inline_comment(line, value_end_col);
 
         CustomNode::Scalar {
             value: scalar_value,
@@ -403,7 +333,9 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 let line = span.start.line() - 1; // Convert to 0-indexed
 
                 // Find standalone comments before this line
-                let standalone = self.find_standalone_before_line(line);
+                let standalone = self
+                    .comment_anchor_tracker
+                    .find_standalone_before_line(line);
 
                 let mut node = self.create_scalar(&value, &style, line);
 
@@ -420,7 +352,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
 
                 // Handle anchor - use next raw anchor name
                 if anchor_id != 0 {
-                    if let Some(name) = self.next_anchor_name_from_raw() {
+                    if let Some(name) = self.comment_anchor_tracker.next_anchor_name() {
                         self.anchors.insert(anchor_id, name.clone());
                         if let CustomNode::Scalar { anchor, .. } = &mut node {
                             *anchor = Some(name);
@@ -442,11 +374,13 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 let flow_style = self.detect_flow_style(&span, b'{');
 
                 // Find standalone comments before this line
-                let standalone = self.find_standalone_before_line(line);
+                let standalone = self
+                    .comment_anchor_tracker
+                    .find_standalone_before_line(line);
 
                 // Handle anchor - use next raw anchor name
                 if anchor_id != 0 {
-                    if let Some(name) = self.next_anchor_name_from_raw() {
+                    if let Some(name) = self.comment_anchor_tracker.next_anchor_name() {
                         self.anchors.insert(anchor_id, name.clone());
                     }
                 }
@@ -499,11 +433,13 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 let flow_style = self.detect_flow_style(&span, b'[');
 
                 // Find standalone comments before this line
-                let standalone = self.find_standalone_before_line(line);
+                let standalone = self
+                    .comment_anchor_tracker
+                    .find_standalone_before_line(line);
 
                 // Handle anchor - use next raw anchor name
                 if anchor_id != 0 {
-                    if let Some(name) = self.next_anchor_name_from_raw() {
+                    if let Some(name) = self.comment_anchor_tracker.next_anchor_name() {
                         self.anchors.insert(anchor_id, name.clone());
                     }
                 }
