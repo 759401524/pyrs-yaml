@@ -9,16 +9,17 @@ pyyaml-rs uses a modular architecture designed for performance and correctness.
 │                     Python Layer                        │
 │  ┌─────────────────────────────────────────────────────┐│
 │  │               pyyaml_rs module                       ││
-│  │  parse() | safe_load() | dump_file() | ...          ││
+│  │  parse | safe_load | safe_dump | dump_file | ...    ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │ PyO3 bindings                   │
 ├────────────────────────▼─────────────────────────────────┤
 │                    Rust Layer                            │
 │  ┌─────────────────────────────────────────────────────┐│
-│  │  lib.rs — PyO3 module (inline pymodule)            ││
-│  │  • YamlDocument class                               ││
-│  │  • Exception types (YamlParseError, etc.)           ││
-│  │  • Function wrappers                                ││
+│  │  src/py/ — PyO3 bindings + Python type conversion   ││
+│  │  • mod.rs — Module definition & exports              ││
+│  │  • python_types.rs — Python → CustomNode conversion ││
+│  │  • ndarray.rs — NumPy ndarray conversion            ││
+│  │  • stream_events.rs — Stream event types            ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │                                 │
 │      ┌─────────────────┼─────────────────┐              │
@@ -56,10 +57,12 @@ The **CustomNode** enum is the heart of pyyaml-rs:
 
 Built on **saphyr-parser** (YAML 1.2 compliant):
 
-- **`mod.rs`** — `AstReceiver` state machine, event-based parsing
-- **`yaml/comment.rs`** — Comment extraction from raw text
+- **`mod.rs`** — `AstReceiver` state machine, event-based parsing, flow style detection
+- **`stream.rs`** — Streaming event parser (line-by-line YAML events)
+- **`yaml/comment.rs`** — Comment and anchor extraction from raw text
 - **`yaml/merge.rs`** — Merge key (`<<`) resolution
 - **`yaml/scalar.rs`** — Scalar style detection, unescaping, chomping
+- **`yaml/schema.rs`** — YAML schema resolution (core, JSON, failsafe, YAML 1.1)
 - **`yaml/types.rs`** — YAML 1.2 type resolution (null, bool, int, float)
 
 **Key Design Decisions:**
@@ -83,14 +86,35 @@ Custom serializer that reconstructs YAML from the AST:
 - Indent-level state management for nested structures
 - Chomping indicator handling for block scalars
 
-### 4. `src/lib.rs` — PyO3 Module
+### 4. `src/py/` — PyO3 Bindings
 
-Inline `#[pymodule] mod pyyaml_rs` with:
+Python-facing module definitions and type conversions:
 
-- **`YamlDocument`** — `#[pyclass]` wrapper around `CustomNode`
-- **Exceptions** — `create_exception!` macros for custom errors
-- **Functions** — `parse`, `safe_load`, `dump_file`, etc.
-- **i18n** — `rust-i18n` integration for bilingual errors
+- **`mod.rs`** — Inline `#[pymodule(gil_used = false)]` with `YamlDocument` class, exception types, and all exported functions
+- **`python_types.rs`** — Converts Python objects (dict, list, scalars, ndarray) to `CustomNode`
+- **`ndarray.rs`** — NumPy ndarray conversion (optional, behind `numpy` feature)
+- **`stream_events.rs`** — Stream event types for `parse_stream()`
+
+**Exported Python functions (18 total):**
+`parse`, `safe_load`, `safe_loads`, `safe_dump`, `safe_dumps`, `parse_file`, `dump_file`, `parse_all_docs`, `parse_stream`, `read_markdown`, `from_dict`, `from_json`, `set_language`, `get_language`, `list_languages`, `detect_language`, `negotiate_language`, `YamlDocument`
+
+### 5. `src/lib.rs` — Module Entry
+
+- Re-exports all modules
+- Error types: `YamlParseError`, `YamlSerializeError`, `YamlTypeError`
+- `create_exception!` macros for custom Python exceptions
+- `rust-i18n` initialization
+
+### 6. `src/i18n/` — Internationalization
+
+- `src/i18n.rs` — Configuration and language negotiation
+- `src/i18n/` — Locale bundles (en, zh-CN, ja-JP, ko-KR)
+- Bilingual error messages with format strings
+
+### 7. `src/integration/` — Integration Helpers
+
+- `yaml_suite.rs` — YAML Test Suite runner for validation
+- Test helpers for benchmarks and compliance checks
 
 ## Data Flow
 
@@ -105,7 +129,8 @@ YAML String
 │ 2. Extract anchors from raw text    │
 │ 3. saphyr-parser → YAML events      │
 │ 4. AstReceiver builds CustomNode    │
-│ 5. Resolve merge keys (if enabled)  │
+│ 5. Resolve schema types             │
+│ 6. Resolve merge keys (if enabled)  │
 └─────────────────────────────────────┘
     │
     ▼
@@ -144,8 +169,9 @@ YAML String
 
 | Crate | Purpose |
 |-------|---------|
-| **pyo3** | Python bindings (with `experimental-inspect`) |
+| **pyo3** | Python bindings (with `experimental-inspect`, `abi3-py38`, `abi3t`) |
 | **saphyr-parser** | YAML 1.2 compliant parsing |
 | **indexmap** | Ordered hash map for key preservation |
 | **serde_json** | JSON ↔ YAML conversion |
+| **numpy** | NumPy ndarray support (optional, default enabled) |
 | **rust-i18n** | Internationalized error messages |

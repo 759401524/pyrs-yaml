@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "High-performance Python YAML library with perfect round-trip support"
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 keywords = ["yaml", "parser", "round-trip", "high-performance", "rust"]
 authors = [
     {name = "MuLong", email = "759401524@qq.com"}
@@ -20,6 +20,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -35,9 +36,6 @@ classifiers = [
 dependencies = [
 ]
 
-[project.optional-dependencies]
-jsonschema = ["jsonschema>=4.25.1"]
-
 [project.urls]
 Homepage = "https://github.com/759401524/pyyaml-rs"
 Documentation = "https://github.com/759401524/pyyaml-rs#readme"
@@ -45,70 +43,42 @@ Repository = "https://github.com/759401524/pyyaml-rs"
 Issues = "https://github.com/759401524/pyyaml-rs/issues"
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
-python-source = "python"
+bindings = "pyo3"
 module-name = "pyyaml_rs"
+python-source = "python"
+features = ["pyo3/extension-module"]
+strip = true
+auditwheel = "repair"
+
+[tool.maturin.generate-ci.github]
+platforms = ["linux", "windows", "macos"]
+pytest = true
+zig = true
+interpreter = "3.8"
 
 [dependency-groups]
-dev = [
-    "maturin>=1.0,<2.0",
+test = [
     "pytest>=8.0",
     "pytest-benchmark>=4.0",
     "pytest-asyncio>=0.23",
     "numpy>=1.16.0",
+    "PyYAML>=6.0",
+    "jsonschema>=4.18.0,<4.25.1; python_version < '3.9'",
+    "jsonschema>=4.25.1; python_version >= '3.9'",
+]
+lint = [
+    "ruff>=0.5.0,<0.10.0; python_version < '3.9'",
+    "ruff>=0.14.0; python_version >= '3.9'",
+]
+dev = [
+    "maturin>=1.0,<2.0",
+    {include-group = "test"},
+    {include-group = "lint"},
+]
+docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.7",
-    "mkdocstrings-python>=1.18.2",
-    "ruff>=0.14.0",
-    "rumdl>=0.2.43",
-    "prek>=0.1.0",
+    "mkdocs-static-i18n>=1.0.0",
+    "mkdocstrings-python>=1.9.0,<1.12.0; python_version < '3.9'",
+    "mkdocstrings-python>=1.18.2; python_version >= '3.9'",
 ]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-v --tb=short --strict-markers"
-markers = [
-    "slow: marks tests as slow (deselect with -m 'not slow')",
-    "i18n: marks tests that check internationalization",
-]
-filterwarnings = [
-    "error::pytest.PytestReturnNotNoneWarning",
-    "ignore::pytest.PytestUnraisableExceptionWarning",
-]
-asyncio_mode = "auto"
-log_cli = "true"
-log_cli_level = "WARNING"
-
-# =============================================================================
-# Ruff — Python linter (Markdown linting handled by rumdl)
-# =============================================================================
-
-[tool.ruff]
-target-version = "py39"
-line-length = 120
-respect-gitignore = true
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "N", "B", "SIM", "LOG", "PYI", "PTH", "RUF"]
-ignore = [
-    "E501",   # line too long (handled by formatter)
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B008"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["pyyaml_rs"]
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
-
-# =============================================================================
-# Prek — Git hooks runner (config lives in prek.toml)
-# =============================================================================

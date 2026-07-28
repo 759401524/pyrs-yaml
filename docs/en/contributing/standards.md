@@ -52,6 +52,15 @@ let content = std::fs::read_to_string(path).unwrap();
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 ```
 
+### PyO3 Signature Annotations
+
+Every `#[pyfunction]` and `#[pymethods]` must use `#[pyo3(signature = "...")]` with quoted types:
+
+```rust
+#[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core") -> "YamlDocument")]
+fn parse(...) -> YamlDocument { ... }
+```
+
 ### GIL Management
 
 - Release GIL during heavy computation using `py.detach()` or `py.allow_threads()`
@@ -79,14 +88,16 @@ Run `cargo clippy -- -D warnings` — treat all warnings as errors.
 - Follow [PEP 8](https://peps.python.org/pep-0008/)
 - Use type hints everywhere
 - Docstrings in Google style
+- Linting is configured in `ruff.toml` (run `ruff check`)
 
 ```python
-def parse(yaml: str, resolve_merges: bool = True) -> YamlDocument:
+def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlDocument:
     """Parse a YAML string into a YamlDocument.
 
     Args:
         yaml: A string containing YAML content
         resolve_merges: Whether to resolve merge keys (default: True)
+        schema: YAML schema profile ("core", "json", "failsafe", "yaml11")
 
     Returns:
         A YamlDocument containing the parsed YAML
@@ -99,15 +110,16 @@ def parse(yaml: str, resolve_merges: bool = True) -> YamlDocument:
 ### Testing
 
 - Write tests before code (TDD)
-- Use `pytest` with fixtures where appropriate
+- Use `uv run --frozen pytest` with fixtures where appropriate
 - Test edge cases: empty input, special characters, large documents
 - Include round-trip assertions
+- Pytest config is in `pytest.ini` (asyncio_mode = auto, custom markers)
 
 ## Git
 
 - Commit messages in imperative mood: "Add feature X", not "Added feature X"
 - One logical change per commit
-- Run `cargo test` and `pytest tests/` before committing
+- Run `cargo test` and `uv run --frozen pytest tests/` before committing
 
 ## Documentation
 
