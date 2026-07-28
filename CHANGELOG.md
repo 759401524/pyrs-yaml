@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Python 3.13 and 3.14 support** — PyO3 `abi3-py39` wheel now covers Python 3.9-3.14 (GIL build)
+- **Free-threaded CPython (no-GIL) support** — `#[pymodule(gil_used = false)]` declares module as thread-safe for free-threaded Python 3.13t/3.14t; `Py_GIL_DISABLED` cfg flag gates numpy (rust-numpy has no free-threaded support yet — numpy feature must be disabled for free-threaded builds via `--no-default-features`)
+- **CI free-threaded job** — new `test-freethreaded` workflow job validates compilation and tests against Python 3.13t
+- **`pyo3-build-config` build dependency** — enables `#[cfg(Py_GIL_DISABLED)]`, `#[cfg(Py_3_13)]` etc. compiler flags via `build.rs`
+- **`numpy` made optional** — feature-gated behind `numpy` feature (default enabled); excluded automatically under `Py_GIL_DISABLED`
+
+### Changed
+
+- CI Python matrix expanded: 3.9-3.14 across ubuntu, windows, macos
+- `pyproject.toml` classifiers updated with 3.13, 3.14 entries
+
 ## [0.6.0] - 2026-07-27
 
 ### Added

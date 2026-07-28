@@ -27,11 +27,14 @@ saphyr-parser = "0.0.11"
 # serde_json: JSON 转换支持
 serde_json = "1.0"
 
-# numpy: NumPy ndarray 类型擦除与零拷贝切片访问
-numpy = "0.29"
+# numpy: NumPy ndarray 类型擦除与零拷贝切片访问（可选，默认启用；Py_GIL_DISABLED 下自动排除）
+numpy = { version = "0.29", optional = true }
 
 # rust-i18n: 国际化错误消息
 rust-i18n = "4.2"
+
+[build-dependencies]
+pyo3-build-config = "0.29"
 ```
 
 🚨 **绝对禁止**：
