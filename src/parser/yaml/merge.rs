@@ -62,64 +62,85 @@ fn resolve_mapping_merges(
 ) {
     let merge_key = CustomNode::plain_scalar("<<");
 
-    // Check if merge key exists and collect merge data
     let merge_data = if let Some(merge_value) = pairs.get(&merge_key) {
-        let mut merged_pairs = Vec::new();
-
-        match merge_value {
-            CustomNode::Alias { name } => {
-                // Single alias: <<: *alias
-                if let Some(merged) = anchors.get(name) {
-                    for (k, v) in merged {
-                        // Only add if not already overridden in current mapping
-                        if !pairs.contains_key(k) {
-                            merged_pairs.push((k.clone(), v.clone()));
-                        }
-                    }
-                }
-            }
-            CustomNode::Sequence { items, .. } => {
-                // Multiple aliases: <<: [*alias1, *alias2]
-                for item in items {
-                    if let CustomNode::Alias { name } = item {
-                        if let Some(merged) = anchors.get(name) {
-                            for (k, v) in merged {
-                                if !pairs.contains_key(k) {
-                                    merged_pairs.push((k.clone(), v.clone()));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
+        let merged_pairs = collect_merge_data(merge_value, pairs, anchors);
+        if merged_pairs.is_empty() {
+            None
+        } else {
+            Some(merged_pairs)
         }
-        Some(merged_pairs)
     } else {
         None
     };
 
-    // Apply merge data if we have any
     if let Some(merged_pairs) = merge_data {
-        // Remove the merge key
-        pairs.swap_remove(&merge_key);
-
-        // Add merged pairs at the beginning (to preserve order: merged first, then overrides)
-        let mut new_pairs = IndexMap::new();
-        for (k, v) in merged_pairs {
-            new_pairs.insert(k, v);
-        }
-        for (k, v) in pairs.iter() {
-            new_pairs.insert(k.clone(), v.clone());
-        }
-
-        *pairs = new_pairs;
+        prepend_merged_pairs(pairs, &merge_key, merged_pairs);
     }
 
     // Recursively resolve in nested mappings
     for value in pairs.values_mut() {
         resolve_merges_recursive(value, anchors);
     }
+}
+
+/// Collect merged pairs from a merge key value (single alias or sequence of aliases).
+fn collect_merge_data(
+    merge_value: &CustomNode,
+    pairs: &IndexMap<CustomNode, CustomNode>,
+    anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
+) -> Vec<(CustomNode, CustomNode)> {
+    let mut merged_pairs = Vec::new();
+
+    match merge_value {
+        CustomNode::Alias { name } => {
+            collect_merged_pairs_for_anchor(name, pairs, anchors, &mut merged_pairs);
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                if let CustomNode::Alias { name } = item {
+                    collect_merged_pairs_for_anchor(name, pairs, anchors, &mut merged_pairs);
+                }
+            }
+        }
+        _ => {}
+    }
+
+    merged_pairs
+}
+
+/// Collect merged pairs from a single anchor reference.
+fn collect_merged_pairs_for_anchor(
+    name: &str,
+    pairs: &IndexMap<CustomNode, CustomNode>,
+    anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
+    result: &mut Vec<(CustomNode, CustomNode)>,
+) {
+    if let Some(merged) = anchors.get(name) {
+        for (k, v) in merged {
+            if !pairs.contains_key(k) {
+                result.push((k.clone(), v.clone()));
+            }
+        }
+    }
+}
+
+/// Remove the merge key and prepend merged pairs at the beginning of the mapping.
+fn prepend_merged_pairs(
+    pairs: &mut IndexMap<CustomNode, CustomNode>,
+    merge_key: &CustomNode,
+    merged_pairs: Vec<(CustomNode, CustomNode)>,
+) {
+    pairs.swap_remove(merge_key);
+
+    let mut new_pairs = IndexMap::new();
+    for (k, v) in merged_pairs {
+        new_pairs.insert(k, v);
+    }
+    for (k, v) in pairs.iter() {
+        new_pairs.insert(k.clone(), v.clone());
+    }
+
+    *pairs = new_pairs;
 }
 
 #[cfg(test)]
