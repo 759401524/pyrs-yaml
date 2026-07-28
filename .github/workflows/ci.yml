@@ -5,6 +5,14 @@ on:
     branches: [main]
     tags: ["*"]
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "AGENTS.md"
+      - "CHANGELOG.md"
+      - ".gitignore"
+      - "prek.toml"
+      - ".rumdl.toml"
   workflow_dispatch:
 
 permissions:
