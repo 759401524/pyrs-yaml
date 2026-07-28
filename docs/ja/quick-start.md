@@ -1,19 +1,21 @@
 ---
 
 title: Quick Start
-lang: ja-JP
+lang: ja
 
 ## クイックスタート
 
-このガイド为您提供 pyyaml-rs を数分で動かす方法です。
+このガイドでは、pyyaml-rs を数分で使い始める方法を説明します。
 
-### 1. Install
+### 1. インストール
+
+パッケージはまだ PyPI に掲載されていません。ソースからインストール：
 
 ```bash
 uv run --frozen maturin develop --release
 ```
 
-### 2. Parse YAML
+### 2. YAML のパース
 
 ```python
 import pyyaml_rs
@@ -31,7 +33,7 @@ print(doc.get("age"))     # 30
 print(doc.get("email"))   # alice@example.com
 ```
 
-### 3. Convert to Python Objects
+### 3. Python オブジェクトへの変換
 
 ```python
 # Use safe_load for PyYAML-compatible behavior
@@ -48,7 +50,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))       # <class 'list'>
 ```
 
-### 4. Serialize to YAML
+### 4. YAML へのシリアライズ
 
 ```python
 # Convert a Python dict back to YAML
@@ -66,7 +68,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-### 5. Preserve Formatting (Round-Trip)
+### 5. フォーマットの保持（ラウンドトリップ）
 
 ```python
 # The key advantage of pyyaml-rs
@@ -96,7 +98,7 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-### 6. Read YAML from Files
+### 6. ファイルから YAML を読み込む
 
 ```python
 # Parse a YAML file directly
@@ -104,7 +106,7 @@ doc = pyyaml_rs.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### 7. Multiple Documents
+### 7. 複数ドキュメント
 
 ```python
 # Parse multiple YAML documents
@@ -123,9 +125,9 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 8. NumPy Ndarray Support
+## 8. NumPy ndarray サポート
 
-pyyaml-rs can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
+pyyaml-rs は `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます。これは科学データ、モデルの重み、または多次元配列を人間が読める形式に保存するのに便利です。
 
 ```python
 import numpy as np
@@ -167,6 +169,6 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 ### 次のステップ
 
-- **[機能](features.md)** — Explore all supported YAML features
-- **[Parsing Guide](guides/parsing.md)** — Advanced parsing options
-- **[API リファレンス](api/reference.md)** — Complete API documentation
+- **[機能](features.md)** — サポートされているすべての YAML 機能を探索
+- **[パースガイド](guides/parsing.md)** — 高度なパースオプション
+- **[API リファレンス](api/reference.md)** — 完全な API ドキュメント

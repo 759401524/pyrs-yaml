@@ -1,85 +1,85 @@
 ---
 
-title: Running Tests
-lang: ja-JP
+title: テスト実行
+lang: ja
 
 ## テスト実行
 
-pyyaml-rs has both Rust unit tests and Python integration tests.
+pyyaml-rs は Rust ユニットテストと Python 統合テストの両方を持っています。
 
-### Rust Tests
+### Rust テスト
 
 ```bash
-# Run all Rust tests
+# すべての Rust テストを実行
 cargo test
 
-# Run tests for a specific module
+# 特定のモジュールのテストを実行
 cargo test ast
 cargo test parser
 cargo test serializer
 
-# Run with output
+# 出力を伴って実行
 cargo test -- --nocapture
 
-# Run integration tests only
+# 統合テストのみ実行
 cargo test --test integration
 ```
 
-#### Test Coverage
+#### テストカバレッジ
 
-- **`src/ast.rs`** — Node construction, metadata, equality
-- **`src/parser/`** — Parsing various YAML constructs
-- **`src/serializer.rs`** — シリアル化 round-trips
-- **`src/integration/`** — YAML Test Suite integration
+- **`src/ast.rs`** — ノード構築、メタデータ、等値性
+- **`src/parser/`** — さまざまな YAML 構造のパース
+- **`src/serializer.rs`** — シリアライゼーション往復保存
+- **`src/integration/`** — YAML Test Suite 統合
 
-### Python Tests
+### Python テスト
 
 ```bash
-# Run all Python tests
+# すべての Python テストを実行
 pytest tests/
 
-# Run with verbose output
+# 詳細出力で実行
 pytest tests/ -v
 
-# Run a specific test file
+# 特定のテストファイルを実行
 pytest tests/test_parse.py
 
-# Run tests matching a pattern
+# パターンに一致するテストを実行
 pytest tests/ -k "comment"
 
-# Run with coverage
+# カバレッジ付きで実行
 pytest tests/ --cov=pyyaml_rs --cov-report=term-missing
 
-# Run benchmarks
+# ベンチマークを実行
 pytest tests/ --benchmark-only --benchmark-json=results.json
 ```
 
-#### Test Files
+#### テストファイル
 
-| File | Coverage |
-|------|----------|
-| `test_parse.py` | Parsing, data types, special chars |
-| `test_serialize.py` | シリアル化, round-trips |
-| `test_edge_cases.py` | Edge cases, error handling |
-| `test_errors.py` | Custom exception types, file I/O |
-| `test_features.py` | Markdown frontmatter, from_dict/from_json |
-| `test_json.py` | JSON ↔ YAML conversion |
-| `test_tabs.py` | Tab handling |
-| `test_yaml_suite.py` | YAML Test Suite integration |
-| `test_performance.py` | パフォーマンス sanity checks |
-| **`test_numpy.py`** | **NumPy Ndarray serialization (0-D through N-D, all dtypes)** |
+| ファイル | カバレッジ |
+|---------|----------|
+| `test_parse.py` | パース、データ型、特殊文字 |
+| `test_serialize.py` | シリアライゼーション、往復保存 |
+| `test_edge_cases.py` | エッジケース、エラーハンドリング |
+| `test_errors.py` | カスタム例外タイプ、ファイル I/O |
+| `test_features.py` | Markdown フロントメータ、from_dict/from_json |
+| `test_json.py` | JSON ↔ YAML 変換 |
+| `test_tabs.py` | タブ処理 |
+| `test_yaml_suite.py` | YAML Test Suite 統合 |
+| `test_performance.py` | パフォーマンス整合性チェック |
+| **`test_numpy.py`** | **NumPy Ndarray シリアライゼーション (0 次元〜N 次元、すべての dtype)** |
 
-### CI Testing
+### CI テスト
 
-GitHub Actions runs on every push and PR:
+GitHub Actions はすべてのプッシュと PR で実行：
 
-- **Rust**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`
-- **Python**: `pytest tests/` on 4 Python versions × 3 OSes
-- **Maturin**: Build wheel for each Python version
+- **Rust**: `cargo test`、`cargo clippy -- -D warnings`、`cargo fmt --check`
+- **Python**: 4 つの Python バージョン × 3 つの OS で `pytest tests/`
+- **Maturin**: 各 Python バージョン用に wheel をビルド
 
-### Adding New Tests
+### 新しいテストの追加
 
-#### Rust Test
+#### Rust テスト
 
 ```rust
 #[cfg(test)]
@@ -88,12 +88,12 @@ mod tests {
 
     #[test]
     fn test_new_feature() {
-        // Your test here
+        // テストをここに書く
     }
 }
 ```
 
-#### Python Test
+#### Python テスト
 
 ```python
 import pyyaml_rs
@@ -105,14 +105,14 @@ class TestNewFeature:
         assert result.get("key") == "value"
 
     def test_edge_case(self):
-        # Edge case test
+        # エッジケーステスト
         pass
 ```
 
-### Test Categories
+### テストカテゴリ
 
-- **Unit tests** — Individual functions, small inputs
-- **Integration tests** — Full parse → serialize round-trips
-- **Edge case tests** — Special characters, empty input, malformed YAML
-- **パフォーマンス tests** — Sanity checks (not benchmarks)
-- **YAML Test Suite** — External test suite for YAML compliance
+- **ユニットテスト** — 個別の関数、小さな入力
+- **統合テスト** — 完全なパース → シリアライズ往復保存
+- **エッジケーステスト** — 特殊文字、空の入力、不正な YAML
+- **パフォーマンステスト** — 整合性チェック（ベンチマークではない）
+- **YAML Test Suite** — YAML 準拠の外部テストスイート

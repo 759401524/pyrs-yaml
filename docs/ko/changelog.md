@@ -1,7 +1,7 @@
 ---
 
 title: Changelog
-lang: ko-KR
+lang: ko
 
 ## 변경 이력
 

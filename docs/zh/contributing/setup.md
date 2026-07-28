@@ -1,89 +1,89 @@
 ---
 
-title: Development Setup
-lang: zh-CN
+title: 开发设置
+lang: zh
 
 ## 开发设置
 
-Set up your environment to contribute to pyyaml-rs.
+设置您的环境以贡献 pyyaml-rs。
 
-### Prerequisites
+### 前提条件
 
 - **Python** ≥ 3.8 (CPython)
-- **Rust** ≥ 1.70 (via [rustup](https://rustup.rs/))
+- **Rust** ≥ 1.70（通过 [rustup](https://rustup.rs/)）
 - **Git**
-- **uv** (recommended) or **pip**
-- **NumPy** — required for running the NumPy serialization test suite (`pytest tests/test_numpy.py`)
+- **uv**（推荐）或 **pip**
+- **NumPy** — 运行 NumPy 序列化测试套件所需 (`pytest tests/test_numpy.py`)
 
-### Clone and Install
+### 克隆和安装
 
 ```bash
 git clone https://github.com/759401524/pyyaml-rs.git
 cd pyyaml-rs
 
-# Using uv (recommended)
+# 使用 uv（推荐）
 uv sync
 
-# Or using pip
+# 或使用 pip
 pip install maturin
 maturin develop --release
 ```
 
-### Verify 安装
+### 验证安装
 
 ```bash
-# Run Rust tests
+# 运行 Rust 测试
 cargo test
 
-# Run Python tests (with uv lockfile for reproducible deps)
+# 运行 Python 测试（使用 uv lockfile 确保可重复依赖）
 uv run --frozen pytest tests/
 
-# Run benchmarks
+# 运行基准测试
 cargo bench
 ```
 
-### Project Structure
+### 项目结构
 
 ```text
 pyyaml-rs/
 ├── src/
-│   ├── lib.rs              # PyO3 module definition
-│   ├── ast.rs              # Custom AST (CustomNode)
+│   ├── lib.rs              # PyO3 模块定义
+│   ├── ast.rs              # 自定义 AST (CustomNode)
 │   ├── parser/
-│   │   ├── mod.rs          # saphyr-parser integration
-│   │   └── yaml/           # YAML-specific parsing
-│   │       ├── comment.rs  # Comment extraction
-│   │       ├── merge.rs    # Merge key resolution
-│   │       ├── scalar.rs   # Scalar parsing
-│   │       └── types.rs    # YAML 1.2 type resolution
-│   └── serializer.rs       # YAML serialization
+│   │   ├── mod.rs          # saphyr-parser 集成
+│   │   └── yaml/           # YAML 特定解析
+│   │       ├── comment.rs  # 注释提取
+│   │       ├── merge.rs    # 合并键解析
+│   │       ├── scalar.rs   # 标量解析
+│   │       └── types.rs    # YAML 1.2 类型解析
+│   └── serializer.rs       # YAML 序列化
 ├── python/pyyaml_rs/
-│   ├── __init__.py         # Python package init
-│   ├── pyyaml_rs.pyi       # Type stubs
-│   └── py.typed            # PEP 561 marker
-├── tests/                  # Python test suite
-├── benches/                # Rust benchmarks
-└── docs/                   # Documentation (mkdocs)
+│   ├── __init__.py         # Python 包初始化
+│   ├── pyyaml_rs.pyi       # 类型桩文件
+│   └── py.typed            # PEP 561 标记
+├── tests/                  # Python 测试套件
+├── benches/                # Rust 基准测试
+└── docs/                   # 文档 (mkdocs)
 ```
 
-### Build Commands
+### 构建命令
 
 ```bash
-# Build Python extension (with uv lockfile)
+# 构建 Python 扩展（使用 uv lockfile）
 uv run --frozen maturin develop --release
 
-# Build wheel
+# 构建 wheel
 uv run --frozen maturin build --release --out dist
 
-# Build with debug info
+# 带调试信息构建
 cargo build
 ```
 
-### Development Workflow
+### 开发工作流
 
-1. **Write tests first** (TDD)
-2. **Implement changes** in `src/`
-3. **Run `cargo test`** to verify Rust tests
-4. **Run `uv run --frozen pytest tests/`** to verify Python tests
-5. **Run `cargo clippy -- -D warnings`** to check code quality
-6. **Run `cargo fmt`** to format code
+1. **首先编写测试** (TDD)
+2. 在 `src/` 中**实现变更**
+3. **运行 `cargo test`** 验证 Rust 测试
+4. **运行 `uv run --frozen pytest tests/`** 验证 Python 测试
+5. **运行 `cargo clippy -- -D warnings`** 检查代码质量
+6. **运行 `cargo fmt`** 格式化代码

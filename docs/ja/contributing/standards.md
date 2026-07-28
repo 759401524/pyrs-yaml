@@ -1,54 +1,54 @@
 ---
 
-title: Coding Standards
-lang: ja-JP
+title: コーディング基準
+lang: ja
 
 ## コーディング基準
 
-Follow these standards when contributing to pyyaml-rs.
+pyyaml-rs に貢献する際は、以下の基準に従ってください。
 
 ### Rust
 
-#### Style
+#### スタイル
 
-- Use `cargo fmt` before committing
-- Follow [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- Use `#[allow(unused_imports)]` only when necessary (tests, feature flags)
+- コミット前に `cargo fmt` を使用
+- [Rust API ガイドライン](https://rust-lang.github.io/api-guidelines/) に従う
+- `#[allow(unused_imports)]` は必要な場合のみ使用（テスト、フィーチャーフラグ）
 
-#### Error Handling
+#### エラーハンドリング
 
-- **Never use `.unwrap()` or `.expect()`** in business logic
-- Convert all Rust errors to Python exceptions
-- Use `PyResult<T>` for functions that can fail
-- Map specific errors to specific Python exception types
+- ビジネスロジックで **`.unwrap()` や `.expect()` を絶対に使用しない**
+- すべての Rust エラーを Python 例外に変換
+- 失敗する可能性のある関数には `PyResult<T>` を使用
+- 特定のエラーを特定の Python 例外タイプにマッピング
 
 ```rust
-// Good
+// OK
 let content = std::fs::read_to_string(path)
     .map_err(|e| YamlParseError::new_err(format_i18n_error("file-read-error", ...)))?;
 
-// Bad
+// NG
 let content = std::fs::read_to_string(path).unwrap();
 ```
 
-#### Documentation
+#### ドキュメント
 
-- All public functions must have `///` doc comments
-- Include `# Arguments`, `# Returns`, `# Errors`, `# Examples` sections
-- Write doc comments in English (Rust convention)
-- Chinese doc comments are acceptable for internal functions
+- すべての公開関数には `///` ドキュメントコメントが必要
+- `# Arguments`、`# Returns`、`# Errors`、`# Examples` セクションを含める
+- ドキュメントコメントは英語で書く（Rust の慣例）
+- 関数内部のドキュメントコメントは中国語でも可
 
 ```rust
-/// Parse a YAML string into a CustomNode AST.
+/// YAML 文字列を CustomNode AST にパースする。
 ///
 /// # Arguments
-/// * `yaml` - YAML content string
+/// * `yaml` — YAML コンテンツ文字列
 ///
 /// # Returns
-/// The parsed AST root node, or `Err(String)` on failure
+/// パースされた AST ルートノード、失敗時は `Err(String)`
 ///
 /// # Errors
-/// Returns `Err(String)` formatted as `"YAML parse error: line N, col M: <msg>"`
+/// `"YAML parse error: line N, col M: <msg>"` 形式の `Err(String)` を返す
 ///
 /// # Examples
 /// ```
@@ -57,65 +57,76 @@ let content = std::fs::read_to_string(path).unwrap();
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 ```
 
-#### GIL Management
+#### PyO3 シグネチャ注釈
 
-- Release GIL during heavy computation using `py.detach()` or `py.allow_threads()`
-- Never hold GIL during file I/O or parsing
+すべての `#[pyfunction]` と `#[pymethods]` は `#[pyo3(signature = "...")]` で型を注釈する必要があります：
 
 ```rust
-// Good
+#[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core") -> "YamlDocument")]
+fn parse(...) -> YamlDocument { ... }
+```
+
+#### GIL 管理
+
+- 負荷の高い計算中は `py.detach()` または `py.allow_threads()` を使用して GIL を解放
+- ファイル I/O やパース中に GIL を保持しない
+
+```rust
+// OK
 let ast = py.detach(|| {
     parser::parse_with_options(&yaml_str, resolve_merges)
         .map_err(|e| YamlParseError::new_err(...))?
 })?;
 
-// Bad — holds GIL during parsing
+// NG — パース中に GIL を保持
 let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 ```
 
 #### Clippy
 
-Run `cargo clippy -- -D warnings` — treat all warnings as errors.
+`cargo clippy -- -D warnings` を実行 — すべての警告をエラーとして扱う。
 
 ### Python
 
-#### Style
+#### スタイル
 
-- Follow [PEP 8](https://peps.python.org/pep-0008/)
-- Use type hints everywhere
-- Docstrings in Google style
+- [PEP 8](https://peps.python.org/pep-0008/) に従う
+- すべての場所で型ヒントを使用
+- ドキュメント文字列は Google スタイル
+- コードチェック設定は `ruff.toml` にあり（`ruff check` を実行）
 
 ```python
 def parse(yaml: str, resolve_merges: bool = True) -> YamlDocument:
-    """Parse a YAML string into a YamlDocument.
+    """YAML 文字列を YamlDocument にパースする。
 
     Args:
-        yaml: A string containing YAML content
-        resolve_merges: Whether to resolve merge keys (default: True)
+        yaml: YAML コンテンツを含む文字列
+        resolve_merges: マージキーを解決するかどうか (デフォルト: True)
 
     Returns:
-        A YamlDocument containing the parsed YAML
+        パースされた YAML を含む YamlDocument
 
     Raises:
-        YamlParseError: If the YAML is invalid
+        YamlParseError: YAML が無効な場合
     """
 ```
 
-#### Testing
+#### テスト
 
-- Write tests before code (TDD)
-- Use `pytest` with fixtures where appropriate
-- Test edge cases: empty input, special characters, large documents
-- Include round-trip assertions
+- コードの前にテストを書く（TDD）
+- 必要に応じて `uv run --frozen pytest` とフィクスチャを使用
+- エッジケースをテスト：空の入力、特殊文字、大きなドキュメント
+- 往復保存アサーションを含める
+- Pytest 設定は `pytest.ini` にあり（asyncio_mode = auto、カスタムマーカー）
 
 ### Git
 
-- Commit messages in imperative mood: "Add feature X", not "Added feature X"
-- One logical change per commit
-- Run `cargo test` and `pytest tests/` before committing
+- コミットメッセージは命令形で："Add feature X"（"Added feature X" ではない）
+- 1 コミットに 1 つの論理的な変更
+- コミット前に `cargo test` と `uv run --frozen pytest tests/` を実行
 
-### Documentation
+### ドキュメント
 
-- Update docs when changing behavior
-- Use code examples that can be copy-pasted and run
-- Keep examples concise but complete
+- 動作を変更した場合はドキュメントを更新
+- コピー＆ペーストして実行できるコードサンプルを使用
+- サンプルは簡潔だが完全に保つ

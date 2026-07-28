@@ -1,15 +1,15 @@
 ---
 
-title: Serialization
-lang: ja-JP
+title: シリアライゼーション
+lang: ja
 
-## シリアル化
+## シリアライゼーション
 
-Convert Python objects and `YamlDocument` instances to YAML strings.
+Python オブジェクトと `YamlDocument` インスタンスを YAML 文字列に変換します。
 
-### Basic シリアル化
+### 基本シリアライゼーション
 
-#### YamlDocument.to_yaml()
+#### `YamlDocument.to_yaml()`
 
 ```python
 doc = pyyaml_rs.parse("key: value")
@@ -17,24 +17,24 @@ yaml_str = doc.to_yaml()
 print(yaml_str)  # key: value\n
 ```
 
-#### YamlDocument.to_yaml_with_options()
+#### `YamlDocument.to_yaml_with_options()`
 
 ```python
 doc = pyyaml_rs.parse("key: value")
 
-# Custom indentation and document markers
+# カスタムインデントとドキュメントマーカー
 yaml_str = doc.to_yaml_with_options(
-    indent_size=4,           # 4 spaces per indent level
-    explicit_start=True,     # Add "---" at start
-    explicit_end=True,       # Add "..." at end
-    sort_keys=True,          # Sort keys alphabetically
+    indent_size=4,           # インデントレベルあたり 4 スペース
+    explicit_start=True,     # 先頭に "---" を追加
+    explicit_end=True,       # 末尾に "..." を追加
+    sort_keys=True,          # キーをアルファベット順にソート
 )
 ```
 
-#### PyYAML-Compatible シリアル化
+#### PyYAML 互換シリアライゼーション
 
 ```python
-# Dict to YAML string
+# dict を YAML 文字列に
 yaml_str = pyyaml_rs.safe_dump({
     "database": {
         "host": "localhost",
@@ -42,13 +42,13 @@ yaml_str = pyyaml_rs.safe_dump({
     }
 })
 
-# Also available as safe_dumps (alias)
+# safe_dumps (エイリアス) も利用可能
 yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
 ```
 
-### Convert Python Objects to YAML
+### Python オブジェクトを YAML に変換
 
-#### from_dict()
+#### `from_dict()`
 
 ```python
 yaml_str = pyyaml_rs.from_dict({
@@ -58,16 +58,16 @@ yaml_str = pyyaml_rs.from_dict({
 })
 ```
 
-#### from_json()
+#### `from_json()`
 
 ```python
 yaml_str = pyyaml_rs.from_json('{"key": "value"}')
 ```
 
-#### dump_file()
+#### `dump_file()`
 
 ```python
-# Write Python object directly to YAML file
+# Python オブジェクトを直接 YAML ファイルに書き込み
 pyyaml_rs.dump_file({
     "config": {
         "debug": True,
@@ -76,27 +76,27 @@ pyyaml_rs.dump_file({
 }, "output.yaml")
 ```
 
-### Supported Input Types
+### サポートされる入力型
 
-| Python Type | YAML Output |
-|-------------|-------------|
-| `dict` | YAML mapping |
-| `list` | YAML sequence |
-| `str` | Plain or quoted scalar |
-| `int` | Plain integer |
-| `float` | Plain float |
+| Python 型 | YAML 出力 |
+|-----------|----------|
+| `dict` | YAML マッピング |
+| `list` | YAML シーケンス |
+| `str` | Plain または引用符付きスカラー |
+| `int` | Plain 整数 |
+| `float` | Plain 浮動小数点 |
 | `bool` | `true` / `false` |
 | `None` | `null` |
 
-### リバース保存
+### 往復保存
 
 ```python
-# The key advantage: formatting is preserved
+# 最大の利点：フォーマットが保持される
 original = """
-# Server config
+# サーバー設定
 server:
   host: 0.0.0.0
-  port: 8080  # main port
+  port: 8080  # メインポート
 
 database: &db
   host: localhost
@@ -108,8 +108,8 @@ api:
 doc = pyyaml_rs.parse(original)
 output = doc.to_yaml()
 
-# Comments, anchors, and merge keys preserved
-assert "# Server config" in output
+# コメント、アンカー、マージキーが保持される
+assert "# サーバー設定" in output
 assert "&db" in output
 assert "<<: *db" in output
 ```

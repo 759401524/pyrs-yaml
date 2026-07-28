@@ -1,15 +1,15 @@
 ---
 
-title: Parsing YAML
-lang: zh-CN
+title: 解析 YAML
+lang: zh
 
 ## 解析 YAML
 
-This guide covers all ways to parse YAML with pyyaml-rs.
+本指南介绍使用 pyyaml-rs 解析 YAML 的所有方法。
 
-### Basic Parsing
+### 基本解析
 
-#### Parse a YAML String
+#### 解析 YAML 字符串
 
 ```python
 import pyyaml_rs
@@ -18,24 +18,24 @@ doc = pyyaml_rs.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
-#### Parse with Options
+#### 使用选项解析
 
 ```python
-# Disable merge key resolution (keep <<: *alias as-is)
+# 禁用合并键解析（保留 <<: *alias 原样）
 doc = pyyaml_rs.parse(yaml_text, resolve_merges=False)
 ```
 
-#### Parse a YAML File
+#### 解析 YAML 文件
 
 ```python
 doc = pyyaml_rs.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-#### Parse Multiple Documents
+#### 解析多个文档
 
 ```python
-# YAML with --- separators
+# 使用 --- 分隔的 YAML
 yaml_text = """
 ---
 
@@ -50,49 +50,49 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
-## PyYAML-Compatible Parsing
+## PyYAML 兼容解析
 
 ```python
-# Returns native Python types (dict, list, str, int, etc.)
+# 返回原生 Python 类型（dict, list, str, int 等）
 data = pyyaml_rs.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
-# Multiple documents
+# 多个文档
 docs = pyyaml_rs.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
-### Acceptable Input Types
+### 支持的输入类型
 
-- `str` — standard YAML string
-- `bytes` — valid UTF-8 encoded bytes
-- `str` with BOM — handled correctly
+- `str` — 标准 YAML 字符串
+- `bytes` — 有效的 UTF-8 编码字节
+- `str` 带 BOM — 正确处理
 
 ```python
-# Accepts both str and bytes
+# 同时接受 str 和 bytes
 doc1 = pyyaml_rs.parse("key: value")
 doc2 = pyyaml_rs.parse(b"key: value")
 ```
 
-### Error Handling
+### 错误处理
 
 ```python
 try:
     doc = pyyaml_rs.parse("invalid: yaml: [")
 except pyyaml_rs.YamlParseError as e:
-    print(f"Parse error: {e}")
+    print(f"解析错误: {e}")
 ```
 
-### Supported Data Types
+### 支持的数据类型
 
-pyyaml-rs correctly parses all YAML 1.2 scalar types:
+pyyaml-rs 正确解析所有 YAML 1.2 标量类型：
 
-| Type | Example | Python Type |
-|------|---------|-------------|
-| String | `hello` | `str` |
-| Integer | `42`, `0x1A`, `0o77` | `int` |
-| Float | `3.14`, `1.23e-4` | `float` |
-| Boolean | `true`, `false` | `bool` |
-| Null | `null`, `~` | `None` |
-| Infinity | `.inf`, `-.inf` | `float` |
+| 类型 | 示例 | Python 类型 |
+|------|------|------------|
+| 字符串 | `hello` | `str` |
+| 整数 | `42`, `0x1A`, `0o77` | `int` |
+| 浮点数 | `3.14`, `1.23e-4` | `float` |
+| 布尔值 | `true`, `false` | `bool` |
+| 空值 | `null`, `~` | `None` |
+| 无穷大 | `.inf`, `-.inf` | `float` |
 | NaN | `.nan` | `float` |

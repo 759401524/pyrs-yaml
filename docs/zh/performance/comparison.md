@@ -1,7 +1,7 @@
 ---
 
 title: Comparison with Other Libraries
-lang: zh-CN
+lang: zh
 
 ## 比较 with Other Libraries
 

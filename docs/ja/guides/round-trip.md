@@ -1,24 +1,24 @@
 ---
 
-title: Round-Trip Preservation
-lang: ja-JP
+title: 往復保存
+lang: ja
 
-## リバース保存
+## 往復保存
 
-This is pyyaml-rs's **killing feature** — what makes it unique among Python YAML libraries.
+これは pyyaml-rs の**最大の特徴** — Python YAML ライブラリの中でユニークな点です。
 
-### What is リバース保存?
+### 往復保存とは？
 
-Round-trip preservation means: **parse YAML → modify → serialize back → output is identical (or semantically equivalent) to the input.**
+往復保存とは：**YAML をパース → 変更 → シリアライズ → 出力が入力と同一（または意味的に同等）** であることを意味します。
 
 ```python
 original = """
-# Server configuration
+# サーバー設定
 server:
   host: 0.0.0.0
-  port: 8080  # main port
+  port: 8080  # メインポート
 
-# Database anchor
+# データベースアンカー
 database: &db
   host: localhost
   port: 5432
@@ -31,51 +31,51 @@ api:
 doc = pyyaml_rs.parse(original)
 output = doc.to_yaml()
 
-# All formatting and metadata preserved
-assert "# Server configuration" in output
-assert "# main port" in output
+# すべてのフォーマットとメタデータが保持される
+assert "# サーバー設定" in output
+assert "# メインポート" in output
 assert "&db" in output
 assert "<<: *db" in output
 ```
 
-### What Gets Preserved
+### 保持されるもの
 
-| Element | Preserved? | Notes |
-|---------|------------|-------|
-| Standalone comments | ✅ | Before keys and values |
-| Inline comments | ✅ | At end of lines |
-| Anchors (`&name`) | ✅ | Full anchor syntax |
-| Aliases (`*name`) | ✅ | Alias references resolved |
-| Merge keys (`<<`) | ✅ | Resolved by default |
-| Tags (`!!str`, `!!int`) | ✅ | Explicit tags preserved |
-| Scalar styles | ✅ | Plain, quoted, literal, folded |
-| Chomping (`\|-`, `>-`) | ✅ | Block scalar indicators |
-| Flow/block style | ✅ | `[]`/`{}` vs block preserved |
-| Key order | ✅ | `IndexMap` guarantees order |
+| 要素 | 保持されるか | 備考 |
+|------|------------|------|
+| 独立行コメント | ✅ | キーと値の前 |
+| 行末コメント | ✅ | 行の末尾 |
+| アンカー (`&name`) | ✅ | 完全なアンカーシンタックス |
+| エイリアス (`*name`) | ✅ | エイリアス参照が解決される |
+| マージキー (`<<`) | ✅ | デフォルトで解決される |
+| タグ (`!!str`, `!!int`) | ✅ | 明示的なタグが保持される |
+| スカラースタイル | ✅ | Plain, 引用符付き, リテラル, フォールド |
+| チョンピング (`\|-`, `>-`) | ✅ | ブロックスカラーインジケーター |
+| フロー/ブロックスタイル | ✅ | `[]`/`{}` vs ブロックが保持される |
+| キーの順序 | ✅ | `IndexMap` が順序を保証 |
 
-### PyYAML vs pyyaml-rs Round-Trip
+### PyYAML vs pyyaml-rs 往復保存
 
 ```python
-original = "# Comment\nkey: value  # inline\n"
+original = "# コメント\nkey: value  # 行末\n"
 
-# PyYAML: loses everything
+# PyYAML: すべて失われる
 yaml.safe_dump(yaml.safe_load(original))
-# Output: 'key: value\n'  ❌
+# 出力: 'key: value\n'  ❌
 
-# pyyaml-rs: preserves everything
+# pyyaml-rs: すべて保持される
 doc = pyyaml_rs.parse(original)
 doc.to_yaml()
-# Output: '# Comment\nkey: value  # inline\n'  ✅
+# 出力: '# コメント\nkey: value  # 行末\n'  ✅
 ```
 
 ### パフォーマンス
 
-Round-trip performance vs competitors:
+他のライブラリとの往復パフォーマンス比較：
 
-| Library | Round-trip (large) | Comments | Anchors | Tags |
-|---------|-------------------|----------|---------|------|
+| ライブラリ | 往復保存 (大) | コメント | アンカー | タグ |
+|-----------|-------------|---------|---------|------|
 | **pyyaml-rs** | **0.08 ms** | ✅ | ✅ | ✅ |
 | PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
 | ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
 
-**pyyaml-rs is 37× faster than PyYAML and 85× faster than ruamel.yaml** while preserving everything.
+**pyyaml-rs は PyYAML より 37 倍速く、ruamel.yaml より 85 倍速く**、すべてを保持します。

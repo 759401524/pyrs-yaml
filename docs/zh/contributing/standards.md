@@ -1,54 +1,54 @@
 ---
 
-title: Coding Standards
-lang: zh-CN
+title: 编码标准
+lang: zh
 
 ## 编码标准
 
-Follow these standards when contributing to pyyaml-rs.
+贡献 pyyaml-rs 时请遵循以下标准。
 
 ### Rust
 
-#### Style
+#### 风格
 
-- Use `cargo fmt` before committing
-- Follow [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- Use `#[allow(unused_imports)]` only when necessary (tests, feature flags)
+- 提交前使用 `cargo fmt`
+- 遵循 [Rust API 指南](https://rust-lang.github.io/api-guidelines/)
+- `#[allow(unused_imports)]` 仅在必要时使用（测试、特性标志）
 
-#### Error Handling
+#### 错误处理
 
-- **Never use `.unwrap()` or `.expect()`** in business logic
-- Convert all Rust errors to Python exceptions
-- Use `PyResult<T>` for functions that can fail
-- Map specific errors to specific Python exception types
+- **绝不在业务逻辑中使用 `.unwrap()` 或 `.expect()`**
+- 将所有 Rust 错误转换为 Python 异常
+- 可能失败的函数使用 `PyResult<T>`
+- 将特定错误映射到特定 Python 异常类型
 
 ```rust
-// Good
+// 正确
 let content = std::fs::read_to_string(path)
     .map_err(|e| YamlParseError::new_err(format_i18n_error("file-read-error", ...)))?;
 
-// Bad
+// 错误
 let content = std::fs::read_to_string(path).unwrap();
 ```
 
-#### Documentation
+#### 文档
 
-- All public functions must have `///` doc comments
-- Include `# Arguments`, `# Returns`, `# Errors`, `# Examples` sections
-- Write doc comments in English (Rust convention)
-- Chinese doc comments are acceptable for internal functions
+- 所有公开函数必须有 `///` 文档注释
+- 包含 `# Arguments`、`# Returns`、`# Errors`、`# Examples` 部分
+- 文档注释用英文编写（Rust 惯例）
+- 内部函数的文档注释可以用中文
 
 ```rust
-/// Parse a YAML string into a CustomNode AST.
+/// 将 YAML 字符串解析为 CustomNode AST。
 ///
 /// # Arguments
-/// * `yaml` - YAML content string
+/// * `yaml` — YAML 内容字符串
 ///
 /// # Returns
-/// The parsed AST root node, or `Err(String)` on failure
+/// 解析后的 AST 根节点，失败时返回 `Err(String)`
 ///
 /// # Errors
-/// Returns `Err(String)` formatted as `"YAML parse error: line N, col M: <msg>"`
+/// 返回格式为 `"YAML parse error: line N, col M: <msg>"` 的 `Err(String)`
 ///
 /// # Examples
 /// ```
@@ -66,68 +66,68 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 fn parse(...) -> YamlDocument { ... }
 ```
 
-#### GIL Management
+#### GIL 管理
 
-- Release GIL during heavy computation using `py.detach()` or `py.allow_threads()`
-- Never hold GIL during file I/O or parsing
+- 在耗时计算期间使用 `py.detach()` 或 `py.allow_threads()` 释放 GIL
+- 在文件 I/O 或解析期间绝不持有 GIL
 
 ```rust
-// Good
+// 正确
 let ast = py.detach(|| {
     parser::parse_with_options(&yaml_str, resolve_merges)
         .map_err(|e| YamlParseError::new_err(...))?
 })?;
 
-// Bad — holds GIL during parsing
+// 错误 — 在解析期间持有 GIL
 let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 ```
 
 #### Clippy
 
-Run `cargo clippy -- -D warnings` — treat all warnings as errors.
+运行 `cargo clippy -- -D warnings` — 将所有警告视为错误。
 
 ### Python
 
-#### Style
+#### 风格
 
-- Follow [PEP 8](https://peps.python.org/pep-0008/)
-- Use type hints everywhere
-- Docstrings in Google style
-- Linting is configured in `ruff.toml` (run `ruff check`)
+- 遵循 [PEP 8](https://peps.python.org/pep-0008/)
+- 到处使用类型提示
+- 文档字符串使用 Google 风格
+- 代码检查配置在 `ruff.toml` 中（运行 `ruff check`）
 
 ```python
 def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlDocument:
-    """Parse a YAML string into a YamlDocument.
+    """将 YAML 字符串解析为 YamlDocument。
 
     Args:
-        yaml: A string containing YAML content
-        resolve_merges: Whether to resolve merge keys (default: True)
-        schema: YAML schema profile ("core", "json", "failsafe", "yaml11")
+        yaml: 包含 YAML 内容的字符串
+        resolve_merges: 是否解析合并键（默认：True）
+        schema: YAML 模式配置（"core"、"json"、"failsafe"、"yaml11"）
 
     Returns:
-        A YamlDocument containing the parsed YAML
+        包含解析后 YAML 的 YamlDocument
 
     Raises:
-        YamlParseError: If the YAML is invalid
+        YamlParseError: YAML 无效时
     """
 ```
 
-#### Testing
+#### 测试
 
-- Write tests before code (TDD)
-- Use `uv run --frozen pytest` with fixtures where appropriate
-- Test edge cases: empty input, special characters, large documents
-- Include round-trip assertions
-- Pytest config is in `pytest.ini` (asyncio_mode = auto, custom markers)
+- 代码前先写测试（TDD）
+- 必要时使用 `uv run --frozen pytest` 和 fixture
+- 测试边缘情况：空输入、特殊字符、大文档
+- 包含往返保存断言
+- Pytest 配置在 `pytest.ini` 中（asyncio_mode = auto，自定义标记）
 
 ### Git
 
-- Commit messages in imperative mood: "Add feature X", not "Added feature X"
-- One logical change per commit
-- Run `cargo test` and `uv run --frozen pytest tests/` before committing
+- 提交消息使用命令式："Add feature X"（不是 "Added feature X"）
+- 每次提交一个逻辑变更
+- 提交前运行 `cargo test` 和 `uv run --frozen pytest tests/`
 
-### Documentation
+### 文档
 
-- Update docs when changing behavior
-- Use code examples that can be copy-pasted and run
-- Keep examples concise but complete
+- 更改行为时更新文档
+- 使用可复制粘贴和运行的代码示例
+- 保持示例简洁但完整

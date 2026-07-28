@@ -1,7 +1,7 @@
 ---
 
 title: Changelog
-lang: zh-CN
+lang: zh
 
 ## 变更日志
 

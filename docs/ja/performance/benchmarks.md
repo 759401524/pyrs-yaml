@@ -1,7 +1,7 @@
 ---
 
 title: Benchmarks
-lang: ja-JP
+lang: ja
 
 ## ベンチマーク
 

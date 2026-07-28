@@ -1,19 +1,21 @@
 ---
 
 title: Quick Start
-lang: ko-KR
+lang: ko
 
 ## 빠른 시작
 
 이 가이드는 몇 분 만에 pyyaml-rs를 사용하도록 안내합니다.
 
-### 1. Install
+### 1. 설치
+
+패키지는 아직 PyPI에 게시되지 않았습니다. 소스에서 설치:
 
 ```bash
 uv run --frozen maturin develop --release
 ```
 
-### 2. Parse YAML
+### 2. YAML 파싱
 
 ```python
 import pyyaml_rs
@@ -31,7 +33,7 @@ print(doc.get("age"))     # 30
 print(doc.get("email"))   # alice@example.com
 ```
 
-### 3. Convert to Python Objects
+### 3. Python 객체로 변환
 
 ```python
 # Use safe_load for PyYAML-compatible behavior
@@ -48,7 +50,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))       # <class 'list'>
 ```
 
-### 4. Serialize to YAML
+### 4. YAML로 직렬화
 
 ```python
 # Convert a Python dict back to YAML
@@ -66,7 +68,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-### 5. Preserve Formatting (Round-Trip)
+### 5. 서식 유지 (순환 파싱)
 
 ```python
 # The key advantage of pyyaml-rs
@@ -96,7 +98,7 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-### 6. Read YAML from Files
+### 6. 파일에서 YAML 읽기
 
 ```python
 # Parse a YAML file directly
@@ -104,7 +106,7 @@ doc = pyyaml_rs.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### 7. Multiple Documents
+### 7. 여러 문서
 
 ```python
 # Parse multiple YAML documents
@@ -123,9 +125,9 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 8. NumPy ndarray Support
+## 8. NumPy ndarray 지원
 
-pyyaml-rs can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
+pyyaml-rs는 `numpy.ndarray` 객체를 직접 YAML로 직렬화할 수 있습니다. 이는 과학 데이터, 모델 가중치 또는 다차원 배열을 사람이 읽을 수 있는 형식으로 저장하는 데 유용합니다.
 
 ```python
 import numpy as np
@@ -167,6 +169,6 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 ### 다음 단계
 
-- **[기능](features.md)** — Explore all supported YAML features
-- **[Parsing Guide](guides/parsing.md)** — Advanced parsing options
-- **[API 참조](api/reference.md)** — Complete API documentation
+- **[기능](features.md)** — 지원되는 모든 YAML 기능 탐색
+- **[파싱 가이드](guides/parsing.md)** — 고급 파싱 옵션
+- **[API 참조](api/reference.md)** — 완전한 API 문서

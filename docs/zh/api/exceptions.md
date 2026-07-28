@@ -1,144 +1,135 @@
 ---
 
-title: Exceptions
-lang: zh-CN
+title: 异常
+lang: zh
 
 ## 异常
 
-pyyaml-rs defines three custom exception classes for error handling.
+pyyaml-rs 定义了三个自定义异常类用于错误处理。
 
 ### YamlParseError
 
-Raised when YAML parsing fails.
+YAML 解析失败时引发。
 
 ```python
 class YamlParseError(ValueError):
-    """YAML parsing error (inherits from ValueError)."""
+    """YAML 解析错误（继承自 ValueError）。"""
 ```
 
-**Inherits from:** `ValueError`
+**继承自:** `ValueError`
 
-**Example:**
+**示例:**
 
 ```python
 try:
     doc = pyyaml_rs.parse("invalid: yaml: [")
 except pyyaml_rs.YamlParseError as e:
-    print(f"Parse error: {e}")
-    # Output: "YAML parse error: line 1, column 14: unexpected token..."
+    print(f"解析错误: {e}")
 ```
 
-**Can be caught as:**
+**错误消息示例:**
 
-```python
-except ValueError as e:  # Also works
-```
+- `Invalid YAML: line 1, column 15: did not find expected key`
+- `YAML parse error at line 2, column 1: mapping values are not allowed here`
 
 ### YamlSerializeError
 
-Raised when YAML serialization fails.
+YAML 序列化失败时引发。
 
 ```python
 class YamlSerializeError(ValueError):
-    """YAML serialization error (inherits from ValueError)."""
+    """YAML 序列化错误（继承自 ValueError）。"""
 ```
 
-**Inherits from:** `ValueError`
+**继承自:** `ValueError`
 
-**Example:**
+**示例:**
 
 ```python
 try:
-    yaml_str = pyyaml_rs.safe_dump(some_unsupported_type)
+    result = pyyaml_rs.safe_dump(float('inf'))
 except pyyaml_rs.YamlSerializeError as e:
-    print(f"Serialize error: {e}")
+    print(f"序列化错误: {e}")
 ```
 
 ### YamlTypeError
 
-Raised when a type conversion error occurs.
+类型转换错误时引发。
 
 ```python
 class YamlTypeError(TypeError):
-    """YAML type conversion error (inherits from TypeError)."""
+    """类型转换错误（继承自 TypeError）。"""
 ```
 
-**Inherits from:** `TypeError`
+**继承自:** `TypeError`
 
-**Example:**
+**示例:**
 
 ```python
 try:
-    pyyaml_rs.parse(123)  # Expected str or bytes
+    result = pyyaml_rs.safe_dump(object())  # 不可转换的类型
 except pyyaml_rs.YamlTypeError as e:
-    print(f"Type error: {e}")
+    print(f"类型错误: {e}")
 ```
 
 ### YamlValidateError
 
-Raised when JSON Schema validation fails via `YamlDocument.validate()`.
+JSON Schema 验证失败时引发。
 
 ```python
 class YamlValidateError(ValueError):
-    """JSON Schema validation error (inherits from ValueError)."""
+    """JSON Schema 验证错误（继承自 ValueError）。"""
 ```
 
-**Inherits from:** `ValueError`
+**继承自:** `ValueError`
 
-**Example:**
+**示例:**
 
 ```python
-doc = pyyaml_rs.parse("name: Alice")
-schema = {"type": "object", "required": ["name", "email"]}
 try:
-    doc.validate(schema)
+    doc = pyyaml_rs.parse("age: not_a_number")
+    doc.validate(schema={"type": "object", "properties": {"age": {"type": "number"}}})
 except pyyaml_rs.YamlValidateError as e:
-    print(f"Validation error: {e}")
-    # Output: "Validation error: 'email' is a required property"
+    print(f"验证错误: {e}")
 ```
 
-### Error Message Format
+### 错误消息格式
 
-All error messages include contextual information:
+所有错误消息都包含上下文信息：
 
-| Error | Format |
-|-------|--------|
-| Parse error | `"YAML parse error: line N, column M: <message>"` |
-| File not found | `"File read error: <path> — <OS error>"` |
-| Invalid UTF-8 | `"Invalid UTF-8: <detail>"` |
-| Key not found | `"Key not found: <key>"` |
-| Index out of range | `"Index out of range: <index> (len: <len>)"` |
-| Unsupported type | `"Unsupported type for YAML conversion"` |
-| ndarray unsupported dtype | `"Unsupported type for YAML conversion"` |
-| Schema validation failure | `"<jsonschema error message>"` |
+| 字段 | 说明 |
+|-----|------|
+| 消息 | 人类可读的错误描述 |
+| Line | 错误发生的行号 |
+| Column | 错误发生的列号 |
+| offset | 行内的字节偏移量 |
 
-### i18n Support
+### i18n 支持
 
-Error messages can be localized:
-
-```python
-pyyaml_rs.set_language("zh-CN")
-
-try:
-    pyyaml_rs.parse("invalid: [")
-except pyyaml_rs.YamlParseError as e:
-    print(e)
-    # Chinese: "YAML 解析错误: 第 1 行, 第 14 列: ..."
-```
-
-### Best Practices
+错误消息可以本地化：
 
 ```python
 import pyyaml_rs
 
-def load_yaml(path):
-    try:
-        doc = pyyaml_rs.parse_file(path)
-        return doc.to_dict()
-    except pyyaml_rs.YamlParseError as e:
-        print(f"Failed to parse {path}: {e}")
-        return None
-    except OSError as e:
-        print(f"Failed to read {path}: {e}")
-        return None
+pyyaml_rs.set_language("zh-CN")  # 中文
+try:
+    pyyaml_rs.parse("invalid: yaml: [")
+except pyyaml_rs.YamlParseError as e:
+    print(e)  # 中文错误消息
 ```
+
+### 最佳实践
+
+```python
+# 捕获具体的异常
+try:
+    doc = pyyaml_rs.parse(yaml_content)
+except pyyaml_rs.YamlParseError as e:
+    logger.error(f"YAML 解析错误: {e}")
+    # 错误消息的解析
+    error_str = str(e)  # "Invalid YAML: line 1, column 15: ..."
+except pyyaml_rs.YamlTypeError as e:
+    logger.error(f"类型错误: {e}")
+```
+
+**注意:** 所有自定义异常都继承自 `ValueError`，因此可以用 `except ValueError` 批量捕获。但为了更细粒度的错误处理，建议使用具体的异常类。

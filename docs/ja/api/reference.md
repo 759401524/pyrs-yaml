@@ -1,35 +1,35 @@
 ---
 
-title: Module Reference
-lang: ja-JP
+title: モジュール リファレンス
+lang: ja
 
 ## モジュール リファレンス
 
-Complete API reference for the `pyyaml_rs` module.
+`pyyaml_rs` モジュールの完全な API リファレンス。
 
-### Core Functions
+### コア関数
 
 #### `parse()`
 
-YAML ストリングをパースする or bytes into a `YamlDocument`.
+YAML 文字列またはバイト列をパースして `YamlDocument` に変換します。
 
 ```python
 parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```
 
-**Parameters:**
+**パラメータ:**
 
-- `yaml` — YAML content as `str` or `bytes`
-- `resolve_merges` — Whether to resolve merge keys (`<<: *alias`) after parsing (default: `True`)
+- `yaml` — `str` または `bytes` の YAML コンテンツ
+- `resolve_merges` — パース後にマージキー (`<<: *alias`) を解決するかどうか (デフォルト: `True`)
 
-**Returns:** A `YamlDocument` containing the parsed YAML
+**戻り値:** パースされた YAML を含む `YamlDocument`
 
-**Raises:**
+**スロー:**
 
-- `YamlParseError` — Invalid YAML syntax
-- `TypeError` — Input is not `str` or `bytes`
+- `YamlParseError` — 無効な YAML 構文
+- `TypeError` — 入力が `str` または `bytes` でない
 
-**Example:**
+**例:**
 
 ```python
 doc = pyyaml_rs.parse("key: value")
@@ -39,24 +39,24 @@ doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
 
 #### `parse_file()`
 
-Parse a YAML file.
+YAML ファイルをパースします。
 
 ```python
 parse_file(path: str) -> YamlDocument
 ```
 
-**Parameters:**
+**パラメータ:**
 
-- `path` — Path to the YAML file
+- `path` — YAML ファイルへのパス
 
-**Returns:** A `YamlDocument`
+**戻り値:** `YamlDocument`
 
-**Raises:**
+**スロー:**
 
-- `IOError` — File not found or unreadable
-- `YamlParseError` — Invalid YAML
+- `IOError` — ファイルが見つからないまたは読み取り不可
+- `YamlParseError` — 無効な YAML
 
-**Example:**
+**例:**
 
 ```python
 doc = pyyaml_rs.parse_file("config.yaml")
@@ -64,33 +64,33 @@ doc = pyyaml_rs.parse_file("config.yaml")
 
 #### `parse_all_docs()`
 
-複数の YAML ドキュメントをパースする from a string.
+文字列から複数の YAML ドキュメントをパースします。
 
 ```python
 parse_all_docs(yaml: str) -> list[YamlDocument]
 ```
 
-**Returns:** A list of `YamlDocument` objects
+**戻り値:** `YamlDocument` オブジェクトのリスト
 
-**Example:**
+**例:**
 
 ```python
 docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-### PyYAML-Compatible Functions
+### PyYAML 互換関数
 
 #### `safe_load()`
 
-Parse YAML and return native Python types.
+YAML をパースしてネイティブ Python 型を返します。
 
 ```python
 safe_load(yaml: str) -> dict[str, Any] | list[Any]
 ```
 
-**Equivalent to:** `yaml.safe_load()` in PyYAML
+**以下と同等:** PyYAML の `yaml.safe_load()`
 
-**Example:**
+**例:**
 
 ```python
 data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
@@ -98,39 +98,39 @@ data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
 
 #### `safe_loads()`
 
-複数の YAML ドキュメントをパースする.
+複数の YAML ドキュメントをパースします。
 
 ```python
 safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 ```
 
-**Equivalent to:** `yaml.safe_loads()` in PyYAML
+**以下と同等:** PyYAML の `yaml.safe_loads()`
 
 #### `safe_dump()`
 
-Serialize a Python object to YAML.
+Python オブジェクトを YAML にシリアライズします。
 
 ```python
 safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-**Equivalent to:** `yaml.safe_dump()` in PyYAML
+**以下と同等:** PyYAML の `yaml.safe_dump()`
 
-**Supported input types:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, and **`numpy.ndarray`** (all dimensions and numeric dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
+**サポートされる入力型:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, および **`numpy.ndarray`** (すべての次元と数値 dtype: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
 #### `safe_dumps()`
 
-Alias for `safe_dump()`.
+`safe_dump()` のエイリアス。
 
 ```python
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-### Conversion Functions
+### 変換関数
 
 #### `from_dict()`
 
-Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value inside the dict.
+Python dict を YAML 文字列に変換します。dict の値として `numpy.ndarray` も受け付けます。
 
 ```python
 from_dict(data: dict[str, Any]) -> str
@@ -138,7 +138,7 @@ from_dict(data: dict[str, Any]) -> str
 
 #### `from_json()`
 
-Convert a JSON string to YAML string.
+JSON 文字列を YAML 文字列に変換します。
 
 ```python
 from_json(json_str: str) -> str
@@ -146,19 +146,19 @@ from_json(json_str: str) -> str
 
 #### `dump_file()`
 
-Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or `numpy.ndarray`.
+Python オブジェクトを YAML にシリアライズしてファイルに書き込みます。`dict`, `list`, または `numpy.ndarray` を受け付けます。
 
 ```python
 dump_file(data: Any, path: str) -> None
 ```
 
-### Async Functions
+### 非同期関数
 
-Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
+`asyncio.run_in_executor` を使用した非同期 I/O ラッパー。イベントループコンテキストではノンブロッキング。
 
 #### `safe_dumps_async()`
 
-Serialize a Python object to YAML string (async).
+Python オブジェクトを YAML 文字列にシリアライズ (非同期)。
 
 ```python
 async def safe_dumps_async(data: Any) -> str
@@ -166,7 +166,7 @@ async def safe_dumps_async(data: Any) -> str
 
 #### `safe_dump_async()`
 
-Serialize a Python object to stdout as YAML (async).
+Python オブジェクトを stdout に YAML として出力 (非同期)。
 
 ```python
 async def safe_dump_async(data: Any) -> None
@@ -174,7 +174,7 @@ async def safe_dump_async(data: Any) -> None
 
 #### `safe_loads_async()`
 
-YAML ストリングをパースする into native Python objects (async).
+YAML 文字列をネイティブ Python オブジェクトにパース (非同期)。
 
 ```python
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
@@ -182,13 +182,13 @@ async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 
 #### `safe_load_async()`
 
-YAML ストリングをパースする into native Python objects (async).
+YAML 文字列をネイティブ Python オブジェクトにパース (非同期)。
 
 ```python
 async def safe_load_async(yaml: str, schema: str = "core") -> Any
 ```
 
-**Example:**
+**例:**
 
 ```python
 import asyncio, pyyaml_rs
@@ -205,37 +205,37 @@ asyncio.run(main())
 
 #### `read_markdown()`
 
-Extract YAML frontmatter from a Markdown file.
+Markdown ファイルから YAML フロントメータを抽出します。
 
 ```python
 read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
 ```
 
-**Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
+**戻り値:** `(frontmatter_dict, content_string)`。フロントメータがない場合、`frontmatter` は `None`。
 
 #### `read_markdown_str()`
 
-Extract YAML frontmatter from a Markdown string.
+Markdown 文字列から YAML フロントメータを抽出します。
 
 ```python
 read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
 ```
 
-### i18n Functions
+### i18n 関数
 
 #### `set_language()`
 
-Set the language for error messages.
+エラーメッセージの言語を設定します。
 
 ```python
 set_language(lang: str) -> None
 ```
 
-Supported: `"en"`, `"zh-CN"`
+サポート: `"en"`, `"zh-CN"`
 
 #### `get_language()`
 
-Get the current language.
+現在の言語を取得します。
 
 ```python
 get_language() -> str
@@ -243,7 +243,7 @@ get_language() -> str
 
 #### `list_languages()`
 
-List all supported languages.
+すべてのサポートされる言語を一覧表示します。
 
 ```python
 list_languages() -> list[str]
@@ -251,7 +251,7 @@ list_languages() -> list[str]
 
 #### `detect_language()`
 
-Auto-detect user's preferred language from environment variables.
+環境変数からユーザーの優先言語を自動検出します。
 
 ```python
 detect_language() -> str
@@ -259,7 +259,7 @@ detect_language() -> str
 
 #### `negotiate_language()`
 
-BCP 47 language negotiation.
+BCP 47 言語ネゴシエーション。
 
 ```python
 negotiate_language(user_locales: list[str], default: str = "en") -> str
@@ -267,12 +267,12 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 ### 例外
 
-- `YamlParseError` — YAML parsing error (inherits from `ValueError`)
-- `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
-- `YamlTypeError` — Type conversion error (inherits from `TypeError`)
-- `YamlValidateError` — JSON Schema validation error (inherits from `ValueError`)
+- `YamlParseError` — YAML パースエラー (`ValueError` を継承)
+- `YamlSerializeError` — YAML シリアライズエラー (`ValueError` を継承)
+- `YamlTypeError` — 型変換エラー (`TypeError` を継承)
+- `YamlValidateError` — JSON Schema 検証エラー (`ValueError` を継承)
 
-### Version
+### バージョン
 
 ```python
 __version__ = "0.6.0"

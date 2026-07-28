@@ -1,35 +1,35 @@
 ---
 
-title: Module Reference
-lang: ko-KR
+title: 모듈 참조
+lang: ko
 
 ## 모듈 참조
 
-Complete API reference for the `pyyaml_rs` module.
+`pyyaml_rs` 모듈의 전체 API 참조입니다.
 
-### Core Functions
+### 코어 함수
 
 #### `parse()`
 
-YAML 파arsing or bytes into a `YamlDocument`.
+YAML 문자열 또는 바이트를 파싱하여 `YamlDocument`로 변환합니다.
 
 ```python
 parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```
 
-**Parameters:**
+**매개변수:**
 
-- `yaml` — YAML content as `str` or `bytes`
-- `resolve_merges` — Whether to resolve merge keys (`<<: *alias`) after parsing (default: `True`)
+- `yaml` — `str` 또는 `bytes` YAML 콘텐츠
+- `resolve_merges` — 파싱 후 병합 키 (`<<: *alias`)를 해석할지 여부 (기본값: `True`)
 
-**Returns:** A `YamlDocument` containing the parsed YAML
+**반환값:** 파싱된 YAML를 포함하는 `YamlDocument`
 
-**Raises:**
+**발생:**
 
-- `YamlParseError` — Invalid YAML syntax
-- `TypeError` — Input is not `str` or `bytes`
+- `YamlParseError` — 잘못된 YAML 구문
+- `TypeError` — 입력이 `str` 또는 `bytes`가 아님
 
-**Example:**
+**예시:**
 
 ```python
 doc = pyyaml_rs.parse("key: value")
@@ -39,24 +39,24 @@ doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
 
 #### `parse_file()`
 
-Parse a YAML file.
+YAML 파일을 파싱합니다.
 
 ```python
 parse_file(path: str) -> YamlDocument
 ```
 
-**Parameters:**
+**매개변수:**
 
-- `path` — Path to the YAML file
+- `path` — YAML 파일 경로
 
-**Returns:** A `YamlDocument`
+**반환값:** `YamlDocument`
 
-**Raises:**
+**발생:**
 
-- `IOError` — File not found or unreadable
-- `YamlParseError` — Invalid YAML
+- `IOError` — 파일을 찾을 수 없거나 읽을 수 없음
+- `YamlParseError` — 잘못된 YAML
 
-**Example:**
+**예시:**
 
 ```python
 doc = pyyaml_rs.parse_file("config.yaml")
@@ -64,33 +64,33 @@ doc = pyyaml_rs.parse_file("config.yaml")
 
 #### `parse_all_docs()`
 
-여러 YAML 문서 구문 분석 from a string.
+문자열에서 여러 YAML 문서를 파싱합니다.
 
 ```python
 parse_all_docs(yaml: str) -> list[YamlDocument]
 ```
 
-**Returns:** A list of `YamlDocument` objects
+**반환값:** `YamlDocument` 객체 목록
 
-**Example:**
+**예시:**
 
 ```python
 docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-### PyYAML-Compatible Functions
+### PyYAML 호환 함수
 
 #### `safe_load()`
 
-Parse YAML and return native Python types.
+YAML를 파싱하여 네이티브 Python 타입을 반환합니다.
 
 ```python
 safe_load(yaml: str) -> dict[str, Any] | list[Any]
 ```
 
-**Equivalent to:** `yaml.safe_load()` in PyYAML
+**다음과 동일:** PyYAML의 `yaml.safe_load()`
 
-**Example:**
+**예시:**
 
 ```python
 data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
@@ -98,39 +98,39 @@ data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
 
 #### `safe_loads()`
 
-여러 YAML 문서 구문 분석.
+여러 YAML 문서를 파싱합니다.
 
 ```python
 safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 ```
 
-**Equivalent to:** `yaml.safe_loads()` in PyYAML
+**다음과 동일:** PyYAML의 `yaml.safe_loads()`
 
 #### `safe_dump()`
 
-Serialize a Python object to YAML.
+Python 객체를 YAML로 직렬화합니다.
 
 ```python
 safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-**Equivalent to:** `yaml.safe_dump()` in PyYAML
+**다음과 동일:** PyYAML의 `yaml.safe_dump()`
 
-**Supported input types:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, and **`numpy.ndarray`** (all dimensions and numeric dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
+**지원되는 입력 타입:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, 그리고 **`numpy.ndarray`** (모든 차원과 숫자 dtype: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
 #### `safe_dumps()`
 
-Alias for `safe_dump()`.
+`safe_dump()`의 별칭입니다.
 
 ```python
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-### Conversion Functions
+### 변환 함수
 
 #### `from_dict()`
 
-Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value inside the dict.
+Python dict를 YAML 문자열로 변환합니다. dict 값으로 `numpy.ndarray`도 허용됩니다.
 
 ```python
 from_dict(data: dict[str, Any]) -> str
@@ -138,7 +138,7 @@ from_dict(data: dict[str, Any]) -> str
 
 #### `from_json()`
 
-Convert a JSON string to YAML string.
+JSON 문자열을 YAML 문자열로 변환합니다.
 
 ```python
 from_json(json_str: str) -> str
@@ -146,19 +146,19 @@ from_json(json_str: str) -> str
 
 #### `dump_file()`
 
-Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or `numpy.ndarray`.
+Python 객체를 YAML로 직렬화하여 파일에 씁니다. `dict`, `list` 또는 `numpy.ndarray`를 허용합니다.
 
 ```python
 dump_file(data: Any, path: str) -> None
 ```
 
-### Async Functions
+### 비동기 함수
 
-Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
+`asyncio.run_in_executor`를 사용한 비동기 I/O 래퍼. 이벤트 루프 컨텍스트에서 논블로킹.
 
 #### `safe_dumps_async()`
 
-Serialize a Python object to YAML string (async).
+Python 객체를 YAML 문자열로 직렬화 (비동기).
 
 ```python
 async def safe_dumps_async(data: Any) -> str
@@ -166,7 +166,7 @@ async def safe_dumps_async(data: Any) -> str
 
 #### `safe_dump_async()`
 
-Serialize a Python object to stdout as YAML (async).
+Python 객체를 YAML 형식으로 stdout에 출력 (비동기).
 
 ```python
 async def safe_dump_async(data: Any) -> None
@@ -174,7 +174,7 @@ async def safe_dump_async(data: Any) -> None
 
 #### `safe_loads_async()`
 
-YAML 파arsing into native Python objects (async).
+YAML 문자열을 네이티브 Python 객체로 파싱 (비동기).
 
 ```python
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
@@ -182,13 +182,13 @@ async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 
 #### `safe_load_async()`
 
-YAML 파arsing into native Python objects (async).
+YAML 문자열을 네이티브 Python 객체로 파싱 (비동기).
 
 ```python
 async def safe_load_async(yaml: str, schema: str = "core") -> Any
 ```
 
-**Example:**
+**예시:**
 
 ```python
 import asyncio, pyyaml_rs
@@ -205,37 +205,37 @@ asyncio.run(main())
 
 #### `read_markdown()`
 
-Extract YAML frontmatter from a Markdown file.
+Markdown 파일에서 YAML 프론트메터를 추출합니다.
 
 ```python
 read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
 ```
 
-**Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
+**반환값:** `(frontmatter_dict, content_string)`. 프론트메터가 없으면 `frontmatter`는 `None`.
 
 #### `read_markdown_str()`
 
-Extract YAML frontmatter from a Markdown string.
+Markdown 문자열에서 YAML 프론트메터를 추출합니다.
 
 ```python
 read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
 ```
 
-### i18n Functions
+### i18n 함수
 
 #### `set_language()`
 
-Set the language for error messages.
+오류 메시지의 언어를 설정합니다.
 
 ```python
 set_language(lang: str) -> None
 ```
 
-Supported: `"en"`, `"zh-CN"`
+지원: `"en"`, `"zh-CN"`
 
 #### `get_language()`
 
-Get the current language.
+현재 언어를 가져옵니다.
 
 ```python
 get_language() -> str
@@ -243,7 +243,7 @@ get_language() -> str
 
 #### `list_languages()`
 
-List all supported languages.
+지원되는 모든 언어를 나열합니다.
 
 ```python
 list_languages() -> list[str]
@@ -251,7 +251,7 @@ list_languages() -> list[str]
 
 #### `detect_language()`
 
-Auto-detect user's preferred language from environment variables.
+환경 변수에서 사용자의 선호 언어를 자동 감지합니다.
 
 ```python
 detect_language() -> str
@@ -259,7 +259,7 @@ detect_language() -> str
 
 #### `negotiate_language()`
 
-BCP 47 language negotiation.
+BCP 47 언어 협상.
 
 ```python
 negotiate_language(user_locales: list[str], default: str = "en") -> str
@@ -267,12 +267,12 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 ### 예외
 
-- `YamlParseError` — YAML parsing error (inherits from `ValueError`)
-- `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
-- `YamlTypeError` — Type conversion error (inherits from `TypeError`)
-- `YamlValidateError` — JSON Schema validation error (inherits from `ValueError`)
+- `YamlParseError` — YAML 파싱 오류 (`ValueError` 상속)
+- `YamlSerializeError` — YAML 직렬화 오류 (`ValueError` 상속)
+- `YamlTypeError` — 타입 변환 오류 (`TypeError` 상속)
+- `YamlValidateError` — JSON Schema 검증 오류 (`ValueError` 상속)
 
-### Version
+### 버전
 
 ```python
 __version__ = "0.6.0"

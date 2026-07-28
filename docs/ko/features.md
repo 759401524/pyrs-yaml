@@ -1,30 +1,30 @@
 ---
 
 title: Features
-lang: ko-KR
+lang: ko
 
 ## 기능
 
-pyyaml-rs is designed to be a **drop-in replacement** for PyYAML while adding powerful features that PyYAML lacks.
+pyyaml-rs는 PyYAML의 **직접 교체**로 설계되었으며, PyYAML이 없는 강력한 기능을 추가합니다.
 
-### YAML 1.2 Compliance
+### YAML 1.2 준수
 
-Powered by **saphyr-parser**, pyyaml-rs achieves **98.1% pass rate** on the YAML Test Suite.
+**saphyr-parser**로 구동되며, YAML 테스트 스위트에서 **98.1% 통과율**을 달성.
 
-### Perfect Round-Trip
+### 완벽한 순환 파싱
 
-Unlike PyYAML, pyyaml-rs **preserves all formatting and metadata**:
+PyYAML과 달리, pyyaml-rs는 **모든 서식과 메타데이터를 유지**합니다:
 
-- **Comments** — standalone and inline
-- **Anchors** (`&name`) and **aliases** (`*name`)
-- **Tags** (`!!str`, `!!int`, etc.)
-- **Chomping indicators** (`\|-`, `\|+`, `>-`, `>+`)
-- **Scalar styles** (plain, single-quoted, double-quoted, literal, folded)
-- **Flow/block formatting** — `[]`/`{}` vs block style preserved
+- **주석** — 독립 주석과 인라인 주석
+- **앵커** (`&name`)와 **별칭** (`*name`)
+- **태그** (`!!str`, `!!int` 등)
+- **chomp 지시자** (`|-`, `|+`, `>-`, `>+`)
+- **스칼라 스타일** (일반, 단일 따옴표, 이중 따옴표, 리터럴, 접은 형식)
+- **흐름/블록 서식** — `[]`/`{}`와 블록 스타일 유지
 
 ### 성능
 
-Rust backend delivers **25–40× speedup** over PyYAML:
+Rust 백엔드는 PyYAML보다 **25–40배 빠릅니다**:
 
 | Operation | pyyaml-rs | PyYAML |
 |-----------|-----------|--------|
@@ -32,18 +32,18 @@ Rust backend delivers **25–40× speedup** over PyYAML:
 | Serialize (large) | 0.08 ms | 2.96 ms |
 | Round-trip | 0.08 ms | 2.98 ms |
 
-### Custom AST
+### 커스텀 AST
 
-The **CustomNode** AST gives you full control over YAML structure:
+**CustomNode** AST는 YAML 구조를 완전히 제어할 수 있게 합니다:
 
-- Inspect and modify nodes programmatically
-- Add custom metadata (comments, anchors, tags)
-- Build YAML from scratch with full formatting control
-- Advanced use cases: template engines, config generators, code formatters
+- 프로그래밍 방식으로 노드 검사 및 수정
+- 사용자 정의 메타데이터 (주석, 앵커, 태그) 추가
+- 서식을 완전히 제어하면서 YAML를 처음부터 구축
+- 고급 사용 사례: 템플릿 엔진, 구성 생성자, 코드 포맷터
 
 ### PyYAML 호환성
 
-Drop-in replacement with familiar API:
+익숙한 API로 직접 교체 가능：
 
 ```python
 import pyyaml_rs as yaml  # Use as 'yaml' for easy migration
@@ -54,9 +54,9 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
-### Async I/O
+### 비동기 I/O
 
-Non-blocking serialization and parsing via `asyncio`:
+`asyncio`를 통한 논블로킹 직렬화 및 파싱:
 
 ```python
 import asyncio
@@ -70,11 +70,11 @@ async def main():
 asyncio.run(main())
 ```
 
-Available functions: `safe_dump_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async`.
+사용 가능한 함수: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 
-### JSON Schema Validation
+### JSON Schema 검증
 
-Validate parsed YAML documents against JSON Schema:
+JSON Schema를 기반으로 파싱된 YAML 문서 검증：
 
 ```python
 doc = pyyaml_rs.parse("name: Alice\nage: 30")
@@ -84,11 +84,11 @@ doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 doc.validate('{"type": "object", "required": ["name"]}')
 ```
 
-Raises `YamlValidateError` on validation failure.
+검증 실패 시 `YamlValidateError`를 발생시킵니다.
 
-### Incremental Re-parse
+### 점진적 재파싱
 
-Re-parse stored source text in place with different options:
+다른 옵션으로 저장된 소스 텍스트를 제자리에서 재파싱：
 
 ```python
 doc = pyyaml_rs.parse("x: on")
@@ -98,9 +98,9 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-### NumPy ndarray Support
+### NumPy ndarray 지원
 
-pyyaml-rs can serialize `numpy.ndarray` objects of any dimension directly to YAML:
+pyyaml-rs는 모든 차원의 `numpy.ndarray` 객체를 직접 YAML로 직렬화할 수 있습니다:
 
 ```python
 import numpy as np
@@ -128,47 +128,47 @@ loaded = pyyaml_rs.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-#### Supported dtypes
+#### 지원되는 dtype
 
-| Type | Rust Backend | YAML Output |
-|------|-------------|-------------|
-| `int8/16/32/64` | `PyUntypedArray` → `PyArrayDyn<i8/i16/i32/i64>` | Plain integer (quoted if negative) |
-| `uint8/16/32/64` | `PyUntypedArray` → `PyArrayDyn<u8/u16/u32/u64>` | Plain integer |
-| `float32/64` | `PyUntypedArray` → `PyArrayDyn<f32/f64>` | Plain float (quoted if negative) |
-| `complex64/128` | `PyUntypedArray` → `PyArrayDyn<Complex64/Complex32>` | `(re+imj)` string |
+| 타입 | Rust 백엔드 | YAML 출력 |
+|------|------------|----------|
+| `int8/16/32/64` | `PyUntypedArray` → `PyArrayDyn<i8/i16/i32/i64>` | 일반 정수（음수 시 따옴표） |
+| `uint8/16/32/64` | `PyUntypedArray` → `PyArrayDyn<u8/u16/u32/u64>` | 일반 정수 |
+| `float32/64` | `PyUntypedArray` → `PyArrayDyn<f32/f64>` | 일반 실수（음수 시 따옴표） |
+| `complex64/128` | `PyUntypedArray` → `PyArrayDyn<Complex64/Complex32>` | `(re+imj)` 문자열 |
 | `bool` | `PyUntypedArray` → `PyArrayDyn<bool>` | `true` / `false` |
 | `nan` / `inf` | — | `NaN` / `.inf` / `-.inf` |
 
-#### Notes
+#### 참고사항
 
-- **Zero-copy**: Uses the `numpy` Rust crate's `PyUntypedArray` for type-erased array access, then dispatches to the correct typed `PyArrayDyn<T>` for zero-copy slice iteration
-- **GIL released**: Slice iteration runs outside the GIL for maximum performance on large arrays
-- **Negative numbers**: YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative values are automatically quoted and correctly parsed back during round-trip
-- **0-D arrays**: Reshaped to 1-D and serialized as a single-item list
-- **Complex numbers**: YAML has no native complex type; serialized as `(re+imj)` strings. `safe_load` returns them as strings, not Python `complex`
-- **Markdown frontmatter extraction** — `read_markdown()` for blog/content tools
-- **JSON ↔ YAML conversion** — `from_json()` / `from_dict()`
-- **Multi-document parsing** — `parse_all_docs()`
-- **i18n error messages** — `set_language("zh-CN")` for bilingual errors
-- **Type hints** — Full `.pyi` stubs for IDE support
+- **제로 복사**: `numpy` Rust crate의 `PyUntypedArray`를 사용하여 타입이 지워진 배열 접근을 수행한 후, 올바른 타입의 `PyArrayDyn<T>`에 디스패치하여 제로 복사 슬라이스 반복을 수행
+- **GIL 해제**: 슬라이스 반복은 GIL 외부에서 실행되어 큰 배열에서 최대 성능을 발휘
+- **음수**: YAML 1.2 블록 시퀀스에는 `-`로 시작하는 일반 스칼라를 포함할 수 없습니다. 음수 값은 자동으로 따옴표가 추가되며 순환 파싱 시 올바르게 파싱됩니다
+- **0차원 배열**: 1차원으로 리셰이프되어 단일 항목 리스트로 직렬화
+- **복소수**: YAML에는 네이티브 복소수 타입이 없습니다. `(re+imj)` 문자열로 직렬화됩니다. `safe_load`는 Python `complex`가 아닌 문자열로 반환
+- **Markdown frontmatter 추출** — `read_markdown()` 블로그/콘텐츠 도구용
+- **JSON ↔ YAML 변환** — `from_json()` / `from_dict()`
+- **다중 문서 파싱** — `parse_all_docs()`
+- **국제화 오류 메시지** — `set_language("ko")` 이중 언어 오류용
+- **타입 힌트** — IDE 지원을 위한 완전한 `.pyi` 스텁
 
-### Supported YAML Constructs
+### 지원되는 YAML 구조
 
-| Feature | Support |
-|---------|---------|
-| YAML 1.2 spec | ✅ Full |
-| Comments (standalone) | ✅ Preserved |
-| Comments (inline) | ✅ Preserved |
-| Anchors & aliases | ✅ Preserved |
-| Tags (explicit) | ✅ Preserved |
-| Block scalars (`\|`, `>`) | ✅ Preserved |
-| Chomping indicators | ✅ Preserved |
-| Flow collections (`{}`, `[]`) | ✅ Preserved |
-| Merge keys (`<<`) | ✅ Resolved |
-| Complex keys | ✅ Supported |
-| Escape sequences | ✅ Supported |
-| Multi-document | ✅ Supported |
-| **Async I/O** | **✅ `safe_*_async`** |
-| **JSON Schema validation** | **✅ `doc.validate()`** |
-| **Incremental re-parse** | **✅ `doc.reparse()`** |
-| **JSON export** | **✅ `doc.to_json()`** |
+| 기능 | 지원 |
+|------|------|
+| YAML 1.2 사양 | ✅ 완전 |
+| 주석 (독립) | ✅ 유지 |
+| 주석 (인라인) | ✅ 유지 |
+| 앵커 및 별칭 | ✅ 유지 |
+| 태그 (명시적) | ✅ 유지 |
+| 블록 스칼라 (`|`, `>`) | ✅ 유지 |
+| chomp 지시자 | ✅ 유지 |
+| 흐름 컬렉션 (`{}`, `[]`) | ✅ 유지 |
+| 병합 키 (`<<`) | ✅ 해결 |
+| 복합 키 | ✅ 지원 |
+| 이스케이프 시퀀스 | ✅ 지원 |
+| 다중 문서 | ✅ 지원 |
+| **비동기 I/O** | **✅ `safe_*_async`** |
+| **JSON Schema 검증** | **✅ `doc.validate()`** |
+| **점진적 재파싱** | **✅ `doc.reparse()`** |
+| **JSON 내보내기** | **✅ `doc.to_json()`** |

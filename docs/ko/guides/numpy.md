@@ -1,57 +1,57 @@
 ---
 
-title: NumPy ndarray 序列化指南
-lang: ko-KR
+title: NumPy ndarray 직렬화 가이드
+lang: ko
 
-## NumPy ndarray 序列化指南
+## NumPy ndarray 직렬화 가이드
 
-将 NumPy 数组序列化为 YAML 列表，支持零拷贝 Rust 处理。
+NumPy 배열을 YAML 리스트로 직렬화합니다. 제로 복사 Rust 처리를 지원합니다.
 
-### 基本用法
+### 기본 사용법
 
 ```python
 import numpy as np
 import pyyaml_rs as y
 
-# 1-D 数组
+# 1차원 배열
 arr = np.array([1, 2, 3], dtype="int32")
 yaml_str = y.safe_dump(arr)
-# 输出:
+# 출력:
 # - 1
 # - 2
 # - 3
 
-# 还原回 Python 列表
+# Python 리스트로 복원
 data = y.safe_load(yaml_str)
 assert data == [1, 2, 3]
 ```
 
-### 多维数组
+### 다차원 배열
 
 ```python
-# 2-D 矩阵
+# 2차원 행렬
 matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
 yaml_str = y.safe_dump(matrix)
 data = y.safe_load(yaml_str)
 assert data == [[1.0, 2.0], [3.0, 4.0]]
 
-# 3-D 立方体
+# 3차원 큐브
 cube = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype="int64")
 data = y.safe_load(y.safe_dump(cube))
 assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 ```
 
-### 支持的 dtype
+### 지원되는 dtype
 
-| NumPy dtype | YAML 输出 | 示例 |
+| NumPy dtype | YAML 출력 | 예시 |
 |-------------|-----------|------|
-| `int8/16/32/64` | 整数 | `42` |
-| `uint8/16/32/64` | 整数 | `42` |
-| `float32/64` | 浮点数 | `3.14` |
-| `bool` | 布尔 | `true` / `false` |
-| `complex64/128` | 字符串 | `(1+2j)` |
+| `int8/16/32/64` | 정수 | `42` |
+| `uint8/16/32/64` | 정수 | `42` |
+| `float32/64` | 부동소수점 | `3.14` |
+| `bool` | 불리언 | `true` / `false` |
+| `complex64/128` | 문자열 | `(1+2j)` |
 
-### 特殊值
+### 특수 값
 
 ```python
 # NaN
@@ -59,26 +59,26 @@ arr = np.array([1.0, float("nan"), 3.0])
 data = y.safe_load(y.safe_dump(arr))
 assert str(data[1]) == "nan"
 
-# Infinity
+# 무한대
 arr = np.array([float("inf"), -float("inf")])
 data = y.safe_load(y.safe_dump(arr))
 assert data[0] == float("inf")
 assert data[1] == float("-inf")
 ```
 
-### 负数处理
+### 음수 처리
 
-YAML 1.2 规范不允许在块序列中以 `-` 开头的 plain 标量。负数会自动用单引号包裹以确保正确的往返：
+YAML 1.2 사양에서는 블록 시퀀스에 `-`로 시작하는 일반 스칼라를 포함할 수 없습니다. 음수 값은 자동으로 단일 따옴표로 감싸지며, 순환 파싱 시 올바르게 파싱됩니다:
 
 ```python
 arr = np.array([-100, 200], dtype="int16")
 data = y.safe_load(y.safe_dump(arr))
-assert data == [-100, 200]  # 往返正确
+assert data == [-100, 200]  # 순환 파싱 정상 처리
 ```
 
-### 0-D 标量数组
+### 0차원 스칼라 배열
 
-0-D 数组会被 reshape 为 1-D 后序列化，结果是一个单元素列表：
+0차원 배열은 1차원으로 리셰이프된 후 직렬화되며, 단일 항목 리스트가 됩니다:
 
 ```python
 scalar = np.array(42, dtype="int32")
@@ -86,9 +86,9 @@ data = y.safe_load(y.safe_dump(scalar))
 assert data == [42]
 ```
 
-### 嵌套在结构体中
+### 구조체 내 중첩
 
-NumPy 数组可以包含在 dict 或 list 中：
+NumPy 배열은 dict나 list에 포함될 수 있습니다:
 
 ```python
 data = {"matrix": np.array([[1, 2], [3, 4]]), "label": "test"}
@@ -97,18 +97,18 @@ loaded = y.safe_load(yaml_str)
 assert loaded["matrix"] == [[1, 2], [3, 4]]
 ```
 
-### 不支持的类型
+### 지원되지 않는 타입
 
-以下类型会抛出 `YamlTypeError`：
+다음 타입은 `YamlTypeError`를 발생시킵니다:
 
-- 字符串数组
-- 对象数组
-- 结构化数组
-- 非数值自定义 dtype
+- 문자열 배열
+- 객체 배열
+- 구조화 배열
+- 비숫자 커스텀 dtype
 
-### 性能
+### 성능
 
-- 使用 `PyUntypedArray` 进行零拷贝 dtype 分派
-- 使用 `PyArrayDyn<T>` 进行零拷贝切片迭代
-- 遍历切片时释放 Python GIL
-- 支持任意维度无需额外分配
+- `PyUntypedArray`를 사용한 제로 복사 dtype 디스패치
+- `PyArrayDyn<T>`를 사용한 제로 복사 슬라이스 반복
+- 슬라이스 이터레이션 중 Python GIL 해제
+- 추가 할당 없이 모든 차원 지원

@@ -1,7 +1,7 @@
 ---
 
 title: Changelog
-lang: ja-JP
+lang: ja
 
 ## 変更履歴
 

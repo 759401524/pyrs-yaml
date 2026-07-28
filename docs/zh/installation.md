@@ -1,11 +1,11 @@
 ---
 
 title: Installation
-lang: zh-CN
+lang: zh
 
 ## 安装
 
-### Requirements
+### 系统要求
 
 - **Python** ≥ 3.8 (CPython)
 - **Platform**: Linux, macOS, Windows

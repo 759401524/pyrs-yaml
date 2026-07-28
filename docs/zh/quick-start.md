@@ -1,7 +1,7 @@
 ---
 
 title: Quick Start
-lang: zh-CN
+lang: zh
 
 ## 快速开始
 
@@ -17,7 +17,7 @@ cd pyyaml-rs
 uv run --frozen maturin develop --release
 ```
 
-### 2. Parse YAML
+### 2. 解析 YAML
 
 ```python
 import pyyaml_rs
@@ -35,7 +35,7 @@ print(doc.get("age"))     # 30
 print(doc.get("email"))   # alice@example.com
 ```
 
-### 3. Convert to Python Objects
+### 3. 转换为 Python 对象
 
 ```python
 # Use safe_load for PyYAML-compatible behavior
@@ -52,7 +52,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))       # <class 'list'>
 ```
 
-### 4. Serialize to YAML
+### 4. 序列化为 YAML
 
 ```python
 # Convert a Python dict back to YAML
@@ -70,7 +70,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-### 5. Preserve Formatting (Round-Trip)
+### 5. 保留格式（往返解析）
 
 ```python
 # The key advantage of pyyaml-rs
@@ -100,7 +100,7 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-### 6. Read YAML from Files
+### 6. 从文件读取 YAML
 
 ```python
 # Parse a YAML file directly
@@ -108,7 +108,7 @@ doc = pyyaml_rs.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### 7. Multiple Documents
+### 7. 多文档解析
 
 ```python
 # Parse multiple YAML documents
@@ -127,9 +127,9 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 8. NumPy ndarray Support
+## 8. NumPy ndarray 支持
 
-pyyaml-rs can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
+pyyaml-rs 可以将 `numpy.ndarray` 对象直接序列化为 YAML。这对于保存科学数据、模型权重或任何多维数组为人类可读格式非常有用。
 
 ```python
 import numpy as np
@@ -171,6 +171,6 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 ### 下一步
 
-- **[功能特性](features.md)** — Explore all supported YAML features
-- **[Parsing Guide](guides/parsing.md)** — Advanced parsing options
-- **[API 参考](api/reference.md)** — Complete API documentation
+- **[功能特性](features.md)** — 探索所有支持的 YAML 功能
+- **[解析指南](guides/parsing.md)** — 高级解析选项
+- **[API 参考](api/reference.md)** — 完整的 API 文档

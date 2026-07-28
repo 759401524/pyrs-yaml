@@ -1,68 +1,68 @@
 ---
 
-title: PyYAML Compatibility
-lang: zh-CN
+title: PyYAML 兼容性
+lang: zh
 
 ## 与 PyYAML 兼容
 
-pyyaml-rs provides a **drop-in replacement** for PyYAML, making migration straightforward.
+pyyaml-rs 提供了 PyYAML 的**直接替换**，使迁移变得简单。
 
-### Simple Migration
+### 简单迁移
 
 ```python
-# Before
+# 旧代码
 import yaml
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 
-# After
+# 新代码
 import pyyaml_rs as yaml
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
 
-### Compatible API
+### 兼容 API
 
-| PyYAML Function | pyyaml-rs Equivalent | Notes |
-|-----------------|---------------------|-------|
-| `yaml.safe_load()` | `pyyaml_rs.safe_load()` | ✅ Identical |
-| `yaml.safe_loads()` | `pyyaml_rs.safe_loads()` | ✅ Identical |
-| `yaml.safe_dump()` | `pyyaml_rs.safe_dump()` | ✅ Identical |
-| `yaml.safe_dumps()` | `pyyaml_rs.safe_dumps()` | ✅ Identical |
-| `yaml.load()` | `pyyaml_rs.safe_load()` | ⚠️ Use safe variant |
-| `yaml.dump()` | `pyyaml_rs.safe_dump()` | ⚠️ Use safe variant |
+| PyYAML 函数 | pyyaml-rs 等价物 | 说明 |
+|-------------|----------------|------|
+| `yaml.safe_load()` | `pyyaml_rs.safe_load()` | ✅ 完全相同 |
+| `yaml.safe_loads()` | `pyyaml_rs.safe_loads()` | ✅ 完全相同 |
+| `yaml.safe_dump()` | `pyyaml_rs.safe_dump()` | ✅ 完全相同 |
+| `yaml.safe_dumps()` | `pyyaml_rs.safe_dumps()` | ✅ 完全相同 |
+| `yaml.load()` | `pyyaml_rs.safe_load()` | ⚠️ 使用安全变体 |
+| `yaml.dump()` | `pyyaml_rs.safe_dump()` | ⚠️ 使用安全变体 |
 
-### Key Differences
+### 主要区别
 
-#### What pyyaml-rs Does Better
+#### pyyaml-rs 的优势
 
-| Feature | PyYAML | pyyaml-rs |
-|---------|--------|-----------|
-| Round-trip preservation | ❌ Loses comments/anchors | ✅ Preserves everything |
-| 性能 | Baseline | **25–40× faster** |
-| Type hints | Partial | ✅ Full `.pyi` stubs |
-| ABI3 wheel | N/A | ✅ Single wheel for all Python versions |
-| i18n errors | ❌ English only | ✅ English + Chinese |
+| 特性 | PyYAML | pyyaml-rs |
+|------|--------|-----------|
+| 往返保存 | ❌ 丢失注释/锚点 | ✅ 保留所有内容 |
+| 性能 | 基准 | **快 25-40 倍** |
+| 类型提示 | 部分支持 | ✅ 完整 `.pyi` 桩文件 |
+| ABI3 wheel | 无 | ✅ 单个 wheel 支持所有 Python 版本 |
+| i18n 错误 | ❌ 仅英文 | ✅ 英文 + 中文 |
 
-#### What to Watch For
+#### 注意事项
 
-1. **Anchor/alias handling**: PyYAML loses anchors on round-trip; pyyaml-rs preserves them
-2. **Comment position**: pyyaml-rs may reorder some comments in complex nested structures
-3. **Flow style**: Both preserve, but output formatting may differ slightly
-4. **Error messages**: pyyaml-rs uses i18n error messages with more context
+1. **锚点/别名处理**: PyYAML 在往返时丢失锚点；pyyaml-rs 保留它们
+2. **注释位置**: pyyaml-rs 在复杂嵌套结构中可能会重新排列某些注释
+3. **流式风格**: 两者都保留，但输出格式可能略有不同
+4. **错误消息**: pyyaml-rs 使用具有更多上下文的 i18n 错误消息
 
-### Migration Checklist
+### 迁移检查清单
 
-- [ ] Replace `import yaml` with `import pyyaml_rs as yaml`
-- [ ] Test all YAML parsing/saving workflows
-- [ ] Verify round-trip output matches expectations
-- [ ] Check anchor/alias behavior (if used)
-- [ ] Review error handling for custom error messages
+- [ ] 将 `import yaml` 替换为 `import pyyaml_rs as yaml`
+- [ ] 测试所有 YAML 解析/保存工作流
+- [ ] 验证往返输出符合预期
+- [ ] 检查锚点/别名行为（如果使用）
+- [ ] 检查自定义错误消息的错误处理
 
-### Example Migration
+### 迁移示例
 
 ```python
-# Old code
+# 旧代码
 import yaml
 
 def load_config(path):
@@ -73,13 +73,12 @@ def save_config(data, path):
     with open(path, "w") as f:
         yaml.safe_dump(data, f)
 
-# New code
+# 新代码
 import pyyaml_rs
 
 def load_config(path):
     return pyyaml_rs.parse_file(path).to_dict()
 
 def save_config(data, path):
-    doc = pyyaml_rs.parse(pyyaml_rs.safe_dump(data))
     pyyaml_rs.dump_file(data, path)
 ```

@@ -1,7 +1,7 @@
 ---
 
 title: License
-lang: ja-JP
+lang: ja
 
 ## ライセンス
 

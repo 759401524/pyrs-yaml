@@ -1,7 +1,7 @@
 ---
 
 title: Comparison with Other Libraries
-lang: ja-JP
+lang: ja
 
 ## 比較 with Other Libraries
 

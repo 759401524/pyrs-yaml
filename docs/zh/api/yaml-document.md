@@ -1,290 +1,223 @@
 ---
 
-title: YamlDocument Class
-lang: zh-CN
+title: YamlDocument 类
+lang: zh
 
 ## YamlDocument 类
 
-The `YamlDocument` class represents a parsed YAML document with full metadata preservation.
-
 ### 概述
+
+`YamlDocument` 是 pyyaml-rs 的核心类，保存已解析的 YAML 文档。它使用基于 `IndexMap` 的自定义 AST，实现 **100% 往返解析**、**完整的键顺序保留**、**嵌套注释保留** 和 **详细元数据**。
 
 ```python
 class YamlDocument:
-    """A parsed YAML document with perfect round-trip support."""
+    """pyyaml-rs 的核心类。"""
+    # ... C 扩展实现 ...
 ```
 
-### Methods
+### 构造函数
+
+#### `YamlDocument()`
+
+内部构造函数。用户不应直接调用。从 `pyyaml_rs.parse()` 返回。
+
+### 属性
+
+- `version` — YAML 文档版本
+- `schema` — 模式（`core`、`failsafe`、`json`）
+- `tags` — 标签列表
+- `anchors` — 锚点列表
+- `source` — YAML 源文本
+
+### 方法
 
 #### `to_yaml()`
 
-Convert the document back to a YAML string.
+将文档转换为 YAML 字符串。
 
 ```python
-to_yaml() -> str
-```
-
-**Returns:** The complete YAML document string, ending with a newline.
-
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("key: value")
-print(doc.to_yaml())  # key: value\n
-```
-
-#### `to_yaml_with_options()`
-
-Convert to YAML with custom options.
-
-```python
-to_yaml_with_options(
-    indent_size: int = 2,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
+to_yaml(
+    indent: int = 2,
+    allow_unicode: bool = True,
+    default_flow_style: bool = False,
     sort_keys: bool = False,
+    width: int = 80,
+    resolve_aliases: bool = True,
+    strip_comments: bool = False,
+    preserve_quotes: bool = True,
 ) -> str
 ```
 
-**Parameters:**
+**参数:**
 
-- `indent_size` — Spaces per indent level (default: 2)
-- `explicit_start` — Add `---` at document start (default: False)
-- `explicit_end` — Add `...` at document end (default: False)
-- `sort_keys` — Sort keys alphabetically (default: False)
+- `indent` — 缩进空格数（默认：2）
+- `allow_unicode` — 允许 Unicode 字符（默认：True）
+- `default_flow_style` — 默认使用流式风格（默认：False）
+- `sort_keys` — 对键排序（默认：False）
+- `width` — 折行宽度（默认：80）
+- `resolve_aliases` — 解析别名（默认：True）
+- `strip_comments` — 去除注释（默认：False）
+- `preserve_quotes` — 保留引号（默认：True）
 
-**Example:**
+**返回值:** YAML 字符串
+
+**示例:**
 
 ```python
-yaml_str = doc.to_yaml_with_options(
-    indent_size=4,
-    explicit_start=True,
-    sort_keys=True,
-)
+doc = pyyaml_rs.parse("key: value\n# comment")
+yaml_str = doc.to_yaml()
 ```
 
 #### `to_dict()`
 
-Convert to a Python dict/list, resolving alias references.
+转换为 Python dict/list。解析别名引用，返回原生 Python 类型。
 
 ```python
 to_dict() -> dict[str, Any] | list[Any]
 ```
 
-**Returns:** Native Python types. Anchors (`&name`) are inlined, aliases (`*name`) are replaced with actual values. Scalars are converted to Python native types (bool/int/float/str/None).
+**返回值:** 字典或列表
 
-**Example:**
+**示例:**
 
 ```python
-data = doc.to_dict()
-print(data["key"])  # value
-print(type(data))   # <class 'dict'>
+doc = pyyaml_rs.parse("key: value")
+data = doc.to_dict()  # {'key': 'value'}
 ```
 
 #### `get()`
 
-Get a value by key (for mapping roots).
+通过键获取值（用于映射根）。
 
 ```python
 get(key: str, default: Any = None) -> Any
 ```
 
-**Parameters:**
+**返回值:** 值，未找到则返回默认值
 
-- `key` — The key to look up
-- `default` — Value to return if key not found (default: None)
+#### `type()`
 
-**Returns:** The value, or `default` if not found (or if root is not a mapping).
-
-**Example:**
+以字符串形式获取根节点类型。
 
 ```python
-value = doc.get("key")
-value = doc.get("missing", "fallback")
+type() -> str
 ```
 
-#### `root_type()`
-
-Get the root node type as a string.
-
-```python
-root_type() -> str
-```
-
-**Returns:** One of `"scalar"`, `"mapping"`, `"sequence"`, `"null"`, `"alias"`.
-
-**Example:**
-
-```python
-print(doc.root_type())  # "mapping"
-```
+**返回值:** 类型名（`"mapping"`、`"sequence"`、`"scalar"`）
 
 #### `to_json()`
 
-Serialize the document to a JSON string.
+将文档序列化为 JSON 字符串。
 
 ```python
 to_json(indent: int = 2) -> str
 ```
 
-**Parameters:**
-
-- `indent` — JSON indentation spaces (default: 2)
-
-**Returns:** A JSON string of the document contents.
-
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("a: 1\nb: hello")
-json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
-```
+**返回值:** JSON 字符串
 
 #### `validate()`
 
-Validate the document contents against a JSON Schema.
+根据 JSON Schema 验证文档内容。
 
 ```python
-validate(schema: str | dict[str, Any]) -> None
+validate(schema: dict[str, Any]) -> None
 ```
 
-**Parameters:**
+**引发:** `YamlValidateError` — 验证错误
 
-- `schema` — JSON Schema as either a JSON string or a Python dict
+#### `reload()`
 
-**Returns:** `None` on success.
-
-**Raises:**
-
-- `YamlValidateError` — Document does not conform to the schema
-
-**Example:**
+就地重新解析存储的源文本，允许更改模式或合并行为。
 
 ```python
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
-doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
-
-# From JSON string
-doc.validate('{"type": "object", "required": ["name"]}')
+reload(schema: str = "core", resolve_merges: bool = True) -> None
 ```
 
-#### `source()`
+#### `source_text()`
 
-Return the original YAML source text used to create this document.
+返回用于创建此文档的原始 YAML 源文本。
 
 ```python
-source() -> str | None
+source_text() -> str
 ```
 
-**Returns:** The original YAML string, or `None` if the document was not created via `parse()` (e.g. from `from_dict()`).
+**返回值:** YAML 源字符串
 
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("key: value")
-print(doc.source())  # "key: value"
-```
-
-#### `reparse()`
-
-Re-parse the stored source text in place, allowing schema or merge behavior changes.
-
-```python
-reparse(resolve_merges: bool = True, schema: str = "core") -> None
-```
-
-**Parameters:**
-
-- `resolve_merges` — Whether to resolve `<<: *alias` merge keys (default: `True`)
-- `schema` — Type resolution schema: `"core"`, `"json"`, `"failsafe"`, or `"yaml1.1"` (default: `"core"`)
-
-**Raises:**
-
-- `TypeError` — No source text stored
-- `YamlParseError` — Re-parsing failed
-
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("x: on")
-print(doc.get("x"))  # "on" (string, core schema)
-
-doc.reparse(schema="yaml1.1")
-print(doc.get("x"))  # True (bool, yaml1.1 schema)
-```
-
-### Dunder Methods
+### 特殊方法
 
 #### `__getitem__()`
 
-Access by key (mapping) or index (sequence).
+通过键（映射）或索引（序列）访问。
 
 ```python
-doc["key"]      # For mappings
-doc[0]          # For sequences
+doc = pyyaml_rs.parse("key: value")
+value = doc["key"]  # 'value'
 ```
-
-**Raises:**
-
-- `KeyError` — Key not found in mapping
-- `IndexError` — Index out of range for sequence
-- `TypeError` — Document not subscriptable
 
 #### `__contains__()`
 
-Check if a key exists.
+检查键是否存在。
 
 ```python
-"key" in doc  # Returns bool
+"key" in doc  # True
 ```
 
 #### `__len__()`
 
-Get the number of items.
+获取项目数量。
 
 ```python
-len(doc)  # Number of keys (mapping) or items (sequence)
+len(doc)
 ```
 
 #### `__iter__()`
 
-Iterate over keys (mapping) or values (sequence).
+遍历键（映射）或值（序列）。
 
 ```python
 for key in doc:
-    print(key, doc[key])
+    print(key)
 ```
 
 #### `__repr__()`
 
-Debug representation.
+调试表示。
 
 ```python
-repr(doc)  # "YamlDocument(<yaml>...)"
+repr(doc)  # "YamlDocument({key: value})"
 ```
 
 #### `__str__()`
 
-String representation.
+字符串表示。
 
 ```python
-str(doc)  # Same as doc.to_yaml()
+str(doc)  # "YamlDocument({key: value})"
 ```
 
-### Example
+#### `__eq__()`
+
+等值比较。当两个 `YamlDocument` 具有相同内容时返回 true。
+
+```python
+doc1 == doc2  # True or False
+```
+
+**示例:**
 
 ```python
 import pyyaml_rs
 
-doc = pyyaml_rs.parse("""
-name: Alice
-age: 30
-""")
+# 映射
+doc = pyyaml_rs.parse("name: Alice\nage: 30")
+print(doc["name"])  # Alice
+print(len(doc))     # 2
 
-print(doc.get("name"))    # Alice
-print(doc.root_type())    # mapping
-print(len(doc))           # 2
-print("name" in doc)      # True
-for key in doc:
-    print(key, doc[key])  # name Alice, age 30
+# 序列
+doc = pyyaml_rs.parse("- item1\n- item2")
+print(doc[0])  # item1
+
+# 嵌套访问
+doc = pyyaml_rs.parse("user:\n  name: Alice")
+print(doc["user"]["name"])  # Alice
 ```

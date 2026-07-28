@@ -1,114 +1,114 @@
 ---
 
-title: Markdown Frontmatter
-lang: ja-JP
+title: Markdown フロントメータ
+lang: ja
 
 ## Markdown フロントメータ
 
-Extract YAML frontmatter from Markdown files and strings.
+Markdown ファイルや文字列から YAML フロントメータを抽出します。
 
-### What is Frontmatter?
+### フロントメータとは？
 
-Frontmatter is a YAML block at the top of Markdown files, wrapped between `---` delimiters. Commonly used in blog platforms, static site generators, and content management systems.
+フロントメータは、Markdown ファイルの先頭にある `---` 区切りで囲まれた YAML ブロックです。ブログプラットフォーム、静的サイトジェネレーター、コンテンツ管理システムでよく使われます。
 
 ```markdown
 ---
 
-title: My Blog Post
+title: ブログ記事
 author: Alice
 date: 2024-01-15
 tags: [yaml, python, rust]
 ---
 
-# Hello World
+# こんにちは
 
-This is the content.
+コンテンツです。
 ```
 
-## read_markdown()
+## `read_markdown()`
 
-Parse frontmatter from a Markdown file:
+Markdown ファイルからフロントメータをパースします：
 
 ```python
 import pyyaml_rs
 
-# Returns (frontmatter_dict, content_string)
+# (frontmatter_dict, content_string) を返す
 frontmatter, content = pyyaml_rs.read_markdown("post.md")
 
 print(frontmatter)
-# {'title': 'My Blog Post', 'author': 'Alice', 'date': '2024-01-15', 'tags': ['yaml', 'python', 'rust']}
+# {'title': 'ブログ記事', 'author': 'Alice', 'date': '2024-01-15', 'tags': ['yaml', 'python', 'rust']}
 
 print(content)
-# "# Hello World\n\nThis is the content.\n"
+# "# こんにちは\n\nコンテンツです。\n"
 ```
 
-### read_markdown_str()
+### `read_markdown_str()`
 
-Parse frontmatter from a Markdown string:
+Markdown 文字列からフロントメータをパースします：
 
 ```python
 markdown_text = """
 ---
-title: My Post
+title: 記事
 tags: [tech]
 ---
 
-Content here.
+コンテンツここ。
 """
 
 frontmatter, content = pyyaml_rs.read_markdown_str(markdown_text)
 
 if frontmatter:
-    print(f"Title: {frontmatter['title']}")
-    print(f"Tags: {frontmatter['tags']}")
-    print(f"Content: {content}")
+    print(f"タイトル: {frontmatter['title']}")
+    print(f"タグ: {frontmatter['tags']}")
+    print(f"コンテンツ: {content}")
 else:
-    print("No frontmatter found")
+    print("フロントメータが見つかりません")
 ```
 
-### No Frontmatter
+### フロントメータがない場合
 
-If the file/string has no frontmatter:
+ファイル/文字列にフロントメータがない場合：
 
 ```python
 frontmatter, content = pyyaml_rs.read_markdown("no-frontmatter.md")
 
-# frontmatter is None, content is the full text
+# frontmatter は None、content は全文
 assert frontmatter is None
-assert content == "Just regular markdown content."
+assert content == "通常の Markdown コンテンツ。"
 ```
 
-### Common Use Cases
+### 一般的な使用例
 
-#### Blog Platforms
+#### ブログプラットフォーム
 
 ```python
-# Extract metadata for blog listing
+# ブログ一覧用のメタデータを抽出
 frontmatter, _ = pyyaml_rs.read_markdown("draft.md")
 if frontmatter.get("published", False):
-    print(f"Published post: {frontmatter['title']}")
+    print(f"公開済み記事: {frontmatter['title']}")
 else:
-    print("Draft post")
+    print("下書き記事")
 ```
 
-#### Static Site Generators
+#### 静的サイトジェネレーター
 
 ```python
-# Process all markdown files
+# すべての Markdown ファイルを処理
 import glob
 
 for path in glob.glob("posts/*.md"):
     meta, content = pyyaml_rs.read_markdown(path)
-    # Render template with meta and content
+    # meta とコンテンツでテンプレートをレンダリング
 ```
 
-#### Content Management
+#### コンテンツ管理
 
 ```python
-# Validate frontmatter structure
+# フロントメータの構造を検証
 required_fields = ["title", "author", "date"]
 frontmatter, _ = pyyaml_rs.read_markdown("article.md")
 
 for field in required_fields:
-    assert field in frontmatter, f"Missing required field: {field}"
+    assert field in frontmatter, f"必須フィールドがありません: {field}"
 ```

@@ -1,7 +1,7 @@
 ---
 
 title: License
-lang: ko-KR
+lang: ko
 
 ## 라이선스
 

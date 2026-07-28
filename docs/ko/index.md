@@ -1,7 +1,7 @@
 ---
 
 title: pyyaml-rs
-lang: ko-KR
+lang: ko
 
 ## pyyaml-rs
 
@@ -13,21 +13,21 @@ lang: ko-KR
 
 대부분의 Python YAML 라이브러리는 성능 또는 정확도 중 하나를 희생합니다. pyyaml-rs는 둘을 모두 제공합니다:
 
-- **PyYAML** (Python) — slow, **loses comments/anchors/tags** on round-trip
-- **ruamel.yaml** (Python) — preserves formatting, but **5–10× slower** than pyyaml-rs
-- **pyyaml-rs** (Rust) — **25–40× faster than PyYAML** while preserving everything
+- **PyYAML** (Python) — 느리고, 순환 파싱 시 **주석/앵커/태그를 잃음**
+- **ruamel.yaml** (Python) — 서식을 유지하지만 pyyaml-rs보다 **5–10배 느림**
+- **pyyaml-rs** (Rust) — PyYAML보다 **25–40배 빠르며** 모든 것을 유지
 
 ### 주요 기능
 
-- **YAML 1.2 compliant** — powered by saphyr-parser (98.1% YAML Test Suite pass rate)
-- **Perfect Round-Trip** — preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
-- **25–40× faster** than PyYAML — Rust backend with zero-copy parsing
-- **Custom AST** — extensible AST for advanced YAML manipulation and custom formatting
-- **PyYAML compatible** — drop-in replacement with `safe_load` / `safe_dump` API
-- **Type hints** — PEP 561 compliant with full `.pyi` stubs
-- **ABI3** — single wheel works across Python 3.9–3.13
-- **i18n error messages** — `set_language("zh-CN")` for bilingual error reporting
-- **NumPy ndarray support** — serialize `numpy.ndarray` of any dimension to YAML with zero-copy Rust dispatch
+- **YAML 1.2 준수** — saphyr-parser 기반 (YAML 테스트 스위트 98.1% 통과율)
+- **완벽한 순환 파싱** — 주석, 앵커, 태그, chomp, 스칼라 스타일 및 흐름/블록 서식 유지
+- **PyYAML보다 25–40배 빠름** — Rust 백엔드, 제로 복사 파싱
+- **커스텀 AST** — 고급 YAML 조작 및 사용자 정의 서식을 위한 확장 가능한 AST
+- **PyYAML 호환** — `safe_load` / `safe_dump` API로 직접 교체 가능
+- **타입 힌트** — PEP 561 준수, 완전한 `.pyi` 스텁 파일
+- **ABI3** — 단일 휠로 Python 3.9–3.13 지원
+- **국제화 오류 메시지** — `set_language("ko")`로 이중 언어 오류 보고
+- **NumPy ndarray 지원** — 모든 차원의 `numpy.ndarray`를 제로 복사 Rust 디스패치로 YAML에 직렬화
 
 ### 빠른 시작
 

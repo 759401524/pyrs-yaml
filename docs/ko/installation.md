@@ -1,26 +1,28 @@
 ---
 
 title: Installation
-lang: ko-KR
+lang: ko
 
 ## 설치
 
-### Requirements
+### 시스템 요구사항
 
 - **Python** ≥ 3.8 (CPython)
-- **Platform**: Linux, macOS, Windows
+- **플랫폼**: Linux, macOS, Windows
 
-### pip install
+### 소스에서 설치
+
+패키지는 아직 PyPI에 게시되지 않았습니다. 소스에서 설치:
 
 ```bash
 uv run --frozen maturin develop --release
 ```
 
-The package is published as an **ABI3 wheel**, meaning a single wheel works across Python 3.8 through 3.15 — no recompilation needed.
+패키지는 **ABI3 휠**로 빌드되며, 단일 휠로 Python 3.8부터 3.15까지 지원 — 재컴파일 불필요.
 
-### Development 설치
+### 개발용 설치
 
-To install from source (for development or testing):
+소스에서 설치 (개발 또는 테스트용):
 
 ```bash
 git clone https://github.com/759401524/pyyaml-rs.git
@@ -28,7 +30,7 @@ cd pyyaml-rs
 uv run --frozen maturin develop --release
 ```
 
-### Verify 설치
+### 설치 확인
 
 ```python
 import pyyaml_rs

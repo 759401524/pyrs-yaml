@@ -1,15 +1,15 @@
 ---
 
-title: Parsing YAML
-lang: ja-JP
+title: YAML のパース
+lang: ja
 
 ## YAML のパース
 
-This guide covers all ways to parse YAML with pyyaml-rs.
+このガイドでは、pyyaml-rs で YAML をパースするすべての方法を説明します。
 
-### Basic Parsing
+### 基本パース
 
-#### Parse a YAML String
+#### YAML 文字列のパース
 
 ```python
 import pyyaml_rs
@@ -18,24 +18,24 @@ doc = pyyaml_rs.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
-#### Parse with Options
+#### オプション付きパース
 
 ```python
-# Disable merge key resolution (keep <<: *alias as-is)
+# マージキーの解決を無効化（<<: *alias をそのまま保持）
 doc = pyyaml_rs.parse(yaml_text, resolve_merges=False)
 ```
 
-#### Parse a YAML File
+#### YAML ファイルのパース
 
 ```python
 doc = pyyaml_rs.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-#### Parse Multiple Documents
+#### 複数ドキュメントのパース
 
 ```python
-# YAML with --- separators
+# --- 区切りの YAML
 yaml_text = """
 ---
 
@@ -50,49 +50,49 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
-## PyYAML-Compatible Parsing
+## PyYAML 互換パース
 
 ```python
-# Returns native Python types (dict, list, str, int, etc.)
+# ネイティブ Python 型を返す（dict, list, str, int など）
 data = pyyaml_rs.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
-# Multiple documents
+# 複数ドキュメント
 docs = pyyaml_rs.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
-### Acceptable Input Types
+### 受け付ける入力型
 
-- `str` — standard YAML string
-- `bytes` — valid UTF-8 encoded bytes
-- `str` with BOM — handled correctly
+- `str` — 標準 YAML 文字列
+- `bytes` — 有効な UTF-8 エンコードバイト列
+- `str` に BOM あり — 正しく処理される
 
 ```python
-# Accepts both str and bytes
+# str と bytes の両方を受け付ける
 doc1 = pyyaml_rs.parse("key: value")
 doc2 = pyyaml_rs.parse(b"key: value")
 ```
 
-### Error Handling
+### エラーハンドリング
 
 ```python
 try:
     doc = pyyaml_rs.parse("invalid: yaml: [")
 except pyyaml_rs.YamlParseError as e:
-    print(f"Parse error: {e}")
+    print(f"パースエラー: {e}")
 ```
 
-### Supported Data Types
+### サポートされるデータ型
 
-pyyaml-rs correctly parses all YAML 1.2 scalar types:
+pyyaml-rs はすべての YAML 1.2 スカラータイプを正しくパースします。
 
-| Type | Example | Python Type |
-|------|---------|-------------|
-| String | `hello` | `str` |
-| Integer | `42`, `0x1A`, `0o77` | `int` |
-| Float | `3.14`, `1.23e-4` | `float` |
-| Boolean | `true`, `false` | `bool` |
+| 型 | 例 | Python 型 |
+|---|-----|----------|
+| 文字列 | `hello` | `str` |
+| 整数 | `42`, `0x1A`, `0o77` | `int` |
+| 浮動小数点 | `3.14`, `1.23e-4` | `float` |
+| ブーリアン | `true`, `false` | `bool` |
 | Null | `null`, `~` | `None` |
-| Infinity | `.inf`, `-.inf` | `float` |
+| 無限大 | `.inf`, `-.inf` | `float` |
 | NaN | `.nan` | `float` |

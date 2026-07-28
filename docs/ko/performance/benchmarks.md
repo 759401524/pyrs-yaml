@@ -1,7 +1,7 @@
 ---
 
 title: Benchmarks
-lang: ko-KR
+lang: ko
 
 ## 벤치마크
 

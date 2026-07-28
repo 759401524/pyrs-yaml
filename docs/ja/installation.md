@@ -1,26 +1,28 @@
 ---
 
 title: Installation
-lang: ja-JP
+lang: ja
 
 ## インストール
 
-### Requirements
+### 必須要件
 
 - **Python** ≥ 3.8 (CPython)
-- **Platform**: Linux, macOS, Windows
+- **プラットフォーム**: Linux、macOS、Windows
 
-### pip install
+### ソースからインストール
+
+パッケージはまだ PyPI に掲載されていません。ソースからインストール：
 
 ```bash
 uv run --frozen maturin develop --release
 ```
 
-The package is published as an **ABI3 wheel**, meaning a single wheel works across Python 3.8 through 3.15 — no recompilation needed.
+パッケージは **ABI3 ホイール** としてビルドされており、単一のホイールで Python 3.8 から 3.15 まで対応 — 再コンパイル不要。
 
-### Development インストール
+### 開発用インストール
 
-To install from source (for development or testing):
+ソースからインストール（開発またはテスト用）：
 
 ```bash
 git clone https://github.com/759401524/pyyaml-rs.git
@@ -28,7 +30,7 @@ cd pyyaml-rs
 uv run --frozen maturin develop --release
 ```
 
-### Verify インストール
+### インストールの確認
 
 ```python
 import pyyaml_rs

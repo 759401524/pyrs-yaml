@@ -1,7 +1,7 @@
 ---
 
 title: NumPy ndarray 序列化指南
-lang: zh-CN
+lang: zh
 
 ## NumPy ndarray 序列化指南
 

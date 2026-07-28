@@ -1,7 +1,7 @@
 ---
 
 title: Comparison with Other Libraries
-lang: ko-KR
+lang: ko
 
 ## 비교 with Other Libraries
 

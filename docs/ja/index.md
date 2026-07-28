@@ -1,7 +1,7 @@
 ---
 
 title: pyyaml-rs
-lang: ja-JP
+lang: ja
 
 ## pyyaml-rs
 
@@ -13,21 +13,21 @@ lang: ja-JP
 
 ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。 pyyaml-rs の両方を提供します:
 
-- **PyYAML** (Python) — slow, **loses comments/anchors/tags** on round-trip
-- **ruamel.yaml** (Python) — preserves formatting, but **5–10× slower** than pyyaml-rs
-- **pyyaml-rs** (Rust) — **25–40× faster than PyYAML** while preserving everything
+- **PyYAML** (Python) — 遅く、往復解析時に**コメント/アンカー/タグを失う**
+- **ruamel.yaml** (Python) — フォーマットを保持するが、pyyaml-rs より **5–10 倍遅い**
+- **pyyaml-rs** (Rust) — PyYAML より **25–40 倍高速**、すべてを保持
 
 ### 主要機能
 
-- **YAML 1.2 compliant** — powered by saphyr-parser (98.1% YAML Test Suite pass rate)
-- **Perfect Round-Trip** — preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
-- **25–40× faster** than PyYAML — Rust backend with zero-copy parsing
-- **Custom AST** — extensible AST for advanced YAML manipulation and custom formatting
-- **PyYAML compatible** — drop-in replacement with `safe_load` / `safe_dump` API
-- **Type hints** — PEP 561 compliant with full `.pyi` stubs
-- **ABI3** — single wheel works across Python 3.9–3.13
-- **i18n error messages** — `set_language("zh-CN")` for bilingual error reporting
-- **NumPy Ndarray support** — serialize `numpy.ndarray` of any dimension to YAML with zero-copy Rust dispatch
+- **YAML 1.2 準拠** — saphyr-parser 駆動（YAML テストスイート 98.1% 合格率）
+- **完璧なラウンドトリップ** — コメント、アンカー、タグ、チョーピング、スカラースタイル、フロー/ブロックフォーマットを保持
+- **PyYAML より 25–40 倍高速** — Rust バックエンド、ゼロコピー解析
+- **カスタム AST** — 高度な YAML 操作とカスタムフォーマット用の拡張可能な AST
+- **PyYAML 互換** — `safe_load` / `safe_dump` API で直接置換可能
+- **型ヒント** — PEP 561 準拠、完全な `.pyi` スタブファイル
+- **ABI3** — 単一のホイールで Python 3.9–3.13 に対応
+- **国際化エラーメッセージ** — `set_language("ja")` でバイリンガルエラーレポート
+- **NumPy ndarray サポート** — 任意次元の `numpy.ndarray` をゼロコピー Rust ディスパッチで YAML にシリアライズ
 
 ### クイックスタート
 
@@ -65,8 +65,8 @@ assert doc.to_yaml() == original
 
 ---
 
-## [シットオク →](quick-start.md)
+## [クイックスタート →](quick-start.md)
 
-## [アパリ・リフメンス →](api/reference.md)
+## [API リファレンスを参照 →](api/reference.md)
 
-## [ズクセ・デーョコラ・ミン →](https://github.com/759401524/pyyaml-rs)
+## [GitHub で見る →](https://github.com/759401524/pyyaml-rs)

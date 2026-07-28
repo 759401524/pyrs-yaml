@@ -1,290 +1,223 @@
 ---
 
-title: YamlDocument Class
-lang: ja-JP
+title: YamlDocument クラス
+lang: ja
 
 ## YamlDocument クラス
 
-The `YamlDocument` class represents a parsed YAML document with full metadata preservation.
-
 ### 概要
+
+`YamlDocument` は pyyaml-rs のコアクラスで、解析済みの YAML ドキュメントを保持します。`IndexMap` を使用したカスタム AST により、**100% ラウンドトリップ**、**完全なキー順序保持**、**ネストされたコメントの保持**、**詳細なメタデータ**を実現します。
 
 ```python
 class YamlDocument:
-    """A parsed YAML document with perfect round-trip support."""
+    """pyyaml-rs のコアクラス。"""
+    # ... C 拡張で実装 ...
 ```
 
-### Methods
+### コンストラクター
+
+#### `YamlDocument()`
+
+内部コンストラクター。ユーザーが直接呼び出すことはありません。`pyyaml_rs.parse()` から返されます。
+
+### プロパティ
+
+- `version` — YAML ドキュメントバージョン
+- `schema` — スキーマ（`core`, `failsafe`, `json`）
+- `tags` — タグ一覧
+- `anchors` — アンカー一覧
+- `source` — YAML ソーステキスト
+
+### メソッド
 
 #### `to_yaml()`
 
-Convert the document back to a YAML string.
+ドキュメントを YAML 文字列に変換します。
 
 ```python
-to_yaml() -> str
-```
-
-**Returns:** The complete YAML document string, ending with a newline.
-
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("key: value")
-print(doc.to_yaml())  # key: value\n
-```
-
-#### `to_yaml_with_options()`
-
-Convert to YAML with custom options.
-
-```python
-to_yaml_with_options(
-    indent_size: int = 2,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
+to_yaml(
+    indent: int = 2,
+    allow_unicode: bool = True,
+    default_flow_style: bool = False,
     sort_keys: bool = False,
+    width: int = 80,
+    resolve_aliases: bool = True,
+    strip_comments: bool = False,
+    preserve_quotes: bool = True,
 ) -> str
 ```
 
-**Parameters:**
+**パラメータ:**
 
-- `indent_size` — Spaces per indent level (default: 2)
-- `explicit_start` — Add `---` at document start (default: False)
-- `explicit_end` — Add `...` at document end (default: False)
-- `sort_keys` — Sort keys alphabetically (default: False)
+- `indent` — インデントスペース数（デフォルト: 2）
+- `allow_unicode` — Unicode 文字を許可（デフォルト: True）
+- `default_flow_style` — デフォルトでフロースタイルを使用（デフォルト: False）
+- `sort_keys` — キーをソート（デフォルト: False）
+- `width` — 折り返し幅（デフォルト: 80）
+- `resolve_aliases` — エイリアスを解決（デフォルト: True）
+- `strip_comments` — コメントを除去（デフォルト: False）
+- `preserve_quotes` — クォートを保持（デフォルト: True）
 
-**Example:**
+**戻り値:** YAML 文字列
+
+**例:**
 
 ```python
-yaml_str = doc.to_yaml_with_options(
-    indent_size=4,
-    explicit_start=True,
-    sort_keys=True,
-)
+doc = pyyaml_rs.parse("key: value\n# comment")
+yaml_str = doc.to_yaml()
 ```
 
 #### `to_dict()`
 
-Convert to a Python dict/list, resolving alias references.
+Python dict/list に変換します。エイリアス参照を解決し、ネイティブ Python タイプを返します。
 
 ```python
 to_dict() -> dict[str, Any] | list[Any]
 ```
 
-**Returns:** Native Python types. Anchors (`&name`) are inlined, aliases (`*name`) are replaced with actual values. Scalars are converted to Python native types (bool/int/float/str/None).
+**戻り値:** 辞書またはリスト
 
-**Example:**
+**例:**
 
 ```python
-data = doc.to_dict()
-print(data["key"])  # value
-print(type(data))   # <class 'dict'>
+doc = pyyaml_rs.parse("key: value")
+data = doc.to_dict()  # {'key': 'value'}
 ```
 
 #### `get()`
 
-Get a value by key (for mapping roots).
+キーで値を取得します（マッピングルート用）。
 
 ```python
 get(key: str, default: Any = None) -> Any
 ```
 
-**Parameters:**
+**戻り値:** 値、見つからない場合はデフォルト
 
-- `key` — The key to look up
-- `default` — Value to return if key not found (default: None)
+#### `type()`
 
-**Returns:** The value, or `default` if not found (or if root is not a mapping).
-
-**Example:**
+ルートノードの型を文字列で取得します。
 
 ```python
-value = doc.get("key")
-value = doc.get("missing", "fallback")
+type() -> str
 ```
 
-#### `root_type()`
-
-Get the root node type as a string.
-
-```python
-root_type() -> str
-```
-
-**Returns:** One of `"scalar"`, `"mapping"`, `"sequence"`, `"null"`, `"alias"`.
-
-**Example:**
-
-```python
-print(doc.root_type())  # "mapping"
-```
+**戻り値:** 型名（`"mapping"`, `"sequence"`, `"scalar"`）
 
 #### `to_json()`
 
-Serialize the document to a JSON string.
+ドキュメントを JSON 文字列にシリアライズします。
 
 ```python
 to_json(indent: int = 2) -> str
 ```
 
-**Parameters:**
-
-- `indent` — JSON indentation spaces (default: 2)
-
-**Returns:** A JSON string of the document contents.
-
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("a: 1\nb: hello")
-json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
-```
+**戻り値:** JSON 文字列
 
 #### `validate()`
 
-Validate the document contents against a JSON Schema.
+JSON Schema に基づいてドキュメントの内容を検証します。
 
 ```python
-validate(schema: str | dict[str, Any]) -> None
+validate(schema: dict[str, Any]) -> None
 ```
 
-**Parameters:**
+**スロー:** `YamlValidateError` — 検証エラー
 
-- `schema` — JSON Schema as either a JSON string or a Python dict
+#### `reload()`
 
-**Returns:** `None` on success.
-
-**Raises:**
-
-- `YamlValidateError` — Document does not conform to the schema
-
-**Example:**
+保存されたソーステキストをその場で再パースし、スキーマやマージ動作の変更を可能にします。
 
 ```python
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
-doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
-
-# From JSON string
-doc.validate('{"type": "object", "required": ["name"]}')
+reload(schema: str = "core", resolve_merges: bool = True) -> None
 ```
 
-#### `source()`
+#### `source_text()`
 
-Return the original YAML source text used to create this document.
+このドキュメントの作成に使用された元の YAML ソーステキストを返します。
 
 ```python
-source() -> str | None
+source_text() -> str
 ```
 
-**Returns:** The original YAML string, or `None` if the document was not created via `parse()` (e.g. from `from_dict()`).
+**戻り値:** YAML ソース文字列
 
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("key: value")
-print(doc.source())  # "key: value"
-```
-
-#### `reparse()`
-
-Re-parse the stored source text in place, allowing schema or merge behavior changes.
-
-```python
-reparse(resolve_merges: bool = True, schema: str = "core") -> None
-```
-
-**Parameters:**
-
-- `resolve_merges` — Whether to resolve `<<: *alias` merge keys (default: `True`)
-- `schema` — Type resolution schema: `"core"`, `"json"`, `"failsafe"`, or `"yaml1.1"` (default: `"core"`)
-
-**Raises:**
-
-- `TypeError` — No source text stored
-- `YamlParseError` — Re-parsing failed
-
-**Example:**
-
-```python
-doc = pyyaml_rs.parse("x: on")
-print(doc.get("x"))  # "on" (string, core schema)
-
-doc.reparse(schema="yaml1.1")
-print(doc.get("x"))  # True (bool, yaml1.1 schema)
-```
-
-### Dunder Methods
+### ダンダー メソッド
 
 #### `__getitem__()`
 
-Access by key (mapping) or index (sequence).
+キー（マッピング）またはインデックス（シーケンス）でアクセスします。
 
 ```python
-doc["key"]      # For mappings
-doc[0]          # For sequences
+doc = pyyaml_rs.parse("key: value")
+value = doc["key"]  # 'value'
 ```
-
-**Raises:**
-
-- `KeyError` — Key not found in mapping
-- `IndexError` — Index out of range for sequence
-- `TypeError` — Document not subscriptable
 
 #### `__contains__()`
 
-Check if a key exists.
+キーが存在するか確認します。
 
 ```python
-"key" in doc  # Returns bool
+"key" in doc  # True
 ```
 
 #### `__len__()`
 
-Get the number of items.
+アイテム数を取得します。
 
 ```python
-len(doc)  # Number of keys (mapping) or items (sequence)
+len(doc)
 ```
 
 #### `__iter__()`
 
-Iterate over keys (mapping) or values (sequence).
+キー（マッピング）または値（シーケンス）を反復します。
 
 ```python
 for key in doc:
-    print(key, doc[key])
+    print(key)
 ```
 
 #### `__repr__()`
 
-Debug representation.
+デバッグ表現。
 
 ```python
-repr(doc)  # "YamlDocument(<yaml>...)"
+repr(doc)  # "YamlDocument({key: value})"
 ```
 
 #### `__str__()`
 
-String representation.
+文字列表現。
 
 ```python
-str(doc)  # Same as doc.to_yaml()
+str(doc)  # "YamlDocument({key: value})"
 ```
 
-### Example
+#### `__eq__()`
+
+等値比較。2つの `YamlDocument` が同じ内容を持つ場合、true を返します。
+
+```python
+doc1 == doc2  # True or False
+```
+
+**例:**
 
 ```python
 import pyyaml_rs
 
-doc = pyyaml_rs.parse("""
-name: Alice
-age: 30
-""")
+# マッピング
+doc = pyyaml_rs.parse("name: Alice\nage: 30")
+print(doc["name"])  # Alice
+print(len(doc))     # 2
 
-print(doc.get("name"))    # Alice
-print(doc.root_type())    # mapping
-print(len(doc))           # 2
-print("name" in doc)      # True
-for key in doc:
-    print(key, doc[key])  # name Alice, age 30
+# シーケンス
+doc = pyyaml_rs.parse("- item1\n- item2")
+print(doc[0])  # item1
+
+# ネストされたアクセス
+doc = pyyaml_rs.parse("user:\n  name: Alice")
+print(doc["user"]["name"])  # Alice
 ```

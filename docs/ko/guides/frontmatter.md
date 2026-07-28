@@ -1,114 +1,114 @@
 ---
 
-title: Markdown Frontmatter
-lang: ko-KR
+title: Markdown 프론트메터
+lang: ko
 
 ## Markdown 프론트메터
 
-Extract YAML frontmatter from Markdown files and strings.
+Markdown 파일과 문자열에서 YAML 프론트메터를 추출합니다.
 
-### What is Frontmatter?
+### 프론트메터란?
 
-Frontmatter is a YAML block at the top of Markdown files, wrapped between `---` delimiters. Commonly used in blog platforms, static site generators, and content management systems.
+프론트메터는 Markdown 파일 상단에 `---` 구분자로 감싼 YAML 블록입니다. 블로그 플랫폼, 정적 사이트 생성기, 콘텐츠 관리 시스템에서 흔히 사용됩니다.
 
 ```markdown
 ---
 
-title: My Blog Post
+title: 블로그 포스트
 author: Alice
 date: 2024-01-15
 tags: [yaml, python, rust]
 ---
 
-# Hello World
+# 안녕하세요
 
-This is the content.
+콘텐츠입니다.
 ```
 
-## read_markdown()
+## `read_markdown()`
 
-Parse frontmatter from a Markdown file:
+Markdown 파일에서 프론트메터를 파싱합니다:
 
 ```python
 import pyyaml_rs
 
-# Returns (frontmatter_dict, content_string)
+# (frontmatter_dict, content_string) 반환
 frontmatter, content = pyyaml_rs.read_markdown("post.md")
 
 print(frontmatter)
-# {'title': 'My Blog Post', 'author': 'Alice', 'date': '2024-01-15', 'tags': ['yaml', 'python', 'rust']}
+# {'title': '블로그 포스트', 'author': 'Alice', 'date': '2024-01-15', 'tags': ['yaml', 'python', 'rust']}
 
 print(content)
-# "# Hello World\n\nThis is the content.\n"
+# "# 안녕하세요\n\n콘텐츠입니다.\n"
 ```
 
-### read_markdown_str()
+### `read_markdown_str()`
 
-Parse frontmatter from a Markdown string:
+Markdown 문자열에서 프론트메터를 파싱합니다:
 
 ```python
 markdown_text = """
 ---
-title: My Post
+title: 내 포스트
 tags: [tech]
 ---
 
-Content here.
+여기에 콘텐츠.
 """
 
 frontmatter, content = pyyaml_rs.read_markdown_str(markdown_text)
 
 if frontmatter:
-    print(f"Title: {frontmatter['title']}")
-    print(f"Tags: {frontmatter['tags']}")
-    print(f"Content: {content}")
+    print(f"제목: {frontmatter['title']}")
+    print(f"태그: {frontmatter['tags']}")
+    print(f"콘텐츠: {content}")
 else:
-    print("No frontmatter found")
+    print("프론트메터를 찾을 수 없습니다")
 ```
 
-### No Frontmatter
+### 프론트메터가 없는 경우
 
-If the file/string has no frontmatter:
+파일/문자열에 프론트메터가 없으면:
 
 ```python
 frontmatter, content = pyyaml_rs.read_markdown("no-frontmatter.md")
 
-# frontmatter is None, content is the full text
+# frontmatter는 None, content는 전체 텍스트
 assert frontmatter is None
-assert content == "Just regular markdown content."
+assert content == "일반 Markdown 콘텐츠."
 ```
 
-### Common Use Cases
+### 일반적인 사용 예시
 
-#### Blog Platforms
+#### 블로그 플랫폼
 
 ```python
-# Extract metadata for blog listing
+# 블로그 목록용 메타데이터 추출
 frontmatter, _ = pyyaml_rs.read_markdown("draft.md")
 if frontmatter.get("published", False):
-    print(f"Published post: {frontmatter['title']}")
+    print(f"발행된 포스트: {frontmatter['title']}")
 else:
-    print("Draft post")
+    print("초안 포스트")
 ```
 
-#### Static Site Generators
+#### 정적 사이트 생성기
 
 ```python
-# Process all markdown files
+# 모든 Markdown 파일 처리
 import glob
 
 for path in glob.glob("posts/*.md"):
     meta, content = pyyaml_rs.read_markdown(path)
-    # Render template with meta and content
+    # 메타데이터와 콘텐츠로 템플릿 렌더링
 ```
 
-#### Content Management
+#### 콘텐츠 관리
 
 ```python
-# Validate frontmatter structure
+# 프론트메터 구조 검증
 required_fields = ["title", "author", "date"]
 frontmatter, _ = pyyaml_rs.read_markdown("article.md")
 
 for field in required_fields:
-    assert field in frontmatter, f"Missing required field: {field}"
+    assert field in frontmatter, f"필수 필드 누락: {field}"
 ```

@@ -1,29 +1,29 @@
 ---
 
-title: Architecture
-lang: zh-CN
+title: 架构
+lang: zh
 
 ## 架构
 
-pyyaml-rs uses a modular architecture designed for performance and correctness.
+pyyaml-rs 使用为性能和正确性设计的模块化架构。
 
 ### 概述
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
-│                     Python Layer                        │
+│                     Python 层                           │
 │  ┌─────────────────────────────────────────────────────┐│
-│  │               pyyaml_rs module                       ││
+│  │               pyyaml_rs 模块                        ││
 │  │  parse() | safe_load() | dump_file() | ...          ││
 │  └─────────────────────┬───────────────────────────────┘│
-│                        │ PyO3 bindings                   │
+│                        │ PyO3 绑定                       │
 ├────────────────────────▼─────────────────────────────────┤
-│                    Rust Layer                            │
+│                    Rust 层                              │
 │  ┌─────────────────────────────────────────────────────┐│
-│  │  lib.rs — PyO3 module (inline pymodule)            ││
-│  │  • YamlDocument class                               ││
-│  │  • Exception types (YamlParseError, etc.)           ││
-│  │  • Function wrappers                                ││
+│  │  lib.rs — PyO3 模块 (inline pymodule)              ││
+│  │  • YamlDocument 类                                 ││
+│  │  • 异常类型 (YamlParseError 等)                    ││
+│  │  • 函数包装器                                       ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │                                 │
 │      ┌─────────────────┼─────────────────┐              │
@@ -31,7 +31,7 @@ pyyaml-rs uses a modular architecture designed for performance and correctness.
 │  ┌─────────┐    ┌────────────┐    ┌────────────┐        │
 │  │ ast.rs  │    │ parser/    │    │serializer  │        │
 │  │ Custom  │◄──►│ saphyr     │    │ to_yaml()  │        │
-│  │ Node    │    │ integration│    │ to_yaml_*  │        │
+│  │ Node    │    │ 集成       │    │ to_yaml_*  │        │
 │  └─────────┘    └────────────┘    └────────────┘        │
 │      ▲                 ▲                                    │
 │      └─────────────────┴────────────────────┘              │
@@ -39,118 +39,118 @@ pyyaml-rs uses a modular architecture designed for performance and correctness.
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Module 架构
+### 模块架构
 
-#### 1. `src/ast.rs` — Custom AST
+#### 1. `src/ast.rs` — 自定义 AST
 
-The **CustomNode** enum is the heart of pyyaml-rs:
+**CustomNode** 枚举是 pyyaml-rs 的核心：
 
-- **Scalar** — with style (plain, quoted, literal, folded), comment, anchor, tag, chomping
-- **Mapping** — `IndexMap` for key order preservation, flow_style flag
-- **Sequence** — ordered list, flow_style flag
-- **Null** — with comment, anchor, tag
-- **Alias** — alias reference (name only)
+- **Scalar** — 带样式（plain、引号、字面量、折叠）、注释、锚点、标签、chomping
+- **Mapping** — 用于键顺序保留的 `IndexMap`、flow_style 标志
+- **Sequence** — 有序列表、flow_style 标志
+- **Null** — 带注释、锚点、标签
+- **Alias** — 别名引用（仅名称）
 
-**Why Custom AST?**
+##### 为什么使用自定义 AST？
 
-- Standard YAML parsers discard metadata (comments, formatting)
-- Custom AST preserves everything needed for round-trip
-- Extensible for future features (custom node types, metadata)
+- 标准 YAML 解析器会丢弃元数据（注释、格式）
+- 自定义 AST 保留往返保存所需的一切
+- 可扩展以支持未来功能（自定义节点类型、元数据）
 
-#### 2. `src/parser/` — YAML Parser
+#### 2. `src/parser/` — YAML 解析器
 
-Built on **saphyr-parser** (YAML 1.2 compliant):
+基于 **saphyr-parser**（YAML 1.2 兼容）构建：
 
-- **`mod.rs`** — `AstReceiver` state machine, event-based parsing
-- **`yaml/comment.rs`** — Comment extraction from raw text
-- **`yaml/merge.rs`** — Merge key (`<<`) resolution
-- **`yaml/scalar.rs`** — Scalar style detection, unescaping, chomping
-- **`yaml/types.rs`** — YAML 1.2 type resolution (null, bool, int, float)
+- **`mod.rs`** — `AstReceiver` 状态机、基于事件的解析
+- **`yaml/comment.rs`** — 从原始文本提取注释
+- **`yaml/merge.rs`** — 合并键 (`<<`) 解析
+- **`yaml/scalar.rs`** — 标量样式检测、反转义、chomping
+- **`yaml/types.rs`** — YAML 1.2 类型解析（null、bool、int、float）
 
-**Key Design Decisions:**
+##### 关键设计决策
 
-- Event-based API (not token-based) — better for structured output
-- Two-pass parsing: first extract comments/anchors, then parse events
-- Merge key resolution happens after parsing (configurable)
+- 基于事件的 API（非基于令牌）— 更适合结构化输出
+- 两遍解析：首先提取注释/锚点，然后解析事件
+- 合并键解析在解析后进行（可配置）
 
-#### 3. `src/serializer.rs` — YAML Serializer
+#### 3. `src/serializer.rs` — YAML 序列化器
 
-Custom serializer that reconstructs YAML from the AST:
+从 AST 重建 YAML 的自定义序列化器：
 
-- **`to_yaml()`** — Serialize with default options
-- **`to_yaml_with_options()`** — Custom indent, markers, sorting
-- **`write_anchor_tag()`** — Helper for anchor/tag output
-- **`write_inline_comment()`** — Helper for inline comment output
+- **`to_yaml()`** — 使用默认选项序列化
+- **`to_yaml_with_options()`** — 自定义缩进、标记、排序
+- **`write_anchor_tag()`** — 锚点/标签输出辅助函数
+- **`write_inline_comment()`** — 行内注释输出辅助函数
 
-**Key Design Decisions:**
+##### 关键设计决策
 
-- No third-party emitter — full control over output format
-- Indent-level state management for nested structures
-- Chomping indicator handling for block scalars
+- 不使用第三方 emitter — 完全控制输出格式
+- 嵌套结构的缩进级别状态管理
+- 块标量的 chomping 指示符处理
 
-#### 4. `src/lib.rs` — PyO3 Module
+#### 4. `src/lib.rs` — PyO3 模块
 
-Inline `#[pymodule] mod pyyaml_rs` with:
+内联 `#[pymodule] mod pyyaml_rs`：
 
-- **`YamlDocument`** — `#[pyclass]` wrapper around `CustomNode`
-- **异常** — `create_exception!` macros for custom errors
-- **Functions** — `parse`, `safe_load`, `dump_file`, etc.
-- **i18n** — `rust-i18n` integration for bilingual errors
+- **`YamlDocument`** — `CustomNode` 的 `#[pyclass]` 包装器
+- **异常** — 自定义错误的 `create_exception!` 宏
+- **函数** — `parse`、`safe_load`、`dump_file` 等
+- **i18n** — 双语错误的 `rust-i18n` 集成
 
-### Data Flow
+### 数据流
 
-#### Parse Flow
+#### 解析流
 
 ```text
-YAML String
+YAML 字符串
     │
     ▼
 ┌─────────────────────────────────────┐
-│ 1. Extract comments from raw text   │
-│ 2. Extract anchors from raw text    │
-│ 3. saphyr-parser → YAML events      │
-│ 4. AstReceiver builds CustomNode    │
-│ 5. Resolve merge keys (if enabled)  │
+│ 1. 从原始文本提取注释                │
+│ 2. 从原始文本提取锚点                │
+│ 3. saphyr-parser → YAML 事件        │
+│ 4. AstReceiver 构建 CustomNode      │
+│ 5. 解析合并键（如果启用）            │
 └─────────────────────────────────────┘
     │
     ▼
 CustomNode (AST)
 ```
 
-#### Serialize Flow
+#### 序列化流
 
 ```text
 CustomNode (AST)
     │
     ▼
 ┌─────────────────────────────────────┐
-│ 1. Determine node type              │
-│ 2. Write opening (anchor, tag)      │
-│ 3. Write content (key: value)       │
-│ 4. Write inline comment             │
-│ 5. Recurse for nested nodes         │
+│ 1. 确定节点类型                      │
+│ 2. 写入开头（锚点、标签）            │
+│ 3. 写入内容（key: value）            │
+│ 4. 写入行内注释                      │
+│ 5. 递归处理嵌套节点                  │
 └─────────────────────────────────────┘
     │
     ▼
-YAML String
+YAML 字符串
 ```
 
-### 性能 Characteristics
+### 性能特性
 
-| Operation | Complexity | Notes |
-|-----------|-----------|-------|
-| Parse | O(n) | Single pass over YAML events |
-| Serialize | O(n) | Single pass over AST |
-| Round-trip | O(n) | Parse + Serialize |
-| Merge resolution | O(n × m) | Where n = docs, m = merges per doc |
-| Comment extraction | O(n) | Single pass over raw text |
+| 操作 | 复杂度 | 说明 |
+|------|--------|------|
+| 解析 | O(n) | YAML 事件的单遍处理 |
+| 序列化 | O(n) | AST 的单遍处理 |
+| 往返保存 | O(n) | 解析 + 序列化 |
+| 合并解析 | O(n × m) | n = 文档数，m = 每文档合并数 |
+| 注释提取 | O(n) | 原始文本的单遍处理 |
 
-### Dependencies
+### 依赖关系
 
-| Crate | Purpose |
-|-------|---------|
-| **pyo3** | Python bindings (with `experimental-inspect`) |
-| **saphyr-parser** | YAML 1.2 compliant parsing |
-| **indexmap** | Ordered hash map for key preservation |
-| **serde_json** | JSON ↔ YAML conversion |
-| **rust-i18n** | Internationalized error messages |
+| Crate | 用途 |
+|-------|------|
+| **pyo3** | Python 绑定（带 `experimental-inspect`） |
+| **saphyr-parser** | YAML 1.2 兼容解析 |
+| **indexmap** | 键顺序保留的有序哈希映射 |
+| **serde_json** | JSON ↔ YAML 转换 |
+| **rust-i18n** | 国际化错误消息 |

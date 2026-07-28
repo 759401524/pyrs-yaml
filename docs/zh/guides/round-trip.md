@@ -1,24 +1,24 @@
 ---
 
-title: Round-Trip Preservation
-lang: zh-CN
+title: 往返保存
+lang: zh
 
-## 往返保留
+## 往返保存
 
-This is pyyaml-rs's **killing feature** — what makes it unique among Python YAML libraries.
+这是 pyyaml-rs 的**核心特性** — 在 Python YAML 库中独树一帜。
 
-### What is 往返保留?
+### 什么是往返保存？
 
-Round-trip preservation means: **parse YAML → modify → serialize back → output is identical (or semantically equivalent) to the input.**
+往返保存意味着：**解析 YAML → 修改 → 序列化 → 输出与输入相同（或语义等效）。**
 
 ```python
 original = """
-# Server configuration
+# 服务器配置
 server:
   host: 0.0.0.0
-  port: 8080  # main port
+  port: 8080  # 主端口
 
-# Database anchor
+# 数据库锚点
 database: &db
   host: localhost
   port: 5432
@@ -31,51 +31,51 @@ api:
 doc = pyyaml_rs.parse(original)
 output = doc.to_yaml()
 
-# All formatting and metadata preserved
-assert "# Server configuration" in output
-assert "# main port" in output
+# 所有格式和元数据都被保留
+assert "# 服务器配置" in output
+assert "# 主端口" in output
 assert "&db" in output
 assert "<<: *db" in output
 ```
 
-### What Gets Preserved
+### 保留的内容
 
-| Element | Preserved? | Notes |
-|---------|------------|-------|
-| Standalone comments | ✅ | Before keys and values |
-| Inline comments | ✅ | At end of lines |
-| Anchors (`&name`) | ✅ | Full anchor syntax |
-| Aliases (`*name`) | ✅ | Alias references resolved |
-| Merge keys (`<<`) | ✅ | Resolved by default |
-| Tags (`!!str`, `!!int`) | ✅ | Explicit tags preserved |
-| Scalar styles | ✅ | Plain, quoted, literal, folded |
-| Chomping (`\|-`, `>-`) | ✅ | Block scalar indicators |
-| Flow/block style | ✅ | `[]`/`{}` vs block preserved |
-| Key order | ✅ | `IndexMap` guarantees order |
+| 元素 | 是否保留 | 说明 |
+|------|---------|------|
+| 独立行注释 | ✅ | 键和值之前 |
+| 行内注释 | ✅ | 行尾 |
+| 锚点 (`&name`) | ✅ | 完整的锚点语法 |
+| 别名 (`*name`) | ✅ | 别名引用被解析 |
+| 合并键 (`<<`) | ✅ | 默认被解析 |
+| 标签 (`!!str`, `!!int`) | ✅ | 显式标签被保留 |
+| 标量样式 | ✅ | Plain、引号、字面量、折叠 |
+| Chomping (`\|-`, `>-`) | ✅ | 块标量指示符 |
+| 流式/块式风格 | ✅ | `[]`/`{}` 与块式被保留 |
+| 键顺序 | ✅ | `IndexMap` 保证顺序 |
 
-### PyYAML vs pyyaml-rs Round-Trip
+### PyYAML vs pyyaml-rs 往返保存
 
 ```python
-original = "# Comment\nkey: value  # inline\n"
+original = "# 注释\nkey: value  # 行内注释\n"
 
-# PyYAML: loses everything
+# PyYAML: 丢失一切
 yaml.safe_dump(yaml.safe_load(original))
-# Output: 'key: value\n'  ❌
+# 输出: 'key: value\n'  ❌
 
-# pyyaml-rs: preserves everything
+# pyyaml-rs: 保留一切
 doc = pyyaml_rs.parse(original)
 doc.to_yaml()
-# Output: '# Comment\nkey: value  # inline\n'  ✅
+# 输出: '# 注释\nkey: value  # 行内注释\n'  ✅
 ```
 
 ### 性能
 
-Round-trip performance vs competitors:
+与其他库的往返性能对比：
 
-| Library | Round-trip (large) | Comments | Anchors | Tags |
-|---------|-------------------|----------|---------|------|
+| 库 | 往返保存 (大文件) | 注释 | 锚点 | 标签 |
+|---|------------------|------|------|------|
 | **pyyaml-rs** | **0.08 ms** | ✅ | ✅ | ✅ |
 | PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
 | ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
 
-**pyyaml-rs is 37× faster than PyYAML and 85× faster than ruamel.yaml** while preserving everything.
+**pyyaml-rs 比 PyYAML 快 37 倍，比 ruamel.yaml 快 85 倍**，同时保留所有内容。

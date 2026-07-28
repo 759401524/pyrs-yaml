@@ -1,7 +1,7 @@
 ---
 
 title: Benchmarks
-lang: zh-CN
+lang: zh
 
 ## 基准测试
 

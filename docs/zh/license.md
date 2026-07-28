@@ -1,7 +1,7 @@
 ---
 
 title: License
-lang: zh-CN
+lang: zh
 
 ## 许可证
 

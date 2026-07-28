@@ -1,144 +1,135 @@
 ---
 
-title: Exceptions
-lang: ko-KR
+title: 예외
+lang: ko
 
 ## 예외
 
-pyyaml-rs defines three custom exception classes for error handling.
+pyyaml-rs는 오류 처리를 위해 세 가지 사용자 정의 예외 클래스를 정의합니다.
 
 ### YamlParseError
 
-Raised when YAML parsing fails.
+YAML 파싱이 실패할 때 발생합니다.
 
 ```python
 class YamlParseError(ValueError):
-    """YAML parsing error (inherits from ValueError)."""
+    """YAML 파싱 오류 (ValueError 상속)."""
 ```
 
-**Inherits from:** `ValueError`
+**상속:** `ValueError`
 
-**Example:**
+**예시:**
 
 ```python
 try:
     doc = pyyaml_rs.parse("invalid: yaml: [")
 except pyyaml_rs.YamlParseError as e:
-    print(f"Parse error: {e}")
-    # Output: "YAML parse error: line 1, column 14: unexpected token..."
+    print(f"파싱 오류: {e}")
 ```
 
-**Can be caught as:**
+**오류 메시지 예시:**
 
-```python
-except ValueError as e:  # Also works
-```
+- `Invalid YAML: line 1, column 15: did not find expected key`
+- `YAML parse error at line 2, column 1: mapping values are not allowed here`
 
 ### YamlSerializeError
 
-Raised when YAML serialization fails.
+YAML 직렬화가 실패할 때 발생합니다.
 
 ```python
 class YamlSerializeError(ValueError):
-    """YAML serialization error (inherits from ValueError)."""
+    """YAML 직렬화 오류 (ValueError 상속)."""
 ```
 
-**Inherits from:** `ValueError`
+**상속:** `ValueError`
 
-**Example:**
+**예시:**
 
 ```python
 try:
-    yaml_str = pyyaml_rs.safe_dump(some_unsupported_type)
+    result = pyyaml_rs.safe_dump(float('inf'))
 except pyyaml_rs.YamlSerializeError as e:
-    print(f"Serialize error: {e}")
+    print(f"직렬화 오류: {e}")
 ```
 
 ### YamlTypeError
 
-Raised when a type conversion error occurs.
+타입 변환 오류가 발생할 때 발생합니다.
 
 ```python
 class YamlTypeError(TypeError):
-    """YAML type conversion error (inherits from TypeError)."""
+    """타입 변환 오류 (TypeError 상속)."""
 ```
 
-**Inherits from:** `TypeError`
+**상속:** `TypeError`
 
-**Example:**
+**예시:**
 
 ```python
 try:
-    pyyaml_rs.parse(123)  # Expected str or bytes
+    result = pyyaml_rs.safe_dump(object())  # 변환 불가능한 타입
 except pyyaml_rs.YamlTypeError as e:
-    print(f"Type error: {e}")
+    print(f"타입 오류: {e}")
 ```
 
 ### YamlValidateError
 
-Raised when JSON Schema validation fails via `YamlDocument.validate()`.
+JSON Schema 검증이 실패할 때 발생합니다.
 
 ```python
 class YamlValidateError(ValueError):
-    """JSON Schema validation error (inherits from ValueError)."""
+    """JSON Schema 검증 오류 (ValueError 상속)."""
 ```
 
-**Inherits from:** `ValueError`
+**상속:** `ValueError`
 
-**Example:**
+**예시:**
 
 ```python
-doc = pyyaml_rs.parse("name: Alice")
-schema = {"type": "object", "required": ["name", "email"]}
 try:
-    doc.validate(schema)
+    doc = pyyaml_rs.parse("age: not_a_number")
+    doc.validate(schema={"type": "object", "properties": {"age": {"type": "number"}}})
 except pyyaml_rs.YamlValidateError as e:
-    print(f"Validation error: {e}")
-    # Output: "Validation error: 'email' is a required property"
+    print(f"검증 오류: {e}")
 ```
 
-### Error Message Format
+### 오류 메시지 형식
 
-All error messages include contextual information:
+모든 오류 메시지에 컨텍스트 정보가 포함됩니다.
 
-| Error | Format |
-|-------|--------|
-| Parse error | `"YAML parse error: line N, column M: <message>"` |
-| File not found | `"File read error: <path> — <OS error>"` |
-| Invalid UTF-8 | `"Invalid UTF-8: <detail>"` |
-| Key not found | `"Key not found: <key>"` |
-| Index out of range | `"Index out of range: <index> (len: <len>)"` |
-| Unsupported type | `"Unsupported type for YAML conversion"` |
-| ndarray unsupported dtype | `"Unsupported type for YAML conversion"` |
-| Schema validation failure | `"<jsonschema error message>"` |
+| 필드 | 설명 |
+|------|------|
+| 메시지 | 사람이 읽을 수 있는 오류 설명 |
+| Line | 오류가 발생한 줄 번호 |
+| Column | 오류가 발생한 열 번호 |
+| offset | 줄 내 바이트 오프셋 |
 
-### i18n Support
+### i18n 지원
 
-Error messages can be localized:
-
-```python
-pyyaml_rs.set_language("zh-CN")
-
-try:
-    pyyaml_rs.parse("invalid: [")
-except pyyaml_rs.YamlParseError as e:
-    print(e)
-    # Chinese: "YAML 解析错误: 第 1 行, 第 14 列: ..."
-```
-
-### Best Practices
+오류 메시지를 현지화할 수 있습니다:
 
 ```python
 import pyyaml_rs
 
-def load_yaml(path):
-    try:
-        doc = pyyaml_rs.parse_file(path)
-        return doc.to_dict()
-    except pyyaml_rs.YamlParseError as e:
-        print(f"Failed to parse {path}: {e}")
-        return None
-    except OSError as e:
-        print(f"Failed to read {path}: {e}")
-        return None
+pyyaml_rs.set_language("zh-CN")  # 중국어
+try:
+    pyyaml_rs.parse("invalid: yaml: [")
+except pyyaml_rs.YamlParseError as e:
+    print(e)  # 중국어 오류 메시지
 ```
+
+### 모범 사례
+
+```python
+# 구체적인 예외 캡처
+try:
+    doc = pyyaml_rs.parse(yaml_content)
+except pyyaml_rs.YamlParseError as e:
+    logger.error(f"YAML 파싱 오류: {e}")
+    # 오류 메시지 파싱
+    error_str = str(e)  # "Invalid YAML: line 1, column 15: ..."
+except pyyaml_rs.YamlTypeError as e:
+    logger.error(f"타입 오류: {e}")
+```
+
+**참고:** 모든 사용자 정의 예외는 `ValueError`를 상속하므로 `except ValueError`로 일괄 캡처할 수 있습니다. 하지만 더 세밀한 오류 처리를 위해서는 구체적인 예외 클래스를 사용하는 것이 좋습니다.

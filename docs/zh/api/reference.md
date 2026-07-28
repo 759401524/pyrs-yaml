@@ -1,35 +1,35 @@
 ---
 
-title: Module Reference
-lang: zh-CN
+title: 模块参考
+lang: zh
 
 ## 模块参考
 
-Complete API reference for the `pyyaml_rs` module.
+`pyyaml_rs` 模块的完整 API 参考。
 
-### Core Functions
+### 核心函数
 
 #### `parse()`
 
-解析 YAML 字符串 or bytes into a `YamlDocument`.
+将 YAML 字符串或字节解析为 `YamlDocument`。
 
 ```python
 parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```
 
-**Parameters:**
+**参数:**
 
-- `yaml` — YAML content as `str` or `bytes`
-- `resolve_merges` — Whether to resolve merge keys (`<<: *alias`) after parsing (default: `True`)
+- `yaml` — `str` 或 `bytes` 的 YAML 内容
+- `resolve_merges` — 解析后是否解析合并键 (`<<: *alias`)（默认：`True`）
 
-**Returns:** A `YamlDocument` containing the parsed YAML
+**返回值:** 包含解析后 YAML 的 `YamlDocument`
 
-**Raises:**
+**引发:**
 
-- `YamlParseError` — Invalid YAML syntax
-- `TypeError` — Input is not `str` or `bytes`
+- `YamlParseError` — 无效的 YAML 语法
+- `TypeError` — 输入不是 `str` 或 `bytes`
 
-**Example:**
+**示例:**
 
 ```python
 doc = pyyaml_rs.parse("key: value")
@@ -39,24 +39,24 @@ doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
 
 #### `parse_file()`
 
-Parse a YAML file.
+解析 YAML 文件。
 
 ```python
 parse_file(path: str) -> YamlDocument
 ```
 
-**Parameters:**
+**参数:**
 
-- `path` — Path to the YAML file
+- `path` — YAML 文件的路径
 
-**Returns:** A `YamlDocument`
+**返回值:** `YamlDocument`
 
-**Raises:**
+**引发:**
 
-- `IOError` — File not found or unreadable
-- `YamlParseError` — Invalid YAML
+- `IOError` — 文件未找到或无法读取
+- `YamlParseError` — 无效的 YAML
 
-**Example:**
+**示例:**
 
 ```python
 doc = pyyaml_rs.parse_file("config.yaml")
@@ -64,33 +64,33 @@ doc = pyyaml_rs.parse_file("config.yaml")
 
 #### `parse_all_docs()`
 
-解析多个 YAML 文档 from a string.
+从字符串解析多个 YAML 文档。
 
 ```python
 parse_all_docs(yaml: str) -> list[YamlDocument]
 ```
 
-**Returns:** A list of `YamlDocument` objects
+**返回值:** `YamlDocument` 对象列表
 
-**Example:**
+**示例:**
 
 ```python
 docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-### PyYAML-Compatible Functions
+### PyYAML 兼容函数
 
 #### `safe_load()`
 
-Parse YAML and return native Python types.
+解析 YAML 并返回原生 Python 类型。
 
 ```python
 safe_load(yaml: str) -> dict[str, Any] | list[Any]
 ```
 
-**Equivalent to:** `yaml.safe_load()` in PyYAML
+**等价于:** PyYAML 的 `yaml.safe_load()`
 
-**Example:**
+**示例:**
 
 ```python
 data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
@@ -98,39 +98,39 @@ data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
 
 #### `safe_loads()`
 
-解析多个 YAML 文档.
+解析多个 YAML 文档。
 
 ```python
 safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 ```
 
-**Equivalent to:** `yaml.safe_loads()` in PyYAML
+**等价于:** PyYAML 的 `yaml.safe_loads()`
 
 #### `safe_dump()`
 
-Serialize a Python object to YAML.
+将 Python 对象序列化为 YAML。
 
 ```python
 safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-**Equivalent to:** `yaml.safe_dump()` in PyYAML
+**等价于:** PyYAML 的 `yaml.safe_dump()`
 
-**Supported input types:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, and **`numpy.ndarray`** (all dimensions and numeric dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
+**支持的输入类型:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`，以及 **`numpy.ndarray`**（所有维度和数值 dtype：`int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`）
 
 #### `safe_dumps()`
 
-Alias for `safe_dump()`.
+`safe_dump()` 的别名。
 
 ```python
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-### Conversion Functions
+### 转换函数
 
 #### `from_dict()`
 
-Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value inside the dict.
+将 Python dict 转换为 YAML 字符串。dict 的值中可以包含 `numpy.ndarray`。
 
 ```python
 from_dict(data: dict[str, Any]) -> str
@@ -138,7 +138,7 @@ from_dict(data: dict[str, Any]) -> str
 
 #### `from_json()`
 
-Convert a JSON string to YAML string.
+将 JSON 字符串转换为 YAML 字符串。
 
 ```python
 from_json(json_str: str) -> str
@@ -146,19 +146,19 @@ from_json(json_str: str) -> str
 
 #### `dump_file()`
 
-Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or `numpy.ndarray`.
+将 Python 对象序列化为 YAML 并写入文件。接受 `dict`、`list` 或 `numpy.ndarray`。
 
 ```python
 dump_file(data: Any, path: str) -> None
 ```
 
-### Async Functions
+### 异步函数
 
-Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
+使用 `asyncio.run_in_executor` 的异步 I/O 包装器。在事件循环上下文中不阻塞。
 
 #### `safe_dumps_async()`
 
-Serialize a Python object to YAML string (async).
+将 Python 对象序列化为 YAML 字符串（异步）。
 
 ```python
 async def safe_dumps_async(data: Any) -> str
@@ -166,7 +166,7 @@ async def safe_dumps_async(data: Any) -> str
 
 #### `safe_dump_async()`
 
-Serialize a Python object to stdout as YAML (async).
+将 Python 对象以 YAML 格式输出到 stdout（异步）。
 
 ```python
 async def safe_dump_async(data: Any) -> None
@@ -174,7 +174,7 @@ async def safe_dump_async(data: Any) -> None
 
 #### `safe_loads_async()`
 
-解析 YAML 字符串 into native Python objects (async).
+将 YAML 字符串解析为原生 Python 对象（异步）。
 
 ```python
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
@@ -182,13 +182,13 @@ async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 
 #### `safe_load_async()`
 
-解析 YAML 字符串 into native Python objects (async).
+将 YAML 字符串解析为原生 Python 对象（异步）。
 
 ```python
 async def safe_load_async(yaml: str, schema: str = "core") -> Any
 ```
 
-**Example:**
+**示例:**
 
 ```python
 import asyncio, pyyaml_rs
@@ -205,37 +205,37 @@ asyncio.run(main())
 
 #### `read_markdown()`
 
-Extract YAML frontmatter from a Markdown file.
+从 Markdown 文件提取 YAML 前端元数据。
 
 ```python
 read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
 ```
 
-**Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
+**返回值:** `(frontmatter_dict, content_string)`。没有前端元数据时，`frontmatter` 为 `None`。
 
 #### `read_markdown_str()`
 
-Extract YAML frontmatter from a Markdown string.
+从 Markdown 字符串提取 YAML 前端元数据。
 
 ```python
 read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
 ```
 
-### i18n Functions
+### i18n 函数
 
 #### `set_language()`
 
-Set the language for error messages.
+设置错误消息的语言。
 
 ```python
 set_language(lang: str) -> None
 ```
 
-Supported: `"en"`, `"zh-CN"`
+支持：`"en"`, `"zh-CN"`
 
 #### `get_language()`
 
-Get the current language.
+获取当前语言。
 
 ```python
 get_language() -> str
@@ -243,7 +243,7 @@ get_language() -> str
 
 #### `list_languages()`
 
-List all supported languages.
+列出所有支持的语言。
 
 ```python
 list_languages() -> list[str]
@@ -251,7 +251,7 @@ list_languages() -> list[str]
 
 #### `detect_language()`
 
-Auto-detect user's preferred language from environment variables.
+从环境变量自动检测用户的首选语言。
 
 ```python
 detect_language() -> str
@@ -259,7 +259,7 @@ detect_language() -> str
 
 #### `negotiate_language()`
 
-BCP 47 language negotiation.
+BCP 47 语言协商。
 
 ```python
 negotiate_language(user_locales: list[str], default: str = "en") -> str
@@ -267,12 +267,12 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 ### 异常
 
-- `YamlParseError` — YAML parsing error (inherits from `ValueError`)
-- `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
-- `YamlTypeError` — Type conversion error (inherits from `TypeError`)
-- `YamlValidateError` — JSON Schema validation error (inherits from `ValueError`)
+- `YamlParseError` — YAML 解析错误（继承自 `ValueError`）
+- `YamlSerializeError` — YAML 序列化错误（继承自 `ValueError`）
+- `YamlTypeError` — 类型转换错误（继承自 `TypeError`）
+- `YamlValidateError` — JSON Schema 验证错误（继承自 `ValueError`）
 
-### Version
+### 版本
 
 ```python
 __version__ = "0.6.0"
