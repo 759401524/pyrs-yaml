@@ -20,16 +20,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: pyo3/maturin-action/setup-python@v1
-        with:
-          python-version: ${{ matrix.python-version }}
-          interpreter: ${{ matrix.python-version }}
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Run cargo tests
         if: matrix.os != 'macos-latest'
@@ -38,28 +44,42 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
 
-      - name: Build wheel
-        uses: pyo3/maturin-action/build@v1
+      - name: Build and install
+        uses: PyO3/maturin-action@v1
         with:
-          maturin-version: latest
+          command: develop
           args: --release
 
       - name: Install Python test dependencies
-        run: pip install -q pytest pytest-asyncio numpy
+        run: uv pip install -q pytest pytest-asyncio numpy
 
       - name: Run Python tests
         run: pytest tests/ -v --ignore=tests/benchmark_compare.py
+
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --find-interpreter
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: target/wheels/
 
   test-freethreaded:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up free-threaded Python
-        uses: pyo3/maturin-action/setup-python@v1
-        with:
-          python-version: "3.13t"
-          interpreter: "3.13t"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -72,11 +92,11 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
 
-      - name: Build wheel
-        uses: pyo3/maturin-action/build@v1
+      - name: Build free-threaded wheel
+        uses: PyO3/maturin-action@v1
         with:
-          maturin-version: latest
-          args: --release
+          command: develop
+          args: --release -i python3.13t
 
       - name: Install Python test dependencies
         run: pip install -q pytest pytest-asyncio
