@@ -5,7 +5,7 @@ lang: ko
 
 ## 개발 환경 설정
 
-pyyaml-rs에 기여하기 위한 환경을 설정합니다.
+pyrs-yaml에 기여하기 위한 환경을 설정합니다.
 
 ### 사전 요구사항
 
@@ -18,8 +18,8 @@ pyyaml-rs에 기여하기 위한 환경을 설정합니다.
 ### 클론 및 설치
 
 ```bash
-git clone https://github.com/759401524/pyyaml-rs.git
-cd pyyaml-rs
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
 
 # uv 사용 (권장)
 uv sync
@@ -45,7 +45,7 @@ cargo bench
 ### 프로젝트 구조
 
 ```text
-pyyaml-rs/
+pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 모듈 정의
 │   ├── ast.rs              # 사용자 정의 AST (CustomNode)
@@ -57,9 +57,9 @@ pyyaml-rs/
 │   │       ├── scalar.rs   # 스칼라 파싱
 │   │       └── types.rs    # YAML 1.2 타입 해석
 │   └── serializer.rs       # YAML 직렬화
-├── python/pyyaml_rs/
+├── python/pyrs_yaml/
 │   ├── __init__.py         # Python 패키지 초기화
-│   ├── pyyaml_rs.pyi       # 타입 스텁
+│   ├── pyrs_yaml.pyi       # 타입 스텁
 │   └── py.typed            # PEP 561 마커
 ├── tests/                  # Python 테스트 스위트
 ├── benches/                # Rust 벤치마크

@@ -1,21 +1,21 @@
 ---
 
-title: pyyaml-rs
+title: pyrs-yaml
 lang: ja
 
-## pyyaml-rs
+## pyrs-yaml
 
 # 高性能な Python YAML ライブラリ、完璧な Round-Trip サポート、Rust と PyO3 で構築されています。
 
 ---
 
-## なぜ pyyaml-rs を選ぶべきか？
+## なぜ pyrs-yaml を選ぶべきか？
 
-ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。 pyyaml-rs の両方を提供します:
+ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。 pyrs-yaml の両方を提供します:
 
 - **PyYAML** (Python) — 遅く、往復解析時に**コメント/アンカー/タグを失う**
-- **ruamel.yaml** (Python) — フォーマットを保持するが、pyyaml-rs より **5–10 倍遅い**
-- **pyyaml-rs** (Rust) — PyYAML より **25–40 倍高速**、すべてを保持
+- **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **5–10 倍遅い**
+- **pyrs-yaml** (Rust) — PyYAML より **25–40 倍高速**、すべてを保持
 
 ### 主要機能
 
@@ -32,29 +32,29 @@ lang: ja
 ### クイックスタート
 
 ```bash
-pip install pyyaml-rs
+pip install pyrs-yaml
 ```
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # Parse YAML
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 
 # PyYAML compatible API
-data = pyyaml_rs.safe_load("key: value")
+data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # Round-trip preserves comments
 original = "# Comment\nkey: value  # inline\n"
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
 ```
 
 ### PyYAML との比較
 
-| Operation | pyyaml-rs | PyYAML | Speedup |
+| Operation | pyrs-yaml | PyYAML | Speedup |
 |-----------|-----------|--------|---------|
 | Parse (small) | 0.00 ms | 0.11 ms | **25×** |
 | Parse (medium) | 0.03 ms | 0.75 ms | **28×** |
@@ -69,4 +69,4 @@ assert doc.to_yaml() == original
 
 ## [API リファレンスを参照 →](api/reference.md)
 
-## [GitHub で見る →](https://github.com/759401524/pyyaml-rs)
+## [GitHub で見る →](https://github.com/759401524/pyrs-yaml)

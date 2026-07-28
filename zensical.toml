@@ -1,13 +1,13 @@
 [project]
-site_name = "pyyaml-rs"
-site_url = "https://759401524.github.io/pyyaml-rs/"
+site_name = "pyrs-yaml"
+site_url = "https://759401524.github.io/pyrs-yaml/"
 site_description = "High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3"
 site_author = "MuLong <759401524@qq.com>"
-repo_url = "https://github.com/759401524/pyyaml-rs"
-repo_name = "759401524/pyyaml-rs"
+repo_url = "https://github.com/759401524/pyrs-yaml"
+repo_name = "759401524/pyrs-yaml"
 docs_dir = "docs/en"
 site_dir = "site/en"
-edit_uri = "https://github.com/759401524/pyyaml-rs/edit/main/docs/"
+edit_uri = "https://github.com/759401524/pyrs-yaml/edit/main/docs/"
 nav = [
     {"Home" = "index.md"},
     {"Getting Started" = [
@@ -128,14 +128,14 @@ custom_checkbox = true
 
 [project.extra]
 social = [
-    {icon = "fontawesome/brands/github", link = "https://github.com/759401524/pyyaml-rs"},
-    {icon = "fontawesome/brands/python", link = "https://pypi.org/project/pyyaml-rs/"},
+    {icon = "fontawesome/brands/github", link = "https://github.com/759401524/pyrs-yaml"},
+    {icon = "fontawesome/brands/python", link = "https://pypi.org/project/pyrs-yaml/"},
 ]
 alternate = [
-    {name = "English", link = "/pyyaml-rs/en/", lang = "en"},
-    {name = "中文", link = "/pyyaml-rs/zh/", lang = "zh"},
-    {name = "日本語", link = "/pyyaml-rs/ja/", lang = "ja"},
-    {name = "한국어", link = "/pyyaml-rs/ko/", lang = "ko"},
+    {name = "English", link = "/pyrs-yaml/en/", lang = "en"},
+    {name = "中文", link = "/pyrs-yaml/zh/", lang = "zh"},
+    {name = "日本語", link = "/pyrs-yaml/ja/", lang = "ja"},
+    {name = "한국어", link = "/pyrs-yaml/ko/", lang = "ko"},
 ]
 
 [project.extra.analytics]

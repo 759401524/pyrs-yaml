@@ -5,10 +5,10 @@ lang: zh
 
 ## 许可证
 
-pyyaml-rs is dual-licensed under either:
+pyrs-yaml is dual-licensed under either:
 
-- [MIT 许可证](https://github.com/MuLong/pyyaml-rs/blob/main/LICENSE-MIT)
-- [Apache 许可证, Version 2.0](https://github.com/MuLong/pyyaml-rs/blob/main/LICENSE-APACHE)
+- [MIT 许可证](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-MIT)
+- [Apache 许可证, Version 2.0](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-APACHE)
 
 at your option.
 
@@ -63,7 +63,7 @@ The dual license gives users flexibility:
 
 ### Dependencies
 
-pyyaml-rs depends on the following open-source projects:
+pyrs-yaml depends on the following open-source projects:
 
 | Dependency | 许可证 |
 |------------|---------|

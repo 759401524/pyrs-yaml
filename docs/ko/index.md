@@ -1,21 +1,21 @@
 ---
 
-title: pyyaml-rs
+title: pyrs-yaml
 lang: ko
 
-## pyyaml-rs
+## pyrs-yaml
 
 # 높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨
 
 ---
 
-## pyyaml-rs를 선택하는 이유
+## pyrs-yaml를 선택하는 이유
 
-대부분의 Python YAML 라이브러리는 성능 또는 정확도 중 하나를 희생합니다. pyyaml-rs는 둘을 모두 제공합니다:
+대부분의 Python YAML 라이브러리는 성능 또는 정확도 중 하나를 희생합니다. pyrs-yaml는 둘을 모두 제공합니다:
 
 - **PyYAML** (Python) — 느리고, 순환 파싱 시 **주석/앵커/태그를 잃음**
-- **ruamel.yaml** (Python) — 서식을 유지하지만 pyyaml-rs보다 **5–10배 느림**
-- **pyyaml-rs** (Rust) — PyYAML보다 **25–40배 빠르며** 모든 것을 유지
+- **ruamel.yaml** (Python) — 서식을 유지하지만 pyrs-yaml보다 **5–10배 느림**
+- **pyrs-yaml** (Rust) — PyYAML보다 **25–40배 빠르며** 모든 것을 유지
 
 ### 주요 기능
 
@@ -32,29 +32,29 @@ lang: ko
 ### 빠른 시작
 
 ```bash
-pip install pyyaml-rs
+pip install pyrs-yaml
 ```
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # Parse YAML
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 
 # PyYAML compatible API
-data = pyyaml_rs.safe_load("key: value")
+data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # Round-trip preserves comments
 original = "# Comment\nkey: value  # inline\n"
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
 ```
 
 ### PyYAML와의 성능 비교
 
-| Operation | pyyaml-rs | PyYAML | Speedup |
+| Operation | pyrs-yaml | PyYAML | Speedup |
 |-----------|-----------|--------|---------|
 | Parse (small) | 0.00 ms | 0.11 ms | **25×** |
 | Parse (medium) | 0.03 ms | 0.75 ms | **28×** |
@@ -69,4 +69,4 @@ assert doc.to_yaml() == original
 
 ## [API 참조 보기 →](api/reference.md)
 
-## [GitHub에서 보기 →](https://github.com/759401524/pyyaml-rs)
+## [GitHub에서 보기 →](https://github.com/759401524/pyrs-yaml)

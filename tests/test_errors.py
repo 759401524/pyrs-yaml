@@ -5,9 +5,8 @@ Error handling tests — YamlParseError, YamlTypeError, IO errors, edge cases.
 import tempfile
 from pathlib import Path
 
+import pyrs_yaml
 import pytest
-
-import pyyaml_rs
 
 # ============================================================================
 # File I/O Errors
@@ -22,7 +21,7 @@ class TestFileIO:
         with Path(test_file).open("w") as f:
             f.write("key: value\nlist:\n  - a\n  - b")
         try:
-            doc = pyyaml_rs.parse_file(test_file)
+            doc = pyrs_yaml.parse_file(test_file)
             assert doc.get("key") == "value"
         finally:
             if Path(test_file).exists():
@@ -30,7 +29,7 @@ class TestFileIO:
 
     def test_parse_file_nonexistent(self):
         with pytest.raises(OSError):
-            pyyaml_rs.parse_file("/nonexistent/file.yaml")
+            pyrs_yaml.parse_file("/nonexistent/file.yaml")
 
 
 # ============================================================================
@@ -42,31 +41,31 @@ class TestEdgeCases:
     """Test edge cases and special scenarios"""
 
     def test_empty_yaml(self):
-        doc = pyyaml_rs.parse("")
+        doc = pyrs_yaml.parse("")
         assert doc.root_type() == "null"
 
     def test_only_comment(self):
-        doc = pyyaml_rs.parse("# just a comment")
+        doc = pyrs_yaml.parse("# just a comment")
         assert doc.root_type() == "null"
 
     def test_special_chars_in_key(self):
         yaml_str = '"key:with:colons": value'
-        doc = pyyaml_rs.parse(yaml_str)
+        doc = pyrs_yaml.parse(yaml_str)
         assert doc.root_type() == "mapping"
 
     def test_multiline_string(self):
         yaml_str = "key: |\n  line1\n  line2\n  line3"
-        doc = pyyaml_rs.parse(yaml_str)
+        doc = pyrs_yaml.parse(yaml_str)
         assert doc.root_type() == "mapping"
 
     def test_deeply_nested(self):
         yaml_str = "a:\n  b:\n    c:\n      d: value"
-        doc = pyyaml_rs.parse(yaml_str)
+        doc = pyrs_yaml.parse(yaml_str)
         assert doc.root_type() == "mapping"
 
     def test_multiple_documents(self):
         yaml_str = "a: 1\n---\nb: 2"
-        docs = pyyaml_rs.safe_loads(yaml_str)
+        docs = pyrs_yaml.safe_loads(yaml_str)
         assert len(docs) == 2
 
 
@@ -80,34 +79,34 @@ class TestCustomExceptions:
 
     def test_yaml_parse_error_exists(self):
         """YamlParseError should be importable."""
-        assert hasattr(pyyaml_rs, "YamlParseError")
+        assert hasattr(pyrs_yaml, "YamlParseError")
 
     def test_yaml_serialize_error_exists(self):
         """YamlSerializeError should be importable."""
-        assert hasattr(pyyaml_rs, "YamlSerializeError")
+        assert hasattr(pyrs_yaml, "YamlSerializeError")
 
     def test_yaml_type_error_exists(self):
         """YamlTypeError should be importable."""
-        assert hasattr(pyyaml_rs, "YamlTypeError")
+        assert hasattr(pyrs_yaml, "YamlTypeError")
 
     def test_parse_error_is_value_error(self):
         """YamlParseError should inherit from ValueError."""
-        assert issubclass(pyyaml_rs.YamlParseError, ValueError)
+        assert issubclass(pyrs_yaml.YamlParseError, ValueError)
 
     def test_serialize_error_is_value_error(self):
         """YamlSerializeError should inherit from ValueError."""
-        assert issubclass(pyyaml_rs.YamlSerializeError, ValueError)
+        assert issubclass(pyrs_yaml.YamlSerializeError, ValueError)
 
     def test_type_error_is_type_error(self):
         """YamlTypeError should inherit from TypeError."""
-        assert issubclass(pyyaml_rs.YamlTypeError, TypeError)
+        assert issubclass(pyrs_yaml.YamlTypeError, TypeError)
 
     def test_parse_error_can_be_caught(self):
         """YamlParseError can be caught by except ValueError."""
         with pytest.raises(ValueError):
-            pyyaml_rs.parse("{{invalid yaml")
+            pyrs_yaml.parse("{{invalid yaml")
 
     def test_parse_error_is_custom_type(self):
         """Raised parse error is specifically YamlParseError."""
-        with pytest.raises(pyyaml_rs.YamlParseError):
-            pyyaml_rs.parse("{{invalid yaml")
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.parse("{{invalid yaml")

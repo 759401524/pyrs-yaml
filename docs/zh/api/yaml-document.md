@@ -7,11 +7,11 @@ lang: zh
 
 ### 概述
 
-`YamlDocument` 是 pyyaml-rs 的核心类，保存已解析的 YAML 文档。它使用基于 `IndexMap` 的自定义 AST，实现 **100% 往返解析**、**完整的键顺序保留**、**嵌套注释保留** 和 **详细元数据**。
+`YamlDocument` 是 pyrs-yaml 的核心类，保存已解析的 YAML 文档。它使用基于 `IndexMap` 的自定义 AST，实现 **100% 往返解析**、**完整的键顺序保留**、**嵌套注释保留** 和 **详细元数据**。
 
 ```python
 class YamlDocument:
-    """pyyaml-rs 的核心类。"""
+    """pyrs-yaml 的核心类。"""
     # ... C 扩展实现 ...
 ```
 
@@ -19,7 +19,7 @@ class YamlDocument:
 
 #### `YamlDocument()`
 
-内部构造函数。用户不应直接调用。从 `pyyaml_rs.parse()` 返回。
+内部构造函数。用户不应直接调用。从 `pyrs_yaml.parse()` 返回。
 
 ### 属性
 
@@ -64,7 +64,7 @@ to_yaml(
 **示例:**
 
 ```python
-doc = pyyaml_rs.parse("key: value\n# comment")
+doc = pyrs_yaml.parse("key: value\n# comment")
 yaml_str = doc.to_yaml()
 ```
 
@@ -81,7 +81,7 @@ to_dict() -> dict[str, Any] | list[Any]
 **示例:**
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 data = doc.to_dict()  # {'key': 'value'}
 ```
 
@@ -150,7 +150,7 @@ source_text() -> str
 通过键（映射）或索引（序列）访问。
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
 
@@ -206,18 +206,18 @@ doc1 == doc2  # True or False
 **示例:**
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # 映射
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 print(doc["name"])  # Alice
 print(len(doc))     # 2
 
 # 序列
-doc = pyyaml_rs.parse("- item1\n- item2")
+doc = pyrs_yaml.parse("- item1\n- item2")
 print(doc[0])  # item1
 
 # 嵌套访问
-doc = pyyaml_rs.parse("user:\n  name: Alice")
+doc = pyrs_yaml.parse("user:\n  name: Alice")
 print(doc["user"]["name"])  # Alice
 ```

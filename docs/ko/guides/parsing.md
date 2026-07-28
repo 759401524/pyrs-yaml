@@ -5,16 +5,16 @@ lang: ko
 
 ## YAML 파싱
 
-이 가이드는 pyyaml-rs로 YAML를 파싱하는 모든 방법을 설명합니다.
+이 가이드는 pyrs-yaml로 YAML를 파싱하는 모든 방법을 설명합니다.
 
 ### 기본 파싱
 
 #### YAML 문자열 파싱
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
@@ -22,13 +22,13 @@ print(doc.get("key"))  # value
 
 ```python
 # 병합 키 해석 비활성화 (<<: *alias를 그대로 유지)
-doc = pyyaml_rs.parse(yaml_text, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_text, resolve_merges=False)
 ```
 
 #### YAML 파일 파싱
 
 ```python
-doc = pyyaml_rs.parse_file("config.yaml")
+doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
@@ -44,7 +44,7 @@ name: first
 name: second
 """
 
-docs = pyyaml_rs.parse_all_docs(yaml_text)
+docs = pyrs_yaml.parse_all_docs(yaml_text)
 print(len(docs))  # 2
 print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
@@ -54,11 +54,11 @@ print(docs[1].get("name"))  # second
 
 ```python
 # 네이티브 Python 타입을 반환 (dict, list, str, int 등)
-data = pyyaml_rs.safe_load("key: value")
+data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # 여러 문서
-docs = pyyaml_rs.safe_loads("a: 1\n---\nb: 2")
+docs = pyrs_yaml.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
@@ -70,22 +70,22 @@ print(len(docs))  # 2
 
 ```python
 # str과 bytes 모두 허용
-doc1 = pyyaml_rs.parse("key: value")
-doc2 = pyyaml_rs.parse(b"key: value")
+doc1 = pyrs_yaml.parse("key: value")
+doc2 = pyrs_yaml.parse(b"key: value")
 ```
 
 ### 오류 처리
 
 ```python
 try:
-    doc = pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(f"파싱 오류: {e}")
 ```
 
 ### 지원되는 데이터 타입
 
-pyyaml-rs는 모든 YAML 1.2 스칼라 타입을 올바르게 파싱합니다.
+pyrs-yaml는 모든 YAML 1.2 스칼라 타입을 올바르게 파싱합니다.
 
 | 타입 | 예시 | Python 타입 |
 |------|------|------------|

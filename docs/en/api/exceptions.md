@@ -1,6 +1,6 @@
 # Exceptions
 
-pyyaml-rs defines three custom exception classes for error handling.
+pyrs-yaml defines three custom exception classes for error handling.
 
 ## YamlParseError
 
@@ -17,8 +17,8 @@ class YamlParseError(ValueError):
 
 ```python
 try:
-    doc = pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(f"Parse error: {e}")
     # Output: "YAML parse error: line 1, column 14: unexpected token..."
 ```
@@ -44,8 +44,8 @@ class YamlSerializeError(ValueError):
 
 ```python
 try:
-    yaml_str = pyyaml_rs.safe_dump(some_unsupported_type)
-except pyyaml_rs.YamlSerializeError as e:
+    yaml_str = pyrs_yaml.safe_dump(some_unsupported_type)
+except pyrs_yaml.YamlSerializeError as e:
     print(f"Serialize error: {e}")
 ```
 
@@ -64,8 +64,8 @@ class YamlTypeError(TypeError):
 
 ```python
 try:
-    pyyaml_rs.parse(123)  # Expected str or bytes
-except pyyaml_rs.YamlTypeError as e:
+    pyrs_yaml.parse(123)  # Expected str or bytes
+except pyrs_yaml.YamlTypeError as e:
     print(f"Type error: {e}")
 ```
 
@@ -83,11 +83,11 @@ class YamlValidateError(ValueError):
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse("name: Alice")
+doc = pyrs_yaml.parse("name: Alice")
 schema = {"type": "object", "required": ["name", "email"]}
 try:
     doc.validate(schema)
-except pyyaml_rs.YamlValidateError as e:
+except pyrs_yaml.YamlValidateError as e:
     print(f"Validation error: {e}")
     # Output: "Validation error: 'email' is a required property"
 ```
@@ -112,11 +112,11 @@ All error messages include contextual information:
 Error messages can be localized:
 
 ```python
-pyyaml_rs.set_language("zh-CN")
+pyrs_yaml.set_language("zh-CN")
 
 try:
-    pyyaml_rs.parse("invalid: [")
-except pyyaml_rs.YamlParseError as e:
+    pyrs_yaml.parse("invalid: [")
+except pyrs_yaml.YamlParseError as e:
     print(e)
     # Chinese: "YAML 解析错误: 第 1 行, 第 14 列: ..."
 ```
@@ -124,13 +124,13 @@ except pyyaml_rs.YamlParseError as e:
 ## Best Practices
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 def load_yaml(path):
     try:
-        doc = pyyaml_rs.parse_file(path)
+        doc = pyrs_yaml.parse_file(path)
         return doc.to_dict()
-    except pyyaml_rs.YamlParseError as e:
+    except pyrs_yaml.YamlParseError as e:
         print(f"Failed to parse {path}: {e}")
         return None
     except OSError as e:

@@ -225,7 +225,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::CustomNode;
+    /// use pyrs_yaml::ast::CustomNode;
     ///
     /// let node = CustomNode::plain_scalar("hello");
     /// assert_eq!(node.comment(), None);
@@ -253,7 +253,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::CustomNode;
+    /// use pyrs_yaml::ast::CustomNode;
     ///
     /// // YAML 输出: '-100'
     /// let node = CustomNode::quoted_scalar("-100");
@@ -281,7 +281,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::CustomNode;
+    /// use pyrs_yaml::ast::CustomNode;
     /// use indexmap::IndexMap;
     ///
     /// let mut pairs = IndexMap::new();
@@ -308,7 +308,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::CustomNode;
+    /// use pyrs_yaml::ast::CustomNode;
     ///
     /// let items = vec![CustomNode::plain_scalar("a"), CustomNode::plain_scalar("b")];
     /// let node = CustomNode::plain_sequence(items);
@@ -330,7 +330,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::CustomNode;
+    /// use pyrs_yaml::ast::CustomNode;
     ///
     /// let node = CustomNode::plain_null();
     /// assert!(matches!(node, CustomNode::Null { .. }));
@@ -351,7 +351,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::{CustomNode, Comment};
+    /// use pyrs_yaml::ast::{CustomNode, Comment};
     ///
     /// let mut node = CustomNode::plain_scalar("value");
     /// assert_eq!(node.comment(), None);
@@ -377,7 +377,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::{CustomNode, Comment};
+    /// use pyrs_yaml::ast::{CustomNode, Comment};
     ///
     /// let mut node = CustomNode::plain_scalar("hello");
     /// node.set_comment(Comment { text: "greeting".into(), standalone: false });
@@ -403,7 +403,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::CustomNode;
+    /// use pyrs_yaml::ast::CustomNode;
     ///
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
@@ -433,7 +433,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::{CustomNode, Tag};
+    /// use pyrs_yaml::ast::{CustomNode, Tag};
     ///
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
@@ -464,7 +464,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```ignore
-    /// use pyyaml_rs::ast::{CustomNode, Tag};
+    /// use pyrs_yaml::ast::{CustomNode, Tag};
     ///
     /// let mut node = CustomNode::plain_scalar("42");
     /// node.set_tag(Tag::primary("int"));

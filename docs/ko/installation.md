@@ -25,21 +25,21 @@ uv run --frozen maturin develop --release
 소스에서 설치 (개발 또는 테스트용):
 
 ```bash
-git clone https://github.com/759401524/pyyaml-rs.git
-cd pyyaml-rs
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
 ### 설치 확인
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # Check version
-print(pyyaml_rs.__version__)  # e.g., "0.2.0"
+print(pyrs_yaml.__version__)  # e.g., "0.2.0"
 
 # Quick smoke test
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 assert doc.to_yaml() == "key: value\n"
 print("✓ Installation verified")
 ```

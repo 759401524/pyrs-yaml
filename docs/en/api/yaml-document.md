@@ -24,7 +24,7 @@ to_yaml() -> str
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 ```
 
@@ -131,7 +131,7 @@ to_json(indent: int = 2) -> str
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse("a: 1\nb: hello")
+doc = pyrs_yaml.parse("a: 1\nb: hello")
 json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
 ```
 
@@ -156,7 +156,7 @@ validate(schema: str | dict[str, Any]) -> None
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
 # From JSON string
@@ -176,7 +176,7 @@ source() -> str | None
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.source())  # "key: value"
 ```
 
@@ -201,7 +201,7 @@ reparse(resolve_merges: bool = True, schema: str = "core") -> None
 **Example:**
 
 ```python
-doc = pyyaml_rs.parse("x: on")
+doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
 doc.reparse(schema="yaml1.1")
@@ -269,9 +269,9 @@ str(doc)  # Same as doc.to_yaml()
 ## Example
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
-doc = pyyaml_rs.parse("""
+doc = pyrs_yaml.parse("""
 name: Alice
 age: 30
 """)

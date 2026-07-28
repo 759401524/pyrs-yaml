@@ -15,8 +15,8 @@ lang: zh
 该包尚未发布到 PyPI。从源码安装：
 
 ```bash
-git clone https://github.com/759401524/pyyaml-rs.git
-cd pyyaml-rs
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
@@ -25,13 +25,13 @@ uv run --frozen maturin develop --release
 ### 快速验证
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # 检查版本
-print(pyyaml_rs.__version__)
+print(pyrs_yaml.__version__)
 
 # 快速测试
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 assert doc.to_yaml() == "key: value\n"
 print("✓ 安装验证成功")
 ```

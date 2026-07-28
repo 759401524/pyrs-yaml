@@ -5,7 +5,7 @@ lang: zh
 
 ## 编码标准
 
-贡献 pyyaml-rs 时请遵循以下标准。
+贡献 pyrs-yaml 时请遵循以下标准。
 
 ### Rust
 
@@ -52,7 +52,7 @@ let content = std::fs::read_to_string(path).unwrap();
 ///
 /// # Examples
 /// ```
-/// let ast = pyyaml_rs::parser::parse("key: value").unwrap();
+/// let ast = pyrs_yaml::parser::parse("key: value").unwrap();
 /// ```
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 ```

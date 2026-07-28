@@ -5,7 +5,7 @@ lang: zh
 
 ## 往返保存
 
-这是 pyyaml-rs 的**核心特性** — 在 Python YAML 库中独树一帜。
+这是 pyrs-yaml 的**核心特性** — 在 Python YAML 库中独树一帜。
 
 ### 什么是往返保存？
 
@@ -28,7 +28,7 @@ api:
   endpoint: /api/v1
 """
 
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # 所有格式和元数据都被保留
@@ -53,7 +53,7 @@ assert "<<: *db" in output
 | 流式/块式风格 | ✅ | `[]`/`{}` 与块式被保留 |
 | 键顺序 | ✅ | `IndexMap` 保证顺序 |
 
-### PyYAML vs pyyaml-rs 往返保存
+### PyYAML vs pyrs-yaml 往返保存
 
 ```python
 original = "# 注释\nkey: value  # 行内注释\n"
@@ -62,8 +62,8 @@ original = "# 注释\nkey: value  # 行内注释\n"
 yaml.safe_dump(yaml.safe_load(original))
 # 输出: 'key: value\n'  ❌
 
-# pyyaml-rs: 保留一切
-doc = pyyaml_rs.parse(original)
+# pyrs-yaml: 保留一切
+doc = pyrs_yaml.parse(original)
 doc.to_yaml()
 # 输出: '# 注释\nkey: value  # 行内注释\n'  ✅
 ```
@@ -74,8 +74,8 @@ doc.to_yaml()
 
 | 库 | 往返保存 (大文件) | 注释 | 锚点 | 标签 |
 |---|------------------|------|------|------|
-| **pyyaml-rs** | **0.08 ms** | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
 | PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
 | ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
 
-**pyyaml-rs 比 PyYAML 快 37 倍，比 ruamel.yaml 快 85 倍**，同时保留所有内容。
+**pyrs-yaml 比 PyYAML 快 37 倍，比 ruamel.yaml 快 85 倍**，同时保留所有内容。

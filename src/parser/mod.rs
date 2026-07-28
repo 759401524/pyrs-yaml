@@ -27,7 +27,7 @@ use yaml::{
 ///
 /// # Examples
 /// ```ignore
-/// let ast = pyyaml_rs::parser::parse("key: value").unwrap();
+/// let ast = pyrs_yaml::parser::parse("key: value").unwrap();
 /// ```
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser

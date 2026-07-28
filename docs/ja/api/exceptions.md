@@ -5,7 +5,7 @@ lang: ja
 
 ## 例外
 
-pyyaml-rs はエラーハンドリング用に3つのカスタム例外クラスを定義しています。
+pyrs-yaml はエラーハンドリング用に3つのカスタム例外クラスを定義しています。
 
 ### YamlParseError
 
@@ -22,8 +22,8 @@ class YamlParseError(ValueError):
 
 ```python
 try:
-    doc = pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(f"パースエラー: {e}")
 ```
 
@@ -47,8 +47,8 @@ class YamlSerializeError(ValueError):
 
 ```python
 try:
-    result = pyyaml_rs.safe_dump(float('inf'))
-except pyyaml_rs.YamlSerializeError as e:
+    result = pyrs_yaml.safe_dump(float('inf'))
+except pyrs_yaml.YamlSerializeError as e:
     print(f"シリアライズエラー: {e}")
 ```
 
@@ -67,8 +67,8 @@ class YamlTypeError(TypeError):
 
 ```python
 try:
-    result = pyyaml_rs.safe_dump(object())  # 変換不可な型
-except pyyaml_rs.YamlTypeError as e:
+    result = pyrs_yaml.safe_dump(object())  # 変換不可な型
+except pyrs_yaml.YamlTypeError as e:
     print(f"型エラー: {e}")
 ```
 
@@ -87,9 +87,9 @@ class YamlValidateError(ValueError):
 
 ```python
 try:
-    doc = pyyaml_rs.parse("age: not_a_number")
+    doc = pyrs_yaml.parse("age: not_a_number")
     doc.validate(schema={"type": "object", "properties": {"age": {"type": "number"}}})
-except pyyaml_rs.YamlValidateError as e:
+except pyrs_yaml.YamlValidateError as e:
     print(f"検証エラー: {e}")
 ```
 
@@ -109,12 +109,12 @@ except pyyaml_rs.YamlValidateError as e:
 エラーメッセージはローカライズできます：
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
-pyyaml_rs.set_language("zh-CN")  # 中国語
+pyrs_yaml.set_language("zh-CN")  # 中国語
 try:
-    pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(e)  # 中国語のエラーメッセージ
 ```
 
@@ -123,12 +123,12 @@ except pyyaml_rs.YamlParseError as e:
 ```python
 # 具体的な例外をキャッチ
 try:
-    doc = pyyaml_rs.parse(yaml_content)
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse(yaml_content)
+except pyrs_yaml.YamlParseError as e:
     logger.error(f"YAML パースエラー: {e}")
     # エラーメッセージの解析
     error_str = str(e)  # "Invalid YAML: line 1, column 15: ..."
-except pyyaml_rs.YamlTypeError as e:
+except pyrs_yaml.YamlTypeError as e:
     logger.error(f"型エラー: {e}")
 ```
 

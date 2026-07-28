@@ -12,7 +12,7 @@ Python オブジェクトと `YamlDocument` インスタンスを YAML 文字列
 #### `YamlDocument.to_yaml()`
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 yaml_str = doc.to_yaml()
 print(yaml_str)  # key: value\n
 ```
@@ -20,7 +20,7 @@ print(yaml_str)  # key: value\n
 #### `YamlDocument.to_yaml_with_options()`
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 
 # カスタムインデントとドキュメントマーカー
 yaml_str = doc.to_yaml_with_options(
@@ -35,7 +35,7 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 # dict を YAML 文字列に
-yaml_str = pyyaml_rs.safe_dump({
+yaml_str = pyrs_yaml.safe_dump({
     "database": {
         "host": "localhost",
         "port": 5432
@@ -43,7 +43,7 @@ yaml_str = pyyaml_rs.safe_dump({
 })
 
 # safe_dumps (エイリアス) も利用可能
-yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
+yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ```
 
 ### Python オブジェクトを YAML に変換
@@ -51,7 +51,7 @@ yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
 #### `from_dict()`
 
 ```python
-yaml_str = pyyaml_rs.from_dict({
+yaml_str = pyrs_yaml.from_dict({
     "name": "Alice",
     "age": 30,
     "tags": ["admin", "user"]
@@ -61,14 +61,14 @@ yaml_str = pyyaml_rs.from_dict({
 #### `from_json()`
 
 ```python
-yaml_str = pyyaml_rs.from_json('{"key": "value"}')
+yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 ```
 
 #### `dump_file()`
 
 ```python
 # Python オブジェクトを直接 YAML ファイルに書き込み
-pyyaml_rs.dump_file({
+pyrs_yaml.dump_file({
     "config": {
         "debug": True,
         "log_level": "info"
@@ -105,7 +105,7 @@ api:
   <<: *db
 """
 
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # コメント、アンカー、マージキーが保持される

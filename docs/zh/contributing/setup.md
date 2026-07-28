@@ -5,7 +5,7 @@ lang: zh
 
 ## 开发设置
 
-设置您的环境以贡献 pyyaml-rs。
+设置您的环境以贡献 pyrs-yaml。
 
 ### 前提条件
 
@@ -18,8 +18,8 @@ lang: zh
 ### 克隆和安装
 
 ```bash
-git clone https://github.com/759401524/pyyaml-rs.git
-cd pyyaml-rs
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
 
 # 使用 uv（推荐）
 uv sync
@@ -45,7 +45,7 @@ cargo bench
 ### 项目结构
 
 ```text
-pyyaml-rs/
+pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 模块定义
 │   ├── ast.rs              # 自定义 AST (CustomNode)
@@ -57,9 +57,9 @@ pyyaml-rs/
 │   │       ├── scalar.rs   # 标量解析
 │   │       └── types.rs    # YAML 1.2 类型解析
 │   └── serializer.rs       # YAML 序列化
-├── python/pyyaml_rs/
+├── python/pyrs_yaml/
 │   ├── __init__.py         # Python 包初始化
-│   ├── pyyaml_rs.pyi       # 类型桩文件
+│   ├── pyrs_yaml.pyi       # 类型桩文件
 │   └── py.typed            # PEP 561 标记
 ├── tests/                  # Python 测试套件
 ├── benches/                # Rust 基准测试

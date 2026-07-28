@@ -1,6 +1,6 @@
 # Coding Standards
 
-Follow these standards when contributing to pyyaml-rs.
+Follow these standards when contributing to pyrs-yaml.
 
 ## Rust
 
@@ -47,7 +47,7 @@ let content = std::fs::read_to_string(path).unwrap();
 ///
 /// # Examples
 /// ```
-/// let ast = pyyaml_rs::parser::parse("key: value").unwrap();
+/// let ast = pyrs_yaml::parser::parse("key: value").unwrap();
 /// ```
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 ```

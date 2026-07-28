@@ -7,7 +7,7 @@ Convert Python objects and `YamlDocument` instances to YAML strings.
 ### YamlDocument.to_yaml()
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 yaml_str = doc.to_yaml()
 print(yaml_str)  # key: value\n
 ```
@@ -15,7 +15,7 @@ print(yaml_str)  # key: value\n
 ### YamlDocument.to_yaml_with_options()
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 
 # Custom indentation and document markers
 yaml_str = doc.to_yaml_with_options(
@@ -30,7 +30,7 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 # Dict to YAML string
-yaml_str = pyyaml_rs.safe_dump({
+yaml_str = pyrs_yaml.safe_dump({
     "database": {
         "host": "localhost",
         "port": 5432
@@ -38,7 +38,7 @@ yaml_str = pyyaml_rs.safe_dump({
 })
 
 # Also available as safe_dumps (alias)
-yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
+yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ```
 
 ## Convert Python Objects to YAML
@@ -46,7 +46,7 @@ yaml_str = pyyaml_rs.safe_dumps({"key": "value"})
 ### from_dict()
 
 ```python
-yaml_str = pyyaml_rs.from_dict({
+yaml_str = pyrs_yaml.from_dict({
     "name": "Alice",
     "age": 30,
     "tags": ["admin", "user"]
@@ -56,14 +56,14 @@ yaml_str = pyyaml_rs.from_dict({
 ### from_json()
 
 ```python
-yaml_str = pyyaml_rs.from_json('{"key": "value"}')
+yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 ```
 
 ### dump_file()
 
 ```python
 # Write Python object directly to YAML file
-pyyaml_rs.dump_file({
+pyrs_yaml.dump_file({
     "config": {
         "debug": True,
         "log_level": "info"
@@ -100,7 +100,7 @@ api:
   <<: *db
 """
 
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 output = doc.to_yaml()
 
 # Comments, anchors, and merge keys preserved

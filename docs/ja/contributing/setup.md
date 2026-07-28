@@ -5,7 +5,7 @@ lang: ja
 
 ## 開発環境のセットアップ
 
-pyyaml-rs に貢献するための環境をセットアップします。
+pyrs-yaml に貢献するための環境をセットアップします。
 
 ### 前提条件
 
@@ -18,8 +18,8 @@ pyyaml-rs に貢献するための環境をセットアップします。
 ### クローンとインストール
 
 ```bash
-git clone https://github.com/759401524/pyyaml-rs.git
-cd pyyaml-rs
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
 
 # uv を使用（推奨）
 uv sync
@@ -45,7 +45,7 @@ cargo bench
 ### プロジェクト構造
 
 ```text
-pyyaml-rs/
+pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 モジュール定義
 │   ├── ast.rs              # カスタム AST (CustomNode)
@@ -57,9 +57,9 @@ pyyaml-rs/
 │   │       ├── scalar.rs   # スカラーパース
 │   │       └── types.rs    # YAML 1.2 型解決
 │   └── serializer.rs       # YAML シリアライゼーション
-├── python/pyyaml_rs/
+├── python/pyrs_yaml/
 │   ├── __init__.py         # Python パッケージ初期化
-│   ├── pyyaml_rs.pyi       # 型スタブ
+│   ├── pyrs_yaml.pyi       # 型スタブ
 │   └── py.typed            # PEP 561 マーカー
 ├── tests/                  # Python テストスイート
 ├── benches/                # Rust ベンチマーク

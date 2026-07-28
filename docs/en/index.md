@@ -1,16 +1,16 @@
-# pyyaml-rs
+# pyrs-yaml
 
 **High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.**
 
 ---
 
-## Why pyyaml-rs?
+## Why pyrs-yaml?
 
-Most Python YAML libraries sacrifice either performance or fidelity. pyyaml-rs delivers both:
+Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml delivers both:
 
 - **PyYAML** (Python) — slow, **loses comments/anchors/tags** on round-trip
-- **ruamel.yaml** (Python) — preserves formatting, but **5–10× slower** than pyyaml-rs
-- **pyyaml-rs** (Rust) — **25–40× faster than PyYAML** while preserving everything
+- **ruamel.yaml** (Python) — preserves formatting, but **5–10× slower** than pyrs-yaml
+- **pyrs-yaml** (Rust) — **25–40× faster than PyYAML** while preserving everything
 
 ## Key Features
 
@@ -27,29 +27,29 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyyaml-rs d
 ## Quick Start
 
 ```bash
-pip install pyyaml-rs
+pip install pyrs-yaml
 ```
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # Parse YAML
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 
 # PyYAML compatible API
-data = pyyaml_rs.safe_load("key: value")
+data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # Round-trip preserves comments
 original = "# Comment\nkey: value  # inline\n"
-doc = pyyaml_rs.parse(original)
+doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
 ```
 
 ## Performance vs PyYAML
 
-| Operation | pyyaml-rs | PyYAML | Speedup |
+| Operation | pyrs-yaml | PyYAML | Speedup |
 |-----------|-----------|--------|---------|
 | Parse (small) | 0.00 ms | 0.11 ms | **25×** |
 | Parse (medium) | 0.03 ms | 0.75 ms | **28×** |
@@ -62,4 +62,4 @@ assert doc.to_yaml() == original
 
 **[Get Started →](quick-start.md)**
 **[Browse API Reference →](api/reference.md)**
-**[View on GitHub →](https://github.com/759401524/pyyaml-rs)**
+**[View on GitHub →](https://github.com/759401524/pyrs-yaml)**

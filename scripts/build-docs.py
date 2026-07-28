@@ -1,4 +1,4 @@
-"""Build pyyaml-rs documentation for all locales using Zensical.
+"""Build pyrs-yaml documentation for all locales using Zensical.
 
 Each locale is built as a separate Zensical site with the correct theme.language,
 so that the HTML lang attribute is accurate (zh, ja, ko, not en).

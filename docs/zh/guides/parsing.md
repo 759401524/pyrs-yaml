@@ -5,16 +5,16 @@ lang: zh
 
 ## 解析 YAML
 
-本指南介绍使用 pyyaml-rs 解析 YAML 的所有方法。
+本指南介绍使用 pyrs-yaml 解析 YAML 的所有方法。
 
 ### 基本解析
 
 #### 解析 YAML 字符串
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
@@ -22,13 +22,13 @@ print(doc.get("key"))  # value
 
 ```python
 # 禁用合并键解析（保留 <<: *alias 原样）
-doc = pyyaml_rs.parse(yaml_text, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_text, resolve_merges=False)
 ```
 
 #### 解析 YAML 文件
 
 ```python
-doc = pyyaml_rs.parse_file("config.yaml")
+doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
@@ -44,7 +44,7 @@ name: first
 name: second
 """
 
-docs = pyyaml_rs.parse_all_docs(yaml_text)
+docs = pyrs_yaml.parse_all_docs(yaml_text)
 print(len(docs))  # 2
 print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
@@ -54,11 +54,11 @@ print(docs[1].get("name"))  # second
 
 ```python
 # 返回原生 Python 类型（dict, list, str, int 等）
-data = pyyaml_rs.safe_load("key: value")
+data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
 # 多个文档
-docs = pyyaml_rs.safe_loads("a: 1\n---\nb: 2")
+docs = pyrs_yaml.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
@@ -70,22 +70,22 @@ print(len(docs))  # 2
 
 ```python
 # 同时接受 str 和 bytes
-doc1 = pyyaml_rs.parse("key: value")
-doc2 = pyyaml_rs.parse(b"key: value")
+doc1 = pyrs_yaml.parse("key: value")
+doc2 = pyrs_yaml.parse(b"key: value")
 ```
 
 ### 错误处理
 
 ```python
 try:
-    doc = pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(f"解析错误: {e}")
 ```
 
 ### 支持的数据类型
 
-pyyaml-rs 正确解析所有 YAML 1.2 标量类型：
+pyrs-yaml 正确解析所有 YAML 1.2 标量类型：
 
 | 类型 | 示例 | Python 类型 |
 |------|------|------------|

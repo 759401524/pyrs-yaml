@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "pyyaml-rs"
+name = "pyrs-yaml"
 dynamic = ["version"]
 description = "High-performance Python YAML library with perfect round-trip support"
 readme = "README.md"
@@ -37,14 +37,14 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/759401524/pyyaml-rs"
-Documentation = "https://github.com/759401524/pyyaml-rs#readme"
-Repository = "https://github.com/759401524/pyyaml-rs"
-Issues = "https://github.com/759401524/pyyaml-rs/issues"
+Homepage = "https://github.com/759401524/pyrs-yaml"
+Documentation = "https://github.com/759401524/pyrs-yaml#readme"
+Repository = "https://github.com/759401524/pyrs-yaml"
+Issues = "https://github.com/759401524/pyrs-yaml/issues"
 
 [tool.maturin]
 bindings = "pyo3"
-module-name = "pyyaml_rs"
+module-name = "pyrs_yaml"
 python-source = "python"
 features = ["pyo3/extension-module"]
 strip = true

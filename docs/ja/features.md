@@ -5,7 +5,7 @@ lang: ja
 
 ## 機能
 
-pyyaml-rs は PyYAML の**直接置換**として設計されており、PyYAML にない強力な機能を追加しています。
+pyrs-yaml は PyYAML の**直接置換**として設計されており、PyYAML にない強力な機能を追加しています。
 
 ### YAML 1.2 準拠
 
@@ -13,7 +13,7 @@ pyyaml-rs は PyYAML の**直接置換**として設計されており、PyYAML 
 
 ### 完璧なラウンドトリップ
 
-PyYAML と異なり、pyyaml-rs は**すべてのフォーマットとメタデータを保持**します：
+PyYAML と異なり、pyrs-yaml は**すべてのフォーマットとメタデータを保持**します：
 
 - **コメント** — 独立コメントとインラインコメント
 - **アンカー** (`&name`) と **エイリアス** (`*name`)
@@ -26,7 +26,7 @@ PyYAML と異なり、pyyaml-rs は**すべてのフォーマットとメタデ�
 
 Rust バックエンドは PyYAML より **25–40 倍高速**：
 
-| Operation | pyyaml-rs | PyYAML |
+| Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
 | Parse (large) | 0.07 ms | 1.83 ms |
 | Serialize (large) | 0.08 ms | 2.96 ms |
@@ -46,7 +46,7 @@ Rust バックエンドは PyYAML より **25–40 倍高速**：
 使い慣れた API で直接置き換え可能：
 
 ```python
-import pyyaml_rs as yaml  # Use as 'yaml' for easy migration
+import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
 yaml.safe_dump(data)
@@ -60,11 +60,11 @@ yaml.safe_dumps(data)
 
 ```python
 import asyncio
-import pyyaml_rs
+import pyrs_yaml
 
 async def main():
-    yaml = await pyyaml_rs.safe_dump_async({"a": 1})
-    data = await pyyaml_rs.safe_loads_async(yaml)
+    yaml = await pyrs_yaml.safe_dump_async({"a": 1})
+    data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())
@@ -77,7 +77,7 @@ asyncio.run(main())
 JSON Schema に基づいてパースされた YAML ドキュメントを検証：
 
 ```python
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
 # Schema as JSON string
@@ -91,7 +91,7 @@ doc.validate('{"type": "object", "required": ["name"]}')
 異なるオプションで保存されたソーステキストをその場で再パース：
 
 ```python
-doc = pyyaml_rs.parse("x: on")
+doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
 doc.reparse(schema="yaml1.1")
@@ -100,22 +100,22 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 ### NumPy ndarray サポート
 
-pyyaml-rs は任意次元の `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます：
+pyrs-yaml は任意次元の `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます：
 
 ```python
 import numpy as np
-import pyyaml_rs
+import pyrs_yaml
 
 # 1-D array
 arr = np.array([1, 2, 3], dtype="int32")
-yaml_str = pyyaml_rs.safe_dump(arr)
+yaml_str = pyrs_yaml.safe_dump(arr)
 # - 1
 # - 2
 # - 3
 
 # 2-D matrix
 matrix = np.array([[1, 2], [3, 4]], dtype="float64")
-yaml_str = pyyaml_rs.safe_dump(matrix)
+yaml_str = pyrs_yaml.safe_dump(matrix)
 # -
 #   - 1.0
 #   - 2.0
@@ -124,7 +124,7 @@ yaml_str = pyyaml_rs.safe_dump(matrix)
 #   - 4.0
 
 # Round-trip
-loaded = pyyaml_rs.safe_load(yaml_str)
+loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 

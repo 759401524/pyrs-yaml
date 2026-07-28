@@ -1,15 +1,14 @@
 """
-YAML Test Suite Runner for pyyaml_rs
+YAML Test Suite Runner for pyrs_yaml
 Runs the official YAML test suite and reports results
 """
 
 import json
 from pathlib import Path
 
+import pyrs_yaml
 import pytest
 import yaml
-
-import pyyaml_rs
 
 
 def convert_special_chars(text: str) -> str:
@@ -123,7 +122,7 @@ def run_test(test: dict) -> dict:
 
     # Test 1: Parse the YAML
     try:
-        doc = pyyaml_rs.parse(yaml_input)
+        doc = pyrs_yaml.parse(yaml_input)
         result["parse_ok"] = True
     except Exception as e:
         result["error"] = f"Parse error: {str(e)[:100]}"
@@ -132,7 +131,7 @@ def run_test(test: dict) -> dict:
     # Test 2: Compare JSON output (if expected)
     if test["json"]:
         try:
-            actual_data = pyyaml_rs.safe_load(yaml_input)
+            actual_data = pyrs_yaml.safe_load(yaml_input)
             actual_json = json.dumps(actual_data, sort_keys=True, indent=2)
             result["json_match"] = compare_json(test["json"], actual_json)
         except Exception as e:

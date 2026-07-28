@@ -30,10 +30,10 @@ tags: [yaml, python, rust]
 Markdown 파일에서 프론트메터를 파싱합니다:
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # (frontmatter_dict, content_string) 반환
-frontmatter, content = pyyaml_rs.read_markdown("post.md")
+frontmatter, content = pyrs_yaml.read_markdown("post.md")
 
 print(frontmatter)
 # {'title': '블로그 포스트', 'author': 'Alice', 'date': '2024-01-15', 'tags': ['yaml', 'python', 'rust']}
@@ -56,7 +56,7 @@ tags: [tech]
 여기에 콘텐츠.
 """
 
-frontmatter, content = pyyaml_rs.read_markdown_str(markdown_text)
+frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text)
 
 if frontmatter:
     print(f"제목: {frontmatter['title']}")
@@ -71,7 +71,7 @@ else:
 파일/문자열에 프론트메터가 없으면:
 
 ```python
-frontmatter, content = pyyaml_rs.read_markdown("no-frontmatter.md")
+frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
 
 # frontmatter는 None, content는 전체 텍스트
 assert frontmatter is None
@@ -84,7 +84,7 @@ assert content == "일반 Markdown 콘텐츠."
 
 ```python
 # 블로그 목록용 메타데이터 추출
-frontmatter, _ = pyyaml_rs.read_markdown("draft.md")
+frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
 if frontmatter.get("published", False):
     print(f"발행된 포스트: {frontmatter['title']}")
 else:
@@ -98,7 +98,7 @@ else:
 import glob
 
 for path in glob.glob("posts/*.md"):
-    meta, content = pyyaml_rs.read_markdown(path)
+    meta, content = pyrs_yaml.read_markdown(path)
     # 메타데이터와 콘텐츠로 템플릿 렌더링
 ```
 
@@ -107,7 +107,7 @@ for path in glob.glob("posts/*.md"):
 ```python
 # 프론트메터 구조 검증
 required_fields = ["title", "author", "date"]
-frontmatter, _ = pyyaml_rs.read_markdown("article.md")
+frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 
 for field in required_fields:
     assert field in frontmatter, f"필수 필드 누락: {field}"

@@ -1,6 +1,6 @@
 # Architecture
 
-pyyaml-rs uses a modular architecture designed for performance and correctness.
+pyrs-yaml uses a modular architecture designed for performance and correctness.
 
 ## Overview
 
@@ -8,7 +8,7 @@ pyyaml-rs uses a modular architecture designed for performance and correctness.
 ┌─────────────────────────────────────────────────────────┐
 │                     Python Layer                        │
 │  ┌─────────────────────────────────────────────────────┐│
-│  │               pyyaml_rs module                       ││
+│  │               pyrs_yaml module                       ││
 │  │  parse | safe_load | safe_dump | dump_file | ...    ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │ PyO3 bindings                   │
@@ -39,7 +39,7 @@ pyyaml-rs uses a modular architecture designed for performance and correctness.
 
 ### 1. `src/ast.rs` — Custom AST
 
-The **CustomNode** enum is the heart of pyyaml-rs:
+The **CustomNode** enum is the heart of pyrs-yaml:
 
 - **Scalar** — with style (plain, quoted, literal, folded), comment, anchor, tag, chomping
 - **Mapping** — `IndexMap` for key order preservation, flow_style flag

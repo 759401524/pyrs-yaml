@@ -5,7 +5,7 @@ lang: zh
 
 ## 模块参考
 
-`pyyaml_rs` 模块的完整 API 参考。
+`pyrs_yaml` 模块的完整 API 参考。
 
 ### 核心函数
 
@@ -32,9 +32,9 @@ parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 **示例:**
 
 ```python
-doc = pyyaml_rs.parse("key: value")
-doc = pyyaml_rs.parse(b"key: value")
-doc = pyyaml_rs.parse(yaml_str, resolve_merges=False)
+doc = pyrs_yaml.parse("key: value")
+doc = pyrs_yaml.parse(b"key: value")
+doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 ```
 
 #### `parse_file()`
@@ -59,7 +59,7 @@ parse_file(path: str) -> YamlDocument
 **示例:**
 
 ```python
-doc = pyyaml_rs.parse_file("config.yaml")
+doc = pyrs_yaml.parse_file("config.yaml")
 ```
 
 #### `parse_all_docs()`
@@ -75,7 +75,7 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 **示例:**
 
 ```python
-docs = pyyaml_rs.parse_all_docs("a: 1\n---\nb: 2")
+docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
 ### PyYAML 兼容函数
@@ -93,7 +93,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 **示例:**
 
 ```python
-data = pyyaml_rs.safe_load("key: value")  # {'key': 'value'}
+data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 ```
 
 #### `safe_loads()`
@@ -191,11 +191,11 @@ async def safe_load_async(yaml: str, schema: str = "core") -> Any
 **示例:**
 
 ```python
-import asyncio, pyyaml_rs
+import asyncio, pyrs_yaml
 
 async def main():
-    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
-    data = await pyyaml_rs.safe_loads_async(yaml)
+    yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
+    data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())

@@ -5,7 +5,7 @@ lang: ja
 
 ## 比較 with Other Libraries
 
-pyyaml-rs compared against the two most popular Python YAML libraries.
+pyrs-yaml compared against the two most popular Python YAML libraries.
 
 ### パフォーマンス 比較
 
@@ -13,7 +13,7 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyyaml-rs** | **0.07 ms** | — |
+| **pyrs-yaml** | **0.07 ms** | — |
 | PyYAML | 1.83 ms | 26× slower |
 | ruamel.yaml | 4.26 ms | 61× slower |
 
@@ -21,7 +21,7 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyyaml-rs** | **0.08 ms** | — |
+| **pyrs-yaml** | **0.08 ms** | — |
 | PyYAML | 2.96 ms | 37× slower |
 | ruamel.yaml | 6.74 ms | 84× slower |
 
@@ -29,13 +29,13 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyyaml-rs** | **0.08 ms** | — |
+| **pyrs-yaml** | **0.08 ms** | — |
 | PyYAML | 2.98 ms | 37× slower |
 | ruamel.yaml | 6.79 ms | 85× slower |
 
 ### Feature 比較
 
-| Feature | pyyaml-rs | PyYAML | ruamel.yaml |
+| Feature | pyrs-yaml | PyYAML | ruamel.yaml |
 |---------|-----------|--------|-------------|
 | **YAML 1.2 compliance** | ✅ | ✅ | ✅ |
 | **Comments (standalone)** | ✅ | ❌ | ✅ |
@@ -56,7 +56,7 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 
 ### Summary
 
-#### Choose pyyaml-rs when
+#### Choose pyrs-yaml when
 
 - **パフォーマンス matters** — 25–40× faster than PyYAML
 - **Round-trip preservation is critical** — preserves comments, anchors, tags
@@ -80,14 +80,14 @@ pyyaml-rs compared against the two most popular Python YAML libraries.
 
 ```python
 # Step 1: Install
-pip install pyyaml-rs
+pip install pyrs-yaml
 
 # Step 2: Replace import
 # Before:
 import yaml
 
 # After:
-import pyyaml_rs as yaml
+import pyrs_yaml as yaml
 
 # Step 3: Test
 # Run your existing tests to verify compatibility

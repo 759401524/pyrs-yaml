@@ -1,14 +1,13 @@
 """
-Comprehensive benchmark: pyyaml-rs vs PyYAML vs ruamel.yaml
+Comprehensive benchmark: pyrs-yaml vs PyYAML vs ruamel.yaml
 """
 
 import io
 import time
 
+import pyrs_yaml
 import yaml as pyyaml
 from ruamel.yaml import YAML
-
-import pyyaml_rs
 
 # ── Ruamel helpers ─────────────────────────────────────────────────────────
 
@@ -32,7 +31,7 @@ def ruamel_dump(data):
 SMALL_YAML = """
 # Application config
 app:
-  name: pyyaml-rs
+  name: pyrs-yaml
   version: 0.2.0
   debug: false
   log_level: info
@@ -219,10 +218,10 @@ def timed(fn, rounds=200):
 
 def main():
     print("=" * 75)
-    print("  pyyaml-rs vs PyYAML vs ruamel.yaml — Performance Benchmark")
+    print("  pyrs-yaml vs PyYAML vs ruamel.yaml — Performance Benchmark")
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
-    print(f"  pyyaml-rs: {pyyaml_rs.__version__}")
+    print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
     print(f"  ruamel:    {YAML.__module__}")
     print()
@@ -236,11 +235,11 @@ def main():
         print(f"  {label}")
         print("─" * 75)
 
-        # pyyaml-rs
-        p = timed(lambda yaml_str=yaml_str: pyyaml_rs.parse(yaml_str))
-        s = timed(lambda yaml_str=yaml_str: pyyaml_rs.parse(yaml_str).to_yaml())
-        r = timed(lambda yaml_str=yaml_str: pyyaml_rs.parse(yaml_str).to_yaml())
-        print(f"  pyyaml-rs       parse={p[0]:8.2f}ms  serialize={s[0]:8.2f}ms  roundtrip={r[0]:8.2f}ms")
+        # pyrs-yaml
+        p = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str))
+        s = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml())
+        r = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml())
+        print(f"  pyrs-yaml       parse={p[0]:8.2f}ms  serialize={s[0]:8.2f}ms  roundtrip={r[0]:8.2f}ms")
 
         # PyYAML
         p2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_load(yaml_str))
@@ -269,10 +268,10 @@ def main():
 
     rt_yaml = LARGE_YAML
 
-    # pyyaml-rs
-    out1 = pyyaml_rs.parse(rt_yaml).to_yaml()
+    # pyrs-yaml
+    out1 = pyrs_yaml.parse(rt_yaml).to_yaml()
     print(
-        f"  pyyaml-rs:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}"
+        f"  pyrs-yaml:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}"
     )
 
     # PyYAML
@@ -310,7 +309,7 @@ def main():
         ("i18n error messages", True, False, False),
     ]
 
-    print(f"  {'Feature':35s} {'pyyaml-rs':12s} {'PyYAML':10s} {'ruamel':10s}")
+    print(f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s}")
     print(f"  {'-' * 67}")
     for name, pyr, pyr2, ruamel in features:
         pyr_m = "✅" if pyr else "❌"

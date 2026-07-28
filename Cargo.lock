@@ -688,7 +688,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pyyaml-rs"
+name = "pyrs-yaml"
 version = "0.6.0"
 dependencies = [
  "criterion",

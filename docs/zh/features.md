@@ -5,15 +5,15 @@ lang: zh
 
 ## 功能特性
 
-pyyaml-rs 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺少的强大功能。
+pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺少的强大功能。
 
 ### YAML 1.2 合规
 
-由 **saphyr-parser** 驱动，pyyaml-rs 在 YAML 测试套件中达到 **98.1% 的通过率**。
+由 **saphyr-parser** 驱动，pyrs-yaml 在 YAML 测试套件中达到 **98.1% 的通过率**。
 
 ### 完美的往返解析
 
-与 PyYAML 不同，pyyaml-rs **保留所有格式和元数据**：
+与 PyYAML 不同，pyrs-yaml **保留所有格式和元数据**：
 
 - **注释** — 独立注释和行内注释
 - **锚点** (`&name`) 和 **别名** (`*name`)
@@ -26,7 +26,7 @@ pyyaml-rs 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺�
 
 Rust 后端比 PyYAML 快 **25–40 倍**：
 
-| Operation | pyyaml-rs | PyYAML |
+| Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
 | Parse (large) | 0.07 ms | 1.83 ms |
 | Serialize (large) | 0.08 ms | 2.96 ms |
@@ -46,7 +46,7 @@ Rust 后端比 PyYAML 快 **25–40 倍**：
 直接替换，API 熟悉易用：
 
 ```python
-import pyyaml_rs as yaml  # Use as 'yaml' for easy migration
+import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
 yaml.safe_dump(data)
@@ -60,11 +60,11 @@ yaml.safe_dumps(data)
 
 ```python
 import asyncio
-import pyyaml_rs
+import pyrs_yaml
 
 async def main():
-    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
-    data = await pyyaml_rs.safe_loads_async(yaml)
+    yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
+    data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())
@@ -77,7 +77,7 @@ asyncio.run(main())
 根据 JSON Schema 验证解析后的 YAML 文档：
 
 ```python
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
 # Schema as JSON string
@@ -91,7 +91,7 @@ doc.validate('{"type": "object", "required": ["name"]}')
 使用不同选项就地重新解析存储的源文本：
 
 ```python
-doc = pyyaml_rs.parse("x: on")
+doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
 doc.reparse(schema="yaml1.1")
@@ -100,22 +100,22 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 ### NumPy ndarray 支持
 
-pyyaml-rs 可以将任意维度的 `numpy.ndarray` 对象直接序列化为 YAML：
+pyrs-yaml 可以将任意维度的 `numpy.ndarray` 对象直接序列化为 YAML：
 
 ```python
 import numpy as np
-import pyyaml_rs
+import pyrs_yaml
 
 # 1-D array
 arr = np.array([1, 2, 3], dtype="int32")
-yaml_str = pyyaml_rs.safe_dump(arr)
+yaml_str = pyrs_yaml.safe_dump(arr)
 # - 1
 # - 2
 # - 3
 
 # 2-D matrix
 matrix = np.array([[1, 2], [3, 4]], dtype="float64")
-yaml_str = pyyaml_rs.safe_dump(matrix)
+yaml_str = pyrs_yaml.safe_dump(matrix)
 # -
 #   - 1.0
 #   - 2.0
@@ -124,7 +124,7 @@ yaml_str = pyyaml_rs.safe_dump(matrix)
 #   - 4.0
 
 # Round-trip
-loaded = pyyaml_rs.safe_load(yaml_str)
+loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 

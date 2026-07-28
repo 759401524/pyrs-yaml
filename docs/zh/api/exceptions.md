@@ -5,7 +5,7 @@ lang: zh
 
 ## 异常
 
-pyyaml-rs 定义了三个自定义异常类用于错误处理。
+pyrs-yaml 定义了三个自定义异常类用于错误处理。
 
 ### YamlParseError
 
@@ -22,8 +22,8 @@ class YamlParseError(ValueError):
 
 ```python
 try:
-    doc = pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(f"解析错误: {e}")
 ```
 
@@ -47,8 +47,8 @@ class YamlSerializeError(ValueError):
 
 ```python
 try:
-    result = pyyaml_rs.safe_dump(float('inf'))
-except pyyaml_rs.YamlSerializeError as e:
+    result = pyrs_yaml.safe_dump(float('inf'))
+except pyrs_yaml.YamlSerializeError as e:
     print(f"序列化错误: {e}")
 ```
 
@@ -67,8 +67,8 @@ class YamlTypeError(TypeError):
 
 ```python
 try:
-    result = pyyaml_rs.safe_dump(object())  # 不可转换的类型
-except pyyaml_rs.YamlTypeError as e:
+    result = pyrs_yaml.safe_dump(object())  # 不可转换的类型
+except pyrs_yaml.YamlTypeError as e:
     print(f"类型错误: {e}")
 ```
 
@@ -87,9 +87,9 @@ class YamlValidateError(ValueError):
 
 ```python
 try:
-    doc = pyyaml_rs.parse("age: not_a_number")
+    doc = pyrs_yaml.parse("age: not_a_number")
     doc.validate(schema={"type": "object", "properties": {"age": {"type": "number"}}})
-except pyyaml_rs.YamlValidateError as e:
+except pyrs_yaml.YamlValidateError as e:
     print(f"验证错误: {e}")
 ```
 
@@ -109,12 +109,12 @@ except pyyaml_rs.YamlValidateError as e:
 错误消息可以本地化：
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
-pyyaml_rs.set_language("zh-CN")  # 中文
+pyrs_yaml.set_language("zh-CN")  # 中文
 try:
-    pyyaml_rs.parse("invalid: yaml: [")
-except pyyaml_rs.YamlParseError as e:
+    pyrs_yaml.parse("invalid: yaml: [")
+except pyrs_yaml.YamlParseError as e:
     print(e)  # 中文错误消息
 ```
 
@@ -123,12 +123,12 @@ except pyyaml_rs.YamlParseError as e:
 ```python
 # 捕获具体的异常
 try:
-    doc = pyyaml_rs.parse(yaml_content)
-except pyyaml_rs.YamlParseError as e:
+    doc = pyrs_yaml.parse(yaml_content)
+except pyrs_yaml.YamlParseError as e:
     logger.error(f"YAML 解析错误: {e}")
     # 错误消息的解析
     error_str = str(e)  # "Invalid YAML: line 1, column 15: ..."
-except pyyaml_rs.YamlTypeError as e:
+except pyrs_yaml.YamlTypeError as e:
     logger.error(f"类型错误: {e}")
 ```
 

@@ -7,11 +7,11 @@ lang: ja
 
 ### 概要
 
-`YamlDocument` は pyyaml-rs のコアクラスで、解析済みの YAML ドキュメントを保持します。`IndexMap` を使用したカスタム AST により、**100% ラウンドトリップ**、**完全なキー順序保持**、**ネストされたコメントの保持**、**詳細なメタデータ**を実現します。
+`YamlDocument` は pyrs-yaml のコアクラスで、解析済みの YAML ドキュメントを保持します。`IndexMap` を使用したカスタム AST により、**100% ラウンドトリップ**、**完全なキー順序保持**、**ネストされたコメントの保持**、**詳細なメタデータ**を実現します。
 
 ```python
 class YamlDocument:
-    """pyyaml-rs のコアクラス。"""
+    """pyrs-yaml のコアクラス。"""
     # ... C 拡張で実装 ...
 ```
 
@@ -19,7 +19,7 @@ class YamlDocument:
 
 #### `YamlDocument()`
 
-内部コンストラクター。ユーザーが直接呼び出すことはありません。`pyyaml_rs.parse()` から返されます。
+内部コンストラクター。ユーザーが直接呼び出すことはありません。`pyrs_yaml.parse()` から返されます。
 
 ### プロパティ
 
@@ -64,7 +64,7 @@ to_yaml(
 **例:**
 
 ```python
-doc = pyyaml_rs.parse("key: value\n# comment")
+doc = pyrs_yaml.parse("key: value\n# comment")
 yaml_str = doc.to_yaml()
 ```
 
@@ -81,7 +81,7 @@ to_dict() -> dict[str, Any] | list[Any]
 **例:**
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 data = doc.to_dict()  # {'key': 'value'}
 ```
 
@@ -150,7 +150,7 @@ source_text() -> str
 キー（マッピング）またはインデックス（シーケンス）でアクセスします。
 
 ```python
-doc = pyyaml_rs.parse("key: value")
+doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
 
@@ -206,18 +206,18 @@ doc1 == doc2  # True or False
 **例:**
 
 ```python
-import pyyaml_rs
+import pyrs_yaml
 
 # マッピング
-doc = pyyaml_rs.parse("name: Alice\nage: 30")
+doc = pyrs_yaml.parse("name: Alice\nage: 30")
 print(doc["name"])  # Alice
 print(len(doc))     # 2
 
 # シーケンス
-doc = pyyaml_rs.parse("- item1\n- item2")
+doc = pyrs_yaml.parse("- item1\n- item2")
 print(doc[0])  # item1
 
 # ネストされたアクセス
-doc = pyyaml_rs.parse("user:\n  name: Alice")
+doc = pyrs_yaml.parse("user:\n  name: Alice")
 print(doc["user"]["name"])  # Alice
 ```
