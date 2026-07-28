@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- CI Python matrix expanded: 3.9-3.14 across ubuntu, windows, macos
-- Stable ABI: `abi3-py39` → `abi3-py38` (wider Python support), added `abi3t` + `abi3t-py315` (free-threaded stable ABI)
+- CI Python matrix expanded: 3.8-3.14 across ubuntu, windows, macos
+- Stable ABI: `abi3-py39` → `abi3-py38` (wider Python 3.8+ support), added `abi3t` + `abi3t-py315` (free-threaded stable ABI)
 - `pyproject.toml` classifiers updated with 3.13, 3.14, 3.15 entries
 
 ## [0.6.0] - 2026-07-27

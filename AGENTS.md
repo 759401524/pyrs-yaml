@@ -15,8 +15,8 @@
 
 ```toml
 [dependencies]
-# PyO3: 必须包含 "experimental-inspect" 特性; abi3-py39 + abi3t-py315 用于稳定 ABI
-pyo3 = { version = "0.29", features = ["experimental-inspect", "abi3-py39", "abi3t-py315"] }
+# PyO3: 必须包含 "experimental-inspect" 特性; abi3-py38 + abi3t-py315 用于稳定 ABI
+pyo3 = { version = "0.29", features = ["experimental-inspect", "abi3-py38", "abi3t-py315"] }
 
 # indexmap: 用于保证 Mapping (字典) 的插入/解析顺序
 indexmap = "2.7"
