@@ -455,9 +455,7 @@ mod pyyaml_rs {
 
     /// 将 `CustomNode` 转换为 Python 对象，不解析别名（别名节点返回 `None`）。
     fn node_to_pyobject(node: &CustomNode, py: Python, schema: YamlSchema) -> PyResult<Py<PyAny>> {
-        let anchors = HashMap::new();
-        let mut visited = HashSet::new();
-        node_to_pyobject_inner(node, py, &anchors, &mut visited, schema)
+        node_to_pyobject_simple(node, py, schema)
     }
 
     /// 内部转换逻辑，被 `node_to_pyobject` 和 `node_to_pyobject_with_anchors` 共用。
@@ -512,6 +510,60 @@ mod pyyaml_rs {
                 let list = pyo3::types::PyList::empty(py);
                 for item in items {
                     let val = node_to_pyobject_with_anchors(item, py, anchors, visited, schema)?;
+                    list.append(val).ok();
+                }
+                Ok(list.into_any().unbind())
+            }
+            CustomNode::Null { .. } => Ok(py.None()),
+            CustomNode::Alias { .. } => Ok(py.None()),
+        }
+    }
+
+    /// Simple conversion path without alias resolution.
+    fn node_to_pyobject_simple(
+        node: &CustomNode,
+        py: Python,
+        schema: YamlSchema,
+    ) -> PyResult<Py<PyAny>> {
+        match node {
+            CustomNode::Scalar { value, style, .. } => {
+                if matches!(
+                    style,
+                    ast::ScalarStyle::Plain
+                        | ast::ScalarStyle::SingleQuoted
+                        | ast::ScalarStyle::DoubleQuoted
+                ) {
+                    use parser::yaml::{resolve_yaml_type, YamlType};
+                    match resolve_yaml_type(value, schema) {
+                        YamlType::Null => Ok(py.None()),
+                        YamlType::Bool(b) => Ok(pyo3::types::PyBool::new(py, b)
+                            .to_owned()
+                            .into_any()
+                            .unbind()),
+                        YamlType::Int(n) => Ok(n.into_pyobject(py)?.into_any().unbind()),
+                        YamlType::Float(f) => Ok(f.into_pyobject(py)?.into_any().unbind()),
+                        YamlType::Str(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
+                    }
+                } else {
+                    Ok(value.clone().into_pyobject(py)?.into_any().unbind())
+                }
+            }
+            CustomNode::Mapping { pairs, .. } => {
+                let dict = PyDict::new(py);
+                for (key, value) in pairs {
+                    let key_str = match key {
+                        CustomNode::Scalar { value, .. } => value.clone(),
+                        _ => format!("{:?}", key),
+                    };
+                    let val = node_to_pyobject_simple(value, py, schema)?;
+                    dict.set_item(key_str, val).ok();
+                }
+                Ok(dict.into_any().unbind())
+            }
+            CustomNode::Sequence { items, .. } => {
+                let list = pyo3::types::PyList::empty(py);
+                for item in items {
+                    let val = node_to_pyobject_simple(item, py, schema)?;
                     list.append(val).ok();
                 }
                 Ok(list.into_any().unbind())
