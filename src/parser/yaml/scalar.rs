@@ -36,7 +36,6 @@ pub fn unescape_double_quoted(s: &str) -> String {
                 Some('e') => result.push('\x1B'),
                 Some(' ') => result.push(' '),
                 Some('\n') => {
-                    // Line continuation - skip whitespace
                     while let Some(&next) = chars.clone().peekable().peek() {
                         if next.is_whitespace() {
                             chars.next();
@@ -46,29 +45,16 @@ pub fn unescape_double_quoted(s: &str) -> String {
                     }
                 }
                 Some('u') => {
-                    // Unicode escape: \uXXXX
                     let hex: String = chars.by_ref().take(4).collect();
-                    if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
-                        if let Some(c) = char::from_u32(code_point) {
-                            result.push(c);
-                        }
-                    }
+                    result.push_str(&unescape_unicode_hex(&hex, 4));
                 }
                 Some('U') => {
-                    // Unicode escape: \UXXXXXXXX
                     let hex: String = chars.by_ref().take(8).collect();
-                    if let Ok(code_point) = u32::from_str_radix(&hex, 16) {
-                        if let Some(c) = char::from_u32(code_point) {
-                            result.push(c);
-                        }
-                    }
+                    result.push_str(&unescape_unicode_hex(&hex, 8));
                 }
                 Some('x') => {
-                    // Hex escape: \xXX
                     let hex: String = chars.by_ref().take(2).collect();
-                    if let Ok(code_point) = u8::from_str_radix(&hex, 16) {
-                        result.push(code_point as char);
-                    }
+                    result.push_str(&unescape_hex_escape(&hex));
                 }
                 Some(other) => {
                     result.push('\\');
@@ -82,6 +68,28 @@ pub fn unescape_double_quoted(s: &str) -> String {
     }
 
     result
+}
+
+/// Decode a hex string as a Unicode code point and return the character.
+fn unescape_unicode_hex(hex: &str, expected_len: usize) -> String {
+    if hex.len() != expected_len {
+        return String::new();
+    }
+    match u32::from_str_radix(hex, 16) {
+        Ok(code_point) => char::from_u32(code_point).map_or(String::new(), |c| c.to_string()),
+        Err(_) => String::new(),
+    }
+}
+
+/// Decode a two-character hex escape and return the character.
+fn unescape_hex_escape(hex: &str) -> String {
+    if hex.len() != 2 {
+        return String::new();
+    }
+    match u8::from_str_radix(hex, 16) {
+        Ok(byte) => (byte as char).to_string(),
+        Err(_) => String::new(),
+    }
 }
 
 /// 从原始 YAML 文本中检测块标量的 chomping 指示符。
