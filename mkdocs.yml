@@ -124,6 +124,19 @@ extra:
     deprecated: Deprecated
   version:
     provider: mike
+  alternate:
+    - name: English
+      link: /en/
+      lang: en
+    - name: 中文
+      link: /zh/
+      lang: zh
+    - name: 日本語
+      link: /ja/
+      lang: ja
+    - name: 한국어
+      link: /ko/
+      lang: ko
 
 nav:
   - Home: en/index.md

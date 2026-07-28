@@ -72,6 +72,7 @@ lint = [
 ]
 dev = [
     "maturin>=1.0,<2.0",
+    "zensical>=0.0.2",
     {include-group = "test"},
     {include-group = "lint"},
 ]
