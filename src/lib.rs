@@ -909,6 +909,36 @@ mod pyyaml_rs {
             .collect()
     }
 
+    /// Helper: set common event fields (type, value, style, anchor, tag) on a dict.
+    fn fill_event_dict<'a>(
+        dict: &Bound<'a, PyDict>,
+        py: Python<'a>,
+        event_type: &str,
+        value: Option<&str>,
+        style: Option<&str>,
+        anchor: Option<&str>,
+        tag: Option<&str>,
+    ) -> PyResult<()> {
+        dict.set_item("type", event_type)?;
+        match value {
+            Some(v) => dict.set_item("value", v)?,
+            None => dict.set_item("value", py.None())?,
+        }
+        match style {
+            Some(s) => dict.set_item("style", s)?,
+            None => dict.set_item("style", py.None())?,
+        }
+        match anchor {
+            Some(a) => dict.set_item("anchor", a)?,
+            None => dict.set_item("anchor", py.None())?,
+        }
+        match tag {
+            Some(t) => dict.set_item("tag", t)?,
+            None => dict.set_item("tag", py.None())?,
+        }
+        Ok(())
+    }
+
     /// Convert a `StreamEvent` to a Python dict.
     fn stream_event_to_py_dict<'a>(
         py: Python<'a>,
@@ -920,32 +950,16 @@ mod pyyaml_rs {
 
         match &event.event_type {
             StreamEventType::StreamStart => {
-                dict.set_item("type", "stream_start")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                fill_event_dict(&dict, py, "stream_start", None, None, None, None)?;
             }
             StreamEventType::StreamEnd => {
-                dict.set_item("type", "stream_end")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                fill_event_dict(&dict, py, "stream_end", None, None, None, None)?;
             }
             StreamEventType::DocumentStart => {
-                dict.set_item("type", "document_start")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                fill_event_dict(&dict, py, "document_start", None, None, None, None)?;
             }
             StreamEventType::DocumentEnd => {
-                dict.set_item("type", "document_end")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                fill_event_dict(&dict, py, "document_end", None, None, None, None)?;
             }
             StreamEventType::Scalar {
                 value,
@@ -953,86 +967,71 @@ mod pyyaml_rs {
                 anchor,
                 tag,
             } => {
-                dict.set_item("type", "scalar")?;
-                dict.set_item("value", value)?;
-                dict.set_item(
-                    "style",
-                    match style {
-                        ast::ScalarStyle::Plain => "plain",
-                        ast::ScalarStyle::SingleQuoted => "single_quoted",
-                        ast::ScalarStyle::DoubleQuoted => "double_quoted",
-                        ast::ScalarStyle::Literal => "literal",
-                        ast::ScalarStyle::Folded => "folded",
-                    },
+                let style_str = match style {
+                    ast::ScalarStyle::Plain => "plain",
+                    ast::ScalarStyle::SingleQuoted => "single_quoted",
+                    ast::ScalarStyle::DoubleQuoted => "double_quoted",
+                    ast::ScalarStyle::Literal => "literal",
+                    ast::ScalarStyle::Folded => "folded",
+                };
+                let anchor_str = anchor.as_deref();
+                let tag_str = tag.as_ref().map(|t| format!("{}{}", t.handle, t.suffix));
+                fill_event_dict(
+                    &dict,
+                    py,
+                    "scalar",
+                    Some(value),
+                    Some(style_str),
+                    anchor_str,
+                    tag_str.as_deref(),
                 )?;
-                if let Some(a) = anchor {
-                    dict.set_item("anchor", a)?;
-                } else {
-                    dict.set_item("anchor", py.None())?;
-                }
-                if let Some(t) = tag {
-                    dict.set_item("tag", format!("{}{}", t.handle, t.suffix))?;
-                } else {
-                    dict.set_item("tag", py.None())?;
-                }
             }
             StreamEventType::MappingStart { anchor, tag } => {
-                dict.set_item("type", "mapping_start")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                if let Some(a) = anchor {
-                    dict.set_item("anchor", a)?;
-                } else {
-                    dict.set_item("anchor", py.None())?;
-                }
-                if let Some(t) = tag {
-                    dict.set_item("tag", format!("{}{}", t.handle, t.suffix))?;
-                } else {
-                    dict.set_item("tag", py.None())?;
-                }
+                let anchor_str = anchor.as_deref();
+                let tag_str = tag.as_ref().map(|t| format!("{}{}", t.handle, t.suffix));
+                fill_event_dict(
+                    &dict,
+                    py,
+                    "mapping_start",
+                    None,
+                    None,
+                    anchor_str,
+                    tag_str.as_deref(),
+                )?;
             }
             StreamEventType::MappingEnd => {
-                dict.set_item("type", "mapping_end")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                fill_event_dict(&dict, py, "mapping_end", None, None, None, None)?;
             }
             StreamEventType::SequenceStart { anchor, tag } => {
-                dict.set_item("type", "sequence_start")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                if let Some(a) = anchor {
-                    dict.set_item("anchor", a)?;
-                } else {
-                    dict.set_item("anchor", py.None())?;
-                }
-                if let Some(t) = tag {
-                    dict.set_item("tag", format!("{}{}", t.handle, t.suffix))?;
-                } else {
-                    dict.set_item("tag", py.None())?;
-                }
+                let anchor_str = anchor.as_deref();
+                let tag_str = tag.as_ref().map(|t| format!("{}{}", t.handle, t.suffix));
+                fill_event_dict(
+                    &dict,
+                    py,
+                    "sequence_start",
+                    None,
+                    None,
+                    anchor_str,
+                    tag_str.as_deref(),
+                )?;
             }
             StreamEventType::SequenceEnd => {
-                dict.set_item("type", "sequence_end")?;
-                dict.set_item("value", py.None())?;
-                dict.set_item("style", py.None())?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                fill_event_dict(&dict, py, "sequence_end", None, None, None, None)?;
             }
             StreamEventType::Alias { name } => {
-                dict.set_item("type", "alias")?;
-                dict.set_item("value", name)?;
-                dict.set_item("style", py.None())?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                fill_event_dict(&dict, py, "alias", Some(name), None, None, None)?;
             }
             StreamEventType::Comment { text, standalone } => {
-                dict.set_item("type", "comment")?;
-                dict.set_item("value", text)?;
-                dict.set_item("style", if *standalone { "standalone" } else { "inline" })?;
-                dict.set_item("anchor", py.None())?;
-                dict.set_item("tag", py.None())?;
+                let style_str = if *standalone { "standalone" } else { "inline" };
+                fill_event_dict(
+                    &dict,
+                    py,
+                    "comment",
+                    Some(text),
+                    Some(style_str),
+                    None,
+                    None,
+                )?;
             }
         }
 
