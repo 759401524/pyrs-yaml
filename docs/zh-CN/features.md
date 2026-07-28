@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Features
@@ -72,7 +70,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Available functions: `safe_dumps_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async`.
+Available functions: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 
 ### JSON Schema Validation
 

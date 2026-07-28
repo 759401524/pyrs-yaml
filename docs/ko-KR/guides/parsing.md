@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Parsing YAML
@@ -52,7 +50,7 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
-### PyYAML-Compatible Parsing
+## PyYAML-Compatible Parsing
 
 ```python
 # Returns native Python types (dict, list, str, int, etc.)

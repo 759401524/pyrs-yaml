@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Comparison with Other Libraries

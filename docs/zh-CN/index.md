@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: pyyaml-rs
@@ -11,7 +9,7 @@ lang: zh-CN
 
 ---
 
-### 为什么选择 pyyaml-rs？
+## 为什么选择 pyyaml-rs？
 
 大多数 Python YAML 库都在性能和保真度之间做出权衡。 pyyaml-rs 同时提供两者:
 
@@ -67,6 +65,8 @@ assert doc.to_yaml() == original
 
 ---
 
-# [开始使用 →](quick-start.md)
-# [浈西 API 参考 →](api/reference.md)
-# [在 GitHub 上看看 →](https://github.com/759401524/pyyaml-rs)
+## [开始使用 →](quick-start.md)
+
+## [浈西 API 参考 →](api/reference.md)
+
+## [在 GitHub 上看看 →](https://github.com/759401524/pyyaml-rs)

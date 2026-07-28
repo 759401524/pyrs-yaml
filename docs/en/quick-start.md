@@ -4,8 +4,12 @@ This guide will get you up and running with pyyaml-rs in minutes.
 
 ## 1. Install
 
+The package is not yet on PyPI. Install from source:
+
 ```bash
-pip install pyyaml-rs
+git clone https://github.com/759401524/pyyaml-rs.git
+cd pyyaml-rs
+uv run --frozen maturin develop --release
 ```
 
 ## 2. Parse YAML

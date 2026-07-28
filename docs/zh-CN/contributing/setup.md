@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Development Setup
@@ -11,7 +9,7 @@ Set up your environment to contribute to pyyaml-rs.
 
 ### Prerequisites
 
-- **Python** ≥ 3.9 (CPython)
+- **Python** ≥ 3.8 (CPython)
 - **Rust** ≥ 1.70 (via [rustup](https://rustup.rs/))
 - **Git**
 - **uv** (recommended) or **pip**
@@ -20,7 +18,7 @@ Set up your environment to contribute to pyyaml-rs.
 ### Clone and Install
 
 ```bash
-git clone https://github.com/MuLong/pyyaml-rs.git
+git clone https://github.com/759401524/pyyaml-rs.git
 cd pyyaml-rs
 
 # Using uv (recommended)
@@ -37,8 +35,8 @@ maturin develop --release
 # Run Rust tests
 cargo test
 
-# Run Python tests
-pytest tests/
+# Run Python tests (with uv lockfile for reproducible deps)
+uv run --frozen pytest tests/
 
 # Run benchmarks
 cargo bench
@@ -71,11 +69,11 @@ pyyaml-rs/
 ### Build Commands
 
 ```bash
-# Build Python extension
-maturin develop --release
+# Build Python extension (with uv lockfile)
+uv run --frozen maturin develop --release
 
 # Build wheel
-maturin build --release --out dist
+uv run --frozen maturin build --release --out dist
 
 # Build with debug info
 cargo build
@@ -86,6 +84,6 @@ cargo build
 1. **Write tests first** (TDD)
 2. **Implement changes** in `src/`
 3. **Run `cargo test`** to verify Rust tests
-4. **Run `pytest tests/`** to verify Python tests
+4. **Run `uv run --frozen pytest tests/`** to verify Python tests
 5. **Run `cargo clippy -- -D warnings`** to check code quality
 6. **Run `cargo fmt`** to format code

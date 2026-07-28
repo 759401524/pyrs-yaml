@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Quick Start
@@ -12,7 +10,7 @@ lang: ja-JP
 ### 1. Install
 
 ```bash
-pip install pyyaml-rs
+uv run --frozen maturin develop --release
 ```
 
 ### 2. Parse YAML
@@ -125,7 +123,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-### 8. NumPy Ndarray Support
+## 8. NumPy Ndarray Support
 
 pyyaml-rs can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
 
@@ -157,7 +155,7 @@ loaded = pyyaml_rs.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-#### サポートされる NumPy データ型
+### サポートされる NumPy データ型
 
 | NumPy dtype | YAML output | Notes |
 |-------------|-------------|-------|

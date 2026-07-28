@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Features
@@ -65,14 +63,14 @@ import asyncio
 import pyyaml_rs
 
 async def main():
-    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
+    yaml = await pyyaml_rs.safe_dump_async({"a": 1})
     data = await pyyaml_rs.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())
 ```
 
-Available functions: `safe_dumps_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async`.
+Available functions: `safe_dump_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async`.
 
 ### JSON Schema Validation
 

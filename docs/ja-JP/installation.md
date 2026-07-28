@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Installation
@@ -9,26 +7,25 @@ lang: ja-JP
 
 ### Requirements
 
-- **Python** ≥ 3.9 (CPython)
+- **Python** ≥ 3.8 (CPython)
 - **Platform**: Linux, macOS, Windows
 
 ### pip install
 
 ```bash
-pip install pyyaml-rs
+uv run --frozen maturin develop --release
 ```
 
-The package is published as an **ABI3 wheel**, meaning a single wheel works across Python 3.9 through 3.13 — no recompilation needed.
+The package is published as an **ABI3 wheel**, meaning a single wheel works across Python 3.8 through 3.15 — no recompilation needed.
 
 ### Development インストール
 
 To install from source (for development or testing):
 
 ```bash
-git clone https://github.com/MuLong/pyyaml-rs.git
+git clone https://github.com/759401524/pyyaml-rs.git
 cd pyyaml-rs
-pip install maturin
-maturin develop --release
+uv run --frozen maturin develop --release
 ```
 
 ### Verify インストール

@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Quick Start
@@ -9,10 +7,14 @@ lang: zh-CN
 
 本指南将帮助您在几分钟内快速上手 pyyaml-rs。
 
-### 1. Install
+### 1. 安装
+
+该包尚未发布到 PyPI。从源码安装：
 
 ```bash
-pip install pyyaml-rs
+git clone https://github.com/759401524/pyyaml-rs.git
+cd pyyaml-rs
+uv run --frozen maturin develop --release
 ```
 
 ### 2. Parse YAML
@@ -125,7 +127,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-### 8. NumPy ndarray Support
+## 8. NumPy ndarray Support
 
 pyyaml-rs can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
 
@@ -157,7 +159,7 @@ loaded = pyyaml_rs.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-#### 支持的 NumPy 数据类型
+### 支持的 NumPy 数据类型
 
 | NumPy dtype | YAML output | Notes |
 |-------------|-------------|-------|

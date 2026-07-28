@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Installation
@@ -9,38 +7,41 @@ lang: zh-CN
 
 ### Requirements
 
-- **Python** ≥ 3.9 (CPython)
+- **Python** ≥ 3.8 (CPython)
 - **Platform**: Linux, macOS, Windows
 
-### pip install
+### 从源码安装
+
+该包尚未发布到 PyPI。从源码安装：
 
 ```bash
-pip install pyyaml-rs
-```
-
-The package is published as an **ABI3 wheel**, meaning a single wheel works across Python 3.9 through 3.13 — no recompilation needed.
-
-### Development 安装
-
-To install from source (for development or testing):
-
-```bash
-git clone https://github.com/MuLong/pyyaml-rs.git
+git clone https://github.com/759401524/pyyaml-rs.git
 cd pyyaml-rs
-pip install maturin
-maturin develop --release
+uv run --frozen maturin develop --release
 ```
 
-### Verify 安装
+包以 **ABI3 wheel** 格式构建，单个 wheel 支持 Python 3.8 到 3.15 — 无需重新编译。
+
+### 快速验证
 
 ```python
 import pyyaml_rs
 
-# Check version
-print(pyyaml_rs.__version__)  # e.g., "0.2.0"
+# 检查版本
+print(pyyaml_rs.__version__)
 
-# Quick smoke test
+# 快速测试
 doc = pyyaml_rs.parse("key: value")
 assert doc.to_yaml() == "key: value\n"
-print("✓ Installation verified")
+print("✓ 安装验证成功")
+```
+
+### 运行测试
+
+```bash
+# Rust 测试
+cargo test
+
+# Python 测试
+uv run --frozen pytest tests/
 ```

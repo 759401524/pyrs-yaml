@@ -58,14 +58,14 @@ import asyncio
 import pyyaml_rs
 
 async def main():
-    yaml = await pyyaml_rs.safe_dumps_async({"a": 1})
+    yaml = await pyyaml_rs.safe_dump_async({"a": 1})
     data = await pyyaml_rs.safe_loads_async(yaml)
     print(data)  # {'a': 1}
 
 asyncio.run(main())
 ```
 
-Available functions: `safe_dumps_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async`.
+Available functions: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 
 ## JSON Schema Validation
 
@@ -145,7 +145,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **JSON ↔ YAML conversion** — `from_json()` / `from_dict()`
 - **Multi-document parsing** — `parse_all_docs()`
 - **i18n error messages** — `set_language("zh-CN")` for bilingual errors
-- **Type hints** — Full `.pyi` stubs for IDE support
+- **Type hints** — PEP 561 typed package marker (`py.typed`) for mypy support
 
 ## Supported YAML Constructs
 

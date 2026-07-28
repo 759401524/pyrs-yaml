@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: pyyaml-rs
@@ -11,7 +9,7 @@ lang: ko-KR
 
 ---
 
-### pyyaml-rs를 선택하는 이유
+## pyyaml-rs를 선택하는 이유
 
 대부분의 Python YAML 라이브러리는 성능 또는 정확도 중 하나를 희생합니다. pyyaml-rs는 둘을 모두 제공합니다:
 
@@ -67,6 +65,8 @@ assert doc.to_yaml() == original
 
 ---
 
-# [시작하기 →](quick-start.md)
-# [API 참조 보기 →](api/reference.md)
-# [GitHub에서 보기 →](https://github.com/759401524/pyyaml-rs)
+## [시작하기 →](quick-start.md)
+
+## [API 참조 보기 →](api/reference.md)
+
+## [GitHub에서 보기 →](https://github.com/759401524/pyyaml-rs)

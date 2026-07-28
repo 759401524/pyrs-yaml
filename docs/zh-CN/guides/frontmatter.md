@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: Markdown Frontmatter
@@ -27,7 +25,7 @@ tags: [yaml, python, rust]
 This is the content.
 ```
 
-### read_markdown()
+## read_markdown()
 
 Parse frontmatter from a Markdown file:
 

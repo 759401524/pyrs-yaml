@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: pyyaml-rs
@@ -11,7 +9,7 @@ lang: ja-JP
 
 ---
 
-### なぜ pyyaml-rs を選ぶべきか？
+## なぜ pyyaml-rs を選ぶべきか？
 
 ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。 pyyaml-rs の両方を提供します:
 
@@ -67,6 +65,8 @@ assert doc.to_yaml() == original
 
 ---
 
-# [シットオク →](quick-start.md)
-# [アパリ・リフメンス →](api/reference.md)
-# [ズクセ・デーョコラ・ミン →](https://github.com/759401524/pyyaml-rs)
+## [シットオク →](quick-start.md)
+
+## [アパリ・リフメンス →](api/reference.md)
+
+## [ズクセ・デーョコラ・ミン →](https://github.com/759401524/pyyaml-rs)

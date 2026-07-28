@@ -23,3 +23,5 @@ respect-gitignore = true
 "CLAUDE.md" = ["MD033", "MD041"]
 # AGENTS.md: uses <comet-ambient-resume> HTML tags
 "AGENTS.md" = ["MD033"]
+# Docs: mkdocs frontmatter (---) means no H1 on first line
+"docs/**/*.md" = ["MD041"]

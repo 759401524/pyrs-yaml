@@ -1,5 +1,3 @@
-# ---
-
 ---
 
 title: NumPy ndarray 序列化指南
