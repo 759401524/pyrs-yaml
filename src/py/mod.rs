@@ -228,7 +228,7 @@ mod pyrs_yaml {
                     .map_err(|e| {
                         YamlParseError::new_err(format_i18n_error(
                             "yaml-parse-error",
-                            &[("detail", &e.to_string())],
+                            &[("detail", &e.message)],
                         ))
                     })
             })?;
@@ -307,7 +307,7 @@ mod pyrs_yaml {
         let ast = py.detach(|| {
             crate::parser::parse_with_options(&yaml_str, resolve_merges, schema_enum, max_depth)
                 .map_err(|e| {
-                    if e.contains("max depth exceeded") {
+                    if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
                             &[("max_depth", &max_depth.to_string())],
@@ -315,7 +315,7 @@ mod pyrs_yaml {
                     } else {
                         YamlParseError::new_err(format_i18n_error(
                             "yaml-parse-error",
-                            &[("detail", &e.to_string())],
+                            &[("detail", &e.message)],
                         ))
                     }
                 })
@@ -344,7 +344,7 @@ mod pyrs_yaml {
         })?;
         let ast = py.detach(|| {
             crate::parser::parse_with_options(&content, true, schema_enum, max_depth).map_err(|e| {
-                if e.contains("max depth exceeded") {
+                if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
@@ -352,7 +352,7 @@ mod pyrs_yaml {
                 } else {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
-                        &[("detail", &e.to_string())],
+                        &[("detail", &e.message)],
                     ))
                 }
             })
@@ -377,7 +377,7 @@ mod pyrs_yaml {
         let asts = py.detach(|| {
             crate::parser::parse_all_with_options(yaml, resolve_merges, schema_enum, max_depth)
                 .map_err(|e| {
-                    if e.contains("max depth exceeded") {
+                    if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
                             &[("max_depth", &max_depth.to_string())],
@@ -385,7 +385,7 @@ mod pyrs_yaml {
                     } else {
                         YamlParseError::new_err(format_i18n_error(
                             "yaml-parse-error",
-                            &[("detail", &e.to_string())],
+                            &[("detail", &e.message)],
                         ))
                     }
                 })
@@ -406,7 +406,7 @@ mod pyrs_yaml {
         let schema_enum = parse_schema(schema)?;
         let ast = py.detach(|| {
             crate::parser::parse_with_options(yaml, true, schema_enum, max_depth).map_err(|e| {
-                if e.contains("max depth exceeded") {
+                if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
@@ -414,7 +414,7 @@ mod pyrs_yaml {
                 } else {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
-                        &[("detail", &e.to_string())],
+                        &[("detail", &e.message)],
                     ))
                 }
             })
@@ -436,7 +436,7 @@ mod pyrs_yaml {
         let schema_enum = parse_schema(schema)?;
         let asts = py.detach(|| {
             crate::parser::parse_all_with_options(yaml, true, schema_enum, max_depth).map_err(|e| {
-                if e.contains("max depth exceeded") {
+                if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
@@ -444,7 +444,7 @@ mod pyrs_yaml {
                 } else {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
-                        &[("detail", &e.to_string())],
+                        &[("detail", &e.message)],
                     ))
                 }
             })
@@ -487,7 +487,7 @@ mod pyrs_yaml {
                 crate::parser::parse_stream(&yaml_str).map_err(|e| {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
-                        &[("detail", &e.to_string())],
+                        &[("detail", &e.message)],
                     ))
                 })
             })?;
@@ -509,7 +509,7 @@ mod pyrs_yaml {
                 crate::parser::parse_stream(&yaml_str).map_err(|e| {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
-                        &[("detail", &e.to_string())],
+                        &[("detail", &e.message)],
                     ))
                 })
             })?;
@@ -621,7 +621,7 @@ mod pyrs_yaml {
                         let ast = crate::parser::parse(frontmatter, schema_enum).map_err(|e| {
                             YamlParseError::new_err(format_i18n_error(
                                 "yaml-parse-error",
-                                &[("detail", &e.to_string())],
+                                &[("detail", &e.message)],
                             ))
                         })?;
                         Ok((

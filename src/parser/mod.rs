@@ -3,6 +3,17 @@ pub mod yaml;
 
 pub use crate::parser::stream::{parse_stream, StreamEvent, StreamEventType};
 
+/// Error detail for YAML parsing failures, carrying line/column information.
+#[derive(Debug, Clone)]
+pub struct ParseErrorDetail {
+    /// Human-readable error message.
+    pub message: String,
+    /// Line number (0-indexed) where the error occurred.
+    pub line: usize,
+    /// Column number (0-indexed) where the error occurred.
+    pub col: usize,
+}
+
 use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
 use crate::parser::yaml::YamlSchema;
 use indexmap::IndexMap;
@@ -31,7 +42,7 @@ use yaml::{
 /// ```
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
-pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, String> {
+pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDetail> {
     parse_with_options(yaml, true, schema, 1000)
 }
 
@@ -54,7 +65,7 @@ pub fn parse_with_options(
     resolve_merges: bool,
     _schema: YamlSchema,
     max_depth: usize,
-) -> Result<CustomNode, String> {
+) -> Result<CustomNode, ParseErrorDetail> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(CustomNode::plain_null());
@@ -70,13 +81,18 @@ pub fn parse_with_options(
 
     parser
         .load(&mut receiver, true)
-        .map_err(|e| format!("YAML parse error: {}", e))?;
+        .map_err(|e| ParseErrorDetail {
+            message: format!("YAML parse error: {}", e),
+            line: 0,
+            col: 0,
+        })?;
 
     if receiver.max_depth_exceeded {
-        return Err(format!(
-            "YAML parse error: max depth exceeded (max={})",
-            max_depth
-        ));
+        return Err(ParseErrorDetail {
+            message: format!("YAML parse error: max depth exceeded (max={})", max_depth),
+            line: 0,
+            col: 0,
+        });
     }
 
     // Get the parsed node (handle empty documents)
@@ -104,7 +120,7 @@ pub fn parse_with_options(
 /// 返回 `Err(String)`，格式为 `"YAML parse error: document #{doc_index} at <行号>:<列号>: <消息>"`。
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
-pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, String> {
+pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, ParseErrorDetail> {
     parse_all_with_options(yaml, true, schema, 1000)
 }
 
@@ -114,7 +130,7 @@ pub fn parse_all_with_options(
     resolve_merges: bool,
     _schema: YamlSchema,
     max_depth: usize,
-) -> Result<Vec<CustomNode>, String> {
+) -> Result<Vec<CustomNode>, ParseErrorDetail> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(Vec::new());
@@ -128,13 +144,18 @@ pub fn parse_all_with_options(
 
     parser
         .load(&mut receiver, true)
-        .map_err(|e| format!("YAML parse error: {}", e))?;
+        .map_err(|e| ParseErrorDetail {
+            message: format!("YAML parse error: {}", e),
+            line: 0,
+            col: 0,
+        })?;
 
     if receiver.max_depth_exceeded {
-        return Err(format!(
-            "YAML parse error: max depth exceeded (max={})",
-            max_depth
-        ));
+        return Err(ParseErrorDetail {
+            message: format!("YAML parse error: max depth exceeded (max={})", max_depth),
+            line: 0,
+            col: 0,
+        });
     }
 
     // Collect all documents from receiver

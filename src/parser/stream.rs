@@ -349,14 +349,14 @@ fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
 ///
 /// # Returns
 /// Success: a `Vec<StreamEvent>` representing the complete event stream.
-/// Failure: an error message string.
+/// Failure: a `ParseErrorDetail` with line/column information.
 ///
 /// # Examples
 /// ```ignore
 /// let events = parse_stream("key: value").unwrap();
 /// assert!(!events.is_empty());
 /// ```
-pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, String> {
+pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, super::ParseErrorDetail> {
     if yaml.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -366,7 +366,11 @@ pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, String> {
 
     parser
         .load(&mut receiver, true)
-        .map_err(|e| format!("YAML parse error: {}", e))?;
+        .map_err(|e| super::ParseErrorDetail {
+            message: format!("YAML parse error: {}", e),
+            line: 0,
+            col: 0,
+        })?;
 
     Ok(receiver.events)
 }
