@@ -166,3 +166,28 @@ jobs:
         with:
           name: compliance-report
           path: compliance.json
+
+  benchmark:
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@v6
+        with:
+          name: wheels-ubuntu-latest
+      - name: Install wheel
+        run: pip install *.whl
+      - name: Install benchmark deps
+        run: pip install pyyaml ruamel.yaml
+      - name: Run benchmark
+        run: python tests/benchmark_compare.py --ci
+      - name: Upload results
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-results
+          path: benchmark-results.json
