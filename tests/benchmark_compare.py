@@ -357,5 +357,55 @@ def main():
     print("=" * 75)
 
 
+# ── Integration test: speedup assertion ──────────────────────────────────
+
+
+def benchmark_block_style(rounds=50):
+    """Run block-style benchmark and return results dict."""
+    yaml_str = (
+        "key1: value1\n"
+        "key2: value2\n"
+        "nested:\n"
+        "  subkey1: subvalue1\n"
+        "  subkey2: subvalue2\n"
+        "list:\n"
+        "  - item1\n"
+        "  - item2\n"
+        "  - item3\n"
+    )
+
+    def parse_pyrs():
+        return pyrs_yaml.parse(yaml_str)
+
+    def serialize_pyrs():
+        return pyrs_yaml.parse(yaml_str).to_yaml()
+
+    def parse_pyyaml():
+        return pyyaml.safe_load(yaml_str)
+
+    def serialize_pyyaml():
+        return pyyaml.safe_dump(pyyaml.safe_load(yaml_str))
+
+    pyr_parse = timed(parse_pyrs, rounds)
+    pyr_ser = timed(serialize_pyrs, rounds)
+    pyy_parse = timed(parse_pyyaml, rounds)
+    pyy_ser = timed(serialize_pyyaml, rounds)
+
+    return {
+        "pyrs_yaml": {"parse_ms": pyr_parse[0], "serialize_ms": pyr_ser[0]},
+        "pyyaml": {"parse_ms": pyy_parse[0], "serialize_ms": pyy_ser[0]},
+    }
+
+
+def test_speedup_vs_pyyaml():
+    """Verify pyrs-yaml is faster than PyYAML on block-style YAML."""
+    results = benchmark_block_style(rounds=10)
+    assert results["pyrs_yaml"]["serialize_ms"] < results["pyyaml"]["serialize_ms"], (
+        f"pyrs-yaml slower than PyYAML: "
+        f"{results['pyrs_yaml']['serialize_ms']:.2f}ms vs "
+        f"{results['pyyaml']['serialize_ms']:.2f}ms"
+    )
+
+
 if __name__ == "__main__":
     main()
