@@ -21,6 +21,7 @@ from .async_dump import (
 from .pyrs_yaml import (
     StreamIterator,
     YamlDocument,
+    YamlMaxDepthError,
     YamlParseError,
     YamlSerializeError,
     YamlTypeError,
@@ -47,6 +48,7 @@ from .pyrs_yaml import (
 __all__ = [
     "StreamIterator",
     "YamlDocument",
+    "YamlMaxDepthError",
     "YamlParseError",
     "YamlSerializeError",
     "YamlTypeError",
