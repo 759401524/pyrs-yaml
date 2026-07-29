@@ -4,7 +4,10 @@ Runs the official YAML test suite and reports results
 """
 
 import json
+import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import pyrs_yaml
 import pytest
@@ -113,6 +116,7 @@ def run_test(test: dict) -> dict:
         "json_match": False,
         "dump_match": False,
         "error": None,
+        "status": "fail",
     }
 
     yaml_input = test["yaml"]
@@ -146,7 +150,39 @@ def run_test(test: dict) -> dict:
         except Exception as e:
             result["error"] = f"Dump comparison error: {str(e)[:100]}"
 
+    result["status"] = "pass" if result["error"] is None else "fail"
     return result
+
+
+def compute_compliance(suite_dir: Optional[str] = None) -> dict:
+    """Run YAML Test Suite and return compliance report."""
+    if suite_dir is None:
+        suite_dir = str(Path(__file__).parent.parent / "Reference" / "yaml-test-suite")
+    tests = load_test_cases(suite_dir)
+    passed = 0
+    failed_tests = []
+    for test in tests:
+        result = run_test(test)
+        if result["status"] == "pass":
+            passed += 1
+        else:
+            failed_tests.append(
+                {
+                    "id": test["id"],
+                    "name": test["name"],
+                    "reason": result.get("error", "unknown"),
+                }
+            )
+    total = len(tests)
+    return {
+        "version": "0.7.0",
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "total": total,
+        "passed": passed,
+        "failed": total - passed,
+        "rate": round(passed / max(total, 1), 4),
+        "failed_tests": failed_tests,
+    }
 
 
 SUITE_DIR = "Reference/yaml-test-suite"
@@ -204,3 +240,19 @@ def test_yaml_suite_json_match():
         assert rate >= 80.0, f"JSON match rate {rate:.1f}% below threshold 80%"
     else:
         pytest.skip("No JSON comparison results found")
+
+
+def test_compliance_report():
+    """Print compliance percentage to stdout."""
+    report = compute_compliance()
+    msg = f"\nCompliance: {report['rate'] * 100:.1f}% ({report['passed']}/{report['total']} passed)"
+    print(msg)
+    assert report["rate"] > 0.7, f"Compliance too low: {report['rate'] * 100:.1f}%"
+
+
+if __name__ == "__main__":
+    if "--json" in sys.argv:
+        report = compute_compliance()
+        print(json.dumps(report, indent=2))
+    else:
+        pytest.main([__file__])
