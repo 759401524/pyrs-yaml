@@ -246,7 +246,17 @@ impl Serializer {
                         self.output.push(':');
 
                         // Check if value needs to be on next line
-                        if self.needs_newline_for_value(value) || is_complex_key {
+                        if (matches!(
+                            value,
+                            CustomNode::Mapping {
+                                flow_style: false,
+                                ..
+                            } | CustomNode::Sequence {
+                                flow_style: false,
+                                ..
+                            }
+                        )) || is_complex_key
+                        {
                             // If the value node has an anchor or tag, write it after the colon
                             if let Some(anchor_name) = value.anchor() {
                                 self.output.push_str(" &");
@@ -322,7 +332,10 @@ impl Serializer {
                         self.write_indent(indent_level);
                         self.output.push_str("- ");
 
-                        if self.needs_newline_for_sequence_item(item) {
+                        if matches!(
+                            item,
+                            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                        ) {
                             self.output.push('\n');
                             self.serialize_node_internal(
                                 item,
@@ -503,23 +516,6 @@ impl Serializer {
             }
             first = false;
         }
-    }
-
-    /// 判断值节点是否需要换行显示（非 flow 风格的映射/序列）。
-    fn needs_newline_for_value(&self, node: &CustomNode) -> bool {
-        match node {
-            CustomNode::Mapping { flow_style, .. } => !flow_style,
-            CustomNode::Sequence { flow_style, .. } => !flow_style,
-            _ => false,
-        }
-    }
-
-    /// 判断序列项是否需要换行显示（映射或序列类型）。
-    fn needs_newline_for_sequence_item(&self, node: &CustomNode) -> bool {
-        matches!(
-            node,
-            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-        )
     }
 
     /// 在 flow 上下文中序列化值（不追加换行符）。
