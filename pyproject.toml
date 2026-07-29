@@ -31,7 +31,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Rust",
     "Topic :: Software Development :: Libraries",
-    "Topic :: Text Processing :: Markup :: YAML",
+    "Topic :: Text Processing :: Markup",
 ]
 dependencies = [
 ]
