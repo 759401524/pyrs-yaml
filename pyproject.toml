@@ -34,6 +34,7 @@ classifiers = [
     "Topic :: Text Processing :: Markup",
 ]
 dependencies = [
+    "ruamel-yaml>=0.18.16",
 ]
 
 [project.urls]
