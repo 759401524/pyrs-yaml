@@ -101,6 +101,9 @@ impl Serializer {
 
     /// 写入锚点（`&name`）和标签（`!!type`）前缀。
     fn write_anchor_tag(&mut self, anchor: &Option<String>, tag: &Option<Tag>) {
+        if anchor.is_none() && tag.is_none() {
+            return;
+        }
         if let Some(anchor_name) = anchor {
             self.output.push('&');
             self.output.push_str(anchor_name);
@@ -114,12 +117,12 @@ impl Serializer {
 
     /// 写入行内注释（`  # text`），跳过独立行注释。
     fn write_inline_comment(&mut self, comment: &Option<Comment>) {
-        if let Some(c) = comment {
-            if !c.standalone {
-                self.output.push_str("  # ");
-                self.output.push_str(&c.text);
-            }
-        }
+        let c = match comment {
+            Some(c) if !c.standalone => c,
+            _ => return,
+        };
+        self.output.push_str("  # ");
+        self.output.push_str(&c.text);
     }
 
     /// 核心递归序列化方法，处理所有节点类型的缩进和格式化。
