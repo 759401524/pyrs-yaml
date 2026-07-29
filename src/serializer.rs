@@ -198,10 +198,9 @@ impl Serializer {
                         self.output.push('\n');
                     }
 
-                    // Collect pairs, optionally sorted
-                    let pairs_vec: Vec<(&CustomNode, &CustomNode)> = if self.sort_keys {
-                        let mut v: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
-                        v.sort_by(|a, b| {
+                    if self.sort_keys {
+                        let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
+                        pairs_vec.sort_by(|a, b| {
                             let ka = match a.0 {
                                 CustomNode::Scalar { value, .. } => value.as_str(),
                                 _ => "",
@@ -212,77 +211,140 @@ impl Serializer {
                             };
                             ka.cmp(kb)
                         });
-                        v
-                    } else {
-                        pairs.iter().collect()
-                    };
 
-                    for (i, (key, value)) in pairs_vec.iter().enumerate() {
-                        // Check if key is a complex key (mapping or sequence)
-                        let is_complex_key = matches!(
-                            key,
-                            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-                        );
-
-                        if is_complex_key {
-                            // Complex key: use ? indicator
-                            self.write_indent(indent_level);
-                            self.output.push_str("? ");
-                            // For complex keys, we need to serialize at the same indent level
-                            // but the key content should be indented relative to the ?
-                            self.serialize_node_internal(
+                        for (i, (key, value)) in pairs_vec.iter().enumerate() {
+                            // Check if key is a complex key (mapping or sequence)
+                            let is_complex_key = matches!(
                                 key,
-                                indent_level,
-                                false,
-                                false,
-                                depth + 1,
-                            )?;
-                        } else {
-                            // Simple key
-                            self.write_indent(indent_level);
-                            self.write_scalar_for_key(key);
-                        }
+                                CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                            );
 
-                        self.output.push(':');
+                            if is_complex_key {
+                                // Complex key: use ? indicator
+                                self.write_indent(indent_level);
+                                self.output.push_str("? ");
+                                // For complex keys, we need to serialize at the same indent level
+                                // but the key content should be indented relative to the ?
+                                self.serialize_node_internal(
+                                    key,
+                                    indent_level,
+                                    false,
+                                    false,
+                                    depth + 1,
+                                )?;
+                            } else {
+                                // Simple key
+                                self.write_indent(indent_level);
+                                self.write_scalar_for_key(key);
+                            }
 
-                        // Check if value needs to be on next line
-                        if (matches!(
-                            value,
-                            CustomNode::Mapping {
-                                flow_style: false,
-                                ..
-                            } | CustomNode::Sequence {
-                                flow_style: false,
-                                ..
-                            }
-                        )) || is_complex_key
-                        {
-                            // If the value node has an anchor or tag, write it after the colon
-                            if let Some(anchor_name) = value.anchor() {
-                                self.output.push_str(" &");
-                                self.output.push_str(anchor_name);
-                            }
-                            if let Some(t) = value.tag() {
+                            self.output.push(':');
+
+                            // Check if value needs to be on next line
+                            if (matches!(
+                                value,
+                                CustomNode::Mapping {
+                                    flow_style: false,
+                                    ..
+                                } | CustomNode::Sequence {
+                                    flow_style: false,
+                                    ..
+                                }
+                            )) || is_complex_key
+                            {
+                                // If the value node has an anchor or tag, write it after the colon
+                                if let Some(anchor_name) = value.anchor() {
+                                    self.output.push_str(" &");
+                                    self.output.push_str(anchor_name);
+                                }
+                                if let Some(t) = value.tag() {
+                                    self.output.push(' ');
+                                    self.output.push_str(&t.to_string());
+                                }
+                                self.output.push('\n');
+                                self.serialize_node_internal(
+                                    value,
+                                    indent_level + 1,
+                                    i == pairs_vec.len() - 1,
+                                    true,
+                                    depth + 1,
+                                )?;
+                            } else {
                                 self.output.push(' ');
-                                self.output.push_str(&t.to_string());
+                                self.serialize_node_internal(
+                                    value,
+                                    0,
+                                    i == pairs_vec.len() - 1,
+                                    true,
+                                    depth + 1,
+                                )?;
                             }
-                            self.output.push('\n');
-                            self.serialize_node_internal(
+                        }
+                    } else {
+                        for (i, (key, value)) in pairs.iter().enumerate() {
+                            // Check if key is a complex key (mapping or sequence)
+                            let is_complex_key = matches!(
+                                key,
+                                CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                            );
+
+                            if is_complex_key {
+                                // Complex key: use ? indicator
+                                self.write_indent(indent_level);
+                                self.output.push_str("? ");
+                                self.serialize_node_internal(
+                                    key,
+                                    indent_level,
+                                    false,
+                                    false,
+                                    depth + 1,
+                                )?;
+                            } else {
+                                // Simple key
+                                self.write_indent(indent_level);
+                                self.write_scalar_for_key(key);
+                            }
+
+                            self.output.push(':');
+
+                            // Check if value needs to be on next line
+                            if (matches!(
                                 value,
-                                indent_level + 1,
-                                i == pairs_vec.len() - 1,
-                                true,
-                                depth + 1,
-                            )?;
-                        } else {
-                            self.output.push(' ');
-                            self.serialize_node_internal(
-                                value,
-                                0,
-                                i == pairs_vec.len() - 1,
-                                true,
-                                depth + 1,
-                            )?;
+                                CustomNode::Mapping {
+                                    flow_style: false,
+                                    ..
+                                } | CustomNode::Sequence {
+                                    flow_style: false,
+                                    ..
+                                }
+                            )) || is_complex_key
+                            {
+                                if let Some(anchor_name) = value.anchor() {
+                                    self.output.push_str(" &");
+                                    self.output.push_str(anchor_name);
+                                }
+                                if let Some(t) = value.tag() {
+                                    self.output.push(' ');
+                                    self.output.push_str(&t.to_string());
+                                }
+                                self.output.push('\n');
+                                self.serialize_node_internal(
+                                    value,
+                                    indent_level + 1,
+                                    i == pairs.len() - 1,
+                                    true,
+                                    depth + 1,
+                                )?;
+                            } else {
+                                self.output.push(' ');
+                                self.serialize_node_internal(
+                                    value,
+                                    0,
+                                    i == pairs.len() - 1,
+                                    true,
+                                    depth + 1,
+                                )?;
+                            }
                         }
                     }
 
