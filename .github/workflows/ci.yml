@@ -72,6 +72,16 @@ jobs:
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py
 
+      - name: Compliance summary
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+        run: |
+          uv run python -c "
+          import sys; sys.path.insert(0, 'tests')
+          from test_yaml_suite import compute_compliance
+          r = compute_compliance()
+          print(f'Compliance: {r[\"rate\"]*100:.1f}% ({r[\"passed\"]}/{r[\"total\"]} passed)')
+          " >> $GITHUB_STEP_SUMMARY
+
   build:
     strategy:
       matrix:
@@ -136,3 +146,23 @@ jobs:
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py -k "not numpy"
+
+  compliance-report:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@v6
+        with:
+          name: wheels-ubuntu-latest
+      - name: Install wheel
+        run: pip install *.whl
+      - name: Generate compliance report
+        run: python tests/test_yaml_suite.py --json > compliance.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: compliance-report
+          path: compliance.json
