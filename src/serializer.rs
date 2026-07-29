@@ -56,14 +56,20 @@ struct Serializer {
 
 impl Serializer {
     fn new(options: &SerializeOptions) -> Self {
-        let mut cache = Vec::with_capacity(64);
+        let mut cache = Vec::with_capacity(128);
         cache.push(String::new()); // level 0 = empty
+                                   // Pre-fill up to 64 levels
+        let base_indent = " ".repeat(options.indent_size);
+        for i in 1..64 {
+            let next = format!("{}{}", cache[i - 1], base_indent);
+            cache.push(next);
+        }
         Self {
             output: String::new(),
             indent_size: options.indent_size,
             sort_keys: options.sort_keys,
             indent_cache: cache,
-            max_cached: 0,
+            max_cached: 64,
             max_depth: options.max_depth,
         }
     }
@@ -565,8 +571,7 @@ impl Serializer {
     /// Write each line of the block scalar content with base indentation appended.
     /// Writes directly to output (no intermediate Vec or join).
     fn write_base_indent(&mut self, value: &str, base_indent: usize) {
-        let indent = self.get_indent(base_indent);
-        let indent = indent.to_string();
+        let indent = self.get_indent(base_indent).to_string();
         let mut first = true;
         for line in value.lines() {
             if !first {
