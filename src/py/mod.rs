@@ -65,14 +65,20 @@ mod pyrs_yaml {
             explicit_start: bool,
             explicit_end: bool,
             sort_keys: bool,
-        ) -> String {
+        ) -> PyResult<String> {
             let options = SerializeOptions {
                 indent_size,
                 explicit_start,
                 explicit_end,
                 sort_keys,
+                max_depth: 1000,
             };
-            to_yaml_with_options(&self.ast, &options)
+            to_yaml_with_options(&self.ast, &options).map_err(|e| {
+                YamlSerializeError::new_err(format_i18n_error(
+                    "yaml-serialize-error",
+                    &[("detail", &e)],
+                ))
+            })
         }
 
         /// 将文档转换为 Python 字典/列表，自动解析锚点引用。

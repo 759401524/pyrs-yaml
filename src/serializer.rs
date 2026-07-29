@@ -6,6 +6,7 @@ pub struct SerializeOptions {
     pub explicit_start: bool,
     pub explicit_end: bool,
     pub sort_keys: bool,
+    pub max_depth: usize,
 }
 
 impl Default for SerializeOptions {
@@ -15,26 +16,30 @@ impl Default for SerializeOptions {
             explicit_start: false,
             explicit_end: false,
             sort_keys: false,
+            max_depth: 1000,
         }
     }
 }
 
 /// Serialize a CustomNode AST back to YAML string
 pub fn to_yaml(node: &CustomNode) -> String {
-    to_yaml_with_options(node, &SerializeOptions::default())
+    to_yaml_with_options(node, &SerializeOptions::default()).expect("serialization failed")
 }
 
 /// Serialize with custom options
-pub fn to_yaml_with_options(node: &CustomNode, options: &SerializeOptions) -> String {
+pub fn to_yaml_with_options(
+    node: &CustomNode,
+    options: &SerializeOptions,
+) -> Result<String, String> {
     let mut serializer = Serializer::new(options);
     if options.explicit_start {
         serializer.output.push_str("---\n");
     }
-    serializer.serialize_node_internal(node, 0, false, false);
+    serializer.serialize_node_internal(node, 0, false, false, 0)?;
     if options.explicit_end {
         serializer.output.push_str("...\n");
     }
-    serializer.output
+    Ok(serializer.output)
 }
 
 struct Serializer {
@@ -45,6 +50,8 @@ struct Serializer {
     indent_cache: Vec<String>,
     /// Max depth we've cached; grown on demand
     max_cached: usize,
+    /// Maximum recursion depth before serialization fails
+    max_depth: usize,
 }
 
 impl Serializer {
@@ -57,6 +64,7 @@ impl Serializer {
             sort_keys: options.sort_keys,
             indent_cache: cache,
             max_cached: 0,
+            max_depth: options.max_depth,
         }
     }
 
@@ -121,7 +129,12 @@ impl Serializer {
         indent_level: usize,
         _is_last: bool,
         in_value_context: bool,
-    ) {
+        depth: usize,
+    ) -> Result<(), String> {
+        if depth >= self.max_depth {
+            return Err(format!("max depth exceeded (max={})", self.max_depth));
+        }
+
         // Handle standalone comments first
         if let Some(comment) = node.comment() {
             if comment.standalone {
@@ -167,7 +180,7 @@ impl Serializer {
                             }
                             self.write_scalar_for_key(key);
                             self.output.push_str(": ");
-                            self.serialize_flow_value(value);
+                            self.serialize_flow_value(value, depth + 1)?;
                         }
                     }
                     self.output.push('}');
@@ -214,7 +227,13 @@ impl Serializer {
                             self.output.push_str("? ");
                             // For complex keys, we need to serialize at the same indent level
                             // but the key content should be indented relative to the ?
-                            self.serialize_node_internal(key, indent_level, false, false);
+                            self.serialize_node_internal(
+                                key,
+                                indent_level,
+                                false,
+                                false,
+                                depth + 1,
+                            )?;
                         } else {
                             // Simple key
                             self.write_indent(indent_level);
@@ -240,10 +259,17 @@ impl Serializer {
                                 indent_level + 1,
                                 i == pairs_vec.len() - 1,
                                 true,
-                            );
+                                depth + 1,
+                            )?;
                         } else {
                             self.output.push(' ');
-                            self.serialize_node_internal(value, 0, i == pairs_vec.len() - 1, true);
+                            self.serialize_node_internal(
+                                value,
+                                0,
+                                i == pairs_vec.len() - 1,
+                                true,
+                                depth + 1,
+                            )?;
                         }
                     }
 
@@ -274,7 +300,7 @@ impl Serializer {
                             if i > 0 {
                                 self.output.push_str(", ");
                             }
-                            self.serialize_flow_value(item);
+                            self.serialize_flow_value(item, depth + 1)?;
                         }
                     }
                     self.output.push(']');
@@ -300,11 +326,18 @@ impl Serializer {
                                 indent_level + 1,
                                 i == items.len() - 1,
                                 false,
-                            );
+                                depth + 1,
+                            )?;
                         } else {
                             // For simple items, they go on the same line as the dash
                             // Don't pass indent_level to avoid extra indentation
-                            self.serialize_node_internal(item, 0, i == items.len() - 1, false);
+                            self.serialize_node_internal(
+                                item,
+                                0,
+                                i == items.len() - 1,
+                                false,
+                                depth + 1,
+                            )?;
                         }
                     }
 
@@ -339,6 +372,7 @@ impl Serializer {
                 self.output.push('\n');
             }
         }
+        Ok(())
     }
 
     /// Write a scalar value directly to output based on style and chomping.
@@ -486,7 +520,11 @@ impl Serializer {
     }
 
     /// 在 flow 上下文中序列化值（不追加换行符）。
-    fn serialize_flow_value(&mut self, node: &CustomNode) {
+    fn serialize_flow_value(&mut self, node: &CustomNode, depth: usize) -> Result<(), String> {
+        if depth >= self.max_depth {
+            return Err(format!("max depth exceeded (max={})", self.max_depth));
+        }
+
         match node {
             CustomNode::Scalar {
                 value,
@@ -513,7 +551,7 @@ impl Serializer {
                     }
                     self.write_scalar_for_key(key);
                     self.output.push_str(": ");
-                    self.serialize_flow_value(value);
+                    self.serialize_flow_value(value, depth + 1)?;
                 }
                 self.output.push('}');
             }
@@ -526,7 +564,7 @@ impl Serializer {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.serialize_flow_value(item);
+                    self.serialize_flow_value(item, depth + 1)?;
                 }
                 self.output.push(']');
             }
@@ -535,6 +573,7 @@ impl Serializer {
                 self.output.push_str(name);
             }
         }
+        Ok(())
     }
 }
 
