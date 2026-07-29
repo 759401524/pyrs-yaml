@@ -26,6 +26,35 @@ use self::convert::{
 use self::python_types::{json_value_to_node, pyobject_to_node};
 use self::stream_events::stream_event_to_py_dict;
 
+/// Format a YAML parse error with source context and caret marker.
+///
+/// Output:
+/// ```text
+/// YAML parse error at line 5, col 12: unexpected mapping value
+///     |
+///   5 | key: value: extra
+///     |            ^^^^^^ unexpected mapping value
+/// ```
+fn format_source_snippet(source: &str, line: usize, col: usize, message: &str) -> String {
+    let source_lines: Vec<&str> = source.lines().collect();
+    let line_num = if line > 0 { line } else { 0 };
+    let line_idx = line_num.saturating_sub(1);
+    let source_line = source_lines.get(line_idx).copied().unwrap_or("");
+
+    // Build caret: 5 chars or remaining width, whichever is smaller
+    let caret_width = 5.min(source_line.len().saturating_sub(col));
+    let caret = if caret_width > 0 {
+        format!("{}{} {}", " ".repeat(col), "^".repeat(caret_width), message)
+    } else {
+        message.to_string()
+    };
+
+    format!(
+        "YAML parse error at line {}, col {}: {}\n    |\n{:>4} | {}\n    | {}\n",
+        line_num, col, message, line_num, source_line, caret
+    )
+}
+
 /// A Python module implemented in Rust.
 ///
 /// pyrs-yaml: high-performance YAML parsing with perfect round-trip support.
@@ -226,10 +255,15 @@ mod pyrs_yaml {
             let new_ast = py.detach(|| {
                 crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000)
                     .map_err(|e| {
-                        YamlParseError::new_err(format_i18n_error(
-                            "yaml-parse-error",
-                            &[("detail", &e.message)],
-                        ))
+                        if e.line > 0 {
+                            let msg = format_source_snippet(source, e.line, e.col, &e.message);
+                            YamlParseError::new_err(msg)
+                        } else {
+                            YamlParseError::new_err(format_i18n_error(
+                                "yaml-parse-error",
+                                &[("detail", &e.message)],
+                            ))
+                        }
                     })
             })?;
             self.ast = new_ast;
@@ -312,6 +346,9 @@ mod pyrs_yaml {
                             "max-depth-exceeded",
                             &[("max_depth", &max_depth.to_string())],
                         ))
+                    } else if e.line > 0 {
+                        let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
                     } else {
                         YamlParseError::new_err(format_i18n_error(
                             "yaml-parse-error",
@@ -349,6 +386,9 @@ mod pyrs_yaml {
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
                     ))
+                } else if e.line > 0 {
+                    let msg = format_source_snippet(&content, e.line, e.col, &e.message);
+                    YamlParseError::new_err(msg)
                 } else {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
@@ -382,6 +422,9 @@ mod pyrs_yaml {
                             "max-depth-exceeded",
                             &[("max_depth", &max_depth.to_string())],
                         ))
+                    } else if e.line > 0 {
+                        let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
                     } else {
                         YamlParseError::new_err(format_i18n_error(
                             "yaml-parse-error",
@@ -411,6 +454,9 @@ mod pyrs_yaml {
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
                     ))
+                } else if e.line > 0 {
+                    let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                    YamlParseError::new_err(msg)
                 } else {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
@@ -441,6 +487,9 @@ mod pyrs_yaml {
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
                     ))
+                } else if e.line > 0 {
+                    let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                    YamlParseError::new_err(msg)
                 } else {
                     YamlParseError::new_err(format_i18n_error(
                         "yaml-parse-error",
@@ -485,10 +534,15 @@ mod pyrs_yaml {
         if let Some(callback) = on_event {
             let events = py.detach(|| {
                 crate::parser::parse_stream(&yaml_str).map_err(|e| {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
+                    if e.line > 0 {
+                        let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
+                    } else {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.message)],
+                        ))
+                    }
                 })
             })?;
 
@@ -507,10 +561,15 @@ mod pyrs_yaml {
         } else {
             let events = py.detach(|| {
                 crate::parser::parse_stream(&yaml_str).map_err(|e| {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
+                    if e.line > 0 {
+                        let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
+                    } else {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.message)],
+                        ))
+                    }
                 })
             })?;
 
@@ -619,10 +678,16 @@ mod pyrs_yaml {
                 if !frontmatter.is_empty() {
                     return Python::attach(|py| {
                         let ast = crate::parser::parse(frontmatter, schema_enum).map_err(|e| {
-                            YamlParseError::new_err(format_i18n_error(
-                                "yaml-parse-error",
-                                &[("detail", &e.message)],
-                            ))
+                            if e.line > 0 {
+                                let msg =
+                                    format_source_snippet(frontmatter, e.line, e.col, &e.message);
+                                YamlParseError::new_err(msg)
+                            } else {
+                                YamlParseError::new_err(format_i18n_error(
+                                    "yaml-parse-error",
+                                    &[("detail", &e.message)],
+                                ))
+                            }
                         })?;
                         Ok((
                             Some(node_to_pyobject(&ast, py, schema_enum)?),
