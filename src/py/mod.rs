@@ -216,14 +216,13 @@ mod pyrs_yaml {
             })?;
             let schema_enum = parse_schema(schema)?;
             let new_ast = py.detach(|| {
-                crate::parser::parse_with_options(source, resolve_merges, schema_enum).map_err(
-                    |e| {
+                crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000)
+                    .map_err(|e| {
                         YamlParseError::new_err(format_i18n_error(
                             "yaml-parse-error",
                             &[("detail", &e.to_string())],
                         ))
-                    },
-                )
+                    })
             })?;
             self.ast = new_ast;
             self.schema = schema_enum;
@@ -297,12 +296,14 @@ mod pyrs_yaml {
 
         let schema_enum = parse_schema(schema)?;
         let ast = py.detach(|| {
-            crate::parser::parse_with_options(&yaml_str, resolve_merges, schema_enum).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error(
-                    "yaml-parse-error",
-                    &[("detail", &e.to_string())],
-                ))
-            })
+            crate::parser::parse_with_options(&yaml_str, resolve_merges, schema_enum, 1000).map_err(
+                |e| {
+                    YamlParseError::new_err(format_i18n_error(
+                        "yaml-parse-error",
+                        &[("detail", &e.to_string())],
+                    ))
+                },
+            )
         })?;
         Ok(YamlDocument {
             ast,
@@ -322,7 +323,7 @@ mod pyrs_yaml {
             ))
         })?;
         let ast = py.detach(|| {
-            crate::parser::parse_with_options(&content, true, schema_enum).map_err(|e| {
+            crate::parser::parse_with_options(&content, true, schema_enum, 1000).map_err(|e| {
                 YamlParseError::new_err(format_i18n_error(
                     "yaml-parse-error",
                     &[("detail", &e.to_string())],
@@ -346,12 +347,14 @@ mod pyrs_yaml {
     ) -> PyResult<Vec<YamlDocument>> {
         let schema_enum = parse_schema(schema)?;
         let asts = py.detach(|| {
-            crate::parser::parse_all_with_options(yaml, resolve_merges, schema_enum).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error(
-                    "yaml-parse-error",
-                    &[("detail", &e.to_string())],
-                ))
-            })
+            crate::parser::parse_all_with_options(yaml, resolve_merges, schema_enum, 1000).map_err(
+                |e| {
+                    YamlParseError::new_err(format_i18n_error(
+                        "yaml-parse-error",
+                        &[("detail", &e.to_string())],
+                    ))
+                },
+            )
         })?;
         Ok(asts
             .into_iter()

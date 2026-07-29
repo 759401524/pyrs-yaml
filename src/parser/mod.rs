@@ -32,7 +32,7 @@ use yaml::{
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
 pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, String> {
-    parse_with_options(yaml, true, schema)
+    parse_with_options(yaml, true, schema, 1000)
 }
 
 /// 使用选项解析 YAML 字符串。
@@ -53,6 +53,7 @@ pub fn parse_with_options(
     yaml: &str,
     resolve_merges: bool,
     _schema: YamlSchema,
+    max_depth: usize,
 ) -> Result<CustomNode, String> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
@@ -64,12 +65,19 @@ pub fn parse_with_options(
     let raw_anchors = extract_anchors(yaml);
 
     // Parse YAML using saphyr-parser
-    let mut receiver = AstReceiver::new(yaml, raw_comments, raw_anchors);
+    let mut receiver = AstReceiver::new(yaml, raw_comments, raw_anchors, max_depth);
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
         .load(&mut receiver, true)
         .map_err(|e| format!("YAML parse error: {}", e))?;
+
+    if receiver.max_depth_exceeded {
+        return Err(format!(
+            "YAML parse error: max depth exceeded (max={})",
+            max_depth
+        ));
+    }
 
     // Get the parsed node (handle empty documents)
     let mut node = receiver.result.unwrap_or(CustomNode::plain_null());
@@ -97,7 +105,7 @@ pub fn parse_with_options(
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
 pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, String> {
-    parse_all_with_options(yaml, true, schema)
+    parse_all_with_options(yaml, true, schema, 1000)
 }
 
 /// 解析包含多个 YAML 文档的字符串，支持选项。
@@ -105,6 +113,7 @@ pub fn parse_all_with_options(
     yaml: &str,
     resolve_merges: bool,
     _schema: YamlSchema,
+    max_depth: usize,
 ) -> Result<Vec<CustomNode>, String> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
@@ -114,12 +123,19 @@ pub fn parse_all_with_options(
     let raw_comments = extract_comments(yaml);
     let raw_anchors = extract_anchors(yaml);
 
-    let mut receiver = AstReceiver::new(yaml, raw_comments, raw_anchors);
+    let mut receiver = AstReceiver::new(yaml, raw_comments, raw_anchors, max_depth);
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
         .load(&mut receiver, true)
         .map_err(|e| format!("YAML parse error: {}", e))?;
+
+    if receiver.max_depth_exceeded {
+        return Err(format!(
+            "YAML parse error: max depth exceeded (max={})",
+            max_depth
+        ));
+    }
 
     // Collect all documents from receiver
     let docs = receiver.documents;
@@ -183,6 +199,10 @@ struct AstReceiver<'a> {
     anchors: std::collections::HashMap<usize, String>,
     /// Pending standalone comment for the next node
     pending_standalone_comment: Option<Comment>,
+    /// Maximum allowed nesting depth for mapping/sequence containers
+    max_depth: usize,
+    /// Set to true when the maximum nesting depth is exceeded
+    max_depth_exceeded: bool,
 }
 
 #[derive(Debug)]
@@ -205,7 +225,12 @@ enum ParseState {
 }
 
 impl<'a> AstReceiver<'a> {
-    fn new(yaml_text: &'a str, raw_comments: Vec<RawComment>, raw_anchors: Vec<RawAnchor>) -> Self {
+    fn new(
+        yaml_text: &'a str,
+        raw_comments: Vec<RawComment>,
+        raw_anchors: Vec<RawAnchor>,
+        max_depth: usize,
+    ) -> Self {
         // Pre-compute line start offsets for O(1) line access
         Self {
             yaml_text,
@@ -216,6 +241,8 @@ impl<'a> AstReceiver<'a> {
             documents: Vec::new(),
             anchors: std::collections::HashMap::new(),
             pending_standalone_comment: None,
+            max_depth,
+            max_depth_exceeded: false,
         }
     }
 
@@ -370,6 +397,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 self.push_node(node);
             }
             Event::MappingStart(anchor_id, tag) => {
+                if self.stack.len() >= self.max_depth {
+                    self.max_depth_exceeded = true;
+                    return;
+                }
                 let line = span.start.line() - 1;
                 let flow_style = self.detect_flow_style(&span, b'{');
 
@@ -429,6 +460,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
             }
             Event::SequenceStart(anchor_id, tag) => {
+                if self.stack.len() >= self.max_depth {
+                    self.max_depth_exceeded = true;
+                    return;
+                }
                 let line = span.start.line() - 1;
                 let flow_style = self.detect_flow_style(&span, b'[');
 
