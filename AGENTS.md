@@ -100,3 +100,4 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 - Commit triggers prek hooks (fmt, clippy, ruff)
 - If hooks fail, fix and re-commit — do not use `--no-verify`
 - Push only after all hooks pass
+- PR merge only after CI passes — do not merge until all CI checks are green

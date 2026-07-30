@@ -10,6 +10,7 @@ import json
 
 import pyrs_yaml
 import pytest
+import ruamel.yaml as ruamel_yaml
 import yaml as pyyaml
 from ruamel.yaml import YAML
 
@@ -359,20 +360,7 @@ def print_report(results=None):
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
-
-    # importlib.metadata distribution name for ruamel can vary between
-    # 'ruamel-yaml' and 'ruamel.yaml' depending on how the package was
-    # published/installed. Try the common names and fall back to
-    # reporting "(not installed)" if neither is found.
-    try:
-        ruamel_ver = importlib.metadata.version("ruamel-yaml")
-    except importlib.metadata.PackageNotFoundError:
-        try:
-            ruamel_ver = importlib.metadata.version("ruamel.yaml")
-        except importlib.metadata.PackageNotFoundError:
-            ruamel_ver = None
-
-    print(f"  ruamel:    {ruamel_ver if ruamel_ver is not None else '(not installed)'}")
+    print(f"  ruamel:    {ruamel_yaml.__version__}")
     if HAS_RYAML:
         try:
             print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
