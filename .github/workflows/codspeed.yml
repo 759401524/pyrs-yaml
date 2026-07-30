@@ -44,8 +44,6 @@ jobs:
   python:
     name: Python benchmarks
     runs-on: ubuntu-latest
-    env:
-      UV_PYTHON: "3.13"
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
@@ -60,12 +58,15 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
-      - name: Install benchmark dependencies
-        run: |
-          uv sync --locked --only-group bench
-          uv pip install maturin
-      - name: Build and install pyrs-yaml
-        run: uv run --no-sync maturin develop --release
+      - name: Create virtualenv
+        run: uv venv .venv
+      - name: Build and install
+        uses: PyO3/maturin-action@v1
+        with:
+          command: develop
+          args: --release
+      - name: Install Python benchmark dependencies
+        run: uv pip install -q -r .ci/requirements-test.txt
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v5
         with:
