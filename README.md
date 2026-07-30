@@ -1,5 +1,7 @@
 # pyrs-yaml
 
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge/759401524/pyrs-yaml)](https://codspeed.io/759401524/pyrs-yaml)
+
 A high-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.
 
 ## Features
