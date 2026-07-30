@@ -14,6 +14,8 @@ import numpy as np
 import pyrs_yaml
 import pytest
 
+pytestmark = pytest.mark.benchmark
+
 CONFIG_YAML = """
 server:
   host: 0.0.0.0

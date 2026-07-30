@@ -4,6 +4,7 @@
 
 - Use `uv` for all Python operations — never `pip` or system Python
 - Use `prek` (not pre-commit) for Git hooks — run `prek install --prepare-hooks`
+- Use `cargo nextest` (not `cargo test`) for Rust tests — install via `cargo install cargo-nextest`
 - PyO3 v0.29 requires `#[pyo3(signature = "...")]` with double-quoted type strings
 - All PyO3 custom types must implement `INPUT_TYPE`/`OUTPUT_TYPE` traits
 - No `serde_yaml`, `yaml-rust2`, or any serde-based YAML library
@@ -15,6 +16,7 @@
 - Run tests: `uv run pytest tests/ -v`
 - Rust fmt: `cargo fmt`
 - Rust lint: `cargo clippy -- -D warnings`
+- Rust tests: `cargo nextest run --all` (preferred over `cargo test`)
 - Python lint: `uv run ruff check . && uv run ruff format .`
 - Generate stubs: `uv run maturin build --generate-stubs`
 - Run prek hooks: `prek run --all-files`

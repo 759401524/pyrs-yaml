@@ -4,6 +4,9 @@ Uses pytest-codspeed for statistical timing.
 """
 
 import pyrs_yaml
+import pytest
+
+pytestmark = pytest.mark.benchmark
 
 
 def test_parse_speed(benchmark):
