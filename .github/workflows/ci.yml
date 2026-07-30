@@ -67,6 +67,7 @@ jobs:
           args: --release
 
       - name: Download YAML Test Suite
+        shell: bash
         run: |
           if [ ! -d "Reference/yaml-test-suite" ]; then
             git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
@@ -148,6 +149,7 @@ jobs:
           args: --release
 
       - name: Download YAML Test Suite
+        shell: bash
         run: |
           if [ ! -d "Reference/yaml-test-suite" ]; then
             git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
@@ -173,12 +175,13 @@ jobs:
       - name: Install wheel
         run: pip install *.whl
       - name: Download YAML Test Suite
+        shell: bash
         run: |
           if [ ! -d "Reference/yaml-test-suite" ]; then
             git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
           fi
       - name: Install pytest
-        run: pip install pytest
+        run: pip install pytest pyyaml
       - name: Generate compliance report
         run: python tests/test_yaml_suite.py --json > compliance.json
       - uses: actions/upload-artifact@v6
