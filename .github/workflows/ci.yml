@@ -94,6 +94,7 @@ jobs:
           " >> $GITHUB_STEP_SUMMARY
 
   build:
+    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -114,6 +115,7 @@ jobs:
           path: dist/
 
   test-freethreaded:
+    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
