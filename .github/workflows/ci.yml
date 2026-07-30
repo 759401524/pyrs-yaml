@@ -214,13 +214,8 @@ jobs:
         with:
           name: wheels-ubuntu-latest
       - name: Install wheel
-        run: pip install *.whl
+        run: uv pip install *.whl
       - name: Install benchmark deps
-        run: pip install pyyaml ruamel.yaml ryaml
+        run: uv pip install pyyaml ruamel.yaml ryaml
       - name: Run benchmark
-        run: uv run pytest tests/test_benchmark.py --benchmark-json=benchmark-results.json
-      - name: Upload results
-        uses: actions/upload-artifact@v6
-        with:
-          name: benchmark-results
-          path: benchmark-results.json
+        run: uv run pytest tests/test_benchmark.py --codspeed

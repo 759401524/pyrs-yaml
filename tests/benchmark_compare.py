@@ -3,6 +3,7 @@ Comprehensive benchmark: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml
 Uses pytest-codspeed for statistical timing (delegates to test_benchmark.py).
 """
 
+import importlib.metadata
 import io
 import json
 
@@ -18,6 +19,14 @@ try:
 except ImportError:
     HAS_RYAML = False
     ryaml = None  # type: ignore[assignment]
+
+try:
+    import yaml_edit
+
+    HAS_YAML_EDIT = True
+except ImportError:
+    HAS_YAML_EDIT = False
+    yaml_edit = None  # type: ignore[assignment]
 
 
 # ── Ruamel helpers ─────────────────────────────────────────────────────────
@@ -207,14 +216,16 @@ monitoring:
 def print_report(results: dict | None = None):
     """Print a feature comparison and round-trip preservation report."""
     print("=" * 75)
-    print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml — Feature Comparison")
+    print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit — Feature Comparison")
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
     print(f"  ruamel:    {ruamel_yaml.__version__}")
     if HAS_RYAML:
-        print(f"  ryaml:     {ryaml.__version__}")
+        print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
+    if HAS_YAML_EDIT:
+        print(f"  yaml_edit: {importlib.metadata.version('yaml-edit')}")
     print()
 
     # ── Round-trip preservation test ─────────────────────────────────────
@@ -240,12 +251,23 @@ def print_report(results: dict | None = None):
     )
 
     if HAS_RYAML:
-        ryaml_buf = io.StringIO(rt_yaml)
-        ryaml_data = ryaml.load(ryaml_buf)
-        out4 = ryaml.dumps(ryaml_data)
-        print(
-            f"  ryaml:         comments={'# Comments everywhere' in out4}  anchors={'&defaults' in out4}  tags={'!!str' in out4}"
-        )
+        try:
+            ryaml_buf = io.StringIO(rt_yaml)
+            ryaml_data = ryaml.load(ryaml_buf)
+            out4 = ryaml.dumps(ryaml_data)
+            print(
+                f"  ryaml:         comments={'# Comments everywhere' in out4}  anchors={'&defaults' in out4}  tags={'!!str' in out4}"
+            )
+        except Exception:
+            print("  ryaml:         (parse error — YAML 1.2 strictness)")
+
+    if HAS_YAML_EDIT:
+        try:
+            doc = yaml_edit.Document()
+            doc.parse(rt_yaml)
+            print("  yaml_edit:     (parse only — no serialization API)")
+        except Exception:
+            print("  yaml_edit:     (parse error)")
     print()
 
     # ── Feature support comparison ───────────────────────────────────────
@@ -254,30 +276,32 @@ def print_report(results: dict | None = None):
     print("─" * 75)
 
     features = [
-        ("YAML 1.2 compliance", True, True, True, True),
-        ("Comments (standalone)", True, False, True, False),
-        ("Comments (inline)", True, False, True, False),
-        ("Anchors/aliases", True, False, True, True),
-        ("Tags (explicit)", True, False, True, True),
-        ("Block scalars", True, True, True, True),
-        ("Flow collections", True, True, True, True),
-        ("Merge keys (<<)", True, False, True, False),
-        ("Complex keys", True, True, True, True),
-        ("Round-trip preservation", True, False, True, False),
-        ("Python bindings", True, True, True, True),
-        ("ABI3 (py3.9+)", True, False, False, False),
-        ("Type stubs (.pyi)", True, True, False, False),
-        ("i18n error messages", True, False, False, False),
+        ("YAML 1.2 compliance", True, True, True, True, True),
+        ("Comments (standalone)", True, False, True, False, False),
+        ("Comments (inline)", True, False, True, False, False),
+        ("Anchors/aliases", True, False, True, True, False),
+        ("Tags (explicit)", True, False, True, True, False),
+        ("Block scalars", True, True, True, True, True),
+        ("Flow collections", True, True, True, True, True),
+        ("Merge keys (<<)", True, False, True, False, False),
+        ("Complex keys", True, True, True, True, True),
+        ("Round-trip preservation", True, False, True, False, False),
+        ("Python bindings", True, True, True, True, True),
+        ("ABI3 (py3.9+)", True, False, False, False, False),
+        ("Type stubs (.pyi)", True, True, False, False, False),
+        ("i18n error messages", True, False, False, False, False),
     ]
 
-    print(f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s} {'ryaml':8s}")
-    print(f"  {'-' * 79}")
+    print(f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s} {'ryaml':8s} {'yaml_edit':10s}")
+    print(f"  {'-' * 91}")
 
     def _mark(v: bool) -> str:
         return "✅" if v else "❌"
 
-    for name, pyr, pyr2, ruamel, ryml in features:
-        print(f"  {name:35s} {_mark(pyr):8s}     {_mark(pyr2):6s}     {_mark(ruamel):6s}     {_mark(ryml):6s}")
+    for name, pyr, pyr2, ruamel, ryml, yedit in features:
+        print(
+            f"  {name:35s} {_mark(pyr):8s}     {_mark(pyr2):6s}     {_mark(ruamel):6s}     {_mark(ryml):6s}     {_mark(yedit):6s}"
+        )
     print()
 
     if results:
