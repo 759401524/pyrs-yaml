@@ -77,6 +77,11 @@ dev = [
     {include-group = "lint"},
     {include-group = "docs"},
 ]
+bench = [
+    {include-group = "test"},
+    "pytest-codspeed>=2.0",
+    "maturin>=1.0,<2.0",
+]
 docs = [
     "mkdocstrings-python>=1.11.1",
     "tomli-w>=1.0.0",
