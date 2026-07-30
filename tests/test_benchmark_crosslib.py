@@ -10,6 +10,7 @@ import json
 
 import pyrs_yaml
 import pytest
+import ruamel.yaml as ruamel_yaml
 import yaml as pyyaml
 from ruamel.yaml import YAML
 
@@ -359,7 +360,7 @@ def print_report(results=None):
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
-    print(f"  ruamel:    {importlib.metadata.version('ruamel-yaml')}")
+    print(f"  ruamel:    {ruamel_yaml.__version__}")
     if HAS_RYAML:
         print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
     if HAS_YAML_EDIT:
