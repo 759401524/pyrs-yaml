@@ -19,6 +19,7 @@ from .async_dump import (
     safe_loads_async,
 )
 from .pyrs_yaml import (
+    YAML,
     StreamIterator,
     YamlDocument,
     YamlMaxDepthError,
@@ -46,6 +47,7 @@ from .pyrs_yaml import (
 )
 
 __all__ = [
+    "YAML",
     "StreamIterator",
     "YamlDocument",
     "YamlMaxDepthError",
