@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["*"]
   pull_request:
     paths-ignore:
       - "docs/**"
@@ -14,6 +13,10 @@ on:
       - "prek.toml"
       - ".rumdl.toml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -27,6 +30,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          - ${{ github.event_name == 'push' && matrix.os != 'ubuntu-latest' }}
+          - ${{ github.event_name == 'push' && matrix.python-version != '3.8' && matrix.python-version != '3.14' }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
