@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-yaml"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 description = "High-performance Python YAML library with perfect round-trip support"
 license = "MIT OR Apache-2.0"
@@ -27,7 +27,7 @@ pyo3-build-config = "0.29"
 default = ["numpy"]
 
 [dev-dependencies]
-criterion = { version = "0.8", features = ["html_reports"] }
+criterion = { version = "5.0.1", package = "codspeed-criterion-compat" }
 
 [[bench]]
 name = "yaml_bench"

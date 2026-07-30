@@ -9,7 +9,7 @@ lang: ja
 
 ### Methodology
 
-- **Tool:** Criterion (Rust) + `pytest-benchmark` (Python)
+- **Tool:** Criterion (Rust) + `pytest-codspeed` (Python)
 - **Rounds:** 200 iterations per benchmark (Python), 100+ samples per benchmark (Rust)
 - **Metric:** Median time in milliseconds (Python), mean time in microseconds (Rust)
 

@@ -206,7 +206,7 @@ pyrs_yaml.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
 
 ## Performance
 
-Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-benchmark` in `tests/test_benchmark.py` (Python):
+Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark.py` (Python):
 
 | Operation | Time |
 |-----------|------|
@@ -236,7 +236,7 @@ pytest tests/
 cargo bench
 
 # Run benchmarks (Python)
-uv run pytest tests/test_benchmark.py --benchmark-json=results.json
+uv run pytest tests/test_benchmark.py --codspeed
 
 # Performance sanity checks
 uv run pytest tests/test_performance.py -v
