@@ -1436,11 +1436,11 @@ dev = [
     { name = "mkdocstrings-python", version = "1.11.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "mkdocstrings-python", version = "1.18.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "mkdocstrings-python", version = "2.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' and python_full_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' and python_full_version < '3.14' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
     { name = "pytest", version = "8.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "pytest", version = "9.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -1457,7 +1457,7 @@ dev = [
     { name = "ryaml", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
     { name = "tomli-w", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "tomli-w", version = "1.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
     { name = "zensical", version = "0.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "zensical", version = "0.0.51", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
@@ -1478,11 +1478,11 @@ test = [
     { name = "jsonschema", version = "4.23.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "jsonschema", version = "4.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "jsonschema", version = "4.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' and python_full_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "1.24.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' and python_full_version < '3.14' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
     { name = "pytest", version = "8.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "pytest", version = "9.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -1495,7 +1495,7 @@ test = [
     { name = "ruamel-yaml", version = "0.18.16", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "ruamel-yaml", version = "0.19.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "ryaml", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
-    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
+    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'ppc64le' and platform_machine != 's390x'" },
 ]
 
 [package.metadata]
@@ -1506,7 +1506,7 @@ dev = [
     { name = "jsonschema", marker = "python_full_version >= '3.9'", specifier = ">=4.25.1" },
     { name = "maturin", specifier = ">=1.0,<2.0" },
     { name = "mkdocstrings-python", specifier = ">=1.11.1" },
-    { name = "numpy", marker = "python_full_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=1.16.0" },
+    { name = "numpy", marker = "python_full_version < '3.14' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=1.16.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "pytest-codspeed", specifier = ">=2.0" },
@@ -1516,7 +1516,7 @@ dev = [
     { name = "ruff", marker = "python_full_version >= '3.9'", specifier = ">=0.14.0" },
     { name = "ryaml", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=0.5.0" },
     { name = "tomli-w", specifier = ">=1.0.0" },
-    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=0.1.2" },
+    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=0.1.2" },
     { name = "zensical", specifier = ">=0.0.2" },
 ]
 docs = [
@@ -1531,14 +1531,14 @@ lint = [
 test = [
     { name = "jsonschema", marker = "python_full_version < '3.9'", specifier = ">=4.18.0,<4.25.1" },
     { name = "jsonschema", marker = "python_full_version >= '3.9'", specifier = ">=4.25.1" },
-    { name = "numpy", marker = "python_full_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=1.16.0" },
+    { name = "numpy", marker = "python_full_version < '3.14' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=1.16.0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "pytest-codspeed", specifier = ">=2.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruamel-yaml", specifier = ">=0.18.16" },
     { name = "ryaml", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=0.5.0" },
-    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'armv7l' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=0.1.2" },
+    { name = "yaml-edit", marker = "python_full_version >= '3.10' and platform_machine != 'ppc64le' and platform_machine != 's390x'", specifier = ">=0.1.2" },
 ]
 
 [[package]]
