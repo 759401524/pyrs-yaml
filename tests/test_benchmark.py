@@ -20,6 +20,14 @@ except ImportError:
     HAS_RYAML = False
     ryaml = None  # type: ignore[assignment]
 
+try:
+    import yaml_edit as yedit
+
+    HAS_YAML_EDIT = True
+except ImportError:
+    HAS_YAML_EDIT = False
+    yedit = None  # type: ignore[assignment]
+
 
 def ruamel_load(s):
     return _ruamel_yaml.load(s)
@@ -382,6 +390,27 @@ def test_ryaml_serialize_large(benchmark):
         benchmark(ryaml_dumps, data)
     except Exception:
         pytest.skip("ryaml YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
+
+
+# ── yaml_edit benchmarks (parse only — no to_string API) ──
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_YAML_EDIT, reason="yaml_edit not installed")
+def test_yaml_edit_parse_small(benchmark):
+    benchmark(yedit.Document.parse, SMALL_YAML)
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_YAML_EDIT, reason="yaml_edit not installed")
+def test_yaml_edit_parse_medium(benchmark):
+    benchmark(yedit.Document.parse, MEDIUM_YAML)
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_YAML_EDIT, reason="yaml_edit not installed")
+def test_yaml_edit_parse_large(benchmark):
+    benchmark(yedit.Document.parse, LARGE_YAML)
 
 
 # ── Speedup assertion ──
