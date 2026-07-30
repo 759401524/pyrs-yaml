@@ -359,11 +359,30 @@ def print_report(results=None):
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
-    print(f"  ruamel:    {importlib.metadata.version('ruamel-yaml')}")
+
+    # importlib.metadata distribution name for ruamel can vary between
+    # 'ruamel-yaml' and 'ruamel.yaml' depending on how the package was
+    # published/installed. Try the common names and fall back to
+    # reporting "(not installed)" if neither is found.
+    try:
+        ruamel_ver = importlib.metadata.version("ruamel-yaml")
+    except importlib.metadata.PackageNotFoundError:
+        try:
+            ruamel_ver = importlib.metadata.version("ruamel.yaml")
+        except importlib.metadata.PackageNotFoundError:
+            ruamel_ver = None
+
+    print(f"  ruamel:    {ruamel_ver if ruamel_ver is not None else '(not installed)'}")
     if HAS_RYAML:
-        print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
+        try:
+            print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
+        except importlib.metadata.PackageNotFoundError:
+            print("  ryaml:     (not installed)")
     if HAS_YAML_EDIT:
-        print(f"  yaml_edit: {importlib.metadata.version('yaml-edit')}")
+        try:
+            print(f"  yaml_edit: {importlib.metadata.version('yaml-edit')}")
+        except importlib.metadata.PackageNotFoundError:
+            print("  yaml_edit: (not installed)")
     print()
 
     print("─" * 75)
