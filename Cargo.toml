@@ -27,7 +27,7 @@ pyo3-build-config = "0.29"
 default = ["numpy"]
 
 [dev-dependencies]
-criterion = { version = "5.0.1", package = "codspeed-criterion-compat" }
+divan = { version = "5.0.1", package = "codspeed-divan-compat" }
 
 [[bench]]
 name = "yaml_bench"
