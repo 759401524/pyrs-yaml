@@ -73,6 +73,6 @@ jobs:
           mode: simulation
           run: >
             uv run --no-sync pytest --codspeed
-            tests/test_benchmark.py
+            tests/test_benchmark_crosslib.py
             tests/test_benchmark_api.py
             tests/test_performance.py

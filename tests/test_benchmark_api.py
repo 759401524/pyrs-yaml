@@ -1,12 +1,14 @@
 """
 Benchmarks for the public Python API of pyrs-yaml.
 
-Complements tests/test_benchmark.py (which compares parse/serialize against
+Complements tests/test_benchmark_crosslib.py (which compares parse/serialize against
 PyYAML and ruamel.yaml) by covering the rest of the surface exposed to Python:
 safe_load, safe_loads, safe_dump, from_dict, from_json,
 YamlDocument.to_json, YamlDocument.validate, YamlDocument.reparse,
 parse_all_docs and parse_stream.
 """
+
+import io
 
 import numpy as np
 import pyrs_yaml
@@ -173,3 +175,15 @@ def test_document_reparse(benchmark):
 def test_parse_schemas(benchmark, schema):
     result = benchmark(lambda: pyrs_yaml.parse(CONFIG_YAML, schema=schema))
     assert result is not None
+
+
+def test_document_to_yaml_explicit(benchmark):
+    doc = pyrs_yaml.parse(CONFIG_YAML)
+    result = benchmark(lambda: doc.to_yaml_with_options(indent_size=4, explicit_start=True, sort_keys=True))
+    assert result
+
+
+def test_parse_file(benchmark):
+    file = io.StringIO(CONFIG_YAML)
+    result = benchmark(lambda: pyrs_yaml.parse(file.getvalue()))
+    assert result

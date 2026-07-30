@@ -1,6 +1,7 @@
 """
-Comprehensive benchmark: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml
-Uses pytest-codspeed for statistical timing (delegates to test_benchmark.py).
+Cross-library comparison: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit.
+
+Run with: pytest tests/test_benchmark_crosslib.py --codspeed
 """
 
 import importlib.metadata
@@ -8,9 +9,11 @@ import io
 import json
 
 import pyrs_yaml
-import ruamel.yaml as ruamel_yaml
+import pytest
 import yaml as pyyaml
 from ruamel.yaml import YAML
+
+_ruamel_yaml = YAML()
 
 try:
     import ryaml
@@ -18,7 +21,7 @@ try:
     HAS_RYAML = True
 except ImportError:
     HAS_RYAML = False
-    ryaml = None  # type: ignore[assignment]
+    ryaml = None
 
 try:
     import yaml_edit
@@ -26,12 +29,7 @@ try:
     HAS_YAML_EDIT = True
 except ImportError:
     HAS_YAML_EDIT = False
-    yaml_edit = None  # type: ignore[assignment]
-
-
-# ── Ruamel helpers ─────────────────────────────────────────────────────────
-
-_ruamel_yaml = YAML()
+    yaml_edit = None
 
 
 def ruamel_load(s):
@@ -44,7 +42,11 @@ def ruamel_dump(data):
     return stream.getvalue()
 
 
-# ── Test data ──────────────────────────────────────────────────────────────
+def ryaml_dumps(data):
+    if HAS_RYAML:
+        return ryaml.dumps(data)
+    return ""
+
 
 SMALL_YAML = """
 # Application config
@@ -137,7 +139,6 @@ services:
       type: redis
       url: redis://localhost:6379/0
 
-# Block scalars
 description: |
   This is a literal block scalar that
   preserves newlines and formatting.
@@ -209,26 +210,162 @@ monitoring:
     team: platform
 """
 
+BLOCK_STYLE_YAML = (
+    "key1: value1\n"
+    "key2: value2\n"
+    "nested:\n"
+    "  subkey1: subvalue1\n"
+    "  subkey2: subvalue2\n"
+    "list:\n"
+    "  - item1\n"
+    "  - item2\n"
+    "  - item3\n"
+)
 
-# ── Feature comparison report ──────────────────────────────────────────────
+YAML_INPUTS = {"small": SMALL_YAML, "medium": MEDIUM_YAML, "large": LARGE_YAML}
+SIZES = ["small", "medium", "large"]
+
+
+# ── pyrs-yaml benchmarks ──
+
+
+@pytest.mark.benchmark(group="pyrs-yaml")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_pyrs_yaml_parse(benchmark, size):
+    benchmark(pyrs_yaml.parse, YAML_INPUTS[size])
+
+
+@pytest.mark.benchmark(group="pyrs-yaml")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_pyrs_yaml_serialize(benchmark, size):
+    doc = pyrs_yaml.parse(YAML_INPUTS[size])
+    benchmark(doc.to_yaml)
+
+
+@pytest.mark.benchmark(group="pyrs-yaml")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_pyrs_yaml_roundtrip(benchmark, size):
+    benchmark(lambda y=YAML_INPUTS[size]: pyrs_yaml.parse(y).to_yaml())
+
+
+# ── PyYAML benchmarks ──
+
+
+@pytest.mark.benchmark(group="pyyaml")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_pyyaml_parse(benchmark, size):
+    benchmark(pyyaml.safe_load, YAML_INPUTS[size])
+
+
+@pytest.mark.benchmark(group="pyyaml")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_pyyaml_serialize(benchmark, size):
+    data = pyyaml.safe_load(YAML_INPUTS[size])
+    benchmark(pyyaml.safe_dump, data)
+
+
+# ── ruamel.yaml benchmarks ──
+
+
+@pytest.mark.benchmark(group="ruamel")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_ruamel_parse(benchmark, size):
+    benchmark(ruamel_load, YAML_INPUTS[size])
+
+
+@pytest.mark.benchmark(group="ruamel")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_ruamel_serialize(benchmark, size):
+    data = ruamel_load(YAML_INPUTS[size])
+    benchmark(ruamel_dump, data)
+
+
+# ── ryaml benchmarks ──
+
+
+@pytest.mark.benchmark(group="ryaml")
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_ryaml_parse(benchmark, size):
+    yaml = YAML_INPUTS[size]
+    if size == "large":
+        try:
+            benchmark(ryaml.load, io.StringIO(yaml))
+        except Exception:
+            pytest.skip("ryaml YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
+    else:
+        benchmark(ryaml.load, io.StringIO(yaml))
+
+
+@pytest.mark.benchmark(group="ryaml")
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_ryaml_serialize(benchmark, size):
+    yaml = YAML_INPUTS[size]
+    if size == "large":
+        try:
+            data = ryaml.load(io.StringIO(yaml))
+            benchmark(ryaml_dumps, data)
+        except Exception:
+            pytest.skip("ryaml YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
+    else:
+        data = ryaml.load(io.StringIO(yaml))
+        benchmark(ryaml_dumps, data)
+
+
+# ── yaml_edit benchmarks (parse only) ──
+
+
+@pytest.mark.benchmark(group="yaml_edit")
+@pytest.mark.skipif(not HAS_YAML_EDIT, reason="yaml_edit not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_yaml_edit_parse(benchmark, size):
+    benchmark(yaml_edit.Document.parse, YAML_INPUTS[size])
+
+
+# ── Speedup assertion ──
+
+
+def test_pyrs_yaml_faster_than_pyyaml():
+    doc = pyrs_yaml.parse(BLOCK_STYLE_YAML)
+    data = pyyaml.safe_load(BLOCK_STYLE_YAML)
+
+    import time
+
+    t0 = time.perf_counter()
+    for _ in range(100):
+        doc.to_yaml()
+    pyr_time = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    for _ in range(100):
+        pyyaml.safe_dump(data)
+    pyy_time = time.perf_counter() - t0
+
+    assert pyr_time < pyy_time, f"pyrs-yaml slower than PyYAML: {pyr_time:.4f}s vs {pyy_time:.4f}s"
+
+
+# ── Feature comparison report ──
+
+
+def test_feature_comparison():
+    print_report()
 
 
 def print_report(results: dict | None = None):
-    """Print a feature comparison and round-trip preservation report."""
     print("=" * 75)
     print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit — Feature Comparison")
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
-    print(f"  ruamel:    {ruamel_yaml.__version__}")
+    print(f"  ruamel:    {importlib.metadata.version('ruamel-yaml')}")
     if HAS_RYAML:
         print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
     if HAS_YAML_EDIT:
         print(f"  yaml_edit: {importlib.metadata.version('yaml-edit')}")
     print()
 
-    # ── Round-trip preservation test ─────────────────────────────────────
     print("─" * 75)
     print("  ROUND-TRIP PRESERVATION TEST")
     print("─" * 75)
@@ -270,7 +407,6 @@ def print_report(results: dict | None = None):
             print("  yaml_edit:     (parse error)")
     print()
 
-    # ── Feature support comparison ───────────────────────────────────────
     print("─" * 75)
     print("  FEATURE SUPPORT COMPARISON")
     print("─" * 75)
@@ -312,13 +448,5 @@ def print_report(results: dict | None = None):
         print()
 
     print("=" * 75)
-    print("  Report complete. Run `pytest tests/test_benchmark.py --codspeed`")
-    print("  for statistical timing results across all libraries.")
+    print("  Report complete.")
     print("=" * 75)
-
-
-# ── Standalone CLI entry point ──────────────────────────────────────────
-
-
-if __name__ == "__main__":
-    print_report()
