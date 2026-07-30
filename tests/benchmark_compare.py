@@ -2,12 +2,26 @@
 Comprehensive benchmark: pyrs-yaml vs PyYAML vs ruamel.yaml
 """
 
+import argparse
 import io
+import json
 import time
 
 import pyrs_yaml
+import ruamel.yaml as ruamel_yaml
 import yaml as pyyaml
 from ruamel.yaml import YAML
+
+# ── CLI arguments ──────────────────────────────────────────────────────────
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="YAML library benchmark")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--rounds", type=int, default=200, help="Number of rounds")
+    parser.add_argument("--ci", action="store_true", help="CI mode: --json --rounds 20")
+    return parser.parse_args()
+
 
 # ── Ruamel helpers ─────────────────────────────────────────────────────────
 
@@ -194,14 +208,6 @@ monitoring:
 # ── Benchmark helpers ─────────────────────────────────────────────────────
 
 
-def bench(fn, rounds=200):
-    """Run fn rounds times, return median in ms."""
-    times = sorted(time.perf_counter() - time.perf_counter() or fn() for _ in range(rounds))
-    times = sorted([time.perf_counter() - (t0 := time.perf_counter()) + (fn(), t0)[1] for _ in range(rounds)])
-    median = times[len(times) // 2]
-    return median * 1000
-
-
 def timed(fn, rounds=200):
     """Return (median_ms, min_ms, max_ms) for fn called rounds times."""
     times = []
@@ -217,40 +223,46 @@ def timed(fn, rounds=200):
 
 
 def main():
+    args = parse_args()
+    rounds = 20 if args.ci else args.rounds
+    if args.ci:
+        args.json = True
+
     print("=" * 75)
     print("  pyrs-yaml vs PyYAML vs ruamel.yaml — Performance Benchmark")
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
-    print(f"  ruamel:    {YAML.__module__}")
+    print(f"  ruamel:    {ruamel_yaml.__version__}")
     print()
 
-    for label, yaml_str in [
-        ("SMALL (~100 B)", SMALL_YAML),
-        ("MEDIUM (~500 B)", MEDIUM_YAML),
-        ("LARGE (~2 KB)", LARGE_YAML),
+    results = {}
+    for label, yaml_str, key in [
+        ("SMALL (~100 B)", SMALL_YAML, "small"),
+        ("MEDIUM (~500 B)", MEDIUM_YAML, "medium"),
+        ("LARGE (~2 KB)", LARGE_YAML, "large"),
     ]:
         print("─" * 75)
         print(f"  {label}")
         print("─" * 75)
 
         # pyrs-yaml
-        p = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str))
-        s = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml())
-        r = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml())
+        p = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str), rounds)
+        s = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml(), rounds)
+        r = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml(), rounds)
         print(f"  pyrs-yaml       parse={p[0]:8.2f}ms  serialize={s[0]:8.2f}ms  roundtrip={r[0]:8.2f}ms")
 
         # PyYAML
-        p2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_load(yaml_str))
-        s2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)))
-        r2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)))
+        p2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_load(yaml_str), rounds)
+        s2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)), rounds)
+        r2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)), rounds)
         print(f"  PyYAML          parse={p2[0]:8.2f}ms  serialize={s2[0]:8.2f}ms  roundtrip={r2[0]:8.2f}ms")
 
         # ruamel.yaml
-        p3 = timed(lambda yaml_str=yaml_str: ruamel_load(yaml_str))
-        s3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)))
-        r3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)))
+        p3 = timed(lambda yaml_str=yaml_str: ruamel_load(yaml_str), rounds)
+        s3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)), rounds)
+        r3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)), rounds)
         print(f"  ruamel.yaml     parse={p3[0]:8.2f}ms  serialize={s3[0]:8.2f}ms  roundtrip={r3[0]:8.2f}ms")
         print()
 
@@ -260,6 +272,24 @@ def main():
         rt_spd = r2[0] / max(r[0], 0.0001)
         print(f"  Speedup vs PyYAML:  parse={parse_spd:.1f}x  serialize={ser_spd:.1f}x  roundtrip={rt_spd:.1f}x")
         print()
+
+        results[key] = {
+            "pyrs-yaml": {
+                "parse_ms": round(p[0], 2),
+                "serialize_ms": round(s[0], 2),
+                "roundtrip_ms": round(r[0], 2),
+            },
+            "pyyaml": {
+                "parse_ms": round(p2[0], 2),
+                "serialize_ms": round(s2[0], 2),
+                "roundtrip_ms": round(r2[0], 2),
+            },
+            "ruamel": {
+                "parse_ms": round(p3[0], 2),
+                "serialize_ms": round(s3[0], 2),
+                "roundtrip_ms": round(r3[0], 2),
+            },
+        }
 
     # ── Round-trip preservation test ─────────────────────────────────────
     print("─" * 75)
@@ -318,9 +348,16 @@ def main():
         print(f"  {name:35s} {pyr_m:8s}     {pyr2_m:6s}     {ruamel_m:6s}")
     print()
 
+    if args.json:
+        print(json.dumps(results, indent=2))
+        return
+
     print("=" * 75)
     print("  Benchmark complete.")
     print("=" * 75)
+
+
+# ── Standalone CLI entry point ──────────────────────────────────────────
 
 
 if __name__ == "__main__":

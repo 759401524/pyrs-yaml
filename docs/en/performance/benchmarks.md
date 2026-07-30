@@ -4,9 +4,9 @@ Performance benchmarks for pyrs-yaml, measured on the author's machine (Windows 
 
 ## Methodology
 
-- **Tool:** Criterion (Rust) + `time.perf_counter()` (Python)
-- **Rounds:** 200 iterations per benchmark
-- **Metric:** Median time in milliseconds
+- **Tool:** Criterion (Rust) + `pytest-benchmark` (Python)
+- **Rounds:** 200 iterations per benchmark (Python), 100+ samples per benchmark (Rust)
+- **Metric:** Median time in milliseconds (Python), mean time in microseconds (Rust)
 
 ## Parse Performance
 
@@ -38,27 +38,27 @@ Measured at the Rust level (no Python overhead):
 
 | Operation | Time |
 |-----------|------|
-| Parse (small) | 1.67 µs |
-| Parse (medium) | 11.9 µs |
-| Parse (large) | 37.3 µs |
-| Parse (anchors) | 10.4 µs |
-| Parse (comments) | 5.4 µs |
-| Parse (block scalars) | 3.0 µs |
-| Serialize (small) | 148 ns |
-| Serialize (medium) | 845 ns |
-| Serialize (large) | 2.23 µs |
-| Serialize (anchors) | 649 ns |
-| Serialize (block scalars) | 388 ns |
-| Round-trip (small) | 1.88 µs |
-| Round-trip (medium) | 13.0 µs |
-| Round-trip (large) | 39.3 µs |
+| Parse (small) | 1.69 µs |
+| Parse (medium) | 12.2 µs |
+| Parse (large) | 37.7 µs |
+| Parse (anchors) | 10.5 µs |
+| Parse (comments) | 5.0 µs |
+| Parse (block scalars) | 3.2 µs |
+| Serialize (small) | 4.4 µs |
+| Serialize (medium) | 4.7 µs |
+| Serialize (large) | 5.5 µs |
+| Serialize (anchors) | 4.8 µs |
+| Serialize (block scalars) | 4.4 µs |
+| Round-trip (small) | 5.9 µs |
+| Round-trip (medium) | 17.1 µs |
+| Round-trip (large) | 44.7 µs |
 
 ## Key Takeaways
 
 1. **pyrs-yaml is consistently 25–40× faster than PyYAML** across all operations
 2. **pyrs-yaml is 4–10× faster than ruamel.yaml** while matching its round-trip features
-3. **Rust-side parsing** is extremely fast — small documents parse in ~1.6 µs
-4. **Serialization** is even faster — small documents serialize in ~148 ns
+3. **Rust-side parsing** is extremely fast — small documents parse in ~1.7 µs
+4. **Serialization** is fast across all sizes — small documents serialize in ~4.4 µs
 5. **The speed advantage compounds** with larger documents
 
 ## Notes

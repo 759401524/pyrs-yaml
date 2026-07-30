@@ -21,17 +21,17 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyrs-yaml** | **0.08 ms** | — |
-| PyYAML | 2.96 ms | 37× slower |
-| ruamel.yaml | 6.74 ms | 84× slower |
+| **pyrs-yaml** | **0.07 ms** | — |
+| PyYAML | 2.92 ms | 40× slower |
+| ruamel.yaml | 6.73 ms | 93× slower |
 
 #### Round-Trip Speed (Large YAML, ~2 KB)
 
 | Library | Time | Speedup |
 |---------|------|---------|
-| **pyrs-yaml** | **0.08 ms** | — |
-| PyYAML | 2.98 ms | 37× slower |
-| ruamel.yaml | 6.79 ms | 85× slower |
+| **pyrs-yaml** | **0.07 ms** | — |
+| PyYAML | 2.90 ms | 41× slower |
+| ruamel.yaml | 6.57 ms | 91× slower |
 
 ### Feature 比較
 

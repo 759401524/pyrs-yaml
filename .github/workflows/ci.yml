@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["*"]
   pull_request:
     paths-ignore:
       - "docs/**"
@@ -14,6 +13,10 @@ on:
       - "prek.toml"
       - ".rumdl.toml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -27,6 +30,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          - ${{ github.event_name == 'push' && matrix.os != 'ubuntu-latest' }}
+          - ${{ github.event_name == 'push' && matrix.python-version != '3.8' && matrix.python-version != '3.14' }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -66,11 +72,28 @@ jobs:
           command: develop
           args: --release
 
+      - name: Download YAML Test Suite
+        shell: bash
+        run: |
+          if [ ! -d "Reference/yaml-test-suite" ]; then
+            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+
       - name: Install Python test dependencies
         run: uv pip install -q pytest pytest-asyncio numpy jsonschema
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py
+
+      - name: Compliance summary
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+        run: |
+          uv run python -c "
+          import sys; sys.path.insert(0, 'tests')
+          from test_yaml_suite import compute_compliance
+          r = compute_compliance()
+          print(f'Compliance: {r[\"rate\"]*100:.1f}% ({r[\"passed\"]}/{r[\"total\"]} passed)')
+          " >> $GITHUB_STEP_SUMMARY
 
   build:
     strategy:
@@ -131,8 +154,73 @@ jobs:
           command: develop
           args: --release
 
+      - name: Download YAML Test Suite
+        shell: bash
+        run: |
+          if [ ! -d "Reference/yaml-test-suite" ]; then
+            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+
       - name: Install Python test dependencies
         run: uv pip install -q pytest pytest-asyncio jsonschema
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py -k "not numpy"
+
+  compliance-report:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@v6
+        with:
+          name: wheels-ubuntu-latest
+      - name: Install wheel
+        run: pip install *.whl
+      - name: Download YAML Test Suite
+        shell: bash
+        run: |
+          if [ ! -d "Reference/yaml-test-suite" ]; then
+            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+      - name: Install pytest
+        run: pip install pytest pyyaml
+      - name: Generate compliance report
+        run: python tests/test_yaml_suite.py --json > compliance.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: compliance-report
+          path: compliance.json
+
+  benchmark:
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - uses: actions/download-artifact@v6
+        with:
+          name: wheels-ubuntu-latest
+      - name: Install wheel
+        run: pip install *.whl
+      - name: Install benchmark deps
+        run: pip install pyyaml ruamel.yaml
+      - name: Run benchmark
+        run: uv run pytest tests/test_benchmark.py --benchmark-json=benchmark-results.json
+      - name: Upload results
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-results
+          path: benchmark-results.json

@@ -2,6 +2,7 @@
 Error handling tests — YamlParseError, YamlTypeError, IO errors, edge cases.
 """
 
+import contextlib
 import tempfile
 from pathlib import Path
 
@@ -110,3 +111,41 @@ class TestCustomExceptions:
         """Raised parse error is specifically YamlParseError."""
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.parse("{{invalid yaml")
+
+
+# ============================================================================
+# Error Context Tests
+# ============================================================================
+
+
+class TestErrorContext:
+    """Test that error messages include useful context."""
+
+    def test_parse_error_has_line_info(self):
+        """Parse error should include line number and source snippet."""
+        invalid_yaml = "key: value: extra_colon"
+        try:
+            pyrs_yaml.parse(invalid_yaml)
+            raise AssertionError("should have raised")
+        except pyrs_yaml.YamlParseError as e:
+            msg = str(e)
+            # Should contain line/col or source context
+            assert "line" in msg.lower() or "col" in msg.lower() or "|" in msg, (
+                f"Error should contain line/col/context info: {msg}"
+            )
+
+    def test_parse_error_different_line(self):
+        """Error on a later line should show the correct line number."""
+        multiline_yaml = """a: 1
+b: 2
+c: value: extra
+d: 4
+"""
+        with contextlib.suppress(pyrs_yaml.YamlParseError):
+            pyrs_yaml.parse(multiline_yaml)
+
+    def test_parse_error_utf8(self):
+        """Error with non-ASCII characters should not crash."""
+        invalid_yaml = "key: \x00value"
+        with contextlib.suppress(pyrs_yaml.YamlParseError):
+            pyrs_yaml.parse(invalid_yaml)

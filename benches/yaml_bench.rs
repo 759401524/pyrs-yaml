@@ -116,6 +116,8 @@ database:
   port: 5432
 "#;
 
+const BLOCK_STYLE_YAML: &str = "key1: value1\nkey2: value2\nnested:\n  subkey1: subvalue1\n  subkey2: subvalue2\nlist:\n  - item1\n  - item2\n  - item3\n";
+
 const BLOCK_SCALAR_YAML: &str = r#"
 description: |
   This is a multi-line
@@ -202,5 +204,20 @@ fn bench_roundtrip(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_parse, bench_serialize, bench_roundtrip);
+fn bench_serialize_block(c: &mut Criterion) {
+    let ast = pyrs_yaml::parser::parse(BLOCK_STYLE_YAML, YamlSchema::Core).unwrap();
+    c.bench_function("serialize_block", |b| {
+        b.iter(|| {
+            let _ = pyrs_yaml::serializer::to_yaml(&ast);
+        });
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_parse,
+    bench_serialize,
+    bench_roundtrip,
+    bench_serialize_block
+);
 criterion_main!(benches);
