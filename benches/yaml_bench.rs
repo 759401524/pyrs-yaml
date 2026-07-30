@@ -1,4 +1,3 @@
-use criterion::{criterion_group, criterion_main, Criterion};
 use pyrs_yaml::parser::yaml::YamlSchema;
 
 const SMALL_YAML: &str = "key: value\nname: test\n";
@@ -132,92 +131,98 @@ folded: >
   a single line.
 "#;
 
-fn bench_parse(c: &mut Criterion) {
-    let mut group = c.benchmark_group("parse");
-    group.bench_function("small", |b| {
-        b.iter(|| pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap());
-    });
-    group.bench_function("medium", |b| {
-        b.iter(|| pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap());
-    });
-    group.bench_function("large", |b| {
-        b.iter(|| pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap());
-    });
-    group.bench_function("anchors", |b| {
-        b.iter(|| pyrs_yaml::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap());
-    });
-    group.bench_function("comments", |b| {
-        b.iter(|| pyrs_yaml::parser::parse(COMMENT_YAML, YamlSchema::Core).unwrap());
-    });
-    group.bench_function("block_scalars", |b| {
-        b.iter(|| pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap());
-    });
-    group.finish();
+fn main() {
+    divan::main();
 }
 
-fn bench_serialize(c: &mut Criterion) {
-    let small_ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
-    let medium_ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
-    let large_ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
-    let anchor_ast = pyrs_yaml::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap();
-    let block_ast = pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap();
+// ── Parse benchmarks ──
 
-    let mut group = c.benchmark_group("serialize");
-    group.bench_function("small", |b| {
-        b.iter(|| pyrs_yaml::serializer::to_yaml(&small_ast));
-    });
-    group.bench_function("medium", |b| {
-        b.iter(|| pyrs_yaml::serializer::to_yaml(&medium_ast));
-    });
-    group.bench_function("large", |b| {
-        b.iter(|| pyrs_yaml::serializer::to_yaml(&large_ast));
-    });
-    group.bench_function("anchors", |b| {
-        b.iter(|| pyrs_yaml::serializer::to_yaml(&anchor_ast));
-    });
-    group.bench_function("block_scalars", |b| {
-        b.iter(|| pyrs_yaml::serializer::to_yaml(&block_ast));
-    });
-    group.finish();
+#[divan::bench]
+fn parse_small() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap()
 }
 
-fn bench_roundtrip(c: &mut Criterion) {
-    let mut group = c.benchmark_group("roundtrip");
-    group.bench_function("small", |b| {
-        b.iter(|| {
-            let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
-            pyrs_yaml::serializer::to_yaml(&ast)
-        });
-    });
-    group.bench_function("medium", |b| {
-        b.iter(|| {
-            let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
-            pyrs_yaml::serializer::to_yaml(&ast)
-        });
-    });
-    group.bench_function("large", |b| {
-        b.iter(|| {
-            let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
-            pyrs_yaml::serializer::to_yaml(&ast)
-        });
-    });
-    group.finish();
+#[divan::bench]
+fn parse_medium() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap()
 }
 
-fn bench_serialize_block(c: &mut Criterion) {
+#[divan::bench]
+fn parse_large() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap()
+}
+
+#[divan::bench]
+fn parse_anchors() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap()
+}
+
+#[divan::bench]
+fn parse_comments() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(COMMENT_YAML, YamlSchema::Core).unwrap()
+}
+
+#[divan::bench]
+fn parse_block_scalars() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap()
+}
+
+// ── Serialize benchmarks (setup separate from measurement) ──
+
+#[divan::bench]
+fn serialize_small(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+}
+
+#[divan::bench]
+fn serialize_medium(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+}
+
+#[divan::bench]
+fn serialize_large(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+}
+
+#[divan::bench]
+fn serialize_anchors(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+}
+
+#[divan::bench]
+fn serialize_block_scalars(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+}
+
+// ── Roundtrip benchmarks (parse + serialize, full pipeline) ──
+
+#[divan::bench]
+fn roundtrip_small() -> String {
+    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    pyrs_yaml::serializer::to_yaml(&ast)
+}
+
+#[divan::bench]
+fn roundtrip_medium() -> String {
+    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    pyrs_yaml::serializer::to_yaml(&ast)
+}
+
+#[divan::bench]
+fn roundtrip_large() -> String {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    pyrs_yaml::serializer::to_yaml(&ast)
+}
+
+// ── Block-style serialize ──
+
+#[divan::bench]
+fn serialize_block(bencher: divan::Bencher) {
     let ast = pyrs_yaml::parser::parse(BLOCK_STYLE_YAML, YamlSchema::Core).unwrap();
-    c.bench_function("serialize_block", |b| {
-        b.iter(|| {
-            let _ = pyrs_yaml::serializer::to_yaml(&ast);
-        });
-    });
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
-
-criterion_group!(
-    benches,
-    bench_parse,
-    bench_serialize,
-    bench_roundtrip,
-    bench_serialize_block
-);
-criterion_main!(benches);

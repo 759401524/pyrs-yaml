@@ -1,26 +1,23 @@
 """
-Comprehensive benchmark: pyrs-yaml vs PyYAML vs ruamel.yaml
+Comprehensive benchmark: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml
+Uses pytest-codspeed for statistical timing (delegates to test_benchmark.py).
 """
 
-import argparse
 import io
 import json
-import time
 
 import pyrs_yaml
 import ruamel.yaml as ruamel_yaml
 import yaml as pyyaml
 from ruamel.yaml import YAML
 
-# ── CLI arguments ──────────────────────────────────────────────────────────
+try:
+    import ryaml
 
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="YAML library benchmark")
-    parser.add_argument("--json", action="store_true", help="Output JSON")
-    parser.add_argument("--rounds", type=int, default=200, help="Number of rounds")
-    parser.add_argument("--ci", action="store_true", help="CI mode: --json --rounds 20")
-    return parser.parse_args()
+    HAS_RYAML = True
+except ImportError:
+    HAS_RYAML = False
+    ryaml = None  # type: ignore[assignment]
 
 
 # ── Ruamel helpers ─────────────────────────────────────────────────────────
@@ -29,12 +26,10 @@ _ruamel_yaml = YAML()
 
 
 def ruamel_load(s):
-    """Load YAML with ruamel.yaml."""
     return _ruamel_yaml.load(s)
 
 
 def ruamel_dump(data):
-    """Dump with ruamel.yaml."""
     stream = io.StringIO()
     _ruamel_yaml.dump(data, stream)
     return stream.getvalue()
@@ -205,91 +200,22 @@ monitoring:
     team: platform
 """
 
-# ── Benchmark helpers ─────────────────────────────────────────────────────
+
+# ── Feature comparison report ──────────────────────────────────────────────
 
 
-def timed(fn, rounds=200):
-    """Return (median_ms, min_ms, max_ms) for fn called rounds times."""
-    times = []
-    for _ in range(rounds):
-        t0 = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - t0)
-    times.sort()
-    return times[len(times) // 2] * 1000, times[0] * 1000, times[-1] * 1000
-
-
-# ── Main ───────────────────────────────────────────────────────────────────
-
-
-def main():
-    args = parse_args()
-    rounds = 20 if args.ci else args.rounds
-    if args.ci:
-        args.json = True
-
+def print_report(results: dict | None = None):
+    """Print a feature comparison and round-trip preservation report."""
     print("=" * 75)
-    print("  pyrs-yaml vs PyYAML vs ruamel.yaml — Performance Benchmark")
+    print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml — Feature Comparison")
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__}")
     print(f"  ruamel:    {ruamel_yaml.__version__}")
+    if HAS_RYAML:
+        print(f"  ryaml:     {ryaml.__version__}")
     print()
-
-    results = {}
-    for label, yaml_str, key in [
-        ("SMALL (~100 B)", SMALL_YAML, "small"),
-        ("MEDIUM (~500 B)", MEDIUM_YAML, "medium"),
-        ("LARGE (~2 KB)", LARGE_YAML, "large"),
-    ]:
-        print("─" * 75)
-        print(f"  {label}")
-        print("─" * 75)
-
-        # pyrs-yaml
-        p = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str), rounds)
-        s = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml(), rounds)
-        r = timed(lambda yaml_str=yaml_str: pyrs_yaml.parse(yaml_str).to_yaml(), rounds)
-        print(f"  pyrs-yaml       parse={p[0]:8.2f}ms  serialize={s[0]:8.2f}ms  roundtrip={r[0]:8.2f}ms")
-
-        # PyYAML
-        p2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_load(yaml_str), rounds)
-        s2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)), rounds)
-        r2 = timed(lambda yaml_str=yaml_str: pyyaml.safe_dump(pyyaml.safe_load(yaml_str)), rounds)
-        print(f"  PyYAML          parse={p2[0]:8.2f}ms  serialize={s2[0]:8.2f}ms  roundtrip={r2[0]:8.2f}ms")
-
-        # ruamel.yaml
-        p3 = timed(lambda yaml_str=yaml_str: ruamel_load(yaml_str), rounds)
-        s3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)), rounds)
-        r3 = timed(lambda yaml_str=yaml_str: ruamel_dump(ruamel_load(yaml_str)), rounds)
-        print(f"  ruamel.yaml     parse={p3[0]:8.2f}ms  serialize={s3[0]:8.2f}ms  roundtrip={r3[0]:8.2f}ms")
-        print()
-
-        # Speedup vs PyYAML
-        parse_spd = p2[0] / max(p[0], 0.0001)
-        ser_spd = s2[0] / max(s[0], 0.0001)
-        rt_spd = r2[0] / max(r[0], 0.0001)
-        print(f"  Speedup vs PyYAML:  parse={parse_spd:.1f}x  serialize={ser_spd:.1f}x  roundtrip={rt_spd:.1f}x")
-        print()
-
-        results[key] = {
-            "pyrs-yaml": {
-                "parse_ms": round(p[0], 2),
-                "serialize_ms": round(s[0], 2),
-                "roundtrip_ms": round(r[0], 2),
-            },
-            "pyyaml": {
-                "parse_ms": round(p2[0], 2),
-                "serialize_ms": round(s2[0], 2),
-                "roundtrip_ms": round(r2[0], 2),
-            },
-            "ruamel": {
-                "parse_ms": round(p3[0], 2),
-                "serialize_ms": round(s3[0], 2),
-                "roundtrip_ms": round(r3[0], 2),
-            },
-        }
 
     # ── Round-trip preservation test ─────────────────────────────────────
     print("─" * 75)
@@ -298,23 +224,28 @@ def main():
 
     rt_yaml = LARGE_YAML
 
-    # pyrs-yaml
     out1 = pyrs_yaml.parse(rt_yaml).to_yaml()
     print(
         f"  pyrs-yaml:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}"
     )
 
-    # PyYAML
     out2 = pyyaml.safe_dump(pyyaml.safe_load(rt_yaml))
     print(
         f"  PyYAML:        comments={'# Comments everywhere' in out2}  anchors={'&defaults' in out2}  tags={'!!str' in out2}"
     )
 
-    # ruamel.yaml
     out3 = ruamel_dump(ruamel_load(rt_yaml))
     print(
         f"  ruamel.yaml:   comments={'# Comments everywhere' in out3}  anchors={'&defaults' in out3}  tags={'!!str' in out3}"
     )
+
+    if HAS_RYAML:
+        ryaml_buf = io.StringIO(rt_yaml)
+        ryaml_data = ryaml.load(ryaml_buf)
+        out4 = ryaml.dumps(ryaml_data)
+        print(
+            f"  ryaml:         comments={'# Comments everywhere' in out4}  anchors={'&defaults' in out4}  tags={'!!str' in out4}"
+        )
     print()
 
     # ── Feature support comparison ───────────────────────────────────────
@@ -323,37 +254,42 @@ def main():
     print("─" * 75)
 
     features = [
-        ("YAML 1.2 compliance", True, True, True),
-        ("Comments (standalone)", True, False, True),
-        ("Comments (inline)", True, False, True),
-        ("Anchors/aliases", True, False, True),
-        ("Tags (explicit)", True, False, True),
-        ("Block scalars", True, True, True),
-        ("Flow collections", True, True, True),
-        ("Merge keys (<<)", True, False, True),
-        ("Complex keys", True, True, True),
-        ("Round-trip preservation", True, False, True),
-        ("Python bindings", True, True, True),
-        ("ABI3 (py3.9+)", True, False, False),
-        ("Type stubs (.pyi)", True, True, False),
-        ("i18n error messages", True, False, False),
+        ("YAML 1.2 compliance", True, True, True, True),
+        ("Comments (standalone)", True, False, True, False),
+        ("Comments (inline)", True, False, True, False),
+        ("Anchors/aliases", True, False, True, True),
+        ("Tags (explicit)", True, False, True, True),
+        ("Block scalars", True, True, True, True),
+        ("Flow collections", True, True, True, True),
+        ("Merge keys (<<)", True, False, True, False),
+        ("Complex keys", True, True, True, True),
+        ("Round-trip preservation", True, False, True, False),
+        ("Python bindings", True, True, True, True),
+        ("ABI3 (py3.9+)", True, False, False, False),
+        ("Type stubs (.pyi)", True, True, False, False),
+        ("i18n error messages", True, False, False, False),
     ]
 
-    print(f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s}")
-    print(f"  {'-' * 67}")
-    for name, pyr, pyr2, ruamel in features:
-        pyr_m = "✅" if pyr else "❌"
-        pyr2_m = "✅" if pyr2 else "❌"
-        ruamel_m = "✅" if ruamel else "❌"
-        print(f"  {name:35s} {pyr_m:8s}     {pyr2_m:6s}     {ruamel_m:6s}")
+    print(f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s} {'ryaml':8s}")
+    print(f"  {'-' * 79}")
+
+    def _mark(v: bool) -> str:
+        return "✅" if v else "❌"
+
+    for name, pyr, pyr2, ruamel, ryml in features:
+        print(f"  {name:35s} {_mark(pyr):8s}     {_mark(pyr2):6s}     {_mark(ruamel):6s}     {_mark(ryml):6s}")
     print()
 
-    if args.json:
+    if results:
+        print("=" * 75)
+        print("  Performance Results (from pytest-codspeed JSON)")
+        print("=" * 75)
         print(json.dumps(results, indent=2))
-        return
+        print()
 
     print("=" * 75)
-    print("  Benchmark complete.")
+    print("  Report complete. Run `pytest tests/test_benchmark.py --codspeed`")
+    print("  for statistical timing results across all libraries.")
     print("=" * 75)
 
 
@@ -361,4 +297,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    print_report()

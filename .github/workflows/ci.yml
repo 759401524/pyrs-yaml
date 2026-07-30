@@ -78,7 +78,7 @@ jobs:
           fi
 
       - name: Install Python test dependencies
-        run: uv pip install -q pytest pytest-asyncio numpy jsonschema
+        run: uv pip install -q -r .ci/requirements-test.txt
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py
@@ -162,7 +162,7 @@ jobs:
           fi
 
       - name: Install Python test dependencies
-        run: uv pip install -q pytest pytest-asyncio jsonschema
+        run: uv pip install -q -r .ci/requirements-test-lite.txt
 
       - name: Run Python tests
         run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py -k "not numpy"
@@ -216,7 +216,7 @@ jobs:
       - name: Install wheel
         run: pip install *.whl
       - name: Install benchmark deps
-        run: pip install pyyaml ruamel.yaml
+        run: pip install pyyaml ruamel.yaml ryaml
       - name: Run benchmark
         run: uv run pytest tests/test_benchmark.py --benchmark-json=benchmark-results.json
       - name: Upload results

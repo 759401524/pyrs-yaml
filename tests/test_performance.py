@@ -1,6 +1,6 @@
 """
 Performance sanity tests — basic parse/serialize speed checks.
-Uses pytest-benchmark for statistical timing.
+Uses pytest-codspeed for statistical timing.
 """
 
 import pyrs_yaml

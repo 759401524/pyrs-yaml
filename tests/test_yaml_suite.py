@@ -175,7 +175,7 @@ def compute_compliance(suite_dir: Optional[str] = None) -> dict:
             )
     total = len(tests)
     return {
-        "version": "0.7.0",
+        "version": "0.7.1",
         "date": datetime.now().strftime("%Y-%m-%d"),
         "total": total,
         "passed": passed,
@@ -248,7 +248,7 @@ def test_compliance_report():
     report = compute_compliance()
     msg = f"\nCompliance: {report['rate'] * 100:.1f}% ({report['passed']}/{report['total']} passed)"
     print(msg)
-    assert report["rate"] > 0.7, f"Compliance too low: {report['rate'] * 100:.1f}%"
+    assert report["rate"] > 0.75, f"Compliance too low: {report['rate'] * 100:.1f}%"
 
 
 if __name__ == "__main__":

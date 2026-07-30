@@ -46,7 +46,7 @@ pytest tests/ -k "comment"
 pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
 
 # Run benchmarks
-pytest tests/ --benchmark-only --benchmark-json=results.json
+pytest tests/ --codspeed
 ```
 
 ### Test Files

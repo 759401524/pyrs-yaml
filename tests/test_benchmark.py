@@ -1,6 +1,6 @@
 """
 Benchmark: pyrs-yaml vs PyYAML vs ruamel.yaml
-Uses pytest-benchmark for statistical timing.
+Uses pytest-codspeed for statistical timing.
 """
 
 import io
@@ -12,6 +12,14 @@ from ruamel.yaml import YAML
 
 _ruamel_yaml = YAML()
 
+try:
+    import ryaml
+
+    HAS_RYAML = True
+except ImportError:
+    HAS_RYAML = False
+    ryaml = None  # type: ignore[assignment]
+
 
 def ruamel_load(s):
     return _ruamel_yaml.load(s)
@@ -21,6 +29,12 @@ def ruamel_dump(data):
     stream = io.StringIO()
     _ruamel_yaml.dump(data, stream)
     return stream.getvalue()
+
+
+def ryaml_dumps(data):
+    if HAS_RYAML:
+        return ryaml.dumps(data)
+    return ""
 
 
 SMALL_YAML = """
@@ -202,50 +216,50 @@ BLOCK_STYLE_YAML = (
 # ── pyrs-yaml benchmarks ──
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_parse_small(benchmark):
     benchmark(pyrs_yaml.parse, SMALL_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_parse_medium(benchmark):
     benchmark(pyrs_yaml.parse, MEDIUM_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_parse_large(benchmark):
     benchmark(pyrs_yaml.parse, LARGE_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_serialize_small(benchmark):
     doc = pyrs_yaml.parse(SMALL_YAML)
     benchmark(doc.to_yaml)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_serialize_medium(benchmark):
     doc = pyrs_yaml.parse(MEDIUM_YAML)
     benchmark(doc.to_yaml)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_serialize_large(benchmark):
     doc = pyrs_yaml.parse(LARGE_YAML)
     benchmark(doc.to_yaml)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_roundtrip_small(benchmark):
     benchmark(lambda: pyrs_yaml.parse(SMALL_YAML).to_yaml())
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_roundtrip_medium(benchmark):
     benchmark(lambda: pyrs_yaml.parse(MEDIUM_YAML).to_yaml())
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyrs_yaml_roundtrip_large(benchmark):
     benchmark(lambda: pyrs_yaml.parse(LARGE_YAML).to_yaml())
 
@@ -253,34 +267,34 @@ def test_pyrs_yaml_roundtrip_large(benchmark):
 # ── PyYAML benchmarks ──
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyyaml_parse_small(benchmark):
     benchmark(pyyaml.safe_load, SMALL_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyyaml_parse_medium(benchmark):
     benchmark(pyyaml.safe_load, MEDIUM_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyyaml_parse_large(benchmark):
     benchmark(pyyaml.safe_load, LARGE_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyyaml_serialize_small(benchmark):
     data = pyyaml.safe_load(SMALL_YAML)
     benchmark(pyyaml.safe_dump, data)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyyaml_serialize_medium(benchmark):
     data = pyyaml.safe_load(MEDIUM_YAML)
     benchmark(pyyaml.safe_dump, data)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_pyyaml_serialize_large(benchmark):
     data = pyyaml.safe_load(LARGE_YAML)
     benchmark(pyyaml.safe_dump, data)
@@ -289,37 +303,85 @@ def test_pyyaml_serialize_large(benchmark):
 # ── ruamel.yaml benchmarks ──
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_ruamel_parse_small(benchmark):
     benchmark(ruamel_load, SMALL_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_ruamel_parse_medium(benchmark):
     benchmark(ruamel_load, MEDIUM_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_ruamel_parse_large(benchmark):
     benchmark(ruamel_load, LARGE_YAML)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_ruamel_serialize_small(benchmark):
     data = ruamel_load(SMALL_YAML)
     benchmark(ruamel_dump, data)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_ruamel_serialize_medium(benchmark):
     data = ruamel_load(MEDIUM_YAML)
     benchmark(ruamel_dump, data)
 
 
-@pytest.mark.benchmark(min_rounds=100, warmup=True)
+@pytest.mark.benchmark(max_rounds=100)
 def test_ruamel_serialize_large(benchmark):
     data = ruamel_load(LARGE_YAML)
     benchmark(ruamel_dump, data)
+
+
+# ── ryaml benchmarks ──
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+def test_ryaml_parse_small(benchmark):
+    benchmark(ryaml.load, io.StringIO(SMALL_YAML))
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+def test_ryaml_parse_medium(benchmark):
+    benchmark(ryaml.load, io.StringIO(MEDIUM_YAML))
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+def test_ryaml_parse_large(benchmark):
+    try:
+        benchmark(ryaml.load, io.StringIO(LARGE_YAML))
+    except Exception:
+        pytest.skip("ryaml YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+def test_ryaml_serialize_small(benchmark):
+    data = ryaml.load(io.StringIO(SMALL_YAML))
+    benchmark(ryaml_dumps, data)
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+def test_ryaml_serialize_medium(benchmark):
+    data = ryaml.load(io.StringIO(MEDIUM_YAML))
+    benchmark(ryaml_dumps, data)
+
+
+@pytest.mark.benchmark(max_rounds=100)
+@pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
+def test_ryaml_serialize_large(benchmark):
+    try:
+        data = ryaml.load(io.StringIO(LARGE_YAML))
+        benchmark(ryaml_dumps, data)
+    except Exception:
+        pytest.skip("ryaml YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
 
 
 # ── Speedup assertion ──
