@@ -162,10 +162,10 @@ jobs:
           fi
 
       - name: Install Python test dependencies
-        run: uv pip install -q -r .ci/requirements-test-lite.txt
+        run: uv pip install -q -r .ci/requirements-test.txt
 
       - name: Run Python tests
-        run: uv run pytest tests/ -v -k "not numpy"
+        run: uv run pytest tests/ -v
 
   compliance-report:
     needs: [build]

@@ -11,10 +11,17 @@ import json
 import pyrs_yaml
 import pytest
 import ruamel.yaml as ruamel_yaml
-import yaml as pyyaml
 from ruamel.yaml import YAML
 
 _ruamel_yaml = YAML()
+
+try:
+    import yaml as pyyaml
+
+    HAS_PYYAML = True
+except ImportError:
+    HAS_PYYAML = False
+    pyyaml = None
 
 try:
     import ryaml
@@ -253,12 +260,14 @@ def test_pyrs_yaml_roundtrip(benchmark, size):
 
 
 @pytest.mark.benchmark(group="pyyaml")
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_pyyaml_parse(benchmark, size):
     benchmark(pyyaml.safe_load, YAML_INPUTS[size])
 
 
 @pytest.mark.benchmark(group="pyyaml")
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_pyyaml_serialize(benchmark, size):
     data = pyyaml.safe_load(YAML_INPUTS[size])
@@ -327,6 +336,7 @@ def test_yaml_edit_parse(benchmark, size):
 # ── Speedup assertion ──
 
 
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_pyrs_yaml_faster_than_pyyaml():
     doc = pyrs_yaml.parse(BLOCK_STYLE_YAML)
     data = pyyaml.safe_load(BLOCK_STYLE_YAML)
@@ -359,7 +369,7 @@ def print_report(results=None):
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
-    print(f"  PyYAML:    {pyyaml.__version__}")
+    print(f"  PyYAML:    {pyyaml.__version__ if HAS_PYYAML else '(not installed)'}")
     print(f"  ruamel:    {ruamel_yaml.__version__}")
     if HAS_RYAML:
         try:
@@ -384,10 +394,13 @@ def print_report(results=None):
         f"  pyrs-yaml:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}"
     )
 
-    out2 = pyyaml.safe_dump(pyyaml.safe_load(rt_yaml))
-    print(
-        f"  PyYAML:        comments={'# Comments everywhere' in out2}  anchors={'&defaults' in out2}  tags={'!!str' in out2}"
-    )
+    if HAS_PYYAML:
+        out2 = pyyaml.safe_dump(pyyaml.safe_load(rt_yaml))
+        print(
+            f"  PyYAML:        comments={'# Comments everywhere' in out2}  anchors={'&defaults' in out2}  tags={'!!str' in out2}"
+        )
+    else:
+        print("  PyYAML:        (not installed)")
 
     out3 = ruamel_dump(ruamel_load(rt_yaml))
     print(
