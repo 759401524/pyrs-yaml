@@ -242,6 +242,7 @@ def test_yaml_suite_json_match():
         pytest.skip("No JSON comparison results found")
 
 
+@pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
 def test_compliance_report():
     """Print compliance percentage to stdout."""
     report = compute_compliance()

@@ -66,6 +66,12 @@ jobs:
           command: develop
           args: --release
 
+      - name: Download YAML Test Suite
+        run: |
+          if [ ! -d "Reference/yaml-test-suite" ]; then
+            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+
       - name: Install Python test dependencies
         run: uv pip install -q pytest pytest-asyncio numpy jsonschema
 
@@ -141,6 +147,12 @@ jobs:
           command: develop
           args: --release
 
+      - name: Download YAML Test Suite
+        run: |
+          if [ ! -d "Reference/yaml-test-suite" ]; then
+            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+
       - name: Install Python test dependencies
         run: uv pip install -q pytest pytest-asyncio jsonschema
 
@@ -160,6 +172,13 @@ jobs:
           name: wheels-ubuntu-latest
       - name: Install wheel
         run: pip install *.whl
+      - name: Download YAML Test Suite
+        run: |
+          if [ ! -d "Reference/yaml-test-suite" ]; then
+            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+      - name: Install pytest
+        run: pip install pytest
       - name: Generate compliance report
         run: python tests/test_yaml_suite.py --json > compliance.json
       - uses: actions/upload-artifact@v6
@@ -177,6 +196,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
       - uses: actions/download-artifact@v6
         with:
           name: wheels-ubuntu-latest
