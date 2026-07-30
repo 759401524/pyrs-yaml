@@ -85,30 +85,38 @@ mod pyrs_yaml {
     #[pymethods]
     impl YamlDocument {
         /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
-        fn to_yaml(&self) -> String {
-            to_yaml(&self.ast)
+        fn to_yaml(&self) -> PyResult<String> {
+            self.to_yaml_with_options(2, false, false, false, 1000)
         }
 
-        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false) -> "str")]
+        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000) -> "str")]
         fn to_yaml_with_options(
             &self,
             indent_size: usize,
             explicit_start: bool,
             explicit_end: bool,
             sort_keys: bool,
+            max_depth: usize,
         ) -> PyResult<String> {
             let options = SerializeOptions {
                 indent_size,
                 explicit_start,
                 explicit_end,
                 sort_keys,
-                max_depth: 1000,
+                max_depth,
             };
             to_yaml_with_options(&self.ast, &options).map_err(|e| {
-                YamlSerializeError::new_err(format_i18n_error(
-                    "yaml-serialize-error",
-                    &[("detail", &e)],
-                ))
+                if e.contains("max depth exceeded") {
+                    YamlMaxDepthError::new_err(format_i18n_error(
+                        "max-depth-exceeded",
+                        &[("max_depth", &max_depth.to_string())],
+                    ))
+                } else {
+                    YamlSerializeError::new_err(format_i18n_error(
+                        "yaml-serialize-error",
+                        &[("detail", &e)],
+                    ))
+                }
             })
         }
 
@@ -146,11 +154,12 @@ mod pyrs_yaml {
         }
 
         fn __repr__(&self) -> String {
-            format!("YamlDocument({})", self.to_yaml())
+            format!("YamlDocument({})", self.to_yaml().unwrap_or_default())
         }
 
         fn __str__(&self) -> String {
             self.to_yaml()
+                .unwrap_or_else(|_| "YamlDocument(error)".to_string())
         }
 
         fn __contains__(&self, key: &str) -> bool {

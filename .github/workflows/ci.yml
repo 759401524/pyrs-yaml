@@ -185,7 +185,7 @@ jobs:
       - name: Install benchmark deps
         run: pip install pyyaml ruamel.yaml
       - name: Run benchmark
-        run: python tests/benchmark_compare.py --ci
+        run: uv run pytest tests/test_benchmark.py --benchmark-json=benchmark-results.json
       - name: Upload results
         uses: actions/upload-artifact@v6
         with:

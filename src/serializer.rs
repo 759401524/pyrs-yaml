@@ -1,4 +1,4 @@
-use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
+use crate::ast::{Chomping, CustomNode, ScalarStyle, Tag};
 
 /// Serialization options
 pub struct SerializeOptions {
@@ -58,18 +58,12 @@ impl Serializer {
     fn new(options: &SerializeOptions) -> Self {
         let mut cache = Vec::with_capacity(128);
         cache.push(String::new()); // level 0 = empty
-                                   // Pre-fill up to 64 levels
-        let base_indent = " ".repeat(options.indent_size);
-        for i in 1..64 {
-            let next = format!("{}{}", cache[i - 1], base_indent);
-            cache.push(next);
-        }
         Self {
             output: String::new(),
             indent_size: options.indent_size,
             sort_keys: options.sort_keys,
             indent_cache: cache,
-            max_cached: 64,
+            max_cached: 0,
             max_depth: options.max_depth,
         }
     }
@@ -77,16 +71,18 @@ impl Serializer {
     /// Ensure indent_cache has an entry for the given level, then write it to output.
     /// Does not return a reference to avoid overlapping borrows.
     fn write_indent(&mut self, level: usize) {
-        if level > self.max_cached {
-            let base_indent = " ".repeat(self.indent_size);
-            let mut last = &self.indent_cache[self.max_cached];
-            for i in 1..=(level - self.max_cached) {
-                let next = format!("{}{}", last, base_indent);
-                self.indent_cache.push(next);
-                last = &self.indent_cache[self.max_cached + i];
-            }
-            self.max_cached = level;
+        if level <= self.max_cached {
+            self.output.push_str(&self.indent_cache[level]);
+            return;
         }
+        let base_indent = " ".repeat(self.indent_size);
+        let mut last = &self.indent_cache[self.max_cached];
+        for i in 1..=(level - self.max_cached) {
+            let next = format!("{}{}", last, base_indent);
+            self.indent_cache.push(next);
+            last = &self.indent_cache[self.max_cached + i];
+        }
+        self.max_cached = level;
         self.output.push_str(&self.indent_cache[level]);
     }
 
@@ -119,16 +115,6 @@ impl Serializer {
             self.output.push_str(&t.to_string());
             self.output.push(' ');
         }
-    }
-
-    /// 写入行内注释（`  # text`），跳过独立行注释。
-    fn write_inline_comment(&mut self, comment: &Option<Comment>) {
-        let c = match comment {
-            Some(c) if !c.standalone => c,
-            _ => return,
-        };
-        self.output.push_str("  # ");
-        self.output.push_str(&c.text);
     }
 
     /// 核心递归序列化方法，处理所有节点类型的缩进和格式化。
@@ -164,10 +150,17 @@ impl Serializer {
                 chomping,
             } => {
                 self.write_indent(indent_level);
-                self.write_anchor_tag(anchor, tag);
+                if anchor.is_some() || tag.is_some() {
+                    self.write_anchor_tag(anchor, tag);
+                }
 
                 self.write_scalar(value, style, chomping);
-                self.write_inline_comment(comment);
+                if let Some(c) = comment {
+                    if !c.standalone {
+                        self.output.push_str("  # ");
+                        self.output.push_str(&c.text);
+                    }
+                }
 
                 self.output.push('\n');
             }
@@ -193,7 +186,12 @@ impl Serializer {
                         }
                     }
                     self.output.push('}');
-                    self.write_inline_comment(comment);
+                    if let Some(c) = comment {
+                        if !c.standalone {
+                            self.output.push_str("  # ");
+                            self.output.push_str(&c.text);
+                        }
+                    }
                     self.output.push('\n');
                 } else {
                     // Block style (original logic)
@@ -385,7 +383,12 @@ impl Serializer {
                         }
                     }
                     self.output.push(']');
-                    self.write_inline_comment(comment);
+                    if let Some(c) = comment {
+                        if !c.standalone {
+                            self.output.push_str("  # ");
+                            self.output.push_str(&c.text);
+                        }
+                    }
                     self.output.push('\n');
                 } else {
                     // Block style (original logic)
@@ -442,10 +445,17 @@ impl Serializer {
                 tag,
             } => {
                 self.write_indent(indent_level);
-                self.write_anchor_tag(anchor, tag);
+                if anchor.is_some() || tag.is_some() {
+                    self.write_anchor_tag(anchor, tag);
+                }
 
                 self.output.push_str("null");
-                self.write_inline_comment(comment);
+                if let Some(c) = comment {
+                    if !c.standalone {
+                        self.output.push_str("  # ");
+                        self.output.push_str(&c.text);
+                    }
+                }
 
                 self.output.push('\n');
             }
@@ -475,6 +485,17 @@ impl Serializer {
         match node {
             CustomNode::Scalar {
                 value,
+                style: ScalarStyle::Plain,
+                ..
+            } => {
+                if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
+                    self.output.push_str(value);
+                } else {
+                    self.write_plain_scalar(value);
+                }
+            }
+            CustomNode::Scalar {
+                value,
                 style,
                 chomping,
                 ..
@@ -487,6 +508,10 @@ impl Serializer {
 
     /// Write a plain scalar, quoting if necessary.
     fn write_plain_scalar(&mut self, value: &str) {
+        if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            self.output.push_str(value);
+            return;
+        }
         if value.is_empty()
             || value.contains(':')
             || value.contains('#')
@@ -599,17 +624,23 @@ impl Serializer {
                 tag,
                 ..
             } => {
-                self.write_anchor_tag(anchor, tag);
+                if anchor.is_some() || tag.is_some() {
+                    self.write_anchor_tag(anchor, tag);
+                }
                 self.write_scalar(value, style, &Chomping::Clip);
             }
             CustomNode::Null { anchor, tag, .. } => {
-                self.write_anchor_tag(anchor, tag);
+                if anchor.is_some() || tag.is_some() {
+                    self.write_anchor_tag(anchor, tag);
+                }
                 self.output.push_str("null");
             }
             CustomNode::Mapping {
                 pairs, anchor, tag, ..
             } => {
-                self.write_anchor_tag(anchor, tag);
+                if anchor.is_some() || tag.is_some() {
+                    self.write_anchor_tag(anchor, tag);
+                }
                 self.output.push('{');
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     if i > 0 {
@@ -624,7 +655,9 @@ impl Serializer {
             CustomNode::Sequence {
                 items, anchor, tag, ..
             } => {
-                self.write_anchor_tag(anchor, tag);
+                if anchor.is_some() || tag.is_some() {
+                    self.write_anchor_tag(anchor, tag);
+                }
                 self.output.push('[');
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {
@@ -772,5 +805,26 @@ mod tests {
 
         let output = to_yaml(&node);
         assert!(output.contains("? "));
+    }
+
+    #[test]
+    fn test_serialize_max_depth_exceeded() {
+        let inner = CustomNode::plain_scalar("leaf");
+        let mut current = inner;
+        for _ in 0..200 {
+            let mut m = IndexMap::<CustomNode, CustomNode>::new();
+            m.insert(CustomNode::plain_scalar("a"), current);
+            current = CustomNode::plain_mapping(m);
+        }
+        let options = SerializeOptions {
+            indent_size: 2,
+            explicit_start: false,
+            explicit_end: false,
+            sort_keys: false,
+            max_depth: 50,
+        };
+        let result = to_yaml_with_options(&current, &options);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("max depth exceeded"));
     }
 }

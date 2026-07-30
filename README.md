@@ -206,17 +206,18 @@ pyrs_yaml.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
 
 ## Performance
 
-Criterion benchmarks in `benches/yaml_bench.rs`:
+Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-benchmark` in `tests/test_benchmark.py` (Python):
 
 | Operation | Time |
 |-----------|------|
-| Parse (small, ~2 keys) | ~1.7 us |
-| Parse (medium, ~30 keys) | ~20 us |
-| Parse (large, ~60 keys) | ~93 us |
-| Serialize (small) | ~200 ns |
-| Serialize (medium) | ~1.7 us |
-| Serialize (large) | ~4.9 us |
-| Roundtrip (large) | ~99 us |
+| Parse (small, ~2 keys) | ~1.7 µs |
+| Parse (medium, ~30 keys) | ~12 µs |
+| Parse (large, ~60 keys) | ~38 µs |
+| Serialize (small) | ~4.4 µs |
+| Serialize (medium) | ~4.7 µs |
+| Serialize (large) | ~5.5 µs |
+| Roundtrip (small) | ~5.9 µs |
+| Roundtrip (large) | ~45 µs |
 
 ## Development
 
@@ -231,8 +232,14 @@ maturin develop --release
 cargo test
 pytest tests/
 
-# Run benchmarks
+# Run benchmarks (Rust)
 cargo bench
+
+# Run benchmarks (Python)
+uv run pytest tests/test_benchmark.py --benchmark-json=results.json
+
+# Performance sanity checks
+uv run pytest tests/test_performance.py -v
 
 # Run clippy
 cargo clippy -- -D warnings

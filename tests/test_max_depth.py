@@ -62,7 +62,31 @@ def test_max_depth_parse_all_docs():
         pyrs_yaml.parse_all_docs(deep_yaml, max_depth=100)
 
 
-def test_max_depth_parse_file(tmp_path):
+def test_serialize_max_depth_exceeded():
+    """Serializing deeply nested AST should raise YamlMaxDepthError."""
+    deep_yaml = _deep_nested_yaml(100)
+    doc = pyrs_yaml.parse(deep_yaml, max_depth=1000)
+    with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+        doc.to_yaml_with_options(max_depth=50)
+
+
+def test_serialize_max_depth_with_options():
+    """to_yaml_with_options should respect max_depth."""
+    deep_yaml = _deep_nested_yaml(200)
+    doc = pyrs_yaml.parse(deep_yaml, max_depth=1000)
+    with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+        doc.to_yaml_with_options(max_depth=50)
+
+
+def test_serialize_normal_depth_succeeds():
+    """Normal depth should serialize without error."""
+    doc = pyrs_yaml.parse("key: value\nnested:\n  a: 1\n  b: 2")
+    result = doc.to_yaml()
+    assert result is not None
+    assert "key: value" in result
+
+
+def test_serialize_max_depth_parse_file(tmp_path):
     """parse_file should respect max_depth."""
     deep_yaml = _deep_nested_yaml(200)
     f = tmp_path / "deep.yaml"

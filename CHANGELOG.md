@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-29
+
+### Added
+
+- **Serializer `max_depth` guard** — `serialize_node_internal` now tracks recursion depth and raises `YamlMaxDepthError` when exceeding the limit (default 1000), matching the parser's protection (`src/serializer.rs:135-145`)
+- **Serializer hot-path optimization** — 5 optimizations targeting block-style serialization for ~4.9% roundtrip speedup:
+  - Inlined `write_anchor_tag` and `write_inline_comment` None checks (eliminates method calls for ~99% of nodes)
+  - `write_indent` hot/cold path split (direct index for cached levels ≤64)
+  - `write_plain_scalar` fast path for short ASCII alphanumeric strings (≤8 chars)
+  - `write_scalar_for_key` direct dispatch for Plain scalars (avoids dispatch chain)
+- **pytest-benchmark migration** — Python benchmarks migrated from raw `time.perf_counter()` to `pytest-benchmark` for statistical rigor, structured JSON output, and CI integration (`tests/test_benchmark.py` + updated `tests/test_performance.py`)
+
+### Changed
+
+- `pytest-benchmark` replaces raw `timeit` in Python benchmarks
+- CI benchmark job now runs `pytest --benchmark-json` instead of standalone script
+
+### Removed
+
+- `write_inline_comment` method — inlined at all call sites
+- `Comment` import from serializer — no longer needed
+
 ## [Unreleased]
 
 ### Added
@@ -86,7 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed version sync: `python/pyrs_yaml/__init__.py` `__version__` updated from 0.2.0 to 0.4.0 to match Cargo.toml/pyproject.toml
 - Removed stale 0.2.0 wheel artifacts from `dist/`
 
-## [0.3.0] - 2025-07-27
+## [0.3.0] - 2026-07-27
 
 ### Added
 
@@ -142,7 +164,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated 6 duplicate test files, moved 9 diagnostic scripts to `scripts/`
 - Improved error messages with key/index/type context
 
-## [0.1.0] - 2025-07-25
+## [0.1.0] - 2026-07-25
 
 ### Added
 
