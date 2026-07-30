@@ -81,7 +81,7 @@ jobs:
         run: uv pip install -q -r .ci/requirements-test.txt
 
       - name: Run Python tests
-        run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py
+        run: uv run pytest tests/ -v
 
       - name: Compliance summary
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
@@ -165,7 +165,7 @@ jobs:
         run: uv pip install -q -r .ci/requirements-test-lite.txt
 
       - name: Run Python tests
-        run: uv run pytest tests/ -v --ignore=tests/benchmark_compare.py -k "not numpy"
+        run: uv run pytest tests/ -v -k "not numpy"
 
   compliance-report:
     needs: [build]

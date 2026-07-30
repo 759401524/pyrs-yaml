@@ -352,7 +352,7 @@ def test_feature_comparison():
     print_report()
 
 
-def print_report(results: dict | None = None):
+def print_report(results=None):
     print("=" * 75)
     print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit — Feature Comparison")
     print("=" * 75)
