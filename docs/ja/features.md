@@ -29,8 +29,8 @@ Rust バックエンドは PyYAML より **25–40 倍高速**：
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
 | Parse (large) | 0.07 ms | 1.83 ms |
-| Serialize (large) | 0.08 ms | 2.96 ms |
-| Round-trip | 0.08 ms | 2.98 ms |
+| Serialize (large) | 0.07 ms | 2.92 ms |
+| Round-trip | 0.07 ms | 2.90 ms |
 
 ### カスタム AST
 

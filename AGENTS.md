@@ -261,6 +261,14 @@ impl IntoPyObject for StreamIterator {
 - **禁止** 使用 `#[pymodule]` function 形式声明模块（必须使用 inline `mod` 形式）
 - **禁止** 修改 `.pyi` 文件时不同步更新 Rust 签名
 
+### 10.7 多语言文档同步
+
+- **必须** 确保所有 4 种语言文档（`en/`、`zh/`、`ja/`、`ko/`）同步更新，达到"信、达、雅"水准
+- **信（忠实）**：技术术语、数字、代码示例必须完全一致，不得有遗漏或错误
+- **达（通顺）**：各语言版本需自然流畅，符合该语言习惯表达
+- **雅（优美）**：在准确的基础上，追求专业、简洁的表述风格
+- **禁止** 仅更新部分语言文档后提交——所有语言必须同步修改并验证后再提交
+
 <comet-ambient-resume>
 <!-- Managed by Comet. Edits inside this block may be replaced by comet init/update. -->
 <!-- Contract: comet.resume_probe.v2 -->
