@@ -362,9 +362,15 @@ def print_report(results=None):
     print(f"  PyYAML:    {pyyaml.__version__}")
     print(f"  ruamel:    {ruamel_yaml.__version__}")
     if HAS_RYAML:
-        print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
+        try:
+            print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
+        except importlib.metadata.PackageNotFoundError:
+            print("  ryaml:     (not installed)")
     if HAS_YAML_EDIT:
-        print(f"  yaml_edit: {importlib.metadata.version('yaml-edit')}")
+        try:
+            print(f"  yaml_edit: {importlib.metadata.version('yaml-edit')}")
+        except importlib.metadata.PackageNotFoundError:
+            print("  yaml_edit: (not installed)")
     print()
 
     print("─" * 75)
