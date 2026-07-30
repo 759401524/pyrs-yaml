@@ -5,6 +5,21 @@ import pyrs_yaml
 import pytest
 
 
+def pytest_collection_modifyitems(session, config, items):
+    """Auto-deselect benchmark tests when --codspeed is not provided."""
+    if not config.getoption("--codspeed"):
+        deselected = []
+        selected = []
+        for item in items:
+            if "benchmark" in item.keywords:
+                deselected.append(item)
+            else:
+                selected.append(item)
+        if deselected:
+            config.hook.pytest_deselected(items=deselected)
+            items[:] = selected
+
+
 @pytest.fixture(autouse=True)
 def reset_language():
     pyrs_yaml.set_language("en")
