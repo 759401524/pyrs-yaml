@@ -37,20 +37,3 @@ pub fn remove(name: &str) {
         map.remove(name);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_nonexistent() {
-        Python::try_attach(|py| {
-            assert!(get_handlers("!nonexistent", py).is_none());
-        });
-    }
-
-    #[test]
-    fn test_remove_nonexistent() {
-        remove("!custom");
-    }
-}

@@ -72,3 +72,7 @@ class TestTagRegistry:
 
         doc = pyrs_yaml.YAML().parse(yaml.TAG_CUSTOM)
         assert doc.get("name") == "high"
+
+    def test_unregistered_tag_returns_original(self):
+        doc = pyrs_yaml.YAML().parse("key: !unknown value")
+        assert doc.get("key") == "value"
