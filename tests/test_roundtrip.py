@@ -1,147 +1,110 @@
-"""
-Round-trip preservation tests — parse → serialize → parse identity.
-"""
+"""Round-trip preservation tests — parse → serialize → parse identity."""
 
 import pyrs_yaml
+import pytest
+
+from tests.data import yaml_samples as yaml
 
 
 class TestRoundTrip:
     """Test perfect round-trip preservation"""
 
-    def test_roundtrip_simple(self):
-        original = "key: value\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
+    @pytest.mark.parametrize(
+        "original",
+        [
+            yaml.ROUNDTRIP_SIMPLE,
+            yaml.ROUNDTRIP_NESTED,
+            yaml.ROUNDTRIP_SEQUENCE,
+            yaml.ROUNDTRIP_MIXED,
+            yaml.ROUNDTRIP_EMPTY_MAP,
+            yaml.ROUNDTRIP_EMPTY_SEQ,
+            yaml.ROUNDTRIP_FLOW_MAP,
+            yaml.ROUNDTRIP_FLOW_SEQ,
+            yaml.ROUNDTRIP_FLOW_NESTED,
+            yaml.ROUNDTRIP_INLINE_FLOW,
+        ],
+        ids=[
+            "simple",
+            "nested",
+            "sequence",
+            "mixed",
+            "empty-map",
+            "empty-seq",
+            "flow-map",
+            "flow-seq",
+            "flow-nested",
+            "inline-flow",
+        ],
+    )
+    def test_roundtrips_exact_output(self, original):
+        assert pyrs_yaml.parse(original).to_yaml() == original
 
-    def test_roundtrip_with_comment(self):
-        original = "# Comment\nkey: value\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
+    @pytest.mark.parametrize(
+        "original",
+        [
+            yaml.ROUNDTRIP_COMMENT,
+            yaml.ROUNDTRIP_INLINE_COMMENT,
+        ],
+        ids=["top-level", "inline"],
+    )
+    def test_roundtrips_with_comments(self, original):
+        assert pyrs_yaml.parse(original).to_yaml() == original
 
-    def test_roundtrip_inline_comment(self):
-        original = "key: value  # comment\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
+    @pytest.mark.parametrize(
+        "indicator",
+        ["|-", "|", "|+", ">-", ">", ">+"],
+        ids=["strip", "literal", "keep", "folded-strip", "folded", "folded-keep"],
+    )
+    def test_preserves_chomping_indicator(self, indicator):
+        if indicator.startswith("|"):
+            original = f"key: {indicator}\n  line1\n  line2\n"
+        else:
+            original = f"key: {indicator}\n  line1\n  line2\n"
+        assert indicator in pyrs_yaml.parse(original).to_yaml()
 
-    def test_roundtrip_anchor(self):
-        original = "defaults: &defaults\n  timeout: 30\n"
-        doc = pyrs_yaml.parse(original)
-        assert "&defaults" in doc.to_yaml()
+    @pytest.mark.parametrize(
+        "original,expected",
+        [
+            (yaml.ROUNDTRIP_ANCHOR, "&defaults"),
+            (yaml.ROUNDTRIP_TAG, "!!str"),
+            (yaml.ROUNDTRIP_CUSTOM_TAG, "!custom"),
+            (yaml.ROUNDTRIP_MULTI_ANCHOR, "&anchor2"),
+        ],
+        ids=["anchor", "tag", "custom-tag", "multi-anchor"],
+    )
+    def test_preserves_annotation(self, original, expected):
+        assert expected in pyrs_yaml.parse(original).to_yaml()
 
-    def test_roundtrip_tag(self):
-        original = "name: !!str John\n"
-        doc = pyrs_yaml.parse(original)
-        assert "!!str" in doc.to_yaml()
-
-    def test_roundtrip_chomping(self):
-        original = "key: |-\n  line1\n  line2\n"
-        doc = pyrs_yaml.parse(original)
-        assert "|-" in doc.to_yaml()
-
-    def test_roundtrip_nested_mapping(self):
-        original = "parent:\n  child1: value1\n  child2: value2\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_sequence(self):
-        original = "- item1\n- item2\n- item3\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_mixed(self):
-        original = "list:\n  - a\n  - b\nmapping:\n  key: value\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_chomping_variants(self):
-        for indicator in ["|-", "|", "|+", ">-", ">", ">+"]:
-            if indicator.startswith("|"):
-                original = f"key: {indicator}\n  line1\n  line2\n"
-            else:
-                original = f"key: {indicator}\n  line1\n  line2\n"
-            doc = pyrs_yaml.parse(original)
-            assert indicator in doc.to_yaml(), f"Chomping indicator {indicator} lost in round-trip"
-
-    def test_roundtrip_multiple_anchors(self):
-        original = "a: &anchor1 val1\nb: &anchor2 val2\n"
-        doc = pyrs_yaml.parse(original)
-        output = doc.to_yaml()
-        assert "&anchor1" in output
-        assert "&anchor2" in output
-
-    def test_roundtrip_empty_values(self):
-        original = "key1:\nkey2: value\n"
-        doc = pyrs_yaml.parse(original)
-        output = doc.to_yaml()
+    def test_preserves_empty_values(self):
+        output = pyrs_yaml.parse(yaml.ROUNDTRIP_EMPTY_KEY).to_yaml()
         assert "key1:" in output
         assert "key2: value" in output
 
-    def test_roundtrip_alias_reference(self):
-        original = "defaults: &defaults\n  timeout: 30\nproduction:\n  <<: *defaults\n  host: x\n"
-        doc = pyrs_yaml.parse(original, resolve_merges=False)
-        output = doc.to_yaml()
-        assert "*defaults" in output
+    def test_preserves_alias_reference(self):
+        doc = pyrs_yaml.parse(yaml.ROUNDTRIP_MERGE, resolve_merges=False)
+        assert "*defaults" in doc.to_yaml()
 
-    def test_roundtrip_scalar_styles(self):
-        for style_yaml, expected_marker in [
+    @pytest.mark.parametrize(
+        "original,expected",
+        [
             ("key: plain_value\n", "plain_value"),
             ("key: 'single quoted'\n", "'single quoted'"),
             ('key: "double quoted"\n', '"double quoted"'),
-        ]:
-            doc = pyrs_yaml.parse(style_yaml)
-            assert expected_marker in doc.to_yaml(), f"Scalar style marker {expected_marker} lost"
+        ],
+        ids=["plain", "single-quoted", "double-quoted"],
+    )
+    def test_roundtrips_scalar_style(self, original, expected):
+        assert expected in pyrs_yaml.parse(original).to_yaml()
 
-    def test_roundtrip_local_tag(self):
-        original = "key: !custom value\n"
-        doc = pyrs_yaml.parse(original)
-        assert "!custom" in doc.to_yaml()
-
-    def test_roundtrip_complex_key(self):
-        original = "? [key1, key2]\n: value\n"
-        doc = pyrs_yaml.parse(original)
-        output = doc.to_yaml()
+    def test_roundtrips_complex_key(self):
+        output = pyrs_yaml.parse(yaml.ROUNDTRIP_EXPLICIT_KEY).to_yaml()
         assert "?" in output or "key1" in output
 
-    def test_roundtrip_empty_mapping(self):
-        original = "{}\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_empty_sequence(self):
-        original = "[]\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_flow_mapping(self):
-        original = "{a: 1, b: 2}\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_flow_sequence(self):
-        original = "[1, 2, 3]\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_flow_nested(self):
-        original = "{a: [1, 2], b: {c: 3}}\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_flow_mixed_with_block(self):
-        """Flow mapping as a value inside block mapping"""
-        original = "key: {a: 1, b: 2}\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_roundtrip_merge_key_unresolved(self):
-        """Merge keys (<<) preserved when resolve_merges=False"""
-        original = "base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2\n"
-        doc = pyrs_yaml.parse(original, resolve_merges=False)
+    def test_preserves_merge_key_unresolved(self):
+        doc = pyrs_yaml.parse(yaml.ROUNDTRIP_MERGE_KEYS, resolve_merges=False)
         assert "<<" in doc.to_yaml()
 
-    def test_roundtrip_resolve_merges_default(self):
-        """Merge keys resolved by default in round-trip"""
-        doc = pyrs_yaml.parse("base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2\n")
-        child = doc.get("child")
+    def test_resolves_merge_keys_by_default(self):
+        child = pyrs_yaml.parse(yaml.ROUNDTRIP_MERGE_KEYS).get("child")
         assert child["x"] == 1
         assert child["y"] == 2

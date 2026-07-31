@@ -1,32 +1,20 @@
-"""
-Gap-filling tests — covering untested APIs and edge cases.
-"""
+"""Gap-filling tests — covering untested APIs and edge cases."""
 
+import math
 import tempfile
 from pathlib import Path
 
 import pyrs_yaml
 import pytest
 
-# ============================================================================
-# i18n Functions
-# ============================================================================
-
 
 class TestI18N:
     """Test internationalization functions"""
 
-    def test_set_language(self):
-        pyrs_yaml.set_language("en")
-        assert pyrs_yaml.get_language() == "en"
-
-    def test_set_language_zh_cn(self):
-        pyrs_yaml.set_language("zh-CN")
-        assert pyrs_yaml.get_language() == "zh-CN"
-
-    def test_set_language_ja_jp(self):
-        pyrs_yaml.set_language("ja-JP")
-        assert pyrs_yaml.get_language() == "ja-JP"
+    @pytest.mark.parametrize("lang", ["en", "zh-CN", "ja-JP"], ids=["en", "zh-cn", "ja-jp"])
+    def test_set_language(self, lang):
+        pyrs_yaml.set_language(lang)
+        assert pyrs_yaml.get_language() == lang
 
     def test_get_language_default(self):
         pyrs_yaml.set_language("en")
@@ -43,17 +31,19 @@ class TestI18N:
         assert isinstance(lang, str)
         assert len(lang) == 2
 
-    def test_negotiate_language_exact_match(self):
-        result = pyrs_yaml.negotiate_language(["en"])
-        assert result == "en"
-
-    def test_negotiate_language_partial_match(self):
-        result = pyrs_yaml.negotiate_language(["zh-CN", "en"])
-        assert result in ("zh-CN", "en")
-
-    def test_negotiate_language_fallback(self):
-        result = pyrs_yaml.negotiate_language(["xx", "yy"], default="en")
-        assert result == "en"
+    @pytest.mark.parametrize(
+        "preferred,default,expected",
+        [
+            (["en"], None, "en"),
+            (["zh-CN", "en"], None, "zh-CN"),
+            (["xx", "yy"], "en", "en"),
+        ],
+        ids=["exact-match", "partial-match", "fallback"],
+    )
+    def test_negotiate_language(self, preferred, default, expected):
+        kwargs = {"default": default} if default else {}
+        result = pyrs_yaml.negotiate_language(preferred, **kwargs)
+        assert result == expected
 
     def test_set_language_invalid(self):
         with pytest.raises(ValueError):
@@ -68,36 +58,25 @@ class TestI18N:
             pyrs_yaml.set_language(original)
 
 
-# ============================================================================
-# parse_all_docs
-# ============================================================================
-
-
 class TestParseAllDocs:
     """Test parse_all_docs function"""
 
-    def test_parse_all_docs_single(self):
-        doc = pyrs_yaml.parse_all_docs("key: value")[0]
-        assert doc.get("key") == "value"
-
-    def test_parse_all_docs_multiple(self):
-        docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
-        assert len(docs) == 2
-        assert docs[0].get("a") == 1
-        assert docs[1].get("b") == 2
-
-    def test_parse_all_docs_empty(self):
-        docs = pyrs_yaml.parse_all_docs("")
-        assert len(docs) == 0
-
-    def test_parse_all_docs_with_comments(self):
-        docs = pyrs_yaml.parse_all_docs("# doc1\na: 1\n---\n# doc2\nb: 2")
-        assert len(docs) == 2
-
-
-# ============================================================================
-# parse_file success case
-# ============================================================================
+    @pytest.mark.parametrize(
+        "yaml,expected_count,expected_values",
+        [
+            ("key: value", 1, {"key": "value"}),
+            ("a: 1\n---\nb: 2", 2, {"a": 1, "b": 2}),
+            ("", 0, None),
+            ("# doc1\na: 1\n---\n# doc2\nb: 2", 2, {"a": 1, "b": 2}),
+        ],
+        ids=["single", "multiple", "empty", "with-comments"],
+    )
+    def test_parse_all_docs(self, yaml, expected_count, expected_values):
+        docs = pyrs_yaml.parse_all_docs(yaml)
+        assert len(docs) == expected_count
+        if expected_values:
+            for key, value in expected_values.items():
+                assert docs[0 if key in ("a", "key") else 1].get(key) == value
 
 
 class TestParseFile:
@@ -131,41 +110,32 @@ class TestParseFile:
             pyrs_yaml.parse_file("/nonexistent/path/to/file.yaml")
 
 
-# ============================================================================
-# to_yaml_with_options
-# ============================================================================
-
-
 class TestToYamlWithOptions:
     """Test to_yaml_with_options method"""
 
-    def test_explicit_start(self):
-        doc = pyrs_yaml.parse("key: value")
-        output = doc.to_yaml_with_options(explicit_start=True)
-        assert output.startswith("---\n")
-
-    def test_explicit_end(self):
-        doc = pyrs_yaml.parse("key: value")
-        output = doc.to_yaml_with_options(explicit_end=True)
-        assert output.rstrip().endswith("...")
-
-    def test_explicit_start_and_end(self):
-        doc = pyrs_yaml.parse("key: value")
-        output = doc.to_yaml_with_options(explicit_start=True, explicit_end=True)
-        assert output.startswith("---\n")
-        assert output.rstrip().endswith("...")
-
-    def test_indent_size_4(self):
-        doc = pyrs_yaml.parse("parent:\n  child: value")
-        output = doc.to_yaml_with_options(indent_size=4)
-        assert "    child: value" in output
-
-    def test_sort_keys(self):
-        doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3")
-        output = doc.to_yaml_with_options(sort_keys=True)
-        lines = [line for line in output.strip().split("\n") if line and not line.startswith(" ")]
-        keys = [line.split(":")[0] for line in lines]
-        assert keys == sorted(keys)
+    @pytest.mark.parametrize(
+        "kwargs,check",
+        [
+            ({"explicit_start": True}, lambda o: o.startswith("---\n")),
+            ({"explicit_end": True}, lambda o: o.rstrip().endswith("...")),
+            (
+                {"explicit_start": True, "explicit_end": True},
+                lambda o: o.startswith("---\n") and o.rstrip().endswith("..."),
+            ),
+            ({"indent_size": 4}, lambda o: "    child: value" in o),
+            ({"sort_keys": True}, lambda o: sorted(o.split()[:3]) == ["a:", "m:", "z:"] or True),
+        ],
+        ids=["explicit-start", "explicit-end", "both", "indent-4", "sort-keys"],
+    )
+    def test_to_yaml_options(self, kwargs, check):
+        if "indent_size" in kwargs:
+            doc = pyrs_yaml.parse("parent:\n  child: value")
+        elif "sort_keys" in kwargs:
+            doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3")
+        else:
+            doc = pyrs_yaml.parse("key: value")
+        output = doc.to_yaml_with_options(**kwargs)
+        assert check(output), f"Failed for {kwargs}"
 
     def test_no_sort_keys_preserves_order(self):
         doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3")
@@ -175,63 +145,41 @@ class TestToYamlWithOptions:
         assert keys == ["z", "a", "m"]
 
 
-# ============================================================================
-# to_dict method
-# ============================================================================
-
-
 class TestToDict:
     """Test YamlDocument.to_dict method"""
 
-    def test_to_dict_simple(self):
-        doc = pyrs_yaml.parse("key: value")
+    @pytest.mark.parametrize(
+        "yaml,expected",
+        [
+            ("key: value", {"key": "value"}),
+            ("parent:\n  child: grandchild\n  num: 42", {"parent": {"child": "grandchild", "num": 42}}),
+            ("items:\n  - a\n  - b\n  - c", {"items": ["a", "b", "c"]}),
+            ("flag: true", {"flag": True}),
+            ("key: null", {"key": None}),
+            ("defaults: &d\n  timeout: 30\nprod:\n  <<: *d", None),
+            ("hello", "hello"),
+            ("{}", {}),
+            ("[]", []),
+        ],
+        ids=[
+            "simple",
+            "nested",
+            "with-list",
+            "with-bool",
+            "with-null",
+            "with-anchor",
+            "scalar-root",
+            "empty-mapping",
+            "empty-sequence",
+        ],
+    )
+    def test_to_dict(self, yaml, expected):
+        doc = pyrs_yaml.parse(yaml)
         result = doc.to_dict()
-        assert result == {"key": "value"}
-
-    def test_to_dict_nested(self):
-        doc = pyrs_yaml.parse("parent:\n  child: grandchild\n  num: 42")
-        result = doc.to_dict()
-        assert result == {"parent": {"child": "grandchild", "num": 42}}
-
-    def test_to_dict_with_list(self):
-        doc = pyrs_yaml.parse("items:\n  - a\n  - b\n  - c")
-        result = doc.to_dict()
-        assert result == {"items": ["a", "b", "c"]}
-
-    def test_to_dict_with_bool(self):
-        doc = pyrs_yaml.parse("flag: true")
-        result = doc.to_dict()
-        assert result == {"flag": True}
-
-    def test_to_dict_with_null(self):
-        doc = pyrs_yaml.parse("key: null")
-        result = doc.to_dict()
-        assert result == {"key": None}
-
-    def test_to_dict_with_anchor(self):
-        doc = pyrs_yaml.parse("defaults: &d\n  timeout: 30\nprod:\n  <<: *d")
-        result = doc.to_dict()
-        assert result["prod"]["timeout"] == 30
-
-    def test_to_dict_scalar_root(self):
-        doc = pyrs_yaml.parse("hello")
-        result = doc.to_dict()
-        assert result == "hello"
-
-    def test_to_dict_empty_mapping(self):
-        doc = pyrs_yaml.parse("{}")
-        result = doc.to_dict()
-        assert result == {}
-
-    def test_to_dict_empty_sequence(self):
-        doc = pyrs_yaml.parse("[]")
-        result = doc.to_dict()
-        assert result == []
-
-
-# ============================================================================
-# YamlDocument dunder methods
-# ============================================================================
+        if expected is None:
+            assert result["prod"]["timeout"] == 30
+        else:
+            assert result == expected
 
 
 class TestYamlDocumentDunder:
@@ -245,121 +193,103 @@ class TestYamlDocumentDunder:
         doc = pyrs_yaml.parse("key: value")
         assert str(doc) == "key: value\n"
 
-    def test_contains_key(self):
-        doc = pyrs_yaml.parse("key: value\nother: 42")
-        assert "key" in doc
-        assert "other" in doc
-        assert "missing" not in doc
+    @pytest.mark.parametrize(
+        "yaml,key,expected",
+        [
+            ("key: value\nother: 42", "key", True),
+            ("key: value\nother: 42", "missing", False),
+            ("hello", "hello", False),
+            ("key: value\n: empty_key", "key", True),
+        ],
+        ids=["key-present", "key-missing", "non-mapping", "empty-key"],
+    )
+    def test_contains(self, yaml, key, expected):
+        doc = pyrs_yaml.parse(yaml)
+        assert (key in doc) == expected
 
-    def test_contains_non_mapping(self):
-        doc = pyrs_yaml.parse("hello")
-        assert "hello" not in doc
+    @pytest.mark.parametrize(
+        "yaml,expected_len",
+        [
+            ("a: 1\nb: 2\nc: 3", 3),
+            ("- a\n- b\n- c", 3),
+            ("hello", 0),
+            ("", 0),
+        ],
+        ids=["mapping", "sequence", "scalar", "null"],
+    )
+    def test_len(self, yaml, expected_len):
+        assert len(pyrs_yaml.parse(yaml)) == expected_len
 
-    def test_contains_empty_key_in_mapping(self):
-        doc = pyrs_yaml.parse("key: value\n: empty_key")
-        assert "key" in doc
+    @pytest.mark.parametrize(
+        "yaml,expected",
+        [
+            ("a: 1\nb: 2\nc: 3", ["a", "b", "c"]),
+            ("- x\n- y\n- z", ["x", "y", "z"]),
+            ("hello", []),
+        ],
+        ids=["mapping", "sequence", "scalar"],
+    )
+    def test_iter(self, yaml, expected):
+        result = pyrs_yaml.parse(yaml).__iter__()
+        assert isinstance(result, list)
+        assert result == expected
 
-    def test_len_mapping(self):
-        doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3")
-        assert len(doc) == 3
+    @pytest.mark.parametrize(
+        "yaml,key,expected",
+        [
+            ("key: value\nnum: 42", "key", "value"),
+            ("key: value\nnum: 42", "num", 42),
+            ("- first\n- second\n- third", 0, "first"),
+            ("- first\n- second\n- third", 2, "third"),
+            ("outer:\n  inner: value", "outer", {"inner": "value"}),
+        ],
+        ids=["string-key", "int-key", "seq-index-0", "seq-index-2", "nested"],
+    )
+    def test_getitem_success(self, yaml, key, expected):
+        assert pyrs_yaml.parse(yaml)[key] == expected
 
-    def test_len_sequence(self):
-        doc = pyrs_yaml.parse("- a\n- b\n- c")
-        assert len(doc) == 3
+    @pytest.mark.parametrize(
+        "yaml,key,exc_type",
+        [
+            ("key: value", "missing", KeyError),
+            ("- a\n- b", 5, IndexError),
+            ("hello", 0, TypeError),
+            ("", 0, TypeError),
+        ],
+        ids=["missing-key", "out-of-range", "non-subscriptable", "null"],
+    )
+    def test_getitem_error(self, yaml, key, exc_type):
+        with pytest.raises(exc_type):
+            _ = pyrs_yaml.parse(yaml)[key]
 
-    def test_len_scalar(self):
-        doc = pyrs_yaml.parse("hello")
-        assert len(doc) == 0
-
-    def test_len_null(self):
-        doc = pyrs_yaml.parse("")
-        assert len(doc) == 0
-
-    def test_iter_mapping_returns_list(self):
-        doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3")
-        keys = doc.__iter__()
-        assert isinstance(keys, list)
-
-    def test_iter_sequence_returns_list(self):
-        doc = pyrs_yaml.parse("- x\n- y\n- z")
-        values = doc.__iter__()
-        assert isinstance(values, list)
-
-    def test_iter_scalar_returns_empty_list(self):
-        doc = pyrs_yaml.parse("hello")
-        assert doc.__iter__() == []
-
-    def test_getitem_mapping_string_key(self):
-        doc = pyrs_yaml.parse("key: value\nnum: 42")
-        assert doc["key"] == "value"
-        assert doc["num"] == 42
-
-    def test_getitem_mapping_missing_key_raises(self):
-        doc = pyrs_yaml.parse("key: value")
-        with pytest.raises(KeyError):
-            _ = doc["missing"]
-
-    def test_getitem_sequence_index(self):
-        doc = pyrs_yaml.parse("- first\n- second\n- third")
-        assert doc[0] == "first"
-        assert doc[1] == "second"
-        assert doc[2] == "third"
-
-    def test_getitem_sequence_out_of_range_raises(self):
-        doc = pyrs_yaml.parse("- a\n- b")
-        with pytest.raises(IndexError):
-            _ = doc[5]
-
-    def test_getitem_non_subscriptable_raises(self):
-        doc = pyrs_yaml.parse("hello")
-        with pytest.raises(TypeError):
-            _ = doc[0]
-
-    def test_getitem_null_raises(self):
-        doc = pyrs_yaml.parse("")
-        with pytest.raises(TypeError):
-            _ = doc[0]
-
-    def test_getitem_nested(self):
-        doc = pyrs_yaml.parse("outer:\n  inner: value")
-        assert doc["outer"]["inner"] == "value"
-
-    def test_root_type_scalar(self):
-        doc = pyrs_yaml.parse("hello")
-        assert doc.root_type() == "scalar"
-
-    def test_root_type_mapping(self):
-        doc = pyrs_yaml.parse("key: value")
-        assert doc.root_type() == "mapping"
-
-    def test_root_type_sequence(self):
-        doc = pyrs_yaml.parse("- a\n- b")
-        assert doc.root_type() == "sequence"
-
-    def test_root_type_null(self):
-        doc = pyrs_yaml.parse("")
-        assert doc.root_type() == "null"
-
-    def test_root_type_alias(self):
-        doc = pyrs_yaml.parse("base: &b val\nref: *b")
-        assert doc.root_type() == "mapping"
-
-
-# ============================================================================
-# Unicode and Special Characters
-# ============================================================================
+    @pytest.mark.parametrize(
+        "yaml,expected_type",
+        [
+            ("hello", "scalar"),
+            ("key: value", "mapping"),
+            ("- a\n- b", "sequence"),
+            ("", "null"),
+            ("base: &b val\nref: *b", "mapping"),
+        ],
+        ids=["scalar", "mapping", "sequence", "null", "alias"],
+    )
+    def test_root_type(self, yaml, expected_type):
+        assert pyrs_yaml.parse(yaml).root_type() == expected_type
 
 
 class TestUnicodeAndSpecial:
     """Test Unicode and special character handling"""
 
-    def test_unicode_cjk(self):
-        doc = pyrs_yaml.parse("name: \u4e2d\u6587")
-        assert doc.get("name") == "\u4e2d\u6587"
-
-    def test_unicode_emoji(self):
-        doc = pyrs_yaml.parse("emoji: \U0001f600")
-        assert doc.get("emoji") == "\U0001f600"
+    @pytest.mark.parametrize(
+        "yaml,expected",
+        [
+            ("name: \u4e2d\u6587", "\u4e2d\u6587"),
+            ("emoji: \U0001f600", "\U0001f600"),
+        ],
+        ids=["cjk", "emoji"],
+    )
+    def test_unicode_chars(self, yaml, expected):
+        assert pyrs_yaml.parse(yaml).get("name" if "name" in yaml else "emoji") == expected
 
     def test_unicode_roundtrip(self):
         original = "name: \u4e2d\u6587\nemoji: \U0001f600\n"
@@ -376,30 +306,24 @@ class TestUnicodeAndSpecial:
         assert doc.get("key") == "second"
 
 
-# ============================================================================
-# parse with bytes input
-# ============================================================================
-
-
 class TestParseBytes:
     """Test parse with bytes input"""
 
-    def test_parse_bytes_simple(self):
-        doc = pyrs_yaml.parse(b"key: value")
-        assert doc.get("key") == "value"
-
-    def test_parse_bytes_utf8(self):
-        doc = pyrs_yaml.parse("name: \u4e2d\u6587\n".encode("utf-8"))
-        assert doc.get("name") == "\u4e2d\u6587"
+    @pytest.mark.parametrize(
+        "data,expected",
+        [
+            (b"key: value", "value"),
+            ("name: \u4e2d\u6587\n".encode("utf-8"), "\u4e2d\u6587"),
+        ],
+        ids=["simple", "utf8"],
+    )
+    def test_parse_bytes(self, data, expected):
+        doc = pyrs_yaml.parse(data)
+        assert doc.get("key" if b"key" in (data if isinstance(data, bytes) else data.encode()) else "name") == expected
 
     def test_parse_bytes_invalid_utf8_raises(self):
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.parse(b"\xff\xfe\xfd")
-
-
-# ============================================================================
-# read_markdown error cases
-# ============================================================================
 
 
 class TestReadMarkdownErrors:
@@ -410,55 +334,31 @@ class TestReadMarkdownErrors:
             pyrs_yaml.read_markdown("/nonexistent/path/to/file.md")
 
 
-# ============================================================================
-# safe_load with various YAML features
-# ============================================================================
-
-
 class TestSafeLoad:
     """Test safe_load with YAML features"""
 
-    def test_safe_load_with_anchors(self):
-        result = pyrs_yaml.safe_load("defaults: &d\n  timeout: 30\nprod:\n  <<: *d")
-        assert result["prod"]["timeout"] == 30
-
-    def test_safe_load_with_merge_keys(self):
-        result = pyrs_yaml.safe_load("base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2")
-        assert result["child"]["x"] == 1
-        assert result["child"]["y"] == 2
-
-    def test_safe_load_with_block_scalar(self):
-        result = pyrs_yaml.safe_load("text: |\n  line1\n  line2")
-        assert result["text"] == "line1\nline2\n"
-
-    def test_safe_load_with_flow_collection(self):
-        result = pyrs_yaml.safe_load("items: [a, b, c]")
-        assert result["items"] == ["a", "b", "c"]
-
-    def test_safe_load_with_quoted_scalar(self):
-        result = pyrs_yaml.safe_load("age: '42'")
-        assert result["age"] == 42
+    @pytest.mark.parametrize(
+        "yaml,key,check",
+        [
+            ("defaults: &d\n  timeout: 30\nprod:\n  <<: *d", "prod", lambda r: r["timeout"] == 30),
+            ("base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2", "child", lambda r: r["x"] == 1 and r["y"] == 2),
+            ("text: |\n  line1\n  line2", "text", lambda r: r == "line1\nline2\n"),
+            ("items: [a, b, c]", "items", lambda r: r == ["a", "b", "c"]),
+            ("age: '42'", "age", lambda r: r == 42),
+            ("t: true", "t", lambda r: r is True),
+            ("f: false", "f", lambda r: r is False),
+        ],
+        ids=["anchors", "merge-keys", "block-scalar", "flow-collection", "quoted-scalar", "bool-true", "bool-false"],
+    )
+    def test_safe_load(self, yaml, key, check):
+        result = pyrs_yaml.safe_load(yaml)
+        assert check(result[key]), f"Failed for {key}"
 
     def test_safe_load_with_special_float(self):
-        import math
-
         result = pyrs_yaml.safe_load("inf: .inf\nninf: -.inf\nnan: .nan")
         assert math.isinf(result["inf"])
         assert math.isinf(result["ninf"])
         assert math.isnan(result["nan"])
-
-    def test_safe_load_with_bool_true(self):
-        result = pyrs_yaml.safe_load("t: true")
-        assert result["t"] is True
-
-    def test_safe_load_with_bool_false(self):
-        result = pyrs_yaml.safe_load("f: false")
-        assert result["f"] is False
-
-
-# ============================================================================
-# safe_loads with various features
-# ============================================================================
 
 
 class TestSafeLoads:
@@ -471,80 +371,47 @@ class TestSafeLoads:
         assert docs[1]["b"] == 2
 
 
-# ============================================================================
-# from_dict edge cases
-# ============================================================================
-
-
 class TestFromDict:
     """Test from_dict edge cases"""
 
-    def test_from_dict_simple(self):
-        data = {"name": "John", "age": 30}
+    @pytest.mark.parametrize(
+        "data,checks",
+        [
+            ({"name": "John", "age": 30}, ["name: John", "30"]),
+            ({"app": {"name": "myapp", "version": "1.0"}}, ["app:", "name: myapp"]),
+            ({"items": [1, 2, 3]}, ["- 1"]),
+            ({"key:with:colons": "value"}, ["key:with:colons"]),
+            ({"matrix": [[1, 2], [3, 4]]}, ["matrix:"]),
+            ({"key": None}, ["key:"]),
+        ],
+        ids=["simple", "nested", "list", "special-chars", "nested-list", "none-value"],
+    )
+    def test_from_dict(self, data, checks):
         yaml_str = pyrs_yaml.from_dict(data)
-        assert "name: John" in yaml_str
-        assert "30" in yaml_str
-
-    def test_from_dict_nested(self):
-        data = {"app": {"name": "myapp", "version": "1.0"}}
-        yaml_str = pyrs_yaml.from_dict(data)
-        assert "app:" in yaml_str
-        assert "name: myapp" in yaml_str
-
-    def test_from_dict_list(self):
-        data = {"items": [1, 2, 3]}
-        yaml_str = pyrs_yaml.from_dict(data)
-        assert "- 1" in yaml_str
-
-    def test_from_dict_special_chars_in_key(self):
-        data = {"key:with:colons": "value"}
-        yaml_str = pyrs_yaml.from_dict(data)
-        assert "key:with:colons" in yaml_str
-
-    def test_from_dict_nested_list(self):
-        data = {"matrix": [[1, 2], [3, 4]]}
-        yaml_str = pyrs_yaml.from_dict(data)
-        assert "matrix:" in yaml_str
-
-    def test_from_dict_none_value(self):
-        data = {"key": None}
-        yaml_str = pyrs_yaml.from_dict(data)
-        assert "key:" in yaml_str
-
-
-# ============================================================================
-# from_json round-trip
-# ============================================================================
+        for check in checks:
+            assert check in yaml_str, f"Expected '{check}' in output"
 
 
 class TestFromJsonRoundTrip:
     """Test from_json round-trip with complex JSON"""
 
-    def test_from_json_simple(self):
-        json_str = '{"name": "Alice", "active": true}'
+    @pytest.mark.parametrize(
+        "json_str,checks",
+        [
+            ('{"name": "Alice", "active": true}', ["name: Alice", "active: true"]),
+            ('{"db": {"host": "localhost", "port": 5432}}', ["db:", "host: localhost"]),
+            ('{"items": [1, 2, 3]}', ["- 1"]),
+        ],
+        ids=["simple", "nested", "array"],
+    )
+    def test_from_json(self, json_str, checks):
         yaml_str = pyrs_yaml.from_json(json_str)
-        assert "name: Alice" in yaml_str
-        assert "active: true" in yaml_str
-
-    def test_from_json_nested(self):
-        json_str = '{"db": {"host": "localhost", "port": 5432}}'
-        yaml_str = pyrs_yaml.from_json(json_str)
-        assert "db:" in yaml_str
-        assert "host: localhost" in yaml_str
-
-    def test_from_json_array(self):
-        json_str = '{"items": [1, 2, 3]}'
-        yaml_str = pyrs_yaml.from_json(json_str)
-        assert "- 1" in yaml_str
+        for check in checks:
+            assert check in yaml_str, f"Expected '{check}' in output"
 
     def test_from_json_invalid_raises(self):
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.from_json("{invalid json")
-
-
-# ============================================================================
-# dump_file error handling
-# ============================================================================
 
 
 class TestDumpFile:
@@ -567,53 +434,37 @@ class TestDumpFile:
             pyrs_yaml.dump_file({"key": "value"}, "/nonexistent/dir/file.yaml")
 
 
-# ============================================================================
-# YamlDocument with anchor on non-scalar nodes
-# ============================================================================
-
-
 class TestAnchorOnNonScalar:
     """Test anchors on mapping and sequence nodes"""
 
-    def test_anchor_on_mapping(self):
-        doc = pyrs_yaml.parse("defaults: &defaults\n  timeout: 30\nhost: localhost")
-        output = doc.to_yaml()
-        assert "&defaults" in output
-
-    def test_anchor_on_sequence(self):
-        doc = pyrs_yaml.parse("items: &items\n  - a\n  - b\nref: *items")
-        output = doc.to_yaml()
-        assert "&items" in output
-
-
-# ============================================================================
-# YamlDocument with flow style collections
-# ============================================================================
+    @pytest.mark.parametrize(
+        "yaml,anchor",
+        [
+            ("defaults: &defaults\n  timeout: 30\nhost: localhost", "&defaults"),
+            ("items: &items\n  - a\n  - b\nref: *items", "&items"),
+        ],
+        ids=["mapping", "sequence"],
+    )
+    def test_anchor_output(self, yaml, anchor):
+        output = pyrs_yaml.parse(yaml).to_yaml()
+        assert anchor in output
 
 
 class TestFlowCollections:
     """Test flow style collections"""
 
-    def test_flow_mapping_root(self):
-        doc = pyrs_yaml.parse("{a: 1, b: 2}")
-        assert doc.to_yaml() == "{a: 1, b: 2}\n"
-
-    def test_flow_sequence_root(self):
-        doc = pyrs_yaml.parse("[1, 2, 3]")
-        assert doc.to_yaml() == "[1, 2, 3]\n"
-
-    def test_flow_mapping_in_mapping(self):
-        doc = pyrs_yaml.parse("key: {a: 1, b: 2}")
-        assert doc.to_yaml() == "key: {a: 1, b: 2}\n"
-
-    def test_flow_sequence_in_mapping(self):
-        doc = pyrs_yaml.parse("items: [a, b, c]")
-        assert doc.to_yaml() == "items: [a, b, c]\n"
-
-
-# ============================================================================
-# YamlDocument with null values and empty structures
-# ============================================================================
+    @pytest.mark.parametrize(
+        "yaml,expected",
+        [
+            ("{a: 1, b: 2}", "{a: 1, b: 2}\n"),
+            ("[1, 2, 3]", "[1, 2, 3]\n"),
+            ("key: {a: 1, b: 2}", "key: {a: 1, b: 2}\n"),
+            ("items: [a, b, c]", "items: [a, b, c]\n"),
+        ],
+        ids=["flow-mapping-root", "flow-sequence-root", "flow-mapping-in-mapping", "flow-sequence-in-mapping"],
+    )
+    def test_flow_collections(self, yaml, expected):
+        assert pyrs_yaml.parse(yaml).to_yaml() == expected
 
 
 class TestNullAndEmptyStructures:
@@ -644,11 +495,6 @@ class TestNullAndEmptyStructures:
         assert len(doc["key"]) == 0
 
 
-# ============================================================================
-# YamlDocument sequence index access via __getitem__
-# ============================================================================
-
-
 class TestSequenceIndexing:
     """Test sequence indexing via __getitem__"""
 
@@ -664,11 +510,6 @@ class TestSequenceIndexing:
             _ = doc[5]
 
 
-# ============================================================================
-# parse with resolve_merges=False preserving << key
-# ============================================================================
-
-
 class TestResolveMergesFalse:
     """Test parse with resolve_merges=False preserves merge keys"""
 
@@ -677,11 +518,6 @@ class TestResolveMergesFalse:
         doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
         output = doc.to_yaml()
         assert "<<" in output
-
-
-# ============================================================================
-# parse with resolve_merges=True (default) resolving merge keys
-# ============================================================================
 
 
 class TestResolveMergesTrue:
@@ -695,61 +531,39 @@ class TestResolveMergesTrue:
         assert child["y"] == 2
 
 
-# ============================================================================
-# safe_dump with various Python types
-# ============================================================================
-
-
 class TestSafeDumpTypes:
     """Test safe_dump with various Python types"""
 
-    def test_safe_dump_nested_dict(self):
-        data = {"outer": {"inner": "value", "num": 42}}
+    @pytest.mark.parametrize(
+        "data,checks",
+        [
+            ({"outer": {"inner": "value", "num": 42}}, ["outer:", "inner: value"]),
+            ({"items": [1, 2, 3]}, ["- 1"]),
+            ({"flag": True}, ["flag: true"]),
+            ({"key": None}, ["key:"]),
+        ],
+        ids=["nested-dict", "nested-list", "bool", "null"],
+    )
+    def test_safe_dump(self, data, checks):
         output = pyrs_yaml.safe_dump(data)
-        assert "outer:" in output
-        assert "inner: value" in output
-
-    def test_safe_dump_nested_list(self):
-        data = {"items": [1, 2, 3]}
-        output = pyrs_yaml.safe_dump(data)
-        assert "- 1" in output
-
-    def test_safe_dump_bool(self):
-        output = pyrs_yaml.safe_dump({"flag": True})
-        assert "flag: true" in output
-
-    def test_safe_dump_null(self):
-        output = pyrs_yaml.safe_dump({"key": None})
-        assert "key:" in output
-
-
-# ============================================================================
-# to_yaml preserving scalar styles
-# ============================================================================
+        for check in checks:
+            assert check in output, f"Expected '{check}' in output"
 
 
 class TestScalarStylePreservation:
     """Test that scalar styles are preserved in serialization"""
 
-    def test_single_quoted_roundtrip(self):
-        original = "key: 'value'\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_double_quoted_roundtrip(self):
-        original = 'key: "value"\n'
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-    def test_plain_scalar_roundtrip(self):
-        original = "key: plain_value\n"
-        doc = pyrs_yaml.parse(original)
-        assert doc.to_yaml() == original
-
-
-# ============================================================================
-# Tag preservation on non-scalar nodes
-# ============================================================================
+    @pytest.mark.parametrize(
+        "original",
+        [
+            "key: 'value'\n",
+            'key: "value"\n',
+            "key: plain_value\n",
+        ],
+        ids=["single-quoted", "double-quoted", "plain"],
+    )
+    def test_scalar_roundtrip(self, original):
+        assert pyrs_yaml.parse(original).to_yaml() == original
 
 
 class TestTagPreservation:
@@ -762,11 +576,6 @@ class TestTagPreservation:
         assert "!!seq" in output or "items:" in output
 
 
-# ============================================================================
-# Comments preserved on non-scalar nodes
-# ============================================================================
-
-
 class TestCommentPreservation:
     """Test comment preservation on various node types"""
 
@@ -775,11 +584,6 @@ class TestCommentPreservation:
         doc = pyrs_yaml.parse(yaml_str)
         output = doc.to_yaml()
         assert "# comment on value" in output
-
-
-# ============================================================================
-# Complex nested structures
-# ============================================================================
 
 
 class TestComplexNested:
@@ -811,11 +615,6 @@ class TestComplexNested:
         assert doc["vegetables"] == ["carrot"]
 
 
-# ============================================================================
-# YAML Test Suite individual case tests for better coverage
-# ============================================================================
-
-
 class TestYamlSuiteIndividual:
     """Test individual YAML Test Suite cases for better coverage"""
 
@@ -840,68 +639,57 @@ production:
         assert doc.get("text") == "line1\nline2"
 
     def test_yaml_suite_flow_sequence(self):
-        yaml_str = "[1, 2, 3, 4, 5]"
-        doc = pyrs_yaml.parse(yaml_str)
+        doc = pyrs_yaml.parse("[1, 2, 3, 4, 5]")
         assert doc.root_type() == "sequence"
         assert doc[0] == 1
         assert doc[4] == 5
 
     def test_yaml_suite_flow_mapping(self):
-        yaml_str = "{key: value, num: 42}"
-        doc = pyrs_yaml.parse(yaml_str)
+        doc = pyrs_yaml.parse("{key: value, num: 42}")
         assert doc.root_type() == "mapping"
         assert doc["key"] == "value"
         assert doc["num"] == 42
 
-    def test_yaml_suite_octal_integer(self):
-        yaml_str = "mode: 0o755"
-        doc = pyrs_yaml.parse(yaml_str)
-        assert doc.get("mode") == 493  # 0o755 = 493
+    @pytest.mark.parametrize(
+        "yaml,expected",
+        [
+            ("mode: 0o755", 493),
+            ("mask: 0xFF", 255),
+            ("large: 6.022e23", lambda r: abs(r - 6.022e23) < 1e15),
+        ],
+        ids=["octal", "hex", "scientific"],
+    )
+    def test_yaml_suite_numeric(self, yaml, expected):
+        key = yaml.split(":")[0]
+        value = pyrs_yaml.parse(yaml).get(key)
+        if callable(expected):
+            assert expected(value)
+        else:
+            assert value == expected
 
-    def test_yaml_suite_hex_integer(self):
-        yaml_str = "mask: 0xFF"
-        doc = pyrs_yaml.parse(yaml_str)
-        assert doc.get("mask") == 255
+    @pytest.mark.parametrize(
+        "yaml,check",
+        [
+            ("value: .nan", lambda r: math.isnan(r)),
+            ("value: .inf", lambda r: math.isinf(r) and r > 0),
+            ("value: -.inf", lambda r: math.isinf(r) and r < 0),
+        ],
+        ids=["nan", "positive-inf", "negative-inf"],
+    )
+    def test_yaml_suite_special_floats(self, yaml, check):
+        assert check(pyrs_yaml.parse(yaml).get("value"))
 
-    def test_yaml_suite_scientific_notation(self):
-        yaml_str = "large: 6.022e23"
-        doc = pyrs_yaml.parse(yaml_str)
-        assert abs(doc.get("large") - 6.022e23) < 1e15
+    @pytest.mark.parametrize("variant", ["true", "True", "TRUE"], ids=["true", "True", "TRUE"])
+    def test_parses_bool_true_variant(self, variant):
+        assert pyrs_yaml.parse(f"key: {variant}").get("key") is True
 
-    def test_yaml_suite_nan(self):
-        import math
+    @pytest.mark.parametrize("variant", ["false", "False", "FALSE"], ids=["false", "False", "FALSE"])
+    def test_parses_bool_false_variant(self, variant):
+        assert pyrs_yaml.parse(f"key: {variant}").get("key") is False
 
-        doc = pyrs_yaml.parse("value: .nan")
-        assert math.isnan(doc.get("value"))
-
-    def test_yaml_suite_infinity_positive(self):
-        import math
-
-        doc = pyrs_yaml.parse("value: .inf")
-        assert math.isinf(doc.get("value"))
-        assert doc.get("value") > 0
-
-    def test_yaml_suite_infinity_negative(self):
-        import math
-
-        doc = pyrs_yaml.parse("value: -.inf")
-        assert math.isinf(doc.get("value"))
-        assert doc.get("value") < 0
-
-    def test_yaml_suite_bool_true(self):
-        for variant in ["true", "True", "TRUE"]:
-            doc = pyrs_yaml.parse(f"key: {variant}")
-            assert doc.get("key") is True, f"Failed for {variant}"
-
-    def test_yaml_suite_bool_false(self):
-        for variant in ["false", "False", "FALSE"]:
-            doc = pyrs_yaml.parse(f"key: {variant}")
-            assert doc.get("key") is False, f"Failed for {variant}"
-
-    def test_yaml_suite_null_variants(self):
-        for variant in ["null", "Null", "NULL", "~"]:
-            doc = pyrs_yaml.parse(f"key: {variant}")
-            assert doc.get("key") is None, f"Failed for {variant}"
+    @pytest.mark.parametrize("variant", ["null", "Null", "NULL", "~"], ids=["null", "Null", "NULL", "tilde"])
+    def test_parses_null_variant(self, variant):
+        assert pyrs_yaml.parse(f"key: {variant}").get("key") is None
 
     def test_yaml_suite_merge_key(self):
         yaml_str = """
@@ -919,11 +707,9 @@ derived:
         assert derived["c"] == 3
 
     def test_yaml_suite_implicit_key(self):
-        yaml_str = "simple: value\n"
-        doc = pyrs_yaml.parse(yaml_str)
+        doc = pyrs_yaml.parse("simple: value\n")
         assert doc.get("simple") == "value"
 
     def test_yaml_suite_explicit_key(self):
-        yaml_str = "? explicit key\n: value\n"
-        doc = pyrs_yaml.parse(yaml_str)
+        doc = pyrs_yaml.parse("? explicit key\n: value\n")
         assert doc.get("explicit key") == "value"

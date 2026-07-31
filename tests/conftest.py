@@ -4,6 +4,8 @@ from pathlib import Path
 import pyrs_yaml
 import pytest
 
+from tests.data import yaml_samples as yaml
+
 
 def pytest_collection_modifyitems(session, config, items):
     """Auto-deselect benchmark tests when --codspeed is not provided."""
@@ -30,21 +32,21 @@ def reset_language():
 @pytest.fixture
 def yaml_strings():
     return {
-        "simple_mapping": "key: value",
-        "nested_mapping": "parent:\n  child: grandchild",
-        "sequence": "- a\n- b\n- c",
-        "mixed": "name: test\nitems:\n  - 1\n  - 2\nflag: true",
-        "multiline_scalar": "description: |\n  Line one\n  Line two",
-        "quoted_scalar": 'message: "hello world"',
-        "empty_document": "",
-        "with_comment": "key: value  # a comment",
-        "anchor": "defaults: &defaults\n  timeout: 30\nref: *defaults",
-        "merge_key": "base: &base\n  a: 1\nb: &b\n  <<: *base\n  b: 2",
-        "flow_mapping": "{key: value, num: 42}",
-        "flow_sequence": "[a, b, c]",
-        "null_value": "key: null",
-        "empty_mapping": "{}",
-        "empty_sequence": "[]",
+        "simple_mapping": yaml.SIMPLE_MAPPING,
+        "nested_mapping": yaml.NESTED_MAPPING,
+        "sequence": yaml.SEQUENCE,
+        "mixed": yaml.MIXED,
+        "multiline_scalar": yaml.MULTILINE_SCALAR,
+        "quoted_scalar": yaml.QUOTED_SCALAR,
+        "empty_document": yaml.EMPTY_DOCUMENT,
+        "with_comment": yaml.WITH_COMMENT,
+        "anchor": yaml.ANCHOR,
+        "merge_key": yaml.MERGE_KEY,
+        "flow_mapping": yaml.FLOW_MAPPING,
+        "flow_sequence": yaml.FLOW_SEQUENCE,
+        "null_value": yaml.NULL_VALUE,
+        "empty_mapping": yaml.EMPTY_MAPPING,
+        "empty_sequence": yaml.EMPTY_SEQUENCE,
     }
 
 
