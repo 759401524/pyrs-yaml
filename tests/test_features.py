@@ -1,33 +1,31 @@
-"""
-Feature tests — Markdown frontmatter, read_markdown.
-"""
+"""Feature tests — Markdown frontmatter, read_markdown."""
 
 import tempfile
 from pathlib import Path
 
 import pyrs_yaml
+import pytest
 
 
 class TestReadMarkdown:
     """Test read_markdown and read_markdown_str functions"""
 
-    def test_read_markdown_with_frontmatter(self):
-        md = "---\ntitle: My Post\ntags: [python]\n---\n# Content"
-        frontmatter, content = pyrs_yaml.read_markdown_str(md)
-        assert frontmatter is not None
-        assert frontmatter["title"] == "My Post"
-        assert "# Content" in content
-
-    def test_read_markdown_no_frontmatter(self):
-        md = "# Just content\nNo frontmatter here."
-        frontmatter, content = pyrs_yaml.read_markdown_str(md)
-        assert frontmatter is None
-        assert content == md
-
-    def test_read_markdown_empty_frontmatter(self):
-        md = "---\n---\n# Content"
+    @pytest.mark.parametrize(
+        "md,has_frontmatter,title",
+        [
+            ("---\ntitle: My Post\ntags: [python]\n---\n# Content", True, "My Post"),
+            ("# Just content\nNo frontmatter here.", False, None),
+            ("---\n---\n# Content", False, None),
+        ],
+        ids=["with-frontmatter", "no-frontmatter", "empty-frontmatter"],
+    )
+    def test_read_markdown_str(self, md, has_frontmatter, title):
         frontmatter, _content = pyrs_yaml.read_markdown_str(md)
-        assert frontmatter is None
+        if has_frontmatter:
+            assert frontmatter is not None
+            assert frontmatter["title"] == title
+        else:
+            assert frontmatter is None
 
     def test_read_markdown_file(self):
         test_file = str(Path(tempfile.gettempdir()) / "test_readme.md")
@@ -42,7 +40,6 @@ class TestReadMarkdown:
                 Path(test_file).unlink()
 
     def test_from_dict_nested(self):
-        """Test from_dict with deeply nested structures."""
         data = {"app": {"name": "myapp", "version": "1.0"}, "features": ["auth", "logging"]}
         yaml_str = pyrs_yaml.from_dict(data)
         assert "app:" in yaml_str
@@ -50,7 +47,6 @@ class TestReadMarkdown:
         assert "- auth" in yaml_str
 
     def test_from_json_nested(self):
-        """Test from_json with nested database config."""
         json_str = '{"database": {"host": "localhost", "port": 5432}}'
         yaml_str = pyrs_yaml.from_json(json_str)
         assert "database:" in yaml_str

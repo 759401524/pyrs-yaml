@@ -1,6 +1,4 @@
-"""
-Error handling tests — YamlParseError, YamlTypeError, IO errors, edge cases.
-"""
+"""Error handling tests — YamlParseError, YamlTypeError, IO errors, edge cases."""
 
 import contextlib
 import tempfile
@@ -8,10 +6,6 @@ from pathlib import Path
 
 import pyrs_yaml
 import pytest
-
-# ============================================================================
-# File I/O Errors
-# ============================================================================
 
 
 class TestFileIO:
@@ -31,11 +25,6 @@ class TestFileIO:
     def test_parse_file_nonexistent(self):
         with pytest.raises(OSError):
             pyrs_yaml.parse_file("/nonexistent/file.yaml")
-
-
-# ============================================================================
-# Edge Cases
-# ============================================================================
 
 
 class TestEdgeCases:
@@ -70,72 +59,57 @@ class TestEdgeCases:
         assert len(docs) == 2
 
 
-# ============================================================================
-# Custom Exception Types
-# ============================================================================
-
-
 class TestCustomExceptions:
     """Test custom exception types for precise error handling"""
 
-    def test_yaml_parse_error_exists(self):
-        """YamlParseError should be importable."""
-        assert hasattr(pyrs_yaml, "YamlParseError")
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "YamlParseError",
+            "YamlSerializeError",
+            "YamlTypeError",
+        ],
+        ids=["parse", "serialize", "type"],
+    )
+    def test_exception_exists(self, name):
+        assert hasattr(pyrs_yaml, name)
 
-    def test_yaml_serialize_error_exists(self):
-        """YamlSerializeError should be importable."""
-        assert hasattr(pyrs_yaml, "YamlSerializeError")
+    @pytest.mark.parametrize(
+        "cls_name,base",
+        [
+            ("YamlParseError", ValueError),
+            ("YamlSerializeError", ValueError),
+            ("YamlTypeError", TypeError),
+        ],
+        ids=["parse-is-value-error", "serialize-is-value-error", "type-is-type-error"],
+    )
+    def test_exception_inheritance(self, cls_name, base):
+        assert issubclass(getattr(pyrs_yaml, cls_name), base)
 
-    def test_yaml_type_error_exists(self):
-        """YamlTypeError should be importable."""
-        assert hasattr(pyrs_yaml, "YamlTypeError")
-
-    def test_parse_error_is_value_error(self):
-        """YamlParseError should inherit from ValueError."""
-        assert issubclass(pyrs_yaml.YamlParseError, ValueError)
-
-    def test_serialize_error_is_value_error(self):
-        """YamlSerializeError should inherit from ValueError."""
-        assert issubclass(pyrs_yaml.YamlSerializeError, ValueError)
-
-    def test_type_error_is_type_error(self):
-        """YamlTypeError should inherit from TypeError."""
-        assert issubclass(pyrs_yaml.YamlTypeError, TypeError)
-
-    def test_parse_error_can_be_caught(self):
-        """YamlParseError can be caught by except ValueError."""
+    def test_parse_error_caught_by_value_error(self):
         with pytest.raises(ValueError):
             pyrs_yaml.parse("{{invalid yaml")
 
     def test_parse_error_is_custom_type(self):
-        """Raised parse error is specifically YamlParseError."""
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.parse("{{invalid yaml")
-
-
-# ============================================================================
-# Error Context Tests
-# ============================================================================
 
 
 class TestErrorContext:
     """Test that error messages include useful context."""
 
     def test_parse_error_has_line_info(self):
-        """Parse error should include line number and source snippet."""
         invalid_yaml = "key: value: extra_colon"
         try:
             pyrs_yaml.parse(invalid_yaml)
             raise AssertionError("should have raised")
         except pyrs_yaml.YamlParseError as e:
             msg = str(e)
-            # Should contain line/col or source context
             assert "line" in msg.lower() or "col" in msg.lower() or "|" in msg, (
                 f"Error should contain line/col/context info: {msg}"
             )
 
     def test_parse_error_different_line(self):
-        """Error on a later line should show the correct line number."""
         multiline_yaml = """a: 1
 b: 2
 c: value: extra
@@ -145,7 +119,6 @@ d: 4
             pyrs_yaml.parse(multiline_yaml)
 
     def test_parse_error_utf8(self):
-        """Error with non-ASCII characters should not crash."""
         invalid_yaml = "key: \x00value"
         with contextlib.suppress(pyrs_yaml.YamlParseError):
             pyrs_yaml.parse(invalid_yaml)
