@@ -7,6 +7,10 @@ pub struct SerializeOptions {
     pub explicit_end: bool,
     pub sort_keys: bool,
     pub max_depth: usize,
+    pub width: usize,
+    pub indent_mapping: usize,
+    pub indent_sequence: usize,
+    pub indent_offset: usize,
 }
 
 impl Default for SerializeOptions {
@@ -17,6 +21,10 @@ impl Default for SerializeOptions {
             explicit_end: false,
             sort_keys: false,
             max_depth: 1000,
+            width: 80,
+            indent_mapping: 2,
+            indent_sequence: 2,
+            indent_offset: 0,
         }
     }
 }
@@ -52,6 +60,8 @@ struct Serializer {
     max_cached: usize,
     /// Maximum recursion depth before serialization fails
     max_depth: usize,
+    /// Line width for wrapping (0 = no wrapping)
+    width: usize,
 }
 
 impl Serializer {
@@ -65,6 +75,7 @@ impl Serializer {
             indent_cache: cache,
             max_cached: 0,
             max_depth: options.max_depth,
+            width: options.width,
         }
     }
 
@@ -154,7 +165,7 @@ impl Serializer {
                     self.write_anchor_tag(anchor, tag);
                 }
 
-                self.write_scalar(value, style, chomping);
+                self.write_scalar(value, style, chomping, self.width);
                 if let Some(c) = comment {
                     if !c.standalone {
                         self.output.push_str("  # ");
@@ -470,9 +481,16 @@ impl Serializer {
     }
 
     /// Write a scalar value directly to output based on style and chomping.
-    fn write_scalar(&mut self, value: &str, style: &ScalarStyle, chomping: &Chomping) {
+    /// `remaining` is the remaining width on the current line (0 = don't wrap).
+    fn write_scalar(
+        &mut self,
+        value: &str,
+        style: &ScalarStyle,
+        chomping: &Chomping,
+        remaining: usize,
+    ) {
         match style {
-            ScalarStyle::Plain => self.write_plain_scalar(value),
+            ScalarStyle::Plain => self.write_plain_scalar(value, remaining),
             ScalarStyle::SingleQuoted => self.write_single_quoted_scalar(value),
             ScalarStyle::DoubleQuoted => self.write_double_quoted_scalar(value),
             ScalarStyle::Literal => self.write_literal_scalar(value, chomping),
@@ -491,7 +509,7 @@ impl Serializer {
                 if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
                     self.output.push_str(value);
                 } else {
-                    self.write_plain_scalar(value);
+                    self.write_plain_scalar(value, 0);
                 }
             }
             CustomNode::Scalar {
@@ -499,7 +517,7 @@ impl Serializer {
                 style,
                 chomping,
                 ..
-            } => self.write_scalar(value, style, chomping),
+            } => self.write_scalar(value, style, chomping, 0),
             _ => {
                 self.output.push_str("null");
             }
@@ -507,7 +525,8 @@ impl Serializer {
     }
 
     /// Write a plain scalar, quoting if necessary.
-    fn write_plain_scalar(&mut self, value: &str) {
+    /// `remaining` is the remaining width on the current line (0 = don't wrap).
+    fn write_plain_scalar(&mut self, value: &str, remaining: usize) {
         if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
             self.output.push_str(value);
             return;
@@ -528,7 +547,32 @@ impl Serializer {
         {
             self.write_double_quoted_scalar(value);
         } else {
-            self.output.push_str(value);
+            // Width-based wrapping: if remaining > 0 and value is too long, wrap
+            if remaining > 0 && value.len() > remaining {
+                let split = value[..remaining].rfind(' ').unwrap_or(remaining);
+                self.output.push_str(&value[..split]);
+                let rest = value[split..].trim();
+                if !rest.is_empty() {
+                    self.output.push('\n');
+                    let wrap_indent_str = " ".repeat(2);
+                    let max_line = self.width;
+                    let mut remaining_rest = rest;
+                    while !remaining_rest.is_empty() {
+                        self.output.push_str(&wrap_indent_str);
+                        if remaining_rest.len() <= max_line.saturating_sub(wrap_indent_str.len()) {
+                            self.output.push_str(remaining_rest);
+                            break;
+                        }
+                        let avail = max_line.saturating_sub(wrap_indent_str.len());
+                        let split_rest = remaining_rest[..avail].rfind(' ').unwrap_or(avail);
+                        self.output.push_str(&remaining_rest[..split_rest]);
+                        self.output.push('\n');
+                        remaining_rest = remaining_rest[split_rest..].trim();
+                    }
+                }
+            } else {
+                self.output.push_str(value);
+            }
         }
     }
 
@@ -627,7 +671,7 @@ impl Serializer {
                 if anchor.is_some() || tag.is_some() {
                     self.write_anchor_tag(anchor, tag);
                 }
-                self.write_scalar(value, style, &Chomping::Clip);
+                self.write_scalar(value, style, &Chomping::Clip, self.width);
             }
             CustomNode::Null { anchor, tag, .. } => {
                 if anchor.is_some() || tag.is_some() {
@@ -822,6 +866,7 @@ mod tests {
             explicit_end: false,
             sort_keys: false,
             max_depth: 50,
+            ..Default::default()
         };
         let result = to_yaml_with_options(&current, &options);
         assert!(result.is_err());

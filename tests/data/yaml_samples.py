@@ -143,6 +143,9 @@ FILE_SIMPLE = "key: value\nlist:\n  - a\n  - b"
 FILE_NAME_VALUE = "name: test\nvalue: 42"
 FILE_WITH_COMMENT = "# comment\nkey: value\n"
 
+# --- Serialize options samples ---
+LONG_VALUE = "key: " + "x" * 100
+
 # --- Misc samples ---
 SIMPLE_INT = "42"
 SIMPLE_MAPPING_FILE = "a: 1\nb: 2"

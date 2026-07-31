@@ -371,10 +371,11 @@ mod pyrs_yaml {
     impl YamlDocument {
         /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
         fn to_yaml(&self) -> PyResult<String> {
-            self.to_yaml_with_options(2, false, false, false, 1000)
+            self.to_yaml_with_options(2, false, false, false, 1000, 80, 2, 2, 0)
         }
 
-        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000) -> "str")]
+        #[allow(clippy::too_many_arguments)]
+        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int" = 2, indent_sequence: "int" = 2, indent_offset: "int" = 0) -> "str")]
         fn to_yaml_with_options(
             &self,
             indent_size: usize,
@@ -382,6 +383,10 @@ mod pyrs_yaml {
             explicit_end: bool,
             sort_keys: bool,
             max_depth: usize,
+            width: usize,
+            indent_mapping: usize,
+            indent_sequence: usize,
+            indent_offset: usize,
         ) -> PyResult<String> {
             let options = SerializeOptions {
                 indent_size,
@@ -389,6 +394,10 @@ mod pyrs_yaml {
                 explicit_end,
                 sort_keys,
                 max_depth,
+                width,
+                indent_mapping,
+                indent_sequence,
+                indent_offset,
             };
             to_yaml_with_options(&self.ast, &options).map_err(|e| {
                 if e.contains("max depth exceeded") {
