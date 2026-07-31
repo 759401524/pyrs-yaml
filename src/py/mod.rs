@@ -75,6 +75,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     use crate::YamlTagError;
     #[pymodule_export]
+    use crate::YamlTagSkip;
+    #[pymodule_export]
     use crate::YamlTypeError;
     #[pymodule_export]
     use crate::YamlValidateError;
@@ -151,14 +153,18 @@ mod pyrs_yaml {
             } => {
                 let tag_name = t.to_string();
                 if let Some(handlers) = get_handlers(&tag_name, py) {
-                    if let Some((_priority, handler)) = handlers.first() {
+                    for (_priority, handler) in handlers {
                         match handler.call1(py, (value.clone(),)) {
                             Ok(result) => {
                                 if let Ok(s) = result.extract::<String>(py) {
                                     *value = s;
                                 }
+                                break;
                             }
                             Err(e) => {
+                                if e.is_instance_of::<crate::YamlTagSkip>(py) {
+                                    continue;
+                                }
                                 return Err(YamlTagError::new_err(format!(
                                     "Tag handler '{}' failed: {}",
                                     tag_name, e
@@ -1116,9 +1122,9 @@ mod pyrs_yaml {
     }
 
     #[pyfunction]
-    #[pyo3(signature = (name: "str", handler: "Py<PyAny>"))]
-    fn register_tag(name: &str, handler: Py<PyAny>) {
-        tag_registry::register(name, handler, 0);
+    #[pyo3(signature = (name: "str", handler: "Py<PyAny>", priority: "u32" = 0))]
+    fn register_tag(name: &str, handler: Py<PyAny>, priority: u32) {
+        tag_registry::register(name, handler, priority);
     }
 
     #[pyfunction]

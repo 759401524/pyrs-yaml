@@ -36,3 +36,39 @@ class TestTagRegistry:
 
         with pytest.raises(pyrs_yaml.YamlTagError):
             pyrs_yaml.YAML().parse(yaml.TAG_CUSTOM)
+
+    def test_chain_first_skip_second_handles(self):
+        @pyrs_yaml.register_tag("!custom", priority=0)
+        def skip_handler(node):
+            raise pyrs_yaml.YamlTagSkip()
+
+        @pyrs_yaml.register_tag("!custom", priority=1)
+        def real_handler(node):
+            return f"handled:{node}"
+
+        doc = pyrs_yaml.YAML().parse(yaml.TAG_CUSTOM)
+        assert doc.get("name") == "handled:value"
+
+    def test_chain_all_skip_fallback(self):
+        @pyrs_yaml.register_tag("!custom", priority=0)
+        def skip1(node):
+            raise pyrs_yaml.YamlTagSkip()
+
+        @pyrs_yaml.register_tag("!custom", priority=1)
+        def skip2(node):
+            raise pyrs_yaml.YamlTagSkip()
+
+        doc = pyrs_yaml.YAML().parse(yaml.TAG_CUSTOM)
+        assert doc.get("name") == "value"
+
+    def test_priority_ordering(self):
+        @pyrs_yaml.register_tag("!custom", priority=10)
+        def low_priority(node):
+            return "low"
+
+        @pyrs_yaml.register_tag("!custom", priority=1)
+        def high_priority(node):
+            return "high"
+
+        doc = pyrs_yaml.YAML().parse(yaml.TAG_CUSTOM)
+        assert doc.get("name") == "high"

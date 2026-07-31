@@ -29,6 +29,7 @@ from .pyrs_yaml import (
     YamlParseError,
     YamlSerializeError,
     YamlTagError,
+    YamlTagSkip,
     YamlTypeError,
     YamlValidateError,
     clear_tag_handlers,
@@ -53,7 +54,7 @@ from .pyrs_yaml import (
 from .pyrs_yaml import register_tag as _rust_register_tag
 
 
-def register_tag(name, handler=None):
+def register_tag(name, handler=None, priority=0):
     """Register a tag handler.
 
     Supports both decorator and imperative forms:
@@ -61,15 +62,20 @@ def register_tag(name, handler=None):
         def handler(node):
             ...
 
+        @register_tag("!custom", priority=1)
+        def handler(node):
+            ...
+
         register_tag("!custom", handler_fn)
+        register_tag("!custom", handler_fn, priority=1)
     """
     if handler is not None:
-        _rust_register_tag(name, handler)
+        _rust_register_tag(name, handler, priority)
         return handler
 
     # Decorator form
     def decorator(fn):
-        _rust_register_tag(name, fn)
+        _rust_register_tag(name, fn, priority)
         return fn
 
     return decorator
@@ -112,6 +118,7 @@ __all__ = [
     "YamlParseError",
     "YamlSerializeError",
     "YamlTagError",
+    "YamlTagSkip",
     "YamlTypeError",
     "YamlValidateError",
     "clear_tag_handlers",

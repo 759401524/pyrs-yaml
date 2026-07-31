@@ -30,3 +30,4 @@ pyo3::create_exception!(
     pyo3::exceptions::PyValueError
 );
 pyo3::create_exception!(pyrs_yaml, YamlTagError, pyo3::exceptions::PyValueError);
+pyo3::create_exception!(pyrs_yaml, YamlTagSkip, crate::YamlTagError);

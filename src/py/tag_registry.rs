@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn test_get_nonexistent() {
-        pyo3::Python::try_attach(|py| {
+        Python::try_attach(|py| {
             assert!(get_handlers("!nonexistent", py).is_none());
         });
     }
