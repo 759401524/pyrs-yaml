@@ -145,20 +145,19 @@ class Node:
         segments = _parse_jsonpath(path)
         current = self
         for seg in segments:
-            if isinstance(seg, str):
-                doc = current._get_doc()
-                val_path = (*current._path, seg)
-                current = Node(doc, val_path)
-            elif isinstance(seg, int):
+            if isinstance(seg, int):
                 doc = current._get_doc()
                 idx_path = (*current._path, seg)
                 current = Node(doc, idx_path)
             elif seg == "*":
                 children = current.children
                 return [Node(current._get_doc(), child._path) for child in children]
-            elif seg.startswith(".."):
-                key = seg[2:]
+            elif isinstance(seg, str) and seg.startswith(".."):
                 doc = current._get_doc()
+                key = seg[2:]
+                if key == "*":
+                    all_nodes = list(current.walk())
+                    return [Node(doc, n._path) for n in all_nodes]
                 results = []
                 for node in current.walk():
                     try:
@@ -168,6 +167,10 @@ class Node:
                     except (KeyError, IndexError, TypeError):
                         continue
                 return results
+            elif isinstance(seg, str):
+                doc = current._get_doc()
+                val_path = (*current._path, seg)
+                current = Node(doc, val_path)
         return current
 
     def __repr__(self) -> str:
@@ -197,16 +200,27 @@ def _parse_jsonpath(path: str) -> list:
         raise ValueError("Path must start with $")
 
     rest = path[1:]
-    if rest.startswith("."):
+    # Remove the first dot after $, but preserve ..
+    if rest.startswith(".."):
+        rest = rest  # keep .. for deep scan
+    elif rest.startswith("."):
         rest = rest[1:]
 
     segments = []
     i = 0
     while i < len(rest):
-        if rest[i] == ".":
+        if i + 1 < len(rest) and rest[i] == "." and rest[i + 1] == ".":
+            # Deep scan (..)
+            i += 2
+            key = ""
+            while i < len(rest) and rest[i] not in (".", "["):
+                key += rest[i]
+                i += 1
+            segments.append(f"..{key}")
+        elif rest[i] == ".":
             i += 1
             continue
-        if rest[i] == "[":
+        elif rest[i] == "[":
             i += 1
             if i < len(rest) and rest[i] == "*":
                 segments.append("*")
@@ -221,13 +235,6 @@ def _parse_jsonpath(path: str) -> list:
             if i < len(rest) and rest[i] == "]":
                 i += 1
             segments.append(int(num))
-        elif i + 1 < len(rest) and rest[i] == "." and rest[i + 1] == ".":
-            i += 2
-            key = ""
-            while i < len(rest) and rest[i] not in (".", "["):
-                key += rest[i]
-                i += 1
-            segments.append(f"..{key}")
         else:
             key = ""
             while i < len(rest) and rest[i] not in (".", "["):
