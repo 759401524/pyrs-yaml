@@ -3,6 +3,8 @@ import pytest
 
 from tests.data import yaml_samples as yaml
 
+pytest.importorskip("pydantic", reason="pydantic not installed")
+
 
 class TestPydantic:
     """Test Pydantic integration (Phase 5 of v0.9.0)."""
