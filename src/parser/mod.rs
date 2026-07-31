@@ -43,7 +43,7 @@ use yaml::{
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
 pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDetail> {
-    parse_with_options(yaml, true, schema, 1000)
+    parse_with_options(yaml, true, schema, 1000, false)
 }
 
 /// 使用选项解析 YAML 字符串。
@@ -65,6 +65,7 @@ pub fn parse_with_options(
     resolve_merges: bool,
     _schema: YamlSchema,
     max_depth: usize,
+    allow_duplicate_keys: bool,
 ) -> Result<CustomNode, ParseErrorDetail> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
@@ -76,7 +77,13 @@ pub fn parse_with_options(
     let raw_anchors = extract_anchors(yaml);
 
     // Parse YAML using saphyr-parser
-    let mut receiver = AstReceiver::new(yaml, raw_comments, raw_anchors, max_depth);
+    let mut receiver = AstReceiver::new(
+        yaml,
+        raw_comments,
+        raw_anchors,
+        max_depth,
+        allow_duplicate_keys,
+    );
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
@@ -86,6 +93,11 @@ pub fn parse_with_options(
             line: 0,
             col: 0,
         })?;
+
+    // Check for duplicate key error
+    if let Some(err) = receiver.duplicate_key_error {
+        return Err(err);
+    }
 
     if receiver.max_depth_exceeded {
         return Err(ParseErrorDetail {
@@ -121,7 +133,7 @@ pub fn parse_with_options(
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
 pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, ParseErrorDetail> {
-    parse_all_with_options(yaml, true, schema, 1000)
+    parse_all_with_options(yaml, true, schema, 1000, false)
 }
 
 /// 解析包含多个 YAML 文档的字符串，支持选项。
@@ -130,6 +142,7 @@ pub fn parse_all_with_options(
     resolve_merges: bool,
     _schema: YamlSchema,
     max_depth: usize,
+    allow_duplicate_keys: bool,
 ) -> Result<Vec<CustomNode>, ParseErrorDetail> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
@@ -139,7 +152,13 @@ pub fn parse_all_with_options(
     let raw_comments = extract_comments(yaml);
     let raw_anchors = extract_anchors(yaml);
 
-    let mut receiver = AstReceiver::new(yaml, raw_comments, raw_anchors, max_depth);
+    let mut receiver = AstReceiver::new(
+        yaml,
+        raw_comments,
+        raw_anchors,
+        max_depth,
+        allow_duplicate_keys,
+    );
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
@@ -149,6 +168,11 @@ pub fn parse_all_with_options(
             line: 0,
             col: 0,
         })?;
+
+    // Check for duplicate key error
+    if let Some(err) = receiver.duplicate_key_error {
+        return Err(err);
+    }
 
     if receiver.max_depth_exceeded {
         return Err(ParseErrorDetail {
@@ -224,6 +248,10 @@ struct AstReceiver<'a> {
     max_depth: usize,
     /// Set to true when the maximum nesting depth is exceeded
     max_depth_exceeded: bool,
+    /// When false, duplicate mapping keys cause a parse error
+    allow_duplicate_keys: bool,
+    /// Stored duplicate key error (since on_event can't return Result)
+    duplicate_key_error: Option<ParseErrorDetail>,
 }
 
 #[derive(Debug)]
@@ -251,6 +279,7 @@ impl<'a> AstReceiver<'a> {
         raw_comments: Vec<RawComment>,
         raw_anchors: Vec<RawAnchor>,
         max_depth: usize,
+        allow_duplicate_keys: bool,
     ) -> Self {
         // Pre-compute line start offsets for O(1) line access
         Self {
@@ -264,6 +293,8 @@ impl<'a> AstReceiver<'a> {
             pending_standalone_comment: None,
             max_depth,
             max_depth_exceeded: false,
+            allow_duplicate_keys,
+            duplicate_key_error: None,
         }
     }
 
@@ -330,22 +361,34 @@ impl<'a> AstReceiver<'a> {
     /// Push a node to the current context
     fn push_node(&mut self, node: CustomNode) {
         match self.stack.last_mut() {
-            Some(ParseState::Mapping { current_key, .. }) => {
+            Some(ParseState::Mapping {
+                current_key, pairs, ..
+            }) => {
                 if current_key.is_none() {
-                    // This is a key
                     **current_key = Some(node);
                 } else if let Some(key) = current_key.take() {
-                    // This is a value - insert the pair
-                    if let Some(ParseState::Mapping { pairs, .. }) = self.stack.last_mut() {
-                        pairs.insert(key, node);
+                    if !self.max_depth_exceeded
+                        && !self.allow_duplicate_keys
+                        && pairs.contains_key(&key)
+                    {
+                        let key_str = match &key {
+                            CustomNode::Scalar { value, .. } => value.clone(),
+                            _ => format!("{:?}", key),
+                        };
+                        self.duplicate_key_error = Some(ParseErrorDetail {
+                            message: format!("duplicate key: {}", key_str),
+                            line: 0,
+                            col: 0,
+                        });
+                        return;
                     }
+                    pairs.insert(key, node);
                 }
             }
             Some(ParseState::Sequence { items, .. }) => {
                 items.push(node);
             }
             None => {
-                // Top level
                 self.result = Some(node);
             }
         }

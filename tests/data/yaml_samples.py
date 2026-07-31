@@ -114,6 +114,7 @@ INVALID_JSON = "{invalid json"
 # --- Edge case samples ---
 CRLF_LINE_ENDINGS = "key: value\r\nlist:\r\n  - a\r\n  - b"
 DUPLICATE_KEYS = "key: first\nkey: second"
+DUPLICATE_KEYS_OVERRIDE = "key: first\nkey: second"
 EMPTY_VALUE = "key:"
 NESTED_SEQUENCE = "- - nested1\n  - nested2\n- top"
 SEQUENCE_SINGLE = "- a"
