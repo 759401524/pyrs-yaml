@@ -89,20 +89,14 @@ class Node:
     def to_yaml(self) -> str:
         """Serialize this subtree to YAML string."""
         resolved = self._resolve()
-        if isinstance(resolved, str):
-            return resolved + "\n"
-        if isinstance(resolved, (int, float, bool)):
-            return str(resolved) + "\n"
+        if isinstance(resolved, (dict, list)):
+            from pyrs_yaml import from_dict
+
+            return from_dict(resolved)
         if resolved is None:
             return "null\n"
-        if isinstance(resolved, list):
-            from pyrs_yaml import from_dict
-
-            return from_dict(resolved).to_yaml()
-        if isinstance(resolved, dict):
-            from pyrs_yaml import from_dict
-
-            return from_dict(resolved).to_yaml()
+        if isinstance(resolved, str):
+            return resolved + "\n"
         return str(resolved) + "\n"
 
     @property

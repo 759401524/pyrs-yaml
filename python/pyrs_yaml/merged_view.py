@@ -18,7 +18,11 @@ class MergedView(Mapping):
     """
 
     def __init__(self, document):
-        self._data = document.to_dict()
+        data = document.to_dict()
+        if isinstance(data, list):
+            self._data = {i: item for i, item in enumerate(data)}
+        else:
+            self._data = data
 
     def __getitem__(self, key):
         return self._wrap(self._data[key])
@@ -33,7 +37,6 @@ class MergedView(Mapping):
         return f"MergedView({self._data!r})"
 
     def _wrap(self, value):
-        """Wrap a value in a MergedView if it's a dict, or a MergedList if it's a list."""
         if isinstance(value, dict):
             return MergedView._DictView(value)
         if isinstance(value, list):
