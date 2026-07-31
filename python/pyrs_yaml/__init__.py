@@ -18,6 +18,7 @@ from .async_dump import (
     safe_load_async,
     safe_loads_async,
 )
+from .merged_view import MergedView
 from .node import Node, YamlDocumentError
 from .pyrs_yaml import (
     YAML,
@@ -64,8 +65,18 @@ def _yaml_document_find(self, path):
 YamlDocument.node = _yaml_document_node
 YamlDocument.find = _yaml_document_find
 
+
+def _yaml_document_merged(self):
+    from .merged_view import MergedView
+
+    return MergedView(self)
+
+
+YamlDocument.merged = _yaml_document_merged
+
 __all__ = [
     "YAML",
+    "MergedView",
     "Node",
     "StreamIterator",
     "YamlDocument",
