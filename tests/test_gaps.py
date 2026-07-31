@@ -679,23 +679,17 @@ production:
     def test_yaml_suite_special_floats(self, yaml, check):
         assert check(pyrs_yaml.parse(yaml).get("value"))
 
-    @pytest.mark.parametrize(
-        "variants,expected",
-        [
-            (["true", "True", "TRUE"], True),
-            (["false", "False", "FALSE"], False),
-        ],
-        ids=["bool-true", "bool-false"],
-    )
-    def test_yaml_suite_bool_variants(self, variants, expected):
-        for variant in variants:
-            doc = pyrs_yaml.parse(f"key: {variant}")
-            assert doc.get("key") is expected, f"Failed for {variant}"
+    @pytest.mark.parametrize("variant", ["true", "True", "TRUE"], ids=["true", "True", "TRUE"])
+    def test_parses_bool_true_variant(self, variant):
+        assert pyrs_yaml.parse(f"key: {variant}").get("key") is True
 
-    def test_yaml_suite_null_variants(self):
-        for variant in ["null", "Null", "NULL", "~"]:
-            doc = pyrs_yaml.parse(f"key: {variant}")
-            assert doc.get("key") is None, f"Failed for {variant}"
+    @pytest.mark.parametrize("variant", ["false", "False", "FALSE"], ids=["false", "False", "FALSE"])
+    def test_parses_bool_false_variant(self, variant):
+        assert pyrs_yaml.parse(f"key: {variant}").get("key") is False
+
+    @pytest.mark.parametrize("variant", ["null", "Null", "NULL", "~"], ids=["null", "Null", "NULL", "tilde"])
+    def test_parses_null_variant(self, variant):
+        assert pyrs_yaml.parse(f"key: {variant}").get("key") is None
 
     def test_yaml_suite_merge_key(self):
         yaml_str = """
