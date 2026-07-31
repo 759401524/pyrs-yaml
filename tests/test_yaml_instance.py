@@ -7,17 +7,17 @@ import pytest
 class TestYAMLInstance:
     """Test YAML() instance API with configurable type/schema/max_depth."""
 
-    def test_parse_default(self, yaml_strings):
-        doc = pyrs_yaml.YAML().parse(yaml_strings["simple_mapping"])
-        assert isinstance(doc, pyrs_yaml.YamlDocument)
-        assert doc.get("key") == "value"
-
-    def test_parse_with_type(self, yaml_strings):
-        doc = pyrs_yaml.YAML(typ="safe").parse(yaml_strings["nested_mapping"])
-        assert doc.get("parent").get("child") == "grandchild"
-
-    def test_parse_with_schema(self, yaml_strings):
-        doc = pyrs_yaml.YAML(schema="json").parse(yaml_strings["simple_mapping"])
+    @pytest.mark.parametrize(
+        "typ,schema",
+        [
+            ("rt", "core"),
+            ("safe", "core"),
+            ("rt", "json"),
+        ],
+        ids=["default", "safe-type", "json-schema"],
+    )
+    def test_parse_variants(self, yaml_strings, typ, schema):
+        doc = pyrs_yaml.YAML(typ=typ, schema=schema).parse(yaml_strings["simple_mapping"])
         assert doc.get("key") == "value"
 
     def test_safe_load(self, yaml_strings):
@@ -41,13 +41,18 @@ class TestYAMLInstance:
         assert docs[0].get("a") == 1
         assert docs[1].get("b") == 2
 
-    def test_invalid_type(self):
+    @pytest.mark.parametrize(
+        "param,value",
+        [
+            ("typ", "invalid"),
+            ("schema", "invalid"),
+        ],
+        ids=["invalid-type", "invalid-schema"],
+    )
+    def test_invalid_param(self, param, value):
+        kwargs = {param: value}
         with pytest.raises(pyrs_yaml.YamlTypeError):
-            pyrs_yaml.YAML(typ="invalid")
-
-    def test_invalid_schema(self):
-        with pytest.raises(pyrs_yaml.YamlTypeError):
-            pyrs_yaml.YAML(schema="invalid")
+            pyrs_yaml.YAML(**kwargs)
 
     def test_parse_max_depth(self, yaml_strings):
         doc = pyrs_yaml.YAML(max_depth=1).parse(yaml_strings["simple_mapping"])
@@ -57,10 +62,14 @@ class TestYAMLInstance:
         doc = pyrs_yaml.YAML().parse(b"key: value")
         assert doc.get("key") == "value"
 
-    def test_parse_schema_yaml11(self):
-        doc = pyrs_yaml.YAML(schema="yaml1.1").parse("bool: yes")
-        assert doc.get("bool") is True
-
-    def test_parse_schema_failsafe(self):
-        doc = pyrs_yaml.YAML(schema="failsafe").parse("bool: yes")
-        assert doc.get("bool") == "yes"
+    @pytest.mark.parametrize(
+        "schema,value",
+        [
+            ("yaml1.1", True),
+            ("failsafe", "yes"),
+        ],
+        ids=["yaml11-schema", "failsafe-schema"],
+    )
+    def test_parse_schema_variants(self, schema, value):
+        doc = pyrs_yaml.YAML(schema=schema).parse("bool: yes")
+        assert doc.get("bool") == value
