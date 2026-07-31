@@ -10,9 +10,11 @@ parse_all_docs and parse_stream.
 
 import io
 
-import numpy as np
 import pyrs_yaml
 import pytest
+
+pytest.importorskip("numpy")
+import numpy as np
 
 pytestmark = pytest.mark.benchmark
 

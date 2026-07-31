@@ -4,6 +4,27 @@ from pathlib import Path
 import pyrs_yaml
 import pytest
 
+BENCHMARK_PATHS = [
+    "tests/test_benchmark_api.py",
+    "tests/test_benchmark_crosslib.py",
+    "tests/test_performance.py",
+]
+
+
+def pytest_collection_modifyitems(config, items):
+    if "--codspeed" not in config.invocation_params.args:
+        deselected = []
+        selected = []
+        for item in items:
+            is_benchmark = any(path in item.nodeid for path in BENCHMARK_PATHS)
+            if is_benchmark:
+                deselected.append(item)
+            else:
+                selected.append(item)
+        if deselected:
+            config.hook.pytest_deselected(items=deselected)
+            items[:] = selected
+
 
 @pytest.fixture(autouse=True)
 def reset_language():

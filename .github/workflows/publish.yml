@@ -23,8 +23,6 @@ jobs:
           - runner: ubuntu-22.04
             target: aarch64
           - runner: ubuntu-22.04
-            target: armv7
-          - runner: ubuntu-22.04
             target: s390x
           - runner: ubuntu-22.04
             target: ppc64le
@@ -69,7 +67,7 @@ jobs:
             set -e
             python3 -m venv .venv
             source .venv/bin/activate
-            pip install -r .ci/requirements-test-lite.txt pyrs-yaml --find-links dist --force-reinstall
+            pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --force-reinstall
             pytest tests/ -v
 
   musllinux:
@@ -108,7 +106,7 @@ jobs:
             apk add py3-pip py3-virtualenv
             python3 -m virtualenv .venv
             source .venv/bin/activate
-            pip install -r .ci/requirements-test-lite.txt pyrs-yaml --find-links dist --force-reinstall
+            pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --force-reinstall
             pytest tests/ -v
           '
       - name: pytest
@@ -123,7 +121,7 @@ jobs:
             set -e
             python3 -m virtualenv .venv
             source .venv/bin/activate
-            pip install -r .ci/requirements-test-lite.txt pyrs-yaml --find-links dist --force-reinstall
+            pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --force-reinstall
             pytest tests/ -v
 
   windows:

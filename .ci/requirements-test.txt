@@ -1,10 +1,8 @@
 pytest>=8.0
 pytest-asyncio>=0.23
 pytest-codspeed>=2.0
-numpy>=1.16.0
+numpy>=1.16.0; python_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 's390x' and platform_machine != 'ppc64le'
 PyYAML>=6.0
 ruamel-yaml>=0.18.16
-ryaml>=0.5.0; python_version >= '3.10'
-yaml-edit>=0.1.2; python_version >= '3.10'
 jsonschema>=4.25.1; python_version >= "3.9"
 jsonschema>=4.18.0,<4.25.1; python_version < "3.9"

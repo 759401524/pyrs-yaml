@@ -11,7 +11,14 @@ from typing import Optional
 
 import pyrs_yaml
 import pytest
-import yaml
+
+try:
+    import yaml
+
+    HAS_PYYAML = True
+except ImportError:
+    HAS_PYYAML = False
+    yaml = None
 
 
 def convert_special_chars(text: str) -> str:
@@ -44,6 +51,8 @@ def convert_special_chars(text: str) -> str:
 
 def load_test_cases(suite_dir: str) -> list:
     """Load all test cases from the YAML test suite"""
+    if not HAS_PYYAML:
+        return []
     test_cases = []
     src_dir = Path(suite_dir) / "src"
 
@@ -189,6 +198,7 @@ SUITE_DIR = "Reference/yaml-test-suite"
 
 
 @pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_yaml_suite_parse_rate():
     """Test that parse success rate meets threshold (>= 95% for valid tests)."""
     test_cases = load_test_cases(SUITE_DIR)
@@ -208,6 +218,7 @@ def test_yaml_suite_parse_rate():
 
 
 @pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_yaml_suite_invalid_rejected():
     """Test that invalid YAML is correctly rejected."""
     test_cases = load_test_cases(SUITE_DIR)
@@ -227,6 +238,7 @@ def test_yaml_suite_invalid_rejected():
 
 
 @pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_yaml_suite_json_match():
     """Test JSON comparison against expected output."""
     test_cases = load_test_cases(SUITE_DIR)
@@ -243,6 +255,7 @@ def test_yaml_suite_json_match():
 
 
 @pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_compliance_report():
     """Print compliance percentage to stdout."""
     report = compute_compliance()
