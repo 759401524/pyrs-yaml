@@ -34,6 +34,9 @@ classifiers = [
     "Topic :: Text Processing :: Markup",
 ]
 
+[project.optional-dependencies]
+pydantic = ["pydantic>=2.10.6"]
+
 [project.urls]
 Homepage = "https://github.com/759401524/pyrs-yaml"
 Documentation = "https://759401524.github.io/pyrs-yaml"

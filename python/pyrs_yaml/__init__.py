@@ -20,6 +20,7 @@ from .async_dump import (
 )
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
+from .pydantic import parse_as
 from .pyrs_yaml import (
     YAML,
     StreamIterator,
@@ -131,6 +132,7 @@ __all__ = [
     "negotiate_language",
     "parse",
     "parse_all_docs",
+    "parse_as",
     "parse_file",
     "parse_stream",
     "read_markdown",
