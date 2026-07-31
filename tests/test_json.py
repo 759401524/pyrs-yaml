@@ -1,63 +1,44 @@
-"""
-JSON/YAML conversion tests — from_dict, from_json.
-"""
+"""JSON/YAML conversion tests — from_dict, from_json."""
 
 import pyrs_yaml
 import pytest
-
-# ============================================================================
-# From Dict
-# ============================================================================
 
 
 class TestFromDict:
     """Test from_dict function"""
 
-    def test_from_dict_simple(self):
-        data = {"name": "John", "age": 30}
+    @pytest.mark.parametrize(
+        "data,checks",
+        [
+            ({"name": "John", "age": 30}, ["name: John", "30"]),
+            ({"app": {"name": "myapp", "version": "1.0"}}, ["app:", "name: myapp"]),
+            ({"items": [1, 2, 3]}, ["- 1", "- 2"]),
+        ],
+        ids=["simple", "nested", "list"],
+    )
+    def test_converts_dict_to_yaml(self, data, checks):
         yaml_str = pyrs_yaml.from_dict(data)
-        assert "name: John" in yaml_str
-        assert "30" in yaml_str
-
-    def test_from_dict_nested(self):
-        data = {"app": {"name": "myapp", "version": "1.0"}}
-        yaml_str = pyrs_yaml.from_dict(data)
-        assert "app:" in yaml_str
-        assert "name: myapp" in yaml_str
-
-    def test_from_dict_list(self):
-        data = {"items": [1, 2, 3]}
-        yaml_str = pyrs_yaml.from_dict(data)
-        assert "- 1" in yaml_str
-        assert "- 2" in yaml_str
-
-
-# ============================================================================
-# From JSON
-# ============================================================================
+        for check in checks:
+            assert check in yaml_str
 
 
 class TestFromJson:
     """Test from_json function"""
 
-    def test_from_json_simple(self):
-        json_str = '{"name": "Alice", "active": true}'
+    @pytest.mark.parametrize(
+        "json_str,checks",
+        [
+            ('{"name": "Alice", "active": true}', ["name: Alice", "active: true"]),
+            ('{"db": {"host": "localhost", "port": 5432}}', ["db:", "host: localhost"]),
+            ('{"items": [1, 2, 3]}', ["- 1"]),
+        ],
+        ids=["simple", "nested", "array"],
+    )
+    def test_converts_json_to_yaml(self, json_str, checks):
         yaml_str = pyrs_yaml.from_json(json_str)
-        assert "name: Alice" in yaml_str
-        assert "active: true" in yaml_str
+        for check in checks:
+            assert check in yaml_str
 
-    def test_from_json_nested(self):
-        json_str = '{"db": {"host": "localhost", "port": 5432}}'
-        yaml_str = pyrs_yaml.from_json(json_str)
-        assert "db:" in yaml_str
-        assert "host: localhost" in yaml_str
-
-    def test_from_json_array(self):
-        json_str = '{"items": [1, 2, 3]}'
-        yaml_str = pyrs_yaml.from_json(json_str)
-        assert "- 1" in yaml_str
-
-    def test_from_json_invalid(self):
-        """Invalid JSON raises YamlParseError."""
+    def test_rejects_invalid_json(self):
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.from_json("{invalid json}")
