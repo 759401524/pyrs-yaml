@@ -122,6 +122,7 @@ mod pyrs_yaml {
             ast,
             schema: schema_enum,
             source: Some(Arc::from(yaml_str)),
+            version: "1.2".to_string(),
         })
     }
 
@@ -267,6 +268,7 @@ mod pyrs_yaml {
                 ast,
                 schema: schema_enum,
                 source: Some(Arc::from(content)),
+                version: "1.2".to_string(),
             })
         }
 
@@ -304,6 +306,7 @@ mod pyrs_yaml {
                     ast,
                     schema: schema_enum,
                     source: Some(Arc::from(yaml)),
+                    version: "1.2".to_string(),
                 })
                 .collect())
         }
@@ -315,6 +318,7 @@ mod pyrs_yaml {
         ast: CustomNode,
         schema: YamlSchema,
         source: Option<Arc<str>>,
+        version: String,
     }
 
     #[pymethods]
@@ -490,6 +494,10 @@ mod pyrs_yaml {
             self.source.as_deref()
         }
 
+        fn version(&self) -> &str {
+            &self.version
+        }
+
         #[pyo3(signature = (resolve_merges: "bool" = true, schema: "str" = "core") -> "None")]
         fn reparse(&mut self, py: Python, resolve_merges: bool, schema: &str) -> PyResult<()> {
             let source = self.source.as_ref().ok_or_else(|| {
@@ -605,6 +613,7 @@ mod pyrs_yaml {
             ast,
             schema: schema_enum,
             source: Some(Arc::from(content)),
+            version: "1.2".to_string(),
         })
     }
 
@@ -643,6 +652,7 @@ mod pyrs_yaml {
                 ast,
                 schema: schema_enum,
                 source: Some(Arc::from(yaml)),
+                version: "1.2".to_string(),
             })
             .collect())
     }

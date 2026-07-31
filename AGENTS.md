@@ -94,10 +94,39 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 - Use `git commit --no-verify` to bypass prek hooks
 - Edit `.pyi` files manually instead of regenerating via maturin
 
-## Git
+## Git Workflow and Engineering Conventions
 
-- Stage with `git add <file>` (never `git add -A`)
-- Commit triggers prek hooks (fmt, clippy, ruff)
-- If hooks fail, fix and re-commit — do not use `--no-verify`
-- Push only after all hooks pass
-- PR merge only after CI passes — do not merge until all CI checks are green
+This section delineates the core principles governing version control, commit quality, and merge processes. All automated agents and developers are required to strictly adhere to these conventions to maintain repository integrity, traceability, and overall engineering excellence.
+
+### 1. Staging and Committing
+
+- **Explicit Staging**: Files must be staged explicitly using `git add <file>`. The use of `git add -A` or `git add .` for indiscriminate bulk staging is **strictly prohibited** to prevent the accidental inclusion of unrelated modifications or sensitive data.
+- **Standardized Commits**: Commit operations will automatically trigger local pre-commit hooks. Commit messages must strictly conform to established conventions (e.g., Conventional Commits) to ensure semantic clarity and structural consistency.
+
+### 2. Quality Gates
+
+- **Hook Enforcement**: Pre-commit hooks executed during the commit phase encompass code formatting and static analysis tools (e.g., `fmt`, `clippy`, `ruff`).
+- **Failure Resolution**: In the event of hook failures, the underlying issues must be rectified prior to re-committing. The utilization of `git commit --no-verify` to bypass quality checks is **strictly forbidden**.
+
+### 3. Pushing and Merging
+
+- **Secure Pushing**: Code may be pushed to the remote repository **only** after all local pre-commit hooks have passed successfully.
+- **CI Prerequisite**: Achieving a passing (green) status across all Continuous Integration (CI) pipeline checks is a **mandatory prerequisite** for merging a Pull Request (PR). This is a necessary condition, not a sufficient one: while a merge is strictly prohibited until all CI checks are green, passing CI does not automatically authorize or mandate the merge (e.g., peer review or architectural approval may still be required).
+
+### 4. Commit Message Convention
+
+Commit messages must adhere to the following standardized structure to ensure semantic clarity and machine parsability:
+
+```text
+<type>(<scope>): <subject>
+// blank line
+<body>
+// blank line
+<footer>
+```
+
+- **type** (Mandatory): Specifies the category of the commit (e.g., `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`).
+- **scope** (Optional): Denotes the specific module, component, or file affected by the commit.
+- **subject** (Mandatory): A concise description of the core changes, not exceeding 50 characters.
+- **body** (Optional): Provides detailed context regarding the motivation for the change and a comparison with previous behavior.
+- **footer** (Optional): Used for referencing issues (e.g., `Closes #123`) or denoting breaking changes (`BREAKING CHANGE`).
