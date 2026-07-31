@@ -5,7 +5,9 @@ Provides a Node class that wraps a YamlDocument and a path, enabling
 tree traversal, query, and mutation operations.
 """
 
-from typing import Any, Callable, Iterator, Optional
+from __future__ import annotations
+
+from typing import Any, Callable, Iterator
 
 
 class YamlDocumentError(Exception):
@@ -51,7 +53,7 @@ class Node:
         return "scalar"
 
     @property
-    def value(self) -> Optional[Any]:
+    def value(self) -> Any | None:
         """Get the scalar value of this node. None for non-scalars."""
         if self.root_type not in ("scalar", "null"):
             return None
@@ -77,14 +79,14 @@ class Node:
         return str(resolved) + "\n"
 
     @property
-    def parent(self) -> Optional["Node"]:
+    def parent(self) -> Node | None:
         """Get the parent Node, or None if this is the root."""
         if not self._path:
             return None
         return Node(self._doc, self._path[:-1])
 
     @property
-    def children(self) -> list["Node"]:
+    def children(self) -> list[Node]:
         """Get the child nodes of this node."""
         resolved = self._resolve()
         if isinstance(resolved, dict):
@@ -93,13 +95,13 @@ class Node:
             return [Node(self._doc, (*self._path, i)) for i in range(len(resolved))]
         return []
 
-    def walk(self) -> Iterator["Node"]:
+    def walk(self) -> Iterator[Node]:
         """Walk all descendant nodes (depth-first pre-order)."""
         yield self
         for child in self.children:
             yield from child.walk()
 
-    def filter(self, predicate: Callable[["Node"], bool]) -> list["Node"]:
+    def filter(self, predicate: Callable[[Node], bool]) -> list[Node]:
         """Filter descendant nodes by a predicate function."""
         return [node for node in self.walk() if predicate(node)]
 
