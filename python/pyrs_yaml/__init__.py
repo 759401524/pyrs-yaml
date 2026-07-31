@@ -28,8 +28,10 @@ from .pyrs_yaml import (
     YamlMaxDepthError,
     YamlParseError,
     YamlSerializeError,
+    YamlTagError,
     YamlTypeError,
     YamlValidateError,
+    clear_tag_handlers,
     detect_language,
     dump_file,
     from_dict,
@@ -48,6 +50,29 @@ from .pyrs_yaml import (
     safe_loads,
     set_language,
 )
+from .pyrs_yaml import register_tag as _rust_register_tag
+
+
+def register_tag(name, handler=None):
+    """Register a tag handler.
+
+    Supports both decorator and imperative forms:
+        @register_tag("!custom")
+        def handler(node):
+            ...
+
+        register_tag("!custom", handler_fn)
+    """
+    if handler is not None:
+        _rust_register_tag(name, handler)
+        return handler
+
+    # Decorator form
+    def decorator(fn):
+        _rust_register_tag(name, fn)
+        return fn
+
+    return decorator
 
 
 # Monkey-patch YamlDocument with node() and find() methods
@@ -86,8 +111,10 @@ __all__ = [
     "YamlMaxDepthError",
     "YamlParseError",
     "YamlSerializeError",
+    "YamlTagError",
     "YamlTypeError",
     "YamlValidateError",
+    "clear_tag_handlers",
     "detect_language",
     "dump_file",
     "from_dict",
@@ -101,6 +128,7 @@ __all__ = [
     "parse_stream",
     "read_markdown",
     "read_markdown_str",
+    "register_tag",
     "safe_dump",
     "safe_dump_async",
     "safe_load",

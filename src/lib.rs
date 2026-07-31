@@ -29,3 +29,4 @@ pyo3::create_exception!(
     YamlDuplicateKeyError,
     pyo3::exceptions::PyValueError
 );
+pyo3::create_exception!(pyrs_yaml, YamlTagError, pyo3::exceptions::PyValueError);

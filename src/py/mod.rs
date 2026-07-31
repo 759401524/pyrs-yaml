@@ -3,6 +3,7 @@
 
 pub mod convert;
 pub mod stream_events;
+pub mod tag_registry;
 
 #[cfg(feature = "numpy")]
 pub mod ndarray;
@@ -72,6 +73,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     use crate::YamlSerializeError;
     #[pymodule_export]
+    use crate::YamlTagError;
+    #[pymodule_export]
     use crate::YamlTypeError;
     #[pymodule_export]
     use crate::YamlValidateError;
@@ -102,7 +105,7 @@ mod pyrs_yaml {
         };
 
         let schema_enum = parse_schema(schema)?;
-        let ast = py.detach(|| {
+        let mut ast = py.detach(|| {
             crate::parser::parse_with_options(
                 &yaml_str,
                 resolve_merges,
@@ -129,12 +132,57 @@ mod pyrs_yaml {
                 }
             })
         })?;
+        resolve_tags(&mut ast, py)?;
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
             source: Some(Arc::from(yaml_str)),
             version: "1.2".to_string(),
         })
+    }
+
+    fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) -> PyResult<()> {
+        use self::tag_registry::get_handlers;
+        match node {
+            crate::ast::CustomNode::Scalar {
+                tag: Some(t),
+                value,
+                ..
+            } => {
+                let tag_name = t.to_string();
+                if let Some(handlers) = get_handlers(&tag_name, py) {
+                    if let Some((_priority, handler)) = handlers.first() {
+                        match handler.call1(py, (value.clone(),)) {
+                            Ok(result) => {
+                                if let Ok(s) = result.extract::<String>(py) {
+                                    *value = s;
+                                }
+                            }
+                            Err(e) => {
+                                return Err(YamlTagError::new_err(format!(
+                                    "Tag handler '{}' failed: {}",
+                                    tag_name, e
+                                )));
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
+            crate::ast::CustomNode::Mapping { pairs, .. } => {
+                for (_, v) in pairs.iter_mut() {
+                    resolve_tags(v, py)?;
+                }
+                Ok(())
+            }
+            crate::ast::CustomNode::Sequence { items, .. } => {
+                for item in items.iter_mut() {
+                    resolve_tags(item, py)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 
     // ---- YAML instance API ----
@@ -655,7 +703,7 @@ mod pyrs_yaml {
                 &[("detail", &e.to_string()), ("path", path)],
             ))
         })?;
-        let ast = py.detach(|| {
+        let mut ast = py.detach(|| {
             crate::parser::parse_with_options(
                 &content,
                 true,
@@ -682,6 +730,7 @@ mod pyrs_yaml {
                 }
             })
         })?;
+        resolve_tags(&mut ast, py)?;
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
@@ -749,7 +798,7 @@ mod pyrs_yaml {
         allow_duplicate_keys: bool,
     ) -> PyResult<Py<PyAny>> {
         let schema_enum = parse_schema(schema)?;
-        let ast = py.detach(|| {
+        let mut ast = py.detach(|| {
             crate::parser::parse_with_options(
                 yaml,
                 true,
@@ -776,6 +825,7 @@ mod pyrs_yaml {
                 }
             })
         })?;
+        resolve_tags(&mut ast, py)?;
         let mut anchors = HashMap::new();
         collect_anchors(&ast, &mut anchors);
         let mut visited = HashSet::new();
@@ -1063,6 +1113,17 @@ mod pyrs_yaml {
         let locales: Vec<String> = user_locales.extract()?;
         let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
         Ok(crate::i18n::negotiate_language(&refs, default).to_string())
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (name: "str", handler: "Py<PyAny>"))]
+    fn register_tag(name: &str, handler: Py<PyAny>) {
+        tag_registry::register(name, handler, 0);
+    }
+
+    #[pyfunction]
+    fn clear_tag_handlers() {
+        tag_registry::clear_all();
     }
 }
 
