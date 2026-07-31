@@ -18,6 +18,7 @@ from .async_dump import (
     safe_load_async,
     safe_loads_async,
 )
+from .node import Node, YamlDocumentError
 from .pyrs_yaml import (
     YAML,
     StreamIterator,
@@ -46,10 +47,29 @@ from .pyrs_yaml import (
     set_language,
 )
 
+
+# Monkey-patch YamlDocument with node() and find() methods
+def _yaml_document_node(self):
+    from .node import Node
+
+    return Node(self)
+
+
+def _yaml_document_find(self, path):
+    from .node import Node
+
+    return Node(self).find(path)
+
+
+YamlDocument.node = _yaml_document_node
+YamlDocument.find = _yaml_document_find
+
 __all__ = [
     "YAML",
+    "Node",
     "StreamIterator",
     "YamlDocument",
+    "YamlDocumentError",
     "YamlMaxDepthError",
     "YamlParseError",
     "YamlSerializeError",
