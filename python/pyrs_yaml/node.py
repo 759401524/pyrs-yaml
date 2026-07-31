@@ -7,6 +7,7 @@ tree traversal, query, and mutation operations.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable, Iterator
 
 
@@ -24,13 +25,30 @@ class Node:
     def __init__(self, document: Any, path: tuple = ()):
         self._doc = document
         self._path = path
+        self._alive = True
 
     def _get_doc(self) -> Any:
+        if not self._alive:
+            warnings.warn(
+                "Accessing a stale Node whose parent YamlDocument has been released",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+            raise YamlDocumentError("parent document has been released")
+        if self._doc is None:
+            self._alive = False
+            warnings.warn(
+                "Accessing a stale Node whose parent YamlDocument has been released",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+            raise YamlDocumentError("parent document has been released")
         return self._doc
 
     def _resolve(self) -> Any:
         """Navigate from the document root through the path to get the value."""
-        data = self._doc.to_dict()
+        doc = self._get_doc()
+        data = doc.to_dict()
         current = data
         for segment in self._path:
             current = current[segment]
@@ -38,7 +56,16 @@ class Node:
 
     def is_valid(self) -> bool:
         """Check if the parent document is still alive."""
-        return True
+        return self._alive and self._doc is not None
+
+    def release(self) -> None:
+        """Release the reference to the parent document, marking this node as stale.
+
+        After calling release(), any access to this node will emit a RuntimeWarning
+        and raise YamlDocumentError.
+        """
+        self._alive = False
+        self._doc = None
 
     @property
     def root_type(self) -> str:
@@ -144,15 +171,17 @@ class Node:
         return current
 
     def __repr__(self) -> str:
+        if not self._alive:
+            return "Node(released)"
         try:
             return f"Node(root_type={self.root_type}, path={self._path})"
-        except YamlDocumentError:
+        except (YamlDocumentError, Exception):
             return "Node(invalid)"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Node):
             return NotImplemented
-        return self._path == other._path and self._doc is other._doc
+        return self._path == other._path and self._doc is other._doc and self._alive == other._alive
 
 
 def _parse_jsonpath(path: str) -> list:
