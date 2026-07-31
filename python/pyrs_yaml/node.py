@@ -7,6 +7,7 @@ tree traversal, query, and mutation operations.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable, Iterator
 
 
@@ -24,13 +25,30 @@ class Node:
     def __init__(self, document: Any, path: tuple = ()):
         self._doc = document
         self._path = path
+        self._alive = True
 
     def _get_doc(self) -> Any:
+        if not self._alive:
+            warnings.warn(
+                "Accessing a stale Node whose parent YamlDocument has been released",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+            raise YamlDocumentError("parent document has been released")
+        if self._doc is None:
+            self._alive = False
+            warnings.warn(
+                "Accessing a stale Node whose parent YamlDocument has been released",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+            raise YamlDocumentError("parent document has been released")
         return self._doc
 
     def _resolve(self) -> Any:
         """Navigate from the document root through the path to get the value."""
-        data = self._doc.to_dict()
+        doc = self._get_doc()
+        data = doc.to_dict()
         current = data
         for segment in self._path:
             current = current[segment]
@@ -38,7 +56,16 @@ class Node:
 
     def is_valid(self) -> bool:
         """Check if the parent document is still alive."""
-        return True
+        return self._alive and self._doc is not None
+
+    def release(self) -> None:
+        """Release the reference to the parent document, marking this node as stale.
+
+        After calling release(), any access to this node will emit a RuntimeWarning
+        and raise YamlDocumentError.
+        """
+        self._alive = False
+        self._doc = None
 
     @property
     def root_type(self) -> str:
@@ -62,20 +89,14 @@ class Node:
     def to_yaml(self) -> str:
         """Serialize this subtree to YAML string."""
         resolved = self._resolve()
-        if isinstance(resolved, str):
-            return resolved + "\n"
-        if isinstance(resolved, (int, float, bool)):
-            return str(resolved) + "\n"
+        if isinstance(resolved, (dict, list)):
+            from pyrs_yaml import from_dict
+
+            return from_dict(resolved)
         if resolved is None:
             return "null\n"
-        if isinstance(resolved, list):
-            from pyrs_yaml import from_dict
-
-            return from_dict(resolved).to_yaml()
-        if isinstance(resolved, dict):
-            from pyrs_yaml import from_dict
-
-            return from_dict(resolved).to_yaml()
+        if isinstance(resolved, str):
+            return resolved + "\n"
         return str(resolved) + "\n"
 
     @property
@@ -118,20 +139,19 @@ class Node:
         segments = _parse_jsonpath(path)
         current = self
         for seg in segments:
-            if isinstance(seg, str):
-                doc = current._get_doc()
-                val_path = (*current._path, seg)
-                current = Node(doc, val_path)
-            elif isinstance(seg, int):
+            if isinstance(seg, int):
                 doc = current._get_doc()
                 idx_path = (*current._path, seg)
                 current = Node(doc, idx_path)
             elif seg == "*":
                 children = current.children
                 return [Node(current._get_doc(), child._path) for child in children]
-            elif seg.startswith(".."):
-                key = seg[2:]
+            elif isinstance(seg, str) and seg.startswith(".."):
                 doc = current._get_doc()
+                key = seg[2:]
+                if key == "*":
+                    all_nodes = list(current.walk())
+                    return [Node(doc, n._path) for n in all_nodes]
                 results = []
                 for node in current.walk():
                     try:
@@ -141,18 +161,24 @@ class Node:
                     except (KeyError, IndexError, TypeError):
                         continue
                 return results
+            elif isinstance(seg, str):
+                doc = current._get_doc()
+                val_path = (*current._path, seg)
+                current = Node(doc, val_path)
         return current
 
     def __repr__(self) -> str:
+        if not self._alive:
+            return "Node(released)"
         try:
             return f"Node(root_type={self.root_type}, path={self._path})"
-        except YamlDocumentError:
+        except (YamlDocumentError, Exception):
             return "Node(invalid)"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Node):
             return NotImplemented
-        return self._path == other._path and self._doc is other._doc
+        return self._path == other._path and self._doc is other._doc and self._alive == other._alive
 
 
 def _parse_jsonpath(path: str) -> list:
@@ -168,16 +194,27 @@ def _parse_jsonpath(path: str) -> list:
         raise ValueError("Path must start with $")
 
     rest = path[1:]
-    if rest.startswith("."):
+    # Remove the first dot after $, but preserve ..
+    if rest.startswith(".."):
+        rest = rest  # keep .. for deep scan
+    elif rest.startswith("."):
         rest = rest[1:]
 
     segments = []
     i = 0
     while i < len(rest):
-        if rest[i] == ".":
+        if i + 1 < len(rest) and rest[i] == "." and rest[i + 1] == ".":
+            # Deep scan (..)
+            i += 2
+            key = ""
+            while i < len(rest) and rest[i] not in (".", "["):
+                key += rest[i]
+                i += 1
+            segments.append(f"..{key}")
+        elif rest[i] == ".":
             i += 1
             continue
-        if rest[i] == "[":
+        elif rest[i] == "[":
             i += 1
             if i < len(rest) and rest[i] == "*":
                 segments.append("*")
@@ -192,13 +229,6 @@ def _parse_jsonpath(path: str) -> list:
             if i < len(rest) and rest[i] == "]":
                 i += 1
             segments.append(int(num))
-        elif i + 1 < len(rest) and rest[i] == "." and rest[i + 1] == ".":
-            i += 2
-            key = ""
-            while i < len(rest) and rest[i] not in (".", "["):
-                key += rest[i]
-                i += 1
-            segments.append(f"..{key}")
         else:
             key = ""
             while i < len(rest) and rest[i] not in (".", "["):
