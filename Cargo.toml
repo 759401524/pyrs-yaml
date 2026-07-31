@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-yaml"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 description = "High-performance Python YAML library with perfect round-trip support"
 license = "MIT OR Apache-2.0"
