@@ -74,6 +74,241 @@ mod pyrs_yaml {
     #[pymodule_export]
     use crate::YamlValidateError;
 
+    // ---- Helper: shared parse logic ----
+    fn parse_document(
+        py: Python,
+        yaml: &Bound<'_, PyAny>,
+        resolve_merges: bool,
+        schema: &str,
+        max_depth: usize,
+    ) -> PyResult<YamlDocument> {
+        let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
+            s
+        } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
+            String::from_utf8(bytes).map_err(|e| {
+                YamlParseError::new_err(format_i18n_error(
+                    "invalid-utf8",
+                    &[("detail", &e.to_string())],
+                ))
+            })?
+        } else {
+            return Err(YamlTypeError::new_err(format_i18n_error(
+                "expected-str-or-bytes",
+                &[],
+            )));
+        };
+
+        let schema_enum = parse_schema(schema)?;
+        let ast = py.detach(|| {
+            crate::parser::parse_with_options(&yaml_str, resolve_merges, schema_enum, max_depth)
+                .map_err(|e| {
+                    if e.message.contains("max depth exceeded") {
+                        YamlMaxDepthError::new_err(format_i18n_error(
+                            "max-depth-exceeded",
+                            &[("max_depth", &max_depth.to_string())],
+                        ))
+                    } else if e.line > 0 {
+                        let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
+                    } else {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.message)],
+                        ))
+                    }
+                })
+        })?;
+        Ok(YamlDocument {
+            ast,
+            schema: schema_enum,
+            source: Some(Arc::from(yaml_str)),
+        })
+    }
+
+    // ---- YAML instance API ----
+    #[pyclass]
+    #[allow(clippy::upper_case_acronyms)]
+    struct YAML {
+        yaml_type: String,
+        schema: String,
+        max_depth: usize,
+    }
+
+    #[pymethods]
+    impl YAML {
+        #[new]
+        #[pyo3(signature = (typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000))]
+        fn new(typ: &str, schema: &str, max_depth: usize) -> PyResult<Self> {
+            let valid_types = ["rt", "safe", "full"];
+            let valid_schemas = ["core", "yaml1.1", "failsafe", "json"];
+            if !valid_types.contains(&typ) {
+                return Err(YamlTypeError::new_err(format!(
+                    "Invalid YAML type: '{}'. Valid types: rt, safe, full",
+                    typ
+                )));
+            }
+            if !valid_schemas.contains(&schema) {
+                return Err(YamlTypeError::new_err(format!(
+                    "Invalid schema: '{}'. Valid schemas: core, yaml1.1, failsafe, json",
+                    schema
+                )));
+            }
+            Ok(YAML {
+                yaml_type: typ.to_string(),
+                schema: schema.to_string(),
+                max_depth,
+            })
+        }
+
+        #[pyo3(signature = (yaml: "str | bytes") -> "YamlDocument")]
+        fn parse(&self, py: Python, yaml: &Bound<'_, PyAny>) -> PyResult<YamlDocument> {
+            let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
+            parse_document(py, yaml, resolve_merges, &self.schema, self.max_depth)
+        }
+
+        #[pyo3(signature = (yaml: "str") -> "dict[str, Any] | list[Any]")]
+        fn safe_load(&self, py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
+            let schema_enum = parse_schema(&self.schema)?;
+            let ast = py.detach(|| {
+                crate::parser::parse_with_options(yaml, true, schema_enum, self.max_depth).map_err(
+                    |e| {
+                        if e.message.contains("max depth exceeded") {
+                            YamlMaxDepthError::new_err(format_i18n_error(
+                                "max-depth-exceeded",
+                                &[("max_depth", &self.max_depth.to_string())],
+                            ))
+                        } else if e.line > 0 {
+                            let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                            YamlParseError::new_err(msg)
+                        } else {
+                            YamlParseError::new_err(format_i18n_error(
+                                "yaml-parse-error",
+                                &[("detail", &e.message)],
+                            ))
+                        }
+                    },
+                )
+            })?;
+            let mut anchors = HashMap::new();
+            collect_anchors(&ast, &mut anchors);
+            let mut visited = HashSet::new();
+            node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
+        }
+
+        #[pyo3(signature = (yaml: "str") -> "list[dict[str, Any] | list[Any]]")]
+        fn safe_loads(&self, py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
+            let schema_enum = parse_schema(&self.schema)?;
+            let asts = py.detach(|| {
+                crate::parser::parse_all_with_options(yaml, true, schema_enum, self.max_depth)
+                    .map_err(|e| {
+                        if e.message.contains("max depth exceeded") {
+                            YamlMaxDepthError::new_err(format_i18n_error(
+                                "max-depth-exceeded",
+                                &[("max_depth", &self.max_depth.to_string())],
+                            ))
+                        } else if e.line > 0 {
+                            let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                            YamlParseError::new_err(msg)
+                        } else {
+                            YamlParseError::new_err(format_i18n_error(
+                                "yaml-parse-error",
+                                &[("detail", &e.message)],
+                            ))
+                        }
+                    })
+            })?;
+            let mut results = Vec::with_capacity(asts.len());
+            for ast in asts {
+                let mut anchors = HashMap::new();
+                collect_anchors(&ast, &mut anchors);
+                let mut visited = HashSet::new();
+                let obj =
+                    node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)?;
+                results.push(obj);
+            }
+            Ok(results)
+        }
+
+        #[pyo3(signature = (path: "str") -> "YamlDocument")]
+        fn parse_file(&self, py: Python, path: &str) -> PyResult<YamlDocument> {
+            let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
+            let schema_enum = parse_schema(&self.schema)?;
+            let content = std::fs::read_to_string(path).map_err(|e| {
+                pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                    "file-read-error",
+                    &[("detail", &e.to_string()), ("path", path)],
+                ))
+            })?;
+            let ast = py.detach(|| {
+                crate::parser::parse_with_options(
+                    &content,
+                    resolve_merges,
+                    schema_enum,
+                    self.max_depth,
+                )
+                .map_err(|e| {
+                    if e.message.contains("max depth exceeded") {
+                        YamlMaxDepthError::new_err(format_i18n_error(
+                            "max-depth-exceeded",
+                            &[("max_depth", &self.max_depth.to_string())],
+                        ))
+                    } else if e.line > 0 {
+                        let msg = format_source_snippet(&content, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
+                    } else {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.message)],
+                        ))
+                    }
+                })
+            })?;
+            Ok(YamlDocument {
+                ast,
+                schema: schema_enum,
+                source: Some(Arc::from(content)),
+            })
+        }
+
+        #[pyo3(signature = (yaml: "str") -> "list[YamlDocument]")]
+        fn parse_all_docs(&self, py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
+            let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
+            let schema_enum = parse_schema(&self.schema)?;
+            let asts = py.detach(|| {
+                crate::parser::parse_all_with_options(
+                    yaml,
+                    resolve_merges,
+                    schema_enum,
+                    self.max_depth,
+                )
+                .map_err(|e| {
+                    if e.message.contains("max depth exceeded") {
+                        YamlMaxDepthError::new_err(format_i18n_error(
+                            "max-depth-exceeded",
+                            &[("max_depth", &self.max_depth.to_string())],
+                        ))
+                    } else if e.line > 0 {
+                        let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
+                    } else {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.message)],
+                        ))
+                    }
+                })
+            })?;
+            Ok(asts
+                .into_iter()
+                .map(|ast| YamlDocument {
+                    ast,
+                    schema: schema_enum,
+                    source: Some(Arc::from(yaml)),
+                })
+                .collect())
+        }
+    }
+
     // ---- YamlDocument ----
     #[pyclass]
     struct YamlDocument {
@@ -330,47 +565,7 @@ mod pyrs_yaml {
         schema: &str,
         max_depth: usize,
     ) -> PyResult<YamlDocument> {
-        let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
-            s
-        } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
-            String::from_utf8(bytes).map_err(|e| {
-                YamlParseError::new_err(format_i18n_error(
-                    "invalid-utf8",
-                    &[("detail", &e.to_string())],
-                ))
-            })?
-        } else {
-            return Err(YamlTypeError::new_err(format_i18n_error(
-                "expected-str-or-bytes",
-                &[],
-            )));
-        };
-
-        let schema_enum = parse_schema(schema)?;
-        let ast = py.detach(|| {
-            crate::parser::parse_with_options(&yaml_str, resolve_merges, schema_enum, max_depth)
-                .map_err(|e| {
-                    if e.message.contains("max depth exceeded") {
-                        YamlMaxDepthError::new_err(format_i18n_error(
-                            "max-depth-exceeded",
-                            &[("max_depth", &max_depth.to_string())],
-                        ))
-                    } else if e.line > 0 {
-                        let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
-                        YamlParseError::new_err(msg)
-                    } else {
-                        YamlParseError::new_err(format_i18n_error(
-                            "yaml-parse-error",
-                            &[("detail", &e.message)],
-                        ))
-                    }
-                })
-        })?;
-        Ok(YamlDocument {
-            ast,
-            schema: schema_enum,
-            source: Some(Arc::from(yaml_str)),
-        })
+        parse_document(py, yaml, resolve_merges, schema, max_depth)
     }
 
     #[pyfunction]
