@@ -684,11 +684,11 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            self.revision = self.revision.wrapping_add(1);
             py.detach(|| editing::set_path(&mut self.ast, &segs, new_node, true))
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
+            self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
         }
@@ -707,11 +707,11 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            self.revision = self.revision.wrapping_add(1);
             py.detach(|| editing::insert_path(&mut self.ast, &segs, index, new_node))
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
+            self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
         }
@@ -729,11 +729,11 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            self.revision = self.revision.wrapping_add(1);
             py.detach(|| editing::append_path(&mut self.ast, &segs, new_node))
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
+            self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
         }
@@ -745,11 +745,11 @@ mod pyrs_yaml {
                 .map(|s| editing::Segment::from_py(py, s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-            self.revision = self.revision.wrapping_add(1);
             py.detach(|| editing::delete_path(&mut self.ast, &segs))
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
+            self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
         }
@@ -766,11 +766,11 @@ mod pyrs_yaml {
                 .map(|s| editing::Segment::from_py(py, s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-            self.revision = self.revision.wrapping_add(1);
             py.detach(|| editing::rename_path(&mut self.ast, &segs, new_key))
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
+            self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
         }

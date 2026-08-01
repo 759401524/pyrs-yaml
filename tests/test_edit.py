@@ -328,3 +328,49 @@ class TestYamlDocumentPathAPI:
         doc = pyrs_yaml.parse("a: 1\n")
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc.set("$.x.y", 3)
+
+
+class TestAliasAndMerge:
+    def test_set_alias_reference_replaces_in_place(self):
+        # typ="safe" (resolve_merges=false) keeps the alias node in the AST
+        doc = pyrs_yaml.YAML(typ="safe").parse("defaults: &defaults\n  timeout: 30\nprod: *defaults\n")
+        doc.set("$.prod", {"timeout": 99})
+        assert doc.to_dict()["prod"] == {"timeout": 99}
+
+    def test_set_merge_expanded_key_edits_clone_only(self):
+        doc = pyrs_yaml.parse("defaults: &defaults\n  timeout: 30\nprod:\n  <<: *defaults\n")
+        doc.set("$.prod.timeout", 99)
+        assert doc.to_dict()["defaults"]["timeout"] == 30
+        assert doc.to_dict()["prod"]["timeout"] == 99
+
+    def test_set_through_alias_raises(self):
+        doc = pyrs_yaml.YAML(typ="safe").parse("defaults: &defaults\n  a: 1\nprod: *defaults\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.set("$.prod.a", 5)
+
+    def test_delete_anchored_node_tolerated(self):
+        doc = pyrs_yaml.parse("defaults: &defaults\n  a: 1\ncopy: *defaults\n")
+        doc.delete("$.defaults")
+        assert "defaults" not in doc.to_dict()
+
+
+class TestEditAtomicity:
+    def test_failed_edit_leaves_doc_identical(self):
+        doc = pyrs_yaml.parse("a: 1\nb: [1, 2]\n")
+        before = doc.to_yaml()
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.insert("$.b", 5, 99)  # out of bounds
+        assert doc.to_yaml() == before
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.set("$.x.y", 3)  # missing intermediate
+        assert doc.to_yaml() == before
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.delete("$.nope")  # missing key
+        assert doc.to_yaml() == before
+
+    def test_failed_edit_does_not_bump_revision(self):
+        doc = pyrs_yaml.parse("a: 1\nb: [1]\n")
+        rev0 = doc._revision()
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.insert("$.b", 5, 99)
+        assert doc._revision() == rev0
