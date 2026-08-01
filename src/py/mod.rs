@@ -754,6 +754,35 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        #[pyo3(signature = (segments: "list", new_key: "str") -> "None")]
+        fn _rename_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            new_key: &str,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            self.revision = self.revision.wrapping_add(1);
+            py.detach(|| editing::rename_path(&mut self.ast, &segs, new_key))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        fn __setitem__(&mut self, py: Python, key: String, value: Py<PyAny>) -> PyResult<()> {
+            self._set_path(py, vec![key.into_pyobject(py)?.into_any().unbind()], value)
+        }
+
+        fn __delitem__(&mut self, py: Python, key: String) -> PyResult<()> {
+            self._delete_path(py, vec![key.into_pyobject(py)?.into_any().unbind()])
+        }
+
         fn _revision(&self) -> u64 {
             self.revision
         }

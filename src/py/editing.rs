@@ -404,3 +404,49 @@ pub fn delete_path(node: &mut CustomNode, segments: &[Segment<'_>]) -> Result<()
         _ => Err("missing-path".to_string()),
     }
 }
+
+/// Rename a mapping key. The value node (with its comment/anchor/tag) is
+/// untouched — metadata preservation for free. Complex (non-scalar) keys and
+/// the root are rejected.
+pub fn rename_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    new_key: &str,
+) -> Result<(), String> {
+    if segments.is_empty() {
+        return Err("cannot-rename-root".to_string());
+    }
+    let (parent_segments, last) = segments.split_at(segments.len() - 1);
+    let last = &last[0];
+    let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
+    match (parent, last) {
+        (CustomNode::Mapping { pairs, .. }, Segment::Key(old_key)) => {
+            let old_key_node = CustomNode::plain_scalar(old_key.as_ref());
+            let idx = mapping_key_index(pairs, &old_key_node)
+                .ok_or_else(|| "missing-path".to_string())?;
+            let key_node = pairs.get_index(idx).map(|(k, _)| k);
+            let is_scalar = matches!(
+                key_node,
+                Some(CustomNode::Scalar { .. }) | Some(CustomNode::Null { .. })
+            );
+            if !is_scalar {
+                return Err("cannot-rename-complex-key".to_string());
+            }
+            // Keys are immutable in IndexMap (mutation would break hashing);
+            // shift_remove preserves order, then re-insert at the SAME index
+            // under the new key with the original value node (comment/
+            // anchor/tag untouched).
+            let value_node = pairs
+                .shift_remove_index(idx)
+                .map(|(_, v)| v)
+                .ok_or_else(|| "missing-path".to_string())?;
+            pairs.shift_insert(
+                idx,
+                CustomNode::plain_scalar(new_key.to_string()),
+                value_node,
+            );
+            Ok(())
+        }
+        _ => Err("cannot-rename-complex-key".to_string()),
+    }
+}

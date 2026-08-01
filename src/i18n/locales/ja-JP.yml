@@ -24,3 +24,4 @@ cannot-rename-complex-key: "複雑な（非スカラー）キーは名前変更�
 cannot-descend-into-scalar: "スカラーノードに降りることができません"
 index-out-of-range-edit: "インデックス %{index} は範囲外です（長さ=%{len}）"
 not-a-sequence: "ノードはシーケンスではありません"
+cannot-rename-root: "ルートノードの名前は変更できません"

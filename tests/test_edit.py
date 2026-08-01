@@ -162,3 +162,77 @@ class TestDeletePath:
         rev0 = doc._revision()
         doc._delete_path(["a"])
         assert doc._revision() == rev0 + 1
+
+
+class TestRenamePath:
+    def test_rename_key_keeps_value_and_comment(self):
+        doc = pyrs_yaml.parse("old: 1  # c\n")
+        doc._rename_path(["old"], "new")
+        assert doc.to_yaml() == "new: 1  # c\n"
+
+    def test_rename_keeps_position(self):
+        doc = pyrs_yaml.parse("a: 1\nold: 2\nc: 3\n")
+        doc._rename_path(["old"], "b")
+        assert doc.to_yaml() == "a: 1\nb: 2\nc: 3\n"
+
+    def test_rename_missing_raises(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc._rename_path(["zzz"], "x")
+
+    def test_rename_root_raises(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc._rename_path([], "x")
+
+    def test_rename_nested_key(self):
+        doc = pyrs_yaml.parse("a:\n  old: 1\n")
+        doc._rename_path(["a", "old"], "new")
+        assert doc.to_yaml() == "a:\n  new: 1\n"
+
+    def test_rename_bumps_revision(self):
+        doc = pyrs_yaml.parse("old: 1\n")
+        rev0 = doc._revision()
+        doc._rename_path(["old"], "new")
+        assert doc._revision() == rev0 + 1
+
+
+class TestSetItem:
+    def test_setitem_existing(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc["a"] = 2
+        assert doc["a"] == 2
+
+    def test_setitem_creates_key(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc["b"] = 3
+        assert doc.to_dict() == {"a": 1, "b": 3}
+
+    def test_setitem_preserves_comment(self):
+        doc = pyrs_yaml.parse("a: 1  # keep\n")
+        doc["a"] = 5
+        assert doc.to_yaml() == "a: 5  # keep\n"
+
+    def test_setitem_bumps_revision(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        rev0 = doc._revision()
+        doc["a"] = 2
+        assert doc._revision() == rev0 + 1
+
+
+class TestDelItem:
+    def test_delitem(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        del doc["a"]
+        assert doc.to_dict() == {"b": 2}
+
+    def test_delitem_missing_raises(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            del doc["zzz"]
+
+    def test_delitem_bumps_revision(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        rev0 = doc._revision()
+        del doc["a"]
+        assert doc._revision() == rev0 + 1
