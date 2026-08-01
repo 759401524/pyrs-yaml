@@ -3,6 +3,7 @@
 
 pub mod convert;
 pub mod stream_events;
+pub mod tag_registry;
 
 #[cfg(feature = "numpy")]
 pub mod ndarray;
@@ -64,11 +65,17 @@ mod pyrs_yaml {
 
     // ---- exceptions ----
     #[pymodule_export]
+    use crate::YamlDuplicateKeyError;
+    #[pymodule_export]
     use crate::YamlMaxDepthError;
     #[pymodule_export]
     use crate::YamlParseError;
     #[pymodule_export]
     use crate::YamlSerializeError;
+    #[pymodule_export]
+    use crate::YamlTagError;
+    #[pymodule_export]
+    use crate::YamlTagSkip;
     #[pymodule_export]
     use crate::YamlTypeError;
     #[pymodule_export]
@@ -81,6 +88,7 @@ mod pyrs_yaml {
         resolve_merges: bool,
         schema: &str,
         max_depth: usize,
+        allow_duplicate_keys: bool,
     ) -> PyResult<YamlDocument> {
         let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
             s
@@ -99,31 +107,98 @@ mod pyrs_yaml {
         };
 
         let schema_enum = parse_schema(schema)?;
-        let ast = py.detach(|| {
-            crate::parser::parse_with_options(&yaml_str, resolve_merges, schema_enum, max_depth)
-                .map_err(|e| {
-                    if e.message.contains("max depth exceeded") {
-                        YamlMaxDepthError::new_err(format_i18n_error(
-                            "max-depth-exceeded",
-                            &[("max_depth", &max_depth.to_string())],
-                        ))
-                    } else if e.line > 0 {
-                        let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
-                        YamlParseError::new_err(msg)
-                    } else {
-                        YamlParseError::new_err(format_i18n_error(
-                            "yaml-parse-error",
-                            &[("detail", &e.message)],
-                        ))
-                    }
-                })
+        let mut ast = py.detach(|| {
+            crate::parser::parse_with_options(
+                &yaml_str,
+                resolve_merges,
+                schema_enum,
+                max_depth,
+                allow_duplicate_keys,
+            )
+            .map_err(|e| {
+                if e.message.contains("duplicate key") {
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
+                } else if e.message.contains("max depth exceeded") {
+                    YamlMaxDepthError::new_err(format_i18n_error(
+                        "max-depth-exceeded",
+                        &[("max_depth", &max_depth.to_string())],
+                    ))
+                } else if e.line > 0 {
+                    let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
+                    YamlParseError::new_err(msg)
+                } else {
+                    YamlParseError::new_err(format_i18n_error(
+                        "yaml-parse-error",
+                        &[("detail", &e.message)],
+                    ))
+                }
+            })
         })?;
+        resolve_tags(&mut ast, py)?;
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
             source: Some(Arc::from(yaml_str)),
             version: "1.2".to_string(),
         })
+    }
+
+    fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) -> PyResult<()> {
+        use self::tag_registry::get_handlers;
+        match node {
+            crate::ast::CustomNode::Scalar {
+                tag: Some(t),
+                value,
+                ..
+            } => {
+                let tag_name = t.to_string();
+                if let Some(handlers) = get_handlers(&tag_name, py) {
+                    for (_priority, handler) in handlers {
+                        match handler.call1(py, (value.clone(),)) {
+                            Ok(result) => match result.extract::<String>(py) {
+                                Ok(s) => {
+                                    *value = s;
+                                    break;
+                                }
+                                Err(_) => {
+                                    return Err(YamlTagError::new_err(format!(
+                                        "Tag handler '{}' must return a string",
+                                        tag_name
+                                    )));
+                                }
+                            },
+                            Err(e) => {
+                                if e.is_instance_of::<crate::YamlTagSkip>(py) {
+                                    continue;
+                                }
+                                return Err(YamlTagError::new_err(format!(
+                                    "Tag handler '{}' failed: {}",
+                                    tag_name, e
+                                )));
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }
+            crate::ast::CustomNode::Mapping { pairs, .. } => {
+                for (_, v) in pairs.iter_mut() {
+                    resolve_tags(v, py)?;
+                }
+                Ok(())
+            }
+            crate::ast::CustomNode::Sequence { items, .. } => {
+                for item in items.iter_mut() {
+                    resolve_tags(item, py)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 
     // ---- YAML instance API ----
@@ -133,13 +208,19 @@ mod pyrs_yaml {
         yaml_type: String,
         schema: String,
         max_depth: usize,
+        allow_duplicate_keys: bool,
     }
 
     #[pymethods]
     impl YAML {
         #[new]
-        #[pyo3(signature = (typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000))]
-        fn new(typ: &str, schema: &str, max_depth: usize) -> PyResult<Self> {
+        #[pyo3(signature = (typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false))]
+        fn new(
+            typ: &str,
+            schema: &str,
+            max_depth: usize,
+            allow_duplicate_keys: bool,
+        ) -> PyResult<Self> {
             let valid_types = ["rt", "safe", "full"];
             let valid_schemas = ["core", "yaml1.1", "failsafe", "json"];
             if !valid_types.contains(&typ) {
@@ -158,37 +239,56 @@ mod pyrs_yaml {
                 yaml_type: typ.to_string(),
                 schema: schema.to_string(),
                 max_depth,
+                allow_duplicate_keys,
             })
         }
 
         #[pyo3(signature = (yaml: "str | bytes") -> "YamlDocument")]
         fn parse(&self, py: Python, yaml: &Bound<'_, PyAny>) -> PyResult<YamlDocument> {
             let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
-            parse_document(py, yaml, resolve_merges, &self.schema, self.max_depth)
+            parse_document(
+                py,
+                yaml,
+                resolve_merges,
+                &self.schema,
+                self.max_depth,
+                self.allow_duplicate_keys,
+            )
         }
 
         #[pyo3(signature = (yaml: "str") -> "dict[str, Any] | list[Any]")]
         fn safe_load(&self, py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
             let schema_enum = parse_schema(&self.schema)?;
             let ast = py.detach(|| {
-                crate::parser::parse_with_options(yaml, true, schema_enum, self.max_depth).map_err(
-                    |e| {
-                        if e.message.contains("max depth exceeded") {
-                            YamlMaxDepthError::new_err(format_i18n_error(
-                                "max-depth-exceeded",
-                                &[("max_depth", &self.max_depth.to_string())],
-                            ))
-                        } else if e.line > 0 {
-                            let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                            YamlParseError::new_err(msg)
-                        } else {
-                            YamlParseError::new_err(format_i18n_error(
-                                "yaml-parse-error",
-                                &[("detail", &e.message)],
-                            ))
-                        }
-                    },
+                crate::parser::parse_with_options(
+                    yaml,
+                    true,
+                    schema_enum,
+                    self.max_depth,
+                    self.allow_duplicate_keys,
                 )
+                .map_err(|e| {
+                    if e.message.contains("duplicate key") {
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
+                    } else if e.message.contains("max depth exceeded") {
+                        YamlMaxDepthError::new_err(format_i18n_error(
+                            "max-depth-exceeded",
+                            &[("max_depth", &self.max_depth.to_string())],
+                        ))
+                    } else if e.line > 0 {
+                        let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
+                    } else {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.message)],
+                        ))
+                    }
+                })
             })?;
             let mut anchors = HashMap::new();
             collect_anchors(&ast, &mut anchors);
@@ -200,23 +300,35 @@ mod pyrs_yaml {
         fn safe_loads(&self, py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
             let schema_enum = parse_schema(&self.schema)?;
             let asts = py.detach(|| {
-                crate::parser::parse_all_with_options(yaml, true, schema_enum, self.max_depth)
-                    .map_err(|e| {
-                        if e.message.contains("max depth exceeded") {
-                            YamlMaxDepthError::new_err(format_i18n_error(
-                                "max-depth-exceeded",
-                                &[("max_depth", &self.max_depth.to_string())],
-                            ))
-                        } else if e.line > 0 {
-                            let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                            YamlParseError::new_err(msg)
-                        } else {
-                            YamlParseError::new_err(format_i18n_error(
-                                "yaml-parse-error",
-                                &[("detail", &e.message)],
-                            ))
-                        }
-                    })
+                crate::parser::parse_all_with_options(
+                    yaml,
+                    true,
+                    schema_enum,
+                    self.max_depth,
+                    self.allow_duplicate_keys,
+                )
+                .map_err(|e| {
+                    if e.message.contains("duplicate key") {
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
+                    } else if e.message.contains("max depth exceeded") {
+                        YamlMaxDepthError::new_err(format_i18n_error(
+                            "max-depth-exceeded",
+                            &[("max_depth", &self.max_depth.to_string())],
+                        ))
+                    } else if e.line > 0 {
+                        let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                        YamlParseError::new_err(msg)
+                    } else {
+                        YamlParseError::new_err(format_i18n_error(
+                            "yaml-parse-error",
+                            &[("detail", &e.message)],
+                        ))
+                    }
+                })
             })?;
             let mut results = Vec::with_capacity(asts.len());
             for ast in asts {
@@ -246,9 +358,16 @@ mod pyrs_yaml {
                     resolve_merges,
                     schema_enum,
                     self.max_depth,
+                    self.allow_duplicate_keys,
                 )
                 .map_err(|e| {
-                    if e.message.contains("max depth exceeded") {
+                    if e.message.contains("duplicate key") {
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
+                    } else if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
                             &[("max_depth", &self.max_depth.to_string())],
@@ -282,9 +401,16 @@ mod pyrs_yaml {
                     resolve_merges,
                     schema_enum,
                     self.max_depth,
+                    self.allow_duplicate_keys,
                 )
                 .map_err(|e| {
-                    if e.message.contains("max depth exceeded") {
+                    if e.message.contains("duplicate key") {
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
+                    } else if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
                             &[("max_depth", &self.max_depth.to_string())],
@@ -325,10 +451,11 @@ mod pyrs_yaml {
     impl YamlDocument {
         /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
         fn to_yaml(&self) -> PyResult<String> {
-            self.to_yaml_with_options(2, false, false, false, 1000)
+            self.to_yaml_with_options(2, false, false, false, 1000, 80, None, None, None)
         }
 
-        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000) -> "str")]
+        #[allow(clippy::too_many_arguments)]
+        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str")]
         fn to_yaml_with_options(
             &self,
             indent_size: usize,
@@ -336,6 +463,10 @@ mod pyrs_yaml {
             explicit_end: bool,
             sort_keys: bool,
             max_depth: usize,
+            width: usize,
+            indent_mapping: Option<usize>,
+            indent_sequence: Option<usize>,
+            indent_offset: Option<usize>,
         ) -> PyResult<String> {
             let options = SerializeOptions {
                 indent_size,
@@ -343,6 +474,10 @@ mod pyrs_yaml {
                 explicit_end,
                 sort_keys,
                 max_depth,
+                width,
+                indent_mapping: indent_mapping.unwrap_or(indent_size),
+                indent_sequence: indent_sequence.unwrap_or(indent_size),
+                indent_offset: indent_offset.unwrap_or(0),
             };
             to_yaml_with_options(&self.ast, &options).map_err(|e| {
                 if e.contains("max depth exceeded") {
@@ -505,7 +640,7 @@ mod pyrs_yaml {
             })?;
             let schema_enum = parse_schema(schema)?;
             let new_ast = py.detach(|| {
-                crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000)
+                crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000, false)
                     .map_err(|e| {
                         if e.line > 0 {
                             let msg = format_source_snippet(source, e.line, e.col, &e.message);
@@ -565,24 +700,33 @@ mod pyrs_yaml {
     // ---- Python-facing functions ----
 
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000) -> "YamlDocument")]
+    #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
     fn parse(
         py: Python,
         yaml: &Bound<'_, PyAny>,
         resolve_merges: bool,
         schema: &str,
         max_depth: usize,
+        allow_duplicate_keys: bool,
     ) -> PyResult<YamlDocument> {
-        parse_document(py, yaml, resolve_merges, schema, max_depth)
+        parse_document(
+            py,
+            yaml,
+            resolve_merges,
+            schema,
+            max_depth,
+            allow_duplicate_keys,
+        )
     }
 
     #[pyfunction]
-    #[pyo3(signature = (path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "YamlDocument")]
+    #[pyo3(signature = (path: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
     fn parse_file(
         py: Python,
         path: &str,
         schema: &str,
         max_depth: usize,
+        allow_duplicate_keys: bool,
     ) -> PyResult<YamlDocument> {
         let schema_enum = parse_schema(schema)?;
         let content = std::fs::read_to_string(path).map_err(|e| {
@@ -591,9 +735,22 @@ mod pyrs_yaml {
                 &[("detail", &e.to_string()), ("path", path)],
             ))
         })?;
-        let ast = py.detach(|| {
-            crate::parser::parse_with_options(&content, true, schema_enum, max_depth).map_err(|e| {
-                if e.message.contains("max depth exceeded") {
+        let mut ast = py.detach(|| {
+            crate::parser::parse_with_options(
+                &content,
+                true,
+                schema_enum,
+                max_depth,
+                allow_duplicate_keys,
+            )
+            .map_err(|e| {
+                if e.message.contains("duplicate key") {
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
+                } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
@@ -609,6 +766,7 @@ mod pyrs_yaml {
                 }
             })
         })?;
+        resolve_tags(&mut ast, py)?;
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
@@ -618,52 +776,32 @@ mod pyrs_yaml {
     }
 
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000) -> "list[YamlDocument]")]
+    #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[YamlDocument]")]
     fn parse_all_docs(
         py: Python,
         yaml: &str,
         resolve_merges: bool,
         schema: &str,
         max_depth: usize,
+        allow_duplicate_keys: bool,
     ) -> PyResult<Vec<YamlDocument>> {
         let schema_enum = parse_schema(schema)?;
         let asts = py.detach(|| {
-            crate::parser::parse_all_with_options(yaml, resolve_merges, schema_enum, max_depth)
-                .map_err(|e| {
-                    if e.message.contains("max depth exceeded") {
-                        YamlMaxDepthError::new_err(format_i18n_error(
-                            "max-depth-exceeded",
-                            &[("max_depth", &max_depth.to_string())],
-                        ))
-                    } else if e.line > 0 {
-                        let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                        YamlParseError::new_err(msg)
-                    } else {
-                        YamlParseError::new_err(format_i18n_error(
-                            "yaml-parse-error",
-                            &[("detail", &e.message)],
-                        ))
-                    }
-                })
-        })?;
-        Ok(asts
-            .into_iter()
-            .map(|ast| YamlDocument {
-                ast,
-                schema: schema_enum,
-                source: Some(Arc::from(yaml)),
-                version: "1.2".to_string(),
-            })
-            .collect())
-    }
-
-    #[pyfunction]
-    #[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "dict[str, Any] | list[Any]")]
-    fn safe_load(py: Python, yaml: &str, schema: &str, max_depth: usize) -> PyResult<Py<PyAny>> {
-        let schema_enum = parse_schema(schema)?;
-        let ast = py.detach(|| {
-            crate::parser::parse_with_options(yaml, true, schema_enum, max_depth).map_err(|e| {
-                if e.message.contains("max depth exceeded") {
+            crate::parser::parse_all_with_options(
+                yaml,
+                resolve_merges,
+                schema_enum,
+                max_depth,
+                allow_duplicate_keys,
+            )
+            .map_err(|e| {
+                if e.message.contains("duplicate key") {
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
+                } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
@@ -679,6 +817,59 @@ mod pyrs_yaml {
                 }
             })
         })?;
+        Ok(asts
+            .into_iter()
+            .map(|ast| YamlDocument {
+                ast,
+                schema: schema_enum,
+                source: Some(Arc::from(yaml)),
+                version: "1.2".to_string(),
+            })
+            .collect())
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "dict[str, Any] | list[Any]")]
+    fn safe_load(
+        py: Python,
+        yaml: &str,
+        schema: &str,
+        max_depth: usize,
+        allow_duplicate_keys: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let schema_enum = parse_schema(schema)?;
+        let mut ast = py.detach(|| {
+            crate::parser::parse_with_options(
+                yaml,
+                true,
+                schema_enum,
+                max_depth,
+                allow_duplicate_keys,
+            )
+            .map_err(|e| {
+                if e.message.contains("duplicate key") {
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
+                } else if e.message.contains("max depth exceeded") {
+                    YamlMaxDepthError::new_err(format_i18n_error(
+                        "max-depth-exceeded",
+                        &[("max_depth", &max_depth.to_string())],
+                    ))
+                } else if e.line > 0 {
+                    let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
+                    YamlParseError::new_err(msg)
+                } else {
+                    YamlParseError::new_err(format_i18n_error(
+                        "yaml-parse-error",
+                        &[("detail", &e.message)],
+                    ))
+                }
+            })
+        })?;
+        resolve_tags(&mut ast, py)?;
         let mut anchors = HashMap::new();
         collect_anchors(&ast, &mut anchors);
         let mut visited = HashSet::new();
@@ -686,17 +877,31 @@ mod pyrs_yaml {
     }
 
     #[pyfunction]
-    #[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "list[dict[str, Any] | list[Any]]")]
+    #[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[dict[str, Any] | list[Any]]")]
     fn safe_loads(
         py: Python,
         yaml: &str,
         schema: &str,
         max_depth: usize,
+        allow_duplicate_keys: bool,
     ) -> PyResult<Vec<Py<PyAny>>> {
         let schema_enum = parse_schema(schema)?;
         let asts = py.detach(|| {
-            crate::parser::parse_all_with_options(yaml, true, schema_enum, max_depth).map_err(|e| {
-                if e.message.contains("max depth exceeded") {
+            crate::parser::parse_all_with_options(
+                yaml,
+                true,
+                schema_enum,
+                max_depth,
+                allow_duplicate_keys,
+            )
+            .map_err(|e| {
+                if e.message.contains("duplicate key") {
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
+                } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
                         &[("max_depth", &max_depth.to_string())],
@@ -956,6 +1161,23 @@ mod pyrs_yaml {
         let locales: Vec<String> = user_locales.extract()?;
         let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
         Ok(crate::i18n::negotiate_language(&refs, default).to_string())
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (name: "str", handler: "Py<PyAny>", priority: "u32" = 0))]
+    fn register_tag(name: &str, handler: Py<PyAny>, priority: u32) {
+        tag_registry::register(name, handler, priority);
+    }
+
+    #[pyfunction]
+    fn clear_tag_handlers() {
+        tag_registry::clear_all();
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (name: "str"))]
+    fn remove_tag(name: &str) {
+        tag_registry::remove(name);
     }
 }
 

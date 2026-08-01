@@ -25,7 +25,30 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  rust-lint:
+    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Run cargo tests
+        env:
+          PYO3_PYTHON: python
+        run: cargo test --locked
+
   test:
+    needs: [build]
     if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
     strategy:
       matrix:
@@ -34,11 +57,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -55,20 +73,15 @@ jobs:
       - name: Create virtualenv
         run: uv venv .venv
 
-      - name: Run cargo tests
-        if: matrix.os != 'macos-latest'
-        env:
-          PYO3_PYTHON: python
-        run: cargo test --locked
-
-      - name: Run cargo clippy
-        run: cargo clippy -- -D warnings
-
-      - name: Build and install
-        uses: PyO3/maturin-action@v1
+      - name: Download abi3 wheel
+        uses: actions/download-artifact@v6
         with:
-          command: develop
-          args: --release
+          name: wheel-${{ matrix.os }}
+          path: dist/
+
+      - name: Install wheel
+        shell: bash
+        run: pip install dist/*.whl
 
       - name: Download YAML Test Suite
         shell: bash
@@ -78,7 +91,7 @@ jobs:
           fi
 
       - name: Install Python test dependencies
-        run: uv pip install -q -r .ci/requirements-test.txt
+        run: uv sync --group test --no-install-project
 
       - name: Run Python tests
         run: uv run pytest tests/ -v
@@ -102,7 +115,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build abi3 wheels
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: build-${{ matrix.os }}
+
+      - name: Build abi3 wheel (for test jobs)
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --interpreter python3 --out dist-test
+
+      - name: Upload abi3 wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist-test/*.whl
+
+      - name: Build release wheels (find-interpreter)
         uses: PyO3/maturin-action@v1
         with:
           command: build
@@ -122,8 +155,11 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
         with:
-          components: clippy
+          key: freethreaded
 
       - name: Set up free-threaded Python
         uses: actions/setup-python@v6
@@ -140,14 +176,6 @@ jobs:
       - name: Create virtualenv
         run: uv venv .venv
 
-      - name: Run cargo tests
-        env:
-          PYO3_PYTHON: python3.14t
-        run: cargo test --locked
-
-      - name: Run cargo clippy
-        run: cargo clippy -- -D warnings
-
       - name: Build and install free-threaded wheel
         uses: PyO3/maturin-action@v1
         with:
@@ -162,7 +190,7 @@ jobs:
           fi
 
       - name: Install Python test dependencies
-        run: uv pip install -q -r .ci/requirements-test.txt
+        run: uv sync --group test --no-install-project
 
       - name: Run Python tests
         run: uv run pytest tests/ -v

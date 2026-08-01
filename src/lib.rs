@@ -24,3 +24,10 @@ pyo3::create_exception!(
 pyo3::create_exception!(pyrs_yaml, YamlTypeError, pyo3::exceptions::PyTypeError);
 pyo3::create_exception!(pyrs_yaml, YamlValidateError, pyo3::exceptions::PyValueError);
 pyo3::create_exception!(pyrs_yaml, YamlMaxDepthError, pyo3::exceptions::PyValueError);
+pyo3::create_exception!(
+    pyrs_yaml,
+    YamlDuplicateKeyError,
+    pyo3::exceptions::PyValueError
+);
+pyo3::create_exception!(pyrs_yaml, YamlTagError, pyo3::exceptions::PyValueError);
+pyo3::create_exception!(pyrs_yaml, YamlTagSkip, crate::YamlTagError);

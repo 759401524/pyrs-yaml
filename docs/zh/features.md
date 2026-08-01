@@ -152,6 +152,81 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **国际化错误消息** — `set_language("zh")` 支持双语错误报告
 - **类型提示** — 完整的 `.pyi` 存根文件，支持 IDE
 
+### 重复键
+
+默认情况下重复的映射键抛出 `YamlDuplicateKeyError`：
+
+```python
+pyrs_yaml.parse("key: first\nkey: second")
+# pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
+```
+
+传入 `allow_duplicate_keys=True` 则保留**最后一个值**：
+
+```python
+doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
+doc.get("key")  # "second"
+```
+
+该开关适用于 `parse`、`safe_load`、`safe_loads`、`parse_file`、`parse_all_docs` 以及 `YAML(allow_duplicate_keys=True)`。往返模式下，允许重复键的文档序列化时输出最后一个出现的键值对。
+
+### 序列化选项
+
+`to_yaml_with_options()` 控制缩进与换行：
+
+```python
+yaml_str = doc.to_yaml_with_options(
+    indent_size=2,      # 基础缩进（省略按类型选项时使用）
+    width=80,           # 换行宽度；0 表示不换行
+    indent_mapping=4,   # 块映射每级缩进
+    indent_sequence=2,  # 块序列每级缩进
+    indent_offset=0,    # 整个文档的基础偏移
+)
+```
+
+`indent_mapping` / `indent_sequence` / `indent_offset` 省略时分别默认等于 `indent_size` / 0，因此 `indent_size=4` 仍然让所有层级缩进 4。
+
+### 自定义标签处理器
+
+为自定义 YAML 标签注册处理器，转换标量值：
+
+```python
+import pyrs_yaml
+
+# 装饰器形式
+@pyrs_yaml.register_tag("!custom")
+def custom_handler(node):
+    return f"custom:{node}"
+
+# 命令式形式
+pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+
+doc = pyrs_yaml.parse("name: !custom value")
+doc.get("name")  # "custom:value"
+```
+
+- 同一标签的多个处理器按 `priority` 升序执行；抛出 `YamlTagSkip` 会交给下一个处理器。
+- 处理器必须返回字符串，否则抛出 `YamlTagError`。
+- `remove_tag("!custom")` 与 `clear_tag_handlers()` 用于注销处理器。
+
+### Pydantic 模型
+
+直接将 YAML 解析为 Pydantic v2 模型：
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+class Config(BaseModel):
+    name: str
+    age: int
+
+cfg = pyrs_yaml.parse_as(Config, "name: Alice\nage: 30")
+cfg.name  # "Alice"
+```
+
+`parse_as` 对非 `BaseModel` 目标抛出 `TypeError`，并在 YAML 不匹配模型时传播 Pydantic 的 `ValidationError`。
+
 ### 支持的 YAML 构造
 
 | 功能 | 支持情况 |
@@ -172,3 +247,6 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **JSON Schema 验证** | **✅ `doc.validate()`** |
 | **增量重新解析** | **✅ `doc.reparse()`** |
 | **JSON 导出** | **✅ `doc.to_json()`** |
+| **重复键** | **✅ 可配置（`YamlDuplicateKeyError` / 后值胜出）** |
+| **自定义标签处理器** | **✅ `register_tag` 优先级链式处理** |
+| **Pydantic 模型** | **✅ `parse_as()` 校验** |

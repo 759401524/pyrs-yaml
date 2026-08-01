@@ -80,6 +80,7 @@ FOLDED_STRIP = "key: >-\n  this is folded"
 TAG_STR = "name: !!str John"
 TAG_CUSTOM = "name: !custom value"
 TAG_INT = "age: !!int 30"
+NESTED_TAGGED = "outer:\n  inner: !custom value"
 
 # --- Anchor and merge samples ---
 ANCHOR_SIMPLE = "defaults: &defaults\n  timeout: 30"
@@ -114,6 +115,7 @@ INVALID_JSON = "{invalid json"
 # --- Edge case samples ---
 CRLF_LINE_ENDINGS = "key: value\r\nlist:\r\n  - a\r\n  - b"
 DUPLICATE_KEYS = "key: first\nkey: second"
+DUPLICATE_KEYS_OVERRIDE = "key: first\nkey: second"
 EMPTY_VALUE = "key:"
 NESTED_SEQUENCE = "- - nested1\n  - nested2\n- top"
 SEQUENCE_SINGLE = "- a"
@@ -142,6 +144,9 @@ FILE_SIMPLE = "key: value\nlist:\n  - a\n  - b"
 FILE_NAME_VALUE = "name: test\nvalue: 42"
 FILE_WITH_COMMENT = "# comment\nkey: value\n"
 
+# --- Serialize options samples ---
+LONG_VALUE = "key: " + "x" * 100
+
 # --- Misc samples ---
 SIMPLE_INT = "42"
 SIMPLE_MAPPING_FILE = "a: 1\nb: 2"
@@ -149,3 +154,6 @@ SIMPLE_MAPPING_XY = "x: y"
 SIMPLE_MAPPING_SERIALIZE = "n: 42\nf: 3.14\nb: true\ns: hello"
 SIMPLE_SEQUENCE = "- 1\n- 2\n- 3"
 SIMPLE_STRING = "hello world"
+USER_MODEL = "name: Alice\nage: 30\n"
+USER_MODEL_INVALID = "name: Alice\nage: not_an_int\n"
+PRODUCT_MODEL = "name: Widget\nprice: 9.99\nin_stock: true\n"

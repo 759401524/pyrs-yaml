@@ -302,7 +302,7 @@ class TestUnicodeAndSpecial:
         assert doc.get("list") == ["a", "b"]
 
     def test_duplicate_keys_last_wins(self):
-        doc = pyrs_yaml.parse("key: first\nkey: second")
+        doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
         assert doc.get("key") == "second"
 
 

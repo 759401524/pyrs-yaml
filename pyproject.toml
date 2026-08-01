@@ -34,6 +34,9 @@ classifiers = [
     "Topic :: Text Processing :: Markup",
 ]
 
+[project.optional-dependencies]
+pydantic = ["pydantic>=2.10.6"]
+
 [project.urls]
 Homepage = "https://github.com/759401524/pyrs-yaml"
 Documentation = "https://759401524.github.io/pyrs-yaml"
@@ -59,6 +62,7 @@ test = [
     "pytest>=8.0",
     "pytest-codspeed>=2.0",
     "pytest-asyncio>=0.23",
+    "pydantic>=2.10.6",
     "numpy>=1.16.0; python_version < '3.14' and platform_machine != 's390x' and platform_machine != 'ppc64le'",
     "PyYAML>=6.0",
     "ruamel-yaml>=0.18.16",

@@ -20,15 +20,20 @@ from .async_dump import (
 )
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
+from .pydantic import parse_as
 from .pyrs_yaml import (
     YAML,
     StreamIterator,
     YamlDocument,
+    YamlDuplicateKeyError,
     YamlMaxDepthError,
     YamlParseError,
     YamlSerializeError,
+    YamlTagError,
+    YamlTagSkip,
     YamlTypeError,
     YamlValidateError,
+    clear_tag_handlers,
     detect_language,
     dump_file,
     from_dict,
@@ -42,11 +47,40 @@ from .pyrs_yaml import (
     parse_stream,
     read_markdown,
     read_markdown_str,
+    remove_tag,
     safe_dump,
     safe_load,
     safe_loads,
     set_language,
 )
+from .pyrs_yaml import register_tag as _rust_register_tag
+
+
+def register_tag(name, handler=None, priority=0):
+    """Register a tag handler.
+
+    Supports both decorator and imperative forms:
+        @register_tag("!custom")
+        def handler(node):
+            ...
+
+        @register_tag("!custom", priority=1)
+        def handler(node):
+            ...
+
+        register_tag("!custom", handler_fn)
+        register_tag("!custom", handler_fn, priority=1)
+    """
+    if handler is not None:
+        _rust_register_tag(name, handler, priority)
+        return handler
+
+    # Decorator form
+    def decorator(fn):
+        _rust_register_tag(name, fn, priority)
+        return fn
+
+    return decorator
 
 
 # Monkey-patch YamlDocument with node() and find() methods
@@ -81,11 +115,15 @@ __all__ = [
     "StreamIterator",
     "YamlDocument",
     "YamlDocumentError",
+    "YamlDuplicateKeyError",
     "YamlMaxDepthError",
     "YamlParseError",
     "YamlSerializeError",
+    "YamlTagError",
+    "YamlTagSkip",
     "YamlTypeError",
     "YamlValidateError",
+    "clear_tag_handlers",
     "detect_language",
     "dump_file",
     "from_dict",
@@ -95,10 +133,13 @@ __all__ = [
     "negotiate_language",
     "parse",
     "parse_all_docs",
+    "parse_as",
     "parse_file",
     "parse_stream",
     "read_markdown",
     "read_markdown_str",
+    "register_tag",
+    "remove_tag",
     "safe_dump",
     "safe_dump_async",
     "safe_load",
