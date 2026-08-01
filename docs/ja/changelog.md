@@ -10,19 +10,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 変更履歴](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### [Unreleased]
+### [0.10.0] - 2026-08-01
 
 #### Added
 
 - **インプレース編集** — フォーマットメタデータを失わずに解析済みドキュメントを編集：
-  - パス API：`doc.set(path, value)`、`doc.insert(path, index, value)`、`doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`、JSONPath スタイルのパス（`$.a.b[0]`）；ルート用糖衣構文 `doc["key"] = value` と `del doc["key"]`
-  - ノード API：`doc.node()` / `doc.find(path)` は `Node` オブジェクトを返し、`set_value` / `append` / `insert` / `delete` / `rename` とツリー走査（`parent`、`children`、`walk`、`filter`）をサポート
-  - 完全なメタデータ保持 — 置換されたスカラーはコメント/アンカー/タグ/クォートを保持；リネームされたキーは位置とコメントを保持；削除時もマッピングの順序は保持
-  - アトミック編集 — 失敗した操作はドキュメント（リビジョンを含む）を変更しません
-  - 遅延ソース再同期 — `source()` / `to_yaml()` / `reparse()` は編集成功後にのみ再シリアライズ
-  - 陳腐化ノード検出 — ドキュメント編集後の `Node` アクセスは `YamlDocumentError` をスロー（`RuntimeWarning` 付き）
-  - 新しい例外：`YamlEditError`、`YamlPathError`（en/zh-CN/ja-JP/ko-KR の i18n 対応）
-  - エイリアス対応編集 — エイリアス自身のパスへの設定はその場で置換；エイリアス経由の編集は `YamlEditError` をスロー
+    - パス API：`doc.set(path, value)`、`doc.insert(path, index, value)`、`doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`、JSONPath スタイルのパス（`$.a.b[0]`）；ルート用糖衣構文 `doc["key"] = value` と `del doc["key"]`
+    - ノード API：`doc.node()` / `doc.find(path)` は `Node` オブジェクトを返し、`set_value` / `append` / `insert` / `delete` / `rename` とツリー走査（`parent`、`children`、`walk`、`filter`）をサポート
+    - 完全なメタデータ保持 — 置換されたスカラーはコメント/アンカー/タグ/クォートを保持；リネームされたキーは位置とコメントを保持；削除時もマッピングの順序は保持
+    - アトミック編集 — 失敗した操作はドキュメント（リビジョンを含む）を変更しません
+    - 遅延ソース再同期 — `source()` / `to_yaml()` / `reparse()` は編集成功後にのみ再シリアライズ
+    - 陳腐化ノード検出 — ドキュメント編集後の `Node` アクセスは `YamlDocumentError` をスロー（`RuntimeWarning` 付き）
+    - 新しい例外：`YamlEditError`、`YamlPathError`（en/zh-CN/ja-JP/ko-KR の i18n 対応）
+    - エイリアス対応編集 — エイリアス自身のパスへの設定はその場で置換；エイリアス経由の編集は `YamlEditError` をスロー
 - **編集ベンチマーク** — `benches/yaml_bench.rs` に divan ベンチマークを 6 つ追加（小〜大ドキュメントの set/insert/delete）
 - **Python 3.13、3.14、3.15 サポート** — PyO3 `abi3-py38` wheel が Python 3.8-3.15 をカバー（GIL ビルド）；`abi3t` + `abi3t-py315` は free-threaded 安定 ABI を提供
 - **Free-threaded CPython（GIL なし）サポート** — `#[pymodule(gil_used = false)]` がモジュールを free-threaded Python 向けにスレッドセーフと宣言；`Py_GIL_DISABLED` cfg フラグで numpy をゲート（rust-numpy は free-threaded 未対応 — free-threaded ビルドでは `--no-default-features` で numpy feature を無効化）
@@ -46,12 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - **NumPy Ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
-  - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
-  - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
-  - Complex numbers serialize as `(re+imj)` string format
-  - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
-  - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
-  - GIL released during slice iteration for maximum performance
+    - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
+    - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
+    - Complex numbers serialize as `(re+imj)` string format
+    - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
+    - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
+    - GIL released during slice iteration for maximum performance
 - **`quoted_scalar()`** — new `CustomNode::quoted_scalar()` constructor for values requiring single-quoted YAML style
 - **Type resolution for quoted scalars** — `resolve_yaml_type` now applied to `SingleQuoted`/`DoubleQuoted` scalars for correct round-trip of quoted negative numbers
 - **Comprehensive NumPy test suite** — 42 tests covering all dtypes, dimensions (0-D through 4-D), negative numbers, infinity, NaN, empty arrays, and edge cases
