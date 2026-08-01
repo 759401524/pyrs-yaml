@@ -14,5 +14,3 @@ docs/audit-plan.md
 docs/experiments/
 benchmark-results.json
 *.benchmark-results.json
-
-python/pyrs_yaml/pyrs_yaml.pyi
