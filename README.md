@@ -14,6 +14,9 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 - **Async I/O** - `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` via `asyncio.run_in_executor`
 - **Incremental re-parse** - `doc.source()` + `doc.reparse()` for re-parsing stored YAML in-place with different options
 - **JSON serialization** - `doc.to_json()` exports documents to standard JSON
+- **Duplicate keys** - `allow_duplicate_keys=True` opts into last-value-wins; `YamlDuplicateKeyError` otherwise
+- **Custom tag handlers** - `register_tag` with priority-based chaining, `YamlTagSkip`, `remove_tag`/`clear_tag_handlers`
+- **Pydantic models** - `parse_as(Model, yaml)` validates parsed YAML against Pydantic v2 models
 - **Custom AST** - Extensible AST for advanced YAML manipulation
 - **PyYAML Compatible** - Drop-in replacement with `safe_load`/`safe_dump` API
 
@@ -115,6 +118,81 @@ loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
+### Duplicate keys
+
+Duplicate mapping keys raise `YamlDuplicateKeyError` by default:
+
+```python
+pyrs_yaml.parse("key: first\nkey: second")
+# pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
+```
+
+Pass `allow_duplicate_keys=True` to keep the **last value** instead:
+
+```python
+doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
+doc.get("key")  # "second"
+```
+
+The flag is available on `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, serializing a document with allowed duplicate keys emits the last occurrence.
+
+### Serialization options
+
+`to_yaml_with_options()` controls indentation and line wrapping:
+
+```python
+yaml_str = doc.to_yaml_with_options(
+    indent_size=2,      # legacy base indent (used when the per-type options are omitted)
+    width=80,           # line-wrap width; 0 disables wrapping
+    indent_mapping=4,   # indent per block-mapping level
+    indent_sequence=2,  # indent per block-sequence level
+    indent_offset=0,    # base offset applied to the whole document
+)
+```
+
+`indent_mapping` / `indent_sequence` / `indent_offset` default to `indent_size` / 0 when omitted, so `indent_size=4` still indents everything by 4.
+
+### Tag handlers
+
+Register a handler for a custom YAML tag to transform scalar values:
+
+```python
+import pyrs_yaml
+
+# Decorator form
+@pyrs_yaml.register_tag("!custom")
+def custom_handler(node):
+    return f"custom:{node}"
+
+# Imperative form
+pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+
+doc = pyrs_yaml.parse("name: !custom value")
+doc.get("name")  # "custom:value"
+```
+
+- Multiple handlers per tag run in ascending `priority` order; raising `YamlTagSkip` passes control to the next handler.
+- A handler must return a string — anything else raises `YamlTagError`.
+- `remove_tag("!custom")` and `clear_tag_handlers()` unregister handlers.
+
+### Pydantic models
+
+Parse YAML directly into a Pydantic v2 model:
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+class Config(BaseModel):
+    name: str
+    age: int
+
+cfg = pyrs_yaml.parse_as(Config, "name: Alice\nage: 30")
+cfg.name  # "Alice"
+```
+
+`parse_as` raises `TypeError` for non-`BaseModel` targets and propagates Pydantic's `ValidationError` when the YAML does not match the model.
+
 ## Features Supported
 
 | Feature | Support |
@@ -134,6 +212,9 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **Async I/O** | **Full** |
 | **Incremental re-parse** | **Full** |
 | **JSON export** | **Full** |
+| **Duplicate keys** | **Configurable (`YamlDuplicateKeyError` / last-wins)** |
+| **Custom tag handlers** | **Priority-chained `register_tag`** |
+| **Pydantic models** | **`parse_as()` validation** |
 
 ## API Reference
 
