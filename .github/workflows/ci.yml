@@ -29,7 +29,7 @@ jobs:
     if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -56,15 +56,15 @@ jobs:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           version: "latest"
           enable-cache: true
@@ -74,7 +74,7 @@ jobs:
         run: uv venv .venv
 
       - name: Download abi3 wheel
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: wheel-${{ matrix.os }}
           path: dist/
@@ -113,7 +113,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -130,7 +130,7 @@ jobs:
           args: --release --interpreter python3 --out dist-test
 
       - name: Upload abi3 wheel
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.os }}
           path: dist-test/*.whl
@@ -142,7 +142,7 @@ jobs:
           args: --release --find-interpreter --out dist
 
       - name: Upload wheels
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}
           path: dist/
@@ -151,7 +151,7 @@ jobs:
     if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -162,12 +162,12 @@ jobs:
           key: freethreaded
 
       - name: Set up free-threaded Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14t"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           version: "latest"
           enable-cache: true
@@ -199,11 +199,11 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: wheels-ubuntu-latest
       - name: Install wheel
@@ -218,7 +218,7 @@ jobs:
         run: pip install pytest pyyaml
       - name: Generate compliance report
         run: python tests/test_yaml_suite.py --json > compliance.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: compliance-report
           path: compliance.json
