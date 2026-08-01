@@ -10,19 +10,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 变更日志](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### [Unreleased]
+### [0.10.0] - 2026-08-01
 
 #### Added
 
 - **就地编辑** — 编辑已解析的文档而不丢失格式元数据：
-  - 路径 API：`doc.set(path, value)`、`doc.insert(path, index, value)`、`doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`，使用 JSONPath 风格路径（`$.a.b[0]`）；根节点语法糖 `doc["key"] = value` 和 `del doc["key"]`
-  - 节点 API：`doc.node()` / `doc.find(path)` 返回 `Node` 对象，支持 `set_value` / `append` / `insert` / `delete` / `rename`，以及树遍历（`parent`、`children`、`walk`、`filter`）
-  - 完整元数据保留 — 被替换的标量保留注释/锚点/标签/引号；重命名的键保留位置和注释；删除时映射顺序保留
-  - 原子编辑 — 失败的操作不会改动文档（及其修订号）
-  - 惰性源文本重新同步 — `source()` / `to_yaml()` / `reparse()` 仅在编辑成功后重新序列化
-  - 过期节点检测 — 文档编辑后访问 `Node` 引发 `YamlDocumentError`（并发出 `RuntimeWarning`）
-  - 新异常：`YamlEditError`、`YamlPathError`（支持 en/zh-CN/ja-JP/ko-KR 国际化）
-  - 别名感知编辑 — 设置别名自身路径会就地替换它；穿过别名编辑引发 `YamlEditError`
+    - 路径 API：`doc.set(path, value)`、`doc.insert(path, index, value)`、`doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`，使用 JSONPath 风格路径（`$.a.b[0]`）；根节点语法糖 `doc["key"] = value` 和 `del doc["key"]`
+    - 节点 API：`doc.node()` / `doc.find(path)` 返回 `Node` 对象，支持 `set_value` / `append` / `insert` / `delete` / `rename`，以及树遍历（`parent`、`children`、`walk`、`filter`）
+    - 完整元数据保留 — 被替换的标量保留注释/锚点/标签/引号；重命名的键保留位置和注释；删除时映射顺序保留
+    - 原子编辑 — 失败的操作不会改动文档（及其修订号）
+    - 惰性源文本重新同步 — `source()` / `to_yaml()` / `reparse()` 仅在编辑成功后重新序列化
+    - 过期节点检测 — 文档编辑后访问 `Node` 引发 `YamlDocumentError`（并发出 `RuntimeWarning`）
+    - 新异常：`YamlEditError`、`YamlPathError`（支持 en/zh-CN/ja-JP/ko-KR 国际化）
+    - 别名感知编辑 — 设置别名自身路径会就地替换它；穿过别名编辑引发 `YamlEditError`
 - **编辑基准测试** — `benches/yaml_bench.rs` 新增 6 个 divan 基准（小到大文档的 set/insert/delete）
 - **Python 3.13、3.14 和 3.15 支持** — PyO3 `abi3-py38` wheel 覆盖 Python 3.8-3.15（GIL 构建）；`abi3t` + `abi3t-py315` 提供 free-threaded 稳定 ABI
 - **Free-threaded CPython（无 GIL）支持** — `#[pymodule(gil_used = false)]` 声明模块对 free-threaded Python 线程安全；`Py_GIL_DISABLED` cfg 标志门控 numpy（rust-numpy 尚不支持 free-threaded — 通过 `--no-default-features` 为 free-threaded 构建禁用 numpy feature）
@@ -46,12 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - **NumPy ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
-  - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
-  - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
-  - Complex numbers serialize as `(re+imj)` string format
-  - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
-  - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
-  - GIL released during slice iteration for maximum performance
+    - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
+    - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
+    - Complex numbers serialize as `(re+imj)` string format
+    - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
+    - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
+    - GIL released during slice iteration for maximum performance
 - **`quoted_scalar()`** — new `CustomNode::quoted_scalar()` constructor for values requiring single-quoted YAML style
 - **Type resolution for quoted scalars** — `resolve_yaml_type` now applied to `SingleQuoted`/`DoubleQuoted` scalars for correct round-trip of quoted negative numbers
 - **Comprehensive NumPy test suite** — 42 tests covering all dtypes, dimensions (0-D through 4-D), negative numbers, infinity, NaN, empty arrays, and edge cases

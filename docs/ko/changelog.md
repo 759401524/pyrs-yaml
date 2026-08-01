@@ -10,19 +10,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 변경 이력](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### [Unreleased]
+### [0.10.0] - 2026-08-01
 
 #### Added
 
 - **제자리 편집** — 서식 메타데이터를 잃지 않고 파싱된 문서 편집:
-  - 경로 API: `doc.set(path, value)`, `doc.insert(path, index, value)`, `doc.append(path, value)`, `doc.delete(path)`, `doc.rename(path, new_key)`, JSONPath 스타일 경로(`$.a.b[0]`); 루트 슈가 `doc["key"] = value`와 `del doc["key"]`
-  - 노드 API: `doc.node()` / `doc.find(path)`는 `Node` 객체를 반환하며 `set_value` / `append` / `insert` / `delete` / `rename`과 트리 탐색(`parent`, `children`, `walk`, `filter`)을 지원
-  - 완전한 메타데이터 보존 — 교체된 스칼라는 주석/앵커/태그/따옴표를 유지; 이름이 변경된 키는 위치와 주석을 유지; 삭제 시 매핑 순서 보존
-  - 원자적 편집 — 실패한 작업은 문서(리비전 포함)를 변경하지 않음
-  - 지연 소스 재동기화 — `source()` / `to_yaml()` / `reparse()`는 편집 성공 후에만 재직렬화
-  - 오래된 노드 감지 — 문서 편집 후 `Node` 접근은 `YamlDocumentError` 발생(`RuntimeWarning` 포함)
-  - 새 예외: `YamlEditError`, `YamlPathError`(en/zh-CN/ja-JP/ko-KR i18n 지원)
-  - 별칭 인식 편집 — 별칭 자신의 경로 설정은 그 자리를 교체; 별칭을 통한 편집은 `YamlEditError` 발생
+    - 경로 API: `doc.set(path, value)`, `doc.insert(path, index, value)`, `doc.append(path, value)`, `doc.delete(path)`, `doc.rename(path, new_key)`, JSONPath 스타일 경로(`$.a.b[0]`); 루트 슈가 `doc["key"] = value`와 `del doc["key"]`
+    - 노드 API: `doc.node()` / `doc.find(path)`는 `Node` 객체를 반환하며 `set_value` / `append` / `insert` / `delete` / `rename`과 트리 탐색(`parent`, `children`, `walk`, `filter`)을 지원
+    - 완전한 메타데이터 보존 — 교체된 스칼라는 주석/앵커/태그/따옴표를 유지; 이름이 변경된 키는 위치와 주석을 유지; 삭제 시 매핑 순서 보존
+    - 원자적 편집 — 실패한 작업은 문서(리비전 포함)를 변경하지 않음
+    - 지연 소스 재동기화 — `source()` / `to_yaml()` / `reparse()`는 편집 성공 후에만 재직렬화
+    - 오래된 노드 감지 — 문서 편집 후 `Node` 접근은 `YamlDocumentError` 발생(`RuntimeWarning` 포함)
+    - 새 예외: `YamlEditError`, `YamlPathError`(en/zh-CN/ja-JP/ko-KR i18n 지원)
+    - 별칭 인식 편집 — 별칭 자신의 경로 설정은 그 자리를 교체; 별칭을 통한 편집은 `YamlEditError` 발생
 - **편집 벤치마크** — `benches/yaml_bench.rs`에 divan 벤치마크 6개 추가(소형~대형 문서의 set/insert/delete)
 - **Python 3.13, 3.14, 3.15 지원** — PyO3 `abi3-py38` 휠이 Python 3.8-3.15 커버(GIL 빌드); `abi3t` + `abi3t-py315`는 free-threaded 안정 ABI 제공
 - **Free-threaded CPython(GIL 없음) 지원** — `#[pymodule(gil_used = false)]`가 모듈을 free-threaded Python용 스레드 안전으로 선언; `Py_GIL_DISABLED` cfg 플래그로 numpy 게이트(rust-numpy는 free-threaded 미지원 — `--no-default-features`로 free-threaded 빌드에서 numpy feature 비활성화)
@@ -46,12 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - **NumPy ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
-  - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
-  - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
-  - Complex numbers serialize as `(re+imj)` string format
-  - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
-  - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
-  - GIL released during slice iteration for maximum performance
+    - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
+    - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
+    - Complex numbers serialize as `(re+imj)` string format
+    - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
+    - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
+    - GIL released during slice iteration for maximum performance
 - **`quoted_scalar()`** — new `CustomNode::quoted_scalar()` constructor for values requiring single-quoted YAML style
 - **Type resolution for quoted scalars** — `resolve_yaml_type` now applied to `SingleQuoted`/`DoubleQuoted` scalars for correct round-trip of quoted negative numbers
 - **Comprehensive NumPy test suite** — 42 tests covering all dtypes, dimensions (0-D through 4-D), negative numbers, infinity, NaN, empty arrays, and edge cases
