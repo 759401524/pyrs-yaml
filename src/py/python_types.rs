@@ -58,8 +58,13 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
     }
 
     #[cfg(feature = "numpy")]
-    if let Some(node) = ndarray_to_node(py, obj) {
-        return Ok(node);
+    if py.import("numpy").is_ok() {
+        // numpy is only probed at runtime: free-threaded (Py_GIL_DISABLED)
+        // builds compile with the default "numpy" feature but ship without
+        // the module installed, and numpy's capsule access would panic.
+        if let Some(node) = ndarray_to_node(py, obj) {
+            return Ok(node);
+        }
     }
 
     Err(YamlTypeError::new_err(format_i18n_error(
