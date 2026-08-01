@@ -39,7 +39,7 @@ print(doc.to_yaml())
 | `$.items[0]` | シーケンス `items` の最初の要素 |
 | `$` | ルートノード自体 |
 
-- **負のインデックス**（`[-1]`）は**サポートされません** — エラーが発生します
+- **負のインデックス**（`[-1]`、`[-2]`、...）は**サポートされています** — シーケンスの末尾から数えます（Python と同じセマンティクス：`-1` は最後の要素）。範囲外の負のインデックスは `YamlEditError` を発生させます
 - キーは**値でマッチ**します（メタデータには依存しません）。そのため、クォート付きキー `"host"` はプレーンキー `host` にマッチします
 
 編集パスは正確に 1 つのノードを対象とする必要があります — **ワイルドカード**（`[*]`）と**ディープスキャン**（`..`）は `YamlPathError` を発生させます。（クエリ専用の `find()` ではこれらを使用できます。[`find()` によるクエリ](#find-によるクエリ) を参照してください。）
@@ -97,7 +97,7 @@ node.set_value(42)
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index` は現在の長さまで指定できます（`len` に挿入すると末尾への追加になります）。それより大きい場合は `YamlEditError` を発生します。
+`index` は現在の長さまで指定できます（`len` に挿入すると末尾への追加になります）。それより大きい場合は `YamlEditError` を発生します。負のインデックスは末尾から数えます（`-1` は最後の要素の前に挿入、`-len` は先頭に挿入）。
 
 ```python
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
@@ -105,6 +105,7 @@ doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", 0, "first")
 doc.insert("$.items", 3, "last")  # index == len appends
+doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
 ### `append()` — 末尾に追加
@@ -253,7 +254,7 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 | エラー | 発生時 |
 |-------|--------|
 | `YamlPathError` | 不正なパス、編集パスでのワイルドカード/`..` の使用 |
-| `YamlEditError` | サポートされない値型（`tuple`）、負のインデックス、エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
+| `YamlEditError` | サポートされない値型（`tuple`）、エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
 | `YamlDocumentError` | ドキュメント編集後に陳腐化した `Node` を使用 |
 
 すべての編集はアトミックです — 失敗した編集はドキュメント（とそのリビジョン）に影響を与えません。

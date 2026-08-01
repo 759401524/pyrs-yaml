@@ -66,6 +66,26 @@ struct Serializer {
     width: usize,
 }
 
+/// Whether a node can be serialized inline on the same line as a mapping
+/// key's colon (compact sequence item form): scalars, nulls, aliases, and
+/// flow-style containers all end with a newline of their own.
+fn inlineable_value(v: &CustomNode) -> bool {
+    matches!(
+        v,
+        CustomNode::Scalar { .. }
+            | CustomNode::Null { .. }
+            | CustomNode::Alias { .. }
+            | CustomNode::Mapping {
+                flow_style: true,
+                ..
+            }
+            | CustomNode::Sequence {
+                flow_style: true,
+                ..
+            }
+    )
+}
+
 impl Serializer {
     fn new(options: &SerializeOptions) -> Self {
         let mut cache = Vec::with_capacity(128);
@@ -396,28 +416,69 @@ impl Serializer {
                         self.write_indent(indent_width);
                         self.output.push_str("- ");
 
-                        if matches!(
-                            item,
-                            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-                        ) {
-                            self.output.push('\n');
-                            self.serialize_node_internal(
-                                item,
-                                indent_width + self.indent_sequence,
-                                i == items.len() - 1,
-                                false,
-                                depth + 1,
-                            )?;
-                        } else {
-                            // For simple items, they go on the same line as the dash
-                            // Don't pass indent_width to avoid extra indentation
-                            self.serialize_node_internal(
-                                item,
-                                0,
-                                i == items.len() - 1,
-                                false,
-                                depth + 1,
-                            )?;
+                        match item {
+                            // Compact form: `- key: value` with subsequent keys
+                            // indented to align under the first key. Only when the
+                            // mapping carries no metadata and every key/value can
+                            // share the dash line.
+                            CustomNode::Mapping {
+                                pairs,
+                                comment: None,
+                                anchor: None,
+                                tag: None,
+                                flow_style: false,
+                                ..
+                            } if !pairs.is_empty()
+                                && pairs.iter().all(|(k, v)| {
+                                    !matches!(
+                                        k,
+                                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+                                    ) && inlineable_value(v)
+                                }) =>
+                            {
+                                for (pi, (key, value)) in pairs.iter().enumerate() {
+                                    if pi > 0 {
+                                        self.write_indent(indent_width + self.indent_sequence);
+                                    }
+                                    self.write_scalar_for_key(key);
+                                    self.output.push(':');
+                                    self.output.push(' ');
+                                    self.serialize_node_internal(
+                                        value,
+                                        0,
+                                        i == items.len() - 1 && pi == pairs.len() - 1,
+                                        true,
+                                        depth + 1,
+                                    )?;
+                                }
+                            }
+                            CustomNode::Mapping {
+                                flow_style: false, ..
+                            }
+                            | CustomNode::Sequence {
+                                flow_style: false, ..
+                            } => {
+                                self.output.push('\n');
+                                self.serialize_node_internal(
+                                    item,
+                                    indent_width + self.indent_sequence,
+                                    i == items.len() - 1,
+                                    false,
+                                    depth + 1,
+                                )?;
+                            }
+                            _ => {
+                                // For simple items (including flow-style containers),
+                                // they go on the same line as the dash. Don't pass
+                                // indent_width to avoid extra indentation.
+                                self.serialize_node_internal(
+                                    item,
+                                    0,
+                                    i == items.len() - 1,
+                                    false,
+                                    depth + 1,
+                                )?;
+                            }
                         }
                     }
 

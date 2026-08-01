@@ -10,14 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **In-place editing** — edit parsed documents without losing formatting metadata:
-  - Path API: `doc.set(path, value)`, `doc.insert(path, index, value)`, `doc.append(path, value)`, `doc.delete(path)`, `doc.rename(path, new_key)` with JSONPath-style paths (`$.a.b[0]`); root sugar via `doc["key"] = value` and `del doc["key"]`
-  - Node API: `doc.node()` / `doc.find(path)` return `Node` objects with `set_value` / `append` / `insert` / `delete` / `rename`, plus tree traversal (`parent`, `children`, `walk`, `filter`)
-  - Full metadata preservation — replaced scalars keep comment/anchor/tag/quoting; renamed keys keep position and comments; mapping order preserved on delete
-  - Atomic edits — failed operations leave the document (and its revision) untouched
-  - Lazy source re-sync — `source()` / `to_yaml()` / `reparse()` re-serialize only after a successful edit
-  - Stale-node detection — `Node` access after a document edit raises `YamlDocumentError` (with `RuntimeWarning`)
-  - New exceptions: `YamlEditError`, `YamlPathError` (i18n across en/zh-CN/ja-JP/ko-KR)
-  - Alias-aware editing — setting an alias's own path replaces it in place; editing through an alias raises `YamlEditError`
+    - Path API: `doc.set(path, value)`, `doc.insert(path, index, value)`, `doc.append(path, value)`, `doc.delete(path)`, `doc.rename(path, new_key)` with JSONPath-style paths (`$.a.b[0]`); root sugar via `doc["key"] = value` and `del doc["key"]`
+    - Node API: `doc.node()` / `doc.find(path)` return `Node` objects with `set_value` / `append` / `insert` / `delete` / `rename`, plus tree traversal (`parent`, `children`, `walk`, `filter`)
+    - Full metadata preservation — replaced scalars keep comment/anchor/tag/quoting; renamed keys keep position and comments; mapping order preserved on delete
+    - Atomic edits — failed operations leave the document (and its revision) untouched
+    - Lazy source re-sync — `source()` / `to_yaml()` / `reparse()` re-serialize only after a successful edit
+    - Stale-node detection — `Node` access after a document edit raises `YamlDocumentError` (with `RuntimeWarning`)
+    - New exceptions: `YamlEditError`, `YamlPathError` (i18n across en/zh-CN/ja-JP/ko-KR)
+    - Alias-aware editing — setting an alias's own path replaces it in place; editing through an alias raises `YamlEditError`
+    - Negative index paths — `[-1]`, `[-2]`, ... work in edit paths and `get()` with Python semantics (count from the end); out-of-range negative indexes raise `YamlEditError`
+    - JSONPath in `get()` — `doc.get("$.a.b")`, `doc.get("$.items[0]")`, `doc.get("$.items[-1]")`
+    - Empty-document edits — `set()` on an empty document auto-creates a mapping root
 - **Edit benchmarks** — 6 new divan benchmarks in `benches/yaml_bench.rs` (set/insert/delete on small–large documents)
 - **Python 3.13, 3.14 and 3.15 support** — PyO3 `abi3-py38` wheel covers Python 3.8-3.15 (GIL build); `abi3t` + `abi3t-py315` provide free-threaded stable ABI
 - **Free-threaded CPython (no-GIL) support** — `#[pymodule(gil_used = false)]` declares module as thread-safe for free-threaded Python; `Py_GIL_DISABLED` cfg flag gates numpy (rust-numpy has no free-threaded support yet — numpy feature must be disabled for free-threaded builds via `--no-default-features`)
@@ -35,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Round-trip documentation clarified: merge keys (`<<`) are resolved by default and only preserved verbatim with `resolve_merges=False`
+- Compact sequence items round-trip — metadata-free mapping items in a sequence now serialize as `- key: value` (previously emitted `- \n  key: value`); flow containers as sequence items no longer break the block layout
+- Editing through an alias now raises a dedicated `cannot-edit-alias` error for `set`/`insert`/`append`/`delete`/`rename`
 
 ## [0.6.0] - 2026-07-27
 
@@ -106,12 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **NumPy ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
-  - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
-  - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
-  - Complex numbers serialize as `(re+imj)` string format
-  - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
-  - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
-  - GIL released during slice iteration for maximum performance
+    - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
+    - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
+    - Complex numbers serialize as `(re+imj)` string format
+    - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
+    - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
+    - GIL released during slice iteration for maximum performance
 - **`quoted_scalar()`** — new `CustomNode::quoted_scalar()` constructor for values requiring single-quoted YAML style
 - **Type resolution for quoted scalars** — `resolve_yaml_type` now applied to `SingleQuoted`/`DoubleQuoted` scalars for correct round-trip of quoted negative numbers
 - **Comprehensive NumPy test suite** — 42 tests covering all dtypes, dimensions (0-D through 4-D), negative numbers, infinity, NaN, empty arrays, and edge cases

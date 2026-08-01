@@ -39,7 +39,7 @@ print(doc.to_yaml())
 | `$.items[0]` | 시퀀스 `items`의 첫 번째 요소 |
 | `$` | 루트 노드 자체 |
 
-- **음수 인덱스** (`[-1]`)는 **지원되지 않습니다** — 오류를 발생시킵니다
+- **음수 인덱스** (`[-1]`, `[-2]`, ...)는 **지원됩니다** — 시퀀스 끝에서부터 셉니다 (Python과 동일한 의미: `-1`은 마지막 요소). 범위를 벗어난 음수 인덱스는 `YamlEditError`를 발생시킵니다
 - 키는 **값 기준**으로 일치하므로(메타데이터 무관), 따옴표 키 `"host"`는 일반 키 `host`와 일치합니다
 
 편집 경로는 정확히 하나의 노드를 대상으로 해야 합니다 — **와일드카드** (`[*]`)와 **딥 스캔** (`..`)은 `YamlPathError`를 발생시킵니다. (쿼리 전용 `find()`는 이를 지원합니다. [find()로 쿼리하기](#find로-쿼리하기) 참조)
@@ -97,7 +97,7 @@ node.set_value(42)
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index`는 현재 길이까지 허용됩니다 (`len`에 삽입하면 추가됨); 그보다 크면 `YamlEditError`가 발생합니다.
+`index`는 현재 길이까지 허용됩니다 (`len`에 삽입하면 추가됨); 그보다 크면 `YamlEditError`가 발생합니다. 음수 인덱스는 끝에서부터 셉니다 (`-1`은 마지막 요소 앞에 삽입, `-len`은 맨 앞에 삽입).
 
 ```python
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
@@ -105,6 +105,7 @@ doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", 0, "first")
 doc.insert("$.items", 3, "last")  # index == len appends
+doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
 ### `append()` — 끝에 추가
@@ -253,7 +254,7 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 | 오류 | 시점 |
 |------|------|
 | `YamlPathError` | 잘못된 경로, 편집 경로에 와일드카드/`..` 사용 |
-| `YamlEditError` | 지원되지 않는 값 타입 (`tuple`), 음수 인덱스, 별칭을 통한 편집, 루트/복합/기존 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과 |
+| `YamlEditError` | 지원되지 않는 값 타입 (`tuple`), 별칭을 통한 편집, 루트/복합/기존 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과 |
 | `YamlDocumentError` | 문서 편집 후 오래된 `Node` 사용 |
 
 모든 편집은 원자적입니다 — 실패한 편집은 문서(및 리비전)를 변경하지 않습니다.

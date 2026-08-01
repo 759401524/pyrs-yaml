@@ -50,32 +50,97 @@ pub fn mapping_key_index(
     pairs.iter().position(|(k, _)| key_eq(k, key))
 }
 
-/// A path segment: mapping key (String) or sequence index (usize).
+/// A path segment: mapping key (String) or sequence index (i64).
+///
+/// Indexes follow Python semantics: negative values count from the end of the
+/// sequence (`-1` = last element). They are normalized against the length at
+/// navigation time via [`normalize_index`].
 #[derive(Debug, Clone)]
 pub enum Segment<'a> {
     Key(Cow<'a, str>),
-    Index(usize),
+    Index(i64),
 }
 
 impl<'a> Segment<'a> {
-    /// Extract from a bound Python object: str → Key, int (non-negative) → Index, else error.
+    /// Extract from a bound Python object: str → Key, int (possibly negative) → Index, else error.
     pub fn from_py(_py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Segment<'a>> {
         if let Ok(s) = obj.extract::<String>() {
             Ok(Segment::Key(Cow::Owned(s)))
         } else if let Ok(i) = obj.extract::<i64>() {
-            if i < 0 {
-                Err(pyo3::exceptions::PyValueError::new_err(
-                    "segment must be a non-negative integer",
-                ))
-            } else {
-                Ok(Segment::Index(i as usize))
-            }
+            Ok(Segment::Index(i))
         } else {
             Err(pyo3::exceptions::PyValueError::new_err(
-                "segment must be str or non-negative int",
+                "segment must be str or int",
             ))
         }
     }
+}
+
+/// Normalize a possibly-negative sequence index against a length, following
+/// Python semantics (`-1` = last element). Returns `None` when out of range
+/// (including when the sequence is empty).
+pub fn normalize_index(index: i64, len: usize) -> Option<usize> {
+    let normalized = if index < 0 {
+        i64::try_from(len).ok()?.checked_add(index)?
+    } else {
+        index
+    };
+    usize::try_from(normalized).ok().filter(|&i| i < len)
+}
+
+/// Parse a JSONPath-like string (`$.a.b`, `$.arr[0]`, `$.arr[-1]`, `$`) into
+/// path segments for editing/querying. Mapping keys and sequence indexes are
+/// interleaved freely; negative indexes are preserved for later normalization.
+///
+/// Wildcard (`*`) and deep-scan (`..`) paths are rejected because they target
+/// more than one node and edits resolve to exactly one.
+pub fn parse_path_segments(path: &str) -> Result<Vec<Segment<'_>>, String> {
+    let rest = path.strip_prefix('$').unwrap_or(path);
+    let rest = rest.strip_prefix('.').unwrap_or(rest);
+    if rest.starts_with('.') {
+        return Err("wildcard-or-deep-scan".to_string());
+    }
+    let mut segments = Vec::new();
+    let mut chars = rest.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        match c {
+            '.' => {
+                chars.next();
+            }
+            '[' => {
+                chars.next();
+                let mut num = String::new();
+                if matches!(chars.peek(), Some('-')) {
+                    num.push('-');
+                    chars.next();
+                }
+                while matches!(chars.peek(), Some(d) if d.is_ascii_digit()) {
+                    num.push(chars.next().expect("peeked digit"));
+                }
+                if chars.next() != Some(']') || num.is_empty() || num == "-" {
+                    return Err(format!("invalid-index:{num}"));
+                }
+                let idx: i64 = num.parse().map_err(|_| format!("invalid-index:{num}"))?;
+                segments.push(Segment::Index(idx));
+            }
+            '*' => return Err("wildcard-or-deep-scan".to_string()),
+            _ => {
+                let mut key = String::new();
+                while let Some(&ch) = chars.peek() {
+                    if matches!(ch, '.' | '[' | '*' | '$') {
+                        break;
+                    }
+                    key.push(ch);
+                    chars.next();
+                }
+                if key.is_empty() {
+                    return Err("invalid-path".to_string());
+                }
+                segments.push(Segment::Key(Cow::Owned(key)));
+            }
+        }
+    }
+    Ok(segments)
 }
 
 /// Navigation failure modes, mapped to i18n keys at the call site.
@@ -106,7 +171,10 @@ pub fn navigate<'a>(
                 .map(|(_, v)| v)
                 .ok_or_else(|| NavigateError::Missing(k.to_string()))?,
             (CustomNode::Sequence { items, .. }, Segment::Index(i)) => items
-                .get(*i)
+                .get(
+                    normalize_index(*i, items.len())
+                        .ok_or_else(|| NavigateError::Missing(i.to_string()))?,
+                )
                 .ok_or_else(|| NavigateError::Missing(i.to_string()))?,
             (_, Segment::Key(k)) => return Err(NavigateError::CannotDescend(k.to_string())),
             (_, Segment::Index(i)) => return Err(NavigateError::CannotDescend(i.to_string())),
@@ -137,8 +205,10 @@ pub fn navigate_mut<'a>(
                     Segment::Index(i) => i,
                     Segment::Key(k) => return Err(NavigateError::CannotDescend(k.to_string())),
                 };
+                let idx = normalize_index(*i, items.len())
+                    .ok_or_else(|| NavigateError::Missing(i.to_string()))?;
                 items
-                    .get_mut(*i)
+                    .get_mut(idx)
                     .ok_or_else(|| NavigateError::Missing(i.to_string()))?
             }
             _ => {
@@ -276,6 +346,17 @@ pub fn set_path(
         *node = new_value;
         return Ok(());
     }
+    // Setting a path on an empty document auto-creates a mapping root so the
+    // first key has somewhere to live (`set("a.b", 1)` on an empty doc).
+    if matches!(node, CustomNode::Null { .. }) {
+        *node = CustomNode::Mapping {
+            pairs: IndexMap::new(),
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        };
+    }
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
     let last = &last[0];
     let parent = navigate_mut(node, parent_segments).map_err(|e| match e {
@@ -283,6 +364,7 @@ pub fn set_path(
         NavigateError::CannotDescend(t) => format!("cannot-descend-into-scalar:{t}"),
         NavigateError::NotContainer => "create-needs-mapping".to_string(),
     })?;
+    let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
     match (parent, last) {
         (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => {
@@ -314,10 +396,11 @@ pub fn set_path(
             Ok(())
         }
         (CustomNode::Sequence { items, .. }, Segment::Index(i)) => {
-            let idx = *i;
+            let idx = normalize_index(*i, items.len())
+                .ok_or_else(|| format!("index-out-of-range-edit:{i}"))?;
             let target = items
                 .get_mut(idx)
-                .ok_or_else(|| format!("index-out-of-range-edit:{idx}"))?;
+                .ok_or_else(|| format!("index-out-of-range-edit:{i}"))?;
             let mut v = new_value;
             if preserve_metadata {
                 v = with_metadata_from(&v, target);
@@ -325,6 +408,7 @@ pub fn set_path(
             items[idx] = v;
             Ok(())
         }
+        _ if parent_is_alias => Err("cannot-edit-alias".to_string()),
         _ => Err("create-needs-mapping".to_string()),
     }
 }
@@ -339,22 +423,32 @@ fn nav_err(e: NavigateError) -> String {
 }
 
 /// Insert `value` at `index` in the sequence reached by `segments`.
-/// `index == len` appends. The final segment must resolve to a sequence.
+/// `index == len` appends; negative `index` counts from the end. The final
+/// segment must resolve to a sequence.
 pub fn insert_path(
     node: &mut CustomNode,
     segments: &[Segment<'_>],
-    index: usize,
+    index: i64,
     value: CustomNode,
 ) -> Result<(), String> {
     let seq = navigate_mut(node, segments).map_err(nav_err)?;
     match seq {
         CustomNode::Sequence { items, .. } => {
-            if index > items.len() {
+            let insert_at = if index < 0 {
+                i64::try_from(items.len())
+                    .map_err(|_| "index-out-of-range-edit".to_string())?
+                    .checked_add(index)
+                    .ok_or_else(|| "index-out-of-range-edit".to_string())?
+            } else {
+                index
+            };
+            if insert_at < 0 || insert_at > items.len() as i64 {
                 return Err("index-out-of-range-edit".to_string());
             }
-            items.insert(index, value);
+            items.insert(insert_at as usize, value);
             Ok(())
         }
+        _ if matches!(seq, CustomNode::Alias { .. }) => Err("cannot-edit-alias".to_string()),
         _ => Err("not-a-sequence".to_string()),
     }
 }
@@ -371,6 +465,7 @@ pub fn append_path(
             items.push(value);
             Ok(())
         }
+        _ if matches!(seq, CustomNode::Alias { .. }) => Err("cannot-edit-alias".to_string()),
         _ => Err("not-a-sequence".to_string()),
     }
 }
@@ -384,6 +479,7 @@ pub fn delete_path(node: &mut CustomNode, segments: &[Segment<'_>]) -> Result<()
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
     let last = &last[0];
     let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
+    let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
     match (parent, last) {
         (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => {
@@ -395,12 +491,12 @@ pub fn delete_path(node: &mut CustomNode, segments: &[Segment<'_>]) -> Result<()
             Ok(())
         }
         (CustomNode::Sequence { items, .. }, Segment::Index(i)) => {
-            if *i >= items.len() {
-                return Err("index-out-of-range-edit".to_string());
-            }
-            items.remove(*i);
+            let idx = normalize_index(*i, items.len())
+                .ok_or_else(|| "index-out-of-range-edit".to_string())?;
+            items.remove(idx);
             Ok(())
         }
+        _ if parent_is_alias => Err("cannot-edit-alias".to_string()),
         _ => Err("missing-path".to_string()),
     }
 }
@@ -419,6 +515,7 @@ pub fn rename_path(
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
     let last = &last[0];
     let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
+    let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
     match (parent, last) {
         (CustomNode::Mapping { pairs, .. }, Segment::Key(old_key)) => {
             let old_key_node = CustomNode::plain_scalar(old_key.as_ref());
@@ -454,6 +551,153 @@ pub fn rename_path(
             pairs.shift_insert(idx, new_key_node, value_node);
             Ok(())
         }
+        _ if parent_is_alias => Err("cannot-edit-alias".to_string()),
         _ => Err("cannot-rename-complex-key".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{parse, yaml::YamlSchema};
+
+    fn doc(yaml: &str) -> CustomNode {
+        parse(yaml, YamlSchema::Core).unwrap()
+    }
+
+    #[test]
+    fn normalize_index_python_semantics() {
+        assert_eq!(normalize_index(0, 3), Some(0));
+        assert_eq!(normalize_index(2, 3), Some(2));
+        assert_eq!(normalize_index(3, 3), None);
+        assert_eq!(normalize_index(-1, 3), Some(2));
+        assert_eq!(normalize_index(-3, 3), Some(0));
+        assert_eq!(normalize_index(-4, 3), None);
+        assert_eq!(normalize_index(-1, 0), None);
+        assert_eq!(normalize_index(0, 0), None);
+    }
+
+    #[test]
+    fn parse_path_segments_basic() {
+        let segs = parse_path_segments("$.a.b").unwrap();
+        assert_eq!(segs.len(), 2);
+        assert!(matches!(&segs[0], Segment::Key(k) if k == "a"));
+        assert!(matches!(&segs[1], Segment::Key(k) if k == "b"));
+
+        let segs = parse_path_segments("$.arr[0]").unwrap();
+        assert!(matches!(&segs[0], Segment::Key(k) if k == "arr"));
+        assert!(matches!(&segs[1], Segment::Index(0)));
+
+        let segs = parse_path_segments("$.arr[-1]").unwrap();
+        assert!(matches!(&segs[1], Segment::Index(-1)));
+
+        assert!(parse_path_segments("$").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_path_segments_rejects_wildcard_and_deep_scan() {
+        assert!(parse_path_segments("$.a[*]").is_err());
+        assert!(parse_path_segments("$..a").is_err());
+        assert!(parse_path_segments("$[0").is_err());
+        assert!(parse_path_segments("$[]").is_err());
+    }
+
+    #[test]
+    fn set_path_negative_index() {
+        let mut node = doc("- a\n- b\n- c");
+        set_path(
+            &mut node,
+            &[Segment::Index(-1)],
+            CustomNode::plain_scalar("z"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(crate::serializer::to_yaml(&node), "- a\n- b\n- z\n");
+    }
+
+    #[test]
+    fn set_path_out_of_range_negative() {
+        let mut node = doc("- a\n- b");
+        assert!(set_path(
+            &mut node,
+            &[Segment::Index(-3)],
+            CustomNode::plain_scalar("z"),
+            true,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn set_path_creates_mapping_root_on_empty_document() {
+        let mut node = doc("");
+        set_path(
+            &mut node,
+            &[Segment::Key(Cow::Borrowed("a"))],
+            CustomNode::plain_scalar("1"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(crate::serializer::to_yaml(&node), "a: 1\n");
+    }
+
+    #[test]
+    fn set_path_through_alias_is_rejected() {
+        let mut node = doc("base: &b\n  x: 1\ncopy: *b");
+        let err = set_path(
+            &mut node,
+            &[
+                Segment::Key(Cow::Borrowed("copy")),
+                Segment::Key(Cow::Borrowed("y")),
+            ],
+            CustomNode::plain_scalar("2"),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(err, "cannot-edit-alias");
+    }
+
+    #[test]
+    fn delete_path_negative_index() {
+        let mut node = doc("- a\n- b\n- c");
+        delete_path(&mut node, &[Segment::Index(-2)]).unwrap();
+        assert_eq!(crate::serializer::to_yaml(&node), "- a\n- c\n");
+    }
+
+    #[test]
+    fn insert_path_negative_index() {
+        let mut node = doc("- a\n- b\n- c");
+        insert_path(&mut node, &[], -1, CustomNode::plain_scalar("z")).unwrap();
+        assert_eq!(crate::serializer::to_yaml(&node), "- a\n- b\n- z\n- c\n");
+    }
+
+    #[test]
+    fn serializer_compact_sequence_item() {
+        let node = doc("servers:\n  - host: a");
+        assert_eq!(crate::serializer::to_yaml(&node), "servers:\n  - host: a\n");
+    }
+
+    #[test]
+    fn serializer_compact_multi_key_item() {
+        let node = doc("- host: a\n  port: 8080");
+        assert_eq!(
+            crate::serializer::to_yaml(&node),
+            "- host: a\n  port: 8080\n"
+        );
+    }
+
+    #[test]
+    fn serializer_compact_skips_metadata_items() {
+        let node = doc("- name: &x anchor\n  value: 1");
+        let out = crate::serializer::to_yaml(&node);
+        assert!(out.contains("&x"));
+    }
+
+    #[test]
+    fn serializer_compact_skips_block_nested_mappings() {
+        let node = doc("- top:\n    inner: 1");
+        assert_eq!(
+            crate::serializer::to_yaml(&node),
+            "- \n  top:\n    inner: 1\n"
+        );
     }
 }

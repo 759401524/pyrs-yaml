@@ -95,7 +95,7 @@ except pyrs_yaml.YamlValidateError as e:
 
 ### YamlEditError
 
-当就地编辑无法应用时引发：不支持的值类型（`tuple`）、负索引、通过别名编辑、重命名根或复杂键、导航进入标量、索引越界。
+当就地编辑无法应用时引发：不支持的值类型（`tuple`）、通过别名编辑、重命名根或复杂键、导航进入标量、索引越界。
 
 ```python
 class YamlEditError(ValueError):

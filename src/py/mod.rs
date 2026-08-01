@@ -545,6 +545,16 @@ mod pyrs_yaml {
 
         #[pyo3(signature = (key: "str", default: "Any" = None) -> "Any")]
         fn get(&self, py: Python, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+            let is_path = key.starts_with('$') || key.contains('.') || key.contains('[');
+            if is_path {
+                let segs = editing::parse_path_segments(key).map_err(|e| {
+                    YamlPathError::new_err(format_i18n_error("path-error", &[("detail", &e)]))
+                })?;
+                return match editing::navigate(&self.ast, &segs) {
+                    Ok(node) => Ok(node_to_pyobject(node, py, self.schema)?),
+                    Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+                };
+            }
             match &self.ast {
                 CustomNode::Mapping { pairs, .. } => {
                     let key_node = CustomNode::plain_scalar(key);
@@ -698,7 +708,7 @@ mod pyrs_yaml {
             &mut self,
             py: Python,
             segments: Vec<Py<PyAny>>,
-            index: usize,
+            index: i64,
             value: Py<PyAny>,
         ) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments

@@ -47,6 +47,7 @@ assert "&db" in output
 | Scalar styles | ✅ | Plain, quoted, literal, folded |
 | Chomping (`\|-`, `>-`) | ✅ | Block scalar indicators |
 | Flow/block style | ✅ | `[]`/`{}` vs block preserved |
+| Compact sequence items | ✅ | `- host: a` stays on the dash line (metadata-free mapping items only) |
 | Key order | ✅ | `IndexMap` guarantees order |
 
 ## PyYAML vs pyrs-yaml Round-Trip

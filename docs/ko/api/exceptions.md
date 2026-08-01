@@ -95,7 +95,7 @@ except pyrs_yaml.YamlValidateError as e:
 
 ### YamlEditError
 
-제자리 편집을 적용할 수 없을 때 발생합니다: 지원되지 않는 값 타입 (`tuple`), 음수 인덱스, 별칭을 통한 편집, 루트 또는 복합 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과.
+제자리 편집을 적용할 수 없을 때 발생합니다: 지원되지 않는 값 타입 (`tuple`), 별칭을 통한 편집, 루트 또는 복합 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과.
 
 ```python
 class YamlEditError(ValueError):

@@ -36,7 +36,7 @@ Paths start with `$` followed by dot-separated keys (mapping) or `[N]` indices (
 | `$.items[0]` | First element of sequence `items` |
 | `$` | The root node itself |
 
-- **Negative indices** (`[-1]`) are **not supported** — they raise an error
+- **Negative indices** (`[-1]`, `[-2]`, ...) are **supported** — they count from the end of a sequence (Python semantics: `-1` is the last element). An out-of-range negative index raises `YamlEditError`
 - Keys are matched **by value** (metadata-insensitive), so a quoted key `"host"` matches the plain key `host`
 
 Editing paths must target exactly one node — **wildcards** (`[*]`) and **deep-scan** (`..`) raise `YamlPathError`. (Query-only `find()` does support them; see [Querying with `find()`](#querying-with-find).)
@@ -58,6 +58,13 @@ doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
 doc.set("$.items[1]", "two")  # sequence index
 doc.set("$.a.c", True)  # add a new key to a mapping (last position)
 doc.set("$", {"x": 1})  # replace the entire root
+```
+
+Setting a path on an **empty document** (parsed from `""`) auto-creates a mapping root:
+
+```python
+doc = pyrs_yaml.parse("")
+doc.set("$.a", 1)  # doc now holds {a: 1}
 ```
 
 Value conversion rules:
@@ -94,7 +101,7 @@ Both operate on **sequences** only; the path must resolve to a sequence node.
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index` may be up to the current length (inserting at `len` appends); anything larger raises `YamlEditError`.
+`index` may be up to the current length (inserting at `len` appends); anything larger raises `YamlEditError`. Negative indexes are supported and count from the end (`-1` inserts before the last element, `-len` inserts at the front).
 
 ```python
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
@@ -102,6 +109,7 @@ doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", 0, "first")
 doc.insert("$.items", 3, "last")  # index == len appends
+doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
 ### `append()` — add at the end
@@ -250,7 +258,7 @@ Re-find the node after any edit to continue working. `node.is_valid()` checks li
 | Error | When |
 |-------|------|
 | `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
-| `YamlEditError` | Unsupported value type (`tuple`), negative index, edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
+| `YamlEditError` | Unsupported value type (`tuple`), edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
 | `YamlDocumentError` | Stale `Node` used after a document edit |
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched.

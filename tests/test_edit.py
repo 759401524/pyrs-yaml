@@ -25,10 +25,15 @@ class TestSetPath:
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc._set_path(["x", "y"], 3)
 
-    def test_set_negative_index_raises(self):
+    def test_set_negative_index_from_end(self):
+        doc = pyrs_yaml.parse("arr: [1, 2, 3]\n")
+        doc._set_path(["arr", -1], 9)
+        assert doc.to_yaml() == "arr: [1, 2, 9]\n"
+
+    def test_set_negative_index_out_of_range_raises(self):
         doc = pyrs_yaml.parse("arr: [1, 2, 3]\n")
         with pytest.raises(pyrs_yaml.YamlEditError):
-            doc._set_path(["arr", -1], 9)
+            doc._set_path(["arr", -4], 9)
 
     def test_set_tuple_value_raises(self):
         doc = pyrs_yaml.parse("a: 1\n")
@@ -404,3 +409,121 @@ class TestEditAtomicity:
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc.insert("$.b", 5, 99)
         assert doc._revision() == rev0
+
+
+class TestNegativeIndexPaths:
+    def test_set_via_string_path(self):
+        doc = pyrs_yaml.parse("arr:\n  - 1\n  - 2\n  - 3\n")
+        doc.set("$.arr[-1]", 9)
+        assert doc.to_yaml() == "arr:\n  - 1\n  - 2\n  - 9\n"
+
+    def test_delete_via_string_path(self):
+        doc = pyrs_yaml.parse("arr:\n  - 1\n  - 2\n  - 3\n")
+        doc.delete("$.arr[-2]")
+        assert doc.to_yaml() == "arr:\n  - 1\n  - 3\n"
+
+    def test_insert_negative_index(self):
+        doc = pyrs_yaml.parse("arr:\n  - 1\n  - 2\n  - 3\n")
+        doc.insert("$.arr", -1, 99)
+        assert doc.to_yaml() == "arr:\n  - 1\n  - 2\n  - 99\n  - 3\n"
+
+    def test_set_out_of_range_negative_raises(self):
+        doc = pyrs_yaml.parse("arr:\n  - 1\n  - 2\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.set("$.arr[-3]", 9)
+
+    def test_get_negative_index(self):
+        doc = pyrs_yaml.parse("arr: [1, 2, 3]\n")
+        assert doc.get("$.arr[-1]") == 3
+        assert doc.get("$.arr[-3]") == 1
+        assert doc.get("$.arr[-4]") is None
+
+
+class TestEmptyDocumentEdit:
+    def test_set_on_empty_doc_creates_mapping_root(self):
+        doc = pyrs_yaml.parse("")
+        doc.set("$.a", 1)
+        assert doc.to_dict() == {"a": 1}
+        assert doc.to_yaml() == "a: 1\n"
+
+    def test_set_nested_on_empty_doc_raises_missing_intermediate(self):
+        doc = pyrs_yaml.parse("")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.set("$.a.b", 2)
+
+
+class TestGetJsonPath:
+    def test_nested_get(self):
+        doc = pyrs_yaml.parse("a:\n  b:\n    c: 42\n")
+        assert doc.get("$.a.b.c") == 42
+        assert doc.get("$.a.missing") is None
+
+    def test_get_sequence_index_path(self):
+        doc = pyrs_yaml.parse("arr: [10, 20, 30]\n")
+        assert doc.get("$.arr[1]") == 20
+        assert doc.get("$.arr[5]") is None
+
+    def test_get_invalid_path_raises(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        with pytest.raises(pyrs_yaml.YamlPathError):
+            doc.get("$[bad")
+        with pytest.raises(pyrs_yaml.YamlPathError):
+            doc.get("$..a")
+
+    def test_get_dotted_key_now_path_semantics(self):
+        doc = pyrs_yaml.parse("a.b: 1\n")
+        assert doc.get("a.b") is None  # '.' routes to JSONPath, not a literal key
+        assert doc.get("$.a.b") is None
+
+
+class TestCompactSequenceItems:
+    def test_round_trip_compact_mapping_item(self):
+        doc = pyrs_yaml.parse("servers:\n  - host: a\n")
+        assert doc.to_yaml() == "servers:\n  - host: a\n"
+
+    def test_round_trip_compact_multi_key_item(self):
+        doc = pyrs_yaml.parse("- host: a\n  port: 8080\n")
+        assert doc.to_yaml() == "- host: a\n  port: 8080\n"
+
+    def test_round_trip_comment_inside_compact_item(self):
+        doc = pyrs_yaml.parse("- host: a  # keep\n  port: 8080\n")
+        assert doc.to_yaml() == "- host: a  # keep\n  port: 8080\n"
+
+    def test_round_trip_flow_items_in_sequence(self):
+        doc = pyrs_yaml.parse("items:\n  - [1, 2]\n  - {a: 1}\n")
+        assert doc.to_yaml() == "items:\n  - [1, 2]\n  - {a: 1}\n"
+
+    def test_round_trip_scalar_items_unchanged(self):
+        doc = pyrs_yaml.parse("list:\n  - one\n  - two\n")
+        assert doc.to_yaml() == "list:\n  - one\n  - two\n"
+
+    def test_compact_item_with_anchor_stays_block(self):
+        doc = pyrs_yaml.parse("- name: &x anchor\n  value: 1\n")
+        assert "&x" in doc.to_yaml()
+
+
+class TestAliasEditErrors:
+    def test_set_through_alias_raises(self):
+        doc = pyrs_yaml.parse("defaults: &defaults\n  a: 1\nprod: *defaults\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.set("$.prod.a", 5)
+
+    def test_insert_through_alias_raises(self):
+        doc = pyrs_yaml.parse("defaults: &d\n  - 1\nprod: *d\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.insert("$.prod", 0, 99)
+
+    def test_append_through_alias_raises(self):
+        doc = pyrs_yaml.parse("defaults: &d\n  - 1\nprod: *d\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.append("$.prod", 99)
+
+    def test_delete_through_alias_raises(self):
+        doc = pyrs_yaml.parse("defaults: &d\n  x: 1\nprod: *d\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.delete("$.prod.x")
+
+    def test_rename_through_alias_raises(self):
+        doc = pyrs_yaml.parse("defaults: &d\n  x: 1\nprod: *d\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.rename("$.prod.x", "y")

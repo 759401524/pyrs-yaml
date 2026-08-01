@@ -78,7 +78,7 @@ print(type(data))  # <class 'dict'>
 
 ### `get()`
 
-Get a value by key (for mapping roots).
+Get a value by key (for mapping roots) or by JSONPath-like path.
 
 ```python
 get(key: str, default: Any = None) -> Any
@@ -86,15 +86,19 @@ get(key: str, default: Any = None) -> Any
 
 **Parameters:**
 
-- `key` — The key to look up
-- `default` — Value to return if key not found (default: None)
+- `key` — The key to look up, or a path. A key containing `.`, `[`, or starting with `$` is treated as a path: `$.a.b` (nested keys) and `$.arr[0]` / `$.arr[-1]` (sequence indexes, negative counts from the end) are resolved via the same navigation rules as the edit methods
+- `default` — Value to return if the key/path is not found (default: None)
 
 **Returns:** The value, or `default` if not found (or if root is not a mapping).
+
+**Raises:** `YamlPathError` — malformed path (e.g. `$[bad`, or a wildcard/deep-scan path)
 
 **Example:**
 
 ```python
 value = doc.get("key")
+value = doc.get("$.a.b")  # nested path
+value = doc.get("$.items[-1]")  # last element
 value = doc.get("missing", "fallback")
 ```
 
@@ -214,7 +218,7 @@ All edits are atomic — a failed edit leaves the document (and its revision) un
 
 ### `set()`
 
-Set the value at a path, preserving the target's metadata (comment, anchor, tag, style).
+Set the value at a path, preserving the target's metadata (comment, anchor, tag, style). Setting a path on an **empty document** (parsed from `""`) auto-creates a mapping root.
 
 ```python
 set(path: str, value: Any) -> None
@@ -225,6 +229,9 @@ doc = pyrs_yaml.parse("a:\n  b: 1")
 doc.set("$.a.b", 42)  # replace existing
 doc.set("$.a.c", True)  # create new key
 doc.set("$", {"x": 1})  # replace the root
+
+empty = pyrs_yaml.parse("")
+empty.set("$.a", 1)  # auto-creates a mapping root: {a: 1}
 ```
 
 **Raises:**
@@ -234,7 +241,7 @@ doc.set("$", {"x": 1})  # replace the root
 
 ### `insert()`
 
-Insert a value into a sequence at an index. The path must resolve to a sequence.
+Insert a value into a sequence at an index. The path must resolve to a sequence. Negative indexes count from the end (`-1` inserts before the last element).
 
 ```python
 insert(path: str, index: int, value: Any) -> None
@@ -243,6 +250,7 @@ insert(path: str, index: int, value: Any) -> None
 ```python
 doc = pyrs_yaml.parse("items: [a, c]")
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
+doc.insert("$.items", -1, "x")  # items: [a, b, x, c]
 ```
 
 ### `append()`

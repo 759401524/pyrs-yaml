@@ -88,13 +88,15 @@ data = doc.to_dict()  # {'key': 'value'}
 
 #### `get()`
 
-通过键获取值（用于映射根）。
+通过键或 JSONPath 风格路径获取值。包含 `.`、`[` 或以 `$` 开头的键会被当作路径处理（`$.a.b`、`$.arr[0]`、`$.arr[-1]` — 负索引从末尾倒数）。
 
 ```python
 get(key: str, default: Any = None) -> Any
 ```
 
 **返回值:** 值，未找到则返回默认值
+
+**引发:** `YamlPathError` — 路径格式错误（`$[bad`、通配符/深度扫描）
 
 #### `type()`
 
@@ -158,6 +160,7 @@ set(path: str, value: Any) -> None
 
 - 支持标量、`dict`、`list`；`tuple` 不支持（引发 `YamlEditError`）
 - 替换现有标量时保留目标的元数据；路径不存在时在映射末尾添加新键
+- 对空文档（从 `""` 解析）设置路径时，会自动创建映射根
 
 **示例:**
 
@@ -176,7 +179,7 @@ doc.set("$", {"x": 1})  # 替换整个根
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index` 最大可为序列当前长度（在 `len` 处插入等同于追加）。路径必须解析为序列节点。
+`index` 最大可为序列当前长度（在 `len` 处插入等同于追加）。负索引从末尾计数（`-1` 在最后一个元素之前插入）。路径必须解析为序列节点。
 
 #### `append()`
 
@@ -223,7 +226,7 @@ find(path: str) -> Node | list[Node]
 **引发:**
 
 - `YamlPathError` — 路径格式错误，或在编辑路径中使用通配符/`..`
-- `YamlEditError` — 编辑无法应用（`tuple`、负索引、通过别名编辑、重命名根/复杂键、导航进入标量、索引越界）
+- `YamlEditError` — 编辑无法应用（`tuple`、通过别名编辑、重命名根/复杂键、导航进入标量、索引越界）
 - `YamlDocumentError` — 文档编辑后使用过期的 `Node`
 
 **参见:** [就地编辑指南](../guides/editing.md)

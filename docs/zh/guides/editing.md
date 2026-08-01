@@ -39,7 +39,7 @@ print(doc.to_yaml())
 | `$.items[0]` | 序列 `items` 的第一个元素 |
 | `$` | 根节点本身 |
 
-- **负索引**（`[-1]`）**不受支持** — 会引发错误
+- **负索引**（`[-1]`、`[-2]`、...）**受支持** — 从序列末尾倒数（与 Python 语义一致：`-1` 是最后一个元素）。超出范围的负索引会抛出 `YamlEditError`
 - 键**按值匹配**（与元数据无关），因此带引号的键 `"host"` 可以匹配普通键 `host`
 
 编辑路径必须精确指向一个节点 — **通配符**（`[*]`）和**深度扫描**（`..`）会抛出 `YamlPathError`。（仅用于查询的 `find()` 支持它们；请参阅 [使用 `find()` 查询](#使用-find-查询)。）
@@ -97,7 +97,7 @@ node.set_value(42)
 insert(path: str, index: int, value: Any) -> None
 ```
 
-`index` 最大可为当前长度（在 `len` 处插入等同于追加）；更大的值会抛出 `YamlEditError`。
+`index` 最大可为当前长度（在 `len` 处插入等同于追加）；更大的值会抛出 `YamlEditError`。负索引从末尾计数（`-1` 在最后一个元素之前插入，`-len` 在开头插入）。
 
 ```python
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
@@ -105,6 +105,7 @@ doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", 0, "first")
 doc.insert("$.items", 3, "last")  # index == len appends
+doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
 ### `append()` — 在末尾追加
@@ -253,7 +254,7 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 | 错误 | 何时引发 |
 |------|---------|
 | `YamlPathError` | 格式错误的路径，编辑路径中使用通配符/`..` |
-| `YamlEditError` | 不支持的值类型（`tuple`）、负索引、通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
+| `YamlEditError` | 不支持的值类型（`tuple`）、通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
 | `YamlDocumentError` | 文档编辑后使用过期的 `Node` |
 
 所有编辑都是原子的 — 失败的编辑不会改动文档（及其修订号）。

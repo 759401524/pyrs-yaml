@@ -261,11 +261,16 @@ def _parse_jsonpath(path: str) -> list:
                     i += 1
                 continue
             num = ""
+            if i < len(rest) and rest[i] == "-":
+                num += "-"
+                i += 1
             while i < len(rest) and rest[i].isdigit():
                 num += rest[i]
                 i += 1
             if i < len(rest) and rest[i] == "]":
                 i += 1
+            if num in ("", "-"):
+                raise ValueError(f"invalid index in path: {path}")
             segments.append(int(num))
         else:
             key = ""
