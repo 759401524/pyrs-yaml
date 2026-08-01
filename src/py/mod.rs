@@ -693,6 +693,67 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        #[pyo3(signature = (segments: "list", index: "int", value: "Any") -> "None")]
+        fn _insert_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            index: usize,
+            value: Py<PyAny>,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            let new_node = pyobject_to_node(py, &value)?;
+            self.revision = self.revision.wrapping_add(1);
+            py.detach(|| editing::insert_path(&mut self.ast, &segs, index, new_node))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        #[pyo3(signature = (segments: "list", value: "Any") -> "None")]
+        fn _append_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            value: Py<PyAny>,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            let new_node = pyobject_to_node(py, &value)?;
+            self.revision = self.revision.wrapping_add(1);
+            py.detach(|| editing::append_path(&mut self.ast, &segs, new_node))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        #[pyo3(signature = (segments: "list") -> "None")]
+        fn _delete_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            self.revision = self.revision.wrapping_add(1);
+            py.detach(|| editing::delete_path(&mut self.ast, &segs))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.source_dirty = true;
+            Ok(())
+        }
+
         fn _revision(&self) -> u64 {
             self.revision
         }

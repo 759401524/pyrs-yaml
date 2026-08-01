@@ -328,3 +328,79 @@ pub fn set_path(
         _ => Err("create-needs-mapping".to_string()),
     }
 }
+
+/// Map a navigation failure to its i18n-key-prefixed message.
+fn nav_err(e: NavigateError) -> String {
+    match e {
+        NavigateError::Missing(s) => format!("missing-path:{s}"),
+        NavigateError::CannotDescend(t) => format!("cannot-descend-into-scalar:{t}"),
+        NavigateError::NotContainer => "create-needs-mapping".to_string(),
+    }
+}
+
+/// Insert `value` at `index` in the sequence reached by `segments`.
+/// `index == len` appends. The final segment must resolve to a sequence.
+pub fn insert_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    index: usize,
+    value: CustomNode,
+) -> Result<(), String> {
+    let seq = navigate_mut(node, segments).map_err(nav_err)?;
+    match seq {
+        CustomNode::Sequence { items, .. } => {
+            if index > items.len() {
+                return Err("index-out-of-range-edit".to_string());
+            }
+            items.insert(index, value);
+            Ok(())
+        }
+        _ => Err("not-a-sequence".to_string()),
+    }
+}
+
+/// Append `value` to the sequence reached by `segments`.
+pub fn append_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    value: CustomNode,
+) -> Result<(), String> {
+    let seq = navigate_mut(node, segments).map_err(nav_err)?;
+    match seq {
+        CustomNode::Sequence { items, .. } => {
+            items.push(value);
+            Ok(())
+        }
+        _ => Err("not-a-sequence".to_string()),
+    }
+}
+
+/// Delete the node reached by `segments`. The final segment is removed from
+/// its parent. Deleting the root (empty segments) is an error.
+pub fn delete_path(node: &mut CustomNode, segments: &[Segment<'_>]) -> Result<(), String> {
+    if segments.is_empty() {
+        return Err("edit-error".to_string());
+    }
+    let (parent_segments, last) = segments.split_at(segments.len() - 1);
+    let last = &last[0];
+    let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
+
+    match (parent, last) {
+        (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => {
+            let key_node = CustomNode::plain_scalar(k.as_ref());
+            let idx =
+                mapping_key_index(pairs, &key_node).ok_or_else(|| "missing-path".to_string())?;
+            // shift_remove preserves mapping order (swap_remove would reorder).
+            pairs.shift_remove_index(idx);
+            Ok(())
+        }
+        (CustomNode::Sequence { items, .. }, Segment::Index(i)) => {
+            if *i >= items.len() {
+                return Err("index-out-of-range-edit".to_string());
+            }
+            items.remove(*i);
+            Ok(())
+        }
+        _ => Err("missing-path".to_string()),
+    }
+}

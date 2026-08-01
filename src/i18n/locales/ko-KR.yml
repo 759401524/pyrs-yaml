@@ -23,3 +23,4 @@ create-needs-mapping: "키를 생성할 수 없습니다: 상위가 매핑이 �
 cannot-rename-complex-key: "복잡한(비스칼라) 키는 이름을 바꿀 수 없습니다"
 cannot-descend-into-scalar: "스칼라 노드로 이동할 수 없습니다"
 index-out-of-range-edit: "인덱스 %{index}(이)가 범위를 벗어났습니다 (길이=%{len})"
+not-a-sequence: "노드가 시퀀스가 아닙니다"
