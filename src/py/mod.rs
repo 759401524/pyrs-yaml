@@ -2,6 +2,7 @@
 //! Python-facing functions exposed via the `pyrs_yaml` PyO3 module.
 
 pub mod convert;
+pub mod editing;
 pub mod stream_events;
 pub mod tag_registry;
 
@@ -668,6 +669,32 @@ mod pyrs_yaml {
         fn source(&mut self, py: Python) -> PyResult<String> {
             self.flush_source(py)?;
             Ok(self.source.as_deref().unwrap_or("").to_string())
+        }
+
+        #[pyo3(signature = (segments: "list", value: "Any") -> "None")]
+        fn _set_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            value: Py<PyAny>,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            let new_node = pyobject_to_node(py, &value)?;
+            self.revision = self.revision.wrapping_add(1);
+            py.detach(|| editing::set_path(&mut self.ast, &segs, new_node, true))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        fn _revision(&self) -> u64 {
+            self.revision
         }
 
         fn version(&self) -> &str {
