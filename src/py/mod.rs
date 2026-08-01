@@ -117,7 +117,11 @@ mod pyrs_yaml {
             )
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
-                    YamlDuplicateKeyError::new_err(e.message.clone())
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
                 } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
@@ -155,12 +159,18 @@ mod pyrs_yaml {
                 if let Some(handlers) = get_handlers(&tag_name, py) {
                     for (_priority, handler) in handlers {
                         match handler.call1(py, (value.clone(),)) {
-                            Ok(result) => {
-                                if let Ok(s) = result.extract::<String>(py) {
+                            Ok(result) => match result.extract::<String>(py) {
+                                Ok(s) => {
                                     *value = s;
+                                    break;
                                 }
-                                break;
-                            }
+                                Err(_) => {
+                                    return Err(YamlTagError::new_err(format!(
+                                        "Tag handler '{}' must return a string",
+                                        tag_name
+                                    )));
+                                }
+                            },
                             Err(e) => {
                                 if e.is_instance_of::<crate::YamlTagSkip>(py) {
                                     continue;
@@ -259,7 +269,11 @@ mod pyrs_yaml {
                 )
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
-                        YamlDuplicateKeyError::new_err(e.message.clone())
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
                     } else if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
@@ -295,7 +309,11 @@ mod pyrs_yaml {
                 )
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
-                        YamlDuplicateKeyError::new_err(e.message.clone())
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
                     } else if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
@@ -344,7 +362,11 @@ mod pyrs_yaml {
                 )
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
-                        YamlDuplicateKeyError::new_err(e.message.clone())
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
                     } else if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
@@ -383,7 +405,11 @@ mod pyrs_yaml {
                 )
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
-                        YamlDuplicateKeyError::new_err(e.message.clone())
+                        let key = e.message.trim_start_matches("duplicate key: ");
+                        YamlDuplicateKeyError::new_err(format_i18n_error(
+                            "duplicate-key",
+                            &[("key", key)],
+                        ))
                     } else if e.message.contains("max depth exceeded") {
                         YamlMaxDepthError::new_err(format_i18n_error(
                             "max-depth-exceeded",
@@ -425,11 +451,11 @@ mod pyrs_yaml {
     impl YamlDocument {
         /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
         fn to_yaml(&self) -> PyResult<String> {
-            self.to_yaml_with_options(2, false, false, false, 1000, 80, 2, 2, 0)
+            self.to_yaml_with_options(2, false, false, false, 1000, 80, None, None, None)
         }
 
         #[allow(clippy::too_many_arguments)]
-        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int" = 2, indent_sequence: "int" = 2, indent_offset: "int" = 0) -> "str")]
+        #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str")]
         fn to_yaml_with_options(
             &self,
             indent_size: usize,
@@ -438,9 +464,9 @@ mod pyrs_yaml {
             sort_keys: bool,
             max_depth: usize,
             width: usize,
-            indent_mapping: usize,
-            indent_sequence: usize,
-            indent_offset: usize,
+            indent_mapping: Option<usize>,
+            indent_sequence: Option<usize>,
+            indent_offset: Option<usize>,
         ) -> PyResult<String> {
             let options = SerializeOptions {
                 indent_size,
@@ -449,9 +475,9 @@ mod pyrs_yaml {
                 sort_keys,
                 max_depth,
                 width,
-                indent_mapping,
-                indent_sequence,
-                indent_offset,
+                indent_mapping: indent_mapping.unwrap_or(indent_size),
+                indent_sequence: indent_sequence.unwrap_or(indent_size),
+                indent_offset: indent_offset.unwrap_or(0),
             };
             to_yaml_with_options(&self.ast, &options).map_err(|e| {
                 if e.contains("max depth exceeded") {
@@ -719,7 +745,11 @@ mod pyrs_yaml {
             )
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
-                    YamlDuplicateKeyError::new_err(e.message.clone())
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
                 } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
@@ -766,7 +796,11 @@ mod pyrs_yaml {
             )
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
-                    YamlDuplicateKeyError::new_err(e.message.clone())
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
                 } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
@@ -814,7 +848,11 @@ mod pyrs_yaml {
             )
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
-                    YamlDuplicateKeyError::new_err(e.message.clone())
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
                 } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
@@ -858,7 +896,11 @@ mod pyrs_yaml {
             )
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
-                    YamlDuplicateKeyError::new_err(e.message.clone())
+                    let key = e.message.trim_start_matches("duplicate key: ");
+                    YamlDuplicateKeyError::new_err(format_i18n_error(
+                        "duplicate-key",
+                        &[("key", key)],
+                    ))
                 } else if e.message.contains("max depth exceeded") {
                     YamlMaxDepthError::new_err(format_i18n_error(
                         "max-depth-exceeded",
@@ -1130,6 +1172,12 @@ mod pyrs_yaml {
     #[pyfunction]
     fn clear_tag_handlers() {
         tag_registry::clear_all();
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (name: "str"))]
+    fn remove_tag(name: &str) {
+        tag_registry::remove(name);
     }
 }
 

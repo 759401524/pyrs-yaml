@@ -7,7 +7,9 @@ use pyo3::prelude::{Py, PyAny, Python};
 static TAG_REGISTRY: Mutex<Option<HashMap<String, Vec<(u32, Py<PyAny>)>>>> = Mutex::new(None);
 
 pub fn register(name: &str, handler: Py<PyAny>, priority: u32) {
-    let mut guard = TAG_REGISTRY.lock().unwrap();
+    let Ok(mut guard) = TAG_REGISTRY.lock() else {
+        return;
+    };
     let map = guard.get_or_insert_with(HashMap::new);
     map.entry(name.to_string())
         .or_default()
@@ -15,7 +17,7 @@ pub fn register(name: &str, handler: Py<PyAny>, priority: u32) {
 }
 
 pub fn get_handlers(name: &str, py: Python<'_>) -> Option<Vec<(u32, Py<PyAny>)>> {
-    let guard = TAG_REGISTRY.lock().unwrap();
+    let guard = TAG_REGISTRY.lock().ok()?;
     let map = guard.as_ref()?;
     let handlers = map.get(name)?;
     let mut sorted: Vec<(u32, Py<PyAny>)> = handlers
@@ -27,12 +29,16 @@ pub fn get_handlers(name: &str, py: Python<'_>) -> Option<Vec<(u32, Py<PyAny>)>>
 }
 
 pub fn clear_all() {
-    let mut guard = TAG_REGISTRY.lock().unwrap();
+    let Ok(mut guard) = TAG_REGISTRY.lock() else {
+        return;
+    };
     *guard = None;
 }
 
 pub fn remove(name: &str) {
-    let mut guard = TAG_REGISTRY.lock().unwrap();
+    let Ok(mut guard) = TAG_REGISTRY.lock() else {
+        return;
+    };
     if let Some(map) = guard.as_mut() {
         map.remove(name);
     }
