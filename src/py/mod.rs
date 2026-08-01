@@ -144,6 +144,8 @@ mod pyrs_yaml {
             schema: schema_enum,
             source: Some(Arc::from(yaml_str)),
             version: "1.2".to_string(),
+            revision: 0,
+            source_dirty: false,
         })
     }
 
@@ -388,6 +390,8 @@ mod pyrs_yaml {
                 schema: schema_enum,
                 source: Some(Arc::from(content)),
                 version: "1.2".to_string(),
+                revision: 0,
+                source_dirty: false,
             })
         }
 
@@ -433,6 +437,8 @@ mod pyrs_yaml {
                     schema: schema_enum,
                     source: Some(Arc::from(yaml)),
                     version: "1.2".to_string(),
+                    revision: 0,
+                    source_dirty: false,
                 })
                 .collect())
         }
@@ -445,19 +451,48 @@ mod pyrs_yaml {
         schema: YamlSchema,
         source: Option<Arc<str>>,
         version: String,
+        #[allow(dead_code)] // consumed by later editing tasks (_*_path primitives)
+        revision: u64, // bumped on every mutation (Node invalidation)
+        source_dirty: bool, // lazy source re-serialization flag
     }
 
     #[pymethods]
     impl YamlDocument {
+        /// Lazily re-serialize the AST into `source` if edits have occurred.
+        fn flush_source(&mut self, py: Python) -> PyResult<()> {
+            if self.source_dirty {
+                let new_yaml = py
+                    .detach(|| {
+                        crate::serializer::to_yaml_with_options(
+                            &self.ast,
+                            &SerializeOptions::default(),
+                        )
+                    })
+                    .map_err(|e| {
+                        YamlSerializeError::new_err(format_i18n_error(
+                            "yaml-serialize-error",
+                            &[("detail", &e)],
+                        ))
+                    })?;
+                self.source = Some(Arc::from(new_yaml));
+                self.source_dirty = false;
+            }
+            Ok(())
+        }
+
         /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
-        fn to_yaml(&self) -> PyResult<String> {
-            self.to_yaml_with_options(2, false, false, false, 1000, 80, None, None, None)
+        #[allow(clippy::wrong_self_convention)] // needs &mut self to flush lazy source
+        fn to_yaml(&mut self, py: Python) -> PyResult<String> {
+            self.flush_source(py)?;
+            self.to_yaml_with_options(py, 2, false, false, false, 1000, 80, None, None, None)
         }
 
         #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::wrong_self_convention)] // needs &mut self to flush lazy source
         #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str")]
         fn to_yaml_with_options(
-            &self,
+            &mut self,
+            py: Python,
             indent_size: usize,
             explicit_start: bool,
             explicit_end: bool,
@@ -468,6 +503,7 @@ mod pyrs_yaml {
             indent_sequence: Option<usize>,
             indent_offset: Option<usize>,
         ) -> PyResult<String> {
+            self.flush_source(py)?;
             let options = SerializeOptions {
                 indent_size,
                 explicit_start,
@@ -527,12 +563,12 @@ mod pyrs_yaml {
             }
         }
 
-        fn __repr__(&self) -> String {
-            format!("YamlDocument({})", self.to_yaml().unwrap_or_default())
+        fn __repr__(&mut self, py: Python) -> String {
+            format!("YamlDocument({})", self.to_yaml(py).unwrap_or_default())
         }
 
-        fn __str__(&self) -> String {
-            self.to_yaml()
+        fn __str__(&mut self, py: Python) -> String {
+            self.to_yaml(py)
                 .unwrap_or_else(|_| "YamlDocument(error)".to_string())
         }
 
@@ -625,8 +661,9 @@ mod pyrs_yaml {
             }
         }
 
-        fn source(&self) -> Option<&str> {
-            self.source.as_deref()
+        fn source(&mut self, py: Python) -> PyResult<String> {
+            self.flush_source(py)?;
+            Ok(self.source.as_deref().unwrap_or("").to_string())
         }
 
         fn version(&self) -> &str {
@@ -635,6 +672,7 @@ mod pyrs_yaml {
 
         #[pyo3(signature = (resolve_merges: "bool" = true, schema: "str" = "core") -> "None")]
         fn reparse(&mut self, py: Python, resolve_merges: bool, schema: &str) -> PyResult<()> {
+            self.flush_source(py)?;
             let source = self.source.as_ref().ok_or_else(|| {
                 YamlTypeError::new_err(format_i18n_error("no-source-to-reparse", &[]))
             })?;
@@ -772,6 +810,8 @@ mod pyrs_yaml {
             schema: schema_enum,
             source: Some(Arc::from(content)),
             version: "1.2".to_string(),
+            revision: 0,
+            source_dirty: false,
         })
     }
 
@@ -824,6 +864,8 @@ mod pyrs_yaml {
                 schema: schema_enum,
                 source: Some(Arc::from(yaml)),
                 version: "1.2".to_string(),
+                revision: 0,
+                source_dirty: false,
             })
             .collect())
     }
