@@ -43,7 +43,7 @@ pub fn to_yaml_with_options(
     if options.explicit_start {
         serializer.output.push_str("---\n");
     }
-    serializer.serialize_node_internal(node, 0, false, false, 0)?;
+    serializer.serialize_node_internal(node, options.indent_offset, false, false, 0)?;
     if options.explicit_end {
         serializer.output.push_str("...\n");
     }
@@ -54,10 +54,12 @@ struct Serializer {
     output: String,
     indent_size: usize,
     sort_keys: bool,
-    /// Pre-computed indent strings for levels 0..max_cached (avoids `repeat()` on every call)
+    /// Memoized indent strings by width (avoids `repeat()` on every call)
     indent_cache: Vec<String>,
-    /// Max depth we've cached; grown on demand
-    max_cached: usize,
+    /// Indent step per block-mapping nesting level
+    indent_mapping: usize,
+    /// Indent step per block-sequence nesting level
+    indent_sequence: usize,
     /// Maximum recursion depth before serialization fails
     max_depth: usize,
     /// Line width for wrapping (0 = no wrapping)
@@ -67,49 +69,29 @@ struct Serializer {
 impl Serializer {
     fn new(options: &SerializeOptions) -> Self {
         let mut cache = Vec::with_capacity(128);
-        cache.push(String::new()); // level 0 = empty
+        cache.push(String::new()); // width 0 = empty
         Self {
             output: String::new(),
             indent_size: options.indent_size,
             sort_keys: options.sort_keys,
             indent_cache: cache,
-            max_cached: 0,
+            indent_mapping: options.indent_mapping,
+            indent_sequence: options.indent_sequence,
             max_depth: options.max_depth,
             width: options.width,
         }
     }
 
-    /// Ensure indent_cache has an entry for the given level, then write it to output.
+    /// Ensure indent_cache has an entry for the given width, then write it to output.
     /// Does not return a reference to avoid overlapping borrows.
-    fn write_indent(&mut self, level: usize) {
-        if level <= self.max_cached {
-            self.output.push_str(&self.indent_cache[level]);
-            return;
+    fn write_indent(&mut self, width: usize) {
+        if self.indent_cache.len() <= width {
+            self.indent_cache.resize(width + 1, String::new());
         }
-        let base_indent = " ".repeat(self.indent_size);
-        let mut last = &self.indent_cache[self.max_cached];
-        for i in 1..=(level - self.max_cached) {
-            let next = format!("{}{}", last, base_indent);
-            self.indent_cache.push(next);
-            last = &self.indent_cache[self.max_cached + i];
+        if self.indent_cache[width].is_empty() {
+            self.indent_cache[width] = " ".repeat(width);
         }
-        self.max_cached = level;
-        self.output.push_str(&self.indent_cache[level]);
-    }
-
-    /// Ensure indent_cache has an entry for the given level, then return a reference to it.
-    fn get_indent(&mut self, level: usize) -> &str {
-        if level > self.max_cached {
-            let base_indent = " ".repeat(self.indent_size);
-            let mut last = &self.indent_cache[self.max_cached];
-            for i in 1..=(level - self.max_cached) {
-                let next = format!("{}{}", last, base_indent);
-                self.indent_cache.push(next);
-                last = &self.indent_cache[self.max_cached + i];
-            }
-            self.max_cached = level;
-        }
-        &self.indent_cache[level]
+        self.output.push_str(&self.indent_cache[width]);
     }
 
     /// 写入锚点（`&name`）和标签（`!!type`）前缀。
@@ -132,7 +114,7 @@ impl Serializer {
     fn serialize_node_internal(
         &mut self,
         node: &CustomNode,
-        indent_level: usize,
+        indent_width: usize,
         _is_last: bool,
         in_value_context: bool,
         depth: usize,
@@ -144,7 +126,7 @@ impl Serializer {
         // Handle standalone comments first
         if let Some(comment) = node.comment() {
             if comment.standalone {
-                self.write_indent(indent_level);
+                self.write_indent(indent_width);
                 self.output.push_str("# ");
                 self.output.push_str(&comment.text);
                 self.output.push('\n');
@@ -160,7 +142,7 @@ impl Serializer {
                 tag,
                 chomping,
             } => {
-                self.write_indent(indent_level);
+                self.write_indent(indent_width);
                 if anchor.is_some() || tag.is_some() {
                     self.write_anchor_tag(anchor, tag);
                 }
@@ -208,7 +190,7 @@ impl Serializer {
                     // Block style (original logic)
                     // Write anchor and tag if present (but not if in value context - they were already output)
                     if !in_value_context && (anchor.is_some() || tag.is_some()) {
-                        self.write_indent(indent_level);
+                        self.write_indent(indent_width);
                         self.write_anchor_tag(anchor, tag);
                         self.output.push('\n');
                     }
@@ -236,20 +218,20 @@ impl Serializer {
 
                             if is_complex_key {
                                 // Complex key: use ? indicator
-                                self.write_indent(indent_level);
+                                self.write_indent(indent_width);
                                 self.output.push_str("? ");
                                 // For complex keys, we need to serialize at the same indent level
                                 // but the key content should be indented relative to the ?
                                 self.serialize_node_internal(
                                     key,
-                                    indent_level,
+                                    indent_width,
                                     false,
                                     false,
                                     depth + 1,
                                 )?;
                             } else {
                                 // Simple key
-                                self.write_indent(indent_level);
+                                self.write_indent(indent_width);
                                 self.write_scalar_for_key(key);
                             }
 
@@ -279,7 +261,7 @@ impl Serializer {
                                 self.output.push('\n');
                                 self.serialize_node_internal(
                                     value,
-                                    indent_level + 1,
+                                    indent_width + self.indent_mapping,
                                     i == pairs_vec.len() - 1,
                                     true,
                                     depth + 1,
@@ -305,18 +287,18 @@ impl Serializer {
 
                             if is_complex_key {
                                 // Complex key: use ? indicator
-                                self.write_indent(indent_level);
+                                self.write_indent(indent_width);
                                 self.output.push_str("? ");
                                 self.serialize_node_internal(
                                     key,
-                                    indent_level,
+                                    indent_width,
                                     false,
                                     false,
                                     depth + 1,
                                 )?;
                             } else {
                                 // Simple key
-                                self.write_indent(indent_level);
+                                self.write_indent(indent_width);
                                 self.write_scalar_for_key(key);
                             }
 
@@ -345,7 +327,7 @@ impl Serializer {
                                 self.output.push('\n');
                                 self.serialize_node_internal(
                                     value,
-                                    indent_level + 1,
+                                    indent_width + self.indent_mapping,
                                     i == pairs.len() - 1,
                                     true,
                                     depth + 1,
@@ -366,7 +348,7 @@ impl Serializer {
                     // Write mapping comment
                     if let Some(c) = comment {
                         if !c.standalone {
-                            self.write_indent(indent_level);
+                            self.write_indent(indent_width);
                             self.output.push_str("# ");
                             self.output.push_str(&c.text);
                             self.output.push('\n');
@@ -405,13 +387,13 @@ impl Serializer {
                     // Block style (original logic)
                     // Write anchor and tag if present (but not if in value context)
                     if !in_value_context && (anchor.is_some() || tag.is_some()) {
-                        self.write_indent(indent_level);
+                        self.write_indent(indent_width);
                         self.write_anchor_tag(anchor, tag);
                         self.output.push('\n');
                     }
 
                     for (i, item) in items.iter().enumerate() {
-                        self.write_indent(indent_level);
+                        self.write_indent(indent_width);
                         self.output.push_str("- ");
 
                         if matches!(
@@ -421,14 +403,14 @@ impl Serializer {
                             self.output.push('\n');
                             self.serialize_node_internal(
                                 item,
-                                indent_level + 1,
+                                indent_width + self.indent_sequence,
                                 i == items.len() - 1,
                                 false,
                                 depth + 1,
                             )?;
                         } else {
                             // For simple items, they go on the same line as the dash
-                            // Don't pass indent_level to avoid extra indentation
+                            // Don't pass indent_width to avoid extra indentation
                             self.serialize_node_internal(
                                 item,
                                 0,
@@ -442,7 +424,7 @@ impl Serializer {
                     // Write sequence comment
                     if let Some(c) = comment {
                         if !c.standalone {
-                            self.write_indent(indent_level);
+                            self.write_indent(indent_width);
                             self.output.push_str("# ");
                             self.output.push_str(&c.text);
                             self.output.push('\n');
@@ -455,7 +437,7 @@ impl Serializer {
                 anchor,
                 tag,
             } => {
-                self.write_indent(indent_level);
+                self.write_indent(indent_width);
                 if anchor.is_some() || tag.is_some() {
                     self.write_anchor_tag(anchor, tag);
                 }
@@ -471,7 +453,7 @@ impl Serializer {
                 self.output.push('\n');
             }
             CustomNode::Alias { name } => {
-                self.write_indent(indent_level);
+                self.write_indent(indent_width);
                 self.output.push('*');
                 self.output.push_str(name);
                 self.output.push('\n');
@@ -564,6 +546,10 @@ impl Serializer {
                             break;
                         }
                         let avail = max_line.saturating_sub(wrap_indent_str.len());
+                        if avail == 0 {
+                            self.output.push_str(remaining_rest);
+                            break;
+                        }
                         let split_rest = remaining_rest[..avail].rfind(' ').unwrap_or(avail);
                         self.output.push_str(&remaining_rest[..split_rest]);
                         self.output.push('\n');
@@ -622,7 +608,7 @@ impl Serializer {
         };
         self.output.push_str(indicator);
         self.output.push('\n');
-        self.write_base_indent(value, 1);
+        self.write_base_indent(value);
     }
 
     /// Write a folded block scalar (`>`) with chomping indicator.
@@ -634,13 +620,13 @@ impl Serializer {
         };
         self.output.push_str(indicator);
         self.output.push('\n');
-        self.write_base_indent(value, 1);
+        self.write_base_indent(value);
     }
 
     /// Write each line of the block scalar content with base indentation appended.
     /// Writes directly to output (no intermediate Vec or join).
-    fn write_base_indent(&mut self, value: &str, base_indent: usize) {
-        let indent = self.get_indent(base_indent).to_string();
+    fn write_base_indent(&mut self, value: &str) {
+        let indent = " ".repeat(self.indent_size);
         let mut first = true;
         for line in value.lines() {
             if !first {
@@ -871,5 +857,79 @@ mod tests {
         let result = to_yaml_with_options(&current, &options);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("max depth exceeded"));
+    }
+
+    #[test]
+    fn test_serialize_indent_mapping() {
+        let mut inner = IndexMap::new();
+        inner.insert(CustomNode::plain_scalar("b"), CustomNode::plain_scalar("1"));
+        let inner_map = CustomNode::Mapping {
+            pairs: inner,
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        };
+        let mut pairs = IndexMap::new();
+        pairs.insert(CustomNode::plain_scalar("a"), inner_map);
+        let node = CustomNode::Mapping {
+            pairs,
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        };
+        let options = SerializeOptions {
+            indent_mapping: 4,
+            ..Default::default()
+        };
+        assert_eq!(
+            to_yaml_with_options(&node, &options).unwrap(),
+            "a:\n    b: 1\n"
+        );
+    }
+
+    #[test]
+    fn test_serialize_indent_sequence() {
+        let inner_seq = CustomNode::Sequence {
+            items: vec![CustomNode::plain_scalar("1"), CustomNode::plain_scalar("2")],
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        };
+        let node = CustomNode::Sequence {
+            items: vec![inner_seq],
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        };
+        let options = SerializeOptions {
+            indent_sequence: 4,
+            ..Default::default()
+        };
+        assert_eq!(
+            to_yaml_with_options(&node, &options).unwrap(),
+            "- \n    - 1\n    - 2\n"
+        );
+    }
+
+    #[test]
+    fn test_serialize_indent_offset() {
+        let mut pairs = IndexMap::new();
+        pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
+        let node = CustomNode::Mapping {
+            pairs,
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+        };
+        let options = SerializeOptions {
+            indent_offset: 2,
+            ..Default::default()
+        };
+        assert_eq!(to_yaml_with_options(&node, &options).unwrap(), "  a: 1\n");
     }
 }
