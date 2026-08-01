@@ -12,11 +12,13 @@ pyrs-yaml 提供了 PyYAML 的**直接替换**，使迁移变得简单。
 ```python
 # 旧代码
 import yaml
+
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 
 # 新代码
 import pyrs_yaml as yaml
+
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
@@ -65,19 +67,24 @@ yaml_str = yaml.safe_dump(data)
 # 旧代码
 import yaml
 
+
 def load_config(path):
     with open(path) as f:
         return yaml.safe_load(f)
+
 
 def save_config(data, path):
     with open(path, "w") as f:
         yaml.safe_dump(data, f)
 
+
 # 新代码
 import pyrs_yaml
 
+
 def load_config(path):
     return pyrs_yaml.parse_file(path).to_dict()
+
 
 def save_config(data, path):
     pyrs_yaml.dump_file(data, path)

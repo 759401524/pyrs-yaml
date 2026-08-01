@@ -10,6 +10,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 変更履歴](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### [Unreleased]
+
+#### Added
+
+- **インプレース編集** — フォーマットメタデータを失わずに解析済みドキュメントを編集：
+  - パス API：`doc.set(path, value)`、`doc.insert(path, index, value)`、`doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`、JSONPath スタイルのパス（`$.a.b[0]`）；ルート用糖衣構文 `doc["key"] = value` と `del doc["key"]`
+  - ノード API：`doc.node()` / `doc.find(path)` は `Node` オブジェクトを返し、`set_value` / `append` / `insert` / `delete` / `rename` とツリー走査（`parent`、`children`、`walk`、`filter`）をサポート
+  - 完全なメタデータ保持 — 置換されたスカラーはコメント/アンカー/タグ/クォートを保持；リネームされたキーは位置とコメントを保持；削除時もマッピングの順序は保持
+  - アトミック編集 — 失敗した操作はドキュメント（リビジョンを含む）を変更しません
+  - 遅延ソース再同期 — `source()` / `to_yaml()` / `reparse()` は編集成功後にのみ再シリアライズ
+  - 陳腐化ノード検出 — ドキュメント編集後の `Node` アクセスは `YamlDocumentError` をスロー（`RuntimeWarning` 付き）
+  - 新しい例外：`YamlEditError`、`YamlPathError`（en/zh-CN/ja-JP/ko-KR の i18n 対応）
+  - エイリアス対応編集 — エイリアス自身のパスへの設定はその場で置換；エイリアス経由の編集は `YamlEditError` をスロー
+- **編集ベンチマーク** — `benches/yaml_bench.rs` に divan ベンチマークを 6 つ追加（小〜大ドキュメントの set/insert/delete）
+- **Python 3.13、3.14、3.15 サポート** — PyO3 `abi3-py38` wheel が Python 3.8-3.15 をカバー（GIL ビルド）；`abi3t` + `abi3t-py315` は free-threaded 安定 ABI を提供
+- **Free-threaded CPython（GIL なし）サポート** — `#[pymodule(gil_used = false)]` がモジュールを free-threaded Python 向けにスレッドセーフと宣言；`Py_GIL_DISABLED` cfg フラグで numpy をゲート（rust-numpy は free-threaded 未対応 — free-threaded ビルドでは `--no-default-features` で numpy feature を無効化）
+- **CI free-threaded ジョブ** — 新しい `test-freethreaded` ワークフロージョブが Python 3.14t でコンパイルとテストを検証
+- **`pyo3-build-config` ビルド依存** — `build.rs` 経由で `#[cfg(Py_GIL_DISABLED)]`、`#[cfg(Py_3_15)]` などのコンパイラフラグを有効化
+- **`numpy` をオプション化** — `numpy` feature の背後にゲート（デフォルト有効）；`Py_GIL_DISABLED` 下では自動的に除外
+
+#### Changed
+
+- CI Python マトリクスを拡張：ubuntu、windows、macos で 3.8-3.14
+- 安定 ABI：`abi3-py39` → `abi3-py38`（より広い Python 3.8+ サポート）、`abi3t` + `abi3t-py315` を追加（free-threaded 安定 ABI）
+- `pyproject.toml` の classifiers に 3.13、3.14、3.15 のエントリを追加
+- `YamlDocument.source()` は `str` を返し、インプレース編集後に遅延再シリアライズするようになりました
+
+#### Fixed
+
+- ラウンドトリップのドキュメントを明確化：マージキー（`<<`）はデフォルトで解決され、`resolve_merges=False` の場合のみそのまま保持
+
 ### [0.3.0] - 2025-07-27
 
 #### Added

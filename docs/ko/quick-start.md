@@ -28,9 +28,9 @@ email: alice@example.com
 """)
 
 # Access values
-print(doc.get("name"))    # Alice
-print(doc.get("age"))     # 30
-print(doc.get("email"))   # alice@example.com
+print(doc.get("name"))  # Alice
+print(doc.get("age"))  # 30
+print(doc.get("email"))  # alice@example.com
 ```
 
 ### 3. Python 객체로 변환
@@ -47,20 +47,14 @@ users:
 
 # Returns native Python types (dict, list, str, int, etc.)
 print(data["users"][0]["name"])  # Alice
-print(type(data["users"]))       # <class 'list'>
+print(type(data["users"]))  # <class 'list'>
 ```
 
 ### 4. YAML로 직렬화
 
 ```python
 # Convert a Python dict back to YAML
-yaml_str = pyrs_yaml.safe_dump({
-    "database": {
-        "host": "localhost",
-        "port": 5432,
-        "name": "mydb"
-    }
-})
+yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
 # database:
 #   host: localhost
@@ -98,7 +92,31 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-### 6. 파일에서 YAML 읽기
+### 6. 제자리 편집
+
+```python
+# 주석이나 서식을 잃지 않고 파싱된 문서 편집
+doc = pyrs_yaml.parse("""
+server:
+  host: localhost  # bind address
+  ports:
+    - 8080
+""")
+
+doc.set("$.server.host", "0.0.0.0")   # 경로로 교체
+doc.append("$.server.ports", 443)     # 시퀀스에 추가
+
+print(doc.to_yaml())
+# server:
+#   host: 0.0.0.0  # bind address
+#   ports:
+#     - 8080
+#     - 443
+```
+
+전체 API는 [제자리 편집 가이드](guides/editing.md)를 참조하세요.
+
+### 7. 파일에서 YAML 읽기
 
 ```python
 # Parse a YAML file directly
@@ -106,7 +124,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### 7. 여러 문서
+### 8. 여러 문서
 
 ```python
 # Parse multiple YAML documents
@@ -125,7 +143,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 8. NumPy ndarray 지원
+## 9. NumPy ndarray 지원
 
 pyrs-yaml는 `numpy.ndarray` 객체를 직접 YAML로 직렬화할 수 있습니다. 이는 과학 데이터, 모델 가중치 또는 다차원 배열을 사람이 읽을 수 있는 형식으로 저장하는 데 유용합니다.
 
@@ -171,4 +189,5 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 - **[기능](features.md)** — 지원되는 모든 YAML 기능 탐색
 - **[파싱 가이드](guides/parsing.md)** — 고급 파싱 옵션
+- **[제자리 편집](guides/editing.md)** — 서식을 잃지 않고 문서 편집
 - **[API 참조](api/reference.md)** — 완전한 API 문서

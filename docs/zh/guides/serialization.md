@@ -24,10 +24,10 @@ doc = pyrs_yaml.parse("key: value")
 
 # 自定义缩进和文档标记
 yaml_str = doc.to_yaml_with_options(
-    indent_size=4,           # 每级缩进 4 个空格
-    explicit_start=True,     # 在开头添加 "---"
-    explicit_end=True,       # 在结尾添加 "..."
-    sort_keys=True,          # 按字母顺序排序键
+    indent_size=4,  # 每级缩进 4 个空格
+    explicit_start=True,  # 在开头添加 "---"
+    explicit_end=True,  # 在结尾添加 "..."
+    sort_keys=True,  # 按字母顺序排序键
 )
 ```
 
@@ -35,12 +35,7 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 # 将 dict 转换为 YAML 字符串
-yaml_str = pyrs_yaml.safe_dump({
-    "database": {
-        "host": "localhost",
-        "port": 5432
-    }
-})
+yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}})
 
 # safe_dumps（别名）也可用
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
@@ -51,11 +46,7 @@ yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 #### `from_dict()`
 
 ```python
-yaml_str = pyrs_yaml.from_dict({
-    "name": "Alice",
-    "age": 30,
-    "tags": ["admin", "user"]
-})
+yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
 #### `from_json()`
@@ -68,12 +59,7 @@ yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 
 ```python
 # 将 Python 对象直接写入 YAML 文件
-pyrs_yaml.dump_file({
-    "config": {
-        "debug": True,
-        "log_level": "info"
-    }
-}, "output.yaml")
+pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
 ### 支持的输入类型

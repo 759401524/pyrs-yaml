@@ -35,7 +35,8 @@ output = doc.to_yaml()
 assert "# 服务器配置" in output
 assert "# 主端口" in output
 assert "&db" in output
-assert "<<: *db" in output
+# 注意：合并键（<<）默认被解析（实体化），不会按原样输出；
+# 要原样保留 <<: *db，请使用 resolve_merges=False
 ```
 
 ### 保留的内容
@@ -46,7 +47,7 @@ assert "<<: *db" in output
 | 行内注释 | ✅ | 行尾 |
 | 锚点 (`&name`) | ✅ | 完整的锚点语法 |
 | 别名 (`*name`) | ✅ | 别名引用被解析 |
-| 合并键 (`<<`) | ✅ | 默认被解析 |
+| 合并键 (`<<`) | ⚠️ | 默认被解析；`resolve_merges=False` 时保留 |
 | 标签 (`!!str`, `!!int`) | ✅ | 显式标签被保留 |
 | 标量样式 | ✅ | Plain、引号、字面量、折叠 |
 | Chomping (`\|-`, `>-`) | ✅ | 块标量指示符 |

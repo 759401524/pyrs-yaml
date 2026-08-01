@@ -8,6 +8,7 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 
 - **YAML 1.2 compliant** - Uses saphyr-parser for full YAML 1.2 support
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
+- **In-Place Editing** - Edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
 - **High Performance** - Rust backend, see [benchmarks](benches/yaml_bench.rs)
 - **NumPy ndarray support** - `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` serialize `numpy.ndarray` of any dimension (0-D through N-D) with zero-copy Rust dispatch
 - **JSON Schema validation** - `YamlDocument.validate(schema)` validates parsed documents against JSON Schema; `YamlValidateError` for failures
@@ -43,6 +44,11 @@ print(data)  # {'key': 'value'}
 original = "# Comment\nkey: value  # inline\n"
 doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original  # True
+
+# Edit in place without losing formatting
+doc.set("$.key", "edited")   # key: edited  # inline
+doc.set("$.new", 1)          # add a new key
+print(doc.to_yaml())
 ```
 
 ### JSON Schema validation
@@ -63,10 +69,12 @@ doc.validate({"type": "object", "required": ["email"]})
 import asyncio
 import pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -142,11 +150,11 @@ The flag is available on `parse`, `safe_load`, `safe_loads`, `parse_file`, `pars
 
 ```python
 yaml_str = doc.to_yaml_with_options(
-    indent_size=2,      # legacy base indent (used when the per-type options are omitted)
-    width=80,           # line-wrap width; 0 disables wrapping
-    indent_mapping=4,   # indent per block-mapping level
+    indent_size=2,  # legacy base indent (used when the per-type options are omitted)
+    width=80,  # line-wrap width; 0 disables wrapping
+    indent_mapping=4,  # indent per block-mapping level
     indent_sequence=2,  # indent per block-sequence level
-    indent_offset=0,    # base offset applied to the whole document
+    indent_offset=0,  # base offset applied to the whole document
 )
 ```
 
@@ -159,10 +167,12 @@ Register a handler for a custom YAML tag to transform scalar values:
 ```python
 import pyrs_yaml
 
+
 # Decorator form
 @pyrs_yaml.register_tag("!custom")
 def custom_handler(node):
     return f"custom:{node}"
+
 
 # Imperative form
 pyrs_yaml.register_tag("!custom", lambda node: node.upper())
@@ -183,9 +193,11 @@ Parse YAML directly into a Pydantic v2 model:
 from pydantic import BaseModel
 import pyrs_yaml
 
+
 class Config(BaseModel):
     name: str
     age: int
+
 
 cfg = pyrs_yaml.parse_as(Config, "name: Alice\nage: 30")
 cfg.name  # "Alice"

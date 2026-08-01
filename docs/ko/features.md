@@ -62,10 +62,12 @@ yaml.safe_dumps(data)
 import asyncio
 import pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dump_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -97,6 +99,33 @@ print(doc.get("x"))  # "on" (string, core schema)
 doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
+
+### 제자리 편집
+
+파싱된 문서를 **서식 메타데이터를 전혀 잃지 않고** 편집합니다 — 주석, 앵커, 태그, 스칼라 스타일, 흐름/블록 스타일이 모두 유지됩니다:
+
+```python
+doc = pyrs_yaml.parse("""
+server:
+  host: localhost  # bind address
+  ports:
+    - 8080
+""")
+
+doc.set("$.server.host", "0.0.0.0")     # 경로로 교체
+doc.insert("$.server.ports", 0, 80)     # 시퀀스에 삽입
+doc.append("$.server.ports", 443)       # 시퀀스에 추가
+doc.rename("$.server", "srv")           # 매핑 키 이름 변경
+del doc["server"]                       # 또는: doc.delete("$.server")
+```
+
+- **경로 API** — JSONPath 스타일 경로(`$.a.b[0]`), 루트 슈가(`doc["k"] = v`, `del doc["k"]`)
+- **노드 API** — `doc.node().find(path)`는 `Node` 객체를 반환하며 `set_value` / `insert` / `append` / `delete` / `rename`과 트리 탐색(`parent`, `children`, `walk`, `filter`)을 지원
+- **원자성** — 실패한 편집은 문서(리비전 포함)를 변경하지 않습니다
+- **메타데이터 보존** — 교체된 스칼라는 주석/앵커/태그/따옴표를 유지; 이름이 변경된 키는 위치와 주석을 유지
+- **별칭 인식** — 별칭 자신의 경로 설정은 그 자리를 교체; 별칭*을 통한* 편집은 `YamlEditError` 발생
+
+자세한 내용은 [제자리 편집 가이드](guides/editing.md)를 참조하세요.
 
 ### NumPy ndarray 지원
 
@@ -171,4 +200,5 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **비동기 I/O** | **✅ `safe_*_async`** |
 | **JSON Schema 검증** | **✅ `doc.validate()`** |
 | **점진적 재파싱** | **✅ `doc.reparse()`** |
+| **제자리 편집** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
 | **JSON 내보내기** | **✅ `doc.to_json()`** |

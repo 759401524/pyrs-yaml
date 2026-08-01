@@ -21,6 +21,7 @@ lang: zh
 
 - **YAML 1.2 合规** — 由 saphyr-parser 驱动（YAML 测试套件通过率 98.1%）
 - **完美的往返解析** — 保留注释、锚点、标签、修剪指示符、标量样式和流式/块式格式
+- **就地编辑** — 通过 JSONPath 风格路径（`doc.set("$.a.b", v)`）或 `Node` 树 API 编辑已解析文档，不丢失格式
 - **比 PyYAML 快 25–40 倍** — Rust 后端，零拷贝解析
 - **自定义 AST** — 可扩展的 AST，用于高级 YAML 操作和自定义格式化
 - **PyYAML 兼容** — 可直接替换，提供 `safe_load` / `safe_dump` API

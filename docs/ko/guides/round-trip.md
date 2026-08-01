@@ -35,7 +35,8 @@ output = doc.to_yaml()
 assert "# 서버 설정" in output
 assert "# 메인 포트" in output
 assert "&db" in output
-assert "<<: *db" in output
+# 참고: 병합 키(<<)는 기본적으로 해석(실체화)되어 그대로 출력되지 않습니다.
+# <<: *db를 그대로 유지하려면 resolve_merges=False를 사용하세요
 ```
 
 ### 보존되는 것
@@ -46,7 +47,7 @@ assert "<<: *db" in output
 | 인라인 주석 | ✅ | 줄 끝 |
 | 앵커 (`&name`) | ✅ | 완전한 앵커 구문 |
 | 별칭 (`*name`) | ✅ | 별칭 참조 해석됨 |
-| 병합 키 (`<<`) | ✅ | 기본적으로 해석됨 |
+| 병합 키 (`<<`) | ⚠️ | 기본적으로 해석됨; `resolve_merges=False`로 유지 |
 | 태그 (`!!str`, `!!int`) | ✅ | 명시적 태그 보존됨 |
 | 스칼라 스타일 | ✅ | Plain, 따옴표, 리터럴, 폴드 |
 | 청핑 (`\|-`, `>-`) | ✅ | 블록 스칼라 표시자 |

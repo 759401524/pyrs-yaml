@@ -10,6 +10,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 变更日志](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### [Unreleased]
+
+#### Added
+
+- **就地编辑** — 编辑已解析的文档而不丢失格式元数据：
+  - 路径 API：`doc.set(path, value)`、`doc.insert(path, index, value)`、`doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`，使用 JSONPath 风格路径（`$.a.b[0]`）；根节点语法糖 `doc["key"] = value` 和 `del doc["key"]`
+  - 节点 API：`doc.node()` / `doc.find(path)` 返回 `Node` 对象，支持 `set_value` / `append` / `insert` / `delete` / `rename`，以及树遍历（`parent`、`children`、`walk`、`filter`）
+  - 完整元数据保留 — 被替换的标量保留注释/锚点/标签/引号；重命名的键保留位置和注释；删除时映射顺序保留
+  - 原子编辑 — 失败的操作不会改动文档（及其修订号）
+  - 惰性源文本重新同步 — `source()` / `to_yaml()` / `reparse()` 仅在编辑成功后重新序列化
+  - 过期节点检测 — 文档编辑后访问 `Node` 引发 `YamlDocumentError`（并发出 `RuntimeWarning`）
+  - 新异常：`YamlEditError`、`YamlPathError`（支持 en/zh-CN/ja-JP/ko-KR 国际化）
+  - 别名感知编辑 — 设置别名自身路径会就地替换它；穿过别名编辑引发 `YamlEditError`
+- **编辑基准测试** — `benches/yaml_bench.rs` 新增 6 个 divan 基准（小到大文档的 set/insert/delete）
+- **Python 3.13、3.14 和 3.15 支持** — PyO3 `abi3-py38` wheel 覆盖 Python 3.8-3.15（GIL 构建）；`abi3t` + `abi3t-py315` 提供 free-threaded 稳定 ABI
+- **Free-threaded CPython（无 GIL）支持** — `#[pymodule(gil_used = false)]` 声明模块对 free-threaded Python 线程安全；`Py_GIL_DISABLED` cfg 标志门控 numpy（rust-numpy 尚不支持 free-threaded — 通过 `--no-default-features` 为 free-threaded 构建禁用 numpy feature）
+- **CI free-threaded 任务** — 新增 `test-freethreaded` 工作流任务，针对 Python 3.14t 验证编译和测试
+- **`pyo3-build-config` 构建依赖** — 通过 `build.rs` 启用 `#[cfg(Py_GIL_DISABLED)]`、`#[cfg(Py_3_15)]` 等编译器标志
+- **`numpy` 改为可选** — 由 `numpy` feature 门控（默认启用）；在 `Py_GIL_DISABLED` 下自动排除
+
+#### Changed
+
+- CI Python 矩阵扩展：ubuntu、windows、macos 上的 3.8-3.14
+- 稳定 ABI：`abi3-py39` → `abi3-py38`（更广的 Python 3.8+ 支持），新增 `abi3t` + `abi3t-py315`（free-threaded 稳定 ABI）
+- `pyproject.toml` classifiers 更新 3.13、3.14、3.15 条目
+- `YamlDocument.source()` 现在返回 `str`，并在就地编辑后惰性重新序列化
+
+#### Fixed
+
+- 往返文档澄清：合并键（`<<`）默认被解析，仅 `resolve_merges=False` 时原样保留
+
 ### [0.3.0] - 2025-07-27
 
 #### Added

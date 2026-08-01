@@ -94,6 +94,7 @@ mod tests {
 import pyrs_yaml
 import pytest
 
+
 class TestNewFeature:
     def test_basic(self):
         result = pyrs_yaml.parse("key: value")

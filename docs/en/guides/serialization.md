@@ -19,10 +19,10 @@ doc = pyrs_yaml.parse("key: value")
 
 # Custom indentation and document markers
 yaml_str = doc.to_yaml_with_options(
-    indent_size=4,           # 4 spaces per indent level
-    explicit_start=True,     # Add "---" at start
-    explicit_end=True,       # Add "..." at end
-    sort_keys=True,          # Sort keys alphabetically
+    indent_size=4,  # 4 spaces per indent level
+    explicit_start=True,  # Add "---" at start
+    explicit_end=True,  # Add "..." at end
+    sort_keys=True,  # Sort keys alphabetically
 )
 ```
 
@@ -30,12 +30,7 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 # Dict to YAML string
-yaml_str = pyrs_yaml.safe_dump({
-    "database": {
-        "host": "localhost",
-        "port": 5432
-    }
-})
+yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}})
 
 # Also available as safe_dumps (alias)
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
@@ -46,11 +41,7 @@ yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ### from_dict()
 
 ```python
-yaml_str = pyrs_yaml.from_dict({
-    "name": "Alice",
-    "age": 30,
-    "tags": ["admin", "user"]
-})
+yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
 ### from_json()
@@ -63,12 +54,7 @@ yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 
 ```python
 # Write Python object directly to YAML file
-pyrs_yaml.dump_file({
-    "config": {
-        "debug": True,
-        "log_level": "info"
-    }
-}, "output.yaml")
+pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
 ## Supported Input Types

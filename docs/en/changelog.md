@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **In-place editing** — edit parsed documents without losing formatting metadata:
+  - Path API: `doc.set(path, value)`, `doc.insert(path, index, value)`, `doc.append(path, value)`, `doc.delete(path)`, `doc.rename(path, new_key)` with JSONPath-style paths (`$.a.b[0]`); root sugar via `doc["key"] = value` and `del doc["key"]`
+  - Node API: `doc.node()` / `doc.find(path)` return `Node` objects with `set_value` / `append` / `insert` / `delete` / `rename`, plus tree traversal (`parent`, `children`, `walk`, `filter`)
+  - Full metadata preservation — replaced scalars keep comment/anchor/tag/quoting; renamed keys keep position and comments; mapping order preserved on delete
+  - Atomic edits — failed operations leave the document (and its revision) untouched
+  - Lazy source re-sync — `source()` / `to_yaml()` / `reparse()` re-serialize only after a successful edit
+  - Stale-node detection — `Node` access after a document edit raises `YamlDocumentError` (with `RuntimeWarning`)
+  - New exceptions: `YamlEditError`, `YamlPathError` (i18n across en/zh-CN/ja-JP/ko-KR)
+  - Alias-aware editing — setting an alias's own path replaces it in place; editing through an alias raises `YamlEditError`
+- **Edit benchmarks** — 6 new divan benchmarks in `benches/yaml_bench.rs` (set/insert/delete on small–large documents)
 - **Python 3.13, 3.14 and 3.15 support** — PyO3 `abi3-py38` wheel covers Python 3.8-3.15 (GIL build); `abi3t` + `abi3t-py315` provide free-threaded stable ABI
 - **Free-threaded CPython (no-GIL) support** — `#[pymodule(gil_used = false)]` declares module as thread-safe for free-threaded Python; `Py_GIL_DISABLED` cfg flag gates numpy (rust-numpy has no free-threaded support yet — numpy feature must be disabled for free-threaded builds via `--no-default-features`)
 - **CI free-threaded job** — new `test-freethreaded` workflow job validates compilation and tests against Python 3.14t
@@ -20,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI Python matrix expanded: 3.8-3.14 across ubuntu, windows, macos
 - Stable ABI: `abi3-py39` → `abi3-py38` (wider Python 3.8+ support), added `abi3t` + `abi3t-py315` (free-threaded stable ABI)
 - `pyproject.toml` classifiers updated with 3.13, 3.14, 3.15 entries
+- `YamlDocument.source()` now returns `str` and lazily re-serializes after in-place edits
+
+### Fixed
+
+- Round-trip documentation clarified: merge keys (`<<`) are resolved by default and only preserved verbatim with `resolve_merges=False`
 
 ## [0.6.0] - 2026-07-27
 

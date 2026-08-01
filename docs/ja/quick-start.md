@@ -28,9 +28,9 @@ email: alice@example.com
 """)
 
 # Access values
-print(doc.get("name"))    # Alice
-print(doc.get("age"))     # 30
-print(doc.get("email"))   # alice@example.com
+print(doc.get("name"))  # Alice
+print(doc.get("age"))  # 30
+print(doc.get("email"))  # alice@example.com
 ```
 
 ### 3. Python オブジェクトへの変換
@@ -47,20 +47,14 @@ users:
 
 # Returns native Python types (dict, list, str, int, etc.)
 print(data["users"][0]["name"])  # Alice
-print(type(data["users"]))       # <class 'list'>
+print(type(data["users"]))  # <class 'list'>
 ```
 
 ### 4. YAML へのシリアライズ
 
 ```python
 # Convert a Python dict back to YAML
-yaml_str = pyrs_yaml.safe_dump({
-    "database": {
-        "host": "localhost",
-        "port": 5432,
-        "name": "mydb"
-    }
-})
+yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
 # database:
 #   host: localhost
@@ -98,7 +92,31 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-### 6. ファイルから YAML を読み込む
+### 6. インプレース編集
+
+```python
+# コメントやフォーマットを失わずに解析済みドキュメントを編集
+doc = pyrs_yaml.parse("""
+server:
+  host: localhost  # bind address
+  ports:
+    - 8080
+""")
+
+doc.set("$.server.host", "0.0.0.0")   # パスで置換
+doc.append("$.server.ports", 443)     # シーケンスに追加
+
+print(doc.to_yaml())
+# server:
+#   host: 0.0.0.0  # bind address
+#   ports:
+#     - 8080
+#     - 443
+```
+
+完全な API は [インプレース編集ガイド](guides/editing.md) を参照してください。
+
+### 7. ファイルから YAML を読み込む
 
 ```python
 # Parse a YAML file directly
@@ -106,7 +124,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### 7. 複数ドキュメント
+### 8. 複数ドキュメント
 
 ```python
 # Parse multiple YAML documents
@@ -125,7 +143,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 8. NumPy ndarray サポート
+## 9. NumPy ndarray サポート
 
 pyrs-yaml は `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます。これは科学データ、モデルの重み、または多次元配列を人間が読める形式に保存するのに便利です。
 
@@ -171,4 +189,5 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 - **[機能](features.md)** — サポートされているすべての YAML 機能を探索
 - **[パースガイド](guides/parsing.md)** — 高度なパースオプション
+- **[インプレース編集](guides/editing.md)** — フォーマットを失わずにドキュメントを編集
 - **[API リファレンス](api/reference.md)** — 完全な API ドキュメント

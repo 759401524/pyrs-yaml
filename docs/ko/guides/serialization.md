@@ -24,10 +24,10 @@ doc = pyrs_yaml.parse("key: value")
 
 # 사용자 정의 들여쓰기와 문서 마커
 yaml_str = doc.to_yaml_with_options(
-    indent_size=4,           # 들여쓰기 레벨당 4 공백
-    explicit_start=True,     # 시작에 "---" 추가
-    explicit_end=True,       # 끝에 "..." 추가
-    sort_keys=True,          # 키를 알파벳 순으로 정렬
+    indent_size=4,  # 들여쓰기 레벨당 4 공백
+    explicit_start=True,  # 시작에 "---" 추가
+    explicit_end=True,  # 끝에 "..." 추가
+    sort_keys=True,  # 키를 알파벳 순으로 정렬
 )
 ```
 
@@ -35,12 +35,7 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 # dict를 YAML 문자열로 변환
-yaml_str = pyrs_yaml.safe_dump({
-    "database": {
-        "host": "localhost",
-        "port": 5432
-    }
-})
+yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}})
 
 # safe_dumps (별칭)도 사용 가능
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
@@ -51,11 +46,7 @@ yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 #### `from_dict()`
 
 ```python
-yaml_str = pyrs_yaml.from_dict({
-    "name": "Alice",
-    "age": 30,
-    "tags": ["admin", "user"]
-})
+yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
 #### `from_json()`
@@ -68,12 +59,7 @@ yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 
 ```python
 # Python 객체를 직접 YAML 파일에 쓰기
-pyrs_yaml.dump_file({
-    "config": {
-        "debug": True,
-        "log_level": "info"
-    }
-}, "output.yaml")
+pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
 ### 지원되는 입력 타입

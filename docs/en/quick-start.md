@@ -25,9 +25,9 @@ email: alice@example.com
 """)
 
 # Access values
-print(doc.get("name"))    # Alice
-print(doc.get("age"))     # 30
-print(doc.get("email"))   # alice@example.com
+print(doc.get("name"))  # Alice
+print(doc.get("age"))  # 30
+print(doc.get("email"))  # alice@example.com
 ```
 
 ## 3. Convert to Python Objects
@@ -44,20 +44,14 @@ users:
 
 # Returns native Python types (dict, list, str, int, etc.)
 print(data["users"][0]["name"])  # Alice
-print(type(data["users"]))       # <class 'list'>
+print(type(data["users"]))  # <class 'list'>
 ```
 
 ## 4. Serialize to YAML
 
 ```python
 # Convert a Python dict back to YAML
-yaml_str = pyrs_yaml.safe_dump({
-    "database": {
-        "host": "localhost",
-        "port": 5432,
-        "name": "mydb"
-    }
-})
+yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
 # database:
 #   host: localhost
@@ -95,7 +89,31 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-## 6. Read YAML from Files
+## 6. Edit In Place
+
+```python
+# Edit a parsed document without losing comments or formatting
+doc = pyrs_yaml.parse("""
+server:
+  host: localhost  # bind address
+  ports:
+    - 8080
+""")
+
+doc.set("$.server.host", "0.0.0.0")   # replace by path
+doc.append("$.server.ports", 443)     # append to a sequence
+
+print(doc.to_yaml())
+# server:
+#   host: 0.0.0.0  # bind address
+#   ports:
+#     - 8080
+#     - 443
+```
+
+See the [In-Place Editing guide](guides/editing.md) for the full API.
+
+## 7. Read YAML from Files
 
 ```python
 # Parse a YAML file directly
@@ -103,7 +121,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-## 7. Multiple Documents
+## 8. Multiple Documents
 
 ```python
 # Parse multiple YAML documents
@@ -121,7 +139,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 8. NumPy ndarray Support
+## 9. NumPy ndarray Support
 
 pyrs-yaml can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
 
@@ -167,4 +185,5 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 - **[Features](features.md)** — Explore all supported YAML features
 - **[Parsing Guide](guides/parsing.md)** — Advanced parsing options
+- **[In-Place Editing](guides/editing.md)** — Edit documents without losing formatting
 - **[API Reference](api/reference.md)** — Complete API documentation

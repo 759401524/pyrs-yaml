@@ -193,10 +193,12 @@ async def safe_load_async(yaml: str, schema: str = "core") -> Any
 ```python
 import asyncio, pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -231,7 +233,7 @@ read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
 set_language(lang: str) -> None
 ```
 
-サポート: `"en"`, `"zh-CN"`
+サポート: `"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
 #### `get_language()`
 
@@ -271,6 +273,11 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlSerializeError` — YAML シリアライズエラー (`ValueError` を継承)
 - `YamlTypeError` — 型変換エラー (`TypeError` を継承)
 - `YamlValidateError` — JSON Schema 検証エラー (`ValueError` を継承)
+- `YamlEditError` — インプレース編集エラー (`ValueError` を継承)
+- `YamlPathError` — YAML パスエラー (`ValueError` を継承)
+- `YamlDocumentError` — 陳腐化した `Node` アクセスエラー (`Exception` を継承)
+
+詳細は [例外](exceptions.md) ページを参照してください。
 
 ### バージョン
 
