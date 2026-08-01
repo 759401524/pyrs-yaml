@@ -103,8 +103,8 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")   # 경로로 교체
-doc.append("$.server.ports", 443)     # 시퀀스에 추가
+doc.set("$.server.host", "0.0.0.0")  # 경로로 교체
+doc.append("$.server.ports", 443)  # 시퀀스에 추가
 
 print(doc.to_yaml())
 # server:

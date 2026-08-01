@@ -100,8 +100,8 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")   # replace by path
-doc.append("$.server.ports", 443)     # append to a sequence
+doc.set("$.server.host", "0.0.0.0")  # replace by path
+doc.append("$.server.ports", 443)  # append to a sequence
 
 print(doc.to_yaml())
 # server:

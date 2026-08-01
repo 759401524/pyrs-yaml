@@ -112,11 +112,11 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")     # 경로로 교체
-doc.insert("$.server.ports", 0, 80)     # 시퀀스에 삽입
-doc.append("$.server.ports", 443)       # 시퀀스에 추가
-doc.rename("$.server", "srv")           # 매핑 키 이름 변경
-del doc["server"]                       # 또는: doc.delete("$.server")
+doc.set("$.server.host", "0.0.0.0")  # 경로로 교체
+doc.insert("$.server.ports", 0, 80)  # 시퀀스에 삽입
+doc.append("$.server.ports", 443)  # 시퀀스에 추가
+doc.rename("$.server", "srv")  # 매핑 키 이름 변경
+del doc["server"]  # 또는: doc.delete("$.server")
 ```
 
 - **경로 API** — JSONPath 스타일 경로(`$.a.b[0]`), 루트 슈가(`doc["k"] = v`, `del doc["k"]`)

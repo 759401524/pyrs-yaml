@@ -46,8 +46,8 @@ doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original  # True
 
 # Edit in place without losing formatting
-doc.set("$.key", "edited")   # key: edited  # inline
-doc.set("$.new", 1)          # add a new key
+doc.set("$.key", "edited")  # key: edited  # inline
+doc.set("$.new", 1)  # add a new key
 print(doc.to_yaml())
 ```
 

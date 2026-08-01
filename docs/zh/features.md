@@ -112,11 +112,11 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")     # 按路径替换
-doc.insert("$.server.ports", 0, 80)     # 向序列插入
-doc.append("$.server.ports", 443)       # 向序列追加
-doc.rename("$.server", "srv")           # 重命名映射键
-del doc["server"]                       # 或: doc.delete("$.server")
+doc.set("$.server.host", "0.0.0.0")  # 按路径替换
+doc.insert("$.server.ports", 0, 80)  # 向序列插入
+doc.append("$.server.ports", 443)  # 向序列追加
+doc.rename("$.server", "srv")  # 重命名映射键
+del doc["server"]  # 或: doc.delete("$.server")
 ```
 
 - **路径 API** — JSONPath 风格路径（`$.a.b[0]`），根节点语法糖（`doc["k"] = v`、`del doc["k"]`）

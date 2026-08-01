@@ -236,7 +236,7 @@ doc.set("$.items[1]", "two")
 doc.insert("$.items", 1, "x")  # items: [1, x, 2, 3]
 doc.append("$.items", 4)
 doc.rename("$.items", "list")  # マッピングキーをリネーム
-del doc["list"]                # doc.delete("$.list") と同等
+del doc["list"]  # doc.delete("$.list") と同等
 ```
 
 ### ダンダー メソッド

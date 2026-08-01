@@ -18,7 +18,7 @@ db:
   port: 5432
 """)
 
-doc.set("$.db.host", "db.example.com")     # set by path
+doc.set("$.db.host", "db.example.com")  # set by path
 doc.set("$.db.port", 5433)
 print(doc.to_yaml())
 # db:
@@ -57,10 +57,10 @@ set(path: str, value: Any) -> None
 ```python
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
-doc.set("$.a.b", 42)          # scalar → scalar, metadata preserved
+doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
 doc.set("$.items[1]", "two")  # sequence index
-doc.set("$.a.c", True)        # add a new key to a mapping (last position)
-doc.set("$", {"x": 1})        # replace the entire root
+doc.set("$.a.c", True)  # add a new key to a mapping (last position)
+doc.set("$", {"x": 1})  # replace the entire root
 ```
 
 값 변환 규칙:
@@ -77,13 +77,13 @@ doc.set("$", {"x": 1})        # replace the entire root
 ### `__setitem__` — 루트 슈가
 
 ```python
-doc["b"] = 2          # equivalent to doc.set("$.b", 2)
+doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
 ### `Node.set_value()` — Node를 통한 편집
 
 ```python
-node = doc.node().find("$.a.b")   # see "Working with Nodes"
+node = doc.node().find("$.a.b")  # see "Working with Nodes"
 node.set_value(42)
 ```
 
@@ -102,9 +102,9 @@ insert(path: str, index: int, value: Any) -> None
 ```python
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
-doc.insert("$.items", 1, "b")       # items: [a, b, c]
+doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", 0, "first")
-doc.insert("$.items", 3, "last")    # index == len appends
+doc.insert("$.items", 3, "last")  # index == len appends
 ```
 
 ### `append()` — 끝에 추가
@@ -146,7 +146,7 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 ### `__delitem__` — 루트 슈가
 
 ```python
-del doc["b"]   # equivalent to doc.delete("$.b")
+del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
 ### `Node.delete()`
@@ -188,11 +188,11 @@ node.rename("new")
 `doc.node()`는 문서 루트의 `Node`를 반환합니다; `Node.find(path)`는 하위 트리로 이동합니다:
 
 ```python
-node = doc.node()                       # root node
-node = doc.node().find("$.db.host")     # navigate by path
-print(node.value)                       # "localhost"
-node.set_value("other")                 # edit through the node
-print(node.root_type)                   # "scalar" | "mapping" | "sequence" | "null"
+node = doc.node()  # root node
+node = doc.node().find("$.db.host")  # navigate by path
+print(node.value)  # "localhost"
+node.set_value("other")  # edit through the node
+print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 ```
 
 Node는 트리 API를 제공합니다: `node.parent`, `node.children`, `node.walk()` (깊이 우선 반복자), `node.filter(predicate)`, `node.to_yaml()`.
@@ -202,8 +202,8 @@ Node는 트리 API를 제공합니다: `node.parent`, `node.children`, `node.wal
 `find()`는 **읽기 지향적**이며 와일드카드와 딥 스캔을 지원합니다 — 경로가 여러 노드를 선택하면 리스트를 반환합니다:
 
 ```python
-doc.node().find("$.items[*]")   # all items of a sequence (list of Nodes)
-doc.node().find("$..timeout")   # deep search for any key named "timeout"
+doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
+doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
 
 와일드카드/딥 스캔 결과는 **직접 편집할 수 없습니다** — 경로를 찾는 데 사용한 후 `set()`/`insert()` 등으로 편집하세요.
@@ -214,7 +214,7 @@ doc.node().find("$..timeout")   # deep search for any key named "timeout"
 
 ```python
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
-doc = pyrs_yaml.YAML(typ="safe").parse(yaml)   # resolve_merges=false keeps the alias node
+doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
 
 doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 99
 ```
@@ -229,9 +229,9 @@ doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 
 
 ```python
 doc = pyrs_yaml.parse("on: yes")
-print(doc.get("on"))    # True   — view (core schema resolution)
+print(doc.get("on"))  # True   — view (core schema resolution)
 doc.set("$.on", "off")  #         — edits the AST scalar
-print(doc.to_yaml())    # on: off — serialized verbatim, no re-resolution
+print(doc.to_yaml())  # on: off — serialized verbatim, no re-resolution
 ```
 
 편집된 값은 **그대로** 출력됩니다; 뷰는 활성 스키마에 따라 이를 해석합니다.
@@ -242,8 +242,8 @@ print(doc.to_yaml())    # on: off — serialized verbatim, no re-resolution
 
 ```python
 node = doc.node().find("$.a")
-doc.set("$.b", 2)          # bumps the revision
-node.set_value(99)         # RuntimeWarning + YamlDocumentError (stale)
+doc.set("$.b", 2)  # bumps the revision
+node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 ```
 
 편집 후에는 노드를 다시 찾아 작업을 계속하세요. `node.is_valid()`는 유효성을 확인합니다; `node.release()`는 노드를 문서에서 명시적으로 분리합니다.

@@ -236,7 +236,7 @@ doc.set("$.items[1]", "two")
 doc.insert("$.items", 1, "x")  # items: [1, x, 2, 3]
 doc.append("$.items", 4)
 doc.rename("$.items", "list")  # 重命名映射键
-del doc["list"]                # 等价于 doc.delete("$.list")
+del doc["list"]  # 等价于 doc.delete("$.list")
 ```
 
 ### 特殊方法

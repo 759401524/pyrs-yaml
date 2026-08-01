@@ -105,8 +105,8 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")   # 按路径替换
-doc.append("$.server.ports", 443)     # 向序列追加
+doc.set("$.server.host", "0.0.0.0")  # 按路径替换
+doc.append("$.server.ports", 443)  # 向序列追加
 
 print(doc.to_yaml())
 # server:

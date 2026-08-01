@@ -18,7 +18,7 @@ db:
   port: 5432
 """)
 
-doc.set("$.db.host", "db.example.com")     # set by path
+doc.set("$.db.host", "db.example.com")  # set by path
 doc.set("$.db.port", 5433)
 print(doc.to_yaml())
 # db:
@@ -57,10 +57,10 @@ set(path: str, value: Any) -> None
 ```python
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
-doc.set("$.a.b", 42)          # scalar → scalar, metadata preserved
+doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
 doc.set("$.items[1]", "two")  # sequence index
-doc.set("$.a.c", True)        # add a new key to a mapping (last position)
-doc.set("$", {"x": 1})        # replace the entire root
+doc.set("$.a.c", True)  # add a new key to a mapping (last position)
+doc.set("$", {"x": 1})  # replace the entire root
 ```
 
 値の変換ルール：
@@ -77,13 +77,13 @@ doc.set("$", {"x": 1})        # replace the entire root
 ### `__setitem__` — ルート用糖衣構文
 
 ```python
-doc["b"] = 2          # equivalent to doc.set("$.b", 2)
+doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
 ### `Node.set_value()` — ノード経由の編集
 
 ```python
-node = doc.node().find("$.a.b")   # see "Working with Nodes"
+node = doc.node().find("$.a.b")  # see "Working with Nodes"
 node.set_value(42)
 ```
 
@@ -102,9 +102,9 @@ insert(path: str, index: int, value: Any) -> None
 ```python
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
-doc.insert("$.items", 1, "b")       # items: [a, b, c]
+doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", 0, "first")
-doc.insert("$.items", 3, "last")    # index == len appends
+doc.insert("$.items", 3, "last")  # index == len appends
 ```
 
 ### `append()` — 末尾に追加
@@ -146,7 +146,7 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 ### `__delitem__` — ルート用糖衣構文
 
 ```python
-del doc["b"]   # equivalent to doc.delete("$.b")
+del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
 ### `Node.delete()`
@@ -188,11 +188,11 @@ node.rename("new")
 `doc.node()` はドキュメントルートの `Node` を返し、`Node.find(path)` はサブツリーに移動します：
 
 ```python
-node = doc.node()                       # root node
-node = doc.node().find("$.db.host")     # navigate by path
-print(node.value)                       # "localhost"
-node.set_value("other")                 # edit through the node
-print(node.root_type)                   # "scalar" | "mapping" | "sequence" | "null"
+node = doc.node()  # root node
+node = doc.node().find("$.db.host")  # navigate by path
+print(node.value)  # "localhost"
+node.set_value("other")  # edit through the node
+print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 ```
 
 ノードはツリー API を公開しています：`node.parent`、`node.children`、`node.walk()`（深さ優先イテレーター）、`node.filter(predicate)`、`node.to_yaml()`。
@@ -202,8 +202,8 @@ print(node.root_type)                   # "scalar" | "mapping" | "sequence" | "n
 `find()` は**読み取り指向**で、ワイルドカードとディープスキャンをサポートします — パスが複数のノードを選択する場合はリストを返します：
 
 ```python
-doc.node().find("$.items[*]")   # all items of a sequence (list of Nodes)
-doc.node().find("$..timeout")   # deep search for any key named "timeout"
+doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
+doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
 
 ワイルドカード/ディープスキャンの結果は**直接編集できません** — パスの特定に使用し、編集は `set()` / `insert()` などで行ってください。
@@ -214,7 +214,7 @@ doc.node().find("$..timeout")   # deep search for any key named "timeout"
 
 ```python
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
-doc = pyrs_yaml.YAML(typ="safe").parse(yaml)   # resolve_merges=false keeps the alias node
+doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
 
 doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 99
 ```
@@ -229,9 +229,9 @@ doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 
 
 ```python
 doc = pyrs_yaml.parse("on: yes")
-print(doc.get("on"))    # True   — view (core schema resolution)
+print(doc.get("on"))  # True   — view (core schema resolution)
 doc.set("$.on", "off")  #         — edits the AST scalar
-print(doc.to_yaml())    # on: off — serialized verbatim, no re-resolution
+print(doc.to_yaml())  # on: off — serialized verbatim, no re-resolution
 ```
 
 編集された値は**そのまま**出力されます。ビューはアクティブなスキーマに従ってそれを解決します。
@@ -242,8 +242,8 @@ print(doc.to_yaml())    # on: off — serialized verbatim, no re-resolution
 
 ```python
 node = doc.node().find("$.a")
-doc.set("$.b", 2)          # bumps the revision
-node.set_value(99)         # RuntimeWarning + YamlDocumentError (stale)
+doc.set("$.b", 2)  # bumps the revision
+node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 ```
 
 編集後はノードを再取得して作業を続けてください。`node.is_valid()` は生存性をチェックし、`node.release()` はノードをドキュメントから明示的に切り離します。

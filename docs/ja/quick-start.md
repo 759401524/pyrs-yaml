@@ -103,8 +103,8 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")   # パスで置換
-doc.append("$.server.ports", 443)     # シーケンスに追加
+doc.set("$.server.host", "0.0.0.0")  # パスで置換
+doc.append("$.server.ports", 443)  # シーケンスに追加
 
 print(doc.to_yaml())
 # server:

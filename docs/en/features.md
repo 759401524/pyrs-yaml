@@ -107,11 +107,11 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")     # replace by path
-doc.insert("$.server.ports", 0, 80)     # insert into a sequence
-doc.append("$.server.ports", 443)       # append to a sequence
-doc.rename("$.server", "srv")           # rename a mapping key
-del doc["server"]                       # or: doc.delete("$.server")
+doc.set("$.server.host", "0.0.0.0")  # replace by path
+doc.insert("$.server.ports", 0, 80)  # insert into a sequence
+doc.append("$.server.ports", 443)  # append to a sequence
+doc.rename("$.server", "srv")  # rename a mapping key
+del doc["server"]  # or: doc.delete("$.server")
 ```
 
 - **Path API** — JSONPath-style paths (`$.a.b[0]`) with root sugar (`doc["k"] = v`, `del doc["k"]`)

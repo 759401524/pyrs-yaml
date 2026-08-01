@@ -222,9 +222,9 @@ set(path: str, value: Any) -> None
 
 ```python
 doc = pyrs_yaml.parse("a:\n  b: 1")
-doc.set("$.a.b", 42)     # replace existing
-doc.set("$.a.c", True)   # create new key
-doc.set("$", {"x": 1})   # replace the root
+doc.set("$.a.b", 42)  # replace existing
+doc.set("$.a.c", True)  # create new key
+doc.set("$", {"x": 1})  # replace the root
 ```
 
 **Raises:**
@@ -311,8 +311,8 @@ find(path: str) -> Node | list[Node]
 ### `__setitem__()` / `__delitem__()` — root sugar
 
 ```python
-doc["key"] = value     # equivalent to doc.set("$.key", value)
-del doc["key"]         # equivalent to doc.delete("$.key")
+doc["key"] = value  # equivalent to doc.set("$.key", value)
+del doc["key"]  # equivalent to doc.delete("$.key")
 ```
 
 ## Dunder Methods

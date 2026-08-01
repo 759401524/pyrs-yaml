@@ -112,11 +112,11 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")     # パスで置換
-doc.insert("$.server.ports", 0, 80)     # シーケンスに挿入
-doc.append("$.server.ports", 443)       # シーケンスに追加
-doc.rename("$.server", "srv")           # マッピングキーをリネーム
-del doc["server"]                       # または: doc.delete("$.server")
+doc.set("$.server.host", "0.0.0.0")  # パスで置換
+doc.insert("$.server.ports", 0, 80)  # シーケンスに挿入
+doc.append("$.server.ports", 443)  # シーケンスに追加
+doc.rename("$.server", "srv")  # マッピングキーをリネーム
+del doc["server"]  # または: doc.delete("$.server")
 ```
 
 - **パス API** — JSONPath スタイルのパス（`$.a.b[0]`）、ルート用糖衣構文（`doc["k"] = v`、`del doc["k"]`）
