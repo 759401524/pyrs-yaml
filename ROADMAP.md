@@ -114,13 +114,23 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ---
 
-### v0.10.0 — Reserve (pending scope)
+### v0.10.0 — "Edit In Place" (target: Q3 2026)
 
-- Overflow from v0.9.0 if scope expands
-- Potential areas:
-  - `yaml-edit`-style in-place editing
-  - YAML 1.2 spec compliance score reporting
-  - Python `with` context manager for document scoping
+> In-place editing on a fidelity-preserving AST — the `yaml-edit` differentiator, without sacrificing round-trip.
+
+| # | Item | Layer | Priority | Notes |
+|:--|:-----|:------|:--------:|:------|
+| 1 | **Rust edit primitives** — `set_path` / `insert_path` / `append_path` / `delete_path` / `rename_path` on `CustomNode` with metadata preservation (`src/py/editing.rs`) | Rust | 🔴 | ✅ Delivered |
+| 2 | **`_*_path` PyO3 methods** — GIL-released (`py.detach`), atomic (revision bumped only on success), lazy `source_dirty` re-sync (`src/py/mod.rs`) | Rust | 🔴 | ✅ Delivered |
+| 3 | **Python path API** — `doc.set/insert/append/delete/rename(path, ...)` + root sugar `doc["k"] = v` / `del doc["k"]`; `YamlPathError` for wildcard/`..` in edit paths (`python/pyrs_yaml/editing.py`) | Python | 🔴 | ✅ Delivered |
+| 4 | **Node edit methods** — `Node.set_value/insert/append/delete/rename` with revision-based staleness detection (`YamlDocumentError` + `RuntimeWarning`) (`python/pyrs_yaml/node.py`) | Python | 🔴 | ✅ Delivered |
+| 5 | **Alias-aware editing** — setting an alias's own path replaces it in place; editing *through* an alias raises `YamlEditError` | Both | 🟡 | ✅ Delivered |
+| 6 | **Docs** — `docs/{en,zh,ja,ko}/guides/editing.md` + API/features/changelog updates | Docs | 🟡 | ✅ Delivered |
+| 7 | **Edit benchmarks** — 6 divan benches (set/insert/delete, small→large) in `benches/yaml_bench.rs` | Rust | 🟡 | ✅ Delivered |
+
+**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md (pending v0.10.0 tag).
+
+**Remaining reserve (not committed)**: YAML 1.2 spec compliance score reporting; Python `with` context manager for document scoping; `yaml-edit` competitor feature tracking.
 
 ---
 

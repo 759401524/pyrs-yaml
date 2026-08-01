@@ -188,10 +188,12 @@ async def safe_load_async(yaml: str, schema: str = "core") -> Any
 ```python
 import asyncio, pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -266,6 +268,9 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
 - `YamlTypeError` — Type conversion error (inherits from `TypeError`)
 - `YamlValidateError` — JSON Schema validation error (inherits from `ValueError`)
+- `YamlEditError` — In-place edit failure (inherits from `ValueError`)
+- `YamlPathError` — Malformed/non-editable path (inherits from `ValueError`)
+- `YamlDocumentError` — Stale `Node` access (inherits from `Exception`)
 
 ## Version
 

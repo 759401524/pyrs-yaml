@@ -12,6 +12,7 @@ lang: ko
 ```python
 class YamlDocument:
     """pyrs-yaml의 핵심 클래스."""
+
     # ... C 확장으로 구현 ...
 ```
 
@@ -87,13 +88,15 @@ data = doc.to_dict()  # {'key': 'value'}
 
 #### `get()`
 
-키로 값을 가져옵니다 (매핑 루트용).
+키 또는 JSONPath 스타일 경로로 값을 가져옵니다. `.`, `[`를 포함하거나 `$`로 시작하는 키는 경로로 처리됩니다 (`$.a.b`, `$.arr[0]`, `$.arr[-1]` — 음수 인덱스는 끝에서부터 셉니다).
 
 ```python
 get(key: str, default: Any = None) -> Any
 ```
 
 **반환값:** 값, 못 찾으면 기본값
+
+**발생:** `YamlPathError` — 잘못된 경로 (`$[bad`, 와일드카드/딥 스캔)
 
 #### `type()`
 
@@ -143,6 +146,102 @@ source_text() -> str
 
 **반환값:** YAML 소스 문자열
 
+### 편집 메서드
+
+문서를 제자리에서 편집하면서 모든 메타데이터(주석, 앵커, 태그, 스타일)를 보존합니다. 편집은 JSONPath 스타일 경로(`$.a.b`, `$.items[0]`)로 노드를 찾으며, 모든 작업은 **원자적**입니다 — 실패 시 문서(리비전 포함)가 변경되지 않습니다.
+
+#### `set()`
+
+경로로 값을 교체합니다.
+
+```python
+set(path: str, value: Any) -> None
+```
+
+- 스칼라, `dict`, `list` 지원; `tuple`은 지원되지 않음(`YamlEditError` 발생)
+- 기존 스칼라를 교체하면 대상의 메타데이터가 보존됩니다; 경로가 없으면 매핑 끝에 새 키 추가
+- 빈 문서(`""`에서 파싱)에 경로를 설정하면 매핑 루트가 자동 생성됩니다
+
+**예시:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1")
+doc.set("$.a.b", 42)
+doc.set("$.a.c", True)  # 새 키 추가
+doc.set("$", {"x": 1})  # 루트 전체 교체
+```
+
+#### `insert()`
+
+시퀀스의 지정된 인덱스에 값을 삽입합니다.
+
+```python
+insert(path: str, index: int, value: Any) -> None
+```
+
+`index`는 시퀀스의 현재 길이까지 허용됩니다(`len`에 삽입하면 추가와 동일). 음수 인덱스는 끝에서부터 셉니다(`-1`은 마지막 요소 앞에 삽입). 경로는 시퀀스 노드를 가리켜야 합니다.
+
+#### `append()`
+
+시퀀스 끝에 값을 추가합니다.
+
+```python
+append(path: str, value: Any) -> None
+```
+
+#### `delete()`
+
+경로로 노드를 제거합니다. 매핑 순서가 유지됩니다.
+
+```python
+delete(path: str) -> None
+```
+
+#### `rename()`
+
+매핑 키를 제자리에서 이름 변경합니다(위치와 메타데이터 보존).
+
+```python
+rename(path: str, new_key: str) -> None
+```
+
+루트 또는 복합(비스칼라) 키의 이름 변경은 `YamlEditError`를 발생시킵니다.
+
+#### `node()`
+
+문서 루트의 `Node`를 반환합니다.
+
+```python
+node() -> Node
+```
+
+#### `find()`
+
+경로로 노드를 찾습니다. 와일드카드(`[*]`)와 딥 스캔(`..`)을 지원 — 이 경우 노드 목록을 반환합니다.
+
+```python
+find(path: str) -> Node | list[Node]
+```
+
+**발생:**
+
+- `YamlPathError` — 경로가 잘못되었거나 편집 경로에 와일드카드/`..` 사용
+- `YamlEditError` — 편집을 적용할 수 없음(`tuple`, 별칭을 통한 편집, 루트/복합 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과)
+- `YamlDocumentError` — 문서 편집 후 오래된 `Node` 사용
+
+**참조:** [제자리 편집 가이드](../guides/editing.md)
+
+**예시:**
+
+```python
+doc = pyrs_yaml.parse("items: [1, 2, 3]")
+doc.set("$.items[1]", "two")
+doc.insert("$.items", 1, "x")  # items: [1, x, 2, 3]
+doc.append("$.items", 4)
+doc.rename("$.items", "list")  # 매핑 키 이름 변경
+del doc["list"]  # doc.delete("$.list")와 동일
+```
+
 ### 더더 메서드
 
 #### `__getitem__()`
@@ -152,6 +251,22 @@ source_text() -> str
 ```python
 doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
+```
+
+#### `__setitem__()`
+
+루트 매핑 키를 설정합니다(`doc.set()`의 루트 슈가).
+
+```python
+doc["key"] = value
+```
+
+#### `__delitem__()`
+
+루트 매핑 키를 삭제합니다(`doc.delete()`의 루트 슈가).
+
+```python
+del doc["key"]
 ```
 
 #### `__contains__()`
@@ -211,7 +326,7 @@ import pyrs_yaml
 # 매핑
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 print(doc["name"])  # Alice
-print(len(doc))     # 2
+print(len(doc))  # 2
 
 # 시퀀스
 doc = pyrs_yaml.parse("- item1\n- item2")

@@ -57,10 +57,12 @@ Non-blocking serialization and parsing via `asyncio`:
 import asyncio
 import pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dump_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -92,6 +94,33 @@ print(doc.get("x"))  # "on" (string, core schema)
 doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
+
+## In-Place Editing
+
+Edit a parsed document **without losing any formatting metadata** — comments, anchors, tags, scalar styles, and flow/block style all survive:
+
+```python
+doc = pyrs_yaml.parse("""
+server:
+  host: localhost  # bind address
+  ports:
+    - 8080
+""")
+
+doc.set("$.server.host", "0.0.0.0")  # replace by path
+doc.insert("$.server.ports", 0, 80)  # insert into a sequence
+doc.append("$.server.ports", 443)  # append to a sequence
+doc.rename("$.server", "srv")  # rename a mapping key
+del doc["server"]  # or: doc.delete("$.server")
+```
+
+- **Path API** — JSONPath-style paths (`$.a.b[0]`) with root sugar (`doc["k"] = v`, `del doc["k"]`)
+- **Node API** — `doc.node().find(path)` returns `Node` objects with `set_value` / `insert` / `append` / `delete` / `rename`, plus tree traversal (`parent`, `children`, `walk`, `filter`)
+- **Atomicity** — failed edits leave the document (and its revision) untouched
+- **Metadata preservation** — replaced scalars keep their comment/anchor/tag/quoting; renamed keys keep position and comments
+- **Alias-aware** — setting an alias's own path replaces it in place; editing *through* an alias raises `YamlEditError`
+
+See the [In-Place Editing guide](guides/editing.md) for details.
 
 ## NumPy ndarray Support
 
@@ -166,4 +195,5 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **Async I/O** | **✅ `safe_*_async`** |
 | **JSON Schema validation** | **✅ `doc.validate()`** |
 | **Incremental re-parse** | **✅ `doc.reparse()`** |
+| **In-place editing** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
 | **JSON export** | **✅ `doc.to_json()`** |

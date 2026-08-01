@@ -12,6 +12,7 @@ lang: zh
 ```python
 class YamlDocument:
     """pyrs-yaml 的核心类。"""
+
     # ... C 扩展实现 ...
 ```
 
@@ -87,13 +88,15 @@ data = doc.to_dict()  # {'key': 'value'}
 
 #### `get()`
 
-通过键获取值（用于映射根）。
+通过键或 JSONPath 风格路径获取值。包含 `.`、`[` 或以 `$` 开头的键会被当作路径处理（`$.a.b`、`$.arr[0]`、`$.arr[-1]` — 负索引从末尾倒数）。
 
 ```python
 get(key: str, default: Any = None) -> Any
 ```
 
 **返回值:** 值，未找到则返回默认值
+
+**引发:** `YamlPathError` — 路径格式错误（`$[bad`、通配符/深度扫描）
 
 #### `type()`
 
@@ -143,6 +146,102 @@ source_text() -> str
 
 **返回值:** YAML 源字符串
 
+### 编辑方法
+
+就地编辑文档，同时保留所有元数据（注释、锚点、标签、样式）。编辑通过 JSONPath 风格路径（`$.a.b`、`$.items[0]`）定位节点，所有操作都是**原子**的 — 失败时文档（含修订号）不变。
+
+#### `set()`
+
+按路径替换值。
+
+```python
+set(path: str, value: Any) -> None
+```
+
+- 支持标量、`dict`、`list`；`tuple` 不支持（引发 `YamlEditError`）
+- 替换现有标量时保留目标的元数据；路径不存在时在映射末尾添加新键
+- 对空文档（从 `""` 解析）设置路径时，会自动创建映射根
+
+**示例:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1")
+doc.set("$.a.b", 42)
+doc.set("$.a.c", True)  # 添加新键
+doc.set("$", {"x": 1})  # 替换整个根
+```
+
+#### `insert()`
+
+在序列的指定索引处插入值。
+
+```python
+insert(path: str, index: int, value: Any) -> None
+```
+
+`index` 最大可为序列当前长度（在 `len` 处插入等同于追加）。负索引从末尾计数（`-1` 在最后一个元素之前插入）。路径必须解析为序列节点。
+
+#### `append()`
+
+在序列末尾追加值。
+
+```python
+append(path: str, value: Any) -> None
+```
+
+#### `delete()`
+
+按路径删除节点。映射顺序保留。
+
+```python
+delete(path: str) -> None
+```
+
+#### `rename()`
+
+就地重命名映射键（保持位置和元数据）。
+
+```python
+rename(path: str, new_key: str) -> None
+```
+
+重命名根节点或复杂（非标量）键会引发 `YamlEditError`。
+
+#### `node()`
+
+返回文档根节点的 `Node`。
+
+```python
+node() -> Node
+```
+
+#### `find()`
+
+按路径查找节点。支持通配符（`[*]`）和深度扫描（`..`）— 此时返回节点列表。
+
+```python
+find(path: str) -> Node | list[Node]
+```
+
+**引发:**
+
+- `YamlPathError` — 路径格式错误，或在编辑路径中使用通配符/`..`
+- `YamlEditError` — 编辑无法应用（`tuple`、通过别名编辑、重命名根/复杂键、导航进入标量、索引越界）
+- `YamlDocumentError` — 文档编辑后使用过期的 `Node`
+
+**参见:** [就地编辑指南](../guides/editing.md)
+
+**示例:**
+
+```python
+doc = pyrs_yaml.parse("items: [1, 2, 3]")
+doc.set("$.items[1]", "two")
+doc.insert("$.items", 1, "x")  # items: [1, x, 2, 3]
+doc.append("$.items", 4)
+doc.rename("$.items", "list")  # 重命名映射键
+del doc["list"]  # 等价于 doc.delete("$.list")
+```
+
 ### 特殊方法
 
 #### `__getitem__()`
@@ -152,6 +251,22 @@ source_text() -> str
 ```python
 doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
+```
+
+#### `__setitem__()`
+
+设置根映射键（`doc.set()` 的根节点语法糖）。
+
+```python
+doc["key"] = value
+```
+
+#### `__delitem__()`
+
+删除根映射键（`doc.delete()` 的根节点语法糖）。
+
+```python
+del doc["key"]
 ```
 
 #### `__contains__()`
@@ -211,7 +326,7 @@ import pyrs_yaml
 # 映射
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 print(doc["name"])  # Alice
-print(len(doc))     # 2
+print(len(doc))  # 2
 
 # 序列
 doc = pyrs_yaml.parse("- item1\n- item2")

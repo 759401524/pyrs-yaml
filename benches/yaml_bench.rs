@@ -226,3 +226,79 @@ fn serialize_block(bencher: divan::Bencher) {
     let ast = pyrs_yaml::parser::parse(BLOCK_STYLE_YAML, YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
+
+// ── Editing benchmarks (pure AST mutation; lazy sync defers serialization) ──
+
+use pyrs_yaml::ast::CustomNode;
+use pyrs_yaml::py::editing::{self, Segment};
+
+#[divan::bench]
+fn edit_set_small(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("key"))];
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true);
+    });
+}
+
+#[divan::bench]
+fn edit_set_medium(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("database"))];
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true);
+    });
+}
+
+#[divan::bench]
+fn edit_set_large(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let segs = vec![
+        Segment::Key(std::borrow::Cow::Borrowed("config")),
+        Segment::Key(std::borrow::Cow::Borrowed("limits")),
+        Segment::Key(std::borrow::Cow::Borrowed("max_connections")),
+    ];
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("999"), true);
+    });
+}
+
+#[divan::bench]
+fn edit_insert_large(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let _ = editing::insert_path(&mut a, &segs, 0, CustomNode::plain_scalar("x"));
+    });
+}
+
+#[divan::bench]
+fn edit_delete_large(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let _ = editing::delete_path(&mut a, &segs);
+    });
+}
+
+#[divan::bench]
+fn edit_batch_10(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        for i in 0..10 {
+            let segs = vec![
+                Segment::Key(std::borrow::Cow::Borrowed("items")),
+                Segment::Index(i % 5),
+            ];
+            let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true);
+        }
+        // one flush for the whole batch (lazy source sync)
+        let _ = pyrs_yaml::serializer::to_yaml(&a);
+    });
+}

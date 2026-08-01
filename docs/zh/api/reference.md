@@ -193,10 +193,12 @@ async def safe_load_async(yaml: str, schema: str = "core") -> Any
 ```python
 import asyncio, pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -231,7 +233,7 @@ read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
 set_language(lang: str) -> None
 ```
 
-支持：`"en"`, `"zh-CN"`
+支持：`"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
 #### `get_language()`
 
@@ -271,6 +273,11 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlSerializeError` — YAML 序列化错误（继承自 `ValueError`）
 - `YamlTypeError` — 类型转换错误（继承自 `TypeError`）
 - `YamlValidateError` — JSON Schema 验证错误（继承自 `ValueError`）
+- `YamlEditError` — 就地编辑错误（继承自 `ValueError`）
+- `YamlPathError` — YAML 路径错误（继承自 `ValueError`）
+- `YamlDocumentError` — 过期的 `Node` 访问错误（继承自 `Exception`）
+
+参见 [异常](exceptions.md) 页面了解完整详情。
 
 ### 版本
 

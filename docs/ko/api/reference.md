@@ -193,10 +193,12 @@ async def safe_load_async(yaml: str, schema: str = "core") -> Any
 ```python
 import asyncio, pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -231,7 +233,7 @@ read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
 set_language(lang: str) -> None
 ```
 
-지원: `"en"`, `"zh-CN"`
+지원: `"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
 #### `get_language()`
 
@@ -271,6 +273,11 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlSerializeError` — YAML 직렬화 오류 (`ValueError` 상속)
 - `YamlTypeError` — 타입 변환 오류 (`TypeError` 상속)
 - `YamlValidateError` — JSON Schema 검증 오류 (`ValueError` 상속)
+- `YamlEditError` — 제자리 편집 오류 (`ValueError` 상속)
+- `YamlPathError` — YAML 경로 오류 (`ValueError` 상속)
+- `YamlDocumentError` — 오래된 `Node` 접근 오류 (`Exception` 상속)
+
+자세한 내용은 [예외](exceptions.md) 페이지를 참조하세요.
 
 ### 버전
 

@@ -2,6 +2,7 @@
 //! Python-facing functions exposed via the `pyrs_yaml` PyO3 module.
 
 pub mod convert;
+pub mod editing;
 pub mod stream_events;
 pub mod tag_registry;
 
@@ -67,9 +68,13 @@ mod pyrs_yaml {
     #[pymodule_export]
     use crate::YamlDuplicateKeyError;
     #[pymodule_export]
+    use crate::YamlEditError;
+    #[pymodule_export]
     use crate::YamlMaxDepthError;
     #[pymodule_export]
     use crate::YamlParseError;
+    #[pymodule_export]
+    use crate::YamlPathError;
     #[pymodule_export]
     use crate::YamlSerializeError;
     #[pymodule_export]
@@ -144,6 +149,8 @@ mod pyrs_yaml {
             schema: schema_enum,
             source: Some(Arc::from(yaml_str)),
             version: "1.2".to_string(),
+            revision: 0,
+            source_dirty: false,
         })
     }
 
@@ -388,6 +395,8 @@ mod pyrs_yaml {
                 schema: schema_enum,
                 source: Some(Arc::from(content)),
                 version: "1.2".to_string(),
+                revision: 0,
+                source_dirty: false,
             })
         }
 
@@ -433,6 +442,8 @@ mod pyrs_yaml {
                     schema: schema_enum,
                     source: Some(Arc::from(yaml)),
                     version: "1.2".to_string(),
+                    revision: 0,
+                    source_dirty: false,
                 })
                 .collect())
         }
@@ -445,19 +456,48 @@ mod pyrs_yaml {
         schema: YamlSchema,
         source: Option<Arc<str>>,
         version: String,
+        #[allow(dead_code)] // consumed by later editing tasks (_*_path primitives)
+        revision: u64, // bumped on every mutation (Node invalidation)
+        source_dirty: bool, // lazy source re-serialization flag
     }
 
     #[pymethods]
     impl YamlDocument {
+        /// Lazily re-serialize the AST into `source` if edits have occurred.
+        fn flush_source(&mut self, py: Python) -> PyResult<()> {
+            if self.source_dirty {
+                let new_yaml = py
+                    .detach(|| {
+                        crate::serializer::to_yaml_with_options(
+                            &self.ast,
+                            &SerializeOptions::default(),
+                        )
+                    })
+                    .map_err(|e| {
+                        YamlSerializeError::new_err(format_i18n_error(
+                            "yaml-serialize-error",
+                            &[("detail", &e)],
+                        ))
+                    })?;
+                self.source = Some(Arc::from(new_yaml));
+                self.source_dirty = false;
+            }
+            Ok(())
+        }
+
         /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
-        fn to_yaml(&self) -> PyResult<String> {
-            self.to_yaml_with_options(2, false, false, false, 1000, 80, None, None, None)
+        #[allow(clippy::wrong_self_convention)] // needs &mut self to flush lazy source
+        fn to_yaml(&mut self, py: Python) -> PyResult<String> {
+            self.flush_source(py)?;
+            self.to_yaml_with_options(py, 2, false, false, false, 1000, 80, None, None, None)
         }
 
         #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::wrong_self_convention)] // needs &mut self to flush lazy source
         #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str")]
         fn to_yaml_with_options(
-            &self,
+            &mut self,
+            py: Python,
             indent_size: usize,
             explicit_start: bool,
             explicit_end: bool,
@@ -468,6 +508,7 @@ mod pyrs_yaml {
             indent_sequence: Option<usize>,
             indent_offset: Option<usize>,
         ) -> PyResult<String> {
+            self.flush_source(py)?;
             let options = SerializeOptions {
                 indent_size,
                 explicit_start,
@@ -504,6 +545,16 @@ mod pyrs_yaml {
 
         #[pyo3(signature = (key: "str", default: "Any" = None) -> "Any")]
         fn get(&self, py: Python, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+            let is_path = key.starts_with('$') || key.contains('.') || key.contains('[');
+            if is_path {
+                let segs = editing::parse_path_segments(key).map_err(|e| {
+                    YamlPathError::new_err(format_i18n_error("path-error", &[("detail", &e)]))
+                })?;
+                return match editing::navigate(&self.ast, &segs) {
+                    Ok(node) => Ok(node_to_pyobject(node, py, self.schema)?),
+                    Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+                };
+            }
             match &self.ast {
                 CustomNode::Mapping { pairs, .. } => {
                     let key_node = CustomNode::plain_scalar(key);
@@ -527,12 +578,12 @@ mod pyrs_yaml {
             }
         }
 
-        fn __repr__(&self) -> String {
-            format!("YamlDocument({})", self.to_yaml().unwrap_or_default())
+        fn __repr__(&mut self, py: Python) -> String {
+            format!("YamlDocument({})", self.to_yaml(py).unwrap_or_default())
         }
 
-        fn __str__(&self) -> String {
-            self.to_yaml()
+        fn __str__(&mut self, py: Python) -> String {
+            self.to_yaml(py)
                 .unwrap_or_else(|_| "YamlDocument(error)".to_string())
         }
 
@@ -625,8 +676,125 @@ mod pyrs_yaml {
             }
         }
 
-        fn source(&self) -> Option<&str> {
-            self.source.as_deref()
+        fn source(&mut self, py: Python) -> PyResult<String> {
+            self.flush_source(py)?;
+            Ok(self.source.as_deref().unwrap_or("").to_string())
+        }
+
+        #[pyo3(signature = (segments: "list", value: "Any") -> "None")]
+        fn _set_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            value: Py<PyAny>,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            let new_node = pyobject_to_node(py, &value)?;
+            py.detach(|| editing::set_path(&mut self.ast, &segs, new_node, true))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.revision = self.revision.wrapping_add(1);
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        #[pyo3(signature = (segments: "list", index: "int", value: "Any") -> "None")]
+        fn _insert_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            index: i64,
+            value: Py<PyAny>,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            let new_node = pyobject_to_node(py, &value)?;
+            py.detach(|| editing::insert_path(&mut self.ast, &segs, index, new_node))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.revision = self.revision.wrapping_add(1);
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        #[pyo3(signature = (segments: "list", value: "Any") -> "None")]
+        fn _append_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            value: Py<PyAny>,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            let new_node = pyobject_to_node(py, &value)?;
+            py.detach(|| editing::append_path(&mut self.ast, &segs, new_node))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.revision = self.revision.wrapping_add(1);
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        #[pyo3(signature = (segments: "list") -> "None")]
+        fn _delete_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            py.detach(|| editing::delete_path(&mut self.ast, &segs))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.revision = self.revision.wrapping_add(1);
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        #[pyo3(signature = (segments: "list", new_key: "str") -> "None")]
+        fn _rename_path(
+            &mut self,
+            py: Python,
+            segments: Vec<Py<PyAny>>,
+            new_key: &str,
+        ) -> PyResult<()> {
+            let segs: Vec<editing::Segment<'_>> = segments
+                .iter()
+                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .collect::<Result<Vec<_>, pyo3::PyErr>>()
+                .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+            py.detach(|| editing::rename_path(&mut self.ast, &segs, new_key))
+                .map_err(|e| {
+                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+                })?;
+            self.revision = self.revision.wrapping_add(1);
+            self.source_dirty = true;
+            Ok(())
+        }
+
+        fn __setitem__(&mut self, py: Python, key: String, value: Py<PyAny>) -> PyResult<()> {
+            self._set_path(py, vec![key.into_pyobject(py)?.into_any().unbind()], value)
+        }
+
+        fn __delitem__(&mut self, py: Python, key: String) -> PyResult<()> {
+            self._delete_path(py, vec![key.into_pyobject(py)?.into_any().unbind()])
+        }
+
+        fn _revision(&self) -> u64 {
+            self.revision
         }
 
         fn version(&self) -> &str {
@@ -635,6 +803,7 @@ mod pyrs_yaml {
 
         #[pyo3(signature = (resolve_merges: "bool" = true, schema: "str" = "core") -> "None")]
         fn reparse(&mut self, py: Python, resolve_merges: bool, schema: &str) -> PyResult<()> {
+            self.flush_source(py)?;
             let source = self.source.as_ref().ok_or_else(|| {
                 YamlTypeError::new_err(format_i18n_error("no-source-to-reparse", &[]))
             })?;
@@ -772,6 +941,8 @@ mod pyrs_yaml {
             schema: schema_enum,
             source: Some(Arc::from(content)),
             version: "1.2".to_string(),
+            revision: 0,
+            source_dirty: false,
         })
     }
 
@@ -824,6 +995,8 @@ mod pyrs_yaml {
                 schema: schema_enum,
                 source: Some(Arc::from(yaml)),
                 version: "1.2".to_string(),
+                revision: 0,
+                source_dirty: false,
             })
             .collect())
     }

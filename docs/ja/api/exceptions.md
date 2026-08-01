@@ -5,7 +5,7 @@ lang: ja
 
 ## 例外
 
-pyrs-yaml はエラーハンドリング用に3つのカスタム例外クラスを定義しています。
+pyrs-yaml はエラーハンドリング用にカスタム例外クラスを定義しています。
 
 ### YamlParseError
 
@@ -47,7 +47,7 @@ class YamlSerializeError(ValueError):
 
 ```python
 try:
-    result = pyrs_yaml.safe_dump(float('inf'))
+    result = pyrs_yaml.safe_dump(float("inf"))
 except pyrs_yaml.YamlSerializeError as e:
     print(f"シリアライズエラー: {e}")
 ```
@@ -93,6 +93,69 @@ except pyrs_yaml.YamlValidateError as e:
     print(f"検証エラー: {e}")
 ```
 
+### YamlEditError
+
+インプレース編集を適用できない場合にスローされます：サポートされない値型（`tuple`）、エイリアス経由の編集、ルートまたは複合キーのリネーム、スカラーへのナビゲーション、インデックス範囲外。
+
+```python
+class YamlEditError(ValueError):
+    """インプレース編集エラー（ValueError を継承）。"""
+```
+
+**継承元:** `ValueError`
+
+**例:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1")
+
+try:
+    doc.set("$.a.b.c", 2)  # スカラーへのナビゲーション
+except pyrs_yaml.YamlEditError as e:
+    print(f"編集エラー: {e}")
+```
+
+### YamlPathError
+
+JSONPath スタイルのパスが不正または編集不可の場合にスローされます：`$` で始まらないパス、編集操作でのワイルドカード（`[*]`）またはディープスキャン（`..`）セグメントの使用。
+
+```python
+class YamlPathError(ValueError):
+    """YAML パスエラー（ValueError を継承）。"""
+```
+
+**継承元:** `ValueError`
+
+**例:**
+
+```python
+doc = pyrs_yaml.parse("items: [1, 2]")
+
+try:
+    doc.set("$.items[*]", 3)  # ワイルドカードは編集不可
+except pyrs_yaml.YamlPathError as e:
+    print(f"パスエラー: {e}")
+```
+
+### YamlDocumentError
+
+`Node` が陳腐化した場合にスローされます — ノード作成後にドキュメントが変更（またはリリース）された。
+
+```python
+class YamlDocumentError(Exception):
+    """ノードの親 YamlDocument が陳腐化したときにスロー。"""
+```
+
+**継承元:** `Exception`
+
+**例:**
+
+```python
+node = doc.node().find("$.a")
+doc.set("$.b", 2)  # ドキュメントのリビジョンを増加
+node.set_value(99)  # RuntimeWarning + YamlDocumentError
+```
+
 ### エラーメッセージ形式
 
 すべてのエラーメッセージにはコンテキスト情報が含まれます。
@@ -103,6 +166,13 @@ except pyrs_yaml.YamlValidateError as e:
 | Line | エラーが発生した行番号 |
 | Column | エラーが発生した列番号 |
 | offset | 行内のバイトオフセット |
+
+**編集エラー形式:**
+
+| エラー | 形式 |
+|-------|------|
+| 編集失敗 | `YAML edit error: <detail>` |
+| パス不正 | `YAML path error: <detail>` |
 
 ### i18n サポート
 

@@ -73,12 +73,12 @@ to_dict() -> dict[str, Any] | list[Any]
 ```python
 data = doc.to_dict()
 print(data["key"])  # value
-print(type(data))   # <class 'dict'>
+print(type(data))  # <class 'dict'>
 ```
 
 ### `get()`
 
-Get a value by key (for mapping roots).
+Get a value by key (for mapping roots) or by JSONPath-like path.
 
 ```python
 get(key: str, default: Any = None) -> Any
@@ -86,15 +86,19 @@ get(key: str, default: Any = None) -> Any
 
 **Parameters:**
 
-- `key` — The key to look up
-- `default` — Value to return if key not found (default: None)
+- `key` — The key to look up, or a path. A key containing `.`, `[`, or starting with `$` is treated as a path: `$.a.b` (nested keys) and `$.arr[0]` / `$.arr[-1]` (sequence indexes, negative counts from the end) are resolved via the same navigation rules as the edit methods
+- `default` — Value to return if the key/path is not found (default: None)
 
 **Returns:** The value, or `default` if not found (or if root is not a mapping).
+
+**Raises:** `YamlPathError` — malformed path (e.g. `$[bad`, or a wildcard/deep-scan path)
 
 **Example:**
 
 ```python
 value = doc.get("key")
+value = doc.get("$.a.b")  # nested path
+value = doc.get("$.items[-1]")  # last element
 value = doc.get("missing", "fallback")
 ```
 
@@ -165,13 +169,13 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 ### `source()`
 
-Return the original YAML source text used to create this document.
+Return the original YAML source text used to create this document. If the document has been edited in place, the source is lazily re-serialized from the current tree on first access.
 
 ```python
-source() -> str | None
+source() -> str
 ```
 
-**Returns:** The original YAML string, or `None` if the document was not created via `parse()` (e.g. from `from_dict()`).
+**Returns:** The YAML string. Empty string if the document was not created via `parse()` (e.g. from `from_dict()`).
 
 **Example:**
 
@@ -208,6 +212,117 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
+## Editing Methods
+
+All edits are atomic — a failed edit leaves the document (and its revision) untouched. On success, the stored source is marked dirty and the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` call re-serializes from the updated tree. See the [In-Place Editing guide](../guides/editing.md) for the full path syntax and semantics.
+
+### `set()`
+
+Set the value at a path, preserving the target's metadata (comment, anchor, tag, style). Setting a path on an **empty document** (parsed from `""`) auto-creates a mapping root.
+
+```python
+set(path: str, value: Any) -> None
+```
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1")
+doc.set("$.a.b", 42)  # replace existing
+doc.set("$.a.c", True)  # create new key
+doc.set("$", {"x": 1})  # replace the root
+
+empty = pyrs_yaml.parse("")
+empty.set("$.a", 1)  # auto-creates a mapping root: {a: 1}
+```
+
+**Raises:**
+
+- `YamlPathError` — Malformed path (wildcards/`..` are rejected)
+- `YamlEditError` — Navigation failure, unsupported value type (`tuple`), etc.
+
+### `insert()`
+
+Insert a value into a sequence at an index. The path must resolve to a sequence. Negative indexes count from the end (`-1` inserts before the last element).
+
+```python
+insert(path: str, index: int, value: Any) -> None
+```
+
+```python
+doc = pyrs_yaml.parse("items: [a, c]")
+doc.insert("$.items", 1, "b")  # items: [a, b, c]
+doc.insert("$.items", -1, "x")  # items: [a, b, x, c]
+```
+
+### `append()`
+
+Append a value to a sequence. The path must resolve to a sequence.
+
+```python
+append(path: str, value: Any) -> None
+```
+
+```python
+doc = pyrs_yaml.parse("items: [a, b]")
+doc.append("$.items", "c")
+```
+
+### `delete()`
+
+Delete the node at a path, preserving mapping/sequence order.
+
+```python
+delete(path: str) -> None
+```
+
+```python
+doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3")
+doc.delete("$.b")
+# a: 1
+# c: 3
+```
+
+### `rename()`
+
+Rename a mapping key in place, preserving position and key metadata.
+
+```python
+rename(path: str, new_key: str) -> None
+```
+
+```python
+doc = pyrs_yaml.parse("old: 1  # comment")
+doc.rename("$.old", "new")
+# new: 1  # comment
+```
+
+### `node()`
+
+Get the root `Node` of the document for tree navigation and editing.
+
+```python
+node() -> Node
+```
+
+```python
+node = doc.node().find("$.a.b")
+node.set_value(42)
+```
+
+### `find()`
+
+Query the document by JSONPath-like path. Supports wildcards (`[*]`) and deep-scan (`..`), returning a list when multiple nodes match.
+
+```python
+find(path: str) -> Node | list[Node]
+```
+
+### `__setitem__()` / `__delitem__()` — root sugar
+
+```python
+doc["key"] = value  # equivalent to doc.set("$.key", value)
+del doc["key"]  # equivalent to doc.delete("$.key")
+```
+
 ## Dunder Methods
 
 ### `__getitem__()`
@@ -215,8 +330,8 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 Access by key (mapping) or index (sequence).
 
 ```python
-doc["key"]      # For mappings
-doc[0]          # For sequences
+doc["key"]  # For mappings
+doc[0]  # For sequences
 ```
 
 **Raises:**
@@ -276,10 +391,10 @@ name: Alice
 age: 30
 """)
 
-print(doc.get("name"))    # Alice
-print(doc.root_type())    # mapping
-print(len(doc))           # 2
-print("name" in doc)      # True
+print(doc.get("name"))  # Alice
+print(doc.root_type())  # mapping
+print(len(doc))  # 2
+print("name" in doc)  # True
 for key in doc:
     print(key, doc[key])  # name Alice, age 30
 ```

@@ -24,10 +24,10 @@ doc = pyrs_yaml.parse("key: value")
 
 # カスタムインデントとドキュメントマーカー
 yaml_str = doc.to_yaml_with_options(
-    indent_size=4,           # インデントレベルあたり 4 スペース
-    explicit_start=True,     # 先頭に "---" を追加
-    explicit_end=True,       # 末尾に "..." を追加
-    sort_keys=True,          # キーをアルファベット順にソート
+    indent_size=4,  # インデントレベルあたり 4 スペース
+    explicit_start=True,  # 先頭に "---" を追加
+    explicit_end=True,  # 末尾に "..." を追加
+    sort_keys=True,  # キーをアルファベット順にソート
 )
 ```
 
@@ -35,12 +35,7 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 # dict を YAML 文字列に
-yaml_str = pyrs_yaml.safe_dump({
-    "database": {
-        "host": "localhost",
-        "port": 5432
-    }
-})
+yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}})
 
 # safe_dumps (エイリアス) も利用可能
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
@@ -51,11 +46,7 @@ yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 #### `from_dict()`
 
 ```python
-yaml_str = pyrs_yaml.from_dict({
-    "name": "Alice",
-    "age": 30,
-    "tags": ["admin", "user"]
-})
+yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
 #### `from_json()`
@@ -68,12 +59,7 @@ yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 
 ```python
 # Python オブジェクトを直接 YAML ファイルに書き込み
-pyrs_yaml.dump_file({
-    "config": {
-        "debug": True,
-        "log_level": "info"
-    }
-}, "output.yaml")
+pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
 ### サポートされる入力型

@@ -1,6 +1,6 @@
 # Exceptions
 
-pyrs-yaml defines three custom exception classes for error handling.
+pyrs-yaml defines custom exception classes for error handling.
 
 ## YamlParseError
 
@@ -92,6 +92,69 @@ except pyrs_yaml.YamlValidateError as e:
     # Output: "Validation error: 'email' is a required property"
 ```
 
+## YamlEditError
+
+Raised when an in-place edit cannot be applied: unsupported value types (`tuple`), negative indices, edits through aliases, renaming the root or complex keys, navigation into a scalar, or out-of-bounds indices.
+
+```python
+class YamlEditError(ValueError):
+    """In-place edit error (inherits from ValueError)."""
+```
+
+**Inherits from:** `ValueError`
+
+**Example:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1")
+
+try:
+    doc.set("$.a.b.c", 2)  # Navigates into a scalar
+except pyrs_yaml.YamlEditError as e:
+    print(f"Edit error: {e}")
+```
+
+## YamlPathError
+
+Raised when a JSONPath-style path is malformed or not editable: paths not starting with `$`, wildcard (`[*]`) or deep-scan (`..`) segments used in edit operations.
+
+```python
+class YamlPathError(ValueError):
+    """YAML path error (inherits from ValueError)."""
+```
+
+**Inherits from:** `ValueError`
+
+**Example:**
+
+```python
+doc = pyrs_yaml.parse("items: [1, 2]")
+
+try:
+    doc.set("$.items[*]", 3)  # Wildcards are not editable
+except pyrs_yaml.YamlPathError as e:
+    print(f"Path error: {e}")
+```
+
+## YamlDocumentError
+
+Raised when a `Node` becomes stale — the document was modified (or released) after the node was created.
+
+```python
+class YamlDocumentError(Exception):
+    """Raised when a Node's parent YamlDocument is stale."""
+```
+
+**Inherits from:** `Exception`
+
+**Example:**
+
+```python
+node = doc.node().find("$.a")
+doc.set("$.b", 2)  # Bumps the document revision
+node.set_value(99)  # RuntimeWarning + YamlDocumentError
+```
+
 ## Error Message Format
 
 All error messages include contextual information:
@@ -106,6 +169,8 @@ All error messages include contextual information:
 | Unsupported type | `"Unsupported type for YAML conversion"` |
 | ndarray unsupported dtype | `"Unsupported type for YAML conversion"` |
 | Schema validation failure | `"<jsonschema error message>"` |
+| Edit failure | `"YAML edit error: <detail>"` |
+| Malformed path | `"YAML path error: <detail>"` |
 
 ## i18n Support
 
@@ -125,6 +190,7 @@ except pyrs_yaml.YamlParseError as e:
 
 ```python
 import pyrs_yaml
+
 
 def load_yaml(path):
     try:

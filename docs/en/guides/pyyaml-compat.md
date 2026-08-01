@@ -7,11 +7,13 @@ pyrs-yaml provides a **drop-in replacement** for PyYAML, making migration straig
 ```python
 # Before
 import yaml
+
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 
 # After
 import pyrs_yaml as yaml
+
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
@@ -60,19 +62,24 @@ yaml_str = yaml.safe_dump(data)
 # Old code
 import yaml
 
+
 def load_config(path):
     with open(path) as f:
         return yaml.safe_load(f)
+
 
 def save_config(data, path):
     with open(path, "w") as f:
         yaml.safe_dump(data, f)
 
+
 # New code
 import pyrs_yaml
 
+
 def load_config(path):
     return pyrs_yaml.parse_file(path).to_dict()
+
 
 def save_config(data, path):
     doc = pyrs_yaml.parse(pyrs_yaml.safe_dump(data))

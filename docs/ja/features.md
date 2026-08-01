@@ -62,10 +62,12 @@ yaml.safe_dumps(data)
 import asyncio
 import pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dump_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -97,6 +99,33 @@ print(doc.get("x"))  # "on" (string, core schema)
 doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
+
+### インプレース編集
+
+解析済みドキュメントを**フォーマットメタデータを一切失わずに**編集します — コメント、アンカー、タグ、スカラースタイル、フロー/ブロックスタイルはすべて保持されます：
+
+```python
+doc = pyrs_yaml.parse("""
+server:
+  host: localhost  # bind address
+  ports:
+    - 8080
+""")
+
+doc.set("$.server.host", "0.0.0.0")  # パスで置換
+doc.insert("$.server.ports", 0, 80)  # シーケンスに挿入
+doc.append("$.server.ports", 443)  # シーケンスに追加
+doc.rename("$.server", "srv")  # マッピングキーをリネーム
+del doc["server"]  # または: doc.delete("$.server")
+```
+
+- **パス API** — JSONPath スタイルのパス（`$.a.b[0]`）、ルート用糖衣構文（`doc["k"] = v`、`del doc["k"]`）
+- **ノード API** — `doc.node().find(path)` は `Node` オブジェクトを返し、`set_value` / `insert` / `append` / `delete` / `rename` とツリー走査（`parent`、`children`、`walk`、`filter`）をサポート
+- **原子性** — 失敗した編集はドキュメント（リビジョンを含む）を変更しません
+- **メタデータ保持** — 置換されたスカラーはコメント/アンカー/タグ/クォートを保持；リネームされたキーは位置とコメントを保持
+- **エイリアス対応** — エイリアス自身のパスへの設定はその場で置換；エイリアス*経由*の編集は `YamlEditError` をスロー
+
+詳細は [インプレース編集ガイド](guides/editing.md) を参照してください。
 
 ### NumPy ndarray サポート
 
@@ -171,4 +200,5 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **非同期 I/O** | **✅ `safe_*_async`** |
 | **JSON Schema 検証** | **✅ `doc.validate()`** |
 | **インクリメンタル再パース** | **✅ `doc.reparse()`** |
+| **インプレース編集** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
 | **JSON エクスポート** | **✅ `doc.to_json()`** |

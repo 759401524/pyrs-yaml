@@ -5,7 +5,7 @@ lang: zh
 
 ## 异常
 
-pyrs-yaml 定义了三个自定义异常类用于错误处理。
+pyrs-yaml 定义了自定义异常类用于错误处理。
 
 ### YamlParseError
 
@@ -47,7 +47,7 @@ class YamlSerializeError(ValueError):
 
 ```python
 try:
-    result = pyrs_yaml.safe_dump(float('inf'))
+    result = pyrs_yaml.safe_dump(float("inf"))
 except pyrs_yaml.YamlSerializeError as e:
     print(f"序列化错误: {e}")
 ```
@@ -93,6 +93,69 @@ except pyrs_yaml.YamlValidateError as e:
     print(f"验证错误: {e}")
 ```
 
+### YamlEditError
+
+当就地编辑无法应用时引发：不支持的值类型（`tuple`）、通过别名编辑、重命名根或复杂键、导航进入标量、索引越界。
+
+```python
+class YamlEditError(ValueError):
+    """就地编辑错误（继承自 ValueError）。"""
+```
+
+**继承自:** `ValueError`
+
+**示例:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1")
+
+try:
+    doc.set("$.a.b.c", 2)  # 导航进入标量
+except pyrs_yaml.YamlEditError as e:
+    print(f"编辑错误: {e}")
+```
+
+### YamlPathError
+
+当 JSONPath 风格路径格式错误或不可编辑时引发：路径不以 `$` 开头、编辑操作中使用通配符（`[*]`）或深度扫描（`..`）段。
+
+```python
+class YamlPathError(ValueError):
+    """YAML 路径错误（继承自 ValueError）。"""
+```
+
+**继承自:** `ValueError`
+
+**示例:**
+
+```python
+doc = pyrs_yaml.parse("items: [1, 2]")
+
+try:
+    doc.set("$.items[*]", 3)  # 通配符不可编辑
+except pyrs_yaml.YamlPathError as e:
+    print(f"路径错误: {e}")
+```
+
+### YamlDocumentError
+
+当 `Node` 过期时引发 — 节点创建后文档被修改（或释放）。
+
+```python
+class YamlDocumentError(Exception):
+    """节点的父 YamlDocument 过期时引发。"""
+```
+
+**继承自:** `Exception`
+
+**示例:**
+
+```python
+node = doc.node().find("$.a")
+doc.set("$.b", 2)  # 增加文档修订号
+node.set_value(99)  # RuntimeWarning + YamlDocumentError
+```
+
 ### 错误消息格式
 
 所有错误消息都包含上下文信息：
@@ -103,6 +166,13 @@ except pyrs_yaml.YamlValidateError as e:
 | Line | 错误发生的行号 |
 | Column | 错误发生的列号 |
 | offset | 行内的字节偏移量 |
+
+**编辑错误格式:**
+
+| 错误 | 格式 |
+|------|------|
+| 编辑失败 | `YAML edit error: <detail>` |
+| 路径格式错误 | `YAML path error: <detail>` |
 
 ### i18n 支持
 

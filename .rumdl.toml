@@ -2,8 +2,8 @@
 # https://rumdl.dev/configuration/
 
 [global]
-extend-disable = ["MD013"]  # line length handled by general formatting
-
+extend-disable = ["MD013", "MD051"]  # MD013 line length handled by general formatting; MD051 false-positive on CJK anchors (rumdl slugs are ASCII-only, but GitHub/mkdocs keep CJK)
+flavor = "mkdocs"
 exclude = [
     ".git",
     ".github",

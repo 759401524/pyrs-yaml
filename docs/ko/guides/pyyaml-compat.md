@@ -12,11 +12,13 @@ pyrs-yaml는 PyYAML의 **드롭인 교체**를 제공하여 마이그레이션�
 ```python
 # 이전 코드
 import yaml
+
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 
 # 새 코드
 import pyrs_yaml as yaml
+
 data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
@@ -65,19 +67,24 @@ yaml_str = yaml.safe_dump(data)
 # 이전 코드
 import yaml
 
+
 def load_config(path):
     with open(path) as f:
         return yaml.safe_load(f)
+
 
 def save_config(data, path):
     with open(path, "w") as f:
         yaml.safe_dump(data, f)
 
+
 # 새 코드
 import pyrs_yaml
 
+
 def load_config(path):
     return pyrs_yaml.parse_file(path).to_dict()
+
 
 def save_config(data, path):
     pyrs_yaml.dump_file(data, path)

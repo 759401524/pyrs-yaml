@@ -5,7 +5,7 @@ lang: ko
 
 ## 예외
 
-pyrs-yaml는 오류 처리를 위해 세 가지 사용자 정의 예외 클래스를 정의합니다.
+pyrs-yaml는 오류 처리를 위해 사용자 정의 예외 클래스를 정의합니다.
 
 ### YamlParseError
 
@@ -47,7 +47,7 @@ class YamlSerializeError(ValueError):
 
 ```python
 try:
-    result = pyrs_yaml.safe_dump(float('inf'))
+    result = pyrs_yaml.safe_dump(float("inf"))
 except pyrs_yaml.YamlSerializeError as e:
     print(f"직렬화 오류: {e}")
 ```
@@ -93,6 +93,69 @@ except pyrs_yaml.YamlValidateError as e:
     print(f"검증 오류: {e}")
 ```
 
+### YamlEditError
+
+제자리 편집을 적용할 수 없을 때 발생합니다: 지원되지 않는 값 타입 (`tuple`), 별칭을 통한 편집, 루트 또는 복합 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과.
+
+```python
+class YamlEditError(ValueError):
+    """제자리 편집 오류 (ValueError 상속)."""
+```
+
+**상속:** `ValueError`
+
+**예시:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1")
+
+try:
+    doc.set("$.a.b.c", 2)  # 스칼라로의 탐색
+except pyrs_yaml.YamlEditError as e:
+    print(f"편집 오류: {e}")
+```
+
+### YamlPathError
+
+JSONPath 스타일 경로가 잘못되었거나 편집할 수 없을 때 발생합니다: `$`로 시작하지 않는 경로, 편집 작업에서 와일드카드 (`[*]`) 또는 딥 스캔 (`..`) 세그먼트 사용.
+
+```python
+class YamlPathError(ValueError):
+    """YAML 경로 오류 (ValueError 상속)."""
+```
+
+**상속:** `ValueError`
+
+**예시:**
+
+```python
+doc = pyrs_yaml.parse("items: [1, 2]")
+
+try:
+    doc.set("$.items[*]", 3)  # 와일드카드는 편집 불가
+except pyrs_yaml.YamlPathError as e:
+    print(f"경로 오류: {e}")
+```
+
+### YamlDocumentError
+
+`Node`가 오래된(stale) 상태일 때 발생합니다 — 노드 생성 후 문서가 수정(또는 해제)됨.
+
+```python
+class YamlDocumentError(Exception):
+    """노드의 부모 YamlDocument가 오래된 경우 발생."""
+```
+
+**상속:** `Exception`
+
+**예시:**
+
+```python
+node = doc.node().find("$.a")
+doc.set("$.b", 2)  # 문서 리비전 증가
+node.set_value(99)  # RuntimeWarning + YamlDocumentError
+```
+
 ### 오류 메시지 형식
 
 모든 오류 메시지에 컨텍스트 정보가 포함됩니다.
@@ -103,6 +166,13 @@ except pyrs_yaml.YamlValidateError as e:
 | Line | 오류가 발생한 줄 번호 |
 | Column | 오류가 발생한 열 번호 |
 | offset | 줄 내 바이트 오프셋 |
+
+**편집 오류 형식:**
+
+| 오류 | 형식 |
+|------|------|
+| 편집 실패 | `YAML edit error: <detail>` |
+| 경로 오류 | `YAML path error: <detail>` |
 
 ### i18n 지원
 

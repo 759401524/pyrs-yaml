@@ -30,8 +30,9 @@ output = doc.to_yaml()
 assert "# Server configuration" in output
 assert "# main port" in output
 assert "&db" in output
-assert "<<: *db" in output
 ```
+
+> **Note on merge keys:** by default (`resolve_merges=True`), `<<: *db` is **resolved** during parsing, so the output materializes the merged keys (`api: {host: localhost, endpoint: ...}`) and `<<` no longer appears. Pass `resolve_merges=False` to keep the `<<: *db` pair verbatim in the round-trip.
 
 ## What Gets Preserved
 
@@ -41,11 +42,12 @@ assert "<<: *db" in output
 | Inline comments | ✅ | At end of lines |
 | Anchors (`&name`) | ✅ | Full anchor syntax |
 | Aliases (`*name`) | ✅ | Alias references resolved |
-| Merge keys (`<<`) | ✅ | Resolved by default |
+| Merge keys (`<<`) | ⚠️ | Resolved by default; preserved with `resolve_merges=False` |
 | Tags (`!!str`, `!!int`) | ✅ | Explicit tags preserved |
 | Scalar styles | ✅ | Plain, quoted, literal, folded |
 | Chomping (`\|-`, `>-`) | ✅ | Block scalar indicators |
 | Flow/block style | ✅ | `[]`/`{}` vs block preserved |
+| Compact sequence items | ✅ | `- host: a` stays on the dash line (metadata-free mapping items only) |
 | Key order | ✅ | `IndexMap` guarantees order |
 
 ## PyYAML vs pyrs-yaml Round-Trip

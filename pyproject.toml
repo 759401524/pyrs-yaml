@@ -60,6 +60,7 @@ interpreter = "3.8"
 [dependency-groups]
 test = [
     "pytest>=8.0",
+    "pytest-cov>=5.0.0",
     "pytest-codspeed>=2.0",
     "pytest-asyncio>=0.23",
     "pydantic>=2.10.6",

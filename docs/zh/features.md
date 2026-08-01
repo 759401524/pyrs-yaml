@@ -62,10 +62,12 @@ yaml.safe_dumps(data)
 import asyncio
 import pyrs_yaml
 
+
 async def main():
     yaml = await pyrs_yaml.safe_dumps_async({"a": 1})
     data = await pyrs_yaml.safe_loads_async(yaml)
     print(data)  # {'a': 1}
+
 
 asyncio.run(main())
 ```
@@ -97,6 +99,33 @@ print(doc.get("x"))  # "on" (string, core schema)
 doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
+
+### 就地编辑
+
+编辑已解析的文档，**不丢失任何格式元数据** — 注释、锚点、标签、标量样式和流式/块式风格全部保留：
+
+```python
+doc = pyrs_yaml.parse("""
+server:
+  host: localhost  # bind address
+  ports:
+    - 8080
+""")
+
+doc.set("$.server.host", "0.0.0.0")  # 按路径替换
+doc.insert("$.server.ports", 0, 80)  # 向序列插入
+doc.append("$.server.ports", 443)  # 向序列追加
+doc.rename("$.server", "srv")  # 重命名映射键
+del doc["server"]  # 或: doc.delete("$.server")
+```
+
+- **路径 API** — JSONPath 风格路径（`$.a.b[0]`），根节点语法糖（`doc["k"] = v`、`del doc["k"]`）
+- **节点 API** — `doc.node().find(path)` 返回 `Node` 对象，支持 `set_value` / `insert` / `append` / `delete` / `rename`，以及树遍历（`parent`、`children`、`walk`、`filter`）
+- **原子性** — 失败的编辑不会改动文档（及其修订号）
+- **元数据保留** — 被替换的标量保留其注释/锚点/标签/引号；重命名的键保留位置和注释
+- **别名感知** — 设置别名自身路径会就地替换它；*穿过*别名编辑会引发 `YamlEditError`
+
+参见 [就地编辑指南](guides/editing.md) 了解更多详情。
 
 ### NumPy ndarray 支持
 
@@ -176,11 +205,11 @@ doc.get("key")  # "second"
 
 ```python
 yaml_str = doc.to_yaml_with_options(
-    indent_size=2,      # 基础缩进（省略按类型选项时使用）
-    width=80,           # 换行宽度；0 表示不换行
-    indent_mapping=4,   # 块映射每级缩进
+    indent_size=2,  # 基础缩进（省略按类型选项时使用）
+    width=80,  # 换行宽度；0 表示不换行
+    indent_mapping=4,  # 块映射每级缩进
     indent_sequence=2,  # 块序列每级缩进
-    indent_offset=0,    # 整个文档的基础偏移
+    indent_offset=0,  # 整个文档的基础偏移
 )
 ```
 
@@ -193,10 +222,12 @@ yaml_str = doc.to_yaml_with_options(
 ```python
 import pyrs_yaml
 
+
 # 装饰器形式
 @pyrs_yaml.register_tag("!custom")
 def custom_handler(node):
     return f"custom:{node}"
+
 
 # 命令式形式
 pyrs_yaml.register_tag("!custom", lambda node: node.upper())
@@ -217,9 +248,11 @@ doc.get("name")  # "custom:value"
 from pydantic import BaseModel
 import pyrs_yaml
 
+
 class Config(BaseModel):
     name: str
     age: int
+
 
 cfg = pyrs_yaml.parse_as(Config, "name: Alice\nage: 30")
 cfg.name  # "Alice"
@@ -246,6 +279,7 @@ cfg.name  # "Alice"
 | **异步 I/O** | **✅ `safe_*_async`** |
 | **JSON Schema 验证** | **✅ `doc.validate()`** |
 | **增量重新解析** | **✅ `doc.reparse()`** |
+| **就地编辑** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
 | **JSON 导出** | **✅ `doc.to_json()`** |
 | **重复键** | **✅ 可配置（`YamlDuplicateKeyError` / 后值胜出）** |
 | **自定义标签处理器** | **✅ `register_tag` 优先级链式处理** |

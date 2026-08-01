@@ -21,6 +21,7 @@ lang: ko
 
 - **YAML 1.2 준수** — saphyr-parser 기반 (YAML 테스트 스위트 98.1% 통과율)
 - **완벽한 순환 파싱** — 주석, 앵커, 태그, chomp, 스칼라 스타일 및 흐름/블록 서식 유지
+- **제자리 편집** — JSONPath 스타일 경로(`doc.set("$.a.b", v)`) 또는 `Node` 트리 API로 파싱된 문서를 서식 손실 없이 편집
 - **PyYAML보다 25–40배 빠름** — Rust 백엔드, 제로 복사 파싱
 - **커스텀 AST** — 고급 YAML 조작 및 사용자 정의 서식을 위한 확장 가능한 AST
 - **PyYAML 호환** — `safe_load` / `safe_dump` API로 직접 교체 가능

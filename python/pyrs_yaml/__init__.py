@@ -26,8 +26,10 @@ from .pyrs_yaml import (
     StreamIterator,
     YamlDocument,
     YamlDuplicateKeyError,
+    YamlEditError,
     YamlMaxDepthError,
     YamlParseError,
+    YamlPathError,
     YamlSerializeError,
     YamlTagError,
     YamlTagSkip,
@@ -108,6 +110,15 @@ def _yaml_document_merged(self):
 
 YamlDocument.merged = _yaml_document_merged
 
+
+from . import editing as _editing  # noqa: E402  (monkeypatches must run after Rust module loads)
+
+YamlDocument.set = _editing._yaml_document_set
+YamlDocument.insert = _editing._yaml_document_insert
+YamlDocument.append = _editing._yaml_document_append
+YamlDocument.delete = _editing._yaml_document_delete
+YamlDocument.rename = _editing._yaml_document_rename
+
 __all__ = [
     "YAML",
     "MergedView",
@@ -116,8 +127,10 @@ __all__ = [
     "YamlDocument",
     "YamlDocumentError",
     "YamlDuplicateKeyError",
+    "YamlEditError",
     "YamlMaxDepthError",
     "YamlParseError",
+    "YamlPathError",
     "YamlSerializeError",
     "YamlTagError",
     "YamlTagSkip",

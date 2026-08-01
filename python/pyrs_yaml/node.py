@@ -26,6 +26,7 @@ class Node:
         self._doc = document
         self._path = path
         self._alive = True
+        self._revision_at_creation = document._revision() if document is not None else 0
 
     def _get_doc(self) -> Any:
         if not self._alive:
@@ -43,6 +44,13 @@ class Node:
                 stacklevel=3,
             )
             raise YamlDocumentError("parent document has been released")
+        if self._doc._revision() != self._revision_at_creation:
+            warnings.warn(
+                "Node is stale: the document was modified after this node was created; re-find the node",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+            raise YamlDocumentError("document has been modified; re-find the node")
         return self._doc
 
     def _resolve(self) -> Any:
@@ -98,6 +106,36 @@ class Node:
         if isinstance(resolved, str):
             return resolved + "\n"
         return str(resolved) + "\n"
+
+    def set_value(self, value: Any) -> None:
+        """Replace this node's value, preserving its metadata (comment/anchor/tag/style)."""
+        doc = self._get_doc()
+        segments = [s for s in self._path]
+        doc._set_path(segments, value)
+
+    def append(self, value: Any) -> None:
+        """Append to a sequence node."""
+        doc = self._get_doc()
+        segments = [s for s in self._path]
+        doc._append_path(segments, value)
+
+    def insert(self, index: int, value: Any) -> None:
+        """Insert into a sequence node at index."""
+        doc = self._get_doc()
+        segments = [s for s in self._path]
+        doc._insert_path(segments, index, value)
+
+    def delete(self) -> None:
+        """Remove this node and its comments. Node becomes stale afterwards."""
+        doc = self._get_doc()
+        segments = [s for s in self._path]
+        doc._delete_path(segments)
+
+    def rename(self, new_key: str) -> None:
+        """Rename this node's mapping key. Node must be a mapping value."""
+        doc = self._get_doc()
+        segments = [s for s in self._path]
+        doc._rename_path(segments, new_key)
 
     @property
     def parent(self) -> Node | None:
@@ -223,11 +261,16 @@ def _parse_jsonpath(path: str) -> list:
                     i += 1
                 continue
             num = ""
+            if i < len(rest) and rest[i] == "-":
+                num += "-"
+                i += 1
             while i < len(rest) and rest[i].isdigit():
                 num += rest[i]
                 i += 1
             if i < len(rest) and rest[i] == "]":
                 i += 1
+            if num in ("", "-"):
+                raise ValueError(f"invalid index in path: {path}")
             segments.append(int(num))
         else:
             key = ""

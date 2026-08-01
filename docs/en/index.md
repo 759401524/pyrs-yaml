@@ -16,6 +16,7 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml d
 
 - **YAML 1.2 compliant** — powered by saphyr-parser (98.1% YAML Test Suite pass rate)
 - **Perfect Round-Trip** — preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
+- **In-Place Editing** — edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
 - **25–40× faster** than PyYAML — Rust backend with zero-copy parsing
 - **Custom AST** — extensible AST for advanced YAML manipulation and custom formatting
 - **PyYAML compatible** — drop-in replacement with `safe_load` / `safe_dump` API
