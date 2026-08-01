@@ -67,9 +67,13 @@ mod pyrs_yaml {
     #[pymodule_export]
     use crate::YamlDuplicateKeyError;
     #[pymodule_export]
+    use crate::YamlEditError;
+    #[pymodule_export]
     use crate::YamlMaxDepthError;
     #[pymodule_export]
     use crate::YamlParseError;
+    #[pymodule_export]
+    use crate::YamlPathError;
     #[pymodule_export]
     use crate::YamlSerializeError;
     #[pymodule_export]
