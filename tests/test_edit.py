@@ -236,3 +236,95 @@ class TestDelItem:
         rev0 = doc._revision()
         del doc["a"]
         assert doc._revision() == rev0 + 1
+
+
+class TestNodeEditMethods:
+    def test_node_set_value_preserves_metadata(self):
+        doc = pyrs_yaml.parse("server:\n  host: localhost  # bind address\n")
+        node = doc.node().find("$.server.host")
+        node.set_value("0.0.0.0")
+        assert doc.to_yaml() == "server:\n  host: 0.0.0.0  # bind address\n"
+
+    def test_node_stale_after_edit(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        node = doc.node().find("$.a")
+        doc["b"] = 2  # any edit bumps revision
+        with pytest.warns(RuntimeWarning), pytest.raises(pyrs_yaml.YamlDocumentError):
+            _ = node.value
+
+    def test_node_self_edit_does_not_stale(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        node = doc.node().find("$.a")
+        node.set_value(2)
+        assert doc.to_dict()["a"] == 2
+
+    def test_node_delete_stale(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        node = doc.node().find("$.a")
+        node.delete()
+        assert doc.to_dict() == {"b": 2}
+
+    def test_node_append(self):
+        doc = pyrs_yaml.parse("arr: [1]\n")
+        node = doc.node().find("$.arr")
+        node.append(2)
+        assert doc.to_dict()["arr"] == [1, 2]
+
+    def test_node_insert(self):
+        doc = pyrs_yaml.parse("arr: [1, 3]\n")
+        node = doc.node().find("$.arr")
+        node.insert(1, 2)
+        assert doc.to_dict()["arr"] == [1, 2, 3]
+
+    def test_node_rename(self):
+        doc = pyrs_yaml.parse("old: 1  # c\n")
+        node = doc.node().find("$.old")
+        node.rename("new")
+        assert doc.to_yaml() == "new: 1  # c\n"
+
+
+class TestYamlDocumentPathAPI:
+    def test_doc_set(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc.set("$.a", 2)
+        assert doc.to_yaml() == "a: 2\n"
+
+    def test_doc_set_creates_key(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc.set("$.b", 3)
+        assert doc.to_yaml() == "a: 1\nb: 3\n"
+
+    def test_doc_insert(self):
+        doc = pyrs_yaml.parse("arr: [1, 2, 3]\n")
+        doc.insert("$.arr", 1, 99)
+        assert doc.to_yaml() == "arr: [1, 99, 2, 3]\n"
+
+    def test_doc_append(self):
+        doc = pyrs_yaml.parse("arr: [1, 2]\n")
+        doc.append("$.arr", 3)
+        assert doc.to_yaml() == "arr: [1, 2, 3]\n"
+
+    def test_doc_delete(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        doc.delete("$.a")
+        assert doc.to_yaml() == "b: 2\n"
+
+    def test_doc_rename(self):
+        doc = pyrs_yaml.parse("old: 1  # c\n")
+        doc.rename("$.old", "new")
+        assert doc.to_yaml() == "new: 1  # c\n"
+
+    def test_path_wildcard_raises(self):
+        doc = pyrs_yaml.parse("arr: [1, 2]\n")
+        with pytest.raises(pyrs_yaml.YamlPathError):
+            doc.set("$.arr[*]", 3)
+
+    def test_path_deepscan_raises(self):
+        doc = pyrs_yaml.parse("a: {b: 1}\n")
+        with pytest.raises(pyrs_yaml.YamlPathError):
+            doc.delete("$..b")
+
+    def test_doc_set_missing_intermediate_raises(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.set("$.x.y", 3)
