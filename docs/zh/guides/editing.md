@@ -174,7 +174,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 - **位置保留** — 重命名后的键保持在原位
 - **元数据保留** — 键的行内注释、样式和锚点随重命名一起保留
-- 重命名根节点或复杂（非标量）键会抛出 `YamlEditError`
+- 重命名根节点、复杂（非标量）键，或重命名为**已存在的键**会抛出 `YamlEditError`（重命名为自身是无操作）
 
 ### `Node.rename()`
 
@@ -253,7 +253,7 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 | 错误 | 何时引发 |
 |------|---------|
 | `YamlPathError` | 格式错误的路径，编辑路径中使用通配符/`..` |
-| `YamlEditError` | 不支持的值类型（`tuple`）、负索引、通过别名编辑、重命名根节点/复杂键、导航进入标量、索引越界 |
+| `YamlEditError` | 不支持的值类型（`tuple`）、负索引、通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
 | `YamlDocumentError` | 文档编辑后使用过期的 `Node` |
 
 所有编辑都是原子的 — 失败的编辑不会改动文档（及其修订号）。

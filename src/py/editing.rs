@@ -432,6 +432,17 @@ pub fn rename_path(
             if !is_scalar {
                 return Err("cannot-rename-complex-key".to_string());
             }
+            // Reject renaming onto an existing key: indexmap's shift_insert
+            // would overwrite the existing entry's value, silently losing it.
+            // The check runs BEFORE shift_remove so a failed rename leaves the
+            // document untouched (atomicity). Renaming a key to itself is a
+            // no-op and stays allowed.
+            let new_key_node = CustomNode::plain_scalar(new_key.to_string());
+            if !key_eq(&new_key_node, &old_key_node)
+                && mapping_key_index(pairs, &new_key_node).is_some()
+            {
+                return Err("rename-key-exists".to_string());
+            }
             // Keys are immutable in IndexMap (mutation would break hashing);
             // shift_remove preserves order, then re-insert at the SAME index
             // under the new key with the original value node (comment/
@@ -440,11 +451,7 @@ pub fn rename_path(
                 .shift_remove_index(idx)
                 .map(|(_, v)| v)
                 .ok_or_else(|| "missing-path".to_string())?;
-            pairs.shift_insert(
-                idx,
-                CustomNode::plain_scalar(new_key.to_string()),
-                value_node,
-            );
+            pairs.shift_insert(idx, new_key_node, value_node);
             Ok(())
         }
         _ => Err("cannot-rename-complex-key".to_string()),

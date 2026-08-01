@@ -196,6 +196,30 @@ class TestRenamePath:
         doc._rename_path(["old"], "new")
         assert doc._revision() == rev0 + 1
 
+    def test_rename_to_existing_key_raises_atomically(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc._rename_path(["a"], "b")
+        assert doc.to_yaml() == "a: 1\nb: 2\n"
+
+    def test_rename_to_existing_key_nested_raises(self):
+        doc = pyrs_yaml.parse("m:\n  a: 1\n  b: 2\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc._rename_path(["m", "a"], "b")
+        assert doc.to_yaml() == "m:\n  a: 1\n  b: 2\n"
+
+    def test_rename_to_same_key_is_noop(self):
+        doc = pyrs_yaml.parse("a: 1  # c\n")
+        doc._rename_path(["a"], "a")
+        assert doc.to_yaml() == "a: 1  # c\n"
+
+    def test_rename_conflict_does_not_bump_revision(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        rev0 = doc._revision()
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc._rename_path(["a"], "b")
+        assert doc._revision() == rev0
+
 
 class TestSetItem:
     def test_setitem_existing(self):
@@ -313,6 +337,12 @@ class TestYamlDocumentPathAPI:
         doc = pyrs_yaml.parse("old: 1  # c\n")
         doc.rename("$.old", "new")
         assert doc.to_yaml() == "new: 1  # c\n"
+
+    def test_doc_rename_conflict_raises(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.rename("$.a", "b")
+        assert doc.to_yaml() == "a: 1\nb: 2\n"
 
     def test_path_wildcard_raises(self):
         doc = pyrs_yaml.parse("arr: [1, 2]\n")

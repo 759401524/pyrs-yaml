@@ -171,7 +171,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 - **Position is preserved** — the renamed key stays in place
 - **Metadata is preserved** — the key's inline comment, style, and anchor travel with the rename
-- Renaming the root, or a complex (non-scalar) key, raises `YamlEditError`
+- Renaming the root, a complex (non-scalar) key, or onto an **existing key** raises `YamlEditError` (renaming a key to itself is a no-op)
 
 ### `Node.rename()`
 
@@ -250,7 +250,7 @@ Re-find the node after any edit to continue working. `node.is_valid()` checks li
 | Error | When |
 |-------|------|
 | `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
-| `YamlEditError` | Unsupported value type (`tuple`), negative index, edit through alias, rename of root/complex key, navigation into a scalar, index out of bounds |
+| `YamlEditError` | Unsupported value type (`tuple`), negative index, edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
 | `YamlDocumentError` | Stale `Node` used after a document edit |
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched.
