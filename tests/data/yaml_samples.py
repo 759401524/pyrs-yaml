@@ -80,6 +80,7 @@ FOLDED_STRIP = "key: >-\n  this is folded"
 TAG_STR = "name: !!str John"
 TAG_CUSTOM = "name: !custom value"
 TAG_INT = "age: !!int 30"
+NESTED_TAGGED = "outer:\n  inner: !custom value"
 
 # --- Anchor and merge samples ---
 ANCHOR_SIMPLE = "defaults: &defaults\n  timeout: 30"
@@ -154,4 +155,5 @@ SIMPLE_MAPPING_SERIALIZE = "n: 42\nf: 3.14\nb: true\ns: hello"
 SIMPLE_SEQUENCE = "- 1\n- 2\n- 3"
 SIMPLE_STRING = "hello world"
 USER_MODEL = "name: Alice\nage: 30\n"
+USER_MODEL_INVALID = "name: Alice\nage: not_an_int\n"
 PRODUCT_MODEL = "name: Widget\nprice: 9.99\nin_stock: true\n"

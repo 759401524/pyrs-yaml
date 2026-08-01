@@ -37,3 +37,17 @@ class TestPydantic:
         monkeypatch.setitem(sys.modules, "pydantic", None)
         with pytest.raises(ImportError, match="pydantic is required"):
             pyrs_yaml.parse_as(dict, "key: value")
+
+    def test_parse_as_validation_error(self):
+        from pydantic import BaseModel, ValidationError
+
+        class UserModel(BaseModel):
+            name: str
+            age: int
+
+        with pytest.raises(ValidationError):
+            pyrs_yaml.parse_as(UserModel, yaml.USER_MODEL_INVALID)
+
+    def test_parse_as_non_base_model(self):
+        with pytest.raises(TypeError, match="BaseModel"):
+            pyrs_yaml.parse_as(dict, "key: value")
