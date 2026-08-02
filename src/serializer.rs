@@ -230,139 +230,24 @@ impl Serializer {
                             ka.cmp(kb)
                         });
 
-                        for (i, (key, value)) in pairs_vec.iter().enumerate() {
-                            // Check if key is a complex key (mapping or sequence)
-                            let is_complex_key = matches!(
+                        for (i, (key, value)) in pairs_vec.iter().copied().enumerate() {
+                            self.write_mapping_pair(
                                 key,
-                                CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-                            );
-
-                            if is_complex_key {
-                                // Complex key: use ? indicator
-                                self.write_indent(indent_width);
-                                self.output.push_str("? ");
-                                // For complex keys, we need to serialize at the same indent level
-                                // but the key content should be indented relative to the ?
-                                self.serialize_node_internal(
-                                    key,
-                                    indent_width,
-                                    false,
-                                    false,
-                                    depth + 1,
-                                )?;
-                            } else {
-                                // Simple key
-                                self.write_indent(indent_width);
-                                self.write_scalar_for_key(key);
-                            }
-
-                            self.output.push(':');
-
-                            // Check if value needs to be on next line
-                            if (matches!(
                                 value,
-                                CustomNode::Mapping {
-                                    flow_style: false,
-                                    ..
-                                } | CustomNode::Sequence {
-                                    flow_style: false,
-                                    ..
-                                }
-                            )) || is_complex_key
-                            {
-                                // If the value node has an anchor or tag, write it after the colon
-                                if let Some(anchor_name) = value.anchor() {
-                                    self.output.push_str(" &");
-                                    self.output.push_str(anchor_name);
-                                }
-                                if let Some(t) = value.tag() {
-                                    self.output.push(' ');
-                                    self.output.push_str(&t.to_string());
-                                }
-                                self.output.push('\n');
-                                self.serialize_node_internal(
-                                    value,
-                                    indent_width + self.indent_mapping,
-                                    i == pairs_vec.len() - 1,
-                                    true,
-                                    depth + 1,
-                                )?;
-                            } else {
-                                self.output.push(' ');
-                                self.serialize_node_internal(
-                                    value,
-                                    0,
-                                    i == pairs_vec.len() - 1,
-                                    true,
-                                    depth + 1,
-                                )?;
-                            }
+                                indent_width,
+                                i == pairs_vec.len() - 1,
+                                depth,
+                            )?;
                         }
                     } else {
                         for (i, (key, value)) in pairs.iter().enumerate() {
-                            // Check if key is a complex key (mapping or sequence)
-                            let is_complex_key = matches!(
+                            self.write_mapping_pair(
                                 key,
-                                CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-                            );
-
-                            if is_complex_key {
-                                // Complex key: use ? indicator
-                                self.write_indent(indent_width);
-                                self.output.push_str("? ");
-                                self.serialize_node_internal(
-                                    key,
-                                    indent_width,
-                                    false,
-                                    false,
-                                    depth + 1,
-                                )?;
-                            } else {
-                                // Simple key
-                                self.write_indent(indent_width);
-                                self.write_scalar_for_key(key);
-                            }
-
-                            self.output.push(':');
-
-                            // Check if value needs to be on next line
-                            if (matches!(
                                 value,
-                                CustomNode::Mapping {
-                                    flow_style: false,
-                                    ..
-                                } | CustomNode::Sequence {
-                                    flow_style: false,
-                                    ..
-                                }
-                            )) || is_complex_key
-                            {
-                                if let Some(anchor_name) = value.anchor() {
-                                    self.output.push_str(" &");
-                                    self.output.push_str(anchor_name);
-                                }
-                                if let Some(t) = value.tag() {
-                                    self.output.push(' ');
-                                    self.output.push_str(&t.to_string());
-                                }
-                                self.output.push('\n');
-                                self.serialize_node_internal(
-                                    value,
-                                    indent_width + self.indent_mapping,
-                                    i == pairs.len() - 1,
-                                    true,
-                                    depth + 1,
-                                )?;
-                            } else {
-                                self.output.push(' ');
-                                self.serialize_node_internal(
-                                    value,
-                                    0,
-                                    i == pairs.len() - 1,
-                                    true,
-                                    depth + 1,
-                                )?;
-                            }
+                                indent_width,
+                                i == pairs.len() - 1,
+                                depth,
+                            )?;
                         }
                     }
 
@@ -414,73 +299,7 @@ impl Serializer {
                     }
 
                     for (i, item) in items.iter().enumerate() {
-                        self.write_indent(indent_width);
-                        self.output.push_str("- ");
-
-                        match item {
-                            // Compact form: `- key: value` with subsequent keys
-                            // indented to align under the first key. Only when the
-                            // mapping carries no metadata and every key/value can
-                            // share the dash line.
-                            CustomNode::Mapping {
-                                pairs,
-                                comment: None,
-                                anchor: None,
-                                tag: None,
-                                flow_style: false,
-                                ..
-                            } if !pairs.is_empty()
-                                && pairs.iter().all(|(k, v)| {
-                                    !matches!(
-                                        k,
-                                        CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
-                                    ) && inlineable_value(v)
-                                }) =>
-                            {
-                                for (pi, (key, value)) in pairs.iter().enumerate() {
-                                    if pi > 0 {
-                                        self.write_indent(indent_width + self.indent_sequence);
-                                    }
-                                    self.write_scalar_for_key(key);
-                                    self.output.push(':');
-                                    self.output.push(' ');
-                                    self.serialize_node_internal(
-                                        value,
-                                        0,
-                                        i == items.len() - 1 && pi == pairs.len() - 1,
-                                        true,
-                                        depth + 1,
-                                    )?;
-                                }
-                            }
-                            CustomNode::Mapping {
-                                flow_style: false, ..
-                            }
-                            | CustomNode::Sequence {
-                                flow_style: false, ..
-                            } => {
-                                self.output.push('\n');
-                                self.serialize_node_internal(
-                                    item,
-                                    indent_width + self.indent_sequence,
-                                    i == items.len() - 1,
-                                    false,
-                                    depth + 1,
-                                )?;
-                            }
-                            _ => {
-                                // For simple items (including flow-style containers),
-                                // they go on the same line as the dash. Don't pass
-                                // indent_width to avoid extra indentation.
-                                self.serialize_node_internal(
-                                    item,
-                                    0,
-                                    i == items.len() - 1,
-                                    false,
-                                    depth + 1,
-                                )?;
-                            }
-                        }
+                        self.write_sequence_item(item, indent_width, i == items.len() - 1, depth)?;
                     }
 
                     // Write sequence comment
@@ -541,6 +360,148 @@ impl Serializer {
             ScalarStyle::Literal => self.write_literal_scalar(value, chomping),
             ScalarStyle::Folded => self.write_folded_scalar(value, chomping),
         }
+    }
+
+    /// Write one `key: value` pair of a block mapping, including indentation,
+    /// the `?` marker for complex keys, and the value emission (block value on
+    /// a new line, or inline). `is_last` is true when this is the final pair.
+    pub(crate) fn write_mapping_pair(
+        &mut self,
+        key: &CustomNode,
+        value: &CustomNode,
+        indent_width: usize,
+        is_last: bool,
+        depth: usize,
+    ) -> Result<(), String> {
+        // Check if key is a complex key (mapping or sequence)
+        let is_complex_key = matches!(
+            key,
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+        );
+
+        if is_complex_key {
+            // Complex key: use ? indicator
+            self.write_indent(indent_width);
+            self.output.push_str("? ");
+            // For complex keys, we need to serialize at the same indent level
+            // but the key content should be indented relative to the ?
+            self.serialize_node_internal(key, indent_width, false, false, depth + 1)?;
+        } else {
+            // Simple key
+            self.write_indent(indent_width);
+            self.write_scalar_for_key(key);
+        }
+
+        self.output.push(':');
+
+        // Check if value needs to be on next line
+        if (matches!(
+            value,
+            CustomNode::Mapping {
+                flow_style: false,
+                ..
+            } | CustomNode::Sequence {
+                flow_style: false,
+                ..
+            }
+        )) || is_complex_key
+        {
+            // If the value node has an anchor or tag, write it after the colon
+            if let Some(anchor_name) = value.anchor() {
+                self.output.push_str(" &");
+                self.output.push_str(anchor_name);
+            }
+            if let Some(t) = value.tag() {
+                self.output.push(' ');
+                self.output.push_str(&t.to_string());
+            }
+            self.output.push('\n');
+            self.serialize_node_internal(
+                value,
+                indent_width + self.indent_mapping,
+                is_last,
+                true,
+                depth + 1,
+            )?;
+        } else {
+            self.output.push(' ');
+            self.serialize_node_internal(value, 0, is_last, true, depth + 1)?;
+        }
+
+        Ok(())
+    }
+
+    /// Write one `- ` item of a block sequence, keeping the compact inline
+    /// form for plain mappings on the dash line. `is_last` is true when this
+    /// is the final item.
+    pub(crate) fn write_sequence_item(
+        &mut self,
+        item: &CustomNode,
+        indent_width: usize,
+        is_last: bool,
+        depth: usize,
+    ) -> Result<(), String> {
+        self.write_indent(indent_width);
+        self.output.push_str("- ");
+
+        match item {
+            // Compact form: `- key: value` with subsequent keys
+            // indented to align under the first key. Only when the
+            // mapping carries no metadata and every key/value can
+            // share the dash line.
+            CustomNode::Mapping {
+                pairs,
+                comment: None,
+                anchor: None,
+                tag: None,
+                flow_style: false,
+                ..
+            } if !pairs.is_empty()
+                && pairs.iter().all(|(k, v)| {
+                    !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
+                        && inlineable_value(v)
+                }) =>
+            {
+                for (pi, (key, value)) in pairs.iter().enumerate() {
+                    if pi > 0 {
+                        self.write_indent(indent_width + self.indent_sequence);
+                    }
+                    self.write_scalar_for_key(key);
+                    self.output.push(':');
+                    self.output.push(' ');
+                    self.serialize_node_internal(
+                        value,
+                        0,
+                        is_last && pi == pairs.len() - 1,
+                        true,
+                        depth + 1,
+                    )?;
+                }
+            }
+            CustomNode::Mapping {
+                flow_style: false, ..
+            }
+            | CustomNode::Sequence {
+                flow_style: false, ..
+            } => {
+                self.output.push('\n');
+                self.serialize_node_internal(
+                    item,
+                    indent_width + self.indent_sequence,
+                    is_last,
+                    false,
+                    depth + 1,
+                )?;
+            }
+            _ => {
+                // For simple items (including flow-style containers),
+                // they go on the same line as the dash. Don't pass
+                // indent_width to avoid extra indentation.
+                self.serialize_node_internal(item, 0, is_last, false, depth + 1)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Write a scalar formatted as a mapping key.
@@ -774,6 +735,72 @@ mod tests {
     use super::*;
     use crate::ast::Tag;
     use indexmap::IndexMap;
+
+    #[test]
+    fn test_pair_helper_matches_full_serialize() {
+        let yaml = "a: 1\nb:\n  c: 2\n";
+        let (ast, _) = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        let full = crate::serializer::to_yaml(&ast);
+        let mut s = Serializer::new(&SerializeOptions::default());
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            panic!()
+        };
+        for (i, (k, v)) in pairs.iter().enumerate() {
+            s.write_mapping_pair(k, v, 0, i == pairs.len() - 1, 0)
+                .unwrap();
+        }
+        assert_eq!(full, s.output);
+    }
+
+    #[test]
+    fn test_item_helper_matches_full_serialize() {
+        // mixed items: simple scalar + compact mapping (multi-key alignment) + block container
+        let yaml = "- a\n- b: c\n  d: 1\n- - 1\n  - 2\n";
+        let (ast, _) = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        let full = crate::serializer::to_yaml(&ast);
+        let mut s = Serializer::new(&SerializeOptions::default());
+        let CustomNode::Sequence { items, .. } = &ast else {
+            panic!()
+        };
+        for (i, item) in items.iter().enumerate() {
+            s.write_sequence_item(item, 0, i == items.len() - 1, 0)
+                .unwrap();
+        }
+        assert_eq!(full, s.output);
+    }
+
+    #[test]
+    fn test_item_helper_preserves_compact_dash() {
+        let yaml = "- host: a\n";
+        let (ast, _) = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        let mut s = Serializer::new(&SerializeOptions::default());
+        let CustomNode::Sequence { items, .. } = &ast else {
+            panic!()
+        };
+        s.write_sequence_item(&items[0], 0, true, 0).unwrap();
+        assert_eq!(s.output, "- host: a\n"); // P2: dash prefix must survive
+    }
 
     #[test]
     fn test_serialize_plain_scalar() {
