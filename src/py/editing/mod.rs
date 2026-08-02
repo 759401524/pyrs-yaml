@@ -421,9 +421,7 @@ mod tests {
     }
 
     fn doc_with_ranges(yaml: &str) -> CustomNode {
-        parse_with_options(yaml, true, YamlSchema::Core, 1000, false)
-            .unwrap()
-            .0
+        parse_with_options(yaml, true, YamlSchema::Core, 1000, false).unwrap()
     }
 
     #[test]

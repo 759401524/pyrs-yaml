@@ -113,7 +113,7 @@ mod pyrs_yaml {
         };
 
         let schema_enum = parse_schema(schema)?;
-        let (mut ast, splice_eligible) = py.detach(|| {
+        let mut ast = py.detach(|| {
             crate::parser::parse_with_options(
                 &yaml_str,
                 resolve_merges,
@@ -153,7 +153,8 @@ mod pyrs_yaml {
             version: "1.2".to_string(),
             revision: 0,
             source_dirty: false,
-            splice: splice_eligible.then(|| SpliceState::new(source)),
+            splice: None,
+            splice_checked: false,
         })
     }
 
@@ -277,7 +278,6 @@ mod pyrs_yaml {
                     self.max_depth,
                     self.allow_duplicate_keys,
                 )
-                .map(|(ast, _)| ast)
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
                         let key = e.message.trim_start_matches("duplicate key: ");
@@ -363,7 +363,7 @@ mod pyrs_yaml {
                     &[("detail", &e.to_string()), ("path", path)],
                 ))
             })?;
-            let (ast, splice_eligible) = py.detach(|| {
+            let ast = py.detach(|| {
                 crate::parser::parse_with_options(
                     &content,
                     resolve_merges,
@@ -402,7 +402,8 @@ mod pyrs_yaml {
                 version: "1.2".to_string(),
                 revision: 0,
                 source_dirty: false,
-                splice: splice_eligible.then(|| SpliceState::new(source)),
+                splice: None,
+                splice_checked: false,
             })
         }
 
@@ -452,6 +453,7 @@ mod pyrs_yaml {
                     revision: 0,
                     source_dirty: false,
                     splice: None,
+                    splice_checked: false,
                 })
                 .collect())
         }
@@ -469,15 +471,16 @@ mod pyrs_yaml {
         /// Segment-splice accumulator for default-layout documents; `None`
         /// when the doc is not splice-eligible or the state was consumed.
         splice: Option<SpliceState>,
+        /// Whether splice eligibility has been computed (lazily, on first edit).
+        splice_checked: bool,
     }
 
     impl YamlDocument {
-        /// Non-`#[pymethod]` constructor used by benches (Task 7) and
-        /// integration tests: seeds the splice accumulator for default-layout
-        /// documents.
+        /// Non-`#[pymethod]` constructor used by benches and integration tests.
+        /// Splice eligibility is computed lazily on first edit via
+        /// [`ensure_splice`], so `splice` starts `None`.
         #[allow(dead_code)] // pub but struct is not pub — used by benches (separate crate)
         pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
-            let splice_eligible = crate::parser::check_default_layout(&ast, &source);
             YamlDocument {
                 ast,
                 schema: crate::parser::yaml::YamlSchema::Core,
@@ -485,7 +488,30 @@ mod pyrs_yaml {
                 version: "1.2".to_string(),
                 revision: 0,
                 source_dirty: false,
-                splice: splice_eligible.then(|| SpliceState::new(source)),
+                splice: None,
+                splice_checked: false,
+            }
+        }
+
+        /// Lazily compute splice eligibility on first edit. `splice_checked`
+        /// distinguishes "not yet computed" from "consumed or ineligible" —
+        /// the single-burst model must NOT re-create state after materialize.
+        ///
+        /// Field-reference form so edit closures keep disjoint field captures.
+        fn ensure_splice(
+            splice: &mut Option<SpliceState>,
+            checked: &mut bool,
+            ast: &CustomNode,
+            source: &Option<Arc<str>>,
+        ) {
+            if *checked || splice.is_some() {
+                return;
+            }
+            *checked = true;
+            if let Some(src) = source {
+                if crate::parser::check_default_layout(ast, src) {
+                    *splice = Some(SpliceState::new(src.clone()));
+                }
             }
         }
     }
@@ -734,6 +760,12 @@ mod pyrs_yaml {
             let new_node = pyobject_to_node(py, &value)?;
             py.detach(|| -> Result<(), String> {
                 let src = self.source.as_deref().unwrap_or("");
+                Self::ensure_splice(
+                    &mut self.splice,
+                    &mut self.splice_checked,
+                    &self.ast,
+                    &self.source,
+                );
                 let unit = editing::set_path(&mut self.ast, &segs, new_node, true, src)?;
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
@@ -766,6 +798,12 @@ mod pyrs_yaml {
             let new_node = pyobject_to_node(py, &value)?;
             py.detach(|| -> Result<(), String> {
                 let src = self.source.as_deref().unwrap_or("");
+                Self::ensure_splice(
+                    &mut self.splice,
+                    &mut self.splice_checked,
+                    &self.ast,
+                    &self.source,
+                );
                 let unit = editing::insert_path(&mut self.ast, &segs, index, new_node, src)?;
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
@@ -797,6 +835,12 @@ mod pyrs_yaml {
             let new_node = pyobject_to_node(py, &value)?;
             py.detach(|| -> Result<(), String> {
                 let src = self.source.as_deref().unwrap_or("");
+                Self::ensure_splice(
+                    &mut self.splice,
+                    &mut self.splice_checked,
+                    &self.ast,
+                    &self.source,
+                );
                 let unit = editing::append_path(&mut self.ast, &segs, new_node, src)?;
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
@@ -822,6 +866,12 @@ mod pyrs_yaml {
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             py.detach(|| -> Result<(), String> {
                 let src = self.source.as_deref().unwrap_or("");
+                Self::ensure_splice(
+                    &mut self.splice,
+                    &mut self.splice_checked,
+                    &self.ast,
+                    &self.source,
+                );
                 let unit = editing::delete_path(&mut self.ast, &segs, src)?;
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
@@ -852,6 +902,12 @@ mod pyrs_yaml {
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             py.detach(|| -> Result<(), String> {
                 let src = self.source.as_deref().unwrap_or("");
+                Self::ensure_splice(
+                    &mut self.splice,
+                    &mut self.splice_checked,
+                    &self.ast,
+                    &self.source,
+                );
                 let unit = editing::rename_path(&mut self.ast, &segs, new_key, src)?;
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
@@ -893,7 +949,6 @@ mod pyrs_yaml {
             let schema_enum = parse_schema(schema)?;
             let new_ast = py.detach(|| {
                 crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000, false)
-                    .map(|(ast, _)| ast)
                     .map_err(|e| {
                         if e.line > 0 {
                             let msg = format_source_snippet(source, e.line, e.col, &e.message);
@@ -908,6 +963,8 @@ mod pyrs_yaml {
             })?;
             self.ast = new_ast;
             self.schema = schema_enum;
+            self.splice = None;
+            self.splice_checked = false;
             Ok(())
         }
 
@@ -988,7 +1045,7 @@ mod pyrs_yaml {
                 &[("detail", &e.to_string()), ("path", path)],
             ))
         })?;
-        let (mut ast, splice_eligible) = py.detach(|| {
+        let mut ast = py.detach(|| {
             crate::parser::parse_with_options(
                 &content,
                 true,
@@ -1028,7 +1085,8 @@ mod pyrs_yaml {
             version: "1.2".to_string(),
             revision: 0,
             source_dirty: false,
-            splice: splice_eligible.then(|| SpliceState::new(source)),
+            splice: None,
+            splice_checked: false,
         })
     }
 
@@ -1085,6 +1143,7 @@ mod pyrs_yaml {
                 revision: 0,
                 source_dirty: false,
                 splice: None,
+                splice_checked: false,
             })
             .collect())
     }
@@ -1107,7 +1166,6 @@ mod pyrs_yaml {
                 max_depth,
                 allow_duplicate_keys,
             )
-            .map(|(ast, _)| ast)
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
                     let key = e.message.trim_start_matches("duplicate key: ");
@@ -1440,6 +1498,86 @@ mod pyrs_yaml {
     #[pyo3(signature = (name: "str"))]
     fn remove_tag(name: &str) {
         tag_registry::remove(name);
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn splice_eligibility_is_lazy_and_cached() {
+            let source = Arc::from("- a: 1\n- b: 2\n");
+            let ast =
+                crate::parser::parse_with_options(&source, true, YamlSchema::Core, 1000, false)
+                    .expect("parse");
+            let mut doc = YamlDocument::from_ast(ast, source);
+            assert!(!doc.splice_checked, "must be unchecked before first edit");
+            assert!(doc.splice.is_none());
+
+            YamlDocument::ensure_splice(
+                &mut doc.splice,
+                &mut doc.splice_checked,
+                &doc.ast,
+                &doc.source,
+            );
+            assert!(doc.splice.is_some(), "default-layout doc must be eligible");
+            assert!(doc.splice_checked);
+
+            // Idempotent: after the single-burst state is consumed (set to None),
+            // ensure_splice must NOT rebuild it.
+            doc.splice = None;
+            YamlDocument::ensure_splice(
+                &mut doc.splice,
+                &mut doc.splice_checked,
+                &doc.ast,
+                &doc.source,
+            );
+            assert!(doc.splice.is_none(), "consumed state must not be rebuilt");
+        }
+
+        #[test]
+        fn splice_ineligible_doc_stays_checked_without_state() {
+            // CRLF line endings break default layout → never splice-eligible.
+            let source = Arc::from("a: 1\r\nb: 2\r\n");
+            let ast =
+                crate::parser::parse_with_options(&source, true, YamlSchema::Core, 1000, false)
+                    .expect("parse");
+            let mut doc = YamlDocument::from_ast(ast, source);
+            YamlDocument::ensure_splice(
+                &mut doc.splice,
+                &mut doc.splice_checked,
+                &doc.ast,
+                &doc.source,
+            );
+            assert!(doc.splice_checked);
+            assert!(doc.splice.is_none());
+        }
+
+        #[test]
+        fn splice_state_survives_until_materialize() {
+            let source = Arc::from("- a: 1\n- b: 2\n");
+            let ast =
+                crate::parser::parse_with_options(&source, true, YamlSchema::Core, 1000, false)
+                    .expect("parse");
+            let mut doc = YamlDocument::from_ast(ast, source);
+            YamlDocument::ensure_splice(
+                &mut doc.splice,
+                &mut doc.splice_checked,
+                &doc.ast,
+                &doc.source,
+            );
+            let state = doc.splice.take().expect("eligible doc has state");
+            let rendered = state.materialize().expect("materialize");
+            assert!(rendered.contains("- a: 1"));
+            // Re-checking after materialize must not recreate state.
+            YamlDocument::ensure_splice(
+                &mut doc.splice,
+                &mut doc.splice_checked,
+                &doc.ast,
+                &doc.source,
+            );
+            assert!(doc.splice.is_none());
+        }
     }
 }
 
