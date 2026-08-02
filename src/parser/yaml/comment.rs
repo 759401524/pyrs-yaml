@@ -12,7 +12,7 @@ use crate::ast::Comment;
 /// A vector of byte offsets, one per line. The length is `number_of_lines + 1`
 /// (the extra entry is the offset past the final character, for convenience).
 pub fn compute_line_offsets(yaml: &str) -> Vec<usize> {
-    let mut offsets = Vec::with_capacity(64);
+    let mut offsets = Vec::with_capacity(yaml.len() / 16 + 1);
     offsets.push(0);
     for (i, byte) in yaml.bytes().enumerate() {
         if byte == b'\n' {
