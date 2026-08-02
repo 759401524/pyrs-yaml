@@ -452,15 +452,19 @@ mod tests {
     use crate::parser::yaml::YamlSchema;
     use crate::py::editing::{delete_path, parse_path_segments, set_path};
 
-    fn parsed(source: &str) -> (crate::ast::CustomNode, bool) {
+    fn parsed(source: &str) -> crate::ast::CustomNode {
         crate::parser::parse_with_options(source, true, YamlSchema::Core, 1000, false).unwrap()
+    }
+
+    fn is_eligible(ast: &CustomNode, source: &str) -> bool {
+        crate::parser::check_default_layout(ast, source)
     }
 
     #[test]
     fn preserves_untouched_bytes() {
         let source = "a: 1\nb: 2\nc: 3\n";
-        let (mut ast, eligible) = parsed(source);
-        assert!(eligible);
+        let mut ast = parsed(source);
+        assert!(is_eligible(&ast, source));
         let mut splice = SpliceState::new(Arc::from(source));
         let segs = parse_path_segments("$.b").unwrap();
         let unit = set_path(&mut ast, &segs, CustomNode::plain_scalar("9"), true, source).unwrap();
@@ -471,8 +475,8 @@ mod tests {
     #[test]
     fn flow_region_edit_falls_back() {
         let source = "a: {b: 1}\n";
-        let (mut ast, eligible) = parsed(source);
-        assert!(eligible); // the doc gate passes; flow fallback is per-unit
+        let mut ast = parsed(source);
+        assert!(is_eligible(&ast, source)); // the doc gate passes; flow fallback is per-unit
         let mut splice = SpliceState::new(Arc::from(source));
         // Editing inside a flow container is ineligible at the unit level, so
         // the splice rejects it and the caller falls back to a full serialize.
@@ -485,8 +489,8 @@ mod tests {
     #[test]
     fn compact_roundtrip() {
         let source = "- a: 1\n  b: 2\n- c: 3\n";
-        let (mut ast, eligible) = parsed(source);
-        assert!(eligible);
+        let mut ast = parsed(source);
+        assert!(is_eligible(&ast, source));
         let mut splice = SpliceState::new(Arc::from(source));
         let segs = parse_path_segments("$[0].a").unwrap();
         let unit = set_path(&mut ast, &segs, CustomNode::plain_scalar("9"), true, source).unwrap();
@@ -500,8 +504,8 @@ mod tests {
     #[test]
     fn set_creating_pair_inserts() {
         let source = "a: 1\n";
-        let (mut ast, eligible) = parsed(source);
-        assert!(eligible);
+        let mut ast = parsed(source);
+        assert!(is_eligible(&ast, source));
         let mut splice = SpliceState::new(Arc::from(source));
         let segs = parse_path_segments("$.b").unwrap();
         let unit = set_path(&mut ast, &segs, CustomNode::plain_scalar("2"), true, source).unwrap();
@@ -512,8 +516,8 @@ mod tests {
     #[test]
     fn multi_edit_burst_then_fallback() {
         let source = "- a: 1\n- b: 2\n- c: 3\n";
-        let (mut ast, eligible) = parsed(source);
-        assert!(eligible);
+        let mut ast = parsed(source);
+        assert!(is_eligible(&ast, source));
         let mut splice = SpliceState::new(Arc::from(source));
         for (path, val) in [("$[0]", "x"), ("$[1]", "y")] {
             let segs = parse_path_segments(path).unwrap();
@@ -526,8 +530,8 @@ mod tests {
         // delete_path marks the unit ineligible; apply rejects it and the
         // caller falls back to a full serialize (flush_source splice=None).
         let compact = "- a: 1\n  b: 2\n- c: 3\n";
-        let (mut ast2, eligible2) = parsed(compact);
-        assert!(eligible2);
+        let mut ast2 = parsed(compact);
+        assert!(is_eligible(&ast2, compact));
         let mut splice2 = SpliceState::new(Arc::from(compact));
         let segs = parse_path_segments("$[0].a").unwrap();
         let unit = delete_path(&mut ast2, &segs, compact).unwrap();

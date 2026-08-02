@@ -779,7 +779,7 @@ mod tests {
     #[test]
     fn test_pair_helper_matches_full_serialize() {
         let yaml = "a: 1\nb:\n  c: 2\n";
-        let (ast, _) = crate::parser::parse_with_options(
+        let ast = crate::parser::parse_with_options(
             yaml,
             true,
             crate::parser::yaml::YamlSchema::Core,
@@ -803,7 +803,7 @@ mod tests {
     fn test_item_helper_matches_full_serialize() {
         // mixed items: simple scalar + compact mapping (multi-key alignment) + block container
         let yaml = "- a\n- b: c\n  d: 1\n- - 1\n  - 2\n";
-        let (ast, _) = crate::parser::parse_with_options(
+        let ast = crate::parser::parse_with_options(
             yaml,
             true,
             crate::parser::yaml::YamlSchema::Core,
@@ -826,7 +826,7 @@ mod tests {
     #[test]
     fn test_item_helper_preserves_compact_dash() {
         let yaml = "- host: a\n";
-        let (ast, _) = crate::parser::parse_with_options(
+        let ast = crate::parser::parse_with_options(
             yaml,
             true,
             crate::parser::yaml::YamlSchema::Core,

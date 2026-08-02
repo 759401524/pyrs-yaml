@@ -44,7 +44,7 @@ use yaml::{
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
 pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDetail> {
-    parse_with_options(yaml, true, schema, 1000, false).map(|(node, _)| node)
+    parse_with_options(yaml, true, schema, 1000, false)
 }
 
 /// 使用选项解析 YAML 字符串。
@@ -55,7 +55,7 @@ pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDet
 ///   合并键会将源映射的键值对合并到目标映射中。
 ///
 /// # Returns
-/// 成功时返回解析后的 AST 根节点，以及文档是否可拼接（splice-eligible）。
+/// 成功时返回解析后的 AST 根节点。
 ///
 /// # Errors
 /// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
@@ -67,10 +67,10 @@ pub fn parse_with_options(
     _schema: YamlSchema,
     max_depth: usize,
     allow_duplicate_keys: bool,
-) -> Result<(CustomNode, bool), ParseErrorDetail> {
+) -> Result<CustomNode, ParseErrorDetail> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
-        return Ok((CustomNode::plain_null(), true));
+        return Ok(CustomNode::plain_null());
     }
 
     // Extract comments and anchors from raw text before parsing
@@ -116,11 +116,7 @@ pub fn parse_with_options(
         resolve_merge_keys(&mut node);
     }
 
-    // Splice eligibility: docs the default serializer reproduces byte-for-byte
-    // (modulo marker lines) can have edits applied as region splices.
-    let splice_eligible = check_default_layout(&node, yaml);
-
-    Ok((node, splice_eligible))
+    Ok(node)
 }
 
 /// 解析包含多个 YAML 文档的字符串（以 `---` 分隔），支持 `resolve_merges` 选项。
@@ -886,8 +882,7 @@ mod tests {
 
     #[test]
     fn test_scalar_byte_range() {
-        let (node, _) =
-            parse_with_options("key: value\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options("key: value\n", true, YamlSchema::Core, 1000, false).unwrap();
         let CustomNode::Mapping { pairs, .. } = node else {
             panic!()
         };
@@ -899,8 +894,7 @@ mod tests {
 
     #[test]
     fn test_mapping_range_spans_children() {
-        let (node, _) =
-            parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
         let CustomNode::Mapping {
             pairs,
             source_range,
@@ -923,8 +917,7 @@ mod tests {
     #[test]
     fn test_non_ascii_byte_range() {
         // '值' is 3 bytes; char index 5 != byte offset 7
-        let (node, _) =
-            parse_with_options("key: 值\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options("key: 值\n", true, YamlSchema::Core, 1000, false).unwrap();
         let CustomNode::Mapping { pairs, .. } = node else {
             panic!()
         };
@@ -933,8 +926,7 @@ mod tests {
 
     #[test]
     fn test_flow_mapping_range_includes_closing_token() {
-        let (node, _) =
-            parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let node = parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
         let CustomNode::Mapping { source_range, .. } = node else {
             panic!()
         };
@@ -943,36 +935,35 @@ mod tests {
 
     #[test]
     fn test_splice_gate_default_layout_ok() {
-        let (_, ok) =
-            parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
-        assert!(ok);
+        let node = parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(check_default_layout(&node, "a:\n  b: 1\n"));
     }
 
     #[test]
     fn test_splice_gate_non_default_indent_rejected() {
-        let (_, ok) =
+        let node =
             parse_with_options("a:\n    b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
-        assert!(!ok); // 4-space indent violates indent_mapping=2
+        assert!(!check_default_layout(&node, "a:\n    b: 1\n")); // 4-space indent violates indent_mapping=2
     }
 
     #[test]
     fn test_splice_gate_crlf_rejected() {
-        let (_, ok) =
+        let node =
             parse_with_options("a: 1\r\nb: 2\r\n", true, YamlSchema::Core, 1000, false).unwrap();
-        assert!(!ok); // CRLF -> fallback (P1)
+        assert!(!check_default_layout(&node, "a: 1\r\nb: 2\r\n")); // CRLF -> fallback (P1)
     }
 
     #[test]
     fn test_splice_gate_bom_rejected() {
-        let (_, ok) =
+        let node =
             parse_with_options("\u{FEFF}a: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
-        assert!(!ok); // BOM -> fallback (P1)
+        assert!(!check_default_layout(&node, "\u{FEFF}a: 1\n")); // BOM -> fallback (P1)
     }
 
     #[test]
     fn test_splice_gate_nested_layout_ok() {
         // nested mapping (indent_mapping) + sequence value (indent_sequence)
-        let (_, ok) = parse_with_options(
+        let node = parse_with_options(
             "a:\n  b:\n    c: 1\nd:\n  - 1\n",
             true,
             YamlSchema::Core,
@@ -980,26 +971,28 @@ mod tests {
             false,
         )
         .unwrap();
-        assert!(ok);
+        assert!(check_default_layout(
+            &node,
+            "a:\n  b:\n    c: 1\nd:\n  - 1\n"
+        ));
     }
 
     #[test]
     fn test_splice_gate_compact_item_layout_ok() {
-        let (_, ok) =
+        let node =
             parse_with_options("- a: 1\n  b: 2\n", true, YamlSchema::Core, 1000, false).unwrap();
-        assert!(ok);
+        assert!(check_default_layout(&node, "- a: 1\n  b: 2\n"));
     }
 
     #[test]
     fn test_splice_gate_sequence_bad_indent_rejected() {
-        let (_, ok) =
-            parse_with_options("a:\n   - 1\n", true, YamlSchema::Core, 1000, false).unwrap();
-        assert!(!ok); // dash at col 3 instead of indent_sequence=2
+        let node = parse_with_options("a:\n   - 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(!check_default_layout(&node, "a:\n   - 1\n")); // dash at col 3 instead of indent_sequence=2
     }
 
     #[test]
     fn test_splice_gate_flow_doc_eligible() {
-        let (_, ok) = parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
-        assert!(ok); // flow docs stay eligible (only flow *regions* fall back)
+        let node = parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(check_default_layout(&node, "{a: 1}\n")); // flow docs stay eligible (only flow *regions* fall back)
     }
 }

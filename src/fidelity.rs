@@ -88,11 +88,11 @@ fn collect_keys(node: &CustomNode, prefix: &str, keys: &mut Vec<String>) {
 proptest! {
     #[test]
     fn untouched_bytes_survive_edit(ref doc_str in doc_strategy()) {
-        let (ast, eligible) = parse_with_options(doc_str, true, YamlSchema::Core, 1000, false)
+        let ast = parse_with_options(doc_str, true, YamlSchema::Core, 1000, false)
             .expect("generated doc must parse");
         let source: Arc<str> = Arc::from(doc_str.as_str());
 
-        if !eligible {
+        if !crate::parser::check_default_layout(&ast, doc_str) {
             return Ok(());
         }
 
