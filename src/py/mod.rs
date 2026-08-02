@@ -476,7 +476,7 @@ mod pyrs_yaml {
         /// Non-`#[pymethod]` constructor used by benches (Task 7) and
         /// integration tests: seeds the splice accumulator for default-layout
         /// documents.
-        #[allow(dead_code)] // consumed by benches in Task 7
+        #[allow(dead_code)] // pub but struct is not pub — used by benches (separate crate)
         pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
             let splice_eligible = crate::parser::check_default_layout(&ast, &source);
             YamlDocument {
