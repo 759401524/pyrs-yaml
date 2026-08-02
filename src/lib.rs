@@ -10,6 +10,9 @@ pub mod serializer;
 pub mod splice;
 
 #[cfg(test)]
+pub mod fidelity;
+
+#[cfg(test)]
 mod integration;
 
 // rust-i18n 初始化
