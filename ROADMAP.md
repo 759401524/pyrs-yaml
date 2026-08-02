@@ -115,7 +115,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ---
 
-### v0.10.0 — "Edit In Place" (target: Q3 2026)
+### v0.10.0 — "Edit In Place" (released 2026-08-01)
 
 > In-place editing on a fidelity-preserving AST — the `yaml-edit` differentiator, without sacrificing round-trip.
 
@@ -129,9 +129,26 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 | 6 | **Docs** — `docs/{en,zh,ja,ko}/guides/editing.md` + API/features/changelog updates | Docs | 🟡 | ✅ Delivered |
 | 7 | **Edit benchmarks** — 6 divan benches (set/insert/delete, small→large) in `benches/yaml_bench.rs` | Rust | 🟡 | ✅ Delivered |
 
-**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md (pending v0.10.0 tag).
+**Changelog mapping**: Entries under `[0.10.0]` in CHANGELOG.md.
 
 **Remaining reserve (not committed)**: YAML 1.2 spec compliance score reporting; Python `with` context manager for document scoping; `yaml-edit` competitor feature tracking.
+
+---
+
+### v0.11.0 — "TBD" (target: Q4 2026)
+
+> Scope to be finalized via brainstorming (2026-08-02). Candidate items under evaluation (from Research & Exploration + v0.10.0 reserve):
+
+| # | Item | Layer | Priority | Status |
+|:--|:-----|:------|:--------:|:-------|
+| 1 | Streaming large documents — event-based/iterator API for files > 100 MB | Both | 🔴 | 🔲 Evaluating |
+| 2 | Incremental serialization — serialize only modified subtrees in `YamlDocument` | Rust | 🟡 | 🔲 Evaluating |
+| 3 | `with` context manager for document scoping | Python | 🟡 | 🔲 Evaluating |
+| 4 | YAML 1.2 spec compliance score reporting | Rust | 🟡 | 🔲 Evaluating |
+| 5 | `yaml-edit` competitor feature tracking | Docs | ⚪ | 🔲 Evaluating |
+| 6 | Community plugins / YAML Schema language | Both | ⚪ | 🔲 Evaluating (defer?) |
+
+**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
 
 ---
 
@@ -139,7 +156,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 Tracked as open questions for future roadmap inclusion; not committed to any version.
 
-- [ ] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix (started in v0.6.0, CI job exists)
+- [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
 - [ ] **Streaming large documents** — event-based/iterator API for files > 100 MB
 - [ ] **YAML Schema language** — dedicated schema definition format beyond JSON Schema
 - [ ] **Incremental serialization** — serialize only modified subtrees in `YamlDocument`

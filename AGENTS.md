@@ -94,6 +94,16 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 - Use `git commit --no-verify` to bypass prek hooks
 - Edit `.pyi` files manually instead of regenerating via maturin
 
+## Release Process
+
+Learnings from v0.10.0 (2026-08-01) — three pitfalls, each is a separate regression:
+
+1. **`publish.yml` must never use `--generate-stubs`.** Maturin's introspection helper is built for the runner host glibc and cannot load the extension inside old manylinux/musllinux containers or under qemu → every linux/musllinux wheel build fails with `Failed to introspect the built libraries to generate type stubs`. macos/windows pass — the failure is silent until Release.
+2. **The committed `.pyi` must NOT appear in `.gitignore`.** Maturin bundles `python-source` files but skips anything gitignored → the wheel silently ships without `pyrs_yaml.pyi`. Regenerate via `uv run maturin build --release --generate-stubs`, extract, commit with `git add -f`.
+3. **Publish runs only on tag push** (it validates at release time, never on PRs/pushes). Verify the tag target before pushing: `git ls-remote --tags origin`. Force-pushing a tag re-triggers the workflow; a tag on a bad commit must be canceled + re-tagged.
+
+Release checklist: bump `Cargo.toml` + `Cargo.lock`, rename `[Unreleased]` → `[X.Y.Z]` (with date) in `CHANGELOG.md` + `docs/{en,ja,ko,zh}/changelog.md` (do NOT skip `docs/en/changelog.md` — it is the canonical English mirror and feeds the deployed docs site; v0.7.0–v0.10.0 were silently missed and only caught during post-release site verification), add a `ROADMAP.md` table row, then PR → CI → rebase merge → lightweight tag → watch Publish run (Release job publishes to PyPI only when all build jobs pass).
+
 ## Git Workflow and Engineering Conventions
 
 This section delineates the core principles governing version control, commit quality, and merge processes. All automated agents and developers are required to strictly adhere to these conventions to maintain repository integrity, traceability, and overall engineering excellence.
