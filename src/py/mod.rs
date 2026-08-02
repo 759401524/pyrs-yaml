@@ -697,7 +697,11 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            py.detach(|| editing::set_path(&mut self.ast, &segs, new_node, true))
+            let _unit = py
+                .detach(|| {
+                    let src = self.source.as_deref().unwrap_or("");
+                    editing::set_path(&mut self.ast, &segs, new_node, true, src)
+                })
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
@@ -720,7 +724,11 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            py.detach(|| editing::insert_path(&mut self.ast, &segs, index, new_node))
+            let _unit = py
+                .detach(|| {
+                    let src = self.source.as_deref().unwrap_or("");
+                    editing::insert_path(&mut self.ast, &segs, index, new_node, src)
+                })
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
@@ -742,7 +750,11 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            py.detach(|| editing::append_path(&mut self.ast, &segs, new_node))
+            let _unit = py
+                .detach(|| {
+                    let src = self.source.as_deref().unwrap_or("");
+                    editing::append_path(&mut self.ast, &segs, new_node, src)
+                })
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
@@ -758,7 +770,11 @@ mod pyrs_yaml {
                 .map(|s| editing::Segment::from_py(py, s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-            py.detach(|| editing::delete_path(&mut self.ast, &segs))
+            let _unit = py
+                .detach(|| {
+                    let src = self.source.as_deref().unwrap_or("");
+                    editing::delete_path(&mut self.ast, &segs, src)
+                })
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;
@@ -779,7 +795,11 @@ mod pyrs_yaml {
                 .map(|s| editing::Segment::from_py(py, s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-            py.detach(|| editing::rename_path(&mut self.ast, &segs, new_key))
+            let _unit = py
+                .detach(|| {
+                    let src = self.source.as_deref().unwrap_or("");
+                    editing::rename_path(&mut self.ast, &segs, new_key, src)
+                })
                 .map_err(|e| {
                     YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
                 })?;

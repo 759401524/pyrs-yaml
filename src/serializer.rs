@@ -86,6 +86,54 @@ fn inlineable_value(v: &CustomNode) -> bool {
     )
 }
 
+/// Whether a block mapping can be emitted in the compact `- key: value`
+/// sequence-item form: no metadata, non-empty, all keys simple scalars and
+/// all values inlineable. Mirrors the guard used by `write_sequence_item`;
+/// shared so the splice layer and the serializer can never drift.
+pub(crate) fn is_compact_item(node: &CustomNode) -> bool {
+    matches!(
+        node,
+        CustomNode::Mapping {
+            pairs,
+            comment: None,
+            anchor: None,
+            tag: None,
+            flow_style: false,
+            ..
+        } if !pairs.is_empty()
+            && pairs.iter().all(|(k, v)| {
+                !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
+                    && inlineable_value(v)
+            })
+    )
+}
+
+/// Serialize a single block-mapping pair via [`Serializer::write_mapping_pair`],
+/// producing exactly the bytes a splice regeneration splices in.
+pub(crate) fn pair_to_string(
+    key: &CustomNode,
+    value: &CustomNode,
+    indent_width: usize,
+    is_last: bool,
+    depth: usize,
+) -> Result<String, String> {
+    let mut s = Serializer::new(&SerializeOptions::default());
+    s.write_mapping_pair(key, value, indent_width, is_last, depth)?;
+    Ok(s.output)
+}
+
+/// Serialize a single block-sequence item via [`Serializer::write_sequence_item`].
+pub(crate) fn item_to_string(
+    item: &CustomNode,
+    indent_width: usize,
+    is_last: bool,
+    depth: usize,
+) -> Result<String, String> {
+    let mut s = Serializer::new(&SerializeOptions::default());
+    s.write_sequence_item(item, indent_width, is_last, depth)?;
+    Ok(s.output)
+}
+
 impl Serializer {
     fn new(options: &SerializeOptions) -> Self {
         let mut cache = Vec::with_capacity(128);
@@ -444,61 +492,52 @@ impl Serializer {
         self.write_indent(indent_width);
         self.output.push_str("- ");
 
-        match item {
+        if is_compact_item(item) {
             // Compact form: `- key: value` with subsequent keys
             // indented to align under the first key. Only when the
             // mapping carries no metadata and every key/value can
             // share the dash line.
-            CustomNode::Mapping {
-                pairs,
-                comment: None,
-                anchor: None,
-                tag: None,
-                flow_style: false,
-                ..
-            } if !pairs.is_empty()
-                && pairs.iter().all(|(k, v)| {
-                    !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
-                        && inlineable_value(v)
-                }) =>
-            {
-                for (pi, (key, value)) in pairs.iter().enumerate() {
-                    if pi > 0 {
-                        self.write_indent(indent_width + self.indent_sequence);
-                    }
-                    self.write_scalar_for_key(key);
-                    self.output.push(':');
-                    self.output.push(' ');
-                    self.serialize_node_internal(
-                        value,
-                        0,
-                        is_last && pi == pairs.len() - 1,
-                        true,
-                        depth + 1,
-                    )?;
+            let CustomNode::Mapping { pairs, .. } = item else {
+                return Err("internal-error: is_compact_item on non-mapping".to_string());
+            };
+            for (pi, (key, value)) in pairs.iter().enumerate() {
+                if pi > 0 {
+                    self.write_indent(indent_width + self.indent_sequence);
                 }
-            }
-            CustomNode::Mapping {
-                flow_style: false, ..
-            }
-            | CustomNode::Sequence {
-                flow_style: false, ..
-            } => {
-                self.output.push('\n');
+                self.write_scalar_for_key(key);
+                self.output.push(':');
+                self.output.push(' ');
                 self.serialize_node_internal(
-                    item,
-                    indent_width + self.indent_sequence,
-                    is_last,
-                    false,
+                    value,
+                    0,
+                    is_last && pi == pairs.len() - 1,
+                    true,
                     depth + 1,
                 )?;
             }
-            _ => {
-                // For simple items (including flow-style containers),
-                // they go on the same line as the dash. Don't pass
-                // indent_width to avoid extra indentation.
-                self.serialize_node_internal(item, 0, is_last, false, depth + 1)?;
+        } else if matches!(
+            item,
+            CustomNode::Mapping {
+                flow_style: false,
+                ..
+            } | CustomNode::Sequence {
+                flow_style: false,
+                ..
             }
+        ) {
+            self.output.push('\n');
+            self.serialize_node_internal(
+                item,
+                indent_width + self.indent_sequence,
+                is_last,
+                false,
+                depth + 1,
+            )?;
+        } else {
+            // For simple items (including flow-style containers),
+            // they go on the same line as the dash. Don't pass
+            // indent_width to avoid extra indentation.
+            self.serialize_node_internal(item, 0, is_last, false, depth + 1)?;
         }
 
         Ok(())
