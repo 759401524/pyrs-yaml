@@ -10,6 +10,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 変更履歴](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### [Unreleased]
+
+#### Performance
+
+- **パース時にスプライス資格を計算しない** — O(ドキュメント) のレイアウトチェックは最初の編集時に `YamlDocument.splice_checked` 経由で遅延実行され、v0.11.0 の回帰を復元: parse_comments -59%、parse_anchors -42%、parse/roundtrip/edit -10~35% すべて v0.10.0 レベルに戻る
+- **線形カーソルのレイアウトチェック** — 事前計算済み行オフセット上のノード単位バイナリサーチを置換（単調なソース順トラバーサル）
+
+#### Changed
+
+- `parse_with_options` は `CustomNode` を返す（旧 `(CustomNode, bool)`）; スプライス資格は現在 `YamlDocument` 内部にあり、オンデマンドで計算される
+
 ### [0.11.0] - 2026-08-02
 
 #### Added

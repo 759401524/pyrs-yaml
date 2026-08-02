@@ -10,6 +10,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 变更日志](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### [Unreleased]
+
+#### Performance
+
+- **解析不再计算拼接资格** — O(文档) 布局检查现在在首次编辑时通过 `YamlDocument.splice_checked` 惰性运行，恢复 v0.11.0 回归：parse_comments -59%、parse_anchors -42%、parse/roundtrip/edit -10~35% 全部回到 v0.10.0 水平
+- **线性游标布局检查** — 取代基于预计算行偏移的逐节点二分查找（单调源码顺序遍历）
+
+#### Changed
+
+- `parse_with_options` 返回 `CustomNode`（原为 `(CustomNode, bool)`）；拼接资格现在内置于 `YamlDocument` 并按需计算
+
 ### [0.11.0] - 2026-08-02
 
 #### Added
