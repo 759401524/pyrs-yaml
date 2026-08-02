@@ -1,5 +1,13 @@
 # pyrs-yaml
 
+[![PyPI version](https://img.shields.io/pypi/v/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/)
+[![Python versions](https://img.shields.io/pypi/pyversions/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/)
+[![Downloads](https://img.shields.io/pypi/dm/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/)
+[![License](https://img.shields.io/github/license/759401524/pyrs-yaml)](LICENSE-MIT)
+[![CI](https://img.shields.io/github/actions/workflow/status/759401524/pyrs-yaml/ci.yml?branch=main)](https://github.com/759401524/pyrs-yaml/actions)
+[![GitHub release](https://img.shields.io/github/v/release/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml/releases)
+[![Docs](https://img.shields.io/website?url=https%3A%2F%2F759401524.github.io%2Fpyrs-yaml%2F&label=docs&color=blue)](https://759401524.github.io/pyrs-yaml)
+[![GitHub stars](https://img.shields.io/github/stars/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/759401524/pyrs-yaml?utm_source=badge)
 
 A high-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.
@@ -26,6 +34,16 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 ```bash
 pip install pyrs-yaml
 ```
+
+Or with uv:
+
+```bash
+uv pip install pyrs-yaml
+```
+
+## Documentation
+
+Full documentation (English, 简体中文, 日本語, 한국어) is available at [https://759401524.github.io/pyrs-yaml](https://759401524.github.io/pyrs-yaml). See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## Quick Start
 
@@ -301,7 +319,7 @@ pyrs_yaml.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
 
 ## Performance
 
-Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark_crosslib.py` (Python):
+Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark_crosslib.py` (Python). See [benchmarks docs](docs/en/performance/benchmarks.md) for the full cross-library comparison against PyYAML and ruamel.yaml:
 
 | Operation | Time |
 |-----------|------|
@@ -321,11 +339,17 @@ Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `t
 uv sync
 
 # Build Python extension
-maturin develop --release
+uv run maturin develop --release
 
-# Run tests
-cargo test
-pytest tests/
+# Run tests (Rust: cargo nextest; Python: uv run pytest)
+cargo nextest run --all
+uv run pytest tests/ -v --ignore=tests/benchmark_compare.py
+
+# Lint and format (Rust + Python)
+cargo clippy -- -D warnings
+cargo fmt
+uv run ruff check .
+uv run ruff format .
 
 # Run benchmarks (Rust)
 cargo bench
@@ -336,11 +360,9 @@ uv run pytest tests/test_benchmark_crosslib.py tests/test_benchmark_api.py --cod
 # Performance sanity checks
 uv run pytest tests/test_performance.py -v
 
-# Run clippy
-cargo clippy -- -D warnings
-
-# Format code
-cargo fmt
+# Git hooks
+prek install --prepare-hooks
+prek run --all-files
 ```
 
 ## License
