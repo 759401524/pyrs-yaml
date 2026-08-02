@@ -135,20 +135,43 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ---
 
-### v0.11.0 — "TBD" (target: Q4 2026)
+### v0.11.0 — "Surgical Serialization" (target: Q4 2026)
 
-> Scope to be finalized via brainstorming (2026-08-02). Candidate items under evaluation (from Research & Exploration + v0.10.0 reserve):
+> Edit large documents without paying O(doc) re-serialization — completes the yaml-edit differentiator (v0.10.0 editing + this release's byte-level fidelity). Scope decided via brainstorming 2026-08-02.
 
-| # | Item | Layer | Priority | Status |
-|:--|:-----|:------|:--------:|:-------|
-| 1 | Streaming large documents — event-based/iterator API for files > 100 MB | Both | 🔴 | 🔲 Evaluating |
-| 2 | Incremental serialization — serialize only modified subtrees in `YamlDocument` | Rust | 🟡 | 🔲 Evaluating |
-| 3 | `with` context manager for document scoping | Python | 🟡 | 🔲 Evaluating |
-| 4 | YAML 1.2 spec compliance score reporting | Rust | 🟡 | 🔲 Evaluating |
-| 5 | `yaml-edit` competitor feature tracking | Docs | ⚪ | 🔲 Evaluating |
-| 6 | Community plugins / YAML Schema language | Both | ⚪ | 🔲 Evaluating (defer?) |
+| # | Item | Layer | Priority | Notes |
+|:--|:-----|:------|:--------:|:------|
+| 1 | **Source span tracking** — `source_range: Option<Range<usize>>` on every `CustomNode` variant, populated at parse time | Rust | 🔴 | ⭐ AST structural change (approved 2026-08-02); touches all constructors/serializer/tests — 118 Rust + 658 Python tests as guard |
+| 2 | **Dirty-region splice** — edit primitives (set/insert/append/delete/rename + root sugar) mark dirty nodes; `flush_source` regenerates the smallest enclosing block regions, byte-copies all untouched text | Rust | 🔴 | Fallback to full serialize: flow-style containers, doc-wide structural changes, layout options (`sort_keys`/`width`/`explicit_*`/indent) differing from source layout |
+| 3 | **Fidelity property tests** — byte equality of untouched regions after every edit op | Rust | 🔴 | The splice-correctness guarantee |
+| 4 | **Edit-flush benchmarks** — divan: single-key edit on a synthetic 10MB block doc → `source()`/`to_yaml()` time ∝ region | Rust | 🟡 | Target ≥100× vs v0.10.0 full re-serialize; extend edit_* benches |
+| 5 | **Docs** — guides/perf updates in en/zh/ja/ko | Docs | 🟡 | |
+
+**Design decisions (2026-08-02)**: per-scalar exact byte splice rejected — comments/anchors/tags attached to nodes + insert/delete span shifts make it fragile; recorded as a future optimization. Subtree-memoized full serialization rejected — no benefit for linear text assembly.
 
 **Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
+
+---
+
+### v0.11.1 — "Streaming Parse" (target: Q1 2027)
+
+> Constant-memory traversal of 100MB+ YAML files. Scope decided via brainstorming 2026-08-02.
+
+| # | Item | Layer | Priority | Notes |
+|:--|:-----|:------|:--------:|:------|
+| 1 | **Lazy event iterator** — `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)` returning `YamlStream` iterator holding a saphyr `Parser` fed in ~64KB chunks from the Python file object | Rust | 🔴 | GIL released per chunk (`py.detach`); reuse `stream_event_to_py_dict` |
+| 2 | **Early termination** — consumer stops ⇒ stop reading further chunks (existing `should_continue` semantics) | Rust | 🔴 | |
+| 3 | **Memory-bound test** — 100MB synthetic file: peak RSS < ~64MB + constant | Rust | 🔴 | vs current ~input size + full AST + full event vec |
+| 4 | **Event parity property test** — stream output equals `parse_stream` on the same input, event by event | Rust | 🟡 | |
+| 5 | **Docs** — en/zh/ja/ko | Docs | 🟡 | |
+
+**Design decisions (2026-08-02)**: callback-push `feed(&[u8])` model rejected for v1 (borrow-checker pain across feed calls; stdin/network later). mmap-based I/O deferred (abi3 portability). Existing string-based `parse_stream(yaml: str, on_event=...)` stays for in-memory compat.
+
+**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
+
+---
+
+**Deferred (not committed, revisit at each milestone review)**: `with` context manager for document scoping; YAML 1.2 spec compliance score reporting; `yaml-edit` competitor feature tracking; community plugins / YAML Schema language; `--no-default-features` numpy-free free-threaded wheel. Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-02).
 
 ---
 
@@ -156,13 +179,15 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 Tracked as open questions for future roadmap inclusion; not committed to any version.
 
+> **Revisit rule** (from Review Notes 2026-08-02): every milestone review must re-evaluate all unchecked items below — promote, defer with reason, or close. No item stays unchecked for more than two consecutive milestone reviews.
+
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
-- [ ] **Streaming large documents** — event-based/iterator API for files > 100 MB
 - [ ] **YAML Schema language** — dedicated schema definition format beyond JSON Schema
-- [ ] **Incremental serialization** — serialize only modified subtrees in `YamlDocument`
 - [ ] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy
 - [ ] **Community plugins** — allow third-party Python modules to register custom node types
 - [ ] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python (see CHANGELOG v0.6.0)
+
+**Committed to v0.11.x (moved from this list, see Planned)**: Streaming large documents → v0.11.1; Incremental serialization → v0.11.0.
 
 ---
 
@@ -186,3 +211,51 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 ### Timeline Feasibility Note
 
 Releases v0.1.0–v0.6.0 were compressed into a few days (July 2025 – July 2026), indicating rapid iteration but shallow review buffers. The v0.8.0 critical path (Instance API → Node API → Query Language) is the highest-risk segment; if not started by mid-Q3 2026, consider splitting into v0.8.0 (API surface) and v0.8.1 (query language + lifecycle safety).
+
+---
+
+## Appendix: Review Notes (2026-08-02)
+
+> Generated through the four-phase loop: 洞察反馈 (insight feedback) → 溯源析理 (root-cause tracing) → 内化重构 (internalize & refactor) → 螺旋闭环 (spiral closure). Source signals: v0.10.0 release (published 2026-08-01), post-release verification, and the v0.11.x brainstorming session.
+
+### Phase 1 — 洞察反馈: Signals
+
+| # | Insight | Observed at |
+|:--|:--------|:------------|
+| 1 | publish.yml is validated only at tag push — the `--generate-stubs` failure surfaced at Release, never on PRs/pushes | v0.10.0 publish run failed on linux/musllinux |
+| 2 | `docs/en/changelog.md` (canonical English mirror) missed in both v0.9.0 and v0.10.0 releases; deployed docs changelog was stale at v0.6.0 | Post-release site verification |
+| 3 | CodSpeed flagged `serialize_medium` −10.92% — actually a runner CPU change (EPYC 7763 → EPYC 9V74 → Xeon 8573C), not code | v0.10.0 vs v0.9.0 comparison |
+| 4 | Research & Exploration items have no revisit mechanism — `with` scoping, compliance reporting, competitor tracking, plugins stayed unchecked across releases | ROADMAP review |
+| 5 | `flush_source` re-serializes the whole document after every edit (O(doc)) — the v0.10.0 edit API has no byte-level AST↔source mapping | Code read (src/py/mod.rs:467) |
+| 6 | `parse_stream` is pseudo-streaming — whole input string + whole `Vec<StreamEvent>` in memory (src/py/mod.rs:1104) | Code read |
+
+### Phase 2 — 溯源析理: Root Causes
+
+| # | Root cause | Layer |
+|:--|:-----------|:------|
+| 1 | Validation timing lag: publish recipe never runs outside the tag-triggered workflow, so recipe changes are unverifiable until Release | Process |
+| 2 | Release checklist was an implicit convention, not an enforced gate; dual-maintained changelog mirrors (root + docs/en) lacked a sync check; no post-release site verification step | Process |
+| 3 | Simulation-mode CodSpeed is sensitive to physical CPU modeling; runner pool is non-deterministic; no hardware-fingerprint gate before declaring regressions | Tooling |
+| 4 | Planning ≠ commitment: Research items carry no owner, no review cadence, no closure rule | Planning |
+| 5 | v0.10.0 preserved fidelity at the comment/anchor layer but never recorded the AST↔source-text byte mapping — the architectural debt the edit API left behind | Architecture |
+| 6 | parse_stream was designed as an event abstraction over `str`, not an I/O abstraction — the input model (whole-string) caps memory behavior | Architecture |
+
+### Phase 3 — 内化重构: Resolutions Landed
+
+| # | Resolution | Artifact |
+|:--|:-----------|:---------|
+| 1 | v0.11.0 #1: source span tracking on `CustomNode` — the missing AST↔source byte mapping (⭐ structural change, approved) | ROADMAP v0.11.0 |
+| 2 | v0.11.0 #2–#4: dirty-region splice + fidelity property tests + O(region) edit-flush benchmarks (target ≥100×) | ROADMAP v0.11.0 |
+| 3 | v0.11.1 #1–#4: lazy event iterator over chunked reader + early termination + memory-bound + event-parity tests | ROADMAP v0.11.1 |
+| 4 | Rejected approaches recorded as future options (per-scalar splice, callback-push feed, mmap) so the decision space isn't lost | ROADMAP v0.11.0/v0.11.1 design decisions |
+| 5 | Release checklist now mandates `docs/{en,ja,ko,zh}/changelog.md` + post-release docs-site verification (v0.9.0–v0.10.0 gap) | AGENTS.md Release Process |
+| 6 | CodSpeed guidance: hardware-difference attribution before treating Simulation flags as regressions | AGENTS.md (post-release verification) |
+| 7 | Research & Exploration gains a revisit rule — every milestone review promotes/defer/close; no item unchecked for >2 consecutive reviews | ROADMAP Research & Exploration |
+
+### Phase 4 — 螺旋闭环: Closure Verification
+
+- **Every insight has a landed resolution**: #1–#6 in Phase 1 map 1:1 to Phase 3 #1–#6; #4 additionally closed the planning gap via the revisit rule.
+- **Design consistency**: span tracking (v0.11.0 #1) is the sole AST structural change and was explicitly approved 2026-08-02; v0.11.0 → v0.11.1 order confirmed (editing continuity before I/O expansion).
+- **No silent carries**: deferred items (`with` scoping, compliance reporting, competitor tracking, plugins, numpy-free wheel) are explicitly listed in Planned's "Deferred" block AND tracked in Research with the revisit rule.
+- **Loop state**: closed. Next spiral turn = feature-level spec + writing-plans when v0.11.0 implementation starts; each feature gets its own design doc under `docs/superpowers/specs/`.
+- **Process debts still open (tracked, not blocking)**: publish.yml pre-release validation (workflow_dispatch dry-run) and CodSpeed hardware-fingerprint gating are candidate process improvements — intentionally not committed to any version; revisit at next milestone review.
