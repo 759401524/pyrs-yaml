@@ -107,7 +107,7 @@ impl Hash for Tag {
 }
 
 /// Custom AST node with full metadata for round-trip support
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub enum CustomNode {
     Scalar {
         value: String,
@@ -161,7 +161,7 @@ impl Hash for CustomNode {
                 anchor,
                 tag,
                 chomping,
-                source_range,
+                ..
             } => {
                 state.write_u8(0);
                 value.hash(state);
@@ -170,7 +170,6 @@ impl Hash for CustomNode {
                 anchor.hash(state);
                 tag.hash(state);
                 chomping.hash(state);
-                source_range.hash(state);
             }
             CustomNode::Mapping {
                 pairs,
@@ -178,7 +177,7 @@ impl Hash for CustomNode {
                 anchor,
                 tag,
                 flow_style,
-                source_range,
+                ..
             } => {
                 state.write_u8(1);
                 for (k, v) in pairs {
@@ -189,7 +188,6 @@ impl Hash for CustomNode {
                 anchor.hash(state);
                 tag.hash(state);
                 flow_style.hash(state);
-                source_range.hash(state);
             }
             CustomNode::Sequence {
                 items,
@@ -197,7 +195,7 @@ impl Hash for CustomNode {
                 anchor,
                 tag,
                 flow_style,
-                source_range,
+                ..
             } => {
                 state.write_u8(2);
                 for item in items {
@@ -207,24 +205,104 @@ impl Hash for CustomNode {
                 anchor.hash(state);
                 tag.hash(state);
                 flow_style.hash(state);
-                source_range.hash(state);
             }
             CustomNode::Null {
                 comment,
                 anchor,
                 tag,
-                source_range,
+                ..
             } => {
                 state.write_u8(3);
                 comment.hash(state);
                 anchor.hash(state);
                 tag.hash(state);
-                source_range.hash(state);
             }
             CustomNode::Alias { name } => {
                 state.write_u8(4);
                 name.hash(state);
             }
+        }
+    }
+}
+
+impl PartialEq for CustomNode {
+    /// Equality is structural: `source_range` (byte provenance) is excluded so that
+    /// programmatically-built nodes (`source_range: None`) match parsed nodes (`Some(..)`),
+    /// and dirty-detection snapshots that differ only in ranges still compare equal.
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                CustomNode::Scalar {
+                    value: a,
+                    style: b,
+                    comment: c,
+                    anchor: d,
+                    tag: e,
+                    chomping: f,
+                    ..
+                },
+                CustomNode::Scalar {
+                    value: a2,
+                    style: b2,
+                    comment: c2,
+                    anchor: d2,
+                    tag: e2,
+                    chomping: f2,
+                    ..
+                },
+            ) => a == a2 && b == b2 && c == c2 && d == d2 && e == e2 && f == f2,
+            (
+                CustomNode::Mapping {
+                    pairs: a,
+                    comment: b,
+                    anchor: c,
+                    tag: d,
+                    flow_style: e,
+                    ..
+                },
+                CustomNode::Mapping {
+                    pairs: a2,
+                    comment: b2,
+                    anchor: c2,
+                    tag: d2,
+                    flow_style: e2,
+                    ..
+                },
+            ) => a == a2 && b == b2 && c == c2 && d == d2 && e == e2,
+            (
+                CustomNode::Sequence {
+                    items: a,
+                    comment: b,
+                    anchor: c,
+                    tag: d,
+                    flow_style: e,
+                    ..
+                },
+                CustomNode::Sequence {
+                    items: a2,
+                    comment: b2,
+                    anchor: c2,
+                    tag: d2,
+                    flow_style: e2,
+                    ..
+                },
+            ) => a == a2 && b == b2 && c == c2 && d == d2 && e == e2,
+            (
+                CustomNode::Null {
+                    comment: a,
+                    anchor: b,
+                    tag: c,
+                    ..
+                },
+                CustomNode::Null {
+                    comment: a2,
+                    anchor: b2,
+                    tag: c2,
+                    ..
+                },
+            ) => a == a2 && b == b2 && c == c2,
+            (CustomNode::Alias { name: a }, CustomNode::Alias { name: a2 }) => a == a2,
+            _ => false,
         }
     }
 }

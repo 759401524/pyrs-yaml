@@ -20,6 +20,7 @@ use indexmap::IndexMap;
 use saphyr_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
+use std::ops::Range;
 use yaml::{
     compute_line_offsets, detect_chomping, extract_anchors, extract_comments, resolve_merge_keys,
     unescape_double_quoted, CommentAnchorTracker, RawAnchor, RawComment,
@@ -43,7 +44,7 @@ use yaml::{
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser
 pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDetail> {
-    parse_with_options(yaml, true, schema, 1000, false)
+    parse_with_options(yaml, true, schema, 1000, false).map(|(node, _)| node)
 }
 
 /// 使用选项解析 YAML 字符串。
@@ -54,7 +55,7 @@ pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDet
 ///   合并键会将源映射的键值对合并到目标映射中。
 ///
 /// # Returns
-/// 成功时返回解析后的 AST 根节点。
+/// 成功时返回解析后的 AST 根节点，以及文档是否可拼接（splice-eligible）。
 ///
 /// # Errors
 /// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
@@ -66,10 +67,10 @@ pub fn parse_with_options(
     _schema: YamlSchema,
     max_depth: usize,
     allow_duplicate_keys: bool,
-) -> Result<CustomNode, ParseErrorDetail> {
+) -> Result<(CustomNode, bool), ParseErrorDetail> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
-        return Ok(CustomNode::plain_null());
+        return Ok((CustomNode::plain_null(), true));
     }
 
     // Extract comments and anchors from raw text before parsing
@@ -115,7 +116,11 @@ pub fn parse_with_options(
         resolve_merge_keys(&mut node);
     }
 
-    Ok(node)
+    // Splice eligibility: docs the default serializer reproduces byte-for-byte
+    // (modulo marker lines) can have edits applied as region splices.
+    let splice_eligible = check_default_layout(&node, yaml);
+
+    Ok((node, splice_eligible))
 }
 
 /// 解析包含多个 YAML 文档的字符串（以 `---` 分隔），支持 `resolve_merges` 选项。
@@ -230,11 +235,152 @@ pub(crate) fn convert_tag(tag: &saphyr_parser::Tag) -> Tag {
     }
 }
 
+/// A document is splice-eligible when every block container's direct children
+/// sit at the default serializer's indentation (layout parameters read from
+/// `SerializeOptions::default()`, not hardcoded). Flow containers are skipped:
+/// the gate is doc-wide, so flow docs stay eligible — only flow *regions* fall
+/// back (Task 4 P4). CRLF/BOM docs and docs whose layout can't be verified
+/// (missing source ranges: merged keys, aliases, programmatic AST) always fall
+/// back (P1).
+fn check_default_layout(node: &CustomNode, text: &str) -> bool {
+    if text.contains('\r') || text.starts_with('\u{FEFF}') {
+        return false;
+    }
+    let def = crate::serializer::SerializeOptions::default();
+    let line_offsets = compute_line_offsets(text);
+    check_node_layout(node, text, &line_offsets, &def, def.indent_offset)
+}
+
+/// Byte offset of the start of the line containing `byte_offset`.
+fn line_start_of(line_offsets: &[usize], byte_offset: usize) -> usize {
+    match line_offsets.binary_search(&byte_offset) {
+        Ok(i) => line_offsets[i],
+        Err(0) => 0,
+        Err(i) => line_offsets[i - 1],
+    }
+}
+
+/// Column of `byte_offset` on its line.
+fn column_of(line_offsets: &[usize], byte_offset: usize) -> usize {
+    byte_offset - line_start_of(line_offsets, byte_offset)
+}
+
+/// Recursive layout walk: verifies each block container's direct children sit
+/// at `content_indent` (the indent its children must occupy).
+fn check_node_layout(
+    node: &CustomNode,
+    text: &str,
+    line_offsets: &[usize],
+    def: &crate::serializer::SerializeOptions,
+    content_indent: usize,
+) -> bool {
+    match node {
+        CustomNode::Scalar { .. } | CustomNode::Null { .. } | CustomNode::Alias { .. } => true,
+        CustomNode::Mapping {
+            pairs, flow_style, ..
+        } => {
+            if *flow_style {
+                return true;
+            }
+            for (key, value) in pairs {
+                let Some(key_range) = key.source_range() else {
+                    return false; // merged keys / programmatic nodes: not verifiable
+                };
+                if column_of(line_offsets, key_range.start) != content_indent {
+                    return false;
+                }
+                // Complex block container keys sit after "? " (content_indent + 2)
+                if !check_node_layout(key, text, line_offsets, def, content_indent + 2) {
+                    return false;
+                }
+                match value {
+                    CustomNode::Mapping {
+                        flow_style: false, ..
+                    } if !check_node_layout(
+                        value,
+                        text,
+                        line_offsets,
+                        def,
+                        content_indent + def.indent_mapping,
+                    ) =>
+                    {
+                        return false;
+                    }
+                    CustomNode::Sequence {
+                        flow_style: false, ..
+                    } if !check_node_layout(
+                        value,
+                        text,
+                        line_offsets,
+                        def,
+                        content_indent + def.indent_sequence,
+                    ) =>
+                    {
+                        return false;
+                    }
+                    _ => {} // flow container, scalar, null, alias: nothing to check
+                }
+            }
+            true
+        }
+        CustomNode::Sequence {
+            items, flow_style, ..
+        } => {
+            if *flow_style {
+                return true;
+            }
+            for item in items {
+                let Some(item_range) = item.source_range() else {
+                    return false;
+                };
+                // The item's line must start with `<content_indent>- `
+                let line_start = line_start_of(line_offsets, item_range.start);
+                let bytes = text.as_bytes();
+                if bytes.get(line_start + content_indent) != Some(&b'-') {
+                    return false;
+                }
+                match bytes.get(line_start + content_indent + 1) {
+                    None | Some(b' ' | b'#') => {}
+                    _ => return false,
+                }
+                // Block container items are emitted compact ("- key: value"), so
+                // their content sits at content_indent + 2 (after the dash)
+                match item {
+                    CustomNode::Mapping {
+                        flow_style: false, ..
+                    }
+                    | CustomNode::Sequence {
+                        flow_style: false, ..
+                    } if !check_node_layout(item, text, line_offsets, def, content_indent + 2) => {
+                        return false;
+                    }
+                    _ => {}
+                }
+            }
+            true
+        }
+    }
+}
+
+/// Build a char-index → byte-offset table. `offsets[char_idx]` is the byte
+/// offset of the `char_idx`-th char. saphyr `Marker::index()` is a char index.
+fn char_to_byte_offsets(text: &str) -> Vec<usize> {
+    let mut out = Vec::with_capacity(text.chars().count() + 1);
+    out.push(0);
+    for (i, c) in text.char_indices() {
+        out.push(i + c.len_utf8());
+    }
+    out.push(text.len());
+    out
+}
+
 /// Event receiver that builds CustomNode AST
 struct AstReceiver<'a> {
     yaml_text: &'a str,
     /// Pre-computed byte offsets for each line start (O(1) line access)
     line_offsets: Vec<usize>,
+    /// Char-index → byte-offset table; `Some` only for non-ASCII input
+    char_offsets: Option<Vec<usize>>,
     comment_anchor_tracker: CommentAnchorTracker,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
@@ -263,6 +409,7 @@ enum ParseState {
         anchor_id: usize,
         tag: Option<Tag>,
         flow_style: bool,
+        start_byte: usize,
     },
     /// Building a sequence
     Sequence {
@@ -270,6 +417,7 @@ enum ParseState {
         anchor_id: usize,
         tag: Option<Tag>,
         flow_style: bool,
+        start_byte: usize,
     },
 }
 
@@ -285,6 +433,7 @@ impl<'a> AstReceiver<'a> {
         Self {
             yaml_text,
             line_offsets: compute_line_offsets(yaml_text),
+            char_offsets: (!yaml_text.is_ascii()).then(|| char_to_byte_offsets(yaml_text)),
             comment_anchor_tracker: CommentAnchorTracker::new(raw_comments, raw_anchors),
             stack: Vec::new(),
             result: None,
@@ -298,8 +447,14 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
-    /// Create a scalar node from value and style
-    fn create_scalar(&mut self, value: &str, style: &SaphyrScalarStyle, line: usize) -> CustomNode {
+    /// Create a scalar node from value, style, and its byte range in the source
+    fn create_scalar(
+        &mut self,
+        value: &str,
+        style: &SaphyrScalarStyle,
+        line: usize,
+        range: Range<usize>,
+    ) -> CustomNode {
         let scalar_style = match style {
             SaphyrScalarStyle::Plain => ScalarStyle::Plain,
             SaphyrScalarStyle::SingleQuoted => ScalarStyle::SingleQuoted,
@@ -355,7 +510,15 @@ impl<'a> AstReceiver<'a> {
             anchor: None,
             tag: None,
             chomping,
-            source_range: None,
+            source_range: Some(range),
+        }
+    }
+
+    /// Convert a saphyr span (char-indexed markers) to a byte range
+    fn span_to_byte_range(&self, span: &Span) -> Range<usize> {
+        match &self.char_offsets {
+            None => span.start.index()..span.end.index(),
+            Some(t) => t[span.start.index()]..t[span.end.index()],
         }
     }
 
@@ -395,16 +558,11 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
-    /// Detect flow style by checking if the byte at the span position matches the expected character
+    /// Detect flow style by checking if the byte at the span start matches
     fn detect_flow_style(&self, span: &Span, expected_byte: u8) -> bool {
-        let line = span.start.line() - 1;
-        if line < self.line_offsets.len() {
-            let byte_offset = self.line_offsets[line] + span.start.col();
-            if byte_offset < self.yaml_text.len() {
-                return self.yaml_text.as_bytes()[byte_offset] == expected_byte;
-            }
-        }
-        false
+        let byte_offset = self.span_to_byte_range(span).start;
+        byte_offset < self.yaml_text.len()
+            && self.yaml_text.as_bytes()[byte_offset] == expected_byte
     }
 }
 
@@ -423,13 +581,14 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::Scalar(value, style, anchor_id, tag) => {
                 let line = span.start.line() - 1; // Convert to 0-indexed
+                let range = self.span_to_byte_range(&span);
 
                 // Find standalone comments before this line
                 let standalone = self
                     .comment_anchor_tracker
                     .find_standalone_before_line(line);
 
-                let mut node = self.create_scalar(&value, &style, line);
+                let mut node = self.create_scalar(&value, &style, line, range);
 
                 // Attach standalone comment if found
                 if let Some(comment) = standalone {
@@ -468,6 +627,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
                 let line = span.start.line() - 1;
                 let flow_style = self.detect_flow_style(&span, b'{');
+                let start_byte = self.span_to_byte_range(&span).start;
 
                 // Find standalone comments before this line
                 let standalone = self
@@ -490,6 +650,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     anchor_id,
                     tag: tag_obj,
                     flow_style,
+                    start_byte,
                 });
 
                 // Store standalone comment for when we pop
@@ -505,6 +666,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     anchor_id,
                     tag,
                     flow_style,
+                    start_byte,
                     ..
                 }) = self.stack.pop()
                 {
@@ -514,13 +676,30 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     // Get pending standalone comment
                     let comment = self.pending_standalone_comment.take();
 
+                    // Block containers span from their start to the last child's
+                    // end; flow containers span to the closing token (inclusive).
+                    let end = if !flow_style {
+                        pairs
+                            .iter()
+                            .flat_map(|(k, v)| {
+                                k.source_range()
+                                    .map(|r| r.end)
+                                    .into_iter()
+                                    .chain(v.source_range().map(|r| r.end))
+                            })
+                            .max()
+                            .unwrap_or_else(|| self.span_to_byte_range(&span).start)
+                    } else {
+                        self.span_to_byte_range(&span).end
+                    };
+
                     let mapping = CustomNode::Mapping {
                         pairs,
                         comment,
                         anchor,
                         tag,
                         flow_style,
-                        source_range: None,
+                        source_range: Some(start_byte..end),
                     };
                     self.push_node(mapping);
                 }
@@ -532,6 +711,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
                 let line = span.start.line() - 1;
                 let flow_style = self.detect_flow_style(&span, b'[');
+                let start_byte = self.span_to_byte_range(&span).start;
 
                 // Find standalone comments before this line
                 let standalone = self
@@ -553,6 +733,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     anchor_id,
                     tag: tag_obj,
                     flow_style,
+                    start_byte,
                 });
 
                 // Store standalone comment for when we pop
@@ -566,6 +747,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     anchor_id,
                     tag,
                     flow_style,
+                    start_byte,
                     ..
                 }) = self.stack.pop()
                 {
@@ -575,13 +757,24 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     // Get pending standalone comment
                     let comment = self.pending_standalone_comment.take();
 
+                    let end = if !flow_style {
+                        items
+                            .iter()
+                            .filter_map(|i| i.source_range().map(|r| r.end))
+                            .max()
+                            .unwrap_or_else(|| self.span_to_byte_range(&span).start)
+                    } else {
+                        // Flow containers span to the closing token (inclusive)
+                        self.span_to_byte_range(&span).end
+                    };
+
                     let seq = CustomNode::Sequence {
                         items,
                         comment,
                         anchor,
                         tag,
                         flow_style,
-                        source_range: None,
+                        source_range: Some(start_byte..end),
                     };
                     self.push_node(seq);
                 }
@@ -689,5 +882,124 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_scalar_byte_range() {
+        let (node, _) =
+            parse_with_options("key: value\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let CustomNode::Mapping { pairs, .. } = node else {
+            panic!()
+        };
+        let key = pairs.keys().next().unwrap();
+        let val = pairs.values().next().unwrap();
+        assert_eq!(key.source_range(), Some(&(0usize..3))); // "key"
+        assert_eq!(val.source_range(), Some(&(5usize..10))); // "value"
+    }
+
+    #[test]
+    fn test_mapping_range_spans_children() {
+        let (node, _) =
+            parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let CustomNode::Mapping {
+            pairs,
+            source_range,
+            ..
+        } = node
+        else {
+            panic!()
+        };
+        assert_eq!(source_range, Some(0usize..9)); // up to the last child ("1") end
+        let inner = pairs.values().next().unwrap();
+        let CustomNode::Mapping { pairs, .. } = inner else {
+            panic!()
+        };
+        assert_eq!(
+            pairs.values().next().unwrap().source_range(),
+            Some(&(8usize..9))
+        );
+    }
+
+    #[test]
+    fn test_non_ascii_byte_range() {
+        // '值' is 3 bytes; char index 5 != byte offset 7
+        let (node, _) =
+            parse_with_options("key: 值\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let CustomNode::Mapping { pairs, .. } = node else {
+            panic!()
+        };
+        assert_eq!(pairs.values().next().unwrap().source_range(), Some(&(5..8)));
+    }
+
+    #[test]
+    fn test_flow_mapping_range_includes_closing_token() {
+        let (node, _) =
+            parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
+        let CustomNode::Mapping { source_range, .. } = node else {
+            panic!()
+        };
+        assert_eq!(source_range, Some(0usize..6)); // covers "{a: 1}" incl. '}'
+    }
+
+    #[test]
+    fn test_splice_gate_default_layout_ok() {
+        let (_, ok) =
+            parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(ok);
+    }
+
+    #[test]
+    fn test_splice_gate_non_default_indent_rejected() {
+        let (_, ok) =
+            parse_with_options("a:\n    b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(!ok); // 4-space indent violates indent_mapping=2
+    }
+
+    #[test]
+    fn test_splice_gate_crlf_rejected() {
+        let (_, ok) =
+            parse_with_options("a: 1\r\nb: 2\r\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(!ok); // CRLF -> fallback (P1)
+    }
+
+    #[test]
+    fn test_splice_gate_bom_rejected() {
+        let (_, ok) =
+            parse_with_options("\u{FEFF}a: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(!ok); // BOM -> fallback (P1)
+    }
+
+    #[test]
+    fn test_splice_gate_nested_layout_ok() {
+        // nested mapping (indent_mapping) + sequence value (indent_sequence)
+        let (_, ok) = parse_with_options(
+            "a:\n  b:\n    c: 1\nd:\n  - 1\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        assert!(ok);
+    }
+
+    #[test]
+    fn test_splice_gate_compact_item_layout_ok() {
+        let (_, ok) =
+            parse_with_options("- a: 1\n  b: 2\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(ok);
+    }
+
+    #[test]
+    fn test_splice_gate_sequence_bad_indent_rejected() {
+        let (_, ok) =
+            parse_with_options("a:\n   - 1\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(!ok); // dash at col 3 instead of indent_sequence=2
+    }
+
+    #[test]
+    fn test_splice_gate_flow_doc_eligible() {
+        let (_, ok) = parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
+        assert!(ok); // flow docs stay eligible (only flow *regions* fall back)
     }
 }

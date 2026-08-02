@@ -120,6 +120,7 @@ mod pyrs_yaml {
                 max_depth,
                 allow_duplicate_keys,
             )
+            .map(|(ast, _)| ast)
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
                     let key = e.message.trim_start_matches("duplicate key: ");
@@ -274,6 +275,7 @@ mod pyrs_yaml {
                     self.max_depth,
                     self.allow_duplicate_keys,
                 )
+                .map(|(ast, _)| ast)
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
                         let key = e.message.trim_start_matches("duplicate key: ");
@@ -367,6 +369,7 @@ mod pyrs_yaml {
                     self.max_depth,
                     self.allow_duplicate_keys,
                 )
+                .map(|(ast, _)| ast)
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
                         let key = e.message.trim_start_matches("duplicate key: ");
@@ -810,6 +813,7 @@ mod pyrs_yaml {
             let schema_enum = parse_schema(schema)?;
             let new_ast = py.detach(|| {
                 crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000, false)
+                    .map(|(ast, _)| ast)
                     .map_err(|e| {
                         if e.line > 0 {
                             let msg = format_source_snippet(source, e.line, e.col, &e.message);
@@ -912,6 +916,7 @@ mod pyrs_yaml {
                 max_depth,
                 allow_duplicate_keys,
             )
+            .map(|(ast, _)| ast)
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
                     let key = e.message.trim_start_matches("duplicate key: ");
@@ -1019,6 +1024,7 @@ mod pyrs_yaml {
                 max_depth,
                 allow_duplicate_keys,
             )
+            .map(|(ast, _)| ast)
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
                     let key = e.message.trim_start_matches("duplicate key: ");

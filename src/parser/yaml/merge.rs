@@ -108,6 +108,35 @@ fn collect_merge_data(
     merged_pairs
 }
 
+/// Clear source ranges recursively on a node and its descendants.
+/// Merged-in pairs are cloned from an anchor's source location; their byte
+/// ranges point into the wrong text, so they must not be treated as layout
+/// verifiable or spliceable.
+fn clear_source_ranges(node: &mut CustomNode) {
+    match node {
+        CustomNode::Scalar { source_range, .. }
+        | CustomNode::Mapping { source_range, .. }
+        | CustomNode::Sequence { source_range, .. }
+        | CustomNode::Null { source_range, .. } => {
+            *source_range = None;
+        }
+        CustomNode::Alias { .. } => {}
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for v in pairs.values_mut() {
+                clear_source_ranges(v);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items.iter_mut() {
+                clear_source_ranges(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Collect merged pairs from a single anchor reference.
 fn collect_merged_pairs_for_anchor(
     name: &str,
@@ -118,7 +147,11 @@ fn collect_merged_pairs_for_anchor(
     if let Some(merged) = anchors.get(name) {
         for (k, v) in merged {
             if !pairs.contains_key(k) {
-                result.push((k.clone(), v.clone()));
+                let mut key = k.clone();
+                let mut value = v.clone();
+                clear_source_ranges(&mut key);
+                clear_source_ranges(&mut value);
+                result.push((key, value));
             }
         }
     }
