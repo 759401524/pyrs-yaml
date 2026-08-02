@@ -11,6 +11,7 @@ index-out-of-range: "インデックス %{index} は範囲外です（長さ=%{l
 index-not-integer: "インデックスは整数である必要があります"
 not-subscriptable: "YamlDocument はサブスクリプトできません"
 expected-str-or-bytes: "str または bytes が期待されます"
+expected-readable: "read() メソッドを持つオブジェクトが必要です"
 unsupported-type: "YAML 変換に対応していない Python 型です"
 invalid-utf8: "無効な UTF-8：%{detail}"
 max-depth-exceeded: "YAMLの最大深度を超えました (max=%{max_depth})"
