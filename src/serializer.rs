@@ -1,6 +1,7 @@
 use crate::ast::{Chomping, CustomNode, ScalarStyle, Tag};
 
 /// Serialization options
+#[derive(Debug, Clone, PartialEq)]
 pub struct SerializeOptions {
     pub indent_size: usize,
     pub explicit_start: bool,

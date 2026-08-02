@@ -15,6 +15,7 @@ use crate::ast::CustomNode;
 use crate::parser::yaml::YamlSchema;
 use crate::parser::StreamEvent;
 use crate::serializer::{to_yaml, to_yaml_with_options, SerializeOptions};
+use crate::splice::SpliceState;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -112,7 +113,7 @@ mod pyrs_yaml {
         };
 
         let schema_enum = parse_schema(schema)?;
-        let mut ast = py.detach(|| {
+        let (mut ast, splice_eligible) = py.detach(|| {
             crate::parser::parse_with_options(
                 &yaml_str,
                 resolve_merges,
@@ -120,7 +121,6 @@ mod pyrs_yaml {
                 max_depth,
                 allow_duplicate_keys,
             )
-            .map(|(ast, _)| ast)
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
                     let key = e.message.trim_start_matches("duplicate key: ");
@@ -145,13 +145,15 @@ mod pyrs_yaml {
             })
         })?;
         resolve_tags(&mut ast, py)?;
+        let source: Arc<str> = Arc::from(yaml_str);
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
-            source: Some(Arc::from(yaml_str)),
+            source: Some(source.clone()),
             version: "1.2".to_string(),
             revision: 0,
             source_dirty: false,
+            splice: splice_eligible.then(|| SpliceState::new(source)),
         })
     }
 
@@ -361,7 +363,7 @@ mod pyrs_yaml {
                     &[("detail", &e.to_string()), ("path", path)],
                 ))
             })?;
-            let ast = py.detach(|| {
+            let (ast, splice_eligible) = py.detach(|| {
                 crate::parser::parse_with_options(
                     &content,
                     resolve_merges,
@@ -369,7 +371,6 @@ mod pyrs_yaml {
                     self.max_depth,
                     self.allow_duplicate_keys,
                 )
-                .map(|(ast, _)| ast)
                 .map_err(|e| {
                     if e.message.contains("duplicate key") {
                         let key = e.message.trim_start_matches("duplicate key: ");
@@ -393,13 +394,15 @@ mod pyrs_yaml {
                     }
                 })
             })?;
+            let source: Arc<str> = Arc::from(content);
             Ok(YamlDocument {
                 ast,
                 schema: schema_enum,
-                source: Some(Arc::from(content)),
+                source: Some(source.clone()),
                 version: "1.2".to_string(),
                 revision: 0,
                 source_dirty: false,
+                splice: splice_eligible.then(|| SpliceState::new(source)),
             })
         }
 
@@ -438,15 +441,17 @@ mod pyrs_yaml {
                     }
                 })
             })?;
+            let source: Arc<str> = Arc::from(yaml);
             Ok(asts
                 .into_iter()
                 .map(|ast| YamlDocument {
                     ast,
                     schema: schema_enum,
-                    source: Some(Arc::from(yaml)),
+                    source: Some(source.clone()),
                     version: "1.2".to_string(),
                     revision: 0,
                     source_dirty: false,
+                    splice: None,
                 })
                 .collect())
         }
@@ -462,6 +467,28 @@ mod pyrs_yaml {
         #[allow(dead_code)] // consumed by later editing tasks (_*_path primitives)
         revision: u64, // bumped on every mutation (Node invalidation)
         source_dirty: bool, // lazy source re-serialization flag
+        /// Segment-splice accumulator for default-layout documents; `None`
+        /// when the doc is not splice-eligible or the state was consumed.
+        splice: Option<SpliceState>,
+    }
+
+    impl YamlDocument {
+        /// Non-`#[pymethod]` constructor used by benches (Task 7) and
+        /// integration tests: seeds the splice accumulator for default-layout
+        /// documents.
+        #[allow(dead_code)] // consumed by benches in Task 7
+        pub(crate) fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
+            let splice_eligible = crate::parser::check_default_layout(&ast, &source);
+            YamlDocument {
+                ast,
+                schema: crate::parser::yaml::YamlSchema::Core,
+                source: Some(source.clone()),
+                version: "1.2".to_string(),
+                revision: 0,
+                source_dirty: false,
+                splice: splice_eligible.then(|| SpliceState::new(source)),
+            }
+        }
     }
 
     #[pymethods]
@@ -469,20 +496,29 @@ mod pyrs_yaml {
         /// Lazily re-serialize the AST into `source` if edits have occurred.
         fn flush_source(&mut self, py: Python) -> PyResult<()> {
             if self.source_dirty {
-                let new_yaml = py
-                    .detach(|| {
-                        crate::serializer::to_yaml_with_options(
-                            &self.ast,
-                            &SerializeOptions::default(),
-                        )
-                    })
-                    .map_err(|e| {
-                        YamlSerializeError::new_err(format_i18n_error(
-                            "yaml-serialize-error",
-                            &[("detail", &e)],
-                        ))
-                    })?;
+                // Splice path: replay the accumulated segments against the
+                // original source. Runs at most once — the state is consumed
+                // (set to None) whether or not it materializes, so a later
+                // burst falls back to a full serialize.
+                let spliced = py.detach(|| self.splice.as_ref().and_then(|s| s.materialize()));
+                let new_yaml = match spliced {
+                    Some(text) => text,
+                    None => py
+                        .detach(|| {
+                            crate::serializer::to_yaml_with_options(
+                                &self.ast,
+                                &SerializeOptions::default(),
+                            )
+                        })
+                        .map_err(|e| {
+                            YamlSerializeError::new_err(format_i18n_error(
+                                "yaml-serialize-error",
+                                &[("detail", &e)],
+                            ))
+                        })?,
+                };
                 self.source = Some(Arc::from(new_yaml));
+                self.splice = None;
                 self.source_dirty = false;
             }
             Ok(())
@@ -697,14 +733,19 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            let _unit = py
-                .detach(|| {
-                    let src = self.source.as_deref().unwrap_or("");
-                    editing::set_path(&mut self.ast, &segs, new_node, true, src)
-                })
-                .map_err(|e| {
-                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
-                })?;
+            py.detach(|| -> Result<(), String> {
+                let src = self.source.as_deref().unwrap_or("");
+                let unit = editing::set_path(&mut self.ast, &segs, new_node, true, src)?;
+                if let Some(state) = self.splice.as_mut() {
+                    if state.apply(&unit).is_err() {
+                        self.splice = None;
+                    }
+                }
+                Ok(())
+            })
+            .map_err(|e| {
+                YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+            })?;
             self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
@@ -724,14 +765,19 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            let _unit = py
-                .detach(|| {
-                    let src = self.source.as_deref().unwrap_or("");
-                    editing::insert_path(&mut self.ast, &segs, index, new_node, src)
-                })
-                .map_err(|e| {
-                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
-                })?;
+            py.detach(|| -> Result<(), String> {
+                let src = self.source.as_deref().unwrap_or("");
+                let unit = editing::insert_path(&mut self.ast, &segs, index, new_node, src)?;
+                if let Some(state) = self.splice.as_mut() {
+                    if state.apply(&unit).is_err() {
+                        self.splice = None;
+                    }
+                }
+                Ok(())
+            })
+            .map_err(|e| {
+                YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+            })?;
             self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
@@ -750,14 +796,19 @@ mod pyrs_yaml {
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
-            let _unit = py
-                .detach(|| {
-                    let src = self.source.as_deref().unwrap_or("");
-                    editing::append_path(&mut self.ast, &segs, new_node, src)
-                })
-                .map_err(|e| {
-                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
-                })?;
+            py.detach(|| -> Result<(), String> {
+                let src = self.source.as_deref().unwrap_or("");
+                let unit = editing::append_path(&mut self.ast, &segs, new_node, src)?;
+                if let Some(state) = self.splice.as_mut() {
+                    if state.apply(&unit).is_err() {
+                        self.splice = None;
+                    }
+                }
+                Ok(())
+            })
+            .map_err(|e| {
+                YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+            })?;
             self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
@@ -770,14 +821,19 @@ mod pyrs_yaml {
                 .map(|s| editing::Segment::from_py(py, s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-            let _unit = py
-                .detach(|| {
-                    let src = self.source.as_deref().unwrap_or("");
-                    editing::delete_path(&mut self.ast, &segs, src)
-                })
-                .map_err(|e| {
-                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
-                })?;
+            py.detach(|| -> Result<(), String> {
+                let src = self.source.as_deref().unwrap_or("");
+                let unit = editing::delete_path(&mut self.ast, &segs, src)?;
+                if let Some(state) = self.splice.as_mut() {
+                    if state.apply(&unit).is_err() {
+                        self.splice = None;
+                    }
+                }
+                Ok(())
+            })
+            .map_err(|e| {
+                YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+            })?;
             self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
@@ -795,14 +851,19 @@ mod pyrs_yaml {
                 .map(|s| editing::Segment::from_py(py, s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-            let _unit = py
-                .detach(|| {
-                    let src = self.source.as_deref().unwrap_or("");
-                    editing::rename_path(&mut self.ast, &segs, new_key, src)
-                })
-                .map_err(|e| {
-                    YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
-                })?;
+            py.detach(|| -> Result<(), String> {
+                let src = self.source.as_deref().unwrap_or("");
+                let unit = editing::rename_path(&mut self.ast, &segs, new_key, src)?;
+                if let Some(state) = self.splice.as_mut() {
+                    if state.apply(&unit).is_err() {
+                        self.splice = None;
+                    }
+                }
+                Ok(())
+            })
+            .map_err(|e| {
+                YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)]))
+            })?;
             self.revision = self.revision.wrapping_add(1);
             self.source_dirty = true;
             Ok(())
@@ -928,7 +989,7 @@ mod pyrs_yaml {
                 &[("detail", &e.to_string()), ("path", path)],
             ))
         })?;
-        let mut ast = py.detach(|| {
+        let (mut ast, splice_eligible) = py.detach(|| {
             crate::parser::parse_with_options(
                 &content,
                 true,
@@ -936,7 +997,6 @@ mod pyrs_yaml {
                 max_depth,
                 allow_duplicate_keys,
             )
-            .map(|(ast, _)| ast)
             .map_err(|e| {
                 if e.message.contains("duplicate key") {
                     let key = e.message.trim_start_matches("duplicate key: ");
@@ -961,13 +1021,15 @@ mod pyrs_yaml {
             })
         })?;
         resolve_tags(&mut ast, py)?;
+        let source: Arc<str> = Arc::from(content);
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
-            source: Some(Arc::from(content)),
+            source: Some(source.clone()),
             version: "1.2".to_string(),
             revision: 0,
             source_dirty: false,
+            splice: splice_eligible.then(|| SpliceState::new(source)),
         })
     }
 
@@ -1013,15 +1075,17 @@ mod pyrs_yaml {
                 }
             })
         })?;
+        let source: Arc<str> = Arc::from(yaml);
         Ok(asts
             .into_iter()
             .map(|ast| YamlDocument {
                 ast,
                 schema: schema_enum,
-                source: Some(Arc::from(yaml)),
+                source: Some(source.clone()),
                 version: "1.2".to_string(),
                 revision: 0,
                 source_dirty: false,
+                splice: None,
             })
             .collect())
     }
