@@ -181,9 +181,10 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 | 2 | **Early termination** — consumer stops ⇒ stop reading further chunks (existing `should_continue` semantics) | Rust | 🔴 | |
 | 3 | **Memory-bound test** — 100MB synthetic file: peak RSS < ~64MB + constant | Rust | 🔴 | vs current ~input size + full AST + full event vec |
 | 4 | **Event parity property test** — stream output equals `parse_stream` on the same input, event by event | Rust | 🟡 | |
-| 5 | **Docs** — en/zh/ja/ko | Docs | 🟡 | |
+| 5 | **Line-offsets cache** — `compute_line_offsets(source)` (src/parser/yaml/comment.rs:14) rescanned on every edit call (src/py/editing/mod.rs:28); pass/cache offsets into the 5 edit primitives so a burst costs O(N+edit) not O(N×edit) | Rust | 🟡 | Requires changing the 5 edit-function signatures (Ask First per AGENTS.md); deferred from v0.11.1 closure — single-burst model gives limited measured gain, revisit with streaming |
+| 6 | **Docs** — en/zh/ja/ko | Docs | 🟡 | |
 
-**Design decisions (2026-08-02)**: callback-push `feed(&[u8])` model rejected for v1 (borrow-checker pain across feed calls; stdin/network later). mmap-based I/O deferred (abi3 portability). Existing string-based `parse_stream(yaml: str, on_event=...)` stays for in-memory compat.
+**Design decisions (2026-08-02)**: callback-push `feed(&[u8])` model rejected for v1 (borrow-checker pain across feed calls; stdin/network later). mmap-based I/O deferred (abi3 portability). Existing string-based `parse_stream(yaml: str, on_event=...)` stays for in-memory compat. Line-offsets cache (v0.11.2 #5) recorded from v0.11.1 closure — CodSpeed walltime (2026-08-02, same-runner 3-branch) showed no real edit regression, so it is an architectural optimization, not a fix.
 
 **Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
 
