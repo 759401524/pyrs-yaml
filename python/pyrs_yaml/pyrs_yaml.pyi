@@ -15,6 +15,14 @@ class StreamIterator:
 @final
 class YAML:
     def __new__(cls, /, typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> YAML: ...
+    def load_stream(self, /, file_obj: "Any") -> "YamlStream":
+        """
+        惰性事件迭代器：从 file_obj（read() 返回 str 或 bytes）增量读取。
+        """
+    def load_stream_file(self, /, path: "str") -> "YamlStream":
+        """
+        惰性事件迭代器：从文件路径增量读取（Rust File，无 GIL 阻塞）。
+        """
     def parse(self, /, yaml: "str | bytes") -> "YamlDocument": ...
     def parse_all_docs(self, /, yaml: "str") -> "list[YamlDocument]": ...
     def parse_file(self, /, path: "str") -> "YamlDocument": ...
