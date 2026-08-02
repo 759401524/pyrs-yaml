@@ -242,7 +242,7 @@ pub(crate) fn convert_tag(tag: &saphyr_parser::Tag) -> Tag {
 /// back (Task 4 P4). CRLF/BOM docs and docs whose layout can't be verified
 /// (missing source ranges: merged keys, aliases, programmatic AST) always fall
 /// back (P1).
-fn check_default_layout(node: &CustomNode, text: &str) -> bool {
+pub(crate) fn check_default_layout(node: &CustomNode, text: &str) -> bool {
     if text.contains('\r') || text.starts_with('\u{FEFF}') {
         return false;
     }

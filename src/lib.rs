@@ -7,6 +7,7 @@ pub mod i18n;
 pub mod parser;
 pub mod py;
 pub mod serializer;
+pub mod splice;
 
 #[cfg(test)]
 mod integration;

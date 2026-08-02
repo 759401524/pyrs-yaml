@@ -18,8 +18,13 @@ use std::ops::Range;
 #[derive(Debug, Clone, PartialEq)]
 pub enum DirtyKind {
     /// Regenerate the pair/item/root text at this byte range (line-aligned,
-    /// includes the trailing newline), then splice the serialized text in.
-    Region { range: Range<usize>, indent: usize },
+    /// includes the trailing newline), then splice `text` in. `text` is the
+    /// serialized pair/item/root produced against the POST-mutation tree.
+    Region {
+        range: Range<usize>,
+        indent: usize,
+        text: String,
+    },
     /// Insert `text` at byte offset (original source space).
     Insert { at: usize, text: String },
     /// Remove bytes; range extends upward over the node's preceding
@@ -379,10 +384,16 @@ pub fn set_path(
     if segments.is_empty() {
         let eligible = eligible_path(&path_nodes(node, segments).map_err(nav_err)?);
         *node = new_value;
+        // Whole-document replacement: regenerate against the POST-mutation tree.
+        let text = crate::serializer::to_yaml_with_options(
+            &*node,
+            &crate::serializer::SerializeOptions::default(),
+        )?;
         return Ok(DirtyUnit {
             kind: DirtyKind::Region {
                 range: 0..source.len(),
                 indent: 0,
+                text,
             },
             eligible,
         });
@@ -441,6 +452,17 @@ pub fn set_path(
                     } else {
                         pairs.insert(stored_key, new_value);
                     }
+                    // Regenerate the pair text against the POST-mutation tree
+                    // (key/value may carry comment/anchor/style metadata).
+                    let text = regenerate_region_text(
+                        node,
+                        segments,
+                        parent_segments,
+                        None,
+                        &compact_override,
+                        old_indent,
+                        depth,
+                    )?;
                     Ok(DirtyUnit {
                         kind: region_unit(
                             old_key_start,
@@ -449,6 +471,7 @@ pub fn set_path(
                             &line_offsets,
                             source,
                             compact_override,
+                            &text,
                         ),
                         eligible,
                     })
@@ -494,8 +517,13 @@ pub fn set_path(
             let raw_start = raw.start;
             let range = line_aligned(raw, &line_offsets, source);
             let indent = line_indent(&line_offsets, source, raw_start);
+            let text = crate::serializer::item_to_string(&items[idx], indent, true, depth)?;
             Ok(DirtyUnit {
-                kind: DirtyKind::Region { range, indent },
+                kind: DirtyKind::Region {
+                    range,
+                    indent,
+                    text,
+                },
                 eligible,
             })
         }
@@ -658,13 +686,14 @@ fn eligible_path(path: &[&CustomNode]) -> bool {
 /// P2: the innermost node on the path whose parent is a `Sequence` and which
 /// serializes in the compact `- key: value` form. When present, the edit
 /// covers the WHOLE item and regeneration goes through `write_sequence_item`.
-fn compact_item_ancestor<'a>(path: &'a [&'a CustomNode]) -> Option<&'a CustomNode> {
+/// Returns `(path_index, node)`; `segments[..path_index]` reaches the item.
+fn compact_item_ancestor<'a>(path: &'a [&'a CustomNode]) -> Option<(usize, &'a CustomNode)> {
     for i in 1..path.len() {
         let node = path[i];
         let parent = path[i - 1];
         if matches!(parent, CustomNode::Sequence { .. }) && crate::serializer::is_compact_item(node)
         {
-            return Some(node);
+            return Some((i, node));
         }
     }
     None
@@ -679,44 +708,98 @@ fn region_unit(
     pair_indent: usize,
     line_offsets: &[usize],
     source: &str,
-    compact_override: Option<(Range<usize>, usize)>,
+    compact_override: Option<(Range<usize>, usize, usize)>,
+    text: &str,
 ) -> DirtyKind {
-    if let Some((range, indent)) = compact_override {
-        DirtyKind::Region { range, indent }
+    if let Some((range, indent, _)) = compact_override {
+        DirtyKind::Region {
+            range,
+            indent,
+            text: text.to_string(),
+        }
     } else {
         let range = line_aligned(key_start..value_end, line_offsets, source);
         DirtyKind::Region {
             range,
             indent: pair_indent,
+            text: text.to_string(),
         }
     }
 }
 
 /// P4 eligibility and the P2 compact-item override, computed from immutable
 /// borrows only so `navigate_mut` can run afterwards. Runs BEFORE the
-/// mutation (D4). The override is a value (`Range` + indent), never a
-/// reference into the tree.
+/// mutation (D4). The override is a value (`Range` + indent + the path index
+/// of the compact item), never a reference into the tree.
 fn precompute(
     node: &CustomNode,
     segments: &[Segment<'_>],
     parent_segments: &[Segment<'_>],
     line_offsets: &[usize],
     source: &str,
-) -> (bool, Option<(Range<usize>, usize)>) {
+) -> (bool, Option<(Range<usize>, usize, usize)>) {
     let path = match path_nodes(node, segments) {
         Ok(p) => p,
         Err(_) => path_nodes(node, parent_segments).unwrap_or_default(),
     };
     let eligible = eligible_path(&path);
-    let compact_override = compact_item_ancestor(&path)
-        .and_then(|item| item.source_range().cloned())
-        .map(|r| {
+    let compact_override = compact_item_ancestor(&path).and_then(|(idx, item)| {
+        item.source_range().cloned().map(|r| {
             (
                 line_aligned(r.clone(), line_offsets, source),
                 line_indent(line_offsets, source, r.start),
+                idx,
             )
-        });
+        })
+    });
     (eligible, compact_override)
+}
+
+/// Regenerate the serialized text of the region an edit covers, against the
+/// POST-mutation tree. `indent` is the pair line indent for the plain case and
+/// the dash indent for a compact-item override; `depth` feeds the serializer.
+fn regenerate_region_text(
+    node: &CustomNode,
+    segments: &[Segment<'_>],
+    parent_segments: &[Segment<'_>],
+    new_key_override: Option<&str>,
+    compact_override: &Option<(Range<usize>, usize, usize)>,
+    indent: usize,
+    depth: usize,
+) -> Result<String, String> {
+    if let Some((_, override_indent, prefix_len)) = compact_override {
+        // Compact item: the whole item is the region; re-serialize it at its
+        // dash indent (which may differ from the pair line indent). The item
+        // serialization naturally includes a renamed key, so the override
+        // takes precedence over `new_key_override`.
+        let path = path_nodes(node, &segments[..*prefix_len]).map_err(nav_err)?;
+        let item = path.last().ok_or_else(|| "edit-error".to_string())?;
+        crate::serializer::item_to_string(item, *override_indent, true, depth)
+    } else {
+        // Plain pair: re-locate the (possibly renamed) key under the parent
+        // mapping and re-serialize the pair against the post-mutation tree.
+        let parent_path = path_nodes(node, parent_segments).map_err(nav_err)?;
+        let parent = parent_path.last().ok_or_else(|| "edit-error".to_string())?;
+        match parent {
+            CustomNode::Mapping { pairs, .. } => {
+                let key_text = match new_key_override {
+                    Some(k) => k,
+                    None => match segments.last() {
+                        Some(Segment::Key(k)) => k.as_ref(),
+                        _ => return Err("edit-error".to_string()),
+                    },
+                };
+                let key_node = CustomNode::plain_scalar(key_text.to_string());
+                let idx = mapping_key_index(pairs, &key_node)
+                    .ok_or_else(|| "missing-path".to_string())?;
+                let (k, v) = pairs
+                    .get_index(idx)
+                    .ok_or_else(|| "missing-path".to_string())?;
+                crate::serializer::pair_to_string(k, v, indent, true, depth)
+            }
+            _ => Err("edit-error".to_string()),
+        }
+    }
 }
 /// Insert `value` at `index` in the sequence reached by `segments`.
 /// `index == len` appends; negative `index` counts from the end. The final
@@ -854,10 +937,8 @@ pub fn delete_path(
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
     let last = &last[0];
     // D4: eligibility is computed on the PRE-mutation tree.
-    let eligible = {
-        let path = path_nodes(node, segments).map_err(nav_err)?;
-        eligible_path(&path)
-    };
+    let (eligible, compact_override) =
+        precompute(node, segments, parent_segments, &line_offsets, source);
     let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
@@ -866,6 +947,15 @@ pub fn delete_path(
             let key_node = CustomNode::plain_scalar(k.as_ref());
             let idx =
                 mapping_key_index(pairs, &key_node).ok_or_else(|| "missing-path".to_string())?;
+            // Deleting the FIRST key of a compact `- k: v` item removes its dash
+            // line; the leftover continuation lines would lose the `- ` marker.
+            // The splice would emit orphaned bytes, so force a full-serialize
+            // fallback for this shape (every other deletion splices cleanly).
+            let compact_first_delete = compact_override
+                .as_ref()
+                .map(|(_, _, prefix_len)| *prefix_len == segments.len() - 1 && idx == 0)
+                .unwrap_or(false);
+            let eligible = eligible && !compact_first_delete;
             // Capture the pair span BEFORE mutation; P3 then folds in any
             // standalone comment lines directly above it.
             let raw = pairs.get_index(idx).map(|(k, v)| {
@@ -914,6 +1004,7 @@ pub fn rename_path(
     }
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
     let last = &last[0];
+    let depth = segments.len().saturating_sub(1);
     let (eligible, compact_override) =
         precompute(node, segments, parent_segments, &line_offsets, source);
     let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
@@ -959,6 +1050,15 @@ pub fn rename_path(
                 .ok_or_else(|| "missing-path".to_string())?;
             pairs.shift_insert(idx, new_key_node, value_node);
             let (key_start, value_end) = old_range.unwrap_or((0, 0));
+            let text = regenerate_region_text(
+                node,
+                segments,
+                parent_segments,
+                Some(new_key),
+                &compact_override,
+                old_indent,
+                depth,
+            )?;
             Ok(DirtyUnit {
                 kind: region_unit(
                     key_start,
@@ -967,6 +1067,7 @@ pub fn rename_path(
                     &line_offsets,
                     source,
                     compact_override,
+                    &text,
                 ),
                 eligible,
             })
@@ -1119,7 +1220,7 @@ mod tests {
         )
         .unwrap();
         match unit.kind {
-            DirtyKind::Region { range, indent } => {
+            DirtyKind::Region { range, indent, .. } => {
                 assert_eq!(range, 5..10);
                 assert_eq!(indent, 0);
             }
