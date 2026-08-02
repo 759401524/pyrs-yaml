@@ -464,8 +464,7 @@ mod pyrs_yaml {
         schema: YamlSchema,
         source: Option<Arc<str>>,
         version: String,
-        #[allow(dead_code)] // consumed by later editing tasks (_*_path primitives)
-        revision: u64, // bumped on every mutation (Node invalidation)
+        revision: u64,      // bumped on every mutation (Node invalidation)
         source_dirty: bool, // lazy source re-serialization flag
         /// Segment-splice accumulator for default-layout documents; `None`
         /// when the doc is not splice-eligible or the state was consumed.

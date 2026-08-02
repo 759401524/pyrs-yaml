@@ -77,6 +77,8 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 - Implement `INPUT_TYPE`/`OUTPUT_TYPE` for all PyO3 types
 - Use `#[pyo3(signature = "...")]` with double-quoted types
 - Run prek hooks before committing
+- **Bench design**: Include setup costs (e.g. `ast.clone()`) in both sides of the comparison, or document them as external
+- **pyo3 visibility**: `#[pyclass]` methods may need `#[allow(dead_code)]` even when `pub` — Rust visibility != Python visibility
 
 ⚠️ Ask First:
 

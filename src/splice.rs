@@ -534,4 +534,19 @@ mod tests {
         assert!(!unit.eligible);
         assert!(splice2.apply(&unit).is_err());
     }
+
+    #[test]
+    fn root_scalar_replacement_splices_correctly() {
+        let mut s = SpliceState::new(Arc::from("hello\n"));
+        let unit = DirtyUnit {
+            kind: DirtyKind::Region {
+                range: 0..6,
+                indent: 0,
+                text: "world\n".into(),
+            },
+            eligible: true,
+        };
+        s.apply(&unit).unwrap();
+        assert_eq!(s.materialize().unwrap(), "world\n");
+    }
 }
