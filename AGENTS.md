@@ -104,6 +104,8 @@ Learnings from v0.10.0 (2026-08-01) — three pitfalls, each is a separate regre
 
 Release checklist: bump `Cargo.toml` + `Cargo.lock`, rename `[Unreleased]` → `[X.Y.Z]` (with date) in `CHANGELOG.md` + `docs/{en,ja,ko,zh}/changelog.md` (do NOT skip `docs/en/changelog.md` — it is the canonical English mirror and feeds the deployed docs site; v0.7.0–v0.10.0 were silently missed and only caught during post-release site verification), add a `ROADMAP.md` table row, then PR → CI → rebase merge → lightweight tag → watch Publish run (Release job publishes to PyPI only when all build jobs pass).
 
+Post-release verification (mandatory): confirm the deployed docs changelog shows the new version (`https://759401524.github.io/pyrs-yaml/en/changelog/`) — a stale page means a docs mirror was missed; smoke-test the PyPI wheel in a clean venv (`__version__`, parse/edit/round-trip, `py.typed` + `.pyi` present). When interpreting CodSpeed comparisons, check for runner hardware differences first (Simulation-mode flags that ran across a CPU change are hardware-attributable, not code regressions).
+
 ## Git Workflow and Engineering Conventions
 
 This section delineates the core principles governing version control, commit quality, and merge processes. All automated agents and developers are required to strictly adhere to these conventions to maintain repository integrity, traceability, and overall engineering excellence.
