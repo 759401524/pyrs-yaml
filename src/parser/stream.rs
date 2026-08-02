@@ -612,4 +612,93 @@ mod tests {
             assert!(event.line < 100);
         }
     }
+
+    #[test]
+    fn spike_new_from_iter_matches_str() {
+        // 项 1：new_from_iter 与 new_from_str 事件序列一致（值/样式/line/col 逐项相等）
+        let mut p1 = SaphyrParser::new_from_str("a: 1\n");
+        let mut p2 = SaphyrParser::new_from_iter("a: 1\n".chars());
+        loop {
+            match (p1.next_event(), p2.next_event()) {
+                (None, None) => break,
+                (Some(Ok(e1)), Some(Ok(e2))) => assert_eq!(e1, e2),
+                _ => panic!("spike 1: 序列不一致 (streams diverged)"),
+            }
+        }
+    }
+
+    #[test]
+    fn spike_alias_event_carries_only_id() {
+        // 项 1 附加：Event::Alias(usize) 只带 id（设计 A'''' 验证）
+        let mut p = SaphyrParser::new_from_iter("a: &x 1\nb: *x\n".chars());
+        let mut alias_ids = Vec::new();
+        while let Some(Ok((event, _))) = p.next_event() {
+            if let Event::Alias(id) = event {
+                alias_ids.push(id);
+            }
+        }
+        assert_eq!(alias_ids.len(), 1);
+        assert_ne!(alias_ids[0], 0);
+    }
+
+    #[test]
+    fn spike_eof_returns_none() {
+        // 项 2：EOF 后 next_event() → None（stream_end_emitted flag）
+        let mut p = SaphyrParser::new_from_iter("a: 1\n".chars());
+        let mut count = 0;
+        while p.next_event().is_some() {
+            count += 1;
+        }
+        assert!(count > 2);
+        assert!(p.next_event().is_none());
+        assert!(p.next_event().is_none());
+    }
+
+    #[test]
+    fn spike_multidoc_sequence() {
+        // 项 2a：多文档 `--- a\n--- b\n` 事件序列 = StreamStart→DocStart→…→DocEnd→…→StreamEnd
+        let mut p = SaphyrParser::new_from_iter("--- a\n--- b\n".chars());
+        let mut types = Vec::new();
+        while let Some(Ok((event, _))) = p.next_event() {
+            types.push(match event {
+                Event::StreamStart => "SS",
+                Event::StreamEnd => "SE",
+                Event::DocumentStart(_) => "DS",
+                Event::DocumentEnd => "DE",
+                Event::Scalar(..) => "SC",
+                _ => "?",
+            });
+        }
+        assert_eq!(types, ["SS", "DS", "SC", "DE", "DS", "SC", "DE", "SE"]);
+    }
+
+    #[test]
+    fn spike_empty_input_yields_stream_start_end() {
+        // 项 2b：空输入 → [StreamStart, StreamEnd]（与字符串 parse_stream 的 [] 不同，架构性差异）
+        let mut p = SaphyrParser::new_from_iter("".chars());
+        let mut types = Vec::new();
+        while let Some(Ok((event, _))) = p.next_event() {
+            types.push(match event {
+                Event::StreamStart => "SS",
+                Event::StreamEnd => "SE",
+                other => panic!("unexpected: {:?}", other),
+            });
+        }
+        assert_eq!(types, ["SS", "SE"]);
+    }
+
+    #[test]
+    fn spike_crlf_line_col() {
+        // 项 4：CRLF 输入 line/col 正确（skip_linebreak → 单次 line 增量，scanner.rs:619-625）。
+        // 实测结论（spike）：key 与 value 都是 scalar 事件——key 在 col 0，value 在 col 3；
+        // line 1-indexed；每条 CRLF 使 line 仅 +1。
+        let mut p = SaphyrParser::new_from_iter("a: 1\r\nb: 2\r\n".chars());
+        let mut cols = Vec::new();
+        while let Some(Ok((event, span))) = p.next_event() {
+            if matches!(event, Event::Scalar(..)) {
+                cols.push((span.start.line(), span.start.col()));
+            }
+        }
+        assert_eq!(cols, [(1, 0), (1, 3), (2, 0), (2, 3)]);
+    }
 }
