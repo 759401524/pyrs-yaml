@@ -10,13 +10,13 @@ use pyo3::types::PyDict;
 use saphyr_parser::{BufferedInput, Parser as SaphyrParser, Span};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 
 use crate::parser::stream::event_to_stream_event;
 use crate::parser::{StreamEvent, StreamEventType};
 use crate::py::stream_events::stream_event_to_py_dict;
 
 /// Source of bytes for [`ChunkCharIter`].
-#[allow(dead_code)] // Task 3 提供基础设施；Task 4 YamlStream 消费后移除
 pub(crate) enum InputSrc {
     /// Python file-like object (`Py<PyAny>`, Ungil) — `read(chunk_size)` per fill.
     PyObj(Py<PyAny>),
@@ -25,12 +25,10 @@ pub(crate) enum InputSrc {
 }
 
 /// Default chunk size for streaming reads (64 KiB).
-#[allow(dead_code)] // Task 3 提供基础设施；Task 4 YamlStream 消费后移除
 pub(crate) const DEFAULT_CHUNK_SIZE: usize = 64 * 1024;
 
 /// Char iterator that reads from [`InputSrc`] in chunks, splitting on UTF-8
 /// boundaries and reporting read/decode failures via [`ChunkCharIter::take_error`].
-#[allow(dead_code)] // Task 3 提供基础设施；Task 4 YamlStream 消费后移除
 pub(crate) struct ChunkCharIter {
     src: InputSrc,
     pending: Vec<u8>, // ≤3 字节的不完整 UTF-8 尾部
@@ -38,9 +36,11 @@ pub(crate) struct ChunkCharIter {
     chunk_size: usize,
     eof: bool,
     error: Option<String>,
+    /// Shared error slot — YamlStream reads reader failures (invalid UTF-8,
+    /// read errors) here once the parser sees a clean EOF.
+    error_slot: Option<Arc<Mutex<Option<String>>>>,
 }
 
-#[allow(dead_code)] // Task 3 提供基础设施；Task 4 YamlStream 消费后移除
 impl ChunkCharIter {
     pub(crate) fn new(src: InputSrc, chunk_size: usize) -> Self {
         Self {
@@ -50,7 +50,13 @@ impl ChunkCharIter {
             chunk_size,
             eof: false,
             error: None,
+            error_slot: None,
         }
+    }
+
+    /// Attach a shared error slot; subsequent reader errors are mirrored there.
+    fn attach_error_slot(&mut self, slot: Arc<Mutex<Option<String>>>) {
+        self.error_slot = Some(slot);
     }
 
     #[cfg(test)]
@@ -63,11 +69,24 @@ impl ChunkCharIter {
             chunk_size: 4,
             eof: true,
             error: Some(msg.to_string()),
+            error_slot: None,
         }
     }
 
-    /// Take the pending error (once).
-    pub(crate) fn take_error(&mut self) -> Option<String> {
+    fn set_error(&mut self, msg: String) {
+        self.eof = true;
+        self.error = Some(msg.clone());
+        if let Some(slot) = &self.error_slot {
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(msg);
+            }
+        }
+    }
+
+    /// Take the pending error (once). Reader errors now surface to YamlStream
+    /// via the shared slot; this accessor is test-only.
+    #[cfg(test)]
+    fn take_error(&mut self) -> Option<String> {
         self.error.take()
     }
 
@@ -82,8 +101,7 @@ impl ChunkCharIter {
                     Ok(0) => self.eof = true,
                     Ok(n) => self.push_bytes(&chunk[..n]),
                     Err(e) => {
-                        self.eof = true;
-                        self.error = Some(format!("Failed to read file: {}", e));
+                        self.set_error(format!("Failed to read file: {}", e));
                     }
                 }
             }
@@ -119,14 +137,20 @@ impl ChunkCharIter {
             }
         });
         match result {
-            ReadResult::Bytes(bytes) => self.push_bytes(&bytes),
+            ReadResult::Bytes(bytes) => {
+                if bytes.is_empty() {
+                    // Python 文件对象 read() 在 EOF 返回 b"" / ""——同 File::read
+                    // 的 Ok(0)，必须置 eof 否则 next() 无限循环。
+                    self.eof = true;
+                } else {
+                    self.push_bytes(&bytes);
+                }
+            }
             ReadResult::BadType => {
-                self.eof = true;
-                self.error = Some("Expected str or bytes from file object read()".to_string());
+                self.set_error("Expected str or bytes from file object read()".to_string());
             }
             ReadResult::Failed(msg) => {
-                self.eof = true;
-                self.error = Some(format!("file read failed: {}", msg));
+                self.set_error(format!("file read failed: {}", msg));
             }
         }
     }
@@ -151,8 +175,7 @@ impl ChunkCharIter {
                 match e.error_len() {
                     // 完整非法序列（拼接更多字节也无法修复）→ 报错。
                     Some(_) => {
-                        self.eof = true;
-                        self.error = Some(format!("Invalid UTF-8: {:?}", rest));
+                        self.set_error(format!("Invalid UTF-8: {:?}", rest));
                     }
                     // 不完整多字节序列尾部（≤3 字节）→ 留待下一 chunk 拼接。
                     None => self.pending = rest.to_vec(),
@@ -171,7 +194,7 @@ impl Iterator for ChunkCharIter {
             }
             if !self.pending.is_empty() && self.eof {
                 // EOF 时遗留的不完整 UTF-8 尾部 → 截断错误。
-                self.error = Some(format!("Invalid UTF-8 (truncated): {:?}", self.pending));
+                self.set_error(format!("Invalid UTF-8 (truncated): {:?}", self.pending));
                 self.pending.clear();
                 return None;
             }
@@ -190,23 +213,29 @@ impl Iterator for ChunkCharIter {
 /// exactly once as a `YamlParseError`; after an error or `close()` the
 /// iterator returns `None` (StopIteration).
 #[pyclass(module = "pyrs_yaml")]
-#[allow(dead_code)] // Task 4 提供 YamlStream；Task 5 YAML.load_stream 消费后移除
 pub(crate) struct YamlStream {
     parser: Option<SaphyrParser<'static, BufferedInput<ChunkCharIter>>>,
     anchor_map: HashMap<usize, String>,
     finished: bool,
     pending_error: Option<String>,
+    /// Shared reader-error slot (mirrors ChunkCharIter.error). The iterator is
+    /// moved into the parser, so this is how YamlStream observes reader
+    /// failures (invalid UTF-8 / read errors) at clean EOF.
+    error_slot: Option<Arc<Mutex<Option<String>>>>,
 }
 
-#[allow(dead_code)] // Task 4 提供 YamlStream；Task 5 YAML.load_stream 消费后移除
 impl YamlStream {
     pub(crate) fn new(chars: ChunkCharIter) -> Self {
+        let error_slot = Arc::new(Mutex::new(None));
+        let mut chars = chars;
+        chars.attach_error_slot(error_slot.clone());
         let parser = SaphyrParser::new_from_iter(chars);
         Self {
             parser: Some(parser),
             anchor_map: HashMap::new(),
             finished: false,
             pending_error: None,
+            error_slot: Some(error_slot),
         }
     }
 
@@ -218,6 +247,9 @@ impl YamlStream {
             match parser.next_event() {
                 None => {
                     self.finished = true;
+                    // 解析器遇 reader 错误视为干净 EOF——错误存于共享槽，
+                    // 在此提取转为 pending_error（若尚未由扫描错误触发）。
+                    self.pull_reader_error();
                     return None;
                 }
                 Some(Err(e)) => {
@@ -246,10 +278,22 @@ impl YamlStream {
             }
         }
     }
+
+    fn pull_reader_error(&mut self) {
+        if self.pending_error.is_some() {
+            return;
+        }
+        if let Some(slot) = &self.error_slot {
+            if let Ok(mut guard) = slot.lock() {
+                if let Some(msg) = guard.take() {
+                    self.pending_error = Some(format!("YAML parse error: {}", msg));
+                }
+            }
+        }
+    }
 }
 
 #[pymethods]
-#[allow(dead_code)] // Task 4 提供 YamlStream；Task 5 YAML.load_stream 消费后移除
 impl YamlStream {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf

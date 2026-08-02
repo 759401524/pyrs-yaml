@@ -29,6 +29,7 @@ use self::convert::{
 };
 use self::python_types::{json_value_to_node, pyobject_to_node};
 use self::stream_events::stream_event_to_py_dict;
+use self::streaming::{ChunkCharIter, InputSrc, YamlStream, DEFAULT_CHUNK_SIZE};
 
 /// Format a YAML parse error with source context and caret marker.
 ///
@@ -457,6 +458,32 @@ mod pyrs_yaml {
                     splice_checked: false,
                 })
                 .collect())
+        }
+
+        /// 惰性事件迭代器：从 file_obj（read() 返回 str 或 bytes）增量读取。
+        #[pyo3(signature = (file_obj: "Any") -> "YamlStream")]
+        fn load_stream(&self, _py: Python, file_obj: Bound<'_, PyAny>) -> PyResult<YamlStream> {
+            if file_obj.getattr("read").is_err() {
+                return Err(YamlTypeError::new_err(format_i18n_error(
+                    "expected-readable",
+                    &[],
+                )));
+            }
+            let src = InputSrc::PyObj(file_obj.unbind());
+            Ok(YamlStream::new(ChunkCharIter::new(src, DEFAULT_CHUNK_SIZE)))
+        }
+
+        /// 惰性事件迭代器：从文件路径增量读取（Rust File，无 GIL 阻塞）。
+        #[pyo3(signature = (path: "str") -> "YamlStream")]
+        fn load_stream_file(&self, _py: Python, path: &str) -> PyResult<YamlStream> {
+            let file = std::fs::File::open(path).map_err(|e| {
+                pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                    "file-read-error",
+                    &[("detail", &e.to_string()), ("path", path)],
+                ))
+            })?;
+            let src = InputSrc::File(std::io::BufReader::new(file));
+            Ok(YamlStream::new(ChunkCharIter::new(src, DEFAULT_CHUNK_SIZE)))
         }
     }
 
