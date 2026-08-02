@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- **Surgical Serialization** — 全 AST ノードのバイトレベルソーススパン追跡；セグメントベーススプライス — 編集はタッチされた領域のみ再生成、 untouched テキストはバイトコピー
+- プロパティテスト（proptest、新規開発依存）
+- 10MB 編集-フラッシュベンチマーク
+
+#### Changed
+
+- `flush_source` がセグメントスプライスを使用；フロースタイル領域、非デフォルトレイアウト文書、マージキー、CRLF/BOM 文書、materialize 後（シングルバーストモデル）では全量シリアライズにフォールバック
+- スプライス編集は `---`/`...`/ディレクティブマーカー行を未変更バイトとして保持（全量シリアライズは以前それらを削除 — 意図的な動作差）
+
 ### [0.10.0] - 2026-08-01
 
 #### Added

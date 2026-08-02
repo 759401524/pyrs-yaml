@@ -477,7 +477,7 @@ mod pyrs_yaml {
         /// integration tests: seeds the splice accumulator for default-layout
         /// documents.
         #[allow(dead_code)] // consumed by benches in Task 7
-        pub(crate) fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
+        pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
             let splice_eligible = crate::parser::check_default_layout(&ast, &source);
             YamlDocument {
                 ast,

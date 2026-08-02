@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- **Surgical Serialization** — 모든 AST 노드의 바이트 수준 소스 스팬 추적; 세그먼트 기반 스플라이스 — 편집은 접촉 영역만 재생성, 미접촉 텍스트는 바이트 복사
+- 속성 테스트（proptest, 새 개발 의존성）
+- 10MB 편집-플러시 벤치마크
+
+#### Changed
+
+- `flush_source`가 세그먼트 스플라이스 사용; 플로우 스타일 영역, 비기본 레이아웃 문서, 병합 키, CRLF/BOM 문서, materialize 후（단일 버스트 모델）에서 전체 직렬화로 폴백
+- 스플라이스 편집이 `---`/`...`/지시자 마커 라인을 미변경 바이트로 보존（전체 직렬화는 이전에 이를 제거 — 의도적인 동작 차이）
+
 ### [0.10.0] - 2026-08-01
 
 #### Added

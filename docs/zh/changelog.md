@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- **Surgical Serialization** — 字节级源码范围追踪；基于段的分片拼接 — 编辑仅重新生成触碰区域，未触碰文本按字节复制
+- 属性测试 proptest 代码包（新开发依赖）
+- 10MB 编辑-刷新基准测试
+
+#### Changed
+
+- `flush_source` 现在使用分片拼接；回退到全量序列化场景：flow 风格区域、非默认布局文档、合并键、CRLF/BOM 文档、以及 materialize 之后（单次爆发模型）
+- 分片编辑保留 `---`/`...`/指令标记行作为未触碰字节（全量序列化曾丢弃它们 — 设计上的行为差异）
+
 ### [0.10.0] - 2026-08-01
 
 #### Added
