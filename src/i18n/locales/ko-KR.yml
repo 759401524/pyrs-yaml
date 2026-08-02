@@ -11,6 +11,7 @@ index-out-of-range: "인덱스 %{index}(이)가 범위를 벗어났습니다 (�
 index-not-integer: "인덱스는 정수여야 합니다"
 not-subscriptable: "YamlDocument는 인덱스 연산을 지원하지 않습니다"
 expected-str-or-bytes: "str 또는 bytes가 필요합니다"
+expected-readable: "read() 메서드가 있는 객체가 필요합니다"
 unsupported-type: "YAML 변환을 지원하지 않는 Python 타입입니다"
 invalid-utf8: "잘못된 UTF-8: %{detail}"
 max-depth-exceeded: "최대 YAML 깊이 초과 (max=%{max_depth})"
