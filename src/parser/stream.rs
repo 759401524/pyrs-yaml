@@ -106,10 +106,6 @@ impl<'a> StreamReceiver<'a> {
         }
     }
 
-    fn register_anchor(&mut self, anchor_id: usize, name: String) {
-        self.anchors.insert(anchor_id, name);
-    }
-
     fn emit_pending_comment(&mut self, line: usize, column: usize) {
         if let Some(comment) = self.pending_standalone_comment.take() {
             self.events.push(StreamEvent {
@@ -129,39 +125,12 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
         let line = span.start.line().saturating_sub(1);
         let column = span.start.col();
 
-        match event {
-            Event::StreamStart => {
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::StreamStart,
-                    line,
-                    column,
-                });
-            }
-            Event::StreamEnd => {
-                self.emit_pending_comment(line, column);
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::StreamEnd,
-                    line,
-                    column,
-                });
-            }
-            Event::DocumentStart(_) => {
-                self.emit_pending_comment(line, column);
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::DocumentStart,
-                    line,
-                    column,
-                });
-            }
-            Event::DocumentEnd => {
-                self.emit_pending_comment(line, column);
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::DocumentEnd,
-                    line,
-                    column,
-                });
-            }
-            Event::Scalar(value, style, anchor_id, tag) => {
+        // 注释注入逻辑保持逐分支：standalone 查找仅 Scalar/MappingStart/SequenceStart；
+        // Scalar 分支在发现 standalone 时立即 emit pending（与现有实现逐字节一致）。
+        let mut inline_comment = None;
+        let mut value_end_col = 0;
+        match &event {
+            Event::Scalar(value, ..) => {
                 let standalone = self
                     .comment_anchor_tracker
                     .find_standalone_before_line(line);
@@ -170,21 +139,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                     self.emit_pending_comment(line, column);
                 }
 
-                let scalar_style = match style {
-                    SaphyrScalarStyle::Plain => ScalarStyle::Plain,
-                    SaphyrScalarStyle::SingleQuoted => ScalarStyle::SingleQuoted,
-                    SaphyrScalarStyle::DoubleQuoted => ScalarStyle::DoubleQuoted,
-                    SaphyrScalarStyle::Literal => ScalarStyle::Literal,
-                    SaphyrScalarStyle::Folded => ScalarStyle::Folded,
-                };
-
-                let scalar_value = if matches!(style, SaphyrScalarStyle::DoubleQuoted) {
-                    unescape_double_quoted(&value)
-                } else {
-                    value.to_string()
-                };
-
-                let value_end_col = if line < self.line_offsets.len() {
+                value_end_col = if line < self.line_offsets.len() {
                     let start = self.line_offsets[line];
                     let end = if line + 1 < self.line_offsets.len() {
                         self.line_offsets[line + 1].saturating_sub(1)
@@ -201,135 +156,50 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
                     value.len()
                 };
 
-                let inline = self
+                inline_comment = self
                     .comment_anchor_tracker
                     .find_inline_comment(line, value_end_col);
-
-                let anchor = if anchor_id != 0 {
-                    self.comment_anchor_tracker.next_anchor_name()
-                } else {
-                    None
-                };
-                if let Some(ref name) = anchor {
-                    self.register_anchor(anchor_id, name.clone());
-                }
-
-                let tag_obj = convert_tag(tag.as_deref());
-
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::Scalar {
-                        value: scalar_value,
-                        style: scalar_style,
-                        anchor,
-                        tag: tag_obj,
-                    },
-                    line,
-                    column,
-                });
-
-                if let Some(inline_comment) = inline {
-                    self.events.push(StreamEvent {
-                        event_type: StreamEventType::Comment {
-                            text: inline_comment.text,
-                            standalone: false,
-                        },
-                        line,
-                        column: value_end_col,
-                    });
-                }
             }
-            Event::MappingStart(anchor_id, tag) => {
+            Event::MappingStart(..) | Event::SequenceStart(..) => {
                 let standalone = self
                     .comment_anchor_tracker
                     .find_standalone_before_line(line);
                 if let Some(comment) = standalone {
                     self.pending_standalone_comment = Some(comment);
                 }
-
-                let anchor = if anchor_id != 0 {
-                    self.comment_anchor_tracker.next_anchor_name()
-                } else {
-                    None
-                };
-                if let Some(ref name) = anchor {
-                    self.register_anchor(anchor_id, name.clone());
-                }
-
-                let tag_obj = convert_tag(tag.as_deref());
-
-                self.emit_pending_comment(line, column);
-
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::MappingStart {
-                        anchor,
-                        tag: tag_obj,
-                    },
-                    line,
-                    column,
-                });
             }
-            Event::MappingEnd => {
-                self.emit_pending_comment(line, column);
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::MappingEnd,
-                    line,
-                    column,
-                });
-            }
-            Event::SequenceStart(anchor_id, tag) => {
-                let standalone = self
-                    .comment_anchor_tracker
-                    .find_standalone_before_line(line);
-                if let Some(comment) = standalone {
-                    self.pending_standalone_comment = Some(comment);
-                }
+            _ => {}
+        }
 
-                let anchor = if anchor_id != 0 {
-                    self.comment_anchor_tracker.next_anchor_name()
-                } else {
-                    None
-                };
-                if let Some(ref name) = anchor {
-                    self.register_anchor(anchor_id, name.clone());
-                }
+        let Some(stream_event) =
+            event_to_stream_event(event, span, &mut self.anchors, &mut |_id| {
+                self.comment_anchor_tracker.next_anchor_name()
+            })
+        else {
+            return; // Event::Nothing
+        };
 
-                let tag_obj = convert_tag(tag.as_deref());
+        // emit_pending_comment 时机：除 StreamStart 与 Scalar 外，其余事件在 push 前无条件 emit。
+        // （Scalar 分支仅在发现 standalone 时 emit，见上方 match；StreamStart 不 emit。）
+        let needs_emit_pending = !matches!(
+            &stream_event.event_type,
+            StreamEventType::StreamStart | StreamEventType::Scalar { .. }
+        );
+        if needs_emit_pending {
+            self.emit_pending_comment(line, column);
+        }
 
-                self.emit_pending_comment(line, column);
+        self.events.push(stream_event);
 
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::SequenceStart {
-                        anchor,
-                        tag: tag_obj,
-                    },
-                    line,
-                    column,
-                });
-            }
-            Event::SequenceEnd => {
-                self.emit_pending_comment(line, column);
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::SequenceEnd,
-                    line,
-                    column,
-                });
-            }
-            Event::Alias(anchor_id) => {
-                self.emit_pending_comment(line, column);
-
-                let alias_name = self
-                    .anchors
-                    .get(&anchor_id)
-                    .cloned()
-                    .unwrap_or_else(|| format!("alias_{}", anchor_id));
-
-                self.events.push(StreamEvent {
-                    event_type: StreamEventType::Alias { name: alias_name },
-                    line,
-                    column,
-                });
-            }
-            Event::Nothing => {}
+        if let Some(inline_comment) = inline_comment {
+            self.events.push(StreamEvent {
+                event_type: StreamEventType::Comment {
+                    text: inline_comment.text,
+                    standalone: false,
+                },
+                line,
+                column: value_end_col,
+            });
         }
     }
 }
@@ -337,6 +207,111 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
 /// Convert a saphyr-parser Tag to our Tag format.
 fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
     tag.map(|t| super::convert_tag(t).clone())
+}
+
+/// 纯函数：saphyr `Event` + `Span` → `StreamEvent`（D4 抽取）。
+///
+/// 不含注释/`line_offsets`/`value_end_col` 等 O(doc) 依赖逻辑（留在
+/// `StreamReceiver::on_event`）；anchor 名经 `resolve_anchor` 回调注入
+/// （字符串路径：`comment_anchor_tracker.next_anchor_name()`；流式路径：
+/// `format!("anchor_{id}")`），回调返回 `None` 表示无 anchor；解析到的
+/// anchor 注册进 `anchor_map` 供 Alias 分支查找。`Event::Nothing` → `None`。
+pub(crate) fn event_to_stream_event<F>(
+    event: Event<'_>,
+    span: Span,
+    anchor_map: &mut HashMap<usize, String>,
+    resolve_anchor: &mut F,
+) -> Option<StreamEvent>
+where
+    F: FnMut(usize) -> Option<String>,
+{
+    let line = span.start.line().saturating_sub(1);
+    let column = span.start.col();
+
+    let event_type = match event {
+        Event::Nothing => return None,
+        Event::StreamStart => StreamEventType::StreamStart,
+        Event::StreamEnd => StreamEventType::StreamEnd,
+        Event::DocumentStart(_) => StreamEventType::DocumentStart,
+        Event::DocumentEnd => StreamEventType::DocumentEnd,
+        Event::Scalar(value, style, anchor_id, tag) => {
+            let scalar_style = match style {
+                SaphyrScalarStyle::Plain => ScalarStyle::Plain,
+                SaphyrScalarStyle::SingleQuoted => ScalarStyle::SingleQuoted,
+                SaphyrScalarStyle::DoubleQuoted => ScalarStyle::DoubleQuoted,
+                SaphyrScalarStyle::Literal => ScalarStyle::Literal,
+                SaphyrScalarStyle::Folded => ScalarStyle::Folded,
+            };
+            let scalar_value = if matches!(style, SaphyrScalarStyle::DoubleQuoted) {
+                unescape_double_quoted(&value)
+            } else {
+                value.to_string()
+            };
+            let anchor = resolve_anchor_name(anchor_id, anchor_map, resolve_anchor);
+            let tag_obj = convert_tag(tag.as_deref());
+            StreamEventType::Scalar {
+                value: scalar_value,
+                style: scalar_style,
+                anchor,
+                tag: tag_obj,
+            }
+        }
+        Event::MappingStart(anchor_id, tag) => {
+            let anchor = resolve_anchor_name(anchor_id, anchor_map, resolve_anchor);
+            let tag_obj = convert_tag(tag.as_deref());
+            StreamEventType::MappingStart {
+                anchor,
+                tag: tag_obj,
+            }
+        }
+        Event::MappingEnd => StreamEventType::MappingEnd,
+        Event::SequenceStart(anchor_id, tag) => {
+            let anchor = resolve_anchor_name(anchor_id, anchor_map, resolve_anchor);
+            let tag_obj = convert_tag(tag.as_deref());
+            StreamEventType::SequenceStart {
+                anchor,
+                tag: tag_obj,
+            }
+        }
+        Event::SequenceEnd => StreamEventType::SequenceEnd,
+        Event::Alias(anchor_id) => {
+            let name = anchor_map
+                .get(&anchor_id)
+                .cloned()
+                .unwrap_or_else(|| format!("alias_{}", anchor_id));
+            StreamEventType::Alias { name }
+        }
+    };
+
+    Some(StreamEvent {
+        event_type,
+        line,
+        column,
+    })
+}
+
+/// Resolve and register an anchor name for a non-zero anchor id.
+///
+/// `resolve_anchor` 返回 `None` 时表示无 anchor（名称来源耗尽），此时不注册，
+/// 与字符串路径 `next_anchor_name()` 的语义一致。
+fn resolve_anchor_name<F>(
+    anchor_id: usize,
+    anchor_map: &mut HashMap<usize, String>,
+    resolve_anchor: &mut F,
+) -> Option<String>
+where
+    F: FnMut(usize) -> Option<String>,
+{
+    if anchor_id == 0 {
+        return None;
+    }
+    match resolve_anchor(anchor_id) {
+        Some(name) => {
+            anchor_map.insert(anchor_id, name.clone());
+            Some(name)
+        }
+        None => None,
+    }
 }
 
 /// Parse a YAML string into a stream of `StreamEvent`s.
@@ -700,5 +675,107 @@ mod tests {
             }
         }
         assert_eq!(cols, [(1, 0), (1, 3), (2, 0), (2, 3)]);
+    }
+
+    fn mk_span(line: usize, col: usize) -> Span {
+        Span::new(
+            saphyr_parser::Marker::new(0, line, col),
+            saphyr_parser::Marker::new(0, line, col),
+        )
+    }
+
+    #[test]
+    fn event_to_stream_event_scalar_double_quoted_unescapes() {
+        let mut anchor_map = HashMap::new();
+        let event = Event::Scalar("a\\n\\t".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
+        let ev = super::event_to_stream_event(event, mk_span(1, 0), &mut anchor_map, &mut |_| None)
+            .expect("scalar maps to Some");
+        match ev.event_type {
+            super::StreamEventType::Scalar {
+                value,
+                style,
+                anchor,
+                tag,
+            } => {
+                assert_eq!(value, "a\n\t");
+                assert_eq!(style, ScalarStyle::DoubleQuoted);
+                assert_eq!(anchor, None);
+                assert_eq!(tag, None);
+            }
+            other => panic!("wrong variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn event_to_stream_event_plain_scalar_passthrough() {
+        let mut anchor_map = HashMap::new();
+        let event = Event::Scalar("hello".into(), SaphyrScalarStyle::Plain, 0, None);
+        let ev = super::event_to_stream_event(event, mk_span(2, 4), &mut anchor_map, &mut |_| None)
+            .unwrap();
+        match ev.event_type {
+            super::StreamEventType::Scalar { value, style, .. } => {
+                assert_eq!(value, "hello");
+                assert_eq!(style, ScalarStyle::Plain);
+            }
+            other => panic!("wrong variant: {:?}", other),
+        }
+        assert_eq!((ev.line, ev.column), (1, 4)); // line = span.line - 1
+    }
+
+    #[test]
+    fn event_to_stream_event_anchor_resolves_and_registers() {
+        let mut anchor_map = HashMap::new();
+        let event = Event::Scalar("v".into(), SaphyrScalarStyle::Plain, 7, None);
+        let ev = super::event_to_stream_event(event, mk_span(1, 0), &mut anchor_map, &mut |id| {
+            Some(format!("anchor_{}", id))
+        })
+        .unwrap();
+        match ev.event_type {
+            super::StreamEventType::Scalar {
+                anchor: Some(name), ..
+            } => {
+                assert_eq!(name, "anchor_7");
+                assert_eq!(anchor_map.get(&7), Some(&"anchor_7".to_string()));
+            }
+            other => panic!("wrong variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn event_to_stream_event_alias_lookup_and_fallback() {
+        let mut anchor_map = HashMap::new();
+        let ev = super::event_to_stream_event(
+            Event::Alias(3),
+            mk_span(1, 0),
+            &mut anchor_map,
+            &mut |_| None,
+        )
+        .unwrap();
+        assert!(
+            matches!(ev.event_type, super::StreamEventType::Alias { name } if name == "alias_3")
+        );
+
+        let mut anchor_map = HashMap::new();
+        anchor_map.insert(3, "real".to_string());
+        let ev = super::event_to_stream_event(
+            Event::Alias(3),
+            mk_span(1, 0),
+            &mut anchor_map,
+            &mut |_| None,
+        )
+        .unwrap();
+        assert!(matches!(ev.event_type, super::StreamEventType::Alias { name } if name == "real"));
+    }
+
+    #[test]
+    fn event_to_stream_event_nothing_is_none() {
+        let mut anchor_map = HashMap::new();
+        assert!(super::event_to_stream_event(
+            Event::Nothing,
+            mk_span(1, 0),
+            &mut anchor_map,
+            &mut |_| None
+        )
+        .is_none());
     }
 }
