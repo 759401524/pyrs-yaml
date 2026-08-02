@@ -161,6 +161,7 @@ impl Serializer {
                 anchor,
                 tag,
                 chomping,
+                ..
             } => {
                 self.write_indent(indent_width);
                 if anchor.is_some() || tag.is_some() {
@@ -497,6 +498,7 @@ impl Serializer {
                 comment,
                 anchor,
                 tag,
+                ..
             } => {
                 self.write_indent(indent_width);
                 if anchor.is_some() || tag.is_some() {
@@ -782,6 +784,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
         assert_eq!(to_yaml(&node), "hello\n");
     }
@@ -798,6 +801,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
         assert_eq!(to_yaml(&node), "value  # a comment\n");
     }
@@ -811,6 +815,7 @@ mod tests {
             anchor: None,
             tag: Some(Tag::primary("int")),
             chomping: Chomping::Clip,
+            source_range: None,
         };
         assert_eq!(to_yaml(&node), "!!int 42\n");
     }
@@ -824,6 +829,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
         let value = CustomNode::Scalar {
             value: "value".to_string(),
@@ -832,6 +838,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
 
         let mut pairs = IndexMap::new();
@@ -843,6 +850,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
 
         assert_eq!(to_yaml(&node), "key: value\n");
@@ -859,6 +867,7 @@ mod tests {
                     anchor: None,
                     tag: None,
                     chomping: Chomping::Clip,
+                    source_range: None,
                 },
                 CustomNode::Scalar {
                     value: "key2".to_string(),
@@ -867,12 +876,14 @@ mod tests {
                     anchor: None,
                     tag: None,
                     chomping: Chomping::Clip,
+                    source_range: None,
                 },
             ],
             comment: None,
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
         let value = CustomNode::Scalar {
             value: "value".to_string(),
@@ -881,6 +892,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
 
         let mut pairs = IndexMap::new();
@@ -892,6 +904,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
 
         let output = to_yaml(&node);
@@ -930,6 +943,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
         let mut pairs = IndexMap::new();
         pairs.insert(CustomNode::plain_scalar("a"), inner_map);
@@ -939,6 +953,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
         let options = SerializeOptions {
             indent_mapping: 4,
@@ -958,6 +973,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
         let node = CustomNode::Sequence {
             items: vec![inner_seq],
@@ -965,6 +981,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
         let options = SerializeOptions {
             indent_sequence: 4,
@@ -986,6 +1003,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
         let options = SerializeOptions {
             indent_offset: 2,

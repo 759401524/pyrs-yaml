@@ -355,6 +355,7 @@ impl<'a> AstReceiver<'a> {
             anchor: None,
             tag: None,
             chomping,
+            source_range: None,
         }
     }
 
@@ -519,6 +520,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                         anchor,
                         tag,
                         flow_style,
+                        source_range: None,
                     };
                     self.push_node(mapping);
                 }
@@ -579,6 +581,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                         anchor,
                         tag,
                         flow_style,
+                        source_range: None,
                     };
                     self.push_node(seq);
                 }

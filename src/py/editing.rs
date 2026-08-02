@@ -252,6 +252,7 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
                 anchor: anchor.clone(),
                 tag: tag.clone(),
                 chomping: chomping.clone(),
+                source_range: None,
             }
         }
         (
@@ -271,6 +272,7 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
             anchor: anchor.clone(),
             tag: tag.clone(),
             flow_style: *flow_style || *src_flow_style,
+            source_range: None,
         },
         (
             CustomNode::Sequence {
@@ -289,6 +291,7 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
             anchor: anchor.clone(),
             tag: tag.clone(),
             flow_style: *flow_style || *src_flow_style,
+            source_range: None,
         },
         (
             CustomNode::Null { .. },
@@ -296,11 +299,13 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
                 comment,
                 anchor,
                 tag,
+                ..
             },
         ) => CustomNode::Null {
             comment: comment.clone(),
             anchor: anchor.clone(),
             tag: tag.clone(),
+            source_range: None,
         },
         _ => target.clone(),
     }
@@ -355,6 +360,7 @@ pub fn set_path(
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
     }
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
