@@ -4,6 +4,7 @@
 pub mod convert;
 pub mod editing;
 pub mod stream_events;
+pub mod streaming;
 pub mod tag_registry;
 
 #[cfg(feature = "numpy")]

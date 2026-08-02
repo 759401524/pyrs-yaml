@@ -742,6 +742,7 @@ dependencies = [
  "rust-i18n",
  "saphyr-parser",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
