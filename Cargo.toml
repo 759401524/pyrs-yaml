@@ -28,6 +28,7 @@ default = ["numpy"]
 
 [dev-dependencies]
 divan = { version = "5.0.1", package = "codspeed-divan-compat" }
+proptest = "1.11"
 
 [[bench]]
 name = "yaml_bench"
