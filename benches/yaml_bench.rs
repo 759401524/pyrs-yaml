@@ -1,4 +1,8 @@
+use pyrs_yaml::ast::CustomNode;
 use pyrs_yaml::parser::yaml::YamlSchema;
+use pyrs_yaml::py::editing::{self, Segment};
+use pyrs_yaml::splice::SpliceState;
+use std::sync::Arc;
 
 const SMALL_YAML: &str = "key: value\nname: test\n";
 
@@ -229,16 +233,20 @@ fn serialize_block(bencher: divan::Bencher) {
 
 // ── Editing benchmarks (pure AST mutation; lazy sync defers serialization) ──
 
-use pyrs_yaml::ast::CustomNode;
-use pyrs_yaml::py::editing::{self, Segment};
-
 #[divan::bench]
 fn edit_set_small(bencher: divan::Bencher) {
     let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("key"))];
     bencher.bench(|| {
         let mut a = ast.clone();
-        let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true);
+        editing::set_path(
+            &mut a,
+            &segs,
+            CustomNode::plain_scalar("x"),
+            true,
+            SMALL_YAML,
+        )
+        .ok();
     });
 }
 
@@ -248,7 +256,14 @@ fn edit_set_medium(bencher: divan::Bencher) {
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("database"))];
     bencher.bench(|| {
         let mut a = ast.clone();
-        let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true);
+        editing::set_path(
+            &mut a,
+            &segs,
+            CustomNode::plain_scalar("x"),
+            true,
+            MEDIUM_YAML,
+        )
+        .ok();
     });
 }
 
@@ -262,7 +277,14 @@ fn edit_set_large(bencher: divan::Bencher) {
     ];
     bencher.bench(|| {
         let mut a = ast.clone();
-        let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("999"), true);
+        editing::set_path(
+            &mut a,
+            &segs,
+            CustomNode::plain_scalar("999"),
+            true,
+            LARGE_YAML,
+        )
+        .ok();
     });
 }
 
@@ -272,7 +294,7 @@ fn edit_insert_large(bencher: divan::Bencher) {
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
         let mut a = ast.clone();
-        let _ = editing::insert_path(&mut a, &segs, 0, CustomNode::plain_scalar("x"));
+        editing::insert_path(&mut a, &segs, 0, CustomNode::plain_scalar("x"), LARGE_YAML).ok();
     });
 }
 
@@ -282,23 +304,124 @@ fn edit_delete_large(bencher: divan::Bencher) {
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
         let mut a = ast.clone();
-        let _ = editing::delete_path(&mut a, &segs);
+        editing::delete_path(&mut a, &segs, LARGE_YAML).ok();
     });
 }
 
 #[divan::bench]
 fn edit_batch_10(bencher: divan::Bencher) {
     let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    let source: Arc<str> = Arc::from(LARGE_YAML);
     bencher.bench(|| {
         let mut a = ast.clone();
+        let mut state = SpliceState::new(source.clone());
         for i in 0..10 {
             let segs = vec![
                 Segment::Key(std::borrow::Cow::Borrowed("items")),
                 Segment::Index(i % 5),
             ];
-            let _ = editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true);
+            if let Ok(unit) =
+                editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true, &source)
+            {
+                if unit.eligible {
+                    state.apply(&unit).ok();
+                }
+            }
         }
-        // one flush for the whole batch (lazy source sync)
-        let _ = pyrs_yaml::serializer::to_yaml(&a);
+        state.materialize();
+    });
+}
+
+// ── 10MB edit-flush benches ──
+
+fn make_large_doc(approx_bytes: usize) -> String {
+    let num_groups = 500usize;
+    let keys_per_group = approx_bytes / (num_groups * 25);
+    let mut yaml = String::with_capacity(approx_bytes);
+    for g in 0..num_groups {
+        yaml.push_str(&format!("group_{g:03}:\n"));
+        for k in 0..keys_per_group {
+            yaml.push_str(&format!("  key_{k:04}: value\n"));
+        }
+    }
+    yaml
+}
+
+#[divan::bench]
+fn serialize_10mb(bencher: divan::Bencher) {
+    let yaml = make_large_doc(10 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+}
+
+#[divan::bench]
+fn clone_ast_10mb(bencher: divan::Bencher) {
+    let yaml = make_large_doc(10 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    bencher.bench(|| ast.clone());
+}
+
+#[divan::bench]
+fn edit_flush_set_10mb(bencher: divan::Bencher) {
+    let yaml = make_large_doc(10 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    let source: Arc<str> = Arc::from(yaml);
+    let segs = vec![
+        Segment::Key(std::borrow::Cow::Borrowed("group_000")),
+        Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
+    ];
+    let new_value = CustomNode::plain_scalar("zzz");
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let mut state = SpliceState::new(source.clone());
+        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source) {
+            if unit.eligible {
+                state.apply(&unit).ok();
+            }
+        }
+        state.materialize();
+    });
+}
+
+#[divan::bench]
+fn edit_flush_burst5_10mb(bencher: divan::Bencher) {
+    let yaml = make_large_doc(10 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    let source: Arc<str> = Arc::from(yaml);
+    let targets = [
+        (
+            Segment::Key(std::borrow::Cow::Borrowed("group_000")),
+            Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
+        ),
+        (
+            Segment::Key(std::borrow::Cow::Borrowed("group_000")),
+            Segment::Key(std::borrow::Cow::Borrowed("key_0001")),
+        ),
+        (
+            Segment::Key(std::borrow::Cow::Borrowed("group_001")),
+            Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
+        ),
+        (
+            Segment::Key(std::borrow::Cow::Borrowed("group_001")),
+            Segment::Key(std::borrow::Cow::Borrowed("key_0001")),
+        ),
+        (
+            Segment::Key(std::borrow::Cow::Borrowed("group_002")),
+            Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
+        ),
+    ];
+    let new_value = CustomNode::plain_scalar("zzz");
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let mut state = SpliceState::new(source.clone());
+        for (g, k) in &targets {
+            let segs = vec![g.clone(), k.clone()];
+            if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source) {
+                if unit.eligible {
+                    state.apply(&unit).ok();
+                }
+            }
+        }
+        state.materialize();
     });
 }
