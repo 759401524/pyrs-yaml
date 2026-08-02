@@ -153,9 +153,27 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ---
 
-### v0.11.1 — "Streaming Parse" (target: Q1 2027)
+### v0.11.1 — "Internalization" 内化重构 (target: 2026-08)
 
-> Constant-memory traversal of 100MB+ YAML files. Scope decided via brainstorming 2026-08-02.
+> 洞察反馈 → 溯源析理 → 内化重构 → 螺旋闭环. CodSpeed 回归修复 + 架构内化. Scope decided via brainstorming + design spec 2026-08-02 (`docs/superpowers/specs/2026-08-02-v0.11.1-internalization-design.md`).
+
+| # | Item | Layer | Priority | Notes |
+|:--|:-----|:------|:--------:|:------|
+| 1 | **Lazy splice eligibility** — `parse_with_options` no longer runs the O(doc) layout check; `YamlDocument.splice_checked` computes it on first edit | Rust | 🔴 | restores 15 CodSpeed regressions (parse_comments -59%, parse_anchors -42%, parse/roundtrip/edit -10~35%) |
+| 2 | **Linear-cursor layout check** — replaces per-node binary search over line offsets | Rust | 🔴 | |
+| 3 | **Dead code cleanup** — zero `dead_code` warnings across `--all-targets` | Rust | 🟡 | verified: none remain |
+| 4 | **Serializer API surface** — only 3 `pub` items (`SerializeOptions`, `to_yaml`, `to_yaml_with_options`) | Rust | 🟡 | verified: already minimal |
+| 5 | **Closure doc** — `docs/superpowers/2026-08-02-v0.11.1-closure.md` with benchmark evidence | Docs | 🟡 | |
+
+**Design decisions (2026-08-02)**: splice eligibility is a property of the *edit path*, not of parsing — computing it eagerly on parse wasted time for read-only use. Streaming Parse deferred to v0.11.2.
+
+**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
+
+---
+
+### v0.11.2 — "Streaming Parse" (target: Q1 2027)
+
+> Constant-memory traversal of 100MB+ YAML files. Scope decided via brainstorming 2026-08-02; deferred from v0.11.1 to keep the internalization loop focused.
 
 | # | Item | Layer | Priority | Notes |
 |:--|:-----|:------|:--------:|:------|
