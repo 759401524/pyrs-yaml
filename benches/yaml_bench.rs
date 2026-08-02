@@ -362,6 +362,16 @@ fn clone_ast_10mb(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
+fn serialize_with_clone_10mb(bencher: divan::Bencher) {
+    let yaml = make_large_doc(10 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    bencher.bench(|| {
+        let a = ast.clone();
+        pyrs_yaml::serializer::to_yaml(&a)
+    });
+}
+
+#[divan::bench]
 fn edit_flush_set_10mb(bencher: divan::Bencher) {
     let yaml = make_large_doc(10 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
@@ -420,6 +430,72 @@ fn edit_flush_burst5_10mb(bencher: divan::Bencher) {
                 if unit.eligible {
                     state.apply(&unit).ok();
                 }
+            }
+        }
+        state.materialize();
+    });
+}
+
+// ── Complex-doc benches (10MB with comments, anchors, tags, block scalars) ──
+
+fn make_complex_doc(approx_bytes: usize) -> String {
+    let num_groups = 200usize;
+    let keys_per_group = approx_bytes / (num_groups * 30).max(1);
+    let mut yaml = String::with_capacity(approx_bytes);
+    for g in 0..num_groups {
+        if g % 20 == 0 {
+            yaml.push_str(&format!("group_{g:03}: &g{g:03}\n"));
+        } else {
+            yaml.push_str(&format!("group_{g:03}:\n"));
+        }
+        for k in 0..keys_per_group {
+            if k % 20 == 5 {
+                yaml.push_str(&format!("  key_{k:04}: |\n    value {g}_{k}\n"));
+            } else if k % 20 == 0 {
+                yaml.push_str(&format!("  key_{k:04}: !!str value  # inline\n"));
+            } else if k % 10 == 0 {
+                yaml.push_str(&format!("  key_{k:04}: value  # inline\n"));
+            } else {
+                yaml.push_str(&format!("  key_{k:04}: value\n"));
+            }
+        }
+    }
+    yaml
+}
+
+#[divan::bench]
+fn serialize_complex_2mb(bencher: divan::Bencher) {
+    let yaml = make_complex_doc(2 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+}
+
+#[divan::bench]
+fn serialize_with_clone_complex_2mb(bencher: divan::Bencher) {
+    let yaml = make_complex_doc(2 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    bencher.bench(|| {
+        let a = ast.clone();
+        pyrs_yaml::serializer::to_yaml(&a)
+    });
+}
+
+#[divan::bench]
+fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
+    let yaml = make_complex_doc(2 * 1024 * 1024);
+    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    let source: Arc<str> = Arc::from(yaml);
+    let segs = vec![
+        Segment::Key(std::borrow::Cow::Borrowed("group_000")),
+        Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
+    ];
+    let new_value = CustomNode::plain_scalar("zzz");
+    bencher.bench(|| {
+        let mut a = ast.clone();
+        let mut state = SpliceState::new(source.clone());
+        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source) {
+            if unit.eligible {
+                state.apply(&unit).ok();
             }
         }
         state.materialize();

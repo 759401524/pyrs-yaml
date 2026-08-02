@@ -145,7 +145,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 | 2 | **Dirty-region splice** — edit primitives (set/insert/append/delete/rename + root sugar) mark dirty nodes; `flush_source` regenerates the smallest enclosing block regions, byte-copies all untouched text | Rust | 🔴 | ✅ `7b0cf2f` | Fallback to full serialize: flow-style containers, doc-wide structural changes, layout options (`sort_keys`/`width`/`explicit_*`/indent) differing from source layout |
 | 3 | **Fidelity property tests** — byte equality of untouched regions after every edit op | Rust | 🔴 | ✅ `8f6122d` | The splice-correctness guarantee |
 | 4 | **Edit-flush benchmarks** — divan: single-key edit on a synthetic 10MB block doc → `source()`/`to_yaml()` time ∝ region | Rust | 🟡 | ✅ `3456f40` | Target ≥100× vs v0.10.0 full re-serialize; extend edit_* benches |
-| 5 | **Docs** — guides/perf updates in en/zh/ja/ko | Docs | 🟡 | ✅ (this commit) | |
+| 5 | **Docs** — guides/perf updates in en/zh/ja/ko | Docs | 🟡 | ✅ `82e73d7` | |
 
 **Design decisions (2026-08-02)**: per-scalar exact byte splice rejected — comments/anchors/tags attached to nodes + insert/delete span shifts make it fragile; recorded as a future optimization. Subtree-memoized full serialization rejected — no benefit for linear text assembly.
 
