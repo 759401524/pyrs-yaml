@@ -244,21 +244,35 @@ pub(crate) fn check_default_layout(node: &CustomNode, text: &str) -> bool {
     }
     let def = crate::serializer::SerializeOptions::default();
     let line_offsets = compute_line_offsets(text);
-    check_node_layout(node, text, &line_offsets, &def, def.indent_offset)
+    let mut cursor = LineCursor::new(&line_offsets);
+    check_node_layout(node, text, &mut cursor, &def, def.indent_offset)
 }
 
-/// Byte offset of the start of the line containing `byte_offset`.
-fn line_start_of(line_offsets: &[usize], byte_offset: usize) -> usize {
-    match line_offsets.binary_search(&byte_offset) {
-        Ok(i) => line_offsets[i],
-        Err(0) => 0,
-        Err(i) => line_offsets[i - 1],
+/// Linear line-cursor over precomputed line offsets. Children of a container
+/// appear in source order, so their offsets are monotonically increasing —
+/// a single forward pass replaces per-node binary search.
+struct LineCursor<'a> {
+    offsets: &'a [usize],
+    idx: usize,
+}
+
+impl<'a> LineCursor<'a> {
+    fn new(offsets: &'a [usize]) -> Self {
+        Self { offsets, idx: 0 }
     }
-}
 
-/// Column of `byte_offset` on its line.
-fn column_of(line_offsets: &[usize], byte_offset: usize) -> usize {
-    byte_offset - line_start_of(line_offsets, byte_offset)
+    /// Advance to the line containing `byte_offset`; returns its start.
+    fn line_start_of(&mut self, byte_offset: usize) -> usize {
+        while self.idx + 1 < self.offsets.len() && self.offsets[self.idx + 1] <= byte_offset {
+            self.idx += 1;
+        }
+        self.offsets[self.idx]
+    }
+
+    /// Column of `byte_offset` on its line.
+    fn column_of(&mut self, byte_offset: usize) -> usize {
+        byte_offset - self.line_start_of(byte_offset)
+    }
 }
 
 /// Recursive layout walk: verifies each block container's direct children sit
@@ -266,7 +280,7 @@ fn column_of(line_offsets: &[usize], byte_offset: usize) -> usize {
 fn check_node_layout(
     node: &CustomNode,
     text: &str,
-    line_offsets: &[usize],
+    cursor: &mut LineCursor<'_>,
     def: &crate::serializer::SerializeOptions,
     content_indent: usize,
 ) -> bool {
@@ -282,11 +296,11 @@ fn check_node_layout(
                 let Some(key_range) = key.source_range() else {
                     return false; // merged keys / programmatic nodes: not verifiable
                 };
-                if column_of(line_offsets, key_range.start) != content_indent {
+                if cursor.column_of(key_range.start) != content_indent {
                     return false;
                 }
                 // Complex block container keys sit after "? " (content_indent + 2)
-                if !check_node_layout(key, text, line_offsets, def, content_indent + 2) {
+                if !check_node_layout(key, text, cursor, def, content_indent + 2) {
                     return false;
                 }
                 match value {
@@ -295,7 +309,7 @@ fn check_node_layout(
                     } if !check_node_layout(
                         value,
                         text,
-                        line_offsets,
+                        cursor,
                         def,
                         content_indent + def.indent_mapping,
                     ) =>
@@ -307,7 +321,7 @@ fn check_node_layout(
                     } if !check_node_layout(
                         value,
                         text,
-                        line_offsets,
+                        cursor,
                         def,
                         content_indent + def.indent_sequence,
                     ) =>
@@ -330,7 +344,7 @@ fn check_node_layout(
                     return false;
                 };
                 // The item's line must start with `<content_indent>- `
-                let line_start = line_start_of(line_offsets, item_range.start);
+                let line_start = cursor.line_start_of(item_range.start);
                 let bytes = text.as_bytes();
                 if bytes.get(line_start + content_indent) != Some(&b'-') {
                     return false;
@@ -347,7 +361,7 @@ fn check_node_layout(
                     }
                     | CustomNode::Sequence {
                         flow_style: false, ..
-                    } if !check_node_layout(item, text, line_offsets, def, content_indent + 2) => {
+                    } if !check_node_layout(item, text, cursor, def, content_indent + 2) => {
                         return false;
                     }
                     _ => {}
