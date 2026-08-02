@@ -6,8 +6,14 @@
 //! flag (`take_error`), surfaced by `YamlStream` as a `PyErr`.
 
 use pyo3::prelude::*;
-use std::collections::VecDeque;
+use pyo3::types::PyDict;
+use saphyr_parser::{BufferedInput, Parser as SaphyrParser, Span};
+use std::collections::{HashMap, VecDeque};
 use std::io::Read;
+
+use crate::parser::stream::event_to_stream_event;
+use crate::parser::{StreamEvent, StreamEventType};
+use crate::py::stream_events::stream_event_to_py_dict;
 
 /// Source of bytes for [`ChunkCharIter`].
 #[allow(dead_code)] // Task 3 提供基础设施；Task 4 YamlStream 消费后移除
@@ -177,6 +183,108 @@ impl Iterator for ChunkCharIter {
     }
 }
 
+/// Lazy, constant-memory stream of YAML documents from a [`ChunkCharIter`].
+///
+/// `__next__` parses exactly one event per call (driving the saphyr parser
+/// incrementally), so a large file is never fully buffered. Errors surface
+/// exactly once as a `YamlParseError`; after an error or `close()` the
+/// iterator returns `None` (StopIteration).
+#[pyclass(module = "pyrs_yaml")]
+#[allow(dead_code)] // Task 4 提供 YamlStream；Task 5 YAML.load_stream 消费后移除
+pub(crate) struct YamlStream {
+    parser: Option<SaphyrParser<'static, BufferedInput<ChunkCharIter>>>,
+    anchor_map: HashMap<usize, String>,
+    finished: bool,
+    pending_error: Option<String>,
+}
+
+#[allow(dead_code)] // Task 4 提供 YamlStream；Task 5 YAML.load_stream 消费后移除
+impl YamlStream {
+    pub(crate) fn new(chars: ChunkCharIter) -> Self {
+        let parser = SaphyrParser::new_from_iter(chars);
+        Self {
+            parser: Some(parser),
+            anchor_map: HashMap::new(),
+            finished: false,
+            pending_error: None,
+        }
+    }
+
+    /// 核心循环：取下一事件。返回 `(StreamEvent, Span)` 或 None（EOF/错误）。
+    /// 在 `__next__` 内以 `py.detach(|| ...)` 调用。
+    fn next_event_impl(&mut self) -> Option<(StreamEvent, Span)> {
+        let parser = self.parser.as_mut()?;
+        loop {
+            match parser.next_event() {
+                None => {
+                    self.finished = true;
+                    return None;
+                }
+                Some(Err(e)) => {
+                    self.finished = true;
+                    self.pending_error = Some(format!("YAML parse error: {}", e));
+                    return None;
+                }
+                Some(Ok((event, span))) => {
+                    let stream_event =
+                        event_to_stream_event(event, span, &mut self.anchor_map, &mut |id| {
+                            Some(format!("anchor_{}", id))
+                        });
+                    // D5: 文档级清空 —— 当前文档的 anchor 已全部消费完毕，
+                    // 在转换之后清空，下个文档从头注册。
+                    if matches!(
+                        stream_event.as_ref().map(|e| &e.event_type),
+                        Some(StreamEventType::DocumentEnd)
+                    ) {
+                        self.anchor_map.clear();
+                    }
+                    if let Some(ev) = stream_event {
+                        return Some((ev, span));
+                    }
+                    // Event::Nothing → 继续循环
+                }
+            }
+        }
+    }
+}
+
+#[pymethods]
+#[allow(dead_code)] // Task 4 提供 YamlStream；Task 5 YAML.load_stream 消费后移除
+impl YamlStream {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__<'a>(&mut self, py: Python<'a>) -> PyResult<Option<Bound<'a, PyDict>>> {
+        if self.finished {
+            return Ok(None);
+        }
+        // 错误在首次 next_event 时取出并抛出一次。
+        let result = py.detach(|| self.next_event_impl());
+        if let Some(err_msg) = self.pending_error.take() {
+            self.finished = true;
+            return Err(crate::YamlParseError::new_err(err_msg));
+        }
+        let Some((event, _span)) = result else {
+            self.finished = true;
+            return Ok(None);
+        };
+        Ok(Some(stream_event_to_py_dict(py, &event)?))
+    }
+
+    /// 提前终止：停止读取后续 chunk。幂等。
+    fn close(&mut self) {
+        self.finished = true;
+        self.parser = None; // 释放 File/Py<PyAny> 句柄
+    }
+}
+
+impl Drop for YamlStream {
+    fn drop(&mut self) {
+        self.parser = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +340,60 @@ mod tests {
         assert_eq!(it.next(), None);
         assert_eq!(it.take_error(), Some("injected read failure".to_string()));
         assert_eq!(it.take_error(), None); // 一次性
+    }
+
+    #[test]
+    fn yaml_stream_produces_events_from_chars() {
+        let chars = iter_from_bytes("key: value\n".as_bytes());
+        let mut ys = YamlStream::new(chars);
+        let mut types = Vec::new();
+        while let Some((ev, _)) = ys.next_event_impl() {
+            types.push(format!("{:?}", ev.event_type));
+        }
+        // SS/DS/MS/SC/ME/DE/SE
+        assert!(types.len() >= 6, "got {:?}", types);
+        assert!(types.iter().any(|t| t.starts_with("Scalar")), "{:?}", types);
+        assert_eq!(ys.pending_error, None);
+        assert!(ys.finished);
+    }
+
+    #[test]
+    fn yaml_stream_document_end_clears_anchor_map() {
+        // 多文档：doc1 定义 &x，doc2 无 anchor —— DocumentEnd 后 anchor_map 为空。
+        let chars = iter_from_bytes("a: &x 1\n---\nb: 2\n".as_bytes());
+        let mut ys = YamlStream::new(chars);
+        while let Some((_ev, _)) = ys.next_event_impl() {
+            if ys.anchor_map.is_empty() {
+                // 任何时刻 anchor_map 为空都合法（doc2 无 anchor）
+            }
+        }
+        // 迭代结束后 anchor_map 应为空（最后一次 DocumentEnd 已清空）。
+        assert!(ys.anchor_map.is_empty());
+        assert_eq!(ys.pending_error, None);
+    }
+
+    #[test]
+    fn yaml_stream_error_then_finished() {
+        // 非法 YAML → pending_error 置位 + finished
+        let chars = iter_from_bytes("key: {unclosed\n".as_bytes());
+        let mut ys = YamlStream::new(chars);
+        loop {
+            let ev = ys.next_event_impl();
+            if ev.is_none() {
+                break;
+            }
+        }
+        assert!(ys.pending_error.is_some(), "expected a parse error");
+        assert!(ys.finished);
+    }
+
+    #[test]
+    fn yaml_stream_close_stops_reading() {
+        let chars = iter_from_bytes("key: value\n".as_bytes());
+        let mut ys = YamlStream::new(chars);
+        ys.close();
+        assert!(ys.finished);
+        assert!(ys.next_event_impl().is_none());
+        assert!(ys.pending_error.is_none());
     }
 }
