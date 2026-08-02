@@ -93,20 +93,3 @@ fn needs_quoting(value: &str) -> bool {
             .chars()
             .any(|c| c.is_whitespace() || ":{}[],&#*!|>".contains(c))
 }
-
-#[allow(dead_code)]
-fn target_scalar_value(node: &CustomNode) -> String {
-    match node {
-        CustomNode::Scalar { value, .. } => value.clone(),
-        CustomNode::Null { .. } => "null".to_string(),
-        _ => node_to_plain(node),
-    }
-}
-
-#[allow(dead_code)]
-fn node_to_plain(node: &CustomNode) -> String {
-    crate::serializer::to_yaml(node)
-        .trim_end()
-        .trim_start_matches("- ")
-        .to_string()
-}
