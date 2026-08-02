@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::ops::Range;
 
 /// Scalar style preservation for round-trip support
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,6 +117,8 @@ pub enum CustomNode {
         tag: Option<Tag>,
         /// Chomping indicator for block scalars (|+, |-, >+, >-)
         chomping: Chomping,
+        /// Byte range of this node in the original source text
+        source_range: Option<Range<usize>>,
     },
     Mapping {
         pairs: IndexMap<CustomNode, CustomNode>,
@@ -124,6 +127,8 @@ pub enum CustomNode {
         tag: Option<Tag>,
         /// Whether this mapping uses flow style ({key: value}) vs block style
         flow_style: bool,
+        /// Byte range of this node in the original source text
+        source_range: Option<Range<usize>>,
     },
     Sequence {
         items: Vec<CustomNode>,
@@ -132,11 +137,15 @@ pub enum CustomNode {
         tag: Option<Tag>,
         /// Whether this sequence uses flow style (\[item\]) vs block style
         flow_style: bool,
+        /// Byte range of this node in the original source text
+        source_range: Option<Range<usize>>,
     },
     Null {
         comment: Option<Comment>,
         anchor: Option<String>,
         tag: Option<Tag>,
+        /// Byte range of this node in the original source text
+        source_range: Option<Range<usize>>,
     },
     /// Alias reference (*alias)
     Alias { name: String },
@@ -152,6 +161,7 @@ impl Hash for CustomNode {
                 anchor,
                 tag,
                 chomping,
+                source_range,
             } => {
                 state.write_u8(0);
                 value.hash(state);
@@ -160,6 +170,7 @@ impl Hash for CustomNode {
                 anchor.hash(state);
                 tag.hash(state);
                 chomping.hash(state);
+                source_range.hash(state);
             }
             CustomNode::Mapping {
                 pairs,
@@ -167,6 +178,7 @@ impl Hash for CustomNode {
                 anchor,
                 tag,
                 flow_style,
+                source_range,
             } => {
                 state.write_u8(1);
                 for (k, v) in pairs {
@@ -177,6 +189,7 @@ impl Hash for CustomNode {
                 anchor.hash(state);
                 tag.hash(state);
                 flow_style.hash(state);
+                source_range.hash(state);
             }
             CustomNode::Sequence {
                 items,
@@ -184,6 +197,7 @@ impl Hash for CustomNode {
                 anchor,
                 tag,
                 flow_style,
+                source_range,
             } => {
                 state.write_u8(2);
                 for item in items {
@@ -193,16 +207,19 @@ impl Hash for CustomNode {
                 anchor.hash(state);
                 tag.hash(state);
                 flow_style.hash(state);
+                source_range.hash(state);
             }
             CustomNode::Null {
                 comment,
                 anchor,
                 tag,
+                source_range,
             } => {
                 state.write_u8(3);
                 comment.hash(state);
                 anchor.hash(state);
                 tag.hash(state);
+                source_range.hash(state);
             }
             CustomNode::Alias { name } => {
                 state.write_u8(4);
@@ -238,6 +255,7 @@ impl CustomNode {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         }
     }
 
@@ -266,6 +284,7 @@ impl CustomNode {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         }
     }
 
@@ -295,6 +314,7 @@ impl CustomNode {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         }
     }
 
@@ -320,6 +340,7 @@ impl CustomNode {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         }
     }
 
@@ -340,6 +361,7 @@ impl CustomNode {
             comment: None,
             anchor: None,
             tag: None,
+            source_range: None,
         }
     }
 
@@ -395,6 +417,36 @@ impl CustomNode {
         }
     }
 
+    /// 获取节点在原始源文本中的字节区间。
+    ///
+    /// # Returns
+    /// 返回 `Some(&Range<usize>)` 表示节点覆盖的 `[start, end)` 字节范围，
+    /// 或 `None` 表示没有范围信息（例如编程式构造的节点或 `Alias` 变体）。
+    pub fn source_range(&self) -> Option<&Range<usize>> {
+        match self {
+            CustomNode::Scalar { source_range, .. }
+            | CustomNode::Mapping { source_range, .. }
+            | CustomNode::Sequence { source_range, .. }
+            | CustomNode::Null { source_range, .. } => source_range.as_ref(),
+            CustomNode::Alias { .. } => None,
+        }
+    }
+
+    /// 设置节点在原始源文本中的字节区间。
+    ///
+    /// 对 `Alias` 变体调用此方法是空操作（别名永远不携带源区间）。
+    pub fn set_source_range(&mut self, r: Range<usize>) {
+        match self {
+            CustomNode::Scalar { source_range, .. }
+            | CustomNode::Mapping { source_range, .. }
+            | CustomNode::Sequence { source_range, .. }
+            | CustomNode::Null { source_range, .. } => {
+                *source_range = Some(r);
+            }
+            CustomNode::Alias { .. } => {}
+        }
+    }
+
     /// 获取节点的锚点名称。
     ///
     /// # Returns
@@ -412,6 +464,7 @@ impl CustomNode {
     ///     anchor: Some("my_anchor".into()),
     ///     tag: None,
     ///     chomping: Default::default(),
+    ///     source_range: None,
     /// };
     /// assert_eq!(node.anchor(), Some("my_anchor"));
     /// ```
@@ -442,6 +495,7 @@ impl CustomNode {
     ///     anchor: None,
     ///     tag: Some(Tag::primary("int")),
     ///     chomping: Default::default(),
+    ///     source_range: None,
     /// };
     /// assert_eq!(node.tag().unwrap().suffix, "int");
     /// ```
@@ -496,6 +550,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
         assert_eq!(node.comment(), None);
         assert_eq!(node.anchor(), None);
@@ -511,6 +566,7 @@ mod tests {
             anchor: None,
             tag: Some(Tag::primary("int")),
             chomping: Chomping::Clip,
+            source_range: None,
         };
         assert_eq!(node.tag().unwrap().suffix, "int");
     }
@@ -527,6 +583,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
         assert_eq!(node.comment().unwrap().text, "a greeting");
         assert!(!node.comment().unwrap().standalone);
@@ -541,6 +598,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
         let key2 = CustomNode::Scalar {
             value: "a".to_string(),
@@ -549,6 +607,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
         let val = CustomNode::Scalar {
             value: "1".to_string(),
@@ -557,6 +616,7 @@ mod tests {
             anchor: None,
             tag: None,
             chomping: Chomping::Clip,
+            source_range: None,
         };
 
         let mut pairs = IndexMap::new();
@@ -569,6 +629,7 @@ mod tests {
             anchor: None,
             tag: None,
             flow_style: false,
+            source_range: None,
         };
 
         // Verify order is preserved (insertion order)
