@@ -1,6 +1,7 @@
 """Integration tests for YAML.load_stream / load_stream_file."""
 
 import io
+import itertools
 
 import pyrs_yaml
 import pytest
@@ -41,16 +42,14 @@ class TestLoadStream:
         s = pyrs_yaml.YAML().load_stream(io.StringIO("key: value"))
         s.close()
         s.close()
-        assert list(s) == []  # close 后 StopIteration
+        assert list(s) == []
 
     def test_load_stream_error_then_stopiteration(self):
         """Error surfaces exactly once; subsequent __next__ returns StopIteration (no repeat raise)."""
         it = pyrs_yaml.YAML().load_stream(io.StringIO("key: {unclosed"))
         with pytest.raises(pyrs_yaml.YamlParseError):
-            # 惰性迭代: 错误在解析到达非法 token 时抛出(可能先产出若干事件).
             while True:
                 next(it)
-        # 第二次 next → StopIteration(不重复抛错)
         with pytest.raises(StopIteration):
             next(it)
 
@@ -77,3 +76,148 @@ class TestLoadStreamFile:
         assert set(sig.parameters) <= {"self", "path"}
         sig2 = inspect.signature(pyrs_yaml.YAML.load_stream)
         assert set(sig2.parameters) <= {"self", "file_obj"}
+
+
+# ============================================================================
+# Parity with parse_stream (§7 tests 1, 1a, 1b, 1c)
+# ============================================================================
+
+INPUTS = [
+    "key: value",
+    "a:\n  b: 1\n  c: [1, 2, 3]",
+    "# comment\nkey: value  # inline",
+    "defaults: &defaults\n  timeout: 30\nref: *defaults",
+    "---\nkey1: val1\n---\nkey2: val2",
+    "- a\r\n- b\r\n- c",
+    "nested:\n  child: |\n    literal text\n",
+    'msg: "hello\\nworld"',
+]
+
+
+def _normalize_stream_events(events, streaming):
+    out = []
+    for e in events:
+        if e["type"] == "comment":
+            continue
+        e = dict(e)
+        if streaming and e["type"] == "alias":
+            assert e["value"] is not None and len(e["value"]) > 0
+            e["value"] = "<alias>"
+        elif streaming and e["anchor"] is not None:
+            assert e["anchor"].startswith("anchor_")
+            e["anchor"] = "<anchor>"
+        elif not streaming and e["type"] == "alias":
+            e["value"] = "<alias>"
+        elif not streaming and e["anchor"] is not None:
+            e["anchor"] = "<anchor>"
+        out.append(e)
+    return out
+
+
+@pytest.mark.parametrize("yaml_str", INPUTS)
+def test_parity_structure_events(yaml_str):
+    streamed = list(pyrs_yaml.YAML().load_stream(io.StringIO(yaml_str)))
+    parsed = list(pyrs_yaml.parse_stream(yaml_str))
+    assert _normalize_stream_events(streamed, True) == _normalize_stream_events(parsed, False)
+
+
+@pytest.mark.parametrize("yaml_str", ["---\na: 1\n---\nb: 2\n", "a: 1\n---\nb: 2\n"])
+def test_parity_multidoc_sequence(yaml_str):
+    streamed = [e["type"] for e in pyrs_yaml.YAML().load_stream(io.StringIO(yaml_str))]
+    parsed = [e["type"] for e in pyrs_yaml.parse_stream(yaml_str) if e["type"] != "comment"]
+    assert streamed == parsed
+    assert streamed.count("document_start") == 2
+    assert streamed[-1] == "stream_end"
+
+
+def test_parity_cross_document_alias_load_stream_succeeds():
+    """load_stream does not validate cross-doc aliases (saphyr streaming parser)."""
+    events = list(pyrs_yaml.YAML().load_stream(io.StringIO("---\na: &x 1\n---\nb: *x\n")))
+    assert any(e["type"] == "alias" for e in events)
+
+
+def test_parity_cross_document_alias_parse_stream_raises():
+    """parse_stream (full parser) validates cross-doc aliases."""
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        list(pyrs_yaml.parse_stream("---\na: &x 1\n---\nb: *x\n"))
+
+
+@pytest.mark.parametrize("empty", ["", "  \n \n", "\n\n"])
+def test_parity_empty_input(empty):
+    streamed = [e["type"] for e in pyrs_yaml.YAML().load_stream(io.StringIO(empty))]
+    parsed = [e["type"] for e in pyrs_yaml.parse_stream(empty)]
+    assert parsed == []
+    assert streamed == ["stream_start", "stream_end"]
+
+
+def test_parity_line_column_equal():
+    yaml_str = "a: 1\nb:\n  - 2\n  - 3\n"
+    streamed = pyrs_yaml.YAML().load_stream(io.StringIO(yaml_str))
+    parsed = [e for e in pyrs_yaml.parse_stream(yaml_str) if e["type"] != "comment"]
+    for se, pe in zip(streamed, parsed):
+        assert (se["line"], se["column"]) == (pe["line"], pe["column"])
+
+
+def test_parity_all_seven_keys_present():
+    keys = {"type", "value", "style", "anchor", "tag", "line", "column"}
+    for e in pyrs_yaml.YAML().load_stream(io.StringIO("key: value")):
+        assert keys.issubset(e.keys())
+
+
+# ============================================================================
+# §7 tests 2, 3, 7 — memory-bound, early termination, free-threaded
+# ============================================================================
+
+
+class TrackingFile(io.StringIO):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.read_calls = 0
+
+    def read(self, n=-1):  # type: ignore[override]
+        self.read_calls += 1
+        return super().read(n)
+
+
+def test_early_termination_stops_reading():
+    big = "".join(f"key{i}: value{i}\n" for i in range(10000))
+    f = TrackingFile(big)
+    s = pyrs_yaml.YAML().load_stream(f)
+    for _ in itertools.islice(s, 20):
+        pass
+    calls_after_20 = f.read_calls
+    s.close()
+    for _ in itertools.islice(s, 20):
+        pass
+    assert f.read_calls == calls_after_20
+
+
+def test_early_termination_break_stops_reading():
+    big = "".join(f"key{i}: value{i}\n" for i in range(10000))
+    f = TrackingFile(big)
+    for e in pyrs_yaml.YAML().load_stream(f):
+        if e["type"] == "scalar":
+            break
+    import sys
+
+    if sys.implementation.name == "cpython":
+        assert f.read_calls < 100
+
+
+def test_memory_bound_load_stream_file(tmp_path):
+    pytest.importorskip("psutil", reason="psutil provides RSS measurement")
+    path = tmp_path / "big.yaml"
+    with path.open("w", encoding="utf-8") as fh:
+        for i in range(1_000_000):
+            fh.write(f"k{i}: v{i}\n")
+    import psutil
+
+    proc = psutil.Process()
+    before = proc.memory_info().rss
+    count = 0
+    for e in pyrs_yaml.YAML().load_stream_file(str(path)):
+        if e["type"] == "scalar":
+            count += 1
+    after = proc.memory_info().rss
+    assert count > 0
+    assert after - before < 128 * 1024 * 1024
