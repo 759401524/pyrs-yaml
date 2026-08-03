@@ -24,8 +24,16 @@ pub fn set_path(
     new_value: CustomNode,
     preserve_metadata: bool,
     source: &str,
+    line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let line_offsets = compute_line_offsets(source);
+    let computed;
+    let line_offsets: &[usize] = match line_offsets {
+        Some(offs) => offs,
+        None => {
+            computed = compute_line_offsets(source);
+            &computed
+        }
+    };
 
     if segments.is_empty() {
         let eligible = eligible_path(&path_nodes(node, segments).map_err(nav_err)?);
@@ -58,7 +66,7 @@ pub fn set_path(
     let depth = segments.len().saturating_sub(1);
 
     let (eligible, compact_override) =
-        precompute(node, segments, parent_segments, &line_offsets, source);
+        precompute(node, segments, parent_segments, line_offsets, source);
 
     let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
@@ -78,7 +86,7 @@ pub fn set_path(
                         .map(|(k, v)| {
                             let s = k.source_range().map(|r| r.start).unwrap_or(0);
                             let e = v.source_range().map(|r| r.end).unwrap_or(s);
-                            (s, e, line_indent(&line_offsets, source, s))
+                            (s, e, line_indent(line_offsets, source, s))
                         })
                         .unwrap_or((0, 0, 0));
                     let target = pairs.get_index_mut(idx).map(|(_, v)| v);
@@ -105,7 +113,7 @@ pub fn set_path(
                             old_key_start,
                             old_value_end,
                             old_indent,
-                            &line_offsets,
+                            line_offsets,
                             source,
                             compact_override,
                             &text,
@@ -119,8 +127,8 @@ pub fn set_path(
                             let key_start = lk.source_range().map(|r| r.start).unwrap_or(0);
                             let val_end = lv.source_range().map(|r| r.end).unwrap_or(key_start);
                             (
-                                line_end(&line_offsets, val_end, source.len()),
-                                line_indent(&line_offsets, source, key_start),
+                                line_end(line_offsets, val_end, source.len()),
+                                line_indent(line_offsets, source, key_start),
                             )
                         }
                         None => (0, 0),
@@ -150,8 +158,8 @@ pub fn set_path(
             items[idx] = v;
             let raw = item_range.unwrap_or(0..0);
             let raw_start = raw.start;
-            let range = line_aligned(raw, &line_offsets, source);
-            let indent = line_indent(&line_offsets, source, raw_start);
+            let range = line_aligned(raw, line_offsets, source);
+            let indent = line_indent(line_offsets, source, raw_start);
             let text = crate::serializer::item_to_string(&items[idx], indent, true, depth)?;
             Ok(DirtyUnit {
                 kind: DirtyKind::Region {
@@ -173,8 +181,16 @@ pub fn insert_path(
     index: i64,
     value: CustomNode,
     source: &str,
+    line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let line_offsets = compute_line_offsets(source);
+    let computed;
+    let line_offsets: &[usize] = match line_offsets {
+        Some(offs) => offs,
+        None => {
+            computed = compute_line_offsets(source);
+            &computed
+        }
+    };
     let depth = segments.len().saturating_sub(1);
     let eligible = {
         let path = path_nodes(node, segments).map_err(nav_err)?;
@@ -208,8 +224,8 @@ pub fn insert_path(
             let (at, indent, is_last) = if insert_at < items.len() {
                 let next_item = items[insert_at].source_range().cloned().unwrap_or(0..0);
                 (
-                    line_start(&line_offsets, next_item.start),
-                    line_indent(&line_offsets, source, next_item.start),
+                    line_start(line_offsets, next_item.start),
+                    line_indent(line_offsets, source, next_item.start),
                     false,
                 )
             } else {
@@ -218,8 +234,8 @@ pub fn insert_path(
                     .cloned()
                     .unwrap_or(0..0);
                 (
-                    line_end(&line_offsets, last_item.end, source.len()),
-                    line_indent(&line_offsets, source, last_item.start),
+                    line_end(line_offsets, last_item.end, source.len()),
+                    line_indent(line_offsets, source, last_item.start),
                     true,
                 )
             };
@@ -240,8 +256,16 @@ pub fn append_path(
     segments: &[Segment<'_>],
     value: CustomNode,
     source: &str,
+    line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let line_offsets = compute_line_offsets(source);
+    let computed;
+    let line_offsets: &[usize] = match line_offsets {
+        Some(offs) => offs,
+        None => {
+            computed = compute_line_offsets(source);
+            &computed
+        }
+    };
     let depth = segments.len().saturating_sub(1);
     let eligible = {
         let path = path_nodes(node, segments).map_err(nav_err)?;
@@ -264,8 +288,8 @@ pub fn append_path(
                 .source_range()
                 .cloned()
                 .unwrap_or(0..0);
-            let at = line_end(&line_offsets, last_item.end, source.len());
-            let indent = line_indent(&line_offsets, source, last_item.start);
+            let at = line_end(line_offsets, last_item.end, source.len());
+            let indent = line_indent(line_offsets, source, last_item.start);
             let text = crate::serializer::item_to_string(&value, indent, true, depth)?;
             items.push(value);
             Ok(DirtyUnit {
@@ -282,15 +306,23 @@ pub fn delete_path(
     node: &mut CustomNode,
     segments: &[Segment<'_>],
     source: &str,
+    line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let line_offsets = compute_line_offsets(source);
+    let computed;
+    let line_offsets: &[usize] = match line_offsets {
+        Some(offs) => offs,
+        None => {
+            computed = compute_line_offsets(source);
+            &computed
+        }
+    };
     if segments.is_empty() {
         return Err("edit-error".to_string());
     }
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
     let last = &last[0];
     let (eligible, compact_override) =
-        precompute(node, segments, parent_segments, &line_offsets, source);
+        precompute(node, segments, parent_segments, line_offsets, source);
     let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
@@ -310,8 +342,8 @@ pub fn delete_path(
                 s..e
             });
             pairs.shift_remove_index(idx);
-            let range = line_aligned(raw.unwrap_or(0..0), &line_offsets, source);
-            let range = extend_delete_over_comments(range, &line_offsets, source);
+            let range = line_aligned(raw.unwrap_or(0..0), line_offsets, source);
+            let range = extend_delete_over_comments(range, line_offsets, source);
             Ok(DirtyUnit {
                 kind: DirtyKind::Delete { range },
                 eligible,
@@ -322,8 +354,8 @@ pub fn delete_path(
                 .ok_or_else(|| "index-out-of-range-edit".to_string())?;
             let item_range = items[idx].source_range().cloned();
             items.remove(idx);
-            let range = line_aligned(item_range.unwrap_or(0..0), &line_offsets, source);
-            let range = extend_delete_over_comments(range, &line_offsets, source);
+            let range = line_aligned(item_range.unwrap_or(0..0), line_offsets, source);
+            let range = extend_delete_over_comments(range, line_offsets, source);
             Ok(DirtyUnit {
                 kind: DirtyKind::Delete { range },
                 eligible,
@@ -339,8 +371,16 @@ pub fn rename_path(
     segments: &[Segment<'_>],
     new_key: &str,
     source: &str,
+    line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let line_offsets = compute_line_offsets(source);
+    let computed;
+    let line_offsets: &[usize] = match line_offsets {
+        Some(offs) => offs,
+        None => {
+            computed = compute_line_offsets(source);
+            &computed
+        }
+    };
     if segments.is_empty() {
         return Err("cannot-rename-root".to_string());
     }
@@ -348,7 +388,7 @@ pub fn rename_path(
     let last = &last[0];
     let depth = segments.len().saturating_sub(1);
     let (eligible, compact_override) =
-        precompute(node, segments, parent_segments, &line_offsets, source);
+        precompute(node, segments, parent_segments, line_offsets, source);
     let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
     match (parent, last) {
@@ -375,8 +415,7 @@ pub fn rename_path(
                 let e = v.source_range().map(|r| r.end).unwrap_or(s);
                 (s, e)
             });
-            let old_indent =
-                line_indent(&line_offsets, source, old_range.map(|r| r.0).unwrap_or(0));
+            let old_indent = line_indent(line_offsets, source, old_range.map(|r| r.0).unwrap_or(0));
             let value_node = pairs
                 .shift_remove_index(idx)
                 .map(|(_, v)| v)
@@ -397,7 +436,7 @@ pub fn rename_path(
                     key_start,
                     value_end,
                     old_indent,
-                    &line_offsets,
+                    line_offsets,
                     source,
                     compact_override,
                     &text,
@@ -470,6 +509,7 @@ mod tests {
             CustomNode::plain_scalar("z"),
             true,
             "- a\n- b\n- c",
+            None,
         )
         .unwrap();
         assert_eq!(crate::serializer::to_yaml(&node), "- a\n- b\n- z\n");
@@ -484,6 +524,7 @@ mod tests {
             CustomNode::plain_scalar("z"),
             true,
             "- a\n- b",
+            None,
         )
         .is_err());
     }
@@ -497,6 +538,7 @@ mod tests {
             CustomNode::plain_scalar("1"),
             true,
             "",
+            None,
         )
         .unwrap();
         assert_eq!(crate::serializer::to_yaml(&node), "a: 1\n");
@@ -514,6 +556,7 @@ mod tests {
             CustomNode::plain_scalar("2"),
             true,
             "base: &b\n  x: 1\ncopy: *b",
+            None,
         )
         .unwrap_err();
         assert_eq!(err, "cannot-edit-alias");
@@ -522,7 +565,7 @@ mod tests {
     #[test]
     fn delete_path_negative_index() {
         let mut node = doc("- a\n- b\n- c");
-        delete_path(&mut node, &[Segment::Index(-2)], "- a\n- b\n- c").unwrap();
+        delete_path(&mut node, &[Segment::Index(-2)], "- a\n- b\n- c", None).unwrap();
         assert_eq!(crate::serializer::to_yaml(&node), "- a\n- c\n");
     }
 
@@ -535,6 +578,7 @@ mod tests {
             -1,
             CustomNode::plain_scalar("z"),
             "- a\n- b\n- c",
+            None,
         )
         .unwrap();
         assert_eq!(crate::serializer::to_yaml(&node), "- a\n- b\n- z\n- c\n");
@@ -549,6 +593,7 @@ mod tests {
             CustomNode::plain_scalar("9"),
             true,
             "a: 1\nb: 2\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -563,7 +608,7 @@ mod tests {
     #[test]
     fn delete_item_region_is_item_lines() {
         let mut node = doc_with_ranges("- a\n- b\n- c\n");
-        let unit = delete_path(&mut node, &[Segment::Index(1)], "- a\n- b\n- c\n").unwrap();
+        let unit = delete_path(&mut node, &[Segment::Index(1)], "- a\n- b\n- c\n", None).unwrap();
         match unit.kind {
             DirtyKind::Delete { range } => assert_eq!(range, 4..8),
             _ => panic!(),
@@ -579,6 +624,7 @@ mod tests {
             1,
             CustomNode::plain_scalar("z"),
             "- a\n- b\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -596,6 +642,7 @@ mod tests {
             CustomNode::plain_scalar("b"),
             true,
             "- host: a\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -611,6 +658,7 @@ mod tests {
             &mut node,
             &[Segment::Key(Cow::Borrowed("b"))],
             "# note\nb: 2\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -628,6 +676,7 @@ mod tests {
             CustomNode::plain_scalar("b"),
             true,
             "- host: a\n  port: 8080\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -645,6 +694,7 @@ mod tests {
             CustomNode::plain_scalar("2"),
             true,
             "a: 1\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -659,8 +709,14 @@ mod tests {
     #[test]
     fn append_uses_last_item_end() {
         let mut node = doc_with_ranges("- a\n- b\n");
-        let unit =
-            append_path(&mut node, &[], CustomNode::plain_scalar("c"), "- a\n- b\n").unwrap();
+        let unit = append_path(
+            &mut node,
+            &[],
+            CustomNode::plain_scalar("c"),
+            "- a\n- b\n",
+            None,
+        )
+        .unwrap();
         match unit.kind {
             DirtyKind::Insert { at, text } => {
                 assert_eq!(at, 8);
@@ -682,6 +738,7 @@ mod tests {
             CustomNode::plain_scalar("2"),
             true,
             "a: {b: 1}\n",
+            None,
         )
         .unwrap();
         assert!(!unit.eligible);
@@ -700,6 +757,7 @@ mod tests {
             CustomNode::plain_scalar("2"),
             true,
             "a: 1\n",
+            None,
         )
         .unwrap();
         assert!(!unit.eligible);
@@ -713,6 +771,7 @@ mod tests {
             &[Segment::Index(0), Segment::Key(Cow::Borrowed("host"))],
             "name",
             "- host: a\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -728,6 +787,7 @@ mod tests {
             &mut node,
             &[Segment::Index(0), Segment::Key(Cow::Borrowed("port"))],
             "- host: a\n  port: 8080\n",
+            None,
         )
         .unwrap();
         match unit.kind {
@@ -802,5 +862,33 @@ mod tests {
             crate::serializer::to_yaml(&node),
             "- \n  top:\n    inner: 1\n"
         );
+    }
+
+    #[test]
+    fn cached_offsets_match_fresh_compute() {
+        let source = "a: 1\nb: 2\nc: 3\n";
+        let offsets = compute_line_offsets(source);
+        let segs = &[Segment::Key(Cow::Borrowed("b"))];
+        let mut n1 = crate::ast::CustomNode::plain_mapping(indexmap::IndexMap::new());
+        let mut n2 = n1.clone();
+        let unit1 = set_path(
+            &mut n1,
+            segs,
+            crate::ast::CustomNode::plain_scalar("9"),
+            true,
+            source,
+            Some(&offsets),
+        )
+        .unwrap();
+        let unit2 = set_path(
+            &mut n2,
+            segs,
+            crate::ast::CustomNode::plain_scalar("9"),
+            true,
+            source,
+            None,
+        )
+        .unwrap();
+        assert_eq!(unit1, unit2);
     }
 }

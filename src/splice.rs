@@ -38,6 +38,7 @@ pub struct SpliceReject;
 pub struct SpliceState {
     pub segments: Vec<SourceSegment>,
     pub base: Arc<str>,
+    pub offsets: Option<Vec<usize>>,
 }
 
 impl SpliceState {
@@ -49,7 +50,18 @@ impl SpliceState {
                 end: base.len(),
             }],
             base,
+            offsets: None,
         }
+    }
+
+    /// Compute (once) and return the byte offset of each line of `base`.
+    /// The offsets are in original-source coordinates — the same space the
+    /// segments use — so they stay valid across an edit burst.
+    pub fn line_offsets(&mut self) -> &[usize] {
+        if self.offsets.is_none() {
+            self.offsets = Some(crate::parser::yaml::compute_line_offsets(&self.base));
+        }
+        self.offsets.as_deref().unwrap_or(&[])
     }
 
     /// Fold one edit unit into the segment list. `Err` means the unit cannot
@@ -467,7 +479,15 @@ mod tests {
         assert!(is_eligible(&ast, source));
         let mut splice = SpliceState::new(Arc::from(source));
         let segs = parse_path_segments("$.b").unwrap();
-        let unit = set_path(&mut ast, &segs, CustomNode::plain_scalar("9"), true, source).unwrap();
+        let unit = set_path(
+            &mut ast,
+            &segs,
+            CustomNode::plain_scalar("9"),
+            true,
+            source,
+            None,
+        )
+        .unwrap();
         splice.apply(&unit).unwrap();
         assert_eq!(splice.materialize(), Some("a: 1\nb: 9\nc: 3\n".to_string()));
     }
@@ -481,7 +501,15 @@ mod tests {
         // Editing inside a flow container is ineligible at the unit level, so
         // the splice rejects it and the caller falls back to a full serialize.
         let segs = parse_path_segments("$.a.b").unwrap();
-        let unit = set_path(&mut ast, &segs, CustomNode::plain_scalar("2"), true, source).unwrap();
+        let unit = set_path(
+            &mut ast,
+            &segs,
+            CustomNode::plain_scalar("2"),
+            true,
+            source,
+            None,
+        )
+        .unwrap();
         assert!(!unit.eligible);
         assert!(splice.apply(&unit).is_err());
     }
@@ -493,7 +521,15 @@ mod tests {
         assert!(is_eligible(&ast, source));
         let mut splice = SpliceState::new(Arc::from(source));
         let segs = parse_path_segments("$[0].a").unwrap();
-        let unit = set_path(&mut ast, &segs, CustomNode::plain_scalar("9"), true, source).unwrap();
+        let unit = set_path(
+            &mut ast,
+            &segs,
+            CustomNode::plain_scalar("9"),
+            true,
+            source,
+            None,
+        )
+        .unwrap();
         splice.apply(&unit).unwrap();
         assert_eq!(
             splice.materialize(),
@@ -508,7 +544,15 @@ mod tests {
         assert!(is_eligible(&ast, source));
         let mut splice = SpliceState::new(Arc::from(source));
         let segs = parse_path_segments("$.b").unwrap();
-        let unit = set_path(&mut ast, &segs, CustomNode::plain_scalar("2"), true, source).unwrap();
+        let unit = set_path(
+            &mut ast,
+            &segs,
+            CustomNode::plain_scalar("2"),
+            true,
+            source,
+            None,
+        )
+        .unwrap();
         splice.apply(&unit).unwrap();
         assert_eq!(splice.materialize(), Some("a: 1\nb: 2\n".to_string()));
     }
@@ -521,8 +565,15 @@ mod tests {
         let mut splice = SpliceState::new(Arc::from(source));
         for (path, val) in [("$[0]", "x"), ("$[1]", "y")] {
             let segs = parse_path_segments(path).unwrap();
-            let unit =
-                set_path(&mut ast, &segs, CustomNode::plain_scalar(val), true, source).unwrap();
+            let unit = set_path(
+                &mut ast,
+                &segs,
+                CustomNode::plain_scalar(val),
+                true,
+                source,
+                None,
+            )
+            .unwrap();
             splice.apply(&unit).unwrap();
         }
         assert_eq!(splice.materialize(), Some("- x\n- y\n- c: 3\n".to_string()));
@@ -534,7 +585,7 @@ mod tests {
         assert!(is_eligible(&ast2, compact));
         let mut splice2 = SpliceState::new(Arc::from(compact));
         let segs = parse_path_segments("$[0].a").unwrap();
-        let unit = delete_path(&mut ast2, &segs, compact).unwrap();
+        let unit = delete_path(&mut ast2, &segs, compact, None).unwrap();
         assert!(!unit.eligible);
         assert!(splice2.apply(&unit).is_err());
     }
