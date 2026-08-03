@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Streaming write: `YAML.dump_stream(file_obj, iterable)` / `YAML.dump_file(path, iterable)` with document-level constant memory, auto `---` separators, and `explicit_start`/`explicit_end` flags
+- `YamlDocument` `with` context manager: snapshot/rollback transaction scoping
+- `compliance_report()`: public YAML Test Suite pass-rate reporting (version-consistent)
+
+### Changed
+
+- Edit-burst line-offset cache: internal O(N+edit) carry-through in the splice layer (public API unchanged)
+- `compute_compliance` moved from tests to `pyrs_yaml.compliance`; version no longer hardcoded
+
+### Fixed
+
+- Changelog mirror drift guard: prek hook + CI job assert root/mirror `[Unreleased]` sync
+- Publish stub pre-validation: CI reproduces v0.10.0-class `--generate-stubs` container failures before Release
+
 ## [0.11.2] - 2026-08-03
 
 ### Added

@@ -39,6 +39,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |:--------|:-----|:----------|
+| v0.11.3 | 2026-08-03 | [CHANGELOG.md §\[0.11.3\]](CHANGELOG.md#0113---streaming-write--process-hardening-target-q3-2026) |
 | v0.11.2 | 2026-08-03 | [CHANGELOG.md §\[0.11.2\]](CHANGELOG.md#0112---2026-08-03) |
 | v0.11.0 | 2026-08-02 | [CHANGELOG.md §\[0.11.0\]](CHANGELOG.md#0110---2026-08-02) |
 | v0.10.0 | 2026-08-01 | [CHANGELOG.md §\[0.10.0\]](CHANGELOG.md#0100---2026-08-01) |
@@ -61,12 +62,12 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | # | Item | Layer | Priority | Notes |
 |:--|:-----|:------|:--------:|:------|
-| 1 | **Streaming write** — `YAML.dump_stream(file_obj, iterable)` / `dump_file(path, ...)`: serializer emits events chunk-by-chunk to a Python file object; constant memory on 100MB+ output | Rust + Python | 🔴 | Headline; symmetric to `load_stream`; serializer is currently whole-string (`src/serializer.rs`); GIL released per chunk via `py.detach`; highest design risk → needs design doc under `docs/superpowers/specs/` |
-| 2 | **Line-offsets cache** — carry `compute_line_offsets(source)` (src/parser/yaml/comment.rs:14) through the 5 edit primitives so an edit burst costs O(N+edit) not O(N×edit) | Rust | 🟡 | Carried from v0.11.2 #5; **requires changing 5 edit-function signatures → Ask First per AGENTS.md**; justify with a real edit-burst use case before committing |
-| 3 | **publish.yml pre-release validation** — CI job on PRs touching the publish workflow (or `workflow_dispatch` dry-run) running `maturin build --release --generate-stubs` in a linux container, catching the v0.10.0-class stub failure before Release | CI | 🔴 | Open process debt (2026-08-02 review, Phase 4); cheap; prevents silent publish failures |
-| 4 | **Changelog mirror sync check** — prek hook or CI job asserting root `CHANGELOG.md` `[Unreleased]` == `docs/{en,ja,ko,zh}` changelog mirrors | CI/Process | 🟡 | Open process debt; docs-site staleness recurred v0.7.0–v0.10.0 |
-| 5 | **`with` context manager** for document scoping | Python | 🟡 | Deferred since v0.9.0 review; small, safe, ecosystem-idiomatic |
-| 6 | **Compliance score reporting** — public `compliance_report()` surfacing the yaml-test-suite pass rate (tests gate at 75%) | Python | 🟡 | Regression guard + differentiator signal |
+| 1 | **Streaming write** — `YAML.dump_stream(file_obj, iterable)` / `dump_file(path, ...)`: serializer emits events chunk-by-chunk to a Python file object; constant memory on 100MB+ output | Rust + Python | 🔴 | ✅ Commits `061ebfd`/`11bdb80`/`7e6e821` |
+| 2 | **Line-offsets cache** — carry `compute_line_offsets(source)` (src/parser/yaml/comment.rs:14) through the 5 edit primitives so an edit burst costs O(N+edit) not O(N×edit) | Rust | 🟡 | ✅ Commit `ef53ddc` |
+| 3 | **publish.yml pre-release validation** — CI job on PRs touching the publish workflow (or `workflow_dispatch` dry-run) running `maturin build --release --generate-stubs` in a linux container, catching the v0.10.0-class stub failure before Release | CI | 🔴 | ✅ Commit `cb3c6fc` |
+| 4 | **Changelog mirror sync check** — prek hook or CI job asserting root `CHANGELOG.md` `[Unreleased]` == `docs/{en,ja,ko,zh}` changelog mirrors | CI/Process | 🟡 | ✅ Commit `cb3c6fc` |
+| 5 | **`with` context manager** for document scoping | Python | 🟡 | ✅ Commit `2bfc483` |
+| 6 | **Compliance score reporting** — public `compliance_report()` surfacing the yaml-test-suite pass rate (tests gate at 75%) | Python | 🟡 | ✅ Commit `6599ee7` |
 
 **Design decisions (2026-08-03)**: mmap-backed file streaming (read + edit without loading) stays deferred (abi3 portability blocker). Community plugins / YAML Schema language stay in Research. Line-offsets cache is an architectural optimization, not a fix (CodSpeed same-runner 3-branch showed no real edit regression).
 
