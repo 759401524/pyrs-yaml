@@ -159,6 +159,7 @@ mod pyrs_yaml {
             source_dirty: false,
             splice: None,
             splice_checked: false,
+            snapshot: vec![],
         })
     }
 
@@ -408,6 +409,7 @@ mod pyrs_yaml {
                 source_dirty: false,
                 splice: None,
                 splice_checked: false,
+                snapshot: vec![],
             })
         }
 
@@ -458,6 +460,7 @@ mod pyrs_yaml {
                     source_dirty: false,
                     splice: None,
                     splice_checked: false,
+                    snapshot: vec![],
                 })
                 .collect())
         }
@@ -552,6 +555,16 @@ mod pyrs_yaml {
     }
 
     // ---- YamlDocument ----
+    #[derive(Clone)]
+    struct DocumentSnapshot {
+        ast: CustomNode,
+        splice: Option<SpliceState>,
+        source: Option<Arc<str>>,
+        revision: u64,
+        source_dirty: bool,
+        splice_checked: bool,
+    }
+
     #[pyclass]
     pub(crate) struct YamlDocument {
         ast: CustomNode,
@@ -565,6 +578,9 @@ mod pyrs_yaml {
         splice: Option<SpliceState>,
         /// Whether splice eligibility has been computed (lazily, on first edit).
         splice_checked: bool,
+        /// Transaction snapshot stack. `__enter__` pushes, `__exit__` pops.
+        /// Grows only as deep as `with` nesting; `None` means empty stack.
+        snapshot: Vec<DocumentSnapshot>,
     }
 
     /// Serialize a document's AST with the given options, flushing any pending
@@ -607,6 +623,7 @@ mod pyrs_yaml {
                 source_dirty: false,
                 splice: None,
                 splice_checked: false,
+                snapshot: vec![],
             }
         }
 
@@ -1137,6 +1154,42 @@ mod pyrs_yaml {
             })?;
             Ok(())
         }
+
+        /// 进入事务作用域：快照 AST + splice 状态。`with doc:` 干净退出
+        /// 保留编辑；异常时 `__exit__` 回滚快照。
+        fn __enter__(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
+            let snap = DocumentSnapshot {
+                ast: slf.ast.clone(),
+                splice: slf.splice.clone(),
+                source: slf.source.clone(),
+                revision: slf.revision,
+                source_dirty: slf.source_dirty,
+                splice_checked: slf.splice_checked,
+            };
+            slf.snapshot.push(snap);
+            slf
+        }
+
+        #[pyo3(signature = (exc_type: "Any | None" = None, exc_value: "Any | None" = None, tb: "Any | None" = None) -> "bool")]
+        fn __exit__(
+            &mut self,
+            exc_type: Option<Bound<'_, PyAny>>,
+            exc_value: Option<Bound<'_, PyAny>>,
+            tb: Option<Bound<'_, PyAny>>,
+        ) -> bool {
+            let _ = (exc_value, tb);
+            if let Some(snap) = self.snapshot.pop() {
+                if exc_type.is_some() {
+                    self.ast = snap.ast;
+                    self.splice = snap.splice;
+                    self.source = snap.source;
+                    self.revision = snap.revision;
+                    self.source_dirty = snap.source_dirty;
+                    self.splice_checked = snap.splice_checked;
+                }
+            }
+            false // 从不吞掉异常
+        }
     }
 
     // ---- Python-facing functions ----
@@ -1219,6 +1272,7 @@ mod pyrs_yaml {
             source_dirty: false,
             splice: None,
             splice_checked: false,
+            snapshot: vec![],
         })
     }
 
@@ -1276,6 +1330,7 @@ mod pyrs_yaml {
                 source_dirty: false,
                 splice: None,
                 splice_checked: false,
+                snapshot: vec![],
             })
             .collect())
     }
