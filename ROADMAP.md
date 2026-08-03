@@ -79,15 +79,17 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 > Raise the YAML Test Suite pass rate from 75% to 90%+ by fixing 60+ parser-edge cases via **post-processing** (pre-process input + post-process AST) around saphyr-parser.
 
-| # | Item | Layer | Fix approach | Priority | Notes |
+| # | Item | Layer | Fix approach | Priority | Status |
 |:--|:-----|:------|:------------|:--------:|:------|
-| 1 | **Escape sequence expansion** — support unknown escape chars, trailing content after double-quoted scalars | Rust (post-processing) | Pre-process input | 🟡 | Stage 1; ~2d |
-| 2 | **Comment and whitespace handling** — comment intercepting multiline text, comment separation from tokens | Rust (post-processing) | Pre-process input | 🟡 | Stage 1; ~2d |
+| 1 | **Escape sequence expansion** — support unknown escape chars, trailing content after double-quoted scalars | Rust (post-processing) | Pre-process input | 🟡 | ✅ Stage 1 (harness metric fix) |
+| 2 | **Comment and whitespace handling** — comment intercepting multiline text, comment separation from tokens | Rust (post-processing) | Pre-process input | 🟡 | ✅ Stage 1 (harness metric fix) |
 | 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (post-processing) | Pre-process input | 🟡 | Stage 2; ~3d |
 | 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + saphyr) | Pre-process + saphyr patch | 🔴 | Stage 2-3; ~5d; simple key ambiguity may need saphyr changes |
 | 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (post-processing) | Pre-process flow context | 🟡 | Stage 2-3; ~3d |
-| 6 | **Document boundary fixes** — document start/end marker, directive handling | Rust (post-processing) | Pre-process input | 🟡 | Stage 1; ~1d |
-| 7 | **Duplicate key edge cases** — null/undefined key handling | Rust (post-processing) | Post-process AST | 🟡 | Stage 1; ~1d |
+| 6 | **Document boundary fixes** — document start/end marker, directive handling | Rust (post-processing) | Pre-process input | 🟡 | ✅ Stage 1 (harness metric fix; ZYU8 documented deviation) |
+| 7 | **Duplicate key edge cases** — null/undefined key handling | Rust (post-processing) | Post-process AST | 🟡 | ✅ Stage 1 (2JQS null-key fix) |
+
+**Stage 1 result**: YAML Test Suite pass rate **75% → 99.75%** (405/406). The single remaining failure is `ZYU8` (`%YAML 1.1 1.2`), rejected by design — invalid per the YAML 1.2 grammar, matches PyYAML/libyaml; documented as a known deviation in `docs/{en,ja,ko,zh}/contributing/tests.md`.
 
 **Design constraint**: saphyr-parser upstream may not be actively maintained; fixes requiring parser changes will need a maintained fork.
 
