@@ -8,7 +8,7 @@
 - PyO3 v0.29 requires `#[pyo3(signature = "...")]` with double-quoted type strings
 - All PyO3 custom types must implement `INPUT_TYPE`/`OUTPUT_TYPE` traits
 - No `serde_yaml`, `yaml-rust2`, or any serde-based YAML library
-- Must release GIL during expensive Rust computation: `py.allow_threads(|| { ... })`
+- Must release GIL during expensive Rust computation: `py.detach(|| { ... })` (pyo3 0.29); `Python::attach` re-acquires the GIL. No `with_gil`/`allow_threads` in 0.29.
 
 ## Commands
 
