@@ -27,7 +27,7 @@ pyo3-build-config = "0.29"
 default = ["numpy"]
 
 [dev-dependencies]
-divan = { version = "5.0.1", package = "codspeed-divan-compat" }
+divan = "0.1.21"
 proptest = "1.11"
 tempfile = "3"
 
