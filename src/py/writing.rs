@@ -87,16 +87,14 @@ pub(crate) fn normalize_doc(text: &str) -> String {
 }
 
 /// Serialize options for streaming write: fixed shape, `sort_keys` the only
-/// user-visible toggle beyond the separator flags.
-pub(crate) fn dump_options(
-    explicit_start: bool,
-    explicit_end: bool,
-    sort_keys: bool,
-) -> SerializeOptions {
+/// user-visible toggle. Separator flags (`---`/`...`) are NOT set here —
+/// `dump_iterable` handles them programmatically, and the serializer must not
+/// emit them inline.
+pub(crate) fn dump_options(sort_keys: bool) -> SerializeOptions {
     SerializeOptions {
         indent_size: 2,
-        explicit_start,
-        explicit_end,
+        explicit_start: false,
+        explicit_end: false,
         sort_keys,
         max_depth: 1000,
         width: 80,
@@ -123,28 +121,41 @@ pub(crate) fn dump_iterable(
     loop {
         let item = match iter.next() {
             Some(Ok(i)) => i,
-            Some(Err(e)) => return Err(e),
+            Some(Err(e)) => {
+                // Keep the partial output produced before the failure.
+                let _ = writer.flush(py);
+                return Err(e);
+            }
             None => break,
         };
-        let yaml = if let Ok(doc) = item.cast::<YamlDocument>() {
-            let mut doc = doc.try_borrow_mut()?;
-            serialize_document(&mut doc, py, options)?
-        } else {
-            let node = pyobject_to_node(py, &item.unbind())?;
-            py.detach(|| to_yaml_with_options(&node, options))
-                .map_err(|e| {
-                    if e.contains("max depth exceeded") {
-                        crate::YamlMaxDepthError::new_err(format_i18n_error(
-                            "max-depth-exceeded",
-                            &[("max_depth", &options.max_depth.to_string())],
-                        ))
-                    } else {
-                        crate::YamlSerializeError::new_err(format_i18n_error(
-                            "yaml-serialize-error",
-                            &[("detail", &e)],
-                        ))
-                    }
-                })?
+        let result: PyResult<String> = (|| {
+            if let Ok(doc) = item.cast::<YamlDocument>() {
+                let mut doc = doc.try_borrow_mut()?;
+                serialize_document(&mut doc, py, options)
+            } else {
+                let node = pyobject_to_node(py, &item.unbind())?;
+                py.detach(|| to_yaml_with_options(&node, options))
+                    .map_err(|e| {
+                        if e.contains("max depth exceeded") {
+                            crate::YamlMaxDepthError::new_err(format_i18n_error(
+                                "max-depth-exceeded",
+                                &[("max_depth", &options.max_depth.to_string())],
+                            ))
+                        } else {
+                            crate::YamlSerializeError::new_err(format_i18n_error(
+                                "yaml-serialize-error",
+                                &[("detail", &e)],
+                            ))
+                        }
+                    })
+            }
+        })();
+        let yaml = match result {
+            Ok(y) => y,
+            Err(e) => {
+                let _ = writer.flush(py);
+                return Err(e);
+            }
         };
         if !first || explicit_start {
             writer.write(py, "---\n")?;
