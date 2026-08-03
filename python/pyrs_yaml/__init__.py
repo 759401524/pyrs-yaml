@@ -18,6 +18,7 @@ from .async_dump import (
     safe_load_async,
     safe_loads_async,
 )
+from .compliance import compliance_report
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
 from .pydantic import parse_as
@@ -137,6 +138,7 @@ __all__ = [
     "YamlTypeError",
     "YamlValidateError",
     "clear_tag_handlers",
+    "compliance_report",
     "detect_language",
     "dump_file",
     "from_dict",
