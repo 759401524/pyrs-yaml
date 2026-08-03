@@ -214,6 +214,9 @@ impl Iterator for ChunkCharIter {
 /// iterator returns `None` (StopIteration).
 #[pyclass(module = "pyrs_yaml")]
 pub(crate) struct YamlStream {
+    /// SAFETY: `'static` lifetime is a lie — the parser's lifetime parameter is
+    /// for deserialization (which we don't use). The `ChunkCharIter` is owned
+    /// by `BufferedInput`, which is owned by the parser, so no dangling refs.
     parser: Option<SaphyrParser<'static, BufferedInput<ChunkCharIter>>>,
     anchor_map: HashMap<usize, String>,
     finished: bool,
@@ -222,6 +225,8 @@ pub(crate) struct YamlStream {
     /// moved into the parser, so this is how YamlStream observes reader
     /// failures (invalid UTF-8 / read errors) at clean EOF.
     error_slot: Option<Arc<Mutex<Option<String>>>>,
+    /// Whether the Python file object was closed by Drop (for repr).
+    dropped: bool,
 }
 
 impl YamlStream {
@@ -236,6 +241,7 @@ impl YamlStream {
             finished: false,
             pending_error: None,
             error_slot: Some(error_slot),
+            dropped: false,
         }
     }
 
@@ -319,13 +325,28 @@ impl YamlStream {
     /// 提前终止：停止读取后续 chunk。幂等。
     fn close(&mut self) {
         self.finished = true;
-        self.parser = None; // 释放 File/Py<PyAny> 句柄
+        self.parser = None;
+    }
+
+    fn __repr__(&self) -> String {
+        if self.finished || self.dropped {
+            "<YamlStream finished>".to_string()
+        } else {
+            "<YamlStream running>".to_string()
+        }
+    }
+
+    fn __del__(&mut self) {
+        self.finished = true;
+        self.parser = None;
+        self.dropped = true;
     }
 }
 
 impl Drop for YamlStream {
     fn drop(&mut self) {
         self.parser = None;
+        self.dropped = true;
     }
 }
 

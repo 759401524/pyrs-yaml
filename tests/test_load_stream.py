@@ -16,6 +16,16 @@ class TestLoadStream:
         assert "scalar" in types
         assert types[-1] == "stream_end"
 
+    def test_load_stream_read_raises_surfaces_as_parse_error(self):
+        """read() throwing exception surfaces as YamlParseError."""
+
+        class BadFile:
+            def read(self, n=-1):
+                raise RuntimeError("disk failure")
+
+        with pytest.raises(pyrs_yaml.YamlParseError, match="disk failure"):
+            list(pyrs_yaml.YAML().load_stream(BadFile()))
+
     def test_load_stream_binary_file(self):
         """load_stream accepts a binary file object (read returns bytes)."""
         events = list(pyrs_yaml.YAML().load_stream(io.BytesIO(b"key: value")))
