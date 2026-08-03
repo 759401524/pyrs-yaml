@@ -1,6 +1,7 @@
 """YAML Test Suite compliance reporting for pyrs_yaml."""
 
 import json
+import re
 import sys
 from datetime import datetime
 from importlib.metadata import version as _pkg_version
@@ -34,16 +35,9 @@ def convert_special_chars(text: str) -> str:
     # Order matters - longer sequences first
     text = text.replace("\u2423", " ")  # ␣ = space
 
-    # Tab indicators (em dashes + right angle bracket)
-    text = text.replace("\u2014\u2014\u2014\u00bb", "\t")  # ———» = tab
-    text = text.replace("\u2014\u2014\u00bb", "\t")  # ——» = tab
-    text = text.replace("\u2014\u00bb", "\t")  # —» = tab
-    text = text.replace("\u00bb", "\t")  # » = tab
-
-    # Also handle double vertical line variants
-    text = text.replace("\u2016\u2016\u2016\u00bb", "\t")  # ‖‖‖» = tab
-    text = text.replace("\u2016\u2016\u00bb", "\t")  # ‖‖» = tab
-    text = text.replace("\u2016\u00bb", "\t")  # ‖» = tab
+    # Tab indicators: any run of em dashes / double vertical lines + »
+    # (———», ——», —», » and the ‖ variants all encode a single tab)
+    text = re.sub(r"(?:\u2014+|\u2016+)?\u00bb", "\t", text)
 
     text = text.replace("\u21b5", "\n")  # ↵ = newline
     text = text.replace("\u220e", "")  # ∎ = no final newline (remove)
@@ -143,6 +137,15 @@ def run_test(test: dict) -> dict:
         result["parse_ok"] = True
     except Exception as e:
         result["error"] = f"Parse error: {str(e)[:100]}"
+        # Correctly rejecting invalid YAML is compliant behavior.
+        if not test["valid"]:
+            result["status"] = "pass"
+            result["error"] = None
+        return result
+
+    # Invalid YAML that parses successfully is a failure.
+    if not test["valid"]:
+        result["error"] = "Invalid YAML was accepted by parser"
         return result
 
     # Test 2: Compare JSON output (if expected)
