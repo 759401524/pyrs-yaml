@@ -733,7 +733,6 @@ dependencies = [
 name = "pyrs-yaml"
 version = "0.11.3"
 dependencies = [
- "codspeed",
  "codspeed-divan-compat",
  "indexmap",
  "numpy",
