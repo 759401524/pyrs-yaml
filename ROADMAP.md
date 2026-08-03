@@ -39,6 +39,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |:--------|:-----|:----------|
+| v0.11.5 | 2026-08-04 | [CHANGELOG.md §\[0.11.5\]](CHANGELOG.md#0115---2026-08-04) |
 | v0.11.4 | 2026-08-04 | [CHANGELOG.md §\[0.11.4\]](CHANGELOG.md#0114---2026-08-04) |
 | v0.11.3 | 2026-08-03 | [CHANGELOG.md §\[0.11.3\]](CHANGELOG.md#0113---streaming-write--process-hardening-target-q3-2026) |
 | v0.11.2 | 2026-08-03 | [CHANGELOG.md §\[0.11.2\]](CHANGELOG.md#0112---2026-08-03) |
@@ -82,13 +83,18 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | # | Item | Layer | Fix approach | Priority | Status |
 |:--|:-----|:------|:------------|:--------:|:------|
-| 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (post-processing) | Pre-process input | 🟡 | Phase 0 audit; ~3d |
-| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + saphyr) | Pre-process + saphyr patch | 🔴 | Phase 0 audit; ~5d; simple key ambiguity may need saphyr changes |
-| 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (post-processing) | Pre-process flow context | 🟡 | Phase 0 audit; ~3d |
+| 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (post-processing) | Pre-process input | 🟡 | ✅ Closed 2026-08-04 — audit found no fixable case |
+| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + saphyr) | Pre-process + saphyr patch | 🔴 | ✅ Closed 2026-08-04 — audit found no fixable case |
+| 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (post-processing) | Pre-process flow context | 🟡 | ✅ Closed 2026-08-04 — audit found no fixable case |
 
-**Phase 0 strictness audit (decision gate)**: these items have no in-suite target (all suite tests already pass). Scope is defined by a bounded probe corpus (~50 cases/bucket: indentation, block-mapping keys, flow context) compared against a PyYAML/libyaml oracle. If no accepted-but-invalid cases surface, the items close with a documentation write-up; each confirmed probe is fixed and regression-tested. Full suite must remain at **405/406**.
+**Phase 0 strictness audit (decision gate) — result: EMPTY fix list → items close (2026-08-04)**: these items have no in-suite target (all suite tests already pass). A 70-probe corpus (~20/bucket: indentation, block-mapping keys, flow context) was compared against a PyYAML oracle via `tests/test_strictness_audit.py`. The parser matched the oracle on **64/70** probes (26 reject-match, 38 accept-match). The 6 divergences are all **deliberate** and documented in the test:
 
-**Design constraint**: saphyr-parser upstream may not be actively maintained; item 4 may require a maintained fork.
+- **5 accepted-by-us but rejected-by-PyYAML** — each is a YAML 1.2 spec or yaml-test-suite requirement where PyYAML is the outlier, not a laxness bug: empty mapping keys (`2JQS`, `CFD4`, `FRK4`, `UKK6` — suite requires accepting `: a`, `[ : empty key ]`), local tags (`C4HZ` — PyYAML fails only at constructor stage, not parse), implicit document after `...` (YAML 1.2 `l-yaml-stream` grammar).
+- **1 rejected-by-us but accepted-by-PyYAML** (`{a: 1, a: 2}`) — deliberate duplicate-key strictness; no suite test requires accepting duplicate non-empty keys.
+
+Per the plan's risk note ("the audit records oracle disagreements but does not change our parser to match PyYAML quirks"), none of these were changed. Fixing the 5 would **regress** suite compliance below 405/406; fixing the 1 is already deliberate strictness. **No fixes shipped** — items 3/4/5 close with the audit corpus pinned as a regression test. Do not invent fixes to justify the original ~11d estimate.
+
+**Design constraint**: saphyr-parser upstream may not be actively maintained; item 4 may require a maintained fork. Unchanged — item 4 needed no fork because the audit surfaced no fixable case.
 
 **Changelog mapping**: Entries under `[0.11.5]` in CHANGELOG.md.
 
@@ -131,4 +137,4 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 - [ ] **Community plugins** — allow third-party Python modules to register custom node types
 - [x] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python ✅ Committed in v0.11.6
 
-**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness, reframed from v0.12.0 items 3/4/5); v0.11.6 (numpy-free free-threaded wheel).
+**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness — audit closed empty, docs-only release, with strictness regression corpus `tests/test_strictness_audit.py`); v0.11.6 (numpy-free free-threaded wheel).
