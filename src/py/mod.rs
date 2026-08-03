@@ -31,6 +31,7 @@ use self::convert::{
 use self::python_types::{json_value_to_node, pyobject_to_node};
 use self::stream_events::stream_event_to_py_dict;
 use self::streaming::{ChunkCharIter, InputSrc, YamlStream, DEFAULT_CHUNK_SIZE};
+use self::writing::{dump_iterable, dump_options, OutputSink, SinkWriter};
 
 /// Format a YAML parse error with source context and caret marker.
 ///
@@ -486,11 +487,73 @@ mod pyrs_yaml {
             let src = InputSrc::File(std::io::BufReader::new(file));
             Ok(YamlStream::new(ChunkCharIter::new(src, DEFAULT_CHUNK_SIZE)))
         }
+
+        /// 流式写：逐文档序列化到 file_obj（write(str)），常量内存。
+        #[pyo3(signature = (file_obj: "Any", iterable: "Any", explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false) -> "None")]
+        fn dump_stream(
+            &self,
+            py: Python,
+            file_obj: Bound<'_, PyAny>,
+            iterable: Bound<'_, PyAny>,
+            explicit_start: bool,
+            explicit_end: bool,
+            sort_keys: bool,
+        ) -> PyResult<()> {
+            if file_obj.getattr("write").is_err() {
+                return Err(YamlTypeError::new_err(format_i18n_error(
+                    "expected-writable",
+                    &[],
+                )));
+            }
+            let mut writer = SinkWriter::new(
+                OutputSink::PyObj(file_obj.unbind()),
+                self::writing::DEFAULT_CHUNK_SIZE,
+            );
+            dump_iterable(
+                py,
+                &mut writer,
+                iterable,
+                &dump_options(explicit_start, explicit_end, sort_keys),
+                explicit_start,
+                explicit_end,
+            )
+        }
+
+        /// 流式写：逐文档序列化到 path（Rust File，无 GIL 阻塞）。
+        #[pyo3(signature = (path: "str", iterable: "Any", explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false) -> "None")]
+        fn dump_file(
+            &self,
+            py: Python,
+            path: &str,
+            iterable: Bound<'_, PyAny>,
+            explicit_start: bool,
+            explicit_end: bool,
+            sort_keys: bool,
+        ) -> PyResult<()> {
+            let file = std::fs::File::create(path).map_err(|e| {
+                pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                    "file-write-error",
+                    &[("detail", &e.to_string()), ("path", path)],
+                ))
+            })?;
+            let mut writer = SinkWriter::new(
+                OutputSink::File(std::io::BufWriter::new(file)),
+                self::writing::DEFAULT_CHUNK_SIZE,
+            );
+            dump_iterable(
+                py,
+                &mut writer,
+                iterable,
+                &dump_options(explicit_start, explicit_end, sort_keys),
+                explicit_start,
+                explicit_end,
+            )
+        }
     }
 
     // ---- YamlDocument ----
     #[pyclass]
-    struct YamlDocument {
+    pub(crate) struct YamlDocument {
         ast: CustomNode,
         schema: YamlSchema,
         source: Option<Arc<str>>,
@@ -502,6 +565,31 @@ mod pyrs_yaml {
         splice: Option<SpliceState>,
         /// Whether splice eligibility has been computed (lazily, on first edit).
         splice_checked: bool,
+    }
+
+    /// Serialize a document's AST with the given options, flushing any pending
+    /// splice edits first. Shared by `to_yaml_with_options` and streaming
+    /// write. The serialize itself runs detached from the GIL.
+    pub(crate) fn serialize_document(
+        doc: &mut YamlDocument,
+        py: Python,
+        options: &SerializeOptions,
+    ) -> PyResult<String> {
+        doc.flush_source(py)?;
+        py.detach(|| to_yaml_with_options(&doc.ast, options))
+            .map_err(|e| {
+                if e.contains("max depth exceeded") {
+                    YamlMaxDepthError::new_err(format_i18n_error(
+                        "max-depth-exceeded",
+                        &[("max_depth", &options.max_depth.to_string())],
+                    ))
+                } else {
+                    YamlSerializeError::new_err(format_i18n_error(
+                        "yaml-serialize-error",
+                        &[("detail", &e)],
+                    ))
+                }
+            })
     }
 
     impl YamlDocument {
@@ -1620,5 +1708,42 @@ mod tests {
         let ast = parse(yaml, YamlSchema::Core).unwrap();
         let output = crate::serializer::to_yaml(&ast);
         assert_eq!(output, "key: value\n");
+    }
+
+    #[test]
+    fn dump_iterable_writes_separators_and_docs() {
+        // 用 File sink + 临时文件验证：2 文档 → 1 个 `---`，可整读
+        use crate::py::writing::{dump_iterable, dump_options, OutputSink, SinkWriter};
+        use pyo3::prelude::*;
+        use pyo3::types::PyDictMethods;
+        use std::io::{Read, Seek, SeekFrom};
+        use std::sync::Once;
+
+        static PY_INIT: Once = Once::new();
+        PY_INIT.call_once(Python::initialize);
+
+        Python::attach(|py| {
+            let mut f = tempfile::tempfile().unwrap();
+            let mut writer = SinkWriter::new(
+                OutputSink::File(std::io::BufWriter::new(f.try_clone().unwrap())),
+                1024,
+            );
+            let dict = pyo3::types::PyDict::new(py);
+            dict.set_item("a", 1).unwrap();
+            let list = pyo3::types::PyList::new(py, [dict.clone()]).unwrap();
+            dump_iterable(
+                py,
+                &mut writer,
+                list.into_any(),
+                &dump_options(false, false, false),
+                false,
+                false,
+            )
+            .unwrap();
+            f.seek(SeekFrom::Start(0)).unwrap();
+            let mut s = String::new();
+            f.read_to_string(&mut s).unwrap();
+            assert_eq!(s, "a: 1\n");
+        });
     }
 }

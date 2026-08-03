@@ -15,6 +15,14 @@ class StreamIterator:
 @final
 class YAML:
     def __new__(cls, /, typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> YAML: ...
+    def dump_file(self, /, path: "str", iterable: "Any", explicit_start: "bool" = False, explicit_end: "bool" = False, sort_keys: "bool" = False) -> "None":
+        """
+        流式写：逐文档序列化到 path（Rust File，无 GIL 阻塞）。
+        """
+    def dump_stream(self, /, file_obj: "Any", iterable: "Any", explicit_start: "bool" = False, explicit_end: "bool" = False, sort_keys: "bool" = False) -> "None":
+        """
+        流式写：逐文档序列化到 file_obj（write(str)），常量内存。
+        """
     def load_stream(self, /, file_obj: "Any") -> "YamlStream":
         """
         惰性事件迭代器：从 file_obj（read() 返回 str 或 bytes）增量读取。
