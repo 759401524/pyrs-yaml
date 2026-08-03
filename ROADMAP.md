@@ -75,6 +75,26 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ---
 
+## v0.12.0 — "Compliance Improvement" (target: Q3 2026)
+
+> Raise the YAML Test Suite pass rate from 75% to 90%+ by fixing 60+ parser-edge cases in saphyr.
+
+| # | Item | Layer | Priority | Notes |
+|:--|:-----|:------|:--------:|:------|
+| 1 | **Escape sequence expansion** — support unknown escape chars, trailing content after double-quoted scalars | Rust (saphyr) | 🟡 | Stage 1; ~2d |
+| 2 | **Comment and whitespace handling** — comment intercepting multiline text, comment separation from tokens | Rust (saphyr) | 🟡 | Stage 1; ~2d |
+| 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (saphyr) | 🟡 | Stage 2; ~3d |
+| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (saphyr) | 🔴 | Stage 2-3; ~5d |
+| 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (saphyr) | 🟡 | Stage 2-3; ~3d |
+| 6 | **Document boundary fixes** — document start/end marker, directive handling | Rust (saphyr) | 🟡 | Stage 1; ~1d |
+| 7 | **Duplicate key edge cases** — null/undefined key handling | Rust (saphyr) | 🟡 | Stage 1; ~1d |
+
+**Design constraint**: saphyr-parser is a third-party crate; upstream changes or a fork may be needed for deeper fixes.
+
+**Changelog mapping**: Entries under `[0.12.0]` in CHANGELOG.md.
+
+---
+
 **Deferred (not committed, revisit at each milestone review)**: `yaml-edit` competitor feature tracking; community plugins / YAML Schema language; `--no-default-features` numpy-free free-threaded wheel. Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-02).
 
 ---
@@ -91,4 +111,4 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 - [ ] **Community plugins** — allow third-party Python modules to register custom node types
 - [ ] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python (see CHANGELOG v0.6.0)
 
-**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation).
+**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.12.0 (compliance improvement).
