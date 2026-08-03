@@ -77,19 +77,19 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ## v0.12.0 — "Compliance Improvement" (target: Q3 2026)
 
-> Raise the YAML Test Suite pass rate from 75% to 90%+ by fixing 60+ parser-edge cases in saphyr.
+> Raise the YAML Test Suite pass rate from 75% to 90%+ by fixing 60+ parser-edge cases via **post-processing** (pre-process input + post-process AST) around saphyr-parser.
 
-| # | Item | Layer | Priority | Notes |
-|:--|:-----|:------|:--------:|:------|
-| 1 | **Escape sequence expansion** — support unknown escape chars, trailing content after double-quoted scalars | Rust (saphyr) | 🟡 | Stage 1; ~2d |
-| 2 | **Comment and whitespace handling** — comment intercepting multiline text, comment separation from tokens | Rust (saphyr) | 🟡 | Stage 1; ~2d |
-| 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (saphyr) | 🟡 | Stage 2; ~3d |
-| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (saphyr) | 🔴 | Stage 2-3; ~5d |
-| 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (saphyr) | 🟡 | Stage 2-3; ~3d |
-| 6 | **Document boundary fixes** — document start/end marker, directive handling | Rust (saphyr) | 🟡 | Stage 1; ~1d |
-| 7 | **Duplicate key edge cases** — null/undefined key handling | Rust (saphyr) | 🟡 | Stage 1; ~1d |
+| # | Item | Layer | Fix approach | Priority | Notes |
+|:--|:-----|:------|:------------|:--------:|:------|
+| 1 | **Escape sequence expansion** — support unknown escape chars, trailing content after double-quoted scalars | Rust (post-processing) | Pre-process input | 🟡 | Stage 1; ~2d |
+| 2 | **Comment and whitespace handling** — comment intercepting multiline text, comment separation from tokens | Rust (post-processing) | Pre-process input | 🟡 | Stage 1; ~2d |
+| 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (post-processing) | Pre-process input | 🟡 | Stage 2; ~3d |
+| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + saphyr) | Pre-process + saphyr patch | 🔴 | Stage 2-3; ~5d; simple key ambiguity may need saphyr changes |
+| 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (post-processing) | Pre-process flow context | 🟡 | Stage 2-3; ~3d |
+| 6 | **Document boundary fixes** — document start/end marker, directive handling | Rust (post-processing) | Pre-process input | 🟡 | Stage 1; ~1d |
+| 7 | **Duplicate key edge cases** — null/undefined key handling | Rust (post-processing) | Post-process AST | 🟡 | Stage 1; ~1d |
 
-**Design constraint**: saphyr-parser is a third-party crate; upstream changes or a fork may be needed for deeper fixes.
+**Design constraint**: saphyr-parser upstream may not be actively maintained; fixes requiring parser changes will need a maintained fork.
 
 **Changelog mapping**: Entries under `[0.12.0]` in CHANGELOG.md.
 
@@ -106,6 +106,7 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 > **Revisit rule** (from Review Notes 2026-08-02): every milestone review must re-evaluate all unchecked items below — promote, defer with reason, or close. No item stays unchecked for more than two consecutive milestone reviews.
 
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
+- [ ] **Custom YAML 1.2 parser** — evaluate replacing saphyr-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork saphyr-parser and incrementally fix to 100%.
 - [ ] **YAML Schema language** — dedicated schema definition format beyond JSON Schema
 - [ ] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy
 - [ ] **Community plugins** — allow third-party Python modules to register custom node types
