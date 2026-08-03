@@ -513,7 +513,7 @@ mod pyrs_yaml {
                 py,
                 &mut writer,
                 iterable,
-                &dump_options(explicit_start, explicit_end, sort_keys),
+                &dump_options(sort_keys),
                 explicit_start,
                 explicit_end,
             )
@@ -544,7 +544,7 @@ mod pyrs_yaml {
                 py,
                 &mut writer,
                 iterable,
-                &dump_options(explicit_start, explicit_end, sort_keys),
+                &dump_options(sort_keys),
                 explicit_start,
                 explicit_end,
             )
