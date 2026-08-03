@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml"
-version = "0.11.2"
+version = "0.11.3"
 dependencies = [
  "codspeed-divan-compat",
  "indexmap",
