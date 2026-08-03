@@ -39,6 +39,8 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |:--------|:-----|:----------|
+| v0.11.2 | 2026-08-03 | [CHANGELOG.md §\[0.11.2\]](CHANGELOG.md#0112---2026-08-03) |
+| v0.11.0 | 2026-08-02 | [CHANGELOG.md §\[0.11.0\]](CHANGELOG.md#0110---2026-08-02) |
 | v0.10.0 | 2026-08-01 | [CHANGELOG.md §\[0.10.0\]](CHANGELOG.md#0100---2026-08-01) |
 | v0.9.0 | 2026-08-01 | [CHANGELOG.md §\[0.9.0\]](CHANGELOG.md#090---2026-08-01) |
 | v0.8.0 | 2026-07-30 | [CHANGELOG.md §\[0.8.0\]](CHANGELOG.md#080---2026-07-30) |
@@ -135,7 +137,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ---
 
-### v0.11.0 — "Surgical Serialization" (target: Q4 2026)
+### v0.11.0 — "Surgical Serialization" (released 2026-08-02)
 
 > Edit large documents without paying O(doc) re-serialization — completes the yaml-edit differentiator (v0.10.0 editing + this release's byte-level fidelity). Scope decided via brainstorming 2026-08-02.
 
@@ -149,11 +151,11 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 **Design decisions (2026-08-02)**: per-scalar exact byte splice rejected — comments/anchors/tags attached to nodes + insert/delete span shifts make it fragile; recorded as a future optimization. Subtree-memoized full serialization rejected — no benefit for linear text assembly.
 
-**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
+**Changelog mapping**: Entries under `[0.11.0]` in CHANGELOG.md.
 
 ---
 
-### v0.11.1 — "Internalization" 内化重构 (target: 2026-08)
+### v0.11.1 — "Internalization" 内化重构 (released 2026-08-03, folded into v0.11.2)
 
 > 洞察反馈 → 溯源析理 → 内化重构 → 螺旋闭环. CodSpeed 回归修复 + 架构内化. Scope decided via brainstorming + design spec 2026-08-02 (`docs/superpowers/specs/2026-08-02-v0.11.1-internalization-design.md`).
 
@@ -167,11 +169,11 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 **Design decisions (2026-08-02)**: splice eligibility is a property of the *edit path*, not of parsing — computing it eagerly on parse wasted time for read-only use. Streaming Parse deferred to v0.11.2.
 
-**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
+**Changelog mapping**: Entries under `[0.11.2]` in CHANGELOG.md (v0.11.1 shipped within v0.11.2).
 
 ---
 
-### v0.11.2 — "Streaming Parse" (target: Q1 2027)
+### v0.11.2 — "Streaming Parse" (released 2026-08-03)
 
 > Constant-memory traversal of 100MB+ YAML files. Scope decided via brainstorming 2026-08-02; deferred from v0.11.1 to keep the internalization loop focused.
 
@@ -186,11 +188,30 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 **Design decisions (2026-08-02)**: callback-push `feed(&[u8])` model rejected for v1 (borrow-checker pain across feed calls; stdin/network later). mmap-based I/O deferred (abi3 portability). Existing string-based `parse_stream(yaml: str, on_event=...)` stays for in-memory compat. Line-offsets cache (v0.11.2 #5) recorded from v0.11.1 closure — CodSpeed walltime (2026-08-02, same-runner 3-branch) showed no real edit regression, so it is an architectural optimization, not a fix.
 
-**Changelog mapping**: Entries under `[Unreleased]` in CHANGELOG.md.
+**Changelog mapping**: Entries under `[0.11.2]` in CHANGELOG.md.
 
 ---
 
-**Deferred (not committed, revisit at each milestone review)**: `with` context manager for document scoping; YAML 1.2 spec compliance score reporting; `yaml-edit` competitor feature tracking; community plugins / YAML Schema language; `--no-default-features` numpy-free free-threaded wheel. Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-02).
+### v0.11.3 — "Streaming Write + Process Hardening" (target: Q3 2026)
+
+> Complete the big-file story v0.11.2 opened (read is constant-memory, write still isn't) and close the two process debts flagged in the 2026-08-02 closure that caused v0.10.0-class release failures.
+
+| # | Item | Layer | Priority | Notes |
+|:--|:-----|:------|:--------:|:------|
+| 1 | **Streaming write** — `YAML.dump_stream(file_obj, iterable)` / `dump_file(path, ...)`: serializer emits events chunk-by-chunk to a Python file object; constant memory on 100MB+ output | Rust + Python | 🔴 | Headline; symmetric to `load_stream`; serializer is currently whole-string (`src/serializer.rs`); GIL released per chunk via `py.detach`; highest design risk → needs design doc under `docs/superpowers/specs/` |
+| 2 | **Line-offsets cache** — carry `compute_line_offsets(source)` (src/parser/yaml/comment.rs:14) through the 5 edit primitives so an edit burst costs O(N+edit) not O(N×edit) | Rust | 🟡 | Carried from v0.11.2 #5; **requires changing 5 edit-function signatures → Ask First per AGENTS.md**; justify with a real edit-burst use case before committing |
+| 3 | **publish.yml pre-release validation** — CI job on PRs touching the publish workflow (or `workflow_dispatch` dry-run) running `maturin build --release --generate-stubs` in a linux container, catching the v0.10.0-class stub failure before Release | CI | 🔴 | Open process debt (2026-08-02 review, Phase 4); cheap; prevents silent publish failures |
+| 4 | **Changelog mirror sync check** — prek hook or CI job asserting root `CHANGELOG.md` `[Unreleased]` == `docs/{en,ja,ko,zh}` changelog mirrors | CI/Process | 🟡 | Open process debt; docs-site staleness recurred v0.7.0–v0.10.0 |
+| 5 | **`with` context manager** for document scoping | Python | 🟡 | Deferred since v0.9.0 review; small, safe, ecosystem-idiomatic |
+| 6 | **Compliance score reporting** — public `compliance_report()` surfacing the yaml-test-suite pass rate (tests gate at 75%) | Python | 🟡 | Regression guard + differentiator signal |
+
+**Design decisions (2026-08-03)**: mmap-backed file streaming (read + edit without loading) stays deferred (abi3 portability blocker). Community plugins / YAML Schema language stay in Research. Line-offsets cache is an architectural optimization, not a fix (CodSpeed same-runner 3-branch showed no real edit regression).
+
+**Changelog mapping**: Entries under `[0.11.3]` in CHANGELOG.md.
+
+---
+
+**Deferred (not committed, revisit at each milestone review)**: `yaml-edit` competitor feature tracking; community plugins / YAML Schema language; `--no-default-features` numpy-free free-threaded wheel. Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-02).
 
 ---
 
@@ -206,7 +227,7 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 - [ ] **Community plugins** — allow third-party Python modules to register custom node types
 - [ ] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python (see CHANGELOG v0.6.0)
 
-**Committed to v0.11.x (moved from this list, see Planned)**: Streaming large documents → v0.11.1; Incremental serialization → v0.11.0.
+**Committed (moved from this list, see Planned)**: Incremental serialization → v0.11.0 (released 2026-08-02); Streaming large documents → v0.11.2 (released 2026-08-03, with v0.11.1); Streaming write, `with` scoping, compliance reporting, line-offsets cache, publish pre-validation → v0.11.3.
 
 ---
 
