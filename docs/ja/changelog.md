@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`: O(アンカー + チャンク) メモリの遅延イベントイテレータ (v0.11.2)
+
 #### Performance
 
 - **パース時にスプライス資格を計算しない** — O(ドキュメント) のレイアウトチェックは最初の編集時に `YamlDocument.splice_checked` 経由で遅延実行され、v0.11.0 の回帰を復元: parse_comments -59%、parse_anchors -42%、parse/roundtrip/edit -10~35% すべて v0.10.0 レベルに戻る

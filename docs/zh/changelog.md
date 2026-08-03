@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`: O(锚点数 + 块) 内存的惰性事件迭代器 (v0.11.2)
+
 #### Performance
 
 - **解析不再计算拼接资格** — O(文档) 布局检查现在在首次编辑时通过 `YamlDocument.splice_checked` 惰性运行，恢复 v0.11.0 回归：parse_comments -59%、parse_anchors -42%、parse/roundtrip/edit -10~35% 全部回到 v0.10.0 水平
