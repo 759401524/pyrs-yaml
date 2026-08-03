@@ -61,7 +61,7 @@ impl SpliceState {
         if self.offsets.is_none() {
             self.offsets = Some(crate::parser::yaml::compute_line_offsets(&self.base));
         }
-        self.offsets.as_deref().unwrap_or(&[])
+        self.offsets.as_deref().unwrap()
     }
 
     /// Fold one edit unit into the segment list. `Err` means the unit cannot

@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 변경 이력](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### [Unreleased]
+## [Unreleased]
 
 ### Added
 
@@ -28,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changelog mirror drift guard: prek hook + CI job assert root/mirror `[Unreleased]` sync
 - Publish stub pre-validation: CI reproduces v0.10.0-class `--generate-stubs` container failures before Release
 
-### [0.11.2] - 2026-08-03
+## [0.11.2] - 2026-08-03
 
-#### Added
+### Added
 
 - `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`: O(앵커 + 청크) 메모리의 지연 이벤트 반복자
 
@@ -43,9 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `parse_with_options`가 `CustomNode`를 반환 (기존 `(CustomNode, bool)`); 스플라이스 자격은 이제 `YamlDocument` 내부에 있으며 요청 시 계산
 
-### [0.11.0] - 2026-08-02
+## [0.11.0] - 2026-08-02
 
-#### Added
+### Added
 
 - **Surgical Serialization** — 모든 AST 노드의 바이트 수준 소스 스팬 추적; 세그먼트 기반 스플라이스 — 편집은 접촉 영역만 재생성, 미접촉 텍스트는 바이트 복사
 - 속성 테스트（proptest, 새 개발 의존성）
@@ -56,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `flush_source`가 세그먼트 스플라이스 사용; 플로우 스타일 영역, 비기본 레이아웃 문서, 병합 키, CRLF/BOM 문서, materialize 후（단일 버스트 모델）에서 전체 직렬화로 폴백
 - 스플라이스 편집이 `---`/`...`/지시자 마커 라인을 미변경 바이트로 보존（전체 직렬화는 이전에 이를 제거 — 의도적인 동작 차이）
 
-### [0.10.0] - 2026-08-01
+## [0.10.0] - 2026-08-01
 
-#### Added
+### Added
 
 - **제자리 편집** — 서식 메타데이터를 잃지 않고 파싱된 문서 편집:
     - 경로 API: `doc.set(path, value)`, `doc.insert(path, index, value)`, `doc.append(path, value)`, `doc.delete(path)`, `doc.rename(path, new_key)`, JSONPath 스타일 경로(`$.a.b[0]`); 루트 슈가 `doc["key"] = value`와 `del doc["key"]`
@@ -87,9 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 순환 문서 명확화: 병합 키(`<<`)는 기본적으로 해석되며 `resolve_merges=False`일 때만 그대로 유지
 
-### [0.3.0] - 2025-07-27
+## [0.3.0] - 2025-07-27
 
-#### Added
+### Added
 
 - **NumPy ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
     - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
@@ -151,9 +151,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `#[pymodule]` refactored to inline module for `pyo3-introspection` compatibility
 - All `#[pyo3(signature)]` attributes now include Python type annotations
 
-### [0.1.0] - 2025-07-25
+## [0.1.0] - 2025-07-25
 
-#### Added
+### Added
 
 - Initial release with YAML 1.2 compliance via saphyr-parser
 - Custom AST with full metadata (comments, anchors, tags, chomping, scalar styles)

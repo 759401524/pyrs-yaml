@@ -27,6 +27,17 @@ pub enum YamlType {
 }
 
 #[cfg(test)]
+impl YamlType {
+    /// Check if this is a NaN value (since f64 NaN != NaN via PartialEq)
+    pub fn is_nan_value(&self) -> bool {
+        match self {
+            YamlType::Float(v) => v.is_nan(),
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::parser::yaml::schema::resolve_yaml_type;
@@ -131,6 +142,8 @@ mod tests {
     #[test]
     fn test_resolve_float() {
         match resolve_yaml_type("3.14", YamlSchema::Core) {
+            // Tests parsing the string "3.14"; the expected value IS 3.14, not PI
+            #[allow(clippy::approx_constant)]
             YamlType::Float(v) => assert!((v - 3.14).abs() < 1e-10),
             other => panic!("expected Float, got {:?}", other),
         }
@@ -188,17 +201,6 @@ mod tests {
                 formatted,
                 re_resolved
             );
-        }
-    }
-}
-
-#[cfg(test)]
-impl YamlType {
-    /// Check if this is a NaN value (since f64 NaN != NaN via PartialEq)
-    pub fn is_nan_value(&self) -> bool {
-        match self {
-            YamlType::Float(v) => v.is_nan(),
-            _ => false,
         }
     }
 }

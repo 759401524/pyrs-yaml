@@ -366,6 +366,8 @@ mod tests {
     fn collect(chars: ChunkCharIter) -> (String, Option<String>) {
         let mut it = chars;
         let mut s = String::new();
+        // for c in it would move `it` — we need it after the loop for take_error()
+        #[allow(clippy::while_let_on_iterator)]
         while let Some(c) = it.next() {
             s.push(c);
         }

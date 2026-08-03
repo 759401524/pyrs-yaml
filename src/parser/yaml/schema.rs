@@ -250,6 +250,8 @@ mod tests {
         assert_eq!(resolve_core_type("0x1F"), YamlType::Int(31));
         assert_eq!(resolve_core_type("0o17"), YamlType::Int(15));
         match resolve_core_type("3.14") {
+            // Tests parsing the string "3.14"; the expected value IS 3.14, not PI
+            #[allow(clippy::approx_constant)]
             YamlType::Float(v) => assert!((v - 3.14).abs() < 1e-10),
             other => panic!("expected Float, got {:?}", other),
         }
@@ -293,6 +295,8 @@ mod tests {
         assert_eq!(resolve_json_type("false"), YamlType::Bool(false));
         assert_eq!(resolve_json_type("42"), YamlType::Int(42));
         match resolve_json_type("3.14") {
+            // Tests parsing the string "3.14"; the expected value IS 3.14, not PI
+            #[allow(clippy::approx_constant)]
             YamlType::Float(v) => assert!((v - 3.14).abs() < 1e-10),
             other => panic!("expected Float, got {:?}", other),
         }

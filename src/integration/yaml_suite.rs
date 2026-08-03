@@ -28,7 +28,7 @@ fn test_yaml_test_suite() {
     let mut entries: Vec<_> = std::fs::read_dir(suite_dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "yaml"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "yaml"))
         .collect();
     entries.sort_by_key(|e| e.path());
 

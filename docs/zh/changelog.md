@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 变更日志](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### [Unreleased]
+## [Unreleased]
 
 ### Added
 
@@ -28,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changelog mirror drift guard: prek hook + CI job assert root/mirror `[Unreleased]` sync
 - Publish stub pre-validation: CI reproduces v0.10.0-class `--generate-stubs` container failures before Release
 
-### [0.11.2] - 2026-08-03
+## [0.11.2] - 2026-08-03
 
-#### Added
+### Added
 
 - `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`: O(锚点数 + 块) 内存的惰性事件迭代器
 
@@ -43,9 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `parse_with_options` 返回 `CustomNode`（原为 `(CustomNode, bool)`）；拼接资格现在内置于 `YamlDocument` 并按需计算
 
-### [0.11.0] - 2026-08-02
+## [0.11.0] - 2026-08-02
 
-#### Added
+### Added
 
 - **Surgical Serialization** — 字节级源码范围追踪；基于段的分片拼接 — 编辑仅重新生成触碰区域，未触碰文本按字节复制
 - 属性测试 proptest 代码包（新开发依赖）
@@ -56,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `flush_source` 现在使用分片拼接；回退到全量序列化场景：flow 风格区域、非默认布局文档、合并键、CRLF/BOM 文档、以及 materialize 之后（单次爆发模型）
 - 分片编辑保留 `---`/`...`/指令标记行作为未触碰字节（全量序列化曾丢弃它们 — 设计上的行为差异）
 
-### [0.10.0] - 2026-08-01
+## [0.10.0] - 2026-08-01
 
-#### Added
+### Added
 
 - **就地编辑** — 编辑已解析的文档而不丢失格式元数据：
     - 路径 API：`doc.set(path, value)`、`doc.insert(path, index, value)`、`doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`，使用 JSONPath 风格路径（`$.a.b[0]`）；根节点语法糖 `doc["key"] = value` 和 `del doc["key"]`
@@ -87,9 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 往返文档澄清：合并键（`<<`）默认被解析，仅 `resolve_merges=False` 时原样保留
 
-### [0.3.0] - 2025-07-27
+## [0.3.0] - 2025-07-27
 
-#### Added
+### Added
 
 - **NumPy ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
     - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
@@ -151,9 +151,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `#[pymodule]` refactored to inline module for `pyo3-introspection` compatibility
 - All `#[pyo3(signature)]` attributes now include Python type annotations
 
-### [0.1.0] - 2025-07-25
+## [0.1.0] - 2025-07-25
 
-#### Added
+### Added
 
 - Initial release with YAML 1.2 compliance via saphyr-parser
 - Custom AST with full metadata (comments, anchors, tags, chomping, scalar styles)
