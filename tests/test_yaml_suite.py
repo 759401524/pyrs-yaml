@@ -86,7 +86,7 @@ def test_compliance_report():
     report = compute_compliance()
     msg = f"\nCompliance: {report['rate'] * 100:.1f}% ({report['passed']}/{report['total']} passed)"
     print(msg)
-    assert report["rate"] > 0.75, f"Compliance too low: {report['rate'] * 100:.1f}%"
+    assert report["rate"] >= 0.95, f"Compliance too low: {report['rate'] * 100:.1f}%"
 
 
 def test_compliance_report_version_is_dynamic():
