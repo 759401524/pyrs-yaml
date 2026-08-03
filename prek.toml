@@ -48,6 +48,14 @@ files = "\\.(rs|toml|lock)$"
 pass_filenames = false
 priority = "checks"
 
+[[repos.hooks]]
+id = "changelog-mirror-sync"
+name = "changelog mirror sync"
+language = "system"
+entry = "python scripts/check_changelog_mirrors.py"
+files = "^(CHANGELOG\\.md|docs/(en|ja|ko|zh)/changelog\\.md)$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
