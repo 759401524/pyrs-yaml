@@ -33,6 +33,8 @@ jobs:
           channel: stable
           cache-target: release
           bins: cargo-codspeed
+      - name: Install cargo-codspeed (fallback if quickinstall fails)
+        run: cargo codspeed --version 2>/dev/null || cargo install cargo-codspeed
       - name: Build the benchmark target(s)
         run: cargo codspeed build
       - name: Run the benchmarks
