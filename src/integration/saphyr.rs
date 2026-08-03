@@ -1,5 +1,4 @@
 /// Saphyr-parser integration tests
-
 struct EventSink<'a> {
     events: Vec<saphyr_parser::Event<'a>>,
 }

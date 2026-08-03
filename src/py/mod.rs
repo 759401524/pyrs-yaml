@@ -1841,6 +1841,7 @@ mod tests {
                 false,
             )
             .unwrap();
+            drop(writer);
             f.seek(SeekFrom::Start(0)).unwrap();
             let mut s = String::new();
             f.read_to_string(&mut s).unwrap();

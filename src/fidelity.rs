@@ -115,39 +115,37 @@ proptest! {
 
         let mut state = SpliceState::new(source);
 
-        if unit.eligible {
-            if state.apply(&unit).is_ok() {
-                if let Some(spliced) = state.materialize() {
-                    match &unit.kind {
-                        editing::DirtyKind::Region { range, text, .. } => {
-                            let expected = format!(
-                                "{}{}{}",
-                                &doc_str[..range.start],
-                                text,
-                                &doc_str[range.end..]
-                            );
-                            prop_assert_eq!(spliced, expected,
-                                "splice must preserve untouched bytes outside the dirty region");
-                        }
-                        editing::DirtyKind::Insert { at, text } => {
-                            let expected = format!(
-                                "{}{}{}",
-                                &doc_str[..*at],
-                                text,
-                                &doc_str[*at..]
-                            );
-                            prop_assert_eq!(spliced, expected,
-                                "splice must preserve untouched bytes outside the insert point");
-                        }
-                        editing::DirtyKind::Delete { range } => {
-                            let expected = format!(
-                                "{}{}",
-                                &doc_str[..range.start],
-                                &doc_str[range.end..]
-                            );
-                            prop_assert_eq!(spliced, expected,
-                                "splice must preserve untouched bytes outside the delete range");
-                        }
+        if unit.eligible && state.apply(&unit).is_ok() {
+            if let Some(spliced) = state.materialize() {
+                match &unit.kind {
+                    editing::DirtyKind::Region { range, text, .. } => {
+                        let expected = format!(
+                            "{}{}{}",
+                            &doc_str[..range.start],
+                            text,
+                            &doc_str[range.end..]
+                        );
+                        prop_assert_eq!(spliced, expected,
+                            "splice must preserve untouched bytes outside the dirty region");
+                    }
+                    editing::DirtyKind::Insert { at, text } => {
+                        let expected = format!(
+                            "{}{}{}",
+                            &doc_str[..*at],
+                            text,
+                            &doc_str[*at..]
+                        );
+                        prop_assert_eq!(spliced, expected,
+                            "splice must preserve untouched bytes outside the insert point");
+                    }
+                    editing::DirtyKind::Delete { range } => {
+                        let expected = format!(
+                            "{}{}",
+                            &doc_str[..range.start],
+                            &doc_str[range.end..]
+                        );
+                        prop_assert_eq!(spliced, expected,
+                            "splice must preserve untouched bytes outside the delete range");
                     }
                 }
             }

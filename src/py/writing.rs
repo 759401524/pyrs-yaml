@@ -65,17 +65,12 @@ impl SinkWriter {
                         ))
                     })
             }
-            OutputSink::File(w) => py
-                .detach(|| {
-                    w.write_all(text.as_bytes())?;
-                    w.flush()
-                })
-                .map_err(|e| {
-                    pyo3::exceptions::PyIOError::new_err(format_i18n_error(
-                        "file-write-error",
-                        &[("detail", &e.to_string())],
-                    ))
-                }),
+            OutputSink::File(w) => py.detach(|| w.write_all(text.as_bytes())).map_err(|e| {
+                pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+                    "file-write-error",
+                    &[("detail", &e.to_string())],
+                ))
+            }),
         }
     }
 }
@@ -153,7 +148,9 @@ pub(crate) fn dump_iterable(
         let yaml = match result {
             Ok(y) => y,
             Err(e) => {
-                let _ = writer.flush(py);
+                // Flush pending before propagating the error so partial output is
+                // preserved. If the flush itself fails that error is more important.
+                writer.flush(py)?;
                 return Err(e);
             }
         };
@@ -208,6 +205,7 @@ mod tests {
             assert!(writer.pending.is_empty());
             writer.flush(py).unwrap();
         });
+        drop(writer);
         f.seek(SeekFrom::Start(0)).unwrap();
         let mut s = String::new();
         f.read_to_string(&mut s).unwrap();
@@ -226,6 +224,7 @@ mod tests {
             writer.write(py, "a: 1\n").unwrap();
             writer.flush(py).unwrap();
         });
+        drop(writer);
         f.seek(SeekFrom::Start(0)).unwrap();
         let mut s = String::new();
         f.read_to_string(&mut s).unwrap();
