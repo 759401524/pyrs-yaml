@@ -6,6 +6,7 @@ pub mod editing;
 pub mod stream_events;
 pub mod streaming;
 pub mod tag_registry;
+pub mod writing;
 
 #[cfg(feature = "numpy")]
 pub mod ndarray;
