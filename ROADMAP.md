@@ -76,29 +76,45 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ---
 
-## v0.12.0 — "Compliance Improvement" (target: Q3 2026)
+## v0.11.5 — "Parser Robustness" (target: Q3 2026)
 
-> Raise the YAML Test Suite pass rate from 75% to 90%+ by fixing 60+ parser-edge cases via **post-processing** (pre-process input + post-process AST) around saphyr-parser.
+> Reframed from the original v0.12.0 "Compliance Improvement" items 3/4/5. The YAML Test Suite pass rate is saturated at **99.75%** (405/406 — only `ZYU8` fails, rejected by design), so these items no longer move the compliance metric. They harden rejection of invalid YAML edge cases beyond the suite, each bound to a strictness-audit probe corpus.
 
 | # | Item | Layer | Fix approach | Priority | Status |
 |:--|:-----|:------|:------------|:--------:|:------|
-| 1 | **Escape sequence expansion** — support unknown escape chars, trailing content after double-quoted scalars | Rust (post-processing) | Pre-process input | 🟡 | ✅ Stage 1 (harness metric fix) |
-| 2 | **Comment and whitespace handling** — comment intercepting multiline text, comment separation from tokens | Rust (post-processing) | Pre-process input | 🟡 | ✅ Stage 1 (harness metric fix) |
-| 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (post-processing) | Pre-process input | 🟡 | Stage 2; ~3d |
-| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + saphyr) | Pre-process + saphyr patch | 🔴 | Stage 2-3; ~5d; simple key ambiguity may need saphyr changes |
-| 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (post-processing) | Pre-process flow context | 🟡 | Stage 2-3; ~3d |
-| 6 | **Document boundary fixes** — document start/end marker, directive handling | Rust (post-processing) | Pre-process input | 🟡 | ✅ Stage 1 (harness metric fix; ZYU8 documented deviation) |
-| 7 | **Duplicate key edge cases** — null/undefined key handling | Rust (post-processing) | Post-process AST | 🟡 | ✅ Stage 1 (2JQS null-key fix) |
+| 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (post-processing) | Pre-process input | 🟡 | Phase 0 audit; ~3d |
+| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + saphyr) | Pre-process + saphyr patch | 🔴 | Phase 0 audit; ~5d; simple key ambiguity may need saphyr changes |
+| 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (post-processing) | Pre-process flow context | 🟡 | Phase 0 audit; ~3d |
 
-**Stage 1 result**: YAML Test Suite pass rate **75% → 99.75%** (405/406). The single remaining failure is `ZYU8` (`%YAML 1.1 1.2`), rejected by design — invalid per the YAML 1.2 grammar, matches PyYAML/libyaml; documented as a known deviation in `docs/{en,ja,ko,zh}/contributing/tests.md`.
+**Phase 0 strictness audit (decision gate)**: these items have no in-suite target (all suite tests already pass). Scope is defined by a bounded probe corpus (~50 cases/bucket: indentation, block-mapping keys, flow context) compared against a PyYAML/libyaml oracle. If no accepted-but-invalid cases surface, the items close with a documentation write-up; each confirmed probe is fixed and regression-tested. Full suite must remain at **405/406**.
 
-**Design constraint**: saphyr-parser upstream may not be actively maintained; fixes requiring parser changes will need a maintained fork.
+**Design constraint**: saphyr-parser upstream may not be actively maintained; item 4 may require a maintained fork.
 
-**Changelog mapping**: Entries under `[0.12.0]` in CHANGELOG.md.
+**Changelog mapping**: Entries under `[0.11.5]` in CHANGELOG.md.
 
 ---
 
-**Deferred (not committed, revisit at each milestone review)**: `yaml-edit` competitor feature tracking; community plugins / YAML Schema language; `--no-default-features` numpy-free free-threaded wheel. Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-02).
+## v0.11.6 — "numpy-free free-threaded wheel" (target: Q3 2026)
+
+> Ship `cp314t` (free-threaded) wheels built with `--no-default-features` so rust-numpy is excluded entirely. Current free-threaded wheels compile the numpy feature (default) but runtime-probe it (`src/py/python_types.rs:61`) since free-threaded environments typically lack numpy; the change strips the dead linkage (smaller binary, no numpy capsule code, no probe needed). GIL wheels keep numpy enabled.
+
+| # | Item | Layer | Status |
+|:--|:-----|:------|:------|
+| 1 | **`--no-default-features` wheel** — add the flag to the free-threaded wheel build steps in `publish.yml` (windows + macos `-i python3.14t`) | CI | Not started |
+| 2 | **Free-threaded CI validation** — `test-freethreaded` job builds with `--no-default-features` | CI | Not started |
+| 3 | **Install docs note** — `docs/{en,zh,ja,ko}`: free-threaded wheels are numpy-free (ndarray serialization unavailable on cp314t) | Docs | Not started |
+
+**Changelog mapping**: Entries under `[0.11.6]` in CHANGELOG.md.
+
+---
+
+## v0.12.0 — (open slot, target: TBD)
+
+> Scope was previously "Compliance Improvement"; that work shipped in v0.11.4 (Stage 1 → 99.75%) and the numpy-free wheel moved to v0.11.6. **No scope committed** — determined at the next milestone review per the Deferred revisit rule.
+
+---
+
+**Deferred (not committed, revisit at each milestone review)**: `yaml-edit` competitor feature tracking; community plugins / YAML Schema language. Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-02).
 
 ---
 
@@ -113,6 +129,6 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 - [ ] **YAML Schema language** — dedicated schema definition format beyond JSON Schema
 - [ ] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy
 - [ ] **Community plugins** — allow third-party Python modules to register custom node types
-- [ ] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python (see CHANGELOG v0.6.0)
+- [x] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python ✅ Committed in v0.11.6
 
-**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.12.0 (compliance improvement).
+**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness, reframed from v0.12.0 items 3/4/5); v0.11.6 (numpy-free free-threaded wheel).
