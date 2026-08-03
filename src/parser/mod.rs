@@ -26,6 +26,20 @@ use yaml::{
     unescape_double_quoted, CommentAnchorTracker, RawAnchor, RawComment,
 };
 
+/// Return true if a mapping key is a null/empty key (`~`, empty, or null).
+///
+/// The yaml-test-suite allows duplicate null keys (e.g. `: a\n: b`, see 2JQS),
+/// so duplicate-key detection must not reject them.
+fn is_null_key(key: &CustomNode) -> bool {
+    match key {
+        CustomNode::Null { .. } => true,
+        CustomNode::Scalar { value, .. } => {
+            value.is_empty() || value == "~" || value.eq_ignore_ascii_case("null")
+        }
+        _ => false,
+    }
+}
+
 /// 使用 saphyr-parser 解析 YAML 字符串为 `CustomNode` AST。
 ///
 /// # Arguments
@@ -543,6 +557,7 @@ impl<'a> AstReceiver<'a> {
                 } else if let Some(key) = current_key.take() {
                     if !self.max_depth_exceeded
                         && !self.allow_duplicate_keys
+                        && !is_null_key(&key)
                         && pairs.contains_key(&key)
                     {
                         let key_str = match &key {

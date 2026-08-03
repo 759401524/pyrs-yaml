@@ -46,6 +46,20 @@ class TestDuplicateKeys:
         doc = pyrs_yaml.parse(nested, allow_duplicate_keys=True)
         assert doc.get("outer")["dup"] == "b"
 
+    def test_null_keys_are_not_duplicate(self):
+        # yaml-test-suite 2JQS: duplicate empty/null keys are valid
+        doc = pyrs_yaml.parse(": a\n: b")
+        assert doc.get("~") == "b"
+        doc = pyrs_yaml.parse("~: a\n~: b")
+        assert doc.get("~") == "b"
+        doc = pyrs_yaml.parse("null: a\nnull: b")
+        assert doc.get("null") == "b"
+
+    def test_null_key_then_real_duplicate_still_errors(self):
+        yaml_text = "~: a\nkey: first\nkey: second"
+        with pytest.raises(pyrs_yaml.YamlDuplicateKeyError):
+            pyrs_yaml.parse(yaml_text)
+
     def test_parse_all_docs_duplicate_keys(self):
         multi = "---\nkey: first\nkey: second\n---\nother: value"
         with pytest.raises(pyrs_yaml.YamlDuplicateKeyError):
