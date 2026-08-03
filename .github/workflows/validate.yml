@@ -1,0 +1,38 @@
+name: Validate
+
+on:
+  pull_request:
+    paths:
+      - "CHANGELOG.md"
+      - "docs/**/changelog.md"
+      - ".github/workflows/publish.yml"
+      - ".github/workflows/validate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check changelog mirrors
+        run: python scripts/check_changelog_mirrors.py
+
+  stub-build-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.8"
+      - name: Build wheel with stub generation (reproduces v0.10.0 failure mode)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          args: --release --generate-stubs
+          sccache: false
+          manylinux: auto
+      - name: Assert committed pyi is git-tracked
+        run: git ls-files --error-unmatch python/pyrs_yaml/pyrs_yaml.pyi
