@@ -110,7 +110,7 @@ proptest! {
 
         let mut edited_ast = ast.clone();
         let new_value = CustomNode::plain_scalar("zzz_prop");
-        let unit = editing::set_path(&mut edited_ast, &segs, new_value, true, doc_str)
+        let unit = editing::set_path(&mut edited_ast, &segs, new_value, true, doc_str, None)
             .expect("set_path must succeed");
 
         let mut state = SpliceState::new(source);

@@ -883,7 +883,10 @@ mod pyrs_yaml {
                     &self.ast,
                     &self.source,
                 );
-                let unit = editing::set_path(&mut self.ast, &segs, new_node, true, src)?;
+                let unit = {
+                    let offsets = self.splice.as_mut().map(|s| s.line_offsets());
+                    editing::set_path(&mut self.ast, &segs, new_node, true, src, offsets)?
+                };
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
                         self.splice = None;
@@ -921,7 +924,10 @@ mod pyrs_yaml {
                     &self.ast,
                     &self.source,
                 );
-                let unit = editing::insert_path(&mut self.ast, &segs, index, new_node, src)?;
+                let unit = {
+                    let offsets = self.splice.as_mut().map(|s| s.line_offsets());
+                    editing::insert_path(&mut self.ast, &segs, index, new_node, src, offsets)?
+                };
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
                         self.splice = None;
@@ -958,7 +964,10 @@ mod pyrs_yaml {
                     &self.ast,
                     &self.source,
                 );
-                let unit = editing::append_path(&mut self.ast, &segs, new_node, src)?;
+                let unit = {
+                    let offsets = self.splice.as_mut().map(|s| s.line_offsets());
+                    editing::append_path(&mut self.ast, &segs, new_node, src, offsets)?
+                };
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
                         self.splice = None;
@@ -989,7 +998,10 @@ mod pyrs_yaml {
                     &self.ast,
                     &self.source,
                 );
-                let unit = editing::delete_path(&mut self.ast, &segs, src)?;
+                let unit = {
+                    let offsets = self.splice.as_mut().map(|s| s.line_offsets());
+                    editing::delete_path(&mut self.ast, &segs, src, offsets)?
+                };
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
                         self.splice = None;
@@ -1025,7 +1037,10 @@ mod pyrs_yaml {
                     &self.ast,
                     &self.source,
                 );
-                let unit = editing::rename_path(&mut self.ast, &segs, new_key, src)?;
+                let unit = {
+                    let offsets = self.splice.as_mut().map(|s| s.line_offsets());
+                    editing::rename_path(&mut self.ast, &segs, new_key, src, offsets)?
+                };
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
                         self.splice = None;
@@ -1696,6 +1711,37 @@ mod pyrs_yaml {
             assert!(doc.splice.is_none());
         }
     }
+
+    #[test]
+    fn splice_offsets_cache_populated_on_first_edit() {
+        use crate::parser::yaml::YamlSchema;
+        use std::sync::Once;
+        static PY_INIT: Once = Once::new();
+        PY_INIT.call_once(Python::initialize);
+        let source = Arc::from("a: 1\nb: 2\n");
+        let ast = crate::parser::parse_with_options(&source, true, YamlSchema::Core, 1000, false)
+            .expect("parse");
+        let mut doc = YamlDocument::from_ast(ast, source);
+        Python::attach(|py| {
+            let segs = vec!["a"
+                .to_string()
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind()];
+            doc._set_path(
+                py,
+                segs,
+                "9".to_string()
+                    .into_pyobject(py)
+                    .unwrap()
+                    .into_any()
+                    .unbind(),
+            )
+            .unwrap();
+        });
+        assert!(doc.splice.as_ref().unwrap().offsets.is_some());
+    }
 }
 
 #[cfg(test)]
@@ -1735,7 +1781,7 @@ mod tests {
                 py,
                 &mut writer,
                 list.into_any(),
-                &dump_options(false, false, false),
+                &dump_options(false),
                 false,
                 false,
             )
