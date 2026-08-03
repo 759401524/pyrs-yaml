@@ -245,6 +245,7 @@ fn edit_set_small(bencher: divan::Bencher) {
             CustomNode::plain_scalar("x"),
             true,
             SMALL_YAML,
+            None,
         )
         .ok();
     });
@@ -262,6 +263,7 @@ fn edit_set_medium(bencher: divan::Bencher) {
             CustomNode::plain_scalar("x"),
             true,
             MEDIUM_YAML,
+            None,
         )
         .ok();
     });
@@ -283,6 +285,7 @@ fn edit_set_large(bencher: divan::Bencher) {
             CustomNode::plain_scalar("999"),
             true,
             LARGE_YAML,
+            None,
         )
         .ok();
     });
@@ -294,7 +297,15 @@ fn edit_insert_large(bencher: divan::Bencher) {
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
         let mut a = ast.clone();
-        editing::insert_path(&mut a, &segs, 0, CustomNode::plain_scalar("x"), LARGE_YAML).ok();
+        editing::insert_path(
+            &mut a,
+            &segs,
+            0,
+            CustomNode::plain_scalar("x"),
+            LARGE_YAML,
+            None,
+        )
+        .ok();
     });
 }
 
@@ -304,7 +315,7 @@ fn edit_delete_large(bencher: divan::Bencher) {
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
         let mut a = ast.clone();
-        editing::delete_path(&mut a, &segs, LARGE_YAML).ok();
+        editing::delete_path(&mut a, &segs, LARGE_YAML, None).ok();
     });
 }
 
@@ -320,9 +331,14 @@ fn edit_batch_10(bencher: divan::Bencher) {
                 Segment::Key(std::borrow::Cow::Borrowed("items")),
                 Segment::Index(i % 5),
             ];
-            if let Ok(unit) =
-                editing::set_path(&mut a, &segs, CustomNode::plain_scalar("x"), true, &source)
-            {
+            if let Ok(unit) = editing::set_path(
+                &mut a,
+                &segs,
+                CustomNode::plain_scalar("x"),
+                true,
+                &source,
+                None,
+            ) {
                 if unit.eligible {
                     state.apply(&unit).ok();
                 }
@@ -384,7 +400,7 @@ fn edit_flush_set_10mb(bencher: divan::Bencher) {
     bencher.bench(|| {
         let mut a = ast.clone();
         let mut state = SpliceState::new(source.clone());
-        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source) {
+        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None) {
             if unit.eligible {
                 state.apply(&unit).ok();
             }
@@ -426,7 +442,9 @@ fn edit_flush_burst5_10mb(bencher: divan::Bencher) {
         let mut state = SpliceState::new(source.clone());
         for (g, k) in &targets {
             let segs = vec![g.clone(), k.clone()];
-            if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source) {
+            if let Ok(unit) =
+                editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None)
+            {
                 if unit.eligible {
                     state.apply(&unit).ok();
                 }
@@ -493,7 +511,7 @@ fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
     bencher.bench(|| {
         let mut a = ast.clone();
         let mut state = SpliceState::new(source.clone());
-        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source) {
+        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None) {
             if unit.eligible {
                 state.apply(&unit).ok();
             }
