@@ -55,6 +55,18 @@ class TestSetPath:
         doc._set_path(["b", "y"], 2, True)
         assert doc.to_yaml() == "a: 1  # keep\nb:\n  x: 1\n  y: 2\n"
 
+    def test_splice_offsets_cached_on_first_edit(self):
+        """Multiple edits on a default-layout doc preserve round-trip (splice cache)."""
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        doc._set_path(["a"], 9)
+        assert doc.to_yaml() == "a: 9\nb: 2\n"
+
+    def test_splice_multiple_edits_preserve_format(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3\n")
+        doc._set_path(["a"], 9)
+        doc._set_path(["c"], 7)
+        assert doc.to_yaml() == "a: 9\nb: 2\nc: 7\n"
+
     def test_set_method_create_missing(self):
         doc = pyrs_yaml.parse("a: 1\n")
         doc.set("$.b.c.d", 2, create_missing=True)

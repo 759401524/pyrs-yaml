@@ -99,8 +99,24 @@ def _yaml_document_find(self, path):
     return Node(self).find(path)
 
 
+def _yaml_document_walk(self):
+    from .node import Node
+
+    for path in self._walk_paths():
+        yield Node(self, path)
+
+
+def _yaml_document_scalars(self):
+    from .node import Node
+
+    for path in self._scalar_paths():
+        yield Node(self, path)
+
+
 YamlDocument.node = _yaml_document_node
 YamlDocument.find = _yaml_document_find
+YamlDocument.walk = _yaml_document_walk
+YamlDocument.scalars = _yaml_document_scalars
 
 
 def _yaml_document_merged(self):
