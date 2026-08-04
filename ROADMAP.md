@@ -39,6 +39,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |---------|------|-----------|
+| v0.11.7 | 2026-08-04 | [CHANGELOG.md §[0.11.7]](CHANGELOG.md#0117---2026-08-04) |
 | v0.11.6 | 2026-08-04 | [CHANGELOG.md §[0.11.6]](CHANGELOG.md#0116---2026-08-04) |
 | v0.11.5 | 2026-08-04 | [CHANGELOG.md §\[0.11.5\]](CHANGELOG.md#0115---2026-08-04) |
 | v0.11.4 | 2026-08-04 | [CHANGELOG.md §\[0.11.4\]](CHANGELOG.md#0114---2026-08-04) |
@@ -115,6 +116,19 @@ Per the plan's risk note ("the audit records oracle disagreements but does not c
 
 ---
 
+## v0.11.7 — "CI signal hygiene" (target: Q3 2026)
+
+> Replace the deliberately-failing `stub-build-check` CI job with static assertions that pass when the repo is correct (green CI), fail only on regression. Track `rust-numpy` free-threaded support status for re-enabling ndarray on cp314t.
+
+| # | Item | Layer | Status |
+|:--|:-----|:------|:------|
+| 1 | **stub-build-check → release-guard** — replace the always-red container build with static assertions: `grep` guards `publish.yml` against `--generate-stubs`, `git ls-files` asserts `.pyi` is tracked, `test -f` checks `py.typed` | CI | ✅ |
+| 2 | **Numpy free-threaded tracking** — ROADMAP.md documents `rust-numpy` free-threaded support (PyO3/rust-numpy#476) as a tracked dependency | Docs | ✅ |
+
+**Changelog mapping**: Entries under `[0.11.7]` in CHANGELOG.md.
+
+---
+
 ## v0.12.0 — (open slot, target: TBD)
 
 > Scope was previously "Compliance Improvement"; that work shipped in v0.11.4 (Stage 1 → 99.75%) and the numpy-free wheel moved to v0.11.6. **No scope committed** — determined at the next milestone review per the Deferred revisit rule.
@@ -133,9 +147,10 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
 - [ ] **Custom YAML 1.2 parser** — evaluate replacing saphyr-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork saphyr-parser and incrementally fix to 100%.
+- [ ] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime probe (`py.import("numpy").is_ok()`) auto-detect. Tracked in v0.11.7.
 - [ ] **YAML Schema language** — dedicated schema definition format beyond JSON Schema
 - [ ] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy
 - [ ] **Community plugins** — allow third-party Python modules to register custom node types
 - [x] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python ✅ Committed in v0.11.6
 
-**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness — audit closed empty, docs-only release, with strictness regression corpus `tests/test_strictness_audit.py`); v0.11.6 (numpy-free free-threaded wheel).
+**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness — audit closed empty, docs-only release, with strictness regression corpus `tests/test_strictness_audit.py`); v0.11.6 (numpy-free free-threaded wheel); v0.11.7 (CI signal hygiene + numpy tracking).
