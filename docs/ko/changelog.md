@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`set(create_missing=True)`** - missing intermediate mapping keys along
+  the edit path are created as nested mappings (e.g. setting `a.b.c` on
+  `a: 1` creates `b` and `c`); index segments that miss are still an error,
+  and a scalar intermediate along the path still raises.
+
+### Fixed
+
+- **`set(create_missing=True)` nested chain build** - the created mapping
+  chain no longer duplicates the first segment as a nested key level.
+- **`set(create_missing=True)` eligibility** - freshly created keys are now
+  eligible for the value write (the eligibility check no longer runs after
+  the synthetic pair is inserted).
+
 ## [0.11.7] - 2026-08-04
 
 ### Changed

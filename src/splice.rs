@@ -486,6 +486,7 @@ mod tests {
             true,
             source,
             None,
+            false,
         )
         .unwrap();
         splice.apply(&unit).unwrap();
@@ -508,6 +509,7 @@ mod tests {
             true,
             source,
             None,
+            false,
         )
         .unwrap();
         assert!(!unit.eligible);
@@ -528,6 +530,7 @@ mod tests {
             true,
             source,
             None,
+            false,
         )
         .unwrap();
         splice.apply(&unit).unwrap();
@@ -551,10 +554,33 @@ mod tests {
             true,
             source,
             None,
+            false,
         )
         .unwrap();
         splice.apply(&unit).unwrap();
         assert_eq!(splice.materialize(), Some("a: 1\nb: 2\n".to_string()));
+    }
+
+    #[test]
+    fn create_missing_splices_nested_mapping() {
+        let source = "a: 1\n";
+        let mut ast = parsed(source);
+        assert!(is_eligible(&ast, source));
+        let mut splice = SpliceState::new(Arc::from(source));
+        let segs = parse_path_segments("$.b.c").unwrap();
+        let unit = set_path(
+            &mut ast,
+            &segs,
+            CustomNode::plain_scalar("2"),
+            true,
+            source,
+            None,
+            true,
+        )
+        .unwrap();
+        assert!(unit.eligible);
+        splice.apply(&unit).unwrap();
+        assert_eq!(splice.materialize(), Some("a: 1\nb:\n  c: 2\n".to_string()));
     }
 
     #[test]
@@ -572,6 +598,7 @@ mod tests {
                 true,
                 source,
                 None,
+                false,
             )
             .unwrap();
             splice.apply(&unit).unwrap();

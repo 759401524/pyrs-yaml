@@ -22,8 +22,8 @@ def _path_node(self, path: str) -> Node:
     return node
 
 
-def _yaml_document_set(self, path: str, value: Any) -> None:
-    return _path_node(self, path).set_value(value)
+def _yaml_document_set(self, path: str, value: Any, create_missing: bool = False) -> None:
+    return _path_node(self, path).set_value(value, create_missing=create_missing)
 
 
 def _yaml_document_insert(self, path: str, index: int, value: Any) -> None:

@@ -129,9 +129,14 @@ Per the plan's risk note ("the audit records oracle disagreements but does not c
 
 ---
 
-## v0.12.0 — (open slot, target: TBD)
+## v0.12.0 — "Competitive Response" (target: Q3 2026)
 
-> Scope was previously "Compliance Improvement"; that work shipped in v0.11.4 (Stage 1 → 99.75%) and the numpy-free wheel moved to v0.11.6. **No scope committed** — determined at the next milestone review per the Deferred revisit rule.
+> Respond to `yaml-edit` competitor features with a fast, round-trip-preserving editing story. D3 ships the create-missing path write; D4 adds Rust-backed AST traversal.
+
+| # | Item | Layer | Status |
+|:--|:-----|:------|:------|
+| D3 | **`set(create_missing=True)`** — create missing intermediate mapping keys along an edit path (`doc.set("$.a.b.c", 2)`) | Rust + Python | ✅ 2026-08-04 |
+| D4 | **`doc.walk()` / `doc.scalars()`** — Rust-backed depth-first traversal yielding `Node` objects, matching `Node.walk()` semantics without per-node `to_dict()` resolution | Rust + Python | 🔴 planned |
 
 ---
 
