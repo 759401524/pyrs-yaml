@@ -1,7 +1,20 @@
+//! AST navigation for edit path resolution.
+//!
+//! Pure Rust implementation — no PyO3 dependencies.
+//! Python-specific segment parsing is in `crate::py::editing`.
+
 use crate::ast::CustomNode;
 use indexmap::IndexMap;
-use pyo3::prelude::*;
 use std::borrow::Cow;
+
+/// A path segment for navigating into a YAML AST.
+#[derive(Debug, Clone)]
+pub enum Segment<'a> {
+    /// Mapping key lookup.
+    Key(Cow<'a, str>),
+    /// Sequence index lookup.
+    Index(i64),
+}
 
 pub fn key_eq(a: &CustomNode, b: &CustomNode) -> bool {
     match (a, b) {
@@ -33,26 +46,6 @@ pub fn mapping_key_index(
     key: &CustomNode,
 ) -> Option<usize> {
     pairs.iter().position(|(k, _)| key_eq(k, key))
-}
-
-#[derive(Debug, Clone)]
-pub enum Segment<'a> {
-    Key(Cow<'a, str>),
-    Index(i64),
-}
-
-impl<'a> Segment<'a> {
-    pub fn from_py(_py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Segment<'a>> {
-        if let Ok(s) = obj.extract::<String>() {
-            Ok(Segment::Key(Cow::Owned(s)))
-        } else if let Ok(i) = obj.extract::<i64>() {
-            Ok(Segment::Index(i))
-        } else {
-            Err(pyo3::exceptions::PyValueError::new_err(
-                "segment must be str or int",
-            ))
-        }
-    }
 }
 
 pub fn normalize_index(index: i64, len: usize) -> Option<usize> {
@@ -184,4 +177,141 @@ pub fn navigate_mut<'a>(
         };
     }
     Ok(cur)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::CustomNode;
+
+    fn mk_scalar(s: &str) -> CustomNode {
+        CustomNode::plain_scalar(s)
+    }
+
+    fn mk_map(pairs: Vec<(&str, &str)>) -> CustomNode {
+        CustomNode::Mapping {
+            pairs: pairs
+                .into_iter()
+                .map(|(k, v)| (mk_scalar(k), mk_scalar(v)))
+                .collect(),
+            tag: None,
+            comment: None,
+            anchor: None,
+            flow_style: false,
+            source_range: None,
+        }
+    }
+
+    fn mk_seq(items: Vec<&str>) -> CustomNode {
+        CustomNode::Sequence {
+            items: items.into_iter().map(mk_scalar).collect(),
+            tag: None,
+            comment: None,
+            anchor: None,
+            flow_style: false,
+            source_range: None,
+        }
+    }
+
+    #[test]
+    fn test_key_eq_same_scalar() {
+        assert!(key_eq(&mk_scalar("a"), &mk_scalar("a")));
+    }
+
+    #[test]
+    fn test_key_eq_different_scalar() {
+        assert!(!key_eq(&mk_scalar("a"), &mk_scalar("b")));
+    }
+
+    #[test]
+    fn test_key_eq_same_mapping() {
+        let a = mk_map(vec![("x", "1")]);
+        let b = mk_map(vec![("x", "1")]);
+        assert!(key_eq(&a, &b));
+    }
+
+    #[test]
+    fn test_key_eq_different_mapping() {
+        let a = mk_map(vec![("x", "1")]);
+        let b = mk_map(vec![("y", "2")]);
+        assert!(!key_eq(&a, &b));
+    }
+
+    #[test]
+    fn test_mapping_key_index_found() {
+        let pairs = vec![
+            (mk_scalar("a"), mk_scalar("1")),
+            (mk_scalar("b"), mk_scalar("2")),
+        ];
+        let map: IndexMap<CustomNode, CustomNode> = pairs.into_iter().collect();
+        assert_eq!(mapping_key_index(&map, &mk_scalar("a")), Some(0));
+        assert_eq!(mapping_key_index(&map, &mk_scalar("b")), Some(1));
+    }
+
+    #[test]
+    fn test_mapping_key_index_not_found() {
+        let pairs = vec![(mk_scalar("a"), mk_scalar("1"))];
+        let map: IndexMap<CustomNode, CustomNode> = pairs.into_iter().collect();
+        assert_eq!(mapping_key_index(&map, &mk_scalar("x")), None);
+    }
+
+    #[test]
+    fn test_normalize_index_positive() {
+        assert_eq!(normalize_index(0, 5), Some(0));
+        assert_eq!(normalize_index(4, 5), Some(4));
+        assert_eq!(normalize_index(5, 5), None);
+    }
+
+    #[test]
+    fn test_normalize_index_negative() {
+        assert_eq!(normalize_index(-1, 5), Some(4));
+        assert_eq!(normalize_index(-5, 5), Some(0));
+        assert_eq!(normalize_index(-6, 5), None);
+    }
+
+    #[test]
+    fn test_navigate_mapping_key() {
+        let node = mk_map(vec![("a", "1")]);
+        let segs = [Segment::Key(Cow::Borrowed("a"))];
+        let result = navigate(&node, &segs).unwrap();
+        assert!(key_eq(result, &mk_scalar("1")));
+    }
+
+    #[test]
+    fn test_navigate_missing_key() {
+        let node = mk_map(vec![("a", "1")]);
+        let segs = [Segment::Key(Cow::Borrowed("x"))];
+        assert!(matches!(
+            navigate(&node, &segs),
+            Err(NavigateError::Missing(_))
+        ));
+    }
+
+    #[test]
+    fn test_navigate_sequence_index() {
+        let node = mk_seq(vec!["a", "b", "c"]);
+        let segs = [Segment::Index(1)];
+        let result = navigate(&node, &segs).unwrap();
+        assert!(key_eq(result, &mk_scalar("b")));
+    }
+
+    #[test]
+    fn test_navigate_cannot_descend_scalar() {
+        let node = mk_scalar("hello");
+        let segs = [Segment::Key(Cow::Borrowed("x"))];
+        assert!(matches!(
+            navigate(&node, &segs),
+            Err(NavigateError::CannotDescend(_))
+        ));
+    }
+
+    #[test]
+    fn test_navigate_mut_modifies() {
+        let mut node = mk_map(vec![("a", "1")]);
+        let segs = [Segment::Key(Cow::Borrowed("a"))];
+        let result = navigate_mut(&mut node, &segs).unwrap();
+        *result = mk_scalar("9");
+        let check = navigate(&node, &segs).unwrap();
+        assert!(key_eq(check, &mk_scalar("9")));
+    }
 }

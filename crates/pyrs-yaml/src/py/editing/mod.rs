@@ -1,22 +1,18 @@
 mod metadata;
-mod navigate;
-mod region;
 
-pub use metadata::with_metadata_from;
-pub use navigate::{
-    key_eq, mapping_get_mut, mapping_key_index, navigate, navigate_mut, normalize_index,
-    parse_path_segments, NavigateError, Segment,
+pub use crate::editing::{
+    eligible_path, extend_delete_over_comments, key_eq, line_aligned, line_end, line_indent,
+    line_start, mapping_get_mut, mapping_key_index, nav_err, navigate, navigate_mut,
+    normalize_index, parse_path_segments, path_nodes, precompute, regenerate_region_text,
+    region_unit, DirtyKind, DirtyUnit, NavigateError, Segment,
 };
-pub use region::{nav_err, precompute, regenerate_region_text, DirtyKind, DirtyUnit};
+pub use metadata::with_metadata_from;
+
+pub mod segment_py;
 
 use crate::ast::CustomNode;
 use crate::parser::yaml::compute_line_offsets;
 use indexmap::IndexMap;
-
-use region::{
-    eligible_path, extend_delete_over_comments, line_aligned, line_end, line_indent, line_start,
-    path_nodes, region_unit,
-};
 
 pub fn set_path(
     node: &mut CustomNode,
@@ -562,7 +558,7 @@ mod tests {
         let path = path_nodes(&node, &[]).unwrap();
         eprintln!(
             "root_flow={} root_range={:?}",
-            crate::py::editing::region::node_is_flow(&node),
+            crate::editing::region::node_is_flow(&node),
             node.source_range()
         );
         if let CustomNode::Mapping { pairs, .. } = &node {

@@ -252,7 +252,7 @@ pub(crate) fn convert_tag(tag: &saphyr_parser::Tag) -> Tag {
 /// back (Task 4 P4). CRLF/BOM docs and docs whose layout can't be verified
 /// (missing source ranges: merged keys, aliases, programmatic AST) always fall
 /// back (P1).
-pub(crate) fn check_default_layout(node: &CustomNode, text: &str) -> bool {
+pub fn check_default_layout(node: &CustomNode, text: &str) -> bool {
     if text.contains('\r') || text.starts_with('\u{FEFF}') {
         return false;
     }
@@ -265,12 +265,13 @@ pub(crate) fn check_default_layout(node: &CustomNode, text: &str) -> bool {
 /// Linear line-cursor over precomputed line offsets. Children of a container
 /// appear in source order, so their offsets are monotonically increasing —
 /// a single forward pass replaces per-node binary search.
-struct LineCursor<'a> {
+pub struct LineCursor<'a> {
     offsets: &'a [usize],
     idx: usize,
 }
 
 impl<'a> LineCursor<'a> {
+    #[allow(dead_code)]
     fn new(offsets: &'a [usize]) -> Self {
         Self { offsets, idx: 0 }
     }
@@ -291,7 +292,7 @@ impl<'a> LineCursor<'a> {
 
 /// Recursive layout walk: verifies each block container's direct children sit
 /// at `content_indent` (the indent its children must occupy).
-fn check_node_layout(
+pub fn check_node_layout(
     node: &CustomNode,
     text: &str,
     cursor: &mut LineCursor<'_>,

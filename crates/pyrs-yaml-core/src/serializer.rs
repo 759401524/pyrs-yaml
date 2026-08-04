@@ -91,7 +91,7 @@ fn inlineable_value(v: &CustomNode) -> bool {
 /// sequence-item form: no metadata, non-empty, all keys simple scalars and
 /// all values inlineable. Mirrors the guard used by `write_sequence_item`;
 /// shared so the splice layer and the serializer can never drift.
-pub(crate) fn is_compact_item(node: &CustomNode) -> bool {
+pub fn is_compact_item(node: &CustomNode) -> bool {
     matches!(
         node,
         CustomNode::Mapping {
@@ -111,7 +111,7 @@ pub(crate) fn is_compact_item(node: &CustomNode) -> bool {
 
 /// Serialize a single block-mapping pair via [`Serializer::write_mapping_pair`],
 /// producing exactly the bytes a splice regeneration splices in.
-pub(crate) fn pair_to_string(
+pub fn pair_to_string(
     key: &CustomNode,
     value: &CustomNode,
     indent_width: usize,
@@ -124,7 +124,7 @@ pub(crate) fn pair_to_string(
 }
 
 /// Serialize a single block-sequence item via [`Serializer::write_sequence_item`].
-pub(crate) fn item_to_string(
+pub fn item_to_string(
     item: &CustomNode,
     indent_width: usize,
     is_last: bool,

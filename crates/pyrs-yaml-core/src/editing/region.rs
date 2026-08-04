@@ -1,29 +1,12 @@
+//! Region computation for edit operations.
+//!
+//! Pure Rust implementation — no PyO3 dependencies.
+
 use crate::ast::CustomNode;
 use std::ops::Range;
 
+use super::dirty::DirtyKind;
 use super::navigate::{mapping_key_index, normalize_index, NavigateError, Segment};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum DirtyKind {
-    Region {
-        range: Range<usize>,
-        indent: usize,
-        text: String,
-    },
-    Insert {
-        at: usize,
-        text: String,
-    },
-    Delete {
-        range: Range<usize>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DirtyUnit {
-    pub kind: DirtyKind,
-    pub eligible: bool,
-}
 
 pub fn path_nodes<'a>(
     node: &'a CustomNode,
@@ -251,5 +234,130 @@ pub fn nav_err(e: NavigateError) -> String {
         NavigateError::Missing(s) => format!("missing-path:{s}"),
         NavigateError::CannotDescend(t) => format!("cannot-descend-into-scalar:{t}"),
         NavigateError::NotContainer => "create-needs-mapping".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mk_flow_seq() -> CustomNode {
+        CustomNode::Sequence {
+            items: vec![],
+            tag: None,
+            comment: None,
+            anchor: None,
+            flow_style: true,
+            source_range: None,
+        }
+    }
+
+    fn mk_block_seq() -> CustomNode {
+        CustomNode::Sequence {
+            items: vec![],
+            tag: None,
+            comment: None,
+            anchor: None,
+            flow_style: false,
+            source_range: None,
+        }
+    }
+
+    #[test]
+    fn test_node_is_flow_flow_style() {
+        assert!(node_is_flow(&mk_flow_seq()));
+    }
+
+    #[test]
+    fn test_node_is_flow_block_style() {
+        assert!(!node_is_flow(&mk_block_seq()));
+    }
+
+    #[test]
+    fn test_node_is_flow_scalar() {
+        assert!(!node_is_flow(&CustomNode::plain_scalar("x")));
+    }
+
+    #[test]
+    fn test_line_index_of_exact() {
+        let offsets = vec![0, 5, 10, 15];
+        assert_eq!(line_index_of(&offsets, 0), 0);
+        assert_eq!(line_index_of(&offsets, 5), 1);
+    }
+
+    #[test]
+    fn test_line_index_of_between() {
+        let offsets = vec![0, 10, 20];
+        assert_eq!(line_index_of(&offsets, 5), 0);
+        assert_eq!(line_index_of(&offsets, 15), 1);
+    }
+
+    #[test]
+    fn test_line_start_end() {
+        let offsets = vec![0, 5, 10, 15];
+        assert_eq!(line_start(&offsets, 3), 0);
+        assert_eq!(line_end(&offsets, 3, 15), 5);
+        assert_eq!(line_end(&offsets, 8, 15), 10);
+    }
+
+    #[test]
+    fn test_line_end_last_line() {
+        let offsets = vec![0, 5, 10];
+        assert_eq!(line_end(&offsets, 12, 15), 15);
+    }
+
+    #[test]
+    fn test_line_indent_counts_spaces() {
+        let text = "    key: val\n  next: v\n";
+        let offsets = vec![0, 13];
+        assert_eq!(line_indent(&offsets, text, 0), 4);
+        assert_eq!(line_indent(&offsets, text, 13), 2);
+    }
+
+    #[test]
+    fn test_line_aligned_expands_range() {
+        let text = "  a: 1\n  b: 2\n";
+        let offsets = vec![0, 7, 13];
+        let range = line_aligned(2..5, &offsets, text);
+        assert_eq!(range, 0..7);
+    }
+
+    #[test]
+    fn test_extend_delete_over_comments_extends_backward() {
+        let text = "# comment\nkey: val\n";
+        let offsets = vec![0, 10];
+        let range = 10..14;
+        let extended = extend_delete_over_comments(range, &offsets, text);
+        assert_eq!(extended, 0..14);
+    }
+
+    #[test]
+    fn test_extend_delete_over_comments_no_comment() {
+        let text = "a: 1\nb: 2\n";
+        let offsets = vec![0, 5, 10];
+        let range = 5..8;
+        let extended = extend_delete_over_comments(range, &offsets, text);
+        assert_eq!(extended, 5..8);
+    }
+
+    #[test]
+    fn test_nav_err_missing() {
+        assert_eq!(
+            nav_err(NavigateError::Missing("x".into())),
+            "missing-path:x"
+        );
+    }
+
+    #[test]
+    fn test_nav_err_cannot_descend() {
+        assert_eq!(
+            nav_err(NavigateError::CannotDescend("key".into())),
+            "cannot-descend-into-scalar:key"
+        );
+    }
+
+    #[test]
+    fn test_nav_err_not_container() {
+        assert_eq!(nav_err(NavigateError::NotContainer), "create-needs-mapping");
     }
 }
