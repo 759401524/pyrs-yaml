@@ -25,6 +25,7 @@ pub fn set_path(
     preserve_metadata: bool,
     source: &str,
     line_offsets: Option<&[usize]>,
+    create_missing: bool,
 ) -> Result<DirtyUnit, String> {
     let computed;
     let line_offsets: &[usize] = match line_offsets {
@@ -68,7 +69,13 @@ pub fn set_path(
     let (eligible, compact_override) =
         precompute(node, segments, parent_segments, line_offsets, source);
 
-    let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
+    let parent = match navigate_mut(node, parent_segments) {
+        Ok(parent) => parent,
+        Err(NavigateError::Missing(_)) if create_missing => {
+            return set_path_create_missing(node, segments, new_value, source, line_offsets);
+        }
+        Err(e) => return Err(nav_err(e)),
+    };
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
     match (parent, last) {
@@ -173,6 +180,92 @@ pub fn set_path(
         _ if parent_is_alias => Err("cannot-edit-alias".to_string()),
         _ => Err("create-needs-mapping".to_string()),
     }
+}
+
+/// `set_path` with `create_missing`: walk as deep as the path allows and
+/// synthesize the missing intermediate mappings as a single nested Insert at
+/// the end of the deepest existing mapping. Only key segments may be created;
+/// an out-of-range index, an alias, or a non-container intermediate still
+/// errors.
+fn set_path_create_missing(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    new_value: CustomNode,
+    source: &str,
+    line_offsets: &[usize],
+) -> Result<DirtyUnit, String> {
+    let mut consumed = 0;
+    {
+        let mut cur: &CustomNode = node;
+        for (i, seg) in segments.iter().enumerate() {
+            match (cur, seg) {
+                (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => {
+                    let key_node = CustomNode::plain_scalar(k.as_ref());
+                    match mapping_key_index(pairs, &key_node) {
+                        Some(idx) => {
+                            cur = pairs
+                                .get_index(idx)
+                                .map(|(_, v)| v)
+                                .ok_or_else(|| "create-needs-mapping".to_string())?;
+                            consumed = i + 1;
+                        }
+                        None => break,
+                    }
+                }
+                (CustomNode::Sequence { items, .. }, Segment::Index(idx)) => {
+                    let idx = normalize_index(*idx, items.len())
+                        .ok_or_else(|| format!("index-out-of-range-edit:{idx}"))?;
+                    cur = items
+                        .get(idx)
+                        .ok_or_else(|| format!("index-out-of-range-edit:{idx}"))?;
+                    consumed = i + 1;
+                }
+                (CustomNode::Alias { .. }, _) => return Err("cannot-edit-alias".to_string()),
+                _ => return Err("create-needs-mapping".to_string()),
+            }
+        }
+    }
+    let tail = &segments[consumed..];
+    if tail.is_empty() {
+        return Err("create-needs-mapping".to_string());
+    }
+    let mut nested = new_value;
+    for seg in tail[1..].iter().rev() {
+        let Segment::Key(k) = seg else {
+            return Err("create-needs-mapping".to_string());
+        };
+        let mut pairs = IndexMap::new();
+        pairs.insert(CustomNode::plain_scalar(k.as_ref()), nested);
+        nested = CustomNode::plain_mapping(pairs);
+    }
+    let top_key = match &tail[0] {
+        Segment::Key(k) => CustomNode::plain_scalar(k.as_ref()),
+        Segment::Index(_) => return Err("create-needs-mapping".to_string()),
+    };
+    let path = path_nodes(node, &segments[..consumed]).map_err(nav_err)?;
+    let eligible = eligible_path(&path);
+    let parent = navigate_mut(node, &segments[..consumed]).map_err(nav_err)?;
+    let CustomNode::Mapping { pairs, .. } = parent else {
+        return Err("create-needs-mapping".to_string());
+    };
+    let (at, indent) = match pairs.iter().last() {
+        Some((lk, lv)) => {
+            let key_start = lk.source_range().map(|r| r.start).unwrap_or(0);
+            let val_end = lv.source_range().map(|r| r.end).unwrap_or(key_start);
+            (
+                line_end(line_offsets, val_end, source.len()),
+                line_indent(line_offsets, source, key_start),
+            )
+        }
+        None => (0, 0),
+    };
+    let depth = consumed;
+    let text = crate::serializer::pair_to_string(&top_key, &nested, indent, true, depth)?;
+    pairs.insert(top_key, nested);
+    Ok(DirtyUnit {
+        kind: DirtyKind::Insert { at, text },
+        eligible,
+    })
 }
 
 pub fn insert_path(
@@ -464,6 +557,29 @@ mod tests {
     }
 
     #[test]
+    fn probe_eligible_root() {
+        let node = doc_with_ranges("a: 1\n");
+        let path = path_nodes(&node, &[]).unwrap();
+        eprintln!(
+            "root_flow={} root_range={:?}",
+            crate::py::editing::region::node_is_flow(&node),
+            node.source_range()
+        );
+        if let CustomNode::Mapping { pairs, .. } = &node {
+            for (k, v) in pairs.iter() {
+                eprintln!(
+                    "k_range={:?} v_range={:?}",
+                    k.source_range(),
+                    v.source_range()
+                );
+            }
+        }
+        eprintln!("eligible={}", eligible_path(&path));
+        let path_full = path_nodes(&node, &[Segment::Key(Cow::Borrowed("b"))]);
+        eprintln!("path_full={:?}", path_full);
+    }
+
+    #[test]
     fn normalize_index_python_semantics() {
         assert_eq!(normalize_index(0, 3), Some(0));
         assert_eq!(normalize_index(2, 3), Some(2));
@@ -510,6 +626,7 @@ mod tests {
             true,
             "- a\n- b\n- c",
             None,
+            false,
         )
         .unwrap();
         assert_eq!(crate::serializer::to_yaml(&node), "- a\n- b\n- z\n");
@@ -525,6 +642,7 @@ mod tests {
             true,
             "- a\n- b",
             None,
+            false,
         )
         .is_err());
     }
@@ -539,6 +657,7 @@ mod tests {
             true,
             "",
             None,
+            false,
         )
         .unwrap();
         assert_eq!(crate::serializer::to_yaml(&node), "a: 1\n");
@@ -557,6 +676,7 @@ mod tests {
             true,
             "base: &b\n  x: 1\ncopy: *b",
             None,
+            false,
         )
         .unwrap_err();
         assert_eq!(err, "cannot-edit-alias");
@@ -594,6 +714,7 @@ mod tests {
             true,
             "a: 1\nb: 2\n",
             None,
+            false,
         )
         .unwrap();
         match unit.kind {
@@ -643,6 +764,7 @@ mod tests {
             true,
             "- host: a\n",
             None,
+            false,
         )
         .unwrap();
         match unit.kind {
@@ -677,6 +799,7 @@ mod tests {
             true,
             "- host: a\n  port: 8080\n",
             None,
+            false,
         )
         .unwrap();
         match unit.kind {
@@ -695,6 +818,7 @@ mod tests {
             true,
             "a: 1\n",
             None,
+            false,
         )
         .unwrap();
         match unit.kind {
@@ -704,6 +828,137 @@ mod tests {
             }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn create_missing_nested_insert_at_deepest_mapping() {
+        let mut node = doc_with_ranges("a: 1\n");
+        let unit = set_path(
+            &mut node,
+            &[
+                Segment::Key(Cow::Borrowed("b")),
+                Segment::Key(Cow::Borrowed("c")),
+            ],
+            CustomNode::plain_scalar("2"),
+            true,
+            "a: 1\n",
+            None,
+            true,
+        )
+        .unwrap();
+        match unit.kind {
+            DirtyKind::Insert { at, text } => {
+                assert_eq!(at, 5);
+                assert_eq!(text, "b:\n  c: 2\n");
+            }
+            _ => panic!(),
+        }
+        assert!(unit.eligible);
+        assert_eq!(crate::serializer::to_yaml(&node), "a: 1\nb:\n  c: 2\n");
+    }
+
+    #[test]
+    fn create_missing_mixed_existing_and_missing() {
+        let mut node = doc_with_ranges("a:\n  x: 1\n");
+        let unit = set_path(
+            &mut node,
+            &[
+                Segment::Key(Cow::Borrowed("a")),
+                Segment::Key(Cow::Borrowed("y")),
+                Segment::Key(Cow::Borrowed("z")),
+            ],
+            CustomNode::plain_scalar("2"),
+            true,
+            "a:\n  x: 1\n",
+            None,
+            true,
+        )
+        .unwrap();
+        match unit.kind {
+            DirtyKind::Insert { at, text } => {
+                assert_eq!(at, 10);
+                assert_eq!(text, "  y:\n    z: 2\n");
+            }
+            _ => panic!(),
+        }
+        assert_eq!(
+            crate::serializer::to_yaml(&node),
+            "a:\n  x: 1\n  y:\n    z: 2\n"
+        );
+    }
+
+    #[test]
+    fn create_missing_empty_document_builds_full_chain() {
+        let mut node = doc("");
+        let unit = set_path(
+            &mut node,
+            &[
+                Segment::Key(Cow::Borrowed("a")),
+                Segment::Key(Cow::Borrowed("b")),
+            ],
+            CustomNode::plain_scalar("1"),
+            true,
+            "",
+            None,
+            true,
+        )
+        .unwrap();
+        match unit.kind {
+            DirtyKind::Insert { at, text } => {
+                assert_eq!(at, 0);
+                assert_eq!(text, "a:\n  b: 1\n");
+            }
+            _ => panic!(),
+        }
+        assert!(!unit.eligible);
+        assert_eq!(crate::serializer::to_yaml(&node), "a:\n  b: 1\n");
+    }
+
+    #[test]
+    fn create_missing_index_segment_still_errors() {
+        let mut node = doc("a: 1\n");
+        let err = set_path(
+            &mut node,
+            &[Segment::Key(Cow::Borrowed("b")), Segment::Index(0)],
+            CustomNode::plain_scalar("2"),
+            true,
+            "a: 1\n",
+            None,
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(err, "create-needs-mapping");
+        let mut node = doc("a:\n  - 1\n");
+        let err = set_path(
+            &mut node,
+            &[Segment::Key(Cow::Borrowed("a")), Segment::Index(5)],
+            CustomNode::plain_scalar("2"),
+            true,
+            "a:\n  - 1\n",
+            None,
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(err, "index-out-of-range-edit:5");
+    }
+
+    #[test]
+    fn create_missing_scalar_intermediate_errors() {
+        let mut node = doc("a: 1\n");
+        let err = set_path(
+            &mut node,
+            &[
+                Segment::Key(Cow::Borrowed("a")),
+                Segment::Key(Cow::Borrowed("b")),
+            ],
+            CustomNode::plain_scalar("2"),
+            true,
+            "a: 1\n",
+            None,
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(err, "create-needs-mapping");
     }
 
     #[test]
@@ -739,6 +994,7 @@ mod tests {
             true,
             "a: {b: 1}\n",
             None,
+            false,
         )
         .unwrap();
         assert!(!unit.eligible);
@@ -758,6 +1014,7 @@ mod tests {
             true,
             "a: 1\n",
             None,
+            false,
         )
         .unwrap();
         assert!(!unit.eligible);
@@ -878,6 +1135,7 @@ mod tests {
             true,
             source,
             Some(&offsets),
+            false,
         )
         .unwrap();
         let unit2 = set_path(
@@ -887,6 +1145,7 @@ mod tests {
             true,
             source,
             None,
+            false,
         )
         .unwrap();
         assert_eq!(unit1, unit2);

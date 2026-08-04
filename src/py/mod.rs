@@ -879,12 +879,13 @@ mod pyrs_yaml {
             Ok(self.source.as_deref().unwrap_or("").to_string())
         }
 
-        #[pyo3(signature = (segments: "list", value: "Any") -> "None")]
+        #[pyo3(signature = (segments: "list", value: "Any", create_missing: "bool" = false) -> "None")]
         fn _set_path(
             &mut self,
             py: Python,
             segments: Vec<Py<PyAny>>,
             value: Py<PyAny>,
+            create_missing: bool,
         ) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments
                 .iter()
@@ -902,7 +903,15 @@ mod pyrs_yaml {
                 );
                 let unit = {
                     let offsets = self.splice.as_mut().map(|s| s.line_offsets());
-                    editing::set_path(&mut self.ast, &segs, new_node, true, src, offsets)?
+                    editing::set_path(
+                        &mut self.ast,
+                        &segs,
+                        new_node,
+                        true,
+                        src,
+                        offsets,
+                        create_missing,
+                    )?
                 };
                 if let Some(state) = self.splice.as_mut() {
                     if state.apply(&unit).is_err() {
@@ -1074,7 +1083,12 @@ mod pyrs_yaml {
         }
 
         fn __setitem__(&mut self, py: Python, key: String, value: Py<PyAny>) -> PyResult<()> {
-            self._set_path(py, vec![key.into_pyobject(py)?.into_any().unbind()], value)
+            self._set_path(
+                py,
+                vec![key.into_pyobject(py)?.into_any().unbind()],
+                value,
+                false,
+            )
         }
 
         fn __delitem__(&mut self, py: Python, key: String) -> PyResult<()> {
@@ -1792,6 +1806,7 @@ mod pyrs_yaml {
                     .unwrap()
                     .into_any()
                     .unbind(),
+                false,
             )
             .unwrap();
         });

@@ -246,6 +246,7 @@ fn edit_set_small(bencher: divan::Bencher) {
             true,
             SMALL_YAML,
             None,
+            false,
         )
         .ok();
     });
@@ -260,10 +261,11 @@ fn edit_set_medium(bencher: divan::Bencher) {
         editing::set_path(
             &mut a,
             &segs,
-            CustomNode::plain_scalar("x"),
+            CustomNode::plain_scalar("999"),
             true,
             MEDIUM_YAML,
             None,
+            false,
         )
         .ok();
     });
@@ -286,6 +288,7 @@ fn edit_set_large(bencher: divan::Bencher) {
             true,
             LARGE_YAML,
             None,
+            false,
         )
         .ok();
     });
@@ -336,8 +339,9 @@ fn edit_batch_10(bencher: divan::Bencher) {
                 &segs,
                 CustomNode::plain_scalar("x"),
                 true,
-                &source,
+                SMALL_YAML,
                 None,
+                false,
             ) {
                 if unit.eligible {
                     state.apply(&unit).ok();
@@ -400,7 +404,9 @@ fn edit_flush_set_10mb(bencher: divan::Bencher) {
     bencher.bench(|| {
         let mut a = ast.clone();
         let mut state = SpliceState::new(source.clone());
-        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None) {
+        if let Ok(unit) =
+            editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
+        {
             if unit.eligible {
                 state.apply(&unit).ok();
             }
@@ -443,7 +449,7 @@ fn edit_flush_burst5_10mb(bencher: divan::Bencher) {
         for (g, k) in &targets {
             let segs = vec![g.clone(), k.clone()];
             if let Ok(unit) =
-                editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None)
+                editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
             {
                 if unit.eligible {
                     state.apply(&unit).ok();
@@ -511,7 +517,9 @@ fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
     bencher.bench(|| {
         let mut a = ast.clone();
         let mut state = SpliceState::new(source.clone());
-        if let Ok(unit) = editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None) {
+        if let Ok(unit) =
+            editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
+        {
             if unit.eligible {
                 state.apply(&unit).ok();
             }

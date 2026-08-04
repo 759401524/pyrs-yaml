@@ -107,11 +107,17 @@ class Node:
             return resolved + "\n"
         return str(resolved) + "\n"
 
-    def set_value(self, value: Any) -> None:
-        """Replace this node's value, preserving its metadata (comment/anchor/tag/style)."""
+    def set_value(self, value: Any, create_missing: bool = False) -> None:
+        """Replace this node's value, preserving its metadata (comment/anchor/tag/style).
+
+        With ``create_missing=True``, missing intermediate mapping keys along
+        the path are created as nested mappings (e.g. setting ``a.b.c`` on
+        ``a: 1`` creates ``b`` and ``c``). Index segments that miss are still
+        an error.
+        """
         doc = self._get_doc()
         segments = [s for s in self._path]
-        doc._set_path(segments, value)
+        doc._set_path(segments, value, create_missing)
 
     def append(self, value: Any) -> None:
         """Append to a sequence node."""

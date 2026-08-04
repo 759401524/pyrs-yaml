@@ -25,6 +25,41 @@ class TestSetPath:
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc._set_path(["x", "y"], 3)
 
+    def test_set_create_missing_nested(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc._set_path(["b", "c"], 2, True)
+        assert doc.to_yaml() == "a: 1\nb:\n  c: 2\n"
+
+    def test_set_create_missing_mixed_existing(self):
+        doc = pyrs_yaml.parse("a:\n  b: 1\n")
+        doc._set_path(["a", "c", "d"], 2, True)
+        assert doc.to_yaml() == "a:\n  b: 1\n  c:\n    d: 2\n"
+
+    def test_set_create_missing_three_levels_empty_doc(self):
+        doc = pyrs_yaml.parse("")
+        doc._set_path(["a", "b", "c"], 1, True)
+        assert doc.to_yaml() == "a:\n  b:\n    c: 1\n"
+
+    def test_set_create_missing_index_still_raises(self):
+        doc = pyrs_yaml.parse("a:\n  - 1\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc._set_path(["a", 5, "x"], 2, True)
+
+    def test_set_create_missing_scalar_intermediate_raises(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc._set_path(["a", "b"], 2, True)
+
+    def test_set_create_missing_keeps_existing_content(self):
+        doc = pyrs_yaml.parse("a: 1  # keep\nb:\n  x: 1\n")
+        doc._set_path(["b", "y"], 2, True)
+        assert doc.to_yaml() == "a: 1  # keep\nb:\n  x: 1\n  y: 2\n"
+
+    def test_set_method_create_missing(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc.set("$.b.c.d", 2, create_missing=True)
+        assert doc.to_yaml() == "a: 1\nb:\n  c:\n    d: 2\n"
+
     def test_set_negative_index_from_end(self):
         doc = pyrs_yaml.parse("arr: [1, 2, 3]\n")
         doc._set_path(["arr", -1], 9)
