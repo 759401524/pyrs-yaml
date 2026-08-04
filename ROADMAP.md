@@ -136,7 +136,7 @@ Per the plan's risk note ("the audit records oracle disagreements but does not c
 | # | Item | Layer | Status |
 |:--|:-----|:------|:------|
 | D3 | **`set(create_missing=True)`** — create missing intermediate mapping keys along an edit path (`doc.set("$.a.b.c", 2)`) | Rust + Python | ✅ 2026-08-04 |
-| D4 | **`doc.walk()` / `doc.scalars()`** — Rust-backed depth-first traversal yielding `Node` objects, matching `Node.walk()` semantics without per-node `to_dict()` resolution | Rust + Python | 🔴 planned |
+| D4 | **`doc.walk()` / `doc.scalars()`** — Rust-backed depth-first traversal yielding `Node` objects, matching `Node.walk()` semantics without per-node `to_dict()` resolution | Rust + Python | ✅ 2026-08-04 |
 
 ---
 

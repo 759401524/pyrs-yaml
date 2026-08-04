@@ -15,10 +15,11 @@
 - Build + install: `uv run maturin develop --release`
 - Run tests: `uv run pytest tests/ -v`
 - Rust fmt: `cargo fmt`
-- Rust lint: `cargo clippy -- -D warnings`
+- Rust lint: `cargo clippy --all -- -D warnings`
 - Rust tests: `cargo nextest run --all` (preferred over `cargo test`)
+- Pure Rust tests (no Python runtime): `cargo test --all --no-default-features`
 - Python lint: `uv run ruff check . && uv run ruff format .`
-- Generate stubs: `uv run maturin build --generate-stubs`
+- Generate stubs: `uv run maturin build --release --generate-stubs`
 - Run prek hooks: `prek run --all-files`
 
 ## Pinned Versions
