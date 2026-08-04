@@ -4,9 +4,9 @@ use proptest::strategy::Union;
 use std::sync::Arc;
 
 use crate::ast::CustomNode;
+use crate::editing::{self, Segment};
 use crate::parser::parse_with_options;
 use crate::parser::yaml::YamlSchema;
-use crate::py::editing::{self, Segment};
 use crate::serializer::{to_yaml_with_options, SerializeOptions};
 use crate::splice::SpliceState;
 
@@ -110,7 +110,7 @@ proptest! {
 
         let mut edited_ast = ast.clone();
         let new_value = CustomNode::plain_scalar("zzz_prop");
-        let unit = editing::set_path(&mut edited_ast, &segs, new_value, true, doc_str, None, false)
+        let unit = crate::py::editing::set_path(&mut edited_ast, &segs, new_value, true, doc_str, None, false)
             .expect("set_path must succeed");
 
         let mut state = SpliceState::new(source);

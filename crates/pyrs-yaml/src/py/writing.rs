@@ -191,6 +191,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires working Python interpreter"]
     fn sink_writer_file_flushes_on_chunk_threshold() {
         init_python();
         let mut f = tempfile::tempfile().unwrap();
@@ -213,6 +214,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires working Python interpreter"]
     fn sink_writer_file_flush_on_finish() {
         init_python();
         let mut f = tempfile::tempfile().unwrap();

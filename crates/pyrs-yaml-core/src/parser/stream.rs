@@ -216,7 +216,7 @@ fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
 /// （字符串路径：`comment_anchor_tracker.next_anchor_name()`；流式路径：
 /// `format!("anchor_{id}")`），回调返回 `None` 表示无 anchor；解析到的
 /// anchor 注册进 `anchor_map` 供 Alias 分支查找。`Event::Nothing` → `None`。
-pub(crate) fn event_to_stream_event<F>(
+pub fn event_to_stream_event<F>(
     event: Event<'_>,
     span: Span,
     anchor_map: &mut HashMap<usize, String>,

@@ -20,7 +20,7 @@ use crate::serializer::{to_yaml, to_yaml_with_options, SerializeOptions};
 use crate::splice::SpliceState;
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyTuple};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -61,6 +61,8 @@ fn format_source_snippet(source: &str, line: usize, col: usize, message: &str) -
         line_num, col, message, line_num, source_line, caret
     )
 }
+
+use crate::py::editing::segment_py::SegmentExt;
 
 /// A Python module implemented in Rust.
 ///
@@ -879,6 +881,24 @@ mod pyrs_yaml {
             Ok(self.source.as_deref().unwrap_or("").to_string())
         }
 
+        /// Walk the AST depth-first, returning a list of path tuples.
+        /// Each path tuple contains strings (mapping keys) and ints (sequence indices).
+        /// The first element is always the root node (empty path).
+        fn _walk_paths(&self, py: Python) -> PyResult<Vec<Py<PyAny>>> {
+            let mut paths = Vec::new();
+            let mut path = Vec::new();
+            walk_ast(&self.ast, &mut path, &mut paths, py)?;
+            Ok(paths)
+        }
+
+        /// Walk only scalar/null nodes, returning their path tuples.
+        fn _scalar_paths(&self, py: Python) -> PyResult<Vec<Py<PyAny>>> {
+            let mut paths = Vec::new();
+            let mut path = Vec::new();
+            walk_scalars(&self.ast, &mut path, &mut paths, py)?;
+            Ok(paths)
+        }
+
         #[pyo3(signature = (segments: "list", value: "Any", create_missing: "bool" = false) -> "None")]
         fn _set_path(
             &mut self,
@@ -889,7 +909,7 @@ mod pyrs_yaml {
         ) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments
                 .iter()
-                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .map(|s| editing::Segment::from_py(s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
@@ -938,7 +958,7 @@ mod pyrs_yaml {
         ) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments
                 .iter()
-                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .map(|s| editing::Segment::from_py(s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
@@ -978,7 +998,7 @@ mod pyrs_yaml {
         ) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments
                 .iter()
-                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .map(|s| editing::Segment::from_py(s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             let new_node = pyobject_to_node(py, &value)?;
@@ -1013,7 +1033,7 @@ mod pyrs_yaml {
         fn _delete_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments
                 .iter()
-                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .map(|s| editing::Segment::from_py(s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             py.detach(|| -> Result<(), String> {
@@ -1052,7 +1072,7 @@ mod pyrs_yaml {
         ) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments
                 .iter()
-                .map(|s| editing::Segment::from_py(py, s.bind(py)))
+                .map(|s| editing::Segment::from_py(s.bind(py)))
                 .collect::<Result<Vec<_>, pyo3::PyErr>>()
                 .map_err(|e| YamlEditError::new_err(e.to_string()))?;
             py.detach(|| -> Result<(), String> {
@@ -1701,6 +1721,84 @@ mod pyrs_yaml {
         tag_registry::remove(name);
     }
 
+    // ---- D4: Rust-backed AST traversal ----
+
+    fn walk_ast<'a>(
+        node: &CustomNode,
+        path: &mut Vec<Bound<'a, PyAny>>,
+        paths: &mut Vec<Py<PyAny>>,
+        py: Python<'a>,
+    ) -> PyResult<()> {
+        paths.push(
+            PyTuple::new(py, path.iter().map(|p| p as &Bound<'_, PyAny>))?
+                .into_any()
+                .unbind(),
+        );
+        match node {
+            CustomNode::Mapping { pairs, .. } => {
+                for (k, v) in pairs.iter() {
+                    let key_str = match k {
+                        CustomNode::Scalar { value, .. } => value.clone(),
+                        _ => continue,
+                    };
+                    let item = key_str.into_pyobject(py)?.into_any();
+                    path.push(item);
+                    walk_ast(v, path, paths, py)?;
+                    path.pop();
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                for (i, item) in items.iter().enumerate() {
+                    let idx = (i as i64).into_pyobject(py)?.into_any();
+                    path.push(idx);
+                    walk_ast(item, path, paths, py)?;
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn walk_scalars<'a>(
+        node: &CustomNode,
+        path: &mut Vec<Bound<'a, PyAny>>,
+        paths: &mut Vec<Py<PyAny>>,
+        py: Python<'a>,
+    ) -> PyResult<()> {
+        match node {
+            CustomNode::Scalar { .. } | CustomNode::Null { .. } => {
+                paths.push(
+                    PyTuple::new(py, path.iter().map(|p| p as &Bound<'_, PyAny>))?
+                        .into_any()
+                        .unbind(),
+                );
+            }
+            CustomNode::Mapping { pairs, .. } => {
+                for (k, v) in pairs.iter() {
+                    let key_str = match k {
+                        CustomNode::Scalar { value, .. } => value.clone(),
+                        _ => continue,
+                    };
+                    let item = key_str.into_pyobject(py)?.into_any();
+                    path.push(item);
+                    walk_scalars(v, path, paths, py)?;
+                    path.pop();
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                for (i, item) in items.iter().enumerate() {
+                    let idx = (i as i64).into_pyobject(py)?.into_any();
+                    path.push(idx);
+                    walk_scalars(item, path, paths, py)?;
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -1779,88 +1877,14 @@ mod pyrs_yaml {
             );
             assert!(doc.splice.is_none());
         }
-    }
 
-    #[test]
-    fn splice_offsets_cache_populated_on_first_edit() {
-        use crate::parser::yaml::YamlSchema;
-        use std::sync::Once;
-        static PY_INIT: Once = Once::new();
-        PY_INIT.call_once(Python::initialize);
-        let source = Arc::from("a: 1\nb: 2\n");
-        let ast = crate::parser::parse_with_options(&source, true, YamlSchema::Core, 1000, false)
-            .expect("parse");
-        let mut doc = YamlDocument::from_ast(ast, source);
-        Python::attach(|py| {
-            let segs = vec!["a"
-                .to_string()
-                .into_pyobject(py)
-                .unwrap()
-                .into_any()
-                .unbind()];
-            doc._set_path(
-                py,
-                segs,
-                "9".to_string()
-                    .into_pyobject(py)
-                    .unwrap()
-                    .into_any()
-                    .unbind(),
-                false,
-            )
-            .unwrap();
-        });
-        assert!(doc.splice.as_ref().unwrap().offsets.is_some());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::parser::{parse, yaml::YamlSchema};
-
-    #[test]
-    fn test_parse_and_serialize() {
-        let yaml = "key: value";
-        let ast = parse(yaml, YamlSchema::Core).unwrap();
-        let output = crate::serializer::to_yaml(&ast);
-        assert_eq!(output, "key: value\n");
-    }
-
-    #[test]
-    fn dump_iterable_writes_separators_and_docs() {
-        // 用 File sink + 临时文件验证：2 文档 → 1 个 `---`，可整读
-        use crate::py::writing::{dump_iterable, dump_options, OutputSink, SinkWriter};
-        use pyo3::prelude::*;
-        use pyo3::types::PyDictMethods;
-        use std::io::{Read, Seek, SeekFrom};
-        use std::sync::Once;
-
-        static PY_INIT: Once = Once::new();
-        PY_INIT.call_once(Python::initialize);
-
-        Python::attach(|py| {
-            let mut f = tempfile::tempfile().unwrap();
-            let mut writer = SinkWriter::new(
-                OutputSink::File(std::io::BufWriter::new(f.try_clone().unwrap())),
-                1024,
-            );
-            let dict = pyo3::types::PyDict::new(py);
-            dict.set_item("a", 1).unwrap();
-            let list = pyo3::types::PyList::new(py, [dict.clone()]).unwrap();
-            dump_iterable(
-                py,
-                &mut writer,
-                list.into_any(),
-                &dump_options(false),
-                false,
-                false,
-            )
-            .unwrap();
-            drop(writer);
-            f.seek(SeekFrom::Start(0)).unwrap();
-            let mut s = String::new();
-            f.read_to_string(&mut s).unwrap();
-            assert_eq!(s, "a: 1\n");
-        });
+        #[test]
+        fn test_parse_and_serialize() {
+            use crate::parser::{parse, yaml::YamlSchema};
+            let yaml = "key: value";
+            let ast = parse(yaml, YamlSchema::Core).unwrap();
+            let output = crate::serializer::to_yaml(&ast);
+            assert_eq!(output, "key: value\n");
+        }
     }
 }

@@ -1,24 +1,17 @@
 //! # pyrs-yaml
 //!
-//! A high-performance Python YAML library with perfect round-trip support.
+//! Python YAML library with perfect round-trip support.
+//! Built on top of pyrs-yaml-core.
 
-pub mod ast;
-pub mod i18n;
-pub mod parser;
+// Re-export core crate for backward compatibility
+pub use pyrs_yaml_core::*;
+
 pub mod py;
-pub mod serializer;
-pub mod splice;
 
 #[cfg(test)]
 pub mod fidelity;
 
-#[cfg(test)]
-mod integration;
-
-// rust-i18n 初始化
-rust_i18n::i18n!("src/i18n/locales");
-
-// 自定义 Python 异常类型
+// PyO3 exception types
 pyo3::create_exception!(pyrs_yaml, YamlParseError, pyo3::exceptions::PyValueError);
 pyo3::create_exception!(
     pyrs_yaml,
