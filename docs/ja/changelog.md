@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.7] - 2026-08-04
+
+### Changed
+
+- **stub-build-check replaced with release-guard** - the always-red container
+  build (`validate.yml`) that deliberately failed to reproduce the v0.10.0
+  `--generate-stubs` failure mode is replaced with three static assertions
+  that **pass** when the repo is correct: `grep` guards `publish.yml` against
+  `--generate-stubs`, `git ls-files` asserts the committed `.pyi` is tracked,
+  and `test -f` checks `py.typed` exists. The job now gives green CI on
+  correct state, red only on regression.
+
+### Added
+
+- **Numpy free-threaded tracking** - ROADMAP.md now tracks `rust-numpy` free-
+  threaded support status (PyO3/rust-numpy#476) as a dependency for re-enabling
+  ndarray serialization on cp314t wheels when the Rust binding matures.
+
 ## [0.11.6] - 2026-08-04
 
 ### Changed
