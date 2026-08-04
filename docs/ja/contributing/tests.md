@@ -10,48 +10,58 @@ pyrs-yaml は Rust ユニットテストと Python 統合テストの両方を�
 ### Rust テスト
 
 ```bash
-# すべての Rust テストを実行
-cargo test
+# すべての Rust テストを nextest で実行（推奨）
+cargo nextest run --all
 
-# 特定のモジュールのテストを実行
-cargo test ast
-cargo test parser
-cargo test serializer
+# すべての Rust テストを cargo test で実行
+cargo test --all
+
+# Pure Rust コアテストを実行（Python ランタイム不要）
+cargo test --all --no-default-features
 
 # 出力を伴って実行
-cargo test -- --nocapture
-
-# 統合テストのみ実行
-cargo test --test integration
+cargo test --all -- --nocapture
 ```
 
 #### テストカバレッジ
 
-- **`src/ast.rs`** — ノード構築、メタデータ、等値性
-- **`src/parser/`** — さまざまな YAML 構造のパース
-- **`src/serializer.rs`** — シリアライゼーション往復保存
-- **`src/integration/`** — YAML Test Suite 統合
+- **`crates/pyrs-yaml-core/src/ast.rs`** — ノード構築、メタデータ、等値性
+- **`crates/pyrs-yaml-core/src/parser/`** — さまざまな YAML 構造のパース
+- **`crates/pyrs-yaml-core/src/serializer.rs`** — シリアライゼーション往復保存
+- **`crates/pyrs-yaml-core/src/editing/`** — 編集プリミティブ（navigate, region, dirty, metadata）
+- **`crates/pyrs-yaml-core/src/integration/`** — YAML Test Suite 統合
+- **`crates/pyrs-yaml/src/fidelity.rs`** — プロパティベースファズテスト
 
 ### Python テスト
 
 ```bash
 # すべての Python テストを実行
-pytest tests/
-
-# 詳細出力で実行
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # 特定のテストファイルを実行
-pytest tests/test_parse.py
+uv run pytest tests/test_edit.py -v
 
-# パターンに一致するテストを実行
-pytest tests/ -k "comment"
+# 特定のテストクラスを実行
+uv run pytest tests/test_node_api.py::TestDocWalk -v
 
 # カバレッジ付きで実行
-pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
+uv run pytest tests/ -v --cov=pyrs_yaml
+
+# コンプライアンススイートを実行
+uv run pytest tests/test_yaml_suite.py -v
 
 # ベンチマークを実行
-pytest tests/ --codspeed
+uv run pytest tests/ --codspeed
+```
+
+### Maturin ビルド
+
+```bash
+# ビルドしてインストール（モノレポの manifest-path を使用）
+uv run maturin develop --release
+
+# .pyi ファイルのスタブを生成
+uv run maturin build --release --generate-stubs
 ```
 
 #### テストファイル
@@ -73,9 +83,9 @@ pytest tests/ --codspeed
 
 GitHub Actions はすべてのプッシュと PR で実行：
 
-- **Rust**: `cargo test`、`cargo clippy -- -D warnings`、`cargo fmt --check`
-- **Python**: 4 つの Python バージョン × 3 つの OS で `pytest tests/`
-- **Maturin**: 各 Python バージョン用に wheel をビルド
+- **Rust**: `cargo nextest run --all`、`cargo clippy --all -- -D warnings`、`cargo fmt --check`
+- **Python**: 4 つの Python バージョン × 3 つの OS で `uv run pytest tests/`
+- **Maturin**: 各 Python バージョン用に wheel をビルド（`crates/pyrs-yaml/Cargo.toml` 経由）
 
 ### 新しいテストの追加
 
@@ -117,3 +127,13 @@ class TestNewFeature:
 - **エッジケーステスト** — 特殊文字、空の入力、不正な YAML
 - **パフォーマンステスト** — 整合性チェック（ベンチマークではない）
 - **YAML Test Suite** — YAML 準拠の外部テストスイート
+
+### YAML Test Suite 既知の逸脱
+
+スイートの合格率は **95%** でゲートされています（`test_compliance_report` 参照）。一部のケースは意図的に追跡していません。それらを拒否することは仕様的に正しく、リファレンスパーサー（特に PyYAML/libyaml）と一致するためです：
+
+| ID | 入力 | 逸脱として許容する理由 |
+|:---|:------|:----------------------------|
+| `ZYU8` | `%YAML 1.1 1.2` | バージョンディレクティブに続く内容は、YAML 1.2 文法（`ns-yaml-version ::= ns-dec-digit+ '.' ns-dec-digit+`）に従うと**無効**です。PyYAML もこれを拒否します。スイート自身の注釈でも、これらのディレクティブバリアントは「まったく有用に有効ではない」と述べており、サポートは推奨されていません。 |
+
+その他のスイートケースはすべて合格しています（現在 405/406 = 99.75%）。

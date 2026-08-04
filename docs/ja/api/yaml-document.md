@@ -155,12 +155,13 @@ source_text() -> str
 パスで値を置き換えます。
 
 ```python
-set(path: str, value: Any) -> None
+set(path: str, value: Any, create_missing: bool = False) -> None
 ```
 
 - スカラー、`dict`、`list` をサポート；`tuple` はサポートされません（`YamlEditError` をスロー）
 - 既存のスカラーを置換する場合、対象のメタデータが保持されます；パスが存在しない場合はマッピングの末尾に新しいキーを追加
 - 空のドキュメント（`""` からパース）にパスを設定すると、マッピングルートが自動的に作成されます
+- `create_missing=True` を指定すると、不足している中間マッピングキーが自動的に作成されます
 
 **例:**
 
@@ -169,6 +170,53 @@ doc = pyrs_yaml.parse("a:\n  b: 1")
 doc.set("$.a.b", 42)
 doc.set("$.a.c", True)  # 新しいキーを追加
 doc.set("$", {"x": 1})  # ルート全体を置換
+
+# create_missing で不足キーを自動作成
+doc.set("$.b.c.d", 2, create_missing=True)
+```
+
+#### `walk()`
+
+AST の深さ優先・先行順の走査で、`Node` オブジェクトを生成します。
+
+```python
+walk() -> Generator[Node, None, None]
+```
+
+`Node.walk()` とは異なり、このメソッドは**Rust バックエンド**です — AST を Python dict に変換せずに直接走査するため、大規模ドキュメントで大幅に高速です。
+
+**生成するもの:** ルートを含む、ドキュメントツリー内のすべてのノードの `Node` オブジェクト。
+
+**例:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+```
+
+#### `scalars()`
+
+`walk()` と同様ですが、スカラー/null ノードのみを生成します。
+
+```python
+scalars() -> Generator[Node, None, None]
+```
+
+**生成するもの:** ドキュメントツリー内のすべてのスカラーまたは null ノードの `Node` オブジェクト。
+
+**例:**
+
+```python
+doc = pyrs_yaml.parse("a: hello\nb: null\n")
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a',) hello
+# ('b',) None
 ```
 
 #### `insert()`
