@@ -218,10 +218,10 @@ All edits are atomic — a failed edit leaves the document (and its revision) un
 
 ### `set()`
 
-Set the value at a path, preserving the target's metadata (comment, anchor, tag, style). Setting a path on an **empty document** (parsed from `""`) auto-creates a mapping root.
+Set a value by JSONPath path.
 
 ```python
-set(path: str, value: Any) -> None
+set(path: str, value: Any, create_missing: bool = False) -> None
 ```
 
 ```python
@@ -237,9 +237,51 @@ empty.set("$.a", 1)  # auto-creates a mapping root: {a: 1}
 **Raises:**
 
 - `YamlPathError` — Malformed path (wildcards/`..` are rejected)
-- `YamlEditError` — Navigation failure, unsupported value type (`tuple`), etc.
+- `YamlEditError` — Navigation failure, unsupported value type (`tuple`), missing intermediate key (when `create_missing=False`), etc.
 
-### `insert()`
+### `walk()`
+
+Depth-first, pre-order traversal of the AST, yielding `Node` objects.
+
+```python
+walk() -> Generator[Node, None, None]
+```
+
+Unlike `Node.walk()`, this method is **Rust-backed** — it traverses the AST directly without converting to Python dicts, making it significantly faster for large documents.
+
+**Yields:** `Node` objects for every node in the document tree, including the root.
+
+**Example:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+```
+
+### `scalars()`
+
+Like `walk()`, but yields only scalar/null nodes.
+
+```python
+scalars() -> Generator[Node, None, None]
+```
+
+**Yields:** `Node` objects for every scalar or null node in the document tree.
+
+**Example:**
+
+```python
+doc = pyrs_yaml.parse("a: hello\nb: null\n")
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a',) hello
+# ('b',) None
+```
 
 Insert a value into a sequence at an index. The path must resolve to a sequence. Negative indexes count from the end (`-1` inserts before the last element).
 

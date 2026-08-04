@@ -5,48 +5,58 @@ pyrs-yaml has both Rust unit tests and Python integration tests.
 ## Rust Tests
 
 ```bash
-# Run all Rust tests
-cargo test
+# Run all Rust tests with nextest (preferred)
+cargo nextest run --all
 
-# Run tests for a specific module
-cargo test ast
-cargo test parser
-cargo test serializer
+# Run all Rust tests with cargo test
+cargo test --all
+
+# Run pure Rust core tests (no Python runtime needed)
+cargo test --all --no-default-features
 
 # Run with output
-cargo test -- --nocapture
-
-# Run integration tests only
-cargo test --test integration
+cargo test --all -- --nocapture
 ```
 
 ### Test Coverage
 
-- **`src/ast.rs`** — Node construction, metadata, equality
-- **`src/parser/`** — Parsing various YAML constructs
-- **`src/serializer.rs`** — Serialization round-trips
-- **`src/integration/`** — YAML Test Suite integration
+- **`crates/pyrs-yaml-core/src/ast.rs`** — Node construction, metadata, equality
+- **`crates/pyrs-yaml-core/src/parser/`** — Parsing various YAML constructs
+- **`crates/pyrs-yaml-core/src/serializer.rs`** — Serialization round-trips
+- **`crates/pyrs-yaml-core/src/editing/`** — Edit primitives (navigate, region, dirty, metadata)
+- **`crates/pyrs-yaml-core/src/integration/`** — YAML Test Suite integration
+- **`crates/pyrs-yaml/src/fidelity.rs`** — Property-based fuzz tests
 
 ## Python Tests
 
 ```bash
 # Run all Python tests
-pytest tests/
-
-# Run with verbose output
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run a specific test file
-pytest tests/test_parse.py
+uv run pytest tests/test_edit.py -v
 
-# Run tests matching a pattern
-pytest tests/ -k "comment"
+# Run a specific test class
+uv run pytest tests/test_node_api.py::TestDocWalk -v
 
 # Run with coverage
-pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
+uv run pytest tests/ -v --cov=pyrs_yaml
+
+# Run compliance suite
+uv run pytest tests/test_yaml_suite.py -v
 
 # Run benchmarks
-pytest tests/ --codspeed
+uv run pytest tests/ --codspeed
+```
+
+## Maturin Build
+
+```bash
+# Build and install (uses monorepo manifest-path)
+uv run maturin develop --release
+
+# Generate stubs for .pyi files
+uv run maturin build --release --generate-stubs
 ```
 
 ### Test Files
@@ -68,9 +78,9 @@ pytest tests/ --codspeed
 
 GitHub Actions runs on every push and PR:
 
-- **Rust**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`
-- **Python**: `pytest tests/` on 4 Python versions × 3 OSes
-- **Maturin**: Build wheel for each Python version
+- **Rust**: `cargo nextest run --all`, `cargo clippy --all -- -D warnings`, `cargo fmt --check`
+- **Python**: `uv run pytest tests/` on 4 Python versions × 3 OSes
+- **Maturin**: Build wheel for each Python version (via `crates/pyrs-yaml/Cargo.toml`)
 
 ## Adding New Tests
 

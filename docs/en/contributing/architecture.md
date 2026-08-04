@@ -22,22 +22,49 @@ pyrs-yaml uses a modular architecture designed for performance and correctness.
 │  │  • stream_events.rs — Stream event types            ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │                                 │
-│      ┌─────────────────┼─────────────────┐              │
-│      ▼                 ▼                 ▼              │
-│  ┌─────────┐    ┌────────────┐    ┌────────────┐        │
-│  │ ast.rs  │    │ parser/    │    │serializer  │        │
-│  │ Custom  │◄──►│ saphyr     │    │ to_yaml()  │        │
-│  │ Node    │    │ integration│    │ to_yaml_*  │        │
-│  └─────────┘    └────────────┘    └────────────┘        │
+│      ┌─────────────────┼──────────────────┐              │
+│      ▼                 ▼                  ▼              │
+│  ┌─────────┐    ┌────────────┐    ┌──────────────┐       │
+│  │ ast.rs  │    │ parser/    │    │serializer.rs │       │
+│  │ Custom  │◄──►│ saphyr     │    │ to_yaml()    │       │
+│  │ Node    │    │ integration│    │ to_yaml_*    │       │
+│  └─────────┘    └────────────┘    └───────────────┘       │
 │      ▲                 ▲                                    │
 │      └─────────────────┴────────────────────┘              │
 │                      CustomNode                           │
 └─────────────────────────────────────────────────────────┘
+
+## Workspace Structure
+
+The codebase is split into two crates under `crates/`:
+
+```
+
+crates/
+├── pyrs-yaml-core/ # Pure Rust, no PyO3 dependencies
+│ └── src/
+│ ├── lib.rs # Re-exports all core modules
+│ ├── ast.rs # CustomNode AST
+│ ├── editing/ # Edit primitives (navigate, region, dirty, metadata)
+│ ├── i18n.rs # Internationalization
+│ ├── parser/ # YAML parser (saphyr-based)
+│ ├── serializer.rs    # YAML serializer
+│ └── splice.rs        # Splice-based text assembly
+└── pyrs-yaml/ # PyO3 bindings layer
+    └── src/
+        ├── lib.rs # Re-exports core + defines #[pymodule]
+        ├── py/ # PyO3 bindings
+        │ ├── mod.rs # YamlDocument pyclass
+        │ ├── convert.rs # CustomNode ↔ Python type conversion
+        │ └── editing/ # Python-facing editing wrappers
+        └── fidelity.rs # Property-based tests
+
+```text
 ```
 
 ## Module Architecture
 
-### 1. `src/ast.rs` — Custom AST
+### 1. `crates/pyrs-yaml-core/src/ast.rs` — Custom AST
 
 The **CustomNode** enum is the heart of pyrs-yaml:
 
@@ -53,7 +80,7 @@ The **CustomNode** enum is the heart of pyrs-yaml:
 - Custom AST preserves everything needed for round-trip
 - Extensible for future features (custom node types, metadata)
 
-### 2. `src/parser/` — YAML Parser
+### 2. `crates/pyrs-yaml-core/src/parser/` — YAML Parser
 
 Built on **saphyr-parser** (YAML 1.2 compliant):
 
@@ -71,7 +98,7 @@ Built on **saphyr-parser** (YAML 1.2 compliant):
 - Two-pass parsing: first extract comments/anchors, then parse events
 - Merge key resolution happens after parsing (configurable)
 
-### 3. `src/serializer.rs` — YAML Serializer
+### 3. `crates/pyrs-yaml-core/src/serializer.rs` — YAML Serializer
 
 Custom serializer that reconstructs YAML from the AST:
 
@@ -86,7 +113,28 @@ Custom serializer that reconstructs YAML from the AST:
 - Indent-level state management for nested structures
 - Chomping indicator handling for block scalars
 
-### 4. `src/py/` — PyO3 Bindings
+### 5. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
+
+The Python-facing layer that exposes Rust functionality to Python:
+
+- **`mod.rs`** — `YamlDocument` pyclass, `#[pymodule]` entry point
+- **`convert.rs`** — Python ↔ CustomNode conversion and error formatting
+- **`python_types.rs`** — Python → CustomNode type conversion
+- **`ndarray.rs`** — NumPy ndarray serialization (optional, `numpy` feature)
+- **`stream_events.rs`** — Stream event types for Python
+- **`streaming.rs`** — Streaming parse (constant memory)
+- **`writing.rs`** — Streaming write (constant memory)
+- **`tag_registry.rs`** — Python tag handler registration
+- **`editing/`** — Python-facing editing wrappers (`segment_py.rs` + re-exports from core)
+
+Pure Rust edit primitives used by the Python-facing editing API:
+
+- **`navigate.rs`** — AST path navigation (`navigate`, `navigate_mut`, `key_eq`, `mapping_key_index`, `normalize_index`, `parse_path_segments`)
+- **`region.rs`** — Edit region computation (`path_nodes`, `region_unit`, `precompute`, line helpers, `extend_delete_over_comments`)
+- **`dirty.rs`** — Edit operation types (`DirtyKind`, `DirtyUnit`)
+- **`metadata.rs`** — Metadata preservation (`with_metadata_from`)
+
+### 5. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
 
 Python-facing module definitions and type conversions:
 

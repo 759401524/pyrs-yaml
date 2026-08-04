@@ -202,6 +202,56 @@ print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 
 Nodes expose a tree API: `node.parent`, `node.children`, `node.walk()` (depth-first iterator), `node.filter(predicate)`, and `node.to_yaml()`.
 
+### Walking the AST (`doc.walk()` / `doc.scalars()`)
+
+`doc.walk()` and `doc.scalars()` are **Rust-backed** traversal methods that yield `Node` objects without converting the entire AST to Python dicts. Unlike `Node.walk()` (which calls `to_dict()` under the hood), these methods traverse the AST directly:
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+
+# Walk all nodes (depth-first, pre-order)
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+
+# Walk only scalar/null nodes
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a', 'b') 1
+# ('a', 'c') 2
+```
+
+This is significantly faster than the Python-only `Node.walk()` for large documents, especially when you only need path information or scalar values.
+
+### Create Missing Keys (`create_missing=True`)
+
+By default, `set()` raises `YamlEditError` when an intermediate key in the path doesn't exist. With `create_missing=True`, missing intermediate mapping keys are automatically created:
+
+```python
+doc = pyrs_yaml.parse("a: 1\n")
+
+# Without create_missing — raises
+doc.set("$.b.c.d", 2)  # YamlEditError: missing path
+
+# With create_missing — creates b → c → d
+doc.set("$.b.c.d", 2, create_missing=True)
+print(doc.to_yaml())
+# a: 1
+# b:
+#   c:
+#     d: 2
+```
+
+Rules:
+
+- Missing **mapping keys** are created as nested mappings
+- Missing **index segments** still raise (can't auto-create a sequence element)
+- A **scalar** intermediate along the path still raises (can't descend into a scalar)
+- The created chain is eligible for in-place splice editing
+
 ### Querying with `find()`
 
 `find()` is **read-oriented** and supports wildcards and deep scans — it returns a list when the path selects multiple nodes:
