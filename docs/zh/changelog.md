@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the edit path are created as nested mappings (e.g. setting `a.b.c` on
   `a: 1` creates `b` and `c`); index segments that miss are still an error,
   and a scalar intermediate along the path still raises.
+- **`doc.walk()` / `doc.scalars()`** - Rust-backed depth-first AST traversal
+  yielding `Node` objects, avoiding per-node `to_dict()` resolution.
+  `walk()` returns all nodes; `scalars()` returns only scalar/null nodes.
+- **Rust core module tests** - 39 new tests covering `editing::navigate`
+  (key_eq, navigate, navigate_mut, normalize_index, mapping_key_index),
+  `editing::region` (line helpers, node_is_flow, extend_delete_over_comments,
+  nav_err), `editing::dirty` (DirtyKind/DirtyUnit constructors), and
+  `editing::metadata` (with_metadata_from, needs_quoting).
+- **Python doc.walk() edge case tests** - 9 new tests for empty doc, null
+  values, deeply nested, flow collections, mixed types.
+
+### Changed
+
+- **Monorepo workspace** - source code split into `crates/pyrs-yaml-core/`
+  (pure Rust, no PyO3) and `crates/pyrs-yaml/` (PyO3 bindings). Root
+  `Cargo.toml` is now a workspace. Old `src/` directory and `build.rs`
+  removed.
+- **pyproject.toml** - added `tool.maturin.manifest-path` pointing to
+  `crates/pyrs-yaml/Cargo.toml`.
 
 ### Fixed
 
