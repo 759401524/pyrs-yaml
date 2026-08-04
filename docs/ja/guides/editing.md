@@ -198,6 +198,56 @@ print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 
 ノードはツリー API を公開しています：`node.parent`、`node.children`、`node.walk()`（深さ優先イテレーター）、`node.filter(predicate)`、`node.to_yaml()`。
 
+### AST の走査（`doc.walk()` / `doc.scalars()`）
+
+`doc.walk()` と `doc.scalars()` は**Rust バックエンド**の走査メソッドで、AST 全体を Python dict に変換せずに `Node` オブジェクトを生成します。`Node.walk()`（内部で `to_dict()` を呼び出す）とは異なり、これらのメソッドは AST を直接走査します：
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+
+# すべてのノードを走査（深さ優先、先行順）
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+
+# スカラー/null ノードのみを走査
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a', 'b') 1
+# ('a', 'c') 2
+```
+
+これは、特にパス情報やスカラー値のみが必要な場合、大規模ドキュメントに対して Python のみの `Node.walk()` よりも大幅に高速です。
+
+### 不足キーの自動作成（`create_missing=True`）
+
+デフォルトでは、`set()` はパス内の中間キーが存在しない場合に `YamlEditError` を発生させます。`create_missing=True` を指定すると、不足している中間マッピングキーが自動的に作成されます：
+
+```python
+doc = pyrs_yaml.parse("a: 1\n")
+
+# create_missing なし — エラー
+doc.set("$.b.c.d", 2)  # YamlEditError: missing path
+
+# create_missing あり — b → c → d を作成
+doc.set("$.b.c.d", 2, create_missing=True)
+print(doc.to_yaml())
+# a: 1
+# b:
+#   c:
+#     d: 2
+```
+
+ルール：
+
+- 不足している**マッピングキー**は、ネストされたマッピングとして作成されます
+- 不足している**インデックスセグメント**はエラーになります（シーケンス要素は自動生成できません）
+- 途中に**スカラー**がある場合もエラーになります（スカラー内には降下できません）
+- 作成されたチェーンはインプレーススプライス編集の対象になります
+
 ### `find()` によるクエリ
 
 `find()` は**読み取り指向**で、ワイルドカードとディープスキャンをサポートします — パスが複数のノードを選択する場合はリストを返します：

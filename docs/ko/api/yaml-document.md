@@ -155,12 +155,13 @@ source_text() -> str
 경로로 값을 교체합니다.
 
 ```python
-set(path: str, value: Any) -> None
+set(path: str, value: Any, create_missing: bool = False) -> None
 ```
 
 - 스칼라, `dict`, `list` 지원; `tuple`은 지원되지 않음(`YamlEditError` 발생)
 - 기존 스칼라를 교체하면 대상의 메타데이터가 보존됩니다; 경로가 없으면 매핑 끝에 새 키 추가
 - 빈 문서(`""`에서 파싱)에 경로를 설정하면 매핑 루트가 자동 생성됩니다
+- `create_missing=True`인 경우 누락된 중간 매핑 키가 자동으로 생성됩니다
 
 **예시:**
 
@@ -169,7 +170,15 @@ doc = pyrs_yaml.parse("a:\n  b: 1")
 doc.set("$.a.b", 42)
 doc.set("$.a.c", True)  # 새 키 추가
 doc.set("$", {"x": 1})  # 루트 전체 교체
+
+# 누락된 키 생성
+doc.set("$.x.y.z", 3, create_missing=True)
 ```
+
+**발생:**
+
+- `YamlPathError` — 잘못된 경로 (와일드카드/`..` 거부)
+- `YamlEditError` — 탐색 실패, 지원되지 않는 값 타입 (`tuple`), 누락된 중간 키 (`create_missing=False`일 때) 등
 
 #### `insert()`
 
@@ -213,6 +222,50 @@ rename(path: str, new_key: str) -> None
 
 ```python
 node() -> Node
+```
+
+#### `walk()`
+
+AST의 깊이 우선, 전위 순회를 수행하며 `Node` 객체를 생성합니다.
+
+```python
+walk() -> Generator[Node, None, None]
+```
+
+`Node.walk()`와 달리 이 메서드는 **Rust 기반**입니다 — AST를 Python dict로 변환하지 않고 직접 순회하므로 대규모 문서에서 훨씬 빠릅니다.
+
+**생성:** 문서 트리의 모든 노드(루트 포함)에 대한 `Node` 객체.
+
+**예시:**
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+```
+
+#### `scalars()`
+
+`walk()`와 유사하지만 스칼라/null 노드만 생성합니다.
+
+```python
+scalars() -> Generator[Node, None, None]
+```
+
+**생성:** 문서 트리의 모든 스칼라 또는 null 노드에 대한 `Node` 객체.
+
+**예시:**
+
+```python
+doc = pyrs_yaml.parse("a: hello\nb: null\n")
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a',) hello
+# ('b',) None
 ```
 
 #### `find()`

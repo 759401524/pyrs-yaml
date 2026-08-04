@@ -152,23 +152,82 @@ source_text() -> str
 
 #### `set()`
 
-按路径替换值。
+按 JSONPath 路径设置值。
 
 ```python
-set(path: str, value: Any) -> None
+set(path: str, value: Any, create_missing: bool = False) -> None
 ```
-
-- 支持标量、`dict`、`list`；`tuple` 不支持（引发 `YamlEditError`）
-- 替换现有标量时保留目标的元数据；路径不存在时在映射末尾添加新键
-- 对空文档（从 `""` 解析）设置路径时，会自动创建映射根
-
-**示例:**
 
 ```python
 doc = pyrs_yaml.parse("a:\n  b: 1")
-doc.set("$.a.b", 42)
-doc.set("$.a.c", True)  # 添加新键
+doc.set("$.a.b", 42)  # 替换现有值
+doc.set("$.a.c", True)  # 创建新键
 doc.set("$", {"x": 1})  # 替换整个根
+
+empty = pyrs_yaml.parse("")
+empty.set("$.a", 1)  # 自动创建映射根：{a: 1}
+```
+
+**`create_missing` 参数：**
+
+默认情况下，当路径中的中间键不存在时，`set()` 会抛出 `YamlEditError`。使用 `create_missing=True` 时，缺失的中间映射键会被自动创建为嵌套映射：
+
+```python
+doc = pyrs_yaml.parse("a: 1\n")
+doc.set("$.b.c.d", 2, create_missing=True)
+# a: 1
+# b:
+#   c:
+#     d: 2
+```
+
+#### 引发：
+
+- `YamlPathError` — 格式错误的路径（通配符/`..` 被拒绝）
+- `YamlEditError` — 导航失败、不支持的值类型（`tuple`）、缺失中间键（当 `create_missing=False` 时）等
+
+#### `walk()`
+
+深度优先、前序遍历 AST，产生 `Node` 对象。
+
+```python
+walk() -> Generator[Node, None, None]
+```
+
+与 `Node.walk()` 不同，此方法是 **Rust 后端**的 — 它直接遍历 AST，无需转换为 Python 字典，因此对于大型文档明显更快。
+
+**生成：** 文档树中每个节点的 `Node` 对象，包括根节点。
+
+#### 示例：
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+```
+
+#### `scalars()`
+
+与 `walk()` 类似，但仅生成标量/null 节点。
+
+```python
+scalars() -> Generator[Node, None, None]
+```
+
+**生成：** 文档树中每个标量或 null 节点的 `Node` 对象。
+
+#### 示例：
+
+```python
+doc = pyrs_yaml.parse("a: hello\nb: null\n")
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a',) hello
+# ('b',) None
 ```
 
 #### `insert()`

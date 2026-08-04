@@ -10,48 +10,48 @@ pyrs-yaml는 Rust 유닛 테스트와 Python 통합 테스트를 모두 보유�
 ### Rust 테스트
 
 ```bash
-# 모든 Rust 테스트 실행
-cargo test
+# 모든 Rust 테스트를 nextest로 실행 (권장)
+cargo nextest run --all
 
-# 특정 모듈의 테스트 실행
-cargo test ast
-cargo test parser
-cargo test serializer
+# 모든 Rust 테스트를 cargo test로 실행
+cargo test --all
+
+# 순수 Rust 코어 테스트 실행 (Python 런타임 불필요)
+cargo test --all --no-default-features
 
 # 출력과 함께 실행
-cargo test -- --nocapture
-
-# 통합 테스트만 실행
-cargo test --test integration
+cargo test --all -- --nocapture
 ```
 
 #### 테스트 커버리지
 
-- **`src/ast.rs`** — 노드 구성, 메타데이터, 동등성
-- **`src/parser/`** — 다양한 YAML 구조 파싱
-- **`src/serializer.rs`** — 직렬화 순환 보존
-- **`src/integration/`** — YAML Test Suite 통합
+- **`crates/pyrs-yaml-core/src/ast.rs`** — 노드 구성, 메타데이터, 동등성
+- **`crates/pyrs-yaml-core/src/parser/`** — 다양한 YAML 구조 파싱
+- **`crates/pyrs-yaml-core/src/serializer.rs`** — 직렬화 순환 보존
+- **`crates/pyrs-yaml-core/src/editing/`** — 편집 프리미티브 (navigate, region, dirty, metadata)
+- **`crates/pyrs-yaml-core/src/integration/`** — YAML Test Suite 통합
+- **`crates/pyrs-yaml/src/fidelity.rs`** — 속성 기반 퍼즈 테스트
 
 ### Python 테스트
 
 ```bash
 # 모든 Python 테스트 실행
-pytest tests/
-
-# 상세 출력으로 실행
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # 특정 테스트 파일 실행
-pytest tests/test_parse.py
+uv run pytest tests/test_edit.py -v
 
-# 패턴과 일치하는 테스트 실행
-pytest tests/ -k "comment"
+# 특정 테스트 클래스 실행
+uv run pytest tests/test_node_api.py::TestDocWalk -v
 
 # 커버리지와 함께 실행
-pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
+uv run pytest tests/ -v --cov=pyrs_yaml
+
+# 규정 준수 스위트 실행
+uv run pytest tests/test_yaml_suite.py -v
 
 # 벤치마크 실행
-pytest tests/ --codspeed
+uv run pytest tests/ --codspeed
 ```
 
 #### 테스트 파일
@@ -69,13 +69,23 @@ pytest tests/ --codspeed
 | `test_performance.py` | 성능 건전성 검사 |
 | **`test_numpy.py`** | **NumPy ndarray 직렬화 (0차원~N차원, 모든 dtype)** |
 
+### Maturin 빌드
+
+```bash
+# 빌드 및 설치 (모노레포 manifest-path 사용)
+uv run maturin develop --release
+
+# .pyi 파일용 스텁 생성
+uv run maturin build --release --generate-stubs
+```
+
 ### CI 테스트
 
 GitHub Actions가 모든 푸시와 PR에서 실행:
 
-- **Rust**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`
-- **Python**: 4개 Python 버전 × 3개 OS에서 `pytest tests/`
-- **Maturin**: 각 Python 버전용 wheel 빌드
+- **Rust**: `cargo nextest run --all`, `cargo clippy --all -- -D warnings`, `cargo fmt --check`
+- **Python**: 4개 Python 버전 × 3개 OS에서 `uv run pytest tests/`
+- **Maturin**: 각 Python 버전용 wheel 빌드 (`crates/pyrs-yaml/Cargo.toml` 경로 사용)
 
 ### 새 테스트 추가
 

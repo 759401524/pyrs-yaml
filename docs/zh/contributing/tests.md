@@ -10,51 +10,61 @@ pyrs-yaml 同时具有 Rust 单元测试和 Python 集成测试。
 ### Rust 测试
 
 ```bash
-# 运行所有 Rust 测试
-cargo test
+# 使用 nextest 运行所有 Rust 测试（推荐）
+cargo nextest run --all
 
-# 运行特定模块的测试
-cargo test ast
-cargo test parser
-cargo test serializer
+# 使用 cargo test 运行所有 Rust 测试
+cargo test --all
+
+# 运行纯 Rust 核心测试（无需 Python 运行时）
+cargo test --all --no-default-features
 
 # 带输出运行
-cargo test -- --nocapture
-
-# 仅运行集成测试
-cargo test --test integration
+cargo test --all -- --nocapture
 ```
 
 #### 测试覆盖
 
-- **`src/ast.rs`** — 节点构建、元数据、等值性
-- **`src/parser/`** — 解析各种 YAML 构造
-- **`src/serializer.rs`** — 序列化往返保存
-- **`src/integration/`** — YAML Test Suite 集成
+- **`crates/pyrs-yaml-core/src/ast.rs`** — 节点构建、元数据、等值性
+- **`crates/pyrs-yaml-core/src/parser/`** — 解析各种 YAML 构造
+- **`crates/pyrs-yaml-core/src/serializer.rs`** — 序列化往返保存
+- **`crates/pyrs-yaml-core/src/editing/`** — 编辑原语（navigate、region、dirty、metadata）
+- **`crates/pyrs-yaml-core/src/integration/`** — YAML Test Suite 集成
+- **`crates/pyrs-yaml/src/fidelity.rs`** — 基于属性的模糊测试
 
 ### Python 测试
 
 ```bash
 # 运行所有 Python 测试
-pytest tests/
-
-# 详细输出运行
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # 运行特定测试文件
-pytest tests/test_parse.py
+uv run pytest tests/test_edit.py -v
 
-# 运行匹配模式的测试
-pytest tests/ -k "comment"
+# 运行特定测试类
+uv run pytest tests/test_node_api.py::TestDocWalk -v
 
 # 带覆盖率运行
-pytest tests/ --cov=pyrs_yaml --cov-report=term-missing
+uv run pytest tests/ -v --cov=pyrs_yaml
+
+# 运行合规性套件
+uv run pytest tests/test_yaml_suite.py -v
 
 # 运行基准测试
-pytest tests/ --codspeed
+uv run pytest tests/ --codspeed
 ```
 
-#### 测试文件
+## Maturin 构建
+
+```bash
+# 构建并安装（使用 monorepo manifest-path）
+uv run maturin develop --release
+
+# 生成 stubs 用于 .pyi 文件
+uv run maturin build --release --generate-stubs
+```
+
+### 测试文件
 
 | 文件 | 覆盖范围 |
 |------|---------|
@@ -73,9 +83,9 @@ pytest tests/ --codspeed
 
 GitHub Actions 在每次推送和 PR 上运行：
 
-- **Rust**: `cargo test`、`cargo clippy -- -D warnings`、`cargo fmt --check`
-- **Python**: 在 4 个 Python 版本 × 3 个操作系统上运行 `pytest tests/`
-- **Maturin**: 为每个 Python 版本构建 wheel
+- **Rust**: `cargo nextest run --all`、`cargo clippy --all -- -D warnings`、`cargo fmt --check`
+- **Python**: 在 4 个 Python 版本 × 3 个操作系统上运行 `uv run pytest tests/`
+- **Maturin**: 为每个 Python 版本构建 wheel（通过 `crates/pyrs-yaml/Cargo.toml`）
 
 ### 添加新测试
 

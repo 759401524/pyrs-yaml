@@ -39,9 +39,34 @@ pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처�
 └─────────────────────────────────────────────────────────┘
 ```
 
+## 워크스페이스 구조
+
+코드베이스는 `crates/` 아래 두 개의 크레이트로 나뉩니다:
+
+```text
+crates/
+├── pyrs-yaml-core/ # 순수 Rust, PyO3 의존성 없음
+│ └── src/
+│   ├── lib.rs # 모든 코어 모듈 재내보내기
+│   ├── ast.rs # CustomNode AST
+│   ├── editing/ # 편집 프리미티브 (navigate, region, dirty, metadata)
+│   ├── i18n.rs # 국제화
+│   ├── parser/ # YAML 파서 (saphyr 기반)
+│   ├── serializer.rs # YAML 직렬화기
+│   └── splice.rs # 스플라이스 기반 텍스트 조립
+└── pyrs-yaml/ # PyO3 바인딩 레이어
+    └── src/
+        ├── lib.rs # 코어 재내보내기 + #[pymodule] 정의
+        ├── py/ # PyO3 바인딩
+        │   ├── mod.rs # YamlDocument pyclass
+        │   ├── convert.rs # CustomNode ↔ Python 타입 변환
+        │   └── editing/ # Python용 편집 래퍼
+        └── fidelity.rs # 속성 기반 테스트
+```
+
 ### 모듈 아키텍처
 
-#### 1. `src/ast.rs` — 사용자 정의 AST
+#### 1. `crates/pyrs-yaml-core/src/ast.rs` — 사용자 정의 AST
 
 **CustomNode** 열거형은 pyrs-yaml의 핵심입니다:
 
@@ -57,14 +82,16 @@ pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처�
 - 사용자 정의 AST는 순환 보존에 필요한 모든 것을 유지
 - 향후 기능 (사용자 정의 노드 타입, 메타데이터)을 위해 확장 가능
 
-#### 2. `src/parser/` — YAML 파서
+#### 2. `crates/pyrs-yaml-core/src/parser/` — YAML 파서
 
 **saphyr-parser** (YAML 1.2 호환) 위에 구축:
 
-- **`mod.rs`** — `AstReceiver` 상태 머신, 이벤트 기반 파싱
-- **`yaml/comment.rs`** — 원시 텍스트에서 주석 추출
+- **`mod.rs`** — `AstReceiver` 상태 머신, 이벤트 기반 파싱, 플로우 스타일 감지
+- **`stream.rs`** — 스트리밍 이벤트 파서 (라인별 YAML 이벤트)
+- **`yaml/comment.rs`** — 원시 텍스트에서 주석 및 앵커 추출
 - **`yaml/merge.rs`** — 병합 키 (`<<`) 해석
 - **`yaml/scalar.rs`** — 스칼라 스타일 감지, 언스케이핑, 청핑
+- **`yaml/schema.rs`** — YAML 스키마 해석 (core, JSON, failsafe, YAML 1.1)
 - **`yaml/types.rs`** — YAML 1.2 타입 해석 (null, bool, int, float)
 
 **핵심 설계 결정:**
@@ -73,7 +100,7 @@ pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처�
 - 2 패스 파싱: 먼저 주석/앵커를 추출하고, 이벤트를 파싱
 - 병합 키 해석은 파싱 후 발생 (구성 가능)
 
-#### 3. `src/serializer.rs` — YAML 직렬화기
+#### 3. `crates/pyrs-yaml-core/src/serializer.rs` — YAML 직렬화기
 
 AST에서 YAML를 재구성하는 사용자 정의 직렬화기:
 
@@ -88,14 +115,47 @@ AST에서 YAML를 재구성하는 사용자 정의 직렬화기:
 - 중첩된 구조를 위한 들여쓰기 레벨 상태 관리
 - 블록 스칼라를 위한 청핑 표시자 처리
 
-#### 4. `src/lib.rs` — PyO3 모듈
+#### 4. `crates/pyrs-yaml/src/py/` — PyO3 바인딩
 
-인라인 `#[pymodule] mod pyrs_yaml`:
+Python-facing 레이어로 Rust 기능을 Python에 노출합니다:
 
-- **`YamlDocument`** — `CustomNode`의 `#[pyclass]` 래퍼
-- **예외** — 사용자 정의 오류를 위한 `create_exception!` 매크로
-- **함수** — `parse`, `safe_load`, `dump_file` 등
-- **i18n** — 이중 언어 오류를 위한 `rust-i18n` 통합
+- **`mod.rs`** — `YamlDocument` pyclass, `#[pymodule]` 진입점
+- **`convert.rs`** — Python ↔ CustomNode 변환 및 오류 포맷팅
+- **`python_types.rs`** — Python → CustomNode 타입 변환
+- **`ndarray.rs`** — NumPy ndarray 직렬화 (선택 사항, `numpy` 기능)
+- **`stream_events.rs`** — Python용 스트림 이벤트 타입
+- **`streaming.rs`** — 스트리밍 파싱 (일정 메모리)
+- **`writing.rs`** — 스트리밍 쓰기 (일정 메모리)
+- **`tag_registry.rs`** — Python 태그 핸들러 등록
+- **`editing/`** — Python용 편집 래퍼 (`segment_py.rs` + 코어 재내보내기)
+
+PyO3 바인딩에서 사용하는 순수 Rust 편집 프리미티브:
+
+- **`navigate.rs`** — AST 경로 탐색 (`navigate`, `navigate_mut`, `key_eq`, `mapping_key_index`, `normalize_index`, `parse_path_segments`)
+- **`region.rs`** — 편집 영역 계산 (`path_nodes`, `region_unit`, `precompute`, 라인 헬퍼, `extend_delete_over_comments`)
+- **`dirty.rs`** — 편집 연산 타입 (`DirtyKind`, `DirtyUnit`)
+- **`metadata.rs`** — 메타데이터 보존 (`with_metadata_from`)
+
+**내보내진 Python 함수 (총 18개):**
+`parse`, `safe_load`, `safe_loads`, `safe_dump`, `safe_dumps`, `parse_file`, `dump_file`, `parse_all_docs`, `parse_stream`, `read_markdown`, `from_dict`, `from_json`, `set_language`, `get_language`, `list_languages`, `detect_language`, `negotiate_language`, `YamlDocument`
+
+#### 5. `crates/pyrs-yaml-core/src/lib.rs` — 모듈 진입점
+
+- 모든 모듈 재내보내기
+- 오류 타입: `YamlParseError`, `YamlSerializeError`, `YamlTypeError`
+- `create_exception!` 매크로를 위한 사용자 정의 Python 예외
+- `rust-i18n` 초기화
+
+#### 6. `crates/pyrs-yaml-core/src/i18n.rs` — 국제화
+
+- `i18n.rs` — 설정 및 언어 협상
+- `i18n/` — 로케일 번들 (en, zh-CN, ja-JP, ko-KR)
+- 이중 언어 오류 메시지 (포맷 문자열 포함)
+
+#### 7. `crates/pyrs-yaml-core/src/integration/` — 통합 헬퍼
+
+- `yaml_suite.rs` — 검증을 위한 YAML Test Suite 러너
+- 벤치마크 및 규정 준수 검사를 위한 테스트 헬퍼
 
 ### 데이터 흐름
 
@@ -110,7 +170,8 @@ YAML 문자열
 │ 2. 원시 텍스트에서 앵커 추출        │
 │ 3. saphyr-parser → YAML 이벤트      │
 │ 4. AstReceiver가 CustomNode 구축    │
-│ 5. 병합 키 해석 (활성화된 경우)      │
+│ 5. 스키마 타입 해석                  │
+│ 6. 병합 키 해석 (활성화된 경우)      │
 └─────────────────────────────────────┘
     │
     ▼
@@ -149,8 +210,9 @@ YAML 문자열
 
 | 크레이트 | 용도 |
 |---------|------|
-| **pyo3** | Python 바인딩 (`experimental-inspect` 포함) |
+| **pyo3** | Python 바인딩 (`experimental-inspect`, `abi3-py38`, `abi3t` 포함) |
 | **saphyr-parser** | YAML 1.2 호환 파싱 |
 | **indexmap** | 키 유지를 위한 순서가 있는 해시 맵 |
 | **serde_json** | JSON ↔ YAML 변환 |
+| **numpy** | NumPy ndarray 지원 (선택 사항, 기본 활성화) |
 | **rust-i18n** | 국제화 오류 메시지 |

@@ -198,6 +198,56 @@ print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 
 Node는 트리 API를 제공합니다: `node.parent`, `node.children`, `node.walk()` (깊이 우선 반복자), `node.filter(predicate)`, `node.to_yaml()`.
 
+### AST 탐색 (`doc.walk()` / `doc.scalars()`)
+
+`doc.walk()`과 `doc.scalars()`는 **Rust 기반** 순회 메서드로, 전체 AST를 Python dict로 변환하지 않고 `Node` 객체를 생성합니다. `Node.walk()`와 달리 (내부적으로 `to_dict()`를 호출), 이 메서드들은 AST를 직접 순회합니다:
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+
+# 모든 노드 탐색 (깊이 우선, 전위 순회)
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+
+# 스칼라/null 노드만 탐색
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a', 'b') 1
+# ('a', 'c') 2
+```
+
+이는 대규모 문서에서 Python 전용 `Node.walk()`보다 훨씬 빠르며, 특히 경로 정보나 스칼라 값만 필요한 경우에 유용합니다.
+
+### 누락된 키 생성 (`create_missing=True`)
+
+기본적으로 `set()`은 경로에 중간 키가 없으면 `YamlEditError`를 발생시킵니다. `create_missing=True`를 사용하면 누락된 중간 매핑 키가 자동으로 생성됩니다:
+
+```python
+doc = pyrs_yaml.parse("a: 1\n")
+
+# create_missing 없이 — 오류 발생
+doc.set("$.b.c.d", 2)  # YamlEditError: missing path
+
+# create_missing 사용 — b → c → d 생성
+doc.set("$.b.c.d", 2, create_missing=True)
+print(doc.to_yaml())
+# a: 1
+# b:
+#   c:
+#     d: 2
+```
+
+규칙:
+
+- 누락된 **매핑 키**는 중첩 매핑으로 생성됩니다
+- 누락된 **인덱스 세그먼트**는 여전히 오류를 발생시킵니다 (시퀀스 요소를 자동 생성할 수 없음)
+- 경로 중간에 **스칼라**가 있으면 여전히 오류를 발생시킵니다 (스칼라로 내려갈 수 없음)
+- 생성된 체인은 제자리 스플라이스 편집에 적합합니다
+
 ### `find()`로 쿼리하기
 
 `find()`는 **읽기 지향적**이며 와일드카드와 딥 스캔을 지원합니다 — 경로가 여러 노드를 선택하면 리스트를 반환합니다:

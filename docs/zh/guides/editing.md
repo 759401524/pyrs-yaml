@@ -198,6 +198,56 @@ print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 
 `Node` 提供树形 API：`node.parent`、`node.children`、`node.walk()`（深度优先迭代器）、`node.filter(predicate)` 和 `node.to_yaml()`。
 
+### 遍历 AST（`doc.walk()` / `doc.scalars()`）
+
+`doc.walk()` 和 `doc.scalars()` 是**Rust 后端**的遍历方法，直接产生 `Node` 对象，无需将整个 AST 转换为 Python 字典。与 `Node.walk()`（底层调用 `to_dict()`）不同，这些方法直接遍历 AST：
+
+```python
+doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+
+# 遍历所有节点（深度优先，前序）
+for node in doc.walk():
+    print(node._path, node.root_type)
+# ()       mapping
+# ('a',)   mapping
+# ('a', 'b') scalar
+# ('a', 'c') scalar
+
+# 仅遍历标量/null 节点
+for node in doc.scalars():
+    print(node._path, node.value)
+# ('a', 'b') 1
+# ('a', 'c') 2
+```
+
+对于大型文档，这比纯 Python 的 `Node.walk()` 快得多，尤其当您只需要路径信息或标量值时。
+
+### 创建缺失键（`create_missing=True`）
+
+默认情况下，当路径中的中间键不存在时，`set()` 会抛出 `YamlEditError`。使用 `create_missing=True` 时，缺失的中间映射键会被自动创建：
+
+```python
+doc = pyrs_yaml.parse("a: 1\n")
+
+# 不使用 create_missing — 抛出异常
+doc.set("$.b.c.d", 2)  # YamlEditError: missing path
+
+# 使用 create_missing — 创建 b → c → d
+doc.set("$.b.c.d", 2, create_missing=True)
+print(doc.to_yaml())
+# a: 1
+# b:
+#   c:
+#     d: 2
+```
+
+规则：
+
+- 缺失的**映射键**会被创建为嵌套映射
+- 缺失的**索引段**仍然会抛出异常（无法自动创建序列元素）
+- 路径上的**标量**中间节点仍然会抛出异常（无法进入标量）
+- 创建的链可以进行就地分片拼接编辑
+
 ### 使用 `find()` 查询
 
 `find()` 是**面向读取**的，支持通配符和深度扫描 — 当路径选中多个节点时返回列表：

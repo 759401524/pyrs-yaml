@@ -39,9 +39,34 @@ pyrs-yaml 使用为性能和正确性设计的模块化架构。
 └─────────────────────────────────────────────────────────┘
 ```
 
+## 工作区结构
+
+代码库分为 `crates/` 下的两个 crate：
+
+```text
+crates/
+├── pyrs-yaml-core/ # 纯 Rust，无 PyO3 依赖
+│ └── src/
+│   ├── lib.rs          # 重新导出所有核心模块
+│   ├── ast.rs          # CustomNode AST
+│   ├── editing/        # 编辑原语 (navigate, region, dirty, metadata)
+│   ├── i18n.rs         # 国际化
+│   ├── parser/         # YAML 解析器 (基于 saphyr)
+│   ├── serializer.rs   # YAML 序列化器
+│   └── splice.rs       # 基于分片拼接的文本组装
+└── pyrs-yaml/          # PyO3 绑定层
+    └── src/
+        ├── lib.rs      # 重新导出核心 + 定义 #[pymodule]
+        ├── py/         # PyO3 绑定
+        │   ├── mod.rs      # YamlDocument pyclass
+        │   ├── convert.rs  # CustomNode ↔ Python 类型转换
+        │   └── editing/    # Python 层面的编辑包装器
+        └── fidelity.rs # 基于属性的测试
+```
+
 ### 模块架构
 
-#### 1. `src/ast.rs` — 自定义 AST
+#### 1. `crates/pyrs-yaml-core/src/ast.rs` — 自定义 AST
 
 **CustomNode** 枚举是 pyrs-yaml 的核心：
 
@@ -57,7 +82,7 @@ pyrs-yaml 使用为性能和正确性设计的模块化架构。
 - 自定义 AST 保留往返保存所需的一切
 - 可扩展以支持未来功能（自定义节点类型、元数据）
 
-#### 2. `src/parser/` — YAML 解析器
+#### 2. `crates/pyrs-yaml-core/src/parser/` — YAML 解析器
 
 基于 **saphyr-parser**（YAML 1.2 兼容）构建：
 
@@ -73,7 +98,7 @@ pyrs-yaml 使用为性能和正确性设计的模块化架构。
 - 两遍解析：首先提取注释/锚点，然后解析事件
 - 合并键解析在解析后进行（可配置）
 
-#### 3. `src/serializer.rs` — YAML 序列化器
+#### 3. `crates/pyrs-yaml-core/src/serializer.rs` — YAML 序列化器
 
 从 AST 重建 YAML 的自定义序列化器：
 
@@ -88,14 +113,46 @@ pyrs-yaml 使用为性能和正确性设计的模块化架构。
 - 嵌套结构的缩进级别状态管理
 - 块标量的 chomping 指示符处理
 
-#### 4. `src/lib.rs` — PyO3 模块
+#### 4. `crates/pyrs-yaml-core/src/editing/` — 编辑原语
 
-内联 `#[pymodule] mod pyrs_yaml`：
+纯 Rust 编辑原语，供 Python 层面的编辑 API 使用：
 
-- **`YamlDocument`** — `CustomNode` 的 `#[pyclass]` 包装器
-- **异常** — 自定义错误的 `create_exception!` 宏
-- **函数** — `parse`、`safe_load`、`dump_file` 等
-- **i18n** — 双语错误的 `rust-i18n` 集成
+- **`navigate.rs`** — AST 路径导航（`navigate`、`navigate_mut`、`key_eq`、`mapping_key_index`、`normalize_index`、`parse_path_segments`）
+- **`region.rs`** — 编辑区域计算（`path_nodes`、`region_unit`、`precompute`、行辅助函数、`extend_delete_over_comments`）
+- **`dirty.rs`** — 编辑操作类型（`DirtyKind`、`DirtyUnit`）
+- **`metadata.rs`** — 元数据保留（`with_metadata_from`）
+
+#### 5. `crates/pyrs-yaml/src/py/` — PyO3 绑定
+
+Python 层面的模块定义和类型转换：
+
+- **`mod.rs`** — `YamlDocument` pyclass、`#[pymodule]` 入口
+- **`convert.rs`** — Python ↔ CustomNode 转换和错误格式化
+- **`python_types.rs`** — Python → CustomNode 类型转换
+- **`ndarray.rs`** — NumPy ndarray 序列化（可选，`numpy` 特性）
+- **`stream_events.rs`** — Python 的流事件类型
+- **`streaming.rs`** — 流式解析（常量内存）
+- **`writing.rs`** — 流式写入（常量内存）
+- **`tag_registry.rs`** — Python 标签处理器注册
+- **`editing/`** — Python 层面的编辑包装器（`segment_py.rs` + 从核心重新导出）
+
+#### 5. `crates/pyrs-yaml/src/lib.rs` — 模块入口
+
+- 重新导出所有模块
+- 错误类型：`YamlParseError`、`YamlSerializeError`、`YamlTypeError`
+- `create_exception!` 宏用于自定义 Python 异常
+- `rust-i18n` 初始化
+
+#### 6. `crates/pyrs-yaml-core/src/i18n.rs` — 国际化
+
+- 配置和语言协商
+- 语言包（en、zh-CN、ja-JP、ko-KR）
+- 带格式字符串的双语错误消息
+
+#### 7. `crates/pyrs-yaml-core/src/integration/` — 集成辅助
+
+- `yaml_suite.rs` — YAML Test Suite 运行器，用于验证
+- 基准测试和合规性检查的测试辅助函数
 
 ### 数据流
 
