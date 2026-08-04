@@ -38,7 +38,8 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 ## Released
 
 | Version | Date | Changelog |
-|:--------|:-----|:----------|
+|---------|------|-----------|
+| v0.11.6 | 2026-08-04 | [CHANGELOG.md §[0.11.6]](CHANGELOG.md#0116---2026-08-04) |
 | v0.11.5 | 2026-08-04 | [CHANGELOG.md §\[0.11.5\]](CHANGELOG.md#0115---2026-08-04) |
 | v0.11.4 | 2026-08-04 | [CHANGELOG.md §\[0.11.4\]](CHANGELOG.md#0114---2026-08-04) |
 | v0.11.3 | 2026-08-03 | [CHANGELOG.md §\[0.11.3\]](CHANGELOG.md#0113---streaming-write--process-hardening-target-q3-2026) |
@@ -106,9 +107,9 @@ Per the plan's risk note ("the audit records oracle disagreements but does not c
 
 | # | Item | Layer | Status |
 |:--|:-----|:------|:------|
-| 1 | **`--no-default-features` wheel** — add the flag to the free-threaded wheel build steps in `publish.yml` (windows + macos `-i python3.14t`) | CI | Not started |
-| 2 | **Free-threaded CI validation** — `test-freethreaded` job builds with `--no-default-features` | CI | Not started |
-| 3 | **Install docs note** — `docs/{en,zh,ja,ko}`: free-threaded wheels are numpy-free (ndarray serialization unavailable on cp314t) | Docs | Not started |
+| 1 | **`--no-default-features` wheel** — add the flag to the free-threaded wheel build steps in `publish.yml` (windows + macos `-i python3.14t`) | CI | ✅ Commit `9ad41f3` |
+| 2 | **Free-threaded CI validation** — `test-freethreaded` job builds with `--no-default-features` | CI | ✅ Commit `9ad41f3` |
+| 3 | **Install docs note** — `docs/{en,zh,ja,ko}`: free-threaded wheels are numpy-free (ndarray serialization unavailable on cp314t) | Docs | ✅ Commit `9ad41f3` |
 
 **Changelog mapping**: Entries under `[0.11.6]` in CHANGELOG.md.
 

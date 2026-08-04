@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-08-04
+
+### Changed
+
+- **Free-threaded (cp314t) wheels are now numpy-free** - built with
+  `--no-default-features`, so rust-numpy is excluded entirely (smaller
+  binary, no runtime probe). `safe_dump` on a `numpy.ndarray` raises
+  `YamlTypeError` on free-threaded builds; GIL builds (Python 3.8-3.15)
+  keep full ndarray serialization.
+
+### Added
+
+- **Free-threaded CI validation** - `test-freethreaded` job now builds
+  and tests with `--no-default-features`, matching the shipped
+  free-threaded wheel configuration.
+- **Install docs** - `docs/{en,zh,ja,ko}` note that free-threaded
+  wheels are numpy-free (ndarray serialization unavailable on cp314t).
+
 ## [0.11.5] - 2026-08-04
 
 ### Changed
