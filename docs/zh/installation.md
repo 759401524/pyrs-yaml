@@ -22,6 +22,10 @@ uv run --frozen maturin develop --release
 
 包以 **ABI3 wheel** 格式构建，单个 wheel 支持 Python 3.8 到 3.15 — 无需重新编译。
 
+### 自由线程 Python (cp314t)
+
+CPython 3.14t 的自由线程（无 GIL）wheel 使用 `--no-default-features` 构建，因此**不包含** NumPy 集成：在自由线程构建上对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`。GIL 构建（Python 3.8–3.15）保留完整的 ndarray 序列化支持。
+
 ### 快速验证
 
 ```python

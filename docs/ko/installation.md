@@ -20,6 +20,10 @@ uv run --frozen maturin develop --release
 
 패키지는 **ABI3 휠**로 빌드되며, 단일 휠로 Python 3.8부터 3.15까지 지원 — 재컴파일 불필요.
 
+### 프리-스레디드 Python (cp314t)
+
+CPython 3.14t용 프리-스레디드(no-GIL) 휠은 `--no-default-features`로 빌드되어 NumPy 통합이 **포함되지 않습니다**: 프리-스레디드 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다. GIL 빌드(Python 3.8–3.15)에서는 전체 ndarray 직렬화를 지원합니다.
+
 ### 개발용 설치
 
 소스에서 설치 (개발 또는 테스트용):

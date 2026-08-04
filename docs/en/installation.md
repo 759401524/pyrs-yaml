@@ -17,6 +17,10 @@ uv run --frozen maturin develop --release
 
 The package is built as an **ABI3 wheel**, meaning a single wheel works across Python 3.8 through 3.15 — no recompilation needed.
 
+## Free-Threaded Python (cp314t)
+
+Free-threaded (no-GIL) wheels for CPython 3.14t are built with `--no-default-features`, so the NumPy integration is **not included**: `safe_dump` on a `numpy.ndarray` raises `YamlTypeError` on free-threaded builds. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
+
 ## Quick Check
 
 ```python

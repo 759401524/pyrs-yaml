@@ -20,6 +20,10 @@ uv run --frozen maturin develop --release
 
 パッケージは **ABI3 ホイール** としてビルドされており、単一のホイールで Python 3.8 から 3.15 まで対応 — 再コンパイル不要。
 
+### フリースレッド Python (cp314t)
+
+CPython 3.14t 向けのフリースレッド（GIL なし）ホイールは `--no-default-features` でビルドされるため、NumPy 統合は**含まれません**：フリースレッドビルドで `numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
+
 ### 開発用インストール
 
 ソースからインストール（開発またはテスト用）：
