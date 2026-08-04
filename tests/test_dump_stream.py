@@ -112,3 +112,17 @@ def test_dump_stream_large_stream_stays_correct():
     assert len(reloaded) == 500
     assert reloaded[0]["doc"] == 0
     assert reloaded[-1]["doc"] == 499
+
+
+def test_dump_file_chunked_write(tmp_path):
+    """Writing a large doc triggers chunk-level flush."""
+    p = tmp_path / "out.yaml"
+    pyrs_yaml.YAML().dump_file(str(p), [{"a": 1, "b": 2, "c": 3, "d": 4}])
+    assert p.read_text().strip() == "a: 1\nb: 2\nc: 3\nd: 4"
+
+
+def test_dump_file_multi_doc(tmp_path):
+    """Multiple docs written to file."""
+    p = tmp_path / "out.yaml"
+    pyrs_yaml.YAML().dump_file(str(p), [{"a": 1}, {"b": 2}])
+    assert list(pyrs_yaml.safe_loads(p.read_text())) == [{"a": 1}, {"b": 2}]

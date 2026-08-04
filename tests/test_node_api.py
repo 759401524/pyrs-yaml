@@ -100,6 +100,90 @@ class TestNodeAPI:
             Node(pyrs_yaml.parse(yaml_strings["simple_mapping"])).find("key")
 
 
+class TestDocWalk:
+    """Test doc.walk() and doc.scalars() (D4 Rust-backed traversal)."""
+
+    def test_doc_walk_flat_mapping(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), ("a",), ("b",), ("c",)]
+
+    def test_doc_walk_nested(self):
+        doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), ("a",), ("a", "b"), ("a", "c")]
+
+    def test_doc_walk_sequence(self):
+        doc = pyrs_yaml.parse("- a\n- b\n- c\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), (0,), (1,), (2,)]
+
+    def test_doc_scalars_flat(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3\n")
+        paths = [n._path for n in doc.scalars()]
+        assert paths == [("a",), ("b",), ("c",)]
+
+    def test_doc_scalars_nested(self):
+        doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
+        paths = [n._path for n in doc.scalars()]
+        assert paths == [("a", "b"), ("a", "c")]
+
+    def test_doc_walk_yields_nodes(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        for node in doc.walk():
+            assert isinstance(node, Node)
+
+    def test_doc_scalars_values(self):
+        doc = pyrs_yaml.parse("a: hello\nb: world\n")
+        values = {n._path: n.value for n in doc.scalars()}
+        assert values == {("a",): "hello", ("b",): "world"}
+
+    def test_doc_walk_empty_doc(self):
+        doc = pyrs_yaml.parse("")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [()]
+
+    def test_doc_scalars_empty_doc(self):
+        doc = pyrs_yaml.parse("")
+        paths = [n._path for n in doc.scalars()]
+        assert paths == [()]  # empty doc is a Null node, which is a scalar-like node
+
+    def test_doc_walk_null_values(self):
+        doc = pyrs_yaml.parse("a: null\nb: ~\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), ("a",), ("b",)]
+
+    def test_doc_scalars_null_values(self):
+        doc = pyrs_yaml.parse("a: null\nb: ~\n")
+        paths = [n._path for n in doc.scalars()]
+        assert paths == [("a",), ("b",)]
+
+    def test_doc_scalars_no_scalars(self):
+        doc = pyrs_yaml.parse("a:\n  b:\n    c:\n")
+        paths = [n._path for n in doc.scalars()]
+        assert paths == [("a", "b", "c")]
+
+    def test_doc_walk_deeply_nested(self):
+        doc = pyrs_yaml.parse("a:\n  b:\n    c:\n      d: 1\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), ("a",), ("a", "b"), ("a", "b", "c"), ("a", "b", "c", "d")]
+
+    def test_doc_walk_flow_mapping(self):
+        doc = pyrs_yaml.parse("a: {b: 1, c: 2}\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), ("a",), ("a", "b"), ("a", "c")]
+
+    def test_doc_walk_flow_sequence(self):
+        doc = pyrs_yaml.parse("a: [1, 2, 3]\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), ("a",), ("a", 0), ("a", 1), ("a", 2)]
+
+    def test_doc_walk_mixed_types(self):
+        doc = pyrs_yaml.parse("a: 1\nb: {c: 2}\nc: [3, 4]\n")
+        paths = [n._path for n in doc.walk()]
+        assert paths == [(), ("a",), ("b",), ("b", "c"), ("c",), ("c", 0), ("c", 1)]
+
+
 class TestNodeRelease:
     """Test Node.release() lifecycle warnings (v0.8.0 Phase 6)."""
 
