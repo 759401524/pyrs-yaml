@@ -4,6 +4,13 @@
 
 use crate::ast::{CustomNode, ScalarStyle};
 
+/// ```
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::editing::with_metadata_from;
+/// let target = CustomNode::plain_scalar("new_val");
+/// let src = CustomNode::quoted_scalar("old_val");
+/// let result = with_metadata_from(&target, &src);
+/// ```
 pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
     match (target, src) {
         (

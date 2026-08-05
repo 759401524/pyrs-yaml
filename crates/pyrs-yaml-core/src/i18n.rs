@@ -17,7 +17,7 @@
 //! # 使用方法
 //!
 //! ```rust
-//! use pyrs_yaml::i18n;
+//! use pyrs_yaml_core::i18n;
 //!
 //! // 设置语言
 //! i18n::set_language("zh-CN").unwrap();
@@ -91,7 +91,7 @@ pub fn list_languages() -> Vec<&'static str> {
 /// # Examples
 ///
 /// ```rust
-/// use pyrs_yaml::i18n;
+/// use pyrs_yaml_core::i18n;
 ///
 /// i18n::set_language("en").unwrap();
 /// let msg = i18n::format_message("yaml-parse-error", &[("detail", "unexpected token")]);
@@ -126,7 +126,7 @@ pub fn format_message(key: &str, args: &[(&str, &str)]) -> String {
 /// # Examples
 ///
 /// ```
-/// use pyrs_yaml::i18n;
+/// use pyrs_yaml_core::i18n;
 ///
 /// // 精确匹配
 /// assert_eq!(i18n::negotiate_language(&["zh-CN"], "en"), "zh-CN");
@@ -176,7 +176,7 @@ pub fn negotiate_language<'a>(user_locales: &[&'a str], default: &'a str) -> &'a
 /// # Examples
 ///
 /// ```
-/// use pyrs_yaml::i18n;
+/// use pyrs_yaml_core::i18n;
 ///
 /// // 注意：实际检测结果取决于环境变量
 /// let detected = i18n::detect_language();

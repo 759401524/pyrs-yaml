@@ -52,8 +52,10 @@ fn is_null_key(key: &CustomNode) -> bool {
 /// 返回 `Err(String)` 格式为 `"YAML parse error: <行号>:<列号>: <消息>"`。
 ///
 /// # Examples
-/// ```ignore
-/// let ast = pyrs_yaml::parser::parse("key: value").unwrap();
+/// ```rust
+/// use pyrs_yaml_core::parser::parse;
+/// use pyrs_yaml_core::parser::yaml::YamlSchema;
+/// let ast = parse("key: value", YamlSchema::Core).unwrap();
 /// ```
 ///
 /// Parse a YAML string into a CustomNode AST using saphyr-parser

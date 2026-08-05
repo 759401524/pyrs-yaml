@@ -40,6 +40,14 @@ pub fn path_nodes<'a>(
     Ok(path)
 }
 
+/// ```
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::editing::node_is_flow;
+/// let flow = CustomNode::Sequence { items: vec![], tag: None, comment: None, anchor: None, flow_style: true, source_range: None };
+/// let block = CustomNode::Sequence { items: vec![], tag: None, comment: None, anchor: None, flow_style: false, source_range: None };
+/// assert!(node_is_flow(&flow));
+/// assert!(!node_is_flow(&block));
+/// ```
 pub fn node_is_flow(node: &CustomNode) -> bool {
     match node {
         CustomNode::Mapping { flow_style, .. } | CustomNode::Sequence { flow_style, .. } => {
@@ -174,6 +182,12 @@ pub fn regenerate_region_text(
     }
 }
 
+/// ```
+/// use pyrs_yaml_core::editing::region::line_index_of;
+/// let offsets = vec![0, 5, 10];
+/// assert_eq!(line_index_of(&offsets, 3), 0);
+/// assert_eq!(line_index_of(&offsets, 5), 1);
+/// ```
 pub fn line_index_of(line_offsets: &[usize], byte_offset: usize) -> usize {
     match line_offsets.binary_search(&byte_offset) {
         Ok(i) => i,
@@ -181,6 +195,12 @@ pub fn line_index_of(line_offsets: &[usize], byte_offset: usize) -> usize {
     }
 }
 
+/// ```
+/// use pyrs_yaml_core::editing::line_start;
+/// let offsets = vec![0, 5, 10];
+/// assert_eq!(line_start(&offsets, 3), 0);
+/// assert_eq!(line_start(&offsets, 7), 5);
+/// ```
 pub fn line_start(line_offsets: &[usize], byte_offset: usize) -> usize {
     line_offsets[line_index_of(line_offsets, byte_offset)]
 }
@@ -229,6 +249,11 @@ pub fn extend_delete_over_comments(
     range
 }
 
+/// ```
+/// use pyrs_yaml_core::editing::{nav_err, NavigateError};
+/// assert_eq!(nav_err(NavigateError::Missing("x".into())), "missing-path:x");
+/// assert_eq!(nav_err(NavigateError::NotContainer), "create-needs-mapping");
+/// ```
 pub fn nav_err(e: NavigateError) -> String {
     match e {
         NavigateError::Missing(s) => format!("missing-path:{s}"),
@@ -276,20 +301,6 @@ mod tests {
     #[test]
     fn test_node_is_flow_scalar() {
         assert!(!node_is_flow(&CustomNode::plain_scalar("x")));
-    }
-
-    #[test]
-    fn test_line_index_of_exact() {
-        let offsets = vec![0, 5, 10, 15];
-        assert_eq!(line_index_of(&offsets, 0), 0);
-        assert_eq!(line_index_of(&offsets, 5), 1);
-    }
-
-    #[test]
-    fn test_line_index_of_between() {
-        let offsets = vec![0, 10, 20];
-        assert_eq!(line_index_of(&offsets, 5), 0);
-        assert_eq!(line_index_of(&offsets, 15), 1);
     }
 
     #[test]

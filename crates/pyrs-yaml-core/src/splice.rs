@@ -43,6 +43,12 @@ pub struct SpliceState {
 
 impl SpliceState {
     /// A fresh state borrowing the whole base as a single segment.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use pyrs_yaml_core::splice::SpliceState;
+    /// let state = SpliceState::new(Arc::from("a: 1\n"));
+    /// ```
     pub fn new(base: Arc<str>) -> Self {
         Self {
             segments: vec![SourceSegment::Borrowed {
@@ -67,6 +73,19 @@ impl SpliceState {
     /// Fold one edit unit into the segment list. `Err` means the unit cannot
     /// be spliced (ineligible, or it would overwrite previously regenerated
     /// text in an unresolvable way) and the state is UNCHANGED.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use pyrs_yaml_core::splice::SpliceState;
+    /// use pyrs_yaml_core::editing::{DirtyKind, DirtyUnit};
+    /// let mut state = SpliceState::new(Arc::from("a: 1\nb: 2\n"));
+    /// let unit = DirtyUnit {
+    ///     kind: DirtyKind::Region { range: 3..4, indent: 0, text: "9".into() },
+    ///     eligible: true,
+    /// };
+    /// state.apply(&unit).unwrap();
+    /// assert_eq!(state.materialize(), Some("a: 9\nb: 2\n".to_string()));
+    /// ```
     pub fn apply(&mut self, unit: &DirtyUnit) -> Result<(), SpliceReject> {
         if !unit.eligible {
             return Err(SpliceReject);

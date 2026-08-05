@@ -31,11 +31,54 @@ impl Default for SerializeOptions {
 }
 
 /// Serialize a CustomNode AST back to YAML string
+///
+/// ```
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::serializer::to_yaml;
+/// use indexmap::IndexMap;
+/// let mut pairs = IndexMap::new();
+/// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
+/// let node = CustomNode::Mapping {
+///     pairs,
+///     tag: None,
+///     comment: None,
+///     anchor: None,
+///     flow_style: false,
+///     source_range: None,
+/// };
+/// let output = to_yaml(&node);
+/// assert_eq!(output, "a: 1\n");
+/// ```
 pub fn to_yaml(node: &CustomNode) -> String {
     to_yaml_with_options(node, &SerializeOptions::default()).expect("serialization failed")
 }
 
 /// Serialize with custom options
+///
+/// ```
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::serializer::{to_yaml_with_options, SerializeOptions};
+/// use indexmap::IndexMap;
+/// let mut pairs = IndexMap::new();
+/// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
+/// let node = CustomNode::Mapping {
+///     pairs,
+///     tag: None,
+///     comment: None,
+///     anchor: None,
+///     flow_style: false,
+///     source_range: None,
+/// };
+/// let opts = SerializeOptions {
+///     indent_size: 4,
+///     explicit_start: true,
+///     explicit_end: false,
+///     sort_keys: false,
+///     ..Default::default()
+/// };
+/// let output = to_yaml_with_options(&node, &opts).unwrap();
+/// assert!(output.starts_with("---\n"));
+/// ```
 pub fn to_yaml_with_options(
     node: &CustomNode,
     options: &SerializeOptions,
