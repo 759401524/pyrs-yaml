@@ -180,10 +180,10 @@ mod pyrs_yaml {
                 let tag_name = t.to_string();
                 if let Some(handlers) = get_handlers(&tag_name, py) {
                     for (_priority, handler) in handlers {
-                        match handler.call1(py, (value.clone(),)) {
+                        match handler.call1(py, (value.as_ref(),)) {
                             Ok(result) => match result.extract::<String>(py) {
                                 Ok(s) => {
-                                    *value = s;
+                                    *value = Arc::from(s);
                                     break;
                                 }
                                 Err(_) => {
@@ -1742,7 +1742,7 @@ mod pyrs_yaml {
             CustomNode::Mapping { pairs, .. } => {
                 for (k, v) in pairs.iter() {
                     let key_str = match k {
-                        CustomNode::Scalar { value, .. } => value.clone(),
+                        CustomNode::Scalar { value, .. } => value.as_ref(),
                         _ => continue,
                     };
                     let item = key_str.into_pyobject(py)?.into_any();
@@ -1781,7 +1781,7 @@ mod pyrs_yaml {
             CustomNode::Mapping { pairs, .. } => {
                 for (k, v) in pairs.iter() {
                     let key_str = match k {
-                        CustomNode::Scalar { value, .. } => value.clone(),
+                        CustomNode::Scalar { value, .. } => value.as_ref(),
                         _ => continue,
                     };
                     let item = key_str.into_pyobject(py)?.into_any();

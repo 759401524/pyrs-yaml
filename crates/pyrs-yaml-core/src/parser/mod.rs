@@ -21,9 +21,10 @@ use saphyr_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 use std::ops::Range;
+use std::sync::Arc;
 use yaml::{
     compute_line_offsets, detect_chomping, extract_comments_and_anchors, resolve_merge_keys,
-    unescape_double_quoted, CommentAnchorTracker, RawAnchor, RawComment,
+    scan_yaml, unescape_double_quoted, CommentAnchorTracker, RawAnchor, RawComment,
 };
 
 /// Return true if a mapping key is a null/empty key (`~`, empty, or null).
@@ -34,7 +35,7 @@ fn is_null_key(key: &CustomNode) -> bool {
     match key {
         CustomNode::Null { .. } => true,
         CustomNode::Scalar { value, .. } => {
-            value.is_empty() || value == "~" || value.eq_ignore_ascii_case("null")
+            value.is_empty() || value.as_ref() == "~" || value.eq_ignore_ascii_case("null")
         }
         _ => false,
     }
@@ -92,7 +93,9 @@ pub fn parse_with_options(
     // Extract comments and anchors from raw text before parsing. Fast path:
     // a comment requires a `#` and an anchor requires an `&`, so a text with
     // neither contains no comments or anchors and the full scan is skipped.
-    let (raw_comments, raw_anchors) = if !yaml.contains('#') && !yaml.contains('&') {
+    // The single scan also pre-computes line offsets (no second traversal).
+    let scan = scan_yaml(yaml);
+    let (raw_comments, raw_anchors) = if !scan.has_hash && !scan.has_amp {
         (Vec::new(), Vec::new())
     } else {
         extract_comments_and_anchors(yaml)
@@ -103,6 +106,8 @@ pub fn parse_with_options(
         yaml,
         raw_comments,
         raw_anchors,
+        scan.line_offsets,
+        scan.is_ascii,
         max_depth,
         allow_duplicate_keys,
     );
@@ -115,7 +120,6 @@ pub fn parse_with_options(
             line: 0,
             col: 0,
         })?;
-
     // Check for duplicate key error
     if let Some(err) = receiver.duplicate_key_error {
         return Err(err);
@@ -171,7 +175,8 @@ pub fn parse_all_with_options(
         return Ok(Vec::new());
     }
 
-    let (raw_comments, raw_anchors) = if !yaml.contains('#') && !yaml.contains('&') {
+    let scan = scan_yaml(yaml);
+    let (raw_comments, raw_anchors) = if !scan.has_hash && !scan.has_amp {
         (Vec::new(), Vec::new())
     } else {
         extract_comments_and_anchors(yaml)
@@ -181,6 +186,8 @@ pub fn parse_all_with_options(
         yaml,
         raw_comments,
         raw_anchors,
+        scan.line_offsets,
+        scan.is_ascii,
         max_depth,
         allow_duplicate_keys,
     );
@@ -414,6 +421,9 @@ struct AstReceiver<'a> {
     yaml_text: &'a str,
     /// Pre-computed byte offsets for each line start (O(1) line access)
     line_offsets: Vec<usize>,
+    /// Whether the raw text contains a `#` (possible comments). When false,
+    /// per-scalar `find('#')` scans in `create_scalar` are skipped entirely.
+    has_hash: bool,
     /// Char-index → byte-offset table; `Some` only for non-ASCII input
     char_offsets: Option<Vec<usize>>,
     comment_anchor_tracker: CommentAnchorTracker,
@@ -461,14 +471,17 @@ impl<'a> AstReceiver<'a> {
         yaml_text: &'a str,
         raw_comments: Vec<RawComment>,
         raw_anchors: Vec<RawAnchor>,
+        line_offsets: Vec<usize>,
+        is_ascii: bool,
         max_depth: usize,
         allow_duplicate_keys: bool,
     ) -> Self {
         // Pre-compute line start offsets for O(1) line access
         Self {
             yaml_text,
-            line_offsets: compute_line_offsets(yaml_text),
-            char_offsets: (!yaml_text.is_ascii()).then(|| char_to_byte_offsets(yaml_text)),
+            line_offsets,
+            has_hash: !raw_comments.is_empty(),
+            char_offsets: (!is_ascii).then(|| char_to_byte_offsets(yaml_text)),
             comment_anchor_tracker: CommentAnchorTracker::new(raw_comments, raw_anchors),
             stack: Vec::new(),
             result: None,
@@ -507,15 +520,20 @@ impl<'a> AstReceiver<'a> {
 
         // Unescape double-quoted strings
         let scalar_value = if matches!(style, SaphyrScalarStyle::DoubleQuoted) {
-            unescape_double_quoted(value)
+            Arc::from(unescape_double_quoted(value))
         } else {
-            value.to_string()
+            Arc::from(value)
         };
 
         // Find inline comment - look for comment on the same line after the value
         // The value typically starts at column 0 for keys, or after ": " for values
         // We need to find the position after the value ends
-        let value_end_col = if line < self.line_offsets.len() {
+        let value_end_col = if !self.has_hash {
+            // No comments in the whole text: the value ends at the line end.
+            // `find_inline_comment` would return None regardless of `after_col`,
+            // so the per-scalar `find('#')` scan is skipped entirely.
+            Self::line_text_len(self.yaml_text, line, &self.line_offsets)
+        } else if line < self.line_offsets.len() {
             let start = self.line_offsets[line];
             let end = if line + 1 < self.line_offsets.len() {
                 // Exclude the trailing \n from the line
@@ -549,6 +567,20 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
+    /// Length of the text on `line` (excluding the trailing `\n`).
+    fn line_text_len(yaml_text: &str, line: usize, line_offsets: &[usize]) -> usize {
+        if line >= line_offsets.len() {
+            return 0;
+        }
+        let start = line_offsets[line];
+        let end = if line + 1 < line_offsets.len() {
+            line_offsets[line + 1].saturating_sub(1)
+        } else {
+            yaml_text.len()
+        };
+        end.saturating_sub(start)
+    }
+
     /// Convert a saphyr span (char-indexed markers) to a byte range
     fn span_to_byte_range(&self, span: &Span) -> Range<usize> {
         match &self.char_offsets {
@@ -566,23 +598,24 @@ impl<'a> AstReceiver<'a> {
                 if current_key.is_none() {
                     **current_key = Some(node);
                 } else if let Some(key) = current_key.take() {
-                    if !self.max_depth_exceeded
-                        && !self.allow_duplicate_keys
-                        && !is_null_key(&key)
-                        && pairs.contains_key(&key)
-                    {
+                    if self.max_depth_exceeded || self.allow_duplicate_keys || is_null_key(&key) {
+                        pairs.insert(key, node);
+                    } else {
+                        // Compute the display string before insert moves `key`
                         let key_str = match &key {
-                            CustomNode::Scalar { value, .. } => value.clone(),
+                            CustomNode::Scalar { value, .. } => value.to_string(),
                             _ => format!("{:?}", key),
                         };
-                        self.duplicate_key_error = Some(ParseErrorDetail {
-                            message: format!("duplicate key: {}", key_str),
-                            line: 0,
-                            col: 0,
-                        });
-                        return;
+                        if pairs.insert(key, node).is_some() {
+                            // Insert returned the previous value: the key already exists.
+                            // The AST is discarded on error, so the replaced pair is harmless.
+                            self.duplicate_key_error = Some(ParseErrorDetail {
+                                message: format!("duplicate key: {}", key_str),
+                                line: 0,
+                                col: 0,
+                            });
+                        }
                     }
-                    pairs.insert(key, node);
                 }
             }
             Some(ParseState::Sequence { items, .. }) => {
@@ -840,7 +873,7 @@ mod tests {
         let result = parse("hello", YamlSchema::Core);
         assert!(result.is_ok());
         if let Ok(CustomNode::Scalar { value, style, .. }) = result {
-            assert_eq!(value, "hello");
+            assert_eq!(value.as_ref(), "hello");
             assert_eq!(style, ScalarStyle::Plain);
         }
     }
@@ -873,7 +906,7 @@ mod tests {
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             for (k, v) in pairs {
                 if let CustomNode::Scalar { value, .. } = k {
-                    if value == "name" {
+                    if value.as_ref() == "name" {
                         if let CustomNode::Scalar { tag, .. } = v {
                             assert!(tag.is_some());
                             assert_eq!(tag.unwrap().suffix, "str");
@@ -909,7 +942,7 @@ mod tests {
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             for (k, v) in pairs {
                 if let CustomNode::Scalar { value, .. } = k {
-                    if value == "defaults" {
+                    if value.as_ref() == "defaults" {
                         if let CustomNode::Mapping { anchor, .. } = v {
                             assert!(anchor.is_some());
                             assert_eq!(anchor.unwrap(), "defaults");

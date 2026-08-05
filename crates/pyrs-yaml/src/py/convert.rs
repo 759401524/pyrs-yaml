@@ -115,7 +115,7 @@ fn node_to_pyobject_inner(
             let dict = PyDict::new(py);
             for (key, value) in pairs {
                 let key_str = match key {
-                    CustomNode::Scalar { value, .. } => value.clone(),
+                    CustomNode::Scalar { value, .. } => value.to_string(),
                     _ => format!("{:?}", key),
                 };
                 let val = node_to_pyobject_with_anchors(value, py, anchors, visited, schema)?;
@@ -147,7 +147,7 @@ fn node_to_pyobject_simple(
             let dict = PyDict::new(py);
             for (key, value) in pairs {
                 let key_str = match key {
-                    CustomNode::Scalar { value, .. } => value.clone(),
+                    CustomNode::Scalar { value, .. } => value.to_string(),
                     _ => format!("{:?}", key),
                 };
                 let val = node_to_pyobject_simple(value, py, schema)?;

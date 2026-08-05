@@ -312,11 +312,11 @@ impl Serializer {
                         let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
                         pairs_vec.sort_by(|a, b| {
                             let ka = match a.0 {
-                                CustomNode::Scalar { value, .. } => value.as_str(),
+                                CustomNode::Scalar { value, .. } => value.as_ref(),
                                 _ => "",
                             };
                             let kb = match b.0 {
-                                CustomNode::Scalar { value, .. } => value.as_str(),
+                                CustomNode::Scalar { value, .. } => value.as_ref(),
                                 _ => "",
                             };
                             ka.cmp(kb)
@@ -818,6 +818,7 @@ mod tests {
     use super::*;
     use crate::ast::Tag;
     use indexmap::IndexMap;
+    use std::sync::Arc;
 
     #[test]
     fn test_pair_helper_matches_full_serialize() {
@@ -888,7 +889,7 @@ mod tests {
     #[test]
     fn test_serialize_plain_scalar() {
         let node = CustomNode::Scalar {
-            value: "hello".to_string(),
+            value: Arc::from("hello"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -902,7 +903,7 @@ mod tests {
     #[test]
     fn test_serialize_scalar_with_comment() {
         let node = CustomNode::Scalar {
-            value: "value".to_string(),
+            value: Arc::from("value"),
             style: ScalarStyle::Plain,
             comment: Some(crate::ast::Comment {
                 text: "a comment".to_string(),
@@ -919,7 +920,7 @@ mod tests {
     #[test]
     fn test_serialize_scalar_with_tag() {
         let node = CustomNode::Scalar {
-            value: "42".to_string(),
+            value: Arc::from("42"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -933,7 +934,7 @@ mod tests {
     #[test]
     fn test_serialize_mapping() {
         let key = CustomNode::Scalar {
-            value: "key".to_string(),
+            value: Arc::from("key"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -942,7 +943,7 @@ mod tests {
             source_range: None,
         };
         let value = CustomNode::Scalar {
-            value: "value".to_string(),
+            value: Arc::from("value"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -971,7 +972,7 @@ mod tests {
         let key = CustomNode::Sequence {
             items: vec![
                 CustomNode::Scalar {
-                    value: "key1".to_string(),
+                    value: Arc::from("key1"),
                     style: ScalarStyle::Plain,
                     comment: None,
                     anchor: None,
@@ -980,7 +981,7 @@ mod tests {
                     source_range: None,
                 },
                 CustomNode::Scalar {
-                    value: "key2".to_string(),
+                    value: Arc::from("key2"),
                     style: ScalarStyle::Plain,
                     comment: None,
                     anchor: None,
@@ -996,7 +997,7 @@ mod tests {
             source_range: None,
         };
         let value = CustomNode::Scalar {
-            value: "value".to_string(),
+            value: Arc::from("value"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,

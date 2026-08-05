@@ -125,7 +125,7 @@ mod tests {
         let result = with_metadata_from(&target, &src);
         match result {
             CustomNode::Scalar { value, anchor, .. } => {
-                assert_eq!(value, "val");
+                assert_eq!(value.as_ref(), "val");
                 assert_eq!(anchor, Some("myanchor".into()));
             }
             _ => panic!("expected Scalar"),
@@ -160,7 +160,7 @@ mod tests {
         let result = with_metadata_from(&target, &src);
         match result {
             CustomNode::Scalar { value, .. } => {
-                assert_eq!(value, "newval");
+                assert_eq!(value.as_ref(), "newval");
             }
             _ => panic!("expected Scalar"),
         }
