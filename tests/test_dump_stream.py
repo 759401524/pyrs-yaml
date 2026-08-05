@@ -126,3 +126,11 @@ def test_dump_file_multi_doc(tmp_path):
     p = tmp_path / "out.yaml"
     pyrs_yaml.YAML().dump_file(str(p), [{"a": 1}, {"b": 2}])
     assert list(pyrs_yaml.safe_loads(p.read_text())) == [{"a": 1}, {"b": 2}]
+
+
+def test_dump_file_flush_on_finish(tmp_path):
+    """Writer flushes remaining data on finish."""
+    p = tmp_path / "out.yaml"
+    pyrs_yaml.YAML().dump_file(str(p), [{"a": 1}])
+    text = p.read_text()
+    assert text.strip() == "a: 1"

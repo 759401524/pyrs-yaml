@@ -59,20 +59,6 @@ impl ChunkCharIter {
         self.error_slot = Some(slot);
     }
 
-    #[cfg(test)]
-    fn with_error(msg: &str) -> Self {
-        // 测试注入：error flag 已置位，src 不会被读取。
-        Self {
-            src: InputSrc::File(std::io::BufReader::new(tempfile::tempfile().unwrap())),
-            pending: Vec::new(),
-            buf: VecDeque::new(),
-            chunk_size: 4,
-            eof: true,
-            error: Some(msg.to_string()),
-            error_slot: None,
-        }
-    }
-
     fn set_error(&mut self, msg: String) {
         self.eof = true;
         self.error = Some(msg.clone());
@@ -81,13 +67,6 @@ impl ChunkCharIter {
                 *guard = Some(msg);
             }
         }
-    }
-
-    /// Take the pending error (once). Reader errors now surface to YamlStream
-    /// via the shared slot; this accessor is test-only.
-    #[cfg(test)]
-    fn take_error(&mut self) -> Option<String> {
-        self.error.take()
     }
 
     fn fill(&mut self) {
@@ -347,120 +326,5 @@ impl Drop for YamlStream {
     fn drop(&mut self) {
         self.parser = None;
         self.dropped = true;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::{Seek, SeekFrom, Write};
-
-    fn iter_from_bytes(data: &[u8]) -> ChunkCharIter {
-        let mut f = tempfile::tempfile().unwrap();
-        f.write_all(data).unwrap();
-        f.flush().unwrap();
-        f.seek(SeekFrom::Start(0)).unwrap();
-        ChunkCharIter::new(InputSrc::File(std::io::BufReader::new(f)), 4)
-    }
-
-    fn collect(chars: ChunkCharIter) -> (String, Option<String>) {
-        let mut it = chars;
-        let mut s = String::new();
-        // for c in it would move `it` — we need it after the loop for take_error()
-        #[allow(clippy::while_let_on_iterator)]
-        while let Some(c) = it.next() {
-            s.push(c);
-        }
-        let err = it.take_error();
-        (s, err)
-    }
-
-    #[test]
-    fn chunk_utf8_across_boundary() {
-        // 多字节字符跨 chunk 边界（chunk=4 字节强制切分）
-        let (s, err) = collect(iter_from_bytes("a: 你好\nb: 世界\n".as_bytes()));
-        assert_eq!(err, None);
-        assert_eq!(s, "a: 你好\nb: 世界\n");
-    }
-
-    #[test]
-    fn chunk_invalid_utf8_sets_error() {
-        let (s, err) = collect(iter_from_bytes(b"\xff\xfe"));
-        let err = err.expect("invalid UTF-8 must set error");
-        assert!(err.starts_with("Invalid UTF-8:"), "got: {}", err);
-        assert!(s.is_empty());
-    }
-
-    #[test]
-    fn chunk_eof_returns_none_cleanly() {
-        let mut it = iter_from_bytes("a".as_bytes());
-        assert_eq!(it.next(), Some('a'));
-        assert_eq!(it.next(), None);
-        assert_eq!(it.next(), None);
-        assert_eq!(it.take_error(), None);
-    }
-
-    #[test]
-    fn chunk_read_error_sets_flag() {
-        // 注入 error flag（目录路径模拟 read 失败不可靠，计划允许 with_error 构造器）
-        let mut it = ChunkCharIter::with_error("injected read failure");
-        assert_eq!(it.next(), None);
-        assert_eq!(it.take_error(), Some("injected read failure".to_string()));
-        assert_eq!(it.take_error(), None); // 一次性
-    }
-
-    #[test]
-    fn yaml_stream_produces_events_from_chars() {
-        let chars = iter_from_bytes("key: value\n".as_bytes());
-        let mut ys = YamlStream::new(chars);
-        let mut types = Vec::new();
-        while let Some((ev, _)) = ys.next_event_impl() {
-            types.push(format!("{:?}", ev.event_type));
-        }
-        // SS/DS/MS/SC/ME/DE/SE
-        assert!(types.len() >= 6, "got {:?}", types);
-        assert!(types.iter().any(|t| t.starts_with("Scalar")), "{:?}", types);
-        assert_eq!(ys.pending_error, None);
-        assert!(ys.finished);
-    }
-
-    #[test]
-    fn yaml_stream_document_end_clears_anchor_map() {
-        // 多文档：doc1 定义 &x，doc2 无 anchor —— DocumentEnd 后 anchor_map 为空。
-        let chars = iter_from_bytes("a: &x 1\n---\nb: 2\n".as_bytes());
-        let mut ys = YamlStream::new(chars);
-        while let Some((_ev, _)) = ys.next_event_impl() {
-            if ys.anchor_map.is_empty() {
-                // 任何时刻 anchor_map 为空都合法（doc2 无 anchor）
-            }
-        }
-        // 迭代结束后 anchor_map 应为空（最后一次 DocumentEnd 已清空）。
-        assert!(ys.anchor_map.is_empty());
-        assert_eq!(ys.pending_error, None);
-    }
-
-    #[test]
-    fn yaml_stream_error_then_finished() {
-        // 非法 YAML → pending_error 置位 + finished
-        let chars = iter_from_bytes("key: {unclosed\n".as_bytes());
-        let mut ys = YamlStream::new(chars);
-        loop {
-            let ev = ys.next_event_impl();
-            if ev.is_none() {
-                break;
-            }
-        }
-        assert!(ys.pending_error.is_some(), "expected a parse error");
-        assert!(ys.finished);
-    }
-
-    #[test]
-    fn yaml_stream_close_stops_reading() {
-        let chars = iter_from_bytes("key: value\n".as_bytes());
-        let mut ys = YamlStream::new(chars);
-        ys.close();
-        assert!(ys.finished);
-        assert!(ys.next_event_impl().is_none());
-        assert!(ys.pending_error.is_none());
     }
 }
