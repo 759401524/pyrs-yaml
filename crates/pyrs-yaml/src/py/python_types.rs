@@ -8,8 +8,21 @@ use super::ndarray::ndarray_to_node;
 use crate::ast::CustomNode;
 
 use indexmap::IndexMap;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyBytesMethods, PyDict, PyList, PyString, PyStringMethods};
+use std::sync::Arc;
+
+/// 将 Python 字符串零拷贝借用后转 `Arc<str>`：`encode_utf8` 产出 UTF-8 `PyBytes`
+/// （单次分配），`Arc::from(&str)` 再拷贝一次 —— 共 2 次分配，与
+/// `extract::<String>`（内部即 `to_cow().into_owned()`）路径持平。
+/// 注：abi3-py38 下 `PyStringMethods::to_str` 被 cfg 禁用，借用必须走 `encode_utf8`。
+fn py_string_to_arc(s: &Bound<'_, PyString>) -> PyResult<Arc<str>> {
+    let bytes = s.encode_utf8()?;
+    let text = std::str::from_utf8(bytes.as_bytes())
+        .map_err(|e| PyValueError::new_err(format!("invalid UTF-8 in Python string: {e}")))?;
+    Ok(Arc::from(text))
+}
 
 /// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None/ndarray。
 pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
@@ -22,8 +35,8 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
     if let Ok(dict) = obj.cast::<PyDict>() {
         let mut pairs = IndexMap::new();
         for (key, value) in dict.iter() {
-            let key_node = if let Ok(key_str) = key.extract::<String>() {
-                CustomNode::plain_scalar(key_str)
+            let key_node = if let Ok(key_str) = key.cast::<PyString>() {
+                CustomNode::plain_scalar(py_string_to_arc(key_str)?)
             } else {
                 pyobject_to_node(py, &key.into_any().unbind())?
             };
@@ -53,8 +66,8 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         return Ok(CustomNode::plain_scalar(f.to_string()));
     }
 
-    if let Ok(s) = obj.extract::<String>() {
-        return Ok(CustomNode::plain_scalar(s));
+    if let Ok(s) = obj.cast::<PyString>() {
+        return Ok(CustomNode::plain_scalar(py_string_to_arc(s)?));
     }
 
     #[cfg(feature = "numpy")]
