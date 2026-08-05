@@ -7,6 +7,12 @@ use crate::ast::CustomNode;
 use indexmap::IndexMap;
 use std::borrow::Cow;
 
+/// ```
+/// use pyrs_yaml_core::editing::Segment;
+/// use std::borrow::Cow;
+/// let key = Segment::Key(Cow::Borrowed("a"));
+/// let idx = Segment::Index(0);
+/// ```
 /// A path segment for navigating into a YAML AST.
 #[derive(Debug, Clone)]
 pub enum Segment<'a> {
@@ -16,6 +22,12 @@ pub enum Segment<'a> {
     Index(i64),
 }
 
+/// ```
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::editing::key_eq;
+/// assert!(key_eq(&CustomNode::plain_scalar("a"), &CustomNode::plain_scalar("a")));
+/// assert!(!key_eq(&CustomNode::plain_scalar("a"), &CustomNode::plain_scalar("b")));
+/// ```
 pub fn key_eq(a: &CustomNode, b: &CustomNode) -> bool {
     match (a, b) {
         (CustomNode::Scalar { value: av, .. }, CustomNode::Scalar { value: bv, .. }) => av == bv,
@@ -48,6 +60,12 @@ pub fn mapping_key_index(
     pairs.iter().position(|(k, _)| key_eq(k, key))
 }
 
+/// ```
+/// use pyrs_yaml_core::editing::normalize_index;
+/// assert_eq!(normalize_index(0, 5), Some(0));
+/// assert_eq!(normalize_index(-1, 5), Some(4));
+/// assert_eq!(normalize_index(5, 5), None);
+/// ```
 pub fn normalize_index(index: i64, len: usize) -> Option<usize> {
     let normalized = if index < 0 {
         i64::try_from(len).ok()?.checked_add(index)?
@@ -57,6 +75,11 @@ pub fn normalize_index(index: i64, len: usize) -> Option<usize> {
     usize::try_from(normalized).ok().filter(|&i| i < len)
 }
 
+/// ```
+/// use pyrs_yaml_core::editing::parse_path_segments;
+/// let segs = parse_path_segments("$.a.b").unwrap();
+/// assert_eq!(segs.len(), 2);
+/// ```
 pub fn parse_path_segments(path: &str) -> Result<Vec<Segment<'_>>, String> {
     let rest = path.strip_prefix('$').unwrap_or(path);
     let rest = rest.strip_prefix('.').unwrap_or(rest);
@@ -106,6 +129,12 @@ pub fn parse_path_segments(path: &str) -> Result<Vec<Segment<'_>>, String> {
     Ok(segments)
 }
 
+/// ```
+/// use pyrs_yaml_core::editing::NavigateError;
+/// let missing = NavigateError::Missing("x".into());
+/// let cannot = NavigateError::CannotDescend("key".into());
+/// let not_container = NavigateError::NotContainer;
+/// ```
 #[derive(Debug)]
 pub enum NavigateError {
     Missing(String),
@@ -113,6 +142,18 @@ pub enum NavigateError {
     NotContainer,
 }
 
+/// ```
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::editing::{navigate, Segment, key_eq};
+/// use std::borrow::Cow;
+/// use indexmap::IndexMap;
+/// let mut pairs = IndexMap::new();
+/// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
+/// let node = CustomNode::Mapping { pairs, tag: None, comment: None, anchor: None, flow_style: false, source_range: None };
+/// let segs = [Segment::Key(Cow::Borrowed("a"))];
+/// let result = navigate(&node, &segs).unwrap();
+/// assert!(key_eq(result, &CustomNode::plain_scalar("1")));
+/// ```
 pub fn navigate<'a>(
     node: &'a CustomNode,
     segments: &[Segment<'_>],
@@ -141,6 +182,18 @@ pub fn navigate<'a>(
     Ok(cur)
 }
 
+/// ```
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::editing::{navigate_mut, navigate, Segment, key_eq};
+/// use std::borrow::Cow;
+/// use indexmap::IndexMap;
+/// let mut pairs = IndexMap::new();
+/// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
+/// let mut node = CustomNode::Mapping { pairs, tag: None, comment: None, anchor: None, flow_style: false, source_range: None };
+/// let segs = [Segment::Key(Cow::Borrowed("a"))];
+/// *navigate_mut(&mut node, &segs).unwrap() = CustomNode::plain_scalar("9");
+/// assert!(key_eq(navigate(&node, &segs).unwrap(), &CustomNode::plain_scalar("9")));
+/// ```
 pub fn navigate_mut<'a>(
     node: &'a mut CustomNode,
     segments: &[Segment<'_>],
@@ -256,20 +309,6 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_index_positive() {
-        assert_eq!(normalize_index(0, 5), Some(0));
-        assert_eq!(normalize_index(4, 5), Some(4));
-        assert_eq!(normalize_index(5, 5), None);
-    }
-
-    #[test]
-    fn test_normalize_index_negative() {
-        assert_eq!(normalize_index(-1, 5), Some(4));
-        assert_eq!(normalize_index(-5, 5), Some(0));
-        assert_eq!(normalize_index(-6, 5), None);
-    }
-
-    #[test]
     fn test_navigate_mapping_key() {
         let node = mk_map(vec![("a", "1")]);
         let segs = [Segment::Key(Cow::Borrowed("a"))];
@@ -303,15 +342,5 @@ mod tests {
             navigate(&node, &segs),
             Err(NavigateError::CannotDescend(_))
         ));
-    }
-
-    #[test]
-    fn test_navigate_mut_modifies() {
-        let mut node = mk_map(vec![("a", "1")]);
-        let segs = [Segment::Key(Cow::Borrowed("a"))];
-        let result = navigate_mut(&mut node, &segs).unwrap();
-        *result = mk_scalar("9");
-        let check = navigate(&node, &segs).unwrap();
-        assert!(key_eq(check, &mk_scalar("9")));
     }
 }

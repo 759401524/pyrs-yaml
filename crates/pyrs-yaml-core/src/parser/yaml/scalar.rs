@@ -12,7 +12,8 @@ use crate::ast::Chomping;
 /// 反转义后的字符串。
 ///
 /// # Examples
-/// ```ignore
+/// ```rust
+/// use pyrs_yaml_core::parser::yaml::scalar::unescape_double_quoted;
 /// assert_eq!(unescape_double_quoted(r#"hello\nworld"#), "hello\nworld");
 /// assert_eq!(unescape_double_quoted(r"\u0041"), "A");
 /// ```

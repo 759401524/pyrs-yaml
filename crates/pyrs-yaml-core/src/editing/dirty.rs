@@ -6,6 +6,13 @@
 use std::ops::Range;
 
 /// Describes the kind of edit operation to apply.
+///
+/// ```
+/// use pyrs_yaml_core::editing::DirtyKind;
+/// let insert = DirtyKind::Insert { at: 5, text: "hello".into() };
+/// let region = DirtyKind::Region { range: 0..5, indent: 2, text: "abc".into() };
+/// let delete = DirtyKind::Delete { range: 3..7 };
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum DirtyKind {
     /// Replace a range of original text with new text.
@@ -21,6 +28,12 @@ pub enum DirtyKind {
 }
 
 /// A single edit unit with eligibility information.
+///
+/// ```
+/// use pyrs_yaml_core::editing::{DirtyKind, DirtyUnit};
+/// let unit = DirtyUnit { kind: DirtyKind::Insert { at: 0, text: "".into() }, eligible: true };
+/// assert!(unit.eligible);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct DirtyUnit {
     pub kind: DirtyKind,

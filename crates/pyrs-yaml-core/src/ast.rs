@@ -319,8 +319,8 @@ impl CustomNode {
     /// 返回一个 `CustomNode::Scalar` 变体，所有元数据字段为 `None`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::CustomNode;
+    /// ```rust
+    /// use pyrs_yaml_core::ast::CustomNode;
     ///
     /// let node = CustomNode::plain_scalar("hello");
     /// assert_eq!(node.comment(), None);
@@ -348,8 +348,8 @@ impl CustomNode {
     /// 返回一个 `CustomNode::Scalar` 变体，style 为 `SingleQuoted`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::CustomNode;
+    /// ```rust
+    /// use pyrs_yaml_core::ast::CustomNode;
     ///
     /// // YAML 输出: '-100'
     /// let node = CustomNode::quoted_scalar("-100");
@@ -377,8 +377,8 @@ impl CustomNode {
     /// 返回一个 `CustomNode::Mapping` 变体，`flow_style` 为 `false`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::CustomNode;
+    /// ```rust
+    /// use pyrs_yaml_core::ast::CustomNode;
     /// use indexmap::IndexMap;
     ///
     /// let mut pairs = IndexMap::new();
@@ -405,8 +405,8 @@ impl CustomNode {
     /// 返回一个 `CustomNode::Sequence` 变体，`flow_style` 为 `false`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::CustomNode;
+    /// ```rust
+    /// use pyrs_yaml_core::ast::CustomNode;
     ///
     /// let items = vec![CustomNode::plain_scalar("a"), CustomNode::plain_scalar("b")];
     /// let node = CustomNode::plain_sequence(items);
@@ -428,8 +428,8 @@ impl CustomNode {
     /// 返回一个 `CustomNode::Null` 变体，所有元数据字段为 `None`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::CustomNode;
+    /// ```rust
+    /// use pyrs_yaml_core::ast::CustomNode;
     ///
     /// let node = CustomNode::plain_null();
     /// assert!(matches!(node, CustomNode::Null { .. }));
@@ -450,8 +450,8 @@ impl CustomNode {
     /// `Alias` 变体始终返回 `None`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::{CustomNode, Comment};
+    /// ```rust
+    /// use pyrs_yaml_core::ast::{CustomNode, Comment};
     ///
     /// let mut node = CustomNode::plain_scalar("value");
     /// assert_eq!(node.comment(), None);
@@ -476,8 +476,8 @@ impl CustomNode {
     /// 对 `Alias` 变体调用此方法是空操作。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::{CustomNode, Comment};
+    /// ```rust
+    /// use pyrs_yaml_core::ast::{CustomNode, Comment};
     ///
     /// let mut node = CustomNode::plain_scalar("hello");
     /// node.set_comment(Comment { text: "greeting".into(), standalone: false });
@@ -532,16 +532,16 @@ impl CustomNode {
     /// `Alias` 变体始终返回 `None`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::CustomNode;
+    /// ```rust
+    /// use pyrs_yaml_core::ast::{CustomNode, ScalarStyle, Chomping};
     ///
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
-    ///     style: Default::default(),
+    ///     style: ScalarStyle::Plain,
     ///     comment: None,
     ///     anchor: Some("my_anchor".into()),
     ///     tag: None,
-    ///     chomping: Default::default(),
+    ///     chomping: Chomping::Clip,
     ///     source_range: None,
     /// };
     /// assert_eq!(node.anchor(), Some("my_anchor"));
@@ -563,16 +563,16 @@ impl CustomNode {
     /// `Alias` 变体始终返回 `None`。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::{CustomNode, Tag};
+    /// ```rust
+    /// use pyrs_yaml_core::ast::{CustomNode, Tag, ScalarStyle, Chomping};
     ///
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
-    ///     style: Default::default(),
+    ///     style: ScalarStyle::Plain,
     ///     comment: None,
     ///     anchor: None,
     ///     tag: Some(Tag::primary("int")),
-    ///     chomping: Default::default(),
+    ///     chomping: Chomping::Clip,
     ///     source_range: None,
     /// };
     /// assert_eq!(node.tag().unwrap().suffix, "int");
@@ -595,8 +595,8 @@ impl CustomNode {
     /// 对 `Alias` 变体调用此方法是空操作。
     ///
     /// # Examples
-    /// ```ignore
-    /// use pyrs_yaml::ast::{CustomNode, Tag};
+    /// ```rust
+    /// use pyrs_yaml_core::ast::{CustomNode, Tag};
     ///
     /// let mut node = CustomNode::plain_scalar("42");
     /// node.set_tag(Tag::primary("int"));

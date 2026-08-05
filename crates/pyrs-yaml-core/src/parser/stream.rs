@@ -327,7 +327,8 @@ where
 /// Failure: a `ParseErrorDetail` with line/column information.
 ///
 /// # Examples
-/// ```ignore
+/// ```rust
+/// use pyrs_yaml_core::parser::stream::parse_stream;
 /// let events = parse_stream("key: value").unwrap();
 /// assert!(!events.is_empty());
 /// ```
