@@ -67,6 +67,23 @@ class TestSetPath:
         doc._set_path(["c"], 7)
         assert doc.to_yaml() == "a: 9\nb: 2\nc: 7\n"
 
+    def test_splice_state_eligibility_lazy_cached(self):
+        """Splice state is lazily initialized and cached."""
+        yaml = "a: 1\nb: 2\n"
+        doc = pyrs_yaml.parse(yaml)
+        doc._set_path(["a"], 9)
+        assert doc.to_yaml() == "a: 9\nb: 2\n"
+
+    def test_splice_ineligible_crlf_doc(self):
+        """CRLF documents are not splice-eligible (fall back to full serialize)."""
+
+        yaml = "a: 1\r\nb: 2\r\n"
+        doc = pyrs_yaml.parse(yaml)
+        doc._set_path(["a"], 9)
+        result = doc.to_yaml()
+        assert "a: 9" in result
+        assert "b: 2" in result
+
     def test_set_method_create_missing(self):
         doc = pyrs_yaml.parse("a: 1\n")
         doc.set("$.b.c.d", 2, create_missing=True)

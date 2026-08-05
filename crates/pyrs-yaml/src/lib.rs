@@ -8,9 +8,6 @@ pub use pyrs_yaml_core::*;
 
 pub mod py;
 
-#[cfg(test)]
-pub mod fidelity;
-
 // PyO3 exception types
 pyo3::create_exception!(pyrs_yaml, YamlParseError, pyo3::exceptions::PyValueError);
 pyo3::create_exception!(
