@@ -527,3 +527,41 @@ fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
         state.materialize();
     });
 }
+
+// ── D4: Walk/Scalars benchmarks (Rust-backed AST traversal) ──
+
+#[divan::bench]
+fn walk_small(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::ast::walk(&ast));
+}
+
+#[divan::bench]
+fn scalars_small(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::ast::scalars(&ast));
+}
+
+#[divan::bench]
+fn walk_medium(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::ast::walk(&ast));
+}
+
+#[divan::bench]
+fn scalars_medium(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::ast::scalars(&ast));
+}
+
+#[divan::bench]
+fn walk_large(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::ast::walk(&ast));
+}
+
+#[divan::bench]
+fn scalars_large(bencher: divan::Bencher) {
+    let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
+    bencher.bench(|| pyrs_yaml::ast::scalars(&ast));
+}

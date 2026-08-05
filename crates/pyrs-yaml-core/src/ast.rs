@@ -225,6 +225,92 @@ impl Hash for CustomNode {
     }
 }
 
+/// Depth-first pre-order traversal yielding paths as `&[&CustomNode]`.
+///
+/// # Example
+///
+/// ```rust
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::ast::walk;
+///
+/// let node = CustomNode::plain_scalar("hello");
+/// let paths = walk(&node);
+/// assert_eq!(paths.len(), 1);
+/// ```
+pub fn walk(node: &CustomNode) -> Vec<Vec<&CustomNode>> {
+    let mut paths = Vec::new();
+    fn collect<'a>(
+        node: &'a CustomNode,
+        path: &mut Vec<&'a CustomNode>,
+        out: &mut Vec<Vec<&'a CustomNode>>,
+    ) {
+        path.push(node);
+        out.push(path.clone());
+        match node {
+            CustomNode::Mapping { pairs, .. } => {
+                for (_, v) in pairs.iter() {
+                    collect(v, path, out);
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                for item in items.iter() {
+                    collect(item, path, out);
+                }
+            }
+            _ => {}
+        }
+        path.pop();
+    }
+    collect(node, &mut Vec::new(), &mut paths);
+    paths
+}
+
+/// Depth-first pre-order traversal yielding only scalar/null paths.
+///
+/// # Example
+///
+/// ```rust
+/// use pyrs_yaml_core::ast::CustomNode;
+/// use pyrs_yaml_core::ast::scalars;
+///
+/// let node = CustomNode::plain_scalar("hello");
+/// let paths = scalars(&node);
+/// assert_eq!(paths.len(), 1);
+/// ```
+pub fn scalars(node: &CustomNode) -> Vec<Vec<&CustomNode>> {
+    let mut paths = Vec::new();
+    fn collect<'a>(
+        node: &'a CustomNode,
+        path: &mut Vec<&'a CustomNode>,
+        out: &mut Vec<Vec<&'a CustomNode>>,
+    ) {
+        match node {
+            CustomNode::Scalar { .. } | CustomNode::Null { .. } => {
+                path.push(node);
+                out.push(path.clone());
+                path.pop();
+            }
+            CustomNode::Mapping { pairs, .. } => {
+                path.push(node);
+                for (_, v) in pairs.iter() {
+                    collect(v, path, out);
+                }
+                path.pop();
+            }
+            CustomNode::Sequence { items, .. } => {
+                path.push(node);
+                for item in items.iter() {
+                    collect(item, path, out);
+                }
+                path.pop();
+            }
+            _ => {}
+        }
+    }
+    collect(node, &mut Vec::new(), &mut paths);
+    paths
+}
+
 impl PartialEq for CustomNode {
     /// Equality is structural: `source_range` (byte provenance) is excluded so that
     /// programmatically-built nodes (`source_range: None`) match parsed nodes (`Some(..)`),
