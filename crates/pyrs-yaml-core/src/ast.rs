@@ -2,6 +2,7 @@ use indexmap::IndexMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
+use std::sync::Arc;
 
 /// Scalar style preservation for round-trip support
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,7 +111,7 @@ impl Hash for Tag {
 #[derive(Debug, Clone, Eq)]
 pub enum CustomNode {
     Scalar {
-        value: String,
+        value: Arc<str>,
         style: ScalarStyle,
         comment: Option<Comment>,
         anchor: Option<String>,
@@ -411,7 +412,7 @@ impl CustomNode {
     /// let node = CustomNode::plain_scalar("hello");
     /// assert_eq!(node.comment(), None);
     /// ```
-    pub fn plain_scalar(value: impl Into<String>) -> Self {
+    pub fn plain_scalar(value: impl Into<Arc<str>>) -> Self {
         CustomNode::Scalar {
             value: value.into(),
             style: ScalarStyle::Plain,
@@ -440,7 +441,7 @@ impl CustomNode {
     /// // YAML 输出: '-100'
     /// let node = CustomNode::quoted_scalar("-100");
     /// ```
-    pub fn quoted_scalar(value: impl Into<String>) -> Self {
+    pub fn quoted_scalar(value: impl Into<Arc<str>>) -> Self {
         CustomNode::Scalar {
             value: value.into(),
             style: ScalarStyle::SingleQuoted,
@@ -708,7 +709,7 @@ mod tests {
     #[test]
     fn test_scalar_creation() {
         let node = CustomNode::Scalar {
-            value: "hello".to_string(),
+            value: Arc::from("hello"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -724,7 +725,7 @@ mod tests {
     #[test]
     fn test_scalar_with_tag() {
         let node = CustomNode::Scalar {
-            value: "42".to_string(),
+            value: Arc::from("42"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -738,7 +739,7 @@ mod tests {
     #[test]
     fn test_scalar_with_comment() {
         let node = CustomNode::Scalar {
-            value: "world".to_string(),
+            value: Arc::from("world"),
             style: ScalarStyle::DoubleQuoted,
             comment: Some(Comment {
                 text: "a greeting".to_string(),
@@ -756,7 +757,7 @@ mod tests {
     #[test]
     fn test_mapping_preserves_order() {
         let key1 = CustomNode::Scalar {
-            value: "b".to_string(),
+            value: Arc::from("b"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -765,7 +766,7 @@ mod tests {
             source_range: None,
         };
         let key2 = CustomNode::Scalar {
-            value: "a".to_string(),
+            value: Arc::from("a"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,
@@ -774,7 +775,7 @@ mod tests {
             source_range: None,
         };
         let val = CustomNode::Scalar {
-            value: "1".to_string(),
+            value: Arc::from("1"),
             style: ScalarStyle::Plain,
             comment: None,
             anchor: None,

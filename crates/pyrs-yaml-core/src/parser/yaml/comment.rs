@@ -12,14 +12,48 @@ use crate::ast::Comment;
 /// A vector of byte offsets, one per line. The length is `number_of_lines + 1`
 /// (the extra entry is the offset past the final character, for convenience).
 pub fn compute_line_offsets(yaml: &str) -> Vec<usize> {
+    scan_yaml(yaml).line_offsets
+}
+
+/// Result of a single full-text scan over the input.
+///
+/// Collects everything the parser needs from the raw text in one pass,
+/// avoiding separate `contains('#')`/`contains('&')`/`is_ascii()`/line-offset
+/// traversals (4 full scans on comment-free documents before the parser runs).
+#[derive(Debug)]
+pub struct YamlScan {
+    /// Byte offset of the start of each line (`len = lines + 1`).
+    pub line_offsets: Vec<usize>,
+    /// Whether the text contains a `#` (possible comment).
+    pub has_hash: bool,
+    /// Whether the text contains an `&` (possible anchor).
+    pub has_amp: bool,
+    /// Whether the text is entirely ASCII.
+    pub is_ascii: bool,
+}
+
+/// Single pass over `yaml` collecting line offsets and marker presence.
+pub fn scan_yaml(yaml: &str) -> YamlScan {
     let mut offsets = Vec::with_capacity(yaml.len() / 16 + 1);
     offsets.push(0);
+    let mut has_hash = false;
+    let mut has_amp = false;
+    let mut is_ascii = true;
     for (i, byte) in yaml.bytes().enumerate() {
-        if byte == b'\n' {
-            offsets.push(i + 1);
+        match byte {
+            b'\n' => offsets.push(i + 1),
+            b'#' => has_hash = true,
+            b'&' => has_amp = true,
+            0x00..=0x7f => {}
+            _ => is_ascii = false,
         }
     }
-    offsets
+    YamlScan {
+        line_offsets: offsets,
+        has_hash,
+        has_amp,
+        is_ascii,
+    }
 }
 
 /// 从原始 YAML 文本中提取的注释信息。

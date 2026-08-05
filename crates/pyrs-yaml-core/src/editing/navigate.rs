@@ -164,7 +164,7 @@ pub fn navigate<'a>(
             (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => pairs
                 .iter()
                 .find(|(knode, _)| match knode {
-                    CustomNode::Scalar { value, .. } => value == k.as_ref(),
+                    CustomNode::Scalar { value, .. } => value.as_ref() == k.as_ref(),
                     _ => false,
                 })
                 .map(|(_, v)| v)
