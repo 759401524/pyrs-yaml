@@ -22,7 +22,7 @@ use saphyr_parser::{
 };
 use std::ops::Range;
 use yaml::{
-    compute_line_offsets, detect_chomping, extract_anchors, extract_comments, resolve_merge_keys,
+    compute_line_offsets, detect_chomping, extract_comments_and_anchors, resolve_merge_keys,
     unescape_double_quoted, CommentAnchorTracker, RawAnchor, RawComment,
 };
 
@@ -89,9 +89,14 @@ pub fn parse_with_options(
         return Ok(CustomNode::plain_null());
     }
 
-    // Extract comments and anchors from raw text before parsing
-    let raw_comments = extract_comments(yaml);
-    let raw_anchors = extract_anchors(yaml);
+    // Extract comments and anchors from raw text before parsing. Fast path:
+    // a comment requires a `#` and an anchor requires an `&`, so a text with
+    // neither contains no comments or anchors and the full scan is skipped.
+    let (raw_comments, raw_anchors) = if !yaml.contains('#') && !yaml.contains('&') {
+        (Vec::new(), Vec::new())
+    } else {
+        extract_comments_and_anchors(yaml)
+    };
 
     // Parse YAML using saphyr-parser
     let mut receiver = AstReceiver::new(
@@ -166,8 +171,11 @@ pub fn parse_all_with_options(
         return Ok(Vec::new());
     }
 
-    let raw_comments = extract_comments(yaml);
-    let raw_anchors = extract_anchors(yaml);
+    let (raw_comments, raw_anchors) = if !yaml.contains('#') && !yaml.contains('&') {
+        (Vec::new(), Vec::new())
+    } else {
+        extract_comments_and_anchors(yaml)
+    };
 
     let mut receiver = AstReceiver::new(
         yaml,

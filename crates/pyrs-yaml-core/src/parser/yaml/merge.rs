@@ -5,12 +5,31 @@ use std::collections::HashMap;
 /// Resolve merge keys (<<) in a YAML AST
 /// This replaces <<: *alias entries with the actual values from the referenced mapping
 pub fn resolve_merge_keys(node: &mut CustomNode) {
+    // Fast path: no merge key present anywhere, skip anchor collection entirely
+    if !has_merge_key(node) {
+        return;
+    }
     // First, collect all anchor names and their mappings
     let mut anchors: HashMap<String, IndexMap<CustomNode, CustomNode>> = HashMap::new();
     collect_anchor_mappings(node, &mut anchors);
 
     // Then, resolve merge keys
     resolve_merges_recursive(node, &anchors);
+}
+
+/// Return true if any mapping in the tree has a `<<` merge key.
+fn has_merge_key(node: &CustomNode) -> bool {
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            let merge_key = CustomNode::plain_scalar("<<");
+            if pairs.contains_key(&merge_key) {
+                return true;
+            }
+            pairs.values().any(has_merge_key)
+        }
+        CustomNode::Sequence { items, .. } => items.iter().any(has_merge_key),
+        _ => false,
+    }
 }
 
 /// Recursively resolve merge keys in a node

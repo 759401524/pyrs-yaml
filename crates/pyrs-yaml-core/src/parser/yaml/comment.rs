@@ -133,44 +133,7 @@ pub struct RawAnchor {
 /// # Returns
 /// 按行号和列号排序的 `RawComment` 列表。
 pub fn extract_comments(yaml: &str) -> Vec<RawComment> {
-    let mut comments = Vec::new();
-
-    for (line_idx, line) in yaml.lines().enumerate() {
-        let mut in_single_quote = false;
-        let mut in_double_quote = false;
-        let mut escaped = false;
-
-        for (col_idx, ch) in line.char_indices() {
-            if escaped {
-                escaped = false;
-                continue;
-            }
-            if ch == '\\' && (in_single_quote || in_double_quote) {
-                escaped = true;
-                continue;
-            }
-            if ch == '\'' && !in_double_quote {
-                in_single_quote = !in_single_quote;
-                continue;
-            }
-            if ch == '"' && !in_single_quote {
-                in_double_quote = !in_double_quote;
-                continue;
-            }
-            if ch == '#' && !in_single_quote && !in_double_quote {
-                let comment_text = line.get(col_idx + 1..).unwrap_or("").trim().to_string();
-                let is_standalone = line.get(..col_idx).unwrap_or("").trim().is_empty();
-                comments.push(RawComment {
-                    line: line_idx,
-                    col: col_idx,
-                    text: comment_text,
-                    standalone: is_standalone,
-                });
-                break;
-            }
-        }
-    }
-
+    let (comments, _) = extract_comments_and_anchors(yaml);
     comments
 }
 
@@ -191,6 +154,19 @@ fn is_valid_anchor_char(c: char) -> bool {
 /// # Returns
 /// 按出现顺序排列的 `RawAnchor` 列表。
 pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
+    let (_, anchors) = extract_comments_and_anchors(yaml);
+    anchors
+}
+
+/// 单遍扫描：同时提取注释和锚点定义。
+///
+/// 两遍独立扫描（`extract_comments` + `extract_anchors`）共享相同的
+/// 引号/转义状态机，合并为一次遍历可省掉一次全文扫描。
+///
+/// # Returns
+/// `(RawComment 列表, RawAnchor 列表)`。
+pub fn extract_comments_and_anchors(yaml: &str) -> (Vec<RawComment>, Vec<RawAnchor>) {
+    let mut comments = Vec::new();
     let mut anchors = Vec::new();
 
     for (line_idx, line) in yaml.lines().enumerate() {
@@ -199,10 +175,21 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
         let mut escaped = false;
 
         for (col_idx, ch) in line.char_indices() {
-            if is_string_char(&mut in_single_quote, &mut in_double_quote, &mut escaped, ch) {
-                continue;
+            // 注释提取：遇到引号外的 `#` 记录注释并停止本行注释检测
+            if !in_single_quote && !in_double_quote && ch == '#' {
+                let comment_text = line.get(col_idx + 1..).unwrap_or("").trim().to_string();
+                let is_standalone = line.get(..col_idx).unwrap_or("").trim().is_empty();
+                comments.push(RawComment {
+                    line: line_idx,
+                    col: col_idx,
+                    text: comment_text,
+                    standalone: is_standalone,
+                });
+                // 与 extract_comments 行为一致：第一个 `#` 后即本行注释尾部
+                break;
             }
-            if ch == '&' && !in_single_quote && !in_double_quote {
+            // 锚点提取：与 extract_anchors 行为一致，引号外 `&` 视为锚点
+            if !in_single_quote && !in_double_quote && ch == '&' {
                 let rest = &line[col_idx + 1..];
                 if let Some(anchor_name) = scan_anchor_name(rest) {
                     anchors.push(RawAnchor {
@@ -212,10 +199,13 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
                     });
                 }
             }
+            if is_string_char(&mut in_single_quote, &mut in_double_quote, &mut escaped, ch) {
+                continue;
+            }
         }
     }
 
-    anchors
+    (comments, anchors)
 }
 
 /// Advance quote/escape state machine for a single character.
