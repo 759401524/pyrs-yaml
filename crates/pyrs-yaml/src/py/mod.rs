@@ -155,7 +155,7 @@ mod pyrs_yaml {
         Ok(YamlDocument {
             ast,
             schema: schema_enum,
-            source: Some(source.clone()),
+            source: Some(source),
             version: "1.2".to_string(),
             revision: 0,
             source_dirty: false,
@@ -167,6 +167,10 @@ mod pyrs_yaml {
 
     fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) -> PyResult<()> {
         use self::tag_registry::get_handlers;
+        // Fast path: no handlers registered, skip the whole AST traversal
+        if self::tag_registry::is_empty() {
+            return Ok(());
+        }
         match node {
             crate::ast::CustomNode::Scalar {
                 tag: Some(t),

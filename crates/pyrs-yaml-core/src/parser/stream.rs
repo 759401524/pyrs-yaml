@@ -1,6 +1,6 @@
 use crate::ast::{Comment, ScalarStyle, Tag};
 use crate::parser::yaml::{
-    compute_line_offsets, extract_anchors, extract_comments, unescape_double_quoted,
+    compute_line_offsets, extract_comments_and_anchors, unescape_double_quoted,
     CommentAnchorTracker,
 };
 use saphyr_parser::{
@@ -93,13 +93,15 @@ pub struct StreamReceiver<'a> {
 
 impl<'a> StreamReceiver<'a> {
     fn new(yaml_text: &'a str) -> Self {
+        let (comments, anchors) = if !yaml_text.contains('#') && !yaml_text.contains('&') {
+            (Vec::new(), Vec::new())
+        } else {
+            extract_comments_and_anchors(yaml_text)
+        };
         Self {
             yaml_text,
             line_offsets: compute_line_offsets(yaml_text),
-            comment_anchor_tracker: CommentAnchorTracker::new(
-                extract_comments(yaml_text),
-                extract_anchors(yaml_text),
-            ),
+            comment_anchor_tracker: CommentAnchorTracker::new(comments, anchors),
             events: Vec::new(),
             pending_standalone_comment: None,
             anchors: HashMap::new(),

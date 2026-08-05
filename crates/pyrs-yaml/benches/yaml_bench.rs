@@ -135,6 +135,128 @@ folded: >
   a single line.
 "#;
 
+/// LARGE_YAML with the two comment lines removed. No `#`, no `&`:
+/// exercises the extraction fast path (skips the full-text scan).
+const LARGE_NO_EXTRACT_YAML: &str = r#"
+items:
+  - name: item_001
+    value: 100
+    tags: [alpha, beta]
+    metadata:
+      created: 2024-01-01
+      author: test
+  - name: item_002
+    value: 200
+    tags: [gamma, delta]
+    metadata:
+      created: 2024-01-02
+      author: test
+  - name: item_003
+    value: 300
+    tags: [epsilon, zeta]
+    metadata:
+      created: 2024-01-03
+      author: test
+  - name: item_004
+    value: 400
+    tags: [eta, theta]
+    metadata:
+      created: 2024-01-04
+      author: test
+  - name: item_005
+    value: 500
+    tags: [iota, kappa]
+    metadata:
+      created: 2024-01-05
+      author: test
+
+config:
+  debug: false
+  verbose: true
+  limits:
+    max_connections: 100
+    request_timeout: 30
+    idle_timeout: 300
+
+database:
+  primary:
+    host: primary.db.local
+    port: 5432
+    replicas:
+      - host: replica1.db.local
+        port: 5433
+      - host: replica2.db.local
+        port: 5434
+  cache:
+    host: cache.db.local
+    port: 6379
+    ttl: 3600
+"#;
+
+/// LARGE_YAML with a defaults anchor + merge keys added: exercises the
+/// full merge resolution path (contrast with parse_large fast path).
+const LARGE_MERGE_YAML: &str = r#"
+defaults: &defaults
+  timeout: 30
+  retries: 3
+  pool_size: 10
+
+items:
+  - name: item_001
+    value: 100
+    tags: [alpha, beta]
+    metadata:
+      created: 2024-01-01
+      author: test
+  - name: item_002
+    value: 200
+    tags: [gamma, delta]
+    metadata:
+      created: 2024-01-02
+      author: test
+  - name: item_003
+    value: 300
+    tags: [epsilon, zeta]
+    metadata:
+      created: 2024-01-03
+      author: test
+  - name: item_004
+    value: 400
+    tags: [eta, theta]
+    metadata:
+      created: 2024-01-04
+      author: test
+  - name: item_005
+    value: 500
+    tags: [iota, kappa]
+    metadata:
+      created: 2024-01-05
+      author: test
+
+config:
+  <<: *defaults
+  debug: false
+  verbose: true
+  limits:
+    max_connections: 100
+    request_timeout: 30
+    idle_timeout: 300
+
+database:
+  primary:
+    host: primary.db.local
+    port: 5432
+    replicas:
+      - host: replica1.db.local
+        port: 5433
+      - host: replica2.db.local
+        port: 5434
+  cache:
+    host: cache.db.local
+    port: 6379
+    ttl: 3600
+"#;
+
 fn main() {
     divan::main();
 }
@@ -169,6 +291,18 @@ fn parse_comments() -> pyrs_yaml::ast::CustomNode {
 #[divan::bench]
 fn parse_block_scalars() -> pyrs_yaml::ast::CustomNode {
     pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap()
+}
+
+/// No `#`/`&` — extraction fast path avoids the full-text scan.
+#[divan::bench]
+fn parse_large_no_extract() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(LARGE_NO_EXTRACT_YAML, YamlSchema::Core).unwrap()
+}
+
+/// Has `<<` merges — exercises the full merge resolution path.
+#[divan::bench]
+fn parse_large_with_merges() -> pyrs_yaml::ast::CustomNode {
+    pyrs_yaml::parser::parse(LARGE_MERGE_YAML, YamlSchema::Core).unwrap()
 }
 
 // ── Serialize benchmarks (setup separate from measurement) ──

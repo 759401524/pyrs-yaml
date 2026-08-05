@@ -5,8 +5,8 @@ pub mod schema;
 pub mod types;
 
 pub use comment::{
-    compute_line_offsets, extract_anchors, extract_comments, CommentAnchorTracker, RawAnchor,
-    RawComment,
+    compute_line_offsets, extract_anchors, extract_comments, extract_comments_and_anchors,
+    CommentAnchorTracker, RawAnchor, RawComment,
 };
 pub use merge::resolve_merge_keys;
 pub use scalar::{detect_chomping, unescape_double_quoted};

@@ -35,6 +35,14 @@ pub fn clear_all() {
     *guard = None;
 }
 
+/// Cheap check whether any tag handlers are registered.
+pub fn is_empty() -> bool {
+    let Ok(guard) = TAG_REGISTRY.lock() else {
+        return true;
+    };
+    guard.as_ref().is_none_or(|map| map.is_empty())
+}
+
 pub fn remove(name: &str) {
     let Ok(mut guard) = TAG_REGISTRY.lock() else {
         return;
