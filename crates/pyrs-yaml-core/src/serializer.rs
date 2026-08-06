@@ -480,6 +480,15 @@ impl Serializer {
             self.serialize_node_internal(key, indent_width, false, false, depth + 1)?;
         } else {
             // Simple key
+            // Handle standalone comments before the key
+            if let Some(comment) = key.comment() {
+                if comment.standalone {
+                    self.write_indent(indent_width);
+                    self.output.push_str("# ");
+                    self.output.push_str(&comment.text);
+                    self.output.push('\n');
+                }
+            }
             self.write_indent(indent_width);
             self.write_scalar_for_key(key);
         }
@@ -1121,5 +1130,36 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(to_yaml_with_options(&node, &options).unwrap(), "  a: 1\n");
+    }
+
+    #[test]
+    fn test_standalone_comment_before_simple_key() {
+        let yaml = "a: 1\n# c1\nb: 2\n";
+        let ast = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        assert_eq!(crate::serializer::to_yaml(&ast), "a: 1\n# c1\nb: 2\n");
+    }
+
+    #[test]
+    fn test_standalone_comment_before_nested_key() {
+        let yaml = "top:\n  x: 1\n  # c2\n  y: 2\n";
+        let ast = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::serializer::to_yaml(&ast),
+            "top:\n  x: 1\n  # c2\n  y: 2\n"
+        );
     }
 }
