@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-yaml-core"
-version = "0.11.7"
+version = "0.12.1"
 edition = "2021"
 description = "Core YAML engine — pure Rust, no Python dependencies"
 license = "MIT OR Apache-2.0"

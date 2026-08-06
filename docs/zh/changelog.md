@@ -12,24 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Parse hot paths** - single-pass comment/anchor extraction, lazy
-  duplicate-key detection, `shift_insert` merge prepending, and skipped
-  `DocumentEnd` deep-clone for single-document parses cut large-document
-  parse cost ~19% (CodSpeed: parse[large] +13.9%, parse[medium] +16.6%,
-  roundtrip[large] +12.2%).
-- **`Arc<str>` scalar storage** - `CustomNode::Scalar` and comment/event
-  text share allocations via `Arc<str>`; AST nodes shrink 8 bytes and
-  clones become refcount bumps instead of deep copies.
-
-### Fixed
-
-- **Standalone comments before simple mapping keys** - round-trip
-  previously dropped standalone comments attached to simple-key nodes;
-  now preserved (two regression tests).
-
-## [v0.12.0] — 2026-08-05
+## [v0.12.1] — 2026-08-06
 
 ### Added
 
@@ -56,6 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed.
 - **pyproject.toml** - added `tool.maturin.manifest-path` pointing to
   `crates/pyrs-yaml/Cargo.toml`.
+- **Parse hot paths** - single-pass comment/anchor extraction, lazy
+  duplicate-key detection, `shift_insert` merge prepending, and skipped
+  `DocumentEnd` deep-clone for single-document parses cut large-document
+  parse cost ~19% (CodSpeed: parse[large] +13.9%, parse[medium] +16.6%,
+  roundtrip[large] +12.2%).
+- **`Arc<str>` scalar storage** - `CustomNode::Scalar` and comment/event
+  text share allocations via `Arc<str>`; AST nodes shrink 8 bytes and
+  clones become refcount bumps instead of deep copies.
 
 ### Fixed
 
@@ -64,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`set(create_missing=True)` eligibility** - freshly created keys are now
   eligible for the value write (the eligibility check no longer runs after
   the synthetic pair is inserted).
+- **Standalone comments before simple mapping keys** - round-trip
+  previously dropped standalone comments attached to simple-key nodes;
+  now preserved (two regression tests).
 
 ## [0.11.7] - 2026-08-04
 
