@@ -47,7 +47,7 @@ impl Hash for ScalarStyle {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comment {
     /// The comment text (without # prefix)
-    pub text: String,
+    pub text: Arc<str>,
     /// Whether this is a standalone line comment (true) or line-end comment (false)
     pub standalone: bool,
 }
@@ -742,7 +742,7 @@ mod tests {
             value: Arc::from("world"),
             style: ScalarStyle::DoubleQuoted,
             comment: Some(Comment {
-                text: "a greeting".to_string(),
+                text: Arc::from("a greeting"),
                 standalone: false,
             }),
             anchor: None,
@@ -750,7 +750,7 @@ mod tests {
             chomping: Chomping::Clip,
             source_range: None,
         };
-        assert_eq!(node.comment().unwrap().text, "a greeting");
+        assert_eq!(node.comment().unwrap().text.as_ref(), "a greeting");
         assert!(!node.comment().unwrap().standalone);
     }
 

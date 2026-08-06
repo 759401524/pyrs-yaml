@@ -124,7 +124,7 @@ pub fn stream_event_to_py_dict<'a>(
                 &dict,
                 py,
                 "comment",
-                Some(text),
+                Some(text.as_ref()),
                 Some(style_str),
                 None,
                 None,

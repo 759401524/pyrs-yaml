@@ -1,5 +1,7 @@
 use crate::ast::Comment;
 
+use std::sync::Arc;
+
 /// Pre-compute the byte offset of the start of each line in the given text.
 ///
 /// The returned vector has one entry per line, where `line_offsets[line]`
@@ -64,7 +66,7 @@ pub struct RawComment {
     /// 注释起始列（0 起始，`#` 字符的位置）
     pub col: usize,
     /// 注释文本（不含 `#` 前缀和前导空格）
-    pub text: String,
+    pub text: Arc<str>,
     /// `true` 表示独立行注释（行首仅有注释），`false` 表示行尾注释
     pub standalone: bool,
 }
@@ -211,7 +213,7 @@ pub fn extract_comments_and_anchors(yaml: &str) -> (Vec<RawComment>, Vec<RawAnch
         for (col_idx, ch) in line.char_indices() {
             // 注释提取：遇到引号外的 `#` 记录注释并停止本行注释检测
             if !in_single_quote && !in_double_quote && ch == '#' {
-                let comment_text = line.get(col_idx + 1..).unwrap_or("").trim().to_string();
+                let comment_text = Arc::from(line.get(col_idx + 1..).unwrap_or("").trim());
                 let is_standalone = line.get(..col_idx).unwrap_or("").trim().is_empty();
                 comments.push(RawComment {
                     line: line_idx,
@@ -312,7 +314,7 @@ mod tests {
         let yaml = "key: value  # comment";
         let comments = extract_comments(yaml);
         assert_eq!(comments.len(), 1);
-        assert_eq!(comments[0].text, "comment");
+        assert_eq!(comments[0].text.as_ref(), "comment");
         assert!(!comments[0].standalone);
         assert_eq!(comments[0].line, 0);
     }
@@ -322,7 +324,7 @@ mod tests {
         let yaml = "# standalone\nkey: value";
         let comments = extract_comments(yaml);
         assert_eq!(comments.len(), 1);
-        assert_eq!(comments[0].text, "standalone");
+        assert_eq!(comments[0].text.as_ref(), "standalone");
         assert!(comments[0].standalone);
         assert_eq!(comments[0].line, 0);
     }
