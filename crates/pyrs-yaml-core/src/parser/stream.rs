@@ -6,6 +6,7 @@ use saphyr_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Line and column information for a YAML stream event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,7 +68,7 @@ pub enum StreamEventType {
     /// A comment line or inline comment.
     Comment {
         /// The comment text (without the `#` prefix and leading space).
-        text: String,
+        text: Arc<str>,
         /// Whether this is a standalone line comment (`true`) or an inline
         /// comment at the end of a line (`false`).
         standalone: bool,
@@ -474,7 +475,7 @@ mod tests {
             .collect();
         assert!(!comment_events.is_empty());
         if let StreamEventType::Comment { text, standalone } = &comment_events[0].event_type {
-            assert_eq!(text, "standalone comment");
+            assert_eq!(text.as_ref(), "standalone comment");
             assert!(*standalone);
         }
     }
@@ -488,7 +489,7 @@ mod tests {
             .collect();
         assert!(!comment_events.is_empty());
         if let StreamEventType::Comment { text, standalone } = &comment_events[0].event_type {
-            assert_eq!(text, "inline comment");
+            assert_eq!(text.as_ref(), "inline comment");
             assert!(!*standalone);
         }
     }

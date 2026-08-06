@@ -906,7 +906,7 @@ mod tests {
             value: Arc::from("value"),
             style: ScalarStyle::Plain,
             comment: Some(crate::ast::Comment {
-                text: "a comment".to_string(),
+                text: Arc::from("a comment"),
                 standalone: false,
             }),
             anchor: None,
