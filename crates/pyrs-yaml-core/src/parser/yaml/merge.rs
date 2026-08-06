@@ -182,17 +182,14 @@ fn prepend_merged_pairs(
     merge_key: &CustomNode,
     merged_pairs: Vec<(CustomNode, CustomNode)>,
 ) {
-    pairs.swap_remove(merge_key);
+    pairs.shift_remove(merge_key);
 
-    let mut new_pairs = IndexMap::new();
-    for (k, v) in merged_pairs {
-        new_pairs.insert(k, v);
+    // Insert merged pairs at the front in order, keeping existing pairs in
+    // place. `merged_pairs` is filtered against existing keys by the caller,
+    // so `shift_insert` cannot collide.
+    for (k, v) in merged_pairs.into_iter().rev() {
+        pairs.shift_insert(0, k, v);
     }
-    for (k, v) in pairs.iter() {
-        new_pairs.insert(k.clone(), v.clone());
-    }
-
-    *pairs = new_pairs;
 }
 
 #[cfg(test)]

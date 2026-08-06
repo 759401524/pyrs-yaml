@@ -111,6 +111,7 @@ pub fn parse_with_options(
         max_depth,
         allow_duplicate_keys,
     );
+    receiver.collect_documents = false;
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
@@ -429,6 +430,9 @@ struct AstReceiver<'a> {
     comment_anchor_tracker: CommentAnchorTracker,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
+    /// Whether to collect completed documents for multi-doc parsing. When
+    /// false (single-document parse), `DocumentEnd` skips the full AST clone.
+    collect_documents: bool,
     /// Completed documents (for multi-doc parsing)
     documents: Vec<CustomNode>,
     /// Current anchor ID to name mapping
@@ -476,7 +480,6 @@ impl<'a> AstReceiver<'a> {
         max_depth: usize,
         allow_duplicate_keys: bool,
     ) -> Self {
-        // Pre-compute line start offsets for O(1) line access
         Self {
             yaml_text,
             line_offsets,
@@ -485,6 +488,7 @@ impl<'a> AstReceiver<'a> {
             comment_anchor_tracker: CommentAnchorTracker::new(raw_comments, raw_anchors),
             stack: Vec::new(),
             result: None,
+            collect_documents: true,
             documents: Vec::new(),
             anchors: std::collections::HashMap::new(),
             pending_standalone_comment: None,
@@ -600,21 +604,21 @@ impl<'a> AstReceiver<'a> {
                 } else if let Some(key) = current_key.take() {
                     if self.max_depth_exceeded || self.allow_duplicate_keys || is_null_key(&key) {
                         pairs.insert(key, node);
-                    } else {
-                        // Compute the display string before insert moves `key`
+                    } else if pairs.contains_key(&key) {
+                        // Duplicate key (rare): only now compute the display string.
                         let key_str = match &key {
                             CustomNode::Scalar { value, .. } => value.to_string(),
                             _ => format!("{:?}", key),
                         };
-                        if pairs.insert(key, node).is_some() {
-                            // Insert returned the previous value: the key already exists.
-                            // The AST is discarded on error, so the replaced pair is harmless.
-                            self.duplicate_key_error = Some(ParseErrorDetail {
-                                message: format!("duplicate key: {}", key_str),
-                                line: 0,
-                                col: 0,
-                            });
-                        }
+                        pairs.insert(key, node);
+                        // The AST is discarded on error, so the replaced pair is harmless.
+                        self.duplicate_key_error = Some(ParseErrorDetail {
+                            message: format!("duplicate key: {}", key_str),
+                            line: 0,
+                            col: 0,
+                        });
+                    } else {
+                        pairs.insert(key, node);
                     }
                 }
             }
@@ -644,8 +648,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::DocumentEnd => {
                 // Clone the completed document for multi-doc support
-                if let Some(ref doc) = self.result {
-                    self.documents.push(doc.clone());
+                if self.collect_documents {
+                    if let Some(ref doc) = self.result {
+                        self.documents.push(doc.clone());
+                    }
                 }
             }
             Event::Scalar(value, style, anchor_id, tag) => {
