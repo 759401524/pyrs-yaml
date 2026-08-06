@@ -568,7 +568,7 @@ impl CustomNode {
     ///
     /// let mut node = CustomNode::plain_scalar("hello");
     /// node.set_comment(Comment { text: "greeting".into(), standalone: false });
-    /// assert_eq!(node.comment().unwrap().text, "greeting");
+    /// assert_eq!(node.comment().unwrap().text.as_ref(), "greeting");
     /// ```
     pub fn set_comment(&mut self, new_comment: Comment) {
         match self {
