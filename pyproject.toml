@@ -51,6 +51,8 @@ manifest-path = "crates/pyrs-yaml/Cargo.toml"
 strip = true
 auditwheel = "repair"
 
+include = ["LICENSE-APACHE", "LICENSE-MIT"]
+
 [tool.maturin.generate-ci.github]
 platforms = ["linux", "windows", "macos"]
 pytest = true
