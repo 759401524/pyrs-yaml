@@ -225,6 +225,7 @@ mod pyrs_yaml {
 
     // ---- YAML instance API ----
     #[pyclass]
+    /// Configured YAML parser instance (rt / safe / full).
     #[allow(clippy::upper_case_acronyms)]
     struct YAML {
         yaml_type: String,
@@ -236,6 +237,7 @@ mod pyrs_yaml {
     #[pymethods]
     impl YAML {
         #[new]
+        /// Create a YAML instance; `typ` can be `rt`/`safe`/`full`.
         #[pyo3(signature = (typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false))]
         fn new(
             typ: &str,
@@ -265,6 +267,7 @@ mod pyrs_yaml {
             })
         }
 
+        /// Parse a YAML string and return a `YamlDocument`.
         #[pyo3(signature = (yaml: "str | bytes") -> "YamlDocument")]
         fn parse(&self, py: Python, yaml: &Bound<'_, PyAny>) -> PyResult<YamlDocument> {
             let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
@@ -278,6 +281,7 @@ mod pyrs_yaml {
             )
         }
 
+        /// Parse YAML into a dict/list (resolves anchors and merges).
         #[pyo3(signature = (yaml: "str") -> "dict[str, Any] | list[Any]")]
         fn safe_load(&self, py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
             let schema_enum = parse_schema(&self.schema)?;
@@ -318,6 +322,7 @@ mod pyrs_yaml {
             node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
         }
 
+        /// Parse multi-document YAML into a list of dicts/lists.
         #[pyo3(signature = (yaml: "str") -> "list[dict[str, Any] | list[Any]]")]
         fn safe_loads(&self, py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
             let schema_enum = parse_schema(&self.schema)?;
@@ -364,6 +369,7 @@ mod pyrs_yaml {
             Ok(results)
         }
 
+        /// Parse a YAML file and return a `YamlDocument`.
         #[pyo3(signature = (path: "str") -> "YamlDocument")]
         fn parse_file(&self, py: Python, path: &str) -> PyResult<YamlDocument> {
             let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
@@ -419,6 +425,7 @@ mod pyrs_yaml {
             })
         }
 
+        /// Parse multi-document YAML and return a list of `YamlDocument`.
         #[pyo3(signature = (yaml: "str") -> "list[YamlDocument]")]
         fn parse_all_docs(&self, py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
             let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
@@ -471,7 +478,7 @@ mod pyrs_yaml {
                 .collect())
         }
 
-        /// 惰性事件迭代器：从 file_obj（read() 返回 str 或 bytes）增量读取。
+        /// Lazy event iterator: incrementally read from `file_obj` (read() returns str or bytes).
         #[pyo3(signature = (file_obj: "Any") -> "YamlStream")]
         fn load_stream(&self, _py: Python, file_obj: Bound<'_, PyAny>) -> PyResult<YamlStream> {
             if file_obj.getattr("read").is_err() {
@@ -484,7 +491,7 @@ mod pyrs_yaml {
             Ok(YamlStream::new(ChunkCharIter::new(src, DEFAULT_CHUNK_SIZE)))
         }
 
-        /// 惰性事件迭代器：从文件路径增量读取（Rust File，无 GIL 阻塞）。
+        /// Lazy event iterator: incrementally read from file path (Rust File, no GIL blocking).
         #[pyo3(signature = (path: "str") -> "YamlStream")]
         fn load_stream_file(&self, _py: Python, path: &str) -> PyResult<YamlStream> {
             let file = std::fs::File::open(path).map_err(|e| {
@@ -497,7 +504,7 @@ mod pyrs_yaml {
             Ok(YamlStream::new(ChunkCharIter::new(src, DEFAULT_CHUNK_SIZE)))
         }
 
-        /// 流式写：逐文档序列化到 file_obj（write(str)），常量内存。
+        /// Streaming writer: serialize documents to `file_obj` (write(str)), constant memory.
         #[pyo3(signature = (file_obj: "Any", iterable: "Any", explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false) -> "None")]
         fn dump_stream(
             &self,
@@ -528,7 +535,7 @@ mod pyrs_yaml {
             )
         }
 
-        /// 流式写：逐文档序列化到 path（Rust File，无 GIL 阻塞）。
+        /// Streaming writer: serialize documents to `path` (Rust File, no GIL blocking).
         #[pyo3(signature = (path: "str", iterable: "Any", explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false) -> "None")]
         fn dump_file(
             &self,
@@ -572,6 +579,7 @@ mod pyrs_yaml {
     }
 
     #[pyclass]
+    /// Round-trip editable YAML document with transaction support, path editing, and source preservation.
     pub(crate) struct YamlDocument {
         ast: CustomNode,
         schema: YamlSchema,
@@ -689,7 +697,7 @@ mod pyrs_yaml {
             Ok(())
         }
 
-        /// 将文档序列化为 YAML 字符串（默认 2 空格缩进）。
+        /// Serialize the document to a YAML string (default 2-space indent).
         #[allow(clippy::wrong_self_convention)] // needs &mut self to flush lazy source
         fn to_yaml(&mut self, py: Python) -> PyResult<String> {
             self.flush_source(py)?;
@@ -697,8 +705,9 @@ mod pyrs_yaml {
         }
 
         #[allow(clippy::too_many_arguments)]
-        #[allow(clippy::wrong_self_convention)] // needs &mut self to flush lazy source
+        #[allow(clippy::wrong_self_convention)]
         #[pyo3(signature = (indent_size: "int" = 2, explicit_start: "bool" = false, explicit_end: "bool" = false, sort_keys: "bool" = false, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str")]
+        /// Serialize with customizable indent, sorting, and explicit start/end markers.
         fn to_yaml_with_options(
             &mut self,
             py: Python,
@@ -739,7 +748,7 @@ mod pyrs_yaml {
             })
         }
 
-        /// 将文档转换为 Python 字典/列表，自动解析锚点引用。
+        /// Convert the document to a Python dict/list, resolving anchor references.
         fn to_dict(&self, py: Python) -> PyResult<Py<PyAny>> {
             let mut anchors = HashMap::new();
             collect_anchors(&self.ast, &mut anchors);
@@ -747,6 +756,7 @@ mod pyrs_yaml {
             node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited, self.schema)
         }
 
+        /// Access a value by key or path (e.g. `a.b[0]`), returning `default` if not found.
         #[pyo3(signature = (key: "str", default: "Any" = None) -> "Any")]
         fn get(&self, py: Python, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
             let is_path = key.starts_with('$') || key.contains('.') || key.contains('[');
@@ -772,6 +782,7 @@ mod pyrs_yaml {
             }
         }
 
+        /// Return the root node type: `scalar`/`mapping`/`sequence`/`null`/`alias`.
         fn root_type(&self) -> String {
             match &self.ast {
                 CustomNode::Scalar { .. } => "scalar".to_string(),
@@ -782,15 +793,18 @@ mod pyrs_yaml {
             }
         }
 
+        /// Return a `YamlDocument(...)` representation.
         fn __repr__(&mut self, py: Python) -> String {
             format!("YamlDocument({})", self.to_yaml(py).unwrap_or_default())
         }
 
+        /// Return the YAML string representation.
         fn __str__(&mut self, py: Python) -> String {
             self.to_yaml(py)
                 .unwrap_or_else(|_| "YamlDocument(error)".to_string())
         }
 
+        /// Check if a key exists in the mapping.
         fn __contains__(&self, key: &str) -> bool {
             match &self.ast {
                 CustomNode::Mapping { pairs, .. } => {
@@ -800,6 +814,7 @@ mod pyrs_yaml {
             }
         }
 
+        /// Return the number of mapping entries or sequence length.
         fn __len__(&self) -> usize {
             match &self.ast {
                 CustomNode::Mapping { pairs, .. } => pairs.len(),
@@ -808,6 +823,7 @@ mod pyrs_yaml {
             }
         }
 
+        /// Return an iterator over keys (mapping) or values (sequence).
         fn __iter__<'py>(&self, _py: Python<'py>) -> PyResult<Py<PyAny>> {
             let schema = self.schema;
             Python::attach(|py| match &self.ast {
@@ -832,6 +848,7 @@ mod pyrs_yaml {
             })
         }
 
+        /// Access a child node by key (mapping) or index (sequence).
         fn __getitem__<'py>(&self, py: Python<'py>, key: Py<PyAny>) -> PyResult<Py<PyAny>> {
             let schema = self.schema;
             match &self.ast {
@@ -880,6 +897,7 @@ mod pyrs_yaml {
             }
         }
 
+        /// Return the current YAML source string.
         fn source(&mut self, py: Python) -> PyResult<String> {
             self.flush_source(py)?;
             Ok(self.source.as_deref().unwrap_or("").to_string())
@@ -903,6 +921,7 @@ mod pyrs_yaml {
             Ok(paths)
         }
 
+        /// Set a value by path (internal, called by `__setitem__`).
         #[pyo3(signature = (segments: "list", value: "Any", create_missing: "bool" = false) -> "None")]
         fn _set_path(
             &mut self,
@@ -952,6 +971,7 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        /// Insert a value by path (internal, inserts at a sequence position).
         #[pyo3(signature = (segments: "list", index: "int", value: "Any") -> "None")]
         fn _insert_path(
             &mut self,
@@ -993,6 +1013,7 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        /// Append a value by path (internal, appends to a sequence).
         #[pyo3(signature = (segments: "list", value: "Any") -> "None")]
         fn _append_path(
             &mut self,
@@ -1033,6 +1054,7 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        /// Delete a node by path (internal, called by `__delitem__`).
         #[pyo3(signature = (segments: "list") -> "None")]
         fn _delete_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
             let segs: Vec<editing::Segment<'_>> = segments
@@ -1067,6 +1089,7 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        /// Rename a mapping key by path (internal).
         #[pyo3(signature = (segments: "list", new_key: "str") -> "None")]
         fn _rename_path(
             &mut self,
@@ -1106,6 +1129,7 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        /// Set the value for a mapping key, `doc['key'] = value`.
         fn __setitem__(&mut self, py: Python, key: String, value: Py<PyAny>) -> PyResult<()> {
             self._set_path(
                 py,
@@ -1115,18 +1139,22 @@ mod pyrs_yaml {
             )
         }
 
+        /// Delete a mapping key, `del doc['key']`.
         fn __delitem__(&mut self, py: Python, key: String) -> PyResult<()> {
             self._delete_path(py, vec![key.into_pyobject(py)?.into_any().unbind()])
         }
 
+        /// Return the current revision number (incremented on each edit).
         fn _revision(&self) -> u64 {
             self.revision
         }
 
+        /// Return the YAML version string.
         fn version(&self) -> &str {
             &self.version
         }
 
+        /// Reparse the current source, optionally changing merge behavior and schema.
         #[pyo3(signature = (resolve_merges: "bool" = true, schema: "str" = "core") -> "None")]
         fn reparse(&mut self, py: Python, resolve_merges: bool, schema: &str) -> PyResult<()> {
             self.flush_source(py)?;
@@ -1155,6 +1183,7 @@ mod pyrs_yaml {
             Ok(())
         }
 
+        /// Serialize to a JSON string (via Python `json.dumps`).
         #[pyo3(signature = (indent: "int" = 2) -> "str")]
         fn to_json(&self, py: Python, indent: usize) -> PyResult<String> {
             let obj = self.to_dict(py)?;
@@ -1167,6 +1196,7 @@ mod pyrs_yaml {
             Ok(s)
         }
 
+        /// Validate the document against a JSON Schema.
         #[pyo3(signature = (schema: "str | dict[str, Any]") -> "None")]
         fn validate(&self, py: Python, schema: &Bound<'_, PyAny>) -> PyResult<()> {
             let instance = self.to_dict(py)?;
@@ -1193,8 +1223,8 @@ mod pyrs_yaml {
             Ok(())
         }
 
-        /// 进入事务作用域：快照 AST + splice 状态。`with doc:` 干净退出
-        /// 保留编辑；异常时 `__exit__` 回滚快照。
+        /// Enter a transaction scope: snapshot AST + splice state. `with doc:` exits cleanly
+        /// preserving edits; exceptions roll back the snapshot.
         fn __enter__(mut slf: PyRefMut<'_, Self>) -> PyRefMut<'_, Self> {
             let snap = DocumentSnapshot {
                 ast: slf.ast.clone(),
@@ -1226,7 +1256,7 @@ mod pyrs_yaml {
                     self.splice_checked = snap.splice_checked;
                 }
             }
-            false // 从不吞掉异常
+            false // never swallow exceptions
         }
     }
 
@@ -1234,6 +1264,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
+    /// Parse a YAML string (str or bytes) and return an editable `YamlDocument`.
     fn parse(
         py: Python,
         yaml: &Bound<'_, PyAny>,
@@ -1254,6 +1285,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (path: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
+    /// Parse a YAML file and return an editable `YamlDocument`.
     fn parse_file(
         py: Python,
         path: &str,
@@ -1316,6 +1348,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[YamlDocument]")]
+    /// Parse a multi-document YAML stream and return all `YamlDocument` objects.
     fn parse_all_docs(
         py: Python,
         yaml: &str,
@@ -1375,6 +1408,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "dict[str, Any] | list[Any]")]
+    /// Parse YAML into a Python dict/list, resolving anchors and merges.
     fn safe_load(
         py: Python,
         yaml: &str,
@@ -1423,6 +1457,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[dict[str, Any] | list[Any]]")]
+    /// Parse a multi-document YAML stream into a list of dicts/lists.
     fn safe_loads(
         py: Python,
         yaml: &str,
@@ -1474,6 +1509,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None) -> "StreamIterator | None")]
+    /// Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
     fn parse_stream(
         py: Python,
         yaml: &Bound<'_, PyAny>,
@@ -1543,6 +1579,7 @@ mod pyrs_yaml {
     }
 
     #[pyclass]
+    /// YAML event stream iterator, yielding parsed events one by one.
     struct StreamIterator {
         events: Vec<StreamEvent>,
         index: usize,
@@ -1550,10 +1587,12 @@ mod pyrs_yaml {
 
     #[pymethods]
     impl StreamIterator {
+        /// Return self (iterator protocol).
         fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
             slf
         }
 
+        /// Yield the next event dict; return `None` when the stream ends.
         fn __next__<'a>(&mut self, py: Python<'a>) -> PyResult<Option<Bound<'a, PyDict>>> {
             if self.index < self.events.len() {
                 let event = &self.events[self.index];
@@ -1567,6 +1606,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
+    /// Serialize a Python dict/list to a YAML string.
     fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
         let node = pyobject_to_node(py, &data)?;
         Ok(to_yaml(&node))
@@ -1574,6 +1614,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
+    /// Convert a Python dict/list to a YAML string (auto-selects block/flow style).
     fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
         let node = pyobject_to_node(py, &data)?;
         Ok(to_yaml(&node))
@@ -1581,6 +1622,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (json_str: "str") -> "str")]
+    /// Convert a JSON string to a YAML string.
     fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
         let json_value: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
             YamlParseError::new_err(format_i18n_error(
@@ -1594,6 +1636,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (data: "Any", path: "str") -> "None")]
+    /// Serialize a Python object to YAML and write to a file.
     fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
         let node = pyobject_to_node(py, &data)?;
         let yaml = to_yaml(&node);
@@ -1608,6 +1651,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (path: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]")]
+    /// Read a Markdown file and extract YAML front matter, returning `(frontmatter, body)`.
     fn read_markdown(
         py: Python,
         path: &str,
@@ -1626,6 +1670,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (content: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]")]
+    /// Extract YAML front matter from a Markdown string, returning `(frontmatter, body)`.
     fn read_markdown_str(
         _py: Python,
         content: &str,
@@ -1667,6 +1712,7 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (lang: "str") -> "None")]
+    /// Set the error message language.
     fn set_language(lang: &str) -> PyResult<()> {
         crate::i18n::set_language(lang).map_err(|_| {
             pyo3::exceptions::PyValueError::new_err(format_i18n_error(
@@ -1684,24 +1730,28 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = () -> "str")]
+    /// Return the current error message language.
     fn get_language() -> &'static str {
         crate::i18n::get_language_static()
     }
 
     #[pyfunction]
     #[pyo3(signature = () -> "list[str]")]
+    /// List supported language codes.
     fn list_languages() -> Vec<&'static str> {
         crate::i18n::list_languages()
     }
 
     #[pyfunction]
     #[pyo3(signature = () -> "str")]
+    /// Detect the system default language.
     fn detect_language() -> String {
         crate::i18n::detect_language()
     }
 
     #[pyfunction]
     #[pyo3(signature = (user_locales: "list[str]", default: "str" = "en") -> "str")]
+    /// Negotiate a language from user locale list and default.
     fn negotiate_language(user_locales: &Bound<'_, PyAny>, default: &str) -> PyResult<String> {
         let locales: Vec<String> = user_locales.extract()?;
         let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
@@ -1710,17 +1760,20 @@ mod pyrs_yaml {
 
     #[pyfunction]
     #[pyo3(signature = (name: "str", handler: "Py<PyAny>", priority: "u32" = 0))]
+    /// Register a custom tag handler.
     fn register_tag(name: &str, handler: Py<PyAny>, priority: u32) {
         tag_registry::register(name, handler, priority);
     }
 
     #[pyfunction]
+    /// Clear all tag handlers.
     fn clear_tag_handlers() {
         tag_registry::clear_all();
     }
 
     #[pyfunction]
     #[pyo3(signature = (name: "str"))]
+    /// Remove a specific tag handler.
     fn remove_tag(name: &str) {
         tag_registry::remove(name);
     }

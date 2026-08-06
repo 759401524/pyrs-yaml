@@ -48,7 +48,6 @@ bindings = "pyo3"
 module-name = "pyrs_yaml"
 python-source = "python"
 manifest-path = "crates/pyrs-yaml/Cargo.toml"
-features = ["pyo3/extension-module"]
 strip = true
 auditwheel = "repair"
 
