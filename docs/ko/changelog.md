@@ -10,6 +10,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a 변경 이력](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Parse hot paths** - single-pass comment/anchor extraction, lazy
+  duplicate-key detection, `shift_insert` merge prepending, and skipped
+  `DocumentEnd` deep-clone for single-document parses cut large-document
+  parse cost ~19% (CodSpeed: parse[large] +13.9%, parse[medium] +16.6%,
+  roundtrip[large] +12.2%).
+- **`Arc<str>` scalar storage** - `CustomNode::Scalar` and comment/event
+  text share allocations via `Arc<str>`; AST nodes shrink 8 bytes and
+  clones become refcount bumps instead of deep copies.
+
+### Fixed
+
+- **Standalone comments before simple mapping keys** - round-trip
+  previously dropped standalone comments attached to simple-key nodes;
+  now preserved (two regression tests).
+
 ## [v0.12.0] — 2026-08-05
 
 ### Added
