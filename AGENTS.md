@@ -19,7 +19,7 @@
 - Rust tests: `cargo nextest run --all` (preferred over `cargo test`)
 - Pure Rust tests (no Python runtime): `cargo test --all --no-default-features`
 - Python lint: `uv run ruff check . && uv run ruff format .`
-- Generate stubs: `uv run maturin build --release --generate-stubs`
+- Generate stubs: `uv run maturin generate-stubs --out target/stubs && cp target/stubs/pyrs_yaml.pyi python/pyrs_yaml/`
 - Run prek hooks: `prek run --all-files`
 
 ## Pinned Versions
