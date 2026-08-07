@@ -69,7 +69,7 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 
 ## Benchmark Standards
 
-- All benchmarks use CodSpeed (`pytest-codspeed`)
+- All benchmarks use CodSpeed (`pytest-codspeed`) in WallTime mode
 - Cross-library comparison in `tests/test_benchmark_crosslib.py` (pyrs-yaml vs PyYAML vs ruamel vs ryaml vs yaml_edit vs yaml_rs)
 - API benchmarks in `tests/test_benchmark_api.py` (safe_load, parse_stream, validate, etc.)
 - Run benchmarks: `uv run pytest tests/test_benchmark_crosslib.py tests/test_benchmark_api.py --codspeed`

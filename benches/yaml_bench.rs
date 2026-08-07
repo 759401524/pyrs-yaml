@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 const SMALL_YAML: &str = "key: value\nname: test\n";
 
+const SMALL_YAML: &str = "key: value\nname: test\n";
+
 const MEDIUM_YAML: &str = r#"server:
   host: localhost
   port: 8080
@@ -186,19 +188,19 @@ fn serialize_medium(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn serialize_large(bencher: divan::Bencher) {
+fn serialize_large(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
-fn serialize_anchors(bencher: divan::Bencher) {
+fn serialize_anchors(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(ANCHOR_YAML, YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
-fn serialize_block_scalars(bencher: divan::Bencher) {
+fn serialize_block_scalars(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
@@ -226,7 +228,7 @@ fn roundtrip_large() -> String {
 // ── Block-style serialize ──
 
 #[divan::bench]
-fn serialize_block(bencher: divan::Bencher) {
+fn serialize_block(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(BLOCK_STYLE_YAML, YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
@@ -234,7 +236,7 @@ fn serialize_block(bencher: divan::Bencher) {
 // ── Editing benchmarks (pure AST mutation; lazy sync defers serialization) ──
 
 #[divan::bench]
-fn edit_set_small(bencher: divan::Bencher) {
+fn edit_set_small(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(SMALL_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("key"))];
     bencher.bench(|| {
@@ -253,7 +255,7 @@ fn edit_set_small(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_set_medium(bencher: divan::Bencher) {
+fn edit_set_medium(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(MEDIUM_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("database"))];
     bencher.bench(|| {
@@ -272,7 +274,7 @@ fn edit_set_medium(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_set_large(bencher: divan::Bencher) {
+fn edit_set_large(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let segs = vec![
         Segment::Key(std::borrow::Cow::Borrowed("config")),
@@ -295,7 +297,7 @@ fn edit_set_large(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_insert_large(bencher: divan::Bencher) {
+fn edit_insert_large(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
@@ -313,7 +315,7 @@ fn edit_insert_large(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_delete_large(bencher: divan::Bencher) {
+fn edit_delete_large(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let segs = vec![Segment::Key(std::borrow::Cow::Borrowed("config"))];
     bencher.bench(|| {
@@ -323,7 +325,7 @@ fn edit_delete_large(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_batch_10(bencher: divan::Bencher) {
+fn edit_batch_10(bencher: Bench) {
     let ast = pyrs_yaml::parser::parse(LARGE_YAML, YamlSchema::Core).unwrap();
     let source: Arc<str> = Arc::from(LARGE_YAML);
     bencher.bench(|| {
@@ -368,21 +370,21 @@ fn make_large_doc(approx_bytes: usize) -> String {
 }
 
 #[divan::bench]
-fn serialize_10mb(bencher: divan::Bencher) {
+fn serialize_10mb(bencher: Bench) {
     let yaml = make_large_doc(10 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
-fn clone_ast_10mb(bencher: divan::Bencher) {
+fn clone_ast_10mb(bencher: Bench) {
     let yaml = make_large_doc(10 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     bencher.bench(|| ast.clone());
 }
 
 #[divan::bench]
-fn serialize_with_clone_10mb(bencher: divan::Bencher) {
+fn serialize_with_clone_10mb(bencher: Bench) {
     let yaml = make_large_doc(10 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     bencher.bench(|| {
@@ -392,7 +394,7 @@ fn serialize_with_clone_10mb(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_flush_set_10mb(bencher: divan::Bencher) {
+fn edit_flush_set_10mb(bencher: Bench) {
     let yaml = make_large_doc(10 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     let source: Arc<str> = Arc::from(yaml);
@@ -416,7 +418,7 @@ fn edit_flush_set_10mb(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_flush_burst5_10mb(bencher: divan::Bencher) {
+fn edit_flush_burst5_10mb(bencher: Bench) {
     let yaml = make_large_doc(10 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     let source: Arc<str> = Arc::from(yaml);
@@ -488,14 +490,14 @@ fn make_complex_doc(approx_bytes: usize) -> String {
 }
 
 #[divan::bench]
-fn serialize_complex_2mb(bencher: divan::Bencher) {
+fn serialize_complex_2mb(bencher: Bench) {
     let yaml = make_complex_doc(2 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
 
 #[divan::bench]
-fn serialize_with_clone_complex_2mb(bencher: divan::Bencher) {
+fn serialize_with_clone_complex_2mb(bencher: Bench) {
     let yaml = make_complex_doc(2 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     bencher.bench(|| {
@@ -505,7 +507,7 @@ fn serialize_with_clone_complex_2mb(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
-fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
+fn edit_flush_set_complex_2mb(bencher: Bench) {
     let yaml = make_complex_doc(2 * 1024 * 1024);
     let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
     let source: Arc<str> = Arc::from(yaml);
