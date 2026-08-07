@@ -16,15 +16,15 @@ pub struct ParseErrorDetail {
 
 use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
 use crate::parser::yaml::YamlSchema;
-use indexmap::IndexMap;
-use saphyr_parser::{
+use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
+use indexmap::IndexMap;
 use std::ops::Range;
 use std::sync::Arc;
 use yaml::{
-    compute_line_offsets, detect_chomping, extract_comments_and_anchors, resolve_merge_keys,
-    scan_yaml, unescape_double_quoted, CommentAnchorTracker, RawAnchor, RawComment,
+    compute_line_offsets, detect_chomping, extract_anchors, resolve_merge_keys,
+    unescape_double_quoted, RawAnchor,
 };
 
 /// Return true if a mapping key is a null/empty key (`~`, empty, or null).
@@ -90,27 +90,11 @@ pub fn parse_with_options(
         return Ok(CustomNode::plain_null());
     }
 
-    // Extract comments and anchors from raw text before parsing. Fast path:
-    // a comment requires a `#` and an anchor requires an `&`, so a text with
-    // neither contains no comments or anchors and the full scan is skipped.
-    // The single scan also pre-computes line offsets (no second traversal).
-    let scan = scan_yaml(yaml);
-    let (raw_comments, raw_anchors) = if !scan.has_hash && !scan.has_amp {
-        (Vec::new(), Vec::new())
-    } else {
-        extract_comments_and_anchors(yaml)
-    };
+    // Extract anchor names from raw text (granit-parser uses numeric IDs)
+    let raw_anchors = extract_anchors(yaml);
 
-    // Parse YAML using saphyr-parser
-    let mut receiver = AstReceiver::new(
-        yaml,
-        raw_comments,
-        raw_anchors,
-        scan.line_offsets,
-        scan.is_ascii,
-        max_depth,
-        allow_duplicate_keys,
-    );
+    // Parse YAML using granit-parser
+    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
     receiver.collect_documents = false;
     let mut parser = SaphyrParser::new_from_str(yaml);
 
@@ -176,22 +160,9 @@ pub fn parse_all_with_options(
         return Ok(Vec::new());
     }
 
-    let scan = scan_yaml(yaml);
-    let (raw_comments, raw_anchors) = if !scan.has_hash && !scan.has_amp {
-        (Vec::new(), Vec::new())
-    } else {
-        extract_comments_and_anchors(yaml)
-    };
+    let raw_anchors = extract_anchors(yaml);
 
-    let mut receiver = AstReceiver::new(
-        yaml,
-        raw_comments,
-        raw_anchors,
-        scan.line_offsets,
-        scan.is_ascii,
-        max_depth,
-        allow_duplicate_keys,
-    );
+    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
@@ -236,11 +207,11 @@ pub fn parse_all_with_options(
 }
 
 /// Convert saphyr tag to our Tag format
-pub(crate) fn convert_tag(tag: &saphyr_parser::Tag) -> Tag {
-    // saphyr uses full URIs like "tag:yaml.org,2002:str"
+pub(crate) fn convert_tag(tag: &granit_parser::Tag) -> Tag {
+    // granit-parser uses full URIs like "tag:yaml.org,2002:str"
     // We need to convert back to short form like "!!str"
-    let handle = &tag.handle;
-    let suffix = &tag.suffix;
+    let handle = tag.handle();
+    let suffix = tag.suffix();
 
     if handle == "tag:yaml.org,2002:" {
         // Core schema tag - use !! prefix
@@ -289,7 +260,6 @@ pub struct LineCursor<'a> {
 }
 
 impl<'a> LineCursor<'a> {
-    #[allow(dead_code)]
     fn new(offsets: &'a [usize]) -> Self {
         Self { offsets, idx: 0 }
     }
@@ -421,13 +391,13 @@ fn char_to_byte_offsets(text: &str) -> Vec<usize> {
 struct AstReceiver<'a> {
     yaml_text: &'a str,
     /// Pre-computed byte offsets for each line start (O(1) line access)
-    line_offsets: Vec<usize>,
-    /// Whether the raw text contains a `#` (possible comments). When false,
-    /// per-scalar `find('#')` scans in `create_scalar` are skipped entirely.
-    has_hash: bool,
-    /// Char-index → byte-offset table; `Some` only for non-ASCII input
     char_offsets: Option<Vec<usize>>,
-    comment_anchor_tracker: CommentAnchorTracker,
+    /// Anchor names extracted from raw text (indexed by anchor_id)
+    anchor_names: Vec<String>,
+    /// Current index into anchor_names
+    anchor_name_idx: usize,
+    /// Comment for the current mapping being built (not available for scalars)
+    mapping_comment: Option<Comment>,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
     /// Whether to collect completed documents for multi-doc parsing. When
@@ -473,24 +443,22 @@ enum ParseState {
 impl<'a> AstReceiver<'a> {
     fn new(
         yaml_text: &'a str,
-        raw_comments: Vec<RawComment>,
         raw_anchors: Vec<RawAnchor>,
-        line_offsets: Vec<usize>,
-        is_ascii: bool,
         max_depth: usize,
         allow_duplicate_keys: bool,
     ) -> Self {
+        let is_ascii = yaml_text.is_ascii();
         Self {
             yaml_text,
-            line_offsets,
-            has_hash: !raw_comments.is_empty(),
             char_offsets: (!is_ascii).then(|| char_to_byte_offsets(yaml_text)),
-            comment_anchor_tracker: CommentAnchorTracker::new(raw_comments, raw_anchors),
             stack: Vec::new(),
             result: None,
             collect_documents: true,
             documents: Vec::new(),
             anchors: std::collections::HashMap::new(),
+            anchor_names: raw_anchors.iter().map(|a| a.name.clone()).collect(),
+            anchor_name_idx: 0,
+            mapping_comment: None,
             pending_standalone_comment: None,
             max_depth,
             max_depth_exceeded: false,
@@ -529,41 +497,11 @@ impl<'a> AstReceiver<'a> {
             Arc::from(value)
         };
 
-        // Find inline comment - look for comment on the same line after the value
-        // The value typically starts at column 0 for keys, or after ": " for values
-        // We need to find the position after the value ends
-        let value_end_col = if !self.has_hash {
-            // No comments in the whole text: the value ends at the line end.
-            // `find_inline_comment` would return None regardless of `after_col`,
-            // so the per-scalar `find('#')` scan is skipped entirely.
-            Self::line_text_len(self.yaml_text, line, &self.line_offsets)
-        } else if line < self.line_offsets.len() {
-            let start = self.line_offsets[line];
-            let end = if line + 1 < self.line_offsets.len() {
-                // Exclude the trailing \n from the line
-                self.line_offsets[line + 1].saturating_sub(1)
-            } else {
-                self.yaml_text.len()
-            };
-            let line_text = &self.yaml_text[start..end];
-            // Find where the value ends by looking for the comment
-            if let Some(comment_pos) = line_text.find('#') {
-                comment_pos
-            } else {
-                line_text.len()
-            }
-        } else {
-            value.len()
-        };
-
-        let inline = self
-            .comment_anchor_tracker
-            .find_inline_comment(line, value_end_col);
-
+        // Inline comment scanning now done by granit-parser natively via Event::Comment
         CustomNode::Scalar {
             value: scalar_value,
             style: scalar_style,
-            comment: inline,
+            comment: None,
             anchor: None,
             tag: None,
             chomping,
@@ -571,18 +509,42 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
-    /// Length of the text on `line` (excluding the trailing `\n`).
-    fn line_text_len(yaml_text: &str, line: usize, line_offsets: &[usize]) -> usize {
-        if line >= line_offsets.len() {
-            return 0;
-        }
-        let start = line_offsets[line];
-        let end = if line + 1 < line_offsets.len() {
-            line_offsets[line + 1].saturating_sub(1)
-        } else {
-            yaml_text.len()
+    /// Attach an inline comment to the most recently created scalar node.
+    fn attach_inline_comment(&mut self, text: Arc<str>) {
+        let comment = Comment {
+            text,
+            standalone: false,
         };
-        end.saturating_sub(start)
+        // Check the top of the stack for a scalar to attach to
+        if let Some(top) = self.stack.last_mut() {
+            match top {
+                ParseState::Mapping {
+                    current_key, pairs, ..
+                } => {
+                    // Attach to the last value if complete, or the current key
+                    let target = if current_key.is_none() {
+                        pairs.iter_mut().last().map(|(_, v)| v)
+                    } else {
+                        current_key.as_mut().as_mut()
+                    };
+                    Self::set_scalar_comment(target, comment);
+                }
+                ParseState::Sequence { items, .. } => {
+                    Self::set_scalar_comment(items.last_mut(), comment);
+                }
+            }
+        } else if let Some(result) = &mut self.result {
+            Self::set_scalar_comment(Some(result), comment);
+        }
+    }
+
+    /// Set the comment on a node if it's a Scalar with no existing comment.
+    fn set_scalar_comment(node: Option<&mut CustomNode>, comment: Comment) {
+        if let Some(CustomNode::Scalar { comment: c, .. }) = node {
+            if c.is_none() {
+                *c = Some(comment);
+            }
+        }
     }
 
     /// Convert a saphyr span (char-indexed markers) to a byte range
@@ -643,7 +605,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
     /// 处理 saphyr 解析器事件，构建 AST 节点并管理解析栈。
     fn on_event(&mut self, event: Event<'a>, span: Span) {
         match event {
-            Event::StreamStart | Event::StreamEnd | Event::DocumentStart(_) => {
+            Event::StreamStart | Event::StreamEnd | Event::DocumentStart(..) => {
                 // Ignore these events
             }
             Event::DocumentEnd => {
@@ -658,10 +620,8 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 let line = span.start.line() - 1; // Convert to 0-indexed
                 let range = self.span_to_byte_range(&span);
 
-                // Find standalone comments before this line
-                let standalone = self
-                    .comment_anchor_tracker
-                    .find_standalone_before_line(line);
+                // Take pending standalone comment from Event::Comment
+                let standalone = self.pending_standalone_comment.take();
 
                 let mut node = self.create_scalar(&value, &style, line, range);
 
@@ -677,12 +637,12 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
 
                 // Handle anchor - use next raw anchor name
-                if anchor_id != 0 {
-                    if let Some(name) = self.comment_anchor_tracker.next_anchor_name() {
-                        self.anchors.insert(anchor_id, name.clone());
-                        if let CustomNode::Scalar { anchor, .. } = &mut node {
-                            *anchor = Some(name);
-                        }
+                if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
+                    let name = self.anchor_names[self.anchor_name_idx].clone();
+                    self.anchor_name_idx += 1;
+                    self.anchors.insert(anchor_id, name.clone());
+                    if let CustomNode::Scalar { anchor, .. } = &mut node {
+                        *anchor = Some(name);
                     }
                 }
 
@@ -695,25 +655,22 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
 
                 self.push_node(node);
             }
-            Event::MappingStart(anchor_id, tag) => {
+            Event::MappingStart(_, anchor_id, tag) => {
                 if self.stack.len() >= self.max_depth {
                     self.max_depth_exceeded = true;
                     return;
                 }
-                let line = span.start.line() - 1;
                 let flow_style = self.detect_flow_style(&span, b'{');
                 let start_byte = self.span_to_byte_range(&span).start;
 
-                // Find standalone comments before this line
-                let standalone = self
-                    .comment_anchor_tracker
-                    .find_standalone_before_line(line);
+                // Take pending standalone comment from Event::Comment
+                let standalone = self.pending_standalone_comment.take();
 
                 // Handle anchor - use next raw anchor name
-                if anchor_id != 0 {
-                    if let Some(name) = self.comment_anchor_tracker.next_anchor_name() {
-                        self.anchors.insert(anchor_id, name.clone());
-                    }
+                if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
+                    let name = self.anchor_names[self.anchor_name_idx].clone();
+                    self.anchor_name_idx += 1;
+                    self.anchors.insert(anchor_id, name);
                 }
 
                 // Handle tag
@@ -728,12 +685,8 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     start_byte,
                 });
 
-                // Store standalone comment for when we pop
-                if let Some(comment) = standalone {
-                    // We'll attach this to the mapping when we pop
-                    // For now, store it temporarily
-                    self.pending_standalone_comment = Some(comment);
-                }
+                // Store standalone comment for the mapping (not available for keys)
+                self.mapping_comment = standalone;
             }
             Event::MappingEnd => {
                 if let Some(ParseState::Mapping {
@@ -748,8 +701,8 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     // Get anchor name from self.anchors
                     let anchor = self.anchors.get(&anchor_id).cloned();
 
-                    // Get pending standalone comment
-                    let comment = self.pending_standalone_comment.take();
+                    // Get comment stored by MappingStart (not from pending)
+                    let comment = self.mapping_comment.take();
 
                     // Block containers span from their start to the last child's
                     // end; flow containers span to the closing token (inclusive).
@@ -779,25 +732,22 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     self.push_node(mapping);
                 }
             }
-            Event::SequenceStart(anchor_id, tag) => {
+            Event::SequenceStart(_, anchor_id, tag) => {
                 if self.stack.len() >= self.max_depth {
                     self.max_depth_exceeded = true;
                     return;
                 }
-                let line = span.start.line() - 1;
                 let flow_style = self.detect_flow_style(&span, b'[');
                 let start_byte = self.span_to_byte_range(&span).start;
 
-                // Find standalone comments before this line
-                let standalone = self
-                    .comment_anchor_tracker
-                    .find_standalone_before_line(line);
+                // Take pending standalone comment from Event::Comment
+                let standalone = self.pending_standalone_comment.take();
 
                 // Handle anchor - use next raw anchor name
-                if anchor_id != 0 {
-                    if let Some(name) = self.comment_anchor_tracker.next_anchor_name() {
-                        self.anchors.insert(anchor_id, name.clone());
-                    }
+                if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
+                    let name = self.anchor_names[self.anchor_name_idx].clone();
+                    self.anchor_name_idx += 1;
+                    self.anchors.insert(anchor_id, name);
                 }
 
                 // Handle tag
@@ -811,10 +761,8 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     start_byte,
                 });
 
-                // Store standalone comment for when we pop
-                if let Some(comment) = standalone {
-                    self.pending_standalone_comment = Some(comment);
-                }
+                // Store standalone comment for the sequence (not available for items)
+                self.mapping_comment = standalone;
             }
             Event::SequenceEnd => {
                 if let Some(ParseState::Sequence {
@@ -829,8 +777,8 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                     // Get anchor name from self.anchors
                     let anchor = self.anchors.get(&anchor_id).cloned();
 
-                    // Get pending standalone comment
-                    let comment = self.pending_standalone_comment.take();
+                    // Get comment stored by SequenceStart (not from pending)
+                    let comment = self.mapping_comment.take();
 
                     let end = if !flow_style {
                         items
@@ -864,7 +812,24 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 let node = CustomNode::Alias { name: alias_name };
                 self.push_node(node);
             }
-            Event::Nothing => {}
+            Event::Comment(text, placement) => {
+                let text = Arc::from(text.trim());
+                match placement {
+                    granit_parser::Placement::Above
+                    | granit_parser::Placement::Free
+                    | granit_parser::Placement::Last => {
+                        self.pending_standalone_comment = Some(Comment {
+                            text,
+                            standalone: true,
+                        });
+                    }
+                    granit_parser::Placement::Right => {
+                        self.attach_inline_comment(text);
+                    }
+                    _ => {} // Placement is #[non_exhaustive]
+                }
+            }
+            _ => {} // granit_parser::Event is #[non_exhaustive]
         }
     }
 }

@@ -2,7 +2,7 @@ use crate::ast::{Comment, ScalarStyle, Tag};
 use crate::parser::yaml::{
     extract_comments_and_anchors, scan_yaml, unescape_double_quoted, CommentAnchorTracker,
 };
-use saphyr_parser::{
+use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 use std::collections::HashMap;
@@ -208,7 +208,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
 }
 
 /// Convert a saphyr-parser Tag to our Tag format.
-fn convert_tag(tag: Option<&saphyr_parser::Tag>) -> Option<Tag> {
+fn convert_tag(tag: Option<&granit_parser::Tag>) -> Option<Tag> {
     tag.map(|t| super::convert_tag(t).clone())
 }
 
@@ -232,10 +232,10 @@ where
     let column = span.start.col();
 
     let event_type = match event {
-        Event::Nothing => return None,
+        // granit-parser doesn't have Event::Nothing, use wildcard at end of match
         Event::StreamStart => StreamEventType::StreamStart,
         Event::StreamEnd => StreamEventType::StreamEnd,
-        Event::DocumentStart(_) => StreamEventType::DocumentStart,
+        Event::DocumentStart(_, _) => StreamEventType::DocumentStart,
         Event::DocumentEnd => StreamEventType::DocumentEnd,
         Event::Scalar(value, style, anchor_id, tag) => {
             let scalar_style = match style {
@@ -259,7 +259,7 @@ where
                 tag: tag_obj,
             }
         }
-        Event::MappingStart(anchor_id, tag) => {
+        Event::MappingStart(_, anchor_id, tag) => {
             let anchor = resolve_anchor_name(anchor_id, anchor_map, resolve_anchor);
             let tag_obj = convert_tag(tag.as_deref());
             StreamEventType::MappingStart {
@@ -268,7 +268,7 @@ where
             }
         }
         Event::MappingEnd => StreamEventType::MappingEnd,
-        Event::SequenceStart(anchor_id, tag) => {
+        Event::SequenceStart(_, anchor_id, tag) => {
             let anchor = resolve_anchor_name(anchor_id, anchor_map, resolve_anchor);
             let tag_obj = convert_tag(tag.as_deref());
             StreamEventType::SequenceStart {
@@ -284,6 +284,7 @@ where
                 .unwrap_or_else(|| format!("alias_{}", anchor_id));
             StreamEventType::Alias { name }
         }
+        _ => return None, // granit-parser is non_exhaustive
     };
 
     Some(StreamEvent {
@@ -642,7 +643,7 @@ mod tests {
             types.push(match event {
                 Event::StreamStart => "SS",
                 Event::StreamEnd => "SE",
-                Event::DocumentStart(_) => "DS",
+                Event::DocumentStart(..) => "DS",
                 Event::DocumentEnd => "DE",
                 Event::Scalar(..) => "SC",
                 _ => "?",
@@ -683,8 +684,8 @@ mod tests {
 
     fn mk_span(line: usize, col: usize) -> Span {
         Span::new(
-            saphyr_parser::Marker::new(0, line, col),
-            saphyr_parser::Marker::new(0, line, col),
+            granit_parser::Marker::new(0, line, col),
+            granit_parser::Marker::new(0, line, col),
         )
     }
 
@@ -772,10 +773,11 @@ mod tests {
     }
 
     #[test]
-    fn event_to_stream_event_nothing_is_none() {
+    fn event_to_stream_event_comment_is_none() {
         let mut anchor_map = HashMap::new();
+        // granit-parser emits Comment events; event_to_stream_event returns None for them
         assert!(super::event_to_stream_event(
-            Event::Nothing,
+            Event::Comment(Default::default(), Default::default()),
             mk_span(1, 0),
             &mut anchor_map,
             &mut |_| None

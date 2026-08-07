@@ -285,6 +285,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "granit-parser"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c92814c286f45b5ed1498ce9547bc9637b473eba7037f8aee6a4d5a3c1e051c"
+dependencies = [
+ "arraydeque",
+ "smallvec",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -546,12 +556,12 @@ name = "pyrs-yaml"
 version = "0.12.1"
 dependencies = [
  "divan",
+ "granit-parser 1.0.1",
  "indexmap",
  "numpy",
  "pyo3",
  "pyo3-build-config",
  "pyrs-yaml-core",
- "saphyr-parser",
  "serde_json",
 ]
 
@@ -559,9 +569,9 @@ dependencies = [
 name = "pyrs-yaml-core"
 version = "0.12.1"
 dependencies = [
+ "granit-parser 1.0.1",
  "indexmap",
  "rust-i18n",
- "saphyr-parser",
 ]
 
 [[package]]
@@ -702,16 +712,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "saphyr-parser"
-version = "0.0.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebfd783fcf1b3f6bafd557be0e1427ec54f826f513c3cdd749f9844484df2a13"
-dependencies = [
- "arraydeque",
- "thiserror",
-]
-
-[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -732,7 +732,7 @@ dependencies = [
  "base64",
  "encoding_rs_io",
  "getrandom",
- "granit-parser",
+ "granit-parser 0.0.7",
  "nohash-hasher",
  "num-traits",
  "serde_core",
@@ -836,26 +836,6 @@ checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
  "windows-sys",
-]
-
-[[package]]
-name = "thiserror"
-version = "2.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09a43598840e33d5b0331f38c5e30d13bb11c11210a4b58f0d9b18a5a5eefcd9"
-dependencies = [
- "thiserror-impl",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "2.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43cbfe0cf76104d42a574802844187e84a305e531ed54455f11fbde0f10541cd"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.3",
 ]
 
 [[package]]

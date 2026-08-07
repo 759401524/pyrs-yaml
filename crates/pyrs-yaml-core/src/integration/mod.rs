@@ -1,4 +1,4 @@
 #[cfg(test)]
-mod saphyr;
+mod granit;
 #[cfg(test)]
 mod yaml_suite;
