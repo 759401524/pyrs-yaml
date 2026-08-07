@@ -287,7 +287,7 @@ nan: .nan
 # Tags
 explicit_string: !!str 123
 explicit_int: !!int 0xFF
-explicit_bool: !!bool yes
+explicit_bool: !!bool true
 explicit_null: !!null ~
 
 # Comments everywhere

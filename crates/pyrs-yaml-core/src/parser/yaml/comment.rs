@@ -1,7 +1,3 @@
-use crate::ast::Comment;
-
-use std::sync::Arc;
-
 /// Pre-compute the byte offset of the start of each line in the given text.
 ///
 /// The returned vector has one entry per line, where `line_offsets[line]`
@@ -58,96 +54,6 @@ pub fn scan_yaml(yaml: &str) -> YamlScan {
     }
 }
 
-/// 从原始 YAML 文本中提取的注释信息。
-#[derive(Debug, Clone)]
-pub struct RawComment {
-    /// 注释所在行（0 起始）
-    pub line: usize,
-    /// 注释起始列（0 起始，`#` 字符的位置）
-    pub col: usize,
-    /// 注释文本（不含 `#` 前缀和前导空格）
-    pub text: Arc<str>,
-    /// `true` 表示独立行注释（行首仅有注释），`false` 表示行尾注释
-    pub standalone: bool,
-}
-
-/// 锚点名称跟踪器，封装 `extract_anchors` 的可变状态。
-#[derive(Debug)]
-pub struct CommentAnchorTracker {
-    raw_comments: Vec<RawComment>,
-    raw_anchors: Vec<RawAnchor>,
-    comment_idx: usize,
-    next_anchor_name: usize,
-}
-
-impl CommentAnchorTracker {
-    pub fn new(raw_comments: Vec<RawComment>, raw_anchors: Vec<RawAnchor>) -> Self {
-        Self {
-            raw_comments,
-            raw_anchors,
-            comment_idx: 0,
-            next_anchor_name: 0,
-        }
-    }
-
-    /// Find inline comment on a given line after a column.
-    pub fn find_inline_comment(&mut self, line: usize, after_col: usize) -> Option<Comment> {
-        let saved_idx = self.comment_idx;
-
-        while self.comment_idx < self.raw_comments.len() {
-            let c = &self.raw_comments[self.comment_idx];
-            if c.line > line {
-                break;
-            }
-            if c.line < line {
-                self.comment_idx += 1;
-                continue;
-            }
-            if c.col >= after_col && !c.standalone {
-                let comment = Comment {
-                    text: c.text.clone(),
-                    standalone: false,
-                };
-                return Some(comment);
-            }
-            self.comment_idx += 1;
-        }
-
-        self.comment_idx = saved_idx;
-        None
-    }
-
-    /// Find standalone comments before a given line.
-    pub fn find_standalone_before_line(&mut self, line: usize) -> Option<Comment> {
-        let mut result = None;
-        while self.comment_idx < self.raw_comments.len() {
-            let c = &self.raw_comments[self.comment_idx];
-            if c.line >= line {
-                break;
-            }
-            if c.standalone {
-                result = Some(Comment {
-                    text: c.text.clone(),
-                    standalone: true,
-                });
-            }
-            self.comment_idx += 1;
-        }
-        result
-    }
-
-    /// Get next anchor name from raw text (in order).
-    pub fn next_anchor_name(&mut self) -> Option<String> {
-        if self.next_anchor_name < self.raw_anchors.len() {
-            let name = self.raw_anchors[self.next_anchor_name].name.clone();
-            self.next_anchor_name += 1;
-            Some(name)
-        } else {
-            None
-        }
-    }
-}
-
 /// 从原始 YAML 文本中提取的锚点信息。
 #[derive(Debug, Clone)]
 pub struct RawAnchor {
@@ -157,20 +63,6 @@ pub struct RawAnchor {
     pub col: usize,
     /// 锚点名称（不含 `&` 前缀）
     pub name: String,
-}
-
-/// 从原始 YAML 文本中逐行扫描提取所有注释。
-///
-/// 正确处理单引号和双引号内的 `#` 字符（视为字符串内容而非注释）。
-///
-/// # Arguments
-/// * `yaml` - 原始 YAML 文本。
-///
-/// # Returns
-/// 按行号和列号排序的 `RawComment` 列表。
-pub fn extract_comments(yaml: &str) -> Vec<RawComment> {
-    let (comments, _) = extract_comments_and_anchors(yaml);
-    comments
 }
 
 /// Check if a character is a valid unquoted anchor name character.
@@ -190,19 +82,6 @@ fn is_valid_anchor_char(c: char) -> bool {
 /// # Returns
 /// 按出现顺序排列的 `RawAnchor` 列表。
 pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
-    let (_, anchors) = extract_comments_and_anchors(yaml);
-    anchors
-}
-
-/// 单遍扫描：同时提取注释和锚点定义。
-///
-/// 两遍独立扫描（`extract_comments` + `extract_anchors`）共享相同的
-/// 引号/转义状态机，合并为一次遍历可省掉一次全文扫描。
-///
-/// # Returns
-/// `(RawComment 列表, RawAnchor 列表)`。
-pub fn extract_comments_and_anchors(yaml: &str) -> (Vec<RawComment>, Vec<RawAnchor>) {
-    let mut comments = Vec::new();
     let mut anchors = Vec::new();
 
     for (line_idx, line) in yaml.lines().enumerate() {
@@ -211,20 +90,7 @@ pub fn extract_comments_and_anchors(yaml: &str) -> (Vec<RawComment>, Vec<RawAnch
         let mut escaped = false;
 
         for (col_idx, ch) in line.char_indices() {
-            // 注释提取：遇到引号外的 `#` 记录注释并停止本行注释检测
-            if !in_single_quote && !in_double_quote && ch == '#' {
-                let comment_text = Arc::from(line.get(col_idx + 1..).unwrap_or("").trim());
-                let is_standalone = line.get(..col_idx).unwrap_or("").trim().is_empty();
-                comments.push(RawComment {
-                    line: line_idx,
-                    col: col_idx,
-                    text: comment_text,
-                    standalone: is_standalone,
-                });
-                // 与 extract_comments 行为一致：第一个 `#` 后即本行注释尾部
-                break;
-            }
-            // 锚点提取：与 extract_anchors 行为一致，引号外 `&` 视为锚点
+            // 锚点提取：引号外 `&` 视为锚点
             if !in_single_quote && !in_double_quote && ch == '&' {
                 let rest = &line[col_idx + 1..];
                 if let Some(anchor_name) = scan_anchor_name(rest) {
@@ -241,7 +107,7 @@ pub fn extract_comments_and_anchors(yaml: &str) -> (Vec<RawComment>, Vec<RawAnch
         }
     }
 
-    (comments, anchors)
+    anchors
 }
 
 /// Advance quote/escape state machine for a single character.
@@ -308,40 +174,6 @@ fn scan_anchor_name(rest: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_extract_inline_comment() {
-        let yaml = "key: value  # comment";
-        let comments = extract_comments(yaml);
-        assert_eq!(comments.len(), 1);
-        assert_eq!(comments[0].text.as_ref(), "comment");
-        assert!(!comments[0].standalone);
-        assert_eq!(comments[0].line, 0);
-    }
-
-    #[test]
-    fn test_extract_standalone_comment() {
-        let yaml = "# standalone\nkey: value";
-        let comments = extract_comments(yaml);
-        assert_eq!(comments.len(), 1);
-        assert_eq!(comments[0].text.as_ref(), "standalone");
-        assert!(comments[0].standalone);
-        assert_eq!(comments[0].line, 0);
-    }
-
-    #[test]
-    fn test_comment_in_string_ignored() {
-        let yaml = "key: 'has # inside'";
-        let comments = extract_comments(yaml);
-        assert!(comments.is_empty());
-    }
-
-    #[test]
-    fn test_comment_in_double_quoted_string_ignored() {
-        let yaml = r#"key: "has # inside""#;
-        let comments = extract_comments(yaml);
-        assert!(comments.is_empty());
-    }
 
     #[test]
     fn test_extract_anchors() {

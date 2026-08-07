@@ -23,6 +23,10 @@ from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON as CONFIG_JSON,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_LARGE,
+    BENCHMARK_SMALL,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_MEDIUM as CONFIG_YAML,
 )
 from tests.data.yaml_samples import (
@@ -41,6 +45,17 @@ pytestmark = pytest.mark.benchmark
 def test_safe_load(benchmark):
     result = benchmark(pyrs_yaml.safe_load, CONFIG_YAML)
     assert result["server"]["port"] == 8080
+
+
+YAML_INPUTS = {"small": BENCHMARK_SMALL, "medium": CONFIG_YAML, "large": BENCHMARK_LARGE}
+SIZES = ["small", "medium", "large"]
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_safe_load_sized(benchmark, size):
+    """safe_load across sizes: parse + Python object conversion."""
+    result = benchmark(pyrs_yaml.safe_load, YAML_INPUTS[size])
+    assert result is not None
 
 
 def test_safe_load_anchors(benchmark):
@@ -135,3 +150,22 @@ def test_parse_file(benchmark):
     file = io.StringIO(CONFIG_YAML)
     result = benchmark(lambda: pyrs_yaml.parse(file.getvalue()))
     assert result
+
+
+# ── Cross-library safe_load comparison ──
+
+try:
+    import yaml as pyyaml
+
+    HAS_PYYAML = True
+except ImportError:
+    HAS_PYYAML = False
+    pyyaml = None
+
+
+@pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_pyyaml_safe_load(benchmark, size):
+    """PyYAML safe_load for cross-library comparison."""
+    result = benchmark(pyyaml.safe_load, YAML_INPUTS[size])
+    assert result is not None
