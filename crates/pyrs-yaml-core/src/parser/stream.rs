@@ -468,6 +468,28 @@ mod tests {
     }
 
     #[test]
+    fn test_stream_comment_before_mapping() {
+        // Comment before a mapping should be emitted before MappingStart
+        let events = parse_stream("# mapping comment\nkey: value").unwrap();
+        let comment_pos = events
+            .iter()
+            .position(|e| matches!(&e.event_type, StreamEventType::Comment { .. }))
+            .expect("comment event should exist");
+        let mapping_pos = events
+            .iter()
+            .position(|e| matches!(&e.event_type, StreamEventType::MappingStart { .. }))
+            .expect("mapping_start event should exist");
+        assert!(
+            comment_pos < mapping_pos,
+            "comment should come before mapping_start"
+        );
+        if let StreamEventType::Comment { text, standalone } = &events[comment_pos].event_type {
+            assert_eq!(text.as_ref(), "mapping comment");
+            assert!(*standalone);
+        }
+    }
+
+    #[test]
     fn test_stream_empty_yaml() {
         let events = parse_stream("").unwrap();
         assert!(events.is_empty());

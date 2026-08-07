@@ -14,7 +14,7 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 
 ## Features
 
-- **YAML 1.2 compliant** - Uses saphyr-parser for full YAML 1.2 support
+- **YAML 1.2 compliant** - Uses granit-parser for full YAML 1.2 support with native comment preservation
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - **In-Place Editing** - Edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
 - **High Performance** - Rust backend, see [benchmarks](benches/yaml_bench.rs)

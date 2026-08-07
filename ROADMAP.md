@@ -87,7 +87,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 | # | Item | Layer | Fix approach | Priority | Status |
 |:--|:-----|:------|:------------|:--------:|:------|
 | 3 | **Indentation edge cases** — invalid indentation, wrongly indented line, block collection indentation | Rust (post-processing) | Pre-process input | 🟡 | ✅ Closed 2026-08-04 — audit found no fixable case |
-| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + saphyr) | Pre-process + saphyr patch | 🔴 | ✅ Closed 2026-08-04 — audit found no fixable case |
+| 4 | **Block mapping key detection** — did not find expected key, simple key `:` ambiguity | Rust (post-processing + granit) | Pre-process + granit patch | 🔴 | ✅ Closed 2026-08-04 — audit found no fixable case |
 | 5 | **Flow context disambiguation** — mapping values not allowed in flow context, flow sequence `,`/`]` | Rust (post-processing) | Pre-process flow context | 🟡 | ✅ Closed 2026-08-04 — audit found no fixable case |
 
 **Phase 0 strictness audit (decision gate) — result: EMPTY fix list → items close (2026-08-04)**: these items have no in-suite target (all suite tests already pass). A 70-probe corpus (~20/bucket: indentation, block-mapping keys, flow context) was compared against a PyYAML oracle via `tests/test_strictness_audit.py`. The parser matched the oracle on **64/70** probes (26 reject-match, 38 accept-match). The 6 divergences are all **deliberate** and documented in the test:
@@ -97,7 +97,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 Per the plan's risk note ("the audit records oracle disagreements but does not change our parser to match PyYAML quirks"), none of these were changed. Fixing the 5 would **regress** suite compliance below 405/406; fixing the 1 is already deliberate strictness. **No fixes shipped** — items 3/4/5 close with the audit corpus pinned as a regression test. Do not invent fixes to justify the original ~11d estimate.
 
-**Design constraint**: saphyr-parser upstream may not be actively maintained; item 4 may require a maintained fork. Unchanged — item 4 needed no fork because the audit surfaced no fixable case.
+**Design constraint**: granit-parser upstream may not be actively maintained; item 4 may require a maintained fork. Unchanged — item 4 needed no fork because the audit surfaced no fixable case.
 
 **Changelog mapping**: Entries under `[0.11.5]` in CHANGELOG.md.
 
@@ -152,7 +152,7 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 > **Revisit rule** (from Review Notes 2026-08-02): every milestone review must re-evaluate all unchecked items below — promote, defer with reason, or close. No item stays unchecked for more than two consecutive milestone reviews.
 
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
-- [ ] **Custom YAML 1.2 parser** — evaluate replacing saphyr-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork saphyr-parser and incrementally fix to 100%.
+- [ ] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser and incrementally fix to 100%.
 - [ ] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime probe (`py.import("numpy").is_ok()`) auto-detect. Tracked in v0.11.7.
 - [ ] **YAML Schema language** — dedicated schema definition format beyond JSON Schema
 - [ ] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy
