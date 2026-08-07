@@ -1,11 +1,10 @@
 use crate::ast::{Comment, ScalarStyle, Tag};
-use crate::parser::yaml::{
-    extract_comments_and_anchors, scan_yaml, unescape_double_quoted, CommentAnchorTracker,
-};
+use crate::parser::yaml::{extract_anchors, unescape_double_quoted};
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Line and column information for a YAML stream event.
@@ -75,7 +74,7 @@ pub enum StreamEventType {
     },
 }
 
-/// Event receiver that collects `StreamEvent`s from saphyr-parser.
+/// Event receiver that collects `StreamEvent`s from granit-parser.
 ///
 /// Mirrors the pattern used by `AstReceiver` in `parser::mod.rs` but
 /// emits lightweight structural events instead of building an AST.
@@ -83,9 +82,12 @@ pub enum StreamEventType {
 /// Pending standalone comments are emitted as `StreamEventType::Comment`
 /// events before the next structural event that carries anchor/tag/alias.
 pub struct StreamReceiver<'a> {
-    yaml_text: &'a str,
-    line_offsets: Vec<usize>,
-    comment_anchor_tracker: CommentAnchorTracker,
+    /// Phantom lifetime to satisfy 'a (no longer needs yaml_text reference)
+    _marker: PhantomData<&'a str>,
+    /// Anchor names extracted from raw text (indexed by anchor_id)
+    anchor_names: Vec<String>,
+    /// Current index into anchor_names
+    anchor_name_idx: usize,
     events: Vec<StreamEvent>,
     pending_standalone_comment: Option<Comment>,
     anchors: HashMap<usize, String>,
@@ -93,16 +95,11 @@ pub struct StreamReceiver<'a> {
 
 impl<'a> StreamReceiver<'a> {
     fn new(yaml_text: &'a str) -> Self {
-        let scan = scan_yaml(yaml_text);
-        let (comments, anchors) = if !scan.has_hash && !scan.has_amp {
-            (Vec::new(), Vec::new())
-        } else {
-            extract_comments_and_anchors(yaml_text)
-        };
+        let raw_anchors = extract_anchors(yaml_text);
         Self {
-            yaml_text,
-            line_offsets: scan.line_offsets,
-            comment_anchor_tracker: CommentAnchorTracker::new(comments, anchors),
+            _marker: PhantomData,
+            anchor_names: raw_anchors.iter().map(|a| a.name.clone()).collect(),
+            anchor_name_idx: 0,
             events: Vec::new(),
             pending_standalone_comment: None,
             anchors: HashMap::new(),
@@ -128,62 +125,50 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
         let line = span.start.line().saturating_sub(1);
         let column = span.start.col();
 
-        // 注释注入逻辑保持逐分支：standalone 查找仅 Scalar/MappingStart/SequenceStart；
-        // Scalar 分支在发现 standalone 时立即 emit pending（与现有实现逐字节一致）。
-        let mut inline_comment = None;
-        let mut value_end_col = 0;
-        match &event {
-            Event::Scalar(value, ..) => {
-                let standalone = self
-                    .comment_anchor_tracker
-                    .find_standalone_before_line(line);
-                if let Some(comment) = standalone {
-                    self.pending_standalone_comment = Some(comment);
-                    self.emit_pending_comment(line, column);
+        // Handle native comments from granit-parser
+        if let Event::Comment(text, placement) = &event {
+            let text = Arc::from(text.trim());
+            match placement {
+                granit_parser::Placement::Above
+                | granit_parser::Placement::Free
+                | granit_parser::Placement::Last => {
+                    self.pending_standalone_comment = Some(Comment {
+                        text,
+                        standalone: true,
+                    });
                 }
-
-                value_end_col = if line < self.line_offsets.len() {
-                    let start = self.line_offsets[line];
-                    let end = if line + 1 < self.line_offsets.len() {
-                        self.line_offsets[line + 1].saturating_sub(1)
-                    } else {
-                        self.yaml_text.len()
-                    };
-                    let line_text = &self.yaml_text[start..end];
-                    if let Some(comment_pos) = line_text.find('#') {
-                        comment_pos
-                    } else {
-                        line_text.len()
-                    }
-                } else {
-                    value.len()
-                };
-
-                inline_comment = self
-                    .comment_anchor_tracker
-                    .find_inline_comment(line, value_end_col);
-            }
-            Event::MappingStart(..) | Event::SequenceStart(..) => {
-                let standalone = self
-                    .comment_anchor_tracker
-                    .find_standalone_before_line(line);
-                if let Some(comment) = standalone {
-                    self.pending_standalone_comment = Some(comment);
+                granit_parser::Placement::Right => {
+                    self.events.push(StreamEvent {
+                        event_type: StreamEventType::Comment {
+                            text,
+                            standalone: false,
+                        },
+                        line,
+                        column,
+                    });
                 }
+                _ => {} // Placement is #[non_exhaustive]
             }
-            _ => {}
+            return;
         }
 
         let Some(stream_event) =
             event_to_stream_event(event, span, &mut self.anchors, &mut |_id| {
-                self.comment_anchor_tracker.next_anchor_name()
+                if self.anchor_name_idx < self.anchor_names.len() {
+                    let name = self.anchor_names[self.anchor_name_idx].clone();
+                    self.anchor_name_idx += 1;
+                    Some(name)
+                } else {
+                    None
+                }
             })
         else {
-            return; // Event::Nothing
+            return; // non_exhaustive wildcard
         };
 
-        // emit_pending_comment 时机：除 StreamStart 与 Scalar 外，其余事件在 push 前无条件 emit。
-        // （Scalar 分支仅在发现 standalone 时 emit，见上方 match；StreamStart 不 emit。）
+        // emit_pending_comment timing: all events except StreamStart emit pending
+        // comment before themselves. Scalar does NOT emit pending (inline comments
+        // are handled by Event::Comment(Placement::Right) directly).
         let needs_emit_pending = !matches!(
             &stream_event.event_type,
             StreamEventType::StreamStart | StreamEventType::Scalar { .. }
@@ -193,32 +178,19 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
         }
 
         self.events.push(stream_event);
-
-        if let Some(inline_comment) = inline_comment {
-            self.events.push(StreamEvent {
-                event_type: StreamEventType::Comment {
-                    text: inline_comment.text,
-                    standalone: false,
-                },
-                line,
-                column: value_end_col,
-            });
-        }
     }
 }
 
-/// Convert a saphyr-parser Tag to our Tag format.
+/// Convert a granit-parser Tag to our Tag format.
 fn convert_tag(tag: Option<&granit_parser::Tag>) -> Option<Tag> {
     tag.map(|t| super::convert_tag(t).clone())
 }
 
-/// 纯函数：saphyr `Event` + `Span` → `StreamEvent`（D4 抽取）。
+/// Pure function: granit `Event` + `Span` → `StreamEvent`.
 ///
-/// 不含注释/`line_offsets`/`value_end_col` 等 O(doc) 依赖逻辑（留在
-/// `StreamReceiver::on_event`）；anchor 名经 `resolve_anchor` 回调注入
-/// （字符串路径：`comment_anchor_tracker.next_anchor_name()`；流式路径：
-/// `format!("anchor_{id}")`），回调返回 `None` 表示无 anchor；解析到的
-/// anchor 注册进 `anchor_map` 供 Alias 分支查找。`Event::Nothing` → `None`。
+/// Contains no comment dependencies (those stay in `StreamReceiver::on_event`);
+/// anchor name injected via `resolve_anchor` callback. Returns `None` for
+/// non_exhaustive wildcard.
 pub fn event_to_stream_event<F>(
     event: Event<'_>,
     span: Span,

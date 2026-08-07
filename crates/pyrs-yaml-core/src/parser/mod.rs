@@ -41,7 +41,7 @@ fn is_null_key(key: &CustomNode) -> bool {
     }
 }
 
-/// 使用 saphyr-parser 解析 YAML 字符串为 `CustomNode` AST。
+/// 使用 granit-parser 解析 YAML 字符串为 `CustomNode` AST。
 ///
 /// # Arguments
 /// * `yaml` - YAML 内容字符串。
@@ -59,7 +59,7 @@ fn is_null_key(key: &CustomNode) -> bool {
 /// let ast = parse("key: value", YamlSchema::Core).unwrap();
 /// ```
 ///
-/// Parse a YAML string into a CustomNode AST using saphyr-parser
+/// Parse a YAML string into a CustomNode AST using granit-parser
 pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDetail> {
     parse_with_options(yaml, true, schema, 1000, false)
 }
