@@ -140,10 +140,10 @@ def test_parity_multidoc_sequence(yaml_str):
     assert streamed[-1] == "stream_end"
 
 
-def test_parity_cross_document_alias_load_stream_succeeds():
-    """load_stream does not validate cross-doc aliases (saphyr streaming parser)."""
-    events = list(pyrs_yaml.YAML().load_stream(io.StringIO("---\na: &x 1\n---\nb: *x\n")))
-    assert any(e["type"] == "alias" for e in events)
+def test_parity_cross_document_alias_load_stream_raises():
+    """load_stream validates cross-doc aliases (granit-parser stricter validation)."""
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        list(pyrs_yaml.YAML().load_stream(io.StringIO("---\na: &x 1\n---\nb: *x\n")))
 
 
 def test_parity_cross_document_alias_parse_stream_raises():
