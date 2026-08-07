@@ -30,9 +30,9 @@ pub fn parse_schema(raw: &str) -> PyResult<YamlSchema> {
 }
 
 /// 递归遍历 AST，收集所有锚点到节点的映射，用于别名解析。
-pub fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<String, &'a CustomNode>) {
+pub fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<&'a str, &'a CustomNode>) {
     if let Some(name) = node.anchor() {
-        anchors.insert(name.to_string(), node);
+        anchors.insert(name, node);
     }
     match node {
         CustomNode::Mapping { pairs, .. } => {
@@ -51,16 +51,16 @@ pub fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<String, &
 }
 
 /// 将 `CustomNode` 转换为 Python 对象，解析别名引用（`*alias`）为实际值。
-pub fn node_to_pyobject_with_anchors(
-    node: &CustomNode,
+pub fn node_to_pyobject_with_anchors<'a>(
+    node: &'a CustomNode,
     py: Python,
-    anchors: &HashMap<String, &CustomNode>,
+    anchors: &HashMap<&'a str, &'a CustomNode>,
     visited: &mut HashSet<usize>,
     schema: YamlSchema,
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Alias { name } => {
-            if let Some(target) = anchors.get(name) {
+            if let Some(target) = anchors.get(name.as_str()) {
                 let addr = std::ptr::addr_of!(*target) as usize;
                 if visited.contains(&addr) {
                     return Ok(py.None());
@@ -90,6 +90,9 @@ fn scalar_to_pyobject(
         style,
         ScalarStyle::Plain | ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted
     ) {
+        // Note: quoted scalars are also resolved for round-trip compatibility.
+        // The serializer quotes negative numbers / special values, so the
+        // loader must de-quote them back to the correct type.
         match resolve_yaml_type(value, schema) {
             YamlType::Null => Ok(py.None()),
             YamlType::Bool(b) => Ok(PyBool::new(py, b).to_owned().into_any().unbind()),
@@ -98,14 +101,14 @@ fn scalar_to_pyobject(
             YamlType::Str(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
         }
     } else {
-        Ok(value.to_string().into_pyobject(py)?.into_any().unbind())
+        Ok(value.into_pyobject(py)?.into_any().unbind())
     }
 }
 
-fn node_to_pyobject_inner(
-    node: &CustomNode,
+fn node_to_pyobject_inner<'a>(
+    node: &'a CustomNode,
     py: Python,
-    anchors: &HashMap<String, &CustomNode>,
+    anchors: &HashMap<&'a str, &'a CustomNode>,
     visited: &mut HashSet<usize>,
     schema: YamlSchema,
 ) -> PyResult<Py<PyAny>> {
@@ -114,12 +117,12 @@ fn node_to_pyobject_inner(
         CustomNode::Mapping { pairs, .. } => {
             let dict = PyDict::new(py);
             for (key, value) in pairs {
-                let key_str = match key {
-                    CustomNode::Scalar { value, .. } => value.to_string(),
-                    _ => format!("{:?}", key),
-                };
                 let val = node_to_pyobject_with_anchors(value, py, anchors, visited, schema)?;
-                dict.set_item(key_str, val).ok();
+                match key {
+                    CustomNode::Scalar { value, .. } => dict.set_item(value.as_ref(), val),
+                    _ => dict.set_item(format!("{:?}", key), val),
+                }
+                .ok();
             }
             Ok(dict.into_any().unbind())
         }
@@ -136,7 +139,7 @@ fn node_to_pyobject_inner(
     }
 }
 
-fn node_to_pyobject_simple(
+pub(crate) fn node_to_pyobject_simple(
     node: &CustomNode,
     py: Python,
     schema: YamlSchema,
@@ -146,12 +149,12 @@ fn node_to_pyobject_simple(
         CustomNode::Mapping { pairs, .. } => {
             let dict = PyDict::new(py);
             for (key, value) in pairs {
-                let key_str = match key {
-                    CustomNode::Scalar { value, .. } => value.to_string(),
-                    _ => format!("{:?}", key),
-                };
                 let val = node_to_pyobject_simple(value, py, schema)?;
-                dict.set_item(key_str, val).ok();
+                match key {
+                    CustomNode::Scalar { value, .. } => dict.set_item(value.as_ref(), val),
+                    _ => dict.set_item(format!("{:?}", key), val),
+                }
+                .ok();
             }
             Ok(dict.into_any().unbind())
         }

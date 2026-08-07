@@ -1,25 +1,35 @@
 use crate::parser::yaml::types::{YamlSchema, YamlType};
+use std::borrow::Cow;
 
 // YamlSchema is defined in types.rs and re-exported via mod.rs.
 
 /// Resolve a plain scalar with zero implicit resolution.
 /// Always returns `YamlType::Str`.
-pub fn resolve_failsafe(value: &str) -> YamlType {
-    YamlType::Str(value.to_string())
+pub fn resolve_failsafe(value: &str) -> YamlType<'_> {
+    YamlType::Str(Cow::Borrowed(value))
 }
 
 /// Resolve a plain scalar as YAML 1.2 Core.
 ///
 /// Priority: Null → Bool → Infinity → NaN → Octal → Hex → Float → Decimal int → String.
-pub fn resolve_core_type(value: &str) -> YamlType {
+pub fn resolve_core_type(value: &str) -> YamlType<'_> {
     let trimmed = value.trim();
 
-    if trimmed.is_empty()
-        || trimmed == "null"
-        || trimmed == "Null"
-        || trimmed == "NULL"
-        || trimmed == "~"
+    if trimmed.is_empty() || trimmed == "~" {
+        return YamlType::Null;
+    }
+
+    // Fast path: most string scalars ("hello", "database", …) start with a
+    // letter that can't be the first character of a YAML keyword (null, true,
+    // false, inf, nan).  Skip the 30+ comparisons and return Str immediately.
+    let first = trimmed.as_bytes().first().copied().unwrap_or(0);
+    if first.is_ascii_alphabetic()
+        && !matches!(first, b'n' | b'N' | b't' | b'T' | b'f' | b'F' | b'i' | b'I')
     {
+        return YamlType::Str(Cow::Borrowed(value));
+    }
+
+    if trimmed == "null" || trimmed == "Null" || trimmed == "NULL" {
         return YamlType::Null;
     }
 
@@ -81,13 +91,13 @@ pub fn resolve_core_type(value: &str) -> YamlType {
         return YamlType::Int(val);
     }
 
-    YamlType::Str(value.to_string())
+    YamlType::Str(Cow::Borrowed(value))
 }
 
 /// Resolve a plain scalar as JSON-compatible YAML.
 ///
 /// Same as Core minus: inf, nan, octal (0o), hex (0x) — those become strings.
-pub fn resolve_json_type(value: &str) -> YamlType {
+pub fn resolve_json_type(value: &str) -> YamlType<'_> {
     let trimmed = value.trim();
 
     if trimmed.is_empty()
@@ -108,12 +118,12 @@ pub fn resolve_json_type(value: &str) -> YamlType {
 
     // inf / nan → strings (not floats)
     if is_inf_or_nan(trimmed) {
-        return YamlType::Str(value.to_string());
+        return YamlType::Str(Cow::Borrowed(value));
     }
 
     // octal / hex → strings (not ints)
     if is_octal(trimmed) || is_hex(trimmed) {
-        return YamlType::Str(value.to_string());
+        return YamlType::Str(Cow::Borrowed(value));
     }
 
     if trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E') {
@@ -126,13 +136,13 @@ pub fn resolve_json_type(value: &str) -> YamlType {
         return YamlType::Int(val);
     }
 
-    YamlType::Str(value.to_string())
+    YamlType::Str(Cow::Borrowed(value))
 }
 
 /// Resolve a plain scalar as YAML 1.1.
 ///
 /// Same as Core plus legacy boolean lexemes (yes/No/ON/off/y/N/...).
-pub fn resolve_yaml11_type(value: &str) -> YamlType {
+pub fn resolve_yaml11_type(value: &str) -> YamlType<'_> {
     let trimmed = value.trim();
 
     if trimmed.is_empty()
@@ -166,7 +176,7 @@ pub fn resolve_yaml11_type(value: &str) -> YamlType {
 }
 
 /// Public dispatcher: resolve a plain scalar according to the given schema.
-pub fn resolve_yaml_type(value: &str, schema: YamlSchema) -> YamlType {
+pub fn resolve_yaml_type(value: &str, schema: YamlSchema) -> YamlType<'_> {
     match schema {
         YamlSchema::Failsafe => resolve_failsafe(value),
         YamlSchema::Json => resolve_json_type(value),
@@ -219,12 +229,12 @@ mod tests {
 
     #[test]
     fn test_failsafe_returns_str() {
-        assert_eq!(resolve_failsafe("42"), YamlType::Str("42".to_string()));
-        assert_eq!(resolve_failsafe("null"), YamlType::Str("null".to_string()));
-        assert_eq!(resolve_failsafe("true"), YamlType::Str("true".to_string()));
-        assert_eq!(resolve_failsafe("3.14"), YamlType::Str("3.14".to_string()));
-        assert_eq!(resolve_failsafe(".inf"), YamlType::Str(".inf".to_string()));
-        assert_eq!(resolve_failsafe("0x1F"), YamlType::Str("0x1F".to_string()));
+        assert_eq!(resolve_failsafe("42"), YamlType::Str(Cow::from("42")));
+        assert_eq!(resolve_failsafe("null"), YamlType::Str("null".into()));
+        assert_eq!(resolve_failsafe("true"), YamlType::Str("true".into()));
+        assert_eq!(resolve_failsafe("3.14"), YamlType::Str("3.14".into()));
+        assert_eq!(resolve_failsafe(".inf"), YamlType::Str(".inf".into()));
+        assert_eq!(resolve_failsafe("0x1F"), YamlType::Str("0x1F".into()));
     }
 
     // ---- core ----
@@ -265,27 +275,24 @@ mod tests {
 
     #[test]
     fn test_core_string() {
-        assert_eq!(
-            resolve_core_type("hello"),
-            YamlType::Str("hello".to_string())
-        );
+        assert_eq!(resolve_core_type("hello"), YamlType::Str("hello".into()));
     }
 
     // ---- json ----
 
     #[test]
     fn test_json_inf_nan_are_strings() {
-        assert_eq!(resolve_json_type(".inf"), YamlType::Str(".inf".to_string()));
-        assert_eq!(resolve_json_type(".INF"), YamlType::Str(".INF".to_string()));
-        assert_eq!(resolve_json_type("-inf"), YamlType::Str("-inf".to_string()));
-        assert_eq!(resolve_json_type(".nan"), YamlType::Str(".nan".to_string()));
-        assert_eq!(resolve_json_type(".NaN"), YamlType::Str(".NaN".to_string()));
+        assert_eq!(resolve_json_type(".inf"), YamlType::Str(".inf".into()));
+        assert_eq!(resolve_json_type(".INF"), YamlType::Str(".INF".into()));
+        assert_eq!(resolve_json_type("-inf"), YamlType::Str("-inf".into()));
+        assert_eq!(resolve_json_type(".nan"), YamlType::Str(".nan".into()));
+        assert_eq!(resolve_json_type(".NaN"), YamlType::Str(".NaN".into()));
     }
 
     #[test]
     fn test_json_octal_hex_are_strings() {
-        assert_eq!(resolve_json_type("0x1F"), YamlType::Str("0x1F".to_string()));
-        assert_eq!(resolve_json_type("0o17"), YamlType::Str("0o17".to_string()));
+        assert_eq!(resolve_json_type("0x1F"), YamlType::Str("0x1F".into()));
+        assert_eq!(resolve_json_type("0o17"), YamlType::Str("0o17".into()));
     }
 
     #[test]
@@ -300,10 +307,7 @@ mod tests {
             YamlType::Float(v) => assert!((v - 3.14).abs() < 1e-10),
             other => panic!("expected Float, got {:?}", other),
         }
-        assert_eq!(
-            resolve_json_type("hello"),
-            YamlType::Str("hello".to_string())
-        );
+        assert_eq!(resolve_json_type("hello"), YamlType::Str("hello".into()));
     }
 
     // ---- yaml1.1 ----
@@ -346,11 +350,11 @@ mod tests {
     fn test_resolve_yaml_type_dispatcher() {
         assert_eq!(
             resolve_yaml_type("42", YamlSchema::Failsafe),
-            YamlType::Str("42".to_string())
+            YamlType::Str("42".into())
         );
         assert_eq!(
             resolve_yaml_type("0x1F", YamlSchema::Json),
-            YamlType::Str("0x1F".to_string())
+            YamlType::Str("0x1F".into())
         );
         assert_eq!(
             resolve_yaml_type("0x1F", YamlSchema::Core),
@@ -362,7 +366,7 @@ mod tests {
         );
         assert_eq!(
             resolve_yaml_type("yes", YamlSchema::Core),
-            YamlType::Str("yes".to_string())
+            YamlType::Str("yes".into())
         );
     }
 

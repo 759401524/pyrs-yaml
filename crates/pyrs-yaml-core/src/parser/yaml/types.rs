@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 /// YAML schema profile controlling implicit type resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YamlSchema {
@@ -13,7 +15,7 @@ pub enum YamlSchema {
 
 /// YAML 1.2 type resolution for plain scalars
 #[derive(Debug, Clone, PartialEq)]
-pub enum YamlType {
+pub enum YamlType<'a> {
     /// Null value
     Null,
     /// Boolean value
@@ -22,12 +24,12 @@ pub enum YamlType {
     Int(i64),
     /// Float value (including infinity and NaN)
     Float(f64),
-    /// String value (default)
-    Str(String),
+    /// String value (default). Borrowed when possible to avoid allocation.
+    Str(Cow<'a, str>),
 }
 
 #[cfg(test)]
-impl YamlType {
+impl YamlType<'_> {
     /// Check if this is a NaN value (since f64 NaN != NaN via PartialEq)
     pub fn is_nan_value(&self) -> bool {
         match self {
@@ -64,7 +66,7 @@ mod tests {
                     val.to_string()
                 }
             }
-            YamlType::Str(s) => s.clone(),
+            YamlType::Str(s) => s.to_string(),
         }
     }
 
@@ -175,11 +177,11 @@ mod tests {
     fn test_resolve_string() {
         assert_eq!(
             resolve_yaml_type("hello", YamlSchema::Core),
-            YamlType::Str("hello".to_string())
+            YamlType::Str(Cow::from("hello"))
         );
         assert_eq!(
             resolve_yaml_type("12abc", YamlSchema::Core),
-            YamlType::Str("12abc".to_string())
+            YamlType::Str(Cow::from("12abc"))
         );
     }
 

@@ -84,6 +84,7 @@ pub fn to_yaml_with_options(
     options: &SerializeOptions,
 ) -> Result<String, String> {
     let mut serializer = Serializer::new(options);
+    serializer.output.reserve(estimate_output_size(node));
     if options.explicit_start {
         serializer.output.push_str("---\n");
     }
@@ -108,6 +109,36 @@ struct Serializer {
     max_depth: usize,
     /// Line width for wrapping (0 = no wrapping)
     width: usize,
+}
+
+/// Estimate output size (bytes) based on node count. Each node averages
+/// ~50 bytes (key + value + indent + newline + structural overhead).
+fn estimate_output_size(node: &CustomNode) -> usize {
+    count_nodes(node) * 50
+}
+
+/// Count total nodes in the AST (pre-order traversal, iterative to avoid stack overflow).
+fn count_nodes(node: &CustomNode) -> usize {
+    let mut count = 0;
+    let mut stack = vec![node];
+    while let Some(n) = stack.pop() {
+        count += 1;
+        match n {
+            CustomNode::Mapping { pairs, .. } => {
+                for (k, v) in pairs {
+                    stack.push(k);
+                    stack.push(v);
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                for item in items {
+                    stack.push(item);
+                }
+            }
+            _ => {}
+        }
+    }
+    count
 }
 
 /// Whether a node can be serialized inline on the same line as a mapping

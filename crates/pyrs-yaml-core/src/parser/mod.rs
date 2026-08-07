@@ -121,8 +121,8 @@ pub fn parse_with_options(
     // Get the parsed node (handle empty documents)
     let mut node = receiver.result.unwrap_or(CustomNode::plain_null());
 
-    // Resolve merge keys (<<) after parsing (if enabled)
-    if resolve_merges {
+    // Resolve merge keys (<<) after parsing (if enabled and any were detected)
+    if resolve_merges && receiver.has_merge_key {
         resolve_merge_keys(&mut node);
     }
 
@@ -191,15 +191,15 @@ pub fn parse_all_with_options(
     if docs.is_empty() {
         // Single document — return as-is
         let mut node = receiver.result.unwrap_or(CustomNode::plain_null());
-        if resolve_merges {
+        if resolve_merges && receiver.has_merge_key {
             resolve_merge_keys(&mut node);
         }
         return Ok(vec![node]);
     }
 
     let mut results: Vec<CustomNode> = docs;
-    for node in &mut results {
-        if resolve_merges {
+    if resolve_merges && receiver.has_merge_key {
+        for node in &mut results {
             resolve_merge_keys(node);
         }
     }
@@ -417,6 +417,8 @@ struct AstReceiver<'a> {
     allow_duplicate_keys: bool,
     /// Stored duplicate key error (since on_event can't return Result)
     duplicate_key_error: Option<ParseErrorDetail>,
+    /// Whether any `<<` merge key was detected during parsing
+    has_merge_key: bool,
 }
 
 #[derive(Debug)]
@@ -464,6 +466,7 @@ impl<'a> AstReceiver<'a> {
             max_depth_exceeded: false,
             allow_duplicate_keys,
             duplicate_key_error: None,
+            has_merge_key: false,
         }
     }
 
@@ -566,21 +569,25 @@ impl<'a> AstReceiver<'a> {
                 } else if let Some(key) = current_key.take() {
                     if self.max_depth_exceeded || self.allow_duplicate_keys || is_null_key(&key) {
                         pairs.insert(key, node);
-                    } else if pairs.contains_key(&key) {
-                        // Duplicate key (rare): only now compute the display string.
-                        let key_str = match &key {
-                            CustomNode::Scalar { value, .. } => value.to_string(),
-                            _ => format!("{:?}", key),
-                        };
-                        pairs.insert(key, node);
-                        // The AST is discarded on error, so the replaced pair is harmless.
-                        self.duplicate_key_error = Some(ParseErrorDetail {
-                            message: format!("duplicate key: {}", key_str),
-                            line: 0,
-                            col: 0,
-                        });
                     } else {
-                        pairs.insert(key, node);
+                        use indexmap::map::Entry;
+                        match pairs.entry(key) {
+                            Entry::Vacant(v) => {
+                                v.insert(node);
+                            }
+                            Entry::Occupied(mut o) => {
+                                let key_str = match o.key() {
+                                    CustomNode::Scalar { value, .. } => value.to_string(),
+                                    k => format!("{:?}", k),
+                                };
+                                o.insert(node);
+                                self.duplicate_key_error = Some(ParseErrorDetail {
+                                    message: format!("duplicate key: {}", key_str),
+                                    line: 0,
+                                    col: 0,
+                                });
+                            }
+                        };
                     }
                 }
             }
@@ -617,6 +624,9 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
             }
             Event::Scalar(value, style, anchor_id, tag) => {
+                if value == "<<" {
+                    self.has_merge_key = true;
+                }
                 let line = span.start.line() - 1; // Convert to 0-indexed
                 let range = self.span_to_byte_range(&span);
 

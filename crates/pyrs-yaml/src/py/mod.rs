@@ -25,8 +25,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use self::convert::{
-    collect_anchors, format_i18n_error, node_to_pyobject, node_to_pyobject_with_anchors,
-    parse_schema,
+    collect_anchors, format_i18n_error, node_to_pyobject, node_to_pyobject_simple,
+    node_to_pyobject_with_anchors, parse_schema,
 };
 use self::python_types::{json_value_to_node, pyobject_to_node};
 use self::stream_events::stream_event_to_py_dict;
@@ -1449,10 +1449,14 @@ mod pyrs_yaml {
             })
         })?;
         resolve_tags(&mut ast, py)?;
-        let mut anchors = HashMap::new();
-        collect_anchors(&ast, &mut anchors);
-        let mut visited = HashSet::new();
-        node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
+        if yaml.bytes().any(|b| b == b'&') {
+            let mut anchors = HashMap::new();
+            collect_anchors(&ast, &mut anchors);
+            let mut visited = HashSet::new();
+            node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
+        } else {
+            node_to_pyobject_simple(&ast, py, schema_enum)
+        }
     }
 
     #[pyfunction]

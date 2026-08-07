@@ -153,30 +153,15 @@ def test_ruamel_serialize(benchmark, size):
 @pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_ryaml_parse(benchmark, size):
-    yaml = YAML_INPUTS[size]
-    if size == "large":
-        try:
-            benchmark(ryaml.load, io.StringIO(yaml))
-        except Exception:
-            pytest.skip("ryaml YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
-    else:
-        benchmark(ryaml.load, io.StringIO(yaml))
+    benchmark(ryaml.load, io.StringIO(YAML_INPUTS[size]))
 
 
 @pytest.mark.benchmark(group="ryaml")
 @pytest.mark.skipif(not HAS_RYAML, reason="ryaml not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_ryaml_serialize(benchmark, size):
-    yaml = YAML_INPUTS[size]
-    if size == "large":
-        try:
-            data = ryaml.load(io.StringIO(yaml))
-            benchmark(ryaml_dumps, data)
-        except Exception:
-            pytest.skip("ryaml YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
-    else:
-        data = ryaml.load(io.StringIO(yaml))
-        benchmark(ryaml_dumps, data)
+    data = ryaml.load(io.StringIO(YAML_INPUTS[size]))
+    benchmark(ryaml_dumps, data)
 
 
 # ── yaml_edit benchmarks (parse only) ──
@@ -196,30 +181,15 @@ def test_yaml_edit_parse(benchmark, size):
 @pytest.mark.skipif(not HAS_YAML_RS, reason="yaml_rs not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_yaml_rs_parse(benchmark, size):
-    yaml = YAML_INPUTS[size]
-    if size == "large":
-        try:
-            benchmark(yaml_rs.loads, yaml)
-        except Exception:
-            pytest.skip("yaml_rs YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
-    else:
-        benchmark(yaml_rs.loads, yaml)
+    benchmark(yaml_rs.loads, YAML_INPUTS[size])
 
 
 @pytest.mark.benchmark(group="yaml_rs")
 @pytest.mark.skipif(not HAS_YAML_RS, reason="yaml_rs not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_yaml_rs_serialize(benchmark, size):
-    yaml = YAML_INPUTS[size]
-    if size == "large":
-        try:
-            data = yaml_rs.loads(yaml)
-            benchmark(yaml_rs.dumps, data)
-        except Exception:
-            pytest.skip("yaml_rs YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
-    else:
-        data = yaml_rs.loads(yaml)
-        benchmark(yaml_rs.dumps, data)
+    data = yaml_rs.loads(YAML_INPUTS[size])
+    benchmark(yaml_rs.dumps, data)
 
 
 # ── Speedup assertion ──
@@ -305,15 +275,12 @@ def print_report(results=None):
         print("  ruamel.yaml:   (not installed)")
 
     if HAS_RYAML:
-        try:
-            ryaml_buf = io.StringIO(rt_yaml)
-            ryaml_data = ryaml.load(ryaml_buf)
-            out4 = ryaml.dumps(ryaml_data)
-            print(
-                f"  ryaml:         comments={'# Comments everywhere' in out4}  anchors={'&defaults' in out4}  tags={'!!str' in out4}"
-            )
-        except Exception:
-            print("  ryaml:         (parse error — YAML 1.2 strictness)")
+        ryaml_buf = io.StringIO(rt_yaml)
+        ryaml_data = ryaml.load(ryaml_buf)
+        out4 = ryaml.dumps(ryaml_data)
+        print(
+            f"  ryaml:         comments={'# Comments everywhere' in out4}  anchors={'&defaults' in out4}  tags={'!!str' in out4}"
+        )
 
     if HAS_YAML_EDIT:
         try:
@@ -324,13 +291,10 @@ def print_report(results=None):
             print("  yaml_edit:     (parse error)")
 
     if HAS_YAML_RS:
-        try:
-            out5 = yaml_rs.dumps(yaml_rs.loads(rt_yaml))
-            print(
-                f"  yaml_rs:       comments={'# Comments everywhere' in out5}  anchors={'&defaults' in out5}  tags={'!!str' in out5}"
-            )
-        except Exception:
-            print("  yaml_rs:       (parse error)")
+        out5 = yaml_rs.dumps(yaml_rs.loads(rt_yaml))
+        print(
+            f"  yaml_rs:       comments={'# Comments everywhere' in out5}  anchors={'&defaults' in out5}  tags={'!!str' in out5}"
+        )
     print()
 
     print("─" * 75)
