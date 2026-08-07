@@ -5,9 +5,9 @@
 //! state across chunk boundaries. Read failures / invalid UTF-8 set an error
 //! flag (`take_error`), surfaced by `YamlStream` as a `PyErr`.
 
+use granit_parser::{BufferedInput, Parser as SaphyrParser, Span};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use saphyr_parser::{BufferedInput, Parser as SaphyrParser, Span};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::sync::{Arc, Mutex};

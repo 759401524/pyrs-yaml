@@ -11,5 +11,5 @@ name = "pyrs_yaml_core"
 
 [dependencies]
 indexmap = "2.7"
-saphyr-parser = "0.0.11"
 rust-i18n = "4.2"
+granit-parser = "1.0"

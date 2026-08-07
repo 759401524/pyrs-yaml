@@ -1,13 +1,13 @@
-/// Saphyr-parser against YAML test suite integration test
-use saphyr_parser::Parser;
+/// Granit-parser against YAML test suite integration test
+use granit_parser::Parser;
 use std::path::Path;
 
 struct EventSink {
     _count: u64,
 }
 
-impl<'a> saphyr_parser::EventReceiver<'a> for EventSink {
-    fn on_event(&mut self, _ev: saphyr_parser::Event<'a>) {
+impl<'a> granit_parser::EventReceiver<'a> for EventSink {
+    fn on_event(&mut self, _ev: granit_parser::Event<'a>) {
         self._count += 1;
     }
 }
@@ -54,7 +54,7 @@ fn test_yaml_test_suite() {
         }
     }
 
-    eprintln!("saphyr-parser YAML test suite results:");
+    eprintln!("granit-parser YAML test suite results:");
     eprintln!("  Total: {}", total);
     eprintln!("  Success: {}", success);
     eprintln!("  Failed: {}", total - success);
@@ -67,5 +67,5 @@ fn test_yaml_test_suite() {
         }
     }
 
-    assert!(success > 0, "saphyr-parser should parse some YAML files");
+    assert!(success > 0, "granit-parser should parse some YAML files");
 }
