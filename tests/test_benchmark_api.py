@@ -13,98 +13,29 @@ import io
 import pyrs_yaml
 import pytest
 
+from tests.data.yaml_samples import (
+    BENCHMARK_ANCHOR as ANCHOR_YAML,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_DATA as CONFIG_DATA,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSON as CONFIG_JSON,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_MEDIUM as CONFIG_YAML,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_MULTI_DOC as MULTI_DOC_YAML,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_SCHEMA as SCHEMA,
+)
+
 pytest.importorskip("numpy")
 import numpy as np
 
 pytestmark = pytest.mark.benchmark
-
-CONFIG_YAML = """
-server:
-  host: 0.0.0.0
-  port: 8080
-  ssl: true
-  workers: 4
-  endpoints:
-    - path: /api/v1/users
-      methods: [GET, POST]
-    - path: /api/v1/orders
-      methods: [GET, POST, PATCH]
-
-database:
-  type: postgresql
-  host: db.example.com
-  port: 5432
-  pool:
-    min_size: 5
-    max_size: 20
-    timeout: 30
-
-logging:
-  level: INFO
-  outputs:
-    - stdout
-    - file:/var/log/app.log
-
-description: |
-  A literal block scalar that
-  preserves newlines exactly.
-"""
-
-MULTI_DOC_YAML = "\n---\n".join(
-    f"doc: {index}\nvalues: [1, 2, 3]\nnested:\n  key: value_{index}\n" for index in range(20)
-)
-
-ANCHOR_YAML = """
-defaults: &defaults
-  timeout: 30
-  retries: 3
-  backoff: exponential
-
-api:
-  <<: *defaults
-  port: 8080
-
-worker:
-  <<: *defaults
-  concurrency: 8
-"""
-
-CONFIG_DATA = {
-    "server": {
-        "host": "0.0.0.0",
-        "port": 8080,
-        "ssl": True,
-        "workers": 4,
-        "tags": ["production", "eu-west-1"],
-    },
-    "database": {
-        "type": "postgresql",
-        "pool": {"min_size": 5, "max_size": 20, "timeout": 30},
-    },
-    "items": [{"name": f"item_{index}", "value": index * 10} for index in range(50)],
-}
-
-CONFIG_JSON = (
-    '{"server": {"host": "0.0.0.0", "port": 8080, "ssl": true}, '
-    '"items": [{"name": "a", "value": 1}, {"name": "b", "value": 2}]}'
-)
-
-SCHEMA = {
-    "type": "object",
-    "required": ["server", "database"],
-    "properties": {
-        "server": {
-            "type": "object",
-            "required": ["host", "port"],
-            "properties": {
-                "host": {"type": "string"},
-                "port": {"type": "integer"},
-                "ssl": {"type": "boolean"},
-            },
-        },
-        "database": {"type": "object"},
-    },
-}
 
 
 def test_safe_load(benchmark):
@@ -130,6 +61,19 @@ def test_parse_all_docs(benchmark):
 def test_parse_stream(benchmark):
     result = benchmark(lambda: list(pyrs_yaml.parse_stream(CONFIG_YAML)))
     assert result
+
+
+def test_load_stream(benchmark):
+    """Benchmark load_stream (incremental YamlStream wrapper)."""
+    file = io.StringIO(CONFIG_YAML)
+    result = benchmark(lambda: list(pyrs_yaml.YAML().load_stream(file)))
+    assert result
+
+
+def test_parse_stream_multidoc(benchmark):
+    """Benchmark parse_stream with multi-document YAML."""
+    result = benchmark(lambda: list(pyrs_yaml.parse_stream(MULTI_DOC_YAML)))
+    assert len(result) > 20  # 20 docs + stream events
 
 
 def test_safe_dump(benchmark):

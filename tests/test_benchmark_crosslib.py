@@ -1,5 +1,5 @@
 """
-Cross-library comparison: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit.
+Cross-library comparison: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit vs yaml_rs.
 
 Run with: pytest tests/test_benchmark_crosslib.py --codspeed
 """
@@ -10,10 +10,19 @@ import json
 
 import pyrs_yaml
 import pytest
-import ruamel.yaml as ruamel_yaml
-from ruamel.yaml import YAML
 
-_ruamel_yaml = YAML()
+from tests.data.yaml_samples import (
+    BENCHMARK_BLOCK_STYLE as BLOCK_STYLE_YAML,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_LARGE as LARGE_YAML,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_MEDIUM as MEDIUM_YAML,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_SMALL as SMALL_YAML,
+)
 
 try:
     import yaml as pyyaml
@@ -22,6 +31,17 @@ try:
 except ImportError:
     HAS_PYYAML = False
     pyyaml = None
+
+try:
+    import ruamel.yaml as ruamel_yaml
+    from ruamel.yaml import YAML
+
+    HAS_RUAMEL = True
+    _ruamel_yaml = YAML()
+except ImportError:
+    HAS_RUAMEL = False
+    ruamel_yaml = None
+    _ruamel_yaml = None
 
 try:
     import ryaml
@@ -39,6 +59,14 @@ except ImportError:
     HAS_YAML_EDIT = False
     yaml_edit = None
 
+try:
+    import yaml_rs
+
+    HAS_YAML_RS = True
+except ImportError:
+    HAS_YAML_RS = False
+    yaml_rs = None
+
 
 def ruamel_load(s):
     return _ruamel_yaml.load(s)
@@ -55,180 +83,6 @@ def ryaml_dumps(data):
         return ryaml.dumps(data)
     return ""
 
-
-SMALL_YAML = """
-# Application config
-app:
-  name: pyrs-yaml
-  version: 0.2.0
-  debug: false
-  log_level: info
-"""
-
-MEDIUM_YAML = """
-# Server configuration
-server:
-  host: 0.0.0.0
-  port: 8080
-  ssl: true
-  workers: 4
-
-database:
-  type: postgresql
-  host: db.example.com
-  port: 5432
-  name: myapp
-  pool:
-    min_size: 5
-    max_size: 20
-    timeout: 30
-
-logging:
-  level: INFO
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  handlers:
-    console:
-      class: logging.StreamHandler
-      stream: sys.stdout
-    file:
-      class: logging.FileHandler
-      filename: app.log
-      max_bytes: 10485760
-
-features:
-  authentication:
-    enabled: true
-    provider: oauth2
-    token_expiry: 3600
-  rate_limiting:
-    enabled: true
-    requests_per_minute: 100
-  caching:
-    enabled: true
-    ttl: 300
-"""
-
-LARGE_YAML = """
-# Complex application configuration with all YAML features
----
-metadata:
-  title: "YAML Test Suite — Large Config"
-  version: 1.0
-  author:
-    name: Test User
-    email: test@example.com
-  tags:
-    - production
-    - configuration
-    - benchmark
-
-# Anchors and aliases
-defaults: &defaults
-  timeout: 30
-  retries: 3
-  backoff: exponential
-
-services:
-  api:
-    <<: *defaults
-    port: 8080
-    endpoints:
-      - path: /api/v1/users
-        methods: [GET, POST]
-      - path: /api/v1/users/{id}
-        methods: [GET, PUT, DELETE]
-      - path: /api/v1/orders
-        methods: [GET, POST, PATCH]
-
-  worker:
-    <<: *defaults
-    concurrency: 8
-    queue:
-      type: redis
-      url: redis://localhost:6379/0
-
-description: |
-  This is a literal block scalar that
-  preserves newlines and formatting.
-  It's used for multi-line strings.
-
-formatted: >
-  This is a folded block scalar that
-  converts newlines to spaces.
-  Useful for wrapping long text.
-
-chomped: |+
-  Keep all trailing newlines
-
-
-stripped: |-
-  Remove all trailing newlines
-
-# Flow collections
-flow_mapping: {key: value, another: 42}
-flow_sequence: [1, 2, 3, 4, 5]
-
-# Special values
-null_value: null
-empty_value: ~
-boolean: true
-float_value: 3.14159
-integer: 42
-octal: 0o77
-hexadecimal: 0xFF
-scientific: 1.23e-4
-infinity: .inf
-nan: .nan
-
-# Tags
-explicit_string: !!str 123
-explicit_int: !!int 0xFF
-explicit_bool: !!bool yes
-explicit_null: !!null ~
-
-# Comments everywhere
-database:  # main database connection
-  host: localhost
-  port: 5432
-  name: mydb
-  credentials:  # authentication info
-    username: admin
-    password: secret123
-
-cache:
-  backend: redis
-  url: "redis://localhost:6379/1"
-  key_prefix: "app:"
-  serializers:
-    - pickle
-    - json
-
-monitoring:
-  enabled: true
-  metrics:
-    - cpu_usage
-    - memory_usage
-    - disk_usage
-    - network_io
-    - request_count
-    - error_count
-  tags:
-    environment: production
-    region: us-east-1
-    team: platform
-"""
-
-BLOCK_STYLE_YAML = (
-    "key1: value1\n"
-    "key2: value2\n"
-    "nested:\n"
-    "  subkey1: subvalue1\n"
-    "  subkey2: subvalue2\n"
-    "list:\n"
-    "  - item1\n"
-    "  - item2\n"
-    "  - item3\n"
-)
 
 YAML_INPUTS = {"small": SMALL_YAML, "medium": MEDIUM_YAML, "large": LARGE_YAML}
 SIZES = ["small", "medium", "large"]
@@ -278,12 +132,14 @@ def test_pyyaml_serialize(benchmark, size):
 
 
 @pytest.mark.benchmark(group="ruamel")
+@pytest.mark.skipif(not HAS_RUAMEL, reason="ruamel.yaml not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_ruamel_parse(benchmark, size):
     benchmark(ruamel_load, YAML_INPUTS[size])
 
 
 @pytest.mark.benchmark(group="ruamel")
+@pytest.mark.skipif(not HAS_RUAMEL, reason="ruamel.yaml not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_ruamel_serialize(benchmark, size):
     data = ruamel_load(YAML_INPUTS[size])
@@ -333,6 +189,39 @@ def test_yaml_edit_parse(benchmark, size):
     benchmark(yaml_edit.Document.parse, YAML_INPUTS[size])
 
 
+# ── yaml_rs benchmarks (Rust competitor) ──
+
+
+@pytest.mark.benchmark(group="yaml_rs")
+@pytest.mark.skipif(not HAS_YAML_RS, reason="yaml_rs not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_yaml_rs_parse(benchmark, size):
+    yaml = YAML_INPUTS[size]
+    if size == "large":
+        try:
+            benchmark(yaml_rs.loads, yaml)
+        except Exception:
+            pytest.skip("yaml_rs YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
+    else:
+        benchmark(yaml_rs.loads, yaml)
+
+
+@pytest.mark.benchmark(group="yaml_rs")
+@pytest.mark.skipif(not HAS_YAML_RS, reason="yaml_rs not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_yaml_rs_serialize(benchmark, size):
+    yaml = YAML_INPUTS[size]
+    if size == "large":
+        try:
+            data = yaml_rs.loads(yaml)
+            benchmark(yaml_rs.dumps, data)
+        except Exception:
+            pytest.skip("yaml_rs YAML 1.2 rejects !!bool yes (YAML 1.1 syntax) in LARGE_YAML")
+    else:
+        data = yaml_rs.loads(yaml)
+        benchmark(yaml_rs.dumps, data)
+
+
 # ── Speedup assertion ──
 
 
@@ -365,12 +254,12 @@ def test_feature_comparison():
 
 def print_report(results=None):
     print("=" * 75)
-    print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit — Feature Comparison")
+    print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit vs yaml_rs — Feature Comparison")
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
     print(f"  PyYAML:    {pyyaml.__version__ if HAS_PYYAML else '(not installed)'}")
-    print(f"  ruamel:    {ruamel_yaml.__version__}")
+    print(f"  ruamel:    {ruamel_yaml.__version__ if HAS_RUAMEL else '(not installed)'}")
     if HAS_RYAML:
         try:
             print(f"  ryaml:     {importlib.metadata.version('ryaml')}")
@@ -381,6 +270,11 @@ def print_report(results=None):
             print(f"  yaml_edit: {importlib.metadata.version('yaml-edit')}")
         except importlib.metadata.PackageNotFoundError:
             print("  yaml_edit: (not installed)")
+    if HAS_YAML_RS:
+        try:
+            print(f"  yaml_rs:   {importlib.metadata.version('yaml-rs')}")
+        except importlib.metadata.PackageNotFoundError:
+            print("  yaml_rs:   (not installed)")
     print()
 
     print("─" * 75)
@@ -402,10 +296,13 @@ def print_report(results=None):
     else:
         print("  PyYAML:        (not installed)")
 
-    out3 = ruamel_dump(ruamel_load(rt_yaml))
-    print(
-        f"  ruamel.yaml:   comments={'# Comments everywhere' in out3}  anchors={'&defaults' in out3}  tags={'!!str' in out3}"
-    )
+    if HAS_RUAMEL:
+        out3 = ruamel_dump(ruamel_load(rt_yaml))
+        print(
+            f"  ruamel.yaml:   comments={'# Comments everywhere' in out3}  anchors={'&defaults' in out3}  tags={'!!str' in out3}"
+        )
+    else:
+        print("  ruamel.yaml:   (not installed)")
 
     if HAS_RYAML:
         try:
@@ -425,6 +322,15 @@ def print_report(results=None):
             print("  yaml_edit:     (parse only — no serialization API)")
         except Exception:
             print("  yaml_edit:     (parse error)")
+
+    if HAS_YAML_RS:
+        try:
+            out5 = yaml_rs.dumps(yaml_rs.loads(rt_yaml))
+            print(
+                f"  yaml_rs:       comments={'# Comments everywhere' in out5}  anchors={'&defaults' in out5}  tags={'!!str' in out5}"
+            )
+        except Exception:
+            print("  yaml_rs:       (parse error)")
     print()
 
     print("─" * 75)
@@ -432,31 +338,33 @@ def print_report(results=None):
     print("─" * 75)
 
     features = [
-        ("YAML 1.2 compliance", True, True, True, True, True),
-        ("Comments (standalone)", True, False, True, False, False),
-        ("Comments (inline)", True, False, True, False, False),
-        ("Anchors/aliases", True, False, True, True, False),
-        ("Tags (explicit)", True, False, True, True, False),
-        ("Block scalars", True, True, True, True, True),
-        ("Flow collections", True, True, True, True, True),
-        ("Merge keys (<<)", True, False, True, False, False),
-        ("Complex keys", True, True, True, True, True),
-        ("Round-trip preservation", True, False, True, False, False),
-        ("Python bindings", True, True, True, True, True),
-        ("ABI3 (py3.9+)", True, False, False, False, False),
-        ("Type stubs (.pyi)", True, True, False, False, False),
-        ("i18n error messages", True, False, False, False, False),
+        ("YAML 1.2 compliance", True, True, True, True, True, True),
+        ("Comments (standalone)", True, False, True, False, False, True),
+        ("Comments (inline)", True, False, True, False, False, True),
+        ("Anchors/aliases", True, False, True, True, False, True),
+        ("Tags (explicit)", True, False, True, True, False, True),
+        ("Block scalars", True, True, True, True, True, True),
+        ("Flow collections", True, True, True, True, True, True),
+        ("Merge keys (<<)", True, False, True, False, False, True),
+        ("Complex keys", True, True, True, True, True, True),
+        ("Round-trip preservation", True, False, True, False, False, True),
+        ("Python bindings", True, True, True, True, True, True),
+        ("ABI3 (py3.9+)", True, False, False, False, False, False),
+        ("Type stubs (.pyi)", True, True, False, False, False, True),
+        ("i18n error messages", True, False, False, False, False, False),
     ]
 
-    print(f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s} {'ryaml':8s} {'yaml_edit':10s}")
-    print(f"  {'-' * 91}")
+    print(
+        f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s} {'ryaml':8s} {'yaml_edit':10s} {'yaml_rs':10s}"
+    )
+    print(f"  {'-' * 101}")
 
     def _mark(v: bool) -> str:
         return "✅" if v else "❌"
 
-    for name, pyr, pyr2, ruamel, ryml, yedit in features:
+    for name, pyr, pyr2, ruamel, ryml, yedit, yrs in features:
         print(
-            f"  {name:35s} {_mark(pyr):8s}     {_mark(pyr2):6s}     {_mark(ruamel):6s}     {_mark(ryml):6s}     {_mark(yedit):6s}"
+            f"  {name:35s} {_mark(pyr):8s}     {_mark(pyr2):6s}     {_mark(ruamel):6s}     {_mark(ryml):6s}     {_mark(yedit):6s}     {_mark(yrs):6s}"
         )
     print()
 

@@ -157,3 +157,235 @@ SIMPLE_STRING = "hello world"
 USER_MODEL = "name: Alice\nage: 30\n"
 USER_MODEL_INVALID = "name: Alice\nage: not_an_int\n"
 PRODUCT_MODEL = "name: Widget\nprice: 9.99\nin_stock: true\n"
+
+# --- Benchmark samples (larger, for performance testing) ---
+
+BENCHMARK_SMALL = """
+# Application config
+app:
+  name: pyrs-yaml
+  version: 0.2.0
+  debug: false
+  log_level: info
+"""
+
+BENCHMARK_MEDIUM = """
+# Server configuration
+server:
+  host: 0.0.0.0
+  port: 8080
+  ssl: true
+  workers: 4
+
+database:
+  type: postgresql
+  host: db.example.com
+  port: 5432
+  name: myapp
+  pool:
+    min_size: 5
+    max_size: 20
+    timeout: 30
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    console:
+      class: logging.StreamHandler
+      stream: sys.stdout
+    file:
+      class: logging.FileHandler
+      filename: app.log
+      max_bytes: 10485760
+
+features:
+  authentication:
+    enabled: true
+    provider: oauth2
+    token_expiry: 3600
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100
+  caching:
+    enabled: true
+    ttl: 300
+"""
+
+BENCHMARK_LARGE = """
+# Complex application configuration with all YAML features
+---
+metadata:
+  title: "YAML Test Suite — Large Config"
+  version: 1.0
+  author:
+    name: Test User
+    email: test@example.com
+  tags:
+    - production
+    - configuration
+    - benchmark
+
+# Anchors and aliases
+defaults: &defaults
+  timeout: 30
+  retries: 3
+  backoff: exponential
+
+services:
+  api:
+    <<: *defaults
+    port: 8080
+    endpoints:
+      - path: /api/v1/users
+        methods: [GET, POST]
+      - path: /api/v1/users/{id}
+        methods: [GET, PUT, DELETE]
+      - path: /api/v1/orders
+        methods: [GET, POST, PATCH]
+
+  worker:
+    <<: *defaults
+    concurrency: 8
+    queue:
+      type: redis
+      url: redis://localhost:6379/0
+
+description: |
+  This is a literal block scalar that
+  preserves newlines and formatting.
+  It's used for multi-line strings.
+
+formatted: >
+  This is a folded block scalar that
+  converts newlines to spaces.
+  Useful for wrapping long text.
+
+chomped: |+
+  Keep all trailing newlines
+
+
+stripped: |-
+  Remove all trailing newlines
+
+# Flow collections
+flow_mapping: {key: value, another: 42}
+flow_sequence: [1, 2, 3, 4, 5]
+
+# Special values
+null_value: null
+empty_value: ~
+boolean: true
+float_value: 3.14159
+integer: 42
+octal: 0o77
+hexadecimal: 0xFF
+scientific: 1.23e-4
+infinity: .inf
+nan: .nan
+
+# Tags
+explicit_string: !!str 123
+explicit_int: !!int 0xFF
+explicit_bool: !!bool yes
+explicit_null: !!null ~
+
+# Comments everywhere
+database:  # main database connection
+  host: localhost
+  port: 5432
+  name: mydb
+  credentials:  # authentication info
+    username: admin
+    password: secret123
+
+cache:
+  backend: redis
+  url: "redis://localhost:6379/1"
+  key_prefix: "app:"
+  serializers:
+    - pickle
+    - json
+
+monitoring:
+  enabled: true
+  metrics:
+    - cpu_usage
+    - memory_usage
+    - disk_usage
+    - network_io
+    - request_count
+    - error_count
+  tags:
+    environment: production
+    region: us-east-1
+    team: platform
+"""
+
+BENCHMARK_MULTI_DOC = "\n---\n".join(
+    f"doc: {index}\nvalues: [1, 2, 3]\nnested:\n  key: value_{index}\n" for index in range(20)
+)
+
+BENCHMARK_BLOCK_STYLE = (
+    "key1: value1\n"
+    "key2: value2\n"
+    "nested:\n"
+    "  subkey1: subvalue1\n"
+    "  subkey2: subvalue2\n"
+    "list:\n"
+    "  - item1\n"
+    "  - item2\n"
+    "  - item3\n"
+)
+
+BENCHMARK_CONFIG_DATA = {
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8080,
+        "ssl": True,
+        "workers": 4,
+        "tags": ["production", "eu-west-1"],
+    },
+    "database": {
+        "type": "postgresql",
+        "pool": {"min_size": 5, "max_size": 20, "timeout": 30},
+    },
+    "items": [{"name": f"item_{index}", "value": index * 10} for index in range(50)],
+}
+
+BENCHMARK_CONFIG_JSON = (
+    '{"server": {"host": "0.0.0.0", "port": 8080, "ssl": true}, '
+    '"items": [{"name": "a", "value": 1}, {"name": "b", "value": 2}]}'
+)
+
+BENCHMARK_SCHEMA = {
+    "type": "object",
+    "required": ["server", "database"],
+    "properties": {
+        "server": {
+            "type": "object",
+            "required": ["host", "port"],
+            "properties": {
+                "host": {"type": "string"},
+                "port": {"type": "integer"},
+                "ssl": {"type": "boolean"},
+            },
+        },
+        "database": {"type": "object"},
+    },
+}
+
+BENCHMARK_ANCHOR = """
+defaults: &defaults
+  timeout: 30
+  retries: 3
+  backoff: exponential
+
+api:
+  <<: *defaults
+  port: 8080
+
+worker:
+  <<: *defaults
+  concurrency: 8
+"""
