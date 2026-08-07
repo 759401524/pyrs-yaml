@@ -25,7 +25,7 @@
 ## Pinned Versions
 
 - pyo3 0.29, abi3-py38 + abi3t-py315 for stable ABI
-- saphyr-parser 0.0.11 (YAML 1.2 parser)
+- granit-parser 1.0.1 (YAML 1.2 parser with native comment support)
 - maturin >=1.0,<2.0
 - ruff >=0.14.0 (py39+), >=0.5.0,<0.10.0 (py38)
 - prek 0.1.0+
@@ -63,10 +63,18 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 ## Testing
 
 - Round-Trip assertion is the primary test pattern
-- Skip `tests/benchmark_compare.py` in normal runs
-- Use `uv run pytest tests/ -v --ignore=tests/benchmark_compare.py`
+- Use `uv run pytest tests/ -v` for normal test runs
 - Free-threaded tests exclude numpy: `pytest tests/ -k "not numpy"`
 - Compliance check via `tests/test_yaml_suite.py` on PRs to main
+
+## Benchmark Standards
+
+- All benchmarks use CodSpeed (`pytest-codspeed`)
+- Cross-library comparison in `tests/test_benchmark_crosslib.py` (pyrs-yaml vs PyYAML vs ruamel vs ryaml vs yaml_edit vs yaml_rs)
+- API benchmarks in `tests/test_benchmark_api.py` (safe_load, parse_stream, validate, etc.)
+- Run benchmarks: `uv run pytest tests/test_benchmark_crosslib.py tests/test_benchmark_api.py --codspeed`
+- Optional dependencies (yaml_rs, ryaml, yaml_edit) use `try/except` + `skipif`
+- Bench files are excluded from normal `pytest` runs (require `--codspeed` flag)
 
 ## Boundaries
 
