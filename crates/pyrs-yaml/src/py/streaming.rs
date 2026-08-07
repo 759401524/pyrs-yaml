@@ -187,7 +187,7 @@ impl Iterator for ChunkCharIter {
 
 /// Lazy, constant-memory stream of YAML documents from a [`ChunkCharIter`].
 ///
-/// `__next__` parses exactly one event per call (driving the saphyr parser
+/// `__next__` parses exactly one event per call (driving the granit parser
 /// incrementally), so a large file is never fully buffered. Errors surface
 /// exactly once as a `YamlParseError`; after an error or `close()` the
 /// iterator returns `None` (StopIteration).
