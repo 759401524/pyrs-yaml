@@ -67,17 +67,17 @@ def test_safe_load_anchors(benchmark):
 # Synthetic single-level mapping docs whose VALUES exercise different scalar
 # resolution paths: strings (resolve_core_type fast-path), numbers (full chain),
 # quoted scalars (round-trip de-quoting), and YAML 1.1 legacy booleans.
+# Each doc uses a single resolution class (strings start with fast-path first
+# bytes, numbers with keep-set first bytes) so the L2 contrast is clean.
 
-_SCALAR_KEYS = 50
+_SCALAR_KEYS = 1000
 
 
 def _make_scalar_doc(values):
     return "".join(f"k{i}: {values[i % len(values)]}\n" for i in range(_SCALAR_KEYS))
 
 
-SCALAR_DOC_STRINGS = _make_scalar_doc(
-    ["hello", "_key", "数据", "-prefix", "123abc", "a/b", "http://x", "?q", "2024-01-01"]
-)
+SCALAR_DOC_STRINGS = _make_scalar_doc(["hello", "_key", "数据", "a/b", "http://x", "?q"])
 SCALAR_DOC_NUMBERS = _make_scalar_doc(["42", "-10", "3.14", "0x1F", "0o17", "1e3", "+7"])
 SCALAR_DOC_QUOTED = _make_scalar_doc(['"42"', "'hello world'", '"true"', '"3.14"', '"null"', "'x y z'"])
 SCALAR_DOC_LEGACY_BOOLS = _make_scalar_doc(["yes", "no", "on", "off", "y", "n"])
@@ -107,6 +107,26 @@ def test_safe_load_instance(benchmark):
     """YAML() instance method path (exercises the fast-path branch in safe_load)."""
     result = benchmark(_YAML_INSTANCE.safe_load, CONFIG_YAML)
     assert result["server"]["port"] == 8080
+
+
+def test_safe_loads_instance(benchmark):
+    """YAML() instance safe_loads path (fast-path branch, multi-doc)."""
+    result = benchmark(_YAML_INSTANCE.safe_loads, MULTI_DOC_YAML)
+    assert len(result) == 20
+
+
+def test_to_dict(benchmark):
+    """YamlDocument.to_dict on an anchor-free doc (L1 simple path)."""
+    doc = pyrs_yaml.parse(CONFIG_YAML)
+    result = benchmark(doc.to_dict)
+    assert result["server"]["port"] == 8080
+
+
+def test_to_dict_anchors(benchmark):
+    """YamlDocument.to_dict on an anchored/merged doc (conservative path)."""
+    doc = pyrs_yaml.parse(ANCHOR_YAML)
+    result = benchmark(doc.to_dict)
+    assert result["api"]["timeout"] == 30
 
 
 def test_safe_loads_multi_document(benchmark):
