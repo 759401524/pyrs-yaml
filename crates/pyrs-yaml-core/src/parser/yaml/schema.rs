@@ -19,13 +19,16 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
         return YamlType::Null;
     }
 
-    // Fast path: most string scalars ("hello", "database", …) start with a
-    // letter that can't be the first character of a YAML keyword (null, true,
-    // false, inf, nan).  Skip the 30+ comparisons and return Str immediately.
+    // Fast path: most string scalars ("hello", "database", "_foo", "你好", …)
+    // start with a character that can't be the first character of any resolved
+    // lexeme (null/true/false/inf/nan/hex/oct/int/float).  Whitelist inversion:
+    // anything not in the keep-set is guaranteed Str, so skip the full chain.
     let first = trimmed.as_bytes().first().copied().unwrap_or(0);
-    if first.is_ascii_alphabetic()
-        && !matches!(first, b'n' | b'N' | b't' | b'T' | b'f' | b'F' | b'i' | b'I')
-    {
+    if !matches!(
+        first,
+        b'~' | b'n' | b'N' | b't' | b'T' | b'f' | b'F' | b'i' | b'I' | b'.' | b'-' | b'+' | b'0'
+            ..=b'9'
+    ) {
         return YamlType::Str(Cow::Borrowed(value));
     }
 
@@ -276,6 +279,47 @@ mod tests {
     #[test]
     fn test_core_string() {
         assert_eq!(resolve_core_type("hello"), YamlType::Str("hello".into()));
+    }
+
+    #[test]
+    fn test_core_first_char_fast_path() {
+        // Whitelist-inversion fast path: any first char outside the keep-set is
+        // guaranteed Str and must NOT fall through the numeric/bool resolution.
+        assert_eq!(resolve_core_type("_foo"), YamlType::Str("_foo".into()));
+        assert_eq!(resolve_core_type("-foo"), YamlType::Str("-foo".into()));
+        assert_eq!(resolve_core_type("123abc"), YamlType::Str("123abc".into()));
+        assert_eq!(resolve_core_type("0b101"), YamlType::Str("0b101".into()));
+        assert_eq!(resolve_core_type("~x"), YamlType::Str("~x".into()));
+        assert_eq!(resolve_core_type("."), YamlType::Str(".".into()));
+        assert_eq!(resolve_core_type("-"), YamlType::Str("-".into()));
+        assert_eq!(resolve_core_type("你好"), YamlType::Str("你好".into()));
+        assert_eq!(
+            resolve_core_type("quote\"d"),
+            YamlType::Str("quote\"d".into())
+        );
+        assert_eq!(resolve_core_type("@tag"), YamlType::Str("@tag".into()));
+        assert_eq!(resolve_core_type("a1"), YamlType::Str("a1".into()));
+        // Leading whitespace trims first, then the fast path applies.
+        assert_eq!(resolve_core_type(" hello"), YamlType::Str(" hello".into()));
+        assert_eq!(resolve_core_type(" null"), YamlType::Null);
+        assert_eq!(resolve_core_type(" 42"), YamlType::Int(42));
+    }
+
+    #[test]
+    fn test_core_first_char_keep_set() {
+        // Every keep-set first char must still resolve through the full chain.
+        assert_eq!(resolve_core_type("+5"), YamlType::Int(5));
+        assert_eq!(resolve_core_type("05"), YamlType::Int(5));
+        assert_eq!(resolve_core_type("~"), YamlType::Null);
+        assert_eq!(resolve_core_type("true"), YamlType::Bool(true));
+        assert_eq!(resolve_core_type("false"), YamlType::Bool(false));
+        assert_eq!(resolve_core_type("null"), YamlType::Null);
+        assert_eq!(resolve_core_type("inf"), YamlType::Float(f64::INFINITY));
+        assert!(resolve_core_type(".nan").is_nan_value());
+        assert_eq!(resolve_core_type("0x1F"), YamlType::Int(31));
+        assert_eq!(resolve_core_type("3.14"), YamlType::Float(3.14));
+        assert_eq!(resolve_core_type("n"), YamlType::Str("n".into()));
+        assert_eq!(resolve_core_type("t"), YamlType::Str("t".into()));
     }
 
     // ---- json ----
