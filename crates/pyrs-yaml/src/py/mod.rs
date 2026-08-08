@@ -316,10 +316,14 @@ mod pyrs_yaml {
                     }
                 })
             })?;
-            let mut anchors = HashMap::new();
-            collect_anchors(&ast, &mut anchors);
-            let mut visited = HashSet::new();
-            node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
+            if yaml.bytes().any(|b| b == b'&') {
+                let mut anchors = HashMap::new();
+                collect_anchors(&ast, &mut anchors);
+                let mut visited = HashSet::new();
+                node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
+            } else {
+                node_to_pyobject_simple(&ast, py, schema_enum)
+            }
         }
 
         /// Parse multi-document YAML into a list of dicts/lists.
@@ -357,13 +361,17 @@ mod pyrs_yaml {
                     }
                 })
             })?;
+            let has_anchors = yaml.bytes().any(|b| b == b'&');
             let mut results = Vec::with_capacity(asts.len());
             for ast in asts {
-                let mut anchors = HashMap::new();
-                collect_anchors(&ast, &mut anchors);
-                let mut visited = HashSet::new();
-                let obj =
-                    node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)?;
+                let obj = if has_anchors {
+                    let mut anchors = HashMap::new();
+                    collect_anchors(&ast, &mut anchors);
+                    let mut visited = HashSet::new();
+                    node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)?
+                } else {
+                    node_to_pyobject_simple(&ast, py, schema_enum)?
+                };
                 results.push(obj);
             }
             Ok(results)
@@ -750,10 +758,15 @@ mod pyrs_yaml {
 
         /// Convert the document to a Python dict/list, resolving anchor references.
         fn to_dict(&self, py: Python) -> PyResult<Py<PyAny>> {
-            let mut anchors = HashMap::new();
-            collect_anchors(&self.ast, &mut anchors);
-            let mut visited = HashSet::new();
-            node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited, self.schema)
+            let has_anchors = self.source.as_deref().is_none_or(|s| s.contains('&'));
+            if has_anchors {
+                let mut anchors = HashMap::new();
+                collect_anchors(&self.ast, &mut anchors);
+                let mut visited = HashSet::new();
+                node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited, self.schema)
+            } else {
+                node_to_pyobject_simple(&self.ast, py, self.schema)
+            }
         }
 
         /// Access a value by key or path (e.g. `a.b[0]`), returning `default` if not found.
@@ -1501,12 +1514,17 @@ mod pyrs_yaml {
                 }
             })
         })?;
+        let has_anchors = yaml.bytes().any(|b| b == b'&');
         asts.iter()
             .map(|ast| {
-                let mut anchors = HashMap::new();
-                collect_anchors(ast, &mut anchors);
-                let mut visited = HashSet::new();
-                node_to_pyobject_with_anchors(ast, py, &anchors, &mut visited, schema_enum)
+                if has_anchors {
+                    let mut anchors = HashMap::new();
+                    collect_anchors(ast, &mut anchors);
+                    let mut visited = HashSet::new();
+                    node_to_pyobject_with_anchors(ast, py, &anchors, &mut visited, schema_enum)
+                } else {
+                    node_to_pyobject_simple(ast, py, schema_enum)
+                }
             })
             .collect()
     }

@@ -63,6 +63,52 @@ def test_safe_load_anchors(benchmark):
     assert result["api"]["timeout"] == 30
 
 
+# ── Scalar-type classification benchmarks ──
+# Synthetic single-level mapping docs whose VALUES exercise different scalar
+# resolution paths: strings (resolve_core_type fast-path), numbers (full chain),
+# quoted scalars (round-trip de-quoting), and YAML 1.1 legacy booleans.
+
+_SCALAR_KEYS = 50
+
+
+def _make_scalar_doc(values):
+    return "".join(f"k{i}: {values[i % len(values)]}\n" for i in range(_SCALAR_KEYS))
+
+
+SCALAR_DOC_STRINGS = _make_scalar_doc(
+    ["hello", "_key", "数据", "-prefix", "123abc", "a/b", "http://x", "?q", "2024-01-01"]
+)
+SCALAR_DOC_NUMBERS = _make_scalar_doc(["42", "-10", "3.14", "0x1F", "0o17", "1e3", "+7"])
+SCALAR_DOC_QUOTED = _make_scalar_doc(['"42"', "'hello world'", '"true"', '"3.14"', '"null"', "'x y z'"])
+SCALAR_DOC_LEGACY_BOOLS = _make_scalar_doc(["yes", "no", "on", "off", "y", "n"])
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [SCALAR_DOC_STRINGS, SCALAR_DOC_NUMBERS, SCALAR_DOC_QUOTED],
+    ids=["strings", "numbers", "quoted"],
+)
+def test_safe_load_scalar_types(benchmark, doc):
+    """safe_load on docs whose scalars hit distinct resolution paths."""
+    result = benchmark(pyrs_yaml.safe_load, doc)
+    assert len(result) == _SCALAR_KEYS
+
+
+def test_safe_load_scalar_types_legacy_bools(benchmark):
+    """yaml1.1 legacy bools exercise the pre-core bool table."""
+    result = benchmark(lambda: pyrs_yaml.safe_load(SCALAR_DOC_LEGACY_BOOLS, schema="yaml1.1"))
+    assert len(result) == _SCALAR_KEYS
+
+
+_YAML_INSTANCE = pyrs_yaml.YAML()
+
+
+def test_safe_load_instance(benchmark):
+    """YAML() instance method path (exercises the fast-path branch in safe_load)."""
+    result = benchmark(_YAML_INSTANCE.safe_load, CONFIG_YAML)
+    assert result["server"]["port"] == 8080
+
+
 def test_safe_loads_multi_document(benchmark):
     result = benchmark(pyrs_yaml.safe_loads, MULTI_DOC_YAML)
     assert len(result) == 20
