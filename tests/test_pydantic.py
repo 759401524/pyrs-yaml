@@ -51,3 +51,45 @@ class TestPydantic:
     def test_parse_as_non_base_model(self):
         with pytest.raises(TypeError, match="BaseModel"):
             pyrs_yaml.parse_as(dict, "key: value")
+
+    def test_dump_pydantic_roundtrip(self):
+        from pydantic import BaseModel
+
+        class UserModel(BaseModel):
+            name: str
+            age: int
+
+        model = UserModel(name="Bob", age=25)
+        yaml_str = pyrs_yaml.dump_pydantic(model)
+        result = pyrs_yaml.parse_as(UserModel, yaml_str)
+        assert result.name == "Bob"
+        assert result.age == 25
+
+    def test_dump_pydantic_nested(self):
+        from pydantic import BaseModel
+
+        class Address(BaseModel):
+            city: str
+            zip: str
+
+        class Person(BaseModel):
+            name: str
+            address: Address
+
+        model = Person(name="Charlie", address=Address(city="NYC", zip="10001-6789"))
+        yaml_str = pyrs_yaml.dump_pydantic(model)
+        result = pyrs_yaml.parse_as(Person, yaml_str)
+        assert result.name == "Charlie"
+        assert result.address.city == "NYC"
+        assert result.address.zip == "10001-6789"
+
+    def test_dump_pydantic_no_pydantic(self, monkeypatch):
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pydantic", None)
+        with pytest.raises(ImportError, match="pydantic is required"):
+            pyrs_yaml.dump_pydantic({"key": "value"})
+
+    def test_dump_pydantic_non_model(self):
+        with pytest.raises(TypeError, match="BaseModel"):
+            pyrs_yaml.dump_pydantic({"key": "value"})

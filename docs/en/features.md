@@ -83,6 +83,29 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 Raises `YamlValidateError` on validation failure.
 
+## Pydantic Integration
+
+Parse YAML directly into Pydantic models, or serialize models to YAML:
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+# Parse YAML into a Pydantic model
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+
+# Serialize a model to YAML string
+yaml_str = pyrs_yaml.dump_pydantic(user)
+print(yaml_str)
+```
+
 ## Incremental Re-parse
 
 Re-parse stored source text in place with different options:
@@ -172,6 +195,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **Complex numbers**: YAML has no native complex type; serialized as `(re+imj)` strings. `safe_load` returns them as strings, not Python `complex`
 - **Markdown frontmatter extraction** — `read_markdown()` for blog/content tools
 - **JSON ↔ YAML conversion** — `from_json()` / `from_dict()`
+- **Pydantic integration** — `parse_as()` / `dump_pydantic()`
 - **Multi-document parsing** — `parse_all_docs()`
 - **i18n error messages** — `set_language("zh-CN")` for bilingual errors
 - **Type hints** — PEP 561 typed package marker (`py.typed`) for mypy support

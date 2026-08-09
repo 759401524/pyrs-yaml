@@ -21,7 +21,7 @@ from .async_dump import (
 from .compliance import compliance_report
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
-from .pydantic import parse_as
+from .pydantic import dump_pydantic, parse_as
 from .pyrs_yaml import (
     YAML,
     StreamIterator,
@@ -157,6 +157,7 @@ __all__ = [
     "compliance_report",
     "detect_language",
     "dump_file",
+    "dump_pydantic",
     "from_dict",
     "from_json",
     "get_language",
