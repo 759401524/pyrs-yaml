@@ -118,7 +118,11 @@ Release checklist: bump `Cargo.toml` + `Cargo.lock`, rename `[Unreleased]` → `
 
 Post-release verification (mandatory): confirm the deployed docs changelog shows the new version (`https://759401524.github.io/pyrs-yaml/en/changelog/`) — a stale page means a docs mirror was missed; smoke-test the PyPI wheel in a clean venv (`__version__`, parse/edit/round-trip, `py.typed` + `.pyi` present). When interpreting CodSpeed comparisons, check for runner hardware differences first (Simulation-mode flags that ran across a CPU change are hardware-attributable, not code regressions).
 
-## Git Workflow and Engineering Conventions
+## Changelog Mirrors
+
+- **Root `CHANGELOG.md` is canonical English**. The 4 locale mirrors (`docs/{en,ja,ko,zh}/changelog.md`) share structural parity (same version headers, `[Unreleased]` present) but the Unreleased entry is translated per locale. Historical entries remain English in all mirrors.
+- **Workflow**: update root first, then translate into each locale. Never commit partial updates.
+- **Guard**: `scripts/check_changelog_mirrors.py` checks structural parity (not verbatim equality) — use it before committing.
 
 This section delineates the core principles governing version control, commit quality, and merge processes. All automated agents and developers are required to strictly adhere to these conventions to maintain repository integrity, traceability, and overall engineering excellence.
 
