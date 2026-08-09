@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-boolean first bytes return `Str` immediately, avoiding schema
   resolution overhead for the common case. (#59)
 
+### Added
+
+- **Pydantic integration** — `dump_pydantic()` serializes a Pydantic model
+  to YAML string via `model_dump(mode='json')` + `safe_dump`; `parse_as()`
+  parses YAML string into a Pydantic model instance. Both use lazy imports,
+  no hard dependency on pydantic. (#61)
+
 ### Internal
 
 - **Split `py/mod.rs`** — monolithic 1786-line module broken into

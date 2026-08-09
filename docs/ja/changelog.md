@@ -12,17 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### 変更
 
-- **Rust MSRV raised to 1.96 and edition bumped to 2024** - both crates now
-  declare `rust-version = "1.96"` and `edition = "2024"`; CI pins the
-  `build`/`test-freethreaded` jobs to Rust 1.96 for deterministic wheel builds
-  and adds an `msrv-check` job running `cargo check`/`cargo test` at the MSRV
-  to prevent silent MSRV drift (the `rust-lint` job stays on `stable`).
-  The floor is set above PyO3 0.29's own baseline (rustc 1.83) for std API
-  headroom (e.g. `assert_matches!`, stabilized 1.96) with no code migration
-  needed. `TAG_REGISTRY` (tag handler storage) refactored to
-  `std::sync::LazyLock`, dropping the `Mutex<Option<...>>` indirection.
+- **Rust MSRV を 1.96 に引き上げ、edition を 2024 に変更** — 両 crate は
+  `rust-version = "1.96"` および `edition = "2024"` を宣言します。CI は
+  `build`/`test-freethreaded` ジョブを Rust 1.96 に固定し、決定論的な wheel
+  ビルドを実現します。また、`msrv-check` ジョブを追加し、MSRV で
+  `cargo check`/`cargo test` を実行して静かな MSRV ドリフトを防ぎます
+  （`rust-lint` ジョブは `stable` のまま）。バージョンの床は
+  PyO3 0.29 自身の基線（rustc 1.83）よりも上に設定され、std API の先行対応
+  （例: `assert_matches!`、1.96 で安定化）を目的としています。
+  `TAG_REGISTRY`（タグハンドラ管理）が `std::sync::LazyLock` にリファクタされ、
+  `Mutex<Option<...>>` の間接レイヤーが除去されました。
 
 ### Performance
 
@@ -37,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`resolve_core_type`: first-byte dispatch whitelist** — non-numeric/
   non-boolean first bytes return `Str` immediately, avoiding schema
   resolution overhead for the common case. (#59)
+
+### Added
+
+- **Pydantic 統合** — `dump_pydantic()` は Pydantic モデルを YAML 文字列に
+  シリアライズ（`model_dump(mode='json')` + `safe_dump`）；`parse_as()`
+  は YAML 文字列を Pydantic モデルインスタンスにパース。両方とも遅延インポート、
+  pydantic へのハード依存なし。 (#61)
 
 ### Internal
 

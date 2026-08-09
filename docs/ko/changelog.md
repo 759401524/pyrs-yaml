@@ -12,17 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### 변경 사항
 
-- **Rust MSRV raised to 1.96 and edition bumped to 2024** - both crates now
-  declare `rust-version = "1.96"` and `edition = "2024"`; CI pins the
-  `build`/`test-freethreaded` jobs to Rust 1.96 for deterministic wheel builds
-  and adds an `msrv-check` job running `cargo check`/`cargo test` at the MSRV
-  to prevent silent MSRV drift (the `rust-lint` job stays on `stable`).
-  The floor is set above PyO3 0.29's own baseline (rustc 1.83) for std API
-  headroom (e.g. `assert_matches!`, stabilized 1.96) with no code migration
-  needed. `TAG_REGISTRY` (tag handler storage) refactored to
-  `std::sync::LazyLock`, dropping the `Mutex<Option<...>>` indirection.
+- **Rust MSRV를 1.96으로 업그레이드하고 edition을 2024로 변경** — 두 crate 모두
+  `rust-version = "1.96"` 및 `edition = "2024"`를 선언합니다. CI는
+  `build`/`test-freethreaded` 작업을 Rust 1.96으로 고정하여 결정론적인
+  wheel 빌드를 보장합니다. 또한 `msrv-check` 작업을 추가하여 MSRV에서
+  `cargo check`/`cargo test`를 실행하고 정적 MSRV 드리프트를 방지합니다
+  (`rust-lint` 작업은 `stable` 유지). 버전 바트는 PyO3 0.29 자체의 기반
+  (rustc 1.83)보다 높게 설정되며, std API 선제 지원(예: `assert_matches!`,
+  1.96 안정화)을 목적으로 합니다. `TAG_REGISTRY`(태그 핸들러 관리)가
+  `std::sync::LazyLock`로 리팩터링되어 `Mutex<Option<...>>` 간접 계층이
+  제거되었습니다.
 
 ### Performance
 
@@ -37,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`resolve_core_type`: first-byte dispatch whitelist** — non-numeric/
   non-boolean first bytes return `Str` immediately, avoiding schema
   resolution overhead for the common case. (#59)
+
+### Added
+
+- **Pydantic 통합** — `dump_pydantic()`은 Pydantic 모델을 YAML 문자열로
+  직렬화 (`model_dump(mode='json')` + `safe_dump`); `parse_as()`는
+  YAML 문자열을 Pydantic 모델 인스턴스로 파싱. 둘 다 지연 임포트,
+  pydantic에 대한 하드 의존성 없음. (#61)
 
 ### Internal
 
