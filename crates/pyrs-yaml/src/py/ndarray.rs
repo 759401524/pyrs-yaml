@@ -3,8 +3,8 @@
 use crate::ast::CustomNode;
 
 use numpy::{
-    dtype, Complex32, Complex64, PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyUntypedArray,
-    PyUntypedArrayMethods,
+    Complex32, Complex64, PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyUntypedArray,
+    PyUntypedArrayMethods, dtype,
 };
 use pyo3::prelude::*;
 

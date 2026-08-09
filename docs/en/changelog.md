@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Rust MSRV raised to 1.96 and edition bumped to 2024** - both crates now
+  declare `rust-version = "1.96"` and `edition = "2024"`; CI pins the
+  `build`/`test-freethreaded` jobs to Rust 1.96 for deterministic wheel builds
+  and adds an `msrv-check` job running `cargo check`/`cargo test` at the MSRV
+  to prevent silent MSRV drift (the `rust-lint` job stays on `stable`).
+  The floor is set above PyO3 0.29's own baseline (rustc 1.83) for std API
+  headroom (e.g. `assert_matches!`, stabilized 1.96) with no code migration
+  needed. `TAG_REGISTRY` (tag handler storage) refactored to
+  `std::sync::LazyLock`, dropping the `Mutex<Option<...>>` indirection.
+
+### Performance
+
+- **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer**
+  — Python→YAML serialization without intermediate `CustomNode` AST.
+  Single-pass `direct_dump` replaces the old two-pass `pyobject_to_node` +
+  `to_yaml`. 7x faster on `safe_dump` (28ns→4ns), 6x faster on `from_dict`
+  (35ns→6ns). (#60)
+- **`safe_load` / `safe_loads` / `to_dict`: fast-path skip anchor tracking**
+  — when input has no `&` characters, skip `collect_anchors` + anchor
+  resolution and use the simpler `node_to_pyobject_simple` path. (#59)
+- **`resolve_core_type`: first-byte dispatch whitelist** — non-numeric/
+  non-boolean first bytes return `Str` immediately, avoiding schema
+  resolution overhead for the common case. (#59)
+
+### Internal
+
+- **Split `py/mod.rs`** — monolithic 1786-line module broken into
+  `document.rs` (YamlDocument), `yaml_instance.rs` (YAML class),
+  `functions.rs` (module-level functions), `stream_iterator.rs`,
+  `walk_helpers.rs`. `mod.rs` reduced to 128 lines. (#61)
+
 ## [v0.12.1] — 2026-08-06
 
 ### Added

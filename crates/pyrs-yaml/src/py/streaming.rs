@@ -62,10 +62,10 @@ impl ChunkCharIter {
     fn set_error(&mut self, msg: String) {
         self.eof = true;
         self.error = Some(msg.clone());
-        if let Some(slot) = &self.error_slot {
-            if let Ok(mut guard) = slot.lock() {
-                *guard = Some(msg);
-            }
+        if let Some(slot) = &self.error_slot
+            && let Ok(mut guard) = slot.lock()
+        {
+            *guard = Some(msg);
         }
     }
 
@@ -268,12 +268,11 @@ impl YamlStream {
         if self.pending_error.is_some() {
             return;
         }
-        if let Some(slot) = &self.error_slot {
-            if let Ok(mut guard) = slot.lock() {
-                if let Some(msg) = guard.take() {
-                    self.pending_error = Some(format!("YAML parse error: {}", msg));
-                }
-            }
+        if let Some(slot) = &self.error_slot
+            && let Ok(mut guard) = slot.lock()
+            && let Some(msg) = guard.take()
+        {
+            self.pending_error = Some(format!("YAML parse error: {}", msg));
         }
     }
 }

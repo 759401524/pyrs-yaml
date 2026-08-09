@@ -770,12 +770,14 @@ mod tests {
     fn event_to_stream_event_comment_is_none() {
         let mut anchor_map = HashMap::new();
         // granit-parser emits Comment events; event_to_stream_event returns None for them
-        assert!(super::event_to_stream_event(
-            Event::Comment(Default::default(), Default::default()),
-            mk_span(1, 0),
-            &mut anchor_map,
-            &mut |_| None
-        )
-        .is_none());
+        assert!(
+            super::event_to_stream_event(
+                Event::Comment(Default::default(), Default::default()),
+                mk_span(1, 0),
+                &mut anchor_map,
+                &mut |_| None
+            )
+            .is_none()
+        );
     }
 }

@@ -1,10 +1,10 @@
 mod metadata;
 
 pub use crate::editing::{
-    eligible_path, extend_delete_over_comments, key_eq, line_aligned, line_end, line_indent,
-    line_start, mapping_get_mut, mapping_key_index, nav_err, navigate, navigate_mut,
-    normalize_index, parse_path_segments, path_nodes, precompute, regenerate_region_text,
-    region_unit, DirtyKind, DirtyUnit, NavigateError, Segment,
+    DirtyKind, DirtyUnit, NavigateError, Segment, eligible_path, extend_delete_over_comments,
+    key_eq, line_aligned, line_end, line_indent, line_start, mapping_get_mut, mapping_key_index,
+    nav_err, navigate, navigate_mut, normalize_index, parse_path_segments, path_nodes, precompute,
+    regenerate_region_text, region_unit,
 };
 pub use metadata::with_metadata_from;
 

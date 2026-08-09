@@ -14,3 +14,4 @@ docs/audit-plan.md
 docs/experiments/
 benchmark-results.json
 *.benchmark-results.json
+.python-version

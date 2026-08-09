@@ -236,13 +236,13 @@ impl Serializer {
         }
 
         // Handle standalone comments first
-        if let Some(comment) = node.comment() {
-            if comment.standalone {
-                self.write_indent(indent_width);
-                self.output.push_str("# ");
-                self.output.push_str(&comment.text);
-                self.output.push('\n');
-            }
+        if let Some(comment) = node.comment()
+            && comment.standalone
+        {
+            self.write_indent(indent_width);
+            self.output.push_str("# ");
+            self.output.push_str(&comment.text);
+            self.output.push('\n');
         }
 
         match node {
@@ -261,11 +261,11 @@ impl Serializer {
                 }
 
                 self.write_scalar(value, style, chomping, self.width);
-                if let Some(c) = comment {
-                    if !c.standalone {
-                        self.output.push_str("  # ");
-                        self.output.push_str(&c.text);
-                    }
+                if let Some(c) = comment
+                    && !c.standalone
+                {
+                    self.output.push_str("  # ");
+                    self.output.push_str(&c.text);
                 }
 
                 self.output.push('\n');
@@ -292,11 +292,11 @@ impl Serializer {
                         }
                     }
                     self.output.push('}');
-                    if let Some(c) = comment {
-                        if !c.standalone {
-                            self.output.push_str("  # ");
-                            self.output.push_str(&c.text);
-                        }
+                    if let Some(c) = comment
+                        && !c.standalone
+                    {
+                        self.output.push_str("  # ");
+                        self.output.push_str(&c.text);
                     }
                     self.output.push('\n');
                 } else {
@@ -344,13 +344,13 @@ impl Serializer {
                     }
 
                     // Write mapping comment
-                    if let Some(c) = comment {
-                        if !c.standalone {
-                            self.write_indent(indent_width);
-                            self.output.push_str("# ");
-                            self.output.push_str(&c.text);
-                            self.output.push('\n');
-                        }
+                    if let Some(c) = comment
+                        && !c.standalone
+                    {
+                        self.write_indent(indent_width);
+                        self.output.push_str("# ");
+                        self.output.push_str(&c.text);
+                        self.output.push('\n');
                     }
                 } // end block style
             }
@@ -374,11 +374,11 @@ impl Serializer {
                         }
                     }
                     self.output.push(']');
-                    if let Some(c) = comment {
-                        if !c.standalone {
-                            self.output.push_str("  # ");
-                            self.output.push_str(&c.text);
-                        }
+                    if let Some(c) = comment
+                        && !c.standalone
+                    {
+                        self.output.push_str("  # ");
+                        self.output.push_str(&c.text);
                     }
                     self.output.push('\n');
                 } else {
@@ -395,13 +395,13 @@ impl Serializer {
                     }
 
                     // Write sequence comment
-                    if let Some(c) = comment {
-                        if !c.standalone {
-                            self.write_indent(indent_width);
-                            self.output.push_str("# ");
-                            self.output.push_str(&c.text);
-                            self.output.push('\n');
-                        }
+                    if let Some(c) = comment
+                        && !c.standalone
+                    {
+                        self.write_indent(indent_width);
+                        self.output.push_str("# ");
+                        self.output.push_str(&c.text);
+                        self.output.push('\n');
                     }
                 } // end block style
             }
@@ -417,11 +417,11 @@ impl Serializer {
                 }
 
                 self.output.push_str("null");
-                if let Some(c) = comment {
-                    if !c.standalone {
-                        self.output.push_str("  # ");
-                        self.output.push_str(&c.text);
-                    }
+                if let Some(c) = comment
+                    && !c.standalone
+                {
+                    self.output.push_str("  # ");
+                    self.output.push_str(&c.text);
                 }
 
                 self.output.push('\n');
@@ -481,13 +481,13 @@ impl Serializer {
         } else {
             // Simple key
             // Handle standalone comments before the key
-            if let Some(comment) = key.comment() {
-                if comment.standalone {
-                    self.write_indent(indent_width);
-                    self.output.push_str("# ");
-                    self.output.push_str(&comment.text);
-                    self.output.push('\n');
-                }
+            if let Some(comment) = key.comment()
+                && comment.standalone
+            {
+                self.write_indent(indent_width);
+                self.output.push_str("# ");
+                self.output.push_str(&comment.text);
+                self.output.push('\n');
             }
             self.write_indent(indent_width);
             self.write_scalar_for_key(key);

@@ -72,22 +72,22 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
         return YamlType::Float(f64::NAN);
     }
 
-    if trimmed.starts_with("0o") || trimmed.starts_with("0O") {
-        if let Ok(val) = i64::from_str_radix(&trimmed[2..], 8) {
-            return YamlType::Int(val);
-        }
+    if (trimmed.starts_with("0o") || trimmed.starts_with("0O"))
+        && let Ok(val) = i64::from_str_radix(&trimmed[2..], 8)
+    {
+        return YamlType::Int(val);
     }
 
-    if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
-        if let Ok(val) = i64::from_str_radix(&trimmed[2..], 16) {
-            return YamlType::Int(val);
-        }
+    if (trimmed.starts_with("0x") || trimmed.starts_with("0X"))
+        && let Ok(val) = i64::from_str_radix(&trimmed[2..], 16)
+    {
+        return YamlType::Int(val);
     }
 
-    if trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E') {
-        if let Ok(val) = trimmed.parse::<f64>() {
-            return YamlType::Float(val);
-        }
+    if (trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E'))
+        && let Ok(val) = trimmed.parse::<f64>()
+    {
+        return YamlType::Float(val);
     }
 
     if let Ok(val) = trimmed.parse::<i64>() {
@@ -152,10 +152,10 @@ pub fn resolve_json_type(value: &str) -> YamlType<'_> {
         return YamlType::Str(Cow::Borrowed(value));
     }
 
-    if trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E') {
-        if let Ok(val) = trimmed.parse::<f64>() {
-            return YamlType::Float(val);
-        }
+    if (trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E'))
+        && let Ok(val) = trimmed.parse::<f64>()
+    {
+        return YamlType::Float(val);
     }
 
     if let Ok(val) = trimmed.parse::<i64>() {

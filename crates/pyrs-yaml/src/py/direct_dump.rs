@@ -21,15 +21,15 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
 
+#[cfg(feature = "numpy")]
+use crate::YamlSerializeError;
 use crate::parser::yaml::schema::needs_quotes;
 use crate::py::convert::format_i18n_error;
 #[cfg(feature = "numpy")]
 use crate::py::ndarray::ndarray_to_node;
 use crate::py::python_types::{float_to_yaml_string, py_string_to_arc};
 #[cfg(feature = "numpy")]
-use crate::serializer::{to_yaml_with_options, SerializeOptions};
-#[cfg(feature = "numpy")]
-use crate::YamlSerializeError;
+use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::{YamlMaxDepthError, YamlTypeError};
 
 const MAX_DEPTH: usize = 1000;
@@ -379,28 +379,28 @@ impl DirectWriter {
             // numpy is only probed at runtime: free-threaded (Py_GIL_DISABLED)
             // builds compile with the default "numpy" feature but ship without
             // the module installed, and numpy's capsule access would panic.
-            if py.import("numpy").is_ok() {
-                if let Some(node) = ndarray_to_node(py, obj) {
-                    let yaml = to_yaml_with_options(
-                        &node,
-                        &SerializeOptions {
-                            indent_offset: indent_width,
-                            ..Default::default()
-                        },
-                    )
-                    .map_err(|e| {
-                        if e.contains("max depth exceeded") {
-                            self.depth_error()
-                        } else {
-                            YamlSerializeError::new_err(format_i18n_error(
-                                "yaml-serialize-error",
-                                &[("detail", &e)],
-                            ))
-                        }
-                    })?;
-                    self.output.push_str(&yaml);
-                    return Ok(());
-                }
+            if py.import("numpy").is_ok()
+                && let Some(node) = ndarray_to_node(py, obj)
+            {
+                let yaml = to_yaml_with_options(
+                    &node,
+                    &SerializeOptions {
+                        indent_offset: indent_width,
+                        ..Default::default()
+                    },
+                )
+                .map_err(|e| {
+                    if e.contains("max depth exceeded") {
+                        self.depth_error()
+                    } else {
+                        YamlSerializeError::new_err(format_i18n_error(
+                            "yaml-serialize-error",
+                            &[("detail", &e)],
+                        ))
+                    }
+                })?;
+                self.output.push_str(&yaml);
+                return Ok(());
             }
         }
         Err(self.unsupported_type())

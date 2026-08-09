@@ -6,7 +6,7 @@ use crate::ast::CustomNode;
 use std::ops::Range;
 
 use super::dirty::DirtyKind;
-use super::navigate::{mapping_key_index, normalize_index, NavigateError, Segment};
+use super::navigate::{NavigateError, Segment, mapping_key_index, normalize_index};
 
 pub fn path_nodes<'a>(
     node: &'a CustomNode,
