@@ -453,6 +453,37 @@ impl CustomNode {
         }
     }
 
+    /// 创建一个双引号风格的标量节点（用于表示会隐式解析为非字符串的
+    /// 字符串值，如 `"true"`、`"42"`、`"null"`、`"~"`、空串及控制字符，
+    /// 裸输出会丢失类型或产生非法 YAML）。
+    ///
+    /// 使用 `ScalarStyle::DoubleQuoted` 和默认元数据。
+    ///
+    /// # Arguments
+    /// * `value` - 标量文本值。
+    ///
+    /// # Returns
+    /// 返回一个 `CustomNode::Scalar` 变体，style 为 `DoubleQuoted`。
+    ///
+    /// # Examples
+    /// ```rust
+    /// use pyrs_yaml_core::ast::CustomNode;
+    ///
+    /// // YAML 输出: "true"
+    /// let node = CustomNode::double_quoted_scalar("true");
+    /// ```
+    pub fn double_quoted_scalar(value: impl Into<Arc<str>>) -> Self {
+        CustomNode::Scalar {
+            value: value.into(),
+            style: ScalarStyle::DoubleQuoted,
+            comment: None,
+            anchor: None,
+            tag: None,
+            chomping: Chomping::Clip,
+            source_range: None,
+        }
+    }
+
     /// 创建一个无元数据的块风格映射节点。
     ///
     /// 键值对顺序由 `IndexMap` 保证，不会进行排序或重新排列。

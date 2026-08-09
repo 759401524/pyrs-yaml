@@ -97,6 +97,29 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
     YamlType::Str(Cow::Borrowed(value))
 }
 
+/// Whether a string would be misread if emitted as an unquoted plain scalar.
+///
+/// Quoting is required when the value resolves to a non-string type under the
+/// core schema (bool/int/float/null — e.g. `"true"`, `"42"`, `"null"`, `"~"`,
+/// `""`, `"0x1F"`, `".inf"`), or when raw emission would be ambiguous or
+/// invalid YAML (leading/trailing whitespace, control characters).
+///
+/// This is the conversion-layer guard used by `pyobject_to_node` and the
+/// direct writer so that Python strings round-trip losslessly. It intentionally
+/// stays bound to [`resolve_core_type`] so the two can never drift.
+pub fn needs_quotes(value: &str) -> bool {
+    if !matches!(resolve_core_type(value), YamlType::Str(_)) {
+        return true;
+    }
+    if value.starts_with(' ') || value.ends_with(' ') {
+        return true;
+    }
+    if value.chars().any(|c| c.is_control()) {
+        return true;
+    }
+    false
+}
+
 /// Resolve a plain scalar as JSON-compatible YAML.
 ///
 /// Same as Core minus: inf, nan, octal (0o), hex (0x) — those become strings.
