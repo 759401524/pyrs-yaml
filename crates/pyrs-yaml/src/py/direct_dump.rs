@@ -26,8 +26,11 @@ use crate::py::convert::format_i18n_error;
 #[cfg(feature = "numpy")]
 use crate::py::ndarray::ndarray_to_node;
 use crate::py::python_types::{float_to_yaml_string, py_string_to_arc};
+#[cfg(feature = "numpy")]
 use crate::serializer::{to_yaml_with_options, SerializeOptions};
-use crate::{YamlMaxDepthError, YamlSerializeError, YamlTypeError};
+#[cfg(feature = "numpy")]
+use crate::YamlSerializeError;
+use crate::{YamlMaxDepthError, YamlTypeError};
 
 const MAX_DEPTH: usize = 1000;
 const WIDTH: usize = 80;
@@ -364,6 +367,7 @@ impl DirectWriter {
 
     /// ndarray subtree (serialized via the core serializer with the current
     /// indent spliced in) or an unsupported Python type.
+    #[cfg_attr(not(feature = "numpy"), allow(unused_variables))]
     fn write_other(
         &mut self,
         py: Python,

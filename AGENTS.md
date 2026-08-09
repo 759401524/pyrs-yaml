@@ -8,7 +8,8 @@
 - PyO3 v0.29 requires `#[pyo3(signature = "...")]` with double-quoted type strings
 - All PyO3 custom types must implement `INPUT_TYPE`/`OUTPUT_TYPE` traits
 - No `serde_yaml`, `yaml-rust2`, or any serde-based YAML library
-- Must release GIL during expensive Rust computation: `py.detach(|| { ... })` (pyo3 0.29); `Python::attach` re-acquires the GIL. No `with_gil`/`allow_threads` in 0.29.
+- Must release GIL during expensive pure-Rust computation (parse, edit, AST serialize): `py.detach(|| { ... })` (pyo3 0.29). `Python::attach` re-acquires the GIL. No `with_gil`/`allow_threads` in 0.29.
+- **Do NOT** cargo-cult `py.detach` when the dominant cost is Python object walking (e.g., `pyobject_to_node`). The old `dump_iterable` pattern `py.detach(|| to_yaml(&node))` released the GIL for a minority phase while the Python-object walk held the GIL throughout. When the whole operation is inherently Python-bound, the total GIL-hold time is all that matters — a faster inline path without detach is strictly better for concurrency (proven: direct_dump 6.6x faster overall, other threads get more CPU share).
 
 ## Commands
 
@@ -100,7 +101,7 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 
 - Use `serde_yaml` or `yaml-rust2` `YamlLoader::load_from_str()`
 - Use `.unwrap()` or `.expect()` in business logic
-- Skip the GIL release in hot Rust paths
+- Skip the GIL release in hot pure-Rust paths (parse, edit, AST serialize — use `py.detach`)
 - Use `pip` or system Python — always `uv`
 - Use `git commit --no-verify` to bypass prek hooks
 - Edit `.pyi` files manually instead of regenerating via maturin
