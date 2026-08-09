@@ -6,9 +6,9 @@ use std::io::Write;
 use pyo3::prelude::*;
 
 use crate::py::convert::format_i18n_error;
+use crate::py::direct_dump::direct_dump_with_options;
 use crate::py::pyrs_yaml::{serialize_document, YamlDocument};
-use crate::py::python_types::pyobject_to_node;
-use crate::serializer::{to_yaml_with_options, SerializeOptions};
+use crate::serializer::SerializeOptions;
 
 /// Destination for streaming writes.
 pub(crate) enum OutputSink {
@@ -128,21 +128,10 @@ pub(crate) fn dump_iterable(
                 let mut doc = doc.try_borrow_mut()?;
                 serialize_document(&mut doc, py, options)
             } else {
-                let node = pyobject_to_node(py, &item.unbind())?;
-                py.detach(|| to_yaml_with_options(&node, options))
-                    .map_err(|e| {
-                        if e.contains("max depth exceeded") {
-                            crate::YamlMaxDepthError::new_err(format_i18n_error(
-                                "max-depth-exceeded",
-                                &[("max_depth", &options.max_depth.to_string())],
-                            ))
-                        } else {
-                            crate::YamlSerializeError::new_err(format_i18n_error(
-                                "yaml-serialize-error",
-                                &[("detail", &e)],
-                            ))
-                        }
-                    })
+                // Direct path: typed PyErrs (YamlMaxDepthError, YamlTypeError,
+                // YamlSerializeError) propagate as-is, matching what
+                // pyobject_to_node raised directly before serialization.
+                direct_dump_with_options(py, &item.unbind(), options.sort_keys)
             }
         })();
         let yaml = match result {
