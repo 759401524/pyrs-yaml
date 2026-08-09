@@ -7,6 +7,9 @@ use super::convert::format_i18n_error;
 use super::ndarray::ndarray_to_node;
 use crate::ast::CustomNode;
 
+use crate::parser::yaml::schema::needs_quotes;
+use crate::parser::yaml::schema::resolve_core_type;
+use crate::parser::yaml::types::YamlType;
 use indexmap::IndexMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -17,11 +20,25 @@ use std::sync::Arc;
 /// （单次分配），`Arc::from(&str)` 再拷贝一次 —— 共 2 次分配，与
 /// `extract::<String>`（内部即 `to_cow().into_owned()`）路径持平。
 /// 注：abi3-py38 下 `PyStringMethods::to_str` 被 cfg 禁用，借用必须走 `encode_utf8`。
-fn py_string_to_arc(s: &Bound<'_, PyString>) -> PyResult<Arc<str>> {
+pub(crate) fn py_string_to_arc(s: &Bound<'_, PyString>) -> PyResult<Arc<str>> {
     let bytes = s.encode_utf8()?;
     let text = std::str::from_utf8(bytes.as_bytes())
         .map_err(|e| PyValueError::new_err(format!("invalid UTF-8 in Python string: {e}")))?;
     Ok(Arc::from(text))
+}
+
+/// Format an `f64` for YAML output so it round-trips back as a float.
+///
+/// Rust `Display` emits `42.0` as `"42"` and `1e300` as a bare digit string —
+/// both resolve back as int/string on load. Appending `.0` when the text does
+/// not already resolve to a float keeps the type stable (`inf`/`NaN` already
+/// resolve as floats and are left untouched).
+pub(crate) fn float_to_yaml_string(f: f64) -> String {
+    let mut s = f.to_string();
+    if !matches!(resolve_core_type(&s), YamlType::Float(_)) {
+        s.push_str(".0");
+    }
+    s
 }
 
 /// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None/ndarray。
@@ -36,7 +53,12 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         let mut pairs = IndexMap::new();
         for (key, value) in dict.iter() {
             let key_node = if let Ok(key_str) = key.cast::<PyString>() {
-                CustomNode::plain_scalar(py_string_to_arc(key_str)?)
+                let text = py_string_to_arc(key_str)?;
+                if needs_quotes(&text) {
+                    CustomNode::double_quoted_scalar(text)
+                } else {
+                    CustomNode::plain_scalar(text)
+                }
             } else {
                 pyobject_to_node(py, &key.into_any().unbind())?
             };
@@ -63,11 +85,16 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
     }
 
     if let Ok(f) = obj.extract::<f64>() {
-        return Ok(CustomNode::plain_scalar(f.to_string()));
+        return Ok(CustomNode::plain_scalar(float_to_yaml_string(f)));
     }
 
     if let Ok(s) = obj.cast::<PyString>() {
-        return Ok(CustomNode::plain_scalar(py_string_to_arc(s)?));
+        let text = py_string_to_arc(s)?;
+        return Ok(if needs_quotes(&text) {
+            CustomNode::double_quoted_scalar(text)
+        } else {
+            CustomNode::plain_scalar(text)
+        });
     }
 
     #[cfg(feature = "numpy")]
@@ -103,7 +130,14 @@ pub fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
             };
             Ok(CustomNode::plain_scalar(s))
         }
-        serde_json::Value::String(s) => Ok(CustomNode::plain_scalar(s.clone())),
+        serde_json::Value::String(s) => {
+            let value = s.clone();
+            Ok(if needs_quotes(&value) {
+                CustomNode::double_quoted_scalar(value)
+            } else {
+                CustomNode::plain_scalar(value)
+            })
+        }
         serde_json::Value::Array(arr) => {
             let items: Vec<CustomNode> = arr
                 .iter()
@@ -114,7 +148,11 @@ pub fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
         serde_json::Value::Object(map) => {
             let mut pairs = IndexMap::new();
             for (key, value) in map {
-                let key_node = CustomNode::plain_scalar(key.clone());
+                let key_node = if needs_quotes(key) {
+                    CustomNode::double_quoted_scalar(key.clone())
+                } else {
+                    CustomNode::plain_scalar(key.clone())
+                };
                 let value_node = json_value_to_node(value)?;
                 pairs.insert(key_node, value_node);
             }
