@@ -2,6 +2,7 @@
 //! Python-facing functions exposed via the `pyrs_yaml` PyO3 module.
 
 pub mod convert;
+pub mod direct_dump;
 pub mod editing;
 pub mod stream_events;
 pub mod streaming;
@@ -28,6 +29,7 @@ use self::convert::{
     collect_anchors, format_i18n_error, node_to_pyobject, node_to_pyobject_simple,
     node_to_pyobject_with_anchors, parse_schema,
 };
+use self::direct_dump::direct_dump;
 use self::python_types::{json_value_to_node, pyobject_to_node};
 use self::stream_events::stream_event_to_py_dict;
 use self::streaming::{ChunkCharIter, InputSrc, YamlStream, DEFAULT_CHUNK_SIZE};
@@ -1630,16 +1632,14 @@ mod pyrs_yaml {
     #[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
     /// Serialize a Python dict/list to a YAML string.
     fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
-        let node = pyobject_to_node(py, &data)?;
-        Ok(to_yaml(&node))
+        direct_dump(py, &data)
     }
 
     #[pyfunction]
     #[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
     /// Convert a Python dict/list to a YAML string (auto-selects block/flow style).
     fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
-        let node = pyobject_to_node(py, &data)?;
-        Ok(to_yaml(&node))
+        direct_dump(py, &data)
     }
 
     #[pyfunction]
@@ -1660,8 +1660,7 @@ mod pyrs_yaml {
     #[pyo3(signature = (data: "Any", path: "str") -> "None")]
     /// Serialize a Python object to YAML and write to a file.
     fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
-        let node = pyobject_to_node(py, &data)?;
-        let yaml = to_yaml(&node);
+        let yaml = direct_dump(py, &data)?;
         std::fs::write(path, yaml).map_err(|e| {
             pyo3::exceptions::PyIOError::new_err(format_i18n_error(
                 "file-write-error",
