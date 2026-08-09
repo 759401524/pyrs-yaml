@@ -1,6 +1,12 @@
-"""Assert root CHANGELOG.md [Unreleased] equals docs/{en,ja,ko,zh} mirrors.
+"""Assert root CHANGELOG.md mirrors are structurally in sync across locales.
 
-Exit code 0 = in sync; 1 = drift (with per-file diff hints).
+Instead of comparing text verbatim (which breaks translation), this script
+checks structural parity: every locale must declare the same set of version
+headers (## [X.Y.Z]) and must contain a [Unreleased] section. This catches
+common mistakes — adding an entry to root but forgetting a mirror — without
+requiring translated content to match the English text byte-for-byte.
+
+Exit code 0 = structurally in sync; 1 = drift detected.
 """
 
 import re
@@ -16,26 +22,52 @@ FILES = [
     ROOT / "docs" / "zh" / "changelog.md",
 ]
 
-_SECTION_RE = re.compile(r"^#{2,3} \[Unreleased\](.*?)(?=^#{2,3} \[|\Z)", re.M | re.S)
+_VERSION_RE = re.compile(r"^#{2,3} \[(\d+\.\d+\.\d+)\](?: — [^\]]+)?\s*$", re.M)
+_UNRELEASED_RE = re.compile(r"^#{2,3} \[Unreleased\]", re.M)
 
 
-def extract_unreleased(text: str) -> str:
-    m = _SECTION_RE.search(text)
-    return m.group(1).strip() if m else ""
+def _versions(text: str) -> set[str]:
+    return set(_VERSION_RE.findall(text))
+
+
+def _has_unreleased(text: str) -> bool:
+    return bool(_UNRELEASED_RE.search(text))
 
 
 def main() -> int:
-    sections = {str(p): extract_unreleased(p.read_text(encoding="utf-8")) for p in FILES}
-    root_sec = sections[str(FILES[0])]
-    errors = []
+    errors: list[str] = []
+    root_text = FILES[0].read_text(encoding="utf-8")
+    root_versions = _versions(root_text)
+
     for path in FILES[1:]:
-        if sections[str(path)] != root_sec:
-            errors.append(f"{path}: [Unreleased] differs from root CHANGELOG.md")
+        text = path.read_text(encoding="utf-8")
+        versions = _versions(text)
+        unreleased = _has_unreleased(text)
+
+        missing = root_versions - versions
+        if missing:
+            errors.append(f"{path.name}: missing versions {sorted(missing)}")
+        extra = versions - root_versions
+        if extra:
+            errors.append(f"{path.name}: has extra versions {sorted(extra)}")
+        if not unreleased:
+            errors.append(f"{path.name}: missing [Unreleased] section")
+
+    # Also verify root has all versions the mirrors do (catches root missing
+    # entries after mirrors are updated first, which sometimes happens).
+    mirror_texts = {p.name: p.read_text(encoding="utf-8") for p in FILES[1:]}
+    mirror_versions = set()
+    for t in mirror_texts.values():
+        mirror_versions |= _versions(t)
+    root_missing = mirror_versions - root_versions
+    if root_missing:
+        errors.append(f"root CHANGELOG.md: missing versions {sorted(root_missing)}")
+
     if errors:
-        print("changelog drift detected:")
+        print("changelog structural drift detected:")
         print("\n".join(errors))
         return 1
-    print("OK: all 5 changelog [Unreleased] sections in sync")
+    print("OK: all 5 changelogs structurally in sync")
     return 0
 
 
