@@ -178,6 +178,21 @@ def test_safe_dump_ndarray(benchmark):
     assert result
 
 
+def test_dump_stream(benchmark):
+    buf = io.StringIO()
+    yaml = pyrs_yaml.YAML()
+    benchmark(lambda: (buf.seek(0), yaml.dump_stream(buf, [CONFIG_DATA])))
+    assert "postgresql" in buf.getvalue()
+
+
+def test_dump_stream_multi_doc(benchmark):
+    buf = io.StringIO()
+    yaml = pyrs_yaml.YAML()
+    docs = [{"doc": i, "payload": "x" * 100} for i in range(500)]
+    benchmark(lambda: (buf.seek(0), yaml.dump_stream(buf, docs)))
+    assert len(list(pyrs_yaml.safe_loads(buf.getvalue()))) == 500
+
+
 def test_document_to_yaml_sorted(benchmark):
     doc = pyrs_yaml.parse(CONFIG_YAML)
     result = benchmark(lambda: doc.to_yaml_with_options(sort_keys=True))

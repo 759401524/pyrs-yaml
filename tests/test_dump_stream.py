@@ -54,6 +54,29 @@ def test_dump_stream_sort_keys():
     assert buf.getvalue() == "a: 2\nb: 1\n"
 
 
+def test_dump_stream_string_keyword_quoted():
+    buf = io.StringIO()
+    pyrs_yaml.YAML().dump_stream(buf, [{"a": "true"}])
+    assert buf.getvalue() == 'a: "true"\n'
+
+
+def test_dump_stream_compact_mapping_not_sorted():
+    buf = io.StringIO()
+    pyrs_yaml.YAML().dump_stream(buf, [[{"b": 1, "a": 2}]], sort_keys=True)
+    assert buf.getvalue() == "- b: 1\n  a: 2\n"
+
+
+def test_dump_stream_max_depth_error():
+    d = {}
+    cur = d
+    for _ in range(1100):
+        cur["x"] = {}
+        cur = cur["x"]
+    buf = io.StringIO()
+    with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+        pyrs_yaml.YAML().dump_stream(buf, [d])
+
+
 def test_dump_stream_object_without_write_raises_type_error():
     with pytest.raises(pyrs_yaml.YamlTypeError):
         pyrs_yaml.YAML().dump_stream(object(), [{"a": 1}])
