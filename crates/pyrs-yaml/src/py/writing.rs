@@ -7,7 +7,7 @@ use pyo3::prelude::*;
 
 use crate::py::convert::format_i18n_error;
 use crate::py::direct_dump::direct_dump_with_options;
-use crate::py::pyrs_yaml::{serialize_document, YamlDocument};
+use crate::py::pyrs_yaml::{YamlDocument, serialize_document};
 use crate::serializer::SerializeOptions;
 
 /// Destination for streaming writes.

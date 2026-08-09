@@ -1,9 +1,9 @@
 //! Conversion between `CustomNode` and Python objects, including alias
 //! resolution and YAML type inference.
 
-use crate::ast::{CustomNode, ScalarStyle};
-use crate::parser::yaml::{resolve_yaml_type, YamlSchema, YamlType};
 use crate::YamlTypeError;
+use crate::ast::{CustomNode, ScalarStyle};
+use crate::parser::yaml::{YamlSchema, YamlType, resolve_yaml_type};
 
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList};

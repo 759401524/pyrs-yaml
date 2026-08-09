@@ -225,7 +225,7 @@ pub fn navigate_mut<'a>(
                 return Err(match seg {
                     Segment::Key(k) => NavigateError::CannotDescend(k.to_string()),
                     Segment::Index(i) => NavigateError::CannotDescend(i.to_string()),
-                })
+                });
             }
         };
     }

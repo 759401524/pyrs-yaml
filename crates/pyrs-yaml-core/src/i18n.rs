@@ -184,59 +184,61 @@ pub fn negotiate_language<'a>(user_locales: &[&'a str], default: &'a str) -> &'a
 /// ```
 pub fn detect_language() -> String {
     // 1. 检查 PYI18N（最高优先级）
-    if let Ok(val) = std::env::var("PYI18N") {
-        if !val.is_empty() {
-            let locales = parse_language_list(&val);
-            let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
-            return negotiate_language(&refs, "en").to_string();
-        }
+    if let Ok(val) = std::env::var("PYI18N")
+        && !val.is_empty()
+    {
+        let locales = parse_language_list(&val);
+        let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
+        return negotiate_language(&refs, "en").to_string();
     }
 
     // 2. 检查 LANGUAGE（GNU gettext 风格）
-    if let Ok(val) = std::env::var("LANGUAGE") {
-        if !val.is_empty() {
-            let locales = parse_language_list(&val);
-            let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
-            let result = negotiate_language(&refs, "en");
-            if !result.is_empty() {
-                return result.to_string();
-            }
+    if let Ok(val) = std::env::var("LANGUAGE")
+        && !val.is_empty()
+    {
+        let locales = parse_language_list(&val);
+        let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
+        let result = negotiate_language(&refs, "en");
+        if !result.is_empty() {
+            return result.to_string();
         }
     }
 
     // 3. 检查 LC_ALL
-    if let Ok(val) = std::env::var("LC_ALL") {
-        if !val.is_empty() && val != "C" && val != "POSIX" {
-            let locales = parse_language_list(&val);
-            let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
-            let result = negotiate_language(&refs, "en");
-            if !result.is_empty() {
-                return result.to_string();
-            }
+    if let Ok(val) = std::env::var("LC_ALL")
+        && !val.is_empty()
+        && val != "C"
+        && val != "POSIX"
+    {
+        let locales = parse_language_list(&val);
+        let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
+        let result = negotiate_language(&refs, "en");
+        if !result.is_empty() {
+            return result.to_string();
         }
     }
 
     // 4. 检查 LC_MESSAGES
-    if let Ok(val) = std::env::var("LC_MESSAGES") {
-        if !val.is_empty() {
-            let locales = parse_language_list(&val);
-            let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
-            let result = negotiate_language(&refs, "en");
-            if !result.is_empty() {
-                return result.to_string();
-            }
+    if let Ok(val) = std::env::var("LC_MESSAGES")
+        && !val.is_empty()
+    {
+        let locales = parse_language_list(&val);
+        let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
+        let result = negotiate_language(&refs, "en");
+        if !result.is_empty() {
+            return result.to_string();
         }
     }
 
     // 5. 检查 LANG
-    if let Ok(val) = std::env::var("LANG") {
-        if !val.is_empty() {
-            let locales = parse_language_list(&val);
-            let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
-            let result = negotiate_language(&refs, "en");
-            if !result.is_empty() {
-                return result.to_string();
-            }
+    if let Ok(val) = std::env::var("LANG")
+        && !val.is_empty()
+    {
+        let locales = parse_language_list(&val);
+        let refs: Vec<&str> = locales.iter().map(|s| s.as_str()).collect();
+        let result = negotiate_language(&refs, "en");
+        if !result.is_empty() {
+            return result.to_string();
         }
     }
 

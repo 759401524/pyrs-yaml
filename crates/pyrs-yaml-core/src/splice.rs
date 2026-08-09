@@ -265,14 +265,12 @@ impl SpliceState {
                 }
             }
         }
-        if !inserted {
-            if let Some(t) = text {
-                out.push(SourceSegment::Owned {
-                    start: range.start,
-                    end: range.end,
-                    text: t.to_string(),
-                });
-            }
+        if !inserted && let Some(t) = text {
+            out.push(SourceSegment::Owned {
+                start: range.start,
+                end: range.end,
+                text: t.to_string(),
+            });
         }
         self.segments = out;
         Ok(())
@@ -367,15 +365,16 @@ mod tests {
     #[test]
     fn ineligible_unit_rejected() {
         let mut s = SpliceState::new(Arc::from("a: 1\n"));
-        assert!(s
-            .apply(&unit(
+        assert!(
+            s.apply(&unit(
                 DirtyKind::Insert {
                     at: 0,
                     text: "x\n".to_string(),
                 },
                 false,
             ))
-            .is_err());
+            .is_err()
+        );
         // State untouched.
         assert_eq!(s.materialize(), Some("a: 1\n".to_string()));
     }
@@ -409,15 +408,16 @@ mod tests {
     #[test]
     fn insert_inside_owned_rejected() {
         let mut s = region("a: 1\nb: 2\nc: 3\n", 5..10, "b: 9\n");
-        assert!(s
-            .apply(&unit(
+        assert!(
+            s.apply(&unit(
                 DirtyKind::Insert {
                     at: 6,
                     text: "x\n".to_string(),
                 },
                 true,
             ))
-            .is_err());
+            .is_err()
+        );
     }
 
     #[test]

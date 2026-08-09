@@ -17,7 +17,7 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 - **YAML 1.2 compliant** - Uses granit-parser for full YAML 1.2 support with native comment preservation
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - **In-Place Editing** - Edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
-- **High Performance** - Rust backend, see [benchmarks](benches/yaml_bench.rs)
+- **High Performance** - Rust backend, see [benchmarks](crates/pyrs-yaml/benches/yaml_bench.rs)
 - **NumPy ndarray support** - `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` serialize `numpy.ndarray` of any dimension (0-D through N-D) with zero-copy Rust dispatch
 - **JSON Schema validation** - `YamlDocument.validate(schema)` validates parsed documents against JSON Schema; `YamlValidateError` for failures
 - **Async I/O** - `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` via `asyncio.run_in_executor`
@@ -40,6 +40,11 @@ Or with uv:
 ```bash
 uv pip install pyrs-yaml
 ```
+
+## Requirements
+
+- **Supported Python versions** (installing wheels): Python 3.8+ (CPython; PyPy and free-threaded 3.14t wheels are also published). abi3 wheels mean one wheel covers all supported Python versions.
+- **Rust toolchain** (building from source only): Rust 1.96 or later (MSRV, edition 2024). This is above PyO3's own baseline (rustc 1.83+ for PyO3 0.29) and is chosen deliberately for std API headroom — it keeps current stable APIs (e.g. `assert_matches!`, stabilized in 1.96) available without waiting for a future MSRV bump. End users installing wheels never need Rust.
 
 ## Documentation
 

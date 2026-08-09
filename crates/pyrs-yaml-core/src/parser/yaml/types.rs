@@ -42,8 +42,8 @@ impl YamlType<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::yaml::schema::resolve_yaml_type;
     use crate::parser::yaml::YamlSchema;
+    use crate::parser::yaml::schema::resolve_yaml_type;
 
     fn format_yaml_type(ty: &YamlType) -> String {
         match ty {

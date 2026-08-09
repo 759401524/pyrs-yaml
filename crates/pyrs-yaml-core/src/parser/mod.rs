@@ -1,7 +1,7 @@
 pub mod stream;
 pub mod yaml;
 
-pub use crate::parser::stream::{parse_stream, StreamEvent, StreamEventType};
+pub use crate::parser::stream::{StreamEvent, StreamEventType, parse_stream};
 
 /// Error detail for YAML parsing failures, carrying line/column information.
 #[derive(Debug, Clone)]
@@ -23,8 +23,8 @@ use indexmap::IndexMap;
 use std::ops::Range;
 use std::sync::Arc;
 use yaml::{
-    compute_line_offsets, detect_chomping, extract_anchors, resolve_merge_keys,
-    unescape_double_quoted, RawAnchor,
+    RawAnchor, compute_line_offsets, detect_chomping, extract_anchors, resolve_merge_keys,
+    unescape_double_quoted,
 };
 
 /// Return true if a mapping key is a null/empty key (`~`, empty, or null).
@@ -543,10 +543,10 @@ impl<'a> AstReceiver<'a> {
 
     /// Set the comment on a node if it's a Scalar with no existing comment.
     fn set_scalar_comment(node: Option<&mut CustomNode>, comment: Comment) {
-        if let Some(CustomNode::Scalar { comment: c, .. }) = node {
-            if c.is_none() {
-                *c = Some(comment);
-            }
+        if let Some(CustomNode::Scalar { comment: c, .. }) = node
+            && c.is_none()
+        {
+            *c = Some(comment);
         }
     }
 
@@ -617,10 +617,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::DocumentEnd => {
                 // Clone the completed document for multi-doc support
-                if self.collect_documents {
-                    if let Some(ref doc) = self.result {
-                        self.documents.push(doc.clone());
-                    }
+                if self.collect_documents
+                    && let Some(ref doc) = self.result
+                {
+                    self.documents.push(doc.clone());
                 }
             }
             Event::Scalar(value, style, anchor_id, tag) => {
@@ -636,13 +636,13 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 let mut node = self.create_scalar(&value, &style, line, range);
 
                 // Attach standalone comment if found
-                if let Some(comment) = standalone {
-                    if let CustomNode::Scalar { comment: c, .. } = &mut node {
-                        // If there's already an inline comment, keep it
-                        // Otherwise, use the standalone comment
-                        if c.is_none() {
-                            *c = Some(comment);
-                        }
+                if let Some(comment) = standalone
+                    && let CustomNode::Scalar { comment: c, .. } = &mut node
+                {
+                    // If there's already an inline comment, keep it
+                    // Otherwise, use the standalone comment
+                    if c.is_none() {
+                        *c = Some(comment);
                     }
                 }
 
@@ -657,10 +657,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
                 }
 
                 // Handle tag
-                if let Some(tag) = tag {
-                    if let CustomNode::Scalar { tag: t, .. } = &mut node {
-                        *t = Some(convert_tag(&tag));
-                    }
+                if let Some(tag) = tag
+                    && let CustomNode::Scalar { tag: t, .. } = &mut node
+                {
+                    *t = Some(convert_tag(&tag));
                 }
 
                 self.push_node(node);
