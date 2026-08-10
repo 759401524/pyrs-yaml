@@ -1,14 +1,27 @@
-# Benchmarks
+---
+title: Benchmarks
+description: Performance benchmarks for pyrs-yaml compared against PyYAML and ruamel.yaml, including Rust-side criterion benchmarks.
+tags:
+  - docs
+status: new
+---
+
+## Benchmarks
+
+!!! note "Benchmark environment"
+    All benchmarks are measured on the author's machine (Windows 11, Python
+    3.12). Relative speedups (×N) are consistent across hardware but absolute
+    times may vary.
 
 Performance benchmarks for pyrs-yaml, measured on the author's machine (Windows 11, Python 3.12).
 
-## Methodology
+### Methodology
 
 - **Tool:** Criterion (Rust) + `pytest-codspeed` (Python)
 - **Rounds:** 200 iterations per benchmark (Python), 100+ samples per benchmark (Rust)
 - **Metric:** Median time in milliseconds (Python), mean time in microseconds (Rust)
 
-## Parse Performance
+### Parse Performance
 
 | YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | Speedup vs PyYAML |
 |-----------|-----------|--------|-------------|-------------------|
@@ -16,7 +29,7 @@ Performance benchmarks for pyrs-yaml, measured on the author's machine (Windows 
 | Medium (~500 B) | 0.03 ms | 0.75 ms | 1.74 ms | **28×** |
 | Large (~2 KB) | 0.07 ms | 1.83 ms | 4.26 ms | **26×** |
 
-## Serialize Performance
+### Serialize Performance
 
 | YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | Speedup vs PyYAML |
 |-----------|-----------|--------|-------------|-------------------|
@@ -24,7 +37,7 @@ Performance benchmarks for pyrs-yaml, measured on the author's machine (Windows 
 | Medium (~500 B) | 0.03 ms | 1.21 ms | 2.83 ms | **40×** |
 | Large (~2 KB) | 0.08 ms | 2.96 ms | 6.74 ms | **37×** |
 
-## Round-Trip Performance
+### Round-Trip Performance
 
 | YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | Speedup vs PyYAML |
 |-----------|-----------|--------|-------------|-------------------|
@@ -32,7 +45,7 @@ Performance benchmarks for pyrs-yaml, measured on the author's machine (Windows 
 | Medium (~500 B) | 0.03 ms | 1.20 ms | 2.88 ms | **39×** |
 | Large (~2 KB) | 0.08 ms | 2.98 ms | 6.79 ms | **37×** |
 
-## Rust-Side Benchmarks (Criterion)
+### Rust-Side Benchmarks (Criterion)
 
 Measured at the Rust level (no Python overhead):
 
@@ -53,7 +66,7 @@ Measured at the Rust level (no Python overhead):
 | Round-trip (medium) | 17.1 µs |
 | Round-trip (large) | 44.7 µs |
 
-## Key Takeaways
+### Key Takeaways
 
 1. **pyrs-yaml is consistently 25–40× faster than PyYAML** across all operations
 2. **pyrs-yaml is 4–10× faster than ruamel.yaml** while matching its round-trip features
@@ -61,7 +74,7 @@ Measured at the Rust level (no Python overhead):
 4. **Serialization** is fast across all sizes — small documents serialize in ~4.4 µs
 5. **The speed advantage compounds** with larger documents
 
-## Notes
+### Notes
 
 - Benchmarks measured on a single machine; absolute times may vary
 - Relative speedups (×N) are consistent across hardware

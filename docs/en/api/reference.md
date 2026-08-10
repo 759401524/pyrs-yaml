@@ -1,10 +1,22 @@
-# Module Reference
+---
+title: Module Reference
+description: Complete API reference for the pyrs_yaml module, including core functions, PyYAML-compatible API, and async functions.
+tags:
+  - docs
+status: new
+---
+
+## Module Reference
 
 Complete API reference for the `pyrs_yaml` module.
 
-## Core Functions
+!!! tip "Version compatibility"
+    pyrs-yaml ships as an ABI3 wheel, so a single wheel works across Python
+    3.8–3.15 — no recompilation needed when upgrading Python.
 
-### `parse()`
+### Core Functions
+
+#### `parse()`
 
 Parse a YAML string or bytes into a `YamlDocument`.
 
@@ -32,7 +44,7 @@ doc = pyrs_yaml.parse(b"key: value")
 doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 ```
 
-### `parse_file()`
+#### `parse_file()`
 
 Parse a YAML file.
 
@@ -57,7 +69,7 @@ parse_file(path: str) -> YamlDocument
 doc = pyrs_yaml.parse_file("config.yaml")
 ```
 
-### `parse_all_docs()`
+#### `parse_all_docs()`
 
 Parse multiple YAML documents from a string.
 
@@ -73,9 +85,9 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-## PyYAML-Compatible Functions
+### PyYAML-Compatible Functions
 
-### `safe_load()`
+#### `safe_load()`
 
 Parse YAML and return native Python types.
 
@@ -91,7 +103,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 ```
 
-### `safe_loads()`
+#### `safe_loads()`
 
 Parse multiple YAML documents.
 
@@ -101,7 +113,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 
 **Equivalent to:** `yaml.safe_loads()` in PyYAML
 
-### `safe_dump()`
+#### `safe_dump()`
 
 Serialize a Python object to YAML.
 
@@ -113,7 +125,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 
 **Supported input types:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, and **`numpy.ndarray`** (all dimensions and numeric dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
-### `safe_dumps()`
+#### `safe_dumps()`
 
 Alias for `safe_dump()`.
 
@@ -121,9 +133,9 @@ Alias for `safe_dump()`.
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-## Conversion Functions
+### Conversion Functions
 
-### `from_dict()`
+#### `from_dict()`
 
 Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value inside the dict.
 
@@ -131,7 +143,7 @@ Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value in
 from_dict(data: dict[str, Any]) -> str
 ```
 
-### `from_json()`
+#### `from_json()`
 
 Convert a JSON string to YAML string.
 
@@ -139,7 +151,7 @@ Convert a JSON string to YAML string.
 from_json(json_str: str) -> str
 ```
 
-### `dump_file()`
+#### `dump_file()`
 
 Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or `numpy.ndarray`.
 
@@ -147,9 +159,9 @@ Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or 
 dump_file(data: Any, path: str) -> None
 ```
 
-## Pydantic Integration
+### Pydantic Integration
 
-### `dump_pydantic()`
+#### `dump_pydantic()`
 
 Serialize a Pydantic model to a YAML string.
 
@@ -179,7 +191,7 @@ class User(BaseModel):
 yaml_str = pyrs_yaml.dump_pydantic(User(name="Alice", age=30))
 ```
 
-### `parse_as()`
+#### `parse_as()`
 
 Parse a YAML string and validate it against a Pydantic model.
 
@@ -208,9 +220,9 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-## Tag Registry
+### Tag Registry
 
-### `register_tag()`
+#### `register_tag()`
 
 Register a custom tag handler. Supports both decorator and imperative forms.
 
@@ -218,21 +230,23 @@ Register a custom tag handler. Supports both decorator and imperative forms.
 register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
 ```
 
-**Example (decorator):**
+**Example:**
 
-```python
-@pyrs_yaml.register_tag("!custom")
-def handler(node):
-    return f"custom:{node}"
-```
+=== "Decorator"
 
-**Example (imperative):**
+    ```python
+    @pyrs_yaml.register_tag("!custom")
+    def handler(node):
+        return f"custom:{node}"
+    ```
 
-```python
-pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
-```
+=== "Imperative"
 
-### `remove_tag()`
+    ```python
+    pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
+    ```
+
+#### `remove_tag()`
 
 Remove a tag handler.
 
@@ -240,7 +254,7 @@ Remove a tag handler.
 remove_tag(name: str) -> None
 ```
 
-### `clear_tag_handlers()`
+#### `clear_tag_handlers()`
 
 Remove all registered tag handlers.
 
@@ -248,9 +262,9 @@ Remove all registered tag handlers.
 clear_tag_handlers() -> None
 ```
 
-## Compliance
+### Compliance
 
-### `compliance_report()`
+#### `compliance_report()`
 
 Compute the YAML Test Suite compliance report.
 
@@ -260,9 +274,9 @@ compliance_report() -> dict
 
 Returns the YAML Test Suite pass rate and per-test results.
 
-## Streaming Events
+### Streaming Events
 
-### `parse_stream()`
+#### `parse_stream()`
 
 Parse YAML incrementally, yielding raw event dicts.
 
@@ -272,7 +286,7 @@ parse_stream(yaml: str) -> StreamIterator
 
 Returns a `StreamIterator` yielding one event dict per step. Unlike `YAML().load_stream()` (which resolves into Python values), this exposes the raw token stream.
 
-### `YamlStream`
+#### `YamlStream` { #yamlstream }
 
 The `YamlStream` class is a lazy event iterator returned by `YAML().load_stream()` and `YAML().load_stream_file()`. It yields parsed event dicts one at a time without loading the entire document into memory.
 
@@ -284,11 +298,11 @@ for event in stream:
 
 See [`YamlStream`](yaml-instance.md) for full API details.
 
-## Async Functions
+### Async Functions
 
 Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
 
-### `safe_dumps_async()`
+#### `safe_dumps_async()`
 
 Serialize a Python object to YAML string (async).
 
@@ -296,7 +310,7 @@ Serialize a Python object to YAML string (async).
 async def safe_dumps_async(data: Any) -> str
 ```
 
-### `safe_dump_async()`
+#### `safe_dump_async()`
 
 Serialize a Python object to stdout as YAML (async).
 
@@ -304,7 +318,7 @@ Serialize a Python object to stdout as YAML (async).
 async def safe_dump_async(data: Any) -> None
 ```
 
-### `safe_loads_async()`
+#### `safe_loads_async()`
 
 Parse a YAML string into native Python objects (async).
 
@@ -312,7 +326,7 @@ Parse a YAML string into native Python objects (async).
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 ```
 
-### `safe_load_async()`
+#### `safe_load_async()`
 
 Parse a YAML string into native Python objects (async).
 
@@ -335,9 +349,9 @@ async def main():
 asyncio.run(main())
 ```
 
-## Markdown Frontmatter
+### Markdown Frontmatter
 
-### `read_markdown()`
+#### `read_markdown()`
 
 Extract YAML frontmatter from a Markdown file.
 
@@ -347,7 +361,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 
 **Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
 
-### `read_markdown_str()`
+#### `read_markdown_str()`
 
 Extract YAML frontmatter from a Markdown string.
 
@@ -355,9 +369,9 @@ Extract YAML frontmatter from a Markdown string.
 read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-## i18n Functions
+### i18n Functions
 
-### `set_language()`
+#### `set_language()`
 
 Set the language for error messages.
 
@@ -367,7 +381,7 @@ set_language(lang: str) -> None
 
 Supported: `"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
-### `get_language()`
+#### `get_language()`
 
 Get the current language.
 
@@ -375,7 +389,7 @@ Get the current language.
 get_language() -> str
 ```
 
-### `list_languages()`
+#### `list_languages()`
 
 List all supported languages.
 
@@ -383,7 +397,7 @@ List all supported languages.
 list_languages() -> list[str]
 ```
 
-### `detect_language()`
+#### `detect_language()`
 
 Auto-detect user's preferred language from environment variables.
 
@@ -391,7 +405,7 @@ Auto-detect user's preferred language from environment variables.
 detect_language() -> str
 ```
 
-### `negotiate_language()`
+#### `negotiate_language()`
 
 BCP 47 language negotiation.
 
@@ -399,7 +413,7 @@ BCP 47 language negotiation.
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-## Exceptions
+### Exceptions
 
 - `YamlParseError` — YAML parsing error (inherits from `ValueError`)
 - `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
@@ -415,7 +429,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 See [Exceptions](exceptions.md) for full details.
 
-## Version
+### Version
 
 ```python
 __version__ = "0.12.1"

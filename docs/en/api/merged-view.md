@@ -1,8 +1,16 @@
-# MergedView Class
+---
+title: MergedView Class
+description: Reference for the read-only MergedView class providing a view of a YamlDocument with merge keys resolved.
+tags:
+  - docs
+status: new
+---
+
+## MergedView Class
 
 The `MergedView` class provides a read-only view of a `YamlDocument` with merge keys (`<<: *anchor`) resolved. It is accessed via `doc.merged()`.
 
-## Overview
+### Overview
 
 ```python
 class MergedView(Mapping):
@@ -11,9 +19,9 @@ class MergedView(Mapping):
 
 The view is built lazily from `YamlDocument.to_dict()`, which resolves anchors and merge keys during serialization. The original AST is never mutated.
 
-## Constructor
+### Constructor
 
-### `MergedView.__init__()`
+#### `MergedView.__init__()`
 
 ```python
 MergedView.__init__(document: YamlDocument) -> None
@@ -25,9 +33,9 @@ MergedView.__init__(document: YamlDocument) -> None
 
 If the document root is a sequence, the view converts it to an integer-keyed mapping (`{0: item0, 1: item1, ...}`).
 
-## Methods
+### Methods
 
-### `__getitem__()`
+#### `__getitem__()`
 
 Access a value by key.
 
@@ -55,7 +63,7 @@ print(view["config"]["timeout"])  # 60 (overrides merged value)
 print(view["config"]["retries"])  # 3 (inherited from merge)
 ```
 
-### `__len__()`
+#### `__len__()`
 
 Return the number of top-level items.
 
@@ -63,7 +71,7 @@ Return the number of top-level items.
 __len__() -> int
 ```
 
-### `__iter__()`
+#### `__iter__()`
 
 Iterate over top-level keys.
 
@@ -71,7 +79,7 @@ Iterate over top-level keys.
 __iter__() -> Iterator[str | int]
 ```
 
-### `__repr__()`
+#### `__repr__()`
 
 ```python
 __repr__() -> str
@@ -79,7 +87,7 @@ __repr__() -> str
 
 Returns `MergedView({...})` with the internal dict representation.
 
-### `get()`
+#### `get()`
 
 `get()` is inherited from `collections.abc.Mapping` — it provides `get(key, default=None)`.
 
@@ -87,7 +95,7 @@ Returns `MergedView({...})` with the internal dict representation.
 get(key: str | int, default: Any = None) -> Any
 ```
 
-## Merge Key Resolution
+### Merge Key Resolution
 
 Keys are resolved with the following precedence (highest wins):
 
@@ -95,7 +103,7 @@ Keys are resolved with the following precedence (highest wins):
 2. Keys from merged anchors (in the order they appear in `<<:`)
 3. Later anchors override earlier ones
 
-## Root Type Support
+### Root Type Support
 
 | Root Type | Behavior |
 | --- | --- |
@@ -103,7 +111,7 @@ Keys are resolved with the following precedence (highest wins):
 | Sequence | Keys are integer indices (`0`, `1`, ...) |
 | Scalar/Null | `__len__()` returns `0`; `__getitem__()` raises `KeyError` |
 
-## Example
+### Example
 
 ```python
 import pyrs_yaml

@@ -1,8 +1,26 @@
-# NumPy ndarray Serialization Guide
+---
+title: NumPy ndarray Serialization Guide
+description: Serialize NumPy arrays to YAML lists with zero-copy Rust processing, including multi-dimensional arrays and special values.
+tags:
+  - docs
+status: new
+---
+
+## NumPy ndarray Serialization Guide
+
+!!! warning "Free-threaded builds exclude NumPy"
+    On free-threaded (cp314t) wheels the `numpy` feature is disabled, so
+    `safe_dump` on a `numpy.ndarray` raises `YamlTypeError`. GIL builds
+    (Python 3.8–3.15) keep full ndarray serialization support.
+
+!!! note "Complex numbers"
+    YAML has no native complex type. Complex numbers are serialized as
+    `(re+imj)` strings. `safe_load` returns them as Python strings, not
+    `complex` objects.
 
 Serialize NumPy arrays to YAML lists with zero-copy Rust processing.
 
-## Basic Usage
+### Basic Usage
 
 ```python
 import numpy as np
@@ -21,7 +39,7 @@ data = y.safe_load(yaml_str)
 assert data == [1, 2, 3]
 ```
 
-## Multi-dimensional Arrays
+### Multi-dimensional Arrays
 
 ```python
 # 2-D matrix
@@ -36,7 +54,7 @@ data = y.safe_load(y.safe_dump(cube))
 assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 ```
 
-## Supported dtypes
+### Supported dtypes
 
 | NumPy dtype | YAML output | Example |
 |-------------|-------------|---------|
@@ -46,7 +64,7 @@ assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 | `bool` | Boolean | `true` / `false` |
 | `complex64/128` | String | `(1+2j)` |
 
-## Special Values
+### Special Values
 
 ```python
 # NaN
@@ -61,7 +79,7 @@ assert data[0] == float("inf")
 assert data[1] == float("-inf")
 ```
 
-## Negative Numbers
+### Negative Numbers
 
 YAML 1.2 does not allow plain scalars starting with `-` in block sequences. Negative values are automatically quoted for correct round-trip:
 
@@ -71,7 +89,7 @@ data = y.safe_load(y.safe_dump(arr))
 assert data == [-100, 200]  # round-trip correct
 ```
 
-## 0-D Scalar Arrays
+### 0-D Scalar Arrays
 
 0-D arrays are reshaped to 1-D before serialization, producing a single-element list:
 
@@ -81,7 +99,7 @@ data = y.safe_load(y.safe_dump(scalar))
 assert data == [42]
 ```
 
-## Nested in Containers
+### Nested in Containers
 
 NumPy arrays can be embedded in dicts or lists:
 
@@ -92,7 +110,7 @@ loaded = y.safe_load(yaml_str)
 assert loaded["matrix"] == [[1, 2], [3, 4]]
 ```
 
-## Unsupported Types
+### Unsupported Types
 
 The following types raise `YamlTypeError`:
 
@@ -101,7 +119,7 @@ The following types raise `YamlTypeError`:
 - Structured arrays
 - Non-numeric custom dtypes
 
-## Performance
+### Performance
 
 - Zero-copy dtype dispatch via `PyUntypedArray`
 - Zero-copy slice iteration via `PyArrayDyn<T>`

@@ -1,16 +1,24 @@
-# Coding Standards
+---
+title: Coding Standards
+description: Coding standards for Rust and Python contributions to pyrs-yaml, including style, error handling, and testing.
+tags:
+  - docs
+status: new
+---
+
+## Coding Standards
 
 Follow these standards when contributing to pyrs-yaml.
 
-## Rust
+### Rust
 
-### Style
+#### Style
 
 - Use `cargo fmt` before committing
 - Follow [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
 - Use `#[allow(unused_imports)]` only when necessary (tests, feature flags)
 
-### Error Handling
+#### Error Handling
 
 - **Never use `.unwrap()` or `.expect()`** in business logic
 - Convert all Rust errors to Python exceptions
@@ -26,7 +34,7 @@ let content = std::fs::read_to_string(path)
 let content = std::fs::read_to_string(path).unwrap();
 ```
 
-### Documentation
+#### Documentation
 
 - All public functions must have `///` doc comments
 - Include `# Arguments`, `# Returns`, `# Errors`, `# Examples` sections
@@ -52,7 +60,7 @@ let content = std::fs::read_to_string(path).unwrap();
 pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 ```
 
-### PyO3 Signature Annotations
+#### PyO3 Signature Annotations
 
 Every `#[pyfunction]` and `#[pymethods]` must use `#[pyo3(signature = "...")]` with quoted types:
 
@@ -61,7 +69,7 @@ Every `#[pyfunction]` and `#[pymethods]` must use `#[pyo3(signature = "...")]` w
 fn parse(...) -> YamlDocument { ... }
 ```
 
-### GIL Management
+#### GIL Management
 
 - Release GIL during heavy computation using `py.detach()` or `py.allow_threads()`
 - Never hold GIL during file I/O or parsing
@@ -77,13 +85,13 @@ let ast = py.detach(|| {
 let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 ```
 
-### Clippy
+#### Clippy
 
 Run `cargo clippy -- -D warnings` — treat all warnings as errors.
 
-## Python
+### Python
 
-### Style
+#### Style
 
 - Follow [PEP 8](https://peps.python.org/pep-0008/)
 - Use type hints everywhere
@@ -107,7 +115,7 @@ def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlD
     """
 ```
 
-### Testing
+#### Testing
 
 - Write tests before code (TDD)
 - Use `uv run --frozen pytest` with fixtures where appropriate
@@ -115,13 +123,13 @@ def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlD
 - Include round-trip assertions
 - Pytest config is in `pytest.ini` (asyncio_mode = auto, custom markers)
 
-## Git
+### Git
 
 - Commit messages in imperative mood: "Add feature X", not "Added feature X"
 - One logical change per commit
 - Run `cargo test` and `uv run --frozen pytest tests/` before committing
 
-## Documentation
+### Documentation
 
 - Update docs when changing behavior
 - Use code examples that can be copy-pasted and run

@@ -1,8 +1,16 @@
-# Running Tests
+---
+title: Running Tests
+description: How to run Rust and Python tests for pyrs-yaml, including nextest, pytest, and the YAML Test Suite.
+tags:
+  - docs
+status: new
+---
+
+## Running Tests
 
 pyrs-yaml has both Rust unit tests and Python integration tests.
 
-## Rust Tests
+### Rust Tests
 
 ```bash
 # Run all Rust tests with nextest (preferred)
@@ -18,7 +26,7 @@ cargo test --all --no-default-features
 cargo test --all -- --nocapture
 ```
 
-### Test Coverage
+#### Test Coverage
 
 - **`crates/pyrs-yaml-core/src/ast.rs`** — Node construction, metadata, equality
 - **`crates/pyrs-yaml-core/src/parser/`** — Parsing various YAML constructs
@@ -27,7 +35,7 @@ cargo test --all -- --nocapture
 - **`crates/pyrs-yaml-core/src/integration/`** — YAML Test Suite integration
 - **`crates/pyrs-yaml/src/fidelity.rs`** — Property-based fuzz tests
 
-## Python Tests
+### Python Tests
 
 ```bash
 # Run all Python tests
@@ -49,7 +57,7 @@ uv run pytest tests/test_yaml_suite.py -v
 uv run pytest tests/ --codspeed
 ```
 
-## Maturin Build
+### Maturin Build
 
 ```bash
 # Build and install (uses monorepo manifest-path)
@@ -59,7 +67,7 @@ uv run maturin develop --release
 uv run maturin build --release --generate-stubs
 ```
 
-### Test Files
+#### Test Files
 
 | File | Coverage |
 |------|----------|
@@ -74,7 +82,7 @@ uv run maturin build --release --generate-stubs
 | `test_performance.py` | Performance sanity checks |
 | **`test_numpy.py`** | **NumPy ndarray serialization (0-D through N-D, all dtypes)** |
 
-## CI Testing
+### CI Testing
 
 GitHub Actions runs on every push and PR:
 
@@ -82,9 +90,9 @@ GitHub Actions runs on every push and PR:
 - **Python**: `uv run pytest tests/` on 4 Python versions × 3 OSes
 - **Maturin**: Build wheel for each Python version (via `crates/pyrs-yaml/Cargo.toml`)
 
-## Adding New Tests
+### Adding New Tests
 
-### Rust Test
+#### Rust Test
 
 ```rust
 #[cfg(test)]
@@ -98,7 +106,7 @@ mod tests {
 }
 ```
 
-### Python Test
+#### Python Test
 
 ```python
 import pyrs_yaml
@@ -115,7 +123,7 @@ class TestNewFeature:
         pass
 ```
 
-## Test Categories
+### Test Categories
 
 - **Unit tests** — Individual functions, small inputs
 - **Integration tests** — Full parse → serialize round-trips
@@ -123,7 +131,7 @@ class TestNewFeature:
 - **Performance tests** — Sanity checks (not benchmarks)
 - **YAML Test Suite** — External test suite for YAML compliance
 
-## YAML Test Suite Known Deviations
+### YAML Test Suite Known Deviations
 
 The suite pass rate is gated at **95%** (see `test_compliance_report`). A small
 number of cases are intentionally not chased because rejecting them is

@@ -1,8 +1,16 @@
-# Development Setup
+---
+title: Development Setup
+description: Set up your environment to contribute to pyrs-yaml, including prerequisites, installation, and build commands.
+tags:
+  - docs
+status: new
+---
+
+## Development Setup
 
 Set up your environment to contribute to pyrs-yaml.
 
-## Prerequisites
+### Prerequisites
 
 - **Python** ≥ 3.8 (CPython)
 - **Rust** ≥ 1.70 (via [rustup](https://rustup.rs/))
@@ -10,7 +18,7 @@ Set up your environment to contribute to pyrs-yaml.
 - **uv** (recommended) or **pip**
 - **NumPy** — required for running the NumPy serialization test suite (`pytest tests/test_numpy.py`)
 
-## Clone and Install
+### Clone and Install
 
 ```bash
 git clone https://github.com/759401524/pyrs-yaml.git
@@ -24,7 +32,7 @@ pip install maturin
 maturin develop --release
 ```
 
-## Verify Installation
+### Verify Installation
 
 ```bash
 # Run Rust tests
@@ -37,7 +45,7 @@ uv run --frozen pytest tests/
 cargo bench
 ```
 
-## Project Structure
+### Project Structure
 
 ```text
 pyrs-yaml/
@@ -75,7 +83,7 @@ pyrs-yaml/
 └── Cargo.toml              # Rust dependencies
 ```
 
-## Build Commands
+### Build Commands
 
 ```bash
 # Build Python extension (with uv lockfile)
@@ -88,7 +96,7 @@ uv run --frozen maturin build --release --out dist
 cargo build
 ```
 
-## Development Workflow
+### Development Workflow
 
 1. **Write tests first** (TDD)
 2. **Implement changes** in `src/`

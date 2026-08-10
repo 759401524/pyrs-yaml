@@ -1,12 +1,20 @@
-# Changelog Mirrors
+---
+title: Changelog Mirrors
+description: How the translated changelog mirrors stay in sync with the root CHANGELOG.md, including structural parity rules.
+tags:
+  - docs
+status: new
+---
+
+## Changelog Mirrors
 
 The changelog has a special structure: `docs/{en,ja,ko,zh}/changelog.md` mirrors the root `CHANGELOG.md`, but the `[Unreleased]` section is **translated per locale** while historical entries remain English.
 
-## Structural Parity
+### Structural Parity
 
 The guard script `scripts/check_changelog_mirrors.py` checks **structural parity** (same version headers, `[Unreleased]` section present) rather than verbatim text equality. This allows translation divergence while catching missing mirrors.
 
-## Workflow
+### Workflow
 
 1. Write the entry first in root `CHANGELOG.md` (English, canonical)
 2. Translate the same `[Unreleased]` entry into `docs/{zh,ja,ko}/changelog.md` (keep version headers like `## [Unreleased]` and `### Added` translated)
@@ -16,7 +24,7 @@ The guard script `scripts/check_changelog_mirrors.py` checks **structural parity
 uv run python scripts/check_changelog_mirrors.py
 ```
 
-## Rules
+### Rules
 
 | Rule | Description |
 |------|-------------|

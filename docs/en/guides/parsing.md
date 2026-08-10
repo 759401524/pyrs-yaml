@@ -1,10 +1,18 @@
-# Parsing YAML
+---
+title: Parsing YAML
+description: Guide to all ways of parsing YAML with pyrs-yaml, including basic parsing, file parsing, and error handling.
+tags:
+  - docs
+status: new
+---
+
+## Parsing YAML
 
 This guide covers all ways to parse YAML with pyrs-yaml.
 
-## Basic Parsing
+### Basic Parsing
 
-### Parse a YAML String
+#### Parse a YAML String
 
 ```python
 import pyrs_yaml
@@ -13,21 +21,21 @@ doc = pyrs_yaml.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
-### Parse with Options
+#### Parse with Options
 
 ```python
 # Disable merge key resolution (keep <<: *alias as-is)
 doc = pyrs_yaml.parse(yaml_text, resolve_merges=False)
 ```
 
-### Parse a YAML File
+#### Parse a YAML File
 
 ```python
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### Parse Multiple Documents
+#### Parse Multiple Documents
 
 ```python
 # YAML with --- separators
@@ -44,7 +52,12 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
-### PyYAML-Compatible Parsing
+#### PyYAML-Compatible Parsing
+
+!!! tip "PyYAML-compatible parsing"
+    Use `safe_load` to get native Python types (`dict`, `list`, `str`, `int`,
+    etc.) instead of a `YamlDocument`. For multiple documents, `safe_loads`
+    returns a list of parsed objects.
 
 ```python
 # Returns native Python types (dict, list, str, int, etc.)
@@ -56,19 +69,25 @@ docs = pyrs_yaml.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
-## Acceptable Input Types
+### Acceptable Input Types
 
 - `str` — standard YAML string
 - `bytes` — valid UTF-8 encoded bytes
 - `str` with BOM — handled correctly
 
-```python
-# Accepts both str and bytes
-doc1 = pyrs_yaml.parse("key: value")
-doc2 = pyrs_yaml.parse(b"key: value")
-```
+=== "str"
 
-## Error Handling
+    ```python
+    doc = pyrs_yaml.parse("key: value")
+    ```
+
+=== "bytes"
+
+    ```python
+    doc = pyrs_yaml.parse(b"key: value")
+    ```
+
+### Error Handling
 
 ```python
 try:
@@ -77,7 +96,7 @@ except pyrs_yaml.YamlParseError as e:
     print(f"Parse error: {e}")
 ```
 
-## Supported Data Types
+### Supported Data Types
 
 pyrs-yaml correctly parses all YAML 1.2 scalar types:
 

@@ -1,8 +1,16 @@
-# Node Class
+---
+title: Node Class
+description: Reference for the Node class providing a borrowed view into a YamlDocument's AST for tree traversal, query, and mutation.
+tags:
+  - docs
+status: new
+---
+
+## Node Class
 
 The `Node` class provides a borrowed view into a `YamlDocument`'s AST, enabling tree traversal, query, and mutation operations. A node is created via `doc.node()`, `doc.find("$.path")`, or `doc.walk()`.
 
-## Overview
+### Overview
 
 ```python
 class Node:
@@ -11,9 +19,9 @@ class Node:
 
 Each `Node` stores a reference to its parent `YamlDocument` and a path tuple that navigates to the target node within the document's AST. Nodes become stale when the document is modified or released.
 
-## Constructor
+### Constructor
 
-### `Node.__init__()`
+#### `Node.__init__()`
 
 ```python
 Node.__init__(document: YamlDocument, path: tuple = ()) -> None
@@ -24,9 +32,9 @@ Node.__init__(document: YamlDocument, path: tuple = ()) -> None
 - `document` — The parent `YamlDocument`
 - `path` — A tuple of path segments (keys/indexes) navigating to the target node
 
-## Properties
+### Properties
 
-### `value`
+#### `value`
 
 Get the scalar value of this node.
 
@@ -36,7 +44,7 @@ value -> Any | None
 
 Returns `None` for non-scalar nodes (mappings, sequences).
 
-### `root_type`
+#### `root_type`
 
 Get the type of this node.
 
@@ -46,7 +54,7 @@ root_type -> str
 
 Returns one of `"scalar"`, `"mapping"`, `"sequence"`, `"null"`.
 
-### `_path`
+#### `_path`
 
 The path tuple that navigates to this node within the document's AST.
 
@@ -54,7 +62,7 @@ The path tuple that navigates to this node within the document's AST.
 _path -> tuple
 ```
 
-### `children`
+#### `children`
 
 Get the child nodes of this node.
 
@@ -64,7 +72,7 @@ children -> list[Node]
 
 Returns an empty list for scalar/null nodes.
 
-### `parent`
+#### `parent`
 
 Get the parent `Node`, or `None` if this is the root.
 
@@ -72,9 +80,9 @@ Get the parent `Node`, or `None` if this is the root.
 parent -> Node | None
 ```
 
-## Methods
+### Methods
 
-### `find()`
+#### `find()`
 
 Find a node by JSONPath-like path.
 
@@ -95,7 +103,7 @@ find(path: str) -> Node | list[Node]
 
 **Returns:** A single `Node` for exact paths, or a `list[Node]` for wildcard/deep-scan queries.
 
-### `walk()`
+#### `walk()`
 
 Walk all descendant nodes (depth-first pre-order).
 
@@ -105,7 +113,7 @@ walk() -> Iterator[Node]
 
 **Yields:** The node itself, then all descendants recursively.
 
-### `filter()`
+#### `filter()`
 
 Filter descendant nodes by a predicate function.
 
@@ -123,7 +131,7 @@ filter(predicate: Callable[[Node], bool]) -> list[Node]
 scalars = root.filter(lambda n: n.root_type == "scalar")
 ```
 
-### `set_value()`
+#### `set_value()`
 
 Replace this node's value, preserving its metadata (comment, anchor, tag, style).
 
@@ -133,7 +141,7 @@ set_value(value: Any, create_missing: bool = False) -> None
 
 With `create_missing=True`, missing intermediate mapping keys along the path are created as nested mappings. Index segments that miss are still an error.
 
-### `append()`
+#### `append()`
 
 Append a value to a sequence node.
 
@@ -141,7 +149,7 @@ Append a value to a sequence node.
 append(value: Any) -> None
 ```
 
-### `insert()`
+#### `insert()`
 
 Insert into a sequence node at an index.
 
@@ -149,7 +157,7 @@ Insert into a sequence node at an index.
 insert(index: int, value: Any) -> None
 ```
 
-### `delete()`
+#### `delete()`
 
 Remove this node and its comments. The node becomes stale afterwards.
 
@@ -157,7 +165,7 @@ Remove this node and its comments. The node becomes stale afterwards.
 delete() -> None
 ```
 
-### `rename()`
+#### `rename()`
 
 Rename this node's mapping key. The node must be a mapping value.
 
@@ -165,7 +173,7 @@ Rename this node's mapping key. The node must be a mapping value.
 rename(new_key: str) -> None
 ```
 
-### `to_yaml()`
+#### `to_yaml()`
 
 Serialize this subtree to a YAML string.
 
@@ -173,7 +181,7 @@ Serialize this subtree to a YAML string.
 to_yaml() -> str
 ```
 
-### `is_valid()`
+#### `is_valid()`
 
 Check if the parent document is still alive and unmodified.
 
@@ -181,7 +189,7 @@ Check if the parent document is still alive and unmodified.
 is_valid() -> bool
 ```
 
-### `release()`
+#### `release()`
 
 Release the reference to the parent document, marking this node as stale.
 
@@ -191,9 +199,9 @@ release() -> None
 
 After calling `release()`, any access to this node will emit a `RuntimeWarning` and raise `YamlDocumentError`.
 
-## Dunder Methods
+### Dunder Methods
 
-### `__repr__()`
+#### `__repr__()`
 
 ```python
 __repr__() -> str
@@ -201,7 +209,7 @@ __repr__() -> str
 
 Returns `Node(root_type=<type>, path=<path>)` for valid nodes, `Node(released)` for released nodes, or `Node(invalid)` for stale nodes.
 
-### `__eq__()`
+#### `__eq__()`
 
 ```python
 __eq__(other: object) -> bool
@@ -209,7 +217,12 @@ __eq__(other: object) -> bool
 
 Two `Node` instances are equal if they share the same document, path, and alive state.
 
-## Stale Node Behavior
+### Stale Node Behavior
+
+!!! warning "Stale nodes"
+    A `Node` is tied to the document's revision at creation time. Any document
+    edit bumps the revision, so previously obtained nodes become stale. Always
+    re-find a node after editing the document.
 
 A node becomes stale when:
 
@@ -227,7 +240,7 @@ RuntimeWarning: Node is stale: the document was modified after this node was cre
 YamlDocumentError: document has been modified; re-find the node
 ```
 
-## Example
+### Example
 
 ```python
 import pyrs_yaml

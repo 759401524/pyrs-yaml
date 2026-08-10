@@ -1,8 +1,16 @@
-# Exceptions
+---
+title: Exceptions
+description: Custom exception classes defined by pyrs-yaml for error handling, with i18n support and best practices.
+tags:
+  - docs
+status: new
+---
+
+## Exceptions
 
 pyrs-yaml defines custom exception classes for error handling.
 
-## YamlParseError
+### YamlParseError
 
 Raised when YAML parsing fails.
 
@@ -29,7 +37,7 @@ except pyrs_yaml.YamlParseError as e:
 except ValueError as e:  # Also works
 ```
 
-## YamlSerializeError
+### YamlSerializeError
 
 Raised when YAML serialization fails.
 
@@ -49,7 +57,7 @@ except pyrs_yaml.YamlSerializeError as e:
     print(f"Serialize error: {e}")
 ```
 
-## YamlTypeError
+### YamlTypeError
 
 Raised when a type conversion error occurs.
 
@@ -69,7 +77,7 @@ except pyrs_yaml.YamlTypeError as e:
     print(f"Type error: {e}")
 ```
 
-## YamlValidateError
+### YamlValidateError
 
 Raised when JSON Schema validation fails via `YamlDocument.validate()`.
 
@@ -92,7 +100,7 @@ except pyrs_yaml.YamlValidateError as e:
     # Output: "Validation error: 'email' is a required property"
 ```
 
-## YamlEditError
+### YamlEditError
 
 Raised when an in-place edit cannot be applied: unsupported value types (`tuple`), negative indices, edits through aliases, renaming the root or complex keys, navigation into a scalar, or out-of-bounds indices.
 
@@ -114,7 +122,7 @@ except pyrs_yaml.YamlEditError as e:
     print(f"Edit error: {e}")
 ```
 
-## YamlPathError
+### YamlPathError
 
 Raised when a JSONPath-style path is malformed or not editable: paths not starting with `$`, wildcard (`[*]`) or deep-scan (`..`) segments used in edit operations.
 
@@ -136,7 +144,7 @@ except pyrs_yaml.YamlPathError as e:
     print(f"Path error: {e}")
 ```
 
-## YamlDocumentError
+### YamlDocumentError
 
 Raised when a `Node` becomes stale — the document was modified (or released) after the node was created.
 
@@ -155,7 +163,7 @@ doc.set("$.b", 2)  # Bumps the document revision
 node.set_value(99)  # RuntimeWarning + YamlDocumentError
 ```
 
-## YamlDuplicateKeyError
+### YamlDuplicateKeyError
 
 Raised when a duplicate mapping key is detected in the input.
 
@@ -175,7 +183,7 @@ except pyrs_yaml.YamlDuplicateKeyError as e:
     print(f"Duplicate key: {e}")
 ```
 
-## YamlMaxDepthError
+### YamlMaxDepthError
 
 Raised when the YAML document exceeds the maximum nesting depth.
 
@@ -195,7 +203,7 @@ except pyrs_yaml.YamlMaxDepthError as e:
     print(f"Max depth exceeded: {e}")
 ```
 
-## YamlTagError
+### YamlTagError
 
 Raised when a tag handler is registered with an invalid name or signature.
 
@@ -206,7 +214,7 @@ class YamlTagError(ValueError):
 
 **Inherits from:** `ValueError`
 
-## YamlTagSkip
+### YamlTagSkip
 
 Sentinel exception raised by a tag handler to skip a node. The parser moves to the next node instead of raising an error. This is not a real error — it is an intentional control-flow signal.
 
@@ -225,7 +233,7 @@ def handler(node):
     raise pyrs_yaml.YamlTagSkip
 ```
 
-## Error Message Format
+### Error Message Format
 
 All error messages include contextual information:
 
@@ -242,7 +250,7 @@ All error messages include contextual information:
 | Edit failure | `"YAML edit error: <detail>"` |
 | Malformed path | `"YAML path error: <detail>"` |
 
-## i18n Support
+### i18n Support
 
 Error messages can be localized:
 
@@ -256,7 +264,7 @@ except pyrs_yaml.YamlParseError as e:
     # Chinese: "YAML 解析错误: 第 1 行, 第 14 列: ..."
 ```
 
-## Best Practices
+### Best Practices
 
 ```python
 import pyrs_yaml

@@ -1,8 +1,16 @@
-# Round-Trip Preservation
+---
+title: Round-Trip Preservation
+description: Understand pyrs-yaml's round-trip preservation of formatting and metadata, and how it compares to PyYAML and ruamel.yaml.
+tags:
+  - docs
+status: new
+---
+
+## Round-Trip Preservation
 
 This is pyrs-yaml's **killing feature** — what makes it unique among Python YAML libraries.
 
-## What is Round-Trip Preservation?
+### What is Round-Trip Preservation?
 
 Round-trip preservation means: **parse YAML → modify → serialize back → output is identical (or semantically equivalent) to the input.**
 
@@ -34,7 +42,7 @@ assert "&db" in output
 
 > **Note on merge keys:** by default (`resolve_merges=True`), `<<: *db` is **resolved** during parsing, so the output materializes the merged keys (`api: {host: localhost, endpoint: ...}`) and `<<` no longer appears. Pass `resolve_merges=False` to keep the `<<: *db` pair verbatim in the round-trip.
 
-## What Gets Preserved
+### What Gets Preserved
 
 | Element | Preserved? | Notes |
 |---------|------------|-------|
@@ -50,7 +58,7 @@ assert "&db" in output
 | Compact sequence items | ✅ | `- host: a` stays on the dash line (metadata-free mapping items only) |
 | Key order | ✅ | `IndexMap` guarantees order |
 
-## PyYAML vs pyrs-yaml Round-Trip
+### PyYAML vs pyrs-yaml Round-Trip
 
 ```python
 original = "# Comment\nkey: value  # inline\n"
@@ -65,7 +73,7 @@ doc.to_yaml()
 # Output: '# Comment\nkey: value  # inline\n'  ✅
 ```
 
-## Performance
+### Performance
 
 Round-trip performance vs competitors:
 

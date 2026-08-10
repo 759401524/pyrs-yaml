@@ -1,8 +1,21 @@
-# PyYAML Compatibility
+---
+title: PyYAML Compatibility
+description: Using pyrs-yaml as a drop-in replacement for PyYAML, including migration checklist and key differences.
+tags:
+  - docs
+status: new
+---
+
+## PyYAML Compatibility
+
+!!! tip "Migration"
+    pyrs-yaml is a drop-in replacement for PyYAML — replace `import yaml` with
+    `import pyrs_yaml as yaml` and most code works unchanged, with significantly
+    better performance and round-trip preservation.
 
 pyrs-yaml provides a **drop-in replacement** for PyYAML, making migration straightforward.
 
-## Simple Migration
+### Simple Migration
 
 ```python
 # Before
@@ -18,7 +31,7 @@ data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
 
-## Compatible API
+### Compatible API
 
 | PyYAML Function | pyrs-yaml Equivalent | Notes |
 |-----------------|---------------------|-------|
@@ -29,9 +42,9 @@ yaml_str = yaml.safe_dump(data)
 | `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ Use safe variant |
 | `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ Use safe variant |
 
-## Key Differences
+### Key Differences
 
-### What pyrs-yaml Does Better
+#### What pyrs-yaml Does Better
 
 | Feature | PyYAML | pyrs-yaml |
 |---------|--------|-----------|
@@ -41,14 +54,14 @@ yaml_str = yaml.safe_dump(data)
 | ABI3 wheel | N/A | ✅ Single wheel for all Python versions |
 | i18n errors | ❌ English only | ✅ English + Chinese |
 
-### What to Watch For
+#### What to Watch For
 
 1. **Anchor/alias handling**: PyYAML loses anchors on round-trip; pyrs-yaml preserves them
 2. **Comment position**: pyrs-yaml may reorder some comments in complex nested structures
 3. **Flow style**: Both preserve, but output formatting may differ slightly
 4. **Error messages**: pyrs-yaml uses i18n error messages with more context
 
-## Migration Checklist
+### Migration Checklist
 
 - [ ] Replace `import yaml` with `import pyrs_yaml as yaml`
 - [ ] Test all YAML parsing/saving workflows
@@ -56,7 +69,7 @@ yaml_str = yaml.safe_dump(data)
 - [ ] Check anchor/alias behavior (if used)
 - [ ] Review error handling for custom error messages
 
-## Example Migration
+### Example Migration
 
 ```python
 # Old code

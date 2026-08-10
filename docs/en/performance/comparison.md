@@ -1,10 +1,18 @@
-# Comparison with Other Libraries
+---
+title: Comparison with Other Libraries
+description: pyrs-yaml compared against PyYAML and ruamel.yaml across performance, features, and migration paths.
+tags:
+  - docs
+status: new
+---
+
+## Comparison with Other Libraries
 
 pyrs-yaml compared against the two most popular Python YAML libraries.
 
-## Performance Comparison
+### Performance Comparison
 
-### Parse Speed (Large YAML, ~2 KB)
+#### Parse Speed (Large YAML, ~2 KB)
 
 | Library | Time | Speedup |
 |---------|------|---------|
@@ -12,7 +20,7 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 | PyYAML | 1.83 ms | 26× slower |
 | ruamel.yaml | 4.26 ms | 61× slower |
 
-### Serialize Speed (Large YAML, ~2 KB)
+#### Serialize Speed (Large YAML, ~2 KB)
 
 | Library | Time | Speedup |
 |---------|------|---------|
@@ -20,7 +28,7 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 | PyYAML | 2.92 ms | 40× slower |
 | ruamel.yaml | 6.73 ms | 93× slower |
 
-### Round-Trip Speed (Large YAML, ~2 KB)
+#### Round-Trip Speed (Large YAML, ~2 KB)
 
 | Library | Time | Speedup |
 |---------|------|---------|
@@ -28,7 +36,7 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 | PyYAML | 2.90 ms | 41× slower |
 | ruamel.yaml | 6.57 ms | 91× slower |
 
-## Feature Comparison
+### Feature Comparison
 
 | Feature | pyrs-yaml | PyYAML | ruamel.yaml |
 |---------|-----------|--------|-------------|
@@ -49,9 +57,9 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 | **Rust backend** | ✅ | ❌ | ❌ |
 | **Performance** | 🚀 Fastest | 🐌 Slow | 🐌 Slow |
 
-## Summary
+### Summary
 
-### Choose pyrs-yaml when
+#### Choose pyrs-yaml when
 
 - **Performance matters** — 25–40× faster than PyYAML
 - **Round-trip preservation is critical** — preserves comments, anchors, tags
@@ -59,19 +67,19 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 - **You need type hints** — full `.pyi` stubs
 - **You want a single wheel** — ABI3 works across Python 3.9–3.13
 
-### Choose PyYAML when
+#### Choose PyYAML when
 
 - You're already using it and don't need round-trip preservation
 - You need maximum compatibility with existing code
 - Performance is not a concern
 
-### Choose ruamel.yaml when
+#### Choose ruamel.yaml when
 
 - You need the most feature-complete YAML parser
 - You're doing complex YAML manipulation
 - Performance is not a concern (it's the slowest option)
 
-## Migration Path
+### Migration Path
 
 ```python
 # Step 1: Install

@@ -1,12 +1,20 @@
-# Features
+---
+title: Features
+description: Explore pyrs-yaml's feature set, including YAML 1.2 compliance, round-trip, in-place editing, and NumPy support.
+tags:
+  - docs
+status: new
+---
+
+## Features
 
 pyrs-yaml is designed to be a **drop-in replacement** for PyYAML while adding powerful features that PyYAML lacks.
 
-## YAML 1.2 Compliance
+### YAML 1.2 Compliance
 
 Powered by **saphyr-parser**, pyrs-yaml achieves **98.1% pass rate** on the YAML Test Suite.
 
-## Perfect Round-Trip
+### Perfect Round-Trip
 
 Unlike PyYAML, pyrs-yaml **preserves all formatting and metadata**:
 
@@ -17,7 +25,12 @@ Unlike PyYAML, pyrs-yaml **preserves all formatting and metadata**:
 - **Scalar styles** (plain, single-quoted, double-quoted, literal, folded)
 - **Flow/block formatting** — `[]`/`{}` vs block style preserved
 
-## Performance
+### Performance
+
+!!! note "Benchmark environment"
+    All benchmarks are measured on the author's machine (Windows 11, Python
+    3.12). Relative speedups (×N) are consistent across hardware but absolute
+    times may vary.
 
 Rust backend delivers **25–40× speedup** over PyYAML:
 
@@ -27,7 +40,7 @@ Rust backend delivers **25–40× speedup** over PyYAML:
 | Serialize (large) | 0.07 ms | 2.92 ms |
 | Round-trip | 0.07 ms | 2.90 ms |
 
-## Custom AST
+### Custom AST
 
 The **CustomNode** AST gives you full control over YAML structure:
 
@@ -36,7 +49,7 @@ The **CustomNode** AST gives you full control over YAML structure:
 - Build YAML from scratch with full formatting control
 - Advanced use cases: template engines, config generators, code formatters
 
-## PyYAML Compatibility
+### PyYAML Compatibility
 
 Drop-in replacement with familiar API:
 
@@ -49,7 +62,7 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
-## Async I/O
+### Async I/O
 
 Non-blocking serialization and parsing via `asyncio`:
 
@@ -69,7 +82,7 @@ asyncio.run(main())
 
 Available functions: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 
-## JSON Schema Validation
+### JSON Schema Validation
 
 Validate parsed YAML documents against JSON Schema:
 
@@ -83,7 +96,7 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 Raises `YamlValidateError` on validation failure.
 
-## Duplicate Keys
+### Duplicate Keys
 
 By default, duplicate mapping keys raise `YamlDuplicateKeyError`:
 
@@ -101,7 +114,7 @@ doc.get("key")  # "second"
 
 The switch applies to `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, documents with duplicate keys allowed serialize with the last key-value pair emitted.
 
-## Serialization Options
+### Serialization Options
 
 `to_yaml_with_options()` controls indentation and line wrapping:
 
@@ -117,23 +130,29 @@ yaml_str = doc.to_yaml_with_options(
 
 When `indent_mapping` / `indent_sequence` / `indent_offset` are omitted, they default to `indent_size` / `indent_size` / `0` respectively, so `indent_size=4` still indents all levels by 4.
 
-## Custom Tag Handlers
+### Custom Tag Handlers
 
 Register handlers for custom YAML tags that transform scalar values:
 
 ```python
 import pyrs_yaml
+```
 
+=== "Decorator"
 
-# Decorator form
-@pyrs_yaml.register_tag("!custom")
-def custom_handler(node):
-    return f"custom:{node}"
+    ```python
+    @pyrs_yaml.register_tag("!custom")
+    def custom_handler(node):
+        return f"custom:{node}"
+    ```
 
+=== "Imperative"
 
-# Imperative form
-pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+    ```python
+    pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+    ```
 
+```python
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -142,7 +161,7 @@ doc.get("name")  # "custom:value"
 - Handlers must return a string, otherwise `YamlTagError` is raised.
 - `remove_tag("!custom")` and `clear_tag_handlers()` unregister handlers.
 
-## Pydantic Integration
+### Pydantic Integration
 
 Parse YAML directly into Pydantic models, or serialize models to YAML:
 
@@ -165,7 +184,7 @@ yaml_str = pyrs_yaml.dump_pydantic(user)
 print(yaml_str)
 ```
 
-## Incremental Re-parse
+### Incremental Re-parse
 
 Re-parse stored source text in place with different options:
 
@@ -177,7 +196,7 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-## In-Place Editing
+### In-Place Editing
 
 Edit a parsed document **without losing any formatting metadata** — comments, anchors, tags, scalar styles, and flow/block style all survive:
 
@@ -204,7 +223,7 @@ del doc["server"]  # or: doc.delete("$.server")
 
 See the [In-Place Editing guide](guides/editing.md) for details.
 
-## NumPy ndarray Support
+### NumPy ndarray Support
 
 pyrs-yaml can serialize `numpy.ndarray` objects of any dimension directly to YAML:
 
@@ -234,7 +253,7 @@ loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-### Supported dtypes
+#### Supported dtypes
 
 | Type | Rust Backend | YAML Output |
 |------|-------------|-------------|
@@ -245,10 +264,16 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `bool` | `PyUntypedArray` → `PyArrayDyn<bool>` | `true` / `false` |
 | `nan` / `inf` | — | `NaN` / `.inf` / `-.inf` |
 
-### Notes
+#### Notes
 
 - **Zero-copy**: Uses the `numpy` Rust crate's `PyUntypedArray` for type-erased array access, then dispatches to the correct typed `PyArrayDyn<T>` for zero-copy slice iteration
 - **GIL released**: Slice iteration runs outside the GIL for maximum performance on large arrays
+
+!!! warning "Negative scalars in block sequences"
+    YAML 1.2 block sequences cannot contain plain scalars starting with `-`;
+    negative values are automatically quoted during serialization and correctly
+    parsed back during round-trip.
+
 - **Negative numbers**: YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative values are automatically quoted and correctly parsed back during round-trip
 - **0-D arrays**: Reshaped to 1-D and serialized as a single-item list
 - **Complex numbers**: YAML has no native complex type; serialized as `(re+imj)` strings. `safe_load` returns them as strings, not Python `complex`
@@ -259,7 +284,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **i18n error messages** — `set_language("zh-CN")` for bilingual errors
 - **Type hints** — PEP 561 typed package marker (`py.typed`) for mypy support
 
-## Supported YAML Constructs
+### Supported YAML Constructs
 
 | Feature | Support |
 |---------|---------|
