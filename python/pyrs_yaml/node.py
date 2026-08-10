@@ -89,7 +89,15 @@ class Node:
 
     @property
     def value(self) -> Any | None:
-        """Get the scalar value of this node. None for non-scalars."""
+        """Get the scalar value of this node.
+
+        Returns ``None`` for container nodes (mappings and sequences).
+        Use the following alternatives for containers:
+
+        - ``node.children`` — iterate over child nodes
+        - ``node.to_yaml()`` — serialize the subtree to a YAML string
+        - ``doc.get(path)`` — access values by key or JSONPath from the document
+        """
         if self.root_type not in ("scalar", "null"):
             return None
         return self._resolve()
