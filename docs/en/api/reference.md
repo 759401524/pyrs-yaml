@@ -272,6 +272,18 @@ parse_stream(yaml: str) -> StreamIterator
 
 Returns a `StreamIterator` yielding one event dict per step. Unlike `YAML().load_stream()` (which resolves into Python values), this exposes the raw token stream.
 
+### `YamlStream`
+
+The `YamlStream` class is a lazy event iterator returned by `YAML().load_stream()` and `YAML().load_stream_file()`. It yields parsed event dicts one at a time without loading the entire document into memory.
+
+```python
+stream = yaml.load_stream_file("large.yaml")
+for event in stream:
+    print(event)
+```
+
+See [`YamlStream`](yaml-instance.md) for full API details.
+
 ## Async Functions
 
 Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
