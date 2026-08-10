@@ -1,15 +1,14 @@
 ---
 
-title: Markdown 프론트메터
+title: Markdown Front Matter
 lang: ko
 
-## Markdown 프론트메터
 
-Markdown 파일과 문자열에서 YAML 프론트메터를 추출합니다.
+Markdown 파일과 문자열에서 YAML Front Matter를 추출합니다.
 
-### 프론트메터란?
+## Front Matter란?
 
-프론트메터는 Markdown 파일 상단에 `---` 구분자로 감싼 YAML 블록입니다. 블로그 플랫폼, 정적 사이트 생성기, 콘텐츠 관리 시스템에서 흔히 사용됩니다.
+Front Matter는 Markdown 파일 상단에 `---` 구분자로 감싼 YAML 블록입니다. 블로그 플랫폼, 정적 사이트 생성기, 콘텐츠 관리 시스템에서 흔히 사용됩니다.
 
 ```markdown
 ---
@@ -27,7 +26,7 @@ tags: [yaml, python, rust]
 
 ## `read_markdown()`
 
-Markdown 파일에서 프론트메터를 파싱합니다:
+Markdown 파일에서 Front Matter를 파싱합니다:
 
 ```python
 import pyrs_yaml
@@ -42,9 +41,9 @@ print(content)
 # "# 안녕하세요\n\n콘텐츠입니다.\n"
 ```
 
-### `read_markdown_str()`
+## `read_markdown_str()`
 
-Markdown 문자열에서 프론트메터를 파싱합니다:
+Markdown 문자열에서 Front Matter를 파싱합니다:
 
 ```python
 markdown_text = """
@@ -63,12 +62,12 @@ if frontmatter:
     print(f"태그: {frontmatter['tags']}")
     print(f"콘텐츠: {content}")
 else:
-    print("프론트메터를 찾을 수 없습니다")
+    print("Front Matter를 찾을 수 없습니다")
 ```
 
-### 프론트메터가 없는 경우
+## Front Matter가 없는 경우
 
-파일/문자열에 프론트메터가 없으면:
+파일/문자열에 Front Matter가 없으면:
 
 ```python
 frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
@@ -78,9 +77,9 @@ assert frontmatter is None
 assert content == "일반 Markdown 콘텐츠."
 ```
 
-### 일반적인 사용 예시
+## 일반적인 사용 예시
 
-#### 블로그 플랫폼
+### 블로그 플랫폼
 
 ```python
 # 블로그 목록용 메타데이터 추출
@@ -105,7 +104,7 @@ for path in glob.glob("posts/*.md"):
 #### 콘텐츠 관리
 
 ```python
-# 프론트메터 구조 검증
+# Front Matter 구조 검증
 required_fields = ["title", "author", "date"]
 frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 

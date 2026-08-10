@@ -3,9 +3,7 @@
 title: YamlDocument クラス
 lang: ja
 
-## YamlDocument クラス
-
-### 概要
+## 概要
 
 `YamlDocument` は pyrs-yaml のコアクラスで、解析済みの YAML ドキュメントを保持します。`IndexMap` を使用したカスタム AST により、**100% ラウンドトリップ**、**完全なキー順序保持**、**ネストされたコメントの保持**、**詳細なメタデータ**を実現します。
 
@@ -16,13 +14,13 @@ class YamlDocument:
     # ... C 拡張で実装 ...
 ```
 
-### コンストラクター
+## コンストラクター
 
-#### `YamlDocument()`
+### `YamlDocument()`
 
 内部コンストラクター。ユーザーが直接呼び出すことはありません。`pyrs_yaml.parse()` から返されます。
 
-### プロパティ
+## プロパティ
 
 - `version` — YAML ドキュメントバージョン
 - `schema` — スキーマ（`core`, `failsafe`, `json`）
@@ -30,9 +28,9 @@ class YamlDocument:
 - `anchors` — アンカー一覧
 - `source` — YAML ソーステキスト
 
-### メソッド
+## メソッド
 
-#### `to_yaml()`
+### `to_yaml()`
 
 ドキュメントを YAML 文字列に変換します。
 
@@ -146,11 +144,11 @@ source_text() -> str
 
 **戻り値:** YAML ソース文字列
 
-### 編集メソッド
+## 編集メソッド
 
 ドキュメントをその場で編集し、すべてのメタデータ（コメント、アンカー、タグ、スタイル）を保持します。編集は JSONPath スタイルのパス（`$.a.b`、`$.items[0]`）でノードを特定し、すべての操作は**アトミック**です — 失敗した場合、ドキュメント（リビジョンを含む）は変更されません。
 
-#### `set()`
+### `set()`
 
 パスで値を置き換えます。
 
@@ -290,9 +288,9 @@ doc.rename("$.items", "list")  # マッピングキーをリネーム
 del doc["list"]  # doc.delete("$.list") と同等
 ```
 
-### ダンダー メソッド
+## ダンダー メソッド
 
-#### `__getitem__()`
+### `__getitem__()`
 
 キー（マッピング）またはインデックス（シーケンス）でアクセスします。
 
@@ -366,21 +364,20 @@ str(doc)  # "YamlDocument({key: value})"
 doc1 == doc2  # True or False
 ```
 
-**例:**
+## 使用例
 
 ```python
 import pyrs_yaml
 
-# マッピング
-doc = pyrs_yaml.parse("name: Alice\nage: 30")
-print(doc["name"])  # Alice
+doc = pyrs_yaml.parse("""
+name: Alice
+age: 30
+""")
+
+print(doc.get("name"))  # Alice
+print(doc.root_type())  # mapping
 print(len(doc))  # 2
-
-# シーケンス
-doc = pyrs_yaml.parse("- item1\n- item2")
-print(doc[0])  # item1
-
-# ネストされたアクセス
-doc = pyrs_yaml.parse("user:\n  name: Alice")
-print(doc["user"]["name"])  # Alice
+print("name" in doc)  # True
+for key in doc:
+    print(key, doc[key])  # name Alice, age 30
 ```

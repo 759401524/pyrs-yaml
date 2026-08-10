@@ -1,18 +1,18 @@
 ---
 
-title: License
+title: 许可证
 lang: zh
 
-## 许可证
+# 许可证
 
-pyrs-yaml is dual-licensed under either:
+pyrs-yaml 采用双许可模式，您可任选其一：
 
 - [MIT 许可证](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-MIT)
 - [Apache 许可证, Version 2.0](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-APACHE)
 
-at your option.
+由您选择。
 
-### MIT 许可证
+## MIT 许可证
 
 ```text
 Copyright (c) 2025 MuLong
@@ -36,7 +36,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Apache 许可证, Version 2.0
+## Apache 许可证, Version 2.0
 
 ```text
 Copyright 2025 MuLong
@@ -54,19 +54,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Why Dual 许可证?
+## 为何采用双许可？
 
-The dual license gives users flexibility:
+双许可为用户提供灵活性：
 
-- **MIT** is simpler and more permissive for most use cases
-- **Apache 2.0** includes an express patent grant, which provides additional legal protection
+- **MIT** 更简洁宽松，适用于大多数使用场景
+- **Apache 2.0** 包含明确的专利授权，提供额外的法律保护
 
-### Dependencies
+## 依赖项
 
-pyrs-yaml depends on the following open-source projects:
+pyrs-yaml 依赖以下开源项目：
 
-| Dependency | 许可证 |
-|------------|---------|
+| 依赖项 | 许可证 |
+|--------|--------|
 | [pyo3](https://github.com/PyO3/pyo3) | Apache 2.0 / MIT |
 | [saphyr-parser](https://github.com/saphyr-rs/saphyr) | Apache 2.0 / MIT |
 | [indexmap](https://github.com/bluss/indexmap) | MIT / Apache 2.0 |

@@ -1,100 +1,98 @@
 ---
 
-title: Comparison with Other Libraries
+title: 他ライブラリとの比較
 lang: ja
 
-## 比較 with Other Libraries
+pyrs-yamlを、最も人気のある2つのPython YAMLライブラリと比較します。
 
-pyrs-yaml compared against the two most popular Python YAML libraries.
+## パフォーマンス比較
 
-### パフォーマンス 比較
+### パース速度（大規模YAML、約2 KB）
 
-#### Parse Speed (Large YAML, ~2 KB)
-
-| Library | Time | Speedup |
+| ライブラリ | 時間 | 高速化率 |
 |---------|------|---------|
 | **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 1.83 ms | 26× slower |
-| ruamel.yaml | 4.26 ms | 61× slower |
+| PyYAML | 1.83 ms | 26倍遅い |
+| ruamel.yaml | 4.26 ms | 61倍遅い |
 
-#### Serialize Speed (Large YAML, ~2 KB)
+### シリアライズ速度（大規模YAML、約2 KB）
 
-| Library | Time | Speedup |
+| ライブラリ | 時間 | 高速化率 |
 |---------|------|---------|
 | **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 2.92 ms | 40× slower |
-| ruamel.yaml | 6.73 ms | 93× slower |
+| PyYAML | 2.92 ms | 40倍遅い |
+| ruamel.yaml | 6.73 ms | 93倍遅い |
 
-#### Round-Trip Speed (Large YAML, ~2 KB)
+### ラウンドトリップ速度（大規模YAML、約2 KB）
 
-| Library | Time | Speedup |
+| ライブラリ | 時間 | 高速化率 |
 |---------|------|---------|
 | **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 2.90 ms | 41× slower |
-| ruamel.yaml | 6.57 ms | 91× slower |
+| PyYAML | 2.90 ms | 41倍遅い |
+| ruamel.yaml | 6.57 ms | 91倍遅い |
 
-### Feature 比較
+## 機能比較
 
-| Feature | pyrs-yaml | PyYAML | ruamel.yaml |
+| 機能 | pyrs-yaml | PyYAML | ruamel.yaml |
 |---------|-----------|--------|-------------|
-| **YAML 1.2 compliance** | ✅ | ✅ | ✅ |
-| **Comments (standalone)** | ✅ | ❌ | ✅ |
-| **Comments (inline)** | ✅ | ❌ | ✅ |
-| **Anchors/aliases** | ✅ | ❌ | ✅ |
-| **Tags (explicit)** | ✅ | ❌ | ✅ |
-| **Block scalars** | ✅ | ✅ | ✅ |
-| **Flow collections** | ✅ | ✅ | ✅ |
-| **Merge keys (<<)** | ✅ | ❌ | ✅ |
-| **Complex keys** | ✅ | ✅ | ✅ |
-| **Round-trip preservation** | ✅ | ❌ | ✅ |
-| **Python bindings** | ✅ | ✅ | ✅ |
-| **ABI3 (py3.9+)** | ✅ | ❌ | ❌ |
-| **Type stubs (.pyi)** | ✅ | ✅ | ❌ |
-| **i18n error messages** | ✅ | ❌ | ❌ |
-| **Rust backend** | ✅ | ❌ | ❌ |
-| **パフォーマンス** | 🚀 Fastest | 🐌 Slow | 🐌 Slow |
+| **YAML 1.2準拠** | ✅ | ✅ | ✅ |
+| **コメント（スタンドアロン）** | ✅ | ❌ | ✅ |
+| **コメント（インライン）** | ✅ | ❌ | ✅ |
+| **アンカー/エイリアス** | ✅ | ❌ | ✅ |
+| **タグ（明示的）** | ✅ | ❌ | ✅ |
+| **ブロックスカラー** | ✅ | ✅ | ✅ |
+| **フローコレクション** | ✅ | ✅ | ✅ |
+| **マージキー（<<）** | ✅ | ❌ | ✅ |
+| **複合キー** | ✅ | ✅ | ✅ |
+| **ラウンドトリップ保持** | ✅ | ❌ | ✅ |
+| **Pythonバインディング** | ✅ | ✅ | ✅ |
+| **ABI3（py3.9+）** | ✅ | ❌ | ❌ |
+| **型スタブ（.pyi）** | ✅ | ✅ | ❌ |
+| **多言語エラーメッセージ** | ✅ | ❌ | ❌ |
+| **Rustバックエンド** | ✅ | ❌ | ❌ |
+| **パフォーマンス** | 🚀 最速 | 🐌 遅い | 🐌 遅い |
 
-### Summary
+## まとめ
 
-#### Choose pyrs-yaml when
+### pyrs-yamlを選ぶべき場合
 
-- **パフォーマンス matters** — 25–40× faster than PyYAML
-- **Round-trip preservation is critical** — preserves comments, anchors, tags
-- **You want PyYAML compatibility** — drop-in replacement API
-- **You need type hints** — full `.pyi` stubs
-- **You want a single wheel** — ABI3 works across Python 3.9–3.13
+- **パフォーマンスが重要** — PyYAMLより25〜40倍高速
+- **ラウンドトリップ保持が重要** — コメント、アンカー、タグを保持
+- **PyYAML互換性が欲しい** — 差し替え可能なAPI
+- **型ヒントが必要** — 完全な`.pyi`スタブ
+- **単一wheelで配布したい** — ABI3はPython 3.9〜3.13全体で動作
 
-#### Choose PyYAML when
+### PyYAMLを選ぶべき場合
 
-- You're already using it and don't need round-trip preservation
-- You need maximum compatibility with existing code
-- パフォーマンス is not a concern
+- すでに使用しており、ラウンドトリップ保持が必要ない
+- 既存コードとの最大限の互換性が必要
+- パフォーマンスを気にしない
 
-#### Choose ruamel.yaml when
+### ruamel.yamlを選ぶべき場合
 
-- You need the most feature-complete YAML parser
-- You're doing complex YAML manipulation
-- パフォーマンス is not a concern (it's the slowest option)
+- 最も機能豊富なYAMLパーサーが必要
+- 複雑なYAML操作を行っている
+- パフォーマンスを気にしない（最も遅い選択肢）
 
-### Migration Path
+## 移行パス
 
 ```python
-# Step 1: Install
+# ステップ1: インストール
 pip install pyrs-yaml
 
-# Step 2: Replace import
+# ステップ2: インポートを置換
 # Before:
 import yaml
 
 # After:
 import pyrs_yaml as yaml
 
-# Step 3: Test
-# Run your existing tests to verify compatibility
+# ステップ3: テスト
+# 既存のテストを実行して互換性を確認
 ```
 
-Most code will work without changes. The main differences:
+ほとんどのコードは変更なしで動作します。主な違い：
 
-1. Round-trip output will preserve comments and formatting
-2. Error messages are more detailed and can be localized
-3. パフォーマンス will be significantly better
+1. ラウンドトリップ出力はコメントとフォーマットを保持します
+2. エラーメッセージは詳細で、ローカライズ可能です
+3. パフォーマンスは大幅に向上します

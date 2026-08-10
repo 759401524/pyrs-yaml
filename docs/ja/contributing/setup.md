@@ -3,11 +3,9 @@
 title: 開発環境のセットアップ
 lang: ja
 
-## 開発環境のセットアップ
-
 pyrs-yaml に貢献するための環境をセットアップします。
 
-### 前提条件
+## 前提条件
 
 - **Python** ≥ 3.8 (CPython)
 - **Rust** ≥ 1.70 ([rustup](https://rustup.rs/) 経由)
@@ -15,7 +13,7 @@ pyrs-yaml に貢献するための環境をセットアップします。
 - **uv**（推奨）または **pip**
 - **NumPy** — NumPy シリアライゼーションテストスイートの実行に必要 (`uv run --frozen pytest tests/test_numpy.py`)
 
-### クローンとインストール
+## クローンとインストール
 
 ```bash
 git clone https://github.com/759401524/pyrs-yaml.git
@@ -29,7 +27,7 @@ pip install maturin
 uv run --frozen maturin develop --release
 ```
 
-### インストールの確認
+## インストールの確認
 
 ```bash
 # Rust テストの実行
@@ -42,7 +40,7 @@ uv run --frozen pytest tests/
 cargo bench
 ```
 
-### プロジェクト構造
+## プロジェクト構造
 
 ```text
 pyrs-yaml/
@@ -66,7 +64,7 @@ pyrs-yaml/
 └── docs/                   # ドキュメント (mkdocs)
 ```
 
-### ビルドコマンド
+## ビルドコマンド
 
 ```bash
 # Python 拡張のビルド
@@ -79,7 +77,7 @@ maturin build --release --out dist
 cargo build
 ```
 
-### 開発ワークフロー
+## 開発ワークフロー
 
 1. **まずテストを書く** (TDD)
 2. `src/` で**変更を実装**

@@ -3,26 +3,24 @@
 title: Features
 lang: ko
 
-## 기능
-
 pyrs-yaml는 PyYAML의 **직접 교체**로 설계되었으며, PyYAML이 없는 강력한 기능을 추가합니다.
 
-### YAML 1.2 준수
+## YAML 1.2 준수
 
 **saphyr-parser**로 구동되며, YAML 테스트 스위트에서 **98.1% 통과율**을 달성.
 
-### 완벽한 순환 파싱
+## 완벽한 순환 파싱
 
 PyYAML과 달리, pyrs-yaml는 **모든 서식과 메타데이터를 유지**합니다:
 
 - **주석** — 독립 주석과 인라인 주석
 - **앵커** (`&name`)와 **별칭** (`*name`)
 - **태그** (`!!str`, `!!int` 등)
-- **chomp 지시자** (`|-`, `|+`, `>-`, `>+`)
+- **촙핑 지시자** (`|-`, `|+`, `>-`, `>+`)
 - **스칼라 스타일** (일반, 단일 따옴표, 이중 따옴표, 리터럴, 접은 형식)
 - **흐름/블록 서식** — `[]`/`{}`와 블록 스타일 유지
 
-### 성능
+## 성능
 
 Rust 백엔드는 PyYAML보다 **25–40배 빠릅니다**:
 
@@ -32,7 +30,7 @@ Rust 백엔드는 PyYAML보다 **25–40배 빠릅니다**:
 | Serialize (large) | 0.07 ms | 2.92 ms |
 | Round-trip | 0.07 ms | 2.90 ms |
 
-### 커스텀 AST
+## 커스텀 AST
 
 **CustomNode** AST는 YAML 구조를 완전히 제어할 수 있게 합니다:
 
@@ -41,7 +39,7 @@ Rust 백엔드는 PyYAML보다 **25–40배 빠릅니다**:
 - 서식을 완전히 제어하면서 YAML를 처음부터 구축
 - 고급 사용 사례: 템플릿 엔진, 구성 생성자, 코드 포맷터
 
-### PyYAML 호환성
+## PyYAML 호환성
 
 익숙한 API로 직접 교체 가능：
 
@@ -54,7 +52,7 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
-### 비동기 I/O
+## 비동기 I/O
 
 `asyncio`를 통한 논블로킹 직렬화 및 파싱:
 
@@ -74,7 +72,7 @@ asyncio.run(main())
 
 사용 가능한 함수: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 
-### JSON Schema 검증
+## JSON Schema 검증
 
 JSON Schema를 기반으로 파싱된 YAML 문서 검증：
 
@@ -88,7 +86,89 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 검증 실패 시 `YamlValidateError`를 발생시킵니다.
 
-### 점진적 재파싱
+## Pydantic 통합
+
+Pydantic 모델로 YAML을 직접 파싱하거나 모델을 YAML로 직렬화:
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+# Pydantic 모델로 YAML 파싱
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+
+# 모델을 YAML 문자열로 직렬화
+yaml_str = pyrs_yaml.dump_pydantic(user)
+print(yaml_str)
+```
+
+## 중복 키
+
+기본적으로 중복 매핑 키는 `YamlDuplicateKeyError`를 발생시킵니다:
+
+```python
+pyrs_yaml.parse("key: first\nkey: second")
+# pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
+```
+
+`allow_duplicate_keys=True`를 전달하면 **마지막 값**이 유지됩니다:
+
+```python
+doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
+doc.get("key")  # "second"
+```
+
+이 스위치는 `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, `YAML(allow_duplicate_keys=True)`에 적용됩니다. 순환 모드에서 중복 키가 허용된 문서는 마지막 키-값 쌍을 출력하여 직렬화됩니다.
+
+## 직렬화 옵션
+
+`to_yaml_with_options()`는 들여쓰기과 줄 바꿈을 제어합니다:
+
+```python
+yaml_str = doc.to_yaml_with_options(
+    indent_size=2,  # 기본 들여쓰기 (유형별 옵션 생략 시 사용)
+    width=80,  # 줄 바꿈 너비; 0은 줄 바꿈 비활성화
+    indent_mapping=4,  # 블록 매핑 레벨별 들여쓰기
+    indent_sequence=2,  # 블록 시퀀스 레벨별 들여쓰기
+    indent_offset=0,  # 전체 문서의 기본 오프셋
+)
+```
+
+`indent_mapping` / `indent_sequence` / `indent_offset`를 생략하면 각각 `indent_size` / `indent_size` / `0`이 되므로 `indent_size=4`도 모든 레벨을 4만큼 들여씁니다.
+
+## 커스텀 태그 핸들러
+
+사용자 정의 YAML 태그에 대한 핸들러를 등록하여 스칼라 값을 변환합니다:
+
+```python
+import pyrs_yaml
+
+
+# 데코레이터 형식
+@pyrs_yaml.register_tag("!custom")
+def custom_handler(node):
+    return f"custom:{node}"
+
+
+# 명령형 형식
+pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+
+doc = pyrs_yaml.parse("name: !custom value")
+doc.get("name")  # "custom:value"
+```
+
+- 같은 태그에 대한 여러 핸들러는 `priority` 오름차순으로 실행됩니다. `YamlTagSkip`을 발생시키면 다음 핸들러에 위임됩니다.
+- 핸들러는 문자열을 반환해야 합니다. 그렇지 않으면 `YamlTagError`가 발생합니다.
+- `remove_tag("!custom")`와 `clear_tag_handlers()`로 핸들러를 해제합니다.
+
+## 점진적 재파싱
 
 다른 옵션으로 저장된 소스 텍스트를 제자리에서 재파싱：
 
@@ -100,7 +180,7 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-### 제자리 편집
+## 제자리 편집
 
 파싱된 문서를 **서식 메타데이터를 전혀 잃지 않고** 편집합니다 — 주석, 앵커, 태그, 스칼라 스타일, 흐름/블록 스타일이 모두 유지됩니다:
 
@@ -127,7 +207,7 @@ del doc["server"]  # 또는: doc.delete("$.server")
 
 자세한 내용은 [제자리 편집 가이드](guides/editing.md)를 참조하세요.
 
-### NumPy ndarray 지원
+## NumPy ndarray 지원
 
 pyrs-yaml는 모든 차원의 `numpy.ndarray` 객체를 직접 YAML로 직렬화할 수 있습니다:
 
@@ -157,7 +237,7 @@ loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-#### 지원되는 dtype
+### 지원되는 dtype
 
 | 타입 | Rust 백엔드 | YAML 출력 |
 |------|------------|----------|
@@ -181,7 +261,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **국제화 오류 메시지** — `set_language("ko")` 이중 언어 오류용
 - **타입 힌트** — IDE 지원을 위한 완전한 `.pyi` 스텁
 
-### 지원되는 YAML 구조
+## 지원되는 YAML 구조
 
 | 기능 | 지원 |
 |------|------|
@@ -191,7 +271,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | 앵커 및 별칭 | ✅ 유지 |
 | 태그 (명시적) | ✅ 유지 |
 | 블록 스칼라 (`|`, `>`) | ✅ 유지 |
-| chomp 지시자 | ✅ 유지 |
+| 촙핑 지시자 | ✅ 유지 |
 | 흐름 컬렉션 (`{}`, `[]`) | ✅ 유지 |
 | 병합 키 (`<<`) | ✅ 해결 |
 | 복합 키 | ✅ 지원 |

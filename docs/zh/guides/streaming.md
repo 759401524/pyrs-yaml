@@ -1,4 +1,7 @@
-# 流式解析
+---
+title: 流式解析
+lang: zh
+---
 
 `YAML.load_stream(file_obj)` 和 `YAML.load_stream_file(path)` 惰性迭代 YAML 事件——内存用量为 O(锚点数 + 64KB 块)，与输入大小无关。适用于 100MB+ 的文件。
 
@@ -44,11 +47,11 @@ YAML().dump_stream(buf, [{"a": 1}, {"b": 2}])
 - `explicit_end=True` 在末文档后添加 `...`。
 - 空 iterable 输出 0 字节。
 
-### 错误语义
+#### 错误语义
 
 中途失败（迭代器异常、序列化错误、写失败）时，已写出的文档保留在目标中，不做回滚。
 
-### 与 safe_dump 的差异
+#### 与 safe_dump 的差异
 
 | 方面 | dump_stream / dump_file | safe_dump |
 |------|------------------------|-----------|
@@ -56,6 +59,61 @@ YAML().dump_stream(buf, [{"a": 1}, {"b": 2}])
 | 内存 | O(单文档 + 64KB) | O(输入) |
 | 项类型 | `YamlDocument`（保留注释/锚点）或普通 Python 对象 | 单个 Python 对象 |
 
-### 排序键
+#### 排序键
 
 传递 `sort_keys=True` 以按排序顺序输出映射键，与 `safe_dump` 的 `sort_keys` 行为一致。
+
+## StreamIterator
+
+`StreamIterator` 类由 `parse_stream()` 和 `YAML().load_stream()` / `YAML().load_stream_file()` 产出。它实现迭代器协议，一次产出一个事件字典。
+
+```python
+from pyrs_yaml import parse_stream
+
+iterator = parse_stream("key: value\n---\na: 1")
+for event in iterator:
+    print(event["type"], event["value"])
+```
+
+### 迭代器协议
+
+`StreamIterator` 实现 `__iter__`（返回 `self`）和 `__next__`：
+
+```python
+def __iter__() -> StreamIterator: ...
+def __next__() -> dict | None: ...
+```
+
+当流被耗尽时，`__next__()` 返回 `None`（不会抛出 `StopIteration`）。
+
+#### 事件字典键
+
+| 键 | 类型 | 描述 |
+| --- | --- | --- |
+| `type` | `str` | 事件类型（见下文） |
+| `value` | `str` 或 `None` | 标量值、别名名称或注释文本 |
+| `style` | `str` 或 `None` | 标量引号样式：`"plain"`、`"single_quoted"`、`"double_quoted"`、`"literal"`、`"folded"`；注释为 `"standalone"` 或 `"inline"` |
+| `anchor` | `str` 或 `None` | 锚点名称（`&name`） |
+| `tag` | `str` 或 `None` | 标签字符串（`!!str`、`!custom`） |
+| `line` | `int` | 行号（0 起始） |
+| `column` | `int` | 列号（0 起始） |
+
+#### 事件类型
+
+| `type` | 何时产出 |
+| --- | --- |
+| `stream_start` | YAML 流的开始 |
+| `stream_end` | 流的结束 |
+| `document_start` | 文档的开始 |
+| `document_end` | 文档的结束 |
+| `mapping_start` | 映射的开始 |
+| `mapping_end` | 映射的结束 |
+| `sequence_start` | 序列的开始 |
+| `sequence_end` | 序列的结束 |
+| `scalar` | 标量值 |
+| `alias` | 别名引用（`*name`） |
+| `comment` | YAML 注释 |
+
+#### 与 `load_stream` 的差异
+
+`parse_stream()` 返回一个产出注释并保留原始锚点名称的 `StreamIterator`。`YAML().load_stream()` / `YAML().load_stream_file()` 返回具有不同默认值的 `YamlStream`（见上面的对照表）。

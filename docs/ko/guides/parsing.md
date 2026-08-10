@@ -3,11 +3,10 @@
 title: YAML 파싱
 lang: ko
 
-## YAML 파싱
 
 이 가이드는 pyrs-yaml로 YAML를 파싱하는 모든 방법을 설명합니다.
 
-### 기본 파싱
+## 기본 파싱
 
 #### YAML 문자열 파싱
 
@@ -62,7 +61,7 @@ docs = pyrs_yaml.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
-### 지원되는 입력 타입
+## 지원되는 입력 타입
 
 - `str` — 표준 YAML 문자열
 - `bytes` — 유효한 UTF-8 인코딩 바이트
@@ -74,7 +73,7 @@ doc1 = pyrs_yaml.parse("key: value")
 doc2 = pyrs_yaml.parse(b"key: value")
 ```
 
-### 오류 처리
+## 오류 처리
 
 ```python
 try:
@@ -83,7 +82,7 @@ except pyrs_yaml.YamlParseError as e:
     print(f"파싱 오류: {e}")
 ```
 
-### 지원되는 데이터 타입
+## 지원되는 데이터 타입
 
 pyrs-yaml는 모든 YAML 1.2 스칼라 타입을 올바르게 파싱합니다.
 

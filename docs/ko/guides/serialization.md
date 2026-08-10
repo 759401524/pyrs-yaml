@@ -3,13 +3,11 @@
 title: 직렬화
 lang: ko
 
-## 직렬화
-
 Python 객체와 `YamlDocument` 인스턴스를 YAML 문자열로 변환합니다.
 
-### 기본 직렬화
+## 기본 직렬화
 
-#### `YamlDocument.to_yaml()`
+### `YamlDocument.to_yaml()`
 
 ```python
 doc = pyrs_yaml.parse("key: value")
@@ -41,9 +39,9 @@ yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}}
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ```
 
-### Python 객체를 YAML로 변환
+## Python 객체를 YAML로 변환
 
-#### `from_dict()`
+### `from_dict()`
 
 ```python
 yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
@@ -62,7 +60,7 @@ yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
-### 지원되는 입력 타입
+## 지원되는 입력 타입
 
 | Python 타입 | YAML 출력 |
 |------------|----------|
@@ -74,7 +72,7 @@ pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.ya
 | `bool` | `true` / `false` |
 | `None` | `null` |
 
-### 순환 보존
+## 순환 보존
 
 ```python
 # 핵심 장점: 포맷이 보존됨

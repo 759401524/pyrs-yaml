@@ -3,11 +3,9 @@
 title: NumPy ndarray 序列化指南
 lang: zh
 
-## NumPy ndarray 序列化指南
-
 将 NumPy 数组序列化为 YAML 列表，支持零拷贝 Rust 处理。
 
-### 基本用法
+## 基本用法
 
 ```python
 import numpy as np
@@ -26,7 +24,7 @@ data = y.safe_load(yaml_str)
 assert data == [1, 2, 3]
 ```
 
-### 多维数组
+## 多维数组
 
 ```python
 # 2-D 矩阵
@@ -41,7 +39,7 @@ data = y.safe_load(y.safe_dump(cube))
 assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 ```
 
-### 支持的 dtype
+## 支持的 dtype
 
 | NumPy dtype | YAML 输出 | 示例 |
 |-------------|-----------|------|
@@ -51,7 +49,7 @@ assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 | `bool` | 布尔 | `true` / `false` |
 | `complex64/128` | 字符串 | `(1+2j)` |
 
-### 特殊值
+## 特殊值
 
 ```python
 # NaN
@@ -66,7 +64,7 @@ assert data[0] == float("inf")
 assert data[1] == float("-inf")
 ```
 
-### 负数处理
+## 负数处理
 
 YAML 1.2 规范不允许在块序列中以 `-` 开头的 plain 标量。负数会自动用单引号包裹以确保正确的往返：
 
@@ -76,7 +74,7 @@ data = y.safe_load(y.safe_dump(arr))
 assert data == [-100, 200]  # 往返正确
 ```
 
-### 0-D 标量数组
+## 0-D 标量数组
 
 0-D 数组会被 reshape 为 1-D 后序列化，结果是一个单元素列表：
 
@@ -86,7 +84,7 @@ data = y.safe_load(y.safe_dump(scalar))
 assert data == [42]
 ```
 
-### 嵌套在结构体中
+## 嵌套在结构体中
 
 NumPy 数组可以包含在 dict 或 list 中：
 
@@ -97,7 +95,7 @@ loaded = y.safe_load(yaml_str)
 assert loaded["matrix"] == [[1, 2], [3, 4]]
 ```
 
-### 不支持的类型
+## 不支持的类型
 
 以下类型会抛出 `YamlTypeError`：
 
@@ -106,7 +104,7 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 - 结构化数组
 - 非数值自定义 dtype
 
-### 性能
+## 性能
 
 - 使用 `PyUntypedArray` 进行零拷贝 dtype 分派
 - 使用 `PyArrayDyn<T>` 进行零拷贝切片迭代

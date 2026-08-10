@@ -1,15 +1,14 @@
 ---
 
-title: Markdown フロントメータ
+title: Markdown Front Matter
 lang: ja
 
-## Markdown フロントメータ
 
-Markdown ファイルや文字列から YAML フロントメータを抽出します。
+Markdown ファイルや文字列から YAML Front Matterを抽出します。
 
-### フロントメータとは？
+## Front Matterとは？
 
-フロントメータは、Markdown ファイルの先頭にある `---` 区切りで囲まれた YAML ブロックです。ブログプラットフォーム、静的サイトジェネレーター、コンテンツ管理システムでよく使われます。
+Front Matterは、Markdown ファイルの先頭にある `---` 区切りで囲まれた YAML ブロックです。ブログプラットフォーム、静的サイトジェネレーター、コンテンツ管理システムでよく使われます。
 
 ```markdown
 ---
@@ -27,7 +26,7 @@ tags: [yaml, python, rust]
 
 ## `read_markdown()`
 
-Markdown ファイルからフロントメータをパースします：
+Markdown ファイルからFront Matterをパースします：
 
 ```python
 import pyrs_yaml
@@ -42,9 +41,9 @@ print(content)
 # "# こんにちは\n\nコンテンツです。\n"
 ```
 
-### `read_markdown_str()`
+## `read_markdown_str()`
 
-Markdown 文字列からフロントメータをパースします：
+Markdown 文字列からFront Matterをパースします：
 
 ```python
 markdown_text = """
@@ -63,12 +62,12 @@ if frontmatter:
     print(f"タグ: {frontmatter['tags']}")
     print(f"コンテンツ: {content}")
 else:
-    print("フロントメータが見つかりません")
+    print("Front Matterが見つかりません")
 ```
 
-### フロントメータがない場合
+## Front Matterがない場合
 
-ファイル/文字列にフロントメータがない場合：
+ファイル/文字列にFront Matterがない場合：
 
 ```python
 frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
@@ -78,9 +77,9 @@ assert frontmatter is None
 assert content == "通常の Markdown コンテンツ。"
 ```
 
-### 一般的な使用例
+## 一般的な使用例
 
-#### ブログプラットフォーム
+### ブログプラットフォーム
 
 ```python
 # ブログ一覧用のメタデータを抽出
@@ -105,7 +104,7 @@ for path in glob.glob("posts/*.md"):
 #### コンテンツ管理
 
 ```python
-# フロントメータの構造を検証
+# Front Matterの構造を検証
 required_fields = ["title", "author", "date"]
 frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 

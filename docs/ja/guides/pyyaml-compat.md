@@ -3,11 +3,9 @@
 title: PyYAML 互換性
 lang: ja
 
-## PyYAML 互換性
-
 pyrs-yaml は PyYAML の**代替品**を提供し、移行を容易にします。
 
-### シンプルな移行
+## シンプルな移行
 
 ```python
 # 旧コード
@@ -23,7 +21,7 @@ data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
 
-### 互換 API
+## 互換 API
 
 | PyYAML 関数 | pyrs-yaml 対応 | 備考 |
 |-------------|---------------|------|
@@ -34,9 +32,9 @@ yaml_str = yaml.safe_dump(data)
 | `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ 安全バリアントを使用 |
 | `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ 安全バリアントを使用 |
 
-### 主な違い
+## 主な違い
 
-#### pyrs-yaml が優れている点
+### pyrs-yaml が優れている点
 
 | 機能 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
@@ -53,7 +51,7 @@ yaml_str = yaml.safe_dump(data)
 3. **フロースタイル**: 両方とも保持するが、出力フォーマットが若干異なる場合がある
 4. **エラーメッセージ**: pyrs-yaml はより詳細なコンテキスト付きの i18n エラーメッセージを使用
 
-### 移行チェックリスト
+## 移行チェックリスト
 
 - [ ] `import yaml` を `import pyrs_yaml as yaml` に置換
 - [ ] すべての YAML パース/保存ワークフローをテスト
@@ -61,7 +59,7 @@ yaml_str = yaml.safe_dump(data)
 - [ ] アンカー/エイリアスの動作を確認（使用している場合）
 - [ ] カスタムエラーメッセージ用のエラーハンドリングを確認
 
-### 移行例
+## 移行例
 
 ```python
 # 旧コード

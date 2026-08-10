@@ -3,26 +3,24 @@
 title: Features
 lang: ja
 
-## 機能
-
 pyrs-yaml は PyYAML の**直接置換**として設計されており、PyYAML にない強力な機能を追加しています。
 
-### YAML 1.2 準拠
+## YAML 1.2 準拠
 
 **saphyr-parser** により駆動され、YAML テストスイートで **98.1% の合格率**を達成。
 
-### 完璧なラウンドトリップ
+## 完璧なラウンドトリップ
 
 PyYAML と異なり、pyrs-yaml は**すべてのフォーマットとメタデータを保持**します：
 
 - **コメント** — 独立コメントとインラインコメント
 - **アンカー** (`&name`) と **エイリアス** (`*name`)
 - **タグ** (`!!str`、`!!int` など)
-- **チョーピングインジケーター** (`|-`、`|+`、`>-`、`>+`)
+- **チョンピング インジケーター** (`|-`、`|+`、`>-`、`>+`)
 - **スカラースタイル**（プレーン、シングルクォート、ダブルクォート、リテラル、フォールド）
 - **フロー/ブロックフォーマット** — `[]`/`{}` とブロックスタイルを保持
 
-### パフォーマンス
+## パフォーマンス
 
 Rust バックエンドは PyYAML より **25–40 倍高速**：
 
@@ -32,7 +30,7 @@ Rust バックエンドは PyYAML より **25–40 倍高速**：
 | Serialize (large) | 0.07 ms | 2.92 ms |
 | Round-trip | 0.07 ms | 2.90 ms |
 
-### カスタム AST
+## カスタム AST
 
 **CustomNode** AST は YAML 構造を完全に制御できます：
 
@@ -41,7 +39,7 @@ Rust バックエンドは PyYAML より **25–40 倍高速**：
 - フォーマットを完全に制御して YAML をゼロから構築
 - 高度なユースケース：テンプレートエンジン、設定ジェネレーター、コードフォーマッター
 
-### PyYAML 互換性
+## PyYAML 互換性
 
 使い慣れた API で直接置き換え可能：
 
@@ -54,7 +52,7 @@ yaml.safe_loads(yaml_text)
 yaml.safe_dumps(data)
 ```
 
-### 非同期 I/O
+## 非同期 I/O
 
 `asyncio` を使用した非ブロッキングシリアライズとパース：
 
@@ -74,7 +72,7 @@ asyncio.run(main())
 
 利用可能な関数：`safe_dump_async`、`safe_load_async`、`safe_loads_async`。
 
-### JSON Schema 検証
+## JSON Schema 検証
 
 JSON Schema に基づいてパースされた YAML ドキュメントを検証：
 
@@ -88,7 +86,89 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 検証に失敗した場合、`YamlValidateError` をスローします。
 
-### インクリメンタル再パース
+## Pydantic 統合
+
+Pydantic モデルに直接 YAML をパース、またはモデルを YAML にシリアライズ：
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+# Pydantic モデルに YAML をパース
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+
+# モデルを YAML 文字列にシリアライズ
+yaml_str = pyrs_yaml.dump_pydantic(user)
+print(yaml_str)
+```
+
+## 重複キー
+
+デフォルトでは、重複するマッピングキーは `YamlDuplicateKeyError` をスローします：
+
+```python
+pyrs_yaml.parse("key: first\nkey: second")
+# pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
+```
+
+`allow_duplicate_keys=True` を渡すと、**最後の値**が保持されます：
+
+```python
+doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
+doc.get("key")  # "second"
+```
+
+このスイッチは `parse`、`safe_load`、`safe_loads`、`parse_file`、`parse_all_docs`、`YAML(allow_duplicate_keys=True)` に適用されます。往復モードでは、重複キーが許可されたドキュメントは最後のキーと値のペアを出力してシリアライズされます。
+
+## シリアライズオプション
+
+`to_yaml_with_options()` はインデントと行折り返しを制御します：
+
+```python
+yaml_str = doc.to_yaml_with_options(
+    indent_size=2,  # 基本インデント（タイプ別オプション省略時に使用）
+    width=80,  # 行折り返し幅；0 で折り返し無効
+    indent_mapping=4,  # ブロックマッピングのレベルごとのインデント
+    indent_sequence=2,  # ブロックシーケンスのレベルごとのインデント
+    indent_offset=0,  # ドキュメント全体の基本オフセット
+)
+```
+
+`indent_mapping` / `indent_sequence` / `indent_offset` を省略すると、それぞれ `indent_size` / `indent_size` / `0` になるため、`indent_size=4` でもすべてのレベルが 4 つインデントされます。
+
+## カスタムタグハンドラ
+
+カスタム YAML タグのハンドラを登録し、スカラー値を変換します：
+
+```python
+import pyrs_yaml
+
+
+# デコレータ形式
+@pyrs_yaml.register_tag("!custom")
+def custom_handler(node):
+    return f"custom:{node}"
+
+
+# 命令形式
+pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+
+doc = pyrs_yaml.parse("name: !custom value")
+doc.get("name")  # "custom:value"
+```
+
+- 同じタグの複数のハンドラは `priority` の昇順で実行されます。`YamlTagSkip` をスローすると次のハンドラに委任されます。
+- ハンドラは文字列を返す必要があります。それ以外の場合、`YamlTagError` がスローされます。
+- `remove_tag("!custom")` と `clear_tag_handlers()` でハンドラを登録解除します。
+
+## インクリメンタル再パース
 
 異なるオプションで保存されたソーステキストをその場で再パース：
 
@@ -100,7 +180,7 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-### インプレース編集
+## インプレース編集
 
 解析済みドキュメントを**フォーマットメタデータを一切失わずに**編集します — コメント、アンカー、タグ、スカラースタイル、フロー/ブロックスタイルはすべて保持されます：
 
@@ -127,7 +207,7 @@ del doc["server"]  # または: doc.delete("$.server")
 
 詳細は [インプレース編集ガイド](guides/editing.md) を参照してください。
 
-### NumPy ndarray サポート
+## NumPy ndarray サポート
 
 pyrs-yaml は任意次元の `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます：
 
@@ -157,7 +237,7 @@ loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-#### サポートされるデータ型
+### サポートされるデータ型
 
 | 型 | Rust バックエンド | YAML 出力 |
 |----|------------------|----------|
@@ -181,7 +261,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **国際化エラーメッセージ** — `set_language("ja")` バイリンガルエラー用
 - **型ヒント** — IDE サポート用の完全な `.pyi` スタブ
 
-### サポートされる YAML 構造
+## サポートされる YAML 構造
 
 | 機能 | サポート |
 |------|---------|
@@ -191,7 +271,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | アンカーとエイリアス | ✅ 保持 |
 | タグ（明示的） | ✅ 保持 |
 | ブロックスカラー（`|`、`>`） | ✅ 保持 |
-| チョーピングインジケーター | ✅ 保持 |
+| チョンピング インジケーター | ✅ 保持 |
 | フローコレクション（`{}`、`[]`） | ✅ 保持 |
 | マージキー（`<<`） | ✅ 解決 |
 | 複合キー | ✅ サポート |

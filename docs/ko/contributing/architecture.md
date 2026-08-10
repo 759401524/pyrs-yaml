@@ -3,11 +3,9 @@
 title: 아키텍처
 lang: ko
 
-## 아키텍처
-
 pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처를 사용합니다.
 
-### 개요
+## 개요
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -64,9 +62,9 @@ crates/
         └── fidelity.rs # 속성 기반 테스트
 ```
 
-### 모듈 아키텍처
+## 모듈 아키텍처
 
-#### 1. `crates/pyrs-yaml-core/src/ast.rs` — 사용자 정의 AST
+### 1. `crates/pyrs-yaml-core/src/ast.rs` — 사용자 정의 AST
 
 **CustomNode** 열거형은 pyrs-yaml의 핵심입니다:
 
@@ -157,9 +155,9 @@ PyO3 바인딩에서 사용하는 순수 Rust 편집 프리미티브:
 - `yaml_suite.rs` — 검증을 위한 YAML Test Suite 러너
 - 벤치마크 및 규정 준수 검사를 위한 테스트 헬퍼
 
-### 데이터 흐름
+## 데이터 흐름
 
-#### 파싱 흐름
+### 파싱 흐름
 
 ```text
 YAML 문자열
@@ -196,7 +194,7 @@ CustomNode (AST)
 YAML 문자열
 ```
 
-### 성능 특성
+## 성능 특성
 
 | 작업 | 복잡도 | 설명 |
 |------|--------|------|
@@ -206,13 +204,13 @@ YAML 문자열
 | 병합 해석 | O(n × m) | n = 문서 수, m = 문서당 병합 수 |
 | 주석 추출 | O(n) | 원시 텍스트의 단일 패스 |
 
-### 의존성
+## 의존성
 
 | 크레이트 | 용도 |
 |---------|------|
-| **pyo3** | Python 바인딩 (`experimental-inspect`, `abi3-py38`, `abi3t` 포함) |
+| **PyO3** | Python 바인딩 (`experimental-inspect`, `abi3-py38`, `abi3t` 포함) |
 | **saphyr-parser** | YAML 1.2 호환 파싱 |
-| **indexmap** | 키 유지를 위한 순서가 있는 해시 맵 |
+| **IndexMap** | 키 유지를 위한 순서가 있는 해시 맵 |
 | **serde_json** | JSON ↔ YAML 변환 |
 | **numpy** | NumPy ndarray 지원 (선택 사항, 기본 활성화) |
 | **rust-i18n** | 국제화 오류 메시지 |

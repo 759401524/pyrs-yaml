@@ -1,15 +1,14 @@
 ---
 
-title: Markdown 前端元数据
+title: Markdown Front Matter
 lang: zh
 
-## Markdown 前端元数据
 
-从 Markdown 文件和字符串中提取 YAML 前端元数据。
+从 Markdown 文件和字符串中提取 YAML Front Matter。
 
-### 什么是前端元数据？
+## 什么是Front Matter？
 
-前端元数据是 Markdown 文件顶部用 `---` 分隔符包裹的 YAML 块。常用于博客平台、静态网站生成器和内容管理系统。
+Front Matter是 Markdown 文件顶部用 `---` 分隔符包裹的 YAML 块。常用于博客平台、静态网站生成器和内容管理系统。
 
 ```markdown
 ---
@@ -27,7 +26,7 @@ tags: [yaml, python, rust]
 
 ## `read_markdown()`
 
-从 Markdown 文件解析前端元数据：
+从 Markdown 文件解析Front Matter：
 
 ```python
 import pyrs_yaml
@@ -42,9 +41,9 @@ print(content)
 # "# 你好世界\n\n这是内容。\n"
 ```
 
-### `read_markdown_str()`
+## `read_markdown_str()`
 
-从 Markdown 字符串解析前端元数据：
+从 Markdown 字符串解析Front Matter：
 
 ```python
 markdown_text = """
@@ -63,12 +62,12 @@ if frontmatter:
     print(f"标签: {frontmatter['tags']}")
     print(f"内容: {content}")
 else:
-    print("未找到前端元数据")
+    print("未找到Front Matter")
 ```
 
-### 没有前端元数据的情况
+## 没有Front Matter的情况
 
-如果文件/字符串没有前端元数据：
+如果文件/字符串没有Front Matter：
 
 ```python
 frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
@@ -78,9 +77,9 @@ assert frontmatter is None
 assert content == "普通 Markdown 内容。"
 ```
 
-### 常见使用场景
+## 常见使用场景
 
-#### 博客平台
+### 博客平台
 
 ```python
 # 提取博客列表的元数据
@@ -105,7 +104,7 @@ for path in glob.glob("posts/*.md"):
 #### 内容管理
 
 ```python
-# 验证前端元数据结构
+# 验证Front Matter结构
 required_fields = ["title", "author", "date"]
 frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 

@@ -1,18 +1,18 @@
 ---
-
-title: License
+title: ライセンス
 lang: ja
+---
 
-## ライセンス
+pyrs-yamlは、以下のいずれかのライセンスの下でデュアルライセンスされています：
 
-pyrs-yaml is dual-licensed under either:
+- [MIT License](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-MIT)
+- [Apache License, Version 2.0](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-APACHE)
 
-- [MIT ライセンス](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-MIT)
-- [Apache ライセンス, Version 2.0](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-APACHE)
+から選択してください。
 
-at your option.
+## MIT License
 
-### MIT ライセンス
+### MIT License
 
 ```text
 Copyright (c) 2025 MuLong
@@ -36,7 +36,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Apache ライセンス, Version 2.0
+## Apache License, Version 2.0
+
+### Apache License, Version 2.0
 
 ```text
 Copyright 2025 MuLong
@@ -54,18 +56,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Why Dual ライセンス?
+## デュアルライセンスの理由
 
-The dual license gives users flexibility:
+### デュアルライセンスの理由
 
-- **MIT** is simpler and more permissive for most use cases
-- **Apache 2.0** includes an express patent grant, which provides additional legal protection
+デュアルライセンスにより、ユーザーに柔軟性が与えられます：
 
-### Dependencies
+- **MIT** はよりシンプルで、ほとんどのユースケースで寛容なライセンスです
+- **Apache 2.0** は明示的な特許付与を含み、追加の法的保護を提供します
 
-pyrs-yaml depends on the following open-source projects:
+## 依存関係
 
-| Dependency | ライセンス |
+### 依存関係
+
+pyrs-yamlは、以下のオープンソースプロジェクトに依存しています：
+
+| 依存関係 | ライセンス |
 |------------|---------|
 | [pyo3](https://github.com/PyO3/pyo3) | Apache 2.0 / MIT |
 | [saphyr-parser](https://github.com/saphyr-rs/saphyr) | Apache 2.0 / MIT |

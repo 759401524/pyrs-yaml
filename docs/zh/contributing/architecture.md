@@ -3,11 +3,9 @@
 title: 架构
 lang: zh
 
-## 架构
-
 pyrs-yaml 使用为性能和正确性设计的模块化架构。
 
-### 概述
+## 概述
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -64,9 +62,9 @@ crates/
         └── fidelity.rs # 基于属性的测试
 ```
 
-### 模块架构
+## 模块架构
 
-#### 1. `crates/pyrs-yaml-core/src/ast.rs` — 自定义 AST
+### 1. `crates/pyrs-yaml-core/src/ast.rs` — 自定义 AST
 
 **CustomNode** 枚举是 pyrs-yaml 的核心：
 
@@ -76,10 +74,10 @@ crates/
 - **Null** — 带注释、锚点、标签
 - **Alias** — 别名引用（仅名称）
 
-##### 为什么使用自定义 AST？
+#### 为什么使用自定义 AST？
 
 - 标准 YAML 解析器会丢弃元数据（注释、格式）
-- 自定义 AST 保留往返保存所需的一切
+- 自定义 AST 保留往返所需的一切
 - 可扩展以支持未来功能（自定义节点类型、元数据）
 
 #### 2. `crates/pyrs-yaml-core/src/parser/` — YAML 解析器
@@ -154,9 +152,9 @@ Python 层面的模块定义和类型转换：
 - `yaml_suite.rs` — YAML Test Suite 运行器，用于验证
 - 基准测试和合规性检查的测试辅助函数
 
-### 数据流
+## 数据流
 
-#### 解析流
+### 解析流
 
 ```text
 YAML 字符串
@@ -192,22 +190,22 @@ CustomNode (AST)
 YAML 字符串
 ```
 
-### 性能特性
+## 性能特性
 
 | 操作 | 复杂度 | 说明 |
 |------|--------|------|
 | 解析 | O(n) | YAML 事件的单遍处理 |
 | 序列化 | O(n) | AST 的单遍处理 |
-| 往返保存 | O(n) | 解析 + 序列化 |
+| 往返 | O(n) | 解析 + 序列化 |
 | 合并解析 | O(n × m) | n = 文档数，m = 每文档合并数 |
 | 注释提取 | O(n) | 原始文本的单遍处理 |
 
-### 依赖关系
+## 依赖关系
 
 | Crate | 用途 |
 |-------|------|
-| **pyo3** | Python 绑定（带 `experimental-inspect`） |
+| **PyO3** | Python 绑定（带 `experimental-inspect`） |
 | **saphyr-parser** | YAML 1.2 兼容解析 |
-| **indexmap** | 键顺序保留的有序哈希映射 |
+| **IndexMap** | 键顺序保留的有序哈希映射 |
 | **serde_json** | JSON ↔ YAML 转换 |
 | **rust-i18n** | 国际化错误消息 |

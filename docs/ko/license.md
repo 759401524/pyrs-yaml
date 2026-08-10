@@ -3,16 +3,16 @@
 title: License
 lang: ko
 
-## 라이선스
+# 라이선스
 
-pyrs-yaml is dual-licensed under either:
+pyrs-yaml은 다음 중 하나에 따라 듀얼 라이선스가 적용됩니다:
 
-- [MIT 라이선스](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-MIT)
-- [Apache 라이선스, Version 2.0](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-APACHE)
+- [MIT License](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-MIT)
+- [Apache License, Version 2.0](https://github.com/MuLong/pyrs-yaml/blob/main/LICENSE-APACHE)
 
-at your option.
+사용자가 선택할 수 있습니다.
 
-### MIT 라이선스
+## MIT License
 
 ```text
 Copyright (c) 2025 MuLong
@@ -36,7 +36,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Apache 라이선스, Version 2.0
+## Apache License, Version 2.0
 
 ```text
 Copyright 2025 MuLong
@@ -54,19 +54,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Why Dual 라이선스?
+## 왜 듀얼 라이선스?
 
-The dual license gives users flexibility:
+듀얼 라이선스는 사용자에게 유연성을 제공합니다:
 
-- **MIT** is simpler and more permissive for most use cases
-- **Apache 2.0** includes an express patent grant, which provides additional legal protection
+- **MIT**는 대부분의 사용 사례에 더 단순하고 관용적입니다
+- **Apache 2.0**은 명시적 특허 라이선스를 포함하여 추가적인 법적 보호를 제공합니다
 
-### Dependencies
+## 의존성
 
-pyrs-yaml depends on the following open-source projects:
+pyrs-yaml은 다음 오픈소스 프로젝트에 의존합니다:
 
-| Dependency | 라이선스 |
-|------------|---------|
+| 의존성 | 라이선스 |
+|--------|----------|
 | [pyo3](https://github.com/PyO3/pyo3) | Apache 2.0 / MIT |
 | [saphyr-parser](https://github.com/saphyr-rs/saphyr) | Apache 2.0 / MIT |
 | [indexmap](https://github.com/bluss/indexmap) | MIT / Apache 2.0 |

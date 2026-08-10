@@ -3,12 +3,12 @@
 title: Changelog
 lang: ko
 
-## 변경 이력
+# 변경 이력
 
-All notable changes to this project will be documented in this file.
+이 파일에는 본 프로젝트의 모든 중요 변경 사항이 기록됩니다.
 
-The format is based on [Keep a 변경 이력](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+이 형식은 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)를 기반으로 하며,
+이 프로젝트는 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)을 따릅니다.
 
 ## [Unreleased]
 
@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `std::sync::LazyLock`로 리팩터링되어 `Mutex<Option<...>>` 간접 계층이
   제거되었습니다.
 
-### Performance
+### 성능
 
 - **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer**
   — Python→YAML serialization without intermediate `CustomNode` AST.
@@ -39,14 +39,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-boolean first bytes return `Str` immediately, avoiding schema
   resolution overhead for the common case. (#59)
 
-### Added
+### 추가
 
+- **스트림 & frontmatter API에 `max_depth` 추가** — `parse_stream(yaml, on_event, max_depth)`,
+  `read_markdown(path, schema, max_depth)`, `read_markdown_str(content, schema, max_depth)`
+  가 `max_depth`를 허용 (기본값 1000). 스트림 파싱은 이제 코어
+  `parse_stream_with_options`를 통해 중첩 깊이 제한을 적용
+  (기존에는 스트림 이벤트에 깊이 제한이 없었음).
 - **Pydantic 통합** — `dump_pydantic()`은 Pydantic 모델을 YAML 문자열로
   직렬화 (`model_dump(mode='json')` + `safe_dump`); `parse_as()`는
   YAML 문자열을 Pydantic 모델 인스턴스로 파싱. 둘 다 지연 임포트,
   pydantic에 대한 하드 의존성 없음. (#61)
 
-### Internal
+### 내부
 
 - **Split `py/mod.rs`** — monolithic 1786-line module broken into
   `document.rs` (YamlDocument), `yaml_instance.rs` (YAML class),
@@ -55,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.12.1] — 2026-08-06
 
-### Added
+### 추가
 
 - **`set(create_missing=True)`** - missing intermediate mapping keys along
   the edit path are created as nested mappings (e.g. setting `a.b.c` on
@@ -72,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Python doc.walk() edge case tests** - 9 new tests for empty doc, null
   values, deeply nested, flow collections, mixed types.
 
-### Changed
+### 변경
 
 - **Monorepo workspace** - source code split into `crates/pyrs-yaml-core/`
   (pure Rust, no PyO3) and `crates/pyrs-yaml/` (PyO3 bindings). Root
@@ -89,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text share allocations via `Arc<str>`; AST nodes shrink 8 bytes and
   clones become refcount bumps instead of deep copies.
 
-### Fixed
+### 수정
 
 - **`set(create_missing=True)` nested chain build** - the created mapping
   chain no longer duplicates the first segment as a nested key level.
@@ -102,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.11.7] - 2026-08-04
 
-### Changed
+### 변경
 
 - **stub-build-check replaced with release-guard** - the always-red container
   build (`validate.yml`) that deliberately failed to reproduce the v0.10.0
@@ -112,7 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `test -f` checks `py.typed` exists. The job now gives green CI on
   correct state, red only on regression.
 
-### Added
+### 추가
 
 - **Numpy free-threaded tracking** - ROADMAP.md now tracks `rust-numpy` free-
   threaded support status (PyO3/rust-numpy#476) as a dependency for re-enabling
@@ -120,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.11.6] - 2026-08-04
 
-### Changed
+### 변경
 
 - **Free-threaded (cp314t) wheels are now numpy-free** - built with
   `--no-default-features`, so rust-numpy is excluded entirely (smaller
@@ -128,7 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `YamlTypeError` on free-threaded builds; GIL builds (Python 3.8-3.15)
   keep full ndarray serialization.
 
-### Added
+### 추가
 
 - **Free-threaded CI validation** - `test-freethreaded` job now builds
   and tests with `--no-default-features`, matching the shipped
@@ -138,180 +143,313 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.11.5] - 2026-08-04
 
-### Changed
+### 변경
 
 - **Parser robustness items 3/4/5 closed via Phase 0 strictness audit** — the 70-probe corpus (indentation, block-mapping keys, flow context) compared against a PyYAML oracle showed **no fixable accepted-but-invalid case** (64/70 match; the 6 divergences are deliberate YAML 1.2 / yaml-test-suite requirements where PyYAML is the outlier, and one deliberate duplicate-key strictness). Compliance stays at **99.75% (405/406)**. Full write-up in `ROADMAP.md` §v0.11.5 and `tests/test_strictness_audit.py`.
 
-### Added
+### 추가
 
 - `tests/test_strictness_audit.py` — 70-probe strictness regression corpus pinning current rejection/acceptance behavior (both directions), so future parser changes cannot silently regress strictness or over-reject.
 
 ## [0.11.4] - 2026-08-04
 
-### Fixed
+### 수정
 
 - Duplicate null/empty mapping keys no longer error (`: a\n: b`, `~: a\n~: b`) — matches yaml-test-suite 2JQS; real duplicate keys still raise `YamlDuplicateKeyError`
 - Compliance harness: correctly-rejected invalid YAML now counts as pass (was lowering the rate despite compliant behavior)
 - Compliance harness: `convert_special_chars` tab decoding via regex — any run of `—`/`‖` + `»` is one tab, fixing tab-encoded suite cases
 
-### Changed
+### 변경
 
 - YAML Test Suite pass rate gate raised from >75% to **≥95%**; current rate **99.75%** (405/406)
 - Known deviation documented: `ZYU8` (`%YAML 1.1 1.2`) is rejected by design (invalid per YAML 1.2 grammar, matches PyYAML/libyaml)
 
 ## [0.11.3] - 2026-08-03
 
-### Added
+### 추가
 
 - Streaming write: `YAML.dump_stream(file_obj, iterable)` / `YAML.dump_file(path, iterable)` with document-level constant memory, auto `---` separators, and `explicit_start`/`explicit_end` flags
 - `YamlDocument` `with` context manager: snapshot/rollback transaction scoping
 - `compliance_report()`: public YAML Test Suite pass-rate reporting (version-consistent)
 
-### Changed
+### 변경
 
 - Edit-burst line-offset cache: internal O(N+edit) carry-through in the splice layer (public API unchanged)
 - `compute_compliance` moved from tests to `pyrs_yaml.compliance`; version no longer hardcoded
 
-### Fixed
+### 수정
 
 - Changelog mirror drift guard: prek hook + CI job assert root/mirror `[Unreleased]` sync
 - Publish stub pre-validation: CI reproduces v0.10.0-class `--generate-stubs` container failures before Release
 
 ## [0.11.2] - 2026-08-03
 
-### Added
+### 추가
 
 - `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`: O(앵커 + 청크) 메모리의 지연 이벤트 반복자
 
-#### Performance
+### 성능
 
 - **파싱 시 스플라이스 자격 계산 안 함** — O(문서) 레이아웃 검사가 첫 편집 시 `YamlDocument.splice_checked`를 통해 지연 실행되어 v0.11.0 회귀 복원: parse_comments -59%, parse_anchors -42%, parse/roundtrip/edit -10~35% 모두 v0.10.0 수준으로 복귀
 - **선형 커서 레이아웃 검사** — 사전 계산된 줄 오프셋에 대한 노드별 이진 탐색 대체 (단조 소스 순서 순회)
 
-#### Changed
+### 변경
 
 - `parse_with_options`가 `CustomNode`를 반환 (기존 `(CustomNode, bool)`); 스플라이스 자격은 이제 `YamlDocument` 내부에 있으며 요청 시 계산
 
 ## [0.11.0] - 2026-08-02
 
-### Added
+### 추가
 
 - **Surgical Serialization** — 모든 AST 노드의 바이트 수준 소스 스팬 추적; 세그먼트 기반 스플라이스 — 편집은 접촉 영역만 재생성, 미접촉 텍스트는 바이트 복사
-- 속성 테스트（proptest, 새 개발 의존성）
-- 10MB 편집-플러시 벤치마크
+- 속성 테스트 (proptest, 새 개발 의존성)
+- 10MB 편집-플러시 벤치마크 (divan)
 
-#### Changed
+### 변경
 
-- `flush_source`가 세그먼트 스플라이스 사용; 플로우 스타일 영역, 비기본 레이아웃 문서, 병합 키, CRLF/BOM 문서, materialize 후（단일 버스트 모델）에서 전체 직렬화로 폴백
-- 스플라이스 편집이 `---`/`...`/지시자 마커 라인을 미변경 바이트로 보존（전체 직렬화는 이전에 이를 제거 — 의도적인 동작 차이）
+- `flush_source`가 세그먼트 스플라이스 사용; 플로우 스타일 영역, 비기본 레이아웃 문서, 병합 키, CRLF/BOM 문서, materialize 후 (단일 버스트 모델) 에서 전체 직렬화로 폴백
+- 스플라이스 편집이 `---`/`...`/지시자 마커 라인을 미변경 바이트로 보존 (전체 직렬화는 이전에 이를 제거 — 의도적인 동작 차이)
 
 ## [0.10.0] - 2026-08-01
 
-### Added
+### 추가
 
 - **제자리 편집** — 서식 메타데이터를 잃지 않고 파싱된 문서 편집:
     - 경로 API: `doc.set(path, value)`, `doc.insert(path, index, value)`, `doc.append(path, value)`, `doc.delete(path)`, `doc.rename(path, new_key)`, JSONPath 스타일 경로(`$.a.b[0]`); 루트 슈가 `doc["key"] = value`와 `del doc["key"]`
     - 노드 API: `doc.node()` / `doc.find(path)`는 `Node` 객체를 반환하며 `set_value` / `append` / `insert` / `delete` / `rename`과 트리 탐색(`parent`, `children`, `walk`, `filter`)을 지원
-    - 완전한 메타데이터 보존 — 교체된 스칼라는 주석/앵커/태그/따옴표를 유지; 이름이 변경된 키는 위치와 주석을 유지; 삭제 시 매핑 순서 보존
-    - 원자적 편집 — 실패한 작업은 문서(리비전 포함)를 변경하지 않음
+    - 완전한 메타데이터 보존 — 교체된 스칼라는 주석/앵커/태그/따옴표를 유지; 이름이 변경된 키는 위치와 주소를 유지; 삭제 시 매핑 순서 보존
+    - 원자적 편집 — 실패한 작업은 문서 (리비전 포함) 를 변경하지 않음
     - 지연 소스 재동기화 — `source()` / `to_yaml()` / `reparse()`는 편집 성공 후에만 재직렬화
-    - 오래된 노드 감지 — 문서 편집 후 `Node` 접근은 `YamlDocumentError` 발생(`RuntimeWarning` 포함)
-    - 새 예외: `YamlEditError`, `YamlPathError`(en/zh-CN/ja-JP/ko-KR i18n 지원)
+    - 오래된 노드 감지 — 문서 편집 후 `Node` 접근은 `YamlDocumentError` 발생 (`RuntimeWarning` 포함)
+    - 새 예외: `YamlEditError`, `YamlPathError` (en/zh-CN/ja-JP/ko-KR i18n 지원)
     - 별칭 인식 편집 — 별칭 자신의 경로 설정은 그 자리를 교체; 별칭을 통한 편집은 `YamlEditError` 발생
-- **편집 벤치마크** — `benches/yaml_bench.rs`에 divan 벤치마크 6개 추가(소형~대형 문서의 set/insert/delete)
-- **Python 3.13, 3.14, 3.15 지원** — PyO3 `abi3-py38` 휠이 Python 3.8-3.15 커버(GIL 빌드); `abi3t` + `abi3t-py315`는 free-threaded 안정 ABI 제공
-- **Free-threaded CPython(GIL 없음) 지원** — `#[pymodule(gil_used = false)]`가 모듈을 free-threaded Python용 스레드 안전으로 선언; `Py_GIL_DISABLED` cfg 플래그로 numpy 게이트(rust-numpy는 free-threaded 미지원 — `--no-default-features`로 free-threaded 빌드에서 numpy feature 비활성화)
-- **CI free-threaded 작업** — 새 `test-freethreaded` 워크플로 작업이 Python 3.14t에서 컴파일과 테스트 검증
-- **`pyo3-build-config` 빌드 의존성** — `build.rs`를 통해 `#[cfg(Py_GIL_DISABLED)]`, `#[cfg(Py_3_15)]` 등 컴파일러 플래그 활성화
-- **`numpy` 선택 사항화** — `numpy` feature 뒤에 게이트(기본 활성화); `Py_GIL_DISABLED` 하에서 자동 제외
+- **편집 벤치마크** — `benches/yaml_bench.rs`에 divan 벤치마크 6개 추가 (소형~대형 문서의 set/insert/delete)
 
-#### Changed
+### 변경
 
-- CI Python 매트릭스 확장: ubuntu, windows, macos에서 3.8-3.14
-- 안정 ABI: `abi3-py39` → `abi3-py38`(더 넓은 Python 3.8+ 지원), `abi3t` + `abi3t-py315` 추가(free-threaded 안정 ABI)
-- `pyproject.toml` classifiers에 3.13, 3.14, 3.15 항목 추가
 - `YamlDocument.source()`가 `str`을 반환하고 제자리 편집 후 지연 재직렬화
 
-#### Fixed
+## [0.9.0] - 2026-08-01
 
-- 순환 문서 명확화: 병합 키(`<<`)는 기본적으로 해석되며 `resolve_merges=False`일 때만 그대로 유지
+### 추가
 
-## [0.3.0] - 2025-07-27
+- **Python 3.13, 3.14, 3.15 지원** — PyO3 `abi3-py38` 휠이 Python 3.8-3.15 커버 (GIL 빌드); `abi3t` + `abi3t-py315`는 free-threaded 안정 ABI 제공
+- **Free-threaded CPython (GIL 없음) 지원** — `#[pymodule(gil_used = false)]`가 모듈을 free-threaded Python용 스레드 안전으로 선언; `Py_GIL_DISABLED` cfg 플래그로 numpy 게이트 (rust-numpy는 free-threaded 미지원 — `--no-default-features`로 free-threaded 빌드에서 numpy feature 비활성화)
+- **CI free-threaded 작업** — 새 `test-freethreaded` 워크플로 작업이 Python 3.14t에서 컴파일과 테스트 검증
+- **`pyo3-build-config` 빌드 의존성** — `build.rs`를 통해 `#[cfg(Py_GIL_DISABLED)]`, `#[cfg(Py_3_15)]` 등 컴파일러 플래그 활성화
+- **`numpy` 선택 사항화** — `numpy` feature 뒤에 게이트 (기본 활성화); `Py_GIL_DISABLED` 하에서 자동 제외
+- **`allow_duplicate_keys`** — `YAML(allow_duplicate_keys=True)`, `parse(..., allow_duplicate_keys=True)`, `parse_file`, `safe_load`, `safe_loads`, `parse_all_docs` 모두 이 플래그를 받습니다; 중복 매핑 키는 기본적으로 `YamlDuplicateKeyError`를 발생시키며, 허용 시 `last value wins`
+- **`SerializeOptions` 확장** — `doc.to_yaml_with_options()`에 `width` (줄 바꿈, 0 = 끄기), `indent_mapping`, `indent_sequence`, `indent_offset` 추가 (기존 `indent_size`/`explicit_start`/`explicit_end`/`sort_keys`/`max_depth`와 함께)
+- **태그 핸들러 레지스트리** — `register_tag("!custom")` 데코레이터 및 명령형 형태 + `clear_tag_handlers()`; 등록된 태그를 가진 스칼라 노드는 핸들러를 통해 변환됨
+- **우선순위를 가진 태그 핸들러 체이닝** — 여러 핸들러가 `priority` 오름차순으로 실행; `YamlTagSkip`은 핸들러가 다음으로 전달되도록 하고, fallback은 원래 값을 유지
+- **Pydantic 통합** — `parse_as(Model, yaml, **yaml_kwargs)`는 YAML을 파싱하여 Pydantic v2 모델로 검증; pydantic이 없을 때 `ImportError` 발생
+- **`.pyi` 타입 스텁** — maturin으로 자동 생성되어 커밋되므로 `register_tag`, `parse_as`, `to_yaml_with_options` 및 새 예외가 타입 체커에게 표시됨
 
-### Added
+### 변경
 
-- **NumPy ndarray serialization** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` now support `numpy.ndarray` of all dimensions (0-D through N-D)
-    - Supported dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
-    - Multi-dimensional arrays serialize as nested YAML lists with correct indentation
-    - Complex numbers serialize as `(re+imj)` string format
-    - `0-D` scalar arrays reshape to 1-D and serialize as a single-item list
-    - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate for zero-copy dtype dispatch
-    - GIL released during slice iteration for maximum performance
-- **`quoted_scalar()`** — new `CustomNode::quoted_scalar()` constructor for values requiring single-quoted YAML style
-- **Type resolution for quoted scalars** — `resolve_yaml_type` now applied to `SingleQuoted`/`DoubleQuoted` scalars for correct round-trip of quoted negative numbers
-- **Comprehensive NumPy test suite** — 42 tests covering all dtypes, dimensions (0-D through 4-D), negative numbers, infinity, NaN, empty arrays, and edge cases
+- CI Python 매트릭스 확장: ubuntu, windows, macos에서 3.8-3.14
+- 안정 ABI: `abi3-py39` → `abi3-py38` (더 넓은 Python 3.8+ 지원), `abi3t` + `abi3t-py315` 추가 (free-threaded 안정 ABI)
+- `pyproject.toml` classifiers에 3.13, 3.14, 3.15 항목 추가
+- **CI 최적화: 중복 Rust 컴파일 제거** — 단일 `rust-lint` 작업이 `cargo clippy` + `cargo test`를 한 번 실행; 빌드 작업은 OS별 abi3 휠을 하나 생성하고 테스트 작업이 `maturin develop` 대신 설치하여 21개 매트릭스 작업에서 Rust 컴파일을 제거 (~86% 감소); 모든 작업에 `Swatinem/rust-cache` 추가
+- **pydantic 테스트 의존성** — `pydantic>=2.10.6`을 `[dependency-groups] test` 및 `.ci/requirements-test.txt`에 추가 (SSOT via `uv sync` in ci.yml)
 
-#### Fixed
+### 수정
 
-- **Negative number round-trip** — YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative numbers are now quoted during serialization and correctly parsed back as integers/floats
-- **N-D array support** — replaced `PyArray1<T>` with `PyArrayDyn<T>` to support arrays of any dimension, not just 1-D
-- **Correct nesting depth** — multi-dimensional arrays now produce exactly N levels of nesting (shape[1..] handles inner dimensions, root dimension wrapped by `plain_sequence`)
+- **Windows DLL 로딩** — `src/py/tag_registry.rs`에서 `#[cfg(test)]` 블록 제거로 Windows에서 `import pyrs_yaml`broken 문제 해결 (`250b8d0`)
+- **Python 3.8 호환성** — `pydantic.py`에 `from __future__ import annotations` 추가 (`63d2495`)
+- **CI pydantic 스킵** — `pytest.importorskip("pydantic")`로 pydantic 미설치 시 테스트 통과 (`7be011d`)
+- **Windows의 CI glob 확장** — `pip install dist/*.whl`에 `shell: bash` 사용 (PowerShell은 `*` 확장 안 함) (`2f7778d`)
+- **문자열이 아닌 태그 핸들러 반환이 `YamlTagError`를 발생시킴** — 비`str` 값을 반환하는 핸들러는 이제 `Tag handler '!x' must return a string` 오류 발생 (`src/py/mod.rs:resolve_tags`)
+- **`to_yaml_with_options` 인덴트 연결** — `indent_mapping`/`indent_sequence`/`indent_offset`가 직렬화器에 의해 이제 반영됨 (이전에는 dead 필드; 각각 생략 시 `indent_size`/0으로 기본값)
+- **`width`가 작은 값에서 멈추지 않음** — `width < continuation indent`일 때 무한 루프 대신 나머지 텍스트를 래핑 없이 출력 (`src/serializer.rs:write_plain_scalar`)
+- **`remove_tag(name)`** — 태그 핸들러를 등록 해제하는 새 함수; `register_tag`/`clear_tag_handlers` 보완
+- **`duplicate-key` 오류가 i18n 적용** — `YamlDuplicateKeyError` 메시지가 이제 모든 4개 locale을 통해 `format_i18n_error`를 통해 흐름
 
-#### Changed
+## [0.8.0] - 2026-07-30
 
-- Added `numpy` crate (v0.29) as a dependency for ndarray type dispatch
+### 추가
 
-#### Added
+- **`YAML()` 인스턴스 API** — `YAML(typ="rt"|"safe"|"full", schema="core"|"yaml1.1", max_depth=1000)` 재사용 가능한 구성; `.parse()`, `.safe_load()`, `.safe_loads()`, `.parse_file()`, `.parse_all_docs()` 메서드
+- **Python `Node` API** — `Node` 클래스: `find()`, `filter()`, `walk()`, `to_yaml()`, `parent`, `children`, `root_type`, `value`로 AST 탐색; JSONPath 스타일 쿼리 언어 (`$.key.sub`, `$.arr[0]`, `$..deep`)
+- **`doc.version` 메타데이터** — `YamlDocument.version()`이 YAML spec 버전 반환 (기본값 "1.2")
+- **`MergedView`** — `doc.merged()`가 병합 키가 해석된 읽기 전용 dict-like 뷰 반환
+- **라이프사이클 경고** — `Node.release()`로 노드 명시적 무효화; 오래된 접근은 `RuntimeWarning` + `YamlDocumentError` 발생
 
-- Flow collections (`{}`/`[]`) round-trip support with `flow_style` field on Mapping/Sequence AST nodes
-- `parse()` accepts both `str` and `bytes` input
-- `parse()` supports `resolve_merges` parameter to opt out of merge key expansion
-- `parse_all_docs()` for multi-document parsing via saphyr events
-- `to_yaml_with_options()` with `indent_size`, `explicit_start`, `explicit_end`, `sort_keys` parameters
-- `get()` supports default value parameter
-- `dump_file()` for writing YAML to files
-- Criterion benchmarks in `benches/yaml_bench.rs` (parse/serialize/roundtrip)
-- GitHub Actions CI with matrix testing (3 OS × 4 Python versions)
-- Anchor name parsing expanded to full YAML 1.2 spec (dots, colons, hashes, quoted anchors)
-- `__version__` attribute, `py.typed` PEP 561 marker
-- Full `.pyi` type stubs with type annotations in `#[pyo3(signature)]`
-- `experimental-inspect` feature enabled for `pyo3-introspection` compatibility
-- i18n support with `set_language()`, `get_language()`, `list_languages()`, `detect_language()`, `negotiate_language()`
-- Markdown frontmatter extraction: `read_markdown()`, `read_markdown_str()`
-- JSON ↔ YAML conversion: `from_json()`, `from_dict()`
+### 변경
 
-#### Fixed
+- `parse()` / `safe_load()`가 이제 구문 당용으로 `YAML().parse()` / `.safe_load()`에 위임
+- `YamlDocument`가 이제 문서 메타데이터를 위해 `version` 필드 저장
 
-- Alias resolution in `to_dict()` and `safe_load()` — aliases now resolve to referenced values instead of `None`
-- `safe_loads()` no longer uses naive `split("---")` — uses saphyr's document events
-- Mapping/Sequence tags no longer discarded during parsing
-- `format_scalar_for_key()` now handles Literal/Folded block scalar styles
-- Exception types now properly exported from inline `#[pymodule]` via `#[pymodule_export]`
+## [0.7.1] - 2026-07-30
 
-#### Changed
+### 추가
 
-- Upgraded PyO3 from 0.21 to 0.29
-- Replaced 15+ boilerplate `CustomNode` constructions with `plain_scalar()`/`plain_mapping()`/`plain_sequence()`/`plain_null()` constructors
-- Serializer extracted `write_anchor_tag()` and `write_inline_comment()` helpers
-- Parser extracted `detect_flow_style()` helper
-- Removed dead code: `ParseOptions`, `find_inline_comment`, `find_standalone_comment_before`, `format_yaml_type` (test-only)
-- Consolidated 6 duplicate test files, moved 9 diagnostic scripts to `scripts/`
-- Improved error messages with key/index/type context
-- `#[pymodule]` refactored to inline module for `pyo3-introspection` compatibility
-- All `#[pyo3(signature)]` attributes now include Python type annotations
+- **ryaml 벤치마크 비교** — `tests/test_benchmark.py`에 `ryaml` (Rust YAML 라이브러리) 에 대한 벤치마크 추가 (PyYAML 및 ruamel.yaml와 함께); `benchmark_compare.py` 기능 비교 보고서로 재작성
+- **CI 준수 임계값 상향** — YAML Test Suite 준수 게이트가 `test_compliance_report()`에서 70%에서 75%로 증가; 유효 파싱율 게이트는 95% (`tests/test_yaml_suite.py:251`)
+- **CI 의존성 통합** — 발행 워크플로와 로컬 개발 전반에 통일된 테스트 의존성 관리를 위해 `.ci/requirements-test.txt` 및 `.ci/requirements-test-lite.txt` 추가
+- **벤치마크 현대화** —更快的 C 확장 기반 통계 벤치마킹을 위해 `pytest-benchmark`에서 `pytest-codspeed`로 마이그레이션; 모든 CI 작업은 이제 `-r .ci/requirements-test.txt` 사용
+- **Rust 벤치마크 Divan으로 마이그레이션** — `codspeed-criterion-compat`를 `codspeed-divan-compat` v5.0.1로 교체; 16개 벤치마크가 Criterion 그룹에서 `#[divan::bench]` 속성으로 재작성 (`Cargo.toml`, `benches/yaml_bench.rs`)
 
-## [0.1.0] - 2025-07-25
+### 변경
 
-### Added
+- CI 벤치마크 작업은 교차 라이브러리 비교를 위해 `ryaml` 설치
+- `benchmark_compare.py`는 이제 타이밍을 `pytest-benchmark`에 위임하고 기능 비교/보고 도구로 역할
 
-- Initial release with YAML 1.2 compliance via saphyr-parser
-- Custom AST with full metadata (comments, anchors, tags, chomping, scalar styles)
-- Round-trip preservation of comments, anchors, tags, and formatting
-- PyYAML-compatible API (`safe_load`/`safe_dump`)
-- `from_dict`/`from_json` conversion functions
-- `read_markdown`/`read_markdown_str` for YAML frontmatter extraction
-- Block scalars (`|`/`>`) with chomping indicators (`|-`/`|+`/`>-`/`>+`)
-- Escape sequences (`\n`, `\t`, `\uXXXX`, `\xXX`)
-- YAML 1.2 type resolution (null, bool, int, float, infinity, NaN)
-- Merge key resolution (`<<: *alias`)
-- Complex keys (sequence/mapping as key)
+## [0.7.0] - 2026-07-29
+
+### 추가
+
+- **직렬화器 `max_depth` 가드** — `serialize_node_internal`이 이제 재귀 깊이 추적하고 제한 초과 시 `YamlMaxDepthError` 발생 (기본값 1000), 파서 보호 일치 (`src/serializer.rs:135-145`)
+- **직렬화器 핫패쓰 최적화** — 블록 스타일 직렬화를 대상으로 한 5개 최적화로 ~4.9% 루트립 속도 향상:
+    - `write_anchor_tag` 및 `write_inline_comment` None 체크 인라이닝 (~99% 노드에 대한 메서드 호출 제거)
+    - `write_indent` hot/cold path 분할 (캐시된 레벨 ≤64에 대한 직접 인덱싱)
+    - 짧은 ASCII 영숫자 문자열 (≤8자) 에 대한 `write_plain_scalar` 고속 경로
+    - Plain 스칼라에 대한 `write_scalar_for_key` 직접 디스패치 (디스패치 체인 방지)
+- **pytest-benchmark 마이그레이션** — Python 벤치마크가 통계적 엄밀성, 구조화된 JSON 출력 및 CI 통합을 위해 원시 `time.perf_counter()`에서 `pytest-benchmark`로 마이그레이션 (`tests/test_benchmark.py` + 업데이트된 `tests/test_performance.py`)
+
+### 변경
+
+- Python 벤치마크에서 원시 `timeit` 대신 `pytest-benchmark` 사용
+- CI 벤치마크 작업은 이제 개별 스크립트 대신 `pytest --benchmark-json` 실행
+
+### 제거
+
+- `write_inline_comment` 메서드 — 모든 호출 위치에서 인라이닝됨
+- 직렬화기에서 `Comment` import — 이제 불필요
+
+## [0.6.0] - 2026-07-27
+
+### 추가
+
+- **비동기 직렬화** — `asyncio.run_in_executor`를 통한 `safe_dumps_async`, `safe_dump_async`, `safe_loads_async`, `safe_load_async` (`python/pyrs_yaml/async_dump.py`)
+- **JSON Schema 검증** — `YamlValidateError` 예외 + `YamlDocument.validate(schema)` 메서드 (`str` 또는 `dict` 수락); Python `jsonschema` 모듈에 위임
+- **`YamlDocument.to_json()`** — 문서를 JSON 문자열로 직렬화 (Python `json.dumps` 사용)
+- **증분 재파싱** — `YamlDocument`가 이제 소스 텍스트 저장 (`doc.source()`); `doc.reparse(resolve_merges=True, schema="core")` 로 제자리 재파싱
+- **29개 새 테스트** — `test_async.py` (8), `test_validate.py` (14), `test_reparse.py` (7)
+
+### 변경
+
+- `YamlValidateError` 새 사용자 정의 예외로 등록 (`ValueError` 상속)
+- `rust_i18n::i18n!` 매크로 경로가 `"src/i18n/locales"`로 업데이트
+- `validate_translations()` 테스트 경로가 새 로케일 디렉토리 일치하도록 업데이트
+
+### 제거
+
+- 중복 `src/i18n/en.ftl`, `src/i18n/zh-CN.ftl` 삭제 (rust-i18n에서 참조되지 않음)
+- `locales/*.yml` → `src/i18n/locales/` 이동 (i18n 모듈과 함께 위치)
+
+### 의존성 변경
+
+- 런타임 의존성: `jsonschema>=4.25.1`
+- 개발 의존성: `pytest-asyncio>=0.23` (런타임에서 이동, 더 이상 고정되지 않음)
+
+## [0.5.0] - 2026-07-27
+
+### 수정
+
+- **`Serializer::write_node`** — `block_mapping`/`block_sequence`의 `values.iter().next().unwrap()`에서 `.unwrap()` 제거하고 안전 인덱스 접근으로 교체하여 edge-case AST에서 잠재적 패닉 제거
+- **`YAML_SCHEMA` 상수** — 오타 `yamorg2002`를 `yamlorg2002`로 수정 (YAML 1.2 spec URL 일치)
+- **개발 문서** — Python 명령어에 필수 `uv run` 접두사 및 Rust 명령어에 직접 `cargo` 추가하여 `AGENTS.md` 업데이트
+
+## [0.4.0] - 2026-07-27
+
+### 추가
+
+- **132개 새 gap-filling 테스트** — 이전에 테스트되지 않은 API에 대한 포괄적 커버리지
+- **i18n 함수 테스트** — `set_language`, `get_language`, `list_languages`, `detect_language`, `negotiate_language`
+- **`parse_all_docs` 전용 테스트 스위트** — 단일 문서, 여러 문서, 빈 문서, 주석
+- **`parse_file` 성공 사례 테스트** — 기본 파싱, 주석 보존, 파일 없음 오류
+- **`to_yaml_with_options` 테스트** — `explicit_start`, `explicit_end`, `indent_size`, `sort_keys` 순서 보존
+- **`to_dict()` 메서드 테스트** — 스칼라 루트, 중첩, 리스트, bool, null, anchor 해석, 빈 매핑/시퀀스
+- **YamlDocument dunder 메서드 테스트** — `__repr__`, `__str__`, `__contains__`, `__len__`, `__iter__`, `__getitem__`, `root_type()`
+- **바이트 입력 테스트** — `parse(b"key: value")`, UTF-8 바이트, 잘못된 UTF-8 오류
+- **유니코드 & 특수 문자 테스트** — CJK, 이모지, 루트립, CRLF 줄 끝, 중복 키
+- **`safe_load`/`safe_loads` 기능 커버리지** — anchor, merge key, block scalar, flow collection, 특수 부동소수, 타입 해석
+- **`from_dict` edge cases** — 키의 특수 문자, 중첩 리스트, None 값, 빈 dict/list
+- **`from_json` 루트립** — 중첩 구조, 배열, 잘못된 JSON 오류
+- **`dump_file` 테스트** — 성공 경로, 잘못된 경로 오류
+- **YAML Test Suite 개별 케이스 테스트** — 8진수, 16진수, 과학적 표기법, NaN, 무한대, merge key, 명시적/암시적 키, bool/null 변형, block scalar strip (`|-`), flow collection
+- **`resolve_merges` 파라미터 테스트** — 비활성화 시 `<<` 보존, 기본값으로 해석
+- **Flow collection 루트립** — 루트 레벨 및 중첩 flow 매핑/시퀀스
+- **비스칼라 노드에 anchor** — 매핑 anchor (`&defaults`) 및 시퀀스 anchor (`&items`)
+- **시퀀스 인덱싱 테스트** — 양수 인덱스, 범위 벗어남 오류
+- **Merge key 통합** — 해석된 및 해석되지 않은 merge key로 루트립
+- **태그 보존** — `!!seq` 및 `!!map` 태그 테스트 커버리지
+- **주석 보존** — 복잡한 구조의 inline 및 standalone 주석 테스트
+
+### 변경
+
+- 버전 동기화 수정: `python/pyrs_yaml/__init__.py` `__version__`을 0.2.0에서 0.4.0으로 업데이트하여 Cargo.toml/pyproject.toml과 일치
+- `dist/`에서 구버전 0.2.0 wheel 아티팩트 제거
+
+## [0.3.0] - 2026-07-27
+
+### 추가
+
+- **NumPy ndarray 직렬화** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()`이 모든 차원 (0-D from N-D) 의 `numpy.ndarray` 지원
+    - 지원 dtype: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`
+    - 다차원 배열은 올바른 들여쓰기로 중첩 YAML 리스트로 직렬화
+    - 복소수는 `(re+imj)` 문자열 형식으로 직렬화
+    - `0-D` 스칼라 배열은 1-D로 재변형되어 단일 항목 리스트로 직렬화
+    - `PyUntypedArray` + `PyArrayDyn` via `numpy` Rust crate로 제로 복제 dtype 디스패치
+    - 슬라이스 반복 동안 GIL 해제 (최대 성능)
+- **`quoted_scalar()`** — 단일 따옴표 YAML 스타일이 필요한 값용 새 `CustomNode::quoted_scalar()` 생성자
+- **따옴표 스칼라의 타입 해석** — `resolve_yaml_type`가 이제 `SingleQuoted`/`DoubleQuoted` 스칼라에 적용되어 따옴표 있는 음수의 올바른 루트립
+- **포괄적 NumPy 테스트 스위트** — 모든 dtype, 차원 (0-D from 4-D), 음수, 무한대, NaN, 빈 배열, edge case를 다루는 42개 테스트
+
+### 수정
+
+- **음수 루트립** — YAML 1.2 블록 시퀀스는 `-`로 시작하는 plain 스칼라를 포함할 수 없음; 이제 직렬화 시 따옴표로 감싸서 정수/부동소수로 올바르게 파싱
+- **N-D 배열 지원** — `PyArray1<T>`를 `PyArrayDyn<T>`로 교체하여 1-D뿐만 아니라 모든 차원의 배열 지원
+- **올바른 중첩 깊이** — 다차원 배열이 이제 정확히 N 수준의 중첩 생성 (내부 차원은 shape[1..] 처리, 루트 차원은 `plain_sequence`로 래핑)
+
+### 변경
+
+- ndarray 타입 디스패치를 위해 `numpy` crate (v0.29) 의존성 추가
+
+### 추가
+
+- Flow collection (`{}`/`[]`) 루트립 지원 — Mapping/Sequence AST 노드에 `flow_style` 필드
+- `parse()`가 `str` 및 `bytes` 입력 모두 수용
+- `parse()`가 `resolve_merges` 파라미터로 merge key 확장 옵트아웃 지원
+- saphyr 이벤트를 통한 다중 문서 파싱용 `parse_all_docs()`
+- `indent_size`, `explicit_start`, `explicit_end`, `sort_keys` 파라미터가 있는 `to_yaml_with_options()`
+- 기본값 파라미터를 지원하는 `get()`
+- YAML을 파일에 작성하는 `dump_file()`
+- `benches/yaml_bench.rs`의 Criterion 벤치마크 (파싱/직렬화/루트립)
+- 매트릭스 테스트가 있는 GitHub Actions CI (3 OS x 4 Python 버전)
+- 전체 YAML 1.2 spec으로 확장된 anchor 이름 파싱 (도트, 콜론, 해시, 따옴표 anchor)
+- `__version__` 속성, `py.typed` PEP 561 마커
+
+### 수정
+
+- `to_dict()` 및 `safe_load()`의 alias 해석 — alias가 이제 참조값 대신 `None`으로 해석
+- `safe_loads()`가 더 이상 단순 `split("---")`를 사용하지 않음 — saphyr의 문서 이벤트 사용
+- 파싱 중 Mapping/Sequence 태그가 더 이상 폐기되지 않음
+- `format_scalar_for_key()`이 Literal/Folded 블록 스칼라 스타일 처리
+
+### 변경
+
+- PyO3를 0.21에서 0.29로 업그레이드
+- 15+ 보일러플레이트 `CustomNode` constructions를 `plain_scalar()`/`plain_mapping()`/`plain_sequence()`/`plain_null()` 생성자로 교체
+- 직렬化器가 `write_anchor_tag()` 및 `write_inline_comment()` 헬퍼 추출
+- 파서가 `detect_flow_style()` 헬퍼 추출
+- 데드 코드 제거: `ParseOptions`, `find_inline_comment`, `find_standalone_comment_before`, `format_yaml_type` (테스트 전용)
+- 6개 중복 테스트 파일 통합, 9개 진단 스크립트를 `scripts/`로 이동
+- 키/인덱스/타입 컨텍스트로 오류 메시지 개선
+
+## [0.1.0] - 2026-07-25
+
+### 추가
+
+- saphyr-parser를 통한 YAML 1.2 준수로 초기 릴리스
+- 완전한 메타데이터 (주석, anchor, 태그, chomping, 스칼라 스타일) 와 함께 사용자 정의 AST
+- 주석, anchor, 태그 및 서식의 루트립 보존
+- PyYAML 호환 API (`safe_load`/`safe_dump`)
+- `from_dict`/`from_json` 변환 함수
+- YAML frontmatter 추출용 `read_markdown`/`read_markdown_str`
+- chomping indicator가 있는 블록 스칼라 (`|-`/`|+`/`>-`/`>+)
+- 이스케이프 시퀀스 (`\n`, `\t`, `\uXXXX`, `\xXX`)
+- YAML 1.2 타입 해석 (null, bool, int, float, infinity, NaN)
+- Merge key 해석 (`<<: *alias`)
+- 복잡한 키 (시퀀스/매핑을 키로)

@@ -1,100 +1,100 @@
 ---
 
-title: Comparison with Other Libraries
+title: 与其他库对比
 lang: zh
 
-## 比较 with Other Libraries
+# 与其他库对比
 
-pyrs-yaml compared against the two most popular Python YAML libraries.
+pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 
-### 性能 比较
+## 性能对比
 
-#### Parse Speed (Large YAML, ~2 KB)
+### 解析速度（大 YAML，约 2 KB）
 
-| Library | Time | Speedup |
-|---------|------|---------|
+| 库 | 时间 | 加速比 |
+|----|------|--------|
 | **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 1.83 ms | 26× slower |
-| ruamel.yaml | 4.26 ms | 61× slower |
+| PyYAML | 1.83 ms | 慢 26 倍 |
+| ruamel.yaml | 4.26 ms | 慢 61 倍 |
 
-#### Serialize Speed (Large YAML, ~2 KB)
+### 序列化速度（大 YAML，约 2 KB）
 
-| Library | Time | Speedup |
-|---------|------|---------|
+| 库 | 时间 | 加速比 |
+|----|------|--------|
 | **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 2.92 ms | 40× slower |
-| ruamel.yaml | 6.73 ms | 93× slower |
+| PyYAML | 2.92 ms | 慢 40 倍 |
+| ruamel.yaml | 6.73 ms | 慢 93 倍 |
 
-#### Round-Trip Speed (Large YAML, ~2 KB)
+### 往返速度（大 YAML，约 2 KB）
 
-| Library | Time | Speedup |
-|---------|------|---------|
+| 库 | 时间 | 加速比 |
+|----|------|--------|
 | **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 2.90 ms | 41× slower |
-| ruamel.yaml | 6.57 ms | 91× slower |
+| PyYAML | 2.90 ms | 慢 41 倍 |
+| ruamel.yaml | 6.57 ms | 慢 91 倍 |
 
-### Feature 比较
+## 功能对比
 
-| Feature | pyrs-yaml | PyYAML | ruamel.yaml |
-|---------|-----------|--------|-------------|
-| **YAML 1.2 compliance** | ✅ | ✅ | ✅ |
-| **Comments (standalone)** | ✅ | ❌ | ✅ |
-| **Comments (inline)** | ✅ | ❌ | ✅ |
-| **Anchors/aliases** | ✅ | ❌ | ✅ |
-| **Tags (explicit)** | ✅ | ❌ | ✅ |
-| **Block scalars** | ✅ | ✅ | ✅ |
-| **Flow collections** | ✅ | ✅ | ✅ |
-| **Merge keys (<<)** | ✅ | ❌ | ✅ |
-| **Complex keys** | ✅ | ✅ | ✅ |
-| **Round-trip preservation** | ✅ | ❌ | ✅ |
-| **Python bindings** | ✅ | ✅ | ✅ |
-| **ABI3 (py3.9+)** | ✅ | ❌ | ❌ |
-| **Type stubs (.pyi)** | ✅ | ✅ | ❌ |
-| **i18n error messages** | ✅ | ❌ | ❌ |
-| **Rust backend** | ✅ | ❌ | ❌ |
-| **性能** | 🚀 Fastest | 🐌 Slow | 🐌 Slow |
+| 功能 | pyrs-yaml | PyYAML | ruamel.yaml |
+|------|-----------|--------|-------------|
+| **YAML 1.2 合规** | ✅ | ✅ | ✅ |
+| **独立注释** | ✅ | ❌ | ✅ |
+| **内联注释** | ✅ | ❌ | ✅ |
+| **锚点/别名** | ✅ | ❌ | ✅ |
+| **标签（显式）** | ✅ | ❌ | ✅ |
+| **块标量** | ✅ | ✅ | ✅ |
+| **流集合** | ✅ | ✅ | ✅ |
+| **合并键（<<）** | ✅ | ❌ | ✅ |
+| **复杂键** | ✅ | ✅ | ✅ |
+| **往返保留** | ✅ | ❌ | ✅ |
+| **Python 绑定** | ✅ | ✅ | ✅ |
+| **ABI3（py3.9+）** | ✅ | ❌ | ❌ |
+| **类型存根（.pyi）** | ✅ | ✅ | ❌ |
+| **国际化错误消息** | ✅ | ❌ | ❌ |
+| **Rust 后端** | ✅ | ❌ | ❌ |
+| **性能** | 🚀 最快 | 🐌 慢 | 🐌 慢 |
 
-### Summary
+## 总结
 
-#### Choose pyrs-yaml when
+### 选择 pyrs-yaml 的场景
 
-- **性能 matters** — 25–40× faster than PyYAML
-- **Round-trip preservation is critical** — preserves comments, anchors, tags
-- **You want PyYAML compatibility** — drop-in replacement API
-- **You need type hints** — full `.pyi` stubs
-- **You want a single wheel** — ABI3 works across Python 3.9–3.13
+- **性能至关重要** — 比 PyYAML 快 25–40 倍
+- **往返保留是核心需求** — 保留注释、锚点、标签
+- **需要 PyYAML 兼容性** — 即插即用 API
+- **需要类型提示** — 完整 `.pyi` 存根
+- **需要一个 wheel** — ABI3 兼容 Python 3.9–3.13
 
-#### Choose PyYAML when
+### 选择 PyYAML 的场景
 
-- You're already using it and don't need round-trip preservation
-- You need maximum compatibility with existing code
-- 性能 is not a concern
+- 您已在使用它且不需要往返保留
+- 需要与现有代码最大兼容
+- 性能不是关注点
 
-#### Choose ruamel.yaml when
+### 选择 ruamel.yaml 的场景
 
-- You need the most feature-complete YAML parser
-- You're doing complex YAML manipulation
-- 性能 is not a concern (it's the slowest option)
+- 需要功能最全面的 YAML 解析器
+- 正在进行复杂的 YAML 操作
+- 性能不是关注点（它是三个选项中最慢的）
 
-### Migration Path
+## 迁移路径
 
 ```python
-# Step 1: Install
+# 第一步：安装
 pip install pyrs-yaml
 
-# Step 2: Replace import
-# Before:
+# 第二步：替换导入
+# 之前：
 import yaml
 
-# After:
+# 之后：
 import pyrs_yaml as yaml
 
-# Step 3: Test
-# Run your existing tests to verify compatibility
+# 第三步：测试
+# 运行现有测试以验证兼容性
 ```
 
-Most code will work without changes. The main differences:
+大多数代码无需修改即可工作。主要差异：
 
-1. Round-trip output will preserve comments and formatting
-2. Error messages are more detailed and can be localized
-3. 性能 will be significantly better
+1. 往返输出将保留注释和格式
+2. 错误消息更详细且可本地化
+3. 性能将显著提升

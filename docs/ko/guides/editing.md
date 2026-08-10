@@ -1,7 +1,7 @@
+---
 title: 제자리 편집
 lang: ko
-
-# 제자리 편집
+---
 
 pyrs-yaml는 파싱된 문서를 **제자리에서 편집**할 수 있게 해주며, 모든 포맷 메타데이터(주석, 앵커, 태그, 스칼라 스타일, 흐름/블록 스타일)를 보존합니다 — 수동 문자열 조작 없이, 충실도 손실 없이.
 
@@ -74,13 +74,13 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 기존 스칼라를 교체할 때 대상의 메타데이터(인라인 주석, 앵커, 태그, 따옴표 스타일)는 **보존**됩니다 — 새 값이 매핑/시퀀스인 경우는 예외로, 새 노드 자체의 서식을 따릅니다.
 
-### `__setitem__` — 루트 슈가
+#### `__setitem__` — 루트 슈가
 
 ```python
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
-### `Node.set_value()` — Node를 통한 편집
+#### `Node.set_value()` — Node를 통한 편집
 
 ```python
 node = doc.node().find("$.a.b")  # see "Working with Nodes"
@@ -108,7 +108,7 @@ doc.insert("$.items", 3, "last")  # index == len appends
 doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
-### `append()` — 끝에 추가
+#### `append()` — 끝에 추가
 
 ```python
 append(path: str, value: Any) -> None
@@ -118,7 +118,7 @@ append(path: str, value: Any) -> None
 doc.append("$.items", "d")
 ```
 
-### `Node.append()` / `Node.insert()`
+#### `Node.append()` / `Node.insert()`
 
 동일한 작업을 `Node` 객체에서도 사용할 수 있습니다:
 
@@ -144,13 +144,13 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 
 매핑 순서는 항상 보존됩니다; 시퀀스 삭제는 빈자리를 메웁니다.
 
-### `__delitem__` — 루트 슈가
+#### `__delitem__` — 루트 슈가
 
 ```python
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
-### `Node.delete()`
+#### `Node.delete()`
 
 ```python
 node = doc.node().find("$.b")
@@ -177,7 +177,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 - **메타데이터가 보존됩니다** — 키의 인라인 주석, 스타일, 앵커가 이름 변경과 함께 이동합니다
 - 루트 또는 복합(비스칼라) 키의 이름 변경, 그리고 **기존 키로의** 이름 변경은 `YamlEditError`를 발생시킵니다 (자기 자신으로의 이름 변경은 no-op)
 
-### `Node.rename()`
+#### `Node.rename()`
 
 ```python
 node = doc.node().find("$.old")
@@ -222,7 +222,7 @@ for node in doc.scalars():
 
 이는 대규모 문서에서 Python 전용 `Node.walk()`보다 훨씬 빠르며, 특히 경로 정보나 스칼라 값만 필요한 경우에 유용합니다.
 
-### 누락된 키 생성 (`create_missing=True`)
+#### 누락된 키 생성 (`create_missing=True`)
 
 기본적으로 `set()`은 경로에 중간 키가 없으면 `YamlEditError`를 발생시킵니다. `create_missing=True`를 사용하면 누락된 중간 매핑 키가 자동으로 생성됩니다:
 
@@ -248,7 +248,7 @@ print(doc.to_yaml())
 - 경로 중간에 **스칼라**가 있으면 여전히 오류를 발생시킵니다 (스칼라로 내려갈 수 없음)
 - 생성된 체인은 제자리 스플라이스 편집에 적합합니다
 
-### `find()`로 쿼리하기
+#### `find()`로 쿼리하기
 
 `find()`는 **읽기 지향적**이며 와일드카드와 딥 스캔을 지원합니다 — 경로가 여러 노드를 선택하면 리스트를 반환합니다:
 

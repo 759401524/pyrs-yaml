@@ -3,11 +3,10 @@
 title: YAML のパース
 lang: ja
 
-## YAML のパース
 
 このガイドでは、pyrs-yaml で YAML をパースするすべての方法を説明します。
 
-### 基本パース
+## 基本パース
 
 #### YAML 文字列のパース
 
@@ -62,7 +61,7 @@ docs = pyrs_yaml.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
-### 受け付ける入力型
+## 受け付ける入力型
 
 - `str` — 標準 YAML 文字列
 - `bytes` — 有効な UTF-8 エンコードバイト列
@@ -74,7 +73,7 @@ doc1 = pyrs_yaml.parse("key: value")
 doc2 = pyrs_yaml.parse(b"key: value")
 ```
 
-### エラーハンドリング
+## エラーハンドリング
 
 ```python
 try:
@@ -83,7 +82,7 @@ except pyrs_yaml.YamlParseError as e:
     print(f"パースエラー: {e}")
 ```
 
-### サポートされるデータ型
+## サポートされるデータ型
 
 pyrs-yaml はすべての YAML 1.2 スカラータイプを正しくパースします。
 
