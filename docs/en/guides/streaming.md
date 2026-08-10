@@ -66,3 +66,60 @@ already-written output in the target — there is no rollback for partial output
 
 Pass `sort_keys=True` to emit mapping keys in sorted order, matching
 `safe_dump`'s `sort_keys` behavior.
+
+## StreamIterator
+
+The `StreamIterator` class is yielded by `parse_stream()` and `YAML().load_stream()` / `YAML().load_stream_file()`. It implements the iterator protocol and yields event dicts one at a time.
+
+```python
+from pyrs_yaml import parse_stream
+
+iterator = parse_stream("key: value\n---\na: 1")
+for event in iterator:
+    print(event["type"], event["value"])
+```
+
+### Iterator Protocol
+
+`StreamIterator` implements `__iter__` (returns `self`) and `__next__`:
+
+```python
+def __iter__() -> StreamIterator: ...
+def __next__() -> dict | None: ...
+```
+
+When the stream is exhausted, `__next__()` returns `None` (it does **not** raise `StopIteration`).
+
+### Event Dict Keys
+
+Each event dict contains the following keys:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `type` | `str` | Event type (see below) |
+| `value` | `str` or `None` | Scalar value, alias name, or comment text |
+| `style` | `str` or `None` | Scalar quote style: `"plain"`, `"single_quoted"`, `"double_quoted"`, `"literal"`, `"folded"`; for comments: `"standalone"` or `"inline"` |
+| `anchor` | `str` or `None` | Anchor name (`&name`) |
+| `tag` | `str` or `None` | Tag string (`!!str`, `!custom`) |
+| `line` | `int` | Line number (0-indexed) |
+| `column` | `int` | Column number (0-indexed) |
+
+### Event Types
+
+| `type` | When Emitted |
+| --- | --- |
+| `stream_start` | Start of a YAML stream |
+| `stream_end` | End of the stream |
+| `document_start` | Start of a document |
+| `document_end` | End of a document |
+| `mapping_start` | Start of a mapping |
+| `mapping_end` | End of a mapping |
+| `sequence_start` | Start of a sequence |
+| `sequence_end` | End of a sequence |
+| `scalar` | A scalar value |
+| `alias` | An alias reference (`*name`) |
+| `comment` | A YAML comment |
+
+### Differences from `load_stream`
+
+`parse_stream()` returns a `StreamIterator` that emits comments and preserves original anchor names. `YAML().load_stream()` / `YAML().load_stream_file()` return a `YamlStream` with different defaults (see the comparison table above).

@@ -155,6 +155,76 @@ doc.set("$.b", 2)  # Bumps the document revision
 node.set_value(99)  # RuntimeWarning + YamlDocumentError
 ```
 
+## YamlDuplicateKeyError
+
+Raised when a duplicate mapping key is detected in the input.
+
+```python
+class YamlDuplicateKeyError(ValueError):
+    """Duplicate mapping key error (inherits from ValueError)."""
+```
+
+**Inherits from:** `ValueError`
+
+**Example:**
+
+```python
+try:
+    pyrs_yaml.parse("key: 1\nkey: 2")
+except pyrs_yaml.YamlDuplicateKeyError as e:
+    print(f"Duplicate key: {e}")
+```
+
+## YamlMaxDepthError
+
+Raised when the YAML document exceeds the maximum nesting depth.
+
+```python
+class YamlMaxDepthError(ValueError):
+    """Maximum nesting depth exceeded (inherits from ValueError)."""
+```
+
+**Inherits from:** `ValueError`
+
+**Example:**
+
+```python
+try:
+    pyrs_yaml.parse("a:\n  b:\n    c:\n      ...", max_depth=2)
+except pyrs_yaml.YamlMaxDepthError as e:
+    print(f"Max depth exceeded: {e}")
+```
+
+## YamlTagError
+
+Raised when a tag handler is registered with an invalid name or signature.
+
+```python
+class YamlTagError(ValueError):
+    """Tag handler error (inherits from ValueError)."""
+```
+
+**Inherits from:** `ValueError`
+
+## YamlTagSkip
+
+Sentinel exception raised by a tag handler to skip a node. The parser moves to the next node instead of raising an error. This is not a real error — it is an intentional control-flow signal.
+
+```python
+class YamlTagSkip(Exception):
+    """Tag handler skip sentinel (inherits from Exception)."""
+```
+
+**Inherits from:** `Exception`
+
+**Example:**
+
+```python
+@pyrs_yaml.register_tag("!skip_me")
+def handler(node):
+    raise pyrs_yaml.YamlTagSkip
+```
+
 ## Error Message Format
 
 All error messages include contextual information:
