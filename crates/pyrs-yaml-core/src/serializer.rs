@@ -1,4 +1,5 @@
 use crate::ast::{Chomping, CustomNode, ScalarStyle, Tag};
+use crate::error::SerializeError;
 
 /// Serialization options
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +83,7 @@ pub fn to_yaml(node: &CustomNode) -> String {
 pub fn to_yaml_with_options(
     node: &CustomNode,
     options: &SerializeOptions,
-) -> Result<String, String> {
+) -> Result<String, SerializeError> {
     let mut serializer = Serializer::new(options);
     if options.explicit_start {
         serializer.output.push_str("---\n");
@@ -160,7 +161,7 @@ pub fn pair_to_string(
     indent_width: usize,
     is_last: bool,
     depth: usize,
-) -> Result<String, String> {
+) -> Result<String, SerializeError> {
     let mut s = Serializer::new(&SerializeOptions::default());
     s.write_mapping_pair(key, value, indent_width, is_last, depth)?;
     Ok(s.output)
@@ -172,7 +173,7 @@ pub fn item_to_string(
     indent_width: usize,
     is_last: bool,
     depth: usize,
-) -> Result<String, String> {
+) -> Result<String, SerializeError> {
     let mut s = Serializer::new(&SerializeOptions::default());
     s.write_sequence_item(item, indent_width, is_last, depth)?;
     Ok(s.output)
@@ -230,9 +231,9 @@ impl Serializer {
         _is_last: bool,
         in_value_context: bool,
         depth: usize,
-    ) -> Result<(), String> {
+    ) -> Result<(), SerializeError> {
         if depth >= self.max_depth {
-            return Err(format!("max depth exceeded (max={})", self.max_depth));
+            return Err(SerializeError::MaxDepthExceeded(self.max_depth));
         }
 
         // Handle standalone comments first
@@ -464,7 +465,7 @@ impl Serializer {
         indent_width: usize,
         is_last: bool,
         depth: usize,
-    ) -> Result<(), String> {
+    ) -> Result<(), SerializeError> {
         // Check if key is a complex key (mapping or sequence)
         let is_complex_key = matches!(
             key,
@@ -541,7 +542,7 @@ impl Serializer {
         indent_width: usize,
         is_last: bool,
         depth: usize,
-    ) -> Result<(), String> {
+    ) -> Result<(), SerializeError> {
         self.write_indent(indent_width);
         self.output.push_str("- ");
 
@@ -551,7 +552,7 @@ impl Serializer {
             // mapping carries no metadata and every key/value can
             // share the dash line.
             let CustomNode::Mapping { pairs, .. } = item else {
-                return Err("internal-error: is_compact_item on non-mapping".to_string());
+                return Err(SerializeError::Internal("is_compact_item on non-mapping"));
             };
             for (pi, (key, value)) in pairs.iter().enumerate() {
                 if pi > 0 {
@@ -757,9 +758,13 @@ impl Serializer {
     }
 
     /// 在 flow 上下文中序列化值（不追加换行符）。
-    fn serialize_flow_value(&mut self, node: &CustomNode, depth: usize) -> Result<(), String> {
+    fn serialize_flow_value(
+        &mut self,
+        node: &CustomNode,
+        depth: usize,
+    ) -> Result<(), SerializeError> {
         if depth >= self.max_depth {
-            return Err(format!("max depth exceeded (max={})", self.max_depth));
+            return Err(SerializeError::MaxDepthExceeded(self.max_depth));
         }
 
         match node {
@@ -1050,7 +1055,7 @@ mod tests {
         };
         let result = to_yaml_with_options(&current, &options);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("max depth exceeded"));
+        assert!(matches!(result, Err(SerializeError::MaxDepthExceeded(50))));
     }
 
     #[test]

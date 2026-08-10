@@ -390,12 +390,12 @@ impl DirectWriter {
                     },
                 )
                 .map_err(|e| {
-                    if e.contains("max depth exceeded") {
+                    if e.to_string().contains("max depth exceeded") {
                         self.depth_error()
                     } else {
                         YamlSerializeError::new_err(format_i18n_error(
                             "yaml-serialize-error",
-                            &[("detail", &e)],
+                            &[("detail", &e.to_string())],
                         ))
                     }
                 })?;

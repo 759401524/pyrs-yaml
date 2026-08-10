@@ -3,10 +3,11 @@
 //! Pure Rust implementation — no PyO3 dependencies.
 
 use crate::ast::CustomNode;
+use crate::error::{EditError, NavigateError};
 use std::ops::Range;
 
 use super::dirty::DirtyKind;
-use super::navigate::{NavigateError, Segment, mapping_key_index, normalize_index};
+use super::navigate::{Segment, mapping_key_index, normalize_index};
 
 pub fn path_nodes<'a>(
     node: &'a CustomNode,
@@ -152,32 +153,36 @@ pub fn regenerate_region_text(
     compact_override: &Option<(Range<usize>, usize, usize)>,
     indent: usize,
     depth: usize,
-) -> Result<String, String> {
+) -> Result<String, EditError> {
     if let Some((_, override_indent, prefix_len)) = compact_override {
-        let path = path_nodes(node, &segments[..*prefix_len]).map_err(nav_err)?;
-        let item = path.last().ok_or_else(|| "edit-error".to_string())?;
-        crate::serializer::item_to_string(item, *override_indent, true, depth)
+        let path = path_nodes(node, &segments[..*prefix_len])?;
+        let item = path.last().ok_or(EditError::Generic)?;
+        Ok(crate::serializer::item_to_string(
+            item,
+            *override_indent,
+            true,
+            depth,
+        )?)
     } else {
-        let parent_path = path_nodes(node, parent_segments).map_err(nav_err)?;
-        let parent = parent_path.last().ok_or_else(|| "edit-error".to_string())?;
+        let parent_path = path_nodes(node, parent_segments)?;
+        let parent = parent_path.last().ok_or(EditError::Generic)?;
         match parent {
             CustomNode::Mapping { pairs, .. } => {
                 let key_text = match new_key_override {
                     Some(k) => k,
                     None => match segments.last() {
                         Some(Segment::Key(k)) => k.as_ref(),
-                        _ => return Err("edit-error".to_string()),
+                        _ => return Err(EditError::Generic),
                     },
                 };
                 let key_node = CustomNode::plain_scalar(key_text.to_string());
-                let idx = mapping_key_index(pairs, &key_node)
-                    .ok_or_else(|| "missing-path".to_string())?;
-                let (k, v) = pairs
-                    .get_index(idx)
-                    .ok_or_else(|| "missing-path".to_string())?;
-                crate::serializer::pair_to_string(k, v, indent, true, depth)
+                let idx = mapping_key_index(pairs, &key_node).ok_or(EditError::MissingKey)?;
+                let (k, v) = pairs.get_index(idx).ok_or(EditError::MissingKey)?;
+                Ok(crate::serializer::pair_to_string(
+                    k, v, indent, true, depth,
+                )?)
             }
-            _ => Err("edit-error".to_string()),
+            _ => Err(EditError::Generic),
         }
     }
 }
@@ -247,19 +252,6 @@ pub fn extend_delete_over_comments(
         }
     }
     range
-}
-
-/// ```
-/// use pyrs_yaml_core::editing::{nav_err, NavigateError};
-/// assert_eq!(nav_err(NavigateError::Missing("x".into())), "missing-path:x");
-/// assert_eq!(nav_err(NavigateError::NotContainer), "create-needs-mapping");
-/// ```
-pub fn nav_err(e: NavigateError) -> String {
-    match e {
-        NavigateError::Missing(s) => format!("missing-path:{s}"),
-        NavigateError::CannotDescend(t) => format!("cannot-descend-into-scalar:{t}"),
-        NavigateError::NotContainer => "create-needs-mapping".to_string(),
-    }
 }
 
 #[cfg(test)]
@@ -349,26 +341,5 @@ mod tests {
         let range = 5..8;
         let extended = extend_delete_over_comments(range, &offsets, text);
         assert_eq!(extended, 5..8);
-    }
-
-    #[test]
-    fn test_nav_err_missing() {
-        assert_eq!(
-            nav_err(NavigateError::Missing("x".into())),
-            "missing-path:x"
-        );
-    }
-
-    #[test]
-    fn test_nav_err_cannot_descend() {
-        assert_eq!(
-            nav_err(NavigateError::CannotDescend("key".into())),
-            "cannot-descend-into-scalar:key"
-        );
-    }
-
-    #[test]
-    fn test_nav_err_not_container() {
-        assert_eq!(nav_err(NavigateError::NotContainer), "create-needs-mapping");
     }
 }

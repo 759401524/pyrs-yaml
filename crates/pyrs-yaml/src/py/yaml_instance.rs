@@ -9,12 +9,10 @@ use crate::py::convert::{
     parse_schema,
 };
 use crate::py::document::{YamlDocument, parse_document};
+use crate::py::parse_error_to_py_err;
 use crate::py::streaming::{ChunkCharIter, DEFAULT_CHUNK_SIZE, InputSrc, YamlStream};
 use crate::py::writing::{OutputSink, SinkWriter, dump_iterable, dump_options};
 
-use crate::YamlDuplicateKeyError;
-use crate::YamlMaxDepthError;
-use crate::YamlParseError;
 use crate::YamlTypeError;
 
 /// Configured YAML parser instance (rt / safe / full).
@@ -86,28 +84,7 @@ impl YAML {
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
-            .map_err(|e| {
-                if e.message.contains("duplicate key") {
-                    let key = e.message.trim_start_matches("duplicate key: ");
-                    YamlDuplicateKeyError::new_err(format_i18n_error(
-                        "duplicate-key",
-                        &[("key", key)],
-                    ))
-                } else if e.message.contains("max depth exceeded") {
-                    YamlMaxDepthError::new_err(format_i18n_error(
-                        "max-depth-exceeded",
-                        &[("max_depth", &self.max_depth.to_string())],
-                    ))
-                } else if e.line > 0 {
-                    let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                    YamlParseError::new_err(msg)
-                } else {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
-                }
-            })
+            .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;
         if yaml.bytes().any(|b| b == b'&') {
             let mut anchors = HashMap::new();
@@ -131,28 +108,7 @@ impl YAML {
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
-            .map_err(|e| {
-                if e.message.contains("duplicate key") {
-                    let key = e.message.trim_start_matches("duplicate key: ");
-                    YamlDuplicateKeyError::new_err(format_i18n_error(
-                        "duplicate-key",
-                        &[("key", key)],
-                    ))
-                } else if e.message.contains("max depth exceeded") {
-                    YamlMaxDepthError::new_err(format_i18n_error(
-                        "max-depth-exceeded",
-                        &[("max_depth", &self.max_depth.to_string())],
-                    ))
-                } else if e.line > 0 {
-                    let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                    YamlParseError::new_err(msg)
-                } else {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
-                }
-            })
+            .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;
         let has_anchors = yaml.bytes().any(|b| b == b'&');
         let mut results = Vec::with_capacity(asts.len());
@@ -189,28 +145,7 @@ impl YAML {
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
-            .map_err(|e| {
-                if e.message.contains("duplicate key") {
-                    let key = e.message.trim_start_matches("duplicate key: ");
-                    YamlDuplicateKeyError::new_err(format_i18n_error(
-                        "duplicate-key",
-                        &[("key", key)],
-                    ))
-                } else if e.message.contains("max depth exceeded") {
-                    YamlMaxDepthError::new_err(format_i18n_error(
-                        "max-depth-exceeded",
-                        &[("max_depth", &self.max_depth.to_string())],
-                    ))
-                } else if e.line > 0 {
-                    let msg = format_source_snippet(&content, e.line, e.col, &e.message);
-                    YamlParseError::new_err(msg)
-                } else {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
-                }
-            })
+            .map_err(|e| parse_error_to_py_err(e, &content, self.max_depth))
         })?;
         let source: Arc<str> = Arc::from(content);
         Ok(YamlDocument {
@@ -239,28 +174,7 @@ impl YAML {
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
-            .map_err(|e| {
-                if e.message.contains("duplicate key") {
-                    let key = e.message.trim_start_matches("duplicate key: ");
-                    YamlDuplicateKeyError::new_err(format_i18n_error(
-                        "duplicate-key",
-                        &[("key", key)],
-                    ))
-                } else if e.message.contains("max depth exceeded") {
-                    YamlMaxDepthError::new_err(format_i18n_error(
-                        "max-depth-exceeded",
-                        &[("max_depth", &self.max_depth.to_string())],
-                    ))
-                } else if e.line > 0 {
-                    let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                    YamlParseError::new_err(msg)
-                } else {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
-                }
-            })
+            .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;
         let source: Arc<str> = Arc::from(yaml);
         Ok(asts
@@ -367,5 +281,3 @@ impl YAML {
         )
     }
 }
-
-use crate::py::format_source_snippet;

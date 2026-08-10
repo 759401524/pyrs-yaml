@@ -16,6 +16,7 @@ use crate::py::convert::{
 };
 use crate::py::editing;
 use crate::py::editing::segment_py::SegmentExt;
+use crate::py::parse_error_to_py_err;
 use crate::py::python_types::pyobject_to_node;
 use crate::py::walk_helpers::{walk_ast, walk_scalars};
 
@@ -59,7 +60,7 @@ pub(crate) fn serialize_document(
     doc.flush_source(py)?;
     py.detach(|| to_yaml_with_options(&doc.ast, options))
         .map_err(|e| {
-            if e.contains("max depth exceeded") {
+            if e.to_string().contains("max depth exceeded") {
                 YamlMaxDepthError::new_err(format_i18n_error(
                     "max-depth-exceeded",
                     &[("max_depth", &options.max_depth.to_string())],
@@ -67,7 +68,7 @@ pub(crate) fn serialize_document(
             } else {
                 YamlSerializeError::new_err(format_i18n_error(
                     "yaml-serialize-error",
-                    &[("detail", &e)],
+                    &[("detail", &e.to_string())],
                 ))
             }
         })
@@ -137,7 +138,7 @@ impl YamlDocument {
                     .map_err(|e| {
                         YamlSerializeError::new_err(format_i18n_error(
                             "yaml-serialize-error",
-                            &[("detail", &e)],
+                            &[("detail", &e.to_string())],
                         ))
                     })?,
             };
@@ -185,7 +186,7 @@ impl YamlDocument {
             indent_offset: indent_offset.unwrap_or(0),
         };
         to_yaml_with_options(&self.ast, &options).map_err(|e| {
-            if e.contains("max depth exceeded") {
+            if e.to_string().contains("max depth exceeded") {
                 YamlMaxDepthError::new_err(format_i18n_error(
                     "max-depth-exceeded",
                     &[("max_depth", &max_depth.to_string())],
@@ -193,7 +194,7 @@ impl YamlDocument {
             } else {
                 YamlSerializeError::new_err(format_i18n_error(
                     "yaml-serialize-error",
-                    &[("detail", &e)],
+                    &[("detail", &e.to_string())],
                 ))
             }
         })
@@ -218,7 +219,10 @@ impl YamlDocument {
         let is_path = key.starts_with('$') || key.contains('.') || key.contains('[');
         if is_path {
             let segs = editing::parse_path_segments(key).map_err(|e| {
-                YamlPathError::new_err(format_i18n_error("path-error", &[("detail", &e)]))
+                YamlPathError::new_err(format_i18n_error(
+                    "path-error",
+                    &[("detail", &e.to_string())],
+                ))
             })?;
             return match editing::navigate(&self.ast, &segs) {
                 Ok(node) => Ok(node_to_pyobject(node, py, self.schema)?),
@@ -608,17 +612,7 @@ impl YamlDocument {
         let schema_enum = parse_schema(schema)?;
         let new_ast = py.detach(|| {
             crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000, false)
-                .map_err(|e| {
-                    if e.line > 0 {
-                        let msg = format_source_snippet(source, e.line, e.col, &e.message);
-                        YamlParseError::new_err(msg)
-                    } else {
-                        YamlParseError::new_err(format_i18n_error(
-                            "yaml-parse-error",
-                            &[("detail", &e.message)],
-                        ))
-                    }
-                })
+                .map_err(|e| parse_error_to_py_err(e, source, 1000))
         })?;
         self.ast = new_ast;
         self.schema = schema_enum;
@@ -704,7 +698,6 @@ impl YamlDocument {
     }
 }
 
-use crate::YamlDuplicateKeyError;
 use crate::YamlEditError;
 use crate::YamlMaxDepthError;
 use crate::YamlParseError;
@@ -713,8 +706,6 @@ use crate::YamlSerializeError;
 use crate::YamlTagError;
 use crate::YamlTypeError;
 use crate::YamlValidateError;
-
-use crate::py::format_source_snippet;
 
 pub(crate) fn parse_document(
     py: Python,
@@ -749,25 +740,7 @@ pub(crate) fn parse_document(
             max_depth,
             allow_duplicate_keys,
         )
-        .map_err(|e| {
-            if e.message.contains("duplicate key") {
-                let key = e.message.trim_start_matches("duplicate key: ");
-                YamlDuplicateKeyError::new_err(format_i18n_error("duplicate-key", &[("key", key)]))
-            } else if e.message.contains("max depth exceeded") {
-                YamlMaxDepthError::new_err(format_i18n_error(
-                    "max-depth-exceeded",
-                    &[("max_depth", &max_depth.to_string())],
-                ))
-            } else if e.line > 0 {
-                let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
-                YamlParseError::new_err(msg)
-            } else {
-                YamlParseError::new_err(format_i18n_error(
-                    "yaml-parse-error",
-                    &[("detail", &e.message)],
-                ))
-            }
-        })
+        .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
     })?;
     resolve_tags(&mut ast, py)?;
     let source: Arc<str> = Arc::from(yaml_str);

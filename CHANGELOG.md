@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`max_depth` on stream & frontmatter APIs** — `parse_stream(yaml, on_event, max_depth)`,
+  `read_markdown(path, schema, max_depth)`, `read_markdown_str(content, schema, max_depth)`
+  accept `max_depth` (default 1000). Stream parsing now enforces the nesting-depth limit
+  via core `parse_stream_with_options` (previously stream events had no depth limit).
 - **Pydantic integration** — `dump_pydantic()` serializes a Pydantic model
   to YAML string via `model_dump(mode='json')` + `safe_dump`; `parse_as()`
   parses YAML string into a Pydantic model instance. Both use lazy imports,

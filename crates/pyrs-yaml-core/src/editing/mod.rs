@@ -17,6 +17,6 @@ pub use navigate::{
 };
 pub use region::{
     compact_item_ancestor, eligible_path, extend_delete_over_comments, line_aligned, line_end,
-    line_indent, line_start, nav_err, node_is_flow, path_nodes, precompute, regenerate_region_text,
+    line_indent, line_start, node_is_flow, path_nodes, precompute, regenerate_region_text,
     region_unit,
 };

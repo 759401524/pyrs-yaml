@@ -5,13 +5,12 @@ use pyo3::prelude::*;
 use crate::py::convert::{format_i18n_error, node_to_pyobject, parse_schema};
 use crate::py::direct_dump::direct_dump;
 use crate::py::document::{YamlDocument, parse_document, resolve_tags};
+use crate::py::parse_error_to_py_err;
 use crate::py::python_types::json_value_to_node;
 use crate::py::stream_events::stream_event_to_py_dict;
 use crate::py::stream_iterator::StreamIterator;
 use crate::py::tag_registry;
 
-use crate::YamlDuplicateKeyError;
-use crate::YamlMaxDepthError;
 use crate::YamlParseError;
 use crate::YamlTypeError;
 
@@ -61,25 +60,7 @@ pub(crate) fn parse_file(
             max_depth,
             allow_duplicate_keys,
         )
-        .map_err(|e| {
-            if e.message.contains("duplicate key") {
-                let key = e.message.trim_start_matches("duplicate key: ");
-                YamlDuplicateKeyError::new_err(format_i18n_error("duplicate-key", &[("key", key)]))
-            } else if e.message.contains("max depth exceeded") {
-                YamlMaxDepthError::new_err(format_i18n_error(
-                    "max-depth-exceeded",
-                    &[("max_depth", &max_depth.to_string())],
-                ))
-            } else if e.line > 0 {
-                let msg = format_source_snippet(&content, e.line, e.col, &e.message);
-                YamlParseError::new_err(msg)
-            } else {
-                YamlParseError::new_err(format_i18n_error(
-                    "yaml-parse-error",
-                    &[("detail", &e.message)],
-                ))
-            }
-        })
+        .map_err(|e| parse_error_to_py_err(e, &content, max_depth))
     })?;
     resolve_tags(&mut ast, py)?;
     let source: std::sync::Arc<str> = std::sync::Arc::from(content);
@@ -116,25 +97,7 @@ pub(crate) fn parse_all_docs(
             max_depth,
             allow_duplicate_keys,
         )
-        .map_err(|e| {
-            if e.message.contains("duplicate key") {
-                let key = e.message.trim_start_matches("duplicate key: ");
-                YamlDuplicateKeyError::new_err(format_i18n_error("duplicate-key", &[("key", key)]))
-            } else if e.message.contains("max depth exceeded") {
-                YamlMaxDepthError::new_err(format_i18n_error(
-                    "max-depth-exceeded",
-                    &[("max_depth", &max_depth.to_string())],
-                ))
-            } else if e.line > 0 {
-                let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                YamlParseError::new_err(msg)
-            } else {
-                YamlParseError::new_err(format_i18n_error(
-                    "yaml-parse-error",
-                    &[("detail", &e.message)],
-                ))
-            }
-        })
+        .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     let source: std::sync::Arc<str> = std::sync::Arc::from(yaml);
     Ok(asts
@@ -166,28 +129,7 @@ pub(crate) fn safe_load(
     let schema_enum = parse_schema(schema)?;
     let mut ast = py.detach(|| {
         crate::parser::parse_with_options(yaml, true, schema_enum, max_depth, allow_duplicate_keys)
-            .map_err(|e| {
-                if e.message.contains("duplicate key") {
-                    let key = e.message.trim_start_matches("duplicate key: ");
-                    YamlDuplicateKeyError::new_err(format_i18n_error(
-                        "duplicate-key",
-                        &[("key", key)],
-                    ))
-                } else if e.message.contains("max depth exceeded") {
-                    YamlMaxDepthError::new_err(format_i18n_error(
-                        "max-depth-exceeded",
-                        &[("max_depth", &max_depth.to_string())],
-                    ))
-                } else if e.line > 0 {
-                    let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                    YamlParseError::new_err(msg)
-                } else {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
-                }
-            })
+            .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     resolve_tags(&mut ast, py)?;
     if yaml.bytes().any(|b| b == b'&') {
@@ -225,25 +167,7 @@ pub(crate) fn safe_loads(
             max_depth,
             allow_duplicate_keys,
         )
-        .map_err(|e| {
-            if e.message.contains("duplicate key") {
-                let key = e.message.trim_start_matches("duplicate key: ");
-                YamlDuplicateKeyError::new_err(format_i18n_error("duplicate-key", &[("key", key)]))
-            } else if e.message.contains("max depth exceeded") {
-                YamlMaxDepthError::new_err(format_i18n_error(
-                    "max-depth-exceeded",
-                    &[("max_depth", &max_depth.to_string())],
-                ))
-            } else if e.line > 0 {
-                let msg = format_source_snippet(yaml, e.line, e.col, &e.message);
-                YamlParseError::new_err(msg)
-            } else {
-                YamlParseError::new_err(format_i18n_error(
-                    "yaml-parse-error",
-                    &[("detail", &e.message)],
-                ))
-            }
-        })
+        .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     let has_anchors = yaml.bytes().any(|b| b == b'&');
     asts.iter()
@@ -267,12 +191,13 @@ pub(crate) fn safe_loads(
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None) -> "StreamIterator | None")]
+#[pyo3(signature = (yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000) -> "StreamIterator | None")]
 /// Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
 pub(crate) fn parse_stream(
     py: Python,
     yaml: &Bound<'_, PyAny>,
     on_event: Option<Py<PyAny>>,
+    max_depth: usize,
 ) -> PyResult<Py<PyAny>> {
     let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
         s
@@ -292,17 +217,8 @@ pub(crate) fn parse_stream(
 
     if let Some(callback) = on_event {
         let events = py.detach(|| {
-            crate::parser::parse_stream(&yaml_str).map_err(|e| {
-                if e.line > 0 {
-                    let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
-                    YamlParseError::new_err(msg)
-                } else {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
-                }
-            })
+            crate::parser::parse_stream_with_options(&yaml_str, max_depth)
+                .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
         })?;
 
         Python::attach(|py| -> PyResult<()> {
@@ -319,17 +235,8 @@ pub(crate) fn parse_stream(
         Ok(py.None())
     } else {
         let events = py.detach(|| {
-            crate::parser::parse_stream(&yaml_str).map_err(|e| {
-                if e.line > 0 {
-                    let msg = format_source_snippet(&yaml_str, e.line, e.col, &e.message);
-                    YamlParseError::new_err(msg)
-                } else {
-                    YamlParseError::new_err(format_i18n_error(
-                        "yaml-parse-error",
-                        &[("detail", &e.message)],
-                    ))
-                }
-            })
+            crate::parser::parse_stream_with_options(&yaml_str, max_depth)
+                .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
         })?;
 
         let iter = StreamIterator { events, index: 0 };
@@ -380,12 +287,13 @@ pub(crate) fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()>
 }
 
 #[pyfunction]
-#[pyo3(signature = (path: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]")]
+#[pyo3(signature = (path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]")]
 /// Read a Markdown file and extract YAML front matter, returning `(frontmatter, body)`.
 pub(crate) fn read_markdown(
     py: Python,
     path: &str,
     schema: &str,
+    max_depth: usize,
 ) -> PyResult<(Option<Py<PyAny>>, String)> {
     let content = py.detach(|| {
         std::fs::read_to_string(path).map_err(|e| {
@@ -395,16 +303,17 @@ pub(crate) fn read_markdown(
             ))
         })
     })?;
-    read_markdown_str(py, &content, schema)
+    read_markdown_str(py, &content, schema, max_depth)
 }
 
 #[pyfunction]
-#[pyo3(signature = (content: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]")]
+#[pyo3(signature = (content: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]")]
 /// Extract YAML front matter from a Markdown string, returning `(frontmatter, body)`.
 pub(crate) fn read_markdown_str(
     _py: Python,
     content: &str,
     schema: &str,
+    max_depth: usize,
 ) -> PyResult<(Option<Py<PyAny>>, String)> {
     let content = content.trim_start();
     let schema_enum = parse_schema(schema)?;
@@ -417,17 +326,14 @@ pub(crate) fn read_markdown_str(
 
         if !frontmatter.is_empty() {
             return Python::attach(|py| {
-                let ast = crate::parser::parse(frontmatter, schema_enum).map_err(|e| {
-                    if e.line > 0 {
-                        let msg = format_source_snippet(frontmatter, e.line, e.col, &e.message);
-                        YamlParseError::new_err(msg)
-                    } else {
-                        YamlParseError::new_err(format_i18n_error(
-                            "yaml-parse-error",
-                            &[("detail", &e.message)],
-                        ))
-                    }
-                })?;
+                let ast = crate::parser::parse_with_options(
+                    frontmatter,
+                    true,
+                    schema_enum,
+                    max_depth,
+                    false,
+                )
+                .map_err(|e| parse_error_to_py_err(e, frontmatter, max_depth))?;
                 Ok((
                     Some(node_to_pyobject(&ast, py, schema_enum)?),
                     markdown_content.to_string(),
@@ -509,5 +415,3 @@ pub(crate) fn clear_tag_handlers() {
 pub(crate) fn remove_tag(name: &str) {
     tag_registry::remove(name);
 }
-
-use crate::py::format_source_snippet;

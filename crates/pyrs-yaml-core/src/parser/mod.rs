@@ -1,18 +1,10 @@
 pub mod stream;
 pub mod yaml;
 
-pub use crate::parser::stream::{StreamEvent, StreamEventType, parse_stream};
-
-/// Error detail for YAML parsing failures, carrying line/column information.
-#[derive(Debug, Clone)]
-pub struct ParseErrorDetail {
-    /// Human-readable error message.
-    pub message: String,
-    /// Line number (0-indexed) where the error occurred.
-    pub line: usize,
-    /// Column number (0-indexed) where the error occurred.
-    pub col: usize,
-}
+pub use crate::error::ParseError;
+pub use crate::parser::stream::{
+    StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
+};
 
 use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
 use crate::parser::yaml::YamlSchema;
@@ -60,7 +52,7 @@ fn is_null_key(key: &CustomNode) -> bool {
 /// ```
 ///
 /// Parse a YAML string into a CustomNode AST using granit-parser
-pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseErrorDetail> {
+pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseError> {
     parse_with_options(yaml, true, schema, 1000, false)
 }
 
@@ -84,7 +76,7 @@ pub fn parse_with_options(
     _schema: YamlSchema,
     max_depth: usize,
     allow_duplicate_keys: bool,
-) -> Result<CustomNode, ParseErrorDetail> {
+) -> Result<CustomNode, ParseError> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(CustomNode::plain_null());
@@ -100,7 +92,7 @@ pub fn parse_with_options(
 
     parser
         .load(&mut receiver, true)
-        .map_err(|e| ParseErrorDetail {
+        .map_err(|e| ParseError::Syntax {
             message: format!("YAML parse error: {}", e),
             line: 0,
             col: 0,
@@ -111,11 +103,7 @@ pub fn parse_with_options(
     }
 
     if receiver.max_depth_exceeded {
-        return Err(ParseErrorDetail {
-            message: format!("YAML parse error: max depth exceeded (max={})", max_depth),
-            line: 0,
-            col: 0,
-        });
+        return Err(ParseError::MaxDepthExceeded(max_depth));
     }
 
     // Get the parsed node (handle empty documents)
@@ -143,7 +131,7 @@ pub fn parse_with_options(
 /// 返回 `Err(String)`，格式为 `"YAML parse error: document #{doc_index} at <行号>:<列号>: <消息>"`。
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
-pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, ParseErrorDetail> {
+pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, ParseError> {
     parse_all_with_options(yaml, true, schema, 1000, false)
 }
 
@@ -154,7 +142,7 @@ pub fn parse_all_with_options(
     _schema: YamlSchema,
     max_depth: usize,
     allow_duplicate_keys: bool,
-) -> Result<Vec<CustomNode>, ParseErrorDetail> {
+) -> Result<Vec<CustomNode>, ParseError> {
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(Vec::new());
@@ -167,7 +155,7 @@ pub fn parse_all_with_options(
 
     parser
         .load(&mut receiver, true)
-        .map_err(|e| ParseErrorDetail {
+        .map_err(|e| ParseError::Syntax {
             message: format!("YAML parse error: {}", e),
             line: 0,
             col: 0,
@@ -179,11 +167,7 @@ pub fn parse_all_with_options(
     }
 
     if receiver.max_depth_exceeded {
-        return Err(ParseErrorDetail {
-            message: format!("YAML parse error: max depth exceeded (max={})", max_depth),
-            line: 0,
-            col: 0,
-        });
+        return Err(ParseError::MaxDepthExceeded(max_depth));
     }
 
     // Collect all documents from receiver
@@ -416,7 +400,7 @@ struct AstReceiver<'a> {
     /// When false, duplicate mapping keys cause a parse error
     allow_duplicate_keys: bool,
     /// Stored duplicate key error (since on_event can't return Result)
-    duplicate_key_error: Option<ParseErrorDetail>,
+    duplicate_key_error: Option<ParseError>,
     /// Whether any `<<` merge key was detected during parsing
     has_merge_key: bool,
 }
@@ -581,11 +565,7 @@ impl<'a> AstReceiver<'a> {
                                     k => format!("{:?}", k),
                                 };
                                 o.insert(node);
-                                self.duplicate_key_error = Some(ParseErrorDetail {
-                                    message: format!("duplicate key: {}", key_str),
-                                    line: 0,
-                                    col: 0,
-                                });
+                                self.duplicate_key_error = Some(ParseError::DuplicateKey(key_str));
                             }
                         };
                     }

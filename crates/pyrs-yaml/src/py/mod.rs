@@ -21,6 +21,36 @@ pub mod python_types;
 
 use pyo3::prelude::*;
 
+use crate::error::ParseError;
+use crate::py::convert::format_i18n_error;
+use crate::{YamlDuplicateKeyError, YamlMaxDepthError, YamlParseError};
+
+/// Map a core [`ParseError`] to the matching Python exception.
+///
+/// Preserves the historical Python-facing behavior:
+/// - `DuplicateKey` → `YamlDuplicateKeyError`
+/// - `MaxDepthExceeded` → `YamlMaxDepthError`
+/// - `Syntax` with a source position → `YamlParseError` with a snippet
+/// - fallback → `YamlParseError` with the i18n message
+pub(crate) fn parse_error_to_py_err(e: ParseError, source: &str, max_depth: usize) -> PyErr {
+    match e {
+        ParseError::DuplicateKey(key) => {
+            YamlDuplicateKeyError::new_err(format_i18n_error("duplicate-key", &[("key", &key)]))
+        }
+        ParseError::MaxDepthExceeded(_) => YamlMaxDepthError::new_err(format_i18n_error(
+            "max-depth-exceeded",
+            &[("max_depth", &max_depth.to_string())],
+        )),
+        ParseError::Syntax { message, line, col } if line > 0 => {
+            YamlParseError::new_err(format_source_snippet(source, line, col, &message))
+        }
+        ParseError::Syntax { message, .. } => YamlParseError::new_err(format_i18n_error(
+            "yaml-parse-error",
+            &[("detail", &message)],
+        )),
+    }
+}
+
 /// Format a YAML parse error with source context and caret marker.
 ///
 /// Output:

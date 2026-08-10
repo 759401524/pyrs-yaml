@@ -5,6 +5,7 @@
 
 pub mod ast;
 pub mod editing;
+pub mod error;
 pub mod i18n;
 pub mod parser;
 pub mod serializer;
