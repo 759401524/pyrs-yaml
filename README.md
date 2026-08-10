@@ -18,11 +18,12 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 - **YAML 1.2 compliant** - Uses granit-parser for full YAML 1.2 support with native comment preservation
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - **In-Place Editing** - Edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
-- **High Performance** - Rust backend, see [benchmarks](crates/pyrs-yaml/benches/yaml_bench.rs)
+- **High Performance** - Rust backend, 7× faster `safe_dump`/`from_dict` vs v0.10 (direct writer, no intermediate AST); fast-path `safe_load`/`safe_loads` skips anchor tracking when none present
+- **Depth-limited parsing** - `max_depth` (default 1000) on `parse`, `parse_file`, `parse_all_docs`, `parse_stream`, `safe_load`, `safe_loads`, `read_markdown`, `read_markdown_str` to prevent deep nesting attacks
 - **NumPy ndarray support** - `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` serialize `numpy.ndarray` of any dimension (0-D through N-D) with zero-copy Rust dispatch
 - **JSON Schema validation** - `YamlDocument.validate(schema)` validates parsed documents against JSON Schema; `YamlValidateError` for failures
 - **Async I/O** - `safe_dumps_async` / `safe_dump_async` / `safe_loads_async` / `safe_load_async` via `asyncio.run_in_executor`
-- **Incremental re-parse** - `doc.source()` + `doc.reparse()` for re-parsing stored YAML in-place with different options
+- **Incremental re-parse** - `doc.source()` + `doc.reparse()` for re-parsing stored YAML in-place with different options (e.g. `schema="yaml1.1"`)
 - **JSON serialization** - `doc.to_json()` exports documents to standard JSON
 - **Duplicate keys** - `allow_duplicate_keys=True` opts into last-value-wins; `YamlDuplicateKeyError` otherwise
 - **Custom tag handlers** - `register_tag` with priority-based chaining, `YamlTagSkip`, `remove_tag`/`clear_tag_handlers`
@@ -261,14 +262,20 @@ cfg.name  # "Alice"
 doc = pyrs_yaml.parse(yaml_str)
 doc = pyrs_yaml.parse(yaml_bytes)
 
-# Parse with options
-doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
+# Parse with options (max_depth, schema, allow_duplicate_keys)
+doc = pyrs_yaml.parse(yaml_str, resolve_merges=False, max_depth=500, schema="yaml1.1")
 
 # Parse YAML file
 doc = pyrs_yaml.parse_file("config.yaml")
 
 # Parse multiple YAML documents
 docs = pyrs_yaml.parse_all_docs(yaml_str)
+
+# Stream parsing (on_event callback)
+def handler(event):
+    print(event)
+    return True  # return False to stop
+iter = pyrs_yaml.parse_stream(yaml_str, on_event=handler, max_depth=1000)
 
 # Convert to YAML string (with options)
 yaml_str = doc.to_yaml()
@@ -288,16 +295,28 @@ len(doc)
 # Iterate
 for key in doc:
     print(key, doc[key])
+
+# Dump to YAML from dict
+yaml_str = pyrs_yaml.from_dict(data)
+
+# i18n language management
+pyrs_yaml.set_language("zh-CN")
+pyrs_yaml.get_language()  # "zh-CN"
+pyrs_yaml.list_languages()  # ["en", "zh-CN"]
+pyrs_yaml.detect_language()  # auto-detect from environment
+pyrs_yaml.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
 ```
 
 ### PyYAML Compatible API
 
 ```python
-# Load YAML to dict
+# Load YAML to dict (supports schema and max_depth)
 data = pyrs_yaml.safe_load(yaml_str)
+data = pyrs_yaml.safe_load(yaml_str, schema="yaml1.1", max_depth=500)
 
 # Load multiple documents
 docs = pyrs_yaml.safe_loads(yaml_str)
+docs = pyrs_yaml.safe_loads(yaml_str, allow_duplicate_keys=True)
 
 # Dump dict to YAML
 yaml_str = pyrs_yaml.safe_dump(data)
@@ -314,29 +333,18 @@ pyrs_yaml.dump_file(data, "output.yaml")
 # Extract YAML frontmatter from markdown
 frontmatter, content = pyrs_yaml.read_markdown("post.md")
 frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text)
-
-# i18n language management
-pyrs_yaml.set_language("zh-CN")
-pyrs_yaml.get_language()  # "zh-CN"
-pyrs_yaml.list_languages()  # ["en", "zh-CN"]
-pyrs_yaml.detect_language()  # auto-detect from environment
-pyrs_yaml.negotiate_language(["zh-CN", "en"], "en")  # "zh-CN"
+frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text, max_depth=200)
 ```
 
 ## Performance
 
-Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark_crosslib.py` (Python). See [benchmarks docs](docs/en/performance/benchmarks.md) for the full cross-library comparison against PyYAML and ruamel.yaml:
+Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark_crosslib.py` (Python). See [benchmarks docs](docs/en/performance/benchmarks.md) for the full cross-library comparison against PyYAML and ruamel.yaml.
 
-| Operation | Time |
-|-----------|------|
-| Parse (small, ~2 keys) | ~1.7 µs |
-| Parse (medium, ~30 keys) | ~12 µs |
-| Parse (large, ~60 keys) | ~38 µs |
-| Serialize (small) | ~4.4 µs |
-| Serialize (medium) | ~4.7 µs |
-| Serialize (large) | ~5.5 µs |
-| Roundtrip (small) | ~5.9 µs |
-| Roundtrip (large) | ~45 µs |
+**v0.11 highlights (vs v0.10):**
+
+- `safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: **7× faster** — direct writer eliminates intermediate `CustomNode` AST
+- `safe_load` / `safe_loads` / `to_dict`: **fast-path** — skips anchor tracking when input has no `&` characters
+- `resolve_core_type`: **first-byte dispatch** — non-numeric/boolean scalars return `Str` immediately
 
 ## Development
 
