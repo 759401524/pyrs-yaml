@@ -1,7 +1,10 @@
 ---
-
 title: コーディング基準
-lang: ja
+description: pyrs-yaml に貢献する際のコーディング基準を説明します。Rust、Python、Git の各規約をカバーします。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml に貢献する際は、以下の基準に従ってください。
 

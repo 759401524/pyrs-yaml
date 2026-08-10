@@ -1,13 +1,16 @@
 ---
-
 title: 快速开始
-lang: zh
+description: 帮助您在几分钟内快速上手 pyrs-yaml，涵盖安装、解析、序列化、往返保留和就地编辑。
+tags:
+  - docs
+status: new
+---
 
-# 快速开始
+## 快速开始
 
 本指南将帮助您在几分钟内快速上手 pyrs-yaml。
 
-## 1. 安装
+### 1. 安装
 
 该包尚未发布到 PyPI。从源码安装：
 
@@ -17,7 +20,7 @@ cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
-## 2. 解析 YAML
+### 2. 解析 YAML
 
 ```python
 import pyrs_yaml
@@ -35,7 +38,7 @@ print(doc.get("age"))  # 30
 print(doc.get("email"))  # alice@example.com
 ```
 
-## 3. 转换为 Python 对象
+### 3. 转换为 Python 对象
 
 ```python
 # 使用 safe_load 获得 PyYAML 兼容行为
@@ -52,7 +55,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))  # <class 'list'>
 ```
 
-## 4. 序列化为 YAML
+### 4. 序列化为 YAML
 
 ```python
 # 将 Python dict 转换回 YAML
@@ -64,7 +67,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-## 5. 保留格式（往返）
+### 5. 保留格式（往返）
 
 ```python
 # pyrs-yaml 的核心优势
@@ -94,7 +97,7 @@ assert "# 服务器配置" in output
 assert "&db" in output
 ```
 
-## 6. 就地编辑
+### 6. 就地编辑
 
 ```python
 # 编辑已解析的文档，不丢失注释或格式
@@ -118,7 +121,7 @@ print(doc.to_yaml())
 
 参见 [就地编辑指南](guides/editing.md) 了解完整 API。
 
-## 7. 从文件读取 YAML
+### 7. 从文件读取 YAML
 
 ```python
 # 直接解析 YAML 文件
@@ -126,7 +129,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-## 8. 多文档解析
+### 8. 多文档解析
 
 ```python
 # 解析多个 YAML 文档
@@ -145,7 +148,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 9. NumPy ndarray 支持
+### 9. NumPy ndarray 支持
 
 pyrs-yaml 可以将 `numpy.ndarray` 对象直接序列化为 YAML。这对于保存科学数据、模型权重或任何多维数组为人类可读格式非常有用。
 
@@ -177,7 +180,7 @@ loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-### 支持的 NumPy 数据类型
+#### 支持的 NumPy 数据类型
 
 | NumPy 数据类型 | YAML 输出 | 备注 |
 |----------------|-----------|------|
@@ -187,7 +190,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` 字符串 | 无原生 YAML 复数类型 |
 | `bool` | `true` / `false` | — |
 
-## 下一步
+### 下一步
 
 - **[功能特性](features.md)** — 探索所有支持的 YAML 功能
 - **[解析指南](guides/parsing.md)** — 高级解析选项

@@ -1,7 +1,10 @@
 ---
-
 title: 開発環境のセットアップ
-lang: ja
+description: pyrs-yaml に貢献するための開発環境のセットアップ手順を説明します。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml に貢献するための環境をセットアップします。
 

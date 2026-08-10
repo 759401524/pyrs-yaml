@@ -1,6 +1,9 @@
 ---
 title: 就地编辑
-lang: zh
+description: 使用 pyrs-yaml 就地编辑 YAML 文档的完整指南，支持路径 API 和 Node API 操作。
+tags:
+  - docs
+status: new
 ---
 
 pyrs-yaml 允许您**就地编辑已解析的文档**，同时保留所有格式元数据（注释、锚点、标签、标量样式、流式/块式风格）——无需手动拼接字符串，也不会丢失任何保真度。
@@ -198,6 +201,21 @@ print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 
 `Node` 提供树形 API：`node.parent`、`node.children`、`node.walk()`（深度优先迭代器）、`node.filter(predicate)` 和 `node.to_yaml()`。
 
+=== "文档路径 API"
+
+    ```python
+    doc.set("$.db.host", "db.example.com")
+    doc.get("$.db.host")
+    ```
+
+=== "Node API"
+
+    ```python
+    node = doc.node().find("$.db.host")
+    node.set_value("db.example.com")
+    print(node.value)
+    ```
+
 ### 遍历 AST（`doc.walk()` / `doc.scalars()`）
 
 `doc.walk()` 和 `doc.scalars()` 是**Rust 后端**的遍历方法，直接产生 `Node` 对象，无需将整个 AST 转换为 Python 字典。与 `Node.walk()`（底层调用 `to_dict()`）不同，这些方法直接遍历 AST：
@@ -260,6 +278,9 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 通配符/深度扫描的结果**不能直接编辑** — 可用来定位路径，然后用 `set()`/`insert()` 等进行编辑。
 
 ## 别名与合并键
+
+!!! warning "穿透别名编辑"
+    穿过别名导航到合并后的键进行编辑会抛出 `YamlEditError`，因为被引用的节点位于其他位置。请直接设置别名自身的路径以原地替换。
 
 当设置别名节点（`*name`）自身的路径时，它会被**原地**替换：
 
@@ -342,6 +363,9 @@ print(doc.to_yaml())
 注释、锚点、标签、标量样式以及流式/块式格式全程保留。
 
 ## 性能
+
+!!! tip "字节级拼接编辑"
+    对于默认布局文档，编辑以字节级分片拼接方式应用，比全量重新序列化快 100 倍。
 
 对于**默认布局**文档（块式风格、2空格缩进、无CRLF/BOM），编辑以**字节级分片拼接**方式应用 — 仅重新生成触碰区域，未触碰文本按字节复制。这使编辑+刷新比全量重新序列化**快100倍**。
 

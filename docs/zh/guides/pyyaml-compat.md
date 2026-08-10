@@ -1,7 +1,10 @@
 ---
-
 title: PyYAML 兼容性
-lang: zh
+description: pyrs-yaml 与 PyYAML 的兼容性说明，包含迁移指南和 API 差异对比。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml 提供了 PyYAML 的**直接替换**，使迁移变得简单。
 

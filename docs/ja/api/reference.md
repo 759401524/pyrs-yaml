@@ -1,7 +1,13 @@
 ---
-
 title: モジュール リファレンス
-lang: ja
+description: pyrs_yaml モジュールの完全な API リファレンス。コア関数、変換関数、タグレジストリ、例外をカバーします。
+tags:
+  - docs
+status: new
+---
+
+!!! tip "バージョン互換性"
+    pyrs-yaml は ABI3 アプローチにより、単一のホイールで Python 3.8 から 3.15 まで対応しています。再コンパイルは不要です。
 
 `pyrs_yaml` モジュールの完全な API リファレンス。
 
@@ -35,7 +41,7 @@ doc = pyrs_yaml.parse(b"key: value")
 doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 ```
 
-#### `parse_file()`
+### `parse_file()`
 
 YAML ファイルをパースします。
 
@@ -60,7 +66,7 @@ parse_file(path: str) -> YamlDocument
 doc = pyrs_yaml.parse_file("config.yaml")
 ```
 
-#### `parse_all_docs()`
+### `parse_all_docs()`
 
 文字列から複数の YAML ドキュメントをパースします。
 
@@ -94,7 +100,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 ```
 
-#### `safe_loads()`
+### `safe_loads()`
 
 複数の YAML ドキュメントをパースします。
 
@@ -104,7 +110,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 
 **以下と同等:** PyYAML の `yaml.safe_loads()`
 
-#### `safe_dump()`
+### `safe_dump()`
 
 Python オブジェクトを YAML にシリアライズします。
 
@@ -116,7 +122,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 
 **サポートされる入力型:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, および **`numpy.ndarray`** (すべての次元と数値 dtype: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
-#### `safe_dumps()`
+### `safe_dumps()`
 
 `safe_dump()` のエイリアス。
 
@@ -134,7 +140,7 @@ Python dict を YAML 文字列に変換します。dict の値として `numpy.n
 from_dict(data: dict[str, Any]) -> str
 ```
 
-#### `from_json()`
+### `from_json()`
 
 JSON 文字列を YAML 文字列に変換します。
 
@@ -142,7 +148,7 @@ JSON 文字列を YAML 文字列に変換します。
 from_json(json_str: str) -> str
 ```
 
-#### `dump_file()`
+### `dump_file()`
 
 Python オブジェクトを YAML にシリアライズしてファイルに書き込みます。`dict`, `list`, または `numpy.ndarray` を受け付けます。
 
@@ -219,19 +225,19 @@ print(user.name)  # Alice
 register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
 ```
 
-**例（デコレータ）:**
+=== "デコレータ"
 
-```python
-@pyrs_yaml.register_tag("!custom")
-def handler(node):
-    return f"custom:{node}"
-```
+    ```python
+    @pyrs_yaml.register_tag("!custom")
+    def handler(node):
+        return f"custom:{node}"
+    ```
 
-**例（命令形式）:**
+=== "命令形式"
 
-```python
-pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
-```
+    ```python
+    pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
+    ```
 
 ### `remove_tag()`
 
@@ -273,6 +279,18 @@ parse_stream(yaml: str) -> StreamIterator
 
 各ステップで 1 つのイベント dict を生成する `StreamIterator` を返します。`YAML().load_stream()`（Python 値に解決される）とは異なり、生のトークンストリームを公開します。
 
+### `YamlStream` { #yamlstream }
+
+`YamlStream` クラスは、`YAML().load_stream()` と `YAML().load_stream_file()` が返す遅延イベントイテレータです。ドキュメント全体をメモリに読み込まずに、パース済みのイベント dict を一度に 1 つ生成します。
+
+```python
+stream = yaml.load_stream_file("large.yaml")
+for event in stream:
+    print(event)
+```
+
+完全な API の詳細は [`YamlStream`](yaml-instance.md) を参照してください。
+
 ## 非同期関数
 
 `asyncio.run_in_executor` を使用した非同期 I/O ラッパー。イベントループコンテキストではノンブロッキング。
@@ -285,7 +303,7 @@ Python オブジェクトを YAML 文字列にシリアライズ (非同期)。
 async def safe_dumps_async(data: Any) -> str
 ```
 
-#### `safe_dump_async()`
+### `safe_dump_async()`
 
 Python オブジェクトを stdout に YAML として出力 (非同期)。
 
@@ -293,7 +311,7 @@ Python オブジェクトを stdout に YAML として出力 (非同期)。
 async def safe_dump_async(data: Any) -> None
 ```
 
-#### `safe_loads_async()`
+### `safe_loads_async()`
 
 YAML 文字列をネイティブ Python オブジェクトにパース (非同期)。
 
@@ -301,7 +319,7 @@ YAML 文字列をネイティブ Python オブジェクトにパース (非同�
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 ```
 
-#### `safe_load_async()`
+### `safe_load_async()`
 
 YAML 文字列をネイティブ Python オブジェクトにパース (非同期)。
 
@@ -336,7 +354,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 
 **戻り値:** `(frontmatter_dict, content_string)`。Front Matterがない場合、`frontmatter` は `None`。
 
-#### `read_markdown_str()`
+### `read_markdown_str()`
 
 Markdown 文字列から YAML Front Matterを抽出します。
 
@@ -356,7 +374,7 @@ set_language(lang: str) -> None
 
 サポート: `"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
-#### `get_language()`
+### `get_language()`
 
 現在の言語を取得します。
 
@@ -364,7 +382,7 @@ set_language(lang: str) -> None
 get_language() -> str
 ```
 
-#### `list_languages()`
+### `list_languages()`
 
 すべてのサポートされる言語を一覧表示します。
 
@@ -372,7 +390,7 @@ get_language() -> str
 list_languages() -> list[str]
 ```
 
-#### `detect_language()`
+### `detect_language()`
 
 環境変数からユーザーの優先言語を自動検出します。
 
@@ -380,7 +398,7 @@ list_languages() -> list[str]
 detect_language() -> str
 ```
 
-#### `negotiate_language()`
+### `negotiate_language()`
 
 BCP 47 言語ネゴシエーション。
 

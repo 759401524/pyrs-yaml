@@ -1,13 +1,14 @@
 ---
-
 title: pyrs-yaml
-lang: ko
-
-# 높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨
-
+description: 높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨
+tags:
+  - docs
+status: new
 ---
 
-## pyrs-yaml를 선택하는 이유
+## 높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨
+
+### pyrs-yaml를 선택하는 이유
 
 대부분의 Python YAML 라이브러리는 성능 또는 정확도 중 하나를 희생합니다. pyrs-yaml는 둘을 모두 제공합니다:
 
@@ -15,7 +16,7 @@ lang: ko
 - **ruamel.yaml** (Python) — 서식을 유지하지만 pyrs-yaml보다 **5–10배 느림**
 - **pyrs-yaml** (Rust) — PyYAML보다 **25–40배 빠르며** 모든 것을 유지
 
-### 주요 기능
+#### 주요 기능
 
 - **YAML 1.2 준수** — saphyr-parser 기반 (YAML 테스트 스위트 98.1% 통과율)
 - **완벽한 순환 파싱** — 주석, 앵커, 태그, chomp, 스칼라 스타일 및 흐름/블록 서식 유지
@@ -28,7 +29,7 @@ lang: ko
 - **국제화 오류 메시지** — `set_language("ko")`로 이중 언어 오류 보고
 - **NumPy ndarray 지원** — 모든 차원의 `numpy.ndarray`를 제로 복사 Rust 디스패치로 YAML에 직렬화
 
-### 빠른 시작
+#### 빠른 시작
 
 ```bash
 pip install pyrs-yaml
@@ -51,7 +52,7 @@ doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
 ```
 
-### PyYAML와의 성능 비교
+#### PyYAML와의 성능 비교
 
 | Operation | pyrs-yaml | PyYAML | Speedup |
 |-----------|-----------|--------|---------|
@@ -64,8 +65,8 @@ assert doc.to_yaml() == original
 
 ---
 
-## [시작하기 →](quick-start.md)
+### [시작하기 →](quick-start.md)
 
-## [API 참조 보기 →](api/reference.md)
+### [API 참조 보기 →](api/reference.md)
 
-## [GitHub에서 보기 →](https://github.com/759401524/pyrs-yaml)
+### [GitHub에서 보기 →](https://github.com/759401524/pyrs-yaml)

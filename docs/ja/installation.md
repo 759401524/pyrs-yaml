@@ -1,7 +1,10 @@
 ---
-
 title: Installation
-lang: ja
+description: pyrs-yaml のインストール方法、必須要件、フリースレッドビルドの制約、インストール確認手順を説明します。
+tags:
+  - docs
+status: new
+---
 
 ## 必須要件
 
@@ -20,7 +23,10 @@ uv run --frozen maturin develop --release
 
 ## フリースレッド Python (cp314t)
 
-CPython 3.14t 向けのフリースレッド（GIL なし）ホイールは `--no-default-features` でビルドされるため、NumPy 統合は**含まれません**：フリースレッドビルドで `numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
+!!! warning "フリースレッドビルドは NumPy 非対応"
+    フリースレッドビルドで `numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
+
+CPython 3.14t 向けのフリースレッド（GIL なし）ホイールは `--no-default-features` でビルドされるため、NumPy 統合は**含まれません**。
 
 ## 開発用インストール
 
@@ -33,6 +39,9 @@ uv run --frozen maturin develop --release
 ```
 
 ## インストールの確認
+
+???+ tip "インストールの確認"
+    以下のコードスニペットを実行して、インストールが正しく完了したか確認できます。
 
 ```python
 import pyrs_yaml

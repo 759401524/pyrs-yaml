@@ -1,7 +1,10 @@
 ---
-
 title: 코드 표준
-lang: ko
+description: pyrs-yaml 기여를 위한 코드 표준 — Rust 스타일, PyO3 시그니처, GIL 관리, Python 스타일, Git
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml에 기여할 때 다음 표준을 따르세요.
 

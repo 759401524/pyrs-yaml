@@ -1,13 +1,14 @@
 ---
-
 title: pyrs-yaml
-lang: ja
-
-# 高性能な Python YAML ライブラリ、完璧な Round-Trip サポート、Rust と PyO3 で構築されています。
-
+description: 高性能な Python YAML ライブラリ。完璧な Round-Trip サポートを備え、Rust と PyO3 で構築されています。
+tags:
+  - docs
+status: new
 ---
 
-## なぜ pyrs-yaml を選ぶべきか？
+## 高性能な Python YAML ライブラリ、完璧な Round-Trip サポート、Rust と PyO3 で構築されています。
+
+### なぜ pyrs-yaml を選ぶべきか？
 
 ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。 pyrs-yaml の両方を提供します:
 
@@ -15,7 +16,7 @@ lang: ja
 - **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **5–10 倍遅い**
 - **pyrs-yaml** (Rust) — PyYAML より **25–40 倍高速**、すべてを保持
 
-### 主要機能
+#### 主要機能
 
 - **YAML 1.2 準拠** — saphyr-parser 駆動（YAML テストスイート 98.1% 合格率）
 - **完璧なラウンドトリップ** — コメント、アンカー、タグ、チョンピング、スカラースタイル、フロー/ブロックフォーマットを保持
@@ -28,7 +29,7 @@ lang: ja
 - **国際化エラーメッセージ** — `set_language("ja")` でバイリンガルエラーレポート
 - **NumPy ndarray サポート** — 任意次元の `numpy.ndarray` をゼロコピー Rust ディスパッチで YAML にシリアライズ
 
-### クイックスタート
+#### クイックスタート
 
 ```bash
 pip install pyrs-yaml
@@ -51,7 +52,7 @@ doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
 ```
 
-### PyYAML との比較
+#### PyYAML との比較
 
 | Operation | pyrs-yaml | PyYAML | Speedup |
 |-----------|-----------|--------|---------|
@@ -64,8 +65,8 @@ assert doc.to_yaml() == original
 
 ---
 
-## [クイックスタート →](quick-start.md)
+### [クイックスタート →](quick-start.md)
 
-## [API リファレンスを参照 →](api/reference.md)
+### [API リファレンスを参照 →](api/reference.md)
 
-## [GitHub で見る →](https://github.com/759401524/pyrs-yaml)
+### [GitHub で見る →](https://github.com/759401524/pyrs-yaml)

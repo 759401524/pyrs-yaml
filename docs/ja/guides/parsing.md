@@ -1,14 +1,16 @@
 ---
-
 title: YAML のパース
-lang: ja
-
+description: pyrs-yaml で YAML をパースするすべての方法を説明します。基本パース、PyYAML 互換パース、入力型、エラーハンドリングをカバーします。
+tags:
+  - docs
+status: new
+---
 
 このガイドでは、pyrs-yaml で YAML をパースするすべての方法を説明します。
 
 ## 基本パース
 
-#### YAML 文字列のパース
+### YAML 文字列のパース
 
 ```python
 import pyrs_yaml
@@ -51,6 +53,9 @@ print(docs[1].get("name"))  # second
 
 ## PyYAML 互換パース
 
+!!! tip "PyYAML 互換の解析"
+    `safe_load` は PyYAML と同じ API を提供するため、既存のコードベースからの移行が容易です。
+
 ```python
 # ネイティブ Python 型を返す（dict, list, str, int など）
 data = pyrs_yaml.safe_load("key: value")
@@ -67,11 +72,17 @@ print(len(docs))  # 2
 - `bytes` — 有効な UTF-8 エンコードバイト列
 - `str` に BOM あり — 正しく処理される
 
-```python
-# str と bytes の両方を受け付ける
-doc1 = pyrs_yaml.parse("key: value")
-doc2 = pyrs_yaml.parse(b"key: value")
-```
+=== "str"
+
+    ```python
+    doc = pyrs_yaml.parse("key: value")
+    ```
+
+=== "bytes"
+
+    ```python
+    doc = pyrs_yaml.parse(b"key: value")
+    ```
 
 ## エラーハンドリング
 

@@ -1,9 +1,13 @@
 ---
-
 title: ベンチマーク
-lang: ja
+description: pyrs-yaml のパフォーマンスベンチマーク。パース、シリアライズ、ラウンドトリップの各指標を掲載します。
+tags:
+  - docs
+status: new
+---
 
-pyrs-yamlのパフォーマンスベンチマーク（作者のマシン：Windows 11、Python 3.12で測定）。
+!!! note "ベンチマーク環境"
+    ベンチマークは作者のマシン（Windows 11、Python 3.12）で測定されたものです。実際のパフォーマンスは環境によって異なります。
 
 ## 測定方法
 

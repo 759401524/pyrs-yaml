@@ -1,7 +1,10 @@
 ---
-
 title: 往復保存
-lang: ja
+description: pyrs-yaml の往復保存機能について説明します。パース、変更、シリアライズ後もフォーマットとメタデータを保持します。
+tags:
+  - docs
+status: new
+---
 
 これは pyrs-yaml の**最大の特徴** — Python YAML ライブラリの中でユニークな点です。
 

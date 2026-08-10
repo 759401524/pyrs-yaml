@@ -1,7 +1,10 @@
 ---
-
 title: 他ライブラリとの比較
-lang: ja
+description: pyrs-yaml を PyYAML や ruamel.yaml と比較。パフォーマンス、機能、移行パスをカバーします。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yamlを、最も人気のある2つのPython YAMLライブラリと比較します。
 

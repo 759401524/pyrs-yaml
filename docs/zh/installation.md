@@ -1,7 +1,10 @@
 ---
-
 title: Installation
-lang: zh
+description: pyrs-yaml 的安装方法和系统要求，包括从源码安装、自由线程 Python 支持说明和验证步骤。
+tags:
+  - docs
+status: new
+---
 
 ## 系统要求
 
@@ -24,6 +27,9 @@ uv run --frozen maturin develop --release
 
 CPython 3.14t 的自由线程（无 GIL）wheel 使用 `--no-default-features` 构建，因此**不包含** NumPy 集成：在自由线程构建上对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`。GIL 构建（Python 3.8–3.15）保留完整的 ndarray 序列化支持。
 
+!!! warning "自由线程构建不含 NumPy"
+    自由线程（cp314t）wheel 使用 `--no-default-features` 构建，因此不包含 NumPy 集成。在自由线程构建上对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`。
+
 ## 快速验证
 
 ```python
@@ -37,6 +43,9 @@ doc = pyrs_yaml.parse("key: value")
 assert doc.to_yaml() == "key: value\n"
 print("✓ 安装验证成功")
 ```
+
+???+ tip "验证安装"
+    运行以上代码可快速验证 pyrs-yaml 是否正确安装。如果输出版本号且断言通过，说明安装成功。
 
 ## 运行测试
 

@@ -1,7 +1,10 @@
 ---
-
 title: 编码标准
-lang: zh
+description: 贡献 pyrs-yaml 时需要遵循的编码标准，包括 Rust、Python 和 Git 规范。
+tags:
+  - docs
+status: new
+---
 
 贡献 pyrs-yaml 时请遵循以下标准。
 

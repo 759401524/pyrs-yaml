@@ -1,18 +1,21 @@
 ---
-
 title: Changelog
-lang: zh
+description: pyrs-yaml 项目的完整变更日志，记录所有版本的重要变更、新增功能和性能优化。
+tags:
+  - docs
+status: new
+---
 
-# 变更日志
+## 变更日志
 
 本文件记录该项目的所有重要变更。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-cn/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
-## [Unreleased]
+### [Unreleased]
 
-### 变更
+#### 变更
 
 - **Rust MSRV 提升至 1.96，edition 升级为 2024** — 两个 crate 均声明
   `rust-version = "1.96"` 和 `edition = "2024"`；CI 将 `build`/`test-freethreaded`
@@ -23,7 +26,7 @@ lang: zh
   `TAG_REGISTRY`（标签处理器存储）重构为 `std::sync::LazyLock`，
   移除了 `Mutex<Option<...>>` 间接层。
 
-### Performance
+#### Performance
 
 - **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer**
   — Python→YAML 序列化无需中间 `CustomNode` AST。
@@ -35,7 +38,7 @@ lang: zh
 - **`resolve_core_type`: first-byte dispatch whitelist** — 非数字/
   非布尔首字节立即返回 `Str`，避免常见情况下的 schema 解析开销。(#59)
 
-### Added
+#### Added
 
 - **`max_depth` 支持流式与 frontmatter API** — `parse_stream(yaml, on_event, max_depth)`、
   `read_markdown(path, schema, max_depth)`、`read_markdown_str(content, schema, max_depth)`
@@ -46,16 +49,16 @@ lang: zh
   YAML 字符串解析为 Pydantic 模型实例。两者均使用延迟导入，无硬性
   pydantic 依赖。(#61)
 
-### Internal
+#### Internal
 
 - **拆分 `py/mod.rs`** — 单体 1786 行模块拆分为
   `document.rs`（YamlDocument）、`yaml_instance.rs`（YAML 类）、
   `functions.rs`（模块级函数）、`stream_iterator.rs`、
   `walk_helpers.rs`。`mod.rs` 缩减至 128 行。(#61)
 
-## [v0.12.1] — 2026-08-06
+### [v0.12.1] — 2026-08-06
 
-### Added
+#### Added
 
 - **`set(create_missing=True)`** - 编辑路径上缺失的中间映射键会创建为嵌套映射
   （例如，对 `a: 1` 设置 `a.b.c` 会创建 `b` 和 `c`）；索引段缺失仍报错，
@@ -71,7 +74,7 @@ lang: zh
 - **Python doc.walk() 边界测试** - 9 个新测试，覆盖空文档、空值、
   深度嵌套、流集合、混合类型。
 
-### Changed
+#### Changed
 
 - **Monorepo workspace** - 源码拆分为 `crates/pyrs-yaml-core/`
   （纯 Rust，无 PyO3）和 `crates/pyrs-yaml/`（PyO3 绑定）。根
@@ -87,7 +90,7 @@ lang: zh
   文本通过 `Arc<str>` 共享分配；AST 节点缩减 8 字节，
   克隆变为引用计数递增而非深拷贝。
 
-### Fixed
+#### Fixed
 
 - **`set(create_missing=True)` 嵌套链构建** - 创建的映射链
   不再将第一段重复为嵌套键层级。
@@ -96,9 +99,9 @@ lang: zh
 - **简单映射键前的独立注释** - 往返之前会丢弃附加到
   简单键节点的独立注释；现在保留（两个回归测试）。
 
-## [0.11.7] - 2026-08-04
+### [0.11.7] - 2026-08-04
 
-### Changed
+#### Changed
 
 - **stub-build-check 替换为 release-guard** — 故意失败以复现
   v0.10.0 `--generate-stubs` 失败模式的总是失败的容器构建
@@ -108,15 +111,15 @@ lang: zh
   `test -f` 检查 `py.typed` 存在。任务现在在正确状态下给出绿色 CI，
   仅在回归时红色。
 
-### Added
+#### Added
 
 - **Numpy free-threaded 跟踪** — ROADMAP.md 现在跟踪 `rust-numpy`
   free-threaded 支持状态（PyO3/rust-numpy#476），作为 Rust
   绑定成熟后在 cp314t wheel 上重新启用 ndarray 序列化的依赖。
 
-## [0.11.6] - 2026-08-04
+### [0.11.6] - 2026-08-04
 
-### Changed
+#### Changed
 
 - **Free-threaded（cp314t）wheel 不再包含 numpy** — 使用
   `--no-default-features` 构建，rust-numpy 完全排除（更小的
@@ -124,7 +127,7 @@ lang: zh
   调用 `safe_dump` 会引发 `YamlTypeError`；GIL 构建（Python 3.8-3.15）
   保留完整的 ndarray 序列化。
 
-### Added
+#### Added
 
 - **Free-threaded CI 验证** — `test-freethreaded` 任务现在使用
   `--no-default-features` 构建和测试，与分发的 free-threaded
@@ -132,9 +135,9 @@ lang: zh
 - **安装文档** — `docs/{en,zh,ja,ko}` 注明 free-threaded
   wheel 不含 numpy（cp314t 上不可用 ndarray 序列化）。
 
-## [0.11.5] - 2026-08-04
+### [0.11.5] - 2026-08-04
 
-### Changed
+#### Changed
 
 - **解析器健壮性项目 3/4/5 通过 Phase 0 严格性审计关闭** —
   70 探针语料库（缩进、块映射键、流上下文）与 PyYAML 预言机对比，
@@ -144,15 +147,15 @@ lang: zh
   **99.75%（405/406）**。完整说明见 `ROADMAP.md` §v0.11.5
   和 `tests/test_strictness_audit.py`。
 
-### Added
+#### Added
 
 - `tests/test_strictness_audit.py` — 70 探针严格性回归语料库，
   固定当前拒绝/接受行为（两个方向），使未来解析器变更无法
   静默降低严格性或过度拒绝。
 
-## [0.11.4] - 2026-08-04
+### [0.11.4] - 2026-08-04
 
-### Fixed
+#### Fixed
 
 - 重复的空/空映射键不再报错（`: a\n: b`、`~: a\n~: b`）— 与
   yaml-test-suite 2JQS 匹配；真实重复键仍会引发 `YamlDuplicateKeyError`
@@ -161,16 +164,16 @@ lang: zh
 - 合规检测工具：`convert_special_chars` 通过正则表达式解码制表符 —
   任何 `—`/`‖` + `»` 序列均为一个制表符，修复制表符编码的套件用例
 
-### Changed
+#### Changed
 
 - YAML Test Suite 通过率阈值从 >75% 提升至 **≥95%**；当前通过率
   **99.75%**（405/406）
 - 记录已知偏差：`ZYU8`（`%YAML 1.1 1.2`）按设计拒绝（YAML 1.2
   语法无效，与 PyYAML/libyaml 一致）
 
-## [0.11.3] - 2026-08-03
+### [0.11.3] - 2026-08-03
 
-### Added
+#### Added
 
 - 流式写入：`YAML.dump_stream(file_obj, iterable)` /
   `YAML.dump_file(path, iterable)`，文档级恒定内存，自动 `---`
@@ -178,26 +181,26 @@ lang: zh
 - `YamlDocument` `with` 上下文管理器：快照/回滚事务作用域
 - `compliance_report()`：公开 YAML Test Suite 通过率报告（版本一致）
 
-### Changed
+#### Changed
 
 - 编辑爆发行偏移缓存：拼接层内部 O(N+edit) 传递（公开 API 不变）
 - `compute_compliance` 从测试移至 `pyrs_yaml.compliance`；版本不再硬编码
 
-### Fixed
+#### Fixed
 
 - 变更日志镜像漂移防护：prek 钩子 + CI 任务断言根/镜像
   `[Unreleased]` 同步
 - 发布存根预验证：CI 在 Release 前复现 v0.10.0 类 `--generate-stubs`
   容器失败
 
-## [0.11.2] - 2026-08-03
+### [0.11.2] - 2026-08-03
 
-### Added
+#### Added
 
 - `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`：
   O(锚点数 + 块) 内存的惰性事件迭代器
 
-### Performance
+#### Performance
 
 - **解析不再计算拼接资格** — O(文档) 布局检查现在在首次编辑时通过
   `YamlDocument.splice_checked` 惰性运行，恢复 v0.11.0 回归：
@@ -206,21 +209,21 @@ lang: zh
 - **线性游标布局检查** — 取代基于预计算行偏移的逐节点二分查找
   （单调源码顺序遍历）
 
-### Changed
+#### Changed
 
 - `parse_with_options` 返回 `CustomNode`（原为 `(CustomNode, bool)`）；
   拼接资格现在内置于 `YamlDocument` 并按需计算
 
-## [0.11.0] - 2026-08-02
+### [0.11.0] - 2026-08-02
 
-### Added
+#### Added
 
 - **精准序列化** — 字节级源码范围追踪；基于段的拼接 — 编辑仅重新生成
   触碰区域，未触碰文本按字节复制
 - proptest 保真度属性测试（新开发依赖）
 - 10MB 编辑-刷新基准测试（divan）
 
-### Changed
+#### Changed
 
 - `flush_source` 现在使用分段拼接；回退到全量序列化：流风格区域、
   非默认布局文档、合并键、CRLF/BOM 文档，以及 materialize 之后
@@ -228,9 +231,9 @@ lang: zh
 - 拼接编辑保留 `---`/`...`/指令标记行为未触碰字节
   （全量序列化之前会丢弃它们 — 设计上的行为差异）
 
-## [0.10.0] - 2026-08-01
+### [0.10.0] - 2026-08-01
 
-### Added
+#### Added
 
 - **就地编辑** — 编辑已解析的文档而不丢失格式元数据：
     - 路径 API：`doc.set(path, value)`、`doc.insert(path, index, value)`、
@@ -254,13 +257,13 @@ lang: zh
 - **编辑基准测试** — `benches/yaml_bench.rs` 新增 6 个 divan 基准
   （小到大文档的 set/insert/delete）
 
-### Changed
+#### Changed
 
 - `YamlDocument.source()` 现在返回 `str` 并在就地编辑后惰性重新序列化
 
-## [0.9.0] - 2026-08-01
+### [0.9.0] - 2026-08-01
 
-### Added
+#### Added
 
 - **Python 3.13、3.14 和 3.15 支持** — PyO3 `abi3-py38` wheel 覆盖
   Python 3.8-3.15（GIL 构建）；`abi3t` + `abi3t-py315` 提供
@@ -296,7 +299,7 @@ lang: zh
   `register_tag`、`parse_as`、`to_yaml_with_options` 和新异常
   对类型检查器可见
 
-### Changed
+#### Changed
 
 - CI Python 矩阵扩展：ubuntu、windows、macos 上的 3.8-3.14
 - 稳定 ABI：`abi3-py39` → `abi3-py38`（更广的 Python 3.8+ 支持），
@@ -311,7 +314,7 @@ lang: zh
   `[dependency-groups] test` 和 `.ci/requirements-test.txt`
   （通过 `uv sync` 在 ci.yml 中统一管理）
 
-### Fixed
+#### Fixed
 
 - **Windows DLL 加载** — 移除 `src/py/tag_registry.rs` 中的
   `#[cfg(test)]` 块，该块在 Windows 上破坏了 `import pyrs_yaml`
@@ -337,9 +340,9 @@ lang: zh
   现通过 `format_i18n_error` 在所有 4 个语言区域中传递
   （`src/i18n/locales/*.yml`）
 
-## [0.8.0] - 2026-07-30
+### [0.8.0] - 2026-07-30
 
-### Added
+#### Added
 
 - **`YAML()` 实例 API** — `YAML(typ="rt"|"safe"|"full", schema="core"|"yaml1.1", max_depth=1000)`，
   可复用配置；`.parse()`、`.safe_load()`、`.safe_loads()`、
@@ -355,15 +358,15 @@ lang: zh
 - **生命周期警告** — `Node.release()` 显式使节点失效；过期
   访问发出 `RuntimeWarning` + `YamlDocumentError`
 
-### Changed
+#### Changed
 
 - `parse()` / `safe_load()` 现在作为语法糖委托至
   `YAML().parse()` / `.safe_load()`
 - `YamlDocument` 现在存储 `version` 字段用于文档元数据
 
-## [0.7.1] - 2026-07-30
+### [0.7.1] - 2026-07-30
 
-### Added
+#### Added
 
 - **ryaml 基准对比** — `tests/test_benchmark.py` 现在与
   `ryaml`（Rust YAML 库） alongside PyYAML 和 ruamel.yaml 进行
@@ -383,15 +386,15 @@ lang: zh
   Criterion 组重写为 `#[divan::bench]` 属性
   （`Cargo.toml`、`benches/yaml_bench.rs`）
 
-### Changed
+#### Changed
 
 - CI 基准任务安装 `ryaml` 用于跨库对比
 - `benchmark_compare.py` 现在委托计时至 `pytest-benchmark`，
   作为特性对比/报告工具
 
-## [0.7.0] - 2026-07-29
+### [0.7.0] - 2026-07-29
 
-### Added
+#### Added
 
 - **序列化器 `max_depth` 守卫** — `serialize_node_internal` 现在
   跟踪递归深度，超出限制时引发 `YamlMaxDepthError`（默认 1000），
@@ -409,19 +412,19 @@ lang: zh
   结构化 JSON 输出和 CI 集成（`tests/test_benchmark.py` + 更新的
   `tests/test_performance.py`）
 
-### Changed
+#### Changed
 
 - `pytest-benchmark` 替换 Python 基准测试中的原始 `timeit`
 - CI 基准任务现在运行 `pytest --benchmark-json` 而非独立脚本
 
-### Removed
+#### Removed
 
 - `write_inline_comment` 方法 — 在所有调用点内联
 - 序列化器的 `Comment` 导入 — 不再需要
 
-## [0.6.0] - 2026-07-27
+### [0.6.0] - 2026-07-27
 
-### Added
+#### Added
 
 - **异步序列化** — `safe_dumps_async`、`safe_dump_async`、
   `safe_loads_async`、`safe_load_async`，通过 `asyncio.run_in_executor`
@@ -437,26 +440,26 @@ lang: zh
 - **29 个新测试** — 跨 `test_async.py`（8）、`test_validate.py`
   （14）、`test_reparse.py`（7）
 
-### Changed
+#### Changed
 
 - `YamlValidateError` 注册为新自定义异常（继承 `ValueError`）
 - `rust_i18n::i18n!` 宏路径更新为 `"src/i18n/locales"`
 - `validate_translations()` 测试路径更新以匹配新语言目录
 
-### Removed
+#### Removed
 
 - 删除冗余的 `src/i18n/en.ftl`、`src/i18n/zh-CN.ftl`（从未被
   rust-i18n 引用）
 - 将 `locales/*.yml` 移至 `src/i18n/locales/`（与 i18n 模块共置）
 
-### 依赖变更
+#### 依赖变更
 
 - 运行时依赖：`jsonschema>=4.25.1`
 - 开发依赖：`pytest-asyncio>=0.23`（从运行时移至开发依赖，不再固定）
 
-## [0.5.0] - 2026-07-27
+### [0.5.0] - 2026-07-27
 
-### Fixed
+#### Fixed
 
 - **`Serializer::write_node`** — `block_mapping`/`block_sequence`
   中 `.unwrap()` on `values.iter().next().unwrap()` 替换为安全
@@ -466,9 +469,9 @@ lang: zh
 - **开发文档** — `AGENTS.md` 更新，为 Python 命令添加强制
   `uv run` 前缀，Rust 命令直接使用 `cargo`
 
-## [0.4.0] - 2026-07-27
+### [0.4.0] - 2026-07-27
 
-### Added
+#### Added
 
 - **132 个新功能填补测试** — 全面覆盖之前未测试的 API
 - **i18n 函数测试** — `set_language`、`get_language`、
@@ -500,15 +503,15 @@ lang: zh
 - **标签保留** — `!!seq` 和 `!!map` 标签测试覆盖
 - **注释保留** — 复杂结构上的内联和独立注释测试
 
-### Changed
+#### Changed
 
 - 修复版本同步：`python/pyrs_yaml/__init__.py` 的 `__version__`
   从 0.2.0 更新至 0.4.0 以匹配 Cargo.toml/pyproject.toml
 - 移除 `dist/` 中过时的 0.2.0 wheel 产物
 
-## [0.3.0] - 2026-07-27
+### [0.3.0] - 2026-07-27
 
-### Added
+#### Added
 
 - **NumPy ndarray 序列化** — `safe_dump()` / `safe_dumps()` /
   `from_dict()` / `dump_file()` 现在支持所有维度的
@@ -528,7 +531,7 @@ lang: zh
 - **全面 NumPy 测试套件** — 42 个测试覆盖所有数据类型、
   维度（0-D 至 4-D）、负数、无穷大、NaN、空数组及边界用例
 
-### Fixed
+#### Fixed
 
 - **负数往返** — YAML 1.2 块序列不能包含以 `-` 开头的纯标量；
   序列化时负数现在加引号，解析时正确还原为整数/浮点数
@@ -537,13 +540,13 @@ lang: zh
 - **正确嵌套深度** — 多维数组现在产生恰好 N 层嵌套
   （shape[1..] 处理内部维度，根维度由 `plain_sequence` 包裹）
 
-### Changed
+#### Changed
 
 - 新增 `numpy` crate（v0.29）作为 ndarray 类型分派的依赖
 
-## [0.1.0] - 2026-07-25
+### [0.1.0] - 2026-07-25
 
-### Added
+#### Added
 
 - 初始发布，通过 saphyr-parser 实现 YAML 1.2 合规
 - 自定义 AST，完整元数据（注释、锚点、标签、chomping、标量风格）

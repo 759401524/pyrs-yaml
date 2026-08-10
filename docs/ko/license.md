@@ -1,9 +1,12 @@
 ---
-
 title: License
-lang: ko
+description: pyrs-yaml의 듀얼 라이선스 — MIT 및 Apache License 2.0, 의존성 라이선스 정보
+tags:
+  - docs
+status: new
+---
 
-# 라이선스
+## 라이선스
 
 pyrs-yaml은 다음 중 하나에 따라 듀얼 라이선스가 적용됩니다:
 
@@ -12,7 +15,7 @@ pyrs-yaml은 다음 중 하나에 따라 듀얼 라이선스가 적용됩니다:
 
 사용자가 선택할 수 있습니다.
 
-## MIT License
+### MIT License
 
 ```text
 Copyright (c) 2025 MuLong
@@ -36,7 +39,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Apache License, Version 2.0
+### Apache License, Version 2.0
 
 ```text
 Copyright 2025 MuLong
@@ -54,14 +57,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## 왜 듀얼 라이선스?
+### 왜 듀얼 라이선스?
 
 듀얼 라이선스는 사용자에게 유연성을 제공합니다:
 
 - **MIT**는 대부분의 사용 사례에 더 단순하고 관용적입니다
 - **Apache 2.0**은 명시적 특허 라이선스를 포함하여 추가적인 법적 보호를 제공합니다
 
-## 의존성
+### 의존성
 
 pyrs-yaml은 다음 오픈소스 프로젝트에 의존합니다:
 

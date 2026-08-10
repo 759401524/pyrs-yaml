@@ -1,7 +1,10 @@
 ---
-
 title: 运行测试
-lang: zh
+description: pyrs-yaml 的测试指南，涵盖 Rust 测试、Python 测试、CI 测试和 YAML Test Suite 合规性验证。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml 同时具有 Rust 单元测试和 Python 集成测试。
 

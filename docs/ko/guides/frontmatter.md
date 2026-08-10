@@ -1,8 +1,10 @@
 ---
-
 title: Markdown Front Matter
-lang: ko
-
+description: Markdown 파일과 문자열에서 YAML Front Matter를 추출하는 read_markdown 및 read_markdown_str 함수
+tags:
+  - docs
+status: new
+---
 
 Markdown 파일과 문자열에서 YAML Front Matter를 추출합니다.
 

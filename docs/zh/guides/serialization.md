@@ -1,15 +1,18 @@
 ---
-
 title: 序列化
-lang: zh
+description: 将 Python 对象和 YamlDocument 实例转换为 YAML 字符串的完整指南。
+tags:
+  - docs
+status: new
+---
 
-# 序列化
+## 序列化
 
 将 Python 对象和 `YamlDocument` 实例转换为 YAML 字符串。
 
-## 基本序列化
+### 基本序列化
 
-### YamlDocument.to_yaml()
+#### YamlDocument.to_yaml()
 
 ```python
 doc = pyrs_yaml.parse("key: value")
@@ -17,7 +20,7 @@ yaml_str = doc.to_yaml()
 print(yaml_str)  # key: value\n
 ```
 
-### YamlDocument.to_yaml_with_options()
+#### YamlDocument.to_yaml_with_options()
 
 ```python
 doc = pyrs_yaml.parse("key: value")
@@ -31,7 +34,7 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
-### PyYAML 兼容序列化
+#### PyYAML 兼容序列化
 
 ```python
 # 将 dict 转换为 YAML 字符串
@@ -41,28 +44,28 @@ yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}}
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ```
 
-## 将 Python 对象转换为 YAML
+### 将 Python 对象转换为 YAML
 
-### from_dict()
+#### from_dict()
 
 ```python
 yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
-### from_json()
+#### from_json()
 
 ```python
 yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 ```
 
-### dump_file()
+#### dump_file()
 
 ```python
 # 将 Python 对象直接写入 YAML 文件
 pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
-## 支持的输入类型
+### 支持的输入类型
 
 | Python 类型 | YAML 输出 |
 |-------------|-----------|
@@ -74,7 +77,7 @@ pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.ya
 | `bool` | `true` / `false` |
 | `None` | `null` |
 
-## 往返
+### 往返
 
 ```python
 # 核心优势：格式被保留

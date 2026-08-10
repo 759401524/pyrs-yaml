@@ -1,8 +1,10 @@
 ---
-
 title: Markdown Front Matter
-lang: ja
-
+description: Markdown ファイルや文字列から YAML Front Matter を抽出する方法を説明します。
+tags:
+  - docs
+status: new
+---
 
 Markdown ファイルや文字列から YAML Front Matterを抽出します。
 

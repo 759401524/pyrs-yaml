@@ -1,7 +1,10 @@
 ---
-
 title: Features
-lang: zh
+description: pyrs-yaml 的功能特性总览，包括 YAML 1.2 合规、往返保留、性能、自定义 AST、NumPy 支持和 Pydantic 集成等。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺少的强大功能。
 
@@ -19,6 +22,9 @@ pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺�
 - **chomping 指示符** (`|-`、`|+`、`>-`、`>+`)
 - **标量样式**（无引号、单引号、双引号、字面量、折叠）
 - **流式/块式格式** — 保留 `[]`/`{}` 与块式风格
+
+!!! note "基准测试环境"
+    以下性能数据在特定硬件上测得，绝对时间可能因环境而异，但相对加速比在不同硬件上保持一致。
 
 ## 性能
 
@@ -126,17 +132,23 @@ yaml_str = doc.to_yaml_with_options(
 
 ```python
 import pyrs_yaml
+```
 
+=== "装饰器"
 
-# 装饰器形式
-@pyrs_yaml.register_tag("!custom")
-def custom_handler(node):
-    return f"custom:{node}"
+    ```python
+    @pyrs_yaml.register_tag("!custom")
+    def custom_handler(node):
+        return f"custom:{node}"
+    ```
 
+=== "命令式"
 
-# 命令式形式
-pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+    ```python
+    pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+    ```
 
+```python
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -224,6 +236,9 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `PyUntypedArray` → `PyArrayDyn<Complex64/Complex32>` | `(re+imj)` 字符串 |
 | `bool` | `PyUntypedArray` → `PyArrayDyn<bool>` | `true` / `false` |
 | `nan` / `inf` | — | `NaN` / `.inf` / `-.inf` |
+
+!!! warning "块序列中的负标量"
+    YAML 1.2 块序列不能包含以 `-` 开头的纯标量；负数值会由 pyrs-yaml 自动加引号并正确往返。
 
 #### 说明
 

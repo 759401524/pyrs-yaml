@@ -1,10 +1,9 @@
 ---
-
 title: pyrs-yaml
-lang: zh
-
-# 高性能的 Python YAML 库，支持完美的往返（Round-Trip）解析，由 Rust 和 PyO3 构建。
-
+description: pyrs-yaml 高性能 Python YAML 库的首页，介绍核心特性和快速开始示例。
+tags:
+  - docs
+status: new
 ---
 
 ## 为什么选择 pyrs-yaml？

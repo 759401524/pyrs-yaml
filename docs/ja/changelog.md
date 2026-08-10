@@ -1,18 +1,21 @@
 ---
-
 title: 変更履歴
-lang: ja
+description: pyrs-yaml プロジェクトのすべての注目すべき変更を文書化します。
+tags:
+  - docs
+status: new
+---
 
-# 変更履歴
+## 変更履歴
 
 このプロジェクトのすべての注目すべき変更は、本ファイルに文書されます。
 
 本書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に基づき、
 このプロジェクトは [Semantic Versioning](https://semver.org/ja/spec/v2.0.0.html) に準拠しています。
 
-## [Unreleased]
+### [Unreleased]
 
-### 変更
+#### 変更
 
 - **Rust MSRV を 1.96 に引き上げ、edition を 2024 に変更** — 両 crate は
   `rust-version = "1.96"` および `edition = "2024"` を宣言します。CI は
@@ -25,7 +28,7 @@ lang: ja
   `TAG_REGISTRY`（タグハンドラ管理）が `std::sync::LazyLock` にリファクタされ、
   `Mutex<Option<...>>` の間接レイヤーが除去されました。
 
-### パフォーマンス
+#### パフォーマンス
 
 - **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer**
   — 中間 `CustomNode` AST を介さず Python→YAML シリアライズ。
@@ -38,7 +41,7 @@ lang: ja
   先頭バイトは即座に `Str` を返すようになり、一般的なケースにおけるスキーマ
   解決のオーバーヘッドを回避。(#59)
 
-### 追加
+#### 追加
 
 - **`max_depth` をストリーム & frontmatter API に追加** — `parse_stream(yaml, on_event, max_depth)`、
   `read_markdown(path, schema, max_depth)`、`read_markdown_str(content, schema, max_depth)`
@@ -50,16 +53,16 @@ lang: ja
   は YAML 文字列を Pydantic モデルインスタンスにパース。両方とも遅延インポート、
   pydantic へのハード依存なし。(#61)
 
-### 内部
+#### 内部
 
 - **`py/mod.rs` の分割** — 巨大な 1786 行のモジュールを
   `document.rs`（YamlDocument）、`yaml_instance.rs`（YAML クラス）、
   `functions.rs`（モジュールレベル関数）、`stream_iterator.rs`、
   `walk_helpers.rs` に分割。`mod.rs` は 128 行に削減。(#61)
 
-## [v0.12.1] — 2026-08-06
+### [v0.12.1] — 2026-08-06
 
-### 追加
+#### 追加
 
 - **`set(create_missing=True)`** — 編集パス上の欠落中間マッピングキーがネストしたマッピングとして作成されます
   （例: `a: 1` に対して `a.b.c` を設定すると `b` と `c` が作成されます）；
@@ -76,7 +79,7 @@ lang: ja
 - **Python doc.walk() エッジケーステスト** — 空ドキュメント、null 値、
   深ネスト、フローコレクション、混合型のカバーするための 9 個の新規テスト。
 
-### 変更
+#### 変更
 
 - **モノレポワークスペース** — ソースコードを `crates/pyrs-yaml-core/`（純粋 Rust、PyO3 なし）
   と `crates/pyrs-yaml/`（PyO3 バインディング）に分割。ルート
@@ -93,7 +96,7 @@ lang: ja
   テキストは `Arc<str>` を介して割り当てを共有；AST ノードが 8 バイト縮小し、
   クローンがディープコピーの代わりに参照カウントインクリメントに。
 
-### 修正
+#### 修正
 
 - **`set(create_missing=True)` ネストチェーン構築** — 作成されたマッピング
   チェーンは最初のセグメントをネストキーレベルとして重複しなくなりました。
@@ -104,9 +107,9 @@ lang: ja
   単純キーノードに付随するスタンドアロンコメントを以前は削除していましたが、
   現在は保持されます（回帰テスト 2 件）。
 
-## [0.11.7] — 2026-08-04
+### [0.11.7] — 2026-08-04
 
-### 変更
+#### 変更
 
 - **stub-build-check から release-guard に置換** — v0.10.0 の
   `--generate-stubs` 失敗モードを再現するために意図的に失敗する常時失敗の
@@ -116,16 +119,16 @@ lang: ja
   `.pyi` が追跡されていることを確認し、`test -f` が `py.typed` の存在を
   確認します。ジョブは正しい状態で緑の CI を返し、回帰時のみ赤になります。
 
-### 追加
+#### 追加
 
 - **Numpy free-threaded 追跡** — ROADMAP.md が `rust-numpy` の free-threaded
   サポート状況（PyO3/rust-numpy#476）を追跡するようになり、Rust バインディングが
   成熟した際に cp314t wheel での ndarray シリアライズを再有効化する依存関係として
   管理されます。
 
-## [0.11.6] — 2026-08-04
+### [0.11.6] — 2026-08-04
 
-### 変更
+#### 変更
 
 - **Free-threaded（cp314t）wheel が numpy なしに** —
   `--no-default-features` でビルドされるため、rust-numpy は完全に除外されます
@@ -133,7 +136,7 @@ lang: ja
   `safe_dump` は free-threaded ビルドで `YamlTypeError` を発生させます；
   GIL ビルド（Python 3.8-3.15）は完全な ndarray シリアライズを保持します。
 
-### 追加
+#### 追加
 
 - **Free-threaded CI 検証** — `test-freethreaded` ジョブが
   `--no-default-features` でビルドとテストを行うようになり、出荷される
@@ -141,9 +144,9 @@ lang: ja
 - **インストールドキュメント** — `docs/{en,zh,ja,ko}` が free-threaded
   wheel が numpy なしであることを明記（cp314t での ndarray シリアライズは利用不可）。
 
-## [0.11.5] — 2026-08-04
+### [0.11.5] — 2026-08-04
 
-### 変更
+#### 変更
 
 - **パーサー堅牢性項目 3/4/5 がフェーズ 0 厳格監査でクローズ** — 70 プローブ
   コーパス（インデント、ブロックマッピングキー、フローコンテキスト）を PyYAML
@@ -153,15 +156,15 @@ lang: ja
   準拠率は **99.75%（405/406）** で維持。詳細は `ROADMAP.md` §v0.11.5 および
   `tests/test_strictness_audit.py` に記載。
 
-### 追加
+#### 追加
 
 - `tests/test_strictness_audit.py` — 70 プローブの厳格性回帰コーパスは現在の
   拒否/受容動作（両方向）を固定し、将来のパーサー変更が厳格性を静かに後退させたり
   過剰拒否したりできないようにします。
 
-## [0.11.4] — 2026-08-04
+### [0.11.4] — 2026-08-04
 
-### 修正
+#### 修正
 
 - 重複する null/空マッピングキーがエラーを発生させなくなりました（`: a\n: b`、`~: a\n~: b`）—
   yaml-test-suite 2JQS に一致；実際の重複キーは依然として `YamlDuplicateKeyError` を発生
@@ -170,16 +173,16 @@ lang: ja
 - 準拠ハーネス：`convert_special_chars` のタブデコードが正規表現に—
   `—`/`‖` + `»` の連続は 1 つのタブになり、タブエンコード済みスイートケースを修正
 
-### 変更
+#### 変更
 
 - YAML Test Suite 合格率ゲートを >75% から **≥95%** に引き上げ；現在のレート
   **99.75%**（405/406）
 - 既知の逸脱を文書化：`ZYU8`（`%YAML 1.1 1.2`）は設計上拒否されます
   （YAML 1.2 文法に違反、PyYAML/libyaml に一致）
 
-## [0.11.3] — 2026-08-03
+### [0.11.3] — 2026-08-03
 
-### 追加
+#### 追加
 
 - ストリーミング書き込み：`YAML.dump_stream(file_obj, iterable)` /
   `YAML.dump_file(path, iterable)` — ドキュメントレベルの一定メモリ、自動
@@ -188,28 +191,28 @@ lang: ja
   トランザクションスコーピング
 - `compliance_report()`：公開 YAML Test Suite 合格率レポート（バージョン一貫）
 
-### 変更
+#### 変更
 
 - 編集バースト行オフセットキャッシュ：スパイスレイヤー内の内部 O(N+edit) 引き継ぎ
   （公開 API 変更なし）
 - `compute_compliance` をテストから `pyrs_yaml.compliance` へ移動；バージョンが
   ハードコードされなくなりました
 
-### 修正
+#### 修正
 
 - Changelog ミラードリフトガード：prek フック + CI ジョブが root/ミラー
   `[Unreleased]` の同期を確認
 - パブリッシュ stub 事前検証：CI がリリース前に v0.10.0 クラスの
   `--generate-stubs` コンテナ失敗を再現
 
-## [0.11.2] — 2026-08-03
+### [0.11.2] — 2026-08-03
 
-### 追加
+#### 追加
 
 - `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`：
   O(アンカー + チャンク) メモリの遅延イベントイテレータ
 
-### パフォーマンス
+#### パフォーマンス
 
 - **パースはスプライス資格を計算しない** — O(ドキュメント) のレイアウトチェックは
   最初の編集時に `YamlDocument.splice_checked` 経由で遅延実行され、v0.11.0 の
@@ -218,14 +221,14 @@ lang: ja
 - **線形カーソルレイアウトチェック** — 事前計算済み行オフセット上のノード単位
   バイナリサーチを置換（単調なソース順トラバーサル）
 
-### 変更
+#### 変更
 
 - `parse_with_options` は `CustomNode` を返す（旧 `(CustomNode, bool)`）；
   スプライス資格は現在 `YamlDocument` 内部にあり、オンデマンドで計算されます。
 
-## [0.11.0] — 2026-08-02
+### [0.11.0] — 2026-08-02
 
-### 追加
+#### 追加
 
 - **外科的シリアライズ** — 全 AST ノードのバイトレベルソーススパン追跡；
   セグメントベーススプライス — 編集はタッチされた領域のみ再生成、
@@ -233,7 +236,7 @@ lang: ja
 - プロパティテスト（proptest、新規開発依存）
 - 10MB 編集フラッシュベンチマーク（divan）
 
-### 変更
+#### 変更
 
 - `flush_source` がセグメントスプライスを使用；フロースタイル領域、
   非デフォルトレイアウト文書、マージキー、CRLF/BOM 文書、materialize 後
@@ -241,9 +244,9 @@ lang: ja
 - スプライス編集は `---`/`...`/ディレクティブマーカー行を未変更バイトとして保持
   （全量シリアライズは以前それらを削除 — 意図的な動作差）
 
-## [0.10.0] — 2026-08-01
+### [0.10.0] — 2026-08-01
 
-### 追加
+#### 追加
 
 - **インプレース編集** — フォーマットメタデータを失わずに解析済みドキュメントを編集：
     - パス API：`doc.set(path, value)`、`doc.insert(path, index, value)`、
@@ -265,13 +268,13 @@ lang: ja
 - **編集ベンチマーク** — `benches/yaml_bench.rs` に divan ベンチマークを 6 つ追加
   （小〜大ドキュメントの set/insert/delete）
 
-### 変更
+#### 変更
 
 - `YamlDocument.source()` は `str` を返し、インプレース編集後に遅延再シリアライズします。
 
-## [0.9.0] — 2026-08-01
+### [0.9.0] — 2026-08-01
 
-### 追加
+#### 追加
 
 - **Python 3.13、3.14、3.15 サポート** — PyO3 `abi3-py38` wheel が
   Python 3.8-3.15 をカバー（GIL ビルド）；`abi3t` + `abi3t-py315` は
@@ -309,7 +312,7 @@ lang: ja
   `register_tag`、`parse_as`、`to_yaml_with_options` および新しい例外が
   型チェッカーから見えるようになります。
 
-### 変更
+#### 変更
 
 - CI Python マトリクスを拡張：ubuntu、windows、macos で 3.8-3.14
 - 安定 ABI：`abi3-py39` → `abi3-py38`（より広い Python 3.8+ サポート）、
@@ -324,7 +327,7 @@ lang: ja
   `[dependency-groups] test` と `.ci/requirements-test.txt` に追加
   （ci.yml 内の `uv sync` による SSOT）
 
-### 修正
+#### 修正
 
 - **Windows DLL 読み込み** — `src/py/tag_registry.rs` から
   `#[cfg(test)]` ブロックを削除し、Windows での `import pyrs_yaml` を
@@ -351,9 +354,9 @@ lang: ja
   全 4 ロケールで `format_i18n_error` を経由するようになりました
   （`src/i18n/locales/*.yml`）
 
-## [0.8.0] — 2026-07-30
+### [0.8.0] — 2026-07-30
 
-### 追加
+#### 追加
 
 - **`YAML()` インスタンス API** — 再利用可能な設定付き
   `YAML(typ="rt"|"safe"|"full", schema="core"|"yaml1.1", max_depth=1000)`；
@@ -370,15 +373,15 @@ lang: ja
 - **ライフサイクル警告** — `Node.release()` でノードを明示的に無効化；
   陳腐化したアクセスは `RuntimeWarning` + `YamlDocumentError` を発生
 
-### 変更
+#### 変更
 
 - `parse()` / `safe_load()` は構文糖衣として
   `YAML().parse()` / `.safe_load()` に委譲するようになりました
 - `YamlDocument` はドキュメントメタデータの `version` フィールドを保持するようになりました
 
-## [0.7.1] — 2026-07-30
+### [0.7.1] — 2026-07-30
 
-### 追加
+#### 追加
 
 - **ryaml ベンチマーク比較** — `tests/test_benchmark.py` が
   PyYAML と ruamel.yaml と並んで `ryaml`（Rust YAML ライブラリ）とも比較するよう
@@ -398,15 +401,15 @@ lang: ja
   Criterion グループから `#[divan::bench]` 属性に書き直し
   （`Cargo.toml`、`benches/yaml_bench.rs`）
 
-### 変更
+#### 変更
 
 - CI ベンチマークジョブがクロスライブラリ比較用に `ryaml` をインストール
 - `benchmark_compare.py` はタイミングを `pytest-benchmark` に委譲し、
   機能比較/レポートツールとして機能するようになりました
 
-## [0.7.0] — 2026-07-29
+### [0.7.0] — 2026-07-29
 
-### 追加
+#### 追加
 
 - **シリアライザ `max_depth` ガード** — `serialize_node_internal` が
   再帰深度を追跡し、制限（デフォルト 1000）を超えると `YamlMaxDepthError` を
@@ -423,20 +426,20 @@ lang: ja
   生 `time.perf_counter()` から `pytest-benchmark` へ移行
   （`tests/test_benchmark.py` + 更新済み `tests/test_performance.py`）
 
-### 変更
+#### 変更
 
 - Python ベンチマークで生 `timeit` の代わりに `pytest-benchmark` を使用
 - CI ベンチマークジョブがスタンドアロンスクリプトの代わりに
   `pytest --benchmark-json` を実行
 
-### 削除
+#### 削除
 
 - `write_inline_comment` メソッド — 全呼び出し箇所でインライン化
 - シリアライザからの `Comment` インポート — 不要になった
 
-## [0.6.0] — 2026-07-27
+### [0.6.0] — 2026-07-27
 
-### 追加
+#### 追加
 
 - **非同期シリアライズ** — `asyncio.run_in_executor` 経由の
   `safe_dumps_async`、`safe_dump_async`、`safe_loads_async`、
@@ -452,26 +455,26 @@ lang: ja
 - **29 個の新規テスト** — `test_async.py`（8）、`test_validate.py`（14）、
   `test_reparse.py`（7）にまたがって
 
-### 変更
+#### 変更
 
 - `YamlValidateError` が新しいカスタム例外として登録（`ValueError` を継承）
 - `rust_i18n::i18n!` マクロパスが `"src/i18n/locales"` に更新
 - `validate_translations()` テストパスが新しいロケールディレクトリに一致するよう更新
 
-### 削除
+#### 削除
 
 - 冗長な `src/i18n/en.ftl`、`src/i18n/zh-CN.ftl` を削除
   （rust-i18n から参照されなかった）
 - `locales/*.yml` を `src/i18n/locales/` に移動（i18n モジュールと共置）
 
-### 依存関係変更
+#### 依存関係変更
 
 - ランタイム依存：`jsonschema>=4.25.1`
 - 開発依存：`pytest-asyncio>=0.23`（ランタイムから移動、ピン留めされなくなりました）
 
-## [0.5.0] — 2026-07-27
+### [0.5.0] — 2026-07-27
 
-### 修正
+#### 修正
 
 - **`Serializer::write_node`** — `block_mapping`/`block_sequence` 内の
   `values.iter().next().unwrap()` での `.unwrap()` を安全なインデックスアクセスに
@@ -481,9 +484,9 @@ lang: ja
 - **開発ドキュメント** — `AGENTS.md` を更新し、Python コマンドに必須の
   `uv run` プレフィックスと Rust コマンドに直接 `cargo` を明記
 
-## [0.4.0] — 2026-07-27
+### [0.4.0] — 2026-07-27
 
-### 追加
+#### 追加
 
 - **132 個の新規ギャップフィルテスト** — 未テストの API に対する包括的カバー
 - **i18n 関数テスト** — `set_language`、`get_language`、`list_languages`、
@@ -521,15 +524,15 @@ lang: ja
 - **タグ保持** — `!!seq` と `!!map` タグのテストカバー
 - **コメント保持** — 複雑構造のインラインおよびスタンドアロンコメントテスト
 
-### 変更
+#### 変更
 
 - バージョン同期を修正：`python/pyrs_yaml/__init__.py` の `__version__` が
   0.2.0 から 0.4.0 に更新され、Cargo.toml/pyproject.toml と一致
 - `dist/` から古い 0.2.0 wheel artifact を削除
 
-## [0.3.0] — 2026-07-27
+### [0.3.0] — 2026-07-27
 
-### 追加
+#### 追加
 
 - **NumPy ndarray シリアライズ** — `safe_dump()` / `safe_dumps()` /
   `from_dict()` / `dump_file()` が全次元（0-D から N-D）の
@@ -549,7 +552,7 @@ lang: ja
 - **包括的 NumPy テストスイート** — 全 dtype、次元（0-D から 4-D）、
   負の数、無限大、NaN、空配列、エッジケースをカバーする 42 個のテスト
 
-### 修正
+#### 修正
 
 - **負の数ラウンドトリップ** — YAML 1.2 のブロックシーケンスに
   `-` で始まるプレーンスカラーは含められないため、負の数はシリアライズ時に
@@ -559,11 +562,11 @@ lang: ja
 - **正しいネスト深さ** — 多次元配列がちょうど N レベルのネストを生成
   （shape[1..] が内部次元を処理、ルート次元が `plain_sequence` でラップ）
 
-### 変更
+#### 変更
 
 - ndarray 型ディスパッチ用の依存関係として `numpy` crate（v0.29）を追加
 
-### 追加
+#### 追加
 
 - フローコレクション（`{}`/`[]`）のラウンドトリップサポートを
   Mapping/Sequence AST ノードの `flow_style` フィールドで追加
@@ -579,7 +582,7 @@ lang: ja
 - アンカー名パーサーが全 YAML 1.2 仕様（ドット、コロン、ハッシュ、引用アンカー）に拡張
 - `__version__` 属性、`py.typed` PEP 561 マーカー
 
-### 修正
+#### 修正
 
 - `to_dict()` と `safe_load()` 内のエイリアス解決 — エイリアスが
   `None` ではなく参照値に解決されるようになりました
@@ -588,7 +591,7 @@ lang: ja
 - パース中のマッピング/シーケンスタグが廃棄されなくなりました
 - `format_scalar_for_key()` が Literal/Folded ブロックスカラー形式を処理するようになりました
 
-### 変更
+#### 変更
 
 - PyO3 を 0.21 から 0.29 にアップグレード
 - 15 個以上のボイラープレート `CustomNode` 構築を
@@ -600,9 +603,9 @@ lang: ja
 - 6 個の重複テストファイルを統合し、9 個の診断スクリプトを `scripts/` に移動
 - キー/インデックス/型コンテキスト付きのエラーメッセージを改善
 
-## [0.1.0] — 2026-07-25
+### [0.1.0] — 2026-07-25
 
-### 追加
+#### 追加
 
 - saphyr-parser による YAML 1.2 準拠の初期リリース
 - 完全なメタデータ（コメント、アンカー、タグ、チョンピング、スカラー形式）付き

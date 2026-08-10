@@ -1,7 +1,10 @@
 ---
-
 title: YamlDocument 클래스
-lang: ko
+description: pyrs-yaml의 핵심 클래스 — 파싱된 YAML 문서, 순환 보존, 편집 메서드, 더더 메서드
+tags:
+  - docs
+status: new
+---
 
 ## 개요
 
@@ -67,7 +70,37 @@ doc = pyrs_yaml.parse("key: value\n# comment")
 yaml_str = doc.to_yaml()
 ```
 
-#### `to_dict()`
+### `to_yaml_with_options()`
+
+사용자 지정 옵션으로 YAML로 변환합니다.
+
+```python
+to_yaml_with_options(
+    indent_size: int = 2,
+    explicit_start: bool = False,
+    explicit_end: bool = False,
+    sort_keys: bool = False,
+) -> str
+```
+
+**매개변수:**
+
+- `indent_size` — 들여쓰기 수준당 공백 수 (기본값: 2)
+- `explicit_start` — 문서 시작에 `---` 추가 (기본값: False)
+- `explicit_end` — 문서 끝에 `...` 추가 (기본값: False)
+- `sort_keys` — 키를 알파벳순으로 정렬 (기본값: False)
+
+**예시:**
+
+```python
+yaml_str = doc.to_yaml_with_options(
+    indent_size=4,
+    explicit_start=True,
+    sort_keys=True,
+)
+```
+
+### `to_dict()`
 
 Python dict/list로 변환합니다. 별칭 참조를 해석하여 네이티브 Python 타입을 반환합니다.
 
@@ -84,7 +117,7 @@ doc = pyrs_yaml.parse("key: value")
 data = doc.to_dict()  # {'key': 'value'}
 ```
 
-#### `get()`
+### `get()`
 
 키 또는 JSONPath 스타일 경로로 값을 가져옵니다. `.`, `[`를 포함하거나 `$`로 시작하는 키는 경로로 처리됩니다 (`$.a.b`, `$.arr[0]`, `$.arr[-1]` — 음수 인덱스는 끝에서부터 셉니다).
 
@@ -96,7 +129,7 @@ get(key: str, default: Any = None) -> Any
 
 **발생:** `YamlPathError` — 잘못된 경로 (`$[bad`, 와일드카드/딥 스캔)
 
-#### `type()`
+### `root_type()`
 
 루트 노드 타입을 문자열로 가져옵니다.
 
@@ -106,7 +139,7 @@ type() -> str
 
 **반환값:** 타입 이름 (`"mapping"`, `"sequence"`, `"scalar"`)
 
-#### `to_json()`
+### `to_json()`
 
 문서를 JSON 문자열로 직렬화합니다.
 
@@ -116,7 +149,7 @@ to_json(indent: int = 2) -> str
 
 **반환값:** JSON 문자열
 
-#### `validate()`
+### `validate()`
 
 JSON Schema를 기반으로 문서 내용을 검증합니다.
 
@@ -126,15 +159,35 @@ validate(schema: dict[str, Any]) -> None
 
 **발생:** `YamlValidateError` — 검증 오류
 
-#### `reload()`
+### `reparse()`
 
 저장된 소스 텍스트를 제자리에서 재파싱하여 스키마 또는 병합 동작 변경을 허용합니다.
 
 ```python
-reload(schema: str = "core", resolve_merges: bool = True) -> None
+reparse(resolve_merges: bool = True, schema: str = "core") -> None
 ```
 
-#### `source_text()`
+**매개변수:**
+
+- `resolve_merges` — `<<: *alias` 병합 키를 해석할지 여부 (기본값: `True`)
+- `schema` — 타입 해석 스키마: `"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` (기본값: `"core"`)
+
+**발생:**
+
+- `TypeError` — 저장된 소스 텍스트가 없음
+- `YamlParseError` — 재파싱 실패
+
+**예시:**
+
+```python
+doc = pyrs_yaml.parse("x: on")
+print(doc.get("x"))  # "on" (문자열, core 스키마)
+
+doc.reparse(schema="yaml1.1")
+print(doc.get("x"))  # True (bool, yaml1.1 스키마)
+```
+
+### `source()`
 
 이 문서를 만드는 데 사용된 원본 YAML 소스 텍스트를 반환합니다.
 
@@ -145,6 +198,9 @@ source_text() -> str
 **반환값:** YAML 소스 문자열
 
 ## 편집 메서드
+
+!!! note "원자적 편집"
+    모든 편집 작업은 원자적입니다 — 실패 시 문서(리비전 포함)가 변경되지 않습니다.
 
 문서를 제자리에서 편집하면서 모든 메타데이터(주석, 앵커, 태그, 스타일)를 보존합니다. 편집은 JSONPath 스타일 경로(`$.a.b`, `$.items[0]`)로 노드를 찾으며, 모든 작업은 **원자적**입니다 — 실패 시 문서(리비전 포함)가 변경되지 않습니다.
 
@@ -188,7 +244,7 @@ insert(path: str, index: int, value: Any) -> None
 
 `index`는 시퀀스의 현재 길이까지 허용됩니다(`len`에 삽입하면 추가와 동일). 음수 인덱스는 끝에서부터 셉니다(`-1`은 마지막 요소 앞에 삽입). 경로는 시퀀스 노드를 가리켜야 합니다.
 
-#### `append()`
+### `append()`
 
 시퀀스 끝에 값을 추가합니다.
 
@@ -196,7 +252,7 @@ insert(path: str, index: int, value: Any) -> None
 append(path: str, value: Any) -> None
 ```
 
-#### `delete()`
+### `delete()`
 
 경로로 노드를 제거합니다. 매핑 순서가 유지됩니다.
 
@@ -204,7 +260,7 @@ append(path: str, value: Any) -> None
 delete(path: str) -> None
 ```
 
-#### `rename()`
+### `rename()`
 
 매핑 키를 제자리에서 이름 변경합니다(위치와 메타데이터 보존).
 
@@ -214,7 +270,7 @@ rename(path: str, new_key: str) -> None
 
 루트 또는 복합(비스칼라) 키의 이름 변경은 `YamlEditError`를 발생시킵니다.
 
-#### `node()`
+### `node()`
 
 문서 루트의 `Node`를 반환합니다.
 
@@ -222,7 +278,7 @@ rename(path: str, new_key: str) -> None
 node() -> Node
 ```
 
-#### `walk()`
+### `walk()`
 
 AST의 깊이 우선, 전위 순회를 수행하며 `Node` 객체를 생성합니다.
 
@@ -246,7 +302,7 @@ for node in doc.walk():
 # ('a', 'c') scalar
 ```
 
-#### `scalars()`
+### `scalars()`
 
 `walk()`와 유사하지만 스칼라/null 노드만 생성합니다.
 
@@ -266,7 +322,7 @@ for node in doc.scalars():
 # ('b',) None
 ```
 
-#### `find()`
+### `find()`
 
 경로로 노드를 찾습니다. 와일드카드(`[*]`)와 딥 스캔(`..`)을 지원 — 이 경우 노드 목록을 반환합니다.
 
@@ -304,7 +360,7 @@ doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
 
-#### `__setitem__()`
+### `__setitem__()`
 
 루트 매핑 키를 설정합니다(`doc.set()`의 루트 슈가).
 
@@ -312,7 +368,7 @@ value = doc["key"]  # 'value'
 doc["key"] = value
 ```
 
-#### `__delitem__()`
+### `__delitem__()`
 
 루트 매핑 키를 삭제합니다(`doc.delete()`의 루트 슈가).
 
@@ -320,7 +376,7 @@ doc["key"] = value
 del doc["key"]
 ```
 
-#### `__contains__()`
+### `__contains__()`
 
 키가 존재하는지 확인합니다.
 
@@ -328,7 +384,7 @@ del doc["key"]
 "key" in doc  # True
 ```
 
-#### `__len__()`
+### `__len__()`
 
 항목 수를 가져옵니다.
 
@@ -336,7 +392,7 @@ del doc["key"]
 len(doc)
 ```
 
-#### `__iter__()`
+### `__iter__()`
 
 키 (매핑) 또는 값 (시퀀스)을 반복합니다.
 
@@ -345,7 +401,7 @@ for key in doc:
     print(key)
 ```
 
-#### `__repr__()`
+### `__repr__()`
 
 디버그 표현.
 
@@ -353,7 +409,7 @@ for key in doc:
 repr(doc)  # "YamlDocument({key: value})"
 ```
 
-#### `__str__()`
+### `__str__()`
 
 문자열 표현.
 
@@ -361,7 +417,7 @@ repr(doc)  # "YamlDocument({key: value})"
 str(doc)  # "YamlDocument({key: value})"
 ```
 
-#### `__eq__()`
+### `__eq__()`
 
 동등 비교. 두 `YamlDocument`가 동일한 내용을 가지면 true를 반환합니다.
 

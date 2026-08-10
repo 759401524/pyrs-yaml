@@ -1,14 +1,16 @@
 ---
-
 title: YAML 파싱
-lang: ko
-
+description: pyrs-yaml로 YAML을 파싱하는 모든 방법 — 기본 파싱, PyYAML 호환 파싱, 입력 타입, 오류 처리
+tags:
+  - docs
+status: new
+---
 
 이 가이드는 pyrs-yaml로 YAML를 파싱하는 모든 방법을 설명합니다.
 
 ## 기본 파싱
 
-#### YAML 문자열 파싱
+### YAML 문자열 파싱
 
 ```python
 import pyrs_yaml
@@ -51,6 +53,9 @@ print(docs[1].get("name"))  # second
 
 ## PyYAML 호환 파싱
 
+!!! tip "PyYAML 호환 파싱"
+    `safe_load()` / `safe_loads()`는 PyYAML과 동일한 API로 네이티브 Python 타입을 반환합니다.
+
 ```python
 # 네이티브 Python 타입을 반환 (dict, list, str, int 등)
 data = pyrs_yaml.safe_load("key: value")
@@ -67,11 +72,19 @@ print(len(docs))  # 2
 - `bytes` — 유효한 UTF-8 인코딩 바이트
 - `str` BOM 포함 — 올바르게 처리됨
 
-```python
-# str과 bytes 모두 허용
-doc1 = pyrs_yaml.parse("key: value")
-doc2 = pyrs_yaml.parse(b"key: value")
-```
+=== "str"
+
+    ```python
+    doc = pyrs_yaml.parse("key: value")
+    ```
+
+=== "bytes"
+
+    ```python
+    doc = pyrs_yaml.parse(b"key: value")
+    ```
+
+`str`과 `bytes` 모두 입력으로 허용됩니다.
 
 ## 오류 처리
 

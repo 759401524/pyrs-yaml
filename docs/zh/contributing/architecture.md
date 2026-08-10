@@ -1,7 +1,10 @@
 ---
-
 title: 架构
-lang: zh
+description: pyrs-yaml 的模块化架构说明，包括工作区结构、核心模块和数据流。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml 使用为性能和正确性设计的模块化架构。
 

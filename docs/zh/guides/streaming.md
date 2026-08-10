@@ -1,7 +1,13 @@
 ---
 title: 流式解析
-lang: zh
+description: 使用 pyrs-yaml 进行流式解析和流式写入的指南，支持常量内存处理大文件。
+tags:
+  - docs
+status: new
 ---
+
+!!! note "流式解析与完整解析"
+    流式解析以惰性事件迭代方式处理 YAML，内存用量为 O(锚点数 + 64KB 块)，与输入大小无关，适用于 100MB+ 的大文件。完整解析则将整个文档加载到内存中构建 AST。
 
 `YAML.load_stream(file_obj)` 和 `YAML.load_stream_file(path)` 惰性迭代 YAML 事件——内存用量为 O(锚点数 + 64KB 块)，与输入大小无关。适用于 100MB+ 的文件。
 

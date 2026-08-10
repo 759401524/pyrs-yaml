@@ -1,8 +1,10 @@
 ---
-
 title: Quick Start
-lang: ja
-
+description: pyrs-yaml を数分で使い始めるためのガイド。パース、シリアライズ、ラウンドトリップ、インプレース編集をカバーします。
+tags:
+  - docs
+status: new
+---
 
 このガイドでは、pyrs-yaml を数分で使い始める方法を説明します。
 

@@ -1,7 +1,10 @@
 ---
-
 title: Features
-lang: ja
+description: pyrs-yaml は PyYAML の直接置換として設計され、PyYAML にない強力な機能を追加しています。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml は PyYAML の**直接置換**として設計されており、PyYAML にない強力な機能を追加しています。
 
@@ -19,6 +22,9 @@ PyYAML と異なり、pyrs-yaml は**すべてのフォーマットとメタデ�
 - **チョンピング インジケーター** (`|-`、`|+`、`>-`、`>+`)
 - **スカラースタイル**（プレーン、シングルクォート、ダブルクォート、リテラル、フォールド）
 - **フロー/ブロックフォーマット** — `[]`/`{}` とブロックスタイルを保持
+
+!!! note "ベンチマーク環境"
+    ベンチマークは作者のマシン（Windows 11、Python 3.12）で測定されたものです。実際のパフォーマンスは環境によって異なります。
 
 ## パフォーマンス
 
@@ -124,19 +130,27 @@ yaml_str = doc.to_yaml_with_options(
 
 カスタム YAML タグのハンドラを登録し、スカラー値を変換します：
 
+=== "デコレータ"
+
+    ```python
+    import pyrs_yaml
+
+
+    @pyrs_yaml.register_tag("!custom")
+    def custom_handler(node):
+        return f"custom:{node}"
+    ```
+
+=== "命令形式"
+
+    ```python
+    import pyrs_yaml
+
+
+    pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+    ```
+
 ```python
-import pyrs_yaml
-
-
-# デコレータ形式
-@pyrs_yaml.register_tag("!custom")
-def custom_handler(node):
-    return f"custom:{node}"
-
-
-# 命令形式
-pyrs_yaml.register_tag("!custom", lambda node: node.upper())
-
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -247,6 +261,9 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `PyUntypedArray` → `PyArrayDyn<Complex64/Complex32>` | `(re+imj)` 文字列 |
 | `bool` | `PyUntypedArray` → `PyArrayDyn<bool>` | `true` / `false` |
 | `nan` / `inf` | — | `NaN` / `.inf` / `-.inf` |
+
+!!! warning "ブロックシーケンス内の負のスカラー"
+    YAML 1.2 では、ブロックシーケンスの項目は `-` で始まるため、負の値は自動的に引用符で囲まれます。この動作は `safe_load` で正しくラウンドトリップします。
 
 #### 注記
 

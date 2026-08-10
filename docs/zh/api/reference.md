@@ -1,9 +1,15 @@
 ---
-
 title: 模块参考
-lang: zh
+description: pyrs-yaml 模块的完整 API 参考文档，涵盖核心函数、PyYAML 兼容函数、转换函数、Pydantic 集成等。
+tags:
+  - docs
+status: new
+---
 
 `pyrs_yaml` 模块的完整 API 参考。
+
+!!! tip "版本兼容"
+    pyrs-yaml 以 ABI3 wheel 格式构建，单个 wheel 支持 Python 3.8 到 3.15，无需重新编译。
 
 ## 核心函数
 
@@ -35,7 +41,7 @@ doc = pyrs_yaml.parse(b"key: value")
 doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 ```
 
-#### `parse_file()`
+### `parse_file()`
 
 解析 YAML 文件。
 
@@ -60,7 +66,7 @@ parse_file(path: str) -> YamlDocument
 doc = pyrs_yaml.parse_file("config.yaml")
 ```
 
-#### `parse_all_docs()`
+### `parse_all_docs()`
 
 从字符串解析多个 YAML 文档。
 
@@ -94,7 +100,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 ```
 
-#### `safe_loads()`
+### `safe_loads()`
 
 解析多个 YAML 文档。
 
@@ -104,7 +110,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 
 **等价于:** PyYAML 的 `yaml.safe_loads()`
 
-#### `safe_dump()`
+### `safe_dump()`
 
 将 Python 对象序列化为 YAML。
 
@@ -116,7 +122,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 
 **支持的输入类型:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`，以及 **`numpy.ndarray`**（所有维度和数值 dtype：`int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`）
 
-#### `safe_dumps()`
+### `safe_dumps()`
 
 `safe_dump()` 的别名。
 
@@ -134,7 +140,7 @@ safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 from_dict(data: dict[str, Any]) -> str
 ```
 
-#### `from_json()`
+### `from_json()`
 
 将 JSON 字符串转换为 YAML 字符串。
 
@@ -142,7 +148,7 @@ from_dict(data: dict[str, Any]) -> str
 from_json(json_str: str) -> str
 ```
 
-#### `dump_file()`
+### `dump_file()`
 
 将 Python 对象序列化为 YAML 并写入文件。接受 `dict`、`list` 或 `numpy.ndarray`。
 
@@ -219,19 +225,19 @@ print(user.name)  # Alice
 register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
 ```
 
-**示例（装饰器）:**
+=== "装饰器"
 
-```python
-@pyrs_yaml.register_tag("!custom")
-def handler(node):
-    return f"custom:{node}"
-```
+    ```python
+    @pyrs_yaml.register_tag("!custom")
+    def handler(node):
+        return f"custom:{node}"
+    ```
 
-**示例（命令式）:**
+=== "命令式"
 
-```python
-pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
-```
+    ```python
+    pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
+    ```
 
 ### `remove_tag()`
 
@@ -273,6 +279,18 @@ parse_stream(yaml: str) -> StreamIterator
 
 返回一个 `StreamIterator`，每步产出一个事件字典。与 `YAML().load_stream()`（解析为 Python 值）不同，这暴露了原始令牌流。
 
+### `YamlStream` { #yamlstream }
+
+`YamlStream` 类是一个惰性事件迭代器，由 `YAML().load_stream()` 和 `YAML().load_stream_file()` 返回。它逐个产出解析后的事件字典，无需将整个文档加载到内存中。
+
+```python
+stream = yaml.load_stream_file("large.yaml")
+for event in stream:
+    print(event)
+```
+
+参见 [`YamlStream`](yaml-instance.md) 了解完整的 API 详情。
+
 ## 异步函数
 
 使用 `asyncio.run_in_executor` 的异步 I/O 包装器。在事件循环上下文中不阻塞。
@@ -285,7 +303,7 @@ parse_stream(yaml: str) -> StreamIterator
 async def safe_dumps_async(data: Any) -> str
 ```
 
-#### `safe_dump_async()`
+### `safe_dump_async()`
 
 将 Python 对象以 YAML 格式输出到 stdout（异步）。
 
@@ -293,7 +311,7 @@ async def safe_dumps_async(data: Any) -> str
 async def safe_dump_async(data: Any) -> None
 ```
 
-#### `safe_loads_async()`
+### `safe_loads_async()`
 
 将 YAML 字符串解析为原生 Python 对象（异步）。
 
@@ -301,7 +319,7 @@ async def safe_dump_async(data: Any) -> None
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 ```
 
-#### `safe_load_async()`
+### `safe_load_async()`
 
 将 YAML 字符串解析为原生 Python 对象（异步）。
 
@@ -336,7 +354,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 
 **返回值:** `(frontmatter_dict, content_string)`。没有Front Matter时，`frontmatter` 为 `None`。
 
-#### `read_markdown_str()`
+### `read_markdown_str()`
 
 从 Markdown 字符串提取 YAML Front Matter。
 
@@ -356,7 +374,7 @@ set_language(lang: str) -> None
 
 支持：`"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
-#### `get_language()`
+### `get_language()`
 
 获取当前语言。
 
@@ -364,7 +382,7 @@ set_language(lang: str) -> None
 get_language() -> str
 ```
 
-#### `list_languages()`
+### `list_languages()`
 
 列出所有支持的语言。
 
@@ -372,7 +390,7 @@ get_language() -> str
 list_languages() -> list[str]
 ```
 
-#### `detect_language()`
+### `detect_language()`
 
 从环境变量自动检测用户的首选语言。
 
@@ -380,7 +398,7 @@ list_languages() -> list[str]
 detect_language() -> str
 ```
 
-#### `negotiate_language()`
+### `negotiate_language()`
 
 BCP 47 语言协商。
 

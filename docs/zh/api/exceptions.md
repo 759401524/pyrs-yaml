@@ -1,7 +1,10 @@
 ---
-
 title: 异常
-lang: zh
+description: pyrs-yaml 自定义异常类的完整参考，包括 YamlParseError、YamlEditError 等及其错误处理最佳实践。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml 定义了自定义异常类用于错误处理。
 

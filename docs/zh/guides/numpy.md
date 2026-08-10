@@ -1,9 +1,15 @@
 ---
-
 title: NumPy ndarray 序列化指南
-lang: zh
+description: 将 NumPy 数组序列化为 YAML 格式的完整指南，支持零拷贝 Rust 处理。
+tags:
+  - docs
+status: new
+---
 
 将 NumPy 数组序列化为 YAML 列表，支持零拷贝 Rust 处理。
+
+!!! warning "自由线程构建不含 NumPy"
+    自由线程（cp314t）wheel 使用 `--no-default-features` 构建，因此不包含 NumPy 集成。在自由线程构建上对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`。
 
 ## 基本用法
 
@@ -48,6 +54,9 @@ assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 | `float32/64` | 浮点数 | `3.14` |
 | `bool` | 布尔 | `true` / `false` |
 | `complex64/128` | 字符串 | `(1+2j)` |
+
+!!! note "复数支持"
+    YAML 没有原生复数类型，复数会序列化为 `(re+imj)` 字符串。`safe_load` 返回字符串而非 Python `complex` 类型。
 
 ## 特殊值
 
