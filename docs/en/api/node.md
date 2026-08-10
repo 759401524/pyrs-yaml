@@ -241,11 +241,11 @@ d: hello
 
 # Get root node
 root = doc.node()
-print(root.root_type)       # "mapping"
+print(root.root_type)  # "mapping"
 
 # Navigate
 node = root.find("$.a.c[1]")
-print(node.value)            # 3
+print(node.value)  # 3
 
 # Walk
 for n in root.walk():
