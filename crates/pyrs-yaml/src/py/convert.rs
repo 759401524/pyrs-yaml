@@ -105,6 +105,48 @@ fn scalar_to_pyobject(
     }
 }
 
+fn batch_mapping<'a, F>(
+    py: Python,
+    schema: YamlSchema,
+    pairs: &'a indexmap::IndexMap<CustomNode, CustomNode>,
+    mut convert: F,
+) -> PyResult<Py<PyAny>>
+where
+    F: FnMut(&'a CustomNode, Python, YamlSchema) -> PyResult<Py<PyAny>>,
+{
+    let mut items: Vec<(Py<PyAny>, Py<PyAny>)> = Vec::with_capacity(pairs.len());
+    for (key, value) in pairs {
+        let k = match key {
+            CustomNode::Scalar { value, .. } => {
+                value.as_ref().into_pyobject(py)?.into_any().unbind()
+            }
+            _ => format!("{:?}", key).into_pyobject(py)?.into_any().unbind(),
+        };
+        let v = convert(value, py, schema)?;
+        items.push((k, v));
+    }
+    let list = PyList::new(py, items)?;
+    let dict = PyDict::from_sequence(list.as_any())?;
+    Ok(dict.into_any().unbind())
+}
+
+fn batch_sequence<'a, F>(
+    py: Python,
+    schema: YamlSchema,
+    items: &'a [CustomNode],
+    mut convert: F,
+) -> PyResult<Py<PyAny>>
+where
+    F: FnMut(&'a CustomNode, Python, YamlSchema) -> PyResult<Py<PyAny>>,
+{
+    let mut vals: Vec<Py<PyAny>> = Vec::with_capacity(items.len());
+    for item in items {
+        vals.push(convert(item, py, schema)?);
+    }
+    let list = PyList::new(py, vals)?;
+    Ok(list.into_any().unbind())
+}
+
 fn node_to_pyobject_inner<'a>(
     node: &'a CustomNode,
     py: Python,
@@ -114,26 +156,12 @@ fn node_to_pyobject_inner<'a>(
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar { value, style, .. } => scalar_to_pyobject(py, value, style, schema),
-        CustomNode::Mapping { pairs, .. } => {
-            let dict = PyDict::new(py);
-            for (key, value) in pairs {
-                let val = node_to_pyobject_with_anchors(value, py, anchors, visited, schema)?;
-                match key {
-                    CustomNode::Scalar { value, .. } => dict.set_item(value.as_ref(), val),
-                    _ => dict.set_item(format!("{:?}", key), val),
-                }
-                .ok();
-            }
-            Ok(dict.into_any().unbind())
-        }
-        CustomNode::Sequence { items, .. } => {
-            let list = PyList::empty(py);
-            for item in items {
-                let val = node_to_pyobject_with_anchors(item, py, anchors, visited, schema)?;
-                list.append(val).ok();
-            }
-            Ok(list.into_any().unbind())
-        }
+        CustomNode::Mapping { pairs, .. } => batch_mapping(py, schema, pairs, |n, py, schema| {
+            node_to_pyobject_with_anchors(n, py, anchors, visited, schema)
+        }),
+        CustomNode::Sequence { items, .. } => batch_sequence(py, schema, items, |n, py, schema| {
+            node_to_pyobject_with_anchors(n, py, anchors, visited, schema)
+        }),
         CustomNode::Null { .. } => Ok(py.None()),
         CustomNode::Alias { .. } => Ok(py.None()),
     }
@@ -146,26 +174,12 @@ pub(crate) fn node_to_pyobject_simple(
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar { value, style, .. } => scalar_to_pyobject(py, value, style, schema),
-        CustomNode::Mapping { pairs, .. } => {
-            let dict = PyDict::new(py);
-            for (key, value) in pairs {
-                let val = node_to_pyobject_simple(value, py, schema)?;
-                match key {
-                    CustomNode::Scalar { value, .. } => dict.set_item(value.as_ref(), val),
-                    _ => dict.set_item(format!("{:?}", key), val),
-                }
-                .ok();
-            }
-            Ok(dict.into_any().unbind())
-        }
-        CustomNode::Sequence { items, .. } => {
-            let list = PyList::empty(py);
-            for item in items {
-                let val = node_to_pyobject_simple(item, py, schema)?;
-                list.append(val).ok();
-            }
-            Ok(list.into_any().unbind())
-        }
+        CustomNode::Mapping { pairs, .. } => batch_mapping(py, schema, pairs, |n, py, schema| {
+            node_to_pyobject_simple(n, py, schema)
+        }),
+        CustomNode::Sequence { items, .. } => batch_sequence(py, schema, items, |n, py, schema| {
+            node_to_pyobject_simple(n, py, schema)
+        }),
         CustomNode::Null { .. } => Ok(py.None()),
         CustomNode::Alias { .. } => Ok(py.None()),
     }
