@@ -305,6 +305,55 @@ fn parse_large_with_merges() -> pyrs_yaml::ast::CustomNode {
     pyrs_yaml::parser::parse(LARGE_MERGE_YAML, YamlSchema::Core).unwrap()
 }
 
+// ── Parse sub-step micro-benchmarks (decompose parse cost) ──
+
+/// Anchor extraction scan only (the `#`/`&` full-text scan before granit parse).
+#[divan::bench]
+fn extract_anchors_large() -> usize {
+    pyrs_yaml::parser::yaml::extract_anchors(LARGE_YAML).len()
+}
+
+/// Scalar type resolution on a sampled set of scalar strings (schema dispatch
+/// cost per scalar, amortized over the common-case string path).
+#[divan::bench]
+fn resolve_core_type_many(bencher: divan::Bencher) {
+    let scalars = [
+        "hello",
+        "server",
+        "database",
+        "localhost",
+        "item_001",
+        "alpha",
+        "test",
+        "true",
+        "false",
+        "null",
+        "42",
+        "-17",
+        "3.14",
+        "0x1F",
+        "0o17",
+        "2024-01-01",
+        "10.0.0.1",
+        "postgres",
+        "verbose",
+        "stdout",
+        "1234567890123",
+    ];
+    bencher.bench(|| {
+        let mut n = 0usize;
+        for s in scalars {
+            if matches!(
+                pyrs_yaml::parser::yaml::schema::resolve_yaml_type(s, YamlSchema::Core),
+                pyrs_yaml::parser::yaml::types::YamlType::Str(_)
+            ) {
+                n += 1;
+            }
+        }
+        n
+    });
+}
+
 // ── Serialize benchmarks (setup separate from measurement) ──
 
 #[divan::bench]

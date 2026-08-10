@@ -250,3 +250,26 @@ def test_pyyaml_safe_load(benchmark, size):
     """PyYAML safe_load for cross-library comparison."""
     result = benchmark(pyyaml.safe_load, YAML_INPUTS[size])
     assert result is not None
+
+
+# ── Parse decomposition: parse -> YamlDocument vs to_dict vs safe_load ──
+# These isolate the two dominant phases of safe_load:
+#   (1) parse_with_options (Rust, GIL-released) + YamlDocument construction
+#   (2) node_to_pyobject_* (Python object conversion, GIL held)
+# Comparing test_parse_only_sized + test_document_to_dict_sized against
+# test_safe_load_sized reveals the boundary + tag-resolution overhead.
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_parse_only_sized(benchmark, size):
+    """Parse into a YamlDocument only — no Python dict/list conversion."""
+    result = benchmark(pyrs_yaml.parse, YAML_INPUTS[size])
+    assert isinstance(result, pyrs_yaml.YamlDocument)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_document_to_dict_sized(benchmark, size):
+    """to_dict on a pre-parsed YamlDocument — Python object conversion only."""
+    doc = pyrs_yaml.parse(YAML_INPUTS[size])
+    result = benchmark(doc.to_dict)
+    assert result is not None
