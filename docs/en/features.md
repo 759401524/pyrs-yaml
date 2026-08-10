@@ -83,6 +83,65 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 Raises `YamlValidateError` on validation failure.
 
+## Duplicate Keys
+
+By default, duplicate mapping keys raise `YamlDuplicateKeyError`:
+
+```python
+pyrs_yaml.parse("key: first\nkey: second")
+# pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
+```
+
+Pass `allow_duplicate_keys=True` to keep the **last value**:
+
+```python
+doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
+doc.get("key")  # "second"
+```
+
+The switch applies to `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_all_docs`, and `YAML(allow_duplicate_keys=True)`. In round-trip mode, documents with duplicate keys allowed serialize with the last key-value pair emitted.
+
+## Serialization Options
+
+`to_yaml_with_options()` controls indentation and line wrapping:
+
+```python
+yaml_str = doc.to_yaml_with_options(
+    indent_size=2,  # base indent (used when per-type options omitted)
+    width=80,  # line wrap width; 0 disables wrapping
+    indent_mapping=4,  # block mapping indent per level
+    indent_sequence=2,  # block sequence indent per level
+    indent_offset=0,  # base offset for the entire document
+)
+```
+
+When `indent_mapping` / `indent_sequence` / `indent_offset` are omitted, they default to `indent_size` / `indent_size` / `0` respectively, so `indent_size=4` still indents all levels by 4.
+
+## Custom Tag Handlers
+
+Register handlers for custom YAML tags that transform scalar values:
+
+```python
+import pyrs_yaml
+
+
+# Decorator form
+@pyrs_yaml.register_tag("!custom")
+def custom_handler(node):
+    return f"custom:{node}"
+
+
+# Imperative form
+pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+
+doc = pyrs_yaml.parse("name: !custom value")
+doc.get("name")  # "custom:value"
+```
+
+- Multiple handlers for the same tag execute in ascending `priority` order; raising `YamlTagSkip` delegates to the next handler.
+- Handlers must return a string, otherwise `YamlTagError` is raised.
+- `remove_tag("!custom")` and `clear_tag_handlers()` unregister handlers.
+
 ## Pydantic Integration
 
 Parse YAML directly into Pydantic models, or serialize models to YAML:
