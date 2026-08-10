@@ -86,29 +86,6 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 검증 실패 시 `YamlValidateError`를 발생시킵니다.
 
-## Pydantic 통합
-
-Pydantic 모델로 YAML을 직접 파싱하거나 모델을 YAML로 직렬화:
-
-```python
-from pydantic import BaseModel
-import pyrs_yaml
-
-
-class User(BaseModel):
-    name: str
-    age: int
-
-
-# Pydantic 모델로 YAML 파싱
-user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
-print(user.name)  # Alice
-
-# 모델을 YAML 문자열로 직렬화
-yaml_str = pyrs_yaml.dump_pydantic(user)
-print(yaml_str)
-```
-
 ## 중복 키
 
 기본적으로 중복 매핑 키는 `YamlDuplicateKeyError`를 발생시킵니다:
@@ -167,6 +144,29 @@ doc.get("name")  # "custom:value"
 - 같은 태그에 대한 여러 핸들러는 `priority` 오름차순으로 실행됩니다. `YamlTagSkip`을 발생시키면 다음 핸들러에 위임됩니다.
 - 핸들러는 문자열을 반환해야 합니다. 그렇지 않으면 `YamlTagError`가 발생합니다.
 - `remove_tag("!custom")`와 `clear_tag_handlers()`로 핸들러를 해제합니다.
+
+## Pydantic 통합
+
+Pydantic 모델로 YAML을 직접 파싱하거나 모델을 YAML로 직렬화:
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+# Pydantic 모델로 YAML 파싱
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+
+# 모델을 YAML 문자열로 직렬화
+yaml_str = pyrs_yaml.dump_pydantic(user)
+print(yaml_str)
+```
 
 ## 점진적 재파싱
 

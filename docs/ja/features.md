@@ -86,29 +86,6 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 検証に失敗した場合、`YamlValidateError` をスローします。
 
-## Pydantic 統合
-
-Pydantic モデルに直接 YAML をパース、またはモデルを YAML にシリアライズ：
-
-```python
-from pydantic import BaseModel
-import pyrs_yaml
-
-
-class User(BaseModel):
-    name: str
-    age: int
-
-
-# Pydantic モデルに YAML をパース
-user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
-print(user.name)  # Alice
-
-# モデルを YAML 文字列にシリアライズ
-yaml_str = pyrs_yaml.dump_pydantic(user)
-print(yaml_str)
-```
-
 ## 重複キー
 
 デフォルトでは、重複するマッピングキーは `YamlDuplicateKeyError` をスローします：
@@ -167,6 +144,29 @@ doc.get("name")  # "custom:value"
 - 同じタグの複数のハンドラは `priority` の昇順で実行されます。`YamlTagSkip` をスローすると次のハンドラに委任されます。
 - ハンドラは文字列を返す必要があります。それ以外の場合、`YamlTagError` がスローされます。
 - `remove_tag("!custom")` と `clear_tag_handlers()` でハンドラを登録解除します。
+
+## Pydantic 統合
+
+Pydantic モデルに直接 YAML をパース、またはモデルを YAML にシリアライズ：
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+# Pydantic モデルに YAML をパース
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+
+# モデルを YAML 文字列にシリアライズ
+yaml_str = pyrs_yaml.dump_pydantic(user)
+print(yaml_str)
+```
 
 ## インクリメンタル再パース
 
