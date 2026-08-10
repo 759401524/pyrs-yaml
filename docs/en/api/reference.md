@@ -147,6 +147,131 @@ Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or 
 dump_file(data: Any, path: str) -> None
 ```
 
+## Pydantic Integration
+
+### `dump_pydantic()`
+
+Serialize a Pydantic model to a YAML string.
+
+```python
+dump_pydantic(model: BaseModel) -> str
+```
+
+Uses `model_dump(mode='json')` to preserve string types (e.g. a `"10001"` zip code stays a string) before delegating to `safe_dump`.
+
+**Raises:**
+
+- `ImportError` — pydantic is not installed
+- `TypeError` — `model` is not a Pydantic `BaseModel` instance
+
+**Example:**
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+yaml_str = pyrs_yaml.dump_pydantic(User(name="Alice", age=30))
+```
+
+### `parse_as()`
+
+Parse a YAML string and validate it against a Pydantic model.
+
+```python
+parse_as(model: type[BaseModel], src: str, **yaml_kwargs: Any) -> BaseModel
+```
+
+**Parameters:**
+
+- `model` — A Pydantic `BaseModel` subclass
+- `src` — YAML string to parse
+- `**yaml_kwargs` — Keyword arguments forwarded to the `YAML()` constructor
+
+**Returns:** An instance of `model` validating the parsed YAML.
+
+**Raises:**
+
+- `ImportError` — pydantic is not installed
+- `TypeError` — `model` is not a Pydantic `BaseModel` subclass
+- `pydantic.ValidationError` — the parsed data fails model validation
+
+**Example:**
+
+```python
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+```
+
+## Tag Registry
+
+### `register_tag()`
+
+Register a custom tag handler. Supports both decorator and imperative forms.
+
+```python
+register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
+```
+
+**Example (decorator):**
+
+```python
+@pyrs_yaml.register_tag("!custom")
+def handler(node):
+    return f"custom:{node}"
+```
+
+**Example (imperative):**
+
+```python
+pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
+```
+
+### `remove_tag()`
+
+Remove a tag handler.
+
+```python
+remove_tag(name: str) -> None
+```
+
+### `clear_tag_handlers()`
+
+Remove all registered tag handlers.
+
+```python
+clear_tag_handlers() -> None
+```
+
+## Compliance
+
+### `compliance_report()`
+
+Compute the YAML Test Suite compliance report.
+
+```python
+compliance_report() -> dict
+```
+
+Returns the YAML Test Suite pass rate and per-test results.
+
+## Streaming Events
+
+### `parse_stream()`
+
+Parse YAML incrementally, yielding raw event dicts.
+
+```python
+parse_stream(yaml: str) -> StreamIterator
+```
+
+Returns a `StreamIterator` yielding one event dict per step. Unlike `YAML().load_stream()` (which resolves into Python values), this exposes the raw token stream.
+
 ## Async Functions
 
 Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
@@ -205,7 +330,7 @@ asyncio.run(main())
 Extract YAML frontmatter from a Markdown file.
 
 ```python
-read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
 **Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
@@ -215,7 +340,7 @@ read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
 Extract YAML frontmatter from a Markdown string.
 
 ```python
-read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
 ## i18n Functions
@@ -228,7 +353,7 @@ Set the language for error messages.
 set_language(lang: str) -> None
 ```
 
-Supported: `"en"`, `"zh-CN"`
+Supported: `"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
 ### `get_language()`
 
@@ -271,9 +396,15 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlEditError` — In-place edit failure (inherits from `ValueError`)
 - `YamlPathError` — Malformed/non-editable path (inherits from `ValueError`)
 - `YamlDocumentError` — Stale `Node` access (inherits from `Exception`)
+- `YamlDuplicateKeyError` — Duplicate mapping key detected (inherits from `ValueError`)
+- `YamlMaxDepthError` — Exceeded maximum nesting depth (inherits from `ValueError`)
+- `YamlTagError` — Invalid tag handler registration (inherits from `ValueError`)
+- `YamlTagSkip` — Sentinel raised by a tag handler to skip a node (inherits from `Exception`)
+
+See [Exceptions](exceptions.md) for full details.
 
 ## Version
 
 ```python
-__version__ = "0.6.0"
+__version__ = "0.12.1"
 ```
