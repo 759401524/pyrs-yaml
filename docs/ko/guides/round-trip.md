@@ -3,11 +3,9 @@
 title: 순환 보존
 lang: ko
 
-## 순환 보존
-
 이것은 pyrs-yaml의 **핵심 기능** — Python YAML 라이브러리 중에서 독보적인 특징입니다.
 
-### 순환 보존이란?
+## 순환 보존이란?
 
 순환 보존은: **YAML 파싱 → 수정 → 직렬화 → 출력이 입력과 동일하거나 의미적으로 동등함**을 의미합니다.
 
@@ -39,7 +37,7 @@ assert "&db" in output
 # <<: *db를 그대로 유지하려면 resolve_merges=False를 사용하세요
 ```
 
-### 보존되는 것
+## 보존되는 것
 
 | 요소 | 보존 여부 | 설명 |
 |------|----------|------|
@@ -55,7 +53,7 @@ assert "&db" in output
 | 컴팩트 시퀀스 항목 | ✅ | `- host: a`가 대시 줄에 유지됨 (메타데이터 없는 매핑 항목만) |
 | 키 순서 | ✅ | `IndexMap`이 순서 보장 |
 
-### PyYAML vs pyrs-yaml 순환 보존
+## PyYAML vs pyrs-yaml 순환 보존
 
 ```python
 original = "# 주석\nkey: value  # 인라인\n"
@@ -70,7 +68,7 @@ doc.to_yaml()
 # 출력: '# 주석\nkey: value  # 인라인\n'  ✅
 ```
 
-### 성능
+## 성능
 
 다른 라이브러리와의 순환 성능 비교:
 

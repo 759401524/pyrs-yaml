@@ -3,13 +3,11 @@
 title: モジュール リファレンス
 lang: ja
 
-## モジュール リファレンス
-
 `pyrs_yaml` モジュールの完全な API リファレンス。
 
-### コア関数
+## コア関数
 
-#### `parse()`
+### `parse()`
 
 YAML 文字列またはバイト列をパースして `YamlDocument` に変換します。
 
@@ -78,9 +76,9 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-### PyYAML 互換関数
+## PyYAML 互換関数
 
-#### `safe_load()`
+### `safe_load()`
 
 YAML をパースしてネイティブ Python 型を返します。
 
@@ -126,9 +124,9 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-### 変換関数
+## 変換関数
 
-#### `from_dict()`
+### `from_dict()`
 
 Python dict を YAML 文字列に変換します。dict の値として `numpy.ndarray` も受け付けます。
 
@@ -152,11 +150,132 @@ Python オブジェクトを YAML にシリアライズしてファイルに書�
 dump_file(data: Any, path: str) -> None
 ```
 
-### 非同期関数
+## Pydantic 統合
+
+### `dump_pydantic()`
+
+Pydantic モデルを YAML 文字列にシリアライズします。
+
+```python
+dump_pydantic(model: BaseModel) -> str
+```
+
+`model_dump(mode='json')` を使用して文字列型を保持してから（例：`"10001"` の郵便番号は文字列のまま）、`safe_dump` に委譲します。
+
+**スロー:**
+
+- `ImportError` — pydantic がインストールされていない
+- `TypeError` — `model` が Pydantic の `BaseModel` インスタンスでない
+
+**例:**
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+class User(BaseModel):
+    name: str
+    age: int
+
+yaml_str = pyrs_yaml.dump_pydantic(User(name="Alice", age=30))
+```
+
+### `parse_as()`
+
+YAML 文字列をパースし、Pydantic モデルに対して検証します。
+
+```python
+parse_as(model: type[BaseModel], src: str, **yaml_kwargs: Any) -> BaseModel
+```
+
+**パラメータ:**
+
+- `model` — Pydantic の `BaseModel` サブクラス
+- `src` — パースする YAML 文字列
+- `**yaml_kwargs` — `YAML()` コンストラクタに転送されるキーワード引数
+
+**スロー:**
+
+- `ImportError` — pydantic がインストールされていない
+- `TypeError` — `model` が Pydantic の `BaseModel` サブクラスでない
+- `pydantic.ValidationError` — パースされたデータがモデル検証に失敗
+
+**例:**
+
+```python
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+```
+
+## タグレジストリ
+
+### `register_tag()`
+
+カスタムタグハンドラを登録します。デコレータ形式と命令形式の両方をサポートします。
+
+```python
+register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
+```
+
+**例（デコレータ）:**
+
+```python
+@pyrs_yaml.register_tag("!custom")
+def handler(node):
+    return f"custom:{node}"
+```
+
+**例（命令形式）:**
+
+```python
+pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
+```
+
+### `remove_tag()`
+
+タグハンドラを削除します。
+
+```python
+remove_tag(name: str) -> None
+```
+
+### `clear_tag_handlers()`
+
+登録済みのすべてのタグハンドラを削除します。
+
+```python
+clear_tag_handlers() -> None
+```
+
+## コンプライアンス
+
+### `compliance_report()`
+
+YAML テストスイートのコンプライアンスレポートを計算します。
+
+```python
+compliance_report() -> dict
+```
+
+YAML テストスイートの合格率とテストごとの結果を返します。
+
+## ストリーミングイベント
+
+### `parse_stream()`
+
+YAML をインクリメンタルにパースし、生のイベント dict を生成します。
+
+```python
+parse_stream(yaml: str) -> StreamIterator
+```
+
+各ステップで 1 つのイベント dict を生成する `StreamIterator` を返します。`YAML().load_stream()`（Python 値に解決される）とは異なり、生のトークンストリームを公開します。
+
+## 非同期関数
 
 `asyncio.run_in_executor` を使用した非同期 I/O ラッパー。イベントループコンテキストではノンブロッキング。
 
-#### `safe_dumps_async()`
+### `safe_dumps_async()`
 
 Python オブジェクトを YAML 文字列にシリアライズ (非同期)。
 
@@ -203,29 +322,29 @@ async def main():
 asyncio.run(main())
 ```
 
-### Markdown フロントメータ
+## Markdown Front Matter
 
-#### `read_markdown()`
+### `read_markdown()`
 
-Markdown ファイルから YAML フロントメータを抽出します。
+Markdown ファイルから YAML Front Matterを抽出します。
 
 ```python
-read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-**戻り値:** `(frontmatter_dict, content_string)`。フロントメータがない場合、`frontmatter` は `None`。
+**戻り値:** `(frontmatter_dict, content_string)`。Front Matterがない場合、`frontmatter` は `None`。
 
 #### `read_markdown_str()`
 
-Markdown 文字列から YAML フロントメータを抽出します。
+Markdown 文字列から YAML Front Matterを抽出します。
 
 ```python
-read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-### i18n 関数
+## i18n 関数
 
-#### `set_language()`
+### `set_language()`
 
 エラーメッセージの言語を設定します。
 
@@ -267,7 +386,7 @@ BCP 47 言語ネゴシエーション。
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-### 例外
+## 例外
 
 - `YamlParseError` — YAML パースエラー (`ValueError` を継承)
 - `YamlSerializeError` — YAML シリアライズエラー (`ValueError` を継承)
@@ -279,7 +398,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 詳細は [例外](exceptions.md) ページを参照してください。
 
-### バージョン
+## バージョン
 
 ```python
 __version__ = "0.6.0"

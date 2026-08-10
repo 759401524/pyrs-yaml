@@ -3,13 +3,11 @@
 title: 코드 표준
 lang: ko
 
-## 코드 표준
-
 pyrs-yaml에 기여할 때 다음 표준을 따르세요.
 
-### Rust
+## Rust
 
-#### 스타일
+### 스타일
 
 - 커밋 전에 `cargo fmt` 사용
 - [Rust API 가이드라인](https://rust-lang.github.io/api-guidelines/) 준수
@@ -86,9 +84,9 @@ let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 
 `cargo clippy -- -D warnings` 실행 — 모든 경고를 오류로 취급.
 
-### Python
+## Python
 
-#### 스타일
+### 스타일
 
 - [PEP 8](https://peps.python.org/pep-0008/) 준수
 - 모든 곳에서 타입 힌트 사용
@@ -120,13 +118,13 @@ def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlD
 - 순환 보존 단언 포함
 - Pytest 설정은 `pytest.ini`에 있음（asyncio_mode = auto, 사용자 정의 마커）
 
-### Git
+## Git
 
 - 커밋 메시지는 명령형으로: "Add feature X" (X가 아님 "Added feature X")
 - 커밋당 하나의 논리적 변경
 - 커밋 전에 `cargo test`와 `uv run --frozen pytest tests/` 실행
 
-### 문서
+## 문서
 
 - 동작을 변경할 때 문서 업데이트
 - 복사하여 붙여넣고 실행할 수 있는 코드 예시 사용

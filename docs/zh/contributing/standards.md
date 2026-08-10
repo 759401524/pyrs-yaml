@@ -3,13 +3,11 @@
 title: 编码标准
 lang: zh
 
-## 编码标准
-
 贡献 pyrs-yaml 时请遵循以下标准。
 
-### Rust
+## Rust
 
-#### 风格
+### 风格
 
 - 提交前使用 `cargo fmt`
 - 遵循 [Rust API 指南](https://rust-lang.github.io/api-guidelines/)
@@ -86,9 +84,9 @@ let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 
 运行 `cargo clippy -- -D warnings` — 将所有警告视为错误。
 
-### Python
+## Python
 
-#### 风格
+### 风格
 
 - 遵循 [PEP 8](https://peps.python.org/pep-0008/)
 - 到处使用类型提示
@@ -117,16 +115,16 @@ def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlD
 - 代码前先写测试（TDD）
 - 必要时使用 `uv run --frozen pytest` 和 fixture
 - 测试边缘情况：空输入、特殊字符、大文档
-- 包含往返保存断言
+- 包含往返断言
 - Pytest 配置在 `pytest.ini` 中（asyncio_mode = auto，自定义标记）
 
-### Git
+## Git
 
 - 提交消息使用命令式："Add feature X"（不是 "Added feature X"）
 - 每次提交一个逻辑变更
 - 提交前运行 `cargo test` 和 `uv run --frozen pytest tests/`
 
-### 文档
+## 文档
 
 - 更改行为时更新文档
 - 使用可复制粘贴和运行的代码示例

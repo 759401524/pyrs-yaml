@@ -3,11 +3,9 @@
 title: テスト実行
 lang: ja
 
-## テスト実行
-
 pyrs-yaml は Rust ユニットテストと Python 統合テストの両方を持っています。
 
-### Rust テスト
+## Rust テスト
 
 ```bash
 # すべての Rust テストを nextest で実行（推奨）
@@ -23,7 +21,7 @@ cargo test --all --no-default-features
 cargo test --all -- --nocapture
 ```
 
-#### テストカバレッジ
+### テストカバレッジ
 
 - **`crates/pyrs-yaml-core/src/ast.rs`** — ノード構築、メタデータ、等値性
 - **`crates/pyrs-yaml-core/src/parser/`** — さまざまな YAML 構造のパース
@@ -32,7 +30,7 @@ cargo test --all -- --nocapture
 - **`crates/pyrs-yaml-core/src/integration/`** — YAML Test Suite 統合
 - **`crates/pyrs-yaml/src/fidelity.rs`** — プロパティベースファズテスト
 
-### Python テスト
+## Python テスト
 
 ```bash
 # すべての Python テストを実行
@@ -54,7 +52,7 @@ uv run pytest tests/test_yaml_suite.py -v
 uv run pytest tests/ --codspeed
 ```
 
-### Maturin ビルド
+## Maturin ビルド
 
 ```bash
 # ビルドしてインストール（モノレポの manifest-path を使用）
@@ -64,7 +62,7 @@ uv run maturin develop --release
 uv run maturin build --release --generate-stubs
 ```
 
-#### テストファイル
+### テストファイル
 
 | ファイル | カバレッジ |
 |---------|----------|
@@ -72,14 +70,14 @@ uv run maturin build --release --generate-stubs
 | `test_serialize.py` | シリアライゼーション、往復保存 |
 | `test_edge_cases.py` | エッジケース、エラーハンドリング |
 | `test_errors.py` | カスタム例外タイプ、ファイル I/O |
-| `test_features.py` | Markdown フロントメータ、from_dict/from_json |
+| `test_features.py` | Markdown Front Matter、from_dict/from_json |
 | `test_json.py` | JSON ↔ YAML 変換 |
 | `test_tabs.py` | タブ処理 |
 | `test_yaml_suite.py` | YAML Test Suite 統合 |
 | `test_performance.py` | パフォーマンス整合性チェック |
 | **`test_numpy.py`** | **NumPy Ndarray シリアライゼーション (0 次元〜N 次元、すべての dtype)** |
 
-### CI テスト
+## CI テスト
 
 GitHub Actions はすべてのプッシュと PR で実行：
 
@@ -87,9 +85,9 @@ GitHub Actions はすべてのプッシュと PR で実行：
 - **Python**: 4 つの Python バージョン × 3 つの OS で `uv run pytest tests/`
 - **Maturin**: 各 Python バージョン用に wheel をビルド（`crates/pyrs-yaml/Cargo.toml` 経由）
 
-### 新しいテストの追加
+## 新しいテストの追加
 
-#### Rust テスト
+### Rust テスト
 
 ```rust
 #[cfg(test)]
@@ -120,7 +118,7 @@ class TestNewFeature:
         pass
 ```
 
-### テストカテゴリ
+## テストカテゴリ
 
 - **ユニットテスト** — 個別の関数、小さな入力
 - **統合テスト** — 完全なパース → シリアライズ往復保存
@@ -128,7 +126,7 @@ class TestNewFeature:
 - **パフォーマンステスト** — 整合性チェック（ベンチマークではない）
 - **YAML Test Suite** — YAML 準拠の外部テストスイート
 
-### YAML Test Suite 既知の逸脱
+## YAML Test Suite 既知の逸脱
 
 スイートの合格率は **95%** でゲートされています（`test_compliance_report` 参照）。一部のケースは意図的に追跡していません。それらを拒否することは仕様的に正しく、リファレンスパーサー（特に PyYAML/libyaml）と一致するためです：
 

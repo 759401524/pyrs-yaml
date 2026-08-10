@@ -3,11 +3,9 @@
 title: 개발 환경 설정
 lang: ko
 
-## 개발 환경 설정
-
 pyrs-yaml에 기여하기 위한 환경을 설정합니다.
 
-### 사전 요구사항
+## 사전 요구사항
 
 - **Python** ≥ 3.8 (CPython)
 - **Rust** ≥ 1.70 ([rustup](https://rustup.rs/) 경유)
@@ -15,7 +13,7 @@ pyrs-yaml에 기여하기 위한 환경을 설정합니다.
 - **uv** (권장) 또는 **pip**
 - **NumPy** — NumPy 직렬화 테스트 스위트 실행에 필요 (`uv run --frozen pytest tests/test_numpy.py`)
 
-### 클론 및 설치
+## 클론 및 설치
 
 ```bash
 git clone https://github.com/759401524/pyrs-yaml.git
@@ -29,7 +27,7 @@ pip install maturin
 uv run --frozen maturin develop --release
 ```
 
-### 설치 확인
+## 설치 확인
 
 ```bash
 # Rust 테스트 실행
@@ -42,7 +40,7 @@ uv run --frozen pytest tests/
 cargo bench
 ```
 
-### 프로젝트 구조
+## 프로젝트 구조
 
 ```text
 pyrs-yaml/
@@ -66,7 +64,7 @@ pyrs-yaml/
 └── docs/                   # 문서 (mkdocs)
 ```
 
-### 빌드 명령어
+## 빌드 명령어
 
 ```bash
 # Python 확장 빌드
@@ -79,7 +77,7 @@ maturin build --release --out dist
 cargo build
 ```
 
-### 개발 워크플로우
+## 개발 워크플로우
 
 1. **먼저 테스트 작성** (TDD)
 2. `src/`에서 **변경 구현**

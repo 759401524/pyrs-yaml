@@ -3,11 +3,10 @@
 title: Quick Start
 lang: ja
 
-## クイックスタート
 
 このガイドでは、pyrs-yaml を数分で使い始める方法を説明します。
 
-### 1. インストール
+## 1. インストール
 
 パッケージはまだ PyPI に掲載されていません。ソースからインストール：
 
@@ -15,7 +14,7 @@ lang: ja
 uv run --frozen maturin develop --release
 ```
 
-### 2. YAML のパース
+## 2. YAML のパース
 
 ```python
 import pyrs_yaml
@@ -33,7 +32,7 @@ print(doc.get("age"))  # 30
 print(doc.get("email"))  # alice@example.com
 ```
 
-### 3. Python オブジェクトへの変換
+## 3. Python オブジェクトへの変換
 
 ```python
 # Use safe_load for PyYAML-compatible behavior
@@ -50,7 +49,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))  # <class 'list'>
 ```
 
-### 4. YAML へのシリアライズ
+## 4. YAML へのシリアライズ
 
 ```python
 # Convert a Python dict back to YAML
@@ -62,7 +61,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-### 5. フォーマットの保持（ラウンドトリップ）
+## 5. フォーマットの保持（ラウンドトリップ）
 
 ```python
 # The key advantage of pyrs-yaml
@@ -92,7 +91,7 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-### 6. インプレース編集
+## 6. インプレース編集
 
 ```python
 # コメントやフォーマットを失わずに解析済みドキュメントを編集
@@ -116,7 +115,7 @@ print(doc.to_yaml())
 
 完全な API は [インプレース編集ガイド](guides/editing.md) を参照してください。
 
-### 7. ファイルから YAML を読み込む
+## 7. ファイルから YAML を読み込む
 
 ```python
 # Parse a YAML file directly
@@ -124,7 +123,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### 8. 複数ドキュメント
+## 8. 複数ドキュメント
 
 ```python
 # Parse multiple YAML documents
@@ -185,7 +184,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` string | No native YAML complex type |
 | `bool` | `true` / `false` | — |
 
-### 次のステップ
+## 次のステップ
 
 - **[機能](features.md)** — サポートされているすべての YAML 機能を探索
 - **[パースガイド](guides/parsing.md)** — 高度なパースオプション

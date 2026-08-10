@@ -3,13 +3,11 @@
 title: コーディング基準
 lang: ja
 
-## コーディング基準
-
 pyrs-yaml に貢献する際は、以下の基準に従ってください。
 
-### Rust
+## Rust
 
-#### スタイル
+### スタイル
 
 - コミット前に `cargo fmt` を使用
 - [Rust API ガイドライン](https://rust-lang.github.io/api-guidelines/) に従う
@@ -86,9 +84,9 @@ let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 
 `cargo clippy -- -D warnings` を実行 — すべての警告をエラーとして扱う。
 
-### Python
+## Python
 
-#### スタイル
+### スタイル
 
 - [PEP 8](https://peps.python.org/pep-0008/) に従う
 - すべての場所で型ヒントを使用
@@ -119,13 +117,13 @@ def parse(yaml: str, resolve_merges: bool = True) -> YamlDocument:
 - 往復保存アサーションを含める
 - Pytest 設定は `pytest.ini` にあり（asyncio_mode = auto、カスタムマーカー）
 
-### Git
+## Git
 
 - コミットメッセージは命令形で："Add feature X"（"Added feature X" ではない）
 - 1 コミットに 1 つの論理的な変更
 - コミット前に `cargo test` と `uv run --frozen pytest tests/` を実行
 
-### ドキュメント
+## ドキュメント
 
 - 動作を変更した場合はドキュメントを更新
 - コピー＆ペーストして実行できるコードサンプルを使用

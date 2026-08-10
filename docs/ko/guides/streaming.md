@@ -1,4 +1,7 @@
-# 스트리밍 파싱
+---
+title: 스트리밍 파싱
+lang: ko
+---
 
 `YAML.load_stream(file_obj)` 및 `YAML.load_stream_file(path)`는 YAML 이벤트를 지연 반복합니다——메모리 사용량은 O(앵커 수 + 64KB 청크)로 입력 크기와 무관합니다. 100MB+ 파일에 적합합니다.
 
@@ -44,11 +47,11 @@ YAML().dump_stream(buf, [{"a": 1}, {"b": 2}])
 - `explicit_end=True`는 마지막 문서 뒤에 `...`를 추가.
 - 빈 iterable은 0바이트 출력.
 
-### 오류 의미론
+#### 오류 의미론
 
 중간에 실패(이터레이터 예외, 직렬화 오류, 쓰기 실패)하면 이미 작성된 출력이 대상에 남습니다——부분 출력에 대한 롤백은 없습니다.
 
-### safe_dump와의 차이점
+#### safe_dump와의 차이점
 
 | 측면 | dump_stream / dump_file | safe_dump |
 |------|------------------------|-----------|
@@ -56,6 +59,61 @@ YAML().dump_stream(buf, [{"a": 1}, {"b": 2}])
 | 메모리 | O(단일 문서 + 64KB) | O(입력) |
 | 항목 유형 | `YamlDocument`(주석/앵커 유지) 또는 일반 Python 객체 | 단일 Python 객체 |
 
-### 키 정렬
+#### 키 정렬
 
 `sort_keys=True`를 전달하면 매핑 키를 정렬된 순서로 출력합니다. `safe_dump`의 `sort_keys` 동작과 동일합니다.
+
+## StreamIterator
+
+`StreamIterator` 클래스는 `parse_stream()` 및 `YAML().load_stream()` / `YAML().load_stream_file()`에서 생성됩니다. 반복자 프로토콜을 구현하며 이벤트 dict를 한 번에 하나씩 생성합니다.
+
+```python
+from pyrs_yaml import parse_stream
+
+iterator = parse_stream("key: value\n---\na: 1")
+for event in iterator:
+    print(event["type"], event["value"])
+```
+
+### 반복자 프로토콜
+
+`StreamIterator`는 `__iter__`(`self` 반환)와 `__next__`를 구현합니다:
+
+```python
+def __iter__() -> StreamIterator: ...
+def __next__() -> dict | None: ...
+```
+
+스트림이 고갈되면 `__next__()`는 `None`을 반환합니다(`StopIteration`을 발생시키지 않음).
+
+#### 이벤트 dict 키
+
+| 키 | 타입 | 설명 |
+| --- | --- | --- |
+| `type` | `str` | 이벤트 타입(아래 참조) |
+| `value` | `str` 또는 `None` | 스칼라 값, 별칭 이름, 또는 주석 텍스트 |
+| `style` | `str` 또는 `None` | 스칼라 따옴표 스타일: `"plain"`, `"single_quoted"`, `"double_quoted"`, `"literal"`, `"folded"`; 주석의 경우 `"standalone"` 또는 `"inline"` |
+| `anchor` | `str` 또는 `None` | 앵커 이름(`&name`) |
+| `tag` | `str` 또는 `None` | 태그 문자열(`!!str`, `!custom`) |
+| `line` | `int` | 줄 번호(0 기반) |
+| `column` | `int` | 열 번호(0 기반) |
+
+#### 이벤트 타입
+
+| `type` | 생성 시점 |
+| --- | --- |
+| `stream_start` | YAML 스트림의 시작 |
+| `stream_end` | 스트림의 끝 |
+| `document_start` | 문서의 시작 |
+| `document_end` | 문서의 끝 |
+| `mapping_start` | 매핑의 시작 |
+| `mapping_end` | 매핑의 끝 |
+| `sequence_start` | 시퀀스의 시작 |
+| `sequence_end` | 시퀀스의 끝 |
+| `scalar` | 스칼라 값 |
+| `alias` | 별칭 참조(`*name`) |
+| `comment` | YAML 주석 |
+
+#### `load_stream`과의 차이점
+
+`parse_stream()`은 주석을 생성하고 원래 앵커 이름을 유지하는 `StreamIterator`를 반환합니다. `YAML().load_stream()` / `YAML().load_stream_file()`은 기본값이 다른 `YamlStream`을 반환합니다(위 비교표 참조).

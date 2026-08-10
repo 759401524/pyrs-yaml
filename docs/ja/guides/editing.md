@@ -1,7 +1,7 @@
+---
 title: インプレース編集
 lang: ja
-
-# インプレース編集
+---
 
 pyrs-yaml では、**パース済みドキュメントをその場で編集**でき、すべてのフォーマットメタデータ（コメント、アンカー、タグ、スカラースタイル、フロー/ブロックスタイル）を保持します — 手作業による文字列加工は不要で、忠実性の損失もありません。
 
@@ -74,13 +74,13 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 既存のスカラーを置換する場合、対象のメタデータ（インラインコメント、アンカー、タグ、クォートスタイル）は**保持**されます — ただし、新しい値がマッピング/シーケンスの場合は、新しいノード自身のフォーマットが採用されます。
 
-### `__setitem__` — ルート用糖衣構文
+#### `__setitem__` — ルート用糖衣構文
 
 ```python
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
-### `Node.set_value()` — ノード経由の編集
+#### `Node.set_value()` — ノード経由の編集
 
 ```python
 node = doc.node().find("$.a.b")  # see "Working with Nodes"
@@ -108,7 +108,7 @@ doc.insert("$.items", 3, "last")  # index == len appends
 doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
-### `append()` — 末尾に追加
+#### `append()` — 末尾に追加
 
 ```python
 append(path: str, value: Any) -> None
@@ -118,7 +118,7 @@ append(path: str, value: Any) -> None
 doc.append("$.items", "d")
 ```
 
-### `Node.append()` / `Node.insert()`
+#### `Node.append()` / `Node.insert()`
 
 同じ操作を `Node` オブジェクトでも利用できます：
 
@@ -144,13 +144,13 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 
 マッピングの順序は常に保持されます。シーケンスの削除では隙間が詰められます。
 
-### `__delitem__` — ルート用糖衣構文
+#### `__delitem__` — ルート用糖衣構文
 
 ```python
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
-### `Node.delete()`
+#### `Node.delete()`
 
 ```python
 node = doc.node().find("$.b")
@@ -177,7 +177,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 - **メタデータは保持** — キーのインラインコメント、スタイル、アンカーはリネームとともに移動します
 - ルートや複合（非スカラー）キーのリネーム、および**既存キーへの**リネームは `YamlEditError` を発生させます（同一キーへのリネームは何も行いません）
 
-### `Node.rename()`
+#### `Node.rename()`
 
 ```python
 node = doc.node().find("$.old")
@@ -222,7 +222,7 @@ for node in doc.scalars():
 
 これは、特にパス情報やスカラー値のみが必要な場合、大規模ドキュメントに対して Python のみの `Node.walk()` よりも大幅に高速です。
 
-### 不足キーの自動作成（`create_missing=True`）
+#### 不足キーの自動作成（`create_missing=True`）
 
 デフォルトでは、`set()` はパス内の中間キーが存在しない場合に `YamlEditError` を発生させます。`create_missing=True` を指定すると、不足している中間マッピングキーが自動的に作成されます：
 
@@ -248,7 +248,7 @@ print(doc.to_yaml())
 - 途中に**スカラー**がある場合もエラーになります（スカラー内には降下できません）
 - 作成されたチェーンはインプレーススプライス編集の対象になります
 
-### `find()` によるクエリ
+#### `find()` によるクエリ
 
 `find()` は**読み取り指向**で、ワイルドカードとディープスキャンをサポートします — パスが複数のノードを選択する場合はリストを返します：
 

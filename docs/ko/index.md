@@ -3,8 +3,6 @@
 title: pyrs-yaml
 lang: ko
 
-## pyrs-yaml
-
 # 높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨
 
 ---

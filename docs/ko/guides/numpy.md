@@ -3,11 +3,9 @@
 title: NumPy ndarray 직렬화 가이드
 lang: ko
 
-## NumPy ndarray 직렬화 가이드
-
 NumPy 배열을 YAML 리스트로 직렬화합니다. 제로 복사 Rust 처리를 지원합니다.
 
-### 기본 사용법
+## 기본 사용법
 
 ```python
 import numpy as np
@@ -26,7 +24,7 @@ data = y.safe_load(yaml_str)
 assert data == [1, 2, 3]
 ```
 
-### 다차원 배열
+## 다차원 배열
 
 ```python
 # 2차원 행렬
@@ -41,7 +39,7 @@ data = y.safe_load(y.safe_dump(cube))
 assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 ```
 
-### 지원되는 dtype
+## 지원되는 dtype
 
 | NumPy dtype | YAML 출력 | 예시 |
 |-------------|-----------|------|
@@ -51,7 +49,7 @@ assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 | `bool` | 불리언 | `true` / `false` |
 | `complex64/128` | 문자열 | `(1+2j)` |
 
-### 특수 값
+## 특수 값
 
 ```python
 # NaN
@@ -66,7 +64,7 @@ assert data[0] == float("inf")
 assert data[1] == float("-inf")
 ```
 
-### 음수 처리
+## 음수 처리
 
 YAML 1.2 사양에서는 블록 시퀀스에 `-`로 시작하는 일반 스칼라를 포함할 수 없습니다. 음수 값은 자동으로 단일 따옴표로 감싸지며, 순환 파싱 시 올바르게 파싱됩니다:
 
@@ -76,7 +74,7 @@ data = y.safe_load(y.safe_dump(arr))
 assert data == [-100, 200]  # 순환 파싱 정상 처리
 ```
 
-### 0차원 스칼라 배열
+## 0차원 스칼라 배열
 
 0차원 배열은 1차원으로 리셰이프된 후 직렬화되며, 단일 항목 리스트가 됩니다:
 
@@ -86,7 +84,7 @@ data = y.safe_load(y.safe_dump(scalar))
 assert data == [42]
 ```
 
-### 구조체 내 중첩
+## 구조체 내 중첩
 
 NumPy 배열은 dict나 list에 포함될 수 있습니다:
 
@@ -97,7 +95,7 @@ loaded = y.safe_load(yaml_str)
 assert loaded["matrix"] == [[1, 2], [3, 4]]
 ```
 
-### 지원되지 않는 타입
+## 지원되지 않는 타입
 
 다음 타입은 `YamlTypeError`를 발생시킵니다:
 
@@ -106,7 +104,7 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 - 구조화 배열
 - 비숫자 커스텀 dtype
 
-### 성능
+## 성능
 
 - `PyUntypedArray`를 사용한 제로 복사 dtype 디스패치
 - `PyArrayDyn<T>`를 사용한 제로 복사 슬라이스 반복

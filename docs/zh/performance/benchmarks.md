@@ -1,74 +1,74 @@
 ---
 
-title: Benchmarks
+title: 基准测试
 lang: zh
 
-## 基准测试
+# 基准测试
 
-性能 benchmarks for pyrs-yaml, measured on the author's machine (Windows 11, Python 3.12).
+pyrs-yaml 的性能基准测试，在作者机器上测量（Windows 11，Python 3.12）。
 
-### Methodology
+## 方法论
 
-- **Tool:** Criterion (Rust) + `pytest-codspeed` (Python)
-- **Rounds:** 200 iterations per benchmark (Python), 100+ samples per benchmark (Rust)
-- **Metric:** Median time in milliseconds (Python), mean time in microseconds (Rust)
+- **工具：** Criterion（Rust）+ `pytest-codspeed`（Python）
+- **轮次：** 每项基准测试 200 次迭代（Python），100+ 次采样（Rust）
+- **指标：** 中位数时间（Python，毫秒），平均时间（Rust，微秒）
 
-### Parse 性能
+## 解析性能
 
-| YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | Speedup vs PyYAML |
-|-----------|-----------|--------|-------------|-------------------|
-| Small (~100 B) | 0.00 ms | 0.11 ms | 0.26 ms | **25×** |
-| Medium (~500 B) | 0.03 ms | 0.75 ms | 1.74 ms | **28×** |
-| Large (~2 KB) | 0.07 ms | 1.83 ms | 4.26 ms | **26×** |
+| YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | 相比 PyYAML 加速 |
+|-----------|-----------|--------|-------------|------------------|
+| 小 (~100 B) | 0.00 ms | 0.11 ms | 0.26 ms | **25×** |
+| 中 (~500 B) | 0.03 ms | 0.75 ms | 1.74 ms | **28×** |
+| 大 (~2 KB) | 0.07 ms | 1.83 ms | 4.26 ms | **26×** |
 
-### Serialize 性能
+## 序列化性能
 
-| YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | Speedup vs PyYAML |
-|-----------|-----------|--------|-------------|-------------------|
-| Small (~100 B) | 0.01 ms | 0.19 ms | 0.46 ms | **36×** |
-| Medium (~500 B) | 0.03 ms | 1.21 ms | 2.83 ms | **40×** |
-| Large (~2 KB) | 0.08 ms | 2.96 ms | 6.74 ms | **37×** |
+| YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | 相比 PyYAML 加速 |
+|-----------|-----------|--------|-------------|------------------|
+| 小 (~100 B) | 0.01 ms | 0.19 ms | 0.46 ms | **36×** |
+| 中 (~500 B) | 0.03 ms | 1.21 ms | 2.83 ms | **40×** |
+| 大 (~2 KB) | 0.08 ms | 2.96 ms | 6.74 ms | **37×** |
 
-### Round-Trip 性能
+## 往返性能
 
-| YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | Speedup vs PyYAML |
-|-----------|-----------|--------|-------------|-------------------|
-| Small (~100 B) | 0.01 ms | 0.19 ms | 0.47 ms | **35×** |
-| Medium (~500 B) | 0.03 ms | 1.20 ms | 2.88 ms | **39×** |
-| Large (~2 KB) | 0.08 ms | 2.98 ms | 6.79 ms | **37×** |
+| YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | 相比 PyYAML 加速 |
+|-----------|-----------|--------|-------------|------------------|
+| 小 (~100 B) | 0.01 ms | 0.19 ms | 0.47 ms | **35×** |
+| 中 (~500 B) | 0.03 ms | 1.20 ms | 2.88 ms | **39×** |
+| 大 (~2 KB) | 0.08 ms | 2.98 ms | 6.79 ms | **37×** |
 
-### Rust-Side 基准测试 (Criterion)
+## Rust 侧基准测试（Criterion）
 
-Measured at the Rust level (no Python overhead):
+在 Rust 层面测量（无 Python 开销）：
 
-| Operation | Time |
-|-----------|------|
-| Parse (small) | 1.69 µs |
-| Parse (medium) | 12.2 µs |
-| Parse (large) | 37.7 µs |
-| Parse (anchors) | 10.5 µs |
-| Parse (comments) | 5.0 µs |
-| Parse (block scalars) | 3.2 µs |
-| Serialize (small) | 4.4 µs |
-| Serialize (medium) | 4.7 µs |
-| Serialize (large) | 5.5 µs |
-| Serialize (anchors) | 4.8 µs |
-| Serialize (block scalars) | 4.4 µs |
-| Round-trip (small) | 5.9 µs |
-| Round-trip (medium) | 17.1 µs |
-| Round-trip (large) | 44.7 µs |
+| 操作 | 时间 |
+|------|------|
+| 解析（小） | 1.69 µs |
+| 解析（中） | 12.2 µs |
+| 解析（大） | 37.7 µs |
+| 解析（含锚点） | 10.5 µs |
+| 解析（含注释） | 5.0 µs |
+| 解析（块标量） | 3.2 µs |
+| 序列化（小） | 4.4 µs |
+| 序列化（中） | 4.7 µs |
+| 序列化（大） | 5.5 µs |
+| 序列化（含锚点） | 4.8 µs |
+| 序列化（块标量） | 4.4 µs |
+| 往返（小） | 5.9 µs |
+| 往返（中） | 17.1 µs |
+| 往返（大） | 44.7 µs |
 
-### Key Takeaways
+## 要点总结
 
-1. **pyrs-yaml is consistently 25–40× faster than PyYAML** across all operations
-2. **pyrs-yaml is 4–10× faster than ruamel.yaml** while matching its round-trip features
-3. **Rust-side parsing** is extremely fast — small documents parse in ~1.6 µs
-4. **序列化** is even faster — small documents serialize in ~148 ns
-5. **The speed advantage compounds** with larger documents
+1. **pyrs-yaml 在所有操作上稳定比 PyYAML 快 25–40 倍**
+2. **pyrs-yaml 比 ruamel.yaml 快 4–10 倍**，同时提供相同的往返特性
+3. **Rust 侧解析极快** — 小文档解析仅需约 1.7 µs
+4. **序列化在所有尺寸下均快速** — 小文档序列化仅需约 4.4 µs
+5. **速度优势随文档增大而累积**
 
-### Notes
+## 说明
 
-- 基准测试 measured on a single machine; absolute times may vary
-- Relative speedups (×N) are consistent across hardware
-- PyYAML benchmarks use `safe_load`/`safe_dump` (same safety guarantees)
-- ruamel.yaml benchmarks use default settings
+- 基准测试在单机上测量；绝对时间可能因硬件而异
+- 相对加速比（×N）在不同硬件上保持一致
+- PyYAML 基准测试使用 `safe_load`/`safe_dump`（相同安全保证）
+- ruamel.yaml 基准测试使用默认设置

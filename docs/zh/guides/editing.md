@@ -1,7 +1,7 @@
+---
 title: 就地编辑
 lang: zh
-
-# 就地编辑
+---
 
 pyrs-yaml 允许您**就地编辑已解析的文档**，同时保留所有格式元数据（注释、锚点、标签、标量样式、流式/块式风格）——无需手动拼接字符串，也不会丢失任何保真度。
 
@@ -74,13 +74,13 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 替换现有标量时，目标的元数据（行内注释、锚点、标签、引号样式）会被**保留** — 除非新值是映射/序列，此时采用新节点自身的格式。
 
-### `__setitem__` — 根节点语法糖
+#### `__setitem__` — 根节点语法糖
 
 ```python
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
-### `Node.set_value()` — 通过 Node 编辑
+#### `Node.set_value()` — 通过 Node 编辑
 
 ```python
 node = doc.node().find("$.a.b")  # see "Working with Nodes"
@@ -108,7 +108,7 @@ doc.insert("$.items", 3, "last")  # index == len appends
 doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
-### `append()` — 在末尾追加
+#### `append()` — 在末尾追加
 
 ```python
 append(path: str, value: Any) -> None
@@ -118,7 +118,7 @@ append(path: str, value: Any) -> None
 doc.append("$.items", "d")
 ```
 
-### `Node.append()` / `Node.insert()`
+#### `Node.append()` / `Node.insert()`
 
 `Node` 对象上提供相同的操作：
 
@@ -144,13 +144,13 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 
 映射顺序始终保留；删除序列元素后会补齐空隙。
 
-### `__delitem__` — 根节点语法糖
+#### `__delitem__` — 根节点语法糖
 
 ```python
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
-### `Node.delete()`
+#### `Node.delete()`
 
 ```python
 node = doc.node().find("$.b")
@@ -177,7 +177,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 - **元数据保留** — 键的行内注释、样式和锚点随重命名一起保留
 - 重命名根节点、复杂（非标量）键，或重命名为**已存在的键**会抛出 `YamlEditError`（重命名为自身是无操作）
 
-### `Node.rename()`
+#### `Node.rename()`
 
 ```python
 node = doc.node().find("$.old")
@@ -222,7 +222,7 @@ for node in doc.scalars():
 
 对于大型文档，这比纯 Python 的 `Node.walk()` 快得多，尤其当您只需要路径信息或标量值时。
 
-### 创建缺失键（`create_missing=True`）
+#### 创建缺失键（`create_missing=True`）
 
 默认情况下，当路径中的中间键不存在时，`set()` 会抛出 `YamlEditError`。使用 `create_missing=True` 时，缺失的中间映射键会被自动创建：
 
@@ -248,7 +248,7 @@ print(doc.to_yaml())
 - 路径上的**标量**中间节点仍然会抛出异常（无法进入标量）
 - 创建的链可以进行就地分片拼接编辑
 
-### 使用 `find()` 查询
+#### 使用 `find()` 查询
 
 `find()` 是**面向读取**的，支持通配符和深度扫描 — 当路径选中多个节点时返回列表：
 

@@ -3,9 +3,7 @@
 title: YamlDocument 클래스
 lang: ko
 
-## YamlDocument 클래스
-
-### 개요
+## 개요
 
 `YamlDocument`는 pyrs-yaml의 핵심 클래스로, 파싱된 YAML 문서를 보유합니다. `IndexMap` 기반의 사용자 정의 AST를 사용하여 **100% 순환 보존**, **완전한 키 순서 유지**, **중첩 주석 보유**, **상세 메타데이터**를 구현합니다.
 
@@ -16,13 +14,13 @@ class YamlDocument:
     # ... C 확장으로 구현 ...
 ```
 
-### 생성자
+## 생성자
 
-#### `YamlDocument()`
+### `YamlDocument()`
 
 내부 생성자. 사용자가 직접 호출하지 않습니다. `pyrs_yaml.parse()`에서 반환됩니다.
 
-### 프로퍼티
+## 프로퍼티
 
 - `version` — YAML 문서 버전
 - `schema` — 스키마 (`core`, `failsafe`, `json`)
@@ -30,9 +28,9 @@ class YamlDocument:
 - `anchors` — 앵커 목록
 - `source` — YAML 소스 텍스트
 
-### 메서드
+## 메서드
 
-#### `to_yaml()`
+### `to_yaml()`
 
 문서를 YAML 문자열로 변환합니다.
 
@@ -146,11 +144,11 @@ source_text() -> str
 
 **반환값:** YAML 소스 문자열
 
-### 편집 메서드
+## 편집 메서드
 
 문서를 제자리에서 편집하면서 모든 메타데이터(주석, 앵커, 태그, 스타일)를 보존합니다. 편집은 JSONPath 스타일 경로(`$.a.b`, `$.items[0]`)로 노드를 찾으며, 모든 작업은 **원자적**입니다 — 실패 시 문서(리비전 포함)가 변경되지 않습니다.
 
-#### `set()`
+### `set()`
 
 경로로 값을 교체합니다.
 
@@ -295,9 +293,9 @@ doc.rename("$.items", "list")  # 매핑 키 이름 변경
 del doc["list"]  # doc.delete("$.list")와 동일
 ```
 
-### 더더 메서드
+## 더더 메서드
 
-#### `__getitem__()`
+### `__getitem__()`
 
 키 (매핑) 또는 인덱스 (시퀀스)로 접근합니다.
 
@@ -388,4 +386,22 @@ print(doc[0])  # item1
 # 중첩 접근
 doc = pyrs_yaml.parse("user:\n  name: Alice")
 print(doc["user"]["name"])  # Alice
+```
+
+## 사용예
+
+```python
+import pyrs_yaml
+
+doc = pyrs_yaml.parse("""
+name: Alice
+age: 30
+""")
+
+print(doc.get("name"))  # Alice
+print(doc.root_type())  # mapping
+print(len(doc))  # 2
+print("name" in doc)  # True
+for key in doc:
+    print(key, doc[key])  # name Alice, age 30
 ```

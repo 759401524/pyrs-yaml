@@ -3,13 +3,11 @@
 title: シリアライゼーション
 lang: ja
 
-## シリアライゼーション
-
 Python オブジェクトと `YamlDocument` インスタンスを YAML 文字列に変換します。
 
-### 基本シリアライゼーション
+## 基本シリアライゼーション
 
-#### `YamlDocument.to_yaml()`
+### `YamlDocument.to_yaml()`
 
 ```python
 doc = pyrs_yaml.parse("key: value")
@@ -41,9 +39,9 @@ yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}}
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ```
 
-### Python オブジェクトを YAML に変換
+## Python オブジェクトを YAML に変換
 
-#### `from_dict()`
+### `from_dict()`
 
 ```python
 yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
@@ -62,7 +60,7 @@ yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
-### サポートされる入力型
+## サポートされる入力型
 
 | Python 型 | YAML 出力 |
 |-----------|----------|
@@ -74,7 +72,7 @@ pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.ya
 | `bool` | `true` / `false` |
 | `None` | `null` |
 
-### 往復保存
+## 往復保存
 
 ```python
 # 最大の利点：フォーマットが保持される

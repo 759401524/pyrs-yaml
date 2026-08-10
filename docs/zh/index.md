@@ -3,8 +3,6 @@
 title: pyrs-yaml
 lang: zh
 
-## pyrs-yaml
-
 # 高性能的 Python YAML 库，支持完美的往返（Round-Trip）解析，由 Rust 和 PyO3 构建。
 
 ---
@@ -13,14 +11,14 @@ lang: zh
 
 大多数 Python YAML 库都在性能和保真度之间做出权衡。 pyrs-yaml 同时提供两者:
 
-- **PyYAML** (Python) — 慢，往返解析时**丢失注释/锚点/标签**
+- **PyYAML** (Python) — 慢，往返时**丢失注释/锚点/标签**
 - **ruamel.yaml** (Python) — 保留格式，但比 pyrs-yaml **慢 5–10 倍**
 - **pyrs-yaml** (Rust) — 比 PyYAML **快 25–40 倍**，同时保留所有内容
 
 ### 核心特性
 
 - **YAML 1.2 合规** — 由 saphyr-parser 驱动（YAML 测试套件通过率 98.1%）
-- **完美的往返解析** — 保留注释、锚点、标签、修剪指示符、标量样式和流式/块式格式
+- **完美的往返** — 保留注释、锚点、标签、chomping 指示符、标量样式和流式/块式格式
 - **就地编辑** — 通过 JSONPath 风格路径（`doc.set("$.a.b", v)`）或 `Node` 树 API 编辑已解析文档，不丢失格式
 - **比 PyYAML 快 25–40 倍** — Rust 后端，零拷贝解析
 - **自定义 AST** — 可扩展的 AST，用于高级 YAML 操作和自定义格式化

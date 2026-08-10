@@ -3,11 +3,9 @@
 title: PyYAML 호환성
 lang: ko
 
-## PyYAML 호환성
-
 pyrs-yaml는 PyYAML의 **드롭인 교체**를 제공하여 마이그레이션을 간소화합니다.
 
-### 간단한 마이그레이션
+## 간단한 마이그레이션
 
 ```python
 # 이전 코드
@@ -23,7 +21,7 @@ data = yaml.safe_load(yaml_text)
 yaml_str = yaml.safe_dump(data)
 ```
 
-### 호환 API
+## 호환 API
 
 | PyYAML 함수 | pyrs-yaml 동등한 것 | 설명 |
 |-------------|----------------|------|
@@ -34,9 +32,9 @@ yaml_str = yaml.safe_dump(data)
 | `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ 안전 변형 사용 |
 | `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ 안전 변형 사용 |
 
-### 주요 차이점
+## 주요 차이점
 
-#### pyrs-yaml가 더 우수한 점
+### pyrs-yaml가 더 우수한 점
 
 | 기능 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
@@ -53,7 +51,7 @@ yaml_str = yaml.safe_dump(data)
 3. **플로우 스타일**: 둘 다 보존하지만 출력 포맷이 약간 다를 수 있음
 4. **오류 메시지**: pyrs-yaml는 더 많은 컨텍스트를 가진 i18n 오류 메시지를 사용
 
-### 마이그레이션 체크리스트
+## 마이그레이션 체크리스트
 
 - [ ] `import yaml`을 `import pyrs_yaml as yaml`로 교체
 - [ ] 모든 YAML 파싱/저장 워크플로우 테스트
@@ -61,7 +59,7 @@ yaml_str = yaml.safe_dump(data)
 - [ ] 앵커/별칭 동작 확인 (사용하는 경우)
 - [ ] 사용자 정의 오류 메시지를 위한 오류 처리 검토
 
-### 마이그레이션 예시
+## 마이그레이션 예시
 
 ```python
 # 이전 코드

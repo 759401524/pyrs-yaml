@@ -3,13 +3,11 @@
 title: 모듈 참조
 lang: ko
 
-## 모듈 참조
-
 `pyrs_yaml` 모듈의 전체 API 참조입니다.
 
-### 코어 함수
+## 코어 함수
 
-#### `parse()`
+### `parse()`
 
 YAML 문자열 또는 바이트를 파싱하여 `YamlDocument`로 변환합니다.
 
@@ -78,9 +76,9 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-### PyYAML 호환 함수
+## PyYAML 호환 함수
 
-#### `safe_load()`
+### `safe_load()`
 
 YAML를 파싱하여 네이티브 Python 타입을 반환합니다.
 
@@ -126,9 +124,9 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-### 변환 함수
+## 변환 함수
 
-#### `from_dict()`
+### `from_dict()`
 
 Python dict를 YAML 문자열로 변환합니다. dict 값으로 `numpy.ndarray`도 허용됩니다.
 
@@ -152,11 +150,132 @@ Python 객체를 YAML로 직렬화하여 파일에 씁니다. `dict`, `list` 또
 dump_file(data: Any, path: str) -> None
 ```
 
-### 비동기 함수
+## Pydantic 통합
+
+### `dump_pydantic()`
+
+Pydantic 모델을 YAML 문자열로 직렬화합니다.
+
+```python
+dump_pydantic(model: BaseModel) -> str
+```
+
+`model_dump(mode='json')`를 사용하여 문자열 타입을 유지한 다음(예: `"10001"` 우편번호는 문자열로 유지), `safe_dump`에 위임합니다.
+
+**발생:**
+
+- `ImportError` — pydantic이 설치되지 않음
+- `TypeError` — `model`이 Pydantic `BaseModel` 인스턴스가 아님
+
+**예시:**
+
+```python
+from pydantic import BaseModel
+import pyrs_yaml
+
+class User(BaseModel):
+    name: str
+    age: int
+
+yaml_str = pyrs_yaml.dump_pydantic(User(name="Alice", age=30))
+```
+
+### `parse_as()`
+
+YAML 문자열을 파싱하고 Pydantic 모델에 대해 검증합니다.
+
+```python
+parse_as(model: type[BaseModel], src: str, **yaml_kwargs: Any) -> BaseModel
+```
+
+**매개변수:**
+
+- `model` — Pydantic `BaseModel` 하위 클래스
+- `src` — 파싱할 YAML 문자열
+- `**yaml_kwargs` — `YAML()` 생성자로 전달되는 키워드 인자
+
+**발생:**
+
+- `ImportError` — pydantic이 설치되지 않음
+- `TypeError` — `model`이 Pydantic `BaseModel` 하위 클래스가 아님
+- `pydantic.ValidationError` — 파싱된 데이터가 모델 검증에 실패
+
+**예시:**
+
+```python
+user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
+print(user.name)  # Alice
+```
+
+## 태그 레지스트리
+
+### `register_tag()`
+
+사용자 정의 태그 핸들러를 등록합니다. 데코레이터와 명령형 두 형식을 모두 지원합니다.
+
+```python
+register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
+```
+
+**예시 (데코레이터):**
+
+```python
+@pyrs_yaml.register_tag("!custom")
+def handler(node):
+    return f"custom:{node}"
+```
+
+**예시 (명령형):**
+
+```python
+pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
+```
+
+### `remove_tag()`
+
+태그 핸들러를 제거합니다.
+
+```python
+remove_tag(name: str) -> None
+```
+
+### `clear_tag_handlers()`
+
+등록된 모든 태그 핸들러를 제거합니다.
+
+```python
+clear_tag_handlers() -> None
+```
+
+## 컴플라이언스
+
+### `compliance_report()`
+
+YAML 테스트 스위트 컴플라이언스 보고서를 계산합니다.
+
+```python
+compliance_report() -> dict
+```
+
+YAML 테스트 스위트 통과율과 테스트별 결과를 반환합니다.
+
+## 스트리밍 이벤트
+
+### `parse_stream()`
+
+YAML을 점진적으로 파싱하여 원시 이벤트 dict를 생성합니다.
+
+```python
+parse_stream(yaml: str) -> StreamIterator
+```
+
+각 단계마다 이벤트 dict를 생성하는 `StreamIterator`를 반환합니다. `YAML().load_stream()`(Python 값으로 해석)과 달리 원시 토큰 스트림을 노출합니다.
+
+## 비동기 함수
 
 `asyncio.run_in_executor`를 사용한 비동기 I/O 래퍼. 이벤트 루프 컨텍스트에서 논블로킹.
 
-#### `safe_dumps_async()`
+### `safe_dumps_async()`
 
 Python 객체를 YAML 문자열로 직렬화 (비동기).
 
@@ -203,29 +322,29 @@ async def main():
 asyncio.run(main())
 ```
 
-### Markdown 프론트메터
+## Markdown Front Matter
 
-#### `read_markdown()`
+### `read_markdown()`
 
-Markdown 파일에서 YAML 프론트메터를 추출합니다.
+Markdown 파일에서 YAML Front Matter를 추출합니다.
 
 ```python
-read_markdown(path: str) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-**반환값:** `(frontmatter_dict, content_string)`. 프론트메터가 없으면 `frontmatter`는 `None`.
+**반환값:** `(frontmatter_dict, content_string)`. Front Matter가 없으면 `frontmatter`는 `None`.
 
 #### `read_markdown_str()`
 
-Markdown 문자열에서 YAML 프론트메터를 추출합니다.
+Markdown 문자열에서 YAML Front Matter를 추출합니다.
 
 ```python
-read_markdown_str(content: str) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-### i18n 함수
+## i18n 함수
 
-#### `set_language()`
+### `set_language()`
 
 오류 메시지의 언어를 설정합니다.
 
@@ -267,7 +386,7 @@ BCP 47 언어 협상.
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-### 예외
+## 예외
 
 - `YamlParseError` — YAML 파싱 오류 (`ValueError` 상속)
 - `YamlSerializeError` — YAML 직렬화 오류 (`ValueError` 상속)
@@ -279,7 +398,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 자세한 내용은 [예외](exceptions.md) 페이지를 참조하세요.
 
-### 버전
+## 버전
 
 ```python
 __version__ = "0.6.0"

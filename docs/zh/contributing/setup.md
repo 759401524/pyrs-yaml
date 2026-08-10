@@ -3,11 +3,9 @@
 title: 开发设置
 lang: zh
 
-## 开发设置
-
 设置您的环境以贡献 pyrs-yaml。
 
-### 前提条件
+## 前提条件
 
 - **Python** ≥ 3.8 (CPython)
 - **Rust** ≥ 1.70（通过 [rustup](https://rustup.rs/)）
@@ -15,7 +13,7 @@ lang: zh
 - **uv**（推荐）或 **pip**
 - **NumPy** — 运行 NumPy 序列化测试套件所需 (`pytest tests/test_numpy.py`)
 
-### 克隆和安装
+## 克隆和安装
 
 ```bash
 git clone https://github.com/759401524/pyrs-yaml.git
@@ -29,7 +27,7 @@ pip install maturin
 maturin develop --release
 ```
 
-### 验证安装
+## 验证安装
 
 ```bash
 # 运行 Rust 测试
@@ -42,7 +40,7 @@ uv run --frozen pytest tests/
 cargo bench
 ```
 
-### 项目结构
+## 项目结构
 
 ```text
 pyrs-yaml/
@@ -66,7 +64,7 @@ pyrs-yaml/
 └── docs/                   # 文档 (mkdocs)
 ```
 
-### 构建命令
+## 构建命令
 
 ```bash
 # 构建 Python 扩展（使用 uv lockfile）
@@ -79,7 +77,7 @@ uv run --frozen maturin build --release --out dist
 cargo build
 ```
 
-### 开发工作流
+## 开发工作流
 
 1. **首先编写测试** (TDD)
 2. 在 `src/` 中**实现变更**

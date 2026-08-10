@@ -3,70 +3,62 @@
 title: YamlDocument 类
 lang: zh
 
-## YamlDocument 类
+## 概述
 
-### 概述
-
-`YamlDocument` 是 pyrs-yaml 的核心类，保存已解析的 YAML 文档。它使用基于 `IndexMap` 的自定义 AST，实现 **100% 往返解析**、**完整的键顺序保留**、**嵌套注释保留** 和 **详细元数据**。
+`YamlDocument` 是 pyrs-yaml 的核心类，保存已解析的 YAML 文档。它使用基于 `IndexMap` 的自定义 AST，实现 **100% 往返**、**完整的键顺序保留**、**嵌套注释保留** 和 **详细元数据**。
 
 ```python
 class YamlDocument:
-    """pyrs-yaml 的核心类。"""
-
-    # ... C 扩展实现 ...
+    """已解析的 YAML 文档，支持完美的往返。"""
 ```
 
-### 构造函数
+## 方法
 
-#### `YamlDocument()`
-
-内部构造函数。用户不应直接调用。从 `pyrs_yaml.parse()` 返回。
-
-### 属性
-
-- `version` — YAML 文档版本
-- `schema` — 模式（`core`、`failsafe`、`json`）
-- `tags` — 标签列表
-- `anchors` — 锚点列表
-- `source` — YAML 源文本
-
-### 方法
-
-#### `to_yaml()`
+### `to_yaml()`
 
 将文档转换为 YAML 字符串。
 
 ```python
-to_yaml(
-    indent: int = 2,
-    allow_unicode: bool = True,
-    default_flow_style: bool = False,
+to_yaml() -> str
+```
+
+**返回值:** 完整的 YAML 文档字符串，以换行符结尾。
+
+**示例:**
+
+```python
+doc = pyrs_yaml.parse("key: value")
+print(doc.to_yaml())  # key: value\n
+```
+
+#### `to_yaml_with_options()`
+
+使用自定义选项转换为 YAML。
+
+```python
+to_yaml_with_options(
+    indent_size: int = 2,
+    explicit_start: bool = False,
+    explicit_end: bool = False,
     sort_keys: bool = False,
-    width: int = 80,
-    resolve_aliases: bool = True,
-    strip_comments: bool = False,
-    preserve_quotes: bool = True,
 ) -> str
 ```
 
 **参数:**
 
-- `indent` — 缩进空格数（默认：2）
-- `allow_unicode` — 允许 Unicode 字符（默认：True）
-- `default_flow_style` — 默认使用流式风格（默认：False）
-- `sort_keys` — 对键排序（默认：False）
-- `width` — 折行宽度（默认：80）
-- `resolve_aliases` — 解析别名（默认：True）
-- `strip_comments` — 去除注释（默认：False）
-- `preserve_quotes` — 保留引号（默认：True）
-
-**返回值:** YAML 字符串
+- `indent_size` — 每级缩进空格数（默认：2）
+- `explicit_start` — 在文档开头添加 `---`（默认：False）
+- `explicit_end` — 在文档末尾添加 `...`（默认：False）
+- `sort_keys` — 按字母顺序对键排序（默认：False）
 
 **示例:**
 
 ```python
-doc = pyrs_yaml.parse("key: value\n# comment")
-yaml_str = doc.to_yaml()
+yaml_str = doc.to_yaml_with_options(
+    indent_size=4,
+    explicit_start=True,
+    sort_keys=True,
+)
 ```
 
 #### `to_dict()`
@@ -98,59 +90,77 @@ get(key: str, default: Any = None) -> Any
 
 **引发:** `YamlPathError` — 路径格式错误（`$[bad`、通配符/深度扫描）
 
-#### `type()`
+#### `root_type()`
 
 以字符串形式获取根节点类型。
 
 ```python
-type() -> str
+root_type() -> str
 ```
 
-**返回值:** 类型名（`"mapping"`、`"sequence"`、`"scalar"`）
+**返回值:** 类型名（`"scalar"`、`"mapping"`、`"sequence"`、`"null"`、`"alias"`）。
 
 #### `to_json()`
 
-将文档序列化为 JSON 字符串。
+将文档序列化为 JSON 字符串（通过 Python `json.dumps`）。
 
 ```python
 to_json(indent: int = 2) -> str
 ```
 
-**返回值:** JSON 字符串
+**参数:**
+
+- `indent` — JSON 缩进空格数（默认：2）
+
+**返回值:** 文档内容的 JSON 字符串。
 
 #### `validate()`
 
 根据 JSON Schema 验证文档内容。
 
 ```python
-validate(schema: dict[str, Any]) -> None
+validate(schema: str | dict[str, Any]) -> None
 ```
 
-**引发:** `YamlValidateError` — 验证错误
+**参数:**
 
-#### `reload()`
+- `schema` — JSON Schema，可以是 JSON 字符串或 Python dict
+
+**引发:** `YamlValidateError` — 文档不符合 schema
+
+#### `reparse()`
 
 就地重新解析存储的源文本，允许更改模式或合并行为。
 
 ```python
-reload(schema: str = "core", resolve_merges: bool = True) -> None
+reparse(resolve_merges: bool = True, schema: str = "core") -> None
 ```
 
-#### `source_text()`
+**参数:**
 
-返回用于创建此文档的原始 YAML 源文本。
+- `resolve_merges` — 是否解析 `<<: *alias` 合并键（默认：`True`）
+- `schema` — 类型解析模式：`"core"`、`"json"`、`"failsafe"` 或 `"yaml1.1"`（默认：`"core"`）
+
+**引发:**
+
+- `TypeError` — 没有存储的源文本
+- `YamlParseError` — 重新解析失败
+
+#### `source()`
+
+返回用于创建此文档的原始 YAML 源文本。如果文档已被编辑，源文本会在首次访问时从当前树懒加载重新序列化。
 
 ```python
-source_text() -> str
+source() -> str
 ```
 
-**返回值:** YAML 源字符串
+**返回值:** YAML 字符串。如果文档不是通过 `parse()` 创建的（例如从 `from_dict()`），则返回空字符串。
 
-### 编辑方法
+## 编辑方法
 
 就地编辑文档，同时保留所有元数据（注释、锚点、标签、样式）。编辑通过 JSONPath 风格路径（`$.a.b`、`$.items[0]`）定位节点，所有操作都是**原子**的 — 失败时文档（含修订号）不变。
 
-#### `set()`
+### `set()`
 
 按 JSONPath 路径设置值。
 
@@ -301,9 +311,9 @@ doc.rename("$.items", "list")  # 重命名映射键
 del doc["list"]  # 等价于 doc.delete("$.list")
 ```
 
-### 特殊方法
+## 特殊方法
 
-#### `__getitem__()`
+### `__getitem__()`
 
 通过键（映射）或索引（序列）访问。
 
@@ -394,4 +404,22 @@ print(doc[0])  # item1
 # 嵌套访问
 doc = pyrs_yaml.parse("user:\n  name: Alice")
 print(doc["user"]["name"])  # Alice
+```
+
+## 使用例
+
+```python
+import pyrs_yaml
+
+doc = pyrs_yaml.parse("""
+name: Alice
+age: 30
+""")
+
+print(doc.get("name"))  # Alice
+print(doc.root_type())  # mapping
+print(len(doc))  # 2
+print("name" in doc)  # True
+for key in doc:
+    print(key, doc[key])  # name Alice, age 30
 ```
