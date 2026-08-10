@@ -1,7 +1,13 @@
 ---
-
 title: Benchmarks
-lang: ko
+description: pyrs-yaml의 성능 벤치마크 — 파싱, 직렬화, 순환 성능, Rust 측 Criterion 벤치마크
+tags:
+  - docs
+status: new
+---
+
+!!! note "벤치마크 환경"
+    벤치마크는 저자 환경(Windows 11, Python 3.12)에서 측정되었습니다. 절대 시간은 환경에 따라 다를 수 있습니다.
 
 pyrs-yaml의 성능 벤치마크 (저자 환경: Windows 11, Python 3.12).
 

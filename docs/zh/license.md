@@ -1,9 +1,12 @@
 ---
-
 title: 许可证
-lang: zh
+description: pyrs-yaml 的双许可模式说明，包括 MIT 和 Apache 2.0 许可证全文及依赖项许可证信息。
+tags:
+  - docs
+status: new
+---
 
-# 许可证
+## 许可证
 
 pyrs-yaml 采用双许可模式，您可任选其一：
 
@@ -12,7 +15,7 @@ pyrs-yaml 采用双许可模式，您可任选其一：
 
 由您选择。
 
-## MIT 许可证
+### MIT 许可证
 
 ```text
 Copyright (c) 2025 MuLong
@@ -36,7 +39,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Apache 许可证, Version 2.0
+### Apache 许可证, Version 2.0
 
 ```text
 Copyright 2025 MuLong
@@ -54,14 +57,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## 为何采用双许可？
+### 为何采用双许可？
 
 双许可为用户提供灵活性：
 
 - **MIT** 更简洁宽松，适用于大多数使用场景
 - **Apache 2.0** 包含明确的专利授权，提供额外的法律保护
 
-## 依赖项
+### 依赖项
 
 pyrs-yaml 依赖以下开源项目：
 

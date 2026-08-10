@@ -1,7 +1,10 @@
 ---
-
 title: 往返
-lang: zh
+description: pyrs-yaml 核心特性——往返（Round-Trip）解析的详细介绍，保留注释、锚点、标签等所有格式元数据。
+tags:
+  - docs
+status: new
+---
 
 这是 pyrs-yaml 的**核心特性** — 在 Python YAML 库中独树一帜。
 

@@ -1,7 +1,10 @@
 ---
-
 title: 例外
-lang: ja
+description: pyrs-yaml のエラーハンドリング用カスタム例外クラスについて説明します。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml はエラーハンドリング用にカスタム例外クラスを定義しています。
 

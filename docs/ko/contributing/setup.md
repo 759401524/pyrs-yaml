@@ -1,7 +1,10 @@
 ---
-
 title: 개발 환경 설정
-lang: ko
+description: pyrs-yaml에 기여하기 위한 개발 환경 설정 — 사전 요구사항, 설치, 빌드 명령어
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml에 기여하기 위한 환경을 설정합니다.
 

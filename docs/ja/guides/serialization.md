@@ -1,7 +1,10 @@
 ---
-
 title: シリアライゼーション
-lang: ja
+description: Python オブジェクトと YamlDocument インスタンスを YAML 文字列に変換する方法を説明します。
+tags:
+  - docs
+status: new
+---
 
 Python オブジェクトと `YamlDocument` インスタンスを YAML 文字列に変換します。
 

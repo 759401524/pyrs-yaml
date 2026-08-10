@@ -1,7 +1,10 @@
 ---
-
 title: 순환 보존
-lang: ko
+description: pyrs-yaml의 핵심 기능 — 주석, 앵커, 태그, 서식을 보존하는 순환 파싱과 성능 비교
+tags:
+  - docs
+status: new
+---
 
 이것은 pyrs-yaml의 **핵심 기능** — Python YAML 라이브러리 중에서 독보적인 특징입니다.
 

@@ -1,6 +1,9 @@
 ---
 title: 제자리 편집
-lang: ko
+description: pyrs-yaml의 제자리 편집 — 포맷 메타데이터 보존, 경로 구문, 값 설정, 삽입, 삭제, 이름 변경
+tags:
+  - docs
+status: new
 ---
 
 pyrs-yaml는 파싱된 문서를 **제자리에서 편집**할 수 있게 해주며, 모든 포맷 메타데이터(주석, 앵커, 태그, 스칼라 스타일, 흐름/블록 스타일)를 보존합니다 — 수동 문자열 조작 없이, 충실도 손실 없이.
@@ -82,10 +85,18 @@ doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 
 #### `Node.set_value()` — Node를 통한 편집
 
-```python
-node = doc.node().find("$.a.b")  # see "Working with Nodes"
-node.set_value(42)
-```
+=== "문서 경로 API"
+
+    ```python
+    doc.set("$.a.b", 42)  # 경로로 직접 편집
+    ```
+
+=== "Node API"
+
+    ```python
+    node = doc.node().find("$.a.b")  # see "Working with Nodes"
+    node.set_value(42)
+    ```
 
 ## 삽입 및 추가
 
@@ -261,6 +272,9 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 ## 별칭과 병합 키
 
+!!! warning "별칭을 통한 편집"
+    별칭(`*name`)을 통해 병합된 키에 도달하기 위해 탐색하는 편집은 `YamlEditError`를 발생시킵니다.
+
 별칭 노드 (`*name`)는 자체 경로가 설정될 때 **제자리에서 교체**됩니다:
 
 ```python
@@ -342,6 +356,9 @@ print(doc.to_yaml())
 주석, 앵커, 태그, 스칼라 스타일 및 흐름/블록 서식이 전체 과정에서 보존됩니다.
 
 ## 성능
+
+!!! tip "바이트 수준 스플라이스 편집"
+    기본 레이아웃 문서에서 편집은 접촉 영역만 재생성하므로, 대규모 문서에서 전체 재직렬화보다 최대 100배 빠릅니다.
 
 **기본 레이아웃** 문서（블록 스타일, 2-공백 들여쓰기, CRLF/BOM 없음）에서 편집은 **바이트 수준 스플라이스**로 적용됩니다 — 접촉 영역만 재생성되고, 미접촉 텍스트는 그대로 복사됩니다. 이로 인해 편집+플러시가 대규모 문서에서 전체 재직렬화보다 **최대 100배 빠릅니다**.
 

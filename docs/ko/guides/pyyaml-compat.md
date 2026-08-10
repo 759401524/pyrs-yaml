@@ -1,7 +1,10 @@
 ---
-
 title: PyYAML 호환성
-lang: ko
+description: pyrs-yaml의 PyYAML 드롭인 교체 — 호환 API, 주요 차이점, 마이그레이션 체크리스트
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml는 PyYAML의 **드롭인 교체**를 제공하여 마이그레이션을 간소화합니다.
 

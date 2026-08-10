@@ -1,9 +1,15 @@
 ---
 title: ストリーム解析
-lang: ja
+description: pyrs-yaml のストリーム解析機能を説明します。load_stream、parse_stream、StreamIterator、リソース管理をカバーします。
+tags:
+  - docs
+status: new
 ---
 
-`YAML.load_stream(file_obj)` および `YAML.load_stream_file(path)` は YAML イベントを遅延反復します——メモリ使用量は O(アンカー数 + 64KB チャンク) で、入力サイズに依存しません。100MB+ のファイルに適しています。
+!!! note "ストリーミング解析"
+    ストリーム解析はメモリ使用量を O(入力サイズ) ではなく O(アンカー数 + 64KB チャンク) に抑えるため、100MB を超える大きなファイルに適しています。
+
+`YAML.load_stream(file_obj)` および `YAML.load_stream_file(path)` は YAML イベントを遅延反復し、入力サイズに依存しないメモリ使用量を実現します。
 
 ```python
 from pyrs_yaml import YAML

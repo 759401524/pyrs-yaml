@@ -1,7 +1,10 @@
 ---
-
 title: アーキテクチャ
-lang: ja
+description: pyrs-yaml のモジュールアーキテクチャについて説明します。Python レイヤー、Rust コア、解析パイプラインをカバーします。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml はパフォーマンスと正確性を考慮したモジュールアーキテクチャを使用しています。
 

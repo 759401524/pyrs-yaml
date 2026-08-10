@@ -1,7 +1,10 @@
 ---
-
 title: 테스트 실행
-lang: ko
+description: pyrs-yaml의 Rust 및 Python 테스트 실행 방법 — 테스트 커버리지, CI 테스트, 새 테스트 추가
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml는 Rust 유닛 테스트와 Python 통합 테스트를 모두 보유하고 있습니다.
 

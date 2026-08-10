@@ -1,13 +1,16 @@
 ---
-
 title: Quick Start
-lang: ko
+description: pyrs-yaml을 빠르게 시작하기 위한 설치, 파싱, 직렬화, 순환 보존 및 제자리 편집 가이드
+tags:
+  - docs
+status: new
+---
 
-# 빠른 시작
+## 빠른 시작
 
 이 가이드를 통해 몇 분 안에 pyrs-yaml을 시작할 수 있습니다.
 
-## 1. 설치
+### 1. 설치
 
 패키지는 아직 PyPI에 게시되지 않았습니다. 소스에서 설치:
 
@@ -17,7 +20,7 @@ cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
-## 2. YAML 파싱
+### 2. YAML 파싱
 
 ```python
 import pyrs_yaml
@@ -35,7 +38,7 @@ print(doc.get("age"))  # 30
 print(doc.get("email"))  # alice@example.com
 ```
 
-## 3. Python 객체로 변환
+### 3. Python 객체로 변환
 
 ```python
 # PyYAML 호환 동작을 위해 safe_load 사용
@@ -52,7 +55,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))  # <class 'list'>
 ```
 
-## 4. YAML로 직렬화
+### 4. YAML로 직렬화
 
 ```python
 # Python 딕셔너리를 YAML로 변환
@@ -64,7 +67,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-## 5. 서식 보존 (Round-Trip)
+### 5. 서식 보존 (Round-Trip)
 
 ```python
 # pyrs-yaml의 핵심 장점
@@ -94,7 +97,7 @@ assert "# 서버 설정" in output
 assert "&db" in output
 ```
 
-## 6. 제자리 편집
+### 6. 제자리 편집
 
 ```python
 # 주석이나 서식을 잃지 않고 파싱된 문서 편집
@@ -118,7 +121,7 @@ print(doc.to_yaml())
 
 전체 API는 [제자리 편집 가이드](guides/editing.md)를 참조하세요.
 
-## 7. 파일에서 YAML 읽기
+### 7. 파일에서 YAML 읽기
 
 ```python
 # YAML 파일 직접 파싱
@@ -126,7 +129,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-## 8. 여러 문서
+### 8. 여러 문서
 
 ```python
 # 여러 YAML 문서 파싱
@@ -145,7 +148,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 9. NumPy ndarray 지원
+### 9. NumPy ndarray 지원
 
 pyrs-yaml은 `numpy.ndarray` 객체를 직접 YAML로 직렬화할 수 있습니다. 이는 과학 데이터, 모델 가중치 또는 다차원 배열을 사람이 읽을 수 있는 형식으로 저장하는 데 유용합니다.
 
@@ -177,7 +180,7 @@ loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-### 지원되는 NumPy dtype
+#### 지원되는 NumPy dtype
 
 | NumPy dtype | YAML 출력 | 참고 |
 |-------------|-------------|-------|
@@ -187,7 +190,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` 문자열 | YAML에는 복잡한 타입 없음 |
 | `bool` | `true` / `false` | — |
 
-## 다음 단계
+### 다음 단계
 
 - **[기능](features.md)** — 지원되는 모든 YAML 기능 탐색
 - **[파싱 가이드](guides/parsing.md)** — 고급 파싱 옵션

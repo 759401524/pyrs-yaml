@@ -1,9 +1,15 @@
 ---
-
 title: 모듈 참조
-lang: ko
+description: pyrs_yaml 모듈의 전체 API 참조 — 코어 함수, PyYAML 호환 함수, 변환 함수, 예외 등
+tags:
+  - docs
+status: new
+---
 
 `pyrs_yaml` 모듈의 전체 API 참조입니다.
+
+!!! tip "버전 호환성"
+    pyrs-yaml은 ABI3 휠로 빌드되어 Python 3.8부터 3.15까지 단일 휠로 지원합니다.
 
 ## 코어 함수
 
@@ -35,7 +41,7 @@ doc = pyrs_yaml.parse(b"key: value")
 doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 ```
 
-#### `parse_file()`
+### `parse_file()`
 
 YAML 파일을 파싱합니다.
 
@@ -60,7 +66,7 @@ parse_file(path: str) -> YamlDocument
 doc = pyrs_yaml.parse_file("config.yaml")
 ```
 
-#### `parse_all_docs()`
+### `parse_all_docs()`
 
 문자열에서 여러 YAML 문서를 파싱합니다.
 
@@ -94,7 +100,7 @@ safe_load(yaml: str) -> dict[str, Any] | list[Any]
 data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 ```
 
-#### `safe_loads()`
+### `safe_loads()`
 
 여러 YAML 문서를 파싱합니다.
 
@@ -104,7 +110,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 
 **다음과 동일:** PyYAML의 `yaml.safe_loads()`
 
-#### `safe_dump()`
+### `safe_dump()`
 
 Python 객체를 YAML로 직렬화합니다.
 
@@ -116,7 +122,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 
 **지원되는 입력 타입:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, 그리고 **`numpy.ndarray`** (모든 차원과 숫자 dtype: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
-#### `safe_dumps()`
+### `safe_dumps()`
 
 `safe_dump()`의 별칭입니다.
 
@@ -134,7 +140,7 @@ Python dict를 YAML 문자열로 변환합니다. dict 값으로 `numpy.ndarray`
 from_dict(data: dict[str, Any]) -> str
 ```
 
-#### `from_json()`
+### `from_json()`
 
 JSON 문자열을 YAML 문자열로 변환합니다.
 
@@ -142,7 +148,7 @@ JSON 문자열을 YAML 문자열로 변환합니다.
 from_json(json_str: str) -> str
 ```
 
-#### `dump_file()`
+### `dump_file()`
 
 Python 객체를 YAML로 직렬화하여 파일에 씁니다. `dict`, `list` 또는 `numpy.ndarray`를 허용합니다.
 
@@ -219,19 +225,21 @@ print(user.name)  # Alice
 register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
 ```
 
-**예시 (데코레이터):**
+**예시:**
 
-```python
-@pyrs_yaml.register_tag("!custom")
-def handler(node):
-    return f"custom:{node}"
-```
+=== "데코레이터"
 
-**예시 (명령형):**
+    ```python
+    @pyrs_yaml.register_tag("!custom")
+    def handler(node):
+        return f"custom:{node}"
+    ```
 
-```python
-pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
-```
+=== "명령형"
+
+    ```python
+    pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
+    ```
 
 ### `remove_tag()`
 
@@ -273,6 +281,18 @@ parse_stream(yaml: str) -> StreamIterator
 
 각 단계마다 이벤트 dict를 생성하는 `StreamIterator`를 반환합니다. `YAML().load_stream()`(Python 값으로 해석)과 달리 원시 토큰 스트림을 노출합니다.
 
+### `YamlStream` { #yamlstream }
+
+`YamlStream` 클래스는 `YAML().load_stream()` 및 `YAML().load_stream_file()`이 반환하는 지연 이벤트 반복자입니다. 전체 문서를 메모리에 로드하지 않고 파싱된 이벤트 dict를 한 번에 하나씩 생성합니다.
+
+```python
+stream = yaml.load_stream_file("large.yaml")
+for event in stream:
+    print(event)
+```
+
+전체 API 세부 정보는 [`YamlStream`](yaml-instance.md)을 참조하세요.
+
 ## 비동기 함수
 
 `asyncio.run_in_executor`를 사용한 비동기 I/O 래퍼. 이벤트 루프 컨텍스트에서 논블로킹.
@@ -285,7 +305,7 @@ Python 객체를 YAML 문자열로 직렬화 (비동기).
 async def safe_dumps_async(data: Any) -> str
 ```
 
-#### `safe_dump_async()`
+### `safe_dump_async()`
 
 Python 객체를 YAML 형식으로 stdout에 출력 (비동기).
 
@@ -293,7 +313,7 @@ Python 객체를 YAML 형식으로 stdout에 출력 (비동기).
 async def safe_dump_async(data: Any) -> None
 ```
 
-#### `safe_loads_async()`
+### `safe_loads_async()`
 
 YAML 문자열을 네이티브 Python 객체로 파싱 (비동기).
 
@@ -301,7 +321,7 @@ YAML 문자열을 네이티브 Python 객체로 파싱 (비동기).
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any
 ```
 
-#### `safe_load_async()`
+### `safe_load_async()`
 
 YAML 문자열을 네이티브 Python 객체로 파싱 (비동기).
 
@@ -336,7 +356,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 
 **반환값:** `(frontmatter_dict, content_string)`. Front Matter가 없으면 `frontmatter`는 `None`.
 
-#### `read_markdown_str()`
+### `read_markdown_str()`
 
 Markdown 문자열에서 YAML Front Matter를 추출합니다.
 
@@ -356,7 +376,7 @@ set_language(lang: str) -> None
 
 지원: `"en"`, `"zh-CN"`, `"ja-JP"`, `"ko-KR"`
 
-#### `get_language()`
+### `get_language()`
 
 현재 언어를 가져옵니다.
 
@@ -364,7 +384,7 @@ set_language(lang: str) -> None
 get_language() -> str
 ```
 
-#### `list_languages()`
+### `list_languages()`
 
 지원되는 모든 언어를 나열합니다.
 
@@ -372,7 +392,7 @@ get_language() -> str
 list_languages() -> list[str]
 ```
 
-#### `detect_language()`
+### `detect_language()`
 
 환경 변수에서 사용자의 선호 언어를 자동 감지합니다.
 
@@ -380,7 +400,7 @@ list_languages() -> list[str]
 detect_language() -> str
 ```
 
-#### `negotiate_language()`
+### `negotiate_language()`
 
 BCP 47 언어 협상.
 

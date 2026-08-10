@@ -1,7 +1,10 @@
 ---
-
 title: 아키텍처
-lang: ko
+description: pyrs-yaml의 모듈화된 아키텍처 — 워크스페이스 구조, 모듈 설명, 데이터 흐름, 성능 특성
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처를 사용합니다.
 

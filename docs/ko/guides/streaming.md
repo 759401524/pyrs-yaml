@@ -1,7 +1,13 @@
 ---
 title: 스트리밍 파싱
-lang: ko
+description: pyrs-yaml의 스트리밍 파싱 — 지연 이벤트 반복, 상수 메모리, StreamIterator, 스트리밍 쓰기
+tags:
+  - docs
+status: new
 ---
+
+!!! note "스트리밍 파싱"
+    `YAML.load_stream()` / `load_stream_file()`은 메모리 사용량이 O(앵커 + 청크)로 입력 크기와 무관합니다. 100MB+ 파일에 적합합니다.
 
 `YAML.load_stream(file_obj)` 및 `YAML.load_stream_file(path)`는 YAML 이벤트를 지연 반복합니다——메모리 사용량은 O(앵커 수 + 64KB 청크)로 입력 크기와 무관합니다. 100MB+ 파일에 적합합니다.
 

@@ -1,7 +1,10 @@
 ---
-
 title: PyYAML 互換性
-lang: ja
+description: pyrs-yaml の PyYAML 互換性について説明します。移行方法、API の違い、注意点をカバーします。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml は PyYAML の**代替品**を提供し、移行を容易にします。
 

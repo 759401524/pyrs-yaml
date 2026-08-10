@@ -1,8 +1,10 @@
 ---
-
 title: Markdown Front Matter
-lang: zh
-
+description: 使用 pyrs-yaml 从 Markdown 文件和字符串中提取 YAML Front Matter 的指南。
+tags:
+  - docs
+status: new
+---
 
 从 Markdown 文件和字符串中提取 YAML Front Matter。
 

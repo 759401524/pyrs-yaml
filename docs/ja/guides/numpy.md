@@ -1,7 +1,13 @@
 ---
-
 title: NumPy ndarray シリアライズガイド
-lang: ja
+description: NumPy 配列を YAML リストにシリアライズする方法を説明します。ゼロコピー Rust 処理に対応。
+tags:
+  - docs
+status: new
+---
+
+!!! warning "フリースレッドビルドは NumPy 非対応"
+    フリースレッド（GIL なし）ビルドでは NumPy 統合が含まれないため、`numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
 
 NumPy 配列を YAML リストにシリアライズします。ゼロコピー Rust 処理に対応。
 
@@ -48,6 +54,9 @@ assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 | `float32/64` | 浮動小数点 | `3.14` |
 | `bool` | ブール値 | `true` / `false` |
 | `complex64/128` | 文字列 | `(1+2j)` |
+
+!!! note "複素数"
+    YAML にはネイティブの複素数型がありません。複素数値は `(re+imj)` 文字列としてシリアライズされます。`safe_load` は Python の `complex` 型ではなく文字列として返します。
 
 ## 特殊値
 

@@ -1,6 +1,9 @@
 ---
 title: ライセンス
-lang: ja
+description: pyrs-yaml のデュアルライセンス（MIT / Apache 2.0）について説明します。
+tags:
+  - docs
+status: new
 ---
 
 pyrs-yamlは、以下のいずれかのライセンスの下でデュアルライセンスされています：

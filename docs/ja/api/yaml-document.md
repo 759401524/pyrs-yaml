@@ -1,7 +1,10 @@
 ---
-
 title: YamlDocument クラス
-lang: ja
+description: pyrs-yaml のコアクラス YamlDocument の API リファレンス。プロパティ、編集、ダンダーメソッドをカバーします。
+tags:
+  - docs
+status: new
+---
 
 ## 概要
 
@@ -67,7 +70,37 @@ doc = pyrs_yaml.parse("key: value\n# comment")
 yaml_str = doc.to_yaml()
 ```
 
-#### `to_dict()`
+### `to_yaml_with_options()`
+
+カスタムオプションで YAML に変換します。
+
+```python
+to_yaml_with_options(
+    indent_size: int = 2,
+    explicit_start: bool = False,
+    explicit_end: bool = False,
+    sort_keys: bool = False,
+) -> str
+```
+
+**パラメータ:**
+
+- `indent_size` — インデントレベルごとのスペース数 (デフォルト: 2)
+- `explicit_start` — ドキュメント先頭に `---` を追加 (デフォルト: False)
+- `explicit_end` — ドキュメント末尾に `...` を追加 (デフォルト: False)
+- `sort_keys` — キーをアルファベット順にソート (デフォルト: False)
+
+**例:**
+
+```python
+yaml_str = doc.to_yaml_with_options(
+    indent_size=4,
+    explicit_start=True,
+    sort_keys=True,
+)
+```
+
+### `to_dict()`
 
 Python dict/list に変換します。エイリアス参照を解決し、ネイティブ Python タイプを返します。
 
@@ -84,7 +117,7 @@ doc = pyrs_yaml.parse("key: value")
 data = doc.to_dict()  # {'key': 'value'}
 ```
 
-#### `get()`
+### `get()`
 
 キーまたは JSONPath スタイルのパスで値を取得します。`.`、`[` を含む、または `$` で始まるキーはパスとして扱われます（`$.a.b`、`$.arr[0]`、`$.arr[-1]` — 負のインデックスは末尾から数えます）。
 
@@ -96,17 +129,23 @@ get(key: str, default: Any = None) -> Any
 
 **スロー:** `YamlPathError` — 不正なパス（`$[bad`、ワイルドカード/ディープスキャン）
 
-#### `type()`
+### `root_type()`
 
 ルートノードの型を文字列で取得します。
 
 ```python
-type() -> str
+root_type() -> str
 ```
 
-**戻り値:** 型名（`"mapping"`, `"sequence"`, `"scalar"`）
+**戻り値:** `"scalar"`, `"mapping"`, `"sequence"`, `"null"`, `"alias"` のいずれか。
 
-#### `to_json()`
+**例:**
+
+```python
+print(doc.root_type())  # "mapping"
+```
+
+### `to_json()`
 
 ドキュメントを JSON 文字列にシリアライズします。
 
@@ -116,7 +155,7 @@ to_json(indent: int = 2) -> str
 
 **戻り値:** JSON 文字列
 
-#### `validate()`
+### `validate()`
 
 JSON Schema に基づいてドキュメントの内容を検証します。
 
@@ -126,27 +165,57 @@ validate(schema: dict[str, Any]) -> None
 
 **スロー:** `YamlValidateError` — 検証エラー
 
-#### `reload()`
+### `reparse()`
 
 保存されたソーステキストをその場で再パースし、スキーマやマージ動作の変更を可能にします。
 
 ```python
-reload(schema: str = "core", resolve_merges: bool = True) -> None
+reparse(resolve_merges: bool = True, schema: str = "core") -> None
 ```
 
-#### `source_text()`
+**パラメータ:**
 
-このドキュメントの作成に使用された元の YAML ソーステキストを返します。
+- `resolve_merges` — `<<: *alias` マージキーを解決するかどうか (デフォルト: `True`)
+- `schema` — 型解決スキーマ: `"core"`, `"json"`, `"failsafe"`, または `"yaml1.1"` (デフォルト: `"core"`)
+
+**スロー:**
+
+- `TypeError` — ソーステキストが保存されていない
+- `YamlParseError` — 再パースに失敗
+
+**例:**
 
 ```python
-source_text() -> str
+doc = pyrs_yaml.parse("x: on")
+print(doc.get("x"))  # "on" (string, core schema)
+
+doc.reparse(schema="yaml1.1")
+print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-**戻り値:** YAML ソース文字列
+### `source()`
+
+このドキュメントの作成に使用された元の YAML ソーステキストを返します。ドキュメントがその場で編集された場合、ソースは最初のアクセス時に現在のツリーから遅延して再シリアライズされます。
+
+```python
+source() -> str
+```
+
+**戻り値:** YAML 文字列。`parse()` で作成されていない場合（例: `from_dict()`）は空文字列。
+
+**例:**
+
+```python
+doc = pyrs_yaml.parse("key: value")
+print(doc.source())  # "key: value"
+```
 
 ## 編集メソッド
 
-ドキュメントをその場で編集し、すべてのメタデータ（コメント、アンカー、タグ、スタイル）を保持します。編集は JSONPath スタイルのパス（`$.a.b`、`$.items[0]`）でノードを特定し、すべての操作は**アトミック**です — 失敗した場合、ドキュメント（リビジョンを含む）は変更されません。
+!!! note "アトミック編集"
+    pyrs-yaml の編集操作はすべてアトミックです。失敗した場合、ドキュメント（リビジョンを含む）は変更されません。
+
+ドキュメントをその場で編集し、すべてのメタデータ（コメント、アンカー、タグ、スタイル）を保持します。編集は JSONPath スタイルのパス（`$.a.b`、`$.items[0]`）でノードを特定します。
 
 ### `set()`
 
@@ -173,7 +242,7 @@ doc.set("$", {"x": 1})  # ルート全体を置換
 doc.set("$.b.c.d", 2, create_missing=True)
 ```
 
-#### `walk()`
+### `walk()`
 
 AST の深さ優先・先行順の走査で、`Node` オブジェクトを生成します。
 
@@ -197,7 +266,7 @@ for node in doc.walk():
 # ('a', 'c') scalar
 ```
 
-#### `scalars()`
+### `scalars()`
 
 `walk()` と同様ですが、スカラー/null ノードのみを生成します。
 
@@ -217,7 +286,7 @@ for node in doc.scalars():
 # ('b',) None
 ```
 
-#### `insert()`
+### `insert()`
 
 シーケンスの指定インデックスに値を挿入します。
 
@@ -227,7 +296,7 @@ insert(path: str, index: int, value: Any) -> None
 
 `index` はシーケンスの現在の長さまで指定できます（`len` への挿入は追加と同等）。負のインデックスは末尾から数えます（`-1` は最後の要素の前に挿入）。パスはシーケンスノードに解決される必要があります。
 
-#### `append()`
+### `append()`
 
 シーケンスの末尾に値を追加します。
 
@@ -235,7 +304,7 @@ insert(path: str, index: int, value: Any) -> None
 append(path: str, value: Any) -> None
 ```
 
-#### `delete()`
+### `delete()`
 
 パスでノードを削除します。マッピングの順序は保持されます。
 
@@ -243,7 +312,7 @@ append(path: str, value: Any) -> None
 delete(path: str) -> None
 ```
 
-#### `rename()`
+### `rename()`
 
 マッピングキーをその場でリネームします（位置とメタデータを保持）。
 
@@ -253,7 +322,7 @@ rename(path: str, new_key: str) -> None
 
 ルートまたは複合（非スカラー）キーのリネームは `YamlEditError` をスローします。
 
-#### `node()`
+### `node()`
 
 ドキュメントルートの `Node` を返します。
 
@@ -261,7 +330,7 @@ rename(path: str, new_key: str) -> None
 node() -> Node
 ```
 
-#### `find()`
+### `find()`
 
 パスでノードを検索します。ワイルドカード（`[*]`）とディープスキャン（`..`）をサポート — その場合、ノードのリストを返します。
 
@@ -299,7 +368,7 @@ doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
 
-#### `__setitem__()`
+### `__setitem__()`
 
 ルートマッピングキーを設定します（`doc.set()` のルート用糖衣構文）。
 
@@ -307,7 +376,7 @@ value = doc["key"]  # 'value'
 doc["key"] = value
 ```
 
-#### `__delitem__()`
+### `__delitem__()`
 
 ルートマッピングキーを削除します（`doc.delete()` のルート用糖衣構文）。
 
@@ -315,7 +384,7 @@ doc["key"] = value
 del doc["key"]
 ```
 
-#### `__contains__()`
+### `__contains__()`
 
 キーが存在するか確認します。
 
@@ -323,7 +392,7 @@ del doc["key"]
 "key" in doc  # True
 ```
 
-#### `__len__()`
+### `__len__()`
 
 アイテム数を取得します。
 
@@ -331,7 +400,7 @@ del doc["key"]
 len(doc)
 ```
 
-#### `__iter__()`
+### `__iter__()`
 
 キー（マッピング）または値（シーケンス）を反復します。
 
@@ -340,7 +409,7 @@ for key in doc:
     print(key)
 ```
 
-#### `__repr__()`
+### `__repr__()`
 
 デバッグ表現。
 
@@ -348,7 +417,7 @@ for key in doc:
 repr(doc)  # "YamlDocument({key: value})"
 ```
 
-#### `__str__()`
+### `__str__()`
 
 文字列表現。
 
@@ -356,7 +425,7 @@ repr(doc)  # "YamlDocument({key: value})"
 str(doc)  # "YamlDocument({key: value})"
 ```
 
-#### `__eq__()`
+### `__eq__()`
 
 等値比較。2つの `YamlDocument` が同じ内容を持つ場合、true を返します。
 

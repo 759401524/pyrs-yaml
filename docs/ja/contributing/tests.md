@@ -1,7 +1,10 @@
 ---
-
 title: テスト実行
-lang: ja
+description: pyrs-yaml の Rust ユニットテストと Python 統合テストの実行方法を説明します。
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml は Rust ユニットテストと Python 統合テストの両方を持っています。
 

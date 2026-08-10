@@ -1,6 +1,9 @@
 ---
 title: インプレース編集
-lang: ja
+description: pyrs-yaml でパース済みドキュメントをその場で編集する方法。パス構文、値の設定、挿入、削除、リネームをカバーします。
+tags:
+  - docs
+status: new
 ---
 
 pyrs-yaml では、**パース済みドキュメントをその場で編集**でき、すべてのフォーマットメタデータ（コメント、アンカー、タグ、スカラースタイル、フロー/ブロックスタイル）を保持します — 手作業による文字列加工は不要で、忠実性の損失もありません。
@@ -188,13 +191,24 @@ node.rename("new")
 
 `doc.node()` はドキュメントルートの `Node` を返し、`Node.find(path)` はサブツリーに移動します：
 
-```python
-node = doc.node()  # root node
-node = doc.node().find("$.db.host")  # navigate by path
-print(node.value)  # "localhost"
-node.set_value("other")  # edit through the node
-print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
-```
+=== "ドキュメントパス API"
+
+    ```python
+    node = doc.find("$.db.host")  # navigate by path
+    print(node.value)  # "localhost"
+    node.set_value("other")  # edit through the node
+    print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
+    ```
+
+=== "Node API"
+
+    ```python
+    node = doc.node()  # root node
+    node = doc.node().find("$.db.host")  # navigate by path
+    print(node.value)  # "localhost"
+    node.set_value("other")  # edit through the node
+    print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
+    ```
 
 ノードはツリー API を公開しています：`node.parent`、`node.children`、`node.walk()`（深さ優先イテレーター）、`node.filter(predicate)`、`node.to_yaml()`。
 
@@ -260,6 +274,9 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ワイルドカード/ディープスキャンの結果は**直接編集できません** — パスの特定に使用し、編集は `set()` / `insert()` などで行ってください。
 
 ## エイリアスとマージキー
+
+!!! warning "エイリアス越しの編集"
+    エイリアス*経由*の編集（`*defaults` を通過してマージされたキーに到達する）は `YamlEditError` を発生させます。参照先ノードは別の場所にあるため、直接編集できません。
 
 エイリアスノード（`*name`）は、その自身のパスが設定されると**その場で**置き換えられます：
 
@@ -343,7 +360,8 @@ print(doc.to_yaml())
 
 ## パフォーマンス
 
-**デフォルトレイアウト**のドキュメント（ブロックスタイル、2スペースインデント、CRLF/BOMなし）では、編集は**バイトレベルのスプライス**として適用されます — タッチされた領域のみ再生成され、未変更テキストはそのままコピーされます。これにより、編集+フラッシュが大規模ドキュメントでの全再シリアライズと比較して**最大100倍高速**になります。
+!!! tip "バイトレベルスプライス編集"
+    デフォルトレイアウトのドキュメントでは、編集は未変更テキストをそのままコピーするバイトレベルのスプライスとして適用され、全再シリアライズと比較して**最大100倍高速**になります。
 
 **フォールバック**（全再シリアライズ）は以下で発生します：
 

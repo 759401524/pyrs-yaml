@@ -1,7 +1,10 @@
 ---
-
 title: 开发设置
-lang: zh
+description: 设置 pyrs-yaml 开发环境的完整指南，包含前提条件、安装步骤和开发工作流。
+tags:
+  - docs
+status: new
+---
 
 设置您的环境以贡献 pyrs-yaml。
 

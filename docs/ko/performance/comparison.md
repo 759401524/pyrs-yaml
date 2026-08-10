@@ -1,7 +1,10 @@
 ---
-
 title: Comparison with Other Libraries
-lang: ko
+description: pyrs-yaml을 PyYAML 및 ruamel.yaml과 비교 — 성능, 기능, 마이그레이션 경로
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml을 가장 인기 있는 두 Python YAML 라이브러리와 비교합니다.
 

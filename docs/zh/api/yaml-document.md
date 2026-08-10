@@ -1,7 +1,10 @@
 ---
-
 title: YamlDocument 类
-lang: zh
+description: pyrs-yaml 核心类 YamlDocument 的完整文档，包括解析、编辑、序列化和特殊方法。
+tags:
+  - docs
+status: new
+---
 
 ## 概述
 
@@ -31,7 +34,7 @@ doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 ```
 
-#### `to_yaml_with_options()`
+### `to_yaml_with_options()`
 
 使用自定义选项转换为 YAML。
 
@@ -61,7 +64,7 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
-#### `to_dict()`
+### `to_dict()`
 
 转换为 Python dict/list。解析别名引用，返回原生 Python 类型。
 
@@ -78,7 +81,7 @@ doc = pyrs_yaml.parse("key: value")
 data = doc.to_dict()  # {'key': 'value'}
 ```
 
-#### `get()`
+### `get()`
 
 通过键或 JSONPath 风格路径获取值。包含 `.`、`[` 或以 `$` 开头的键会被当作路径处理（`$.a.b`、`$.arr[0]`、`$.arr[-1]` — 负索引从末尾倒数）。
 
@@ -90,7 +93,7 @@ get(key: str, default: Any = None) -> Any
 
 **引发:** `YamlPathError` — 路径格式错误（`$[bad`、通配符/深度扫描）
 
-#### `root_type()`
+### `root_type()`
 
 以字符串形式获取根节点类型。
 
@@ -100,7 +103,7 @@ root_type() -> str
 
 **返回值:** 类型名（`"scalar"`、`"mapping"`、`"sequence"`、`"null"`、`"alias"`）。
 
-#### `to_json()`
+### `to_json()`
 
 将文档序列化为 JSON 字符串（通过 Python `json.dumps`）。
 
@@ -114,7 +117,7 @@ to_json(indent: int = 2) -> str
 
 **返回值:** 文档内容的 JSON 字符串。
 
-#### `validate()`
+### `validate()`
 
 根据 JSON Schema 验证文档内容。
 
@@ -128,7 +131,7 @@ validate(schema: str | dict[str, Any]) -> None
 
 **引发:** `YamlValidateError` — 文档不符合 schema
 
-#### `reparse()`
+### `reparse()`
 
 就地重新解析存储的源文本，允许更改模式或合并行为。
 
@@ -146,7 +149,7 @@ reparse(resolve_merges: bool = True, schema: str = "core") -> None
 - `TypeError` — 没有存储的源文本
 - `YamlParseError` — 重新解析失败
 
-#### `source()`
+### `source()`
 
 返回用于创建此文档的原始 YAML 源文本。如果文档已被编辑，源文本会在首次访问时从当前树懒加载重新序列化。
 
@@ -157,6 +160,9 @@ source() -> str
 **返回值:** YAML 字符串。如果文档不是通过 `parse()` 创建的（例如从 `from_dict()`），则返回空字符串。
 
 ## 编辑方法
+
+!!! note "原子性编辑"
+    所有编辑操作都是原子的 — 失败的编辑不会改动文档及其修订号，确保数据一致性。
 
 就地编辑文档，同时保留所有元数据（注释、锚点、标签、样式）。编辑通过 JSONPath 风格路径（`$.a.b`、`$.items[0]`）定位节点，所有操作都是**原子**的 — 失败时文档（含修订号）不变。
 
@@ -196,7 +202,7 @@ doc.set("$.b.c.d", 2, create_missing=True)
 - `YamlPathError` — 格式错误的路径（通配符/`..` 被拒绝）
 - `YamlEditError` — 导航失败、不支持的值类型（`tuple`）、缺失中间键（当 `create_missing=False` 时）等
 
-#### `walk()`
+### `walk()`
 
 深度优先、前序遍历 AST，产生 `Node` 对象。
 
@@ -220,7 +226,7 @@ for node in doc.walk():
 # ('a', 'c') scalar
 ```
 
-#### `scalars()`
+### `scalars()`
 
 与 `walk()` 类似，但仅生成标量/null 节点。
 
@@ -250,7 +256,7 @@ insert(path: str, index: int, value: Any) -> None
 
 `index` 最大可为序列当前长度（在 `len` 处插入等同于追加）。负索引从末尾计数（`-1` 在最后一个元素之前插入）。路径必须解析为序列节点。
 
-#### `append()`
+### `append()`
 
 在序列末尾追加值。
 
@@ -258,7 +264,7 @@ insert(path: str, index: int, value: Any) -> None
 append(path: str, value: Any) -> None
 ```
 
-#### `delete()`
+### `delete()`
 
 按路径删除节点。映射顺序保留。
 
@@ -266,7 +272,7 @@ append(path: str, value: Any) -> None
 delete(path: str) -> None
 ```
 
-#### `rename()`
+### `rename()`
 
 就地重命名映射键（保持位置和元数据）。
 
@@ -276,7 +282,7 @@ rename(path: str, new_key: str) -> None
 
 重命名根节点或复杂（非标量）键会引发 `YamlEditError`。
 
-#### `node()`
+### `node()`
 
 返回文档根节点的 `Node`。
 
@@ -284,7 +290,7 @@ rename(path: str, new_key: str) -> None
 node() -> Node
 ```
 
-#### `find()`
+### `find()`
 
 按路径查找节点。支持通配符（`[*]`）和深度扫描（`..`）— 此时返回节点列表。
 
@@ -322,7 +328,7 @@ doc = pyrs_yaml.parse("key: value")
 value = doc["key"]  # 'value'
 ```
 
-#### `__setitem__()`
+### `__setitem__()`
 
 设置根映射键（`doc.set()` 的根节点语法糖）。
 
@@ -330,7 +336,7 @@ value = doc["key"]  # 'value'
 doc["key"] = value
 ```
 
-#### `__delitem__()`
+### `__delitem__()`
 
 删除根映射键（`doc.delete()` 的根节点语法糖）。
 
@@ -338,7 +344,7 @@ doc["key"] = value
 del doc["key"]
 ```
 
-#### `__contains__()`
+### `__contains__()`
 
 检查键是否存在。
 
@@ -346,7 +352,7 @@ del doc["key"]
 "key" in doc  # True
 ```
 
-#### `__len__()`
+### `__len__()`
 
 获取项目数量。
 
@@ -354,7 +360,7 @@ del doc["key"]
 len(doc)
 ```
 
-#### `__iter__()`
+### `__iter__()`
 
 遍历键（映射）或值（序列）。
 
@@ -363,7 +369,7 @@ for key in doc:
     print(key)
 ```
 
-#### `__repr__()`
+### `__repr__()`
 
 调试表示。
 
@@ -371,7 +377,7 @@ for key in doc:
 repr(doc)  # "YamlDocument({key: value})"
 ```
 
-#### `__str__()`
+### `__str__()`
 
 字符串表示。
 
@@ -379,7 +385,7 @@ repr(doc)  # "YamlDocument({key: value})"
 str(doc)  # "YamlDocument({key: value})"
 ```
 
-#### `__eq__()`
+### `__eq__()`
 
 等值比较。当两个 `YamlDocument` 具有相同内容时返回 true。
 

@@ -1,15 +1,18 @@
 ---
-
 title: 与其他库对比
-lang: zh
+description: pyrs-yaml 与 PyYAML、ruamel.yaml 的全面对比，涵盖性能和功能特性。
+tags:
+  - docs
+status: new
+---
 
-# 与其他库对比
+## 与其他库对比
 
 pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 
-## 性能对比
+### 性能对比
 
-### 解析速度（大 YAML，约 2 KB）
+#### 解析速度（大 YAML，约 2 KB）
 
 | 库 | 时间 | 加速比 |
 |----|------|--------|
@@ -17,7 +20,7 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 | PyYAML | 1.83 ms | 慢 26 倍 |
 | ruamel.yaml | 4.26 ms | 慢 61 倍 |
 
-### 序列化速度（大 YAML，约 2 KB）
+#### 序列化速度（大 YAML，约 2 KB）
 
 | 库 | 时间 | 加速比 |
 |----|------|--------|
@@ -25,7 +28,7 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 | PyYAML | 2.92 ms | 慢 40 倍 |
 | ruamel.yaml | 6.73 ms | 慢 93 倍 |
 
-### 往返速度（大 YAML，约 2 KB）
+#### 往返速度（大 YAML，约 2 KB）
 
 | 库 | 时间 | 加速比 |
 |----|------|--------|
@@ -33,7 +36,7 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 | PyYAML | 2.90 ms | 慢 41 倍 |
 | ruamel.yaml | 6.57 ms | 慢 91 倍 |
 
-## 功能对比
+### 功能对比
 
 | 功能 | pyrs-yaml | PyYAML | ruamel.yaml |
 |------|-----------|--------|-------------|
@@ -54,9 +57,9 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 | **Rust 后端** | ✅ | ❌ | ❌ |
 | **性能** | 🚀 最快 | 🐌 慢 | 🐌 慢 |
 
-## 总结
+### 总结
 
-### 选择 pyrs-yaml 的场景
+#### 选择 pyrs-yaml 的场景
 
 - **性能至关重要** — 比 PyYAML 快 25–40 倍
 - **往返保留是核心需求** — 保留注释、锚点、标签
@@ -64,19 +67,19 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 - **需要类型提示** — 完整 `.pyi` 存根
 - **需要一个 wheel** — ABI3 兼容 Python 3.9–3.13
 
-### 选择 PyYAML 的场景
+#### 选择 PyYAML 的场景
 
 - 您已在使用它且不需要往返保留
 - 需要与现有代码最大兼容
 - 性能不是关注点
 
-### 选择 ruamel.yaml 的场景
+#### 选择 ruamel.yaml 的场景
 
 - 需要功能最全面的 YAML 解析器
 - 正在进行复杂的 YAML 操作
 - 性能不是关注点（它是三个选项中最慢的）
 
-## 迁移路径
+### 迁移路径
 
 ```python
 # 第一步：安装

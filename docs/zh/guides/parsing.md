@@ -1,15 +1,18 @@
 ---
-
 title: 解析 YAML
-lang: zh
+description: 使用 pyrs-yaml 解析 YAML 的完整指南，涵盖基本解析、文件解析、多文档解析和 PyYAML 兼容解析。
+tags:
+  - docs
+status: new
+---
 
-# 解析 YAML
+## 解析 YAML
 
 本指南介绍使用 pyrs-yaml 解析 YAML 的所有方法。
 
-## 基本解析
+### 基本解析
 
-### 解析 YAML 字符串
+#### 解析 YAML 字符串
 
 ```python
 import pyrs_yaml
@@ -18,21 +21,21 @@ doc = pyrs_yaml.parse("key: value")
 print(doc.get("key"))  # value
 ```
 
-### 使用选项解析
+#### 使用选项解析
 
 ```python
 # 禁用合并键解析（保留 <<: *alias 原样）
 doc = pyrs_yaml.parse(yaml_text, resolve_merges=False)
 ```
 
-### 解析 YAML 文件
+#### 解析 YAML 文件
 
 ```python
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-### 解析多个文档
+#### 解析多个文档
 
 ```python
 # 使用 --- 分隔的 YAML
@@ -50,7 +53,10 @@ print(docs[0].get("name"))  # first
 print(docs[1].get("name"))  # second
 ```
 
-## PyYAML 兼容解析
+### PyYAML 兼容解析
+
+!!! tip "PyYAML 兼容解析"
+    使用 `safe_load` 可将 YAML 解析为原生 Python 类型，与 PyYAML 的 `yaml.safe_load()` 行为一致。
 
 ```python
 # 返回原生 Python 类型（dict, list, str, int 等）
@@ -62,19 +68,25 @@ docs = pyrs_yaml.safe_loads("a: 1\n---\nb: 2")
 print(len(docs))  # 2
 ```
 
-## 支持的输入类型
+### 支持的输入类型
 
 - `str` — 标准 YAML 字符串
 - `bytes` — 有效的 UTF-8 编码字节
 - `str` 带 BOM — 正确处理
 
-```python
-# 同时接受 str 和 bytes
-doc1 = pyrs_yaml.parse("key: value")
-doc2 = pyrs_yaml.parse(b"key: value")
-```
+=== "str"
 
-## 错误处理
+    ```python
+    doc1 = pyrs_yaml.parse("key: value")
+    ```
+
+=== "bytes"
+
+    ```python
+    doc2 = pyrs_yaml.parse(b"key: value")
+    ```
+
+### 错误处理
 
 ```python
 try:
@@ -83,7 +95,7 @@ except pyrs_yaml.YamlParseError as e:
     print(f"解析错误: {e}")
 ```
 
-## 支持的数据类型
+### 支持的数据类型
 
 pyrs-yaml 正确解析所有 YAML 1.2 标量类型：
 

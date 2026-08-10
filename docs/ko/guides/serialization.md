@@ -1,7 +1,10 @@
 ---
-
 title: 직렬화
-lang: ko
+description: Python 객체와 YamlDocument 인스턴스를 YAML 문자열로 변환 — 기본 직렬화, 순환 보존
+tags:
+  - docs
+status: new
+---
 
 Python 객체와 `YamlDocument` 인스턴스를 YAML 문자열로 변환합니다.
 

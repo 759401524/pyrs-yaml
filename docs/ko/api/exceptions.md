@@ -1,7 +1,10 @@
 ---
-
 title: 예외
-lang: ko
+description: pyrs-yaml의 사용자 정의 예외 클래스 — YamlParseError, YamlEditError, YamlPathError 등
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml는 오류 처리를 위해 사용자 정의 예외 클래스를 정의합니다.
 

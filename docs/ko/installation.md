@@ -1,7 +1,10 @@
 ---
-
 title: Installation
-lang: ko
+description: pyrs-yaml의 시스템 요구사항, 소스 설치, 프리-스레디드 빌드 및 설치 확인 방법
+tags:
+  - docs
+status: new
+---
 
 ## 시스템 요구사항
 
@@ -20,6 +23,9 @@ uv run --frozen maturin develop --release
 
 ## 프리-스레디드 Python (cp314t)
 
+!!! warning "프리-스레디드 빌드는 NumPy 미포함"
+    프리-스레디드 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다.
+
 CPython 3.14t용 프리-스레디드(no-GIL) 휠은 `--no-default-features`로 빌드되어 NumPy 통합이 **포함되지 않습니다**: 프리-스레디드 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다. GIL 빌드(Python 3.8–3.15)에서는 전체 ndarray 직렬화를 지원합니다.
 
 ## 개발용 설치
@@ -33,6 +39,9 @@ uv run --frozen maturin develop --release
 ```
 
 ## 설치 확인
+
+???+ tip "설치 확인"
+    `pyrs_yaml.__version__`을 출력하고 간단한 파싱 테스트로 설치를 검증할 수 있습니다.
 
 ```python
 import pyrs_yaml

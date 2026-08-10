@@ -1,7 +1,13 @@
 ---
-
 title: NumPy ndarray 직렬화 가이드
-lang: ko
+description: NumPy 배열을 YAML 리스트로 직렬화 — 제로 복사 Rust 처리, 지원되는 dtype, 음수 처리, 성능
+tags:
+  - docs
+status: new
+---
+
+!!! warning "프리-스레디드 빌드는 NumPy 미포함"
+    프리-스레디드(cp314t) 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다. GIL 빌드(Python 3.8–3.15)에서는 전체 ndarray 직렬화를 지원합니다.
 
 NumPy 배열을 YAML 리스트로 직렬화합니다. 제로 복사 Rust 처리를 지원합니다.
 
@@ -94,6 +100,9 @@ yaml_str = y.safe_dump(data)
 loaded = y.safe_load(yaml_str)
 assert loaded["matrix"] == [[1, 2], [3, 4]]
 ```
+
+!!! note "복소수"
+    YAML에는 네이티브 복소수 타입이 없습니다. 복소수는 `(re+imj)` 문자열로 직렬화되며, `safe_load`는 Python `complex`가 아닌 문자열로 반환합니다.
 
 ## 지원되지 않는 타입
 

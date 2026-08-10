@@ -1,7 +1,10 @@
 ---
-
 title: Features
-lang: ko
+description: pyrs-yaml의 주요 기능 — YAML 1.2 준수, 순환 파싱, 성능, 커스텀 AST, PyYAML 호환성 등
+tags:
+  - docs
+status: new
+---
 
 pyrs-yaml는 PyYAML의 **직접 교체**로 설계되었으며, PyYAML이 없는 강력한 기능을 추가합니다.
 
@@ -21,6 +24,9 @@ PyYAML과 달리, pyrs-yaml는 **모든 서식과 메타데이터를 유지**합
 - **흐름/블록 서식** — `[]`/`{}`와 블록 스타일 유지
 
 ## 성능
+
+!!! note "벤치마크 환경"
+    벤치마크는 단일 기계에서 측정된 결과입니다. 절대 시간은 환경에 따라 다를 수 있으나 상대 속도는 일관됩니다.
 
 Rust 백엔드는 PyYAML보다 **25–40배 빠릅니다**:
 
@@ -124,22 +130,31 @@ yaml_str = doc.to_yaml_with_options(
 
 사용자 정의 YAML 태그에 대한 핸들러를 등록하여 스칼라 값을 변환합니다:
 
-```python
-import pyrs_yaml
+=== "데코레이터"
+
+    ```python
+    import pyrs_yaml
 
 
-# 데코레이터 형식
-@pyrs_yaml.register_tag("!custom")
-def custom_handler(node):
-    return f"custom:{node}"
+    @pyrs_yaml.register_tag("!custom")
+    def custom_handler(node):
+        return f"custom:{node}"
+
+    doc = pyrs_yaml.parse("name: !custom value")
+    doc.get("name")  # "custom:value"
+    ```
+
+=== "명령형"
+
+    ```python
+    import pyrs_yaml
 
 
-# 명령형 형식
-pyrs_yaml.register_tag("!custom", lambda node: node.upper())
+    pyrs_yaml.register_tag("!custom", lambda node: node.upper())
 
-doc = pyrs_yaml.parse("name: !custom value")
-doc.get("name")  # "custom:value"
-```
+    doc = pyrs_yaml.parse("name: !custom value")
+    doc.get("name")  # "custom:value"
+    ```
 
 - 같은 태그에 대한 여러 핸들러는 `priority` 오름차순으로 실행됩니다. `YamlTagSkip`을 발생시키면 다음 핸들러에 위임됩니다.
 - 핸들러는 문자열을 반환해야 합니다. 그렇지 않으면 `YamlTagError`가 발생합니다.
@@ -247,6 +262,9 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `PyUntypedArray` → `PyArrayDyn<Complex64/Complex32>` | `(re+imj)` 문자열 |
 | `bool` | `PyUntypedArray` → `PyArrayDyn<bool>` | `true` / `false` |
 | `nan` / `inf` | — | `NaN` / `.inf` / `-.inf` |
+
+!!! warning "블록 시퀀스의 음수 스칼라"
+    YAML 1.2 블록 시퀀스는 `-`로 시작하는 일반 스칼라를 포함할 수 없습니다. 음수 값은 자동으로 따옴표가 추가됩니다.
 
 #### 참고사항
 
