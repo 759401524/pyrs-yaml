@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.13.0] — 2026-08-10
+
 ### Changed
 
 - **Rust MSRV raised to 1.96 and edition bumped to 2024** - both crates now
@@ -32,6 +34,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`resolve_core_type`: first-byte dispatch whitelist** — non-numeric/
   non-boolean first bytes return `Str` immediately, avoiding schema
   resolution overhead for the common case. (#59)
+- **granit-parser migration** — saphyr-parser replaced with granit-parser
+  1.0.1 for native `Event::Comment` emission, eliminating the full-text
+  `scan_yaml()` pre-scan. parse_small -18%, parse_large -21%,
+  roundtrip_large -18%.
+
+### Fixed
+
+- **`float_to_yaml_string` round-trip fix** — appends `.0` when Rust
+  Display drops the decimal (`42` → `42.0`) so floats round-trip as
+  floats instead of becoming ints.
+- **Reverted `count_nodes` pre-allocation** — the full AST traversal cost
+  more than the reallocations it avoided (serialize_10mb was ~14% slower);
+  buffer growth is left to the Vec.
 
 ### Added
 
@@ -50,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `document.rs` (YamlDocument), `yaml_instance.rs` (YAML class),
   `functions.rs` (module-level functions), `stream_iterator.rs`,
   `walk_helpers.rs`. `mod.rs` reduced to 128 lines. (#61)
+- **`needs_quotes()` guard + `double_quoted_scalar()` constructor** —
+  strings like `'true'` / `'42'` / `'null'` now emit as double-quoted
+  scalars under the core schema instead of being misread on re-parse
+  (`pyobject_to_node` + `json_value_to_node`).
+- **CodSpeed benchmarks unified on `codspeed-divan-compat`** —
+  `exclude-allocations` removes allocator noise; cross-library benchmarks
+  consolidated into `tests/test_benchmark_crosslib.py` with shared
+  `tests/data/yaml_samples.py` fixtures and streaming coverage.
 
 ## [v0.12.1] — 2026-08-06
 
