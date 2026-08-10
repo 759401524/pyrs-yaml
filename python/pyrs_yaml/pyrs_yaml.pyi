@@ -244,17 +244,17 @@ def parse_file(path: "str", schema: "str" = "core", max_depth: "int" = 1000, all
     Parse a YAML file and return an editable `YamlDocument`.
     """
 
-def parse_stream(yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None) -> "StreamIterator | None":
+def parse_stream(yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000) -> "StreamIterator | None":
     """
     Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
     """
 
-def read_markdown(path: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]":
+def read_markdown(path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]":
     """
     Read a Markdown file and extract YAML front matter, returning `(frontmatter, body)`.
     """
 
-def read_markdown_str(content: "str", schema: "str" = "core") -> "tuple[dict[str, Any] | None, str]":
+def read_markdown_str(content: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]":
     """
     Extract YAML front matter from a Markdown string, returning `(frontmatter, body)`.
     """
