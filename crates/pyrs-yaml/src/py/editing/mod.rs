@@ -3,7 +3,7 @@ mod metadata;
 pub use crate::editing::{
     DirtyKind, DirtyUnit, NavigateError, Segment, eligible_path, extend_delete_over_comments,
     key_eq, line_aligned, line_end, line_indent, line_start, mapping_get_mut, mapping_key_index,
-    nav_err, navigate, navigate_mut, normalize_index, parse_path_segments, path_nodes, precompute,
+    navigate, navigate_mut, normalize_index, parse_path_segments, path_nodes, precompute,
     regenerate_region_text, region_unit,
 };
 pub use metadata::with_metadata_from;
@@ -33,12 +33,13 @@ pub fn set_path(
     };
 
     if segments.is_empty() {
-        let eligible = eligible_path(&path_nodes(node, segments).map_err(nav_err)?);
+        let eligible = eligible_path(&path_nodes(node, segments).map_err(|e| e.to_string())?);
         *node = new_value;
         let text = crate::serializer::to_yaml_with_options(
             &*node,
             &crate::serializer::SerializeOptions::default(),
-        )?;
+        )
+        .map_err(|e| e.to_string())?;
         return Ok(DirtyUnit {
             kind: DirtyKind::Region {
                 range: 0..source.len(),
@@ -70,7 +71,7 @@ pub fn set_path(
         Err(NavigateError::Missing(_)) if create_missing => {
             return set_path_create_missing(node, segments, new_value, source, line_offsets);
         }
-        Err(e) => return Err(nav_err(e)),
+        Err(e) => return Err(e.to_string()),
     };
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
@@ -110,7 +111,8 @@ pub fn set_path(
                         &compact_override,
                         old_indent,
                         depth,
-                    )?;
+                    )
+                    .map_err(|e| e.to_string())?;
                     Ok(DirtyUnit {
                         kind: region_unit(
                             old_key_start,
@@ -138,7 +140,8 @@ pub fn set_path(
                     };
                     let text = crate::serializer::pair_to_string(
                         &key_node, &new_value, indent, true, depth,
-                    )?;
+                    )
+                    .map_err(|e| e.to_string())?;
                     pairs.insert(key_node, new_value);
                     Ok(DirtyUnit {
                         kind: DirtyKind::Insert { at, text },
@@ -163,7 +166,8 @@ pub fn set_path(
             let raw_start = raw.start;
             let range = line_aligned(raw, line_offsets, source);
             let indent = line_indent(line_offsets, source, raw_start);
-            let text = crate::serializer::item_to_string(&items[idx], indent, true, depth)?;
+            let text = crate::serializer::item_to_string(&items[idx], indent, true, depth)
+                .map_err(|e| e.to_string())?;
             Ok(DirtyUnit {
                 kind: DirtyKind::Region {
                     range,
@@ -238,9 +242,9 @@ fn set_path_create_missing(
         Segment::Key(k) => CustomNode::plain_scalar(k.as_ref()),
         Segment::Index(_) => return Err("create-needs-mapping".to_string()),
     };
-    let path = path_nodes(node, &segments[..consumed]).map_err(nav_err)?;
+    let path = path_nodes(node, &segments[..consumed]).map_err(|e| e.to_string())?;
     let eligible = eligible_path(&path);
-    let parent = navigate_mut(node, &segments[..consumed]).map_err(nav_err)?;
+    let parent = navigate_mut(node, &segments[..consumed]).map_err(|e| e.to_string())?;
     let CustomNode::Mapping { pairs, .. } = parent else {
         return Err("create-needs-mapping".to_string());
     };
@@ -256,7 +260,8 @@ fn set_path_create_missing(
         None => (0, 0),
     };
     let depth = consumed;
-    let text = crate::serializer::pair_to_string(&top_key, &nested, indent, true, depth)?;
+    let text = crate::serializer::pair_to_string(&top_key, &nested, indent, true, depth)
+        .map_err(|e| e.to_string())?;
     pairs.insert(top_key, nested);
     Ok(DirtyUnit {
         kind: DirtyKind::Insert { at, text },
@@ -282,10 +287,10 @@ pub fn insert_path(
     };
     let depth = segments.len().saturating_sub(1);
     let eligible = {
-        let path = path_nodes(node, segments).map_err(nav_err)?;
+        let path = path_nodes(node, segments).map_err(|e| e.to_string())?;
         eligible_path(&path)
     };
-    let seq = navigate_mut(node, segments).map_err(nav_err)?;
+    let seq = navigate_mut(node, segments).map_err(|e| e.to_string())?;
     match seq {
         CustomNode::Sequence { items, .. } => {
             let insert_at = if index < 0 {
@@ -328,7 +333,8 @@ pub fn insert_path(
                     true,
                 )
             };
-            let text = crate::serializer::item_to_string(&value, indent, is_last, depth)?;
+            let text = crate::serializer::item_to_string(&value, indent, is_last, depth)
+                .map_err(|e| e.to_string())?;
             items.insert(insert_at, value);
             Ok(DirtyUnit {
                 kind: DirtyKind::Insert { at, text },
@@ -357,10 +363,10 @@ pub fn append_path(
     };
     let depth = segments.len().saturating_sub(1);
     let eligible = {
-        let path = path_nodes(node, segments).map_err(nav_err)?;
+        let path = path_nodes(node, segments).map_err(|e| e.to_string())?;
         eligible_path(&path)
     };
-    let seq = navigate_mut(node, segments).map_err(nav_err)?;
+    let seq = navigate_mut(node, segments).map_err(|e| e.to_string())?;
     match seq {
         CustomNode::Sequence { items, .. } => {
             if items.is_empty() {
@@ -379,7 +385,8 @@ pub fn append_path(
                 .unwrap_or(0..0);
             let at = line_end(line_offsets, last_item.end, source.len());
             let indent = line_indent(line_offsets, source, last_item.start);
-            let text = crate::serializer::item_to_string(&value, indent, true, depth)?;
+            let text = crate::serializer::item_to_string(&value, indent, true, depth)
+                .map_err(|e| e.to_string())?;
             items.push(value);
             Ok(DirtyUnit {
                 kind: DirtyKind::Insert { at, text },
@@ -412,7 +419,7 @@ pub fn delete_path(
     let last = &last[0];
     let (eligible, compact_override) =
         precompute(node, segments, parent_segments, line_offsets, source);
-    let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
+    let parent = navigate_mut(node, parent_segments).map_err(|e| e.to_string())?;
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
     match (parent, last) {
@@ -478,7 +485,7 @@ pub fn rename_path(
     let depth = segments.len().saturating_sub(1);
     let (eligible, compact_override) =
         precompute(node, segments, parent_segments, line_offsets, source);
-    let parent = navigate_mut(node, parent_segments).map_err(nav_err)?;
+    let parent = navigate_mut(node, parent_segments).map_err(|e| e.to_string())?;
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
     match (parent, last) {
         (CustomNode::Mapping { pairs, .. }, Segment::Key(old_key)) => {
@@ -519,7 +526,8 @@ pub fn rename_path(
                 &compact_override,
                 old_indent,
                 depth,
-            )?;
+            )
+            .map_err(|e| e.to_string())?;
             Ok(DirtyUnit {
                 kind: region_unit(
                     key_start,

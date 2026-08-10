@@ -91,10 +91,16 @@ pub struct StreamReceiver<'a> {
     events: Vec<StreamEvent>,
     pending_standalone_comment: Option<Comment>,
     anchors: HashMap<usize, String>,
+    /// Maximum allowed nesting depth for mapping/sequence containers.
+    max_depth: usize,
+    /// Number of currently open mapping/sequence containers.
+    depth: usize,
+    /// Set to true when the maximum nesting depth is exceeded.
+    max_depth_exceeded: bool,
 }
 
 impl<'a> StreamReceiver<'a> {
-    fn new(yaml_text: &'a str) -> Self {
+    fn new_with_options(yaml_text: &'a str, max_depth: usize) -> Self {
         let raw_anchors = extract_anchors(yaml_text);
         Self {
             _marker: PhantomData,
@@ -103,6 +109,9 @@ impl<'a> StreamReceiver<'a> {
             events: Vec::new(),
             pending_standalone_comment: None,
             anchors: HashMap::new(),
+            max_depth,
+            depth: 0,
+            max_depth_exceeded: false,
         }
     }
 
@@ -124,6 +133,22 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
     fn on_event(&mut self, event: Event<'a>, span: Span) {
         let line = span.start.line().saturating_sub(1);
         let column = span.start.col();
+
+        // Track nesting depth (mirrors AstReceiver: flag when a new container
+        // would push the open-container count to or beyond max_depth).
+        match &event {
+            Event::MappingStart { .. } | Event::SequenceStart { .. } => {
+                if self.depth >= self.max_depth {
+                    self.max_depth_exceeded = true;
+                } else {
+                    self.depth += 1;
+                }
+            }
+            Event::MappingEnd | Event::SequenceEnd => {
+                self.depth = self.depth.saturating_sub(1);
+            }
+            _ => {}
+        }
 
         // Handle native comments from granit-parser
         if let Event::Comment(text, placement) = &event {
@@ -300,7 +325,7 @@ where
 ///
 /// # Returns
 /// Success: a `Vec<StreamEvent>` representing the complete event stream.
-/// Failure: a `ParseErrorDetail` with line/column information.
+/// Failure: a `ParseError` with line/column information.
 ///
 /// # Examples
 /// ```rust
@@ -308,21 +333,41 @@ where
 /// let events = parse_stream("key: value").unwrap();
 /// assert!(!events.is_empty());
 /// ```
-pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, super::ParseErrorDetail> {
+pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, super::ParseError> {
+    parse_stream_with_options(yaml, 1000)
+}
+
+/// Parse a YAML string into a stream of events with a maximum nesting depth.
+///
+/// # Arguments
+/// * `yaml` - The YAML content string.
+/// * `max_depth` - Maximum allowed nesting depth for mapping/sequence containers.
+///
+/// # Returns
+/// Success: a `Vec<StreamEvent>` representing the complete event stream.
+/// Failure: a `ParseError` with line/column information.
+pub fn parse_stream_with_options(
+    yaml: &str,
+    max_depth: usize,
+) -> Result<Vec<StreamEvent>, super::ParseError> {
     if yaml.trim().is_empty() {
         return Ok(Vec::new());
     }
 
-    let mut receiver = StreamReceiver::new(yaml);
+    let mut receiver = StreamReceiver::new_with_options(yaml, max_depth);
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
         .load(&mut receiver, true)
-        .map_err(|e| super::ParseErrorDetail {
+        .map_err(|e| super::ParseError::Syntax {
             message: format!("YAML parse error: {}", e),
             line: 0,
             col: 0,
         })?;
+
+    if receiver.max_depth_exceeded {
+        return Err(super::ParseError::MaxDepthExceeded(max_depth));
+    }
 
     Ok(receiver.events)
 }
@@ -779,5 +824,20 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn test_stream_max_depth_exceeded() {
+        let result = parse_stream_with_options("{a: {a: {a: {a: 1}}}}", 2);
+        assert!(matches!(
+            result,
+            Err(crate::parser::ParseError::MaxDepthExceeded(2))
+        ));
+    }
+
+    #[test]
+    fn test_stream_max_depth_ok() {
+        let events = parse_stream_with_options("{a: {a: {a: {a: 1}}}}", 5).unwrap();
+        assert!(!events.is_empty());
     }
 }

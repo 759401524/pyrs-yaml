@@ -41,14 +41,51 @@ def test_max_depth_exception_is_value_error():
         ("safe_load", {}),
         ("safe_loads", {}),
         ("parse_all_docs", {}),
+        ("parse_stream", {}),
     ],
-    ids=["safe_load", "safe_loads", "parse_all_docs"],
+    ids=["safe_load", "safe_loads", "parse_all_docs", "parse_stream"],
 )
 def test_rejects_depth_limit_in_parse_funcs(func_name, args):
     deep_yaml = _deep_nested_yaml(200)
     func = getattr(pyrs_yaml, func_name)
     with pytest.raises(pyrs_yaml.YamlMaxDepthError):
         func(deep_yaml, max_depth=100, **args)
+
+
+def test_rejects_depth_limit_in_parse_stream_iterator():
+    deep_yaml = _deep_nested_yaml(200)
+    with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+        list(pyrs_yaml.parse_stream(deep_yaml, max_depth=100))
+
+
+def test_rejects_depth_limit_in_parse_stream_callback():
+    deep_yaml = _deep_nested_yaml(200)
+    calls = []
+    with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+        pyrs_yaml.parse_stream(deep_yaml, on_event=lambda e: calls.append(e) or True, max_depth=100)
+
+
+def test_rejects_depth_limit_in_read_markdown_str():
+    deep_yaml = _deep_nested_yaml(200)
+    md = f"---\n{deep_yaml}\n---\nbody"
+    with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+        pyrs_yaml.read_markdown_str(md, max_depth=100)
+
+
+def test_rejects_depth_limit_in_read_markdown_file(tmp_path):
+    deep_yaml = _deep_nested_yaml(200)
+    f = tmp_path / "deep.md"
+    f.write_text(f"---\n{deep_yaml}\n---\nbody")
+    with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+        pyrs_yaml.read_markdown(str(f), max_depth=100)
+
+
+def test_read_markdown_str_default_depth_ok():
+    deep_yaml = _deep_nested_yaml(100)
+    md = f"---\n{deep_yaml}\n---\nbody"
+    frontmatter, content = pyrs_yaml.read_markdown_str(md)
+    assert frontmatter is not None
+    assert content == "body"
 
 
 def test_rejects_depth_limit_in_serialize():
