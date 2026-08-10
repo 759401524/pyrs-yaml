@@ -79,7 +79,7 @@ parse(yaml: str | bytes) -> YamlDocument
 yaml = YAML(typ="rt")
 doc = yaml.parse("name: Alice\nage: 30\n")
 print(doc.root_type())  # mapping
-print(doc["name"])      # Alice
+print(doc["name"])  # Alice
 ```
 
 ### `safe_load()`

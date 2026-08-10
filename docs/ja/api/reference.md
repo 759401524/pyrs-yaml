@@ -173,9 +173,11 @@ dump_pydantic(model: BaseModel) -> str
 from pydantic import BaseModel
 import pyrs_yaml
 
+
 class User(BaseModel):
     name: str
     age: int
+
 
 yaml_str = pyrs_yaml.dump_pydantic(User(name="Alice", age=30))
 ```

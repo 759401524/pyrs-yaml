@@ -51,8 +51,8 @@ config:
 """)
 
 view = doc.merged()
-print(view["config"]["timeout"])   # 60 (overrides merged value)
-print(view["config"]["retries"])   # 3 (inherited from merge)
+print(view["config"]["timeout"])  # 60 (overrides merged value)
+print(view["config"]["retries"])  # 3 (inherited from merge)
 ```
 
 ### `__len__()`
@@ -122,6 +122,6 @@ prod:
 merged = doc.merged()
 assert merged["base"]["host"] == "localhost"
 assert merged["prod"]["host"] == "prod.example.com"  # overridden
-assert merged["prod"]["port"] == 8080                  # inherited
-assert merged["prod"]["debug"] is False                # own key
+assert merged["prod"]["port"] == 8080  # inherited
+assert merged["prod"]["debug"] is False  # own key
 ```
