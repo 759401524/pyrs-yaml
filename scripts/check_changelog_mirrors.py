@@ -22,7 +22,7 @@ FILES = [
     ROOT / "docs" / "zh" / "changelog.md",
 ]
 
-_VERSION_RE = re.compile(r"^#{2,3} \[(\d+\.\d+\.\d+)\](?: — [^\]]+)?\s*$", re.M)
+_VERSION_RE = re.compile(r"^#{2,3} \[(v?\d+\.\d+\.\d+)\](?:[ —][^\]]+)?\s*$", re.M)
 _UNRELEASED_RE = re.compile(r"^#{2,3} \[Unreleased\]", re.M)
 
 

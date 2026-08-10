@@ -243,3 +243,18 @@ jobs:
           name: compliance-report
           path: compliance.json
 
+  i18n-check:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "latest"
+      - name: Run i18n check
+        run: python scripts/check_i18n.py
+
