@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.13.0] — 2026-08-10
+
 #### 変更
 
 - **Rust MSRV を 1.96 に引き上げ、edition を 2024 に変更** — 両 crate は
@@ -40,6 +42,18 @@ status: new
 - **`resolve_core_type`: first-byte dispatch whitelist** — 数値/ブールでない
   先頭バイトは即座に `Str` を返すようになり、一般的なケースにおけるスキーマ
   解決のオーバーヘッドを回避。(#59)
+- **granit-parser への移行** — saphyr-parser を granit-parser 1.0.1 に置換し、
+  ネイティブな `Event::Comment` 出力により全文 `scan_yaml()` プリスキャンを
+  廃止。parse_small -18%、parse_large -21%、roundtrip_large -18%。
+
+#### 修正
+
+- **`float_to_yaml_string` の round-trip 修正** — Rust の Display が小数部を
+  落とした場合に `.0` を付加（`42` → `42.0`）し、float が int にならずに
+  round-trip するように。
+- **`count_nodes` 事前割り当ての巻き戻し** — 全 AST 走査のコストが回避できた
+  realloc を上回ったため（serialize_10mb は約 14% 低下）、バッファ拡張は
+  Vec の再割り当てに委ねる。
 
 #### 追加
 
@@ -59,6 +73,14 @@ status: new
   `document.rs`（YamlDocument）、`yaml_instance.rs`（YAML クラス）、
   `functions.rs`（モジュールレベル関数）、`stream_iterator.rs`、
   `walk_helpers.rs` に分割。`mod.rs` は 128 行に削減。(#61)
+- **`needs_quotes()` ガード + `double_quoted_scalar()` コンストラクタ** —
+  `'true'` / `'42'` / `'null'` のような文字列は、コアスキーマで再パース時に
+  誤読されないようダブルクォートのスカラーとして出力
+  （`pyobject_to_node` + `json_value_to_node`）。
+- **CodSpeed ベンチマークを `codspeed-divan-compat` に統一** —
+  `exclude-allocations` でアロケータノイズを除去。クロスライブラリの
+  ベンチマークを `tests/test_benchmark_crosslib.py` に統合し、共通の
+  `tests/data/yaml_samples.py` フィクスチャとストリーミングのカバレッジを追加。
 
 ### [v0.12.1] — 2026-08-06
 

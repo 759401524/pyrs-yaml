@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.13.0] — 2026-08-10
+
 #### 变更
 
 - **Rust MSRV 提升至 1.96，edition 升级为 2024** — 两个 crate 均声明
@@ -37,6 +39,16 @@ status: new
   使用更简单的 `node_to_pyobject_simple` 路径。(#59)
 - **`resolve_core_type`: first-byte dispatch whitelist** — 非数字/
   非布尔首字节立即返回 `Str`，避免常见情况下的 schema 解析开销。(#59)
+- **迁移到 granit-parser** — 用 granit-parser 1.0.1 替换 saphyr-parser，
+  借助原生 `Event::Comment` 输出消除了全文 `scan_yaml()` 预扫描。
+  parse_small -18%、parse_large -21%、roundtrip_large -18%。
+
+#### Fixed
+
+- **`float_to_yaml_string` round-trip 修复** — Rust Display 丢失小数部分时
+  补 `.0`（`42` → `42.0`），使 float 按 float 而非 int 正确往返。
+- **回退 `count_nodes` 预分配** — 全 AST 遍历的开销大于其避免的重新分配
+  （serialize_10mb 慢约 14%）；缓冲扩容交给 Vec。
 
 #### Added
 
@@ -55,6 +67,12 @@ status: new
   `document.rs`（YamlDocument）、`yaml_instance.rs`（YAML 类）、
   `functions.rs`（模块级函数）、`stream_iterator.rs`、
   `walk_helpers.rs`。`mod.rs` 缩减至 128 行。(#61)
+- **`needs_quotes()` 守卫 + `double_quoted_scalar()` 构造器** —
+  `'true'` / `'42'` / `'null'` 等字符串现以双引号标量输出，避免 core schema
+  重新解析时被误读（`pyobject_to_node` + `json_value_to_node`）。
+- **CodSpeed 基准统一到 `codspeed-divan-compat`** — `exclude-allocations`
+  去除分配器噪声；跨库基准合并到 `tests/test_benchmark_crosslib.py`，
+  引入共享 `tests/data/yaml_samples.py` 夹具和流式覆盖。
 
 ### [v0.12.1] — 2026-08-06
 

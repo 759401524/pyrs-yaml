@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml"
-version = "0.12.1"
+version = "0.13.0"
 dependencies = [
  "codspeed-divan-compat",
  "granit-parser 1.0.1",
@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml-core"
-version = "0.12.1"
+version = "0.13.0"
 dependencies = [
  "granit-parser 1.0.1",
  "indexmap",

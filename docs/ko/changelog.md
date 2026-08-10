@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.13.0] — 2026-08-10
+
 #### 변경 사항
 
 - **Rust MSRV를 1.96으로 업그레이드하고 edition을 2024로 변경** — 두 crate 모두
@@ -41,6 +43,18 @@ status: new
 - **`resolve_core_type`: first-byte dispatch whitelist** — non-numeric/
   non-boolean first bytes return `Str` immediately, avoiding schema
   resolution overhead for the common case. (#59)
+- **granit-parser 마이그레이션** — saphyr-parser를 granit-parser 1.0.1로
+  교체하여 네이티브 `Event::Comment` 출력으로 전체 텍스트 `scan_yaml()`
+  프리스캔을 제거. parse_small -18%, parse_large -21%,
+  roundtrip_large -18%.
+
+#### 수정
+
+- **`float_to_yaml_string` round-trip 수정** — Rust Display가 소수점을
+  버릴 때 `.0`을 추가(`42` → `42.0`)하여 float가 int로 바뀌지 않고
+  round-trip되도록 함.
+- **`count_nodes` 사전 할당 롤백** — 전체 AST 순회 비용이 피한 realloc보다
+  커서(serialize_10mb 약 14% 저하) 버퍼 확장은 Vec에 위임.
 
 #### 추가
 
@@ -60,6 +74,13 @@ status: new
   `document.rs` (YamlDocument), `yaml_instance.rs` (YAML class),
   `functions.rs` (module-level functions), `stream_iterator.rs`,
   `walk_helpers.rs`. `mod.rs` reduced to 128 lines. (#61)
+- **`needs_quotes()` 가드 + `double_quoted_scalar()` 생성자** — `'true'` /
+  `'42'` / `'null'` 같은 문자열은 코어 스키마 재파싱 시 오독되지 않도록
+  큰따옴표 스칼라로 출력(`pyobject_to_node` + `json_value_to_node`).
+- **CodSpeed 벤치마크를 `codspeed-divan-compat`으로 통일** —
+  `exclude-allocations`로 할당 노이즈 제거. 크로스 라이브러리 벤치마크를
+  `tests/test_benchmark_crosslib.py`로 통합하고 공용 `tests/data/yaml_samples.py`
+  픽스처와 스트리밍 커버리지 추가.
 
 ### [v0.12.1] — 2026-08-06
 
