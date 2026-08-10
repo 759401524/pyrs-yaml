@@ -217,9 +217,9 @@ YAML String
 
 | Crate | Purpose |
 |-------|---------|
-| **pyo3** | Python bindings (with `experimental-inspect`, `abi3-py38`, `abi3t`) |
+| **PyO3** | Python bindings (with `experimental-inspect`, `abi3-py38`, `abi3t`) |
 | **saphyr-parser** | YAML 1.2 compliant parsing |
-| **indexmap** | Ordered hash map for key preservation |
+| **IndexMap** | Ordered hash map for key preservation |
 | **serde_json** | JSON ↔ YAML conversion |
 | **numpy** | NumPy ndarray support (optional, default enabled) |
 | **rust-i18n** | Internationalized error messages |
