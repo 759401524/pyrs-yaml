@@ -113,8 +113,10 @@ show_symbol_type_toc = true
 
 [project.markdown_extensions]
 tables = {}
-fenced_code = {}
 admonition = {}
+attr_list = {}
+sane_lists = {}
+md_in_html = {}
 
 [project.markdown_extensions.toc]
 permalink = true
@@ -125,6 +127,20 @@ alternate_style = true
 
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true
+
+[project.markdown_extensions.pymdownx.superfences]
+# 替代 fenced_code，支持嵌套栅栏与自定义 code fence
+
+[project.markdown_extensions.pymdownx.snippets]
+# --8<-- 内容复用，路径相对 docs/<locale>/
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_index = "zensical.extensions.emoji.twemoji"
+emoji_generator = "zensical.extensions.emoji.to_svg"
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.details]
 
 [project.extra]
 social = [
