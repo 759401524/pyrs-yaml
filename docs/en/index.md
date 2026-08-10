@@ -1,10 +1,18 @@
-# pyrs-yaml
+---
+title: pyrs-yaml
+description: Overview of pyrs-yaml, a high-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.
+tags:
+  - docs
+status: new
+---
+
+## pyrs-yaml
 
 **High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.**
 
 ---
 
-## Why pyrs-yaml?
+### Why pyrs-yaml?
 
 Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml delivers both:
 
@@ -12,7 +20,7 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml d
 - **ruamel.yaml** (Python) — preserves formatting, but **5–10× slower** than pyrs-yaml
 - **pyrs-yaml** (Rust) — **25–40× faster than PyYAML** while preserving everything
 
-## Key Features
+### Key Features
 
 - **YAML 1.2 compliant** — powered by saphyr-parser (98.1% YAML Test Suite pass rate)
 - **Perfect Round-Trip** — preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
@@ -25,7 +33,7 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml d
 - **i18n error messages** — `set_language("zh-CN")` for bilingual error reporting
 - **NumPy ndarray support** — serialize `numpy.ndarray` of any dimension to YAML with zero-copy Rust dispatch
 
-## Quick Start
+### Quick Start
 
 ```bash
 pip install pyrs-yaml
@@ -48,7 +56,7 @@ doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
 ```
 
-## Performance vs PyYAML
+### Performance vs PyYAML
 
 | Operation | pyrs-yaml | PyYAML | Speedup |
 |-----------|-----------|--------|---------|

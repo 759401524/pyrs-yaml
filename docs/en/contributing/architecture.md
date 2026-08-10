@@ -1,8 +1,16 @@
-# Architecture
+---
+title: Architecture
+description: The modular architecture of pyrs-yaml, including the Rust core, PyO3 bindings, parser, serializer, and data flow.
+tags:
+  - docs
+status: new
+---
+
+## Architecture
 
 pyrs-yaml uses a modular architecture designed for performance and correctness.
 
-## Overview
+### Overview
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -62,9 +70,9 @@ crates/
 ```text
 ```
 
-## Module Architecture
+### Module Architecture
 
-### 1. `crates/pyrs-yaml-core/src/ast.rs` — Custom AST
+#### 1. `crates/pyrs-yaml-core/src/ast.rs` — Custom AST
 
 The **CustomNode** enum is the heart of pyrs-yaml:
 
@@ -80,7 +88,7 @@ The **CustomNode** enum is the heart of pyrs-yaml:
 - Custom AST preserves everything needed for round-trip
 - Extensible for future features (custom node types, metadata)
 
-### 2. `crates/pyrs-yaml-core/src/parser/` — YAML Parser
+#### 2. `crates/pyrs-yaml-core/src/parser/` — YAML Parser
 
 Built on **saphyr-parser** (YAML 1.2 compliant):
 
@@ -98,7 +106,7 @@ Built on **saphyr-parser** (YAML 1.2 compliant):
 - Two-pass parsing: first extract comments/anchors, then parse events
 - Merge key resolution happens after parsing (configurable)
 
-### 3. `crates/pyrs-yaml-core/src/serializer.rs` — YAML Serializer
+#### 3. `crates/pyrs-yaml-core/src/serializer.rs` — YAML Serializer
 
 Custom serializer that reconstructs YAML from the AST:
 
@@ -113,7 +121,7 @@ Custom serializer that reconstructs YAML from the AST:
 - Indent-level state management for nested structures
 - Chomping indicator handling for block scalars
 
-### 5. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
+#### 5. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
 
 The Python-facing layer that exposes Rust functionality to Python:
 
@@ -134,7 +142,7 @@ Pure Rust edit primitives used by the Python-facing editing API:
 - **`dirty.rs`** — Edit operation types (`DirtyKind`, `DirtyUnit`)
 - **`metadata.rs`** — Metadata preservation (`with_metadata_from`)
 
-### 5. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
+#### 5. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
 
 Python-facing module definitions and type conversions:
 
@@ -146,27 +154,27 @@ Python-facing module definitions and type conversions:
 **Exported Python functions (18 total):**
 `parse`, `safe_load`, `safe_loads`, `safe_dump`, `safe_dumps`, `parse_file`, `dump_file`, `parse_all_docs`, `parse_stream`, `read_markdown`, `from_dict`, `from_json`, `set_language`, `get_language`, `list_languages`, `detect_language`, `negotiate_language`, `YamlDocument`
 
-### 5. `src/lib.rs` — Module Entry
+#### 5. `src/lib.rs` — Module Entry
 
 - Re-exports all modules
 - Error types: `YamlParseError`, `YamlSerializeError`, `YamlTypeError`
 - `create_exception!` macros for custom Python exceptions
 - `rust-i18n` initialization
 
-### 6. `src/i18n/` — Internationalization
+#### 6. `src/i18n/` — Internationalization
 
 - `src/i18n.rs` — Configuration and language negotiation
 - `src/i18n/` — Locale bundles (en, zh-CN, ja-JP, ko-KR)
 - Bilingual error messages with format strings
 
-### 7. `src/integration/` — Integration Helpers
+#### 7. `src/integration/` — Integration Helpers
 
 - `yaml_suite.rs` — YAML Test Suite runner for validation
 - Test helpers for benchmarks and compliance checks
 
-## Data Flow
+### Data Flow
 
-### Parse Flow
+#### Parse Flow
 
 ```text
 YAML String
@@ -185,7 +193,7 @@ YAML String
 CustomNode (AST)
 ```
 
-### Serialize Flow
+#### Serialize Flow
 
 ```text
 CustomNode (AST)
@@ -203,7 +211,7 @@ CustomNode (AST)
 YAML String
 ```
 
-## Performance Characteristics
+### Performance Characteristics
 
 | Operation | Complexity | Notes |
 |-----------|-----------|-------|
@@ -213,7 +221,7 @@ YAML String
 | Merge resolution | O(n × m) | Where n = docs, m = merges per doc |
 | Comment extraction | O(n) | Single pass over raw text |
 
-## Dependencies
+### Dependencies
 
 | Crate | Purpose |
 |-------|---------|

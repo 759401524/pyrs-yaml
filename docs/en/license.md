@@ -1,4 +1,12 @@
-# License
+---
+title: License
+description: pyrs-yaml is dual-licensed under either the MIT License or the Apache License, Version 2.0.
+tags:
+  - docs
+status: new
+---
+
+## License
 
 pyrs-yaml is dual-licensed under either:
 
@@ -7,7 +15,7 @@ pyrs-yaml is dual-licensed under either:
 
 at your option.
 
-## MIT License
+### MIT License
 
 ```text
 Copyright (c) 2025 MuLong
@@ -31,7 +39,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## Apache License, Version 2.0
+### Apache License, Version 2.0
 
 ```text
 Copyright 2025 MuLong
@@ -49,14 +57,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-## Why Dual License?
+### Why Dual License?
 
 The dual license gives users flexibility:
 
 - **MIT** is simpler and more permissive for most use cases
 - **Apache 2.0** includes an express patent grant, which provides additional legal protection
 
-## Dependencies
+### Dependencies
 
 pyrs-yaml depends on the following open-source projects:
 

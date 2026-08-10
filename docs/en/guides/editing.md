@@ -1,8 +1,16 @@
-# In-Place Editing
+---
+title: In-Place Editing
+description: Guide to editing parsed documents in place while preserving all formatting metadata, with path syntax, setting, inserting, deleting, and renaming.
+tags:
+  - docs
+status: new
+---
+
+## In-Place Editing
 
 pyrs-yaml lets you **edit a parsed document in place** while preserving all formatting metadata (comments, anchors, tags, scalar styles, flow/block style) — no manual string surgery, no fidelity loss.
 
-## Overview
+### Overview
 
 Edits are expressed as **JSONPath-style paths** into the document tree:
 
@@ -25,7 +33,7 @@ print(doc.to_yaml())
 
 All edit methods are **atomic**: on failure nothing changes, including the document revision. On success the document is marked dirty, and the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` call re-serializes from the updated tree.
 
-## Path Syntax
+### Path Syntax
 
 Paths start with `$` followed by dot-separated keys (mapping) or `[N]` indices (sequence):
 
@@ -43,9 +51,9 @@ Editing paths must target exactly one node — **wildcards** (`[*]`) and **deep-
 
 **Raises** `YamlPathError` for malformed paths, and `YamlEditError` when a path step cannot be applied (e.g. navigating into a scalar, or editing through an alias).
 
-## Setting Values
+### Setting Values
 
-### `set()` — replace by path
+#### `set()` — replace by path
 
 ```python
 set(path: str, value: Any) -> None
@@ -78,24 +86,24 @@ Value conversion rules:
 
 When replacing an existing scalar, the target's metadata (inline comment, anchor, tag, quoting style) is **preserved** — unless the new value is a mapping/sequence, which adopts the new node's own formatting.
 
-### `__setitem__` — root sugar
+#### `__setitem__` — root sugar
 
 ```python
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
-### `Node.set_value()` — edit through a Node
+#### `Node.set_value()` — edit through a Node
 
 ```python
 node = doc.node().find("$.a.b")  # see "Working with Nodes"
 node.set_value(42)
 ```
 
-## Inserting and Appending
+### Inserting and Appending
 
 Both operate on **sequences** only; the path must resolve to a sequence node.
 
-### `insert()` — insert at an index
+#### `insert()` — insert at an index
 
 ```python
 insert(path: str, index: int, value: Any) -> None
@@ -112,7 +120,7 @@ doc.insert("$.items", 3, "last")  # index == len appends
 doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 ```
 
-### `append()` — add at the end
+#### `append()` — add at the end
 
 ```python
 append(path: str, value: Any) -> None
@@ -122,7 +130,7 @@ append(path: str, value: Any) -> None
 doc.append("$.items", "d")
 ```
 
-### `Node.append()` / `Node.insert()`
+#### `Node.append()` / `Node.insert()`
 
 The same operations are available on `Node` objects:
 
@@ -132,9 +140,9 @@ node.append("d")
 node.insert(1, "x")
 ```
 
-## Deleting
+### Deleting
 
-### `delete()` — remove by path
+#### `delete()` — remove by path
 
 ```python
 delete(path: str) -> None
@@ -148,22 +156,22 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 
 Mapping order is always preserved; sequence deletion closes the gap.
 
-### `__delitem__` — root sugar
+#### `__delitem__` — root sugar
 
 ```python
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
-### `Node.delete()`
+#### `Node.delete()`
 
 ```python
 node = doc.node().find("$.b")
 node.delete()
 ```
 
-## Renaming
+### Renaming
 
-### `rename()` — rename a mapping key in place
+#### `rename()` — rename a mapping key in place
 
 ```python
 rename(path: str, new_key: str) -> None
@@ -181,28 +189,38 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 - **Metadata is preserved** — the key's inline comment, style, and anchor travel with the rename
 - Renaming the root, a complex (non-scalar) key, or onto an **existing key** raises `YamlEditError` (renaming a key to itself is a no-op)
 
-### `Node.rename()`
+#### `Node.rename()`
 
 ```python
 node = doc.node().find("$.old")
 node.rename("new")
 ```
 
-## Working with Nodes
+### Working with Nodes
 
-`doc.node()` returns a `Node` for the document root; `Node.find(path)` navigates to a subtree:
+You can obtain a node reference and edit it through either the document path API or the Node API:
 
-```python
-node = doc.node()  # root node
-node = doc.node().find("$.db.host")  # navigate by path
-print(node.value)  # "localhost"
-node.set_value("other")  # edit through the node
-print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
-```
+=== "Document path API"
+
+    ```python
+    doc.set("$.db.host", "other")  # set by path
+    doc.set("$.db.port", 5433)
+    print(doc.get("$.db.host"))  # "other"
+    ```
+
+=== "Node API"
+
+    ```python
+    node = doc.node()  # root node
+    node = doc.node().find("$.db.host")  # navigate by path
+    print(node.value)  # "localhost"
+    node.set_value("other")  # edit through the node
+    print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
+    ```
 
 Nodes expose a tree API: `node.parent`, `node.children`, `node.walk()` (depth-first iterator), `node.filter(predicate)`, and `node.to_yaml()`.
 
-### Walking the AST (`doc.walk()` / `doc.scalars()`)
+#### Walking the AST (`doc.walk()` / `doc.scalars()`)
 
 `doc.walk()` and `doc.scalars()` are **Rust-backed** traversal methods that yield `Node` objects without converting the entire AST to Python dicts. Unlike `Node.walk()` (which calls `to_dict()` under the hood), these methods traverse the AST directly:
 
@@ -226,7 +244,7 @@ for node in doc.scalars():
 
 This is significantly faster than the Python-only `Node.walk()` for large documents, especially when you only need path information or scalar values.
 
-### Create Missing Keys (`create_missing=True`)
+#### Create Missing Keys (`create_missing=True`)
 
 By default, `set()` raises `YamlEditError` when an intermediate key in the path doesn't exist. With `create_missing=True`, missing intermediate mapping keys are automatically created:
 
@@ -252,7 +270,7 @@ Rules:
 - A **scalar** intermediate along the path still raises (can't descend into a scalar)
 - The created chain is eligible for in-place splice editing
 
-### Querying with `find()`
+#### Querying with `find()`
 
 `find()` is **read-oriented** and supports wildcards and deep scans — it returns a list when the path selects multiple nodes:
 
@@ -263,7 +281,12 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 Wildcard/deep-scan results are **not directly editable** — use them to locate paths, then edit with `set()`/`insert()`/etc.
 
-## Aliases and Merge Keys
+### Aliases and Merge Keys
+
+!!! warning "Editing through an alias"
+    Navigating through an alias node (e.g. setting a key inside `*defaults`)
+    raises `YamlEditError` — the referenced node lives elsewhere and cannot
+    be edited through the alias reference.
 
 An alias node (`*name`) is replaced **in place** when its own path is set:
 
@@ -278,7 +301,7 @@ doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 
 - With merge keys resolved (default), merge-expanded keys are clones; editing them edits only the clone
 - Deleting an anchored node is tolerated (the anchor simply stops being referenced)
 
-## View vs. AST
+### View vs. AST
 
 `doc.get()` / `doc.to_dict()` return the **view** (resolved values). Editing always operates on the **AST**:
 
@@ -291,7 +314,7 @@ print(doc.to_yaml())  # on: off — serialized verbatim, no re-resolution
 
 The edited value is emitted **as-is**; the view resolves it according to the active schema.
 
-## Stale Nodes
+### Stale Nodes
 
 A `Node` is tied to the document's **revision**, recorded when the node was created. Any document edit (even through a different node) bumps the revision, so previously obtained nodes become stale:
 
@@ -303,7 +326,7 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 Re-find the node after any edit to continue working. `node.is_valid()` checks liveness; `node.release()` detaches a node from its document explicitly.
 
-## Error Handling
+### Error Handling
 
 | Error | When |
 |-------|------|
@@ -313,7 +336,7 @@ Re-find the node after any edit to continue working. `node.is_valid()` checks li
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched.
 
-## Full Example
+### Full Example
 
 ```python
 import pyrs_yaml
@@ -345,7 +368,13 @@ print(doc.to_yaml())
 
 Comments, anchors, tags, scalar styles, and flow/block formatting are preserved throughout.
 
-## Performance
+### Performance
+
+!!! tip "Byte-level splice edits"
+    For default-layout documents (block-style, 2-space indent, no CRLF/BOM),
+    edits are applied as byte-level splices — only the touched region is
+    regenerated. Edit + flush can be up to 100× faster than full
+    re-serialization on large documents.
 
 For **default-layout** documents (block-style, 2-space indent, no CRLF/BOM), edits are applied as **byte-level splices** — only the touched region is regenerated, untouched text is copied verbatim. This makes edit + flush up to **100× faster** than full re-serialization on large documents.
 
@@ -359,7 +388,7 @@ For **default-layout** documents (block-style, 2-space indent, no CRLF/BOM), edi
 
 In all fallback cases, correctness is preserved — only the performance benefit is lost.
 
-### Benchmarks
+#### Benchmarks
 
 ```text
 Benchmark                   Median

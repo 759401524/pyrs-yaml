@@ -1,8 +1,16 @@
-# Quick Start
+---
+title: Quick Start
+description: Get up and running with pyrs-yaml in minutes, covering parsing, serialization, round-trip, and in-place editing.
+tags:
+  - docs
+status: new
+---
+
+## Quick Start
 
 This guide will get you up and running with pyrs-yaml in minutes.
 
-## 1. Install
+### 1. Install
 
 The package is not yet on PyPI. Install from source:
 
@@ -12,7 +20,7 @@ cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
-## 2. Parse YAML
+### 2. Parse YAML
 
 ```python
 import pyrs_yaml
@@ -30,7 +38,7 @@ print(doc.get("age"))  # 30
 print(doc.get("email"))  # alice@example.com
 ```
 
-## 3. Convert to Python Objects
+### 3. Convert to Python Objects
 
 ```python
 # Use safe_load for PyYAML-compatible behavior
@@ -47,7 +55,7 @@ print(data["users"][0]["name"])  # Alice
 print(type(data["users"]))  # <class 'list'>
 ```
 
-## 4. Serialize to YAML
+### 4. Serialize to YAML
 
 ```python
 # Convert a Python dict back to YAML
@@ -59,7 +67,7 @@ print(yaml_str)
 #   name: mydb
 ```
 
-## 5. Preserve Formatting (Round-Trip)
+### 5. Preserve Formatting (Round-Trip)
 
 ```python
 # The key advantage of pyrs-yaml
@@ -89,7 +97,7 @@ assert "# Server configuration" in output
 assert "&db" in output
 ```
 
-## 6. Edit In Place
+### 6. Edit In Place
 
 ```python
 # Edit a parsed document without losing comments or formatting
@@ -113,7 +121,7 @@ print(doc.to_yaml())
 
 See the [In-Place Editing guide](guides/editing.md) for the full API.
 
-## 7. Read YAML from Files
+### 7. Read YAML from Files
 
 ```python
 # Parse a YAML file directly
@@ -121,7 +129,7 @@ doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
-## 8. Multiple Documents
+### 8. Multiple Documents
 
 ```python
 # Parse multiple YAML documents
@@ -139,7 +147,7 @@ print(len(docs))  # 2
 print(docs[0].get("name"))  # config1
 ```
 
-## 9. NumPy ndarray Support
+### 9. NumPy ndarray Support
 
 pyrs-yaml can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
 
@@ -171,7 +179,7 @@ loaded = pyrs_yaml.safe_load(yaml_str)
 assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 ```
 
-### Supported NumPy dtypes
+#### Supported NumPy dtypes
 
 | NumPy dtype | YAML output | Notes |
 |-------------|-------------|-------|
@@ -181,7 +189,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` string | No native YAML complex type |
 | `bool` | `true` / `false` | — |
 
-## Next Steps
+### Next Steps
 
 - **[Features](features.md)** — Explore all supported YAML features
 - **[Parsing Guide](guides/parsing.md)** — Advanced parsing options

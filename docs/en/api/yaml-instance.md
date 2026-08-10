@@ -1,17 +1,25 @@
-# YAML Class
+---
+title: YAML Class
+description: Reference for the configured YAML parser instance supporting round-trip, safe, and full parsing modes.
+tags:
+  - docs
+status: new
+---
+
+## YAML Class
 
 The `YAML` class is a configured parser instance that controls parsing behavior through `typ`, `schema`, `max_depth`, and `allow_duplicate_keys` settings. It supports round-trip (`rt`), safe, and full YAML parsing modes.
 
-## Overview
+### Overview
 
 ```python
 class YAML:
     """Configured YAML parser instance (rt / safe / full)."""
 ```
 
-## Constructor
+### Constructor
 
-### `__init__()`
+#### `__init__()`
 
 Create a configured YAML parser instance.
 
@@ -50,9 +58,9 @@ yaml_safe = YAML(typ="safe")
 yaml_full = YAML(typ="full", schema="yaml1.1")
 ```
 
-## Methods
+### Methods
 
-### `parse()`
+#### `parse()`
 
 Parse a YAML string and return a `YamlDocument` with full metadata preservation.
 
@@ -82,7 +90,7 @@ print(doc.root_type())  # mapping
 print(doc["name"])  # Alice
 ```
 
-### `safe_load()`
+#### `safe_load()`
 
 Parse YAML into a plain Python `dict` or `list`, resolving anchors and merges.
 
@@ -116,7 +124,7 @@ alias: *ref
 # data == {"person": {"name": "Alice"}, "alias": {"name": "Alice"}}
 ```
 
-### `safe_loads()`
+#### `safe_loads()`
 
 Parse a multi-document YAML string into a list of `dict`/`list` objects.
 
@@ -151,7 +159,7 @@ b: 2
 # docs == [{"a": 1}, {"b": 2}]
 ```
 
-### `parse_file()`
+#### `parse_file()`
 
 Parse a YAML file and return a `YamlDocument` with full metadata preservation.
 
@@ -182,7 +190,7 @@ doc = yaml.parse_file("config.yaml")
 print(doc["database"]["host"])
 ```
 
-### `parse_all_docs()`
+#### `parse_all_docs()`
 
 Parse a multi-document YAML string and return a list of `YamlDocument` objects.
 
@@ -218,7 +226,7 @@ for doc in docs:
     print(doc.root_type())
 ```
 
-### `dump_stream()`
+#### `dump_stream()`
 
 Streaming writer: serialize Python objects to a file-like object, using constant memory.
 
@@ -266,7 +274,7 @@ print(buf.getvalue())
 # b: 2
 ```
 
-### `dump_file()`
+#### `dump_file()`
 
 Streaming writer: serialize Python objects directly to a file on disk.
 
@@ -307,7 +315,7 @@ yaml = YAML()
 yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
 ```
 
-### `load_stream()`
+#### `load_stream()`
 
 Lazy event iterator: incrementally read from a file-like object.
 
@@ -346,7 +354,7 @@ for event in stream:
     print(event["type"])
 ```
 
-### `load_stream_file()`
+#### `load_stream_file()`
 
 Lazy event iterator: incrementally read from a file path.
 
@@ -382,9 +390,9 @@ for event in stream:
     print(event)
 ```
 
-## Usage Examples
+### Usage Examples
 
-### Round-trip editing with a configured instance
+#### Round-trip editing with a configured instance
 
 ```python
 from pyrs_yaml import YAML
@@ -406,7 +414,7 @@ doc["user"]["tags"].append("staff")
 print(doc.to_yaml())
 ```
 
-### Safe parsing with JSON schema
+#### Safe parsing with JSON schema
 
 ```python
 from pyrs_yaml import YAML
@@ -416,7 +424,7 @@ data = yaml.safe_load("{name: Bob, age: 25}")
 print(data["name"])  # Bob
 ```
 
-### Multi-document stream handling
+#### Multi-document stream handling
 
 ```python
 from pyrs_yaml import YAML
@@ -435,7 +443,7 @@ for doc in docs:
 yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 ```
 
-## See Also
+### See Also
 
 - [`YamlDocument`](yaml-document.md) — the round-trip editable document object
 - [`YamlStream`](reference.md#yamlstream) — the lazy event stream iterator

@@ -1,17 +1,25 @@
-# YamlDocument Class
+---
+title: YamlDocument Class
+description: Reference for the YamlDocument class with full metadata preservation, editing methods, and dunder methods.
+tags:
+  - docs
+status: new
+---
+
+## YamlDocument Class
 
 The `YamlDocument` class represents a parsed YAML document with full metadata preservation.
 
-## Overview
+### Overview
 
 ```python
 class YamlDocument:
     """A parsed YAML document with perfect round-trip support."""
 ```
 
-## Methods
+### Methods
 
-### `to_yaml()`
+#### `to_yaml()`
 
 Convert the document back to a YAML string.
 
@@ -28,7 +36,7 @@ doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 ```
 
-### `to_yaml_with_options()`
+#### `to_yaml_with_options()`
 
 Convert to YAML with custom options.
 
@@ -58,7 +66,7 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
-### `to_dict()`
+#### `to_dict()`
 
 Convert to a Python dict/list, resolving alias references.
 
@@ -76,7 +84,7 @@ print(data["key"])  # value
 print(type(data))  # <class 'dict'>
 ```
 
-### `get()`
+#### `get()`
 
 Get a value by key (for mapping roots) or by JSONPath-like path.
 
@@ -102,7 +110,7 @@ value = doc.get("$.items[-1]")  # last element
 value = doc.get("missing", "fallback")
 ```
 
-### `root_type()`
+#### `root_type()`
 
 Get the root node type as a string.
 
@@ -118,7 +126,7 @@ root_type() -> str
 print(doc.root_type())  # "mapping"
 ```
 
-### `to_json()`
+#### `to_json()`
 
 Serialize the document to a JSON string.
 
@@ -139,7 +147,7 @@ doc = pyrs_yaml.parse("a: 1\nb: hello")
 json_str = doc.to_json()  # '{"a": 1, "b": "hello"}'
 ```
 
-### `validate()`
+#### `validate()`
 
 Validate the document contents against a JSON Schema.
 
@@ -167,7 +175,7 @@ doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 doc.validate('{"type": "object", "required": ["name"]}')
 ```
 
-### `source()`
+#### `source()`
 
 Return the original YAML source text used to create this document. If the document has been edited in place, the source is lazily re-serialized from the current tree on first access.
 
@@ -184,7 +192,7 @@ doc = pyrs_yaml.parse("key: value")
 print(doc.source())  # "key: value"
 ```
 
-### `reparse()`
+#### `reparse()`
 
 Re-parse the stored source text in place, allowing schema or merge behavior changes.
 
@@ -212,11 +220,17 @@ doc.reparse(schema="yaml1.1")
 print(doc.get("x"))  # True (bool, yaml1.1 schema)
 ```
 
-## Editing Methods
+### Editing Methods
+
+!!! note "Atomic edits"
+    All edits are atomic — a failed edit leaves the document (and its
+    revision) untouched. On success the stored source is marked dirty and
+    the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()`
+    call re-serializes from the updated tree.
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched. On success, the stored source is marked dirty and the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` call re-serializes from the updated tree. See the [In-Place Editing guide](../guides/editing.md) for the full path syntax and semantics.
 
-### `set()`
+#### `set()`
 
 Set a value by JSONPath path.
 
@@ -239,7 +253,7 @@ empty.set("$.a", 1)  # auto-creates a mapping root: {a: 1}
 - `YamlPathError` — Malformed path (wildcards/`..` are rejected)
 - `YamlEditError` — Navigation failure, unsupported value type (`tuple`), missing intermediate key (when `create_missing=False`), etc.
 
-### `walk()`
+#### `walk()`
 
 Depth-first, pre-order traversal of the AST, yielding `Node` objects.
 
@@ -263,7 +277,7 @@ for node in doc.walk():
 # ('a', 'c') scalar
 ```
 
-### `scalars()`
+#### `scalars()`
 
 Like `walk()`, but yields only scalar/null nodes.
 
@@ -295,7 +309,7 @@ doc.insert("$.items", 1, "b")  # items: [a, b, c]
 doc.insert("$.items", -1, "x")  # items: [a, b, x, c]
 ```
 
-### `append()`
+#### `append()`
 
 Append a value to a sequence. The path must resolve to a sequence.
 
@@ -308,7 +322,7 @@ doc = pyrs_yaml.parse("items: [a, b]")
 doc.append("$.items", "c")
 ```
 
-### `delete()`
+#### `delete()`
 
 Delete the node at a path, preserving mapping/sequence order.
 
@@ -323,7 +337,7 @@ doc.delete("$.b")
 # c: 3
 ```
 
-### `rename()`
+#### `rename()`
 
 Rename a mapping key in place, preserving position and key metadata.
 
@@ -337,7 +351,7 @@ doc.rename("$.old", "new")
 # new: 1  # comment
 ```
 
-### `node()`
+#### `node()`
 
 Get the root `Node` of the document for tree navigation and editing.
 
@@ -350,7 +364,7 @@ node = doc.node().find("$.a.b")
 node.set_value(42)
 ```
 
-### `find()`
+#### `find()`
 
 Query the document by JSONPath-like path. Supports wildcards (`[*]`) and deep-scan (`..`), returning a list when multiple nodes match.
 
@@ -358,16 +372,16 @@ Query the document by JSONPath-like path. Supports wildcards (`[*]`) and deep-sc
 find(path: str) -> Node | list[Node]
 ```
 
-### `__setitem__()` / `__delitem__()` — root sugar
+#### `__setitem__()` / `__delitem__()` — root sugar
 
 ```python
 doc["key"] = value  # equivalent to doc.set("$.key", value)
 del doc["key"]  # equivalent to doc.delete("$.key")
 ```
 
-## Dunder Methods
+### Dunder Methods
 
-### `__getitem__()`
+#### `__getitem__()`
 
 Access by key (mapping) or index (sequence).
 
@@ -382,7 +396,7 @@ doc[0]  # For sequences
 - `IndexError` — Index out of range for sequence
 - `TypeError` — Document not subscriptable
 
-### `__contains__()`
+#### `__contains__()`
 
 Check if a key exists.
 
@@ -390,7 +404,7 @@ Check if a key exists.
 "key" in doc  # Returns bool
 ```
 
-### `__len__()`
+#### `__len__()`
 
 Get the number of items.
 
@@ -398,7 +412,7 @@ Get the number of items.
 len(doc)  # Number of keys (mapping) or items (sequence)
 ```
 
-### `__iter__()`
+#### `__iter__()`
 
 Iterate over keys (mapping) or values (sequence).
 
@@ -407,7 +421,7 @@ for key in doc:
     print(key, doc[key])
 ```
 
-### `__repr__()`
+#### `__repr__()`
 
 Debug representation.
 
@@ -415,7 +429,7 @@ Debug representation.
 repr(doc)  # "YamlDocument(<yaml>...)"
 ```
 
-### `__str__()`
+#### `__str__()`
 
 String representation.
 
@@ -423,7 +437,7 @@ String representation.
 str(doc)  # Same as doc.to_yaml()
 ```
 
-## Example
+### Example
 
 ```python
 import pyrs_yaml

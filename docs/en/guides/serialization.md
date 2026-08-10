@@ -1,10 +1,18 @@
-# Serialization
+---
+title: Serialization
+description: Convert Python objects and YamlDocument instances to YAML strings, including options and round-trip preservation.
+tags:
+  - docs
+status: new
+---
+
+## Serialization
 
 Convert Python objects and `YamlDocument` instances to YAML strings.
 
-## Basic Serialization
+### Basic Serialization
 
-### YamlDocument.to_yaml()
+#### YamlDocument.to_yaml()
 
 ```python
 doc = pyrs_yaml.parse("key: value")
@@ -12,7 +20,7 @@ yaml_str = doc.to_yaml()
 print(yaml_str)  # key: value\n
 ```
 
-### YamlDocument.to_yaml_with_options()
+#### YamlDocument.to_yaml_with_options()
 
 ```python
 doc = pyrs_yaml.parse("key: value")
@@ -26,7 +34,7 @@ yaml_str = doc.to_yaml_with_options(
 )
 ```
 
-### PyYAML-Compatible Serialization
+#### PyYAML-Compatible Serialization
 
 ```python
 # Dict to YAML string
@@ -36,28 +44,28 @@ yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}}
 yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 ```
 
-## Convert Python Objects to YAML
+### Convert Python Objects to YAML
 
-### from_dict()
+#### from_dict()
 
 ```python
 yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
-### from_json()
+#### from_json()
 
 ```python
 yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 ```
 
-### dump_file()
+#### dump_file()
 
 ```python
 # Write Python object directly to YAML file
 pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
 
-## Supported Input Types
+### Supported Input Types
 
 | Python Type | YAML Output |
 |-------------|-------------|
@@ -69,7 +77,7 @@ pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.ya
 | `bool` | `true` / `false` |
 | `None` | `null` |
 
-## Round-Trip Preservation
+### Round-Trip Preservation
 
 ```python
 # The key advantage: formatting is preserved

@@ -1,10 +1,18 @@
-# Site-wide i18n (MkDocs)
+---
+title: Site-wide i18n (MkDocs)
+description: How the documentation site supports internationalization via MkDocs Material theme, including directory structure and link rules.
+tags:
+  - docs
+status: new
+---
+
+## Site-wide i18n (MkDocs)
 
 The pyrs-yaml documentation site supports **site-wide internationalization** using MkDocs Material theme's built-in i18n. Users can view docs in English (`en`), Chinese (`zh-CN`), Japanese (`ja-JP`), and Korean (`ko-KR`).
 
 See the runtime error-message i18n guide at [guides/i18n.md](../guides/i18n.md) for `set_language()` / `get_language()`.
 
-## How It Works
+### How It Works
 
 Each language gets its own URL path (`/zh-CN/`, `/ja-JP/`, `/ko-KR/`) and shares one navigation with a language switcher in the top-right corner, configured in `mkdocs.yml`:
 
@@ -20,7 +28,7 @@ i18n:
       url: /ko-KR/
 ```
 
-## Directory Structure
+### Directory Structure
 
 Each locale lives under `docs/<lang>/` mirroring the English `docs/en/` tree:
 
@@ -31,7 +39,7 @@ docs/ja/  (or docs/ja-JP)
 docs/ko/  (or docs/ko-KR)
 ```
 
-## Frontmatter
+### Frontmatter
 
 Every translated file **must** carry YAML frontmatter with the `lang` field:
 
@@ -42,13 +50,13 @@ lang: zh-CN
 ---
 ```
 
-## Link Rules
+### Link Rules
 
 - **Do NOT** include language prefixes in internal links — use relative paths (`quick-start.md`).
 - Code examples stay unchanged across languages.
 - License legal text stays English; only headings/explanations are translated.
 
-## Verification
+### Verification
 
 ```bash
 uv sync
@@ -56,7 +64,7 @@ mkdocs build --clean-site
 mkdocs serve   # http://localhost:8000/
 ```
 
-## Troubleshooting
+### Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
