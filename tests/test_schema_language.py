@@ -84,3 +84,23 @@ class TestSchemaLanguage:
         assert doc.get("val") == 255
         out = doc.to_yaml()
         assert "val: 255" in out or "val: 0xFF" in out
+
+    def test_inline_dict_missing_rules_raises(self):
+        """Inline schema dict without rules raises a clear error."""
+        with pytest.raises(ValueError, match="rules"):
+            pyrs_yaml.YAML(schema={"extends": "core"})
+
+    def test_inline_dict_empty_rules_raises(self):
+        with pytest.raises(ValueError, match="rules"):
+            pyrs_yaml.YAML(schema={"rules": []})
+
+    def test_inline_dict_missing_pattern_raises(self):
+        with pytest.raises(ValueError, match="pattern"):
+            pyrs_yaml.YAML(schema={"rules": [{"type": "int"}]})
+
+    def test_inline_dict_default_extends_core(self):
+        """Inline dict without 'extends' defaults to core."""
+        y = pyrs_yaml.YAML(schema={"rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
+        d = y.safe_load("h: 0xFF\nn: 42\n")
+        assert d["h"] == 255
+        assert d["n"] == 42  # core fallback resolves int
