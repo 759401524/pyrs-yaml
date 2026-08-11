@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.14.0] — 2026-08-12
+
 #### Added
 
 - **YAML Schema Language** — 定义自定义 schema，将正则模式映射到 YAML 类型。

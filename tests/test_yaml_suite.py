@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from pyrs_yaml.compliance import compute_compliance, load_test_cases, run_test
 
 try:

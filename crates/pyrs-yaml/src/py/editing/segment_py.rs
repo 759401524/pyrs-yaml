@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use crate::editing::Segment;
 
 /// Extension trait for Segment to support Python parsing.
-pub trait SegmentExt {
+pub(crate) trait SegmentExt {
     /// Parse a Python object into a Segment.
     fn from_py(obj: &Bound<'_, PyAny>) -> PyResult<Segment<'static>>;
 }

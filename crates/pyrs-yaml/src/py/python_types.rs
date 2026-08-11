@@ -43,7 +43,7 @@ pub(crate) fn float_to_yaml_string(f: f64) -> String {
 }
 
 /// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None/ndarray。
-pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
+pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
     let obj = obj.bind(py);
 
     if obj.is_none() {
@@ -85,6 +85,27 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         return Ok(CustomNode::plain_scalar(n.to_string()));
     }
 
+    // Check CustomType for types that would be extracted as f64
+    // (e.g. Decimal) before the float fallback.
+    if !type_registry::is_empty()
+        && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
+    {
+        let (tag_name, yaml_str) = result?;
+        let tag = crate::ast::Tag {
+            handle: "!".to_string(),
+            suffix: tag_name.trim_start_matches('!').to_string(),
+        };
+        return Ok(CustomNode::Scalar {
+            value: std::sync::Arc::from(yaml_str),
+            style: crate::ast::ScalarStyle::Plain,
+            chomping: crate::ast::Chomping::Clip,
+            meta: crate::ast::NodeMeta {
+                tag: Some(tag),
+                ..Default::default()
+            },
+        });
+    }
+
     if let Ok(f) = obj.extract::<f64>() {
         return Ok(CustomNode::plain_scalar(float_to_yaml_string(f)));
     }
@@ -121,11 +142,11 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         return Ok(CustomNode::Scalar {
             value: std::sync::Arc::from(yaml_str),
             style: crate::ast::ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: Some(tag),
             chomping: crate::ast::Chomping::Clip,
-            source_range: None,
+            meta: crate::ast::NodeMeta {
+                tag: Some(tag),
+                ..Default::default()
+            },
         });
     }
 
@@ -136,7 +157,7 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
 }
 
 /// 将 `serde_json::Value` 转换为 `CustomNode` AST 节点。
-pub fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
+pub(crate) fn json_value_to_node(value: &serde_json::Value) -> PyResult<CustomNode> {
     match value {
         serde_json::Value::Null => Ok(CustomNode::plain_null()),
         serde_json::Value::Bool(b) => {

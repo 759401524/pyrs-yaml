@@ -366,7 +366,9 @@ pub fn parse_stream_with_options(
         })?;
 
     if receiver.max_depth_exceeded {
-        return Err(super::ParseError::MaxDepthExceeded(max_depth));
+        return Err(super::ParseError::MaxDepthExceeded(super::DepthError(
+            max_depth,
+        )));
     }
 
     Ok(receiver.events)
@@ -831,7 +833,9 @@ mod tests {
         let result = parse_stream_with_options("{a: {a: {a: {a: 1}}}}", 2);
         assert!(matches!(
             result,
-            Err(crate::parser::ParseError::MaxDepthExceeded(2))
+            Err(crate::parser::ParseError::MaxDepthExceeded(
+                crate::parser::DepthError(2)
+            ))
         ));
     }
 

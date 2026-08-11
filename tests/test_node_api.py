@@ -2,8 +2,9 @@
 
 import contextlib
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 from pyrs_yaml import Node
 
 

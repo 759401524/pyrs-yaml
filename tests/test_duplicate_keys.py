@@ -1,8 +1,8 @@
 """Duplicate key tests — YamlDuplicateKeyError and allow_duplicate_keys override."""
 
-import pyrs_yaml
 import pytest
 
+import pyrs_yaml
 from tests.data import yaml_samples as yaml
 
 

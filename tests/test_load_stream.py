@@ -3,8 +3,9 @@
 import io
 import itertools
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestLoadStream:

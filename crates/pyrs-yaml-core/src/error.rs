@@ -3,6 +3,11 @@
 //! All errors implement `std::error::Error` so downstream consumers can use
 //! `Box<dyn Error>` or `?`-chain across crate boundaries.
 
+/// Recursion depth limit exceeded.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("max depth exceeded (max={0})")]
+pub struct DepthError(pub usize);
+
 /// Path-navigation failures within an AST.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum NavigateError {
@@ -34,16 +39,16 @@ pub enum ParseError {
     #[error("duplicate key: {0}")]
     DuplicateKey(String),
     /// Recursion depth exceeded the configured maximum.
-    #[error("max depth exceeded (max={0})")]
-    MaxDepthExceeded(usize),
+    #[error(transparent)]
+    MaxDepthExceeded(DepthError),
 }
 
 /// YAML serialization failures.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum SerializeError {
     /// Recursion depth exceeded the configured maximum.
-    #[error("max depth exceeded (max={0})")]
-    MaxDepthExceeded(usize),
+    #[error(transparent)]
+    MaxDepthExceeded(DepthError),
     /// Internal invariant violation / unexpected state.
     #[error("internal-error: {0}")]
     Internal(&'static str),
@@ -69,15 +74,9 @@ pub enum PathError {
 /// Python-facing error messages are unchanged.
 #[derive(Debug, thiserror::Error)]
 pub enum EditError {
-    /// Navigation missed a key.
-    #[error("missing-path:{0}")]
-    MissingPath(String),
-    /// Navigation tried to descend into a scalar node.
-    #[error("cannot-descend-into-scalar:{0}")]
-    CannotDescendIntoScalar(String),
-    /// Create-missing requires a mapping parent.
-    #[error("create-needs-mapping")]
-    CreateNeedsMapping,
+    /// Navigation failure (from [`NavigateError`]).
+    #[error(transparent)]
+    Navigate(#[from] NavigateError),
     /// Editing an alias node is not allowed.
     #[error("cannot-edit-alias")]
     CannotEditAlias,
@@ -108,14 +107,4 @@ pub enum EditError {
     /// Serialization failed while producing edit text.
     #[error(transparent)]
     Serialize(#[from] SerializeError),
-}
-
-impl From<NavigateError> for EditError {
-    fn from(e: NavigateError) -> Self {
-        match e {
-            NavigateError::Missing(s) => EditError::MissingPath(s),
-            NavigateError::CannotDescend(t) => EditError::CannotDescendIntoScalar(t),
-            NavigateError::NotContainer => EditError::CreateNeedsMapping,
-        }
-    }
 }

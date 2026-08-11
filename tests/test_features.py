@@ -3,8 +3,9 @@
 import tempfile
 from pathlib import Path
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestReadMarkdown:

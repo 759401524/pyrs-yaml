@@ -2,8 +2,9 @@
 
 import json
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestToJson:

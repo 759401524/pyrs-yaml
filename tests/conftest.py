@@ -1,13 +1,18 @@
+from __future__ import annotations
+
 import tempfile
 from pathlib import Path
 
-import pyrs_yaml
 import pytest
+from _pytest.config import Config
+from _pytest.nodes import Item
+from _pytest.python import Session
 
+import pyrs_yaml
 from tests.data import yaml_samples as yaml
 
 
-def pytest_collection_modifyitems(session, config, items):
+def pytest_collection_modifyitems(session: Session, config: Config, items: list[Item]) -> None:
     """Auto-deselect benchmark tests when --codspeed is not provided."""
     if not config.getoption("--codspeed"):
         deselected = []
@@ -57,10 +62,3 @@ def temp_yaml_file(yaml_strings):
         with Path(filepath).open("w", encoding="utf-8") as f:
             f.write(yaml_strings["simple_mapping"])
         yield filepath
-
-
-@pytest.fixture
-def language_context():
-    original = pyrs_yaml.get_language()
-    yield
-    pyrs_yaml.set_language(original)

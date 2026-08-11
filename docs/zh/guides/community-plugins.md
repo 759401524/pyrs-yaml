@@ -17,7 +17,13 @@ pyrs-yaml 内置了在导入时自动注册的插件：
 
 | 标签 | Python 类型 | 说明 |
 |-----|-------------|------|
-| `!timestamp` | `datetime` | ISO 8601 时间戳往返 |
+| `!timestamp` | `datetime` | ISO 8601 日期时间往返 |
+| `!date` | `datetime.date` | ISO 8601 日期（不含时间） |
+| `!time` | `datetime.time` | ISO 8601 时间（不含日期） |
+| `!uuid` | `uuid.UUID` | UUID 字符串 ↔ 对象 |
+| `!decimal` | `decimal.Decimal` | 任意精度十进制数 |
+| `!binary` | `bytes` | Base64 编码的二进制数据 |
+| `!regex` | `re.Pattern` | 已编译的正则表达式 |
 | `!set` | `str` | YAML 集合（无键映射） |
 
 ### 创建自定义类型

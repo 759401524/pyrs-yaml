@@ -61,3 +61,44 @@ class TestCommunityPlugins:
         # The serialized output should contain the tag and value
         assert "!ts" in out, f"missing tag in {out!r}"
         assert "2026-08-11T10:30:00" in out, f"missing value in {out!r}"
+
+    def test_clear_type_handlers(self):
+        """clear_type_handlers clears registered custom types."""
+        pyrs_yaml.register_type("!ts", TimestampType())
+        # After clearing, the tagged scalar falls through to default resolution
+        # (plain string) instead of being converted to datetime.
+        pyrs_yaml.clear_type_handlers()
+        doc = pyrs_yaml.parse("when: !ts 2026-08-11T10:30:00")
+        val = doc.get("when")
+        assert not isinstance(val, datetime), f"expected plain value, got {type(val)}"
+
+    def test_validate_custom_types_dict(self):
+        """validate_custom_types validates dicts recursively."""
+        pyrs_yaml.register_type("!ts", TimestampType())
+        # Valid datetime passes
+        pyrs_yaml.validate_custom_types({"a": datetime(2026, 8, 11, 10, 30), "b": {"c": datetime(2026, 8, 11)}})
+        # Non-container value passes (no registered type match means ok)
+        pyrs_yaml.validate_custom_types({"a": 42, "b": "hello"})
+
+    def test_validate_custom_types_list_tuple_set(self):
+        """validate_custom_types handles list, tuple, and set containers."""
+        pyrs_yaml.register_type("!ts", TimestampType())
+        pyrs_yaml.validate_custom_types([datetime(2026, 8, 11, 10, 30), 42, "x"])
+        pyrs_yaml.validate_custom_types((datetime(2026, 8, 11, 10, 30), {"nested": 1}))
+        pyrs_yaml.validate_custom_types({datetime(2026, 8, 11, 10, 30), datetime(2026, 8, 12)})
+        pyrs_yaml.validate_custom_types(frozenset({1, 2, 3}))
+
+    def test_validate_custom_types_failure(self):
+        """validate_custom_types raises when a custom type's validate returns False."""
+
+        class AlwaysInvalid(pyrs_yaml.CustomType):
+            python_type = str
+
+            def validate(self, obj):
+                return False
+
+        pyrs_yaml.register_type("!bad", AlwaysInvalid())
+        import pytest
+
+        with pytest.raises(ValueError, match="bad"):
+            pyrs_yaml.validate_custom_types("anything")

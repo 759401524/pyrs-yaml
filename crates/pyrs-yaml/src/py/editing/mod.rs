@@ -1,18 +1,19 @@
 mod metadata;
 
-pub use crate::editing::{
+pub(crate) use crate::editing::{
     DirtyKind, DirtyUnit, NavigateError, Segment, eligible_path, extend_delete_over_comments,
-    key_eq, line_aligned, line_end, line_indent, line_start, mapping_get_mut, mapping_key_index,
-    navigate, navigate_mut, normalize_index, parse_path_segments, path_nodes, precompute,
+    key_eq, line_aligned, line_end, line_indent, line_start, mapping_key_index, navigate,
+    navigate_mut, normalize_index, parse_path_segments, path_nodes, precompute,
     regenerate_region_text, region_unit,
 };
-pub use metadata::with_metadata_from;
+pub(crate) use metadata::with_metadata_from;
 
 pub mod segment_py;
 
 use crate::ast::CustomNode;
 use crate::parser::yaml::compute_line_offsets;
 use indexmap::IndexMap;
+use std::ops::Range;
 
 pub fn set_path(
     node: &mut CustomNode,
@@ -52,11 +53,8 @@ pub fn set_path(
     if matches!(node, CustomNode::Null { .. }) {
         *node = CustomNode::Mapping {
             pairs: IndexMap::new(),
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
     }
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
@@ -75,111 +73,173 @@ pub fn set_path(
     };
     let parent_is_alias = matches!(parent, CustomNode::Alias { .. });
 
-    match (parent, last) {
-        (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => {
-            let key_node = CustomNode::plain_scalar(k.as_ref());
-            match mapping_key_index(pairs, &key_node) {
-                Some(idx) => {
-                    let stored_key = pairs.get_index(idx).map(|(k, _)| k.clone());
-                    let stored_key = match stored_key {
-                        Some(k) => k,
-                        None => key_node.clone(),
-                    };
-                    let (old_key_start, old_value_end, old_indent) = pairs
-                        .get_index(idx)
-                        .map(|(k, v)| {
-                            let s = k.source_range().map(|r| r.start).unwrap_or(0);
-                            let e = v.source_range().map(|r| r.end).unwrap_or(s);
-                            (s, e, line_indent(line_offsets, source, s))
-                        })
-                        .unwrap_or((0, 0, 0));
-                    let target = pairs.get_index_mut(idx).map(|(_, v)| v);
-                    if let Some(target) = target {
-                        let mut v = new_value;
-                        if preserve_metadata {
-                            v = with_metadata_from(&v, target);
-                        }
-                        pairs.insert(stored_key, v);
-                    } else {
-                        pairs.insert(stored_key, new_value);
-                    }
-                    let text = regenerate_region_text(
-                        node,
-                        segments,
-                        parent_segments,
-                        None,
-                        &compact_override,
-                        old_indent,
-                        depth,
-                    )
-                    .map_err(|e| e.to_string())?;
-                    Ok(DirtyUnit {
-                        kind: region_unit(
-                            old_key_start,
-                            old_value_end,
-                            old_indent,
-                            line_offsets,
-                            source,
-                            compact_override,
-                            &text,
-                        ),
-                        eligible,
-                    })
-                }
-                None => {
-                    let (at, indent) = match pairs.iter().last() {
-                        Some((lk, lv)) => {
-                            let key_start = lk.source_range().map(|r| r.start).unwrap_or(0);
-                            let val_end = lv.source_range().map(|r| r.end).unwrap_or(key_start);
-                            (
-                                line_end(line_offsets, val_end, source.len()),
-                                line_indent(line_offsets, source, key_start),
-                            )
-                        }
-                        None => (0, 0),
-                    };
-                    let text = crate::serializer::pair_to_string(
-                        &key_node, &new_value, indent, true, depth,
-                    )
-                    .map_err(|e| e.to_string())?;
-                    pairs.insert(key_node, new_value);
-                    Ok(DirtyUnit {
-                        kind: DirtyKind::Insert { at, text },
-                        eligible,
-                    })
-                }
-            }
+    if parent_is_alias {
+        return Err("cannot-edit-alias".to_string());
+    }
+    let ctx = SetPathContext {
+        segments,
+        parent_segments,
+        compact_override: &compact_override,
+        eligible,
+        depth,
+        line_offsets,
+        source,
+    };
+    match last {
+        Segment::Key(_) => set_path_mapping_key(node, last, new_value, preserve_metadata, &ctx),
+        Segment::Index(_) => {
+            set_path_sequence_index(node, last, new_value, preserve_metadata, &ctx)
         }
-        (CustomNode::Sequence { items, .. }, Segment::Index(i)) => {
-            let idx = normalize_index(*i, items.len())
-                .ok_or_else(|| format!("index-out-of-range-edit:{i}"))?;
-            let item_range = items[idx].source_range().cloned();
-            let target = items
-                .get_mut(idx)
-                .ok_or_else(|| format!("index-out-of-range-edit:{i}"))?;
-            let mut v = new_value;
-            if preserve_metadata {
-                v = with_metadata_from(&v, target);
+    }
+}
+
+/// Set the value at `last` (a `Key` segment) of the mapping reached via
+/// `parent_segments`. Extracted from `set_path` to keep that function small.
+struct SetPathContext<'a> {
+    segments: &'a [Segment<'a>],
+    parent_segments: &'a [Segment<'a>],
+    compact_override: &'a Option<(Range<usize>, usize, usize)>,
+    eligible: bool,
+    depth: usize,
+    line_offsets: &'a [usize],
+    source: &'a str,
+}
+
+fn set_path_mapping_key(
+    node: &mut CustomNode,
+    last: &Segment<'_>,
+    new_value: CustomNode,
+    preserve_metadata: bool,
+    ctx: &SetPathContext<'_>,
+) -> Result<DirtyUnit, String> {
+    let k = match last {
+        Segment::Key(k) => k,
+        _ => return Err("create-needs-mapping".to_string()),
+    };
+    let parent = match navigate_mut(node, ctx.parent_segments) {
+        Ok(p) => p,
+        Err(e) => return Err(e.to_string()),
+    };
+    let CustomNode::Mapping { pairs, .. } = parent else {
+        return Err("create-needs-mapping".to_string());
+    };
+    let key_node = CustomNode::plain_scalar(k.as_ref());
+    match mapping_key_index(pairs, &key_node) {
+        Some(idx) => {
+            let stored_key = pairs.get_index(idx).map(|(k, _)| k.clone());
+            let stored_key = match stored_key {
+                Some(k) => k,
+                None => key_node.clone(),
+            };
+            let (old_key_start, old_value_end, old_indent) = pairs
+                .get_index(idx)
+                .map(|(k, v)| {
+                    let s = k.source_range().map(|r| r.start).unwrap_or(0);
+                    let e = v.source_range().map(|r| r.end).unwrap_or(s);
+                    (s, e, line_indent(ctx.line_offsets, ctx.source, s))
+                })
+                .unwrap_or((0, 0, 0));
+            let target = pairs.get_index_mut(idx).map(|(_, v)| v);
+            if let Some(target) = target {
+                let mut v = new_value;
+                if preserve_metadata {
+                    v = with_metadata_from(&v, target);
+                }
+                pairs.insert(stored_key, v);
+            } else {
+                pairs.insert(stored_key, new_value);
             }
-            items[idx] = v;
-            let raw = item_range.unwrap_or(0..0);
-            let raw_start = raw.start;
-            let range = line_aligned(raw, line_offsets, source);
-            let indent = line_indent(line_offsets, source, raw_start);
-            let text = crate::serializer::item_to_string(&items[idx], indent, true, depth)
-                .map_err(|e| e.to_string())?;
+            let text = regenerate_region_text(
+                node,
+                ctx.segments,
+                ctx.parent_segments,
+                None,
+                ctx.compact_override,
+                old_indent,
+                ctx.depth,
+            )
+            .map_err(|e| e.to_string())?;
             Ok(DirtyUnit {
-                kind: DirtyKind::Region {
-                    range,
-                    indent,
-                    text,
-                },
-                eligible,
+                kind: region_unit(
+                    old_key_start,
+                    old_value_end,
+                    old_indent,
+                    ctx.line_offsets,
+                    ctx.source,
+                    ctx.compact_override.clone(),
+                    &text,
+                ),
+                eligible: ctx.eligible,
             })
         }
-        _ if parent_is_alias => Err("cannot-edit-alias".to_string()),
-        _ => Err("create-needs-mapping".to_string()),
+        None => {
+            let (at, indent) = match pairs.iter().last() {
+                Some((lk, lv)) => {
+                    let key_start = lk.source_range().map(|r| r.start).unwrap_or(0);
+                    let val_end = lv.source_range().map(|r| r.end).unwrap_or(key_start);
+                    (
+                        line_end(ctx.line_offsets, val_end, ctx.source.len()),
+                        line_indent(ctx.line_offsets, ctx.source, key_start),
+                    )
+                }
+                None => (0, 0),
+            };
+            let text = crate::serializer::pair_to_string(&key_node, &new_value, indent, ctx.depth)
+                .map_err(|e| e.to_string())?;
+            pairs.insert(key_node, new_value);
+            Ok(DirtyUnit {
+                kind: DirtyKind::Insert { at, text },
+                eligible: ctx.eligible,
+            })
+        }
     }
+}
+
+/// Set the value at `last` (an `Index` segment) of the sequence reached via
+/// `parent_segments`. Extracted from `set_path` to keep that function small.
+fn set_path_sequence_index(
+    node: &mut CustomNode,
+    last: &Segment<'_>,
+    new_value: CustomNode,
+    preserve_metadata: bool,
+    ctx: &SetPathContext<'_>,
+) -> Result<DirtyUnit, String> {
+    let i = match last {
+        Segment::Index(i) => *i,
+        _ => return Err("create-needs-mapping".to_string()),
+    };
+    let parent = match navigate_mut(node, ctx.parent_segments) {
+        Ok(p) => p,
+        Err(e) => return Err(e.to_string()),
+    };
+    let CustomNode::Sequence { items, .. } = parent else {
+        return Err("create-needs-mapping".to_string());
+    };
+    let idx =
+        normalize_index(i, items.len()).ok_or_else(|| format!("index-out-of-range-edit:{i}"))?;
+    let item_range = items[idx].source_range().cloned();
+    let target = items
+        .get_mut(idx)
+        .ok_or_else(|| format!("index-out-of-range-edit:{i}"))?;
+    let mut v = new_value;
+    if preserve_metadata {
+        v = with_metadata_from(&v, target);
+    }
+    items[idx] = v;
+    let raw = item_range.unwrap_or(0..0);
+    let raw_start = raw.start;
+    let range = line_aligned(raw, ctx.line_offsets, ctx.source);
+    let indent = line_indent(ctx.line_offsets, ctx.source, raw_start);
+    let text = crate::serializer::item_to_string(&items[idx], indent, ctx.depth)
+        .map_err(|e| e.to_string())?;
+    Ok(DirtyUnit {
+        kind: DirtyKind::Region {
+            range,
+            indent,
+            text,
+        },
+        eligible: ctx.eligible,
+    })
 }
 
 /// `set_path` with `create_missing`: walk as deep as the path allows and
@@ -260,13 +320,21 @@ fn set_path_create_missing(
         None => (0, 0),
     };
     let depth = consumed;
-    let text = crate::serializer::pair_to_string(&top_key, &nested, indent, true, depth)
+    let text = crate::serializer::pair_to_string(&top_key, &nested, indent, depth)
         .map_err(|e| e.to_string())?;
     pairs.insert(top_key, nested);
     Ok(DirtyUnit {
         kind: DirtyKind::Insert { at, text },
         eligible,
     })
+}
+
+/// Whether the node at `segments` is eligible for compact inline editing.
+/// Shared by the path-edit helpers to avoid repeating the `path_nodes` +
+/// `eligible_path` computation.
+fn path_eligible(node: &CustomNode, segments: &[Segment<'_>]) -> Result<bool, String> {
+    let path = path_nodes(node, segments).map_err(|e| e.to_string())?;
+    Ok(eligible_path(&path))
 }
 
 pub fn insert_path(
@@ -286,10 +354,7 @@ pub fn insert_path(
         }
     };
     let depth = segments.len().saturating_sub(1);
-    let eligible = {
-        let path = path_nodes(node, segments).map_err(|e| e.to_string())?;
-        eligible_path(&path)
-    };
+    let eligible = path_eligible(node, segments)?;
     let seq = navigate_mut(node, segments).map_err(|e| e.to_string())?;
     match seq {
         CustomNode::Sequence { items, .. } => {
@@ -315,12 +380,11 @@ pub fn insert_path(
                 });
             }
             let insert_at = insert_at as usize;
-            let (at, indent, is_last) = if insert_at < items.len() {
+            let (at, indent) = if insert_at < items.len() {
                 let next_item = items[insert_at].source_range().cloned().unwrap_or(0..0);
                 (
                     line_start(line_offsets, next_item.start),
                     line_indent(line_offsets, source, next_item.start),
-                    false,
                 )
             } else {
                 let last_item = items[items.len() - 1]
@@ -330,10 +394,9 @@ pub fn insert_path(
                 (
                     line_end(line_offsets, last_item.end, source.len()),
                     line_indent(line_offsets, source, last_item.start),
-                    true,
                 )
             };
-            let text = crate::serializer::item_to_string(&value, indent, is_last, depth)
+            let text = crate::serializer::item_to_string(&value, indent, depth)
                 .map_err(|e| e.to_string())?;
             items.insert(insert_at, value);
             Ok(DirtyUnit {
@@ -362,10 +425,7 @@ pub fn append_path(
         }
     };
     let depth = segments.len().saturating_sub(1);
-    let eligible = {
-        let path = path_nodes(node, segments).map_err(|e| e.to_string())?;
-        eligible_path(&path)
-    };
+    let eligible = path_eligible(node, segments)?;
     let seq = navigate_mut(node, segments).map_err(|e| e.to_string())?;
     match seq {
         CustomNode::Sequence { items, .. } => {
@@ -385,7 +445,7 @@ pub fn append_path(
                 .unwrap_or(0..0);
             let at = line_end(line_offsets, last_item.end, source.len());
             let indent = line_indent(line_offsets, source, last_item.start);
-            let text = crate::serializer::item_to_string(&value, indent, true, depth)
+            let text = crate::serializer::item_to_string(&value, indent, depth)
                 .map_err(|e| e.to_string())?;
             items.push(value);
             Ok(DirtyUnit {

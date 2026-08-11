@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// YAML schema profile controlling implicit type resolution.
@@ -52,6 +53,24 @@ impl Schema {
     }
 }
 
+/// Parse a schema name (case-insensitive) into a built-in [`Schema`] variant.
+///
+/// Returns `None` for `Custom` schemas — those are looked up in the
+/// [`SchemaRegistry`] by name instead.
+impl FromStr for Schema {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "core" | "yaml.org,2002" | "yamlorg2002" => Ok(Schema::Core),
+            "json" | "yaml.org,2002:json" => Ok(Schema::Json),
+            "failsafe" | "yaml.org,2002:failsafe" => Ok(Schema::Failsafe),
+            "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(Schema::Yaml1_1),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Const-generic dispatch to a built-in resolver function. The return lifetime
 /// is tied to the input slice, not to any enclosing borrow.
 fn resolve_schema_fn<'a, const IDX: u8>(value: &'a str) -> YamlType<'a> {
@@ -75,6 +94,10 @@ impl From<YamlSchema> for Schema {
 }
 
 impl PartialEq for Schema {
+    /// Built-in variants compare by kind. [`Schema::Custom`] always compares
+    /// unequal to any other `Custom` (including itself) because trait objects
+    /// are not comparable — two custom schemas with identical rules are still
+    /// distinct. Equality is only meaningful for the built-in variants.
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Schema::Failsafe, Schema::Failsafe) => true,

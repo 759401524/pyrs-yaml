@@ -8,13 +8,16 @@ tree traversal, query, and mutation operations.
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, final
+
+from typing_extensions import override
 
 
 class YamlDocumentError(Exception):
     """Raised when a Node's parent YamlDocument has been garbage collected."""
 
 
+@final
 class Node:
     """A node in the YAML AST, backed by a YamlDocument and a path.
 
@@ -22,22 +25,21 @@ class Node:
     path tuple that navigates to the target node within the document's AST.
     """
 
-    def __init__(self, document: Any, path: tuple = ()):
+    _doc: Any
+    _path: tuple[Any, ...]
+    _alive: bool
+    _revision_at_creation: int
+
+    def __init__(self, document: Any, path: tuple[Any, ...] = ()) -> None:
         self._doc = document
         self._path = path
         self._alive = True
         self._revision_at_creation = document._revision() if document is not None else 0
 
     def _get_doc(self) -> Any:
-        if not self._alive:
-            warnings.warn(
-                "Accessing a stale Node whose parent YamlDocument has been released",
-                RuntimeWarning,
-                stacklevel=3,
-            )
-            raise YamlDocumentError("parent document has been released")
-        if self._doc is None:
+        if not self._alive or self._doc is None:
             self._alive = False
+            self._doc = None
             warnings.warn(
                 "Accessing a stale Node whose parent YamlDocument has been released",
                 RuntimeWarning,
@@ -123,33 +125,28 @@ class Node:
         ``a: 1`` creates ``b`` and ``c``). Index segments that miss are still
         an error.
         """
-        doc = self._get_doc()
-        segments = [s for s in self._path]
-        doc._set_path(segments, value, create_missing)
+        self._with_path(lambda doc, segs: doc._set_path(segs, value, create_missing))
 
     def append(self, value: Any) -> None:
         """Append to a sequence node."""
-        doc = self._get_doc()
-        segments = [s for s in self._path]
-        doc._append_path(segments, value)
+        self._with_path(lambda doc, segs: doc._append_path(segs, value))
 
     def insert(self, index: int, value: Any) -> None:
         """Insert into a sequence node at index."""
-        doc = self._get_doc()
-        segments = [s for s in self._path]
-        doc._insert_path(segments, index, value)
+        self._with_path(lambda doc, segs: doc._insert_path(segs, index, value))
 
     def delete(self) -> None:
         """Remove this node and its comments. Node becomes stale afterwards."""
-        doc = self._get_doc()
-        segments = [s for s in self._path]
-        doc._delete_path(segments)
+        self._with_path(lambda doc, segs: doc._delete_path(segs))
 
     def rename(self, new_key: str) -> None:
         """Rename this node's mapping key. Node must be a mapping value."""
+        self._with_path(lambda doc, segs: doc._rename_path(segs, new_key))
+
+    def _with_path(self, action: Callable) -> None:
         doc = self._get_doc()
         segments = [s for s in self._path]
-        doc._rename_path(segments, new_key)
+        action(doc, segments)
 
     @property
     def parent(self) -> Node | None:
@@ -219,21 +216,23 @@ class Node:
                 current = Node(doc, val_path)
         return current
 
+    @override
     def __repr__(self) -> str:
         if not self._alive:
             return "Node(released)"
         try:
             return f"Node(root_type={self.root_type}, path={self._path})"
-        except (YamlDocumentError, Exception):
+        except Exception:
             return "Node(invalid)"
 
+    @override
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Node):
             return NotImplemented
         return self._path == other._path and self._doc is other._doc and self._alive == other._alive
 
 
-def _parse_jsonpath(path: str) -> list:
+def _parse_jsonpath(path: str) -> list[Any]:
     """Parse a JSONPath-like path into a list of segments.
 
     Returns a list where each segment is either:
@@ -246,9 +245,8 @@ def _parse_jsonpath(path: str) -> list:
         raise ValueError("Path must start with $")
 
     rest = path[1:]
-    # Remove the first dot after $, but preserve ..
     if rest.startswith(".."):
-        rest = rest  # keep .. for deep scan
+        pass  # keep .. for deep scan
     elif rest.startswith("."):
         rest = rest[1:]
 
@@ -256,41 +254,54 @@ def _parse_jsonpath(path: str) -> list:
     i = 0
     while i < len(rest):
         if i + 1 < len(rest) and rest[i] == "." and rest[i + 1] == ".":
-            # Deep scan (..)
-            i += 2
-            key = ""
-            while i < len(rest) and rest[i] not in (".", "["):
-                key += rest[i]
-                i += 1
-            segments.append(f"..{key}")
+            seg, i = _parse_deep_scan(rest, i)
         elif rest[i] == ".":
             i += 1
             continue
         elif rest[i] == "[":
-            i += 1
-            if i < len(rest) and rest[i] == "*":
-                segments.append("*")
-                i += 1
-                if i < len(rest) and rest[i] == "]":
-                    i += 1
-                continue
-            num = ""
-            if i < len(rest) and rest[i] == "-":
-                num += "-"
-                i += 1
-            while i < len(rest) and rest[i].isdigit():
-                num += rest[i]
-                i += 1
-            if i < len(rest) and rest[i] == "]":
-                i += 1
-            if num in ("", "-"):
-                raise ValueError(f"invalid index in path: {path}")
-            segments.append(int(num))
+            seg, i = _parse_bracket(rest, i, path)
         else:
-            key = ""
-            while i < len(rest) and rest[i] not in (".", "["):
-                key += rest[i]
-                i += 1
-            segments.append(key)
-
+            seg, i = _parse_key(rest, i)
+        segments.append(seg)
     return segments
+
+
+def _parse_deep_scan(rest: str, i: int) -> tuple[str, int]:
+    """Parse a deep scan segment (..key) starting at position i."""
+    i += 2
+    key = ""
+    while i < len(rest) and rest[i] not in (".", "["):
+        key += rest[i]
+        i += 1
+    return f"..{key}", i
+
+
+def _parse_bracket(rest: str, i: int, path: str) -> tuple[Any, int]:
+    """Parse a bracket segment ([*], [index]) starting at position i."""
+    i += 1
+    if i < len(rest) and rest[i] == "*":
+        i += 1
+        if i < len(rest) and rest[i] == "]":
+            i += 1
+        return "*", i
+    num = ""
+    if i < len(rest) and rest[i] == "-":
+        num += "-"
+        i += 1
+    while i < len(rest) and rest[i].isdigit():
+        num += rest[i]
+        i += 1
+    if i < len(rest) and rest[i] == "]":
+        i += 1
+    if num in ("", "-"):
+        raise ValueError(f"invalid index in path: {path}")
+    return int(num), i
+
+
+def _parse_key(rest: str, i: int) -> tuple[str, int]:
+    """Parse a key segment starting at position i."""
+    key = ""
+    while i < len(rest) and rest[i] not in (".", "["):
+        key += rest[i]
+        i += 1
+    return key, i

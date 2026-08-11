@@ -1,7 +1,8 @@
 use pyrs_yaml::ast::CustomNode;
 use pyrs_yaml::parser::yaml::YamlSchema;
-use pyrs_yaml::py::editing::{self, Segment};
+use pyrs_yaml::py::editing;
 use pyrs_yaml::splice::SpliceState;
+use pyrs_yaml_core::editing::Segment;
 use std::sync::Arc;
 
 const SMALL_YAML: &str = "key: value\nname: test\n";
@@ -525,10 +526,9 @@ fn edit_batch_10(bencher: divan::Bencher) {
                 SMALL_YAML,
                 None,
                 false,
-            ) {
-                if unit.eligible {
-                    state.apply(&unit).ok();
-                }
+            ) && unit.eligible
+            {
+                state.apply(&unit).ok();
             }
         }
         state.materialize();
@@ -589,10 +589,9 @@ fn edit_flush_set_10mb(bencher: divan::Bencher) {
         let mut state = SpliceState::new(source.clone());
         if let Ok(unit) =
             editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
+            && unit.eligible
         {
-            if unit.eligible {
-                state.apply(&unit).ok();
-            }
+            state.apply(&unit).ok();
         }
         state.materialize();
     });
@@ -633,10 +632,9 @@ fn edit_flush_burst5_10mb(bencher: divan::Bencher) {
             let segs = vec![g.clone(), k.clone()];
             if let Ok(unit) =
                 editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
+                && unit.eligible
             {
-                if unit.eligible {
-                    state.apply(&unit).ok();
-                }
+                state.apply(&unit).ok();
             }
         }
         state.materialize();
@@ -702,10 +700,9 @@ fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
         let mut state = SpliceState::new(source.clone());
         if let Ok(unit) =
             editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
+            && unit.eligible
         {
-            if unit.eligible {
-                state.apply(&unit).ok();
-            }
+            state.apply(&unit).ok();
         }
         state.materialize();
     });

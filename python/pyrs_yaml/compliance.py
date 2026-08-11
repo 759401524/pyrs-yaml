@@ -1,12 +1,14 @@
 """YAML Test Suite compliance reporting for pyrs_yaml."""
 
+from __future__ import annotations
+
 import json
 import re
 import sys
 from datetime import datetime
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import pyrs_yaml
 
@@ -16,13 +18,13 @@ try:
     HAS_PYYAML = True
 except ImportError:
     HAS_PYYAML = False
-    yaml = None
+    yaml = None  # ty: ignore[invalid-assignment]
 
 
 def _current_version() -> str:
     try:
         return _pkg_version("pyrs-yaml")
-    except Exception:
+    except (ImportError, FileNotFoundError, ValueError):
         return "unknown"
 
 
@@ -47,7 +49,7 @@ def convert_special_chars(text: str) -> str:
     return text
 
 
-def load_test_cases(suite_dir: str) -> list:
+def load_test_cases(suite_dir: str) -> list[dict[str, Any]]:
     """Load all test cases from the YAML test suite"""
     if not HAS_PYYAML:
         return []
@@ -94,7 +96,7 @@ def load_test_cases(suite_dir: str) -> list:
                         "valid": is_valid,
                     }
                 )
-        except Exception:
+        except (OSError, ValueError, KeyError):
             continue
 
     return test_cases
@@ -106,11 +108,11 @@ def compare_json(expected: str, actual: str) -> bool:
         exp = json.loads(expected)
         act = json.loads(actual)
         return exp == act
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         return expected.strip() == actual.strip()
 
 
-def run_test(test: dict) -> dict:
+def run_test(test: dict[str, Any]) -> dict[str, Any]:
     """Run a single test case"""
     result = {
         "id": test["id"],
@@ -170,7 +172,7 @@ def run_test(test: dict) -> dict:
     return result
 
 
-def compute_compliance(suite_dir: Optional[str] = None) -> dict:
+def compute_compliance(suite_dir: str | None = None) -> dict[str, Any]:
     """Run YAML Test Suite and return compliance report."""
     if suite_dir is None:
         suite_dir = str(Path(__file__).resolve().parent.parent.parent / "Reference" / "yaml-test-suite")
@@ -204,7 +206,7 @@ def compute_compliance(suite_dir: Optional[str] = None) -> dict:
 DEFAULT_SUITE_DIR = str(Path(__file__).resolve().parent.parent.parent / "Reference" / "yaml-test-suite")
 
 
-def compliance_report(suite_dir: Optional[str] = None) -> dict:
+def compliance_report(suite_dir: str | None = None) -> dict[str, Any]:
     """Run the YAML Test Suite and return a compliance report.
 
     The suite data is a dev artifact (``Reference/yaml-test-suite``), not

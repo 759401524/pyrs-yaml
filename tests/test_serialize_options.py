@@ -1,7 +1,6 @@
 """Tests for SerializeOptions expansion (Phase 2 of v0.9.0)."""
 
 import pyrs_yaml
-
 from tests.data import yaml_samples as yaml
 
 

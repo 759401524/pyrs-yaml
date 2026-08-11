@@ -1,11 +1,11 @@
 """Error handling tests — YamlParseError, YamlTypeError, IO errors, edge cases."""
 
-import contextlib
 import tempfile
 from pathlib import Path
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestFileIO:
@@ -115,10 +115,10 @@ b: 2
 c: value: extra
 d: 4
 """
-        with contextlib.suppress(pyrs_yaml.YamlParseError):
+        with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.parse(multiline_yaml)
 
     def test_parse_error_utf8(self):
         invalid_yaml = "key: \x00value"
-        with contextlib.suppress(pyrs_yaml.YamlParseError):
+        with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.parse(invalid_yaml)

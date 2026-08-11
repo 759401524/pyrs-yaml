@@ -46,13 +46,29 @@ impl YamlTypeKind {
             _ => None,
         }
     }
+
+    /// The resolver function for this kind. Called with the original scalar
+    /// and its trimmed form; the match on kind is made once here at
+    /// construction instead of per-scalar at resolve time.
+    fn resolver(self) -> KindResolver {
+        match self {
+            Self::Null => resolve_null_kind,
+            Self::Bool => resolve_bool_kind,
+            Self::Int => resolve_int_kind,
+            Self::Float => resolve_float_kind,
+            Self::Str => resolve_str_kind,
+        }
+    }
 }
 
-/// A single schema rule: a compiled regex pattern and its target type.
-#[derive(Debug, Clone)]
+/// Resolves a matched scalar (original + trimmed form) to a `YamlType`.
+type KindResolver = for<'a> fn(&'a str, &'a str) -> YamlType<'a>;
+
+/// A single schema rule: a compiled regex pattern and a target type resolver.
+#[derive(Clone)]
 pub struct Rule {
     pattern: Regex,
-    target: YamlTypeKind,
+    resolver: KindResolver,
 }
 
 impl Rule {
@@ -65,7 +81,7 @@ impl Rule {
         })?;
         Ok(Self {
             pattern: regex,
-            target,
+            resolver: target.resolver(),
         })
     }
 }
@@ -90,18 +106,7 @@ impl SchemaResolver for RuleResolver {
         let trimmed = value.trim();
         for rule in &self.rules {
             if rule.pattern.is_match(trimmed) {
-                return match rule.target {
-                    YamlTypeKind::Null => YamlType::Null,
-                    YamlTypeKind::Bool => resolve_bool(trimmed),
-                    YamlTypeKind::Int => {
-                        resolve_int(trimmed).unwrap_or(YamlType::Str(Cow::Borrowed(value)))
-                    }
-                    YamlTypeKind::Float => match trimmed.parse::<f64>() {
-                        Ok(f) => YamlType::Float(f),
-                        Err(_) => YamlType::Str(Cow::Borrowed(value)),
-                    },
-                    YamlTypeKind::Str => YamlType::Str(Cow::Borrowed(value)),
-                };
+                return (rule.resolver)(value, trimmed);
             }
         }
         match &self.fallback {
@@ -111,30 +116,16 @@ impl SchemaResolver for RuleResolver {
     }
 }
 
-/// Parse an integer, handling decimal, hex (`0x`), octal (`0o`), and binary
-/// (`0b`) prefixes.
-fn resolve_int(value: &str) -> Option<YamlType<'_>> {
-    if (value.starts_with("0x") || value.starts_with("0X"))
-        && let Ok(n) = i64::from_str_radix(&value[2..], 16)
-    {
-        return Some(YamlType::Int(n));
-    }
-    if (value.starts_with("0o") || value.starts_with("0O"))
-        && let Ok(n) = i64::from_str_radix(&value[2..], 8)
-    {
-        return Some(YamlType::Int(n));
-    }
-    if (value.starts_with("0b") || value.starts_with("0B"))
-        && let Ok(n) = i64::from_str_radix(&value[2..], 2)
-    {
-        return Some(YamlType::Int(n));
-    }
-    value.parse::<i64>().ok().map(YamlType::Int)
+fn resolve_null_kind<'a>(_value: &'a str, _trimmed: &'a str) -> YamlType<'a> {
+    YamlType::Null
 }
 
-/// Resolve a boolean from a matched scalar's exact lexeme.
-fn resolve_bool(value: &str) -> YamlType<'_> {
-    match value {
+fn resolve_str_kind<'a>(value: &'a str, _trimmed: &'a str) -> YamlType<'a> {
+    YamlType::Str(Cow::Borrowed(value))
+}
+
+fn resolve_bool_kind<'a>(value: &'a str, trimmed: &'a str) -> YamlType<'a> {
+    match trimmed {
         "true" | "True" | "TRUE" | "yes" | "Yes" | "YES" | "on" | "On" | "ON" | "y" | "Y" => {
             YamlType::Bool(true)
         }
@@ -143,6 +134,40 @@ fn resolve_bool(value: &str) -> YamlType<'_> {
         }
         _ => YamlType::Str(Cow::Borrowed(value)),
     }
+}
+
+fn resolve_int_kind<'a>(value: &'a str, trimmed: &'a str) -> YamlType<'a> {
+    parse_int(trimmed)
+        .map(YamlType::Int)
+        .unwrap_or(YamlType::Str(Cow::Borrowed(value)))
+}
+
+fn resolve_float_kind<'a>(value: &'a str, trimmed: &'a str) -> YamlType<'a> {
+    match trimmed.parse::<f64>() {
+        Ok(f) => YamlType::Float(f),
+        Err(_) => YamlType::Str(Cow::Borrowed(value)),
+    }
+}
+
+/// Parse an integer, handling decimal, hex (`0x`), octal (`0o`), and binary
+/// (`0b`) prefixes.
+fn parse_int(value: &str) -> Option<i64> {
+    if (value.starts_with("0x") || value.starts_with("0X"))
+        && let Ok(n) = i64::from_str_radix(&value[2..], 16)
+    {
+        return Some(n);
+    }
+    if (value.starts_with("0o") || value.starts_with("0O"))
+        && let Ok(n) = i64::from_str_radix(&value[2..], 8)
+    {
+        return Some(n);
+    }
+    if (value.starts_with("0b") || value.starts_with("0B"))
+        && let Ok(n) = i64::from_str_radix(&value[2..], 2)
+    {
+        return Some(n);
+    }
+    value.parse::<i64>().ok()
 }
 
 /// Parse a schema YAML document into a [`RuleResolver`].
@@ -370,5 +395,22 @@ rules:
         let yaml = "name: empty\nextends: core\nrules: []\n";
         let resolver = parse_schema_yaml(yaml).expect("parse schema");
         assert_eq!(resolve(&resolver, "42"), YamlType::Int(42));
+    }
+
+    #[test]
+    fn test_invalid_yaml_syntax() {
+        assert!(parse_schema_yaml("not: valid: yaml: [[[}").is_err());
+        assert!(parse_schema_yaml("rules: [broken").is_err());
+    }
+
+    #[test]
+    fn test_invalid_extends() {
+        let yaml = "name: bad\nrules:\n  - pattern: ^x$\n    type: int\n";
+        let resolver = parse_schema_yaml(yaml).expect("parse schema");
+        // No extends specified — defaults to no fallback
+        assert_eq!(
+            resolve(&resolver, "hello"),
+            YamlType::Str(Cow::Borrowed("hello"))
+        );
     }
 }

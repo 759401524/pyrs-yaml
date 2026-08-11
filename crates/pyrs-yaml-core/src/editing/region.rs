@@ -44,8 +44,8 @@ pub fn path_nodes<'a>(
 /// ```
 /// use pyrs_yaml_core::ast::CustomNode;
 /// use pyrs_yaml_core::editing::node_is_flow;
-/// let flow = CustomNode::Sequence { items: vec![], tag: None, comment: None, anchor: None, flow_style: true, source_range: None };
-/// let block = CustomNode::Sequence { items: vec![], tag: None, comment: None, anchor: None, flow_style: false, source_range: None };
+/// let flow = CustomNode::Sequence { items: vec![], flow_style: true, meta: Default::default() };
+/// let block = CustomNode::Sequence { items: vec![], flow_style: false, meta: Default::default() };
 /// assert!(node_is_flow(&flow));
 /// assert!(!node_is_flow(&block));
 /// ```
@@ -160,7 +160,6 @@ pub fn regenerate_region_text(
         Ok(crate::serializer::item_to_string(
             item,
             *override_indent,
-            true,
             depth,
         )?)
     } else {
@@ -178,9 +177,7 @@ pub fn regenerate_region_text(
                 let key_node = CustomNode::plain_scalar(key_text.to_string());
                 let idx = mapping_key_index(pairs, &key_node).ok_or(EditError::MissingKey)?;
                 let (k, v) = pairs.get_index(idx).ok_or(EditError::MissingKey)?;
-                Ok(crate::serializer::pair_to_string(
-                    k, v, indent, true, depth,
-                )?)
+                Ok(crate::serializer::pair_to_string(k, v, indent, depth)?)
             }
             _ => Err(EditError::Generic),
         }
@@ -261,22 +258,16 @@ mod tests {
     fn mk_flow_seq() -> CustomNode {
         CustomNode::Sequence {
             items: vec![],
-            tag: None,
-            comment: None,
-            anchor: None,
             flow_style: true,
-            source_range: None,
+            meta: Default::default(),
         }
     }
 
     fn mk_block_seq() -> CustomNode {
         CustomNode::Sequence {
             items: vec![],
-            tag: None,
-            comment: None,
-            anchor: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         }
     }
 

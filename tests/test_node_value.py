@@ -1,7 +1,8 @@
 """Tests for Node.value behavior across all node types."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestNodeValueScalar:

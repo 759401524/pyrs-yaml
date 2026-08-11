@@ -31,6 +31,7 @@ use crate::py::python_types::{float_to_yaml_string, py_string_to_arc};
 use crate::py::type_registry;
 #[cfg(feature = "numpy")]
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
+use crate::serializer::{write_double_quoted_scalar, write_plain_scalar};
 use crate::{YamlMaxDepthError, YamlTypeError};
 
 const MAX_DEPTH: usize = 1000;
@@ -49,39 +50,69 @@ enum Kind {
     Other,
 }
 
+/// The extracted scalar value after classification, before formatting.
+/// String is handled separately because quoting differs between values and keys.
+#[derive(Debug)]
+enum ScalarValue {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+}
+
+/// Extract a non-string scalar from a Python object. Returns `None` if the
+/// object is a string, dict, list, or null — those are handled by their own
+/// dedicated paths.
+fn extract_scalar_value(obj: &Bound<'_, PyAny>) -> PyResult<Option<ScalarValue>> {
+    if obj.cast::<PyString>().is_ok() || obj.is_none() {
+        return Ok(None);
+    }
+    if obj.cast::<PyDict>().is_ok() || obj.cast::<PyList>().is_ok() {
+        return Ok(None);
+    }
+    // bool is checked before PyInt because bool is a subclass of int; this
+    // ensures a bool extraction (lossy for plain ints) only matches actual
+    // bools / numpy bools.
+    if let Ok(b) = obj.extract::<bool>() {
+        return Ok(Some(ScalarValue::Bool(b)));
+    }
+    // Fast path: native Python int/float (exact type check, cheaper than extract).
+    if obj.cast::<pyo3::types::PyInt>().is_ok()
+        && let Ok(n) = obj.extract::<i64>()
+    {
+        return Ok(Some(ScalarValue::Int(n)));
+    }
+    if obj.cast::<pyo3::types::PyFloat>().is_ok()
+        && let Ok(f) = obj.extract::<f64>()
+    {
+        return Ok(Some(ScalarValue::Float(f)));
+    }
+    // Fallback via extract for protocol-convertible types (numpy scalars,
+    // Python big ints that overflow i64, etc.).
+    if let Ok(n) = obj.extract::<i64>() {
+        return Ok(Some(ScalarValue::Int(n)));
+    }
+    if let Ok(f) = obj.extract::<f64>() {
+        return Ok(Some(ScalarValue::Float(f)));
+    }
+    Ok(None)
+}
+
 fn classify(obj: &Bound<'_, PyAny>) -> Kind {
     if obj.is_none() {
         return Kind::Null;
     }
-    // cast is cheaper than extract (type pointer check vs conversion).
     if obj.cast::<PyDict>().is_ok() {
         return Kind::Block;
     }
     if obj.cast::<PyList>().is_ok() {
         return Kind::Block;
     }
+    // String case: cheap cast check.
     if obj.cast::<PyString>().is_ok() {
         return Kind::Scalar;
     }
-    // Fast path for native Python int/float (exact type check).
-    if obj.cast::<pyo3::types::PyInt>().is_ok() {
-        return Kind::Scalar;
-    }
-    if obj.cast::<pyo3::types::PyFloat>().is_ok() {
-        return Kind::Scalar;
-    }
-    // Fallback via extract for protocol-convertible types (numpy scalars,
-    // Python big ints that overflow i64, etc.). bool is checked first
-    // because bool is a subclass of int — extract::<bool>() on a plain
-    // int returns Err (casting to bool is lossy), so it only matches
-    // actual bools and numpy bools.
-    if obj.extract::<bool>().is_ok() {
-        return Kind::Scalar;
-    }
-    if obj.extract::<i64>().is_ok() {
-        return Kind::Scalar;
-    }
-    if obj.extract::<f64>().is_ok() {
+    // Numeric / bool: try extract_scalar_value.
+    if extract_scalar_value(obj).ok().flatten().is_some() {
         return Kind::Scalar;
     }
     Kind::Other
@@ -165,7 +196,7 @@ impl DirectWriter {
                 self.output.push_str("null");
                 self.output.push('\n');
             }
-            Kind::Scalar => self.write_scalar_node(obj, indent_width)?,
+            Kind::Scalar => self.write_scalar_node(py, obj, indent_width)?,
             Kind::Block => {
                 if obj.is_instance_of::<PyDict>() {
                     self.write_mapping(py, obj.cast().unwrap(), indent_width, depth)?;
@@ -180,9 +211,13 @@ impl DirectWriter {
 
     /// Mirror of the serializer's plain/`DoubleQuoted` scalar branches plus the
     /// conversion-layer `needs_quotes` guard.
-    fn write_scalar_node(&mut self, obj: &Bound<'_, PyAny>, indent_width: usize) -> PyResult<()> {
+    fn write_scalar_node(
+        &mut self,
+        py: Python,
+        obj: &Bound<'_, PyAny>,
+        indent_width: usize,
+    ) -> PyResult<()> {
         self.write_indent(indent_width);
-        // String is the most common scalar — check first.
         if let Ok(s) = obj.cast::<PyString>() {
             let text = py_string_to_arc(s)?;
             if needs_quotes(&text) {
@@ -190,12 +225,23 @@ impl DirectWriter {
             } else {
                 self.write_plain_scalar(&text, WIDTH);
             }
-        } else if let Ok(b) = obj.extract::<bool>() {
-            self.output.push_str(if b { "true" } else { "false" });
-        } else if let Ok(n) = obj.extract::<i64>() {
-            self.output.push_str(&n.to_string());
-        } else if let Ok(f) = obj.extract::<f64>() {
-            self.output.push_str(&float_to_yaml_string(f));
+        } else if let Some(v) = extract_scalar_value(obj)? {
+            match v {
+                ScalarValue::Bool(b) => self.output.push_str(if b { "true" } else { "false" }),
+                ScalarValue::Int(n) => self.output.push_str(&n.to_string()),
+                ScalarValue::Float(f) => {
+                    if !type_registry::is_empty()
+                        && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
+                    {
+                        let (tag_name, yaml_str) = result?;
+                        self.output
+                            .push_str(&format!("!{} ", tag_name.trim_start_matches('!')));
+                        self.output.push_str(&yaml_str);
+                    } else {
+                        self.output.push_str(&float_to_yaml_string(f));
+                    }
+                }
+            }
         } else {
             return Err(self.unsupported_type());
         }
@@ -216,17 +262,14 @@ impl DirectWriter {
         }
         match classify(key) {
             Kind::Null => self.output.push_str("null"),
-            Kind::Scalar => {
-                if let Ok(b) = key.extract::<bool>() {
-                    self.output.push_str(if b { "true" } else { "false" });
-                } else if let Ok(n) = key.extract::<i64>() {
-                    self.output.push_str(&n.to_string());
-                } else if let Ok(f) = key.extract::<f64>() {
-                    self.output.push_str(&float_to_yaml_string(f));
-                } else {
-                    return Err(self.unsupported_type());
+            Kind::Scalar => match extract_scalar_value(key)? {
+                Some(ScalarValue::Bool(b)) => {
+                    self.output.push_str(if b { "true" } else { "false" })
                 }
-            }
+                Some(ScalarValue::Int(n)) => self.output.push_str(&n.to_string()),
+                Some(ScalarValue::Float(f)) => self.output.push_str(&float_to_yaml_string(f)),
+                None => return Err(self.unsupported_type()),
+            },
             // dict/list keys are unhashable and can never reach the converter.
             Kind::Block | Kind::Other => return Err(self.unsupported_type()),
         }
@@ -433,86 +476,15 @@ impl DirectWriter {
 
     /// Mirror of `Serializer::write_plain_scalar` (`remaining` = wrap width;
     /// 0 disables wrapping). Byte-identical to the serializer except that
-    /// width-splitting never lands inside a multi-byte character.
+    /// Delegate to the shared `serializer::write_plain_scalar`. `WIDTH` is the
+    /// full wrap width used for continuations; `remaining` is the remaining width
+    /// on the current line (0 disables the first-line wrap).
     fn write_plain_scalar(&mut self, value: &str, remaining: usize) {
-        if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
-            self.output.push_str(value);
-            return;
-        }
-        if value.contains(':')
-            || value.contains('#')
-            || value.starts_with('-')
-            || value.starts_with('{')
-            || value.starts_with('[')
-            || value.starts_with('*')
-            || value.starts_with('&')
-            || value.starts_with('!')
-            || value.starts_with('%')
-            || value.starts_with('@')
-            || value.starts_with('`')
-            || value.contains('\n')
-        {
-            self.write_double_quoted(value);
-        } else if remaining > 0 && value.len() > remaining {
-            self.wrap_plain(value, remaining);
-        } else {
-            self.output.push_str(value);
-        }
+        write_plain_scalar(&mut self.output, value, remaining, WIDTH);
     }
 
-    /// Mirror of the serializer's width-wrap loop, with char-boundary-safe
-    /// splitting where the serializer's `&value[..remaining]` would panic.
-    fn wrap_plain(&mut self, value: &str, remaining: usize) {
-        let boundary = value.floor_char_boundary(remaining);
-        let split = value[..boundary].rfind(' ').unwrap_or(boundary);
-        self.output.push_str(&value[..split]);
-        let mut rest = value[split..].trim();
-        if rest.is_empty() {
-            return;
-        }
-        self.output.push('\n');
-        const WRAP_INDENT: &str = "  ";
-        let max_line = WIDTH;
-        while !rest.is_empty() {
-            self.output.push_str(WRAP_INDENT);
-            if rest.len() <= max_line.saturating_sub(WRAP_INDENT.len()) {
-                self.output.push_str(rest);
-                break;
-            }
-            let avail = max_line.saturating_sub(WRAP_INDENT.len());
-            if avail == 0 {
-                self.output.push_str(rest);
-                break;
-            }
-            let boundary = rest.floor_char_boundary(avail);
-            let split = rest[..boundary].rfind(' ').unwrap_or(boundary);
-            self.output.push_str(&rest[..split]);
-            self.output.push('\n');
-            rest = rest[split..].trim();
-        }
-    }
-
-    /// Mirror of `Serializer::write_double_quoted_scalar`.
+    /// Delegate to the shared `serializer::write_double_quoted_scalar`.
     fn write_double_quoted(&mut self, value: &str) {
-        self.output.push('"');
-        for c in value.chars() {
-            match c {
-                '\\' => self.output.push_str("\\\\"),
-                '"' => self.output.push_str("\\\""),
-                '\n' => self.output.push_str("\\n"),
-                '\r' => self.output.push_str("\\r"),
-                '\t' => self.output.push_str("\\t"),
-                '\0' => self.output.push_str("\\0"),
-                '\x08' => self.output.push_str("\\b"),
-                '\x0C' => self.output.push_str("\\f"),
-                '\x1B' => self.output.push_str("\\e"),
-                '/' => self.output.push_str("\\/"),
-                c if c.is_control() => {
-                    self.output.push_str(&format!("\\u{:04x}", c as u32));
-                }
-                c => self.output.push(c),
-            }
-        }
-        self.output.push('"');
+        write_double_quoted_scalar(&mut self.output, value);
     }
 }

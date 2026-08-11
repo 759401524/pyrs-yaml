@@ -18,8 +18,14 @@ pyrs-yaml ships with built-in plugins registered at import time:
 
 | Tag | Python type | Description |
 |-----|-------------|-------------|
-| `!timestamp` | `datetime` | ISO 8601 timestamp round-trip |
-| `!set` | `str` | YAML set (unkeyed mapping) |
+| `!timestamp` | `datetime` | ISO 8601 datetime round-trip |
+| `!date` | `datetime.date` | ISO 8601 date (no time) |
+| `!time` | `datetime.time` | ISO 8601 time (no date) |
+| `!uuid` | `uuid.UUID` | UUID string ↔ object |
+| `!decimal` | `decimal.Decimal` | Arbitrary-precision decimal |
+| `!binary` | `bytes` | Base64-encoded binary data |
+| `!regex` | `re.Pattern` | Compiled regex pattern |
+| `!set` | `str` | YAML set (unkeyed mapping) — experimental, no round-trip serialization |
 
 ### Creating a Custom Type
 

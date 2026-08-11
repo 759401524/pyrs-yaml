@@ -18,7 +18,13 @@ pyrs-yaml にはインポート時に自動登録される組み込みプラグ�
 
 | タグ | Python 型 | 説明 |
 |-----|----------|------|
-| `!timestamp` | `datetime` | ISO 8601 タイムスタンプのラウンドトリップ |
+| `!timestamp` | `datetime` | ISO 8601 日時のラウンドトリップ |
+| `!date` | `datetime.date` | ISO 8601 日付（時刻なし） |
+| `!time` | `datetime.time` | ISO 8601 時刻（日付なし） |
+| `!uuid` | `uuid.UUID` | UUID 文字列 ↔ オブジェクト |
+| `!decimal` | `decimal.Decimal` | 任意精度の小数 |
+| `!binary` | `bytes` | Base64 エンコードされたバイナリデータ |
+| `!regex` | `re.Pattern` | コンパイル済み正規表現 |
 | `!set` | `str` | YAML セット（キー無しマッピング） |
 
 ### カスタム型の作成

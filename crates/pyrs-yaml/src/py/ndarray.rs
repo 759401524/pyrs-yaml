@@ -9,7 +9,7 @@ use numpy::{
 use pyo3::prelude::*;
 
 /// 将 NumPy ndarray 序列化为嵌套 YAML 列表。
-pub fn ndarray_to_node(py: Python, obj: &Bound<'_, PyAny>) -> Option<CustomNode> {
+pub(crate) fn ndarray_to_node(py: Python, obj: &Bound<'_, PyAny>) -> Option<CustomNode> {
     let arr = obj.cast::<PyUntypedArray>().ok()?;
 
     if arr.ndim() == 0 {
@@ -77,7 +77,7 @@ pub fn ndarray_to_node(py: Python, obj: &Bound<'_, PyAny>) -> Option<CustomNode>
 }
 
 /// 将展平的 `Vec<CustomNode>` 按 `dim` 嵌套一层。
-pub fn nest_ndarray_sequence(flat: Vec<CustomNode>, dim: usize) -> Vec<CustomNode> {
+pub(crate) fn nest_ndarray_sequence(flat: Vec<CustomNode>, dim: usize) -> Vec<CustomNode> {
     if dim == 0 {
         return vec![CustomNode::plain_sequence(Vec::new())];
     }

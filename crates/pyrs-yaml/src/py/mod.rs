@@ -177,4 +177,6 @@ mod pyrs_yaml {
     pub(crate) use super::functions::safe_loads;
     #[pymodule_export]
     pub(crate) use super::functions::set_language;
+    #[pymodule_export]
+    pub(crate) use super::functions::validate_custom_types;
 }

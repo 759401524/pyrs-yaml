@@ -4,8 +4,9 @@ Round-trip (comments/anchors/tags/scalar-style/flow-style/mapping-order) is the
 primary test pattern.
 """
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestSetPath:
@@ -345,11 +346,14 @@ class TestNodeEditMethods:
         with pytest.warns(RuntimeWarning), pytest.raises(pyrs_yaml.YamlDocumentError):
             _ = node.value
 
-    def test_node_self_edit_does_not_stale(self):
+    def test_node_self_edit_stales(self):
         doc = pyrs_yaml.parse("a: 1\n")
         node = doc.node().find("$.a")
         node.set_value(2)
         assert doc.to_dict()["a"] == 2
+        # self-edit stales the node
+        with pytest.warns(RuntimeWarning), pytest.raises(pyrs_yaml.YamlDocumentError):
+            _ = node.value
 
     def test_node_delete_stale(self):
         doc = pyrs_yaml.parse("a: 1\nb: 2\n")

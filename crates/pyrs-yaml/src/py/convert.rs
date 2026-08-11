@@ -12,41 +12,56 @@ use pyo3::types::{PyBool, PyDict, PyList};
 use std::collections::{HashMap, HashSet};
 
 /// 格式化 i18n 错误消息（pub 以便 sibling modules 使用）。
-pub fn format_i18n_error(key: &str, args: &[(&str, &str)]) -> String {
+pub(crate) fn format_i18n_error(key: &str, args: &[(&str, &str)]) -> String {
     crate::i18n::format_message(key, args)
+}
+
+/// Try to convert a tagged scalar via a registered CustomType.
+/// Returns `Some(PyObject)` if a handler matched and `can_parse` returned true;
+/// returns `None` to fall through to default schema resolution.
+fn try_custom_type(py: Python<'_>, tag: &str, value: &str) -> PyResult<Option<Py<PyAny>>> {
+    if let Some(handler) = type_registry::get(tag, py) {
+        let can_parse = handler
+            .call_method1(py, "can_parse", (value,))
+            .and_then(|r| r.extract::<bool>(py))?;
+        if can_parse {
+            return handler.call_method1(py, "from_yaml", (value,)).map(Some);
+        }
+    }
+    Ok(None)
 }
 
 /// Parse a schema string into Schema. Returns built-in schemas or looks up
 /// the global registry for custom schemas.
-pub fn parse_schema(raw: &str) -> PyResult<Schema> {
-    let s = raw.to_lowercase();
-    match s.as_str() {
-        "core" | "yaml.org,2002" | "yamlorg2002" => Ok(Schema::Core),
-        "json" | "yaml.org,2002:json" => Ok(Schema::Json),
-        "failsafe" | "yaml.org,2002:failsafe" => Ok(Schema::Failsafe),
-        "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(Schema::Yaml1_1),
-        _ => {
-            // Try the global registry
-            if let Some(schema) = registry::get(&s) {
-                Ok(schema)
+pub(crate) fn parse_schema(raw: &str) -> PyResult<Schema> {
+    if let Ok(schema) = raw.parse::<Schema>() {
+        Ok(schema)
+    } else if let Some(schema) = registry::get(&raw.to_lowercase()) {
+        Ok(schema)
+    } else {
+        let custom = registry::names()
+            .iter()
+            .filter(|n| !matches!(n.as_str(), "core" | "json" | "failsafe" | "yaml1.1"))
+            .map(|n| format!("'{}'", n))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(YamlTypeError::new_err(format!(
+            "Unsupported schema '{}'. Supported: core, json, failsafe, yaml1.1{}",
+            raw,
+            if custom.is_empty() {
+                String::new()
             } else {
-                Err(YamlTypeError::new_err(format!(
-                    "Unsupported schema '{}'. Supported: core, json, failsafe, yaml1.1 {}",
-                    raw,
-                    registry::names()
-                        .iter()
-                        .filter(|n| !matches!(n.as_str(), "core" | "json" | "failsafe" | "yaml1.1"))
-                        .map(|n| format!("'{}'", n))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                )))
+                format!(", {custom}")
             }
-        }
+        )))
     }
 }
 
 /// 递归遍历 AST，收集所有锚点到节点的映射，用于别名解析。
-pub fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<&'a str, &'a CustomNode>) {
+pub(crate) fn collect_anchors<'a>(
+    node: &'a CustomNode,
+    anchors: &mut HashMap<&'a str, &'a CustomNode>,
+) {
     if let Some(name) = node.anchor() {
         anchors.insert(name, node);
     }
@@ -67,7 +82,7 @@ pub fn collect_anchors<'a>(node: &'a CustomNode, anchors: &mut HashMap<&'a str, 
 }
 
 /// 将 `CustomNode` 转换为 Python 对象，解析别名引用（`*alias`）为实际值。
-pub fn node_to_pyobject_with_anchors<'a>(
+pub(crate) fn node_to_pyobject_with_anchors<'a>(
     node: &'a CustomNode,
     py: Python,
     anchors: &HashMap<&'a str, &'a CustomNode>,
@@ -89,11 +104,6 @@ pub fn node_to_pyobject_with_anchors<'a>(
         }
         _ => node_to_pyobject_inner(node, py, anchors, visited, schema),
     }
-}
-
-/// 将 `CustomNode` 转换为 Python 对象，不解析别名（别名节点返回 `None`）。
-pub fn node_to_pyobject(node: &CustomNode, py: Python, schema: &Schema) -> PyResult<Py<PyAny>> {
-    node_to_pyobject_simple(node, py, schema)
 }
 
 fn scalar_to_pyobject(
@@ -127,14 +137,12 @@ fn node_to_pyobject_inner<'a>(
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar {
-            value, tag, style, ..
+            value, style, meta, ..
         } => {
-            // Check if a registered CustomType handles this tag.
-            if let Some(t) = tag {
-                let tag_str = t.to_string();
-                if let Some(handler) = type_registry::get(&tag_str, py) {
-                    return handler.call_method1(py, "from_yaml", (value.as_ref(),));
-                }
+            if let Some(t) = meta.tag.as_ref()
+                && let Some(result) = try_custom_type(py, &t.to_string(), value.as_ref())?
+            {
+                return Ok(result);
             }
             scalar_to_pyobject(py, value, style, schema)
         }
@@ -163,44 +171,17 @@ fn node_to_pyobject_inner<'a>(
     }
 }
 
+/// 将 `CustomNode` 转换为 Python 对象，不解析别名（别名节点返回 `None`）。
+///
+/// Thin wrapper over `node_to_pyobject_with_anchors` with empty anchors/visited
+/// sets: with no anchors registered, alias nodes fall through to `None` and no
+/// cycle tracking is needed.
 pub(crate) fn node_to_pyobject_simple(
     node: &CustomNode,
     py: Python,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
-    match node {
-        CustomNode::Scalar {
-            value, tag, style, ..
-        } => {
-            if let Some(t) = tag {
-                let tag_str = t.to_string();
-                if let Some(handler) = type_registry::get(&tag_str, py) {
-                    return handler.call_method1(py, "from_yaml", (value.as_ref(),));
-                }
-            }
-            scalar_to_pyobject(py, value, style, schema)
-        }
-        CustomNode::Mapping { pairs, .. } => {
-            let dict = PyDict::new(py);
-            for (key, value) in pairs {
-                let val = node_to_pyobject_simple(value, py, schema)?;
-                match key {
-                    CustomNode::Scalar { value, .. } => dict.set_item(value.as_ref(), val),
-                    _ => dict.set_item(format!("{:?}", key), val),
-                }
-                .ok();
-            }
-            Ok(dict.into_any().unbind())
-        }
-        CustomNode::Sequence { items, .. } => {
-            let list = PyList::empty(py);
-            for item in items {
-                let val = node_to_pyobject_simple(item, py, schema)?;
-                list.append(val).ok();
-            }
-            Ok(list.into_any().unbind())
-        }
-        CustomNode::Null { .. } => Ok(py.None()),
-        CustomNode::Alias { .. } => Ok(py.None()),
-    }
+    let anchors: HashMap<&str, &CustomNode> = HashMap::new();
+    let mut visited: HashSet<usize> = HashSet::new();
+    node_to_pyobject_with_anchors(node, py, &anchors, &mut visited, schema)
 }

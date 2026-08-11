@@ -27,25 +27,13 @@ from typing import Any
 from .pyrs_yaml import safe_dump, safe_load, safe_loads
 
 
-def _safe_dump_sync(data: Any) -> str:
-    return safe_dump(data)
-
-
-def _safe_loads_sync(yaml: str, schema: str = "core") -> Any:
-    return safe_loads(yaml, schema=schema)
-
-
-def _safe_load_sync(yaml: str, schema: str = "core") -> Any:
-    return safe_load(yaml, schema=schema)
-
-
 async def safe_dump_async(data: Any) -> str:
     """Serialize *data* to a YAML string (async).
 
     Mirrors :func:`pyrs_yaml.safe_dump`.
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _safe_dump_sync, data)
+    return await loop.run_in_executor(None, safe_dump, data)
 
 
 async def safe_loads_async(yaml: str, schema: str = "core") -> Any:
@@ -54,7 +42,7 @@ async def safe_loads_async(yaml: str, schema: str = "core") -> Any:
     Mirrors :func:`pyrs_yaml.safe_loads`.
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _safe_loads_sync, yaml, schema)
+    return await loop.run_in_executor(None, safe_loads, yaml, schema)
 
 
 async def safe_load_async(yaml: str, schema: str = "core") -> Any:
@@ -63,4 +51,4 @@ async def safe_load_async(yaml: str, schema: str = "core") -> Any:
     Mirrors :func:`pyrs_yaml.safe_load`.
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _safe_load_sync, yaml, schema)
+    return await loop.run_in_executor(None, safe_load, yaml, schema)

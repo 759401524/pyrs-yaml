@@ -5,7 +5,7 @@ respect-gitignore = true
 extend-exclude = ["python/pyrs_yaml/pyrs_yaml.pyi"]
 
 [lint]
-select = ["E", "F", "W", "I", "UP", "N", "B", "SIM", "LOG", "PYI", "PTH", "RUF"]
+select = ["E", "F", "W", "I", "UP", "N", "B", "SIM", "PYI", "PTH", "RUF"]
 ignore = [
     "E501",   # line too long (handled by formatter)
 ]
@@ -14,7 +14,7 @@ ignore = [
 "tests/**" = ["B008"]
 
 [lint.isort]
-known-first-party = ["pyyaml_rs"]
+known-first-party = ["pyrs_yaml"]
 
 [lint.pydocstyle]
 convention = "google"

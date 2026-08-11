@@ -11,8 +11,8 @@ use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::splice::SpliceState;
 
 use crate::py::convert::{
-    collect_anchors, format_i18n_error, node_to_pyobject, node_to_pyobject_simple,
-    node_to_pyobject_with_anchors, parse_schema,
+    collect_anchors, format_i18n_error, node_to_pyobject_simple, node_to_pyobject_with_anchors,
+    parse_schema,
 };
 use crate::py::editing;
 use crate::py::editing::segment_py::SegmentExt;
@@ -225,7 +225,7 @@ impl YamlDocument {
                 ))
             })?;
             return match editing::navigate(&self.ast, &segs) {
-                Ok(node) => Ok(node_to_pyobject(node, py, &self.schema)?),
+                Ok(node) => Ok(node_to_pyobject_simple(node, py, &self.schema)?),
                 Err(_) => Ok(default.unwrap_or_else(|| py.None())),
             };
         }
@@ -233,7 +233,7 @@ impl YamlDocument {
             CustomNode::Mapping { pairs, .. } => {
                 let key_node = CustomNode::plain_scalar(key);
                 if let Some(value) = pairs.get(&key_node) {
-                    Ok(node_to_pyobject(value, py, &self.schema)?)
+                    Ok(node_to_pyobject_simple(value, py, &self.schema)?)
                 } else {
                     Ok(default.unwrap_or_else(|| py.None()))
                 }
@@ -288,14 +288,14 @@ impl YamlDocument {
             CustomNode::Mapping { pairs, .. } => {
                 let keys: Vec<Py<PyAny>> = pairs
                     .keys()
-                    .map(|k| node_to_pyobject(k, py, &schema))
+                    .map(|k| node_to_pyobject_simple(k, py, &schema))
                     .collect::<PyResult<Vec<_>>>()?;
                 Ok(keys.into_pyobject(py)?.into_any().unbind())
             }
             CustomNode::Sequence { items, .. } => {
                 let values: Vec<Py<PyAny>> = items
                     .iter()
-                    .map(|v| node_to_pyobject(v, py, &schema))
+                    .map(|v| node_to_pyobject_simple(v, py, &schema))
                     .collect::<PyResult<Vec<_>>>()?;
                 Ok(values.into_pyobject(py)?.into_any().unbind())
             }
@@ -314,7 +314,7 @@ impl YamlDocument {
                 if let Ok(key_str) = key.bind(py).extract::<String>() {
                     let key_node = CustomNode::plain_scalar(key_str.clone());
                     if let Some(value) = pairs.get(&key_node) {
-                        Ok(node_to_pyobject(value, py, schema)?)
+                        Ok(node_to_pyobject_simple(value, py, schema)?)
                     } else {
                         Err(pyo3::exceptions::PyKeyError::new_err(format_i18n_error(
                             "key-not-found",
@@ -331,7 +331,7 @@ impl YamlDocument {
             CustomNode::Sequence { items, .. } => {
                 if let Ok(idx) = key.bind(py).extract::<usize>() {
                     if idx < items.len() {
-                        Ok(node_to_pyobject(&items[idx], py, schema)?)
+                        Ok(node_to_pyobject_simple(&items[idx], py, schema)?)
                     } else {
                         Err(pyo3::exceptions::PyIndexError::new_err(format_i18n_error(
                             "index-out-of-range",
@@ -766,8 +766,8 @@ pub(crate) fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) ->
     }
     match node {
         crate::ast::CustomNode::Scalar {
-            tag: Some(t),
             value,
+            meta: crate::ast::NodeMeta { tag: Some(t), .. },
             ..
         } => {
             let tag_name = t.to_string();

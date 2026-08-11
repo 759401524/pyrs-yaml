@@ -2,7 +2,7 @@
 //!
 //! Pure Rust implementation — no PyO3 dependencies.
 
-use crate::ast::{CustomNode, ScalarStyle};
+use crate::ast::{CustomNode, NodeMeta, ScalarStyle};
 
 /// ```
 /// use pyrs_yaml_core::ast::CustomNode;
@@ -17,9 +17,7 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
             CustomNode::Scalar { value, style, .. },
             CustomNode::Scalar {
                 style: src_style,
-                comment,
-                anchor,
-                tag,
+                meta: src_meta,
                 chomping,
                 ..
             },
@@ -35,11 +33,13 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
             CustomNode::Scalar {
                 value: value.clone(),
                 style: new_style,
-                comment: comment.clone(),
-                anchor: anchor.clone(),
-                tag: tag.clone(),
+                meta: NodeMeta {
+                    comment: src_meta.comment.clone(),
+                    anchor: src_meta.anchor.clone(),
+                    tag: src_meta.tag.clone(),
+                    ..Default::default()
+                },
                 chomping: chomping.clone(),
-                source_range: None,
             }
         }
         (
@@ -47,52 +47,46 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
                 pairs, flow_style, ..
             },
             CustomNode::Mapping {
-                comment,
-                anchor,
-                tag,
+                meta: src_meta,
                 flow_style: src_flow_style,
                 ..
             },
         ) => CustomNode::Mapping {
             pairs: pairs.clone(),
-            comment: comment.clone(),
-            anchor: anchor.clone(),
-            tag: tag.clone(),
+            meta: NodeMeta {
+                comment: src_meta.comment.clone(),
+                anchor: src_meta.anchor.clone(),
+                tag: src_meta.tag.clone(),
+                ..Default::default()
+            },
             flow_style: *flow_style || *src_flow_style,
-            source_range: None,
         },
         (
             CustomNode::Sequence {
                 items, flow_style, ..
             },
             CustomNode::Sequence {
-                comment,
-                anchor,
-                tag,
+                meta: src_meta,
                 flow_style: src_flow_style,
                 ..
             },
         ) => CustomNode::Sequence {
             items: items.clone(),
-            comment: comment.clone(),
-            anchor: anchor.clone(),
-            tag: tag.clone(),
-            flow_style: *flow_style || *src_flow_style,
-            source_range: None,
-        },
-        (
-            CustomNode::Null { .. },
-            CustomNode::Null {
-                comment,
-                anchor,
-                tag,
-                ..
+            meta: NodeMeta {
+                comment: src_meta.comment.clone(),
+                anchor: src_meta.anchor.clone(),
+                tag: src_meta.tag.clone(),
+                ..Default::default()
             },
-        ) => CustomNode::Null {
-            comment: comment.clone(),
-            anchor: anchor.clone(),
-            tag: tag.clone(),
-            source_range: None,
+            flow_style: *flow_style || *src_flow_style,
+        },
+        (CustomNode::Null { .. }, CustomNode::Null { meta: src_meta, .. }) => CustomNode::Null {
+            meta: NodeMeta {
+                comment: src_meta.comment.clone(),
+                anchor: src_meta.anchor.clone(),
+                tag: src_meta.tag.clone(),
+                ..Default::default()
+            },
         },
         _ => target.clone(),
     }
@@ -117,16 +111,16 @@ mod tests {
             value: "".into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
-            source_range: None,
-            anchor: Some("myanchor".into()),
-            tag: None,
-            comment: None,
+            meta: NodeMeta {
+                anchor: Some("myanchor".into()),
+                ..Default::default()
+            },
         };
         let result = with_metadata_from(&target, &src);
         match result {
-            CustomNode::Scalar { value, anchor, .. } => {
+            CustomNode::Scalar { value, meta, .. } => {
                 assert_eq!(value.as_ref(), "val");
-                assert_eq!(anchor, Some("myanchor".into()));
+                assert_eq!(meta.anchor, Some("myanchor".into()));
             }
             _ => panic!("expected Scalar"),
         }
@@ -139,15 +133,15 @@ mod tests {
             value: "".into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
-            source_range: None,
-            anchor: None,
-            tag: Some(crate::ast::Tag::local("custom")),
-            comment: None,
+            meta: NodeMeta {
+                tag: Some(crate::ast::Tag::local("custom")),
+                ..Default::default()
+            },
         };
         let result = with_metadata_from(&target, &src);
         match result {
-            CustomNode::Scalar { tag, .. } => {
-                assert_eq!(tag, Some(crate::ast::Tag::local("custom")));
+            CustomNode::Scalar { meta, .. } => {
+                assert_eq!(meta.tag, Some(crate::ast::Tag::local("custom")));
             }
             _ => panic!("expected Scalar"),
         }

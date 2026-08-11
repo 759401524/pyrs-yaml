@@ -1,7 +1,8 @@
 """Integration tests for YAML schema profiles (core, json, failsafe, yaml1.1)."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestCoreSchema:

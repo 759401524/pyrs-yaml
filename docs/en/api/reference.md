@@ -148,13 +148,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 
 **Supported input types:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`, and **`numpy.ndarray`** (all dimensions and numeric dtypes: `int8/16/32/64`, `uint8/16/32/64`, `float32/64`, `complex64/128`, `bool`)
 
-#### `safe_dumps()`
-
-Alias for `safe_dump()`.
-
-```python
-safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
-```
+Alias: `safe_dumps()` — identical to `safe_dump()`.
 
 ### Conversion Functions
 
@@ -361,7 +355,9 @@ class CustomType:
 - `to_yaml(obj)` — Convert a Python object to a YAML string (dump)
 - `validate(obj)` — Validate a Python object's type and value
 
-Built-in plugins include `!timestamp` (maps to `datetime`) and `!set`.
+Built-in plugins include `!timestamp` (maps to `datetime`), `!date` (`datetime.date`),
+`!time` (`datetime.time`), `!uuid` (`uuid.UUID`), `!decimal` (`decimal.Decimal`),
+`!binary` (bytes, base64-encoded), `!regex` (`re.Pattern`), and `!set`.
 
 #### `register_type()`
 
@@ -451,20 +447,12 @@ See [`YamlStream`](yaml-instance.md) for full API details.
 
 Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
 
-#### `safe_dumps_async()`
-
-Serialize a Python object to YAML string (async).
-
-```python
-async def safe_dumps_async(data: Any) -> str
-```
-
 #### `safe_dump_async()`
 
-Serialize a Python object to stdout as YAML (async).
+Serialize a Python object to a YAML string (async). Alias: `safe_dumps_async()`.
 
 ```python
-async def safe_dump_async(data: Any) -> None
+async def safe_dump_async(data: Any) -> str
 ```
 
 #### `safe_loads_async()`
@@ -581,5 +569,5 @@ See [Exceptions](exceptions.md) for full details.
 ### Version
 
 ```python
-__version__ = "0.12.1"
+__version__ = "0.14.0"
 ```

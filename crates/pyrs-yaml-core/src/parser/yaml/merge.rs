@@ -57,8 +57,8 @@ fn collect_anchor_mappings(
     anchors: &mut HashMap<String, IndexMap<CustomNode, CustomNode>>,
 ) {
     match node {
-        CustomNode::Mapping { pairs, anchor, .. } => {
-            if let Some(anchor_name) = anchor {
+        CustomNode::Mapping { pairs, meta, .. } => {
+            if let Some(anchor_name) = &meta.anchor {
                 anchors.insert(anchor_name.clone(), pairs.clone());
             }
             for (_key, value) in pairs {
@@ -133,11 +133,11 @@ fn collect_merge_data(
 /// verifiable or spliceable.
 fn clear_source_ranges(node: &mut CustomNode) {
     match node {
-        CustomNode::Scalar { source_range, .. }
-        | CustomNode::Mapping { source_range, .. }
-        | CustomNode::Sequence { source_range, .. }
-        | CustomNode::Null { source_range, .. } => {
-            *source_range = None;
+        CustomNode::Scalar { meta, .. }
+        | CustomNode::Mapping { meta, .. }
+        | CustomNode::Sequence { meta, .. }
+        | CustomNode::Null { meta, .. } => {
+            meta.source_range = None;
         }
         CustomNode::Alias { .. } => {}
     }

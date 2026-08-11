@@ -1,7 +1,8 @@
 """Tests for YAML() instance API (v0.8.0 Phase 1)."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestYAMLInstance:

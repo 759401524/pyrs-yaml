@@ -1,7 +1,8 @@
 """YamlDocument `with` transaction semantics."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 def test_with_clean_exit_keeps_edits():

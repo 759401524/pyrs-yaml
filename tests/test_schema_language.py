@@ -1,7 +1,8 @@
 """Tests for the YAML Schema Language (Spiral 2 of v0.14.0)."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 HEX_SCHEMA = """\
 name: hex
@@ -104,3 +105,32 @@ class TestSchemaLanguage:
         d = y.safe_load("h: 0xFF\nn: 42\n")
         assert d["h"] == 255
         assert d["n"] == 42  # core fallback resolves int
+
+    def test_coerce_schema_invalid_type(self):
+        """_coerce_schema raises TypeError for non-str, non-dict input."""
+        match = r"schema must be str or dict"
+        with pytest.raises(TypeError, match=match):
+            pyrs_yaml.parse("a: 1", schema=42)
+        with pytest.raises(TypeError, match=match):
+            pyrs_yaml.safe_load("a: 1", schema=[1, 2, 3])
+        with pytest.raises(TypeError, match=match):
+            pyrs_yaml.parse_file("dummy.yaml", schema=None)
+
+    def test_parse_schema_yaml_invalid_yaml(self):
+        """Invalid YAML string raises YamlParseError, not silent suppression."""
+        with pytest.raises((pyrs_yaml.YamlParseError, ValueError)):
+            pyrs_yaml.register_schema("bad", "not: valid: yaml: [[[")
+        with pytest.raises((pyrs_yaml.YamlParseError, ValueError)):
+            pyrs_yaml.register_schema("bad2", "rules: [invalid}")
+
+
+class TestSchemaRegression:
+    """Regression tests for the schema system."""
+
+    def test_re_register_same_schema(self):
+        """Re-registering the same schema by name is idempotent."""
+        pyrs_yaml.register_schema("hex2", HEX_SCHEMA)
+        pyrs_yaml.register_schema("hex2", HEX_SCHEMA)  # no error
+        y = pyrs_yaml.YAML(schema="hex2")
+        d = y.parse("a: 0xFF")
+        assert d.get("a") == 255

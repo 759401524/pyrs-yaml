@@ -13,10 +13,14 @@ Example:
     value
 """
 
-import contextlib
-import hashlib
+from __future__ import annotations
 
-from . import plugins as _plugins  # noqa: F401 — registers built-in plugins
+import hashlib
+from typing import Any, Callable, Dict, Literal, TypeVar, overload
+
+from typing_extensions import TypeAlias, TypedDict, TypeGuard
+
+from . import plugins as _plugins  # ruff: ignore[F401] — registers built-in plugins
 from ._type_registry import CustomType, register_type
 from .async_dump import (
     safe_dump_async,
@@ -58,6 +62,7 @@ from .pyrs_yaml import (
     remove_type,
     safe_dump,
     set_language,
+    validate_custom_types,
 )
 from .pyrs_yaml import (
     parse as _parse,
@@ -83,6 +88,17 @@ from .pyrs_yaml import (
 from .pyrs_yaml import (
     safe_loads as _safe_loads,
 )
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+"""Type variable for callable handler in register_tag/register_type."""
+
+
+@overload
+def register_tag(name: str, handler: _F, priority: int = 0) -> _F: ...
+
+
+@overload
+def register_tag(name: str, handler: None = None, priority: int = 0) -> Callable[[_F], _F]: ...
 
 
 def register_tag(name, handler=None, priority=0):
@@ -114,8 +130,29 @@ def register_tag(name, handler=None, priority=0):
 
 # CustomType / register_type imported from ._type_registry
 
+# ── Inline schema dict typed structure ──────────────────────────────────────
 
-def _schema_to_yaml(schema):
+_SchemaRule: TypeAlias = Dict[str, str]
+"""A single schema rule: keys 'pattern' (regex) and 'type' (null/bool/int/float/str)."""
+
+
+class _SchemaDict(TypedDict, total=False):
+    """Type for an inline schema dict passed to `YAML(schema=...)`."""
+
+    extends: str
+    """Base schema name ('core', 'json', 'failsafe', 'yaml1.1', or custom)."""
+    rules: list[_SchemaRule]
+    """List of pattern → type rules."""
+
+
+# ── Schema helpers ──────────────────────────────────────────────────────────
+
+
+def _is_schema_dict(val: object) -> TypeGuard[_SchemaDict]:
+    return isinstance(val, dict)
+
+
+def _schema_to_yaml(schema: _SchemaDict) -> str:
     """Convert an inline schema dict to a YAML schema string."""
     if not isinstance(schema, dict):
         raise TypeError(f"schema must be a dict, got {type(schema).__name__}")
@@ -124,33 +161,42 @@ def _schema_to_yaml(schema):
     rules = schema["rules"]
     if not isinstance(rules, list):
         raise ValueError("schema 'rules' must be a list")
-    digest = hashlib.sha256(str(schema).encode()).hexdigest()[:16]
-    lines = [f"name: _inline_{digest}"]
-    lines.append(f"extends: {schema.get('extends', 'core')}")
+    lines = [f"extends: {schema.get('extends', 'core')}"]
     lines.append("rules:")
     for rule in rules:
         if not isinstance(rule, dict) or "pattern" not in rule or "type" not in rule:
             raise ValueError(f"each rule must have 'pattern' and 'type' keys, got {rule}")
-        lines.append(f"  - pattern: {rule['pattern']}")
-        lines.append(f"    type: {rule['type']}")
+        pattern = rule["pattern"]
+        typ = rule["type"]
+        if "'" in pattern:
+            lines.append(f'  - pattern: "{pattern}"')
+        else:
+            lines.append(f"  - pattern: '{pattern}'")
+        if "'" in typ:
+            lines.append(f'    type: "{typ}"')
+        else:
+            lines.append(f"    type: '{typ}'")
     return "\n".join(lines) + "\n"
 
 
-def _coerce_schema(schema):
+def _coerce_schema(schema: str | _SchemaDict) -> str:
     """Return a schema name string, registering inline dict schemas.
 
     Accepts either a schema name (str) or an inline schema definition (dict).
     Inline dicts are serialized to YAML, registered under a deterministic name
-    derived from their JSON payload, and the name is returned.
+    derived from their payload, and the name is returned.
     """
     if isinstance(schema, str):
         return schema
-    if isinstance(schema, dict):
-        digest = hashlib.sha256(_schema_to_yaml(schema).encode()).hexdigest()[:16]
+    if _is_schema_dict(schema):
+        yaml_str = _schema_to_yaml(schema)
+        digest = hashlib.sha256(yaml_str.encode()).hexdigest()[:16]
         name = f"_inline_{digest}"
-        with contextlib.suppress(Exception):
-            # Already registered under this name (same content) — ignore.
-            register_schema(name, _schema_to_yaml(schema))
+        # Register under a deterministic name derived from the payload.
+        # Re-registering the same content is a cheap no-op (overwrites with an
+        # identical resolver). A genuine schema error propagates as
+        # YamlParseError so callers see the malformed definition.
+        register_schema(name, yaml_str)
         return name
     raise TypeError(f"schema must be str or dict, got {type(schema).__name__}")
 
@@ -163,98 +209,135 @@ def _coerce_schema(schema):
 class _YAMLMetaclass(type):
     """Metaclass that delegates class-level attribute access to the Rust YAML class."""
 
-    def __getattr__(cls, name):
+    def __getattr__(cls, name: str) -> Any:
         return getattr(_YAML, name)
 
 
 class YAML(metaclass=_YAMLMetaclass):
     """Configured parser instance; `schema` accepts a name or an inline dict."""
 
-    def __init__(self, typ="rt", schema="core", max_depth=1000, allow_duplicate_keys=False):
+    _impl: _YAML
+
+    def __init__(
+        self,
+        typ: Literal["rt", "safe", "full"] = "rt",
+        schema: str | _SchemaDict = "core",
+        max_depth: int = 1000,
+        allow_duplicate_keys: bool = False,
+    ) -> None:
         self._impl = _YAML(typ, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._impl, name)
 
 
 # Module-level functions with schema support — wrap to accept dict
-def safe_load(yaml, schema="core", max_depth=1000, allow_duplicate_keys=False):
+def safe_load(
+    yaml: str,
+    schema: str | _SchemaDict = "core",
+    max_depth: int = 1000,
+    allow_duplicate_keys: bool = False,
+) -> dict[str, Any] | list[Any]:
     return _safe_load(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
-def safe_loads(yaml, schema="core", max_depth=1000, allow_duplicate_keys=False):
+def safe_loads(
+    yaml: str,
+    schema: str | _SchemaDict = "core",
+    max_depth: int = 1000,
+    allow_duplicate_keys: bool = False,
+) -> list[dict[str, Any] | list[Any]]:
     return _safe_loads(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
-def parse(yaml, resolve_merges=True, schema="core", max_depth=1000, allow_duplicate_keys=False):
+def parse(
+    yaml: str | bytes,
+    resolve_merges: bool = True,
+    schema: str | _SchemaDict = "core",
+    max_depth: int = 1000,
+    allow_duplicate_keys: bool = False,
+) -> Any:
     return _parse(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
-def parse_file(path, schema="core", max_depth=1000, allow_duplicate_keys=False):
+def parse_file(
+    path: str,
+    schema: str | _SchemaDict = "core",
+    max_depth: int = 1000,
+    allow_duplicate_keys: bool = False,
+) -> Any:
     return _parse_file(path, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
-def parse_all_docs(yaml, resolve_merges=True, schema="core", max_depth=1000, allow_duplicate_keys=False):
+def parse_all_docs(
+    yaml: str,
+    resolve_merges: bool = True,
+    schema: str | _SchemaDict = "core",
+    max_depth: int = 1000,
+    allow_duplicate_keys: bool = False,
+) -> list[Any]:
     return _parse_all_docs(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
-def read_markdown(content, schema="core", max_depth=1000):
+def read_markdown(
+    content: str,
+    schema: str | _SchemaDict = "core",
+    max_depth: int = 1000,
+) -> tuple[dict[str, Any] | None, str]:
     return _read_markdown(content, _coerce_schema(schema), max_depth)
 
 
-def read_markdown_str(content, schema="core", max_depth=1000):
+def read_markdown_str(
+    content: str,
+    schema: str | _SchemaDict = "core",
+    max_depth: int = 1000,
+) -> tuple[dict[str, Any] | None, str]:
     return _read_markdown_str(content, _coerce_schema(schema), max_depth)
 
 
 # Monkey-patch YamlDocument with node() and find() methods
-def _yaml_document_node(self):
-    from .node import Node
-
+def _yaml_document_node(self: Any) -> Any:
     return Node(self)
 
 
-def _yaml_document_find(self, path):
-    from .node import Node
-
+def _yaml_document_find(self: Any, path: str) -> Any:
     return Node(self).find(path)
 
 
-def _yaml_document_walk(self):
-    from .node import Node
-
+def _yaml_document_walk(self: Any) -> Any:
     for path in self._walk_paths():
         yield Node(self, path)
 
 
-def _yaml_document_scalars(self):
-    from .node import Node
-
+def _yaml_document_scalars(self: Any) -> Any:
     for path in self._scalar_paths():
         yield Node(self, path)
 
 
-YamlDocument.node = _yaml_document_node
-YamlDocument.find = _yaml_document_find
-YamlDocument.walk = _yaml_document_walk
-YamlDocument.scalars = _yaml_document_scalars
+YamlDocument.node = _yaml_document_node  # ty: ignore[unresolved-attribute]
+YamlDocument.find = _yaml_document_find  # ty: ignore[unresolved-attribute]
+YamlDocument.walk = _yaml_document_walk  # ty: ignore[unresolved-attribute]
+YamlDocument.scalars = _yaml_document_scalars  # ty: ignore[unresolved-attribute]
 
 
 def _yaml_document_merged(self):
-    from .merged_view import MergedView
-
     return MergedView(self)
 
 
-YamlDocument.merged = _yaml_document_merged
+YamlDocument.merged = _yaml_document_merged  # ty: ignore[unresolved-attribute]
 
 
-from . import editing as _editing  # noqa: E402  (monkeypatches must run after Rust module loads)
+from . import editing as _editing  # ruff: ignore[E402]  (monkeypatches must run after Rust module loads)
 
-YamlDocument.set = _editing._yaml_document_set
-YamlDocument.insert = _editing._yaml_document_insert
-YamlDocument.append = _editing._yaml_document_append
-YamlDocument.delete = _editing._yaml_document_delete
-YamlDocument.rename = _editing._yaml_document_rename
+YamlDocument.set = _editing._yaml_document_set  # ty: ignore[unresolved-attribute]
+YamlDocument.insert = _editing._yaml_document_insert  # ty: ignore[unresolved-attribute]
+YamlDocument.append = _editing._yaml_document_append  # ty: ignore[unresolved-attribute]
+YamlDocument.delete = _editing._yaml_document_delete  # ty: ignore[unresolved-attribute]
+YamlDocument.rename = _editing._yaml_document_rename  # ty: ignore[unresolved-attribute]
+
+# Module-level aliases (PyYAML compatibility)
+safe_dumps = safe_dump
+safe_dumps_async = safe_dump_async
 
 __all__ = [
     "YAML",
@@ -299,16 +382,18 @@ __all__ = [
     "remove_type",
     "safe_dump",
     "safe_dump_async",
+    "safe_dumps",
     "safe_load",
     "safe_load_async",
     "safe_loads",
     "safe_loads_async",
     "set_language",
+    "validate_custom_types",
 ]
 
 try:
     from importlib.metadata import version as _version
-except Exception:
+except ImportError:
 
     def _version(name: str) -> str:
         return "unknown"

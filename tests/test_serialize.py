@@ -1,7 +1,8 @@
 """YAML serialization and PyYAML-compatible API tests."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestSerialization:
