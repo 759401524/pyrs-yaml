@@ -262,6 +262,132 @@ Remove all registered tag handlers.
 clear_tag_handlers() -> None
 ```
 
+### YAML Schema Language
+
+#### `register_schema()`
+
+Register a custom YAML schema from a schema definition string.
+
+```python
+register_schema(name: str, schema_yaml: str) -> None
+```
+
+**Parameters:**
+
+- `name` — Schema name, used as `YAML(schema=name)`
+- `schema_yaml` — Schema definition in YAML format
+
+The schema definition supports a `rules` list mapping regex patterns to
+YAML types, and an optional `extends` base schema:
+
+```python
+pyrs_yaml.register_schema("myapp", """
+name: myapp
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+  - pattern: ^\\d{4}-\\d{2}-\\d{2}$
+    type: str
+""")
+
+doc = pyrs_yaml.parse("addr: 0xFF", schema="myapp")
+assert doc.get("addr") == 255
+```
+
+**Raises:** `YamlParseError` — Invalid schema definition
+
+#### Schema as inline dict
+
+The `schema` parameter of `YAML()`, `parse()`, `parse_file()`,
+`parse_all_docs()`, `safe_load()`, and `safe_loads()` also accepts an inline
+dict, which is serialized and registered automatically:
+
+```python
+doc = pyrs_yaml.safe_load(
+    "addr: 0xFF",
+    schema={
+        "extends": "core",
+        "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}],
+    },
+)
+assert doc["addr"] == 255
+```
+
+### Community Plugins
+
+#### `CustomType`
+
+Base class for custom YAML node types. Subclass it to define a type that can
+be used with YAML tags.
+
+```python
+class CustomType:
+    python_type = None  # set to a Python type for isinstance checks
+    def can_parse(self, node) -> bool: ...
+    def from_yaml(self, value: str): ...
+    def to_yaml(self, obj) -> str: ...
+    def validate(self, obj) -> bool: ...
+```
+
+**Methods:**
+
+- `python_type` — Optional Python type used during serialization (`isinstance`)
+- `can_parse(node)` — Whether this type handles a given node
+- `from_yaml(value)` — Convert a YAML string to a Python object (load)
+- `to_yaml(obj)` — Convert a Python object to a YAML string (dump)
+- `validate(obj)` — Validate a Python object's type and value
+
+Built-in plugins include `!timestamp` (maps to `datetime`) and `!set`.
+
+#### `register_type()`
+
+Register a `CustomType` instance or class.
+
+```python
+register_type(name: str, handler: CustomType | None = None) -> CustomType
+```
+
+**Imperative form:**
+
+```python
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+    def from_yaml(self, value):
+        return datetime.fromisoformat(value)
+    def to_yaml(self, obj):
+        return obj.isoformat()
+
+pyrs_yaml.register_type("!timestamp", TimestampType())
+```
+
+**Decorator form:**
+
+```python
+@pyrs_yaml.register_type("!timestamp")
+class TimestampType(pyrs_yaml.CustomType):
+    ...
+
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+```
+
+#### `remove_type()`
+
+```python
+remove_type(name: str) -> None
+```
+
+Remove a registered custom type handler.
+
+#### `clear_type_handlers()`
+
+```python
+clear_type_handlers() -> None
+```
+
+Remove all registered custom type handlers.
+
 ### Compliance
 
 #### `compliance_report()`

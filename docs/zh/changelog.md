@@ -15,6 +15,22 @@ status: new
 
 ### [Unreleased]
 
+#### Added
+
+- **YAML Schema Language** — 定义自定义 schema，将正则模式映射到 YAML 类型。
+  通过 `register_schema()` 注册。
+- **内联 dict schema** — `schema` 参数可直接传入 `dict`。
+- **Community Plugins** — 通过 `CustomType` 基类注册自定义节点类型。
+  使用 `register_type()` 注册。
+- **内置插件** — 默认注册 `!timestamp`（datetime）和 `!set`。
+
+#### Changed
+
+- **Schema 解析可插拔** — `SchemaResolver` trait + `Schema` 枚举 +
+  全局 `SchemaRegistry`。内置 schema 保持零开销分发。
+- **`node_to_pyobject` 和 `direct_dump` 检查 `CustomType`** —
+  带标签的标量通过 `from_yaml()` 转换，Python 对象通过 `to_yaml()` 序列化。
+
 ### [v0.13.0] — 2026-08-10
 
 #### 变更

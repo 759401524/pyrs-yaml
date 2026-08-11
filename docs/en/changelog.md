@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- **YAML Schema Language** — define custom schemas with `rules` mapping
+  regex patterns to YAML types; register via `register_schema()`.
+- **Inline dict schema** — `schema` parameter accepts `dict` in `YAML()`,
+  `parse()`, `safe_load()`, etc.
+- **Community Plugins** — `CustomType` base class with
+  `from_yaml`/`to_yaml`/`can_parse`/`validate`; register via `register_type()`.
+- **Built-in plugins** — `!timestamp` (datetime) and `!set` registered by default.
+
+#### Changed
+
+- **Schema resolution is pluggable** — `SchemaResolver` trait + `Schema`
+  enum with global `SchemaRegistry`. Built-in schemas retain zero-cost dispatch.
+- **`node_to_pyobject` and `direct_dump` check registered `CustomType`s** —
+  tagged scalars convert via `from_yaml()`; objects serialize via `to_yaml()`.
+
 ### [v0.13.0] — 2026-08-10
 
 #### Changed

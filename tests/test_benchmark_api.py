@@ -9,6 +9,7 @@ parse_all_docs and parse_stream.
 """
 
 import io
+from datetime import datetime, timezone
 
 import pyrs_yaml
 import pytest
@@ -273,3 +274,57 @@ def test_document_to_dict_sized(benchmark, size):
     doc = pyrs_yaml.parse(YAML_INPUTS[size])
     result = benchmark(doc.to_dict)
     assert result is not None
+
+
+# ── YAML Schema Language benchmarks ──
+
+HEX_SCHEMA_YAML = """\
+name: hex
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+  - pattern: ^\\d{4}-\\d{2}-\\d{2}$
+    type: str
+"""
+
+
+def test_safe_load_custom_schema(benchmark):
+    """safe_load with a registered custom schema (RuleResolver path)."""
+    pyrs_yaml.register_schema("bench_hex", HEX_SCHEMA_YAML)
+    result = benchmark(pyrs_yaml.safe_load, CONFIG_YAML, "bench_hex")
+    assert result["server"]["port"] == 8080
+
+
+def test_safe_load_custom_schema_vs_core(benchmark):
+    """Core schema baseline — should be faster than custom schema."""
+    result = benchmark(pyrs_yaml.safe_load, CONFIG_YAML, "core")
+    assert result["server"]["port"] == 8080
+
+
+# ── Community Plugin benchmarks ──
+
+
+class BenchTimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj):
+        return obj.isoformat()
+
+
+def test_safe_dump_custom_type(benchmark):
+    """safe_dump with a registered CustomType (isinstance + to_yaml path)."""
+    pyrs_yaml.register_type("!bench_ts", BenchTimestampType())
+    data = {"ts": datetime(2026, 8, 11, 10, 30, tzinfo=timezone.utc)}
+    result = benchmark(pyrs_yaml.safe_dump, data)
+    assert "!bench_ts" in result
+
+
+def test_safe_dump_plain_dict_baseline(benchmark):
+    """Plain dict dump baseline — no CustomType overhead."""
+    data = {"name": "x", "count": 3, "flag": True}
+    result = benchmark(pyrs_yaml.safe_dump, data)
+    assert "name: x" in result
