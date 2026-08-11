@@ -7,7 +7,7 @@ pub use crate::parser::stream::{
 };
 
 use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
-use crate::parser::yaml::YamlSchema;
+use crate::parser::yaml::Schema;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
@@ -47,12 +47,12 @@ fn is_null_key(key: &CustomNode) -> bool {
 /// # Examples
 /// ```rust
 /// use pyrs_yaml_core::parser::parse;
-/// use pyrs_yaml_core::parser::yaml::YamlSchema;
-/// let ast = parse("key: value", YamlSchema::Core).unwrap();
+/// use pyrs_yaml_core::parser::yaml::Schema;
+/// let ast = parse("key: value", Schema::Core).unwrap();
 /// ```
 ///
 /// Parse a YAML string into a CustomNode AST using granit-parser
-pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseError> {
+pub fn parse(yaml: &str, schema: impl Into<Schema>) -> Result<CustomNode, ParseError> {
     parse_with_options(yaml, true, schema, 1000, false)
 }
 
@@ -73,10 +73,11 @@ pub fn parse(yaml: &str, schema: YamlSchema) -> Result<CustomNode, ParseError> {
 pub fn parse_with_options(
     yaml: &str,
     resolve_merges: bool,
-    _schema: YamlSchema,
+    schema: impl Into<Schema>,
     max_depth: usize,
     allow_duplicate_keys: bool,
 ) -> Result<CustomNode, ParseError> {
+    let _schema = schema.into();
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(CustomNode::plain_null());
@@ -131,7 +132,7 @@ pub fn parse_with_options(
 /// 返回 `Err(String)`，格式为 `"YAML parse error: document #{doc_index} at <行号>:<列号>: <消息>"`。
 ///
 /// Parse multiple YAML documents from a single string using saphyr document events
-pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, ParseError> {
+pub fn parse_all(yaml: &str, schema: impl Into<Schema>) -> Result<Vec<CustomNode>, ParseError> {
     parse_all_with_options(yaml, true, schema, 1000, false)
 }
 
@@ -139,10 +140,11 @@ pub fn parse_all(yaml: &str, schema: YamlSchema) -> Result<Vec<CustomNode>, Pars
 pub fn parse_all_with_options(
     yaml: &str,
     resolve_merges: bool,
-    _schema: YamlSchema,
+    _schema: impl Into<Schema>,
     max_depth: usize,
     allow_duplicate_keys: bool,
 ) -> Result<Vec<CustomNode>, ParseError> {
+    let _schema = _schema.into();
     // Handle empty YAML
     if yaml.trim().is_empty() {
         return Ok(Vec::new());

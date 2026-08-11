@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::ast::CustomNode;
-use crate::parser::yaml::YamlSchema;
+use crate::parser::yaml::Schema;
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::splice::SpliceState;
 
@@ -34,7 +34,7 @@ pub(crate) struct DocumentSnapshot {
 /// Round-trip editable YAML document with transaction support, path editing, and source preservation.
 pub struct YamlDocument {
     pub(crate) ast: CustomNode,
-    pub(crate) schema: YamlSchema,
+    pub(crate) schema: Schema,
     pub(crate) source: Option<Arc<str>>,
     pub(crate) version: String,
     pub(crate) revision: u64, // bumped on every mutation (Node invalidation)
@@ -82,7 +82,7 @@ impl YamlDocument {
     pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
         YamlDocument {
             ast,
-            schema: crate::parser::yaml::YamlSchema::Core,
+            schema: crate::parser::yaml::Schema::Core,
             source: Some(source.clone()),
             version: "1.2".to_string(),
             revision: 0,
@@ -207,9 +207,9 @@ impl YamlDocument {
             let mut anchors = HashMap::new();
             collect_anchors(&self.ast, &mut anchors);
             let mut visited = HashSet::new();
-            node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited, self.schema)
+            node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited, &self.schema)
         } else {
-            node_to_pyobject_simple(&self.ast, py, self.schema)
+            node_to_pyobject_simple(&self.ast, py, &self.schema)
         }
     }
 
@@ -225,7 +225,7 @@ impl YamlDocument {
                 ))
             })?;
             return match editing::navigate(&self.ast, &segs) {
-                Ok(node) => Ok(node_to_pyobject(node, py, self.schema)?),
+                Ok(node) => Ok(node_to_pyobject(node, py, &self.schema)?),
                 Err(_) => Ok(default.unwrap_or_else(|| py.None())),
             };
         }
@@ -233,7 +233,7 @@ impl YamlDocument {
             CustomNode::Mapping { pairs, .. } => {
                 let key_node = CustomNode::plain_scalar(key);
                 if let Some(value) = pairs.get(&key_node) {
-                    Ok(node_to_pyobject(value, py, self.schema)?)
+                    Ok(node_to_pyobject(value, py, &self.schema)?)
                 } else {
                     Ok(default.unwrap_or_else(|| py.None()))
                 }
@@ -283,19 +283,19 @@ impl YamlDocument {
 
     /// Return an iterator over keys (mapping) or values (sequence).
     fn __iter__<'py>(&self, _py: Python<'py>) -> PyResult<Py<PyAny>> {
-        let schema = self.schema;
+        let schema = self.schema.clone();
         Python::attach(|py| match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
                 let keys: Vec<Py<PyAny>> = pairs
                     .keys()
-                    .map(|k| node_to_pyobject(k, py, schema))
+                    .map(|k| node_to_pyobject(k, py, &schema))
                     .collect::<PyResult<Vec<_>>>()?;
                 Ok(keys.into_pyobject(py)?.into_any().unbind())
             }
             CustomNode::Sequence { items, .. } => {
                 let values: Vec<Py<PyAny>> = items
                     .iter()
-                    .map(|v| node_to_pyobject(v, py, schema))
+                    .map(|v| node_to_pyobject(v, py, &schema))
                     .collect::<PyResult<Vec<_>>>()?;
                 Ok(values.into_pyobject(py)?.into_any().unbind())
             }
@@ -308,7 +308,7 @@ impl YamlDocument {
 
     /// Access a child node by key (mapping) or index (sequence).
     fn __getitem__<'py>(&self, py: Python<'py>, key: Py<PyAny>) -> PyResult<Py<PyAny>> {
-        let schema = self.schema;
+        let schema = &self.schema;
         match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
                 if let Ok(key_str) = key.bind(py).extract::<String>() {
@@ -610,8 +610,9 @@ impl YamlDocument {
             YamlTypeError::new_err(format_i18n_error("no-source-to-reparse", &[]))
         })?;
         let schema_enum = parse_schema(schema)?;
+        let schema_clone = schema_enum.clone();
         let new_ast = py.detach(|| {
-            crate::parser::parse_with_options(source, resolve_merges, schema_enum, 1000, false)
+            crate::parser::parse_with_options(source, resolve_merges, schema_clone, 1000, false)
                 .map_err(|e| parse_error_to_py_err(e, source, 1000))
         })?;
         self.ast = new_ast;
@@ -732,11 +733,12 @@ pub(crate) fn parse_document(
     };
 
     let schema_enum = parse_schema(schema)?;
+    let schema_clone = schema_enum.clone();
     let mut ast = py.detach(|| {
         crate::parser::parse_with_options(
             &yaml_str,
             resolve_merges,
-            schema_enum,
+            schema_clone,
             max_depth,
             allow_duplicate_keys,
         )

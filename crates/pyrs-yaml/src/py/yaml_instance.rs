@@ -76,11 +76,12 @@ impl YAML {
     #[pyo3(signature = (yaml: "str") -> "dict[str, Any] | list[Any]")]
     fn safe_load(&self, py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
         let schema_enum = parse_schema(&self.schema)?;
+        let schema_clone = schema_enum.clone();
         let ast = py.detach(|| {
             crate::parser::parse_with_options(
                 yaml,
                 true,
-                schema_enum,
+                schema_clone,
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
@@ -90,9 +91,9 @@ impl YAML {
             let mut anchors = HashMap::new();
             collect_anchors(&ast, &mut anchors);
             let mut visited = HashSet::new();
-            node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)
+            node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, &schema_enum)
         } else {
-            node_to_pyobject_simple(&ast, py, schema_enum)
+            node_to_pyobject_simple(&ast, py, &schema_enum)
         }
     }
 
@@ -100,11 +101,12 @@ impl YAML {
     #[pyo3(signature = (yaml: "str") -> "list[dict[str, Any] | list[Any]]")]
     fn safe_loads(&self, py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
         let schema_enum = parse_schema(&self.schema)?;
+        let schema_clone = schema_enum.clone();
         let asts = py.detach(|| {
             crate::parser::parse_all_with_options(
                 yaml,
                 true,
-                schema_enum,
+                schema_clone,
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
@@ -117,9 +119,9 @@ impl YAML {
                 let mut anchors = HashMap::new();
                 collect_anchors(&ast, &mut anchors);
                 let mut visited = HashSet::new();
-                node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, schema_enum)?
+                node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, &schema_enum)?
             } else {
-                node_to_pyobject_simple(&ast, py, schema_enum)?
+                node_to_pyobject_simple(&ast, py, &schema_enum)?
             };
             results.push(obj);
         }
@@ -131,6 +133,7 @@ impl YAML {
     fn parse_file(&self, py: Python, path: &str) -> PyResult<YamlDocument> {
         let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
         let schema_enum = parse_schema(&self.schema)?;
+        let schema_clone = schema_enum.clone();
         let content = std::fs::read_to_string(path).map_err(|e| {
             pyo3::exceptions::PyIOError::new_err(format_i18n_error(
                 "file-read-error",
@@ -141,7 +144,7 @@ impl YAML {
             crate::parser::parse_with_options(
                 &content,
                 resolve_merges,
-                schema_enum,
+                schema_clone,
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
@@ -166,11 +169,12 @@ impl YAML {
     fn parse_all_docs(&self, py: Python, yaml: &str) -> PyResult<Vec<YamlDocument>> {
         let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
         let schema_enum = parse_schema(&self.schema)?;
+        let schema_clone = schema_enum.clone();
         let asts = py.detach(|| {
             crate::parser::parse_all_with_options(
                 yaml,
                 resolve_merges,
-                schema_enum,
+                schema_clone,
                 self.max_depth,
                 self.allow_duplicate_keys,
             )
@@ -181,7 +185,7 @@ impl YAML {
             .into_iter()
             .map(|ast| YamlDocument {
                 ast,
-                schema: schema_enum,
+                schema: schema_enum.clone(),
                 source: Some(source.clone()),
                 version: "1.2".to_string(),
                 revision: 0,
