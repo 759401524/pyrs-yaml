@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **YAML Schema Language** — define custom schemas as YAML files with a
+  `rules` list mapping regex patterns to YAML types (`null`/`bool`/`int`/
+  `float`/`str`), plus an optional `extends` base schema. Registered via
+  `register_schema(name, schema_yaml)` and used as `YAML(schema=name)`.
+- **Inline dict schema** — the `schema` parameter of `YAML()`, `parse()`,
+  `parse_file()`, `parse_all_docs()`, `safe_load()`, and `safe_loads()`
+  accepts an inline dict, serialized and registered automatically.
+- **Community Plugins** — `CustomType` base class with
+  `can_parse`/`from_yaml`/`to_yaml`/`validate` methods; register via
+  `register_type()` (imperative or decorator). Custom types handle tagged
+  scalars on load and Python objects on dump.
+- **Built-in plugins** — `!timestamp` (maps to `datetime`) and `!set`
+  registered by default in `pyrs_yaml/plugins/`.
+
+### Changed
+
+- **Schema resolution is pluggable** — `YamlSchema` enum refactored into a
+  `SchemaResolver` trait + `Schema` enum with a global `SchemaRegistry`
+  pre-loaded with the four built-in schemas (`failsafe`, `json`, `core`,
+  `yaml1.1`). Custom schemas register via the registry; built-in Core keeps
+  its zero-cost `match` dispatch.
+- **`node_to_pyobject` and `direct_dump` check registered `CustomType`s** —
+  tagged scalars convert via `from_yaml()` on load; matching Python objects
+  serialize via `to_yaml()` on dump.
+
 ## [v0.13.0] — 2026-08-10
 
 ### Changed

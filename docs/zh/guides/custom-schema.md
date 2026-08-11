@@ -1,0 +1,136 @@
+---
+title: 自定义 Schema
+description: 定义和使用自定义 YAML schema 来控制类型解析行为。
+tags:
+  - docs
+status: new
+---
+
+## 自定义 Schema
+
+默认情况下，pyrs-yaml 使用 YAML 1.2 Core schema 进行隐式类型解析。通过 YAML Schema Language，
+您可以定义自定义 schema，控制 plain scalar 如何解析为 Python 类型。
+
+### 为何需要自定义 Schema？
+
+Core schema 会将 `0xFF` 解析为 `int(255)`，`2026-08-11` 解析为 `int(2026)`，
+`hello` 解析为 `"hello"`。有时您需要不同的行为：
+
+- 将日期保留为字符串（`"2026-08-11"` 而非 `2026`）
+- 将十六进制/二进制字面量解析为整数
+- 添加 YAML 1.1 风格的布尔词法（`yes`/`no`）
+- 使用纯 JSON 子集（不含 `inf`、`nan`、`0x`）
+
+### Schema 定义格式
+
+Schema 定义为一个包含 `rules` 列表的 YAML 文件。每条规则包含一个 `pattern`（正则表达式）
+和一个 `type`（`null`、`bool`、`int`、`float`、`str` 之一）。
+
+```yaml
+# hex_schema.yaml
+name: hex
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+  - pattern: ^0b[01]+$
+    type: int
+```
+
+**`extends`** — 可选的基础 schema。规则优先匹配；若无匹配则回退到 `extends` 指定的 schema。
+默认值：`core`。
+
+**`rules`** — 有序列表。首个匹配的 pattern 决定类型。支持的类型：
+
+| `type` | Python 结果 | 示例 |
+|--------|------------|------|
+| `null` | `None` | `~` |
+| `bool` | `True` / `False` | `true`, `yes`, `on` |
+| `int` | `int` | `42`, `0xFF`, `0o77`, `0b1010` |
+| `float` | `float` | `3.14`, `1e10` |
+| `str` | `str` | `2026-08-11` |
+
+### 注册和使用 Schema
+
+```python
+import pyrs_yaml
+
+# 从 YAML 字符串注册
+pyrs_yaml.register_schema("hex", """
+name: hex
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+""")
+
+# 使用 YAML 实例
+y = pyrs_yaml.YAML(schema="hex")
+doc = y.parse("addr: 0xFF")
+assert doc.get("addr") == 255
+
+# 使用模块级函数
+d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
+assert d["addr"] == 31
+```
+
+### 内联 Dict Schema
+
+无需预先注册，直接传入字典：
+
+```python
+d = pyrs_yaml.safe_load(
+    "addr: 0xFF",
+    schema={
+        "extends": "core",
+        "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}],
+    },
+)
+assert d["addr"] == 255
+```
+
+### 常见模式
+
+#### 将日期保留为字符串
+
+```python
+schema = {
+    "extends": "core",
+    "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
+}
+```
+
+#### 添加 YAML 1.1 布尔值
+
+```python
+schema = {
+    "extends": "core",
+    "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
+}
+```
+
+#### 严格 JSON 模式
+
+```python
+schema = {
+    "extends": "failsafe",
+    "rules": [
+        {"pattern": "^null$|^~$", "type": "null"},
+        {"pattern": "^(true|false)$", "type": "bool"},
+        {"pattern": "^-?\\d+$", "type": "int"},
+        {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
+    ],
+}
+```
+
+### 性能
+
+自定义 schema 使用基于正则表达式的规则引擎。每个 scalar 按顺序匹配规则。
+为获得最佳性能：
+
+- 规则数量控制在 20 条以内
+- 将最常用的模式放在前面
+- 使用 `extends: core` 避免重复实现完整的 Core 解析逻辑
+
+内置 Core schema 不受影响——它仍然使用零开销的 `match` 分发，
+不受自定义 schema 注册的影响。

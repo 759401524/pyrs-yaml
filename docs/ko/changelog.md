@@ -15,6 +15,22 @@ status: new
 
 ### [Unreleased]
 
+#### 추가됨
+
+- **YAML Schema Language** — 정규식 패턴을 YAML 타입에 매핑하는 사용자 정의
+  스키마 정의 가능. `register_schema()`로 등록.
+- **인라인 dict 스키마** — `schema` 매개변수에 `dict` 직접 전달 가능.
+- **Community Plugins** — `CustomType` 기본 클래스로 사용자 정의 노드 타입 등록.
+  `register_type()`으로 등록.
+- **내장 플러그인** — `!timestamp`(datetime)와 `!set`이 기본 등록됨.
+
+#### 변경됨
+
+- **스키마 해석이 플러그인 가능하도록** — `SchemaResolver` 트레이트 +
+  `Schema` 열거형 + 전역 `SchemaRegistry`. 내장 스키마는 제로 비용 디스패치 유지.
+- **`node_to_pyobject`와 `direct_dump`가 `CustomType` 확인** —
+  태그 스칼라는 `from_yaml()`로 변환, Python 객체는 `to_yaml()`로 직렬화.
+
 ### [v0.13.0] — 2026-08-10
 
 #### 변경 사항

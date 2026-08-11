@@ -15,6 +15,24 @@ status: new
 
 ### [Unreleased]
 
+#### 追加
+
+- **YAML Schema Language** — 正規表現パターンを YAML 型にマッピングする
+  カスタムスキーマを定義可能。`register_schema()` で登録。
+- **インライン dict スキーマ** — `schema` パラメータに `dict` を直接渡せる。
+- **Community Plugins** — `CustomType` ベースクラスによる
+  カスタムノード型の登録。`register_type()` で登録。
+- **組み込みプラグイン** — `!timestamp`（datetime）と `!set` がデフォルトで登録済み。
+
+#### 変更
+
+- **スキーマ解決がプラグイン可能に** — `SchemaResolver` トレイト +
+  `Schema` 列挙型 + グローバル `SchemaRegistry`。組み込みスキーマは
+  ゼロコストディスパッチを維持。
+- **`node_to_pyobject` と `direct_dump` が `CustomType` をチェック** —
+  タグ付きスカラは `from_yaml()` で変換、Python オブジェクトは
+  `to_yaml()` でシリアライズ。
+
 ### [v0.13.0] — 2026-08-10
 
 #### 変更
