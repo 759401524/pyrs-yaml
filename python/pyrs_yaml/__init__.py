@@ -15,7 +15,6 @@ Example:
 
 import contextlib
 import hashlib
-import json
 
 from . import plugins as _plugins  # noqa: F401 — registers built-in plugins
 from ._type_registry import CustomType, register_type
@@ -118,18 +117,22 @@ def register_tag(name, handler=None, priority=0):
 
 def _schema_to_yaml(schema):
     """Convert an inline schema dict to a YAML schema string."""
-    _schema_json = json.dumps(schema, sort_keys=True, ensure_ascii=False)
-    lines = []
-    if "extends" in schema:
-        lines.append(f"extends: {schema['extends']}")
-    if "name" in schema:
-        lines.insert(0, f"name: {schema['name']}")
-    rules = schema.get("rules", [])
-    if rules:
-        lines.append("rules:")
-        for rule in rules:
-            lines.append(f"  - pattern: {rule['pattern']}")
-            lines.append(f"    type: {rule['type']}")
+    if not isinstance(schema, dict):
+        raise TypeError(f"schema must be a dict, got {type(schema).__name__}")
+    if "rules" not in schema or not schema["rules"]:
+        raise ValueError("schema dict must contain a non-empty 'rules' list")
+    rules = schema["rules"]
+    if not isinstance(rules, list):
+        raise ValueError("schema 'rules' must be a list")
+    digest = hashlib.sha256(str(schema).encode()).hexdigest()[:16]
+    lines = [f"name: _inline_{digest}"]
+    lines.append(f"extends: {schema.get('extends', 'core')}")
+    lines.append("rules:")
+    for rule in rules:
+        if not isinstance(rule, dict) or "pattern" not in rule or "type" not in rule:
+            raise ValueError(f"each rule must have 'pattern' and 'type' keys, got {rule}")
+        lines.append(f"  - pattern: {rule['pattern']}")
+        lines.append(f"    type: {rule['type']}")
     return "\n".join(lines) + "\n"
 
 

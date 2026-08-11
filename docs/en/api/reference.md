@@ -21,19 +21,23 @@ Complete API reference for the `pyrs_yaml` module.
 Parse a YAML string or bytes into a `YamlDocument`.
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
 ```
 
 **Parameters:**
 
 - `yaml` — YAML content as `str` or `bytes`
 - `resolve_merges` — Whether to resolve merge keys (`<<: *alias`) after parsing (default: `True`)
+- `schema` — Schema name (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"`, or a registered custom name), or an inline schema dict (see [YAML Schema Language](#yaml-schema-language))
+- `max_depth` — Maximum nesting depth (default: `1000`)
+- `allow_duplicate_keys` — Whether to allow duplicate mapping keys (default: `False`)
 
 **Returns:** A `YamlDocument` containing the parsed YAML
 
 **Raises:**
 
 - `YamlParseError` — Invalid YAML syntax
+- `YamlTypeError` — Schema not found
 - `TypeError` — Input is not `str` or `bytes`
 
 **Example:**
@@ -41,7 +45,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```python
 doc = pyrs_yaml.parse("key: value")
 doc = pyrs_yaml.parse(b"key: value")
-doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_str, schema="json")
+doc = pyrs_yaml.parse("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
 ```
 
 #### `parse_file()`
@@ -49,12 +54,13 @@ doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 Parse a YAML file.
 
 ```python
-parse_file(path: str) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
 ```
 
 **Parameters:**
 
 - `path` — Path to the YAML file
+- `schema` — Schema name or inline dict (see [YAML Schema Language](#yaml-schema-language))
 
 **Returns:** A `YamlDocument`
 
@@ -62,6 +68,7 @@ parse_file(path: str) -> YamlDocument
 
 - `IOError` — File not found or unreadable
 - `YamlParseError` — Invalid YAML
+- `YamlTypeError` — Schema not found
 
 **Example:**
 
@@ -74,8 +81,13 @@ doc = pyrs_yaml.parse_file("config.yaml")
 Parse multiple YAML documents from a string.
 
 ```python
-parse_all_docs(yaml: str) -> list[YamlDocument]
+parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> list[YamlDocument]
 ```
+
+**Parameters:**
+
+- `yaml` — YAML content with one or more documents (`---` separated)
+- `schema` — Schema name or inline dict (see [YAML Schema Language](#yaml-schema-language))
 
 **Returns:** A list of `YamlDocument` objects
 
@@ -89,27 +101,38 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 
 #### `safe_load()`
 
-Parse YAML and return native Python types.
+Parse a YAML string into a Python dict or list. Uses PyYAML-compatible API.
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> dict[str, Any] | list[Any]
 ```
 
-**Equivalent to:** `yaml.safe_load()` in PyYAML
+**Parameters:**
+
+- `yaml` — YAML content as `str`
+- `schema` — Schema name or inline dict (see [YAML Schema Language](#yaml-schema-language))
+
+**Raises:** `YamlParseError`, `YamlTypeError`
 
 **Example:**
 
 ```python
-data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
+d = pyrs_yaml.safe_load("key: value")
+d = pyrs_yaml.safe_load("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
 ```
 
 #### `safe_loads()`
 
-Parse multiple YAML documents.
+Parse multiple YAML documents from a string into Python dicts/lists.
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> list[dict[str, Any] | list[Any]]
 ```
+
+**Parameters:**
+
+- `yaml` — YAML content with one or more documents
+- `schema` — Schema name or inline dict (see [YAML Schema Language](#yaml-schema-language))
 
 **Equivalent to:** `yaml.safe_loads()` in PyYAML
 
@@ -482,7 +505,7 @@ asyncio.run(main())
 Extract YAML frontmatter from a Markdown file.
 
 ```python
-read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str | dict = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
 **Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
@@ -492,7 +515,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 Extract YAML frontmatter from a Markdown string.
 
 ```python
-read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str | dict = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
 ### i18n Functions
