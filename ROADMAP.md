@@ -142,7 +142,21 @@ Per the plan's risk note ("the audit records oracle disagreements but does not c
 
 ---
 
-**Deferred (not committed, revisit at each milestone review)**: `yaml-edit` competitor feature tracking; community plugins / YAML Schema language. Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-02).
+## Review Notes 2026-08-11 (v0.13.0 milestone)
+
+Milestone review of all Research & Exploration items per the revisit rule.
+
+| Item | Decision | Rationale |
+|:-----|:---------|:----------|
+| Custom YAML 1.2 parser | **Defer** | saphyr→granit-parser migration shipped in v0.13.0; let it stabilize before evaluating replacement. Revisit v0.14.0. |
+| Numpy free-threaded re-enable | **Defer** | Blocked on upstream `rust-numpy` (PyO3/rust-numpy#476). Revisit when upstream lands. |
+| YAML Schema language | **Promote → v0.14.0** | Independent design deliverable; scope as a design spec for v0.14.0. |
+| `yaml-edit` competitor analysis | **Close** | Passive tracking provides no value; if yaml-edit ships a significant feature, the community will surface it. |
+| Community plugins | **Promote → v0.14.0** | Related to YAML Schema language; third-party registry extension. Scope as design + prototype for v0.14.0. |
+
+---
+
+**Deferred (not committed, revisit at each milestone review)**: Custom YAML 1.2 parser (evaluation deferred — granit migration just shipped, let it settle); numpy free-threaded re-enable (blocked on upstream rust-numpy). Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-11).
 
 ---
 
@@ -153,11 +167,11 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 > **Revisit rule** (from Review Notes 2026-08-02): every milestone review must re-evaluate all unchecked items below — promote, defer with reason, or close. No item stays unchecked for more than two consecutive milestone reviews.
 
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
-- [ ] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser and incrementally fix to 100%.
-- [ ] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime probe (`py.import("numpy").is_ok()`) auto-detect. Tracked in v0.11.7.
-- [ ] **YAML Schema language** — dedicated schema definition format beyond JSON Schema
-- [ ] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy
-- [ ] **Community plugins** — allow third-party Python modules to register custom node types
+- [ ] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser and incrementally fix to 100%. ⏸️ Deferred 2026-08-11 — granit migration just shipped in v0.13.0; let it settle. Revisit v0.14.0.
+- [ ] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime probe (`py.import("numpy").is_ok()`) auto-detect. Tracked in v0.11.7. ⏸️ Deferred 2026-08-11 — blocked on upstream `rust-numpy`.
+- [x] **YAML Schema language** — dedicated schema definition format beyond JSON Schema ✅ Promoted to v0.14.0 planning 2026-08-11
+- [x] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy ✅ Closed 2026-08-11 — passive tracking provides no value
+- [x] **Community plugins** — allow third-party Python modules to register custom node types ✅ Promoted to v0.14.0 planning 2026-08-11
 - [x] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python ✅ Committed in v0.11.6
 
-**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness — audit closed empty, docs-only release, with strictness regression corpus `tests/test_strictness_audit.py`); v0.11.6 (numpy-free free-threaded wheel); v0.11.7 (CI signal hygiene + numpy tracking).
+**Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness — audit closed empty, docs-only release, with strictness regression corpus `tests/test_strictness_audit.py`); v0.11.6 (numpy-free free-threaded wheel); v0.11.7 (CI signal hygiene + numpy tracking); YAML Schema language (promoted 2026-08-11, v0.14.0 planning); Community plugins (promoted 2026-08-11, v0.14.0 planning).
