@@ -5,6 +5,7 @@ use crate::YamlTypeError;
 use crate::ast::{CustomNode, ScalarStyle};
 use crate::parser::yaml::registry;
 use crate::parser::yaml::{Schema, YamlType};
+use crate::py::type_registry;
 
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList};
@@ -125,7 +126,18 @@ fn node_to_pyobject_inner<'a>(
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     match node {
-        CustomNode::Scalar { value, style, .. } => scalar_to_pyobject(py, value, style, schema),
+        CustomNode::Scalar {
+            value, tag, style, ..
+        } => {
+            // Check if a registered CustomType handles this tag.
+            if let Some(t) = tag {
+                let tag_str = t.to_string();
+                if let Some(handler) = type_registry::get(&tag_str, py) {
+                    return handler.call_method1(py, "from_yaml", (value.as_ref(),));
+                }
+            }
+            scalar_to_pyobject(py, value, style, schema)
+        }
         CustomNode::Mapping { pairs, .. } => {
             let dict = PyDict::new(py);
             for (key, value) in pairs {
@@ -157,7 +169,17 @@ pub(crate) fn node_to_pyobject_simple(
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     match node {
-        CustomNode::Scalar { value, style, .. } => scalar_to_pyobject(py, value, style, schema),
+        CustomNode::Scalar {
+            value, tag, style, ..
+        } => {
+            if let Some(t) = tag {
+                let tag_str = t.to_string();
+                if let Some(handler) = type_registry::get(&tag_str, py) {
+                    return handler.call_method1(py, "from_yaml", (value.as_ref(),));
+                }
+            }
+            scalar_to_pyobject(py, value, style, schema)
+        }
         CustomNode::Mapping { pairs, .. } => {
             let dict = PyDict::new(py);
             for (key, value) in pairs {

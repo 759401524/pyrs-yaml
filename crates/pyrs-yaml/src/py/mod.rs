@@ -10,6 +10,7 @@ pub mod stream_events;
 pub mod stream_iterator;
 pub mod streaming;
 pub mod tag_registry;
+pub mod type_registry;
 pub mod walk_helpers;
 pub mod writing;
 pub mod yaml_instance;
@@ -131,6 +132,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::clear_tag_handlers;
     #[pymodule_export]
+    pub(crate) use super::functions::clear_type_handlers;
+    #[pymodule_export]
     pub(crate) use super::functions::detect_language;
     #[pymodule_export]
     pub(crate) use super::functions::dump_file;
@@ -161,7 +164,11 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::register_tag;
     #[pymodule_export]
+    pub(crate) use super::functions::register_type;
+    #[pymodule_export]
     pub(crate) use super::functions::remove_tag;
+    #[pymodule_export]
+    pub(crate) use super::functions::remove_type;
     #[pymodule_export]
     pub(crate) use super::functions::safe_dump;
     #[pymodule_export]

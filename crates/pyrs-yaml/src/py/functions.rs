@@ -10,6 +10,7 @@ use crate::py::python_types::json_value_to_node;
 use crate::py::stream_events::stream_event_to_py_dict;
 use crate::py::stream_iterator::StreamIterator;
 use crate::py::tag_registry;
+use crate::py::type_registry;
 
 use crate::YamlParseError;
 use crate::YamlTypeError;
@@ -418,6 +419,26 @@ pub(crate) fn clear_tag_handlers() {
 /// Remove a specific tag handler.
 pub(crate) fn remove_tag(name: &str) {
     tag_registry::remove(name);
+}
+
+#[pyfunction]
+#[pyo3(signature = (name: "str", handler: "Py<PyAny>"))]
+/// Register a custom type handler (Community Plugins).
+pub(crate) fn register_type(name: &str, handler: Py<PyAny>) {
+    type_registry::register(name, handler);
+}
+
+#[pyfunction]
+/// Clear all custom type handlers.
+pub(crate) fn clear_type_handlers() {
+    type_registry::clear_all();
+}
+
+#[pyfunction]
+#[pyo3(signature = (name: "str"))]
+/// Remove a specific custom type handler.
+pub(crate) fn remove_type(name: &str) {
+    type_registry::remove(name);
 }
 
 #[pyfunction]

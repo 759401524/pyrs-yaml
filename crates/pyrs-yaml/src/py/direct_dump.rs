@@ -28,6 +28,7 @@ use crate::py::convert::format_i18n_error;
 #[cfg(feature = "numpy")]
 use crate::py::ndarray::ndarray_to_node;
 use crate::py::python_types::{float_to_yaml_string, py_string_to_arc};
+use crate::py::type_registry;
 #[cfg(feature = "numpy")]
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::{YamlMaxDepthError, YamlTypeError};
@@ -402,6 +403,16 @@ impl DirectWriter {
                 self.output.push_str(&yaml);
                 return Ok(());
             }
+        }
+        // Check registered CustomTypes for serialization
+        if let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind()) {
+            let (tag_name, yaml_str) = result?;
+            self.write_indent(indent_width);
+            self.output
+                .push_str(&format!("!{} ", tag_name.trim_start_matches('!')));
+            self.output.push_str(&yaml_str);
+            self.output.push('\n');
+            return Ok(());
         }
         Err(self.unsupported_type())
     }
