@@ -2,6 +2,7 @@
 
 use super::super::YamlTypeError;
 use super::convert::format_i18n_error;
+use super::type_registry;
 
 #[cfg(feature = "numpy")]
 use super::ndarray::ndarray_to_node;
@@ -105,6 +106,27 @@ pub fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNode> {
         if let Some(node) = ndarray_to_node(py, obj) {
             return Ok(node);
         }
+    }
+
+    // Check registered CustomTypes for serialization
+    if let Some(result) = {
+        let obj_ref = obj.clone().unbind();
+        type_registry::try_to_yaml(py, &obj_ref)
+    } {
+        let (tag_name, yaml_str) = result?;
+        let tag = crate::ast::Tag {
+            handle: "!".to_string(),
+            suffix: tag_name.trim_start_matches('!').to_string(),
+        };
+        return Ok(CustomNode::Scalar {
+            value: std::sync::Arc::from(yaml_str),
+            style: crate::ast::ScalarStyle::Plain,
+            comment: None,
+            anchor: None,
+            tag: Some(tag),
+            chomping: crate::ast::Chomping::Clip,
+            source_range: None,
+        });
     }
 
     Err(YamlTypeError::new_err(format_i18n_error(

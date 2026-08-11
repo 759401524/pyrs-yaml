@@ -13,6 +13,12 @@ Example:
     value
 """
 
+import contextlib
+import hashlib
+import json
+
+from . import plugins as _plugins  # noqa: F401 — registers built-in plugins
+from ._type_registry import CustomType, register_type
 from .async_dump import (
     safe_dump_async,
     safe_load_async,
@@ -23,7 +29,9 @@ from .merged_view import MergedView
 from .node import Node, YamlDocumentError
 from .pydantic import dump_pydantic, parse_as
 from .pyrs_yaml import (
-    YAML,
+    YAML as _YAML,
+)
+from .pyrs_yaml import (
     StreamIterator,
     YamlDocument,
     YamlDuplicateKeyError,
@@ -37,6 +45,7 @@ from .pyrs_yaml import (
     YamlTypeError,
     YamlValidateError,
     clear_tag_handlers,
+    clear_type_handlers,
     detect_language,
     dump_file,
     from_dict,
@@ -44,20 +53,37 @@ from .pyrs_yaml import (
     get_language,
     list_languages,
     negotiate_language,
-    parse,
-    parse_all_docs,
-    parse_file,
     parse_stream,
-    read_markdown,
-    read_markdown_str,
     register_schema,
     remove_tag,
+    remove_type,
     safe_dump,
-    safe_load,
-    safe_loads,
     set_language,
 )
-from .pyrs_yaml import register_tag as _rust_register_tag
+from .pyrs_yaml import (
+    parse as _parse,
+)
+from .pyrs_yaml import (
+    parse_all_docs as _parse_all_docs,
+)
+from .pyrs_yaml import (
+    parse_file as _parse_file,
+)
+from .pyrs_yaml import (
+    read_markdown as _read_markdown,
+)
+from .pyrs_yaml import (
+    read_markdown_str as _read_markdown_str,
+)
+from .pyrs_yaml import (
+    register_tag as _rust_register_tag,
+)
+from .pyrs_yaml import (
+    safe_load as _safe_load,
+)
+from .pyrs_yaml import (
+    safe_loads as _safe_loads,
+)
 
 
 def register_tag(name, handler=None, priority=0):
@@ -85,6 +111,96 @@ def register_tag(name, handler=None, priority=0):
         return fn
 
     return decorator
+
+
+# CustomType / register_type imported from ._type_registry
+
+
+def _schema_to_yaml(schema):
+    """Convert an inline schema dict to a YAML schema string."""
+    _schema_json = json.dumps(schema, sort_keys=True, ensure_ascii=False)
+    lines = []
+    if "extends" in schema:
+        lines.append(f"extends: {schema['extends']}")
+    if "name" in schema:
+        lines.insert(0, f"name: {schema['name']}")
+    rules = schema.get("rules", [])
+    if rules:
+        lines.append("rules:")
+        for rule in rules:
+            lines.append(f"  - pattern: {rule['pattern']}")
+            lines.append(f"    type: {rule['type']}")
+    return "\n".join(lines) + "\n"
+
+
+def _coerce_schema(schema):
+    """Return a schema name string, registering inline dict schemas.
+
+    Accepts either a schema name (str) or an inline schema definition (dict).
+    Inline dicts are serialized to YAML, registered under a deterministic name
+    derived from their JSON payload, and the name is returned.
+    """
+    if isinstance(schema, str):
+        return schema
+    if isinstance(schema, dict):
+        digest = hashlib.sha256(_schema_to_yaml(schema).encode()).hexdigest()[:16]
+        name = f"_inline_{digest}"
+        with contextlib.suppress(Exception):
+            # Already registered under this name (same content) — ignore.
+            register_schema(name, _schema_to_yaml(schema))
+        return name
+    raise TypeError(f"schema must be str or dict, got {type(schema).__name__}")
+
+
+# Wrap YAML to accept inline dict schemas. PyO3 validates signature at the
+# C level before calling __init__, so monkey-patching doesn't work for
+# argument type coercion. Use delegation instead.
+
+
+class _YAMLMetaclass(type):
+    """Metaclass that delegates class-level attribute access to the Rust YAML class."""
+
+    def __getattr__(cls, name):
+        return getattr(_YAML, name)
+
+
+class YAML(metaclass=_YAMLMetaclass):
+    """Configured parser instance; `schema` accepts a name or an inline dict."""
+
+    def __init__(self, typ="rt", schema="core", max_depth=1000, allow_duplicate_keys=False):
+        self._impl = _YAML(typ, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+
+    def __getattr__(self, name):
+        return getattr(self._impl, name)
+
+
+# Module-level functions with schema support — wrap to accept dict
+def safe_load(yaml, schema="core", max_depth=1000, allow_duplicate_keys=False):
+    return _safe_load(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+
+
+def safe_loads(yaml, schema="core", max_depth=1000, allow_duplicate_keys=False):
+    return _safe_loads(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+
+
+def parse(yaml, resolve_merges=True, schema="core", max_depth=1000, allow_duplicate_keys=False):
+    return _parse(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+
+
+def parse_file(path, schema="core", max_depth=1000, allow_duplicate_keys=False):
+    return _parse_file(path, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+
+
+def parse_all_docs(yaml, resolve_merges=True, schema="core", max_depth=1000, allow_duplicate_keys=False):
+    return _parse_all_docs(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+
+
+def read_markdown(content, schema="core", max_depth=1000):
+    return _read_markdown(content, _coerce_schema(schema), max_depth)
+
+
+def read_markdown_str(content, schema="core", max_depth=1000):
+    return _read_markdown_str(content, _coerce_schema(schema), max_depth)
 
 
 # Monkey-patch YamlDocument with node() and find() methods
@@ -139,6 +255,7 @@ YamlDocument.rename = _editing._yaml_document_rename
 
 __all__ = [
     "YAML",
+    "CustomType",
     "MergedView",
     "Node",
     "StreamIterator",
@@ -155,6 +272,7 @@ __all__ = [
     "YamlTypeError",
     "YamlValidateError",
     "clear_tag_handlers",
+    "clear_type_handlers",
     "compliance_report",
     "detect_language",
     "dump_file",
@@ -173,7 +291,9 @@ __all__ = [
     "read_markdown_str",
     "register_schema",
     "register_tag",
+    "register_type",
     "remove_tag",
+    "remove_type",
     "safe_dump",
     "safe_dump_async",
     "safe_load",
