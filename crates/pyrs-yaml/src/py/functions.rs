@@ -46,6 +46,7 @@ pub(crate) fn parse_file(
     allow_duplicate_keys: bool,
 ) -> PyResult<YamlDocument> {
     let schema_enum = parse_schema(schema)?;
+    let schema_clone = schema_enum.clone();
     let content = std::fs::read_to_string(path).map_err(|e| {
         pyo3::exceptions::PyIOError::new_err(format_i18n_error(
             "file-read-error",
@@ -56,7 +57,7 @@ pub(crate) fn parse_file(
         crate::parser::parse_with_options(
             &content,
             true,
-            schema_enum,
+            schema_clone,
             max_depth,
             allow_duplicate_keys,
         )
@@ -89,11 +90,12 @@ pub(crate) fn parse_all_docs(
     allow_duplicate_keys: bool,
 ) -> PyResult<Vec<YamlDocument>> {
     let schema_enum = parse_schema(schema)?;
+    let schema_clone = schema_enum.clone();
     let asts = py.detach(|| {
         crate::parser::parse_all_with_options(
             yaml,
             resolve_merges,
-            schema_enum,
+            schema_clone,
             max_depth,
             allow_duplicate_keys,
         )
@@ -104,7 +106,7 @@ pub(crate) fn parse_all_docs(
         .into_iter()
         .map(|ast| YamlDocument {
             ast,
-            schema: schema_enum,
+            schema: schema_enum.clone(),
             source: Some(source.clone()),
             version: "1.2".to_string(),
             revision: 0,
@@ -127,8 +129,9 @@ pub(crate) fn safe_load(
     allow_duplicate_keys: bool,
 ) -> PyResult<Py<PyAny>> {
     let schema_enum = parse_schema(schema)?;
+    let schema_clone = schema_enum.clone();
     let mut ast = py.detach(|| {
-        crate::parser::parse_with_options(yaml, true, schema_enum, max_depth, allow_duplicate_keys)
+        crate::parser::parse_with_options(yaml, true, schema_clone, max_depth, allow_duplicate_keys)
             .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     resolve_tags(&mut ast, py)?;
@@ -141,10 +144,10 @@ pub(crate) fn safe_load(
             py,
             &anchors,
             &mut visited,
-            schema_enum,
+            &schema_enum,
         )
     } else {
-        crate::py::convert::node_to_pyobject_simple(&ast, py, schema_enum)
+        crate::py::convert::node_to_pyobject_simple(&ast, py, &schema_enum)
     }
 }
 
@@ -159,11 +162,12 @@ pub(crate) fn safe_loads(
     allow_duplicate_keys: bool,
 ) -> PyResult<Vec<Py<PyAny>>> {
     let schema_enum = parse_schema(schema)?;
+    let schema_clone = schema_enum.clone();
     let asts = py.detach(|| {
         crate::parser::parse_all_with_options(
             yaml,
             true,
-            schema_enum,
+            schema_clone,
             max_depth,
             allow_duplicate_keys,
         )
@@ -181,10 +185,10 @@ pub(crate) fn safe_loads(
                     py,
                     &anchors,
                     &mut visited,
-                    schema_enum,
+                    &schema_enum,
                 )
             } else {
-                crate::py::convert::node_to_pyobject_simple(ast, py, schema_enum)
+                crate::py::convert::node_to_pyobject_simple(ast, py, &schema_enum)
             }
         })
         .collect()
@@ -329,13 +333,13 @@ pub(crate) fn read_markdown_str(
                 let ast = crate::parser::parse_with_options(
                     frontmatter,
                     true,
-                    schema_enum,
+                    schema_enum.clone(),
                     max_depth,
                     false,
                 )
                 .map_err(|e| parse_error_to_py_err(e, frontmatter, max_depth))?;
                 Ok((
-                    Some(node_to_pyobject(&ast, py, schema_enum)?),
+                    Some(node_to_pyobject(&ast, py, &schema_enum)?),
                     markdown_content.to_string(),
                 ))
             });

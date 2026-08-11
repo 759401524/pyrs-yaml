@@ -3,7 +3,8 @@
 
 use crate::YamlTypeError;
 use crate::ast::{CustomNode, ScalarStyle};
-use crate::parser::yaml::{YamlSchema, YamlType, resolve_yaml_type};
+use crate::parser::yaml::registry;
+use crate::parser::yaml::{Schema, YamlType};
 
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList};
@@ -14,18 +15,32 @@ pub fn format_i18n_error(key: &str, args: &[(&str, &str)]) -> String {
     crate::i18n::format_message(key, args)
 }
 
-/// Parse a schema string into YamlSchema.
-pub fn parse_schema(raw: &str) -> PyResult<YamlSchema> {
+/// Parse a schema string into Schema. Returns built-in schemas or looks up
+/// the global registry for custom schemas.
+pub fn parse_schema(raw: &str) -> PyResult<Schema> {
     let s = raw.to_lowercase();
     match s.as_str() {
-        "core" | "yaml.org,2002" | "yamlorg2002" => Ok(YamlSchema::Core),
-        "json" | "yaml.org,2002:json" => Ok(YamlSchema::Json),
-        "failsafe" | "yaml.org,2002:failsafe" => Ok(YamlSchema::Failsafe),
-        "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(YamlSchema::Yaml1_1),
-        _ => Err(YamlTypeError::new_err(format!(
-            "Unsupported schema '{}'. Supported: core, json, failsafe, yaml1.1",
-            raw
-        ))),
+        "core" | "yaml.org,2002" | "yamlorg2002" => Ok(Schema::Core),
+        "json" | "yaml.org,2002:json" => Ok(Schema::Json),
+        "failsafe" | "yaml.org,2002:failsafe" => Ok(Schema::Failsafe),
+        "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(Schema::Yaml1_1),
+        _ => {
+            // Try the global registry
+            if let Some(schema) = registry::get(&s) {
+                Ok(schema)
+            } else {
+                Err(YamlTypeError::new_err(format!(
+                    "Unsupported schema '{}'. Supported: core, json, failsafe, yaml1.1 {}",
+                    raw,
+                    registry::names()
+                        .iter()
+                        .filter(|n| !matches!(n.as_str(), "core" | "json" | "failsafe" | "yaml1.1"))
+                        .map(|n| format!("'{}'", n))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )))
+            }
+        }
     }
 }
 
@@ -56,7 +71,7 @@ pub fn node_to_pyobject_with_anchors<'a>(
     py: Python,
     anchors: &HashMap<&'a str, &'a CustomNode>,
     visited: &mut HashSet<usize>,
-    schema: YamlSchema,
+    schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Alias { name } => {
@@ -76,7 +91,7 @@ pub fn node_to_pyobject_with_anchors<'a>(
 }
 
 /// 将 `CustomNode` 转换为 Python 对象，不解析别名（别名节点返回 `None`）。
-pub fn node_to_pyobject(node: &CustomNode, py: Python, schema: YamlSchema) -> PyResult<Py<PyAny>> {
+pub fn node_to_pyobject(node: &CustomNode, py: Python, schema: &Schema) -> PyResult<Py<PyAny>> {
     node_to_pyobject_simple(node, py, schema)
 }
 
@@ -84,16 +99,13 @@ fn scalar_to_pyobject(
     py: Python,
     value: &str,
     style: &ScalarStyle,
-    schema: YamlSchema,
+    schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     if matches!(
         style,
         ScalarStyle::Plain | ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted
     ) {
-        // Note: quoted scalars are also resolved for round-trip compatibility.
-        // The serializer quotes negative numbers / special values, so the
-        // loader must de-quote them back to the correct type.
-        match resolve_yaml_type(value, schema) {
+        match schema.resolve(value) {
             YamlType::Null => Ok(py.None()),
             YamlType::Bool(b) => Ok(PyBool::new(py, b).to_owned().into_any().unbind()),
             YamlType::Int(n) => Ok(n.into_pyobject(py)?.into_any().unbind()),
@@ -110,7 +122,7 @@ fn node_to_pyobject_inner<'a>(
     py: Python,
     anchors: &HashMap<&'a str, &'a CustomNode>,
     visited: &mut HashSet<usize>,
-    schema: YamlSchema,
+    schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar { value, style, .. } => scalar_to_pyobject(py, value, style, schema),
@@ -142,7 +154,7 @@ fn node_to_pyobject_inner<'a>(
 pub(crate) fn node_to_pyobject_simple(
     node: &CustomNode,
     py: Python,
-    schema: YamlSchema,
+    schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     match node {
         CustomNode::Scalar { value, style, .. } => scalar_to_pyobject(py, value, style, schema),

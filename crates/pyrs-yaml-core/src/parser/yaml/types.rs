@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::sync::Arc;
 
 /// YAML schema profile controlling implicit type resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +12,79 @@ pub enum YamlSchema {
     Core,
     /// YAML 1.1 — adds legacy boolean lexemes (yes/no, on/off, y/n).
     Yaml1_1,
+}
+
+/// Extension point for custom schema resolvers.
+///
+/// Implement this trait to define a custom YAML schema resolution strategy.
+/// The resolver is called for each plain scalar to determine its YAML type.
+pub trait SchemaResolver: Send + Sync {
+    /// Resolve a plain scalar value to its YAML type.
+    fn resolve<'a>(&self, value: &'a str) -> YamlType<'a>;
+}
+
+/// A resolved schema: either a built-in variant (zero-cost dispatch) or a
+/// custom resolver registered via [`SchemaRegistry`].
+#[derive(Clone)]
+pub enum Schema {
+    /// No implicit resolution — every plain scalar is a string.
+    Failsafe,
+    /// JSON-compatible subset (no inf, nan, 0x, 0o).
+    Json,
+    /// YAML 1.2 Core — default behavior.
+    Core,
+    /// YAML 1.1 — adds legacy boolean lexemes (yes/no, on/off, y/n).
+    Yaml1_1,
+    /// Custom resolver registered via the registry.
+    Custom(Arc<dyn SchemaResolver>),
+}
+
+impl Schema {
+    /// Resolve a plain scalar value according to this schema.
+    pub fn resolve<'a>(&self, value: &'a str) -> YamlType<'a> {
+        match self {
+            Schema::Custom(r) => r.resolve(value),
+            Schema::Failsafe => resolve_schema_fn::<0>(value),
+            Schema::Json => resolve_schema_fn::<1>(value),
+            Schema::Core => resolve_schema_fn::<2>(value),
+            Schema::Yaml1_1 => resolve_schema_fn::<3>(value),
+        }
+    }
+}
+
+/// Const-generic dispatch to a built-in resolver function. The return lifetime
+/// is tied to the input slice, not to any enclosing borrow.
+fn resolve_schema_fn<'a, const IDX: u8>(value: &'a str) -> YamlType<'a> {
+    match IDX {
+        0 => crate::parser::yaml::schema::resolve_failsafe(value),
+        1 => crate::parser::yaml::schema::resolve_json_type(value),
+        2 => crate::parser::yaml::schema::resolve_core_type(value),
+        _ => crate::parser::yaml::schema::resolve_yaml11_type(value),
+    }
+}
+
+impl From<YamlSchema> for Schema {
+    fn from(s: YamlSchema) -> Self {
+        match s {
+            YamlSchema::Failsafe => Schema::Failsafe,
+            YamlSchema::Json => Schema::Json,
+            YamlSchema::Core => Schema::Core,
+            YamlSchema::Yaml1_1 => Schema::Yaml1_1,
+        }
+    }
+}
+
+impl PartialEq for Schema {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Schema::Failsafe, Schema::Failsafe) => true,
+            (Schema::Json, Schema::Json) => true,
+            (Schema::Core, Schema::Core) => true,
+            (Schema::Yaml1_1, Schema::Yaml1_1) => true,
+            (Schema::Custom(_), Schema::Custom(_)) => false,
+            _ => false,
+        }
+    }
 }
 
 /// YAML 1.2 type resolution for plain scalars
