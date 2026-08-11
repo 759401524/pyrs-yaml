@@ -157,6 +157,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::read_markdown_str;
     #[pymodule_export]
+    pub(crate) use super::functions::register_schema;
+    #[pymodule_export]
     pub(crate) use super::functions::register_tag;
     #[pymodule_export]
     pub(crate) use super::functions::remove_tag;

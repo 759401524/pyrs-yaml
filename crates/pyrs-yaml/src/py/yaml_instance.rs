@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::parser::yaml::registry;
 use crate::py::convert::{
     collect_anchors, format_i18n_error, node_to_pyobject_simple, node_to_pyobject_with_anchors,
     parse_schema,
@@ -37,16 +38,15 @@ impl YAML {
         allow_duplicate_keys: bool,
     ) -> PyResult<Self> {
         let valid_types = ["rt", "safe", "full"];
-        let valid_schemas = ["core", "yaml1.1", "failsafe", "json"];
         if !valid_types.contains(&typ) {
             return Err(YamlTypeError::new_err(format!(
                 "Invalid YAML type: '{}'. Valid types: rt, safe, full",
                 typ
             )));
         }
-        if !valid_schemas.contains(&schema) {
+        if !registry::exists(schema) {
             return Err(YamlTypeError::new_err(format!(
-                "Invalid schema: '{}'. Valid schemas: core, yaml1.1, failsafe, json",
+                "Invalid schema: '{}'. Valid schemas: core, yaml1.1, failsafe, json (plus any registered custom schemas)",
                 schema
             )));
         }

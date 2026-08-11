@@ -419,3 +419,23 @@ pub(crate) fn clear_tag_handlers() {
 pub(crate) fn remove_tag(name: &str) {
     tag_registry::remove(name);
 }
+
+#[pyfunction]
+#[pyo3(signature = (name: "str", schema_yaml: "str"))]
+/// Register a YAML Schema Language schema under a name.
+///
+/// `schema_yaml` is a schema definition in YAML format:
+/// ```yaml
+/// name: myapp
+/// extends: core
+/// rules:
+///   - pattern: "^0x[0-9a-fA-F]+$"
+///     type: int
+/// ```
+/// Once registered, the schema can be used as `YAML(schema="myapp")`.
+pub(crate) fn register_schema(name: &str, schema_yaml: &str) -> PyResult<()> {
+    let resolver = crate::parser::yaml::schema_language::parse_schema_yaml(schema_yaml)
+        .map_err(|e| YamlParseError::new_err(format!("Schema parse error: {}", e)))?;
+    crate::parser::yaml::registry::register_boxed(name, std::sync::Arc::new(resolver));
+    Ok(())
+}
