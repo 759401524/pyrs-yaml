@@ -8,9 +8,9 @@ import importlib.metadata
 import io
 import json
 
-import pyrs_yaml
 import pytest
 
+import pyrs_yaml
 from tests.data.yaml_samples import (
     BENCHMARK_BLOCK_STYLE as BLOCK_STYLE_YAML,
 )

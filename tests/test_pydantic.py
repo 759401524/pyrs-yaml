@@ -1,6 +1,6 @@
-import pyrs_yaml
 import pytest
 
+import pyrs_yaml
 from tests.data import yaml_samples as yaml
 
 pytest.importorskip("pydantic", reason="pydantic not installed")

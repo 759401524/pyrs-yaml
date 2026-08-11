@@ -7,7 +7,7 @@ type HandlerList = Vec<(u32, Py<PyAny>)>;
 static TAG_REGISTRY: LazyLock<Mutex<HashMap<String, HandlerList>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub fn register(name: &str, handler: Py<PyAny>, priority: u32) {
+pub(crate) fn register(name: &str, handler: Py<PyAny>, priority: u32) {
     let Ok(mut guard) = TAG_REGISTRY.lock() else {
         return;
     };
@@ -17,7 +17,7 @@ pub fn register(name: &str, handler: Py<PyAny>, priority: u32) {
         .push((priority, handler));
 }
 
-pub fn get_handlers(name: &str, py: Python<'_>) -> Option<Vec<(u32, Py<PyAny>)>> {
+pub(crate) fn get_handlers(name: &str, py: Python<'_>) -> Option<Vec<(u32, Py<PyAny>)>> {
     let guard = TAG_REGISTRY.lock().ok()?;
     let handlers = guard.get(name)?;
     let mut sorted: Vec<(u32, Py<PyAny>)> = handlers
@@ -28,7 +28,7 @@ pub fn get_handlers(name: &str, py: Python<'_>) -> Option<Vec<(u32, Py<PyAny>)>>
     Some(sorted)
 }
 
-pub fn clear_all() {
+pub(crate) fn clear_all() {
     let Ok(mut guard) = TAG_REGISTRY.lock() else {
         return;
     };
@@ -36,14 +36,14 @@ pub fn clear_all() {
 }
 
 /// Cheap check whether any tag handlers are registered.
-pub fn is_empty() -> bool {
+pub(crate) fn is_empty() -> bool {
     let Ok(guard) = TAG_REGISTRY.lock() else {
         return true;
     };
     guard.is_empty()
 }
 
-pub fn remove(name: &str) {
+pub(crate) fn remove(name: &str) {
     let Ok(mut guard) = TAG_REGISTRY.lock() else {
         return;
     };

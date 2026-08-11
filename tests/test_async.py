@@ -2,10 +2,12 @@
 
 import asyncio
 
+import pytest
+
 import pyrs_yaml
 
 
-async def test_safe_dump():
+def test_safe_dump():
     data = {"a": 1, "b": [2, 3]}
     yaml = pyrs_yaml.safe_dump(data)
     assert isinstance(yaml, str)
@@ -15,7 +17,7 @@ async def test_safe_dump():
 
 async def test_safe_dump_async():
     """safe_dump_async writes to stdout; verify async dispatch works."""
-    result = pyrs_yaml.safe_dump({"x": 1})
+    result = await pyrs_yaml.safe_dump_async({"x": 1})
     assert result is not None
     assert pyrs_yaml.safe_load(result) == {"x": 1}
 
@@ -43,11 +45,8 @@ async def test_safe_loads_async_schema():
 
 
 async def test_safe_loads_async_error():
-    try:
-        await pyrs_yaml.safe_loads("{{")
-        raise AssertionError("should have raised")
-    except pyrs_yaml.YamlParseError:
-        pass
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        await pyrs_yaml.safe_loads_async("{{")
 
 
 async def test_concurrent_async():
@@ -67,22 +66,3 @@ async def test_concurrent_mixed():
     results = await asyncio.gather(*(roundtrip(i) for i in range(30)))
     for i, result in enumerate(results):
         assert result[0] == {"n": i}
-
-
-async def main():
-    for name, fn in [
-        ("safe_dump", test_safe_dump),
-        ("safe_dump_async", test_safe_dump_async),
-        ("safe_loads_async", test_safe_loads_async),
-        ("safe_load_async", test_safe_load_async),
-        ("safe_loads_async_schema", test_safe_loads_async_schema),
-        ("safe_loads_async_error", test_safe_loads_async_error),
-        ("concurrent_async", test_concurrent_async),
-        ("concurrent_mixed", test_concurrent_mixed),
-    ]:
-        await fn()
-        print(f"  {name}: PASSED")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

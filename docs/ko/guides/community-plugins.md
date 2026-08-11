@@ -18,7 +18,13 @@ pyrs-yaml에는 임포트 시 자동 등록되는 내장 플러그인이 포함�
 
 | 태그 | Python 타입 | 설명 |
 |-----|-------------|------|
-| `!timestamp` | `datetime` | ISO 8601 타임스탬프 라운드트립 |
+| `!timestamp` | `datetime` | ISO 8601 일시 라운드트립 |
+| `!date` | `datetime.date` | ISO 8601 날짜(시간 없음) |
+| `!time` | `datetime.time` | ISO 8601 시간(날짜 없음) |
+| `!uuid` | `uuid.UUID` | UUID 문자열 ↔ 객체 |
+| `!decimal` | `decimal.Decimal` | 임의 정밀도 십진수 |
+| `!binary` | `bytes` | Base64 인코딩 바이너리 데이터 |
+| `!regex` | `re.Pattern` | 컴파일된 정규식 |
 | `!set` | `str` | YAML 세트(키 없는 매핑) |
 
 ### 사용자 정의 타입 생성

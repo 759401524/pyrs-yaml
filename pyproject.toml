@@ -33,6 +33,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Topic :: Text Processing :: Markup",
 ]
+dependencies = [
+    "typing-extensions>=4.12",
+]
 
 [project.optional-dependencies]
 pydantic = ["pydantic>=2.10.6"]
@@ -80,6 +83,7 @@ lint = [
     "ruff>=0.14.0; python_version >= '3.9'",
 ]
 dev = [
+    "hypothesis>=6.113.0",
     "maturin>=1.0,<2.0",
     {include-group = "test"},
     {include-group = "lint"},

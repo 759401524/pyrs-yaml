@@ -1,0 +1,13 @@
+# ty configuration (type checker).
+# See https://docs.astral.sh/ty/reference/configuration/
+# This file takes precedence over [tool.ty] in pyproject.toml.
+
+[environment]
+python-version = "3.8"
+
+[rules]
+all = "error"
+
+[src]
+include = ["python"]
+exclude = ["python/pyrs_yaml/pyrs_yaml.pyi"]

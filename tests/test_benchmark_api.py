@@ -11,9 +11,9 @@ parse_all_docs and parse_stream.
 import io
 from datetime import datetime, timezone
 
-import pyrs_yaml
 import pytest
 
+import pyrs_yaml
 from tests.data.yaml_samples import (
     BENCHMARK_ANCHOR as ANCHOR_YAML,
 )

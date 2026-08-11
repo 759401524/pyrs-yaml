@@ -2,8 +2,9 @@
 
 import io
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 def test_dump_stream_single_matches_safe_dump():

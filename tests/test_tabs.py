@@ -1,7 +1,8 @@
 """Test tab handling in quoted scalars"""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 @pytest.mark.parametrize(

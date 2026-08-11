@@ -96,6 +96,48 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 Raises `YamlValidateError` on validation failure.
 
+### YAML Schema Language
+
+Define custom schemas that control how plain scalars resolve to Python types:
+
+```python
+import pyrs_yaml
+
+# Register a custom schema from a YAML string
+pyrs_yaml.register_schema("hex", """
+name: hex
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+""")
+
+# Use with YAML instance or module-level functions
+y = pyrs_yaml.YAML(schema="hex")
+doc = y.parse("addr: 0xFF")
+assert doc.get("addr") == 255
+
+d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
+assert d["addr"] == 31
+```
+
+Or pass a dict inline instead of registering:
+
+```python
+d = pyrs_yaml.safe_load(
+    "addr: 0xFF",
+    schema={
+        "extends": "core",
+        "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}],
+    },
+)
+```
+
+- **`extends`** — optional base schema (`core`, `json`, `failsafe`, `yaml1.1`)
+- **`rules`** — ordered list of `{pattern, type}`; first match wins
+- **Supported types**: `null`, `bool`, `int`, `float`, `str`
+- Built-in Core schema still uses zero-cost `match` dispatch (unaffected)
+
 ### Duplicate Keys
 
 By default, duplicate mapping keys raise `YamlDuplicateKeyError`:
@@ -160,6 +202,50 @@ doc.get("name")  # "custom:value"
 - Multiple handlers for the same tag execute in ascending `priority` order; raising `YamlTagSkip` delegates to the next handler.
 - Handlers must return a string, otherwise `YamlTagError` is raised.
 - `remove_tag("!custom")` and `clear_tag_handlers()` unregister handlers.
+
+### Community Plugins
+
+Define custom YAML node types that integrate with serialization and deserialization:
+
+```python
+import pyrs_yaml
+from datetime import datetime
+
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+
+# Register imperative or decorator
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# Load: tagged scalar → Python object
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# Dump: Python object → tagged scalar
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out contains: ts: !timestamp 2026-08-11T10:30:00
+```
+
+**Built-in plugins** (registered at import time):
+`!timestamp` → `datetime`, `!date` → `datetime.date`, `!time` → `datetime.time`,
+`!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!binary` → `bytes`,
+`!regex` → `re.Pattern`, `!set` → `str`
+
+| Method | Description |
+|--------|-------------|
+| `can_parse(node)` | Whether this type handles a given AST node |
+| `from_yaml(value)` | Convert YAML string → Python object |
+| `to_yaml(obj)` | Convert Python object → YAML string |
+| `validate(obj)` | Validate a Python object (returns `bool`) |
 
 ### Pydantic Integration
 

@@ -26,50 +26,39 @@ pub struct Yaml11Resolver;
 
 impl SchemaResolver for FailsafeResolver {
     fn resolve<'a>(&self, value: &'a str) -> YamlType<'a> {
-        fn inner(v: &str) -> YamlType<'_> {
-            resolve_failsafe(v)
-        }
-        inner(value)
+        resolve_failsafe(value)
     }
 }
 
 impl SchemaResolver for JsonResolver {
     fn resolve<'a>(&self, value: &'a str) -> YamlType<'a> {
-        fn inner(v: &str) -> YamlType<'_> {
-            resolve_json_type(v)
-        }
-        inner(value)
+        resolve_json_type(value)
     }
 }
 
 impl SchemaResolver for CoreResolver {
     fn resolve<'a>(&self, value: &'a str) -> YamlType<'a> {
-        fn inner(v: &str) -> YamlType<'_> {
-            resolve_core_type(v)
-        }
-        inner(value)
+        resolve_core_type(value)
     }
 }
 
 impl SchemaResolver for Yaml11Resolver {
     fn resolve<'a>(&self, value: &'a str) -> YamlType<'a> {
-        fn inner(v: &str) -> YamlType<'_> {
-            resolve_yaml11_type(v)
-        }
-        inner(value)
+        resolve_yaml11_type(value)
     }
 }
 
-static REGISTRY: LazyLock<RwLock<SchemaRegistry>> = LazyLock::new(|| {
-    let mut reg = SchemaRegistry {
-        schemas: HashMap::new(),
-    };
-    reg.schemas.insert("failsafe".to_string(), Schema::Failsafe);
-    reg.schemas.insert("json".to_string(), Schema::Json);
-    reg.schemas.insert("core".to_string(), Schema::Core);
-    reg.schemas.insert("yaml1.1".to_string(), Schema::Yaml1_1);
-    RwLock::new(reg)
-});
+fn builtin_schemas() -> HashMap<String, Schema> {
+    let mut schemas = HashMap::new();
+    schemas.insert("failsafe".to_string(), Schema::Failsafe);
+    schemas.insert("json".to_string(), Schema::Json);
+    schemas.insert("core".to_string(), Schema::Core);
+    schemas.insert("yaml1.1".to_string(), Schema::Yaml1_1);
+    schemas
+}
+
+static REGISTRY: LazyLock<RwLock<SchemaRegistry>> =
+    LazyLock::new(|| RwLock::new(SchemaRegistry::new()));
 
 /// A registry of named YAML schemas.
 #[derive(Default)]
@@ -80,12 +69,9 @@ pub struct SchemaRegistry {
 impl SchemaRegistry {
     /// Create a fresh registry pre-loaded with the built-in schemas.
     pub fn new() -> Self {
-        let mut schemas = HashMap::new();
-        schemas.insert("failsafe".to_string(), Schema::Failsafe);
-        schemas.insert("json".to_string(), Schema::Json);
-        schemas.insert("core".to_string(), Schema::Core);
-        schemas.insert("yaml1.1".to_string(), Schema::Yaml1_1);
-        Self { schemas }
+        Self {
+            schemas: builtin_schemas(),
+        }
     }
 
     /// Register a custom schema under a name. Overwrites any existing entry.

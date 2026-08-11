@@ -19,8 +19,9 @@ documentation release. These tests pin the behavior so future parser changes
 cannot silently regress strictness or over-reject.
 """
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 # Probes that MUST raise (either YamlParseError or YamlDuplicateKeyError).
 REJECT = [

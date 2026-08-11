@@ -6,8 +6,21 @@ use crate::parser::{StreamEvent, StreamEventType};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+/// Set `key` to `value` if present, otherwise to `None`.
+fn set_item_or_none<'a>(
+    dict: &Bound<'a, PyDict>,
+    py: Python<'a>,
+    key: &str,
+    value: Option<&str>,
+) -> PyResult<()> {
+    match value {
+        Some(v) => dict.set_item(key, v),
+        None => dict.set_item(key, py.None()),
+    }
+}
+
 /// Helper: set common event fields (type, value, style, anchor, tag) on a dict.
-pub fn fill_event_dict<'a>(
+pub(crate) fn fill_event_dict<'a>(
     dict: &Bound<'a, PyDict>,
     py: Python<'a>,
     event_type: &str,
@@ -17,27 +30,15 @@ pub fn fill_event_dict<'a>(
     tag: Option<&str>,
 ) -> PyResult<()> {
     dict.set_item("type", event_type)?;
-    match value {
-        Some(v) => dict.set_item("value", v)?,
-        None => dict.set_item("value", py.None())?,
-    }
-    match style {
-        Some(s) => dict.set_item("style", s)?,
-        None => dict.set_item("style", py.None())?,
-    }
-    match anchor {
-        Some(a) => dict.set_item("anchor", a)?,
-        None => dict.set_item("anchor", py.None())?,
-    }
-    match tag {
-        Some(t) => dict.set_item("tag", t)?,
-        None => dict.set_item("tag", py.None())?,
-    }
+    set_item_or_none(dict, py, "value", value)?;
+    set_item_or_none(dict, py, "style", style)?;
+    set_item_or_none(dict, py, "anchor", anchor)?;
+    set_item_or_none(dict, py, "tag", tag)?;
     Ok(())
 }
 
 /// Convert a `StreamEvent` to a Python dict.
-pub fn stream_event_to_py_dict<'a>(
+pub(crate) fn stream_event_to_py_dict<'a>(
     py: Python<'a>,
     event: &StreamEvent,
 ) -> PyResult<Bound<'a, PyDict>> {

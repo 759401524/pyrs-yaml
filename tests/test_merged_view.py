@@ -1,7 +1,8 @@
 """Tests for MergedView and doc.version (v0.8.0 Phase 4 + Phase 5)."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 from pyrs_yaml import MergedView
 
 

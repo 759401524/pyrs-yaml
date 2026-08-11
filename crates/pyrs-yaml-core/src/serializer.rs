@@ -1,5 +1,6 @@
-use crate::ast::{Chomping, CustomNode, ScalarStyle, Tag};
-use crate::error::SerializeError;
+use crate::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
+use crate::error::{DepthError, SerializeError};
+use indexmap::IndexMap;
 
 /// Serialization options
 #[derive(Debug, Clone, PartialEq)]
@@ -41,11 +42,8 @@ impl Default for SerializeOptions {
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
 /// let node = CustomNode::Mapping {
 ///     pairs,
-///     tag: None,
-///     comment: None,
-///     anchor: None,
 ///     flow_style: false,
-///     source_range: None,
+///     meta: Default::default(),
 /// };
 /// let output = to_yaml(&node);
 /// assert_eq!(output, "a: 1\n");
@@ -64,11 +62,8 @@ pub fn to_yaml(node: &CustomNode) -> String {
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
 /// let node = CustomNode::Mapping {
 ///     pairs,
-///     tag: None,
-///     comment: None,
-///     anchor: None,
 ///     flow_style: false,
-///     source_range: None,
+///     meta: Default::default(),
 /// };
 /// let opts = SerializeOptions {
 ///     indent_size: 4,
@@ -88,7 +83,7 @@ pub fn to_yaml_with_options(
     if options.explicit_start {
         serializer.output.push_str("---\n");
     }
-    serializer.serialize_node_internal(node, options.indent_offset, false, false, 0)?;
+    serializer.serialize_node_internal(node, options.indent_offset, false, 0)?;
     if options.explicit_end {
         serializer.output.push_str("...\n");
     }
@@ -140,9 +135,12 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
         node,
         CustomNode::Mapping {
             pairs,
-            comment: None,
-            anchor: None,
-            tag: None,
+            meta: NodeMeta {
+                comment: None,
+                anchor: None,
+                tag: None,
+                ..
+            },
             flow_style: false,
             ..
         } if !pairs.is_empty()
@@ -159,11 +157,10 @@ pub fn pair_to_string(
     key: &CustomNode,
     value: &CustomNode,
     indent_width: usize,
-    is_last: bool,
     depth: usize,
 ) -> Result<String, SerializeError> {
     let mut s = Serializer::new(&SerializeOptions::default());
-    s.write_mapping_pair(key, value, indent_width, is_last, depth)?;
+    s.write_mapping_pair(key, value, indent_width, depth)?;
     Ok(s.output)
 }
 
@@ -171,11 +168,10 @@ pub fn pair_to_string(
 pub fn item_to_string(
     item: &CustomNode,
     indent_width: usize,
-    is_last: bool,
     depth: usize,
 ) -> Result<String, SerializeError> {
     let mut s = Serializer::new(&SerializeOptions::default());
-    s.write_sequence_item(item, indent_width, is_last, depth)?;
+    s.write_sequence_item(item, indent_width, depth)?;
     Ok(s.output)
 }
 
@@ -228,12 +224,11 @@ impl Serializer {
         &mut self,
         node: &CustomNode,
         indent_width: usize,
-        _is_last: bool,
         in_value_context: bool,
         depth: usize,
     ) -> Result<(), SerializeError> {
         if depth >= self.max_depth {
-            return Err(SerializeError::MaxDepthExceeded(self.max_depth));
+            return Err(SerializeError::MaxDepthExceeded(DepthError(self.max_depth)));
         }
 
         // Handle standalone comments first
@@ -250,190 +245,222 @@ impl Serializer {
             CustomNode::Scalar {
                 value,
                 style,
-                comment,
-                anchor,
-                tag,
+                meta,
                 chomping,
                 ..
-            } => {
-                self.write_indent(indent_width);
-                if anchor.is_some() || tag.is_some() {
-                    self.write_anchor_tag(anchor, tag);
-                }
-
-                self.write_scalar(value, style, chomping, self.width);
-                if let Some(c) = comment
-                    && !c.standalone
-                {
-                    self.output.push_str("  # ");
-                    self.output.push_str(&c.text);
-                }
-
-                self.output.push('\n');
-            }
+            } => self.write_scalar_node(value, style, meta, chomping, indent_width)?,
             CustomNode::Mapping {
                 pairs,
-                comment,
-                anchor,
-                tag,
+                meta,
                 flow_style,
                 ..
-            } => {
-                if *flow_style {
-                    // Flow style: { key: value, key2: value2 }
-                    self.output.push('{');
-                    if !pairs.is_empty() {
-                        for (i, (key, value)) in pairs.iter().enumerate() {
-                            if i > 0 {
-                                self.output.push_str(", ");
-                            }
-                            self.write_scalar_for_key(key);
-                            self.output.push_str(": ");
-                            self.serialize_flow_value(value, depth + 1)?;
-                        }
-                    }
-                    self.output.push('}');
-                    if let Some(c) = comment
-                        && !c.standalone
-                    {
-                        self.output.push_str("  # ");
-                        self.output.push_str(&c.text);
-                    }
-                    self.output.push('\n');
-                } else {
-                    // Block style (original logic)
-                    // Write anchor and tag if present (but not if in value context - they were already output)
-                    if !in_value_context && (anchor.is_some() || tag.is_some()) {
-                        self.write_indent(indent_width);
-                        self.write_anchor_tag(anchor, tag);
-                        self.output.push('\n');
-                    }
-
-                    if self.sort_keys {
-                        let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
-                        pairs_vec.sort_by(|a, b| {
-                            let ka = match a.0 {
-                                CustomNode::Scalar { value, .. } => value.as_ref(),
-                                _ => "",
-                            };
-                            let kb = match b.0 {
-                                CustomNode::Scalar { value, .. } => value.as_ref(),
-                                _ => "",
-                            };
-                            ka.cmp(kb)
-                        });
-
-                        for (i, (key, value)) in pairs_vec.iter().copied().enumerate() {
-                            self.write_mapping_pair(
-                                key,
-                                value,
-                                indent_width,
-                                i == pairs_vec.len() - 1,
-                                depth,
-                            )?;
-                        }
-                    } else {
-                        for (i, (key, value)) in pairs.iter().enumerate() {
-                            self.write_mapping_pair(
-                                key,
-                                value,
-                                indent_width,
-                                i == pairs.len() - 1,
-                                depth,
-                            )?;
-                        }
-                    }
-
-                    // Write mapping comment
-                    if let Some(c) = comment
-                        && !c.standalone
-                    {
-                        self.write_indent(indent_width);
-                        self.output.push_str("# ");
-                        self.output.push_str(&c.text);
-                        self.output.push('\n');
-                    }
-                } // end block style
-            }
+            } => self.write_mapping_node(
+                pairs,
+                meta,
+                *flow_style,
+                indent_width,
+                depth,
+                in_value_context,
+            )?,
             CustomNode::Sequence {
                 items,
-                comment,
-                anchor,
-                tag,
+                meta,
                 flow_style,
                 ..
-            } => {
-                if *flow_style {
-                    // Flow style: [ item1, item2 ]
-                    self.output.push('[');
-                    if !items.is_empty() {
-                        for (i, item) in items.iter().enumerate() {
-                            if i > 0 {
-                                self.output.push_str(", ");
-                            }
-                            self.serialize_flow_value(item, depth + 1)?;
-                        }
-                    }
-                    self.output.push(']');
-                    if let Some(c) = comment
-                        && !c.standalone
-                    {
-                        self.output.push_str("  # ");
-                        self.output.push_str(&c.text);
-                    }
-                    self.output.push('\n');
-                } else {
-                    // Block style (original logic)
-                    // Write anchor and tag if present (but not if in value context)
-                    if !in_value_context && (anchor.is_some() || tag.is_some()) {
-                        self.write_indent(indent_width);
-                        self.write_anchor_tag(anchor, tag);
-                        self.output.push('\n');
-                    }
+            } => self.write_sequence_node(
+                items,
+                meta,
+                *flow_style,
+                indent_width,
+                depth,
+                in_value_context,
+            )?,
+            CustomNode::Null { meta, .. } => self.write_null_node(meta, indent_width)?,
+            CustomNode::Alias { name } => self.write_alias_node(name, indent_width)?,
+        }
+        Ok(())
+    }
 
-                    for (i, item) in items.iter().enumerate() {
-                        self.write_sequence_item(item, indent_width, i == items.len() - 1, depth)?;
-                    }
+    /// Serialize a scalar node (plain / quoted / block) with its anchor, tag and
+    /// trailing comment. Extracted from `serialize_node_internal`.
+    fn write_scalar_node(
+        &mut self,
+        value: &str,
+        style: &ScalarStyle,
+        meta: &NodeMeta,
+        chomping: &Chomping,
+        indent_width: usize,
+    ) -> Result<(), SerializeError> {
+        self.write_indent(indent_width);
+        if meta.anchor.is_some() || meta.tag.is_some() {
+            self.write_anchor_tag(&meta.anchor, &meta.tag);
+        }
+        self.write_scalar(value, style, chomping, self.width);
+        if let Some(c) = &meta.comment
+            && !c.standalone
+        {
+            self.output.push_str("  # ");
+            self.output.push_str(&c.text);
+        }
+        self.output.push('\n');
+        Ok(())
+    }
 
-                    // Write sequence comment
-                    if let Some(c) = comment
-                        && !c.standalone
-                    {
-                        self.write_indent(indent_width);
-                        self.output.push_str("# ");
-                        self.output.push_str(&c.text);
-                        self.output.push('\n');
+    /// Serialize a mapping node in either flow (`{ ... }`) or block style,
+    /// including anchor/tag and trailing comment. Extracted from
+    /// `serialize_node_internal`.
+    fn write_mapping_node(
+        &mut self,
+        pairs: &IndexMap<CustomNode, CustomNode>,
+        meta: &NodeMeta,
+        flow_style: bool,
+        indent_width: usize,
+        depth: usize,
+        in_value_context: bool,
+    ) -> Result<(), SerializeError> {
+        if flow_style {
+            self.output.push('{');
+            if !pairs.is_empty() {
+                for (i, (key, value)) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
                     }
-                } // end block style
+                    self.write_scalar_for_key(key);
+                    self.output.push_str(": ");
+                    self.serialize_flow_value(value, depth + 1)?;
+                }
             }
-            CustomNode::Null {
-                comment,
-                anchor,
-                tag,
-                ..
-            } => {
+            self.output.push('}');
+            if let Some(c) = &meta.comment
+                && !c.standalone
+            {
+                self.output.push_str("  # ");
+                self.output.push_str(&c.text);
+            }
+            self.output.push('\n');
+        } else {
+            if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
                 self.write_indent(indent_width);
-                if anchor.is_some() || tag.is_some() {
-                    self.write_anchor_tag(anchor, tag);
-                }
-
-                self.output.push_str("null");
-                if let Some(c) = comment
-                    && !c.standalone
-                {
-                    self.output.push_str("  # ");
-                    self.output.push_str(&c.text);
-                }
-
+                self.write_anchor_tag(&meta.anchor, &meta.tag);
                 self.output.push('\n');
             }
-            CustomNode::Alias { name } => {
+
+            if self.sort_keys {
+                let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
+                pairs_vec.sort_by(|a, b| {
+                    let ka = match a.0 {
+                        CustomNode::Scalar { value, .. } => value.as_ref(),
+                        _ => "",
+                    };
+                    let kb = match b.0 {
+                        CustomNode::Scalar { value, .. } => value.as_ref(),
+                        _ => "",
+                    };
+                    ka.cmp(kb)
+                });
+
+                for (key, value) in pairs_vec.iter().copied() {
+                    self.write_mapping_pair(key, value, indent_width, depth)?;
+                }
+            } else {
+                for (key, value) in pairs.iter() {
+                    self.write_mapping_pair(key, value, indent_width, depth)?;
+                }
+            }
+
+            if let Some(c) = &meta.comment
+                && !c.standalone
+            {
                 self.write_indent(indent_width);
-                self.output.push('*');
-                self.output.push_str(name);
+                self.output.push_str("# ");
+                self.output.push_str(&c.text);
                 self.output.push('\n');
             }
         }
+        Ok(())
+    }
+
+    /// Serialize a sequence node in either flow (`[ ... ]`) or block style,
+    /// including anchor/tag and trailing comment. Extracted from
+    /// `serialize_node_internal`.
+    fn write_sequence_node(
+        &mut self,
+        items: &[CustomNode],
+        meta: &NodeMeta,
+        flow_style: bool,
+        indent_width: usize,
+        depth: usize,
+        in_value_context: bool,
+    ) -> Result<(), SerializeError> {
+        if flow_style {
+            self.output.push('[');
+            if !items.is_empty() {
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.serialize_flow_value(item, depth + 1)?;
+                }
+            }
+            self.output.push(']');
+            if let Some(c) = &meta.comment
+                && !c.standalone
+            {
+                self.output.push_str("  # ");
+                self.output.push_str(&c.text);
+            }
+            self.output.push('\n');
+        } else {
+            if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
+                self.write_indent(indent_width);
+                self.write_anchor_tag(&meta.anchor, &meta.tag);
+                self.output.push('\n');
+            }
+
+            for item in items.iter() {
+                self.write_sequence_item(item, indent_width, depth)?;
+            }
+
+            if let Some(c) = &meta.comment
+                && !c.standalone
+            {
+                self.write_indent(indent_width);
+                self.output.push_str("# ");
+                self.output.push_str(&c.text);
+                self.output.push('\n');
+            }
+        }
+        Ok(())
+    }
+
+    /// Serialize a null node with its anchor, tag and trailing comment.
+    /// Extracted from `serialize_node_internal`.
+    fn write_null_node(
+        &mut self,
+        meta: &NodeMeta,
+        indent_width: usize,
+    ) -> Result<(), SerializeError> {
+        self.write_indent(indent_width);
+        if meta.anchor.is_some() || meta.tag.is_some() {
+            self.write_anchor_tag(&meta.anchor, &meta.tag);
+        }
+        self.output.push_str("null");
+        if let Some(c) = &meta.comment
+            && !c.standalone
+        {
+            self.output.push_str("  # ");
+            self.output.push_str(&c.text);
+        }
+        self.output.push('\n');
+        Ok(())
+    }
+
+    /// Serialize an alias node (`*name`). Extracted from `serialize_node_internal`.
+    fn write_alias_node(&mut self, name: &str, indent_width: usize) -> Result<(), SerializeError> {
+        self.write_indent(indent_width);
+        self.output.push('*');
+        self.output.push_str(name);
+        self.output.push('\n');
         Ok(())
     }
 
@@ -457,13 +484,12 @@ impl Serializer {
 
     /// Write one `key: value` pair of a block mapping, including indentation,
     /// the `?` marker for complex keys, and the value emission (block value on
-    /// a new line, or inline). `is_last` is true when this is the final pair.
+    /// a new line, or inline).
     pub(crate) fn write_mapping_pair(
         &mut self,
         key: &CustomNode,
         value: &CustomNode,
         indent_width: usize,
-        is_last: bool,
         depth: usize,
     ) -> Result<(), SerializeError> {
         // Check if key is a complex key (mapping or sequence)
@@ -478,7 +504,7 @@ impl Serializer {
             self.output.push_str("? ");
             // For complex keys, we need to serialize at the same indent level
             // but the key content should be indented relative to the ?
-            self.serialize_node_internal(key, indent_width, false, false, depth + 1)?;
+            self.serialize_node_internal(key, indent_width, false, depth + 1)?;
         } else {
             // Simple key
             // Handle standalone comments before the key
@@ -521,26 +547,23 @@ impl Serializer {
             self.serialize_node_internal(
                 value,
                 indent_width + self.indent_mapping,
-                is_last,
                 true,
                 depth + 1,
             )?;
         } else {
             self.output.push(' ');
-            self.serialize_node_internal(value, 0, is_last, true, depth + 1)?;
+            self.serialize_node_internal(value, 0, true, depth + 1)?;
         }
 
         Ok(())
     }
 
     /// Write one `- ` item of a block sequence, keeping the compact inline
-    /// form for plain mappings on the dash line. `is_last` is true when this
-    /// is the final item.
+    /// form for plain mappings on the dash line.
     pub(crate) fn write_sequence_item(
         &mut self,
         item: &CustomNode,
         indent_width: usize,
-        is_last: bool,
         depth: usize,
     ) -> Result<(), SerializeError> {
         self.write_indent(indent_width);
@@ -561,13 +584,7 @@ impl Serializer {
                 self.write_scalar_for_key(key);
                 self.output.push(':');
                 self.output.push(' ');
-                self.serialize_node_internal(
-                    value,
-                    0,
-                    is_last && pi == pairs.len() - 1,
-                    true,
-                    depth + 1,
-                )?;
+                self.serialize_node_internal(value, 0, true, depth + 1)?;
             }
         } else if matches!(
             item,
@@ -583,7 +600,6 @@ impl Serializer {
             self.serialize_node_internal(
                 item,
                 indent_width + self.indent_sequence,
-                is_last,
                 false,
                 depth + 1,
             )?;
@@ -591,7 +607,7 @@ impl Serializer {
             // For simple items (including flow-style containers),
             // they go on the same line as the dash. Don't pass
             // indent_width to avoid extra indentation.
-            self.serialize_node_internal(item, 0, is_last, false, depth + 1)?;
+            self.serialize_node_internal(item, 0, false, depth + 1)?;
         }
 
         Ok(())
@@ -626,94 +642,17 @@ impl Serializer {
     /// Write a plain scalar, quoting if necessary.
     /// `remaining` is the remaining width on the current line (0 = don't wrap).
     fn write_plain_scalar(&mut self, value: &str, remaining: usize) {
-        if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
-            self.output.push_str(value);
-            return;
-        }
-        if value.is_empty()
-            || value.contains(':')
-            || value.contains('#')
-            || value.starts_with('-')
-            || value.starts_with('{')
-            || value.starts_with('[')
-            || value.starts_with('*')
-            || value.starts_with('&')
-            || value.starts_with('!')
-            || value.starts_with('%')
-            || value.starts_with('@')
-            || value.starts_with('`')
-            || value.contains('\n')
-        {
-            self.write_double_quoted_scalar(value);
-        } else {
-            // Width-based wrapping: if remaining > 0 and value is too long, wrap
-            if remaining > 0 && value.len() > remaining {
-                let split = value[..remaining].rfind(' ').unwrap_or(remaining);
-                self.output.push_str(&value[..split]);
-                let rest = value[split..].trim();
-                if !rest.is_empty() {
-                    self.output.push('\n');
-                    let wrap_indent_str = " ".repeat(2);
-                    let max_line = self.width;
-                    let mut remaining_rest = rest;
-                    while !remaining_rest.is_empty() {
-                        self.output.push_str(&wrap_indent_str);
-                        if remaining_rest.len() <= max_line.saturating_sub(wrap_indent_str.len()) {
-                            self.output.push_str(remaining_rest);
-                            break;
-                        }
-                        let avail = max_line.saturating_sub(wrap_indent_str.len());
-                        if avail == 0 {
-                            self.output.push_str(remaining_rest);
-                            break;
-                        }
-                        let split_rest = remaining_rest[..avail].rfind(' ').unwrap_or(avail);
-                        self.output.push_str(&remaining_rest[..split_rest]);
-                        self.output.push('\n');
-                        remaining_rest = remaining_rest[split_rest..].trim();
-                    }
-                }
-            } else {
-                self.output.push_str(value);
-            }
-        }
+        write_plain_scalar(&mut self.output, value, remaining, self.width);
     }
 
     /// Write a single-quoted scalar (single quotes escaped by doubling).
     fn write_single_quoted_scalar(&mut self, value: &str) {
-        self.output.push('\'');
-        for c in value.chars() {
-            if c == '\'' {
-                self.output.push_str("''");
-            } else {
-                self.output.push(c);
-            }
-        }
-        self.output.push('\'');
+        write_single_quoted_scalar(&mut self.output, value);
     }
 
     /// Write a double-quoted scalar with escape sequences.
     fn write_double_quoted_scalar(&mut self, value: &str) {
-        self.output.push('"');
-        for c in value.chars() {
-            match c {
-                '\\' => self.output.push_str("\\\\"),
-                '"' => self.output.push_str("\\\""),
-                '\n' => self.output.push_str("\\n"),
-                '\r' => self.output.push_str("\\r"),
-                '\t' => self.output.push_str("\\t"),
-                '\0' => self.output.push_str("\\0"),
-                '\x08' => self.output.push_str("\\b"),
-                '\x0C' => self.output.push_str("\\f"),
-                '\x1B' => self.output.push_str("\\e"),
-                '/' => self.output.push_str("\\/"),
-                _ if c.is_control() => {
-                    self.output.push_str(&format!("\\u{:04x}", c as u32));
-                }
-                _ => self.output.push(c),
-            }
-        }
-        self.output.push('"');
+        write_double_quoted_scalar(&mut self.output, value);
     }
 
     /// Write a literal block scalar (`|`) with chomping indicator.
@@ -764,33 +703,27 @@ impl Serializer {
         depth: usize,
     ) -> Result<(), SerializeError> {
         if depth >= self.max_depth {
-            return Err(SerializeError::MaxDepthExceeded(self.max_depth));
+            return Err(SerializeError::MaxDepthExceeded(DepthError(self.max_depth)));
         }
 
         match node {
             CustomNode::Scalar {
-                value,
-                style,
-                anchor,
-                tag,
-                ..
+                value, style, meta, ..
             } => {
-                if anchor.is_some() || tag.is_some() {
-                    self.write_anchor_tag(anchor, tag);
+                if meta.anchor.is_some() || meta.tag.is_some() {
+                    self.write_anchor_tag(&meta.anchor, &meta.tag);
                 }
                 self.write_scalar(value, style, &Chomping::Clip, self.width);
             }
-            CustomNode::Null { anchor, tag, .. } => {
-                if anchor.is_some() || tag.is_some() {
-                    self.write_anchor_tag(anchor, tag);
+            CustomNode::Null { meta, .. } => {
+                if meta.anchor.is_some() || meta.tag.is_some() {
+                    self.write_anchor_tag(&meta.anchor, &meta.tag);
                 }
                 self.output.push_str("null");
             }
-            CustomNode::Mapping {
-                pairs, anchor, tag, ..
-            } => {
-                if anchor.is_some() || tag.is_some() {
-                    self.write_anchor_tag(anchor, tag);
+            CustomNode::Mapping { pairs, meta, .. } => {
+                if meta.anchor.is_some() || meta.tag.is_some() {
+                    self.write_anchor_tag(&meta.anchor, &meta.tag);
                 }
                 self.output.push('{');
                 for (i, (key, value)) in pairs.iter().enumerate() {
@@ -803,11 +736,9 @@ impl Serializer {
                 }
                 self.output.push('}');
             }
-            CustomNode::Sequence {
-                items, anchor, tag, ..
-            } => {
-                if anchor.is_some() || tag.is_some() {
-                    self.write_anchor_tag(anchor, tag);
+            CustomNode::Sequence { items, meta, .. } => {
+                if meta.anchor.is_some() || meta.tag.is_some() {
+                    self.write_anchor_tag(&meta.anchor, &meta.tag);
                 }
                 self.output.push('[');
                 for (i, item) in items.iter().enumerate() {
@@ -824,6 +755,114 @@ impl Serializer {
             }
         }
         Ok(())
+    }
+}
+
+// Shared scalar-formatting helpers used by both [`Serializer`] (the AST path)
+// and the Python-side `DirectWriter` fast path. Operating on a caller-owned
+// `String` keeps them crate-agnostic and stops the two mirror implementations
+// from drifting. Output is byte-identical to the previous serializer methods.
+//
+// `remaining` is the remaining width on the current line (0 disables the
+// first-line wrap); `width` is the full wrap width used for continuations.
+
+/// Append `value` to `out` as a single-quoted YAML scalar (quotes doubled).
+pub fn write_single_quoted_scalar(out: &mut String, value: &str) {
+    out.push('\'');
+    for c in value.chars() {
+        if c == '\'' {
+            out.push_str("''");
+        } else {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+}
+
+/// Append `value` to `out` as a double-quoted YAML scalar, escaping control
+/// and special characters.
+pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
+    out.push('"');
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\0' => out.push_str("\\0"),
+            '\x08' => out.push_str("\\b"),
+            '\x0C' => out.push_str("\\f"),
+            '\x1B' => out.push_str("\\e"),
+            '/' => out.push_str("\\/"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+/// Whether a plain scalar must be rendered double-quoted because it would be
+/// ambiguous or invalid as an unquoted token.
+fn needs_double_quoted(value: &str) -> bool {
+    value.is_empty()
+        || value.contains(':')
+        || value.contains('#')
+        || value.starts_with('-')
+        || value.starts_with('{')
+        || value.starts_with('[')
+        || value.starts_with('*')
+        || value.starts_with('&')
+        || value.starts_with('!')
+        || value.starts_with('%')
+        || value.starts_with('@')
+        || value.starts_with('`')
+        || value.contains('\n')
+}
+
+/// Append `value` to `out` as a plain scalar, double-quoting it if required
+/// and wrapping to `width` when it overflows `remaining`.
+pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width: usize) {
+    if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        out.push_str(value);
+        return;
+    }
+    if needs_double_quoted(value) {
+        write_double_quoted_scalar(out, value);
+    } else if remaining > 0 && value.len() > remaining {
+        let safe_remaining = value.floor_char_boundary(remaining);
+        let split = value[..safe_remaining].rfind(' ').unwrap_or(safe_remaining);
+        out.push_str(&value[..split]);
+        let rest = value[split..].trim();
+        if !rest.is_empty() {
+            out.push('\n');
+            wrap_plain_scalar(out, rest, width);
+        }
+    } else {
+        out.push_str(value);
+    }
+}
+
+/// Wrap `value` to `width` with a fixed 2-space continuation indent. Used by
+/// [`write_plain_scalar`] when a value overflows the current line.
+pub fn wrap_plain_scalar(out: &mut String, value: &str, width: usize) {
+    let wrap_indent_str = " ".repeat(2);
+    let mut remaining_rest = value;
+    while !remaining_rest.is_empty() {
+        out.push_str(&wrap_indent_str);
+        if remaining_rest.len() <= width.saturating_sub(wrap_indent_str.len()) {
+            out.push_str(remaining_rest);
+            break;
+        }
+        let avail = width.saturating_sub(wrap_indent_str.len());
+        if avail == 0 {
+            out.push_str(remaining_rest);
+            break;
+        }
+        let split_rest = remaining_rest[..avail].rfind(' ').unwrap_or(avail);
+        out.push_str(&remaining_rest[..split_rest]);
+        out.push('\n');
+        remaining_rest = remaining_rest[split_rest..].trim();
     }
 }
 
@@ -850,9 +889,8 @@ mod tests {
         let CustomNode::Mapping { pairs, .. } = &ast else {
             panic!()
         };
-        for (i, (k, v)) in pairs.iter().enumerate() {
-            s.write_mapping_pair(k, v, 0, i == pairs.len() - 1, 0)
-                .unwrap();
+        for (k, v) in pairs.iter() {
+            s.write_mapping_pair(k, v, 0, 0).unwrap();
         }
         assert_eq!(full, s.output);
     }
@@ -874,9 +912,8 @@ mod tests {
         let CustomNode::Sequence { items, .. } = &ast else {
             panic!()
         };
-        for (i, item) in items.iter().enumerate() {
-            s.write_sequence_item(item, 0, i == items.len() - 1, 0)
-                .unwrap();
+        for item in items.iter() {
+            s.write_sequence_item(item, 0, 0).unwrap();
         }
         assert_eq!(full, s.output);
     }
@@ -896,7 +933,7 @@ mod tests {
         let CustomNode::Sequence { items, .. } = &ast else {
             panic!()
         };
-        s.write_sequence_item(&items[0], 0, true, 0).unwrap();
+        s.write_sequence_item(&items[0], 0, 0).unwrap();
         assert_eq!(s.output, "- host: a\n"); // P2: dash prefix must survive
     }
 
@@ -905,11 +942,8 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("hello"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
         assert_eq!(to_yaml(&node), "hello\n");
     }
@@ -919,14 +953,14 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("value"),
             style: ScalarStyle::Plain,
-            comment: Some(crate::ast::Comment {
-                text: Arc::from("a comment"),
-                standalone: false,
-            }),
-            anchor: None,
-            tag: None,
+            meta: NodeMeta {
+                comment: Some(crate::ast::Comment {
+                    text: Arc::from("a comment"),
+                    standalone: false,
+                }),
+                ..Default::default()
+            },
             chomping: Chomping::Clip,
-            source_range: None,
         };
         assert_eq!(to_yaml(&node), "value  # a comment\n");
     }
@@ -936,11 +970,11 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("42"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: Some(Tag::primary("int")),
+            meta: NodeMeta {
+                tag: Some(Tag::primary("int")),
+                ..Default::default()
+            },
             chomping: Chomping::Clip,
-            source_range: None,
         };
         assert_eq!(to_yaml(&node), "!!int 42\n");
     }
@@ -950,20 +984,14 @@ mod tests {
         let key = CustomNode::Scalar {
             value: Arc::from("key"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
         let value = CustomNode::Scalar {
             value: Arc::from("value"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
 
         let mut pairs = IndexMap::new();
@@ -971,11 +999,8 @@ mod tests {
 
         let node = CustomNode::Mapping {
             pairs,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
 
         assert_eq!(to_yaml(&node), "key: value\n");
@@ -988,36 +1013,24 @@ mod tests {
                 CustomNode::Scalar {
                     value: Arc::from("key1"),
                     style: ScalarStyle::Plain,
-                    comment: None,
-                    anchor: None,
-                    tag: None,
                     chomping: Chomping::Clip,
-                    source_range: None,
+                    meta: Default::default(),
                 },
                 CustomNode::Scalar {
                     value: Arc::from("key2"),
                     style: ScalarStyle::Plain,
-                    comment: None,
-                    anchor: None,
-                    tag: None,
                     chomping: Chomping::Clip,
-                    source_range: None,
+                    meta: Default::default(),
                 },
             ],
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
         let value = CustomNode::Scalar {
             value: Arc::from("value"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
 
         let mut pairs = IndexMap::new();
@@ -1025,11 +1038,8 @@ mod tests {
 
         let node = CustomNode::Mapping {
             pairs,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
 
         let output = to_yaml(&node);
@@ -1055,7 +1065,10 @@ mod tests {
         };
         let result = to_yaml_with_options(&current, &options);
         assert!(result.is_err());
-        assert!(matches!(result, Err(SerializeError::MaxDepthExceeded(50))));
+        assert!(matches!(
+            result,
+            Err(SerializeError::MaxDepthExceeded(DepthError(50)))
+        ));
     }
 
     #[test]
@@ -1064,21 +1077,15 @@ mod tests {
         inner.insert(CustomNode::plain_scalar("b"), CustomNode::plain_scalar("1"));
         let inner_map = CustomNode::Mapping {
             pairs: inner,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
         let mut pairs = IndexMap::new();
         pairs.insert(CustomNode::plain_scalar("a"), inner_map);
         let node = CustomNode::Mapping {
             pairs,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
         let options = SerializeOptions {
             indent_mapping: 4,
@@ -1094,19 +1101,13 @@ mod tests {
     fn test_serialize_indent_sequence() {
         let inner_seq = CustomNode::Sequence {
             items: vec![CustomNode::plain_scalar("1"), CustomNode::plain_scalar("2")],
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
         let node = CustomNode::Sequence {
             items: vec![inner_seq],
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
         let options = SerializeOptions {
             indent_sequence: 4,
@@ -1124,11 +1125,8 @@ mod tests {
         pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
         let node = CustomNode::Mapping {
             pairs,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
         let options = SerializeOptions {
             indent_offset: 2,

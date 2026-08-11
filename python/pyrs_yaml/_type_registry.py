@@ -1,6 +1,12 @@
 """CustomType base class and type registry for Community Plugins."""
 
+from __future__ import annotations
+
+from typing import Any, Callable, TypeVar, overload
+
 from .pyrs_yaml import register_type as _rust_register_type
+
+_T = TypeVar("_T", bound="CustomType")
 
 
 class CustomType:
@@ -24,23 +30,35 @@ class CustomType:
     """
 
     # Optional: set this to a Python type for serialization isinstance checks.
-    python_type = None
+    python_type: Any = None
 
-    def can_parse(self, node) -> bool:
-        """Return True if this type should handle the given node."""
-        return False
+    def can_parse(self, node: Any) -> bool:
+        """Return True if this type should handle the given node.
 
-    def from_yaml(self, value: str):
+        Defaults to True: the tag match alone is sufficient. Override to
+        gate handling on node content (e.g. value prefix).
+        """
+        return True
+
+    def from_yaml(self, value: str) -> Any:
         """Convert a YAML string value to a Python object."""
         return value
 
-    def to_yaml(self, obj) -> str:
+    def to_yaml(self, obj: Any) -> str:
         """Convert a Python object to a YAML string value."""
         return str(obj)
 
-    def validate(self, obj) -> bool:
+    def validate(self, obj: Any) -> bool:
         """Validate a Python object's type and value."""
         return True
+
+
+@overload
+def register_type(name: str, handler: _T) -> _T: ...
+
+
+@overload
+def register_type(name: str, handler: None = None) -> Callable[[type[_T] | _T], type[_T] | _T]: ...
 
 
 def register_type(name, handler=None):

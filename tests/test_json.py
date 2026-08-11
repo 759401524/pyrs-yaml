@@ -1,7 +1,8 @@
 """JSON/YAML conversion tests — from_dict, from_json."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestFromDict:

@@ -4,8 +4,9 @@ NumPy array serialization tests — dump ndarray to YAML lists.
 Round-trip guarantee: safe_dump → safe_load preserves values and shape.
 """
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 # Skip entire module if numpy is not installed
 numpy = pytest.importorskip("numpy")

@@ -1,7 +1,8 @@
 """Tests for i18n language switching and error messages."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 class TestSetLanguage:

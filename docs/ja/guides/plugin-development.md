@@ -1,0 +1,40 @@
+---
+title: プラグイン開発
+description: Community Plugins API を使用して pyrs-yaml のサードパーティプラグインを作成します。
+tags:
+  - docs
+status: new
+---
+
+## プラグイン開発
+
+このガイドでは、Community Plugins API を使用して pyrs-yaml のサードパーティプラグインを作成する方法を説明します。
+
+### プラグインの構造
+
+プラグインは `CustomType` サブクラスを定義し、それを登録する Python モジュールです。
+
+```python
+import pyrs_yaml
+from datetime import datetime
+
+
+class MyTimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+    def from_yaml(self, value):
+        return datetime.fromisoformat(value)
+    def to_yaml(self, obj):
+        return obj.isoformat()
+
+def register():
+    pyrs_yaml.register_type("!mytimestamp", MyTimestampType())
+```
+
+### API リファレンス
+
+| 関数 | 説明 |
+|---------|------|
+| `register_type(name, handler)` | `CustomType` インスタンスを登録 |
+| `clear_type_handlers()` | すべての登録タイプを削除 |
+| `remove_type(name)` | 特定のタイプを削除 |
+| `validate_custom_types(obj)` | オブジェクトを全登録タイプに対して検証 |

@@ -1,7 +1,8 @@
 """Tests for max_depth parameter in pyrs-yaml Python API."""
 
-import pyrs_yaml
 import pytest
+
+import pyrs_yaml
 
 
 def _deep_nested_yaml(depth: int) -> str:

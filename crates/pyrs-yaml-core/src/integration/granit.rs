@@ -1,4 +1,4 @@
-/// Granit-parser integration tests
+//! Granit-parser integration tests
 
 struct EventSink<'a> {
     events: Vec<granit_parser::Event<'a>>,

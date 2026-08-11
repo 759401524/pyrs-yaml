@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -57,4 +57,4 @@ def parse_as(model: type[T], src: str, **yaml_kwargs: Any) -> T:
     from .pyrs_yaml import YAML
 
     data = YAML(**yaml_kwargs).safe_load(src)
-    return model.model_validate(data)
+    return cast(T, model.model_validate(data))

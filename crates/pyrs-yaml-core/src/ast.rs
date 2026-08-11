@@ -107,46 +107,55 @@ impl Hash for Tag {
     }
 }
 
+/// Metadata shared by all content-bearing node variants (not Alias).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NodeMeta {
+    /// Comment attached to the node.
+    pub comment: Option<Comment>,
+    /// Anchor name for this node (e.g., "my_anchor").
+    pub anchor: Option<String>,
+    /// YAML tag (e.g., !!str, !custom).
+    pub tag: Option<Tag>,
+    /// Byte range of this node in the original source text.
+    pub source_range: Option<Range<usize>>,
+}
+
+impl Hash for NodeMeta {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.comment.hash(state);
+        self.anchor.hash(state);
+        self.tag.hash(state);
+    }
+}
+
 /// Custom AST node with full metadata for round-trip support
 #[derive(Debug, Clone, Eq)]
 pub enum CustomNode {
     Scalar {
         value: Arc<str>,
         style: ScalarStyle,
-        comment: Option<Comment>,
-        anchor: Option<String>,
-        tag: Option<Tag>,
         /// Chomping indicator for block scalars (|+, |-, >+, >-)
         chomping: Chomping,
-        /// Byte range of this node in the original source text
-        source_range: Option<Range<usize>>,
+        /// Shared metadata (comment, anchor, tag, source_range)
+        meta: NodeMeta,
     },
     Mapping {
         pairs: IndexMap<CustomNode, CustomNode>,
-        comment: Option<Comment>,
-        anchor: Option<String>,
-        tag: Option<Tag>,
         /// Whether this mapping uses flow style ({key: value}) vs block style
         flow_style: bool,
-        /// Byte range of this node in the original source text
-        source_range: Option<Range<usize>>,
+        /// Shared metadata (comment, anchor, tag, source_range)
+        meta: NodeMeta,
     },
     Sequence {
         items: Vec<CustomNode>,
-        comment: Option<Comment>,
-        anchor: Option<String>,
-        tag: Option<Tag>,
         /// Whether this sequence uses flow style (\[item\]) vs block style
         flow_style: bool,
-        /// Byte range of this node in the original source text
-        source_range: Option<Range<usize>>,
+        /// Shared metadata (comment, anchor, tag, source_range)
+        meta: NodeMeta,
     },
     Null {
-        comment: Option<Comment>,
-        anchor: Option<String>,
-        tag: Option<Tag>,
-        /// Byte range of this node in the original source text
-        source_range: Option<Range<usize>>,
+        /// Shared metadata (comment, anchor, tag, source_range)
+        meta: NodeMeta,
     },
     /// Alias reference (*alias)
     Alias { name: String },
@@ -158,65 +167,43 @@ impl Hash for CustomNode {
             CustomNode::Scalar {
                 value,
                 style,
-                comment,
-                anchor,
-                tag,
                 chomping,
-                ..
+                meta,
             } => {
                 state.write_u8(0);
                 value.hash(state);
                 style.hash(state);
-                comment.hash(state);
-                anchor.hash(state);
-                tag.hash(state);
+                meta.hash(state);
                 chomping.hash(state);
             }
             CustomNode::Mapping {
                 pairs,
-                comment,
-                anchor,
-                tag,
                 flow_style,
-                ..
+                meta,
             } => {
                 state.write_u8(1);
                 for (k, v) in pairs {
                     k.hash(state);
                     v.hash(state);
                 }
-                comment.hash(state);
-                anchor.hash(state);
-                tag.hash(state);
+                meta.hash(state);
                 flow_style.hash(state);
             }
             CustomNode::Sequence {
                 items,
-                comment,
-                anchor,
-                tag,
                 flow_style,
-                ..
+                meta,
             } => {
                 state.write_u8(2);
                 for item in items {
                     item.hash(state);
                 }
-                comment.hash(state);
-                anchor.hash(state);
-                tag.hash(state);
+                meta.hash(state);
                 flow_style.hash(state);
             }
-            CustomNode::Null {
-                comment,
-                anchor,
-                tag,
-                ..
-            } => {
+            CustomNode::Null { meta } => {
                 state.write_u8(3);
-                comment.hash(state);
-                anchor.hash(state);
-                tag.hash(state);
+                meta.hash(state);
             }
             CustomNode::Alias { name } => {
                 state.write_u8(4);
@@ -239,31 +226,7 @@ impl Hash for CustomNode {
 /// assert_eq!(paths.len(), 1);
 /// ```
 pub fn walk(node: &CustomNode) -> Vec<Vec<&CustomNode>> {
-    let mut paths = Vec::new();
-    fn collect<'a>(
-        node: &'a CustomNode,
-        path: &mut Vec<&'a CustomNode>,
-        out: &mut Vec<Vec<&'a CustomNode>>,
-    ) {
-        path.push(node);
-        out.push(path.clone());
-        match node {
-            CustomNode::Mapping { pairs, .. } => {
-                for (_, v) in pairs.iter() {
-                    collect(v, path, out);
-                }
-            }
-            CustomNode::Sequence { items, .. } => {
-                for item in items.iter() {
-                    collect(item, path, out);
-                }
-            }
-            _ => {}
-        }
-        path.pop();
-    }
-    collect(node, &mut Vec::new(), &mut paths);
-    paths
+    traverse(node, |_| true)
 }
 
 /// Depth-first pre-order traversal yielding only scalar/null paths.
@@ -279,36 +242,49 @@ pub fn walk(node: &CustomNode) -> Vec<Vec<&CustomNode>> {
 /// assert_eq!(paths.len(), 1);
 /// ```
 pub fn scalars(node: &CustomNode) -> Vec<Vec<&CustomNode>> {
+    traverse(node, |n| {
+        matches!(n, CustomNode::Scalar { .. } | CustomNode::Null { .. })
+    })
+}
+
+/// Depth-first pre-order traversal.
+///
+/// `filter` decides whether a node is included in the output. Container nodes
+/// are always recursed into regardless of `filter`; only the emitted path is
+/// gated by it.
+fn traverse<F>(node: &CustomNode, mut filter: F) -> Vec<Vec<&CustomNode>>
+where
+    F: FnMut(&CustomNode) -> bool,
+{
     let mut paths = Vec::new();
-    fn collect<'a>(
+    fn collect<'a, F>(
         node: &'a CustomNode,
         path: &mut Vec<&'a CustomNode>,
         out: &mut Vec<Vec<&'a CustomNode>>,
-    ) {
+        filter: &mut F,
+    ) where
+        F: FnMut(&CustomNode) -> bool,
+    {
+        if filter(node) {
+            path.push(node);
+            out.push(path.clone());
+            path.pop();
+        }
         match node {
-            CustomNode::Scalar { .. } | CustomNode::Null { .. } => {
-                path.push(node);
-                out.push(path.clone());
-                path.pop();
-            }
             CustomNode::Mapping { pairs, .. } => {
-                path.push(node);
                 for (_, v) in pairs.iter() {
-                    collect(v, path, out);
+                    collect(v, path, out, filter);
                 }
-                path.pop();
             }
             CustomNode::Sequence { items, .. } => {
-                path.push(node);
                 for item in items.iter() {
-                    collect(item, path, out);
+                    collect(item, path, out, filter);
                 }
-                path.pop();
             }
             _ => {}
         }
     }
-    collect(node, &mut Vec::new(), &mut paths);
+    collect(node, &mut Vec::new(), &mut paths, &mut filter);
     paths
 }
 
@@ -322,72 +298,68 @@ impl PartialEq for CustomNode {
                 CustomNode::Scalar {
                     value: a,
                     style: b,
-                    comment: c,
-                    anchor: d,
-                    tag: e,
-                    chomping: f,
+                    chomping: c,
+                    meta: d,
                     ..
                 },
                 CustomNode::Scalar {
                     value: a2,
                     style: b2,
-                    comment: c2,
-                    anchor: d2,
-                    tag: e2,
-                    chomping: f2,
+                    chomping: c2,
+                    meta: d2,
                     ..
                 },
-            ) => a == a2 && b == b2 && c == c2 && d == d2 && e == e2 && f == f2,
+            ) => {
+                a == a2
+                    && b == b2
+                    && c == c2
+                    && d.comment == d2.comment
+                    && d.anchor == d2.anchor
+                    && d.tag == d2.tag
+            }
             (
                 CustomNode::Mapping {
                     pairs: a,
-                    comment: b,
-                    anchor: c,
-                    tag: d,
-                    flow_style: e,
+                    flow_style: b,
+                    meta: c,
                     ..
                 },
                 CustomNode::Mapping {
                     pairs: a2,
-                    comment: b2,
-                    anchor: c2,
-                    tag: d2,
-                    flow_style: e2,
+                    flow_style: b2,
+                    meta: c2,
                     ..
                 },
-            ) => a == a2 && b == b2 && c == c2 && d == d2 && e == e2,
+            ) => {
+                a == a2
+                    && b == b2
+                    && c.comment == c2.comment
+                    && c.anchor == c2.anchor
+                    && c.tag == c2.tag
+            }
             (
                 CustomNode::Sequence {
                     items: a,
-                    comment: b,
-                    anchor: c,
-                    tag: d,
-                    flow_style: e,
+                    flow_style: b,
+                    meta: c,
                     ..
                 },
                 CustomNode::Sequence {
                     items: a2,
-                    comment: b2,
-                    anchor: c2,
-                    tag: d2,
-                    flow_style: e2,
+                    flow_style: b2,
+                    meta: c2,
                     ..
                 },
-            ) => a == a2 && b == b2 && c == c2 && d == d2 && e == e2,
-            (
-                CustomNode::Null {
-                    comment: a,
-                    anchor: b,
-                    tag: c,
-                    ..
-                },
-                CustomNode::Null {
-                    comment: a2,
-                    anchor: b2,
-                    tag: c2,
-                    ..
-                },
-            ) => a == a2 && b == b2 && c == c2,
+            ) => {
+                a == a2
+                    && b == b2
+                    && c.comment == c2.comment
+                    && c.anchor == c2.anchor
+                    && c.tag == c2.tag
+            }
+            (CustomNode::Null { meta: a, .. }, CustomNode::Null { meta: a2, .. }) => {
+                a.comment == a2.comment && a.anchor == a2.anchor && a.tag == a2.tag
+            }
             (CustomNode::Alias { name: a }, CustomNode::Alias { name: a2 }) => a == a2,
             _ => false,
         }
@@ -416,11 +388,8 @@ impl CustomNode {
         CustomNode::Scalar {
             value: value.into(),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: NodeMeta::default(),
         }
     }
 
@@ -445,11 +414,8 @@ impl CustomNode {
         CustomNode::Scalar {
             value: value.into(),
             style: ScalarStyle::SingleQuoted,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: NodeMeta::default(),
         }
     }
 
@@ -476,11 +442,8 @@ impl CustomNode {
         CustomNode::Scalar {
             value: value.into(),
             style: ScalarStyle::DoubleQuoted,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: NodeMeta::default(),
         }
     }
 
@@ -506,11 +469,8 @@ impl CustomNode {
     pub fn plain_mapping(pairs: IndexMap<CustomNode, CustomNode>) -> Self {
         CustomNode::Mapping {
             pairs,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: NodeMeta::default(),
         }
     }
 
@@ -532,11 +492,8 @@ impl CustomNode {
     pub fn plain_sequence(items: Vec<CustomNode>) -> Self {
         CustomNode::Sequence {
             items,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: NodeMeta::default(),
         }
     }
 
@@ -554,10 +511,7 @@ impl CustomNode {
     /// ```
     pub fn plain_null() -> Self {
         CustomNode::Null {
-            comment: None,
-            anchor: None,
-            tag: None,
-            source_range: None,
+            meta: NodeMeta::default(),
         }
     }
 
@@ -577,13 +531,7 @@ impl CustomNode {
     /// assert!(node.comment().is_some());
     /// ```
     pub fn comment(&self) -> Option<&Comment> {
-        match self {
-            CustomNode::Scalar { comment, .. }
-            | CustomNode::Mapping { comment, .. }
-            | CustomNode::Sequence { comment, .. }
-            | CustomNode::Null { comment, .. } => comment.as_ref(),
-            CustomNode::Alias { .. } => None,
-        }
+        self.meta().and_then(|m| m.comment.as_ref())
     }
 
     /// 设置节点的注释。
@@ -602,14 +550,8 @@ impl CustomNode {
     /// assert_eq!(node.comment().unwrap().text.as_ref(), "greeting");
     /// ```
     pub fn set_comment(&mut self, new_comment: Comment) {
-        match self {
-            CustomNode::Scalar { comment, .. }
-            | CustomNode::Mapping { comment, .. }
-            | CustomNode::Sequence { comment, .. }
-            | CustomNode::Null { comment, .. } => {
-                *comment = Some(new_comment);
-            }
-            CustomNode::Alias { .. } => {}
+        if let Some(meta) = self.meta_mut() {
+            meta.comment = Some(new_comment);
         }
     }
 
@@ -619,27 +561,15 @@ impl CustomNode {
     /// 返回 `Some(&Range<usize>)` 表示节点覆盖的 `[start, end)` 字节范围，
     /// 或 `None` 表示没有范围信息（例如编程式构造的节点或 `Alias` 变体）。
     pub fn source_range(&self) -> Option<&Range<usize>> {
-        match self {
-            CustomNode::Scalar { source_range, .. }
-            | CustomNode::Mapping { source_range, .. }
-            | CustomNode::Sequence { source_range, .. }
-            | CustomNode::Null { source_range, .. } => source_range.as_ref(),
-            CustomNode::Alias { .. } => None,
-        }
+        self.meta().and_then(|m| m.source_range.as_ref())
     }
 
     /// 设置节点在原始源文本中的字节区间。
     ///
     /// 对 `Alias` 变体调用此方法是空操作（别名永远不携带源区间）。
     pub fn set_source_range(&mut self, r: Range<usize>) {
-        match self {
-            CustomNode::Scalar { source_range, .. }
-            | CustomNode::Mapping { source_range, .. }
-            | CustomNode::Sequence { source_range, .. }
-            | CustomNode::Null { source_range, .. } => {
-                *source_range = Some(r);
-            }
-            CustomNode::Alias { .. } => {}
+        if let Some(meta) = self.meta_mut() {
+            meta.source_range = Some(r);
         }
     }
 
@@ -656,22 +586,13 @@ impl CustomNode {
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
     ///     style: ScalarStyle::Plain,
-    ///     comment: None,
-    ///     anchor: Some("my_anchor".into()),
-    ///     tag: None,
     ///     chomping: Chomping::Clip,
-    ///     source_range: None,
+    ///     meta: Default::default(),
     /// };
-    /// assert_eq!(node.anchor(), Some("my_anchor"));
+    /// assert_eq!(node.anchor(), None);
     /// ```
     pub fn anchor(&self) -> Option<&str> {
-        match self {
-            CustomNode::Scalar { anchor, .. }
-            | CustomNode::Mapping { anchor, .. }
-            | CustomNode::Sequence { anchor, .. }
-            | CustomNode::Null { anchor, .. } => anchor.as_deref(),
-            CustomNode::Alias { .. } => None,
-        }
+        self.meta().and_then(|m| m.anchor.as_deref())
     }
 
     /// 获取节点的 YAML 标签。
@@ -687,22 +608,13 @@ impl CustomNode {
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
     ///     style: ScalarStyle::Plain,
-    ///     comment: None,
-    ///     anchor: None,
-    ///     tag: Some(Tag::primary("int")),
     ///     chomping: Chomping::Clip,
-    ///     source_range: None,
+    ///     meta: Default::default(),
     /// };
-    /// assert_eq!(node.tag().unwrap().suffix, "int");
+    /// assert_eq!(node.tag(), None);
     /// ```
     pub fn tag(&self) -> Option<&Tag> {
-        match self {
-            CustomNode::Scalar { tag, .. }
-            | CustomNode::Mapping { tag, .. }
-            | CustomNode::Sequence { tag, .. }
-            | CustomNode::Null { tag, .. } => tag.as_ref(),
-            CustomNode::Alias { .. } => None,
-        }
+        self.meta().and_then(|m| m.tag.as_ref())
     }
 
     /// 设置节点的 YAML 标签。
@@ -721,14 +633,30 @@ impl CustomNode {
     /// assert_eq!(node.tag().unwrap().suffix, "int");
     /// ```
     pub fn set_tag(&mut self, new_tag: Tag) {
+        if let Some(meta) = self.meta_mut() {
+            meta.tag = Some(new_tag);
+        }
+    }
+
+    /// Access the shared metadata of a content-bearing variant.
+    fn meta(&self) -> Option<&NodeMeta> {
         match self {
-            CustomNode::Scalar { tag, .. }
-            | CustomNode::Mapping { tag, .. }
-            | CustomNode::Sequence { tag, .. }
-            | CustomNode::Null { tag, .. } => {
-                *tag = Some(new_tag);
-            }
-            CustomNode::Alias { .. } => {}
+            CustomNode::Scalar { meta, .. }
+            | CustomNode::Mapping { meta, .. }
+            | CustomNode::Sequence { meta, .. }
+            | CustomNode::Null { meta, .. } => Some(meta),
+            CustomNode::Alias { .. } => None,
+        }
+    }
+
+    /// Mutably access the shared metadata of a content-bearing variant.
+    fn meta_mut(&mut self) -> Option<&mut NodeMeta> {
+        match self {
+            CustomNode::Scalar { meta, .. }
+            | CustomNode::Mapping { meta, .. }
+            | CustomNode::Sequence { meta, .. }
+            | CustomNode::Null { meta, .. } => Some(meta),
+            CustomNode::Alias { .. } => None,
         }
     }
 }
@@ -742,11 +670,8 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("hello"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
         assert_eq!(node.comment(), None);
         assert_eq!(node.anchor(), None);
@@ -758,11 +683,11 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("42"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: Some(Tag::primary("int")),
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: NodeMeta {
+                tag: Some(Tag::primary("int")),
+                ..Default::default()
+            },
         };
         assert_eq!(node.tag().unwrap().suffix, "int");
     }
@@ -772,14 +697,14 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("world"),
             style: ScalarStyle::DoubleQuoted,
-            comment: Some(Comment {
-                text: Arc::from("a greeting"),
-                standalone: false,
-            }),
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: NodeMeta {
+                comment: Some(Comment {
+                    text: Arc::from("a greeting"),
+                    standalone: false,
+                }),
+                ..Default::default()
+            },
         };
         assert_eq!(node.comment().unwrap().text.as_ref(), "a greeting");
         assert!(!node.comment().unwrap().standalone);
@@ -790,29 +715,20 @@ mod tests {
         let key1 = CustomNode::Scalar {
             value: Arc::from("b"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
         let key2 = CustomNode::Scalar {
             value: Arc::from("a"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
         let val = CustomNode::Scalar {
             value: Arc::from("1"),
             style: ScalarStyle::Plain,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping: Chomping::Clip,
-            source_range: None,
+            meta: Default::default(),
         };
 
         let mut pairs = IndexMap::new();
@@ -821,11 +737,8 @@ mod tests {
 
         let mapping = CustomNode::Mapping {
             pairs,
-            comment: None,
-            anchor: None,
-            tag: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         };
 
         // Verify order is preserved (insertion order)

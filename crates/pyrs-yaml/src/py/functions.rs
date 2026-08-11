@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 
-use crate::py::convert::{format_i18n_error, node_to_pyobject, parse_schema};
+use crate::py::convert::{format_i18n_error, node_to_pyobject_simple, parse_schema};
 use crate::py::direct_dump::direct_dump;
 use crate::py::document::{YamlDocument, parse_document, resolve_tags};
 use crate::py::parse_error_to_py_err;
@@ -340,7 +340,7 @@ pub(crate) fn read_markdown_str(
                 )
                 .map_err(|e| parse_error_to_py_err(e, frontmatter, max_depth))?;
                 Ok((
-                    Some(node_to_pyobject(&ast, py, &schema_enum)?),
+                    Some(node_to_pyobject_simple(&ast, py, &schema_enum)?),
                     markdown_content.to_string(),
                 ))
             });
@@ -439,6 +439,17 @@ pub(crate) fn clear_type_handlers() {
 /// Remove a specific custom type handler.
 pub(crate) fn remove_type(name: &str) {
     type_registry::remove(name);
+}
+
+#[pyfunction]
+#[pyo3(signature = (obj: "Py<PyAny>"))]
+/// Validate a Python object against all registered CustomType validators.
+///
+/// Recursively walks dicts and lists. For each value that matches a
+/// registered type's `python_type`, calls the handler's `validate` method.
+/// Raises `ValueError` if any value fails validation.
+pub(crate) fn validate_custom_types(py: Python, obj: Py<PyAny>) -> PyResult<()> {
+    type_registry::validate_custom_types(py, &obj)
 }
 
 #[pyfunction]

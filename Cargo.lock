@@ -556,9 +556,9 @@ dependencies = [
 
 [[package]]
 name = "num-integer"
-version = "0.1.46"
+version = "0.1.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
+checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
 dependencies = [
  "num-traits",
 ]
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "codspeed-divan-compat",
  "granit-parser 1.0.1",
@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml-core"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "granit-parser 1.0.1",
  "indexmap",

@@ -1,17 +1,18 @@
 pub mod stream;
 pub mod yaml;
 
-pub use crate::error::ParseError;
+pub use crate::error::{DepthError, ParseError};
 pub use crate::parser::stream::{
     StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
 };
 
-use crate::ast::{Chomping, Comment, CustomNode, ScalarStyle, Tag};
+use crate::ast::{Chomping, Comment, CustomNode, NodeMeta, ScalarStyle, Tag};
 use crate::parser::yaml::Schema;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 use indexmap::IndexMap;
+use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Arc;
 use yaml::{
@@ -104,7 +105,7 @@ pub fn parse_with_options(
     }
 
     if receiver.max_depth_exceeded {
-        return Err(ParseError::MaxDepthExceeded(max_depth));
+        return Err(ParseError::MaxDepthExceeded(DepthError(max_depth)));
     }
 
     // Get the parsed node (handle empty documents)
@@ -169,7 +170,7 @@ pub fn parse_all_with_options(
     }
 
     if receiver.max_depth_exceeded {
-        return Err(ParseError::MaxDepthExceeded(max_depth));
+        return Err(ParseError::MaxDepthExceeded(DepthError(max_depth)));
     }
 
     // Collect all documents from receiver
@@ -490,11 +491,11 @@ impl<'a> AstReceiver<'a> {
         CustomNode::Scalar {
             value: scalar_value,
             style: scalar_style,
-            comment: None,
-            anchor: None,
-            tag: None,
             chomping,
-            source_range: Some(range),
+            meta: NodeMeta {
+                source_range: Some(range),
+                ..Default::default()
+            },
         }
     }
 
@@ -529,10 +530,10 @@ impl<'a> AstReceiver<'a> {
 
     /// Set the comment on a node if it's a Scalar with no existing comment.
     fn set_scalar_comment(node: Option<&mut CustomNode>, comment: Comment) {
-        if let Some(CustomNode::Scalar { comment: c, .. }) = node
-            && c.is_none()
+        if let Some(CustomNode::Scalar { meta: m, .. }) = node
+            && m.comment.is_none()
         {
-            *c = Some(comment);
+            m.comment = Some(comment);
         }
     }
 
@@ -594,234 +595,268 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
     /// 处理 saphyr 解析器事件，构建 AST 节点并管理解析栈。
     fn on_event(&mut self, event: Event<'a>, span: Span) {
         match event {
-            Event::StreamStart | Event::StreamEnd | Event::DocumentStart(..) => {
-                // Ignore these events
-            }
-            Event::DocumentEnd => {
-                // Clone the completed document for multi-doc support
-                if self.collect_documents
-                    && let Some(ref doc) = self.result
-                {
-                    self.documents.push(doc.clone());
-                }
-            }
+            Event::StreamStart | Event::StreamEnd | Event::DocumentStart(..) => {}
+            Event::DocumentEnd => self.on_document_end(),
             Event::Scalar(value, style, anchor_id, tag) => {
-                if value == "<<" {
-                    self.has_merge_key = true;
-                }
-                let line = span.start.line() - 1; // Convert to 0-indexed
-                let range = self.span_to_byte_range(&span);
-
-                // Take pending standalone comment from Event::Comment
-                let standalone = self.pending_standalone_comment.take();
-
-                let mut node = self.create_scalar(&value, &style, line, range);
-
-                // Attach standalone comment if found
-                if let Some(comment) = standalone
-                    && let CustomNode::Scalar { comment: c, .. } = &mut node
-                {
-                    // If there's already an inline comment, keep it
-                    // Otherwise, use the standalone comment
-                    if c.is_none() {
-                        *c = Some(comment);
-                    }
-                }
-
-                // Handle anchor - use next raw anchor name
-                if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
-                    let name = self.anchor_names[self.anchor_name_idx].clone();
-                    self.anchor_name_idx += 1;
-                    self.anchors.insert(anchor_id, name.clone());
-                    if let CustomNode::Scalar { anchor, .. } = &mut node {
-                        *anchor = Some(name);
-                    }
-                }
-
-                // Handle tag
-                if let Some(tag) = tag
-                    && let CustomNode::Scalar { tag: t, .. } = &mut node
-                {
-                    *t = Some(convert_tag(&tag));
-                }
-
-                self.push_node(node);
+                self.on_scalar_event(&value, &style, anchor_id, tag, span);
             }
             Event::MappingStart(_, anchor_id, tag) => {
-                if self.stack.len() >= self.max_depth {
-                    self.max_depth_exceeded = true;
-                    return;
-                }
-                let flow_style = self.detect_flow_style(&span, b'{');
-                let start_byte = self.span_to_byte_range(&span).start;
-
-                // Take pending standalone comment from Event::Comment
-                let standalone = self.pending_standalone_comment.take();
-
-                // Handle anchor - use next raw anchor name
-                if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
-                    let name = self.anchor_names[self.anchor_name_idx].clone();
-                    self.anchor_name_idx += 1;
-                    self.anchors.insert(anchor_id, name);
-                }
-
-                // Handle tag
-                let tag_obj = tag.map(|t| convert_tag(&t));
-
-                self.stack.push(ParseState::Mapping {
-                    pairs: IndexMap::new(),
-                    current_key: Box::new(None),
-                    anchor_id,
-                    tag: tag_obj,
-                    flow_style,
-                    start_byte,
-                });
-
-                // Store standalone comment for the mapping (not available for keys)
-                self.mapping_comment = standalone;
+                self.on_mapping_start(anchor_id, tag, span);
             }
-            Event::MappingEnd => {
-                if let Some(ParseState::Mapping {
-                    pairs,
-                    anchor_id,
-                    tag,
-                    flow_style,
-                    start_byte,
-                    ..
-                }) = self.stack.pop()
-                {
-                    // Get anchor name from self.anchors
-                    let anchor = self.anchors.get(&anchor_id).cloned();
-
-                    // Get comment stored by MappingStart (not from pending)
-                    let comment = self.mapping_comment.take();
-
-                    // Block containers span from their start to the last child's
-                    // end; flow containers span to the closing token (inclusive).
-                    let end = if !flow_style {
-                        pairs
-                            .iter()
-                            .flat_map(|(k, v)| {
-                                k.source_range()
-                                    .map(|r| r.end)
-                                    .into_iter()
-                                    .chain(v.source_range().map(|r| r.end))
-                            })
-                            .max()
-                            .unwrap_or_else(|| self.span_to_byte_range(&span).start)
-                    } else {
-                        self.span_to_byte_range(&span).end
-                    };
-
-                    let mapping = CustomNode::Mapping {
-                        pairs,
-                        comment,
-                        anchor,
-                        tag,
-                        flow_style,
-                        source_range: Some(start_byte..end),
-                    };
-                    self.push_node(mapping);
-                }
-            }
+            Event::MappingEnd => self.on_mapping_end(span),
             Event::SequenceStart(_, anchor_id, tag) => {
-                if self.stack.len() >= self.max_depth {
-                    self.max_depth_exceeded = true;
-                    return;
-                }
-                let flow_style = self.detect_flow_style(&span, b'[');
-                let start_byte = self.span_to_byte_range(&span).start;
-
-                // Take pending standalone comment from Event::Comment
-                let standalone = self.pending_standalone_comment.take();
-
-                // Handle anchor - use next raw anchor name
-                if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
-                    let name = self.anchor_names[self.anchor_name_idx].clone();
-                    self.anchor_name_idx += 1;
-                    self.anchors.insert(anchor_id, name);
-                }
-
-                // Handle tag
-                let tag_obj = tag.map(|t| convert_tag(&t));
-
-                self.stack.push(ParseState::Sequence {
-                    items: Vec::new(),
-                    anchor_id,
-                    tag: tag_obj,
-                    flow_style,
-                    start_byte,
-                });
-
-                // Store standalone comment for the sequence (not available for items)
-                self.mapping_comment = standalone;
+                self.on_sequence_start(anchor_id, tag, span);
             }
-            Event::SequenceEnd => {
-                if let Some(ParseState::Sequence {
-                    items,
-                    anchor_id,
-                    tag,
-                    flow_style,
-                    start_byte,
-                    ..
-                }) = self.stack.pop()
-                {
-                    // Get anchor name from self.anchors
-                    let anchor = self.anchors.get(&anchor_id).cloned();
-
-                    // Get comment stored by SequenceStart (not from pending)
-                    let comment = self.mapping_comment.take();
-
-                    let end = if !flow_style {
-                        items
-                            .iter()
-                            .filter_map(|i| i.source_range().map(|r| r.end))
-                            .max()
-                            .unwrap_or_else(|| self.span_to_byte_range(&span).start)
-                    } else {
-                        // Flow containers span to the closing token (inclusive)
-                        self.span_to_byte_range(&span).end
-                    };
-
-                    let seq = CustomNode::Sequence {
-                        items,
-                        comment,
-                        anchor,
-                        tag,
-                        flow_style,
-                        source_range: Some(start_byte..end),
-                    };
-                    self.push_node(seq);
-                }
-            }
-            Event::Alias(anchor_id) => {
-                let alias_name = self
-                    .anchors
-                    .get(&anchor_id)
-                    .cloned()
-                    .unwrap_or_else(|| format!("alias_{}", anchor_id));
-
-                let node = CustomNode::Alias { name: alias_name };
-                self.push_node(node);
-            }
-            Event::Comment(text, placement) => {
-                let text = Arc::from(text.trim());
-                match placement {
-                    granit_parser::Placement::Above
-                    | granit_parser::Placement::Free
-                    | granit_parser::Placement::Last => {
-                        self.pending_standalone_comment = Some(Comment {
-                            text,
-                            standalone: true,
-                        });
-                    }
-                    granit_parser::Placement::Right => {
-                        self.attach_inline_comment(text);
-                    }
-                    _ => {} // Placement is #[non_exhaustive]
-                }
-            }
+            Event::SequenceEnd => self.on_sequence_end(span),
+            Event::Alias(anchor_id) => self.on_alias_event(anchor_id),
+            Event::Comment(text, placement) => self.on_comment_event(&text, placement),
             _ => {} // granit_parser::Event is #[non_exhaustive]
+        }
+    }
+}
+
+impl<'a> AstReceiver<'a> {
+    /// Handle `DocumentEnd`: snapshot the completed document for multi-doc
+    /// collection. Extracted from `on_event`.
+    fn on_document_end(&mut self) {
+        if self.collect_documents
+            && let Some(ref doc) = self.result
+        {
+            self.documents.push(doc.clone());
+        }
+    }
+
+    /// Handle `Scalar`: build a scalar node, attach standalone comment, anchor
+    /// and tag. Extracted from `on_event`.
+    fn on_scalar_event(
+        &mut self,
+        value: &str,
+        style: &SaphyrScalarStyle,
+        anchor_id: usize,
+        tag: Option<Cow<'a, granit_parser::Tag>>,
+        span: Span,
+    ) {
+        if value == "<<" {
+            self.has_merge_key = true;
+        }
+        let line = span.start.line() - 1; // Convert to 0-indexed
+        let range = self.span_to_byte_range(&span);
+
+        let standalone = self.pending_standalone_comment.take();
+
+        let mut node = self.create_scalar(value, style, line, range);
+
+        if let Some(comment) = standalone
+            && let CustomNode::Scalar { meta: m, .. } = &mut node
+            && m.comment.is_none()
+        {
+            m.comment = Some(comment);
+        }
+
+        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
+            let name = self.anchor_names[self.anchor_name_idx].clone();
+            self.anchor_name_idx += 1;
+            self.anchors.insert(anchor_id, name.clone());
+            if let CustomNode::Scalar { meta: m, .. } = &mut node {
+                m.anchor = Some(name);
+            }
+        }
+
+        if let Some(tag) = tag
+            && let CustomNode::Scalar { meta: m, .. } = &mut node
+        {
+            m.tag = Some(convert_tag(&tag));
+        }
+
+        self.push_node(node);
+    }
+
+    /// Handle `MappingStart`: push a new mapping parse state with flow style,
+    /// anchor, tag and pending standalone comment. Extracted from `on_event`.
+    fn on_mapping_start(
+        &mut self,
+        anchor_id: usize,
+        tag: Option<Cow<'a, granit_parser::Tag>>,
+        span: Span,
+    ) {
+        if self.stack.len() >= self.max_depth {
+            self.max_depth_exceeded = true;
+            return;
+        }
+        let flow_style = self.detect_flow_style(&span, b'{');
+        let start_byte = self.span_to_byte_range(&span).start;
+
+        let standalone = self.pending_standalone_comment.take();
+
+        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
+            let name = self.anchor_names[self.anchor_name_idx].clone();
+            self.anchor_name_idx += 1;
+            self.anchors.insert(anchor_id, name);
+        }
+
+        let tag_obj = tag.map(|t| convert_tag(&t));
+
+        self.stack.push(ParseState::Mapping {
+            pairs: IndexMap::new(),
+            current_key: Box::new(None),
+            anchor_id,
+            tag: tag_obj,
+            flow_style,
+            start_byte,
+        });
+
+        self.mapping_comment = standalone;
+    }
+
+    /// Handle `MappingEnd`: finalize the mapping node and push it. Extracted
+    /// from `on_event`.
+    fn on_mapping_end(&mut self, span: Span) {
+        if let Some(ParseState::Mapping {
+            pairs,
+            anchor_id,
+            tag,
+            flow_style,
+            start_byte,
+            ..
+        }) = self.stack.pop()
+        {
+            let anchor = self.anchors.get(&anchor_id).cloned();
+            let comment = self.mapping_comment.take();
+
+            let end = if !flow_style {
+                pairs
+                    .iter()
+                    .flat_map(|(k, v)| {
+                        k.source_range()
+                            .map(|r| r.end)
+                            .into_iter()
+                            .chain(v.source_range().map(|r| r.end))
+                    })
+                    .max()
+                    .unwrap_or_else(|| self.span_to_byte_range(&span).start)
+            } else {
+                self.span_to_byte_range(&span).end
+            };
+
+            let mapping = CustomNode::Mapping {
+                pairs,
+                flow_style,
+                meta: NodeMeta {
+                    comment,
+                    anchor,
+                    tag,
+                    source_range: Some(start_byte..end),
+                },
+            };
+            self.push_node(mapping);
+        }
+    }
+
+    /// Handle `SequenceStart`: push a new sequence parse state with flow style,
+    /// anchor, tag and pending standalone comment. Extracted from `on_event`.
+    fn on_sequence_start(
+        &mut self,
+        anchor_id: usize,
+        tag: Option<Cow<'a, granit_parser::Tag>>,
+        span: Span,
+    ) {
+        if self.stack.len() >= self.max_depth {
+            self.max_depth_exceeded = true;
+            return;
+        }
+        let flow_style = self.detect_flow_style(&span, b'[');
+        let start_byte = self.span_to_byte_range(&span).start;
+
+        let standalone = self.pending_standalone_comment.take();
+
+        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
+            let name = self.anchor_names[self.anchor_name_idx].clone();
+            self.anchor_name_idx += 1;
+            self.anchors.insert(anchor_id, name);
+        }
+
+        let tag_obj = tag.map(|t| convert_tag(&t));
+
+        self.stack.push(ParseState::Sequence {
+            items: Vec::new(),
+            anchor_id,
+            tag: tag_obj,
+            flow_style,
+            start_byte,
+        });
+
+        self.mapping_comment = standalone;
+    }
+
+    /// Handle `SequenceEnd`: finalize the sequence node and push it. Extracted
+    /// from `on_event`.
+    fn on_sequence_end(&mut self, span: Span) {
+        if let Some(ParseState::Sequence {
+            items,
+            anchor_id,
+            tag,
+            flow_style,
+            start_byte,
+            ..
+        }) = self.stack.pop()
+        {
+            let anchor = self.anchors.get(&anchor_id).cloned();
+            let comment = self.mapping_comment.take();
+
+            let end = if !flow_style {
+                items
+                    .iter()
+                    .filter_map(|i| i.source_range().map(|r| r.end))
+                    .max()
+                    .unwrap_or_else(|| self.span_to_byte_range(&span).start)
+            } else {
+                self.span_to_byte_range(&span).end
+            };
+
+            let seq = CustomNode::Sequence {
+                items,
+                flow_style,
+                meta: NodeMeta {
+                    comment,
+                    anchor,
+                    tag,
+                    source_range: Some(start_byte..end),
+                },
+            };
+            self.push_node(seq);
+        }
+    }
+
+    /// Handle `Alias`: resolve the anchor name and push an alias node.
+    /// Extracted from `on_event`.
+    fn on_alias_event(&mut self, anchor_id: usize) {
+        let alias_name = self
+            .anchors
+            .get(&anchor_id)
+            .cloned()
+            .unwrap_or_else(|| format!("alias_{}", anchor_id));
+
+        let node = CustomNode::Alias { name: alias_name };
+        self.push_node(node);
+    }
+
+    /// Handle `Comment`: stash standalone comments or attach inline comments.
+    /// Extracted from `on_event`.
+    fn on_comment_event(&mut self, text: &str, placement: granit_parser::Placement) {
+        let text = Arc::from(text.trim());
+        match placement {
+            granit_parser::Placement::Above
+            | granit_parser::Placement::Free
+            | granit_parser::Placement::Last => {
+                self.pending_standalone_comment = Some(Comment {
+                    text,
+                    standalone: true,
+                });
+            }
+            granit_parser::Placement::Right => {
+                self.attach_inline_comment(text);
+            }
+            _ => {} // Placement is #[non_exhaustive]
         }
     }
 }
@@ -868,13 +903,12 @@ mod tests {
         assert!(result.is_ok());
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             for (k, v) in pairs {
-                if let CustomNode::Scalar { value, .. } = k {
-                    if value.as_ref() == "name" {
-                        if let CustomNode::Scalar { tag, .. } = v {
-                            assert!(tag.is_some());
-                            assert_eq!(tag.unwrap().suffix, "str");
-                        }
-                    }
+                if let CustomNode::Scalar { value, .. } = k
+                    && value.as_ref() == "name"
+                    && let CustomNode::Scalar { meta, .. } = v
+                {
+                    assert!(meta.tag.is_some());
+                    assert_eq!(meta.tag.unwrap().suffix, "str");
                 }
             }
         }
@@ -904,13 +938,12 @@ mod tests {
         assert!(result.is_ok());
         if let Ok(CustomNode::Mapping { pairs, .. }) = result {
             for (k, v) in pairs {
-                if let CustomNode::Scalar { value, .. } = k {
-                    if value.as_ref() == "defaults" {
-                        if let CustomNode::Mapping { anchor, .. } = v {
-                            assert!(anchor.is_some());
-                            assert_eq!(anchor.unwrap(), "defaults");
-                        }
-                    }
+                if let CustomNode::Scalar { value, .. } = k
+                    && value.as_ref() == "defaults"
+                    && let CustomNode::Mapping { meta, .. } = v
+                {
+                    assert!(meta.anchor.is_some());
+                    assert_eq!(meta.anchor.unwrap(), "defaults");
                 }
             }
         }
@@ -931,15 +964,10 @@ mod tests {
     #[test]
     fn test_mapping_range_spans_children() {
         let node = parse_with_options("a:\n  b: 1\n", true, YamlSchema::Core, 1000, false).unwrap();
-        let CustomNode::Mapping {
-            pairs,
-            source_range,
-            ..
-        } = node
-        else {
+        let CustomNode::Mapping { pairs, meta, .. } = node else {
             panic!()
         };
-        assert_eq!(source_range, Some(0usize..9)); // up to the last child ("1") end
+        assert_eq!(meta.source_range, Some(0usize..9)); // up to the last child ("1") end
         let inner = pairs.values().next().unwrap();
         let CustomNode::Mapping { pairs, .. } = inner else {
             panic!()
@@ -963,10 +991,10 @@ mod tests {
     #[test]
     fn test_flow_mapping_range_includes_closing_token() {
         let node = parse_with_options("{a: 1}\n", true, YamlSchema::Core, 1000, false).unwrap();
-        let CustomNode::Mapping { source_range, .. } = node else {
+        let CustomNode::Mapping { meta, .. } = node else {
             panic!()
         };
-        assert_eq!(source_range, Some(0usize..6)); // covers "{a: 1}" incl. '}'
+        assert_eq!(meta.source_range, Some(0usize..6)); // covers "{a: 1}" incl. '}'
     }
 
     #[test]

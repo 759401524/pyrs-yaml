@@ -141,7 +141,7 @@ pub use crate::error::NavigateError;
 /// use indexmap::IndexMap;
 /// let mut pairs = IndexMap::new();
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
-/// let node = CustomNode::Mapping { pairs, tag: None, comment: None, anchor: None, flow_style: false, source_range: None };
+/// let node = CustomNode::Mapping { pairs, flow_style: false, meta: Default::default() };
 /// let segs = [Segment::Key(Cow::Borrowed("a"))];
 /// let result = navigate(&node, &segs).unwrap();
 /// assert!(key_eq(result, &CustomNode::plain_scalar("1")));
@@ -153,14 +153,14 @@ pub fn navigate<'a>(
     let mut cur = node;
     for seg in segments {
         cur = match (cur, seg) {
-            (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => pairs
-                .iter()
-                .find(|(knode, _)| match knode {
-                    CustomNode::Scalar { value, .. } => value.as_ref() == k.as_ref(),
-                    _ => false,
-                })
-                .map(|(_, v)| v)
-                .ok_or_else(|| NavigateError::Missing(k.to_string()))?,
+            (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => {
+                let key_node = CustomNode::plain_scalar(k.as_ref());
+                pairs
+                    .iter()
+                    .find(|(knode, _)| key_eq(knode, &key_node))
+                    .map(|(_, v)| v)
+                    .ok_or_else(|| NavigateError::Missing(k.to_string()))?
+            }
             (CustomNode::Sequence { items, .. }, Segment::Index(i)) => items
                 .get(
                     normalize_index(*i, items.len())
@@ -181,7 +181,7 @@ pub fn navigate<'a>(
 /// use indexmap::IndexMap;
 /// let mut pairs = IndexMap::new();
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
-/// let mut node = CustomNode::Mapping { pairs, tag: None, comment: None, anchor: None, flow_style: false, source_range: None };
+/// let mut node = CustomNode::Mapping { pairs, flow_style: false, meta: Default::default() };
 /// let segs = [Segment::Key(Cow::Borrowed("a"))];
 /// *navigate_mut(&mut node, &segs).unwrap() = CustomNode::plain_scalar("9");
 /// assert!(key_eq(navigate(&node, &segs).unwrap(), &CustomNode::plain_scalar("9")));
@@ -239,22 +239,16 @@ mod tests {
                 .into_iter()
                 .map(|(k, v)| (mk_scalar(k), mk_scalar(v)))
                 .collect(),
-            tag: None,
-            comment: None,
-            anchor: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         }
     }
 
     fn mk_seq(items: Vec<&str>) -> CustomNode {
         CustomNode::Sequence {
             items: items.into_iter().map(mk_scalar).collect(),
-            tag: None,
-            comment: None,
-            anchor: None,
             flow_style: false,
-            source_range: None,
+            meta: Default::default(),
         }
     }
 

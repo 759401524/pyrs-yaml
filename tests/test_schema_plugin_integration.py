@@ -3,7 +3,6 @@
 from datetime import datetime
 
 import pyrs_yaml
-
 from tests.test_community_plugins import TimestampType
 
 HEX_SCHEMA = """\

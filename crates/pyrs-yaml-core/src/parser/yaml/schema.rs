@@ -9,6 +9,11 @@ pub fn resolve_failsafe(value: &str) -> YamlType<'_> {
     YamlType::Str(Cow::Borrowed(value))
 }
 
+/// Case-insensitive equality against any of the candidate strings.
+fn matches_any(value: &str, candidates: &[&str]) -> bool {
+    candidates.contains(&value)
+}
+
 /// Resolve a plain scalar as YAML 1.2 Core.
 ///
 /// Priority: Null → Bool → Infinity → NaN → Octal → Hex → Float → Decimal int → String.
@@ -32,43 +37,28 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
         return YamlType::Str(Cow::Borrowed(value));
     }
 
-    if trimmed == "null" || trimmed == "Null" || trimmed == "NULL" {
+    if matches_any(trimmed, &["null", "Null", "NULL"]) {
         return YamlType::Null;
     }
 
-    if trimmed == "true" || trimmed == "True" || trimmed == "TRUE" {
+    if matches_any(trimmed, &["true", "True", "TRUE"]) {
         return YamlType::Bool(true);
     }
-    if trimmed == "false" || trimmed == "False" || trimmed == "FALSE" {
+    if matches_any(trimmed, &["false", "False", "FALSE"]) {
         return YamlType::Bool(false);
     }
 
-    if trimmed == ".inf"
-        || trimmed == ".Inf"
-        || trimmed == ".INF"
-        || trimmed == "inf"
-        || trimmed == "Inf"
-        || trimmed == "INF"
-    {
+    if matches_any(trimmed, &[".inf", ".Inf", ".INF", "inf", "Inf", "INF"]) {
         return YamlType::Float(f64::INFINITY);
     }
-    if trimmed == "-.inf"
-        || trimmed == "-.Inf"
-        || trimmed == "-.INF"
-        || trimmed == "-inf"
-        || trimmed == "-Inf"
-        || trimmed == "-INF"
-    {
+    if matches_any(
+        trimmed,
+        &["-.inf", "-.Inf", "-.INF", "-inf", "-Inf", "-INF"],
+    ) {
         return YamlType::Float(f64::NEG_INFINITY);
     }
 
-    if trimmed == ".nan"
-        || trimmed == ".NaN"
-        || trimmed == ".NAN"
-        || trimmed == "nan"
-        || trimmed == "NaN"
-        || trimmed == "NAN"
-    {
+    if matches_any(trimmed, &[".nan", ".NaN", ".NAN", "nan", "NaN", "NAN"]) {
         return YamlType::Float(f64::NAN);
     }
 
@@ -340,7 +330,12 @@ mod tests {
         assert_eq!(resolve_core_type("inf"), YamlType::Float(f64::INFINITY));
         assert!(resolve_core_type(".nan").is_nan_value());
         assert_eq!(resolve_core_type("0x1F"), YamlType::Int(31));
-        assert_eq!(resolve_core_type("3.14"), YamlType::Float(3.14));
+        match resolve_core_type("3.14") {
+            // Tests parsing the string "3.14"; the expected value IS 3.14, not PI
+            #[allow(clippy::approx_constant)]
+            YamlType::Float(v) => assert!((v - 3.14).abs() < 1e-10),
+            other => panic!("expected Float, got {:?}", other),
+        }
         assert_eq!(resolve_core_type("n"), YamlType::Str("n".into()));
         assert_eq!(resolve_core_type("t"), YamlType::Str("t".into()));
     }

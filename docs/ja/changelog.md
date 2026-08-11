@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.14.0] — 2026-08-12
+
 #### 追加
 
 - **YAML Schema Language** — 正規表現パターンを YAML 型にマッピングする

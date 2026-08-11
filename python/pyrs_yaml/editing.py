@@ -14,12 +14,15 @@ def _path_node(self, path: str) -> Node:
     Wildcard (*) and deep-scan (..) segments raise YamlPathError since
     edits target exactly one node.
     """
-    node = Node(self)
-    for seg in _parse_jsonpath(path):
-        if seg == "*" or (isinstance(seg, str) and seg.startswith("..")):
-            raise YamlPathError("wildcard/deep-scan paths are not editable")
-        node = Node(self, (*node._path, seg))
-    return node
+    try:
+        node = Node(self)
+        for seg in _parse_jsonpath(path):
+            if seg == "*" or (isinstance(seg, str) and seg.startswith("..")):
+                raise YamlPathError("wildcard/deep-scan paths are not editable")
+            node = Node(self, (*node._path, seg))
+        return node
+    except ValueError as e:
+        raise YamlPathError(str(e)) from e
 
 
 def _yaml_document_set(self, path: str, value: Any, create_missing: bool = False) -> None:

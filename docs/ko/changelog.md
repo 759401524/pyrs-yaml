@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.14.0] — 2026-08-12
+
 #### 추가됨
 
 - **YAML Schema Language** — 정규식 패턴을 YAML 타입에 매핑하는 사용자 정의
