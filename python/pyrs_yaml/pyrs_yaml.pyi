@@ -16,7 +16,7 @@ class StreamIterator:
         """
         Return self (iterator protocol).
         """
-    def __next__(self, /) -> dict |None:
+    def __next__(self, /) -> dict | None:
         """
         Yield the next event dict; return `None` when the stream ends.
         """
@@ -26,15 +26,33 @@ class YAML:
     """
     Configured YAML parser instance (rt / safe / full).
     """
-    def __new__(cls, /, typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> YAML:
+    def __new__(
+        cls, /, typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False
+    ) -> YAML:
         """
         Create a YAML instance; `typ` can be `rt`/`safe`/`full`.
         """
-    def dump_file(self, /, path: "str", iterable: "Any", explicit_start: "bool" = False, explicit_end: "bool" = False, sort_keys: "bool" = False) -> "None":
+    def dump_file(
+        self,
+        /,
+        path: "str",
+        iterable: "Any",
+        explicit_start: "bool" = False,
+        explicit_end: "bool" = False,
+        sort_keys: "bool" = False,
+    ) -> "None":
         """
         Streaming writer: serialize documents to `path` (Rust File, no GIL blocking).
         """
-    def dump_stream(self, /, file_obj: "Any", iterable: "Any", explicit_start: "bool" = False, explicit_end: "bool" = False, sort_keys: "bool" = False) -> "None":
+    def dump_stream(
+        self,
+        /,
+        file_obj: "Any",
+        iterable: "Any",
+        explicit_start: "bool" = False,
+        explicit_end: "bool" = False,
+        sort_keys: "bool" = False,
+    ) -> "None":
         """
         Streaming writer: serialize documents to `file_obj` (write(str)), constant memory.
         """
@@ -85,7 +103,9 @@ class YamlDocument:
         Enter a transaction scope: snapshot AST + splice state. `with doc:` exits cleanly
         preserving edits; exceptions roll back the snapshot.
         """
-    def __exit__(self, /, exc_type: "Any | None" = None, exc_value: "Any | None" = None, tb: "Any | None" = None) -> "bool": ...
+    def __exit__(
+        self, /, exc_type: "Any | None" = None, exc_value: "Any | None" = None, tb: "Any | None" = None
+    ) -> "bool": ...
     def __getitem__(self, key: Any, /) -> Any:
         """
         Access a child node by key (mapping) or index (sequence).
@@ -150,7 +170,8 @@ class YamlDocument:
         """
     def get(self, /, key: "str", default: "Any" = None) -> "Any":
         """
-        Access a value by key or path (e.g. `a.b[0]`), returning `default` if not found.
+        Access a value by top-level mapping key, returning `default` if not found.
+        Path-based access is available via `find()` / `node()`.
         """
     def reparse(self, /, resolve_merges: "bool" = True, schema: "str" = "core") -> "None":
         """
@@ -176,7 +197,19 @@ class YamlDocument:
         """
         Serialize the document to a YAML string (default 2-space indent).
         """
-    def to_yaml_with_options(self, /, indent_size: "int" = 2, explicit_start: "bool" = False, explicit_end: "bool" = False, sort_keys: "bool" = False, max_depth: "int" = 1000, width: "int" = 80, indent_mapping: "int | None" = None, indent_sequence: "int | None" = None, indent_offset: "int | None" = None) -> "str":
+    def to_yaml_with_options(
+        self,
+        /,
+        indent_size: "int" = 2,
+        explicit_start: "bool" = False,
+        explicit_end: "bool" = False,
+        sort_keys: "bool" = False,
+        max_depth: "int" = 1000,
+        width: "int" = 80,
+        indent_mapping: "int | None" = None,
+        indent_sequence: "int | None" = None,
+        indent_offset: "int | None" = None,
+    ) -> "str":
         """
         Serialize with customizable indent, sorting, and explicit start/end markers.
         """
@@ -229,22 +262,38 @@ def negotiate_language(user_locales: "list[str]", default: "str" = "en") -> "str
     Negotiate a language from user locale list and default.
     """
 
-def parse(yaml: "str | bytes", resolve_merges: "bool" = True, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "YamlDocument":
+def parse(
+    yaml: "str | bytes",
+    resolve_merges: "bool" = True,
+    schema: "str" = "core",
+    max_depth: "int" = 1000,
+    allow_duplicate_keys: "bool" = False,
+) -> "YamlDocument":
     """
     Parse a YAML string (str or bytes) and return an editable `YamlDocument`.
     """
 
-def parse_all_docs(yaml: "str", resolve_merges: "bool" = True, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "list[YamlDocument]":
+def parse_all_docs(
+    yaml: "str",
+    resolve_merges: "bool" = True,
+    schema: "str" = "core",
+    max_depth: "int" = 1000,
+    allow_duplicate_keys: "bool" = False,
+) -> "list[YamlDocument]":
     """
     Parse a multi-document YAML stream and return all `YamlDocument` objects.
     """
 
-def parse_file(path: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "YamlDocument":
+def parse_file(
+    path: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False
+) -> "YamlDocument":
     """
     Parse a YAML file and return an editable `YamlDocument`.
     """
 
-def parse_stream(yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000) -> "StreamIterator | None":
+def parse_stream(
+    yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000
+) -> "StreamIterator | None":
     """
     Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
     """
@@ -254,7 +303,9 @@ def read_markdown(path: "str", schema: "str" = "core", max_depth: "int" = 1000) 
     Read a Markdown file and extract YAML front matter, returning `(frontmatter, body)`.
     """
 
-def read_markdown_str(content: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]":
+def read_markdown_str(
+    content: "str", schema: "str" = "core", max_depth: "int" = 1000
+) -> "tuple[dict[str, Any] | None, str]":
     """
     Extract YAML front matter from a Markdown string, returning `(frontmatter, body)`.
     """
@@ -274,12 +325,16 @@ def safe_dump(data: "dict[str, Any] | list[Any]") -> "str":
     Serialize a Python dict/list to a YAML string.
     """
 
-def safe_load(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "dict[str, Any] | list[Any]":
+def safe_load(
+    yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False
+) -> "dict[str, Any] | list[Any]":
     """
     Parse YAML into a Python dict/list, resolving anchors and merges.
     """
 
-def safe_loads(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "list[dict[str, Any] | list[Any]]":
+def safe_loads(
+    yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False
+) -> "list[dict[str, Any] | list[Any]]":
     """
     Parse a multi-document YAML stream into a list of dicts/lists.
     """

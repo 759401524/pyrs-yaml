@@ -284,6 +284,11 @@ impl DirectWriter {
         indent_width: usize,
         depth: usize,
     ) -> PyResult<()> {
+        if dict.is_empty() {
+            self.write_indent(indent_width);
+            self.output.push_str("{}\n");
+            return Ok(());
+        }
         if self.sort_keys {
             let mut pairs: Vec<(String, Bound<'_, PyAny>, Bound<'_, PyAny>)> = dict
                 .iter()
@@ -359,6 +364,11 @@ impl DirectWriter {
         indent_width: usize,
         depth: usize,
     ) -> PyResult<()> {
+        if list.is_empty() {
+            self.write_indent(indent_width);
+            self.output.push_str("[]\n");
+            return Ok(());
+        }
         for item in list.iter() {
             self.write_indent(indent_width);
             self.output.push_str("- ");

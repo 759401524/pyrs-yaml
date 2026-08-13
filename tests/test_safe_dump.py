@@ -28,13 +28,13 @@ class TestSafeDump:
 
     def test_dump_empty_dict(self):
         result = pyrs_yaml.safe_dump({})
-        # Empty dict serializes to empty string (no keys to emit)
-        assert result.strip() == ""
+        # Empty dict emits the explicit flow form so it re-parses as {} (not null).
+        assert result.strip() == "{}"
 
     def test_dump_empty_list(self):
         result = pyrs_yaml.safe_dump([])
-        # Empty list serializes to empty string
-        assert result.strip() == ""
+        # Empty list emits the explicit flow form so it re-parses as [] (not null).
+        assert result.strip() == "[]"
 
     def test_dump_string_with_special_chars(self):
         result = pyrs_yaml.safe_dump({"key": "hello: world"})

@@ -1,5 +1,7 @@
 use crate::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
 use crate::error::{DepthError, SerializeError};
+use crate::parser::yaml::schema::resolve_core_type;
+use crate::parser::yaml::types::YamlType;
 use indexmap::IndexMap;
 
 /// Serialization options
@@ -345,6 +347,12 @@ impl Serializer {
                 self.output.push('\n');
             }
 
+            if pairs.is_empty() {
+                self.write_indent(indent_width);
+                self.output.push_str("{}\n");
+                return Ok(());
+            }
+
             if self.sort_keys {
                 let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
                 pairs_vec.sort_by(|a, b| {
@@ -415,6 +423,12 @@ impl Serializer {
                 self.write_indent(indent_width);
                 self.write_anchor_tag(&meta.anchor, &meta.tag);
                 self.output.push('\n');
+            }
+
+            if items.is_empty() {
+                self.write_indent(indent_width);
+                self.output.push_str("[]\n");
+                return Ok(());
             }
 
             for item in items.iter() {
@@ -805,19 +819,42 @@ pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
 /// Whether a plain scalar must be rendered double-quoted because it would be
 /// ambiguous or invalid as an unquoted token.
 fn needs_double_quoted(value: &str) -> bool {
-    value.is_empty()
-        || value.contains(':')
+    // Empty scalars must always be quoted: an empty plain token parses back as
+    // null, not as an empty string.
+    if value.is_empty() {
+        return true;
+    }
+    // A plain scalar that resolves to a non-string type (int/float/bool/null)
+    // is emitted unquoted: its loaded type under the core schema equals
+    // `resolve_core_type(text)`, so plain emission always reproduces that type
+    // on re-parse. Quoting a value like `-1` would instead load back as the
+    // string "-1", because quoted scalars are never schema-resolved (YAML 1.2).
+    if !matches!(resolve_core_type(value), YamlType::Str(_)) {
+        return false;
+    }
+    // Genuine strings: quote only when raw emission would be ambiguous or
+    // invalid YAML (YAML indicator characters at the token start, an embedded
+    // colon or hash, or a newline).
+    value.contains(':')
         || value.contains('#')
+        || value.contains('\n')
         || value.starts_with('-')
         || value.starts_with('{')
+        || value.starts_with('}')
         || value.starts_with('[')
+        || value.starts_with(']')
         || value.starts_with('*')
         || value.starts_with('&')
         || value.starts_with('!')
+        || value.starts_with('?')
         || value.starts_with('%')
         || value.starts_with('@')
         || value.starts_with('`')
-        || value.contains('\n')
+        || value.starts_with('\'')
+        || value.starts_with('"')
+        || value.starts_with('|')
+        || value.starts_with('>')
+        || value.starts_with(',')
 }
 
 /// Append `value` to `out` as a plain scalar, double-quoting it if required

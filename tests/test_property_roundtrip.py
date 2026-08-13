@@ -4,15 +4,13 @@ These fuzz the dump/parse pipeline with randomly generated JSON-compatible
 structures to catch (a) panics/crashes on arbitrary input and (b) structural
 or scalar drift introduced by refactors.
 
-Note on the round-trip invariant: this library resolves scalar *type* from
-content (e.g. the string ``"true"`` is loaded back as the boolean ``True``),
-and a few serializer edge cases (e.g. a mapping key that is a lone ``'`` or
-``"`` character) emit YAML that does not re-parse. The exact-equality and
-idempotence properties below are therefore scoped to "safe" strings that are
-known to survive a round trip unchanged, so the suite stays green while still
-exercising deep nesting, collections, ordering, None/bool/int/float, and the
-vast majority of realistic strings. The ``test_dump_never_raises`` fuzz uses
-*arbitrary* input to assert the dump step itself never panics.
+The round-trip invariant now holds end-to-end: quoted scalars load as strings
+(YAML 1.2), lone-quote keys and empty collections round-trip exactly, and only
+plain scalars are schema-resolved. The only strings still excluded from the
+*exact-equality* strategy are those the YAML plain-scalar grammar cannot
+represent losslessly (leading/trailing whitespace, control characters) — a
+serializer syntax concern, not a type-resolution one. ``test_dump_never_raises``
+fuzzes *arbitrary* input to assert the dump step itself never panics.
 """
 
 from hypothesis import given, settings
@@ -26,19 +24,13 @@ def rt(value):
     return pyrs_yaml.parse(pyrs_yaml.safe_dump(value)).to_dict()
 
 
-def _roundtrips_scalar(s):
-    # True only for strings that survive a round trip with unchanged type/value.
-    try:
-        return rt(s) == s
-    except Exception:
-        return False
+# Strings that round-trip faithfully. Quoted scalars and number-like strings
+# now do (Bug-4 fix); only edge-whitespace/control text is excluded because a
+# plain scalar cannot carry it losslessly.
+safe_text = st.text(min_size=0, max_size=40).filter(lambda s: s == s.strip() and s.isprintable())
 
-
-# Strings that round-trip faithfully (excludes "true"/"1"/lone quotes/...).
-safe_text = st.text(min_size=0, max_size=40).filter(_roundtrips_scalar)
-
-# Arbitrary text (including known-fragile single/double quote strings) used
-# only by the dump-fuzz, where we only assert the dumper does not panic.
+# Arbitrary text (including whitespace/quote edge cases) used only by the
+# dump-fuzz, where we only assert the dumper does not panic.
 any_text = st.text(min_size=0, max_size=40)
 
 safe_leaf = st.one_of(
@@ -52,10 +44,8 @@ safe_leaf = st.one_of(
 safe_json = st.recursive(
     safe_leaf,
     lambda children: st.one_of(
-        # Empty collections dump to an empty document that re-parses as None,
-        # so exclude them from the exact-equality strategy.
-        st.lists(children, min_size=1, max_size=8),
-        st.dictionaries(safe_text, children, min_size=1, max_size=8),
+        st.lists(children, min_size=0, max_size=8),
+        st.dictionaries(safe_text, children, min_size=0, max_size=8),
     ),
     max_leaves=40,
 )

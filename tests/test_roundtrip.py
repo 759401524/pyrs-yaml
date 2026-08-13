@@ -108,3 +108,41 @@ class TestRoundTrip:
         child = pyrs_yaml.parse(yaml.ROUNDTRIP_MERGE_KEYS).get("child")
         assert child["x"] == 1
         assert child["y"] == 2
+
+
+class TestAliasCycles:
+    """Self-referential anchors/aliases must not recurse infinitely.
+
+    Alias resolution short-circuits on cycles via a visited set
+    (node_to_pyobject_with_anchors), yielding None instead of runaway
+    recursion. Forward references are rejected by the parser.
+    """
+
+    def test_self_referential_sequence(self):
+        doc = pyrs_yaml.parse("&a [*a]\n")
+        data = doc.to_dict()
+        assert data == [[None]]
+
+    def test_self_referential_mapping(self):
+        doc = pyrs_yaml.parse("a: &x\n  self: *x\n")
+        data = doc.to_dict()
+        assert data == {"a": {"self": {"self": None}}}
+
+    def test_mutual_reference_resolves_via_visited(self):
+        doc = pyrs_yaml.parse("x: &x {a: 1}\ny: &y\n  x: *x\n  y: *y\n")
+        data = doc.to_dict()
+        # The self-reference terminates (visited set) instead of recursing;
+        # one level of expansion happens before aliases collapse to None.
+        assert data == {
+            "x": {"a": 1},
+            "y": {"x": {"a": 1}, "y": {"x": None, "y": None}},
+        }
+
+    def test_forward_anchor_reference_rejected(self):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.parse("a: &a {b: *b}\n")
+
+    def test_merge_key_cycle_does_not_recurse(self):
+        doc = pyrs_yaml.parse("base: &base\n  child: *base\n")
+        data = doc.to_dict()
+        assert data == {"base": {"child": {"child": None}}}

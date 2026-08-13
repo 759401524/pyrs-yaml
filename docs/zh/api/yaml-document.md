@@ -83,7 +83,7 @@ data = doc.to_dict()  # {'key': 'value'}
 
 ### `get()`
 
-通过键或 JSONPath 风格路径获取值。包含 `.`、`[` 或以 `$` 开头的键会被当作路径处理（`$.a.b`、`$.arr[0]`、`$.arr[-1]` — 负索引从末尾倒数）。
+按顶层映射键进行字面键查找获取值（与 `__getitem__`/`__setitem__` 一致）。键包含 `.`、`[`、`]` 或 `$` 时也始终按字面键处理，不会解析为路径。
 
 ```python
 get(key: str, default: Any = None) -> Any
@@ -91,7 +91,9 @@ get(key: str, default: Any = None) -> Any
 
 **返回值:** 值，未找到则返回默认值
 
-**引发:** `YamlPathError` — 路径格式错误（`$[bad`、通配符/深度扫描）
+!!! note "路径访问"
+    JSONPath 风格的访问请使用 [`find()`](#find) / [`node()`](#node) /
+    [`set()`](#set)（如 `$.a.b`、`$.items[-1]`）。
 
 ### `root_type()`
 

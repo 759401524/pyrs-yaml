@@ -205,7 +205,7 @@ You can obtain a node reference and edit it through either the document path API
     ```python
     doc.set("$.db.host", "other")  # set by path
     doc.set("$.db.port", 5433)
-    print(doc.get("$.db.host"))  # "other"
+    print(doc.find("$.db.host").value)  # "other"
     ```
 
 === "Node API"

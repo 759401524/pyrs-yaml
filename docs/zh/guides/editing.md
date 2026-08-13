@@ -205,7 +205,7 @@ print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 
     ```python
     doc.set("$.db.host", "db.example.com")
-    doc.get("$.db.host")
+    print(doc.find("$.db.host").value)
     ```
 
 === "Node API"

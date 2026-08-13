@@ -119,7 +119,7 @@ data = doc.to_dict()  # {'key': 'value'}
 
 ### `get()`
 
-키 또는 JSONPath 스타일 경로로 값을 가져옵니다. `.`, `[`를 포함하거나 `$`로 시작하는 키는 경로로 처리됩니다 (`$.a.b`, `$.arr[0]`, `$.arr[-1]` — 음수 인덱스는 끝에서부터 셉니다).
+최상위 매핑 키로 값을 가져옵니다(리터럴 키 조회, `__getitem__`/`__setitem__`과 일관). 키에 `.`, `[`, `]`, `$`이 포함되어도 항상 그대로의 키로 취급되며 경로로 해석되지 않습니다.
 
 ```python
 get(key: str, default: Any = None) -> Any
@@ -127,7 +127,9 @@ get(key: str, default: Any = None) -> Any
 
 **반환값:** 값, 못 찾으면 기본값
 
-**발생:** `YamlPathError` — 잘못된 경로 (`$[bad`, 와일드카드/딥 스캔)
+!!! note "경로 접근"
+    JSONPath 스타일 접근은 [`find()`](#find) / [`node()`](#node) /
+    [`set()`](#set)을 사용하세요(`$.a.b`, `$.items[-1]` 등).
 
 ### `root_type()`
 

@@ -27,12 +27,12 @@ class TestNodeValueScalar:
         node = doc.node().find("$.key")
         assert node.value is True
 
-    def test_scalar_quoted_string_resolves_to_type(self):
-        """Quoted scalars are resolved by the schema, not preserved as strings."""
+    def test_scalar_quoted_string_stays_string(self):
+        """Quoted scalars are always strings (YAML 1.2); only plain scalars are resolved."""
         doc = pyrs_yaml.parse('key: "42"\n')
         node = doc.node().find("$.key")
-        # Core schema resolves "42" to int 42
-        assert node.value == 42
+        # Quoted scalars are never schema-resolved, so "42" stays a string.
+        assert node.value == "42"
 
 
 class TestNodeValueNull:

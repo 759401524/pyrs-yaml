@@ -502,9 +502,10 @@ class TestNegativeIndexPaths:
 
     def test_get_negative_index(self):
         doc = pyrs_yaml.parse("arr: [1, 2, 3]\n")
-        assert doc.get("$.arr[-1]") == 3
-        assert doc.get("$.arr[-3]") == 1
-        assert doc.get("$.arr[-4]") is None
+        assert doc.find("$.arr[-1]").value == 3
+        assert doc.find("$.arr[-3]").value == 1
+        with pytest.raises(IndexError):
+            _ = doc.find("$.arr[-4]").value
 
 
 class TestEmptyDocumentEdit:
@@ -520,28 +521,32 @@ class TestEmptyDocumentEdit:
             doc.set("$.a.b", 2)
 
 
-class TestGetJsonPath:
-    def test_nested_get(self):
+class TestFindJsonPath:
+    def test_nested_find(self):
         doc = pyrs_yaml.parse("a:\n  b:\n    c: 42\n")
-        assert doc.get("$.a.b.c") == 42
-        assert doc.get("$.a.missing") is None
+        assert doc.find("$.a.b.c").value == 42
 
-    def test_get_sequence_index_path(self):
+    def test_find_sequence_index_path(self):
         doc = pyrs_yaml.parse("arr: [10, 20, 30]\n")
-        assert doc.get("$.arr[1]") == 20
-        assert doc.get("$.arr[5]") is None
+        assert doc.find("$.arr[1]").value == 20
 
-    def test_get_invalid_path_raises(self):
+    def test_find_missing_raises(self):
+        doc = pyrs_yaml.parse("a:\n  b: 1\n")
+        with pytest.raises(KeyError):
+            _ = doc.find("$.a.missing").value
+
+    def test_find_invalid_path_raises(self):
         doc = pyrs_yaml.parse("a: 1\n")
-        with pytest.raises(pyrs_yaml.YamlPathError):
-            doc.get("$[bad")
-        with pytest.raises(pyrs_yaml.YamlPathError):
-            doc.get("$..a")
+        with pytest.raises(ValueError):
+            doc.find("$[bad")
 
-    def test_get_dotted_key_now_path_semantics(self):
-        doc = pyrs_yaml.parse("a.b: 1\n")
-        assert doc.get("a.b") is None  # '.' routes to JSONPath, not a literal key
-        assert doc.get("$.a.b") is None
+    def test_get_is_literal_key(self):
+        # get() follows the Python mapping protocol: the key is always a literal
+        # mapping key, never a path. Dot/bracket keys are ordinary data.
+        doc = pyrs_yaml.parse("a.b: 1\nc[0]: 2\n")
+        assert doc.get("a.b") == 1
+        assert doc.get("c[0]") == 2
+        assert doc.get("a.missing") is None
 
 
 class TestCompactSequenceItems:
