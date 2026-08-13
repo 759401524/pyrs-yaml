@@ -1,14 +1,10 @@
 //! YAML — configured parser instance (rt / safe / full).
 
 use pyo3::prelude::*;
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::parser::yaml::registry;
-use crate::py::convert::{
-    collect_anchors, format_i18n_error, node_to_pyobject_simple, node_to_pyobject_with_anchors,
-    parse_schema,
-};
+use crate::py::convert::{format_i18n_error, node_to_pyobject_resolving_anchors, parse_schema};
 use crate::py::document::{YamlDocument, parse_document};
 use crate::py::parse_error_to_py_err;
 use crate::py::streaming::{ChunkCharIter, DEFAULT_CHUNK_SIZE, InputSrc, YamlStream};
@@ -87,14 +83,7 @@ impl YAML {
             )
             .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;
-        if yaml.bytes().any(|b| b == b'&') {
-            let mut anchors = HashMap::new();
-            collect_anchors(&ast, &mut anchors);
-            let mut visited = HashSet::new();
-            node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, &schema_enum)
-        } else {
-            node_to_pyobject_simple(&ast, py, &schema_enum)
-        }
+        node_to_pyobject_resolving_anchors(&ast, py, &schema_enum, yaml.bytes().any(|b| b == b'&'))
     }
 
     /// Parse multi-document YAML into a list of dicts/lists.
@@ -115,14 +104,7 @@ impl YAML {
         let has_anchors = yaml.bytes().any(|b| b == b'&');
         let mut results = Vec::with_capacity(asts.len());
         for ast in asts {
-            let obj = if has_anchors {
-                let mut anchors = HashMap::new();
-                collect_anchors(&ast, &mut anchors);
-                let mut visited = HashSet::new();
-                node_to_pyobject_with_anchors(&ast, py, &anchors, &mut visited, &schema_enum)?
-            } else {
-                node_to_pyobject_simple(&ast, py, &schema_enum)?
-            };
+            let obj = node_to_pyobject_resolving_anchors(&ast, py, &schema_enum, has_anchors)?;
             results.push(obj);
         }
         Ok(results)
@@ -151,17 +133,7 @@ impl YAML {
             .map_err(|e| parse_error_to_py_err(e, &content, self.max_depth))
         })?;
         let source: Arc<str> = Arc::from(content);
-        Ok(YamlDocument {
-            ast,
-            schema: schema_enum,
-            source: Some(source.clone()),
-            version: "1.2".to_string(),
-            revision: 0,
-            source_dirty: false,
-            splice: None,
-            splice_checked: false,
-            snapshot: vec![],
-        })
+        Ok(YamlDocument::new(ast, schema_enum, source))
     }
 
     /// Parse multi-document YAML and return a list of `YamlDocument`.
@@ -183,17 +155,7 @@ impl YAML {
         let source: Arc<str> = Arc::from(yaml);
         Ok(asts
             .into_iter()
-            .map(|ast| YamlDocument {
-                ast,
-                schema: schema_enum.clone(),
-                source: Some(source.clone()),
-                version: "1.2".to_string(),
-                revision: 0,
-                source_dirty: false,
-                splice: None,
-                splice_checked: false,
-                snapshot: vec![],
-            })
+            .map(|ast| YamlDocument::new(ast, schema_enum.clone(), source.clone()))
             .collect())
     }
 

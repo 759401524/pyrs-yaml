@@ -1,7 +1,6 @@
 use crate::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
 use crate::error::{DepthError, SerializeError};
-use crate::parser::yaml::schema::resolve_core_type;
-use crate::parser::yaml::types::YamlType;
+use crate::parser::yaml::schema::core_type_is_non_string;
 use indexmap::IndexMap;
 
 /// Serialization options
@@ -635,7 +634,7 @@ impl Serializer {
                 style: ScalarStyle::Plain,
                 ..
             } => {
-                if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
+                if is_short_alphanumeric(value) {
                     self.output.push_str(value);
                 } else {
                     self.write_plain_scalar(value, 0);
@@ -829,7 +828,7 @@ fn needs_double_quoted(value: &str) -> bool {
     // `resolve_core_type(text)`, so plain emission always reproduces that type
     // on re-parse. Quoting a value like `-1` would instead load back as the
     // string "-1", because quoted scalars are never schema-resolved (YAML 1.2).
-    if !matches!(resolve_core_type(value), YamlType::Str(_)) {
+    if core_type_is_non_string(value) {
         return false;
     }
     // Genuine strings: quote only when raw emission would be ambiguous or
@@ -901,6 +900,12 @@ pub fn wrap_plain_scalar(out: &mut String, value: &str, width: usize) {
         out.push('\n');
         remaining_rest = remaining_rest[split_rest..].trim();
     }
+}
+
+/// Whether a key or scalar value is a short, purely alphanumeric token that
+/// can be emitted without any quoting or wrapping.
+pub fn is_short_alphanumeric(value: &str) -> bool {
+    value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
 #[cfg(test)]

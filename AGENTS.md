@@ -106,6 +106,12 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 - Use `git commit --no-verify` to bypass prek hooks
 - Edit `.pyi` files manually instead of regenerating via maturin
 
+⚠️ 架构决策（不重构，防过拟合）：
+
+- 不统一 `_parse_jsonpath` 与 `parse_path_segments`：查询（find/walk 多节点）与编辑（set/insert 单节点）路径语义天然不同，重写 find/walk 风险高 ROI 低。
+- 不消除 direct_dump 与 serializer 的近似镜像：输入对象不同（Python 对象 vs CustomNode），细节必然不同，强行抽象引入过度泛化。
+- 不重写绑定层 `py/editing/mod.rs` 与 core editing 的边界：编辑语义直接操作 AST，分层边界在当前版本合理，需未来版本级设计。
+
 ## Release Process
 
 Learnings from v0.10.0 (2026-08-01) — three pitfalls, each is a separate regression:

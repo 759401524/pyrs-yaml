@@ -600,3 +600,31 @@ class TestAliasEditErrors:
         doc = pyrs_yaml.parse("defaults: &d\n  x: 1\nprod: *d\n")
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc.rename("$.prod.x", "y")
+
+
+class TestSetPathRoot:
+    """Root replacement via an empty path (segments.is_empty() branch)."""
+
+    def test_replace_root_with_scalar(self):
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        doc.set("$", 5)
+        assert doc.to_dict() == 5
+        assert doc.to_yaml() == "5\n"
+
+    def test_replace_root_with_mapping(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc.set("$", {"x": [1, 2]})
+        assert doc.to_dict() == {"x": [1, 2]}
+        assert doc.to_yaml() == "x:\n  - 1\n  - 2\n"
+
+    def test_replace_root_with_sequence(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc.set("$", [3, 4])
+        assert doc.to_dict() == [3, 4]
+        assert doc.to_yaml() == "- 3\n- 4\n"
+
+    def test_replace_root_bumps_revision(self):
+        doc = pyrs_yaml.parse("a: 1\n")
+        rev0 = doc._revision()
+        doc.set("$", 9)
+        assert doc._revision() != rev0

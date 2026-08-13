@@ -54,7 +54,7 @@ pub enum SerializeError {
     Internal(&'static str),
 }
 
-/// Edit-path (`parse_path_segments`) failures.
+/// Edit-path parsing failures.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum PathError {
     /// `*` wildcard or deep-scan selector is unsupported.

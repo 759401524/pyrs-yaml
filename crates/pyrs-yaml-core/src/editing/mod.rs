@@ -13,7 +13,7 @@ pub use dirty::{DirtyKind, DirtyUnit};
 pub use metadata::with_metadata_from;
 pub use navigate::{
     NavigateError, Segment, key_eq, mapping_get_mut, mapping_key_index, navigate, navigate_mut,
-    normalize_index, parse_path_segments,
+    normalize_index,
 };
 pub use region::{
     compact_item_ancestor, eligible_path, extend_delete_over_comments, line_aligned, line_end,

@@ -3,8 +3,9 @@
 //! Python YAML library with perfect round-trip support.
 //! Built on top of pyrs-yaml-core.
 
-// Re-export core crate for backward compatibility
-pub use pyrs_yaml_core::*;
+// Explicit re-exports from pyrs-yaml-core (no wildcard — each module must be
+// opted in to keep the public API surface intentional).
+pub use pyrs_yaml_core::{ast, editing, error, i18n, parser, serializer, splice};
 
 pub mod py;
 

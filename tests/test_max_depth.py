@@ -109,3 +109,35 @@ def test_rejects_depth_limit_in_parse_file(tmp_path):
     f.write_text(deep_yaml)
     with pytest.raises(pyrs_yaml.YamlMaxDepthError):
         pyrs_yaml.parse_file(str(f), max_depth=100)
+
+
+def test_resolve_tags_deep_nesting_does_not_recursively_crash():
+    # Deeply nested block mapping with a tagged scalar at the bottom:
+    # resolve_tags recurses over the AST when a tag handler is registered.
+    inner = "leaf: !mytag 42\n"
+    for i in range(60):
+        inner = f"k{i}:\n  {inner}"
+    doc = pyrs_yaml.parse(inner, max_depth=1000)
+    data = doc.to_dict()
+    assert data is not None
+
+
+def test_resolve_tags_with_custom_handler_deep_tree():
+    # Verify invoke-through-handler path at nesting depth (no recursion crash).
+    @pyrs_yaml.register_type
+    class Upper(pyrs_yaml.CustomType):
+        def can_parse(self, value: str) -> bool:
+            return False
+
+        def from_yaml(self, value: str):
+            return value.upper()
+
+    try:
+        inner = "leaf: !upper hello\n"
+        for i in range(60):
+            inner = f"k{i}:\n  {inner}"
+        doc = pyrs_yaml.parse(inner, max_depth=1000)
+        data = doc.to_dict()
+        assert data is not None
+    finally:
+        pyrs_yaml.clear_type_handlers()

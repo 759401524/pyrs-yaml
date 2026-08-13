@@ -23,6 +23,9 @@ pub fn set_path(
     line_offsets: Option<&[usize]>,
     create_missing: bool,
 ) -> Result<DirtyUnit, String> {
+    if segments.is_empty() {
+        return set_path_root(node, new_value, source);
+    }
     let computed;
     let line_offsets: &[usize] = match line_offsets {
         Some(offs) => offs,
@@ -32,23 +35,6 @@ pub fn set_path(
         }
     };
 
-    if segments.is_empty() {
-        let eligible = eligible_path(&path_nodes(node, segments).map_err(|e| e.to_string())?);
-        *node = new_value;
-        let text = crate::serializer::to_yaml_with_options(
-            &*node,
-            &crate::serializer::SerializeOptions::default(),
-        )
-        .map_err(|e| e.to_string())?;
-        return Ok(DirtyUnit {
-            kind: DirtyKind::Region {
-                range: 0..source.len(),
-                indent: 0,
-                text,
-            },
-            eligible,
-        });
-    }
     if matches!(node, CustomNode::Null { .. }) {
         *node = CustomNode::Mapping {
             pairs: IndexMap::new(),
@@ -90,6 +76,30 @@ pub fn set_path(
             set_path_sequence_index(node, last, new_value, preserve_metadata, &ctx)
         }
     }
+}
+
+/// Replace the whole document (empty segment path): swap in the new value and
+/// mark the entire source range dirty.
+fn set_path_root(
+    node: &mut CustomNode,
+    new_value: CustomNode,
+    source: &str,
+) -> Result<DirtyUnit, String> {
+    let eligible = eligible_path(&path_nodes(node, &[]).map_err(|e| e.to_string())?);
+    *node = new_value;
+    let text = crate::serializer::to_yaml_with_options(
+        &*node,
+        &crate::serializer::SerializeOptions::default(),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(DirtyUnit {
+        kind: DirtyKind::Region {
+            range: 0..source.len(),
+            indent: 0,
+            text,
+        },
+        eligible,
+    })
 }
 
 /// Set the value at `last` (a `Key` segment) of the mapping reached via

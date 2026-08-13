@@ -184,3 +184,23 @@ pub(crate) fn node_to_pyobject_simple(
     let mut visited: HashSet<usize> = HashSet::new();
     node_to_pyobject_with_anchors(node, py, &anchors, &mut visited, schema)
 }
+
+/// Convert an AST to a Python object, resolving anchor references only when
+/// the source text actually contains an `&`. Shared by every "source → native
+/// value" entry point (`safe_load`/`safe_loads`/`YAML.safe_load*`/`to_dict`)
+/// so the has-anchor fast path stays in one place.
+pub(crate) fn node_to_pyobject_resolving_anchors(
+    node: &CustomNode,
+    py: Python,
+    schema: &Schema,
+    source_has_anchors: bool,
+) -> PyResult<Py<PyAny>> {
+    if source_has_anchors {
+        let mut anchors = HashMap::new();
+        collect_anchors(node, &mut anchors);
+        let mut visited = HashSet::new();
+        node_to_pyobject_with_anchors(node, py, &anchors, &mut visited, schema)
+    } else {
+        node_to_pyobject_simple(node, py, schema)
+    }
+}
