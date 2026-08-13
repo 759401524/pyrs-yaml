@@ -66,17 +66,7 @@ pub(crate) fn parse_file(
     })?;
     resolve_tags(&mut ast, py)?;
     let source: std::sync::Arc<str> = std::sync::Arc::from(content);
-    Ok(YamlDocument {
-        ast,
-        schema: schema_enum,
-        source: Some(source.clone()),
-        version: "1.2".to_string(),
-        revision: 0,
-        source_dirty: false,
-        splice: None,
-        splice_checked: false,
-        snapshot: vec![],
-    })
+    Ok(YamlDocument::new(ast, schema_enum, source))
 }
 
 #[pyfunction]
@@ -105,17 +95,7 @@ pub(crate) fn parse_all_docs(
     let source: std::sync::Arc<str> = std::sync::Arc::from(yaml);
     Ok(asts
         .into_iter()
-        .map(|ast| YamlDocument {
-            ast,
-            schema: schema_enum.clone(),
-            source: Some(source.clone()),
-            version: "1.2".to_string(),
-            revision: 0,
-            source_dirty: false,
-            splice: None,
-            splice_checked: false,
-            snapshot: vec![],
-        })
+        .map(|ast| YamlDocument::new(ast, schema_enum.clone(), source.clone()))
         .collect())
 }
 
@@ -136,20 +116,12 @@ pub(crate) fn safe_load(
             .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     resolve_tags(&mut ast, py)?;
-    if yaml.bytes().any(|b| b == b'&') {
-        let mut anchors = std::collections::HashMap::new();
-        crate::py::convert::collect_anchors(&ast, &mut anchors);
-        let mut visited = std::collections::HashSet::new();
-        crate::py::convert::node_to_pyobject_with_anchors(
-            &ast,
-            py,
-            &anchors,
-            &mut visited,
-            &schema_enum,
-        )
-    } else {
-        crate::py::convert::node_to_pyobject_simple(&ast, py, &schema_enum)
-    }
+    crate::py::convert::node_to_pyobject_resolving_anchors(
+        &ast,
+        py,
+        &schema_enum,
+        yaml.bytes().any(|b| b == b'&'),
+    )
 }
 
 #[pyfunction]
@@ -177,20 +149,12 @@ pub(crate) fn safe_loads(
     let has_anchors = yaml.bytes().any(|b| b == b'&');
     asts.iter()
         .map(|ast| {
-            if has_anchors {
-                let mut anchors = std::collections::HashMap::new();
-                crate::py::convert::collect_anchors(ast, &mut anchors);
-                let mut visited = std::collections::HashSet::new();
-                crate::py::convert::node_to_pyobject_with_anchors(
-                    ast,
-                    py,
-                    &anchors,
-                    &mut visited,
-                    &schema_enum,
-                )
-            } else {
-                crate::py::convert::node_to_pyobject_simple(ast, py, &schema_enum)
-            }
+            crate::py::convert::node_to_pyobject_resolving_anchors(
+                ast,
+                py,
+                &schema_enum,
+                has_anchors,
+            )
         })
         .collect()
 }

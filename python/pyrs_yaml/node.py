@@ -178,6 +178,11 @@ class Node:
     def find(self, path: str) -> Any:
         """Find a node by JSONPath-like path.
 
+        The path **must** start with ``$`` (a leading ``$`` is required; a bare
+        ``a.b`` or ``arr[0]`` raises ``ValueError``). This is the canonical
+        path syntax for the Python API; the Rust backend's internal path parser
+        accepts an optional ``$`` for compatibility.
+
         Supports:
             $.key           - Root key
             $.key.subkey    - Nested key
@@ -198,18 +203,10 @@ class Node:
             elif isinstance(seg, str) and seg.startswith(".."):
                 doc = current._get_doc()
                 key = seg[2:]
+                entries = _walk_node_paths(current._path, doc.to_dict())
                 if key == "*":
-                    all_nodes = list(current.walk())
-                    return [Node(doc, n._path) for n in all_nodes]
-                results = []
-                for node in current.walk():
-                    try:
-                        val = node._resolve()
-                        if isinstance(val, dict) and key in val:
-                            results.append(Node(doc, (*node._path, key)))
-                    except (KeyError, IndexError, TypeError):
-                        continue
-                return results
+                    return [Node(doc, path) for path, _ in entries]
+                return [Node(doc, (*path, key)) for path, value in entries if isinstance(value, dict) and key in value]
             elif isinstance(seg, str):
                 doc = current._get_doc()
                 val_path = (*current._path, seg)
@@ -230,6 +227,20 @@ class Node:
         if not isinstance(other, Node):
             return NotImplemented
         return self._path == other._path and self._doc is other._doc and self._alive == other._alive
+
+
+def _walk_node_paths(path: tuple[Any, ...], value: Any) -> Iterator[tuple[tuple[Any, ...], Any]]:
+    """Yield ``(path, value)`` pairs in depth-first pre-order over a native
+    dict/list tree without constructing ``Node`` objects. Used by ``Node.find``
+    deep scans so unmatched nodes don't pay object construction or stale checks.
+    """
+    yield path, value
+    if isinstance(value, dict):
+        for k, v in value.items():
+            yield from _walk_node_paths((*path, k), v)
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            yield from _walk_node_paths((*path, i), v)
 
 
 def _parse_jsonpath(path: str) -> list[Any]:

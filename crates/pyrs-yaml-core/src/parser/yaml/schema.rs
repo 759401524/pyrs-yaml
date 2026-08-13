@@ -87,6 +87,14 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
     YamlType::Str(Cow::Borrowed(value))
 }
 
+/// Whether the string resolves to a non-Str type under the core schema
+/// (int/float/bool/null). Shared by [`needs_quotes`] and the serializer's
+/// [`needs_double_quoted`] so the "is this value type-resolvable?" dimension
+/// lives in one place.
+pub(crate) fn core_type_is_non_string(value: &str) -> bool {
+    !matches!(resolve_core_type(value), YamlType::Str(_))
+}
+
 /// Whether a string would be misread if emitted as an unquoted plain scalar.
 ///
 /// Quoting is required when the value resolves to a non-string type under the
@@ -98,7 +106,7 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
 /// direct writer so that Python strings round-trip losslessly. It intentionally
 /// stays bound to [`resolve_core_type`] so the two can never drift.
 pub fn needs_quotes(value: &str) -> bool {
-    if !matches!(resolve_core_type(value), YamlType::Str(_)) {
+    if core_type_is_non_string(value) {
         return true;
     }
     if value.starts_with(' ') || value.ends_with(' ') {

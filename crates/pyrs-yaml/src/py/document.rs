@@ -2,7 +2,6 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::ast::CustomNode;
@@ -11,8 +10,7 @@ use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::splice::SpliceState;
 
 use crate::py::convert::{
-    collect_anchors, format_i18n_error, node_to_pyobject_simple, node_to_pyobject_with_anchors,
-    parse_schema,
+    format_i18n_error, node_to_pyobject_resolving_anchors, node_to_pyobject_simple, parse_schema,
 };
 use crate::py::editing;
 use crate::py::editing::segment_py::SegmentExt;
@@ -75,15 +73,15 @@ pub(crate) fn serialize_document(
 }
 
 impl YamlDocument {
-    /// Non-`#[pymethod]` constructor used by benches and integration tests.
-    /// Splice eligibility is computed lazily on first edit via
-    /// [`ensure_splice`], so `splice` starts `None`.
-    #[allow(dead_code)] // pub but struct is not pub — used by benches (separate crate)
-    pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
+    /// Uniform constructor for a freshly parsed document: all entries start
+    /// at revision 0 with splice eligibility uncomputed. Every parse entry
+    /// point (`parse`, `parse_file`, `parse_all_docs`, `YAML` variants) must
+    /// go through here so derived state stays in sync.
+    pub(crate) fn new(ast: CustomNode, schema: Schema, source: Arc<str>) -> Self {
         YamlDocument {
             ast,
-            schema: crate::parser::yaml::Schema::Core,
-            source: Some(source.clone()),
+            schema,
+            source: Some(source),
             version: "1.2".to_string(),
             revision: 0,
             source_dirty: false,
@@ -91,6 +89,14 @@ impl YamlDocument {
             splice_checked: false,
             snapshot: vec![],
         }
+    }
+
+    /// Non-`#[pymethod]` constructor used by benches and integration tests.
+    /// Splice eligibility is computed lazily on first edit via
+    /// [`ensure_splice`], so `splice` starts `None`.
+    #[allow(dead_code)] // pub but struct is not pub — used by benches (separate crate)
+    pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
+        YamlDocument::new(ast, crate::parser::yaml::Schema::Core, source)
     }
 
     /// Lazily compute splice eligibility on first edit. `splice_checked`
@@ -203,14 +209,7 @@ impl YamlDocument {
     /// Convert the document to a Python dict/list, resolving anchor references.
     fn to_dict(&self, py: Python) -> PyResult<Py<PyAny>> {
         let has_anchors = self.source.as_deref().is_none_or(|s| s.contains('&'));
-        if has_anchors {
-            let mut anchors = HashMap::new();
-            collect_anchors(&self.ast, &mut anchors);
-            let mut visited = HashSet::new();
-            node_to_pyobject_with_anchors(&self.ast, py, &anchors, &mut visited, &self.schema)
-        } else {
-            node_to_pyobject_simple(&self.ast, py, &self.schema)
-        }
+        node_to_pyobject_resolving_anchors(&self.ast, py, &self.schema, has_anchors)
     }
 
     /// Access a value by top-level mapping key, returning `default` if not found.
@@ -733,17 +732,7 @@ pub(crate) fn parse_document(
     })?;
     resolve_tags(&mut ast, py)?;
     let source: Arc<str> = Arc::from(yaml_str);
-    Ok(YamlDocument {
-        ast,
-        schema: schema_enum,
-        source: Some(source),
-        version: "1.2".to_string(),
-        revision: 0,
-        source_dirty: false,
-        splice: None,
-        splice_checked: false,
-        snapshot: vec![],
-    })
+    Ok(YamlDocument::new(ast, schema_enum, source))
 }
 
 pub(crate) fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) -> PyResult<()> {

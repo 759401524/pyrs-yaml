@@ -4,7 +4,6 @@
 //! Python-specific segment parsing is in `crate::py::editing`.
 
 use crate::ast::CustomNode;
-use crate::error::PathError;
 use indexmap::IndexMap;
 use std::borrow::Cow;
 
@@ -74,62 +73,6 @@ pub fn normalize_index(index: i64, len: usize) -> Option<usize> {
         index
     };
     usize::try_from(normalized).ok().filter(|&i| i < len)
-}
-
-/// ```
-/// use pyrs_yaml_core::editing::parse_path_segments;
-/// let segs = parse_path_segments("$.a.b").unwrap();
-/// assert_eq!(segs.len(), 2);
-/// ```
-pub fn parse_path_segments(path: &str) -> Result<Vec<Segment<'_>>, PathError> {
-    let rest = path.strip_prefix('$').unwrap_or(path);
-    let rest = rest.strip_prefix('.').unwrap_or(rest);
-    if rest.starts_with('.') {
-        return Err(PathError::WildcardOrDeepScan);
-    }
-    let mut segments = Vec::new();
-    let mut chars = rest.chars().peekable();
-    while let Some(&c) = chars.peek() {
-        match c {
-            '.' => {
-                chars.next();
-            }
-            '[' => {
-                chars.next();
-                let mut num = String::new();
-                if matches!(chars.peek(), Some('-')) {
-                    num.push('-');
-                    chars.next();
-                }
-                while matches!(chars.peek(), Some(d) if d.is_ascii_digit()) {
-                    num.push(chars.next().expect("peeked digit"));
-                }
-                if chars.next() != Some(']') || num.is_empty() || num == "-" {
-                    return Err(PathError::InvalidIndex(num));
-                }
-                let idx: i64 = num
-                    .parse()
-                    .map_err(|_| PathError::InvalidIndex(num.clone()))?;
-                segments.push(Segment::Index(idx));
-            }
-            '*' => return Err(PathError::WildcardOrDeepScan),
-            _ => {
-                let mut key = String::new();
-                while let Some(&ch) = chars.peek() {
-                    if matches!(ch, '.' | '[' | '*' | '$') {
-                        break;
-                    }
-                    key.push(ch);
-                    chars.next();
-                }
-                if key.is_empty() {
-                    return Err(PathError::InvalidPath);
-                }
-                segments.push(Segment::Key(Cow::Owned(key)));
-            }
-        }
-    }
-    Ok(segments)
 }
 
 pub use crate::error::NavigateError;

@@ -31,7 +31,7 @@ use crate::py::python_types::{float_to_yaml_string, py_string_to_arc};
 use crate::py::type_registry;
 #[cfg(feature = "numpy")]
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
-use crate::serializer::{write_double_quoted_scalar, write_plain_scalar};
+use crate::serializer::{is_short_alphanumeric, write_double_quoted_scalar, write_plain_scalar};
 use crate::{YamlMaxDepthError, YamlTypeError};
 
 const MAX_DEPTH: usize = 1000;
@@ -477,7 +477,7 @@ impl DirectWriter {
     /// Mirror of `Serializer::write_scalar_for_key`'s plain branch, minus the
     /// `needs_quotes` guard (callers dispatch quoted keys before reaching here).
     fn write_key_text(&mut self, value: &str) {
-        if value.len() <= 8 && value.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        if is_short_alphanumeric(value) {
             self.output.push_str(value);
         } else {
             self.write_plain_scalar(value, 0);
