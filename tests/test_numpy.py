@@ -178,24 +178,24 @@ class TestNumpyEdgeCases:
     """Test edge cases and error handling."""
 
     def test_empty_1d(self):
-        """Empty 1-D array: serializes to empty YAML, loads as None (YAML 1.2 spec)."""
+        """Empty 1-D array: serializes to the explicit empty sequence and round-trips back."""
         arr = numpy.array([], dtype="int32")
         yaml_str = pyrs_yaml.safe_dump(arr)
-        # Empty YAML document → null in YAML 1.2
+        # Empty collections emit [] (not an empty document that loads as null).
         data = pyrs_yaml.safe_load(yaml_str)
-        assert data is None
+        assert data == []
 
     def test_empty_2d(self):
         arr = numpy.empty((0, 3), dtype="int32")
         yaml_str = pyrs_yaml.safe_dump(arr)
         data = pyrs_yaml.safe_load(yaml_str)
-        assert data is None
+        assert data == []
 
     def test_empty_3d(self):
         arr = numpy.empty((2, 0, 3), dtype="int32")
         yaml_str = pyrs_yaml.safe_dump(arr)
         data = pyrs_yaml.safe_load(yaml_str)
-        assert data is None
+        assert data == []
 
     def test_single_element(self):
         """1-D single-element arrays round-trip correctly."""

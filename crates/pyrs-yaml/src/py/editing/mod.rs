@@ -2,9 +2,8 @@ mod metadata;
 
 pub(crate) use crate::editing::{
     DirtyKind, DirtyUnit, NavigateError, Segment, eligible_path, extend_delete_over_comments,
-    key_eq, line_aligned, line_end, line_indent, line_start, mapping_key_index, navigate,
-    navigate_mut, normalize_index, parse_path_segments, path_nodes, precompute,
-    regenerate_region_text, region_unit,
+    key_eq, line_aligned, line_end, line_indent, line_start, mapping_key_index, navigate_mut,
+    normalize_index, path_nodes, precompute, regenerate_region_text, region_unit,
 };
 pub(crate) use metadata::with_metadata_from;
 

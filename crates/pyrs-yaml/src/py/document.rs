@@ -213,22 +213,10 @@ impl YamlDocument {
         }
     }
 
-    /// Access a value by key or path (e.g. `a.b[0]`), returning `default` if not found.
+    /// Access a value by top-level mapping key, returning `default` if not found.
+    /// Path-based access is available via `find()` / `node()`.
     #[pyo3(signature = (key: "str", default: "Any" = None) -> "Any")]
     fn get(&self, py: Python, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
-        let is_path = key.starts_with('$') || key.contains('.') || key.contains('[');
-        if is_path {
-            let segs = editing::parse_path_segments(key).map_err(|e| {
-                YamlPathError::new_err(format_i18n_error(
-                    "path-error",
-                    &[("detail", &e.to_string())],
-                ))
-            })?;
-            return match editing::navigate(&self.ast, &segs) {
-                Ok(node) => Ok(node_to_pyobject_simple(node, py, &self.schema)?),
-                Err(_) => Ok(default.unwrap_or_else(|| py.None())),
-            };
-        }
         match &self.ast {
             CustomNode::Mapping { pairs, .. } => {
                 let key_node = CustomNode::plain_scalar(key);
@@ -702,7 +690,6 @@ impl YamlDocument {
 use crate::YamlEditError;
 use crate::YamlMaxDepthError;
 use crate::YamlParseError;
-use crate::YamlPathError;
 use crate::YamlSerializeError;
 use crate::YamlTagError;
 use crate::YamlTypeError;

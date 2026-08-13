@@ -355,12 +355,13 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 - **Zero-copy**: Uses the `numpy` Rust crate's `PyUntypedArray` for type-erased array access, then dispatches to the correct typed `PyArrayDyn<T>` for zero-copy slice iteration
 - **GIL released**: Slice iteration runs outside the GIL for maximum performance on large arrays
 
-!!! warning "Negative scalars in block sequences"
-    YAML 1.2 block sequences cannot contain plain scalars starting with `-`;
-    negative values are automatically quoted during serialization and correctly
-    parsed back during round-trip.
+!!! warning "Negative scalars"
+    YAML 1.2 block sequences cannot contain a plain scalar starting with `-`
+    followed by whitespace. Plain negative numbers (`-1`, `-3.14`) are emitted
+    unquoted and round-trip by value; quoted numeric-looking strings (e.g.
+    `"-1"`) stay strings.
 
-- **Negative numbers**: YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative values are automatically quoted and correctly parsed back during round-trip
+- **Negative numbers**: plain negative values are emitted unquoted and round-trip by value; only plain scalars are type-resolved (YAML 1.2), so quoted numeric-looking strings stay strings
 - **0-D arrays**: Reshaped to 1-D and serialized as a single-item list
 - **Complex numbers**: YAML has no native complex type; serialized as `(re+imj)` strings. `safe_load` returns them as strings, not Python `complex`
 - **Markdown frontmatter extraction** — `read_markdown()` for blog/content tools

@@ -98,7 +98,7 @@ class Node:
 
         - ``node.children`` — iterate over child nodes
         - ``node.to_yaml()`` — serialize the subtree to a YAML string
-        - ``doc.get(path)`` — access values by key or JSONPath from the document
+        - ``doc.get(key)`` — access a value by literal mapping key from the document
         """
         if self.root_type not in ("scalar", "null"):
             return None

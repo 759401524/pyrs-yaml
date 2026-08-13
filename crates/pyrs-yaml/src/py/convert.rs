@@ -112,10 +112,9 @@ fn scalar_to_pyobject(
     style: &ScalarStyle,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
-    if matches!(
-        style,
-        ScalarStyle::Plain | ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted
-    ) {
+    // YAML 1.2: only plain scalars undergo implicit schema resolution. Single-
+    // and double-quoted scalars always load as strings, regardless of content.
+    if matches!(style, ScalarStyle::Plain) {
         match schema.resolve(value) {
             YamlType::Null => Ok(py.None()),
             YamlType::Bool(b) => Ok(PyBool::new(py, b).to_owned().into_any().unbind()),

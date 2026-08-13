@@ -345,7 +345,7 @@ class TestSafeLoad:
             ("base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2", "child", lambda r: r["x"] == 1 and r["y"] == 2),
             ("text: |\n  line1\n  line2", "text", lambda r: r == "line1\nline2\n"),
             ("items: [a, b, c]", "items", lambda r: r == ["a", "b", "c"]),
-            ("age: '42'", "age", lambda r: r == 42),
+            ("age: '42'", "age", lambda r: r == "42"),
             ("t: true", "t", lambda r: r is True),
             ("f: false", "f", lambda r: r is False),
         ],

@@ -86,7 +86,8 @@ print(type(data))  # <class 'dict'>
 
 #### `get()`
 
-Get a value by key (for mapping roots) or by JSONPath-like path.
+Get a value by top-level mapping key (literal key lookup, consistent with
+`__getitem__`/`__setitem__`).
 
 ```python
 get(key: str, default: Any = None) -> Any
@@ -94,19 +95,22 @@ get(key: str, default: Any = None) -> Any
 
 **Parameters:**
 
-- `key` — The key to look up, or a path. A key containing `.`, `[`, or starting with `$` is treated as a path: `$.a.b` (nested keys) and `$.arr[0]` / `$.arr[-1]` (sequence indexes, negative counts from the end) are resolved via the same navigation rules as the edit methods
-- `default` — Value to return if the key/path is not found (default: None)
+- `key` — The literal mapping key to look up. Keys may legally contain `.`,
+  `[`, `]` or `$`; they are never interpreted as paths.
+- `default` — Value to return if the key is not found (default: None)
 
 **Returns:** The value, or `default` if not found (or if root is not a mapping).
 
-**Raises:** `YamlPathError` — malformed path (e.g. `$[bad`, or a wildcard/deep-scan path)
+!!! note "Path access"
+    For JSONPath-style access, use [`find()`](#find) / [`node()`](#node) /
+    [`set()`](#set) instead — they resolve paths such as `$.a.b` and
+    `$.items[-1]`.
 
 **Example:**
 
 ```python
 value = doc.get("key")
-value = doc.get("$.a.b")  # nested path
-value = doc.get("$.items[-1]")  # last element
+value = doc.get("a.b")  # literal dotted key
 value = doc.get("missing", "fallback")
 ```
 
