@@ -126,6 +126,46 @@ jobs:
           print(f'Compliance: {r[\"rate\"]*100:.1f}% ({r[\"passed\"]}/{r[\"total\"]} passed)')
           " >> $GITHUB_STEP_SUMMARY
 
+  coverage:
+    needs: [build]
+    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Create virtualenv
+        run: uv venv .venv
+
+      - name: Download abi3 wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: wheel-ubuntu-latest
+          path: dist/
+
+      - name: Install wheel
+        shell: bash
+        run: pip install dist/*.whl
+
+      - name: Install Python test dependencies
+        run: uv sync --group test --no-install-project
+
+      - name: Coverage report + gate
+        # Python wrapper coverage (Rust extension is measured separately).
+        # Gate prevents regression below the measured baseline (91%).
+        run: uv run pytest tests/ --cov=pyrs_yaml --cov-report=term-missing --cov-fail-under=78
+
   build:
     if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
     strategy:

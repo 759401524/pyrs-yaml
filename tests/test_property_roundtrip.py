@@ -15,6 +15,7 @@ fuzzes *arbitrary* input to assert the dump step itself never panics.
 Strategies are shared via ``tests/strategies.py``.
 """
 
+import pytest
 from hypothesis import HealthCheck, given, settings
 
 import pyrs_yaml
@@ -24,6 +25,8 @@ from tests.strategies import (
     roundtrip_safe_leaf,
     rt,
 )
+
+pytestmark = pytest.mark.slow
 
 
 @settings(max_examples=300, deadline=5000, suppress_health_check=[HealthCheck.too_slow])

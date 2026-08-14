@@ -4,6 +4,8 @@ import pytest
 
 import pyrs_yaml
 
+pytestmark = pytest.mark.i18n
+
 
 class TestSetLanguage:
     def test_set_language_en(self):
