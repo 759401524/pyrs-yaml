@@ -792,6 +792,14 @@ pub fn write_single_quoted_scalar(out: &mut String, value: &str) {
     out.push('\'');
 }
 
+/// Whether `c` is a Unicode noncharacter (U+FFFE/U+FFFF and the plane-end
+/// twins U+1FFFE…U+10FFFF). granit-parser rejects these even inside quoted
+/// scalars, so they must always be escaped.
+pub fn is_yaml_noncharacter(c: char) -> bool {
+    let u = c as u32;
+    u & 0xFFFE == 0xFFFE
+}
+
 /// Append `value` to `out` as a double-quoted YAML scalar, escaping control
 /// and special characters.
 pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
@@ -808,7 +816,16 @@ pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
             '\x0C' => out.push_str("\\f"),
             '\x1B' => out.push_str("\\e"),
             '/' => out.push_str("\\/"),
-            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c if c.is_control() || is_yaml_noncharacter(c) => {
+                // `\u` escapes are 4 hex digits (BMP only); characters above
+                // U+FFFF must use the 8-digit `\U` form.
+                let u = c as u32;
+                if u > 0xFFFF {
+                    out.push_str(&format!("\\U{:08x}", u));
+                } else {
+                    out.push_str(&format!("\\u{:04x}", u));
+                }
+            }
             c => out.push(c),
         }
     }
@@ -837,6 +854,10 @@ fn needs_double_quoted(value: &str) -> bool {
     value.contains(':')
         || value.contains('#')
         || value.contains('\n')
+        || value.contains('\u{00a0}')
+        || value.contains('\u{feff}')
+        || value.chars().any(char::is_control)
+        || value.chars().any(is_yaml_noncharacter)
         || value.starts_with('-')
         || value.starts_with('{')
         || value.starts_with('}')
@@ -864,11 +885,16 @@ pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width
         return;
     }
     if needs_double_quoted(value) {
-        if value.contains('\\') && !value.contains('\n') {
+        if value.contains('\\')
+            && !value.contains('\n')
+            && !value.chars().any(char::is_control)
+            && !value.chars().any(is_yaml_noncharacter)
+        {
             // granit-parser mishandles `\\<escape-letter>` inside double-quoted
             // scalars (e.g. `\\0` collapses to NUL). Single-quoted scalars keep
             // backslashes literal, so prefer them whenever the value contains a
-            // backslash (and no newline, which single-quoted cannot represent).
+            // backslash (and no newline, which single-quoted cannot represent,
+            // and no control/noncharacter, which single-quoted cannot escape).
             write_single_quoted_scalar(out, value);
         } else {
             write_double_quoted_scalar(out, value);
@@ -880,8 +906,14 @@ pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width
                 out.push_str(&value[..split]);
                 let rest = value[split..].trim();
                 if !rest.is_empty() {
+                    // Continuation lines must be indented past the block
+                    // indentation; aligning to the value's own column is always
+                    // safe (and matches the value start column for inline
+                    // contexts like `- item` or `key: value`).
+                    let line_start = out.rfind('\n').map_or(0, |i| i + 1);
+                    let cont_indent = (out.len() - line_start).max(2);
                     out.push('\n');
-                    wrap_plain_scalar(out, rest, width);
+                    wrap_plain_scalar(out, rest, width, cont_indent);
                 }
             }
             None => {
@@ -896,10 +928,11 @@ pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width
     }
 }
 
-/// Wrap `value` to `width` with a fixed 2-space continuation indent. Used by
-/// [`write_plain_scalar`] when a value overflows the current line.
-pub fn wrap_plain_scalar(out: &mut String, value: &str, width: usize) {
-    let wrap_indent_str = " ".repeat(2);
+/// Wrap `value` to `width` with continuation lines indented `cont_indent`
+/// columns. Used by [`write_plain_scalar`] when a value overflows the current
+/// line.
+pub fn wrap_plain_scalar(out: &mut String, value: &str, width: usize, cont_indent: usize) {
+    let wrap_indent_str = " ".repeat(cont_indent);
     let mut remaining_rest = value;
     while !remaining_rest.is_empty() {
         out.push_str(&wrap_indent_str);
@@ -1245,7 +1278,7 @@ mod tests {
         let value =
             format!("x {}y", "y".repeat(75)) + &char::from_u32(0x10a09b).unwrap().to_string();
         let mut out = String::new();
-        wrap_plain_scalar(&mut out, &value, 80);
+        wrap_plain_scalar(&mut out, &value, 80, 2);
         assert!(out.contains('\u{10a09b}'), "multibyte char lost: {out:?}");
         assert!(out.contains("yyy"), "wrapped output incomplete: {out:?}");
     }

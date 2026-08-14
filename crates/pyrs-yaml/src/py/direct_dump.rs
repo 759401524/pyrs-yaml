@@ -32,7 +32,7 @@ use crate::py::type_registry;
 #[cfg(feature = "numpy")]
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::serializer::{
-    is_short_alphanumeric, write_double_quoted_scalar, write_plain_scalar,
+    is_short_alphanumeric, is_yaml_noncharacter, write_double_quoted_scalar, write_plain_scalar,
     write_single_quoted_scalar,
 };
 use crate::{YamlMaxDepthError, YamlTypeError};
@@ -499,9 +499,15 @@ impl DirectWriter {
     /// Mirror the serializer's double-quote escape: granit-parser mishandles
     /// `\\<escape-letter>` inside double-quoted scalars (e.g. `\\0` collapses to
     /// NUL). Single-quoted scalars keep backslashes literal, so prefer them
-    /// whenever a quoted value contains a backslash (and no newline).
+    /// whenever a quoted value contains a backslash, no newline (which
+    /// single-quoted cannot represent), and no control/noncharacter (which
+    /// single-quoted cannot escape).
     fn write_quoted(&mut self, value: &str) {
-        if value.contains('\\') && !value.contains('\n') {
+        if value.contains('\\')
+            && !value.contains('\n')
+            && !value.chars().any(char::is_control)
+            && !value.chars().any(is_yaml_noncharacter)
+        {
             write_single_quoted_scalar(&mut self.output, value);
         } else {
             write_double_quoted_scalar(&mut self.output, value);
