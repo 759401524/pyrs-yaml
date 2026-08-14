@@ -31,7 +31,10 @@ use crate::py::python_types::{float_to_yaml_string, py_string_to_arc};
 use crate::py::type_registry;
 #[cfg(feature = "numpy")]
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
-use crate::serializer::{is_short_alphanumeric, write_double_quoted_scalar, write_plain_scalar};
+use crate::serializer::{
+    is_short_alphanumeric, write_double_quoted_scalar, write_plain_scalar,
+    write_single_quoted_scalar,
+};
 use crate::{YamlMaxDepthError, YamlTypeError};
 
 const MAX_DEPTH: usize = 1000;
@@ -221,7 +224,7 @@ impl DirectWriter {
         if let Ok(s) = obj.cast::<PyString>() {
             let text = py_string_to_arc(s)?;
             if needs_quotes(&text) {
-                self.write_double_quoted(&text);
+                self.write_quoted(&text);
             } else {
                 self.write_plain_scalar(&text, WIDTH);
             }
@@ -254,7 +257,7 @@ impl DirectWriter {
         if let Ok(s) = key.cast::<PyString>() {
             let text = py_string_to_arc(s)?;
             if needs_quotes(&text) {
-                self.write_double_quoted(&text);
+                self.write_quoted(&text);
             } else {
                 self.write_key_text(&text);
             }
@@ -493,8 +496,15 @@ impl DirectWriter {
         write_plain_scalar(&mut self.output, value, remaining, WIDTH);
     }
 
-    /// Delegate to the shared `serializer::write_double_quoted_scalar`.
-    fn write_double_quoted(&mut self, value: &str) {
-        write_double_quoted_scalar(&mut self.output, value);
+    /// Mirror the serializer's double-quote escape: granit-parser mishandles
+    /// `\\<escape-letter>` inside double-quoted scalars (e.g. `\\0` collapses to
+    /// NUL). Single-quoted scalars keep backslashes literal, so prefer them
+    /// whenever a quoted value contains a backslash (and no newline).
+    fn write_quoted(&mut self, value: &str) {
+        if value.contains('\\') && !value.contains('\n') {
+            write_single_quoted_scalar(&mut self.output, value);
+        } else {
+            write_double_quoted_scalar(&mut self.output, value);
+        }
     }
 }
