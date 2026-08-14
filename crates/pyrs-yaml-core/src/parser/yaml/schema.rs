@@ -115,6 +115,13 @@ pub fn needs_quotes(value: &str) -> bool {
     if value.chars().any(|c| c.is_control()) {
         return true;
     }
+    // NBSP (non-breaking space, U+00A0) is not a control character and is
+    // printable, but when emitted as a plain scalar it can cause the parser
+    // to fail in layout-check paths (precompute/ensure_splice). Treat it
+    // like a control character for quoting purposes.
+    if value.contains('\u{00a0}') {
+        return true;
+    }
     false
 }
 
