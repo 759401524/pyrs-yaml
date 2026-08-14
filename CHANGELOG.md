@@ -7,25 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **Quoted scalars always load as strings** — implicit type resolution now
-  applies only to plain scalars (YAML 1.2): `safe_load('"true"')` returns the
-  string `"true"`, not `True`. The serializer keeps negative numbers
-  round-tripping through the document (`to_yaml`) path.
-- **Lone-quote keys round-trip** — mapping keys that are a single `'` or `"`
-  are emitted as quoted scalars instead of unparseable YAML.
-- **Empty collections emit `{}`/`[]`** — dumping empty mappings/sequences no
-  longer yields an empty document that re-parses as `None`.
-
-### Changed
-
-- **`get()` is literal-key only** — `YamlDocument.get()` no longer guesses
-  JSONPath for keys containing `.` or `[`; every key is treated as a
-  top-level mapping key, consistent with `__getitem__`/`__setitem__`.
-  Path access stays available via `find()`/`node()`.
-
-## [v0.14.0] — 2026-08-12
+## [v0.14.0] — 2026-08-14
 
 ### Added
 
@@ -53,6 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`node_to_pyobject` and `direct_dump` check registered `CustomType`s** —
   tagged scalars convert via `from_yaml()` on load; matching Python objects
   serialize via `to_yaml()` on dump.
+
+### Fixed
+
+- **Quoted scalars always load as strings** — implicit type resolution now
+  applies only to plain scalars (YAML 1.2): `safe_load('"true"')` returns the
+  string `"true"`, not `True`. The serializer keeps negative numbers
+  round-tripping through the document (`to_yaml`) path.
+- **Lone-quote keys round-trip** — mapping keys that are a single `'` or `"`
+  are emitted as quoted scalars instead of unparseable YAML.
+- **Empty collections emit `{}`/`[]`** — dumping empty mappings/sequences no
+  longer yields an empty document that re-parses as `None`.
+
+### Changed
+
+- **`get()` is literal-key only** — `YamlDocument.get()` no longer guesses
+  JSONPath for keys containing `.` or `[`; every key is treated as a
+  top-level mapping key, consistent with `__getitem__`/`__setitem__`.
+  Path access stays available via `find()`/`node()`.
 
 ## [v0.13.0] — 2026-08-10
 
