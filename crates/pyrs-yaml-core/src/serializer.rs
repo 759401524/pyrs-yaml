@@ -912,7 +912,8 @@ pub fn wrap_plain_scalar(out: &mut String, value: &str, width: usize) {
             out.push_str(remaining_rest);
             break;
         }
-        match remaining_rest[..avail].rfind(' ') {
+        let safe_avail = remaining_rest.floor_char_boundary(avail);
+        match remaining_rest[..safe_avail].rfind(' ') {
             Some(split) => {
                 out.push_str(&remaining_rest[..split]);
                 out.push('\n');
@@ -1233,5 +1234,19 @@ mod tests {
             crate::serializer::to_yaml(&ast),
             "top:\n  x: 1\n  # c2\n  y: 2\n"
         );
+    }
+
+    #[test]
+    fn test_wrap_plain_scalar_does_not_split_multibyte() {
+        // A value longer than the wrap width with a 4-byte char straddling the
+        // continuation slice (byte 78). `wrap_plain_scalar` must floor the
+        // slice to a char boundary instead of panicking, and must never split
+        // inside the multi-byte character.
+        let value =
+            format!("x {}y", "y".repeat(75)) + &char::from_u32(0x10a09b).unwrap().to_string();
+        let mut out = String::new();
+        wrap_plain_scalar(&mut out, &value, 80);
+        assert!(out.contains('\u{10a09b}'), "multibyte char lost: {out:?}");
+        assert!(out.contains("yyy"), "wrapped output incomplete: {out:?}");
     }
 }
