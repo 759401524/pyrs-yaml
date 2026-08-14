@@ -662,6 +662,252 @@ impl CustomNode {
 }
 
 #[cfg(test)]
+pub(crate) mod proptest_strategies {
+    use super::*;
+    use proptest::prelude::*;
+    use proptest::strategy::BoxedStrategy;
+
+    pub fn arb_scalar_style() -> impl Strategy<Value = ScalarStyle> {
+        prop_oneof![
+            Just(ScalarStyle::Plain),
+            Just(ScalarStyle::SingleQuoted),
+            Just(ScalarStyle::DoubleQuoted),
+            Just(ScalarStyle::Literal),
+            Just(ScalarStyle::Folded),
+        ]
+    }
+
+    pub fn arb_chomping() -> impl Strategy<Value = Chomping> {
+        prop_oneof![
+            Just(Chomping::Strip),
+            Just(Chomping::Clip),
+            Just(Chomping::Keep),
+        ]
+    }
+
+    pub fn arb_tag() -> impl Strategy<Value = Tag> {
+        (prop_oneof![Just("!"), Just("!!")], "[a-zA-Z][a-zA-Z0-9_-]*").prop_map(
+            |(handle, suffix)| Tag {
+                handle: handle.to_string(),
+                suffix,
+            },
+        )
+    }
+
+    pub fn arb_comment() -> impl Strategy<Value = Comment> {
+        (
+            proptest::string::string_regex("[ -~]+").expect("regex"),
+            any::<bool>(),
+        )
+            .prop_map(|(text, standalone)| Comment {
+                text: Arc::from(text),
+                standalone,
+            })
+    }
+
+    pub fn arb_node_meta() -> impl Strategy<Value = NodeMeta> {
+        (
+            proptest::option::of(arb_comment()),
+            proptest::option::of("[a-zA-Z_][a-zA-Z0-9_-]*"),
+            proptest::option::of(arb_tag()),
+        )
+            .prop_map(|(comment, anchor, tag)| NodeMeta {
+                comment,
+                anchor,
+                tag,
+                source_range: None,
+            })
+    }
+
+    fn arb_scalar() -> impl Strategy<Value = CustomNode> {
+        let meta = arb_node_meta();
+        let style = arb_scalar_style();
+        let value = proptest::string::string_regex("[ -~]+").expect("regex");
+        (style, value, meta)
+            .prop_flat_map(|(style, value, meta)| {
+                let chomp = match style {
+                    ScalarStyle::Literal | ScalarStyle::Folded => arb_chomping().boxed(),
+                    _ => Just(Chomping::Clip).boxed(),
+                };
+                (Just(style), Just(value), Just(meta), chomp)
+            })
+            .prop_map(|(style, value, meta, chomping)| CustomNode::Scalar {
+                value: Arc::from(value),
+                style,
+                chomping,
+                meta,
+            })
+    }
+
+    fn arb_mapping(inner: BoxedStrategy<CustomNode>) -> impl Strategy<Value = CustomNode> {
+        (
+            prop::collection::vec((inner.clone(), inner), 0..8),
+            any::<bool>(),
+            arb_node_meta(),
+        )
+            .prop_map(|(pairs, flow_style, meta)| {
+                let mut map = IndexMap::new();
+                for (k, v) in pairs {
+                    map.insert(k, v);
+                }
+                CustomNode::Mapping {
+                    pairs: map,
+                    flow_style,
+                    meta,
+                }
+            })
+    }
+
+    fn arb_sequence(inner: BoxedStrategy<CustomNode>) -> impl Strategy<Value = CustomNode> {
+        (
+            prop::collection::vec(inner, 0..8),
+            any::<bool>(),
+            arb_node_meta(),
+        )
+            .prop_map(|(items, flow_style, meta)| CustomNode::Sequence {
+                items,
+                flow_style,
+                meta,
+            })
+    }
+
+    fn arb_null() -> impl Strategy<Value = CustomNode> {
+        arb_node_meta().prop_map(|meta| CustomNode::Null { meta })
+    }
+
+    #[allow(dead_code)]
+    fn arb_alias() -> impl Strategy<Value = CustomNode> {
+        "[a-zA-Z_][a-zA-Z0-9_-]*".prop_map(|name| CustomNode::Alias { name })
+    }
+
+    /// Full strategy including Alias (for non-round-trip tests).
+    #[allow(dead_code)]
+    pub fn arb_custom_node_full() -> impl Strategy<Value = CustomNode> {
+        let leaf = prop_oneof![
+            arb_scalar().boxed(),
+            arb_null().boxed(),
+            arb_alias().boxed()
+        ];
+        leaf.prop_recursive(6, 128, 8, |inner| {
+            prop_oneof![
+                arb_mapping(inner.clone()).boxed(),
+                arb_sequence(inner).boxed()
+            ]
+            .boxed()
+        })
+    }
+
+    /// Strategy excluding Alias (for round-trip tests).
+    pub fn arb_custom_node() -> impl Strategy<Value = CustomNode> {
+        let leaf = prop_oneof![arb_scalar().boxed(), arb_null().boxed()];
+        leaf.prop_recursive(6, 128, 8, |inner| {
+            prop_oneof![
+                arb_mapping(inner.clone()).boxed(),
+                arb_sequence(inner).boxed()
+            ]
+            .boxed()
+        })
+    }
+
+    /// Compare two CustomNode trees ignoring source_range and
+    /// chomping-on-non-block-scalars.
+    pub fn nodes_equal_ignore_meta(a: &CustomNode, b: &CustomNode) -> bool {
+        use CustomNode::*;
+        match (a, b) {
+            (
+                Scalar {
+                    value: va,
+                    style: sa,
+                    chomping: ca,
+                    meta: ma,
+                },
+                Scalar {
+                    value: vb,
+                    style: sb,
+                    chomping: cb,
+                    meta: mb,
+                },
+            ) => {
+                let style_ok = sa == sb
+                    || matches!(
+                        (sa, sb),
+                        (ScalarStyle::Literal, ScalarStyle::Plain)
+                            | (ScalarStyle::Folded, ScalarStyle::Plain)
+                            | (ScalarStyle::Plain, ScalarStyle::SingleQuoted)
+                            | (ScalarStyle::Plain, ScalarStyle::DoubleQuoted)
+                    );
+                va == vb
+                    && style_ok
+                    && (ca == cb
+                        || (!matches!(sa, ScalarStyle::Literal | ScalarStyle::Folded)
+                            && *ca == Chomping::Clip))
+                    && meta_equal_ignore_source(ma, mb)
+            }
+            (
+                Mapping {
+                    pairs: pa,
+                    flow_style: fa,
+                    meta: ma,
+                },
+                Mapping {
+                    pairs: pb,
+                    flow_style: fb,
+                    meta: mb,
+                },
+            ) => {
+                let style_ok = fa == fb || (pa.is_empty() && pb.is_empty());
+                let tag_ok = meta_equal_ignore_source(ma, mb)
+                    || (pa.is_empty() && pb.is_empty() && meta_allow_loss_on_empty(ma, mb));
+                style_ok
+                    && pa.len() == pb.len()
+                    && pa.iter().zip(pb.iter()).all(|((ka, va), (kb, vb))| {
+                        nodes_equal_ignore_meta(ka, kb) && nodes_equal_ignore_meta(va, vb)
+                    })
+                    && tag_ok
+            }
+            (
+                Sequence {
+                    items: ia,
+                    flow_style: fa,
+                    meta: ma,
+                },
+                Sequence {
+                    items: ib,
+                    flow_style: fb,
+                    meta: mb,
+                },
+            ) => {
+                let style_ok = fa == fb || (ia.is_empty() && ib.is_empty());
+                let tag_ok = meta_equal_ignore_source(ma, mb)
+                    || (ia.is_empty() && ib.is_empty() && meta_allow_loss_on_empty(ma, mb));
+                style_ok
+                    && ia.len() == ib.len()
+                    && ia
+                        .iter()
+                        .zip(ib.iter())
+                        .all(|(a, b)| nodes_equal_ignore_meta(a, b))
+                    && tag_ok
+            }
+            (Null { meta: ma }, Null { meta: mb }) => meta_equal_ignore_source(ma, mb),
+            (Alias { name: na }, Alias { name: nb }) => na == nb,
+            _ => false,
+        }
+    }
+
+    fn meta_equal_ignore_source(a: &NodeMeta, b: &NodeMeta) -> bool {
+        a.comment == b.comment && a.anchor == b.anchor && a.tag == b.tag
+    }
+
+    /// Allow tag/anchor loss on empty containers (serializer normalizes them
+    /// to `{}`/`[]` which lose metadata).
+    fn meta_allow_loss_on_empty(a: &NodeMeta, b: &NodeMeta) -> bool {
+        a.comment == b.comment
+            && (a.anchor == b.anchor || b.anchor.is_none())
+            && (a.tag == b.tag || b.tag.is_none())
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

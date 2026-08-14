@@ -1,4 +1,5 @@
 use crate::parser::yaml::types::{YamlSchema, YamlType};
+use crate::serializer::is_yaml_noncharacter;
 use std::borrow::Cow;
 
 // YamlSchema is defined in types.rs and re-exported via mod.rs.
@@ -112,7 +113,10 @@ pub fn needs_quotes(value: &str) -> bool {
     if value.starts_with(' ') || value.ends_with(' ') {
         return true;
     }
-    if value.chars().any(|c| c.is_control()) {
+    if value
+        .chars()
+        .any(|c| c.is_control() || is_yaml_noncharacter(c))
+    {
         return true;
     }
     // NBSP (non-breaking space, U+00A0) is not a control character and is
@@ -120,6 +124,12 @@ pub fn needs_quotes(value: &str) -> bool {
     // to fail in layout-check paths (precompute/ensure_splice). Treat it
     // like a control character for quoting purposes.
     if value.contains('\u{00a0}') {
+        return true;
+    }
+    // U+FEFF (BOM) is printable but granit-parser treats a plain scalar
+    // starting with it as a document-start BOM and drops it. Quote it so the
+    // character survives round-trip.
+    if value.contains('\u{feff}') {
         return true;
     }
     false

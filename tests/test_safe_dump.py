@@ -121,3 +121,50 @@ class TestFloatSpecialValues:
         out = pyrs_yaml.safe_dump(float("nan"))
         # NaN differs from itself; just confirm it round-trips as a float.
         assert isinstance(pyrs_yaml.safe_load(out), float)
+
+
+class TestFuzzRegressions:
+    """Minimal repros from scripts/fuzz_panics.py (v0.14.0 release cycle).
+
+    Each case produced invalid YAML or a panic before the fix; safe_dump output
+    must always re-parse and round-trip.
+    """
+
+    def _rt(self, value):
+        return pyrs_yaml.safe_load(pyrs_yaml.safe_dump(value))
+
+    def test_control_char_plus_backslash_key(self):
+        # U+001F (control) + backslash: single-quoted emission is invalid YAML
+        # because single quotes cannot escape control characters. Must use
+        # double-quoting.
+        v = {"\x1f\\": ""}
+        assert self._rt(v) == v
+
+    def test_noncharacter_key_bmp(self):
+        # U+FFFE / U+FFFF are non-characters granit rejects as plain scalars.
+        for cp in (0xFFFE, 0xFFFF):
+            v = {chr(cp): None}
+            assert self._rt(v) == v
+
+    def test_noncharacter_key_supplementary(self):
+        # Plane-end non-characters above U+FFFF (e.g. U+1FFFE, U+DFFFE).
+        for cp in (0x1FFFE, 0x1FFFF, 0xDFFFE, 0x10FFFE, 0x10FFFF):
+            v = {chr(cp): None}
+            assert self._rt(v) == v
+
+    def test_bom_key(self):
+        # U+FEFF (BOM) as a plain key is dropped by granit; must be quoted.
+        v = {"\ufeff": None}
+        assert self._rt(v) == v
+
+    def test_wrap_continuation_in_nested_sequence(self):
+        # A long plain scalar inside a nested sequence item must wrap with a
+        # continuation indent greater than the parent block indent, otherwise
+        # granit reports "simple key expected ':'".
+        v = [["0000000 " + "\u00a1" * 18 + "\u0800" * 3 + "\U00010000" * 7]]
+        assert self._rt(v) == v
+
+    def test_wrap_continuation_multibyte_no_panic(self):
+        # 4-byte char straddling the wrap boundary must not panic (char split).
+        v = {"k": "x " + "y" * 75 + chr(0x10A09B)}
+        assert self._rt(v) == v

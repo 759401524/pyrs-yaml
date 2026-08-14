@@ -14,4 +14,7 @@ pub mod splice;
 #[cfg(test)]
 mod integration;
 
+#[cfg(test)]
+mod pbt;
+
 rust_i18n::i18n!("src/i18n/locales");
