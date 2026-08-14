@@ -102,3 +102,65 @@ class TestCommunityPlugins:
 
         with pytest.raises(ValueError, match="bad"):
             pyrs_yaml.validate_custom_types("anything")
+
+
+class _FloatWrap(pyrs_yaml.CustomType):
+    python_type = float
+
+    def to_yaml(self, obj):
+        return f"float<{obj}>"
+
+
+class _M1(pyrs_yaml.CustomType):
+    python_type = str
+
+    def can_parse(self, value):
+        return True
+
+    def from_yaml(self, value):
+        return "M1:" + value
+
+
+class _M2(pyrs_yaml.CustomType):
+    python_type = str
+
+    def can_parse(self, value):
+        return True
+
+    def from_yaml(self, value):
+        return "M2:" + value
+
+
+class TestBindingCoverageGaps:
+    """Boundary coverage for direct_dump / type_registry branches (audit §15)."""
+
+    def setup_method(self):
+        pyrs_yaml.clear_type_handlers()
+
+    def test_custom_type_on_float_scalar_dump(self):
+        # direct_dump write_scalar_node → type_registry branch for scalar floats.
+        pyrs_yaml.register_type("!fw", _FloatWrap())
+        out = pyrs_yaml.safe_dump(3.5)
+        assert "float<3.5>" in out, out
+        # Tagged output round-trips; the wrapped text is not a float so it
+        # falls back to the raw string.
+        assert pyrs_yaml.safe_load(out) == "float<3.5>"
+
+    def test_custom_type_on_float_value_in_mapping(self):
+        pyrs_yaml.register_type("!fw", _FloatWrap())
+        out = pyrs_yaml.safe_dump({"r": 2.5})
+        assert "float<2.5>" in out, out
+
+    def test_duplicate_type_register_last_wins(self):
+        # type_registry keeps insertion order; a later registration replaces
+        # the earlier one for the same tag name.
+        pyrs_yaml.register_type("!m", _M1())
+        pyrs_yaml.register_type("!m", _M2())
+        assert pyrs_yaml.safe_load("x: !m v\n")["x"] == "M2:v"
+
+    def test_remove_type_falls_back(self):
+        pyrs_yaml.register_type("!m", _M1())
+        assert pyrs_yaml.safe_load("x: !m v\n")["x"] == "M1:v"
+        pyrs_yaml.remove_type("!m")
+        # After removal the tagged scalar is no longer converted.
+        assert pyrs_yaml.safe_load("x: !m v\n")["x"] == "v"

@@ -864,15 +864,32 @@ pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width
         return;
     }
     if needs_double_quoted(value) {
-        write_double_quoted_scalar(out, value);
+        if value.contains('\\') && !value.contains('\n') {
+            // granit-parser mishandles `\\<escape-letter>` inside double-quoted
+            // scalars (e.g. `\\0` collapses to NUL). Single-quoted scalars keep
+            // backslashes literal, so prefer them whenever the value contains a
+            // backslash (and no newline, which single-quoted cannot represent).
+            write_single_quoted_scalar(out, value);
+        } else {
+            write_double_quoted_scalar(out, value);
+        }
     } else if remaining > 0 && value.len() > remaining {
         let safe_remaining = value.floor_char_boundary(remaining);
-        let split = value[..safe_remaining].rfind(' ').unwrap_or(safe_remaining);
-        out.push_str(&value[..split]);
-        let rest = value[split..].trim();
-        if !rest.is_empty() {
-            out.push('\n');
-            wrap_plain_scalar(out, rest, width);
+        match value[..safe_remaining].rfind(' ') {
+            Some(split) => {
+                out.push_str(&value[..split]);
+                let rest = value[split..].trim();
+                if !rest.is_empty() {
+                    out.push('\n');
+                    wrap_plain_scalar(out, rest, width);
+                }
+            }
+            None => {
+                // No whitespace to fold across: a mid-token line break would
+                // re-parse as an inserted space and change the value. Emit the
+                // whole value as one (potentially long) lossless line.
+                out.push_str(value);
+            }
         }
     } else {
         out.push_str(value);
@@ -895,10 +912,20 @@ pub fn wrap_plain_scalar(out: &mut String, value: &str, width: usize) {
             out.push_str(remaining_rest);
             break;
         }
-        let split_rest = remaining_rest[..avail].rfind(' ').unwrap_or(avail);
-        out.push_str(&remaining_rest[..split_rest]);
-        out.push('\n');
-        remaining_rest = remaining_rest[split_rest..].trim();
+        match remaining_rest[..avail].rfind(' ') {
+            Some(split) => {
+                out.push_str(&remaining_rest[..split]);
+                out.push('\n');
+                remaining_rest = remaining_rest[split..].trim();
+            }
+            None => {
+                // No whitespace to fold across; another folded line would
+                // re-parse as an inserted space and change the value. Emit the
+                // remainder as one (potentially long) lossless line.
+                out.push_str(remaining_rest);
+                break;
+            }
+        }
     }
 }
 

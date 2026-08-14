@@ -5,8 +5,10 @@ primary test pattern.
 """
 
 import pytest
+from hypothesis import HealthCheck, given, settings
 
 import pyrs_yaml
+from tests.strategies import roundtrip_safe_json
 
 
 class TestSetPath:
@@ -600,6 +602,25 @@ class TestAliasEditErrors:
         doc = pyrs_yaml.parse("defaults: &d\n  x: 1\nprod: *d\n")
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc.rename("$.prod.x", "y")
+
+
+class TestEditProperty:
+    """Property-based tests for edit operations on random structures."""
+
+    @settings(max_examples=100, deadline=3000, suppress_health_check=[HealthCheck.too_slow])
+    @given(roundtrip_safe_json)
+    def test_root_replace_roundtrip(self, value):
+        doc = pyrs_yaml.parse(pyrs_yaml.safe_dump(value))
+        doc.set("$", {"__prop__": 42})
+        assert doc.to_dict() == {"__prop__": 42}
+
+    @settings(max_examples=100, deadline=3000, suppress_health_check=[HealthCheck.too_slow])
+    @given(roundtrip_safe_json)
+    def test_edit_does_not_panic(self, value):
+        doc = pyrs_yaml.parse(pyrs_yaml.safe_dump(value))
+        if doc.root_type() in ("mapping", "seq"):
+            doc.set("$", 42)
+            assert doc.to_dict() == 42
 
 
 class TestSetPathRoot:

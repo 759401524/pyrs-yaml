@@ -141,3 +141,21 @@ class TestStreamEventFields:
         assert len(doc_starts) == 2
         assert len(doc_ends) == 2
         assert types[-1] == "stream_end"
+
+
+class TestBlockScalarStyle:
+    """stream_events style field for block scalars (audit §15)."""
+
+    def test_literal_style_field(self):
+        events = list(pyrs_yaml.YAML().load_stream(io.StringIO("k: |\n  hello\n")))
+        scalars = [e for e in events if e["type"] == "scalar" and e["value"] != "k"]
+        assert len(scalars) == 1
+        assert scalars[0]["value"] == "hello\n"
+        assert scalars[0]["style"] == "literal"
+
+    def test_folded_style_field(self):
+        events = list(pyrs_yaml.YAML().load_stream(io.StringIO("k: >\n  hello\n")))
+        scalars = [e for e in events if e["type"] == "scalar" and e["value"] != "k"]
+        assert len(scalars) == 1
+        assert scalars[0]["value"] == "hello\n"
+        assert scalars[0]["style"] == "folded"

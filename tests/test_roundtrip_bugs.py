@@ -90,3 +90,49 @@ class TestQuotedScalarIsString:
         doc = pyrs_yaml.parse("x: true\n")
         assert doc.to_dict() == {"x": True}
         assert pyrs_yaml.parse(doc.to_yaml()).to_dict() == {"x": True}
+
+
+class TestLongPlainScalarWrap:
+    """Long plain scalars must not be folded at a mid-token break (the fold
+    would re-parse as an inserted space and corrupt the value)."""
+
+    def test_long_token_without_spaces_roundtrips(self):
+        val = "x" * 200
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val
+
+    def test_long_token_with_nbsp_roundtrips(self):
+        # Original CI regression: a long string containing only NBSP as
+        # whitespace used to be wrapped mid-token, corrupting the value.
+        val = "a" * 40 + "\xa0" * 15 + "b" * 120
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val
+
+    def test_long_value_inside_nested_sequence(self):
+        val = [["00000000000000" + "\xa0" * 14 + "\u0800" * 3 + "\U00010000" * 7]]
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val
+
+    def test_short_tokens_still_wrap_losslessly(self):
+        # Multi-token strings wrap at spaces and fold back faithfully.
+        val = " ".join(["word"] * 40)
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val
+
+
+class TestBackslashInQuotedScalar:
+    """granit-parser mishandles `\\<escape>` inside double-quoted scalars, so
+    values containing a backslash must be emitted single-quoted."""
+
+    def test_backslash_zero_value(self):
+        val = "'\\0"
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val
+
+    def test_backslash_followed_by_escape_letters(self):
+        for tail in ("0", "x", "t", "n", '"', "q"):
+            val = "a\\" + tail + "b"
+            assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val, tail
+
+    def test_backslash_value_in_mapping(self):
+        val = {"k": "a\\0b"}
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val
+
+    def test_backslash_properties_string(self):
+        val = r"C:\Program Files\app\0\temp"
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val

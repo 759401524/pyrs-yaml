@@ -12,9 +12,20 @@ class TestSerializeOptions:
         output = doc.to_yaml_with_options(width=0)
         assert "x" * 100 in output
 
-    def test_width_10_wraps_long_value(self):
+    def test_width_10_no_fold_for_unbroken_token(self):
+        # A long token with no whitespace cannot be folded losslessly (a plain
+        # scalar line break re-parses to an inserted space), so it stays on a
+        # single (long) line to preserve round-trip fidelity.
         doc = pyrs_yaml.parse(yaml.LONG_VALUE)
         output = doc.to_yaml_with_options(width=10)
+        lines = output.strip().split("\n")
+        assert len(lines) == 1
+        assert "x" * 100 in output
+
+    def test_width_10_wraps_text_with_spaces(self):
+        # Text with whitespace wraps at word boundaries and folds back exactly.
+        doc = pyrs_yaml.parse("s: " + "lorem ipsum dolor sit amet " * 10)
+        output = doc.to_yaml_with_options(width=30)
         lines = output.strip().split("\n")
         assert len(lines) > 1
 

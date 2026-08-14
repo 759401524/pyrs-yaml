@@ -232,3 +232,71 @@ def test_memory_bound_load_stream_file(tmp_path):
     after = proc.memory_info().rss
     assert count > 0
     assert after - before < 128 * 1024 * 1024
+
+
+class _ByteReader:
+    """File-like object that yields exactly one byte per read() call.
+
+    Forces ChunkCharIter::fill_pyobj / push_bytes to handle multi-byte UTF-8
+    split across chunk boundaries, and a trailing incomplete sequence at EOF.
+    """
+
+    def __init__(self, data: bytes):
+        self._data = data
+        self._pos = 0
+
+    def read(self, n: int = -1):
+        if self._pos >= len(self._data):
+            return b""
+        b = self._data[self._pos]
+        self._pos += 1
+        return bytes([b])
+
+
+class TestChunkedUtf8:
+    """Cross-chunk boundary handling for incremental readers (audit §15)."""
+
+    def test_multibyte_char_split_across_chunks(self):
+        yaml = "a: \u4e2d\n".encode("utf-8")
+        events = list(pyrs_yaml.YAML().load_stream(_ByteReader(yaml)))
+        types = [e["type"] for e in events]
+        # mapping with two scalars parses despite byte-at-a-time delivery.
+        assert types.count("scalar") == 2
+
+    def test_trailing_incomplete_utf8_at_eof(self):
+        # 0xef is the lead byte of a 3-byte sequence that never completes;
+        # the incremental reader reports an invalid-UTF-8 parse error instead
+        # of panicking.
+        yaml = b"a: b\xef\n"
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            list(pyrs_yaml.YAML().load_stream(_ByteReader(yaml)))
+
+    def test_invalid_utf8_byte_in_value(self):
+        yaml = b"a: \xff\n"
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            list(pyrs_yaml.YAML().load_stream(_ByteReader(yaml)))
+
+
+class TestParseStreamCallback:
+    """parse_stream(on_event=...) callback contract (audit §15)."""
+
+    def test_early_termination_on_false(self):
+        seen = []
+
+        def cb(ev):
+            seen.append(ev["type"])
+            return False
+
+        pyrs_yaml.parse_stream("a: 1\n---\nb: 2\n", on_event=cb)
+        # Returning False stops the stream immediately after the first event.
+        assert seen == ["stream_start"]
+
+    def test_continue_consumes_all(self):
+        seen = []
+
+        def cb(ev):
+            seen.append(ev["type"])
+            return True
+
+        pyrs_yaml.parse_stream("a: 1\n---\nb: 2\n", on_event=cb)
+        assert seen.count("document_start") == 2

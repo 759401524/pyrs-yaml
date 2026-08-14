@@ -85,3 +85,39 @@ class TestRoundTrip:
         yaml_str = pyrs_yaml.from_dict(data)
         loaded = pyrs_yaml.safe_load(yaml_str)
         assert loaded == data
+
+
+class TestSequenceModes:
+    """direct_dump write_sequence branch coverage (audit §15)."""
+
+    def test_compact_mapping_in_sequence(self):
+        # write_sequence is_compact_mapping=true (direct_dump path via safe_dump).
+        out = pyrs_yaml.safe_dump([{"a": 1}])
+        assert out.strip() == "- a: 1"
+        assert pyrs_yaml.safe_load(out) == [{"a": 1}]
+
+    def test_block_mapping_in_sequence(self):
+        out = pyrs_yaml.safe_dump([{"a": 1, "b": 2}])
+        assert pyrs_yaml.safe_load(out) == [{"a": 1, "b": 2}]
+
+    def test_nested_list_in_sequence(self):
+        # write_sequence nested-list branch.
+        out = pyrs_yaml.safe_dump([[1, 2], [3, 4]])
+        assert pyrs_yaml.safe_load(out) == [[1, 2], [3, 4]]
+
+
+class TestFloatSpecialValues:
+    """safe_dump of float('inf') / float('nan') (non-numpy path)."""
+
+    def test_inf(self):
+        out = pyrs_yaml.safe_dump(float("inf"))
+        assert pyrs_yaml.safe_load(out) == float("inf")
+
+    def test_neg_inf(self):
+        out = pyrs_yaml.safe_dump(float("-inf"))
+        assert pyrs_yaml.safe_load(out) == float("-inf")
+
+    def test_nan(self):
+        out = pyrs_yaml.safe_dump(float("nan"))
+        # NaN differs from itself; just confirm it round-trips as a float.
+        assert isinstance(pyrs_yaml.safe_load(out), float)

@@ -122,3 +122,9 @@ d: 4
         invalid_yaml = "key: \x00value"
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.parse(invalid_yaml)
+
+    def test_parse_rejects_non_str_bytes(self):
+        # parse_document's else branch: input is neither str nor bytes.
+        for bad in (123, None, {"a": 1}):
+            with pytest.raises(pyrs_yaml.YamlTypeError):
+                pyrs_yaml.parse(bad)

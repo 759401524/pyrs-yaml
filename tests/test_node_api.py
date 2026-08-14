@@ -3,9 +3,11 @@
 import contextlib
 
 import pytest
+from hypothesis import HealthCheck, given, settings
 
 import pyrs_yaml
 from pyrs_yaml import Node
+from tests.strategies import roundtrip_safe_json
 
 
 class TestNodeAPI:
@@ -169,6 +171,22 @@ class TestDocWalk:
         paths = [n._path for n in doc.walk()]
         assert paths == [(), ("a",), ("a", "b"), ("a", "b", "c"), ("a", "b", "c", "d")]
 
+    def test_doc_walk_alias_reference(self):
+        # Alias nodes are visited as path entries but contribute no children.
+        doc = pyrs_yaml.parse("base: &b\n  x: 1\ny: *b\n")
+        paths = [n._path for n in doc.walk()]
+        assert ("y",) in paths
+        assert doc.to_dict()["y"] == {"x": 1}
+
+    def test_doc_scalars_merge_key_expands(self):
+        # << merge keys are expanded by the resolver; walked scalars include
+        # the merged subtree plus the local keys.
+        doc = pyrs_yaml.parse("a: &x\n  p: 1\nb:\n  <<: *x\n  q: 2\n")
+        scalar_paths = [n._path for n in doc.scalars()]
+        assert ("a", "p") in scalar_paths
+        assert ("b", "p") in scalar_paths  # inherited via merge
+        assert ("b", "q") in scalar_paths
+
     def test_doc_walk_flow_mapping(self):
         doc = pyrs_yaml.parse("a: {b: 1, c: 2}\n")
         paths = [n._path for n in doc.walk()]
@@ -183,6 +201,25 @@ class TestDocWalk:
         doc = pyrs_yaml.parse("a: 1\nb: {c: 2}\nc: [3, 4]\n")
         paths = [n._path for n in doc.walk()]
         assert paths == [(), ("a",), ("b",), ("b", "c"), ("c",), ("c", 0), ("c", 1)]
+
+
+class TestWalkProperty:
+    """Property-based tests for walk/scalars on random structures."""
+
+    @settings(max_examples=100, deadline=3000, suppress_health_check=[HealthCheck.too_slow])
+    @given(roundtrip_safe_json)
+    def test_walk_does_not_panic(self, value):
+        doc = pyrs_yaml.parse(pyrs_yaml.safe_dump(value))
+        for node in doc.walk():
+            assert isinstance(node, Node)
+
+    @settings(max_examples=100, deadline=3000, suppress_health_check=[HealthCheck.too_slow])
+    @given(roundtrip_safe_json)
+    def test_scalars_return_paths(self, value):
+        doc = pyrs_yaml.parse(pyrs_yaml.safe_dump(value))
+        for node in doc.scalars():
+            assert isinstance(node, Node)
+            assert isinstance(node._path, tuple)
 
 
 class TestNodeRelease:
