@@ -63,6 +63,17 @@ class TestYAMLInstance:
         doc = pyrs_yaml.YAML().parse(b"key: value")
         assert doc.get("key") == "value"
 
+    def test_resolve_merges_by_yaml_type(self):
+        # yaml_type rt/full resolve << merge keys; safe preserves them literally.
+        merge_yaml = "base: &b\n  x: 1\nchild:\n  <<: *b\n  y: 2\n"
+        for typ, expected in [
+            ("rt", {"x": 1, "y": 2}),
+            ("full", {"x": 1, "y": 2}),
+            ("safe", {"<<": {"x": 1}, "y": 2}),
+        ]:
+            child = pyrs_yaml.YAML(typ=typ).parse(merge_yaml).to_dict()["child"]
+            assert child == expected, f"YAML({typ}) child={child}"
+
     @pytest.mark.parametrize(
         "schema,value",
         [

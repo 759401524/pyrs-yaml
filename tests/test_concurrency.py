@@ -70,3 +70,51 @@ def test_concurrent_edits_are_isolated():
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         assert all(ex.map(work, range(200)))
+
+
+def test_concurrent_tag_registry_register_clear():
+    # tag_registry uses a Mutex; concurrent register/clear must not crash and
+    # must end in a consistent state.
+    def work(_):
+        @pyrs_yaml.register_tag("!c")
+        def h(node):
+            return f"h:{node}"
+
+        pyrs_yaml.clear_tag_handlers()
+        return True
+
+    def read():
+        return pyrs_yaml.parse("x: !c v\n").get("x")
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        assert all(ex.map(work, range(80)))
+
+    # After all workers clear, a fresh register still resolves.
+    @pyrs_yaml.register_tag("!c")
+    def h2(node):
+        return f"ok:{node}"
+
+    assert pyrs_yaml.parse("x: !c v\n").get("x") == "ok:v"
+    pyrs_yaml.clear_tag_handlers()
+
+
+def test_concurrent_type_registry_register_remove():
+    # type_registry Mutex under concurrent register/remove; no crash, consistent end state.
+    class T(pyrs_yaml.CustomType):
+        python_type = str
+
+        def can_parse(self, value):
+            return True
+
+        def from_yaml(self, value):
+            return "T:" + value
+
+    def work(_):
+        pyrs_yaml.register_type("!t", T())
+        pyrs_yaml.remove_type("!t")
+        return True
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        assert all(ex.map(work, range(80)))
+    assert pyrs_yaml.safe_load("x: !t v\n")["x"] == "v"
+    pyrs_yaml.clear_type_handlers()

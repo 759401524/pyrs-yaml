@@ -110,3 +110,19 @@ class TestTagRegistry:
         pyrs_yaml.remove_tag("!custom")
         doc = pyrs_yaml.YAML().parse(yaml.TAG_CUSTOM)
         assert doc.get("name") == "value"
+
+    def test_duplicate_register_first_wins(self):
+        # tag_registry keeps handlers in registration order; resolve_tags
+        # iterates in order and breaks on the first handler that returns a
+        # string, so the FIRST registration takes effect.
+
+        @pyrs_yaml.register_tag("!dup")
+        def first_handler(node):
+            return f"first:{node}"
+
+        @pyrs_yaml.register_tag("!dup")
+        def second_handler(node):
+            return f"second:{node}"
+
+        doc = pyrs_yaml.YAML().parse("x: !dup v\n")
+        assert doc.get("x") == "first:v"

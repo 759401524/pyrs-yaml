@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 from _pytest.config import Config
 from _pytest.nodes import Item
 from _pytest.python import Session
+from hypothesis import settings as _hypothesis_settings
 
 import pyrs_yaml
 from tests.data import yaml_samples as yaml
@@ -62,3 +64,7 @@ def temp_yaml_file(yaml_strings):
         with Path(filepath).open("w", encoding="utf-8") as f:
             f.write(yaml_strings["simple_mapping"])
         yield filepath
+
+
+_hypothesis_settings.register_profile("fast", max_examples=10)
+_hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
