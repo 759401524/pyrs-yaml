@@ -595,6 +595,43 @@ impl CustomNode {
         self.meta().and_then(|m| m.anchor.as_deref())
     }
 
+    /// Set the node's anchor name. No-op on `Alias`.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use pyrs_yaml_core::ast::CustomNode;
+    ///
+    /// let mut node = CustomNode::plain_scalar("val");
+    /// node.set_anchor("myanchor");
+    /// assert_eq!(node.anchor(), Some("myanchor"));
+    /// ```
+    pub fn set_anchor(&mut self, name: impl Into<String>) {
+        if let Some(meta) = self.meta_mut() {
+            meta.anchor = Some(name.into());
+        }
+    }
+
+    /// Remove the node's anchor. No-op on `Alias`.
+    pub fn remove_anchor(&mut self) {
+        if let Some(meta) = self.meta_mut() {
+            meta.anchor = None;
+        }
+    }
+
+    /// Remove the node's comment. No-op on `Alias`.
+    pub fn remove_comment(&mut self) {
+        if let Some(meta) = self.meta_mut() {
+            meta.comment = None;
+        }
+    }
+
+    /// Remove the node's tag. No-op on `Alias`.
+    pub fn remove_tag(&mut self) {
+        if let Some(meta) = self.meta_mut() {
+            meta.tag = None;
+        }
+    }
+
     /// 获取节点的 YAML 标签。
     ///
     /// # Returns

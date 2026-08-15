@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- **Node metadata setters/getters** — `Node.comment` / `Node.anchor` / `Node.tag` read properties and `set_comment` / `set_anchor` / `set_tag` (plus `remove_*` variants), backed by new path-based edit operations. Editing an alias or a missing path raises; standalone comments on inline scalar values and sequence items are now serialized on their own indented lines (fixes pre-existing broken round-trip for `child:\n  # c\n  val` and `- a\n# c\n- b`).
+
 #### Changed
 
 - **NumPy re-enabled on free-threaded (cp314t) wheels** — the `--no-default-features` flag is removed from the cp314t build lines; rust-numpy 0.29 supports free-threaded Python, so `numpy.ndarray` serialization is now available on free-threaded wheels when NumPy is installed (auto-detected at runtime).

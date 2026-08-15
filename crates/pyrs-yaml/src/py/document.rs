@@ -120,6 +120,75 @@ impl YamlDocument {
             *splice = Some(SpliceState::new(src.clone()));
         }
     }
+
+    /// Shared body for metadata edits: parse segments, apply the closure
+    /// against the AST + source, apply the resulting `DirtyUnit` to the
+    /// splice state, bump revision.
+    pub(crate) fn apply_metadata_edit<F>(&mut self, py: Python, edit: F) -> Result<(), pyo3::PyErr>
+    where
+        F: FnOnce(&mut CustomNode, &str, Option<&[usize]>) -> Result<editing::DirtyUnit, String>
+            + Send
+            + 'static,
+    {
+        py.detach(|| -> Result<(), String> {
+            let src = self.source.as_deref().unwrap_or("");
+            Self::ensure_splice(
+                &mut self.splice,
+                &mut self.splice_checked,
+                &self.ast,
+                &self.source,
+            );
+            let unit = {
+                let offsets = self.splice.as_mut().map(|s| s.line_offsets());
+                edit(&mut self.ast, src, offsets)?
+            };
+            if let Some(state) = self.splice.as_mut()
+                && state.apply(&unit).is_err()
+            {
+                self.splice = None;
+            }
+            Ok(())
+        })
+        .map_err(|e| YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)])))?;
+        self.revision = self.revision.wrapping_add(1);
+        self.source_dirty = true;
+        Ok(())
+    }
+}
+
+/// Parse a Python path segment list into `editing::Segment` values.
+pub(crate) fn parse_segments(
+    py: Python,
+    segments: &[Py<PyAny>],
+) -> Result<Vec<editing::Segment<'static>>, pyo3::PyErr> {
+    segments
+        .iter()
+        .map(|s| editing::Segment::from_py(s.bind(py)))
+        .collect::<Result<Vec<_>, pyo3::PyErr>>()
+        .map_err(|e| YamlEditError::new_err(e.to_string()))
+}
+
+/// Parse a YAML tag string into `Tag`:
+/// - `"!custom"` → local tag (handle `!`, suffix `custom`)
+/// - `"!!int"` → primary tag (handle `!!`, suffix `int`)
+/// - otherwise a local tag with the whole string as suffix.
+pub(crate) fn parse_tag(tag: &str) -> pyrs_yaml_core::ast::Tag {
+    if let Some(suffix) = tag.strip_prefix("!!") {
+        pyrs_yaml_core::ast::Tag {
+            handle: "!!".to_string(),
+            suffix: suffix.to_string(),
+        }
+    } else if let Some(suffix) = tag.strip_prefix('!') {
+        pyrs_yaml_core::ast::Tag {
+            handle: "!".to_string(),
+            suffix: suffix.to_string(),
+        }
+    } else {
+        pyrs_yaml_core::ast::Tag {
+            handle: "!".to_string(),
+            suffix: tag.to_string(),
+        }
+    }
 }
 
 #[pymethods]
@@ -562,6 +631,108 @@ impl YamlDocument {
         self.revision = self.revision.wrapping_add(1);
         self.source_dirty = true;
         Ok(())
+    }
+
+    // --- Metadata (comment / anchor / tag) path-based setters ---
+
+    /// Set a comment on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list", text: "str", standalone: "bool" = true) -> "None")]
+    fn _set_comment_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+        text: &str,
+        standalone: bool,
+    ) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        let comment = pyrs_yaml_core::ast::Comment {
+            text: text.into(),
+            standalone,
+        };
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_comment_path(ast, &segs, comment.clone(), src, offs)
+        })
+    }
+
+    /// Remove the comment on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "None")]
+    fn _remove_comment_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::remove_comment_path(ast, &segs, src, offs)
+        })
+    }
+
+    /// Set a YAML tag on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list", tag: "str") -> "None")]
+    fn _set_tag_path(&mut self, py: Python, segments: Vec<Py<PyAny>>, tag: &str) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        let parsed_tag = parse_tag(tag);
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_tag_path(ast, &segs, parsed_tag.clone(), src, offs)
+        })
+    }
+
+    /// Remove the YAML tag on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "None")]
+    fn _remove_tag_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::remove_tag_path(ast, &segs, src, offs)
+        })
+    }
+
+    /// Set an anchor on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list", name: "str") -> "None")]
+    fn _set_anchor_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+        name: &str,
+    ) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        let name = name.to_string();
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_anchor_path(ast, &segs, &name, src, offs)
+        })
+    }
+
+    /// Remove the anchor on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "None")]
+    fn _remove_anchor_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::remove_anchor_path(ast, &segs, src, offs)
+        })
+    }
+
+    // --- Metadata getters (read-only, no splice) ---
+
+    /// Get the comment text on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "str | None")]
+    fn _get_comment(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Option<String>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node.comment().map(|c| c.text.as_ref().to_string()))
+    }
+
+    /// Get the anchor name on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "str | None")]
+    fn _get_anchor(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Option<String>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node.anchor().map(|s| s.to_string()))
+    }
+
+    /// Get the YAML tag on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "str | None")]
+    fn _get_tag(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Option<String>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node.tag().map(|t| t.to_string()))
     }
 
     /// Set the value for a mapping key, `doc['key'] = value`.

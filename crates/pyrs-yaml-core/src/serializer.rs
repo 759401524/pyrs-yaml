@@ -546,6 +546,7 @@ impl Serializer {
                 ..
             }
         )) || is_complex_key
+            || value.comment().is_some_and(|c| c.standalone)
         {
             // If the value node has an anchor or tag, write it after the colon
             if let Some(anchor_name) = value.anchor() {
@@ -608,7 +609,8 @@ impl Serializer {
                 flow_style: false,
                 ..
             }
-        ) {
+        ) || item.comment().is_some_and(|c| c.standalone)
+        {
             self.output.push('\n');
             self.serialize_node_internal(
                 item,

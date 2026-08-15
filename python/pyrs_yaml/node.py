@@ -143,7 +143,58 @@ class Node:
         """Rename this node's mapping key. Node must be a mapping value."""
         self._with_path(lambda doc, segs: doc._rename_path(segs, new_key))
 
-    def _with_path(self, action: Callable) -> None:
+    @property
+    def comment(self) -> str | None:
+        """Get this node's comment text, or None if it has no comment."""
+        doc = self._get_doc()
+        return doc._get_comment([s for s in self._path])
+
+    def set_comment(self, text: str, standalone: bool = True) -> None:
+        """Set (or replace) this node's comment.
+
+        With ``standalone=True`` (default) the comment is emitted on its own
+        line above the node; with ``standalone=False`` it is emitted inline
+        after the node.
+        """
+        self._with_path(lambda doc, segs: doc._set_comment_path(segs, text, standalone))
+
+    def remove_comment(self) -> None:
+        """Remove this node's comment."""
+        self._with_path(lambda doc, segs: doc._remove_comment_path(segs))
+
+    @property
+    def anchor(self) -> str | None:
+        """Get this node's anchor name, or None if it has no anchor."""
+        doc = self._get_doc()
+        return doc._get_anchor([s for s in self._path])
+
+    def set_anchor(self, name: str) -> None:
+        """Set (or replace) this node's anchor."""
+        self._with_path(lambda doc, segs: doc._set_anchor_path(segs, name))
+
+    def remove_anchor(self) -> None:
+        """Remove this node's anchor."""
+        self._with_path(lambda doc, segs: doc._remove_anchor_path(segs))
+
+    @property
+    def tag(self) -> str | None:
+        """Get this node's YAML tag string (e.g. ``!!str``), or None."""
+        doc = self._get_doc()
+        return doc._get_tag([s for s in self._path])
+
+    def set_tag(self, tag: str) -> None:
+        """Set (or replace) this node's YAML tag.
+
+        ``"!custom"`` produces a local tag, ``"!!int"`` produces a primary
+        (``!!``) tag.
+        """
+        self._with_path(lambda doc, segs: doc._set_tag_path(segs, tag))
+
+    def remove_tag(self) -> None:
+        """Remove this node's YAML tag."""
+        self._with_path(lambda doc, segs: doc._remove_tag_path(segs))
+
+    def _with_path(self, action: Callable[[Any, list[Any]], None]) -> None:
         doc = self._get_doc()
         segments = [s for s in self._path]
         action(doc, segments)
