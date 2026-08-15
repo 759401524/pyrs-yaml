@@ -84,6 +84,14 @@ impl Tag {
             suffix: suffix.to_string(),
         }
     }
+
+    /// Create a verbatim tag (!<suffix>)
+    pub fn verbatim(suffix: &str) -> Self {
+        Self {
+            handle: String::new(),
+            suffix: suffix.to_string(),
+        }
+    }
 }
 
 impl fmt::Display for Tag {
@@ -94,6 +102,8 @@ impl fmt::Display for Tag {
             write!(f, "!!{}", self.suffix)
         } else if self.handle == "!" {
             write!(f, "!{}", self.suffix)
+        } else if self.handle.is_empty() && self.suffix != "!" {
+            write!(f, "!<{}>", self.suffix)
         } else {
             write!(f, "{}{}", self.handle, self.suffix)
         }
@@ -1040,6 +1050,18 @@ mod tests {
             Tag {
                 handle: "!".to_string(),
                 suffix: "".to_string()
+            }
+            .to_string(),
+            "!"
+        );
+        assert_eq!(
+            Tag::verbatim("tag:yaml.org,2002:str").to_string(),
+            "!<tag:yaml.org,2002:str>"
+        );
+        assert_eq!(
+            Tag {
+                handle: String::new(),
+                suffix: "!".to_string()
             }
             .to_string(),
             "!"

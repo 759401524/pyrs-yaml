@@ -187,6 +187,53 @@ node = doc.node().find("$.old")
 node.rename("new")
 ```
 
+## タグとメタデータ
+
+コメント、アンカー、タグはデフォルトでラウンドトリップ時に保持されます。`Node` 経由で読み取り・編集も可能で、編集はその場で再シリアライズされ、他の要素はすべて保持されます。
+
+### メタデータの読み取り
+
+```python
+doc = pyrs_yaml.parse("key: !!str value  # note")
+node = doc.node().find("$.key")
+node.comment  # "note"
+node.anchor   # None
+node.tag      # "!!str"
+```
+
+- `comment` — インラインまたはスタンドアロンのコメントテキスト（`#` プレフィックスなし）、または `None`
+- `anchor` — アンカー名、または `None`
+- `tag` — YAML タグ文字列、または `None`
+
+#### `Node.set_comment()` / `Node.remove_comment()`
+
+```python
+node.set_comment("new note")                   # スタンドアロン: ノードの上の行
+node.set_comment("inline", standalone=False)   # ノードの後ろにインライン
+node.remove_comment()
+```
+
+#### `Node.set_anchor()` / `Node.remove_anchor()`
+
+```python
+node.set_anchor("cfg")
+node.remove_anchor()
+```
+
+アンカーはドキュメント内の別の場所でエイリアスから参照できます。
+
+#### `Node.set_tag()` / `Node.remove_tag()`
+
+```python
+node.set_tag("!custom")                  # ローカルタグ
+node.set_tag("!!int")                    # プライマリタグ
+node.set_tag("!<tag:yaml.org,2002:str>") # バーベイタムタグ
+node.remove_tag()
+```
+
+- **エイリアス**ノード（`*ref`）または**存在しないパス**へのメタデータ編集は `YamlEditError` を発生させます
+- 編集後、ノードは**stale** になります — 次にアクセスする前に `doc.node().find(path)` で再検索してください
+
 ## ノードの操作
 
 `doc.node()` はドキュメントルートの `Node` を返し、`Node.find(path)` はサブツリーに移動します：

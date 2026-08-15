@@ -110,6 +110,16 @@ class TestNodeTag:
         Node(doc).find("$.key").set_tag("!!int")
         assert doc.to_yaml() == "key: !!int 123\n"
 
+    def test_set_tag_verbatim(self):
+        doc = pyrs_yaml.parse("key: value")
+        Node(doc).find("$.key").set_tag("!<tag:yaml.org,2002:str>")
+        assert doc.to_yaml() == "key: !<tag:yaml.org,2002:str> value\n"
+
+    def test_set_tag_verbatim_read(self):
+        doc = pyrs_yaml.parse("key: value")
+        Node(doc).find("$.key").set_tag("!<tag:yaml.org,2002:str>")
+        assert Node(doc).find("$.key").tag == "!<tag:yaml.org,2002:str>"
+
     def test_remove_tag(self):
         doc = pyrs_yaml.parse("key: !!str value")
         Node(doc).find("$.key").remove_tag()

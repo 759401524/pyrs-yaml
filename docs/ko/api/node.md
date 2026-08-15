@@ -231,7 +231,7 @@ remove_anchor() -> None
 
 #### `set_tag()`
 
-이 노드의 YAML 태그를 설정(또는 교체)합니다. `"!custom"`은 로컬 태그, `"!!int"`는 프라이머리(`!!`) 태그가 됩니다.
+이 노드의 YAML 태그를 설정(또는 교체)합니다. `"!custom"`은 로컬 태그, `"!!int"`는 프라이머리(`!!`) 태그, `"!<tag:yaml.org,2002:str>"`는 verbatim 태그가 됩니다.
 
 ```python
 set_tag(tag: str) -> None

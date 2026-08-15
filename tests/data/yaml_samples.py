@@ -80,6 +80,7 @@ FOLDED_STRIP = "key: >-\n  this is folded"
 TAG_STR = "name: !!str John"
 TAG_CUSTOM = "name: !custom value"
 TAG_INT = "age: !!int 30"
+TAG_VERBATIM = "name: !<tag:yaml.org,2002:str> John"
 NESTED_TAGGED = "outer:\n  inner: !custom value"
 
 # --- Anchor and merge samples ---
