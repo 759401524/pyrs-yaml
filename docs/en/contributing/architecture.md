@@ -121,7 +121,7 @@ Custom serializer that reconstructs YAML from the AST:
 - Indent-level state management for nested structures
 - Chomping indicator handling for block scalars
 
-#### 5. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
+#### 4. `crates/pyrs-yaml/src/py/` — PyO3 Bindings
 
 The Python-facing layer that exposes Rust functionality to Python:
 
@@ -154,20 +154,20 @@ Python-facing module definitions and type conversions:
 **Exported Python functions (18 total):**
 `parse`, `safe_load`, `safe_loads`, `safe_dump`, `safe_dumps`, `parse_file`, `dump_file`, `parse_all_docs`, `parse_stream`, `read_markdown`, `from_dict`, `from_json`, `set_language`, `get_language`, `list_languages`, `detect_language`, `negotiate_language`, `YamlDocument`
 
-#### 5. `src/lib.rs` — Module Entry
+#### 6. `src/lib.rs` — Module Entry
 
 - Re-exports all modules
 - Error types: `YamlParseError`, `YamlSerializeError`, `YamlTypeError`
 - `create_exception!` macros for custom Python exceptions
 - `rust-i18n` initialization
 
-#### 6. `src/i18n/` — Internationalization
+#### 7. `src/i18n/` — Internationalization
 
 - `src/i18n.rs` — Configuration and language negotiation
 - `src/i18n/` — Locale bundles (en, zh-CN, ja-JP, ko-KR)
 - Bilingual error messages with format strings
 
-#### 7. `src/integration/` — Integration Helpers
+#### 8. `src/integration/` — Integration Helpers
 
 - `yaml_suite.rs` — YAML Test Suite runner for validation
 - Test helpers for benchmarks and compliance checks
