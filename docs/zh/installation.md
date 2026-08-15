@@ -25,10 +25,10 @@ uv run --frozen maturin develop --release
 
 ## 自由线程 Python (cp314t)
 
-CPython 3.14t 的自由线程（无 GIL）wheel 使用 `--no-default-features` 构建，因此**不包含** NumPy 集成：在自由线程构建上对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`。GIL 构建（Python 3.8–3.15）保留完整的 ndarray 序列化支持。
+CPython 3.14t 的自由线程（无 GIL）wheel 包含 NumPy 集成。当环境中安装了 NumPy 时，`safe_dump` / `from_dict` 正常序列化 `numpy.ndarray`；当 NumPy 不存在时，集成自动停用，调用回退到默认对象处理。GIL 构建（Python 3.8–3.15）保留完整的 ndarray 序列化支持。
 
-!!! warning "自由线程构建不含 NumPy"
-    自由线程（cp314t）wheel 使用 `--no-default-features` 构建，因此不包含 NumPy 集成。在自由线程构建上对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`。
+!!! note "NumPy 运行时自动检测"
+    NumPy 集成编译进每个 wheel（GIL 和自由线程），但仅在 NumPy 可导入时激活。若未安装 NumPy，对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`（值不是受支持类型）。
 
 ## 快速验证
 

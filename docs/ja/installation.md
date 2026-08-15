@@ -23,10 +23,10 @@ uv run --frozen maturin develop --release
 
 ## フリースレッド Python (cp314t)
 
-!!! warning "フリースレッドビルドは NumPy 非対応"
-    フリースレッドビルドで `numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
+CPython 3.14t 向けのフリースレッド（GIL なし）ホイールは NumPy 統合を含みます。環境に NumPy がインストールされている場合、`safe_dump` / `from_dict` は `numpy.ndarray` 値を通常通りシリアライズします。NumPy が存在しない場合、統合は非アクティブになり、呼び出しはデフォルトのオブジェクトハンドラにフォールスルーします。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
 
-CPython 3.14t 向けのフリースレッド（GIL なし）ホイールは `--no-default-features` でビルドされるため、NumPy 統合は**含まれません**。
+!!! note "NumPy は実行時に自動検出されます"
+    NumPy 統合はすべてのホイール（GIL およびフリースレッド）にコンパイルされていますが、NumPy がインポート可能な場合にのみアクティブになります。NumPy がインストールされていない場合、`numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します（値が認識された型ではないため）。
 
 ## 開発用インストール
 

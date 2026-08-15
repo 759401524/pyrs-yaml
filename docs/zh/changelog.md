@@ -15,6 +15,10 @@ status: new
 
 ### [Unreleased]
 
+#### 变更
+
+- **NumPy 在自由线程 (cp314t) wheel 上重新启用** — 从 cp314t 构建参数移除 `--no-default-features`；rust-numpy 0.29 支持自由线程 Python，`numpy.ndarray` 序列化现可在自由线程 wheel 上使用（运行时自动检测 NumPy 是否安装）。
+
 ### [v0.14.1] — 2026-08-15
 
 #### 修复

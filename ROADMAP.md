@@ -144,6 +144,15 @@ Per the plan's risk note ("the audit records oracle disagreements but does not c
 
 ---
 
+## Review Notes 2026-08-15 (v0.14.1 milestone)
+
+| Item | Decision | Rationale |
+|:-----|:---------|:----------|
+| Numpy free-threaded re-enable | **Promote → [Unreleased]** | Upstream blocker resolved: rust-numpy v0.24.0+ supports free-threaded Python; v0.29.0 (already pinned) inherits support. Remove `--no-default-features` from cp314t builds; runtime probe auto-detects. |
+| Custom YAML 1.2 parser | **Defer** | granit-parser stable at 99.75% compliance (405/406); 7 workarounds in place but no urgent regression. Revisit next milestone. |
+
+---
+
 ## Review Notes 2026-08-11 (v0.13.0 milestone)
 
 Milestone review of all Research & Exploration items per the revisit rule.
@@ -170,7 +179,7 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
 - [ ] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser and incrementally fix to 100%. ⏸️ Deferred 2026-08-11 — granit migration just shipped in v0.13.0; let it settle. Revisit v0.14.0.
-- [ ] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime probe (`py.import("numpy").is_ok()`) auto-detect. Tracked in v0.11.7. ⏸️ Deferred 2026-08-11 — blocked on upstream `rust-numpy`.
+- [x] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime probe (`py.import("numpy").is_ok()`) auto-detect. Tracked in v0.11.7. ✅ Closed 2026-08-15 — rust-numpy v0.24.0+ supports free-threaded Python; v0.29.0 (already pinned) inherits support. `--no-default-features` removed from cp314t build lines in `publish.yml`/`ci.yml`.
 - [x] **YAML Schema language** — dedicated schema definition format beyond JSON Schema ✅ Promoted to v0.14.0 planning 2026-08-11
 - [x] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy ✅ Closed 2026-08-11 — passive tracking provides no value
 - [x] **Community plugins** — allow third-party Python modules to register custom node types ✅ Promoted to v0.14.0 planning 2026-08-11

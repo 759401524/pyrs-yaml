@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Changed
+
+- **NumPy re-enabled on free-threaded (cp314t) wheels** — the `--no-default-features` flag is removed from the cp314t build lines; rust-numpy 0.29 supports free-threaded Python, so `numpy.ndarray` serialization is now available on free-threaded wheels when NumPy is installed (auto-detected at runtime).
+
 ### [v0.14.1] — 2026-08-15
 
 #### Fixed
