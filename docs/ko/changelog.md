@@ -472,19 +472,6 @@ status: new
 - **`quoted_scalar()`** — 단일 따옴표 YAML 스타일이 필요한 값용 새 `CustomNode::quoted_scalar()` 생성자
 - **따옴표 스칼라의 타입 해석** — `resolve_yaml_type`가 이제 `SingleQuoted`/`DoubleQuoted` 스칼라에 적용되어 따옴표 있는 음수의 올바른 루트립
 - **포괄적 NumPy 테스트 스위트** — 모든 dtype, 차원 (0-D from 4-D), 음수, 무한대, NaN, 빈 배열, edge case를 다루는 42개 테스트
-
-#### 수정
-
-- **음수 루트립** — YAML 1.2 블록 시퀀스는 `-`로 시작하는 plain 스칼라를 포함할 수 없음; 이제 직렬화 시 따옴표로 감싸서 정수/부동소수로 올바르게 파싱
-- **N-D 배열 지원** — `PyArray1<T>`를 `PyArrayDyn<T>`로 교체하여 1-D뿐만 아니라 모든 차원의 배열 지원
-- **올바른 중첩 깊이** — 다차원 배열이 이제 정확히 N 수준의 중첩 생성 (내부 차원은 shape[1..] 처리, 루트 차원은 `plain_sequence`로 래핑)
-
-#### 변경
-
-- ndarray 타입 디스패치를 위해 `numpy` crate (v0.29) 의존성 추가
-
-#### 추가
-
 - Flow collection (`{}`/`[]`) 루트립 지원 — Mapping/Sequence AST 노드에 `flow_style` 필드
 - `parse()`가 `str` 및 `bytes` 입력 모두 수용
 - `parse()`가 `resolve_merges` 파라미터로 merge key 확장 옵트아웃 지원
@@ -499,6 +486,9 @@ status: new
 
 #### 수정
 
+- **음수 루트립** — YAML 1.2 블록 시퀀스는 `-`로 시작하는 plain 스칼라를 포함할 수 없음; 이제 직렬화 시 따옴표로 감싸서 정수/부동소수로 올바르게 파싱
+- **N-D 배열 지원** — `PyArray1<T>`를 `PyArrayDyn<T>`로 교체하여 1-D뿐만 아니라 모든 차원의 배열 지원
+- **올바른 중첩 깊이** — 다차원 배열이 이제 정확히 N 수준의 중첩 생성 (내부 차원은 shape[1..] 처리, 루트 차원은 `plain_sequence`로 래핑)
 - `to_dict()` 및 `safe_load()`의 alias 해석 — alias가 이제 참조값 대신 `None`으로 해석
 - `safe_loads()`가 더 이상 단순 `split("---")`를 사용하지 않음 — saphyr의 문서 이벤트 사용
 - 파싱 중 Mapping/Sequence 태그가 더 이상 폐기되지 않음
@@ -506,9 +496,10 @@ status: new
 
 #### 변경
 
+- ndarray 타입 디스패치를 위해 `numpy` crate (v0.29) 의존성 추가
 - PyO3를 0.21에서 0.29로 업그레이드
 - 15+ 보일러플레이트 `CustomNode` constructions를 `plain_scalar()`/`plain_mapping()`/`plain_sequence()`/`plain_null()` 생성자로 교체
-- 직렬化器가 `write_anchor_tag()` 및 `write_inline_comment()` 헬퍼 추출
+- 직렬화器가 `write_anchor_tag()` 및 `write_inline_comment()` 헬퍼 추출
 - 파서가 `detect_flow_style()` 헬퍼 추출
 - 데드 코드 제거: `ParseOptions`, `find_inline_comment`, `find_standalone_comment_before`, `format_yaml_type` (테스트 전용)
 - 6개 중복 테스트 파일 통합, 9개 진단 스크립트를 `scripts/`로 이동

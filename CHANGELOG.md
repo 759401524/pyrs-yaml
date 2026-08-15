@@ -97,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`node_to_pyobject` and `direct_dump` check registered `CustomType`s** —
   tagged scalars convert via `from_yaml()` on load; matching Python objects
   serialize via `to_yaml()` on dump.
+- **`get()` is literal-key only** — `YamlDocument.get()` no longer guesses
+  JSONPath for keys containing `.` or `[`; every key is treated as a
+  top-level mapping key, consistent with `__getitem__`/`__setitem__`.
+  Path access stays available via `find()`/`node()`.
 
 ### Fixed
 
@@ -108,13 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are emitted as quoted scalars instead of unparseable YAML.
 - **Empty collections emit `{}`/`[]`** — dumping empty mappings/sequences no
   longer yields an empty document that re-parses as `None`.
-
-### Changed
-
-- **`get()` is literal-key only** — `YamlDocument.get()` no longer guesses
-  JSONPath for keys containing `.` or `[`; every key is treated as a
-  top-level mapping key, consistent with `__getitem__`/`__setitem__`.
-  Path access stays available via `find()`/`node()`.
 
 ## [v0.13.0] — 2026-08-10
 
@@ -521,19 +518,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`quoted_scalar()`** — new `CustomNode::quoted_scalar()` constructor for values requiring single-quoted YAML style
 - **Type resolution for quoted scalars** — `resolve_yaml_type` now applied to `SingleQuoted`/`DoubleQuoted` scalars for correct round-trip of quoted negative numbers
 - **Comprehensive NumPy test suite** — 42 tests covering all dtypes, dimensions (0-D through 4-D), negative numbers, infinity, NaN, empty arrays, and edge cases
-
-### Fixed
-
-- **Negative number round-trip** — YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative numbers are now quoted during serialization and correctly parsed back as integers/floats
-- **N-D array support** — replaced `PyArray1<T>` with `PyArrayDyn<T>` to support arrays of any dimension, not just 1-D
-- **Correct nesting depth** — multi-dimensional arrays now produce exactly N levels of nesting (shape[1..] handles inner dimensions, root dimension wrapped by `plain_sequence`)
-
-### Changed
-
-- Added `numpy` crate (v0.29) as a dependency for ndarray type dispatch
-
-### Added
-
 - Flow collections (`{}`/`[]`) round-trip support with `flow_style` field on Mapping/Sequence AST nodes
 - `parse()` accepts both `str` and `bytes` input
 - `parse()` supports `resolve_merges` parameter to opt out of merge key expansion
@@ -548,6 +532,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Negative number round-trip** — YAML 1.2 block sequences cannot contain plain scalars starting with `-`; negative numbers are now quoted during serialization and correctly parsed back as integers/floats
+- **N-D array support** — replaced `PyArray1<T>` with `PyArrayDyn<T>` to support arrays of any dimension, not just 1-D
+- **Correct nesting depth** — multi-dimensional arrays now produce exactly N levels of nesting (shape[1..] handles inner dimensions, root dimension wrapped by `plain_sequence`)
 - Alias resolution in `to_dict()` and `safe_load()` — aliases now resolve to referenced values instead of `None`
 - `safe_loads()` no longer uses naive `split("---")` — uses saphyr's document events
 - Mapping/Sequence tags no longer discarded during parsing
@@ -555,6 +542,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Added `numpy` crate (v0.29) as a dependency for ndarray type dispatch
 - Upgraded PyO3 from 0.21 to 0.29
 - Replaced 15+ boilerplate `CustomNode` constructions with `plain_scalar()`/`plain_mapping()`/`plain_sequence()`/`plain_null()` constructors
 - Serializer extracted `write_anchor_tag()` and `write_inline_comment()` helpers
