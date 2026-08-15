@@ -80,6 +80,30 @@ Get the parent `Node`, or `None` if this is the root.
 parent -> Node | None
 ```
 
+#### `comment`
+
+Get this node's comment text, or `None` if it has no comment.
+
+```python
+comment -> str | None
+```
+
+#### `anchor`
+
+Get this node's anchor name, or `None` if it has no anchor.
+
+```python
+anchor -> str | None
+```
+
+#### `tag`
+
+Get this node's YAML tag string (e.g. `!!str`), or `None` if it has no tag.
+
+```python
+tag -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -171,6 +195,57 @@ Rename this node's mapping key. The node must be a mapping value.
 
 ```python
 rename(new_key: str) -> None
+```
+
+#### `set_comment()`
+
+Set (or replace) this node's comment. With `standalone=True` (default) the
+comment is emitted on its own line above the node; with `standalone=False`
+it is emitted inline after the node.
+
+```python
+set_comment(text: str, standalone: bool = True) -> None
+```
+
+#### `remove_comment()`
+
+Remove this node's comment.
+
+```python
+remove_comment() -> None
+```
+
+#### `set_anchor()`
+
+Set (or replace) this node's anchor.
+
+```python
+set_anchor(name: str) -> None
+```
+
+#### `remove_anchor()`
+
+Remove this node's anchor.
+
+```python
+remove_anchor() -> None
+```
+
+#### `set_tag()`
+
+Set (or replace) this node's YAML tag. `"!custom"` produces a local tag,
+`"!!int"` produces a primary (`!!`) tag.
+
+```python
+set_tag(tag: str) -> None
+```
+
+#### `remove_tag()`
+
+Remove this node's YAML tag.
+
+```python
+remove_tag() -> None
 ```
 
 #### `to_yaml()`

@@ -80,6 +80,30 @@ children -> list[Node]
 parent -> Node | None
 ```
 
+#### `comment`
+
+이 노드의 주석 텍스트를 가져옵니다. 주석이 없으면 `None`을 반환합니다.
+
+```python
+comment -> str | None
+```
+
+#### `anchor`
+
+이 노드의 앵커 이름을 가져옵니다. 앵커가 없으면 `None`을 반환합니다.
+
+```python
+anchor -> str | None
+```
+
+#### `tag`
+
+이 노드의 YAML 태그 문자열(예: `!!str`)을 가져옵니다. 태그가 없으면 `None`을 반환합니다.
+
+```python
+tag -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -171,6 +195,54 @@ delete() -> None
 
 ```python
 rename(new_key: str) -> None
+```
+
+#### `set_comment()`
+
+이 노드의 주석을 설정(또는 교체)합니다. `standalone=True`(기본)면 주석이 노드 위의 독립된 줄에 출력되고, `standalone=False`면 노드 뒤에 인라인으로 출력됩니다.
+
+```python
+set_comment(text: str, standalone: bool = True) -> None
+```
+
+#### `remove_comment()`
+
+이 노드의 주석을 제거합니다.
+
+```python
+remove_comment() -> None
+```
+
+#### `set_anchor()`
+
+이 노드의 앵커를 설정(또는 교체)합니다.
+
+```python
+set_anchor(name: str) -> None
+```
+
+#### `remove_anchor()`
+
+이 노드의 앵커를 제거합니다.
+
+```python
+remove_anchor() -> None
+```
+
+#### `set_tag()`
+
+이 노드의 YAML 태그를 설정(또는 교체)합니다. `"!custom"`은 로컬 태그, `"!!int"`는 프라이머리(`!!`) 태그가 됩니다.
+
+```python
+set_tag(tag: str) -> None
+```
+
+#### `remove_tag()`
+
+이 노드의 YAML 태그를 제거합니다.
+
+```python
+remove_tag() -> None
 ```
 
 #### `to_yaml()`

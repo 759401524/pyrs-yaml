@@ -15,6 +15,10 @@ status: new
 
 ### [Unreleased]
 
+#### 追加
+
+- **ノードメタデータのセッター/ゲッター** — `Node.comment` / `Node.anchor` / `Node.tag` 読み取りプロパティと `set_comment` / `set_anchor` / `set_tag`（および `remove_*` 系）を追加。エイリアスや存在しないパスへの編集はエラーになります。インラインスカラー値・シーケンス項目上のスタンドアロンコメントは独自のインデント行に出力されるようになりました（`child:\n  # c\n  val` と `- a\n# c\n- b` の既存のラウンドトリップ不具合を修正）。
+
 #### 変更
 
 - **フリースレッド (cp314t) ホイールで NumPy を再有効化** — cp314t ビルド引数から `--no-default-features` を削除。rust-numpy 0.29 はフリースレッド Python をサポートし、`numpy.ndarray` シリアライズがフリースレッドホイールで利用可能になりました（NumPy のインストールは実行時に自動検出）。

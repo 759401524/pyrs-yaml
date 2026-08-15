@@ -80,6 +80,30 @@ children -> list[Node]
 parent -> Node | None
 ```
 
+#### `comment`
+
+获取此节点的注释文本，无注释时返回 `None`。
+
+```python
+comment -> str | None
+```
+
+#### `anchor`
+
+获取此节点的锚点名称，无锚点时返回 `None`。
+
+```python
+anchor -> str | None
+```
+
+#### `tag`
+
+获取此节点的 YAML 标签字符串（如 `!!str`），无标签时返回 `None`。
+
+```python
+tag -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -171,6 +195,54 @@ delete() -> None
 
 ```python
 rename(new_key: str) -> None
+```
+
+#### `set_comment()`
+
+设置（或替换）此节点的注释。`standalone=True`（默认）时注释输出在节点上方独立行；`standalone=False` 时注释内联输出在节点之后。
+
+```python
+set_comment(text: str, standalone: bool = True) -> None
+```
+
+#### `remove_comment()`
+
+删除此节点的注释。
+
+```python
+remove_comment() -> None
+```
+
+#### `set_anchor()`
+
+设置（或替换）此节点的锚点。
+
+```python
+set_anchor(name: str) -> None
+```
+
+#### `remove_anchor()`
+
+删除此节点的锚点。
+
+```python
+remove_anchor() -> None
+```
+
+#### `set_tag()`
+
+设置（或替换）此节点的 YAML 标签。`"!custom"` 生成局部标签，`"!!int"` 生成主（`!!`）标签。
+
+```python
+set_tag(tag: str) -> None
+```
+
+#### `remove_tag()`
+
+删除此节点的 YAML 标签。
+
+```python
+remove_tag() -> None
 ```
 
 #### `to_yaml()`

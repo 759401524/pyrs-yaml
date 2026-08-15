@@ -15,6 +15,10 @@ status: new
 
 ### [Unreleased]
 
+#### 추가
+
+- **노드 메타데이터 세터/게터** — `Node.comment` / `Node.anchor` / `Node.tag` 읽기 속성과 `set_comment` / `set_anchor` / `set_tag`(및 `remove_*` 계열)를 추가. 별칭 또는 존재하지 않는 경로 편집은 오류가 발생합니다. 인라인 스칼라 값·시퀀스 항목의 독립형 주석은 자체 들여쓰기 행에 출력됩니다(`child:\n  # c\n  val` 및 `- a\n# c\n- b`의 기존 라운드트립 결함 수정).
+
 #### 변경
 
 - **프리-스레디드 (cp314t) 휠에서 NumPy 재활성화** — cp314t 빌드 인수에서 `--no-default-features` 제거. rust-numpy 0.29는 프리-스레디드 Python을 지원하며, `numpy.ndarray` 직렬화가 프리-스레디드 휠에서 사용 가능합니다(NumPy 설치는 런타임에 자동 감지).

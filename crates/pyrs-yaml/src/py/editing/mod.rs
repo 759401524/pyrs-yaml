@@ -614,3 +614,211 @@ pub fn rename_path(
         _ => Err("cannot-rename-complex-key".to_string()),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Metadata (comment / anchor / tag) path-based setters
+// ---------------------------------------------------------------------------
+
+/// Apply a metadata mutation (comment/anchor/tag set or remove) to the node
+/// at `segments`, then regenerate the affected source region.
+///
+/// Reuses the same splice eligibility + region regeneration machinery as
+/// `rename_path`: navigate to the parent, apply the mutation to the target
+/// node, re-serialize the pair/item (or whole document for root), emit a
+/// `DirtyKind::Region`.
+fn apply_metadata_path<F>(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+    mut mutate: F,
+) -> Result<DirtyUnit, String>
+where
+    F: FnMut(&mut CustomNode),
+{
+    let computed;
+    let line_offsets: &[usize] = match line_offsets {
+        Some(offs) => offs,
+        None => {
+            computed = compute_line_offsets(source);
+            &computed
+        }
+    };
+
+    // Root: mutate then full re-serialize.
+    if segments.is_empty() {
+        let eligible = eligible_path(&path_nodes(node, &[]).map_err(|e| e.to_string())?);
+        mutate(node);
+        let text = crate::serializer::to_yaml_with_options(
+            &*node,
+            &crate::serializer::SerializeOptions::default(),
+        )
+        .map_err(|e| e.to_string())?;
+        return Ok(DirtyUnit {
+            kind: DirtyKind::Region {
+                range: 0..source.len(),
+                indent: 0,
+                text,
+            },
+            eligible,
+        });
+    }
+
+    let (parent_segments, last) = segments.split_at(segments.len() - 1);
+    let last = &last[0];
+    let depth = segments.len().saturating_sub(1);
+    let (eligible, compact_override) =
+        precompute(node, segments, parent_segments, line_offsets, source);
+    let parent = navigate_mut(node, parent_segments).map_err(|e| e.to_string())?;
+    if matches!(parent, CustomNode::Alias { .. }) {
+        return Err("cannot-edit-alias".to_string());
+    }
+
+    match (parent, last) {
+        (CustomNode::Mapping { pairs, .. }, Segment::Key(k)) => {
+            let key_node = CustomNode::plain_scalar(k.as_ref());
+            let idx =
+                mapping_key_index(pairs, &key_node).ok_or_else(|| "missing-path".to_string())?;
+            // Borrow the value mutably to apply the mutation.
+            let (_, value) = pairs
+                .get_index_mut(idx)
+                .ok_or_else(|| "missing-path".to_string())?;
+            if matches!(value, CustomNode::Alias { .. }) {
+                return Err("cannot-edit-alias".to_string());
+            }
+            mutate(value);
+            // Regenerate the pair text.
+            let (k_ref, v_ref) = pairs
+                .get_index(idx)
+                .ok_or_else(|| "missing-path".to_string())?;
+            let old_range = {
+                let s = k_ref.source_range().map(|r| r.start).unwrap_or(0);
+                let e = v_ref.source_range().map(|r| r.end).unwrap_or(s);
+                s..e
+            };
+            let old_indent = line_indent(line_offsets, source, old_range.start);
+            let text = regenerate_region_text(
+                node,
+                segments,
+                parent_segments,
+                None,
+                &compact_override,
+                old_indent,
+                depth,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(DirtyUnit {
+                kind: region_unit(
+                    old_range.start,
+                    old_range.end,
+                    old_indent,
+                    line_offsets,
+                    source,
+                    compact_override,
+                    &text,
+                ),
+                eligible,
+            })
+        }
+        (CustomNode::Sequence { items, .. }, Segment::Index(i)) => {
+            let idx = normalize_index(*i, items.len())
+                .ok_or_else(|| "index-out-of-range-edit".to_string())?;
+            if matches!(items[idx], CustomNode::Alias { .. }) {
+                return Err("cannot-edit-alias".to_string());
+            }
+            mutate(&mut items[idx]);
+            let item_range = items[idx].source_range().cloned().unwrap_or(0..0);
+            let old_indent = line_indent(line_offsets, source, item_range.start);
+            let text = crate::serializer::item_to_string(&items[idx], old_indent, depth)
+                .map_err(|e| e.to_string())?;
+            Ok(DirtyUnit {
+                kind: region_unit(
+                    item_range.start,
+                    item_range.end,
+                    old_indent,
+                    line_offsets,
+                    source,
+                    compact_override,
+                    &text,
+                ),
+                eligible,
+            })
+        }
+        _ => Err("missing-path".to_string()),
+    }
+}
+
+/// Set the comment on the node at `segments`.
+pub fn set_comment_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    comment: crate::ast::Comment,
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.set_comment(comment.clone());
+    })
+}
+
+/// Remove the comment on the node at `segments`.
+pub fn remove_comment_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.remove_comment();
+    })
+}
+
+/// Set the YAML tag on the node at `segments`.
+pub fn set_tag_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    tag: crate::ast::Tag,
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.set_tag(tag.clone());
+    })
+}
+
+/// Remove the YAML tag on the node at `segments`.
+pub fn remove_tag_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.remove_tag();
+    })
+}
+
+/// Set the anchor name on the node at `segments`.
+pub fn set_anchor_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    name: &str,
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.set_anchor(name.to_string());
+    })
+}
+
+/// Remove the anchor on the node at `segments`.
+pub fn remove_anchor_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.remove_anchor();
+    })
+}

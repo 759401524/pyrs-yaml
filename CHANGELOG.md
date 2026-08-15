@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Node metadata setters/getters** — `Node.comment` / `Node.anchor` /
+  `Node.tag` read properties and `set_comment` / `set_anchor` / `set_tag`
+  (plus `remove_*` variants) on `python/pyrs_yaml/node.py`, backed by new
+  path-based edit operations in `py/editing/mod.rs` and `#[pymethods]`
+  (`_set_comment_path`, `_set_tag_path`, `_set_anchor_path`, `_remove_*_path`,
+  `_get_comment`, `_get_anchor`, `_get_tag`). Editing an alias or a missing
+  path raises; standalone comments on inline scalar values and sequence items
+  are now serialized on their own indented lines (fixes pre-existing broken
+  round-trip for `child:\n  # c\n  val` and `- a\n# c\n- b`).
+
 ### Changed
 
 - **NumPy re-enabled on free-threaded (cp314t) wheels** — the

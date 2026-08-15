@@ -80,6 +80,30 @@ children -> list[Node]
 parent -> Node | None
 ```
 
+#### `comment`
+
+このノードのコメントテキストを取得します。コメントがない場合は `None` を返します。
+
+```python
+comment -> str | None
+```
+
+#### `anchor`
+
+このノードのアンカー名を取得します。アンカーがない場合は `None` を返します。
+
+```python
+anchor -> str | None
+```
+
+#### `tag`
+
+このノードの YAML タグ文字列（例: `!!str`）を取得します。タグがない場合は `None` を返します。
+
+```python
+tag -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -171,6 +195,54 @@ delete() -> None
 
 ```python
 rename(new_key: str) -> None
+```
+
+#### `set_comment()`
+
+このノードのコメントを設定（または置換）します。`standalone=True`（デフォルト）ではコメントがノードの上の独立した行に出力され、`standalone=False` ではノードの後ろにインラインで出力されます。
+
+```python
+set_comment(text: str, standalone: bool = True) -> None
+```
+
+#### `remove_comment()`
+
+このノードのコメントを削除します。
+
+```python
+remove_comment() -> None
+```
+
+#### `set_anchor()`
+
+このノードのアンカーを設定（または置換）します。
+
+```python
+set_anchor(name: str) -> None
+```
+
+#### `remove_anchor()`
+
+このノードのアンカーを削除します。
+
+```python
+remove_anchor() -> None
+```
+
+#### `set_tag()`
+
+このノードの YAML タグを設定（または置換）します。`"!custom"` はローカルタグ、`"!!int"` はプライマリ（`!!`）タグになります。
+
+```python
+set_tag(tag: str) -> None
+```
+
+#### `remove_tag()`
+
+このノードの YAML タグを削除します。
+
+```python
+remove_tag() -> None
 ```
 
 #### `to_yaml()`
