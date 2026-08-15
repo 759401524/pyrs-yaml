@@ -187,6 +187,53 @@ node = doc.node().find("$.old")
 node.rename("new")
 ```
 
+## 标签与元数据
+
+注释、锚点、标签默认在往返（round-trip）中保留。通过 `Node` 还可以读取和编辑它们——编辑会原地重新序列化，其余内容全部保留。
+
+### 读取元数据
+
+```python
+doc = pyrs_yaml.parse("key: !!str value  # note")
+node = doc.node().find("$.key")
+node.comment  # "note"
+node.anchor   # None
+node.tag      # "!!str"
+```
+
+- `comment` — 行内或独立注释文本（不含 `#` 前缀），无注释时为 `None`
+- `anchor` — 锚点名称，无锚点时为 `None`
+- `tag` — YAML 标签字符串，无标签时为 `None`
+
+#### `Node.set_comment()` / `Node.remove_comment()`
+
+```python
+node.set_comment("new note")                   # standalone：节点上方独占一行
+node.set_comment("inline", standalone=False)   # 节点后行内
+node.remove_comment()
+```
+
+#### `Node.set_anchor()` / `Node.remove_anchor()`
+
+```python
+node.set_anchor("cfg")
+node.remove_anchor()
+```
+
+锚点可被文档其他位置的别名引用。
+
+#### `Node.set_tag()` / `Node.remove_tag()`
+
+```python
+node.set_tag("!custom")                  # 局部标签
+node.set_tag("!!int")                    # 主（!!）标签
+node.set_tag("!<tag:yaml.org,2002:str>") # verbatim 标签
+node.remove_tag()
+```
+
+- 对**别名**节点（`*ref`）或**不存在的路径**编辑元数据会抛出 `YamlEditError`
+- 编辑后节点变为 **stale**——下次访问前请用 `doc.node().find(path)` 重新查找
+
 ## 使用 Node
 
 `doc.node()` 返回文档根节点的 `Node`；`Node.find(path)` 导航到子树：

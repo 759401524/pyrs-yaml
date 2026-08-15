@@ -73,7 +73,7 @@ pub(crate) fn stream_event_to_py_dict<'a>(
                 ScalarStyle::Folded => "folded",
             };
             let anchor_str = anchor.as_deref();
-            let tag_str = tag.as_ref().map(|t| format!("{}{}", t.handle, t.suffix));
+            let tag_str = tag.as_ref().map(|t| t.to_string());
             fill_event_dict(
                 &dict,
                 py,
@@ -86,7 +86,7 @@ pub(crate) fn stream_event_to_py_dict<'a>(
         }
         StreamEventType::MappingStart { anchor, tag } => {
             let anchor_str = anchor.as_deref();
-            let tag_str = tag.as_ref().map(|t| format!("{}{}", t.handle, t.suffix));
+            let tag_str = tag.as_ref().map(|t| t.to_string());
             fill_event_dict(
                 &dict,
                 py,
@@ -102,7 +102,7 @@ pub(crate) fn stream_event_to_py_dict<'a>(
         }
         StreamEventType::SequenceStart { anchor, tag } => {
             let anchor_str = anchor.as_deref();
-            let tag_str = tag.as_ref().map(|t| format!("{}{}", t.handle, t.suffix));
+            let tag_str = tag.as_ref().map(|t| t.to_string());
             fill_event_dict(
                 &dict,
                 py,

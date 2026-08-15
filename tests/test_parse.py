@@ -115,8 +115,9 @@ class TestTags:
             (yaml.TAG_STR, "!!str"),
             (yaml.TAG_CUSTOM, "!custom"),
             (yaml.TAG_INT, "!!int"),
+            (yaml.TAG_VERBATIM, "!<tag:yaml.org,2002:str>"),
         ],
-        ids=["primary", "local", "int"],
+        ids=["primary", "local", "int", "verbatim"],
     )
     def test_preserves_tag_in_output(self, yaml_str, tag):
         assert tag in pyrs_yaml.parse(yaml_str).to_yaml()

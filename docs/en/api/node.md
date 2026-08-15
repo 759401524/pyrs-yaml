@@ -234,7 +234,8 @@ remove_anchor() -> None
 #### `set_tag()`
 
 Set (or replace) this node's YAML tag. `"!custom"` produces a local tag,
-`"!!int"` produces a primary (`!!`) tag.
+`"!!int"` produces a primary (`!!`) tag, and `"!<tag:yaml.org,2002:str>"`
+produces a verbatim tag.
 
 ```python
 set_tag(tag: str) -> None

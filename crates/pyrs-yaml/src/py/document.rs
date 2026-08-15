@@ -171,6 +171,7 @@ pub(crate) fn parse_segments(
 /// Parse a YAML tag string into `Tag`:
 /// - `"!custom"` → local tag (handle `!`, suffix `custom`)
 /// - `"!!int"` → primary tag (handle `!!`, suffix `int`)
+/// - `"!<tag:yaml.org,2002:str>"` → verbatim tag (empty handle, suffix is the URI)
 /// - otherwise a local tag with the whole string as suffix.
 pub(crate) fn parse_tag(tag: &str) -> pyrs_yaml_core::ast::Tag {
     if let Some(suffix) = tag.strip_prefix("!!") {
@@ -178,6 +179,8 @@ pub(crate) fn parse_tag(tag: &str) -> pyrs_yaml_core::ast::Tag {
             handle: "!!".to_string(),
             suffix: suffix.to_string(),
         }
+    } else if let Some(suffix) = tag.strip_prefix("!<").and_then(|s| s.strip_suffix('>')) {
+        pyrs_yaml_core::ast::Tag::verbatim(suffix)
     } else if let Some(suffix) = tag.strip_prefix('!') {
         pyrs_yaml_core::ast::Tag {
             handle: "!".to_string(),

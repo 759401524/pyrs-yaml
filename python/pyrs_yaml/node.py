@@ -186,7 +186,8 @@ class Node:
         """Set (or replace) this node's YAML tag.
 
         ``"!custom"`` produces a local tag, ``"!!int"`` produces a primary
-        (``!!``) tag.
+        (``!!``) tag, and ``"!<tag:yaml.org,2002:str>"`` produces a verbatim
+        tag.
         """
         self._with_path(lambda doc, segs: doc._set_tag_path(segs, tag))
 

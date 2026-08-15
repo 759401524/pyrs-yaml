@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path raises; standalone comments on inline scalar values and sequence items
   are now serialized on their own indented lines (fixes pre-existing broken
   round-trip for `child:\n  # c\n  val` and `- a\n# c\n- b`).
+- **Verbatim tags** — `set_tag("!<tag:yaml.org,2002:str>")` now produces a
+  verbatim tag (empty handle), and verbatim tags parsed from source survive
+  round-trip: `Tag`'s `Display` emits `!<...>` wrapping for empty-handle tags,
+  `parse_tag` recognizes the `!<...>` form, and stream events serialize tags
+  through `Display`.
 
 ### Changed
 

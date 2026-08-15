@@ -195,6 +195,53 @@ node = doc.node().find("$.old")
 node.rename("new")
 ```
 
+## 태그와 메타데이터
+
+주석, 앵커, 태그는 기본적으로 라운드트립 시 보존됩니다. `Node`를 통해 읽기·편집도 가능하며, 편집은 제자리에서 다시 직렬화되어 나머지 요소는 모두 보존됩니다.
+
+### 메타데이터 읽기
+
+```python
+doc = pyrs_yaml.parse("key: !!str value  # note")
+node = doc.node().find("$.key")
+node.comment  # "note"
+node.anchor   # None
+node.tag      # "!!str"
+```
+
+- `comment` — 인라인 또는 스탠드얼론 주석 텍스트 (`#` 접두사 제외), 없으면 `None`
+- `anchor` — 앵커 이름, 없으면 `None`
+- `tag` — YAML 태그 문자열, 없으면 `None`
+
+### `Node.set_comment()` / `Node.remove_comment()`
+
+```python
+node.set_comment("new note")                   # 스탠드얼론: 노드 위의 줄
+node.set_comment("inline", standalone=False)   # 노드 뒤에 인라인
+node.remove_comment()
+```
+
+### `Node.set_anchor()` / `Node.remove_anchor()`
+
+```python
+node.set_anchor("cfg")
+node.remove_anchor()
+```
+
+앵커는 문서의 다른 곳에서 별칭으로 참조할 수 있습니다.
+
+### `Node.set_tag()` / `Node.remove_tag()`
+
+```python
+node.set_tag("!custom")                  # 로컬 태그
+node.set_tag("!!int")                    # 프라이머리 태그
+node.set_tag("!<tag:yaml.org,2002:str>") # verbatim 태그
+node.remove_tag()
+```
+
+- **별칭** 노드(`*ref`) 또는 **존재하지 않는 경로**에 대한 메타데이터 편집은 `YamlEditError`를 발생시킵니다
+- 편집 후 노드는 **stale** 상태가 됩니다 — 다음 접근 전에 `doc.node().find(path)`로 다시 찾으세요
+
 ## Node 작업
 
 `doc.node()`는 문서 루트의 `Node`를 반환합니다; `Node.find(path)`는 하위 트리로 이동합니다:

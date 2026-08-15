@@ -231,7 +231,7 @@ remove_anchor() -> None
 
 #### `set_tag()`
 
-このノードの YAML タグを設定（または置換）します。`"!custom"` はローカルタグ、`"!!int"` はプライマリ（`!!`）タグになります。
+このノードの YAML タグを設定（または置換）します。`"!custom"` はローカルタグ、`"!!int"` はプライマリ（`!!`）タグ、`"!<tag:yaml.org,2002:str>"` はバーベイタムタグになります。
 
 ```python
 set_tag(tag: str) -> None

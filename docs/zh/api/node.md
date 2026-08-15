@@ -231,7 +231,7 @@ remove_anchor() -> None
 
 #### `set_tag()`
 
-设置（或替换）此节点的 YAML 标签。`"!custom"` 生成局部标签，`"!!int"` 生成主（`!!`）标签。
+设置（或替换）此节点的 YAML 标签。`"!custom"` 生成局部标签，`"!!int"` 生成主（`!!`）标签，`"!<tag:yaml.org,2002:str>"` 生成 verbatim 标签。
 
 ```python
 set_tag(tag: str) -> None

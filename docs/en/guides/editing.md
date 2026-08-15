@@ -196,6 +196,53 @@ node = doc.node().find("$.old")
 node.rename("new")
 ```
 
+### Tags and Metadata
+
+Comments, anchors, and tags survive round-trip by default. Through a `Node` you can read and edit them as well — editing is re-serialized in place, preserving everything else.
+
+#### Reading metadata
+
+```python
+doc = pyrs_yaml.parse("key: !!str value  # note")
+node = doc.node().find("$.key")
+node.comment  # "note"
+node.anchor   # None
+node.tag      # "!!str"
+```
+
+- `comment` — inline or standalone comment text (without the `#` prefix), or `None`
+- `anchor` — anchor name, or `None`
+- `tag` — YAML tag string, or `None`
+
+#### `Node.set_comment()` / `Node.remove_comment()`
+
+```python
+node.set_comment("new note")                   # standalone: own line above
+node.set_comment("inline", standalone=False)   # inline after the node
+node.remove_comment()
+```
+
+#### `Node.set_anchor()` / `Node.remove_anchor()`
+
+```python
+node.set_anchor("cfg")
+node.remove_anchor()
+```
+
+The anchor can then be referenced by aliases elsewhere in the document.
+
+#### `Node.set_tag()` / `Node.remove_tag()`
+
+```python
+node.set_tag("!custom")                  # local tag
+node.set_tag("!!int")                    # primary tag
+node.set_tag("!<tag:yaml.org,2002:str>") # verbatim tag
+node.remove_tag()
+```
+
+- Editing metadata on an **alias** node (`*ref`) or a **missing path** raises `YamlEditError`
+- After an edit the node is **stale** — re-find it with `doc.node().find(path)` before the next access
+
 ### Working with Nodes
 
 You can obtain a node reference and edit it through either the document path API or the Node API:
