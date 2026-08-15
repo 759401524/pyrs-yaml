@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+### [v0.14.1] — 2026-08-15
+
+#### Fixed
+
+- **Single-quoted scalars with backslash + control/noncharacter** — such values now use double-quoting; single quotes cannot escape control chars/noncharacters.
+- **Noncharacters and BOM quoted** — `needs_quotes` / `needs_double_quoted` now require quoting for U+FFFE/U+FFFF/plane-end noncharacters and U+FEFF (BOM).
+- **Double-quoted escape width** — code points above U+FFFF now emit the 8-digit `\Uxxxxxxxx` form (the 4-digit `\u` form is BMP-only).
+- **Folded plain-scalar continuation indent** — continuation indent is derived from the value's start column so nested sequence/mapping items stay indented past the parent block indent.
+- **Multi-byte wrap boundary** — `wrap_plain_scalar` floors the wrap slice to a char boundary instead of panicking on 4-byte UTF-8 straddling.
+- **`hypothesis` in publish test requirements** — `.ci/requirements-test.txt` pins `hypothesis>=6.113.0` so the publish workflow can run the property suite.
+
+#### Added
+
+- **`scripts/fuzz_panics.py`** — high-volume local Hypothesis fuzz harness with a hostile strategy across dump/parse/edit/idempotency.
+
 ### [v0.14.0] — 2026-08-14
 
 #### Added

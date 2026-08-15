@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.14.1] — 2026-08-15
+
+### Fixed
+
+- **Single-quoted scalars with backslash + control/noncharacter** — a quoted
+  value containing a backslash was routed to single-quoting, but single quotes
+  cannot escape control characters or Unicode noncharacters, so the emitted
+  YAML was unparseable. Such values now use double-quoting (`direct_dump` and
+  the shared `write_plain_scalar` single-quote branch).
+- **Noncharacters and BOM quoted** — `needs_quotes` / `needs_double_quoted`
+  now treat Unicode noncharacters (U+FFFE/U+FFFF and the plane-end twins) and
+  U+FEFF (BOM) as requiring quoting: granit drops a plain U+FEFF as a
+  document-start BOM and rejects raw noncharacters even inside quoted scalars.
+- **Double-quoted escape width** — `write_double_quoted_scalar` escapes
+  noncharacters and control chars; for code points above U+FFFF it now emits
+  the 8-digit `\Uxxxxxxxx` form (the 4-digit `\u` form is only valid for the
+  BMP).
+- **Folded plain-scalar continuation indent** — `wrap_plain_scalar`
+  continuation indent is no longer a fixed 2 spaces; it is derived from the
+  value's start column on the current line, so folded plain scalars inside
+  nested sequence/mapping items stay indented past the parent block indent
+  (granit otherwise reports "simple key expected ':'").
+- **Multi-byte wrap boundary** — `wrap_plain_scalar` now floors the wrap slice
+  to a char boundary instead of panicking when a 4-byte UTF-8 character
+  straddles the wrap column.
+- **`hypothesis` in publish test requirements** — `.ci/requirements-test.txt`
+  now pins `hypothesis>=6.113.0` so the publish workflow (which does not
+  install the `dev` dependency group) can run the property test suite.
+
+### Added
+
+- **`scripts/fuzz_panics.py`** — high-volume local Hypothesis fuzz harness that
+  bypasses pytest `@settings` caps with a hostile strategy (control chars,
+  NBSP, backslashes, long multibyte runs) across dump/parse/edit/idempotency.
+
 ## [v0.14.0] — 2026-08-14
 
 ### Added
