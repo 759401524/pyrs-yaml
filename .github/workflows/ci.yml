@@ -240,7 +240,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: develop
-          args: --release --no-default-features
+          args: --release
 
       - name: Download YAML Test Suite
         shell: bash

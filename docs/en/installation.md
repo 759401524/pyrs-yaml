@@ -27,12 +27,13 @@ The package is built as an **ABI3 wheel**, meaning a single wheel works across P
 
 ### Free-Threaded Python (cp314t)
 
-Free-threaded (no-GIL) wheels for CPython 3.14t are built with `--no-default-features`, so the NumPy integration is **not included**: `safe_dump` on a `numpy.ndarray` raises `YamlTypeError` on free-threaded builds. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
+Free-threaded (no-GIL) wheels for CPython 3.14t include the NumPy integration. When NumPy is installed in the environment, `safe_dump` / `from_dict` serialize `numpy.ndarray` values normally; when NumPy is absent, the integration is inert and calls fall through to the default object handler. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
 
-!!! warning "Free-threaded builds exclude NumPy"
-    On free-threaded (cp314t) wheels the NumPy integration is not compiled in,
-    so calling `safe_dump` on a `numpy.ndarray` raises `YamlTypeError`. GIL
-    builds (Python 3.8–3.15) keep full ndarray serialization support.
+!!! note "NumPy is auto-detected at runtime"
+    The NumPy integration is compiled in on every wheel (GIL and free-threaded)
+    but only activates when NumPy is importable. If NumPy is not installed,
+    `safe_dump` on a `numpy.ndarray` raises `YamlTypeError` (the value is not a
+    recognized type).
 
 ### Quick Check
 

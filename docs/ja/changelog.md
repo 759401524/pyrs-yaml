@@ -15,6 +15,10 @@ status: new
 
 ### [Unreleased]
 
+#### 変更
+
+- **フリースレッド (cp314t) ホイールで NumPy を再有効化** — cp314t ビルド引数から `--no-default-features` を削除。rust-numpy 0.29 はフリースレッド Python をサポートし、`numpy.ndarray` シリアライズがフリースレッドホイールで利用可能になりました（NumPy のインストールは実行時に自動検出）。
+
 ### [v0.14.1] — 2026-08-15
 
 #### 修正

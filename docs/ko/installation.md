@@ -23,10 +23,10 @@ uv run --frozen maturin develop --release
 
 ## 프리-스레디드 Python (cp314t)
 
-!!! warning "프리-스레디드 빌드는 NumPy 미포함"
-    프리-스레디드 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다.
+CPython 3.14t용 프리-스레디드(no-GIL) 휠은 NumPy 통합을 포함합니다. 환경에 NumPy가 설치된 경우 `safe_dump` / `from_dict`는 `numpy.ndarray` 값을 정상적으로 직렬화합니다. NumPy가 없는 경우 통합은 비활성화되며 호출은 기본 객체 핸들러로 폴스루됩니다. GIL 빌드(Python 3.8–3.15)에서는 전체 ndarray 직렬화를 지원합니다.
 
-CPython 3.14t용 프리-스레디드(no-GIL) 휠은 `--no-default-features`로 빌드되어 NumPy 통합이 **포함되지 않습니다**: 프리-스레디드 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다. GIL 빌드(Python 3.8–3.15)에서는 전체 ndarray 직렬화를 지원합니다.
+!!! note "NumPy는 런타임에 자동 감지됩니다"
+    NumPy 통합은 모든 휠(GIL 및 프리-스레디드)에 컴파일되어 있지만, NumPy를 임포트할 수 있을 때만 활성화됩니다. NumPy가 설치되어 있지 않으면 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다(값이 인식된 타입이 아님).
 
 ## 개발용 설치
 

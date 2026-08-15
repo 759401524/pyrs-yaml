@@ -15,6 +15,10 @@ status: new
 
 ### [Unreleased]
 
+#### 변경
+
+- **프리-스레디드 (cp314t) 휠에서 NumPy 재활성화** — cp314t 빌드 인수에서 `--no-default-features` 제거. rust-numpy 0.29는 프리-스레디드 Python을 지원하며, `numpy.ndarray` 직렬화가 프리-스레디드 휠에서 사용 가능합니다(NumPy 설치는 런타임에 자동 감지).
+
 ### [v0.14.1] — 2026-08-15
 
 #### 수정
