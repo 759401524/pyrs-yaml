@@ -300,3 +300,8 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **점진적 재파싱** | **✅ `doc.reparse()`** |
 | **제자리 편집** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
 | **JSON 내보내기** | **✅ `doc.to_json()`** |
+| **Metadata editing** | **x1f4af `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **x1f4af `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **x1f4af `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **x1f4af `validate_against_schema()`** |
+| **Schema file IO** | **x1f4af `load_schema()` / `list_schemas()`** |

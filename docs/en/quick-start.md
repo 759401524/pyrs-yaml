@@ -189,9 +189,121 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` string | No native YAML complex type |
 | `bool` | `true` / `false` | — |
 
+### 10. Manipulate Metadata (comment, anchor, tag)
+
+YAML metadata — comments, anchors, and tags — survive round-trip by default;
+you can also **read and edit them** through the `Node` API:
+
+```python
+doc = pyrs_yaml.parse("key: value")
+node = doc.node().find("$.key")
+
+# Set a comment (standalone: own line above value)
+node.set_comment("a note")
+
+# Set an anchor
+node.set_anchor("cfg")
+
+# Set a tag
+node.set_tag("!custom")
+
+print(doc.to_yaml())
+# key: &cfg !custom value  # a note
+```
+
+Metadata can be removed as well:
+
+```python
+node.remove_comment()
+node.remove_anchor()
+node.remove_tag()
+```
+
+### 11. Control Formatting (scalar style, flow style, chomping)
+
+pyrs-yaml preserves the **scalar style** (plain, single-quoted, double-quoted,
+literal, folded), **flow style** (block vs. JSON-like `{}`/`[]`), and
+**chomping indicator** (strip, clip, keep) of every node:
+
+```python
+doc = pyrs_yaml.parse("key: value")
+
+# Switch scalar style to single-quoted
+doc.node().find("$.key").set_scalar_style("single_quoted")
+print(doc.to_yaml())  # key: 'value'
+
+# Switch the root document to flow style
+doc.node().find("$").set_flow_style(True)
+print(doc.to_yaml())  # {key: 'value'}
+
+# Change chomping on a literal block scalar
+doc = pyrs_yaml.parse("text: |\n  hello\n  world\n")
+doc.node().find("$.text").set_chomping("strip")
+print(doc.to_yaml())  # text: |-\n  hello\n  world
+```
+
+### 12. Validate with a Schema
+
+Define a YAML Schema Language document with structural rules and validate
+data against it:
+
+```python
+import pyrs_yaml
+
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+  - path: $.tags[*]
+    type: str
+"""
+
+# Valid document passes
+pyrs_yaml.validate_against_schema(
+    "port: 8080\ntags: [web, api]\n", schema
+)
+
+# Invalid document raises YamlValidateError with every failure
+pyrs_yaml.validate_against_schema("port: abc\n", schema)
+# YamlValidateError: $.port: expected int but got Str("abc")
+```
+
+### 13. Deep Editing (batch, sort, move, copy)
+
+Edit multiple paths at once, sort keys, relocate subtrees, and deep-copy
+values — all while preserving every other YAML feature:
+
+```python
+# Batch set with wildcards
+doc = pyrs_yaml.parse("items:\n  - active: true\n  - active: true\n")
+doc.set_many({"$.items[*].active": False})
+print(doc.to_yaml())
+# items:
+#   - active: false
+#   - active: false
+
+# Sort mapping keys in place
+doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
+doc.sort_keys()
+print(doc.to_yaml())  # a: 2\nm: 3\nz: 1
+
+# Move a subtree to a new path
+doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
+doc.node().find("$.src").move("$.dst")
+print(doc.to_yaml())  # dst:\n  x: 1
+
+# Deep-copy a subtree as a standalone value
+node = doc.node().find("$.dst")
+copied = node.copy()  # returns dict/list/scalar, detached from doc
+```
+
 ### Next Steps
 
 - **[Features](features.md)** — Explore all supported YAML features
 - **[Parsing Guide](guides/parsing.md)** — Advanced parsing options
 - **[In-Place Editing](guides/editing.md)** — Edit documents without losing formatting
+- **[Configuration Management Tutorial](guides/tutorial-config-management.md)** — End-to-end walkthrough
 - **[API Reference](api/reference.md)** — Complete API documentation

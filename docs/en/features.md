@@ -135,8 +135,10 @@ d = pyrs_yaml.safe_load(
 
 - **`extends`** — optional base schema (`core`, `json`, `failsafe`, `yaml1.1`)
 - **`rules`** — ordered list of `{pattern, type}`; first match wins
+- **`validate`** — optional structural validation rules: path-qualified types (`$.port: int`), container checks (`sequence_of`, `mapping_of`), and `required` presence; use `validate_against_schema(data, schema_yaml)` to check documents
 - **Supported types**: `null`, `bool`, `int`, `float`, `str`
 - Built-in Core schema still uses zero-cost `match` dispatch (unaffected)
+- **File I/O** — `load_schema(name, path)` loads a schema from a YAML file; `list_schemas()` returns all registered schemas
 
 ### Duplicate Keys
 
@@ -305,6 +307,9 @@ del doc["server"]  # or: doc.delete("$.server")
 - **Node API** — `doc.node().find(path)` returns `Node` objects with `set_value` / `insert` / `append` / `delete` / `rename`, plus tree traversal (`parent`, `children`, `walk`, `filter`)
 - **Atomicity** — failed edits leave the document (and its revision) untouched
 - **Metadata preservation** — replaced scalars keep their comment/anchor/tag/quoting; renamed keys keep position and comments
+- **Metadata manipulation** — `Node.set_comment()` / `set_anchor()` / `set_tag()` / `remove_*` let you read and write comments, anchors, and tags through the Node API
+- **Style/format control** — `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()` switch scalar quoting, block/flow layout, and chomping indicators
+- **Deep editing** — `doc.set_many({path: value})` applies wildcard paths (`$.items[*].active`) in one splice burst; `doc.sort_keys()` orders mapping keys; `Node.move(new_path)` relocates subtrees; `Node.copy()` deep-copies subtrees
 - **Alias-aware** — setting an alias's own path replaces it in place; editing *through* an alias raises `YamlEditError`
 
 See the [In-Place Editing guide](guides/editing.md) for details.
@@ -391,4 +396,9 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **JSON Schema validation** | **✅ `doc.validate()`** |
 | **Incremental re-parse** | **✅ `doc.reparse()`** |
 | **In-place editing** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
+| **Metadata editing** | **✅ `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **✅ `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **✅ `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **✅ `validate_against_schema()`** |
+| **Schema file IO** | **✅ `load_schema()` / `list_schemas()`** |
 | **JSON export** | **✅ `doc.to_json()`** |

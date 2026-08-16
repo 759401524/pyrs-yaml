@@ -190,6 +190,44 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` 문자열 | YAML에는 복잡한 타입 없음 |
 | `bool` | `true` / `false` | — |
 
+### 10. 메타데이터 조작 (comment, anchor, tag)
+
+```python
+doc = pyrs_yaml.parse("key: value")
+node = doc.node().find("$.key")
+node.set_comment("a note")
+node.set_anchor("cfg")
+node.set_tag("!custom")
+```
+
+### 11. 포맷 제어 (scalar style, flow style, chomping)
+
+```python
+doc = pyrs_yaml.parse("key: value")
+doc.node().find("$.key").set_scalar_style("single_quoted")
+```
+
+### 12. 스키마로 검증
+
+```python
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+pyrs_yaml.validate_against_schema("port: 8080\n", schema)
+```
+
+### 13. 고급 편집
+
+```python
+doc.set_many({"$.items[*].active": False})
+doc.sort_keys()
+```
+
 ### 다음 단계
 
 - **[기능](features.md)** — 지원되는 모든 YAML 기능 탐색

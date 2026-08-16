@@ -299,3 +299,8 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | **インクリメンタル再パース** | **✅ `doc.reparse()`** |
 | **インプレース編集** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
 | **JSON エクスポート** | **✅ `doc.to_json()`** |
+| **Metadata editing** | **✅ `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **✅ `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **✅ `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **✅ `validate_against_schema()`** |
+| **Schema file IO** | **✅ `load_schema()` / `list_schemas()`** |
