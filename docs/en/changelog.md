@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Schema structural validation** — a `validate` section in a schema definition adds structural checks (path-qualified scalar types, `sequence_of`/`mapping_of` containers, `required`); `validate_against_schema(data, schema_yaml)` raises `YamlValidateError` listing every failure.
 - **`Node.copy()`** — deep-copies a subtree as a standalone Python value (dict/list/scalar), detached from the document, for pasting via `set_value()`.
 - **Deep editing API** — `doc.set_many({path: value})` sets multiple paths (with wildcard `[*]` and deep-scan `..` support) in a single splice burst; `doc.sort_keys()` orders mapping keys in place; `Node.move(new_path)` relocates a subtree; `Node.path` / `Node.find_first()` / `Node.value_eq()` add path access, first-wildcard lookup, and value comparison.
+- **Property-based testing for 0.14+ features** — Rust proptests for `validate_node`, schema parsing, style-settings round-trip; Python hypothesis tests for `set_many` wildcards, metadata-edit preservation, `sort_keys` idempotency. `hypothesis` moved to the `test` group so CI runs property tests.
+- **Serializer fix** — standalone comments on empty flow containers (`key: {}` / `key: []`) no longer produce invalid YAML; demoted to inline.
 
 #### Changed
 

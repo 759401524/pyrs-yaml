@@ -24,6 +24,8 @@ status: new
 - **スキーマ構造検証** — スキーマ定義の `validate` セクションで構造チェック（パス限定スカラー型、`sequence_of`/`mapping_of` コンテナ、`required`）を追加。`validate_against_schema(data, schema_yaml)` はすべての失敗を列挙して `YamlValidateError` を送出します。
 - **`Node.copy()`** — サブツリーをドキュメントから独立した Python 値（dict/list/scalar）として深くコピーします。`set_value()` で貼り付けるのに便利です。
 - **詳細編集 API** — `doc.set_many({path: value})` で複数パス（ワイルドカード `[*]` とディープスキャン `..` 対応）を単一スプライスバーストで設定。`doc.sort_keys()` でマッピングキーをその場で並べ替え。`Node.move(new_path)` でサブツリーを移動。`Node.path` / `Node.find_first()` / `Node.value_eq()` でパスアクセス・最初のワイルドカード検索・値比較を追加。
+- **0.14+ 機能のプロパティベーステスト** — `validate_node` / schema 解析 / style round-trip の Rust proptest、`set_many` ワイルドカード / metadata 編集 / `sort_keys` の Python hypothesis テストを追加。`hypothesis` を `test` グループへ移動し、CI でプロパティテストが実行されるように。
+- **シリアライザ修正** — 空フローコンテナ（`key: {}` / `key: []`）上のスタンドアロンコメントが無効な YAML を生成していたのを修正（インラインへ降格）。
 
 #### 変更
 

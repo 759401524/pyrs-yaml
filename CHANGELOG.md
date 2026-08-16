@@ -50,6 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Node.value_eq()` add path access, first-wildcard lookup, and value
   comparison. Rust primitives: `sort_keys_path` / `move_path` /
   `set_many_path` + `apply_batch_edit`.
+- **Property-based testing for 0.14+ features** — Rust proptests for
+  `validate_node` (no panic, error paths exist), schema parsing, and
+  style-settings round-trip; Python hypothesis tests for `set_many`
+  wildcard equivalence, metadata-edit value preservation, and `sort_keys`
+  idempotency. `hypothesis` moved to the `test` dependency group so CI
+  (`uv sync --group test`) actually runs property tests.
+- **Serializer fix** — standalone comments on **empty** flow containers
+  (`key: {}` / `key: []`) no longer serialize to invalid YAML; they are
+  demoted to inline comments (`key: {}  # note`).
 
 ### Changed
 

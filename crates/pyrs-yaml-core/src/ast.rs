@@ -1002,6 +1002,38 @@ pub(crate) mod proptest_strategies {
             && (a.anchor == b.anchor || b.anchor.is_none())
             && (a.tag == b.tag || b.tag.is_none())
     }
+
+    /// Collect every concrete path in a `CustomNode` tree as a JSONPath string
+    /// (e.g. `$`, `$.a`, `$.itemlist[2]`). Used by validate proptests to pick
+    /// paths that surely exist.
+    #[allow(dead_code)] // only used under #[cfg(test)] (pbt.rs)
+    pub fn collect_paths(node: &CustomNode) -> Vec<String> {
+        fn walk(path: &str, node: &CustomNode, out: &mut Vec<String>) {
+            out.push(path.to_string());
+            match node {
+                CustomNode::Mapping { pairs, .. } => {
+                    for (k, v) in pairs {
+                        let kstr = match k {
+                            CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
+                            // Must match validate_recursive's path construction
+                            // in schema_language.rs for non-scalar (complex) keys.
+                            _ => "(complex)".to_string(),
+                        };
+                        walk(&format!("{}.{}", path, kstr), v, out);
+                    }
+                }
+                CustomNode::Sequence { items, .. } => {
+                    for (i, item) in items.iter().enumerate() {
+                        walk(&format!("{}[{}]", path, i), item, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk("$", node, &mut out);
+        out
+    }
 }
 
 #[cfg(test)]
