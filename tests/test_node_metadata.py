@@ -31,6 +31,23 @@ class TestNodeComment:
         Node(doc).find("$.key").remove_comment()
         assert doc.to_yaml() == "key: value\n"
 
+    def test_comment_on_empty_flow_mapping_valid_yaml(self):
+        doc = pyrs_yaml.parse("key: {}\n")
+        Node(doc).find("$.key").set_comment("note")
+        out = doc.to_yaml()
+        assert "key: {}  # note" in out
+        # Empty flow container + standalone comment must stay valid YAML.
+        reparsed = pyrs_yaml.parse(out)
+        assert reparsed.to_dict() == {"key": {}}
+
+    def test_comment_on_empty_flow_sequence_valid_yaml(self):
+        doc = pyrs_yaml.parse("key: []\n")
+        Node(doc).find("$.key").set_comment("note")
+        out = doc.to_yaml()
+        assert "key: []  # note" in out
+        reparsed = pyrs_yaml.parse(out)
+        assert reparsed.to_dict() == {"key": []}
+
     def test_remove_comment_inline(self):
         doc = pyrs_yaml.parse("key: value  # note")
         Node(doc).find("$.key").remove_comment()

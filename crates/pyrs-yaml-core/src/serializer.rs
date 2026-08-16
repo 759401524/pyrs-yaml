@@ -220,6 +220,26 @@ impl Serializer {
         }
     }
 
+    /// An empty flow container (`{}` / `[]`). Such a node cannot host a
+    /// standalone comment on its own line in value position — YAML would
+    /// interpret the bare `{}` as a mapping needing a key. Standalone
+    /// comments on empty flow containers are therefore demoted to inline.
+    fn is_empty_flow(node: &CustomNode) -> bool {
+        match node {
+            CustomNode::Mapping {
+                pairs,
+                flow_style: true,
+                ..
+            } => pairs.is_empty(),
+            CustomNode::Sequence {
+                items,
+                flow_style: true,
+                ..
+            } => items.is_empty(),
+            _ => false,
+        }
+    }
+
     /// 核心递归序列化方法，处理所有节点类型的缩进和格式化。
     fn serialize_node_internal(
         &mut self,
@@ -232,9 +252,12 @@ impl Serializer {
             return Err(SerializeError::MaxDepthExceeded(DepthError(self.max_depth)));
         }
 
-        // Handle standalone comments first
+        // Handle standalone comments first (but not on empty flow containers,
+        // where a bare `{}`/`[]` on its own line would be invalid YAML —
+        // those comments are demoted to inline by the flow writer below).
         if let Some(comment) = node.comment()
             && comment.standalone
+            && !Self::is_empty_flow(node)
         {
             self.write_indent(indent_width);
             self.output.push_str("# ");
@@ -333,7 +356,7 @@ impl Serializer {
             }
             self.output.push('}');
             if let Some(c) = &meta.comment
-                && !c.standalone
+                && (!c.standalone || pairs.is_empty())
             {
                 self.output.push_str("  # ");
                 self.output.push_str(&c.text);
@@ -411,7 +434,7 @@ impl Serializer {
             }
             self.output.push(']');
             if let Some(c) = &meta.comment
-                && !c.standalone
+                && (!c.standalone || items.is_empty())
             {
                 self.output.push_str("  # ");
                 self.output.push_str(&c.text);
@@ -546,7 +569,7 @@ impl Serializer {
                 ..
             }
         )) || is_complex_key
-            || value.comment().is_some_and(|c| c.standalone)
+            || (value.comment().is_some_and(|c| c.standalone) && !Self::is_empty_flow(value))
         {
             // If the value node has an anchor or tag, write it after the colon
             if let Some(anchor_name) = value.anchor() {

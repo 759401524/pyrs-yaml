@@ -24,6 +24,8 @@ status: new
 - **스키마 구조 검증** — 스키마 정의의 `validate` 섹션으로 구조 검사(경로 한정 스칼라 타입, `sequence_of`/`mapping_of` 컨테이너, `required`)를 추가. `validate_against_schema(data, schema_yaml)`는 모든 실패를 나열하며 `YamlValidateError`를 발생시킵니다.
 - **`Node.copy()`** — 하위 트리를 문서에서 분리된 독립 Python 값(dict/list/scalar)으로 깊은 복사합니다. `set_value()`로 붙여넣는 데 유용합니다.
 - **고급 편집 API** — `doc.set_many({path: value})`로 여러 경로(와일드카드 `[*]` 및 딥 스캔 `..` 지원)를 단일 스플라이스 버스트로 설정. `doc.sort_keys()`로 매핑 키를 제자리에서 정렬. `Node.move(new_path)`로 하위 트리 이동. `Node.path` / `Node.find_first()` / `Node.value_eq()`로 경로 접근·첫 와일드카드 검색·값 비교 추가.
+- **0.14+ 기능 프로퍼티 테스트** — `validate_node` / 스키마 파싱 / style round-trip Rust proptest, `set_many` 와일드카드 / metadata 편집 / `sort_keys` Python hypothesis 테스트 추가. `hypothesis`를 `test` 그룹으로 이동해 CI에서 프로퍼티 테스트 실행.
+- **시리얼라이저 수정** — 빈 흐름 컨테이너(`key: {}` / `key: []`)의 독립형 주석이 무효 YAML을 생성하던 문제 수정(인라인으로 강등).
 
 #### 변경
 
