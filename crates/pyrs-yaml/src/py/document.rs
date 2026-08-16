@@ -709,6 +709,52 @@ impl YamlDocument {
         })
     }
 
+    // --- Style (scalar_style / flow_style / chomping) path-based setters ---
+
+    /// Set the scalar style on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list", style: "str") -> "None")]
+    fn _set_scalar_style_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+        style: &str,
+    ) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        let parsed = editing::parse_style(style).map_err(YamlEditError::new_err)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_scalar_style_path(ast, &segs, parsed, src, offs)
+        })
+    }
+
+    /// Set the flow style on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list", flow: "bool") -> "None")]
+    fn _set_flow_style_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+        flow: bool,
+    ) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_flow_style_path(ast, &segs, flow, src, offs)
+        })
+    }
+
+    /// Set the chomping indicator on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list", chomping: "str") -> "None")]
+    fn _set_chomping_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+        chomping: &str,
+    ) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        let parsed = editing::parse_chomping(chomping).map_err(YamlEditError::new_err)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_chomping_path(ast, &segs, parsed, src, offs)
+        })
+    }
+
     // --- Metadata getters (read-only, no splice) ---
 
     /// Get the comment text on the node at `segments` (internal).
@@ -736,6 +782,39 @@ impl YamlDocument {
         let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
             .map_err(|e| YamlEditError::new_err(e.to_string()))?;
         Ok(node.tag().map(|t| t.to_string()))
+    }
+
+    /// Get the scalar style on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "str | None")]
+    fn _get_scalar_style(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Option<String>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node
+            .scalar_style()
+            .map(editing::style_to_str)
+            .map(str::to_string))
+    }
+
+    /// Get the flow style on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "bool | None")]
+    fn _get_flow_style(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Option<bool>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node.flow_style())
+    }
+
+    /// Get the chomping indicator on the node at `segments` (internal).
+    #[pyo3(signature = (segments: "list") -> "str | None")]
+    fn _get_chomping(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Option<String>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node
+            .chomping()
+            .map(editing::chomping_to_str)
+            .map(str::to_string))
     }
 
     /// Set the value for a mapping key, `doc['key'] = value`.

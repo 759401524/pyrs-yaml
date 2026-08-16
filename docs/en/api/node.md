@@ -104,6 +104,30 @@ Get this node's YAML tag string (e.g. `!!str`), or `None` if it has no tag.
 tag -> str | None
 ```
 
+#### `scalar_style`
+
+Get the scalar style (`"plain"`, `"single_quoted"`, `"double_quoted"`, `"literal"`, `"folded"`), or `None` for non-scalar nodes.
+
+```python
+scalar_style -> str | None
+```
+
+#### `flow_style`
+
+Get the flow style (`True` = flow `{}`/`[]`, `False` = block), or `None` for non-container nodes.
+
+```python
+flow_style -> bool | None
+```
+
+#### `chomping`
+
+Get the chomping indicator (`"strip"`, `"clip"`, `"keep"`), or `None` for non-scalar nodes.
+
+```python
+chomping -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -247,6 +271,30 @@ Remove this node's YAML tag.
 
 ```python
 remove_tag() -> None
+```
+
+#### `set_scalar_style()`
+
+Set (or replace) this node's scalar style. No-op on non-scalar nodes. Recognized values: `"plain"`, `"single_quoted"`, `"double_quoted"`, `"literal"`, `"folded"`.
+
+```python
+set_scalar_style(style: str) -> None
+```
+
+#### `set_flow_style()`
+
+Set (or replace) this node's flow style. `True` emits flow (`{}`/`[]`), `False` emits block. No-op on non-container nodes.
+
+```python
+set_flow_style(flow: bool) -> None
+```
+
+#### `set_chomping()`
+
+Set (or replace) this node's chomping indicator. Recognized values: `"strip"` (`-`), `"clip"` (default), `"keep"` (`+`). No-op on non-scalar nodes.
+
+```python
+set_chomping(chomp: str) -> None
 ```
 
 #### `to_yaml()`

@@ -195,6 +195,55 @@ class Node:
         """Remove this node's YAML tag."""
         self._with_path(lambda doc, segs: doc._remove_tag_path(segs))
 
+    @property
+    def scalar_style(self) -> str | None:
+        """Get the scalar style (``"plain"``, ``"single_quoted"``,
+        ``"double_quoted"``, ``"literal"``, ``"folded"``), or ``None`` for
+        non-scalar nodes.
+        """
+        doc = self._get_doc()
+        return doc._get_scalar_style([s for s in self._path])
+
+    def set_scalar_style(self, style: str) -> None:
+        """Set (or replace) this node's scalar style.
+
+        No-op on non-scalar nodes. Recognized values: ``"plain"``,
+        ``"single_quoted"``, ``"double_quoted"``, ``"literal"``, ``"folded"``.
+        """
+        self._with_path(lambda doc, segs: doc._set_scalar_style_path(segs, style))
+
+    @property
+    def flow_style(self) -> bool | None:
+        """Get the flow style (``True`` = flow ``{}``/``[]``, ``False`` = block),
+        or ``None`` for non-container nodes.
+        """
+        doc = self._get_doc()
+        return doc._get_flow_style([s for s in self._path])
+
+    def set_flow_style(self, flow: bool) -> None:
+        """Set (or replace) this node's flow style.
+
+        ``True`` emits flow (``{}``/``[]``), ``False`` emits block. No-op on
+        non-container nodes.
+        """
+        self._with_path(lambda doc, segs: doc._set_flow_style_path(segs, flow))
+
+    @property
+    def chomping(self) -> str | None:
+        """Get the chomping indicator (``"strip"``, ``"clip"``, ``"keep"``),
+        or ``None`` for non-scalar nodes.
+        """
+        doc = self._get_doc()
+        return doc._get_chomping([s for s in self._path])
+
+    def set_chomping(self, chomp: str) -> None:
+        """Set (or replace) this node's chomping indicator.
+
+        Recognized values: ``"strip"`` (``-``), ``"clip"`` (default),
+        ``"keep"`` (``+``). No-op on non-scalar nodes.
+        """
+        self._with_path(lambda doc, segs: doc._set_chomping_path(segs, chomp))
+
     def _with_path(self, action: Callable[[Any, list[Any]], None]) -> None:
         doc = self._get_doc()
         segments = [s for s in self._path]

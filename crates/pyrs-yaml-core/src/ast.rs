@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 /// Scalar style preservation for round-trip support
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScalarStyle {
     /// Plain scalar (no quotes)
     Plain,
@@ -20,7 +20,7 @@ pub enum ScalarStyle {
 }
 
 /// Chomping indicator for block scalars (YAML 1.2)
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Chomping {
     /// Strip chomping (-): final newline is stripped
     Strip,
@@ -685,6 +685,56 @@ impl CustomNode {
         }
     }
 
+    /// Get the scalar style of a `Scalar` node. Returns `None` for non-scalar variants.
+    pub fn scalar_style(&self) -> Option<ScalarStyle> {
+        match self {
+            CustomNode::Scalar { style, .. } => Some(*style),
+            _ => None,
+        }
+    }
+
+    /// Set the scalar style. No-op on non-`Scalar` variants.
+    pub fn set_scalar_style(&mut self, new_style: ScalarStyle) {
+        if let CustomNode::Scalar { style, .. } = self {
+            *style = new_style;
+        }
+    }
+
+    /// Get the flow style of a `Mapping` or `Sequence`. Returns `None` for non-container variants.
+    pub fn flow_style(&self) -> Option<bool> {
+        match self {
+            CustomNode::Mapping { flow_style, .. } | CustomNode::Sequence { flow_style, .. } => {
+                Some(*flow_style)
+            }
+            _ => None,
+        }
+    }
+
+    /// Set the flow style (`true` = flow `{}`/`[]`, `false` = block). No-op on non-container variants.
+    pub fn set_flow_style(&mut self, flow: bool) {
+        match self {
+            CustomNode::Mapping { flow_style, .. } | CustomNode::Sequence { flow_style, .. } => {
+                *flow_style = flow
+            }
+            _ => {}
+        }
+    }
+
+    /// Get the chomping indicator of a `Scalar`. Returns `None` for non-scalar variants.
+    pub fn chomping(&self) -> Option<Chomping> {
+        match self {
+            CustomNode::Scalar { chomping, .. } => Some(*chomping),
+            _ => None,
+        }
+    }
+
+    /// Set the chomping indicator. No-op on non-`Scalar` variants.
+    pub fn set_chomping(&mut self, chomp: Chomping) {
+        if let CustomNode::Scalar { chomping, .. } = self {
+            *chomping = chomp;
+        }
+    }
+
     /// Access the shared metadata of a content-bearing variant.
     fn meta(&self) -> Option<&NodeMeta> {
         match self {
@@ -1066,5 +1116,50 @@ mod tests {
             .to_string(),
             "!"
         );
+    }
+
+    #[test]
+    fn test_scalar_style_getter_setter() {
+        let mut node = CustomNode::plain_scalar("val");
+        assert_eq!(node.scalar_style(), Some(ScalarStyle::Plain));
+        node.set_scalar_style(ScalarStyle::SingleQuoted);
+        assert_eq!(node.scalar_style(), Some(ScalarStyle::SingleQuoted));
+        // Non-scalar nodes return None and set is no-op
+        let mut map = CustomNode::plain_mapping(IndexMap::new());
+        assert_eq!(map.scalar_style(), None);
+        map.set_scalar_style(ScalarStyle::DoubleQuoted);
+        assert_eq!(map.scalar_style(), None);
+    }
+
+    #[test]
+    fn test_flow_style_getter_setter() {
+        let mut map = CustomNode::plain_mapping(IndexMap::new());
+        assert_eq!(map.flow_style(), Some(false));
+        map.set_flow_style(true);
+        assert_eq!(map.flow_style(), Some(true));
+
+        let mut seq = CustomNode::plain_sequence(Vec::new());
+        assert_eq!(seq.flow_style(), Some(false));
+        seq.set_flow_style(true);
+        assert_eq!(seq.flow_style(), Some(true));
+
+        // Non-container nodes return None and set is no-op
+        let mut scalar = CustomNode::plain_scalar("val");
+        assert_eq!(scalar.flow_style(), None);
+        scalar.set_flow_style(true);
+        assert_eq!(scalar.flow_style(), None);
+    }
+
+    #[test]
+    fn test_chomping_getter_setter() {
+        let mut node = CustomNode::plain_scalar("val");
+        assert_eq!(node.chomping(), Some(Chomping::Clip));
+        node.set_chomping(Chomping::Strip);
+        assert_eq!(node.chomping(), Some(Chomping::Strip));
+        // Non-scalar nodes return None and set is no-op
+        let mut map = CustomNode::plain_mapping(IndexMap::new());
+        assert_eq!(map.chomping(), None);
+        map.set_chomping(Chomping::Keep);
+        assert_eq!(map.chomping(), None);
     }
 }

@@ -26,9 +26,9 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
                 && *src_style != ScalarStyle::Plain
                 && !needs_quoting(value)
             {
-                src_style.clone()
+                *src_style
             } else {
-                style.clone()
+                *style
             };
             CustomNode::Scalar {
                 value: value.clone(),
@@ -39,7 +39,7 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
                     tag: src_meta.tag.clone(),
                     ..Default::default()
                 },
-                chomping: chomping.clone(),
+                chomping: *chomping,
             }
         }
         (
