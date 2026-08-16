@@ -305,6 +305,16 @@ Serialize this subtree to a YAML string.
 to_yaml() -> str
 ```
 
+#### `copy()`
+
+Deep-copy this subtree as a standalone Python value (dict/list/scalar),
+detached from the document. Useful for duplicating a subtree to paste
+elsewhere via `set_value()`.
+
+```python
+copy() -> Any
+```
+
 #### `is_valid()`
 
 Check if the parent document is still alive and unmodified.

@@ -182,5 +182,7 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::set_language;
     #[pymodule_export]
+    pub(crate) use super::functions::validate_against_schema;
+    #[pymodule_export]
     pub(crate) use super::functions::validate_custom_types;
 }

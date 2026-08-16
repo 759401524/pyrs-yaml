@@ -21,6 +21,8 @@ status: new
 - **バーベイタムタグ** — `set_tag("!<tag:yaml.org,2002:str>")` はバーベイタムタグ（空ハンドル）を生成し、ソースから解析したバーベイタムタグはラウンドトリップで保持されます：`Tag` の `Display` は空ハンドルタグを `!<...>` で囲んで出力し、`parse_tag` は `!<...>` 形式を認識し、ストリームイベントは `Display` 経由でタグを直列化します。
 - **スキーマファイル IO と一覧** — `load_schema(name, path)` はファイルからスキーマ定義を読み込んで登録し、`list_schemas()` は登録済みのすべてのスキーマ名（組み込み `failsafe`/`json`/`core`/`yaml1.1` + カスタム）を返します。
 - **ノード style/format セッター/ゲッター** — `Node.scalar_style` / `Node.flow_style` / `Node.chomping` 読み取りプロパティと `set_scalar_style` / `set_flow_style` / `set_chomping` メソッド。ScalarStyle/Chomping が `Copy` を derive するようになりました。非スカラーノードは `None` 返却 / no-op、エイリアスや存在しないパスはエラーになります。
+- **スキーマ構造検証** — スキーマ定義の `validate` セクションで構造チェック（パス限定スカラー型、`sequence_of`/`mapping_of` コンテナ、`required`）を追加。`validate_against_schema(data, schema_yaml)` はすべての失敗を列挙して `YamlValidateError` を送出します。
+- **`Node.copy()`** — サブツリーをドキュメントから独立した Python 値（dict/list/scalar）として深くコピーします。`set_value()` で貼り付けるのに便利です。
 
 #### 変更
 

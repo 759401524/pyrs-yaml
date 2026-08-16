@@ -21,6 +21,8 @@ status: new
 - **Verbatim 태그** — `set_tag("!<tag:yaml.org,2002:str>")`는 verbatim 태그(빈 핸들)를 생성하며, 소스에서 파싱된 verbatim 태그는 라운드트립 시 보존됩니다: `Tag`의 `Display`는 빈 핸들 태그를 `!<...>`로 감싸 출력하고, `parse_tag`는 `!<...>` 형식을 인식하며, 스트림 이벤트는 `Display`를 통해 태그를 직렬화합니다.
 - **스키마 파일 IO 및 목록** — `load_schema(name, path)`는 파일에서 스키마 정의를 읽어 등록하고, `list_schemas()`는 등록된 모든 스키마 이름(내장 `failsafe`/`json`/`core`/`yaml1.1` + 사용자 정의)을 반환합니다.
 - **노드 style/format 세터/게터** — `Node.scalar_style` / `Node.flow_style` / `Node.chomping` 읽기 속성과 `set_scalar_style` / `set_flow_style` / `set_chomping` 메서드. ScalarStyle/Chomping이 이제 `Copy`를 derive합니다. 비스칼라 노드는 `None` 반환 / no-op, 별칭 및 존재하지 않는 경로는 오류가 발생합니다.
+- **스키마 구조 검증** — 스키마 정의의 `validate` 섹션으로 구조 검사(경로 한정 스칼라 타입, `sequence_of`/`mapping_of` 컨테이너, `required`)를 추가. `validate_against_schema(data, schema_yaml)`는 모든 실패를 나열하며 `YamlValidateError`를 발생시킵니다.
+- **`Node.copy()`** — 하위 트리를 문서에서 분리된 독립 Python 값(dict/list/scalar)으로 깊은 복사합니다. `set_value()`로 붙여넣는 데 유용합니다.
 
 #### 변경
 

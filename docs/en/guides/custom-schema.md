@@ -94,6 +94,49 @@ print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
 
+#### Structural validation
+
+A `validate` section in a schema definition adds structural checks on top of
+scalar type resolution. Use it with `validate_against_schema()` to check a
+document before using it:
+
+```yaml
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+  - path: $.tags[*]
+    type: str
+  - path: $.numbers
+    sequence_of: int
+  - path: $.config
+    mapping_of: str
+```
+
+```python
+import pyrs_yaml
+
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+
+pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+# Raises YamlValidateError listing every failure:
+pyrs_yaml.validate_against_schema("port: abc\n", schema)
+```
+
+- `path` — JSONPath-like location (`$.key`, `$.a.b`, `$.tags[*]`); omit for all scalars
+- `type` — the scalar must resolve to this YAML type (`null`/`bool`/`int`/`float`/`str`)
+- `sequence_of` / `mapping_of` — every element / value must be of the given type
+- `required` — the path must be present and non-null (combines with `type`)
+
 ### Inline Dict Schema
 
 Instead of registering separately, pass a dict directly:

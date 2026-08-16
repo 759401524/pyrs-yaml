@@ -161,3 +161,33 @@ class TestNodeValueStaleness:
         # After self-edit, the node is stale because revision changed
         with pytest.warns(RuntimeWarning, match="stale"), pytest.raises(pyrs_yaml.YamlDocumentError):
             _ = node.value
+
+
+class TestNodeCopy:
+    def test_copy_scalar(self):
+        doc = pyrs_yaml.parse("a: 42\n")
+        assert doc.node().find("$.a").copy() == 42
+
+    def test_copy_mapping(self):
+        doc = pyrs_yaml.parse("config:\n  host: localhost\n  ports: [80, 443]\n")
+        copied = doc.node().find("$.config").copy()
+        assert copied == {"host": "localhost", "ports": [80, 443]}
+        assert isinstance(copied, dict)
+
+    def test_copy_is_detached(self):
+        doc = pyrs_yaml.parse("config:\n  host: localhost\n")
+        copied = doc.node().find("$.config").copy()
+        copied["host"] = "mutated"
+        assert doc.to_yaml() == "config:\n  host: localhost\n"
+
+    def test_copy_paste_back(self):
+        doc = pyrs_yaml.parse("src:\n  a: 1\ndst: {}\n")
+        src = doc.node().find("$.src").copy()
+        doc.node().find("$.dst").set_value(src)
+        # dst was declared flow-style ({}); set_value preserves the container's
+        # original flow_style, so the pasted value keeps flow formatting.
+        assert doc.to_yaml() == "src:\n  a: 1\ndst: {a: 1}\n"
+
+    def test_copy_sequence(self):
+        doc = pyrs_yaml.parse("items: [1, 2, 3]\n")
+        assert doc.node().find("$.items").copy() == [1, 2, 3]

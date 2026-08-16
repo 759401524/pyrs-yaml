@@ -255,7 +255,7 @@ def print_report(results=None):
 
     out1 = pyrs_yaml.parse(rt_yaml).to_yaml()
     print(
-        f"  pyrs-yaml:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}"
+        f"  pyrs-yaml:     comments={'# Comments everywhere' in out1}  anchors={'&defaults' in out1}  tags={'!!str' in out1}  block_scalar={'|' in out1}  flow={'[' in out1}"
     )
 
     if HAS_PYYAML:
@@ -286,7 +286,7 @@ def print_report(results=None):
         try:
             doc = yaml_edit.Document()
             doc.parse(rt_yaml)
-            print("  yaml_edit:     (parse only — no serialization API)")
+            print("  yaml_edit:     (structural edit only — no comment/anchor/tag/style API, no whole-doc to_string)")
         except Exception:
             print("  yaml_edit:     (parse error)")
 
@@ -316,6 +316,15 @@ def print_report(results=None):
         ("ABI3 (py3.9+)", True, False, False, False, False, False),
         ("Type stubs (.pyi)", True, True, False, False, False, True),
         ("i18n error messages", True, False, False, False, False, False),
+        # Control-plane dimensions: read/write of metadata and formatting.
+        ("Comment editing", True, False, True, False, False, False),
+        ("Anchor editing", True, False, True, False, False, False),
+        ("Tag editing", True, False, True, False, False, False),
+        ("Scalar style control", True, False, True, False, False, False),
+        ("Flow style control", True, False, True, False, False, False),
+        ("Chomping control", True, False, True, False, False, False),
+        ("Verbatim tags", True, False, True, False, False, True),
+        ("Schema file IO", True, False, False, False, False, False),
     ]
 
     print(

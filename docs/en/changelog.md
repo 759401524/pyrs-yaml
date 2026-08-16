@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Verbatim tags** — `set_tag("!<tag:yaml.org,2002:str>")` now produces a verbatim tag (empty handle), and verbatim tags parsed from source survive round-trip: `Tag`'s `Display` emits `!<...>` wrapping for empty-handle tags, `parse_tag` recognizes the `!<...>` form, and stream events serialize tags through `Display`.
 - **Schema file IO and listing** — `load_schema(name, path)` reads a schema definition from a file and registers it; `list_schemas()` returns all registered schema names (built-in `failsafe`/`json`/`core`/`yaml1.1` plus custom).
 - **Node style/format setters/getters** — `Node.scalar_style` / `Node.flow_style` / `Node.chomping` read properties and `set_scalar_style` / `set_flow_style` / `set_chomping` methods. ScalarStyle/Chomping now derive `Copy`. Non-scalar nodes return `None` / are no-op; aliases and missing paths raise.
+- **Schema structural validation** — a `validate` section in a schema definition adds structural checks (path-qualified scalar types, `sequence_of`/`mapping_of` containers, `required`); `validate_against_schema(data, schema_yaml)` raises `YamlValidateError` listing every failure.
+- **`Node.copy()`** — deep-copies a subtree as a standalone Python value (dict/list/scalar), detached from the document, for pasting via `set_value()`.
 
 #### Changed
 

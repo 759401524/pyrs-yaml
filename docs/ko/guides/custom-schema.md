@@ -77,6 +77,47 @@ print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
 
+#### 구조 검증
+
+스키마 정의에 `validate` 섹션을 추가하면 스칼라 타입 해석 위에 구조 검사를 추가할 수 있습니다. `validate_against_schema()`로 문서를 사용하기 전에 검증합니다:
+
+```yaml
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+  - path: $.tags[*]
+    type: str
+  - path: $.numbers
+    sequence_of: int
+  - path: $.config
+    mapping_of: str
+```
+
+```python
+import pyrs_yaml
+
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+
+pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+# 모든 실패를 나열하며 YamlValidateError를 발생:
+pyrs_yaml.validate_against_schema("port: abc\n", schema)
+```
+
+- `path` — JSONPath 형식 위치(`$.key`, `$.a.b`, `$.tags[*]`); 생략 시 모든 스칼라
+- `type` — 스칼라가 이 YAML 타입(`null`/`bool`/`int`/`float`/`str`)으로 해석되어야 함
+- `sequence_of` / `mapping_of` — 모든 요소 / 값이 지정 타입이어야 함
+- `required` — 경로가 존재하고 null이 아니어야 함(`type`과 조합 가능)
+
 ### 인라인 Dict 스키마
 
 ```python

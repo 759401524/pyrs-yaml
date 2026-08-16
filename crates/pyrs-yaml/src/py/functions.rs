@@ -2,6 +2,7 @@
 
 use pyo3::prelude::*;
 
+use crate::YamlValidateError;
 use crate::py::convert::{format_i18n_error, node_to_pyobject_simple, parse_schema};
 use crate::py::direct_dump::direct_dump;
 use crate::py::document::{YamlDocument, parse_document, resolve_tags};
@@ -458,4 +459,33 @@ pub(crate) fn load_schema(name: &str, path: &str) -> PyResult<()> {
 /// plus any schemas registered via `register_schema()` / `load_schema()`.
 pub(crate) fn list_schemas() -> Vec<String> {
     crate::parser::yaml::registry::names()
+}
+
+#[pyfunction]
+#[pyo3(signature = (data: "str", schema_yaml: "str") -> "None")]
+/// Validate a YAML document against a schema definition's `validate` rules.
+///
+/// `data` is a YAML string; `schema_yaml` is a schema definition (the same
+/// format passed to `register_schema`). Raises `YamlValidateError` listing
+/// each structural validation failure (path + reason) when the document does
+/// not conform to the schema's `validate` section.
+pub(crate) fn validate_against_schema(data: &str, schema_yaml: &str) -> PyResult<()> {
+    use pyrs_yaml_core::parser::yaml::Schema;
+    use pyrs_yaml_core::parser::yaml::schema_language::{parse_schema_yaml, validate_node};
+
+    let ast = pyrs_yaml_core::parser::parse(data, Schema::Core)
+        .map_err(|e| YamlParseError::new_err(format!("failed to parse data: {}", e)))?;
+    let resolver = parse_schema_yaml(schema_yaml)
+        .map_err(|e| YamlParseError::new_err(format!("Schema parse error: {}", e)))?;
+    match validate_node(&ast, &resolver) {
+        Ok(()) => Ok(()),
+        Err(errors) => {
+            let msg = errors
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            Err(YamlValidateError::new_err(msg))
+        }
+    }
 }

@@ -92,6 +92,47 @@ print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
 
+#### 结构化校验
+
+在 schema 定义中添加 `validate` 段，可在标量类型解析之上进行结构检查。使用 `validate_against_schema()` 在文档使用前校验：
+
+```yaml
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+  - path: $.tags[*]
+    type: str
+  - path: $.numbers
+    sequence_of: int
+  - path: $.config
+    mapping_of: str
+```
+
+```python
+import pyrs_yaml
+
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+
+pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+# 列出所有失败项并抛 YamlValidateError：
+pyrs_yaml.validate_against_schema("port: abc\n", schema)
+```
+
+- `path` — JSONPath 风格位置（`$.key`、`$.a.b`、`$.tags[*]`）；省略时应用于所有标量
+- `type` — 标量必须解析为该 YAML 类型（`null`/`bool`/`int`/`float`/`str`）
+- `sequence_of` / `mapping_of` — 每个元素 / 值必须为指定类型
+- `required` — 路径必须存在且非 null（可与 `type` 组合）
+
 ### 内联 Dict Schema
 
 无需预先注册，直接传入字典：

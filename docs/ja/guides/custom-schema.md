@@ -92,6 +92,47 @@ print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
 
+#### 構造検証
+
+スキーマ定義に `validate` セクションを追加すると、スカラー型解決に加えて構造チェックができます。`validate_against_schema()` で文書の使用前にチェックします：
+
+```yaml
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+  - path: $.tags[*]
+    type: str
+  - path: $.numbers
+    sequence_of: int
+  - path: $.config
+    mapping_of: str
+```
+
+```python
+import pyrs_yaml
+
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+
+pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+# すべての失敗を列挙して YamlValidateError を送出:
+pyrs_yaml.validate_against_schema("port: abc\n", schema)
+```
+
+- `path` — JSONPath 風の場所（`$.key`、`$.a.b`、`$.tags[*]`）；省略時はすべてのスカラー
+- `type` — スカラーがこの YAML 型（`null`/`bool`/`int`/`float`/`str`）に解決されること
+- `sequence_of` / `mapping_of` — すべての要素 / 値が指定型であること
+- `required` — パスが存在し非 null であること（`type` と組み合わせ可能）
+
 ### インラインディクスキーマ
 
 個別に登録せず、ディクショナリを直接渡せます：

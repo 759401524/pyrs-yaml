@@ -301,6 +301,14 @@ set_chomping(chomp: str) -> None
 to_yaml() -> str
 ```
 
+#### `copy()`
+
+深度复制此子树为与文档分离的独立 Python 值（dict/list/scalar）。可用于通过 `set_value()` 将子树复制粘贴到别处。
+
+```python
+copy() -> Any
+```
+
 #### `is_valid()`
 
 检查父文档是否仍然存活且未被修改。
