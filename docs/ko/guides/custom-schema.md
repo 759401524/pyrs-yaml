@@ -59,6 +59,24 @@ d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
 assert d["addr"] == 31
 ```
 
+#### 파일에서 스키마 로드
+
+`load_schema()`는 파일 경로에서 스키마 정의를 읽어 등록합니다:
+
+```python
+# hex.yaml에 위 스키마 YAML이 포함되어 있음
+pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
+```
+
+#### 등록된 스키마 나열
+
+`list_schemas()`는 등록된 모든 스키마 이름(내장 + 사용자 정의)을 반환합니다:
+
+```python
+print(pyrs_yaml.list_schemas())
+# ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
+```
+
 ### 인라인 Dict 스키마
 
 ```python

@@ -435,3 +435,27 @@ pub(crate) fn register_schema(name: &str, schema_yaml: &str) -> PyResult<()> {
     crate::parser::yaml::registry::register_boxed(name, std::sync::Arc::new(resolver));
     Ok(())
 }
+
+#[pyfunction]
+#[pyo3(signature = (name: "str", path: "str") -> "None")]
+/// Register a YAML Schema Language schema from a file.
+///
+/// Reads the schema definition from `path` (a YAML file with `name`/`extends`/`rules`
+/// structure) and registers it under `name`. Equivalent to calling
+/// `register_schema(name, open(path).read())` but handles file I/O in Rust.
+pub(crate) fn load_schema(name: &str, path: &str) -> PyResult<()> {
+    let schema_yaml = std::fs::read_to_string(path).map_err(|e| {
+        YamlParseError::new_err(format!("failed to read schema file '{}': {}", path, e))
+    })?;
+    register_schema(name, &schema_yaml)
+}
+
+#[pyfunction]
+#[pyo3(signature = () -> "list[str]")]
+/// List all registered schema names (built-in + custom).
+///
+/// Returns the four built-in schemas (`failsafe`, `json`, `core`, `yaml1.1`)
+/// plus any schemas registered via `register_schema()` / `load_schema()`.
+pub(crate) fn list_schemas() -> Vec<String> {
+    crate::parser::yaml::registry::names()
+}

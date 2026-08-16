@@ -74,6 +74,24 @@ d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
 assert d["addr"] == 31
 ```
 
+#### ファイルからスキーマを読み込む
+
+`load_schema()` はファイルパスからスキーマ定義を読み込んで登録します：
+
+```python
+# hex.yaml に上記のスキーマ YAML が含まれている
+pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
+```
+
+#### 登録済みスキーマの一覧
+
+`list_schemas()` は登録済みのすべてのスキーマ名（組み込み + カスタム）を返します：
+
+```python
+print(pyrs_yaml.list_schemas())
+# ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
+```
+
 ### インラインディクスキーマ
 
 個別に登録せず、ディクショナリを直接渡せます：
