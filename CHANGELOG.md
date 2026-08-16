@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered schema names (built-in `failsafe`/`json`/`core`/`yaml1.1` plus
   custom). Exposes the existing `registry::names()` and wraps
   `register_schema` with file I/O.
+- **Schema structural validation** — a `validate` section in a schema
+  definition adds structural checks (path-qualified scalar types,
+  `sequence_of`/`mapping_of` containers, `required` presence); the new
+  `validate_against_schema(data, schema_yaml)` raises `YamlValidateError`
+  listing every failure.
+- **`Node.copy()`** — deep-copies a subtree as a standalone Python value
+  (dict/list/scalar), detached from the document, for pasting via
+  `set_value()`.
 
 ### Changed
 

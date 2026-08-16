@@ -64,6 +64,7 @@ from .pyrs_yaml import (
     remove_type,
     safe_dump,
     set_language,
+    validate_against_schema,
     validate_custom_types,
 )
 from .pyrs_yaml import (
@@ -392,6 +393,7 @@ __all__ = [
     "safe_loads",
     "safe_loads_async",
     "set_language",
+    "validate_against_schema",
     "validate_custom_types",
 ]
 

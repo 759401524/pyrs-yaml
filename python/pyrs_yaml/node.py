@@ -117,6 +117,15 @@ class Node:
             return resolved + "\n"
         return str(resolved) + "\n"
 
+    def copy(self) -> Any:
+        """Deep-copy this subtree as a standalone value (dict/list/scalar).
+
+        The result is detached from the document — useful for duplicating a
+        subtree to paste elsewhere via ``set_value()``.
+        """
+        doc = self._get_doc()
+        return doc._copy_path([s for s in self._path])
+
     def set_value(self, value: Any, create_missing: bool = False) -> None:
         """Replace this node's value, preserving its metadata (comment/anchor/tag/style).
 

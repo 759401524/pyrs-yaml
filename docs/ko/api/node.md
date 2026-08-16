@@ -301,6 +301,14 @@ set_chomping(chomp: str) -> None
 to_yaml() -> str
 ```
 
+#### `copy()`
+
+이 하위 트리를 문서에서 분리된 독립 Python 값(dict/list/scalar)으로 깊은 복사합니다. `set_value()`로 다른 곳에 붙여넣을 때 유용합니다.
+
+```python
+copy() -> Any
+```
+
 #### `is_valid()`
 
 부모 문서가 여전히 살아있고 수정되지 않았는지 확인합니다.

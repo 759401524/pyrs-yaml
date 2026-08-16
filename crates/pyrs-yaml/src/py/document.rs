@@ -817,6 +817,16 @@ impl YamlDocument {
             .map(str::to_string))
     }
 
+    /// Copy the subtree at `segments` as a standalone Python object (internal).
+    #[pyo3(signature = (segments: "list") -> "Any")]
+    fn _copy_path(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        let schema = crate::py::convert::parse_schema("core")?;
+        node_to_pyobject_simple(node, py, &schema)
+    }
+
     /// Set the value for a mapping key, `doc['key'] = value`.
     fn __setitem__(&mut self, py: Python, key: String, value: Py<PyAny>) -> PyResult<()> {
         self._set_path(

@@ -61,6 +61,18 @@ impl YamlTypeKind {
     }
 }
 
+impl std::fmt::Display for YamlTypeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Null => write!(f, "null"),
+            Self::Bool => write!(f, "bool"),
+            Self::Int => write!(f, "int"),
+            Self::Float => write!(f, "float"),
+            Self::Str => write!(f, "str"),
+        }
+    }
+}
+
 /// Resolves a matched scalar (original + trimmed form) to a `YamlType`.
 type KindResolver = for<'a> fn(&'a str, &'a str) -> YamlType<'a>;
 
@@ -86,18 +98,102 @@ impl Rule {
     }
 }
 
+/// The kind of structural validation a [`ValidateRule`] performs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidateKind {
+    /// Scalar value at this path must resolve to the given type.
+    Type(YamlTypeKind),
+    /// Sequence at this path must contain only elements of the given type.
+    SequenceOf(YamlTypeKind),
+    /// Mapping at this path must have values of the given type.
+    MappingOf(YamlTypeKind),
+    /// Path must exist (non-null).
+    Required,
+}
+
+/// A structural validation rule: applies to a specific path (or all scalars
+/// if `path` is `None`) and checks type/structure.
+#[derive(Debug, Clone)]
+pub struct ValidateRule {
+    /// JSONPath-like path (e.g. `"$.port"`, `"$.tags[*]"`). `None` = all scalars.
+    pub path: Option<String>,
+    pub kind: ValidateKind,
+    /// If `true`, the path must resolve to a non-null value.
+    pub required: bool,
+}
+
+impl ValidateRule {
+    pub fn new(path: Option<&str>, kind: ValidateKind) -> Self {
+        Self {
+            path: path.map(String::from),
+            kind,
+            required: false,
+        }
+    }
+
+    pub fn with_required(mut self, required: bool) -> Self {
+        self.required = required;
+        self
+    }
+}
+
+/// A validation error: the path, the expected constraint, and the actual value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SchemaValidationError {
+    pub path: String,
+    pub message: String,
+}
+
+impl SchemaValidationError {
+    pub fn new(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for SchemaValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.path, self.message)
+    }
+}
+
 /// A schema resolver built from a list of rules, with an optional fallback
 /// schema for scalars that match no rule.
 #[derive(Clone)]
 pub struct RuleResolver {
     rules: Vec<Rule>,
     fallback: Option<Schema>,
+    validate_rules: Vec<ValidateRule>,
 }
 
 impl RuleResolver {
     /// Build a resolver from rules and an optional fallback schema.
     pub fn new(rules: Vec<Rule>, fallback: Option<Schema>) -> Self {
-        Self { rules, fallback }
+        Self {
+            rules,
+            fallback,
+            validate_rules: Vec::new(),
+        }
+    }
+
+    /// Build a resolver with both resolve rules and validate rules.
+    pub fn with_validate_rules(
+        rules: Vec<Rule>,
+        fallback: Option<Schema>,
+        validate_rules: Vec<ValidateRule>,
+    ) -> Self {
+        Self {
+            rules,
+            fallback,
+            validate_rules,
+        }
+    }
+
+    /// Access the validate rules (for `validate_node`).
+    pub fn validate_rules(&self) -> &[ValidateRule] {
+        &self.validate_rules
     }
 }
 
@@ -192,6 +288,7 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
 
     let mut extends: Option<Schema> = None;
     let mut rules: Vec<Rule> = Vec::new();
+    let mut validate_rules: Vec<ValidateRule> = Vec::new();
 
     for (key, value) in pairs {
         let key_str = scalar_str(key)?;
@@ -215,11 +312,30 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
                     rules.push(rule_from_node(node)?);
                 }
             }
+            Some("validate") => {
+                let vnodes = match value {
+                    CustomNode::Sequence { items, .. } => items,
+                    _ => {
+                        return Err(ParseError::Syntax {
+                            message: "'validate' must be a sequence".to_string(),
+                            line: 0,
+                            col: 0,
+                        });
+                    }
+                };
+                for node in vnodes {
+                    validate_rules.push(validate_rule_from_node(node)?);
+                }
+            }
             _ => {} // ignore unknown top-level keys (name, version, ...)
         }
     }
 
-    Ok(RuleResolver::new(rules, extends))
+    Ok(RuleResolver::with_validate_rules(
+        rules,
+        extends,
+        validate_rules,
+    ))
 }
 
 /// Parse the `extends` schema name into a Schema.
@@ -291,6 +407,317 @@ fn rule_from_node(node: &CustomNode) -> Result<Rule, ParseError> {
         col: 0,
     })?;
     Rule::new(&pattern, target)
+}
+
+/// Build a [`ValidateRule`] from a `{path, type|sequence_of|mapping_of|required}` mapping.
+fn validate_rule_from_node(node: &CustomNode) -> Result<ValidateRule, ParseError> {
+    let CustomNode::Mapping { pairs, .. } = node else {
+        return Err(ParseError::Syntax {
+            message: "each validate rule must be a mapping".to_string(),
+            line: 0,
+            col: 0,
+        });
+    };
+    let mut path: Option<String> = None;
+    let mut kind: Option<ValidateKind> = None;
+    let mut required = false;
+    for (key, value) in pairs {
+        let key_str = scalar_str(key)?.unwrap_or(Cow::Borrowed(""));
+        match key_str.as_ref() {
+            "path" => {
+                path = scalar_str(value)?.map(|s| s.into_owned());
+            }
+            "type" => {
+                let ty = scalar_str(value)?.unwrap_or(Cow::Borrowed(""));
+                let k = YamlTypeKind::from_name(ty.as_ref()).ok_or_else(|| ParseError::Syntax {
+                    message: format!(
+                        "invalid validate type '{}'. Valid: null, bool, int, float, str",
+                        ty
+                    ),
+                    line: 0,
+                    col: 0,
+                })?;
+                kind = Some(ValidateKind::Type(k));
+            }
+            "sequence_of" => {
+                let ty = scalar_str(value)?.unwrap_or(Cow::Borrowed(""));
+                let k = YamlTypeKind::from_name(ty.as_ref()).ok_or_else(|| ParseError::Syntax {
+                    message: format!(
+                        "invalid sequence_of type '{}'. Valid: null, bool, int, float, str",
+                        ty
+                    ),
+                    line: 0,
+                    col: 0,
+                })?;
+                kind = Some(ValidateKind::SequenceOf(k));
+            }
+            "mapping_of" => {
+                let ty = scalar_str(value)?.unwrap_or(Cow::Borrowed(""));
+                let k = YamlTypeKind::from_name(ty.as_ref()).ok_or_else(|| ParseError::Syntax {
+                    message: format!(
+                        "invalid mapping_of type '{}'. Valid: null, bool, int, float, str",
+                        ty
+                    ),
+                    line: 0,
+                    col: 0,
+                })?;
+                kind = Some(ValidateKind::MappingOf(k));
+            }
+            "required" => {
+                let is_true = match value {
+                    CustomNode::Scalar { value, .. } => {
+                        matches!(value.as_ref(), "true" | "True" | "TRUE")
+                    }
+                    _ => true,
+                };
+                required = is_true;
+            }
+            _ => {}
+        }
+    }
+    let kind = match kind {
+        Some(k) => k,
+        None if required => ValidateKind::Required,
+        None => {
+            return Err(ParseError::Syntax {
+                message: "validate rule missing one of: type, sequence_of, mapping_of, required"
+                    .to_string(),
+                line: 0,
+                col: 0,
+            });
+        }
+    };
+    Ok(ValidateRule::new(path.as_deref(), kind).with_required(required))
+}
+
+/// Check if a concrete path (e.g. `"$.tags[0]"`) matches a pattern path
+/// (e.g. `"$.tags[*]"`). `None` pattern matches everything.
+fn path_matches(pattern: Option<&str>, actual: &str) -> bool {
+    let Some(pat) = pattern else {
+        return true; // None = all scalars
+    };
+    if pat == actual {
+        return true;
+    }
+    // Support `[*]` wildcard: split pattern on `[*]`, check prefix/suffix.
+    if !pat.contains("[*]") {
+        return false;
+    }
+    let parts: Vec<&str> = pat.split("[*]").collect();
+    if parts.len() != 2 {
+        return false; // only single [*] supported
+    }
+    let prefix = parts[0];
+    let suffix = parts[1];
+    actual.starts_with(prefix)
+        && actual.ends_with(suffix)
+        && actual.len() > prefix.len() + suffix.len()
+}
+
+/// Recursively validate a `CustomNode` AST against the validate rules in a
+/// [`RuleResolver`]. Returns `Ok(())` if all rules pass, or `Err(Vec<...>)`
+/// with all collected errors.
+pub fn validate_node(
+    ast: &CustomNode,
+    resolver: &RuleResolver,
+) -> Result<(), Vec<SchemaValidationError>> {
+    let mut errors = Vec::new();
+    // Required existence checks (paths not present in the AST are skipped by
+    // traversal, so check them up front).
+    for rule in resolver.validate_rules() {
+        if !rule.required {
+            continue;
+        }
+        let Some(path) = rule.path.as_deref() else {
+            continue;
+        };
+        if path_matches(Some(path), path) && !contains_path(ast, path) {
+            errors.push(SchemaValidationError::new(path, "required path is missing"));
+        }
+    }
+    validate_recursive(ast, "$", resolver, &mut errors);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+/// Check whether `path` (a `$.a.b[0]`-style path, or with `[*]` wildcards)
+/// resolves to an existing node.
+fn contains_path(ast: &CustomNode, path: &str) -> bool {
+    let Some(segs) = rule_path_to_segments(path) else {
+        // Unparseable path (e.g. wildcard) — conservatively treat as present.
+        return true;
+    };
+    crate::editing::navigate(ast, &segs).is_ok()
+}
+
+/// Parse a `$.a.b[0][*]` path into navigate segments. Returns `None` if the
+/// path contains a `[*]` wildcard (existence over wildcards is ambiguous).
+fn rule_path_to_segments(path: &str) -> Option<Vec<crate::editing::Segment<'static>>> {
+    use crate::editing::Segment;
+    let rest = path.strip_prefix('$')?;
+    let rest = rest.strip_prefix('.')?;
+    if rest.is_empty() {
+        return Some(Vec::new()); // path "$"
+    }
+    let mut segs = Vec::new();
+    let mut cur_key = String::new();
+    let mut i = 0;
+    while i < rest.len() {
+        let c = rest[i..].chars().next().unwrap();
+        match c {
+            '.' => {
+                if !cur_key.is_empty() {
+                    segs.push(Segment::Key(std::borrow::Cow::Owned(std::mem::take(
+                        &mut cur_key,
+                    ))));
+                }
+                i += 1;
+            }
+            '[' => {
+                if !cur_key.is_empty() {
+                    segs.push(Segment::Key(std::borrow::Cow::Owned(std::mem::take(
+                        &mut cur_key,
+                    ))));
+                }
+                let close = rest[i + 1..].find(']')? + i + 1;
+                let inner = &rest[i + 1..close];
+                if inner == "*" {
+                    return None;
+                }
+                let idx: i64 = inner.parse().ok()?;
+                segs.push(Segment::Index(idx));
+                i = close + 1;
+            }
+            _ => {
+                cur_key.push(c);
+                i += 1;
+            }
+        }
+    }
+    if !cur_key.is_empty() {
+        segs.push(Segment::Key(std::borrow::Cow::Owned(cur_key)));
+    }
+    Some(segs)
+}
+
+fn validate_recursive(
+    node: &CustomNode,
+    path: &str,
+    resolver: &RuleResolver,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    // Check rules that match this path
+    for rule in resolver.validate_rules() {
+        if !path_matches(rule.path.as_deref(), path) {
+            continue;
+        }
+        if rule.required && matches!(node, CustomNode::Null { .. }) {
+            errors.push(SchemaValidationError::new(
+                path,
+                "required value is null or missing",
+            ));
+            continue;
+        }
+        match &rule.kind {
+            ValidateKind::Required => {
+                if matches!(node, CustomNode::Null { .. }) {
+                    errors.push(SchemaValidationError::new(
+                        path,
+                        "required path is null or missing",
+                    ));
+                }
+            }
+            ValidateKind::Type(expected) => {
+                if let CustomNode::Scalar { value, .. } = node {
+                    let resolved = resolver.resolve(value.as_ref());
+                    if !yaml_type_matches(&resolved, *expected) {
+                        errors.push(SchemaValidationError::new(
+                            path,
+                            format!("expected {} but got {:?}", expected, resolved),
+                        ));
+                    }
+                }
+            }
+            ValidateKind::SequenceOf(expected) => {
+                if let CustomNode::Sequence { items, .. } = node {
+                    for (i, item) in items.iter().enumerate() {
+                        let item_path = format!("{}[{}]", path, i);
+                        if let CustomNode::Scalar { value, .. } = item {
+                            let resolved = resolver.resolve(value.as_ref());
+                            if !yaml_type_matches(&resolved, *expected) {
+                                errors.push(SchemaValidationError::new(
+                                    item_path,
+                                    format!(
+                                        "expected sequence element {} but got {:?}",
+                                        expected, resolved
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            ValidateKind::MappingOf(expected) => {
+                if let CustomNode::Mapping { pairs, .. } = node {
+                    for (key, val) in pairs.iter() {
+                        let key_str = match key {
+                            CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
+                            _ => "(complex)".to_string(),
+                        };
+                        let val_path = format!("{}.{}", path, key_str);
+                        if let CustomNode::Scalar { value, .. } = val {
+                            let resolved = resolver.resolve(value.as_ref());
+                            if !yaml_type_matches(&resolved, *expected) {
+                                errors.push(SchemaValidationError::new(
+                                    val_path,
+                                    format!(
+                                        "expected mapping value {} but got {:?}",
+                                        expected, resolved
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Recurse into children
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, val) in pairs.iter() {
+                let key_str = match key {
+                    CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
+                    _ => "(complex)".to_string(),
+                };
+                let child_path = format!("{}.{}", path, key_str);
+                validate_recursive(val, &child_path, resolver, errors);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for (i, item) in items.iter().enumerate() {
+                let child_path = format!("{}[{}]", path, i);
+                validate_recursive(item, &child_path, resolver, errors);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Check if a resolved `YamlType` matches an expected `YamlTypeKind`.
+fn yaml_type_matches(resolved: &YamlType, expected: YamlTypeKind) -> bool {
+    matches!(
+        (resolved, expected),
+        (YamlType::Null, YamlTypeKind::Null)
+            | (YamlType::Bool(_), YamlTypeKind::Bool)
+            | (YamlType::Int(_), YamlTypeKind::Int)
+            | (YamlType::Float(_), YamlTypeKind::Float)
+            | (YamlType::Str(_), YamlTypeKind::Str)
+    )
 }
 
 #[cfg(test)]

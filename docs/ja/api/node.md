@@ -301,6 +301,14 @@ set_chomping(chomp: str) -> None
 to_yaml() -> str
 ```
 
+#### `copy()`
+
+このサブツリーをドキュメントから切り離された独立した Python 値（dict/list/scalar）として深くコピーします。`set_value()` で別の場所に貼り付ける際などに使えます。
+
+```python
+copy() -> Any
+```
+
 #### `is_valid()`
 
 親ドキュメントがまだ有効で変更されていないかどうかを確認します。

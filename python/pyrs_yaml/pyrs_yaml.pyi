@@ -114,6 +114,10 @@ class YamlDocument:
         """
         Append a value by path (internal, appends to a sequence).
         """
+    def _copy_path(self, /, segments: "list") -> "Any":
+        """
+        Copy the subtree at `segments` as a standalone Python object (internal).
+        """
     def _delete_path(self, /, segments: "list") -> "None":
         """
         Delete a node by path (internal, called by `__delitem__`).
@@ -395,6 +399,16 @@ def safe_loads(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, all
 def set_language(lang: "str") -> "None":
     """
     Set the error message language.
+    """
+
+def validate_against_schema(data: "str", schema_yaml: "str") -> "None":
+    """
+    Validate a YAML document against a schema definition's `validate` rules.
+
+    `data` is a YAML string; `schema_yaml` is a schema definition (the same
+    format passed to `register_schema`). Raises `YamlValidateError` listing
+    each structural validation failure (path + reason) when the document does
+    not conform to the schema's `validate` section.
     """
 
 def validate_custom_types(obj: "Py<PyAny>") -> None:
