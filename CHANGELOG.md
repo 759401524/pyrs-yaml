@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path raises; standalone comments on inline scalar values and sequence items
   are now serialized on their own indented lines (fixes pre-existing broken
   round-trip for `child:\n  # c\n  val` and `- a\n# c\n- b`).
+- **Node style/format setters/getters** — `Node.scalar_style` /
+  `Node.flow_style` / `Node.chomping` read properties and
+  `set_scalar_style` / `set_flow_style` / `set_chomping` methods, backed by
+  `#[pymethods]` (`_set_scalar_style_path`, `_set_flow_style_path`,
+  `_set_chomping_path`, `_get_scalar_style`, `_get_flow_style`,
+  `_get_chomping`). ScalarStyle/Chomping now derive `Copy`. Non-scalar nodes
+  return `None` / are no-op; aliases and missing paths raise.
 - **Verbatim tags** — `set_tag("!<tag:yaml.org,2002:str>")` now produces a
   verbatim tag (empty handle), and verbatim tags parsed from source survive
   round-trip: `Tag`'s `Display` emits `!<...>` wrapping for empty-handle tags,

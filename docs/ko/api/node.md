@@ -104,6 +104,30 @@ anchor -> str | None
 tag -> str | None
 ```
 
+#### `scalar_style`
+
+스칼라 스타일을 가져옵니다(`"plain"`, `"single_quoted"`, `"double_quoted"`, `"literal"`, `"folded"`). 비스칼라 노드는 `None`을 반환합니다.
+
+```python
+scalar_style -> str | None
+```
+
+#### `flow_style`
+
+흐름 스타일을 가져옵니다(`True` = 흐름 `{}`/`[]`, `False` = 블록). 비컨테이너 노드는 `None`을 반환합니다.
+
+```python
+flow_style -> bool | None
+```
+
+#### `chomping`
+
+chomping 표시자를 가져옵니다(`"strip"`, `"clip"`, `"keep"`). 비스칼라 노드는 `None`을 반환합니다.
+
+```python
+chomping -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -243,6 +267,30 @@ set_tag(tag: str) -> None
 
 ```python
 remove_tag() -> None
+```
+
+#### `set_scalar_style()`
+
+스칼라 스타일을 설정(또는 교체)합니다. 비스칼라 노드에서는 no-op. 값: `"plain"`, `"single_quoted"`, `"double_quoted"`, `"literal"`, `"folded"`.
+
+```python
+set_scalar_style(style: str) -> None
+```
+
+#### `set_flow_style()`
+
+흐름 스타일을 설정(또는 교체)합니다. `True`는 흐름(`{}`/`[]`), `False`는 블록. 비컨테이너 노드에서는 no-op.
+
+```python
+set_flow_style(flow: bool) -> None
+```
+
+#### `set_chomping()`
+
+chomping 표시자를 설정(또는 교체)합니다. 값: `"strip"`(`-`), `"clip"`(기본값), `"keep"`(`+`). 비스칼라 노드에서는 no-op.
+
+```python
+set_chomping(chomp: str) -> None
 ```
 
 #### `to_yaml()`

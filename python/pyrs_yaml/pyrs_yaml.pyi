@@ -122,9 +122,21 @@ class YamlDocument:
         """
         Get the anchor name on the node at `segments` (internal).
         """
+    def _get_chomping(self, /, segments: "list") -> "str | None":
+        """
+        Get the chomping indicator on the node at `segments` (internal).
+        """
     def _get_comment(self, /, segments: "list") -> "str | None":
         """
         Get the comment text on the node at `segments` (internal).
+        """
+    def _get_flow_style(self, /, segments: "list") -> "bool | None":
+        """
+        Get the flow style on the node at `segments` (internal).
+        """
+    def _get_scalar_style(self, /, segments: "list") -> "str | None":
+        """
+        Get the scalar style on the node at `segments` (internal).
         """
     def _get_tag(self, /, segments: "list") -> "str | None":
         """
@@ -162,13 +174,25 @@ class YamlDocument:
         """
         Set an anchor on the node at `segments` (internal).
         """
+    def _set_chomping_path(self, /, segments: "list", chomping: "str") -> "None":
+        """
+        Set the chomping indicator on the node at `segments` (internal).
+        """
     def _set_comment_path(self, /, segments: "list", text: "str", standalone: "bool" = True) -> "None":
         """
         Set a comment on the node at `segments` (internal).
         """
+    def _set_flow_style_path(self, /, segments: "list", flow: "bool") -> "None":
+        """
+        Set the flow style on the node at `segments` (internal).
+        """
     def _set_path(self, /, segments: "list", value: "Any", create_missing: "bool" = False) -> "None":
         """
         Set a value by path (internal, called by `__setitem__`).
+        """
+    def _set_scalar_style_path(self, /, segments: "list", style: "str") -> "None":
+        """
+        Set the scalar style on the node at `segments` (internal).
         """
     def _set_tag_path(self, /, segments: "list", tag: "str") -> "None":
         """

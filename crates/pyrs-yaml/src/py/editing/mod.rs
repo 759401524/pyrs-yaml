@@ -822,3 +822,100 @@ pub fn remove_anchor_path(
         n.remove_anchor();
     })
 }
+
+/// Set the scalar style on the node at `segments`.
+pub fn set_scalar_style_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    style: crate::ast::ScalarStyle,
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.set_scalar_style(style);
+    })
+}
+
+/// Set the flow style on the node at `segments`.
+pub fn set_flow_style_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    flow: bool,
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.set_flow_style(flow);
+    })
+}
+
+/// Set the chomping indicator on the node at `segments`.
+pub fn set_chomping_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    chomp: crate::ast::Chomping,
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.set_chomping(chomp);
+    })
+}
+
+/// Parse a scalar style string into `ScalarStyle`.
+///
+/// - `"plain"` → `Plain`
+/// - `"single_quoted"` → `SingleQuoted`
+/// - `"double_quoted"` → `DoubleQuoted`
+/// - `"literal"` → `Literal`
+/// - `"folded"` → `Folded`
+pub(crate) fn parse_style(s: &str) -> Result<crate::ast::ScalarStyle, String> {
+    match s {
+        "plain" => Ok(crate::ast::ScalarStyle::Plain),
+        "single_quoted" => Ok(crate::ast::ScalarStyle::SingleQuoted),
+        "double_quoted" => Ok(crate::ast::ScalarStyle::DoubleQuoted),
+        "literal" => Ok(crate::ast::ScalarStyle::Literal),
+        "folded" => Ok(crate::ast::ScalarStyle::Folded),
+        _ => Err(format!(
+            "unknown scalar style '{}': expected one of plain, single_quoted, double_quoted, literal, folded",
+            s
+        )),
+    }
+}
+
+/// Parse a chomping string into `Chomping`.
+///
+/// - `"strip"` → `Strip`
+/// - `"clip"` → `Clip`
+/// - `"keep"` → `Keep`
+pub(crate) fn parse_chomping(s: &str) -> Result<crate::ast::Chomping, String> {
+    match s {
+        "strip" => Ok(crate::ast::Chomping::Strip),
+        "clip" => Ok(crate::ast::Chomping::Clip),
+        "keep" => Ok(crate::ast::Chomping::Keep),
+        _ => Err(format!(
+            "unknown chomping '{}': expected one of strip, clip, keep",
+            s
+        )),
+    }
+}
+
+/// Format a `ScalarStyle` as the string used in the Python API.
+pub(crate) fn style_to_str(style: crate::ast::ScalarStyle) -> &'static str {
+    match style {
+        crate::ast::ScalarStyle::Plain => "plain",
+        crate::ast::ScalarStyle::SingleQuoted => "single_quoted",
+        crate::ast::ScalarStyle::DoubleQuoted => "double_quoted",
+        crate::ast::ScalarStyle::Literal => "literal",
+        crate::ast::ScalarStyle::Folded => "folded",
+    }
+}
+
+/// Format a `Chomping` as the string used in the Python API.
+pub(crate) fn chomping_to_str(chomp: crate::ast::Chomping) -> &'static str {
+    match chomp {
+        crate::ast::Chomping::Strip => "strip",
+        crate::ast::Chomping::Clip => "clip",
+        crate::ast::Chomping::Keep => "keep",
+    }
+}

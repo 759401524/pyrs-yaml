@@ -104,6 +104,30 @@ anchor -> str | None
 tag -> str | None
 ```
 
+#### `scalar_style`
+
+スカラー style を取得します（`"plain"`、`"single_quoted"`、`"double_quoted"`、`"literal"`、`"folded"`）。非スカラーノードは `None` を返します。
+
+```python
+scalar_style -> str | None
+```
+
+#### `flow_style`
+
+flow style を取得します（`True` = flow `{}`/`[]`、`False` = block）。非コンテナノードは `None` を返します。
+
+```python
+flow_style -> bool | None
+```
+
+#### `chomping`
+
+chomping 指示子を取得します（`"strip"`、`"clip"`、`"keep"`）。非スカラーノードは `None` を返します。
+
+```python
+chomping -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -243,6 +267,30 @@ set_tag(tag: str) -> None
 
 ```python
 remove_tag() -> None
+```
+
+#### `set_scalar_style()`
+
+スカラー style を設定（または置換）します。非スカラーノードでは no-op。値: `"plain"`, `"single_quoted"`, `"double_quoted"`, `"literal"`, `"folded"`。
+
+```python
+set_scalar_style(style: str) -> None
+```
+
+#### `set_flow_style()`
+
+flow style を設定（または置換）します。`True` は flow（`{}`/`[]`）、`False` は block。非コンテナノードでは no-op。
+
+```python
+set_flow_style(flow: bool) -> None
+```
+
+#### `set_chomping()`
+
+chomping 指示子を設定（または置換）します。値: `"strip"`（`-`）, `"clip"`（デフォルト）, `"keep"`（`+`）。非スカラーノードでは no-op。
+
+```python
+set_chomping(chomp: str) -> None
 ```
 
 #### `to_yaml()`

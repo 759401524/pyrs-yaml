@@ -104,6 +104,30 @@ anchor -> str | None
 tag -> str | None
 ```
 
+#### `scalar_style`
+
+获取标量 style（`"plain"`、`"single_quoted"`、`"double_quoted"`、`"literal"`、`"folded"`），非标量节点返回 `None`。
+
+```python
+scalar_style -> str | None
+```
+
+#### `flow_style`
+
+获取 flow style（`True` = flow `{}`/`[]`，`False` = block），非容器节点返回 `None`。
+
+```python
+flow_style -> bool | None
+```
+
+#### `chomping`
+
+获取 chomping 指示符（`"strip"`、`"clip"`、`"keep"`），非标量节点返回 `None`。
+
+```python
+chomping -> str | None
+```
+
 ### Methods
 
 #### `find()`
@@ -243,6 +267,30 @@ set_tag(tag: str) -> None
 
 ```python
 remove_tag() -> None
+```
+
+#### `set_scalar_style()`
+
+设置（或替换）此节点的标量 style。非标量节点 no-op。值：`"plain"`、`"single_quoted"`、`"double_quoted"`、`"literal"`、`"folded"`。
+
+```python
+set_scalar_style(style: str) -> None
+```
+
+#### `set_flow_style()`
+
+设置（或替换）此节点的 flow style。`True` 输出 flow（`{}`/`[]`），`False` 输出 block。非容器节点 no-op。
+
+```python
+set_flow_style(flow: bool) -> None
+```
+
+#### `set_chomping()`
+
+设置（或替换）此节点的 chomping 指示符。值：`"strip"`（`-`）、`"clip"`（默认）、`"keep"`（`+`）。非标量节点 no-op。
+
+```python
+set_chomping(chomp: str) -> None
 ```
 
 #### `to_yaml()`
