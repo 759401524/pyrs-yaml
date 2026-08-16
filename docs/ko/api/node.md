@@ -62,6 +62,14 @@ root_type -> str
 _path -> tuple
 ```
 
+#### `path`
+
+Get this node's path segments (tuple of keys and indices). The public accessor for logging, error messages, and re-finding a node after it becomes stale.
+
+```python
+path -> tuple
+```
+
 #### `children`
 
 이 노드의 자식 노드들을 가져옵니다.
@@ -150,6 +158,14 @@ find(path: str) -> Node | list[Node]
 | `$..*` | 모든 하위 노드 |
 
 **반환값:** 정확한 경로에 대해서는 단일 `Node`, 와일드카드/깊이 검색 쿼리에 대해서는 `list[Node]`를 반환합니다.
+
+#### `find_first()`
+
+Find the first matching node by JSONPath-like path. Always returns a single `Node` or `None` (never a list) — for wildcard paths (`[*]`), returns the first element.
+
+```python
+find_first(path: str) -> Node | None
+```
 
 #### `walk()`
 
@@ -293,6 +309,22 @@ chomping 표시자를 설정(또는 교체)합니다. 값: `"strip"`(`-`), `"cli
 set_chomping(chomp: str) -> None
 ```
 
+#### `sort_keys()`
+
+Sort the keys of this mapping node in place. No-op on non-mapping nodes.
+
+```python
+sort_keys() -> None
+```
+
+#### `move()`
+
+Move this subtree to a new path in the same document (copies the subtree to `new_path`, then removes the source). `new_path` is an absolute JSONPath.
+
+```python
+move(new_path: str) -> None
+```
+
 #### `to_yaml()`
 
 이 서브트리를 YAML 문자열로 직렬화합니다.
@@ -344,6 +376,14 @@ __eq__(other: object) -> bool
 ```
 
 두 `Node` 인스턴스는 동일한 문서, 경로 및 활성 상태를 공유하는 경우 동일합니다.
+
+#### `value_eq()`
+
+Compare this node's resolved value with another node or Python value. Unlike `__eq__` (reference identity), this compares the actual YAML value.
+
+```python
+value_eq(other: object) -> bool
+```
 
 ### Stale Node Behavior
 

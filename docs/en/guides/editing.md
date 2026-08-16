@@ -326,7 +326,53 @@ doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
 
-Wildcard/deep-scan results are **not directly editable** — use them to locate paths, then edit with `set()`/`insert()`/etc.
+Wildcard/deep-scan results are **not directly editable** via `set()` — use
+`doc.set_many()` to apply values to wildcard paths in one call (below).
+
+### Bulk and Structural Edits
+
+#### `doc.set_many()` — apply multiple values at once
+
+Set multiple paths in a single splice burst. Paths may include wildcards
+(`[*]`) and deep scans (`..`) — every matching node is set:
+
+```python
+doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
+doc.set_many({
+    "$.items[*].pass": False,   # wildcard: every item
+    "$.name": "config",          # plain path
+})
+```
+
+#### `doc.sort_keys()` — order mapping keys
+
+Sort the keys of a mapping (default: root) in place:
+
+```python
+doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
+doc.sort_keys()           # sorts the root mapping
+print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+```
+
+#### `Node.move(new_path)` — relocate a subtree
+
+Move a subtree to a new path in the same document (copies then removes the
+source):
+
+```python
+doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
+doc.node().find("$.src").move("$.dst")
+print(doc.to_yaml())      # dst:\n  x: 1
+```
+
+#### `Node.path` / `Node.find_first()` / `Node.value_eq()`
+
+```python
+node = doc.node().find("$.a.b")
+node.path                  # ('a', 'b') — the path segments
+doc.node().find_first("$.items[*]")  # first wildcard match or None
+node.value_eq(other_node)  # compare resolved values (not reference identity)
+```
 
 ### Aliases and Merge Keys
 

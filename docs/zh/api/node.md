@@ -62,6 +62,14 @@ root_type -> str
 _path -> tuple
 ```
 
+#### `path`
+
+Get this node's path segments (tuple of keys and indices). The public accessor for logging, error messages, and re-finding a node after it becomes stale.
+
+```python
+path -> tuple
+```
+
 #### `children`
 
 获取此节点的子节点。
@@ -150,6 +158,14 @@ find(path: str) -> Node | list[Node]
 | `$..*` | 所有后代节点 |
 
 **返回：** 精确路径返回单个 `Node`，通配符/深度扫描查询返回 `list[Node]`。
+
+#### `find_first()`
+
+Find the first matching node by JSONPath-like path. Always returns a single `Node` or `None` (never a list) — for wildcard paths (`[*]`), returns the first element.
+
+```python
+find_first(path: str) -> Node | None
+```
 
 #### `walk()`
 
@@ -293,6 +309,22 @@ set_flow_style(flow: bool) -> None
 set_chomping(chomp: str) -> None
 ```
 
+#### `sort_keys()`
+
+Sort the keys of this mapping node in place. No-op on non-mapping nodes.
+
+```python
+sort_keys() -> None
+```
+
+#### `move()`
+
+Move this subtree to a new path in the same document (copies the subtree to `new_path`, then removes the source). `new_path` is an absolute JSONPath.
+
+```python
+move(new_path: str) -> None
+```
+
 #### `to_yaml()`
 
 将此子树序列化为 YAML 字符串。
@@ -344,6 +376,14 @@ __eq__(other: object) -> bool
 ```
 
 两个 `Node` 实例在共享相同文档、路径和存活状态时相等。
+
+#### `value_eq()`
+
+Compare this node's resolved value with another node or Python value. Unlike `__eq__` (reference identity), this compares the actual YAML value.
+
+```python
+value_eq(other: object) -> bool
+```
 
 ### Stale Node Behavior
 

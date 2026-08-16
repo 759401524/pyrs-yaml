@@ -318,7 +318,50 @@ doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
 
-ワイルドカード/ディープスキャンの結果は**直接編集できません** — パスの特定に使用し、編集は `set()` / `insert()` などで行ってください。
+ワイルドカード/ディープスキャンの結果は `set()` では**直接編集できません** — 一度の呼び出しでワイルドカードパスに値を適用するには `doc.set_many()` を使用します（下記）。
+
+### 一括・構造編集
+
+#### `doc.set_many()` — 複数値を一度に設定
+
+複数のパスを単一のスプライスバーストで設定します。パスにワイルドカード（`[*]`）やディープスキャン（`..`）を含められます — 一致するすべてのノードが設定されます：
+
+```python
+doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
+doc.set_many({
+    "$.items[*].pass": False,   # ワイルドカード: 全アイテム
+    "$.name": "config",          # 通常パス
+})
+```
+
+#### `doc.sort_keys()` — マッピングキーの並べ替え
+
+マッピング（デフォルト: ルート）のキーをその場で並べ替えます：
+
+```python
+doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
+doc.sort_keys()           # ルートマッピングを並べ替え
+print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+```
+
+#### `Node.move(new_path)` — サブツリーの移動
+
+サブツリーを同じドキュメント内の新しいパスへ移動します（コピー後にソースを削除）：
+
+```python
+doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
+doc.node().find("$.src").move("$.dst")
+print(doc.to_yaml())      # dst:\n  x: 1
+```
+
+#### `Node.path` / `Node.find_first()` / `Node.value_eq()`
+
+```python
+node = doc.node().find("$.a.b")
+node.path                  # ('a', 'b') — パスセグメント
+doc.node().find_first("$.items[*]")  # 最初のワイルドカード一致または None
+node.value_eq(other_node)  # 解決後の値を比較（参照同一性ではない）
+```
 
 ## エイリアスとマージキー
 

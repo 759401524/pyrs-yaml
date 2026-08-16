@@ -62,6 +62,16 @@ The path tuple that navigates to this node within the document's AST.
 _path -> tuple
 ```
 
+#### `path`
+
+Get this node's path segments (tuple of keys and indices). Unlike `_path`,
+this is the documented public accessor — useful for logging, error messages,
+and re-finding a node after it becomes stale.
+
+```python
+path -> tuple
+```
+
 #### `children`
 
 Get the child nodes of this node.
@@ -150,6 +160,16 @@ find(path: str) -> Node | list[Node]
 | `$..*` | All descendant nodes |
 
 **Returns:** A single `Node` for exact paths, or a `list[Node]` for wildcard/deep-scan queries.
+
+#### `find_first()`
+
+Find the first matching node by JSONPath-like path. Always returns a single
+`Node` or `None` (never a list) — for wildcard paths (`[*]`), returns the first
+element.
+
+```python
+find_first(path: str) -> Node | None
+```
 
 #### `walk()`
 
@@ -297,6 +317,23 @@ Set (or replace) this node's chomping indicator. Recognized values: `"strip"` (`
 set_chomping(chomp: str) -> None
 ```
 
+#### `sort_keys()`
+
+Sort the keys of this mapping node in place. No-op on non-mapping nodes.
+
+```python
+sort_keys() -> None
+```
+
+#### `move()`
+
+Move this subtree to a new path in the same document (copies the subtree to
+`new_path`, then removes the source). `new_path` is an absolute JSONPath.
+
+```python
+move(new_path: str) -> None
+```
+
 #### `to_yaml()`
 
 Serialize this subtree to a YAML string.
@@ -350,6 +387,15 @@ __eq__(other: object) -> bool
 ```
 
 Two `Node` instances are equal if they share the same document, path, and alive state.
+
+#### `value_eq()`
+
+Compare this node's resolved value with another node or Python value. Unlike
+`__eq__` (reference identity), this compares the actual YAML value.
+
+```python
+value_eq(other: object) -> bool
+```
 
 ### Stale Node Behavior
 

@@ -23,6 +23,7 @@ status: new
 - **ノード style/format セッター/ゲッター** — `Node.scalar_style` / `Node.flow_style` / `Node.chomping` 読み取りプロパティと `set_scalar_style` / `set_flow_style` / `set_chomping` メソッド。ScalarStyle/Chomping が `Copy` を derive するようになりました。非スカラーノードは `None` 返却 / no-op、エイリアスや存在しないパスはエラーになります。
 - **スキーマ構造検証** — スキーマ定義の `validate` セクションで構造チェック（パス限定スカラー型、`sequence_of`/`mapping_of` コンテナ、`required`）を追加。`validate_against_schema(data, schema_yaml)` はすべての失敗を列挙して `YamlValidateError` を送出します。
 - **`Node.copy()`** — サブツリーをドキュメントから独立した Python 値（dict/list/scalar）として深くコピーします。`set_value()` で貼り付けるのに便利です。
+- **詳細編集 API** — `doc.set_many({path: value})` で複数パス（ワイルドカード `[*]` とディープスキャン `..` 対応）を単一スプライスバーストで設定。`doc.sort_keys()` でマッピングキーをその場で並べ替え。`Node.move(new_path)` でサブツリーを移動。`Node.path` / `Node.find_first()` / `Node.value_eq()` でパスアクセス・最初のワイルドカード検索・値比較を追加。
 
 #### 変更
 

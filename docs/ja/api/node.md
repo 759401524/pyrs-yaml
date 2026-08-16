@@ -62,6 +62,14 @@ root_type -> str
 _path -> tuple
 ```
 
+#### `path`
+
+Get this node's path segments (tuple of keys and indices). The public accessor for logging, error messages, and re-finding a node after it becomes stale.
+
+```python
+path -> tuple
+```
+
 #### `children`
 
 このノードの子ノードを取得します。
@@ -150,6 +158,14 @@ find(path: str) -> Node | list[Node]
 | `$..*` | すべての子孫ノード |
 
 **戻り値:** 厳密なパスには単一の `Node`、ワイルドカード/深層検索クエリには `list[Node]`。
+
+#### `find_first()`
+
+Find the first matching node by JSONPath-like path. Always returns a single `Node` or `None` (never a list) — for wildcard paths (`[*]`), returns the first element.
+
+```python
+find_first(path: str) -> Node | None
+```
 
 #### `walk()`
 
@@ -293,6 +309,22 @@ chomping 指示子を設定（または置換）します。値: `"strip"`（`-`
 set_chomping(chomp: str) -> None
 ```
 
+#### `sort_keys()`
+
+Sort the keys of this mapping node in place. No-op on non-mapping nodes.
+
+```python
+sort_keys() -> None
+```
+
+#### `move()`
+
+Move this subtree to a new path in the same document (copies the subtree to `new_path`, then removes the source). `new_path` is an absolute JSONPath.
+
+```python
+move(new_path: str) -> None
+```
+
 #### `to_yaml()`
 
 このサブツリーを YAML 文字列にシリアライズします。
@@ -344,6 +376,14 @@ __eq__(other: object) -> bool
 ```
 
 2 つの `Node` インスタンスは、同じドキュメント、パス、および有効状態を共有する場合に等しいとみなされます。
+
+#### `value_eq()`
+
+Compare this node's resolved value with another node or Python value. Unlike `__eq__` (reference identity), this compares the actual YAML value.
+
+```python
+value_eq(other: object) -> bool
+```
 
 ### Stale Node Behavior
 

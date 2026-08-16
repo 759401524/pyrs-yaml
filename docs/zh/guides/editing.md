@@ -322,7 +322,50 @@ doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
 
-通配符/深度扫描的结果**不能直接编辑** — 可用来定位路径，然后用 `set()`/`insert()` 等进行编辑。
+通配符/深度扫描的结果**不能直接用 `set()` 编辑** — 如需在一次调用中对通配符路径应用值，请使用 `doc.set_many()`（见下）。
+
+### 批量与结构编辑
+
+#### `doc.set_many()` — 一次设置多个值
+
+在单次 splice 突发中设置多个路径。路径可包含通配符（`[*]`）和深度扫描（`..`）— 所有匹配节点都会被设置：
+
+```python
+doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
+doc.set_many({
+    "$.items[*].pass": False,   # 通配符：所有项
+    "$.name": "config",          # 普通路径
+})
+```
+
+#### `doc.sort_keys()` — 映射键排序
+
+原地对映射（默认：根）的键进行排序：
+
+```python
+doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
+doc.sort_keys()           # 排序根映射
+print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+```
+
+#### `Node.move(new_path)` — 移动子树
+
+将子树移动到同一文档中的新路径（复制后删除源）：
+
+```python
+doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
+doc.node().find("$.src").move("$.dst")
+print(doc.to_yaml())      # dst:\n  x: 1
+```
+
+#### `Node.path` / `Node.find_first()` / `Node.value_eq()`
+
+```python
+node = doc.node().find("$.a.b")
+node.path                  # ('a', 'b') — 路径段
+doc.node().find_first("$.items[*]")  # 第一个通配符匹配，无则 None
+node.value_eq(other_node)  # 比较解析后的值（非引用同一性）
+```
 
 ## 别名与合并键
 

@@ -919,3 +919,79 @@ pub(crate) fn chomping_to_str(chomp: crate::ast::Chomping) -> &'static str {
         crate::ast::Chomping::Keep => "keep",
     }
 }
+
+/// Extract the string key of a mapping key node for sorting. Non-scalar keys
+/// fall back to a stable deterministic representation.
+fn scalar_key_str(key: &CustomNode) -> String {
+    match key {
+        CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
+        CustomNode::Null { .. } => String::new(),
+        _ => format!("{:?}", key),
+    }
+}
+
+/// Sort the keys of a mapping node at `segments` in place.
+pub fn sort_keys_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        if let CustomNode::Mapping { pairs, .. } = n {
+            pairs.sort_by(|ka, _va, kb, _vb| {
+                let sa = scalar_key_str(ka);
+                let sb = scalar_key_str(kb);
+                sa.cmp(&sb)
+            });
+        }
+    })
+}
+
+/// Move a subtree from `src_segments` to `dst_segments` (inside the same
+/// document). The source path is removed after copying.
+pub fn move_path(
+    node: &mut CustomNode,
+    src_segments: &[Segment<'_>],
+    dst_segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    // Clone the source subtree
+    let src = crate::editing::navigate(node, src_segments)
+        .map_err(|e| e.to_string())?
+        .clone();
+    // Set at destination
+    let mut set_unit = set_path(node, dst_segments, src, false, source, line_offsets, false)?;
+    // Delete source
+    let del_unit = delete_path(node, src_segments, source, line_offsets)?;
+    // Merge: use the set unit as primary (it covers the important region)
+    if !set_unit.eligible {
+        set_unit.eligible = del_unit.eligible;
+    }
+    Ok(set_unit)
+}
+
+/// Apply multiple set operations at once. Each pair is a (segments, new_value).
+/// Returns a DirtyUnit for each operation.
+pub fn set_many_path(
+    node: &mut CustomNode,
+    pairs: &[(Vec<Segment<'_>>, CustomNode)],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<Vec<DirtyUnit>, String> {
+    let mut units = Vec::with_capacity(pairs.len());
+    for (segments, new_value) in pairs {
+        let unit = set_path(
+            node,
+            segments,
+            new_value.clone(),
+            false,
+            source,
+            line_offsets,
+            false,
+        )?;
+        units.push(unit);
+    }
+    Ok(units)
+}

@@ -150,6 +150,10 @@ class YamlDocument:
         """
         Insert a value by path (internal, inserts at a sequence position).
         """
+    def _move_path(self, /, src_segments: "list", dst_segments: "list") -> "None":
+        """
+        Move a subtree from `src_segments` to `dst_segments` (internal).
+        """
     def _remove_anchor_path(self, /, segments: "list") -> "None":
         """
         Remove the anchor on the node at `segments` (internal).
@@ -190,6 +194,10 @@ class YamlDocument:
         """
         Set the flow style on the node at `segments` (internal).
         """
+    def _set_many_path(self, /, pairs: "list") -> "None":
+        """
+        Set multiple values at once (internal). Each pair is (segments, value).
+        """
     def _set_path(self, /, segments: "list", value: "Any", create_missing: "bool" = False) -> "None":
         """
         Set a value by path (internal, called by `__setitem__`).
@@ -201,6 +209,10 @@ class YamlDocument:
     def _set_tag_path(self, /, segments: "list", tag: "str") -> "None":
         """
         Set a YAML tag on the node at `segments` (internal).
+        """
+    def _sort_keys_path(self, /, segments: "list") -> "None":
+        """
+        Sort the keys of the mapping at `segments` in place (internal).
         """
     def _walk_paths(self, /) -> list[Any]:
         """

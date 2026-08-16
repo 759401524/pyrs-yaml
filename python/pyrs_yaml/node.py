@@ -68,6 +68,15 @@ class Node:
         """Check if the parent document is still alive."""
         return self._alive and self._doc is not None
 
+    @property
+    def path(self) -> tuple[Any, ...]:
+        """Get this node's path segments (tuple of keys and indices).
+
+        The path can be used to reconstruct a JSONPath-like string or to
+        re-find the node after it becomes stale.
+        """
+        return self._path
+
     def release(self) -> None:
         """Release the reference to the parent document, marking this node as stale.
 
@@ -253,6 +262,24 @@ class Node:
         """
         self._with_path(lambda doc, segs: doc._set_chomping_path(segs, chomp))
 
+    def sort_keys(self) -> None:
+        """Sort the keys of this mapping node in place.
+
+        Only meaningful on mapping nodes; no-op on other node types.
+        """
+        self._with_path(lambda doc, segs: doc._sort_keys_path(segs))
+
+    def move(self, new_path: str) -> None:
+        """Move this subtree to a new path in the same document.
+
+        ``new_path`` is an absolute JSONPath (``$.dest.key``). The source node
+        is removed after the subtree is copied to the destination.
+        """
+        doc = self._get_doc()
+        dst = Node(doc).find(new_path) if new_path != "$" else Node(doc)
+        dst_segs = [s for s in dst._path]
+        doc._move_path([s for s in self._path], dst_segs)
+
     def _with_path(self, action: Callable[[Any, list[Any]], None]) -> None:
         doc = self._get_doc()
         segments = [s for s in self._path]
@@ -323,6 +350,21 @@ class Node:
                 current = Node(doc, val_path)
         return current
 
+    def find_first(self, path: str) -> Node | None:
+        """Find the first matching node by JSONPath-like path.
+
+        Unlike ``find()``, this always returns a single ``Node`` or ``None``
+        (never a list). For wildcard paths (``[*]``), returns the first element.
+        """
+        result = self.find(path)
+        if isinstance(result, list):
+            return result[0] if result else None
+        try:
+            result._resolve()
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+        return result
+
     @override
     def __repr__(self) -> str:
         if not self._alive:
@@ -337,6 +379,16 @@ class Node:
         if not isinstance(other, Node):
             return NotImplemented
         return self._path == other._path and self._doc is other._doc and self._alive == other._alive
+
+    def value_eq(self, other: object) -> bool:
+        """Compare this node's resolved value with another node or Python value.
+
+        Unlike ``==`` (which compares reference identity), this compares the
+        actual YAML value (dict/list/scalar/None) after resolution.
+        """
+        if isinstance(other, Node):
+            return self._resolve() == other._resolve()
+        return self._resolve() == other
 
 
 def _walk_node_paths(path: tuple[Any, ...], value: Any) -> Iterator[tuple[tuple[Any, ...], Any]]:
