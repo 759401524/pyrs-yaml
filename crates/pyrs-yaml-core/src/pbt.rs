@@ -118,7 +118,7 @@ mod tests {
             );
             // Every scalar must be a string — most tree scalars won't satisfy
             // this, so errors (if any) must reference paths that exist.
-            let result = crate::parser::yaml::schema_language::validate_node(&node, &resolver);
+            let result = crate::parser::yaml::schema_language::validate_node(&node, &resolver, "");
             let all_paths: std::collections::HashSet<String> = paths.into_iter().collect();
             if let Err(errors) = result {
                 for e in &errors {

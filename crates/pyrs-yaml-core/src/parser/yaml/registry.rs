@@ -10,6 +10,7 @@ use crate::parser::yaml::schema::{
     resolve_core_type, resolve_failsafe, resolve_json_type, resolve_yaml11_type,
 };
 use crate::parser::yaml::types::{Schema, SchemaResolver, YamlType};
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, RwLock};
 
@@ -64,6 +65,7 @@ static REGISTRY: LazyLock<RwLock<SchemaRegistry>> =
 #[derive(Default)]
 pub struct SchemaRegistry {
     schemas: HashMap<String, Schema>,
+    rule_resolvers: HashMap<String, Arc<dyn Any + Send + Sync>>,
 }
 
 impl SchemaRegistry {
@@ -71,6 +73,7 @@ impl SchemaRegistry {
     pub fn new() -> Self {
         Self {
             schemas: builtin_schemas(),
+            rule_resolvers: HashMap::new(),
         }
     }
 
@@ -86,9 +89,19 @@ impl SchemaRegistry {
             .insert(name.to_string(), Schema::Custom(resolver));
     }
 
+    /// Register a boxed RuleResolver for name-based validation.
+    pub fn register_rule_resolver(&mut self, name: &str, resolver: Arc<dyn Any + Send + Sync>) {
+        self.rule_resolvers.insert(name.to_string(), resolver);
+    }
+
     /// Look up a schema by name.
     pub fn get(&self, name: &str) -> Option<Schema> {
         self.schemas.get(name).cloned()
+    }
+
+    /// Look up a RuleResolver by name.
+    pub fn get_rule_resolver(&self, name: &str) -> Option<Arc<dyn Any + Send + Sync>> {
+        self.rule_resolvers.get(name).cloned()
     }
 }
 
@@ -115,6 +128,21 @@ pub fn register_boxed(name: &str, resolver: Arc<dyn SchemaResolver>) {
     if let Ok(mut reg) = REGISTRY.write() {
         reg.register_boxed(name, resolver);
     }
+}
+
+/// Register a boxed RuleResolver for name-based validation.
+pub fn register_rule_resolver(name: &str, resolver: Arc<dyn Any + Send + Sync>) {
+    if let Ok(mut reg) = REGISTRY.write() {
+        reg.register_rule_resolver(name, resolver);
+    }
+}
+
+/// Look up a RuleResolver by name (for name-based validation).
+pub fn get_rule_resolver(name: &str) -> Option<Arc<dyn Any + Send + Sync>> {
+    let Ok(reg) = REGISTRY.read() else {
+        return None;
+    };
+    reg.get_rule_resolver(name)
 }
 
 /// All registered schema names.

@@ -433,7 +433,15 @@ pub(crate) fn validate_custom_types(py: Python, obj: Py<PyAny>) -> PyResult<()> 
 pub(crate) fn register_schema(name: &str, schema_yaml: &str) -> PyResult<()> {
     let resolver = crate::parser::yaml::schema_language::parse_schema_yaml(schema_yaml)
         .map_err(|e| YamlParseError::new_err(format!("Schema parse error: {}", e)))?;
-    crate::parser::yaml::registry::register_boxed(name, std::sync::Arc::new(resolver));
+    let resolver = std::sync::Arc::new(resolver);
+    crate::parser::yaml::registry::register_boxed(
+        name,
+        resolver.clone() as std::sync::Arc<dyn crate::parser::yaml::types::SchemaResolver>,
+    );
+    crate::parser::yaml::registry::register_rule_resolver(
+        name,
+        resolver as std::sync::Arc<dyn std::any::Any + Send + Sync>,
+    );
     Ok(())
 }
 
@@ -477,7 +485,39 @@ pub(crate) fn validate_against_schema(data: &str, schema_yaml: &str) -> PyResult
         .map_err(|e| YamlParseError::new_err(format!("failed to parse data: {}", e)))?;
     let resolver = parse_schema_yaml(schema_yaml)
         .map_err(|e| YamlParseError::new_err(format!("Schema parse error: {}", e)))?;
-    match validate_node(&ast, &resolver) {
+    match validate_node(&ast, &resolver, data) {
+        Ok(()) => Ok(()),
+        Err(errors) => {
+            let msg = errors
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            Err(YamlValidateError::new_err(msg))
+        }
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (data: "str", name: "str") -> "None")]
+/// Validate a YAML document against a **registered** schema by name.
+///
+/// `data` is a YAML string; `name` is the name of a previously registered
+/// schema (via `register_schema` / `load_schema`). Raises `YamlValidateError`
+/// when the document does not conform to the schema's structural `validate`
+/// section.
+pub(crate) fn validate_against_registered_schema(data: &str, name: &str) -> PyResult<()> {
+    use pyrs_yaml_core::parser::yaml::schema_language::{RuleResolver, validate_node};
+    use pyrs_yaml_core::parser::yaml::{Schema, registry};
+
+    let resolver = registry::get_rule_resolver(name)
+        .ok_or_else(|| YamlValidateError::new_err(format!("unknown schema '{}'", name)))?;
+    let Some(rr) = resolver.downcast_ref::<RuleResolver>() else {
+        return Ok(());
+    };
+    let ast = pyrs_yaml_core::parser::parse(data, Schema::Core)
+        .map_err(|e| YamlParseError::new_err(format!("failed to parse data: {}", e)))?;
+    match validate_node(&ast, rr, data) {
         Ok(()) => Ok(()),
         Err(errors) => {
             let msg = errors
