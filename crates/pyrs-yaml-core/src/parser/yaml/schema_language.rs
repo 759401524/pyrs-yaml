@@ -142,6 +142,10 @@ impl ValidateRule {
 pub struct SchemaValidationError {
     pub path: String,
     pub message: String,
+    /// Line number (1-based) in the source document, if available.
+    pub line: Option<usize>,
+    /// Column number (1-based) in the source document, if available.
+    pub column: Option<usize>,
 }
 
 impl SchemaValidationError {
@@ -149,13 +153,29 @@ impl SchemaValidationError {
         Self {
             path: path.into(),
             message: message.into(),
+            line: None,
+            column: None,
         }
+    }
+
+    /// Set the line/column location from a source byte range.
+    pub fn with_location(mut self, source: &str, range: Option<&std::ops::Range<usize>>) -> Self {
+        if let Some(r) = range {
+            let before = &source[..r.start];
+            self.line = Some(before.lines().count().max(1));
+            self.column = Some(r.start - before.rfind('\n').map(|i| i + 1).unwrap_or(0) + 1);
+        }
+        self
     }
 }
 
 impl std::fmt::Display for SchemaValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.path, self.message)
+        if let Some(ref line) = self.line {
+            write!(f, "{}:{}: {}", line, self.column.unwrap_or(1), self.message)
+        } else {
+            write!(f, "{}: {}", self.path, self.message)
+        }
     }
 }
 
@@ -520,6 +540,7 @@ fn path_matches(pattern: Option<&str>, actual: &str) -> bool {
 pub fn validate_node(
     ast: &CustomNode,
     resolver: &RuleResolver,
+    source: &str,
 ) -> Result<(), Vec<SchemaValidationError>> {
     let mut errors = Vec::new();
     // Required existence checks (paths not present in the AST are skipped by
@@ -535,7 +556,7 @@ pub fn validate_node(
             errors.push(SchemaValidationError::new(path, "required path is missing"));
         }
     }
-    validate_recursive(ast, "$", resolver, &mut errors);
+    validate_recursive(ast, "$", source, resolver, &mut errors);
     if errors.is_empty() {
         Ok(())
     } else {
@@ -606,6 +627,7 @@ fn rule_path_to_segments(path: &str) -> Option<Vec<crate::editing::Segment<'stat
 fn validate_recursive(
     node: &CustomNode,
     path: &str,
+    source: &str,
     resolver: &RuleResolver,
     errors: &mut Vec<SchemaValidationError>,
 ) {
@@ -624,20 +646,23 @@ fn validate_recursive(
         match &rule.kind {
             ValidateKind::Required => {
                 if matches!(node, CustomNode::Null { .. }) {
-                    errors.push(SchemaValidationError::new(
-                        path,
-                        "required path is null or missing",
-                    ));
+                    errors.push(
+                        SchemaValidationError::new(path, "required path is null or missing")
+                            .with_location(source, node.source_range()),
+                    );
                 }
             }
             ValidateKind::Type(expected) => {
                 if let CustomNode::Scalar { value, .. } = node {
                     let resolved = resolver.resolve(value.as_ref());
                     if !yaml_type_matches(&resolved, *expected) {
-                        errors.push(SchemaValidationError::new(
-                            path,
-                            format!("expected {} but got {:?}", expected, resolved),
-                        ));
+                        errors.push(
+                            SchemaValidationError::new(
+                                path,
+                                format!("expected {} but got {:?}", expected, resolved),
+                            )
+                            .with_location(source, node.source_range()),
+                        );
                     }
                 }
             }
@@ -648,13 +673,16 @@ fn validate_recursive(
                         if let CustomNode::Scalar { value, .. } = item {
                             let resolved = resolver.resolve(value.as_ref());
                             if !yaml_type_matches(&resolved, *expected) {
-                                errors.push(SchemaValidationError::new(
-                                    item_path,
-                                    format!(
-                                        "expected sequence element {} but got {:?}",
-                                        expected, resolved
-                                    ),
-                                ));
+                                errors.push(
+                                    SchemaValidationError::new(
+                                        item_path,
+                                        format!(
+                                            "expected sequence element {} but got {:?}",
+                                            expected, resolved
+                                        ),
+                                    )
+                                    .with_location(source, item.source_range()),
+                                );
                             }
                         }
                     }
@@ -671,13 +699,16 @@ fn validate_recursive(
                         if let CustomNode::Scalar { value, .. } = val {
                             let resolved = resolver.resolve(value.as_ref());
                             if !yaml_type_matches(&resolved, *expected) {
-                                errors.push(SchemaValidationError::new(
-                                    val_path,
-                                    format!(
-                                        "expected mapping value {} but got {:?}",
-                                        expected, resolved
-                                    ),
-                                ));
+                                errors.push(
+                                    SchemaValidationError::new(
+                                        val_path,
+                                        format!(
+                                            "expected mapping value {} but got {:?}",
+                                            expected, resolved
+                                        ),
+                                    )
+                                    .with_location(source, val.source_range()),
+                                );
                             }
                         }
                     }
@@ -695,13 +726,13 @@ fn validate_recursive(
                     _ => "(complex)".to_string(),
                 };
                 let child_path = format!("{}.{}", path, key_str);
-                validate_recursive(val, &child_path, resolver, errors);
+                validate_recursive(val, &child_path, source, resolver, errors);
             }
         }
         CustomNode::Sequence { items, .. } => {
             for (i, item) in items.iter().enumerate() {
                 let child_path = format!("{}[{}]", path, i);
-                validate_recursive(item, &child_path, resolver, errors);
+                validate_recursive(item, &child_path, source, resolver, errors);
             }
         }
         _ => {}

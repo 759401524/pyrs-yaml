@@ -413,6 +413,16 @@ def set_language(lang: "str") -> "None":
     Set the error message language.
     """
 
+def validate_against_registered_schema(data: "str", name: "str") -> "None":
+    """
+    Validate a YAML document against a **registered** schema by name.
+
+    `data` is a YAML string; `name` is the name of a previously registered
+    schema (via `register_schema` / `load_schema`). Raises `YamlValidateError`
+    when the document does not conform to the schema's structural `validate`
+    section.
+    """
+
 def validate_against_schema(data: "str", schema_yaml: "str") -> "None":
     """
     Validate a YAML document against a schema definition's `validate` rules.

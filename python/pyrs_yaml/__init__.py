@@ -64,7 +64,7 @@ from .pyrs_yaml import (
     remove_type,
     safe_dump,
     set_language,
-    validate_against_schema,
+    validate_against_registered_schema,
     validate_custom_types,
 )
 from .pyrs_yaml import (
@@ -90,6 +90,9 @@ from .pyrs_yaml import (
 )
 from .pyrs_yaml import (
     safe_loads as _safe_loads,
+)
+from .pyrs_yaml import (
+    validate_against_schema as _validate_against_schema,
 )
 
 _F = TypeVar("_F", bound=Callable[..., Any])
@@ -202,6 +205,17 @@ def _coerce_schema(schema: str | _SchemaDict) -> str:
         register_schema(name, yaml_str)
         return name
     raise TypeError(f"schema must be str or dict, got {type(schema).__name__}")
+
+
+def validate_against_schema(data: str, schema: str) -> None:
+    """Validate a YAML document against a schema's `validate` rules.
+
+    ``schema`` can be either a registered schema name or a schema definition
+    YAML string. Raises ``YamlValidateError`` listing every structural failure.
+    """
+    if "\n" in schema or "{" in schema:
+        return _validate_against_schema(data, schema)
+    return validate_against_registered_schema(data, schema)
 
 
 # Wrap YAML to accept inline dict schemas. PyO3 validates signature at the
