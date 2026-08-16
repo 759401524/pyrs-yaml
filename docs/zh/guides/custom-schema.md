@@ -74,6 +74,24 @@ d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
 assert d["addr"] == 31
 ```
 
+#### 从文件加载 schema
+
+`load_schema()` 从文件路径读取 schema 定义并注册：
+
+```python
+# hex.yaml 包含上述 schema YAML
+pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
+```
+
+#### 列出已注册 schema
+
+`list_schemas()` 返回所有已注册的 schema 名称（内置 + 自定义）：
+
+```python
+print(pyrs_yaml.list_schemas())
+# ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
+```
+
 ### 内联 Dict Schema
 
 无需预先注册，直接传入字典：

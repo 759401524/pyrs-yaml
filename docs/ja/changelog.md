@@ -19,6 +19,7 @@ status: new
 
 - **ノードメタデータのセッター/ゲッター** — `Node.comment` / `Node.anchor` / `Node.tag` 読み取りプロパティと `set_comment` / `set_anchor` / `set_tag`（および `remove_*` 系）を追加。エイリアスや存在しないパスへの編集はエラーになります。インラインスカラー値・シーケンス項目上のスタンドアロンコメントは独自のインデント行に出力されるようになりました（`child:\n  # c\n  val` と `- a\n# c\n- b` の既存のラウンドトリップ不具合を修正）。
 - **バーベイタムタグ** — `set_tag("!<tag:yaml.org,2002:str>")` はバーベイタムタグ（空ハンドル）を生成し、ソースから解析したバーベイタムタグはラウンドトリップで保持されます：`Tag` の `Display` は空ハンドルタグを `!<...>` で囲んで出力し、`parse_tag` は `!<...>` 形式を認識し、ストリームイベントは `Display` 経由でタグを直列化します。
+- **スキーマファイル IO と一覧** — `load_schema(name, path)` はファイルからスキーマ定義を読み込んで登録し、`list_schemas()` は登録済みのすべてのスキーマ名（組み込み `failsafe`/`json`/`core`/`yaml1.1` + カスタム）を返します。
 - **ノード style/format セッター/ゲッター** — `Node.scalar_style` / `Node.flow_style` / `Node.chomping` 読み取りプロパティと `set_scalar_style` / `set_flow_style` / `set_chomping` メソッド。ScalarStyle/Chomping が `Copy` を derive するようになりました。非スカラーノードは `None` 返却 / no-op、エイリアスや存在しないパスはエラーになります。
 
 #### 変更

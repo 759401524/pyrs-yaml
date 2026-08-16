@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-trip: `Tag`'s `Display` emits `!<...>` wrapping for empty-handle tags,
   `parse_tag` recognizes the `!<...>` form, and stream events serialize tags
   through `Display`.
+- **Schema file IO and listing** — `load_schema(name, path)` reads a schema
+  definition from a file and registers it; `list_schemas()` returns all
+  registered schema names (built-in `failsafe`/`json`/`core`/`yaml1.1` plus
+  custom). Exposes the existing `registry::names()` and wraps
+  `register_schema` with file I/O.
 
 ### Changed
 

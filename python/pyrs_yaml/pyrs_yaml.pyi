@@ -290,6 +290,23 @@ def list_languages() -> "list[str]":
     List supported language codes.
     """
 
+def list_schemas() -> "list[str]":
+    """
+    List all registered schema names (built-in + custom).
+
+    Returns the four built-in schemas (`failsafe`, `json`, `core`, `yaml1.1`)
+    plus any schemas registered via `register_schema()` / `load_schema()`.
+    """
+
+def load_schema(name: "str", path: "str") -> "None":
+    """
+    Register a YAML Schema Language schema from a file.
+
+    Reads the schema definition from `path` (a YAML file with `name`/`extends`/`rules`
+    structure) and registers it under `name`. Equivalent to calling
+    `register_schema(name, open(path).read())` but handles file I/O in Rust.
+    """
+
 def negotiate_language(user_locales: "list[str]", default: "str" = "en") -> "str":
     """
     Negotiate a language from user locale list and default.

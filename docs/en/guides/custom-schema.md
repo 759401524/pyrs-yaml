@@ -76,6 +76,24 @@ d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
 assert d["addr"] == 31
 ```
 
+#### Loading a schema from a file
+
+`load_schema()` reads a schema definition from a file path and registers it:
+
+```python
+# hex.yaml contains the schema YAML shown above
+pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
+```
+
+#### Listing registered schemas
+
+`list_schemas()` returns all registered schema names (built-in + custom):
+
+```python
+print(pyrs_yaml.list_schemas())
+# ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
+```
+
 ### Inline Dict Schema
 
 Instead of registering separately, pass a dict directly:
