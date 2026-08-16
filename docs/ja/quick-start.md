@@ -186,6 +186,46 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` string | No native YAML complex type |
 | `bool` | `true` / `false` | — |
 
+### 10. メタデータの操作（comment, anchor, tag）
+
+```python
+doc = pyrs_yaml.parse("key: value")
+node = doc.node().find("$.key")
+node.set_comment("a note")
+node.set_anchor("cfg")
+node.set_tag("!custom")
+print(doc.to_yaml())
+# key: &cfg !custom value  # a note
+```
+
+### 11. フォーマットの制御
+
+```python
+doc = pyrs_yaml.parse("key: value")
+doc.node().find("$.key").set_scalar_style("single_quoted")
+```
+
+### 12. スキーマで検証
+
+```python
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+pyrs_yaml.validate_against_schema("port: 8080\n", schema)
+```
+
+### 13. 高度な編集
+
+```python
+doc.set_many({"$.items[*].active": False})
+doc.sort_keys()
+```
+
 ## 次のステップ
 
 - **[機能](features.md)** — サポートされているすべての YAML 機能を探索

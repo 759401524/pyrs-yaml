@@ -190,6 +190,47 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 | `complex64/128` | `(re+imj)` 字符串 | 无原生 YAML 复数类型 |
 | `bool` | `true` / `false` | — |
 
+### 10. 操控元数据（comment, anchor, tag）
+
+```python
+doc = pyrs_yaml.parse("key: value")
+node = doc.node().find("$.key")
+node.set_comment("a note")
+node.set_anchor("cfg")
+node.set_tag("!custom")
+print(doc.to_yaml())
+# key: &cfg !custom value  # a note
+```
+
+### 11. 控制格式（scalar style、flow style、chomping）
+
+```python
+doc = pyrs_yaml.parse("key: value")
+doc.node().find("$.key").set_scalar_style("single_quoted")
+print(doc.to_yaml())  # key: 'value'
+```
+
+### 12. 使用 Schema 校验
+
+```python
+schema = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+pyrs_yaml.validate_against_schema("port: 8080\n", schema)
+```
+
+### 13. 深度编辑（批量设置、排序、移动、复制）
+
+```python
+doc.set_many({"$.items[*].active": False})
+doc.sort_keys()
+```
+
 ### 下一步
 
 - **[功能特性](features.md)** — 探索所有支持的 YAML 功能

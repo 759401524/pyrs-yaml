@@ -294,6 +294,11 @@ cfg.name  # "Alice"
 | **增量重新解析** | **✅ `doc.reparse()`** |
 | **就地编辑** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
 | **JSON 导出** | **✅ `doc.to_json()`** |
+| **Metadata editing** | **x1f4af `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **x1f4af `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **x1f4af `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **x1f4af `validate_against_schema()`** |
+| **Schema file IO** | **x1f4af `load_schema()` / `list_schemas()`** |
 | **重复键** | **✅ 可配置（`YamlDuplicateKeyError` / 后值胜出）** |
 | **自定义标签处理器** | **✅ `register_tag` 优先级链式处理** |
 | **Pydantic 模型** | **✅ `parse_as()` 校验** |
