@@ -315,7 +315,50 @@ doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
 
-와일드카드/딥 스캔 결과는 **직접 편집할 수 없습니다** — 경로를 찾는 데 사용한 후 `set()`/`insert()` 등으로 편집하세요.
+와일드카드/딥 스캔 결과는 `set()`으로는 **직접 편집할 수 없습니다** — 한 번의 호출로 와일드카드 경로에 값을 적용하려면 `doc.set_many()`를 사용하세요(아래).
+
+### 일괄 및 구조 편집
+
+#### `doc.set_many()` — 여러 값을 한 번에 설정
+
+여러 경로를 단일 스플라이스 버스트로 설정합니다. 경로에 와일드카드(`[*]`) 및 딥 스캔(`..`)을 포함할 수 있습니다 — 일치하는 모든 노드가 설정됩니다:
+
+```python
+doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
+doc.set_many({
+    "$.items[*].pass": False,   # 와일드카드: 모든 항목
+    "$.name": "config",          # 일반 경로
+})
+```
+
+#### `doc.sort_keys()` — 매핑 키 정렬
+
+매핑(기본값: 루트)의 키를 제자리에서 정렬합니다:
+
+```python
+doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
+doc.sort_keys()           # 루트 매핑 정렬
+print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+```
+
+#### `Node.move(new_path)` — 하위 트리 이동
+
+하위 트리를 같은 문서의 새 경로로 이동합니다(복사 후 소스 삭제):
+
+```python
+doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
+doc.node().find("$.src").move("$.dst")
+print(doc.to_yaml())      # dst:\n  x: 1
+```
+
+#### `Node.path` / `Node.find_first()` / `Node.value_eq()`
+
+```python
+node = doc.node().find("$.a.b")
+node.path                  # ('a', 'b') — 경로 세그먼트
+doc.node().find_first("$.items[*]")  # 첫 와일드카드 일치 또는 None
+node.value_eq(other_node)  # 해석된 값 비교(참조 동일성 아님)
+```
 
 ## 별칭과 병합 키
 

@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Node style/format setters/getters** — `Node.scalar_style` / `Node.flow_style` / `Node.chomping` read properties and `set_scalar_style` / `set_flow_style` / `set_chomping` methods. ScalarStyle/Chomping now derive `Copy`. Non-scalar nodes return `None` / are no-op; aliases and missing paths raise.
 - **Schema structural validation** — a `validate` section in a schema definition adds structural checks (path-qualified scalar types, `sequence_of`/`mapping_of` containers, `required`); `validate_against_schema(data, schema_yaml)` raises `YamlValidateError` listing every failure.
 - **`Node.copy()`** — deep-copies a subtree as a standalone Python value (dict/list/scalar), detached from the document, for pasting via `set_value()`.
+- **Deep editing API** — `doc.set_many({path: value})` sets multiple paths (with wildcard `[*]` and deep-scan `..` support) in a single splice burst; `doc.sort_keys()` orders mapping keys in place; `Node.move(new_path)` relocates a subtree; `Node.path` / `Node.find_first()` / `Node.value_eq()` add path access, first-wildcard lookup, and value comparison.
 
 #### Changed
 

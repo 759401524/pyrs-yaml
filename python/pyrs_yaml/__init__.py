@@ -337,6 +337,8 @@ YamlDocument.insert = _editing._yaml_document_insert  # ty: ignore[unresolved-at
 YamlDocument.append = _editing._yaml_document_append  # ty: ignore[unresolved-attribute]
 YamlDocument.delete = _editing._yaml_document_delete  # ty: ignore[unresolved-attribute]
 YamlDocument.rename = _editing._yaml_document_rename  # ty: ignore[unresolved-attribute]
+YamlDocument.sort_keys = _editing._yaml_document_sort_keys  # ty: ignore[unresolved-attribute]
+YamlDocument.set_many = _editing._yaml_document_set_many  # ty: ignore[unresolved-attribute]
 
 # Module-level aliases (PyYAML compatibility)
 safe_dumps = safe_dump

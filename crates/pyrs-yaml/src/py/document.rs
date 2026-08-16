@@ -154,6 +154,47 @@ impl YamlDocument {
         self.source_dirty = true;
         Ok(())
     }
+
+    /// Apply a batch of edits in a single splice burst. Each DirtyUnit is
+    /// applied sequentially; if any unit fails to splice, the entire splice
+    /// state is discarded (fallback to full re-serialization).
+    pub(crate) fn apply_batch_edit<F>(&mut self, py: Python, edit: F) -> Result<(), pyo3::PyErr>
+    where
+        F: FnOnce(
+                &mut CustomNode,
+                &str,
+                Option<&[usize]>,
+            ) -> Result<Vec<editing::DirtyUnit>, String>
+            + Send
+            + 'static,
+    {
+        py.detach(|| -> Result<(), String> {
+            let src = self.source.as_deref().unwrap_or("");
+            Self::ensure_splice(
+                &mut self.splice,
+                &mut self.splice_checked,
+                &self.ast,
+                &self.source,
+            );
+            let units = {
+                let offsets = self.splice.as_mut().map(|s| s.line_offsets());
+                edit(&mut self.ast, src, offsets)?
+            };
+            if let Some(state) = self.splice.as_mut() {
+                for unit in &units {
+                    if state.apply(unit).is_err() {
+                        self.splice = None;
+                        break;
+                    }
+                }
+            }
+            Ok(())
+        })
+        .map_err(|e| YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)])))?;
+        self.revision = self.revision.wrapping_add(1);
+        self.source_dirty = true;
+        Ok(())
+    }
 }
 
 /// Parse a Python path segment list into `editing::Segment` values.
@@ -825,6 +866,53 @@ impl YamlDocument {
             .map_err(|e| YamlEditError::new_err(e.to_string()))?;
         let schema = crate::py::convert::parse_schema("core")?;
         node_to_pyobject_simple(node, py, &schema)
+    }
+
+    // --- Batch editing primitives (sort_keys, move, set_many) ---
+
+    /// Sort the keys of the mapping at `segments` in place (internal).
+    #[pyo3(signature = (segments: "list") -> "None")]
+    fn _sort_keys_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::sort_keys_path(ast, &segs, src, offs)
+        })
+    }
+
+    /// Move a subtree from `src_segments` to `dst_segments` (internal).
+    #[pyo3(signature = (src_segments: "list", dst_segments: "list") -> "None")]
+    fn _move_path(
+        &mut self,
+        py: Python,
+        src_segments: Vec<Py<PyAny>>,
+        dst_segments: Vec<Py<PyAny>>,
+    ) -> PyResult<()> {
+        let src_segs = parse_segments(py, &src_segments)?;
+        let dst_segs = parse_segments(py, &dst_segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::move_path(ast, &src_segs, &dst_segs, src, offs)
+        })
+    }
+
+    /// Set multiple values at once (internal). Each pair is (segments, value).
+    #[pyo3(signature = (pairs: "list") -> "None")]
+    fn _set_many_path(
+        &mut self,
+        py: Python,
+        pairs: Vec<(Vec<Py<PyAny>>, Py<PyAny>)>,
+    ) -> PyResult<()> {
+        let mut segs_list = Vec::with_capacity(pairs.len());
+        let mut values = Vec::with_capacity(pairs.len());
+        for (raw_segs, raw_val) in pairs {
+            let segs = parse_segments(py, &raw_segs)?;
+            let val = pyobject_to_node(py, &raw_val)?;
+            segs_list.push(segs);
+            values.push(val);
+        }
+        let combined: Vec<_> = segs_list.into_iter().zip(values).collect();
+        self.apply_batch_edit(py, move |ast, src, offs| {
+            editing::set_many_path(ast, &combined, src, offs)
+        })
     }
 
     /// Set the value for a mapping key, `doc['key'] = value`.

@@ -23,6 +23,7 @@ status: new
 - **Node style/format setter/getter** — 新增 `Node.scalar_style` / `Node.flow_style` / `Node.chomping` 只读属性和 `set_scalar_style` / `set_flow_style` / `set_chomping` 方法。ScalarStyle/Chomping 现在 derive `Copy`。非标量节点返回 `None` / no-op，别名和缺失路径报错。
 - **Schema 结构化校验** — 在 schema 定义的 `validate` 段添加结构检查（路径限定标量类型、`sequence_of`/`mapping_of` 容器、`required`）。`validate_against_schema(data, schema_yaml)` 列出所有失败项并抛 `YamlValidateError`。
 - **`Node.copy()`** — 将子树深度复制为与文档分离的独立 Python 值（dict/list/scalar），可用于通过 `set_value()` 粘贴。
+- **深度编辑 API** — `doc.set_many({path: value})` 在单次 splice 突发中设置多个路径（支持通配符 `[*]` 和深度扫描 `..`）；`doc.sort_keys()` 原地排序映射键；`Node.move(new_path)` 移动子树；`Node.path` / `Node.find_first()` / `Node.value_eq()` 新增路径访问、首通配符查找、值比较。
 
 #### 变更
 

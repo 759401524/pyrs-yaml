@@ -43,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Node.copy()`** — deep-copies a subtree as a standalone Python value
   (dict/list/scalar), detached from the document, for pasting via
   `set_value()`.
+- **Deep editing API** — `doc.set_many({"$.path": value})` sets multiple
+  paths (with wildcard `[*]` and deep-scan `..` support) in a single splice
+  burst; `doc.sort_keys()` orders mapping keys in place; `Node.move(new_path)`
+  relocates a subtree atomically; `Node.path` / `Node.find_first()` /
+  `Node.value_eq()` add path access, first-wildcard lookup, and value
+  comparison. Rust primitives: `sort_keys_path` / `move_path` /
+  `set_many_path` + `apply_batch_edit`.
 
 ### Changed
 
