@@ -20,6 +20,12 @@ nav = [
         {"Serialization" = "guides/serialization.md"},
         {"PyYAML Compatibility" = "guides/pyyaml-compat.md"},
         {"Round-Trip Preservation" = "guides/round-trip.md"},
+        {"In-Place Editing" = "guides/editing.md"},
+        {"Streaming Parse" = "guides/streaming.md"},
+        {"Custom Schemas" = "guides/custom-schema.md"},
+        {"Plugin Development" = "guides/plugin-development.md"},
+        {"Community Plugins" = "guides/community-plugins.md"},
+        {"Configuration Management with pyrs-yaml" = "guides/tutorial-config-management.md"},
         {"Markdown Frontmatter" = "guides/frontmatter.md"},
         {"i18n Error Messages" = "guides/i18n.md"},
         {"NumPy ndarray" = "guides/numpy.md"},
@@ -27,6 +33,9 @@ nav = [
     {"API Reference" = [
         {"Module Reference" = "api/reference.md"},
         {"YamlDocument Class" = "api/yaml-document.md"},
+        {"YAML Class" = "api/yaml-instance.md"},
+        {"Node Class" = "api/node.md"},
+        {"MergedView Class" = "api/merged-view.md"},
         {"Exceptions" = "api/exceptions.md"},
     ]},
     {"Performance" = [
@@ -38,6 +47,8 @@ nav = [
         {"Architecture" = "contributing/architecture.md"},
         {"Coding Standards" = "contributing/standards.md"},
         {"Running Tests" = "contributing/tests.md"},
+        {"Changelog Mirrors" = "contributing/changelog-mirrors.md"},
+        {"Site-wide i18n (MkDocs)" = "contributing/site-i18n.md"},
     ]},
     {"Changelog" = "changelog.md"},
     {"License" = "license.md"},
@@ -53,11 +64,13 @@ features = [
     "navigation.indexes",
     "navigation.sections",
     "navigation.top",
+    "navigation.instant",
+    "navigation.prefetch",
+    "navigation.footer",
     "search.highlight",
-    "search.suggest",
-    "search.share",
     "content.code.annotate",
     "content.code.copy",
+    "content.code.select",
     "content.tooltips",
     "toc.follow",
 ]
@@ -164,6 +177,3 @@ description = "We use cookies to recognize you when we visit our websites. That'
 [project.extra.status]
 new = "New"
 deprecated = "Deprecated"
-
-[project.extra.version]
-provider = "mike"
