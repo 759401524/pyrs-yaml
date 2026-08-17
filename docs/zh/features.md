@@ -10,7 +10,7 @@ pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺�
 
 ## YAML 1.2 合规
 
-由 **saphyr-parser** 驱动，pyrs-yaml 在 YAML 测试套件中达到 **98.1% 的通过率**。
+由 **granit-parser** 驱动，pyrs-yaml 在 YAML 测试套件中达到 **99.75% 的通过率（405/406）**。
 
 ## 完美的往返
 
@@ -24,17 +24,17 @@ pyrs-yaml 旨在成为 PyYAML 的**直接替代品**，同时添加 PyYAML 缺�
 - **流式/块式格式** — 保留 `[]`/`{}` 与块式风格
 
 !!! note "基准测试环境"
-    以下性能数据在特定硬件上测得，绝对时间可能因环境而异，但相对加速比在不同硬件上保持一致。
+    以下性能数据通过 CodSpeed CI（`pytest-codspeed`，WallTime 模式）测得。绝对时间可能因环境而异，但相对加速比在不同硬件上保持一致。
 
 ## 性能
 
-Rust 后端比 PyYAML 快 **25–40 倍**：
+Rust 后端比 PyYAML 解析快 **21–43 倍**、序列化快 **55–177 倍**：
 
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 0.07 ms | 1.83 ms |
-| Serialize (large) | 0.07 ms | 2.92 ms |
-| Round-trip | 0.07 ms | 2.90 ms |
+| Parse (large) | 1.5 ms | 57.7 ms |
+| Serialize (large) | 0.17 ms | 30.2 ms |
+| Round-trip | 1.6 ms | 87.9 ms |
 
 ## 自定义 AST
 

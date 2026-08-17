@@ -31,6 +31,10 @@ status: new
 
 - **프리-스레디드 (cp314t) 휠에서 NumPy 재활성화** — cp314t 빌드 인수에서 `--no-default-features` 제거. rust-numpy 0.29는 프리-스레디드 Python을 지원하며, `numpy.ndarray` 직렬화가 프리-스레디드 휠에서 사용 가능합니다(NumPy 설치는 런타임에 자동 감지).
 
+#### 문서
+
+- **모든 언어(en/zh/ja/ko) 문서의 오래된 참조 수정** — `saphyr-parser` → `granit-parser`, YAML 준수율 98.1% → 99.75%(스위트 405/406 케이스), ABI3 지원 3.9–3.13 → 3.8–3.15(py3.9+ → py3.8+), 벤치마크 표를 현재 CodSpeed CI 수치(파싱 21–43배, 직렬화 55–177배 PyYAML 대비 빠름)로 업데이트. Rust 측 벤치마크 섹션을 Criterion에서 divan으로 마이그레이션(`benches/yaml_bench.rs` → `crates/pyrs-yaml/benches/yaml_bench.rs`).
+
 ### [v0.14.1] — 2026-08-15
 
 #### 수정

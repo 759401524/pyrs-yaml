@@ -13,19 +13,19 @@ status: new
 ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。 pyrs-yaml の両方を提供します:
 
 - **PyYAML** (Python) — 遅く、往復解析時に**コメント/アンカー/タグを失う**
-- **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **5–10 倍遅い**
-- **pyrs-yaml** (Rust) — PyYAML より **25–40 倍高速**、すべてを保持
+- **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **解析は 48–100 倍、シリアライズは 123–371 倍遅い**
+- **pyrs-yaml** (Rust) — PyYAML より **解析は 21–43 倍、シリアライズは 55–177 倍高速**、すべてを保持
 
 #### 主要機能
 
-- **YAML 1.2 準拠** — saphyr-parser 駆動（YAML テストスイート 98.1% 合格率）
+- **YAML 1.2 準拠** — granit-parser 駆動（YAML テストスイート 99.75% 合格率、405/406）
 - **完璧なラウンドトリップ** — コメント、アンカー、タグ、チョンピング、スカラースタイル、フロー/ブロックフォーマットを保持
 - **インプレース編集** — JSONPath スタイルのパス（`doc.set("$.a.b", v)`）または `Node` ツリー API で解析済みドキュメントを編集、フォーマットを失わない
-- **PyYAML より 25–40 倍高速** — Rust バックエンド、ゼロコピー解析
+- **PyYAML より解析で 21–43 倍、シリアライズで 55–177 倍高速** — Rust バックエンド、ゼロコピー解析
 - **カスタム AST** — 高度な YAML 操作とカスタムフォーマット用の拡張可能な AST
 - **PyYAML 互換** — `safe_load` / `safe_dump` API で直接置換可能
 - **型ヒント** — PEP 561 準拠、完全な `.pyi` スタブファイル
-- **ABI3** — 単一のホイールで Python 3.9–3.13 に対応
+- **ABI3** — 単一のホイールで Python 3.8–3.15 に対応
 - **国際化エラーメッセージ** — `set_language("ja")` でバイリンガルエラーレポート
 - **NumPy ndarray サポート** — 任意次元の `numpy.ndarray` をゼロコピー Rust ディスパッチで YAML にシリアライズ
 
@@ -56,12 +56,12 @@ assert doc.to_yaml() == original
 
 | Operation | pyrs-yaml | PyYAML | Speedup |
 |-----------|-----------|--------|---------|
-| Parse (small) | 0.00 ms | 0.11 ms | **25×** |
-| Parse (medium) | 0.03 ms | 0.75 ms | **28×** |
-| Parse (large) | 0.07 ms | 1.83 ms | **26×** |
-| Serialize (small) | 0.01 ms | 0.19 ms | **36×** |
-| Serialize (medium) | 0.03 ms | 1.21 ms | **40×** |
-| Serialize (large) | 0.08 ms | 2.96 ms | **37×** |
+| Parse (small) | 0.18 ms | 3.8 ms | **21×** |
+| Parse (medium) | 0.56 ms | 24.2 ms | **43×** |
+| Parse (large) | 1.5 ms | 57.7 ms | **38×** |
+| Serialize (small) | 0.04 ms | 2.2 ms | **55×** |
+| Serialize (medium) | 0.08 ms | 12.6 ms | **159×** |
+| Serialize (large) | 0.17 ms | 30.2 ms | **177×** |
 
 ---
 

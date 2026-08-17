@@ -14,25 +14,27 @@ pyrs-yaml을 가장 인기 있는 두 Python YAML 라이브러리와 비교합�
 
 | 라이브러리 | 시간 | 속도 |
 |---------|------|---------|
-| **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 1.83 ms | 26× 느림 |
-| ruamel.yaml | 4.26 ms | 61× 느림 |
+| **pyrs-yaml** | **1.5 ms** | — |
+| PyYAML | 57.7 ms | 38× 느림 |
+| ruamel.yaml | 127.9 ms | 85× 느림 |
 
 #### Serialize 속도 (대규모 YAML, ~2 KB)
 
 | 라이브러리 | 시간 | 속도 |
 |---------|------|---------|
-| **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 2.92 ms | 40× 느림 |
-| ruamel.yaml | 6.73 ms | 93× 느림 |
+| **pyrs-yaml** | **0.17 ms** | — |
+| PyYAML | 30.2 ms | 177× 느림 |
+| ruamel.yaml | 63.1 ms | 371× 느림 |
 
 #### Round-Trip 속도 (대규모 YAML, ~2 KB)
 
 | 라이브러리 | 시간 | 속도 |
 |---------|------|---------|
-| **pyrs-yaml** | **0.07 ms** | — |
-| PyYAML | 2.90 ms | 41× 느림 |
-| ruamel.yaml | 6.57 ms | 91× 느림 |
+| **pyrs-yaml** | **1.6 ms** | — |
+| PyYAML | 87.9 ms¹ | 55× 느림 |
+| ruamel.yaml | 191.0 ms¹ | 119× 느림 |
+
+¹ PyYAML/ruamel의 라운드트립 시간은 동일 벤치마크의 파싱·직렬화 합계로 추정한 값입니다.
 
 ## 기능 비교
 
@@ -49,7 +51,7 @@ pyrs-yaml을 가장 인기 있는 두 Python YAML 라이브러리와 비교합�
 | **복잡한 키** | ✅ | ✅ | ✅ |
 | **Round-trip 보존** | ✅ | ❌ | ✅ |
 | **Python 바인딩** | ✅ | ✅ | ✅ |
-| **ABI3 (py3.9+)** | ✅ | ❌ | ❌ |
+| **ABI3 (py3.8+)** | ✅ | ❌ | ❌ |
 | **Type stubs (.pyi)** | ✅ | ✅ | ❌ |
 | **i18n 오류 메시지** | ✅ | ❌ | ❌ |
 | **Rust 백엔드** | ✅ | ❌ | ❌ |
@@ -59,11 +61,11 @@ pyrs-yaml을 가장 인기 있는 두 Python YAML 라이브러리와 비교합�
 
 ### pyrs-yaml을 선택할 때
 
-- **성능이 중요합니다** — PyYAML보다 25~40× 빠름
+- **성능이 중요합니다** — PyYAML보다 파싱 21~43×, 직렬화 55~177× 빠름
 - **Round-trip 보존이 중요합니다** — 주석, anchor, tag 보존
 - **PyYAML 호환성을 원합니다** — 즉시 교체 가능한 API
 - **Type hints가 필요합니다** — 완전한 `.pyi` stubs
-- **단일 wheel을 원합니다** — ABI3로 Python 3.9~3.13 지원
+- **단일 wheel을 원합니다** — ABI3로 Python 3.8~3.15 지원
 
 #### PyYAML을 선택할 때
 

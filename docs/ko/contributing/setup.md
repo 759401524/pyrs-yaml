@@ -51,7 +51,7 @@ pyrs-yaml/
 │   ├── lib.rs              # PyO3 모듈 정의
 │   ├── ast.rs              # 사용자 정의 AST (CustomNode)
 │   ├── parser/
-│   │   ├── mod.rs          # saphyr-parser 통합
+│   │   ├── mod.rs          # granit-parser 통합
 │   │   └── yaml/           # YAML 특정 파싱
 │   │       ├── comment.rs  # 주석 추출
 │   │       ├── merge.rs    # 병합 키 해석

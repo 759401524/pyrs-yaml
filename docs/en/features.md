@@ -12,7 +12,7 @@ pyrs-yaml is designed to be a **drop-in replacement** for PyYAML while adding po
 
 ### YAML 1.2 Compliance
 
-Powered by **saphyr-parser**, pyrs-yaml achieves **98.1% pass rate** on the YAML Test Suite.
+Powered by **granit-parser**, pyrs-yaml achieves **99.75% pass rate (405/406)** on the YAML Test Suite.
 
 ### Perfect Round-Trip
 
@@ -28,17 +28,16 @@ Unlike PyYAML, pyrs-yaml **preserves all formatting and metadata**:
 ### Performance
 
 !!! note "Benchmark environment"
-    All benchmarks are measured on the author's machine (Windows 11, Python
-    3.12). Relative speedups (×N) are consistent across hardware but absolute
-    times may vary.
+    All benchmarks are measured via CodSpeed CI (`pytest-codspeed`, WallTime mode).
+    Relative speedups (×N) are consistent across hardware but absolute times may vary.
 
-Rust backend delivers **25–40× speedup** over PyYAML:
+Rust backend delivers **21–43× faster parsing and 55–177× faster serialization** over PyYAML:
 
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 0.07 ms | 1.83 ms |
-| Serialize (large) | 0.07 ms | 2.92 ms |
-| Round-trip | 0.07 ms | 2.90 ms |
+| Parse (large) | 1.5 ms | 57.7 ms |
+| Serialize (large) | 0.17 ms | 30.2 ms |
+| Round-trip | 1.6 ms | 87.9 ms |
 
 ### Custom AST
 

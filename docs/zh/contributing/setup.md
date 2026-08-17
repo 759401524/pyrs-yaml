@@ -51,7 +51,7 @@ pyrs-yaml/
 │   ├── lib.rs              # PyO3 模块定义
 │   ├── ast.rs              # 自定义 AST (CustomNode)
 │   ├── parser/
-│   │   ├── mod.rs          # saphyr-parser 集成
+│   │   ├── mod.rs          # granit-parser 集成
 │   │   └── yaml/           # YAML 特定解析
 │   │       ├── comment.rs  # 注释提取
 │   │       ├── merge.rs    # 合并键解析

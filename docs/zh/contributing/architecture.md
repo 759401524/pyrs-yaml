@@ -27,16 +27,15 @@ pyrs-yaml 使用为性能和正确性设计的模块化架构。
 │  │  • 函数包装器                                       ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │                                 │
-│      ┌─────────────────┼─────────────────┐              │
-│      ▼                 ▼                 ▼              │
-│  ┌─────────┐    ┌────────────┐    ┌────────────┐        │
-│  │ ast.rs  │    │ parser/    │    │serializer  │        │
-│  │ Custom  │◄──►│ saphyr     │    │ to_yaml()  │        │
-│  │ Node    │    │ 集成       │    │ to_yaml_*  │        │
-│  └─────────┘    └────────────┘    └────────────┘        │
-│      ▲                 ▲                                    │
-│      └─────────────────┴────────────────────┘              │
-│                      CustomNode                           │
+│       ┌─────────────────┼────────────────────┐          │
+│       ▼                 ▼                    ▼          │
+│  ┌─────────┐    ┌───────────────┐    ┌────────────┐     │
+│  │ ast.rs  │    │ parser/       │    │serializer  │     │
+│  │ Custom  │◄──►│ granit-parser │    │ to_yaml()  │     │
+│  │ Node    │    │ 集成            │    │ to_yaml_*  │     │
+│  └─────────┘    └───────────────┘    └────────────┘     │
+│       ▲                 ▲                               │
+│       └─────────────────┴────────────────────┘          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -52,7 +51,7 @@ crates/
 │   ├── ast.rs          # CustomNode AST
 │   ├── editing/        # 编辑原语 (navigate, region, dirty, metadata)
 │   ├── i18n.rs         # 国际化
-│   ├── parser/         # YAML 解析器 (基于 saphyr)
+│   ├── parser/         # YAML 解析器 (基于 granit)
 │   ├── serializer.rs   # YAML 序列化器
 │   └── splice.rs       # 基于分片拼接的文本组装
 └── pyrs-yaml/          # PyO3 绑定层
@@ -85,7 +84,7 @@ crates/
 
 #### 2. `crates/pyrs-yaml-core/src/parser/` — YAML 解析器
 
-基于 **saphyr-parser**（YAML 1.2 兼容）构建：
+基于 **granit-parser**（YAML 1.2 兼容）构建：
 
 - **`mod.rs`** — `AstReceiver` 状态机、基于事件的解析
 - **`yaml/comment.rs`** — 从原始文本提取注释
@@ -166,7 +165,7 @@ YAML 字符串
 ┌─────────────────────────────────────┐
 │ 1. 从原始文本提取注释                │
 │ 2. 从原始文本提取锚点                │
-│ 3. saphyr-parser → YAML 事件        │
+│ 3. granit-parser → YAML 事件       │
 │ 4. AstReceiver 构建 CustomNode      │
 │ 5. 解析合并键（如果启用）            │
 └─────────────────────────────────────┘
@@ -208,7 +207,7 @@ YAML 字符串
 | Crate | 用途 |
 |-------|------|
 | **PyO3** | Python 绑定（带 `experimental-inspect`） |
-| **saphyr-parser** | YAML 1.2 兼容解析 |
+| **granit-parser** | YAML 1.2 兼容解析 |
 | **IndexMap** | 键顺序保留的有序哈希映射 |
 | **serde_json** | JSON ↔ YAML 转换 |
 | **rust-i18n** | 国际化错误消息 |

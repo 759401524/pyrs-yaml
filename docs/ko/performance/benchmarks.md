@@ -1,78 +1,80 @@
 ---
 title: Benchmarks
-description: pyrs-yaml의 성능 벤치마크 — 파싱, 직렬화, 순환 성능, Rust 측 Criterion 벤치마크
+description: pyrs-yaml의 성능 벤치마크 — 파싱, 직렬화, 순환 성능, Rust 측 divan 벤치마크
 tags:
   - docs
 status: new
 ---
 
 !!! note "벤치마크 환경"
-    벤치마크는 저자 환경(Windows 11, Python 3.12)에서 측정되었습니다. 절대 시간은 환경에 따라 다를 수 있습니다.
+    벤치마크는 CodSpeed CI(`pytest-codspeed`, WallTime 모드)에서 측정된 결과입니다. 절대 시간은 환경에 따라 다를 수 있습니다.
 
-pyrs-yaml의 성능 벤치마크 (저자 환경: Windows 11, Python 3.12).
+pyrs-yaml의 성능 벤치마크 (CodSpeed CI, `pytest-codspeed` WallTime 모드).
 
 ## Methodology
 
-- **도구:** Criterion (Rust) + `pytest-codspeed` (Python)
-- **반복 횟수:** 벤치마크당 200회 (Python), 100회 이상 샘플 (Rust)
+- **도구:** divan (Rust) + `pytest-codspeed` (Python)
+- **반복 횟수:** WallTime 모드, 적응형 샘플링 (Python), 100회 이상 샘플 (Rust)
 - **지표:** 밀리초 단위 중앙값 시간 (Python), 마이크로초 단위 평균 시간 (Rust)
 
 ## Parse 성능
 
 | YAML 크기 | pyrs-yaml | PyYAML | ruamel.yaml | PyYAML 대비 속도 |
 |-----------|-----------|--------|-------------|-------------------|
-| 소규모 (~100 B) | 0.00 ms | 0.11 ms | 0.26 ms | **25×** |
-| 중규모 (~500 B) | 0.03 ms | 0.75 ms | 1.74 ms | **28×** |
-| 대규모 (~2 KB) | 0.07 ms | 1.83 ms | 4.26 ms | **26×** |
+| 소규모 (~100 B) | 0.18 ms | 3.8 ms | 8.8 ms | **21×** |
+| 중규모 (~500 B) | 0.56 ms | 24.2 ms | 56.1 ms | **43×** |
+| 대규모 (~2 KB) | 1.5 ms | 57.7 ms | 127.9 ms | **38×** |
 
 ## Serialize 성능
 
 | YAML 크기 | pyrs-yaml | PyYAML | ruamel.yaml | PyYAML 대비 속도 |
 |-----------|-----------|--------|-------------|-------------------|
-| 소규모 (~100 B) | 0.01 ms | 0.19 ms | 0.46 ms | **36×** |
-| 중규모 (~500 B) | 0.03 ms | 1.21 ms | 2.83 ms | **40×** |
-| 대규모 (~2 KB) | 0.08 ms | 2.96 ms | 6.74 ms | **37×** |
+| 소규모 (~100 B) | 0.04 ms | 2.2 ms | 4.9 ms | **55×** |
+| 중규모 (~500 B) | 0.08 ms | 12.6 ms | 28.1 ms | **159×** |
+| 대규모 (~2 KB) | 0.17 ms | 30.2 ms | 63.1 ms | **177×** |
 
 ## Round-Trip 성능
 
 | YAML 크기 | pyrs-yaml | PyYAML | ruamel.yaml | PyYAML 대비 속도 |
 |-----------|-----------|--------|-------------|-------------------|
-| 소규모 (~100 B) | 0.01 ms | 0.19 ms | 0.47 ms | **35×** |
-| 중규모 (~500 B) | 0.03 ms | 1.20 ms | 2.88 ms | **39×** |
-| 대규모 (~2 KB) | 0.08 ms | 2.98 ms | 6.79 ms | **37×** |
+| 소규모 (~100 B) | 0.22 ms | 6.0 ms¹ | 13.7 ms¹ | **28×** |
+| 중규모 (~500 B) | 0.63 ms | 36.8 ms¹ | 84.2 ms¹ | **59×** |
+| 대규모 (~2 KB) | 1.6 ms | 87.9 ms¹ | 191.0 ms¹ | **55×** |
 
-## Rust-Side 벤치마크 (Criterion)
+¹ PyYAML/ruamel의 라운드트립 시간은 동일 벤치마크의 파싱·직렬화 합계로 추정한 값입니다.
+
+## Rust-Side 벤치마크 (divan)
 
 Rust 수준에서 측정 (Python 오버헤드 없음):
 
 | 작업 | 시간 |
 |-----------|------|
-| Parse (소规模) | 1.69 µs |
-| Parse (중规模) | 12.2 µs |
-| Parse (대规模) | 37.7 µs |
-| Parse (anchor) | 10.5 µs |
-| Parse (comment) | 5.0 µs |
-| Parse (block scalar) | 3.2 µs |
-| Serialize (소规模) | 4.4 µs |
-| Serialize (중规模) | 4.7 µs |
-| Serialize (대规模) | 5.5 µs |
-| Serialize (anchor) | 4.8 µs |
-| Serialize (block scalar) | 4.4 µs |
-| Round-trip (소规模) | 5.9 µs |
-| Round-trip (중规模) | 17.1 µs |
-| Round-trip (대规模) | 44.7 µs |
+| Parse (소규모) | 85.6 µs |
+| Parse (중규모) | 277.4 µs |
+| Parse (대규모) | 840.6 µs |
+| Parse (anchor) | 254.3 µs |
+| Parse (comment) | 164.9 µs |
+| Parse (block scalar) | 123.8 µs |
+| Serialize (소규모) | 7.9 µs |
+| Serialize (중규모) | 32.2 µs |
+| Serialize (대규모) | 76.1 µs |
+| Serialize (anchor) | 27.0 µs |
+| Serialize (block scalar) | 15.4 µs |
+| Round-trip (소규모) | 91.7 µs |
+| Round-trip (중규모) | 303.1 µs |
+| Round-trip (대규모) | 910.0 µs |
 
 ## 주요 결론
 
-1. **pyrs-yaml은 모든 작업에서 PyYAML보다 25~40× 빠릅니다**
-2. **pyrs-yaml은 루트립 기능을 유지하면서 ruamel.yaml보다 4~10× 빠릅니다**
-3. **Rust 파싱은 매우 빠릅니다** — 소규모 문서는 약 1.7 µs에 파싱됩니다
-4. **직렬화는 모든 크기에서 빠릅니다** — 소규모 문서는 약 4.4 µs에 직렬화됩니다
-5. **크기가 커질수록 속도 우위가 커집니다**
+1. **pyrs-yaml은 PyYAML보다 파싱 21~43×, 직렬화 55~177× 빠릅니다**
+2. **pyrs-yaml은 루트립 기능을 유지하면서 ruamel.yaml보다 파싱 48~100×, 직렬화 123~371× 빠릅니다**
+3. **Rust 파싱은 매우 빠릅니다** — 소규모 문서는 약 86 µs에 파싱됩니다
+4. **직렬화는 모든 크기에서 빠릅니다** — 소규모 문서는 약 8 µs에 직렬화됩니다
+5. **속도 우위는 모든 문서 크기에서 일관됩니다**
 
 ## 참고
 
-- 벤치마크는 단일 기계에서 측정; 절대 시간은 환경에 따라 다를 수 있습니다
+- 벤치마크는 CodSpeed CI에서 측정; 절대 시간은 환경에 따라 다를 수 있습니다
 - 상대 속도 (×N)는 하드웨어에 일관되게 유지됩니다
 - PyYAML 벤치마크는 `safe_load`/`safe_dump` 사용 (동일한 안전 보장)
 - ruamel.yaml 벤치마크는 기본 설정 사용

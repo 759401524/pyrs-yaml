@@ -30,16 +30,15 @@ pyrs-yaml uses a modular architecture designed for performance and correctness.
 │  │  • stream_events.rs — Stream event types            ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │                                 │
-│      ┌─────────────────┼──────────────────┐              │
-│      ▼                 ▼                  ▼              │
-│  ┌─────────┐    ┌────────────┐    ┌──────────────┐       │
-│  │ ast.rs  │    │ parser/    │    │serializer.rs │       │
-│  │ Custom  │◄──►│ saphyr     │    │ to_yaml()    │       │
-│  │ Node    │    │ integration│    │ to_yaml_*    │       │
-│  └─────────┘    └────────────┘    └───────────────┘       │
-│      ▲                 ▲                                    │
-│      └─────────────────┴────────────────────┘              │
-│                      CustomNode                           │
+│       ┌─────────────────┼────────────────────┐           │
+│       ▼                 ▼                    ▼           │
+│  ┌─────────┐    ┌───────────────┐    ┌──────────────┐    │
+│  │ ast.rs  │    │ parser/       │    │serializer.rs │    │
+│  │ Custom  │◄──►│ granit-parser │    │ to_yaml()    │    │
+│  │ Node    │    │ integration   │    │ to_yaml_*    │    │
+│  └─────────┘    └───────────────┘    └──────────────┘    │
+│       ▲                 ▲                                │
+│       └─────────────────┴────────────────────┘           │
 └─────────────────────────────────────────────────────────┘
 
 ## Workspace Structure
@@ -55,7 +54,7 @@ crates/
 │ ├── ast.rs # CustomNode AST
 │ ├── editing/ # Edit primitives (navigate, region, dirty, metadata)
 │ ├── i18n.rs # Internationalization
-│ ├── parser/ # YAML parser (saphyr-based)
+│ ├── parser/ # YAML parser (granit-based)
 │ ├── serializer.rs    # YAML serializer
 │ └── splice.rs        # Splice-based text assembly
 └── pyrs-yaml/ # PyO3 bindings layer
@@ -90,7 +89,7 @@ The **CustomNode** enum is the heart of pyrs-yaml:
 
 #### 2. `crates/pyrs-yaml-core/src/parser/` — YAML Parser
 
-Built on **saphyr-parser** (YAML 1.2 compliant):
+Built on **granit-parser** (YAML 1.2 compliant):
 
 - **`mod.rs`** — `AstReceiver` state machine, event-based parsing, flow style detection
 - **`stream.rs`** — Streaming event parser (line-by-line YAML events)
@@ -183,7 +182,7 @@ YAML String
 ┌─────────────────────────────────────┐
 │ 1. Extract comments from raw text   │
 │ 2. Extract anchors from raw text    │
-│ 3. saphyr-parser → YAML events      │
+│ 3. granit-parser → YAML events     │
 │ 4. AstReceiver builds CustomNode    │
 │ 5. Resolve schema types             │
 │ 6. Resolve merge keys (if enabled)  │
@@ -226,7 +225,7 @@ YAML String
 | Crate | Purpose |
 |-------|---------|
 | **PyO3** | Python bindings (with `experimental-inspect`, `abi3-py38`, `abi3t`) |
-| **saphyr-parser** | YAML 1.2 compliant parsing |
+| **granit-parser** | YAML 1.2 compliant parsing |
 | **IndexMap** | Ordered hash map for key preservation |
 | **serde_json** | JSON ↔ YAML conversion |
 | **numpy** | NumPy ndarray support (optional, default enabled) |

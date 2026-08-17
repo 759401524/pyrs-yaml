@@ -51,7 +51,7 @@ pyrs-yaml/
 │   ├── lib.rs              # PyO3 モジュール定義
 │   ├── ast.rs              # カスタム AST (CustomNode)
 │   ├── parser/
-│   │   ├── mod.rs          # saphyr-parser 統合
+│   │   ├── mod.rs          # granit-parser 統合
 │   │   └── yaml/           # YAML 特定パース
 │   │       ├── comment.rs  # コメント抽出
 │   │       ├── merge.rs    # マージキー解決

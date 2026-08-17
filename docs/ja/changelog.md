@@ -31,6 +31,10 @@ status: new
 
 - **フリースレッド (cp314t) ホイールで NumPy を再有効化** — cp314t ビルド引数から `--no-default-features` を削除。rust-numpy 0.29 はフリースレッド Python をサポートし、`numpy.ndarray` シリアライズがフリースレッドホイールで利用可能になりました（NumPy のインストールは実行時に自動検出）。
 
+#### ドキュメント
+
+- **全言語（en/zh/ja/ko）ドキュメントの古い参照を修正** — `saphyr-parser` → `granit-parser`、YAML 準拠率 98.1% → 99.75%（スイート 405/406 件）、ABI3 サポート 3.9–3.13 → 3.8–3.15（py3.9+ → py3.8+）、ベンチマーク表を現在の CodSpeed CI 数値（パース 21〜43 倍、シリアライズ 55〜177 倍 PyYAML 比高速）に更新。Rust 側ベンチマーク章を Criterion から divan へ移行（`benches/yaml_bench.rs` → `crates/pyrs-yaml/benches/yaml_bench.rs`）。
+
 ### [v0.14.1] — 2026-08-15
 
 #### 修正
