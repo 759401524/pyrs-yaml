@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   available on free-threaded wheels when NumPy is installed (auto-detected at
   runtime; inert when absent). Closes the deferred Research & Exploration item
   "Numpy free-threaded re-enable".
+- **granit-parser upgraded to 1.1.0** — the YAML 1.2 parser dependency moves
+  from the `1.0` to `1.1` semver line. Backward-compatible maintenance
+  release: adds `Options`/`emit_comments` configuration, new
+  `new_from_*_with_options` parser constructors, fuzz-testing hardening, and a
+  performance fix for validating large plain/block scalars (ASCII fast path).
+  No API changes required in `pyrs-yaml-core`.
 
 ## [v0.14.1] — 2026-08-15
 
