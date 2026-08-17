@@ -10,6 +10,8 @@ The callable receives no arguments and should call `register_type()` to
 register custom types.
 """
 
+from __future__ import annotations
+
 import contextlib
 import logging
 
