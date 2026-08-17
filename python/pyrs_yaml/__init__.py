@@ -30,6 +30,7 @@ from .async_dump import (
 from .compliance import compliance_report
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
+from .plugins import discover_plugins, get_discovery_errors
 from .pydantic import dump_pydantic, parse_as
 from .pyrs_yaml import (
     YAML as _YAML,
@@ -54,7 +55,9 @@ from .pyrs_yaml import (
     from_dict,
     from_json,
     get_language,
+    get_plugin,
     list_languages,
+    list_plugins,
     list_schemas,
     load_schema,
     negotiate_language,
@@ -380,12 +383,16 @@ __all__ = [
     "clear_type_handlers",
     "compliance_report",
     "detect_language",
+    "discover_plugins",
     "dump_file",
     "dump_pydantic",
     "from_dict",
     "from_json",
+    "get_discovery_errors",
     "get_language",
+    "get_plugin",
     "list_languages",
+    "list_plugins",
     "list_schemas",
     "load_schema",
     "negotiate_language",

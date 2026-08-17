@@ -470,6 +470,25 @@ pub(crate) fn list_schemas() -> Vec<String> {
 }
 
 #[pyfunction]
+#[pyo3(signature = () -> "list[tuple[str, str]]")]
+/// List all registered custom type plugins with their metadata.
+///
+/// Returns a list of ``(tag, python_type)`` tuples for every registered
+/// `CustomType` handler.
+pub(crate) fn list_plugins(py: Python<'_>) -> Vec<(String, String)> {
+    crate::py::type_registry::list(py)
+}
+
+#[pyfunction]
+#[pyo3(signature = (tag: "str") -> "tuple[str, str] | None")]
+/// Get metadata for a registered plugin by tag.
+///
+/// Returns ``(tag, python_type)`` or ``None`` if the tag is not registered.
+pub(crate) fn get_plugin(py: Python<'_>, tag: &str) -> Option<(String, String)> {
+    crate::py::type_registry::get_plugin(py, tag)
+}
+
+#[pyfunction]
 #[pyo3(signature = (data: "str", schema_yaml: "str") -> "None")]
 /// Validate a YAML document against a schema definition's `validate` rules.
 ///

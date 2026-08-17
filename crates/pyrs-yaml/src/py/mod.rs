@@ -144,7 +144,11 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::get_language;
     #[pymodule_export]
+    pub(crate) use super::functions::get_plugin;
+    #[pymodule_export]
     pub(crate) use super::functions::list_languages;
+    #[pymodule_export]
+    pub(crate) use super::functions::list_plugins;
     #[pymodule_export]
     pub(crate) use super::functions::list_schemas;
     #[pymodule_export]
