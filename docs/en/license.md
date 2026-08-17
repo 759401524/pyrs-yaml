@@ -71,7 +71,7 @@ pyrs-yaml depends on the following open-source projects:
 | Dependency | License |
 |------------|---------|
 | [pyo3](https://github.com/PyO3/pyo3) | Apache 2.0 / MIT |
-| [saphyr-parser](https://github.com/saphyr-rs/saphyr) | Apache 2.0 / MIT |
+| [granit-parser](https://github.com/bourumir-wyngs/granit-parser) | MIT / Apache 2.0 |
 | [indexmap](https://github.com/bluss/indexmap) | MIT / Apache 2.0 |
 | [serde_json](https://github.com/serde-rs/json) | MIT / Apache 2.0 |
 | [rust-i18n](https://github.com/mozilla/rust-i18n) | MPL 2.0 |

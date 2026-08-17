@@ -338,7 +338,7 @@ frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text, max_depth=200)
 
 ## Performance
 
-Criterion benchmarks in `benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark_crosslib.py` (Python). See [benchmarks docs](docs/en/performance/benchmarks.md) for the full cross-library comparison against PyYAML and ruamel.yaml.
+divan benchmarks in `crates/pyrs-yaml/benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark_crosslib.py` (Python). See [benchmarks docs](docs/en/performance/benchmarks.md) for the full cross-library comparison against PyYAML and ruamel.yaml.
 
 **v0.11 highlights (vs v0.10):**
 

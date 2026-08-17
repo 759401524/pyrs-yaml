@@ -76,6 +76,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance fix for validating large plain/block scalars (ASCII fast path).
   No API changes required in `pyrs-yaml-core`.
 
+### Docs
+
+- **Corrected stale references across all locale docs (en/zh/ja/ko)** —
+  `saphyr-parser` → `granit-parser`, YAML compliance 98.1% → 99.75%
+  (405/406 suite cases), ABI3 support 3.9–3.13 → 3.8–3.15 (py3.9+ → py3.8+),
+  and benchmark tables updated to current CodSpeed CI numbers (parse 21–43×,
+  serialize 55–177× faster than PyYAML). Rust-side benchmark sections migrated
+  from Criterion to divan (`benches/yaml_bench.rs` →
+  `crates/pyrs-yaml/benches/yaml_bench.rs`).
+
 ## [v0.14.1] — 2026-08-15
 
 ### Fixed

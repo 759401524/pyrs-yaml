@@ -27,16 +27,15 @@ pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처�
 │  │  • 함수 래퍼                                        ││
 │  └─────────────────────┬───────────────────────────────┘│
 │                        │                                 │
-│      ┌─────────────────┼─────────────────┐              │
-│      ▼                 ▼                 ▼              │
-│  ┌─────────┐    ┌────────────┐    ┌────────────┐        │
-│  │ ast.rs  │    │ parser/    │    │serializer  │        │
-│  │ Custom  │◄──►│ saphyr     │    │ to_yaml()  │        │
-│  │ Node    │    │ 통합       │    │ to_yaml_*  │        │
-│  └─────────┘    └────────────┘    └────────────┘        │
-│      ▲                 ▲                                    │
-│      └─────────────────┴────────────────────┘              │
-│                      CustomNode                           │
+│       ┌─────────────────┼────────────────────┐          │
+│       ▼                 ▼                    ▼          │
+│  ┌─────────┐    ┌───────────────┐    ┌────────────┐     │
+│  │ ast.rs  │    │ parser/       │    │serializer  │     │
+│  │ Custom  │◄──►│ granit-parser │    │ to_yaml()  │     │
+│  │ Node    │    │ 통합            │    │ to_yaml_*  │     │
+│  └─────────┘    └───────────────┘    └────────────┘     │
+│       ▲                 ▲                               │
+│       └─────────────────┴────────────────────┘          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -52,7 +51,7 @@ crates/
 │   ├── ast.rs # CustomNode AST
 │   ├── editing/ # 편집 프리미티브 (navigate, region, dirty, metadata)
 │   ├── i18n.rs # 국제화
-│   ├── parser/ # YAML 파서 (saphyr 기반)
+│   ├── parser/ # YAML 파서 (granit-parser 기반)
 │   ├── serializer.rs # YAML 직렬화기
 │   └── splice.rs # 스플라이스 기반 텍스트 조립
 └── pyrs-yaml/ # PyO3 바인딩 레이어
@@ -85,7 +84,7 @@ crates/
 
 #### 2. `crates/pyrs-yaml-core/src/parser/` — YAML 파서
 
-**saphyr-parser** (YAML 1.2 호환) 위에 구축:
+**granit-parser** (YAML 1.2 호환) 위에 구축:
 
 - **`mod.rs`** — `AstReceiver` 상태 머신, 이벤트 기반 파싱, 플로우 스타일 감지
 - **`stream.rs`** — 스트리밍 이벤트 파서 (라인별 YAML 이벤트)
@@ -169,7 +168,7 @@ YAML 문자열
 ┌─────────────────────────────────────┐
 │ 1. 원시 텍스트에서 주석 추출        │
 │ 2. 원시 텍스트에서 앵커 추출        │
-│ 3. saphyr-parser → YAML 이벤트      │
+│ 3. granit-parser → YAML 이벤트     │
 │ 4. AstReceiver가 CustomNode 구축    │
 │ 5. 스키마 타입 해석                  │
 │ 6. 병합 키 해석 (활성화된 경우)      │
@@ -212,7 +211,7 @@ YAML 문자열
 | 크레이트 | 용도 |
 |---------|------|
 | **PyO3** | Python 바인딩 (`experimental-inspect`, `abi3-py38`, `abi3t` 포함) |
-| **saphyr-parser** | YAML 1.2 호환 파싱 |
+| **granit-parser** | YAML 1.2 호환 파싱 |
 | **IndexMap** | 키 유지를 위한 순서가 있는 해시 맵 |
 | **serde_json** | JSON ↔ YAML 변환 |
 | **numpy** | NumPy ndarray 지원 (선택 사항, 기본 활성화) |

@@ -49,7 +49,7 @@ yaml_str = yaml.safe_dump(data)
 | Feature | PyYAML | pyrs-yaml |
 |---------|--------|-----------|
 | Round-trip preservation | ❌ Loses comments/anchors | ✅ Preserves everything |
-| Performance | Baseline | **25–40× faster** |
+| Performance | Baseline | **21–43× faster parsing, 55–177× faster serialization** |
 | Type hints | Partial | ✅ Full `.pyi` stubs |
 | ABI3 wheel | N/A | ✅ Single wheel for all Python versions |
 | i18n errors | ❌ English only | ✅ English + Chinese |

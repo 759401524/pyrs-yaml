@@ -10,7 +10,7 @@ pyrs-yaml는 PyYAML의 **직접 교체**로 설계되었으며, PyYAML이 없는
 
 ## YAML 1.2 준수
 
-**saphyr-parser**로 구동되며, YAML 테스트 스위트에서 **98.1% 통과율**을 달성.
+**granit-parser**로 구동되며, YAML 테스트 스위트에서 **99.75% 통과율 (405/406)**을 달성.
 
 ## 완벽한 순환 파싱
 
@@ -26,15 +26,15 @@ PyYAML과 달리, pyrs-yaml는 **모든 서식과 메타데이터를 유지**합
 ## 성능
 
 !!! note "벤치마크 환경"
-    벤치마크는 단일 기계에서 측정된 결과입니다. 절대 시간은 환경에 따라 다를 수 있으나 상대 속도는 일관됩니다.
+    벤치마크는 CodSpeed CI(`pytest-codspeed`, WallTime 모드)에서 측정된 결과입니다. 절대 시간은 환경에 따라 다를 수 있으나 상대 속도는 일관됩니다.
 
-Rust 백엔드는 PyYAML보다 **25–40배 빠릅니다**:
+Rust 백엔드는 PyYAML보다 파싱 **21–43배**, 직렬화 **55–177배 빠릅니다**:
 
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 0.07 ms | 1.83 ms |
-| Serialize (large) | 0.07 ms | 2.92 ms |
-| Round-trip | 0.07 ms | 2.90 ms |
+| Parse (large) | 1.5 ms | 57.7 ms |
+| Serialize (large) | 0.17 ms | 30.2 ms |
+| Round-trip | 1.6 ms | 87.9 ms |
 
 ## 커스텀 AST
 

@@ -10,7 +10,7 @@ pyrs-yaml は PyYAML の**直接置換**として設計されており、PyYAML 
 
 ## YAML 1.2 準拠
 
-**saphyr-parser** により駆動され、YAML テストスイートで **98.1% の合格率**を達成。
+**granit-parser** により駆動され、YAML テストスイートで **99.75% の合格率（405/406）**を達成。
 
 ## 完璧なラウンドトリップ
 
@@ -24,17 +24,17 @@ PyYAML と異なり、pyrs-yaml は**すべてのフォーマットとメタデ�
 - **フロー/ブロックフォーマット** — `[]`/`{}` とブロックスタイルを保持
 
 !!! note "ベンチマーク環境"
-    ベンチマークは作者のマシン（Windows 11、Python 3.12）で測定されたものです。実際のパフォーマンスは環境によって異なります。
+    ベンチマークは CodSpeed CI（`pytest-codspeed`、WallTime モード）で測定されたものです。実際のパフォーマンスは環境によって異なります。
 
 ## パフォーマンス
 
-Rust バックエンドは PyYAML より **25–40 倍高速**：
+Rust バックエンドは PyYAML より解析で **21–43 倍**、シリアライズで **55–177 倍高速**：
 
 | Operation | pyrs-yaml | PyYAML |
 |-----------|-----------|--------|
-| Parse (large) | 0.07 ms | 1.83 ms |
-| Serialize (large) | 0.07 ms | 2.92 ms |
-| Round-trip | 0.07 ms | 2.90 ms |
+| Parse (large) | 1.5 ms | 57.7 ms |
+| Serialize (large) | 0.17 ms | 30.2 ms |
+| Round-trip | 1.6 ms | 87.9 ms |
 
 ## カスタム AST
 
