@@ -301,9 +301,24 @@ def get_language() -> "str":
     Return the current error message language.
     """
 
+def get_plugin(tag: "str") -> "tuple[str, str] | None":
+    """
+    Get metadata for a registered plugin by tag.
+
+    Returns ``(tag, python_type)`` or ``None`` if the tag is not registered.
+    """
+
 def list_languages() -> "list[str]":
     """
     List supported language codes.
+    """
+
+def list_plugins() -> "list[tuple[str, str]]":
+    """
+    List all registered custom type plugins with their metadata.
+
+    Returns a list of ``(tag, python_type)`` tuples for every registered
+    `CustomType` handler.
     """
 
 def list_schemas() -> "list[str]":
