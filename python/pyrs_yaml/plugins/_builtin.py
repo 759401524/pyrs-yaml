@@ -126,14 +126,16 @@ class RegexType(CustomType):
 class SetType(CustomType):
     """`!set` — a YAML set maps unique keys to null values.
 
-    Note: The current CustomType protocol only supports scalar string values,
-    so `from_yaml` cannot properly parse a YAML mapping-backed set.
-    `to_yaml` serializes a Python set as a YAML block mapping with null values.
+    When parsed, the value is a Python dict whose keys are the set members.
+    ``from_yaml`` extracts the keys and returns a Python set.
+    ``to_yaml`` serializes a Python set as a YAML block mapping with null values.
     """
 
     @override
-    def from_yaml(self, value: str) -> Any:
-        return value
+    def from_yaml(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            return set(value.keys())
+        return {value} if value is not None else set()
 
     @override
     def to_yaml(self, obj: Any) -> str:
