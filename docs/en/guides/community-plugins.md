@@ -94,7 +94,7 @@ the `!timestamp` tag.
 
 | Method | Description |
 |--------|-------------|
-| `can_parse(node)` | Whether this type handles a given AST node |
+| `can_parse(value)` | Whether this type handles a given scalar value (string) |
 | `from_yaml(value)` | Convert YAML string → Python object |
 | `to_yaml(obj)` | Convert Python object → YAML string |
 | `validate(obj)` | Validate a Python object (returns `bool`) |
@@ -103,7 +103,8 @@ the `!timestamp` tag.
 
 Third-party packages can register custom types by calling `register_type()`
 at import time. Automatic discovery via `importlib.metadata.entry_points`
-(group `pyrs_yaml.plugins`) is planned for a future release.
+(group `pyrs_yaml.plugins`) is supported. Plugins are discovered at module
+import time; errors are logged and do not block startup.
 
 ### Example: UUID Type
 

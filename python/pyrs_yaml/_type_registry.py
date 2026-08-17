@@ -32,16 +32,22 @@ class CustomType:
     # Optional: set this to a Python type for serialization isinstance checks.
     python_type: Any = None
 
-    def can_parse(self, node: Any) -> bool:
-        """Return True if this type should handle the given node.
+    def can_parse(self, value: Any) -> bool:
+        """Return True if this type should handle the given value.
 
-        Defaults to True: the tag match alone is sufficient. Override to
-        gate handling on node content (e.g. value prefix).
+        ``value`` is the schema-resolved Python value (str, int, dict, list,
+        etc.). Defaults to True: the tag match alone is sufficient. Override
+        to gate handling on value content (e.g. value prefix).
         """
         return True
 
-    def from_yaml(self, value: str) -> Any:
-        """Convert a YAML string value to a Python object."""
+    def from_yaml(self, value: Any) -> Any:
+        """Convert a schema-resolved Python value to the target Python object.
+
+        ``value`` is the already-resolved Python value (str, int, dict, list,
+        None, etc.). For scalar tags this is a str; for structured tags
+        (e.g. ``!set``) it can be a dict or list.
+        """
         return value
 
     def to_yaml(self, obj: Any) -> str:

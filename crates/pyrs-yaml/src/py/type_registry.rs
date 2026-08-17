@@ -211,3 +211,40 @@ pub(crate) fn remove(name: &str) {
     };
     guard.swap_remove(name);
 }
+
+/// List all registered plugin tags with metadata (tag, python_type).
+pub(crate) fn list(py: Python<'_>) -> Vec<(String, String)> {
+    let Ok(guard) = TYPE_REGISTRY.lock() else {
+        return Vec::new();
+    };
+    guard
+        .iter()
+        .map(|(tag, handler)| {
+            let handler_ref = handler.bind(py);
+            let py_type = handler_ref
+                .getattr("python_type")
+                .ok()
+                .and_then(|t| t.repr().ok())
+                .map(|r| r.to_string())
+                .unwrap_or_default();
+            (tag.clone(), py_type)
+        })
+        .collect()
+}
+
+/// Get metadata for a single plugin by tag.
+pub(crate) fn get_plugin(py: Python<'_>, tag: &str) -> Option<(String, String)> {
+    let Ok(guard) = TYPE_REGISTRY.lock() else {
+        return None;
+    };
+    guard.get(tag).map(|handler| {
+        let handler_ref = handler.bind(py);
+        let py_type = handler_ref
+            .getattr("python_type")
+            .ok()
+            .and_then(|t| t.repr().ok())
+            .map(|r| r.to_string())
+            .unwrap_or_default();
+        (tag.to_string(), py_type)
+    })
+}
