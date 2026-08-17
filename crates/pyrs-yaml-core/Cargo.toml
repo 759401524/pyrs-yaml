@@ -13,7 +13,7 @@ name = "pyrs_yaml_core"
 [dependencies]
 indexmap = "2.7"
 rust-i18n = "4.2"
-granit-parser = "1.0"
+granit-parser = "1.1"
 regex = "1.11"
 thiserror = "2"
 

@@ -26,7 +26,7 @@
 ## Pinned Versions
 
 - pyo3 0.29, abi3-py38 + abi3t-py315 for stable ABI
-- granit-parser 1.0.1 (YAML 1.2 parser with native comment support)
+- granit-parser 1.1.0 (YAML 1.2 parser with native comment support)
 - numpy (rust-numpy) 0.29 — supports free-threaded Python since v0.24.0; enabled on cp314t wheels
 - maturin >=1.0,<2.0
 - ruff >=0.14.0 (py39+), >=0.5.0,<0.10.0 (py38)
