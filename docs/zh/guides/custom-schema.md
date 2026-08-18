@@ -44,15 +44,15 @@ rules:
 
 | `type` | Python 结果 | 示例 |
 |--------|------------|------|
-| `null` | `None` | `~` |
-| `bool` | `True` / `False` | `true`, `yes`, `on` |
-| `int` | `int` | `42`, `0xFF`, `0o77`, `0b1010` |
-| `float` | `float` | `3.14`, `1e10` |
-| `str` | `str` | `2026-08-11` |
+| :material-null: `null` | `None` | `~` |
+| :material-toggle-switch: `bool` | `True` / `False` | `true`, `yes`, `on` |
+| :material-numeric: `int` | `int` | `42`, `0xFF`, `0o77`, `0b1010` |
+| :material-decimal: `float` | `float` | `3.14`, `1e10` |
+| :material-format-text: `str` | `str` | `2026-08-11` |
 
 ### 注册和使用 Schema
 
-```python
+```python title="注册并使用 schema"
 import pyrs_yaml
 
 # 从 YAML 字符串注册
@@ -78,7 +78,7 @@ assert d["addr"] == 31
 
 `load_schema()` 从文件路径读取 schema 定义并注册：
 
-```python
+```python title="从文件加载 schema"
 # hex.yaml 包含上述 schema YAML
 pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 ```
@@ -87,7 +87,7 @@ pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 
 `list_schemas()` 返回所有已注册的 schema 名称（内置 + 自定义）：
 
-```python
+```python title="列出已注册 schema"
 print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
@@ -96,7 +96,7 @@ print(pyrs_yaml.list_schemas())
 
 在 schema 定义中添加 `validate` 段，可在标量类型解析之上进行结构检查。使用 `validate_against_schema()` 在文档使用前校验：
 
-```yaml
+```yaml title="带校验的 schema"
 name: app
 extends: core
 validate:
@@ -137,7 +137,7 @@ pyrs_yaml.validate_against_schema("port: abc\n", schema)
 
 无需预先注册，直接传入字典：
 
-```python
+```python title="内联 dict schema"
 d = pyrs_yaml.safe_load(
     "addr: 0xFF",
     schema={
@@ -150,37 +150,37 @@ assert d["addr"] == 255
 
 ### 常见模式
 
-#### 将日期保留为字符串
+=== "将日期保留为字符串"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
+    }
+    ```
 
-#### 添加 YAML 1.1 布尔值
+=== "添加 YAML 1.1 布尔值"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
+    }
+    ```
 
-#### 严格 JSON 模式
+=== "严格 JSON 模式"
 
-```python
-schema = {
-    "extends": "failsafe",
-    "rules": [
-        {"pattern": "^null$|^~$", "type": "null"},
-        {"pattern": "^(true|false)$", "type": "bool"},
-        {"pattern": "^-?\\d+$", "type": "int"},
-        {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
-    ],
-}
-```
+    ```python
+    schema = {
+        "extends": "failsafe",
+        "rules": [
+            {"pattern": "^null$|^~$", "type": "null"},
+            {"pattern": "^(true|false)$", "type": "bool"},
+            {"pattern": "^-?\\d+$", "type": "int"},
+            {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
+        ],
+    }
+    ```
 
 ### 性能
 

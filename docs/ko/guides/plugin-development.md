@@ -14,7 +14,7 @@ status: new
 
 플러그인은 `CustomType` 서브클래스를 정의하고 등록하는 Python 모듈입니다.
 
-```python
+```python title="my_timestamp_plugin.py"
 import pyrs_yaml
 from datetime import datetime
 
@@ -34,7 +34,7 @@ def register():
 
 | 함수 | 설명 |
 |---------|------|
-| `register_type(name, handler)` | `CustomType` 인스턴스 등록 |
-| `clear_type_handlers()` | 모든 등록된 타입 제거 |
-| `remove_type(name)` | 특정 타입 제거 |
-| `validate_custom_types(obj)` | 모든 등록된 타입에 대해 객체 검증 |
+| :material-code-braces: `register_type(name, handler)` | `CustomType` 인스턴스 등록 |
+| :material-close: `clear_type_handlers()` | 모든 등록된 타입 제거 |
+| :material-close: `remove_type(name)` | 특정 타입 제거 |
+| :material-check-decagram: `validate_custom_types(obj)` | 모든 등록된 타입에 대해 객체 검증 |

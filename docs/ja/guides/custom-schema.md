@@ -44,15 +44,15 @@ rules:
 
 | `type` | Python 結果 | 例 |
 |--------|------------|----|
-| `null` | `None` | `~` |
-| `bool` | `True` / `False` | `true`, `yes`, `on` |
-| `int` | `int` | `42`, `0xFF`, `0o77`, `0b1010` |
-| `float` | `float` | `3.14`, `1e10` |
-| `str` | `str` | `2026-08-11` |
+| :material-null: `null` | `None` | `~` |
+| :material-toggle-switch: `bool` | `True` / `False` | `true`, `yes`, `on` |
+| :material-numeric: `int` | `int` | `42`, `0xFF`, `0o77`, `0b1010` |
+| :material-decimal: `float` | `float` | `3.14`, `1e10` |
+| :material-format-text: `str` | `str` | `2026-08-11` |
 
 ### スキーマの登録と使用
 
-```python
+```python title="スキーマを登録して使用"
 import pyrs_yaml
 
 # YAML 文字列から登録
@@ -78,7 +78,7 @@ assert d["addr"] == 31
 
 `load_schema()` はファイルパスからスキーマ定義を読み込んで登録します：
 
-```python
+```python title="ファイルからスキーマを読み込む"
 # hex.yaml に上記のスキーマ YAML が含まれている
 pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 ```
@@ -87,7 +87,7 @@ pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 
 `list_schemas()` は登録済みのすべてのスキーマ名（組み込み + カスタム）を返します：
 
-```python
+```python title="登録済みスキーマの一覧"
 print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
@@ -96,7 +96,7 @@ print(pyrs_yaml.list_schemas())
 
 スキーマ定義に `validate` セクションを追加すると、スカラー型解決に加えて構造チェックができます。`validate_against_schema()` で文書の使用前にチェックします：
 
-```yaml
+```yaml title="検証付きスキーマ"
 name: app
 extends: core
 validate:
@@ -137,7 +137,7 @@ pyrs_yaml.validate_against_schema("port: abc\n", schema)
 
 個別に登録せず、ディクショナリを直接渡せます：
 
-```python
+```python title="インラインディクスキーマ"
 d = pyrs_yaml.safe_load(
     "addr: 0xFF",
     schema={
@@ -150,37 +150,37 @@ assert d["addr"] == 255
 
 ### 一般的なパターン
 
-#### 日付を文字列として保持
+=== "日付を文字列として保持"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
+    }
+    ```
 
-#### YAML 1.1 ブール値の追加
+=== "YAML 1.1 ブール値の追加"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
+    }
+    ```
 
-#### 厳格な JSON モード
+=== "厳格な JSON モード"
 
-```python
-schema = {
-    "extends": "failsafe",
-    "rules": [
-        {"pattern": "^null$|^~$", "type": "null"},
-        {"pattern": "^(true|false)$", "type": "bool"},
-        {"pattern": "^-?\\d+$", "type": "int"},
-        {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
-    ],
-}
-```
+    ```python
+    schema = {
+        "extends": "failsafe",
+        "rules": [
+            {"pattern": "^null$|^~$", "type": "null"},
+            {"pattern": "^(true|false)$", "type": "bool"},
+            {"pattern": "^-?\\d+$", "type": "int"},
+            {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
+        ],
+    }
+    ```
 
 ### パフォーマンス
 

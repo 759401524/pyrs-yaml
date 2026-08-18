@@ -12,9 +12,8 @@ Markdown ファイルや文字列から YAML Front Matterを抽出します。
 
 Front Matterは、Markdown ファイルの先頭にある `---` 区切りで囲まれた YAML ブロックです。ブログプラットフォーム、静的サイトジェネレーター、コンテンツ管理システムでよく使われます。
 
-```markdown
+```markdown title="post.md"
 ---
-
 title: ブログ記事
 author: Alice
 date: 2024-01-15
@@ -30,7 +29,7 @@ tags: [yaml, python, rust]
 
 Markdown ファイルからFront Matterをパースします：
 
-```python
+```python title="ファイルからパース"
 import pyrs_yaml
 
 # (frontmatter_dict, content_string) を返す
@@ -47,7 +46,7 @@ print(content)
 
 Markdown 文字列からFront Matterをパースします：
 
-```python
+```python title="文字列からパース"
 markdown_text = """
 ---
 title: 記事
@@ -71,7 +70,7 @@ else:
 
 ファイル/文字列にFront Matterがない場合：
 
-```python
+```python title="Front Matterなし"
 frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
 
 # frontmatter は None、content は全文
@@ -81,35 +80,35 @@ assert content == "通常の Markdown コンテンツ。"
 
 ## 一般的な使用例
 
-### ブログプラットフォーム
+=== "ブログプラットフォーム"
 
-```python
-# ブログ一覧用のメタデータを抽出
-frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
-if frontmatter.get("published", False):
-    print(f"公開済み記事: {frontmatter['title']}")
-else:
-    print("下書き記事")
-```
+    ```python title="ブログ一覧用のメタデータを抽出"
+    # ブログ一覧用のメタデータを抽出
+    frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
+    if frontmatter.get("published", False):
+        print(f"公開済み記事: {frontmatter['title']}")
+    else:
+        print("下書き記事")
+    ```
 
-#### 静的サイトジェネレーター
+=== "静的サイトジェネレーター"
 
-```python
-# すべての Markdown ファイルを処理
-import glob
+    ```python title="すべての Markdown ファイルを処理"
+    # すべての Markdown ファイルを処理
+    import glob
 
-for path in glob.glob("posts/*.md"):
-    meta, content = pyrs_yaml.read_markdown(path)
-    # meta とコンテンツでテンプレートをレンダリング
-```
+    for path in glob.glob("posts/*.md"):
+        meta, content = pyrs_yaml.read_markdown(path)
+        # meta とコンテンツでテンプレートをレンダリング
+    ```
 
-#### コンテンツ管理
+=== "コンテンツ管理"
 
-```python
-# Front Matterの構造を検証
-required_fields = ["title", "author", "date"]
-frontmatter, _ = pyrs_yaml.read_markdown("article.md")
+    ```python title="Front Matter の構造を検証"
+    # Front Matterの構造を検証
+    required_fields = ["title", "author", "date"]
+    frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 
-for field in required_fields:
-    assert field in frontmatter, f"必須フィールドがありません: {field}"
-```
+    for field in required_fields:
+        assert field in frontmatter, f"必須フィールドがありません: {field}"
+    ```

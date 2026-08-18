@@ -14,7 +14,7 @@ status: new
 
 一个插件是一个 Python 模块，定义 `CustomType` 子类并注册它。
 
-```python
+```python title="my_timestamp_plugin.py"
 import pyrs_yaml
 from datetime import datetime
 
@@ -37,7 +37,7 @@ def register():
 
 在 `pyproject.toml` 中添加入口点：
 
-```toml
+```toml title="pyproject.toml"
 [project.entry-points."pyrs_yaml.plugins"]
 mytimestamp = "my_timestamp_plugin:register"
 ```
@@ -46,7 +46,7 @@ mytimestamp = "my_timestamp_plugin:register"
 
 | 函数 | 说明 |
 |---------|------|
-| `register_type(name, handler)` | 注册 `CustomType` 实例 |
-| `clear_type_handlers()` | 移除所有已注册类型 |
-| `remove_type(name)` | 移除特定类型 |
-| `validate_custom_types(obj)` | 验证对象是否通过所有注册类型的校验 |
+| :material-code-braces: `register_type(name, handler)` | 注册 `CustomType` 实例 |
+| :material-close: `clear_type_handlers()` | 移除所有已注册类型 |
+| :material-close: `remove_type(name)` | 移除特定类型 |
+| :material-check-decagram: `validate_custom_types(obj)` | 验证对象是否通过所有注册类型的校验 |

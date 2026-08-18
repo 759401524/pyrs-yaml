@@ -16,7 +16,7 @@ preserving every comment, anchor, tag, and formatting choice.
 
 ## Setup
 
-```bash
+```bash title="Install from source"
 # Install pyrs-yaml (requires Rust toolchain)
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
@@ -68,7 +68,7 @@ threshold: 0x1F  # hex value (should be parsed as int)
 
 ## 2. Parse the File
 
-```python
+```python title="Parse the file"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse_file("config.yaml")
@@ -83,7 +83,7 @@ in memory. The document is a `YamlDocument` object, not a raw Python dict.
 
 Use the path API (JSONPath-like) or the Node API (tree-based):
 
-```python
+```python title="Inspect values"
 # Path API — simple and direct
 db_host = doc.get("database.host")
 print(f"Database host: {db_host}")
@@ -100,7 +100,7 @@ When you edit a value, its comment, anchor, tag, and quoting style are
 preserved. The edit is performed in-place on the AST — no string
 manipulation:
 
-```python
+```python title="Edit values in place"
 # Change the production port
 doc.set("$.environments.production.port", 5444)
 
@@ -117,7 +117,7 @@ prod_node.set_comment("overridden for v2 rollout")
 pyrs-yaml goes beyond value editing — you can read and write the YAML
 metadata itself:
 
-```python
+```python title="Read and write metadata"
 # Read existing metadata
 debug_node = doc.node().find("$.environments.staging.debug")
 print(f"Debug comment: {debug_node.comment}")  # None
@@ -136,7 +136,7 @@ prod_db.set_anchor("prod-db")
 
 Switch scalar quoting, block/flow layout, and chomping indicators:
 
-```python
+```python title="Control formatting"
 # Switch the threshold to single-quoted for clarity
 doc.node().find("$.threshold").set_scalar_style("single_quoted")
 
@@ -150,7 +150,7 @@ staging.set_flow_style(True)
 Use `set_many` to apply changes to every matching path — useful for
 toggle-like operations:
 
-```python
+```python title="Batch edit with wildcards"
 # Disable ALL debug flags across every environment
 doc.set_many({
     "$.environments[*].debug": False,
@@ -166,7 +166,7 @@ doc.set_many({
 
 For readability, sort the top-level keys and environment keys:
 
-```python
+```python title="Sort keys"
 doc.sort_keys()              # sort the root mapping
 doc.sort_keys("$.environments")  # sort the environments
 ```
@@ -175,7 +175,7 @@ doc.sort_keys("$.environments")  # sort the environments
 
 Define a schema with structural rules and validate the configuration:
 
-```python
+```python title="Validate against a schema"
 schema = """\
 name: app-config
 extends: core
@@ -198,7 +198,7 @@ print("Configuration is valid!")
 
 Copy a subtree as a standalone Python value (detached from the document):
 
-```python
+```python title="Deep-copy a subtree"
 # Copy the staging configuration for reuse
 staging_config = doc.node().find("$.environments.staging").copy()
 print(staging_config)  # {'host': 'staging.example.com', 'debug': False, ...}
@@ -208,7 +208,7 @@ print(staging_config)  # {'host': 'staging.example.com', 'debug': False, ...}
 
 Relocate a subtree within the same document:
 
-```python
+```python title="Move a subtree"
 # Move the reporting feature to a new section
 doc.node().find("$.features[2]").move("$.deprecated-features")
 ```
@@ -217,7 +217,7 @@ doc.node().find("$.features[2]").move("$.deprecated-features")
 
 Finally, serialize the edited document back to YAML:
 
-```python
+```python title="Write back to file"
 output = doc.to_yaml()
 with open("config-updated.yaml", "w", encoding="utf-8") as f:
     f.write(output)
@@ -257,18 +257,18 @@ environments:
 
 In this tutorial you:
 
-- **Parsed** a YAML file with full metadata preservation
-- **Inspected** values using the path API and Node API
-- **Edited** values, comments, anchors, tags, and formatting
-- **Batch-edited** with wildcards using `set_many`
-- **Sorted** keys for readability
-- **Validated** against a schema
-- **Copied** and **moved** subtrees
-- **Serialized** back to YAML with everything preserved
+- :material-file-code: **Parsed** a YAML file with full metadata preservation
+- :material-magnify: **Inspected** values using the path API and Node API
+- :material-pencil: **Edited** values, comments, anchors, tags, and formatting
+- :material-format-list-bulleted: **Batch-edited** with wildcards using `set_many`
+- :material-sort: **Sorted** keys for readability
+- :material-check-decagram: **Validated** against a schema
+- :material-content-copy: **Copied** and **moved** subtrees
+- :material-sync: **Serialized** back to YAML with everything preserved
 
 ### Next Steps
 
-- [Quick Start](../quick-start.md) — Get started in minutes
-- [In-Place Editing Guide](../guides/editing.md) — Full editing API reference
-- [Custom Schema Guide](../guides/custom-schema.md) — Define your own schemas
-- [API Reference](../api/reference.md) — Complete API documentation
+- :material-rocket-launch: [Quick Start](../quick-start.md) — Get started in minutes
+- :material-pencil: [In-Place Editing Guide](../guides/editing.md) — Full editing API reference
+- :material-check-decagram: [Custom Schema Guide](../guides/custom-schema.md) — Define your own schemas
+- :material-book-open-page-variant: [API Reference](../api/reference.md) — Complete API documentation

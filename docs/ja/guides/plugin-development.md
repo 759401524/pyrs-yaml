@@ -14,7 +14,7 @@ status: new
 
 プラグインは `CustomType` サブクラスを定義し、それを登録する Python モジュールです。
 
-```python
+```python title="my_timestamp_plugin.py"
 import pyrs_yaml
 from datetime import datetime
 
@@ -34,7 +34,7 @@ def register():
 
 | 関数 | 説明 |
 |---------|------|
-| `register_type(name, handler)` | `CustomType` インスタンスを登録 |
-| `clear_type_handlers()` | すべての登録タイプを削除 |
-| `remove_type(name)` | 特定のタイプを削除 |
-| `validate_custom_types(obj)` | オブジェクトを全登録タイプに対して検証 |
+| :material-code-braces: `register_type(name, handler)` | `CustomType` インスタンスを登録 |
+| :material-close: `clear_type_handlers()` | すべての登録タイプを削除 |
+| :material-close: `remove_type(name)` | 特定のタイプを削除 |
+| :material-check-decagram: `validate_custom_types(obj)` | オブジェクトを全登録タイプに対して検証 |
