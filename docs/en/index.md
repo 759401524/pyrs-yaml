@@ -22,16 +22,19 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml d
 
 ### Key Features
 
-- **YAML 1.2 compliant** — powered by granit-parser (99.75% YAML Test Suite pass rate, 405/406)
-- **Perfect Round-Trip** — preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
-- **In-Place Editing** — edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
-- **21–43× faster parsing and 55–177× faster serialization** than PyYAML — Rust backend with zero-copy parsing
-- **Custom AST** — extensible AST for advanced YAML manipulation and custom formatting
-- **PyYAML compatible** — drop-in replacement with `safe_load` / `safe_dump` API
-- **Type hints** — PEP 561 compliant with full `.pyi` stubs
-- **ABI3** — single wheel works across Python 3.8–3.15
-- **i18n error messages** — `set_language("zh-CN")` for bilingual error reporting
-- **NumPy ndarray support** — serialize `numpy.ndarray` of any dimension to YAML with zero-copy Rust dispatch
+<div class="grid cards" markdown>
+
+- :material-lightning-bolt: **Blazing Fast** — 21–43× faster parsing, 55–177× faster serialization than PyYAML, powered by a Rust zero-copy backend
+- :material-sync: **Perfect Round-Trip** — preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
+- :material-pencil: **In-Place Editing** — edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
+- :material-check-decagram: **YAML 1.2 Compliant** — powered by granit-parser (99.75% YAML Test Suite pass rate, 405/406)
+- :material-swap-horizontal: **PyYAML Compatible** — drop-in replacement with `safe_load` / `safe_dump` API
+- :material-language-python: **Type Hints** — PEP 561 compliant with full `.pyi` stubs
+- :material-package-variant-closed: **ABI3 Wheel** — single wheel works across Python 3.8–3.15
+- :material-translate: **i18n Errors** — `set_language("zh-CN")` for bilingual error reporting
+- :material-numeric: **NumPy ndarray** — serialize `numpy.ndarray` of any dimension with zero-copy Rust dispatch
+
+</div>
 
 ### Quick Start
 
@@ -69,6 +72,6 @@ assert doc.to_yaml() == original
 
 ---
 
-**[Get Started →](quick-start.md)**
-**[Browse API Reference →](api/reference.md)**
-**[View on GitHub →](https://github.com/759401524/pyrs-yaml)**
+[Get Started :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[Browse API Reference :material-code-braces:](api/reference.md){ .md-button }
+[View on GitHub :fontawesome-brands-github:](https://github.com/759401524/pyrs-yaml){ .md-button }

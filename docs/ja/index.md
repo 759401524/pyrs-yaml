@@ -18,16 +18,19 @@ status: new
 
 #### 主要機能
 
-- **YAML 1.2 準拠** — granit-parser 駆動（YAML テストスイート 99.75% 合格率、405/406）
-- **完璧なラウンドトリップ** — コメント、アンカー、タグ、チョンピング、スカラースタイル、フロー/ブロックフォーマットを保持
-- **インプレース編集** — JSONPath スタイルのパス（`doc.set("$.a.b", v)`）または `Node` ツリー API で解析済みドキュメントを編集、フォーマットを失わない
-- **PyYAML より解析で 21–43 倍、シリアライズで 55–177 倍高速** — Rust バックエンド、ゼロコピー解析
-- **カスタム AST** — 高度な YAML 操作とカスタムフォーマット用の拡張可能な AST
-- **PyYAML 互換** — `safe_load` / `safe_dump` API で直接置換可能
-- **型ヒント** — PEP 561 準拠、完全な `.pyi` スタブファイル
-- **ABI3** — 単一のホイールで Python 3.8–3.15 に対応
-- **国際化エラーメッセージ** — `set_language("ja")` でバイリンガルエラーレポート
-- **NumPy ndarray サポート** — 任意次元の `numpy.ndarray` をゼロコピー Rust ディスパッチで YAML にシリアライズ
+<div class="grid cards" markdown>
+
+- :material-lightning-bolt: **超高速** — PyYAML より解析 21–43 倍、シリアライズ 55–177 倍高速、Rust ゼロコピーバックエンド駆動
+- :material-sync: **完璧なラウンドトリップ** — コメント、アンカー、タグ、チョンピング、スカラースタイル、フロー/ブロックフォーマットを保持
+- :material-pencil: **インプレース編集** — JSONPath スタイルのパス（`doc.set("$.a.b", v)`）または `Node` ツリー API で編集、フォーマットを失わない
+- :material-check-decagram: **YAML 1.2 準拠** — granit-parser 駆動（YAML テストスイート 99.75% 合格率、405/406）
+- :material-swap-horizontal: **PyYAML 互換** — `safe_load` / `safe_dump` API で直接置換可能
+- :material-language-python: **型ヒント** — PEP 561 準拠、完全な `.pyi` スタブファイル
+- :material-package-variant-closed: **ABI3 ホイール** — 単一ホイールで Python 3.8–3.15 に対応
+- :material-translate: **国際化エラー** — `set_language("ja")` でバイリンガルエラーレポート
+- :material-numeric: **NumPy ndarray** — 任意次元の `numpy.ndarray` をゼロコピー Rust ディスパッチでシリアライズ
+
+</div>
 
 #### クイックスタート
 
@@ -65,8 +68,6 @@ assert doc.to_yaml() == original
 
 ---
 
-### [クイックスタート →](quick-start.md)
-
-### [API リファレンスを参照 →](api/reference.md)
-
-### [GitHub で見る →](https://github.com/759401524/pyrs-yaml)
+[クイックスタート :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[API リファレンス :material-code-braces:](api/reference.md){ .md-button }
+[GitHub で見る :fontawesome-brands-github:](https://github.com/759401524/pyrs-yaml){ .md-button }

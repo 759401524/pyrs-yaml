@@ -206,12 +206,17 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")  # パスで置換
-doc.insert("$.server.ports", 0, 80)  # シーケンスに挿入
-doc.append("$.server.ports", 443)  # シーケンスに追加
-doc.rename("$.server", "srv")  # マッピングキーをリネーム
+doc.set("$.server.host", "0.0.0.0")  # (1)!
+doc.insert("$.server.ports", 0, 80)  # (2)!
+doc.append("$.server.ports", 443)  # (3)!
+doc.rename("$.server", "srv")  # (4)!
 del doc["server"]  # または: doc.delete("$.server")
 ```
+
+1. :material-arrow-down: `set` はパスの値を置換し、インラインコメントを保持します。
+2. :material-arrow-down: `insert` はシーケンスのインデックス位置に要素を挿入します。
+3. :material-arrow-down: `append` はシーケンスの末尾に追加します。
+4. :material-arrow-down: `rename` はマッピングキーをその場でリネームし、位置とコメントを保持します。
 
 - **パス API** — JSONPath スタイルのパス（`$.a.b[0]`）、ルート用糖衣構文（`doc["k"] = v`、`del doc["k"]`）
 - **ノード API** — `doc.node().find(path)` は `Node` オブジェクトを返し、`set_value` / `insert` / `append` / `delete` / `rename` とツリー走査（`parent`、`children`、`walk`、`filter`）をサポート
@@ -282,25 +287,25 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 | 機能 | サポート |
 |------|---------|
-| YAML 1.2 仕様 | ✅ 完全 |
-| コメント（独立） | ✅ 保持 |
-| コメント（インライン） | ✅ 保持 |
-| アンカーとエイリアス | ✅ 保持 |
-| タグ（明示的） | ✅ 保持 |
-| ブロックスカラー（`|`、`>`） | ✅ 保持 |
-| チョンピング インジケーター | ✅ 保持 |
-| フローコレクション（`{}`、`[]`） | ✅ 保持 |
-| マージキー（`<<`） | ✅ 解決 |
-| 複合キー | ✅ サポート |
-| エスケープシーケンス | ✅ サポート |
-| 複数ドキュメント | ✅ サポート |
-| **非同期 I/O** | **✅ `safe_*_async`** |
-| **JSON Schema 検証** | **✅ `doc.validate()`** |
-| **インクリメンタル再パース** | **✅ `doc.reparse()`** |
-| **インプレース編集** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
-| **JSON エクスポート** | **✅ `doc.to_json()`** |
-| **Metadata editing** | **✅ `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
-| **Style/format control** | **✅ `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
-| **Deep editing** | **✅ `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **✅ `validate_against_schema()`** |
-| **Schema file IO** | **✅ `load_schema()` / `list_schemas()`** |
+| YAML 1.2 仕様 | :material-check: 完全 |
+| コメント（独立） | :material-check: 保持 |
+| コメント（インライン） | :material-check: 保持 |
+| アンカーとエイリアス | :material-check: 保持 |
+| タグ（明示的） | :material-check: 保持 |
+| ブロックスカラー（`|`、`>`） | :material-check: 保持 |
+| チョンピング インジケーター | :material-check: 保持 |
+| フローコレクション（`{}`、`[]`） | :material-check: 保持 |
+| マージキー（`<<`） | :material-check: 解決 |
+| 複合キー | :material-check: サポート |
+| エスケープシーケンス | :material-check: サポート |
+| 複数ドキュメント | :material-check: サポート |
+| **非同期 I/O** | **:material-check: `safe_*_async`** |
+| **JSON Schema 検証** | **:material-check: `doc.validate()`** |
+| **インクリメンタル再パース** | **:material-check: `doc.reparse()`** |
+| **インプレース編集** | **:material-check: `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
+| **JSON エクスポート** | **:material-check: `doc.to_json()`** |
+| **Metadata editing** | **:material-check: `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **:material-check: `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **:material-check: `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **:material-check: `validate_against_schema()`** |
+| **Schema file IO** | **:material-check: `load_schema()` / `list_schemas()`** |

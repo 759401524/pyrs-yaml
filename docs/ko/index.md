@@ -18,16 +18,19 @@ status: new
 
 #### 주요 기능
 
-- **YAML 1.2 준수** — granit-parser 기반 (YAML 테스트 스위트 99.75% 통과율, 405/406)
-- **완벽한 순환 파싱** — 주석, 앵커, 태그, chomp, 스칼라 스타일 및 흐름/블록 서식 유지
-- **제자리 편집** — JSONPath 스타일 경로(`doc.set("$.a.b", v)`) 또는 `Node` 트리 API로 파싱된 문서를 서식 손실 없이 편집
-- **PyYAML보다 파싱 21–43배, 직렬화 55–177배 빠름** — Rust 백엔드, 제로 복사 파싱
-- **커스텀 AST** — 고급 YAML 조작 및 사용자 정의 서식을 위한 확장 가능한 AST
-- **PyYAML 호환** — `safe_load` / `safe_dump` API로 직접 교체 가능
-- **타입 힌트** — PEP 561 준수, 완전한 `.pyi` 스텁 파일
-- **ABI3** — 단일 휠로 Python 3.8–3.15 지원
-- **국제화 오류 메시지** — `set_language("ko")`로 이중 언어 오류 보고
-- **NumPy ndarray 지원** — 모든 차원의 `numpy.ndarray`를 제로 복사 Rust 디스패치로 YAML에 직렬화
+<div class="grid cards" markdown>
+
+- :material-lightning-bolt: **초고속** — PyYAML보다 파싱 21–43배, 직렬화 55–177배 빠름, Rust 제로 복사 백엔드 구동
+- :material-sync: **완벽한 순환 파싱** — 주석, 앵커, 태그, chomp, 스칼라 스타일 및 흐름/블록 서식 유지
+- :material-pencil: **제자리 편집** — JSONPath 스타일 경로(`doc.set("$.a.b", v)`) 또는 `Node` 트리 API로 서식 손실 없이 편집
+- :material-check-decagram: **YAML 1.2 준수** — granit-parser 기반 (YAML 테스트 스위트 99.75% 통과율, 405/406)
+- :material-swap-horizontal: **PyYAML 호환** — `safe_load` / `safe_dump` API로 직접 교체 가능
+- :material-language-python: **타입 힌트** — PEP 561 준수, 완전한 `.pyi` 스텁 파일
+- :material-package-variant-closed: **ABI3 휠** — 단일 휠로 Python 3.8–3.15 지원
+- :material-translate: **국제화 오류** — `set_language("ko")`로 이중 언어 오류 보고
+- :material-numeric: **NumPy ndarray** — 모든 차원의 `numpy.ndarray`를 제로 복사 Rust 디스패치로 직렬화
+
+</div>
 
 #### 빠른 시작
 
@@ -65,8 +68,6 @@ assert doc.to_yaml() == original
 
 ---
 
-### [시작하기 →](quick-start.md)
-
-### [API 참조 보기 →](api/reference.md)
-
-### [GitHub에서 보기 →](https://github.com/759401524/pyrs-yaml)
+[시작하기 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[API 참조 :material-code-braces:](api/reference.md){ .md-button }
+[GitHub에서 보기 :fontawesome-brands-github:](https://github.com/759401524/pyrs-yaml){ .md-button }

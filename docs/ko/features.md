@@ -207,12 +207,17 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")  # 경로로 교체
-doc.insert("$.server.ports", 0, 80)  # 시퀀스에 삽입
-doc.append("$.server.ports", 443)  # 시퀀스에 추가
-doc.rename("$.server", "srv")  # 매핑 키 이름 변경
+doc.set("$.server.host", "0.0.0.0")  # (1)!
+doc.insert("$.server.ports", 0, 80)  # (2)!
+doc.append("$.server.ports", 443)  # (3)!
+doc.rename("$.server", "srv")  # (4)!
 del doc["server"]  # 또는: doc.delete("$.server")
 ```
+
+1. :material-arrow-down: `set`은 경로의 값을 교체하며 인라인 주석을 유지합니다.
+2. :material-arrow-down: `insert`는 시퀀스 인덱스 위치에 요소를 삽입합니다.
+3. :material-arrow-down: `append`는 시퀀스 끝에 추가합니다.
+4. :material-arrow-down: `rename`은 매핑 키를 제자리에서 이름 변경하며 위치와 주석을 유지합니다.
 
 - **경로 API** — JSONPath 스타일 경로(`$.a.b[0]`), 루트 슈가(`doc["k"] = v`, `del doc["k"]`)
 - **노드 API** — `doc.node().find(path)`는 `Node` 객체를 반환하며 `set_value` / `insert` / `append` / `delete` / `rename`과 트리 탐색(`parent`, `children`, `walk`, `filter`)을 지원
@@ -283,25 +288,25 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 | 기능 | 지원 |
 |------|------|
-| YAML 1.2 사양 | ✅ 완전 |
-| 주석 (독립) | ✅ 유지 |
-| 주석 (인라인) | ✅ 유지 |
-| 앵커 및 별칭 | ✅ 유지 |
-| 태그 (명시적) | ✅ 유지 |
-| 블록 스칼라 (`|`, `>`) | ✅ 유지 |
-| 촙핑 지시자 | ✅ 유지 |
-| 흐름 컬렉션 (`{}`, `[]`) | ✅ 유지 |
-| 병합 키 (`<<`) | ✅ 해결 |
-| 복합 키 | ✅ 지원 |
-| 이스케이프 시퀀스 | ✅ 지원 |
-| 다중 문서 | ✅ 지원 |
-| **비동기 I/O** | **✅ `safe_*_async`** |
-| **JSON Schema 검증** | **✅ `doc.validate()`** |
-| **점진적 재파싱** | **✅ `doc.reparse()`** |
-| **제자리 편집** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
-| **JSON 내보내기** | **✅ `doc.to_json()`** |
-| **Metadata editing** | **x1f4af `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
-| **Style/format control** | **x1f4af `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
-| **Deep editing** | **x1f4af `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **x1f4af `validate_against_schema()`** |
-| **Schema file IO** | **x1f4af `load_schema()` / `list_schemas()`** |
+| YAML 1.2 사양 | :material-check: 완전 |
+| 주석 (독립) | :material-check: 유지 |
+| 주석 (인라인) | :material-check: 유지 |
+| 앵커 및 별칭 | :material-check: 유지 |
+| 태그 (명시적) | :material-check: 유지 |
+| 블록 스칼라 (`|`, `>`) | :material-check: 유지 |
+| 촙핑 지시자 | :material-check: 유지 |
+| 흐름 컬렉션 (`{}`, `[]`) | :material-check: 유지 |
+| 병합 키 (`<<`) | :material-check: 해결 |
+| 복합 키 | :material-check: 지원 |
+| 이스케이프 시퀀스 | :material-check: 지원 |
+| 다중 문서 | :material-check: 지원 |
+| **비동기 I/O** | **:material-check: `safe_*_async`** |
+| **JSON Schema 검증** | **:material-check: `doc.validate()`** |
+| **점진적 재파싱** | **:material-check: `doc.reparse()`** |
+| **제자리 편집** | **:material-check: `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
+| **JSON 내보내기** | **:material-check: `doc.to_json()`** |
+| **Metadata editing** | **:material-check:  `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **:material-check:  `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **:material-check:  `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **:material-check:  `validate_against_schema()`** |
+| **Schema file IO** | **:material-check:  `load_schema()` / `list_schemas()`** |

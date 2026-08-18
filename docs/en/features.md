@@ -295,12 +295,17 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")  # replace by path
-doc.insert("$.server.ports", 0, 80)  # insert into a sequence
-doc.append("$.server.ports", 443)  # append to a sequence
-doc.rename("$.server", "srv")  # rename a mapping key
+doc.set("$.server.host", "0.0.0.0")  # (1)!
+doc.insert("$.server.ports", 0, 80)  # (2)!
+doc.append("$.server.ports", 443)  # (3)!
+doc.rename("$.server", "srv")  # (4)!
 del doc["server"]  # or: doc.delete("$.server")
 ```
+
+1. :material-arrow-down: `set` replaces the value at a path, preserving the inline comment.
+2. :material-arrow-down: `insert` adds an element at a sequence index.
+3. :material-arrow-down: `append` adds to the end of a sequence.
+4. :material-arrow-down: `rename` changes a mapping key in place, keeping position and comments.
 
 - **Path API** — JSONPath-style paths (`$.a.b[0]`) with root sugar (`doc["k"] = v`, `del doc["k"]`)
 - **Node API** — `doc.node().find(path)` returns `Node` objects with `set_value` / `insert` / `append` / `delete` / `rename`, plus tree traversal (`parent`, `children`, `walk`, `filter`)
@@ -379,25 +384,25 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 | Feature | Support |
 |---------|---------|
-| YAML 1.2 spec | ✅ Full |
-| Comments (standalone) | ✅ Preserved |
-| Comments (inline) | ✅ Preserved |
-| Anchors & aliases | ✅ Preserved |
-| Tags (explicit) | ✅ Preserved |
-| Block scalars (`\|`, `>`) | ✅ Preserved |
-| Chomping indicators | ✅ Preserved |
-| Flow collections (`{}`, `[]`) | ✅ Preserved |
-| Merge keys (`<<`) | ✅ Resolved |
-| Complex keys | ✅ Supported |
-| Escape sequences | ✅ Supported |
-| Multi-document | ✅ Supported |
-| **Async I/O** | **✅ `safe_*_async`** |
-| **JSON Schema validation** | **✅ `doc.validate()`** |
-| **Incremental re-parse** | **✅ `doc.reparse()`** |
-| **In-place editing** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
-| **Metadata editing** | **✅ `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
-| **Style/format control** | **✅ `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
-| **Deep editing** | **✅ `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **✅ `validate_against_schema()`** |
-| **Schema file IO** | **✅ `load_schema()` / `list_schemas()`** |
-| **JSON export** | **✅ `doc.to_json()`** |
+| YAML 1.2 spec | :material-check: Full |
+| Comments (standalone) | :material-check: Preserved |
+| Comments (inline) | :material-check: Preserved |
+| Anchors & aliases | :material-check: Preserved |
+| Tags (explicit) | :material-check: Preserved |
+| Block scalars (`\|`, `>`) | :material-check: Preserved |
+| Chomping indicators | :material-check: Preserved |
+| Flow collections (`{}`, `[]`) | :material-check: Preserved |
+| Merge keys (`<<`) | :material-check: Resolved |
+| Complex keys | :material-check: Supported |
+| Escape sequences | :material-check: Supported |
+| Multi-document | :material-check: Supported |
+| **Async I/O** | **:material-check: `safe_*_async`** |
+| **JSON Schema validation** | **:material-check: `doc.validate()`** |
+| **Incremental re-parse** | **:material-check: `doc.reparse()`** |
+| **In-place editing** | **:material-check: `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
+| **Metadata editing** | **:material-check: `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **:material-check: `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **:material-check: `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **:material-check: `validate_against_schema()`** |
+| **Schema file IO** | **:material-check: `load_schema()` / `list_schemas()`** |
+| **JSON export** | **:material-check: `doc.to_json()`** |
