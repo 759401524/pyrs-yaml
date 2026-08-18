@@ -367,7 +367,7 @@ print(doc.to_yaml())      # dst:\n  x: 1
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
-```python
+```python title="Node の内省"
 node = doc.node().find("$.a.b")
 node.path                  # ('a', 'b') — パスセグメント
 doc.node().find_first("$.items[*]")  # 最初のワイルドカード一致または None
