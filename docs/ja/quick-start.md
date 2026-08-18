@@ -12,13 +12,13 @@ status: new
 
 パッケージはまだ PyPI に掲載されていません。ソースからインストール：
 
-```bash
+```bash title="ソースからインストール"
 uv run --frozen maturin develop --release
 ```
 
 ## 2. YAML のパース
 
-```python
+```python title="パースして値を取得"
 import pyrs_yaml
 
 # Parse a YAML string
@@ -36,7 +36,7 @@ print(doc.get("email"))  # alice@example.com
 
 ## 3. Python オブジェクトへの変換
 
-```python
+```python title="safe_load でネイティブ型を取得"
 # Use safe_load for PyYAML-compatible behavior
 data = pyrs_yaml.safe_load("""
 users:
@@ -53,7 +53,7 @@ print(type(data["users"]))  # <class 'list'>
 
 ## 4. YAML へのシリアライズ
 
-```python
+```python title="safe_dump で dict をシリアライズ"
 # Convert a Python dict back to YAML
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
@@ -65,7 +65,7 @@ print(yaml_str)
 
 ## 5. フォーマットの保持（ラウンドトリップ）
 
-```python
+```python title="コメントとアンカーがラウンドトリップで保持"
 # The key advantage of pyrs-yaml
 original = """
 # Server configuration
@@ -100,7 +100,7 @@ assert "&db" in output  # (4)!
 
 ## 6. インプレース編集
 
-```python
+```python title="JSONPath で編集"
 # コメントやフォーマットを失わずに解析済みドキュメントを編集
 doc = pyrs_yaml.parse("""
 server:
@@ -124,7 +124,7 @@ print(doc.to_yaml())
 
 ## 7. ファイルから YAML を読み込む
 
-```python
+```python title="parse_file"
 # Parse a YAML file directly
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
@@ -132,7 +132,7 @@ print(doc.get("name"))
 
 ## 8. 複数ドキュメント
 
-```python
+```python title="parse_all_docs"
 # Parse multiple YAML documents
 yaml_text = """
 ---
@@ -195,7 +195,7 @@ print(docs[0].get("name"))  # config1
 
 ### 10. メタデータの操作（comment, anchor, tag）
 
-```python
+```python title="コメント、アンカー、タグを設定"
 doc = pyrs_yaml.parse("key: value")
 node = doc.node().find("$.key")
 node.set_comment("a note")
@@ -207,7 +207,7 @@ print(doc.to_yaml())
 
 ### 11. フォーマットの制御
 
-```python
+```python title="スタイル、フロー、chomping"
 doc = pyrs_yaml.parse("key: value")
 doc.node().find("$.key").set_scalar_style("single_quoted")
 ```
@@ -230,7 +230,7 @@ doc.node().find("$.key").set_scalar_style("single_quoted")
 
 ### 13. 高度な編集
 
-```python
+```python title="バッチ、ソート、移動、コピー"
 doc.set_many({"$.items[*].active": False})
 doc.sort_keys()
 ```

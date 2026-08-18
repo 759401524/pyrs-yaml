@@ -49,7 +49,7 @@ Rust 백엔드는 PyYAML보다 파싱 **21–43배**, 직렬화 **55–177배 �
 
 익숙한 API로 직접 교체 가능：
 
-```python
+```python title="PyYAML 호환 API"
 import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
@@ -62,7 +62,7 @@ yaml.safe_dumps(data)
 
 `asyncio`를 통한 논블로킹 직렬화 및 파싱:
 
-```python
+```python title="비동기 덤프 및 로드"
 import asyncio
 import pyrs_yaml
 
@@ -82,7 +82,7 @@ asyncio.run(main())
 
 JSON Schema를 기반으로 파싱된 YAML 문서 검증：
 
-```python
+```python title="JSON Schema 검증"
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
@@ -96,14 +96,14 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 기본적으로 중복 매핑 키는 `YamlDuplicateKeyError`를 발생시킵니다:
 
-```python
+```python title="중복 키 오류"
 pyrs_yaml.parse("key: first\nkey: second")
 # pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
 ```
 
 `allow_duplicate_keys=True`를 전달하면 **마지막 값**이 유지됩니다:
 
-```python
+```python title="중복 키 허용"
 doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
@@ -114,7 +114,7 @@ doc.get("key")  # "second"
 
 `to_yaml_with_options()`는 들여쓰기과 줄 바꿈을 제어합니다:
 
-```python
+```python title="직렬화 옵션"
 yaml_str = doc.to_yaml_with_options(
     indent_size=2,  # 기본 들여쓰기 (유형별 옵션 생략 시 사용)
     width=80,  # 줄 바꿈 너비; 0은 줄 바꿈 비활성화
@@ -164,7 +164,7 @@ yaml_str = doc.to_yaml_with_options(
 
 Pydantic 모델로 YAML을 직접 파싱하거나 모델을 YAML로 직렬화:
 
-```python
+```python title="Pydantic 통합"
 from pydantic import BaseModel
 import pyrs_yaml
 
@@ -187,7 +187,7 @@ print(yaml_str)
 
 다른 옵션으로 저장된 소스 텍스트를 제자리에서 재파싱：
 
-```python
+```python title="점진적 재파싱"
 doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
@@ -199,7 +199,7 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 파싱된 문서를 **서식 메타데이터를 전혀 잃지 않고** 편집합니다 — 주석, 앵커, 태그, 스칼라 스타일, 흐름/블록 스타일이 모두 유지됩니다:
 
-```python
+```python title="제자리 편집"
 doc = pyrs_yaml.parse("""
 server:
   host: localhost  # bind address
@@ -231,7 +231,7 @@ del doc["server"]  # 또는: doc.delete("$.server")
 
 pyrs-yaml는 모든 차원의 `numpy.ndarray` 객체를 직접 YAML로 직렬화할 수 있습니다:
 
-```python
+```python title="NumPy ndarray 직렬화"
 import numpy as np
 import pyrs_yaml
 

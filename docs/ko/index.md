@@ -34,11 +34,11 @@ status: new
 
 #### 빠른 시작
 
-```bash
+```bash title="설치"
 pip install pyrs-yaml
 ```
 
-```python
+```python title="빠른 시작"
 import pyrs_yaml
 
 # Parse YAML

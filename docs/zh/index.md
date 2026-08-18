@@ -32,11 +32,11 @@ status: new
 
 ### 快速开始
 
-```bash
+```bash title="安装"
 pip install pyrs-yaml
 ```
 
-```python
+```python title="快速开始"
 import pyrs_yaml
 
 # Parse YAML

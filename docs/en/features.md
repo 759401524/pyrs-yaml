@@ -52,7 +52,7 @@ The **CustomNode** AST gives you full control over YAML structure:
 
 Drop-in replacement with familiar API:
 
-```python
+```python title="PyYAML-compatible API"
 import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
@@ -65,7 +65,7 @@ yaml.safe_dumps(data)
 
 Non-blocking serialization and parsing via `asyncio`:
 
-```python
+```python title="Async dump and load"
 import asyncio
 import pyrs_yaml
 
@@ -85,7 +85,7 @@ Available functions: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 
 Validate parsed YAML documents against JSON Schema:
 
-```python
+```python title="JSON Schema validation"
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
@@ -99,7 +99,7 @@ Raises `YamlValidateError` on validation failure.
 
 Define custom schemas that control how plain scalars resolve to Python types:
 
-```python
+```python title="Register a custom schema"
 import pyrs_yaml
 
 # Register a custom schema from a YAML string
@@ -122,7 +122,7 @@ assert d["addr"] == 31
 
 Or pass a dict inline instead of registering:
 
-```python
+```python title="Inline schema dict"
 d = pyrs_yaml.safe_load(
     "addr: 0xFF",
     schema={
@@ -143,14 +143,14 @@ d = pyrs_yaml.safe_load(
 
 By default, duplicate mapping keys raise `YamlDuplicateKeyError`:
 
-```python
+```python title="Duplicate key error"
 pyrs_yaml.parse("key: first\nkey: second")
 # pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
 ```
 
 Pass `allow_duplicate_keys=True` to keep the **last value**:
 
-```python
+```python title="Allow duplicate keys"
 doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
@@ -161,7 +161,7 @@ The switch applies to `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_a
 
 `to_yaml_with_options()` controls indentation and line wrapping:
 
-```python
+```python title="Serialization options"
 yaml_str = doc.to_yaml_with_options(
     indent_size=2,  # base indent (used when per-type options omitted)
     width=80,  # line wrap width; 0 disables wrapping
@@ -177,7 +177,7 @@ When `indent_mapping` / `indent_sequence` / `indent_offset` are omitted, they de
 
 Register handlers for custom YAML tags that transform scalar values:
 
-```python
+```python title="Import"
 import pyrs_yaml
 ```
 
@@ -195,7 +195,7 @@ import pyrs_yaml
     pyrs_yaml.register_tag("!custom", lambda node: node.upper())
     ```
 
-```python
+```python title="Use a custom tag"
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -208,7 +208,7 @@ doc.get("name")  # "custom:value"
 
 Define custom YAML node types that integrate with serialization and deserialization:
 
-```python
+```python title="CustomType plugin"
 import pyrs_yaml
 from datetime import datetime
 
@@ -252,7 +252,7 @@ out = pyrs_yaml.safe_dump(data)
 
 Parse YAML directly into Pydantic models, or serialize models to YAML:
 
-```python
+```python title="Pydantic integration"
 from pydantic import BaseModel
 import pyrs_yaml
 
@@ -275,7 +275,7 @@ print(yaml_str)
 
 Re-parse stored source text in place with different options:
 
-```python
+```python title="Incremental re-parse"
 doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
@@ -287,7 +287,7 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 Edit a parsed document **without losing any formatting metadata** — comments, anchors, tags, scalar styles, and flow/block style all survive:
 
-```python
+```python title="In-place editing"
 doc = pyrs_yaml.parse("""
 server:
   host: localhost  # bind address
@@ -322,7 +322,7 @@ See the [In-Place Editing guide](guides/editing.md) for details.
 
 pyrs-yaml can serialize `numpy.ndarray` objects of any dimension directly to YAML:
 
-```python
+```python title="NumPy ndarray serialization"
 import numpy as np
 import pyrs_yaml
 

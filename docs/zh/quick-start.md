@@ -14,7 +14,7 @@ status: new
 
 该包尚未发布到 PyPI。从源码安装：
 
-```bash
+```bash title="从源码安装"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -22,7 +22,7 @@ uv run --frozen maturin develop --release
 
 ### 2. 解析 YAML
 
-```python
+```python title="解析并访问值"
 import pyrs_yaml
 
 # 解析 YAML 字符串
@@ -40,7 +40,7 @@ print(doc.get("email"))  # alice@example.com
 
 ### 3. 转换为 Python 对象
 
-```python
+```python title="使用 safe_load 获取原生类型"
 # 使用 safe_load 获得 PyYAML 兼容行为
 data = pyrs_yaml.safe_load("""
 users:
@@ -57,7 +57,7 @@ print(type(data["users"]))  # <class 'list'>
 
 ### 4. 序列化为 YAML
 
-```python
+```python title="使用 safe_dump 序列化 dict"
 # 将 Python dict 转换回 YAML
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
@@ -69,7 +69,7 @@ print(yaml_str)
 
 ### 5. 保留格式（往返）
 
-```python
+```python title="注释和锚点在往返中保留"
 # pyrs-yaml 的核心优势
 original = """
 # 服务器配置
@@ -104,7 +104,7 @@ assert "&db" in output  # (4)!
 
 ### 6. 就地编辑
 
-```python
+```python title="按 JSONPath 编辑"
 # 编辑已解析的文档，不丢失注释或格式
 doc = pyrs_yaml.parse("""
 server:
@@ -128,7 +128,7 @@ print(doc.to_yaml())
 
 ### 7. 从文件读取 YAML
 
-```python
+```python title="parse_file"
 # 直接解析 YAML 文件
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
@@ -136,7 +136,7 @@ print(doc.get("name"))
 
 ### 8. 多文档解析
 
-```python
+```python title="parse_all_docs"
 # 解析多个 YAML 文档
 yaml_text = """
 ---
@@ -199,7 +199,7 @@ print(docs[0].get("name"))  # config1
 
 ### 10. 操控元数据（comment, anchor, tag）
 
-```python
+```python title="设置注释、锚点、标签"
 doc = pyrs_yaml.parse("key: value")
 node = doc.node().find("$.key")
 node.set_comment("a note")
@@ -211,7 +211,7 @@ print(doc.to_yaml())
 
 ### 11. 控制格式（scalar style、flow style、chomping）
 
-```python
+```python title="样式、流式、chomping"
 doc = pyrs_yaml.parse("key: value")
 doc.node().find("$.key").set_scalar_style("single_quoted")
 print(doc.to_yaml())  # key: 'value'
@@ -235,7 +235,7 @@ print(doc.to_yaml())  # key: 'value'
 
 ### 13. 深度编辑（批量设置、排序、移动、复制）
 
-```python
+```python title="批量、排序、移动、复制"
 doc.set_many({"$.items[*].active": False})
 doc.sort_keys()
 ```

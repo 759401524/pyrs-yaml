@@ -34,11 +34,11 @@ status: new
 
 #### クイックスタート
 
-```bash
+```bash title="インストール"
 pip install pyrs-yaml
 ```
 
-```python
+```python title="クイックスタート"
 import pyrs_yaml
 
 # Parse YAML

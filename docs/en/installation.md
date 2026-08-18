@@ -20,7 +20,7 @@ status: new
 
 The package is not yet published on PyPI. To install from source:
 
-```bash
+```bash title="Install from source"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -45,7 +45,7 @@ Free-threaded (no-GIL) wheels for CPython 3.14t include the NumPy integration. W
     reported, and a basic parse/round-trip works. A successful run prints
     `✓ Installation verified`.
 
-```python
+```python title="Verify your install"
 import pyrs_yaml
 
 # Check version

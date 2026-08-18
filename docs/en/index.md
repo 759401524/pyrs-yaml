@@ -38,11 +38,11 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml d
 
 ### Quick Start
 
-```bash
+```bash title="Install"
 pip install pyrs-yaml
 ```
 
-```python
+```python title="Quick start"
 import pyrs_yaml
 
 # Parse YAML

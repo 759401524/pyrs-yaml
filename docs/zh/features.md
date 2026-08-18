@@ -49,7 +49,7 @@ Rust 后端比 PyYAML 解析快 **21–43 倍**、序列化快 **55–177 倍**�
 
 直接替换，API 熟悉易用：
 
-```python
+```python title="PyYAML 兼容 API"
 import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
@@ -62,7 +62,7 @@ yaml.safe_dumps(data)
 
 通过 `asyncio` 进行非阻塞序列化和解析：
 
-```python
+```python title="异步导出和加载"
 import asyncio
 import pyrs_yaml
 
@@ -82,7 +82,7 @@ asyncio.run(main())
 
 根据 JSON Schema 验证解析后的 YAML 文档：
 
-```python
+```python title="JSON Schema 验证"
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
@@ -96,14 +96,14 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 默认情况下重复的映射键抛出 `YamlDuplicateKeyError`：
 
-```python
+```python title="重复键错误"
 pyrs_yaml.parse("key: first\nkey: second")
 # pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
 ```
 
 传入 `allow_duplicate_keys=True` 则保留**最后一个值**：
 
-```python
+```python title="允许重复键"
 doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
@@ -114,7 +114,7 @@ doc.get("key")  # "second"
 
 `to_yaml_with_options()` 控制缩进与换行：
 
-```python
+```python title="序列化选项"
 yaml_str = doc.to_yaml_with_options(
     indent_size=2,  # 基础缩进（省略按类型选项时使用）
     width=80,  # 换行宽度；0 表示不换行
@@ -130,7 +130,7 @@ yaml_str = doc.to_yaml_with_options(
 
 为自定义 YAML 标签注册处理器，转换标量值：
 
-```python
+```python title="导入"
 import pyrs_yaml
 ```
 
@@ -148,7 +148,7 @@ import pyrs_yaml
     pyrs_yaml.register_tag("!custom", lambda node: node.upper())
     ```
 
-```python
+```python title="使用自定义标签"
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -161,7 +161,7 @@ doc.get("name")  # "custom:value"
 
 使用不同选项就地重新解析存储的源文本：
 
-```python
+```python title="增量重新解析"
 doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
@@ -173,7 +173,7 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 编辑已解析的文档，**不丢失任何格式元数据** — 注释、锚点、标签、标量样式和流式/块式风格全部保留：
 
-```python
+```python title="就地编辑"
 doc = pyrs_yaml.parse("""
 server:
   host: localhost  # bind address
@@ -205,7 +205,7 @@ del doc["server"]  # 或: doc.delete("$.server")
 
 pyrs-yaml 可以将任意维度的 `numpy.ndarray` 对象直接序列化为 YAML：
 
-```python
+```python title="NumPy ndarray 序列化"
 import numpy as np
 import pyrs_yaml
 
@@ -262,7 +262,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 直接将 YAML 解析为 Pydantic v2 模型：
 
-```python
+```python title="Pydantic 集成"
 from pydantic import BaseModel
 import pyrs_yaml
 

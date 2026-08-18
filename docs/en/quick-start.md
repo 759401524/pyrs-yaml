@@ -14,7 +14,7 @@ This guide will get you up and running with pyrs-yaml in minutes.
 
 The package is not yet on PyPI. Install from source:
 
-```bash
+```bash title="Install from source"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -22,7 +22,7 @@ uv run --frozen maturin develop --release
 
 ### 2. Parse YAML
 
-```python
+```python title="Parse and access values"
 import pyrs_yaml
 
 # Parse a YAML string
@@ -40,7 +40,7 @@ print(doc.get("email"))  # alice@example.com
 
 ### 3. Convert to Python Objects
 
-```python
+```python title="safe_load for native types"
 # Use safe_load for PyYAML-compatible behavior
 data = pyrs_yaml.safe_load("""
 users:
@@ -57,7 +57,7 @@ print(type(data["users"]))  # <class 'list'>
 
 ### 4. Serialize to YAML
 
-```python
+```python title="safe_dump a dict"
 # Convert a Python dict back to YAML
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
@@ -69,7 +69,7 @@ print(yaml_str)
 
 ### 5. Preserve Formatting (Round-Trip)
 
-```python
+```python title="Comments and anchors survive round-trip"
 # The key advantage of pyrs-yaml
 original = """
 # Server configuration
@@ -104,7 +104,7 @@ assert "&db" in output  # (4)!
 
 ### 6. Edit In Place
 
-```python
+```python title="Edit by JSONPath"
 # Edit a parsed document without losing comments or formatting
 doc = pyrs_yaml.parse("""
 server:
@@ -128,7 +128,7 @@ See the [In-Place Editing guide](guides/editing.md) for the full API.
 
 ### 7. Read YAML from Files
 
-```python
+```python title="parse_file"
 # Parse a YAML file directly
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
@@ -136,7 +136,7 @@ print(doc.get("name"))
 
 ### 8. Multiple Documents
 
-```python
+```python title="parse_all_docs"
 # Parse multiple YAML documents
 yaml_text = """
 ---
@@ -201,7 +201,7 @@ print(docs[0].get("name"))  # config1
 YAML metadata — comments, anchors, and tags — survive round-trip by default;
 you can also **read and edit them** through the `Node` API:
 
-```python
+```python title="Set comment, anchor, tag"
 doc = pyrs_yaml.parse("key: value")
 node = doc.node().find("$.key")
 
@@ -220,7 +220,7 @@ print(doc.to_yaml())
 
 Metadata can be removed as well:
 
-```python
+```python title="Remove metadata"
 node.remove_comment()
 node.remove_anchor()
 node.remove_tag()
@@ -232,7 +232,7 @@ pyrs-yaml preserves the **scalar style** (plain, single-quoted, double-quoted,
 literal, folded), **flow style** (block vs. JSON-like `{}`/`[]`), and
 **chomping indicator** (strip, clip, keep) of every node:
 
-```python
+```python title="Style, flow, chomping"
 doc = pyrs_yaml.parse("key: value")
 
 # Switch scalar style to single-quoted
@@ -285,7 +285,7 @@ print(doc.to_yaml())  # text: |-\n  hello\n  world
 Edit multiple paths at once, sort keys, relocate subtrees, and deep-copy
 values — all while preserving every other YAML feature:
 
-```python
+```python title="Batch, sort, move, copy"
 # Batch set with wildcards
 doc = pyrs_yaml.parse("items:\n  - active: true\n  - active: true\n")
 doc.set_many({"$.items[*].active": False})

@@ -14,7 +14,7 @@ status: new
 
 패키지는 아직 PyPI에 게시되지 않았습니다. 소스에서 설치:
 
-```bash
+```bash title="소스에서 설치"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -22,7 +22,7 @@ uv run --frozen maturin develop --release
 
 ### 2. YAML 파싱
 
-```python
+```python title="파싱 및 값 접근"
 import pyrs_yaml
 
 # YAML 문자열 파싱
@@ -40,7 +40,7 @@ print(doc.get("email"))  # alice@example.com
 
 ### 3. Python 객체로 변환
 
-```python
+```python title="safe_load로 네이티브 타입 얻기"
 # PyYAML 호환 동작을 위해 safe_load 사용
 data = pyrs_yaml.safe_load("""
 users:
@@ -57,7 +57,7 @@ print(type(data["users"]))  # <class 'list'>
 
 ### 4. YAML로 직렬화
 
-```python
+```python title="safe_dump로 dict 직렬화"
 # Python 딕셔너리를 YAML로 변환
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
@@ -69,7 +69,7 @@ print(yaml_str)
 
 ### 5. 서식 보존 (Round-Trip)
 
-```python
+```python title="주석과 앵커가 라운드트립에서 보존"
 # pyrs-yaml의 핵심 장점
 original = """
 # 서버 설정
@@ -104,7 +104,7 @@ assert "&db" in output  # (4)!
 
 ### 6. 제자리 편집
 
-```python
+```python title="JSONPath로 편집"
 # 주석이나 서식을 잃지 않고 파싱된 문서 편집
 doc = pyrs_yaml.parse("""
 server:
@@ -128,7 +128,7 @@ print(doc.to_yaml())
 
 ### 7. 파일에서 YAML 읽기
 
-```python
+```python title="parse_file"
 # YAML 파일 직접 파싱
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
@@ -136,7 +136,7 @@ print(doc.get("name"))
 
 ### 8. 여러 문서
 
-```python
+```python title="parse_all_docs"
 # 여러 YAML 문서 파싱
 yaml_text = """
 ---
@@ -199,7 +199,7 @@ print(docs[0].get("name"))  # config1
 
 ### 10. 메타데이터 조작 (comment, anchor, tag)
 
-```python
+```python title="주석, 앵커, 태그 설정"
 doc = pyrs_yaml.parse("key: value")
 node = doc.node().find("$.key")
 node.set_comment("a note")
@@ -209,7 +209,7 @@ node.set_tag("!custom")
 
 ### 11. 포맷 제어 (scalar style, flow style, chomping)
 
-```python
+```python title="스타일, 플로우, chomping"
 doc = pyrs_yaml.parse("key: value")
 doc.node().find("$.key").set_scalar_style("single_quoted")
 ```
@@ -232,7 +232,7 @@ doc.node().find("$.key").set_scalar_style("single_quoted")
 
 ### 13. 고급 편집
 
-```python
+```python title="일괄, 정렬, 이동, 복사"
 doc.set_many({"$.items[*].active": False})
 doc.sort_keys()
 ```

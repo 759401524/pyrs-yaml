@@ -49,7 +49,7 @@ Rust バックエンドは PyYAML より解析で **21–43 倍**、シリアラ
 
 使い慣れた API で直接置き換え可能：
 
-```python
+```python title="PyYAML 互換 API"
 import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
@@ -62,7 +62,7 @@ yaml.safe_dumps(data)
 
 `asyncio` を使用した非ブロッキングシリアライズとパース：
 
-```python
+```python title="非同期ダンプとロード"
 import asyncio
 import pyrs_yaml
 
@@ -82,7 +82,7 @@ asyncio.run(main())
 
 JSON Schema に基づいてパースされた YAML ドキュメントを検証：
 
-```python
+```python title="JSON Schema 検証"
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
@@ -96,14 +96,14 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 デフォルトでは、重複するマッピングキーは `YamlDuplicateKeyError` をスローします：
 
-```python
+```python title="重複キーエラー"
 pyrs_yaml.parse("key: first\nkey: second")
 # pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
 ```
 
 `allow_duplicate_keys=True` を渡すと、**最後の値**が保持されます：
 
-```python
+```python title="重複キーを許可"
 doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
@@ -114,7 +114,7 @@ doc.get("key")  # "second"
 
 `to_yaml_with_options()` はインデントと行折り返しを制御します：
 
-```python
+```python title="シリアライズオプション"
 yaml_str = doc.to_yaml_with_options(
     indent_size=2,  # 基本インデント（タイプ別オプション省略時に使用）
     width=80,  # 行折り返し幅；0 で折り返し無効
@@ -150,7 +150,7 @@ yaml_str = doc.to_yaml_with_options(
     pyrs_yaml.register_tag("!custom", lambda node: node.upper())
     ```
 
-```python
+```python title="カスタムタグを使用"
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -163,7 +163,7 @@ doc.get("name")  # "custom:value"
 
 Pydantic モデルに直接 YAML をパース、またはモデルを YAML にシリアライズ：
 
-```python
+```python title="Pydantic 統合"
 from pydantic import BaseModel
 import pyrs_yaml
 
@@ -186,7 +186,7 @@ print(yaml_str)
 
 異なるオプションで保存されたソーステキストをその場で再パース：
 
-```python
+```python title="インクリメンタル再パース"
 doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
@@ -198,7 +198,7 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 解析済みドキュメントを**フォーマットメタデータを一切失わずに**編集します — コメント、アンカー、タグ、スカラースタイル、フロー/ブロックスタイルはすべて保持されます：
 
-```python
+```python title="インプレース編集"
 doc = pyrs_yaml.parse("""
 server:
   host: localhost  # bind address
@@ -230,7 +230,7 @@ del doc["server"]  # または: doc.delete("$.server")
 
 pyrs-yaml は任意次元の `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます：
 
-```python
+```python title="NumPy ndarray シリアライズ"
 import numpy as np
 import pyrs_yaml
 

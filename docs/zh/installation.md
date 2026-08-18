@@ -18,7 +18,7 @@ status: new
 
 该包尚未发布到 PyPI。从源码安装：
 
-```bash
+```bash title="从源码安装"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -35,7 +35,7 @@ CPython 3.14t 的自由线程（无 GIL）wheel 包含 NumPy 集成。当环境�
 
 ## 快速验证
 
-```python
+```python title="验证安装"
 import pyrs_yaml
 
 # 检查版本
