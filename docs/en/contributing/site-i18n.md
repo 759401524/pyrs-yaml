@@ -1,14 +1,14 @@
 ---
-title: Site-wide i18n (MkDocs)
-description: How the documentation site supports internationalization via MkDocs Material theme, including directory structure and link rules.
+title: Site-wide i18n
+description: How the documentation site supports internationalization, including directory structure and link rules.
 tags:
   - docs
 status: new
 ---
 
-## Site-wide i18n (MkDocs)
+## Site-wide i18n
 
-The pyrs-yaml documentation site supports **site-wide internationalization** using MkDocs Material theme's built-in i18n. Users can view docs in English (`en`), Chinese (`zh-CN`), Japanese (`ja-JP`), and Korean (`ko-KR`).
+The pyrs-yaml documentation site supports **site-wide internationalization** using the Material theme's built-in i18n. Users can view docs in English (`en`), Chinese (`zh-CN`), Japanese (`ja-JP`), and Korean (`ko-KR`).
 
 See the runtime error-message i18n guide at [guides/i18n.md](../guides/i18n.md) for `set_language()` / `get_language()`.
 

@@ -6,11 +6,13 @@ tags:
 status: new
 ---
 
-## 高性能な Python YAML ライブラリ、完璧な Round-Trip サポート、Rust と PyO3 で構築されています。
+## pyrs-yaml
+
+**高性能な Python YAML ライブラリ、完璧な Round-Trip サポート、Rust と PyO3 で構築されています。**
 
 ### なぜ pyrs-yaml を選ぶべきか？
 
-ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。 pyrs-yaml の両方を提供します:
+ほとんどの Python YAML ライブラリは、パフォーマンスと忠実性のどちらかを犠牲にします。pyrs-yaml は両方を提供します：
 
 - **PyYAML** (Python) — 遅く、往復解析時に**コメント/アンカー/タグを失う**
 - **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **解析は 48–100 倍、シリアライズは 123–371 倍遅い**
@@ -27,12 +29,12 @@ status: new
 - :material-swap-horizontal: **PyYAML 互換** — `safe_load` / `safe_dump` API で直接置換可能
 - :material-language-python: **型ヒント** — PEP 561 準拠、完全な `.pyi` スタブファイル
 - :material-package-variant-closed: **ABI3 ホイール** — 単一ホイールで Python 3.8–3.15 に対応
-- :material-translate: **国際化エラー** — `set_language("ja")` でバイリンガルエラーレポート
+- :material-translate: **国際化エラー** — `set_language("ja-JP")` でバイリンガルエラーレポート
 - :material-numeric: **NumPy ndarray** — 任意次元の `numpy.ndarray` をゼロコピー Rust ディスパッチでシリアライズ
 
 </div>
 
-#### クイックスタート
+### クイックスタート
 
 ```bash title="インストール"
 pip install pyrs-yaml
@@ -41,23 +43,23 @@ pip install pyrs-yaml
 ```python title="クイックスタート"
 import pyrs_yaml
 
-# Parse YAML
+# YAML をパース
 doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 
-# PyYAML compatible API
+# PyYAML 互換 API
 data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
-# Round-trip preserves comments
+# ラウンドトリップでコメントを保持
 original = "# Comment\nkey: value  # inline\n"
 doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
 ```
 
-#### PyYAML との比較
+### PyYAML との比較
 
-| Operation | pyrs-yaml | PyYAML | Speedup |
+| 操作 | pyrs-yaml | PyYAML | 速度向上 |
 |-----------|-----------|--------|---------|
 | Parse (small) | 0.18 ms | 3.8 ms | **21×** |
 | Parse (medium) | 0.56 ms | 24.2 ms | **43×** |
