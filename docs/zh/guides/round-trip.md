@@ -44,17 +44,17 @@ assert "&db" in output
 
 | 元素 | 是否保留 | 说明 |
 |------|---------|------|
-| 独立行注释 | ✅ | 键和值之前 |
-| 行内注释 | ✅ | 行尾 |
-| 锚点 (`&name`) | ✅ | 完整的锚点语法 |
-| 别名 (`*name`) | ✅ | 别名引用被解析 |
-| 合并键 (`<<`) | ⚠️ | 默认被解析；`resolve_merges=False` 时保留 |
-| 标签 (`!!str`, `!!int`) | ✅ | 显式标签被保留 |
-| 标量样式 | ✅ | Plain、引号、字面量、折叠 |
-| Chomping (`\|-`, `>-`) | ✅ | 块标量指示符 |
-| 流式/块式风格 | ✅ | `[]`/`{}` 与块式被保留 |
-| 紧凑序列项 | ✅ | `- host: a` 保持在破折号行（仅限无元数据的映射项） |
-| 键顺序 | ✅ | `IndexMap` 保证顺序 |
+| 独立行注释 | :material-check: | 键和值之前 |
+| 行内注释 | :material-check: | 行尾 |
+| 锚点 (`&name`) | :material-check: | 完整的锚点语法 |
+| 别名 (`*name`) | :material-check: | 别名引用被解析 |
+| 合并键 (`<<`) | :material-alert: | 默认被解析；`resolve_merges=False` 时保留 |
+| 标签 (`!!str`, `!!int`) | :material-check: | 显式标签被保留 |
+| 标量样式 | :material-check: | Plain、引号、字面量、折叠 |
+| Chomping (`\|-`, `>-`) | :material-check: | 块标量指示符 |
+| 流式/块式风格 | :material-check: | `[]`/`{}` 与块式被保留 |
+| 紧凑序列项 | :material-check: | `- host: a` 保持在破折号行（仅限无元数据的映射项） |
+| 键顺序 | :material-check: | `IndexMap` 保证顺序 |
 
 ## PyYAML vs pyrs-yaml 往返
 
@@ -63,12 +63,12 @@ original = "# 注释\nkey: value  # 行内注释\n"
 
 # PyYAML: 丢失一切
 yaml.safe_dump(yaml.safe_load(original))
-# 输出: 'key: value\n'  ❌
+# 输出: 'key: value\n'  :material-close:
 
 # pyrs-yaml: 保留一切
 doc = pyrs_yaml.parse(original)
 doc.to_yaml()
-# 输出: '# 注释\nkey: value  # 行内注释\n'  ✅
+# 输出: '# 注释\nkey: value  # 行内注释\n'  :material-check:
 ```
 
 ## 性能
@@ -77,8 +77,8 @@ doc.to_yaml()
 
 | 库 | 往返 (大文件) | 注释 | 锚点 | 标签 |
 |---|------------------|------|------|------|
-| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
-| PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
-| ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | :material-check: | :material-check: | :material-check: |
+| PyYAML | 2.98 ms | :material-close: | :material-close: | :material-close: |
+| ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
 **pyrs-yaml 比 PyYAML 快 37 倍，比 ruamel.yaml 快 85 倍**，同时保留所有内容。

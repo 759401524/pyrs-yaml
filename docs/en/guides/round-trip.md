@@ -46,17 +46,17 @@ assert "&db" in output
 
 | Element | Preserved? | Notes |
 |---------|------------|-------|
-| Standalone comments | ✅ | Before keys and values |
-| Inline comments | ✅ | At end of lines |
-| Anchors (`&name`) | ✅ | Full anchor syntax |
-| Aliases (`*name`) | ✅ | Alias references resolved |
-| Merge keys (`<<`) | ⚠️ | Resolved by default; preserved with `resolve_merges=False` |
-| Tags (`!!str`, `!!int`) | ✅ | Explicit tags preserved |
-| Scalar styles | ✅ | Plain, quoted, literal, folded |
-| Chomping (`\|-`, `>-`) | ✅ | Block scalar indicators |
-| Flow/block style | ✅ | `[]`/`{}` vs block preserved |
-| Compact sequence items | ✅ | `- host: a` stays on the dash line (metadata-free mapping items only) |
-| Key order | ✅ | `IndexMap` guarantees order |
+| Standalone comments | :material-check: | Before keys and values |
+| Inline comments | :material-check: | At end of lines |
+| Anchors (`&name`) | :material-check: | Full anchor syntax |
+| Aliases (`*name`) | :material-check: | Alias references resolved |
+| Merge keys (`<<`) | :material-alert: | Resolved by default; preserved with `resolve_merges=False` |
+| Tags (`!!str`, `!!int`) | :material-check: | Explicit tags preserved |
+| Scalar styles | :material-check: | Plain, quoted, literal, folded |
+| Chomping (`\|-`, `>-`) | :material-check: | Block scalar indicators |
+| Flow/block style | :material-check: | `[]`/`{}` vs block preserved |
+| Compact sequence items | :material-check: | `- host: a` stays on the dash line (metadata-free mapping items only) |
+| Key order | :material-check: | `IndexMap` guarantees order |
 
 ### PyYAML vs pyrs-yaml Round-Trip
 
@@ -65,12 +65,12 @@ original = "# Comment\nkey: value  # inline\n"
 
 # PyYAML: loses everything
 yaml.safe_dump(yaml.safe_load(original))
-# Output: 'key: value\n'  ❌
+# Output: 'key: value\n'  :material-close:
 
 # pyrs-yaml: preserves everything
 doc = pyrs_yaml.parse(original)
 doc.to_yaml()
-# Output: '# Comment\nkey: value  # inline\n'  ✅
+# Output: '# Comment\nkey: value  # inline\n'  :material-check:
 ```
 
 ### Performance
@@ -79,8 +79,8 @@ Round-trip performance vs competitors:
 
 | Library | Round-trip (large) | Comments | Anchors | Tags |
 |---------|-------------------|----------|---------|------|
-| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
-| PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
-| ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | :material-check: | :material-check: | :material-check: |
+| PyYAML | 2.98 ms | :material-close: | :material-close: | :material-close: |
+| ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
 **pyrs-yaml is 37× faster than PyYAML and 85× faster than ruamel.yaml** while preserving everything.

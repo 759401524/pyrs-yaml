@@ -44,17 +44,17 @@ assert "&db" in output
 
 | 요소 | 보존 여부 | 설명 |
 |------|----------|------|
-| 독립형 주석 | ✅ | 키와 값 앞 |
-| 인라인 주석 | ✅ | 줄 끝 |
-| 앵커 (`&name`) | ✅ | 완전한 앵커 구문 |
-| 별칭 (`*name`) | ✅ | 별칭 참조 해석됨 |
-| 병합 키 (`<<`) | ⚠️ | 기본적으로 해석됨; `resolve_merges=False`로 유지 |
-| 태그 (`!!str`, `!!int`) | ✅ | 명시적 태그 보존됨 |
-| 스칼라 스타일 | ✅ | Plain, 따옴표, 리터럴, 폴드 |
-| 청핑 (`\|-`, `>-`) | ✅ | 블록 스칼라 표시자 |
-| 플로우/블록 스타일 | ✅ | `[]`/`{}` vs 블록 보존됨 |
-| 컴팩트 시퀀스 항목 | ✅ | `- host: a`가 대시 줄에 유지됨 (메타데이터 없는 매핑 항목만) |
-| 키 순서 | ✅ | `IndexMap`이 순서 보장 |
+| 독립형 주석 | :material-check: | 키와 값 앞 |
+| 인라인 주석 | :material-check: | 줄 끝 |
+| 앵커 (`&name`) | :material-check: | 완전한 앵커 구문 |
+| 별칭 (`*name`) | :material-check: | 별칭 참조 해석됨 |
+| 병합 키 (`<<`) | :material-alert: | 기본적으로 해석됨; `resolve_merges=False`로 유지 |
+| 태그 (`!!str`, `!!int`) | :material-check: | 명시적 태그 보존됨 |
+| 스칼라 스타일 | :material-check: | Plain, 따옴표, 리터럴, 폴드 |
+| 청핑 (`\|-`, `>-`) | :material-check: | 블록 스칼라 표시자 |
+| 플로우/블록 스타일 | :material-check: | `[]`/`{}` vs 블록 보존됨 |
+| 컴팩트 시퀀스 항목 | :material-check: | `- host: a`가 대시 줄에 유지됨 (메타데이터 없는 매핑 항목만) |
+| 키 순서 | :material-check: | `IndexMap`이 순서 보장 |
 
 ## PyYAML vs pyrs-yaml 순환 보존
 
@@ -63,12 +63,12 @@ original = "# 주석\nkey: value  # 인라인\n"
 
 # PyYAML: 모든 것을 잃음
 yaml.safe_dump(yaml.safe_load(original))
-# 출력: 'key: value\n'  ❌
+# 출력: 'key: value\n'  :material-close:
 
 # pyrs-yaml: 모든 것을 보존
 doc = pyrs_yaml.parse(original)
 doc.to_yaml()
-# 출력: '# 주석\nkey: value  # 인라인\n'  ✅
+# 출력: '# 주석\nkey: value  # 인라인\n'  :material-check:
 ```
 
 ## 성능
@@ -77,8 +77,8 @@ doc.to_yaml()
 
 | 라이브러리 | 순환 보존 (대용량) | 주석 | 앵커 | 태그 |
 |-----------|------------------|------|------|------|
-| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
-| PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
-| ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | :material-check: | :material-check: | :material-check: |
+| PyYAML | 2.98 ms | :material-close: | :material-close: | :material-close: |
+| ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
 **pyrs-yaml는 PyYAML보다 37배, ruamel.yaml보다 85배 빠르면서** 모든 것을 보존합니다.

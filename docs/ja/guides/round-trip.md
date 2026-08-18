@@ -44,17 +44,17 @@ assert "&db" in output
 
 | 要素 | 保持されるか | 備考 |
 |------|------------|------|
-| 独立行コメント | ✅ | キーと値の前 |
-| 行末コメント | ✅ | 行の末尾 |
-| アンカー (`&name`) | ✅ | 完全なアンカーシンタックス |
-| エイリアス (`*name`) | ✅ | エイリアス参照が解決される |
-| マージキー (`<<`) | ⚠️ | デフォルトで解決される；`resolve_merges=False` で保持 |
-| タグ (`!!str`, `!!int`) | ✅ | 明示的なタグが保持される |
-| スカラースタイル | ✅ | Plain, 引用符付き, リテラル, フォールド |
-| チョンピング (`\|-`, `>-`) | ✅ | ブロックスカラーインジケーター |
-| フロー/ブロックスタイル | ✅ | `[]`/`{}` vs ブロックが保持される |
-| コンパクトなシーケンス項目 | ✅ | `- host: a` はダッシュ行に留まる（メタデータのないマッピング項目のみ） |
-| キーの順序 | ✅ | `IndexMap` が順序を保証 |
+| 独立行コメント | :material-check: | キーと値の前 |
+| 行末コメント | :material-check: | 行の末尾 |
+| アンカー (`&name`) | :material-check: | 完全なアンカーシンタックス |
+| エイリアス (`*name`) | :material-check: | エイリアス参照が解決される |
+| マージキー (`<<`) | :material-alert: | デフォルトで解決される；`resolve_merges=False` で保持 |
+| タグ (`!!str`, `!!int`) | :material-check: | 明示的なタグが保持される |
+| スカラースタイル | :material-check: | Plain, 引用符付き, リテラル, フォールド |
+| チョンピング (`\|-`, `>-`) | :material-check: | ブロックスカラーインジケーター |
+| フロー/ブロックスタイル | :material-check: | `[]`/`{}` vs ブロックが保持される |
+| コンパクトなシーケンス項目 | :material-check: | `- host: a` はダッシュ行に留まる（メタデータのないマッピング項目のみ） |
+| キーの順序 | :material-check: | `IndexMap` が順序を保証 |
 
 ## PyYAML vs pyrs-yaml 往復保存
 
@@ -63,12 +63,12 @@ original = "# コメント\nkey: value  # 行末\n"
 
 # PyYAML: すべて失われる
 yaml.safe_dump(yaml.safe_load(original))
-# 出力: 'key: value\n'  ❌
+# 出力: 'key: value\n'  :material-close:
 
 # pyrs-yaml: すべて保持される
 doc = pyrs_yaml.parse(original)
 doc.to_yaml()
-# 出力: '# コメント\nkey: value  # 行末\n'  ✅
+# 出力: '# コメント\nkey: value  # 行末\n'  :material-check:
 ```
 
 ## パフォーマンス
@@ -77,8 +77,8 @@ doc.to_yaml()
 
 | ライブラリ | 往復保存 (大) | コメント | アンカー | タグ |
 |-----------|-------------|---------|---------|------|
-| **pyrs-yaml** | **0.08 ms** | ✅ | ✅ | ✅ |
-| PyYAML | 2.98 ms | ❌ | ❌ | ❌ |
-| ruamel.yaml | 6.79 ms | ✅ | ✅ | ✅ |
+| **pyrs-yaml** | **0.08 ms** | :material-check: | :material-check: | :material-check: |
+| PyYAML | 2.98 ms | :material-close: | :material-close: | :material-close: |
+| ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
 **pyrs-yaml は PyYAML より 37 倍速く、ruamel.yaml より 85 倍速く**、すべてを保持します。

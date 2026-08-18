@@ -28,12 +28,12 @@ yaml_str = yaml.safe_dump(data)
 
 | PyYAML 関数 | pyrs-yaml 対応 | 備考 |
 |-------------|---------------|------|
-| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | ✅ 同等 |
-| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | ✅ 同等 |
-| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | ✅ 同等 |
-| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | ✅ 同等 |
-| `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ 安全バリアントを使用 |
-| `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ 安全バリアントを使用 |
+| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | :material-check: 同等 |
+| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | :material-check: 同等 |
+| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | :material-check: 同等 |
+| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | :material-check: 同等 |
+| `yaml.load()` | `pyrs_yaml.safe_load()` | :material-alert: 安全バリアントを使用 |
+| `yaml.dump()` | `pyrs_yaml.safe_dump()` | :material-alert: 安全バリアントを使用 |
 
 ## 主な違い
 
@@ -41,11 +41,11 @@ yaml_str = yaml.safe_dump(data)
 
 | 機能 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
-| 往復保存 | ❌ コメント/アンカーを失う | ✅ すべて保持 |
+| 往復保存 | :material-close: コメント/アンカーを失う | :material-check: すべて保持 |
 | パフォーマンス | ベースライン | **解析で21〜43倍、シリアライズで55〜177倍高速** |
-| 型ヒント | 部分的 | ✅ 完全な `.pyi` スタブ |
-| ABI3 wheel | 該当なし | ✅ すべての Python バージョンに対応 |
-| i18n エラー | ❌ 英語のみ | ✅ 英語 + 中国語 |
+| 型ヒント | 部分的 | :material-check: 完全な `.pyi` スタブ |
+| ABI3 wheel | 該当なし | :material-check: すべての Python バージョンに対応 |
+| i18n エラー | :material-close: 英語のみ | :material-check: 英語 + 中国語 |
 
 #### 注意すべき点
 

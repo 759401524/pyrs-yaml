@@ -35,12 +35,12 @@ yaml_str = yaml.safe_dump(data)
 
 | PyYAML Function | pyrs-yaml Equivalent | Notes |
 |-----------------|---------------------|-------|
-| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | ✅ Identical |
-| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | ✅ Identical |
-| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | ✅ Identical |
-| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | ✅ Identical |
-| `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ Use safe variant |
-| `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ Use safe variant |
+| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | :material-check: Identical |
+| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | :material-check: Identical |
+| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | :material-check: Identical |
+| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | :material-check: Identical |
+| `yaml.load()` | `pyrs_yaml.safe_load()` | :material-alert: Use safe variant |
+| `yaml.dump()` | `pyrs_yaml.safe_dump()` | :material-alert: Use safe variant |
 
 ### Key Differences
 
@@ -48,11 +48,11 @@ yaml_str = yaml.safe_dump(data)
 
 | Feature | PyYAML | pyrs-yaml |
 |---------|--------|-----------|
-| Round-trip preservation | ❌ Loses comments/anchors | ✅ Preserves everything |
+| Round-trip preservation | :material-close: Loses comments/anchors | :material-check: Preserves everything |
 | Performance | Baseline | **21–43× faster parsing, 55–177× faster serialization** |
-| Type hints | Partial | ✅ Full `.pyi` stubs |
-| ABI3 wheel | N/A | ✅ Single wheel for all Python versions |
-| i18n errors | ❌ English only | ✅ English + Chinese |
+| Type hints | Partial | :material-check: Full `.pyi` stubs |
+| ABI3 wheel | N/A | :material-check: Single wheel for all Python versions |
+| i18n errors | :material-close: English only | :material-check: English + Chinese |
 
 #### What to Watch For
 

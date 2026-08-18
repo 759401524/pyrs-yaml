@@ -28,12 +28,12 @@ yaml_str = yaml.safe_dump(data)
 
 | PyYAML 函数 | pyrs-yaml 等价物 | 说明 |
 |-------------|----------------|------|
-| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | ✅ 完全相同 |
-| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | ✅ 完全相同 |
-| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | ✅ 完全相同 |
-| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | ✅ 完全相同 |
-| `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ 使用安全变体 |
-| `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ 使用安全变体 |
+| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | :material-check: 完全相同 |
+| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | :material-check: 完全相同 |
+| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | :material-check: 完全相同 |
+| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | :material-check: 完全相同 |
+| `yaml.load()` | `pyrs_yaml.safe_load()` | :material-alert: 使用安全变体 |
+| `yaml.dump()` | `pyrs_yaml.safe_dump()` | :material-alert: 使用安全变体 |
 
 ## 主要区别
 
@@ -41,11 +41,11 @@ yaml_str = yaml.safe_dump(data)
 
 | 特性 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
-| 往返 | ❌ 丢失注释/锚点 | ✅ 保留所有内容 |
+| 往返 | :material-close: 丢失注释/锚点 | :material-check: 保留所有内容 |
 | 性能 | 基准 | **解析快 21-43 倍、序列化快 55-177 倍** |
-| 类型提示 | 部分支持 | ✅ 完整 `.pyi` 桩文件 |
-| ABI3 wheel | 无 | ✅ 单个 wheel 支持所有 Python 版本 |
-| i18n 错误 | ❌ 仅英文 | ✅ 英文 + 中文 |
+| 类型提示 | 部分支持 | :material-check: 完整 `.pyi` 桩文件 |
+| ABI3 wheel | 无 | :material-check: 单个 wheel 支持所有 Python 版本 |
+| i18n 错误 | :material-close: 仅英文 | :material-check: 英文 + 中文 |
 
 #### 注意事项
 
