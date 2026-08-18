@@ -10,7 +10,7 @@ pyrs-yaml はパフォーマンスと正確性を考慮したモジュールア�
 
 ## 概要
 
-```mermaid
+```mermaid title="全体アーキテクチャ"
 graph TB
     subgraph Python["Python レイヤー"]
         PYMOD["pyrs_yaml モジュール<br/>parse() | safe_load() | dump_file() | ..."]
@@ -144,7 +144,7 @@ Python 向け編集 API が使用する Pure Rust 編集プリミティブ：
 
 ### パースフロー
 
-```mermaid
+```mermaid title="パースフロー"
 graph TD
     A["YAML 文字列"] --> B["1. 生テキストからコメントを抽出"]
     B --> C["2. 生テキストからアンカーを抽出"]
@@ -157,7 +157,7 @@ graph TD
 
 #### シリアライズフロー
 
-```mermaid
+```mermaid title="シリアライズフロー"
 graph TD
     A["CustomNode (AST)"] --> B["1. ノードタイプを判定"]
     B --> C["2. 開始を書き込み（アンカー、タグ）"]

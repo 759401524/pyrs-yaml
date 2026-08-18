@@ -20,7 +20,7 @@ status: new
 2. 동일한 `[Unreleased]` 항목을 `docs/{zh,ja,ko}/changelog.md`로 번역합니다(버전 헤더 `## [Unreleased]`와 `### Added` 등은 번역 상태로 유지)
 3. 검증:
 
-```bash
+```bash title="미러 일치 여부 확인"
 uv run python scripts/check_changelog_mirrors.py
 ```
 

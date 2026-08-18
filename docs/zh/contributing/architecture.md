@@ -10,7 +10,7 @@ pyrs-yaml 使用为性能和正确性设计的模块化架构。
 
 ## 概述
 
-```mermaid
+```mermaid title="总体架构"
 graph TB
     subgraph Python["Python 层"]
         PYMOD["pyrs_yaml 模块<br/>parse() | safe_load() | dump_file() | ..."]
@@ -148,7 +148,7 @@ Python 层面的模块定义和类型转换：
 
 ### 解析流
 
-```mermaid
+```mermaid title="解析流程"
 graph TD
     A["YAML 字符串"] --> B["1. 从原始文本提取注释"]
     B --> C["2. 从原始文本提取锚点"]
@@ -160,7 +160,7 @@ graph TD
 
 #### 序列化流
 
-```mermaid
+```mermaid title="序列化流程"
 graph TD
     A["CustomNode (AST)"] --> B["1. 确定节点类型"]
     B --> C["2. 写入开头（锚点、标签）"]

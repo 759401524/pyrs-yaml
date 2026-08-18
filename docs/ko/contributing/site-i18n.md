@@ -16,7 +16,7 @@ pyrs-yaml 문서 사이트는 MkDocs Material 테마의 내장 i18n을 사용하
 
 각 언어는 고유한 URL 경로(`/zh-CN/`, `/ja-JP/`, `/ko-KR/`)를 가지며, `mkdocs.yml`에 구성된 언어 전환기를 오른쪽 상단에 공유합니다:
 
-```yaml
+```yaml title="mkdocs.yml i18n 설정"
 i18n:
   default_lang: en
   alternate_languages:
@@ -32,7 +32,7 @@ i18n:
 
 각 로케일은 `docs/<lang>/` 아래에 있으며, 영어 `docs/en/` 트리를 미러링합니다:
 
-```text
+```text title="로케일 디렉터리 구조"
 docs/en/  (canonical English)
 docs/zh-CN/  (or docs/zh/)
 docs/ja/  (or docs/ja-JP)
@@ -43,7 +43,7 @@ docs/ko/  (or docs/ko-KR)
 
 모든 번역 파일은 `lang` 필드가 포함된 YAML 프론트매터를 **반드시** 가져야 합니다:
 
-```yaml
+```yaml title="번역 파일 프론트매터"
 ---
 title: 文档标题
 lang: zh-CN
@@ -58,7 +58,7 @@ lang: zh-CN
 
 ### Verification
 
-```bash
+```bash title="문서 빌드 및 미리보기"
 uv sync
 mkdocs build --clean-site
 mkdocs serve   # http://localhost:8000/

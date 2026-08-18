@@ -16,7 +16,7 @@ pyrs-yaml のドキュメントサイトは、MkDocs Material テーマの組み
 
 各言語は独自の URL パス（`/zh-CN/`、`/ja-JP/`、`/ko-KR/`）を持ち、`mkdocs.yml` で設定された右上隅の言語切り替え機能を備えた 1 つのナビゲーションを共有します:
 
-```yaml
+```yaml title="mkdocs.yml の i18n 設定"
 i18n:
   default_lang: en
   alternate_languages:
@@ -32,7 +32,7 @@ i18n:
 
 各ロケールは `docs/<lang>/` 以下に存在し、英語の `docs/en/` ツリーをミラーリングします:
 
-```text
+```text title="ロケールのディレクトリ構造"
 docs/en/  (canonical English)
 docs/zh-CN/  (or docs/zh/)
 docs/ja/  (or docs/ja-JP)
@@ -43,7 +43,7 @@ docs/ko/  (or docs/ko-KR)
 
 翻訳されたファイルはすべて、`lang` フィールドを持つ YAML フロントマターを **必ず** 含める必要があります:
 
-```yaml
+```yaml title="翻訳ファイルのフロントマター"
 ---
 title: ドキュメントタイトル
 lang: ja-JP
@@ -58,7 +58,7 @@ lang: ja-JP
 
 ### Verification
 
-```bash
+```bash title="ドキュメントのビルドとプレビュー"
 uv sync
 mkdocs build --clean-site
 mkdocs serve   # http://localhost:8000/

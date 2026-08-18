@@ -18,7 +18,7 @@ status: new
 
 ## 克隆和安装
 
-```bash
+```bash title="克隆并安装"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 
@@ -32,7 +32,7 @@ maturin develop --release
 
 ## 验证安装
 
-```bash
+```bash title="验证安装"
 # 运行 Rust 测试
 cargo test
 
@@ -45,7 +45,7 @@ cargo bench
 
 ## 项目结构
 
-```text
+```text title="项目布局"
 pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 模块定义
@@ -69,7 +69,7 @@ pyrs-yaml/
 
 ## 构建命令
 
-```bash
+```bash title="构建命令"
 # 构建 Python 扩展（使用 uv lockfile）
 uv run --frozen maturin develop --release
 

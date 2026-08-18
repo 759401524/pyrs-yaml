@@ -25,7 +25,7 @@ Follow these standards when contributing to pyrs-yaml.
 - Use `PyResult<T>` for functions that can fail
 - Map specific errors to specific Python exception types
 
-```rust
+```rust title="Good vs bad error handling"
 // Good
 let content = std::fs::read_to_string(path)
     .map_err(|e| YamlParseError::new_err(format_i18n_error("file-read-error", ...)))?;
@@ -41,7 +41,7 @@ let content = std::fs::read_to_string(path).unwrap();
 - Write doc comments in English (Rust convention)
 - Chinese doc comments are acceptable for internal functions
 
-```rust
+```rust title="Doc comment template"
 /// Parse a YAML string into a CustomNode AST.
 ///
 /// # Arguments
@@ -64,7 +64,7 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 
 Every `#[pyfunction]` and `#[pymethods]` must use `#[pyo3(signature = "...")]` with quoted types:
 
-```rust
+```rust title="PyO3 signature annotation"
 #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core") -> "YamlDocument")]
 fn parse(...) -> YamlDocument { ... }
 ```
@@ -74,7 +74,7 @@ fn parse(...) -> YamlDocument { ... }
 - Release GIL during heavy computation using `py.detach()` or `py.allow_threads()`
 - Never hold GIL during file I/O or parsing
 
-```rust
+```rust title="GIL release"
 // Good
 let ast = py.detach(|| {
     parser::parse_with_options(&yaml_str, resolve_merges)
@@ -98,7 +98,7 @@ Run `cargo clippy -- -D warnings` — treat all warnings as errors.
 - Docstrings in Google style
 - Linting is configured in `ruff.toml` (run `ruff check`)
 
-```python
+```python title="Python docstring style"
 def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlDocument:
     """Parse a YAML string into a YamlDocument.
 

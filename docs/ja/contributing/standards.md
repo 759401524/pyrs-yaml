@@ -23,7 +23,7 @@ pyrs-yaml に貢献する際は、以下の基準に従ってください。
 - 失敗する可能性のある関数には `PyResult<T>` を使用
 - 特定のエラーを特定の Python 例外タイプにマッピング
 
-```rust
+```rust title="正しいエラーハンドリング"
 // OK
 let content = std::fs::read_to_string(path)
     .map_err(|e| YamlParseError::new_err(format_i18n_error("file-read-error", ...)))?;
@@ -39,7 +39,7 @@ let content = std::fs::read_to_string(path).unwrap();
 - ドキュメントコメントは英語で書く（Rust の慣例）
 - 関数内部のドキュメントコメントは中国語でも可
 
-```rust
+```rust title="ドキュメントコメントテンプレート"
 /// YAML 文字列を CustomNode AST にパースする。
 ///
 /// # Arguments
@@ -62,7 +62,7 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 
 すべての `#[pyfunction]` と `#[pymethods]` は `#[pyo3(signature = "...")]` で型を注釈する必要があります：
 
-```rust
+```rust title="PyO3 シグネチャ注釈"
 #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core") -> "YamlDocument")]
 fn parse(...) -> YamlDocument { ... }
 ```
@@ -72,7 +72,7 @@ fn parse(...) -> YamlDocument { ... }
 - 負荷の高い計算中は `py.detach()` または `py.allow_threads()` を使用して GIL を解放
 - ファイル I/O やパース中に GIL を保持しない
 
-```rust
+```rust title="GIL 解放"
 // OK
 let ast = py.detach(|| {
     parser::parse_with_options(&yaml_str, resolve_merges)
@@ -96,7 +96,7 @@ let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 - ドキュメント文字列は Google スタイル
 - コードチェック設定は `ruff.toml` にあり（`ruff check` を実行）
 
-```python
+```python title="Python ドキュメント文字列スタイル"
 def parse(yaml: str, resolve_merges: bool = True) -> YamlDocument:
     """YAML 文字列を YamlDocument にパースする。
 

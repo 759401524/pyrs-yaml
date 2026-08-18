@@ -10,7 +10,7 @@ pyrs-yaml는 성능과 정확성을 위해 설계된 모듈화된 아키텍처�
 
 ## 개요
 
-```mermaid
+```mermaid title="전체 아키텍처"
 graph TB
     subgraph Python["Python 레이어"]
         PYMOD["pyrs_yaml 모듈<br/>parse() | safe_load() | dump_file() | ..."]
@@ -151,7 +151,7 @@ PyO3 바인딩에서 사용하는 순수 Rust 편집 프리미티브:
 
 ### 파싱 흐름
 
-```mermaid
+```mermaid title="파싱 흐름"
 graph TD
     A["YAML 문자열"] --> B["1. 원시 텍스트에서 주석 추출"]
     B --> C["2. 원시 텍스트에서 앵커 추출"]
@@ -164,7 +164,7 @@ graph TD
 
 #### 직렬화 흐름
 
-```mermaid
+```mermaid title="직렬화 흐름"
 graph TD
     A["CustomNode (AST)"] --> B["1. 노드 타입 결정"]
     B --> C["2. 시작 부분 기록 (앵커, 태그)"]

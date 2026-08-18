@@ -16,7 +16,7 @@ See the runtime error-message i18n guide at [guides/i18n.md](../guides/i18n.md) 
 
 Each language gets its own URL path (`/zh-CN/`, `/ja-JP/`, `/ko-KR/`) and shares one navigation with a language switcher in the top-right corner, configured in `mkdocs.yml`:
 
-```yaml
+```yaml title="mkdocs.yml i18n config"
 i18n:
   default_lang: en
   alternate_languages:
@@ -32,7 +32,7 @@ i18n:
 
 Each locale lives under `docs/<lang>/` mirroring the English `docs/en/` tree:
 
-```text
+```text title="Locale directory structure"
 docs/en/  (canonical English)
 docs/zh-CN/  (or docs/zh/)
 docs/ja/  (or docs/ja-JP)
@@ -43,7 +43,7 @@ docs/ko/  (or docs/ko-KR)
 
 Every translated file **must** carry YAML frontmatter with the `lang` field:
 
-```yaml
+```yaml title="Translated frontmatter"
 ---
 title: 文档标题
 lang: zh-CN
@@ -58,7 +58,7 @@ lang: zh-CN
 
 ### Verification
 
-```bash
+```bash title="Build and serve the docs"
 uv sync
 mkdocs build --clean-site
 mkdocs serve   # http://localhost:8000/

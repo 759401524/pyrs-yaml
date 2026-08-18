@@ -20,7 +20,7 @@ status: new
 2. 将相同的 `[Unreleased]` 条目翻译到 `docs/{zh,ja,ko}/changelog.md`（保持版本标题如 `## [Unreleased]` 和 `### Added` 的翻译）
 3. 验证：
 
-```bash
+```bash title="检查镜像一致性"
 uv run python scripts/check_changelog_mirrors.py
 ```
 

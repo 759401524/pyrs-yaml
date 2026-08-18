@@ -12,7 +12,7 @@ pyrs-yaml uses a modular architecture designed for performance and correctness.
 
 ### Overview
 
-```mermaid
+```mermaid title="Overall architecture"
 graph TB
     subgraph Python["Python Layer"]
         PYMOD["pyrs_yaml module<br/>parse | safe_load | safe_dump | dump_file | ..."]
@@ -165,7 +165,7 @@ Python-facing module definitions and type conversions:
 
 #### Parse Flow
 
-```mermaid
+```mermaid title="Parse flow"
 graph TD
     A["YAML String"] --> B["1. Extract comments from raw text"]
     B --> C["2. Extract anchors from raw text"]
@@ -178,7 +178,7 @@ graph TD
 
 #### Serialize Flow
 
-```mermaid
+```mermaid title="Serialize flow"
 graph TD
     A["CustomNode (AST)"] --> B["1. Determine node type"]
     B --> C["2. Write opening (anchor, tag)"]
