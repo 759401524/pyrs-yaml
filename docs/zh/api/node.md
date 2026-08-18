@@ -398,13 +398,16 @@ value_eq(other: object) -> bool
 
 访问过期节点会发出 `RuntimeWarning` 并抛出 `YamlDocumentError`：
 
-```python
+```python title="过期节点示例"
 >>> node = doc.node()
 >>> doc.set("$.key", "new_value")
->>> node.value
+>>> node.value  # (1)!
 RuntimeWarning: Node is stale: the document was modified after this node was created
-YamlDocumentError: document has been modified; re-find the node
+YamlDocumentError: document has been modified; re-find the node  # (2)!
 ```
+
+1. :material-alert: 访问过期节点会先触发 `RuntimeWarning`。
+2. :material-close: 然后抛出 `YamlDocumentError`。请通过 `doc.node().find(path)` 重新获取节点。
 
 ### 示例
 

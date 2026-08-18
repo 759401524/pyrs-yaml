@@ -398,13 +398,16 @@ value_eq(other: object) -> bool
 
 期限切れのノードにアクセスすると、`RuntimeWarning` が発行され、`YamlDocumentError` が発生します:
 
-```python
+```python title="期限切れノードの例"
 >>> node = doc.node()
 >>> doc.set("$.key", "new_value")
->>> node.value
+>>> node.value  # (1)!
 RuntimeWarning: Node is stale: the document was modified after this node was created
-YamlDocumentError: document has been modified; re-find the node
+YamlDocumentError: document has been modified; re-find the node  # (2)!
 ```
+
+1. :material-alert: 期限切れのノードにアクセスすると、最初に `RuntimeWarning` がトリガーされます。
+2. :material-close: 次に `YamlDocumentError` が発生します。`doc.node().find(path)` でノードを再取得してください。
 
 ### 例
 

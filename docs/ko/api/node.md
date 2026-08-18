@@ -399,13 +399,16 @@ value_eq(other: object) -> bool
 
 만료된 노드에 접근하면 `RuntimeWarning`이 발생하고 `YamlDocumentError`가 발생합니다:
 
-```python
+```python title="만료 노드 예제"
 >>> node = doc.node()
 >>> doc.set("$.key", "new_value")
->>> node.value
+>>> node.value  # (1)!
 RuntimeWarning: Node is stale: the document was modified after this node was created
-YamlDocumentError: document has been modified; re-find the node
+YamlDocumentError: document has been modified; re-find the node  # (2)!
 ```
+
+1. :material-alert: 만료된 노드에 접근하면 먼저 `RuntimeWarning`이 트리거됩니다.
+2. :material-close: 그런 다음 `YamlDocumentError`가 발생합니다. `doc.node().find(path)`로 노드를 다시 획득하세요.
 
 ### 예제
 
