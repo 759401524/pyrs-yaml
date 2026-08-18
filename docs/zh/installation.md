@@ -8,8 +8,11 @@ status: new
 
 ## 系统要求
 
-- **Python** ≥ 3.8 (CPython)
-- **Platform**: Linux, macOS, Windows
+| :material-language-python: 要求 | 详情 |
+|---|---|
+| **Python** | ≥ 3.8 (CPython)，包括 3.14t free-threaded |
+| :material-monitor: **平台** | Linux、macOS、Windows |
+| :material-hammer-wrench: **构建** | Rust 工具链（仅源码构建需要） |
 
 ## 从源码安装
 
@@ -49,10 +52,14 @@ print("✓ 安装验证成功")
 
 ## 运行测试
 
-```bash
-# Rust 测试
-cargo test
+=== "Rust"
 
-# Python 测试
-uv run --frozen pytest tests/
-```
+    ```bash
+    cargo nextest run --all
+    ```
+
+=== "Python"
+
+    ```bash
+    uv run --frozen pytest tests/
+    ```

@@ -8,8 +8,11 @@ status: new
 
 ## 시스템 요구사항
 
-- **Python** ≥ 3.8 (CPython)
-- **플랫폼**: Linux, macOS, Windows
+| :material-language-python: 요구사항 | 세부 정보 |
+|---|---|
+| **Python** | ≥ 3.8 (CPython), 3.14t free-threaded 포함 |
+| :material-monitor: **플랫폼** | Linux, macOS, Windows |
+| :material-hammer-wrench: **빌드** | Rust 툴체인 (소스 빌드에만 필요) |
 
 ## 소스에서 설치
 

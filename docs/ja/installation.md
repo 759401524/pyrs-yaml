@@ -8,8 +8,11 @@ status: new
 
 ## 必須要件
 
-- **Python** ≥ 3.8 (CPython)
-- **プラットフォーム**: Linux、macOS、Windows
+| :material-language-python: 要件 | 詳細 |
+|---|---|
+| **Python** | ≥ 3.8 (CPython)、3.14t free-threaded を含む |
+| :material-monitor: **プラットフォーム** | Linux、macOS、Windows |
+| :material-hammer-wrench: **ビルド** | Rust ツールチェーン（ソースビルドのみ） |
 
 ## ソースからインストール
 

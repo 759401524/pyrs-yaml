@@ -10,8 +10,11 @@ status: new
 
 ### Requirements
 
-- **Python** ≥ 3.8 (CPython)
-- **Platform**: Linux, macOS, Windows
+| :material-language-python: Requirement | Details |
+|---|---|
+| **Python** | ≥ 3.8 (CPython), including 3.14t free-threaded |
+| :material-monitor: **Platform** | Linux, macOS, Windows |
+| :material-hammer-wrench: **Build** | Rust toolchain (for source builds only) |
 
 ### Install from Source
 
@@ -56,10 +59,14 @@ print("✓ Installation verified")
 
 ### Run Tests
 
-```bash
-# Rust tests
-cargo test
+=== "Rust"
 
-# Python tests
-uv run --frozen pytest tests/
-```
+    ```bash
+    cargo nextest run --all
+    ```
+
+=== "Python"
+
+    ```bash
+    uv run --frozen pytest tests/
+    ```
