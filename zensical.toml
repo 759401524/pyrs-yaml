@@ -7,7 +7,7 @@ repo_url = "https://github.com/759401524/pyrs-yaml"
 repo_name = "759401524/pyrs-yaml"
 docs_dir = "docs/en"
 site_dir = "site/en"
-edit_uri = "https://github.com/759401524/pyrs-yaml/edit/main/docs/"
+edit_uri = "edit/main/docs/"
 nav = [
     {"Home" = "index.md"},
     {"Getting Started" = [
@@ -64,13 +64,20 @@ features = [
     "navigation.indexes",
     "navigation.sections",
     "navigation.top",
+    "navigation.tabs",
+    "navigation.tabs.sticky",
     "navigation.instant",
-    "navigation.prefetch",
+    "navigation.instant.prefetch",
+    "navigation.instant.progress",
     "navigation.footer",
     "search.highlight",
     "content.code.annotate",
     "content.code.copy",
     "content.code.select",
+    "content.tabs.link",
+    "content.footnote.tooltips",
+    "content.action.edit",
+    "content.action.view",
     "content.tooltips",
     "toc.follow",
 ]
@@ -130,6 +137,8 @@ admonition = {}
 attr_list = {}
 sane_lists = {}
 md_in_html = {}
+footnotes = {}
+def_list = {}
 
 [project.markdown_extensions.toc]
 permalink = true
@@ -141,8 +150,12 @@ alternate_style = true
 [project.markdown_extensions.pymdownx.tasklist]
 custom_checkbox = true
 
+[project.markdown_extensions.pymdownx.keys]
+
 [project.markdown_extensions.pymdownx.superfences]
-# 替代 fenced_code，支持嵌套栅栏与自定义 code fence
+custom_fences = [
+    { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
 
 [project.markdown_extensions.pymdownx.snippets]
 # --8<-- 内容复用，路径相对 docs/<locale>/
