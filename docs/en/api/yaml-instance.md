@@ -226,169 +226,169 @@ for doc in docs:
     print(doc.root_type())
 ```
 
-#### `dump_stream()`
+#### `dump_stream()` / `dump_file()`
 
-Streaming writer: serialize Python objects to a file-like object, using constant memory.
+Streaming writer: serialize Python objects to a file-like object or file on disk, using constant memory.
 
-```python
-dump_stream(
-    file_obj: Any,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+=== "In-memory"
 
-**Parameters:**
+    ```python
+    dump_stream(
+        file_obj: Any,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `file_obj` | `Any` | — | A writable file-like object with a `write(str)` method. |
-| `iterable` | `Any` | — | An iterable of Python objects to serialize. |
-| `explicit_start` | `bool` | `False` | Whether to emit `---` at the start of each document. |
-| `explicit_end` | `bool` | `False` | Whether to emit `...` at the end of each document. |
-| `sort_keys` | `bool` | `False` | Whether to sort mapping keys alphabetically. |
+    **Parameters:**
 
-**Raises:** `YamlTypeError` if `file_obj` does not have a `write` method.
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `file_obj` | `Any` | — | A writable file-like object with a `write(str)` method. |
+    | `iterable` | `Any` | — | An iterable of Python objects to serialize. |
+    | `explicit_start` | `bool` | `False` | Whether to emit `---` at the start of each document. |
+    | `explicit_end` | `bool` | `False` | Whether to emit `...` at the end of each document. |
+    | `sort_keys` | `bool` | `False` | Whether to sort mapping keys alphabetically. |
 
-**Notes:**
+    **Raises:** `YamlTypeError` if `file_obj` does not have a `write` method.
 
-- Uses constant memory — no need to hold the entire output in memory.
-- The GIL is released during the Rust serialization phase.
-- Each item in the iterable becomes a separate YAML document.
+    **Notes:**
 
-**Example:**
+    - Uses constant memory — no need to hold the entire output in memory.
+    - The GIL is released during the Rust serialization phase.
+    - Each item in the iterable becomes a separate YAML document.
 
-```python
-import io
-from pyrs_yaml import YAML
+    **Example:**
 
-yaml = YAML()
-buf = io.StringIO()
-yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
-print(buf.getvalue())
-# ---
-# a: 1
-# ---
-# b: 2
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `dump_file()`
+    yaml = YAML()
+    buf = io.StringIO()
+    yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
+    print(buf.getvalue())
+    # ---
+    # a: 1
+    # ---
+    # b: 2
+    ```
 
-Streaming writer: serialize Python objects directly to a file on disk.
+=== "File path"
 
-```python
-dump_file(
-    path: str,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+    ```python
+    dump_file(
+        path: str,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-**Parameters:**
+    **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `str` | — | The file path to write to. |
-| `iterable` | `Any` | — | An iterable of Python objects to serialize. |
-| `explicit_start` | `bool` | `False` | Whether to emit `---` at the start of each document. |
-| `explicit_end` | `bool` | `False` | Whether to emit `...` at the end of each document. |
-| `sort_keys` | `bool` | `False` | Whether to sort mapping keys alphabetically. |
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `path` | `str` | — | The file path to write to. |
+    | `iterable` | `Any` | — | An iterable of Python objects to serialize. |
+    | `explicit_start` | `bool` | `False` | Whether to emit `---` at the start of each document. |
+    | `explicit_end` | `bool` | `False` | Whether to emit `...` at the end of each document. |
+    | `sort_keys` | `bool` | `False` | Whether to sort mapping keys alphabetically. |
 
-**Raises:** `IOError` if the file cannot be created or written.
+    **Raises:** `IOError` if the file cannot be created or written.
 
-**Notes:**
+    **Notes:**
 
-- Uses Rust's `std::fs::File` directly — no GIL blocking during I/O.
-- Each item in the iterable becomes a separate YAML document.
-- Uses constant memory, suitable for large outputs.
+    - Uses Rust's `std::fs::File` directly — no GIL blocking during I/O.
+    - Each item in the iterable becomes a separate YAML document.
+    - Uses constant memory, suitable for large outputs.
 
-**Example:**
+    **Example:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
-```
+    yaml = YAML()
+    yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
+    ```
 
-#### `load_stream()`
+#### `load_stream()` / `load_stream_file()`
 
-Lazy event iterator: incrementally read from a file-like object.
+Lazy event iterator: incrementally read from a file-like object or file path.
 
-```python
-load_stream(file_obj: Any) -> YamlStream
-```
+=== "In-memory"
 
-**Parameters:**
+    ```python
+    load_stream(file_obj: Any) -> YamlStream
+    ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `file_obj` | `Any` | A readable file-like object with a `read()` method returning `str` or `bytes`. |
+    **Parameters:**
 
-**Returns:** A `YamlStream` iterator that yields parsed event dicts lazily.
+    | Parameter | Type | Description |
+    |-----------|------|-------------|
+    | `file_obj` | `Any` | A readable file-like object with a `read()` method returning `str` or `bytes`. |
 
-**Raises:** `YamlTypeError` if `file_obj` does not have a `read` method.
+    **Returns:** A `YamlStream` iterator that yields parsed event dicts lazily.
 
-**Notes:**
+    **Raises:** `YamlTypeError` if `file_obj` does not have a `read` method.
 
-- The stream is parsed incrementally — no need to load the entire file into memory.
-- Each yielded event is a `dict` with keys like `"type"`, `"key"`, `"value"`, `"start_mark"`, `"end_mark"`.
-- The stream ends when `__next__` returns `None`.
+    **Notes:**
 
-**Example:**
+    - The stream is parsed incrementally — no need to load the entire file into memory.
+    - Each yielded event is a `dict` with keys like `"type"`, `"key"`, `"value"`, `"start_mark"`, `"end_mark"`.
+    - The stream ends when `__next__` returns `None`.
 
-```python
-import io
-from pyrs_yaml import YAML
+    **Example:**
 
-yaml = YAML()
-buf = io.StringIO("key: value\n")
-stream = yaml.load_stream(buf)
-for event in stream:
-    if event is None:
-        break
-    print(event["type"])
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `load_stream_file()`
+    yaml = YAML()
+    buf = io.StringIO("key: value\n")
+    stream = yaml.load_stream(buf)
+    for event in stream:
+        if event is None:
+            break
+        print(event["type"])
+    ```
 
-Lazy event iterator: incrementally read from a file path.
+=== "File path"
 
-```python
-load_stream_file(path: str) -> YamlStream
-```
+    ```python
+    load_stream_file(path: str) -> YamlStream
+    ```
 
-**Parameters:**
+    **Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `path` | `str` | The file path to read incrementally. |
+    | Parameter | Type | Description |
+    |-----------|------|-------------|
+    | `path` | `str` | The file path to read incrementally. |
 
-**Returns:** A `YamlStream` iterator that yields parsed event dicts lazily.
+    **Returns:** A `YamlStream` iterator that yields parsed event dicts lazily.
 
-**Raises:** `IOError` if the file cannot be opened.
+    **Raises:** `IOError` if the file cannot be opened.
 
-**Notes:**
+    **Notes:**
 
-- Uses Rust's `std::fs::File` with buffered I/O — no GIL blocking during reads.
-- Parses the file incrementally, ideal for large YAML files.
+    - Uses Rust's `std::fs::File` with buffered I/O — no GIL blocking during reads.
+    - Parses the file incrementally, ideal for large YAML files.
 
-**Example:**
+    **Example:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-stream = yaml.load_stream_file("large.yaml")
-for event in stream:
-    if event is None:
-        break
-    print(event)
-```
+    yaml = YAML()
+    stream = yaml.load_stream_file("large.yaml")
+    for event in stream:
+        if event is None:
+            break
+        print(event)
+    ```
 
 ### Usage Examples
 

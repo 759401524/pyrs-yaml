@@ -14,7 +14,7 @@ Complete API reference for the `pyrs_yaml` module.
     pyrs-yaml ships as an ABI3 wheel, so a single wheel works across Python
     3.8–3.15 — no recompilation needed when upgrading Python.
 
-### Core Functions
+### :material-code-braces: Core Functions
 
 #### `parse()`
 
@@ -97,7 +97,7 @@ parse_all_docs(yaml: str, resolve_merges: bool = True, schema: str | dict = "cor
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-### PyYAML-Compatible Functions
+### :material-swap-horizontal: PyYAML-Compatible Functions
 
 #### `safe_load()`
 
@@ -150,7 +150,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 
 Alias: `safe_dumps()` — identical to `safe_dump()`.
 
-### Conversion Functions
+### :material-json: Conversion Functions
 
 #### `from_dict()`
 
@@ -176,7 +176,7 @@ Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or 
 dump_file(data: Any, path: str) -> None
 ```
 
-### Pydantic Integration
+### :material-pillar: Pydantic Integration
 
 #### `dump_pydantic()`
 
@@ -237,7 +237,7 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-### Tag Registry
+### :material-tag: Tag Registry
 
 #### `register_tag()`
 
@@ -279,7 +279,7 @@ Remove all registered tag handlers.
 clear_tag_handlers() -> None
 ```
 
-### YAML Schema Language
+### :material-file-document: YAML Schema Language
 
 #### `register_schema()`
 
@@ -331,7 +331,7 @@ doc = pyrs_yaml.safe_load(
 assert doc["addr"] == 255
 ```
 
-### Community Plugins
+### :material-puzzle: Community Plugins
 
 #### `CustomType`
 
@@ -407,7 +407,7 @@ clear_type_handlers() -> None
 
 Remove all registered custom type handlers.
 
-### Compliance
+### :material-check-decagram: Compliance
 
 #### `compliance_report()`
 
@@ -419,7 +419,7 @@ compliance_report() -> dict
 
 Returns the YAML Test Suite pass rate and per-test results.
 
-### Streaming Events
+### :material-wave: Streaming Events
 
 #### `parse_stream()`
 
@@ -443,7 +443,7 @@ for event in stream:
 
 See [`YamlStream`](yaml-instance.md) for full API details.
 
-### Async Functions
+### :material-clock-fast: Async Functions
 
 Async I/O wrappers via `asyncio.run_in_executor`. Non-blocking in event loop context.
 
@@ -486,7 +486,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### Markdown Frontmatter
+### :material-page-layout-body: Markdown Frontmatter
 
 #### `read_markdown()`
 
@@ -506,7 +506,7 @@ Extract YAML frontmatter from a Markdown string.
 read_markdown_str(content: str, schema: str | dict = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-### i18n Functions
+### :material-translate: i18n Functions
 
 #### `set_language()`
 
@@ -550,7 +550,7 @@ BCP 47 language negotiation.
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-### Exceptions
+### :material-bug: Exceptions
 
 - `YamlParseError` — YAML parsing error (inherits from `ValueError`)
 - `YamlSerializeError` — YAML serialization error (inherits from `ValueError`)
@@ -566,7 +566,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 See [Exceptions](exceptions.md) for full details.
 
-### Version
+### :material-information: Version
 
 ```python
 __version__ = "0.14.0"
