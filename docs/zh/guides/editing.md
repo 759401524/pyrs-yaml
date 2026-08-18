@@ -73,7 +73,7 @@ doc.set("$", {"x": 1})  # replace the entire root
 | `str`, `int`, `float`, `bool`, `None` | 新标量（值*不会*被重新解析） |
 | `dict` | 新映射（普通样式） |
 | `list` | 新序列（普通样式） |
-| `tuple` | ❌ 不支持 — 抛出 `YamlEditError` |
+| `tuple` | :material-close: 不支持 — 抛出 `YamlEditError` |
 
 替换现有标量时，目标的元数据（行内注释、锚点、标签、引号样式）会被**保留** — 除非新值是映射/序列，此时采用新节点自身的格式。
 

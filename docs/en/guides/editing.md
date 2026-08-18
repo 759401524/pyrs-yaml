@@ -82,7 +82,7 @@ Value conversion rules:
 | `str`, `int`, `float`, `bool`, `None` | New scalar (value is *not* re-parsed) |
 | `dict` | New mapping (plain style) |
 | `list` | New sequence (plain style) |
-| `tuple` | ❌ not supported — raises `YamlEditError` |
+| `tuple` | :material-close: not supported — raises `YamlEditError` |
 
 When replacing an existing scalar, the target's metadata (inline comment, anchor, tag, quoting style) is **preserved** — unless the new value is a mapping/sequence, which adopts the new node's own formatting.
 

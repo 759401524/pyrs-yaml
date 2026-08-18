@@ -73,7 +73,7 @@ doc.set("$", {"x": 1})  # replace the entire root
 | `str`, `int`, `float`, `bool`, `None` | 새 스칼라 (값은 *재파싱되지 않음*) |
 | `dict` | 새 매핑 (일반 스타일) |
 | `list` | 새 시퀀스 (일반 스타일) |
-| `tuple` | ❌ 지원되지 않음 — `YamlEditError` 발생 |
+| `tuple` | :material-close: 지원되지 않음 — `YamlEditError` 발생 |
 
 기존 스칼라를 교체할 때 대상의 메타데이터(인라인 주석, 앵커, 태그, 따옴표 스타일)는 **보존**됩니다 — 새 값이 매핑/시퀀스인 경우는 예외로, 새 노드 자체의 서식을 따릅니다.
 
