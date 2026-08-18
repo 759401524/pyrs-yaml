@@ -16,11 +16,8 @@ preserving every comment, anchor, tag, and formatting choice.
 
 ## Setup
 
-```bash title="Install from source"
-# Install pyrs-yaml (requires Rust toolchain)
-git clone https://github.com/759401524/pyrs-yaml.git
-cd pyrs-yaml
-uv run --frozen maturin develop --release
+```bash title="Install from PyPI"
+pip install pyrs-yaml
 ```
 
 ## 1. The Configuration File

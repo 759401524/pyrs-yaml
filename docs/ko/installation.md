@@ -14,15 +14,25 @@ status: new
 | :material-monitor: **플랫폼** | Linux, macOS, Windows |
 | :material-hammer-wrench: **빌드** | Rust 툴체인 (소스 빌드에만 필요) |
 
-## 소스에서 설치
+## PyPI에서 설치
 
-패키지는 아직 PyPI에 게시되지 않았습니다. 소스에서 설치:
+패키지는 PyPI에 게시되었습니다. pip로 설치:
 
-```bash title="uv로 빌드 및 설치"
-uv run --frozen maturin develop --release
+```bash title="PyPI에서 설치"
+pip install pyrs-yaml
 ```
 
 패키지는 **ABI3 휠**로 빌드되며, 단일 휠로 Python 3.8부터 3.15까지 지원 — 재컴파일 불필요.
+
+## 소스에서 설치
+
+개발용 또는 최신 미출시 변경용:
+
+```bash title="소스에서 설치"
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
+uv run --frozen maturin develop --release
+```
 
 ## 프리-스레디드 Python (cp314t)
 

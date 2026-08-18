@@ -14,15 +14,25 @@ status: new
 | :material-monitor: **プラットフォーム** | Linux、macOS、Windows |
 | :material-hammer-wrench: **ビルド** | Rust ツールチェーン（ソースビルドのみ） |
 
-## ソースからインストール
+## PyPI からインストール
 
-パッケージはまだ PyPI に掲載されていません。ソースからインストール：
+パッケージは PyPI に公開されています。pip でインストール：
 
-```bash title="uv でビルドしてインストール"
-uv run --frozen maturin develop --release
+```bash title="PyPI からインストール"
+pip install pyrs-yaml
 ```
 
 パッケージは **ABI3 ホイール** としてビルドされており、単一のホイールで Python 3.8 から 3.15 まで対応 — 再コンパイル不要。
+
+## ソースからインストール
+
+開発用または最新の未公開変更用：
+
+```bash title="ソースからインストール"
+git clone https://github.com/759401524/pyrs-yaml.git
+cd pyrs-yaml
+uv run --frozen maturin develop --release
+```
 
 ## フリースレッド Python (cp314t)
 
