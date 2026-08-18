@@ -925,20 +925,16 @@ pub(crate) mod proptest_strategies {
                     meta: mb,
                 },
             ) => {
+                // Plain scalars whose content cannot legally be plain (e.g.
+                // whitespace-only tokens, which must be escaped) are emitted
+                // quoted and re-parse with a quoted style; the content still
+                // matches so the style upgrade is equal. Block scalars keep
+                // their style: the serializer re-derives the correct chomping
+                // indicator, so a Literal/Folded value round-trips as itself.
                 let style_ok = sa == sb
-                    || matches!(
-                        (sa, sb),
-                        (ScalarStyle::Literal, ScalarStyle::Plain)
-                            | (ScalarStyle::Folded, ScalarStyle::Plain)
-                            | (ScalarStyle::Plain, ScalarStyle::SingleQuoted)
-                            | (ScalarStyle::Plain, ScalarStyle::DoubleQuoted)
-                    );
-                va == vb
-                    && style_ok
-                    && (ca == cb
-                        || (!matches!(sa, ScalarStyle::Literal | ScalarStyle::Folded)
-                            && *ca == Chomping::Clip))
-                    && meta_equal_ignore_source(ma, mb)
+                    || (*sa == ScalarStyle::Plain
+                        && matches!(sb, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted));
+                va == vb && style_ok && ca == cb && meta_equal_ignore_source(ma, mb)
             }
             (
                 Mapping {
@@ -952,15 +948,17 @@ pub(crate) mod proptest_strategies {
                     meta: mb,
                 },
             ) => {
+                // An empty block-*style* container is emitted as the flow
+                // token `{}`/`[]` (the only lossless spelling), so a parsed
+                // empty block container reads back flow-style. Metadata is
+                // preserved by the serializer, so it must match exactly.
                 let style_ok = fa == fb || (pa.is_empty() && pb.is_empty());
-                let tag_ok = meta_equal_ignore_source(ma, mb)
-                    || (pa.is_empty() && pb.is_empty() && meta_allow_loss_on_empty(ma, mb));
                 style_ok
                     && pa.len() == pb.len()
                     && pa.iter().zip(pb.iter()).all(|((ka, va), (kb, vb))| {
                         nodes_equal_ignore_meta(ka, kb) && nodes_equal_ignore_meta(va, vb)
                     })
-                    && tag_ok
+                    && meta_equal_ignore_source(ma, mb)
             }
             (
                 Sequence {
@@ -974,33 +972,54 @@ pub(crate) mod proptest_strategies {
                     meta: mb,
                 },
             ) => {
+                // See Mapping arm: empty block containers emit the flow token
+                // and read back flow-style, with metadata preserved.
                 let style_ok = fa == fb || (ia.is_empty() && ib.is_empty());
-                let tag_ok = meta_equal_ignore_source(ma, mb)
-                    || (ia.is_empty() && ib.is_empty() && meta_allow_loss_on_empty(ma, mb));
                 style_ok
                     && ia.len() == ib.len()
                     && ia
                         .iter()
                         .zip(ib.iter())
                         .all(|(a, b)| nodes_equal_ignore_meta(a, b))
-                    && tag_ok
+                    && meta_equal_ignore_source(ma, mb)
             }
             (Null { meta: ma }, Null { meta: mb }) => meta_equal_ignore_source(ma, mb),
+            // granit's AST layer never produces the `Null` variant: `null`,
+            // `~` and empty tokens all come back as Plain scalars, with the
+            // null typed applied later at schema-load time. A generated `Null`
+            // leaf therefore serializes to a null token and re-parses as a
+            // Plain "null"/"~"/"" scalar — the two are equal at the schema
+            // layer, so treat them as equal here too.
+            (
+                Null { meta: ma },
+                Scalar {
+                    value: vb,
+                    style: ScalarStyle::Plain,
+                    chomping: Chomping::Clip,
+                    meta: mb,
+                },
+            ) => is_null_token(vb) && meta_equal_ignore_source(ma, mb),
+            (
+                Scalar {
+                    value: va,
+                    style: ScalarStyle::Plain,
+                    chomping: Chomping::Clip,
+                    meta: ma,
+                },
+                Null { meta: mb },
+            ) => is_null_token(va) && meta_equal_ignore_source(ma, mb),
             (Alias { name: na }, Alias { name: nb }) => na == nb,
             _ => false,
         }
     }
 
-    fn meta_equal_ignore_source(a: &NodeMeta, b: &NodeMeta) -> bool {
-        a.comment == b.comment && a.anchor == b.anchor && a.tag == b.tag
+    /// Whether a Plain scalar token reads as null under the core schema.
+    fn is_null_token(value: &str) -> bool {
+        value.is_empty() || value == "~" || value.eq_ignore_ascii_case("null")
     }
 
-    /// Allow tag/anchor loss on empty containers (serializer normalizes them
-    /// to `{}`/`[]` which lose metadata).
-    fn meta_allow_loss_on_empty(a: &NodeMeta, b: &NodeMeta) -> bool {
-        a.comment == b.comment
-            && (a.anchor == b.anchor || b.anchor.is_none())
-            && (a.tag == b.tag || b.tag.is_none())
+    fn meta_equal_ignore_source(a: &NodeMeta, b: &NodeMeta) -> bool {
+        a.comment == b.comment && a.anchor == b.anchor && a.tag == b.tag
     }
 
     /// Collect every concrete path in a `CustomNode` tree as a JSONPath string
