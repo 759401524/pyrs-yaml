@@ -499,7 +499,9 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
-    /// Attach an inline comment to the most recently created scalar node.
+    /// Attach an inline comment to the most recently created scalar node, or
+    /// to the currently-open empty container (a `{}`/`[]` has no child to
+    /// attach to, so the comment belongs to the container itself).
     fn attach_inline_comment(&mut self, text: Arc<str>) {
         let comment = Comment {
             text,
@@ -517,10 +519,21 @@ impl<'a> AstReceiver<'a> {
                     } else {
                         current_key.as_mut().as_mut()
                     };
-                    Self::set_scalar_comment(target, comment);
+                    if target.is_some() {
+                        Self::set_scalar_comment(target, comment);
+                    } else {
+                        // Empty mapping `{}` — stash for the container end event
+                        // (on_mapping_end attaches mapping_comment to the node).
+                        self.mapping_comment = Some(comment);
+                    }
                 }
                 ParseState::Sequence { items, .. } => {
-                    Self::set_scalar_comment(items.last_mut(), comment);
+                    if !items.is_empty() {
+                        Self::set_scalar_comment(items.last_mut(), comment);
+                    } else {
+                        // Empty sequence `[]` — stash for the container end event.
+                        self.mapping_comment = Some(comment);
+                    }
                 }
             }
         } else if let Some(result) = &mut self.result {
@@ -530,10 +543,11 @@ impl<'a> AstReceiver<'a> {
 
     /// Set the comment on a node if it's a Scalar with no existing comment.
     fn set_scalar_comment(node: Option<&mut CustomNode>, comment: Comment) {
-        if let Some(CustomNode::Scalar { meta: m, .. }) = node
-            && m.comment.is_none()
+        if let Some(node) = node
+            && node.comment().is_none()
+            && !matches!(node, CustomNode::Alias { .. })
         {
-            m.comment = Some(comment);
+            node.set_comment(comment);
         }
     }
 

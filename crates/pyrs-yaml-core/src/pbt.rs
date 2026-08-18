@@ -95,6 +95,176 @@ mod tests {
                 prop_assert!(nodes_equal_ignore_meta(&node, &parsed));
             }
         }
+
+        /// Serializing the result of a round-trip produces an AST-equivalent (not
+        /// byte-identical) document: an empty block container normalizes to its
+        /// flow spelling on the first re-serialize, and stays stable after.
+        #[test]
+        fn prop_idempotent(node in arb_custom_node()) {
+            if let Some(parsed) = try_roundtrip(&node) {
+                let once = to_yaml(&parsed);
+                let twice_parsed = parse_with_options(&once, true, Schema::Core, 1000, false)
+                    .expect("re-parse of normalized output must succeed");
+                prop_assert!(
+                    nodes_equal_ignore_meta(&parsed, &twice_parsed),
+                    "output not stable after first normalization"
+                );
+            }
+        }
+
+        /// Mapping key order survives the serialize → parse cycle.
+        #[test]
+        fn prop_mapping_order_preserved(node in arb_custom_node()) {
+            if let Some(parsed) = try_roundtrip(&node) {
+                fn key_order(n: &crate::ast::CustomNode) -> Vec<Vec<u8>> {
+                    match n {
+                        crate::ast::CustomNode::Mapping { pairs, .. } => pairs
+                            .keys()
+                            .map(|k| {
+                                let y = to_yaml(k);
+                                y.into_bytes()
+                            })
+                            .collect(),
+                        _ => vec![],
+                    }
+                }
+                let a = key_order(&node);
+                let b = key_order(&parsed);
+                prop_assert_eq!(a, b, "mapping key order changed");
+            }
+        }
+
+        /// Flow mappings inside the tree keep their entry order as well.
+        /// (Only flow mappings whose entries survive the round-trip are
+        /// compared; an empty block mapping normalizes to `{}` and reads back
+        /// as a flow mapping, which is covered by the order-shape equality.)
+        #[test]
+        fn prop_flow_order_preserved(node in arb_custom_node()) {
+            if let Some(parsed) = try_roundtrip(&node) {
+                fn flow_key_orders(n: &crate::ast::CustomNode) -> Vec<Vec<Vec<u8>>> {
+                    let mut out = Vec::new();
+                    if let crate::ast::CustomNode::Mapping {
+                        pairs,
+                        flow_style: true,
+                        ..
+                    } = n
+                    {
+                        if !pairs.is_empty() {
+                            out.push(
+                                pairs
+                                    .keys()
+                                    .map(|k| to_yaml(k).into_bytes())
+                                    .collect(),
+                            );
+                        }
+                    }
+                    match n {
+                        crate::ast::CustomNode::Mapping { pairs, .. } => {
+                            for (k, v) in pairs {
+                                out.extend(flow_key_orders(k));
+                                out.extend(flow_key_orders(v));
+                            }
+                        }
+                        crate::ast::CustomNode::Sequence { items, .. } => {
+                            for i in items {
+                                out.extend(flow_key_orders(i));
+                            }
+                        }
+                        _ => {}
+                    }
+                    out
+                }
+                let a = flow_key_orders(&node);
+                let b = flow_key_orders(&parsed);
+                prop_assert_eq!(a, b, "flow mapping order changed");
+            }
+        }
+
+        /// A comment on a node is emitted by the serializer (the node may be
+        /// on a block path that round-trips, in which case the comment text
+        /// must survive).
+        #[test]
+        fn prop_comment_preserved(node in arb_custom_node()) {
+            // Only block containers' comments round-trip reliably; flow nodes
+            // have comments normalized away by the strategy.
+            fn comment_texts(n: &crate::ast::CustomNode) -> Vec<String> {
+                match n {
+                    crate::ast::CustomNode::Scalar { meta, .. }
+                    | crate::ast::CustomNode::Mapping { meta, .. }
+                    | crate::ast::CustomNode::Sequence { meta, .. }
+                    | crate::ast::CustomNode::Null { meta, .. } => {
+                        let mut v = meta
+                            .comment
+                            .as_ref()
+                            .map(|c| vec![c.text.to_string()])
+                            .unwrap_or_default();
+                        match n {
+                            crate::ast::CustomNode::Mapping { pairs, .. } => {
+                                for (k, vv) in pairs {
+                                    v.extend(comment_texts(k));
+                                    v.extend(comment_texts(vv));
+                                }
+                            }
+                            crate::ast::CustomNode::Sequence { items, .. } => {
+                                for i in items {
+                                    v.extend(comment_texts(i));
+                                }
+                            }
+                            _ => {}
+                        }
+                        v
+                    }
+                    _ => vec![],
+                }
+            }
+            if let Some(parsed) = try_roundtrip(&node) {
+                let a = comment_texts(&node);
+                let b = comment_texts(&parsed);
+                for (orig, back) in a.iter().zip(b.iter()) {
+                    prop_assert_eq!(orig, back, "comment text changed");
+                }
+            }
+        }
+
+        /// Tag preservation on round-trip.
+        #[test]
+        fn prop_tag_preserved(node in arb_custom_node()) {
+            fn tag_texts(n: &crate::ast::CustomNode) -> Vec<String> {
+                match n {
+                    crate::ast::CustomNode::Scalar { meta, .. }
+                    | crate::ast::CustomNode::Mapping { meta, .. }
+                    | crate::ast::CustomNode::Sequence { meta, .. }
+                    | crate::ast::CustomNode::Null { meta, .. } => {
+                        let mut v = meta
+                            .tag
+                            .as_ref()
+                            .map(|t| vec![t.to_string()])
+                            .unwrap_or_default();
+                        match n {
+                            crate::ast::CustomNode::Mapping { pairs, .. } => {
+                                for (k, vv) in pairs {
+                                    v.extend(tag_texts(k));
+                                    v.extend(tag_texts(vv));
+                                }
+                            }
+                            crate::ast::CustomNode::Sequence { items, .. } => {
+                                for i in items {
+                                    v.extend(tag_texts(i));
+                                }
+                            }
+                            _ => {}
+                        }
+                        v
+                    }
+                    _ => vec![],
+                }
+            }
+            if let Some(parsed) = try_roundtrip(&node) {
+                let a = tag_texts(&node);
+                let b = tag_texts(&parsed);
+                prop_assert_eq!(a, b, "tags changed after round-trip");
+            }
+        }
     }
 
     // Validate that `validate_node` never panics on arbitrary trees + rules,

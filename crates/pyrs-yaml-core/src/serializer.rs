@@ -220,23 +220,25 @@ impl Serializer {
         }
     }
 
-    /// An empty flow container (`{}` / `[]`). Such a node cannot host a
-    /// standalone comment on its own line in value position — YAML would
-    /// interpret the bare `{}` as a mapping needing a key. Standalone
-    /// comments on empty flow containers are therefore demoted to inline.
-    fn is_empty_flow(node: &CustomNode) -> bool {
+    /// An empty container: a `Mapping`/`Sequence` with no entries/items,
+    /// regardless of flow style (a block-style empty collection is serialized
+    /// by its flow token `{}`/`[]`). Such a node cannot host a standalone
+    /// comment on its own line in value position — YAML would interpret the
+    /// bare `{}`/`[]` as a node needing a key or item — so standalone comments
+    /// on empty containers are demoted to inline.
+    fn is_empty_container(node: &CustomNode) -> bool {
         match node {
-            CustomNode::Mapping {
-                pairs,
-                flow_style: true,
-                ..
-            } => pairs.is_empty(),
-            CustomNode::Sequence {
-                items,
-                flow_style: true,
-                ..
-            } => items.is_empty(),
+            CustomNode::Mapping { pairs, .. } => pairs.is_empty(),
+            CustomNode::Sequence { items, .. } => items.is_empty(),
             _ => false,
+        }
+    }
+
+    /// Emit a comment inline after an empty container token (`  # text`).
+    fn output_empty_node_comment(&mut self, meta: &NodeMeta) {
+        if let Some(c) = &meta.comment {
+            self.output.push_str("  # ");
+            self.output.push_str(&c.text);
         }
     }
 
@@ -252,12 +254,12 @@ impl Serializer {
             return Err(SerializeError::MaxDepthExceeded(DepthError(self.max_depth)));
         }
 
-        // Handle standalone comments first (but not on empty flow containers,
+        // Handle standalone comments first (but not on empty containers,
         // where a bare `{}`/`[]` on its own line would be invalid YAML —
-        // those comments are demoted to inline by the flow writer below).
+        // those comments are demoted to inline by the writer below).
         if let Some(comment) = node.comment()
             && comment.standalone
-            && !Self::is_empty_flow(node)
+            && !Self::is_empty_container(node)
         {
             self.write_indent(indent_width);
             self.output.push_str("# ");
@@ -343,6 +345,9 @@ impl Serializer {
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
         if flow_style {
+            if meta.anchor.is_some() || meta.tag.is_some() {
+                self.write_anchor_tag(&meta.anchor, &meta.tag);
+            }
             self.output.push('{');
             if !pairs.is_empty() {
                 for (i, (key, value)) in pairs.iter().enumerate() {
@@ -371,7 +376,9 @@ impl Serializer {
 
             if pairs.is_empty() {
                 self.write_indent(indent_width);
-                self.output.push_str("{}\n");
+                self.output.push_str("{}");
+                self.output_empty_node_comment(meta);
+                self.output.push('\n');
                 return Ok(());
             }
 
@@ -423,6 +430,9 @@ impl Serializer {
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
         if flow_style {
+            if meta.anchor.is_some() || meta.tag.is_some() {
+                self.write_anchor_tag(&meta.anchor, &meta.tag);
+            }
             self.output.push('[');
             if !items.is_empty() {
                 for (i, item) in items.iter().enumerate() {
@@ -449,7 +459,9 @@ impl Serializer {
 
             if items.is_empty() {
                 self.write_indent(indent_width);
-                self.output.push_str("[]\n");
+                self.output.push_str("[]");
+                self.output_empty_node_comment(meta);
+                self.output.push('\n');
                 return Ok(());
             }
 
@@ -569,7 +581,7 @@ impl Serializer {
                 ..
             }
         )) || is_complex_key
-            || (value.comment().is_some_and(|c| c.standalone) && !Self::is_empty_flow(value))
+            || (value.comment().is_some_and(|c| c.standalone) && !Self::is_empty_container(value))
         {
             // If the value node has an anchor or tag, write it after the colon
             if let Some(anchor_name) = value.anchor() {
