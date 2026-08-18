@@ -12,7 +12,7 @@ pyrs-yaml 允许您**就地编辑已解析的文档**，同时保留所有格式
 
 编辑通过 **JSONPath 风格路径** 定位文档树中的节点：
 
-```python
+```python title="按路径编辑"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -30,6 +30,17 @@ print(doc.to_yaml())
 ```
 
 所有编辑方法都是**原子**的：失败时任何内容都不会改变，包括文档修订号。成功时文档被标记为脏，下一次调用 `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` 时会从更新后的树重新序列化。
+
+### 编辑流水线
+
+```mermaid
+graph LR
+    A["解析<br/>CustomNode AST"] --> B["按路径编辑<br/>set / insert / delete / rename"]
+    B --> C["标记脏 + 递增修订号"]
+    C --> D["字节级拼接<br/>(默认布局)"]
+    D --> E["to_yaml() / source()<br/>重新序列化输出"]
+    C --> F["完整重新序列化<br/>(回退: 流式、合并键、CRLF、BOM)"]
+```
 
 ## 路径语法
 
@@ -53,11 +64,11 @@ print(doc.to_yaml())
 
 ### `set()` — 按路径替换
 
-```python
+```python title="set() 签名"
 set(path: str, value: Any) -> None
 ```
 
-```python
+```python title="set() 示例"
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
 doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
@@ -70,10 +81,10 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 | Python 值 | YAML 节点 |
 |-----------|-----------|
-| `str`, `int`, `float`, `bool`, `None` | 新标量（值*不会*被重新解析） |
-| `dict` | 新映射（普通样式） |
-| `list` | 新序列（普通样式） |
-| `tuple` | :material-close: 不支持 — 抛出 `YamlEditError` |
+| :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | 新标量（值*不会*被重新解析） |
+| :material-language-python: `dict` | 新映射（普通样式） |
+| :material-format-list-numbered: `list` | 新序列（普通样式） |
+| :material-alert: `tuple` | 不支持 — 抛出 `YamlEditError` |
 
 替换现有标量时，目标的元数据（行内注释、锚点、标签、引号样式）会被**保留** — 除非新值是映射/序列，此时采用新节点自身的格式。
 
@@ -96,13 +107,13 @@ node.set_value(42)
 
 ### `insert()` — 在索引处插入
 
-```python
+```python title="insert() 签名"
 insert(path: str, index: int, value: Any) -> None
 ```
 
 `index` 最大可为当前长度（在 `len` 处插入等同于追加）；更大的值会抛出 `YamlEditError`。负索引从末尾计数（`-1` 在最后一个元素之前插入，`-len` 在开头插入）。
 
-```python
+```python title="insert() 示例"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
@@ -113,11 +124,11 @@ doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 
 #### `append()` — 在末尾追加
 
-```python
+```python title="append() 签名"
 append(path: str, value: Any) -> None
 ```
 
-```python
+```python title="append() 示例"
 doc.append("$.items", "d")
 ```
 
@@ -135,7 +146,7 @@ node.insert(1, "x")
 
 ### `delete()` — 按路径删除
 
-```python
+```python title="delete() 签名"
 delete(path: str) -> None
 ```
 
@@ -164,7 +175,7 @@ node.delete()
 
 ### `rename()` — 就地重命名映射键
 
-```python
+```python title="rename() 签名"
 rename(path: str, new_key: str) -> None
 ```
 
@@ -414,9 +425,9 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 | 错误 | 何时引发 |
 |------|---------|
-| `YamlPathError` | 格式错误的路径，编辑路径中使用通配符/`..` |
-| `YamlEditError` | 不支持的值类型（`tuple`）、通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
-| `YamlDocumentError` | 文档编辑后使用过期的 `Node` |
+| :material-alert: `YamlPathError` | 格式错误的路径，编辑路径中使用通配符/`..` |
+| :material-alert: `YamlEditError` | 不支持的值类型（`tuple`）、通过别名编辑、重命名根节点/复杂键/已存在的键、导航进入标量、索引越界 |
+| :material-alert: `YamlDocumentError` | 文档编辑后使用过期的 `Node` |
 
 所有编辑都是原子的 — 失败的编辑不会改动文档（及其修订号）。
 

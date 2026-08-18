@@ -12,7 +12,7 @@ pyrs-yaml는 파싱된 문서를 **제자리에서 편집**할 수 있게 해주
 
 편집은 문서 트리에 대한 **JSONPath 스타일 경로**로 표현됩니다:
 
-```python
+```python title="경로로 편집"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -30,6 +30,17 @@ print(doc.to_yaml())
 ```
 
 모든 편집 메서드는 **원자적**입니다: 실패 시 문서 리비전을 포함해 아무것도 변경되지 않습니다. 성공 시 문서는 dirty로 표시되며, 다음 `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` 호출 시 업데이트된 트리에서 재직렬화됩니다.
+
+### 편집 파이프라인
+
+```mermaid
+graph LR
+    A["파싱<br/>CustomNode AST"] --> B["경로로 편집<br/>set / insert / delete / rename"]
+    B --> C["dirty 표시 + 리비전 증가"]
+    C --> D["바이트 수준 스플라이스<br/>(기본 레이아웃)"]
+    D --> E["to_yaml() / source()<br/>재직렬화 출력"]
+    C --> F["전체 재직렬화<br/>(폴백: 플로우 스타일, 병합 키, CRLF, BOM)"]
+```
 
 ## 경로 구문
 
@@ -53,11 +64,11 @@ print(doc.to_yaml())
 
 ### `set()` — 경로로 교체
 
-```python
+```python title="set() 시그니처"
 set(path: str, value: Any) -> None
 ```
 
-```python
+```python title="set() 예제"
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
 doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
@@ -70,10 +81,10 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 | Python 값 | YAML 노드 |
 |-----------|-----------|
-| `str`, `int`, `float`, `bool`, `None` | 새 스칼라 (값은 *재파싱되지 않음*) |
-| `dict` | 새 매핑 (일반 스타일) |
-| `list` | 새 시퀀스 (일반 스타일) |
-| `tuple` | :material-close: 지원되지 않음 — `YamlEditError` 발생 |
+| :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | 새 스칼라 (값은 *재파싱되지 않음*) |
+| :material-language-python: `dict` | 새 매핑 (일반 스타일) |
+| :material-format-list-numbered: `list` | 새 시퀀스 (일반 스타일) |
+| :material-alert: `tuple` | 지원되지 않음 — `YamlEditError` 발생 |
 
 기존 스칼라를 교체할 때 대상의 메타데이터(인라인 주석, 앵커, 태그, 따옴표 스타일)는 **보존**됩니다 — 새 값이 매핑/시퀀스인 경우는 예외로, 새 노드 자체의 서식을 따릅니다.
 
@@ -104,13 +115,13 @@ doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 
 ### `insert()` — 인덱스에 삽입
 
-```python
+```python title="insert() 시그니처"
 insert(path: str, index: int, value: Any) -> None
 ```
 
 `index`는 현재 길이까지 허용됩니다 (`len`에 삽입하면 추가됨); 그보다 크면 `YamlEditError`가 발생합니다. 음수 인덱스는 끝에서부터 셉니다 (`-1`은 마지막 요소 앞에 삽입, `-len`은 맨 앞에 삽입).
 
-```python
+```python title="insert() 예제"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
@@ -121,11 +132,11 @@ doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 
 #### `append()` — 끝에 추가
 
-```python
+```python title="append() 시그니처"
 append(path: str, value: Any) -> None
 ```
 
-```python
+```python title="append() 예제"
 doc.append("$.items", "d")
 ```
 
@@ -143,7 +154,7 @@ node.insert(1, "x")
 
 ### `delete()` — 경로로 제거
 
-```python
+```python title="delete() 시그니처"
 delete(path: str) -> None
 ```
 
@@ -172,7 +183,7 @@ node.delete()
 
 ### `rename()` — 매핑 키 제자리 이름 변경
 
-```python
+```python title="rename() 시그니처"
 rename(path: str, new_key: str) -> None
 ```
 
@@ -407,9 +418,9 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 | 오류 | 시점 |
 |------|------|
-| `YamlPathError` | 잘못된 경로, 편집 경로에 와일드카드/`..` 사용 |
-| `YamlEditError` | 지원되지 않는 값 타입 (`tuple`), 별칭을 통한 편집, 루트/복합/기존 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과 |
-| `YamlDocumentError` | 문서 편집 후 오래된 `Node` 사용 |
+| :material-alert: `YamlPathError` | 잘못된 경로, 편집 경로에 와일드카드/`..` 사용 |
+| :material-alert: `YamlEditError` | 지원되지 않는 값 타입 (`tuple`), 별칭을 통한 편집, 루트/복합/기존 키 이름 변경, 스칼라로의 탐색, 인덱스 범위 초과 |
+| :material-alert: `YamlDocumentError` | 문서 편집 후 오래된 `Node` 사용 |
 
 모든 편집은 원자적입니다 — 실패한 편집은 문서(및 리비전)를 변경하지 않습니다.
 

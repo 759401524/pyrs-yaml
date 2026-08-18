@@ -12,7 +12,7 @@ pyrs-yaml では、**パース済みドキュメントをその場で編集**で
 
 編集は、ドキュメントツリーへの **JSONPath スタイルのパス** で表現します：
 
-```python
+```python title="パスで編集"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -30,6 +30,17 @@ print(doc.to_yaml())
 ```
 
 すべての編集メソッドは**アトミック**です：失敗した場合、ドキュメント（リビジョンを含む）は何も変更されません。成功するとドキュメントはダーティとしてマークされ、次の `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` 呼び出しで更新されたツリーから再シリアライズされます。
+
+### 編集パイプライン
+
+```mermaid
+graph LR
+    A["パース<br/>CustomNode AST"] --> B["パスで編集<br/>set / insert / delete / rename"]
+    B --> C["ダーティにマーク + リビジョン更新"]
+    C --> D["バイトレベルスプライス<br/>(デフォルトレイアウト)"]
+    D --> E["to_yaml() / source()<br/>再シリアライズ出力"]
+    C --> F["全体再シリアライズ<br/>(フォールバック: フロースタイル、マージキー、CRLF、BOM)"]
+```
 
 ## パス構文
 
@@ -53,11 +64,11 @@ print(doc.to_yaml())
 
 ### `set()` — パスによる置換
 
-```python
+```python title="set() シグネチャ"
 set(path: str, value: Any) -> None
 ```
 
-```python
+```python title="set() 例"
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
 doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
@@ -70,10 +81,10 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 | Python 値 | YAML ノード |
 |-----------|-------------|
-| `str`, `int`, `float`, `bool`, `None` | 新しいスカラー（値は*再パースされません*） |
-| `dict` | 新しいマッピング（プレーンスタイル） |
-| `list` | 新しいシーケンス（プレーンスタイル） |
-| `tuple` | :material-close: サポートされません — `YamlEditError` を発生 |
+| :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | 新しいスカラー（値は*再パースされません*） |
+| :material-language-python: `dict` | 新しいマッピング（プレーンスタイル） |
+| :material-format-list-numbered: `list` | 新しいシーケンス（プレーンスタイル） |
+| :material-alert: `tuple` | サポートされません — `YamlEditError` を発生 |
 
 既存のスカラーを置換する場合、対象のメタデータ（インラインコメント、アンカー、タグ、クォートスタイル）は**保持**されます — ただし、新しい値がマッピング/シーケンスの場合は、新しいノード自身のフォーマットが採用されます。
 
@@ -96,13 +107,13 @@ node.set_value(42)
 
 ### `insert()` — インデックス位置への挿入
 
-```python
+```python title="insert() シグネチャ"
 insert(path: str, index: int, value: Any) -> None
 ```
 
 `index` は現在の長さまで指定できます（`len` に挿入すると末尾への追加になります）。それより大きい場合は `YamlEditError` を発生します。負のインデックスは末尾から数えます（`-1` は最後の要素の前に挿入、`-len` は先頭に挿入）。
 
-```python
+```python title="insert() 例"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
@@ -113,11 +124,11 @@ doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 
 #### `append()` — 末尾に追加
 
-```python
+```python title="append() シグネチャ"
 append(path: str, value: Any) -> None
 ```
 
-```python
+```python title="append() 例"
 doc.append("$.items", "d")
 ```
 
@@ -135,7 +146,7 @@ node.insert(1, "x")
 
 ### `delete()` — パスによる削除
 
-```python
+```python title="delete() シグネチャ"
 delete(path: str) -> None
 ```
 
@@ -164,7 +175,7 @@ node.delete()
 
 ### `rename()` — マッピングキーのその場リネーム
 
-```python
+```python title="rename() シグネチャ"
 rename(path: str, new_key: str) -> None
 ```
 
@@ -410,9 +421,9 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 | エラー | 発生時 |
 |-------|--------|
-| `YamlPathError` | 不正なパス、編集パスでのワイルドカード/`..` の使用 |
-| `YamlEditError` | サポートされない値型（`tuple`）、エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
-| `YamlDocumentError` | ドキュメント編集後に陳腐化した `Node` を使用 |
+| :material-alert: `YamlPathError` | 不正なパス、編集パスでのワイルドカード/`..` の使用 |
+| :material-alert: `YamlEditError` | サポートされない値型（`tuple`）、エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
+| :material-alert: `YamlDocumentError` | ドキュメント編集後に陳腐化した `Node` を使用 |
 
 すべての編集はアトミックです — 失敗した編集はドキュメント（とそのリビジョン）に影響を与えません。
 

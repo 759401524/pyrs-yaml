@@ -14,7 +14,7 @@ pyrs-yaml lets you **edit a parsed document in place** while preserving all form
 
 Edits are expressed as **JSONPath-style paths** into the document tree:
 
-```python
+```python title="Edit by path"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -32,6 +32,17 @@ print(doc.to_yaml())
 ```
 
 All edit methods are **atomic**: on failure nothing changes, including the document revision. On success the document is marked dirty, and the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` call re-serializes from the updated tree.
+
+#### Edit Pipeline
+
+```mermaid
+graph LR
+    A["Parse<br/>CustomNode AST"] --> B["Edit by path<br/>set / insert / delete / rename"]
+    B --> C["Mark dirty + bump revision"]
+    C --> D["Byte-level splice<br/>(default layout)"]
+    D --> E["to_yaml() / source()<br/>re-serialized output"]
+    C --> F["Full re-serialization<br/>(fallback: flow style, merged keys, CRLF, BOM)"]
+```
 
 ### Path Syntax
 
@@ -55,11 +66,11 @@ Editing paths must target exactly one node — **wildcards** (`[*]`) and **deep-
 
 #### `set()` — replace by path
 
-```python
+```python title="set() signature"
 set(path: str, value: Any) -> None
 ```
 
-```python
+```python title="set() examples"
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
 doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
@@ -79,10 +90,10 @@ Value conversion rules:
 
 | Python value | YAML node |
 |--------------|-----------|
-| `str`, `int`, `float`, `bool`, `None` | New scalar (value is *not* re-parsed) |
-| `dict` | New mapping (plain style) |
-| `list` | New sequence (plain style) |
-| `tuple` | :material-close: not supported — raises `YamlEditError` |
+| :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | New scalar (value is *not* re-parsed) |
+| :material-language-python: `dict` | New mapping (plain style) |
+| :material-format-list-numbered: `list` | New sequence (plain style) |
+| :material-alert: `tuple` | not supported — raises `YamlEditError` |
 
 When replacing an existing scalar, the target's metadata (inline comment, anchor, tag, quoting style) is **preserved** — unless the new value is a mapping/sequence, which adopts the new node's own formatting.
 
@@ -105,13 +116,13 @@ Both operate on **sequences** only; the path must resolve to a sequence node.
 
 #### `insert()` — insert at an index
 
-```python
+```python title="insert() signature"
 insert(path: str, index: int, value: Any) -> None
 ```
 
 `index` may be up to the current length (inserting at `len` appends); anything larger raises `YamlEditError`. Negative indexes are supported and count from the end (`-1` inserts before the last element, `-len` inserts at the front).
 
-```python
+```python title="insert() examples"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
@@ -122,11 +133,11 @@ doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 
 #### `append()` — add at the end
 
-```python
+```python title="append() signature"
 append(path: str, value: Any) -> None
 ```
 
-```python
+```python title="append() example"
 doc.append("$.items", "d")
 ```
 
@@ -144,7 +155,7 @@ node.insert(1, "x")
 
 #### `delete()` — remove by path
 
-```python
+```python title="delete() signature"
 delete(path: str) -> None
 ```
 
@@ -173,7 +184,7 @@ node.delete()
 
 #### `rename()` — rename a mapping key in place
 
-```python
+```python title="rename() signature"
 rename(path: str, new_key: str) -> None
 ```
 
@@ -423,9 +434,9 @@ Re-find the node after any edit to continue working. `node.is_valid()` checks li
 
 | Error | When |
 |-------|------|
-| `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
-| `YamlEditError` | Unsupported value type (`tuple`), edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
-| `YamlDocumentError` | Stale `Node` used after a document edit |
+| :material-alert: `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
+| :material-alert: `YamlEditError` | Unsupported value type (`tuple`), edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
+| :material-alert: `YamlDocumentError` | Stale `Node` used after a document edit |
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched.
 
