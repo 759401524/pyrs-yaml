@@ -125,3 +125,11 @@ assert "# 서버 설정" in output
 assert "&db" in output
 assert "<<: *db" in output
 ```
+
+---
+
+### 참고 항목
+
+- [YAML 파싱](parsing.md) — 문자열, 파일, 여러 문서 파싱
+- [라운드트립](round-trip.md) — 주석과 앵커 보존
+- [PyYAML 호환](pyyaml-compat.md) — 직접 교체 가능한 API

@@ -112,3 +112,10 @@ assert content == "일반 Markdown 콘텐츠."
     for field in required_fields:
         assert field in frontmatter, f"필수 필드 누락: {field}"
     ```
+
+---
+
+### 참고 항목
+
+- [YAML 파싱](parsing.md) — 일반 YAML 문서 파싱
+- [Markdown 프론트매터 API](../api/reference.md#markdown-frontmatter) — `read_markdown()` 및 `read_markdown_str()`

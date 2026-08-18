@@ -112,3 +112,10 @@ pyrs_yaml.register_type("!uuid", UUIDType())
 doc = pyrs_yaml.parse("id: !uuid 550e8400-e29b-41d4-a716-446655440000")
 assert isinstance(doc.get("id"), uuid.UUID)
 ```
+
+---
+
+### 另请参阅
+
+- [插件开发](plugin-development.md) — 构建你自己的自定义类型
+- [自定义 Schema](custom-schema.md) — 控制标量类型解析

@@ -132,3 +132,10 @@ def __next__() -> dict | None: ...
 #### `load_stream` との違い
 
 `parse_stream()` はコメントを生成し、元のアンカー名を保持する `StreamIterator` を返します。`YAML().load_stream()` / `YAML().load_stream_file()` はデフォルトが異なる `YamlStream` を返します（上記の比較表を参照）。
+
+---
+
+### 関連項目
+
+- [YAML のパース](parsing.md) — 標準ドキュメントパース
+- [ストリーミング API リファレンス](../api/yaml-instance.md) — YAML インスタンスのストリームメソッド

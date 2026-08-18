@@ -125,3 +125,11 @@ assert "# サーバー設定" in output
 assert "&db" in output
 assert "<<: *db" in output
 ```
+
+---
+
+### 関連項目
+
+- [YAML のパース](parsing.md) — 文字列、ファイル、複数ドキュメントのパース
+- [ラウンドトリップ](round-trip.md) — コメントとアンカーの保持
+- [PyYAML 互換](pyyaml-compat.md) — 直接置換可能な API

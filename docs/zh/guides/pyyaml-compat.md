@@ -90,3 +90,11 @@ def load_config(path):
 def save_config(data, path):
     pyrs_yaml.dump_file(data, path)
 ```
+
+---
+
+### 另请参阅
+
+- [解析 YAML](parsing.md) — 高级解析选项
+- [序列化](serialization.md) — 详细序列化选项
+- [往返保留](round-trip.md) — 注释和锚点在往返中保留

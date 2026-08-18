@@ -174,3 +174,11 @@ assert d["addr"] == 255
 - `extends: core`를 사용하여 Core 해석을 재구현하지 않음
 
 내장 Core 스키마는 영향을 받지 않으며, 계속 제로 오버헤드 `match` 디스패치를 사용합니다.
+
+---
+
+### 참고 항목
+
+- [플러그인 개발](plugin-development.md) — 사용자 정의 태그 핸들러 구축
+- [i18n 오류 메시지](i18n.md) — 스키마 오류 메시지 지역화
+- [스키마 API 참조](../api/reference.md#yaml-schema-language) — `register_schema()` 및 인라인 스키마 문서

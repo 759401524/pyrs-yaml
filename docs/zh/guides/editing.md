@@ -490,3 +490,11 @@ edit_flush_burst5_10mb    119 ms
 ```
 
 测得于包含500组×838个键的合成10MB块映射文档。比率受AST克隆成本（56ms）主导；实际编辑+materialize约54ms（3倍于序列化）。对于包含注释、锚点和标签的复杂文档，分片优势显著增长。
+
+---
+
+### 另请参阅
+
+- [解析 YAML](parsing.md) — 在编辑前解析文档
+- [流式解析](streaming.md) — 大文件增量解析
+- [配置管理](tutorial-config-management.md) — 端到端编辑实战

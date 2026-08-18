@@ -193,3 +193,11 @@ assert d["addr"] == 255
 
 組み込みの Core スキーマは影響を受けません。ゼロコストの `match` ディスパッチのままで、
 カスタムスキーマの登録の影響を受けません。
+
+---
+
+### 関連項目
+
+- [プラグイン開発](plugin-development.md) — カスタムタグハンドラの構築
+- [i18n エラーメッセージ](i18n.md) — スキーマのエラーメッセージをローカライズ
+- [スキーマ API リファレンス](../api/reference.md#yaml-schema-language) — `register_schema()` とインラインスキーマのドキュメント

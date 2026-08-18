@@ -119,3 +119,11 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 - :material-bolt: `PyArrayDyn<T>` を使用したゼロコピー切片反復
 - :material-bolt: 切片イテレーション中の Python GIL リリース
 - :material-bolt: 任意次元を追加割り当てなしでサポート
+
+---
+
+### 関連項目
+
+- [シリアライズ](serialization.md) — 通常の Python オブジェクトのシリアライズ
+- [NumPy 機能](../features.md) — NumPy ndarray サポートの概要
+- [NumPy API リファレンス](../api/reference.md) — シリアライゼーション用モジュール関数

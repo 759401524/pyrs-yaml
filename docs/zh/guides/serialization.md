@@ -127,3 +127,11 @@ assert "# 服务器配置" in output
 assert "&db" in output
 assert "<<: *db" in output
 ```
+
+---
+
+### 另请参阅
+
+- [解析 YAML](parsing.md) — 解析字符串、文件和多个文档
+- [往返保留](round-trip.md) — 注释和锚点在序列化中如何保留
+- [PyYAML 兼容](pyyaml-compat.md) — 直接替换 API

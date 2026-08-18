@@ -90,3 +90,11 @@ def load_config(path):
 def save_config(data, path):
     pyrs_yaml.dump_file(data, path)
 ```
+
+---
+
+### 関連項目
+
+- [YAML のパース](parsing.md) — 高度なパースオプション
+- [シリアライズ](serialization.md) — シリアライズオプションの詳細
+- [ラウンドトリップ](round-trip.md) — コメントとアンカーがラウンドトリップで保持

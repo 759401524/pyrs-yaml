@@ -111,3 +111,10 @@ pyrs_yaml.register_type("!uuid", UUIDType())
 doc = pyrs_yaml.parse("id: !uuid 550e8400-e29b-41d4-a716-446655440000")
 assert isinstance(doc.get("id"), uuid.UUID)
 ```
+
+---
+
+### 참고 항목
+
+- [플러그인 개발](plugin-development.md) — 나만의 사용자 정의 타입 구축
+- [사용자 정의 스키마](custom-schema.md) — 스칼라 타입 해석 제어

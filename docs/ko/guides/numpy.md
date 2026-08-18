@@ -119,3 +119,11 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 - :material-bolt: `PyArrayDyn<T>`를 사용한 제로 복사 슬라이스 반복
 - :material-bolt: 슬라이스 이터레이션 중 Python GIL 해제
 - :material-bolt: 추가 할당 없이 모든 차원 지원
+
+---
+
+### 참고 항목
+
+- [직렬화](serialization.md) — 일반 Python 객체 직렬화
+- [NumPy 기능](../features.md) — NumPy ndarray 지원 개요
+- [NumPy API 참조](../api/reference.md) — 직렬화 모듈 함수

@@ -223,7 +223,7 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-## :material-tag: 标签注册表
+## :material-tag: 标签注册表 {#tag-registry}
 
 ### `register_tag()`
 
@@ -486,7 +486,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## :material-page-layout-body: Markdown Front Matter
+## :material-page-layout-body: Markdown Front Matter {#markdown-frontmatter}
 
 ### `read_markdown()`
 
@@ -506,7 +506,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-## :material-translate: i18n 函数
+## :material-translate: i18n 函数 {#i18n-functions}
 
 ### `set_language()`
 

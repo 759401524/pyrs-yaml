@@ -90,3 +90,11 @@ def load_config(path):
 def save_config(data, path):
     pyrs_yaml.dump_file(data, path)
 ```
+
+---
+
+### 참고 항목
+
+- [YAML 파싱](parsing.md) — 고급 파싱 옵션
+- [직렬화](serialization.md) — 직렬화 옵션 상세
+- [라운드트립](round-trip.md) — 주석과 앵커가 라운드트립에서 보존

@@ -111,3 +111,10 @@ pyrs_yaml.register_type("!uuid", UUIDType())
 doc = pyrs_yaml.parse("id: !uuid 550e8400-e29b-41d4-a716-446655440000")
 assert isinstance(doc.get("id"), uuid.UUID)
 ```
+
+---
+
+### 関連項目
+
+- [プラグイン開発](plugin-development.md) — 独自のカスタムタイプを構築
+- [カスタムスキーマ](custom-schema.md) — スカラー型解決を制御

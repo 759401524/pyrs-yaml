@@ -50,3 +50,11 @@ mytimestamp = "my_timestamp_plugin:register"
 | :material-close: `clear_type_handlers()` | 移除所有已注册类型 |
 | :material-close: `remove_type(name)` | 移除特定类型 |
 | :material-check-decagram: `validate_custom_types(obj)` | 验证对象是否通过所有注册类型的校验 |
+
+---
+
+### 另请参阅
+
+- [社区插件](community-plugins.md) — 可扩展的内置类型
+- [自定义 Schema](custom-schema.md) — 定义类型解析规则
+- [标签注册 API](../api/reference.md#tag-registry) — `register_tag()` 及相关函数

@@ -191,5 +191,12 @@ assert d["addr"] == 255
 - 将最常用的模式放在前面
 - 使用 `extends: core` 避免重复实现完整的 Core 解析逻辑
 
-内置 Core schema 不受影响——它仍然使用零开销的 `match` 分发，
-不受自定义 schema 注册的影响。
+内置 Core schema 不受影响——它仍然使用零开销的 `match` 分发，不受自定义 schema 注册的影响。
+
+---
+
+### 另请参阅
+
+- [插件开发](plugin-development.md) — 构建自定义标签处理器
+- [i18n 错误消息](i18n.md) — 为你的 schema 本地化错误消息
+- [Schema API 参考](../api/reference.md#yaml-schema-language) — `register_schema()` 和内联 schema 文档

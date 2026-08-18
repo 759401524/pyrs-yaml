@@ -483,3 +483,11 @@ edit_flush_burst5_10mb    119 ms
 ```
 
 *500그룹×838키의 합성 10MB 블록 매핑 문서에서 측정. 비율은 AST 클론 비용（56ms）이 지배적；실제 편집+materialize는 약 54ms（직렬화의 3배）. 주석, 앵커, 태그가 포함된 복잡한 문서에서는 스플라이스 이점이 크게 증가합니다.*
+
+---
+
+### 참고 항목
+
+- [YAML 파싱](parsing.md) — 편집 전 문서 파싱
+- [스트리밍 파싱](streaming.md) — 대용량 파일 증분 파싱
+- [설정 관리](tutorial-config-management.md) — 종단간 편집 실습

@@ -38,3 +38,11 @@ def register():
 | :material-close: `clear_type_handlers()` | すべての登録タイプを削除 |
 | :material-close: `remove_type(name)` | 特定のタイプを削除 |
 | :material-check-decagram: `validate_custom_types(obj)` | オブジェクトを全登録タイプに対して検証 |
+
+---
+
+### 関連項目
+
+- [コミュニティプラグイン](community-plugins.md) — 拡張できる組み込みタイプ
+- [カスタムスキーマ](custom-schema.md) — 型解決ルールを定義
+- [タグレジストリ API](../api/reference.md#tag-registry) — `register_tag()` と関連関数

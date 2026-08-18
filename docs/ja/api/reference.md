@@ -220,7 +220,7 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-## :material-tag: タグレジストリ
+## :material-tag: タグレジストリ {#tag-registry}
 
 ### `register_tag()`
 
@@ -483,7 +483,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## :material-page-layout-body: Markdown Front Matter
+## :material-page-layout-body: Markdown Front Matter {#markdown-frontmatter}
 
 ### `read_markdown()`
 
@@ -503,7 +503,7 @@ Markdown 文字列から YAML Front Matterを抽出します。
 read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-## :material-translate: i18n 関数
+## :material-translate: i18n 関数 {#i18n-functions}
 
 ### `set_language()`
 

@@ -112,3 +112,10 @@ assert content == "普通 Markdown 内容。"
     for field in required_fields:
         assert field in frontmatter, f"缺少必需字段: {field}"
     ```
+
+---
+
+### 另请参阅
+
+- [解析 YAML](parsing.md) — 解析纯 YAML 文档
+- [Markdown 头信息 API](../api/reference.md#markdown-frontmatter) — `read_markdown()` 和 `read_markdown_str()`

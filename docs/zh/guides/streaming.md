@@ -132,3 +132,10 @@ def __next__() -> dict | None: ...
 #### 与 `load_stream` 的差异
 
 `parse_stream()` 返回一个产出注释并保留原始锚点名称的 `StreamIterator`。`YAML().load_stream()` / `YAML().load_stream_file()` 返回具有不同默认值的 `YamlStream`（见上面的对照表）。
+
+---
+
+### 另请参阅
+
+- [解析 YAML](parsing.md) — 标准文档解析
+- [流式 API 参考](../api/yaml-instance.md) — YAML 实例的流式方法

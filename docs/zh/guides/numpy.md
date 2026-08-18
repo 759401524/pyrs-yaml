@@ -119,3 +119,11 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 - :material-bolt: 使用 `PyArrayDyn<T>` 进行零拷贝切片迭代
 - :material-bolt: 遍历切片时释放 Python GIL
 - :material-bolt: 支持任意维度无需额外分配
+
+---
+
+### 另请参阅
+
+- [序列化](serialization.md) — 序列化普通 Python 对象
+- [NumPy 特性](../features.md) — NumPy ndarray 支持概览
+- [NumPy API 参考](../api/reference.md) — 序列化模块函数

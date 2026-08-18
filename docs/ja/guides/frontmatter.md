@@ -112,3 +112,10 @@ assert content == "通常の Markdown コンテンツ。"
     for field in required_fields:
         assert field in frontmatter, f"必須フィールドがありません: {field}"
     ```
+
+---
+
+### 関連項目
+
+- [YAML のパース](parsing.md) — プレーン YAML ドキュメントのパース
+- [Markdown フロントマター API](../api/reference.md#markdown-frontmatter) — `read_markdown()` と `read_markdown_str()`

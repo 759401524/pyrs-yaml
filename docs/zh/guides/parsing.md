@@ -111,3 +111,11 @@ pyrs-yaml 正确解析所有 YAML 1.2 标量类型：
 | :material-null: 空值 | `null`, `~` | `None` |
 | :material-infinity: 无穷大 | `.inf`, `-.inf` | `float` |
 | :material-alphabetical: NaN | `.nan` | `float` |
+
+---
+
+### 另请参阅
+
+- [序列化](serialization.md) — 将文档转换回 YAML 字符串
+- [就地编辑](editing.md) — 修改已解析文档而不丢失格式
+- [自定义 Schema](custom-schema.md) — 定义自定义类型解析规则

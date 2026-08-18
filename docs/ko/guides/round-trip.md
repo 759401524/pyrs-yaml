@@ -82,3 +82,11 @@ doc.to_yaml()
 | ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
 **pyrs-yaml는 PyYAML보다 37배, ruamel.yaml보다 85배 빠르면서** 모든 것을 보존합니다.
+
+---
+
+### 참고 항목
+
+- [직렬화](serialization.md) — 서식을 잃지 않고 직렬화
+- [제자리 편집](editing.md) — 라운드트립 정확도를 유지하며 편집
+- [PyYAML 호환](pyyaml-compat.md) — PyYAML에서 마이그레이션

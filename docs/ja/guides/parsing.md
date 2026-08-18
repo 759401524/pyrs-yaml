@@ -109,3 +109,11 @@ pyrs-yaml はすべての YAML 1.2 スカラータイプを正しくパースし
 | :material-null: Null | `null`, `~` | `None` |
 | :material-infinity: 無限大 | `.inf`, `-.inf` | `float` |
 | :material-alphabetical: NaN | `.nan` | `float` |
+
+---
+
+### 関連項目
+
+- [シリアライズ](serialization.md) — ドキュメントを YAML 文字列に変換
+- [インプレース編集](editing.md) — フォーマットを失わずに編集
+- [カスタムスキーマ](custom-schema.md) — カスタム型解決ルールを定義

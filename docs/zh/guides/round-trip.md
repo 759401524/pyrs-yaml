@@ -82,3 +82,11 @@ doc.to_yaml()
 | ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
 **pyrs-yaml 比 PyYAML 快 37 倍，比 ruamel.yaml 快 85 倍**，同时保留所有内容。
+
+---
+
+### 另请参阅
+
+- [序列化](serialization.md) — 不丢失格式地序列化文档
+- [就地编辑](editing.md) — 编辑同时保留往返保真度
+- [PyYAML 兼容](pyyaml-compat.md) — 从 PyYAML 迁移

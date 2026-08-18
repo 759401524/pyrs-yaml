@@ -109,3 +109,11 @@ pyrs-yaml는 모든 YAML 1.2 스칼라 타입을 올바르게 파싱합니다.
 | :material-null: 널 | `null`, `~` | `None` |
 | :material-infinity: 무한대 | `.inf`, `-.inf` | `float` |
 | :material-alphabetical: NaN | `.nan` | `float` |
+
+---
+
+### 참고 항목
+
+- [직렬화](serialization.md) — 문서를 YAML 문자열로 변환
+- [제자리 편집](editing.md) — 서식을 잃지 않고 편집
+- [사용자 정의 스키마](custom-schema.md) — 사용자 정의 타입 해석 규칙 정의
