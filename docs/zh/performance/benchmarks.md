@@ -68,11 +68,11 @@ pyrs-yaml 的性能基准测试，通过 CodSpeed CI（`pytest-codspeed`，WallT
 
 ### 要点总结
 
-1. **pyrs-yaml 解析比 PyYAML 快 21–43 倍、序列化快 55–177 倍**
-2. **pyrs-yaml 解析比 ruamel.yaml 快 48–100 倍、序列化快 123–371 倍**，同时提供相同的往返特性
-3. **Rust 侧解析极快** — 小文档解析仅需约 86 µs
-4. **序列化在所有尺寸下均快速** — 小文档序列化仅需约 8 µs
-5. **速度优势在所有文档尺寸下均保持**
+1. :material-trending-up: **pyrs-yaml 解析比 PyYAML 快 21–43 倍、序列化快 55–177 倍**
+2. :material-trending-up: **pyrs-yaml 解析比 ruamel.yaml 快 48–100 倍、序列化快 123–371 倍**，同时提供相同的往返特性
+3. :material-bolt: **Rust 侧解析极快** — 小文档解析仅需约 86 µs
+4. :material-bolt: **序列化在所有尺寸下均快速** — 小文档序列化仅需约 8 µs
+5. :material-chart-line: **速度优势在所有文档尺寸下均保持**
 
 ### 说明
 
