@@ -230,9 +230,9 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
     All edits are atomic — a failed edit leaves the document (and its
     revision) untouched. On success the stored source is marked dirty and
     the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()`
-    call re-serializes from the updated tree.
-
-All edits are atomic — a failed edit leaves the document (and its revision) untouched. On success, the stored source is marked dirty and the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` call re-serializes from the updated tree. See the [In-Place Editing guide](../guides/editing.md) for the full path syntax and semantics.
+    call re-serializes from the updated tree. See the
+    [In-Place Editing guide](../guides/editing.md) for the full path syntax
+    and semantics.
 
 #### `set()`
 
@@ -300,6 +300,8 @@ for node in doc.scalars():
 # ('a',) hello
 # ('b',) None
 ```
+
+#### `insert()`
 
 Insert a value into a sequence at an index. The path must resolve to a sequence. Negative indexes count from the end (`-1` inserts before the last element).
 

@@ -52,7 +52,7 @@ The **CustomNode** AST gives you full control over YAML structure:
 
 Drop-in replacement with familiar API:
 
-```python
+```python title="PyYAML-compatible API"
 import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
@@ -65,7 +65,7 @@ yaml.safe_dumps(data)
 
 Non-blocking serialization and parsing via `asyncio`:
 
-```python
+```python title="Async dump and load"
 import asyncio
 import pyrs_yaml
 
@@ -85,7 +85,7 @@ Available functions: `safe_dump_async`, `safe_load_async`, `safe_loads_async`.
 
 Validate parsed YAML documents against JSON Schema:
 
-```python
+```python title="JSON Schema validation"
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
@@ -99,7 +99,7 @@ Raises `YamlValidateError` on validation failure.
 
 Define custom schemas that control how plain scalars resolve to Python types:
 
-```python
+```python title="Register a custom schema"
 import pyrs_yaml
 
 # Register a custom schema from a YAML string
@@ -122,7 +122,7 @@ assert d["addr"] == 31
 
 Or pass a dict inline instead of registering:
 
-```python
+```python title="Inline schema dict"
 d = pyrs_yaml.safe_load(
     "addr: 0xFF",
     schema={
@@ -143,14 +143,14 @@ d = pyrs_yaml.safe_load(
 
 By default, duplicate mapping keys raise `YamlDuplicateKeyError`:
 
-```python
+```python title="Duplicate key error"
 pyrs_yaml.parse("key: first\nkey: second")
 # pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
 ```
 
 Pass `allow_duplicate_keys=True` to keep the **last value**:
 
-```python
+```python title="Allow duplicate keys"
 doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
@@ -161,7 +161,7 @@ The switch applies to `parse`, `safe_load`, `safe_loads`, `parse_file`, `parse_a
 
 `to_yaml_with_options()` controls indentation and line wrapping:
 
-```python
+```python title="Serialization options"
 yaml_str = doc.to_yaml_with_options(
     indent_size=2,  # base indent (used when per-type options omitted)
     width=80,  # line wrap width; 0 disables wrapping
@@ -177,7 +177,7 @@ When `indent_mapping` / `indent_sequence` / `indent_offset` are omitted, they de
 
 Register handlers for custom YAML tags that transform scalar values:
 
-```python
+```python title="Import"
 import pyrs_yaml
 ```
 
@@ -195,7 +195,7 @@ import pyrs_yaml
     pyrs_yaml.register_tag("!custom", lambda node: node.upper())
     ```
 
-```python
+```python title="Use a custom tag"
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -208,7 +208,7 @@ doc.get("name")  # "custom:value"
 
 Define custom YAML node types that integrate with serialization and deserialization:
 
-```python
+```python title="CustomType plugin"
 import pyrs_yaml
 from datetime import datetime
 
@@ -252,7 +252,7 @@ out = pyrs_yaml.safe_dump(data)
 
 Parse YAML directly into Pydantic models, or serialize models to YAML:
 
-```python
+```python title="Pydantic integration"
 from pydantic import BaseModel
 import pyrs_yaml
 
@@ -275,7 +275,7 @@ print(yaml_str)
 
 Re-parse stored source text in place with different options:
 
-```python
+```python title="Incremental re-parse"
 doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
@@ -287,7 +287,7 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 Edit a parsed document **without losing any formatting metadata** — comments, anchors, tags, scalar styles, and flow/block style all survive:
 
-```python
+```python title="In-place editing"
 doc = pyrs_yaml.parse("""
 server:
   host: localhost  # bind address
@@ -295,12 +295,17 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")  # replace by path
-doc.insert("$.server.ports", 0, 80)  # insert into a sequence
-doc.append("$.server.ports", 443)  # append to a sequence
-doc.rename("$.server", "srv")  # rename a mapping key
+doc.set("$.server.host", "0.0.0.0")  # (1)!
+doc.insert("$.server.ports", 0, 80)  # (2)!
+doc.append("$.server.ports", 443)  # (3)!
+doc.rename("$.server", "srv")  # (4)!
 del doc["server"]  # or: doc.delete("$.server")
 ```
+
+1. :material-arrow-down: `set` replaces the value at a path, preserving the inline comment.
+2. :material-arrow-down: `insert` adds an element at a sequence index.
+3. :material-arrow-down: `append` adds to the end of a sequence.
+4. :material-arrow-down: `rename` changes a mapping key in place, keeping position and comments.
 
 - **Path API** — JSONPath-style paths (`$.a.b[0]`) with root sugar (`doc["k"] = v`, `del doc["k"]`)
 - **Node API** — `doc.node().find(path)` returns `Node` objects with `set_value` / `insert` / `append` / `delete` / `rename`, plus tree traversal (`parent`, `children`, `walk`, `filter`)
@@ -317,7 +322,7 @@ See the [In-Place Editing guide](guides/editing.md) for details.
 
 pyrs-yaml can serialize `numpy.ndarray` objects of any dimension directly to YAML:
 
-```python
+```python title="NumPy ndarray serialization"
 import numpy as np
 import pyrs_yaml
 
@@ -379,25 +384,25 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 | Feature | Support |
 |---------|---------|
-| YAML 1.2 spec | ✅ Full |
-| Comments (standalone) | ✅ Preserved |
-| Comments (inline) | ✅ Preserved |
-| Anchors & aliases | ✅ Preserved |
-| Tags (explicit) | ✅ Preserved |
-| Block scalars (`\|`, `>`) | ✅ Preserved |
-| Chomping indicators | ✅ Preserved |
-| Flow collections (`{}`, `[]`) | ✅ Preserved |
-| Merge keys (`<<`) | ✅ Resolved |
-| Complex keys | ✅ Supported |
-| Escape sequences | ✅ Supported |
-| Multi-document | ✅ Supported |
-| **Async I/O** | **✅ `safe_*_async`** |
-| **JSON Schema validation** | **✅ `doc.validate()`** |
-| **Incremental re-parse** | **✅ `doc.reparse()`** |
-| **In-place editing** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
-| **Metadata editing** | **✅ `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
-| **Style/format control** | **✅ `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
-| **Deep editing** | **✅ `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **✅ `validate_against_schema()`** |
-| **Schema file IO** | **✅ `load_schema()` / `list_schemas()`** |
-| **JSON export** | **✅ `doc.to_json()`** |
+| YAML 1.2 spec | :material-check: Full |
+| Comments (standalone) | :material-check: Preserved |
+| Comments (inline) | :material-check: Preserved |
+| Anchors & aliases | :material-check: Preserved |
+| Tags (explicit) | :material-check: Preserved |
+| Block scalars (`\|`, `>`) | :material-check: Preserved |
+| Chomping indicators | :material-check: Preserved |
+| Flow collections (`{}`, `[]`) | :material-check: Preserved |
+| Merge keys (`<<`) | :material-check: Resolved |
+| Complex keys | :material-check: Supported |
+| Escape sequences | :material-check: Supported |
+| Multi-document | :material-check: Supported |
+| **Async I/O** | **:material-check: `safe_*_async`** |
+| **JSON Schema validation** | **:material-check: `doc.validate()`** |
+| **Incremental re-parse** | **:material-check: `doc.reparse()`** |
+| **In-place editing** | **:material-check: `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
+| **Metadata editing** | **:material-check: `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **:material-check: `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **:material-check: `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **:material-check: `validate_against_schema()`** |
+| **Schema file IO** | **:material-check: `load_schema()` / `list_schemas()`** |
+| **JSON export** | **:material-check: `doc.to_json()`** |

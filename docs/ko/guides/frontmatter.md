@@ -12,9 +12,8 @@ Markdown 파일과 문자열에서 YAML Front Matter를 추출합니다.
 
 Front Matter는 Markdown 파일 상단에 `---` 구분자로 감싼 YAML 블록입니다. 블로그 플랫폼, 정적 사이트 생성기, 콘텐츠 관리 시스템에서 흔히 사용됩니다.
 
-```markdown
+```markdown title="post.md"
 ---
-
 title: 블로그 포스트
 author: Alice
 date: 2024-01-15
@@ -30,7 +29,7 @@ tags: [yaml, python, rust]
 
 Markdown 파일에서 Front Matter를 파싱합니다:
 
-```python
+```python title="파일에서 파싱"
 import pyrs_yaml
 
 # (frontmatter_dict, content_string) 반환
@@ -47,7 +46,7 @@ print(content)
 
 Markdown 문자열에서 Front Matter를 파싱합니다:
 
-```python
+```python title="문자열에서 파싱"
 markdown_text = """
 ---
 title: 내 포스트
@@ -71,7 +70,7 @@ else:
 
 파일/문자열에 Front Matter가 없으면:
 
-```python
+```python title="Front Matter 없음"
 frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
 
 # frontmatter는 None, content는 전체 텍스트
@@ -81,35 +80,42 @@ assert content == "일반 Markdown 콘텐츠."
 
 ## 일반적인 사용 예시
 
-### 블로그 플랫폼
+=== "블로그 플랫폼"
 
-```python
-# 블로그 목록용 메타데이터 추출
-frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
-if frontmatter.get("published", False):
-    print(f"발행된 포스트: {frontmatter['title']}")
-else:
-    print("초안 포스트")
-```
+    ```python title="블로그 목록용 메타데이터 추출"
+    # 블로그 목록용 메타데이터 추출
+    frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
+    if frontmatter.get("published", False):
+        print(f"발행된 포스트: {frontmatter['title']}")
+    else:
+        print("초안 포스트")
+    ```
 
-#### 정적 사이트 생성기
+=== "정적 사이트 생성기"
 
-```python
-# 모든 Markdown 파일 처리
-import glob
+    ```python title="모든 Markdown 파일 처리"
+    # 모든 Markdown 파일 처리
+    import glob
 
-for path in glob.glob("posts/*.md"):
-    meta, content = pyrs_yaml.read_markdown(path)
-    # 메타데이터와 콘텐츠로 템플릿 렌더링
-```
+    for path in glob.glob("posts/*.md"):
+        meta, content = pyrs_yaml.read_markdown(path)
+        # 메타데이터와 콘텐츠로 템플릿 렌더링
+    ```
 
-#### 콘텐츠 관리
+=== "콘텐츠 관리"
 
-```python
-# Front Matter 구조 검증
-required_fields = ["title", "author", "date"]
-frontmatter, _ = pyrs_yaml.read_markdown("article.md")
+    ```python title="Front Matter 구조 검증"
+    # Front Matter 구조 검증
+    required_fields = ["title", "author", "date"]
+    frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 
-for field in required_fields:
-    assert field in frontmatter, f"필수 필드 누락: {field}"
-```
+    for field in required_fields:
+        assert field in frontmatter, f"필수 필드 누락: {field}"
+    ```
+
+---
+
+### 참고 항목
+
+- [YAML 파싱](parsing.md) — 일반 YAML 문서 파싱
+- [Markdown 프론트매터 API](../api/reference.md#markdown-frontmatter) — `read_markdown()` 및 `read_markdown_str()`

@@ -10,14 +10,17 @@ status: new
 
 ### Requirements
 
-- **Python** ≥ 3.8 (CPython)
-- **Platform**: Linux, macOS, Windows
+| :material-language-python: Requirement | Details |
+|---|---|
+| **Python** | ≥ 3.8 (CPython), including 3.14t free-threaded |
+| :material-monitor: **Platform** | Linux, macOS, Windows |
+| :material-hammer-wrench: **Build** | Rust toolchain (for source builds only) |
 
 ### Install from Source
 
 The package is not yet published on PyPI. To install from source:
 
-```bash
+```bash title="Install from source"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -42,7 +45,7 @@ Free-threaded (no-GIL) wheels for CPython 3.14t include the NumPy integration. W
     reported, and a basic parse/round-trip works. A successful run prints
     `✓ Installation verified`.
 
-```python
+```python title="Verify your install"
 import pyrs_yaml
 
 # Check version
@@ -56,10 +59,14 @@ print("✓ Installation verified")
 
 ### Run Tests
 
-```bash
-# Rust tests
-cargo test
+=== "Rust"
 
-# Python tests
-uv run --frozen pytest tests/
-```
+    ```bash
+    cargo nextest run --all
+    ```
+
+=== "Python"
+
+    ```bash
+    uv run --frozen pytest tests/
+    ```

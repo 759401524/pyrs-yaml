@@ -18,20 +18,20 @@ pyrs-yaml ships with built-in plugins registered at import time:
 
 | Tag | Python type | Description |
 |-----|-------------|-------------|
-| `!timestamp` | `datetime` | ISO 8601 datetime round-trip |
-| `!date` | `datetime.date` | ISO 8601 date (no time) |
-| `!time` | `datetime.time` | ISO 8601 time (no date) |
-| `!uuid` | `uuid.UUID` | UUID string ↔ object |
-| `!decimal` | `decimal.Decimal` | Arbitrary-precision decimal |
-| `!binary` | `bytes` | Base64-encoded binary data |
-| `!regex` | `re.Pattern` | Compiled regex pattern |
-| `!set` | `str` | YAML set (unkeyed mapping) — experimental, no round-trip serialization |
+| :material-clock-outline: `!timestamp` | `datetime` | ISO 8601 datetime round-trip |
+| :material-calendar: `!date` | `datetime.date` | ISO 8601 date (no time) |
+| :material-clock: `!time` | `datetime.time` | ISO 8601 time (no date) |
+| :material-binary: `!uuid` | `uuid.UUID` | UUID string ↔ object |
+| :material-decimal: `!decimal` | `decimal.Decimal` | Arbitrary-precision decimal |
+| :material-binary: `!binary` | `bytes` | Base64-encoded binary data |
+| :material-language-python: `!regex` | `re.Pattern` | Compiled regex pattern |
+| :material-format-list-bulleted: `!set` | `str` | YAML set (unkeyed mapping) — experimental, no round-trip serialization |
 
 ### Creating a Custom Type
 
 Subclass `CustomType` and implement `from_yaml()` and `to_yaml()`:
 
-```python
+```python title="CustomType subclass"
 import pyrs_yaml
 from datetime import datetime
 
@@ -54,13 +54,13 @@ class TimestampType(pyrs_yaml.CustomType):
 
 **Imperative form:**
 
-```python
+```python title="Imperative registration"
 pyrs_yaml.register_type("!timestamp", TimestampType())
 ```
 
 **Decorator form:**
 
-```python
+```python title="Decorator registration"
 @pyrs_yaml.register_type("!timestamp")
 class TimestampType(pyrs_yaml.CustomType):
     ...
@@ -70,7 +70,7 @@ class TimestampType(pyrs_yaml.CustomType):
 
 **Loading a tagged scalar:**
 
-```python
+```python title="Parse a tagged scalar"
 doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
 val = doc.get("when")
 assert isinstance(val, datetime)  # val is a datetime object
@@ -80,7 +80,7 @@ The tag `!timestamp` triggers `from_yaml()` which returns a `datetime`.
 
 **Dumping a Python object:**
 
-```python
+```python title="Dump a Python object"
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
 # out contains: ts: !timestamp 2026-08-11T10:30:00
@@ -94,10 +94,10 @@ the `!timestamp` tag.
 
 | Method | Description |
 |--------|-------------|
-| `can_parse(value)` | Whether this type handles a given scalar value (string) |
-| `from_yaml(value)` | Convert YAML string → Python object |
-| `to_yaml(obj)` | Convert Python object → YAML string |
-| `validate(obj)` | Validate a Python object (returns `bool`) |
+| :material-function: `can_parse(value)` | Whether this type handles a given scalar value (string) |
+| :material-swap-horizontal: `from_yaml(value)` | Convert YAML string → Python object |
+| :material-swap-horizontal: `to_yaml(obj)` | Convert Python object → YAML string |
+| :material-check-decagram: `validate(obj)` | Validate a Python object (returns `bool`) |
 
 ### Third-Party Plugins
 
@@ -108,7 +108,7 @@ import time; errors are logged and do not block startup.
 
 ### Example: UUID Type
 
-```python
+```python title="uuid_plugin.py"
 import uuid
 import pyrs_yaml
 
@@ -128,3 +128,10 @@ pyrs_yaml.register_type("!uuid", UUIDType())
 doc = pyrs_yaml.parse("id: !uuid 550e8400-e29b-41d4-a716-446655440000")
 assert isinstance(doc.get("id"), uuid.UUID)
 ```
+
+---
+
+### See Also
+
+- [Plugin Development](plugin-development.md) — Build your own custom types
+- [Custom Schemas](custom-schema.md) — Control scalar type resolution

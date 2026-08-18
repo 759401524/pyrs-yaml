@@ -40,7 +40,7 @@ rules:
 
 ### 등록 및 사용
 
-```python
+```python title="스키마 등록 및 사용"
 import pyrs_yaml
 
 pyrs_yaml.register_schema("hex", """
@@ -63,7 +63,7 @@ assert d["addr"] == 31
 
 `load_schema()`는 파일 경로에서 스키마 정의를 읽어 등록합니다:
 
-```python
+```python title="파일에서 스키마 로드"
 # hex.yaml에 위 스키마 YAML이 포함되어 있음
 pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 ```
@@ -72,7 +72,7 @@ pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 
 `list_schemas()`는 등록된 모든 스키마 이름(내장 + 사용자 정의)을 반환합니다:
 
-```python
+```python title="등록된 스키마 나열"
 print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
@@ -81,7 +81,7 @@ print(pyrs_yaml.list_schemas())
 
 스키마 정의에 `validate` 섹션을 추가하면 스칼라 타입 해석 위에 구조 검사를 추가할 수 있습니다. `validate_against_schema()`로 문서를 사용하기 전에 검증합니다:
 
-```yaml
+```yaml title="검증이 포함된 스키마"
 name: app
 extends: core
 validate:
@@ -120,7 +120,7 @@ pyrs_yaml.validate_against_schema("port: abc\n", schema)
 
 ### 인라인 Dict 스키마
 
-```python
+```python title="인라인 dict 스키마"
 d = pyrs_yaml.safe_load(
     "addr: 0xFF",
     schema={
@@ -133,37 +133,37 @@ assert d["addr"] == 255
 
 ### 일반적인 패턴
 
-#### 날짜를 문자열로 유지
+=== "날짜를 문자열로 유지"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
+    }
+    ```
 
-#### YAML 1.1 불리언 추가
+=== "YAML 1.1 불리언 추가"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
+    }
+    ```
 
-#### 엄격 JSON 모드
+=== "엄격 JSON 모드"
 
-```python
-schema = {
-    "extends": "failsafe",
-    "rules": [
-        {"pattern": "^null$|^~$", "type": "null"},
-        {"pattern": "^(true|false)$", "type": "bool"},
-        {"pattern": "^-?\\d+$", "type": "int"},
-        {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
-    ],
-}
-```
+    ```python
+    schema = {
+        "extends": "failsafe",
+        "rules": [
+            {"pattern": "^null$|^~$", "type": "null"},
+            {"pattern": "^(true|false)$", "type": "bool"},
+            {"pattern": "^-?\\d+$", "type": "int"},
+            {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
+        ],
+    }
+    ```
 
 ### 성능
 
@@ -174,3 +174,11 @@ schema = {
 - `extends: core`를 사용하여 Core 해석을 재구현하지 않음
 
 내장 Core 스키마는 영향을 받지 않으며, 계속 제로 오버헤드 `match` 디스패치를 사용합니다.
+
+---
+
+### 참고 항목
+
+- [플러그인 개발](plugin-development.md) — 사용자 정의 태그 핸들러 구축
+- [i18n 오류 메시지](i18n.md) — 스키마 오류 메시지 지역화
+- [스키마 API 참조](../api/reference.md#yaml-schema-language) — `register_schema()` 및 인라인 스키마 문서

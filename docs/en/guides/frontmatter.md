@@ -14,7 +14,7 @@ Extract YAML frontmatter from Markdown files and strings.
 
 Frontmatter is a YAML block at the top of Markdown files, wrapped between `---` delimiters. Commonly used in blog platforms, static site generators, and content management systems.
 
-```markdown
+```markdown title="post.md"
 ---
 title: My Blog Post
 author: Alice
@@ -31,7 +31,7 @@ This is the content.
 
 Parse frontmatter from a Markdown file:
 
-```python
+```python title="Parse from a file"
 import pyrs_yaml
 
 # Returns (frontmatter_dict, content_string)
@@ -48,7 +48,7 @@ print(content)
 
 Parse frontmatter from a Markdown string:
 
-```python
+```python title="Parse from a string"
 markdown_text = """
 ---
 title: My Post
@@ -72,7 +72,7 @@ else:
 
 If the file/string has no frontmatter:
 
-```python
+```python title="No frontmatter"
 frontmatter, content = pyrs_yaml.read_markdown("no-frontmatter.md")
 
 # frontmatter is None, content is the full text
@@ -82,35 +82,42 @@ assert content == "Just regular markdown content."
 
 ### Common Use Cases
 
-#### Blog Platforms
+=== "Blog Platforms"
 
-```python
-# Extract metadata for blog listing
-frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
-if frontmatter.get("published", False):
-    print(f"Published post: {frontmatter['title']}")
-else:
-    print("Draft post")
-```
+    ```python title="Extract metadata for blog listing"
+    # Extract metadata for blog listing
+    frontmatter, _ = pyrs_yaml.read_markdown("draft.md")
+    if frontmatter.get("published", False):
+        print(f"Published post: {frontmatter['title']}")
+    else:
+        print("Draft post")
+    ```
 
-#### Static Site Generators
+=== "Static Site Generators"
 
-```python
-# Process all markdown files
-import glob
+    ```python title="Process all markdown files"
+    # Process all markdown files
+    import glob
 
-for path in glob.glob("posts/*.md"):
-    meta, content = pyrs_yaml.read_markdown(path)
-    # Render template with meta and content
-```
+    for path in glob.glob("posts/*.md"):
+        meta, content = pyrs_yaml.read_markdown(path)
+        # Render template with meta and content
+    ```
 
-#### Content Management
+=== "Content Management"
 
-```python
-# Validate frontmatter structure
-required_fields = ["title", "author", "date"]
-frontmatter, _ = pyrs_yaml.read_markdown("article.md")
+    ```python title="Validate frontmatter structure"
+    # Validate frontmatter structure
+    required_fields = ["title", "author", "date"]
+    frontmatter, _ = pyrs_yaml.read_markdown("article.md")
 
-for field in required_fields:
-    assert field in frontmatter, f"Missing required field: {field}"
-```
+    for field in required_fields:
+        assert field in frontmatter, f"Missing required field: {field}"
+    ```
+
+---
+
+### See Also
+
+- [Parsing YAML](parsing.md) — Parse plain YAML documents
+- [Markdown Frontmatter API](../api/reference.md#markdown-frontmatter) — `read_markdown()` and `read_markdown_str()`

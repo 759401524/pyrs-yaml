@@ -8,6 +8,21 @@ status: new
 
 pyrs-yaml 定义了自定义异常类用于错误处理。
 
+```mermaid title="异常继承层次"
+classDiagram
+    ValueError <|-- YamlParseError
+    ValueError <|-- YamlSerializeError
+    ValueError <|-- YamlValidateError
+    ValueError <|-- YamlEditError
+    ValueError <|-- YamlPathError
+    ValueError <|-- YamlDuplicateKeyError
+    ValueError <|-- YamlMaxDepthError
+    ValueError <|-- YamlTagError
+    TypeError <|-- YamlTypeError
+    Exception <|-- YamlDocumentError
+    Exception <|-- YamlTagSkip
+```
+
 ## YamlParseError
 
 YAML 解析失败时引发。
@@ -211,6 +226,10 @@ class YamlTagError(ValueError):
 ## YamlTagSkip
 
 标签处理器抛出的哨兵异常，用于跳过节点。解析器会移到下一个节点而不是引发错误。这不是真正的错误，而是有意的控制流信号。
+
+!!! info "控制流哨兵"
+    `YamlTagSkip` 不是真正的错误。它是标签处理器将控制权委托给链中下一个处理器的信号。
+    从处理器中抛出它会将控制权传递给下一个处理器（或回退到默认行为）。
 
 ```python
 class YamlTagSkip(Exception):

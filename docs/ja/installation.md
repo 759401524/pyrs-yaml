@@ -8,14 +8,17 @@ status: new
 
 ## 必須要件
 
-- **Python** ≥ 3.8 (CPython)
-- **プラットフォーム**: Linux、macOS、Windows
+| :material-language-python: 要件 | 詳細 |
+|---|---|
+| **Python** | ≥ 3.8 (CPython)、3.14t free-threaded を含む |
+| :material-monitor: **プラットフォーム** | Linux、macOS、Windows |
+| :material-hammer-wrench: **ビルド** | Rust ツールチェーン（ソースビルドのみ） |
 
 ## ソースからインストール
 
 パッケージはまだ PyPI に掲載されていません。ソースからインストール：
 
-```bash
+```bash title="uv でビルドしてインストール"
 uv run --frozen maturin develop --release
 ```
 
@@ -32,7 +35,7 @@ CPython 3.14t 向けのフリースレッド（GIL なし）ホイールは NumP
 
 ソースからインストール（開発またはテスト用）：
 
-```bash
+```bash title="ソースからインストール"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -43,7 +46,7 @@ uv run --frozen maturin develop --release
 ???+ tip "インストールの確認"
     以下のコードスニペットを実行して、インストールが正しく完了したか確認できます。
 
-```python
+```python title="インストールの確認"
 import pyrs_yaml
 
 # Check version

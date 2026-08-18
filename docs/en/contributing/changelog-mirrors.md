@@ -20,7 +20,7 @@ The guard script `scripts/check_changelog_mirrors.py` checks **structural parity
 2. Translate the same `[Unreleased]` entry into `docs/{zh,ja,ko}/changelog.md` (keep version headers like `## [Unreleased]` and `### Added` translated)
 3. Verify:
 
-```bash
+```bash title="Check mirror parity"
 uv run python scripts/check_changelog_mirrors.py
 ```
 

@@ -10,7 +10,7 @@ pyrs-yaml는 Rust 유닛 테스트와 Python 통합 테스트를 모두 보유�
 
 ## Rust 테스트
 
-```bash
+```bash title="Rust 테스트 실행"
 # 모든 Rust 테스트를 nextest로 실행 (권장)
 cargo nextest run --all
 
@@ -35,7 +35,7 @@ cargo test --all -- --nocapture
 
 ## Python 테스트
 
-```bash
+```bash title="Python 테스트 실행"
 # 모든 Python 테스트 실행
 uv run pytest tests/ -v
 
@@ -72,7 +72,7 @@ uv run pytest tests/ --codspeed
 
 ## Maturin 빌드
 
-```bash
+```bash title="빌드 및 설치"
 # 빌드 및 설치 (모노레포 manifest-path 사용)
 uv run maturin develop --release
 
@@ -92,7 +92,7 @@ GitHub Actions가 모든 푸시와 PR에서 실행:
 
 ### Rust 테스트
 
-```rust
+```rust title="Rust 테스트 템플릿"
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,7 +106,7 @@ mod tests {
 
 #### Python 테스트
 
-```python
+```python title="Python 테스트 템플릿"
 import pyrs_yaml
 import pytest
 

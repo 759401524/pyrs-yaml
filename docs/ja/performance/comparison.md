@@ -31,31 +31,31 @@ pyrs-yamlを、最も人気のある2つのPython YAMLライブラリと比較�
 | ライブラリ | 時間 | 高速化率 |
 |---------|------|---------|
 | **pyrs-yaml** | **1.6 ms** | — |
-| PyYAML | 87.9 ms¹ | 55倍遅い |
-| ruamel.yaml | 191.0 ms¹ | 119倍遅い |
+| PyYAML | 87.9 ms[^1] | 55倍遅い |
+| ruamel.yaml | 191.0 ms[^1] | 119倍遅い |
 
-¹ PyYAML/ruamel.yaml のラウンドトリップ時間は、同じベンチマークのパースとシリアライズの合計による推定値です。
+[^1]: PyYAML/ruamel.yaml のラウンドトリップ時間は、同じベンチマークのパースとシリアライズの合計による推定値です。
 
 ## 機能比較
 
 | 機能 | pyrs-yaml | PyYAML | ruamel.yaml |
 |---------|-----------|--------|-------------|
-| **YAML 1.2準拠** | ✅ | ✅ | ✅ |
-| **コメント（スタンドアロン）** | ✅ | ❌ | ✅ |
-| **コメント（インライン）** | ✅ | ❌ | ✅ |
-| **アンカー/エイリアス** | ✅ | ❌ | ✅ |
-| **タグ（明示的）** | ✅ | ❌ | ✅ |
-| **ブロックスカラー** | ✅ | ✅ | ✅ |
-| **フローコレクション** | ✅ | ✅ | ✅ |
-| **マージキー（<<）** | ✅ | ❌ | ✅ |
-| **複合キー** | ✅ | ✅ | ✅ |
-| **ラウンドトリップ保持** | ✅ | ❌ | ✅ |
-| **Pythonバインディング** | ✅ | ✅ | ✅ |
-| **ABI3（py3.8+）** | ✅ | ❌ | ❌ |
-| **型スタブ（.pyi）** | ✅ | ✅ | ❌ |
-| **多言語エラーメッセージ** | ✅ | ❌ | ❌ |
-| **Rustバックエンド** | ✅ | ❌ | ❌ |
-| **パフォーマンス** | 🚀 最速 | 🐌 遅い | 🐌 遅い |
+| **YAML 1.2準拠** | :material-check: | :material-check: | :material-check: |
+| **コメント（スタンドアロン）** | :material-check: | :material-close: | :material-check: |
+| **コメント（インライン）** | :material-check: | :material-close: | :material-check: |
+| **アンカー/エイリアス** | :material-check: | :material-close: | :material-check: |
+| **タグ（明示的）** | :material-check: | :material-close: | :material-check: |
+| **ブロックスカラー** | :material-check: | :material-check: | :material-check: |
+| **フローコレクション** | :material-check: | :material-check: | :material-check: |
+| **マージキー（<<）** | :material-check: | :material-close: | :material-check: |
+| **複合キー** | :material-check: | :material-check: | :material-check: |
+| **ラウンドトリップ保持** | :material-check: | :material-close: | :material-check: |
+| **Pythonバインディング** | :material-check: | :material-check: | :material-check: |
+| **ABI3（py3.8+）** | :material-check: | :material-close: | :material-close: |
+| **型スタブ（.pyi）** | :material-check: | :material-check: | :material-close: |
+| **多言語エラーメッセージ** | :material-check: | :material-close: | :material-close: |
+| **Rustバックエンド** | :material-check: | :material-close: | :material-close: |
+| **パフォーマンス** | :material-rocket-launch: 最速 | :material-snail: 遅い | :material-snail: 遅い |
 
 ## まとめ
 
@@ -81,7 +81,7 @@ pyrs-yamlを、最も人気のある2つのPython YAMLライブラリと比較�
 
 ## 移行パス
 
-```python
+```python title="移行ステップ"
 # ステップ1: インストール
 pip install pyrs-yaml
 

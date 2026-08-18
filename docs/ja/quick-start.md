@@ -12,13 +12,13 @@ status: new
 
 パッケージはまだ PyPI に掲載されていません。ソースからインストール：
 
-```bash
+```bash title="ソースからインストール"
 uv run --frozen maturin develop --release
 ```
 
 ## 2. YAML のパース
 
-```python
+```python title="パースして値を取得"
 import pyrs_yaml
 
 # Parse a YAML string
@@ -36,7 +36,7 @@ print(doc.get("email"))  # alice@example.com
 
 ## 3. Python オブジェクトへの変換
 
-```python
+```python title="safe_load でネイティブ型を取得"
 # Use safe_load for PyYAML-compatible behavior
 data = pyrs_yaml.safe_load("""
 users:
@@ -53,7 +53,7 @@ print(type(data["users"]))  # <class 'list'>
 
 ## 4. YAML へのシリアライズ
 
-```python
+```python title="safe_dump で dict をシリアライズ"
 # Convert a Python dict back to YAML
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
@@ -65,7 +65,7 @@ print(yaml_str)
 
 ## 5. フォーマットの保持（ラウンドトリップ）
 
-```python
+```python title="コメントとアンカーがラウンドトリップで保持"
 # The key advantage of pyrs-yaml
 original = """
 # Server configuration
@@ -85,17 +85,22 @@ api:
 """
 
 # Parse and re-serialize — comments and anchors preserved
-doc = pyrs_yaml.parse(original)
-output = doc.to_yaml()
+doc = pyrs_yaml.parse(original)  # (1)!
+output = doc.to_yaml()  # (2)!
 
 # The output matches the input (or is semantically equivalent)
-assert "# Server configuration" in output
-assert "&db" in output
+assert "# Server configuration" in output  # (3)!
+assert "&db" in output  # (4)!
 ```
+
+1. :material-arrow-down: `parse` はすべてのコメント、アンカー、タグ、スタイルを保持する `YamlDocument` を構築します。
+2. :material-arrow-down: `to_yaml` は AST から再シリアライズし、フォーマットを保持します — 文字列操作なし。
+3. :material-arrow-down: 独立コメントはそのまま保持されます。
+4. :material-arrow-down: アンカー（`&db`）、エイリアス（`*db`）、マージキー（`<<`）がすべて保持されます。
 
 ## 6. インプレース編集
 
-```python
+```python title="JSONPath で編集"
 # コメントやフォーマットを失わずに解析済みドキュメントを編集
 doc = pyrs_yaml.parse("""
 server:
@@ -119,7 +124,7 @@ print(doc.to_yaml())
 
 ## 7. ファイルから YAML を読み込む
 
-```python
+```python title="parse_file"
 # Parse a YAML file directly
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
@@ -127,7 +132,7 @@ print(doc.get("name"))
 
 ## 8. 複数ドキュメント
 
-```python
+```python title="parse_all_docs"
 # Parse multiple YAML documents
 yaml_text = """
 ---
@@ -146,49 +151,51 @@ print(docs[0].get("name"))  # config1
 
 ## 9. NumPy ndarray サポート
 
-pyrs-yaml は `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます。これは科学データ、モデルの重み、または多次元配列を人間が読める形式に保存するのに便利です。
+??? note "オプション: NumPy が必要"
 
-```python
-import numpy as np
-import pyrs_yaml
+    pyrs-yaml は `numpy.ndarray` オブジェクトを直接 YAML にシリアライズできます。これは科学データ、モデルの重み、または多次元配列を人間が読める形式に保存するのに便利です。
 
-# 1-D array
-arr = np.array([1, 2, 3], dtype="int32")
-yaml_str = pyrs_yaml.safe_dump(arr)
-print(yaml_str)
-# - 1
-# - 2
-# - 3
+    ```python
+    import numpy as np
+    import pyrs_yaml
 
-# 2-D matrix
-matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
-yaml_str = pyrs_yaml.safe_dump(matrix)
-print(yaml_str)
-# -
-#   - 1.0
-#   - 2.0
-# -
-#   - 3.0
-#   - 4.0
+    # 1-D array
+    arr = np.array([1, 2, 3], dtype="int32")
+    yaml_str = pyrs_yaml.safe_dump(arr)
+    print(yaml_str)
+    # - 1
+    # - 2
+    # - 3
 
-# Round-trip preserves values
-loaded = pyrs_yaml.safe_load(yaml_str)
-assert loaded == [[1.0, 2.0], [3.0, 4.0]]
-```
+    # 2-D matrix
+    matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
+    yaml_str = pyrs_yaml.safe_dump(matrix)
+    print(yaml_str)
+    # -
+    #   - 1.0
+    #   - 2.0
+    # -
+    #   - 3.0
+    #   - 4.0
 
-### サポートされる NumPy データ型
+    # Round-trip preserves values
+    loaded = pyrs_yaml.safe_load(yaml_str)
+    assert loaded == [[1.0, 2.0], [3.0, 4.0]]
+    ```
 
-| NumPy dtype | YAML output | Notes |
-|-------------|-------------|-------|
-| `int8/16/32/64` | Plain integer | Quoted if negative |
-| `uint8/16/32/64` | Plain integer | — |
-| `float32/64` | Plain float | Quoted if negative |
-| `complex64/128` | `(re+imj)` string | No native YAML complex type |
-| `bool` | `true` / `false` | — |
+    ### サポートされる NumPy データ型
+
+    | NumPy dtype | YAML output | Notes |
+    |-------------|-------------|-------|
+    | `int8/16/32/64` | Plain integer | Quoted if negative |
+    | `uint8/16/32/64` | Plain integer | — |
+    | `float32/64` | Plain float | Quoted if negative |
+    | `complex64/128` | `(re+imj)` string | No native YAML complex type |
+    | `bool` | `true` / `false` | — |
 
 ### 10. メタデータの操作（comment, anchor, tag）
 
-```python
+```python title="コメント、アンカー、タグを設定"
 doc = pyrs_yaml.parse("key: value")
 node = doc.node().find("$.key")
 node.set_comment("a note")
@@ -200,35 +207,41 @@ print(doc.to_yaml())
 
 ### 11. フォーマットの制御
 
-```python
+```python title="スタイル、フロー、chomping"
 doc = pyrs_yaml.parse("key: value")
 doc.node().find("$.key").set_scalar_style("single_quoted")
 ```
 
 ### 12. スキーマで検証
 
-```python
-schema = """\
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-"""
-pyrs_yaml.validate_against_schema("port: 8080\n", schema)
-```
+??? note "オプション: YAML Schema Language"
+
+    ```python
+    schema = """\
+    name: app
+    extends: core
+    validate:
+      - path: $.port
+        type: int
+        required: true
+    """
+    pyrs_yaml.validate_against_schema("port: 8080\n", schema)
+    ```
 
 ### 13. 高度な編集
 
-```python
+```python title="バッチ、ソート、移動、コピー"
 doc.set_many({"$.items[*].active": False})
 doc.sort_keys()
 ```
 
 ## 次のステップ
 
-- **[機能](features.md)** — サポートされているすべての YAML 機能を探索
-- **[パースガイド](guides/parsing.md)** — 高度なパースオプション
-- **[インプレース編集](guides/editing.md)** — フォーマットを失わずにドキュメントを編集
-- **[API リファレンス](api/reference.md)** — 完全な API ドキュメント
+<div class="grid cards" markdown>
+
+- :material-feature-search: **[機能](features.md)** — サポートされているすべての YAML 機能を探索
+- :material-file-search: **[パースガイド](guides/parsing.md)** — 高度なパースオプション
+- :material-pencil: **[インプレース編集](guides/editing.md)** — フォーマットを失わずにドキュメントを編集
+- :material-code-braces: **[API リファレンス](api/reference.md)** — 完全な API ドキュメント
+
+</div>

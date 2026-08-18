@@ -11,26 +11,30 @@ status: new
 
 `pyrs_yaml` モジュールの完全な API リファレンス。
 
-## コア関数
+## :material-code-braces: コア関数
 
 ### `parse()`
 
 YAML 文字列またはバイト列をパースして `YamlDocument` に変換します。
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
 ```
 
 **パラメータ:**
 
 - `yaml` — `str` または `bytes` の YAML コンテンツ
 - `resolve_merges` — パース後にマージキー (`<<: *alias`) を解決するかどうか (デフォルト: `True`)
+- `schema` — スキーマ名 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` または登録済みカスタム名)、またはインラインスキーマ dict（[YAML スキーマ言語](#yaml-schema-language) 参照）
+- `max_depth` — 最大ネスト深度 (デフォルト: `1000`)
+- `allow_duplicate_keys` — 重複マッピングキーを許可するかどうか (デフォルト: `False`)
 
 **戻り値:** パースされた YAML を含む `YamlDocument`
 
 **スロー:**
 
 - `YamlParseError` — 無効な YAML 構文
+- `YamlTypeError` — 指定されたスキーマが見つかりません
 - `TypeError` — 入力が `str` または `bytes` でない
 
 **例:**
@@ -38,7 +42,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```python
 doc = pyrs_yaml.parse("key: value")
 doc = pyrs_yaml.parse(b"key: value")
-doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_str, schema="json")
+doc = pyrs_yaml.parse("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
 ```
 
 ### `parse_file()`
@@ -82,7 +87,7 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-## PyYAML 互換関数
+## :material-swap-horizontal: PyYAML 互換関数
 
 ### `safe_load()`
 
@@ -130,7 +135,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-## 変換関数
+## :material-json: 変換関数
 
 ### `from_dict()`
 
@@ -156,7 +161,7 @@ Python オブジェクトを YAML にシリアライズしてファイルに書�
 dump_file(data: Any, path: str) -> None
 ```
 
-## Pydantic 統合
+## :material-pillar: Pydantic 統合
 
 ### `dump_pydantic()`
 
@@ -215,7 +220,7 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-## タグレジストリ
+## :material-tag: タグレジストリ {#tag-registry}
 
 ### `register_tag()`
 
@@ -255,7 +260,143 @@ remove_tag(name: str) -> None
 clear_tag_handlers() -> None
 ```
 
-## コンプライアンス
+## :material-file-document: YAML スキーマ言語 {#yaml-schema-language}
+
+カスタムスキーマを定義して、プレーンスカラーが Python 型にどのように解決されるかを制御します。
+
+### `register_schema()`
+
+カスタムスキーマを登録します。
+
+```python
+register_schema(name: str, schema: str | dict) -> None
+```
+
+**パラメーター:**
+
+- `name` — スキーマ名
+- `schema` — YAML 文字列または dict（`extends`、`rules`、`validate` キーを含む）
+
+**例:**
+
+```python
+import pyrs_yaml
+
+# YAML 文字列からカスタムスキーマを登録
+pyrs_yaml.register_schema("hex", """
+name: hex
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+""")
+
+# カスタムスキーマを使用
+y = pyrs_yaml.YAML(schema="hex")
+doc = y.parse("addr: 0xFF")
+assert doc.get("addr") == 255
+
+d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
+assert d["addr"] == 31
+```
+
+### インラインスキーマ dict
+
+登録せずに dict を直接渡す：
+
+```python
+d = pyrs_yaml.safe_load(
+    "addr: 0xFF",
+    schema={
+        "extends": "core",
+        "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}],
+    },
+)
+```
+
+- **`extends`** — オプションのベーススキーマ（`core`、`json`、`failsafe`、`yaml1.1`）
+- **`rules`** — 順序付きの `{pattern, type}` リスト；最初にマッチしたものが適用
+- **`validate`** — オプションの構造検証ルール：パス修飾型（`$.port: int`）、コンテナチェック（`sequence_of`、`mapping_of`）、`required` 存在確認；`validate_against_schema(data, schema_yaml)` でドキュメントを検証
+- **対応型**：`null`、`bool`、`int`、`float`、`str`
+- 組み込み Core スキーマは引き続きゼロコスト `match` ディスパッチを使用（影響なし）
+- **ファイル I/O** — `load_schema(name, path)` で YAML ファイルからスキーマを読み込み；`list_schemas()` で登録済みの全スキーマを取得
+
+## :material-puzzle: コミュニティプラグイン {#community-plugins}
+
+カスタム YAML ノードタイプを定義して、シリアライズとデシリアライズに統合します。
+
+### `CustomType`
+
+カスタムタイプの基底クラス。
+
+```python
+class CustomType:
+    python_type: type
+
+    def from_yaml(self, value: str) -> Any: ...
+    def to_yaml(self, obj: Any) -> str: ...
+    def can_parse(self, node: CustomNode) -> bool: ...
+    def validate(self, obj: Any) -> bool: ...
+```
+
+### `register_type()`
+
+カスタムタイプを登録します。
+
+```python
+register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
+```
+
+**例:**
+
+```python
+from datetime import datetime
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# ロード：タグ付きスカラー → Python オブジェクト
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# ダンプ：Python オブジェクト → タグ付きスカラー
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out には次が含まれる：ts: !timestamp 2026-08-11T10:30:00
+```
+
+| メソッド | 説明 |
+|---------|------|
+| `can_parse(node)` | このタイプが指定された AST ノードを処理するかどうか |
+| `from_yaml(value)` | YAML 文字列を Python オブジェクトに変換 |
+| `to_yaml(obj)` | Python オブジェクトを YAML 文字列に変換 |
+| `validate(obj)` | Python オブジェクトを検証（`bool` を返す） |
+
+### `remove_type()`
+
+登録済みのタイプを削除します。
+
+```python
+remove_type(name: str) -> None
+```
+
+### `clear_type_handlers()`
+
+登録済みのすべてのタイプハンドラを削除します。
+
+```python
+clear_type_handlers() -> None
+```
+
+## :material-check-decagram: コンプライアンス
 
 ### `compliance_report()`
 
@@ -267,7 +408,7 @@ compliance_report() -> dict
 
 YAML テストスイートの合格率とテストごとの結果を返します。
 
-## ストリーミングイベント
+## :material-wave: ストリーミングイベント
 
 ### `parse_stream()`
 
@@ -291,7 +432,7 @@ for event in stream:
 
 完全な API の詳細は [`YamlStream`](yaml-instance.md) を参照してください。
 
-## 非同期関数
+## :material-clock-fast: 非同期関数
 
 `asyncio.run_in_executor` を使用した非同期 I/O ラッパー。イベントループコンテキストではノンブロッキング。
 
@@ -342,7 +483,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## Markdown Front Matter
+## :material-page-layout-body: Markdown Front Matter {#markdown-frontmatter}
 
 ### `read_markdown()`
 
@@ -362,7 +503,7 @@ Markdown 文字列から YAML Front Matterを抽出します。
 read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-## i18n 関数
+## :material-translate: i18n 関数 {#i18n-functions}
 
 ### `set_language()`
 
@@ -406,7 +547,7 @@ BCP 47 言語ネゴシエーション。
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-## 例外
+## :material-bug: 例外
 
 - `YamlParseError` — YAML パースエラー (`ValueError` を継承)
 - `YamlSerializeError` — YAML シリアライズエラー (`ValueError` を継承)
@@ -418,8 +559,8 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 詳細は [例外](exceptions.md) ページを参照してください。
 
-## バージョン
+## :material-information: バージョン
 
 ```python
-__version__ = "0.6.0"
+__version__ = "0.14.0"
 ```

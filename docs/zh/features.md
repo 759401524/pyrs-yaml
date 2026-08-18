@@ -49,7 +49,7 @@ Rust 后端比 PyYAML 解析快 **21–43 倍**、序列化快 **55–177 倍**�
 
 直接替换，API 熟悉易用：
 
-```python
+```python title="PyYAML 兼容 API"
 import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
@@ -62,7 +62,7 @@ yaml.safe_dumps(data)
 
 通过 `asyncio` 进行非阻塞序列化和解析：
 
-```python
+```python title="异步导出和加载"
 import asyncio
 import pyrs_yaml
 
@@ -82,7 +82,7 @@ asyncio.run(main())
 
 根据 JSON Schema 验证解析后的 YAML 文档：
 
-```python
+```python title="JSON Schema 验证"
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
@@ -96,14 +96,14 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 默认情况下重复的映射键抛出 `YamlDuplicateKeyError`：
 
-```python
+```python title="重复键错误"
 pyrs_yaml.parse("key: first\nkey: second")
 # pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
 ```
 
 传入 `allow_duplicate_keys=True` 则保留**最后一个值**：
 
-```python
+```python title="允许重复键"
 doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
@@ -114,7 +114,7 @@ doc.get("key")  # "second"
 
 `to_yaml_with_options()` 控制缩进与换行：
 
-```python
+```python title="序列化选项"
 yaml_str = doc.to_yaml_with_options(
     indent_size=2,  # 基础缩进（省略按类型选项时使用）
     width=80,  # 换行宽度；0 表示不换行
@@ -130,7 +130,7 @@ yaml_str = doc.to_yaml_with_options(
 
 为自定义 YAML 标签注册处理器，转换标量值：
 
-```python
+```python title="导入"
 import pyrs_yaml
 ```
 
@@ -148,7 +148,7 @@ import pyrs_yaml
     pyrs_yaml.register_tag("!custom", lambda node: node.upper())
     ```
 
-```python
+```python title="使用自定义标签"
 doc = pyrs_yaml.parse("name: !custom value")
 doc.get("name")  # "custom:value"
 ```
@@ -161,7 +161,7 @@ doc.get("name")  # "custom:value"
 
 使用不同选项就地重新解析存储的源文本：
 
-```python
+```python title="增量重新解析"
 doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
@@ -173,7 +173,7 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 编辑已解析的文档，**不丢失任何格式元数据** — 注释、锚点、标签、标量样式和流式/块式风格全部保留：
 
-```python
+```python title="就地编辑"
 doc = pyrs_yaml.parse("""
 server:
   host: localhost  # bind address
@@ -181,12 +181,17 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")  # 按路径替换
-doc.insert("$.server.ports", 0, 80)  # 向序列插入
-doc.append("$.server.ports", 443)  # 向序列追加
-doc.rename("$.server", "srv")  # 重命名映射键
+doc.set("$.server.host", "0.0.0.0")  # (1)!
+doc.insert("$.server.ports", 0, 80)  # (2)!
+doc.append("$.server.ports", 443)  # (3)!
+doc.rename("$.server", "srv")  # (4)!
 del doc["server"]  # 或: doc.delete("$.server")
 ```
+
+1. :material-arrow-down: `set` 按路径替换值，保留行内注释。
+2. :material-arrow-down: `insert` 在序列索引处插入元素。
+3. :material-arrow-down: `append` 向序列末尾追加。
+4. :material-arrow-down: `rename` 就地重命名映射键，保留位置和注释。
 
 - **路径 API** — JSONPath 风格路径（`$.a.b[0]`），根节点语法糖（`doc["k"] = v`、`del doc["k"]`）
 - **节点 API** — `doc.node().find(path)` 返回 `Node` 对象，支持 `set_value` / `insert` / `append` / `delete` / `rename`，以及树遍历（`parent`、`children`、`walk`、`filter`）
@@ -200,7 +205,7 @@ del doc["server"]  # 或: doc.delete("$.server")
 
 pyrs-yaml 可以将任意维度的 `numpy.ndarray` 对象直接序列化为 YAML：
 
-```python
+```python title="NumPy ndarray 序列化"
 import numpy as np
 import pyrs_yaml
 
@@ -257,7 +262,7 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 直接将 YAML 解析为 Pydantic v2 模型：
 
-```python
+```python title="Pydantic 集成"
 from pydantic import BaseModel
 import pyrs_yaml
 
@@ -277,28 +282,28 @@ cfg.name  # "Alice"
 
 | 功能 | 支持情况 |
 |------|---------|
-| YAML 1.2 规范 | ✅ 完全支持 |
-| 注释（独立） | ✅ 保留 |
-| 注释（行内） | ✅ 保留 |
-| 锚点和别名 | ✅ 保留 |
-| 标签（显式） | ✅ 保留 |
-| 块标量（`|`、`>`） | ✅ 保留 |
-| chomping 指示符 | ✅ 保留 |
-| 流式集合（`{}`、`[]`） | ✅ 保留 |
-| 合并键（`<<`） | ✅ 解析 |
-| 复杂键 | ✅ 支持 |
-| 转义序列 | ✅ 支持 |
-| 多文档 | ✅ 支持 |
-| **异步 I/O** | **✅ `safe_*_async`** |
-| **JSON Schema 验证** | **✅ `doc.validate()`** |
-| **增量重新解析** | **✅ `doc.reparse()`** |
-| **就地编辑** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
-| **JSON 导出** | **✅ `doc.to_json()`** |
-| **Metadata editing** | **x1f4af `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
-| **Style/format control** | **x1f4af `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
-| **Deep editing** | **x1f4af `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **x1f4af `validate_against_schema()`** |
-| **Schema file IO** | **x1f4af `load_schema()` / `list_schemas()`** |
-| **重复键** | **✅ 可配置（`YamlDuplicateKeyError` / 后值胜出）** |
-| **自定义标签处理器** | **✅ `register_tag` 优先级链式处理** |
-| **Pydantic 模型** | **✅ `parse_as()` 校验** |
+| YAML 1.2 规范 | :material-check: 完全支持 |
+| 注释（独立） | :material-check: 保留 |
+| 注释（行内） | :material-check: 保留 |
+| 锚点和别名 | :material-check: 保留 |
+| 标签（显式） | :material-check: 保留 |
+| 块标量（`|`、`>`） | :material-check: 保留 |
+| chomping 指示符 | :material-check: 保留 |
+| 流式集合（`{}`、`[]`） | :material-check: 保留 |
+| 合并键（`<<`） | :material-check: 解析 |
+| 复杂键 | :material-check: 支持 |
+| 转义序列 | :material-check: 支持 |
+| 多文档 | :material-check: 支持 |
+| **异步 I/O** | **:material-check: `safe_*_async`** |
+| **JSON Schema 验证** | **:material-check: `doc.validate()`** |
+| **增量重新解析** | **:material-check: `doc.reparse()`** |
+| **就地编辑** | **:material-check: `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
+| **JSON 导出** | **:material-check: `doc.to_json()`** |
+| **Metadata editing** | **:material-check:  `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **:material-check:  `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **:material-check:  `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **:material-check:  `validate_against_schema()`** |
+| **Schema file IO** | **:material-check:  `load_schema()` / `list_schemas()`** |
+| **重复键** | **:material-check: 可配置（`YamlDuplicateKeyError` / 后值胜出）** |
+| **自定义标签处理器** | **:material-check: `register_tag` 优先级链式处理** |
+| **Pydantic 模型** | **:material-check: `parse_as()` 校验** |

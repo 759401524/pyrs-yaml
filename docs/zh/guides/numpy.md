@@ -13,7 +13,7 @@ status: new
 
 ## 基本用法
 
-```python
+```python title="序列化一维数组"
 import numpy as np
 import pyrs_yaml as y
 
@@ -32,7 +32,7 @@ assert data == [1, 2, 3]
 
 ## 多维数组
 
-```python
+```python title="二维与三维数组"
 # 2-D 矩阵
 matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
 yaml_str = y.safe_dump(matrix)
@@ -49,18 +49,18 @@ assert data == [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]
 
 | NumPy dtype | YAML 输出 | 示例 |
 |-------------|-----------|------|
-| `int8/16/32/64` | 整数 | `42` |
-| `uint8/16/32/64` | 整数 | `42` |
-| `float32/64` | 浮点数 | `3.14` |
-| `bool` | 布尔 | `true` / `false` |
-| `complex64/128` | 字符串 | `(1+2j)` |
+| :material-numeric: `int8/16/32/64` | 整数 | `42` |
+| :material-numeric: `uint8/16/32/64` | 整数 | `42` |
+| :material-decimal: `float32/64` | 浮点数 | `3.14` |
+| :material-toggle-switch: `bool` | 布尔 | `true` / `false` |
+| :material-format-text: `complex64/128` | 字符串 | `(1+2j)` |
 
 !!! note "复数支持"
     YAML 没有原生复数类型，复数会序列化为 `(re+imj)` 字符串。`safe_load` 返回字符串而非 Python `complex` 类型。
 
 ## 特殊值
 
-```python
+```python title="NaN 与 Infinity"
 # NaN
 arr = np.array([1.0, float("nan"), 3.0])
 data = y.safe_load(y.safe_dump(arr))
@@ -77,7 +77,7 @@ assert data[1] == float("-inf")
 
 YAML 1.2 规范不允许在块序列中以 `-` 开头的 plain 标量。负数会自动用单引号包裹以确保正确的往返：
 
-```python
+```python title="负数值"
 arr = np.array([-100, 200], dtype="int16")
 data = y.safe_load(y.safe_dump(arr))
 assert data == [-100, 200]  # 往返正确
@@ -87,7 +87,7 @@ assert data == [-100, 200]  # 往返正确
 
 0-D 数组会被 reshape 为 1-D 后序列化，结果是一个单元素列表：
 
-```python
+```python title="0-D 标量"
 scalar = np.array(42, dtype="int32")
 data = y.safe_load(y.safe_dump(scalar))
 assert data == [42]
@@ -97,7 +97,7 @@ assert data == [42]
 
 NumPy 数组可以包含在 dict 或 list 中：
 
-```python
+```python title="嵌套在 dict 中"
 data = {"matrix": np.array([[1, 2], [3, 4]]), "label": "test"}
 yaml_str = y.safe_dump(data)
 loaded = y.safe_load(yaml_str)
@@ -108,14 +108,22 @@ assert loaded["matrix"] == [[1, 2], [3, 4]]
 
 以下类型会抛出 `YamlTypeError`：
 
-- 字符串数组
-- 对象数组
-- 结构化数组
-- 非数值自定义 dtype
+- :material-alert: 字符串数组
+- :material-alert: 对象数组
+- :material-alert: 结构化数组
+- :material-alert: 非数值自定义 dtype
 
 ## 性能
 
-- 使用 `PyUntypedArray` 进行零拷贝 dtype 分派
-- 使用 `PyArrayDyn<T>` 进行零拷贝切片迭代
-- 遍历切片时释放 Python GIL
-- 支持任意维度无需额外分配
+- :material-bolt: 使用 `PyUntypedArray` 进行零拷贝 dtype 分派
+- :material-bolt: 使用 `PyArrayDyn<T>` 进行零拷贝切片迭代
+- :material-bolt: 遍历切片时释放 Python GIL
+- :material-bolt: 支持任意维度无需额外分配
+
+---
+
+### 另请参阅
+
+- [序列化](serialization.md) — 序列化普通 Python 对象
+- [NumPy 特性](../features.md) — NumPy ndarray 支持概览
+- [NumPy API 参考](../api/reference.md) — 序列化模块函数

@@ -6,9 +6,31 @@ tags:
 status: new
 ---
 
-## 为什么选择 pyrs-yaml？
+<div class="hero" markdown>
 
-大多数 Python YAML 库都在性能和保真度之间做出权衡。 pyrs-yaml 同时提供两者:
+## pyrs-yaml
+
+**高性能 Python YAML 库，完美往返支持，基于 Rust 和 PyO3 构建。**
+
+[:material-rocket-launch: 开始使用 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[:material-code-braces: 浏览 API 参考](api/reference.md){ .md-button }
+[:fontawesome-brands-github: 在 GitHub 上查看](https://github.com/759401524/pyrs-yaml){ .md-button }
+
+<div class="badges" markdown>
+
+- :material-check-decagram: YAML 1.2 合规
+- :material-package-variant-closed: ABI3 Wheel
+- :material-numeric: Python 3.8–3.15
+- :material-language-python: 类型注解
+- :material-lightning-bolt: 自由线程就绪
+
+</div>
+
+</div>
+
+### 为什么选择 pyrs-yaml？
+
+大多数 Python YAML 库都在性能和保真度之间做出权衡。pyrs-yaml 同时提供两者：
 
 - **PyYAML** (Python) — 慢，往返时**丢失注释/锚点/标签**
 - **ruamel.yaml** (Python) — 保留格式，但比 pyrs-yaml **解析慢 48–100 倍、序列化慢 123–371 倍**
@@ -16,35 +38,38 @@ status: new
 
 ### 核心特性
 
-- **YAML 1.2 合规** — 由 granit-parser 驱动（YAML 测试套件通过率 99.75%，405/406）
-- **完美的往返** — 保留注释、锚点、标签、chomping 指示符、标量样式和流式/块式格式
-- **就地编辑** — 通过 JSONPath 风格路径（`doc.set("$.a.b", v)`）或 `Node` 树 API 编辑已解析文档，不丢失格式
-- **比 PyYAML 解析快 21–43 倍、序列化快 55–177 倍** — Rust 后端，零拷贝解析
-- **自定义 AST** — 可扩展的 AST，用于高级 YAML 操作和自定义格式化
-- **PyYAML 兼容** — 可直接替换，提供 `safe_load` / `safe_dump` API
-- **类型提示** — PEP 561 合规，提供完整的 `.pyi` 存根文件
-- **ABI3** — 单个 wheel 支持 Python 3.8–3.15
-- **国际化错误消息** — `set_language("zh")` 支持双语错误报告
-- **NumPy ndarray 支持** — 将任意维度的 `numpy.ndarray` 序列化为 YAML，零拷贝 Rust 调度
+<div class="grid cards" markdown>
+
+- :material-lightning-bolt: **极速** — 解析比 PyYAML 快 21–43 倍、序列化快 55–177 倍，Rust 零拷贝后端驱动
+- :material-sync: **完美往返** — 保留注释、锚点、标签、chomping 指示符、标量样式和流式/块式格式
+- :material-pencil: **就地编辑** — 通过 JSONPath 风格路径（`doc.set("$.a.b", v)`）或 `Node` 树 API 编辑已解析文档，不丢失格式
+- :material-check-decagram: **YAML 1.2 合规** — 由 granit-parser 驱动（YAML 测试套件通过率 99.75%，405/406）
+- :material-swap-horizontal: **PyYAML 兼容** — 可直接替换，提供 `safe_load` / `safe_dump` API
+- :material-language-python: **类型提示** — PEP 561 合规，提供完整的 `.pyi` 存根文件
+- :material-package-variant-closed: **ABI3 Wheel** — 单个 wheel 支持 Python 3.8–3.15
+- :material-translate: **国际化错误** — `set_language("zh-CN")` 支持双语错误报告
+- :material-numeric: **NumPy ndarray** — 将任意维度的 `numpy.ndarray` 序列化为 YAML，零拷贝 Rust 调度
+
+</div>
 
 ### 快速开始
 
-```bash
+```bash title="安装"
 pip install pyrs-yaml
 ```
 
-```python
+```python title="快速开始"
 import pyrs_yaml
 
-# Parse YAML
+# 解析 YAML
 doc = pyrs_yaml.parse("key: value")
 print(doc.to_yaml())  # key: value\n
 
-# PyYAML compatible API
+# PyYAML 兼容 API
 data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
 
-# Round-trip preserves comments
+# 往返保留注释
 original = "# Comment\nkey: value  # inline\n"
 doc = pyrs_yaml.parse(original)
 assert doc.to_yaml() == original
@@ -52,7 +77,7 @@ assert doc.to_yaml() == original
 
 ### 与 PyYAML 的性能对比
 
-| Operation | pyrs-yaml | PyYAML | Speedup |
+| 操作 | pyrs-yaml | PyYAML | 速度提升 |
 |-----------|-----------|--------|---------|
 | Parse (small) | 0.18 ms | 3.8 ms | **21×** |
 | Parse (medium) | 0.56 ms | 24.2 ms | **43×** |
@@ -60,11 +85,3 @@ assert doc.to_yaml() == original
 | Serialize (small) | 0.04 ms | 2.2 ms | **55×** |
 | Serialize (medium) | 0.08 ms | 12.6 ms | **159×** |
 | Serialize (large) | 0.17 ms | 30.2 ms | **177×** |
-
----
-
-## [开始使用 →](quick-start.md)
-
-## [浏览 API 参考 →](api/reference.md)
-
-## [在 GitHub 上看看 →](https://github.com/759401524/pyrs-yaml)

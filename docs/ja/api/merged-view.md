@@ -10,7 +10,7 @@ status: new
 
 `MergedView` クラスは、マージキー（`<<: *anchor`）を解決した `YamlDocument` の読み取り専用ビューを提供します。`doc.merged()` でアクセスできます。
 
-### Overview
+### 概要
 
 ```python
 class MergedView(Mapping):
@@ -19,7 +19,7 @@ class MergedView(Mapping):
 
 このビューは `YamlDocument.to_dict()` から遅延構築され、シリアライズ時にアンカーとマージキーを解決します。元の AST は決して変更されません。
 
-### Constructor
+### コンストラクタ
 
 #### `MergedView.__init__()`
 
@@ -33,7 +33,7 @@ MergedView.__init__(document: YamlDocument) -> None
 
 ドキュメントのルートがシーケンスの場合、ビューは整数キーのマッピング（`{0: item0, 1: item1, ...}`）に変換します。
 
-### Methods
+### メソッド
 
 #### `__getitem__()`
 
@@ -95,7 +95,7 @@ __repr__() -> str
 get(key: str | int, default: Any = None) -> Any
 ```
 
-### Merge Key Resolution
+### マージキー解決
 
 キーは以下の優先順位で解決されます（高いほど優先）:
 
@@ -103,7 +103,7 @@ get(key: str | int, default: Any = None) -> Any
 2. マージされたアンカーからのキー（`<<:` に出現する順序）
 3. 後方のアンカーが前方のアンカーを上書き
 
-### Root Type Support
+### ルート型サポート
 
 | Root Type | Behavior |
 | --- | --- |
@@ -111,7 +111,7 @@ get(key: str | int, default: Any = None) -> Any
 | Sequence | キーは整数インデックス（`0`, `1`, ...） |
 | Scalar/Null | `__len__()` は `0` を返す；`__getitem__()` は `KeyError` を発生 |
 
-### Example
+### 例
 
 ```python
 import pyrs_yaml

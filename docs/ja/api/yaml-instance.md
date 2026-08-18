@@ -10,14 +10,14 @@ status: new
 
 `YAML` クラスは、`typ`、`schema`、`max_depth`、`allow_duplicate_keys` の設定を通じてパース動作を制御する、設定済みのパーサーインスタンスです。ラウンドトリップ（`rt`）、セーフ、フルの YAML パースモードをサポートします。
 
-### Overview
+### 概要
 
 ```python
 class YAML:
     """Configured YAML parser instance (rt / safe / full)."""
 ```
 
-### Constructor
+### コンストラクタ
 
 #### `__init__()`
 
@@ -58,7 +58,7 @@ yaml_safe = YAML(typ="safe")
 yaml_full = YAML(typ="full", schema="yaml1.1")
 ```
 
-### Methods
+### メソッド
 
 #### `parse()`
 
@@ -226,171 +226,171 @@ for doc in docs:
     print(doc.root_type())
 ```
 
-#### `dump_stream()`
+#### `dump_stream()` / `dump_file()`
 
-ストリーミングライター: Python オブジェクトをファイルライクオブジェクトにシリアライズし、一定メモリを使用します。
+ストリーミングライター: Python オブジェクトをファイルライクオブジェクトまたはディスク上のファイルにシリアライズし、一定メモリを使用します。
 
-```python
-dump_stream(
-    file_obj: Any,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+=== "メモリ内"
 
-**Parameters:**
+    ```python
+    dump_stream(
+        file_obj: Any,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `file_obj` | `Any` | — | `write(str)` メソッドを持つ書き込み可能なファイルライクオブジェクト。 |
-| `iterable` | `Any` | — | シリアライズする Python オブジェクトの反復可能オブジェクト。 |
-| `explicit_start` | `bool` | `False` | 各ドキュメントの先頭に `---` を出力するかどうか。 |
-| `explicit_end` | `bool` | `False` | 各ドキュメントの末尾に `...` を出力するかどうか。 |
-| `sort_keys` | `bool` | `False` | マッピングキーをアルファベット順にソートするかどうか。 |
+    **Parameters:**
 
-**Raises:** `YamlTypeError` — `file_obj` に `write` メソッドがない場合。
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `file_obj` | `Any` | — | `write(str)` メソッドを持つ書き込み可能なファイルライクオブジェクト。 |
+    | `iterable` | `Any` | — | シリアライズする Python オブジェクトの反復可能オブジェクト。 |
+    | `explicit_start` | `bool` | `False` | 各ドキュメントの先頭に `---` を出力するかどうか。 |
+    | `explicit_end` | `bool` | `False` | 各ドキュメントの末尾に `...` を出力するかどうか。 |
+    | `sort_keys` | `bool` | `False` | マッピングキーをアルファベット順にソートするかどうか。 |
 
-**Notes:**
+    **Raises:** `YamlTypeError` — `file_obj` に `write` メソッドがない場合。
 
-- 一定メモリを使用 — 出力全体をメモリに保持する必要はありません。
-- Rust のシリアライズフェーズ中は GIL が解放されます。
-- 反復可能オブジェクトの各アイテムが個別の YAML ドキュメントになります。
+    **Notes:**
 
-**Example:**
+    - 一定メモリを使用 — 出力全体をメモリに保持する必要はありません。
+    - Rust のシリアライズフェーズ中は GIL が解放されます。
+    - 反復可能オブジェクトの各アイテムが個別の YAML ドキュメントになります。
 
-```python
-import io
-from pyrs_yaml import YAML
+    **Example:**
 
-yaml = YAML()
-buf = io.StringIO()
-yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
-print(buf.getvalue())
-# ---
-# a: 1
-# ---
-# b: 2
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `dump_file()`
+    yaml = YAML()
+    buf = io.StringIO()
+    yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
+    print(buf.getvalue())
+    # ---
+    # a: 1
+    # ---
+    # b: 2
+    ```
 
-ストリーミングライター: Python オブジェクトをディスク上のファイルに直接シリアライズします。
+=== "ファイルパス"
 
-```python
-dump_file(
-    path: str,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+    ```python
+    dump_file(
+        path: str,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-**Parameters:**
+    **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `str` | — | 書き込み先のファイルパス。 |
-| `iterable` | `Any` | — | シリアライズする Python オブジェクトの反復可能オブジェクト。 |
-| `explicit_start` | `bool` | `False` | 各ドキュメントの先頭に `---` を出力するかどうか。 |
-| `explicit_end` | `bool` | `False` | 各ドキュメントの末尾に `...` を出力するかどうか。 |
-| `sort_keys` | `bool` | `False` | マッピングキーをアルファベット順にソートするかどうか。 |
+    | Parameter | Type | Default | Description |
+    |-----------|------|---------|-------------|
+    | `path` | `str` | — | 書き込み先のファイルパス。 |
+    | `iterable` | `Any` | — | シリアライズする Python オブジェクトの反復可能オブジェクト。 |
+    | `explicit_start` | `bool` | `False` | 各ドキュメントの先頭に `---` を出力するかどうか。 |
+    | `explicit_end` | `bool` | `False` | 各ドキュメントの末尾に `...` を出力するかどうか。 |
+    | `sort_keys` | `bool` | `False` | マッピングキーをアルファベット順にソートするかどうか。 |
 
-**Raises:** `IOError` — ファイルを作成または書き込みできない場合。
+    **Raises:** `IOError` — ファイルを作成または書き込みできない場合。
 
-**Notes:**
+    **Notes:**
 
-- Rust の `std::fs::File` を直接使用 — I/O 中の GIL ブロッキングは発生しません。
-- 反復可能オブジェクトの各アイテムが個別の YAML ドキュメントになります。
-- 一定メモリを使用し、大規模な出力に適しています。
+    - Rust の `std::fs::File` を直接使用 — I/O 中の GIL ブロッキングは発生しません。
+    - 反復可能オブジェクトの各アイテムが個別の YAML ドキュメントになります。
+    - 一定メモリを使用し、大規模な出力に適しています。
 
-**Example:**
+    **Example:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
-```
+    yaml = YAML()
+    yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
+    ```
 
-#### `load_stream()`
+#### `load_stream()` / `load_stream_file()`
 
-遅延イベントイテレーター: ファイルライクオブジェクトからインクリメンタルに読み取ります。
+遅延イベントイテレーター: ファイルライクオブジェクトまたはファイルパスからインクリメンタルに読み取ります。
 
-```python
-load_stream(file_obj: Any) -> YamlStream
-```
+=== "メモリ内"
 
-**Parameters:**
+    ```python
+    load_stream(file_obj: Any) -> YamlStream
+    ```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `file_obj` | `Any` | `str` または `bytes` を返す `read()` メソッドを持つ読み取り可能なファイルライクオブジェクト。 |
+    **Parameters:**
 
-**Returns:** パースされたイベント dict を遅延生成する `YamlStream` イテレーター。
+    | Parameter | Type | Description |
+    |-----------|------|-------------|
+    | `file_obj` | `Any` | `str` または `bytes` を返す `read()` メソッドを持つ読み取り可能なファイルライクオブジェクト。 |
 
-**Raises:** `YamlTypeError` — `file_obj` に `read` メソッドがない場合。
+    **Returns:** パースされたイベント dict を遅延生成する `YamlStream` イテレーター。
 
-**Notes:**
+    **Raises:** `YamlTypeError` — `file_obj` に `read` メソッドがない場合。
 
-- ストリームはインクリメンタルにパースされます — ファイル全体をメモリに読み込む必要はありません。
-- 生成される各イベントは、`"type"`、`"key"`、`"value"`、`"start_mark"`、`"end_mark"` などのキーを持つ `dict` です。
-- `__next__` が `None` を返すとストリームは終了します。
+    **Notes:**
 
-**Example:**
+    - ストリームはインクリメンタルにパースされます — ファイル全体をメモリに読み込む必要はありません。
+    - 生成される各イベントは、`"type"`、`"key"`、`"value"`、`"start_mark"`、`"end_mark"` などのキーを持つ `dict` です。
+    - `__next__` が `None` を返すとストリームは終了します。
 
-```python
-import io
-from pyrs_yaml import YAML
+    **Example:**
 
-yaml = YAML()
-buf = io.StringIO("key: value\n")
-stream = yaml.load_stream(buf)
-for event in stream:
-    if event is None:
-        break
-    print(event["type"])
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `load_stream_file()`
+    yaml = YAML()
+    buf = io.StringIO("key: value\n")
+    stream = yaml.load_stream(buf)
+    for event in stream:
+        if event is None:
+            break
+        print(event["type"])
+    ```
 
-遅延イベントイテレーター: ファイルパスからインクリメンタルに読み取ります。
+=== "ファイルパス"
 
-```python
-load_stream_file(path: str) -> YamlStream
-```
+    ```python
+    load_stream_file(path: str) -> YamlStream
+    ```
 
-**Parameters:**
+    **Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `path` | `str` | インクリメンタルに読み取るファイルパス。 |
+    | Parameter | Type | Description |
+    |-----------|------|-------------|
+    | `path` | `str` | インクリメンタルに読み取るファイルパス。 |
 
-**Returns:** パースされたイベント dict を遅延生成する `YamlStream` イテレーター。
+    **Returns:** パースされたイベント dict を遅延生成する `YamlStream` イテレーター。
 
-**Raises:** `IOError` — ファイルを開けない場合。
+    **Raises:** `IOError` — ファイルを開けない場合。
 
-**Notes:**
+    **Notes:**
 
-- Rust の `std::fs::File` とバッファリング I/O を使用 — 読み取り中の GIL ブロッキングは発生しません。
-- ファイルをインクリメンタルにパースするため、大規模な YAML ファイルに最適です。
+    - Rust の `std::fs::File` とバッファリング I/O を使用 — 読み取り中の GIL ブロッキングは発生しません。
+    - ファイルをインクリメンタルにパースするため、大規模な YAML ファイルに最適です。
 
-**Example:**
+    **Example:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-stream = yaml.load_stream_file("large.yaml")
-for event in stream:
-    if event is None:
-        break
-    print(event)
-```
+    yaml = YAML()
+    stream = yaml.load_stream_file("large.yaml")
+    for event in stream:
+        if event is None:
+            break
+        print(event)
+    ```
 
-### Usage Examples
+### 使用例
 
 #### 設定インスタンスを使ったラウンドトリップ編集
 
@@ -443,7 +443,7 @@ for doc in docs:
 yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 ```
 
-### See Also
+### 関連項目
 
 - [`YamlDocument`](yaml-document.md) — ラウンドトリップ編集可能なドキュメントオブジェクト
 - [`YamlStream`](reference.md#yamlstream) — 遅延イベントストリームイテレーター

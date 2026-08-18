@@ -12,7 +12,7 @@ pyrs-yaml has both Rust unit tests and Python integration tests.
 
 ### Rust Tests
 
-```bash
+```bash title="Run Rust tests"
 # Run all Rust tests with nextest (preferred)
 cargo nextest run --all
 
@@ -37,7 +37,7 @@ cargo test --all -- --nocapture
 
 ### Python Tests
 
-```bash
+```bash title="Run Python tests"
 # Run all Python tests
 uv run pytest tests/ -v
 
@@ -59,7 +59,7 @@ uv run pytest tests/ --codspeed
 
 ### Maturin Build
 
-```bash
+```bash title="Build and install"
 # Build and install (uses monorepo manifest-path)
 uv run maturin develop --release
 
@@ -94,7 +94,7 @@ GitHub Actions runs on every push and PR:
 
 #### Rust Test
 
-```rust
+```rust title="Rust test template"
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,7 +108,7 @@ mod tests {
 
 #### Python Test
 
-```python
+```python title="Python test template"
 import pyrs_yaml
 import pytest
 

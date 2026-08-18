@@ -12,7 +12,7 @@ pyrs-yaml では、**パース済みドキュメントをその場で編集**で
 
 編集は、ドキュメントツリーへの **JSONPath スタイルのパス** で表現します：
 
-```python
+```python title="パスで編集"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -30,6 +30,17 @@ print(doc.to_yaml())
 ```
 
 すべての編集メソッドは**アトミック**です：失敗した場合、ドキュメント（リビジョンを含む）は何も変更されません。成功するとドキュメントはダーティとしてマークされ、次の `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` 呼び出しで更新されたツリーから再シリアライズされます。
+
+### 編集パイプライン
+
+```mermaid
+graph LR
+    A["パース<br/>CustomNode AST"] --> B["パスで編集<br/>set / insert / delete / rename"]
+    B --> C["ダーティにマーク + リビジョン更新"]
+    C --> D["バイトレベルスプライス<br/>(デフォルトレイアウト)"]
+    D --> E["to_yaml() / source()<br/>再シリアライズ出力"]
+    C --> F["全体再シリアライズ<br/>(フォールバック: フロースタイル、マージキー、CRLF、BOM)"]
+```
 
 ## パス構文
 
@@ -53,11 +64,11 @@ print(doc.to_yaml())
 
 ### `set()` — パスによる置換
 
-```python
+```python title="set() シグネチャ"
 set(path: str, value: Any) -> None
 ```
 
-```python
+```python title="set() 例"
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
 doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
@@ -70,22 +81,22 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 | Python 値 | YAML ノード |
 |-----------|-------------|
-| `str`, `int`, `float`, `bool`, `None` | 新しいスカラー（値は*再パースされません*） |
-| `dict` | 新しいマッピング（プレーンスタイル） |
-| `list` | 新しいシーケンス（プレーンスタイル） |
-| `tuple` | ❌ サポートされません — `YamlEditError` を発生 |
+| :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | 新しいスカラー（値は*再パースされません*） |
+| :material-language-python: `dict` | 新しいマッピング（プレーンスタイル） |
+| :material-format-list-numbered: `list` | 新しいシーケンス（プレーンスタイル） |
+| :material-alert: `tuple` | サポートされません — `YamlEditError` を発生 |
 
 既存のスカラーを置換する場合、対象のメタデータ（インラインコメント、アンカー、タグ、クォートスタイル）は**保持**されます — ただし、新しい値がマッピング/シーケンスの場合は、新しいノード自身のフォーマットが採用されます。
 
 #### `__setitem__` — ルート用糖衣構文
 
-```python
+```python title="__setitem__ 糖衣構文"
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
 #### `Node.set_value()` — ノード経由の編集
 
-```python
+```python title="set_value()"
 node = doc.node().find("$.a.b")  # see "Working with Nodes"
 node.set_value(42)
 ```
@@ -96,13 +107,13 @@ node.set_value(42)
 
 ### `insert()` — インデックス位置への挿入
 
-```python
+```python title="insert() シグネチャ"
 insert(path: str, index: int, value: Any) -> None
 ```
 
 `index` は現在の長さまで指定できます（`len` に挿入すると末尾への追加になります）。それより大きい場合は `YamlEditError` を発生します。負のインデックスは末尾から数えます（`-1` は最後の要素の前に挿入、`-len` は先頭に挿入）。
 
-```python
+```python title="insert() 例"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
@@ -113,11 +124,11 @@ doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 
 #### `append()` — 末尾に追加
 
-```python
+```python title="append() シグネチャ"
 append(path: str, value: Any) -> None
 ```
 
-```python
+```python title="append() 例"
 doc.append("$.items", "d")
 ```
 
@@ -125,7 +136,7 @@ doc.append("$.items", "d")
 
 同じ操作を `Node` オブジェクトでも利用できます：
 
-```python
+```python title="Node append/insert"
 node = doc.node().find("$.items")
 node.append("d")
 node.insert(1, "x")
@@ -135,11 +146,11 @@ node.insert(1, "x")
 
 ### `delete()` — パスによる削除
 
-```python
+```python title="delete() シグネチャ"
 delete(path: str) -> None
 ```
 
-```python
+```python title="delete() 例"
 doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3")
 doc.delete("$.b")
 print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
@@ -149,13 +160,13 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 
 #### `__delitem__` — ルート用糖衣構文
 
-```python
+```python title="__delitem__ root sugar"
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
 #### `Node.delete()`
 
-```python
+```python title="Node.delete()"
 node = doc.node().find("$.b")
 node.delete()
 ```
@@ -164,13 +175,13 @@ node.delete()
 
 ### `rename()` — マッピングキーのその場リネーム
 
-```python
+```python title="rename() シグネチャ"
 rename(path: str, new_key: str) -> None
 ```
 
 パスは**マッピングキー**を指している必要があります（値はそのキーの下にあり、メタデータを保持します）：
 
-```python
+```python title="rename() 例"
 doc = pyrs_yaml.parse("old: value  # keep me\nnext: 1")
 doc.rename("$.old", "new")
 print(doc.to_yaml())  # new: value  # keep me\nnext: 1
@@ -182,7 +193,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 #### `Node.rename()`
 
-```python
+```python title="Node.rename()"
 node = doc.node().find("$.old")
 node.rename("new")
 ```
@@ -193,7 +204,7 @@ node.rename("new")
 
 ### メタデータの読み取り
 
-```python
+```python title="ノードメタデータの読み取り"
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
@@ -207,7 +218,7 @@ node.tag      # "!!str"
 
 #### `Node.set_comment()` / `Node.remove_comment()`
 
-```python
+```python title="コメントの設定/削除"
 node.set_comment("new note")                   # スタンドアロン: ノードの上の行
 node.set_comment("inline", standalone=False)   # ノードの後ろにインライン
 node.remove_comment()
@@ -215,7 +226,7 @@ node.remove_comment()
 
 #### `Node.set_anchor()` / `Node.remove_anchor()`
 
-```python
+```python title="アンカーの設定/削除"
 node.set_anchor("cfg")
 node.remove_anchor()
 ```
@@ -224,7 +235,7 @@ node.remove_anchor()
 
 #### `Node.set_tag()` / `Node.remove_tag()`
 
-```python
+```python title="タグの設定/削除"
 node.set_tag("!custom")                  # ローカルタグ
 node.set_tag("!!int")                    # プライマリタグ
 node.set_tag("!<tag:yaml.org,2002:str>") # バーベイタムタグ
@@ -263,7 +274,7 @@ node.remove_tag()
 
 `doc.walk()` と `doc.scalars()` は**Rust バックエンド**の走査メソッドで、AST 全体を Python dict に変換せずに `Node` オブジェクトを生成します。`Node.walk()`（内部で `to_dict()` を呼び出す）とは異なり、これらのメソッドは AST を直接走査します：
 
-```python
+```python title="Rust バックエンドの走査"
 doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
 
 # すべてのノードを走査（深さ優先、先行順）
@@ -287,7 +298,7 @@ for node in doc.scalars():
 
 デフォルトでは、`set()` はパス内の中間キーが存在しない場合に `YamlEditError` を発生させます。`create_missing=True` を指定すると、不足している中間マッピングキーが自動的に作成されます：
 
-```python
+```python title="create_missing 例"
 doc = pyrs_yaml.parse("a: 1\n")
 
 # create_missing なし — エラー
@@ -313,7 +324,7 @@ print(doc.to_yaml())
 
 `find()` は**読み取り指向**で、ワイルドカードとディープスキャンをサポートします — パスが複数のノードを選択する場合はリストを返します：
 
-```python
+```python title="find() ワイルドカード"
 doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
@@ -326,7 +337,7 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 複数のパスを単一のスプライスバーストで設定します。パスにワイルドカード（`[*]`）やディープスキャン（`..`）を含められます — 一致するすべてのノードが設定されます：
 
-```python
+```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
 doc.set_many({
     "$.items[*].pass": False,   # ワイルドカード: 全アイテム
@@ -338,7 +349,7 @@ doc.set_many({
 
 マッピング（デフォルト: ルート）のキーをその場で並べ替えます：
 
-```python
+```python title="sort_keys() 例"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
 doc.sort_keys()           # ルートマッピングを並べ替え
 print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
@@ -348,7 +359,7 @@ print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
 
 サブツリーを同じドキュメント内の新しいパスへ移動します（コピー後にソースを削除）：
 
-```python
+```python title="Node.move() 例"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
 print(doc.to_yaml())      # dst:\n  x: 1
@@ -356,7 +367,7 @@ print(doc.to_yaml())      # dst:\n  x: 1
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
-```python
+```python title="Node の内省"
 node = doc.node().find("$.a.b")
 node.path                  # ('a', 'b') — パスセグメント
 doc.node().find_first("$.items[*]")  # 最初のワイルドカード一致または None
@@ -370,7 +381,7 @@ node.value_eq(other_node)  # 解決後の値を比較（参照同一性ではな
 
 エイリアスノード（`*name`）は、その自身のパスが設定されると**その場で**置き換えられます：
 
-```python
+```python title="エイリアスの置換"
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
 doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
 
@@ -385,7 +396,7 @@ doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 
 
 `doc.get()` / `doc.to_dict()` は**ビュー**（解決された値）を返します。編集は常に**AST**に対して行われます：
 
-```python
+```python title="ビューと AST の例"
 doc = pyrs_yaml.parse("on: yes")
 print(doc.get("on"))  # True   — view (core schema resolution)
 doc.set("$.on", "off")  #         — edits the AST scalar
@@ -398,7 +409,7 @@ print(doc.to_yaml())  # on: off — serialized verbatim, no re-resolution
 
 `Node` はドキュメントの**リビジョン**に結び付けられており、ノードの作成時に記録されます。ドキュメントの編集（別のノード経由でも）はリビジョンを増加させるため、以前に取得したノードは陳腐化します：
 
-```python
+```python title="期限切れノードの例"
 node = doc.node().find("$.a")
 doc.set("$.b", 2)  # bumps the revision
 node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
@@ -410,15 +421,15 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 | エラー | 発生時 |
 |-------|--------|
-| `YamlPathError` | 不正なパス、編集パスでのワイルドカード/`..` の使用 |
-| `YamlEditError` | サポートされない値型（`tuple`）、エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
-| `YamlDocumentError` | ドキュメント編集後に陳腐化した `Node` を使用 |
+| :material-alert: `YamlPathError` | 不正なパス、編集パスでのワイルドカード/`..` の使用 |
+| :material-alert: `YamlEditError` | サポートされない値型（`tuple`）、エイリアス経由の編集、ルート/複合/既存キーのリネーム、スカラーへのナビゲーション、インデックス範囲外 |
+| :material-alert: `YamlDocumentError` | ドキュメント編集後に陳腐化した `Node` を使用 |
 
 すべての編集はアトミックです — 失敗した編集はドキュメント（とそのリビジョン）に影響を与えません。
 
 ## 完全な例
 
-```python
+```python title="編集の完全な例"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -465,7 +476,7 @@ print(doc.to_yaml())
 
 ### ベンチマーク
 
-```text
+```text title="ベンチマーク結果"
 Benchmark                   Median
 serialize_10mb             17 ms
 edit_flush_set_10mb       110 ms
@@ -473,3 +484,11 @@ edit_flush_burst5_10mb    119 ms
 ```
 
 500グループ×838キーの合成10MBブロックマッピングドキュメントで測定。比率はASTクローンコスト（56ms）が支配的；実際の編集+materializeは約54ms（シリアライズの3倍）。コメント、アンカー、タグを含む複雑なドキュメントでは、スプライスの利点が大幅に拡大します。
+
+---
+
+### 関連項目
+
+- [YAML のパース](parsing.md) — 編集前のドキュメントパース
+- [ストリーム解析](streaming.md) — 大規模ファイルのインクリメンタル解析
+- [設定管理](tutorial-config-management.md) — エンドツーエンドの編集チュートリアル

@@ -20,7 +20,7 @@ status: new
 2. 同じ `[Unreleased]` エントリを `docs/{zh,ja,ko}/changelog.md` に翻訳します（`## [Unreleased]` や `### Added` などのバージョンヘッダーは翻訳します）
 3. 確認します:
 
-```bash
+```bash title="ミラーパリティのチェック"
 uv run python scripts/check_changelog_mirrors.py
 ```
 

@@ -49,7 +49,7 @@ Rust 백엔드는 PyYAML보다 파싱 **21–43배**, 직렬화 **55–177배 �
 
 익숙한 API로 직접 교체 가능：
 
-```python
+```python title="PyYAML 호환 API"
 import pyrs_yaml as yaml  # Use as 'yaml' for easy migration
 
 yaml.safe_load(yaml_text)
@@ -62,7 +62,7 @@ yaml.safe_dumps(data)
 
 `asyncio`를 통한 논블로킹 직렬화 및 파싱:
 
-```python
+```python title="비동기 덤프 및 로드"
 import asyncio
 import pyrs_yaml
 
@@ -82,7 +82,7 @@ asyncio.run(main())
 
 JSON Schema를 기반으로 파싱된 YAML 문서 검증：
 
-```python
+```python title="JSON Schema 검증"
 doc = pyrs_yaml.parse("name: Alice\nage: 30")
 doc.validate({"type": "object", "properties": {"name": {"type": "string"}}})
 
@@ -96,14 +96,14 @@ doc.validate('{"type": "object", "required": ["name"]}')
 
 기본적으로 중복 매핑 키는 `YamlDuplicateKeyError`를 발생시킵니다:
 
-```python
+```python title="중복 키 오류"
 pyrs_yaml.parse("key: first\nkey: second")
 # pyrs_yaml.YamlDuplicateKeyError: duplicate key: key
 ```
 
 `allow_duplicate_keys=True`를 전달하면 **마지막 값**이 유지됩니다:
 
-```python
+```python title="중복 키 허용"
 doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
 doc.get("key")  # "second"
 ```
@@ -114,7 +114,7 @@ doc.get("key")  # "second"
 
 `to_yaml_with_options()`는 들여쓰기과 줄 바꿈을 제어합니다:
 
-```python
+```python title="직렬화 옵션"
 yaml_str = doc.to_yaml_with_options(
     indent_size=2,  # 기본 들여쓰기 (유형별 옵션 생략 시 사용)
     width=80,  # 줄 바꿈 너비; 0은 줄 바꿈 비활성화
@@ -164,7 +164,7 @@ yaml_str = doc.to_yaml_with_options(
 
 Pydantic 모델로 YAML을 직접 파싱하거나 모델을 YAML로 직렬화:
 
-```python
+```python title="Pydantic 통합"
 from pydantic import BaseModel
 import pyrs_yaml
 
@@ -187,7 +187,7 @@ print(yaml_str)
 
 다른 옵션으로 저장된 소스 텍스트를 제자리에서 재파싱：
 
-```python
+```python title="점진적 재파싱"
 doc = pyrs_yaml.parse("x: on")
 print(doc.get("x"))  # "on" (string, core schema)
 
@@ -199,7 +199,7 @@ print(doc.get("x"))  # True (bool, yaml1.1 schema)
 
 파싱된 문서를 **서식 메타데이터를 전혀 잃지 않고** 편집합니다 — 주석, 앵커, 태그, 스칼라 스타일, 흐름/블록 스타일이 모두 유지됩니다:
 
-```python
+```python title="제자리 편집"
 doc = pyrs_yaml.parse("""
 server:
   host: localhost  # bind address
@@ -207,12 +207,17 @@ server:
     - 8080
 """)
 
-doc.set("$.server.host", "0.0.0.0")  # 경로로 교체
-doc.insert("$.server.ports", 0, 80)  # 시퀀스에 삽입
-doc.append("$.server.ports", 443)  # 시퀀스에 추가
-doc.rename("$.server", "srv")  # 매핑 키 이름 변경
+doc.set("$.server.host", "0.0.0.0")  # (1)!
+doc.insert("$.server.ports", 0, 80)  # (2)!
+doc.append("$.server.ports", 443)  # (3)!
+doc.rename("$.server", "srv")  # (4)!
 del doc["server"]  # 또는: doc.delete("$.server")
 ```
+
+1. :material-arrow-down: `set`은 경로의 값을 교체하며 인라인 주석을 유지합니다.
+2. :material-arrow-down: `insert`는 시퀀스 인덱스 위치에 요소를 삽입합니다.
+3. :material-arrow-down: `append`는 시퀀스 끝에 추가합니다.
+4. :material-arrow-down: `rename`은 매핑 키를 제자리에서 이름 변경하며 위치와 주석을 유지합니다.
 
 - **경로 API** — JSONPath 스타일 경로(`$.a.b[0]`), 루트 슈가(`doc["k"] = v`, `del doc["k"]`)
 - **노드 API** — `doc.node().find(path)`는 `Node` 객체를 반환하며 `set_value` / `insert` / `append` / `delete` / `rename`과 트리 탐색(`parent`, `children`, `walk`, `filter`)을 지원
@@ -226,7 +231,7 @@ del doc["server"]  # 또는: doc.delete("$.server")
 
 pyrs-yaml는 모든 차원의 `numpy.ndarray` 객체를 직접 YAML로 직렬화할 수 있습니다:
 
-```python
+```python title="NumPy ndarray 직렬화"
 import numpy as np
 import pyrs_yaml
 
@@ -283,25 +288,25 @@ assert loaded == [[1.0, 2.0], [3.0, 4.0]]
 
 | 기능 | 지원 |
 |------|------|
-| YAML 1.2 사양 | ✅ 완전 |
-| 주석 (독립) | ✅ 유지 |
-| 주석 (인라인) | ✅ 유지 |
-| 앵커 및 별칭 | ✅ 유지 |
-| 태그 (명시적) | ✅ 유지 |
-| 블록 스칼라 (`|`, `>`) | ✅ 유지 |
-| 촙핑 지시자 | ✅ 유지 |
-| 흐름 컬렉션 (`{}`, `[]`) | ✅ 유지 |
-| 병합 키 (`<<`) | ✅ 해결 |
-| 복합 키 | ✅ 지원 |
-| 이스케이프 시퀀스 | ✅ 지원 |
-| 다중 문서 | ✅ 지원 |
-| **비동기 I/O** | **✅ `safe_*_async`** |
-| **JSON Schema 검증** | **✅ `doc.validate()`** |
-| **점진적 재파싱** | **✅ `doc.reparse()`** |
-| **제자리 편집** | **✅ `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
-| **JSON 내보내기** | **✅ `doc.to_json()`** |
-| **Metadata editing** | **x1f4af `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
-| **Style/format control** | **x1f4af `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
-| **Deep editing** | **x1f4af `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
-| **Schema validation** | **x1f4af `validate_against_schema()`** |
-| **Schema file IO** | **x1f4af `load_schema()` / `list_schemas()`** |
+| YAML 1.2 사양 | :material-check: 완전 |
+| 주석 (독립) | :material-check: 유지 |
+| 주석 (인라인) | :material-check: 유지 |
+| 앵커 및 별칭 | :material-check: 유지 |
+| 태그 (명시적) | :material-check: 유지 |
+| 블록 스칼라 (`|`, `>`) | :material-check: 유지 |
+| 촙핑 지시자 | :material-check: 유지 |
+| 흐름 컬렉션 (`{}`, `[]`) | :material-check: 유지 |
+| 병합 키 (`<<`) | :material-check: 해결 |
+| 복합 키 | :material-check: 지원 |
+| 이스케이프 시퀀스 | :material-check: 지원 |
+| 다중 문서 | :material-check: 지원 |
+| **비동기 I/O** | **:material-check: `safe_*_async`** |
+| **JSON Schema 검증** | **:material-check: `doc.validate()`** |
+| **점진적 재파싱** | **:material-check: `doc.reparse()`** |
+| **제자리 편집** | **:material-check: `doc.set()` / `insert()` / `append()` / `delete()` / `rename()`** |
+| **JSON 내보내기** | **:material-check: `doc.to_json()`** |
+| **Metadata editing** | **:material-check:  `Node.set_comment()` / `set_anchor()` / `set_tag()`** |
+| **Style/format control** | **:material-check:  `Node.set_scalar_style()` / `set_flow_style()` / `set_chomping()`** |
+| **Deep editing** | **:material-check:  `doc.set_many()` / `sort_keys()` / `Node.move()` / `copy()`** |
+| **Schema validation** | **:material-check:  `validate_against_schema()`** |
+| **Schema file IO** | **:material-check:  `load_schema()` / `list_schemas()`** |

@@ -33,31 +33,31 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 | 库 | 时间 | 加速比 |
 |----|------|--------|
 | **pyrs-yaml** | **1.6 ms** | — |
-| PyYAML | 87.9 ms¹ | 慢 55 倍 |
-| ruamel.yaml | 191.0 ms¹ | 慢 119 倍 |
+| PyYAML | 87.9 ms[^1] | 慢 55 倍 |
+| ruamel.yaml | 191.0 ms[^1] | 慢 119 倍 |
 
-¹ PyYAML/ruamel 的往返时间为同一基准测试中解析与序列化时间之和的估算值。
+[^1]: PyYAML/ruamel 的往返时间为同一基准测试中解析与序列化时间之和的估算值。
 
 ### 功能对比
 
 | 功能 | pyrs-yaml | PyYAML | ruamel.yaml |
 |------|-----------|--------|-------------|
-| **YAML 1.2 合规** | ✅ | ✅ | ✅ |
-| **独立注释** | ✅ | ❌ | ✅ |
-| **内联注释** | ✅ | ❌ | ✅ |
-| **锚点/别名** | ✅ | ❌ | ✅ |
-| **标签（显式）** | ✅ | ❌ | ✅ |
-| **块标量** | ✅ | ✅ | ✅ |
-| **流集合** | ✅ | ✅ | ✅ |
-| **合并键（<<）** | ✅ | ❌ | ✅ |
-| **复杂键** | ✅ | ✅ | ✅ |
-| **往返保留** | ✅ | ❌ | ✅ |
-| **Python 绑定** | ✅ | ✅ | ✅ |
-| **ABI3（py3.8+）** | ✅ | ❌ | ❌ |
-| **类型存根（.pyi）** | ✅ | ✅ | ❌ |
-| **国际化错误消息** | ✅ | ❌ | ❌ |
-| **Rust 后端** | ✅ | ❌ | ❌ |
-| **性能** | 🚀 最快 | 🐌 慢 | 🐌 慢 |
+| **YAML 1.2 合规** | :material-check: | :material-check: | :material-check: |
+| **独立注释** | :material-check: | :material-close: | :material-check: |
+| **内联注释** | :material-check: | :material-close: | :material-check: |
+| **锚点/别名** | :material-check: | :material-close: | :material-check: |
+| **标签（显式）** | :material-check: | :material-close: | :material-check: |
+| **块标量** | :material-check: | :material-check: | :material-check: |
+| **流集合** | :material-check: | :material-check: | :material-check: |
+| **合并键（<<）** | :material-check: | :material-close: | :material-check: |
+| **复杂键** | :material-check: | :material-check: | :material-check: |
+| **往返保留** | :material-check: | :material-close: | :material-check: |
+| **Python 绑定** | :material-check: | :material-check: | :material-check: |
+| **ABI3（py3.8+）** | :material-check: | :material-close: | :material-close: |
+| **类型存根（.pyi）** | :material-check: | :material-check: | :material-close: |
+| **国际化错误消息** | :material-check: | :material-close: | :material-close: |
+| **Rust 后端** | :material-check: | :material-close: | :material-close: |
+| **性能** | :material-rocket-launch: 最快 | :material-snail: 慢 | :material-snail: 慢 |
 
 ### 总结
 
@@ -83,7 +83,7 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 
 ### 迁移路径
 
-```python
+```python title="迁移步骤"
 # 第一步：安装
 pip install pyrs-yaml
 

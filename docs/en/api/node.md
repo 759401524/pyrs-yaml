@@ -412,13 +412,16 @@ A node becomes stale when:
 
 Accessing a stale node emits a `RuntimeWarning` and raises `YamlDocumentError`:
 
-```python
+```python title="Stale node example"
 >>> node = doc.node()
 >>> doc.set("$.key", "new_value")
->>> node.value
+>>> node.value  # (1)!
 RuntimeWarning: Node is stale: the document was modified after this node was created
-YamlDocumentError: document has been modified; re-find the node
+YamlDocumentError: document has been modified; re-find the node  # (2)!
 ```
+
+1. :material-alert: Accessing a stale node triggers a `RuntimeWarning` first.
+2. :material-close: Then raises `YamlDocumentError`. Re-acquire the node via `doc.node().find(path)`.
 
 ### Example
 

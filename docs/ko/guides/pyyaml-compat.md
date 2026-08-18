@@ -10,7 +10,7 @@ pyrs-yaml는 PyYAML의 **드롭인 교체**를 제공하여 마이그레이션�
 
 ## 간단한 마이그레이션
 
-```python
+```python title="간단한 마이그레이션"
 # 이전 코드
 import yaml
 
@@ -28,12 +28,12 @@ yaml_str = yaml.safe_dump(data)
 
 | PyYAML 함수 | pyrs-yaml 동등한 것 | 설명 |
 |-------------|----------------|------|
-| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | ✅ 동일 |
-| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | ✅ 동일 |
-| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | ✅ 동일 |
-| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | ✅ 동일 |
-| `yaml.load()` | `pyrs_yaml.safe_load()` | ⚠️ 안전 변형 사용 |
-| `yaml.dump()` | `pyrs_yaml.safe_dump()` | ⚠️ 안전 변형 사용 |
+| `yaml.safe_load()` | `pyrs_yaml.safe_load()` | :material-check: 동일 |
+| `yaml.safe_loads()` | `pyrs_yaml.safe_loads()` | :material-check: 동일 |
+| `yaml.safe_dump()` | `pyrs_yaml.safe_dump()` | :material-check: 동일 |
+| `yaml.safe_dumps()` | `pyrs_yaml.safe_dumps()` | :material-check: 동일 |
+| `yaml.load()` | `pyrs_yaml.safe_load()` | :material-alert: 안전 변형 사용 |
+| `yaml.dump()` | `pyrs_yaml.safe_dump()` | :material-alert: 안전 변형 사용 |
 
 ## 주요 차이점
 
@@ -41,11 +41,11 @@ yaml_str = yaml.safe_dump(data)
 
 | 기능 | PyYAML | pyrs-yaml |
 |------|--------|-----------|
-| 순환 보존 | ❌ 주석/앵커 잃음 | ✅ 모든 것 보존 |
+| 순환 보존 | :material-close: 주석/앵커 잃음 | :material-check: 모든 것 보존 |
 | 성능 | 기준 | **파싱 21-43배, 직렬화 55-177배 빠름** |
-| 타입 힌트 | 부분적 | ✅ 완전한 `.pyi` 스텁 |
-| ABI3 wheel | 해당 없음 | ✅ 모든 Python 버전에 단일 wheel |
-| i18n 오류 | ❌ 영어만 | ✅ 영어 + 중국어 |
+| 타입 힌트 | 부분적 | :material-check: 완전한 `.pyi` 스텁 |
+| ABI3 wheel | 해당 없음 | :material-check: 모든 Python 버전에 단일 wheel |
+| i18n 오류 | :material-close: 영어만 | :material-check: 영어 + 중국어 |
 
 #### 주의사항
 
@@ -64,7 +64,7 @@ yaml_str = yaml.safe_dump(data)
 
 ## 마이그레이션 예시
 
-```python
+```python title="전체 마이그레이션 예제"
 # 이전 코드
 import yaml
 
@@ -90,3 +90,11 @@ def load_config(path):
 def save_config(data, path):
     pyrs_yaml.dump_file(data, path)
 ```
+
+---
+
+### 참고 항목
+
+- [YAML 파싱](parsing.md) — 고급 파싱 옵션
+- [직렬화](serialization.md) — 직렬화 옵션 상세
+- [라운드트립](round-trip.md) — 주석과 앵커가 라운드트립에서 보존

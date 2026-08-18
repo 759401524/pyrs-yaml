@@ -8,14 +8,17 @@ status: new
 
 ## 시스템 요구사항
 
-- **Python** ≥ 3.8 (CPython)
-- **플랫폼**: Linux, macOS, Windows
+| :material-language-python: 요구사항 | 세부 정보 |
+|---|---|
+| **Python** | ≥ 3.8 (CPython), 3.14t free-threaded 포함 |
+| :material-monitor: **플랫폼** | Linux, macOS, Windows |
+| :material-hammer-wrench: **빌드** | Rust 툴체인 (소스 빌드에만 필요) |
 
 ## 소스에서 설치
 
 패키지는 아직 PyPI에 게시되지 않았습니다. 소스에서 설치:
 
-```bash
+```bash title="uv로 빌드 및 설치"
 uv run --frozen maturin develop --release
 ```
 
@@ -32,7 +35,7 @@ CPython 3.14t용 프리-스레디드(no-GIL) 휠은 NumPy 통합을 포함합니
 
 소스에서 설치 (개발 또는 테스트용):
 
-```bash
+```bash title="소스에서 설치"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -43,7 +46,7 @@ uv run --frozen maturin develop --release
 ???+ tip "설치 확인"
     `pyrs_yaml.__version__`을 출력하고 간단한 파싱 테스트로 설치를 검증할 수 있습니다.
 
-```python
+```python title="설치 확인"
 import pyrs_yaml
 
 # Check version

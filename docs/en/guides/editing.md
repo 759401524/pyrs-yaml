@@ -14,7 +14,7 @@ pyrs-yaml lets you **edit a parsed document in place** while preserving all form
 
 Edits are expressed as **JSONPath-style paths** into the document tree:
 
-```python
+```python title="Edit by path"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -32,6 +32,17 @@ print(doc.to_yaml())
 ```
 
 All edit methods are **atomic**: on failure nothing changes, including the document revision. On success the document is marked dirty, and the next `source()` / `to_yaml()` / `to_yaml_with_options()` / `reparse()` call re-serializes from the updated tree.
+
+#### Edit Pipeline
+
+```mermaid
+graph LR
+    A["Parse<br/>CustomNode AST"] --> B["Edit by path<br/>set / insert / delete / rename"]
+    B --> C["Mark dirty + bump revision"]
+    C --> D["Byte-level splice<br/>(default layout)"]
+    D --> E["to_yaml() / source()<br/>re-serialized output"]
+    C --> F["Full re-serialization<br/>(fallback: flow style, merged keys, CRLF, BOM)"]
+```
 
 ### Path Syntax
 
@@ -55,11 +66,11 @@ Editing paths must target exactly one node — **wildcards** (`[*]`) and **deep-
 
 #### `set()` — replace by path
 
-```python
+```python title="set() signature"
 set(path: str, value: Any) -> None
 ```
 
-```python
+```python title="set() examples"
 doc = pyrs_yaml.parse("a:\n  b: 1\nitems: [1, 2, 3]")
 
 doc.set("$.a.b", 42)  # scalar → scalar, metadata preserved
@@ -70,7 +81,7 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 Setting a path on an **empty document** (parsed from `""`) auto-creates a mapping root:
 
-```python
+```python title="Set on empty document"
 doc = pyrs_yaml.parse("")
 doc.set("$.a", 1)  # doc now holds {a: 1}
 ```
@@ -79,22 +90,22 @@ Value conversion rules:
 
 | Python value | YAML node |
 |--------------|-----------|
-| `str`, `int`, `float`, `bool`, `None` | New scalar (value is *not* re-parsed) |
-| `dict` | New mapping (plain style) |
-| `list` | New sequence (plain style) |
-| `tuple` | ❌ not supported — raises `YamlEditError` |
+| :material-format-text: `str`, :material-numeric: `int`, :material-decimal: `float`, :material-toggle-switch: `bool`, :material-null: `None` | New scalar (value is *not* re-parsed) |
+| :material-language-python: `dict` | New mapping (plain style) |
+| :material-format-list-numbered: `list` | New sequence (plain style) |
+| :material-alert: `tuple` | not supported — raises `YamlEditError` |
 
 When replacing an existing scalar, the target's metadata (inline comment, anchor, tag, quoting style) is **preserved** — unless the new value is a mapping/sequence, which adopts the new node's own formatting.
 
 #### `__setitem__` — root sugar
 
-```python
+```python title="__setitem__ root sugar"
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
 #### `Node.set_value()` — edit through a Node
 
-```python
+```python title="set_value()"
 node = doc.node().find("$.a.b")  # see "Working with Nodes"
 node.set_value(42)
 ```
@@ -105,13 +116,13 @@ Both operate on **sequences** only; the path must resolve to a sequence node.
 
 #### `insert()` — insert at an index
 
-```python
+```python title="insert() signature"
 insert(path: str, index: int, value: Any) -> None
 ```
 
 `index` may be up to the current length (inserting at `len` appends); anything larger raises `YamlEditError`. Negative indexes are supported and count from the end (`-1` inserts before the last element, `-len` inserts at the front).
 
-```python
+```python title="insert() examples"
 doc = pyrs_yaml.parse("items:\n  - a\n  - c")
 
 doc.insert("$.items", 1, "b")  # items: [a, b, c]
@@ -122,11 +133,11 @@ doc.insert("$.items", -1, "before-last")  # items: [a, before-last, c]
 
 #### `append()` — add at the end
 
-```python
+```python title="append() signature"
 append(path: str, value: Any) -> None
 ```
 
-```python
+```python title="append() example"
 doc.append("$.items", "d")
 ```
 
@@ -134,7 +145,7 @@ doc.append("$.items", "d")
 
 The same operations are available on `Node` objects:
 
-```python
+```python title="Node append/insert"
 node = doc.node().find("$.items")
 node.append("d")
 node.insert(1, "x")
@@ -144,11 +155,11 @@ node.insert(1, "x")
 
 #### `delete()` — remove by path
 
-```python
+```python title="delete() signature"
 delete(path: str) -> None
 ```
 
-```python
+```python title="delete() example"
 doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3")
 doc.delete("$.b")
 print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
@@ -158,13 +169,13 @@ Mapping order is always preserved; sequence deletion closes the gap.
 
 #### `__delitem__` — root sugar
 
-```python
+```python title="__delitem__ root sugar"
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
 #### `Node.delete()`
 
-```python
+```python title="Node.delete()"
 node = doc.node().find("$.b")
 node.delete()
 ```
@@ -173,13 +184,13 @@ node.delete()
 
 #### `rename()` — rename a mapping key in place
 
-```python
+```python title="rename() signature"
 rename(path: str, new_key: str) -> None
 ```
 
 The path must point at a **mapping key** (the value lives under it and keeps its metadata):
 
-```python
+```python title="rename() example"
 doc = pyrs_yaml.parse("old: value  # keep me\nnext: 1")
 doc.rename("$.old", "new")
 print(doc.to_yaml())  # new: value  # keep me\nnext: 1
@@ -191,7 +202,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 #### `Node.rename()`
 
-```python
+```python title="Node.rename()"
 node = doc.node().find("$.old")
 node.rename("new")
 ```
@@ -202,7 +213,7 @@ Comments, anchors, and tags survive round-trip by default. Through a `Node` you 
 
 #### Reading metadata
 
-```python
+```python title="Reading node metadata"
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
@@ -216,7 +227,7 @@ node.tag      # "!!str"
 
 #### `Node.set_comment()` / `Node.remove_comment()`
 
-```python
+```python title="Set/remove comment"
 node.set_comment("new note")                   # standalone: own line above
 node.set_comment("inline", standalone=False)   # inline after the node
 node.remove_comment()
@@ -224,7 +235,7 @@ node.remove_comment()
 
 #### `Node.set_anchor()` / `Node.remove_anchor()`
 
-```python
+```python title="Set/remove anchor"
 node.set_anchor("cfg")
 node.remove_anchor()
 ```
@@ -233,7 +244,7 @@ The anchor can then be referenced by aliases elsewhere in the document.
 
 #### `Node.set_tag()` / `Node.remove_tag()`
 
-```python
+```python title="Set/remove tag"
 node.set_tag("!custom")                  # local tag
 node.set_tag("!!int")                    # primary tag
 node.set_tag("!<tag:yaml.org,2002:str>") # verbatim tag
@@ -271,7 +282,7 @@ Nodes expose a tree API: `node.parent`, `node.children`, `node.walk()` (depth-fi
 
 `doc.walk()` and `doc.scalars()` are **Rust-backed** traversal methods that yield `Node` objects without converting the entire AST to Python dicts. Unlike `Node.walk()` (which calls `to_dict()` under the hood), these methods traverse the AST directly:
 
-```python
+```python title="Rust-backed traversal"
 doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
 
 # Walk all nodes (depth-first, pre-order)
@@ -295,7 +306,7 @@ This is significantly faster than the Python-only `Node.walk()` for large docume
 
 By default, `set()` raises `YamlEditError` when an intermediate key in the path doesn't exist. With `create_missing=True`, missing intermediate mapping keys are automatically created:
 
-```python
+```python title="create_missing example"
 doc = pyrs_yaml.parse("a: 1\n")
 
 # Without create_missing — raises
@@ -321,7 +332,7 @@ Rules:
 
 `find()` is **read-oriented** and supports wildcards and deep scans — it returns a list when the path selects multiple nodes:
 
-```python
+```python title="find() wildcards"
 doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
@@ -336,7 +347,7 @@ Wildcard/deep-scan results are **not directly editable** via `set()` — use
 Set multiple paths in a single splice burst. Paths may include wildcards
 (`[*]`) and deep scans (`..`) — every matching node is set:
 
-```python
+```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
 doc.set_many({
     "$.items[*].pass": False,   # wildcard: every item
@@ -348,7 +359,7 @@ doc.set_many({
 
 Sort the keys of a mapping (default: root) in place:
 
-```python
+```python title="sort_keys() example"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
 doc.sort_keys()           # sorts the root mapping
 print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
@@ -359,7 +370,7 @@ print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
 Move a subtree to a new path in the same document (copies then removes the
 source):
 
-```python
+```python title="Node.move() example"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
 print(doc.to_yaml())      # dst:\n  x: 1
@@ -367,7 +378,7 @@ print(doc.to_yaml())      # dst:\n  x: 1
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
-```python
+```python title="Node introspection"
 node = doc.node().find("$.a.b")
 node.path                  # ('a', 'b') — the path segments
 doc.node().find_first("$.items[*]")  # first wildcard match or None
@@ -383,7 +394,7 @@ node.value_eq(other_node)  # compare resolved values (not reference identity)
 
 An alias node (`*name`) is replaced **in place** when its own path is set:
 
-```python
+```python title="Alias replacement"
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
 doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
 
@@ -398,7 +409,7 @@ doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 
 
 `doc.get()` / `doc.to_dict()` return the **view** (resolved values). Editing always operates on the **AST**:
 
-```python
+```python title="View vs AST example"
 doc = pyrs_yaml.parse("on: yes")
 print(doc.get("on"))  # True   — view (core schema resolution)
 doc.set("$.on", "off")  #         — edits the AST scalar
@@ -411,7 +422,7 @@ The edited value is emitted **as-is**; the view resolves it according to the act
 
 A `Node` is tied to the document's **revision**, recorded when the node was created. Any document edit (even through a different node) bumps the revision, so previously obtained nodes become stale:
 
-```python
+```python title="Stale node example"
 node = doc.node().find("$.a")
 doc.set("$.b", 2)  # bumps the revision
 node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
@@ -423,15 +434,15 @@ Re-find the node after any edit to continue working. `node.is_valid()` checks li
 
 | Error | When |
 |-------|------|
-| `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
-| `YamlEditError` | Unsupported value type (`tuple`), edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
-| `YamlDocumentError` | Stale `Node` used after a document edit |
+| :material-alert: `YamlPathError` | Malformed path, wildcard/`..` used in an edit path |
+| :material-alert: `YamlEditError` | Unsupported value type (`tuple`), edit through alias, rename of root/complex/existing key, navigation into a scalar, index out of bounds |
+| :material-alert: `YamlDocumentError` | Stale `Node` used after a document edit |
 
 All edits are atomic — a failed edit leaves the document (and its revision) untouched.
 
 ### Full Example
 
-```python
+```python title="Complete editing walkthrough"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -483,7 +494,7 @@ In all fallback cases, correctness is preserved — only the performance benefit
 
 #### Benchmarks
 
-```text
+```text title="Benchmark results"
 Benchmark                   Median
 serialize_10mb             17 ms
 edit_flush_set_10mb       110 ms
@@ -491,3 +502,11 @@ edit_flush_burst5_10mb    119 ms
 ```
 
 *Measured on a synthetic 10MB block-mapping document with 500 groups × 838 keys. The ratio is dominated by AST clone cost (56 ms); the actual edit+materialize is ~54 ms (3× serialize). For complex documents with comments, anchors, and tags, the splice advantage grows significantly.*
+
+---
+
+### See Also
+
+- [Parsing YAML](parsing.md) — Parse documents before editing
+- [Streaming Parse](streaming.md) — Incremental parsing for large files
+- [Configuration Management](tutorial-config-management.md) — End-to-end editing walkthrough

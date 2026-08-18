@@ -13,7 +13,7 @@ status: new
 
 ## 설정
 
-```bash
+```bash title="소스에서 설치"
 # Install pyrs-yaml (requires Rust toolchain)
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
@@ -64,7 +64,7 @@ threshold: 0x1F  # hex value (should be parsed as int)
 
 ## 2. 파일 파싱
 
-```python
+```python title="파일 파싱"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse_file("config.yaml")
@@ -78,7 +78,7 @@ print(f"Parsed: {doc.get('app.name')} v{doc.get('app.version')}")
 
 경로 API(JSONPath 스타일) 또는 Node API(트리 기반)를 사용합니다:
 
-```python
+```python title="값 검사"
 # Path API — simple and direct
 db_host = doc.get("database.host")
 print(f"Database host: {db_host}")
@@ -93,7 +93,7 @@ print(f"Database anchor: {db_node.anchor}")  # "default-db"
 
 값을 편집하면 해당 주석, 앵커, 태그, 따옴표 스타일이 보존됩니다. 편집은 AST에서 직접 수행되며 문자열 조작이 아닙니다:
 
-```python
+```python title="제자리 값 편집"
 # Change the production port
 doc.set("$.environments.production.port", 5444)
 
@@ -141,7 +141,7 @@ staging.set_flow_style(True)
 
 `set_many`를 사용하여 일치하는 모든 경로에 변경을 적용합니다 — 토글류 작업에 유용합니다:
 
-```python
+```python title="와일드카드 일괄 편집"
 # Disable ALL debug flags across every environment
 doc.set_many({
     "$.environments[*].debug": False,
@@ -157,7 +157,7 @@ doc.set_many({
 
 가독성을 위해 최상위 키와 환경 키를 정렬합니다:
 
-```python
+```python title="키 정렬"
 doc.sort_keys()              # sort the root mapping
 doc.sort_keys("$.environments")  # sort the environments
 ```
@@ -166,7 +166,7 @@ doc.sort_keys("$.environments")  # sort the environments
 
 구조 규칙이 있는 스키마를 정의하고 구성을 검증합니다:
 
-```python
+```python title="스키마 검증"
 schema = """\
 name: app-config
 extends: core
@@ -189,7 +189,7 @@ print("Configuration is valid!")
 
 하위 트리를 (문서에서 분리된) 독립 Python 값으로 복사합니다:
 
-```python
+```python title="하위 트리 딥 카피"
 # Copy the staging configuration for reuse
 staging_config = doc.node().find("$.environments.staging").copy()
 print(staging_config)  # {'host': 'staging.example.com', 'debug': False, ...}
@@ -199,7 +199,7 @@ print(staging_config)  # {'host': 'staging.example.com', 'debug': False, ...}
 
 같은 문서 안에서 하위 트리를 이동합니다:
 
-```python
+```python title="하위 트리 이동"
 # Move the reporting feature to a new section
 doc.node().find("$.features[2]").move("$.deprecated-features")
 ```
@@ -208,7 +208,7 @@ doc.node().find("$.features[2]").move("$.deprecated-features")
 
 마지막으로 편집된 문서를 YAML로 직렬화합니다:
 
-```python
+```python title="파일에 다시 쓰기"
 output = doc.to_yaml()
 with open("config-updated.yaml", "w", encoding="utf-8") as f:
     f.write(output)
@@ -247,18 +247,18 @@ environments:
 
 이 튜토리얼에서 다음을 수행했습니다:
 
-- 메타데이터를 완전히 보존하며 YAML 파일을 **파싱**
-- 경로 API와 Node API로 값을 **검사**
-- 값, 주석, 앵커, 태그, 서식을 **편집**
-- `set_many`로 와일드카드 **일괄 편집**
-- 가독성을 위해 키를 **정렬**
-- 스키마에 대해 **검증**
-- 하위 트리를 **복사** 및 **이동**
-- 모든 것을 보존한 채 YAML로 **직렬화**
+- :material-file-code: 메타데이터를 완전히 보존하며 YAML 파일을 **파싱**
+- :material-magnify: 경로 API와 Node API로 값을 **검사**
+- :material-pencil: 값, 주석, 앵커, 태그, 서식을 **편집**
+- :material-format-list-bulleted: `set_many`로 와일드카드 **일괄 편집**
+- :material-sort: 가독성을 위해 키를 **정렬**
+- :material-check-decagram: 스키마에 대해 **검증**
+- :material-content-copy: 하위 트리를 **복사** 및 **이동**
+- :material-sync: 모든 것을 보존한 채 YAML로 **직렬화**
 
 ### 다음 단계
 
-- [빠른 시작](../quick-start.md) — 몇 분 안에 시작
-- [제자리 편집 가이드](../guides/editing.md) — 편집 API 전체 레퍼런스
-- [사용자 지정 스키마 가이드](../guides/custom-schema.md) — 나만의 스키마 정의
-- [API 레퍼런스](../api/reference.md) — 전체 API 문서
+- :material-rocket-launch: [빠른 시작](../quick-start.md) — 몇 분 안에 시작
+- :material-pencil: [제자리 편집 가이드](../guides/editing.md) — 편집 API 전체 레퍼런스
+- :material-check-decagram: [사용자 지정 스키마 가이드](../guides/custom-schema.md) — 나만의 스키마 정의
+- :material-book-open-page-variant: [API 레퍼런스](../api/reference.md) — 전체 API 문서

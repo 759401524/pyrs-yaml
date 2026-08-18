@@ -8,6 +8,21 @@ status: new
 
 pyrs-yaml는 오류 처리를 위해 사용자 정의 예외 클래스를 정의합니다.
 
+```mermaid title="예외 계층 구조"
+classDiagram
+    ValueError <|-- YamlParseError
+    ValueError <|-- YamlSerializeError
+    ValueError <|-- YamlValidateError
+    ValueError <|-- YamlEditError
+    ValueError <|-- YamlPathError
+    ValueError <|-- YamlDuplicateKeyError
+    ValueError <|-- YamlMaxDepthError
+    ValueError <|-- YamlTagError
+    TypeError <|-- YamlTypeError
+    Exception <|-- YamlDocumentError
+    Exception <|-- YamlTagSkip
+```
+
 ## YamlParseError
 
 YAML 파싱이 실패할 때 발생합니다.
@@ -211,6 +226,11 @@ class YamlTagError(ValueError):
 ## YamlTagSkip
 
 태그 핸들러가 노드를 건너뛰기 위해 발생시키는 센티널 예외입니다. 오류를 발생시키는 대신 파서가 다음 노드로 이동합니다. 이는 실제 오류가 아닌 의도적인 제어 흐름 신호입니다.
+
+!!! info "제어 흐름 센티널"
+    `YamlTagSkip`은 실제 오류가 아닙니다. 태그 핸들러가 체인의 다음 핸들러로
+    제어를 위임하기 위한 신호입니다. 핸들러에서 이를 발생시키면
+    제어가 다음 핸들러로 전달됩니다（또는 기본값으로 폴스루됩니다）。
 
 ```python
 class YamlTagSkip(Exception):

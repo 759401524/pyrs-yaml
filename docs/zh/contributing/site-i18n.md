@@ -14,25 +14,23 @@ pyrs-yaml 文档站点使用 MkDocs Material 主题内置的 i18n 支持**站点
 
 ### How It Works
 
-每种语言都有独立的 URL 路径（`/zh-CN/`、`/ja-JP/`、`/ko-KR/`），共享一个导航栏，右上角提供语言切换器，在 `mkdocs.yml` 中配置：
+每种语言都有独立的 URL 路径（`/zh-CN/`、`/ja-JP/`、`/ko-KR/`），共享一个导航栏，右上角提供语言切换器，在 `zensical.toml` 中配置：
 
-```yaml
-i18n:
-  default_lang: en
-  alternate_languages:
-    - lang: zh-CN
-      url: /zh-CN/
-    - lang: ja-JP
-      url: /ja-JP/
-    - lang: ko-KR
-      url: /ko-KR/
+```toml title="zensical.toml i18n 配置"
+[project.extra]
+alternate = [
+    {name = "English", link = "/pyrs-yaml/en/", lang = "en"},
+    {name = "中文", link = "/pyrs-yaml/zh/", lang = "zh"},
+    {name = "日本語", link = "/pyrs-yaml/ja/", lang = "ja"},
+    {name = "한국어", link = "/pyrs-yaml/ko/", lang = "ko"},
+]
 ```
 
 ### Directory Structure
 
 每个语言版本位于 `docs/<lang>/` 目录下，镜像 `docs/en/` 的树结构：
 
-```text
+```text title="语言目录结构"
 docs/en/  (规范英文版)
 docs/zh-CN/  (或 docs/zh/)
 docs/ja/  (或 docs/ja-JP)
@@ -43,7 +41,7 @@ docs/ko/  (或 docs/ko-KR)
 
 每个翻译文件**必须**携带 YAML frontmatter，包含 `lang` 字段：
 
-```yaml
+```yaml title="翻译文件 frontmatter"
 ---
 title: 文档标题
 lang: zh-CN
@@ -58,10 +56,12 @@ lang: zh-CN
 
 ### Verification
 
-```bash
-uv sync
-mkdocs build --clean-site
-mkdocs serve   # http://localhost:8000/
+```bash title="构建并预览文档"
+# 构建全部 4 种语言
+uv run --group docs python scripts/build-docs.py
+
+# 为开发预览单个语言
+uv run --group docs python -m zensical serve --config-file zensical.toml --dirty
 ```
 
 ### Troubleshooting
@@ -71,4 +71,4 @@ mkdocs serve   # http://localhost:8000/
 | 语言切换器未显示 | 确保 `i18n` 块已配置，且每个 `alternate_languages.lang` 有对应的目录 |
 | 链接损坏 | 确认内部链接使用相对路径（无语言前缀） |
 | Frontmatter 未解析 | 确保每个文件以 `---` 开头，后跟 Markdown 内容 |
-| 搜索无法按语言区分 | 使用 `mkdocs build --clean-site` 重新构建 |
+| 搜索无法按语言区分 | 使用 `uv run --group docs python scripts/build-docs.py` 重新构建 |

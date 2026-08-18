@@ -10,6 +10,21 @@ status: new
 
 pyrs-yaml defines custom exception classes for error handling.
 
+```mermaid title="Exception hierarchy"
+classDiagram
+    ValueError <|-- YamlParseError
+    ValueError <|-- YamlSerializeError
+    ValueError <|-- YamlValidateError
+    ValueError <|-- YamlEditError
+    ValueError <|-- YamlPathError
+    ValueError <|-- YamlDuplicateKeyError
+    ValueError <|-- YamlMaxDepthError
+    ValueError <|-- YamlTagError
+    TypeError <|-- YamlTypeError
+    Exception <|-- YamlDocumentError
+    Exception <|-- YamlTagSkip
+```
+
 ### YamlParseError
 
 Raised when YAML parsing fails.
@@ -23,7 +38,7 @@ class YamlParseError(ValueError):
 
 **Example:**
 
-```python
+```python title="Try/except example"
 try:
     doc = pyrs_yaml.parse("invalid: yaml: [")
 except pyrs_yaml.YamlParseError as e:
@@ -50,9 +65,9 @@ class YamlSerializeError(ValueError):
 
 **Example:**
 
-```python
+```python title="Try/except example"
 try:
-    yaml_str = pyrs_yaml.safe_dump(some_unsupported_type)
+    data = pyrs_yaml.safe_dump(complex_object)
 except pyrs_yaml.YamlSerializeError as e:
     print(f"Serialize error: {e}")
 ```
@@ -70,7 +85,7 @@ class YamlTypeError(TypeError):
 
 **Example:**
 
-```python
+```python title="Try/except example"
 try:
     pyrs_yaml.parse(123)  # Expected str or bytes
 except pyrs_yaml.YamlTypeError as e:
@@ -176,7 +191,7 @@ class YamlDuplicateKeyError(ValueError):
 
 **Example:**
 
-```python
+```python title="Try/except example"
 try:
     pyrs_yaml.parse("key: 1\nkey: 2")
 except pyrs_yaml.YamlDuplicateKeyError as e:
@@ -196,7 +211,7 @@ class YamlMaxDepthError(ValueError):
 
 **Example:**
 
-```python
+```python title="Try/except example"
 try:
     pyrs_yaml.parse("a:\n  b:\n    c:\n      ...", max_depth=2)
 except pyrs_yaml.YamlMaxDepthError as e:
@@ -218,6 +233,12 @@ class YamlTagError(ValueError):
 
 Sentinel exception raised by a tag handler to skip a node. The parser moves to the next node instead of raising an error. This is not a real error — it is an intentional control-flow signal.
 
+!!! info "Control-flow sentinel"
+    `YamlTagSkip` is not a real error. It is a signal for tag handlers
+    to delegate to the next handler in the chain. Raising it from a
+    handler passes control to the next handler (or falls through to
+    the default).
+
 ```python
 class YamlTagSkip(Exception):
     """Tag handler skip sentinel (inherits from Exception)."""
@@ -227,7 +248,7 @@ class YamlTagSkip(Exception):
 
 **Example:**
 
-```python
+```python title="Skip handler example"
 @pyrs_yaml.register_tag("!skip_me")
 def handler(node):
     raise pyrs_yaml.YamlTagSkip
@@ -254,7 +275,7 @@ All error messages include contextual information:
 
 Error messages can be localized:
 
-```python
+```python title="Localized error messages"
 pyrs_yaml.set_language("zh-CN")
 
 try:
@@ -266,7 +287,7 @@ except pyrs_yaml.YamlParseError as e:
 
 ### Best Practices
 
-```python
+```python title="Safe load helper"
 import pyrs_yaml
 
 

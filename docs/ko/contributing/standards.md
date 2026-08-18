@@ -23,7 +23,7 @@ pyrs-yaml에 기여할 때 다음 표준을 따르세요.
 - 실패할 수 있는 함수에 `PyResult<T>` 사용
 - 특정 오류를 특정 Python 예외 타입으로 매핑
 
-```rust
+```rust title="올바른 오류 처리"
 // 올바름
 let content = std::fs::read_to_string(path)
     .map_err(|e| YamlParseError::new_err(format_i18n_error("file-read-error", ...)))?;
@@ -39,7 +39,7 @@ let content = std::fs::read_to_string(path).unwrap();
 - doc 주석은 영어로 작성 (Rust 관례)
 - 내부 함수의 doc 주석은 중국어 허용
 
-```rust
+```rust title="Doc 주석 템플릿"
 /// YAML 문자열을 CustomNode AST로 파싱합니다.
 ///
 /// # Arguments
@@ -62,7 +62,7 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 
 모든 `#[pyfunction]`와 `#[pymethods]`는 `#[pyo3(signature = "...")]`로 타입을 주석해야 합니다：
 
-```rust
+```rust title="PyO3 시그니처 주석"
 #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core") -> "YamlDocument")]
 fn parse(...) -> YamlDocument { ... }
 ```
@@ -72,7 +72,7 @@ fn parse(...) -> YamlDocument { ... }
 - 부하가 높은 계산 중 `py.detach()` 또는 `py.allow_threads()`를 사용하여 GIL 해제
 - 파일 I/O 또는 파싱 중 GIL을 절대 보유하지 마세요
 
-```rust
+```rust title="GIL 해제"
 // 올바름
 let ast = py.detach(|| {
     parser::parse_with_options(&yaml_str, resolve_merges)
@@ -96,7 +96,7 @@ let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 - docstring은 Google 스타일
 - 코드 검사 설정은 `ruff.toml`에 있음（`ruff check` 실행）
 
-```python
+```python title="Python docstring 스타일"
 def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlDocument:
     """YAML 문자열을 YamlDocument로 파싱합니다.
 

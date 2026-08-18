@@ -14,7 +14,7 @@ This guide will get you up and running with pyrs-yaml in minutes.
 
 The package is not yet on PyPI. Install from source:
 
-```bash
+```bash title="Install from source"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
@@ -22,7 +22,7 @@ uv run --frozen maturin develop --release
 
 ### 2. Parse YAML
 
-```python
+```python title="Parse and access values"
 import pyrs_yaml
 
 # Parse a YAML string
@@ -40,7 +40,7 @@ print(doc.get("email"))  # alice@example.com
 
 ### 3. Convert to Python Objects
 
-```python
+```python title="safe_load for native types"
 # Use safe_load for PyYAML-compatible behavior
 data = pyrs_yaml.safe_load("""
 users:
@@ -57,7 +57,7 @@ print(type(data["users"]))  # <class 'list'>
 
 ### 4. Serialize to YAML
 
-```python
+```python title="safe_dump a dict"
 # Convert a Python dict back to YAML
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432, "name": "mydb"}})
 print(yaml_str)
@@ -69,7 +69,7 @@ print(yaml_str)
 
 ### 5. Preserve Formatting (Round-Trip)
 
-```python
+```python title="Comments and anchors survive round-trip"
 # The key advantage of pyrs-yaml
 original = """
 # Server configuration
@@ -89,17 +89,22 @@ api:
 """
 
 # Parse and re-serialize — comments and anchors preserved
-doc = pyrs_yaml.parse(original)
-output = doc.to_yaml()
+doc = pyrs_yaml.parse(original)  # (1)!
+output = doc.to_yaml()  # (2)!
 
 # The output matches the input (or is semantically equivalent)
-assert "# Server configuration" in output
-assert "&db" in output
+assert "# Server configuration" in output  # (3)!
+assert "&db" in output  # (4)!
 ```
+
+1. :material-arrow-down: `parse` builds a `YamlDocument` that retains every comment, anchor, tag, and style.
+2. :material-arrow-down: `to_yaml` re-serializes from the AST, preserving formatting — no string manipulation.
+3. :material-arrow-down: Standalone comments survive round-trip intact.
+4. :material-arrow-down: Anchors (`&db`) and aliases (`*db`) and merge keys (`<<`) are preserved.
 
 ### 6. Edit In Place
 
-```python
+```python title="Edit by JSONPath"
 # Edit a parsed document without losing comments or formatting
 doc = pyrs_yaml.parse("""
 server:
@@ -123,7 +128,7 @@ See the [In-Place Editing guide](guides/editing.md) for the full API.
 
 ### 7. Read YAML from Files
 
-```python
+```python title="parse_file"
 # Parse a YAML file directly
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
@@ -131,7 +136,7 @@ print(doc.get("name"))
 
 ### 8. Multiple Documents
 
-```python
+```python title="parse_all_docs"
 # Parse multiple YAML documents
 yaml_text = """
 ---
@@ -149,52 +154,54 @@ print(docs[0].get("name"))  # config1
 
 ### 9. NumPy ndarray Support
 
-pyrs-yaml can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
+??? note "Optional: requires NumPy"
 
-```python
-import numpy as np
-import pyrs_yaml
+    pyrs-yaml can serialize `numpy.ndarray` objects directly to YAML. This is useful for saving scientific data, model weights, or any multi-dimensional array to a human-readable format.
 
-# 1-D array
-arr = np.array([1, 2, 3], dtype="int32")
-yaml_str = pyrs_yaml.safe_dump(arr)
-print(yaml_str)
-# - 1
-# - 2
-# - 3
+    ```python
+    import numpy as np
+    import pyrs_yaml
 
-# 2-D matrix
-matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
-yaml_str = pyrs_yaml.safe_dump(matrix)
-print(yaml_str)
-# -
-#   - 1.0
-#   - 2.0
-# -
-#   - 3.0
-#   - 4.0
+    # 1-D array
+    arr = np.array([1, 2, 3], dtype="int32")
+    yaml_str = pyrs_yaml.safe_dump(arr)
+    print(yaml_str)
+    # - 1
+    # - 2
+    # - 3
 
-# Round-trip preserves values
-loaded = pyrs_yaml.safe_load(yaml_str)
-assert loaded == [[1.0, 2.0], [3.0, 4.0]]
-```
+    # 2-D matrix
+    matrix = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float64")
+    yaml_str = pyrs_yaml.safe_dump(matrix)
+    print(yaml_str)
+    # -
+    #   - 1.0
+    #   - 2.0
+    # -
+    #   - 3.0
+    #   - 4.0
 
-#### Supported NumPy dtypes
+    # Round-trip preserves values
+    loaded = pyrs_yaml.safe_load(yaml_str)
+    assert loaded == [[1.0, 2.0], [3.0, 4.0]]
+    ```
 
-| NumPy dtype | YAML output | Notes |
-|-------------|-------------|-------|
-| `int8/16/32/64` | Plain integer | Quoted if negative |
-| `uint8/16/32/64` | Plain integer | — |
-| `float32/64` | Plain float | Quoted if negative |
-| `complex64/128` | `(re+imj)` string | No native YAML complex type |
-| `bool` | `true` / `false` | — |
+    #### Supported NumPy dtypes
+
+    | NumPy dtype | YAML output | Notes |
+    |-------------|-------------|-------|
+    | `int8/16/32/64` | Plain integer | Quoted if negative |
+    | `uint8/16/32/64` | Plain integer | — |
+    | `float32/64` | Plain float | Quoted if negative |
+    | `complex64/128` | `(re+imj)` string | No native YAML complex type |
+    | `bool` | `true` / `false` | — |
 
 ### 10. Manipulate Metadata (comment, anchor, tag)
 
 YAML metadata — comments, anchors, and tags — survive round-trip by default;
 you can also **read and edit them** through the `Node` API:
 
-```python
+```python title="Set comment, anchor, tag"
 doc = pyrs_yaml.parse("key: value")
 node = doc.node().find("$.key")
 
@@ -213,7 +220,7 @@ print(doc.to_yaml())
 
 Metadata can be removed as well:
 
-```python
+```python title="Remove metadata"
 node.remove_comment()
 node.remove_anchor()
 node.remove_tag()
@@ -225,7 +232,7 @@ pyrs-yaml preserves the **scalar style** (plain, single-quoted, double-quoted,
 literal, folded), **flow style** (block vs. JSON-like `{}`/`[]`), and
 **chomping indicator** (strip, clip, keep) of every node:
 
-```python
+```python title="Style, flow, chomping"
 doc = pyrs_yaml.parse("key: value")
 
 # Switch scalar style to single-quoted
@@ -244,39 +251,41 @@ print(doc.to_yaml())  # text: |-\n  hello\n  world
 
 ### 12. Validate with a Schema
 
-Define a YAML Schema Language document with structural rules and validate
-data against it:
+??? note "Optional: YAML Schema Language"
 
-```python
-import pyrs_yaml
+    Define a YAML Schema Language document with structural rules and validate
+    data against it:
 
-schema = """\
-name: app
-extends: core
-validate:
-  - path: $.port
-    type: int
-    required: true
-  - path: $.tags[*]
-    type: str
-"""
+    ```python
+    import pyrs_yaml
 
-# Valid document passes
-pyrs_yaml.validate_against_schema(
-    "port: 8080\ntags: [web, api]\n", schema
-)
+    schema = """\
+    name: app
+    extends: core
+    validate:
+      - path: $.port
+        type: int
+        required: true
+      - path: $.tags[*]
+        type: str
+    """
 
-# Invalid document raises YamlValidateError with every failure
-pyrs_yaml.validate_against_schema("port: abc\n", schema)
-# YamlValidateError: $.port: expected int but got Str("abc")
-```
+    # Valid document passes
+    pyrs_yaml.validate_against_schema(
+        "port: 8080\ntags: [web, api]\n", schema
+    )
+
+    # Invalid document raises YamlValidateError with every failure
+    pyrs_yaml.validate_against_schema("port: abc\n", schema)
+    # YamlValidateError: $.port: expected int but got Str("abc")
+    ```
 
 ### 13. Deep Editing (batch, sort, move, copy)
 
 Edit multiple paths at once, sort keys, relocate subtrees, and deep-copy
 values — all while preserving every other YAML feature:
 
-```python
+```python title="Batch, sort, move, copy"
 # Batch set with wildcards
 doc = pyrs_yaml.parse("items:\n  - active: true\n  - active: true\n")
 doc.set_many({"$.items[*].active": False})
@@ -302,8 +311,12 @@ copied = node.copy()  # returns dict/list/scalar, detached from doc
 
 ### Next Steps
 
-- **[Features](features.md)** — Explore all supported YAML features
-- **[Parsing Guide](guides/parsing.md)** — Advanced parsing options
-- **[In-Place Editing](guides/editing.md)** — Edit documents without losing formatting
-- **[Configuration Management Tutorial](guides/tutorial-config-management.md)** — End-to-end walkthrough
-- **[API Reference](api/reference.md)** — Complete API documentation
+<div class="grid cards" markdown>
+
+- :material-feature-search: **[Features](features.md)** — Explore all supported YAML features
+- :material-file-search: **[Parsing Guide](guides/parsing.md)** — Advanced parsing options
+- :material-pencil: **[In-Place Editing](guides/editing.md)** — Edit documents without losing formatting
+- :material-book-open-variant: **[Configuration Management Tutorial](guides/tutorial-config-management.md)** — End-to-end walkthrough
+- :material-code-braces: **[API Reference](api/reference.md)** — Complete API documentation
+
+</div>

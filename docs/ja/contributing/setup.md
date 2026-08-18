@@ -18,7 +18,7 @@ pyrs-yaml に貢献するための環境をセットアップします。
 
 ## クローンとインストール
 
-```bash
+```bash title="クローンしてインストール"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 
@@ -32,7 +32,7 @@ uv run --frozen maturin develop --release
 
 ## インストールの確認
 
-```bash
+```bash title="インストールの確認"
 # Rust テストの実行
 cargo test
 
@@ -45,7 +45,7 @@ cargo bench
 
 ## プロジェクト構造
 
-```text
+```text title="プロジェクト構成"
 pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 モジュール定義
@@ -69,14 +69,14 @@ pyrs-yaml/
 
 ## ビルドコマンド
 
-```bash
+```bash title="ビルドコマンド"
 # Python 拡張のビルド
 uv run --frozen maturin develop --release
 
 # wheel のビルド
-maturin build --release --out dist
+uv run --frozen maturin build --release --out dist
 
-# デバッグ情報付きでビルド
+# デバッグ情報付きビルド
 cargo build
 ```
 

@@ -17,20 +17,20 @@ pyrs-yaml 内置了在导入时自动注册的插件：
 
 | 标签 | Python 类型 | 说明 |
 |-----|-------------|------|
-| `!timestamp` | `datetime` | ISO 8601 日期时间往返 |
-| `!date` | `datetime.date` | ISO 8601 日期（不含时间） |
-| `!time` | `datetime.time` | ISO 8601 时间（不含日期） |
-| `!uuid` | `uuid.UUID` | UUID 字符串 ↔ 对象 |
-| `!decimal` | `decimal.Decimal` | 任意精度十进制数 |
-| `!binary` | `bytes` | Base64 编码的二进制数据 |
-| `!regex` | `re.Pattern` | 已编译的正则表达式 |
-| `!set` | `str` | YAML 集合（无键映射） |
+| :material-clock-outline: `!timestamp` | `datetime` | ISO 8601 日期时间往返 |
+| :material-calendar: `!date` | `datetime.date` | ISO 8601 日期（不含时间） |
+| :material-clock: `!time` | `datetime.time` | ISO 8601 时间（不含日期） |
+| :material-binary: `!uuid` | `uuid.UUID` | UUID 字符串 ↔ 对象 |
+| :material-decimal: `!decimal` | `decimal.Decimal` | 任意精度十进制数 |
+| :material-binary: `!binary` | `bytes` | Base64 编码的二进制数据 |
+| :material-language-python: `!regex` | `re.Pattern` | 已编译的正则表达式 |
+| :material-format-list-bulleted: `!set` | `str` | YAML 集合（无键映射） |
 
 ### 创建自定义类型
 
 继承 `CustomType` 并实现 `from_yaml()` 和 `to_yaml()`：
 
-```python
+```python title="CustomType 子类"
 import pyrs_yaml
 from datetime import datetime
 
@@ -51,13 +51,13 @@ class TimestampType(pyrs_yaml.CustomType):
 
 **命令式：**
 
-```python
+```python title="命令式注册"
 pyrs_yaml.register_type("!timestamp", TimestampType())
 ```
 
 **装饰器形式：**
 
-```python
+```python title="装饰器注册"
 @pyrs_yaml.register_type("!timestamp")
 class TimestampType(pyrs_yaml.CustomType):
     ...
@@ -67,7 +67,7 @@ class TimestampType(pyrs_yaml.CustomType):
 
 **加载标签标量：**
 
-```python
+```python title="解析标签标量"
 doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
 val = doc.get("when")
 assert isinstance(val, datetime)
@@ -75,7 +75,7 @@ assert isinstance(val, datetime)
 
 **转储 Python 对象：**
 
-```python
+```python title="转储 Python 对象"
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
 # out 包含: ts: !timestamp 2026-08-11T10:30:00
@@ -85,14 +85,14 @@ out = pyrs_yaml.safe_dump(data)
 
 | 方法 | 说明 |
 |--------|------|
-| `can_parse(node)` | 此类型是否处理给定 AST 节点 |
-| `from_yaml(value)` | 将 YAML 字符串转换为 Python 对象 |
-| `to_yaml(obj)` | 将 Python 对象转换为 YAML 字符串 |
-| `validate(obj)` | 验证 Python 对象（返回 `bool`） |
+| :material-function: `can_parse(node)` | 此类型是否处理给定 AST 节点 |
+| :material-swap-horizontal: `from_yaml(value)` | 将 YAML 字符串转换为 Python 对象 |
+| :material-swap-horizontal: `to_yaml(obj)` | 将 Python 对象转换为 YAML 字符串 |
+| :material-check-decagram: `validate(obj)` | 验证 Python 对象（返回 `bool`） |
 
 ### 示例：UUID 类型
 
-```python
+```python title="uuid_plugin.py"
 import uuid
 import pyrs_yaml
 
@@ -112,3 +112,10 @@ pyrs_yaml.register_type("!uuid", UUIDType())
 doc = pyrs_yaml.parse("id: !uuid 550e8400-e29b-41d4-a716-446655440000")
 assert isinstance(doc.get("id"), uuid.UUID)
 ```
+
+---
+
+### 另请参阅
+
+- [插件开发](plugin-development.md) — 构建你自己的自定义类型
+- [自定义 Schema](custom-schema.md) — 控制标量类型解析

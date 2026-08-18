@@ -20,7 +20,7 @@ Set up your environment to contribute to pyrs-yaml.
 
 ### Clone and Install
 
-```bash
+```bash title="Clone and install"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 
@@ -34,7 +34,7 @@ maturin develop --release
 
 ### Verify Installation
 
-```bash
+```bash title="Verify installation"
 # Run Rust tests
 cargo test
 
@@ -47,7 +47,7 @@ cargo bench
 
 ### Project Structure
 
-```text
+```text title="Project layout"
 pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 module entry
@@ -85,7 +85,7 @@ pyrs-yaml/
 
 ### Build Commands
 
-```bash
+```bash title="Build commands"
 # Build Python extension (with uv lockfile)
 uv run --frozen maturin develop --release
 

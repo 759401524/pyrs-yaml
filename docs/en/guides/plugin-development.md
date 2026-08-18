@@ -18,7 +18,7 @@ it, and (optionally) exposes an entry point for automatic discovery.
 
 **Minimal plugin:**
 
-```python
+```python title="my_timestamp_plugin.py"
 # my_timestamp_plugin.py
 import pyrs_yaml
 from datetime import datetime
@@ -43,7 +43,7 @@ def register():
 To make your plugin auto-discoverable, add an entry point in your
 `pyproject.toml`:
 
-```toml
+```toml title="pyproject.toml"
 [project.entry-points."pyrs_yaml.plugins"]
 mytimestamp = "my_timestamp_plugin:register"
 ```
@@ -58,10 +58,10 @@ The `CustomType` base class provides four methods:
 
 | Method | Purpose | Default |
 |--------|---------|---------|
-| `can_parse(node)` | Gate: should this type handle the node? | `True` (tag match sufficient) |
-| `from_yaml(value)` | Convert YAML string → Python object | Returns `value` unchanged |
-| `to_yaml(obj)` | Convert Python object → YAML string | Returns `str(obj)` |
-| `validate(obj)` | Validate the Python object | Returns `True` |
+| :material-function: `can_parse(node)` | Gate: should this type handle the node? | `True` (tag match sufficient) |
+| :material-swap-horizontal: `from_yaml(value)` | Convert YAML string → Python object | Returns `value` unchanged |
+| :material-swap-horizontal: `to_yaml(obj)` | Convert Python object → YAML string | Returns `str(obj)` |
+| :material-check-decagram: `validate(obj)` | Validate the Python object | Returns `True` |
 
 **`python_type`** — Optional attribute. When set, the serializer uses
 `isinstance(obj, python_type)` to detect objects that should be serialized
@@ -69,7 +69,7 @@ with this type's `to_yaml()` method.
 
 ### Example: UUID Plugin
 
-```python
+```python title="uuid_plugin.py"
 import uuid
 import pyrs_yaml
 
@@ -90,7 +90,7 @@ def register():
 
 ### Example: `can_parse` Gate
 
-```python
+```python title="Conditional parse gate"
 class ConditionalType(pyrs_yaml.CustomType):
     python_type = str
 
@@ -107,7 +107,7 @@ class ConditionalType(pyrs_yaml.CustomType):
 
 ### Validation
 
-```python
+```python title="Validated int type"
 class PositiveIntType(pyrs_yaml.CustomType):
     python_type = int
 
@@ -126,7 +126,7 @@ class PositiveIntType(pyrs_yaml.CustomType):
 
 ### Testing Your Plugin
 
-```python
+```python title="test_my_plugin.py"
 def test_my_plugin():
     # Clear any built-in types that might conflict
     pyrs_yaml.clear_type_handlers()
@@ -141,16 +141,24 @@ def test_my_plugin():
 
 ### Publishing
 
-1. Package your plugin as a Python package (wheel)
-2. Include the `pyproject.toml` entry point
-3. Publish to PyPI
-4. Users install it and it's auto-discovered
+1. :material-package-variant-closed: Package your plugin as a Python package (wheel)
+2. :material-file-code: Include the `pyproject.toml` entry point
+3. :material-rocket-launch: Publish to PyPI
+4. :material-magnify: Users install it and it's auto-discovered
 
 ### API Reference
 
 | Function | Description |
 |----------|-------------|
-| `register_type(name, handler)` | Register a `CustomType` instance |
-| `clear_type_handlers()` | Remove all registered types |
-| `remove_type(name)` | Remove a specific type |
-| `validate_custom_types(obj)` | Validate an object against all registered types |
+| :material-code-braces: `register_type(name, handler)` | Register a `CustomType` instance |
+| :material-close: `clear_type_handlers()` | Remove all registered types |
+| :material-close: `remove_type(name)` | Remove a specific type |
+| :material-check-decagram: `validate_custom_types(obj)` | Validate an object against all registered types |
+
+---
+
+### See Also
+
+- [Community Plugins](community-plugins.md) — Built-in types you can extend
+- [Custom Schemas](custom-schema.md) — Define type resolution rules
+- [Tag Registry API](../api/reference.md#tag-registry) — `register_tag()` and related functions

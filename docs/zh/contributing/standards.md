@@ -23,7 +23,7 @@ status: new
 - 可能失败的函数使用 `PyResult<T>`
 - 将特定错误映射到特定 Python 异常类型
 
-```rust
+```rust title="正确与错误的错误处理"
 // 正确
 let content = std::fs::read_to_string(path)
     .map_err(|e| YamlParseError::new_err(format_i18n_error("file-read-error", ...)))?;
@@ -39,7 +39,7 @@ let content = std::fs::read_to_string(path).unwrap();
 - 文档注释用英文编写（Rust 惯例）
 - 内部函数的文档注释可以用中文
 
-```rust
+```rust title="文档注释模板"
 /// 将 YAML 字符串解析为 CustomNode AST。
 ///
 /// # Arguments
@@ -62,7 +62,7 @@ pub fn parse(yaml: &str) -> Result<CustomNode, String> {
 
 每个 `#[pyfunction]` 和 `#[pymethods]` 必须使用 `#[pyo3(signature = "...")]` 标注类型：
 
-```rust
+```rust title="PyO3 签名注解"
 #[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core") -> "YamlDocument")]
 fn parse(...) -> YamlDocument { ... }
 ```
@@ -72,7 +72,7 @@ fn parse(...) -> YamlDocument { ... }
 - 在耗时计算期间使用 `py.detach()` 或 `py.allow_threads()` 释放 GIL
 - 在文件 I/O 或解析期间绝不持有 GIL
 
-```rust
+```rust title="GIL 释放"
 // 正确
 let ast = py.detach(|| {
     parser::parse_with_options(&yaml_str, resolve_merges)
@@ -96,7 +96,7 @@ let ast = parser::parse_with_options(&yaml_str, resolve_merges)?;
 - 文档字符串使用 Google 风格
 - 代码检查配置在 `ruff.toml` 中（运行 `ruff check`）
 
-```python
+```python title="Python 文档字符串风格"
 def parse(yaml: str, resolve_merges: bool = True, schema: str = "core") -> YamlDocument:
     """将 YAML 字符串解析为 YamlDocument。
 

@@ -27,7 +27,7 @@ and `hello` to `"hello"`. Sometimes you want different behavior:
 A schema is defined as a YAML file with a `rules` list. Each rule has a
 `pattern` (regex) and a `type` (one of `null`, `bool`, `int`, `float`, `str`).
 
-```yaml
+```yaml title="hex_schema.yaml"
 # hex_schema.yaml
 name: hex
 extends: core
@@ -46,15 +46,15 @@ Supported types and their values:
 
 | `type` | Python result | Example |
 |--------|--------------|---------|
-| `null` | `None` | `~` |
-| `bool` | `True` / `False` | `true`, `yes`, `on` |
-| `int` | `int` | `42`, `0xFF`, `0o77`, `0b1010` |
-| `float` | `float` | `3.14`, `1e10` |
-| `str` | `str` | `2026-08-11` |
+| :material-null: `null` | `None` | `~` |
+| :material-toggle-switch: `bool` | `True` / `False` | `true`, `yes`, `on` |
+| :material-numeric: `int` | `int` | `42`, `0xFF`, `0o77`, `0b1010` |
+| :material-decimal: `float` | `float` | `3.14`, `1e10` |
+| :material-format-text: `str` | `str` | `2026-08-11` |
 
 ### Registering and Using a Schema
 
-```python
+```python title="Register and use a schema"
 import pyrs_yaml
 
 # Register from a YAML string
@@ -80,7 +80,7 @@ assert d["addr"] == 31
 
 `load_schema()` reads a schema definition from a file path and registers it:
 
-```python
+```python title="Load schema from file"
 # hex.yaml contains the schema YAML shown above
 pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 ```
@@ -89,7 +89,7 @@ pyrs_yaml.load_schema("hex", "path/to/hex.yaml")
 
 `list_schemas()` returns all registered schema names (built-in + custom):
 
-```python
+```python title="List registered schemas"
 print(pyrs_yaml.list_schemas())
 # ['failsafe', 'json', 'core', 'yaml1.1', 'hex', ...]
 ```
@@ -100,7 +100,7 @@ A `validate` section in a schema definition adds structural checks on top of
 scalar type resolution. Use it with `validate_against_schema()` to check a
 document before using it:
 
-```yaml
+```yaml title="Schema with validation"
 name: app
 extends: core
 validate:
@@ -141,7 +141,7 @@ pyrs_yaml.validate_against_schema("port: abc\n", schema)
 
 Instead of registering separately, pass a dict directly:
 
-```python
+```python title="Inline dict schema"
 d = pyrs_yaml.safe_load(
     "addr: 0xFF",
     schema={
@@ -154,37 +154,37 @@ assert d["addr"] == 255
 
 ### Common Patterns
 
-#### Keep dates as strings
+=== "Keep dates as strings"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^\\d{4}-\\d{2}-\\d{2}$", "type": "str"}],
+    }
+    ```
 
-#### Add YAML 1.1 booleans
+=== "Add YAML 1.1 booleans"
 
-```python
-schema = {
-    "extends": "core",
-    "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
-}
-```
+    ```python
+    schema = {
+        "extends": "core",
+        "rules": [{"pattern": "^(yes|no|Yes|No|YES|NO)$", "type": "bool"}],
+    }
+    ```
 
-#### Strict JSON mode
+=== "Strict JSON mode"
 
-```python
-schema = {
-    "extends": "failsafe",
-    "rules": [
-        {"pattern": "^null$|^~$", "type": "null"},
-        {"pattern": "^(true|false)$", "type": "bool"},
-        {"pattern": "^-?\\d+$", "type": "int"},
-        {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
-    ],
-}
-```
+    ```python
+    schema = {
+        "extends": "failsafe",
+        "rules": [
+            {"pattern": "^null$|^~$", "type": "null"},
+            {"pattern": "^(true|false)$", "type": "bool"},
+            {"pattern": "^-?\\d+$", "type": "int"},
+            {"pattern": "^-?\\d+\\.\\d+$", "type": "float"},
+        ],
+    }
+    ```
 
 ### Performance
 

@@ -11,11 +11,20 @@ status: new
 
 `YAML.load_stream(file_obj)` 및 `YAML.load_stream_file(path)`는 YAML 이벤트를 지연 반복합니다——메모리 사용량은 O(앵커 수 + 64KB 청크)로 입력 크기와 무관합니다. 100MB+ 파일에 적합합니다.
 
-```python
+```python title="스트림 로드"
 from pyrs_yaml import YAML
 
 for event in YAML().load_stream_file("huge.yaml"):
     print(event["type"], event["value"])
+```
+
+## 작동 방식
+
+```mermaid title="스트리밍 파싱 아키텍처"
+graph LR
+    A["YAML 파일 / 문자열"] --> B["지연 이벤트 반복자<br/>O(앵커 + 64KB 청크)"]
+    B --> C["이벤트 dict<br/>type, value, style, anchor, tag, line, column"]
+    C --> D["소비자<br/>스트리밍 처리"]
 ```
 
 ## parse_stream과의 차이점
@@ -23,7 +32,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 | 동작 | load_stream | parse_stream |
 | --- | --- | --- |
 | 메모리 | O(앵커 + 청크) | O(입력) |
-| 주석 | 출력하지 않음 | 출력함 |
+| 주석 | :material-close: 출력하지 않음 | :material-check: 출력함 |
 | 앵커 이름 | `anchor_{id}` | 원래 이름 |
 | 오류 메시지 | 소스 스니펫 없음 | 소스 스니펫 있음 |
 | 빈 입력 | `[stream_start, stream_end]` | `[]` |
@@ -38,7 +47,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 `YAML().dump_stream(file_obj, iterable, ...)` 및 `YAML().dump_file(path, iterable, ...)`
 는 문서를 하나씩 직렬화하며 상수 메모리(O(단일 문서 + 64KB 청크))를 사용합니다.
 
-```python
+```python title="스트림 덤프"
 from pyrs_yaml import YAML
 
 buf = io.StringIO()
@@ -73,7 +82,7 @@ YAML().dump_stream(buf, [{"a": 1}, {"b": 2}])
 
 `StreamIterator` 클래스는 `parse_stream()` 및 `YAML().load_stream()` / `YAML().load_stream_file()`에서 생성됩니다. 반복자 프로토콜을 구현하며 이벤트 dict를 한 번에 하나씩 생성합니다.
 
-```python
+```python title="이벤트 반복"
 from pyrs_yaml import parse_stream
 
 iterator = parse_stream("key: value\n---\na: 1")
@@ -85,7 +94,7 @@ for event in iterator:
 
 `StreamIterator`는 `__iter__`(`self` 반환)와 `__next__`를 구현합니다:
 
-```python
+```python title="반복자 프로토콜"
 def __iter__() -> StreamIterator: ...
 def __next__() -> dict | None: ...
 ```
@@ -123,3 +132,10 @@ def __next__() -> dict | None: ...
 #### `load_stream`과의 차이점
 
 `parse_stream()`은 주석을 생성하고 원래 앵커 이름을 유지하는 `StreamIterator`를 반환합니다. `YAML().load_stream()` / `YAML().load_stream_file()`은 기본값이 다른 `YamlStream`을 반환합니다(위 비교표 참조).
+
+---
+
+### 참고 항목
+
+- [YAML 파싱](parsing.md) — 표준 문서 파싱
+- [스트리밍 API 참조](../api/yaml-instance.md) — YAML 인스턴스의 스트림 메서드

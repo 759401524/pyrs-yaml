@@ -10,14 +10,14 @@ status: new
 
 `YAML` 클래스는 `typ`, `schema`, `max_depth`, `allow_duplicate_keys` 설정을 통해 파싱 동작을 제어하는 구성된 파서 인스턴스입니다. 라운드트립(`rt`), 안전(safe), 전체(full) YAML 파싱 모드를 지원합니다.
 
-### Overview
+### 개요
 
 ```python
 class YAML:
     """Configured YAML parser instance (rt / safe / full)."""
 ```
 
-### Constructor
+### 생성자
 
 #### `__init__()`
 
@@ -58,7 +58,7 @@ yaml_safe = YAML(typ="safe")
 yaml_full = YAML(typ="full", schema="yaml1.1")
 ```
 
-### Methods
+### 메서드
 
 #### `parse()`
 
@@ -226,171 +226,171 @@ for doc in docs:
     print(doc.root_type())
 ```
 
-#### `dump_stream()`
+#### `dump_stream()` / `dump_file()`
 
-스트리밍 writer: Python 객체를 파일류 객체로 직렬화하며 상수 메모리를 사용합니다.
+스트리밍 writer: Python 객체를 파일류 객체 또는 디스크 파일로 직렬화하며 상수 메모리를 사용합니다.
 
-```python
-dump_stream(
-    file_obj: Any,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+=== "메모리 내"
 
-**매개변수:**
+    ```python
+    dump_stream(
+        file_obj: Any,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-| 매개변수 | 타입 | 기본값 | 설명 |
-|-----------|------|---------|-------------|
-| `file_obj` | `Any` | — | `write(str)` 메서드가 있는 쓰기 가능한 파일류 객체입니다. |
-| `iterable` | `Any` | — | 직렬화할 Python 객체의 이터러블입니다. |
-| `explicit_start` | `bool` | `False` | 각 문서 시작에 `---`를 출력할지 여부입니다. |
-| `explicit_end` | `bool` | `False` | 각 문서 끝에 `...`를 출력할지 여부입니다. |
-| `sort_keys` | `bool` | `False` | 매핑 키를 알파벳순으로 정렬할지 여부입니다. |
+    **매개변수:**
 
-**발생:** `file_obj`에 `write` 메서드가 없으면 `YamlTypeError`가 발생합니다.
+    | 매개변수 | 타입 | 기본값 | 설명 |
+    |-----------|------|---------|-------------|
+    | `file_obj` | `Any` | — | `write(str)` 메서드가 있는 쓰기 가능한 파일류 객체입니다. |
+    | `iterable` | `Any` | — | 직렬화할 Python 객체의 이터러블입니다. |
+    | `explicit_start` | `bool` | `False` | 각 문서 시작에 `---`를 출력할지 여부입니다. |
+    | `explicit_end` | `bool` | `False` | 각 문서 끝에 `...`를 출력할지 여부입니다. |
+    | `sort_keys` | `bool` | `False` | 매핑 키를 알파벳순으로 정렬할지 여부입니다. |
 
-**참고:**
+    **발생:** `file_obj`에 `write` 메서드가 없으면 `YamlTypeError`가 발생합니다.
 
-- 상수 메모리를 사용합니다 — 전체 출력을 메모리에 보관할 필요가 없습니다.
-- Rust 직렬화 단계 동안 GIL이 해제됩니다.
-- 이터러블의 각 항목은 별도의 YAML 문서가 됩니다.
+    **참고:**
 
-**예제:**
+    - 상수 메모리를 사용합니다 — 전체 출력을 메모리에 보관할 필요가 없습니다.
+    - Rust 직렬화 단계 동안 GIL이 해제됩니다.
+    - 이터러블의 각 항목은 별도의 YAML 문서가 됩니다.
 
-```python
-import io
-from pyrs_yaml import YAML
+    **예제:**
 
-yaml = YAML()
-buf = io.StringIO()
-yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
-print(buf.getvalue())
-# ---
-# a: 1
-# ---
-# b: 2
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `dump_file()`
+    yaml = YAML()
+    buf = io.StringIO()
+    yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
+    print(buf.getvalue())
+    # ---
+    # a: 1
+    # ---
+    # b: 2
+    ```
 
-스트리밍 writer: Python 객체를 디스크의 파일로 직접 직렬화합니다.
+=== "파일 경로"
 
-```python
-dump_file(
-    path: str,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+    ```python
+    dump_file(
+        path: str,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-**매개변수:**
+    **매개변수:**
 
-| 매개변수 | 타입 | 기본값 | 설명 |
-|-----------|------|---------|-------------|
-| `path` | `str` | — | 쓸 파일 경로입니다. |
-| `iterable` | `Any` | — | 직렬화할 Python 객체의 이터러블입니다. |
-| `explicit_start` | `bool` | `False` | 각 문서 시작에 `---`를 출력할지 여부입니다. |
-| `explicit_end` | `bool` | `False` | 각 문서 끝에 `...`를 출력할지 여부입니다. |
-| `sort_keys` | `bool` | `False` | 매핑 키를 알파벳순으로 정렬할지 여부입니다. |
+    | 매개변수 | 타입 | 기본값 | 설명 |
+    |-----------|------|---------|-------------|
+    | `path` | `str` | — | 쓸 파일 경로입니다. |
+    | `iterable` | `Any` | — | 직렬화할 Python 객체의 이터러블입니다. |
+    | `explicit_start` | `bool` | `False` | 각 문서 시작에 `---`를 출력할지 여부입니다. |
+    | `explicit_end` | `bool` | `False` | 각 문서 끝에 `...`를 출력할지 여부입니다. |
+    | `sort_keys` | `bool` | `False` | 매핑 키를 알파벳순으로 정렬할지 여부입니다. |
 
-**발생:** 파일을 만들거나 쓸 수 없으면 `IOError`가 발생합니다.
+    **발생:** 파일을 만들거나 쓸 수 없으면 `IOError`가 발생합니다.
 
-**참고:**
+    **참고:**
 
-- Rust의 `std::fs::File`을 직접 사용합니다 — I/O 중 GIL 차단이 없습니다.
-- 이터러블의 각 항목은 별도의 YAML 문서가 됩니다.
-- 상수 메모리를 사용하며 대용량 출력에 적합합니다.
+    - Rust의 `std::fs::File`을 직접 사용합니다 — I/O 중 GIL 차단이 없습니다.
+    - 이터러블의 각 항목은 별도의 YAML 문서가 됩니다.
+    - 상수 메모리를 사용하며 대용량 출력에 적합합니다.
 
-**예제:**
+    **예제:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
-```
+    yaml = YAML()
+    yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
+    ```
 
-#### `load_stream()`
+#### `load_stream()` / `load_stream_file()`
 
-지연 이벤트 이터레이터: 파일류 객체에서 점진적으로 읽습니다.
+지연 이벤트 이터레이터: 파일류 객체 또는 파일 경로에서 점진적으로 읽습니다.
 
-```python
-load_stream(file_obj: Any) -> YamlStream
-```
+=== "메모리 내"
 
-**매개변수:**
+    ```python
+    load_stream(file_obj: Any) -> YamlStream
+    ```
 
-| 매개변수 | 타입 | 설명 |
-|-----------|------|-------------|
-| `file_obj` | `Any` | `str` 또는 `bytes`를 반환하는 `read()` 메서드가 있는 읽기 가능한 파일류 객체입니다. |
+    **매개변수:**
 
-**반환값:** 파싱된 이벤트 dict를 지연 생성하는 `YamlStream` 이터레이터입니다.
+    | 매개변수 | 타입 | 설명 |
+    |-----------|------|-------------|
+    | `file_obj` | `Any` | `str` 또는 `bytes`를 반환하는 `read()` 메서드가 있는 읽기 가능한 파일류 객체입니다. |
 
-**발생:** `file_obj`에 `read` 메서드가 없으면 `YamlTypeError`가 발생합니다.
+    **반환값:** 파싱된 이벤트 dict를 지연 생성하는 `YamlStream` 이터레이터입니다.
 
-**참고:**
+    **발생:** `file_obj`에 `read` 메서드가 없으면 `YamlTypeError`가 발생합니다.
 
-- 스트림은 점진적으로 파싱됩니다 — 전체 파일을 메모리에 로드할 필요가 없습니다.
-- 각 생성된 이벤트는 `"type"`, `"key"`, `"value"`, `"start_mark"`, `"end_mark"` 같은 키를 가진 `dict`입니다.
-- `__next__`가 `None`을 반환하면 스트림이 끝납니다.
+    **참고:**
 
-**예제:**
+    - 스트림은 점진적으로 파싱됩니다 — 전체 파일을 메모리에 로드할 필요가 없습니다.
+    - 각 생성된 이벤트는 `"type"`, `"key"`, `"value"`, `"start_mark"`, `"end_mark"` 같은 키를 가진 `dict`입니다.
+    - `__next__`가 `None`을 반환하면 스트림이 끝납니다.
 
-```python
-import io
-from pyrs_yaml import YAML
+    **예제:**
 
-yaml = YAML()
-buf = io.StringIO("key: value\n")
-stream = yaml.load_stream(buf)
-for event in stream:
-    if event is None:
-        break
-    print(event["type"])
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `load_stream_file()`
+    yaml = YAML()
+    buf = io.StringIO("key: value\n")
+    stream = yaml.load_stream(buf)
+    for event in stream:
+        if event is None:
+            break
+        print(event["type"])
+    ```
 
-지연 이벤트 이터레이터: 파일 경로에서 점진적으로 읽습니다.
+=== "파일 경로"
 
-```python
-load_stream_file(path: str) -> YamlStream
-```
+    ```python
+    load_stream_file(path: str) -> YamlStream
+    ```
 
-**매개변수:**
+    **매개변수:**
 
-| 매개변수 | 타입 | 설명 |
-|-----------|------|-------------|
-| `path` | `str` | 점진적으로 읽을 파일 경로입니다. |
+    | 매개변수 | 타입 | 설명 |
+    |-----------|------|-------------|
+    | `path` | `str` | 점진적으로 읽을 파일 경로입니다. |
 
-**반환값:** 파싱된 이벤트 dict를 지연 생성하는 `YamlStream` 이터레이터입니다.
+    **반환값:** 파싱된 이벤트 dict를 지연 생성하는 `YamlStream` 이터레이터입니다.
 
-**발생:** 파일을 열 수 없으면 `IOError`가 발생합니다.
+    **발생:** 파일을 열 수 없으면 `IOError`가 발생합니다.
 
-**참고:**
+    **참고:**
 
-- 버퍼링된 I/O와 함께 Rust의 `std::fs::File`을 사용합니다 — 읽기 중 GIL 차단이 없습니다.
-- 파일을 점진적으로 파싱하므로 대용량 YAML 파일에 이상적입니다.
+    - 버퍼링된 I/O와 함께 Rust의 `std::fs::File`을 사용합니다 — 읽기 중 GIL 차단이 없습니다.
+    - 파일을 점진적으로 파싱하므로 대용량 YAML 파일에 이상적입니다.
 
-**예제:**
+    **예제:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-stream = yaml.load_stream_file("large.yaml")
-for event in stream:
-    if event is None:
-        break
-    print(event)
-```
+    yaml = YAML()
+    stream = yaml.load_stream_file("large.yaml")
+    for event in stream:
+        if event is None:
+            break
+        print(event)
+    ```
 
-### Usage Examples
+### 사용 예제
 
 #### 구성된 인스턴스로 라운드트립 편집
 
@@ -443,7 +443,7 @@ for doc in docs:
 yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 ```
 
-### See Also
+### 참고 항목
 
 - [`YamlDocument`](yaml-document.md) — 라운드트립으로 편집 가능한 문서 객체
 - [`YamlStream`](reference.md#yamlstream) — 지연 이벤트 스트림 이터레이터

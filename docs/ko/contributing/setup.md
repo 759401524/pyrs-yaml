@@ -18,7 +18,7 @@ pyrs-yaml에 기여하기 위한 환경을 설정합니다.
 
 ## 클론 및 설치
 
-```bash
+```bash title="클론 및 설치"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 
@@ -32,7 +32,7 @@ uv run --frozen maturin develop --release
 
 ## 설치 확인
 
-```bash
+```bash title="설치 확인"
 # Rust 테스트 실행
 cargo test
 
@@ -45,7 +45,7 @@ cargo bench
 
 ## 프로젝트 구조
 
-```text
+```text title="프로젝트 구조"
 pyrs-yaml/
 ├── src/
 │   ├── lib.rs              # PyO3 모듈 정의
@@ -69,7 +69,7 @@ pyrs-yaml/
 
 ## 빌드 명령어
 
-```bash
+```bash title="빌드 명령어"
 # Python 확장 빌드
 uv run --frozen maturin develop --release
 
