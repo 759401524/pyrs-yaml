@@ -11,7 +11,7 @@ status: new
 !!! tip "版本兼容"
     pyrs-yaml 以 ABI3 wheel 格式构建，单个 wheel 支持 Python 3.8 到 3.15，无需重新编译。
 
-## 核心函数
+## :material-code-braces: 核心函数
 
 ### `parse()`
 
@@ -90,7 +90,7 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-## PyYAML 兼容函数
+## :material-swap-horizontal: PyYAML 兼容函数
 
 ### `safe_load()`
 
@@ -138,7 +138,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-## 转换函数
+## :material-json: 转换函数
 
 ### `from_dict()`
 
@@ -164,7 +164,7 @@ from_json(json_str: str) -> str
 dump_file(data: Any, path: str) -> None
 ```
 
-## Pydantic 集成
+## :material-pillar: Pydantic 集成
 
 ### `dump_pydantic()`
 
@@ -223,7 +223,7 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-## 标签注册表
+## :material-tag: 标签注册表
 
 ### `register_tag()`
 
@@ -263,7 +263,7 @@ remove_tag(name: str) -> None
 clear_tag_handlers() -> None
 ```
 
-## YAML Schema Language {#yaml-schema-language}
+## :material-file-document: YAML Schema Language {#yaml-schema-language}
 
 定义自定义 Schema，控制纯标量如何解析为 Python 类型。
 
@@ -324,7 +324,7 @@ d = pyrs_yaml.safe_load(
 - 内置 Core Schema 仍使用零成本 `match` 分发（不受影响）
 - **文件 I/O** — `load_schema(name, path)` 从 YAML 文件加载 Schema；`list_schemas()` 返回所有已注册的 Schema
 
-## 社区插件 {#community-plugins}
+## :material-puzzle: 社区插件 {#community-plugins}
 
 定义自定义 YAML 节点类型，集成序列化和反序列化。
 
@@ -399,7 +399,7 @@ remove_type(name: str) -> None
 clear_type_handlers() -> None
 ```
 
-## 合规性
+## :material-check-decagram: 合规性
 
 ### `compliance_report()`
 
@@ -411,7 +411,7 @@ compliance_report() -> dict
 
 返回 YAML 测试套件的通过率及每个测试的结果。
 
-## 流式事件
+## :material-wave: 流式事件
 
 ### `parse_stream()`
 
@@ -435,7 +435,7 @@ for event in stream:
 
 参见 [`YamlStream`](yaml-instance.md) 了解完整的 API 详情。
 
-## 异步函数
+## :material-clock-fast: 异步函数
 
 使用 `asyncio.run_in_executor` 的异步 I/O 包装器。在事件循环上下文中不阻塞。
 
@@ -486,7 +486,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## Markdown Front Matter
+## :material-page-layout-body: Markdown Front Matter
 
 ### `read_markdown()`
 
@@ -506,7 +506,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-## i18n 函数
+## :material-translate: i18n 函数
 
 ### `set_language()`
 
@@ -550,7 +550,7 @@ BCP 47 语言协商。
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-## 异常
+## :material-bug: 异常
 
 - `YamlParseError` — YAML 解析错误（继承自 `ValueError`）
 - `YamlSerializeError` — YAML 序列化错误（继承自 `ValueError`）
@@ -562,7 +562,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 参见 [异常](exceptions.md) 页面了解完整详情。
 
-## 版本
+## :material-information: 版本
 
 ```python
 __version__ = "0.14.0"

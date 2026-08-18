@@ -11,7 +11,7 @@ status: new
 !!! tip "버전 호환성"
     pyrs-yaml은 ABI3 휠로 빌드되어 Python 3.8부터 3.15까지 단일 휠로 지원합니다.
 
-## 코어 함수
+## :material-code-braces: 코어 함수
 
 ### `parse()`
 
@@ -87,7 +87,7 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-## PyYAML 호환 함수
+## :material-swap-horizontal: PyYAML 호환 함수
 
 ### `safe_load()`
 
@@ -135,7 +135,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-## 변환 함수
+## :material-json: 변환 함수
 
 ### `from_dict()`
 
@@ -161,7 +161,7 @@ Python 객체를 YAML로 직렬화하여 파일에 씁니다. `dict`, `list` 또
 dump_file(data: Any, path: str) -> None
 ```
 
-## Pydantic 통합
+## :material-pillar: Pydantic 통합
 
 ### `dump_pydantic()`
 
@@ -220,7 +220,7 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-## 태그 레지스트리
+## :material-tag: 태그 레지스트리
 
 ### `register_tag()`
 
@@ -262,7 +262,7 @@ remove_tag(name: str) -> None
 clear_tag_handlers() -> None
 ```
 
-## YAML 스키마 언어 {#yaml-schema-language}
+## :material-file-document: YAML 스키마 언어 {#yaml-schema-language}
 
 사용자 정의 스키마를 정의하여 일반 스칼라가 Python 타입으로 해석되는 방식을 제어합니다.
 
@@ -323,7 +323,7 @@ d = pyrs_yaml.safe_load(
 - 내장 Core 스키마는 계속 제로 비용 `match` 디스패치 사용（영향 없음）
 - **파일 I/O** — `load_schema(name, path)`로 YAML 파일에서 스키마 로드; `list_schemas()`로 등록된 모든 스키마 반환
 
-## 커뮤니티 플러그인 {#community-plugins}
+## :material-puzzle: 커뮤니티 플러그인 {#community-plugins}
 
 사용자 정의 YAML 노드 타입을 정의하여 직렬화 및 역직렬화에 통합합니다.
 
@@ -398,7 +398,7 @@ remove_type(name: str) -> None
 clear_type_handlers() -> None
 ```
 
-## 컴플라이언스
+## :material-check-decagram: 컴플라이언스
 
 ### `compliance_report()`
 
@@ -410,7 +410,7 @@ compliance_report() -> dict
 
 YAML 테스트 스위트 통과율과 테스트별 결과를 반환합니다.
 
-## 스트리밍 이벤트
+## :material-wave: 스트리밍 이벤트
 
 ### `parse_stream()`
 
@@ -434,7 +434,7 @@ for event in stream:
 
 전체 API 세부 정보는 [`YamlStream`](yaml-instance.md)을 참조하세요.
 
-## 비동기 함수
+## :material-clock-fast: 비동기 함수
 
 `asyncio.run_in_executor`를 사용한 비동기 I/O 래퍼. 이벤트 루프 컨텍스트에서 논블로킹.
 
@@ -485,7 +485,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## Markdown Front Matter
+## :material-page-layout-body: Markdown Front Matter
 
 ### `read_markdown()`
 
@@ -505,7 +505,7 @@ Markdown 문자열에서 YAML Front Matter를 추출합니다.
 read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-## i18n 함수
+## :material-translate: i18n 함수
 
 ### `set_language()`
 
@@ -549,7 +549,7 @@ BCP 47 언어 협상.
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-## 예외
+## :material-bug: 예외
 
 - `YamlParseError` — YAML 파싱 오류 (`ValueError` 상속)
 - `YamlSerializeError` — YAML 직렬화 오류 (`ValueError` 상속)
@@ -561,7 +561,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 자세한 내용은 [예외](exceptions.md) 페이지를 참조하세요.
 
-## 버전
+## :material-information: 버전
 
 ```python
 __version__ = "0.14.0"

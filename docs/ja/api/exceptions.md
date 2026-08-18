@@ -8,6 +8,21 @@ status: new
 
 pyrs-yaml はエラーハンドリング用にカスタム例外クラスを定義しています。
 
+```mermaid title="例外階層"
+classDiagram
+    ValueError <|-- YamlParseError
+    ValueError <|-- YamlSerializeError
+    ValueError <|-- YamlValidateError
+    ValueError <|-- YamlEditError
+    ValueError <|-- YamlPathError
+    ValueError <|-- YamlDuplicateKeyError
+    ValueError <|-- YamlMaxDepthError
+    ValueError <|-- YamlTagError
+    TypeError <|-- YamlTypeError
+    Exception <|-- YamlDocumentError
+    Exception <|-- YamlTagSkip
+```
+
 ## YamlParseError
 
 YAML パースに失敗した場合にスローされます。
@@ -211,6 +226,11 @@ class YamlTagError(ValueError):
 ## YamlTagSkip
 
 タグハンドラがノードをスキップするために送出するセンチネル例外。エラーを発生させる代わりに、パーサーは次のノードに移動します。これは実際のエラーではなく、意図的な制御フローシグナルです。
+
+!!! info "制御フローセンチネル"
+    `YamlTagSkip` は実際のエラーではありません。タグハンドラがチェーン内の次のハンドラに
+    制御を委譲するためのシグナルです。ハンドラからこれをスローすると、
+    制御が次のハンドラに渡されます（またはデフォルトにフォールスルーします）。
 
 ```python
 class YamlTagSkip(Exception):

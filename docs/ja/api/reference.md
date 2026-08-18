@@ -11,7 +11,7 @@ status: new
 
 `pyrs_yaml` モジュールの完全な API リファレンス。
 
-## コア関数
+## :material-code-braces: コア関数
 
 ### `parse()`
 
@@ -87,7 +87,7 @@ parse_all_docs(yaml: str) -> list[YamlDocument]
 docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 ```
 
-## PyYAML 互換関数
+## :material-swap-horizontal: PyYAML 互換関数
 
 ### `safe_load()`
 
@@ -135,7 +135,7 @@ safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
 safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 ```
 
-## 変換関数
+## :material-json: 変換関数
 
 ### `from_dict()`
 
@@ -161,7 +161,7 @@ Python オブジェクトを YAML にシリアライズしてファイルに書�
 dump_file(data: Any, path: str) -> None
 ```
 
-## Pydantic 統合
+## :material-pillar: Pydantic 統合
 
 ### `dump_pydantic()`
 
@@ -220,7 +220,7 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
-## タグレジストリ
+## :material-tag: タグレジストリ
 
 ### `register_tag()`
 
@@ -260,7 +260,7 @@ remove_tag(name: str) -> None
 clear_tag_handlers() -> None
 ```
 
-## YAML スキーマ言語 {#yaml-schema-language}
+## :material-file-document: YAML スキーマ言語 {#yaml-schema-language}
 
 カスタムスキーマを定義して、プレーンスカラーが Python 型にどのように解決されるかを制御します。
 
@@ -321,7 +321,7 @@ d = pyrs_yaml.safe_load(
 - 組み込み Core スキーマは引き続きゼロコスト `match` ディスパッチを使用（影響なし）
 - **ファイル I/O** — `load_schema(name, path)` で YAML ファイルからスキーマを読み込み；`list_schemas()` で登録済みの全スキーマを取得
 
-## コミュニティプラグイン {#community-plugins}
+## :material-puzzle: コミュニティプラグイン {#community-plugins}
 
 カスタム YAML ノードタイプを定義して、シリアライズとデシリアライズに統合します。
 
@@ -396,7 +396,7 @@ remove_type(name: str) -> None
 clear_type_handlers() -> None
 ```
 
-## コンプライアンス
+## :material-check-decagram: コンプライアンス
 
 ### `compliance_report()`
 
@@ -408,7 +408,7 @@ compliance_report() -> dict
 
 YAML テストスイートの合格率とテストごとの結果を返します。
 
-## ストリーミングイベント
+## :material-wave: ストリーミングイベント
 
 ### `parse_stream()`
 
@@ -432,7 +432,7 @@ for event in stream:
 
 完全な API の詳細は [`YamlStream`](yaml-instance.md) を参照してください。
 
-## 非同期関数
+## :material-clock-fast: 非同期関数
 
 `asyncio.run_in_executor` を使用した非同期 I/O ラッパー。イベントループコンテキストではノンブロッキング。
 
@@ -483,7 +483,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## Markdown Front Matter
+## :material-page-layout-body: Markdown Front Matter
 
 ### `read_markdown()`
 
@@ -503,7 +503,7 @@ Markdown 文字列から YAML Front Matterを抽出します。
 read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
 ```
 
-## i18n 関数
+## :material-translate: i18n 関数
 
 ### `set_language()`
 
@@ -547,7 +547,7 @@ BCP 47 言語ネゴシエーション。
 negotiate_language(user_locales: list[str], default: str = "en") -> str
 ```
 
-## 例外
+## :material-bug: 例外
 
 - `YamlParseError` — YAML パースエラー (`ValueError` を継承)
 - `YamlSerializeError` — YAML シリアライズエラー (`ValueError` を継承)
@@ -559,7 +559,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 
 詳細は [例外](exceptions.md) ページを参照してください。
 
-## バージョン
+## :material-information: バージョン
 
 ```python
 __version__ = "0.14.0"
