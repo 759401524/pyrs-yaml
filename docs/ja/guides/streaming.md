@@ -20,7 +20,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 
 ## 動作の仕組み
 
-```mermaid
+```mermaid title="ストリーム解析のアーキテクチャ"
 graph LR
     A["YAML ファイル / 文字列"] --> B["遅延イベントイテレータ<br/>O(アンカー + 64KB チャンク)"]
     B --> C["イベント dict<br/>type, value, style, anchor, tag, line, column"]

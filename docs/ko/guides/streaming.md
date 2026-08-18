@@ -20,7 +20,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 
 ## 작동 방식
 
-```mermaid
+```mermaid title="스트리밍 파싱 아키텍처"
 graph LR
     A["YAML 파일 / 문자열"] --> B["지연 이벤트 반복자<br/>O(앵커 + 64KB 청크)"]
     B --> C["이벤트 dict<br/>type, value, style, anchor, tag, line, column"]

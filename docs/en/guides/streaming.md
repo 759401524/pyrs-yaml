@@ -26,7 +26,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 
 ### How It Works
 
-```mermaid
+```mermaid title="Streaming parse architecture"
 graph LR
     A["YAML file / string"] --> B["Lazy event iterator<br/>O(anchors + 64KB chunk)"]
     B --> C["Event dicts<br/>type, value, style, anchor, tag, line, column"]

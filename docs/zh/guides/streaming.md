@@ -20,7 +20,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 
 ## 工作原理
 
-```mermaid
+```mermaid title="流式解析架构"
 graph LR
     A["YAML 文件 / 字符串"] --> B["惰性事件迭代器<br/>O(锚点数 + 64KB 块)"]
     B --> C["事件字典<br/>type, value, style, anchor, tag, line, column"]
