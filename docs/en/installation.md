@@ -16,17 +16,25 @@ status: new
 | :material-monitor: **Platform** | Linux, macOS, Windows |
 | :material-hammer-wrench: **Build** | Rust toolchain (for source builds only) |
 
+### Install from PyPI
+
+The package is published on PyPI. Install with pip:
+
+```bash title="Install from PyPI"
+pip install pyrs-yaml
+```
+
+The package is built as an **ABI3 wheel**, meaning a single wheel works across Python 3.8 through 3.15 — no recompilation needed.
+
 ### Install from Source
 
-The package is not yet published on PyPI. To install from source:
+For development or the latest unreleased changes:
 
 ```bash title="Install from source"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
-
-The package is built as an **ABI3 wheel**, meaning a single wheel works across Python 3.8 through 3.15 — no recompilation needed.
 
 ### Free-Threaded Python (cp314t)
 

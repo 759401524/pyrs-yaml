@@ -12,12 +12,10 @@ status: new
 
 ### 1. 설치
 
-패키지는 아직 PyPI에 게시되지 않았습니다. 소스에서 설치:
+PyPI에서 설치:
 
-```bash title="소스에서 설치"
-git clone https://github.com/759401524/pyrs-yaml.git
-cd pyrs-yaml
-uv run --frozen maturin develop --release
+```bash title="PyPI에서 설치"
+pip install pyrs-yaml
 ```
 
 ### 2. YAML 파싱

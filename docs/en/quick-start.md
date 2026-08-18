@@ -12,12 +12,10 @@ This guide will get you up and running with pyrs-yaml in minutes.
 
 ### 1. Install
 
-The package is not yet on PyPI. Install from source:
+Install pyrs-yaml from PyPI:
 
-```bash title="Install from source"
-git clone https://github.com/759401524/pyrs-yaml.git
-cd pyrs-yaml
-uv run --frozen maturin develop --release
+```bash title="Install from PyPI"
+pip install pyrs-yaml
 ```
 
 ### 2. Parse YAML

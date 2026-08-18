@@ -10,10 +10,10 @@ status: new
 
 ## 1. インストール
 
-パッケージはまだ PyPI に掲載されていません。ソースからインストール：
+PyPI からインストール：
 
-```bash title="ソースからインストール"
-uv run --frozen maturin develop --release
+```bash title="PyPI からインストール"
+pip install pyrs-yaml
 ```
 
 ## 2. YAML のパース

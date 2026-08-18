@@ -13,11 +13,8 @@ status: new
 
 ## 环境搭建
 
-```bash title="从源码安装"
-# Install pyrs-yaml (requires Rust toolchain)
-git clone https://github.com/759401524/pyrs-yaml.git
-cd pyrs-yaml
-uv run --frozen maturin develop --release
+```bash title="从 PyPI 安装"
+pip install pyrs-yaml
 ```
 
 ## 1. 配置文件

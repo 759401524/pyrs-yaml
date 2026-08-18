@@ -14,17 +14,25 @@ status: new
 | :material-monitor: **平台** | Linux、macOS、Windows |
 | :material-hammer-wrench: **构建** | Rust 工具链（仅源码构建需要） |
 
-## 从源码安装
+### 从 PyPI 安装
 
-该包尚未发布到 PyPI。从源码安装：
+该包已发布到 PyPI。使用 pip 安装：
+
+```bash title="从 PyPI 安装"
+pip install pyrs-yaml
+```
+
+该包以 **ABI3 wheel** 格式构建，单个 wheel 支持 Python 3.8 到 3.15 — 无需重新编译。
+
+### 从源码安装
+
+用于开发或获取最新未发布更改：
 
 ```bash title="从源码安装"
 git clone https://github.com/759401524/pyrs-yaml.git
 cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
-
-包以 **ABI3 wheel** 格式构建，单个 wheel 支持 Python 3.8 到 3.15 — 无需重新编译。
 
 ## 自由线程 Python (cp314t)
 

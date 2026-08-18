@@ -13,11 +13,8 @@ status: new
 
 ## 설정
 
-```bash title="소스에서 설치"
-# Install pyrs-yaml (requires Rust toolchain)
-git clone https://github.com/759401524/pyrs-yaml.git
-cd pyrs-yaml
-uv run --frozen maturin develop --release
+```bash title="PyPI에서 설치"
+pip install pyrs-yaml
 ```
 
 ## 1. 구성 파일

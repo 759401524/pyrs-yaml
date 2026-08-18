@@ -12,12 +12,10 @@ status: new
 
 ### 1. 安装
 
-该包尚未发布到 PyPI。从源码安装：
+从 PyPI 安装 pyrs-yaml：
 
-```bash title="从源码安装"
-git clone https://github.com/759401524/pyrs-yaml.git
-cd pyrs-yaml
-uv run --frozen maturin develop --release
+```bash title="从 PyPI 安装"
+pip install pyrs-yaml
 ```
 
 ### 2. 解析 YAML
