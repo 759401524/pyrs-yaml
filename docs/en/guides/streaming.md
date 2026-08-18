@@ -17,11 +17,20 @@ status: new
 events lazily — memory usage is O(anchors + 64KB chunk), independent of input
 size. Suitable for 100MB+ files.
 
-```python
+```python title="Load a stream"
 from pyrs_yaml import YAML
 
 for event in YAML().load_stream_file("huge.yaml"):
     print(event["type"], event["value"])
+```
+
+### How It Works
+
+```mermaid
+graph LR
+    A["YAML file / string"] --> B["Lazy event iterator<br/>O(anchors + 64KB chunk)"]
+    B --> C["Event dicts<br/>type, value, style, anchor, tag, line, column"]
+    C --> D["Consumer<br/>streaming processing"]
 ```
 
 ### Differences from parse_stream
@@ -29,7 +38,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 | Behavior | load_stream | parse_stream |
 | --- | --- | --- |
 | Memory | O(anchors + chunk) | O(input) |
-| Comments | Not emitted | Emitted |
+| Comments | :material-close: Not emitted | :material-check: Emitted |
 | Anchor names | `anchor_{id}` | Original names |
 | Errors | No source snippet | Source snippet |
 | Empty input | `[stream_start, stream_end]` | `[]` |
@@ -47,7 +56,7 @@ and does **not** close the file object you passed in.
 serialize documents one at a time using constant memory (O(single-doc + 64KB chunk)),
 independent of the total number of documents.
 
-```python
+```python title="Dump a stream"
 from pyrs_yaml import YAML
 
 buf = io.StringIO()
@@ -84,7 +93,7 @@ Pass `sort_keys=True` to emit mapping keys in sorted order, matching
 
 The `StreamIterator` class is yielded by `parse_stream()` and `YAML().load_stream()` / `YAML().load_stream_file()`. It implements the iterator protocol and yields event dicts one at a time.
 
-```python
+```python title="Iterate events"
 from pyrs_yaml import parse_stream
 
 iterator = parse_stream("key: value\n---\na: 1")
@@ -96,7 +105,7 @@ for event in iterator:
 
 `StreamIterator` implements `__iter__` (returns `self`) and `__next__`:
 
-```python
+```python title="Iterator protocol"
 def __iter__() -> StreamIterator: ...
 def __next__() -> dict | None: ...
 ```

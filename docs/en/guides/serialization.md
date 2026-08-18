@@ -14,15 +14,17 @@ Convert Python objects and `YamlDocument` instances to YAML strings.
 
 #### YamlDocument.to_yaml()
 
-```python
+```python title="to_yaml()"
 doc = pyrs_yaml.parse("key: value")
-yaml_str = doc.to_yaml()
+yaml_str = doc.to_yaml()  # (1)!
 print(yaml_str)  # key: value\n
 ```
 
+1. `to_yaml()` serializes back with all comments, anchors, and formatting preserved.
+
 #### YamlDocument.to_yaml_with_options()
 
-```python
+```python title="to_yaml_with_options()"
 doc = pyrs_yaml.parse("key: value")
 
 # Custom indentation and document markers
@@ -36,7 +38,7 @@ yaml_str = doc.to_yaml_with_options(
 
 #### PyYAML-Compatible Serialization
 
-```python
+```python title="PyYAML-compatible serialization"
 # Dict to YAML string
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}})
 
@@ -48,38 +50,61 @@ yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 
 #### from_dict()
 
-```python
+```python title="from_dict()"
 yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
 #### from_json()
 
-```python
+```python title="from_json()"
 yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 ```
 
 #### dump_file()
 
-```python
+```python title="dump_file()"
 # Write Python object directly to YAML file
 pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
+
+### Output Formats
+
+pyrs-yaml can serialize to different destinations:
+
+=== "string"
+
+    ```python title="YAML string"
+    yaml_str = pyrs_yaml.safe_dump({"key": "value"})
+    ```
+
+=== "file"
+
+    ```python title="YAML file"
+    pyrs_yaml.dump_file({"key": "value"}, "output.yaml")
+    ```
+
+=== "document"
+
+    ```python title="YamlDocument"
+    doc = pyrs_yaml.parse("key: value")
+    yaml_str = doc.to_yaml()
+    ```
 
 ### Supported Input Types
 
 | Python Type | YAML Output |
 |-------------|-------------|
-| `dict` | YAML mapping |
-| `list` | YAML sequence |
-| `str` | Plain or quoted scalar |
-| `int` | Plain integer |
-| `float` | Plain float |
-| `bool` | `true` / `false` |
-| `None` | `null` |
+| :material-language-python: `dict` | YAML mapping |
+| :material-format-list-numbered: `list` | YAML sequence |
+| :material-format-text: `str` | Plain or quoted scalar |
+| :material-numeric: `int` | Plain integer |
+| :material-decimal: `float` | Plain float |
+| :material-toggle-switch: `bool` | `true` / `false` |
+| :material-null: `None` | `null` |
 
 ### Round-Trip Preservation
 
-```python
+```python title="Round-trip preservation"
 # The key advantage: formatting is preserved
 original = """
 # Server config

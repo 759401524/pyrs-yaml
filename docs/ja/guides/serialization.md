@@ -12,15 +12,17 @@ Python オブジェクトと `YamlDocument` インスタンスを YAML 文字列
 
 ### `YamlDocument.to_yaml()`
 
-```python
+```python title="to_yaml()"
 doc = pyrs_yaml.parse("key: value")
-yaml_str = doc.to_yaml()
+yaml_str = doc.to_yaml()  # (1)!
 print(yaml_str)  # key: value\n
 ```
 
+1. `to_yaml()` はすべてのコメント・アンカー・フォーマットを保持してシリアライズします。
+
 #### `YamlDocument.to_yaml_with_options()`
 
-```python
+```python title="to_yaml_with_options()"
 doc = pyrs_yaml.parse("key: value")
 
 # カスタムインデントとドキュメントマーカー
@@ -34,7 +36,7 @@ yaml_str = doc.to_yaml_with_options(
 
 #### PyYAML 互換シリアライゼーション
 
-```python
+```python title="PyYAML 互換シリアライゼーション"
 # dict を YAML 文字列に
 yaml_str = pyrs_yaml.safe_dump({"database": {"host": "localhost", "port": 5432}})
 
@@ -46,38 +48,61 @@ yaml_str = pyrs_yaml.safe_dumps({"key": "value"})
 
 ### `from_dict()`
 
-```python
+```python title="from_dict()"
 yaml_str = pyrs_yaml.from_dict({"name": "Alice", "age": 30, "tags": ["admin", "user"]})
 ```
 
 #### `from_json()`
 
-```python
+```python title="from_json()"
 yaml_str = pyrs_yaml.from_json('{"key": "value"}')
 ```
 
 #### `dump_file()`
 
-```python
+```python title="dump_file()"
 # Python オブジェクトを直接 YAML ファイルに書き込み
 pyrs_yaml.dump_file({"config": {"debug": True, "log_level": "info"}}, "output.yaml")
 ```
+
+## 出力形式
+
+pyrs-yaml は複数の出力先にシリアライズできます。
+
+=== "文字列"
+
+    ```python title="YAML 文字列"
+    yaml_str = pyrs_yaml.safe_dump({"key": "value"})
+    ```
+
+=== "ファイル"
+
+    ```python title="YAML ファイル"
+    pyrs_yaml.dump_file({"key": "value"}, "output.yaml")
+    ```
+
+=== "ドキュメント"
+
+    ```python title="YamlDocument"
+    doc = pyrs_yaml.parse("key: value")
+    yaml_str = doc.to_yaml()
+    ```
 
 ## サポートされる入力型
 
 | Python 型 | YAML 出力 |
 |-----------|----------|
-| `dict` | YAML マッピング |
-| `list` | YAML シーケンス |
-| `str` | Plain または引用符付きスカラー |
-| `int` | Plain 整数 |
-| `float` | Plain 浮動小数点 |
-| `bool` | `true` / `false` |
-| `None` | `null` |
+| :material-language-python: `dict` | YAML マッピング |
+| :material-format-list-numbered: `list` | YAML シーケンス |
+| :material-format-text: `str` | Plain または引用符付きスカラー |
+| :material-numeric: `int` | Plain 整数 |
+| :material-decimal: `float` | Plain 浮動小数点 |
+| :material-toggle-switch: `bool` | `true` / `false` |
+| :material-null: `None` | `null` |
 
 ## 往復保存
 
-```python
+```python title="往復保存"
 # 最大の利点：フォーマットが保持される
 original = """
 # サーバー設定

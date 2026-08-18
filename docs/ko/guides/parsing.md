@@ -12,34 +12,35 @@ status: new
 
 ### YAML 문자열 파싱
 
-```python
+```python title="문자열 파싱"
 import pyrs_yaml
 
-doc = pyrs_yaml.parse("key: value")
+doc = pyrs_yaml.parse("key: value")  # (1)!
 print(doc.get("key"))  # value
 ```
 
+1. `parse()`는 [`YamlDocument`](../api/yaml-document.md)를 반환하며 주석, 앵커, 서식을 보존합니다.
+
 #### 옵션 파싱
 
-```python
+```python title="옵션 파싱"
 # 병합 키 해석 비활성화 (<<: *alias를 그대로 유지)
 doc = pyrs_yaml.parse(yaml_text, resolve_merges=False)
 ```
 
 #### YAML 파일 파싱
 
-```python
+```python title="파일 파싱"
 doc = pyrs_yaml.parse_file("config.yaml")
 print(doc.get("name"))
 ```
 
 #### 여러 문서 파싱
 
-```python
+```python title="여러 문서 파싱"
 # --- 구분자로 분리된 YAML
 yaml_text = """
 ---
-
 name: first
 ---
 name: second
@@ -56,7 +57,7 @@ print(docs[1].get("name"))  # second
 !!! tip "PyYAML 호환 파싱"
     `safe_load()` / `safe_loads()`는 PyYAML과 동일한 API로 네이티브 Python 타입을 반환합니다.
 
-```python
+```python title="PyYAML 호환 파싱"
 # 네이티브 Python 타입을 반환 (dict, list, str, int 등)
 data = pyrs_yaml.safe_load("key: value")
 print(data)  # {'key': 'value'}
@@ -68,27 +69,27 @@ print(len(docs))  # 2
 
 ## 지원되는 입력 타입
 
-- `str` — 표준 YAML 문자열
-- `bytes` — 유효한 UTF-8 인코딩 바이트
-- `str` BOM 포함 — 올바르게 처리됨
+pyrs-yaml는 세 가지 입력 형태를 지원합니다.
+
+- :material-language-python: **`str`** — 표준 YAML 문자열
+- :material-binary: **`bytes`** — 유효한 UTF-8 인코딩 바이트
+- :material-format-list-bulleted: **`str` BOM 포함** — 올바르게 처리됨
 
 === "str"
 
-    ```python
+    ```python title="str 입력"
     doc = pyrs_yaml.parse("key: value")
     ```
 
 === "bytes"
 
-    ```python
+    ```python title="bytes 입력"
     doc = pyrs_yaml.parse(b"key: value")
     ```
 
-`str`과 `bytes` 모두 입력으로 허용됩니다.
-
 ## 오류 처리
 
-```python
+```python title="오류 처리"
 try:
     doc = pyrs_yaml.parse("invalid: yaml: [")
 except pyrs_yaml.YamlParseError as e:
@@ -101,10 +102,10 @@ pyrs-yaml는 모든 YAML 1.2 스칼라 타입을 올바르게 파싱합니다.
 
 | 타입 | 예시 | Python 타입 |
 |------|------|------------|
-| 문자열 | `hello` | `str` |
-| 정수 | `42`, `0x1A`, `0o77` | `int` |
-| 부동소수점 | `3.14`, `1.23e-4` | `float` |
-| 부울 | `true`, `false` | `bool` |
-| 널 | `null`, `~` | `None` |
-| 무한대 | `.inf`, `-.inf` | `float` |
-| NaN | `.nan` | `float` |
+| :material-format-text: 문자열 | `hello` | `str` |
+| :material-numeric: 정수 | `42`, `0x1A`, `0o77` | `int` |
+| :material-decimal: 부동소수점 | `3.14`, `1.23e-4` | `float` |
+| :material-toggle-switch: 부울 | `true`, `false` | `bool` |
+| :material-null: 널 | `null`, `~` | `None` |
+| :material-infinity: 무한대 | `.inf`, `-.inf` | `float` |
+| :material-alphabetical: NaN | `.nan` | `float` |

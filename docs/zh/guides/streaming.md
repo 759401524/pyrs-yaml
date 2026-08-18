@@ -11,11 +11,20 @@ status: new
 
 `YAML.load_stream(file_obj)` 和 `YAML.load_stream_file(path)` 惰性迭代 YAML 事件——内存用量为 O(锚点数 + 64KB 块)，与输入大小无关。适用于 100MB+ 的文件。
 
-```python
+```python title="加载流"
 from pyrs_yaml import YAML
 
 for event in YAML().load_stream_file("huge.yaml"):
     print(event["type"], event["value"])
+```
+
+## 工作原理
+
+```mermaid
+graph LR
+    A["YAML 文件 / 字符串"] --> B["惰性事件迭代器<br/>O(锚点数 + 64KB 块)"]
+    B --> C["事件字典<br/>type, value, style, anchor, tag, line, column"]
+    C --> D["消费者<br/>流式处理"]
 ```
 
 ## 与 parse_stream 的差异
@@ -23,7 +32,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 | 行为 | load_stream | parse_stream |
 | --- | --- | --- |
 | 内存 | O(锚点数 + 块) | O(输入) |
-| 注释 | 不产出 | 产出 |
+| 注释 | :material-close: 不产出 | :material-check: 产出 |
 | 锚点名称 | `anchor_{id}` | 原始名称 |
 | 错误消息 | 无源码片段 | 有源码片段 |
 | 空输入 | `[stream_start, stream_end]` | `[]` |
@@ -38,7 +47,7 @@ for event in YAML().load_stream_file("huge.yaml"):
 `YAML().dump_stream(file_obj, iterable, ...)` 和 `YAML().dump_file(path, iterable, ...)`
 逐文档序列化，使用常量内存（O(单文档 + 64KB 块)），与文档总数无关。
 
-```python
+```python title="写出流"
 from pyrs_yaml import YAML
 
 buf = io.StringIO()
@@ -73,7 +82,7 @@ YAML().dump_stream(buf, [{"a": 1}, {"b": 2}])
 
 `StreamIterator` 类由 `parse_stream()` 和 `YAML().load_stream()` / `YAML().load_stream_file()` 产出。它实现迭代器协议，一次产出一个事件字典。
 
-```python
+```python title="迭代事件"
 from pyrs_yaml import parse_stream
 
 iterator = parse_stream("key: value\n---\na: 1")
@@ -85,7 +94,7 @@ for event in iterator:
 
 `StreamIterator` 实现 `__iter__`（返回 `self`）和 `__next__`：
 
-```python
+```python title="迭代器协议"
 def __iter__() -> StreamIterator: ...
 def __next__() -> dict | None: ...
 ```
