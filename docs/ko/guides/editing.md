@@ -90,7 +90,7 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 #### `__setitem__` — 루트 슈가
 
-```python
+```python title="__setitem__ 문법 설탕"
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
@@ -144,7 +144,7 @@ doc.append("$.items", "d")
 
 동일한 작업을 `Node` 객체에서도 사용할 수 있습니다:
 
-```python
+```python title="Node append/insert"
 node = doc.node().find("$.items")
 node.append("d")
 node.insert(1, "x")
@@ -158,7 +158,7 @@ node.insert(1, "x")
 delete(path: str) -> None
 ```
 
-```python
+```python title="delete() 예제"
 doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3")
 doc.delete("$.b")
 print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
@@ -168,13 +168,13 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 
 #### `__delitem__` — 루트 슈가
 
-```python
+```python title="__delitem__ 문법 설탕"
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
 #### `Node.delete()`
 
-```python
+```python title="Node.delete()"
 node = doc.node().find("$.b")
 node.delete()
 ```
@@ -189,7 +189,7 @@ rename(path: str, new_key: str) -> None
 
 경로는 **매핑 키**를 가리켜야 합니다 (그 아래 값이 메타데이터를 유지합니다):
 
-```python
+```python title="rename() 예제"
 doc = pyrs_yaml.parse("old: value  # keep me\nnext: 1")
 doc.rename("$.old", "new")
 print(doc.to_yaml())  # new: value  # keep me\nnext: 1
@@ -201,7 +201,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 #### `Node.rename()`
 
-```python
+```python title="Node.rename()"
 node = doc.node().find("$.old")
 node.rename("new")
 ```
@@ -212,7 +212,7 @@ node.rename("new")
 
 ### 메타데이터 읽기
 
-```python
+```python title="노드 메타데이터 읽기"
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
@@ -226,7 +226,7 @@ node.tag      # "!!str"
 
 ### `Node.set_comment()` / `Node.remove_comment()`
 
-```python
+```python title="주석 설정/삭제"
 node.set_comment("new note")                   # 스탠드얼론: 노드 위의 줄
 node.set_comment("inline", standalone=False)   # 노드 뒤에 인라인
 node.remove_comment()
@@ -234,7 +234,7 @@ node.remove_comment()
 
 ### `Node.set_anchor()` / `Node.remove_anchor()`
 
-```python
+```python title="앵커 설정/삭제"
 node.set_anchor("cfg")
 node.remove_anchor()
 ```
@@ -243,7 +243,7 @@ node.remove_anchor()
 
 ### `Node.set_tag()` / `Node.remove_tag()`
 
-```python
+```python title="태그 설정/삭제"
 node.set_tag("!custom")                  # 로컬 태그
 node.set_tag("!!int")                    # 프라이머리 태그
 node.set_tag("!<tag:yaml.org,2002:str>") # verbatim 태그
@@ -257,7 +257,7 @@ node.remove_tag()
 
 `doc.node()`는 문서 루트의 `Node`를 반환합니다; `Node.find(path)`는 하위 트리로 이동합니다:
 
-```python
+```python title="Node 트리 탐색"
 node = doc.node()  # root node
 node = doc.node().find("$.db.host")  # navigate by path
 print(node.value)  # "localhost"
@@ -271,7 +271,7 @@ Node는 트리 API를 제공합니다: `node.parent`, `node.children`, `node.wal
 
 `doc.walk()`과 `doc.scalars()`는 **Rust 기반** 순회 메서드로, 전체 AST를 Python dict로 변환하지 않고 `Node` 객체를 생성합니다. `Node.walk()`와 달리 (내부적으로 `to_dict()`를 호출), 이 메서드들은 AST를 직접 순회합니다:
 
-```python
+```python title="Rust 백엔드 순회"
 doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
 
 # 모든 노드 탐색 (깊이 우선, 전위 순회)
@@ -295,7 +295,7 @@ for node in doc.scalars():
 
 기본적으로 `set()`은 경로에 중간 키가 없으면 `YamlEditError`를 발생시킵니다. `create_missing=True`를 사용하면 누락된 중간 매핑 키가 자동으로 생성됩니다:
 
-```python
+```python title="create_missing 예제"
 doc = pyrs_yaml.parse("a: 1\n")
 
 # create_missing 없이 — 오류 발생
@@ -321,7 +321,7 @@ print(doc.to_yaml())
 
 `find()`는 **읽기 지향적**이며 와일드카드와 딥 스캔을 지원합니다 — 경로가 여러 노드를 선택하면 리스트를 반환합니다:
 
-```python
+```python title="find() 와일드카드"
 doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
@@ -334,7 +334,7 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 여러 경로를 단일 스플라이스 버스트로 설정합니다. 경로에 와일드카드(`[*]`) 및 딥 스캔(`..`)을 포함할 수 있습니다 — 일치하는 모든 노드가 설정됩니다:
 
-```python
+```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
 doc.set_many({
     "$.items[*].pass": False,   # 와일드카드: 모든 항목
@@ -346,7 +346,7 @@ doc.set_many({
 
 매핑(기본값: 루트)의 키를 제자리에서 정렬합니다:
 
-```python
+```python title="sort_keys() 예제"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
 doc.sort_keys()           # 루트 매핑 정렬
 print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
@@ -356,7 +356,7 @@ print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
 
 하위 트리를 같은 문서의 새 경로로 이동합니다(복사 후 소스 삭제):
 
-```python
+```python title="Node.move() 예제"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
 print(doc.to_yaml())      # dst:\n  x: 1
@@ -364,7 +364,7 @@ print(doc.to_yaml())      # dst:\n  x: 1
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
-```python
+```python title="Node 내부 조사"
 node = doc.node().find("$.a.b")
 node.path                  # ('a', 'b') — 경로 세그먼트
 doc.node().find_first("$.items[*]")  # 첫 와일드카드 일치 또는 None
@@ -378,7 +378,7 @@ node.value_eq(other_node)  # 해석된 값 비교(참조 동일성 아님)
 
 별칭 노드 (`*name`)는 자체 경로가 설정될 때 **제자리에서 교체**됩니다:
 
-```python
+```python title="별칭 교체"
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
 doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
 
@@ -393,7 +393,7 @@ doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 
 
 `doc.get()` / `doc.to_dict()`는 **뷰**(해석된 값)를 반환합니다. 편집은 항상 **AST**에서 수행됩니다:
 
-```python
+```python title="뷰와 AST 예제"
 doc = pyrs_yaml.parse("on: yes")
 print(doc.get("on"))  # True   — view (core schema resolution)
 doc.set("$.on", "off")  #         — edits the AST scalar
@@ -406,7 +406,7 @@ print(doc.to_yaml())  # on: off — serialized verbatim, no re-resolution
 
 `Node`는 노드 생성 시 기록된 문서 **리비전**에 연결됩니다. 어떤 문서 편집(다른 노드를 통한 편집도 포함)이든 리비전을 올리므로, 이전에 얻은 노드는 오래된(stale) 상태가 됩니다:
 
-```python
+```python title="만료 노드 예제"
 node = doc.node().find("$.a")
 doc.set("$.b", 2)  # bumps the revision
 node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
@@ -426,7 +426,7 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 ## 전체 예시
 
-```python
+```python title="완전한 편집 예제"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -475,7 +475,7 @@ print(doc.to_yaml())
 
 ### 벤치마크
 
-```text
+```text title="벤치마크 결과"
 Benchmark                   Median
 serialize_10mb             17 ms
 edit_flush_set_10mb       110 ms

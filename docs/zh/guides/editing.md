@@ -90,13 +90,13 @@ doc.set("$", {"x": 1})  # replace the entire root
 
 #### `__setitem__` — 根节点语法糖
 
-```python
+```python title="__setitem__ 根语法糖"
 doc["b"] = 2  # equivalent to doc.set("$.b", 2)
 ```
 
 #### `Node.set_value()` — 通过 Node 编辑
 
-```python
+```python title="set_value()"
 node = doc.node().find("$.a.b")  # see "Working with Nodes"
 node.set_value(42)
 ```
@@ -136,7 +136,7 @@ doc.append("$.items", "d")
 
 `Node` 对象上提供相同的操作：
 
-```python
+```python title="Node append/insert"
 node = doc.node().find("$.items")
 node.append("d")
 node.insert(1, "x")
@@ -150,7 +150,7 @@ node.insert(1, "x")
 delete(path: str) -> None
 ```
 
-```python
+```python title="delete() 示例"
 doc = pyrs_yaml.parse("a: 1\nb: 2\nc: 3")
 doc.delete("$.b")
 print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
@@ -160,13 +160,13 @@ print(doc.to_yaml())  # a: 1\nc: 3\n — order preserved
 
 #### `__delitem__` — 根节点语法糖
 
-```python
+```python title="__delitem__ 根语法糖"
 del doc["b"]  # equivalent to doc.delete("$.b")
 ```
 
 #### `Node.delete()`
 
-```python
+```python title="Node.delete()"
 node = doc.node().find("$.b")
 node.delete()
 ```
@@ -181,7 +181,7 @@ rename(path: str, new_key: str) -> None
 
 路径必须指向一个**映射键**（其值位于该键下并保留元数据）：
 
-```python
+```python title="rename() 示例"
 doc = pyrs_yaml.parse("old: value  # keep me\nnext: 1")
 doc.rename("$.old", "new")
 print(doc.to_yaml())  # new: value  # keep me\nnext: 1
@@ -193,7 +193,7 @@ print(doc.to_yaml())  # new: value  # keep me\nnext: 1
 
 #### `Node.rename()`
 
-```python
+```python title="Node.rename()"
 node = doc.node().find("$.old")
 node.rename("new")
 ```
@@ -204,7 +204,7 @@ node.rename("new")
 
 ### 读取元数据
 
-```python
+```python title="读取节点元数据"
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
@@ -218,7 +218,7 @@ node.tag      # "!!str"
 
 #### `Node.set_comment()` / `Node.remove_comment()`
 
-```python
+```python title="设置/移除注释"
 node.set_comment("new note")                   # standalone：节点上方独占一行
 node.set_comment("inline", standalone=False)   # 节点后行内
 node.remove_comment()
@@ -226,7 +226,7 @@ node.remove_comment()
 
 #### `Node.set_anchor()` / `Node.remove_anchor()`
 
-```python
+```python title="设置/移除锚点"
 node.set_anchor("cfg")
 node.remove_anchor()
 ```
@@ -235,7 +235,7 @@ node.remove_anchor()
 
 #### `Node.set_tag()` / `Node.remove_tag()`
 
-```python
+```python title="设置/移除标签"
 node.set_tag("!custom")                  # 局部标签
 node.set_tag("!!int")                    # 主（!!）标签
 node.set_tag("!<tag:yaml.org,2002:str>") # verbatim 标签
@@ -249,7 +249,7 @@ node.remove_tag()
 
 `doc.node()` 返回文档根节点的 `Node`；`Node.find(path)` 导航到子树：
 
-```python
+```python title="Node 树导航"
 node = doc.node()  # root node
 node = doc.node().find("$.db.host")  # navigate by path
 print(node.value)  # "localhost"
@@ -278,7 +278,7 @@ print(node.root_type)  # "scalar" | "mapping" | "sequence" | "null"
 
 `doc.walk()` 和 `doc.scalars()` 是**Rust 后端**的遍历方法，直接产生 `Node` 对象，无需将整个 AST 转换为 Python 字典。与 `Node.walk()`（底层调用 `to_dict()`）不同，这些方法直接遍历 AST：
 
-```python
+```python title="Rust 后端遍历"
 doc = pyrs_yaml.parse("a:\n  b: 1\n  c: 2\n")
 
 # 遍历所有节点（深度优先，前序）
@@ -302,7 +302,7 @@ for node in doc.scalars():
 
 默认情况下，当路径中的中间键不存在时，`set()` 会抛出 `YamlEditError`。使用 `create_missing=True` 时，缺失的中间映射键会被自动创建：
 
-```python
+```python title="create_missing 示例"
 doc = pyrs_yaml.parse("a: 1\n")
 
 # 不使用 create_missing — 抛出异常
@@ -328,7 +328,7 @@ print(doc.to_yaml())
 
 `find()` 是**面向读取**的，支持通配符和深度扫描 — 当路径选中多个节点时返回列表：
 
-```python
+```python title="find() 通配符"
 doc.node().find("$.items[*]")  # all items of a sequence (list of Nodes)
 doc.node().find("$..timeout")  # deep search for any key named "timeout"
 ```
@@ -341,7 +341,7 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 在单次 splice 突发中设置多个路径。路径可包含通配符（`[*]`）和深度扫描（`..`）— 所有匹配节点都会被设置：
 
-```python
+```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
 doc.set_many({
     "$.items[*].pass": False,   # 通配符：所有项
@@ -353,7 +353,7 @@ doc.set_many({
 
 原地对映射（默认：根）的键进行排序：
 
-```python
+```python title="sort_keys() 示例"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
 doc.sort_keys()           # 排序根映射
 print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
@@ -363,7 +363,7 @@ print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
 
 将子树移动到同一文档中的新路径（复制后删除源）：
 
-```python
+```python title="Node.move() 示例"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
 print(doc.to_yaml())      # dst:\n  x: 1
@@ -371,7 +371,7 @@ print(doc.to_yaml())      # dst:\n  x: 1
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
-```python
+```python title="Node 内省"
 node = doc.node().find("$.a.b")
 node.path                  # ('a', 'b') — 路径段
 doc.node().find_first("$.items[*]")  # 第一个通配符匹配，无则 None
@@ -385,7 +385,7 @@ node.value_eq(other_node)  # 比较解析后的值（非引用同一性）
 
 当设置别名节点（`*name`）自身的路径时，它会被**原地**替换：
 
-```python
+```python title="别名替换"
 yaml = "defaults: &defaults\n  timeout: 30\nprod: *defaults\n"
 doc = pyrs_yaml.YAML(typ="safe").parse(yaml)  # resolve_merges=false keeps the alias node
 
@@ -400,7 +400,7 @@ doc.set("$.prod", {"timeout": 99})  # replaces the alias node — prod.timeout: 
 
 `doc.get()` / `doc.to_dict()` 返回**视图**（解析后的值）。编辑始终作用于 **AST**：
 
-```python
+```python title="视图与 AST 示例"
 doc = pyrs_yaml.parse("on: yes")
 print(doc.get("on"))  # True   — view (core schema resolution)
 doc.set("$.on", "off")  #         — edits the AST scalar
@@ -413,7 +413,7 @@ print(doc.to_yaml())  # on: off — serialized verbatim, no re-resolution
 
 `Node` 与文档的**修订号**绑定，修订号在节点创建时记录。任何文档编辑（即使通过其他节点）都会增加修订号，因此之前获取的节点会过期：
 
-```python
+```python title="过期节点示例"
 node = doc.node().find("$.a")
 doc.set("$.b", 2)  # bumps the revision
 node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
@@ -433,7 +433,7 @@ node.set_value(99)  # RuntimeWarning + YamlDocumentError (stale)
 
 ## 完整示例
 
-```python
+```python title="完整编辑示例"
 import pyrs_yaml
 
 doc = pyrs_yaml.parse("""
@@ -482,7 +482,7 @@ print(doc.to_yaml())
 
 ### 基准测试
 
-```text
+```text title="基准测试结果"
 Benchmark                   Median
 serialize_10mb             17 ms
 edit_flush_set_10mb       110 ms
