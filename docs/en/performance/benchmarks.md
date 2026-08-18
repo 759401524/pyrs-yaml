@@ -41,11 +41,11 @@ Performance benchmarks for pyrs-yaml, measured via CodSpeed CI (`pytest-codspeed
 
 | YAML Size | pyrs-yaml | PyYAML | ruamel.yaml | Speedup vs PyYAML |
 |-----------|-----------|--------|-------------|-------------------|
-| Small (~100 B) | 0.22 ms | 6.0 ms¹ | 13.7 ms¹ | **28×** |
-| Medium (~500 B) | 0.63 ms | 36.8 ms¹ | 84.2 ms¹ | **59×** |
-| Large (~2 KB) | 1.6 ms | 87.9 ms¹ | 191.0 ms¹ | **55×** |
+| Small (~100 B) | 0.22 ms | 6.0 ms[^1] | 13.7 ms[^1] | **28×** |
+| Medium (~500 B) | 0.63 ms | 36.8 ms[^1] | 84.2 ms[^1] | **59×** |
+| Large (~2 KB) | 1.6 ms | 87.9 ms[^1] | 191.0 ms[^1] | **55×** |
 
-¹ PyYAML/ruamel round-trip times are estimated as parse + serialize from the same benchmark run.
+[^1]: PyYAML/ruamel round-trip times are estimated as parse + serialize from the same benchmark run.
 
 ### Rust-Side Benchmarks (divan)
 
@@ -70,11 +70,11 @@ Measured at the Rust level (no Python overhead):
 
 ### Key Takeaways
 
-1. **pyrs-yaml parses 21–43× faster and serializes 55–177× faster than PyYAML**
-2. **pyrs-yaml is 48–100× faster at parsing and 123–371× faster at serializing than ruamel.yaml** while matching its round-trip features
-3. **Rust-side parsing** is extremely fast — small documents parse in ~86 µs
-4. **Serialization** is fast across all sizes — small documents serialize in ~8 µs
-5. **The speed advantage holds across all document sizes**
+1. :material-trending-up: **pyrs-yaml parses 21–43× faster and serializes 55–177× faster than PyYAML**
+2. :material-trending-up: **pyrs-yaml is 48–100× faster at parsing and 123–371× faster at serializing than ruamel.yaml** while matching its round-trip features
+3. :material-bolt: **Rust-side parsing** is extremely fast — small documents parse in ~86 µs
+4. :material-bolt: **Serialization** is fast across all sizes — small documents serialize in ~8 µs
+5. :material-chart-line: **The speed advantage holds across all document sizes**
 
 ### Notes
 

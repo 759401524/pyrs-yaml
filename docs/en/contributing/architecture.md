@@ -12,40 +12,30 @@ pyrs-yaml uses a modular architecture designed for performance and correctness.
 
 ### Overview
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│                     Python Layer                        │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │               pyrs_yaml module                       ││
-│  │  parse | safe_load | safe_dump | dump_file | ...    ││
-│  └─────────────────────┬───────────────────────────────┘│
-│                        │ PyO3 bindings                   │
-├────────────────────────▼─────────────────────────────────┤
-│                    Rust Layer                            │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │  src/py/ — PyO3 bindings + Python type conversion   ││
-│  │  • mod.rs — Module definition & exports              ││
-│  │  • python_types.rs — Python → CustomNode conversion ││
-│  │  • ndarray.rs — NumPy ndarray conversion            ││
-│  │  • stream_events.rs — Stream event types            ││
-│  └─────────────────────┬───────────────────────────────┘│
-│                        │                                 │
-│       ┌─────────────────┼────────────────────┐           │
-│       ▼                 ▼                    ▼           │
-│  ┌─────────┐    ┌───────────────┐    ┌──────────────┐    │
-│  │ ast.rs  │    │ parser/       │    │serializer.rs │    │
-│  │ Custom  │◄──►│ granit-parser │    │ to_yaml()    │    │
-│  │ Node    │    │ integration   │    │ to_yaml_*    │    │
-│  └─────────┘    └───────────────┘    └──────────────┘    │
-│       ▲                 ▲                                │
-│       └─────────────────┴────────────────────┘           │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Python["Python Layer"]
+        PYMOD["pyrs_yaml module<br/>parse | safe_load | safe_dump | dump_file | ..."]
+    end
+    subgraph Rust["Rust Layer"]
+        BIND["src/py/<br/>PyO3 bindings + type conversion"]
+        AST["ast.rs<br/>CustomNode AST"]
+        PARSER["parser/<br/>granit-parser integration"]
+        SER["serializer.rs<br/>to_yaml() / to_yaml_*"]
+        BIND --> AST
+        BIND --> PARSER
+        BIND --> SER
+        AST <--> PARSER
+        AST <--> SER
+    end
+    PYMOD -- "PyO3 bindings" --> BIND
+```
 
 ## Workspace Structure
 
 The codebase is split into two crates under `crates/`:
 
-```
+```text
 
 crates/
 ├── pyrs-yaml-core/ # Pure Rust, no PyO3 dependencies
@@ -175,39 +165,27 @@ Python-facing module definitions and type conversions:
 
 #### Parse Flow
 
-```text
-YAML String
-    │
-    ▼
-┌─────────────────────────────────────┐
-│ 1. Extract comments from raw text   │
-│ 2. Extract anchors from raw text    │
-│ 3. granit-parser → YAML events     │
-│ 4. AstReceiver builds CustomNode    │
-│ 5. Resolve schema types             │
-│ 6. Resolve merge keys (if enabled)  │
-└─────────────────────────────────────┘
-    │
-    ▼
-CustomNode (AST)
+```mermaid
+graph TD
+    A["YAML String"] --> B["1. Extract comments from raw text"]
+    B --> C["2. Extract anchors from raw text"]
+    C --> D["3. granit-parser → YAML events"]
+    D --> E["4. AstReceiver builds CustomNode"]
+    E --> F["5. Resolve schema types"]
+    F --> G["6. Resolve merge keys (if enabled)"]
+    G --> H["CustomNode (AST)"]
 ```
 
 #### Serialize Flow
 
-```text
-CustomNode (AST)
-    │
-    ▼
-┌─────────────────────────────────────┐
-│ 1. Determine node type              │
-│ 2. Write opening (anchor, tag)      │
-│ 3. Write content (key: value)       │
-│ 4. Write inline comment             │
-│ 5. Recurse for nested nodes         │
-└─────────────────────────────────────┘
-    │
-    ▼
-YAML String
+```mermaid
+graph TD
+    A["CustomNode (AST)"] --> B["1. Determine node type"]
+    B --> C["2. Write opening (anchor, tag)"]
+    C --> D["3. Write content (key: value)"]
+    D --> E["4. Write inline comment"]
+    E --> F["5. Recurse for nested nodes"]
+    F --> G["YAML String"]
 ```
 
 ### Performance Characteristics

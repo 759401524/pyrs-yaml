@@ -31,31 +31,31 @@ pyrs-yaml을 가장 인기 있는 두 Python YAML 라이브러리와 비교합�
 | 라이브러리 | 시간 | 속도 |
 |---------|------|---------|
 | **pyrs-yaml** | **1.6 ms** | — |
-| PyYAML | 87.9 ms¹ | 55× 느림 |
-| ruamel.yaml | 191.0 ms¹ | 119× 느림 |
+| PyYAML | 87.9 ms[^1] | 55× 느림 |
+| ruamel.yaml | 191.0 ms[^1] | 119× 느림 |
 
-¹ PyYAML/ruamel의 라운드트립 시간은 동일 벤치마크의 파싱·직렬화 합계로 추정한 값입니다.
+[^1]: PyYAML/ruamel의 라운드트립 시간은 동일 벤치마크의 파싱·직렬화 합계로 추정한 값입니다.
 
 ## 기능 비교
 
 | 기능 | pyrs-yaml | PyYAML | ruamel.yaml |
 |---------|-----------|--------|-------------|
-| **YAML 1.2 준수** | ✅ | ✅ | ✅ |
-| **주석 (standalone)** | ✅ | ❌ | ✅ |
-| **주석 (inline)** | ✅ | ❌ | ✅ |
-| **Anchor/alias** | ✅ | ❌ | ✅ |
-| **Tag (explicit)** | ✅ | ❌ | ✅ |
-| **Block scalar** | ✅ | ✅ | ✅ |
-| **Flow collection** | ✅ | ✅ | ✅ |
-| **Merge key (<<)** | ✅ | ❌ | ✅ |
-| **복잡한 키** | ✅ | ✅ | ✅ |
-| **Round-trip 보존** | ✅ | ❌ | ✅ |
-| **Python 바인딩** | ✅ | ✅ | ✅ |
-| **ABI3 (py3.8+)** | ✅ | ❌ | ❌ |
-| **Type stubs (.pyi)** | ✅ | ✅ | ❌ |
-| **i18n 오류 메시지** | ✅ | ❌ | ❌ |
-| **Rust 백엔드** | ✅ | ❌ | ❌ |
-| **성능** | 🚀 가장 빠름 | 🐌 느림 | 🐌 느림 |
+| **YAML 1.2 준수** | :material-check: | :material-check: | :material-check: |
+| **주석 (standalone)** | :material-check: | :material-close: | :material-check: |
+| **주석 (inline)** | :material-check: | :material-close: | :material-check: |
+| **Anchor/alias** | :material-check: | :material-close: | :material-check: |
+| **Tag (explicit)** | :material-check: | :material-close: | :material-check: |
+| **Block scalar** | :material-check: | :material-check: | :material-check: |
+| **Flow collection** | :material-check: | :material-check: | :material-check: |
+| **Merge key (<<)** | :material-check: | :material-close: | :material-check: |
+| **복잡한 키** | :material-check: | :material-check: | :material-check: |
+| **Round-trip 보존** | :material-check: | :material-close: | :material-check: |
+| **Python 바인딩** | :material-check: | :material-check: | :material-check: |
+| **ABI3 (py3.8+)** | :material-check: | :material-close: | :material-close: |
+| **Type stubs (.pyi)** | :material-check: | :material-check: | :material-close: |
+| **i18n 오류 메시지** | :material-check: | :material-close: | :material-close: |
+| **Rust 백엔드** | :material-check: | :material-close: | :material-close: |
+| **성능** | :material-rocket-launch: 가장 빠름 | :material-snail: 느림 | :material-snail: 느림 |
 
 ## 요약
 
