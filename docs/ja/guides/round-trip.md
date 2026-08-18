@@ -12,7 +12,7 @@ status: new
 
 往復保存とは：**YAML をパース → 変更 → シリアライズ → 出力が入力と同一（または意味的に同等）** であることを意味します。
 
-```python
+```python title="ラウンドトリップの例"
 original = """
 # サーバー設定
 server:
@@ -58,7 +58,7 @@ assert "&db" in output
 
 ## PyYAML vs pyrs-yaml 往復保存
 
-```python
+```python title="PyYAML 比較"
 original = "# コメント\nkey: value  # 行末\n"
 
 # PyYAML: すべて失われる

@@ -12,7 +12,7 @@ status: new
 
 往返意味着：**解析 YAML → 修改 → 序列化 → 输出与输入相同（或语义等效）。**
 
-```python
+```python title="往返示例"
 original = """
 # 服务器配置
 server:
@@ -58,7 +58,7 @@ assert "&db" in output
 
 ## PyYAML vs pyrs-yaml 往返
 
-```python
+```python title="PyYAML 对比"
 original = "# 注释\nkey: value  # 行内注释\n"
 
 # PyYAML: 丢失一切

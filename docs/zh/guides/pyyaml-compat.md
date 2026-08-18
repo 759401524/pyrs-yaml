@@ -10,7 +10,7 @@ pyrs-yaml 提供了 PyYAML 的**直接替换**，使迁移变得简单。
 
 ## 简单迁移
 
-```python
+```python title="简单迁移"
 # 旧代码
 import yaml
 
@@ -64,7 +64,7 @@ yaml_str = yaml.safe_dump(data)
 
 ## 迁移示例
 
-```python
+```python title="完整迁移示例"
 # 旧代码
 import yaml
 

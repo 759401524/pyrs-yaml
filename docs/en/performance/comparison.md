@@ -86,7 +86,7 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 
 ### Migration Path
 
-```python
+```python title="Migration steps"
 # Step 1: Install
 pip install pyrs-yaml
 

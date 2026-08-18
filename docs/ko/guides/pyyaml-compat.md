@@ -10,7 +10,7 @@ pyrs-yaml는 PyYAML의 **드롭인 교체**를 제공하여 마이그레이션�
 
 ## 간단한 마이그레이션
 
-```python
+```python title="간단한 마이그레이션"
 # 이전 코드
 import yaml
 
@@ -64,7 +64,7 @@ yaml_str = yaml.safe_dump(data)
 
 ## 마이그레이션 예시
 
-```python
+```python title="전체 마이그레이션 예제"
 # 이전 코드
 import yaml
 

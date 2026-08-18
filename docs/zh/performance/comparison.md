@@ -83,7 +83,7 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 
 ### 迁移路径
 
-```python
+```python title="迁移步骤"
 # 第一步：安装
 pip install pyrs-yaml
 

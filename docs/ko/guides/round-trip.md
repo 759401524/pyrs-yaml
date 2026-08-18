@@ -12,7 +12,7 @@ status: new
 
 순환 보존은: **YAML 파싱 → 수정 → 직렬화 → 출력이 입력과 동일하거나 의미적으로 동등함**을 의미합니다.
 
-```python
+```python title="라운드트립 예제"
 original = """
 # 서버 설정
 server:
@@ -58,7 +58,7 @@ assert "&db" in output
 
 ## PyYAML vs pyrs-yaml 순환 보존
 
-```python
+```python title="PyYAML 비교"
 original = "# 주석\nkey: value  # 인라인\n"
 
 # PyYAML: 모든 것을 잃음

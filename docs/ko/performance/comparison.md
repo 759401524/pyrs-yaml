@@ -81,7 +81,7 @@ pyrs-yaml을 가장 인기 있는 두 Python YAML 라이브러리와 비교합�
 
 ## 마이그레이션 경로
 
-```python
+```python title="마이그레이션 단계"
 # Step 1: Install
 pip install pyrs-yaml
 

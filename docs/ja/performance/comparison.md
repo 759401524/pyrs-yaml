@@ -81,7 +81,7 @@ pyrs-yamlを、最も人気のある2つのPython YAMLライブラリと比較�
 
 ## 移行パス
 
-```python
+```python title="移行ステップ"
 # ステップ1: インストール
 pip install pyrs-yaml
 

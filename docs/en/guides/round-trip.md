@@ -14,7 +14,7 @@ This is pyrs-yaml's **killing feature** — what makes it unique among Python YA
 
 Round-trip preservation means: **parse YAML → modify → serialize back → output is identical (or semantically equivalent) to the input.**
 
-```python
+```python title="Round-trip example"
 original = """
 # Server configuration
 server:
@@ -60,7 +60,7 @@ assert "&db" in output
 
 ### PyYAML vs pyrs-yaml Round-Trip
 
-```python
+```python title="PyYAML comparison"
 original = "# Comment\nkey: value  # inline\n"
 
 # PyYAML: loses everything

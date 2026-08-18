@@ -17,7 +17,7 @@ pyrs-yaml provides a **drop-in replacement** for PyYAML, making migration straig
 
 ### Simple Migration
 
-```python
+```python title="Simple migration"
 # Before
 import yaml
 
@@ -71,7 +71,7 @@ yaml_str = yaml.safe_dump(data)
 
 ### Example Migration
 
-```python
+```python title="Full migration example"
 # Old code
 import yaml
 

@@ -10,7 +10,7 @@ pyrs-yaml は PyYAML の**代替品**を提供し、移行を容易にします�
 
 ## シンプルな移行
 
-```python
+```python title="シンプルな移行"
 # 旧コード
 import yaml
 
@@ -64,7 +64,7 @@ yaml_str = yaml.safe_dump(data)
 
 ## 移行例
 
-```python
+```python title="完全な移行例"
 # 旧コード
 import yaml
 
