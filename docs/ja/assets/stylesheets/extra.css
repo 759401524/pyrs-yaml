@@ -1,0 +1,58 @@
+/* pyrs-yaml docs site custom styles */
+
+/* Homepage hero section */
+.md-typeset .hero {
+  text-align: center;
+  padding: 2rem 0 2.5rem;
+}
+
+.md-typeset .hero h1,
+.md-typeset .hero h2 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 0.5rem;
+}
+
+.md-typeset .hero h1 + p,
+.md-typeset .hero h2 + p {
+  font-size: 1.25rem;
+  color: var(--md-default-fg-color--light);
+  margin: 0 auto 1.5rem;
+  max-width: 42rem;
+}
+
+.md-typeset .hero .md-button {
+  margin: 0.25rem 0.5rem;
+}
+
+/* Homepage feature badges */
+.md-typeset .hero .badges {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.md-typeset .hero .badges ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+.md-typeset .hero .badges li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 2rem;
+  font-size: 0.78rem;
+  color: var(--md-default-fg-color--light);
+  margin: 0;
+}

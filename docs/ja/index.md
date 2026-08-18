@@ -6,9 +6,27 @@ tags:
 status: new
 ---
 
+<div class="hero" markdown>
+
 ## pyrs-yaml
 
 **高性能な Python YAML ライブラリ、完璧な Round-Trip サポート、Rust と PyO3 で構築されています。**
+
+[:material-rocket-launch: クイックスタート :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[:material-code-braces: API リファレンス](api/reference.md){ .md-button }
+[:fontawesome-brands-github: GitHub で見る](https://github.com/759401524/pyrs-yaml){ .md-button }
+
+<div class="badges" markdown>
+
+- :material-check-decagram: YAML 1.2 準拠
+- :material-package-variant-closed: ABI3 ホイール
+- :material-numeric: Python 3.8–3.15
+- :material-language-python: 型ヒント
+- :material-lightning-bolt: フリースレッド対応
+
+</div>
+
+</div>
 
 ### なぜ pyrs-yaml を選ぶべきか？
 
@@ -18,7 +36,7 @@ status: new
 - **ruamel.yaml** (Python) — フォーマットを保持するが、pyrs-yaml より **解析は 48–100 倍、シリアライズは 123–371 倍遅い**
 - **pyrs-yaml** (Rust) — PyYAML より **解析は 21–43 倍、シリアライズは 55–177 倍高速**、すべてを保持
 
-#### 主要機能
+### 主要機能
 
 <div class="grid cards" markdown>
 
@@ -67,9 +85,3 @@ assert doc.to_yaml() == original
 | Serialize (small) | 0.04 ms | 2.2 ms | **55×** |
 | Serialize (medium) | 0.08 ms | 12.6 ms | **159×** |
 | Serialize (large) | 0.17 ms | 30.2 ms | **177×** |
-
----
-
-[クイックスタート :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
-[API リファレンス :material-code-braces:](api/reference.md){ .md-button }
-[GitHub で見る :fontawesome-brands-github:](https://github.com/759401524/pyrs-yaml){ .md-button }

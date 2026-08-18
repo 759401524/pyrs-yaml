@@ -6,11 +6,27 @@ tags:
 status: new
 ---
 
+<div class="hero" markdown>
+
 ## pyrs-yaml
 
 **High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.**
 
----
+[:material-rocket-launch: Get Started :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[:material-code-braces: Browse API Reference](api/reference.md){ .md-button }
+[:fontawesome-brands-github: View on GitHub](https://github.com/759401524/pyrs-yaml){ .md-button }
+
+<div class="badges" markdown>
+
+- :material-check-decagram: YAML 1.2 Compliant
+- :material-package-variant-closed: ABI3 Wheel
+- :material-numeric: Python 3.8–3.15
+- :material-language-python: Typed
+- :material-lightning-bolt: Free-threaded ready
+
+</div>
+
+</div>
 
 ### Why pyrs-yaml?
 
@@ -69,9 +85,3 @@ assert doc.to_yaml() == original
 | Serialize (small) | 0.04 ms | 2.2 ms | **55×** |
 | Serialize (medium) | 0.08 ms | 12.6 ms | **159×** |
 | Serialize (large) | 0.17 ms | 30.2 ms | **177×** |
-
----
-
-[Get Started :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
-[Browse API Reference :material-code-braces:](api/reference.md){ .md-button }
-[View on GitHub :fontawesome-brands-github:](https://github.com/759401524/pyrs-yaml){ .md-button }

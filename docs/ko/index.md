@@ -6,9 +6,27 @@ tags:
 status: new
 ---
 
+<div class="hero" markdown>
+
 ## pyrs-yaml
 
 **높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨**
+
+[:material-rocket-launch: 시작하기 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[:material-code-braces: API 참조](api/reference.md){ .md-button }
+[:fontawesome-brands-github: GitHub에서 보기](https://github.com/759401524/pyrs-yaml){ .md-button }
+
+<div class="badges" markdown>
+
+- :material-check-decagram: YAML 1.2 준수
+- :material-package-variant-closed: ABI3 휠
+- :material-numeric: Python 3.8–3.15
+- :material-language-python: 타입 힌트
+- :material-lightning-bolt: 프리-스레디드 지원
+
+</div>
+
+</div>
 
 ### pyrs-yaml을 선택하는 이유
 
@@ -18,7 +36,7 @@ status: new
 - **ruamel.yaml** (Python) — 서식을 유지하지만 pyrs-yaml보다 **파싱 48–100배, 직렬화 123–371배 느림**
 - **pyrs-yaml** (Rust) — PyYAML보다 **파싱 21–43배, 직렬화 55–177배 빠르며** 모든 것을 유지
 
-#### 주요 기능
+### 주요 기능
 
 <div class="grid cards" markdown>
 
@@ -67,9 +85,3 @@ assert doc.to_yaml() == original
 | Serialize (small) | 0.04 ms | 2.2 ms | **55×** |
 | Serialize (medium) | 0.08 ms | 12.6 ms | **159×** |
 | Serialize (large) | 0.17 ms | 30.2 ms | **177×** |
-
----
-
-[시작하기 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
-[API 참조 :material-code-braces:](api/reference.md){ .md-button }
-[GitHub에서 보기 :fontawesome-brands-github:](https://github.com/759401524/pyrs-yaml){ .md-button }

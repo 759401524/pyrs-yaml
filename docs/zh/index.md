@@ -6,9 +6,27 @@ tags:
 status: new
 ---
 
+<div class="hero" markdown>
+
 ## pyrs-yaml
 
 **高性能 Python YAML 库，完美往返支持，基于 Rust 和 PyO3 构建。**
+
+[:material-rocket-launch: 开始使用 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
+[:material-code-braces: 浏览 API 参考](api/reference.md){ .md-button }
+[:fontawesome-brands-github: 在 GitHub 上查看](https://github.com/759401524/pyrs-yaml){ .md-button }
+
+<div class="badges" markdown>
+
+- :material-check-decagram: YAML 1.2 合规
+- :material-package-variant-closed: ABI3 Wheel
+- :material-numeric: Python 3.8–3.15
+- :material-language-python: 类型注解
+- :material-lightning-bolt: 自由线程就绪
+
+</div>
+
+</div>
 
 ### 为什么选择 pyrs-yaml？
 
@@ -67,9 +85,3 @@ assert doc.to_yaml() == original
 | Serialize (small) | 0.04 ms | 2.2 ms | **55×** |
 | Serialize (medium) | 0.08 ms | 12.6 ms | **159×** |
 | Serialize (large) | 0.17 ms | 30.2 ms | **177×** |
-
----
-
-[开始使用 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
-[浏览 API 参考 :material-code-braces:](api/reference.md){ .md-button }
-[在 GitHub 上看看 :fontawesome-brands-github:](https://github.com/759401524/pyrs-yaml){ .md-button }

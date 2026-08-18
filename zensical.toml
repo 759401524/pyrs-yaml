@@ -8,6 +8,7 @@ repo_name = "759401524/pyrs-yaml"
 docs_dir = "docs/en"
 site_dir = "site/en"
 edit_uri = "edit/main/docs/"
+extra_css = ["assets/stylesheets/extra.css"]
 nav = [
     {"Home" = "index.md"},
     {"Getting Started" = [
@@ -190,3 +191,4 @@ description = "We use cookies to recognize you when we visit our websites. That'
 [project.extra.status]
 new = "New"
 deprecated = "Deprecated"
+
