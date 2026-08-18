@@ -10,7 +10,7 @@ status: new
 
 `Node` 클래스는 `YamlDocument`의 AST에 대한 대여된 뷰(borrowed view)를 제공하여 트리 탐색, 쿼리 및 변경 작업을 가능하게 합니다. 노드는 `doc.node()`, `doc.find("$.path")` 또는 `doc.walk()`을 통해 생성됩니다.
 
-### Overview
+### 개요
 
 ```python
 class Node:
@@ -19,7 +19,7 @@ class Node:
 
 각 `Node`는 부모 `YamlDocument`에 대한 참조와 문서의 AST 내에서 대상 노드로 이동하는 경로 튜플을 저장합니다. 문서가 수정되거나 해제되면 노드는 만료(stale)됩니다.
 
-### Constructor
+### 생성자
 
 #### `Node.__init__()`
 
@@ -32,7 +32,7 @@ Node.__init__(document: YamlDocument, path: tuple = ()) -> None
 - `document` — 부모 `YamlDocument`
 - `path` — 대상 노드로 이동하는 경로 세그먼트(키/인덱스)의 튜플
 
-### Properties
+### 속성
 
 #### `value`
 
@@ -136,7 +136,7 @@ chomping 표시자를 가져옵니다(`"strip"`, `"clip"`, `"keep"`). 비스칼�
 chomping -> str | None
 ```
 
-### Methods
+### 메서드
 
 #### `find()`
 
@@ -359,7 +359,7 @@ release() -> None
 
 `release()`를 호출한 후에는 이 노드에 접근하면 `RuntimeWarning`이 발생하고 `YamlDocumentError`가 발생합니다.
 
-### Dunder Methods
+### 던더 메서드
 
 #### `__repr__()`
 
@@ -385,7 +385,7 @@ Compare this node's resolved value with another node or Python value. Unlike `__
 value_eq(other: object) -> bool
 ```
 
-### Stale Node Behavior
+### 무효 노드 동작
 
 !!! warning "만료된 노드"
     `Node`는 생성 시점의 문서 리비전에 연결됩니다. 문서 편집은 리비전을 증가시키므로,
@@ -407,7 +407,7 @@ RuntimeWarning: Node is stale: the document was modified after this node was cre
 YamlDocumentError: document has been modified; re-find the node
 ```
 
-### Example
+### 예제
 
 ```python
 import pyrs_yaml

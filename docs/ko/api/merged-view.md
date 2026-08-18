@@ -10,7 +10,7 @@ status: new
 
 `MergedView` 클래스는 병합 키(`<<: *anchor`)가 해석된 `YamlDocument`의 읽기 전용 뷰를 제공합니다. `doc.merged()`를 통해 접근합니다.
 
-### Overview
+### 개요
 
 ```python
 class MergedView(Mapping):
@@ -19,7 +19,7 @@ class MergedView(Mapping):
 
 이 뷰는 `YamlDocument.to_dict()`에서 지연(lazy) 방식으로 구성되며, 직렬화 중에 앵커와 병합 키를 해석합니다. 원본 AST는 절대 변경되지 않습니다.
 
-### Constructor
+### 생성자
 
 #### `MergedView.__init__()`
 
@@ -33,7 +33,7 @@ MergedView.__init__(document: YamlDocument) -> None
 
 문서 루트가 시퀀스인 경우, 뷰는 이를 정수 키 매핑(`{0: item0, 1: item1, ...}`)으로 변환합니다.
 
-### Methods
+### 메서드
 
 #### `__getitem__()`
 
@@ -95,7 +95,7 @@ __repr__() -> str
 get(key: str | int, default: Any = None) -> Any
 ```
 
-### Merge Key Resolution
+### 병합 키 해석
 
 키는 다음 우선순위로 해석됩니다(높을수록 우선):
 
@@ -103,7 +103,7 @@ get(key: str | int, default: Any = None) -> Any
 2. 병합된 앵커에서 온 키(`<<:`에 나타난 순서)
 3. 나중의 앵커가 앞선 앵커를 덮어씁니다
 
-### Root Type Support
+### 루트 타입 지원
 
 | 루트 타입 | 동작 |
 | --- | --- |
@@ -111,7 +111,7 @@ get(key: str | int, default: Any = None) -> Any
 | Sequence | 키는 정수 인덱스입니다(`0`, `1`, ...) |
 | Scalar/Null | `__len__()`은 `0`을 반환하고, `__getitem__()`은 `KeyError`를 발생시킵니다 |
 
-### Example
+### 예제
 
 ```python
 import pyrs_yaml

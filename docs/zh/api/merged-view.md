@@ -10,7 +10,7 @@ status: new
 
 `MergedView` 类提供 `YamlDocument` 的只读视图，其中合并键（`<<: *anchor`）已被解析。通过 `doc.merged()` 访问。
 
-### Overview
+### 概述
 
 ```python
 class MergedView(Mapping):
@@ -19,7 +19,7 @@ class MergedView(Mapping):
 
 该视图从 `YamlDocument.to_dict()` 延迟构建，在序列化过程中解析锚点和合并键。原始 AST 永远不会被修改。
 
-### Constructor
+### 构造函数
 
 #### `MergedView.__init__()`
 
@@ -33,7 +33,7 @@ MergedView.__init__(document: YamlDocument) -> None
 
 如果文档根节点是序列，则视图将其转换为整数键映射（`{0: item0, 1: item1, ...}`）。
 
-### Methods
+### 方法
 
 #### `__getitem__()`
 
@@ -95,7 +95,7 @@ __repr__() -> str
 get(key: str | int, default: Any = None) -> Any
 ```
 
-### Merge Key Resolution
+### 合并键解析
 
 键的解析优先级如下（最高优先）：
 
@@ -103,7 +103,7 @@ get(key: str | int, default: Any = None) -> Any
 2. 来自合并锚点的键（按在 `<<:` 中出现的顺序）
 3. 后出现的锚点覆盖先出现的锚点
 
-### Root Type Support
+### 根类型支持
 
 | Root Type | 行为 |
 | --- | --- |
@@ -111,7 +111,7 @@ get(key: str | int, default: Any = None) -> Any
 | Sequence | 键为整数索引（`0`、`1`、...） |
 | Scalar/Null | `__len__()` 返回 `0`；`__getitem__()` 抛出 `KeyError` |
 
-### Example
+### 示例
 
 ```python
 import pyrs_yaml

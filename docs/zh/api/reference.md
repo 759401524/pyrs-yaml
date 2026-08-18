@@ -18,19 +18,23 @@ status: new
 将 YAML 字符串或字节解析为 `YamlDocument`。
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
 ```
 
 **参数:**
 
 - `yaml` — `str` 或 `bytes` 的 YAML 内容
 - `resolve_merges` — 解析后是否解析合并键 (`<<: *alias`)（默认：`True`）
+- `schema` — Schema 名称 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 或已注册的自定义名称)，或内联 schema dict（参见 [YAML Schema Language](#yaml-schema-language)）
+- `max_depth` — 最大嵌套深度（默认：`1000`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
 
 **返回值:** 包含解析后 YAML 的 `YamlDocument`
 
 **引发:**
 
 - `YamlParseError` — 无效的 YAML 语法
+- `YamlTypeError` — 未找到指定的 Schema
 - `TypeError` — 输入不是 `str` 或 `bytes`
 
 **示例:**
@@ -38,7 +42,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```python
 doc = pyrs_yaml.parse("key: value")
 doc = pyrs_yaml.parse(b"key: value")
-doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_str, schema="json")
+doc = pyrs_yaml.parse("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
 ```
 
 ### `parse_file()`
@@ -46,12 +51,15 @@ doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
 解析 YAML 文件。
 
 ```python
-parse_file(path: str) -> YamlDocument
+parse_file(path: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
 ```
 
 **参数:**
 
 - `path` — YAML 文件的路径
+- `schema` — Schema 名称或内联 dict（默认：`"core"`）
+- `max_depth` — 最大嵌套深度（默认：`1000`）
+- `allow_duplicate_keys` — 是否允许重复映射键（默认：`False`）
 
 **返回值:** `YamlDocument`
 
@@ -255,6 +263,142 @@ remove_tag(name: str) -> None
 clear_tag_handlers() -> None
 ```
 
+## YAML Schema Language {#yaml-schema-language}
+
+定义自定义 Schema，控制纯标量如何解析为 Python 类型。
+
+### `register_schema()`
+
+注册一个自定义 Schema。
+
+```python
+register_schema(name: str, schema: str | dict) -> None
+```
+
+**参数:**
+
+- `name` — Schema 名称
+- `schema` — YAML 字符串或 dict（包含 `extends`、`rules`、`validate` 键）
+
+**示例:**
+
+```python
+import pyrs_yaml
+
+# 从 YAML 字符串注册自定义 Schema
+pyrs_yaml.register_schema("hex", """
+name: hex
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+""")
+
+# 使用自定义 Schema
+y = pyrs_yaml.YAML(schema="hex")
+doc = y.parse("addr: 0xFF")
+assert doc.get("addr") == 255
+
+d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
+assert d["addr"] == 31
+```
+
+### 内联 Schema dict
+
+直接传入 dict 代替注册：
+
+```python
+d = pyrs_yaml.safe_load(
+    "addr: 0xFF",
+    schema={
+        "extends": "core",
+        "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}],
+    },
+)
+```
+
+- **`extends`** — 可选的基 Schema（`core`、`json`、`failsafe`、`yaml1.1`）
+- **`rules`** — 有序的 `{pattern, type}` 列表；首个匹配生效
+- **`validate`** — 可选的结构校验规则：路径限定类型（`$.port: int`）、容器检查（`sequence_of`、`mapping_of`）和 `required` 存在性检查；使用 `validate_against_schema(data, schema_yaml)` 校验文档
+- **支持的类型**：`null`、`bool`、`int`、`float`、`str`
+- 内置 Core Schema 仍使用零成本 `match` 分发（不受影响）
+- **文件 I/O** — `load_schema(name, path)` 从 YAML 文件加载 Schema；`list_schemas()` 返回所有已注册的 Schema
+
+## 社区插件 {#community-plugins}
+
+定义自定义 YAML 节点类型，集成序列化和反序列化。
+
+### `CustomType`
+
+自定义类型的基类。
+
+```python
+class CustomType:
+    python_type: type
+
+    def from_yaml(self, value: str) -> Any: ...
+    def to_yaml(self, obj: Any) -> str: ...
+    def can_parse(self, node: CustomNode) -> bool: ...
+    def validate(self, obj: Any) -> bool: ...
+```
+
+### `register_type()`
+
+注册自定义类型。
+
+```python
+register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
+```
+
+**示例:**
+
+```python
+from datetime import datetime
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# 加载：带标签的标量 → Python 对象
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# 导出：Python 对象 → 带标签的标量
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out 包含：ts: !timestamp 2026-08-11T10:30:00
+```
+
+| 方法 | 描述 |
+|------|------|
+| `can_parse(node)` | 该类型是否处理给定的 AST 节点 |
+| `from_yaml(value)` | 将 YAML 字符串转换为 Python 对象 |
+| `to_yaml(obj)` | 将 Python 对象转换为 YAML 字符串 |
+| `validate(obj)` | 校验 Python 对象（返回 `bool`） |
+
+### `remove_type()`
+
+移除已注册的类型。
+
+```python
+remove_type(name: str) -> None
+```
+
+### `clear_type_handlers()`
+
+移除所有已注册的类型处理器。
+
+```python
+clear_type_handlers() -> None
+```
+
 ## 合规性
 
 ### `compliance_report()`
@@ -421,5 +565,5 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## 版本
 
 ```python
-__version__ = "0.6.0"
+__version__ = "0.14.0"
 ```

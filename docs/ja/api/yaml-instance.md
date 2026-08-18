@@ -10,14 +10,14 @@ status: new
 
 `YAML` クラスは、`typ`、`schema`、`max_depth`、`allow_duplicate_keys` の設定を通じてパース動作を制御する、設定済みのパーサーインスタンスです。ラウンドトリップ（`rt`）、セーフ、フルの YAML パースモードをサポートします。
 
-### Overview
+### 概要
 
 ```python
 class YAML:
     """Configured YAML parser instance (rt / safe / full)."""
 ```
 
-### Constructor
+### コンストラクタ
 
 #### `__init__()`
 
@@ -58,7 +58,7 @@ yaml_safe = YAML(typ="safe")
 yaml_full = YAML(typ="full", schema="yaml1.1")
 ```
 
-### Methods
+### メソッド
 
 #### `parse()`
 
@@ -390,7 +390,7 @@ for event in stream:
     print(event)
 ```
 
-### Usage Examples
+### 使用例
 
 #### 設定インスタンスを使ったラウンドトリップ編集
 
@@ -443,7 +443,7 @@ for doc in docs:
 yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 ```
 
-### See Also
+### 関連項目
 
 - [`YamlDocument`](yaml-document.md) — ラウンドトリップ編集可能なドキュメントオブジェクト
 - [`YamlStream`](reference.md#yamlstream) — 遅延イベントストリームイテレーター

@@ -10,14 +10,14 @@ status: new
 
 `YAML` 类是一个可配置的解析器实例，通过 `typ`、`schema`、`max_depth` 和 `allow_duplicate_keys` 设置控制解析行为。支持往返（`rt`）、安全和完整 YAML 解析模式。
 
-### Overview
+### 概述
 
 ```python
 class YAML:
     """Configured YAML parser instance (rt / safe / full)."""
 ```
 
-### Constructor
+### 构造函数
 
 #### `__init__()`
 
@@ -58,7 +58,7 @@ yaml_safe = YAML(typ="safe")
 yaml_full = YAML(typ="full", schema="yaml1.1")
 ```
 
-### Methods
+### 方法
 
 #### `parse()`
 
@@ -390,7 +390,7 @@ for event in stream:
     print(event)
 ```
 
-### Usage Examples
+### 使用示例
 
 #### 使用配置实例进行往返编辑
 
@@ -443,7 +443,7 @@ for doc in docs:
 yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 ```
 
-### See Also
+### 另请参阅
 
 - [`YamlDocument`](yaml-document.md) — 支持往返编辑的文档对象
 - [`YamlStream`](reference.md#yamlstream) — 惰性事件流迭代器

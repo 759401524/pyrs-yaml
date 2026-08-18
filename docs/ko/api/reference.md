@@ -18,19 +18,23 @@ status: new
 YAML 문자열 또는 바이트를 파싱하여 `YamlDocument`로 변환합니다.
 
 ```python
-parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
+parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> YamlDocument
 ```
 
 **매개변수:**
 
 - `yaml` — `str` 또는 `bytes` YAML 콘텐츠
 - `resolve_merges` — 파싱 후 병합 키 (`<<: *alias`)를 해석할지 여부 (기본값: `True`)
+- `schema` — 스키마 이름 (`"core"`, `"json"`, `"failsafe"`, `"yaml1.1"` 또는 등록된 사용자 정의 이름), 또는 인라인 스키마 dict ([YAML 스키마 언어](#yaml-schema-language) 참조)
+- `max_depth` — 최대 중첩 깊이 (기본값: `1000`)
+- `allow_duplicate_keys` — 중복 매핑 키를 허용할지 여부 (기본값: `False`)
 
 **반환값:** 파싱된 YAML를 포함하는 `YamlDocument`
 
 **발생:**
 
 - `YamlParseError` — 잘못된 YAML 구문
+- `YamlTypeError` — 지정된 스키마를 찾을 수 없음
 - `TypeError` — 입력이 `str` 또는 `bytes`가 아님
 
 **예시:**
@@ -38,7 +42,8 @@ parse(yaml: str | bytes, resolve_merges: bool = True) -> YamlDocument
 ```python
 doc = pyrs_yaml.parse("key: value")
 doc = pyrs_yaml.parse(b"key: value")
-doc = pyrs_yaml.parse(yaml_str, resolve_merges=False)
+doc = pyrs_yaml.parse(yaml_str, schema="json")
+doc = pyrs_yaml.parse("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
 ```
 
 ### `parse_file()`
@@ -257,6 +262,142 @@ remove_tag(name: str) -> None
 clear_tag_handlers() -> None
 ```
 
+## YAML 스키마 언어 {#yaml-schema-language}
+
+사용자 정의 스키마를 정의하여 일반 스칼라가 Python 타입으로 해석되는 방식을 제어합니다.
+
+### `register_schema()`
+
+사용자 정의 스키마를 등록합니다.
+
+```python
+register_schema(name: str, schema: str | dict) -> None
+```
+
+**매개변수:**
+
+- `name` — 스키마 이름
+- `schema` — YAML 문자열 또는 dict（`extends`, `rules`, `validate` 키 포함）
+
+**예제:**
+
+```python
+import pyrs_yaml
+
+# YAML 문자열에서 사용자 정의 스키마 등록
+pyrs_yaml.register_schema("hex", """
+name: hex
+extends: core
+rules:
+  - pattern: ^0x[0-9a-fA-F]+$
+    type: int
+""")
+
+# 사용자 정의 스키마 사용
+y = pyrs_yaml.YAML(schema="hex")
+doc = y.parse("addr: 0xFF")
+assert doc.get("addr") == 255
+
+d = pyrs_yaml.safe_load("addr: 0x1F", schema="hex")
+assert d["addr"] == 31
+```
+
+### 인라인 스키마 dict
+
+등록하지 않고 dict를 직접 전달:
+
+```python
+d = pyrs_yaml.safe_load(
+    "addr: 0xFF",
+    schema={
+        "extends": "core",
+        "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}],
+    },
+)
+```
+
+- **`extends`** — 선택적 기본 스키마（`core`, `json`, `failsafe`, `yaml1.1`）
+- **`rules`** — 순서가 있는 `{pattern, type}` 목록; 첫 번째 일치 항목이 적용
+- **`validate`** — 선택적 구조 검증 규칙: 경로 한정 타입(`$.port: int`), 컨테이너 검사(`sequence_of`, `mapping_of`), `required` 존재 확인; `validate_against_schema(data, schema_yaml)`로 문서 검증
+- **지원 타입** : `null`, `bool`, `int`, `float`, `str`
+- 내장 Core 스키마는 계속 제로 비용 `match` 디스패치 사용（영향 없음）
+- **파일 I/O** — `load_schema(name, path)`로 YAML 파일에서 스키마 로드; `list_schemas()`로 등록된 모든 스키마 반환
+
+## 커뮤니티 플러그인 {#community-plugins}
+
+사용자 정의 YAML 노드 타입을 정의하여 직렬화 및 역직렬화에 통합합니다.
+
+### `CustomType`
+
+사용자 정의 타입의 기본 클래스.
+
+```python
+class CustomType:
+    python_type: type
+
+    def from_yaml(self, value: str) -> Any: ...
+    def to_yaml(self, obj: Any) -> str: ...
+    def can_parse(self, node: CustomNode) -> bool: ...
+    def validate(self, obj: Any) -> bool: ...
+```
+
+### `register_type()`
+
+사용자 정의 타입을 등록합니다.
+
+```python
+register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
+```
+
+**예제:**
+
+```python
+from datetime import datetime
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# 로드: 태그된 스칼라 → Python 객체
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# 덤프: Python 객체 → 태그된 스칼라
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out에 포함됨: ts: !timestamp 2026-08-11T10:30:00
+```
+
+| 메서드 | 설명 |
+|--------|------|
+| `can_parse(node)` | 이 타입이 주어진 AST 노드를 처리하는지 여부 |
+| `from_yaml(value)` | YAML 문자열을 Python 객체로 변환 |
+| `to_yaml(obj)` | Python 객체를 YAML 문자열로 변환 |
+| `validate(obj)` | Python 객체 검증（`bool` 반환） |
+
+### `remove_type()`
+
+등록된 타입을 제거합니다.
+
+```python
+remove_type(name: str) -> None
+```
+
+### `clear_type_handlers()`
+
+등록된 모든 타입 핸들러를 제거합니다.
+
+```python
+clear_type_handlers() -> None
+```
+
 ## 컴플라이언스
 
 ### `compliance_report()`
@@ -423,5 +564,5 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 ## 버전
 
 ```python
-__version__ = "0.6.0"
+__version__ = "0.14.0"
 ```

@@ -10,7 +10,7 @@ status: new
 
 `Node` クラスは、`YamlDocument` の AST への借用ビューを提供し、ツリーの走査、クエリ、および変更操作を可能にします。ノードは `doc.node()`、`doc.find("$.path")`、または `doc.walk()` で作成されます。
 
-### Overview
+### 概要
 
 ```python
 class Node:
@@ -19,7 +19,7 @@ class Node:
 
 各 `Node` は、親 `YamlDocument` への参照と、ドキュメントの AST 内のターゲットノードに移動するパス タプルを保持します。ノードは、ドキュメントが変更または解放されると期限切れになります。
 
-### Constructor
+### コンストラクタ
 
 #### `Node.__init__()`
 
@@ -32,7 +32,7 @@ Node.__init__(document: YamlDocument, path: tuple = ()) -> None
 - `document` — 親 `YamlDocument`
 - `path` — ターゲットノードに移動するパスセグメント（キー/インデックス）のタプル
 
-### Properties
+### プロパティ
 
 #### `value`
 
@@ -136,7 +136,7 @@ chomping 指示子を取得します（`"strip"`、`"clip"`、`"keep"`）。非�
 chomping -> str | None
 ```
 
-### Methods
+### メソッド
 
 #### `find()`
 
@@ -359,7 +359,7 @@ release() -> None
 
 `release()` を呼び出した後、このノードへのアクセスは `RuntimeWarning` を発行し、`YamlDocumentError` を発生させます。
 
-### Dunder Methods
+### ダンダーメソッド
 
 #### `__repr__()`
 
@@ -385,7 +385,7 @@ Compare this node's resolved value with another node or Python value. Unlike `__
 value_eq(other: object) -> bool
 ```
 
-### Stale Node Behavior
+### 無効なノードの動作
 
 !!! warning "期限切れノード"
     `Node` はドキュメントのリビジョンに結び付けられています。ドキュメントが編集されるとリビジョンが増加し、以前に取得したノードは期限切れになり、`YamlDocumentError` をスローします。編集後はノードを再取得してください。
@@ -406,7 +406,7 @@ RuntimeWarning: Node is stale: the document was modified after this node was cre
 YamlDocumentError: document has been modified; re-find the node
 ```
 
-### Example
+### 例
 
 ```python
 import pyrs_yaml

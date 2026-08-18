@@ -10,7 +10,7 @@ status: new
 
 `Node` 类提供对 `YamlDocument` AST 的借用视图，支持树遍历、查询和修改操作。节点通过 `doc.node()`、`doc.find("$.path")` 或 `doc.walk()` 创建。
 
-### Overview
+### 概述
 
 ```python
 class Node:
@@ -19,7 +19,7 @@ class Node:
 
 每个 `Node` 存储对其父 `YamlDocument` 的引用以及一个路径元组，该元组定位到文档 AST 中的目标节点。当文档被修改或释放时，节点会过期。
 
-### Constructor
+### 构造函数
 
 #### `Node.__init__()`
 
@@ -32,7 +32,7 @@ Node.__init__(document: YamlDocument, path: tuple = ()) -> None
 - `document` — 父 `YamlDocument`
 - `path` — 定位到目标节点的路径段（键/索引）元组
 
-### Properties
+### 属性
 
 #### `value`
 
@@ -136,7 +136,7 @@ flow_style -> bool | None
 chomping -> str | None
 ```
 
-### Methods
+### 方法
 
 #### `find()`
 
@@ -359,7 +359,7 @@ release() -> None
 
 调用 `release()` 后，对该节点的任何访问都会发出 `RuntimeWarning` 并抛出 `YamlDocumentError`。
 
-### Dunder Methods
+### 特殊方法
 
 #### `__repr__()`
 
@@ -385,7 +385,7 @@ Compare this node's resolved value with another node or Python value. Unlike `__
 value_eq(other: object) -> bool
 ```
 
-### Stale Node Behavior
+### 过期节点行为
 
 !!! warning "过期节点"
     `Node` 与文档的修订号绑定，文档编辑后之前获取的 `Node` 会过期。每次编辑后重新查找节点以继续工作。
@@ -406,7 +406,7 @@ RuntimeWarning: Node is stale: the document was modified after this node was cre
 YamlDocumentError: document has been modified; re-find the node
 ```
 
-### Example
+### 示例
 
 ```python
 import pyrs_yaml

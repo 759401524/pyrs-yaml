@@ -10,14 +10,14 @@ status: new
 
 `YAML` 클래스는 `typ`, `schema`, `max_depth`, `allow_duplicate_keys` 설정을 통해 파싱 동작을 제어하는 구성된 파서 인스턴스입니다. 라운드트립(`rt`), 안전(safe), 전체(full) YAML 파싱 모드를 지원합니다.
 
-### Overview
+### 개요
 
 ```python
 class YAML:
     """Configured YAML parser instance (rt / safe / full)."""
 ```
 
-### Constructor
+### 생성자
 
 #### `__init__()`
 
@@ -58,7 +58,7 @@ yaml_safe = YAML(typ="safe")
 yaml_full = YAML(typ="full", schema="yaml1.1")
 ```
 
-### Methods
+### 메서드
 
 #### `parse()`
 
@@ -390,7 +390,7 @@ for event in stream:
     print(event)
 ```
 
-### Usage Examples
+### 사용 예제
 
 #### 구성된 인스턴스로 라운드트립 편집
 
@@ -443,7 +443,7 @@ for doc in docs:
 yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 ```
 
-### See Also
+### 참고 항목
 
 - [`YamlDocument`](yaml-document.md) — 라운드트립으로 편집 가능한 문서 객체
 - [`YamlStream`](reference.md#yamlstream) — 지연 이벤트 스트림 이터레이터
