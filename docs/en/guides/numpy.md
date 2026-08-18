@@ -125,3 +125,11 @@ The following types raise `YamlTypeError`:
 - :material-bolt: Zero-copy slice iteration via `PyArrayDyn<T>`
 - :material-bolt: Python GIL released during slice traversal
 - :material-bolt: Arbitrary dimensions supported with no extra allocation
+
+---
+
+### See Also
+
+- [Serialization](serialization.md) — Serialize plain Python objects
+- [NumPy Features](../features.md) — NumPy ndarray support overview
+- [NumPy API Reference](../api/reference.md) — Module functions for serialization

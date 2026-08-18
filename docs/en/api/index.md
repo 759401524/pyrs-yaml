@@ -10,9 +10,9 @@ status: new
 
 The API Reference covers the complete `pyrs_yaml` module and its classes:
 
-- **Module Reference** — all exported functions (parse, serialize, validate, etc.)
-- **YamlDocument Class** — parsed YAML document with round-trip and editing methods
-- **YAML Instance** — configurable YAML parser/serializer instance
-- **Node Class** — tree API for inspecting and modifying AST nodes
-- **MergedView Class** — lazy merged view of merge-key resolved documents
-- **Exceptions** — all custom exception types
+- [Module Reference](reference.md) — All exported functions: parse, serialize, validate, register schemas, and more
+- [YamlDocument Class](yaml-document.md) — Parsed YAML document with round-trip, editing, and metadata methods
+- [YAML Instance](yaml-instance.md) — Configurable parser/serializer instance with per-instance options
+- [Node Class](node.md) — Tree API for inspecting and modifying AST nodes
+- [MergedView Class](merged-view.md) — Lazy merged view of merge-key resolved documents
+- [Exceptions](exceptions.md) — All custom exception types with hierarchy diagram

@@ -127,3 +127,11 @@ assert "# Server config" in output
 assert "&db" in output
 assert "<<: *db" in output
 ```
+
+---
+
+### See Also
+
+- [Parsing YAML](parsing.md) — Parse strings, files, and multiple documents
+- [Round-Trip Preservation](round-trip.md) — How comments and anchors survive serialization
+- [PyYAML Compatibility](pyyaml-compat.md) — Drop-in replacement API

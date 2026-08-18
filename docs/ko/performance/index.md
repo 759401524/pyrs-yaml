@@ -9,3 +9,6 @@ status: new
 ## 성능
 
 pyrs-yaml의 벤치마크 결과 및 교차 라이브러리 비교.
+
+- [벤치마크](benchmarks.md) — 문서 크기별 상세 벤치마크 결과
+- [비교](comparison.md) — PyYAML, ruamel.yaml 등 라이브러리와의 기능 비교

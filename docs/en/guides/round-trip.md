@@ -84,3 +84,11 @@ Round-trip performance vs competitors:
 | ruamel.yaml | 6.79 ms | :material-check: | :material-check: | :material-check: |
 
 **pyrs-yaml is 37× faster than PyYAML and 85× faster than ruamel.yaml** while preserving everything.
+
+---
+
+### See Also
+
+- [Serialization](serialization.md) — Serialize documents without losing formatting
+- [In-Place Editing](editing.md) — Edit while preserving round-trip fidelity
+- [PyYAML Compatibility](pyyaml-compat.md) — Migrate from PyYAML

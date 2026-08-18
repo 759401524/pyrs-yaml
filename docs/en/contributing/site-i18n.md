@@ -14,18 +14,16 @@ See the runtime error-message i18n guide at [guides/i18n.md](../guides/i18n.md) 
 
 ### How It Works
 
-Each language gets its own URL path (`/zh-CN/`, `/ja-JP/`, `/ko-KR/`) and shares one navigation with a language switcher in the top-right corner, configured in `mkdocs.yml`:
+Each language gets its own URL path (`/zh-CN/`, `/ja-JP/`, `/ko-KR/`) and shares one navigation with a language switcher in the top-right corner, configured in `zensical.toml`:
 
-```yaml title="mkdocs.yml i18n config"
-i18n:
-  default_lang: en
-  alternate_languages:
-    - lang: zh-CN
-      url: /zh-CN/
-    - lang: ja-JP
-      url: /ja-JP/
-    - lang: ko-KR
-      url: /ko-KR/
+```toml title="zensical.toml i18n config"
+[project.extra]
+alternate = [
+    {name = "English", link = "/pyrs-yaml/en/", lang = "en"},
+    {name = "中文", link = "/pyrs-yaml/zh/", lang = "zh"},
+    {name = "日本語", link = "/pyrs-yaml/ja/", lang = "ja"},
+    {name = "한국어", link = "/pyrs-yaml/ko/", lang = "ko"},
+]
 ```
 
 ### Directory Structure
@@ -59,9 +57,11 @@ lang: zh-CN
 ### Verification
 
 ```bash title="Build and serve the docs"
-uv sync
-mkdocs build --clean-site
-mkdocs serve   # http://localhost:8000/
+# Build all 4 locales
+uv run --group docs python scripts/build-docs.py
+
+# Serve a single locale for development
+uv run --group docs python -m zensical serve --config-file zensical.toml --dirty
 ```
 
 ### Troubleshooting
@@ -71,4 +71,4 @@ mkdocs serve   # http://localhost:8000/
 | Language switcher not showing | Ensure `i18n` block is configured and every `alternate_languages.lang` has a matching directory |
 | Broken links | Verify internal links use relative paths (no lang prefix) |
 | Frontmatter not parsed | Every file starts with `---` before any markdown content |
-| Search not per-language | Rebuild with `mkdocs build --clean-site` |
+| Search not per-language | Rebuild with `uv run --group docs python scripts/build-docs.py` |

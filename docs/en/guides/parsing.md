@@ -113,3 +113,11 @@ pyrs-yaml correctly parses all YAML 1.2 scalar types:
 | :material-null: Null | `null`, `~` | `None` |
 | :material-infinity: Infinity | `.inf`, `-.inf` | `float` |
 | :material-alphabetical: NaN | `.nan` | `float` |
+
+---
+
+### See Also
+
+- [Serialization](serialization.md) — Convert documents back to YAML strings
+- [In-Place Editing](editing.md) — Modify parsed documents without losing formatting
+- [Custom Schemas](custom-schema.md) — Define custom type resolution rules

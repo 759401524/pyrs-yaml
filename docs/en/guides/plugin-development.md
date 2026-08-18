@@ -154,3 +154,11 @@ def test_my_plugin():
 | :material-close: `clear_type_handlers()` | Remove all registered types |
 | :material-close: `remove_type(name)` | Remove a specific type |
 | :material-check-decagram: `validate_custom_types(obj)` | Validate an object against all registered types |
+
+---
+
+### See Also
+
+- [Community Plugins](community-plugins.md) — Built-in types you can extend
+- [Custom Schemas](custom-schema.md) — Define type resolution rules
+- [Tag Registry API](../api/reference.md#tag-registry) — `register_tag()` and related functions

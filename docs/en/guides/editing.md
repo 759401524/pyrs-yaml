@@ -502,3 +502,11 @@ edit_flush_burst5_10mb    119 ms
 ```
 
 *Measured on a synthetic 10MB block-mapping document with 500 groups × 838 keys. The ratio is dominated by AST clone cost (56 ms); the actual edit+materialize is ~54 ms (3× serialize). For complex documents with comments, anchors, and tags, the splice advantage grows significantly.*
+
+---
+
+### See Also
+
+- [Parsing YAML](parsing.md) — Parse documents before editing
+- [Streaming Parse](streaming.md) — Incremental parsing for large files
+- [Configuration Management](tutorial-config-management.md) — End-to-end editing walkthrough

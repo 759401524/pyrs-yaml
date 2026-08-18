@@ -114,3 +114,10 @@ assert content == "Just regular markdown content."
     for field in required_fields:
         assert field in frontmatter, f"Missing required field: {field}"
     ```
+
+---
+
+### See Also
+
+- [Parsing YAML](parsing.md) — Parse plain YAML documents
+- [Markdown Frontmatter API](../api/reference.md#markdown-frontmatter) — `read_markdown()` and `read_markdown_str()`

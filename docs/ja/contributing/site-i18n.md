@@ -14,18 +14,16 @@ pyrs-yaml のドキュメントサイトは、MkDocs Material テーマの組み
 
 ### How It Works
 
-各言語は独自の URL パス（`/zh-CN/`、`/ja-JP/`、`/ko-KR/`）を持ち、`mkdocs.yml` で設定された右上隅の言語切り替え機能を備えた 1 つのナビゲーションを共有します:
+各言語は独自の URL パス（`/zh-CN/`、`/ja-JP/`、`/ko-KR/`）を持ち、`zensical.toml` で設定された右上隅の言語切り替え機能を備えた 1 つのナビゲーションを共有します:
 
-```yaml title="mkdocs.yml の i18n 設定"
-i18n:
-  default_lang: en
-  alternate_languages:
-    - lang: zh-CN
-      url: /zh-CN/
-    - lang: ja-JP
-      url: /ja-JP/
-    - lang: ko-KR
-      url: /ko-KR/
+```toml title="zensical.toml の i18n 設定"
+[project.extra]
+alternate = [
+    {name = "English", link = "/pyrs-yaml/en/", lang = "en"},
+    {name = "中文", link = "/pyrs-yaml/zh/", lang = "zh"},
+    {name = "日本語", link = "/pyrs-yaml/ja/", lang = "ja"},
+    {name = "한국어", link = "/pyrs-yaml/ko/", lang = "ko"},
+]
 ```
 
 ### Directory Structure
@@ -59,9 +57,11 @@ lang: ja-JP
 ### Verification
 
 ```bash title="ドキュメントのビルドとプレビュー"
-uv sync
-mkdocs build --clean-site
-mkdocs serve   # http://localhost:8000/
+# 4 言語すべてをビルド
+uv run --group docs python scripts/build-docs.py
+
+# 開発用に単一言語をプレビュー
+uv run --group docs python -m zensical serve --config-file zensical.toml --dirty
 ```
 
 ### Troubleshooting
@@ -71,4 +71,4 @@ mkdocs serve   # http://localhost:8000/
 | 言語切り替えが表示されない | `i18n` ブロックが設定され、`alternate_languages.lang` ごとに対応するディレクトリが存在することを確認してください |
 | リンク切れ | 内部リンクが相対パス（言語プレフィックスなし）を使用していることを確認してください |
 | フロントマターがパースされない | すべてのファイルがマークダウンコンテンツの前に `---` で始まっていることを確認してください |
-| 検索が言語ごとにならない | `mkdocs build --clean-site` で再ビルドしてください |
+| 検索が言語ごとにならない | `uv run --group docs python scripts/build-docs.py` で再ビルドしてください |

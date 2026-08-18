@@ -145,3 +145,10 @@ Each event dict contains the following keys:
 #### Differences from `load_stream`
 
 `parse_stream()` returns a `StreamIterator` that emits comments and preserves original anchor names. `YAML().load_stream()` / `YAML().load_stream_file()` return a `YamlStream` with different defaults (see the comparison table above).
+
+---
+
+### See Also
+
+- [Parsing YAML](parsing.md) — Standard document parsing
+- [Streaming API Reference](../api/yaml-instance.md) — YAML instance stream methods
