@@ -226,169 +226,169 @@ for doc in docs:
     print(doc.root_type())
 ```
 
-#### `dump_stream()`
+#### `dump_stream()` / `dump_file()`
 
-流式写入器：将 Python 对象序列化到类文件对象，使用常量内存。
+流式写入器：将 Python 对象序列化到类文件对象或磁盘文件，使用常量内存。
 
-```python
-dump_stream(
-    file_obj: Any,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+=== "内存中"
 
-**Parameters:**
+    ```python
+    dump_stream(
+        file_obj: Any,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-| Parameter | Type | Default | 描述 |
-|-----------|------|---------|-------------|
-| `file_obj` | `Any` | — | 具有 `write(str)` 方法的可写类文件对象。 |
-| `iterable` | `Any` | — | 要序列化的 Python 对象的可迭代对象。 |
-| `explicit_start` | `bool` | `False` | 是否在每个文档开头输出 `---`。 |
-| `explicit_end` | `bool` | `False` | 是否在每个文档结尾输出 `...`。 |
-| `sort_keys` | `bool` | `False` | 是否按字母顺序排序映射键。 |
+    **Parameters:**
 
-**Raises:** 如果 `file_obj` 没有 `write` 方法，抛出 `YamlTypeError`。
+    | Parameter | Type | Default | 描述 |
+    |-----------|------|---------|-------------|
+    | `file_obj` | `Any` | — | 具有 `write(str)` 方法的可写类文件对象。 |
+    | `iterable` | `Any` | — | 要序列化的 Python 对象的可迭代对象。 |
+    | `explicit_start` | `bool` | `False` | 是否在每个文档开头输出 `---`。 |
+    | `explicit_end` | `bool` | `False` | 是否在每个文档结尾输出 `...`。 |
+    | `sort_keys` | `bool` | `False` | 是否按字母顺序排序映射键。 |
 
-**Notes:**
+    **Raises:** 如果 `file_obj` 没有 `write` 方法，抛出 `YamlTypeError`。
 
-- 使用常量内存 — 无需将整个输出保留在内存中。
-- 在 Rust 序列化阶段释放 GIL。
-- 可迭代对象中的每个项目成为单独的 YAML 文档。
+    **Notes:**
 
-**Example:**
+    - 使用常量内存 — 无需将整个输出保留在内存中。
+    - 在 Rust 序列化阶段释放 GIL。
+    - 可迭代对象中的每个项目成为单独的 YAML 文档。
 
-```python
-import io
-from pyrs_yaml import YAML
+    **Example:**
 
-yaml = YAML()
-buf = io.StringIO()
-yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
-print(buf.getvalue())
-# ---
-# a: 1
-# ---
-# b: 2
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `dump_file()`
+    yaml = YAML()
+    buf = io.StringIO()
+    yaml.dump_stream(buf, [{"a": 1}, {"b": 2}], explicit_start=True)
+    print(buf.getvalue())
+    # ---
+    # a: 1
+    # ---
+    # b: 2
+    ```
 
-流式写入器：将 Python 对象直接序列化到磁盘文件。
+=== "文件路径"
 
-```python
-dump_file(
-    path: str,
-    iterable: Any,
-    explicit_start: bool = False,
-    explicit_end: bool = False,
-    sort_keys: bool = False,
-) -> None
-```
+    ```python
+    dump_file(
+        path: str,
+        iterable: Any,
+        explicit_start: bool = False,
+        explicit_end: bool = False,
+        sort_keys: bool = False,
+    ) -> None
+    ```
 
-**Parameters:**
+    **Parameters:**
 
-| Parameter | Type | Default | 描述 |
-|-----------|------|---------|-------------|
-| `path` | `str` | — | 要写入的文件路径。 |
-| `iterable` | `Any` | — | 要序列化的 Python 对象的可迭代对象。 |
-| `explicit_start` | `bool` | `False` | 是否在每个文档开头输出 `---`。 |
-| `explicit_end` | `bool` | `False` | 是否在每个文档结尾输出 `...`。 |
-| `sort_keys` | `bool` | `False` | 是否按字母顺序排序映射键。 |
+    | Parameter | Type | Default | 描述 |
+    |-----------|------|---------|-------------|
+    | `path` | `str` | — | 要写入的文件路径。 |
+    | `iterable` | `Any` | — | 要序列化的 Python 对象的可迭代对象。 |
+    | `explicit_start` | `bool` | `False` | 是否在每个文档开头输出 `---`。 |
+    | `explicit_end` | `bool` | `False` | 是否在每个文档结尾输出 `...`。 |
+    | `sort_keys` | `bool` | `False` | 是否按字母顺序排序映射键。 |
 
-**Raises:** 如果文件无法创建或写入，抛出 `IOError`。
+    **Raises:** 如果文件无法创建或写入，抛出 `IOError`。
 
-**Notes:**
+    **Notes:**
 
-- 直接使用 Rust 的 `std::fs::File` — I/O 期间无 GIL 阻塞。
-- 可迭代对象中的每个项目成为单独的 YAML 文档。
-- 使用常量内存，适合大输出。
+    - 直接使用 Rust 的 `std::fs::File` — I/O 期间无 GIL 阻塞。
+    - 可迭代对象中的每个项目成为单独的 YAML 文档。
+    - 使用常量内存，适合大输出。
 
-**Example:**
+    **Example:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
-```
+    yaml = YAML()
+    yaml.dump_file("output.yaml", [{"x": 2}, {"x": 3}], sort_keys=True)
+    ```
 
-#### `load_stream()`
+#### `load_stream()` / `load_stream_file()`
 
-惰性事件迭代器：从类文件对象增量读取。
+惰性事件迭代器：从类文件对象或文件路径增量读取。
 
-```python
-load_stream(file_obj: Any) -> YamlStream
-```
+=== "内存中"
 
-**Parameters:**
+    ```python
+    load_stream(file_obj: Any) -> YamlStream
+    ```
 
-| Parameter | Type | 描述 |
-|-----------|------|-------------|
-| `file_obj` | `Any` | 具有返回 `str` 或 `bytes` 的 `read()` 方法的可读类文件对象。 |
+    **Parameters:**
 
-**Returns:** 延迟生成解析事件字典的 `YamlStream` 迭代器。
+    | Parameter | Type | 描述 |
+    |-----------|------|-------------|
+    | `file_obj` | `Any` | 具有返回 `str` 或 `bytes` 的 `read()` 方法的可读类文件对象。 |
 
-**Raises:** 如果 `file_obj` 没有 `read` 方法，抛出 `YamlTypeError`。
+    **Returns:** 延迟生成解析事件字典的 `YamlStream` 迭代器。
 
-**Notes:**
+    **Raises:** 如果 `file_obj` 没有 `read` 方法，抛出 `YamlTypeError`。
 
-- 流式增量解析 — 无需将整个文件加载到内存中。
-- 每个生成的事件是一个包含 `"type"`、`"key"`、`"value"`、`"start_mark"`、`"end_mark"` 等键的 `dict`。
-- 当 `__next__` 返回 `None` 时流结束。
+    **Notes:**
 
-**Example:**
+    - 流式增量解析 — 无需将整个文件加载到内存中。
+    - 每个生成的事件是一个包含 `"type"`、`"key"`、`"value"`、`"start_mark"`、`"end_mark"` 等键的 `dict`。
+    - 当 `__next__` 返回 `None` 时流结束。
 
-```python
-import io
-from pyrs_yaml import YAML
+    **Example:**
 
-yaml = YAML()
-buf = io.StringIO("key: value\n")
-stream = yaml.load_stream(buf)
-for event in stream:
-    if event is None:
-        break
-    print(event["type"])
-```
+    ```python
+    import io
+    from pyrs_yaml import YAML
 
-#### `load_stream_file()`
+    yaml = YAML()
+    buf = io.StringIO("key: value\n")
+    stream = yaml.load_stream(buf)
+    for event in stream:
+        if event is None:
+            break
+        print(event["type"])
+    ```
 
-惰性事件迭代器：从文件路径增量读取。
+=== "文件路径"
 
-```python
-load_stream_file(path: str) -> YamlStream
-```
+    ```python
+    load_stream_file(path: str) -> YamlStream
+    ```
 
-**Parameters:**
+    **Parameters:**
 
-| Parameter | Type | 描述 |
-|-----------|------|-------------|
-| `path` | `str` | 要增量读取的文件路径。 |
+    | Parameter | Type | 描述 |
+    |-----------|------|-------------|
+    | `path` | `str` | 要增量读取的文件路径。 |
 
-**Returns:** 延迟生成解析事件字典的 `YamlStream` 迭代器。
+    **Returns:** 延迟生成解析事件字典的 `YamlStream` 迭代器。
 
-**Raises:** 如果文件无法打开，抛出 `IOError`。
+    **Raises:** 如果文件无法打开，抛出 `IOError`。
 
-**Notes:**
+    **Notes:**
 
-- 使用 Rust 的 `std::fs::File` 配合缓冲 I/O — 读取期间无 GIL 阻塞。
-- 增量解析文件，适合大型 YAML 文件。
+    - 使用 Rust 的 `std::fs::File` 配合缓冲 I/O — 读取期间无 GIL 阻塞。
+    - 增量解析文件，适合大型 YAML 文件。
 
-**Example:**
+    **Example:**
 
-```python
-from pyrs_yaml import YAML
+    ```python
+    from pyrs_yaml import YAML
 
-yaml = YAML()
-stream = yaml.load_stream_file("large.yaml")
-for event in stream:
-    if event is None:
-        break
-    print(event)
-```
+    yaml = YAML()
+    stream = yaml.load_stream_file("large.yaml")
+    for event in stream:
+        if event is None:
+            break
+        print(event)
+    ```
 
 ### 使用示例
 
