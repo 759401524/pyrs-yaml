@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.15.0] — 2026-08-19
+
 #### 新增
 
 - **Node 元数据 setter/getter** — 新增 `Node.comment` / `Node.anchor` / `Node.tag` 只读属性和 `set_comment` / `set_anchor` / `set_tag`（及 `remove_*` 系列）。编辑别名或不存在路径会报错；内联标量值和序列项上的独立注释现在输出到独立的缩进行（修复 `child:\n  # c\n  val` 与 `- a\n# c\n- b` 既有的 round-trip 缺陷）。
