@@ -296,6 +296,31 @@ impl SpliceState {
 mod tests {
     use super::*;
 
+    /// Assert that a `SpliceState::materialize` result equals the expected
+    /// YAML string, printing a unified diff on mismatch.
+    macro_rules! assert_materialize_eq {
+        ($splice:expr, $expected:expr) => {{
+            let actual = $splice.materialize();
+            let expected: Option<String> = Some($expected.to_string());
+            if actual != expected {
+                let actual_str = actual.as_deref().unwrap_or("<None>");
+                let expected_str = expected.as_deref().unwrap();
+                let diff = similar::TextDiff::from_lines(expected_str, actual_str);
+                let out = diff
+                    .unified_diff()
+                    .context_radius(3)
+                    .header("expected", "actual")
+                    .to_string();
+                panic!(
+                    "materialize mismatch:\n\
+                     expected: {expected_str:?}\n\
+                     actual:   {actual_str:?}\n\n\
+                     diff:\n{out}"
+                );
+            }
+        }};
+    }
+
     fn unit(kind: DirtyKind, eligible: bool) -> DirtyUnit {
         DirtyUnit { kind, eligible }
     }
@@ -317,7 +342,7 @@ mod tests {
     #[test]
     fn set_splices_only_region() {
         let s = region("a: 1\nb: 2\n", 5..10, "b: 9\n");
-        assert_eq!(s.materialize(), Some("a: 1\nb: 9\n".to_string()));
+        assert_materialize_eq!(s, "a: 1\nb: 9\n");
     }
 
     #[test]
@@ -331,7 +356,7 @@ mod tests {
             true,
         ))
         .unwrap();
-        assert_eq!(s.materialize(), Some("- a\n- z\n- b\n".to_string()));
+        assert_materialize_eq!(s, "- a\n- z\n- b\n");
     }
 
     #[test]
@@ -345,7 +370,7 @@ mod tests {
             true,
         ))
         .unwrap();
-        assert_eq!(s.materialize(), Some("- a\n- b\n- c\n".to_string()));
+        assert_materialize_eq!(s, "- a\n- b\n- c\n");
     }
 
     #[test]
@@ -353,13 +378,13 @@ mod tests {
         let mut s = SpliceState::new(Arc::from("- a\n- b\n- c\n"));
         s.apply(&unit(DirtyKind::Delete { range: 4..8 }, true))
             .unwrap();
-        assert_eq!(s.materialize(), Some("- a\n- c\n".to_string()));
+        assert_materialize_eq!(s, "- a\n- c\n");
     }
 
     #[test]
     fn materialize_is_identity_on_empty_ops() {
         let s = SpliceState::new(Arc::from("a: 1\nb: 2\n"));
-        assert_eq!(s.materialize(), Some("a: 1\nb: 2\n".to_string()));
+        assert_materialize_eq!(s, "a: 1\nb: 2\n");
     }
 
     #[test]
@@ -376,7 +401,7 @@ mod tests {
             .is_err()
         );
         // State untouched.
-        assert_eq!(s.materialize(), Some("a: 1\n".to_string()));
+        assert_materialize_eq!(s, "a: 1\n");
     }
 
     #[test]
@@ -432,7 +457,7 @@ mod tests {
             true,
         ))
         .unwrap();
-        assert_eq!(s.materialize(), Some("a: 1\nb: 9\nc: 3\n".to_string()));
+        assert_materialize_eq!(s, "a: 1\nb: 9\nc: 3\n");
     }
 
     #[test]
@@ -448,7 +473,7 @@ mod tests {
             ))
             .unwrap();
         }
-        assert_eq!(s.materialize(), Some("a: 1\nx\nx\nb: 2\n".to_string()));
+        assert_materialize_eq!(s, "a: 1\nx\nx\nb: 2\n");
     }
 
     #[test]
@@ -471,7 +496,7 @@ mod tests {
             true,
         ))
         .unwrap();
-        assert_eq!(s.materialize(), Some("a: 1\nx\nb: 2\nc: 8\n".to_string()));
+        assert_materialize_eq!(s, "a: 1\nx\nb: 2\nc: 8\n");
     }
 
     #[test]
@@ -486,6 +511,6 @@ mod tests {
             eligible: true,
         };
         s.apply(&unit).unwrap();
-        assert_eq!(s.materialize().unwrap(), "world\n");
+        assert_materialize_eq!(s, "world\n");
     }
 }

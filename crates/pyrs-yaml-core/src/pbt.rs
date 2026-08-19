@@ -7,12 +7,24 @@ mod tests {
     use crate::serializer::{SerializeOptions, to_yaml, to_yaml_with_options};
     use proptest::prelude::*;
 
+    /// When a round-trip comparison fails, print a unified diff of the two
+    /// YAML serializations so the developer can see exactly what changed.
+    fn yaml_diff(a: &str, b: &str) -> String {
+        let diff = similar::TextDiff::from_lines(a, b);
+        diff.unified_diff()
+            .context_radius(3)
+            .header("original.yaml", "re-parsed.yaml")
+            .to_string()
+    }
+
     fn try_roundtrip(node: &crate::ast::CustomNode) -> Option<crate::ast::CustomNode> {
         let yaml = to_yaml(node);
         let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false).ok()?;
         if nodes_equal_ignore_meta(node, &parsed) {
             Some(parsed)
         } else {
+            let yaml2 = to_yaml(&parsed);
+            eprintln!("round-trip mismatch:\n{}", yaml_diff(&yaml, &yaml2));
             None
         }
     }
