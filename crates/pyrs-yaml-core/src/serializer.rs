@@ -1013,6 +1013,32 @@ mod tests {
     use indexmap::IndexMap;
     use std::sync::Arc;
 
+    /// Print a unified diff when two YAML strings differ, then panic.
+    macro_rules! assert_yaml_eq {
+        ($expected:expr, $actual:expr) => {{
+            let expected = $expected;
+            let actual = $actual;
+            let expected_str: &str = expected.as_ref();
+            let actual_str: &str = actual.as_ref();
+            if expected_str != actual_str {
+                let diff = similar::TextDiff::from_lines(expected_str, actual_str);
+                let out = diff
+                    .unified_diff()
+                    .context_radius(3)
+                    .header("expected", "actual")
+                    .to_string();
+                panic!(
+                    "YAML mismatch:\n\
+                     expected ({} bytes):\n{expected_str:?}\n\
+                     actual   ({} bytes):\n{actual_str:?}\n\n\
+                     diff:\n{out}",
+                    expected_str.len(),
+                    actual_str.len()
+                );
+            }
+        }};
+    }
+
     #[test]
     fn test_pair_helper_matches_full_serialize() {
         let yaml = "a: 1\nb:\n  c: 2\n";
@@ -1032,7 +1058,7 @@ mod tests {
         for (k, v) in pairs.iter() {
             s.write_mapping_pair(k, v, 0, 0).unwrap();
         }
-        assert_eq!(full, s.output);
+        assert_yaml_eq!(&full, &s.output);
     }
 
     #[test]
@@ -1055,7 +1081,7 @@ mod tests {
         for item in items.iter() {
             s.write_sequence_item(item, 0, 0).unwrap();
         }
-        assert_eq!(full, s.output);
+        assert_yaml_eq!(&full, &s.output);
     }
 
     #[test]
@@ -1074,7 +1100,7 @@ mod tests {
             panic!()
         };
         s.write_sequence_item(&items[0], 0, 0).unwrap();
-        assert_eq!(s.output, "- host: a\n"); // P2: dash prefix must survive
+        assert_yaml_eq!(&s.output, "- host: a\n"); // P2: dash prefix must survive
     }
 
     #[test]
@@ -1085,7 +1111,7 @@ mod tests {
             chomping: Chomping::Clip,
             meta: Default::default(),
         };
-        assert_eq!(to_yaml(&node), "hello\n");
+        assert_yaml_eq!(to_yaml(&node), "hello\n");
     }
 
     #[test]
@@ -1102,7 +1128,7 @@ mod tests {
             },
             chomping: Chomping::Clip,
         };
-        assert_eq!(to_yaml(&node), "value  # a comment\n");
+        assert_yaml_eq!(to_yaml(&node), "value  # a comment\n");
     }
 
     #[test]
@@ -1116,7 +1142,7 @@ mod tests {
             },
             chomping: Chomping::Clip,
         };
-        assert_eq!(to_yaml(&node), "!!int 42\n");
+        assert_yaml_eq!(to_yaml(&node), "!!int 42\n");
     }
 
     #[test]
@@ -1143,7 +1169,7 @@ mod tests {
             meta: Default::default(),
         };
 
-        assert_eq!(to_yaml(&node), "key: value\n");
+        assert_yaml_eq!(to_yaml(&node), "key: value\n");
     }
 
     #[test]
@@ -1272,7 +1298,7 @@ mod tests {
             indent_offset: 2,
             ..Default::default()
         };
-        assert_eq!(to_yaml_with_options(&node, &options).unwrap(), "  a: 1\n");
+        assert_yaml_eq!(to_yaml_with_options(&node, &options).unwrap(), "  a: 1\n");
     }
 
     #[test]
@@ -1286,7 +1312,7 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(crate::serializer::to_yaml(&ast), "a: 1\n# c1\nb: 2\n");
+        assert_yaml_eq!(crate::serializer::to_yaml(&ast), "a: 1\n# c1\nb: 2\n");
     }
 
     #[test]
@@ -1300,7 +1326,7 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(
+        assert_yaml_eq!(
             crate::serializer::to_yaml(&ast),
             "top:\n  x: 1\n  # c2\n  y: 2\n"
         );
