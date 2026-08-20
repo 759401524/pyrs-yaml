@@ -4,6 +4,8 @@ import uuid
 from datetime import date, datetime, time
 from decimal import Decimal
 
+import pytest
+
 import pyrs_yaml
 
 
@@ -69,3 +71,81 @@ def test_regex_plugin_roundtrip():
     doc = pyrs_yaml.parse(out)
     assert isinstance(doc.get("r"), re.Pattern)
     assert doc.get("r").pattern == pattern.pattern
+
+
+def test_pendulum_duration_roundtrip():
+    """!duration serializes/deserializes pendulum.Duration."""
+    pendulum = pytest.importorskip("pendulum")
+    d = pendulum.duration(days=1, hours=2, seconds=3)
+    out = pyrs_yaml.safe_dump({"d": d})
+    assert "!duration" in out, out
+    doc = pyrs_yaml.parse(out)
+    assert isinstance(doc.get("d"), pendulum.Duration)
+    assert doc.get("d").total_seconds() == d.total_seconds()
+
+
+def test_timedelta_not_matched_by_duration():
+    """stdlib timedelta is never matched by !duration."""
+    pytest.importorskip("pendulum")
+    from datetime import timedelta
+
+    with pytest.raises(pyrs_yaml.YamlTypeError):
+        pyrs_yaml.safe_dump({"td": timedelta(days=1)})
+
+
+def test_arrow_roundtrip():
+    """!arrow serializes/deserializes arrow.Arrow."""
+    arrow = pytest.importorskip("arrow")
+    a = arrow.get("2026-08-19T10:30:00+00:00")
+    out = pyrs_yaml.safe_dump({"a": a})
+    assert "!arrow" in out, out
+    doc = pyrs_yaml.parse(out)
+    assert isinstance(doc.get("a"), arrow.Arrow)
+    assert doc.get("a") == a
+
+
+def test_ulid_roundtrip():
+    """!ulid serializes/deserializes ulid.ULID."""
+    ulid_mod = pytest.importorskip("ulid")
+    u = ulid_mod.ULID()
+    out = pyrs_yaml.safe_dump({"u": u})
+    assert "!ulid" in out, out
+    doc = pyrs_yaml.parse(out)
+    assert isinstance(doc.get("u"), ulid_mod.ULID)
+    assert doc.get("u") == u
+
+
+def test_timestamp_still_parses_to_datetime():
+    """!timestamp still returns datetime when third-party libs are present."""
+    pytest.importorskip("arrow")
+    pytest.importorskip("pendulum")
+    doc = pyrs_yaml.parse("ts: !timestamp 2026-08-11T10:30:00")
+    assert isinstance(doc.get("ts"), datetime)
+
+
+def test_third_party_plugins_listed():
+    """list_plugins() reports third-party tags when libraries are importable."""
+    expected = set()
+    for mod_name in ("pendulum", "arrow", "ulid"):
+        try:
+            __import__(mod_name)
+        except ImportError:
+            continue
+        expected.add({"pendulum": "!duration", "arrow": "!arrow", "ulid": "!ulid"}[mod_name])
+    if not expected:
+        pytest.skip("no third-party libraries installed")
+    tags = {tag for tag, _ in pyrs_yaml.list_plugins()}
+    assert expected <= tags, f"missing tags {expected - tags} in {tags}"
+
+
+def test_third_party_plugins_skip_when_absent(monkeypatch):
+    """_register_third_party() is a no-op when libraries are not importable."""
+    from pyrs_yaml.plugins import _builtin
+
+    def fake_import(name, *args, **kwargs):
+        if name in ("pendulum", "arrow", "ulid"):
+            raise ImportError(f"No module named {name!r}")
+        return __import__(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    _builtin._register_third_party()

@@ -157,6 +157,53 @@ doc.get("name")  # "custom:value"
 - 处理器必须返回字符串，否则抛出 `YamlTagError`。
 - `remove_tag("!custom")` 与 `clear_tag_handlers()` 用于注销处理器。
 
+## 社区插件
+
+定义与序列化和反序列化集成的自定义 YAML 节点类型：
+
+```python title="CustomType 插件"
+import pyrs_yaml
+from datetime import datetime
+
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+
+# 命令式或装饰器注册
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# 加载: 带标签的标量 → Python 对象
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# 转储: Python 对象 → 带标签的标量
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out contains: ts: !timestamp 2026-08-11T10:30:00
+```
+
+**内置插件**（导入时注册）:
+`!timestamp` → `datetime`、`!date` → `datetime.date`、`!time` → `datetime.time`、
+`!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!binary` → `bytes`、
+`!regex` → `re.Pattern`、`!set` → `str`
+
+**可选的第三方插件**（安装对应库后自动注册）:
+`!duration` → `pendulum.Duration`、`!arrow` → `arrow.Arrow`、`!ulid` → `ulid.ULID`
+
+| 方法 | 说明 |
+|------|------|
+| `can_parse(node)` | 该类型是否处理给定的 AST 节点 |
+| `from_yaml(value)` | 将 YAML 字符串转换为 Python 对象 |
+| `to_yaml(obj)` | 将 Python 对象转换为 YAML 字符串 |
+| `validate(obj)` | 验证 Python 对象（返回 `bool`） |
+
 ## 增量重新解析
 
 使用不同选项就地重新解析存储的源文本：

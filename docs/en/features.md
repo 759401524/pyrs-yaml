@@ -241,6 +241,9 @@ out = pyrs_yaml.safe_dump(data)
 `!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!binary` → `bytes`,
 `!regex` → `re.Pattern`, `!set` → `str`
 
+**Optional third-party plugins** (auto-registered when the library is installed):
+`!duration` → `pendulum.Duration`, `!arrow` → `arrow.Arrow`, `!ulid` → `ulid.ULID`
+
 | Method | Description |
 |--------|-------------|
 | `can_parse(node)` | Whether this type handles a given AST node |

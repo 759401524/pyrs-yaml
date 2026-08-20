@@ -15,6 +15,15 @@ status: new
 
 ### [Unreleased]
 
+#### 追加
+
+- **オプションのサードパーティタイププラグイン** — `!duration`（`pendulum.Duration`）、
+  `!arrow`（`arrow.Arrow`）、`!ulid`（`ulid.ULID`）は、対応するライブラリがインストール
+  されている場合に自動登録されます（`python/pyrs_yaml/plugins/_builtin.py` の
+  `_register_third_party`）。各プラグインは独立したタグを使用するため、既存の
+  `!timestamp` / `!date` / `!uuid` ハンドラには影響しません。標準ライブラリの
+  `timedelta` が `!duration` にマッチすることはありません。
+
 ### [v0.15.0] — 2026-08-19
 
 #### 追加

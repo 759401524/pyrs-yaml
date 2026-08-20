@@ -15,6 +15,13 @@ status: new
 
 ### [Unreleased]
 
+#### 新增
+
+- **可选第三方类型插件** — `!duration`（`pendulum.Duration`）、`!arrow`（`arrow.Arrow`）、
+  `!ulid`（`ulid.ULID`）在安装对应库时自动注册（`python/pyrs_yaml/plugins/_builtin.py`
+  中的 `_register_third_party`）。每个插件使用独立标签，不影响现有 `!timestamp` /
+  `!date` / `!uuid` 处理器；标准库 `timedelta` 绝不会被 `!duration` 匹配。
+
 ### [v0.15.0] — 2026-08-19
 
 #### 新增

@@ -160,6 +160,53 @@ yaml_str = doc.to_yaml_with_options(
 - 핸들러는 문자열을 반환해야 합니다. 그렇지 않으면 `YamlTagError`가 발생합니다.
 - `remove_tag("!custom")`와 `clear_tag_handlers()`로 핸들러를 해제합니다.
 
+## 커뮤니티 플러그인
+
+직렬화 및 역직렬화에 통합되는 사용자 정의 YAML 노드 유형을 정의합니다:
+
+```python title="CustomType 플러그인"
+import pyrs_yaml
+from datetime import datetime
+
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+
+# 명령형 또는 데코레이터로 등록
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# 로드: 태그가 지정된 스칼라 → Python 객체
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# 덤프: Python 객체 → 태그가 지정된 스칼라
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out contains: ts: !timestamp 2026-08-11T10:30:00
+```
+
+**내장 플러그인** (import 시 등록):
+`!timestamp` → `datetime`, `!date` → `datetime.date`, `!time` → `datetime.time`,
+`!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!binary` → `bytes`,
+`!regex` → `re.Pattern`, `!set` → `str`
+
+**선택적 서드파티 플러그인** (라이브러리가 설치된 경우 자동 등록):
+`!duration` → `pendulum.Duration`, `!arrow` → `arrow.Arrow`, `!ulid` → `ulid.ULID`
+
+| 메서드 | 설명 |
+|--------|------|
+| `can_parse(node)` | 이 유형이 지정된 AST 노드를 처리하는지 여부 |
+| `from_yaml(value)` | YAML 문자열 → Python 객체로 변환 |
+| `to_yaml(obj)` | Python 객체 → YAML 문자열로 변환 |
+| `validate(obj)` | Python 객체를 검증합니다 (`bool` 반환) |
+
 ## Pydantic 통합
 
 Pydantic 모델로 YAML을 직접 파싱하거나 모델을 YAML로 직렬화:

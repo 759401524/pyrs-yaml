@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- **Optional third-party type plugins** — `!duration` (`pendulum.Duration`),
+  `!arrow` (`arrow.Arrow`), and `!ulid` (`ulid.ULID`) auto-register when the
+  corresponding library is installed (`_register_third_party` in
+  `python/pyrs_yaml/plugins/_builtin.py`). Each uses a distinct tag so existing
+  `!timestamp` / `!date` / `!uuid` handlers are unaffected; a plain stdlib
+  `timedelta` is never matched by `!duration`.
+
 ### [v0.15.0] — 2026-08-19
 
 #### Added

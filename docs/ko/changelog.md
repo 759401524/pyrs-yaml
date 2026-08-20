@@ -15,6 +15,14 @@ status: new
 
 ### [Unreleased]
 
+#### 추가
+
+- **선택적 서드파티 유형 플러그인** — `!duration`(`pendulum.Duration`),
+  `!arrow`(`arrow.Arrow`), `!ulid`(`ulid.ULID`)는 해당 라이브러리가 설치되어 있을 때
+  자동으로 등록됩니다(`python/pyrs_yaml/plugins/_builtin.py`의 `_register_third_party`).
+  각 플러그인은 고유한 태그를 사용하므로 기존 `!timestamp` / `!date` / `!uuid` 핸들러에
+  영향을 주지 않습니다. 표준 라이브러리 `timedelta`가 `!duration`에 매칭되지 않습니다.
+
 ### [v0.15.0] — 2026-08-19
 
 #### 추가
