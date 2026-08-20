@@ -208,8 +208,8 @@ node.rename("new")
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
-node.anchor   # None
-node.tag      # "!!str"
+node.anchor  # None
+node.tag  # "!!str"
 ```
 
 - `comment` — 行内或独立注释文本（不含 `#` 前缀），无注释时为 `None`
@@ -219,8 +219,8 @@ node.tag      # "!!str"
 #### `Node.set_comment()` / `Node.remove_comment()`
 
 ```python title="设置/移除注释"
-node.set_comment("new note")                   # standalone：节点上方独占一行
-node.set_comment("inline", standalone=False)   # 节点后行内
+node.set_comment("new note")  # standalone：节点上方独占一行
+node.set_comment("inline", standalone=False)  # 节点后行内
 node.remove_comment()
 ```
 
@@ -236,9 +236,9 @@ node.remove_anchor()
 #### `Node.set_tag()` / `Node.remove_tag()`
 
 ```python title="设置/移除标签"
-node.set_tag("!custom")                  # 局部标签
-node.set_tag("!!int")                    # 主（!!）标签
-node.set_tag("!<tag:yaml.org,2002:str>") # verbatim 标签
+node.set_tag("!custom")  # 局部标签
+node.set_tag("!!int")  # 主（!!）标签
+node.set_tag("!<tag:yaml.org,2002:str>")  # verbatim 标签
 node.remove_tag()
 ```
 
@@ -343,10 +343,12 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 ```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
-doc.set_many({
-    "$.items[*].pass": False,   # 通配符：所有项
-    "$.name": "config",          # 普通路径
-})
+doc.set_many(
+    {
+        "$.items[*].pass": False,  # 通配符：所有项
+        "$.name": "config",  # 普通路径
+    }
+)
 ```
 
 #### `doc.sort_keys()` — 映射键排序
@@ -355,8 +357,8 @@ doc.set_many({
 
 ```python title="sort_keys() 示例"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
-doc.sort_keys()           # 排序根映射
-print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+doc.sort_keys()  # 排序根映射
+print(doc.to_yaml())  # a: 2\nm: 3\nz: 1
 ```
 
 #### `Node.move(new_path)` — 移动子树
@@ -366,14 +368,14 @@ print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
 ```python title="Node.move() 示例"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
-print(doc.to_yaml())      # dst:\n  x: 1
+print(doc.to_yaml())  # dst:\n  x: 1
 ```
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
 ```python title="Node 内省"
 node = doc.node().find("$.a.b")
-node.path                  # ('a', 'b') — 路径段
+node.path  # ('a', 'b') — 路径段
 doc.node().find_first("$.items[*]")  # 第一个通配符匹配，无则 None
 node.value_eq(other_node)  # 比较解析后的值（非引用同一性）
 ```

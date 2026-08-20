@@ -269,9 +269,7 @@ print(doc.to_yaml())  # text: |-\n  hello\n  world
     """
 
     # Valid document passes
-    pyrs_yaml.validate_against_schema(
-        "port: 8080\ntags: [web, api]\n", schema
-    )
+    pyrs_yaml.validate_against_schema("port: 8080\ntags: [web, api]\n", schema)
 
     # Invalid document raises YamlValidateError with every failure
     pyrs_yaml.validate_against_schema("port: abc\n", schema)

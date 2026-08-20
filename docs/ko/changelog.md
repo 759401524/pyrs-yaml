@@ -22,6 +22,12 @@ status: new
   자동으로 등록됩니다(`python/pyrs_yaml/plugins/_builtin.py`의 `_register_third_party`).
   각 플러그인은 고유한 태그를 사용하므로 기존 `!timestamp` / `!date` / `!uuid` 핸들러에
   영향을 주지 않습니다. 표준 라이브러리 `timedelta`가 `!duration`에 매칭되지 않습니다.
+- **pydantic-settings YAML 소스** — `PyrsYamlConfigSettingsSource`
+  (`python/pyrs_yaml/settings.py`)는 `pydantic_settings.YamlConfigSettingsSource`의
+  드롭인 대체품으로, PyYAML 대신 pyrs-yaml(YAML 1.2 코어 스키마)로 파싱합니다.
+  지연 내보내기되므로 `import pyrs_yaml`에 pydantic-settings가 필요 없습니다.
+  `pip install "pyrs-yaml[settings]"`로 설치합니다(Python 3.10+).
+  `dump_pydantic`과 `parse_as`도 동일한 모듈 수준 `__getattr__` 지연 내보내기 패턴으로 변경되었습니다.
 
 ### [v0.15.0] — 2026-08-19
 

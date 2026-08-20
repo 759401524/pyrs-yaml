@@ -46,7 +46,9 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 doc = pyrs_yaml.parse("key: value")
 doc = pyrs_yaml.parse(b"key: value")
 doc = pyrs_yaml.parse(yaml_str, schema="json")
-doc = pyrs_yaml.parse("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
+doc = pyrs_yaml.parse(
+    "addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]}
+)
 ```
 
 #### `parse_file()`
@@ -118,7 +120,9 @@ safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_d
 
 ```python
 d = pyrs_yaml.safe_load("key: value")
-d = pyrs_yaml.safe_load("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
+d = pyrs_yaml.safe_load(
+    "addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]}
+)
 ```
 
 #### `safe_loads()`
@@ -237,6 +241,59 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
+#### `PyrsYamlConfigSettingsSource`
+
+A pydantic-settings YAML source backed by pyrs-yaml. Drop-in replacement for `pydantic_settings.YamlConfigSettingsSource` that uses pyrs-yaml as the parser instead of PyYAML.
+
+```python
+PyrsYamlConfigSettingsSource(
+    settings_cls: type[BaseSettings],
+    yaml_file: ConfigFileSourceType | None = DEFAULT_PATH,
+    yaml_file_encoding: str | None = None,
+    yaml_config_section: str | None = None,
+    deep_merge: bool = False,
+)
+```
+
+Loads settings from YAML file(s) declared via `SettingsConfigDict(yaml_file=...)`
+(or passed directly), then reads them with pyrs-yaml's parser under the YAML 1.2
+core schema. All other pydantic-settings features — env-var and dotenv overlay,
+`yaml_config_section` (dot-notation paths included), `deep_merge` across multiple
+files, `yaml_file_encoding` — behave identically to `YamlConfigSettingsSource`.
+
+**Raises:**
+
+- `ImportError` — pydantic-settings is not installed (install `pyrs-yaml[settings]`)
+
+**Example:**
+
+```python
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+```
+
+> **Note:** the class is exported lazily — `import pyrs_yaml` never requires
+> pydantic-settings. Accessing `pyrs_yaml.PyrsYamlConfigSettingsSource` without
+> pydantic-settings installed raises `ImportError` with installation hints.
+
 ### :material-tag: Tag Registry
 
 #### `register_tag()`
@@ -298,7 +355,9 @@ The schema definition supports a `rules` list mapping regex patterns to
 YAML types, and an optional `extends` base schema:
 
 ```python
-pyrs_yaml.register_schema("myapp", """
+pyrs_yaml.register_schema(
+    "myapp",
+    """
 name: myapp
 extends: core
 rules:
@@ -306,7 +365,8 @@ rules:
     type: int
   - pattern: ^\\d{4}-\\d{2}-\\d{2}$
     type: str
-""")
+""",
+)
 
 doc = pyrs_yaml.parse("addr: 0xFF", schema="myapp")
 assert doc.get("addr") == 255
@@ -341,6 +401,7 @@ be used with YAML tags.
 ```python
 class CustomType:
     python_type = None  # set to a Python type for isinstance checks
+
     def can_parse(self, node) -> bool: ...
     def from_yaml(self, value: str): ...
     def to_yaml(self, obj) -> str: ...
@@ -372,10 +433,13 @@ register_type(name: str, handler: CustomType | None = None) -> CustomType
 ```python
 class TimestampType(pyrs_yaml.CustomType):
     python_type = datetime
+
     def from_yaml(self, value):
         return datetime.fromisoformat(value)
+
     def to_yaml(self, obj):
         return obj.isoformat()
+
 
 pyrs_yaml.register_type("!timestamp", TimestampType())
 ```
@@ -384,8 +448,8 @@ pyrs_yaml.register_type("!timestamp", TimestampType())
 
 ```python
 @pyrs_yaml.register_type("!timestamp")
-class TimestampType(pyrs_yaml.CustomType):
-    ...
+class TimestampType(pyrs_yaml.CustomType): ...
+
 
 doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
 assert isinstance(doc.get("when"), datetime)

@@ -140,6 +140,7 @@ yaml_str = doc.to_yaml_with_options(
     def custom_handler(node):
         return f"custom:{node}"
 
+
     doc = pyrs_yaml.parse("name: !custom value")
     doc.get("name")  # "custom:value"
     ```
@@ -229,6 +230,38 @@ print(user.name)  # Alice
 yaml_str = pyrs_yaml.dump_pydantic(user)
 print(yaml_str)
 ```
+
+### pydantic-settings
+
+`PyrsYamlConfigSettingsSource`는 `pydantic_settings.YamlConfigSettingsSource`의 드롭인 대체품입니다. 동일한 `BaseSettings` + `SettingsConfigDict(yaml_file=...)` 워크플로에 연결되지만 PyYAML 대신 pyrs-yaml로 파싱합니다. 값은 YAML 1.2 코어 스키마를 따르며(예: `on`은 문자열로 유지), pyrs-yaml의 성능을 설정 로딩에도 활용할 수 있습니다.
+
+```python title="pydantic-settings 소스"
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+
+
+settings = Settings()  # pyrs-yaml로 config.yaml에서 로드
+```
+
+`pip install "pyrs-yaml[settings]"`로 설치합니다 (Python 3.10+ 필요).
 
 ## 점진적 재파싱
 

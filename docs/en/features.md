@@ -103,13 +103,16 @@ Define custom schemas that control how plain scalars resolve to Python types:
 import pyrs_yaml
 
 # Register a custom schema from a YAML string
-pyrs_yaml.register_schema("hex", """
+pyrs_yaml.register_schema(
+    "hex",
+    """
 name: hex
 extends: core
 rules:
   - pattern: ^0x[0-9a-fA-F]+$
     type: int
-""")
+""",
+)
 
 # Use with YAML instance or module-level functions
 y = pyrs_yaml.YAML(schema="hex")
@@ -273,6 +276,42 @@ print(user.name)  # Alice
 yaml_str = pyrs_yaml.dump_pydantic(user)
 print(yaml_str)
 ```
+
+#### pydantic-settings
+
+`PyrsYamlConfigSettingsSource` is a drop-in replacement for
+`pydantic_settings.YamlConfigSettingsSource`: it feeds the same `BaseSettings`
+and `SettingsConfigDict(yaml_file=...)` workflow but parses with pyrs-yaml
+instead of PyYAML — so values follow the YAML 1.2 core schema (e.g. `on` stays
+a string), and pyrs-yaml's performance carries into your settings loading.
+
+```python title="pydantic-settings source"
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+
+
+settings = Settings()  # loaded from config.yaml via pyrs-yaml
+```
+
+Install with `pip install "pyrs-yaml[settings]"` (requires Python 3.10+).
 
 ### Incremental Re-parse
 

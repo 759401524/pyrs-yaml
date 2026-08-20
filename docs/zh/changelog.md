@@ -21,6 +21,12 @@ status: new
   `!ulid`（`ulid.ULID`）在安装对应库时自动注册（`python/pyrs_yaml/plugins/_builtin.py`
   中的 `_register_third_party`）。每个插件使用独立标签，不影响现有 `!timestamp` /
   `!date` / `!uuid` 处理器；标准库 `timedelta` 绝不会被 `!duration` 匹配。
+- **pydantic-settings YAML 配置来源** — `PyrsYamlConfigSettingsSource`
+  （`python/pyrs_yaml/settings.py`）是 `pydantic_settings.YamlConfigSettingsSource`
+  的即插即用替代，使用 pyrs-yaml（YAML 1.2 核心 schema）而非 PyYAML 解析。采用惰性
+  导出，`import pyrs_yaml` 不依赖 pydantic-settings；通过
+  `pip install "pyrs-yaml[settings]"` 安装（Python 3.10+）。`dump_pydantic` 与
+  `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
 
 ### [v0.15.0] — 2026-08-19
 

@@ -23,6 +23,12 @@ status: new
   `_register_third_party`）。各プラグインは独立したタグを使用するため、既存の
   `!timestamp` / `!date` / `!uuid` ハンドラには影響しません。標準ライブラリの
   `timedelta` が `!duration` にマッチすることはありません。
+- **pydantic-settings の YAML ソース** — `PyrsYamlConfigSettingsSource`
+  （`python/pyrs_yaml/settings.py`）は `pydantic_settings.YamlConfigSettingsSource` の
+  ドロップイン代替で、PyYAML の代わりに pyrs-yaml（YAML 1.2 コアスキーマ）で解析します。
+  遅延エクスポートされるため `import pyrs_yaml` に pydantic-settings は不要です。
+  `pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+）。
+  `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されました。
 
 ### [v0.15.0] — 2026-08-19
 

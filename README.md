@@ -273,10 +273,13 @@ doc = pyrs_yaml.parse_file("config.yaml")
 # Parse multiple YAML documents
 docs = pyrs_yaml.parse_all_docs(yaml_str)
 
+
 # Stream parsing (on_event callback)
 def handler(event):
     print(event)
     return True  # return False to stop
+
+
 iter = pyrs_yaml.parse_stream(yaml_str, on_event=handler, max_depth=1000)
 
 # Convert to YAML string (with options)

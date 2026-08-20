@@ -43,13 +43,16 @@ rules:
 ```python title="스키마 등록 및 사용"
 import pyrs_yaml
 
-pyrs_yaml.register_schema("hex", """
+pyrs_yaml.register_schema(
+    "hex",
+    """
 name: hex
 extends: core
 rules:
   - pattern: ^0x[0-9a-fA-F]+$
     type: int
-""")
+""",
+)
 
 y = pyrs_yaml.YAML(schema="hex")
 doc = y.parse("addr: 0xFF")
@@ -108,7 +111,7 @@ validate:
     required: true
 """
 
-pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
 # 모든 실패를 나열하며 YamlValidateError를 발생:
 pyrs_yaml.validate_against_schema("port: abc\n", schema)
 ```

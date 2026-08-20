@@ -208,8 +208,8 @@ node.rename("new")
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
-node.anchor   # None
-node.tag      # "!!str"
+node.anchor  # None
+node.tag  # "!!str"
 ```
 
 - `comment` — インラインまたはスタンドアロンのコメントテキスト（`#` プレフィックスなし）、または `None`
@@ -219,8 +219,8 @@ node.tag      # "!!str"
 #### `Node.set_comment()` / `Node.remove_comment()`
 
 ```python title="コメントの設定/削除"
-node.set_comment("new note")                   # スタンドアロン: ノードの上の行
-node.set_comment("inline", standalone=False)   # ノードの後ろにインライン
+node.set_comment("new note")  # スタンドアロン: ノードの上の行
+node.set_comment("inline", standalone=False)  # ノードの後ろにインライン
 node.remove_comment()
 ```
 
@@ -236,9 +236,9 @@ node.remove_anchor()
 #### `Node.set_tag()` / `Node.remove_tag()`
 
 ```python title="タグの設定/削除"
-node.set_tag("!custom")                  # ローカルタグ
-node.set_tag("!!int")                    # プライマリタグ
-node.set_tag("!<tag:yaml.org,2002:str>") # バーベイタムタグ
+node.set_tag("!custom")  # ローカルタグ
+node.set_tag("!!int")  # プライマリタグ
+node.set_tag("!<tag:yaml.org,2002:str>")  # バーベイタムタグ
 node.remove_tag()
 ```
 
@@ -339,10 +339,12 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 ```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
-doc.set_many({
-    "$.items[*].pass": False,   # ワイルドカード: 全アイテム
-    "$.name": "config",          # 通常パス
-})
+doc.set_many(
+    {
+        "$.items[*].pass": False,  # ワイルドカード: 全アイテム
+        "$.name": "config",  # 通常パス
+    }
+)
 ```
 
 #### `doc.sort_keys()` — マッピングキーの並べ替え
@@ -351,8 +353,8 @@ doc.set_many({
 
 ```python title="sort_keys() 例"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
-doc.sort_keys()           # ルートマッピングを並べ替え
-print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+doc.sort_keys()  # ルートマッピングを並べ替え
+print(doc.to_yaml())  # a: 2\nm: 3\nz: 1
 ```
 
 #### `Node.move(new_path)` — サブツリーの移動
@@ -362,14 +364,14 @@ print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
 ```python title="Node.move() 例"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
-print(doc.to_yaml())      # dst:\n  x: 1
+print(doc.to_yaml())  # dst:\n  x: 1
 ```
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
 ```python title="Node の内省"
 node = doc.node().find("$.a.b")
-node.path                  # ('a', 'b') — パスセグメント
+node.path  # ('a', 'b') — パスセグメント
 doc.node().find_first("$.items[*]")  # 最初のワイルドカード一致または None
 node.value_eq(other_node)  # 解決後の値を比較（参照同一性ではない）
 ```

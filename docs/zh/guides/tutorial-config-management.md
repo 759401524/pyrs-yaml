@@ -140,14 +140,18 @@ staging.set_flow_style(True)
 
 ```python title="通配符批量编辑"
 # Disable ALL debug flags across every environment
-doc.set_many({
-    "$.environments[*].debug": False,
-})
+doc.set_many(
+    {
+        "$.environments[*].debug": False,
+    }
+)
 
 # Disable all features at once
-doc.set_many({
-    "$.features[*].enabled": False,
-})
+doc.set_many(
+    {
+        "$.features[*].enabled": False,
+    }
+)
 ```
 
 ## 8. 排序键
@@ -155,7 +159,7 @@ doc.set_many({
 为便于阅读，对顶层键和环境键排序：
 
 ```python title="排序键"
-doc.sort_keys()              # sort the root mapping
+doc.sort_keys()  # sort the root mapping
 doc.sort_keys("$.environments")  # sort the environments
 ```
 

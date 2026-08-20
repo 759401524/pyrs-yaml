@@ -229,6 +229,38 @@ yaml_str = pyrs_yaml.dump_pydantic(user)
 print(yaml_str)
 ```
 
+### pydantic-settings
+
+`PyrsYamlConfigSettingsSource` は `pydantic_settings.YamlConfigSettingsSource` のドロップイン代替です。同じ `BaseSettings` + `SettingsConfigDict(yaml_file=...)` のワークフローにフィードしますが、PyYAML ではなく pyrs-yaml でパースします。値は YAML 1.2 コアスキーマに従い（例：`on` は文字列のまま）、pyrs-yaml の性能を設定読み込みにも活かせます。
+
+```python title="pydantic-settings ソース"
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+
+
+settings = Settings()  # pyrs-yaml で config.yaml から読み込み
+```
+
+`pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+ が必要）。
+
 ## インクリメンタル再パース
 
 異なるオプションで保存されたソーステキストをその場で再パース：

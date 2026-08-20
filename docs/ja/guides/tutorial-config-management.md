@@ -140,14 +140,18 @@ staging.set_flow_style(True)
 
 ```python title="ワイルドカードで一括編集"
 # Disable ALL debug flags across every environment
-doc.set_many({
-    "$.environments[*].debug": False,
-})
+doc.set_many(
+    {
+        "$.environments[*].debug": False,
+    }
+)
 
 # Disable all features at once
-doc.set_many({
-    "$.features[*].enabled": False,
-})
+doc.set_many(
+    {
+        "$.features[*].enabled": False,
+    }
+)
 ```
 
 ## 8. キーのソート
@@ -155,7 +159,7 @@ doc.set_many({
 読みやすくするために、トップレベルのキーと環境キーをソートします：
 
 ```python title="キーのソート"
-doc.sort_keys()              # sort the root mapping
+doc.sort_keys()  # sort the root mapping
 doc.sort_keys("$.environments")  # sort the environments
 ```
 

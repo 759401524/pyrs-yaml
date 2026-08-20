@@ -272,10 +272,13 @@ doc = pyrs_yaml.parse_file("config.yaml")
 # 解析多个 YAML 文档
 docs = pyrs_yaml.parse_all_docs(yaml_str)
 
+
 # 流式解析（on_event 回调）
 def handler(event):
     print(event)
     return True  # 返回 False 停止
+
+
 iter = pyrs_yaml.parse_stream(yaml_str, on_event=handler, max_depth=1000)
 
 # 转换为 YAML 字符串（带选项）

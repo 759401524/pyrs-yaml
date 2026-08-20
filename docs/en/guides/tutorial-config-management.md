@@ -149,14 +149,18 @@ toggle-like operations:
 
 ```python title="Batch edit with wildcards"
 # Disable ALL debug flags across every environment
-doc.set_many({
-    "$.environments[*].debug": False,
-})
+doc.set_many(
+    {
+        "$.environments[*].debug": False,
+    }
+)
 
 # Disable all features at once
-doc.set_many({
-    "$.features[*].enabled": False,
-})
+doc.set_many(
+    {
+        "$.features[*].enabled": False,
+    }
+)
 ```
 
 ## 8. Sort Keys
@@ -164,7 +168,7 @@ doc.set_many({
 For readability, sort the top-level keys and environment keys:
 
 ```python title="Sort keys"
-doc.sort_keys()              # sort the root mapping
+doc.sort_keys()  # sort the root mapping
 doc.sort_keys("$.environments")  # sort the environments
 ```
 

@@ -325,6 +325,38 @@ cfg.name  # "Alice"
 
 `parse_as` 对非 `BaseModel` 目标抛出 `TypeError`，并在 YAML 不匹配模型时传播 Pydantic 的 `ValidationError`。
 
+### pydantic-settings
+
+`PyrsYamlConfigSettingsSource` 是 `pydantic_settings.YamlConfigSettingsSource` 的即插即用替代：它接入相同的 `BaseSettings` + `SettingsConfigDict(yaml_file=...)` 工作流，但用 pyrs-yaml 代替 PyYAML 解析——值遵循 YAML 1.2 核心 schema（例如 `on` 保持为字符串），并把 pyrs-yaml 的性能带入配置加载。
+
+```python title="pydantic-settings 来源"
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+
+
+settings = Settings()  # 通过 pyrs-yaml 从 config.yaml 加载
+```
+
+使用 `pip install "pyrs-yaml[settings]"` 安装（需要 Python 3.10+）。
+
 ## 支持的 YAML 构造
 
 | 功能 | 支持情况 |

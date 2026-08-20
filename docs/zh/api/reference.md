@@ -43,7 +43,9 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 doc = pyrs_yaml.parse("key: value")
 doc = pyrs_yaml.parse(b"key: value")
 doc = pyrs_yaml.parse(yaml_str, schema="json")
-doc = pyrs_yaml.parse("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
+doc = pyrs_yaml.parse(
+    "addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]}
+)
 ```
 
 ### `parse_file()`
@@ -223,6 +225,53 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
+### `PyrsYamlConfigSettingsSource`
+
+基于 pyrs-yaml 的 pydantic-settings YAML 配置来源类。`pydantic_settings.YamlConfigSettingsSource` 的即插即用替代品，使用 pyrs-yaml 而非 PyYAML 作为解析器。
+
+```python
+PyrsYamlConfigSettingsSource(
+    settings_cls: type[BaseSettings],
+    yaml_file: ConfigFileSourceType | None = DEFAULT_PATH,
+    yaml_file_encoding: str | None = None,
+    yaml_config_section: str | None = None,
+    deep_merge: bool = False,
+)
+```
+
+从 `SettingsConfigDict(yaml_file=...)`（或直接传入）声明的 YAML 文件加载设置，并用 pyrs-yaml 解析器（YAML 1.2 核心 schema）解析。环境变量与 dotenv 覆盖、`yaml_config_section`（支持点号嵌套路径）、多文件 `deep_merge`、`yaml_file_encoding` 等其他 pydantic-settings 功能均与 `YamlConfigSettingsSource` 行为一致。
+
+**异常：**
+
+- `ImportError` — 未安装 pydantic-settings 时抛出（安装 `pyrs-yaml[settings]`）
+
+**示例：**
+
+```python
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+```
+
+> **注意：** 该类采用惰性导出——`import pyrs_yaml` 不依赖 pydantic-settings。在未安装 pydantic-settings 时访问 `pyrs_yaml.PyrsYamlConfigSettingsSource` 会抛出带有安装提示的 `ImportError`。
+
 ## :material-tag: 标签注册表 {#tag-registry}
 
 ### `register_tag()`
@@ -286,13 +335,16 @@ register_schema(name: str, schema: str | dict) -> None
 import pyrs_yaml
 
 # 从 YAML 字符串注册自定义 Schema
-pyrs_yaml.register_schema("hex", """
+pyrs_yaml.register_schema(
+    "hex",
+    """
 name: hex
 extends: core
 rules:
   - pattern: ^0x[0-9a-fA-F]+$
     type: int
-""")
+""",
+)
 
 # 使用自定义 Schema
 y = pyrs_yaml.YAML(schema="hex")
@@ -355,6 +407,7 @@ register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
 ```python
 from datetime import datetime
 
+
 class TimestampType(pyrs_yaml.CustomType):
     python_type = datetime
 
@@ -363,6 +416,7 @@ class TimestampType(pyrs_yaml.CustomType):
 
     def to_yaml(self, obj) -> str:
         return obj.isoformat()
+
 
 pyrs_yaml.register_type("!timestamp", TimestampType())
 
