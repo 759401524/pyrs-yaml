@@ -31,7 +31,6 @@ from .compliance import compliance_report
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
 from .plugins import discover_plugins, get_discovery_errors
-from .pydantic import dump_pydantic, parse_as
 from .pyrs_yaml import (
     YAML as _YAML,
 )
@@ -366,6 +365,7 @@ __all__ = [
     "CustomType",
     "MergedView",
     "Node",
+    "PyrsYamlConfigSettingsSource",
     "StreamIterator",
     "YamlDocument",
     "YamlDocumentError",
@@ -428,7 +428,15 @@ except ImportError:
         return "unknown"
 
 
-def __getattr__(name: str) -> str:
+def __getattr__(name: str) -> Any:
     if name == "__version__":
         return _version("pyrs-yaml")
+    if name in ("dump_pydantic", "parse_as"):
+        from .pydantic import dump_pydantic, parse_as
+
+        return {"dump_pydantic": dump_pydantic, "parse_as": parse_as}[name]
+    if name == "PyrsYamlConfigSettingsSource":
+        from .settings import PyrsYamlConfigSettingsSource
+
+        return PyrsYamlConfigSettingsSource
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

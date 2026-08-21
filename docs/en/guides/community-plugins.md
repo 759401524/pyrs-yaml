@@ -62,8 +62,7 @@ pyrs_yaml.register_type("!timestamp", TimestampType())
 
 ```python title="Decorator registration"
 @pyrs_yaml.register_type("!timestamp")
-class TimestampType(pyrs_yaml.CustomType):
-    ...
+class TimestampType(pyrs_yaml.CustomType): ...
 ```
 
 ### Usage

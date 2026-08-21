@@ -216,8 +216,8 @@ node.rename("new")
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
-node.anchor   # None
-node.tag      # "!!str"
+node.anchor  # None
+node.tag  # "!!str"
 ```
 
 - `comment` — 인라인 또는 스탠드얼론 주석 텍스트 (`#` 접두사 제외), 없으면 `None`
@@ -227,8 +227,8 @@ node.tag      # "!!str"
 ### `Node.set_comment()` / `Node.remove_comment()`
 
 ```python title="주석 설정/삭제"
-node.set_comment("new note")                   # 스탠드얼론: 노드 위의 줄
-node.set_comment("inline", standalone=False)   # 노드 뒤에 인라인
+node.set_comment("new note")  # 스탠드얼론: 노드 위의 줄
+node.set_comment("inline", standalone=False)  # 노드 뒤에 인라인
 node.remove_comment()
 ```
 
@@ -244,9 +244,9 @@ node.remove_anchor()
 ### `Node.set_tag()` / `Node.remove_tag()`
 
 ```python title="태그 설정/삭제"
-node.set_tag("!custom")                  # 로컬 태그
-node.set_tag("!!int")                    # 프라이머리 태그
-node.set_tag("!<tag:yaml.org,2002:str>") # verbatim 태그
+node.set_tag("!custom")  # 로컬 태그
+node.set_tag("!!int")  # 프라이머리 태그
+node.set_tag("!<tag:yaml.org,2002:str>")  # verbatim 태그
 node.remove_tag()
 ```
 
@@ -336,10 +336,12 @@ doc.node().find("$..timeout")  # deep search for any key named "timeout"
 
 ```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
-doc.set_many({
-    "$.items[*].pass": False,   # 와일드카드: 모든 항목
-    "$.name": "config",          # 일반 경로
-})
+doc.set_many(
+    {
+        "$.items[*].pass": False,  # 와일드카드: 모든 항목
+        "$.name": "config",  # 일반 경로
+    }
+)
 ```
 
 #### `doc.sort_keys()` — 매핑 키 정렬
@@ -348,8 +350,8 @@ doc.set_many({
 
 ```python title="sort_keys() 예제"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
-doc.sort_keys()           # 루트 매핑 정렬
-print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+doc.sort_keys()  # 루트 매핑 정렬
+print(doc.to_yaml())  # a: 2\nm: 3\nz: 1
 ```
 
 #### `Node.move(new_path)` — 하위 트리 이동
@@ -359,14 +361,14 @@ print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
 ```python title="Node.move() 예제"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
-print(doc.to_yaml())      # dst:\n  x: 1
+print(doc.to_yaml())  # dst:\n  x: 1
 ```
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
 ```python title="Node 내부 조사"
 node = doc.node().find("$.a.b")
-node.path                  # ('a', 'b') — 경로 세그먼트
+node.path  # ('a', 'b') — 경로 세그먼트
 doc.node().find_first("$.items[*]")  # 첫 와일드카드 일치 또는 None
 node.value_eq(other_node)  # 해석된 값 비교(참조 동일성 아님)
 ```

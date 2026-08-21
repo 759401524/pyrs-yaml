@@ -56,13 +56,16 @@ rules:
 import pyrs_yaml
 
 # 从 YAML 字符串注册
-pyrs_yaml.register_schema("hex", """
+pyrs_yaml.register_schema(
+    "hex",
+    """
 name: hex
 extends: core
 rules:
   - pattern: ^0x[0-9a-fA-F]+$
     type: int
-""")
+""",
+)
 
 # 使用 YAML 实例
 y = pyrs_yaml.YAML(schema="hex")
@@ -123,7 +126,7 @@ validate:
     required: true
 """
 
-pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
 # 列出所有失败项并抛 YamlValidateError：
 pyrs_yaml.validate_against_schema("port: abc\n", schema)
 ```

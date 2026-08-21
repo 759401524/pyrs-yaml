@@ -145,6 +145,62 @@ class SetType(CustomType):
         return "!set\n" + "\n".join(items) + "\n"
 
 
+@final
+class DurationType(CustomType):
+    """`!duration` — serialize/deserialize `pendulum.Duration` objects.
+
+    `pendulum.Duration` is a `datetime.timedelta` subclass, but is only
+    registered when the `pendulum` library is installed, so a plain stdlib
+    `timedelta` is never matched.
+    """
+
+    def __init__(self, module: Any) -> None:
+        self.python_type = module.Duration
+        self._module = module
+
+    @override
+    def from_yaml(self, value: str) -> Any:
+        return self._module.duration(seconds=float(value))
+
+    @override
+    def to_yaml(self, obj: Any) -> str:
+        return str(obj.total_seconds())
+
+
+@final
+class ArrowType(CustomType):
+    """`!arrow` — serialize/deserialize `arrow.Arrow` objects."""
+
+    def __init__(self, module: Any) -> None:
+        self.python_type = module.Arrow
+        self._module = module
+
+    @override
+    def from_yaml(self, value: str) -> Any:
+        return self._module.get(value)
+
+    @override
+    def to_yaml(self, obj: Any) -> str:
+        return obj.isoformat()
+
+
+@final
+class ULIDType(CustomType):
+    """`!ulid` — serialize/deserialize `ulid.ULID` objects."""
+
+    def __init__(self, py_type: Any) -> None:
+        self.python_type = py_type
+        self._py_type = py_type
+
+    @override
+    def from_yaml(self, value: str) -> Any:
+        return self._py_type.from_str(value)
+
+    @override
+    def to_yaml(self, obj: Any) -> str:
+        return str(obj)
+
+
 def _register_builtins():
     """Register built-in plugins idempotently."""
     register_type("!date", DateType())
@@ -155,3 +211,30 @@ def _register_builtins():
     register_type("!binary", BinaryType())
     register_type("!regex", RegexType())
     register_type("!set", SetType())
+
+
+def _register_third_party():
+    """Register optional third-party plugins (no-op when library is absent)."""
+    # pendulum.Duration → !duration
+    try:
+        import pendulum
+
+        register_type("!duration", DurationType(pendulum))
+    except ImportError:
+        pass
+
+    # arrow.Arrow → !arrow
+    try:
+        import arrow
+
+        register_type("!arrow", ArrowType(arrow))
+    except ImportError:
+        pass
+
+    # ulid.ULID → !ulid
+    try:
+        from ulid import ULID
+
+        register_type("!ulid", ULIDType(ULID))
+    except ImportError:
+        pass

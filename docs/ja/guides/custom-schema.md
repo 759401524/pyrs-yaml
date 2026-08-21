@@ -56,13 +56,16 @@ rules:
 import pyrs_yaml
 
 # YAML 文字列から登録
-pyrs_yaml.register_schema("hex", """
+pyrs_yaml.register_schema(
+    "hex",
+    """
 name: hex
 extends: core
 rules:
   - pattern: ^0x[0-9a-fA-F]+$
     type: int
-""")
+""",
+)
 
 # YAML インスタンスで使用
 y = pyrs_yaml.YAML(schema="hex")
@@ -123,7 +126,7 @@ validate:
     required: true
 """
 
-pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
 # すべての失敗を列挙して YamlValidateError を送出:
 pyrs_yaml.validate_against_schema("port: abc\n", schema)
 ```

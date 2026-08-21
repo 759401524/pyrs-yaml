@@ -99,7 +99,7 @@ class ConditionalType(pyrs_yaml.CustomType):
         return value.startswith("myprefix_")
 
     def from_yaml(self, value: str):
-        return value[len("myprefix_"):]
+        return value[len("myprefix_") :]
 
     def to_yaml(self, obj) -> str:
         return obj
@@ -132,10 +132,12 @@ def test_my_plugin():
     pyrs_yaml.clear_type_handlers()
 
     import my_timestamp_plugin
+
     my_timestamp_plugin.register()
 
     doc = pyrs_yaml.parse("when: !mytimestamp 2026-08-11T10:30:00")
     from datetime import datetime
+
     assert isinstance(doc.get("when"), datetime)
 ```
 

@@ -43,7 +43,9 @@ parse(yaml: str | bytes, resolve_merges: bool = True, schema: str | dict = "core
 doc = pyrs_yaml.parse("key: value")
 doc = pyrs_yaml.parse(b"key: value")
 doc = pyrs_yaml.parse(yaml_str, schema="json")
-doc = pyrs_yaml.parse("addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]})
+doc = pyrs_yaml.parse(
+    "addr: 0xFF", schema={"extends": "core", "rules": [{"pattern": "^0x[0-9a-fA-F]+$", "type": "int"}]}
+)
 ```
 
 ### `parse_file()`
@@ -220,6 +222,53 @@ user = pyrs_yaml.parse_as(User, "name: Alice\nage: 30")
 print(user.name)  # Alice
 ```
 
+### `PyrsYamlConfigSettingsSource`
+
+pydantic-settings YAML 소스를 pyrs-yaml로 구현한 클래스. `pydantic_settings.YamlConfigSettingsSource`의 드롭인 대체품으로, PyYAML 대신 pyrs-yaml을 파서로 사용합니다.
+
+```python
+PyrsYamlConfigSettingsSource(
+    settings_cls: type[BaseSettings],
+    yaml_file: ConfigFileSourceType | None = DEFAULT_PATH,
+    yaml_file_encoding: str | None = None,
+    yaml_config_section: str | None = None,
+    deep_merge: bool = False,
+)
+```
+
+`SettingsConfigDict(yaml_file=...)`(또는 직접 전달)로 선언된 YAML 파일에서 설정을 로드한 뒤 pyrs-yaml 파서(YAML 1.2 코어 스키마)로 해석합니다. 환경 변수·dotenv 덮어쓰기, `yaml_config_section`(점 표기 경로 지원), 여러 파일의 `deep_merge`, `yaml_file_encoding` 등 다른 pydantic-settings 기능은 `YamlConfigSettingsSource`와 동일하게 동작합니다.
+
+**예외:**
+
+- `ImportError` — pydantic-settings가 설치되지 않은 경우(`pyrs-yaml[settings]` 설치)
+
+**예제:**
+
+```python
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+```
+
+> **참고:** 이 클래스는 지연 내보내기됩니다 — `import pyrs_yaml`에 pydantic-settings가 필요 없습니다. pydantic-settings가 설치되지 않은 상태에서 `pyrs_yaml.PyrsYamlConfigSettingsSource`에 접근하면 설치 방법을 안내하는 `ImportError`가 발생합니다.
+
 ## :material-tag: 태그 레지스트리 {#tag-registry}
 
 ### `register_tag()`
@@ -285,13 +334,16 @@ register_schema(name: str, schema: str | dict) -> None
 import pyrs_yaml
 
 # YAML 문자열에서 사용자 정의 스키마 등록
-pyrs_yaml.register_schema("hex", """
+pyrs_yaml.register_schema(
+    "hex",
+    """
 name: hex
 extends: core
 rules:
   - pattern: ^0x[0-9a-fA-F]+$
     type: int
-""")
+""",
+)
 
 # 사용자 정의 스키마 사용
 y = pyrs_yaml.YAML(schema="hex")
@@ -354,6 +406,7 @@ register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
 ```python
 from datetime import datetime
 
+
 class TimestampType(pyrs_yaml.CustomType):
     python_type = datetime
 
@@ -362,6 +415,7 @@ class TimestampType(pyrs_yaml.CustomType):
 
     def to_yaml(self, obj) -> str:
         return obj.isoformat()
+
 
 pyrs_yaml.register_type("!timestamp", TimestampType())
 

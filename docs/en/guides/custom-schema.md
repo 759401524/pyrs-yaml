@@ -58,13 +58,16 @@ Supported types and their values:
 import pyrs_yaml
 
 # Register from a YAML string
-pyrs_yaml.register_schema("hex", """
+pyrs_yaml.register_schema(
+    "hex",
+    """
 name: hex
 extends: core
 rules:
   - pattern: ^0x[0-9a-fA-F]+$
     type: int
-""")
+""",
+)
 
 # Use with YAML instance
 y = pyrs_yaml.YAML(schema="hex")
@@ -127,7 +130,7 @@ validate:
     required: true
 """
 
-pyrs_yaml.validate_against_schema("port: 80\n", schema)          # OK
+pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
 # Raises YamlValidateError listing every failure:
 pyrs_yaml.validate_against_schema("port: abc\n", schema)
 ```

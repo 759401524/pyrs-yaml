@@ -157,6 +157,53 @@ doc.get("name")  # "custom:value"
 - 处理器必须返回字符串，否则抛出 `YamlTagError`。
 - `remove_tag("!custom")` 与 `clear_tag_handlers()` 用于注销处理器。
 
+## 社区插件
+
+定义与序列化和反序列化集成的自定义 YAML 节点类型：
+
+```python title="CustomType 插件"
+import pyrs_yaml
+from datetime import datetime
+
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+
+# 命令式或装饰器注册
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# 加载: 带标签的标量 → Python 对象
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# 转储: Python 对象 → 带标签的标量
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out contains: ts: !timestamp 2026-08-11T10:30:00
+```
+
+**内置插件**（导入时注册）:
+`!timestamp` → `datetime`、`!date` → `datetime.date`、`!time` → `datetime.time`、
+`!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!binary` → `bytes`、
+`!regex` → `re.Pattern`、`!set` → `str`
+
+**可选的第三方插件**（安装对应库后自动注册）:
+`!duration` → `pendulum.Duration`、`!arrow` → `arrow.Arrow`、`!ulid` → `ulid.ULID`
+
+| 方法 | 说明 |
+|------|------|
+| `can_parse(node)` | 该类型是否处理给定的 AST 节点 |
+| `from_yaml(value)` | 将 YAML 字符串转换为 Python 对象 |
+| `to_yaml(obj)` | 将 Python 对象转换为 YAML 字符串 |
+| `validate(obj)` | 验证 Python 对象（返回 `bool`） |
+
 ## 增量重新解析
 
 使用不同选项就地重新解析存储的源文本：
@@ -277,6 +324,38 @@ cfg.name  # "Alice"
 ```
 
 `parse_as` 对非 `BaseModel` 目标抛出 `TypeError`，并在 YAML 不匹配模型时传播 Pydantic 的 `ValidationError`。
+
+### pydantic-settings
+
+`PyrsYamlConfigSettingsSource` 是 `pydantic_settings.YamlConfigSettingsSource` 的即插即用替代：它接入相同的 `BaseSettings` + `SettingsConfigDict(yaml_file=...)` 工作流，但用 pyrs-yaml 代替 PyYAML 解析——值遵循 YAML 1.2 核心 schema（例如 `on` 保持为字符串），并把 pyrs-yaml 的性能带入配置加载。
+
+```python title="pydantic-settings 来源"
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+
+
+settings = Settings()  # 通过 pyrs-yaml 从 config.yaml 加载
+```
+
+使用 `pip install "pyrs-yaml[settings]"` 安装（需要 Python 3.10+）。
 
 ## 支持的 YAML 构造
 

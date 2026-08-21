@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Optional third-party type plugins** — `!duration` (`pendulum.Duration`),
+  `!arrow` (`arrow.Arrow`), and `!ulid` (`ulid.ULID`) auto-register when the
+  corresponding library is installed (`_register_third_party` in
+  `python/pyrs_yaml/plugins/_builtin.py`). Each uses a distinct tag so existing
+  `!timestamp` / `!date` / `!uuid` handlers are unaffected; a plain stdlib
+  `timedelta` is never matched by `!duration`.
+- **pydantic-settings YAML source** — `PyrsYamlConfigSettingsSource`
+  (`python/pyrs_yaml/settings.py`) is a drop-in replacement for
+  `pydantic_settings.YamlConfigSettingsSource` that parses with pyrs-yaml
+  (YAML 1.2 core schema) instead of PyYAML. It is exported lazily so
+  `import pyrs_yaml` never requires pydantic-settings; install with
+  `pip install "pyrs-yaml[settings]"` (Python 3.10+). `dump_pydantic` and
+  `parse_as` now use the same lazy module-level `__getattr__` export pattern.
+
 ## [v0.15.0] — 2026-08-19
 
 ### Added

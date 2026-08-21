@@ -140,6 +140,7 @@ yaml_str = doc.to_yaml_with_options(
     def custom_handler(node):
         return f"custom:{node}"
 
+
     doc = pyrs_yaml.parse("name: !custom value")
     doc.get("name")  # "custom:value"
     ```
@@ -159,6 +160,53 @@ yaml_str = doc.to_yaml_with_options(
 - 같은 태그에 대한 여러 핸들러는 `priority` 오름차순으로 실행됩니다. `YamlTagSkip`을 발생시키면 다음 핸들러에 위임됩니다.
 - 핸들러는 문자열을 반환해야 합니다. 그렇지 않으면 `YamlTagError`가 발생합니다.
 - `remove_tag("!custom")`와 `clear_tag_handlers()`로 핸들러를 해제합니다.
+
+## 커뮤니티 플러그인
+
+직렬화 및 역직렬화에 통합되는 사용자 정의 YAML 노드 유형을 정의합니다:
+
+```python title="CustomType 플러그인"
+import pyrs_yaml
+from datetime import datetime
+
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+
+# 명령형 또는 데코레이터로 등록
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# 로드: 태그가 지정된 스칼라 → Python 객체
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# 덤프: Python 객체 → 태그가 지정된 스칼라
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out contains: ts: !timestamp 2026-08-11T10:30:00
+```
+
+**내장 플러그인** (import 시 등록):
+`!timestamp` → `datetime`, `!date` → `datetime.date`, `!time` → `datetime.time`,
+`!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!binary` → `bytes`,
+`!regex` → `re.Pattern`, `!set` → `str`
+
+**선택적 서드파티 플러그인** (라이브러리가 설치된 경우 자동 등록):
+`!duration` → `pendulum.Duration`, `!arrow` → `arrow.Arrow`, `!ulid` → `ulid.ULID`
+
+| 메서드 | 설명 |
+|--------|------|
+| `can_parse(node)` | 이 유형이 지정된 AST 노드를 처리하는지 여부 |
+| `from_yaml(value)` | YAML 문자열 → Python 객체로 변환 |
+| `to_yaml(obj)` | Python 객체 → YAML 문자열로 변환 |
+| `validate(obj)` | Python 객체를 검증합니다 (`bool` 반환) |
 
 ## Pydantic 통합
 
@@ -182,6 +230,38 @@ print(user.name)  # Alice
 yaml_str = pyrs_yaml.dump_pydantic(user)
 print(yaml_str)
 ```
+
+### pydantic-settings
+
+`PyrsYamlConfigSettingsSource`는 `pydantic_settings.YamlConfigSettingsSource`의 드롭인 대체품입니다. 동일한 `BaseSettings` + `SettingsConfigDict(yaml_file=...)` 워크플로에 연결되지만 PyYAML 대신 pyrs-yaml로 파싱합니다. 값은 YAML 1.2 코어 스키마를 따르며(예: `on`은 문자열로 유지), pyrs-yaml의 성능을 설정 로딩에도 활용할 수 있습니다.
+
+```python title="pydantic-settings 소스"
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+
+
+settings = Settings()  # pyrs-yaml로 config.yaml에서 로드
+```
+
+`pip install "pyrs-yaml[settings]"`로 설치합니다 (Python 3.10+ 필요).
 
 ## 점진적 재파싱
 

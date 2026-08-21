@@ -21,10 +21,13 @@ from datetime import datetime
 
 class MyTimestampType(pyrs_yaml.CustomType):
     python_type = datetime
+
     def from_yaml(self, value):
         return datetime.fromisoformat(value)
+
     def to_yaml(self, obj):
         return obj.isoformat()
+
 
 def register():
     pyrs_yaml.register_type("!mytimestamp", MyTimestampType())

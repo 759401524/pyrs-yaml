@@ -217,8 +217,8 @@ Comments, anchors, and tags survive round-trip by default. Through a `Node` you 
 doc = pyrs_yaml.parse("key: !!str value  # note")
 node = doc.node().find("$.key")
 node.comment  # "note"
-node.anchor   # None
-node.tag      # "!!str"
+node.anchor  # None
+node.tag  # "!!str"
 ```
 
 - `comment` — inline or standalone comment text (without the `#` prefix), or `None`
@@ -228,8 +228,8 @@ node.tag      # "!!str"
 #### `Node.set_comment()` / `Node.remove_comment()`
 
 ```python title="Set/remove comment"
-node.set_comment("new note")                   # standalone: own line above
-node.set_comment("inline", standalone=False)   # inline after the node
+node.set_comment("new note")  # standalone: own line above
+node.set_comment("inline", standalone=False)  # inline after the node
 node.remove_comment()
 ```
 
@@ -245,9 +245,9 @@ The anchor can then be referenced by aliases elsewhere in the document.
 #### `Node.set_tag()` / `Node.remove_tag()`
 
 ```python title="Set/remove tag"
-node.set_tag("!custom")                  # local tag
-node.set_tag("!!int")                    # primary tag
-node.set_tag("!<tag:yaml.org,2002:str>") # verbatim tag
+node.set_tag("!custom")  # local tag
+node.set_tag("!!int")  # primary tag
+node.set_tag("!<tag:yaml.org,2002:str>")  # verbatim tag
 node.remove_tag()
 ```
 
@@ -349,10 +349,12 @@ Set multiple paths in a single splice burst. Paths may include wildcards
 
 ```python title="set_many()"
 doc = pyrs_yaml.parse("items:\n  - pass: true\n  - pass: true\n")
-doc.set_many({
-    "$.items[*].pass": False,   # wildcard: every item
-    "$.name": "config",          # plain path
-})
+doc.set_many(
+    {
+        "$.items[*].pass": False,  # wildcard: every item
+        "$.name": "config",  # plain path
+    }
+)
 ```
 
 #### `doc.sort_keys()` — order mapping keys
@@ -361,8 +363,8 @@ Sort the keys of a mapping (default: root) in place:
 
 ```python title="sort_keys() example"
 doc = pyrs_yaml.parse("z: 1\na: 2\nm: 3\n")
-doc.sort_keys()           # sorts the root mapping
-print(doc.to_yaml())      # a: 2\nm: 3\nz: 1
+doc.sort_keys()  # sorts the root mapping
+print(doc.to_yaml())  # a: 2\nm: 3\nz: 1
 ```
 
 #### `Node.move(new_path)` — relocate a subtree
@@ -373,14 +375,14 @@ source):
 ```python title="Node.move() example"
 doc = pyrs_yaml.parse("src:\n  x: 1\ndst: {}\n")
 doc.node().find("$.src").move("$.dst")
-print(doc.to_yaml())      # dst:\n  x: 1
+print(doc.to_yaml())  # dst:\n  x: 1
 ```
 
 #### `Node.path` / `Node.find_first()` / `Node.value_eq()`
 
 ```python title="Node introspection"
 node = doc.node().find("$.a.b")
-node.path                  # ('a', 'b') — the path segments
+node.path  # ('a', 'b') — the path segments
 doc.node().find_first("$.items[*]")  # first wildcard match or None
 node.value_eq(other_node)  # compare resolved values (not reference identity)
 ```

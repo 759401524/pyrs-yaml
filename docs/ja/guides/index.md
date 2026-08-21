@@ -32,3 +32,4 @@ status: new
 - [Markdown フロントマター](frontmatter.md) — Markdown ファイルから YAML フロントマターを抽出
 - [i18n エラーメッセージ](i18n.md) — エラーメッセージのローカライズ
 - [NumPy ndarray](numpy.md) — numpy 配列を YAML にシリアライズ
+- [Pydantic 統合](pydantic.md) — YAML を Pydantic モデルにパースし、BaseSettings を読み込みます

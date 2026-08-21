@@ -140,14 +140,18 @@ staging.set_flow_style(True)
 
 ```python title="와일드카드 일괄 편집"
 # Disable ALL debug flags across every environment
-doc.set_many({
-    "$.environments[*].debug": False,
-})
+doc.set_many(
+    {
+        "$.environments[*].debug": False,
+    }
+)
 
 # Disable all features at once
-doc.set_many({
-    "$.features[*].enabled": False,
-})
+doc.set_many(
+    {
+        "$.features[*].enabled": False,
+    }
+)
 ```
 
 ## 8. 키 정렬
@@ -155,7 +159,7 @@ doc.set_many({
 가독성을 위해 최상위 키와 환경 키를 정렬합니다:
 
 ```python title="키 정렬"
-doc.sort_keys()              # sort the root mapping
+doc.sort_keys()  # sort the root mapping
 doc.sort_keys("$.environments")  # sort the environments
 ```
 

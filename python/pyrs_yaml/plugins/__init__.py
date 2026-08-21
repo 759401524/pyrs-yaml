@@ -15,9 +15,10 @@ from __future__ import annotations
 import contextlib
 import logging
 
-from ._builtin import _register_builtins
+from ._builtin import _register_builtins, _register_third_party
 
 _register_builtins()
+_register_third_party()
 
 # ── Discovery error tracking ────────────────────────────────────────────────
 

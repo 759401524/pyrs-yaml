@@ -159,6 +159,53 @@ doc.get("name")  # "custom:value"
 - ハンドラは文字列を返す必要があります。それ以外の場合、`YamlTagError` がスローされます。
 - `remove_tag("!custom")` と `clear_tag_handlers()` でハンドラを登録解除します。
 
+## コミュニティプラグイン
+
+シリアライズとデシリアライズに統合されるカスタム YAML ノードタイプを定義します：
+
+```python title="CustomType プラグイン"
+import pyrs_yaml
+from datetime import datetime
+
+
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value: str):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj) -> str:
+        return obj.isoformat()
+
+
+# 命令形式またはデコレータで登録
+pyrs_yaml.register_type("!timestamp", TimestampType())
+
+# 読み込み: タグ付きスカラー → Python オブジェクト
+doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
+assert isinstance(doc.get("when"), datetime)
+
+# ダンプ: Python オブジェクト → タグ付きスカラー
+data = {"ts": datetime(2026, 8, 11, 10, 30)}
+out = pyrs_yaml.safe_dump(data)
+# out contains: ts: !timestamp 2026-08-11T10:30:00
+```
+
+**組み込みプラグイン**（インポート時に登録）:
+`!timestamp` → `datetime`、`!date` → `datetime.date`、`!time` → `datetime.time`、
+`!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!binary` → `bytes`、
+`!regex` → `re.Pattern`、`!set` → `str`
+
+**オプションのサードパーティプラグイン**（ライブラリがインストールされている場合に自動登録）:
+`!duration` → `pendulum.Duration`、`!arrow` → `arrow.Arrow`、`!ulid` → `ulid.ULID`
+
+| メソッド | 説明 |
+|--------|------|
+| `can_parse(node)` | このタイプが指定された AST ノードを処理するかどうか |
+| `from_yaml(value)` | YAML 文字列 → Python オブジェクトに変換 |
+| `to_yaml(obj)` | Python オブジェクト → YAML 文字列に変換 |
+| `validate(obj)` | Python オブジェクトを検証します（`bool` を返します） |
+
 ## Pydantic 統合
 
 Pydantic モデルに直接 YAML をパース、またはモデルを YAML にシリアライズ：
@@ -181,6 +228,38 @@ print(user.name)  # Alice
 yaml_str = pyrs_yaml.dump_pydantic(user)
 print(yaml_str)
 ```
+
+### pydantic-settings
+
+`PyrsYamlConfigSettingsSource` は `pydantic_settings.YamlConfigSettingsSource` のドロップイン代替です。同じ `BaseSettings` + `SettingsConfigDict(yaml_file=...)` のワークフローにフィードしますが、PyYAML ではなく pyrs-yaml でパースします。値は YAML 1.2 コアスキーマに従い（例：`on` は文字列のまま）、pyrs-yaml の性能を設定読み込みにも活かせます。
+
+```python title="pydantic-settings ソース"
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import pyrs_yaml
+
+
+class Settings(BaseSettings):
+    app_name: str
+
+    model_config = SettingsConfigDict(yaml_file="config.yaml")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            pyrs_yaml.PyrsYamlConfigSettingsSource(settings_cls),
+        )
+
+
+settings = Settings()  # pyrs-yaml で config.yaml から読み込み
+```
+
+`pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+ が必要）。
 
 ## インクリメンタル再パース
 
