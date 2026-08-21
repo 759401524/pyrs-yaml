@@ -1,16 +1,14 @@
 # pyrs-yaml
 
-[![PyPI 版本](https://img.shields.io/pypi/v/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/)
-[![Python 版本](https://img.shields.io/pypi/pyversions/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/)
-[![下载量](https://img.shields.io/pypi/dm/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/)
-[![许可证](https://img.shields.io/github/license/759401524/pyrs-yaml)](LICENSE-MIT)
-[![CI](https://img.shields.io/github/actions/workflow/status/759401524/pyrs-yaml/ci.yml?branch=main)](https://github.com/759401524/pyrs-yaml/actions)
-[![GitHub 发布](https://img.shields.io/github/v/release/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml/releases)
-[![文档](https://img.shields.io/website?url=https%3A%2F%2F759401524.github.io%2Fpyrs-yaml%2F&label=docs&color=blue)](https://759401524.github.io/pyrs-yaml)
-[![GitHub 星标](https://img.shields.io/github/stars/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml)
-[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/759401524/pyrs-yaml?utm_source=badge)
+[![PyPI 版本](https://img.shields.io/pypi/v/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/) [![Python 版本](https://img.shields.io/pypi/pyversions/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/) [![下载量](https://img.shields.io/pypi/dm/pyrs-yaml)](https://pypi.org/project/pyrs-yaml/)
+[![许可证](https://img.shields.io/github/license/759401524/pyrs-yaml)](LICENSE-MIT) [![CI](https://img.shields.io/github/actions/workflow/status/759401524/pyrs-yaml/ci.yml?branch=main)](https://github.com/759401524/pyrs-yaml/actions) [![GitHub 发布](https://img.shields.io/github/v/release/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml/releases)
+[![文档](https://img.shields.io/website?url=https%3A%2F%2F759401524.github.io%2Fpyrs-yaml%2F&label=docs&color=blue)](https://759401524.github.io/pyrs-yaml) [![GitHub 星标](https://img.shields.io/github/stars/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml) [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/759401524/pyrs-yaml?utm_source=badge)
 
 [English](README.md) | **简体中文**
+
+## 指标
+
+[![GitHub 分支](https://img.shields.io/github/forks/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml) [![GitHub 关注](https://img.shields.io/github/watchers/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml) [![GitHub 问题](https://img.shields.io/github/issues/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml)
 
 高性能 Python YAML 库，完美往返支持，基于 Rust 和 PyO3 构建。
 
