@@ -32,3 +32,4 @@ status: new
 - [Markdown 头信息](frontmatter.md) — 从 Markdown 文件中提取 YAML 头信息
 - [i18n 错误消息](i18n.md) — 本地化错误消息
 - [NumPy ndarray](numpy.md) — 将 numpy 数组序列化为 YAML
+- [Pydantic 集成](pydantic.md) — 将 YAML 解析为 Pydantic 模型并加载 BaseSettings

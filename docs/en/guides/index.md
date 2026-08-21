@@ -32,3 +32,4 @@ Advanced features — custom schemas, plugin development, community plugins, con
 - [Markdown Frontmatter](frontmatter.md) — Extract YAML frontmatter from markdown files
 - [i18n Error Messages](i18n.md) — Localize error messages
 - [NumPy ndarray](numpy.md) — Serialize numpy arrays to YAML
+- [Pydantic Integration](pydantic.md) — Parse YAML into Pydantic models and load BaseSettings

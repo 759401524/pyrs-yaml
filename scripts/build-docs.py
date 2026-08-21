@@ -54,6 +54,7 @@ LOCALE_NAV = {
                         {"Markdown Frontmatter": "guides/frontmatter.md"},
                         {"i18n Error Messages": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
+                        {"Pydantic Integration": "guides/pydantic.md"},
                     ]
                 },
             ]
@@ -117,6 +118,7 @@ LOCALE_NAV = {
                         {"Markdown 头信息": "guides/frontmatter.md"},
                         {"i18n 错误消息": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
+                        {"Pydantic 集成": "guides/pydantic.md"},
                     ]
                 },
             ]
@@ -180,6 +182,7 @@ LOCALE_NAV = {
                         {"Markdown フロントマター": "guides/frontmatter.md"},
                         {"i18n エラーメッセージ": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
+                        {"Pydantic 統合": "guides/pydantic.md"},
                     ]
                 },
             ]
@@ -243,6 +246,7 @@ LOCALE_NAV = {
                         {"Markdown 프론트매터": "guides/frontmatter.md"},
                         {"i18n 오류 메시지": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
+                        {"Pydantic 통합": "guides/pydantic.md"},
                     ]
                 },
             ]

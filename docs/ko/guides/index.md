@@ -32,3 +32,4 @@ status: new
 - [Markdown 프론트매터](frontmatter.md) — Markdown 파일에서 YAML 프론트매터 추출
 - [i18n 오류 메시지](i18n.md) — 오류 메시지 지역화
 - [NumPy ndarray](numpy.md) — numpy 배열을 YAML로 직렬화
+- [Pydantic 통합](pydantic.md) — YAML을 Pydantic 모델로 파싱하고 BaseSettings를 로드합니다
