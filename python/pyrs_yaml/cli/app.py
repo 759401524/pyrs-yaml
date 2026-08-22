@@ -8,11 +8,10 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from cyclopts import App, Parameter
-from cyclopts.types import StdioPath
 
 import pyrs_yaml
 
-from ._io import emit, fail, load_document, read_text
+from ._io import emit, fail, is_stdio, load_document, read_text
 
 app = App(
     name="pyrs-yaml",
@@ -20,8 +19,8 @@ app = App(
     version=pyrs_yaml.__version__,
 )
 
-STDIN_FILE = StdioPath("-")
-"""Module-level singleton so command defaults avoid a call in the default (B008)."""
+STDIN_FILE = "-"
+"""Default input source; the bare "-" token means stdin/stdout."""
 
 
 def _serialize(doc: Any, indent: int) -> str:
@@ -35,9 +34,9 @@ def _serialize(doc: Any, indent: int) -> str:
         fail(str(exc))
 
 
-def _finish_edit(doc: Any, file: StdioPath, inplace: bool, output: StdioPath | None) -> None:
+def _finish_edit(doc: Any, file: str, inplace: bool, output: str | None) -> None:
     if inplace:
-        if file.is_stdio:
+        if is_stdio(file):
             fail("cannot use --inplace with stdin input; use -o/--output instead")
         Path(file).write_text(_serialize(doc, 2), encoding="utf-8")
     else:
@@ -46,9 +45,9 @@ def _finish_edit(doc: Any, file: StdioPath, inplace: bool, output: StdioPath | N
 
 @app.command(name="fmt")
 def fmt(
-    file: StdioPath = STDIN_FILE,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)] = STDIN_FILE,
     *,
-    output: Annotated[StdioPath | None, Parameter(name=["--output", "-o"])] = None,
+    output: Annotated[str | None, Parameter(name=["--output", "-o"], allow_leading_hyphen=True)] = None,
     inplace: Annotated[bool, Parameter(name=["--inplace", "-i"])] = False,
     indent: Annotated[int, Parameter(name=["--indent"])] = 2,
 ) -> None:
@@ -61,7 +60,7 @@ def fmt(
     """
     doc = load_document(file)
     if inplace:
-        if file.is_stdio:
+        if is_stdio(file):
             fail("cannot use --inplace with stdin input; use -o/--output instead")
         Path(file).write_text(_serialize(doc, indent), encoding="utf-8")
     else:
@@ -70,7 +69,7 @@ def fmt(
 
 @app.command
 def get(
-    file: StdioPath = STDIN_FILE,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)] = STDIN_FILE,
     path: str = "$",
     *,
     format: Annotated[str, Parameter(name=["--format", "-f"])] = "yaml",
@@ -114,7 +113,7 @@ def get(
 
 @app.command(name="set")
 def set_value(
-    file: StdioPath,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)],
     path: str,
     value: Annotated[str, Parameter(allow_leading_hyphen=True)],
     *,
@@ -155,7 +154,7 @@ def set_value(
 
 @app.command(name="delete")
 def delete_value(
-    file: StdioPath,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)],
     path: str,
     *,
     inplace: Annotated[bool, Parameter(name=["--inplace", "-i"])] = False,
@@ -181,7 +180,7 @@ def delete_value(
 
 @app.command(name="rename")
 def rename_value(
-    file: StdioPath,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)],
     path: str,
     new_key: str,
     *,
@@ -210,7 +209,7 @@ def rename_value(
 
 @app.command
 def validate(
-    file: StdioPath = STDIN_FILE,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)] = STDIN_FILE,
     *,
     schema: Annotated[str, Parameter(name=["--schema"], required=True)],
 ) -> None:
@@ -235,9 +234,9 @@ def validate(
 
 @app.command(name="to-json")
 def to_json_cmd(
-    file: StdioPath = STDIN_FILE,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)] = STDIN_FILE,
     *,
-    output: Annotated[StdioPath | None, Parameter(name=["--output", "-o"])] = None,
+    output: Annotated[str | None, Parameter(name=["--output", "-o"], allow_leading_hyphen=True)] = None,
     indent: Annotated[int, Parameter(name=["--indent"])] = 2,
 ) -> None:
     """Convert YAML to JSON.
@@ -254,9 +253,9 @@ def to_json_cmd(
 
 @app.command(name="from-json")
 def from_json_cmd(
-    file: StdioPath = STDIN_FILE,
+    file: Annotated[str, Parameter(allow_leading_hyphen=True)] = STDIN_FILE,
     *,
-    output: Annotated[StdioPath | None, Parameter(name=["--output", "-o"])] = None,
+    output: Annotated[str | None, Parameter(name=["--output", "-o"], allow_leading_hyphen=True)] = None,
 ) -> None:
     """Convert JSON to YAML.
 

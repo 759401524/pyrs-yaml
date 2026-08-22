@@ -13,13 +13,14 @@ def fail(message: str) -> NoReturn:
     sys.exit(1)
 
 
-def _is_stdio(source: Any) -> bool:
+def is_stdio(source: Any) -> bool:
+    """True when *source* selects stdin/stdout (the ``-`` token)."""
     return source == "-" or getattr(source, "is_stdio", False)
 
 
 def read_text(source: Any) -> str:
     """Read text from a file path, or from stdin when *source* is stdio."""
-    if _is_stdio(source):
+    if is_stdio(source):
         return sys.stdin.read()
     try:
         return Path(source).read_text(encoding="utf-8")
@@ -32,7 +33,7 @@ def load_document(source: Any) -> Any:
     from pyrs_yaml import YamlParseError, parse, parse_file
 
     try:
-        if _is_stdio(source):
+        if is_stdio(source):
             return parse(sys.stdin.read())
         return parse_file(str(source))
     except OSError as exc:
@@ -43,7 +44,7 @@ def load_document(source: Any) -> Any:
 
 def emit(text: str, output: Any = None) -> None:
     """Write *text* to stdout, or to a file when *output* is a path."""
-    if output is None or _is_stdio(output):
+    if output is None or is_stdio(output):
         sys.stdout.write(text)
         return
     Path(output).write_text(text, encoding="utf-8")
