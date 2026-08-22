@@ -78,6 +78,19 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 - Optional dependencies (yaml_rs, ryaml, yaml_edit) use `try/except` + `skipif`
 - Bench files are excluded from normal `pytest` runs (require `--codspeed` flag)
 
+## CLI (`pyrs-yaml` command)
+
+Learnings from the initial CLI implementation (2026-08):
+
+- **Architecture invariant**: the CLI lives behind the `cli` extra (`cyclopts>=4,<5`, Python 3.10+). The base install must stay zero-extra-dependency and Python 3.8 compatible — `python/pyrs_yaml/cli/__init__.py` guards the import and matches on `exc.name == "cyclopts"` so unrelated ImportErrors are not masked.
+- **Cyclopts in-process gotchas** (all bit us once):
+    - Call as `app(["fmt", "--indent", "4"])` — a token list, not splat args.
+    - Every successful command still raises `SystemExit(0)` under the default `result_action`; tests must swallow exit 0 and propagate nonzero.
+    - Use `cyclopts.types.StdioPath` for file parameters (`-` means stdin/stdout, leading-hyphen tokens accepted). Do not hand-roll `-` checks on plain strings.
+    - Parameters whose value may start with `-` (e.g. negative numbers in `set`) need `Parameter(allow_leading_hyphen=True)`.
+- **Known boundaries** (candidate roadmap): single-document only (`parse_all_docs`, `sort_keys`, `Node.move`, front-matter APIs not exposed); `validate --schema` disambiguates registered-name vs file-path via an `os.path.exists` probe, so a schema name that collides with a filename is undefined; `python -m pyrs_yaml.compliance --json` remains an undocumented quasi-CLI and could become `pyrs-yaml compliance`.
+- **Docs cross-page anchors**: localized pages translate headings, so slug fragments like `editing.md#path-syntax` only resolve in `docs/en`. Link to the bare page for zh/ja/ko, or add an explicit `{ #id }` to the target heading first (per `DOCS_STANDARDS.md`; strict builds fail on missing anchors).
+
 ## Boundaries
 
 ✅ Always:

@@ -17,6 +17,15 @@ status: new
 
 #### 추가
 
+- **커맨드라인 인터페이스** — 새로운 `pyrs-yaml` 명령(`pip install "pyrs-yaml[cli]"`로
+  옵트인, Python 3.10+ 필요)을 통해 라이브러리의 핵심 기능을 터미널에서 사용할 수
+  있습니다: `fmt`(주석/앵커/순서를 보존하는 라운드트립 재포매팅), `get`(JSONPath 쿼리,
+  `--format yaml|json|text` 지원), `set` / `delete` / `rename`(경로 기반 편집,
+  `--inplace`, `--string`, `--create-missing` 지원), `validate`(스키마 파일 또는 등록된
+  스키마 이름, CI 친화적 종료 코드), 그리고 `to-json` / `from-json` 변환. 모든 명령은
+  `-`로 stdin을 읽고 기본적으로 stdout에 출력합니다. 구현은 순수 Python
+  (`python/pyrs_yaml/cli/`)이며 [Cyclopts](https://github.com/BrianPugh/cyclopts)를
+  선택적 extra로 사용하므로, 기본 설치는 추가 의존성 없음과 Python 3.8 지원을 유지합니다.
 - **선택적 서드파티 유형 플러그인** — `!duration`(`pendulum.Duration`),
   `!arrow`(`arrow.Arrow`), `!ulid`(`ulid.ULID`)는 해당 라이브러리가 설치되어 있을 때
   자동으로 등록됩니다(`python/pyrs_yaml/plugins/_builtin.py`의 `_register_third_party`).
