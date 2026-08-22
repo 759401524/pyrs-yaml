@@ -17,6 +17,17 @@ status: new
 
 #### 追加
 
+- **コマンドラインインターフェース** — 新しい `pyrs-yaml` コマンド（
+  `pip install "pyrs-yaml[cli]"` でオプトイン、Python 3.10+ 必須）により、ライブラリの
+  中核機能をターミナルから利用できます：`fmt`（コメント・アンカー・順序を保持する
+  ラウンドトリップ整形）、`get`（JSONPath クエリ、`--format yaml|json|text` 対応）、
+  `set` / `delete` / `rename`（パスベースの編集、`--inplace`・`--string`・
+  `--create-missing` をサポート）、`validate`（スキーマファイルまたは登録済みスキーマ
+  名、CI フレンドリーな終了コード）、および `to-json` / `from-json` 変換。すべての
+  コマンドは `-` で stdin を読み、デフォルトで stdout に出力します。実装は純粋な
+  Python（`python/pyrs_yaml/cli/`）で、[Cyclopts](https://github.com/BrianPugh/cyclopts)
+  をオプション extra として使用するため、ベースインストールは追加依存ゼロと
+  Python 3.8 サポートを維持します。
 - **オプションのサードパーティタイププラグイン** — `!duration`（`pendulum.Duration`）、
   `!arrow`（`arrow.Arrow`）、`!ulid`（`ulid.ULID`）は、対応するライブラリがインストール
   されている場合に自動登録されます（`python/pyrs_yaml/plugins/_builtin.py` の

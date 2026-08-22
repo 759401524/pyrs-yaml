@@ -43,6 +43,26 @@ Or with uv:
 uv pip install pyrs-yaml
 ```
 
+### CLI
+
+An optional command-line tool is available via the `cli` extra (Python 3.10+):
+
+```bash
+pip install "pyrs-yaml[cli]"
+```
+
+```bash
+$ echo "a:    1 # keep me" | pyrs-yaml fmt -
+a: 1  # keep me
+
+$ pyrs-yaml get deploy.yaml '$..host' --format text
+$ pyrs-yaml set config.yaml "$.port" 8080 --inplace
+$ pyrs-yaml validate app.yaml --schema schema.yaml
+$ pyrs-yaml to-json config.yaml
+```
+
+Commands: `fmt` / `get` / `set` / `delete` / `rename` / `validate` / `to-json` / `from-json` — see the [CLI guide](https://759401524.github.io/pyrs-yaml/en/guides/cli/) for details.
+
 ## Requirements
 
 - **Supported Python versions** (installing wheels): Python 3.8+ (CPython; PyPy and free-threaded 3.14t wheels are also published). abi3 wheels mean one wheel covers all supported Python versions.

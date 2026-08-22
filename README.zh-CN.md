@@ -42,6 +42,26 @@ pip install pyrs-yaml
 uv pip install pyrs-yaml
 ```
 
+### CLI
+
+通过 `cli` extra 可获得可选的命令行工具（需 Python 3.10+）：
+
+```bash
+pip install "pyrs-yaml[cli]"
+```
+
+```bash
+$ echo "a:    1 # keep me" | pyrs-yaml fmt -
+a: 1  # keep me
+
+$ pyrs-yaml get deploy.yaml '$..host' --format text
+$ pyrs-yaml set config.yaml "$.port" 8080 --inplace
+$ pyrs-yaml validate app.yaml --schema schema.yaml
+$ pyrs-yaml to-json config.yaml
+```
+
+命令：`fmt` / `get` / `set` / `delete` / `rename` / `validate` / `to-json` / `from-json`——详见 [CLI 指南](https://759401524.github.io/pyrs-yaml/zh/guides/cli/)。
+
 ## 环境要求
 
 - **支持的 Python 版本**（安装 wheel）：Python 3.8+（CPython；PyPy 和自由线程 3.14t wheel 也有发布）。abi3 wheel 意味着一个 wheel 覆盖所有支持的 Python 版本。

@@ -55,6 +55,7 @@ LOCALE_NAV = {
                         {"i18n Error Messages": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
                         {"Pydantic Integration": "guides/pydantic.md"},
+                        {"Command-Line Interface": "guides/cli.md"},
                     ]
                 },
             ]
@@ -119,6 +120,7 @@ LOCALE_NAV = {
                         {"i18n 错误消息": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
                         {"Pydantic 集成": "guides/pydantic.md"},
+                        {"命令行工具": "guides/cli.md"},
                     ]
                 },
             ]
@@ -183,6 +185,7 @@ LOCALE_NAV = {
                         {"i18n エラーメッセージ": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
                         {"Pydantic 統合": "guides/pydantic.md"},
+                        {"コマンドラインツール": "guides/cli.md"},
                     ]
                 },
             ]
@@ -247,6 +250,7 @@ LOCALE_NAV = {
                         {"i18n 오류 메시지": "guides/i18n.md"},
                         {"NumPy ndarray": "guides/numpy.md"},
                         {"Pydantic 통합": "guides/pydantic.md"},
+                        {"명령줄 도구": "guides/cli.md"},
                     ]
                 },
             ]
