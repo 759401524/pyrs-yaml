@@ -22,12 +22,18 @@ status: new
   中核機能をターミナルから利用できます：`fmt`（コメント・アンカー・順序を保持する
   ラウンドトリップ整形）、`get`（JSONPath クエリ、`--format yaml|json|text` 対応）、
   `set` / `delete` / `rename`（パスベースの編集、`--inplace`・`--string`・
-  `--create-missing` をサポート）、`validate`（スキーマファイルまたは登録済みスキーマ
-  名、CI フレンドリーな終了コード）、および `to-json` / `from-json` 変換。すべての
+  `--create-missing` をサポート）、`validate`（CI フレンドリーな終了コード）、および `to-json` / `from-json` 変換。すべての
   コマンドは `-` で stdin を読み、デフォルトで stdout に出力します。実装は純粋な
   Python（`python/pyrs_yaml/cli/`）で、[Cyclopts](https://github.com/BrianPugh/cyclopts)
   をオプション extra として使用するため、ベースインストールは追加依存ゼロと
   Python 3.8 サポートを維持します。
+- **CLI 拡張** — `sort-keys`（パス位置のマッピングキーをソート）、`move`
+  （サブツリーを既存の宛先へ移動）、`frontmatter`（Markdown フロントマターを YAML で
+  抽出、本文の分割も可能）、`compliance`（YAML Test Suite レポート、`--json` 対応）
+  コマンドを追加。`fmt`/`get`/`set`/`delete`/`rename`/`sort-keys`/`validate`/
+  `to-json` に `-A/--all-docs` マルチドキュメントモードを提供し、`validate` は相互排他の
+  `--schema <名前>` と `--schema-file <パス>` に分割しました。未文書だった `python -m
+  pyrs_yaml.compliance` エントリポイントはサブコマンドに置き換えられ削除されました。
 - **オプションのサードパーティタイププラグイン** — `!duration`（`pendulum.Duration`）、
   `!arrow`（`arrow.Arrow`）、`!ulid`（`ulid.ULID`）は、対応するライブラリがインストール
   されている場合に自動登録されます（`python/pyrs_yaml/plugins/_builtin.py` の

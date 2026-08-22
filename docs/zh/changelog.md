@@ -21,10 +21,16 @@ status: new
   需 Python 3.10+），在终端中暴露库的核心能力：`fmt`（往返重新格式化，保留注释/
   锚点/顺序）、`get`（JSONPath 查询，支持 `--format yaml|json|text`）、`set` /
   `delete` / `rename`（基于路径的编辑，支持 `--inplace`、`--string`、
-  `--create-missing`）、`validate`（schema 文件或已注册 schema 名称，对 CI 友好的
-  退出码）以及 `to-json` / `from-json` 转换。所有命令通过 `-` 读取 stdin，默认输出到
+  `--create-missing`）、`validate`（对 CI 友好的退出码）以及 `to-json` / `from-json` 转换。所有命令通过 `-` 读取 stdin，默认输出到
   stdout。实现为纯 Python（`python/pyrs_yaml/cli/`），基于
   [Cyclopts](https://github.com/BrianPugh/cyclopts) 作为可选 extra，基础安装保持零额外依赖并继续支持 Python 3.8。
+  基础安装保持零额外依赖并继续支持 Python 3.8。
+- **CLI 扩展** —— 新增 `sort-keys`（对路径处映射键排序）、`move`（将子树移动到已存在的目标）、
+  `frontmatter`（提取 Markdown front matter 为 YAML，可选拆分正文）与 `compliance`
+  （YAML Test Suite 报告，支持 `--json`）命令；为 `fmt`/`get`/`set`/`delete`/`rename`/
+  `sort-keys`/`validate`/`to-json` 提供 `-A/--all-docs` 多文档模式；`validate` 改为互斥的
+  `--schema <名称>` 与 `--schema-file <路径>`。未成文的 `python -m pyrs_yaml.compliance`
+  入口已被子命令取代并移除。
 - **可选第三方类型插件** — `!duration`（`pendulum.Duration`）、`!arrow`（`arrow.Arrow`）、
   `!ulid`（`ulid.ULID`）在安装对应库时自动注册（`python/pyrs_yaml/plugins/_builtin.py`
   中的 `_register_third_party`）。每个插件使用独立标签，不影响现有 `!timestamp` /

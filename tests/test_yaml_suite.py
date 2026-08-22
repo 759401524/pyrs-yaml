@@ -3,8 +3,6 @@ YAML Test Suite Runner for pyrs_yaml
 Runs the official YAML test suite and reports results
 """
 
-import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -104,11 +102,3 @@ def test_compliance_report_missing_data_raises(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         compliance_report(str(tmp_path / "nonexistent"))
-
-
-if __name__ == "__main__":
-    if "--json" in sys.argv:
-        report = compute_compliance()
-        print(json.dumps(report, indent=2))
-    else:
-        pytest.main([__file__])

@@ -7,15 +7,15 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 
+def is_stdio(source: Any) -> bool:
+    """True when *source* selects stdin/stdout (the ``-`` token)."""
+    return source == "-" or getattr(source, "is_stdio", False)
+
+
 def fail(message: str) -> NoReturn:
     """Print an error to stderr and exit with status 1."""
     print(f"error: {message}", file=sys.stderr)
     sys.exit(1)
-
-
-def is_stdio(source: Any) -> bool:
-    """True when *source* selects stdin/stdout (the ``-`` token)."""
-    return source == "-" or getattr(source, "is_stdio", False)
 
 
 def read_text(source: Any) -> str:
@@ -40,6 +40,32 @@ def load_document(source: Any) -> Any:
         fail(f"cannot read '{source}': {exc.strerror or exc}")
     except YamlParseError as exc:
         fail(str(exc))
+
+
+def load_documents(source: Any) -> list[Any]:
+    """Parse every document in a YAML stream (file or stdin)."""
+    from pyrs_yaml import YamlParseError, parse_all_docs
+
+    try:
+        if is_stdio(source):
+            return parse_all_docs(sys.stdin.read())
+        text = Path(source).read_text(encoding="utf-8")
+        return parse_all_docs(text)
+    except OSError as exc:
+        fail(f"cannot read '{source}': {exc.strerror or exc}")
+    except YamlParseError as exc:
+        fail(str(exc))
+
+
+def join_documents(texts: list[str]) -> str:
+    """Join per-document serializations into a standard multi-doc stream."""
+    parts = []
+    for i, text in enumerate(texts):
+        if i == 0:
+            parts.append(text)
+        else:
+            parts.append("---\n" + text)
+    return "".join(parts)
 
 
 def emit(text: str, output: Any = None) -> None:
