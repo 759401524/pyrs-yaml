@@ -14,13 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the terminal: `fmt` (round-trip reformat preserving comments/anchors/
   order), `get` (JSONPath queries with `--format yaml|json|text`), `set` /
   `delete` / `rename` (path-based edits with `--inplace`, `--string`,
-  `--create-missing`), `validate` (schema file or registered schema name,
-  CI-friendly exit codes), and `to-json` / `from-json` conversions. All
+  `--create-missing`), `validate` (CI-friendly exit codes), and `to-json` / `from-json` conversions. All
   commands read stdin via `-` and default to stdout output. Implemented in
   pure Python (`python/pyrs_yaml/cli/`) on top of
   [Cyclopts](https://github.com/BrianPugh/cyclopts) as an optional extra, so
   the base install keeps zero extra dependencies and Python 3.8 support.
-- **Optional third-party type plugins** — `!duration` (`pendulum.Duration`),
+- **CLI expansion** — `sort-keys` (sort mapping keys at a path), `move`
+  (relocate a subtree to an existing destination), `frontmatter` (extract
+  Markdown front matter as YAML, optional body split), and `compliance`
+  (YAML Test Suite report with `--json`) commands; `-A/--all-docs`
+  multi-document mode on `fmt`/`get`/`set`/`delete`/`rename`/`sort-keys`/
+  `validate`/`to-json`; and mutually exclusive `validate --schema <name>`
+  vs `--schema-file <path>`. The undocumented `python -m
+  pyrs_yaml.compliance` entry point was removed in favor of the
+  subcommand.- **Optional third-party type plugins** — `!duration` (`pendulum.Duration`),
   `!arrow` (`arrow.Arrow`), and `!ulid` (`ulid.ULID`) auto-register when the
   corresponding library is installed (`_register_third_party` in
   `python/pyrs_yaml/plugins/_builtin.py`). Each uses a distinct tag so existing

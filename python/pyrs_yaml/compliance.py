@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from datetime import datetime
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -219,11 +218,3 @@ def compliance_report(suite_dir: str | None = None) -> dict[str, Any]:
             f"yaml-test-suite not found at {suite_dir}; clone https://github.com/yaml/yaml-test-suite into Reference/"
         )
     return compute_compliance(suite_dir)
-
-
-if __name__ == "__main__":
-    if "--json" in sys.argv:
-        report = compliance_report()
-        print(json.dumps(report, indent=2))
-    else:
-        print(compliance_report())

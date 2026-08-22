@@ -42,11 +42,15 @@ pyrs-yaml --version
 | [`set`](#cmd-edit) | 设置路径处的值 |
 | [`delete`](#cmd-edit) | 删除路径处的节点 |
 | [`rename`](#cmd-edit) | 重命名映射键 |
+| [`sort-keys`](#cmd-edit) | 对路径处的映射键排序 |
+| [`move`](#cmd-edit) | 将子树移动到另一个已存在的路径 |
+| [`frontmatter`](#cmd-frontmatter) | 提取 Markdown front matter 为 YAML |
 | [`validate`](#cmd-validate) | 按 Schema 校验 YAML |
 | [`to-json`](#cmd-convert) | 将 YAML 转为 JSON |
 | [`from-json`](#cmd-convert) | 将 JSON 转为 YAML |
+| [`compliance`](#cmd-compliance) | 报告 YAML Test Suite 合规率 |
 
-文件参数为 `-` 或省略时从 **stdin** 读取；除非指定 `-o/--output` 或 `-i/--inplace`，结果一律输出到 **stdout**。
+文件参数为 `-` 或省略时从 **stdin** 读取；除非指定 `-o/--output` 或 `-i/--inplace`，结果一律输出到 **stdout**。流式输入通过 [`-A/--all-docs`](#multi-doc) 处理。
 
 ### 格式化（`fmt`） { #cmd-fmt }
 
@@ -97,16 +101,26 @@ pyrs-yaml delete config.yaml "$.legacy_key"
 pyrs-yaml rename config.yaml "$.old_name" new_name
 
 pyrs-yaml set config.yaml "$.port" 8080 --inplace             # 就地修改文件
+
+pyrs-yaml sort-keys config.yaml                               # 对根映射键排序
+pyrs-yaml sort-keys config.yaml "$.meta"                      # 对单个嵌套映射排序
+pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # 移动子树
 ```
 
 编辑会保留周边元数据——被编辑节点上方或行内的注释原样不动。
 
+注意：
+
+- 父级已存在时，`set` 即使不加 `--create-missing` 也会添加路径的末级键；该标志仅用于缺失的**中间**键。
+- `sort-keys` 对 `path` 处映射的键排序（默认根节点）；不递归。
+- `move` 的目标必须已存在，其值会被移动来的子树替换；两端均不允许通配符。
+
 ### 校验（`validate`） { #cmd-validate }
 
-`validate` 按 Schema 定义（文件路径）或已注册的 Schema 名称检查文档：
+`validate` 按 Schema 定义文件或已注册的 Schema 名称检查文档——两个选项互斥：
 
 ```bash
-pyrs-yaml validate app.yaml --schema schema.yaml
+pyrs-yaml validate app.yaml --schema-file schema.yaml
 pyrs-yaml validate app.yaml --schema my_schema        # 经 register_schema() 注册
 ```
 
@@ -139,6 +153,39 @@ $ pyrs-yaml to-json config.yaml
 $ echo '{"name": "x"}' | pyrs-yaml from-json -
 name: x
 ```
+
+### 多文档流 { #multi-doc }
+
+添加 `-A/--all-docs` 将输入视为 `---` 分隔的文档流，而非仅处理第一个文档：
+
+```bash
+pyrs-yaml fmt stream.yaml -A                              # 重新格式化每个文档
+pyrs-yaml get stream.yaml '$..name' --format text -A      # 跨文档查询
+pyrs-yaml to-json stream.yaml -A                          # 输出文档 JSON 数组
+pyrs-yaml set stream.yaml "$.retries" 5 -A                # 编辑每个文档
+pyrs-yaml validate stream.yaml --schema-file s.yaml -A    # 失败时报 "document N"
+```
+
+支持 `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`validate` 与 `to-json`。输出以标准 `---` 分隔符连接；编辑命令在路径可解析的文档上生效，仅当无任何文档匹配时失败。
+
+### Markdown front matter（`frontmatter`） { #cmd-frontmatter }
+
+```bash
+$ pyrs-yaml frontmatter post.md
+title: Hello
+
+$ pyrs-yaml frontmatter post.md --body-out body.md   # 同时拆分正文
+```
+
+页面没有 front matter 时退出码为 `1`。库 API 详见 [Markdown 头信息](frontmatter.md)。
+
+### YAML Test Suite 合规率（`compliance`） { #cmd-compliance }
+
+```bash
+pyrs-yaml compliance [--json] [SUITE_DIR]
+```
+
+针对 [yaml-test-suite](https://github.com/yaml/yaml-test-suite) 语料运行解析器（默认检出位置：`./Reference/yaml-test-suite`），按套件分区打印通过/失败统计——便于将 pyrs-yaml 与其他 YAML 实现进行对比评估。
 
 ### 退出码
 

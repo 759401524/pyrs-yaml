@@ -42,11 +42,15 @@ pyrs-yaml --version
 | [`set`](#cmd-edit) | パス位置の値を設定 |
 | [`delete`](#cmd-edit) | パス位置のノードを削除 |
 | [`rename`](#cmd-edit) | マッピングキーを改名 |
+| [`sort-keys`](#cmd-edit) | パス位置のマッピングキーをソート |
+| [`move`](#cmd-edit) | サブツリーを別の既存パスへ移動 |
+| [`frontmatter`](#cmd-frontmatter) | Markdown フロントマターを YAML で抽出 |
 | [`validate`](#cmd-validate) | スキーマに対して YAML を検証 |
 | [`to-json`](#cmd-convert) | YAML を JSON に変換 |
 | [`from-json`](#cmd-convert) | JSON を YAML に変換 |
+| [`compliance`](#cmd-compliance) | YAML Test Suite の適合率をレポート |
 
-ファイル引数が `-` または省略された場合は **stdin** から読み込み、`-o/--output` や `-i/--inplace` がない限り結果は **stdout** に出力されます。
+ファイル引数が `-` または省略された場合は **stdin** から読み込み、`-o/--output` や `-i/--inplace` がない限り結果は **stdout** に出力されます。ストリーム入力は [`-A/--all-docs`](#multi-doc) で扱います。
 
 ### フォーマット（`fmt`） { #cmd-fmt }
 
@@ -97,16 +101,26 @@ pyrs-yaml delete config.yaml "$.legacy_key"
 pyrs-yaml rename config.yaml "$.old_name" new_name
 
 pyrs-yaml set config.yaml "$.port" 8080 --inplace             # ファイルを直接編集
+
+pyrs-yaml sort-keys config.yaml                               # ルートのキーをソート
+pyrs-yaml sort-keys config.yaml "$.meta"                      # 単一のネストしたマッピングをソート
+pyrs-yaml move deploy.yaml "$.staging" "$.environments.dev"   # サブツリーを移動
 ```
 
 編集しても周辺のメタデータは保持されます——編集したノードの上や行内のコメントはそのまま残ります。
 
+注意：
+
+- 親が存在する場合、`set` は `--create-missing` なしでもパスの最終キーを追加します。このフラグが必要なのは**中間**キーが欠けている場合のみです。
+- `sort-keys` は `path` のマッピング（デフォルトはルート）のキーをソートします。再帰的ではありません。
+- `move` の宛先は既に存在している必要があり、その値は移動したサブツリーで置き換えられます。両端でワイルドカードは使えません。
+
 ### バリデーション（`validate`） { #cmd-validate }
 
-`validate` はスキーマ定義（ファイルパス）または登録済みスキーマ名に基づいてドキュメントを検証します:
+`validate` はスキーマ定義ファイルまたは登録済みスキーマ名に基づいてドキュメントを検証します——2 つのオプションは相互排他です:
 
 ```bash
-pyrs-yaml validate app.yaml --schema schema.yaml
+pyrs-yaml validate app.yaml --schema-file schema.yaml
 pyrs-yaml validate app.yaml --schema my_schema        # register_schema() で登録したもの
 ```
 
@@ -139,6 +153,39 @@ $ pyrs-yaml to-json config.yaml
 $ echo '{"name": "x"}' | pyrs-yaml from-json -
 name: x
 ```
+
+### 複数ドキュメントストリーム { #multi-doc }
+
+`-A/--all-docs` を付けると、最初のドキュメントだけでなく `---` 区切りのドキュメント列全体を入力として扱います:
+
+```bash
+pyrs-yaml fmt stream.yaml -A                              # 全ドキュメントを再整形
+pyrs-yaml get stream.yaml '$..name' --format text -A      # ドキュメント横断でクエリ
+pyrs-yaml to-json stream.yaml -A                          # ドキュメントの JSON 配列を出力
+pyrs-yaml set stream.yaml "$.retries" 5 -A                # 全ドキュメントを編集
+pyrs-yaml validate stream.yaml --schema-file s.yaml -A    # 失敗時は "document N" と報告
+```
+
+対象コマンド: `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`validate`、`to-json`。出力は標準の `---` 区切りで連結されます。編集コマンドはパスが解決できる各ドキュメントに適用され、1 つも一致しない場合のみ失敗します。
+
+### Markdown フロントマター（`frontmatter`） { #cmd-frontmatter }
+
+```bash
+$ pyrs-yaml frontmatter post.md
+title: Hello
+
+$ pyrs-yaml frontmatter post.md --body-out body.md   # 本文も分割して出力
+```
+
+フロントマターがないページでは終了コード `1` で終わります。ライブラリ API の詳細は [Markdown フロントマター](frontmatter.md) を参照してください。
+
+### YAML Test Suite 適合率（`compliance`） { #cmd-compliance }
+
+```bash
+pyrs-yaml compliance [--json] [SUITE_DIR]
+```
+
+[yaml-test-suite](https://github.com/yaml/yaml-test-suite) コーパスに対してパーサーを実行し（デフォルトのチェックアウト場所: `./Reference/yaml-test-suite`)、セクションごとの合否統計を出力します。他の YAML 実装と pyrs-yaml を比較評価する際に有用です。
 
 ### 終了コード
 
