@@ -266,6 +266,25 @@ class YamlDocument:
         Return the YAML version string.
         """
 
+@final
+class YamlStream:
+    """
+    Lazy, constant-memory stream of YAML documents from a [`ChunkCharIter`].
+
+    `__next__` parses exactly one event per call (driving the granit parser
+    incrementally), so a large file is never fully buffered. Errors surface
+    exactly once as a `YamlParseError`; after an error or `close()` the
+    iterator returns `None` (StopIteration).
+    """
+    def __del__(self, /) -> None: ...
+    def __iter__(self, /) -> YamlStream: ...
+    def __next__(self, /) -> dict |None: ...
+    def __repr__(self, /) -> str: ...
+    def close(self, /) -> None:
+        """
+        提前终止：停止读取后续 chunk。幂等。
+        """
+
 def clear_tag_handlers() -> None:
     """
     Clear all tag handlers.
@@ -281,12 +300,12 @@ def detect_language() -> "str":
     Detect the system default language.
     """
 
-def dump_file(data: "Any", path: "str") -> "None":
+def dump_file(data: "Any", path: "str", sort_keys: "bool" = False) -> "None":
     """
     Serialize a Python object to YAML and write to a file.
     """
 
-def from_dict(data: "dict[str, Any] | list[Any]") -> "str":
+def from_dict(data: "dict[str, Any] | list[Any]", sort_keys: "bool" = False) -> "str":
     """
     Convert a Python dict/list to a YAML string (auto-selects block/flow style).
     """
@@ -408,7 +427,7 @@ def remove_type(name: "str") -> None:
     Remove a specific custom type handler.
     """
 
-def safe_dump(data: "dict[str, Any] | list[Any]") -> "str":
+def safe_dump(data: "dict[str, Any] | list[Any]", sort_keys: "bool" = False) -> "str":
     """
     Serialize a Python dict/list to a YAML string.
     """
@@ -426,6 +445,16 @@ def safe_loads(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, all
 def set_language(lang: "str") -> "None":
     """
     Set the error message language.
+    """
+
+def tag_registry_get_handler_info(name: "str") -> list[tuple[int, Any]] |None:
+    """
+    Get all handlers for a tag as a list of (priority, handler) tuples.
+    """
+
+def tag_registry_list_tags() -> list[str]:
+    """
+    List all registered tag handler tags.
     """
 
 def validate_against_registered_schema(data: "str", name: "str") -> "None":
