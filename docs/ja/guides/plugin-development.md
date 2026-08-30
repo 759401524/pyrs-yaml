@@ -33,6 +33,26 @@ def register():
     pyrs_yaml.register_type("!mytimestamp", MyTimestampType())
 ```
 
+### 統合 TagHandler API
+
+`TagHandler` はタグレジストリ（`register_tag`）とコミュニティプラグイン（`register_type`）を単一の登録ポイントに統合します。ハンドラはスカラー、コンテナ、ライフサイクルメソッドを任意に組み合わせられます。
+
+```python
+class HexInt(pyrs_yaml.TagHandler):
+    python_type = int
+
+    def from_yaml(self, value, tag):
+        return int(value, 16)
+
+    def to_yaml(self, obj, tag):
+        return hex(obj)
+
+
+pyrs_yaml.register_tag_handler("!hex", HexInt())
+```
+
+コンテナタグ（`from_yaml_mapping`/`from_yaml_sequence`/`to_yaml_mapping`/`to_yaml_sequence`）は AST ラウンドトリップパスでのみ有効。`safe_dump` 高速パスは常にプレーンコンテナを出力します。
+
 ### API リファレンス
 
 | 関数 | 説明 |
@@ -41,6 +61,12 @@ def register():
 | :material-close: `clear_type_handlers()` | すべての登録タイプを削除 |
 | :material-close: `remove_type(name)` | 特定のタイプを削除 |
 | :material-check-decagram: `validate_custom_types(obj)` | オブジェクトを全登録タイプに対して検証 |
+| :material-link-variant: `register_tag_handler(name, handler)` | 統合 `TagHandler` を登録 |
+| :material-close: `clear_tag_handlers()` | すべてのタグハンドラを削除 |
+| :material-close: `remove_tag_handler(name)` | 指定タグのハンドラを削除 |
+| :material-code-braces: `list_tag_handlers()` | 登録済みタグハンドラを一覧 |
+| :material-code-braces: `get_tag_handler(name)` | タグのハンドラインスタンスを取得 |
+| :material-export: `serialize(doc, ...)` | ライフサイクルフック付きシリアライズ |
 
 ---
 

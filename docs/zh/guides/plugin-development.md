@@ -42,6 +42,26 @@ def register():
 mytimestamp = "my_timestamp_plugin:register"
 ```
 
+### 统一 TagHandler API
+
+`TagHandler` 将标签注册表（`register_tag`）与社区插件（`register_type`）统一到一个注册点。处理器可任意组合标量、容器与生命周期方法。
+
+```python
+class HexInt(pyrs_yaml.TagHandler):
+    python_type = int
+
+    def from_yaml(self, value, tag):
+        return int(value, 16)
+
+    def to_yaml(self, obj, tag):
+        return hex(obj)
+
+
+pyrs_yaml.register_tag_handler("!hex", HexInt())
+```
+
+容器标签（`from_yaml_mapping`/`from_yaml_sequence`/`to_yaml_mapping`/`to_yaml_sequence`）仅在 AST 往返路径生效；`safe_dump` 快速路径始终输出普通容器。
+
 ### API 参考
 
 | 函数 | 说明 |
@@ -50,6 +70,12 @@ mytimestamp = "my_timestamp_plugin:register"
 | :material-close: `clear_type_handlers()` | 移除所有已注册类型 |
 | :material-close: `remove_type(name)` | 移除特定类型 |
 | :material-check-decagram: `validate_custom_types(obj)` | 验证对象是否通过所有注册类型的校验 |
+| :material-link-variant: `register_tag_handler(name, handler)` | 注册统一的 `TagHandler` |
+| :material-close: `clear_tag_handlers()` | 移除所有标签处理器 |
+| :material-close: `remove_tag_handler(name)` | 移除指定标签的处理器 |
+| :material-code-braces: `list_tag_handlers()` | 列出所有已注册标签处理器 |
+| :material-code-braces: `get_tag_handler(name)` | 获取标签的处理器实例 |
+| :material-export: `serialize(doc, ...)` | 带生命周期钩子的序列化 |
 
 ---
 
