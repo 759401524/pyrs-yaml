@@ -297,4 +297,6 @@ jobs:
           version: "latest"
       - name: Run i18n check
         run: python scripts/check_i18n.py
+      - name: Run YamlStream export check
+        run: python scripts/check_yamlstream_export.py
 
