@@ -15,8 +15,9 @@ use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Arc;
+use yaml::comment::{YamlScan, scan_yaml};
 use yaml::{
-    RawAnchor, compute_line_offsets, detect_chomping, extract_anchors, resolve_merge_keys,
+    RawAnchor, compute_line_offsets, detect_chomping_at, extract_anchors, resolve_merge_keys,
     unescape_double_quoted,
 };
 
@@ -84,11 +85,19 @@ pub fn parse_with_options(
         return Ok(CustomNode::plain_null());
     }
 
+    // Single byte-pass scan: line offsets (for O(1) chomping detection),
+    // ASCII check, and anchor presence gate for the char-level pre-scan.
+    let scan: YamlScan = scan_yaml(yaml);
+
     // Extract anchor names from raw text (granit-parser uses numeric IDs)
-    let raw_anchors = extract_anchors(yaml);
+    let raw_anchors = if scan.has_amp {
+        extract_anchors(yaml)
+    } else {
+        Vec::new()
+    };
 
     // Parse YAML using granit-parser
-    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
+    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys, scan);
     receiver.collect_documents = false;
     let mut parser = SaphyrParser::new_from_str(yaml);
 
@@ -151,9 +160,15 @@ pub fn parse_all_with_options(
         return Ok(Vec::new());
     }
 
-    let raw_anchors = extract_anchors(yaml);
+    // Single byte-pass scan (see parse_with_options).
+    let scan: YamlScan = scan_yaml(yaml);
+    let raw_anchors = if scan.has_amp {
+        extract_anchors(yaml)
+    } else {
+        Vec::new()
+    };
 
-    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
+    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys, scan);
     let mut parser = SaphyrParser::new_from_str(yaml);
 
     parser
@@ -379,6 +394,9 @@ struct AstReceiver<'a> {
     yaml_text: &'a str,
     /// Pre-computed byte offsets for each line start (O(1) line access)
     char_offsets: Option<Vec<usize>>,
+    /// Byte offset of each line start, from the single-pass [`scan_yaml`]
+    /// pre-pass; used for O(1) block-scalar chomping detection.
+    line_offsets: Vec<usize>,
     /// Anchor names extracted from raw text (indexed by anchor_id)
     anchor_names: Vec<String>,
     /// Current index into anchor_names
@@ -435,11 +453,17 @@ impl<'a> AstReceiver<'a> {
         raw_anchors: Vec<RawAnchor>,
         max_depth: usize,
         allow_duplicate_keys: bool,
+        scan: YamlScan,
     ) -> Self {
-        let is_ascii = yaml_text.is_ascii();
+        let YamlScan {
+            line_offsets,
+            is_ascii,
+            ..
+        } = scan;
         Self {
             yaml_text,
             char_offsets: (!is_ascii).then(|| char_to_byte_offsets(yaml_text)),
+            line_offsets,
             stack: Vec::new(),
             result: None,
             collect_documents: true,
@@ -475,7 +499,7 @@ impl<'a> AstReceiver<'a> {
 
         // Detect chomping for block scalars
         let chomping = if matches!(scalar_style, ScalarStyle::Literal | ScalarStyle::Folded) {
-            detect_chomping(self.yaml_text, line)
+            detect_chomping_at(self.yaml_text, line, &self.line_offsets)
         } else {
             Chomping::Clip
         };

@@ -103,6 +103,27 @@ fn unescape_hex_escape(hex: &str) -> String {
 ///
 /// # Returns
 /// 检测到的 `Chomping` 值：`Strip`（`-`）、`Keep`（`+`）或默认 `Clip`。
+/// Look for a block-scalar indicator (`|`/`>`) in `line_text` and classify the
+/// chomping mode. Returns `Some(Chomping)` when the indicator resolves to a
+/// mode, `None` when no decisive indicator is on this line.
+fn chomping_from_line(line_text: &str) -> Option<Chomping> {
+    for (i, ch) in line_text.char_indices() {
+        if ch == '|' || ch == '>' {
+            let remaining = &line_text[i + 1..];
+            if remaining.starts_with('-') {
+                return Some(Chomping::Strip);
+            } else if remaining.starts_with('+') {
+                return Some(Chomping::Keep);
+            }
+            // Found the indicator without chomping, stop looking
+            if remaining.is_empty() || remaining.starts_with(|c: char| c.is_whitespace()) {
+                return Some(Chomping::Clip);
+            }
+        }
+    }
+    None
+}
+
 pub fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
     let lines: Vec<&str> = yaml.lines().collect();
 
@@ -112,28 +133,41 @@ pub fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
         if check_line >= lines.len() {
             continue;
         }
-        let line_text = lines[check_line];
-
-        // Look for | or > followed by - or +
-        for (i, ch) in line_text.char_indices() {
-            if ch == '|' || ch == '>' {
-                let remaining = &line_text[i + 1..];
-                if remaining.starts_with('-') {
-                    return Chomping::Strip;
-                } else if remaining.starts_with('+') {
-                    return Chomping::Keep;
-                }
-                // Found the indicator without chomping, stop looking
-                if remaining.is_empty() || remaining.starts_with(|c: char| c.is_whitespace()) {
-                    return Chomping::Clip;
-                }
-            }
+        if let Some(chomping) = chomping_from_line(lines[check_line]) {
+            return chomping;
         }
     }
 
     Chomping::Clip
 }
 
+/// O(1)-per-line variant of [`detect_chomping`] using pre-computed line byte
+/// offsets (from [`super::comment::scan_yaml`]). Semantically identical, but
+/// avoids re-splitting the whole document for every block scalar.
+pub fn detect_chomping_at(yaml: &str, content_line: usize, line_offsets: &[usize]) -> Chomping {
+    let line_text = |l: usize| -> Option<&str> {
+        let start = *line_offsets.get(l)?;
+        let end = line_offsets.get(l + 1).copied().unwrap_or(yaml.len());
+        if start > end || end > yaml.len() {
+            return None;
+        }
+        let raw = &yaml[start..end];
+        let raw = raw.strip_suffix('\n').unwrap_or(raw);
+        let raw = raw.strip_suffix('\r').unwrap_or(raw);
+        Some(raw)
+    };
+
+    for check_line in (0..=content_line).rev() {
+        let Some(line) = line_text(check_line) else {
+            continue;
+        };
+        if let Some(chomping) = chomping_from_line(line) {
+            return chomping;
+        }
+    }
+
+    Chomping::Clip
+}
 #[cfg(test)]
 mod tests {
     use super::*;
