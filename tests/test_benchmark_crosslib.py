@@ -1,5 +1,5 @@
 """
-Cross-library comparison: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit vs yaml_rs.
+Cross-library comparison: pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit vs yaml_rs vs yamlrocks.
 
 Run with: pytest tests/test_benchmark_crosslib.py --codspeed
 """
@@ -66,6 +66,14 @@ try:
 except ImportError:
     HAS_YAML_RS = False
     yaml_rs = None
+
+try:
+    import yamlrocks
+
+    HAS_YAMLROCKS = True
+except ImportError:
+    HAS_YAMLROCKS = False
+    yamlrocks = None
 
 
 def ruamel_load(s):
@@ -192,6 +200,25 @@ def test_yaml_rs_serialize(benchmark, size):
     benchmark(yaml_rs.dumps, data)
 
 
+# ── yamlrocks benchmarks (Rust competitor) ──
+
+
+@pytest.mark.benchmark(group="yamlrocks")
+@pytest.mark.skipif(not HAS_YAMLROCKS, reason="yamlrocks not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_yamlrocks_parse(benchmark, size):
+    benchmark(yamlrocks.loads, YAML_INPUTS[size])
+
+
+@pytest.mark.benchmark(group="yamlrocks")
+@pytest.mark.skipif(not HAS_YAMLROCKS, reason="yamlrocks not installed")
+@pytest.mark.parametrize("size", SIZES, ids=SIZES)
+def test_yamlrocks_serialize(benchmark, size):
+    data = yamlrocks.loads(YAML_INPUTS[size])
+    # yamlrocks.dumps returns bytes by design (no extra encode step on their side)
+    benchmark(yamlrocks.dumps, data)
+
+
 # ── Speedup assertion ──
 
 
@@ -224,7 +251,7 @@ def test_feature_comparison():
 
 def print_report(results=None):
     print("=" * 75)
-    print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit vs yaml_rs — Feature Comparison")
+    print("  pyrs-yaml vs PyYAML vs ruamel.yaml vs ryaml vs yaml_edit vs yaml_rs vs yamlrocks — Feature Comparison")
     print("=" * 75)
     print(f"  Python:   {__import__('sys').version.split()[0]}")
     print(f"  pyrs-yaml: {pyrs_yaml.__version__}")
@@ -245,6 +272,11 @@ def print_report(results=None):
             print(f"  yaml_rs:   {importlib.metadata.version('yaml-rs')}")
         except importlib.metadata.PackageNotFoundError:
             print("  yaml_rs:   (not installed)")
+    if HAS_YAMLROCKS:
+        try:
+            print(f"  yamlrocks: {importlib.metadata.version('yamlrocks')}")
+        except importlib.metadata.PackageNotFoundError:
+            print("  yamlrocks: (not installed)")
     print()
 
     print("─" * 75)
@@ -295,6 +327,11 @@ def print_report(results=None):
         print(
             f"  yaml_rs:       comments={'# Comments everywhere' in out5}  anchors={'&defaults' in out5}  tags={'!!str' in out5}"
         )
+    if HAS_YAMLROCKS:
+        out6 = yamlrocks.dumps(yamlrocks.loads(rt_yaml, option=yamlrocks.OPT_ROUND_TRIP)).decode()
+        print(
+            f"  yamlrocks:     comments={'# Comments everywhere' in out6}  anchors={'&defaults' in out6}  tags={'!!str' in out6}"
+        )
     print()
 
     print("─" * 75)
@@ -302,42 +339,42 @@ def print_report(results=None):
     print("─" * 75)
 
     features = [
-        ("YAML 1.2 compliance", True, True, True, True, True, True),
-        ("Comments (standalone)", True, False, True, False, False, True),
-        ("Comments (inline)", True, False, True, False, False, True),
-        ("Anchors/aliases", True, False, True, True, False, True),
-        ("Tags (explicit)", True, False, True, True, False, True),
-        ("Block scalars", True, True, True, True, True, True),
-        ("Flow collections", True, True, True, True, True, True),
-        ("Merge keys (<<)", True, False, True, False, False, True),
-        ("Complex keys", True, True, True, True, True, True),
-        ("Round-trip preservation", True, False, True, False, False, True),
-        ("Python bindings", True, True, True, True, True, True),
-        ("ABI3 (py3.9+)", True, False, False, False, False, False),
-        ("Type stubs (.pyi)", True, True, False, False, False, True),
-        ("i18n error messages", True, False, False, False, False, False),
+        ("YAML 1.2 compliance", True, True, True, True, True, True, True),
+        ("Comments (standalone)", True, False, True, False, False, True, True),
+        ("Comments (inline)", True, False, True, False, False, True, True),
+        ("Anchors/aliases", True, False, True, True, False, True, True),
+        ("Tags (explicit)", True, False, True, True, False, True, True),
+        ("Block scalars", True, True, True, True, True, True, True),
+        ("Flow collections", True, True, True, True, True, True, True),
+        ("Merge keys (<<)", True, False, True, False, False, True, True),
+        ("Complex keys", True, True, True, True, True, True, True),
+        ("Round-trip preservation", True, False, True, False, False, True, True),
+        ("Python bindings", True, True, True, True, True, True, True),
+        ("ABI3 (py3.9+)", True, False, False, False, False, False, False),
+        ("Type stubs (.pyi)", True, True, False, False, False, True, True),
+        ("i18n error messages", True, False, False, False, False, False, False),
         # Control-plane dimensions: read/write of metadata and formatting.
-        ("Comment editing", True, False, True, False, False, False),
-        ("Anchor editing", True, False, True, False, False, False),
-        ("Tag editing", True, False, True, False, False, False),
-        ("Scalar style control", True, False, True, False, False, False),
-        ("Flow style control", True, False, True, False, False, False),
-        ("Chomping control", True, False, True, False, False, False),
-        ("Verbatim tags", True, False, True, False, False, True),
-        ("Schema file IO", True, False, False, False, False, False),
+        ("Comment editing", True, False, True, False, False, False, True),
+        ("Anchor editing", True, False, True, False, False, False, True),
+        ("Tag editing", True, False, True, False, False, False, True),
+        ("Scalar style control", True, False, True, False, False, False, True),
+        ("Flow style control", True, False, True, False, False, False, True),
+        ("Chomping control", True, False, True, False, False, False, True),
+        ("Verbatim tags", True, False, True, False, False, True, True),
+        ("Schema file IO", True, False, False, False, False, False, False),
     ]
 
     print(
-        f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s} {'ryaml':8s} {'yaml_edit':10s} {'yaml_rs':10s}"
+        f"  {'Feature':35s} {'pyrs-yaml':12s} {'PyYAML':10s} {'ruamel':10s} {'ryaml':8s} {'yaml_edit':10s} {'yaml_rs':10s} {'yamlrocks':10s}"
     )
-    print(f"  {'-' * 101}")
+    print(f"  {'-' * 113}")
 
     def _mark(v: bool) -> str:
         return "✅" if v else "❌"
 
-    for name, pyr, pyr2, ruamel, ryml, yedit, yrs in features:
+    for name, pyr, pyr2, ruamel, ryml, yedit, yrs, yrocks in features:
         print(
-            f"  {name:35s} {_mark(pyr):8s}     {_mark(pyr2):6s}     {_mark(ruamel):6s}     {_mark(ryml):6s}     {_mark(yedit):6s}     {_mark(yrs):6s}"
+            f"  {name:35s} {_mark(pyr):8s}     {_mark(pyr2):6s}     {_mark(ruamel):6s}     {_mark(ryml):6s}     {_mark(yedit):6s}     {_mark(yrs):6s}     {_mark(yrocks):6s}"
         )
     print()
 
