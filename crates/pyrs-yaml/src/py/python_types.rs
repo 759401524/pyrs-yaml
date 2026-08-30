@@ -15,7 +15,7 @@ use indexmap::IndexMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytesMethods, PyDict, PyList, PyString, PyStringMethods};
+use pyo3::types::{PyBytesMethods, PyDict, PyFrozenSet, PyList, PySet, PyString, PyStringMethods};
 use std::sync::Arc;
 
 /// 将 Python 字符串零拷贝借用后转 `Arc<str>`：`encode_utf8` 产出 UTF-8 `PyBytes`
@@ -146,6 +146,65 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
                     };
                     return Ok(CustomNode::Sequence {
                         items,
+                        flow_style: false,
+                        meta: crate::ast::NodeMeta {
+                            tag: Some(tag),
+                            ..Default::default()
+                        },
+                    });
+                }
+            }
+        }
+
+        // set / frozenset -> to_yaml_mapping (serialized as a mapping with the tag)
+        let is_set = obj.is_instance_of::<PySet>() || obj.is_instance_of::<PyFrozenSet>();
+        if is_set {
+            for (tag_name, handler) in type_registry::snapshot(py) {
+                let handler_ref = handler.bind(py);
+                let matches_type = handler_ref
+                    .getattr(intern!(py, "python_type"))
+                    .ok()
+                    .and_then(|pt| {
+                        if pt.is_none() {
+                            return None;
+                        }
+                        py.import(intern!(py, "builtins"))
+                            .and_then(|b| b.getattr(intern!(py, "isinstance")))
+                            .and_then(|isinstance_fn| isinstance_fn.call1((obj, &pt)))
+                            .and_then(|r| r.extract::<bool>())
+                            .ok()
+                            .filter(|&b| b)
+                    })
+                    .unwrap_or(false);
+                if !matches_type {
+                    continue;
+                }
+                if handler_ref.hasattr("to_yaml_mapping").unwrap_or(false)
+                    && let Ok(result) = handler_ref.call_method1("to_yaml_mapping", (obj,))
+                    && !result.is_none()
+                    && let Ok(new_dict) = result.cast::<PyDict>()
+                {
+                    let mut pairs = IndexMap::new();
+                    for (key, value) in new_dict.iter() {
+                        let key_node = if let Ok(key_str) = key.cast::<PyString>() {
+                            let text = py_string_to_arc(key_str)?;
+                            if needs_quotes(&text) {
+                                CustomNode::double_quoted_scalar(text)
+                            } else {
+                                CustomNode::plain_scalar(text)
+                            }
+                        } else {
+                            pyobject_to_node(py, &key.into_any().unbind())?
+                        };
+                        let value_node = pyobject_to_node(py, &value.into_any().unbind())?;
+                        pairs.insert(key_node, value_node);
+                    }
+                    let tag = crate::ast::Tag {
+                        handle: "!".to_string(),
+                        suffix: tag_name.trim_start_matches('!').to_string(),
+                    };
+                    return Ok(CustomNode::Mapping {
+                        pairs,
                         flow_style: false,
                         meta: crate::ast::NodeMeta {
                             tag: Some(tag),

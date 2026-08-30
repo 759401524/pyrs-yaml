@@ -128,6 +128,8 @@ class RegexHandler(TagHandler):
 class SetHandler(TagHandler):
     """`!set` — a YAML set (unique keys mapped to null) becomes a Python set."""
 
+    python_type = set
+
     @override
     def from_yaml_mapping(self, tag: str, data: dict[str, Any]) -> Any:
         return set(data.keys())

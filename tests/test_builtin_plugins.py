@@ -138,6 +138,22 @@ def test_third_party_plugins_listed():
     assert expected <= tags, f"missing tags {expected - tags} in {tags}"
 
 
+def test_set_plugin_roundtrip():
+    """!set parses to a Python set and round-trips via the AST editor path."""
+    doc = pyrs_yaml.parse("s: !set {a: 1, b: 2}")
+    assert isinstance(doc.get("s"), set)
+    assert doc.get("s") == {"a", "b"}
+
+    # Serialize a Python set object back through the AST/editor path
+    doc2 = pyrs_yaml.parse("x: 1")
+    doc2.set("$y", {"a", "b"})
+    out = doc2.to_yaml_with_options()
+    assert "!set" in out, out
+    rt = pyrs_yaml.parse(out)
+    assert isinstance(rt.get("y"), set)
+    assert rt.get("y") == {"a", "b"}
+
+
 def test_third_party_plugins_skip_when_absent(monkeypatch):
     """_register_third_party() is a no-op when libraries are not importable."""
     from pyrs_yaml.plugins import _builtin
