@@ -74,13 +74,21 @@ status: new
   엔트리 포인트 발견 중 충돌 감지를 활성화합니다. `get_plugin_info(tag)`와
   `list_plugin_info()`로 플러그인 메타데이터를 조회합니다.
 
+### 파괴적 변경
+
+- **`CustomType`, `register_type`, `register_tag` 삭제** — 이러한 기존 태그 API 기호
+  (v0.15.0 주기에서 사용 중단 예정)는 이제 완전히 제거되었습니다. 모든 사용자 정의
+  태그 로직은 통합 `TagHandler` API(`register_tag_handler()`)를 사용해야 합니다.
+  내장 형식(`!timestamp`, `!date`, `!time`, `!uuid`, `!decimal`, `!binary`, `!regex`,
+  `!set`, `!duration`, `!arrow`, `!ulid`)은 이제 네이티브 `TagHandler` 하위 클래스이며
+  마이그레이션이 필요 없습니다. 이는 **파괴적 변경**이며 패키지 버전은 `2.0.0`으로
+  점프합니다.
+
 ### 변경
 
-- **`CustomType`/`register_type`/`register_tag` 사용 중단 예정** — 이러한 기존 API는
-  이제 `DeprecationWarning`을 발생시키지만 완전히 동작합니다. 통합 `TagHandler` API
-  (`register_tag_handler`)를 권장합니다. `register_type("!x", t)`은 `CustomType`을
-  `TagHandler`로 자동 래핑하므로 기존 등록은 변경 없이 계속 작동합니다.
-  제거는 v2.0(Phase 3)에서 예정되어 있습니다.
+- **`CustomType`/`register_type`/`register_tag` 삭제됨** — 이러한 기존 API(v0.15.0에서
+  사용 중단, Phase 2에서 `TagHandler`로 자동 래핑)는 사라졌습니다. 통합 `TagHandler` API
+  (`register_tag_handler`)를 사용하세요. 내장 형식은 네이티브 `TagHandler` 하위 클래스입니다.
 
 ### [v0.15.0] — 2026-08-19
 

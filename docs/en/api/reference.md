@@ -294,48 +294,6 @@ class Settings(BaseSettings):
 > pydantic-settings. Accessing `pyrs_yaml.PyrsYamlConfigSettingsSource` without
 > pydantic-settings installed raises `ImportError` with installation hints.
 
-### :material-tag: Tag Registry
-
-#### `register_tag()`
-
-Register a custom tag handler. Supports both decorator and imperative forms.
-
-```python
-register_tag(name: str, handler: Callable | None = None, priority: int = 0) -> Callable
-```
-
-**Example:**
-
-=== "Decorator"
-
-    ```python
-    @pyrs_yaml.register_tag("!custom")
-    def handler(node):
-        return f"custom:{node}"
-    ```
-
-=== "Imperative"
-
-    ```python
-    pyrs_yaml.register_tag("!custom", handler_fn, priority=1)
-    ```
-
-#### `remove_tag()`
-
-Remove a tag handler.
-
-```python
-remove_tag(name: str) -> None
-```
-
-#### `clear_tag_handlers()`
-
-Remove all registered tag handlers.
-
-```python
-clear_tag_handlers() -> None
-```
-
 ### :material-file-document: YAML Schema Language
 
 #### `register_schema()`
@@ -390,86 +348,6 @@ doc = pyrs_yaml.safe_load(
 )
 assert doc["addr"] == 255
 ```
-
-### :material-puzzle: Community Plugins
-
-#### `CustomType`
-
-Base class for custom YAML node types. Subclass it to define a type that can
-be used with YAML tags.
-
-```python
-class CustomType:
-    python_type = None  # set to a Python type for isinstance checks
-
-    def can_parse(self, node) -> bool: ...
-    def from_yaml(self, value: str): ...
-    def to_yaml(self, obj) -> str: ...
-    def validate(self, obj) -> bool: ...
-```
-
-**Methods:**
-
-- `python_type` — Optional Python type used during serialization (`isinstance`)
-- `can_parse(node)` — Whether this type handles a given node
-- `from_yaml(value)` — Convert a YAML string to a Python object (load)
-- `to_yaml(obj)` — Convert a Python object to a YAML string (dump)
-- `validate(obj)` — Validate a Python object's type and value
-
-Built-in plugins include `!timestamp` (maps to `datetime`), `!date` (`datetime.date`),
-`!time` (`datetime.time`), `!uuid` (`uuid.UUID`), `!decimal` (`decimal.Decimal`),
-`!binary` (bytes, base64-encoded), `!regex` (`re.Pattern`), and `!set`.
-
-#### `register_type()`
-
-Register a `CustomType` instance or class.
-
-```python
-register_type(name: str, handler: CustomType | None = None) -> CustomType
-```
-
-**Imperative form:**
-
-```python
-class TimestampType(pyrs_yaml.CustomType):
-    python_type = datetime
-
-    def from_yaml(self, value):
-        return datetime.fromisoformat(value)
-
-    def to_yaml(self, obj):
-        return obj.isoformat()
-
-
-pyrs_yaml.register_type("!timestamp", TimestampType())
-```
-
-**Decorator form:**
-
-```python
-@pyrs_yaml.register_type("!timestamp")
-class TimestampType(pyrs_yaml.CustomType): ...
-
-
-doc = pyrs_yaml.parse("when: !timestamp 2026-08-11T10:30:00")
-assert isinstance(doc.get("when"), datetime)
-```
-
-#### `remove_type()`
-
-```python
-remove_type(name: str) -> None
-```
-
-Remove a registered custom type handler.
-
-#### `clear_type_handlers()`
-
-```python
-clear_type_handlers() -> None
-```
-
-Remove all registered custom type handlers.
 
 ### :material-link-variant: Unified TagHandler API
 

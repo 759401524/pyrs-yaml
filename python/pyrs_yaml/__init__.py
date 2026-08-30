@@ -16,14 +16,27 @@ Example:
 from __future__ import annotations
 
 import hashlib
-import warnings
 from typing import Any, Callable, Dict, Literal, TypeVar, overload
 
-from typing_extensions import TypeAlias, TypedDict, TypeGuard, override
+from typing_extensions import TypeAlias, TypedDict, TypeGuard
 
 from . import plugins as _plugins  # ruff: ignore[F401] — registers built-in plugins
-from ._tag_handler import TagHandler
-from ._type_registry import CustomType, _register_via_core, register_type
+
+# ── Unified TagHandler API ───────────────────────────────────────────────────
+from ._tag_handler import (
+    ParseContext,
+    PluginInfo,
+    SerializeContext,
+    TagHandler,
+    call_parse_end,
+    call_parse_start,
+    call_serialize_end,
+    call_serialize_start,
+    clear_stored_handlers,
+    get_stored_handler,
+    remove_stored_handler,
+)
+from ._type_registry import _register_via_core
 from .async_dump import (
     safe_dump_async,
     safe_load_async,
@@ -97,86 +110,6 @@ from .pyrs_yaml import (
     validate_against_schema as _validate_against_schema,
 )
 
-_F = TypeVar("_F", bound=Callable[..., Any])
-"""Type variable for callable handler in register_tag/register_type."""
-
-
-@overload
-def register_tag(name: str, handler: _F, priority: int = 0) -> _F: ...
-
-
-@overload
-def register_tag(name: str, handler: None = None, priority: int = 0) -> Callable[[_F], _F]: ...
-
-
-class _ResolveAdapter(TagHandler):
-    """Wrap a legacy `register_tag` callable as a `TagHandler` (Phase 2).
-
-    The callable receives the scalar string and returns the rewritten string; it
-    is exposed via `TagHandler.resolve` so old `register_tag` handlers keep
-    working unchanged.
-    """
-
-    def __init__(self, fn: Callable[[str], str]) -> None:
-        self._fn = fn
-
-    @override
-    def resolve(self, value: str, tag: str) -> str:
-        return self._fn(value)
-
-
-def register_tag(name, handler=None, priority=0):
-    """Register a tag handler.
-
-    .. deprecated::
-        Use `register_tag_handler` with a `TagHandler` instead. `register_tag`
-        now wraps the callable as a `TagHandler` and will be removed in v2.0.
-
-    Supports both decorator and imperative forms:
-        @register_tag("!custom")
-        def handler(node):
-            ...
-
-        @register_tag("!custom", priority=1)
-        def handler(node):
-            ...
-
-        register_tag("!custom", handler_fn)
-        register_tag("!custom", handler_fn, priority=1)
-    """
-    warnings.warn(
-        "register_tag is deprecated; use register_tag_handler with a TagHandler instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if handler is not None:
-        _register_via_core(name, _ResolveAdapter(handler), priority)
-        return handler
-
-    # Decorator form
-    def decorator(fn):
-        _register_via_core(name, _ResolveAdapter(fn), priority)
-        return fn
-
-    return decorator
-
-
-# ── Unified TagHandler API ───────────────────────────────────────────────────
-
-from ._tag_handler import (  # noqa: E402 — after function defs to avoid circular import
-    ParseContext,
-    PluginInfo,
-    SerializeContext,
-    TagHandler,
-    call_parse_end,
-    call_parse_start,
-    call_serialize_end,
-    call_serialize_start,
-    clear_stored_handlers,
-    get_stored_handler,
-    remove_stored_handler,
-)
-
 _THandler = TypeVar("_THandler", bound=TagHandler)
 
 
@@ -210,8 +143,7 @@ def register_tag_handler(name, handler=None, priority=0):
 
     def _register(name: str, instance: _TH, priority: int) -> None:
         # Delegate to the shared low-level backend (Rust tag + type registries
-        # plus the Python handler registry). This avoids double registration and
-        # does not emit the CustomType deprecation warning.
+        # plus the Python handler registry). This avoids double registration.
         _register_via_core(name, instance, priority)
 
     if handler is not None:
@@ -265,6 +197,7 @@ def get_tag_handler(name: str) -> TagHandler | None:
 def remove_tag_handler(name: str) -> None:
     """Remove all handlers for a tag."""
     remove_tag(name)
+    remove_type(name)
     remove_stored_handler(name)
 
 
@@ -278,8 +211,6 @@ def clear_tag_handlers() -> None:
     _rust_clear_tag_handlers()
     clear_stored_handlers()
 
-
-# CustomType / register_type imported from ._type_registry
 
 # ── Inline schema dict typed structure ──────────────────────────────────────
 
@@ -548,7 +479,6 @@ safe_dumps_async = safe_dump_async
 
 __all__ = [
     "YAML",
-    "CustomType",
     "MergedView",
     "Node",
     "ParseContext",
@@ -599,9 +529,7 @@ __all__ = [
     "read_markdown",
     "read_markdown_str",
     "register_schema",
-    "register_tag",
     "register_tag_handler",
-    "register_type",
     "remove_tag",
     "remove_tag_handler",
     "remove_type",

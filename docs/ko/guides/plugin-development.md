@@ -68,25 +68,6 @@ pyrs_yaml.register_tag_handler("!hex", HexInt())
 | :material-code-braces: `get_tag_handler(name)` | 태그의 핸들러 인스턴스 조회 |
 | :material-export: `serialize(doc, ...)` | 라이프사이클 훅 포함 직렬화 |
 
-### CustomType에서 TagHandler로 마이그레이션
-
-`CustomType`, `register_type`, `register_tag`는 이제 **비권장**이지만 여전히 사용 가능합니다(`DeprecationWarning` 발생). `register_type("!x", handler)`은 `CustomType`을 `TagHandler`로 자동 래핑하므로 기존 등록 코드는 수정 불필요입니다.
-
-**API 대조:**
-
-| 구 API | 신 API |
-|---------|--------|
-| `register_type("!x", T())` | `register_tag_handler("!x", THandler())` |
-| `from_yaml(value)` | `from_yaml(value, tag)` |
-| `to_yaml(obj)` | `to_yaml(obj, tag)` |
-| `can_parse` / `validate` / `python_type` | 변경 없음 |
-| — | `resolve` / `from_yaml_mapping` / `to_yaml_mapping` / 라이프사이클 훅 (TagHandler 신규) |
-
-!!! note "컨테이너 타입"
-    태그가 Mapping/Sequence(예: `!set`)에 붙으면 스칼라 `from_yaml`이 아닌 `TagHandler`에 `from_yaml_mapping` / `to_yaml_mapping`을 구현합니다.
-
----
-
 ### 참고 항목
 
 - [커뮤니티 플러그인](community-plugins.md) — 확장할 수 있는 내장 타입

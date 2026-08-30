@@ -77,25 +77,6 @@ pyrs_yaml.register_tag_handler("!hex", HexInt())
 | :material-code-braces: `get_tag_handler(name)` | 获取标签的处理器实例 |
 | :material-export: `serialize(doc, ...)` | 带生命周期钩子的序列化 |
 
-### 从 CustomType 迁移到 TagHandler
-
-`CustomType`、`register_type` 和 `register_tag` 现已**弃用**，但仍可正常使用（会发出 `DeprecationWarning`）。`register_type("!x", handler)` 会自动将 `CustomType` 包装为 `TagHandler`，因此现有注册代码无需修改。
-
-**API 对照：**
-
-| 旧 API | 新 API |
-|---------|--------|
-| `register_type("!x", T())` | `register_tag_handler("!x", THandler())` |
-| `from_yaml(value)` | `from_yaml(value, tag)` |
-| `to_yaml(obj)` | `to_yaml(obj, tag)` |
-| `can_parse` / `validate` / `python_type` | 保持不变 |
-| — | `resolve` / `from_yaml_mapping` / `to_yaml_mapping` / 生命周期钩子（TagHandler 新增） |
-
-!!! note "容器类型"
-    若标签作用于 Mapping/Sequence（如 `!set`），需在 `TagHandler` 中实现 `from_yaml_mapping` / `to_yaml_mapping`，而非标量 `from_yaml`。
-
----
-
 ### 另请参阅
 
 - [社区插件](community-plugins.md) — 可扩展的内置类型

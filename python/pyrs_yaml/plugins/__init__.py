@@ -6,8 +6,8 @@ in their `pyproject.toml`:
     [project.entry-points."pyrs_yaml.plugins"]
     myplugin = "myplugin:register"
 
-The callable receives no arguments and should call `register_type()` or
-``register_tag_handler()`` to register custom types. It may optionally
+The callable receives no arguments and should call ``register_tag_handler()``
+to register custom types. It may optionally
 return a ``PluginInfo`` instance for metadata tracking and conflict
 detection.
 """

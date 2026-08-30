@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import pytest
 
 import pyrs_yaml
+from pyrs_yaml import TagHandler, register_tag_handler
 from tests.data.yaml_samples import (
     BENCHMARK_ANCHOR as ANCHOR_YAML,
 )
@@ -305,7 +306,7 @@ def test_safe_load_custom_schema_vs_core(benchmark):
 # ── Community Plugin benchmarks ──
 
 
-class BenchTimestampType(pyrs_yaml.CustomType):
+class BenchTimestampType(TagHandler):
     python_type = datetime
 
     def from_yaml(self, value):
@@ -316,8 +317,8 @@ class BenchTimestampType(pyrs_yaml.CustomType):
 
 
 def test_safe_dump_custom_type(benchmark):
-    """safe_dump with a registered CustomType (isinstance + to_yaml path)."""
-    pyrs_yaml.register_type("!bench_ts", BenchTimestampType())
+    """safe_dump with a registered tag handler (isinstance + to_yaml path)."""
+    register_tag_handler("!bench_ts", BenchTimestampType())
     data = {"ts": datetime(2026, 8, 11, 10, 30, tzinfo=timezone.utc)}
     result = benchmark(pyrs_yaml.safe_dump, data)
     assert "!bench_ts" in result

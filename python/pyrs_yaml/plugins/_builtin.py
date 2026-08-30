@@ -1,8 +1,9 @@
-"""Built-in plugins for pyrs-yaml (Community Plugins, Spiral 3).
+"""Built-in tag handlers for pyrs-yaml.
 
-These are demonstration CustomType implementations installed by default.
-They show how third-party modules can register custom node types via the
-same `register_type` API.
+These `TagHandler` implementations are registered by default so that common
+YAML tags (`!timestamp`, `!date`, `!uuid`, `!set`, etc.) round-trip to native
+Python objects. Optional third-party libraries (pendulum, arrow, ulid) are
+registered when available.
 """
 
 import base64
@@ -14,11 +15,12 @@ from typing import Any, final
 
 from typing_extensions import override
 
-from .._type_registry import CustomType, _register_via_core
+from .._tag_handler import TagHandler
+from .._type_registry import _register_via_core
 
 
 @final
-class TimestampType(CustomType):
+class TimestampHandler(TagHandler):
     """`!timestamp` — serialize/deserialize `datetime` objects."""
 
     python_type = datetime
@@ -33,8 +35,8 @@ class TimestampType(CustomType):
 
 
 @final
-class DateType(CustomType):
-    """`!date` — serialize/deserialize exact `datetime.date` objects (not datetime subclasses)."""
+class DateHandler(TagHandler):
+    """`!date` — exact `datetime.date` objects (not datetime subclasses)."""
 
     python_type = date
 
@@ -48,8 +50,8 @@ class DateType(CustomType):
 
 
 @final
-class TimeType(CustomType):
-    """`!time` — serialize/deserialize `datetime.time` objects."""
+class TimeHandler(TagHandler):
+    """`!time` — `datetime.time` objects."""
 
     python_type = time
 
@@ -63,8 +65,8 @@ class TimeType(CustomType):
 
 
 @final
-class UUIDType(CustomType):
-    """`!uuid` — serialize/deserialize `uuid.UUID` objects."""
+class UUIDHandler(TagHandler):
+    """`!uuid` — `uuid.UUID` objects."""
 
     python_type = uuid.UUID
 
@@ -78,8 +80,8 @@ class UUIDType(CustomType):
 
 
 @final
-class DecimalType(CustomType):
-    """`!decimal` — serialize/deserialize `decimal.Decimal` objects."""
+class DecimalHandler(TagHandler):
+    """`!decimal` — `decimal.Decimal` objects."""
 
     python_type = Decimal
 
@@ -93,7 +95,7 @@ class DecimalType(CustomType):
 
 
 @final
-class BinaryType(CustomType):
+class BinaryHandler(TagHandler):
     """`!binary` — base64-encoded bytes (YAML 1.1 binary tag)."""
 
     python_type = bytes
@@ -108,8 +110,8 @@ class BinaryType(CustomType):
 
 
 @final
-class RegexType(CustomType):
-    """`!regex` — serialize/deserialize compiled `re.Pattern` objects."""
+class RegexHandler(TagHandler):
+    """`!regex` — compiled `re.Pattern` objects."""
 
     python_type = re.Pattern
 
@@ -123,36 +125,21 @@ class RegexType(CustomType):
 
 
 @final
-class SetType(CustomType):
-    """`!set` — a YAML set maps unique keys to null values.
-
-    When parsed, the value is a Python dict whose keys are the set members.
-    ``from_yaml`` extracts the keys and returns a Python set.
-    ``to_yaml`` serializes a Python set as a YAML block mapping with null values.
-    """
+class SetHandler(TagHandler):
+    """`!set` — a YAML set (unique keys mapped to null) becomes a Python set."""
 
     @override
-    def from_yaml(self, value: Any) -> Any:
-        if isinstance(value, dict):
-            return set(value.keys())
-        return {value} if value is not None else set()
+    def from_yaml_mapping(self, tag: str, data: dict[str, Any]) -> Any:
+        return set(data.keys())
 
     @override
-    def to_yaml(self, obj: Any) -> str:
-        items = []
-        for item in sorted(obj):
-            items.append(f"  {item!s}: null")
-        return "!set\n" + "\n".join(items) + "\n"
+    def to_yaml_mapping(self, obj: Any) -> dict[str, Any]:
+        return {item: None for item in obj}
 
 
 @final
-class DurationType(CustomType):
-    """`!duration` — serialize/deserialize `pendulum.Duration` objects.
-
-    `pendulum.Duration` is a `datetime.timedelta` subclass, but is only
-    registered when the `pendulum` library is installed, so a plain stdlib
-    `timedelta` is never matched.
-    """
+class DurationHandler(TagHandler):
+    """`!duration` — `pendulum.Duration` objects (registered when pendulum present)."""
 
     def __init__(self, module: Any) -> None:
         self.python_type = module.Duration
@@ -168,8 +155,8 @@ class DurationType(CustomType):
 
 
 @final
-class ArrowType(CustomType):
-    """`!arrow` — serialize/deserialize `arrow.Arrow` objects."""
+class ArrowHandler(TagHandler):
+    """`!arrow` — `arrow.Arrow` objects (registered when arrow present)."""
 
     def __init__(self, module: Any) -> None:
         self.python_type = module.Arrow
@@ -185,8 +172,8 @@ class ArrowType(CustomType):
 
 
 @final
-class ULIDType(CustomType):
-    """`!ulid` — serialize/deserialize `ulid.ULID` objects."""
+class ULIDHandler(TagHandler):
+    """`!ulid` — `ulid.ULID` objects (registered when ulid present)."""
 
     def __init__(self, py_type: Any) -> None:
         self.python_type = py_type
@@ -202,39 +189,36 @@ class ULIDType(CustomType):
 
 
 def _register_builtins():
-    """Register built-in plugins idempotently."""
-    _register_via_core("!date", DateType())
-    _register_via_core("!time", TimeType())
-    _register_via_core("!timestamp", TimestampType())
-    _register_via_core("!uuid", UUIDType())
-    _register_via_core("!decimal", DecimalType())
-    _register_via_core("!binary", BinaryType())
-    _register_via_core("!regex", RegexType())
-    _register_via_core("!set", SetType())
+    """Register built-in tag handlers idempotently."""
+    _register_via_core("!date", DateHandler())
+    _register_via_core("!time", TimeHandler())
+    _register_via_core("!timestamp", TimestampHandler())
+    _register_via_core("!uuid", UUIDHandler())
+    _register_via_core("!decimal", DecimalHandler())
+    _register_via_core("!binary", BinaryHandler())
+    _register_via_core("!regex", RegexHandler())
+    _register_via_core("!set", SetHandler())
 
 
 def _register_third_party():
-    """Register optional third-party plugins (no-op when library is absent)."""
-    # pendulum.Duration → !duration
+    """Register optional third-party tag handlers (no-op when library absent)."""
     try:
         import pendulum
 
-        _register_via_core("!duration", DurationType(pendulum))
+        _register_via_core("!duration", DurationHandler(pendulum))
     except ImportError:
         pass
 
-    # arrow.Arrow → !arrow
     try:
         import arrow
 
-        _register_via_core("!arrow", ArrowType(arrow))
+        _register_via_core("!arrow", ArrowHandler(arrow))
     except ImportError:
         pass
 
-    # ulid.ULID → !ulid
     try:
         from ulid import ULID
 
-        _register_via_core("!ulid", ULIDType(ULID))
+        _register_via_core("!ulid", ULIDHandler(ULID))
     except ImportError:
         pass

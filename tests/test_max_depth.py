@@ -3,6 +3,7 @@
 import pytest
 
 import pyrs_yaml
+from pyrs_yaml import TagHandler, register_tag_handler
 
 
 def _deep_nested_yaml(depth: int) -> str:
@@ -124,8 +125,8 @@ def test_resolve_tags_deep_nesting_does_not_recursively_crash():
 
 def test_resolve_tags_with_custom_handler_deep_tree():
     # Verify invoke-through-handler path at nesting depth (no recursion crash).
-    @pyrs_yaml.register_type
-    class Upper(pyrs_yaml.CustomType):
+    @register_tag_handler
+    class Upper(TagHandler):
         def can_parse(self, value: str) -> bool:
             return False
 

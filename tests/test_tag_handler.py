@@ -6,7 +6,7 @@ Covers:
 - list_tag_handlers
 - Lifecycle hooks (on_parse_start/end, on_serialize_start/end)
 - PluginInfo + conflict detection
-- Backward compatibility with register_tag / register_type
+- Registration safety (no spurious warnings)
 """
 
 from __future__ import annotations
@@ -374,67 +374,20 @@ class TestPluginInfo:
 # ── Backward compatibility ──────────────────────────────────────────────────
 
 
-class TestBackwardCompat:
+class TestRegistrationSafety:
     def teardown_method(self) -> None:
         pyrs_yaml.clear_tag_handlers()
         clear_stored_handlers()
 
-    def test_register_tag_still_works(self) -> None:
-        """register_tag (old API) should still function."""
-        pyrs_yaml.register_tag("!oldapi", lambda v: f"wrapped:{v}")
-        doc = parse("!oldapi test")
-        assert doc.to_dict() == "wrapped:test"
-
-    def test_register_type_still_works(self) -> None:
-        """register_type (old API) should still function."""
-        from pyrs_yaml import CustomType, register_type
-
-        class MyCustom(CustomType):
-            python_type = float
-
-            def from_yaml(self, value: Any) -> Any:
-                return float(value) * 2
-
-        register_type("!doubled", MyCustom())
-        doc = parse("!doubled 21")
-        assert doc.to_dict() == 42.0
-
-
-# ── Deprecation warnings (Phase 2) ──────────────────────────────────────────
-
-
-class TestDeprecationWarnings:
-    def teardown_method(self) -> None:
-        pyrs_yaml.clear_tag_handlers()
-        clear_stored_handlers()
-
-    def test_register_type_emits_deprecation(self) -> None:
-        """register_type must warn that it is deprecated."""
-        from pyrs_yaml import CustomType, register_type
-
-        class MyCustom(CustomType):
-            python_type = float
-
-            def from_yaml(self, value: Any) -> Any:
-                return float(value)
-
-        with pytest.warns(DeprecationWarning):
-            register_type("!dep1", MyCustom())
-
-    def test_register_tag_emits_deprecation(self) -> None:
-        """register_tag must warn that it is deprecated."""
-        with pytest.warns(DeprecationWarning):
-            pyrs_yaml.register_tag("!dep2", lambda v: v)
-
-    def test_register_tag_handler_no_deprecation(self) -> None:
+    def test_register_tag_handler_no_warning(self) -> None:
         """register_tag_handler (new API) must NOT warn."""
         import warnings
 
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            register_tag_handler("!dep3", TagHandler())
+            register_tag_handler("!safety", TagHandler())
 
-    def test_builtins_register_without_deprecation(self) -> None:
+    def test_builtins_register_without_warning(self) -> None:
         """Built-in types register during import without deprecation spam."""
         import warnings
 

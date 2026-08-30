@@ -44,13 +44,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `conflicts` list enables conflict detection during entry-point discovery.
   `get_plugin_info(tag)` and `list_plugin_info()` query plugin metadata.
 
+### Breaking Changes
+
+- **Removed `CustomType`, `register_type`, and `register_tag`** — these classic
+  tag-API symbols (deprecated in the v0.15.0 cycle) are now fully removed. All
+  custom tag logic must use the unified `TagHandler` API via
+  `register_tag_handler()`. The built-in types (`!timestamp`, `!date`, `!time`,
+  `!uuid`, `!decimal`, `!binary`, `!regex`, `!set`, `!duration`, `!arrow`,
+  `!ulid`) are now native `TagHandler` subclasses and need no migration. This is
+  a **breaking change** — the package version jumps to `2.0.0`.
+
 ### Changed
 
-- **`CustomType`/`register_type`/`register_tag` deprecated** — these classic
-  APIs now emit a `DeprecationWarning` but remain fully functional. Prefer the
-  unified `TagHandler` API (`register_tag_handler`). `register_type("!x", t)`
-  auto-wraps a `CustomType` as a `TagHandler` so existing registrations keep
-  working unchanged. Removal is scheduled for v2.0 (Phase 3).
+- **`CustomType`/`register_type`/`register_tag` removed** — these classic APIs
+  (deprecated in v0.15.0, auto-wrapped as `TagHandler` in Phase 2) are now gone.
+  Use the unified `TagHandler` API (`register_tag_handler`). Built-in types are
+  native `TagHandler` subclasses.
 - **Command-line interface** — a new `pyrs-yaml` command (opt-in via
   `pip install "pyrs-yaml[cli]"`, requires Python 3.10+) exposing the library
   from the terminal: `fmt` (round-trip reformat preserving comments/anchors/

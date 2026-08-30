@@ -68,25 +68,6 @@ pyrs_yaml.register_tag_handler("!hex", HexInt())
 | :material-code-braces: `get_tag_handler(name)` | タグのハンドラインスタンスを取得 |
 | :material-export: `serialize(doc, ...)` | ライフサイクルフック付きシリアライズ |
 
-### CustomType から TagHandler への移行
-
-`CustomType`、`register_type`、`register_tag` は**非推奨**となりましたが、引き続き利用可能です（`DeprecationWarning` が出ます）。`register_type("!x", handler)` は `CustomType` を `TagHandler` に自動ラップするため、既存の登録コードは変更不要です。
-
-**API 対照：**
-
-| 旧 API | 新 API |
-|---------|--------|
-| `register_type("!x", T())` | `register_tag_handler("!x", THandler())` |
-| `from_yaml(value)` | `from_yaml(value, tag)` |
-| `to_yaml(obj)` | `to_yaml(obj, tag)` |
-| `can_parse` / `validate` / `python_type` | 変更なし |
-| — | `resolve` / `from_yaml_mapping` / `to_yaml_mapping` / ライフサイクルフック（TagHandler 新規） |
-
-!!! note "コンテナ型"
-    タグが Mapping/Sequence（例: `!set`）に付く場合は、スカラーの `from_yaml` ではなく `TagHandler` に `from_yaml_mapping` / `to_yaml_mapping` を実装します。
-
----
-
 ### 関連項目
 
 - [コミュニティプラグイン](community-plugins.md) — 拡張できる組み込みタイプ

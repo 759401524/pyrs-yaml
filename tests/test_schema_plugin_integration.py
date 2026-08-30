@@ -19,7 +19,7 @@ class TestSchemaPluginIntegration:
 
     def setup_method(self):
         pyrs_yaml.clear_type_handlers()
-        pyrs_yaml.register_type("!ts", TimestampType())
+        pyrs_yaml.register_tag_handler("!ts", TimestampType())
 
     def test_schema_and_plugin_same_doc(self):
         """Custom schema resolves plain scalars; plugin handles tagged scalar."""

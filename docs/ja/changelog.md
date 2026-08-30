@@ -76,13 +76,21 @@ status: new
   あり、エントリポイント発見中のコンフリクト検出を有効にします。
   `get_plugin_info(tag)` と `list_plugin_info()` でプラグインメタデータを照会します。
 
+### 破壊的変更
+
+- **`CustomType`、`register_type`、`register_tag` の削除** — これらの古典的なタグ API シンボル
+  （v0.15.0 サイクルで非推奨化）は完全に削除されました。すべてのカスタムタグロジックは
+  統合 `TagHandler` API（`register_tag_handler()`）を使用する必要があります。組み込み型
+  （`!timestamp`、`!date`、`!time`、`!uuid`、`!decimal`、`!binary`、`!regex`、`!set`、
+  `!duration`、`!arrow`、`!ulid`）はネイティブな `TagHandler` サブクラスとなり、移行は
+  不要です。これは **破壊的変更** であり、パッケージバージョンは `2.0.0` にジャンプします。
+
 ### 変更
 
-- **`CustomType`/`register_type`/`register_tag` の非推奨化** — これらの古典的な API は
-  現在 `DeprecationWarning` を発行しますが、完全に機能します。統合 `TagHandler` API
-  （`register_tag_handler`）を推奨します。`register_type("!x", t)` は `CustomType` を
-  `TagHandler` として自動ラップするため、既存の登録は変更なしで動作し続けます。
-  削除は v2.0（Phase 3）で予定されています。
+- **`CustomType`/`register_type`/`register_tag` の削除** — これらの古典的な API
+  （v0.15.0 で非推奨、Phase 2 で `TagHandler` として自動ラップ）は消滅しました。
+  統合 `TagHandler` API（`register_tag_handler`）を使用してください。組み込み型は
+  ネイティブな `TagHandler` サブクラスです。
 
 ### [v0.15.0] — 2026-08-19
 

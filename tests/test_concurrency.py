@@ -9,6 +9,18 @@ concurrency; they do not require the free-threaded build.
 from concurrent.futures import ThreadPoolExecutor
 
 import pyrs_yaml
+from pyrs_yaml import TagHandler, register_tag_handler
+
+
+def _resolve_handler(fn):
+    """Wrap a scalar string-transform callable as a TagHandler."""
+
+    class _ResolveHandler(TagHandler):
+        def resolve(self, value: str, tag: str) -> str:
+            return fn(value)
+
+    return _ResolveHandler()
+
 
 # A small set of representative documents whose load/dump must stay stable.
 DOCUMENTS = [
@@ -76,10 +88,7 @@ def test_concurrent_tag_registry_register_clear():
     # tag_registry uses a Mutex; concurrent register/clear must not crash and
     # must end in a consistent state.
     def work(_):
-        @pyrs_yaml.register_tag("!c")
-        def h(node):
-            return f"h:{node}"
-
+        register_tag_handler("!c", _resolve_handler(lambda node: f"h:{node}"))
         pyrs_yaml.clear_tag_handlers()
         return True
 
@@ -90,9 +99,7 @@ def test_concurrent_tag_registry_register_clear():
         assert all(ex.map(work, range(80)))
 
     # After all workers clear, a fresh register still resolves.
-    @pyrs_yaml.register_tag("!c")
-    def h2(node):
-        return f"ok:{node}"
+    register_tag_handler("!c", _resolve_handler(lambda node: f"ok:{node}"))
 
     assert pyrs_yaml.parse("x: !c v\n").get("x") == "ok:v"
     pyrs_yaml.clear_tag_handlers()
@@ -100,7 +107,7 @@ def test_concurrent_tag_registry_register_clear():
 
 def test_concurrent_type_registry_register_remove():
     # type_registry Mutex under concurrent register/remove; no crash, consistent end state.
-    class T(pyrs_yaml.CustomType):
+    class T(TagHandler):
         python_type = str
 
         def can_parse(self, value):
@@ -110,8 +117,8 @@ def test_concurrent_type_registry_register_remove():
             return "T:" + value
 
     def work(_):
-        pyrs_yaml.register_type("!t", T())
-        pyrs_yaml.remove_type("!t")
+        register_tag_handler("!t", T())
+        pyrs_yaml.remove_tag_handler("!t")
         return True
 
     with ThreadPoolExecutor(max_workers=8) as ex:

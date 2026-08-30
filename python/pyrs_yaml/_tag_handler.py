@@ -1,12 +1,10 @@
 """Unified TagHandler base class for pyrs-yaml.
 
-Replaces the separate ``CustomType`` and ``register_tag`` protocols with a
-single handler that can control parsing, serialization, and validation of
+A single handler that controls parsing, serialization, and validation of
 YAML tags — including container tags (Mapping/Sequence).
 
-Phase 1 (additive): TagHandler coexists with CustomType and register_tag.
-Phase 2 (future): CustomType deprecated in favor of TagHandler.
-Phase 3 (v2.0): Old APIs removed.
+This is the sole public tag-extensibility protocol since v2.0; the legacy
+``CustomType`` / ``register_tag`` / ``register_type`` APIs were removed.
 """
 
 from __future__ import annotations

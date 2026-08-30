@@ -66,12 +66,20 @@ status: new
 - **插件发现增强** — `PluginInfo` 数据类带 `conflicts` 列表，在入口点发现期间
   启用冲突检测。`get_plugin_info(tag)` 和 `list_plugin_info()` 查询插件元数据。
 
+### 破坏性变更
+
+- **移除 `CustomType`、`register_type` 和 `register_tag`** — 这些经典标签 API 符号
+  （在 v0.15.0 周期中已弃用）现已完全移除。所有自定义标签逻辑必须使用统一的
+  `TagHandler` API（`register_tag_handler()`）。内置类型（`!timestamp`、`!date`、
+  `!time`、`!uuid`、`!decimal`、`!binary`、`!regex`、`!set`、`!duration`、
+  `!arrow`、`!ulid`）现在是原生的 `TagHandler` 子类，无需迁移。这是一处
+  **破坏性变更** — 包版本跳升至 `2.0.0`。
+
 ### 变更
 
-- **`CustomType`/`register_type`/`register_tag` 已弃用** — 这些经典 API 现在会发出
-  `DeprecationWarning`，但仍完全可用。请优先使用统一的 `TagHandler` API
-  （`register_tag_handler`）。`register_type("!x", t)` 会将 `CustomType` 自动包装为
-  `TagHandler`，现有注册无需修改即可继续工作。移除计划于 v2.0（Phase 3）进行。
+- **`CustomType`/`register_type`/`register_tag` 已移除** — 这些经典 API（v0.15.0 弃用，
+  Phase 2 自动包装为 `TagHandler`）现已消失。请使用统一的 `TagHandler` API
+  （`register_tag_handler`）。内置类型为原生 `TagHandler` 子类。
 
 ### [v0.15.0] — 2026-08-19
 
