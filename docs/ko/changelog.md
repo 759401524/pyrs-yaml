@@ -74,6 +74,14 @@ status: new
   엔트리 포인트 발견 중 충돌 감지를 활성화합니다. `get_plugin_info(tag)`와
   `list_plugin_info()`로 플러그인 메타데이터를 조회합니다.
 
+### 변경
+
+- **`CustomType`/`register_type`/`register_tag` 사용 중단 예정** — 이러한 기존 API는
+  이제 `DeprecationWarning`을 발생시키지만 완전히 동작합니다. 통합 `TagHandler` API
+  (`register_tag_handler`)를 권장합니다. `register_type("!x", t)`은 `CustomType`을
+  `TagHandler`로 자동 래핑하므로 기존 등록은 변경 없이 계속 작동합니다.
+  제거는 v2.0(Phase 3)에서 예정되어 있습니다.
+
 ### [v0.15.0] — 2026-08-19
 
 #### 추가

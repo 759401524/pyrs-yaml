@@ -66,6 +66,13 @@ status: new
 - **插件发现增强** — `PluginInfo` 数据类带 `conflicts` 列表，在入口点发现期间
   启用冲突检测。`get_plugin_info(tag)` 和 `list_plugin_info()` 查询插件元数据。
 
+### 变更
+
+- **`CustomType`/`register_type`/`register_tag` 已弃用** — 这些经典 API 现在会发出
+  `DeprecationWarning`，但仍完全可用。请优先使用统一的 `TagHandler` API
+  （`register_tag_handler`）。`register_type("!x", t)` 会将 `CustomType` 自动包装为
+  `TagHandler`，现有注册无需修改即可继续工作。移除计划于 v2.0（Phase 3）进行。
+
 ### [v0.15.0] — 2026-08-19
 
 #### 新增

@@ -16,12 +16,14 @@ Example:
 from __future__ import annotations
 
 import hashlib
+import warnings
 from typing import Any, Callable, Dict, Literal, TypeVar, overload
 
-from typing_extensions import TypeAlias, TypedDict, TypeGuard
+from typing_extensions import TypeAlias, TypedDict, TypeGuard, override
 
 from . import plugins as _plugins  # ruff: ignore[F401] — registers built-in plugins
-from ._type_registry import CustomType, register_type
+from ._tag_handler import TagHandler
+from ._type_registry import CustomType, _register_via_core, register_type
 from .async_dump import (
     safe_dump_async,
     safe_load_async,
@@ -86,9 +88,6 @@ from .pyrs_yaml import (
     read_markdown_str as _read_markdown_str,
 )
 from .pyrs_yaml import (
-    register_tag as _rust_register_tag,
-)
-from .pyrs_yaml import (
     safe_load as _safe_load,
 )
 from .pyrs_yaml import (
@@ -110,8 +109,28 @@ def register_tag(name: str, handler: _F, priority: int = 0) -> _F: ...
 def register_tag(name: str, handler: None = None, priority: int = 0) -> Callable[[_F], _F]: ...
 
 
+class _ResolveAdapter(TagHandler):
+    """Wrap a legacy `register_tag` callable as a `TagHandler` (Phase 2).
+
+    The callable receives the scalar string and returns the rewritten string; it
+    is exposed via `TagHandler.resolve` so old `register_tag` handlers keep
+    working unchanged.
+    """
+
+    def __init__(self, fn: Callable[[str], str]) -> None:
+        self._fn = fn
+
+    @override
+    def resolve(self, value: str, tag: str) -> str:
+        return self._fn(value)
+
+
 def register_tag(name, handler=None, priority=0):
     """Register a tag handler.
+
+    .. deprecated::
+        Use `register_tag_handler` with a `TagHandler` instead. `register_tag`
+        now wraps the callable as a `TagHandler` and will be removed in v2.0.
 
     Supports both decorator and imperative forms:
         @register_tag("!custom")
@@ -125,13 +144,18 @@ def register_tag(name, handler=None, priority=0):
         register_tag("!custom", handler_fn)
         register_tag("!custom", handler_fn, priority=1)
     """
+    warnings.warn(
+        "register_tag is deprecated; use register_tag_handler with a TagHandler instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if handler is not None:
-        _rust_register_tag(name, handler, priority)
+        _register_via_core(name, _ResolveAdapter(handler), priority)
         return handler
 
     # Decorator form
     def decorator(fn):
-        _rust_register_tag(name, fn, priority)
+        _register_via_core(name, _ResolveAdapter(fn), priority)
         return fn
 
     return decorator
@@ -151,7 +175,6 @@ from ._tag_handler import (  # noqa: E402 — after function defs to avoid circu
     clear_stored_handlers,
     get_stored_handler,
     remove_stored_handler,
-    store_handler,
 )
 
 _THandler = TypeVar("_THandler", bound=TagHandler)
@@ -186,15 +209,10 @@ def register_tag_handler(name, handler=None, priority=0):
     from ._tag_handler import TagHandler as _TH  # noqa: N814
 
     def _register(name: str, instance: _TH, priority: int) -> None:
-        # Wrap resolve() as a callable for the Rust tag_registry.
-        # Rust calls handler(str) -> str; we delegate to instance.resolve().
-        def _resolve_wrapper(value: str) -> str:
-            return instance.resolve(value, name)
-
-        _rust_register_tag(name, _resolve_wrapper, priority)
-        # Also register in type_registry for from_yaml/to_yaml/container dispatch
-        register_type(name, instance)  # type: ignore[arg-type]
-        store_handler(name, instance)
+        # Delegate to the shared low-level backend (Rust tag + type registries
+        # plus the Python handler registry). This avoids double registration and
+        # does not emit the CustomType deprecation warning.
+        _register_via_core(name, instance, priority)
 
     if handler is not None:
         if not isinstance(handler, _TH):

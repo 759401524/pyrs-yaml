@@ -275,6 +275,66 @@ def test_my_plugin():
 | :material-magnify: `get_tag_handler(name)` | Return the `TagHandler` for a tag, or `None` |
 | :material-code-braces: `serialize(doc, indent=2, sort_keys=False, ...)` | Serialize a `YamlDocument` with lifecycle hooks |
 
+### Migration from `CustomType` to `TagHandler`
+
+`CustomType`, `register_type()`, and `register_tag()` are **deprecated** as of this
+release. They still work (and emit a `DeprecationWarning`), but new code should use
+`TagHandler` + `register_tag_handler()`.
+
+`register_type("!x", handler)` now automatically wraps your `CustomType` in a
+`TagHandler`, so existing registrations keep working unchanged.
+
+**API mapping:**
+
+| `CustomType` | `TagHandler` |
+|---|---|
+| `register_type("!x", T())` | `register_tag_handler("!x", T())` |
+| `from_yaml(value)` | `from_yaml(value, tag)` |
+| `to_yaml(obj)` | `to_yaml(obj, tag)` |
+| `can_parse(value)` | `can_parse(value)` (unchanged) |
+| `validate(obj)` | `validate(obj)` (unchanged) |
+| `python_type` | `python_type` (unchanged) |
+| — (scalar string rewrite) | `resolve(value, tag)` |
+| — (container tags) | `from_yaml_mapping` / `from_yaml_sequence` / `to_yaml_mapping` / `to_yaml_sequence` |
+| — (hooks) | `on_parse_start` / `on_parse_end` / `on_serialize_start` / `on_serialize_end` |
+
+**Before (deprecated):**
+
+```python
+class TimestampType(pyrs_yaml.CustomType):
+    python_type = datetime
+
+    def from_yaml(self, value):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj):
+        return obj.isoformat()
+
+
+pyrs_yaml.register_type("!timestamp", TimestampType())
+```
+
+**After (recommended):**
+
+```python
+class TimestampHandler(pyrs_yaml.TagHandler):
+    python_type = datetime
+
+    def from_yaml(self, value, tag):
+        return datetime.fromisoformat(value)
+
+    def to_yaml(self, obj, tag):
+        return obj.isoformat()
+
+
+pyrs_yaml.register_tag_handler("!timestamp", TimestampHandler())
+```
+
+!!! note "Container types need `from_yaml_mapping` / `to_yaml_mapping`"
+    If your `CustomType` handled a mapping or sequence tag, override the
+    corresponding container method on `TagHandler` instead of `from_yaml` /
+    `to_yaml`, which are only called for scalars.
+
 ---
 
 ### See Also

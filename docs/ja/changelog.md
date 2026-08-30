@@ -76,6 +76,14 @@ status: new
   あり、エントリポイント発見中のコンフリクト検出を有効にします。
   `get_plugin_info(tag)` と `list_plugin_info()` でプラグインメタデータを照会します。
 
+### 変更
+
+- **`CustomType`/`register_type`/`register_tag` の非推奨化** — これらの古典的な API は
+  現在 `DeprecationWarning` を発行しますが、完全に機能します。統合 `TagHandler` API
+  （`register_tag_handler`）を推奨します。`register_type("!x", t)` は `CustomType` を
+  `TagHandler` として自動ラップするため、既存の登録は変更なしで動作し続けます。
+  削除は v2.0（Phase 3）で予定されています。
+
 ### [v0.15.0] — 2026-08-19
 
 #### 追加

@@ -82,6 +82,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list enables conflict detection during entry-point discovery.
   `get_plugin_info(tag)` and `list_plugin_info()` query plugin metadata.
 
+### Changed
+
+- **`CustomType`/`register_type`/`register_tag` deprecated** — these classic
+  APIs now emit a `DeprecationWarning` but remain fully functional. Prefer the
+  unified `TagHandler` API (`register_tag_handler`). `register_type("!x", t)`
+  auto-wraps a `CustomType` as a `TagHandler` so existing registrations keep
+  working unchanged. Removal is scheduled for v2.0 (Phase 3).
+
 ### [v0.15.0] — 2026-08-19
 
 #### Added

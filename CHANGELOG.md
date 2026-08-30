@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plugin discovery enhancement** — `PluginInfo` dataclass with
   `conflicts` list enables conflict detection during entry-point discovery.
   `get_plugin_info(tag)` and `list_plugin_info()` query plugin metadata.
+
+### Changed
+
+- **`CustomType`/`register_type`/`register_tag` deprecated** — these classic
+  APIs now emit a `DeprecationWarning` but remain fully functional. Prefer the
+  unified `TagHandler` API (`register_tag_handler`). `register_type("!x", t)`
+  auto-wraps a `CustomType` as a `TagHandler` so existing registrations keep
+  working unchanged. Removal is scheduled for v2.0 (Phase 3).
 - **Command-line interface** — a new `pyrs-yaml` command (opt-in via
   `pip install "pyrs-yaml[cli]"`, requires Python 3.10+) exposing the library
   from the terminal: `fmt` (round-trip reformat preserving comments/anchors/

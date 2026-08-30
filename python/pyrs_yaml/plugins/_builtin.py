@@ -14,7 +14,7 @@ from typing import Any, final
 
 from typing_extensions import override
 
-from .._type_registry import CustomType, register_type
+from .._type_registry import CustomType, _register_via_core
 
 
 @final
@@ -203,14 +203,14 @@ class ULIDType(CustomType):
 
 def _register_builtins():
     """Register built-in plugins idempotently."""
-    register_type("!date", DateType())
-    register_type("!time", TimeType())
-    register_type("!timestamp", TimestampType())
-    register_type("!uuid", UUIDType())
-    register_type("!decimal", DecimalType())
-    register_type("!binary", BinaryType())
-    register_type("!regex", RegexType())
-    register_type("!set", SetType())
+    _register_via_core("!date", DateType())
+    _register_via_core("!time", TimeType())
+    _register_via_core("!timestamp", TimestampType())
+    _register_via_core("!uuid", UUIDType())
+    _register_via_core("!decimal", DecimalType())
+    _register_via_core("!binary", BinaryType())
+    _register_via_core("!regex", RegexType())
+    _register_via_core("!set", SetType())
 
 
 def _register_third_party():
@@ -219,7 +219,7 @@ def _register_third_party():
     try:
         import pendulum
 
-        register_type("!duration", DurationType(pendulum))
+        _register_via_core("!duration", DurationType(pendulum))
     except ImportError:
         pass
 
@@ -227,7 +227,7 @@ def _register_third_party():
     try:
         import arrow
 
-        register_type("!arrow", ArrowType(arrow))
+        _register_via_core("!arrow", ArrowType(arrow))
     except ImportError:
         pass
 
@@ -235,6 +235,6 @@ def _register_third_party():
     try:
         from ulid import ULID
 
-        register_type("!ulid", ULIDType(ULID))
+        _register_via_core("!ulid", ULIDType(ULID))
     except ImportError:
         pass
