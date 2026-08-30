@@ -250,6 +250,8 @@ def test_help_lists_all_commands(capsys):
         "rename",
         "sort-keys",
         "move",
+        "insert",
+        "set-many",
         "frontmatter",
         "validate",
         "to-json",
@@ -309,6 +311,54 @@ def test_validate_no_schema_flag_rejected(capsys):
         run("validate")
     assert exc.value.code == 1
     assert "--schema or --schema-file" in capsys.readouterr().err
+
+
+# ── validate --schema content-sniffing disambiguation (#98, undefined boundary) ──
+
+INLINE_SCHEMA = """\
+name: app
+extends: core
+validate:
+  - path: $.port
+    type: int
+    required: true
+"""
+
+
+def test_validate_inline_schema_string_accepted(capsys, monkeypatch):
+    """A multi-line schema string is treated as inline YAML, not a registered name."""
+    import pyrs_yaml
+
+    pyrs_yaml.register_schema("should_not_be_used", "name: app\nextends: core\n")
+    feed_stdin(monkeypatch, "port: 8080\n")
+    run("validate", "--schema", INLINE_SCHEMA)
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.xfail(
+    reason="undefined: content sniffing in __init__.py:218 misroutes a registered "
+    "name containing a newline or '{' as an inline schema (see AGENTS.md Known boundaries)"
+)
+def test_validate_registered_name_with_newline_is_misrouted(capsys, monkeypatch):
+    """A registered schema name containing a newline collides with inline sniffing."""
+    import pyrs_yaml
+
+    pyrs_yaml.register_schema("weird\nname", "name: app\nextends: core\n")
+    feed_stdin(monkeypatch, "port: 8080\n")
+    run("validate", "--schema", "weird\nname")
+
+
+@pytest.mark.xfail(
+    reason="undefined: content sniffing in __init__.py:218 misroutes a registered "
+    "name containing '{' as an inline schema (see AGENTS.md Known boundaries)"
+)
+def test_validate_registered_name_with_brace_is_misrouted(capsys, monkeypatch):
+    """A registered schema name containing '{' collides with inline sniffing."""
+    import pyrs_yaml
+
+    pyrs_yaml.register_schema("weird{name", "name: app\nextends: core\n")
+    feed_stdin(monkeypatch, "port: 8080\n")
+    run("validate", "--schema", "weird{name")
 
 
 # ── multi-document streams: -A/--all-docs (#96) ─────────────────────────────
@@ -450,6 +500,106 @@ def test_frontmatter_absent_exits_1(capsys, monkeypatch):
         run("frontmatter", "-")
     assert exc.value.code == 1
     assert "no front matter" in capsys.readouterr().err
+
+
+# ── insert (#P2) ─────────────────────────────────────────────────────────────
+
+
+def test_insert_into_sequence(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "items:\n  - a\n  - c\n")
+    run("insert", "-", "$.items", "1", "b")
+    out = capsys.readouterr().out
+    assert "a" in out and "b" in out and "c" in out
+    lines = [line.strip() for line in out.strip().splitlines() if line.strip().startswith("-")]
+    assert lines.index("- a") < lines.index("- b") < lines.index("- c")
+
+
+def test_insert_at_end(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "items:\n  - x\n")
+    run("insert", "-", "$.items", "1", "y")
+    out = capsys.readouterr().out
+    assert "- x" in out and "- y" in out
+
+
+def test_insert_out_of_bounds_exits_1(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "items:\n  - a\n")
+    with pytest.raises(SystemExit) as exc:
+        run("insert", "-", "$.items", "99", "b")
+    assert exc.value.code == 1
+    assert "cannot insert" in capsys.readouterr().err
+
+
+def test_insert_non_sequence_exits_1(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "name: test\n")
+    with pytest.raises(SystemExit) as exc:
+        run("insert", "-", "$.name", "0", "val")
+    assert exc.value.code == 1
+
+
+def test_insert_string_flag(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "items:\n  - a\n")
+    run("insert", "-", "$.items", "1", "42", "--string")
+    out = capsys.readouterr().out
+    assert "- a" in out and '- "42"' in out
+
+
+# ── set-many (#P2) ───────────────────────────────────────────────────────────
+
+
+def test_set_many_from_stdin(capsys, monkeypatch):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"$.x": 10, "$.y": "hello"}'))
+    run("set-many", "-")
+    out = capsys.readouterr().out
+    assert "x: 10" in out and "y: hello" in out
+
+
+def test_set_many_invalid_json_exits_1(capsys, monkeypatch):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
+    with pytest.raises(SystemExit) as exc:
+        run("set-many", "-")
+    assert exc.value.code == 1
+    assert "invalid JSON" in capsys.readouterr().err
+
+
+def test_set_many_non_object_exits_1(capsys, monkeypatch):
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("[1, 2, 3]"))
+    with pytest.raises(SystemExit) as exc:
+        run("set-many", "-")
+    assert exc.value.code == 1
+    assert "JSON object" in capsys.readouterr().err
+
+
+# ── get --format tree (#P2) ──────────────────────────────────────────────────
+
+
+def test_get_tree_root(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "name: test\nitems:\n  - a\n  - b\n")
+    run("get", "-", "$", "--format", "tree")
+    out = capsys.readouterr().out
+    assert "$ (mapping, 2 children)" in out
+    assert "$.name (scalar) = 'test'" in out
+    assert "$.items (sequence, 2 children)" in out
+
+
+def test_get_tree_subpath(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "a:\n  b: 1\nc: 2\n")
+    run("get", "-", "$.a", "--format", "tree")
+    out = capsys.readouterr().out
+    assert "$.a.b (scalar) = 1" in out
+    assert "$.c" not in out
+
+
+def test_get_tree_no_match_exits_1(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "a: 1\n")
+    with pytest.raises(SystemExit) as exc:
+        run("get", "-", "$.missing", "--format", "tree")
+    assert exc.value.code == 1
 
 
 # ── compliance (#99) ────────────────────────────────────────────────────────

@@ -113,6 +113,41 @@ def _query_chunks(doc: Any, path: str, format: str) -> list[str]:
     return chunks
 
 
+def _tree_chunks(doc: Any, path: str) -> list[str]:
+    from pyrs_yaml import Node
+
+    try:
+        found = Node(doc).find(path)
+    except ValueError as exc:
+        fail(str(exc))
+
+    nodes = found if isinstance(found, list) else [found]
+    lines: list[str] = []
+    for node in nodes:
+        try:
+            descendants = list(node.walk())
+        except (KeyError, IndexError, TypeError):
+            continue
+        for descendant in descendants:
+            path_str = "$" + "".join(f".{seg}" if isinstance(seg, str) else f"[{seg}]" for seg in descendant.path)
+            try:
+                rtype = descendant.root_type
+            except (KeyError, IndexError, TypeError):
+                continue
+            if rtype == "scalar":
+                val = descendant.value
+                lines.append(f"{path_str} ({rtype}) = {val!r}")
+            elif rtype == "null":
+                lines.append(f"{path_str} (null) = null")
+            else:
+                try:
+                    child_count = len(descendant.children)
+                except (KeyError, IndexError, TypeError):
+                    child_count = 0
+                lines.append(f"{path_str} ({rtype}, {child_count} children)")
+    return lines
+
+
 @app.command
 def get(
     file: FILE_ARG = STDIN_FILE,
@@ -132,13 +167,16 @@ def get(
     all_docs:
         Query every document in the input stream; matches print in order.
     """
-    if format not in ("yaml", "json", "text"):
-        fail(f"invalid --format {format!r}; expected yaml, json or text")
+    if format not in ("yaml", "json", "text", "tree"):
+        fail(f"invalid --format {format!r}; expected yaml, json, text, or tree")
 
     docs = load_documents(file) if all_docs else [load_document(file)]
     chunks: list[str] = []
     for doc in docs:
-        chunks.extend(_query_chunks(doc, path, format))
+        if format == "tree":
+            chunks.extend(_tree_chunks(doc, path))
+        else:
+            chunks.extend(_query_chunks(doc, path, format))
     if not chunks:
         fail(f"no match for path {path!r}")
     sys.stdout.write("\n".join(chunks) + "\n")
@@ -308,6 +346,85 @@ def sort_keys(
     if applied == 0:
         fail(f"cannot sort keys at {path!r}: no document resolves the path")
     _finish_edits(docs, file, inplace, None)
+
+
+@app.command(name="insert")
+def insert_value(
+    file: FILE_ARG,
+    path: str,
+    index: Annotated[int, Parameter(allow_leading_hyphen=True)],
+    value: Annotated[str, Parameter(allow_leading_hyphen=True)],
+    *,
+    inplace: INPLACE = False,
+    string: Annotated[bool, Parameter(name=["--string", "-s"])] = False,
+) -> None:
+    """Insert a value into a sequence at a given index.
+
+    VALUE is parsed as YAML unless --string is given.
+
+    Parameters
+    ----------
+    file:
+        YAML file to edit.
+    path:
+        JSONPath of the sequence node to insert into.
+    index:
+        Zero-based insertion index (must be <= current length).
+    value:
+        Value to insert; parsed as YAML (numbers, bools, nested structures).
+    """
+    from pyrs_yaml import Node, YamlEditError, YamlPathError
+
+    parsed = _parse_value(value, string)
+    doc = load_document(file)
+    try:
+        found = Node(doc).find(path)
+        if isinstance(found, list):
+            fail(f"path {path!r} matched multiple nodes; be more specific")
+        found.insert(index, parsed)
+    except (YamlEditError, YamlPathError, KeyError, IndexError, ValueError) as exc:
+        fail(f"cannot insert at {path!r}: {exc}")
+    _finish_edits([doc], file, inplace, None)
+
+
+@app.command(name="set-many")
+def set_many_values(
+    file: FILE_ARG,
+    *,
+    inplace: INPLACE = False,
+) -> None:
+    """Set multiple paths at once from a JSON object on stdin.
+
+    Reads a JSON object mapping JSONPath strings to values. Example::
+
+        echo '{"$.name": "Alice", "$.age": 30}' | pyrs-yaml set-many config.yaml
+
+    Parameters
+    ----------
+    file:
+        YAML file to edit.
+    """
+    from pyrs_yaml import YamlEditError, YamlPathError
+
+    text = read_text(STDIN_FILE)
+    try:
+        mapping = _json.loads(text)
+    except _json.JSONDecodeError as exc:
+        fail(f"invalid JSON on stdin: {exc}")
+    if not isinstance(mapping, dict):
+        fail("stdin must be a JSON object mapping paths to values")
+
+    doc = load_document(file)
+    applied = 0
+    for path, value in mapping.items():
+        try:
+            doc.set(path, value)
+            applied += 1
+        except (YamlEditError, YamlPathError, KeyError, IndexError) as exc:
+            fail(f"cannot set {path!r}: {exc}")
+    if applied == 0:
+        fail("no paths were set")
+    _finish_edits([doc], file, inplace, None)
 
 
 @app.command(name="move")

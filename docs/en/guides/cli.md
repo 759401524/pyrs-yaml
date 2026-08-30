@@ -40,6 +40,8 @@ pyrs-yaml --version
 | [`fmt`](#cmd-fmt) | Reformat YAML preserving comments, anchors, and order |
 | [`get`](#cmd-get) | Query values by JSONPath expression |
 | [`set`](#cmd-edit) | Set a value at a path |
+| [`set-many`](#cmd-set-many) | Set multiple paths at once from a JSON mapping |
+| [`insert`](#cmd-edit) | Insert a value into a sequence at a given index |
 | [`delete`](#cmd-edit) | Remove a node at a path |
 | [`rename`](#cmd-edit) | Rename a mapping key |
 | [`sort-keys`](#cmd-edit) | Sort mapping keys at a path |
@@ -84,7 +86,19 @@ db
 $ pyrs-yaml get deploy.yaml '$.servers[*]'            # subtrees as YAML (default)
 ```
 
-Output formats via `--format/-f`: `yaml` (default), `json`, or `text` (raw scalar values).
+Output formats via `--format/-f`: `yaml` (default), `json`, `text` (raw scalar values), or `tree` (full node tree with types).
+
+`tree` outputs every node's JSONPath, type, and value — useful for debugging or navigating unfamiliar YAML:
+
+```bash
+pyrs-yaml get config.yaml '$' --format tree
+(mapping, 2 children)
+$.name (scalar) = 'app'
+$.settings (mapping, 3 children)
+$.settings.debug (scalar) = True
+$.settings.port (scalar) = 8080
+$.settings.tags (sequence, 2 children)
+```
 
 ### Editing (`set`, `delete`, `rename`) { #cmd-edit }
 
@@ -96,6 +110,10 @@ pyrs-yaml set config.yaml "$.retries" 5
 pyrs-yaml set config.yaml "$.tags" '[a, b]'
 pyrs-yaml set config.yaml "$.token" '12345' --string          # force string
 pyrs-yaml set config.yaml "$.a.b.c" new --create-missing      # create parents
+
+pyrs-yaml insert config.yaml "$.items" 0 first                 # insert at index 0
+pyrs-yaml insert config.yaml "$.items" -1 last                 # append (-1 = end)
+pyrs-yaml insert config.yaml "$.items" 1 42 --string           # insert "42" as string
 
 pyrs-yaml delete config.yaml "$.legacy_key"
 pyrs-yaml rename config.yaml "$.old_name" new_name
@@ -137,6 +155,18 @@ validate:
 ```
 
 See [Custom Schemas](custom-schema.md) for the full schema language.
+
+### Bulk edits (`set-many`) { #cmd-set-many }
+
+`set-many` reads a JSON object from stdin mapping JSONPath strings to values and applies them all in one pass:
+
+```bash
+echo '{"$.name": "Alice", "$.port": 8080, "$.debug": true}' | pyrs-yaml set-many config.yaml
+
+pyrs-yaml set-many config.yaml --inplace < updates.json
+```
+
+All paths must resolve; the command exits `1` on the first failure.
 
 ### Conversion (`to-json`, `from-json`) { #cmd-convert }
 
