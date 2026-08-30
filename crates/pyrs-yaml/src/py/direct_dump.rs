@@ -121,11 +121,6 @@ fn classify(obj: &Bound<'_, PyAny>) -> Kind {
     Kind::Other
 }
 
-/// Serialize a Python object to a YAML string (one document, no `---`).
-pub(crate) fn direct_dump(py: Python, obj: &Py<PyAny>) -> PyResult<String> {
-    direct_dump_with_options(py, obj, false)
-}
-
 /// Serialize a Python object to a YAML string, optionally sorting mapping keys.
 /// Key sorting mirrors the core serializer's block-mapping sort (byte order on
 /// the raw scalar value); compact `- key: value` items are never sorted.

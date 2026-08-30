@@ -714,3 +714,45 @@ derived:
     def test_yaml_suite_explicit_key(self):
         doc = pyrs_yaml.parse("? explicit key\n: value\n")
         assert doc.get("explicit key") == "value"
+
+
+class TestSortKeysOnDump:
+    def test_safe_dump_sort_keys(self):
+        data = {"z": 1, "a": 2, "m": 3}
+        result = pyrs_yaml.safe_dump(data, sort_keys=True)
+        lines = result.strip().splitlines()
+        assert lines[0].startswith("a:")
+        assert lines[1].startswith("m:")
+        assert lines[2].startswith("z:")
+
+    def test_safe_dump_no_sort_keys(self):
+        data = {"z": 1, "a": 2, "m": 3}
+        result = pyrs_yaml.safe_dump(data, sort_keys=False)
+        lines = result.strip().splitlines()
+        # Default order is insertion order — verify keys are present
+        assert len(lines) == 3
+
+    def test_from_dict_sort_keys(self):
+        data = {"z": 1, "a": 2}
+        result = pyrs_yaml.from_dict(data, sort_keys=True)
+        lines = result.strip().splitlines()
+        assert lines[0].startswith("a:")
+        assert lines[1].startswith("z:")
+
+    def test_dump_file_sort_keys(self, tmp_path):
+        data = {"z": 1, "a": 2, "m": 3}
+        path = tmp_path / "out.yaml"
+        pyrs_yaml.dump_file(data, str(path), sort_keys=True)
+        content = path.read_text()
+        lines = content.strip().splitlines()
+        assert lines[0].startswith("a:")
+        assert lines[1].startswith("m:")
+        assert lines[2].startswith("z:")
+
+    def test_safe_dump_sort_keys_nested(self):
+        data = {"root": {"z": 1, "a": 2}}
+        result = pyrs_yaml.safe_dump(data, sort_keys=True)
+        lines = result.strip().splitlines()
+        assert lines[0] == "root:"
+        assert lines[1] == "  a: 2"
+        assert lines[2] == "  z: 1"

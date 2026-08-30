@@ -152,7 +152,7 @@ fn node_to_pyobject_inner<'a>(
             }
             Ok(py_obj)
         }
-        CustomNode::Mapping { pairs, .. } => {
+        CustomNode::Mapping { pairs, meta, .. } => {
             let dict = PyDict::new(py);
             for (key, value) in pairs {
                 let val = node_to_pyobject_with_anchors(value, py, anchors, visited, schema)?;
@@ -162,17 +162,57 @@ fn node_to_pyobject_inner<'a>(
                 }
                 .ok();
             }
+            // Check if a tag handler wants to convert this tagged mapping
+            if let Some(t) = meta.tag.as_ref()
+                && let Some(handler) = type_registry::get(&t.to_string(), py)
+            {
+                let handler_ref = handler.bind(py);
+                if handler_ref.hasattr("from_yaml_mapping").unwrap_or(false) {
+                    let tag_str = t.to_string();
+                    match handler_ref.call_method1("from_yaml_mapping", (&tag_str, &dict)) {
+                        Ok(obj) => return Ok(obj.unbind()),
+                        Err(e) if e.is_instance_of::<crate::YamlTagSkip>(py) => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
             Ok(dict.into_any().unbind())
         }
-        CustomNode::Sequence { items, .. } => {
+        CustomNode::Sequence { items, meta, .. } => {
             let list = PyList::empty(py);
             for item in items {
                 let val = node_to_pyobject_with_anchors(item, py, anchors, visited, schema)?;
                 list.append(val).ok();
             }
+            // Check if a tag handler wants to convert this tagged sequence
+            if let Some(t) = meta.tag.as_ref()
+                && let Some(handler) = type_registry::get(&t.to_string(), py)
+            {
+                let handler_ref = handler.bind(py);
+                if handler_ref.hasattr("from_yaml_sequence").unwrap_or(false) {
+                    let tag_str = t.to_string();
+                    match handler_ref.call_method1("from_yaml_sequence", (&tag_str, &list)) {
+                        Ok(obj) => return Ok(obj.unbind()),
+                        Err(e) if e.is_instance_of::<crate::YamlTagSkip>(py) => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
             Ok(list.into_any().unbind())
         }
-        CustomNode::Null { .. } => Ok(py.None()),
+        CustomNode::Null { meta, .. } => {
+            // Check if a tag handler wants to convert a tagged null
+            if let Some(t) = meta.tag.as_ref()
+                && let Some(handler) = type_registry::get(&t.to_string(), py)
+            {
+                let handler_ref = handler.bind(py);
+                let py_none = py.None();
+                if let Ok(result) = handler_ref.call_method1("from_yaml", (&py_none,)) {
+                    return Ok(result.unbind());
+                }
+            }
+            Ok(py.None())
+        }
         CustomNode::Alias { .. } => Ok(py.None()),
     }
 }

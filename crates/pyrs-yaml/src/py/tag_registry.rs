@@ -49,3 +49,16 @@ pub(crate) fn remove(name: &str) {
     };
     guard.remove(name);
 }
+
+/// List all registered tag handler tags.
+pub(crate) fn list_tags() -> Vec<String> {
+    let Ok(guard) = TAG_REGISTRY.lock() else {
+        return Vec::new();
+    };
+    guard.keys().cloned().collect()
+}
+
+/// Get all handlers for a given tag, returning (priority, handler) pairs.
+pub(crate) fn get_handler_info(name: &str, py: Python<'_>) -> Option<Vec<(u32, Py<PyAny>)>> {
+    get_handlers(name, py)
+}

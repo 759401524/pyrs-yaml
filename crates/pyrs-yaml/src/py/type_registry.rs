@@ -248,3 +248,15 @@ pub(crate) fn get_plugin(py: Python<'_>, tag: &str) -> Option<(String, String)> 
         (tag.to_string(), py_type)
     })
 }
+
+/// Get a snapshot of all (tag, handler) pairs for iteration.
+/// The lock is released before returning.
+pub(crate) fn snapshot(py: Python<'_>) -> Vec<(String, Py<PyAny>)> {
+    let Ok(guard) = TYPE_REGISTRY.lock() else {
+        return Vec::new();
+    };
+    guard
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone_ref(py)))
+        .collect()
+}

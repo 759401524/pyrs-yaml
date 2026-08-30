@@ -128,6 +128,10 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::stream_iterator::StreamIterator;
 
+    // ---- YamlStream ----
+    #[pymodule_export]
+    pub(crate) use super::streaming::YamlStream;
+
     // ---- Module-level functions ----
     #[pymodule_export]
     pub(crate) use super::functions::clear_tag_handlers;
@@ -191,4 +195,9 @@ mod pyrs_yaml {
     pub(crate) use super::functions::validate_against_schema;
     #[pymodule_export]
     pub(crate) use super::functions::validate_custom_types;
+    // ---- TagHandler introspection ----
+    #[pymodule_export]
+    pub(crate) use super::functions::tag_registry_get_handler_info;
+    #[pymodule_export]
+    pub(crate) use super::functions::tag_registry_list_tags;
 }

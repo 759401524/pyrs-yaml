@@ -30,7 +30,7 @@ from .async_dump import (
 from .compliance import compliance_report
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
-from .plugins import discover_plugins, get_discovery_errors
+from .plugins import discover_plugins, get_discovery_errors, get_plugin_info, list_plugin_info
 from .pyrs_yaml import (
     YAML as _YAML,
 )
@@ -43,6 +43,7 @@ from .pyrs_yaml import (
     YamlParseError,
     YamlPathError,
     YamlSerializeError,
+    YamlStream,
     YamlTagError,
     YamlTagSkip,
     YamlTypeError,
@@ -134,6 +135,130 @@ def register_tag(name, handler=None, priority=0):
         return fn
 
     return decorator
+
+
+# ── Unified TagHandler API ───────────────────────────────────────────────────
+
+from ._tag_handler import (  # noqa: E402 — after function defs to avoid circular import
+    ParseContext,
+    PluginInfo,
+    SerializeContext,
+    TagHandler,
+    call_parse_end,
+    call_parse_start,
+    call_serialize_end,
+    call_serialize_start,
+    clear_stored_handlers,
+    get_stored_handler,
+    remove_stored_handler,
+    store_handler,
+)
+
+_THandler = TypeVar("_THandler", bound=TagHandler)
+
+
+@overload
+def register_tag_handler(name: str, handler: _THandler, priority: int = 0) -> _THandler: ...
+
+
+@overload
+def register_tag_handler(name: str, handler: None = None, priority: int = 0) -> Callable[[_THandler], _THandler]: ...
+
+
+def register_tag_handler(name, handler=None, priority=0):
+    """Register a unified TagHandler for a YAML tag.
+
+    Supports both imperative and decorator forms::
+
+        register_tag_handler("!timestamp", TimestampHandler())
+
+        @register_tag_handler("!custom", priority=1)
+        class CustomHandler(TagHandler):
+            def from_yaml(self, value):
+                return custom_parse(value)
+
+    The handler can implement any combination of:
+    - ``resolve()`` — parse-time scalar string transformation
+    - ``from_yaml()`` / ``to_yaml()`` — type conversion
+    - ``from_yaml_mapping()`` / ``from_yaml_sequence()`` — container conversion
+    - Lifecycle hooks (``on_parse_start``, ``on_parse_end``, etc.)
+    """
+    from ._tag_handler import TagHandler as _TH  # noqa: N814
+
+    def _register(name: str, instance: _TH, priority: int) -> None:
+        # Wrap resolve() as a callable for the Rust tag_registry.
+        # Rust calls handler(str) -> str; we delegate to instance.resolve().
+        def _resolve_wrapper(value: str) -> str:
+            return instance.resolve(value, name)
+
+        _rust_register_tag(name, _resolve_wrapper, priority)
+        # Also register in type_registry for from_yaml/to_yaml/container dispatch
+        register_type(name, instance)  # type: ignore[arg-type]
+        store_handler(name, instance)
+
+    if handler is not None:
+        if not isinstance(handler, _TH):
+            raise TypeError(f"handler must be a TagHandler instance, got {type(handler).__name__}")
+        _register(name, handler, priority)
+        return handler
+
+    # Decorator form
+    def decorator(cls_or_instance):
+        instance = cls_or_instance() if isinstance(cls_or_instance, type) else cls_or_instance
+        if not isinstance(instance, _TH):
+            raise TypeError(
+                f"decorated object must be a TagHandler subclass or instance, got {type(instance).__name__}"
+            )
+        _register(name, instance, priority)
+        return cls_or_instance
+
+    return decorator
+
+
+def list_tag_handlers() -> list[tuple[str, int]]:
+    """List all registered tag handlers.
+
+    Returns a list of ``(tag_name, priority)`` tuples.
+    """
+    from .pyrs_yaml import tag_registry_list_tags as _list_tags
+
+    tags = _list_tags()
+    result = []
+    for tag in tags:
+        from .pyrs_yaml import tag_registry_get_handler_info as _get_info
+
+        handlers = _get_info(tag)
+        if handlers:
+            for priority, _handler in handlers:
+                result.append((tag, priority))
+        else:
+            result.append((tag, 0))
+    return result
+
+
+def get_tag_handler(name: str) -> TagHandler | None:
+    """Get the highest-priority handler for a tag.
+
+    Returns the TagHandler instance, or ``None`` if no handler is registered.
+    """
+    return get_stored_handler(name)
+
+
+def remove_tag_handler(name: str) -> None:
+    """Remove all handlers for a tag."""
+    remove_tag(name)
+    remove_stored_handler(name)
+
+
+# Wrap clear_tag_handlers to also clear the Python-level registry.
+# clear_tag_handlers is imported from Rust at line 51.
+_rust_clear_tag_handlers = clear_tag_handlers  # type: ignore[assignment]
+
+
+def clear_tag_handlers() -> None:
+    """Remove all tag handlers from both Rust and Python registries."""
+    _rust_clear_tag_handlers()
+    clear_stored_handlers()
 
 
 # CustomType / register_type imported from ._type_registry
@@ -276,7 +401,13 @@ def parse(
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
 ) -> Any:
-    return _parse(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    schema_str = _coerce_schema(schema)
+    ctx = ParseContext(schema=schema_str, max_depth=max_depth, resolve_merges=resolve_merges)
+    if isinstance(yaml, str):
+        yaml = call_parse_start(yaml, ctx)
+    doc = _parse(yaml, resolve_merges, schema_str, max_depth, allow_duplicate_keys)
+    call_parse_end(doc, ctx)
+    return doc
 
 
 def parse_file(
@@ -285,7 +416,11 @@ def parse_file(
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
 ) -> Any:
-    return _parse_file(path, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    schema_str = _coerce_schema(schema)
+    ctx = ParseContext(schema=schema_str, max_depth=max_depth, source=path)
+    doc = _parse_file(path, schema_str, max_depth, allow_duplicate_keys)
+    call_parse_end(doc, ctx)
+    return doc
 
 
 def parse_all_docs(
@@ -295,7 +430,13 @@ def parse_all_docs(
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
 ) -> list[Any]:
-    return _parse_all_docs(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    schema_str = _coerce_schema(schema)
+    ctx = ParseContext(schema=schema_str, max_depth=max_depth, resolve_merges=resolve_merges)
+    yaml_str = call_parse_start(yaml, ctx)
+    docs = _parse_all_docs(yaml_str, resolve_merges, schema_str, max_depth, allow_duplicate_keys)
+    for doc in docs:
+        call_parse_end(doc, ctx)
+    return docs
 
 
 def read_markdown(
@@ -312,6 +453,33 @@ def read_markdown_str(
     max_depth: int = 1000,
 ) -> tuple[dict[str, Any] | None, str]:
     return _read_markdown_str(content, _coerce_schema(schema), max_depth)
+
+
+def serialize(
+    document: YamlDocument,
+    indent: int = 2,
+    sort_keys: bool = False,
+    explicit_start: bool = False,
+    explicit_end: bool = False,
+    max_depth: int = 1000,
+    width: int = 80,
+) -> str:
+    """Serialize a YamlDocument to YAML string with lifecycle hooks.
+
+    Calls ``on_serialize_start`` before and ``on_serialize_end`` after
+    the underlying ``to_yaml_with_options``.
+    """
+    ctx = SerializeContext(indent=indent, sort_keys=sort_keys)
+    call_serialize_start(document, ctx)
+    result = document.to_yaml_with_options(
+        indent_size=indent,
+        sort_keys=sort_keys,
+        explicit_start=explicit_start,
+        explicit_end=explicit_end,
+        max_depth=max_depth,
+        width=width,
+    )
+    return call_serialize_end(result, ctx)
 
 
 # Monkey-patch YamlDocument with node() and find() methods
@@ -365,8 +533,12 @@ __all__ = [
     "CustomType",
     "MergedView",
     "Node",
+    "ParseContext",
+    "PluginInfo",
     "PyrsYamlConfigSettingsSource",
+    "SerializeContext",
     "StreamIterator",
+    "TagHandler",
     "YamlDocument",
     "YamlDocumentError",
     "YamlDuplicateKeyError",
@@ -375,6 +547,7 @@ __all__ = [
     "YamlParseError",
     "YamlPathError",
     "YamlSerializeError",
+    "YamlStream",
     "YamlTagError",
     "YamlTagSkip",
     "YamlTypeError",
@@ -391,9 +564,13 @@ __all__ = [
     "get_discovery_errors",
     "get_language",
     "get_plugin",
+    "get_plugin_info",
+    "get_tag_handler",
     "list_languages",
+    "list_plugin_info",
     "list_plugins",
     "list_schemas",
+    "list_tag_handlers",
     "load_schema",
     "negotiate_language",
     "parse",
@@ -405,8 +582,10 @@ __all__ = [
     "read_markdown_str",
     "register_schema",
     "register_tag",
+    "register_tag_handler",
     "register_type",
     "remove_tag",
+    "remove_tag_handler",
     "remove_type",
     "safe_dump",
     "safe_dump_async",
@@ -415,6 +594,7 @@ __all__ = [
     "safe_load_async",
     "safe_loads",
     "safe_loads_async",
+    "serialize",
     "set_language",
     "validate_against_schema",
     "validate_custom_types",

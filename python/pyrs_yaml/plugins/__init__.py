@@ -1,4 +1,4 @@
-""" "Built-in plugins package for pyrs-yaml (Community Plugins).
+"""Built-in plugins package for pyrs-yaml (Community Plugins).
 
 Third-party packages can register custom types by defining an entry point
 in their `pyproject.toml`:
@@ -6,8 +6,10 @@ in their `pyproject.toml`:
     [project.entry-points."pyrs_yaml.plugins"]
     myplugin = "myplugin:register"
 
-The callable receives no arguments and should call `register_type()` to
-register custom types.
+The callable receives no arguments and should call `register_type()` or
+``register_tag_handler()`` to register custom types. It may optionally
+return a ``PluginInfo`` instance for metadata tracking and conflict
+detection.
 """
 
 from __future__ import annotations
@@ -15,14 +17,16 @@ from __future__ import annotations
 import contextlib
 import logging
 
+from .._tag_handler import PluginInfo
 from ._builtin import _register_builtins, _register_third_party
 
 _register_builtins()
 _register_third_party()
 
-# ── Discovery error tracking ────────────────────────────────────────────────
+# ── Discovery error tracking + PluginInfo storage ────────────────────────────
 
 _discovery_errors: list[str] = []
+_plugin_info: dict[str, PluginInfo] = {}  # tag_name → PluginInfo
 
 
 def _discover() -> None:
@@ -44,11 +48,29 @@ def _discover() -> None:
         try:
             _register = _ep.load()
             if callable(_register):
-                _register()
+                result = _register()
+                if isinstance(result, PluginInfo):
+                    _register_plugin_info(result)
         except Exception as _exc:
             msg = f"Failed to load pyrs_yaml plugin '{_ep.name}': {_exc}"
             logging.getLogger(__name__).warning(msg)
             _discovery_errors.append(msg)
+
+
+def _register_plugin_info(info: PluginInfo) -> None:
+    """Store PluginInfo and check for conflicts."""
+    # Check for conflicts with already-registered plugins
+    for tag in info.tags:
+        if tag in _plugin_info:
+            existing = _plugin_info[tag]
+            if tag in info.conflicts or tag in existing.conflicts:
+                msg = f"Plugin conflict: '{info.name}' and '{existing.name}' both register tag '{tag}'"
+                logging.getLogger(__name__).warning(msg)
+                _discovery_errors.append(msg)
+                return
+    # Store info for each tag this plugin handles
+    for tag in info.tags:
+        _plugin_info[tag] = info
 
 
 with contextlib.suppress(Exception):
@@ -71,4 +93,25 @@ def get_discovery_errors() -> list[str]:
     return list(_discovery_errors)
 
 
-__all__ = ["discover_plugins", "get_discovery_errors"]
+def get_plugin_info(tag: str) -> PluginInfo | None:
+    """Return the PluginInfo for a given tag, or None."""
+    return _plugin_info.get(tag)
+
+
+def list_plugin_info() -> list[PluginInfo]:
+    """Return a list of all registered PluginInfo instances."""
+    seen: set[str] = set()
+    result: list[PluginInfo] = []
+    for info in _plugin_info.values():
+        if info.name not in seen:
+            seen.add(info.name)
+            result.append(info)
+    return result
+
+
+__all__ = [
+    "discover_plugins",
+    "get_discovery_errors",
+    "get_plugin_info",
+    "list_plugin_info",
+]

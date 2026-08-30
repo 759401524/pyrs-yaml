@@ -983,7 +983,11 @@ impl YamlDocument {
         } else {
             schema.clone()
         };
-        let jsonschema = py.import("jsonschema")?;
+        let jsonschema = py.import("jsonschema").map_err(|_| {
+            YamlValidateError::new_err(
+                "jsonschema is required for validate(). Install with: pip install jsonschema",
+            )
+        })?;
         let validate_fn = jsonschema.getattr("validate")?;
         let kw = PyDict::new(py);
         kw.set_item("instance", instance)?;

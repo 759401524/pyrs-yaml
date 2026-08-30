@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 
 use crate::YamlValidateError;
 use crate::py::convert::{format_i18n_error, node_to_pyobject_simple, parse_schema};
-use crate::py::direct_dump::direct_dump;
+use crate::py::direct_dump::direct_dump_with_options;
 use crate::py::document::{YamlDocument, parse_document, resolve_tags};
 use crate::py::parse_error_to_py_err;
 use crate::py::python_types::json_value_to_node;
@@ -215,17 +215,17 @@ pub(crate) fn parse_stream(
 }
 
 #[pyfunction]
-#[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
+#[pyo3(signature = (data: "dict[str, Any] | list[Any]", sort_keys: "bool" = false) -> "str")]
 /// Serialize a Python dict/list to a YAML string.
-pub(crate) fn safe_dump(py: Python, data: Py<PyAny>) -> PyResult<String> {
-    direct_dump(py, &data)
+pub(crate) fn safe_dump(py: Python, data: Py<PyAny>, sort_keys: bool) -> PyResult<String> {
+    direct_dump_with_options(py, &data, sort_keys)
 }
 
 #[pyfunction]
-#[pyo3(signature = (data: "dict[str, Any] | list[Any]") -> "str")]
+#[pyo3(signature = (data: "dict[str, Any] | list[Any]", sort_keys: "bool" = false) -> "str")]
 /// Convert a Python dict/list to a YAML string (auto-selects block/flow style).
-pub(crate) fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
-    direct_dump(py, &data)
+pub(crate) fn from_dict(py: Python, data: Py<PyAny>, sort_keys: bool) -> PyResult<String> {
+    direct_dump_with_options(py, &data, sort_keys)
 }
 
 #[pyfunction]
@@ -243,10 +243,10 @@ pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (data: "Any", path: "str") -> "None")]
+#[pyo3(signature = (data: "Any", path: "str", sort_keys: "bool" = false) -> "None")]
 /// Serialize a Python object to YAML and write to a file.
-pub(crate) fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()> {
-    let yaml = direct_dump(py, &data)?;
+pub(crate) fn dump_file(py: Python, data: Py<PyAny>, path: &str, sort_keys: bool) -> PyResult<()> {
+    let yaml = direct_dump_with_options(py, &data, sort_keys)?;
     std::fs::write(path, yaml).map_err(|e| {
         pyo3::exceptions::PyIOError::new_err(format_i18n_error(
             "file-write-error",
@@ -384,6 +384,22 @@ pub(crate) fn clear_tag_handlers() {
 /// Remove a specific tag handler.
 pub(crate) fn remove_tag(name: &str) {
     tag_registry::remove(name);
+}
+
+#[pyfunction]
+/// List all registered tag handler tags.
+pub(crate) fn tag_registry_list_tags() -> Vec<String> {
+    tag_registry::list_tags()
+}
+
+#[pyfunction]
+#[pyo3(signature = (name: "str"))]
+/// Get all handlers for a tag as a list of (priority, handler) tuples.
+pub(crate) fn tag_registry_get_handler_info(
+    py: Python<'_>,
+    name: &str,
+) -> Option<Vec<(u32, Py<PyAny>)>> {
+    tag_registry::get_handler_info(name, py)
 }
 
 #[pyfunction]
