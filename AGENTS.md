@@ -88,7 +88,8 @@ Learnings from the initial CLI implementation (2026-08):
     - Every successful command still raises `SystemExit(0)` under the default `result_action`; tests must swallow exit 0 and propagate nonzero.
     - Do NOT use `cyclopts.types.StdioPath` — it requires Python 3.12+ (Path subclassing) while the `cli` extra targets 3.10+. Use plain `str` params with `Parameter(allow_leading_hyphen=True)` so the bare `-` token parses positionally, and route through `_io.is_stdio()`.
     - Parameters whose value may start with `-` (e.g. negative numbers in `set`) need `Parameter(allow_leading_hyphen=True)`.
-- **Known boundaries** (candidate roadmap): single-document only (`parse_all_docs`, `sort_keys`, `Node.move`, front-matter APIs not exposed); `validate --schema` disambiguates registered-name vs file-path via an `os.path.exists` probe, so a schema name that collides with a filename is undefined; `python -m pyrs_yaml.compliance --json` remains an undocumented quasi-CLI and could become `pyrs-yaml compliance`.
+- **Known boundaries** (candidate roadmap): `validate --schema` disambiguates registered-name vs inline-schema via content sniffing (`"\n" in schema or "{" in schema`) in `python/pyrs_yaml/__init__.py:218`; a registered name containing a newline or `{` is misrouted and undefined; `YamlStream` is now exported (`#[pymodule_export]`, `__all__`, `.pyi` stub) but `check_yamlstream_export.py` monitors drift; `jsonschema` is a hard runtime import in `YamlDocument.validate()` (`document.rs:986`) — guard added (raises `YamlValidateError` with install hint instead of raw `ImportError`); cp314t (free-threaded) wheels ship without `numpy` ndarray support (feature `numpy` excluded via `--no-default-features`).
+- **Superseded** (shipped in v0.15.0, previously listed here as unexposed): `parse_all_docs`, `sort_keys`, `Node.move`, front-matter APIs (`read_markdown`/`read_markdown_str` + CLI `frontmatter`), and `python -m pyrs_yaml.compliance --json` (removed in favor of the `pyrs-yaml compliance` subcommand).
 - **Docs cross-page anchors**: localized pages translate headings, so slug fragments like `editing.md#path-syntax` only resolve in `docs/en`. Link to the bare page for zh/ja/ko, or add an explicit `{ #id }` to the target heading first (per `DOCS_STANDARDS.md`; strict builds fail on missing anchors).
 
 ## Boundaries
@@ -125,6 +126,8 @@ Learnings from the initial CLI implementation (2026-08):
 - 不统一 `_parse_jsonpath` 与 `parse_path_segments`：查询（find/walk 多节点）与编辑（set/insert 单节点）路径语义天然不同，重写 find/walk 风险高 ROI 低。
 - 不消除 direct_dump 与 serializer 的近似镜像：输入对象不同（Python 对象 vs CustomNode），细节必然不同，强行抽象引入过度泛化。
 - 不重写绑定层 `py/editing/mod.rs` 与 core editing 的边界：编辑语义直接操作 AST，分层边界在当前版本合理，需未来版本级设计。
+- 不在 `direct_dump.rs` 加容器标签输出：`safe_dump`/`from_dict`/`dump_file` 走 direct_dump 路径，无 AST 上下文，无法知道哪些 dict/list 原本是带标签的。容器标签（`to_yaml_mapping`/`to_yaml_sequence`）仅在 AST 往返路径（`pyobject_to_node`→`to_yaml_with_options`）工作。`python_type` isinstance 守卫防止 ALL dict/list 被匹配。
+- **TagHandler 统一注册**：`register_tag_handler()` 同时写入 Rust `tag_registry`（resolve 路径）和 `type_registry`（from_yaml/to_yaml/容器路径），外加 Python `_handler_registry`（生命周期钩子）。`register_tag`/`register_type` 保持向后兼容。内置类型（`_builtin.py`）仍为 `CustomType` 子类，Phase 2 迁移延后。
 
 ## Release Process
 

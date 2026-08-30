@@ -42,7 +42,37 @@ status: new
   드롭인 대체품으로, PyYAML 대신 pyrs-yaml(YAML 1.2 코어 스키마)로 파싱합니다.
   지연 내보내기되므로 `import pyrs_yaml`에 pydantic-settings가 필요 없습니다.
   `pip install "pyrs-yaml[settings]"`로 설치합니다(Python 3.10+).
-  `dump_pydantic`과 `parse_as`도 동일한 모듈 수준 `__getattr__` 지연 내보내기 패턴으로 변경되었습니다.
+   `dump_pydantic`과 `parse_as`도 동일한 모듈 수준 `__getattr__` 지연 내보내기 패턴으로 변경되었습니다.
+- **`sort_keys` 매개변수** — 모듈 수준 `safe_dump`, `from_dict`, `dump_file`에
+  `sort_keys` 매개변수를 추가. `True`로 설정하면 직렬화 전에 매핑 키를 바이트 순서로
+  정렬합니다（`YAML.dump_stream(sort_keys=True)` 및
+  `YamlDocument.to_yaml_with_options(sort_keys=True)` 동작과 일치）.
+- **CLI 확장** — `insert`（시퀀스의 지정 인덱스에 삽입, `--string` 플래그 지원）、
+  `set-many`（stdin에서 JSON 객체를 읽어 여러 경로 편집을 일괄 적용）、
+  `get --format tree`（재귀적 경로/유형/값 트리 보기）를 추가.
+- **`jsonschema` 가드** — `YamlDocument.validate()`가 `jsonschema` 미설치 시
+  원시 `ImportError` 대신 설치 안내가 포함된 `YamlValidateError`를 발생시키도록 변경.
+- **`similar` v3** — 개발 의존성을 v2에서 v3로 업데이트（테스트 차이 출력에만 영향, 프로덕션 영향 없음）.
+- **통합 태그 해결 아키텍처** — 새로운 `TagHandler` 기반 클래스
+  (`python/pyrs_yaml/_tag_handler.py`)가 이전에 분리되어 있던 `register_tag`
+  (스칼라 문자열 변환)와 `register_type`(CustomType 객체 변환) API를 단일
+  등록 지점 `register_tag_handler()`로 통합합니다. 핸들러는 다음을 임의 조합으로
+  구현할 수 있습니다: `resolve()`(파싱 시 스칼라 재작성),
+  `from_yaml()`/`to_yaml()`(양방향 유형 변환),
+  `from_yaml_mapping()`/`from_yaml_sequence()`(컨테이너 태그 변환), 그리고
+  라이프사이클 훅(`on_parse_start`/`on_parse_end`/`on_serialize_start`/
+  `on_serialize_end`). `register_tag`/`register_type`은 완전한 하위 호환성을
+  유지합니다.
+- **컨테이너 태그 지원** — 태그가 있는 Mapping 및 Sequence 노드는 이제 AST→Python
+  변환 시 `from_yaml_mapping`/`from_yaml_sequence`로, Python→AST 직렬화 시
+  `to_yaml_mapping`/`to_yaml_sequence`로 디스패치됩니다. `to_yaml_with_options()`를
+  통한 라운드트립은 컨테이너 태그를 보존합니다. `safe_dump`(AST 컨텍스트 없음)는
+  설계상 일반 컨테이너로 출력합니다.
+- **`serialize()` 함수** — `to_yaml_with_options()`의 모듈 수준 래퍼로,
+  `on_serialize_start`/`on_serialize_end` 라이프사이클 훅을 발생시킵니다.
+- **플러그인 발견 강화** — `PluginInfo` 데이터 클래스에 `conflicts` 목록이 있어
+  엔트리 포인트 발견 중 충돌 감지를 활성화합니다. `get_plugin_info(tag)`와
+  `list_plugin_info()`로 플러그인 메타데이터를 조회합니다.
 
 ### [v0.15.0] — 2026-08-19
 

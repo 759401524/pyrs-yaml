@@ -40,7 +40,31 @@ status: new
   的即插即用替代，使用 pyrs-yaml（YAML 1.2 核心 schema）而非 PyYAML 解析。采用惰性
   导出，`import pyrs_yaml` 不依赖 pydantic-settings；通过
   `pip install "pyrs-yaml[settings]"` 安装（Python 3.10+）。`dump_pydantic` 与
-  `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
+   `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
+- **`sort_keys` 参数** — 模块级 `safe_dump`、`from_dict` 和 `dump_file` 新增
+  `sort_keys` 参数，设为 `True` 时在序列化前按键的字节序排序映射键（与
+  `YAML.dump_stream(sort_keys=True)` 和 `YamlDocument.to_yaml_with_options(sort_keys=True)` 行为一致）。
+- **CLI 扩展** —— 新增 `insert`（在序列指定索引处插入，支持 `--string` 标志）、
+  `set-many`（从 stdin 读取 JSON 对象批量应用路径编辑）以及 `get --format tree`
+  （递归路径/类型/值树视图）。
+- **`jsonschema` 保护** — `YamlDocument.validate()` 在未安装 `jsonschema` 时现在抛出
+  `YamlValidateError` 并附带安装提示，而非原始 `ImportError`。
+- **`similar` v3** — 开发依赖从 v2 升级至 v3（仅影响测试差异输出，无生产影响）。
+- **统一标签解析架构** — 新增 `TagHandler` 基类（`python/pyrs_yaml/_tag_handler.py`），
+  将原先分离的 `register_tag`（标量字符串变换）和 `register_type`（CustomType 对象
+  转换）API 统一到单一注册点 `register_tag_handler()`。处理器可任意组合实现：
+  `resolve()`（解析时标量重写）、`from_yaml()`/`to_yaml()`（双向类型转换）、
+  `from_yaml_mapping()`/`from_yaml_sequence()`（容器标签转换）以及生命周期钩子
+  （`on_parse_start`/`on_parse_end`/`on_serialize_start`/`on_serialize_end`）。
+  `register_tag`/`register_type` 保持完全向后兼容。
+- **容器标签支持** — 带标签的 Mapping 和 Sequence 节点现在在 AST→Python 转换时
+  分发到 `from_yaml_mapping`/`from_yaml_sequence`，在 Python→AST 序列化时分发到
+  `to_yaml_mapping`/`to_yaml_sequence`。通过 `to_yaml_with_options()` 的往返保留
+  容器标签；`safe_dump`（无 AST 上下文）按设计输出为普通容器。
+- **`serialize()` 函数** — `to_yaml_with_options()` 的模块级封装，触发
+  `on_serialize_start`/`on_serialize_end` 生命周期钩子。
+- **插件发现增强** — `PluginInfo` 数据类带 `conflicts` 列表，在入口点发现期间
+  启用冲突检测。`get_plugin_info(tag)` 和 `list_plugin_info()` 查询插件元数据。
 
 ### [v0.15.0] — 2026-08-19
 

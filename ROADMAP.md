@@ -160,7 +160,7 @@ Milestone review of all Research & Exploration items per the revisit rule.
 
 | Item | Decision | Rationale |
 |:-----|:---------|:----------|
-| Custom YAML 1.2 parser | **Defer** | saphyr→granit-parser migration shipped in v0.13.0; let it stabilize before evaluating replacement. Revisit v0.14.0. |
+| Custom YAML 1.2 parser | **Indefinitely deferred** | granit-parser stable at 99.75%; 3-6 month effort does not justify ROI. Revisit only if community YAML 1.2 Rust parser emerges. |
 | Numpy free-threaded re-enable | **Defer** | Blocked on upstream `rust-numpy` (PyO3/rust-numpy#476). Revisit when upstream lands. |
 | YAML Schema language | **Promote → v0.14.0** | Independent design deliverable; scope as a design spec for v0.14.0. |
 | `yaml-edit` competitor analysis | **Close** | Passive tracking provides no value; if yaml-edit ships a significant feature, the community will surface it. |
@@ -168,7 +168,7 @@ Milestone review of all Research & Exploration items per the revisit rule.
 
 ---
 
-**Deferred (not committed, revisit at each milestone review)**: Custom YAML 1.2 parser (evaluation deferred — granit migration just shipped, let it settle); numpy free-threaded re-enable (blocked on upstream rust-numpy). Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-11).
+**Deferred (not committed, revisit at each milestone review)**: Custom YAML 1.2 parser (indefinitely deferred — granit-parser stable at 99.75%, ROI does not justify 3-6 month effort); numpy free-threaded re-enable (closed 2026-08-15 — rust-numpy v0.24.0+ supports free-threaded Python). Tracked in Research & Exploration below with a revisit rule (see Review Notes 2026-08-11).
 
 ---
 
@@ -179,11 +179,12 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 > **Revisit rule** (from Review Notes 2026-08-02): every milestone review must re-evaluate all unchecked items below — promote, defer with reason, or close. No item stays unchecked for more than two consecutive milestone reviews.
 
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
-- [ ] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser and incrementally fix to 100%. ⏸️ Deferred 2026-08-11 — granit migration just shipped in v0.13.0; let it settle. Revisit v0.14.0.
+- [ ] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C) ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser and incrementally fix to 100%. ⏸️ **Indefinitely deferred** — granit-parser stable at 99.75% (405/406 YAML Test Suite), 7 workarounds in place, ROI of replacement does not justify 3-6 month effort. Revisit only if a community-maintained YAML 1.2 Rust parser emerges.
 - [x] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime probe (`py.import("numpy").is_ok()`) auto-detect. Tracked in v0.11.7. ✅ Closed 2026-08-15 — rust-numpy v0.24.0+ supports free-threaded Python; v0.29.0 (already pinned) inherits support. `--no-default-features` removed from cp314t build lines in `publish.yml`/`ci.yml`.
 - [x] **YAML Schema language** — dedicated schema definition format beyond JSON Schema ✅ Promoted to v0.14.0 planning 2026-08-11
 - [x] **`yaml-edit` competitor analysis** — track their feature expansion; respond with differentiator strategy ✅ Closed 2026-08-11 — passive tracking provides no value
 - [x] **Community plugins** — allow third-party Python modules to register custom node types ✅ Promoted to v0.14.0 planning 2026-08-11
+- [x] **Unified tag resolution architecture** — unify `register_tag` (scalar string transform) and `register_type` (CustomType object conversion) under a single `TagHandler` API with container tag support and lifecycle hooks ✅ Phase 1 delivered [Unreleased] — `TagHandler` base class (`_tag_handler.py`), `register_tag_handler()`/`list_tag_handlers()`/`get_tag_handler()`/`remove_tag_handler()`, container tag dispatch (`from_yaml_mapping`/`from_yaml_sequence` in `convert.rs`, `to_yaml_mapping`/`to_yaml_sequence` in `python_types.rs`), lifecycle hooks (`on_parse_start`/`on_parse_end`/`on_serialize_start`/`on_serialize_end`), `serialize()` wrapper, `PluginInfo` conflict detection. Phase 2 (migrate built-in types to `TagHandler`) deferred — `CustomType` subclasses remain fully functional.
 - [x] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python ✅ Committed in v0.11.6
 
 **Committed (moved from this list, see Planned)**: v0.11.0 (surgical serialization), v0.11.2 (streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting, line-offsets cache, publish pre-validation); v0.11.5 (parser robustness — audit closed empty, docs-only release, with strictness regression corpus `tests/test_strictness_audit.py`); v0.11.6 (numpy-free free-threaded wheel); v0.11.7 (CI signal hygiene + numpy tracking); YAML Schema language (promoted 2026-08-11, v0.14.0 planning); Community plugins (promoted 2026-08-11, v0.14.0 planning).

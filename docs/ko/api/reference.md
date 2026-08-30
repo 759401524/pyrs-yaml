@@ -122,7 +122,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 Python 객체를 YAML로 직렬화합니다.
 
 ```python
-safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
+safe_dump(data: dict[str, Any] | list[Any] | ndarray, sort_keys: bool = False) -> str
 ```
 
 **다음과 동일:** PyYAML의 `yaml.safe_dump()`
@@ -144,7 +144,7 @@ safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 Python dict를 YAML 문자열로 변환합니다. dict 값으로 `numpy.ndarray`도 허용됩니다.
 
 ```python
-from_dict(data: dict[str, Any]) -> str
+from_dict(data: dict[str, Any], sort_keys: bool = False) -> str
 ```
 
 ### `from_json()`
@@ -160,7 +160,7 @@ from_json(json_str: str) -> str
 Python 객체를 YAML로 직렬화하여 파일에 씁니다. `dict`, `list` 또는 `numpy.ndarray`를 허용합니다.
 
 ```python
-dump_file(data: Any, path: str) -> None
+dump_file(data: Any, path: str, sort_keys: bool = False) -> None
 ```
 
 ## :material-pillar: Pydantic 통합
@@ -451,6 +451,105 @@ remove_type(name: str) -> None
 ```python
 clear_type_handlers() -> None
 ```
+
+## :material-link-variant: 통합 TagHandler API
+
+`TagHandler` 기반 클래스는 태그 레지스트리(`register_tag`)와 커뮤니티 플러그인(`register_type`) API를 단일 등록 지점으로 통합합니다. 핸들러는 스칼라, 컨테이너, 라이프사이클 메서드를 임의 조합으로 구현할 수 있으며, 정의한 메서드만 호출됩니다.
+
+### `TagHandler`
+
+통합 태그 핸들러의 기반 클래스. 서브클래싱하여 필요한 메서드를 재정의합니다.
+
+```python
+class TagHandler:
+    python_type = None  # isinstance 기반 직렬화 디스패치용
+
+    # 스칼라: 파싱 시 문자열 변환 (register_tag 대체)
+    def resolve(self, value: str, tag: str) -> str: ...
+
+    # 스칼라: 양방향 유형 변환 (CustomType 대체)
+    def from_yaml(self, value: Any, tag: str) -> Any: ...
+    def to_yaml(self, obj: Any, tag: str) -> str: ...
+
+    # 컨테이너: mapping/sequence 태그 변환
+    def from_yaml_mapping(self, mapping: dict, tag: str) -> Any: ...
+    def from_yaml_sequence(self, sequence: list, tag: str) -> Any: ...
+    def to_yaml_mapping(self, obj: Any, tag: str) -> dict: ...
+    def to_yaml_sequence(self, obj: Any, tag: str) -> list: ...
+
+    # 라이프사이클 훅
+    def on_parse_start(self, yaml: str, ctx: ParseContext) -> str: ...
+    def on_parse_end(self, doc: YamlDocument, ctx: ParseContext) -> None: ...
+    def on_serialize_start(self, doc: YamlDocument, ctx: SerializeContext) -> None: ...
+    def on_serialize_end(self, result: str, ctx: SerializeContext) -> str: ...
+```
+
+!!! note "컨테이너 태그와 `safe_dump`"
+    컨테이너 태그(`from_yaml_mapping`/`from_yaml_sequence`/
+    `to_yaml_mapping`/`to_yaml_sequence`)는 AST 라운드트립 경로
+    (`parse` → `to_yaml_with_options`/`serialize`)에서만 작동합니다.
+    `safe_dump`/`from_dict`/`dump_file` 고속 경로는 AST 컨텍스트가 없어
+    어떤 dict/list가 원래 태그가 있었는지 판단할 수 없으므로 항상 일반
+    컨테이너를 출력합니다.
+
+### `register_tag_handler()`
+
+`TagHandler` 인스턴스를 등록. 클래스도 허용(자동 인스턴스화). 데코레이터 형식도 지원.
+
+```python
+register_tag_handler(name: str, handler: TagHandler | None = None, priority: int = 0) -> TagHandler
+```
+
+### `list_tag_handlers()`
+
+```python
+list_tag_handlers() -> list[tuple[str, int]]
+```
+
+등록된 모든 태그 핸들러를 `(tag_name, priority)` 튜플 목록으로 반환합니다.
+
+### `get_tag_handler()`
+
+```python
+get_tag_handler(name: str) -> TagHandler | None
+```
+
+태그의 핸들러 인스턴스를 가져옵니다. 미등록 시 `None`.
+
+### `remove_tag_handler()`
+
+```python
+remove_tag_handler(name: str) -> None
+```
+
+Rust 및 Python 레지스트리에서 태그의 모든 핸들러를 제거합니다.
+
+### `serialize()`
+
+라이프사이클 훅 지원으로 `YamlDocument`를 직렬화합니다.
+
+```python
+serialize(document: YamlDocument, indent: int = 2, sort_keys: bool = False,
+          explicit_start: bool = False, explicit_end: bool = False,
+          max_depth: int = 1000, width: int = 80) -> str
+```
+
+`to_yaml_with_options()` 전에 `on_serialize_start`, 후에 `on_serialize_end`를 호출합니다.
+
+### 컨텍스트 객체
+
+- `ParseContext` — 파싱 라이프사이클 훅에 전달(`schema`, `max_depth`, `resolve_merges`, `source`)
+- `SerializeContext` — 직렬화 라이프사이클 훅에 전달(`indent`, `sort_keys`)
+- `PluginInfo` — 플러그인 메타데이터 데이터 클래스(`name`, `version`, `description`, `conflicts`)
+
+### `get_plugin_info()` / `list_plugin_info()`
+
+```python
+get_plugin_info(tag: str) -> PluginInfo | None
+list_plugin_info() -> list[PluginInfo]
+```
+
+엔트리 포인트 발견으로 등록된 플러그인 메타데이터를 조회합니다.
 
 ## :material-check-decagram: 컴플라이언스
 

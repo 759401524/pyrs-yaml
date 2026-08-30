@@ -145,7 +145,7 @@ safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_
 Serialize a Python object to YAML.
 
 ```python
-safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
+safe_dump(data: dict[str, Any] | list[Any] | ndarray, sort_keys: bool = False) -> str
 ```
 
 **Equivalent to:** `yaml.safe_dump()` in PyYAML
@@ -161,7 +161,7 @@ Alias: `safe_dumps()` — identical to `safe_dump()`.
 Convert a Python dict to YAML string. Also accepts `numpy.ndarray` as a value inside the dict.
 
 ```python
-from_dict(data: dict[str, Any]) -> str
+from_dict(data: dict[str, Any], sort_keys: bool = False) -> str
 ```
 
 #### `from_json()`
@@ -177,7 +177,7 @@ from_json(json_str: str) -> str
 Serialize a Python object to YAML and write to file. Accepts `dict`, `list`, or `numpy.ndarray`.
 
 ```python
-dump_file(data: Any, path: str) -> None
+dump_file(data: Any, path: str, sort_keys: bool = False) -> None
 ```
 
 ### :material-pillar: Pydantic Integration
@@ -470,6 +470,145 @@ clear_type_handlers() -> None
 ```
 
 Remove all registered custom type handlers.
+
+### :material-link-variant: Unified TagHandler API
+
+The `TagHandler` base class unifies the Tag Registry (`register_tag`) and
+Community Plugins (`register_type`) APIs under a single registration point.
+A handler can implement any combination of scalar, container, and lifecycle
+methods — only the methods you define are called.
+
+#### `TagHandler`
+
+Base class for unified tag handlers. Subclass and override the methods you need.
+
+```python
+class TagHandler:
+    python_type = None  # set for isinstance-based serialization dispatch
+
+    # Scalar: parse-time string transform (replaces register_tag)
+    def resolve(self, value: str, tag: str) -> str: ...
+
+    # Scalar: bidirectional type conversion (replaces CustomType)
+    def from_yaml(self, value: Any, tag: str) -> Any: ...
+    def to_yaml(self, obj: Any, tag: str) -> str: ...
+
+    # Container: mapping/sequence tag conversion
+    def from_yaml_mapping(self, mapping: dict, tag: str) -> Any: ...
+    def from_yaml_sequence(self, sequence: list, tag: str) -> Any: ...
+    def to_yaml_mapping(self, obj: Any, tag: str) -> dict: ...
+    def to_yaml_sequence(self, obj: Any, tag: str) -> list: ...
+
+    # Lifecycle hooks
+    def on_parse_start(self, yaml: str, ctx: ParseContext) -> str: ...
+    def on_parse_end(self, doc: YamlDocument, ctx: ParseContext) -> None: ...
+    def on_serialize_start(self, doc: YamlDocument, ctx: SerializeContext) -> None: ...
+    def on_serialize_end(self, result: str, ctx: SerializeContext) -> str: ...
+```
+
+**Scalar handler example:**
+
+```python
+class HexInt(TagHandler):
+    python_type = int
+
+    def from_yaml(self, value, tag):
+        return int(value, 16)
+
+    def to_yaml(self, obj, tag):
+        return hex(obj)
+
+
+pyrs_yaml.register_tag_handler("!hex", HexInt())
+```
+
+**Container handler example:**
+
+```python
+class OrderedMap(TagHandler):
+    python_type = dict
+
+    def from_yaml_mapping(self, mapping, tag):
+        return list(mapping.items())  # preserve order as list of pairs
+
+    def to_yaml_mapping(self, obj, tag):
+        return dict(obj)
+
+
+pyrs_yaml.register_tag_handler("!omap", OrderedMap())
+```
+
+!!! note "Container tags and `safe_dump`"
+    Container tags (`from_yaml_mapping`/`from_yaml_sequence`/
+    `to_yaml_mapping`/`to_yaml_sequence`) only work in the AST round-trip
+    path (`parse` → `to_yaml_with_options`/`serialize`). The `safe_dump`/
+    `from_dict`/`dump_file` fast path has no AST context and cannot
+    determine which dicts/lists were originally tagged — it always emits
+    plain containers.
+
+#### `register_tag_handler()`
+
+Register a `TagHandler` instance. Also accepts a class (instantiated
+automatically). Supports decorator form.
+
+```python
+register_tag_handler(name: str, handler: TagHandler | None = None, priority: int = 0) -> TagHandler
+```
+
+#### `list_tag_handlers()`
+
+```python
+list_tag_handlers() -> list[tuple[str, int]]
+```
+
+List all registered tag handlers as `(tag_name, priority)` tuples.
+
+#### `get_tag_handler()`
+
+```python
+get_tag_handler(name: str) -> TagHandler | None
+```
+
+Get the handler instance for a tag, or `None` if unregistered.
+
+#### `remove_tag_handler()`
+
+```python
+remove_tag_handler(name: str) -> None
+```
+
+Remove all handlers for a tag from both Rust and Python registries.
+
+#### `serialize()`
+
+Serialize a `YamlDocument` with lifecycle hook support.
+
+```python
+serialize(document: YamlDocument, indent: int = 2, sort_keys: bool = False,
+          explicit_start: bool = False, explicit_end: bool = False,
+          max_depth: int = 1000, width: int = 80) -> str
+```
+
+Calls `on_serialize_start` before and `on_serialize_end` after
+`to_yaml_with_options()`.
+
+#### Context objects
+
+- `ParseContext` — passed to parse lifecycle hooks (`schema`, `max_depth`,
+  `resolve_merges`, `source`)
+- `SerializeContext` — passed to serialize lifecycle hooks (`indent`,
+  `sort_keys`)
+- `PluginInfo` — dataclass for plugin metadata (`name`, `version`,
+  `description`, `conflicts`)
+
+#### `get_plugin_info()` / `list_plugin_info()`
+
+```python
+get_plugin_info(tag: str) -> PluginInfo | None
+list_plugin_info() -> list[PluginInfo]
+```
+
+Query plugin metadata registered via entry-point discovery.
 
 ### :material-check-decagram: Compliance
 

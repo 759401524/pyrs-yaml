@@ -48,6 +48,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `import pyrs_yaml` never requires pydantic-settings; install with
   `pip install "pyrs-yaml[settings]"` (Python 3.10+). `dump_pydantic` and
   `parse_as` now use the same lazy module-level `__getattr__` export pattern.
+- **`sort_keys` parameter** on module-level `safe_dump`, `from_dict`, and
+  `dump_file` — when `True`, mapping keys are sorted in byte order before
+  serialization (matching `YAML.dump_stream(sort_keys=True)` and
+  `YamlDocument.to_yaml_with_options(sort_keys=True)` behavior).
+- **CLI expansion** — `insert` (append to sequence at index, with `--string`
+  flag), `set-many` (apply multiple path edits from a JSON object on stdin),
+  and `--format tree` on `get` (recursive path/type/value tree view).
+- **`jsonschema` guard** — `YamlDocument.validate()` now raises
+  `YamlValidateError` with an install hint instead of a raw `ImportError`
+  when `jsonschema` is not installed.
+- **`similar` v3** — dev-dependency bumped from v2 to v3 (test diff output
+  only, no production impact).
+- **Unified tag resolution architecture** — a new `TagHandler` base class
+  (`python/pyrs_yaml/_tag_handler.py`) unifies the previously separate
+  `register_tag` (scalar string transform) and `register_type` (CustomType
+  object conversion) APIs under a single registration point
+  (`register_tag_handler()`). A handler can implement any combination of:
+  `resolve()` (parse-time scalar rewrite), `from_yaml()`/`to_yaml()`
+  (bidirectional type conversion), `from_yaml_mapping()`/
+  `from_yaml_sequence()` (container tag conversion), and lifecycle hooks
+  (`on_parse_start`/`on_parse_end`/`on_serialize_start`/`on_serialize_end`).
+  `register_tag`/`register_type` remain fully backward-compatible.
+- **Container tag support** — tagged Mapping and Sequence nodes are now
+  dispatched to `from_yaml_mapping`/`from_yaml_sequence` during AST→Python
+  conversion and to `to_yaml_mapping`/`to_yaml_sequence` during Python→AST
+  serialization. Round-trip via `to_yaml_with_options()` preserves container
+  tags; `safe_dump` (no AST context) dumps as plain containers by design.
+- **`serialize()` function** — module-level wrapper around
+  `to_yaml_with_options()` that fires `on_serialize_start`/`on_serialize_end`
+  lifecycle hooks.
+- **Plugin discovery enhancement** — `PluginInfo` dataclass with `conflicts`
+  list enables conflict detection during entry-point discovery.
+  `get_plugin_info(tag)` and `list_plugin_info()` query plugin metadata.
 
 ### [v0.15.0] — 2026-08-19
 

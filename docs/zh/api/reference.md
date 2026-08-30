@@ -125,7 +125,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 将 Python 对象序列化为 YAML。
 
 ```python
-safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
+safe_dump(data: dict[str, Any] | list[Any] | ndarray, sort_keys: bool = False) -> str
 ```
 
 **等价于:** PyYAML 的 `yaml.safe_dump()`
@@ -147,7 +147,7 @@ safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 将 Python dict 转换为 YAML 字符串。dict 的值中可以包含 `numpy.ndarray`。
 
 ```python
-from_dict(data: dict[str, Any]) -> str
+from_dict(data: dict[str, Any], sort_keys: bool = False) -> str
 ```
 
 ### `from_json()`
@@ -163,7 +163,7 @@ from_json(json_str: str) -> str
 将 Python 对象序列化为 YAML 并写入文件。接受 `dict`、`list` 或 `numpy.ndarray`。
 
 ```python
-dump_file(data: Any, path: str) -> None
+dump_file(data: Any, path: str, sort_keys: bool = False) -> None
 ```
 
 ## :material-pillar: Pydantic 集成
@@ -452,6 +452,104 @@ remove_type(name: str) -> None
 ```python
 clear_type_handlers() -> None
 ```
+
+## :material-link-variant: 统一 TagHandler API
+
+`TagHandler` 基类将标签注册表（`register_tag`）和社区插件（`register_type`）API 统一到单一注册点。处理器可任意组合实现标量、容器和生命周期方法 — 仅已定义的方法会被调用。
+
+### `TagHandler`
+
+统一标签处理器的基类。子类化并按需重写方法。
+
+```python
+class TagHandler:
+    python_type = None  # 设为 Python 类型以进行 isinstance 序列化分发
+
+    # 标量：解析时字符串变换（替代 register_tag）
+    def resolve(self, value: str, tag: str) -> str: ...
+
+    # 标量：双向类型转换（替代 CustomType）
+    def from_yaml(self, value: Any, tag: str) -> Any: ...
+    def to_yaml(self, obj: Any, tag: str) -> str: ...
+
+    # 容器：mapping/sequence 标签转换
+    def from_yaml_mapping(self, mapping: dict, tag: str) -> Any: ...
+    def from_yaml_sequence(self, sequence: list, tag: str) -> Any: ...
+    def to_yaml_mapping(self, obj: Any, tag: str) -> dict: ...
+    def to_yaml_sequence(self, obj: Any, tag: str) -> list: ...
+
+    # 生命周期钩子
+    def on_parse_start(self, yaml: str, ctx: ParseContext) -> str: ...
+    def on_parse_end(self, doc: YamlDocument, ctx: ParseContext) -> None: ...
+    def on_serialize_start(self, doc: YamlDocument, ctx: SerializeContext) -> None: ...
+    def on_serialize_end(self, result: str, ctx: SerializeContext) -> str: ...
+```
+
+!!! note "容器标签与 `safe_dump`"
+    容器标签（`from_yaml_mapping`/`from_yaml_sequence`/
+    `to_yaml_mapping`/`to_yaml_sequence`）仅在 AST 往返路径
+    （`parse` → `to_yaml_with_options`/`serialize`）中工作。
+    `safe_dump`/`from_dict`/`dump_file` 快速路径无 AST 上下文，无法确定哪些
+    dict/list 原本是带标签的 — 始终输出普通容器。
+
+### `register_tag_handler()`
+
+注册 `TagHandler` 实例。也接受类（自动实例化）。支持装饰器形式。
+
+```python
+register_tag_handler(name: str, handler: TagHandler | None = None, priority: int = 0) -> TagHandler
+```
+
+### `list_tag_handlers()`
+
+```python
+list_tag_handlers() -> list[tuple[str, int]]
+```
+
+以 `(tag_name, priority)` 元组列表所有已注册的标签处理器。
+
+### `get_tag_handler()`
+
+```python
+get_tag_handler(name: str) -> TagHandler | None
+```
+
+获取标签的处理器实例，未注册则返回 `None`。
+
+### `remove_tag_handler()`
+
+```python
+remove_tag_handler(name: str) -> None
+```
+
+从 Rust 和 Python 注册表中移除标签的所有处理器。
+
+### `serialize()`
+
+带生命周期钩子支持地序列化 `YamlDocument`。
+
+```python
+serialize(document: YamlDocument, indent: int = 2, sort_keys: bool = False,
+          explicit_start: bool = False, explicit_end: bool = False,
+          max_depth: int = 1000, width: int = 80) -> str
+```
+
+在 `to_yaml_with_options()` 之前调用 `on_serialize_start`，之后调用 `on_serialize_end`。
+
+### 上下文对象
+
+- `ParseContext` — 传递给解析生命周期钩子（`schema`、`max_depth`、`resolve_merges`、`source`）
+- `SerializeContext` — 传递给序列化生命周期钩子（`indent`、`sort_keys`）
+- `PluginInfo` — 插件元数据数据类（`name`、`version`、`description`、`conflicts`）
+
+### `get_plugin_info()` / `list_plugin_info()`
+
+```python
+get_plugin_info(tag: str) -> PluginInfo | None
+list_plugin_info() -> list[PluginInfo]
+```
+
+查询通过入口点发现注册的插件元数据。
 
 ## :material-check-decagram: 合规性
 

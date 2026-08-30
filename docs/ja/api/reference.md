@@ -122,7 +122,7 @@ safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
 Python オブジェクトを YAML にシリアライズします。
 
 ```python
-safe_dump(data: dict[str, Any] | list[Any] | ndarray) -> str
+safe_dump(data: dict[str, Any] | list[Any] | ndarray, sort_keys: bool = False) -> str
 ```
 
 **以下と同等:** PyYAML の `yaml.safe_dump()`
@@ -144,7 +144,7 @@ safe_dumps(data: dict[str, Any] | list[Any] | ndarray) -> str
 Python dict を YAML 文字列に変換します。dict の値として `numpy.ndarray` も受け付けます。
 
 ```python
-from_dict(data: dict[str, Any]) -> str
+from_dict(data: dict[str, Any], sort_keys: bool = False) -> str
 ```
 
 ### `from_json()`
@@ -160,7 +160,7 @@ from_json(json_str: str) -> str
 Python オブジェクトを YAML にシリアライズしてファイルに書き込みます。`dict`, `list`, または `numpy.ndarray` を受け付けます。
 
 ```python
-dump_file(data: Any, path: str) -> None
+dump_file(data: Any, path: str, sort_keys: bool = False) -> None
 ```
 
 ## :material-pillar: Pydantic 統合
@@ -449,6 +449,105 @@ remove_type(name: str) -> None
 ```python
 clear_type_handlers() -> None
 ```
+
+## :material-link-variant: 統合 TagHandler API
+
+`TagHandler` 基底クラスは、タグレジストリ（`register_tag`）とコミュニティプラグイン（`register_type`）APIを単一の登録ポイントに統合します。ハンドラはスカラー、コンテナ、ライフサイクルメソッドを任意の組み合わせで実装でき、定義したメソッドのみが呼び出されます。
+
+### `TagHandler`
+
+統合タグハンドラの基底クラス。サブクラス化して必要なメソッドをオーバーライドします。
+
+```python
+class TagHandler:
+    python_type = None  # isinstance ベースのシリアライズディスパッチ用
+
+    # スカラー：解析時文字列変換（register_tag の代替）
+    def resolve(self, value: str, tag: str) -> str: ...
+
+    # スカラー：双方向型変換（CustomType の代替）
+    def from_yaml(self, value: Any, tag: str) -> Any: ...
+    def to_yaml(self, obj: Any, tag: str) -> str: ...
+
+    # コンテナ：mapping/sequence タグ変換
+    def from_yaml_mapping(self, mapping: dict, tag: str) -> Any: ...
+    def from_yaml_sequence(self, sequence: list, tag: str) -> Any: ...
+    def to_yaml_mapping(self, obj: Any, tag: str) -> dict: ...
+    def to_yaml_sequence(self, obj: Any, tag: str) -> list: ...
+
+    # ライフサイクルフック
+    def on_parse_start(self, yaml: str, ctx: ParseContext) -> str: ...
+    def on_parse_end(self, doc: YamlDocument, ctx: ParseContext) -> None: ...
+    def on_serialize_start(self, doc: YamlDocument, ctx: SerializeContext) -> None: ...
+    def on_serialize_end(self, result: str, ctx: SerializeContext) -> str: ...
+```
+
+!!! note "コンテナタグと `safe_dump`"
+    コンテナタグ（`from_yaml_mapping`/`from_yaml_sequence`/
+    `to_yaml_mapping`/`to_yaml_sequence`）は AST ラウンドトリップパス
+    （`parse` → `to_yaml_with_options`/`serialize`）でのみ動作します。
+    `safe_dump`/`from_dict`/`dump_file` 高速パスは AST コンテキストがなく、
+    どの dict/list がタグ付きだったかを判断できないため、常にプレーン
+    コンテナを出力します。
+
+### `register_tag_handler()`
+
+`TagHandler` インスタンスを登録。クラスも受け付け（自動インスタンス化）。デコレータ形式もサポート。
+
+```python
+register_tag_handler(name: str, handler: TagHandler | None = None, priority: int = 0) -> TagHandler
+```
+
+### `list_tag_handlers()`
+
+```python
+list_tag_handlers() -> list[tuple[str, int]]
+```
+
+登録済みのすべてのタグハンドラを `(tag_name, priority)` タプルのリストとして返します。
+
+### `get_tag_handler()`
+
+```python
+get_tag_handler(name: str) -> TagHandler | None
+```
+
+タグのハンドラインンスタンスを取得。未登録の場合は `None`。
+
+### `remove_tag_handler()`
+
+```python
+remove_tag_handler(name: str) -> None
+```
+
+Rust および Python レジストリからタグのすべてのハンドラを削除します。
+
+### `serialize()`
+
+ライフサイクルフック対応で `YamlDocument` をシリアライズします。
+
+```python
+serialize(document: YamlDocument, indent: int = 2, sort_keys: bool = False,
+          explicit_start: bool = False, explicit_end: bool = False,
+          max_depth: int = 1000, width: int = 80) -> str
+```
+
+`to_yaml_with_options()` の前に `on_serialize_start`、後に `on_serialize_end` を呼び出します。
+
+### コンテキストオブジェクト
+
+- `ParseContext` — 解析ライフサイクルフックに渡される（`schema`、`max_depth`、`resolve_merges`、`source`）
+- `SerializeContext` — シリアライズライフサイクルフックに渡される（`indent`、`sort_keys`）
+- `PluginInfo` — プラグインメタデータのデータクラス（`name`、`version`、`description`、`conflicts`）
+
+### `get_plugin_info()` / `list_plugin_info()`
+
+```python
+get_plugin_info(tag: str) -> PluginInfo | None
+list_plugin_info() -> list[PluginInfo]
+```
+
+エントリポイント発見で登録されたプラグインメタデータを照会します。
 
 ## :material-check-decagram: コンプライアンス
 

@@ -45,7 +45,36 @@ status: new
   ドロップイン代替で、PyYAML の代わりに pyrs-yaml（YAML 1.2 コアスキーマ）で解析します。
   遅延エクスポートされるため `import pyrs_yaml` に pydantic-settings は不要です。
   `pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+）。
-  `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されました。
+   `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されました。
+- **`sort_keys` パラメータ** — モジュールレベルの `safe_dump`、`from_dict`、
+  `dump_file` に `sort_keys` パラメータを追加。`True` 指定時、シリアライゼーション前に
+  マッピングキーをバイト順でソートします（`YAML.dump_stream(sort_keys=True)` および
+  `YamlDocument.to_yaml_with_options(sort_keys=True)` の動作と一致）。
+- **CLI 拡張** — `insert`（シーケンスの指定インデックスに挿入、`--string` フラグ対応）、
+  `set-many`（stdin から JSON オブジェクトを読み込み複数パス編集を一括適用）、
+  `get --format tree`（再帰的なパス/タイプ/値ツリー表示）を追加。
+- **`jsonschema` ガード** — `YamlDocument.validate()` が `jsonschema` 未インストール時、
+  生の `ImportError` ではなく `YamlValidateError` とインストールヒントを送出するように変更。
+- **`similar` v3** — 開発依存を v2 から v3 に更新（テスト差分出力のみ、本番影響なし）。
+- **統合タグ解決アーキテクチャ** — 新しい `TagHandler` 基底クラス
+  （`python/pyrs_yaml/_tag_handler.py`）が、以前は分離されていた `register_tag`
+  （スカラー文字列変換）と `register_type`（CustomType オブジェクト変換）の
+  API を単一の登録ポイント `register_tag_handler()` に統合します。ハンドラは
+  以下を任意の組み合わせで実装できます：`resolve()`（解析時スカラー書き換え）、
+  `from_yaml()`/`to_yaml()`（双方向型変換）、`from_yaml_mapping()`/
+  `from_yaml_sequence()`（コンテナタグ変換）、およびライフサイクルフック
+  （`on_parse_start`/`on_parse_end`/`on_serialize_start`/`on_serialize_end`）。
+  `register_tag`/`register_type` は完全な後方互換性を維持します。
+- **コンテナタグサポート** — タグ付き Mapping および Sequence ノードは、
+  AST→Python 変換時に `from_yaml_mapping`/`from_yaml_sequence` に、Python→AST
+  シリアライズ時に `to_yaml_mapping`/`to_yaml_sequence` にディスパッチされます。
+  `to_yaml_with_options()` によるラウンドトリップはコンテナタグを保持します。
+  `safe_dump`（AST コンテキストなし）は設計によりプレーンコンテナとして出力します。
+- **`serialize()` 関数** — `to_yaml_with_options()` のモジュールレベルラッパーで、
+  `on_serialize_start`/`on_serialize_end` ライフサイクルフックを発火します。
+- **プラグイン発見の強化** — `PluginInfo` データクラスに `conflicts` リストが
+  あり、エントリポイント発見中のコンフリクト検出を有効にします。
+  `get_plugin_info(tag)` と `list_plugin_info()` でプラグインメタデータを照会します。
 
 ### [v0.15.0] — 2026-08-19
 
