@@ -163,10 +163,11 @@ pyrs-yaml fmt stream.yaml -A                              # reformat every docum
 pyrs-yaml get stream.yaml '$..name' --format text -A      # query across documents
 pyrs-yaml to-json stream.yaml -A                          # JSON array of documents
 pyrs-yaml set stream.yaml "$.retries" 5 -A                # edit every document
+pyrs-yaml move stream.yaml "$.src" "$.nested" -A          # move where both paths resolve
 pyrs-yaml validate stream.yaml --schema-file s.yaml -A    # failures report "document N"
 ```
 
-Supported by `fmt`, `get`, `set`, `delete`, `rename`, `sort-keys`, `validate`, and `to-json`. Outputs are joined with standard `---` separators; edit commands apply where the path resolves and fail only when no document matches.
+Supported by `fmt`, `get`, `set`, `delete`, `rename`, `sort-keys`, `move`, `validate`, and `to-json`. Outputs are joined with standard `---` separators; edit commands apply where the path resolves and fail only when no document matches.
 
 ### Markdown front matter (`frontmatter`) { #cmd-frontmatter }
 

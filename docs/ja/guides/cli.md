@@ -163,10 +163,11 @@ pyrs-yaml fmt stream.yaml -A                              # 全ドキュメン�
 pyrs-yaml get stream.yaml '$..name' --format text -A      # ドキュメント横断でクエリ
 pyrs-yaml to-json stream.yaml -A                          # ドキュメントの JSON 配列を出力
 pyrs-yaml set stream.yaml "$.retries" 5 -A                # 全ドキュメントを編集
+pyrs-yaml move stream.yaml "$.src" "$.nested" -A          # パスが解決できるドキュメントで移動
 pyrs-yaml validate stream.yaml --schema-file s.yaml -A    # 失敗時は "document N" と報告
 ```
 
-対象コマンド: `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`validate`、`to-json`。出力は標準の `---` 区切りで連結されます。編集コマンドはパスが解決できる各ドキュメントに適用され、1 つも一致しない場合のみ失敗します。
+対象コマンド: `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`move`、`validate`、`to-json`。出力は標準の `---` 区切りで連結されます。編集コマンドはパスが解決できる各ドキュメントに適用され、1 つも一致しない場合のみ失敗します。
 
 ### Markdown フロントマター（`frontmatter`） { #cmd-frontmatter }
 
