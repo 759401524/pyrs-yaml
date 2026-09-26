@@ -57,6 +57,37 @@ pub fn parse(yaml: &str, schema: impl Into<Schema>) -> Result<CustomNode, ParseE
     parse_with_options(yaml, true, schema, 1000, false)
 }
 
+/// Drive `AstReceiver` over `yaml` with the shared error contract:
+/// parse failure, duplicate-key rejection and max-depth rejection are
+/// all mapped here so the single-document and multi-document entry
+/// points can never drift. The receiver is returned so callers can
+/// pick `result` (single) or `documents` (stream) as they need.
+fn load_ast<'a>(
+    yaml: &'a str,
+    max_depth: usize,
+    allow_duplicate_keys: bool,
+    collect_documents: bool,
+) -> Result<AstReceiver<'a>, ParseError> {
+    let raw_anchors = extract_anchors(yaml);
+    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
+    receiver.collect_documents = collect_documents;
+    let mut parser = SaphyrParser::new_from_str(yaml);
+    parser
+        .load(&mut receiver, true)
+        .map_err(|e| ParseError::Syntax {
+            message: format!("YAML parse error: {}", e),
+            line: 0,
+            col: 0,
+        })?;
+    if let Some(err) = receiver.duplicate_key_error {
+        return Err(err);
+    }
+    if receiver.max_depth_exceeded {
+        return Err(ParseError::MaxDepthExceeded(DepthError(max_depth)));
+    }
+    Ok(receiver)
+}
+
 /// 使用选项解析 YAML 字符串。
 ///
 /// # Arguments
@@ -84,29 +115,7 @@ pub fn parse_with_options(
         return Ok(CustomNode::plain_null());
     }
 
-    // Extract anchor names from raw text (granit-parser uses numeric IDs)
-    let raw_anchors = extract_anchors(yaml);
-
-    // Parse YAML using granit-parser
-    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
-    receiver.collect_documents = false;
-    let mut parser = SaphyrParser::new_from_str(yaml);
-
-    parser
-        .load(&mut receiver, true)
-        .map_err(|e| ParseError::Syntax {
-            message: format!("YAML parse error: {}", e),
-            line: 0,
-            col: 0,
-        })?;
-    // Check for duplicate key error
-    if let Some(err) = receiver.duplicate_key_error {
-        return Err(err);
-    }
-
-    if receiver.max_depth_exceeded {
-        return Err(ParseError::MaxDepthExceeded(DepthError(max_depth)));
-    }
+    let receiver = load_ast(yaml, max_depth, allow_duplicate_keys, false)?;
 
     // Get the parsed node (handle empty documents)
     let mut node = receiver.result.unwrap_or(CustomNode::plain_null());
@@ -151,27 +160,7 @@ pub fn parse_all_with_options(
         return Ok(Vec::new());
     }
 
-    let raw_anchors = extract_anchors(yaml);
-
-    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
-    let mut parser = SaphyrParser::new_from_str(yaml);
-
-    parser
-        .load(&mut receiver, true)
-        .map_err(|e| ParseError::Syntax {
-            message: format!("YAML parse error: {}", e),
-            line: 0,
-            col: 0,
-        })?;
-
-    // Check for duplicate key error
-    if let Some(err) = receiver.duplicate_key_error {
-        return Err(err);
-    }
-
-    if receiver.max_depth_exceeded {
-        return Err(ParseError::MaxDepthExceeded(DepthError(max_depth)));
-    }
+    let receiver = load_ast(yaml, max_depth, allow_duplicate_keys, true)?;
 
     // Collect all documents from receiver
     let docs = receiver.documents;
@@ -689,19 +678,21 @@ impl<'a> AstReceiver<'a> {
         self.push_node(node);
     }
 
-    /// Handle `MappingStart`: push a new mapping parse state with flow style,
-    /// anchor, tag and pending standalone comment. Extracted from `on_event`.
-    fn on_mapping_start(
+    /// Shared prologue of `MappingStart`/`SequenceStart`: depth guard, flow
+    /// detection against the expected opening bracket, anchor registration
+    /// and tag conversion. `None` means max depth was hit (flag already set).
+    fn begin_container(
         &mut self,
         anchor_id: usize,
         tag: Option<Cow<'a, granit_parser::Tag>>,
         span: Span,
-    ) {
+        expect: u8,
+    ) -> Option<(bool, usize, Option<crate::ast::Tag>)> {
         if self.stack.len() >= self.max_depth {
             self.max_depth_exceeded = true;
-            return;
+            return None;
         }
-        let flow_style = self.detect_flow_style(&span, b'{');
+        let flow_style = self.detect_flow_style(&span, expect);
         let start_byte = self.span_to_byte_range(&span).start;
 
         let standalone = self.pending_standalone_comment.take();
@@ -714,6 +705,23 @@ impl<'a> AstReceiver<'a> {
 
         let tag_obj = tag.map(|t| convert_tag(&t));
 
+        self.mapping_comment = standalone;
+        Some((flow_style, start_byte, tag_obj))
+    }
+
+    /// Handle `MappingStart`: push a new mapping parse state with flow style,
+    /// anchor, tag and pending standalone comment. Extracted from `on_event`.
+    fn on_mapping_start(
+        &mut self,
+        anchor_id: usize,
+        tag: Option<Cow<'a, granit_parser::Tag>>,
+        span: Span,
+    ) {
+        let Some((flow_style, start_byte, tag_obj)) =
+            self.begin_container(anchor_id, tag, span, b'{')
+        else {
+            return;
+        };
         self.stack.push(ParseState::Mapping {
             pairs: IndexMap::new(),
             current_key: Box::new(None),
@@ -722,8 +730,6 @@ impl<'a> AstReceiver<'a> {
             flow_style,
             start_byte,
         });
-
-        self.mapping_comment = standalone;
     }
 
     /// Handle `MappingEnd`: finalize the mapping node and push it. Extracted
@@ -778,23 +784,11 @@ impl<'a> AstReceiver<'a> {
         tag: Option<Cow<'a, granit_parser::Tag>>,
         span: Span,
     ) {
-        if self.stack.len() >= self.max_depth {
-            self.max_depth_exceeded = true;
+        let Some((flow_style, start_byte, tag_obj)) =
+            self.begin_container(anchor_id, tag, span, b'[')
+        else {
             return;
-        }
-        let flow_style = self.detect_flow_style(&span, b'[');
-        let start_byte = self.span_to_byte_range(&span).start;
-
-        let standalone = self.pending_standalone_comment.take();
-
-        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
-            let name = self.anchor_names[self.anchor_name_idx].clone();
-            self.anchor_name_idx += 1;
-            self.anchors.insert(anchor_id, name);
-        }
-
-        let tag_obj = tag.map(|t| convert_tag(&t));
-
+        };
         self.stack.push(ParseState::Sequence {
             items: Vec::new(),
             anchor_id,
@@ -802,8 +796,6 @@ impl<'a> AstReceiver<'a> {
             flow_style,
             start_byte,
         });
-
-        self.mapping_comment = standalone;
     }
 
     /// Handle `SequenceEnd`: finalize the sequence node and push it. Extracted
