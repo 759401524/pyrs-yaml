@@ -105,6 +105,22 @@ pub(crate) fn safe_load(
     allow_duplicate_keys: bool,
 ) -> PyResult<Py<PyAny>> {
     let schema_enum = parse_schema(schema)?;
+    // P3 fast path: one-pass event → Python materialization for value-only
+    // documents; anything outside its surface (anchors/tags/merges/…)
+    // falls through to the AST pipeline unchanged.
+    match crate::py::direct_load::try_direct_load(
+        py,
+        yaml,
+        &schema_enum,
+        max_depth,
+        allow_duplicate_keys,
+    ) {
+        crate::py::direct_load::DirectOutcome::Done(v) => return Ok(v),
+        crate::py::direct_load::DirectOutcome::Fail(e) => {
+            return Err(parse_error_to_py_err(e, yaml, max_depth));
+        }
+        crate::py::direct_load::DirectOutcome::Bail => {}
+    }
     let schema_clone = schema_enum.clone();
     let mut ast = py.detach(|| {
         crate::parser::parse_with_options(yaml, true, schema_clone, max_depth, allow_duplicate_keys)
