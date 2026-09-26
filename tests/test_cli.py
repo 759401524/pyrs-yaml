@@ -427,6 +427,22 @@ def test_move_wildcard_source_rejected(capsys, monkeypatch):
     assert "wildcards" in capsys.readouterr().err
 
 
+def test_move_all_docs_applies_where_paths_resolve(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "src: {v: 1}\nnested: 0\n---\nkeep: 1\nsrc: {v: 2}\nnested: 0\n")
+    run("move", "-", "$.src", "$.nested", "-A")
+    out = capsys.readouterr().out
+    assert "src:" not in out
+    assert out.count("nested:") == 2 and "v: 1" in out and "v: 2" in out
+
+
+def test_move_all_docs_unresolvable_everywhere_exits_1(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "a: 1\n---\nb: 2\n")
+    with pytest.raises(SystemExit) as exc:
+        run("move", "-", "$.src", "$.nested", "-A")
+    assert exc.value.code == 1
+    assert "no document" in capsys.readouterr().err
+
+
 MARKDOWN = "---\ntitle: Hello\nrating: 5\n---\n\nBody text.\n"
 
 

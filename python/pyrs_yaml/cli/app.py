@@ -317,6 +317,7 @@ def move_value(
     destination: str,
     *,
     inplace: INPLACE = False,
+    all_docs: ALL_DOCS = False,
 ) -> None:
     """Move a subtree to another path within the same document.
 
@@ -329,21 +330,32 @@ def move_value(
     destination:
         Absolute JSONPath the subtree is moved to. The destination node must
         already exist and its value is replaced (e.g. ``$.nested`` below).
+    all_docs:
+        Move in every document where both paths resolve; fails only when no
+        document matches.
     """
     from pyrs_yaml import Node, YamlEditError, YamlPathError
 
     for label, p in (("source", source), ("destination", destination)):
         if "*" in p or ".." in p:
             fail(f"{label} path must not contain wildcards or deep scans")
-    doc = load_document(file)
-    try:
-        found = Node(doc).find(source)
-        if isinstance(found, list):
-            fail(f"source path {source!r} matched multiple nodes")
-        found.move(destination)
-    except (YamlEditError, YamlPathError, KeyError, IndexError, ValueError) as exc:
-        fail(f"cannot move {source!r} to {destination!r}: {exc}")
-    _finish_edits([doc], file, inplace, None)
+    docs = load_documents(file) if all_docs else [load_document(file)]
+    applied = 0
+    for doc in docs:
+        try:
+            found = Node(doc).find(source)
+            if isinstance(found, list):
+                if all_docs:
+                    continue
+                fail(f"source path {source!r} matched multiple nodes")
+            found.move(destination)
+            applied += 1
+        except (YamlEditError, YamlPathError, KeyError, IndexError, ValueError) as exc:
+            if not all_docs:
+                fail(f"cannot move {source!r} to {destination!r}: {exc}")
+    if applied == 0:
+        fail(f"cannot move {source!r} to {destination!r}: no document resolves the paths")
+    _finish_edits(docs, file, inplace, None)
 
 
 @app.command(name="frontmatter")

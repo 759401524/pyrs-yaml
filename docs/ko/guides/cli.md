@@ -163,10 +163,11 @@ pyrs-yaml fmt stream.yaml -A                              # 모든 문서 재포
 pyrs-yaml get stream.yaml '$..name' --format text -A      # 문서 전역 쿼리
 pyrs-yaml to-json stream.yaml -A                          # 문서의 JSON 배열 출력
 pyrs-yaml set stream.yaml "$.retries" 5 -A                # 모든 문서 편집
+pyrs-yaml move stream.yaml "$.src" "$.nested" -A          # 경로가 해결되는 문서에서 이동
 pyrs-yaml validate stream.yaml --schema-file s.yaml -A    # 실패 시 "document N" 보고
 ```
 
-지원 명령: `fmt`, `get`, `set`, `delete`, `rename`, `sort-keys`, `validate`, `to-json`. 출력은 표준 `---` 구분자로 연결됩니다. 편집 명령은 경로가 해석되는 각 문서에 적용되며, 어느 문서에서도 일치하지 않을 때만 실패합니다.
+지원 명령: `fmt`, `get`, `set`, `delete`, `rename`, `sort-keys`, `move`, `validate`, `to-json`. 출력은 표준 `---` 구분자로 연결됩니다. 편집 명령은 경로가 해석되는 각 문서에 적용되며, 어느 문서에서도 일치하지 않을 때만 실패합니다.
 
 ### Markdown 프론트매터(`frontmatter`) { #cmd-frontmatter }
 

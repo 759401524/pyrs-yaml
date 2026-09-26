@@ -163,10 +163,11 @@ pyrs-yaml fmt stream.yaml -A                              # 重新格式化每�
 pyrs-yaml get stream.yaml '$..name' --format text -A      # 跨文档查询
 pyrs-yaml to-json stream.yaml -A                          # 输出文档 JSON 数组
 pyrs-yaml set stream.yaml "$.retries" 5 -A                # 编辑每个文档
+pyrs-yaml move stream.yaml "$.src" "$.nested" -A          # 在两端路径可解析的文档上移动
 pyrs-yaml validate stream.yaml --schema-file s.yaml -A    # 失败时报 "document N"
 ```
 
-支持 `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`validate` 与 `to-json`。输出以标准 `---` 分隔符连接；编辑命令在路径可解析的文档上生效，仅当无任何文档匹配时失败。
+支持 `fmt`、`get`、`set`、`delete`、`rename`、`sort-keys`、`move`、`validate` 与 `to-json`。输出以标准 `---` 分隔符连接；编辑命令在路径可解析的文档上生效，仅当无任何文档匹配时失败。
 
 ### Markdown front matter（`frontmatter`） { #cmd-frontmatter }
 
