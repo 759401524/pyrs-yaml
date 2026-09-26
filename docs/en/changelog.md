@@ -89,6 +89,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Performance
 
+- **Direct event→Python load materialization** — `safe_load`, `safe_loads`
+  and `YAML().safe_load*` build Python objects in one pass over the granit
+  event stream instead of constructing the full AST and walking it again in
+  `convert.rs`; schema resolution, raw-text mapping keys and duplicate-key
+  errors stay identical. Anchored/tagged/merge/multi-document shapes fall
+  back via zero-cost pre-vetoes. WSL wall-time: scalar-heavy `safe_load`
+  −21~25%, family overall −13~18%, fallbacks unchanged.
 - **Anchor extraction byte gate** — `extract_anchors` returns empty after a
   single `&` byte-containment check; anchor-free documents skip the
   per-character quote state machine. Rust-side `parse_*` benches improve

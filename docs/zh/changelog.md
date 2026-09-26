@@ -69,6 +69,12 @@ status: new
 
 #### 性能
 
+- **事件流→Python 对象的直接物化** — `safe_load`、`safe_loads`、
+  `YAML().safe_load*` 现在单次遍历 granit 事件流直接构建 Python 对象，
+  不再先建完整 AST 再在 `convert.rs` 中二次遍历；schema 解析、原文映射
+  键与重复键报错语义完全一致。带锚点/tag/merge/多文档的输入经零成本
+  预否决回退 AST 管线。WSL 实测：标量密集 `safe_load` −21~25%，
+  家族整体 −13~18%，回退形态不变。
 - **锚点提取字节门控** — `extract_anchors` 先做一次 `&` 字节包含检查，无锚点文档
   直接返回空，整体跳过逐字符引号状态机。Rust 侧 `parse_*` 基准中位数提升 11–18%，
   扫描本身从 1.5µs 降至 38ns。
