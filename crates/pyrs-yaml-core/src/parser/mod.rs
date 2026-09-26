@@ -630,13 +630,17 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
 }
 
 impl<'a> AstReceiver<'a> {
-    /// Handle `DocumentEnd`: snapshot the completed document for multi-doc
-    /// collection. Extracted from `on_event`.
+    /// Handle `DocumentEnd`: move the completed document into the multi-doc
+    /// collection. Ownership is *moved* (not cloned): the next document
+    /// rebuilds `result` from scratch, and `parse_all_with_options` reads the
+    /// documents list — so a per-document deep clone would be pure overhead.
+    /// When `DocumentEnd` never fires, `result` is untouched and the
+    /// empty-`documents` fallback in the callers still applies.
     fn on_document_end(&mut self) {
         if self.collect_documents
-            && let Some(ref doc) = self.result
+            && let Some(doc) = self.result.take()
         {
-            self.documents.push(doc.clone());
+            self.documents.push(doc);
         }
     }
 
@@ -961,6 +965,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The multi-doc collection path moves each finished document out of
+    /// `result` (no deep clone). Every document must still arrive intact and
+    /// in order, and no state may leak between documents.
+    #[test]
+    fn test_parse_all_moves_documents_intact() {
+        let yaml = "first: 1\n# c\n---\nsecond: [a, b]\n---\nthird: &t x\nfourth: *t\n";
+        let docs = parse_all(yaml, YamlSchema::Core).unwrap();
+        assert_eq!(docs.len(), 3);
+        // doc 1: single mapping entry
+        let CustomNode::Mapping { pairs, .. } = &docs[0] else {
+            panic!("doc0")
+        };
+        assert_eq!(pairs.len(), 1);
+        let CustomNode::Scalar {
+            value: key_value, ..
+        } = pairs.keys().next().unwrap()
+        else {
+            panic!("doc0 key")
+        };
+        assert_eq!(key_value.as_ref(), "first");
+        // doc 2: mapping with a 2-item sequence
+        let CustomNode::Mapping { pairs, .. } = &docs[1] else {
+            panic!("doc1")
+        };
+        assert_eq!(pairs.len(), 1);
+        let CustomNode::Sequence { items, .. } = pairs.values().next().unwrap() else {
+            panic!("doc1 seq")
+        };
+        assert_eq!(items.len(), 2);
+        // doc 3: anchor + alias preserved through the move
+        let CustomNode::Mapping { pairs, .. } = &docs[2] else {
+            panic!("doc2")
+        };
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs.values().next().unwrap().anchor(), Some("t"));
+        assert!(matches!(
+            pairs.values().nth(1).unwrap(),
+            CustomNode::Alias { .. }
+        ));
     }
 
     #[test]

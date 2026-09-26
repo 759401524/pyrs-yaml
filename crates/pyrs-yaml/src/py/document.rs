@@ -488,43 +488,11 @@ impl YamlDocument {
         value: Py<PyAny>,
         create_missing: bool,
     ) -> PyResult<()> {
-        let segs: Vec<editing::Segment<'_>> = segments
-            .iter()
-            .map(|s| editing::Segment::from_py(s.bind(py)))
-            .collect::<Result<Vec<_>, pyo3::PyErr>>()
-            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        let segs = parse_segments(py, &segments)?;
         let new_node = pyobject_to_node(py, &value)?;
-        py.detach(|| -> Result<(), String> {
-            let src = self.source.as_deref().unwrap_or("");
-            Self::ensure_splice(
-                &mut self.splice,
-                &mut self.splice_checked,
-                &self.ast,
-                &self.source,
-            );
-            let unit = {
-                let offsets = self.splice.as_mut().map(|s| s.line_offsets());
-                editing::set_path(
-                    &mut self.ast,
-                    &segs,
-                    new_node,
-                    true,
-                    src,
-                    offsets,
-                    create_missing,
-                )?
-            };
-            if let Some(state) = self.splice.as_mut()
-                && state.apply(&unit).is_err()
-            {
-                self.splice = None;
-            }
-            Ok(())
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_path(ast, &segs, new_node, true, src, offs, create_missing)
         })
-        .map_err(|e| YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)])))?;
-        self.revision = self.revision.wrapping_add(1);
-        self.source_dirty = true;
-        Ok(())
     }
 
     /// Insert a value by path (internal, inserts at a sequence position).
@@ -536,35 +504,11 @@ impl YamlDocument {
         index: i64,
         value: Py<PyAny>,
     ) -> PyResult<()> {
-        let segs: Vec<editing::Segment<'_>> = segments
-            .iter()
-            .map(|s| editing::Segment::from_py(s.bind(py)))
-            .collect::<Result<Vec<_>, pyo3::PyErr>>()
-            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        let segs = parse_segments(py, &segments)?;
         let new_node = pyobject_to_node(py, &value)?;
-        py.detach(|| -> Result<(), String> {
-            let src = self.source.as_deref().unwrap_or("");
-            Self::ensure_splice(
-                &mut self.splice,
-                &mut self.splice_checked,
-                &self.ast,
-                &self.source,
-            );
-            let unit = {
-                let offsets = self.splice.as_mut().map(|s| s.line_offsets());
-                editing::insert_path(&mut self.ast, &segs, index, new_node, src, offsets)?
-            };
-            if let Some(state) = self.splice.as_mut()
-                && state.apply(&unit).is_err()
-            {
-                self.splice = None;
-            }
-            Ok(())
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::insert_path(ast, &segs, index, new_node, src, offs)
         })
-        .map_err(|e| YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)])))?;
-        self.revision = self.revision.wrapping_add(1);
-        self.source_dirty = true;
-        Ok(())
     }
 
     /// Append a value by path (internal, appends to a sequence).
@@ -575,68 +519,20 @@ impl YamlDocument {
         segments: Vec<Py<PyAny>>,
         value: Py<PyAny>,
     ) -> PyResult<()> {
-        let segs: Vec<editing::Segment<'_>> = segments
-            .iter()
-            .map(|s| editing::Segment::from_py(s.bind(py)))
-            .collect::<Result<Vec<_>, pyo3::PyErr>>()
-            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        let segs = parse_segments(py, &segments)?;
         let new_node = pyobject_to_node(py, &value)?;
-        py.detach(|| -> Result<(), String> {
-            let src = self.source.as_deref().unwrap_or("");
-            Self::ensure_splice(
-                &mut self.splice,
-                &mut self.splice_checked,
-                &self.ast,
-                &self.source,
-            );
-            let unit = {
-                let offsets = self.splice.as_mut().map(|s| s.line_offsets());
-                editing::append_path(&mut self.ast, &segs, new_node, src, offsets)?
-            };
-            if let Some(state) = self.splice.as_mut()
-                && state.apply(&unit).is_err()
-            {
-                self.splice = None;
-            }
-            Ok(())
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::append_path(ast, &segs, new_node, src, offs)
         })
-        .map_err(|e| YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)])))?;
-        self.revision = self.revision.wrapping_add(1);
-        self.source_dirty = true;
-        Ok(())
     }
 
     /// Delete a node by path (internal, called by `__delitem__`).
     #[pyo3(signature = (segments: "list") -> "None")]
     fn _delete_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
-        let segs: Vec<editing::Segment<'_>> = segments
-            .iter()
-            .map(|s| editing::Segment::from_py(s.bind(py)))
-            .collect::<Result<Vec<_>, pyo3::PyErr>>()
-            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-        py.detach(|| -> Result<(), String> {
-            let src = self.source.as_deref().unwrap_or("");
-            Self::ensure_splice(
-                &mut self.splice,
-                &mut self.splice_checked,
-                &self.ast,
-                &self.source,
-            );
-            let unit = {
-                let offsets = self.splice.as_mut().map(|s| s.line_offsets());
-                editing::delete_path(&mut self.ast, &segs, src, offsets)?
-            };
-            if let Some(state) = self.splice.as_mut()
-                && state.apply(&unit).is_err()
-            {
-                self.splice = None;
-            }
-            Ok(())
+        let segs = parse_segments(py, &segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::delete_path(ast, &segs, src, offs)
         })
-        .map_err(|e| YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)])))?;
-        self.revision = self.revision.wrapping_add(1);
-        self.source_dirty = true;
-        Ok(())
     }
 
     /// Rename a mapping key by path (internal).
@@ -647,34 +543,11 @@ impl YamlDocument {
         segments: Vec<Py<PyAny>>,
         new_key: &str,
     ) -> PyResult<()> {
-        let segs: Vec<editing::Segment<'_>> = segments
-            .iter()
-            .map(|s| editing::Segment::from_py(s.bind(py)))
-            .collect::<Result<Vec<_>, pyo3::PyErr>>()
-            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
-        py.detach(|| -> Result<(), String> {
-            let src = self.source.as_deref().unwrap_or("");
-            Self::ensure_splice(
-                &mut self.splice,
-                &mut self.splice_checked,
-                &self.ast,
-                &self.source,
-            );
-            let unit = {
-                let offsets = self.splice.as_mut().map(|s| s.line_offsets());
-                editing::rename_path(&mut self.ast, &segs, new_key, src, offsets)?
-            };
-            if let Some(state) = self.splice.as_mut()
-                && state.apply(&unit).is_err()
-            {
-                self.splice = None;
-            }
-            Ok(())
+        let segs = parse_segments(py, &segments)?;
+        let new_key = new_key.to_owned();
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::rename_path(ast, &segs, &new_key, src, offs)
         })
-        .map_err(|e| YamlEditError::new_err(format_i18n_error("edit-error", &[("detail", &e)])))?;
-        self.revision = self.revision.wrapping_add(1);
-        self.source_dirty = true;
-        Ok(())
     }
 
     // --- Metadata (comment / anchor / tag) path-based setters ---
@@ -977,27 +850,31 @@ impl YamlDocument {
     #[pyo3(signature = (schema: "str | dict[str, Any]") -> "None")]
     fn validate(&self, py: Python, schema: &Bound<'_, PyAny>) -> PyResult<()> {
         let instance = self.to_dict(py)?;
-        let schema_obj: Bound<'_, PyAny> = if let Ok(schema_str) = schema.extract::<String>() {
+
+        // Repeated validation against the same schema dominates the cost:
+        // jsonschema.validate() re-parses/re-checks the schema and rebuilds
+        // the validator on every call. A first successful call caches a
+        // compiled validator. str schemas are keyed by (immutable) text; dict
+        // schemas by object identity plus a deep-copy snapshot compared with
+        // `==` on each hit, so a mutated dict safely falls back to recompiling.
+        if let Some(validator) = cached_validator_hit(py, schema)? {
+            return run_cached_validator(py, &validator, instance.bind(py));
+        }
+
+        if let Ok(schema_str) = schema.extract::<String>() {
             let json_module = py.import("json")?;
-            json_module.call_method("loads", (schema_str,), None)?
-        } else {
-            schema.clone()
-        };
-        let jsonschema = py.import("jsonschema")?;
-        let validate_fn = jsonschema.getattr("validate")?;
-        let kw = PyDict::new(py);
-        kw.set_item("instance", instance)?;
-        kw.set_item("schema", schema_obj)?;
-        validate_fn.call((), Some(&kw)).map_err(|e| {
-            let msg = e
-                .value(py)
-                .getattr("message")
-                .ok()
-                .and_then(|m| m.extract::<String>().ok())
-                .unwrap_or_else(|| e.to_string());
-            YamlValidateError::new_err(msg)
-        })?;
-        Ok(())
+            let parsed = json_module.call_method("loads", (schema_str.clone(),), None)?;
+            let result = run_jsonschema_validate(py, instance.bind(py), &parsed);
+            if result.is_ok() {
+                cache_validator(py, ValidatorKey::Text(schema_str), &parsed)?;
+            }
+            return result;
+        }
+        let result = run_jsonschema_validate(py, instance.bind(py), schema);
+        if result.is_ok() {
+            cache_validator(py, ValidatorKey::Id(schema.as_ptr() as usize), schema)?;
+        }
+        result
     }
 
     /// Enter a transaction scope: snapshot AST + splice state. `with doc:` exits cleanly
@@ -1045,6 +922,155 @@ use crate::YamlTagError;
 use crate::YamlTypeError;
 use crate::YamlValidateError;
 
+/// Cache key for compiled jsonschema validators: immutable schema text, or
+/// object identity for dict schemas. Identity entries also hold strong
+/// references (below), so an address can never be recycled underneath a
+/// live entry; content mutation is caught by the pristine snapshot compare.
+#[derive(PartialEq, Eq, Hash)]
+enum ValidatorKey {
+    Text(String),
+    Id(usize),
+}
+
+struct CachedValidator {
+    /// Strong reference keeping the keyed object alive (prevents ABA on `Id`
+    /// keys: the address cannot be recycled while this reference exists).
+    /// Never read beyond being dropped.
+    #[allow(dead_code)]
+    original: Py<PyAny>,
+    /// Deep-copy snapshot of the schema at compile time; `==` against the
+    /// live schema on each hit detects in-place mutation.
+    pristine: Py<PyAny>,
+    validator: Py<PyAny>,
+}
+
+static VALIDATOR_CACHE: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<ValidatorKey, CachedValidator>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Return the compiled validator for `schema` if a cache entry exists and
+/// its pristine snapshot still equals the live schema.
+fn cached_validator_hit(py: Python, schema: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
+    if let Ok(schema_str) = schema.extract::<String>() {
+        let guard = match VALIDATOR_CACHE.lock() {
+            Ok(g) => g,
+            Err(_) => return Ok(None),
+        };
+        return Ok(guard
+            .get(&ValidatorKey::Text(schema_str))
+            .map(|e| e.validator.clone_ref(py)));
+    }
+    let key = ValidatorKey::Id(schema.as_ptr() as usize);
+    // Clone the snapshot handle out and release the lock *before* running
+    // `__eq__`: comparing dicts can execute arbitrary Python (custom dict
+    // subclasses), which must not re-enter with the global lock held.
+    let snapshot = {
+        let guard = match VALIDATOR_CACHE.lock() {
+            Ok(g) => g,
+            Err(_) => return Ok(None),
+        };
+        guard
+            .get(&key)
+            .map(|e| (e.pristine.clone_ref(py), e.validator.clone_ref(py)))
+    };
+    match snapshot {
+        Some((pristine, validator)) if pristine.bind(py).eq(schema)? => Ok(Some(validator)),
+        _ => Ok(None),
+    }
+}
+
+/// Map a jsonschema exception to `YamlValidateError`, preserving the
+/// historical "use `.message` when present" behavior.
+fn jsonschema_error(py: Python, e: pyo3::PyErr) -> pyo3::PyErr {
+    let msg = e
+        .value(py)
+        .getattr("message")
+        .ok()
+        .and_then(|m| m.extract::<String>().ok())
+        .unwrap_or_else(|| e.to_string());
+    YamlValidateError::new_err(msg)
+}
+
+fn run_jsonschema_validate(
+    py: Python,
+    instance: &Bound<'_, PyAny>,
+    schema_obj: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let jsonschema = py.import("jsonschema")?;
+    let validate_fn = jsonschema.getattr("validate")?;
+    let kw = PyDict::new(py);
+    kw.set_item("instance", instance)?;
+    kw.set_item("schema", schema_obj)?;
+    validate_fn
+        .call((), Some(&kw))
+        .map_err(|e| jsonschema_error(py, e))?;
+    Ok(())
+}
+
+/// Run a cached validator with semantics identical to
+/// `jsonschema.validate()` for an already meta-checked schema: raise
+/// `exceptions.best_match(validator.iter_errors(instance))` when non-None.
+fn run_cached_validator(
+    py: Python,
+    validator: &Py<PyAny>,
+    instance: &Bound<'_, PyAny>,
+) -> PyResult<()> {
+    let errors = validator
+        .bind(py)
+        .call_method1("iter_errors", (instance,))?;
+    let exceptions = py.import("jsonschema.exceptions")?;
+    let best = exceptions.call_method1("best_match", (errors,))?;
+    if best.is_none() {
+        return Ok(());
+    }
+    Err(jsonschema_error(py, pyo3::PyErr::from_value(best)))
+}
+
+/// Build and cache `validator_for(schema)(schema)` after a successful
+/// validation, keyed by `key`, with a deep-copy snapshot for mutation
+/// detection and a strong reference keeping identity keys stable.
+fn cache_validator(py: Python, key: ValidatorKey, schema_obj: &Bound<'_, PyAny>) -> PyResult<()> {
+    let jsonschema = py.import("jsonschema.validators")?;
+    let cls = jsonschema.call_method("validator_for", (schema_obj,), None)?;
+    let validator = cls.call1((schema_obj,))?;
+    let pristine = py
+        .import("copy")?
+        .call_method1("deepcopy", (schema_obj,))?
+        .unbind();
+    let entry = CachedValidator {
+        original: schema_obj.clone().unbind(),
+        pristine,
+        validator: validator.unbind(),
+    };
+    let Ok(mut guard) = VALIDATOR_CACHE.lock() else {
+        return Ok(());
+    };
+    if guard.len() >= 64 {
+        guard.clear();
+    }
+    guard.insert(key, entry); // same-identity re-validation overwrites in place
+    Ok(())
+}
+
+/// Coerce a Python `str | bytes` argument into an owned `String`.
+pub(crate) fn coerce_str_or_bytes(yaml: &Bound<'_, PyAny>) -> PyResult<String> {
+    if let Ok(s) = yaml.extract::<String>() {
+        return Ok(s);
+    }
+    if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
+        return String::from_utf8(bytes).map_err(|e| {
+            YamlParseError::new_err(format_i18n_error(
+                "invalid-utf8",
+                &[("detail", &e.to_string())],
+            ))
+        });
+    }
+    Err(YamlTypeError::new_err(format_i18n_error(
+        "expected-str-or-bytes",
+        &[],
+    )))
+}
+
 pub(crate) fn parse_document(
     py: Python,
     yaml: &Bound<'_, PyAny>,
@@ -1053,21 +1079,7 @@ pub(crate) fn parse_document(
     max_depth: usize,
     allow_duplicate_keys: bool,
 ) -> PyResult<YamlDocument> {
-    let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
-        s
-    } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
-        String::from_utf8(bytes).map_err(|e| {
-            YamlParseError::new_err(format_i18n_error(
-                "invalid-utf8",
-                &[("detail", &e.to_string())],
-            ))
-        })?
-    } else {
-        return Err(YamlTypeError::new_err(format_i18n_error(
-            "expected-str-or-bytes",
-            &[],
-        )));
-    };
+    let yaml_str: String = coerce_str_or_bytes(yaml)?;
 
     let schema_enum = parse_schema(schema)?;
     let schema_clone = schema_enum.clone();

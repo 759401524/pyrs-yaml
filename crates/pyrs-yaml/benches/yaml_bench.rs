@@ -32,9 +32,12 @@ features:
   rate_limit: false
 "#;
 
-const LARGE_YAML: &str = r#"
-# Large YAML document for benchmarking
-items:
+// Shared fixtures for the LARGE_* documents below. Each macro expands to a
+// string literal so the variants can `concat!` them, keeping every byte
+// (including newlines) identical to the hand-written originals.
+macro_rules! items_block {
+    () => {
+        r#"items:
   - name: item_001
     value: 100
     tags: [alpha, beta]
@@ -66,7 +69,13 @@ items:
       created: 2024-01-05
       author: test
 
-config:
+"#
+    };
+}
+
+macro_rules! config_block {
+    () => {
+        r#"config:
   debug: false
   verbose: true
   limits:
@@ -74,8 +83,30 @@ config:
     request_timeout: 30
     idle_timeout: 300
 
-# Comment before mapping
-database:
+"#
+    };
+}
+
+/// Same as `config_block!` but with a merge key on `defaults`.
+macro_rules! config_merge_block {
+    () => {
+        concat!(
+            "config:\n",
+            "  <<: *defaults\n",
+            "  debug: false\n",
+            "  verbose: true\n",
+            "  limits:\n",
+            "    max_connections: 100\n",
+            "    request_timeout: 30\n",
+            "    idle_timeout: 300\n",
+            "\n",
+        )
+    };
+}
+
+macro_rules! database_block {
+    () => {
+        r#"database:
   primary:
     host: primary.db.local
     port: 5432
@@ -88,7 +119,17 @@ database:
     host: cache.db.local
     port: 6379
     ttl: 3600
-"#;
+"#
+    };
+}
+
+const LARGE_YAML: &str = concat!(
+    "\n# Large YAML document for benchmarking\n",
+    items_block!(),
+    config_block!(),
+    "# Comment before mapping\n",
+    database_block!(),
+);
 
 const ANCHOR_YAML: &str = r#"
 defaults: &defaults
@@ -138,125 +179,21 @@ folded: >
 
 /// LARGE_YAML with the two comment lines removed. No `#`, no `&`:
 /// exercises the extraction fast path (skips the full-text scan).
-const LARGE_NO_EXTRACT_YAML: &str = r#"
-items:
-  - name: item_001
-    value: 100
-    tags: [alpha, beta]
-    metadata:
-      created: 2024-01-01
-      author: test
-  - name: item_002
-    value: 200
-    tags: [gamma, delta]
-    metadata:
-      created: 2024-01-02
-      author: test
-  - name: item_003
-    value: 300
-    tags: [epsilon, zeta]
-    metadata:
-      created: 2024-01-03
-      author: test
-  - name: item_004
-    value: 400
-    tags: [eta, theta]
-    metadata:
-      created: 2024-01-04
-      author: test
-  - name: item_005
-    value: 500
-    tags: [iota, kappa]
-    metadata:
-      created: 2024-01-05
-      author: test
-
-config:
-  debug: false
-  verbose: true
-  limits:
-    max_connections: 100
-    request_timeout: 30
-    idle_timeout: 300
-
-database:
-  primary:
-    host: primary.db.local
-    port: 5432
-    replicas:
-      - host: replica1.db.local
-        port: 5433
-      - host: replica2.db.local
-        port: 5434
-  cache:
-    host: cache.db.local
-    port: 6379
-    ttl: 3600
-"#;
+const LARGE_NO_EXTRACT_YAML: &str =
+    concat!("\n", items_block!(), config_block!(), database_block!(),);
 
 /// LARGE_YAML with a defaults anchor + merge keys added: exercises the
 /// full merge resolution path (contrast with parse_large fast path).
-const LARGE_MERGE_YAML: &str = r#"
-defaults: &defaults
-  timeout: 30
-  retries: 3
-  pool_size: 10
-
-items:
-  - name: item_001
-    value: 100
-    tags: [alpha, beta]
-    metadata:
-      created: 2024-01-01
-      author: test
-  - name: item_002
-    value: 200
-    tags: [gamma, delta]
-    metadata:
-      created: 2024-01-02
-      author: test
-  - name: item_003
-    value: 300
-    tags: [epsilon, zeta]
-    metadata:
-      created: 2024-01-03
-      author: test
-  - name: item_004
-    value: 400
-    tags: [eta, theta]
-    metadata:
-      created: 2024-01-04
-      author: test
-  - name: item_005
-    value: 500
-    tags: [iota, kappa]
-    metadata:
-      created: 2024-01-05
-      author: test
-
-config:
-  <<: *defaults
-  debug: false
-  verbose: true
-  limits:
-    max_connections: 100
-    request_timeout: 30
-    idle_timeout: 300
-
-database:
-  primary:
-    host: primary.db.local
-    port: 5432
-    replicas:
-      - host: replica1.db.local
-        port: 5433
-      - host: replica2.db.local
-        port: 5434
-  cache:
-    host: cache.db.local
-    port: 6379
-    ttl: 3600
-"#;
+const LARGE_MERGE_YAML: &str = concat!(
+    "\ndefaults: &defaults\n",
+    "  timeout: 30\n",
+    "  retries: 3\n",
+    "  pool_size: 10\n",
+    "\n",
+    items_block!(),
+    config_merge_block!(),
+    database_block!(),
+);
 
 fn main() {
     divan::main();
@@ -307,6 +244,40 @@ fn parse_large_with_merges() -> pyrs_yaml::ast::CustomNode {
 }
 
 // ── Parse sub-step micro-benchmarks (decompose parse cost) ──
+
+/// Receiver that only counts events: isolates granit's tokenizer/parser cost
+/// from our AstReceiver's CustomNode construction.
+struct CountReceiver {
+    count: usize,
+}
+
+impl<'a> granit_parser::SpannedEventReceiver<'a> for CountReceiver {
+    fn on_event(&mut self, _event: granit_parser::Event<'a>, _span: granit_parser::Span) {
+        self.count += 1;
+    }
+}
+
+fn granit_event_count(yaml: &str) -> usize {
+    let mut receiver = CountReceiver { count: 0 };
+    let mut parser = granit_parser::Parser::new_from_str(yaml);
+    parser.load(&mut receiver, true).ok();
+    receiver.count
+}
+
+#[divan::bench]
+fn granit_events_small() -> usize {
+    granit_event_count(SMALL_YAML)
+}
+
+#[divan::bench]
+fn granit_events_medium() -> usize {
+    granit_event_count(MEDIUM_YAML)
+}
+
+#[divan::bench]
+fn granit_events_large() -> usize {
+    granit_event_count(LARGE_YAML)
+}
 
 /// Anchor extraction scan only (the `#`/`&` full-text scan before granit parse).
 #[divan::bench]
@@ -550,39 +521,33 @@ fn make_large_doc(approx_bytes: usize) -> String {
     yaml
 }
 
-#[divan::bench]
-fn serialize_10mb(bencher: divan::Bencher) {
-    let yaml = make_large_doc(10 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+fn key(k: &str) -> Segment<'_> {
+    Segment::Key(std::borrow::Cow::Borrowed(k))
+}
+
+fn parse_doc(yaml: &str) -> CustomNode {
+    pyrs_yaml::parser::parse(yaml, YamlSchema::Core).unwrap()
+}
+
+/// Shared bodies for the large/complex document benches: the measured
+/// operation is identical, only the fixture generator differs.
+fn bench_serialize(bencher: divan::Bencher, yaml: String) {
+    let ast = parse_doc(&yaml);
     bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
 }
 
-#[divan::bench]
-fn clone_ast_10mb(bencher: divan::Bencher) {
-    let yaml = make_large_doc(10 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
-    bencher.bench(|| ast.clone());
-}
-
-#[divan::bench]
-fn serialize_with_clone_10mb(bencher: divan::Bencher) {
-    let yaml = make_large_doc(10 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+fn bench_serialize_with_clone(bencher: divan::Bencher, yaml: String) {
+    let ast = parse_doc(&yaml);
     bencher.bench(|| {
         let a = ast.clone();
         pyrs_yaml::serializer::to_yaml(&a)
     });
 }
 
-#[divan::bench]
-fn edit_flush_set_10mb(bencher: divan::Bencher) {
-    let yaml = make_large_doc(10 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+fn bench_edit_flush_set(bencher: divan::Bencher, yaml: String) {
+    let ast = parse_doc(&yaml);
     let source: Arc<str> = Arc::from(yaml);
-    let segs = vec![
-        Segment::Key(std::borrow::Cow::Borrowed("group_000")),
-        Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
-    ];
+    let segs = vec![key("group_000"), key("key_0000")];
     let new_value = CustomNode::plain_scalar("zzz");
     bencher.bench(|| {
         let mut a = ast.clone();
@@ -598,38 +563,45 @@ fn edit_flush_set_10mb(bencher: divan::Bencher) {
 }
 
 #[divan::bench]
+fn serialize_10mb(bencher: divan::Bencher) {
+    bench_serialize(bencher, make_large_doc(10 * 1024 * 1024));
+}
+
+#[divan::bench]
+fn clone_ast_10mb(bencher: divan::Bencher) {
+    let yaml = make_large_doc(10 * 1024 * 1024);
+    let ast = parse_doc(&yaml);
+    bencher.bench(|| ast.clone());
+}
+
+#[divan::bench]
+fn serialize_with_clone_10mb(bencher: divan::Bencher) {
+    bench_serialize_with_clone(bencher, make_large_doc(10 * 1024 * 1024));
+}
+
+#[divan::bench]
+fn edit_flush_set_10mb(bencher: divan::Bencher) {
+    bench_edit_flush_set(bencher, make_large_doc(10 * 1024 * 1024));
+}
+
+#[divan::bench]
 fn edit_flush_burst5_10mb(bencher: divan::Bencher) {
     let yaml = make_large_doc(10 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
+    let ast = parse_doc(&yaml);
     let source: Arc<str> = Arc::from(yaml);
     let targets = [
-        (
-            Segment::Key(std::borrow::Cow::Borrowed("group_000")),
-            Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
-        ),
-        (
-            Segment::Key(std::borrow::Cow::Borrowed("group_000")),
-            Segment::Key(std::borrow::Cow::Borrowed("key_0001")),
-        ),
-        (
-            Segment::Key(std::borrow::Cow::Borrowed("group_001")),
-            Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
-        ),
-        (
-            Segment::Key(std::borrow::Cow::Borrowed("group_001")),
-            Segment::Key(std::borrow::Cow::Borrowed("key_0001")),
-        ),
-        (
-            Segment::Key(std::borrow::Cow::Borrowed("group_002")),
-            Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
-        ),
+        ("group_000", "key_0000"),
+        ("group_000", "key_0001"),
+        ("group_001", "key_0000"),
+        ("group_001", "key_0001"),
+        ("group_002", "key_0000"),
     ];
     let new_value = CustomNode::plain_scalar("zzz");
     bencher.bench(|| {
         let mut a = ast.clone();
         let mut state = SpliceState::new(source.clone());
         for (g, k) in &targets {
-            let segs = vec![g.clone(), k.clone()];
+            let segs = vec![key(g), key(k)];
             if let Ok(unit) =
                 editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
                 && unit.eligible
@@ -670,42 +642,17 @@ fn make_complex_doc(approx_bytes: usize) -> String {
 
 #[divan::bench]
 fn serialize_complex_2mb(bencher: divan::Bencher) {
-    let yaml = make_complex_doc(2 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
-    bencher.bench(|| pyrs_yaml::serializer::to_yaml(&ast));
+    bench_serialize(bencher, make_complex_doc(2 * 1024 * 1024));
 }
 
 #[divan::bench]
 fn serialize_with_clone_complex_2mb(bencher: divan::Bencher) {
-    let yaml = make_complex_doc(2 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
-    bencher.bench(|| {
-        let a = ast.clone();
-        pyrs_yaml::serializer::to_yaml(&a)
-    });
+    bench_serialize_with_clone(bencher, make_complex_doc(2 * 1024 * 1024));
 }
 
 #[divan::bench]
 fn edit_flush_set_complex_2mb(bencher: divan::Bencher) {
-    let yaml = make_complex_doc(2 * 1024 * 1024);
-    let ast = pyrs_yaml::parser::parse(&yaml, YamlSchema::Core).unwrap();
-    let source: Arc<str> = Arc::from(yaml);
-    let segs = vec![
-        Segment::Key(std::borrow::Cow::Borrowed("group_000")),
-        Segment::Key(std::borrow::Cow::Borrowed("key_0000")),
-    ];
-    let new_value = CustomNode::plain_scalar("zzz");
-    bencher.bench(|| {
-        let mut a = ast.clone();
-        let mut state = SpliceState::new(source.clone());
-        if let Ok(unit) =
-            editing::set_path(&mut a, &segs, new_value.clone(), true, &source, None, false)
-            && unit.eligible
-        {
-            state.apply(&unit).ok();
-        }
-        state.materialize();
-    });
+    bench_edit_flush_set(bencher, make_complex_doc(2 * 1024 * 1024));
 }
 
 // ── D4: Walk/Scalars benchmarks (Rust-backed AST traversal) ──

@@ -12,7 +12,21 @@ pub mod segment_py;
 use crate::ast::CustomNode;
 use crate::parser::yaml::compute_line_offsets;
 use indexmap::IndexMap;
+use std::borrow::Cow;
 use std::ops::Range;
+
+/// Use the caller's precomputed line-offset table, or compute one from
+/// `source` when not supplied. Borrowing avoids re-scanning the source on
+/// every edit inside a splice burst.
+fn resolve_line_offsets<'a>(
+    line_offsets: Option<&'a [usize]>,
+    source: &'a str,
+) -> Cow<'a, [usize]> {
+    match line_offsets {
+        Some(offs) => Cow::Borrowed(offs),
+        None => Cow::Owned(compute_line_offsets(source)),
+    }
+}
 
 pub fn set_path(
     node: &mut CustomNode,
@@ -26,14 +40,8 @@ pub fn set_path(
     if segments.is_empty() {
         return set_path_root(node, new_value, source);
     }
-    let computed;
-    let line_offsets: &[usize] = match line_offsets {
-        Some(offs) => offs,
-        None => {
-            computed = compute_line_offsets(source);
-            &computed
-        }
-    };
+    let offsets = resolve_line_offsets(line_offsets, source);
+    let line_offsets: &[usize] = &offsets;
 
     if matches!(node, CustomNode::Null { .. }) {
         *node = CustomNode::Mapping {
@@ -354,14 +362,8 @@ pub fn insert_path(
     source: &str,
     line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let computed;
-    let line_offsets: &[usize] = match line_offsets {
-        Some(offs) => offs,
-        None => {
-            computed = compute_line_offsets(source);
-            &computed
-        }
-    };
+    let offsets = resolve_line_offsets(line_offsets, source);
+    let line_offsets: &[usize] = &offsets;
     let depth = segments.len().saturating_sub(1);
     let eligible = path_eligible(node, segments)?;
     let seq = navigate_mut(node, segments).map_err(|e| e.to_string())?;
@@ -425,14 +427,8 @@ pub fn append_path(
     source: &str,
     line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let computed;
-    let line_offsets: &[usize] = match line_offsets {
-        Some(offs) => offs,
-        None => {
-            computed = compute_line_offsets(source);
-            &computed
-        }
-    };
+    let offsets = resolve_line_offsets(line_offsets, source);
+    let line_offsets: &[usize] = &offsets;
     let depth = segments.len().saturating_sub(1);
     let eligible = path_eligible(node, segments)?;
     let seq = navigate_mut(node, segments).map_err(|e| e.to_string())?;
@@ -473,14 +469,8 @@ pub fn delete_path(
     source: &str,
     line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let computed;
-    let line_offsets: &[usize] = match line_offsets {
-        Some(offs) => offs,
-        None => {
-            computed = compute_line_offsets(source);
-            &computed
-        }
-    };
+    let offsets = resolve_line_offsets(line_offsets, source);
+    let line_offsets: &[usize] = &offsets;
     if segments.is_empty() {
         return Err("edit-error".to_string());
     }
@@ -538,14 +528,8 @@ pub fn rename_path(
     source: &str,
     line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
-    let computed;
-    let line_offsets: &[usize] = match line_offsets {
-        Some(offs) => offs,
-        None => {
-            computed = compute_line_offsets(source);
-            &computed
-        }
-    };
+    let offsets = resolve_line_offsets(line_offsets, source);
+    let line_offsets: &[usize] = &offsets;
     if segments.is_empty() {
         return Err("cannot-rename-root".to_string());
     }
@@ -636,14 +620,8 @@ fn apply_metadata_path<F>(
 where
     F: FnMut(&mut CustomNode),
 {
-    let computed;
-    let line_offsets: &[usize] = match line_offsets {
-        Some(offs) => offs,
-        None => {
-            computed = compute_line_offsets(source);
-            &computed
-        }
-    };
+    let offsets = resolve_line_offsets(line_offsets, source);
+    let line_offsets: &[usize] = &offsets;
 
     // Root: mutate then full re-serialize.
     if segments.is_empty() {

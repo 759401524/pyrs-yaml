@@ -6,7 +6,6 @@ use std::io::Write;
 use pyo3::prelude::*;
 
 use crate::py::convert::format_i18n_error;
-use crate::py::direct_dump::direct_dump_with_options;
 use crate::py::pyrs_yaml::{YamlDocument, serialize_document};
 use crate::serializer::SerializeOptions;
 
@@ -113,6 +112,9 @@ pub(crate) fn dump_iterable(
 ) -> PyResult<()> {
     let mut iter = iterable.try_iter()?;
     let mut first = true;
+    // One reusable buffer for every document: capacity grows once instead of
+    // allocating a fresh String per document in the stream loop.
+    let mut buf = String::new();
     loop {
         let item = match iter.next() {
             Some(Ok(i)) => i,
@@ -123,31 +125,36 @@ pub(crate) fn dump_iterable(
             }
             None => break,
         };
-        let result: PyResult<String> = (|| {
+        buf.clear();
+        let result: PyResult<()> = (|| {
             if let Ok(doc) = item.cast::<YamlDocument>() {
                 let mut doc = doc.try_borrow_mut()?;
-                serialize_document(&mut doc, py, options)
+                buf.push_str(&serialize_document(&mut doc, py, options)?);
             } else {
                 // Direct path: typed PyErrs (YamlMaxDepthError, YamlTypeError,
                 // YamlSerializeError) propagate as-is, matching what
                 // pyobject_to_node raised directly before serialization.
-                direct_dump_with_options(py, &item.unbind(), options.sort_keys)
+                crate::py::direct_dump::direct_dump_into(py, &item, options.sort_keys, &mut buf)?;
             }
+            Ok(())
         })();
-        let yaml = match result {
-            Ok(y) => y,
-            Err(e) => {
-                // Flush pending before propagating the error so partial output is
-                // preserved. If the flush itself fails that error is more important.
-                writer.flush(py)?;
-                return Err(e);
-            }
-        };
+        if let Err(e) = result {
+            // Flush pending before propagating the error so partial output is
+            // preserved. If the flush itself fails that error is more important.
+            writer.flush(py)?;
+            return Err(e);
+        }
         if !first || explicit_start {
             writer.write(py, "---\n")?;
         }
         first = false;
-        writer.write(py, &normalize_doc(&yaml))?;
+        // Fast path: serializers already emit exactly one trailing newline
+        // for well-formed documents; skip normalize_doc's re-copy then.
+        if buf.ends_with('\n') && !buf.ends_with("\n\n") {
+            writer.write(py, &buf)?;
+        } else {
+            writer.write(py, &normalize_doc(&buf))?;
+        }
     }
     if explicit_end && !first {
         writer.write(py, "...\n")?;
