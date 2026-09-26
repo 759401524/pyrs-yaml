@@ -160,15 +160,14 @@ mod tests {
                         flow_style: true,
                         ..
                     } = n
+                        && !pairs.is_empty()
                     {
-                        if !pairs.is_empty() {
-                            out.push(
-                                pairs
-                                    .keys()
-                                    .map(|k| to_yaml(k).into_bytes())
-                                    .collect(),
-                            );
-                        }
+                        out.push(
+                            pairs
+                                .keys()
+                                .map(|k| to_yaml(k).into_bytes())
+                                .collect(),
+                        );
                     }
                     match n {
                         crate::ast::CustomNode::Mapping { pairs, .. } => {
