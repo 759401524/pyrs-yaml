@@ -730,16 +730,18 @@ impl Serializer {
     }
 
     /// Write each line of the block scalar content with base indentation appended.
-    /// Writes directly to output (no intermediate Vec or join).
+    /// Writes directly to output (no intermediate Vec or join); indentation goes
+    /// through the memoized `write_indent` cache instead of a fresh `repeat()`
+    /// allocation per block scalar.
     fn write_base_indent(&mut self, value: &str) {
-        let indent = " ".repeat(self.indent_size);
+        let width = self.indent_size;
         let mut first = true;
         for line in value.lines() {
             if !first {
                 self.output.push('\n');
             }
             if !line.is_empty() {
-                self.output.push_str(&indent);
+                self.write_indent(width);
                 self.output.push_str(line);
             }
             first = false;
