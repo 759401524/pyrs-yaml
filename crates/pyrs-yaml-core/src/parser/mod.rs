@@ -57,6 +57,18 @@ pub fn parse(yaml: &str, schema: impl Into<Schema>) -> Result<CustomNode, ParseE
     parse_with_options(yaml, true, schema, 1000, false)
 }
 
+/// Whether a granit comment placement denotes a standalone (own-line)
+/// comment, as opposed to an inline trailing one. Shared by the AST and
+/// stream receivers so the placement taxonomy lives in exactly one place.
+pub(crate) fn is_standalone_placement(p: &granit_parser::Placement) -> bool {
+    matches!(
+        p,
+        granit_parser::Placement::Above
+            | granit_parser::Placement::Free
+            | granit_parser::Placement::Last
+    )
+}
+
 /// Drive `AstReceiver` over `yaml` with the shared error contract:
 /// parse failure, duplicate-key rejection and max-depth rejection are
 /// all mapped here so the single-document and multi-document entry
@@ -660,13 +672,10 @@ impl<'a> AstReceiver<'a> {
             m.comment = Some(comment);
         }
 
-        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
-            let name = self.anchor_names[self.anchor_name_idx].clone();
-            self.anchor_name_idx += 1;
-            self.anchors.insert(anchor_id, name.clone());
-            if let CustomNode::Scalar { meta: m, .. } = &mut node {
-                m.anchor = Some(name);
-            }
+        if let Some(name) = self.register_anchor(anchor_id)
+            && let CustomNode::Scalar { meta: m, .. } = &mut node
+        {
+            m.anchor = Some(name);
         }
 
         if let Some(tag) = tag
@@ -676,6 +685,20 @@ impl<'a> AstReceiver<'a> {
         }
 
         self.push_node(node);
+    }
+
+    /// Consume the next raw anchor name for a granit numeric `anchor_id`,
+    /// recording the mapping for later alias resolution. `None` when this
+    /// node carries no anchor or the name list is exhausted.
+    fn register_anchor(&mut self, anchor_id: usize) -> Option<String> {
+        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
+            let name = self.anchor_names[self.anchor_name_idx].clone();
+            self.anchor_name_idx += 1;
+            self.anchors.insert(anchor_id, name.clone());
+            Some(name)
+        } else {
+            None
+        }
     }
 
     /// Shared prologue of `MappingStart`/`SequenceStart`: depth guard, flow
@@ -697,11 +720,7 @@ impl<'a> AstReceiver<'a> {
 
         let standalone = self.pending_standalone_comment.take();
 
-        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
-            let name = self.anchor_names[self.anchor_name_idx].clone();
-            self.anchor_name_idx += 1;
-            self.anchors.insert(anchor_id, name);
-        }
+        self.register_anchor(anchor_id);
 
         let tag_obj = tag.map(|t| convert_tag(&t));
 
@@ -854,20 +873,15 @@ impl<'a> AstReceiver<'a> {
     /// Extracted from `on_event`.
     fn on_comment_event(&mut self, text: &str, placement: granit_parser::Placement) {
         let text = Arc::from(text.trim());
-        match placement {
-            granit_parser::Placement::Above
-            | granit_parser::Placement::Free
-            | granit_parser::Placement::Last => {
-                self.pending_standalone_comment = Some(Comment {
-                    text,
-                    standalone: true,
-                });
-            }
-            granit_parser::Placement::Right => {
-                self.attach_inline_comment(text);
-            }
-            _ => {} // Placement is #[non_exhaustive]
+        if is_standalone_placement(&placement) {
+            self.pending_standalone_comment = Some(Comment {
+                text,
+                standalone: true,
+            });
+        } else if placement == granit_parser::Placement::Right {
+            self.attach_inline_comment(text);
         }
+        // Placement is #[non_exhaustive]: other variants are ignored.
     }
 }
 
