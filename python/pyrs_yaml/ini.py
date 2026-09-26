@@ -5,12 +5,24 @@ stdlib parser rather than inventing a dialect. Duplicate sections or
 keys raise ValueError instead of silently merging.
 """
 
+from __future__ import annotations
+
 import configparser
+
+from typing_extensions import override
 
 __all__ = ["load_ini"]
 
 
-def load_ini(text: str) -> dict:
+class _CaseSensitiveParser(configparser.RawConfigParser):
+    """Preserve option key case (the default lowercases them)."""
+
+    @override
+    def optionxform(self, optionstr: str) -> str:
+        return optionstr
+
+
+def load_ini(text: str) -> dict[str, dict[str, str]]:
     """Parse INI text into a ``{section: {key: value}}`` dict.
 
     Values are returned as raw strings (typed interpretation is left to
@@ -18,15 +30,14 @@ def load_ini(text: str) -> dict:
     DEFAULT section and are inlined into every section, matching
     configparser semantics.
     """
-    parser = configparser.RawConfigParser(strict=True, inline_comment_prefixes=None)
-    parser.optionxform = str  # preserve key case
+    parser = _CaseSensitiveParser(strict=True, inline_comment_prefixes=None)
     try:
         parser.read_string(text)
     except configparser.Error as e:
         # configparser raises its own hierarchy; the library's load-error
         # contract is ValueError-based (YamlParseError et al).
         raise ValueError(f"INI parse error: {e}") from e
-    result: dict = {}
+    result: dict[str, dict[str, str]] = {}
     for section in parser.sections():
         result[section] = dict(parser.items(section))
     default = dict(parser.defaults())
