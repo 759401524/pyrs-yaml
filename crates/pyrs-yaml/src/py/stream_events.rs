@@ -3,14 +3,17 @@
 use crate::ast::ScalarStyle;
 use crate::parser::{StreamEvent, StreamEventType};
 
+use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-/// Set `key` to `value` if present, otherwise to `None`.
+/// Set `key` to `value` if present, otherwise to `None`. `key` is a
+/// pre-interned attribute name so the dict insert reuses a cached string
+/// object instead of allocating a fresh Python str per event field.
 fn set_item_or_none<'a>(
     dict: &Bound<'a, PyDict>,
     py: Python<'a>,
-    key: &str,
+    key: &Bound<'a, PyAny>,
     value: Option<&str>,
 ) -> PyResult<()> {
     match value {
@@ -29,11 +32,11 @@ pub(crate) fn fill_event_dict<'a>(
     anchor: Option<&str>,
     tag: Option<&str>,
 ) -> PyResult<()> {
-    dict.set_item("type", event_type)?;
-    set_item_or_none(dict, py, "value", value)?;
-    set_item_or_none(dict, py, "style", style)?;
-    set_item_or_none(dict, py, "anchor", anchor)?;
-    set_item_or_none(dict, py, "tag", tag)?;
+    dict.set_item(intern!(py, "type"), event_type)?;
+    set_item_or_none(dict, py, intern!(py, "value"), value)?;
+    set_item_or_none(dict, py, intern!(py, "style"), style)?;
+    set_item_or_none(dict, py, intern!(py, "anchor"), anchor)?;
+    set_item_or_none(dict, py, intern!(py, "tag"), tag)?;
     Ok(())
 }
 
@@ -43,8 +46,8 @@ pub(crate) fn stream_event_to_py_dict<'a>(
     event: &StreamEvent,
 ) -> PyResult<Bound<'a, PyDict>> {
     let dict = PyDict::new(py);
-    dict.set_item("line", event.line)?;
-    dict.set_item("column", event.column)?;
+    dict.set_item(intern!(py, "line"), event.line)?;
+    dict.set_item(intern!(py, "column"), event.column)?;
 
     match &event.event_type {
         StreamEventType::StreamStart => {

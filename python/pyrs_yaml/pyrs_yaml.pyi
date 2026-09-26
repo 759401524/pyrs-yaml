@@ -266,6 +266,25 @@ class YamlDocument:
         Return the YAML version string.
         """
 
+@final
+class YamlStream:
+    """
+    Lazy, constant-memory stream of YAML documents from a [`ChunkCharIter`].
+
+    `__next__` parses exactly one event per call (driving the granit parser
+    incrementally), so a large file is never fully buffered. Errors surface
+    exactly once as a `YamlParseError`; after an error or `close()` the
+    iterator returns `None` (StopIteration).
+    """
+    def __del__(self, /) -> None: ...
+    def __iter__(self, /) -> YamlStream: ...
+    def __next__(self, /) -> dict |None: ...
+    def __repr__(self, /) -> str: ...
+    def close(self, /) -> None:
+        """
+        提前终止：停止读取后续 chunk。幂等。
+        """
+
 def clear_tag_handlers() -> None:
     """
     Clear all tag handlers.

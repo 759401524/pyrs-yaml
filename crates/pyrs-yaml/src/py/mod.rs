@@ -86,6 +86,28 @@ pub(crate) fn format_source_snippet(
     )
 }
 
+/// Read a UTF-8 file, mapping IO failures to `PyIOError` with the i18n
+/// `file-read-error` message.
+pub(crate) fn read_file_to_string(path: &str) -> PyResult<String> {
+    std::fs::read_to_string(path).map_err(|e| {
+        pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+            "file-read-error",
+            &[("detail", &e.to_string()), ("path", path)],
+        ))
+    })
+}
+
+/// Open a file for reading, mapping IO failures to `PyIOError` with the same
+/// i18n message as [`read_file_to_string`].
+pub(crate) fn open_file(path: &str) -> PyResult<std::fs::File> {
+    std::fs::File::open(path).map_err(|e| {
+        pyo3::exceptions::PyIOError::new_err(format_i18n_error(
+            "file-read-error",
+            &[("detail", &e.to_string()), ("path", path)],
+        ))
+    })
+}
+
 /// A Python module implemented in Rust.
 ///
 /// pyrs-yaml: high-performance YAML parsing with perfect round-trip support.
@@ -127,6 +149,10 @@ mod pyrs_yaml {
     // ---- StreamIterator ----
     #[pymodule_export]
     pub(crate) use super::stream_iterator::StreamIterator;
+
+    // ---- YamlStream (lazy load_stream event iterator) ----
+    #[pymodule_export]
+    pub(crate) use super::streaming::YamlStream;
 
     // ---- Module-level functions ----
     #[pymodule_export]

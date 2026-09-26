@@ -73,3 +73,43 @@ class TestValidateInvalid:
 class TestYamlValidateError:
     def test_is_subclass_of_value_error(self):
         assert issubclass(pyrs_yaml.YamlValidateError, ValueError)
+
+
+class TestValidateCacheSemantics:
+    """The compiled-validator cache must never change observable behavior."""
+
+    def test_repeated_dict_schema_still_validates(self):
+        schema = {"type": "object", "required": ["a"]}
+        doc = pyrs_yaml.parse("a: 1")
+        doc.validate(schema)  # miss: full path, warms cache
+        doc.validate(schema)  # hit: cached validator
+        with pytest.raises(pyrs_yaml.YamlValidateError):
+            pyrs_yaml.parse("b: 2").validate(schema)  # failure via hit path
+
+    def test_mutated_dict_schema_invalidates_cache(self):
+        schema = {"type": "object", "properties": {"n": {"type": "string"}}}
+        pyrs_yaml.parse("n: ok").validate(schema)  # cache under old content
+        schema["properties"]["n"]["type"] = "integer"  # in-place mutation
+        with pytest.raises(pyrs_yaml.YamlValidateError):
+            pyrs_yaml.parse("n: text").validate(schema)
+
+    def test_str_schema_hit_reports_same_message_as_jsonschema(self):
+        schema = json.dumps({"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]})
+        pyrs_yaml.parse("n: 5").validate(schema)  # warm cache
+        with pytest.raises(pyrs_yaml.YamlValidateError) as ours:
+            pyrs_yaml.parse("n: x").validate(schema)  # cached path
+        assert "is not of type 'integer'" in str(ours.value)
+
+    def test_distinct_equal_dicts_are_cached_independently(self):
+        # Two equal-but-distinct dict objects validate the same instance:
+        # each gets its own identity-keyed entry, and a later failure on
+        # either still raises through its cached validator.
+        s1 = {"type": "object", "properties": {"a": {"type": "integer"}}}
+        s2 = {"type": "object", "properties": {"a": {"type": "integer"}}}
+        doc = pyrs_yaml.parse("a: 1")
+        doc.validate(s1)  # caches under id(s1)
+        doc.validate(s2)  # equal but distinct object: caches under id(s2)
+        with pytest.raises(pyrs_yaml.YamlValidateError):
+            pyrs_yaml.parse("a: text").validate(s1)
+        with pytest.raises(pyrs_yaml.YamlValidateError):
+            pyrs_yaml.parse("a: text").validate(s2)

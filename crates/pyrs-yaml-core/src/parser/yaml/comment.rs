@@ -82,6 +82,11 @@ fn is_valid_anchor_char(c: char) -> bool {
 /// # Returns
 /// 按出现顺序排列的 `RawAnchor` 列表。
 pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
+    // Cheap byte gate: every anchor literal contains `&`; skip the per-char
+    // quote state machine entirely for documents without one (the common case).
+    if !yaml.as_bytes().contains(&b'&') {
+        return Vec::new();
+    }
     let mut anchors = Vec::new();
 
     for (line_idx, line) in yaml.lines().enumerate() {

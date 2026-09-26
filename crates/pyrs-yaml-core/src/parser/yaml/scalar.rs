@@ -18,6 +18,12 @@ use crate::ast::Chomping;
 /// assert_eq!(unescape_double_quoted(r"\u0041"), "A");
 /// ```
 pub fn unescape_double_quoted(s: &str) -> String {
+    // Every transformation below keys off a backslash; with none present the
+    // output equals the input, so skip the per-char state machine entirely
+    // (common case: quoted scalars without escapes).
+    if !s.contains('\\') {
+        return s.to_string();
+    }
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars();
 
@@ -104,15 +110,14 @@ fn unescape_hex_escape(hex: &str) -> String {
 /// # Returns
 /// 检测到的 `Chomping` 值：`Strip`（`-`）、`Keep`（`+`）或默认 `Clip`。
 pub fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
-    let lines: Vec<&str> = yaml.lines().collect();
-
     // Look at the line before the content for the block scalar indicator
-    // The indicator could be on the same line as the key or on a previous line
+    // The indicator could be on the same line as the key or on a previous
+    // line. Lines are pulled lazily (nth) instead of materializing the whole
+    // document into a Vec on every block scalar.
     for check_line in (0..=content_line).rev() {
-        if check_line >= lines.len() {
+        let Some(line_text) = yaml.lines().nth(check_line) else {
             continue;
-        }
-        let line_text = lines[check_line];
+        };
 
         // Look for | or > followed by - or +
         for (i, ch) in line_text.char_indices() {

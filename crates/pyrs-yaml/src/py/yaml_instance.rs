@@ -116,12 +116,7 @@ impl YAML {
         let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
         let schema_enum = parse_schema(&self.schema)?;
         let schema_clone = schema_enum.clone();
-        let content = std::fs::read_to_string(path).map_err(|e| {
-            pyo3::exceptions::PyIOError::new_err(format_i18n_error(
-                "file-read-error",
-                &[("detail", &e.to_string()), ("path", path)],
-            ))
-        })?;
+        let content = crate::py::read_file_to_string(path)?;
         let ast = py.detach(|| {
             crate::parser::parse_with_options(
                 &content,
@@ -175,12 +170,7 @@ impl YAML {
     /// Lazy event iterator: incrementally read from file path (Rust File, no GIL blocking).
     #[pyo3(signature = (path: "str") -> "YamlStream")]
     fn load_stream_file(&self, _py: Python, path: &str) -> PyResult<YamlStream> {
-        let file = std::fs::File::open(path).map_err(|e| {
-            pyo3::exceptions::PyIOError::new_err(format_i18n_error(
-                "file-read-error",
-                &[("detail", &e.to_string()), ("path", path)],
-            ))
-        })?;
+        let file = crate::py::open_file(path)?;
         let src = InputSrc::File(std::io::BufReader::new(file));
         Ok(YamlStream::new(ChunkCharIter::new(src, DEFAULT_CHUNK_SIZE)))
     }

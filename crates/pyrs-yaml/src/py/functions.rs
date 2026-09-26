@@ -14,7 +14,6 @@ use crate::py::tag_registry;
 use crate::py::type_registry;
 
 use crate::YamlParseError;
-use crate::YamlTypeError;
 
 #[pyfunction]
 #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
@@ -49,12 +48,7 @@ pub(crate) fn parse_file(
 ) -> PyResult<YamlDocument> {
     let schema_enum = parse_schema(schema)?;
     let schema_clone = schema_enum.clone();
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        pyo3::exceptions::PyIOError::new_err(format_i18n_error(
-            "file-read-error",
-            &[("detail", &e.to_string()), ("path", path)],
-        ))
-    })?;
+    let content = crate::py::read_file_to_string(path)?;
     let mut ast = py.detach(|| {
         crate::parser::parse_with_options(
             &content,
@@ -169,21 +163,7 @@ pub(crate) fn parse_stream(
     on_event: Option<Py<PyAny>>,
     max_depth: usize,
 ) -> PyResult<Py<PyAny>> {
-    let yaml_str: String = if let Ok(s) = yaml.extract::<String>() {
-        s
-    } else if let Ok(bytes) = yaml.extract::<Vec<u8>>() {
-        String::from_utf8(bytes).map_err(|e| {
-            YamlParseError::new_err(format_i18n_error(
-                "invalid-utf8",
-                &[("detail", &e.to_string())],
-            ))
-        })?
-    } else {
-        return Err(YamlTypeError::new_err(format_i18n_error(
-            "expected-str-or-bytes",
-            &[],
-        )));
-    };
+    let yaml_str: String = crate::py::document::coerce_str_or_bytes(yaml)?;
 
     if let Some(callback) = on_event {
         let events = py.detach(|| {
@@ -265,14 +245,7 @@ pub(crate) fn read_markdown(
     schema: &str,
     max_depth: usize,
 ) -> PyResult<(Option<Py<PyAny>>, String)> {
-    let content = py.detach(|| {
-        std::fs::read_to_string(path).map_err(|e| {
-            pyo3::exceptions::PyIOError::new_err(format_i18n_error(
-                "file-read-error",
-                &[("detail", &e.to_string()), ("path", path)],
-            ))
-        })
-    })?;
+    let content = py.detach(|| crate::py::read_file_to_string(path))?;
     read_markdown_str(py, &content, schema, max_depth)
 }
 

@@ -134,13 +134,28 @@ pub(crate) fn direct_dump_with_options(
     obj: &Py<PyAny>,
     sort_keys: bool,
 ) -> PyResult<String> {
+    let mut output = String::new();
+    direct_dump_into(py, obj.bind(py), sort_keys, &mut output)?;
+    Ok(output)
+}
+
+/// Serialize `obj` *into* a caller-provided buffer (cleared first). Lets a
+/// multi-document loop reuse one allocation instead of creating a fresh
+/// `String` per document; the buffer's capacity survives across calls.
+pub(crate) fn direct_dump_into(
+    py: Python,
+    obj: &Bound<'_, PyAny>,
+    sort_keys: bool,
+    output: &mut String,
+) -> PyResult<()> {
     let mut w = DirectWriter {
-        output: String::new(),
+        output: std::mem::take(output),
         indent_cache: vec![String::new()],
         sort_keys,
     };
-    w.write_node(py, obj.bind(py), 0, 0)?;
-    Ok(w.output)
+    let result = w.write_node(py, obj, 0, 0);
+    *output = std::mem::take(&mut w.output);
+    result
 }
 
 struct DirectWriter {
