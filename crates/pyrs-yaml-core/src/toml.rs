@@ -61,8 +61,14 @@ fn table_to_node(table: &toml_edit::Table) -> CustomNode {
 fn item_to_node(item: &toml_edit::Item) -> CustomNode {
     match item {
         toml_edit::Item::Table(t) => table_to_node(t),
+        // The parser folds repeated [[x]] headers into one item.
+        toml_edit::Item::ArrayOfTables(aot) => CustomNode::Sequence {
+            items: aot.iter().map(table_to_node).collect(),
+            flow_style: false,
+            meta: NodeMeta::default(),
+        },
         toml_edit::Item::Value(v) => value_to_node(v),
-        // Implicit/None items are formatting artifacts of valid documents.
+        // implicit/none items are formatting artifacts of valid documents.
         _ => CustomNode::plain_null(),
     }
 }
@@ -81,21 +87,20 @@ fn value_to_node(value: &toml_edit::Value) -> CustomNode {
         toml_edit::Value::Float(f) => CustomNode::plain_scalar(format_toml_float(*f.value())),
         toml_edit::Value::Boolean(b) => CustomNode::plain_scalar(b.value().to_string()),
         toml_edit::Value::Datetime(d) => {
-            let text = d.value().to_string();
-            match Schema::Core.resolve(&text) {
-                YamlType::Null => CustomNode::plain_scalar(text),
-                resolved => {
-                    let _ = resolved;
-                    CustomNode::Scalar {
-                        value: text.into(),
-                        style: ScalarStyle::Plain,
-                        chomping: Chomping::Clip,
-                        meta: NodeMeta {
-                            tag: Some(Tag::primary("timestamp")),
-                            ..Default::default()
-                        },
-                    }
-                }
+            // RFC 3339 text with the same local-tag shape the YAML parser
+            // produces for `!timestamp` (handle "!"), so the built-in
+            // plugin's type-registry key matches on both paths.
+            CustomNode::Scalar {
+                value: d.value().to_string().into(),
+                style: ScalarStyle::Plain,
+                chomping: Chomping::Clip,
+                meta: NodeMeta {
+                    tag: Some(Tag {
+                        handle: "!".to_string(),
+                        suffix: "timestamp".to_string(),
+                    }),
+                    ..Default::default()
+                },
             }
         }
         toml_edit::Value::Array(a) => CustomNode::Sequence {

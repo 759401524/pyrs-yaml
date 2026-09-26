@@ -14,6 +14,7 @@ use crate::py::tag_registry;
 use crate::py::type_registry;
 
 use crate::YamlParseError;
+use crate::YamlSerializeError;
 
 #[pyfunction]
 #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
@@ -253,6 +254,56 @@ pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
     })?;
     let node = json_value_to_node(&json_value)?;
     Ok(crate::serializer::to_yaml(&node))
+}
+
+#[pyfunction]
+#[pyo3(signature = (toml_str: "str") -> "str")]
+/// Convert a TOML string to a YAML string (hub-and-spoke exchange).
+/// TOML strings keep quoting so values never re-resolve; datetimes gain
+/// the `!timestamp` tag consumed by the built-in plugin.
+pub(crate) fn from_toml(toml_str: &str) -> PyResult<String> {
+    let node = pyrs_yaml_core::toml::from_toml(toml_str).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "toml-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    Ok(crate::serializer::to_yaml(&node))
+}
+
+#[pyfunction]
+#[pyo3(signature = (yaml: "str", schema: "str" = "core") -> "str")]
+/// Render a YAML document as TOML text. Rejects shapes TOML cannot hold
+/// (non-table root, null values, aliases, non-scalar keys) with stable
+/// `toml-serialize-error` messages.
+pub(crate) fn to_toml(py: Python, yaml: &str, schema: &str) -> PyResult<String> {
+    let schema_enum = parse_schema(schema)?;
+    let schema_clone = schema_enum.clone();
+    let node = py.detach(|| {
+        crate::parser::parse_with_options(yaml, true, schema_clone, 1000, false)
+            .map_err(|e| parse_error_to_py_err(e, yaml, 1000))
+    })?;
+    pyrs_yaml_core::toml::to_toml(&node).map_err(|e| {
+        YamlSerializeError::new_err(format_i18n_error(
+            "toml-serialize-error",
+            &[("detail", &e.to_string())],
+        ))
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (toml_str: "str") -> "dict[str, Any]")]
+/// Parse TOML directly into a Python dict (values, not a document).
+/// Anchors cannot occur in TOML, so no alias resolution pass is needed.
+pub(crate) fn load_toml(py: Python, toml_str: &str) -> PyResult<Py<PyAny>> {
+    let mut ast = pyrs_yaml_core::toml::from_toml(toml_str).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "toml-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    crate::py::document::resolve_tags(&mut ast, py)?;
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &parse_schema("core")?, false)
 }
 
 #[pyfunction]

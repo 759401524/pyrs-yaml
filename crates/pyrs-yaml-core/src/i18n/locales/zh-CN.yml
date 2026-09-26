@@ -1,6 +1,8 @@
 yaml-parse-error: "%{detail}"
 yaml-serialize-error: "%{detail}"
 json-parse-error: "%{detail}"
+toml-parse-error: "%{detail}"
+toml-serialize-error: "%{detail}"
 file-not-found: "未找到文件：%{path}"
 file-read-error: "读取文件失败：%{detail}"
 file-write-error: "写入文件失败：%{detail}"

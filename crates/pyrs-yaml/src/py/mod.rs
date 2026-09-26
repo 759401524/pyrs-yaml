@@ -169,6 +169,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::from_json;
     #[pymodule_export]
+    pub(crate) use super::functions::from_toml;
+    #[pymodule_export]
     pub(crate) use super::functions::get_language;
     #[pymodule_export]
     pub(crate) use super::functions::get_plugin;
@@ -180,6 +182,8 @@ mod pyrs_yaml {
     pub(crate) use super::functions::list_schemas;
     #[pymodule_export]
     pub(crate) use super::functions::load_schema;
+    #[pymodule_export]
+    pub(crate) use super::functions::load_toml;
     #[pymodule_export]
     pub(crate) use super::functions::negotiate_language;
     #[pymodule_export]
@@ -212,6 +216,8 @@ mod pyrs_yaml {
     pub(crate) use super::functions::safe_loads;
     #[pymodule_export]
     pub(crate) use super::functions::set_language;
+    #[pymodule_export]
+    pub(crate) use super::functions::to_toml;
     #[pymodule_export]
     pub(crate) use super::functions::validate_against_registered_schema;
     #[pymodule_export]
