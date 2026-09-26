@@ -171,7 +171,17 @@ def test_ryaml_serialize(benchmark, size):
 @pytest.mark.skipif(not HAS_YAML_EDIT, reason="yaml_edit not installed")
 @pytest.mark.parametrize("size", SIZES, ids=SIZES)
 def test_yaml_edit_parse(benchmark, size):
-    benchmark(yaml_edit.Document.parse, YAML_INPUTS[size])
+    src = YAML_INPUTS[size]
+    try:
+        yaml_edit.Document.parse(src)
+    except ValueError as exc:
+        # Newer yaml_edit releases reject stream-level comments in
+        # Document.parse (the commented fixture is intentional — comment
+        # fidelity is the point of the comparison). A competitor that
+        # cannot ingest the benchmark input degrades to skip, mirroring
+        # the not-installed path, instead of reddening the suite.
+        pytest.skip(f"yaml_edit cannot parse the commented fixture: {exc}")
+    benchmark(yaml_edit.Document.parse, src)
 
 
 # ── yaml_rs benchmarks (Rust competitor) ──
