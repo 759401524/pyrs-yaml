@@ -72,6 +72,19 @@ impl YAML {
     #[pyo3(signature = (yaml: "str") -> "dict[str, Any] | list[Any]")]
     fn safe_load(&self, py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
         let schema_enum = parse_schema(&self.schema)?;
+        match crate::py::direct_load::try_direct_load(
+            py,
+            yaml,
+            &schema_enum,
+            self.max_depth,
+            self.allow_duplicate_keys,
+        ) {
+            crate::py::direct_load::DirectOutcome::Done(v) => return Ok(v),
+            crate::py::direct_load::DirectOutcome::Fail(e) => {
+                return Err(parse_error_to_py_err(e, yaml, self.max_depth));
+            }
+            crate::py::direct_load::DirectOutcome::Bail => {}
+        }
         let schema_clone = schema_enum.clone();
         let ast = py.detach(|| {
             crate::parser::parse_with_options(
@@ -90,6 +103,21 @@ impl YAML {
     #[pyo3(signature = (yaml: "str") -> "list[dict[str, Any] | list[Any]]")]
     fn safe_loads(&self, py: Python, yaml: &str) -> PyResult<Vec<Py<PyAny>>> {
         let schema_enum = parse_schema(&self.schema)?;
+        if !yaml.trim().is_empty() {
+            match crate::py::direct_load::try_direct_load(
+                py,
+                yaml,
+                &schema_enum,
+                self.max_depth,
+                self.allow_duplicate_keys,
+            ) {
+                crate::py::direct_load::DirectOutcome::Done(v) => return Ok(vec![v]),
+                crate::py::direct_load::DirectOutcome::Fail(e) => {
+                    return Err(parse_error_to_py_err(e, yaml, self.max_depth));
+                }
+                crate::py::direct_load::DirectOutcome::Bail => {}
+            }
+        }
         let schema_clone = schema_enum.clone();
         let asts = py.detach(|| {
             crate::parser::parse_all_with_options(
