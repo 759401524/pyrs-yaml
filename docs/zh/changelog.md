@@ -48,6 +48,12 @@ status: new
   导出，`import pyrs_yaml` 不依赖 pydantic-settings；通过
   `pip install "pyrs-yaml[settings]"` 安装（Python 3.10+）。`dump_pydantic` 与
   `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
+- **TOML 与 INI 交换格式** — 轮毂-辐射式多格式支持，YAML 仍是唯一可编辑
+  表示：`from_toml`/`to_toml` 在 TOML 文本 ⇄ YAML 文本间转换（Rust
+  `toml_edit`）；`load_toml` 将 TOML 直接读为 Python 值（datetime 经内建
+  `!timestamp` 插件；TOML 字符串不会被重新解析）；`load_ini` 经标准库
+  configparser 读取 INI（严格模式，只读）。TOML 输出对不可表达结构报
+  稳定错误；往返编辑按设计仅 YAML 支持。
 
 #### 变更
 

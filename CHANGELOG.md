@@ -55,6 +55,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `import pyrs_yaml` never requires pydantic-settings; install with
   `pip install "pyrs-yaml[settings]"` (Python 3.10+). `dump_pydantic` and
   `parse_as` now use the same lazy module-level `__getattr__` export pattern.
+- **TOML and INI exchange formats** — hub-and-spoke multi-format support
+  with YAML as the single editable representation:
+    - `from_toml(toml: str) -> str` and `to_toml(yaml: str, schema=...) -> str`
+    convert TOML text ⇄ YAML text (Rust `toml_edit`, MSRV-pinned to 0.22);
+    - `load_toml(toml: str) -> dict` materializes TOML directly into Python
+    values, with datetimes routed through the built-in `!timestamp` plugin;
+    TOML strings never re-resolve (a `"true"` value stays a string);
+    - `load_ini(text: str) -> dict` reads INI via stdlib configparser (strict,
+    case-preserving; read-only by design — INI has no official grammar).
+  TOML output rejects inexpressible shapes (null values, non-table roots,
+  aliases, non-scalar keys) with stable error messages. Round-trip editing
+  (comments, anchors, splices) remains YAML-only by design.
 
 ### Changed
 
