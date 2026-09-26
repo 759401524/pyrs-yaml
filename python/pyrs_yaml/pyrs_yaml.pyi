@@ -315,6 +315,13 @@ def from_json(json_str: "str") -> "str":
     Convert a JSON string to a YAML string.
     """
 
+def from_toml(toml_str: "str") -> "str":
+    """
+    Convert a TOML string to a YAML string (hub-and-spoke exchange).
+    TOML strings keep quoting so values never re-resolve; datetimes gain
+    the `!timestamp` tag consumed by the built-in plugin.
+    """
+
 def get_language() -> "str":
     """
     Return the current error message language.
@@ -355,6 +362,12 @@ def load_schema(name: "str", path: "str") -> "None":
     Reads the schema definition from `path` (a YAML file with `name`/`extends`/`rules`
     structure) and registers it under `name`. Equivalent to calling
     `register_schema(name, open(path).read())` but handles file I/O in Rust.
+    """
+
+def load_toml(toml_str: "str") -> "dict[str, Any]":
+    """
+    Parse TOML directly into a Python dict (values, not a document).
+    Anchors cannot occur in TOML, so no alias resolution pass is needed.
     """
 
 def negotiate_language(user_locales: "list[str]", default: "str" = "en") -> "str":
@@ -445,6 +458,13 @@ def safe_loads(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, all
 def set_language(lang: "str") -> "None":
     """
     Set the error message language.
+    """
+
+def to_toml(yaml: "str", schema: "str" = "core") -> "str":
+    """
+    Render a YAML document as TOML text. Rejects shapes TOML cannot hold
+    (non-table root, null values, aliases, non-scalar keys) with stable
+    `toml-serialize-error` messages.
     """
 
 def validate_against_registered_schema(data: "str", name: "str") -> "None":
