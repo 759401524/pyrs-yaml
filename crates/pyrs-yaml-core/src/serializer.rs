@@ -127,6 +127,19 @@ fn inlineable_value(v: &CustomNode) -> bool {
     )
 }
 
+/// Shared shape parameters for the mapping/sequence container skeleton
+/// consumed by [`Serializer::write_container_node`].
+#[derive(Clone, Copy)]
+struct ContainerSkeleton<'a> {
+    empty: bool,
+    meta: &'a NodeMeta,
+    flow_style: bool,
+    indent_width: usize,
+    in_value_context: bool,
+    open: char,
+    close: char,
+}
+
 /// Whether a block mapping can be emitted in the compact `- key: value`
 /// sequence-item form: no metadata, non-empty, all keys simple scalars and
 /// all values inlineable. Mirrors the guard used by `write_sequence_item`;
@@ -333,8 +346,9 @@ impl Serializer {
     }
 
     /// Serialize a mapping node in either flow (`{ ... }`) or block style,
-    /// including anchor/tag and trailing comment. Extracted from
-    /// `serialize_node_internal`.
+    /// including anchor/tag and trailing comment. The container skeleton is
+    /// shared with sequences by [`write_container_node`]; only the element
+    /// renderer, pair separator, and block iteration differ.
     fn write_mapping_node(
         &mut self,
         pairs: &IndexMap<CustomNode, CustomNode>,
@@ -344,45 +358,29 @@ impl Serializer {
         depth: usize,
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
-        if flow_style {
-            if meta.anchor.is_some() || meta.tag.is_some() {
-                self.write_anchor_tag(&meta.anchor, &meta.tag);
-            }
-            self.output.push('{');
-            if !pairs.is_empty() {
+        let sk = ContainerSkeleton {
+            empty: pairs.is_empty(),
+            meta,
+            flow_style,
+            indent_width,
+            in_value_context,
+            open: '{',
+            close: '}',
+        };
+        self.write_container_node(
+            &sk,
+            |s| {
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     if i > 0 {
-                        self.output.push_str(", ");
+                        s.output.push_str(", ");
                     }
-                    self.write_scalar_for_key(key);
-                    self.output.push_str(": ");
-                    self.serialize_flow_value(value, depth + 1)?;
+                    s.write_scalar_for_key(key);
+                    s.output.push_str(": ");
+                    s.serialize_flow_value(value, depth + 1)?;
                 }
-            }
-            self.output.push('}');
-            if let Some(c) = &meta.comment
-                && (!c.standalone || pairs.is_empty())
-            {
-                self.output.push_str("  # ");
-                self.output.push_str(&c.text);
-            }
-            self.output.push('\n');
-        } else {
-            if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
-                self.write_indent(indent_width);
-                self.write_anchor_tag(&meta.anchor, &meta.tag);
-                self.output.push('\n');
-            }
-
-            if pairs.is_empty() {
-                self.write_indent(indent_width);
-                self.output.push_str("{}");
-                self.output_empty_node_comment(meta);
-                self.output.push('\n');
-                return Ok(());
-            }
-
-            if self.sort_keys {
+                Ok(())
+            },
+            |s| {
                 let mut pairs_vec: Vec<(&CustomNode, &CustomNode)> = pairs.iter().collect();
                 pairs_vec.sort_by(|a, b| {
                     let ka = match a.0 {
@@ -395,31 +393,23 @@ impl Serializer {
                     };
                     ka.cmp(kb)
                 });
-
                 for (key, value) in pairs_vec.iter().copied() {
-                    self.write_mapping_pair(key, value, indent_width, depth)?;
+                    s.write_mapping_pair(key, value, indent_width, depth)?;
                 }
-            } else {
+                Ok(())
+            },
+            |s| {
                 for (key, value) in pairs.iter() {
-                    self.write_mapping_pair(key, value, indent_width, depth)?;
+                    s.write_mapping_pair(key, value, indent_width, depth)?;
                 }
-            }
-
-            if let Some(c) = &meta.comment
-                && !c.standalone
-            {
-                self.write_indent(indent_width);
-                self.output.push_str("# ");
-                self.output.push_str(&c.text);
-                self.output.push('\n');
-            }
-        }
-        Ok(())
+                Ok(())
+            },
+        )
     }
 
     /// Serialize a sequence node in either flow (`[ ... ]`) or block style,
-    /// including anchor/tag and trailing comment. Extracted from
-    /// `serialize_node_internal`.
+    /// including anchor/tag and trailing comment. See [`write_mapping_node`]
+    /// for the shared skeleton.
     fn write_sequence_node(
         &mut self,
         items: &[CustomNode],
@@ -429,22 +419,74 @@ impl Serializer {
         depth: usize,
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
+        let sk = ContainerSkeleton {
+            empty: items.is_empty(),
+            meta,
+            flow_style,
+            indent_width,
+            in_value_context,
+            open: '[',
+            close: ']',
+        };
+        self.write_container_node(
+            &sk,
+            |s| {
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        s.output.push_str(", ");
+                    }
+                    s.serialize_flow_value(item, depth + 1)?;
+                }
+                Ok(())
+            },
+            // Sequences never sort their items: the sorted branch is the
+            // ordinary block pass (mirrors the pre-refactor behavior).
+            move |s: &mut Self| {
+                for item in items.iter() {
+                    s.write_sequence_item(item, indent_width, depth)?;
+                }
+                Ok(())
+            },
+            |s| {
+                for item in items.iter() {
+                    s.write_sequence_item(item, indent_width, depth)?;
+                }
+                Ok(())
+            },
+        )
+    }
+
+    /// Shared mapping/sequence skeleton: flow form (bracketed, comma-separated
+    /// inline elements), the block preamble (anchor/tag line outside a value
+    /// context), the empty-container fallback with its node comment, and the
+    /// trailing inline comment after block elements.
+    fn write_container_node(
+        &mut self,
+        sk: &ContainerSkeleton<'_>,
+        flow: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
+        block_sorted: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
+        block: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
+    ) -> Result<(), SerializeError> {
+        let ContainerSkeleton {
+            empty,
+            meta,
+            flow_style,
+            indent_width,
+            in_value_context,
+            open,
+            close,
+        } = *sk;
         if flow_style {
             if meta.anchor.is_some() || meta.tag.is_some() {
                 self.write_anchor_tag(&meta.anchor, &meta.tag);
             }
-            self.output.push('[');
-            if !items.is_empty() {
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(", ");
-                    }
-                    self.serialize_flow_value(item, depth + 1)?;
-                }
+            self.output.push(open);
+            if !empty {
+                flow(self)?;
             }
-            self.output.push(']');
+            self.output.push(close);
             if let Some(c) = &meta.comment
-                && (!c.standalone || items.is_empty())
+                && (!c.standalone || empty)
             {
                 self.output.push_str("  # ");
                 self.output.push_str(&c.text);
@@ -457,16 +499,19 @@ impl Serializer {
                 self.output.push('\n');
             }
 
-            if items.is_empty() {
+            if empty {
                 self.write_indent(indent_width);
-                self.output.push_str("[]");
+                self.output.push(open);
+                self.output.push(close);
                 self.output_empty_node_comment(meta);
                 self.output.push('\n');
                 return Ok(());
             }
 
-            for item in items.iter() {
-                self.write_sequence_item(item, indent_width, depth)?;
+            if self.sort_keys {
+                block_sorted(self)?
+            } else {
+                block(self)?
             }
 
             if let Some(c) = &meta.comment
@@ -1041,17 +1086,22 @@ mod tests {
         }};
     }
 
-    #[test]
-    fn test_pair_helper_matches_full_serialize() {
-        let yaml = "a: 1\nb:\n  c: 2\n";
-        let ast = crate::parser::parse_with_options(
+    /// Test fixture: core-schema parse with the standard options.
+    fn parse_core(yaml: &str) -> CustomNode {
+        crate::parser::parse_with_options(
             yaml,
             true,
             crate::parser::yaml::YamlSchema::Core,
             1000,
             false,
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn test_pair_helper_matches_full_serialize() {
+        let yaml = "a: 1\nb:\n  c: 2\n";
+        let ast = parse_core(yaml);
         let full = crate::serializer::to_yaml(&ast);
         let mut s = Serializer::new(&SerializeOptions::default());
         let CustomNode::Mapping { pairs, .. } = &ast else {
@@ -1067,14 +1117,7 @@ mod tests {
     fn test_item_helper_matches_full_serialize() {
         // mixed items: simple scalar + compact mapping (multi-key alignment) + block container
         let yaml = "- a\n- b: c\n  d: 1\n- - 1\n  - 2\n";
-        let ast = crate::parser::parse_with_options(
-            yaml,
-            true,
-            crate::parser::yaml::YamlSchema::Core,
-            1000,
-            false,
-        )
-        .unwrap();
+        let ast = parse_core(yaml);
         let full = crate::serializer::to_yaml(&ast);
         let mut s = Serializer::new(&SerializeOptions::default());
         let CustomNode::Sequence { items, .. } = &ast else {
@@ -1089,14 +1132,7 @@ mod tests {
     #[test]
     fn test_item_helper_preserves_compact_dash() {
         let yaml = "- host: a\n";
-        let ast = crate::parser::parse_with_options(
-            yaml,
-            true,
-            crate::parser::yaml::YamlSchema::Core,
-            1000,
-            false,
-        )
-        .unwrap();
+        let ast = parse_core(yaml);
         let mut s = Serializer::new(&SerializeOptions::default());
         let CustomNode::Sequence { items, .. } = &ast else {
             panic!()
@@ -1107,12 +1143,7 @@ mod tests {
 
     #[test]
     fn test_serialize_plain_scalar() {
-        let node = CustomNode::Scalar {
-            value: Arc::from("hello"),
-            style: ScalarStyle::Plain,
-            chomping: Chomping::Clip,
-            meta: Default::default(),
-        };
+        let node = CustomNode::plain_scalar("hello");
         assert_yaml_eq!(to_yaml(&node), "hello\n");
     }
 
@@ -1149,18 +1180,8 @@ mod tests {
 
     #[test]
     fn test_serialize_mapping() {
-        let key = CustomNode::Scalar {
-            value: Arc::from("key"),
-            style: ScalarStyle::Plain,
-            chomping: Chomping::Clip,
-            meta: Default::default(),
-        };
-        let value = CustomNode::Scalar {
-            value: Arc::from("value"),
-            style: ScalarStyle::Plain,
-            chomping: Chomping::Clip,
-            meta: Default::default(),
-        };
+        let key = CustomNode::plain_scalar("key");
+        let value = CustomNode::plain_scalar("value");
 
         let mut pairs = IndexMap::new();
         pairs.insert(key, value);
@@ -1178,28 +1199,13 @@ mod tests {
     fn test_serialize_complex_key() {
         let key = CustomNode::Sequence {
             items: vec![
-                CustomNode::Scalar {
-                    value: Arc::from("key1"),
-                    style: ScalarStyle::Plain,
-                    chomping: Chomping::Clip,
-                    meta: Default::default(),
-                },
-                CustomNode::Scalar {
-                    value: Arc::from("key2"),
-                    style: ScalarStyle::Plain,
-                    chomping: Chomping::Clip,
-                    meta: Default::default(),
-                },
+                CustomNode::plain_scalar("key1"),
+                CustomNode::plain_scalar("key2"),
             ],
             flow_style: false,
             meta: Default::default(),
         };
-        let value = CustomNode::Scalar {
-            value: Arc::from("value"),
-            style: ScalarStyle::Plain,
-            chomping: Chomping::Clip,
-            meta: Default::default(),
-        };
+        let value = CustomNode::plain_scalar("value");
 
         let mut pairs = IndexMap::new();
         pairs.insert(key, value);
