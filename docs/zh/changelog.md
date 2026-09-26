@@ -60,6 +60,12 @@ status: new
   快照守卫：原地修改会在下次使用时通过 `==` 检出并透明重编译。缓存路径抛出
   `exceptions.best_match(validator.iter_errors(instance))`，与
   `jsonschema.validate()` 语义完全一致。WSL 实测：`document_validate` −98%。
+- **解析/序列化内核结构化去重** — mapping 与 sequence 渲染共享单一
+  `write_container_node` 骨架（输出字节级一致，`serialize_*` 中位数 −5~11%）；
+  单/多文档解析入口共享同一 `load_ast` 错误契约；schema 解析链共享
+  `bool_word`/`numeric_tail`，YAML 1.1 不再逐标量重复 core 的 null/bool 检查；
+  锚点注册（`register_anchor`）与独立/行内注释分类（`is_standalone_placement`）
+  在 AST 与流 receiver 间单源化。仓库重复代码率 3.38% → 2.60%。
 
 #### 性能
 

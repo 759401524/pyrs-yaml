@@ -71,6 +71,13 @@ status: new
   ガードで管理され、その場の変更は `==` で検出され透過的に再コンパイル。キャッシュ
   経路は `exceptions.best_match(validator.iter_errors(instance))` を送出し、
   `jsonschema.validate()` と完全に同一のセマンティクス。WSL 実測: `document_validate` −98%。
+- **パーサー/シリアライザーカーネルの構造的重複排除** — mapping と sequence の
+  レンダリングを単一の `write_container_node` スケルトンに統一（出力はバイト単位
+  同一、`serialize_*` 中央値 −5~11%）；単一/複数文書パーサーは同一の `load_ast`
+  エラー契約を共有；schema 解析チェーンは `bool_word`/`numeric_tail` を共有し、
+  YAML 1.1 は core の null/bool 語をスカラーごとに再チェックしない；アンカー登録
+  （`register_anchor`）と standalone/inline 注釈分類（`is_standalone_placement`）を
+  AST と stream receiver で単一化。リポジトリ重複率 3.38% → 2.60%。
 
 #### パフォーマンス
 
