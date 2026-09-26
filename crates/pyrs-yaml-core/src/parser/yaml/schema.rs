@@ -42,11 +42,8 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
         return YamlType::Null;
     }
 
-    if matches_any(trimmed, &["true", "True", "TRUE"]) {
-        return YamlType::Bool(true);
-    }
-    if matches_any(trimmed, &["false", "False", "FALSE"]) {
-        return YamlType::Bool(false);
+    if let Some(b) = bool_word(trimmed) {
+        return YamlType::Bool(b);
     }
 
     if matches_any(trimmed, &[".inf", ".Inf", ".INF", "inf", "Inf", "INF"]) {
@@ -75,6 +72,22 @@ pub fn resolve_core_type(value: &str) -> YamlType<'_> {
         return YamlType::Int(val);
     }
 
+    numeric_tail(trimmed, value)
+}
+
+/// 1.2 boolean lexeme check shared by the core and JSON chains.
+fn bool_word(trimmed: &str) -> Option<bool> {
+    if trimmed == "true" || trimmed == "True" || trimmed == "TRUE" {
+        return Some(true);
+    }
+    if trimmed == "false" || trimmed == "False" || trimmed == "FALSE" {
+        return Some(false);
+    }
+    None
+}
+
+/// Float/decimal-int/string tail shared by the core and JSON chains.
+fn numeric_tail<'a>(trimmed: &str, value: &'a str) -> YamlType<'a> {
     if (trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E'))
         && let Ok(val) = trimmed.parse::<f64>()
     {
@@ -150,11 +163,8 @@ pub fn resolve_json_type(value: &str) -> YamlType<'_> {
         return YamlType::Null;
     }
 
-    if trimmed == "true" || trimmed == "True" || trimmed == "TRUE" {
-        return YamlType::Bool(true);
-    }
-    if trimmed == "false" || trimmed == "False" || trimmed == "FALSE" {
-        return YamlType::Bool(false);
+    if let Some(b) = bool_word(trimmed) {
+        return YamlType::Bool(b);
     }
 
     // inf / nan → strings (not floats)
@@ -167,41 +177,17 @@ pub fn resolve_json_type(value: &str) -> YamlType<'_> {
         return YamlType::Str(Cow::Borrowed(value));
     }
 
-    if (trimmed.contains('.') || trimmed.contains('e') || trimmed.contains('E'))
-        && let Ok(val) = trimmed.parse::<f64>()
-    {
-        return YamlType::Float(val);
-    }
-
-    if let Ok(val) = trimmed.parse::<i64>() {
-        return YamlType::Int(val);
-    }
-
-    YamlType::Str(Cow::Borrowed(value))
+    numeric_tail(trimmed, value)
 }
 
 /// Resolve a plain scalar as YAML 1.1.
 ///
 /// Same as Core plus legacy boolean lexemes (yes/No/ON/off/y/N/...).
+/// The legacy words are matched first; everything else (null spellings,
+/// 1.2 bools, inf/nan, octal/hex, numbers) is delegated to the core
+/// chain so the two can never drift.
 pub fn resolve_yaml11_type(value: &str) -> YamlType<'_> {
     let trimmed = value.trim();
-
-    if trimmed.is_empty()
-        || trimmed == "null"
-        || trimmed == "Null"
-        || trimmed == "NULL"
-        || trimmed == "~"
-    {
-        return YamlType::Null;
-    }
-
-    // YAML 1.2 booleans
-    if trimmed == "true" || trimmed == "True" || trimmed == "TRUE" {
-        return YamlType::Bool(true);
-    }
-    if trimmed == "false" || trimmed == "False" || trimmed == "FALSE" {
-        return YamlType::Bool(false);
-    }
 
     // YAML 1.1 legacy booleans
     let legacy_bool = match trimmed {
