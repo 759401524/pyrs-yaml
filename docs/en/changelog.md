@@ -77,6 +77,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `==` and transparently recompiles. The cached path raises
   `exceptions.best_match(validator.iter_errors(instance))`, identical to
   `jsonschema.validate()` semantics. WSL wall-time: `document_validate` −98%.
+- **Structural dedupe of parser/serializer kernels** — mapping and sequence
+  rendering share one `write_container_node` skeleton (output byte-identical,
+  `serialize_*` medians −5~11%); single- and multi-document parse entry points
+  share one `load_ast` error contract; the schema resolution chains share
+  `bool_word`/`numeric_tail` and YAML 1.1 no longer re-checks the core's
+  null/bool words per scalar; anchor registration (`register_anchor`) and the
+  standalone-vs-inline comment taxonomy (`is_standalone_placement`) are
+  single-sourced across the AST and stream receivers. Repo duplicate rate
+  3.38% → 2.60%.
 
 #### Performance
 

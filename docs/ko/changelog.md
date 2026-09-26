@@ -66,6 +66,13 @@ status: new
   키핑하며 딥복사 스냅샷 가드로 감지합니다: 제자리 변경은 다음 사용 시 `==`로 감지되어
   투명하게 재컴파일됩니다. 캐시 경로는 `exceptions.best_match(validator.iter_errors(instance))`
   를 raise하므로 `jsonschema.validate()`와 동일한 의미론. WSL 실측: `document_validate` −98%.
+- **파서/직렬화 커널의 구조적 중복 제거** — mapping과 sequence 렌더링이 단일
+  `write_container_node` 골격을 공유(출력 바이트 단위 동일, `serialize_*` 중앙값
+  −5~11%); 단일/다중 문서 파싱 진입점이 동일한 `load_ast` 오류 계약을 공유;
+  schema 해석 체인은 `bool_word`/`numeric_tail`을 공유하고 YAML 1.1은 core의
+  null/bool 단어를 스칼라마다 다시 검사하지 않음; 앵커 등록(`register_anchor`)과
+  독립/인라인 주석 분류(`is_standalone_placement`)를 AST·stream receiver 간 단일화.
+  저장소 중복율 3.38% → 2.60%.
 
 #### 성능
 
