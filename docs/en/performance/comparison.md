@@ -38,6 +38,26 @@ pyrs-yaml compared against the two most popular Python YAML libraries.
 
 [^1]: PyYAML/ruamel round-trip times are estimated as parse + serialize from the same benchmark run.
 
+### Trade-off vs. native-object Rust parsers
+
+pyrs-yaml is the fastest YAML library that also keeps a **round-trip AST**
+(comments, anchors, tags, and source spans survive a load→edit→dump). When
+compared against Rust parsers that deserialize straight to plain Python
+objects and do **not** offer round-trip editing — `yaml-rs` in our
+cross-library benchmark — the picture is split:
+
+- **Serialize:** pyrs-yaml wins by ~2–3× (see the tables above).
+- **Eager parse into a `YamlDocument`:** pyrs-yaml is ~2× slower than
+  `yaml-rs`, because it builds the richer round-trip structure `yaml-rs`
+  never produces. This is a deliberate design trade — the extra work is what
+  buys comment/anchor/order preservation, not a regression to optimize away.
+
+Choose a native-only parser like `yaml-rs` when you only ever *read* YAML,
+need the last microsecond on parse, and never need to write changes back
+preserving the original formatting. Choose pyrs-yaml when round-trip
+fidelity matters — and note that even then it stays 20–40× ahead of the
+pure-Python alternatives above.
+
 ### Feature Comparison
 
 | Feature | pyrs-yaml | PyYAML | ruamel.yaml |

@@ -31,6 +31,13 @@ status: new
   `sort-keys`/`validate`/`to-json` 提供 `-A/--all-docs` 多文档模式；`validate` 改为互斥的
   `--schema <名称>` 与 `--schema-file <路径>`。未成文的 `python -m pyrs_yaml.compliance`
   入口已被子命令取代并移除。
+- **`YamlStream` 可导入** — `from pyrs_yaml import YamlStream` 现在与 API 文档和类型
+  标记一致；此前该类仅能作为 `YAML().load_stream*()` 的返回值，从未从原生模块导出。
+- **CLI `move --all-docs`** — `move` 现在支持 `-A/--all-docs`，在每个两端路径均可解析的
+  文档上应用子树移动（与 `set`/`delete`/`rename` 语义一致），多文档标志覆盖全部编辑命令。
+- **文档 ↔ API 一致性守卫** — `tests/test_docs_api.py` 扫描所有语系文档页中的
+  `pyrs_yaml.…` 属性链、`import pyrs_yaml…` 与 `from pyrs_yaml … import …` 声明，
+  任一引用符号在运行时不存在即失败（约 965 条声明纳入检查）。
 - **可选第三方类型插件** — `!duration`（`pendulum.Duration`）、`!arrow`（`arrow.Arrow`）、
   `!ulid`（`ulid.ULID`）在安装对应库时自动注册（`python/pyrs_yaml/plugins/_builtin.py`
   中的 `_register_third_party`）。每个插件使用独立标签，不影响现有 `!timestamp` /
@@ -41,6 +48,46 @@ status: new
   导出，`import pyrs_yaml` 不依赖 pydantic-settings；通过
   `pip install "pyrs-yaml[settings]"` 安装（Python 3.10+）。`dump_pydantic` 与
   `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
+
+#### 变更
+
+- **内部重复代码清理** — 基准 fixture 改由共享块拼接，PyO3 路径编辑方法委托给现有
+  `apply_metadata_edit` 助手，重复的文件读取/错误映射与行偏移样板收敛为共享函数。
+  公开行为无变化；jscpd 测量的重复代码率从 5.25% 降至 3.45%。
+- **`YamlDocument.validate()` 缓存编译后的 validator** — schema（JSON 文本或
+  dict）首次校验成功后即缓存编译好的 `jsonschema` validator；后续调用跳过 schema
+  解析、meta-schema 检查与 validator 构建。dict schema 按对象身份键控并辅以深拷贝
+  快照守卫：原地修改会在下次使用时通过 `==` 检出并透明重编译。缓存路径抛出
+  `exceptions.best_match(validator.iter_errors(instance))`，与
+  `jsonschema.validate()` 语义完全一致。WSL 实测：`document_validate` −98%。
+
+#### 性能
+
+- **锚点提取字节门控** — `extract_anchors` 先做一次 `&` 字节包含检查，无锚点文档
+  直接返回空，整体跳过逐字符引号状态机。Rust 侧 `parse_*` 基准中位数提升 11–18%，
+  扫描本身从 1.5µs 降至 38ns。
+- **流事件字典键驻留** — `parse_stream`/`load_stream` 每事件的固定键复用
+  `pyo3::intern!` 常驻字符串，消除每键一次的 Python 字符串分配。WSL 实测：
+  `parse_stream` −34%、`parse_stream_multidoc` −39%、`load_stream` −22%。
+- **分解微基准** — 新增 `granit_events_*` 基准，将 granit 纯事件管道成本与 AST
+  构建分离（仅基准）。
+- **多文档解析免除逐文档深拷贝** — `on_document_end` 改为将完成文档的所有权移动
+  进集合而非深拷贝（下一文档会重建 result，克隆是纯开销）。WSL 实测：
+  `parse_all_docs` −9.7%、`safe_loads`（多文档）−9.5%、`YAML().safe_loads` −6.7%。
+- **流式写入跨文档复用单一缓冲** — 新增 `direct_dump_into` 将每个文档写入复用的
+  `String`，`dump_iterable` 在文本已以恰好一个换行结尾（正常情况）时跳过
+  `normalize_doc` 的重新拷贝。WSL 实测：`dump_stream_multi_doc` −27.2%、
+  `dump_stream` −4.4%。
+- **AST 构建器标量快速路径** — `unescape_double_quoted` 对无背斜杠字符串提前返回；
+  `detect_chomping` 改为惰性取行而非每个块标量收集全文。WSL 实测：`to_dict` 族
+  −4~9%、标量类型加载 −3~4%，无回退。
+
+#### 文档
+
+- **修正 numpy 指南的 0-D 标量章节（全部语系）** — 原文声称 0-D 数组会“重塑为单元素
+  列表”（`assert data == [42]`），而实际行为（由 `tests/test_numpy.py` 锁定）是序列化为
+  裸标量（`assert data == 42`）；四语系文本已纠正，en 版新增 0-D `bool` → `1.0`
+  的 rust-numpy 特性警告块。
 
 ### [v0.15.0] — 2026-08-19
 

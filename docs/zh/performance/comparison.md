@@ -38,6 +38,15 @@ pyrs-yaml 与两款最流行的 Python YAML 库进行对比。
 
 [^1]: PyYAML/ruamel 的往返时间为同一基准测试中解析与序列化时间之和的估算值。
 
+### 与「直接产出原生对象」的 Rust 解析器的取舍
+
+pyrs-yaml 是**同时保留往返 AST**（注释、锚点、标签与源码 span 能在 load→edit→dump 后存活）的 YAML 库中最快的。与只反序列化为普通 Python 对象、且**不提供**往返编辑的 Rust 解析器（本仓库横向基准里的 `yaml-rs`）相比，结果是一分为二的：
+
+- **序列化：** pyrs-yaml 领先约 2–3 倍（见上表）。
+- **解析为 `YamlDocument`：** pyrs-yaml 比 `yaml-rs` 慢约 2 倍，因为它构建了 `yaml-rs` 从不产出的更丰富的往返结构。这是有意的设计取舍——多出的开销正是注释/锚点/顺序保真的来源，而非可优化掉的回退。
+
+若你只*读取* YAML、需要解析的最后一点速度、且从不把改动按原格式写回，可选 `yaml-rs` 这类纯原生解析器；若往返保真重要，则选 pyrs-yaml——即便在此它仍比上面的纯 Python 方案快 20–40 倍。
+
 ### 功能对比
 
 | 功能 | pyrs-yaml | PyYAML | ruamel.yaml |

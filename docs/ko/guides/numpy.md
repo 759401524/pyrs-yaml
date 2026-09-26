@@ -82,12 +82,12 @@ assert data == [-100, 200]  # 순환 파싱 정상 처리
 
 ## 0차원 스칼라 배열
 
-0차원 배열은 1차원으로 리셰이프된 후 직렬화되며, 단일 항목 리스트가 됩니다:
+0차원 배열은 래핑 리스트 없이 스칼라 값으로 직렬화됩니다:
 
 ```python title="0차원 스칼라"
 scalar = np.array(42, dtype="int32")
 data = y.safe_load(y.safe_dump(scalar))
-assert data == [42]
+assert data == 42
 ```
 
 ## 구조체 내 중첩

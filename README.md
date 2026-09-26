@@ -57,11 +57,11 @@ a: 1  # keep me
 
 $ pyrs-yaml get deploy.yaml '$..host' --format text
 $ pyrs-yaml set config.yaml "$.port" 8080 --inplace
-$ pyrs-yaml validate app.yaml --schema schema.yaml
+$ pyrs-yaml validate app.yaml --schema-file schema.yaml
 $ pyrs-yaml to-json config.yaml
 ```
 
-Commands: `fmt` / `get` / `set` / `delete` / `rename` / `validate` / `to-json` / `from-json` — see the [CLI guide](https://759401524.github.io/pyrs-yaml/en/guides/cli/) for details.
+Commands: `fmt` / `get` / `set` / `delete` / `rename` / `sort-keys` / `move` / `frontmatter` / `validate` / `to-json` / `from-json` / `compliance`, with `-A/--all-docs` multi-document support on all edit/query commands — see the [CLI guide](https://759401524.github.io/pyrs-yaml/en/guides/cli/) for details.
 
 ## Requirements
 

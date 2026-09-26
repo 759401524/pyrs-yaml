@@ -85,12 +85,12 @@ assert data == [-100, 200]  # 往返正确
 
 ## 0-D 标量数组
 
-0-D 数组会被 reshape 为 1-D 后序列化，结果是一个单元素列表：
+0-D 数组直接序列化为标量值，不会包装成列表：
 
 ```python title="0-D 标量"
 scalar = np.array(42, dtype="int32")
 data = y.safe_load(y.safe_dump(scalar))
-assert data == [42]
+assert data == 42
 ```
 
 ## 嵌套在结构体中

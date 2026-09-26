@@ -56,11 +56,11 @@ a: 1  # keep me
 
 $ pyrs-yaml get deploy.yaml '$..host' --format text
 $ pyrs-yaml set config.yaml "$.port" 8080 --inplace
-$ pyrs-yaml validate app.yaml --schema schema.yaml
+$ pyrs-yaml validate app.yaml --schema-file schema.yaml
 $ pyrs-yaml to-json config.yaml
 ```
 
-命令：`fmt` / `get` / `set` / `delete` / `rename` / `validate` / `to-json` / `from-json`——详见 [CLI 指南](https://759401524.github.io/pyrs-yaml/zh/guides/cli/)。
+命令：`fmt` / `get` / `set` / `delete` / `rename` / `sort-keys` / `move` / `frontmatter` / `validate` / `to-json` / `from-json` / `compliance`，全部编辑/查询命令支持 `-A/--all-docs` 多文档模式——详见 [CLI 指南](https://759401524.github.io/pyrs-yaml/zh/guides/cli/)。
 
 ## 环境要求
 
