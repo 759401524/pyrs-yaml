@@ -10,6 +10,7 @@ pub mod i18n;
 pub mod parser;
 pub mod serializer;
 pub mod splice;
+pub mod toml;
 
 #[cfg(test)]
 mod integration;
