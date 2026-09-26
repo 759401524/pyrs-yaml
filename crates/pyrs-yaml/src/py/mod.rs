@@ -3,6 +3,7 @@
 
 pub mod convert;
 pub mod direct_dump;
+pub mod direct_load;
 pub mod document;
 pub mod editing;
 pub mod functions;
