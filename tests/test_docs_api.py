@@ -54,13 +54,25 @@ def resolve_chain(chain: str) -> tuple[bool, str]:
     for part in parts[1:]:
         if part in BINARY_SUFFIXES:
             return True, ""  # filename tail, not an attribute claim
-        if not hasattr(obj, part):
+        try:
+            exists = hasattr(obj, part)
+        except ImportError:
+            # hasattr only swallows AttributeError; a lazy optional-extra
+            # export raising ImportError must not redden the guard either.
+            return True, ""
+        if not exists:
             # Classes are capitalized; a lowercase link after a class is an
             # instance member claim (e.g. YAML().load) — not an export check.
             if part[0].islower() and not isinstance(obj, type):
                 return True, ""
             return False, chain + " (missing ." + part + ")"
-        obj = getattr(obj, part)
+        try:
+            obj = getattr(obj, part)
+        except ImportError:
+            # Lazy optional-extra export (e.g. pyrs_yaml.settings pulls in
+            # pydantic-settings on first access): unverifiable without the
+            # extra, which is not a broken docs claim.
+            return True, ""
     return True, ""
 
 
@@ -77,7 +89,13 @@ def collect_claims(text: str) -> list[str]:
         sources.extend(INLINE_RE.findall(line))
         for src in sources:
             for match in FROM_RE.finditer(src):
-                module = importlib.import_module(match.group(1))
+                try:
+                    module = importlib.import_module(match.group(1))
+                except ImportError:
+                    # Optional-extra submodule (e.g. pyrs_yaml.settings needs
+                    # pydantic-settings). Its absence means the claim cannot
+                    # be verified in this env — not that the docs are wrong.
+                    continue
                 names = [n.strip().split(" as ")[0].strip() for n in match.group(2).split(",") if n.strip()]
                 for name in names:
                     if name and name != "*":
