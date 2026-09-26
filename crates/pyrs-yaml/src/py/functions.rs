@@ -146,6 +146,23 @@ pub(crate) fn safe_loads(
     allow_duplicate_keys: bool,
 ) -> PyResult<Vec<Py<PyAny>>> {
     let schema_enum = parse_schema(schema)?;
+    // Single-document streams take the direct path (multi-doc bails back to
+    // the AST pipeline); empty input mirrors parse_all's empty list.
+    if !yaml.trim().is_empty() {
+        match crate::py::direct_load::try_direct_load(
+            py,
+            yaml,
+            &schema_enum,
+            max_depth,
+            allow_duplicate_keys,
+        ) {
+            crate::py::direct_load::DirectOutcome::Done(v) => return Ok(vec![v]),
+            crate::py::direct_load::DirectOutcome::Fail(e) => {
+                return Err(parse_error_to_py_err(e, yaml, max_depth));
+            }
+            crate::py::direct_load::DirectOutcome::Bail => {}
+        }
+    }
     let schema_clone = schema_enum.clone();
     let asts = py.detach(|| {
         crate::parser::parse_all_with_options(
