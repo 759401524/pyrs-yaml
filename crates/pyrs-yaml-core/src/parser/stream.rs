@@ -153,27 +153,22 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
         // Handle native comments from granit-parser
         if let Event::Comment(text, placement) = &event {
             let text = Arc::from(text.trim());
-            match placement {
-                granit_parser::Placement::Above
-                | granit_parser::Placement::Free
-                | granit_parser::Placement::Last => {
-                    self.pending_standalone_comment = Some(Comment {
+            if crate::parser::is_standalone_placement(placement) {
+                self.pending_standalone_comment = Some(Comment {
+                    text,
+                    standalone: true,
+                });
+            } else if *placement == granit_parser::Placement::Right {
+                self.events.push(StreamEvent {
+                    event_type: StreamEventType::Comment {
                         text,
-                        standalone: true,
-                    });
-                }
-                granit_parser::Placement::Right => {
-                    self.events.push(StreamEvent {
-                        event_type: StreamEventType::Comment {
-                            text,
-                            standalone: false,
-                        },
-                        line,
-                        column,
-                    });
-                }
-                _ => {} // Placement is #[non_exhaustive]
+                        standalone: false,
+                    },
+                    line,
+                    column,
+                });
             }
+            // Placement is #[non_exhaustive]: other variants are ignored.
             return;
         }
 
