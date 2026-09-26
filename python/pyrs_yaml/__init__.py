@@ -28,6 +28,7 @@ from .async_dump import (
     safe_loads_async,
 )
 from .compliance import compliance_report
+from .ini import load_ini
 from .merged_view import MergedView
 from .node import Node, YamlDocumentError
 from .plugins import discover_plugins, get_discovery_errors
@@ -400,6 +401,7 @@ __all__ = [
     "list_languages",
     "list_plugins",
     "list_schemas",
+    "load_ini",
     "load_schema",
     "load_toml",
     "negotiate_language",
