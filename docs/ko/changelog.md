@@ -53,6 +53,13 @@ status: new
   지연 내보내기되므로 `import pyrs_yaml`에 pydantic-settings가 필요 없습니다.
   `pip install "pyrs-yaml[settings]"`로 설치합니다(Python 3.10+).
   `dump_pydantic`과 `parse_as`도 동일한 모듈 수준 `__getattr__` 지연 내보내기 패턴으로 변경되었습니다.
+- **TOML 및 INI 교환 형식** — YAML을 유일한 편집 가능 표현으로 하는 허브-스포크
+  멀티 형식 지원: `from_toml`/`to_toml`로 TOML 텍스트 ⇄ YAML 텍스트 변환
+  (Rust `toml_edit`), `load_toml`은 TOML을 Python 값으로 직접 읽기
+  (datetime은 내장 `!timestamp` 플러그인 경유, TOML 문자열은 재해석되지 않음),
+  `load_ini`는 표준 라이브러리 configparser로 INI 읽기(엄격 모드·읽기 전용).
+  TOML 출력은 표현 불가 구조를 안정적인 오류로 거부하며, 라운드트립 편집은
+  YAML 전용으로 유지됩니다.
 
 #### 변경
 

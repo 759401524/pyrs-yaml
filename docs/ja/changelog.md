@@ -57,6 +57,13 @@ status: new
   遅延エクスポートされるため `import pyrs_yaml` に pydantic-settings は不要です。
   `pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+）。
   `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されました。
+- **TOML と INI の交換フォーマット** — YAML を唯一の編集可能表現とする
+  ハブ・スポーク構成のマルチフォーマット対応：`from_toml`/`to_toml` で
+  TOML テキスト ⇄ YAML テキストを変換（Rust `toml_edit`）、`load_toml` は
+  TOML を Python 値へ直接読み出し（datetime は内蔵 `!timestamp` プラグイン
+  経由、TOML 文字列は再解決されない）、`load_ini` は標準ライブラリ
+  configparser で INI を読み取り（厳格モード・読み取り専用）。TOML 出力は
+  表現不能な構造を安定したエラーで拒否。ラウンドトリップ編集は YAML 限定。
 
 #### 変更
 
