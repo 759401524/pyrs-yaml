@@ -66,12 +66,30 @@ impl<'a> SpannedEventReceiver<'a> for Collector<'a> {
                 }
             }
             Event::DocumentEnd => {}
-            // Aliases, anchors and tags belong to the AST-only surface.
+            // Anchors and aliases stay on the AST surface: measured
+            // event-span replay never beat parse+to_dict (anchored docs
+            // regressed ~+48% paying collection overhead *plus* the AST
+            // fallback), and a byte-level pre-veto is impossible since
+            // aliases reference anchors by id. Revisit with parser-level
+            // integration, not stream-level.
             Event::Alias(_) => self.bail = true,
-            Event::Scalar(_, _, anchor_id, tag)
-            | Event::MappingStart(_, anchor_id, tag)
-            | Event::SequenceStart(_, anchor_id, tag) => {
-                if *anchor_id != 0 || tag.is_some() {
+            Event::Scalar(value, _, anchor_id, tag) => {
+                if tag.is_some() || *anchor_id != 0 {
+                    self.bail = true;
+                    return;
+                }
+                // Merge keys veto the fast path (the AST layer owns `<<`
+                // semantics). Rejected regardless of position: a literal
+                // "<<" scalar is vanishingly rare outside merge keys, and
+                // losing the fast path there is harmless.
+                if value == "<<" {
+                    self.bail = true;
+                    return;
+                }
+                self.push(event, span);
+            }
+            Event::MappingStart(_, anchor_id, tag) | Event::SequenceStart(_, anchor_id, tag) => {
+                if tag.is_some() || anchor_id != &0 {
                     self.bail = true;
                     return;
                 }
@@ -245,6 +263,16 @@ impl<'py, 'a> Builder<'py, 'a> {
     }
 }
 
+/// True when a document separator line (`---` / `...`) appears anywhere
+/// after the first line: such streams may hold multiple documents and the
+/// collector's late bail is too expensive to gamble on. False positives
+/// (separator-looking lines inside block scalars) only lose the fast path.
+fn has_later_document_separator(src: &str) -> bool {
+    let mut lines = src.lines();
+    lines.next();
+    lines.any(|l| l == "---" || l == "..." || l.starts_with("--- ") || l.starts_with("... "))
+}
+
 /// Outcome of a direct load attempt.
 pub(crate) enum DirectOutcome {
     /// Fully materialized Python value.
@@ -262,9 +290,24 @@ pub(crate) fn try_direct_load(
     max_depth: usize,
     allow_duplicate_keys: bool,
 ) -> DirectOutcome {
-    // Merge keys need a byte-level veto: "<<: x" is structurally a plain
-    // scalar key the collector would otherwise accept... cheap one-pass.
-    if yaml_src.contains("<<") {
+    // Anchored documents stay on the AST path; a single `&` byte scan
+    // rejects them here so bail costs nanoseconds, not a partial granit
+    // pass + full AST rerun (measured +59% on small anchored documents
+    // without this gate). Aliases cannot exist without an anchor
+    // definition, so scanning for the anchor marker covers both; the
+    // known false positive (`&` inside quoted values, e.g. URLs) only
+    // costs that document the fast path. Tags and merge keys are vetoed
+    // precisely at the event layer.
+    if yaml_src.as_bytes().contains(&b'&') {
+        return DirectOutcome::Bail;
+    }
+    // Cheap structural veto for multi-document streams: bailing only when
+    // the collector reaches the second DocumentStart wastes a full
+    // collection pass (and the follow-up AST parse re-reads everything),
+    // which measured +58% on multi-document loads. A line-start scan for
+    // separators costs microseconds; a leading `---` (explicit single-doc
+    // start) stays on the fast path.
+    if has_later_document_separator(yaml_src) {
         return DirectOutcome::Bail;
     }
     let mut collector = Collector {
