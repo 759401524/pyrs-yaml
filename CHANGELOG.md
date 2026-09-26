@@ -27,7 +27,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `validate`/`to-json`; and mutually exclusive `validate --schema <name>`
   vs `--schema-file <path>`. The undocumented `python -m
   pyrs_yaml.compliance` entry point was removed in favor of the
-  subcommand.- **Optional third-party type plugins** — `!duration` (`pendulum.Duration`),
+  subcommand.
+- **`YamlStream` is now importable** — `from pyrs_yaml import YamlStream`
+  works as documented in the API reference and type stubs; the class was
+  previously returned by `YAML().load_stream*()` but never exported from the
+  native module.
+- **CLI `move --all-docs`** — `move` now accepts `-A/--all-docs`, applying the
+  subtree move to every document where both paths resolve (same semantics as
+  `set`/`delete`/`rename`), so the multi-document flag covers all edit
+  commands.
+- **Docs ↔ API consistency guard** — `tests/test_docs_api.py` scans every
+  locale doc page (`docs/{en,zh,ja,ko}`) for `pyrs_yaml.…` attribute chains,
+  `import pyrs_yaml…`, and `from pyrs_yaml … import …` claims, and fails if
+  any referenced symbol does not exist at runtime (~965 claims checked).
+  Guards against the class of drift that let the missing `YamlStream` export
+  stay undocumented-by-tests.
+- **Optional third-party type plugins** — `!duration` (`pendulum.Duration`),
   `!arrow` (`arrow.Arrow`), and `!ulid` (`ulid.ULID`) auto-register when the
   corresponding library is installed (`_register_third_party` in
   `python/pyrs_yaml/plugins/_builtin.py`). Each uses a distinct tag so existing
@@ -98,6 +113,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Internal duplication cleanup** — benchmark fixtures composed from shared
+  blocks, PyO3 path-edit methods delegate to the existing
+  `apply_metadata_edit` helper, and repeated file-read/error-mapping and
+  line-offset boilerplate collapsed into shared functions. No public behavior
+  change; the duplicate-code rate measured by jscpd drops from 5.25% to 3.45%.
+- **`YamlDocument.validate()` caches compiled validators** — the first
+  successful validation against a schema (JSON text *or* dict) caches a
+  compiled `jsonschema` validator; later calls skip schema parsing,
+  meta-schema checking, and validator construction. Dict schemas are keyed by
+  object identity with a deep-copy snapshot guard: an in-place mutation is
+  detected by `==` on the next use and transparently recompiles. The cached
+  path raises `exceptions.best_match(validator.iter_errors(instance))`,
+  identical to `jsonschema.validate()` semantics. WSL wall-time:
+  `document_validate` −98% (660µs → 13µs).
 - **NumPy re-enabled on free-threaded (cp314t) wheels** — the
   `--no-default-features` flag is removed from the cp314t build lines in
   `publish.yml` and `ci.yml`; rust-numpy 0.29 (already pinned) supports
@@ -112,8 +141,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance fix for validating large plain/block scalars (ASCII fast path).
   No API changes required in `pyrs-yaml-core`.
 
+### Performance
+
+- **Anchor extraction byte gate** — `extract_anchors` returns empty after a
+  single `&` byte-containment check; documents without anchors (the common
+  case) skip the per-character quote state machine entirely. Rust-side
+  `parse_*` divan benches improve 11–18% at the median (e.g. `parse_large`
+  31.2µs → 26.3µs; the extraction scan itself drops 1.5µs → 38ns).
+- **Interned stream-event dict keys** — the fixed keys emitted per event by
+  `parse_stream` / `load_stream` (`line`, `column`, `type`, `value`, `style`,
+  `anchor`, `tag`) now reuse interned string objects via `pyo3::intern!`,
+  eliminating one Python string allocation per key insert. WSL wall-time:
+  `parse_stream` −34%, `parse_stream_multidoc` −39%, `load_stream` −22%.
+- **Decomposition micro-benchmarks** — new `granit_events_*` benches isolate
+  the pure granit event-pipeline cost from AST construction (bench-only).
+- **Multi-document parse without per-document clones** — `on_document_end`
+  moves the completed document into the collection instead of deep-cloning it
+  (the next document rebuilds the result; the clone was pure overhead).
+  WSL wall-time: `parse_all_docs` −9.7%, `safe_loads` (multi-doc) −9.5%,
+  `YAML().safe_loads` −6.7%.
+- **Streaming write reuses one buffer across documents** — new
+  `direct_dump_into` writes each document into a reused `String`, and
+  `dump_iterable` skips `normalize_doc`'s re-copy when the text already ends
+  with exactly one newline (the normal case). WSL wall-time:
+  `dump_stream_multi_doc` −27.2%, `dump_stream` −4.4%.
+- **Scalar fast paths in the AST builder** — `unescape_double_quoted` returns
+  early for quoted strings without backslashes (no per-char state machine) and
+  `detect_chomping` pulls lines lazily instead of collecting every line of the
+  document per block scalar. WSL wall-time: `to_dict` family −4~9%,
+  `safe_load_scalar_types[strings/numbers]` −3~4%, no regressions.
+
 ### Docs
 
+- **Corrected the numpy guide's 0-D scalar section (all locales)** — the
+  ``0-D Scalar Arrays`` snippet claimed 0-D arrays "reshape to a single-element
+  list" (`assert data == [42]`); the shipped behavior (pinned by
+  `tests/test_numpy.py`) serializes them as bare scalars (`assert data == 42`).
+  Text corrected in `docs/{en,zh,ja,ko}/guides/numpy.md`, and the en page gained
+  a warning admonition documenting the 0-D `bool` → `1.0` rust-numpy quirk.
 - **Corrected stale references across all locale docs (en/zh/ja/ko)** —
   `saphyr-parser` → `granit-parser`, YAML compliance 98.1% → 99.75%
   (405/406 suite cases), ABI3 support 3.9–3.13 → 3.8–3.15 (py3.9+ → py3.8+),

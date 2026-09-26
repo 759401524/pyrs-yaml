@@ -91,13 +91,19 @@ assert data == [-100, 200]  # round-trip correct
 
 ### 0-D Scalar Arrays
 
-0-D arrays are reshaped to 1-D before serialization, producing a single-element list:
+A 0-D array serializes as its scalar value — no wrapping list:
 
 ```python title="0-D scalar"
 scalar = np.array(42, dtype="int32")
 data = y.safe_load(y.safe_dump(scalar))
-assert data == [42]
+assert data == 42
 ```
+
+!!! warning "0-D bool arrays"
+
+    Due to a rust-numpy dtype-matching quirk, a 0-D `bool` array may serialize
+    as `1.0`/`0.0` (a float) rather than `true`/`false`. Use a 1-element 1-D
+    array (`np.array([True])`) when you need an explicit boolean round-trip.
 
 ### Nested in Containers
 

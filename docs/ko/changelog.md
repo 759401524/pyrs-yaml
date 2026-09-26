@@ -32,6 +32,16 @@ status: new
   `-A/--all-docs` 다중 문서 모드가 제공되고, `validate`는 상호 배타적인
   `--schema <이름>`과 `--schema-file <경로>`로 분리되었습니다. 문서화되지 않았던
   `python -m pyrs_yaml.compliance` 진입점은 서브커맨드로 대체되어 제거되었습니다.
+- **`YamlStream` import 가능** — API 문서와 타입 스텁대로
+  `from pyrs_yaml import YamlStream`이 동작합니다. 그동안 이 클래스는
+  `YAML().load_stream*()`의 반환값으로만 얻을 수 있고 네이티브 모듈에서 내보내지
+  않았습니다.
+- **CLI `move --all-docs`** — `move`가 `-A/--all-docs`를 지원합니다. 양쪽 경로가 해석되는
+  모든 문서에 서브트리 이동을 적용합니다(`set`/`delete`/`rename`과 동일한 의미론). 이제
+  다중 문서 플래그가 모든 편집 명령을 커버합니다.
+- **문서↔API 일관성 가드** — `tests/test_docs_api.py`가 모든 언어 문서 페이지의
+  `pyrs_yaml.…` 속성 체인, `import pyrs_yaml…`, `from pyrs_yaml … import …` 참조를
+  훑어 실행 시간에 존재하지 않는 심볼을 참조하면 실패합니다(약 965개 선언 검사).
 - **선택적 서드파티 유형 플러그인** — `!duration`(`pendulum.Duration`),
   `!arrow`(`arrow.Arrow`), `!ulid`(`ulid.ULID`)는 해당 라이브러리가 설치되어 있을 때
   자동으로 등록됩니다(`python/pyrs_yaml/plugins/_builtin.py`의 `_register_third_party`).
@@ -43,6 +53,49 @@ status: new
   지연 내보내기되므로 `import pyrs_yaml`에 pydantic-settings가 필요 없습니다.
   `pip install "pyrs-yaml[settings]"`로 설치합니다(Python 3.10+).
   `dump_pydantic`과 `parse_as`도 동일한 모듈 수준 `__getattr__` 지연 내보내기 패턴으로 변경되었습니다.
+
+#### 변경
+
+- **내부 중복 코드 정리** — 벤치마크 fixture를 공유 블록 조립으로 변경, PyO3 경로 편집
+  메서드를 기존 `apply_metadata_edit` 헬퍼로 위임, 반복된 파일 읽기/에러 매핑과 행 오프셋
+  보일러플레이트를 공유 함수로 통합했습니다. 공개 동작 변경은 없습니다. jscpd로 측정한
+  중복 코드 비율이 5.25%에서 3.45%로 감소했습니다.
+- **`YamlDocument.validate()`가 컴파일된 validator를 캐시** — 스키마(JSON 텍스트 또는
+  dict)에 대한 첫 검증 성공 시 `jsonschema` validator를 캐시해 이후 호출에서는 스키마
+  파싱, 메타스키마 검사, validator 구축을 생략합니다. dict 스키마는 객체 식별자로
+  키핑하며 딥복사 스냅샷 가드로 감지합니다: 제자리 변경은 다음 사용 시 `==`로 감지되어
+  투명하게 재컴파일됩니다. 캐시 경로는 `exceptions.best_match(validator.iter_errors(instance))`
+  를 raise하므로 `jsonschema.validate()`와 동일한 의미론. WSL 실측: `document_validate` −98%.
+
+#### 성능
+
+- **앵커 추출 바이트 게이트** — `extract_anchors`는 `&` 바이트 포함 여부를 한 번만
+  검사해 앵커가 없는 문서는 문자 단위 인용 상태 머신을 완전히 건너뜁니다. Rust 쪽
+  `parse_*` 벤치 중간값 11–18% 개선, 스캔 자체는 1.5µs → 38ns.
+- **스트림 이벤트 딕셔너리 키 인터닝** — `parse_stream`/`load_stream`이 이벤트마다
+  넣는 고정 키를 `pyo3::intern!` 상주 객체로 재사용해 키별 Python 문자열 할당을
+  없앴습니다. WSL 실측: `parse_stream` −34%, `parse_stream_multidoc` −39%,
+  `load_stream` −22%.
+- **분해 마이크로벤치** — `granit_events_*` 벤치로 granit 순수 이벤트 파이프라인
+  비용과 AST 구축을 분리(벤치 전용).
+- **다중 문서 파싱의 문서별 딥복사 제거** — `on_document_end`가 완성된 문서를
+  딥복사 대신 컬렉션으로 소유권을 이동합니다(다음 문서가 result를 재구성하므로
+  복사는 순수 오버헤드). WSL 실측: `parse_all_docs` −9.7%, `safe_loads`(다중 문서)
+  −9.5%, `YAML().safe_loads` −6.7%.
+- **스트림 쓰기는 문서 간 단일 버퍼를 재사용** — 새 `direct_dump_into`는 각 문서를
+  재사용 `String`에 쓰고, `dump_iterable`은 텍스트가 개행 하나로 이미 끝나면
+  `normalize_doc` 재복사를 건너뜁니다. WSL 실측: `dump_stream_multi_doc` −27.2%,
+  `dump_stream` −4.4%.
+- **AST 빌더 스칼라 빠른 경로** — `unescape_double_quoted`는 백슬래시가 없으면 즉시
+  반환하고, `detect_chomping`은 블록 스칼라마다 문서 전체 행을 collect 대신 지연
+  가져오기를 합니다. WSL 실측: `to_dict` 계열 −4~9%, 스칼라 타입 로드 −3~4%, 회귀 없음.
+
+#### 문서
+
+- **numpy 가이드의 0차원 스칼라 절 모든 로케일 수정** — 기존 문서는 "단일 항목
+  리스트로 리셰이프"(`assert data == [42]`)라고 했지만 실제 동작(`tests/test_numpy.py`로
+  고정)은 맨 스칼라로 직렬화(`assert data == 42`)합니다. 4개 로케일 텍스트를 정정했고
+  en 문서에 0-D `bool` → `1.0` rust-numpy 특성 경고 admonition을 추가했습니다.
 
 ### [v0.15.0] — 2026-08-19
 

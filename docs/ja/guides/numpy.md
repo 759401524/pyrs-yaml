@@ -85,12 +85,12 @@ assert data == [-100, 200]  # ラウンドトリップ正しく処理
 
 ## 0次元スカラ配列
 
-0次元配列は1次元にリシェイプされてからシリアライズされ、単一要素リストになります：
+0次元配列はそのままスカラー値としてシリアライズされます（リストにはなりません）：
 
 ```python title="0次元スカラ"
 scalar = np.array(42, dtype="int32")
 data = y.safe_load(y.safe_dump(scalar))
-assert data == [42]
+assert data == 42
 ```
 
 ## 構造体内にネスト

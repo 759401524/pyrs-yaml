@@ -34,6 +34,17 @@ status: new
   `to-json` に `-A/--all-docs` マルチドキュメントモードを提供し、`validate` は相互排他の
   `--schema <名前>` と `--schema-file <パス>` に分割しました。未文書だった `python -m
   pyrs_yaml.compliance` エントリポイントはサブコマンドに置き換えられ削除されました。
+- **`YamlStream` が import 可能に** — API リファレンスと型スタブどおり
+  `from pyrs_yaml import YamlStream` が使えるようになりました。これまでこのクラスは
+  `YAML().load_stream*()` の戻り値としてのみ得られ、ネイティブモジュールから
+  エクスポートされていませんでした。
+- **CLI `move --all-docs`** — `move` が `-A/--all-docs` をサポート。両方のパスが解決できる
+  各ドキュメントでサブツリー移動を適用します（`set`/`delete`/`rename` と同じセマンティクス）。
+  これによりマルチドキュメントフラグはすべての編集コマンドをカバーします。
+- **ドキュメント↔API 整合性ガード** — `tests/test_docs_api.py` が全言語の
+  ドキュメントページ内の `pyrs_yaml.…` 属性チェーン・`import pyrs_yaml…`・
+  `from pyrs_yaml … import …` の参照を走査し、実行時に存在しないシンボルを
+  参照していれば失敗します（約 965 件の宣言を検査）。
 - **オプションのサードパーティタイププラグイン** — `!duration`（`pendulum.Duration`）、
   `!arrow`（`arrow.Arrow`）、`!ulid`（`ulid.ULID`）は、対応するライブラリがインストール
   されている場合に自動登録されます（`python/pyrs_yaml/plugins/_builtin.py` の
@@ -46,6 +57,50 @@ status: new
   遅延エクスポートされるため `import pyrs_yaml` に pydantic-settings は不要です。
   `pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+）。
   `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されました。
+
+#### 変更
+
+- **内部の重複コード整理** — ベンチマーク fixture を共有ブロックの合成に変更、PyO3 の
+  パス編集メソッドを既存の `apply_metadata_edit` ヘルパーへ委譲、重複したファイル読み込み/
+  エラーマッピングと行オフセットの定型コードを共有関数に集約しました。公開動作の変更は
+  ありません。jscpd で測った重複コード率は 5.25% から 3.45% に低下。
+- **`YamlDocument.validate()` がコンパイル済み validator をキャッシュ** — スキーマ
+  （JSON テキストまたは dict）に対する初回検証成功時に `jsonschema` validator を
+  キャッシュし、以降の呼び出しではスキーマ解析・メタスキーマチェック・validator
+  構築をスキップ。dict キーはオブジェクト同一性＋ディープコピー・スナップショット
+  ガードで管理され、その場の変更は `==` で検出され透過的に再コンパイル。キャッシュ
+  経路は `exceptions.best_match(validator.iter_errors(instance))` を送出し、
+  `jsonschema.validate()` と完全に同一のセマンティクス。WSL 実測: `document_validate` −98%。
+
+#### パフォーマンス
+
+- **アンカー抽出のバイトゲート** — `extract_anchors` は `&` のバイト含有チェック 1 回で
+  空を返し、アンカーなしドキュメントでは文字単位のクォート状態機械を完全にスキップ。
+  Rust 側 `parse_*` ベンチの中央値で 11〜18% 改善、スキャン自体は 1.5µs → 38ns。
+- **ストリームイベント辞書キーのインターン** — `parse_stream`/`load_stream` が各イベン
+  トに出す固定キーを `pyo3::intern!` の常駐オブジェクトに統一し、キーごとの Python
+  文字列確保を解消。WSL 実測: `parse_stream` −34%、`parse_stream_multidoc` −39%、
+  `load_stream` −22%。
+- **分解用マイクロベンチ** — `granit_events_*` を追加し、granit の純イベントパイプライン
+  コストと AST 構築を分離（ベンチのみ）。
+- **マルチドキュメント解析の文書ごとのディープコピーを削除** — `on_document_end` は
+  完成したドキュメントをクローンではなくコレクションへ移動します（次のドキュメントで
+  result は再構築されるためクローンは純粋なオーバーヘッド）。WSL 実測:
+  `parse_all_docs` −9.7%、`safe_loads`（マルチドキュメント）−9.5%、`YAML().safe_loads` −6.7%。
+- **ストリーミング書き込みは文書間で単一バッファを再利用** — 新しい
+  `direct_dump_into` は各文書を再利用の `String` へ書き込み、`dump_iterable` は
+  テキストが改行 1 つで終わる通常ケースで `normalize_doc` の再コピーをスキップ。
+  WSL 実測: `dump_stream_multi_doc` −27.2%、`dump_stream` −4.4%。
+- **AST ビルダのスカラ高速パス** — `unescape_double_quoted` はバックスラッシュなしでは
+  即返答、`detect_chomping` はブロックスカラ毎に全文行を collect せず遅延取得。
+  WSL 実測: `to_dict` 系 −4〜9%、スカラ型ロード −3〜4%、退行なし。
+
+#### ドキュメント
+
+- **numpy ガイドの 0 次元スカラ節を全ロケールで修正** — 旧文は「単一要素リストへ
+  リシェイプ」（`assert data == [42]`）と説明したが、実挙動（`tests/test_numpy.py` で
+  固定）は素のスカラーへシリアライズ（`assert data == 42`）。4 ロケールとも修正し、
+  en 版に 0-D `bool` → `1.0` の rust-numpy 特性に関する警告 admonition を追加。
 
 ### [v0.15.0] — 2026-08-19
 
