@@ -56,6 +56,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pip install "pyrs-yaml[settings]"` (Python 3.10+). `dump_pydantic` and
   `parse_as` now use the same lazy module-level `__getattr__` export pattern.
 
+### Changed
+
+- **Internal duplication cleanup** — benchmark fixtures composed from shared
+  blocks, PyO3 path-edit methods delegate to the existing
+  `apply_metadata_edit` helper, and repeated file-read/error-mapping and
+  line-offset boilerplate collapsed into shared functions. No public behavior
+  change; the duplicate-code rate measured by jscpd drops from 5.25% to 3.45%.
+- **`YamlDocument.validate()` caches compiled validators** — the first
+  successful validation against a schema (JSON text *or* dict) caches a
+  compiled `jsonschema` validator; later calls skip schema parsing,
+  meta-schema checking, and validator construction. Dict schemas are keyed by
+  object identity with a deep-copy snapshot guard: an in-place mutation is
+  detected by `==` on the next use and transparently recompiles. The cached
+  path raises `exceptions.best_match(validator.iter_errors(instance))`,
+  identical to `jsonschema.validate()` semantics. WSL wall-time:
+  `document_validate` −98% (660µs → 13µs).
+- **Structural dedupe of parser/serializer kernels** — mapping and sequence
+  rendering share one `write_container_node` skeleton (output byte-identical,
+  `serialize_*` medians −5~11%); single- and multi-document parse entry
+  points share one `load_ast` error contract; the schema resolution chains
+  share `bool_word`/`numeric_tail` and YAML 1.1 no longer re-checks the
+  core's null/bool words per scalar. Repo duplicate rate 3.38% → 2.67%.
+
+### Performance
+
+- **Anchor extraction byte gate** — `extract_anchors` returns empty after a
+  single `&` byte-containment check; documents without anchors (the common
+  case) skip the per-character quote state machine entirely. Rust-side
+  `parse_*` divan benches improve 11–18% at the median (e.g. `parse_large`
+  31.2µs → 26.3µs; the extraction scan itself drops 1.5µs → 38ns).
+- **Interned stream-event dict keys** — the fixed keys emitted per event by
+  `parse_stream` / `load_stream` (`line`, `column`, `type`, `value`, `style`,
+  `anchor`, `tag`) now reuse interned string objects via `pyo3::intern!`,
+  eliminating one Python string allocation per key insert. WSL wall-time:
+  `parse_stream` −34%, `parse_stream_multidoc` −39%, `load_stream` −22%.
+- **Decomposition micro-benchmarks** — new `granit_events_*` benches isolate
+  the pure granit event-pipeline cost from AST construction (bench-only).
+- **Multi-document parse without per-document clones** — `on_document_end`
+  moves the completed document into the collection instead of deep-cloning it
+  (the next document rebuilds the result; the clone was pure overhead).
+  WSL wall-time: `parse_all_docs` −9.7%, `safe_loads` (multi-doc) −9.5%,
+  `YAML().safe_loads` −6.7%.
+- **Streaming write reuses one buffer across documents** — new
+  `direct_dump_into` writes each document into a reused `String`, and
+  `dump_iterable` skips `normalize_doc`'s re-copy when the text already ends
+  with exactly one newline (the normal case). WSL wall-time:
+  `dump_stream_multi_doc` −27.2%, `dump_stream` −4.4%.
+- **Scalar fast paths in the AST builder** — `unescape_double_quoted` returns
+  early for quoted strings without backslashes (no per-char state machine) and
+  `detect_chomping` pulls lines lazily instead of collecting every line of the
+  document per block scalar. WSL wall-time: `to_dict` family −4~9%,
+  `safe_load_scalar_types[strings/numbers]` −3~4%, no regressions.
+- **Memoized block indentation** — the serializer's indent cache is now also
+  used by block-scalar header writing, and `test_benchmark_api.py` gained
+  `validate` and `load_file` benchmarks.
+
+### Docs
+
+- **Corrected the numpy guide's 0-D scalar section (all locales)** — the
+  ``0-D Scalar Arrays`` snippet claimed 0-D arrays "reshape to a single-element
+  list" (`assert data == [42]`); the shipped behavior (pinned by
+  `tests/test_numpy.py`) serializes them as bare scalars (`assert data == 42`).
+  Text corrected in `docs/{en,zh,ja,ko}/guides/numpy.md`, and the en page gained
+  a warning admonition documenting the 0-D `bool` → `1.0` rust-numpy quirk.
+- **Corrected stale references across all locale docs (en/zh/ja/ko)** —
+  `saphyr-parser` → `granit-parser`, YAML compliance 98.1% → 99.75%
+  (405/406 suite cases), ABI3 support 3.9–3.13 → 3.8–3.15 (py3.9+ → py3.8+),
+  and benchmark tables updated to current CodSpeed CI numbers (parse 21–43×,
+  serialize 55–177× faster than PyYAML). Rust-side benchmark sections migrated
+  from Criterion to divan (`benches/yaml_bench.rs` →
+  `crates/pyrs-yaml/benches/yaml_bench.rs`).
+
 ## [v0.15.0] — 2026-08-19
 
 ### Added
@@ -113,20 +185,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Internal duplication cleanup** — benchmark fixtures composed from shared
-  blocks, PyO3 path-edit methods delegate to the existing
-  `apply_metadata_edit` helper, and repeated file-read/error-mapping and
-  line-offset boilerplate collapsed into shared functions. No public behavior
-  change; the duplicate-code rate measured by jscpd drops from 5.25% to 3.45%.
-- **`YamlDocument.validate()` caches compiled validators** — the first
-  successful validation against a schema (JSON text *or* dict) caches a
-  compiled `jsonschema` validator; later calls skip schema parsing,
-  meta-schema checking, and validator construction. Dict schemas are keyed by
-  object identity with a deep-copy snapshot guard: an in-place mutation is
-  detected by `==` on the next use and transparently recompiles. The cached
-  path raises `exceptions.best_match(validator.iter_errors(instance))`,
-  identical to `jsonschema.validate()` semantics. WSL wall-time:
-  `document_validate` −98% (660µs → 13µs).
 - **NumPy re-enabled on free-threaded (cp314t) wheels** — the
   `--no-default-features` flag is removed from the cp314t build lines in
   `publish.yml` and `ci.yml`; rust-numpy 0.29 (already pinned) supports
@@ -140,52 +198,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `new_from_*_with_options` parser constructors, fuzz-testing hardening, and a
   performance fix for validating large plain/block scalars (ASCII fast path).
   No API changes required in `pyrs-yaml-core`.
-
-### Performance
-
-- **Anchor extraction byte gate** — `extract_anchors` returns empty after a
-  single `&` byte-containment check; documents without anchors (the common
-  case) skip the per-character quote state machine entirely. Rust-side
-  `parse_*` divan benches improve 11–18% at the median (e.g. `parse_large`
-  31.2µs → 26.3µs; the extraction scan itself drops 1.5µs → 38ns).
-- **Interned stream-event dict keys** — the fixed keys emitted per event by
-  `parse_stream` / `load_stream` (`line`, `column`, `type`, `value`, `style`,
-  `anchor`, `tag`) now reuse interned string objects via `pyo3::intern!`,
-  eliminating one Python string allocation per key insert. WSL wall-time:
-  `parse_stream` −34%, `parse_stream_multidoc` −39%, `load_stream` −22%.
-- **Decomposition micro-benchmarks** — new `granit_events_*` benches isolate
-  the pure granit event-pipeline cost from AST construction (bench-only).
-- **Multi-document parse without per-document clones** — `on_document_end`
-  moves the completed document into the collection instead of deep-cloning it
-  (the next document rebuilds the result; the clone was pure overhead).
-  WSL wall-time: `parse_all_docs` −9.7%, `safe_loads` (multi-doc) −9.5%,
-  `YAML().safe_loads` −6.7%.
-- **Streaming write reuses one buffer across documents** — new
-  `direct_dump_into` writes each document into a reused `String`, and
-  `dump_iterable` skips `normalize_doc`'s re-copy when the text already ends
-  with exactly one newline (the normal case). WSL wall-time:
-  `dump_stream_multi_doc` −27.2%, `dump_stream` −4.4%.
-- **Scalar fast paths in the AST builder** — `unescape_double_quoted` returns
-  early for quoted strings without backslashes (no per-char state machine) and
-  `detect_chomping` pulls lines lazily instead of collecting every line of the
-  document per block scalar. WSL wall-time: `to_dict` family −4~9%,
-  `safe_load_scalar_types[strings/numbers]` −3~4%, no regressions.
-
-### Docs
-
-- **Corrected the numpy guide's 0-D scalar section (all locales)** — the
-  ``0-D Scalar Arrays`` snippet claimed 0-D arrays "reshape to a single-element
-  list" (`assert data == [42]`); the shipped behavior (pinned by
-  `tests/test_numpy.py`) serializes them as bare scalars (`assert data == 42`).
-  Text corrected in `docs/{en,zh,ja,ko}/guides/numpy.md`, and the en page gained
-  a warning admonition documenting the 0-D `bool` → `1.0` rust-numpy quirk.
-- **Corrected stale references across all locale docs (en/zh/ja/ko)** —
-  `saphyr-parser` → `granit-parser`, YAML compliance 98.1% → 99.75%
-  (405/406 suite cases), ABI3 support 3.9–3.13 → 3.8–3.15 (py3.9+ → py3.8+),
-  and benchmark tables updated to current CodSpeed CI numbers (parse 21–43×,
-  serialize 55–177× faster than PyYAML). Rust-side benchmark sections migrated
-  from Criterion to divan (`benches/yaml_bench.rs` →
-  `crates/pyrs-yaml/benches/yaml_bench.rs`).
 
 ## [v0.14.1] — 2026-08-15
 
