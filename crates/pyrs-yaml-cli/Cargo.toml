@@ -1,0 +1,17 @@
+[package]
+name = "pyrs-yaml-cli"
+version = "0.15.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+description = "pyq - a jq/yq-style command-line tool for YAML, JSON, TOML and INI, powered by pyrs-yaml-core"
+
+[[bin]]
+name = "pyq"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+indexmap = { version = "2", features = ["std"] }
+pyrs-yaml-core = { path = "../pyrs-yaml-core", version = "0.15.0" }
+serde_json = { version = "1", features = ["preserve_order"] }
