@@ -25,6 +25,12 @@ class TimestampType(CustomType):
 
     @override
     def from_yaml(self, value: str) -> Any:
+        # datetime.fromisoformat only accepts a trailing `Z` (and other
+        # ISO-8601 spellings like `+00:00` alternatives) from Python 3.11;
+        # normalize UTC-Z so `!timestamp ...Z` and TOML datetimes work on
+        # the full supported floor (3.8+).
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
         return datetime.fromisoformat(value)
 
     @override

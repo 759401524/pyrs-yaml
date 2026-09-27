@@ -97,6 +97,14 @@ status: new
   （`register_anchor`）と standalone/inline 注釈分類（`is_standalone_placement`）を
   AST と stream receiver で単一化。リポジトリ重複率 3.38% → 2.60%。
 
+#### 修正
+
+- **`!timestamp` がサポート全 Python で末尾 `Z` を受理** —
+  `datetime.fromisoformat` は UTC-`Z` 接尾辞を 3.11 以降でしか認識せず、
+  プラグインで `...Z` を `+00:00` に正規化し、3.8～3.10 における YAML
+  `!timestamp` スカラーおよび `load_toml` / `from_toml` 経由の TOML
+  datetime の `Invalid isoformat string` を解消。
+
 #### パフォーマンス
 
 - **イベントストリーム→Python オブジェクトの直接構築** — `safe_load`、

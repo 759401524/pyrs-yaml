@@ -90,6 +90,14 @@ status: new
   독립/인라인 주석 분류(`is_standalone_placement`)를 AST·stream receiver 간 단일화.
   저장소 중복율 3.38% → 2.60%.
 
+#### 수정
+
+- **`!timestamp`가 지원되는 모든 Python에서 끝의 `Z` 허용** —
+  `datetime.fromisoformat`은 UTC-`Z` 접미사를 3.11부터만 인식하므로
+  플러그인에서 `...Z`를 `+00:00`으로 정규화, 3.8~3.10의 YAML
+  `!timestamp` 스칼라 및 `load_toml` / `from_toml` 경로의 TOML datetime에서
+  `Invalid isoformat string` 오류를 해소.
+
 #### 성능
 
 - **이벤트 스트림→Python 객체 직접 구성** — `safe_load`, `safe_loads`,

@@ -107,6 +107,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are single-sourced across the AST and stream receivers. Repo duplicate
   rate 3.38% → 2.60%.
 
+### Fixed
+
+- **`!timestamp` accepts a trailing `Z` on every supported Python** —
+  `datetime.fromisoformat` only recognizes the UTC-`Z` suffix from 3.11;
+  the built-in plugin now normalizes `...Z` to `+00:00` first, fixing
+  `ValueError: Invalid isoformat string` on 3.8–3.10 for YAML
+  `!timestamp` scalars and TOML datetimes arriving through `load_toml` /
+  `from_toml`.
+
 ### Performance
 
 - **Direct event→Python load materialization** — `safe_load`, `safe_loads`

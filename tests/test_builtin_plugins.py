@@ -1,7 +1,7 @@
 """Test built-in plugins (enriched set)."""
 
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
 import pytest
@@ -121,6 +121,14 @@ def test_timestamp_still_parses_to_datetime():
     pytest.importorskip("pendulum")
     doc = pyrs_yaml.parse("ts: !timestamp 2026-08-11T10:30:00")
     assert isinstance(doc.get("ts"), datetime)
+
+
+def test_timestamp_utc_z_suffix_on_all_supported_pythons():
+    # datetime.fromisoformat only gained `Z` support in 3.11; the plugin
+    # normalizes it so UTC-Z timestamps work from 3.8 up (TOML datetimes
+    # route through this same path).
+    d = pyrs_yaml.safe_load("t: !timestamp 2026-01-02T03:04:05Z\n")
+    assert d["t"] == datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
 
 
 def test_third_party_plugins_listed():
