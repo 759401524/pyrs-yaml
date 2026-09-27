@@ -90,6 +90,17 @@ status: new
 
 #### 변경
 
+- **네이티브 JSON 및 TOML 코어** — `serde_json` 및 `toml_edit` 의존성을 완전히
+  제거했습니다. `pyrs-yaml-core`는 RFC 8259 JSON 엔진(바이트 수준 스캐너, 숫자는
+  소스 표기를 그대로 보존하여 `from_json → to_json`이 바이트 안정적이고 큰
+  정수/부동소수점 정밀도 손실이 없습니다. 라인/컬럼 오류에 타입을 부가하며,
+  후행 쉼표·선행 0·고립 서러게이트· 이스케이프되지 않은 제어 문자·다중 루트 문서를
+  엄격히 거부)와 TOML 1.0 전문어법을 완전히 다루는 엔진(bare/quoted/dotted 키,
+  basic/literal/멀티라인 문자열, `_` 구분자를 허용하는 10/16/8/2진 정수,
+  `inf`/`nan`/지수 포함 float, offset/local 날짜·시간·날짜시간)를 내장합니다.
+  모든 거부는 granit-parser와 동일한 스타일로 0-indexed `line`/`col`을 담고
+  `ParseError::Syntax`로 보고됩니다. 공개 API는 그대로이며 왕복 테스트와
+  `tests/test_toml.py`가 새 엔진에서 모두 통과합니다.
 - **내부 중복 코드 정리** — 벤치마크 fixture를 공유 블록 조립으로 변경, PyO3 경로 편집
   메서드를 기존 `apply_metadata_edit` 헬퍼로 위임, 반복된 파일 읽기/에러 매핑과 행 오프셋
   보일러플레이트를 공유 함수로 통합했습니다. 공개 동작 변경은 없습니다. jscpd로 측정한

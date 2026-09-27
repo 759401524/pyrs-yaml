@@ -7,6 +7,7 @@ pub mod ast;
 pub mod editing;
 pub mod error;
 pub mod i18n;
+pub mod json;
 pub mod parser;
 pub mod serializer;
 pub mod splice;

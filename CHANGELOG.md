@@ -111,6 +111,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Native JSON & TOML cores** — the `serde_json` and `toml_edit` dependencies
+  are gone. `pyrs-yaml-core` ships an RFC 8259 JSON engine (byte-level
+  scanner, verbatim number spelling so `from_json → to_json` is byte-stable
+  and precision-preserving for large integers/doubles, typed line/column
+  errors, strict rejections for trailing commas, leading zeros, lone
+  surrogates, unescaped control characters, and multi-root documents) and a
+  TOML 1.0 engine covering the full grammar — bare/quoted/dotted keys,
+  basic/literal/multiline strings with every escape form, decimal /
+  hexadecimal / octal / binary integers with underscore separators, floats
+  including `inf` / `nan` / exponent forms, and offset / local date, time,
+  and date-time — every rejection surfacing as `ParseError::Syntax` with
+  0-indexed `line`/`col` in the granit-parser house style. CLI, bindings
+  and pyproject surface unchanged; round-trip tests and `tests/test_toml.py`
+  green with the native path.
 - **Internal duplication cleanup** — benchmark fixtures composed from shared
   blocks, PyO3 path-edit methods delegate to the existing
   `apply_metadata_edit` helper, and repeated file-read/error-mapping and
