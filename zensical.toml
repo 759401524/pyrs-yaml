@@ -31,6 +31,7 @@ nav = [
         {"i18n Error Messages" = "guides/i18n.md"},
         {"NumPy ndarray" = "guides/numpy.md"},
         {"Pydantic Integration" = "guides/pydantic.md"},
+        {"TOML, JSON & INI Formats" = "guides/formats.md"},
         {"Command-Line Interface" = "guides/cli.md"},
     ]},
     {"API Reference" = [
