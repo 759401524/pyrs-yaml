@@ -48,6 +48,12 @@ status: new
   导出，`import pyrs_yaml` 不依赖 pydantic-settings；通过
   `pip install "pyrs-yaml[settings]"` 安装（Python 3.10+）。`dump_pydantic` 与
   `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
+- **`pyq` — Rust 原生 CLI crate** — `crates/pyrs-yaml-cli`（workspace 成员，
+  基于 clap）将 `pyrs-yaml-core` 直接接入 jq/yq 风格命令行，运行时无需
+  Python：`fmt`（保留注释的往返格式化）、`get <path>`（JSONPath-lite，支持
+  `--json`/`--raw`）、`to-json`（保序）、`to-toml`，以及导入命令 `from-json` /
+  `from-toml` / `from-ini`；输入格式按扩展名识别（`--input` 可覆盖），`-` 或
+  省略时读 stdin，失败时以 core 的稳定错误文本非零退出。
 - **TOML 与 INI 交换格式** — 轮毂-辐射式多格式支持，YAML 仍是唯一可编辑
   表示：`from_toml`/`to_toml` 在 TOML 文本 ⇄ YAML 文本间转换（Rust
   `toml_edit`）；`load_toml` 将 TOML 直接读为 Python 值（datetime 经内建

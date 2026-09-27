@@ -55,6 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `import pyrs_yaml` never requires pydantic-settings; install with
   `pip install "pyrs-yaml[settings]"` (Python 3.10+). `dump_pydantic` and
   `parse_as` now use the same lazy module-level `__getattr__` export pattern.
+- **`pyq` — native Rust CLI crate** — `crates/pyrs-yaml-cli` (workspace
+  member, clap-based, installed via `cargo install --path crates/pyrs-yaml-cli`)
+  puts `pyrs-yaml-core` directly behind a jq/yq-style command line, with no
+  Python at runtime: `fmt` (comment/order-preserving round-trip), `get <path>`
+  (JSONPath-lite: dot keys, `[n]`/`[-n]`, bracket keys, `*`; `--json`/`--raw`
+  output), `to-json` (order-preserving), `to-toml`, and the import commands
+  `from-json` / `from-toml` / `from-ini`. Input formats resolve by extension
+  (`--input` overrides; YAML content is always a JSON superset); stdin via
+  `-` or omission; non-zero exit with the core's stable error text on
+  failures. 12 integration/unit tests pin parity with the Python API.
 - **TOML and INI exchange formats** — hub-and-spoke multi-format support
   with YAML as the single editable representation:
     - `from_toml(toml: str) -> str` and `to_toml(yaml: str, schema=...) -> str`

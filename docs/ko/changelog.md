@@ -53,6 +53,13 @@ status: new
   지연 내보내기되므로 `import pyrs_yaml`에 pydantic-settings가 필요 없습니다.
   `pip install "pyrs-yaml[settings]"`로 설치합니다(Python 3.10+).
   `dump_pydantic`과 `parse_as`도 동일한 모듈 수준 `__getattr__` 지연 내보내기 패턴으로 변경되었습니다.
+- **`pyq` — Rust 네이티브 CLI 크레이트** — `crates/pyrs-yaml-cli`
+  (워크스페이스 멤버, clap 기반)는 `pyrs-yaml-core`를 jq/yq 스타일
+  CLI에 직접 연결하여 런타임 Python이 필요 없습니다: `fmt`(주석 보존
+  라운드트립), `get <path>`(JSONPath-lite, `--json`/`--raw` 지원),
+  `to-json`(순서 보존), `to-toml`, 도입 명령 `from-json` / `from-toml` /
+  `from-ini`. 입력 형식은 확장자로 판정(`--input`으로 덮어씀), stdin은
+  `-`, 실패 시 core의 안정적인 오류 텍스트로 비정상 종료.
 - **TOML 및 INI 교환 형식** — YAML을 유일한 편집 가능 표현으로 하는 허브-스포크
   멀티 형식 지원: `from_toml`/`to_toml`로 TOML 텍스트 ⇄ YAML 텍스트 변환
   (Rust `toml_edit`), `load_toml`은 TOML을 Python 값으로 직접 읽기
