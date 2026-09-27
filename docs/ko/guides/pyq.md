@@ -50,7 +50,11 @@ pyq set '.db.pool.size' 50 services.yaml          # 편집된 문서 출력
 pyq set -i '.db.pool.size' 50 services.yaml       # 파일을 제자리에서 재작성
 pyq set --create-missing '.a.b.c' 1 empty.yaml    # 중간 매핑 자동 생성
 pyq delete '.legacy_field' -i config.yaml
+pyq sort-keys '$' -i config.yaml                  # 매핑 한 계층 키순 정렬
 ```
+
+모든 편집은 공유 splice 엔진을 통과합니다: 레이아웃이 조건을 만족하면
+건드리지 않은 행(주석, 빈 줄, 불규칙 공백)은 바이트 단위로 그대로 유지됩니다.
 
 편집된 출력은 `fmt`와 같은 라운드트립 직렬화기를 거칩니다: 주석·앵커·
 키 순서가 보존되고, 삽입된 값은 자신의 표기 스타일을 유지합니다
@@ -84,9 +88,11 @@ pyq from-ini settings.ini        # INI -> YAML (값은 모두 문자열)
 | 기능 | pyq | pyrs-yaml CLI (Python) |
 |------|-----|-------------------------|
 | 쿼리 / set / delete / 서식 / 변환 | ✅ | ✅ |
+| 레이아웃 고정 편집 (splice 엔진) | ✅ | ✅ |
+| 경로별 sort-keys | ✅ | ✅ |
 | 다중 문서 (`-A`) | 계획 중 | ✅ |
 | 등록 스키마 `validate` | 계획 중 | ✅ |
-| sort-keys / rename / move / frontmatter | — | ✅ |
+| rename / move / frontmatter | — | ✅ |
 
 양쪽 모두 동일한 코어 splice 엔진으로 레이아웃 고정 편집을 합니다
 (건드리지 않은 행, standalone 주석 포함, 드리프트 없음). 전체 기능은

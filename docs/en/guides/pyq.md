@@ -50,7 +50,12 @@ pyq set '.db.pool.size' 50 services.yaml          # print edited doc
 pyq set -i '.db.pool.size' 50 services.yaml       # rewrite the file
 pyq set --create-missing '.a.b.c' 1 empty.yaml    # grow mappings
 pyq delete '.legacy_field' -i config.yaml
+pyq sort-keys '$' -i config.yaml                  # sort one mapping level
 ```
+
+All edits run through the shared splice engine: untouched lines - comments,
+blank lines, odd spacing - keep their exact bytes whenever the document's
+layout is splice-eligible.
 
 Edited documents round-trip through the same serializer as `fmt`:
 comments, anchors and key order survive; the inserted value keeps its
@@ -84,9 +89,11 @@ superset, JSON content also parses on the YAML path unchanged.
 | Capability | pyq | pyrs-yaml CLI (Python) |
 |------------|-----|------------------------|
 | Query / set / delete / format / convert | ✅ | ✅ |
+| Layout-pinned edits (splice engine) | ✅ | ✅ |
+| sort-keys at a path | ✅ | ✅ |
 | Multi-document streams (`-A`) | planned | ✅ |
 | `validate` with registered schemas | planned | ✅ |
-| sort-keys / rename / move / frontmatter | — | ✅ |
+| rename / move / frontmatter | — | ✅ |
 
 Both CLIs edit through the same core splice engine with layout pinning
 (untouched lines, including standalone comments, never drift). The
