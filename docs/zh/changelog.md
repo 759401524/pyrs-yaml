@@ -81,6 +81,14 @@ status: new
   锚点注册（`register_anchor`）与独立/行内注释分类（`is_standalone_placement`）
   在 AST 与流 receiver 间单源化。仓库重复代码率 3.38% → 2.60%。
 
+#### 修复
+
+- **`!timestamp` 在所有受支持 Python 上接受结尾 `Z`** —
+  `datetime.fromisoformat` 仅从 3.11 起识别 UTC-`Z` 后缀；插件现将
+  `...Z` 归一为 `+00:00`，修复 3.8–3.10 上 YAML `!timestamp` 标量及
+  `load_toml` / `from_toml` 引入的 TOML datetime 报 `Invalid isoformat
+  string` 的问题。
+
 #### 性能
 
 - **事件流→Python 对象的直接物化** — `safe_load`、`safe_loads`、
