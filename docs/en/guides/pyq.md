@@ -23,8 +23,15 @@ cargo build -p pyrs-yaml-cli --release      # -> target/release/pyq
 
 ```bash
 # JSONPath-lite: dot keys, [n], [-n] (python-style), ['key'], [*]
+# a missing leading dot is fine, and `.` selects the whole document
 $ pyq get '.servers[-1].host' inventory.yaml
 web-3
+
+# wildcards expand to ALL matches, streamed like jq: one YAML document
+# each (or one JSON value per line with --json)
+$ pyq get '.servers[*].port' --json inventory.yaml
+8080
+8081
 
 # stdin when the file is `-` or omitted; --raw for bare scalars
 $ cat services.yaml | pyq get --raw .db.pool.size

@@ -34,6 +34,10 @@ fn unquote(s: &str) -> String {
 pub fn parse_path(input: &str) -> Result<Selector, String> {
     let s = input.trim();
     let mut segs = Vec::new();
+    // jq's most basic idiom: `.` is the whole document.
+    if s == "." {
+        return Ok(Selector { segs });
+    }
     let normalized;
     let mut rest = if s.starts_with(['.', '[', '$']) {
         s.strip_prefix('$').unwrap_or(s)
@@ -121,6 +125,41 @@ impl Selector {
             };
         }
         Ok(Some(current))
+    }
+
+    /// jq-stream semantics: every node the selector matches (wildcards
+    /// expand to all children; non-wildcard paths yield at most one).
+    pub fn select_all<'a>(&self, root: &'a CustomNode) -> Vec<&'a CustomNode> {
+        let mut frontier = vec![root];
+        for seg in &self.segs {
+            let mut next = Vec::new();
+            for node in frontier {
+                match (seg, node) {
+                    (Seg::Key(k), CustomNode::Mapping { pairs, .. }) => {
+                        if let Some((_, v)) = pairs.iter().find(|(ek, _)| matches_key(ek, k)) {
+                            next.push(v);
+                        }
+                    }
+                    (Seg::Index(i), CustomNode::Sequence { items, .. }) => {
+                        if let Some(idx) = resolve_index(*i, items.len()) {
+                            next.push(&items[idx]);
+                        }
+                    }
+                    (Seg::Wildcard, CustomNode::Mapping { pairs, .. }) => {
+                        next.extend(pairs.values());
+                    }
+                    (Seg::Wildcard, CustomNode::Sequence { items, .. }) => {
+                        next.extend(items.iter());
+                    }
+                    _ => {}
+                }
+            }
+            frontier = next;
+            if frontier.is_empty() {
+                break;
+            }
+        }
+        frontier
     }
 }
 
@@ -317,6 +356,34 @@ mod tests {
                 .unwrap()
                 .map(node_text),
             Some("a".to_string())
+        );
+    }
+
+    #[test]
+    fn single_dot_is_the_root() {
+        // The dot-strip helper must not break jq's `.` idiom.
+        let d = doc();
+        assert!(matches!(
+            parse_path(".").unwrap().select(&d).unwrap(),
+            Some(CustomNode::Mapping { .. })
+        ));
+        assert_eq!(parse_path(".").unwrap().segments_len(), 0);
+    }
+
+    #[test]
+    fn wildcard_expands_to_all_children() {
+        let d = doc();
+        let hosts = parse_path(".servers[*].host")
+            .unwrap()
+            .select_all(&d)
+            .iter()
+            .map(|n| node_text(n))
+            .collect::<Vec<_>>();
+        assert_eq!(hosts, vec!["a", "b"]);
+        assert_eq!(
+            parse_path(".a.*").unwrap().select_all(&d).len(),
+            0,
+            "missing key yields an empty stream"
         );
     }
 
