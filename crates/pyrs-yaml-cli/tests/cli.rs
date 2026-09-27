@@ -209,6 +209,23 @@ fn delete_missing_key_exits_nonzero() {
 }
 
 #[test]
+fn sort_keys_root_and_path() {
+    let (code, out, err) = run_with_stdin(&["sort-keys", "$", "-"], "b: 2\na:\n  z: 1\n  y: 2\n");
+    assert_eq!(code, Some(0), "{err}");
+    // one level: root sorted, nested mapping keeps its order
+    assert_eq!(out, "a:\n  z: 1\n  y: 2\nb: 2\n");
+    let (_, out, _) = run_with_stdin(&["sort-keys", ".a", "-"], "b: 2\na:\n  z: 1\n  y: 2\n");
+    assert_eq!(out, "b: 2\na:\n  y: 2\n  z: 1\n");
+}
+
+#[test]
+fn sort_keys_preserves_comments() {
+    let (code, out, err) = run_with_stdin(&["sort-keys", "$", "-"], "# note\nz: 1\na: 2\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "# note\na: 2\nz: 1\n");
+}
+
+#[test]
 fn edit_pins_layout_of_untouched_lines() {
     // The splice engine rewrites only the edited region: standalone notes
     // and odd inline spacing survive verbatim - the serializer alone

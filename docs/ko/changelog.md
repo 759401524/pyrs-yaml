@@ -17,6 +17,9 @@ status: new
 
 #### 추가
 
+- **`pyq sort-keys`** — 임의 경로(`$`는 루트)의 매핑 키를 정렬. `set`/`delete`와
+  동일한 코어 plan/splice 엔진을 거쳐 그 자리 다시 쓰기 또는 표준 출력 모두
+  지원하며, Python CLI의 `sort-keys`와의 대응 격차를 해소.
 - **커맨드라인 인터페이스** — 새로운 `pyrs-yaml` 명령(`pip install "pyrs-yaml[cli]"`로
   옵트인, Python 3.10+ 필요)을 통해 라이브러리의 핵심 기능을 터미널에서 사용할 수
   있습니다: `fmt`(주석/앵커/순서를 보존하는 라운드트립 재포매팅), `get`(JSONPath 쿼리,

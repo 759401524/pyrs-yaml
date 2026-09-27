@@ -17,6 +17,9 @@ status: new
 
 #### 追加
 
+- **`pyq sort-keys`** — 任意パス（`$` はルート）のMapping キーを並び替え。
+  `set`/`delete` と同じコア plan/splice エンジン経由で、その場書き換えにも
+  標準出力にも対応し、Python CLI の `sort-keys` との対応差を解消。
 - **コマンドラインインターフェース** — 新しい `pyrs-yaml` コマンド（
   `pip install "pyrs-yaml[cli]"` でオプトイン、Python 3.10+ 必須）により、ライブラリの
   中核機能をターミナルから利用できます：`fmt`（コメント・アンカー・順序を保持する

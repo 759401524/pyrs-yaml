@@ -17,6 +17,9 @@ status: new
 
 #### 新增
 
+- **`pyq sort-keys`** — 对任意路径（`$` 为根）的映射键排序，可原地回写
+  或输出到 stdout，与 `set`/`delete` 共用核心 plan/splice 引擎，补齐与
+  Python CLI `sort-keys` 的对等性。
 - **命令行工具** — 新增 `pyrs-yaml` 命令（通过 `pip install "pyrs-yaml[cli]"` 安装，
   需 Python 3.10+），在终端中暴露库的核心能力：`fmt`（往返重新格式化，保留注释/
   锚点/顺序）、`get`（JSONPath 查询，支持 `--format yaml|json|text`）、`set` /

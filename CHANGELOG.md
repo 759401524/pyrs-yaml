@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`pyq sort-keys`** — sort the keys of the mapping at any path (`$` for
+  the root), in place or to stdout, through the same core plan/splice
+  engine as `set`/`delete` - closing the parity gap with the Python
+  CLI's `sort-keys` command.
 - **Command-line interface** — a new `pyrs-yaml` command (opt-in via
   `pip install "pyrs-yaml[cli]"`, requires Python 3.10+) exposing the library
   from the terminal: `fmt` (round-trip reformat preserving comments/anchors/

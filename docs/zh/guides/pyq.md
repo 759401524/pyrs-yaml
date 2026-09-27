@@ -49,7 +49,11 @@ pyq set '.db.pool.size' 50 services.yaml          # 打印编辑后文档
 pyq set -i '.db.pool.size' 50 services.yaml       # 原地回写文件
 pyq set --create-missing '.a.b.c' 1 empty.yaml    # 自动创建中间层
 pyq delete '.legacy_field' -i config.yaml
+pyq sort-keys '$' -i config.yaml                  # 排序一层映射键
 ```
+
+所有编辑都经由共享的 splice 引擎：只要文档布局符合条件，未触碰的行
+（注释、空行、特殊空格）逐字节保持不变。
 
 编辑后的文档经由与 `fmt` 相同的往返序列化器输出：注释、锚点与键序
 全部保留；注入的值保持自身书写风格（`[1, two]` 保持 flow 风格，
@@ -82,9 +86,11 @@ pyq from-ini settings.ini        # INI -> YAML（值均为字符串）
 | 能力 | pyq | pyrs-yaml CLI（Python） |
 |------|-----|--------------------------|
 | 查询 / set / delete / 格式化 / 转换 | ✅ | ✅ |
+| 布局钉死编辑（splice 引擎） | ✅ | ✅ |
+| 路径级 sort-keys | ✅ | ✅ |
 | 多文档流（`-A`） | 计划中 | ✅ |
 | 注册 schema 的 `validate` | 计划中 | ✅ |
-| sort-keys / rename / move / frontmatter | — | ✅ |
+| rename / move / frontmatter | — | ✅ |
 
 两者均经由同一核心 splice 引擎做版式钉死的编辑（未触碰的行，包括
 standalone 注释，不会漂移）。Python 版 CLI 仍是全功能面（`-A` 多文档、

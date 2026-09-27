@@ -79,6 +79,15 @@ pub enum Command {
         #[arg(long, short = 'i')]
         inplace: bool,
     },
+    /// Sort the keys of the mapping at a path (one level; `$` sorts the
+    /// document root).
+    SortKeys {
+        /// Target mapping path (`$` for the root).
+        path: String,
+        file: Option<PathBuf>,
+        #[arg(long, short = 'i')]
+        inplace: bool,
+    },
     /// Convert to JSON text.
     ToJson {
         file: Option<PathBuf>,
@@ -231,6 +240,19 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let segs = segments_of(&paths::parse_path(&path)?)?;
             let text = spliced_edit(&mut node, &src, &path, |node, offs| {
                 plan::delete_path(node, &segs, &src, offs)
+            })?;
+            write_text(&text, &file, inplace)?;
+        }
+        Command::SortKeys {
+            path,
+            file,
+            inplace,
+        } => {
+            let src = read_input(&file)?;
+            let mut node = parser::parse(&src, Schema::Core)?;
+            let segs = segments_of(&paths::parse_path(&path)?)?;
+            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+                plan::sort_keys_path(node, &segs, &src, offs)
             })?;
             write_text(&text, &file, inplace)?;
         }

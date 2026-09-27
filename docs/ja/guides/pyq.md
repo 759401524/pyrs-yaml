@@ -50,7 +50,11 @@ pyq set '.db.pool.size' 50 services.yaml          # 編集後ドキュメント�
 pyq set -i '.db.pool.size' 50 services.yaml       # ファイルをその場で書き換え
 pyq set --create-missing '.a.b.c' 1 empty.yaml    # 中間マッピングを自動生成
 pyq delete '.legacy_field' -i config.yaml
+pyq sort-keys '$' -i config.yaml                  # マッピング 1 階層をキー順に
 ```
+
+すべての編集は共有 splice エンジンを経由します：レイアウトが条件を満たせば、
+触れていない行（コメント・空行・不規則な空白）は 1 バイトも変わりません。
 
 編集後の出力は `fmt` と同じラウンドトリップ・シリアライザを経由します：
 コメント・アンカー・キー順序は保持され、注入した値は自身の表記スタイルを
@@ -84,9 +88,11 @@ pyq from-ini settings.ini        # INI -> YAML（値はすべて文字列）
 | 機能 | pyq | pyrs-yaml CLI（Python） |
 |------|-----|--------------------------|
 | クエリ / set / delete / 整形 / 変換 | ✅ | ✅ |
+| レイアウト保持編集（splice エンジン） | ✅ | ✅ |
+| パス指定 sort-keys | ✅ | ✅ |
 | マルチドキュメント（`-A`） | 計画中 | ✅ |
 | 登録スキーマでの `validate` | 計画中 | ✅ |
-| sort-keys / rename / move / frontmatter | — | ✅ |
+| rename / move / frontmatter | — | ✅ |
 
 両者とも同一のコア splice エンジンでレイアウト保持編集を行います
 （触れていない行——standalone コメント含む——は漂移しない）。多機能面は
