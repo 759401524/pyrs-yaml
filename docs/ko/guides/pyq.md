@@ -42,6 +42,27 @@ $ pyq get '.servers' --json services.yaml
 [ { "host": "web-1", "port": 8080 }, ... ]
 ```
 
+## 필터 동사 (jq 스타일 후처리)
+
+표현식이 아닌 구조화 플래그—명령줄 순서와 무관하게 매칭 스트림에
+고정 파이프라인 `select -> sort -> unique -> slice`, 끝에 `join`을 적용합니다.
+
+```bash
+pyq get '.servers[*]' --select 'port >= 1000' services.yaml
+pyq get '.servers[*]' --sort-by host --desc services.yaml
+pyq get '.tags[*]' --unique --skip 2 --take 5 blob.yaml
+pyq get '.hosts[*]' --join ',' --raw inventory.yaml   # 맨 줄 텍스트
+```
+
+| 플래그 | jq 대응 | 참고 |
+|--------|---------|------|
+| `--select 'PATH OP LITERAL'` | `select(.PATH OP LITERAL)` | OP는 `== != > >= < <=`. 리터럴은 YAML. 경로 누락·타입 불일치는 false(jq 전순서 없음) |
+| `--sort-by PATH` / `--desc` | `sort_by(.PATH)` | 안정 정렬. 키 누락은 마지막 |
+| `--unique` | `unique` | 정렬 후 중복 제거, jq와 동일 |
+| `--first` / `--last` | `.[0]` / `.[-1]` | 상호 배타 |
+| `--skip N` / `--take N` | `.[N:][…]` | 스트림 슬라이스 |
+| `--join SEP` | `join(SEP)` | 전체 스칼라 스트림만 |
+
 ## 편집 (yq 스타일)
 
 ```bash
@@ -97,6 +118,7 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 기능 | pyq | pyrs-yaml CLI (Python) |
 |------|-----|-------------------------|
 | 쿼리 / set / delete / 서식 / 변환 | ✅ | ✅ |
+| 동사 후처리 (`select`/`sort`/`unique`/…) | ✅ | — |
 | 레이아웃 고정 편집 (splice 엔진) | ✅ | ✅ |
 | 경로별 sort-keys | ✅ | ✅ |
 | 다중 문서 (`-A`) | 계획 중 | ✅ |

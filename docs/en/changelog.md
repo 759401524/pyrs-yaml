@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **`pyq` filter verbs** — structured jq-style post-processing on the
+  match stream: `--select 'PATH OP LITERAL'`, `--sort-by PATH` /
+  `--desc`, `--unique`, `--first` / `--last`, `--skip N` / `--take N`,
+  and `--join SEP`, applied in the fixed pipeline order
+  `select -> sort -> unique -> slice` then `join` on `get` and the
+  `from-*` converters. Deliberately flags, not an expression language:
+  the predicate is one micro-grammar parse (micro ~40 lines), mixed
+  comparison kinds are `false` (documented divergence from jq's total
+  order), and startup stays instant.
 - **`pyq completion`** — print a shell completion script for bash, zsh,
   fish or PowerShell (`pyq completion bash > ...`), powered by
   `clap_complete` (approved addition to the CLI crate's dependencies;

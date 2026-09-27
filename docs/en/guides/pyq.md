@@ -42,6 +42,28 @@ $ pyq get '.servers' --json services.yaml
 [ { "host": "web-1", "port": 8080 }, ... ]
 ```
 
+## Filter verbs (jq-style post-processing)
+
+Structured flags, not an expression language - applied to the match
+stream in this fixed order regardless of flag order on the command line:
+`select -> sort -> unique -> slice`, then `join`.
+
+```bash
+pyq get '.servers[*]' --select 'port >= 1000' services.yaml
+pyq get '.servers[*]' --sort-by host --desc services.yaml
+pyq get '.tags[*]' --unique --skip 2 --take 5 blob.yaml
+pyq get '.hosts[*]' --join ',' --raw inventory.yaml   # one bare line
+```
+
+| Flag | jq equivalent | Notes |
+|------|---------------|-------|
+| `--select 'PATH OP LITERAL'` | `select(.PATH OP LITERAL)` | OP `== != > >= < <=`; literal is YAML; missing path or mixed kinds compare false (no jq total order) |
+| `--sort-by PATH` / `--desc` | `sort_by(.PATH)` | stable; missing key sorts last |
+| `--unique` | `unique` | dedup after sorting, like jq |
+| `--first` / `--last` | `.[0]` / `.[-1]` | mutually exclusive |
+| `--skip N` / `--take N` | `.[N:][…]` | slice the stream |
+| `--join SEP` | `join(SEP)` | all-scalar streams only |
+
 ## Edit (yq-style)
 
 ```bash
@@ -98,6 +120,7 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | Capability | pyq | pyrs-yaml CLI (Python) |
 |------------|-----|------------------------|
 | Query / set / delete / format / convert | ✅ | ✅ |
+| Verb post-processing (`select`/`sort`/`unique`/...) | ✅ | — |
 | Layout-pinned edits (splice engine) | ✅ | ✅ |
 | sort-keys at a path | ✅ | ✅ |
 | Multi-document streams (`-A`) | planned | ✅ |

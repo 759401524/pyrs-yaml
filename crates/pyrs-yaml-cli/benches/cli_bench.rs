@@ -173,3 +173,42 @@ fn delete_middle_key() -> usize {
         .unwrap();
     black_box(serializer::to_yaml(&black_box(node)).len())
 }
+
+// ── verbs pipeline (post-selection stream processing) ──
+
+#[divan::bench]
+fn verbs_select_80_stream() -> usize {
+    let src = big_yaml();
+    let node = parser::parse(&src, Schema::Core).unwrap();
+    let stream = paths::parse_path(".services.*").unwrap().select_all(&node);
+    let verbs = pyrs_yaml_cli::verbs::Verbs {
+        select: Some("port > 8040".into()),
+        ..Default::default()
+    };
+    black_box(verbs.apply(stream, ".services.*").unwrap().len())
+}
+
+#[divan::bench]
+fn verbs_sort_by_80_stream() -> usize {
+    let src = big_yaml();
+    let node = parser::parse(&src, Schema::Core).unwrap();
+    let stream = paths::parse_path(".services.*").unwrap().select_all(&node);
+    let verbs = pyrs_yaml_cli::verbs::Verbs {
+        sort_by: Some(".port".into()),
+        ..Default::default()
+    };
+    black_box(verbs.apply(stream, ".services.*").unwrap().len())
+}
+
+#[divan::bench]
+fn verbs_unique_over_dups() -> usize {
+    let src = big_yaml();
+    let node = parser::parse(&src, Schema::Core).unwrap();
+    let mut stream = paths::parse_path(".services.*").unwrap().select_all(&node);
+    stream.extend(stream.clone()); // force real dedup work
+    let verbs = pyrs_yaml_cli::verbs::Verbs {
+        unique: true,
+        ..Default::default()
+    };
+    black_box(verbs.apply(stream, ".services.*").unwrap().len())
+}

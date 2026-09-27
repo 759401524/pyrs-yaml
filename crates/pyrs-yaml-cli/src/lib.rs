@@ -9,6 +9,7 @@
 
 pub mod json;
 pub mod paths;
+pub mod verbs;
 
 use clap::{Parser, Subcommand};
 use pyrs_yaml_core::ast::CustomNode;
@@ -51,6 +52,8 @@ pub enum Command {
         file: Option<PathBuf>,
         #[command(flatten)]
         input: InputOpts,
+        #[command(flatten)]
+        verbs: verbs::Verbs,
         #[arg(long)]
         /// Emit JSON instead of YAML.
         json: bool,
@@ -108,6 +111,8 @@ pub enum Command {
         file: Option<PathBuf>,
         #[arg(long, default_value = "$")]
         get: String,
+        #[command(flatten)]
+        verbs: verbs::Verbs,
         /// Emit JSON (an identity check / re-serialization of the input).
         #[arg(long)]
         json: bool,
@@ -119,6 +124,8 @@ pub enum Command {
         file: Option<PathBuf>,
         #[arg(long, default_value = "$")]
         get: String,
+        #[command(flatten)]
+        verbs: verbs::Verbs,
         #[arg(long)]
         json: bool,
         #[arg(long)]
@@ -129,6 +136,8 @@ pub enum Command {
         file: Option<PathBuf>,
         #[arg(long, default_value = "$")]
         get: String,
+        #[command(flatten)]
+        verbs: verbs::Verbs,
         #[arg(long)]
         json: bool,
         #[arg(long)]
@@ -212,12 +221,13 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             path,
             file,
             input,
+            verbs,
             json,
             raw,
         } => {
             let node = load(&file, &input)?;
             let sel = paths::parse_path(&path)?;
-            emit_matched(&sel.select_all(&node), json, raw, &path)?;
+            emit_with_verbs(sel.select_all(&node), &verbs, json, raw, &path)?;
         }
         Command::Set {
             path,
@@ -284,29 +294,32 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         Command::FromJson {
             file,
             get,
+            verbs,
             json,
             raw,
         } => {
             let node = json::json_to_node(&read_input(&file)?)?;
-            emit_selected(&node, &get, json, raw)?;
+            emit_selected(&node, &get, &verbs, json, raw)?;
         }
         Command::FromToml {
             file,
             get,
+            verbs,
             json,
             raw,
         } => {
             let node = toml::from_toml(&read_input(&file)?)?;
-            emit_selected(&node, &get, json, raw)?;
+            emit_selected(&node, &get, &verbs, json, raw)?;
         }
         Command::FromIni {
             file,
             get,
+            verbs,
             json,
             raw,
         } => {
             let node = ini_to_node(&read_input(&file)?)?;
-            emit_selected(&node, &get, json, raw)?;
+            emit_selected(&node, &get, &verbs, json, raw)?;
         }
         Command::Completion { shell } => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
@@ -320,11 +333,28 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
 fn emit_selected(
     node: &CustomNode,
     path: &str,
+    verbs: &verbs::Verbs,
     json: bool,
     raw: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sel = paths::parse_path(path)?;
-    emit_matched(&sel.select_all(node), json, raw, path)
+    emit_with_verbs(sel.select_all(node), verbs, json, raw, path)
+}
+
+/// Verb pipeline over a match stream, then output; `--join` collapses the
+/// stream into one scalar first.
+fn emit_with_verbs(
+    stream: Vec<&CustomNode>,
+    verbs: &verbs::Verbs,
+    json: bool,
+    raw: bool,
+    path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let stream = verbs.apply(stream, path)?;
+    if let Some(text) = verbs.render_join(&stream)? {
+        return emit_value(&CustomNode::plain_scalar(text), json, raw);
+    }
+    emit_matched(&stream, json, raw, path)
 }
 
 /// jq-stream output: zero matches is an error, one match prints plainly,

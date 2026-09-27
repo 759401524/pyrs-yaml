@@ -17,6 +17,12 @@ status: new
 
 #### 追加
 
+- **`pyq` 絞り込み動詞** — マッチ列への jq スタイル構造化後処理：
+  `--select 'PATH OP LITERAL'`、`--sort-by PATH` / `--desc`、`--unique`、
+  `--first` / `--last`、`--skip N` / `--take N`、`--join SEP`。
+  `get` と `from-*` で固定パイプライン `select -> sort -> unique -> slice`
+  → `join` を適用。意図的にフラグ設計（式言語なし）：述語は微細構文 1
+  パース（約 40 行）、型不一致は false（jq の全順序との既知差）、起動は瞬時。
 - **`pyq completion`** — bash・zsh・fish・PowerShell のシェル補完スクリプトを
   出力（`pyq completion bash > ...`）。`clap_complete` 実装（承認済みの CLI
   クレート依存追加。`pyrs-yaml-cli` バイナリ内に完結し Python 配布に影響せず）。
