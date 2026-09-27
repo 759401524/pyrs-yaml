@@ -40,9 +40,77 @@ pub struct DirtyUnit {
     pub eligible: bool,
 }
 
+impl DirtyUnit {
+    /// Translate every absolute offset in the unit down by `base`, for
+    /// applying a plan computed against a whole stream to one document's
+    /// segment (multi-document splice: each segment carries its own
+    /// `SpliceState`). Panics-free: saturates at 0 defensively.
+    pub fn shifted(&self, base: usize) -> DirtyUnit {
+        let move_range =
+            |r: &std::ops::Range<usize>| r.start.saturating_sub(base)..r.end.saturating_sub(base);
+        DirtyUnit {
+            kind: match &self.kind {
+                DirtyKind::Region {
+                    range,
+                    indent,
+                    text,
+                } => DirtyKind::Region {
+                    range: move_range(range),
+                    indent: *indent,
+                    text: text.clone(),
+                },
+                DirtyKind::Insert { at, text } => DirtyKind::Insert {
+                    at: at.saturating_sub(base),
+                    text: text.clone(),
+                },
+                DirtyKind::Delete { range } => DirtyKind::Delete {
+                    range: move_range(range),
+                },
+            },
+            eligible: self.eligible,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shifted_moves_every_offset_kind() {
+        let region = DirtyUnit {
+            kind: DirtyKind::Region {
+                range: 100..140,
+                indent: 2,
+                text: "x".into(),
+            },
+            eligible: true,
+        };
+        let got = region.shifted(80);
+        assert_eq!(
+            got.kind,
+            DirtyKind::Region {
+                range: 20..60,
+                indent: 2,
+                text: "x".into()
+            }
+        );
+        assert!(got.eligible);
+        let ins = DirtyUnit {
+            kind: DirtyKind::Insert {
+                at: 90,
+                text: "y".into(),
+            },
+            eligible: false,
+        };
+        assert_eq!(
+            ins.shifted(95).kind,
+            DirtyKind::Insert {
+                at: 0,
+                text: "y".into()
+            }
+        );
+    }
 
     #[test]
     fn test_dirty_kind_insert() {

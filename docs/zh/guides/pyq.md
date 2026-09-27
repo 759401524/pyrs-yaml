@@ -123,11 +123,9 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 路径级 sort-keys | ✅ | ✅ |
 | 多文档查询流（`-A`：get/fmt/to-json） | ✅ | ✅ |
 | rename / move / append / insert / frontmatter / `validate`（schema 语言） | ✅ | ✅ |
-| 多文档编辑（`-A` 配 set/delete） | 计划中 | ✅ |
+| 多文档编辑（`-A` 覆盖全部编辑命令，`to-json -A`） | ✅ | ✅ |
 
-两者均经由同一核心 splice 引擎做版式钉死的编辑（未触碰的行，包括
-standalone 注释，不会漂移）。Python 版 CLI 仍是全功能面（`-A` 多文档、
-`validate`、rename/move/frontmatter）；`pyq` 定位于单文档的轻快免依赖脚本化。
+两者均经由同一核心 plan/splice 引擎做版式钉死的编辑。对多文档流，`pyq -A` 更进一步：每个文档独立 splice 状态，未触碰的文档和所有 `---` 分隔行逐字节保持原样，布局异常的文档单独回退（`to-json -A` 输出 JSON 数组）。Python CLI 仅存的差异是按注册的 CustomType 校验——那是 Python 层的概念。
 
 ## 另见
 

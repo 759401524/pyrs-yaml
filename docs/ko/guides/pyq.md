@@ -125,12 +125,13 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 경로별 sort-keys | ✅ | ✅ |
 | 다중 문서 조회 (`-A`: get/fmt/to-json) | ✅ | ✅ |
 | rename / move / append / insert / frontmatter / `validate` (스키마 언어) | ✅ | ✅ |
-| 다중 문서 편집 (`-A`와 set/delete) | 계획 중 | ✅ |
+| 다중 문서 편집 (`-A` 모든 편집 명령, `to-json -A`) | ✅ | ✅ |
 
-양쪽 모두 동일한 코어 splice 엔진으로 레이아웃 고정 편집을 합니다
-(건드리지 않은 행, standalone 주석 포함, 드리프트 없음). 전체 기능은
-Python CLI가 담당하고(`-A` 다중 문서, `validate`, rename/move/frontmatter),
-`pyq`는 단일 문서의 빠르고 의존성 없는 스크립팅을 목표로 합니다.
+양쪽 모두 동일한 코어 plan/splice 엔진으로 레이아웃 고정 편집을 합니다.
+스트림에서 `pyq -A`는 한 걸음 더 나아갑니다: 문서마다 독립적인 splice 상태를
+가져 건드리지 않은 문서와 모든 `---` 구분자가 바이트 단위로 그대로 유지되고,
+레이아웃이 더러운 문서만 개별적으로 폴백합니다(`to-json -A`는 JSON 배열 출력).
+Python CLI의 남은 강점은 CustomType 등록 검증으로, Python 계층의 개념입니다.
 
 ## 관련 문서
 

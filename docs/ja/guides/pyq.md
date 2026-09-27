@@ -125,13 +125,14 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | パス指定 sort-keys | ✅ | ✅ |
 | マルチドキュメント照会（`-A`：get/fmt/to-json） | ✅ | ✅ |
 | rename / move / append / insert / frontmatter / `validate`（スキーマ言語） | ✅ | ✅ |
-| マルチドキュメント編集（`-A` と set/delete） | 計画中 | ✅ |
+| マルチドキュメント編集（`-A` 全編集コマンド、`to-json -A`） | ✅ | ✅ |
 
-両者とも同一のコア splice エンジンでレイアウト保持編集を行います
-（触れていない行——standalone コメント含む——は漂移しない）。多機能面は
-Python 版 CLI が担い（`-A` マルチドキュメント、`validate`、
-rename/move/frontmatter）、`pyq` は単一ドキュメントの高速・無依存
-スクリプティングを目標とします。
+両者とも同一のコア plan/splice エンジンでレイアウト保持編集を行います。
+ストリームでは `pyq -A` が一歩先を行く：ドキュメントごとに独立した splice
+状態を持つため、触れていないドキュメントもすべての `---` 区切り行もバイト単位で
+そのまま保たれ、レイアウトが異常なドキュメントだけ個別にフォールバックします
+（`to-json -A` は JSON 配列を出力）。Python 版 CLI の残る優位点は CustomType
+登録による検証で、これは Python 層の概念です。
 
 ## 関連
 

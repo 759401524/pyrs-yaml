@@ -17,6 +17,14 @@ status: new
 
 #### 追加
 
+- **pyq マルチドキュメント編集** — `-A/--all-docs` が全編集コマンド
+  （set/delete/rename/move/append/insert/sort-keys）と `to-json -A`
+  （JSON 配列、Python 対応）をカバー。各ドキュメントはストリーム内の
+  自身のセグメントに対して splice（`MultiDocEditor` + `DirtyUnit::shifted`）：
+  触れていないドキュメントと全ての `---` 区切り行はバイト単位で保持、
+  パス不一致のドキュメントはスキップ（Python の try/skip 意味と一致、
+  全不一致はエラー）、レイアウト異常のドキュメントは単独でフォールバックし
+  近隣を巻き込まない。
 - **pyq 機能補完** — CLI が Python CLI の機能面に追従：`rename`/`move`/`append`/`insert`
   の splice 編集、`validate`（構文チェック、または `--schema rules.yaml` による
   スキーマ言語ルール検証）、`frontmatter`（`--body-out` で本文分割）、

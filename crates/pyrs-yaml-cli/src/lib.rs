@@ -8,6 +8,7 @@
 //! process.
 
 pub mod json;
+pub mod multidoc;
 pub mod paths;
 pub mod verbs;
 
@@ -16,12 +17,10 @@ use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::editing::Segment;
 use pyrs_yaml_core::editing::plan;
 use pyrs_yaml_core::parser::yaml::Schema;
-use pyrs_yaml_core::splice::SpliceState;
 use pyrs_yaml_core::{parser, serializer, toml};
 use std::borrow::Cow;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(
@@ -77,6 +76,10 @@ pub enum Command {
         file: Option<PathBuf>,
         #[arg(long)]
         create_missing: bool,
+        /// Apply to every document where the path resolves; others keep
+        /// their bytes.
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         /// Rewrite the input file in place instead of printing.
         #[arg(long, short = 'i')]
         inplace: bool,
@@ -85,6 +88,8 @@ pub enum Command {
     Delete {
         path: String,
         file: Option<PathBuf>,
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         #[arg(long, short = 'i')]
         inplace: bool,
     },
@@ -95,6 +100,8 @@ pub enum Command {
         /// New key text (written as a plain scalar).
         new_key: String,
         file: Option<PathBuf>,
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         #[arg(long, short = 'i')]
         inplace: bool,
     },
@@ -103,6 +110,8 @@ pub enum Command {
         from: String,
         to: String,
         file: Option<PathBuf>,
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         #[arg(long, short = 'i')]
         inplace: bool,
     },
@@ -112,6 +121,8 @@ pub enum Command {
         /// New value in YAML syntax; JSON works, being a YAML subset.
         value: String,
         file: Option<PathBuf>,
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         #[arg(long, short = 'i')]
         inplace: bool,
     },
@@ -122,6 +133,8 @@ pub enum Command {
         index: i64,
         value: String,
         file: Option<PathBuf>,
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         #[arg(long, short = 'i')]
         inplace: bool,
     },
@@ -146,6 +159,8 @@ pub enum Command {
         /// Target mapping path (`$` for the root).
         path: String,
         file: Option<PathBuf>,
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         #[arg(long, short = 'i')]
         inplace: bool,
     },
@@ -154,6 +169,9 @@ pub enum Command {
         file: Option<PathBuf>,
         #[command(flatten)]
         input: InputOpts,
+        /// Emit a JSON array of all stream documents.
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         /// Pretty-print with the given indent (0 = compact).
         #[arg(long, default_value_t = 2)]
         indent: usize,
@@ -306,13 +324,13 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             value,
             file,
             create_missing,
+            all_docs,
             inplace,
         } => {
             let src = read_input(&file)?;
-            let mut node = parser::parse(&src, Schema::Core)?;
             let v = parser::parse(&value, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
-            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+            let text = stream_edit(&src, all_docs, &path, |node, offs| {
                 plan::set_path(node, &segs, v.clone(), true, &src, offs, create_missing)
                     .map(|u| vec![u])
             })?;
@@ -321,12 +339,12 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         Command::Delete {
             path,
             file,
+            all_docs,
             inplace,
         } => {
             let src = read_input(&file)?;
-            let mut node = parser::parse(&src, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
-            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+            let text = stream_edit(&src, all_docs, &path, |node, offs| {
                 plan::delete_path(node, &segs, &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
@@ -335,12 +353,12 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             path,
             new_key,
             file,
+            all_docs,
             inplace,
         } => {
             let src = read_input(&file)?;
-            let mut node = parser::parse(&src, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
-            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+            let text = stream_edit(&src, all_docs, &path, |node, offs| {
                 plan::rename_path(node, &segs, &new_key, &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
@@ -349,13 +367,13 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             from,
             to,
             file,
+            all_docs,
             inplace,
         } => {
             let src = read_input(&file)?;
-            let mut node = parser::parse(&src, Schema::Core)?;
             let from_segs = segments_of(&paths::parse_path(&from)?)?;
             let to_segs = segments_of(&paths::parse_path(&to)?)?;
-            let text = spliced_edit(&mut node, &src, &from, |node, offs| {
+            let text = stream_edit(&src, all_docs, &from, |node, offs| {
                 plan::move_path(node, &from_segs, &to_segs, &src, offs)
             })?;
             write_text(&text, &file, inplace)?;
@@ -364,13 +382,13 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             path,
             value,
             file,
+            all_docs,
             inplace,
         } => {
             let src = read_input(&file)?;
-            let mut node = parser::parse(&src, Schema::Core)?;
             let v = parser::parse(&value, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
-            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+            let text = stream_edit(&src, all_docs, &path, |node, offs| {
                 plan::append_path(node, &segs, v.clone(), &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
@@ -380,13 +398,13 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             index,
             value,
             file,
+            all_docs,
             inplace,
         } => {
             let src = read_input(&file)?;
-            let mut node = parser::parse(&src, Schema::Core)?;
             let v = parser::parse(&value, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
-            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+            let text = stream_edit(&src, all_docs, &path, |node, offs| {
                 plan::insert_path(node, &segs, index, v.clone(), &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
@@ -432,12 +450,12 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         Command::SortKeys {
             path,
             file,
+            all_docs,
             inplace,
         } => {
             let src = read_input(&file)?;
-            let mut node = parser::parse(&src, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
-            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+            let text = stream_edit(&src, all_docs, &path, |node, offs| {
                 plan::sort_keys_path(node, &segs, &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
@@ -445,14 +463,26 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         Command::ToJson {
             file,
             input,
+            all_docs,
             indent,
         } => {
-            let node = load(&file, &input)?;
-            let value = json::node_to_json(&node)?;
-            let text = if indent == 0 {
-                serde_json::to_string(&value)?
+            let src = read_input(&file)?;
+            let docs = load_docs(&src, file.as_deref(), &input, all_docs)?;
+            let mut values = Vec::with_capacity(docs.len());
+            for doc in &docs {
+                values.push(json::node_to_json(doc)?);
+            }
+            // -A emits a JSON array of documents (Python CLI parity);
+            // otherwise the single document renders as before.
+            let root = if all_docs || docs.len() > 1 {
+                serde_json::Value::Array(values)
             } else {
-                serde_json::to_string_pretty(&value)?
+                values.swap_remove(0)
+            };
+            let text = if indent == 0 {
+                serde_json::to_string(&root)?
+            } else {
+                serde_json::to_string_pretty(&root)?
             };
             let mut out = text;
             out.push('\n');
@@ -589,50 +619,42 @@ fn plan_error(e: &str, path: &str) -> String {
     }
 }
 
-/// Layout-pinned edit through the shared splice engine (same architecture
-/// as the Python CLI's document edits): mutate the AST while the plan's
-/// dirty units rewrite the original text, so comments and untouched
-/// layout never drift. Falls back to full re-serialization when the
-/// document layout is ineligible or any unit rejects.
-fn spliced_edit(
-    node: &mut CustomNode,
+/// Layout-pinned edit over one document or, with `--all-docs`, over a
+/// stream through `MultiDocEditor`: per-document splice state isolates
+/// failures - a plan error skips that doc (its original segment bytes
+/// are emitted verbatim), and only an all-miss command errors.
+fn stream_edit(
     src: &str,
+    all_docs: bool,
     path: &str,
-    edit: impl FnOnce(
+    plan: impl Fn(
         &mut CustomNode,
         Option<&[usize]>,
     ) -> Result<Vec<pyrs_yaml_core::editing::DirtyUnit>, String>,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let mut state = parser::check_default_layout(node, src)
-        .then(|| SpliceState::new(Arc::from(src.to_string())));
-    // Populate the line-offset table once; the plan and splice share it.
-    let offsets: Vec<usize> = match state.as_mut() {
-        Some(s) => s.line_offsets().to_vec(),
-        None => Vec::new(),
+    let mut docs = if all_docs {
+        parser::parse_all(src, Schema::Core)?
+    } else {
+        vec![parser::parse(src, Schema::Core)?]
     };
-    let units = edit(
-        node,
-        if state.is_some() {
-            Some(&offsets)
-        } else {
-            None
-        },
-    )
-    .map_err(|e| plan_error(&e, path))?;
-    let mut spliced = None;
-    if let Some(s) = state.as_mut() {
-        let mut applied = true;
-        for unit in &units {
-            if s.apply(unit).is_err() {
-                applied = false;
-                break;
+    let mut ed = multidoc::MultiDocEditor::new(src, &docs);
+    let mut applied = 0usize;
+    let mut last_err: Option<String> = None;
+    for (i, doc) in docs.iter_mut().enumerate() {
+        if let Err(e) = ed.edit(i, doc, |node, offs| plan(node, offs)) {
+            if !all_docs {
+                return Err(plan_error(&e, path).into());
             }
+            last_err = Some(e);
+            continue;
         }
-        if applied {
-            spliced = s.materialize();
-        }
+        applied += 1;
     }
-    Ok(spliced.unwrap_or_else(|| serializer::to_yaml(node)))
+    if applied == 0 {
+        let e = last_err.unwrap_or_else(|| "missing-path".to_string());
+        return Err(plan_error(&e, path).into());
+    }
+    Ok(ed.finalize(&docs))
 }
 
 /// Load one document, or every document with `--all-docs` (YAML/JSON

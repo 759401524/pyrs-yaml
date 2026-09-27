@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **pyq 多文档编辑** — `-A/--all-docs` 现覆盖全部编辑命令
+  （set/delete/rename/move/append/insert/sort-keys）及 `to-json -A`
+  （JSON 数组，与 Python 对等）。每个文档针对流中自己的文本段做 splice
+  （`MultiDocEditor` + `DirtyUnit::shifted`）：未触碰的文档与所有 `---`
+  分隔行逐字节保持原样；路径未命中的文档跳过（与 Python try/skip 语义
+  一致，全部未命中仍报错退出）；布局异常的文档单独回退，不连带邻居。
 - **pyq 功能补齐** — CLI 追平 Python CLI 功能面：`rename`/`move`/`append`/`insert`
   splice 编辑、`validate`（解析检查，或用 `--schema rules.yaml` 按 schema 语言规则
   校验）、`frontmatter`（`--body-out` 分离正文），以及 `get`/`fmt`/`to-json` 的

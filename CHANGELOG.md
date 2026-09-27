@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **pyq multi-document edits** — `-A/--all-docs` now covers every edit
+  command (set/delete/rename/move/append/insert/sort-keys) plus
+  `to-json -A` (JSON array, Python parity). Each document splices
+  against its own segment of the stream (`MultiDocEditor` +
+  `DirtyUnit::shifted`): untouched documents and all `---` separators
+  keep their exact bytes, a plan miss skips its document (Python try/
+  skip semantics; all-miss still exits 1), and one layout-dirty document
+  falls back alone instead of de-pinning its neighbours.
 - **pyq feature completion** — the CLI reaches parity with the Python
   CLI's surface: `rename`/`move`/`append`/`insert` splice edits, `validate`
   (parse check, or against schema-language rules via `--schema rules.yaml`),

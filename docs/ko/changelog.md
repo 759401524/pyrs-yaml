@@ -17,6 +17,12 @@ status: new
 
 #### 추가
 
+- **pyq 다중 문서 편집** — `-A/--all-docs`가 모든 편집 명령(set/delete/rename/
+  move/append/insert/sort-keys)과 `to-json -A`(JSON 배열, Python 대응)를 커버.
+  각 문서는 스트림 내 자기 구간에 대해 splice(`MultiDocEditor` + `DirtyUnit::
+  shifted`): 건드리지 않은 문서와 모든 `---` 구분자는 바이트 단위로 유지,
+  경로 미매칭 문서는 스킵(Python try/skip 의미 일치, 전원 미매칭은 오류),
+  레이아웃 오염 문서는 단독 폴백으로 이웃에 영향 없음.
 - **pyq 기능 보완** — CLI가 Python CLI 기능면에 대응: `rename`/`move`/`append`/`insert`
   splice 편집, `validate`(파싱 검사 또는 `--schema rules.yaml` 스키마 언어 규칙 검증),
   `frontmatter`(`--body-out` 본문 분리), `get`/`fmt`/`to-json`의 `-A/--all-docs` 다중
