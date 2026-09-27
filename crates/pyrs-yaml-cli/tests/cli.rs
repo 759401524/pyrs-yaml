@@ -399,6 +399,53 @@ fn all_docs_get_streams_matches_and_skips_misses() {
 }
 
 #[test]
+fn all_docs_set_edits_every_hit_and_pins_the_rest() {
+    let stream = "---\nname: one\nweird:   1\n---\nname: two\n";
+    let (code, out, err) = run_with_stdin(&["set", "-A", ".tag", "9", "-"], stream);
+    assert_eq!(code, Some(0), "{err}");
+    // doc 0 keeps its odd spacing verbatim around the spliced line
+    assert!(out.contains("name: one\nweird:   1\ntag: 9"), "{out:?}");
+    assert!(out.contains("name: two\ntag: 9"), "{out:?}");
+    // the stream still round-trips as two documents with both edits
+    let (_, check, _) = run_with_stdin(&["get", ".tag", "-A", "--json", "-"], &out);
+    assert_eq!(check, "9\n9\n");
+}
+
+#[test]
+fn all_docs_delete_skips_docs_without_the_path() {
+    let stream = "---\na: 1\nkeep: y\n---\nb: 2\n";
+    let (code, out, err) = run_with_stdin(&["delete", "-A", ".a", "-"], stream);
+    assert_eq!(code, Some(0), "{err}");
+    // doc 1 edited (last-key removal renders {} like single-doc), doc 2
+    // byte-identical including its separator prelude
+    assert!(out.contains("keep: y\n"), "{out:?}");
+    assert!(out.contains("---\nb: 2\n"), "{out:?}");
+    // all-miss is still an error
+    let (code, _, err) = run_with_stdin(&["delete", "-A", ".zzz", "-"], stream);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("path not found: .zzz"), "{err}");
+}
+
+#[test]
+fn all_docs_create_missing_grows_every_document() {
+    let (code, out, err) = run_with_stdin(
+        &["set", "-A", "--create-missing", ".m.n", "7", "-"],
+        "---\nx: 1\n---\ny: 2\n",
+    );
+    assert_eq!(code, Some(0), "{err}");
+    let (_, check, _) = run_with_stdin(&["get", ".m.n", "-A", "--json", "-"], &out);
+    assert_eq!(check, "7\n7\n");
+}
+
+#[test]
+fn to_json_all_docs_emits_a_json_array() {
+    let (code, out, err) = run_with_stdin(&["to-json", "-A", "-"], "---\na: 1\n---\nb: two\n");
+    assert_eq!(code, Some(0), "{err}");
+    let compact: String = out.chars().filter(|c| !matches!(c, ' ' | '\n')).collect();
+    assert_eq!(compact, "[{\"a\":1},{\"b\":\"two\"}]");
+}
+
+#[test]
 fn edit_pins_layout_of_untouched_lines() {
     // The splice engine rewrites only the edited region: standalone notes
     // and odd inline spacing survive verbatim - the serializer alone

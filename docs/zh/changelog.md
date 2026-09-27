@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **pyq 多文档编辑** — `-A/--all-docs` 现覆盖全部编辑命令
+  （set/delete/rename/move/append/insert/sort-keys）及 `to-json -A`
+  （JSON 数组，与 Python 对等）。每个文档针对流中自己的文本段做 splice
+  （`MultiDocEditor` + `DirtyUnit::shifted`）：未触碰的文档与所有 `---`
+  分隔行逐字节保持原样；路径未命中的文档跳过（与 Python try/skip 语义
+  一致，全部未命中仍报错退出）；布局异常的文档单独回退，不连带邻居。
 - **JSONC 解析** — `pyrs_yaml_core::json::from_jsonc(text)` 与
   `from_json_with_options(text, JsonParseOptions)` 接受任意空白位置的
   `// 行` 与 `/* 块 */` 注释（即 TypeScript `tsconfig.json` 与 VS Code

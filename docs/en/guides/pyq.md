@@ -126,13 +126,9 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | Layout-pinned edits (splice engine) | ✅ | ✅ |
 | sort-keys at a path | ✅ | ✅ |
 | Rename / move / append / insert / frontmatter / `validate` | ✅ | ✅ |
-| Multi-document edits (`-A` with set/delete) | planned | ✅ |
+| Multi-document edits (`-A` on every edit command, `to-json -A`) | ✅ | ✅ |
 
-Both CLIs edit through the same core splice engine with layout pinning
-(untouched lines, including standalone comments, never drift). The
-Python CLI remains the full-feature surface (`-A` multi-document,
-`validate`, rename/move/frontmatter); `pyq` targets fast,
-dependency-free scripting of single documents.
+Both CLIs edit through the same core plan/splice engine. For streams, `pyq -A` goes one step further: each document gets an independent splice state, so untouched documents - and every `---` separator - keep their exact bytes, and one layout-dirty document falls back alone (`to-json -A` emits a JSON array). The Python CLI's remaining edge is validation against registered CustomTypes, a Python-layer concept.
 
 ## See Also
 
