@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **pyq 功能补齐** — CLI 追平 Python CLI 功能面：`rename`/`move`/`append`/`insert`
+  splice 编辑、`validate`（解析检查，或用 `--schema rules.yaml` 按 schema 语言规则
+  校验）、`frontmatter`（`--body-out` 分离正文），以及 `get`/`fmt`/`to-json` 的
+  `-A/--all-docs` 多文档流。接线过程揪出核心引擎 bug：`move_path` 只返回目标
+  INSERT 单元，splice 文本会残留被移动子树的副本（文档回退全重序列化时不可见）；
+  现返回两个单元，bindings 经批量 splice 通道依次应用。
 - **`pyq` 过滤动词** — 匹配流上的结构化 jq 风格后处理：
   `--select 'PATH OP LITERAL'`、`--sort-by PATH` / `--desc`、`--unique`、
   `--first` / `--last`、`--skip N` / `--take N`、`--join SEP`，在 `get` 与

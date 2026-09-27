@@ -90,6 +90,8 @@ pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
 pyq from-ini settings.ini        # INI -> YAML（值均为字符串）
+pyq validate k8s.yaml --schema rules.yaml   # 解析检查 + schema 语言规则校验
+pyq frontmatter README.md --body-out body.md # 分离 Markdown front matter
 ```
 
 输入格式按文件扩展名识别（`.json`、`.toml`、`.ini`），可用
@@ -119,9 +121,9 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 动词后处理（`select`/`sort`/`unique`/…） | ✅ | — |
 | 布局钉死编辑（splice 引擎） | ✅ | ✅ |
 | 路径级 sort-keys | ✅ | ✅ |
-| 多文档流（`-A`） | 计划中 | ✅ |
-| 注册 schema 的 `validate` | 计划中 | ✅ |
-| rename / move / frontmatter | — | ✅ |
+| 多文档查询流（`-A`：get/fmt/to-json） | ✅ | ✅ |
+| rename / move / append / insert / frontmatter / `validate`（schema 语言） | ✅ | ✅ |
+| 多文档编辑（`-A` 配 set/delete） | 计划中 | ✅ |
 
 两者均经由同一核心 splice 引擎做版式钉死的编辑（未触碰的行，包括
 standalone 注释，不会漂移）。Python 版 CLI 仍是全功能面（`-A` 多文档、

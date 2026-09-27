@@ -43,6 +43,9 @@ pub enum Command {
         /// Wrap the document with an explicit `---` marker.
         #[arg(long)]
         explicit_start: bool,
+        /// Process every document of a multi-document stream.
+        #[arg(long, short = 'A')]
+        all_docs: bool,
     },
     /// Extract a value at a path (`.a.b[0]`, `$` for the whole document).
     Get {
@@ -52,6 +55,9 @@ pub enum Command {
         file: Option<PathBuf>,
         #[command(flatten)]
         input: InputOpts,
+        /// Process every document; docs without a match are skipped.
+        #[arg(long, short = 'A')]
+        all_docs: bool,
         #[command(flatten)]
         verbs: verbs::Verbs,
         #[arg(long)]
@@ -81,6 +87,58 @@ pub enum Command {
         file: Option<PathBuf>,
         #[arg(long, short = 'i')]
         inplace: bool,
+    },
+    /// Rename the key addressed by PATH (keeps value, comments and
+    /// layout through the splice engine).
+    Rename {
+        path: String,
+        /// New key text (written as a plain scalar).
+        new_key: String,
+        file: Option<PathBuf>,
+        #[arg(long, short = 'i')]
+        inplace: bool,
+    },
+    /// Move the subtree at FROM to the existing destination path TO.
+    Move {
+        from: String,
+        to: String,
+        file: Option<PathBuf>,
+        #[arg(long, short = 'i')]
+        inplace: bool,
+    },
+    /// Append VALUE to the sequence at PATH.
+    Append {
+        path: String,
+        /// New value in YAML syntax; JSON works, being a YAML subset.
+        value: String,
+        file: Option<PathBuf>,
+        #[arg(long, short = 'i')]
+        inplace: bool,
+    },
+    /// Insert VALUE into the sequence at PATH before index N (negative
+    /// counts from the end).
+    Insert {
+        path: String,
+        index: i64,
+        value: String,
+        file: Option<PathBuf>,
+        #[arg(long, short = 'i')]
+        inplace: bool,
+    },
+    /// Check that a file parses; with `--schema`, validate every
+    /// document against schema-language rules. Prints one violation per
+    /// line, exit 1 on any.
+    Validate {
+        file: Option<PathBuf>,
+        /// Schema rules file (YAML, core schema language).
+        #[arg(long)]
+        schema: Option<PathBuf>,
+    },
+    /// Extract Markdown front matter as YAML (`--body-out` splits the body).
+    Frontmatter {
+        file: Option<PathBuf>,
+        #[arg(long)]
+        body_out: Option<PathBuf>,
     },
     /// Sort the keys of the mapping at a path (one level; `$` sorts the
     /// document root).
@@ -207,27 +265,41 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         Command::Fmt {
             file,
             explicit_start,
+            all_docs,
         } => {
             let src = read_input(&file)?;
             let opts = serializer::SerializeOptions {
                 explicit_start,
                 ..Default::default()
             };
-            let ast = parser::parse(&src, Schema::Core)?;
-            let out = serializer::to_yaml_with_options(&ast, &opts)?;
-            emit_str(&out)?;
+            if all_docs {
+                let docs = parser::parse_all(&src, Schema::Core)?;
+                let mut out = String::new();
+                for doc in &docs {
+                    out.push_str("---\n");
+                    out.push_str(&serializer::to_yaml_with_options(doc, &opts)?);
+                }
+                emit_str(&out)?;
+            } else {
+                let ast = parser::parse(&src, Schema::Core)?;
+                let out = serializer::to_yaml_with_options(&ast, &opts)?;
+                emit_str(&out)?;
+            }
         }
         Command::Get {
             path,
             file,
             input,
+            all_docs,
             verbs,
             json,
             raw,
         } => {
-            let node = load(&file, &input)?;
+            let src = read_input(&file)?;
+            let docs = load_docs(&src, file.as_deref(), &input, all_docs)?;
             let sel = paths::parse_path(&path)?;
-            emit_with_verbs(sel.select_all(&node), &verbs, json, raw, &path)?;
+            let stream: Vec<&CustomNode> = docs.iter().flat_map(|d| sel.select_all(d)).collect();
+            emit_with_verbs(stream, &verbs, json, raw, &path)?;
         }
         Command::Set {
             path,
@@ -242,6 +314,7 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let segs = segments_of(&paths::parse_path(&path)?)?;
             let text = spliced_edit(&mut node, &src, &path, |node, offs| {
                 plan::set_path(node, &segs, v.clone(), true, &src, offs, create_missing)
+                    .map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
         }
@@ -254,9 +327,107 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let mut node = parser::parse(&src, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
             let text = spliced_edit(&mut node, &src, &path, |node, offs| {
-                plan::delete_path(node, &segs, &src, offs)
+                plan::delete_path(node, &segs, &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
+        }
+        Command::Rename {
+            path,
+            new_key,
+            file,
+            inplace,
+        } => {
+            let src = read_input(&file)?;
+            let mut node = parser::parse(&src, Schema::Core)?;
+            let segs = segments_of(&paths::parse_path(&path)?)?;
+            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+                plan::rename_path(node, &segs, &new_key, &src, offs).map(|u| vec![u])
+            })?;
+            write_text(&text, &file, inplace)?;
+        }
+        Command::Move {
+            from,
+            to,
+            file,
+            inplace,
+        } => {
+            let src = read_input(&file)?;
+            let mut node = parser::parse(&src, Schema::Core)?;
+            let from_segs = segments_of(&paths::parse_path(&from)?)?;
+            let to_segs = segments_of(&paths::parse_path(&to)?)?;
+            let text = spliced_edit(&mut node, &src, &from, |node, offs| {
+                plan::move_path(node, &from_segs, &to_segs, &src, offs)
+            })?;
+            write_text(&text, &file, inplace)?;
+        }
+        Command::Append {
+            path,
+            value,
+            file,
+            inplace,
+        } => {
+            let src = read_input(&file)?;
+            let mut node = parser::parse(&src, Schema::Core)?;
+            let v = parser::parse(&value, Schema::Core)?;
+            let segs = segments_of(&paths::parse_path(&path)?)?;
+            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+                plan::append_path(node, &segs, v.clone(), &src, offs).map(|u| vec![u])
+            })?;
+            write_text(&text, &file, inplace)?;
+        }
+        Command::Insert {
+            path,
+            index,
+            value,
+            file,
+            inplace,
+        } => {
+            let src = read_input(&file)?;
+            let mut node = parser::parse(&src, Schema::Core)?;
+            let v = parser::parse(&value, Schema::Core)?;
+            let segs = segments_of(&paths::parse_path(&path)?)?;
+            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+                plan::insert_path(node, &segs, index, v.clone(), &src, offs).map(|u| vec![u])
+            })?;
+            write_text(&text, &file, inplace)?;
+        }
+        Command::Validate { file, schema } => {
+            let src = read_input(&file)?;
+            let resolver = match &schema {
+                Some(p) => Some(parser::yaml::parse_schema_yaml(&std::fs::read_to_string(
+                    p,
+                )?)?),
+                None => None,
+            };
+            let docs = parser::parse_all(&src, Schema::Core)?;
+            let mut failures = Vec::new();
+            if let Some(rules) = &resolver {
+                for doc in &docs {
+                    if let Err(errs) =
+                        parser::yaml::schema_language::validate_node(doc, rules, &src)
+                    {
+                        failures.extend(errs);
+                    }
+                }
+            }
+            if !failures.is_empty() {
+                let mut out = String::new();
+                for e in &failures {
+                    out.push_str(&format!("{}: {}\n", e.path, e.message));
+                }
+                emit_str(&out)?;
+                return Err("validation failed".into());
+            }
+            emit_str("ok\n")?;
+        }
+        Command::Frontmatter { file, body_out } => {
+            let src = read_input(&file)?;
+            let (fm, body) = split_front_matter(&src)?;
+            let node = parser::parse(&fm, Schema::Core)?;
+            emit_str(&serializer::to_yaml(&node))?;
+            if let Some(p) = body_out {
+                std::fs::write(p, body)?;
+            }
         }
         Command::SortKeys {
             path,
@@ -267,7 +438,7 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let mut node = parser::parse(&src, Schema::Core)?;
             let segs = segments_of(&paths::parse_path(&path)?)?;
             let text = spliced_edit(&mut node, &src, &path, |node, offs| {
-                plan::sort_keys_path(node, &segs, &src, offs)
+                plan::sort_keys_path(node, &segs, &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
         }
@@ -420,9 +591,9 @@ fn plan_error(e: &str, path: &str) -> String {
 
 /// Layout-pinned edit through the shared splice engine (same architecture
 /// as the Python CLI's document edits): mutate the AST while the plan's
-/// `DirtyUnit` rewrites the original text, so comments and untouched
+/// dirty units rewrite the original text, so comments and untouched
 /// layout never drift. Falls back to full re-serialization when the
-/// document layout is ineligible or the splice rejects the unit.
+/// document layout is ineligible or any unit rejects.
 fn spliced_edit(
     node: &mut CustomNode,
     src: &str,
@@ -430,7 +601,7 @@ fn spliced_edit(
     edit: impl FnOnce(
         &mut CustomNode,
         Option<&[usize]>,
-    ) -> Result<pyrs_yaml_core::editing::DirtyUnit, String>,
+    ) -> Result<Vec<pyrs_yaml_core::editing::DirtyUnit>, String>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut state = parser::check_default_layout(node, src)
         .then(|| SpliceState::new(Arc::from(src.to_string())));
@@ -439,7 +610,7 @@ fn spliced_edit(
         Some(s) => s.line_offsets().to_vec(),
         None => Vec::new(),
     };
-    let unit = edit(
+    let units = edit(
         node,
         if state.is_some() {
             Some(&offsets)
@@ -449,12 +620,57 @@ fn spliced_edit(
     )
     .map_err(|e| plan_error(&e, path))?;
     let mut spliced = None;
-    if let Some(s) = state.as_mut()
-        && s.apply(&unit).is_ok()
-    {
-        spliced = s.materialize();
+    if let Some(s) = state.as_mut() {
+        let mut applied = true;
+        for unit in &units {
+            if s.apply(unit).is_err() {
+                applied = false;
+                break;
+            }
+        }
+        if applied {
+            spliced = s.materialize();
+        }
     }
     Ok(spliced.unwrap_or_else(|| serializer::to_yaml(node)))
+}
+
+/// Load one document, or every document with `--all-docs` (YAML/JSON
+/// streams only; explicit TOML/INI input has no stream concept).
+pub fn load_docs(
+    src: &str,
+    path_hint: Option<&Path>,
+    input: &InputOpts,
+    all_docs: bool,
+) -> Result<Vec<CustomNode>, Box<dyn std::error::Error>> {
+    if !all_docs {
+        return Ok(vec![load_source(src, path_hint, input)?]);
+    }
+    if matches!(input.input, Format::Toml | Format::Ini) {
+        return Err("--all-docs only applies to YAML or JSON input".into());
+    }
+    Ok(parser::parse_all(src, Schema::from(input.schema))?)
+}
+
+/// Split `---\n<yaml>\n---\n<body>`; mirrors the Python CLI's frontmatter
+/// fences (`---` or `...` closing the block).
+fn split_front_matter(src: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let rest = src
+        .strip_prefix("---\n")
+        .or_else(|| src.strip_prefix("---\r\n"))
+        .ok_or("no front matter")?;
+    let mut consumed = 0usize;
+    for line in rest.split_inclusive('\n') {
+        let t = line.trim_end_matches(['\n', '\r']);
+        if t == "---" || t == "..." {
+            return Ok((
+                rest[..consumed].to_string(),
+                rest[consumed + line.len()..].to_string(),
+            ));
+        }
+        consumed += line.len();
+    }
+    Err("unterminated front matter".into())
 }
 
 /// Load according to --input (auto: extension, else YAML/JSON superset,

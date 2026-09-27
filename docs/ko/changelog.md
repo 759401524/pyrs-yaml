@@ -17,6 +17,12 @@ status: new
 
 #### 추가
 
+- **pyq 기능 보완** — CLI가 Python CLI 기능면에 대응: `rename`/`move`/`append`/`insert`
+  splice 편집, `validate`(파싱 검사 또는 `--schema rules.yaml` 스키마 언어 규칙 검증),
+  `frontmatter`(`--body-out` 본문 분리), `get`/`fmt`/`to-json`의 `-A/--all-docs` 다중
+  문서 지원. 배선 중 코어 엔진 버그 발견: `move_path`가 이동 대상 INSERT 단위만
+  반환해 splice 텍스트에 이동 원본 사본이 잔류(폴백 시 눈에 안 탐). 이제 두 단위를
+  반환하고 bindings는 배치 splice 경로로 적용.
 - **`pyq` 필터 동사** — 매칭 스트림의 jq 스타일 구조화 후처리:
   `--select 'PATH OP LITERAL'`, `--sort-by PATH` / `--desc`, `--unique`,
   `--first` / `--last`, `--skip N` / `--take N`, `--join SEP`.

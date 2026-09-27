@@ -955,27 +955,26 @@ pub fn sort_keys_path(
 }
 
 /// Move a subtree from `src_segments` to `dst_segments` (inside the same
-/// document). The source path is removed after copying.
+/// document). Returns the INSERT unit (destination) and the DELETE unit
+/// (source) as a batch: splicing must rewrite both regions - a merged
+/// single unit silently left the moved-from key in the text (the bindings
+/// applied them in sequence via their batch path).
 pub fn move_path(
     node: &mut CustomNode,
     src_segments: &[Segment<'_>],
     dst_segments: &[Segment<'_>],
     source: &str,
     line_offsets: Option<&[usize]>,
-) -> Result<DirtyUnit, String> {
+) -> Result<Vec<DirtyUnit>, String> {
     // Clone the source subtree
     let src = crate::editing::navigate(node, src_segments)
         .map_err(|e| e.to_string())?
         .clone();
     // Set at destination
-    let mut set_unit = set_path(node, dst_segments, src, false, source, line_offsets, false)?;
+    let set_unit = set_path(node, dst_segments, src, false, source, line_offsets, false)?;
     // Delete source
     let del_unit = delete_path(node, src_segments, source, line_offsets)?;
-    // Merge: use the set unit as primary (it covers the important region)
-    if !set_unit.eligible {
-        set_unit.eligible = del_unit.eligible;
-    }
-    Ok(set_unit)
+    Ok(vec![set_unit, del_unit])
 }
 
 /// Apply multiple set operations at once. Each pair is a (segments, new_value).

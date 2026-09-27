@@ -303,6 +303,102 @@ fn completion_emits_usable_scripts() {
 }
 
 #[test]
+fn rename_keeps_value_and_comments() {
+    let (code, out, err) = run_with_stdin(&["rename", ".a", "b", "-"], "a: 1  # keep\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "b: 1  # keep\n");
+}
+
+#[test]
+fn move_relocates_subtree_to_existing_destination() {
+    let doc = "a:\n  x: 1\nb:\n  y: 2\n";
+    let (code, out, err) = run_with_stdin(&["move", ".a.x", ".b.x", "-"], doc);
+    assert_eq!(code, Some(0), "{err}");
+    // both splice units land: destination gains the node, the source line
+    // disappears leaving `a:` (batch fix in move_path)
+    assert_eq!(out, "a:\nb:\n  y: 2\n  x: 1\n");
+}
+
+#[test]
+fn append_and_insert_sequences() {
+    let doc = "s:\n  - one\n  - two\n";
+    let (_, out, _) = run_with_stdin(&["append", ".s", "three", "-"], doc);
+    assert_eq!(out, "s:\n  - one\n  - two\n  - three\n");
+    let (_, out, _) = run_with_stdin(&["insert", ".s", "1", "zero", "-"], doc);
+    assert_eq!(out, "s:\n  - one\n  - zero\n  - two\n");
+}
+
+#[test]
+fn validate_reports_parse_and_schema_failures() {
+    let (code, out, _) = run_with_stdin(&["validate", "-"], "a: 1\n");
+    assert_eq!(code, Some(0));
+    assert_eq!(out, "ok\n");
+    let (code, _, err) = run_with_stdin(&["validate", "-"], "b: [1,\n");
+    assert_eq!(code, Some(1));
+    assert!(err.contains("unclosed bracket"), "{err}");
+
+    let dir = std::env::temp_dir().join(format!("pyq-val-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let rules = dir.join("rules.yaml");
+    std::fs::write(
+        &rules,
+        "validate:\n  - path: $.name\n    type: str\n    required: true\n",
+    )
+    .unwrap();
+    let (code, out, _) = run_with_stdin(
+        &["validate", "--schema", rules.to_str().unwrap(), "-"],
+        "name: hello\n",
+    );
+    assert_eq!(code, Some(0));
+    assert_eq!(out, "ok\n");
+    let (code, stdout, stderr) = run_with_stdin(
+        &["validate", "--schema", rules.to_str().unwrap(), "-"],
+        "other: 1\n",
+    );
+    assert_eq!(code, Some(1));
+    assert!(
+        stdout.contains("$.name: required path is missing"),
+        "{stdout}"
+    );
+    assert!(stderr.contains("validation failed"), "{stderr}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn frontmatter_extracts_yaml_and_splits_body() {
+    let dir = std::env::temp_dir().join(format!("pyq-fm-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let page = dir.join("page.md");
+    let body = dir.join("body.md");
+    std::fs::write(&page, "---\ntitle: Hi\ntags: [a, b]\n---\n# Body here\n").unwrap();
+    let (code, out, err) = run(&[
+        "frontmatter",
+        page.to_str().unwrap(),
+        "--body-out",
+        body.to_str().unwrap(),
+    ]);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "title: Hi\ntags: [a, b]\n");
+    assert_eq!(std::fs::read_to_string(&body).unwrap(), "# Body here\n");
+    // a plain YAML file has no front matter
+    let (code, _, err) = run_with_stdin(&["frontmatter", "-"], "a: 1\n");
+    assert_eq!(code, Some(1));
+    assert!(err.contains("no front matter"), "{err}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn all_docs_get_streams_matches_and_skips_misses() {
+    let stream = "---\nname: doc1\n---\nname: doc2\n---\nother: x\n";
+    let (code, out, err) = run_with_stdin(&["get", ".name", "-A", "-"], stream);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "---\ndoc1\n---\ndoc2\n");
+    // fmt -A normalizes every document
+    let (_, out, _) = run_with_stdin(&["fmt", "-A", "-"], "---\nb: 1\n---\na: 2\n");
+    assert_eq!(out, "---\nb: 1\n---\na: 2\n");
+}
+
+#[test]
 fn edit_pins_layout_of_untouched_lines() {
     // The splice engine rewrites only the edited region: standalone notes
     // and odd inline spacing survive verbatim - the serializer alone

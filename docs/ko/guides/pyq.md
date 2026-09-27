@@ -91,6 +91,8 @@ pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
 pyq from-ini settings.ini        # INI -> YAML (값은 모두 문자열)
+pyq validate k8s.yaml --schema rules.yaml   # 파싱 검사 + 스키마 언어 검증
+pyq frontmatter README.md --body-out body.md # Markdown 프런트매터 분리
 ```
 
 입력 형식은 확장자로 판정(`.json`, `.toml`, `.ini`)하며
@@ -121,9 +123,9 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 동사 후처리 (`select`/`sort`/`unique`/…) | ✅ | — |
 | 레이아웃 고정 편집 (splice 엔진) | ✅ | ✅ |
 | 경로별 sort-keys | ✅ | ✅ |
-| 다중 문서 (`-A`) | 계획 중 | ✅ |
-| 등록 스키마 `validate` | 계획 중 | ✅ |
-| rename / move / frontmatter | — | ✅ |
+| 다중 문서 조회 (`-A`: get/fmt/to-json) | ✅ | ✅ |
+| rename / move / append / insert / frontmatter / `validate` (스키마 언어) | ✅ | ✅ |
+| 다중 문서 편집 (`-A`와 set/delete) | 계획 중 | ✅ |
 
 양쪽 모두 동일한 코어 splice 엔진으로 레이아웃 고정 편집을 합니다
 (건드리지 않은 행, standalone 주석 포함, 드리프트 없음). 전체 기능은
