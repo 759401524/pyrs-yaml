@@ -88,8 +88,11 @@ pyq from-ini settings.ini        # INI -> YAML（値はすべて文字列）
 | 登録スキーマでの `validate` | 計画中 | ✅ |
 | sort-keys / rename / move / frontmatter | — | ✅ |
 
-多機能面は Python 版 CLI が担い（スプライスによるレイアウト保持編集が
-可能）、`pyq` は単一ドキュメントの高速・無依存スクリプティングを目標とします。
+両者とも同一のコア splice エンジンでレイアウト保持編集を行います
+（触れていない行——standalone コメント含む——は漂移しない）。多機能面は
+Python 版 CLI が担い（`-A` マルチドキュメント、`validate`、
+rename/move/frontmatter）、`pyq` は単一ドキュメントの高速・無依存
+スクリプティングを目標とします。
 
 ## 関連
 

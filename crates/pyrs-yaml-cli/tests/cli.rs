@@ -205,7 +205,23 @@ fn delete_key_and_negative_index() {
 fn delete_missing_key_exits_nonzero() {
     let (code, _, err) = run_with_stdin(&["delete", ".nope", "-"], "a: 1\n");
     assert_eq!(code, Some(1));
-    assert!(err.contains("no key nope"), "{err}");
+    assert!(err.contains("path not found: .nope"), "{err}");
+}
+
+#[test]
+fn edit_pins_layout_of_untouched_lines() {
+    // The splice engine rewrites only the edited region: standalone notes
+    // and odd inline spacing survive verbatim - the serializer alone
+    // would normalize `demo   # inline` to two spaces. This is the
+    // Python CLI's layout-pinning guarantee, now shared through the
+    // core plan engine.
+    let input = "# header\napp:\n  name: demo   # inline\n# trailing note\nport: 1\n";
+    let (code, out, err) = run_with_stdin(&["set", ".port", "2", "-"], input);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(
+        out,
+        "# header\napp:\n  name: demo   # inline\n# trailing note\nport: 2\n"
+    );
 }
 
 #[test]

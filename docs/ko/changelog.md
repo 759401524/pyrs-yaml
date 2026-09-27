@@ -92,6 +92,13 @@ status: new
 
 #### 수정
 
+- **첫 키 값이 중첩 컨테이너일 때 문서 헤더 주석 소실 수정** — 파서가가 진행 중인
+  모든 컨테이너에 단일 주석 슬롯을 공유했고, 중첩 컨테이너 start가 아직 자리 잡지
+  못한 standalone 헤더를 지웠다(parse 단계에서 폐기, `to_dict`엔 보이지 않고 `dump`에서
+  치명적). 이제 컨테이너별 슬롯 스택으로 관리.
+- **splice 편집 시 선행 주석 중복 수정** — 재생성된 리전 텍스트가 pair/item 자신의
+  standalone 주석을 담을 때 교체 범위가 기존 주석 행을 덮지 않아 두 개가 공존했으나,
+  plan이 주석 행까지 범위를 확장(`pyq set`/`delete`와 bindings splice 경로 공통 수정).
 - **`!timestamp`가 지원되는 모든 Python에서 끝의 `Z` 허용** —
   `datetime.fromisoformat`은 UTC-`Z` 접미사를 3.11부터만 인식하므로
   플러그인에서 `...Z`를 `+00:00`으로 정규화, 3.8~3.10의 YAML

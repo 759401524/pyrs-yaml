@@ -88,7 +88,9 @@ pyq from-ini settings.ini        # INI -> YAML (값은 모두 문자열)
 | 등록 스키마 `validate` | 계획 중 | ✅ |
 | sort-keys / rename / move / frontmatter | — | ✅ |
 
-전체 기능은 Python CLI가 담당하고(스플라이스 기반 레이아웃 고정 편집 가능),
+양쪽 모두 동일한 코어 splice 엔진으로 레이아웃 고정 편집을 합니다
+(건드리지 않은 행, standalone 주석 포함, 드리프트 없음). 전체 기능은
+Python CLI가 담당하고(`-A` 다중 문서, `validate`, rename/move/frontmatter),
 `pyq`는 단일 문서의 빠르고 의존성 없는 스크립팅을 목표로 합니다.
 
 ## 관련 문서

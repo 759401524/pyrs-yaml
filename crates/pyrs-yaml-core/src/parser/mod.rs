@@ -384,8 +384,11 @@ struct AstReceiver<'a> {
     anchor_names: Vec<String>,
     /// Current index into anchor_names
     anchor_name_idx: usize,
-    /// Comment for the current mapping being built (not available for scalars)
-    mapping_comment: Option<Comment>,
+    /// Standalone/inline comment slot per in-progress container, parallel to
+    /// `stack`. A single shared slot was clobbered by nested container starts
+    /// (a block mapping's header comment vanished when its first value was
+    /// itself a container).
+    comment_stack: Vec<Option<Comment>>,
     stack: Vec<ParseState>,
     result: Option<CustomNode>,
     /// Whether to collect completed documents for multi-doc parsing. When
@@ -448,7 +451,7 @@ impl<'a> AstReceiver<'a> {
             anchors: std::collections::HashMap::new(),
             anchor_names: raw_anchors.iter().map(|a| a.name.clone()).collect(),
             anchor_name_idx: 0,
-            mapping_comment: None,
+            comment_stack: Vec::new(),
             pending_standalone_comment: None,
             max_depth,
             max_depth_exceeded: false,
@@ -522,18 +525,18 @@ impl<'a> AstReceiver<'a> {
                     };
                     if target.is_some() {
                         Self::set_scalar_comment(target, comment);
-                    } else {
-                        // Empty mapping `{}` — stash for the container end event
-                        // (on_mapping_end attaches mapping_comment to the node).
-                        self.mapping_comment = Some(comment);
+                    } else if let Some(slot) = self.comment_stack.last_mut() {
+                        // Empty mapping `{}` — stash in the container's own slot
+                        // (on_mapping_end attaches it to the node).
+                        *slot = Some(comment);
                     }
                 }
                 ParseState::Sequence { items, .. } => {
                     if !items.is_empty() {
                         Self::set_scalar_comment(items.last_mut(), comment);
-                    } else {
-                        // Empty sequence `[]` — stash for the container end event.
-                        self.mapping_comment = Some(comment);
+                    } else if let Some(slot) = self.comment_stack.last_mut() {
+                        // Empty sequence `[]` — stash in the container's slot.
+                        *slot = Some(comment);
                     }
                 }
             }
@@ -724,7 +727,8 @@ impl<'a> AstReceiver<'a> {
 
         let tag_obj = tag.map(|t| convert_tag(&t));
 
-        self.mapping_comment = standalone;
+        // Own slot for this container; popped by the matching End event.
+        self.comment_stack.push(standalone);
         Some((flow_style, start_byte, tag_obj))
     }
 
@@ -764,7 +768,7 @@ impl<'a> AstReceiver<'a> {
         }) = self.stack.pop()
         {
             let anchor = self.anchors.get(&anchor_id).cloned();
-            let comment = self.mapping_comment.take();
+            let comment = self.comment_stack.pop().flatten();
 
             let end = if !flow_style {
                 pairs
@@ -830,7 +834,7 @@ impl<'a> AstReceiver<'a> {
         }) = self.stack.pop()
         {
             let anchor = self.anchors.get(&anchor_id).cloned();
-            let comment = self.mapping_comment.take();
+            let comment = self.comment_stack.pop().flatten();
 
             let end = if !flow_style {
                 items
@@ -898,6 +902,20 @@ mod tests {
             assert_eq!(value.as_ref(), "hello");
             assert_eq!(style, ScalarStyle::Plain);
         }
+    }
+
+    #[test]
+    fn standalone_comment_survives_nested_first_value() {
+        // Regression: container starts clobbered a single shared comment
+        // slot, so a document header comment was dropped at PARSE time
+        // whenever the first key's value was itself a container.
+        let ast = parse("# header\napp:\n  name: demo\nport: 1\n", YamlSchema::Core).unwrap();
+        let CustomNode::Mapping { meta, .. } = &ast else {
+            panic!("expected root mapping")
+        };
+        assert_eq!(meta.comment.as_ref().unwrap().text.as_ref(), "header");
+        let yaml = crate::serializer::to_yaml(&ast);
+        assert!(yaml.starts_with("# header\n"), "{yaml:?}");
     }
 
     #[test]
