@@ -29,11 +29,18 @@ fn unquote(s: &str) -> String {
     }
 }
 
-/// Parse `.a.b[0]`, `$.a.b`, `[*]`, `a."x.y"` (quoted brackets allow dots).
+/// Parse `.a.b[0]`, `$.a.b`, `[*]`, `a."x.y"` (quoted brackets allow dots);
+/// a missing leading `.` is accepted (yq users often write bare `a.b`).
 pub fn parse_path(input: &str) -> Result<Selector, String> {
     let s = input.trim();
     let mut segs = Vec::new();
-    let mut rest = s.strip_prefix('$').unwrap_or(s);
+    let normalized;
+    let mut rest = if s.starts_with(['.', '[', '$']) {
+        s.strip_prefix('$').unwrap_or(s)
+    } else {
+        normalized = format!(".{s}");
+        normalized.as_str()
+    };
     if rest.is_empty() {
         return Ok(Selector { segs });
     }
@@ -78,6 +85,11 @@ pub fn parse_path(input: &str) -> Result<Selector, String> {
 }
 
 impl Selector {
+    /// Number of parsed segments (exposed for benches and diagnostics).
+    pub fn segments_len(&self) -> usize {
+        self.segs.len()
+    }
+
     /// First match, resolved through plain mappings/sequences only (aliases
     /// and typed collections are out of the v1 surface).
     pub fn select<'a>(&self, root: &'a CustomNode) -> Result<Option<&'a CustomNode>, String> {
@@ -293,6 +305,19 @@ mod tests {
         assert!(parse_path("$").unwrap().select(&d).unwrap().is_some());
         assert!(parse_path("$.nope").unwrap().select(&d).is_err());
         assert!(parse_path("$.empty.x").unwrap().select(&d).is_err());
+    }
+
+    #[test]
+    fn bare_path_without_leading_dot() {
+        let d = doc();
+        assert_eq!(
+            parse_path("servers[0].host")
+                .unwrap()
+                .select(&d)
+                .unwrap()
+                .map(node_text),
+            Some("a".to_string())
+        );
     }
 
     fn node_text(n: &CustomNode) -> String {
