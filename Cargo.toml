@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/pyrs-yaml-core", "crates/pyrs-yaml"]
+members = ["crates/pyrs-yaml-core", "crates/pyrs-yaml", "crates/pyrs-yaml-cli"]
 resolver = "2"
 package = { edition = "2024" }
 
