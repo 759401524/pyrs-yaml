@@ -33,6 +33,7 @@ nav = [
         {"Pydantic Integration" = "guides/pydantic.md"},
         {"TOML, JSON & INI Formats" = "guides/formats.md"},
         {"Command-Line Interface" = "guides/cli.md"},
+        {"pyq - Rust CLI" = "guides/pyq.md"},
     ]},
     {"API Reference" = [
         {"Module Reference" = "api/reference.md"},
