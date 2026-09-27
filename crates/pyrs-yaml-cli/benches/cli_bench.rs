@@ -8,6 +8,7 @@
 use divan::black_box;
 use pyrs_yaml_cli::{Format, InputOpts, SchemaKind, ini_to_node, json, load_source, paths};
 use pyrs_yaml_core::ast::CustomNode;
+use pyrs_yaml_core::editing::plan;
 use pyrs_yaml_core::parser::yaml::Schema;
 use pyrs_yaml_core::{parser, serializer, toml};
 
@@ -211,4 +212,27 @@ fn verbs_unique_over_dups() -> usize {
         ..Default::default()
     };
     black_box(verbs.apply(stream, ".services.*").unwrap().len())
+}
+
+/// Eight-document stream; set touches every doc through the multi-doc
+/// editor (segment derivation + per-doc eligibility + splice units).
+#[divan::bench]
+fn edit_all_docs_8x() -> usize {
+    let mut src = String::new();
+    for i in 0..8 {
+        src.push_str(&format!("---\nsvc: s{i}\nport: {}\n", 8000 + i));
+    }
+    let mut docs = parser::parse_all(&src, Schema::Core).unwrap();
+    let mut ed = pyrs_yaml_cli::multidoc::MultiDocEditor::new(&src, &docs);
+    let seg = [pyrs_yaml_core::editing::Segment::Key(
+        std::borrow::Cow::Borrowed("replicas"),
+    )];
+    let value = parser::parse("3", Schema::Core).unwrap();
+    for (i, doc) in docs.iter_mut().enumerate() {
+        ed.edit(i, doc, |node, offs| {
+            plan::set_path(node, &seg, value.clone(), true, &src, offs, true).map(|u| vec![u])
+        })
+        .unwrap();
+    }
+    black_box(ed.finalize(&docs).len())
 }

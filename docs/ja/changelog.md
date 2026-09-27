@@ -17,6 +17,14 @@ status: new
 
 #### 追加
 
+- **pyq マルチドキュメント編集** — `-A/--all-docs` が全編集コマンド
+  （set/delete/rename/move/append/insert/sort-keys）と `to-json -A`
+  （JSON 配列、Python 対応）をカバー。各ドキュメントはストリーム内の
+  自身のセグメントに対して splice（`MultiDocEditor` + `DirtyUnit::shifted`）：
+  触れていないドキュメントと全ての `---` 区切り行はバイト単位で保持、
+  パス不一致のドキュメントはスキップ（Python の try/skip 意味と一致、
+  全不一致はエラー）、レイアウト異常のドキュメントは単独でフォールバックし
+  近隣を巻き込まない。
 - **JSONC パース** — `pyrs_yaml_core::json::from_jsonc(text)` と
   `from_json_with_options(text, JsonParseOptions)` は、ホワイトスペース
   が許される任意的位置で `// 行` と `/* ブロック */` のコメントを受
