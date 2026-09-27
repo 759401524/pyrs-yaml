@@ -42,6 +42,27 @@ $ pyq get '.servers' --json services.yaml
 [ { "host": "web-1", "port": 8080 }, ... ]
 ```
 
+## 絞り込み動詞（jq スタイルの後処理）
+
+式言語ではなく構造化フラグ——コマンドラインの順序に関係なく、
+マッチ列に固定パイプライン `select -> sort -> unique -> slice`、最後に `join` を適用。
+
+```bash
+pyq get '.servers[*]' --select 'port >= 1000' services.yaml
+pyq get '.servers[*]' --sort-by host --desc services.yaml
+pyq get '.tags[*]' --unique --skip 2 --take 5 blob.yaml
+pyq get '.hosts[*]' --join ',' --raw inventory.yaml   # 1 行のむき出しテキスト
+```
+
+| フラグ | jq 対応 | 備考 |
+|--------|---------|------|
+| `--select 'PATH OP LITERAL'` | `select(.PATH OP LITERAL)` | OP は `== != > >= < <=`。リテラルは YAML。パス欠損・型不一致は false（jq の全順序なし） |
+| `--sort-by PATH` / `--desc` | `sort_by(.PATH)` | 安定ソート。キー欠損は最後 |
+| `--unique` | `unique` | ソート後の重複排除、jq と同じ |
+| `--first` / `--last` | `.[0]` / `.[-1]` | 排他 |
+| `--skip N` / `--take N` | `.[N:][…]` | 列スライス |
+| `--join SEP` | `join(SEP)` | 全スカラー列のみ |
+
 ## 編集（yq スタイル）
 
 ```bash
@@ -97,6 +118,7 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 機能 | pyq | pyrs-yaml CLI（Python） |
 |------|-----|--------------------------|
 | クエリ / set / delete / 整形 / 変換 | ✅ | ✅ |
+| 動詞後処理（`select`/`sort`/`unique`/…） | ✅ | — |
 | レイアウト保持編集（splice エンジン） | ✅ | ✅ |
 | パス指定 sort-keys | ✅ | ✅ |
 | マルチドキュメント（`-A`） | 計画中 | ✅ |

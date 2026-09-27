@@ -71,6 +71,71 @@ fn wildcard_streams_all_matches_as_yaml_docs() {
 }
 
 #[test]
+fn verbs_pipeline_select_sort_unique_slice() {
+    let doc =
+        "s:\n  - {name: c, port: 1800}\n  - {name: a, port: 900}\n  - {name: b, port: 1500}\n";
+    // select gates the stream, sort orders it, --json streams one value/line
+    let (code, out, err) = run_with_stdin(
+        &[
+            "get",
+            ".s[*]",
+            "--select",
+            "port >= 1000",
+            "--sort-by",
+            "name",
+            "--json",
+            "-",
+        ],
+        doc,
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(
+        out,
+        "{\"name\":\"b\",\"port\":1500}\n{\"name\":\"c\",\"port\":1800}\n"
+    );
+    // desc reverses, take slices
+    let (_, out, _) = run_with_stdin(
+        &[
+            "get",
+            ".s[*]",
+            "--sort-by",
+            "name",
+            "--desc",
+            "--take",
+            "1",
+            "--json",
+            "-",
+        ],
+        doc,
+    );
+    assert_eq!(out, "{\n  \"name\": \"c\",\n  \"port\": 1800\n}\n");
+}
+
+#[test]
+fn verbs_join_and_errors() {
+    let (_, out, _) = run_with_stdin(
+        &["get", ".s[*]", "--join", ",", "--raw", "-"],
+        "s:\n  - one\n  - two\n",
+    );
+    assert_eq!(out, "one,two\n");
+    // join over mappings is rejected
+    let (code, _, err) = run_with_stdin(&["get", ".s[*]", "--join", ",", "-"], "s:\n  - {a: 1}\n");
+    assert_eq!(code, Some(1));
+    assert!(err.contains("--join needs an all-scalar stream"), "{err}");
+    // unparseable predicate
+    let (code, _, err) = run_with_stdin(&["get", ".s[*]", "--select", "bogus", "-"], "s: []\n");
+    assert_eq!(code, Some(1));
+    assert!(err.contains("invalid predicate: bogus"), "{err}");
+    // filters emptied the stream: distinct from a plain path miss
+    let (code, _, err) = run_with_stdin(
+        &["get", ".s[*]", "--select", "port > 1000", "-"],
+        "s:\n  - {port: 1}\n",
+    );
+    assert_eq!(code, Some(1));
+    assert!(err.contains("no matches after filters: .s[*]"), "{err}");
+}
+
+#[test]
 fn wildcard_json_streams_one_value_per_line() {
     let (code, out, err) = run_with_stdin(
         &["get", ".servers[*].port", "--json"],

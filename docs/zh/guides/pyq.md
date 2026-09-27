@@ -41,6 +41,27 @@ $ pyq get '.servers' --json services.yaml
 [ { "host": "web-1", "port": 8080 }, ... ]
 ```
 
+## 过滤动词（jq 风格后处理）
+
+结构化旗标，不是表达式语言——无论命令行旗标顺序如何，始终按固定管线
+作用于匹配流：`select -> sort -> unique -> slice`，最后是 `join`。
+
+```bash
+pyq get '.servers[*]' --select 'port >= 1000' services.yaml
+pyq get '.servers[*]' --sort-by host --desc services.yaml
+pyq get '.tags[*]' --unique --skip 2 --take 5 blob.yaml
+pyq get '.hosts[*]' --join ',' --raw inventory.yaml   # 单行裸文本
+```
+
+| 旗标 | jq 对应 | 说明 |
+|------|---------|------|
+| `--select 'PATH OP LITERAL'` | `select(.PATH OP LITERAL)` | OP 为 `== != > >= < <=`；字面量按 YAML 解析；路径缺失或类型不匹配一律 false（无 jq 全序） |
+| `--sort-by PATH` / `--desc` | `sort_by(.PATH)` | 稳定排序；缺键排最后 |
+| `--unique` | `unique` | 排序后去重，与 jq 一致 |
+| `--first` / `--last` | `.[0]` / `.[-1]` | 互斥 |
+| `--skip N` / `--take N` | `.[N:][…]` | 流切片 |
+| `--join SEP` | `join(SEP)` | 仅限全标量流 |
+
 ## 编辑（yq 风格）
 
 ```bash
@@ -95,6 +116,7 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 能力 | pyq | pyrs-yaml CLI（Python） |
 |------|-----|--------------------------|
 | 查询 / set / delete / 格式化 / 转换 | ✅ | ✅ |
+| 动词后处理（`select`/`sort`/`unique`/…） | ✅ | — |
 | 布局钉死编辑（splice 引擎） | ✅ | ✅ |
 | 路径级 sort-keys | ✅ | ✅ |
 | 多文档流（`-A`） | 计划中 | ✅ |

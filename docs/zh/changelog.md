@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **`pyq` 过滤动词** — 匹配流上的结构化 jq 风格后处理：
+  `--select 'PATH OP LITERAL'`、`--sort-by PATH` / `--desc`、`--unique`、
+  `--first` / `--last`、`--skip N` / `--take N`、`--join SEP`，在 `get` 与
+  `from-*` 上按固定管线 `select -> sort -> unique -> slice` 后接 `join`
+  作用。有意选择旗标而非表达式语言：谓词仅一次微语法解析（约 40 行），
+  类型不匹配一律 `false`（与 jq 全序的已知差异，已入文档），启动保持瞬时。
 - **`pyq completion`** — 输出 bash、zsh、fish、PowerShell 的 shell 补全
   脚本（`pyq completion bash > ...`），由 `clap_complete` 驱动（已批准
   添加到 CLI crate 的依赖；仅存在于 `pyrs-yaml-cli` 二进制内，不影响

@@ -17,6 +17,12 @@ status: new
 
 #### 추가
 
+- **`pyq` 필터 동사** — 매칭 스트림의 jq 스타일 구조화 후처리:
+  `--select 'PATH OP LITERAL'`, `--sort-by PATH` / `--desc`, `--unique`,
+  `--first` / `--last`, `--skip N` / `--take N`, `--join SEP`.
+  `get`과 `from-*`에서 고정 파이프라인 `select -> sort -> unique -> slice`
+  → `join` 적용. 의도적으로 플래그 설계(표현식 없음): 술어는 미세 구문
+  1회 파싱(약 40줄), 타입 불일치는 false(jq 전순서와의 알려진 차이), 즉시 시작 유지.
 - **`pyq completion`** — bash·zsh·fish·PowerShell 셸 자동 완성 스크립트 출력
   (`pyq completion bash > ...`). `clap_complete` 구현(승인된 CLI 크레이트
   의존성 추가. `pyrs-yaml-cli` 바이너리 내에 완결되며 Python 배포에 영향 없음).
