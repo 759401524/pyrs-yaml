@@ -835,6 +835,7 @@ name = "pyrs-yaml-cli"
 version = "0.15.0"
 dependencies = [
  "clap",
+ "codspeed-divan-compat",
  "indexmap",
  "pyrs-yaml-core",
  "serde_json",
