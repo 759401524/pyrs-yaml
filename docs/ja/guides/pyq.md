@@ -23,8 +23,15 @@ cargo build -p pyrs-yaml-cli --release      # -> target/release/pyq
 
 ```bash
 # JSONPath-lite：ドットキー、[n]、[-n]（Python 式負インデックス）、['key']、[*]
+# 先頭のドットは省略可、`.` 単体はドキュメント全体
 $ pyq get '.servers[-1].host' inventory.yaml
 web-3
+
+# ワイルドカードは全マッチに展開され jq のようにストリーム出力：
+# マッチごとに YAML ドキュメント（--json では 1 行 1 値）
+$ pyq get '.servers[*].port' --json inventory.yaml
+8080
+8081
 
 # ファイルが `-` または省略時は stdin、--raw で素のスカラー
 $ cat services.yaml | pyq get --raw .db.pool.size

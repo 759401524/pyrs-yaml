@@ -56,6 +56,31 @@ fn get_resolves_paths_with_negative_index() {
 }
 
 #[test]
+fn single_dot_is_the_whole_document() {
+    let (code, out, err) = run_with_stdin(&["get", "."], "a: 1\nb: two\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "a: 1\nb: two\n");
+}
+
+#[test]
+fn wildcard_streams_all_matches_as_yaml_docs() {
+    let (code, out, err) = run_with_stdin(&["get", ".a.*"], "a:\n  x: 1\n  y: two\n");
+    assert_eq!(code, Some(0), "{err}");
+    // one document per match, mapping key order preserved
+    assert_eq!(out, "---\n1\n---\ntwo\n");
+}
+
+#[test]
+fn wildcard_json_streams_one_value_per_line() {
+    let (code, out, err) = run_with_stdin(
+        &["get", ".servers[*].port", "--json"],
+        "servers:\n  - port: 1\n  - port: 2\n",
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "1\n2\n");
+}
+
+#[test]
 fn to_json_preserves_key_order_and_types() {
     // Input via YAML (superset): order and typed values must survive.
     let yaml = "z: 1\na: \"two\"\nm: {k: [1, null, true]}\n";
@@ -118,7 +143,8 @@ fn file_extension_drives_auto_input_format() {
 fn missing_path_exits_nonzero() {
     let (code, _, err) = run_with_stdin(&["get", ".nope", "-"], "a: 1\n");
     assert_eq!(code, Some(1));
-    assert!(err.contains("no key nope"), "{err}");
+    // get reports the jq-style unified wording with the full path
+    assert!(err.contains("path not found: .nope"), "{err}");
 }
 
 #[test]

@@ -198,10 +198,7 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let node = load(&file, &input)?;
             let sel = paths::parse_path(&path)?;
-            let found = sel
-                .select(&node)?
-                .ok_or_else(|| format!("path not found: {path}"))?;
-            emit_value(found, json, raw)?;
+            emit_matched(&sel.select_all(&node), json, raw, &path)?;
         }
         Command::Set {
             path,
@@ -285,10 +282,41 @@ fn emit_selected(
     raw: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sel = paths::parse_path(path)?;
-    let found = sel
-        .select(node)?
-        .ok_or_else(|| format!("path not found: {path}"))?;
-    emit_value(found, json, raw)
+    emit_matched(&sel.select_all(node), json, raw, path)
+}
+
+/// jq-stream output: zero matches is an error, one match prints plainly,
+/// many print as a multi-document YAML stream (or one JSON value per line,
+/// matching `jq` output for piping).
+fn emit_matched(
+    found: &[&CustomNode],
+    json: bool,
+    raw: bool,
+    path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match found.len() {
+        0 => Err(format!("path not found: {path}").into()),
+        1 => {
+            emit_value(found[0], json, raw)?;
+            Ok(())
+        }
+        _ => {
+            let mut out = String::new();
+            if json {
+                for node in found {
+                    let v = json::node_to_json(node)?;
+                    out.push_str(&serde_json::to_string(&v)?);
+                    out.push('\n');
+                }
+            } else {
+                for node in found {
+                    out.push_str("---\n");
+                    out.push_str(&serializer::to_yaml(node));
+                }
+            }
+            emit_str(&out)
+        }
+    }
 }
 
 /// Load according to --input (auto: extension, else YAML/JSON superset,

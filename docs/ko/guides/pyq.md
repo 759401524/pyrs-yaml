@@ -23,8 +23,15 @@ cargo build -p pyrs-yaml-cli --release      # -> target/release/pyq
 
 ```bash
 # JSONPath-lite: 점 키, [n], [-n](파이썬식 음수 인덱스), ['key'], [*]
+# 선행 점은 생략 가능, `.`만 쓰면 문서 전체입니다
 $ pyq get '.servers[-1].host' inventory.yaml
 web-3
+
+# 와일드카드는 모든 매칭으로 확장되어 jq처럼 스트리밍됩니다:
+# 매칭마다 YAML 문서 하나(--json이면 줄당 JSON 값 하나)
+$ pyq get '.servers[*].port' --json inventory.yaml
+8080
+8081
 
 # 파일이 `-`이거나 생략되면 stdin, --raw는 맨 스칼라 출력
 $ cat services.yaml | pyq get --raw .db.pool.size

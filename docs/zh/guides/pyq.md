@@ -22,8 +22,15 @@ cargo build -p pyrs-yaml-cli --release      # -> target/release/pyq
 
 ```bash
 # JSONPath-lite：点键、[n]、[-n]（Python 式负索引）、['key']、[*]
+# 前导点可省略，单独 `.` 表示整个文档
 $ pyq get '.servers[-1].host' inventory.yaml
 web-3
+
+# 通配符展开全部匹配，像 jq 一样流式输出：每个匹配一个
+# YAML 文档（加 --json 则每行一个 JSON 值）
+$ pyq get '.servers[*].port' --json inventory.yaml
+8080
+8081
 
 # 文件为 `-` 或省略时读 stdin；--raw 输出裸标量
 $ cat services.yaml | pyq get --raw .db.pool.size
