@@ -1,0 +1,89 @@
+---
+title: pyq - Rust 原生 CLI
+description: 基于 pyrs-yaml-core 的 jq/yq 风格 Rust 命令行工具，支持 YAML、JSON、TOML 与 INI，运行时无需 Python。
+tags:
+  - docs
+status: new
+---
+
+`pyq` 是 Rust 原生命令行工具：`pyrs-yaml-core` 直接接入 jq/yq 风格接口，
+运行时无需 Python。它与 Python 版 [pyrs-yaml CLI](cli.md) 互补；两者共享
+同一内核以及一致的退出码与错误消息语义。
+
+## 安装
+
+```bash
+cargo install --path crates/pyrs-yaml-cli   # 从源码检出安装
+# 或在仓库内构建：
+cargo build -p pyrs-yaml-cli --release      # -> target/release/pyq
+```
+
+## 查询（jq 风格）
+
+```bash
+# JSONPath-lite：点键、[n]、[-n]（Python 式负索引）、['key']、[*]
+$ pyq get '.servers[-1].host' inventory.yaml
+web-3
+
+# 文件为 `-` 或省略时读 stdin；--raw 输出裸标量
+$ cat services.yaml | pyq get --raw .db.pool.size
+20
+
+# JSON 输出（保持键序）
+$ pyq get '.servers' --json services.yaml
+[ { "host": "web-1", "port": 8080 }, ... ]
+```
+
+## 编辑（yq 风格）
+
+```bash
+# 值是 YAML 表达式（JSON 也可，YAML 是其超集）
+pyq set '.db.pool.size' 50 services.yaml          # 打印编辑后文档
+pyq set -i '.db.pool.size' 50 services.yaml       # 原地回写文件
+pyq set --create-missing '.a.b.c' 1 empty.yaml    # 自动创建中间层
+pyq delete '.legacy_field' -i config.yaml
+```
+
+编辑后的文档经由与 `fmt` 相同的往返序列化器输出：注释、锚点与键序
+全部保留；注入的值保持自身书写风格（`[1, two]` 保持 flow 风格，
+`"true"` 保持带引号字符串）。
+
+## 转换
+
+```bash
+pyq fmt k8s.yaml                 # 保留注释的规范化
+pyq fmt --explicit-start cfg.yaml
+pyq to-json config.yaml          # YAML -> JSON（保持键序）
+pyq to-toml compose.yaml
+pyq from-toml Cargo.toml         # TOML -> YAML
+pyq from-json package.json       # JSON -> YAML
+pyq from-ini settings.ini        # INI -> YAML（值均为字符串）
+```
+
+输入格式按文件扩展名识别（`.json`、`.toml`、`.ini`），可用
+`--input yaml|json|toml|ini` 覆盖。由于 YAML 是 JSON 的超集，JSON
+内容走 YAML 通道也能原样解析。
+
+## 退出码
+
+- `0` 成功；
+- `1`：路径缺失、解析失败或 TOML 无法表达的结构（null 值、非表格
+  根）时向 stderr 输出 `pyq: <消息>`——与 Python API 相同的稳定消息。
+
+## 能力范围
+
+| 能力 | pyq | pyrs-yaml CLI（Python） |
+|------|-----|--------------------------|
+| 查询 / set / delete / 格式化 / 转换 | ✅ | ✅ |
+| 多文档流（`-A`） | 计划中 | ✅ |
+| 注册 schema 的 `validate` | 计划中 | ✅ |
+| sort-keys / rename / move / frontmatter | — | ✅ |
+
+Python 版 CLI 仍是全功能面（可经 splice 做版式钉死的编辑）；`pyq`
+定位于单文档的轻快免依赖脚本化。
+
+## 另见
+
+- [命令行工具](cli.md) — Python 版 `pyrs-yaml` 命令
+- [TOML、JSON 与 INI 格式](formats.md) — 库侧转换 API
+- [原地编辑](editing.md) — `pyq` 编辑所依赖的往返模型

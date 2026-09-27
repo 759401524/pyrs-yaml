@@ -1,0 +1,92 @@
+---
+title: pyq - the Rust CLI
+description: jq/yq-style YAML, JSON, TOML and INI processing in Rust with pyrs-yaml-core - no Python required.
+tags:
+  - docs
+status: new
+---
+
+`pyq` is the native Rust command-line tool: `pyrs-yaml-core` directly behind
+a jq/yq-style interface, with no Python at runtime. It complements the
+Python-based [pyrs-yaml CLI](cli.md); both share the same core, exit-code
+and error-message semantics.
+
+## Install
+
+```bash
+cargo install --path crates/pyrs-yaml-cli   # from a checkout
+# or build in-tree:
+cargo build -p pyrs-yaml-cli --release      # -> target/release/pyq
+```
+
+## Query (jq-style)
+
+```bash
+# JSONPath-lite: dot keys, [n], [-n] (python-style), ['key'], [*]
+$ pyq get '.servers[-1].host' inventory.yaml
+web-3
+
+# stdin when the file is `-` or omitted; --raw for bare scalars
+$ cat services.yaml | pyq get --raw .db.pool.size
+20
+
+# JSON output (order-preserving)
+$ pyq get '.servers' --json services.yaml
+[ { "host": "web-1", "port": 8080 }, ... ]
+```
+
+## Edit (yq-style)
+
+```bash
+# values are YAML expressions (JSON works: YAML is a superset)
+pyq set '.db.pool.size' 50 services.yaml          # print edited doc
+pyq set -i '.db.pool.size' 50 services.yaml       # rewrite the file
+pyq set --create-missing '.a.b.c' 1 empty.yaml    # grow mappings
+pyq delete '.legacy_field' -i config.yaml
+```
+
+Edited documents round-trip through the same serializer as `fmt`:
+comments, anchors and key order survive; the inserted value keeps its
+own source style (`[1, two]` stays flow, `"true"` stays a quoted string).
+
+## Convert
+
+```bash
+pyq fmt k8s.yaml                 # comment-preserving normalization
+pyq fmt --explicit-start cfg.yaml
+pyq to-json config.yaml          # YAML -> JSON (key order kept)
+pyq to-toml compose.yaml
+pyq from-toml Cargo.toml         # TOML -> YAML
+pyq from-json package.json       # JSON -> YAML
+pyq from-ini settings.ini        # INI -> YAML (values are strings)
+```
+
+Input format resolves by file extension (`.json`, `.toml`, `.ini`);
+override with `--input yaml|json|toml|ini`. Since YAML is a JSON
+superset, JSON content also parses on the YAML path unchanged.
+
+## Exit codes
+
+- `0` success;
+- `1` with `pyq: <message>` on stderr for missing paths, parse failures
+  or TOML-inexpressible shapes (null values, non-table roots) - the same
+  stable messages the Python API raises.
+
+## Scope
+
+| Capability | pyq | pyrs-yaml CLI (Python) |
+|------------|-----|------------------------|
+| Query / set / delete / format / convert | ✅ | ✅ |
+| Multi-document streams (`-A`) | planned | ✅ |
+| `validate` with registered schemas | planned | ✅ |
+| sort-keys / rename / move / frontmatter | — | ✅ |
+
+The Python CLI remains the full-feature surface (it can edit through
+splices with layout pinning); `pyq` targets fast, dependency-free
+scripting of single documents.
+
+## See Also
+
+- [Command-Line Interface](cli.md) — the Python-based `pyrs-yaml` command
+- [TOML, JSON & INI Formats](formats.md) — the library-side conversion API
+- [In-Place Editing](editing.md) — the round-trip model `pyq` edits through

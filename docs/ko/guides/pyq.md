@@ -1,0 +1,91 @@
+---
+title: pyq - Rust 네이티브 CLI
+description: pyrs-yaml-core 기반의 jq/yq 스타일 Rust CLI. 런타임 Python 없이 YAML·JSON·TOML·INI를 처리합니다.
+tags:
+  - docs
+status: new
+---
+
+`pyq`는 Rust 네이티브 명령줄 도구입니다. `pyrs-yaml-core`를 jq/yq 스타일
+인터페이스에 직접 연결하며 런타임에 Python이 필요 없습니다. Python 기반
+[pyrs-yaml CLI](cli.md)를 보완하며, 두 도구는 같은 코어와 종료 코드·
+에러 메시지 규격을 공유합니다.
+
+## 설치
+
+```bash
+cargo install --path crates/pyrs-yaml-cli   # 소스 트리에서 설치
+# 또는 리포지토리에서 빌드:
+cargo build -p pyrs-yaml-cli --release      # -> target/release/pyq
+```
+
+## 쿼리 (jq 스타일)
+
+```bash
+# JSONPath-lite: 점 키, [n], [-n](파이썬식 음수 인덱스), ['key'], [*]
+$ pyq get '.servers[-1].host' inventory.yaml
+web-3
+
+# 파일이 `-`이거나 생략되면 stdin, --raw는 맨 스칼라 출력
+$ cat services.yaml | pyq get --raw .db.pool.size
+20
+
+# JSON 출력 (키 순서 보존)
+$ pyq get '.servers' --json services.yaml
+[ { "host": "web-1", "port": 8080 }, ... ]
+```
+
+## 편집 (yq 스타일)
+
+```bash
+# 값은 YAML 표현식(JSON도 가능, YAML의 상위 집합)
+pyq set '.db.pool.size' 50 services.yaml          # 편집된 문서 출력
+pyq set -i '.db.pool.size' 50 services.yaml       # 파일을 제자리에서 재작성
+pyq set --create-missing '.a.b.c' 1 empty.yaml    # 중간 매핑 자동 생성
+pyq delete '.legacy_field' -i config.yaml
+```
+
+편집된 출력은 `fmt`와 같은 라운드트립 직렬화기를 거칩니다: 주석·앵커·
+키 순서가 보존되고, 삽입된 값은 자신의 표기 스타일을 유지합니다
+(`[1, two]`는 플로우 그대로, `"true"`는 따옴표 문자열 그대로).
+
+## 변환
+
+```bash
+pyq fmt k8s.yaml                 # 주석 보존 정규화
+pyq fmt --explicit-start cfg.yaml
+pyq to-json config.yaml          # YAML -> JSON (키 순서 보존)
+pyq to-toml compose.yaml
+pyq from-toml Cargo.toml         # TOML -> YAML
+pyq from-json package.json       # JSON -> YAML
+pyq from-ini settings.ini        # INI -> YAML (값은 모두 문자열)
+```
+
+입력 형식은 확장자로 판정(`.json`, `.toml`, `.ini`)하며
+`--input yaml|json|toml|ini`로 덮어쓸 수 있습니다. YAML은 JSON의 상위
+집합이므로 JSON 내용은 YAML 경로에서도 그대로 해석됩니다.
+
+## 종료 코드
+
+- `0` 성공;
+- `1`: 경로 미발견, 해석 실패, TOML로 표현할 수 없는 구조(null 값,
+  테이블이 아닌 루트)에서는 stderr에 `pyq: <메시지>` — Python API와
+  동일한 안정적 메시지.
+
+## 지원 범위
+
+| 기능 | pyq | pyrs-yaml CLI (Python) |
+|------|-----|-------------------------|
+| 쿼리 / set / delete / 서식 / 변환 | ✅ | ✅ |
+| 다중 문서 (`-A`) | 계획 중 | ✅ |
+| 등록 스키마 `validate` | 계획 중 | ✅ |
+| sort-keys / rename / move / frontmatter | — | ✅ |
+
+전체 기능은 Python CLI가 담당하고(스플라이스 기반 레이아웃 고정 편집 가능),
+`pyq`는 단일 문서의 빠르고 의존성 없는 스크립팅을 목표로 합니다.
+
+## 관련 문서
+
+- [명령줄 인터페이스](cli.md) — Python 기반 `pyrs-yaml` 명령
+- [TOML, JSON, INI 형식](formats.md) — 라이브러리 측 변환 API
+- [제자리 편집](editing.md) — `pyq`가 편집에 쓰는 라운드트립 모델
