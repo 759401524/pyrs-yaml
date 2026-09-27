@@ -57,6 +57,14 @@ status: new
   遅延エクスポートされるため `import pyrs_yaml` に pydantic-settings は不要です。
   `pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+）。
   `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されました。
+- **`pyq` — Rust ネイティブ CLI クレート** — `crates/pyrs-yaml-cli`
+  （ワークスペースメンバー、clap ベース）は `pyrs-yaml-core` を jq/yq
+  スタイルの CLI に直接接続し、実行時に Python を不要にします：
+  `fmt`（コメント保持のラウンドトリップ）、`get <path>`（JSONPath-lite、
+  `--json`/`--raw` 対応）、`to-json`（順序保持）、`to-toml`、導入コマンド
+  `from-json` / `from-toml` / `from-ini`。入力形式は拡張子で判定
+  （`--input` で上書き）、stdin は `-`、失敗時は core の安定したエラー
+  テキストで非ゼロ終了。
 - **TOML と INI の交換フォーマット** — YAML を唯一の編集可能表現とする
   ハブ・スポーク構成のマルチフォーマット対応：`from_toml`/`to_toml` で
   TOML テキスト ⇄ YAML テキストを変換（Rust `toml_edit`）、`load_toml` は
