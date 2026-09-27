@@ -84,6 +84,15 @@ superset, JSON content also parses on the YAML path unchanged.
   or TOML-inexpressible shapes (null values, non-table roots) - the same
   stable messages the Python API raises.
 
+## Shell completion
+
+```bash
+pyq completion bash > /etc/bash_completion.d/pyq   # bash
+pyq completion zsh  > "${functions[@]:0:1}/_pyq"   # zsh
+pyq completion fish | source                        # fish
+pyq completion powershell > pyq.ps1                 # PowerShell
+```
+
 ## Scope
 
 | Capability | pyq | pyrs-yaml CLI (Python) |

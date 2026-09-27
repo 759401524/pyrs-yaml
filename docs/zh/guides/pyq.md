@@ -81,6 +81,15 @@ pyq from-ini settings.ini        # INI -> YAML（值均为字符串）
 - `1`：路径缺失、解析失败或 TOML 无法表达的结构（null 值、非表格
   根）时向 stderr 输出 `pyq: <消息>`——与 Python API 相同的稳定消息。
 
+## Shell 补全
+
+```bash
+pyq completion bash > /etc/bash_completion.d/pyq   # bash
+pyq completion zsh  > "${functions[@]:0:1}/_pyq"   # zsh
+pyq completion fish | source                        # fish
+pyq completion powershell > pyq.ps1                 # PowerShell
+```
+
 ## 能力范围
 
 | 能力 | pyq | pyrs-yaml CLI（Python） |
