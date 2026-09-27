@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TOML and INI exchange formats** — hub-and-spoke multi-format support
   with YAML as the single editable representation:
     - `from_toml(toml: str) -> str` and `to_toml(yaml: str, schema=...) -> str`
-    convert TOML text ⇄ YAML text (Rust `toml_edit`, MSRV-pinned to 0.22);
+    convert TOML text ⇄ YAML text (Rust `toml_edit` 0.25);
     - `load_toml(toml: str) -> dict` materializes TOML directly into Python
     values, with datetimes routed through the built-in `!timestamp` plugin;
     TOML strings never re-resolve (a `"true"` value stays a string);
