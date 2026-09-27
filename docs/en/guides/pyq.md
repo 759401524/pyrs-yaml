@@ -88,9 +88,11 @@ superset, JSON content also parses on the YAML path unchanged.
 | `validate` with registered schemas | planned | ✅ |
 | sort-keys / rename / move / frontmatter | — | ✅ |
 
-The Python CLI remains the full-feature surface (it can edit through
-splices with layout pinning); `pyq` targets fast, dependency-free
-scripting of single documents.
+Both CLIs edit through the same core splice engine with layout pinning
+(untouched lines, including standalone comments, never drift). The
+Python CLI remains the full-feature surface (`-A` multi-document,
+`validate`, rename/move/frontmatter); `pyq` targets fast,
+dependency-free scripting of single documents.
 
 ## See Also
 

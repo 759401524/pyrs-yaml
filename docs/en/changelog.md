@@ -106,6 +106,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Document header comments no longer vanish on nested first values** —
+  the parser kept one shared comment slot for all in-progress containers,
+  so a nested container start clobbered a standalone header note before
+  it reached the AST (dropped at parse time; invisible to `to_dict`,
+  fatal for `dump`). Slot handling is now a per-container stack.
+- **Splice edits no longer duplicate leading comments** — when a
+  regenerated region text carried the pair/item's own standalone note,
+  the replaced range skipped the old note line and both survived; the
+  plan now widens the range over note lines (`pyq set`/`delete` and the
+  bindings' splice path share the fix).
 - **`!timestamp` accepts a trailing `Z` on every supported Python** —
   `datetime.fromisoformat` only recognizes the UTC-`Z` suffix from 3.11;
   the plugin now normalizes `...Z` to `+00:00` first, fixing

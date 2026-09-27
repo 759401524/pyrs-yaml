@@ -7,6 +7,7 @@
 pub mod dirty;
 pub mod metadata;
 pub mod navigate;
+pub mod plan;
 pub mod region;
 
 pub use dirty::{DirtyKind, DirtyUnit};

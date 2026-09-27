@@ -4,7 +4,7 @@
 use pyrs_yaml_core::ast::CustomNode;
 
 #[derive(Debug, Clone, PartialEq)]
-enum Seg {
+pub enum Seg {
     Key(String),
     Index(i64),
     Wildcard,
@@ -89,6 +89,11 @@ pub fn parse_path(input: &str) -> Result<Selector, String> {
 }
 
 impl Selector {
+    /// Parsed segments, for translation into core edit `Segment`s.
+    pub fn segments(&self) -> &[Seg] {
+        &self.segs
+    }
+
     /// Number of parsed segments (exposed for benches and diagnostics).
     pub fn segments_len(&self) -> usize {
         self.segs.len()

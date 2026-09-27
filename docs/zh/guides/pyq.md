@@ -86,8 +86,9 @@ pyq from-ini settings.ini        # INI -> YAML（值均为字符串）
 | 注册 schema 的 `validate` | 计划中 | ✅ |
 | sort-keys / rename / move / frontmatter | — | ✅ |
 
-Python 版 CLI 仍是全功能面（可经 splice 做版式钉死的编辑）；`pyq`
-定位于单文档的轻快免依赖脚本化。
+两者均经由同一核心 splice 引擎做版式钉死的编辑（未触碰的行，包括
+standalone 注释，不会漂移）。Python 版 CLI 仍是全功能面（`-A` 多文档、
+`validate`、rename/move/frontmatter）；`pyq` 定位于单文档的轻快免依赖脚本化。
 
 ## 另见
 

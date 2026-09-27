@@ -83,6 +83,14 @@ status: new
 
 #### 修复
 
+- **首层值为嵌套容器时文档头注释不再丢失** — 解析器曾为所有进行中的
+  容器共用单一注释槽，嵌套容器的 start 会提前抹掉尚未落位的 standalone
+  头注释（在 parse 层即丢弃；`to_dict` 不可见，`dump` 致命）。现改为
+  每容器独立槽的栈式管理。
+- **splice 编辑不再重复前导注释** — 重生成的区域文本携带 pair/item 自身
+  的 standalone 注释时，被替换区域未覆盖旧注释行，两条注释并存；plan
+  现将区域回扩至注释行（`pyq set`/`delete` 与 bindings splice 路径共享
+  此修复）。
 - **`!timestamp` 在所有受支持 Python 上接受结尾 `Z`** —
   `datetime.fromisoformat` 仅从 3.11 起识别 UTC-`Z` 后缀；插件现将
   `...Z` 归一为 `+00:00`，修复 3.8–3.10 上 YAML `!timestamp` 标量及

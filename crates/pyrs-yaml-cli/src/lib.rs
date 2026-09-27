@@ -12,10 +12,15 @@ pub mod paths;
 
 use clap::{Parser, Subcommand};
 use pyrs_yaml_core::ast::CustomNode;
+use pyrs_yaml_core::editing::Segment;
+use pyrs_yaml_core::editing::plan;
 use pyrs_yaml_core::parser::yaml::Schema;
+use pyrs_yaml_core::splice::SpliceState;
 use pyrs_yaml_core::{parser, serializer, toml};
+use std::borrow::Cow;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(
@@ -210,8 +215,11 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let src = read_input(&file)?;
             let mut node = parser::parse(&src, Schema::Core)?;
             let v = parser::parse(&value, Schema::Core)?;
-            paths::parse_path(&path)?.set_at(&mut node, v, create_missing)?;
-            write_edited(&node, &file, inplace)?;
+            let segs = segments_of(&paths::parse_path(&path)?)?;
+            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+                plan::set_path(node, &segs, v.clone(), true, &src, offs, create_missing)
+            })?;
+            write_text(&text, &file, inplace)?;
         }
         Command::Delete {
             path,
@@ -220,8 +228,11 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let src = read_input(&file)?;
             let mut node = parser::parse(&src, Schema::Core)?;
-            paths::parse_path(&path)?.delete_at(&mut node)?;
-            write_edited(&node, &file, inplace)?;
+            let segs = segments_of(&paths::parse_path(&path)?)?;
+            let text = spliced_edit(&mut node, &src, &path, |node, offs| {
+                plan::delete_path(node, &segs, &src, offs)
+            })?;
+            write_text(&text, &file, inplace)?;
         }
         Command::ToJson {
             file,
@@ -319,6 +330,72 @@ fn emit_matched(
     }
 }
 
+/// Translate a parsed selector into core edit segments; wildcards are a
+/// query-only feature and never address a single editable node.
+fn segments_of(sel: &paths::Selector) -> Result<Vec<Segment<'static>>, String> {
+    sel.segments()
+        .iter()
+        .map(|s| match s {
+            paths::Seg::Key(k) => Ok(Segment::Key(Cow::Owned(k.clone()))),
+            paths::Seg::Index(i) => Ok(Segment::Index(*i)),
+            paths::Seg::Wildcard => Err("cannot edit through a wildcard".to_string()),
+        })
+        .collect()
+}
+
+/// The shared plan engine reports stable i18n keys (the bindings resolve
+/// them through a catalog); the CLI renders them as path-aware sentences.
+fn plan_error(e: &str, path: &str) -> String {
+    match e {
+        "missing-path" => format!("path not found: {path}"),
+        "cannot-edit-alias" => format!("cannot edit through an alias: {path}"),
+        "create-needs-mapping" => format!("cannot create {path}: parent is not a mapping"),
+        "index-out-of-range-edit" => format!("index out of range: {path}"),
+        "not-a-sequence" => format!("not a sequence: {path}"),
+        "edit-error" => "edit failed".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Layout-pinned edit through the shared splice engine (same architecture
+/// as the Python CLI's document edits): mutate the AST while the plan's
+/// `DirtyUnit` rewrites the original text, so comments and untouched
+/// layout never drift. Falls back to full re-serialization when the
+/// document layout is ineligible or the splice rejects the unit.
+fn spliced_edit(
+    node: &mut CustomNode,
+    src: &str,
+    path: &str,
+    edit: impl FnOnce(
+        &mut CustomNode,
+        Option<&[usize]>,
+    ) -> Result<pyrs_yaml_core::editing::DirtyUnit, String>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut state = parser::check_default_layout(node, src)
+        .then(|| SpliceState::new(Arc::from(src.to_string())));
+    // Populate the line-offset table once; the plan and splice share it.
+    let offsets: Vec<usize> = match state.as_mut() {
+        Some(s) => s.line_offsets().to_vec(),
+        None => Vec::new(),
+    };
+    let unit = edit(
+        node,
+        if state.is_some() {
+            Some(&offsets)
+        } else {
+            None
+        },
+    )
+    .map_err(|e| plan_error(&e, path))?;
+    let mut spliced = None;
+    if let Some(s) = state.as_mut()
+        && s.apply(&unit).is_ok()
+    {
+        spliced = s.materialize();
+    }
+    Ok(spliced.unwrap_or_else(|| serializer::to_yaml(node)))
+}
+
 /// Load according to --input (auto: extension, else YAML/JSON superset,
 /// with a TOML retry on failure).
 pub fn load(
@@ -408,14 +485,12 @@ pub fn ini_to_node(src: &str) -> Result<CustomNode, Box<dyn std::error::Error>> 
     Ok(CustomNode::plain_mapping(map))
 }
 
-/// Shared tail for edit commands: in-place rewrite or stdout. The
-/// serializer round-trips comment/anchor metadata already held in the AST.
-fn write_edited(
-    node: &CustomNode,
+/// Shared tail for edit commands: in-place rewrite or stdout.
+fn write_text(
+    text: &str,
     file: &Option<PathBuf>,
     inplace: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let text = serializer::to_yaml(node);
     if inplace {
         let f = file.as_ref().ok_or("--inplace requires a file argument")?;
         if f.as_os_str() == "-" {
@@ -423,7 +498,7 @@ fn write_edited(
         }
         std::fs::write(f, text)?;
     } else {
-        emit_str(&text)?;
+        emit_str(text)?;
     }
     Ok(())
 }
