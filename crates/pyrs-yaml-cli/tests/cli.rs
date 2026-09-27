@@ -127,3 +127,70 @@ fn to_toml_rejects_null_with_stable_message() {
     assert_eq!(code, Some(1));
     assert!(err.contains("toml-cannot-represent-null"), "{err}");
 }
+
+#[test]
+fn set_overwrites_value_and_keeps_comments() {
+    let input = "a: 1  # keep\nb:\n  c: 2\n";
+    let (_, out, err) = run_with_stdin(&["set", ".b.c", "99", "-"], input);
+    assert_eq!(out, "a: 1  # keep\nb:\n  c: 99\n", "{err}");
+}
+
+#[test]
+fn set_parses_typed_and_structured_values() {
+    // Round-trip style fidelity: the value's own source style is kept,
+    // exactly like `fmt` preserves layout.
+    let (_, out, _) = run_with_stdin(&["set", ".x", "[1, two]", "-"], "x: 0\n");
+    assert_eq!(out, "x: [1, two]\n");
+    // quoted YAML value stays a string through the round-trip
+    let (_, out, _) = run_with_stdin(&["set", ".x", "\"true\"", "-"], "x: 0\n");
+    assert_eq!(out, "x: \"true\"\n");
+}
+
+#[test]
+fn create_missing_grows_intermediate_mappings() {
+    let (_, out, err) =
+        run_with_stdin(&["set", "--create-missing", ".a.b.c", "1", "-"], "top: 0\n");
+    assert_eq!(out, "top: 0\na:\n  b:\n    c: 1\n", "{err}");
+    // without the flag the missing intermediate errors
+    let (code, _, err) = run_with_stdin(&["set", ".a.b.c", "1", "-"], "top: 0\n");
+    assert_eq!(code, Some(1), "{err}");
+}
+
+#[test]
+fn set_replaces_whole_document_at_root() {
+    // Flow input keeps flow style on output (round-trip fidelity).
+    let (_, out, _) = run_with_stdin(&["set", "$", "{a: 1}", "-"], "old: stuff\n");
+    assert_eq!(out, "{a: 1}\n");
+    // block-style replacement value emits block
+    let (_, out, _) = run_with_stdin(&["set", "$", "a: 1", "-"], "old: stuff\n");
+    assert_eq!(out, "a: 1\n");
+}
+
+#[test]
+fn delete_key_and_negative_index() {
+    let input = "a: 1\nb: 2\nlist:\n  - x\n  - y\n";
+    let (_, out, _) = run_with_stdin(&["delete", ".a", "-"], input);
+    assert_eq!(out, "b: 2\nlist:\n  - x\n  - y\n");
+    let (_, out, _) = run_with_stdin(&["delete", ".list[-2]", "-"], input);
+    assert_eq!(out, "a: 1\nb: 2\nlist:\n  - y\n");
+}
+
+#[test]
+fn delete_missing_key_exits_nonzero() {
+    let (code, _, err) = run_with_stdin(&["delete", ".nope", "-"], "a: 1\n");
+    assert_eq!(code, Some(1));
+    assert!(err.contains("no key nope"), "{err}");
+}
+
+#[test]
+fn inplace_rewrites_the_file() {
+    let dir = std::env::temp_dir().join(format!("pyq-ip-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("cfg.yaml");
+    std::fs::write(&f, "a: 1  # keep\n").unwrap();
+    let (code, _, err) = run(&["set", "--inplace", ".b", "2", f.to_str().unwrap()]);
+    let content = std::fs::read_to_string(&f).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(content, "a: 1  # keep\nb: 2\n");
+}

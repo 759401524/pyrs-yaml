@@ -60,7 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   puts `pyrs-yaml-core` directly behind a jq/yq-style command line, with no
   Python at runtime: `fmt` (comment/order-preserving round-trip), `get <path>`
   (JSONPath-lite: dot keys, `[n]`/`[-n]`, bracket keys, `*`; `--json`/`--raw`
-  output), `to-json` (order-preserving), `to-toml`, and the import commands
+  output), `set <path> <value>` and `delete <path>` (yq-style edits with
+  `--create-missing` and `-i/--inplace` file rewrite; edited documents
+  re-serialize through the round-trip serializer, keeping comments and
+  the value's own style), `to-json` (order-preserving), `to-toml`, and the import commands
   `from-json` / `from-toml` / `from-ini`. Input formats resolve by extension
   (`--input` overrides; YAML content is always a JSON superset); stdin via
   `-` or omission; non-zero exit with the core's stable error text on

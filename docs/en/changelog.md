@@ -64,7 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`pyq` — native Rust CLI crate** — `crates/pyrs-yaml-cli` (workspace
   member, clap-based) puts `pyrs-yaml-core` behind a jq/yq-style command
   line with no Python at runtime: `fmt` (comment-preserving round-trip),
-  `get <path>` (JSONPath-lite with `--json`/`--raw`), `to-json` (order
+  `get <path>` (JSONPath-lite with `--json`/`--raw`), `set <path> <value>`
+  and `delete <path>` (yq-style edits with `--create-missing` and
+  `-i/--inplace`, round-trip-preserving output), `to-json` (order
   preserved), `to-toml`, `from-json` / `from-toml` / `from-ini`; input
   format by extension with `--input` override, stdin via `-`, non-zero
   exit with the core's stable error text.

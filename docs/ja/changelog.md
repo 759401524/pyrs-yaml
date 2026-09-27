@@ -61,7 +61,10 @@ status: new
   （ワークスペースメンバー、clap ベース）は `pyrs-yaml-core` を jq/yq
   スタイルの CLI に直接接続し、実行時に Python を不要にします：
   `fmt`（コメント保持のラウンドトリップ）、`get <path>`（JSONPath-lite、
-  `--json`/`--raw` 対応）、`to-json`（順序保持）、`to-toml`、導入コマンド
+  `--json`/`--raw` 対応）、`set <path> <value>` と `delete <path>`（yq 風の
+  編集、`--create-missing` と `-i/--inplace` 対応、出力はラウンドトリップ
+  シリアライザ経由でコメントと値のスタイルを保持）、`to-json`（順序保持）、
+  `to-toml`、導入コマンド
   `from-json` / `from-toml` / `from-ini`。入力形式は拡張子で判定
   （`--input` で上書き）、stdin は `-`、失敗時は core の安定したエラー
   テキストで非ゼロ終了。

@@ -57,7 +57,9 @@ status: new
   (워크스페이스 멤버, clap 기반)는 `pyrs-yaml-core`를 jq/yq 스타일
   CLI에 직접 연결하여 런타임 Python이 필요 없습니다: `fmt`(주석 보존
   라운드트립), `get <path>`(JSONPath-lite, `--json`/`--raw` 지원),
-  `to-json`(순서 보존), `to-toml`, 도입 명령 `from-json` / `from-toml` /
+  `set <path> <value>` 및 `delete <path>`(yq 스타일 편집, `--create-missing`
+  과 `-i/--inplace` 파일 쓰기 지원; 출력은 라운드트립 직렬화기 경유로
+  주석과 값 스타일 보존), `to-json`(순서 보존), `to-toml`, 도입 명령 `from-json` / `from-toml` /
   `from-ini`. 입력 형식은 확장자로 판정(`--input`으로 덮어씀), stdin은
   `-`, 실패 시 core의 안정적인 오류 텍스트로 비정상 종료.
 - **TOML 및 INI 교환 형식** — YAML을 유일한 편집 가능 표현으로 하는 허브-스포크
