@@ -17,6 +17,13 @@ status: new
 
 #### 追加
 
+- **pyq 機能補完** — CLI が Python CLI の機能面に追従：`rename`/`move`/`append`/`insert`
+  の splice 編集、`validate`（構文チェック、または `--schema rules.yaml` による
+  スキーマ言語ルール検証）、`frontmatter`（`--body-out` で本文分割）、
+  `get`/`fmt`/`to-json` の `-A/--all-docs` マルチドキュメント対応。配線中にコア
+  エンジンのバグを発見：`move_path` が移動先 INSERT ユニットのみ返し、splice
+  テキストに移動元サブツリーが残存（フォールバック時は invisible）。両ユニットを
+  返し bindings はバッチ splice 経路で適用する仕様に修正。
 - **`pyq` 絞り込み動詞** — マッチ列への jq スタイル構造化後処理：
   `--select 'PATH OP LITERAL'`、`--sort-by PATH` / `--desc`、`--unique`、
   `--first` / `--last`、`--skip N` / `--take N`、`--join SEP`。

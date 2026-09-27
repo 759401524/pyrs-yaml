@@ -762,7 +762,9 @@ impl YamlDocument {
     ) -> PyResult<()> {
         let src_segs = parse_segments(py, &src_segments)?;
         let dst_segs = parse_segments(py, &dst_segments)?;
-        self.apply_metadata_edit(py, move |ast, src, offs| {
+        // move_path yields an INSERT unit (destination) and a DELETE unit
+        // (source); both must splice, so this goes through the batch path.
+        self.apply_batch_edit(py, move |ast, src, offs| {
             editing::move_path(ast, &src_segs, &dst_segs, src, offs)
         })
     }

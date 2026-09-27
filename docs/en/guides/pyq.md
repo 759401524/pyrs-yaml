@@ -93,6 +93,8 @@ pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
 pyq from-ini settings.ini        # INI -> YAML (values are strings)
+pyq validate k8s.yaml --schema rules.yaml   # parse + schema-language rules
+pyq frontmatter README.md --body-out body.md # split Markdown front matter
 ```
 
 Input format resolves by file extension (`.json`, `.toml`, `.ini`);
@@ -123,9 +125,8 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | Verb post-processing (`select`/`sort`/`unique`/...) | ✅ | — |
 | Layout-pinned edits (splice engine) | ✅ | ✅ |
 | sort-keys at a path | ✅ | ✅ |
-| Multi-document streams (`-A`) | planned | ✅ |
-| `validate` with registered schemas | planned | ✅ |
-| rename / move / frontmatter | — | ✅ |
+| Rename / move / append / insert / frontmatter / `validate` | ✅ | ✅ |
+| Multi-document edits (`-A` with set/delete) | planned | ✅ |
 
 Both CLIs edit through the same core splice engine with layout pinning
 (untouched lines, including standalone comments, never drift). The

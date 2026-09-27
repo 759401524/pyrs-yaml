@@ -91,6 +91,8 @@ pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
 pyq from-ini settings.ini        # INI -> YAML（値はすべて文字列）
+pyq validate k8s.yaml --schema rules.yaml   # 構文チェック + スキーマ言語検証
+pyq frontmatter README.md --body-out body.md # Markdown フロントマター分割
 ```
 
 入力形式は拡張子で判定（`.json`・`.toml`・`.ini`）され、
@@ -121,9 +123,9 @@ pyq completion powershell > pyq.ps1                 # PowerShell
 | 動詞後処理（`select`/`sort`/`unique`/…） | ✅ | — |
 | レイアウト保持編集（splice エンジン） | ✅ | ✅ |
 | パス指定 sort-keys | ✅ | ✅ |
-| マルチドキュメント（`-A`） | 計画中 | ✅ |
-| 登録スキーマでの `validate` | 計画中 | ✅ |
-| rename / move / frontmatter | — | ✅ |
+| マルチドキュメント照会（`-A`：get/fmt/to-json） | ✅ | ✅ |
+| rename / move / append / insert / frontmatter / `validate`（スキーマ言語） | ✅ | ✅ |
+| マルチドキュメント編集（`-A` と set/delete） | 計画中 | ✅ |
 
 両者とも同一のコア splice エンジンでレイアウト保持編集を行います
 （触れていない行——standalone コメント含む——は漂移しない）。多機能面は

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **pyq feature completion** — the CLI reaches parity with the Python
+  CLI's surface: `rename`/`move`/`append`/`insert` splice edits, `validate`
+  (parse check, or against schema-language rules via `--schema rules.yaml`),
+  `frontmatter` (`--body-out` splits the body), and `-A/--all-docs` on
+  `get`/`fmt`/`to-json` for multi-document streams. Fixing the wiring
+  surfaced a core engine bug: `move_path` returned only the destination
+  INSERT unit, so the spliced text kept a duplicate of the moved subtree
+  (invisible whenever documents fell back to re-serialization); it now
+  returns both units and the bindings apply them through their batch
+  splice path.
 - **`pyq` filter verbs** — structured jq-style post-processing on the
   match stream: `--select 'PATH OP LITERAL'`, `--sort-by PATH` /
   `--desc`, `--unique`, `--first` / `--last`, `--skip N` / `--take N`,
