@@ -1,0 +1,564 @@
+//! Native JSON engine - an RFC 8259-conformant parser and serializer built
+//! in the `granit-parser` house style: a byte-level scanner with exact
+//! positions, errors carrying line/column diagnostics, and direct
+//! `CustomNode` construction (no intermediate value tree).
+//!
+//! Strictness choices (documented divergence or improvement over the
+//! previous `serde_json`-based path):
+//! - numbers keep their source spelling (`1e3`, `1.0`, `-0`) instead of
+//!   f64 round-tripping, so `from-json | to-json` is byte-stable and no
+//!   precision is lost on large doubles;
+//! - lone UTF-16 surrogates are rejected (RFC 8259 "may reject"; a Rust
+//!   `String` cannot represent them losslessly);
+//! - duplicate object keys follow the JSON guidance: last value wins,
+//!   first insertion order position kept (`IndexMap` semantics);
+//! - top-level scalars are valid (RFC 8259), trailing commas are not,
+//!   and a document must contain exactly one value.
+
+use crate::ast::CustomNode;
+use crate::error::{DepthError, ParseError};
+use crate::parser::yaml::schema::needs_quotes;
+use indexmap::IndexMap;
+
+/// Default nesting limit, matching the YAML pipeline's `parse` default.
+pub const DEFAULT_MAX_DEPTH: usize = 1000;
+
+/// Parse one JSON document into the shared AST.
+pub fn from_json(text: &str) -> Result<CustomNode, ParseError> {
+    from_json_with_max_depth(text, DEFAULT_MAX_DEPTH)
+}
+
+/// Parse with an explicit nesting limit (`MaxDepthExceeded` beyond it).
+pub fn from_json_with_max_depth(text: &str, max_depth: usize) -> Result<CustomNode, ParseError> {
+    let mut p = Parser {
+        s: text.as_bytes(),
+        text,
+        pos: 0,
+        depth: 0,
+        max_depth,
+    };
+    p.ws();
+    let value = p.value()?;
+    p.ws();
+    if p.pos != p.s.len() {
+        return Err(p.err("trailing characters after the JSON value"));
+    }
+    Ok(value)
+}
+
+struct Parser<'a> {
+    s: &'a [u8],
+    text: &'a str,
+    pos: usize,
+    depth: usize,
+    max_depth: usize,
+}
+
+impl<'a> Parser<'a> {
+    fn peek(&self) -> Option<u8> {
+        self.s.get(self.pos).copied()
+    }
+
+    /// 0-indexed line/column fields (granit convention) plus a human
+    /// 1-indexed suffix in the message body.
+    fn err(&self, msg: &str) -> ParseError {
+        let clamped = self.pos.min(self.text.len());
+        // `self.pos` is a byte offset; snap to a char boundary so a mid-
+        // multi-byte stop never panics on slicing or counting.
+        let cut = floor_char_boundary(self.text, clamped);
+        let consumed = &self.text[..cut];
+        let line = consumed.matches('\n').count();
+        let col = match consumed.rfind('\n') {
+            Some(nl) => consumed[nl + 1..].chars().count(),
+            None => consumed.chars().count(),
+        };
+        ParseError::Syntax {
+            message: format!("{msg} at line {} column {}", line + 1, col + 1),
+            line,
+            col,
+        }
+    }
+
+    fn ws(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.pos += 1;
+        }
+    }
+
+    fn expect(&mut self, lit: &str, ctx: &str) -> Result<(), ParseError> {
+        if self.text[self.pos..].starts_with(lit) {
+            self.pos += lit.len();
+            Ok(())
+        } else {
+            Err(self.err(ctx))
+        }
+    }
+
+    fn value(&mut self) -> Result<CustomNode, ParseError> {
+        self.depth += 1;
+        if self.depth > self.max_depth {
+            self.depth -= 1;
+            return Err(ParseError::MaxDepthExceeded(DepthError(self.max_depth)));
+        }
+        let out = self.value_inner();
+        self.depth -= 1;
+        out
+    }
+
+    fn value_inner(&mut self) -> Result<CustomNode, ParseError> {
+        match self.peek() {
+            Some(b'{') => self.object(),
+            Some(b'[') => self.array(),
+            Some(b'"') => {
+                let s = self.string()?;
+                Ok(quoted_or_plain(s))
+            }
+            Some(b't') => {
+                self.expect("true", "expected literal `true`")?;
+                Ok(CustomNode::plain_scalar("true"))
+            }
+            Some(b'f') => {
+                self.expect("false", "expected literal `false`")?;
+                Ok(CustomNode::plain_scalar("false"))
+            }
+            Some(b'n') => {
+                self.expect("null", "expected literal `null`")?;
+                Ok(CustomNode::plain_null())
+            }
+            Some(b'-') | Some(b'0'..=b'9') => self.number(),
+            _ => Err(self.err("expected a JSON value")),
+        }
+    }
+
+    fn object(&mut self) -> Result<CustomNode, ParseError> {
+        self.pos += 1; // '{'
+        let mut pairs: IndexMap<CustomNode, CustomNode> = IndexMap::new();
+        self.ws();
+        if self.peek() == Some(b'}') {
+            self.pos += 1;
+            return Ok(CustomNode::plain_mapping(pairs));
+        }
+        loop {
+            self.ws();
+            if self.peek() != Some(b'"') {
+                return Err(self.err("expected a quoted object key"));
+            }
+            let key = self.string()?;
+            let key_node = quoted_or_plain(key);
+            self.ws();
+            self.expect(":", "expected `:` after the object key")?;
+            self.ws();
+            let value = self.value()?;
+            // duplicate keys: last value wins, first position kept
+            pairs.insert(key_node, value);
+            self.ws();
+            match self.peek() {
+                Some(b',') => self.pos += 1,
+                Some(b'}') => {
+                    self.pos += 1;
+                    return Ok(CustomNode::plain_mapping(pairs));
+                }
+                _ => return Err(self.err("expected `,` or `}` in object")),
+            }
+        }
+    }
+
+    fn array(&mut self) -> Result<CustomNode, ParseError> {
+        self.pos += 1; // '['
+        let mut items: Vec<CustomNode> = Vec::new();
+        self.ws();
+        if self.peek() == Some(b']') {
+            self.pos += 1;
+            return Ok(CustomNode::plain_sequence(items));
+        }
+        loop {
+            self.ws();
+            items.push(self.value()?);
+            self.ws();
+            match self.peek() {
+                Some(b',') => self.pos += 1,
+                Some(b']') => {
+                    self.pos += 1;
+                    return Ok(CustomNode::plain_sequence(items));
+                }
+                _ => return Err(self.err("expected `,` or `]` in array")),
+            }
+        }
+    }
+
+    /// `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?` - grammar-exact.
+    /// The matched slice is kept verbatim as a plain scalar (no f64 round
+    /// trip), which preserves arbitrary-precision integer and float text.
+    fn number(&mut self) -> Result<CustomNode, ParseError> {
+        let start = self.pos;
+        if self.peek() == Some(b'-') {
+            self.pos += 1;
+        }
+        match self.peek() {
+            Some(b'0') => {
+                self.pos += 1;
+                if matches!(self.peek(), Some(b'0'..=b'9')) {
+                    return Err(self.err("leading zero in number"));
+                }
+            }
+            Some(b'1'..=b'9') => {
+                while matches!(self.peek(), Some(b'0'..=b'9')) {
+                    self.pos += 1;
+                }
+            }
+            _ => return Err(self.err("expected integer digits in number")),
+        }
+        if self.peek() == Some(b'.') {
+            self.pos += 1;
+            if !matches!(self.peek(), Some(b'0'..=b'9')) {
+                return Err(self.err("expected digits after `.` in number"));
+            }
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.pos += 1;
+            }
+        }
+        if matches!(self.peek(), Some(b'e' | b'E')) {
+            self.pos += 1;
+            if matches!(self.peek(), Some(b'+' | b'-')) {
+                self.pos += 1;
+            }
+            if !matches!(self.peek(), Some(b'0'..=b'9')) {
+                return Err(self.err("expected digits in number exponent"));
+            }
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.pos += 1;
+            }
+        }
+        Ok(CustomNode::plain_scalar(
+            self.text[start..self.pos].to_string(),
+        ))
+    }
+
+    /// Decode a quoted string; returns its content.
+    fn string(&mut self) -> Result<String, ParseError> {
+        debug_assert_eq!(self.peek(), Some(b'"'));
+        self.pos += 1; // skip opening quote
+        let mut out = String::new();
+        loop {
+            // Bulk-scan literal characters until we hit a special byte.
+            let start = self.pos;
+            while self.pos < self.s.len() {
+                let b = self.s[self.pos];
+                if b == b'"' || b == b'\\' || b < 0x20 {
+                    break;
+                }
+                self.pos += 1;
+            }
+            if self.pos > start {
+                // SAFETY: we only advanced over bytes that are not ASCII < 0x20,
+                // not " or \ — so UTF-8 sequences are preserved intact.
+                out.push_str(&self.text[start..self.pos]);
+            }
+            // Handle the stopping character.
+            let Some(b) = self.peek() else {
+                return Err(self.err("unterminated string"));
+            };
+            match b {
+                b'"' => {
+                    self.pos += 1;
+                    return Ok(out);
+                }
+                b'\\' => {
+                    self.pos += 1;
+                    let e = self.peek().ok_or_else(|| self.err("unterminated escape"))?;
+                    self.pos += 1;
+                    match e {
+                        b'"' => out.push('"'),
+                        b'\\' => out.push('\\'),
+                        b'/' => out.push('/'),
+                        b'b' => out.push('\u{8}'),
+                        b'f' => out.push('\u{c}'),
+                        b'n' => out.push('\n'),
+                        b'r' => out.push('\r'),
+                        b't' => out.push('\t'),
+                        b'u' => self.unicode_escape(&mut out)?,
+                        _ => return Err(self.err("invalid escape sequence")),
+                    }
+                }
+                0x00..=0x1f => {
+                    return Err(
+                        self.err(&format!("unescaped control character U+{b:04X} in string"))
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    fn hex4(&mut self) -> Result<u32, ParseError> {
+        if self.pos + 4 > self.s.len() {
+            return Err(self.err("truncated \\u escape"));
+        }
+        let digits = &self.text[self.pos..self.pos + 4];
+        let value = u32::from_str_radix(digits, 16)
+            .map_err(|_| self.err("invalid hex digits in \\u escape"))?;
+        self.pos += 4;
+        Ok(value)
+    }
+
+    fn unicode_escape(&mut self, out: &mut String) -> Result<(), ParseError> {
+        let code = self.hex4()?;
+        match code {
+            0xD800..=0xDBFF => {
+                // high surrogate must pair with a following \uDC00-\uDFFF
+                if self.peek() != Some(b'\\') || self.s.get(self.pos + 1) != Some(&b'u') {
+                    return Err(self.err("lone high surrogate (missing low surrogate pair)"));
+                }
+                self.pos += 2;
+                let low = self.hex4()?;
+                if !(0xDC00..=0xDFFF).contains(&low) {
+                    return Err(
+                        self.err("invalid surrogate pair (second escape is not a low surrogate)")
+                    );
+                }
+                let combined = 0x1_0000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+                out.push(
+                    char::from_u32(combined)
+                        .ok_or_else(|| self.err("invalid combined surrogate value"))?,
+                );
+                Ok(())
+            }
+            0xDC00..=0xDFFF => Err(self.err("lone low surrogate")),
+            other => {
+                let c = char::from_u32(other)
+                    .ok_or_else(|| self.err("invalid \\u escape (not a Unicode scalar value)"))?;
+                out.push(c);
+                Ok(())
+            }
+        }
+    }
+}
+
+/// JSON strings land in the YAML-shaped AST without ever re-resolving:
+/// text that a plain YAML scalar would reinterpret is quoted (the same
+/// `needs_quotes` discipline the TOML spoke follows).
+fn quoted_or_plain(value: String) -> CustomNode {
+    if needs_quotes(&value) {
+        CustomNode::double_quoted_scalar(value)
+    } else {
+        CustomNode::plain_scalar(value)
+    }
+}
+
+/// Stable equivalent of `str::floor_char_boundary` (unstable on `str`).
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::ScalarStyle;
+    use crate::parser::yaml::Schema;
+
+    fn scalar_text(node: &CustomNode) -> String {
+        match node {
+            CustomNode::Scalar { value, .. } => value.to_string(),
+            other => panic!("expected scalar, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_all_value_kinds() {
+        let n = from_json(r#"{"a":[1, -2.5, true, false, null, "s"], "e":{}, "f":[]}"#).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &n else {
+            panic!("object")
+        };
+        assert_eq!(pairs.len(), 3);
+        let (_, root_v) = pairs.get_index(0).unwrap();
+        let CustomNode::Sequence { items, .. } = root_v else {
+            unreachable!()
+        };
+        assert_eq!(items.len(), 6);
+        assert_eq!(scalar_text(&items[0]), "1");
+        assert_eq!(scalar_text(&items[1]), "-2.5");
+        assert_eq!(scalar_text(&items[2]), "true");
+        assert!(matches!(items[4], CustomNode::Null { .. }));
+        assert_eq!(scalar_text(&items[5]), "s");
+    }
+
+    #[test]
+    fn string_styling_prevents_reinterpretation() {
+        let n = from_json(r#"{"k": ["plain", "123", "true", ""]}"#).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &n else {
+            unreachable!()
+        };
+        let (_, root_v) = pairs.get_index(0).unwrap();
+        let CustomNode::Sequence { items, .. } = root_v else {
+            unreachable!()
+        };
+        assert!(matches!(
+            &items[0],
+            CustomNode::Scalar {
+                style: ScalarStyle::Plain,
+                ..
+            }
+        ));
+        // "123" and "true" must come back out as strings, never re-typed
+        for item in &items[1..3] {
+            assert!(matches!(
+                item,
+                CustomNode::Scalar {
+                    style: ScalarStyle::DoubleQuoted,
+                    ..
+                }
+            ));
+        }
+        assert!(matches!(
+            &items[3],
+            CustomNode::Scalar {
+                style: ScalarStyle::DoubleQuoted,
+                value,
+                ..
+            } if value.is_empty()
+        ));
+    }
+
+    #[test]
+    fn numbers_keep_source_spelling() {
+        for text in [
+            "1e3",
+            "1.0",
+            "-0",
+            "0E0",
+            "1234567890123456789012345678901234567890123456789",
+        ] {
+            let n = from_json(&format!("{{\"v\": {text}}}")).unwrap();
+            let CustomNode::Mapping { pairs, .. } = &n else {
+                unreachable!()
+            };
+            let (_, v) = pairs.get_index(0).unwrap();
+            assert_eq!(scalar_text(v), text);
+        }
+    }
+
+    #[test]
+    fn number_grammar_is_exact() {
+        for bad in [
+            "01", "+1", ".5", "1.", "1e", "1e+", "-", "1.5e2.5", "00", "0x1", "1_000",
+        ] {
+            assert!(
+                from_json(bad).is_err(),
+                "must reject {bad:?} (with trailing-char or grammar error)"
+            );
+        }
+        // single valid check to keep the failure message useful
+        from_json("0").unwrap();
+        from_json("-0.5e-3").unwrap();
+    }
+
+    #[test]
+    fn surrogate_pairs_combine_and_lone_surrogates_reject() {
+        let n = from_json(r#""😀""#).unwrap();
+        assert_eq!(scalar_text(&n), "😀");
+        let n = from_json(r#""\ud83d\ude00""#).unwrap();
+        assert_eq!(scalar_text(&n), "😀");
+        for bad in [r#""\ud83d""#, r#""\udc00""#, r#""\ud83dA""#] {
+            assert!(
+                from_json(bad).is_err(),
+                "must reject lone surrogate {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn structure_errors_carry_positions() {
+        let e = from_json("{\n  \"a\": 1,\n  \"b\"\n}").unwrap_err();
+        let ParseError::Syntax { message, line, col } = &e else {
+            panic!("{e:?}")
+        };
+        // Error fires when `:` is expected: `ws()` has advanced past the
+        // newline after `"b"`, so the failure is reported at `}` (line 4
+        // 1-indexed, 0-indexed line=3, 0-indexed col=0 — `}` sits at the
+        // start of its line with no leading spaces).
+        assert_eq!(*line, 3);
+        assert_eq!(*col, 0);
+        assert!(message.contains("line 4 column 1"), "{message}");
+        assert!(message.contains("`:`"), "{message}");
+    }
+
+    #[test]
+    fn duplicate_keys_last_wins_first_position() {
+        let n = from_json(r#"{"a": 1, "b": 2, "a": 3}"#).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &n else {
+            unreachable!()
+        };
+        assert_eq!(pairs.len(), 2);
+        let (_, v0) = pairs.get_index(0).unwrap();
+        assert_eq!(scalar_text(v0), "3");
+        let (k1, _) = pairs.get_index(1).unwrap();
+        assert!(k1.source_range().is_none()); // keys carry no ranges
+    }
+
+    #[test]
+    fn strict_rejections() {
+        for bad in [
+            "",         // empty document
+            "1 2",      // two top-level values
+            "[1,]",     // trailing comma
+            "{'a': 1}", // single quotes
+            "\"a\tb\"", // raw control char in string
+            "NaN",
+            "Infinity",
+            "{\"a\" 1}", // missing colon
+            "[1 2]",     // missing comma
+            "\"unterminated",
+            r#"{"k":"\x41"}"#, // invalid escape
+        ] {
+            assert!(from_json(bad).is_err(), "must reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn max_depth_is_enforced() {
+        let deep = format!("{}{}", "[".repeat(10), "]".repeat(10));
+        from_json_with_max_depth(&deep, 5).unwrap_err();
+        from_json_with_max_depth(&deep, 20).unwrap();
+    }
+
+    #[test]
+    fn resolved_types_match_json_semantics() {
+        // Plain scalars produced by the parser resolve back through the
+        // core schema to the same JSON types (round trip in the AST).
+        // `null` is the exception: the parser emits a dedicated `Null` AST
+        // variant rather than a plain scalar with the text "null".
+        let n_null = from_json("null").unwrap();
+        assert!(matches!(n_null, CustomNode::Null { .. }));
+        let cases = [
+            ("42", Schema::Core),
+            ("-1.5", Schema::Core),
+            ("1e3", Schema::Core),
+            ("true", Schema::Core),
+            ("false", Schema::Core),
+        ];
+        for (text, schema) in cases {
+            let n = from_json(text).unwrap();
+            let CustomNode::Scalar {
+                value,
+                style: ScalarStyle::Plain,
+                ..
+            } = &n
+            else {
+                panic!("{text} should be a plain scalar: {n:?}")
+            };
+            assert_eq!(value.as_ref(), text);
+            // resolves to a non-string JSON primitive
+            assert!(!matches!(
+                schema.resolve(value),
+                crate::parser::yaml::YamlType::Str(_)
+            ));
+        }
+    }
+}

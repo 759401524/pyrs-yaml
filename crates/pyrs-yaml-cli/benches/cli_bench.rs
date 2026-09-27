@@ -116,7 +116,7 @@ fn json_to_node_big() -> CustomNode {
 }
 
 #[divan::bench]
-fn node_to_json_big() -> serde_json::Value {
+fn node_to_json_big() -> String {
     let src = big_json();
     let node = json::json_to_node(&src).unwrap();
     black_box(json::node_to_json(black_box(&node)).unwrap())

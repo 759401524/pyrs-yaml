@@ -84,6 +84,15 @@ status: new
 
 #### 变更
 
+- **原生 JSON 与 TOML 内核** — `serde_json` 和 `toml_edit` 依赖已全部移除。
+  `pyrs-yaml-core` 自带 RFC 8259 JSON 引擎（字节级扫描、数字保留原文，因此
+  `from_json → to_json` 字节稳定且不会丢失大整数/浮点精度，行/列错误带类型，
+  严格拒绝尾逗号、前导零、孤立代理对、未转义控制字符、多根文档）以及覆盖
+  完整语法的 TOML 1.0 引擎 — bare/quoted/dotted 键，basic/literal/多行字符串，
+  十进制/十六进制/八进制/二进制整数允许下划线分隔，浮点支持 `inf`/`nan`/指数，
+  以及 offset/local 日期、时间与日期时间 — 所有拒绝都以 granit-parser 风格的
+  `ParseError::Syntax` 携 0-indexed `line`/`col` 上报。公开 API 保持不变，
+  回环测试与 `tests/test_toml.py` 在新引擎上全绿。
 - **内部重复代码清理** — 基准 fixture 改由共享块拼接，PyO3 路径编辑方法委托给现有
   `apply_metadata_edit` 助手，重复的文件读取/错误映射与行偏移样板收敛为共享函数。
   公开行为无变化；jscpd 测量的重复代码率从 5.25% 降至 3.45%。

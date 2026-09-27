@@ -7,7 +7,6 @@ use crate::py::convert::{format_i18n_error, node_to_pyobject_simple, parse_schem
 use crate::py::direct_dump::direct_dump;
 use crate::py::document::{YamlDocument, parse_document, resolve_tags};
 use crate::py::parse_error_to_py_err;
-use crate::py::python_types::json_value_to_node;
 use crate::py::stream_events::stream_event_to_py_dict;
 use crate::py::stream_iterator::StreamIterator;
 use crate::py::tag_registry;
@@ -246,13 +245,12 @@ pub(crate) fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
 #[pyo3(signature = (json_str: "str") -> "str")]
 /// Convert a JSON string to a YAML string.
 pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
-    let json_value: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+    let node = pyrs_yaml_core::json::from_json(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",
             &[("detail", &e.to_string())],
         ))
     })?;
-    let node = json_value_to_node(&json_value)?;
     Ok(crate::serializer::to_yaml(&node))
 }
 

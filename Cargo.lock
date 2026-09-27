@@ -836,7 +836,6 @@ dependencies = [
  "pyo3",
  "pyo3-build-config",
  "pyrs-yaml-core",
- "serde_json",
 ]
 
 [[package]]
@@ -848,7 +847,6 @@ dependencies = [
  "codspeed-divan-compat",
  "indexmap",
  "pyrs-yaml-core",
- "serde_json",
 ]
 
 [[package]]
@@ -862,7 +860,6 @@ dependencies = [
  "rust-i18n",
  "similar",
  "thiserror",
- "toml_edit 0.25.15+spec-1.1.0",
 ]
 
 [[package]]
@@ -1119,7 +1116,6 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
- "indexmap",
  "itoa",
  "memchr",
  "serde",
@@ -1306,7 +1302,6 @@ dependencies = [
  "indexmap",
  "toml_datetime 1.1.1+spec-1.1.0",
  "toml_parser",
- "toml_writer",
  "winnow 1.0.4",
 ]
 
@@ -1324,12 +1319,6 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
-
-[[package]]
-name = "toml_writer"
-version = "1.1.2+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "triomphe"

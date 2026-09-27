@@ -448,11 +448,10 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             indent,
         } => {
             let node = load(&file, &input)?;
-            let value = json::node_to_json(&node)?;
             let text = if indent == 0 {
-                serde_json::to_string(&value)?
+                json::node_to_json(&node)?
             } else {
-                serde_json::to_string_pretty(&value)?
+                json::node_to_json_pretty(&node, indent)?
             };
             let mut out = text;
             out.push('\n');
@@ -547,8 +546,7 @@ fn emit_matched(
             let mut out = String::new();
             if json {
                 for node in found {
-                    let v = json::node_to_json(node)?;
-                    out.push_str(&serde_json::to_string(&v)?);
+                    out.push_str(&json::node_to_json(node)?);
                     out.push('\n');
                 }
             } else {
@@ -798,8 +796,8 @@ fn read_input(file: &Option<PathBuf>) -> Result<String, Box<dyn std::error::Erro
 
 fn emit_value(node: &CustomNode, json: bool, raw: bool) -> Result<(), Box<dyn std::error::Error>> {
     if json {
-        let v = json::node_to_json(node)?;
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        let text = json::node_to_json_pretty(node, 2)?;
+        println!("{text}");
         return Ok(());
     }
     if raw && let CustomNode::Scalar { value, .. } = node {
