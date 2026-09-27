@@ -116,6 +116,135 @@ fn matches_key(key: &CustomNode, want: &str) -> bool {
     matches!(key, CustomNode::Scalar { value, .. } if value.as_ref() == want)
 }
 
+fn scalar_key(k: &str) -> CustomNode {
+    CustomNode::plain_scalar(k)
+}
+
+impl Selector {
+    /// Assign `value` at the selected position. With `create_missing`,
+    /// intermediate mapping keys are created as empty mappings on demand
+    /// (mirrors the Python CLI's `--create-missing`); sequence indices are
+    /// never grown. An empty selector replaces the whole document.
+    pub fn set_at(
+        &self,
+        root: &mut CustomNode,
+        value: CustomNode,
+        create_missing: bool,
+    ) -> Result<(), String> {
+        if self.segs.is_empty() {
+            *root = value;
+            return Ok(());
+        }
+        let (last, parents) = self.segs.split_last().expect("non-empty");
+        let parent = descend(parents, root, create_missing)?;
+        match (last, &mut *parent) {
+            (Seg::Key(k), CustomNode::Mapping { pairs, .. }) => {
+                if let Some(existing) = pairs
+                    .iter()
+                    .find(|(ek, _)| matches_key(ek, k))
+                    .map(|(ek, _)| ek.clone())
+                {
+                    // Overwrite keeps the original key node (and its style).
+                    pairs.insert(existing, value);
+                } else {
+                    pairs.insert(scalar_key(k), value);
+                }
+                Ok(())
+            }
+            (Seg::Index(i), CustomNode::Sequence { items, .. }) => {
+                let idx = resolve_index(*i, items.len())
+                    .ok_or_else(|| format!("index {i} out of range"))?;
+                items[idx] = value;
+                Ok(())
+            }
+            (Seg::Wildcard, _) => Err("cannot set through a wildcard".to_string()),
+            _ => Err(format!("cannot descend into {last:?}")),
+        }
+    }
+
+    /// Remove the selected key/element; errors when it does not exist,
+    /// matching the Python edit semantics (delete of a missing key raises).
+    pub fn delete_at(&self, root: &mut CustomNode) -> Result<(), String> {
+        let (last, parents) = self
+            .segs
+            .split_last()
+            .ok_or_else(|| "cannot delete the document root".to_string())?;
+        let parent = descend(parents, root, false)?;
+        match (last, &mut *parent) {
+            (Seg::Key(k), CustomNode::Mapping { pairs, .. }) => {
+                let found = pairs
+                    .iter()
+                    .position(|(ek, _)| matches_key(ek, k))
+                    .ok_or_else(|| format!("no key {k}"))?;
+                pairs.shift_remove_index(found);
+                Ok(())
+            }
+            (Seg::Index(i), CustomNode::Sequence { items, .. }) => {
+                let idx = resolve_index(*i, items.len())
+                    .ok_or_else(|| format!("index {i} out of range"))?;
+                items.remove(idx);
+                Ok(())
+            }
+            (Seg::Wildcard, _) => Err("cannot delete through a wildcard".to_string()),
+            _ => Err(format!("cannot descend into {last:?}")),
+        }
+    }
+}
+
+fn resolve_index(i: i64, len: usize) -> Option<usize> {
+    if i < 0 {
+        let back = (-i) as usize;
+        if back > len {
+            return None;
+        }
+        Some(len - back)
+    } else if (i as usize) >= len {
+        None
+    } else {
+        Some(i as usize)
+    }
+}
+
+/// Mutable walk over all but the last segment.
+fn descend<'a>(
+    segs: &[Seg],
+    node: &'a mut CustomNode,
+    create_missing: bool,
+) -> Result<&'a mut CustomNode, String> {
+    let mut current = node;
+    for seg in segs {
+        current = match (seg, current) {
+            (Seg::Key(k), CustomNode::Mapping { pairs, .. }) => {
+                // position-then-reborrow: holding an iter_mut borrow across
+                // the insert arm trips the borrow checker over the loop.
+                let pos = pairs.iter().position(|(ek, _)| matches_key(ek, k));
+                match pos {
+                    Some(p) => {
+                        let (_, v) = pairs.get_index_mut(p).expect("position valid");
+                        v
+                    }
+                    None if create_missing => {
+                        pairs.insert(
+                            scalar_key(k),
+                            CustomNode::plain_mapping(indexmap::IndexMap::new()),
+                        );
+                        let (_, v) = pairs.last_mut().expect("just inserted");
+                        v
+                    }
+                    None => return Err(format!("no key {k}")),
+                }
+            }
+            (Seg::Index(i), CustomNode::Sequence { items, .. }) => {
+                let idx = resolve_index(*i, items.len())
+                    .ok_or_else(|| format!("index {i} out of range"))?;
+                &mut items[idx]
+            }
+            _ => return Err(format!("cannot descend into {seg:?}")),
+        };
+    }
+    Ok(current)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

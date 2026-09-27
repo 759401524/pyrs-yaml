@@ -51,7 +51,9 @@ status: new
 - **`pyq` — Rust 原生 CLI crate** — `crates/pyrs-yaml-cli`（workspace 成员，
   基于 clap）将 `pyrs-yaml-core` 直接接入 jq/yq 风格命令行，运行时无需
   Python：`fmt`（保留注释的往返格式化）、`get <path>`（JSONPath-lite，支持
-  `--json`/`--raw`）、`to-json`（保序）、`to-toml`，以及导入命令 `from-json` /
+  `--json`/`--raw`）、`set <path> <value>` 与 `delete <path>`（yq 风格编辑，
+  支持 `--create-missing` 与 `-i/--inplace` 文件回写，输出经往返序列化器，
+  保留注释与值自身风格）、`to-json`（保序）、`to-toml`，以及导入命令 `from-json` /
   `from-toml` / `from-ini`；输入格式按扩展名识别（`--input` 可覆盖），`-` 或
   省略时读 stdin，失败时以 core 的稳定错误文本非零退出。
 - **TOML 与 INI 交换格式** — 轮毂-辐射式多格式支持，YAML 仍是唯一可编辑

@@ -49,6 +49,27 @@ enum Command {
         /// Print bare scalars without document markers.
         raw: bool,
     },
+    /// Assign a value at a path (creates missing mappings with
+    /// `--create-missing`; `$` replaces the whole document). Input is
+    /// YAML (round-trip semantics, like `fmt`).
+    Set {
+        path: String,
+        /// New value in YAML syntax; JSON works, being a YAML subset.
+        value: String,
+        file: Option<PathBuf>,
+        #[arg(long)]
+        create_missing: bool,
+        /// Rewrite the input file in place instead of printing.
+        #[arg(long, short = 'i')]
+        inplace: bool,
+    },
+    /// Remove a key or sequence element at a path.
+    Delete {
+        path: String,
+        file: Option<PathBuf>,
+        #[arg(long, short = 'i')]
+        inplace: bool,
+    },
     /// Convert to JSON text.
     ToJson {
         file: Option<PathBuf>,
@@ -173,6 +194,29 @@ fn run(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
                 .select(&node)?
                 .ok_or_else(|| format!("path not found: {path}"))?;
             emit_value(found, json, raw)?;
+        }
+        Command::Set {
+            path,
+            value,
+            file,
+            create_missing,
+            inplace,
+        } => {
+            let src = read_input(&file)?;
+            let mut node = parser::parse(&src, Schema::Core)?;
+            let v = parser::parse(&value, Schema::Core)?;
+            paths::parse_path(&path)?.set_at(&mut node, v, create_missing)?;
+            write_edited(&node, &file, inplace)?;
+        }
+        Command::Delete {
+            path,
+            file,
+            inplace,
+        } => {
+            let src = read_input(&file)?;
+            let mut node = parser::parse(&src, Schema::Core)?;
+            paths::parse_path(&path)?.delete_at(&mut node)?;
+            write_edited(&node, &file, inplace)?;
         }
         Command::ToJson {
             file,
@@ -317,6 +361,26 @@ fn ini_to_node(src: &str) -> Result<CustomNode, Box<dyn std::error::Error>> {
         );
     }
     Ok(CustomNode::plain_mapping(map))
+}
+
+/// Shared tail for edit commands: in-place rewrite or stdout. The
+/// serializer round-trips comment/anchor metadata already held in the AST.
+fn write_edited(
+    node: &CustomNode,
+    file: &Option<PathBuf>,
+    inplace: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let text = serializer::to_yaml(node);
+    if inplace {
+        let f = file.as_ref().ok_or("--inplace requires a file argument")?;
+        if f.as_os_str() == "-" {
+            return Err("--inplace cannot write to stdin".into());
+        }
+        std::fs::write(f, text)?;
+    } else {
+        emit_str(&text)?;
+    }
+    Ok(())
 }
 
 fn read_input(file: &Option<PathBuf>) -> Result<String, Box<dyn std::error::Error>> {
