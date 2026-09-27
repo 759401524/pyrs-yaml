@@ -83,6 +83,15 @@ pyq from-ini settings.ini        # INI -> YAML（値はすべて文字列）
   以外ルート）では stderr に `pyq: <メッセージ>` — Python API と同じ
   安定メッセージ。
 
+## シェル補完
+
+```bash
+pyq completion bash > /etc/bash_completion.d/pyq   # bash
+pyq completion zsh  > "${functions[@]:0:1}/_pyq"   # zsh
+pyq completion fish | source                        # fish
+pyq completion powershell > pyq.ps1                 # PowerShell
+```
+
 ## 対応範囲
 
 | 機能 | pyq | pyrs-yaml CLI（Python） |

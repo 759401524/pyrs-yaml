@@ -17,6 +17,9 @@ status: new
 
 #### 추가
 
+- **`pyq completion`** — bash·zsh·fish·PowerShell 셸 자동 완성 스크립트 출력
+  (`pyq completion bash > ...`). `clap_complete` 구현(승인된 CLI 크레이트
+  의존성 추가. `pyrs-yaml-cli` 바이너리 내에 완결되며 Python 배포에 영향 없음).
 - **`pyq sort-keys`** — 임의 경로(`$`는 루트)의 매핑 키를 정렬. `set`/`delete`와
   동일한 코어 plan/splice 엔진을 거쳐 그 자리 다시 쓰기 또는 표준 출력 모두
   지원하며, Python CLI의 `sort-keys`와의 대응 격차를 해소.

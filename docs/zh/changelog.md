@@ -17,6 +17,10 @@ status: new
 
 #### 新增
 
+- **`pyq completion`** — 输出 bash、zsh、fish、PowerShell 的 shell 补全
+  脚本（`pyq completion bash > ...`），由 `clap_complete` 驱动（已批准
+  添加到 CLI crate 的依赖；仅存在于 `pyrs-yaml-cli` 二进制内，不影响
+  Python 分发）。
 - **`pyq sort-keys`** — 对任意路径（`$` 为根）的映射键排序，可原地回写
   或输出到 stdout，与 `set`/`delete` 共用核心 plan/splice 引擎，补齐与
   Python CLI `sort-keys` 的对等性。

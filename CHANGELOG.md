@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`pyq completion`** — print a shell completion script for bash, zsh,
+  fish or PowerShell (`pyq completion bash > ...`), powered by
+  `clap_complete` (approved addition to the CLI crate's dependencies;
+  it stays inside the `pyrs-yaml-cli` binary and does not touch the
+  Python distribution).
 - **`pyq sort-keys`** — sort the keys of the mapping at any path (`$` for
   the root), in place or to stdout, through the same core plan/splice
   engine as `set`/`delete` - closing the parity gap with the Python

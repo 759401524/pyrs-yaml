@@ -134,6 +134,11 @@ pub enum Command {
         #[arg(long)]
         raw: bool,
     },
+    /// Print a shell completion script (bash, zsh, fish, ...).
+    Completion {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 #[derive(clap::Args)]
@@ -302,6 +307,10 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let node = ini_to_node(&read_input(&file)?)?;
             emit_selected(&node, &get, json, raw)?;
+        }
+        Command::Completion { shell } => {
+            let mut cmd = <Cli as clap::CommandFactory>::command();
+            clap_complete::generate(shell, &mut cmd, "pyq", &mut std::io::stdout());
         }
     }
     Ok(())

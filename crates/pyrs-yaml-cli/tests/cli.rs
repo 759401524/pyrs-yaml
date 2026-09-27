@@ -226,6 +226,18 @@ fn sort_keys_preserves_comments() {
 }
 
 #[test]
+fn completion_emits_usable_scripts() {
+    for shell in ["bash", "zsh", "fish", "powershell"] {
+        let (code, out, err) = run(&["completion", shell]);
+        assert_eq!(code, Some(0), "{shell}: {err}");
+        assert!(out.contains("pyq"), "{shell} script should name the binary");
+    }
+    let (code, _, err) = run(&["completion", "ksh"]);
+    assert_eq!(code, Some(2));
+    assert!(err.contains("invalid value"), "{err}");
+}
+
+#[test]
 fn edit_pins_layout_of_untouched_lines() {
     // The splice engine rewrites only the edited region: standalone notes
     // and odd inline spacing survive verbatim - the serializer alone

@@ -17,6 +17,9 @@ status: new
 
 #### 追加
 
+- **`pyq completion`** — bash・zsh・fish・PowerShell のシェル補完スクリプトを
+  出力（`pyq completion bash > ...`）。`clap_complete` 実装（承認済みの CLI
+  クレート依存追加。`pyrs-yaml-cli` バイナリ内に完結し Python 配布に影響せず）。
 - **`pyq sort-keys`** — 任意パス（`$` はルート）のMapping キーを並び替え。
   `set`/`delete` と同じコア plan/splice エンジン経由で、その場書き換えにも
   標準出力にも対応し、Python CLI の `sort-keys` との対応差を解消。
