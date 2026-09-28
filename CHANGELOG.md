@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML inline-table interior comment fidelity** — PR #119 plumbs
+  interior `# ...` comments through the inline-table IR so they survive
+  the round trip instead of being silently dropped. A `# ...` on its
+  own line above a member is captured as that member's leading note
+  (onto its key's `leading_comment`); a `# ...` on the member's own
+  line after its value is captured as trailing (onto the value's
+  `comment`). Undecorated inline tables keep the compact single-line
+  `{ a = 1, b = 2 }` form; a decorated inline table nested in an array
+  promotes to the multi-line inline form (a line comment cannot live
+  inside a one-line `{}`), while a decorated top-level inline table is
+  promoted to a `[section]` (long-standing behaviour since #107) that
+  now carries the comments. Fixing this also surfaced and repaired a
+  latent #114 bug: `skip_all_blank` counted a standalone comment's own
+  terminating newline as a blank line, so re-parsing emitted spurious
+  blank lines before comment-led pairs.
 - **YAML receiver writes standalone comments into `decor.leading_comment`**
   — PR #117b migrates the last remaining engine (the granit-parser
   receiver in `parser/mod.rs`) onto the slot convention PR #114

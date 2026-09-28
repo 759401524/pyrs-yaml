@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **TOML inline table 内部注释保真** — PR #119 捕捉 inline
+  table 内部的 `# ...` 注释（成员上方独立行 → leading，值同行
+  后面 → trailing）并贯串 IR，使它们能往返而不丢失。无装饰
+  的 inline table 保持紧凑单行形式；嵌套在数组内的有装饰项
+  会提升为多行。同时修复了 #114 遗留 bug：`skip_all_blank` 将
+  独立注释自身的终止换行误判为空行。
 - **YAML receiver 将独立行注释写入 `decor.leading_comment`**
   — PR #117b 把最后一个引擎（granit-parser receiver）迁到 #114 /
   #115 确立的新槽。scalar / mapping / sequence 的独立行注释现在落在

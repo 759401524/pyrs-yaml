@@ -197,12 +197,43 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
             Ok(format!("[{}]", parts.join(", ")))
         }
         CustomNode::Mapping { pairs, .. } => {
-            let mut parts = Vec::with_capacity(pairs.len());
-            for (k, v) in pairs {
-                let key_str = scalar_key(k)?;
-                parts.push(format!("{key_str} = {}", value_str(v)?));
+            // PR #119: an inline table whose members carry interior
+            // comments (a key leading note or a value trailing note)
+            // must be rendered multi-line, because a `# ...` comment
+            // runs to end-of-line and cannot live inside a single-line
+            // `{ a = 1, b = 2 }`. Undecorated inline tables keep the
+            // compact single-line form so 1.0-compatible output is
+            // unchanged.
+            let decorated = pairs.iter().any(|(k, v)| {
+                k.leading_comment().is_some() || v.comment().is_some_and(|c| !c.standalone)
+            });
+            if decorated {
+                let mut out = String::from("{\n");
+                let count = pairs.len();
+                for (idx, (k, v)) in pairs.iter().enumerate() {
+                    if let Some(c) = k.leading_comment() {
+                        out.push_str(&format!("  # {}\n", c.text));
+                    }
+                    let key_str = scalar_key(k)?;
+                    let val = value_str(v)?;
+                    let trail = v
+                        .comment()
+                        .filter(|c| !c.standalone)
+                        .map(|c| format!(" # {}", c.text))
+                        .unwrap_or_default();
+                    let sep = if idx + 1 < count { "," } else { "" };
+                    out.push_str(&format!("  {key_str} = {val}{sep}{trail}\n"));
+                }
+                out.push('}');
+                Ok(out)
+            } else {
+                let mut parts = Vec::with_capacity(pairs.len());
+                for (k, v) in pairs {
+                    let key_str = scalar_key(k)?;
+                    parts.push(format!("{key_str} = {}", value_str(v)?));
+                }
+                Ok(format!("{{{}}}", parts.join(", ")))
             }
-            Ok(format!("{{{}}}", parts.join(", ")))
         }
         CustomNode::Null { .. } => Err(SerializeError::Internal("toml-cannot-represent-null")),
         CustomNode::Alias { .. } => Err(SerializeError::Internal("toml-unsupported-node")),
@@ -495,6 +526,89 @@ mod tests {
         let src = "t = 14:15\ndt = 2010-02-03 14:15\n";
         let out = to_toml(&from_toml(src).unwrap()).unwrap();
         assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn preserves_inline_table_interior_leading_comments() {
+        // PR #119: a `# ...` on its own line above an inline-table member
+        // is no longer discarded. The top-level writer promotes a
+        // non-empty mapping to a `[section]` (long-standing behaviour
+        // since #107), and the captured leading note rides along onto
+        // the promoted key — so the comment survives the round trip
+        // instead of vanishing as it did before this PR.
+        let src = "tbl = {\n  # lead a\n  a = 1,\n  # lead b\n  b = 2\n}\n";
+        let ast = from_toml(src).unwrap();
+        // Structural check: the leading notes landed on the member keys.
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            unreachable!()
+        };
+        let (_, tbl) = pairs.iter().next().unwrap();
+        let CustomNode::Mapping { pairs: inner, .. } = tbl else {
+            unreachable!()
+        };
+        let keys: Vec<_> = inner.keys().collect();
+        assert_eq!(
+            keys[0].leading_comment().map(|c| &*c.text).unwrap(),
+            "lead a"
+        );
+        assert_eq!(
+            keys[1].leading_comment().map(|c| &*c.text).unwrap(),
+            "lead b"
+        );
+        // Emit preserves both notes (in the promoted section form), and a
+        // second parse + emit is byte-stable (idempotent normalisation).
+        let out = to_toml(&ast).unwrap();
+        assert!(out.contains("# lead a"), "leading a lost: {out}");
+        assert!(out.contains("# lead b"), "leading b lost: {out}");
+        let twice = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, twice, "not idempotent: {out} vs {twice}");
+    }
+
+    #[test]
+    fn preserves_inline_table_interior_trailing_comment() {
+        // A `# ...` on the same line as the last member is its trailing
+        // note and rides onto the value node's `comment` slot. The
+        // comment is preserved through the promotion round trip.
+        let src = "tbl = {\n  a = 1,\n  b = 2 # trail b\n}\n";
+        let ast = from_toml(src).unwrap();
+        let out = to_toml(&ast).unwrap();
+        assert!(out.contains("# trail b"), "trailing note lost: {out}");
+        // Re-parse keeps the trailing note attached to member b.
+        let reparsed = from_toml(&out).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &reparsed else {
+            unreachable!()
+        };
+        let (_, tbl) = pairs.iter().next().unwrap();
+        let CustomNode::Mapping { pairs: inner, .. } = tbl else {
+            unreachable!()
+        };
+        let (_, b_val) = inner.iter().last().unwrap();
+        assert_eq!(b_val.comment().map(|c| &*c.text).unwrap(), "trail b");
+    }
+
+    #[test]
+    fn preserves_nested_inline_table_interior_comment() {
+        // An inline table nested inside an array stays inline (arrays
+        // serialise element mappings via `value_str`), so its interior
+        // comment forces the multi-line inline form specifically.
+        let src = "arr = [{\n  # lead x\n  x = 1\n}]\n";
+        let ast = from_toml(src).unwrap();
+        let out = to_toml(&ast).unwrap();
+        assert!(out.contains("# lead x"), "nested leading lost: {out}");
+        // The nested table is emitted in the multi-line inline form.
+        assert!(out.contains("arr = [{"), "not inline form: {out}");
+        let twice = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, twice, "not idempotent: {out} vs {twice}");
+    }
+
+    #[test]
+    fn undecorated_nested_inline_table_stays_single_line() {
+        // No interior comments => a nested inline table keeps the
+        // compact single-line form inside its array.
+        let src = "arr = [{ a = 1, b = 2 }]\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert!(out.contains("a = 1, b = 2"), "lost compact form: {out}");
+        assert!(out.contains("[{"), "not inline: {out}");
     }
 
     #[test]
