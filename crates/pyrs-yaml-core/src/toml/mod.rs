@@ -72,7 +72,7 @@ pub(crate) enum TomlValue {
     /// `None` for local variants.
     Datetime(String, Option<&'static str>),
     Array(Vec<TomlValue>),
-    InlineTable(Vec<(String, TomlValue)>),
+    InlineTable(Vec<(String, TomlValue, KVAnnotations)>),
 }
 
 /// A TOML table entry: a concrete value, an implicit sub-table (created by
@@ -274,14 +274,32 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
         },
         TomlValue::InlineTable(v) => {
             let mut pairs = indexmap::IndexMap::new();
-            for (k, val) in v {
-                let key = CustomNode::Scalar {
+            for (k, val, anns) in v {
+                let mut key = CustomNode::Scalar {
                     value: k.into(),
                     style: ScalarStyle::Plain,
                     chomping: Chomping::Clip,
                     meta: NodeMeta::default(),
                 };
-                pairs.insert(key, toml_value_to_node(val));
+                // PR #119: interior comments ride the same two-slot
+                // convention as the surrounding tables — the own-line
+                // note above a member onto its key's `leading_comment`,
+                // the same-line trailing note onto its value's
+                // `comment`.
+                if let Some(text) = anns.leading {
+                    key.set_leading_comment(crate::ast::Comment {
+                        text: std::sync::Arc::from(text),
+                        standalone: true,
+                    });
+                }
+                let mut value_node = toml_value_to_node(val);
+                if let Some(text) = anns.trailing {
+                    value_node.set_comment(crate::ast::Comment {
+                        text: std::sync::Arc::from(text),
+                        standalone: false,
+                    });
+                }
+                pairs.insert(key, value_node);
             }
             CustomNode::Mapping {
                 pairs,

@@ -56,6 +56,7 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
         pending_leading: None,
         pending_blank: false,
         dialect,
+        pending_inline_comment: None,
     };
     p.parse_document()?;
     Ok(cow_table_to_node(p.root))
@@ -82,6 +83,10 @@ struct Parser<'a> {
     pending_blank: bool,
     /// Grammar dialect gate for A1 / A2 / A3 / A4 (PR #116).
     dialect: TomlDialect,
+    /// Most-recent `# ...` comment seen inside a multi-line inline
+    /// table on a line of its own. Claimed by the next member as its
+    /// `leading` annotation (PR #119 interior-comment fidelity).
+    pending_inline_comment: Option<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -155,9 +160,25 @@ impl<'a> Parser<'a> {
                 Some(b'#') => {
                     // Standalone comment line: remember the most recent
                     // one so the next pair or header adopts it as its
-                    // leading. Blank lines in between flush the slot.
-                    newlines_here = 0;
+                    // leading. A comment runs to end-of-line, so the
+                    // newline that terminates it is the comment's own
+                    // break, NOT a blank separator. Eat it here and
+                    // reset the tally so only genuinely empty lines
+                    // after the comment count toward `pending_blank`.
+                    // (PR #119 caught the latent #114 bug that omitted
+                    // this: promoting an inline table to a `[section]`
+                    // feeds `key = v\n# lead\nkey = v` back through this
+                    // parser, and the comment's terminator newline was
+                    // being miscounted as a blank line.)
                     self.pending_leading = Some(self.take_comment());
+                    if self.peek() == Some(b'\n') {
+                        self.pos += 1;
+                    } else if self.peek() == Some(b'\r')
+                        && self.byte_at(self.pos + 1) == Some(b'\n')
+                    {
+                        self.pos += 2;
+                    }
+                    newlines_here = 0;
                 }
                 Some(b'\n') => {
                     newlines_here += 1;
@@ -944,12 +965,23 @@ impl<'a> Parser<'a> {
         }
         loop {
             self.skip_inline_ws();
+            // A `# ...` on its own line above this member (captured by
+            // `skip_inline_ws` into `pending_inline_comment`) is the
+            // member's leading note. PR #119 plumbs it through the IR
+            // so `to_toml` can reproduce interior comments.
+            let leading = self.pending_inline_comment.take();
             let key = self.parse_key_path()?;
             self.skip_inline_ws();
             self.expect_byte(b'=', "expected `=` in inline table")?;
             self.skip_inline_ws();
             let v = self.parse_value()?;
-            entries.push((key.join("."), v));
+            let trailing = self.take_inline_trailing_comment();
+            let anns = KVAnnotations {
+                leading,
+                trailing,
+                blank_before: false,
+            };
+            entries.push((key.join("."), v, anns));
             self.skip_inline_ws();
             if self.peek() == Some(b',') {
                 self.pos += 1;
@@ -975,6 +1007,27 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Capture a `# ...` comment that sits on the same line as the
+    /// member value (i.e. only spaces/tabs between the value and the
+    /// `#`). Returns `None` once a newline or the `,` / `}` separator
+    /// is reached, so an own-line comment stays pending for the next
+    /// member's leading slot rather than being misfiled as trailing.
+    fn take_inline_trailing_comment(&mut self) -> Option<String> {
+        if self.dialect != TomlDialect::V1_1 {
+            return None;
+        }
+        let mut i = self.pos;
+        while matches!(self.byte_at(i), Some(b' ' | b'\t')) {
+            i += 1;
+        }
+        if self.byte_at(i) == Some(b'#') {
+            self.pos = i;
+            Some(self.take_comment())
+        } else {
+            None
+        }
+    }
+
     fn skip_inline_ws(&mut self) {
         // TOML 1.0.0 confined inline tables to a single physical line so
         // only spaces and tabs separated members. TOML 1.1.0 (PR #116
@@ -991,7 +1044,9 @@ impl<'a> Parser<'a> {
                     self.pos += 2;
                 }
                 Some(b'#') if self.dialect == TomlDialect::V1_1 => {
-                    self.take_comment();
+                    // PR #119: remember the most recent own-line comment
+                    // so the next member adopts it as its leading note.
+                    self.pending_inline_comment = Some(self.take_comment());
                 }
                 _ => return,
             }

@@ -17,6 +17,12 @@ status: new
 
 #### 추가
 
+- **TOML 인라인 테이블 내부 주석 보전** — PR #119가 인라인 테이블 내
+  `# ...` 주석을 잡아 (멤버 위 독립 행 -> leading, 값 같은 행 후 -> trailing)
+  IR 로 전달해 워드트립이 도는 혀 주석이 손실되지 않습니다. 장식이 없는
+  인라인 테이블은 깁깐한 한 줄 형식을 유지하며, 배열 내 노안된 장식
+  테이블은 멀리 줄로 승급됩니다. 동시에 #114 재재 버그
+  (`skip_all_blank`가 standalone 주석 자신의 냄배를 단련 줄로 오인)을 수정했습니다.
 - **YAML 리시버가 standalone 주석을 `decor.leading_comment` 에
   기록** — PR #117b 로 마지막 엔진(granit-parser 리시버)이 #114 /
   #115 에서 도입한 새 슬롯으로 이전했습니다. scalar / mapping /
