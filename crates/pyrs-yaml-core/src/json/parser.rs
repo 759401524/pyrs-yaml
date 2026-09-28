@@ -41,6 +41,11 @@ pub struct JsonParseOptions {
     pub allow_trailing_commas: bool,
     pub allow_single_quoted: bool,
     pub allow_unquoted_keys: bool,
+    /// JSON5 numeric forms: hexadecimal integers (`0xDECAF`), leading `+`,
+    /// leading / trailing decimal point (`.5`, `5.`), and the bare
+    /// `Infinity` / `NaN` literals. Off for STRICT and JSONC so those
+    /// dialects keep rejecting them exactly as before; on for JSON5.
+    pub allow_json5_numbers: bool,
     pub max_depth: usize,
 }
 
@@ -51,6 +56,7 @@ impl JsonParseOptions {
         allow_trailing_commas: false,
         allow_single_quoted: false,
         allow_unquoted_keys: false,
+        allow_json5_numbers: false,
         max_depth: DEFAULT_MAX_DEPTH,
     };
     /// JSONC: allows `//` and `/* ... */` comments. Everything else strict.
@@ -59,15 +65,19 @@ impl JsonParseOptions {
         allow_trailing_commas: false,
         allow_single_quoted: false,
         allow_unquoted_keys: false,
+        allow_json5_numbers: false,
         max_depth: DEFAULT_MAX_DEPTH,
     };
-    /// JSON5: all four extensions on. Trailing commas, single-quoted
-    /// strings, unquoted identifier keys and line/block comments.
+    /// JSON5: all extensions on. Trailing commas, single-quoted
+    /// strings, unquoted identifier keys, line/block comments and the
+    /// hexadecimal / leading-sign / leading-dot / `Infinity` / `NaN`
+    /// numeric forms.
     pub const JSON5: JsonParseOptions = JsonParseOptions {
         allow_comments: true,
         allow_trailing_commas: true,
         allow_single_quoted: true,
         allow_unquoted_keys: true,
+        allow_json5_numbers: true,
         max_depth: DEFAULT_MAX_DEPTH,
     };
 }
@@ -78,7 +88,11 @@ pub fn from_json(text: &str) -> Result<CustomNode, ParseError> {
 }
 
 /// Parse one JSONC document (JSON with comments) into the shared AST.
-/// Comments are stripped, not preserved on the AST.
+///
+/// Comments are preserved on the AST (standalone notes ride the
+/// `leading_comment` slot introduced by #114, inline notes the
+/// `comment` slot) and round-trip through `to_jsonc_text` /
+/// `to_jsonc_text_pretty`. `to_json_text` still drops them.
 pub fn from_jsonc(text: &str) -> Result<CustomNode, ParseError> {
     from_json_with_options(text, JsonParseOptions::JSONC)
 }
@@ -117,6 +131,7 @@ pub fn from_json_with_options(
         allow_trailing_commas: opts.allow_trailing_commas,
         allow_single_quoted: opts.allow_single_quoted,
         allow_unquoted_keys: opts.allow_unquoted_keys,
+        allow_json5_numbers: opts.allow_json5_numbers,
         pending_comment: None,
     };
     p.ws();
@@ -138,6 +153,7 @@ struct Parser<'a> {
     allow_trailing_commas: bool,
     allow_single_quoted: bool,
     allow_unquoted_keys: bool,
+    allow_json5_numbers: bool,
     /// The most recent JSONC comment consumed by `ws()`, waiting to
     /// be attached to the next constructed node. `own_line` records
     /// whether the comment started on a line of its own (i.e. no
@@ -383,6 +399,18 @@ impl<'a> Parser<'a> {
                 self.expect("null", "expected literal `null`")?;
                 Ok(CustomNode::plain_null())
             }
+            // JSON5 numeric forms (PR #120): a leading `+` or `.` and the
+            // bare `Infinity` / `NaN` literals. Gated so STRICT / JSONC
+            // keep treating them as "expected a JSON value" errors.
+            Some(b'+') | Some(b'.') if self.allow_json5_numbers => self.number(),
+            Some(b'I') if self.allow_json5_numbers => {
+                self.expect("Infinity", "expected `Infinity`")?;
+                Ok(CustomNode::plain_scalar("Infinity"))
+            }
+            Some(b'N') if self.allow_json5_numbers => {
+                self.expect("NaN", "expected `NaN`")?;
+                Ok(CustomNode::plain_scalar("NaN"))
+            }
             Some(b'-') | Some(b'0'..=b'9') => self.number(),
             _ => Err(self.err("expected a JSON value")),
         }
@@ -503,30 +531,87 @@ impl<'a> Parser<'a> {
     /// trip), which preserves arbitrary-precision integer and float text.
     fn number(&mut self) -> Result<CustomNode, ParseError> {
         let start = self.pos;
-        if self.peek() == Some(b'-') {
+        let json5 = self.allow_json5_numbers;
+        // Sign. STRICT / JSONC allow only `-`; JSON5 also allows `+`.
+        if self.peek() == Some(b'-') || (json5 && self.peek() == Some(b'+')) {
             self.pos += 1;
         }
-        match self.peek() {
-            Some(b'0') => {
+        // JSON5 signed `Infinity` (`-Infinity` / `+Infinity`): the token
+        // starts with a sign, so it reaches `number()` rather than the
+        // bare `Infinity` dispatch in `value_inner`. `NaN` is unsigned,
+        // so it is not handled here.
+        if json5 && self.peek() == Some(b'I') {
+            self.expect("Infinity", "expected `Infinity` after sign")?;
+            return Ok(CustomNode::plain_scalar(
+                self.text[start..self.pos].to_string(),
+            ));
+        }
+        // JSON5 hexadecimal integer: `0x` / `0X` followed by one or more
+        // hex digits. The raw slice is preserved verbatim so #121's
+        // writer can emit it unchanged (same source-spelling strategy as
+        // TOML #108).
+        if json5
+            && self.peek() == Some(b'0')
+            && matches!(self.s.get(self.pos + 1).copied(), Some(b'x' | b'X'))
+        {
+            self.pos += 2;
+            let ds = self.pos;
+            while matches!(self.peek(), Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F')) {
                 self.pos += 1;
-                if matches!(self.peek(), Some(b'0'..=b'9')) {
-                    return Err(self.err("leading zero in number"));
-                }
             }
-            Some(b'1'..=b'9') => {
+            if self.pos == ds {
+                return Err(self.err("expected hexadecimal digits in number"));
+            }
+            return Ok(CustomNode::plain_scalar(
+                self.text[start..self.pos].to_string(),
+            ));
+        }
+        // JSON5 leading-dot form: `.5` (no integer part). Under STRICT the
+        // `.` branch below requires a preceding integer, so handle it here.
+        let mut saw_int = false;
+        if json5 && self.peek() == Some(b'.') {
+            self.pos += 1;
+            let ds = self.pos;
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.pos += 1;
+            }
+            if self.pos == ds {
+                return Err(self.err("expected digits after `.` in number"));
+            }
+            saw_int = true; // fractional part already consumed
+        }
+        if !saw_int {
+            match self.peek() {
+                Some(b'0') => {
+                    self.pos += 1;
+                    if json5 {
+                        // JSON5 tolerates a leading zero (`07` parses as
+                        // decimal 7); keep consuming the digit run.
+                        while matches!(self.peek(), Some(b'0'..=b'9')) {
+                            self.pos += 1;
+                        }
+                    } else if matches!(self.peek(), Some(b'0'..=b'9')) {
+                        return Err(self.err("leading zero in number"));
+                    }
+                }
+                Some(b'1'..=b'9') => {
+                    while matches!(self.peek(), Some(b'0'..=b'9')) {
+                        self.pos += 1;
+                    }
+                }
+                _ => return Err(self.err("expected integer digits in number")),
+            }
+        }
+        // Fractional part. JSON5 allows a trailing `.` with no following
+        // digits (`5.`); STRICT requires at least one digit after the dot.
+        if self.peek() == Some(b'.') && !saw_int {
+            self.pos += 1;
+            if matches!(self.peek(), Some(b'0'..=b'9')) {
                 while matches!(self.peek(), Some(b'0'..=b'9')) {
                     self.pos += 1;
                 }
-            }
-            _ => return Err(self.err("expected integer digits in number")),
-        }
-        if self.peek() == Some(b'.') {
-            self.pos += 1;
-            if !matches!(self.peek(), Some(b'0'..=b'9')) {
+            } else if !json5 {
                 return Err(self.err("expected digits after `.` in number"));
-            }
-            while matches!(self.peek(), Some(b'0'..=b'9')) {
-                self.pos += 1;
             }
         }
         if matches!(self.peek(), Some(b'e' | b'E')) {
@@ -1002,5 +1087,75 @@ mod tests {
                 crate::parser::yaml::YamlType::Str(_)
             ));
         }
+    }
+
+    // ------ JSON5 numeric forms (PR #120) -------------------------------------
+
+    #[test]
+    fn json5_parses_hexadecimal_leading_plus_and_dots() {
+        // Each of these is invalid strict JSON but a legal JSON5 number.
+        // The parser keeps the source slice verbatim so #121's writer can
+        // reproduce the exact spelling; here we only assert acceptance and
+        // the preserved text on the plain scalar.
+        for src in ["0xDECAF", "+7", ".5", "5.", "-0x1F", "0XFF", "+.25"] {
+            let n =
+                from_json5(src).unwrap_or_else(|e| panic!("{src} should parse as JSON5: {e:?}"));
+            let CustomNode::Scalar {
+                value,
+                style: ScalarStyle::Plain,
+                ..
+            } = &n
+            else {
+                panic!("{src} should be a plain scalar: {n:?}")
+            };
+            assert_eq!(value.as_ref(), src, "{src} spelling not preserved");
+        }
+    }
+
+    #[test]
+    fn json5_parses_infinity_and_nan() {
+        for (src, want) in [
+            ("Infinity", "Infinity"),
+            ("-Infinity", "-Infinity"),
+            ("NaN", "NaN"),
+        ] {
+            let n = from_json5(src).unwrap_or_else(|e| panic!("{src}: {e:?}"));
+            let CustomNode::Scalar {
+                value,
+                style: ScalarStyle::Plain,
+                ..
+            } = &n
+            else {
+                panic!("{src} should be a plain scalar: {n:?}")
+            };
+            assert_eq!(value.as_ref(), want);
+        }
+    }
+
+    #[test]
+    fn json5_rejects_bad_hex_and_bare_dot() {
+        // `0x` with no digits, and a lone `.`, are still errors.
+        assert!(from_json5("0x").is_err());
+        assert!(from_json5(".").is_err());
+        assert!(from_json5("+.").is_err());
+    }
+
+    #[test]
+    fn strict_and_jsonc_still_reject_json5_numbers() {
+        // Dialect gate: hex / leading `+` / leading `.` / `Infinity` /
+        // `NaN` stay rejected outside JSON5 so the RFC 8259 contract is
+        // byte-for-byte unchanged.
+        for src in ["0x1F", "+7", ".5", "Infinity", "NaN"] {
+            assert!(from_json(src).is_err(), "{src} must be invalid strict JSON");
+            assert!(from_jsonc(src).is_err(), "{src} must be invalid JSONC");
+        }
+    }
+
+    #[test]
+    fn json5_leading_zero_relaxed() {
+        // JSON5 permits a leading zero (it is octal-ish legacy in JS, but
+        // the spec treats `07` as decimal 7); STRICT rejects it.
+        assert!(from_json5("07").is_ok());
+        assert!(from_json("07").is_err());
     }
 }

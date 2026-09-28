@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 numeric forms on the parser** — `from_json5` (and
+  `from_json_with_options` with the new `allow_json5_numbers` axis) now
+  accept the number spellings that are legal in JSON5 but invalid in RFC
+  8259: hexadecimal integers (`0xDECAF`, `0XFF`, `-0x1F`), a leading
+  decimal point (`.5`), a trailing decimal point (`5.`), an explicit
+  leading `+` (`+7`, `+.25`), a leading zero (`07`), and the bare
+  `Infinity` / `NaN` literals (including signed `-Infinity`). Each form
+  keeps its exact source text on the plain scalar (the same
+  source-spelling strategy as TOML #108) so a follow-up JSON5 writer can
+  reproduce it verbatim. `STRICT` and `JSONC` are gated off this axis,
+  so they reject every one of these exactly as before — the RFC 8259
+  contract is unchanged. `from_jsonc`'s stale "comments are stripped"
+  doc comment was corrected: since #112/#115 comments are preserved on
+  the AST and round-trip through `to_jsonc_text`.
 - **TOML inline-table interior comment fidelity** — PR #119 plumbs
   interior `# ...` comments through the inline-table IR so they survive
   the round trip instead of being silently dropped. A `# ...` on its

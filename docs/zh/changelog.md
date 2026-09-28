@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **JSON5 数值形式解析** — `from_json5`（新增
+  `allow_json5_numbers` 轴）现在接受十六进制（`0xDECAF`）、前/后小数点
+  （`.5`、`5.`）、前导 `+`（`+7`）、前导零（`07`）以及裸 `Infinity` /
+  `NaN` / `-Infinity`，每项都保留原文本供后续 JSON5 writer 使
+  用。STRICT / JSONC 仍默认关闭该轴，像以前一样拒绝。同时修正了
+  `from_jsonc` 陈旧的“注释被丢弃”文档（#112/#115 后注释已保真）。
 - **TOML inline table 内部注释保真** — PR #119 捕捉 inline
   table 内部的 `# ...` 注释（成员上方独立行 → leading，值同行
   后面 → trailing）并贯串 IR，使它们能往返而不丢失。无装饰
