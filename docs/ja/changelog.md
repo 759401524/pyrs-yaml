@@ -17,6 +17,15 @@ status: new
 
 #### 追加
 
+- **JSONC パース** — `pyrs_yaml_core::json::from_jsonc(text)` と
+  `from_json_with_options(text, JsonParseOptions)` は、ホワイトスペース
+  が許される任意的位置で `// 行` と `/* ブロック */` のコメントを受
+
+    け入れます（TypeScript の `tsconfig.json` や VS Code の
+    `settings.json` で使われる方言）。コメントは除去され保持されません。
+    末尾カンマや JSON5 固有の構文は引き続き拒否されるため、受理される言語
+    は RFC 8259 の厳密な上位集合のままです。`from_json` の既定動作
+    （モード）は変わりません。
 - **TOML コメント忠実性** — パーサーがペアやセクションヘッダーの上に
   独立した行で現れる `# ...` コメントと、行末コメント (`key = value # ...`
   / `[name] # ...`) の両方をキャプチャし、共有 AST の `NodeMeta::comment`

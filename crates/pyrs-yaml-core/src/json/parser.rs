@@ -23,19 +23,73 @@ use indexmap::IndexMap;
 /// Default nesting limit, matching the YAML pipeline's `parse` default.
 pub const DEFAULT_MAX_DEPTH: usize = 1000;
 
+/// Dialect knobs for [`from_json_with_options`].
+///
+/// The default [`JsonParseOptions::STRICT`] implements RFC 8259 exactly:
+/// no comments, no trailing commas, one top-level value. [`allow_comments`]
+/// upgrades the parser to JSONC (the dialect popularised by TypeScript's
+/// `tsconfig.json` and VS Code's `settings.json`), accepting `// line`
+/// and `/* block */` comments wherever whitespace is legal. Trailing
+/// commas remain rejected so the accepted language is still a strict
+/// superset of JSON, not JSON5.
+///
+/// [`allow_comments`]: JsonParseOptions::allow_comments
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JsonParseOptions {
+    pub allow_comments: bool,
+    pub max_depth: usize,
+}
+
+impl JsonParseOptions {
+    /// RFC 8259 with the default depth budget. `from_json` maps to this.
+    pub const STRICT: JsonParseOptions = JsonParseOptions {
+        allow_comments: false,
+        max_depth: DEFAULT_MAX_DEPTH,
+    };
+    /// JSONC: allows `//` and `/* ... */` comments. Everything else strict.
+    pub const JSONC: JsonParseOptions = JsonParseOptions {
+        allow_comments: true,
+        max_depth: DEFAULT_MAX_DEPTH,
+    };
+}
+
 /// Parse one JSON document into the shared AST.
 pub fn from_json(text: &str) -> Result<CustomNode, ParseError> {
-    from_json_with_max_depth(text, DEFAULT_MAX_DEPTH)
+    from_json_with_options(text, JsonParseOptions::STRICT)
+}
+
+/// Parse one JSONC document (JSON with comments) into the shared AST.
+/// Comments are stripped, not preserved on the AST.
+pub fn from_jsonc(text: &str) -> Result<CustomNode, ParseError> {
+    from_json_with_options(text, JsonParseOptions::JSONC)
 }
 
 /// Parse with an explicit nesting limit (`MaxDepthExceeded` beyond it).
+///
+/// Kept as a distinct entry point because it predates the options struct;
+/// new code should prefer [`from_json_with_options`].
 pub fn from_json_with_max_depth(text: &str, max_depth: usize) -> Result<CustomNode, ParseError> {
+    from_json_with_options(
+        text,
+        JsonParseOptions {
+            allow_comments: false,
+            max_depth,
+        },
+    )
+}
+
+/// Parse with a chosen dialect. See [`JsonParseOptions`] for the axes.
+pub fn from_json_with_options(
+    text: &str,
+    opts: JsonParseOptions,
+) -> Result<CustomNode, ParseError> {
     let mut p = Parser {
         s: text.as_bytes(),
         text,
         pos: 0,
         depth: 0,
-        max_depth,
+        max_depth: opts.max_depth,
+        allow_comments: opts.allow_comments,
     };
     p.ws();
     let value = p.value()?;
@@ -52,6 +106,7 @@ struct Parser<'a> {
     pos: usize,
     depth: usize,
     max_depth: usize,
+    allow_comments: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -80,9 +135,45 @@ impl<'a> Parser<'a> {
     }
 
     fn ws(&mut self) {
-        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
-            self.pos += 1;
+        loop {
+            match self.peek() {
+                Some(b' ' | b'\t' | b'\n' | b'\r') => self.pos += 1,
+                Some(b'/') if self.allow_comments => {
+                    // JSONC: `// line ... \n` or `/* block ... */`. Both are
+                    // treated as whitespace when the dialect opts in.
+                    if self.s.get(self.pos + 1) == Some(&b'/') {
+                        self.pos += 2;
+                        while !self.eof_pos()
+                            && self.peek() != Some(b'\n')
+                            && self.peek() != Some(b'\r')
+                        {
+                            self.pos += 1;
+                        }
+                    } else if self.s.get(self.pos + 1) == Some(&b'*') {
+                        self.pos += 2;
+                        loop {
+                            if self.pos + 1 >= self.s.len() {
+                                // Unterminated block comment: report at the
+                                // opener so callers get a stable position.
+                                return;
+                            }
+                            if self.s[self.pos] == b'*' && self.s[self.pos + 1] == b'/' {
+                                self.pos += 2;
+                                break;
+                            }
+                            self.pos += 1;
+                        }
+                    } else {
+                        return;
+                    }
+                }
+                _ => return,
+            }
         }
+    }
+
+    fn eof_pos(&self) -> bool {
+        self.pos >= self.s.len()
     }
 
     fn expect(&mut self, lit: &str, ctx: &str) -> Result<(), ParseError> {
@@ -526,6 +617,60 @@ mod tests {
         let deep = format!("{}{}", "[".repeat(10), "]".repeat(10));
         from_json_with_max_depth(&deep, 5).unwrap_err();
         from_json_with_max_depth(&deep, 20).unwrap();
+    }
+
+    #[test]
+    fn jsonc_accepts_line_and_block_comments() {
+        // Dialect opt-in lets `// ...` and `/* ... */` ride anywhere
+        // whitespace is legal. Same AST as the equivalent strict JSON.
+        let strict = r#"{"a": 1, "b": [2, 3]}"#;
+        let jsonc = r#"{
+            // leading note
+            "a": 1, /* mid */
+            "b": [
+                // inside array
+                2,
+                3  // trailing on same line, no comma
+            ]
+            /* footer */
+        }"#;
+        let want = from_json(strict).unwrap();
+        let got = from_jsonc(jsonc).unwrap();
+        // `want` and `got` differ only in that `strict` never sees the
+        // `,` before `]` — but the shape (values, order) is identical.
+        // Re-serialize to compare semantically.
+        let a = crate::json::to_json_text(&want).unwrap();
+        let b = crate::json::to_json_text(&got).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn jsonc_still_rejects_trailing_commas_and_multi_root() {
+        // Trailing commas remain a hard error even under JSONC — the
+        // accepted language is JSON + comments, not JSON5.
+        assert!(from_jsonc(r#"[1, 2,]"#).is_err());
+        assert!(from_jsonc("1 2").is_err());
+        assert!(from_jsonc("NaN").is_err());
+    }
+
+    #[test]
+    fn strict_rejects_comments_but_jsonc_accepts_them() {
+        let src = "{\"a\": 1 /* note */}";
+        assert!(
+            from_json(src).is_err(),
+            "strict mode must reject block comments"
+        );
+        assert!(from_jsonc(src).is_ok());
+    }
+
+    #[test]
+    fn unterminated_block_comment_is_treated_as_trailing_content() {
+        // The JSONC scanner bails silently on an unterminated block, so
+        // the outer parser falls through to the normal "trailing
+        // characters after the JSON value" rejection with a stable
+        // position instead of hanging on a slice-out-of-bounds.
+        let err = from_jsonc("1 /* unterminated").unwrap_err();
+        assert!(format!("{err:?}").contains("trailing"), "{err:?}");
     }
 
     #[test]

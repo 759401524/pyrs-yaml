@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSONC parsing** — `pyrs_yaml_core::json::from_jsonc(text)` and
+  `from_json_with_options(text, JsonParseOptions)` accept `// line` and
+  `/* block */` comments at any whitespace position (the dialect used by
+  TypeScript's `tsconfig.json` and VS Code's `settings.json`). Comments
+  are stripped, not preserved. Trailing commas and other JSON5-only
+  forms remain rejected so the accepted language stays a strict superset
+  of RFC 8259. `from_json` is unchanged (strict mode by default).
 - **TOML comment fidelity** — the parser now captures both standalone
   (`# ...` on its own line above a pair or section header) and inline
   (`key = value # ...` / `[name] # ...`) comments and attaches them onto

@@ -10,9 +10,19 @@
 //! let node = from_json(r#"{"a": [1, 2.5, true]}"#).unwrap();
 //! assert_eq!(to_json_text(&node).unwrap(), r#"{"a":[1,2.5,true]}"#);
 //! ```
+//!
+//! The default [`from_json`] is strict RFC 8259. Pass a
+//! [`JsonParseOptions`] (or call [`from_jsonc`]) to accept JSONC-style
+//! `//` and `/* ... */` comments — handy for parsing TypeScript
+//! `tsconfig.json`, VS Code `settings.json`, and similar dialects.
+//! Comments are stripped on read; they are not currently re-emitted on
+//! write.
 
 mod parser;
 mod writer;
 
-pub use parser::{DEFAULT_MAX_DEPTH, from_json, from_json_with_max_depth};
+pub use parser::{
+    DEFAULT_MAX_DEPTH, JsonParseOptions, from_json, from_json_with_max_depth,
+    from_json_with_options, from_jsonc,
+};
 pub use writer::{key_text, to_json_text, to_json_text_pretty};

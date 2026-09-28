@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **JSONC 解析** — `pyrs_yaml_core::json::from_jsonc(text)` 与
+  `from_json_with_options(text, JsonParseOptions)` 接受任意空白位置的
+  `// 行` 与 `/* 块 */` 注释（即 TypeScript `tsconfig.json` 与 VS Code
+  `settings.json` 使用的方言）。注释仅剥离，不保留。尾逗号及其他 JSON5
+  独有形式仍拒绝，接受语言保持为 RFC 8259 的严格超集。`from_json` 默认
+  行为不变（仍为严格模式）。
 - **TOML 注释保真** — 解析器现在会采集独立注释（`# ...` 单独一行，
   位于键值对或 section 头部之上）与行尾注释（`key = value # ...` /
   `[name] # ...`），并通过 `NodeMeta::comment` 挂载到共享 AST（独立部
