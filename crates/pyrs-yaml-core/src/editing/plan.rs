@@ -767,6 +767,36 @@ pub fn set_comment_path(
     })
 }
 
+/// Set the leading (standalone) comment on the node at `segments`.
+///
+/// PR #117 exposes the `decor.leading_comment` slot to the Python
+/// layer. The write is atomic: `set_leading_comment` clears the legacy
+/// `comment(standalone = true)` slot the YAML receiver still uses, so
+/// the two conventions never conflict.
+pub fn set_leading_comment_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    comment: crate::ast::Comment,
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.set_leading_comment(comment.clone());
+    })
+}
+
+/// Remove the leading (standalone) comment on the node at `segments`.
+pub fn remove_leading_comment_path(
+    node: &mut CustomNode,
+    segments: &[Segment<'_>],
+    source: &str,
+    line_offsets: Option<&[usize]>,
+) -> Result<DirtyUnit, String> {
+    apply_metadata_path(node, segments, source, line_offsets, |n| {
+        n.remove_leading_comment();
+    })
+}
+
 /// Remove the comment on the node at `segments`.
 pub fn remove_comment_path(
     node: &mut CustomNode,

@@ -17,6 +17,15 @@ status: new
 
 #### 추가
 
+- **슬롯 간 standalone 주석 규정화 + Python
+  `Node.leading_comment`** — `NodeMeta::eq` / `Hash`가 standalone 주석을 새로운
+  `leading_comment` 슬롯(TOML / JSON 엔진)이나 오랜
+  `comment(standalone = true)` 슬롯(YAML 리시버 + 수곤픽스테 기본)에
+  있는지 여부와 관련하지 않고 동일 개념으로 처리합니다. setter / remover는
+  두 슬롯에 원자적으로 작용하며 YAML 서리라이저는 규정화된 뷰를 읽어
+  `to_yaml(toml_ast)`의 leading note가 사라지지 않습니다. Python의
+  `Node.leading_comment` getter / setter / remover가 `Node.comment`를 미러링하며
+  TOML / JSONC 소스의 standalone 주석을 처음으로 Python 호출자에게 노출합니다.
 - **TOML 1.1.0 문법** — `from_toml`이 TOML v1.1.0（2025-12-18 공개）에 맞춰
   파싱합니다. 다음 두 가지 추가: **(A1)** 인라인 테이블의 줄바꾸기 및 후행 슜표
   허용, **(A2)** 기본 문자열에서 `\xHH` 바이트 특별문자（0x00..=0xFF）, **(A3)** `\e` =

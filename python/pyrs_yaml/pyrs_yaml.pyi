@@ -300,12 +300,12 @@ def detect_language() -> "str":
     Detect the system default language.
     """
 
-def dump_file(data: "Any", path: "str") -> "None":
+def dump_file(data: "Any", path: "str", sort_keys: "bool" = False) -> "None":
     """
     Serialize a Python object to YAML and write to a file.
     """
 
-def from_dict(data: "dict[str, Any] | list[Any]") -> "str":
+def from_dict(data: "dict[str, Any] | list[Any]", sort_keys: "bool" = False) -> "str":
     """
     Convert a Python dict/list to a YAML string (auto-selects block/flow style).
     """
@@ -313,20 +313,6 @@ def from_dict(data: "dict[str, Any] | list[Any]") -> "str":
 def from_json(json_str: "str") -> "str":
     """
     Convert a JSON string to a YAML string.
-    """
-
-def from_jsonc(json_str: "str") -> "str":
-    """
-    Convert a JSONC string (JSON with `//` and `/* ... */` comments) to
-    a YAML string. Comments are stripped; everything else matches
-    `from_json` semantics exactly.
-    """
-
-def from_toml(toml_str: "str") -> "str":
-    """
-    Convert a TOML string to a YAML string (hub-and-spoke exchange).
-    TOML strings keep quoting so values never re-resolve; datetimes gain
-    the `!timestamp` tag consumed by the built-in plugin.
     """
 
 def get_language() -> "str":
@@ -362,13 +348,6 @@ def list_schemas() -> "list[str]":
     plus any schemas registered via `register_schema()` / `load_schema()`.
     """
 
-def load_jsonc(json_str: "str") -> "dict[str, Any] | list[Any]":
-    """
-    Parse a JSONC document directly into Python values (dict / list /
-    scalar). Handy for TypeScript `tsconfig.json`, VS Code
-    `settings.json`, and similar dialects without a pre-processing step.
-    """
-
 def load_schema(name: "str", path: "str") -> "None":
     """
     Register a YAML Schema Language schema from a file.
@@ -376,12 +355,6 @@ def load_schema(name: "str", path: "str") -> "None":
     Reads the schema definition from `path` (a YAML file with `name`/`extends`/`rules`
     structure) and registers it under `name`. Equivalent to calling
     `register_schema(name, open(path).read())` but handles file I/O in Rust.
-    """
-
-def load_toml(toml_str: "str") -> "dict[str, Any]":
-    """
-    Parse TOML directly into a Python dict (values, not a document).
-    Anchors cannot occur in TOML, so no alias resolution pass is needed.
     """
 
 def negotiate_language(user_locales: "list[str]", default: "str" = "en") -> "str":
@@ -454,7 +427,7 @@ def remove_type(name: "str") -> None:
     Remove a specific custom type handler.
     """
 
-def safe_dump(data: "dict[str, Any] | list[Any]") -> "str":
+def safe_dump(data: "dict[str, Any] | list[Any]", sort_keys: "bool" = False) -> "str":
     """
     Serialize a Python dict/list to a YAML string.
     """
@@ -474,11 +447,14 @@ def set_language(lang: "str") -> "None":
     Set the error message language.
     """
 
-def to_toml(yaml: "str", schema: "str" = "core") -> "str":
+def tag_registry_get_handler_info(name: "str") -> list[tuple[int, Any]] |None:
     """
-    Render a YAML document as TOML text. Rejects shapes TOML cannot hold
-    (non-table root, null values, aliases, non-scalar keys) with stable
-    `toml-serialize-error` messages.
+    Get all handlers for a tag as a list of (priority, handler) tuples.
+    """
+
+def tag_registry_list_tags() -> list[str]:
+    """
+    List all registered tag handler tags.
     """
 
 def validate_against_registered_schema(data: "str", name: "str") -> "None":

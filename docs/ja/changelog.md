@@ -17,6 +17,17 @@ status: new
 
 #### 追加
 
+- **スロット横断の standalone 正規化 + Python
+  `Node.leading_comment`** — `NodeMeta::eq` / `Hash` は
+  standalone コメントを新しい `leading_comment` スロット（TOML /
+  JSON エンジンが使用）と古い `comment(standalone = true)`
+  スロット（YAML レシーバーと hand-built fixture が現在も使用中）
+  のどちらにあっても同一概念として扱います。setter / remover は
+  両スロットにアトミックに作用し、YAML シリアライザは正規化され
+  たビューを読むので `to_yaml(toml_ast)` の leading note が失われ
+  ません。Python の `Node.leading_comment` getter / setter /
+  remover は `Node.comment` をミラーし、TOML / JSONC ソースの
+  standalone note を初めて Python 側に露出します。
 - **TOML 1.1.0 文法** — `from_toml` が TOML v1.1.0（2025-12-18
   公開）を解析します。四つの追加：**(A1)** インラインテーブルの
   改行と後尾カンマ許容、**(A2)** 基本文字列 `\xHH` バイトエスケープ

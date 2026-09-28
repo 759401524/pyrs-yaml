@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **Cross-slot standalone normalisation + Python
+  `Node.leading_comment`** — `NodeMeta::eq` / `Hash` treat the
+  standalone note as one concept across the newer `leading_comment`
+  slot (TOML / JSON) and the older `comment(standalone = true)` slot
+  (YAML receiver + hand-built fixtures). Setters / removers act
+  atomically on both, and the YAML serializer reads the normalised
+  view so `to_yaml(toml_ast)` keeps its leading notes. Python
+  `Node.leading_comment` getter / setter / remover mirror
+  `Node.comment` and now surface TOML / JSONC standalone notes.
 - **TOML 1.1.0 grammar** — `from_toml` parses to the v1.1.0 spec
   (2025-12-18). Four additions: **(A1)** multi-line inline tables +
   trailing commas; **(A2)** `\xHH` basic-string byte escape;

@@ -571,6 +571,38 @@ impl YamlDocument {
         })
     }
 
+    /// Set the leading (standalone) comment on the node at
+    /// `segments`. See [`pyrs_yaml_core::editing::set_leading_comment_path`].
+    #[pyo3(signature = (segments: "list", text: "str") -> "None")]
+    fn _set_leading_comment_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+        text: &str,
+    ) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        let comment = pyrs_yaml_core::ast::Comment {
+            text: text.into(),
+            standalone: true,
+        };
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::set_leading_comment_path(ast, &segs, comment.clone(), src, offs)
+        })
+    }
+
+    /// Remove the leading (standalone) comment on the node at `segments`.
+    #[pyo3(signature = (segments: "list") -> "None")]
+    fn _remove_leading_comment_path(
+        &mut self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+    ) -> PyResult<()> {
+        let segs = parse_segments(py, &segments)?;
+        self.apply_metadata_edit(py, move |ast, src, offs| {
+            editing::remove_leading_comment_path(ast, &segs, src, offs)
+        })
+    }
+
     /// Remove the comment on the node at `segments` (internal).
     #[pyo3(signature = (segments: "list") -> "None")]
     fn _remove_comment_path(&mut self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<()> {
@@ -678,6 +710,22 @@ impl YamlDocument {
         let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
             .map_err(|e| YamlEditError::new_err(e.to_string()))?;
         Ok(node.comment().map(|c| c.text.as_ref().to_string()))
+    }
+
+    /// Get the leading (standalone) comment text on the node at
+    /// `segments`. PR #117 exposes the AST slot introduced by #114 and
+    /// normalised to fall back to a `standalone = true` note still
+    /// living in the older `comment` field.
+    #[pyo3(signature = (segments: "list") -> "str | None")]
+    fn _get_leading_comment(
+        &self,
+        py: Python,
+        segments: Vec<Py<PyAny>>,
+    ) -> PyResult<Option<String>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node.leading_comment().map(|c| c.text.as_ref().to_string()))
     }
 
     /// Get the anchor name on the node at `segments` (internal).
