@@ -385,7 +385,16 @@ impl<'a> Parser<'a> {
             }
             Some(b'\'') if self.allow_single_quoted => {
                 let s = self.single_quoted_string()?;
-                Ok(quoted_or_plain(s))
+                // PR #121: keep the single-quote style on the AST (JSON5-
+                // only path, so STRICT / JSONC never produce this) so
+                // `to_json5_text` can reproduce `'…'` rather than forcing
+                // every string double-quoted.
+                Ok(CustomNode::Scalar {
+                    value: s.into(),
+                    style: crate::ast::ScalarStyle::SingleQuoted,
+                    chomping: crate::ast::Chomping::Clip,
+                    meta: crate::ast::NodeMeta::default(),
+                })
             }
             Some(b't') => {
                 self.expect("true", "expected literal `true`")?;

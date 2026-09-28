@@ -17,6 +17,12 @@ status: new
 
 #### 追加
 
+- **JSON5 ライター（`to_json5_text` / `to_json5_text_pretty`）** —
+  契約 B ステップ 2。AST を JSON5 に再帰列化し、パーサーが
+  保持する一重引用符文字列と `0x…`/`.5`/`+7`/`Infinity`/`NaN`
+  の数値形式、および `//` コメントを復元。キーは常に引用符付き
+  （損失なし）。内部では `Mode`（Json/Jsonc/Json5）を共用、厳密 /
+  JSONC 出力は不変。
 - **パーサーに JSON5 数値形式を追加** — `from_json5`（新規
   `allow_json5_numbers`）が十六進（`0xDECAF`）、前/後小数点（`.5`、
   `5.`）、前置 `+`（`+7`）、先頭ゼロ（`07`）、素の `Infinity` /

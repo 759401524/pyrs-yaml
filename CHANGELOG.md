@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 writer (`to_json5_text` / `to_json5_text_pretty`)** —
+  contract-B step 2, complementing #120's parse side. Serializes the
+  shared AST back to JSON5 text, restoring the JSON5-only spellings the
+  parser preserves on the AST: single-quoted strings (any scalar tagged
+  `ScalarStyle::SingleQuoted`, which only the JSON5 parser produces) and
+  the numeric forms `0x…` / `.5` / `5.` / `+7` / `Infinity` / `NaN` as
+  bare tokens. Comments (line and block, both normalized to `//`) are
+  emitted exactly as in JSONC, using the `leading_comment` / `comment`
+  slots from #114/#117. Object keys are always quoted — JSON5 permits
+  bare identifier keys but quoting is lossless and keeps one code path.
+  `to_json_text` / `to_jsonc_text` are unchanged; the writer now shares
+  a single `Mode` (Json / Jsonc / Json5) internally instead of a boolean
+  comment flag.
 - **JSON5 numeric forms on the parser** — `from_json5` (and
   `from_json_with_options` with the new `allow_json5_numbers` axis) now
   accept the number spellings that are legal in JSON5 but invalid in RFC
