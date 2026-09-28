@@ -72,10 +72,12 @@ pub(crate) enum TomlTable {
 /// Comments captured for a `key = value` pair during parsing.
 ///
 /// The pair projects onto the shared AST as follows:
-/// - `leading` becomes the key node's `NodeMeta::comment` with
+/// - `leading` becomes the key node's `NodeMeta::leading_comment` with
 ///   `standalone = true` (rendered on its own line before `key = value`).
 /// - `trailing` becomes the value node's `NodeMeta::comment` with
 ///   `standalone = false` (rendered after the value on the same line).
+/// - `blank_before` records a preceding blank line in the source so the
+///   writer can reproduce the visual grouping.
 ///
 /// Only the LAST contiguous standalone block immediately above a pair
 /// survives; earlier blocks separated by blank lines are dropped, which
@@ -84,17 +86,20 @@ pub(crate) enum TomlTable {
 pub(crate) struct KVAnnotations {
     pub(crate) leading: Option<String>,
     pub(crate) trailing: Option<String>,
+    pub(crate) blank_before: bool,
 }
 
 /// Insertion-ordered TOML key/value store used during parsing.
 ///
 /// `comment` holds the inline trailing text on the `[name] # ...` header
 /// line; `leading` holds the last standalone `# ...` block on the line
-/// immediately above the header.
+/// immediately above the header; `blank_before` records whether a blank
+/// line separated this section from the previous pair.
 pub(crate) struct CowTable {
     pub(crate) entries: indexmap::IndexMap<String, TomlTable>,
     pub(crate) comment: Option<String>,
     pub(crate) leading: Option<String>,
+    pub(crate) blank_before: bool,
 }
 
 impl CowTable {
@@ -103,6 +108,7 @@ impl CowTable {
             entries: indexmap::IndexMap::new(),
             comment: None,
             leading: None,
+            blank_before: false,
         }
     }
 }
@@ -116,29 +122,61 @@ impl Default for CowTable {
 pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
     let mut pairs = indexmap::IndexMap::new();
     for (k, v) in t.entries {
-        // Extract the leading (standalone) comment that rides on the key
-        // node and the trailing (inline) comment that rides on the value
-        // node, then attach them via the `NodeMeta::comment` slot. The
-        // sub-table branches surface their own `CowTable.leading` on the
-        // key node so `[section]` blocks stay attached to the section
-        // name rather than its first inner pair.
-        let (standalone, inline, value_node) = match v {
+        // Comments split across two `NodeMeta` slots (PR #114): the
+        // standalone block goes to `leading_comment` (its own line
+        // above), the inline trailing note stays on `comment` (same
+        // line after the value). Sub-table and AOT branches push their
+        // own leading onto the child node's `leading_comment` so both
+        // slots can coexist on one node — that is the whole reason for
+        // the AST change.
+        let (standalone, inline, blank, value_node) = match v {
             TomlTable::Value(val, anns) => {
                 let n = toml_value_to_node(val);
-                (anns.leading, anns.trailing, n)
+                (anns.leading, anns.trailing, anns.blank_before, n)
             }
             TomlTable::Implicit(ct) | TomlTable::Explicit(ct) => {
-                let standalone = ct.leading.clone();
-                let node = cow_table_to_node(ct);
-                (standalone, None, node)
+                let blank = ct.blank_before;
+                // Detach `leading` before moving `ct` into the recursive
+                // conversion, then reattach it onto the child node's own
+                // `leading_comment` slot. That is the whole point of the
+                // #114 AST change: a section header's leading note and
+                // its inline trailing note coexist on the same node,
+                // without ever displacing each other.
+                let leading_text = ct.leading.clone();
+                let mut node = cow_table_to_node(ct);
+                if let Some(text) = leading_text {
+                    node.set_leading_comment(crate::ast::Comment {
+                        text: std::sync::Arc::from(text),
+                        standalone: true,
+                    });
+                }
+                (None, None, blank, node)
             }
             TomlTable::ArrayOfTables(list) => {
+                let items: Vec<CustomNode> = list
+                    .into_iter()
+                    .map(|sub| {
+                        let blank = sub.blank_before;
+                        let leading = sub.leading.clone();
+                        let mut n = cow_table_to_node(sub);
+                        if let Some(text) = leading {
+                            n.set_leading_comment(crate::ast::Comment {
+                                text: std::sync::Arc::from(text),
+                                standalone: true,
+                            });
+                        }
+                        if blank {
+                            n.set_blank_before(true);
+                        }
+                        n
+                    })
+                    .collect();
                 let node = CustomNode::Sequence {
-                    items: list.into_iter().map(cow_table_to_node).collect(),
+                    items,
                     flow_style: false,
                     meta: NodeMeta::default(),
                 };
-                (None, None, node)
+                (None, None, false, node)
             }
         };
         let mut key = CustomNode::Scalar {
@@ -148,7 +186,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
             meta: NodeMeta::default(),
         };
         if let Some(text) = standalone {
-            key.set_comment(crate::ast::Comment {
+            key.set_leading_comment(crate::ast::Comment {
                 text: std::sync::Arc::from(text),
                 standalone: true,
             });
@@ -160,6 +198,11 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                 standalone: false,
             });
         }
+        // A blank-line hint rides on the value node so the writer sees
+        // both hints (comment + blank) coming from the same slot chain.
+        if blank {
+            val.set_blank_before(true);
+        }
         pairs.insert(key, val);
     }
     CustomNode::Mapping {
@@ -167,6 +210,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
         flow_style: false,
         meta: NodeMeta {
             comment: t.comment.map(into_comment),
+            blank_before: t.blank_before,
             ..Default::default()
         },
     }

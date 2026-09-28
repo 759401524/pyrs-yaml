@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **TOML 空行与双槽注释保真** — `NodeMeta` 新增
+  `leading_comment: Option<Comment>` 与 `blank_before: bool`（均从结构
+  化 `Hash` / `PartialEq` 中排除），让 section 头部或 AOT 元素同时携带
+  上方的独立注释与 `]` 后的行尾注释，互不隐盖。`to_toml` 现在会
+  重现源文中的空行分隔（`a = 1\n\nb = 2` 字节稳定往返）；文档开头
+  第一对KV不写前导空行。手建 / YAML 来源的节点仍通过 writer 的
+  fallback 读取保持兼容渲染。
 - **JSON5 方言** — `pyrs_yaml_core::json::from_json5(text)` 与
   `from_json_with_options(text, JsonParseOptions)` 接受 JSON5 全部四
   个轴：尾逗号、单引号字符串、无引号标识符 key 以及行/块

@@ -17,6 +17,14 @@ status: new
 
 #### 추가
 
+- **TOML 빈 행 + dual-slot 주석 보전** — `NodeMeta`에
+  `leading_comment: Option<Comment>` 와 `blank_before: bool` 이
+  추가되었습니다 (둘 다 구조적 `Hash` / `PartialEq` 에서 제외).
+  섹션 헤더나 AOT 요소가 `]` 뒤의 행미 주석과 그 위의 독립 행 주석을
+  동시에 보존할 수 있어 서로 밀어내지 않습니다. `to_toml` 은 소스의 빈
+  행 구역을 재현하며 (`a = 1\n\nb = 2` 가 바이트 안정적으로 왕복),
+  문서 첫 페어 앞에는 빈 행을 쓰지 않습니다. 수작업 빌드 및 YAML 출처
+  노드는 writer 의 fallback 읽기로 계속 동일하게 렌더링됩니다.
 - **JSON5 방언** — `pyrs_yaml_core::json::from_json5(text)`과
   `from_json_with_options(text, JsonParseOptions)`가 JSON5의 4개 축
   (후행 쉼표, 한따옴표 문자열, 따옴표 없는 식별자 키, 행/블록
