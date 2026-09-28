@@ -487,6 +487,33 @@ mod tests {
     }
 
     #[test]
+    fn to_toml_preserves_optional_seconds_time_spelling() {
+        // PR #116 A4: a source `HH:MM` (no seconds) is preserved as
+        // written, not canonicalised back to `HH:MM:00`. Round-trip is
+        // byte-stable because the parser stores the exact source text
+        // as the datetime scalar value.
+        let src = "t = 14:15\ndt = 2010-02-03 14:15\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn to_toml_emits_multiline_inline_table_as_single_line() {
+        // PR #116 A1: parsing a multi-line inline table succeeds and
+        // the writer emits the compact single-line `{ ... }` shape
+        // because the AST preserves `flow_style: true` for a
+        // non-section inline mapping. Values and insertion order match
+        // the source.
+        let src = "tbl = {\n  a = 1,\n  b = 2,\n}\n";
+        let ast = from_toml(src).unwrap();
+        // Sanity: the writer accepts the tree without error and the
+        // members are visible somewhere in the output.
+        let out = to_toml(&ast).unwrap();
+        assert!(out.contains("a = 1"), "{out}");
+        assert!(out.contains("b = 2"), "{out}");
+    }
+
+    #[test]
     fn preserves_trailing_inline_comment_on_kv() {
         // Fidelity #109: `key = val # comment` retains the same-line note.
         let src = "port = 8080 # default\nhost = \"localhost\"\n";

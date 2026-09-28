@@ -1,11 +1,29 @@
 //! TOML ⇄ `CustomNode` conversion — the hub's TOML spoke.
 //!
-//! Native TOML 1.0 grammar ([toml.io/en/v1.0.0]) implemented in the
-//! `granit-parser` house style: byte-level scanner with exact error
-//! positions, direct AST construction, no intermediate value tree. The
-//! writer renders the shared AST back to TOML text with stable rejection
-//! reasons. Round-trip EDITING (comments, styles, splices) stays YAML-only
-//! by design: TOML is an exchange format here, not an editing substrate.
+//! Native TOML **1.1** grammar ([toml.io/en/v1.1.0]) implemented in
+//! the `granit-parser` house style: byte-level scanner with exact
+//! error positions, direct AST construction, no intermediate value
+//! tree. The writer renders the shared AST back to TOML text with
+//! stable rejection reasons. Round-trip EDITING (comments, styles,
+//! splices) stays YAML-only by design: TOML is an exchange format
+//! here, not an editing substrate.
+//!
+//! PR #116 upgraded the parser from TOML 1.0 to TOML 1.1. Four
+//! additions land here:
+//!
+//! - **A1** Multi-line inline tables + trailing commas inside an
+//!   inline table. Interior comments are supported only via a
+//!   follow-up (see §Non-goals in the design doc).
+//! - **A2** `\xHH` byte escape in basic strings (codepoints ≤ 0xFF).
+//! - **A3** `\e` escape for U+001B (ESC).
+//! - **A4** Optional seconds in local-time and date-time values
+//!   (`14:15` and `2010-03-05 14:15` become valid).
+//!
+//! Strict TOML 1.0 consumers stay supported through
+//! [`from_toml_v1_0`] and the [`TomlDialect::V1_0`] option; those
+//! entry points reject every 1.1-only input with a positional parse
+//! error. `from_toml` defaults to V1_1 (a superset — every 1.0 doc
+//! parses identically).
 //!
 //! Type mapping is loss-aware, mirroring the YAML schema semantics:
 //!
@@ -21,12 +39,12 @@
 //! `to_toml` rejects the shapes TOML cannot hold: a non-table root,
 //! null values, aliases, non-scalar keys.
 //!
-//! [toml.io/en/v1.0.0]: https://toml.io/en/v1.0.0
+//! [toml.io/en/v1.1.0]: https://toml.io/en/v1.1.0
 
 pub(crate) mod parser;
 mod writer;
 
-pub use parser::from_toml;
+pub use parser::{TomlDialect, from_toml, from_toml_v1_0, from_toml_with_options};
 pub use writer::to_toml;
 
 use crate::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};

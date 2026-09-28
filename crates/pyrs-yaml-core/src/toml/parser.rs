@@ -1,18 +1,51 @@
-//! TOML 1.0 parser producing the shared `CustomNode` AST.
+//! TOML parser producing the shared `CustomNode` AST.
 //!
-//! Byte-level scanner aligned with the [TOML v1.0.0 grammar][spec]. Every
-//! rejection surfaces as `ParseError::Syntax` with a 0-indexed `line`/`col`
-//! derived from the byte offset where the failure was detected.
+//! Byte-level scanner aligned with the [TOML v1.1.0 grammar][spec].
+//! Every rejection surfaces as `ParseError::Syntax` with a 0-indexed
+//! `line`/`col` derived from the byte offset where the failure was
+//! detected. PR #116 added the 1.1 dialect axis (`TomlDialect`);
+//! `from_toml` defaults to [`TomlDialect::V1_1`] and every 1.0-only
+//! input parses identically.
 //!
-//! [spec]: https://toml.io/en/v1.0.0
+//! [spec]: https://toml.io/en/v1.1.0
 
 use crate::ast::CustomNode;
 use crate::error::ParseError;
 use crate::toml::{CowTable, KVAnnotations, TomlTable, TomlValue, cow_table_to_node};
 use indexmap::IndexMap;
 
-/// Parse a TOML document into the shared AST.
+/// TOML grammar dialect to accept at parse time.
+///
+/// PR #116 grew the engine from 1.0 to 1.1. Existing callers of
+/// [`from_toml`] get the 1.1 superset for free; strict-1.0 consumers
+/// (CI schema validators pinning cargo-style TOML semantics, for
+/// example) can call [`from_toml_v1_0`] to reject every 1.1-only
+/// input with a positional parse error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TomlDialect {
+    /// TOML 1.0.0 (2021-01-11) — inline tables stay on one line with
+    /// no trailing comma; basic strings use only the 1.0 escape set;
+    /// time / date-time values must include seconds.
+    V1_0,
+    /// TOML 1.1.0 (2025-12-18) — adds A1 multi-line inline tables +
+    /// trailing commas inside them, A2 `\xHH`, A3 `\e`, and A4
+    /// optional seconds in time-of-day.
+    #[default]
+    V1_1,
+}
+
+/// Parse a TOML document with the default V1_1 dialect.
 pub fn from_toml(src: &str) -> Result<CustomNode, ParseError> {
+    from_toml_with_options(src, TomlDialect::default())
+}
+
+/// Parse a TOML document pinned to the strict TOML 1.0.0 grammar.
+pub fn from_toml_v1_0(src: &str) -> Result<CustomNode, ParseError> {
+    from_toml_with_options(src, TomlDialect::V1_0)
+}
+
+/// Parse a TOML document selecting an explicit dialect.
+pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomNode, ParseError> {
     let mut p = Parser {
         s: src.as_bytes(),
         text: src,
@@ -22,6 +55,7 @@ pub fn from_toml(src: &str) -> Result<CustomNode, ParseError> {
         defined: Vec::new(),
         pending_leading: None,
         pending_blank: false,
+        dialect,
     };
     p.parse_document()?;
     Ok(cow_table_to_node(p.root))
@@ -46,6 +80,8 @@ struct Parser<'a> {
     /// or header as its `blank_before` hint so the writer can reproduce
     /// the visual grouping.
     pending_blank: bool,
+    /// Grammar dialect gate for A1 / A2 / A3 / A4 (PR #116).
+    dialect: TomlDialect,
 }
 
 impl<'a> Parser<'a> {
@@ -473,17 +509,23 @@ impl<'a> Parser<'a> {
     }
 
     fn looks_like_time_prefix(&self) -> bool {
-        // HH:MM:SS...
+        // HH:MM:SS... (all dialects) or HH:MM (V1_1 only, PR #116 A4).
         let p = self.pos;
-        matches!(self.byte_at(p + 2), Some(b':'))
-            && matches!(self.byte_at(p + 5), Some(b':'))
-            && (0..6).all(|i| {
-                if i == 2 || i == 5 {
-                    true
-                } else {
-                    matches!(self.byte_at(p + i), Some(b'0'..=b'9'))
-                }
-            })
+        let hh = matches!(self.byte_at(p), Some(b'0'..=b'9'))
+            && matches!(self.byte_at(p + 1), Some(b'0'..=b'9'))
+            && self.byte_at(p + 2) == Some(b':')
+            && matches!(self.byte_at(p + 3), Some(b'0'..=b'9'))
+            && matches!(self.byte_at(p + 4), Some(b'0'..=b'9'));
+        if !hh {
+            return false;
+        }
+        if self.byte_at(p + 5) == Some(b':') {
+            // HH:MM:SS form: seconds pair must be digits too.
+            return matches!(self.byte_at(p + 6), Some(b'0'..=b'9'))
+                && matches!(self.byte_at(p + 7), Some(b'0'..=b'9'));
+        }
+        // No seconds component: only valid under V1_1.
+        self.dialect == TomlDialect::V1_1
     }
 
     fn parse_decimal_numeric_body(&mut self) -> Result<TomlValue, ParseError> {
@@ -716,8 +758,25 @@ impl<'a> Parser<'a> {
             b'f' => out.push('\u{c}'),
             b'u' => self.push_unicode_escape(out, 4)?,
             b'U' => self.push_unicode_escape(out, 8)?,
+            // TOML 1.1.0 additions (PR #116 A2/A3), gated by dialect.
+            b'x' if self.dialect == TomlDialect::V1_1 => self.push_byte_escape(out)?,
+            b'e' if self.dialect == TomlDialect::V1_1 => out.push('\u{1b}'),
             _ => return Err(self.err("invalid escape in basic string")),
         }
+        Ok(())
+    }
+
+    /// `\xHH` — TOML 1.1.0 byte escape for codepoints 0x00..=0xFF.
+    fn push_byte_escape(&mut self, out: &mut String) -> Result<(), ParseError> {
+        if self.pos + 2 > self.s.len() {
+            return Err(self.err("truncated \\xHH escape"));
+        }
+        let digits = &self.text[self.pos..self.pos + 2];
+        let value =
+            u32::from_str_radix(digits, 16).map_err(|_| self.err("invalid hex in \\xHH escape"))?;
+        self.pos += 2;
+        let c = char::from_u32(value).ok_or_else(|| self.err("invalid \\xHH byte"))?;
+        out.push(c);
         Ok(())
     }
 
@@ -894,6 +953,18 @@ impl<'a> Parser<'a> {
             self.skip_inline_ws();
             if self.peek() == Some(b',') {
                 self.pos += 1;
+                // TOML 1.1.0 (PR #116 A1): allow a trailing comma before
+                // `}`. V1_0 continues into the next loop iteration which
+                // then rejects the missing key with the same
+                // "expected `=` in inline table" error users already
+                // saw before this PR landed.
+                if self.dialect == TomlDialect::V1_1 {
+                    self.skip_inline_ws();
+                    if self.peek() == Some(b'}') {
+                        self.pos += 1;
+                        return Ok(TomlValue::InlineTable(entries));
+                    }
+                }
                 continue;
             }
             if self.peek() == Some(b'}') {
@@ -905,8 +976,25 @@ impl<'a> Parser<'a> {
     }
 
     fn skip_inline_ws(&mut self) {
-        while matches!(self.peek(), Some(b' ' | b'\t')) {
-            self.pos += 1;
+        // TOML 1.0.0 confined inline tables to a single physical line so
+        // only spaces and tabs separated members. TOML 1.1.0 (PR #116
+        // A1) additionally allows newlines and comment lines between
+        // members; the dialect gate keeps V1_0 rejecting them.
+        loop {
+            match self.peek() {
+                Some(b' ' | b'\t') => self.pos += 1,
+                Some(b'\n') if self.dialect == TomlDialect::V1_1 => self.pos += 1,
+                Some(b'\r')
+                    if self.dialect == TomlDialect::V1_1
+                        && self.byte_at(self.pos + 1) == Some(b'\n') =>
+                {
+                    self.pos += 2;
+                }
+                Some(b'#') if self.dialect == TomlDialect::V1_1 => {
+                    self.take_comment();
+                }
+                _ => return,
+            }
         }
     }
 
@@ -921,9 +1009,19 @@ impl<'a> Parser<'a> {
             }
             // Optional T / t / space + time follows.
             let sep = self.peek();
+            // Space-separated date-time: the character at `pos + 3`
+            // (relative to the space) is the `:` in `HH:MM`. A
+            // pre-#116 off-by-one used `pos + 4` here, which meant
+            // space-separated date-times silently fell through the
+            // `has_time` check and were rejected later. The new A4
+            // optional-seconds test exercises the path and caught
+            // the bug.
             let space_time_sep = sep == Some(b' ')
                 && matches!(self.byte_at(self.pos + 1), Some(b'0'..=b'9'))
-                && matches!(self.byte_at(self.pos + 4), Some(b':'));
+                && matches!(self.byte_at(self.pos + 2), Some(b'0'..=b'9'))
+                && self.byte_at(self.pos + 3) == Some(b':')
+                && matches!(self.byte_at(self.pos + 4), Some(b'0'..=b'9'))
+                && matches!(self.byte_at(self.pos + 5), Some(b'0'..=b'9'));
             let has_time = matches!(sep, Some(b'T') | Some(b't')) || space_time_sep;
             if has_time {
                 self.pos += 1;
@@ -968,28 +1066,39 @@ impl<'a> Parser<'a> {
 
     fn scan_time_body(&mut self) -> Result<(), ParseError> {
         let start = self.pos;
-        // HH:MM:SS(.frac)?
+        // HH:MM is required in every dialect. TOML 1.1.0 (PR #116 A4)
+        // additionally allows HH:MM without seconds; V1_0 continues to
+        // require the full HH:MM:SS triple.
         if !(matches!(self.peek(), Some(b'0'..=b'9'))
             && matches!(self.byte_at(self.pos + 1), Some(b'0'..=b'9'))
             && self.byte_at(self.pos + 2) == Some(b':')
             && matches!(self.byte_at(self.pos + 3), Some(b'0'..=b'9'))
-            && matches!(self.byte_at(self.pos + 4), Some(b'0'..=b'9'))
-            && self.byte_at(self.pos + 5) == Some(b':')
-            && matches!(self.byte_at(self.pos + 6), Some(b'0'..=b'9'))
-            && matches!(self.byte_at(self.pos + 7), Some(b'0'..=b'9')))
+            && matches!(self.byte_at(self.pos + 4), Some(b'0'..=b'9')))
         {
             return Err(self.err_at("invalid time-of-day", start));
         }
-        self.pos += 8;
-        if self.peek() == Some(b'.') {
+        self.pos += 5;
+        // Optional `:SS(.frac)?`. Under V1_0 its absence is an error.
+        if self.peek() == Some(b':') {
             self.pos += 1;
-            let fs = self.pos;
-            while matches!(self.peek(), Some(b'0'..=b'9')) {
+            if !(matches!(self.peek(), Some(b'0'..=b'9'))
+                && matches!(self.byte_at(self.pos + 1), Some(b'0'..=b'9')))
+            {
+                return Err(self.err_at("invalid seconds in time-of-day", start));
+            }
+            self.pos += 2;
+            if self.peek() == Some(b'.') {
                 self.pos += 1;
+                let fs = self.pos;
+                while matches!(self.peek(), Some(b'0'..=b'9')) {
+                    self.pos += 1;
+                }
+                if self.pos == fs {
+                    return Err(self.err_at("empty fractional seconds", start));
+                }
             }
-            if self.pos == fs {
-                return Err(self.err_at("empty fractional seconds", start));
-            }
+        } else if self.dialect == TomlDialect::V1_0 {
+            return Err(self.err_at("invalid time-of-day", start));
         }
         Ok(())
     }
@@ -1263,35 +1372,49 @@ impl DateTimeProbe {
 
     fn check_time_and_offset(s: &str) -> bool {
         let b = s.as_bytes();
-        if b.len() < 8
+        // HH:MM is required in every dialect (TOML 1.0 and 1.1).
+        if b.len() < 5
             || b[2] != b':'
-            || b[5] != b':'
-            || !(0..8).all(|i| {
-                if i == 2 || i == 5 {
-                    true
-                } else {
-                    b[i].is_ascii_digit()
-                }
-            })
+            || !(0..5).all(|i| if i == 2 { true } else { b[i].is_ascii_digit() })
         {
             return false;
         }
         let h: u32 = s[0..2].parse().unwrap_or(99);
         let m: u32 = s[3..5].parse().unwrap_or(99);
-        let sec: u32 = s[6..8].parse().unwrap_or(99);
-        if h > 23 || m > 59 || sec > 62 {
+        if h > 23 || m > 59 {
             return false;
         }
-        let mut idx = 8;
-        if b.get(idx) == Some(&b'.') {
+        // Seconds are optional under TOML 1.1 (PR #116 A4). If a `:`
+        // follows the minute, we require the two-digit seconds pair.
+        let mut idx = 5;
+        if b.get(idx) == Some(&b':') {
             idx += 1;
-            let fs = idx;
-            while b.get(idx).is_some_and(|c| c.is_ascii_digit()) {
-                idx += 1;
-            }
-            if idx == fs {
+            if !(b.len() > idx
+                && b[idx].is_ascii_digit()
+                && b.get(idx + 1).is_some_and(|c| c.is_ascii_digit()))
+            {
                 return false;
             }
+            let sec: u32 = s[idx..idx + 2].parse().unwrap_or(99);
+            if sec > 62 {
+                return false;
+            }
+            idx += 2;
+            if b.get(idx) == Some(&b'.') {
+                idx += 1;
+                let fs = idx;
+                while b.get(idx).is_some_and(|c| c.is_ascii_digit()) {
+                    idx += 1;
+                }
+                if idx == fs {
+                    return false;
+                }
+            }
+        } else if b.len() > idx {
+            // No seconds component but extra trailing content (e.g.
+            // `14:15:00` with an offset suffix but no seconds would
+            // never be legal anyway).
+            return false;
         }
         match b.get(idx) {
             None => true,
@@ -1522,5 +1645,136 @@ mod tests {
     #[test]
     fn floats_special_forms() {
         let _ast = from_toml("a = inf\nb = -inf\nc = nan\nd = 1e10\ne = -3.14e-2\n").unwrap();
+    }
+
+    // ------ TOML 1.1.0 (PR #116) ----------------------------------------------
+
+    #[test]
+    fn v1_1_accepts_multiline_inline_table() {
+        // A1: inline tables may span lines when the parser runs under
+        // V1_1. Members remain in insertion order and surface as a
+        // nested Mapping just like their single-line siblings.
+        let src = "tbl = {\n  a = 1,\n  b = 2,\n}\n";
+        let ast = from_toml(src).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            unreachable!()
+        };
+        let (_, val) = pairs.iter().next().unwrap();
+        let CustomNode::Mapping { pairs: inner, .. } = val else {
+            panic!("expected inline mapping, got {val:?}")
+        };
+        assert_eq!(inner.len(), 2);
+    }
+
+    #[test]
+    fn v1_1_accepts_trailing_comma_in_inline_table() {
+        // A1: the trailing `,` before `}` is valid TOML 1.1.
+        let src = "p = { x = 1, y = 2, }\n";
+        let ast = from_toml(src).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            unreachable!()
+        };
+        assert_eq!(pairs.len(), 1);
+    }
+
+    #[test]
+    fn v1_0_rejects_trailing_comma_in_inline_table() {
+        // Dialect gate: the same source is a syntax error under V1_0.
+        let src = "p = { x = 1, y = 2, }\n";
+        let err = from_toml_v1_0(src).unwrap_err();
+        assert!(
+            matches!(&err, ParseError::Syntax { message, .. } if message.contains("TOML parse error")),
+            "expected Syntax, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn v1_1_accepts_byte_escape_x_hh() {
+        // A2: `\xHH` covers codepoints 0x00..=0xFF. Two hex digits,
+        // exactly one byte appended.
+        let src = "null = \"nul:\\x00\"\nletter_a = \"a:\\x61\"\n";
+        let ast = from_toml(src).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            unreachable!()
+        };
+        let mut seen_a = false;
+        for (k, v) in pairs {
+            if let CustomNode::Scalar { value, .. } = k
+                && &**value == "letter_a"
+            {
+                let CustomNode::Scalar { value, .. } = v else {
+                    unreachable!()
+                };
+                assert_eq!(&**value, "a:a");
+                seen_a = true;
+            }
+        }
+        assert!(seen_a, "letter_a pair not found");
+    }
+
+    #[test]
+    fn v1_1_accepts_escape_e() {
+        // A3: `\e` is U+001B (ESC). Commonly used with ANSI CSI
+        // sequences (`"\e["`).
+        let src = "csi = \"\\e[\"\n";
+        let ast = from_toml(src).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            unreachable!()
+        };
+        let (_, v) = pairs.iter().next().unwrap();
+        let CustomNode::Scalar { value, .. } = v else {
+            unreachable!()
+        };
+        assert_eq!(&**value, "\u{1b}[");
+    }
+
+    #[test]
+    fn v1_0_rejects_escape_x_and_e() {
+        // Dialect gate: `\x41` and `\e` are unknown escapes in TOML
+        // 1.0 and must fall through to the standard error path.
+        for src in ["a = \"\\x41\"\n", "a = \"\\e\"\n"] {
+            let err = from_toml_v1_0(src).unwrap_err();
+            assert!(
+                matches!(&err, ParseError::Syntax { message, .. } if message.contains("invalid escape")),
+                "expected invalid-escape Syntax, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn v1_1_accepts_optional_seconds_in_time_and_datetime() {
+        // A4: `HH:MM` is valid time / date-time under TOML 1.1.
+        let src = "t = 14:15\ndt = 2010-02-03 14:15\n";
+        let ast = from_toml(src).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            unreachable!()
+        };
+        assert_eq!(pairs.len(), 2);
+        // Exact spellings ride through unchanged in the scalar text.
+        let texts: Vec<String> = pairs
+            .iter()
+            .filter_map(|(_, v)| {
+                if let CustomNode::Scalar { value, .. } = v {
+                    Some(value.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(texts.contains(&"14:15".to_string()), "{texts:?}");
+        assert!(texts.contains(&"2010-02-03 14:15".to_string()), "{texts:?}");
+    }
+
+    #[test]
+    fn v1_0_rejects_missing_seconds() {
+        // Dialect gate: the same source without seconds is a syntax
+        // error under V1_0.
+        for src in ["t = 14:15\n", "dt = 2010-02-03 14:15\n"] {
+            let err = from_toml_v1_0(src).unwrap_err();
+            assert!(
+                matches!(&err, ParseError::Syntax { .. }),
+                "expected Syntax, got {err:?}"
+            );
+        }
     }
 }
