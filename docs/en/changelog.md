@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON dual-slot comment fidelity** — the JSONC parser writes
+  standalone (`// ...` on its own line) notes onto the new
+  `leading_comment` slot from #114, while inline (`// trailing`) stays
+  on `comment`. Object members and array elements can now carry both
+  notes on the same node — impossible under #112's single-slot model.
+  The writer prefers `leading_comment` and falls back to `comment`
+  with `standalone = true` for hand-built fixtures.
 - **TOML blank-line + dual-slot comment fidelity** — `NodeMeta` grows
   `leading_comment: Option<Comment>` and `blank_before: bool` (both
   excluded from structural `Hash` / `PartialEq`), letting a section

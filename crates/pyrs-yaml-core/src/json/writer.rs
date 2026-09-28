@@ -103,10 +103,16 @@ fn emit_inline_comment(node: &CustomNode, out: &mut String) {
 
 /// Emit a standalone comment block on its own line, already indented to
 /// `step * level`.
+///
+/// PR #115 puts standalone notes onto the dedicated `leading_comment`
+/// slot on the parser side; hand-built fixtures and pre-#115 shapes
+/// that still write into `comment` (with `standalone = true`) keep
+/// rendering thanks to the fallback read here.
 fn emit_standalone_comment(node: &CustomNode, step: usize, level: usize, out: &mut String) {
-    if let Some(c) = node.comment()
-        && c.standalone
-    {
+    let c = node
+        .leading_comment()
+        .or_else(|| node.comment().filter(|c| c.standalone));
+    if let Some(c) = c {
         indent(out, step, level);
         let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " "));
     }
@@ -436,6 +442,36 @@ mod tests {
         let n = crate::json::from_jsonc(src).unwrap();
         let out = to_jsonc_text_pretty(&n, 2).unwrap();
         assert!(out.contains("// section header\n  \"k\": 1"), "{out}");
+    }
+
+    #[test]
+    fn jsonc_member_carries_both_leading_and_trailing_comments() {
+        // PR #115: a member with a standalone comment on the line above
+        // AND an inline note after its value keeps BOTH slots. The
+        // leading note rides onto `NodeMeta::leading_comment`, the
+        // trailing on `NodeMeta::comment` — impossible under the
+        // single-slot model #112 shipped.
+        let src = "{\n  // above\n  \"k\": 1 // after\n}";
+        let n = crate::json::from_jsonc(src).unwrap();
+        let out = to_jsonc_text_pretty(&n, 2).unwrap();
+        assert!(out.contains("// above"), "missing leading: {out}");
+        assert!(out.contains("// after"), "missing trailing: {out}");
+        assert!(
+            out.contains("// above\n  \"k\": 1 // after"),
+            "wrong order: {out}"
+        );
+    }
+
+    #[test]
+    fn jsonc_array_element_carries_both_slots() {
+        // Array items get the same treatment as object members: a
+        // standalone note on its own line plus a trailing note after
+        // the value both survive the round trip.
+        let src = "[\n  // lead\n  1 // trail\n]";
+        let n = crate::json::from_jsonc(src).unwrap();
+        let out = to_jsonc_text_pretty(&n, 2).unwrap();
+        assert!(out.contains("// lead"), "missing leading: {out}");
+        assert!(out.contains("// trail"), "missing trailing: {out}");
     }
 
     #[test]
