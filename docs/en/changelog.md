@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **TOML blank-line + dual-slot comment fidelity** — `NodeMeta` grows
+  `leading_comment: Option<Comment>` and `blank_before: bool` (both
+  excluded from structural `Hash` / `PartialEq`), letting a section
+  header or AOT element carry both the standalone note above and the
+  inline trailing note after `]` without either displacing the other.
+  `to_toml` reproduces blank-line groupings; the very first pair never
+  emits a leading blank line. Hand-built / YAML-origin nodes still
+  rendering via the writer's fallback read.
 - **JSON5 dialect** — `pyrs_yaml_core::json::from_json5(text)` and
   `from_json_with_options(text, JsonParseOptions)` accept the full
   JSON5 axis set: trailing commas, single-quoted strings, unquoted

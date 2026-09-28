@@ -17,6 +17,14 @@ status: new
 
 #### 追加
 
+- **TOML 空行と dual-slot コメント保真** — `NodeMeta` に
+  `leading_comment: Option<Comment>` と `blank_before: bool` を追加
+  （どちらも構造的な `Hash` / `PartialEq` から除外）。section ヘッダー
+  や AOT 要素が `]` の後ろにある行末コメントと、その上にある独立行
+  の先頭コメントを同時保持できるようになりました。`to_toml` は元の
+  空行区切りを再現します（`a = 1\n\nb = 2` は byte-stable に往復）。
+  手構築ノードと YAML 由来ノードは writer の fallback 読み取りで
+  そのままレンダリングできます。
 - **JSON5 方言** — `pyrs_yaml_core::json::from_json5(text)` と
   `from_json_with_options(text, JsonParseOptions)` は JSON5 の全 4
   軸（後尾カンマ、一重引用符文字列、引用符なし識別子キー、

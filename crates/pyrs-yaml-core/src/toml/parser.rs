@@ -21,6 +21,7 @@ pub fn from_toml(src: &str) -> Result<CustomNode, ParseError> {
         current: Vec::new(),
         defined: Vec::new(),
         pending_leading: None,
+        pending_blank: false,
     };
     p.parse_document()?;
     Ok(cow_table_to_node(p.root))
@@ -40,6 +41,11 @@ struct Parser<'a> {
     /// earlier blocks separated by blank lines are dropped so only the
     /// last block survives (matches the YAML receiver's model).
     pending_leading: Option<String>,
+    /// True once `skip_all_blank` has crossed at least one blank line
+    /// since the last real pair / header / EOF. Claimed by the next pair
+    /// or header as its `blank_before` hint so the writer can reproduce
+    /// the visual grouping.
+    pending_blank: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -99,6 +105,14 @@ impl<'a> Parser<'a> {
     }
 
     fn skip_all_blank(&mut self) {
+        // A single `\n` here counts as a blank line: `finish_line` already
+        // consumed the terminating newline of the previous content line,
+        // so any additional newline seen during `skip_all_blank` came
+        // from an empty line between the previous and next pair. Two or
+        // more such newlines set the flag once; a comment line resets the
+        // tally so a `# note\nkey = 1` sequence does NOT imply a blank
+        // between them.
+        let mut newlines_here = 0usize;
         loop {
             match self.peek() {
                 Some(b' ') | Some(b'\t') => self.pos += 1,
@@ -106,10 +120,23 @@ impl<'a> Parser<'a> {
                     // Standalone comment line: remember the most recent
                     // one so the next pair or header adopts it as its
                     // leading. Blank lines in between flush the slot.
+                    newlines_here = 0;
                     self.pending_leading = Some(self.take_comment());
                 }
-                Some(b'\n') => self.pos += 1,
-                Some(b'\r') if self.byte_at(self.pos + 1) == Some(b'\n') => self.pos += 2,
+                Some(b'\n') => {
+                    newlines_here += 1;
+                    if newlines_here >= 1 {
+                        self.pending_blank = true;
+                    }
+                    self.pos += 1;
+                }
+                Some(b'\r') if self.byte_at(self.pos + 1) == Some(b'\n') => {
+                    newlines_here += 1;
+                    if newlines_here >= 1 {
+                        self.pending_blank = true;
+                    }
+                    self.pos += 2;
+                }
                 _ => return,
             }
         }
@@ -189,6 +216,7 @@ impl<'a> Parser<'a> {
         // Take ownership of the pending standalone comment block (if any)
         // so it becomes THIS pair's leading rather than the next one's.
         let leading = self.pending_leading.take();
+        let blank = std::mem::take(&mut self.pending_blank);
         let key_start = self.pos;
         let key = self.parse_key_path()?;
         self.skip_spaces();
@@ -199,14 +227,20 @@ impl<'a> Parser<'a> {
         self.skip_spaces();
         let value = self.parse_value()?;
         let trailing = self.finish_line()?;
-        let anns = KVAnnotations { leading, trailing };
+        let anns = KVAnnotations {
+            leading,
+            trailing,
+            blank_before: blank,
+        };
         self.register_kv(&key, value, anns, key_start)
     }
 
     fn parse_table_header(&mut self) -> Result<(), ParseError> {
         // The pending standalone block sits ABOVE the header; take it
-        // before parsing so it becomes this section's leading.
+        // before parsing so it becomes this section's leading. `pending_blank`
+        // travels through the same route to mark the section's blank separator.
         let leading = self.pending_leading.take();
+        let blank = std::mem::take(&mut self.pending_blank);
         self.expect_byte(b'[', "expected `[`")?;
         let is_array = self.peek() == Some(b'[');
         if is_array {
@@ -228,7 +262,7 @@ impl<'a> Parser<'a> {
             None
         };
         self.consume_line_ending()?;
-        self.register_header(&key, is_array, comment, leading)
+        self.register_header(&key, is_array, comment, leading, blank)
     }
 
     // ------ keys -------------------------------------------------------------
@@ -1059,6 +1093,7 @@ impl<'a> Parser<'a> {
         is_array: bool,
         comment: Option<String>,
         leading: Option<String>,
+        blank_before: bool,
     ) -> Result<(), ParseError> {
         let joined = key.join(".");
         if !is_array && self.defined.contains(&joined) {
@@ -1090,6 +1125,7 @@ impl<'a> Parser<'a> {
                                     entries: taken,
                                     comment: comment.clone(),
                                     leading: leading.clone(),
+                                    blank_before,
                                 }),
                             );
                             self.current = key.to_vec();
@@ -1110,6 +1146,7 @@ impl<'a> Parser<'a> {
                                 entries: IndexMap::new(),
                                 comment: comment.clone(),
                                 leading: leading.clone(),
+                                blank_before,
                             });
                             let tail = list.last_mut().unwrap() as *mut CowTable;
                             root = tail;
@@ -1127,6 +1164,7 @@ impl<'a> Parser<'a> {
                                     entries: IndexMap::new(),
                                     comment: comment.clone(),
                                     leading: leading.clone(),
+                                    blank_before,
                                 }];
                                 tbl.entries
                                     .insert(seg.clone(), TomlTable::ArrayOfTables(list));
@@ -1141,6 +1179,7 @@ impl<'a> Parser<'a> {
                                         entries: IndexMap::new(),
                                         comment: comment.clone(),
                                         leading: leading.clone(),
+                                        blank_before,
                                     }),
                                 );
                                 if let Some(TomlTable::Explicit(inner)) =

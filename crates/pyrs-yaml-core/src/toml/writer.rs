@@ -29,6 +29,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     };
     let mut out = String::new();
     let mut sections: Vec<(String, &CustomNode, Option<&CustomNode>)> = Vec::new();
+    let mut first_pair = true;
     for (k, v) in pairs {
         let key_str = scalar_key(k)?;
         match v {
@@ -36,18 +37,39 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                 sections.push((key_str, v, Some(k)));
             }
             other => {
+                // Design Q2: never emit a blank line before the very first
+                // pair of a document; the leading-newline hint only
+                // becomes visual for subsequent pairs.
+                if !first_pair && other.blank_before() {
+                    out.push('\n');
+                }
+                first_pair = false;
                 emit_pair(&mut out, k, other, &key_str)?;
             }
         }
     }
-    for (name, tbl, key_node) in sections {
-        // Standalone comment block sits above the header on its own line;
-        // the mapping's own meta.comment rides on the header line after
-        // `]` as an inline trailing note.
-        if let Some(k) = key_node
-            && let Some(c) = k.comment()
-            && c.standalone
-        {
+    for (idx, (name, tbl, key_node)) in sections.iter().enumerate() {
+        // PR #114 places the section header's leading note on the child
+        // mapping's own `leading_comment`, freeing the parent key slot
+        // for future use and letting a header carry BOTH a leading and
+        // an inline note. The fallbacks keep #109-era hand-built nodes
+        // and YAML-origin documents rendering identically.
+        let leading = tbl
+            .leading_comment()
+            .or_else(|| tbl.comment().filter(|c| c.standalone))
+            .or_else(|| {
+                key_node.and_then(|k| {
+                    k.leading_comment()
+                        .or_else(|| k.comment().filter(|c| c.standalone))
+                })
+            });
+        // Blank line before a section separator acts like the KV rule:
+        // skip it for the first section if any top-level pairs already
+        // appeared, since the section break is already visual.
+        if tbl.blank_before() && !(idx == 0 && out.is_empty()) {
+            out.push('\n');
+        }
+        if let Some(c) = leading {
             let _ = writeln!(out, "# {}", c.text);
         }
         let header_inline = tbl.comment();
@@ -62,8 +84,11 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         let CustomNode::Mapping { pairs, .. } = tbl else {
             unreachable!("sections collected are mappings");
         };
-        for (k, v) in pairs {
+        for (i, (k, v)) in pairs.iter().enumerate() {
             let key_str = scalar_key(k)?;
+            if i > 0 && v.blank_before() {
+                out.push('\n');
+            }
             emit_pair(&mut out, k, v, &key_str)?;
         }
     }
@@ -78,9 +103,14 @@ fn emit_pair(
     value_node: &CustomNode,
     key_str: &str,
 ) -> Result<(), SerializeError> {
-    if let Some(c) = key_node.comment()
-        && c.standalone
-    {
+    // PR #114: the native parser puts a leading note into the dedicated
+    // `leading_comment` slot. The pre-#114 shape (a standalone note in
+    // `comment`) still renders, so documents produced by the YAML path
+    // (which has not migrated) or hand-built fixtures keep working.
+    let leading = key_node
+        .leading_comment()
+        .or_else(|| key_node.comment().filter(|c| c.standalone));
+    if let Some(c) = leading {
         let _ = writeln!(out, "# {}", c.text);
     }
     let value_text = value_str(value_node)?;
@@ -418,6 +448,42 @@ mod tests {
         let twice = to_toml(&from_toml(&once).unwrap()).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once, src);
+    }
+
+    #[test]
+    fn preserves_blank_line_between_pairs() {
+        // PR #114: a blank line separating two top-level pairs is a
+        // visual grouping cue the writer must reproduce. The Q2 rule
+        // suppresses blank at the very first pair (nothing precedes it).
+        let src = "a = 1\n\nb = 2\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn preserves_blank_line_before_section() {
+        let src = "a = 1\n\n[srv]\nport = 1\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn section_carries_both_leading_and_trailing_comments() {
+        // The whole point of the #114 AST change: one node hosting both
+        // slots side by side without one clobbering the other.
+        let src = "# leading\n[srv] # trailing\nport = 1\n";
+        let ast = from_toml(src).unwrap();
+        let out = to_toml(&ast).unwrap();
+        assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn blank_line_and_leading_comment_coexist() {
+        // A blank line separates visual blocks; a leading comment sits
+        // directly above its pair. Both hints must survive together.
+        let src = "a = 1\n\n# header for b\nb = 2\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, src, "{out}");
     }
 
     #[test]

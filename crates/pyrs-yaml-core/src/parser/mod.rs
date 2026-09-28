@@ -790,6 +790,8 @@ impl<'a> AstReceiver<'a> {
                 flow_style,
                 meta: NodeMeta {
                     comment,
+                    leading_comment: None,
+                    blank_before: false,
                     anchor,
                     tag,
                     source_range: Some(start_byte..end),
@@ -851,6 +853,8 @@ impl<'a> AstReceiver<'a> {
                 flow_style,
                 meta: NodeMeta {
                     comment,
+                    leading_comment: None,
+                    blank_before: false,
                     anchor,
                     tag,
                     source_range: Some(start_byte..end),

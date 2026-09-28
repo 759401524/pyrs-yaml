@@ -118,16 +118,41 @@ impl Hash for Tag {
 }
 
 /// Metadata shared by all content-bearing node variants (not Alias).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+///
+/// `leading_comment` and `blank_before` are round-trip fidelity slots
+/// introduced by PR #114 to give the native TOML / JSON engines a place
+/// to carry both the standalone note above a pair AND the trailing
+/// inline note after its value on the same node. They are excluded from
+/// `Hash` and `PartialEq` (same treatment as `source_range`) so
+/// programmatically built nodes keep comparing equal to parsed ones
+/// whenever the structural metadata agrees.
+#[derive(Debug, Clone, Eq, Default)]
 pub struct NodeMeta {
-    /// Comment attached to the node.
+    /// Trailing (inline) comment attached to the node. Rendered after
+    /// the value on the same line by the YAML / TOML / JSON writers.
     pub comment: Option<Comment>,
+    /// Leading (standalone) comment rendered on its own line above the
+    /// node's key or header. Currently only produced by the native TOML
+    /// and JSON parsers and the granit-parser receiver for YAML.
+    pub leading_comment: Option<Comment>,
+    /// Whether the source carried at least one blank line immediately
+    /// before this node. Excluded from structural equality.
+    pub blank_before: bool,
     /// Anchor name for this node (e.g., "my_anchor").
     pub anchor: Option<String>,
     /// YAML tag (e.g., !!str, !custom).
     pub tag: Option<Tag>,
     /// Byte range of this node in the original source text.
     pub source_range: Option<Range<usize>>,
+}
+
+impl PartialEq for NodeMeta {
+    /// Structural equality excludes `leading_comment`, `blank_before`
+    /// and `source_range` so hand-built fixtures keep matching parsed
+    /// output regardless of whitespace or provenance hints.
+    fn eq(&self, other: &Self) -> bool {
+        self.comment == other.comment && self.anchor == other.anchor && self.tag == other.tag
+    }
 }
 
 impl Hash for NodeMeta {
@@ -565,6 +590,37 @@ impl CustomNode {
         }
     }
 
+    /// Read the leading (standalone) comment slot introduced by PR #114.
+    ///
+    /// The native TOML and JSON writers place comments parsed on the
+    /// line above a pair here, leaving `comment()` for the same-line
+    /// trailing note. `None` for programmatically built nodes and for
+    /// YAML documents (whose receiver keeps writing standalone notes
+    /// into `comment()` with `standalone = true` until PR #115).
+    pub fn leading_comment(&self) -> Option<&Comment> {
+        self.meta().and_then(|m| m.leading_comment.as_ref())
+    }
+
+    /// Set the leading (standalone) comment. No-op on `Alias`.
+    pub fn set_leading_comment(&mut self, new_comment: Comment) {
+        if let Some(meta) = self.meta_mut() {
+            meta.leading_comment = Some(new_comment);
+        }
+    }
+
+    /// Whether the source carried a blank line immediately before this
+    /// node. Excluded from structural equality.
+    pub fn blank_before(&self) -> bool {
+        self.meta().is_some_and(|m| m.blank_before)
+    }
+
+    /// Record a preceding blank-line hint. No-op on `Alias`.
+    pub fn set_blank_before(&mut self, blank: bool) {
+        if let Some(meta) = self.meta_mut() {
+            meta.blank_before = blank;
+        }
+    }
+
     /// 获取节点在原始源文本中的字节区间。
     ///
     /// # Returns
@@ -810,6 +866,8 @@ pub(crate) mod proptest_strategies {
         )
             .prop_map(|(comment, anchor, tag)| NodeMeta {
                 comment,
+                leading_comment: None,
+                blank_before: false,
                 anchor,
                 tag,
                 source_range: None,
