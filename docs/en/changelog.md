@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON5 numeric forms on the parser** — `from_json5` (new
+  `allow_json5_numbers` axis) accepts hex (`0xDECAF`), leading/trailing
+  dot (`.5`, `5.`), leading `+` (`+7`), leading zero (`07`), and bare
+  `Infinity` / `NaN` / `-Infinity`, each keeping its exact source text
+  for a future JSON5 writer. STRICT / JSONC stay gated off and reject
+  them as before. `from_jsonc`'s stale "comments are stripped" doc was
+  corrected.
 - **TOML inline-table interior comment fidelity** — PR #119 captures
   interior `# ...` comments in inline tables (own-line above a member
   → leading, same-line after its value → trailing) and threads them
