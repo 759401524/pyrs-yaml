@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **JSON5/JSONC를 공개 API에서 사용 가능하도록** — `pyrs_yaml.from_json5` / `load_json5`, 그리고 `YamlDocument.to_jsonc()` / `to_json5()`(네이티브 엔진 경유로 주석과 JSON5 스타일 보존). 함께 도달성 결함도 수정: `from_jsonc` / `load_jsonc`가 `pyrs_yaml` 패키지에 재수출되지 않아 `AttributeError`가 났는데 이제 `__all__`에 포함된다. `to_jsonc`/`to_json5`는 `emit_root_leading`으로 문서 수준 standalone 주석을 보존한다. `test_benchmark_api.py`에 JSON 계열 벤치마크를 추가했다.
 - **JSON5 라이터(`to_json5_text` / `to_json5_text_pretty`)** — 계약 B 2단계. AST를 JSON5로 직렬화해 파서 보존한 한따옴표 문자열과 `0x…`/`.5`/`+7`/`Infinity`/`NaN` 숫자 형식, 그리고 `//` 주석을 복원한다. 키는 항상 인용부호를 붙인다(무손실). 내부에서 `Mode`(Json/Jsonc/Json5)를 공유하며, 엄격·JSONC 출력은 변하지 않는다.
 - **파서에 JSON5 수치 형식 추가** — `from_json5`(새 `allow_json5_numbers` 축)가 십육진(`0xDECAF`), 전/후 소수점(`.5`, `5.`), 부호 `+`(`+7`), 선행 0(`07`), 그리고 `Infinity` / `NaN` / `-Infinity`를 받아들인다. 각 형식은 원문을 보존해 훗날 JSON5 라이터가 그대로 재현할 수 있다. STRICT / JSONC는 이 축을 OFF로 두어 종래대로 거부한다. `from_jsonc`의 낡은 "주석은 버려진다" doc도 정정했다.
 - **TOML 인라인 테이블 내부 주석 보전** — PR #119가 인라인 테이블 내

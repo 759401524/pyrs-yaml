@@ -359,6 +359,12 @@ BENCHMARK_CONFIG_JSON = (
     '"items": [{"name": "a", "value": 1}, {"name": "b", "value": 2}]}'
 )
 
+# JSONC / JSON5 variants of the same document, for benchmarking the
+# dialect parsers (comments, single quotes, unquoted keys, trailing
+# commas) and the JSON5 writer restoring those styles.
+BENCHMARK_CONFIG_JSONC = "{\n  // server\n  " + BENCHMARK_CONFIG_JSON[1:]
+BENCHMARK_CONFIG_JSON5 = "{server: {host: '0.0.0.0', port: 8080, ssl: true}, items: [{name: 'a', value: .5}]}"
+
 BENCHMARK_SCHEMA = {
     "type": "object",
     "required": ["server", "database"],

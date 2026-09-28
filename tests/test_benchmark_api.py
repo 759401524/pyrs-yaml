@@ -24,6 +24,12 @@ from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON as CONFIG_JSON,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSON5 as CONFIG_JSON5,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSONC as CONFIG_JSONC,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_LARGE,
     BENCHMARK_SMALL,
 )
@@ -171,6 +177,37 @@ def test_from_dict(benchmark):
 def test_from_json(benchmark):
     result = benchmark(pyrs_yaml.from_json, CONFIG_JSON)
     assert "server" in result
+
+
+def test_from_jsonc(benchmark):
+    result = benchmark(pyrs_yaml.from_jsonc, CONFIG_JSONC)
+    assert "server" in result
+
+
+def test_from_json5(benchmark):
+    result = benchmark(pyrs_yaml.from_json5, CONFIG_JSON5)
+    assert "server" in result
+
+
+def test_load_json5(benchmark):
+    result = benchmark(pyrs_yaml.load_json5, CONFIG_JSON5)
+    assert result["server"]["port"] == 8080
+
+
+def test_document_to_jsonc(benchmark):
+    doc = pyrs_yaml.parse(CONFIG_YAML)
+    result = benchmark(doc.to_jsonc)
+    # A document-level comment is now emitted first, so don't assume the
+    # payload starts at `{`; assert the object closes it instead.
+    assert result.rstrip().endswith("}")
+    assert '"server"' in result
+
+
+def test_document_to_json5(benchmark):
+    doc = pyrs_yaml.parse(CONFIG_YAML)
+    result = benchmark(doc.to_json5)
+    assert result.rstrip().endswith("}")
+    assert '"server"' in result
 
 
 def test_safe_dump_ndarray(benchmark):

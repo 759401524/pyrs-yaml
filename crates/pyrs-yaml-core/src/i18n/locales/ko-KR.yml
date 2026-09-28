@@ -1,6 +1,7 @@
 yaml-parse-error: "%{detail}"
 yaml-serialize-error: "%{detail}"
 json-parse-error: "%{detail}"
+json-serialize-error: "%{detail}"
 toml-parse-error: "%{detail}"
 toml-serialize-error: "%{detail}"
 file-not-found: "파일을 찾을 수 없습니다: %{path}"

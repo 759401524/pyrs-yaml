@@ -896,6 +896,34 @@ impl YamlDocument {
         Ok(s)
     }
 
+    /// Serialize to JSONC text, preserving the comments the AST carries
+    /// (both `//` line and `/* */` block, emitted as `//`). Unlike
+    /// [`to_json`](Self::to_json) — which goes through `json.dumps` and
+    /// so drops comments and type info — this routes through the native
+    /// engine, so a document parsed from JSONC round-trips its notes.
+    #[pyo3(signature = (indent: "int" = 2) -> "str")]
+    fn to_jsonc(&self, indent: usize) -> PyResult<String> {
+        pyrs_yaml_core::json::to_jsonc_text_pretty(&self.ast, indent).map_err(|e| {
+            YamlSerializeError::new_err(format_i18n_error(
+                "json-serialize-error",
+                &[("detail", &e.to_string())],
+            ))
+        })
+    }
+
+    /// Serialize to JSON5 text, restoring single-quoted strings, the
+    /// `0x…` / `.5` / `+7` / `Infinity` / `NaN` numeric forms and `//`
+    /// comments as the native parser preserved them on the AST.
+    #[pyo3(signature = (indent: "int" = 2) -> "str")]
+    fn to_json5(&self, indent: usize) -> PyResult<String> {
+        pyrs_yaml_core::json::to_json5_text_pretty(&self.ast, indent).map_err(|e| {
+            YamlSerializeError::new_err(format_i18n_error(
+                "json-serialize-error",
+                &[("detail", &e.to_string())],
+            ))
+        })
+    }
+
     /// Validate the document against a JSON Schema.
     #[pyo3(signature = (schema: "str | dict[str, Any]") -> "None")]
     fn validate(&self, py: Python, schema: &Bound<'_, PyAny>) -> PyResult<()> {
