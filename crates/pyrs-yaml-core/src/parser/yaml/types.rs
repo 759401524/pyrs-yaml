@@ -36,6 +36,9 @@ pub enum Schema {
     Core,
     /// YAML 1.1 — adds legacy boolean lexemes (yes/no, on/off, y/n).
     Yaml1_1,
+    /// JSON5 value resolution — the JSON grammar plus hexadecimal ints,
+    /// a leading `+`, trailing-dot floats, and `Infinity` / `NaN`.
+    Json5,
     /// Custom resolver registered via the registry.
     Custom(Arc<dyn SchemaResolver>),
 }
@@ -49,6 +52,7 @@ impl Schema {
             Schema::Json => resolve_schema_fn::<1>(value),
             Schema::Core => resolve_schema_fn::<2>(value),
             Schema::Yaml1_1 => resolve_schema_fn::<3>(value),
+            Schema::Json5 => resolve_schema_fn::<4>(value),
         }
     }
 }
@@ -64,6 +68,7 @@ impl FromStr for Schema {
         match s.to_ascii_lowercase().as_str() {
             "core" | "yaml.org,2002" | "yamlorg2002" => Ok(Schema::Core),
             "json" | "yaml.org,2002:json" => Ok(Schema::Json),
+            "json5" => Ok(Schema::Json5),
             "failsafe" | "yaml.org,2002:failsafe" => Ok(Schema::Failsafe),
             "yaml1.1" | "1.1" | "yaml.org,2002:yaml1.1" => Ok(Schema::Yaml1_1),
             _ => Err(()),
@@ -78,6 +83,7 @@ fn resolve_schema_fn<'a, const IDX: u8>(value: &'a str) -> YamlType<'a> {
         0 => crate::parser::yaml::schema::resolve_failsafe(value),
         1 => crate::parser::yaml::schema::resolve_json_type(value),
         2 => crate::parser::yaml::schema::resolve_core_type(value),
+        4 => crate::parser::yaml::schema::resolve_json5_type(value),
         _ => crate::parser::yaml::schema::resolve_yaml11_type(value),
     }
 }
@@ -104,6 +110,7 @@ impl PartialEq for Schema {
             (Schema::Json, Schema::Json) => true,
             (Schema::Core, Schema::Core) => true,
             (Schema::Yaml1_1, Schema::Yaml1_1) => true,
+            (Schema::Json5, Schema::Json5) => true,
             (Schema::Custom(_), Schema::Custom(_)) => false,
             _ => false,
         }

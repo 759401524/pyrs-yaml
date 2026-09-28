@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON5 value semantics on load** — `load_json5` resolves the
+  JSON5-only number forms (`0x1F`→31, `+7`→7, `5.`→5.0, `Infinity`/`NaN`)
+  to real numbers via a new `Schema::Json5`, leaving strict JSON/JSONC
+  loaders unchanged and `to_json5_text` still emitting the source
+  spelling.
 - **JSON5/JSONC reachable through the public API** —
   `pyrs_yaml.from_json5` / `load_json5`, and `YamlDocument.to_jsonc()` /
   `to_json5()` (native-engine emit, so comments and JSON5 styles

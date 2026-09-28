@@ -17,6 +17,10 @@ status: new
 
 #### 追加
 
+- **load_json5 の JSON5 数値セマンティクス** — `load_json5` が
+  JSON5 独特の数値形式（`0x1F`→31、`+7`→7、`5.`→5.0、`Infinity`/
+  `NaN`）を新しい `Schema::Json5` で実数として解決。厳密 JSON /
+  JSONC ローダは不変、`to_json5_text` は元の表記のまま出力。
 - **JSON5 / JSONC を公開 API から利用可能に** —
   `pyrs_yaml.from_json5` / `load_json5`、および
   `YamlDocument.to_jsonc()` / `to_json5()`（ネイティブエンジン経由で

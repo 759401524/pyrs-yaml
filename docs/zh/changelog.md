@@ -17,6 +17,10 @@ status: new
 
 #### 新增
 
+- **load_json5 的 JSON5 数值语义** — `load_json5` 现在把 JSON5
+  独有的数值形式（`0x1F`→31、`+7`→7、`5.`→5.0、`Infinity`/`NaN`）
+  解析为真正的数字（新增 `Schema::Json5`），严格 JSON/JSONC 加载
+  器不变，`to_json5_text` 仍按源文拼写输出。
 - **JSON5/JSONC 开放到公开 API** — `pyrs_yaml.from_json5` /
   `load_json5`，以及 `YamlDocument.to_jsonc()` / `to_json5()`
   （走原生引擎，注释与 JSON5 风格不丢）。同时修正一个可达性
