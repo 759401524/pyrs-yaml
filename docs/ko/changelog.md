@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **JSON5 문자열 이스케이프 `\v`와 `\0`** — `from_json5`가 수직 탭(`\v`)과 NUL(`\0`)을 큰따옴표/작은따옴표 문자열 모두에서 받아들인다. 엄격 JSON / JSONC는 종래대로 거부한다. #120(수치)·#124(수치 시맨틱)과 함께 JSON5 문법을 완성한다.
 - **load_json5의 JSON5 수치 시맨틱** — `load_json5`가 JSON5 전용 수치 형식(`0x1F`→31, `+7`→7, `5.`→5.0, `Infinity`/`NaN`)을 새로운 `Schema::Json5`로 실수 값으로 해석한다. 엄격 JSON/JSONC 로더는 불변이며 `to_json5_text`는 원본 표기 그대로 출력한다.
 - **JSON5/JSONC를 공개 API에서 사용 가능하도록** — `pyrs_yaml.from_json5` / `load_json5`, 그리고 `YamlDocument.to_jsonc()` / `to_json5()`(네이티브 엔진 경유로 주석과 JSON5 스타일 보존). 함께 도달성 결함도 수정: `from_jsonc` / `load_jsonc`가 `pyrs_yaml` 패키지에 재수출되지 않아 `AttributeError`가 났는데 이제 `__all__`에 포함된다. `to_jsonc`/`to_json5`는 `emit_root_leading`으로 문서 수준 standalone 주석을 보존한다. `test_benchmark_api.py`에 JSON 계열 벤치마크를 추가했다.
 - **JSON5 라이터(`to_json5_text` / `to_json5_text_pretty`)** — 계약 B 2단계. AST를 JSON5로 직렬화해 파서 보존한 한따옴표 문자열과 `0x…`/`.5`/`+7`/`Infinity`/`NaN` 숫자 형식, 그리고 `//` 주석을 복원한다. 키는 항상 인용부호를 붙인다(무손실). 내부에서 `Mode`(Json/Jsonc/Json5)를 공유하며, 엄격·JSONC 출력은 변하지 않는다.

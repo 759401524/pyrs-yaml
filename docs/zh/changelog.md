@@ -17,6 +17,10 @@ status: new
 
 #### 新增
 
+- **JSON5 字符串转义 `\v` 与 `\0`** — `from_json5` 现在接受
+  垂直制表符（`\v`）与 NUL（`\0`），双引号与单引号字符串均可；
+  严格 JSON / JSONC 仍拒绝。与 #120（数值）、#124（数值语义）
+  一起补齐 JSON5 语法。
 - **load_json5 的 JSON5 数值语义** — `load_json5` 现在把 JSON5
   独有的数值形式（`0x1F`→31、`+7`→7、`5.`→5.0、`Infinity`/`NaN`）
   解析为真正的数字（新增 `Schema::Json5`），严格 JSON/JSONC 加载

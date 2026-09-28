@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON5 string escapes `\v` and `\0`** — `from_json5` accepts
+  vertical tab (`\v`) and NUL (`\0`) in double- and single-quoted
+  strings; strict JSON / JSONC still reject them. Completes JSON5
+  grammar with #120 (numbers) and #124 (value semantics).
 - **JSON5 value semantics on load** — `load_json5` resolves the
   JSON5-only number forms (`0x1F`→31, `+7`→7, `5.`→5.0, `Infinity`/`NaN`)
   to real numbers via a new `Schema::Json5`, leaving strict JSON/JSONC

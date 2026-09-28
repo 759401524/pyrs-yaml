@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 string escapes `\v` and `\0`** — `from_json5` now accepts the
+  two string escapes JSON5 adds to the JSON set: `\v` (vertical tab
+  U+000B) and `\0` (NUL U+0000), in both double- and single-quoted
+  strings. Gated on JSON5 mode, so strict `from_json` and `from_jsonc`
+  still reject them exactly as before. Completes the JSON5 grammar
+  support alongside #120 (numeric forms) and #124 (value semantics).
 - **JSON5 value semantics on load** — `load_json5` now resolves the
   JSON5-only numeric forms to real Python numbers instead of leaving
   them as strings: hexadecimal integers (`0x1F` → `31`), a leading `+`
