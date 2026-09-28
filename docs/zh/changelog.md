@@ -17,6 +17,14 @@ status: new
 
 #### 新增
 
+- **跨槽独立行注释规范化 + Python `Node.leading_comment`**
+  — `NodeMeta::eq` / `Hash` 现在把“独立行注释”视为单一概念，无论
+  它存于新的 `leading_comment` 槽（TOML / JSON 引擎使用）还是旧的
+  `comment(standalone = true)` 槽（YAML receiver 与手建 fixture 仍
+  在用）。setter / remover 对两槽原子操作，YAML serializer 读规范化
+  视图，`to_yaml(toml_ast)` 不再丢头注。Python
+  `Node.leading_comment` getter / setter / remover 镜像
+  `Node.comment`，TOML / JSONC 来文档的独立行注释首次对 Python 调用方可见。
 - **TOML 1.1.0 语法** — `from_toml` 解析到 TOML v1.1.0（2025-12-18
   发布）。四项新增：**(A1)** inline table 可跳行 + 允许尾逗号；
   **(A2)** 基本字符串中 `\xHH` 字节转义（0x00..=0xFF）；**(A3)**

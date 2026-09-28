@@ -181,6 +181,41 @@ class Node:
         self._with_path(lambda doc, segs: doc._remove_comment_path(segs))
 
     @property
+    def leading_comment(self) -> str | None:
+        """Get this node's leading (standalone) comment text.
+
+        Returns the note the source carried on its own line above the
+        node. For YAML documents the receiver historically stored
+        standalone notes on the ``comment`` slot with a ``standalone``
+        flag; the getter normalises across both representations, so a
+        parsed YAML document and a parsed TOML / JSONC document both
+        surface their leading note here.
+
+        ``None`` when the node has no standalone comment.
+        """
+        doc = self._get_doc()
+        return doc._get_leading_comment([s for s in self._path])
+
+    def set_leading_comment(self, text: str) -> None:
+        """Set (or replace) this node's leading (standalone) comment.
+
+        Writes to the dedicated ``leading_comment`` slot introduced in
+        PR #114 and clears any legacy ``standalone=True`` note still
+        living on the ``comment`` slot so the two representations never
+        disagree.
+        """
+        self._with_path(lambda doc, segs: doc._set_leading_comment_path(segs, text))
+
+    def remove_leading_comment(self) -> None:
+        """Remove this node's leading (standalone) comment.
+
+        Clears both the ``leading_comment`` slot and any legacy
+        ``comment(standalone=True)`` note on the same node. The inline
+        trailing note on the ``comment`` slot is preserved.
+        """
+        self._with_path(lambda doc, segs: doc._remove_leading_comment_path(segs))
+
+    @property
     def anchor(self) -> str | None:
         """Get this node's anchor name, or None if it has no anchor."""
         doc = self._get_doc()

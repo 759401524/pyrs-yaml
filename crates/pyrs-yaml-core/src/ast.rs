@@ -174,17 +174,46 @@ impl PartialEq for NodeDecor {
 }
 
 impl PartialEq for NodeMeta {
-    /// Structural equality excludes `decor` and `source_range` so
-    /// hand-built fixtures keep matching parsed output regardless of
-    /// whitespace or provenance hints.
+    /// Structural equality normalises standalone comments across the
+    /// two slots introduced by #114 / #117. A hand-built fixture that
+    /// attaches a standalone note via `comment(standalone = true)` and
+    /// a parser that produced the same note in `decor.leading_comment`
+    /// compare equal, so YAML receiver migration in #117 does not
+    /// break every existing round-trip assertion. `source_range` is
+    /// still excluded.
     fn eq(&self, other: &Self) -> bool {
-        self.comment == other.comment && self.anchor == other.anchor && self.tag == other.tag
+        self.standalone_slot() == other.standalone_slot()
+            && self.inline_slot() == other.inline_slot()
+            && self.anchor == other.anchor
+            && self.tag == other.tag
+    }
+}
+
+impl NodeMeta {
+    /// Effective standalone comment: the leading-comment slot wins,
+    /// falling back to `comment` when its `standalone` flag is set.
+    /// Callers reading either convention can go through this helper.
+    pub fn standalone_slot(&self) -> Option<&Comment> {
+        self.decor
+            .as_ref()
+            .and_then(|d| d.leading_comment.as_ref())
+            .or_else(|| self.comment.as_ref().filter(|c| c.standalone))
+    }
+
+    /// Effective inline / trailing comment: only `comment` with
+    /// `standalone = false`.
+    pub fn inline_slot(&self) -> Option<&Comment> {
+        self.comment.as_ref().filter(|c| !c.standalone)
     }
 }
 
 impl Hash for NodeMeta {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.comment.hash(state);
+        // Mirror `PartialEq`'s normalisation so equal nodes hash
+        // equally regardless of which slot the standalone note lives
+        // in.
+        self.standalone_slot().hash(state);
+        self.inline_slot().hash(state);
         self.anchor.hash(state);
         self.tag.hash(state);
     }
@@ -619,23 +648,54 @@ impl CustomNode {
 
     /// Read the leading (standalone) comment slot introduced by PR #114.
     ///
-    /// The native TOML and JSON writers place comments parsed on the
-    /// line above a pair here, leaving `comment()` for the same-line
-    /// trailing note. `None` for programmatically built nodes and for
-    /// YAML documents (whose receiver keeps writing standalone notes
-    /// into `comment()` with `standalone = true` until PR #117).
+    /// PR #117 normalises across conventions: if the AST carries a
+    /// standalone note in the new `decor.leading_comment` slot it is
+    /// returned; otherwise a `Comment` with `standalone = true` living
+    /// in the older `comment` slot (the shape the YAML receiver still
+    /// writes today, and every hand-built fixture predating #114) is
+    /// returned. Callers can therefore treat "the standalone note" as
+    /// one concept without caring which slot produced it.
     pub fn leading_comment(&self) -> Option<&Comment> {
-        self.meta()
-            .and_then(|m| m.decor.as_ref())
-            .and_then(|d| d.leading_comment.as_ref())
+        self.meta().and_then(NodeMeta::standalone_slot)
     }
 
     /// Set the leading (standalone) comment. Allocates the boxed
     /// `NodeDecor` on first write. No-op on `Alias`.
+    ///
+    /// PR #117 makes the write atomic across both conventions: if a
+    /// legacy standalone note lives in the older `comment` slot (as
+    /// the YAML receiver still writes and hand-built fixtures still
+    /// construct), it is cleared so the two slots never carry
+    /// conflicting standalone text.
     pub fn set_leading_comment(&mut self, new_comment: Comment) {
         if let Some(meta) = self.meta_mut() {
             let decor = meta.decor.get_or_insert_with(Default::default);
             decor.leading_comment = Some(new_comment);
+            if meta.comment.as_ref().is_some_and(|c| c.standalone) {
+                meta.comment = None;
+            }
+        }
+    }
+
+    /// Drop the leading (standalone) comment slot. The inline trailing
+    /// slot is untouched. If a legacy standalone note still lives in
+    /// `comment`, it is cleared as well so `set_leading_comment` /
+    /// `remove_leading_comment` behave symmetrically across both
+    /// conventions.
+    pub fn remove_leading_comment(&mut self) {
+        if let Some(meta) = self.meta_mut() {
+            if let Some(decor) = meta.decor.as_mut() {
+                decor.leading_comment = None;
+                if !decor.blank_before {
+                    // Nothing else lives in the boxed payload: drop it
+                    // so `NodeMeta::default()`-shaped nodes stay
+                    // allocation-free.
+                    meta.decor = None;
+                }
+            }
+            if meta.comment.as_ref().is_some_and(|c| c.standalone) {
+                meta.comment = None;
+            }
         }
     }
 
@@ -1154,6 +1214,85 @@ pub(crate) mod proptest_strategies {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn node_meta_equality_normalises_standalone_across_slots() {
+        // PR #117: a hand-built node carrying `comment(standalone =
+        // true)` compares equal to a parser that produced the same
+        // note in `decor.leading_comment`. This is the invariant that
+        // lets us migrate the YAML receiver's write path without
+        // breaking every existing round-trip assertion.
+        let legacy = NodeMeta {
+            comment: Some(crate::ast::Comment {
+                text: std::sync::Arc::from("hello"),
+                standalone: true,
+            }),
+            ..Default::default()
+        };
+        let migrated = NodeMeta {
+            decor: Some(Box::new(NodeDecor {
+                leading_comment: Some(crate::ast::Comment {
+                    text: std::sync::Arc::from("hello"),
+                    standalone: true,
+                }),
+                blank_before: false,
+            })),
+            ..Default::default()
+        };
+        assert_eq!(legacy, migrated, "standalone slot mismatch");
+    }
+
+    #[test]
+    fn set_leading_comment_clears_legacy_standalone() {
+        // Symmetric setter invariant: writing to the new slot also
+        // clears the older `comment(standalone = true)` so the two
+        // never carry conflicting text.
+        let mut n = CustomNode::plain_scalar("v");
+        n.set_comment(crate::ast::Comment {
+            text: std::sync::Arc::from("legacy"),
+            standalone: true,
+        });
+        n.set_leading_comment(crate::ast::Comment {
+            text: std::sync::Arc::from("new"),
+            standalone: true,
+        });
+        assert_eq!(n.leading_comment().map(|c| &*c.text).unwrap(), "new");
+        // The legacy slot is cleared. `node.comment()` returns None
+        // because it only sees the `comment` field.
+        assert!(n.comment().is_none());
+    }
+
+    #[test]
+    fn remove_leading_comment_clears_both_slots() {
+        let mut n = CustomNode::plain_scalar("v");
+        n.set_comment(crate::ast::Comment {
+            text: std::sync::Arc::from("legacy"),
+            standalone: true,
+        });
+        n.remove_leading_comment();
+        assert!(n.leading_comment().is_none());
+        assert!(n.comment().is_none());
+    }
+
+    #[test]
+    fn set_leading_comment_preserves_inline_trailing_note() {
+        // Inline notes ride on `comment(standalone = false)` and must
+        // survive a set_leading_comment on the same node.
+        let mut n = CustomNode::plain_scalar("v");
+        n.set_comment(crate::ast::Comment {
+            text: std::sync::Arc::from("inline"),
+            standalone: false,
+        });
+        n.set_leading_comment(crate::ast::Comment {
+            text: std::sync::Arc::from("above"),
+            standalone: true,
+        });
+        assert_eq!(n.leading_comment().map(|c| &*c.text).unwrap(), "above");
+        // The `comment()` accessor still exposes the inline note.
+        let inline = n.comment().expect("inline note lost");
+        assert_eq!(&*inline.text, "inline");
+        assert!(!inline.standalone);
+    }
 
     #[test]
     fn test_scalar_creation() {

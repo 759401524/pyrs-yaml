@@ -248,8 +248,15 @@ impl Serializer {
     }
 
     /// Emit a comment inline after an empty container token (`  # text`).
+    ///
+    /// Standalone notes on an empty container demote to inline (a bare
+    /// `{}` / `[]` on its own line is invalid YAML), so the writer
+    /// merges the container's `leading_comment` / `comment` slots here.
+    /// PR #117 keeps the semantics identical across both conventions:
+    /// `leading_comment()` normalises so a TOML-origin node's leading
+    /// note lands on the same line as its `{}`.
     fn output_empty_node_comment(&mut self, meta: &NodeMeta) {
-        if let Some(c) = &meta.comment {
+        if let Some(c) = meta.standalone_slot().or_else(|| meta.inline_slot()) {
             self.output.push_str("  # ");
             self.output.push_str(&c.text);
         }
@@ -270,8 +277,13 @@ impl Serializer {
         // Handle standalone comments first (but not on empty containers,
         // where a bare `{}`/`[]` on its own line would be invalid YAML —
         // those comments are demoted to inline by the writer below).
-        if let Some(comment) = node.comment()
-            && comment.standalone
+        // PR #117: `leading_comment()` normalises across the new
+        // `decor.leading_comment` slot (used by the native TOML and
+        // JSON engines) and the older `comment(standalone = true)`
+        // slot the YAML receiver still writes today, so a document
+        // converted from TOML / JSON keeps its leading notes when
+        // re-serialised as YAML.
+        if let Some(comment) = node.leading_comment()
             && !Self::is_empty_container(node)
         {
             self.write_indent(indent_width);
@@ -485,9 +497,9 @@ impl Serializer {
                 flow(self)?;
             }
             self.output.push(close);
-            if let Some(c) = &meta.comment
-                && (!c.standalone || empty)
-            {
+            if empty {
+                self.output_empty_node_comment(meta);
+            } else if let Some(c) = meta.inline_slot() {
                 self.output.push_str("  # ");
                 self.output.push_str(&c.text);
             }
@@ -601,9 +613,7 @@ impl Serializer {
         } else {
             // Simple key
             // Handle standalone comments before the key
-            if let Some(comment) = key.comment()
-                && comment.standalone
-            {
+            if let Some(comment) = key.leading_comment() {
                 self.write_indent(indent_width);
                 self.output.push_str("# ");
                 self.output.push_str(&comment.text);
@@ -626,7 +636,7 @@ impl Serializer {
                 ..
             }
         )) || is_complex_key
-            || (value.comment().is_some_and(|c| c.standalone) && !Self::is_empty_container(value))
+            || (value.leading_comment().is_some() && !Self::is_empty_container(value))
         {
             // If the value node has an anchor or tag, write it after the colon
             if let Some(anchor_name) = value.anchor() {
@@ -689,7 +699,7 @@ impl Serializer {
                 flow_style: false,
                 ..
             }
-        ) || item.comment().is_some_and(|c| c.standalone)
+        ) || item.leading_comment().is_some()
         {
             self.output.push('\n');
             self.serialize_node_internal(

@@ -63,6 +63,44 @@ class TestNodeComment:
         Node(doc).find("$.parent.child").set_comment("deep")
         assert doc.to_yaml() == "parent:\n  child:\n    # deep\n    val\n"
 
+    def test_leading_comment_read_from_yaml_standalone(self):
+        """PR #117: a standalone ``comment`` also surfaces via ``leading_comment``.
+
+        The YAML receiver stores standalone notes in the older
+        ``NodeMeta::comment(standalone = true)`` slot. The new
+        ``leading_comment`` property normalises across that shape so
+        Python callers get one consistent view regardless of origin.
+        """
+        doc = pyrs_yaml.parse("key: value\n")
+        Node(doc).find("$.key").set_comment("above the key")
+        # Legacy `comment` accessor returns the text directly.
+        assert Node(doc).find("$.key").comment == "above the key"
+        # New `leading_comment` returns the same note via normalisation.
+        assert Node(doc).find("$.key").leading_comment == "above the key"
+
+    def test_set_leading_comment_emits_standalone(self):
+        """Setting the new slot produces a standalone line on serialize."""
+        doc = pyrs_yaml.parse("key: value\n")
+        Node(doc).find("$.key").set_leading_comment("hello")
+        out = doc.to_yaml()
+        # The note rides on its own line before the value.
+        assert "hello" in out
+        assert "key:" in out
+        # Round-trip preserves the leading note.
+        reparsed = pyrs_yaml.parse(out)
+        assert Node(reparsed).find("$.key").leading_comment == "hello"
+
+    def test_remove_leading_comment_clears_legacy_standalone(self):
+        """`remove_leading_comment` clears both slots (new + legacy)."""
+        doc = pyrs_yaml.parse("key: value\n")
+        Node(doc).find("$.key").set_comment("old")
+        # Re-find after mutation: the edit invalidates cached node handles.
+        assert Node(doc).find("$.key").leading_comment == "old"
+        Node(doc).find("$.key").remove_leading_comment()
+        assert Node(doc).find("$.key").leading_comment is None
+        assert Node(doc).find("$.key").comment is None
+        assert doc.to_yaml() == "key: value\n"
+
     def test_comment_roundtrip(self):
         doc = pyrs_yaml.parse("key: value")
         Node(doc).find("$.key").set_comment("updated")
