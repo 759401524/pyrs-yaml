@@ -313,6 +313,11 @@ impl<'a> Parser<'a> {
                             // JSON5 line continuation: nothing appended.
                         }
                         b'u' => self.unicode_escape(&mut out)?,
+                        // JSON5-only string escapes (allow_json5_numbers is
+                        // true only for the JSON5 preset): vertical tab and
+                        // NUL. Strict JSON / JSONC still reject them.
+                        b'v' if self.allow_json5_numbers => out.push('\u{b}'),
+                        b'0' if self.allow_json5_numbers => out.push('\0'),
                         _ => return Err(self.err("invalid escape sequence")),
                     }
                 }
@@ -683,6 +688,9 @@ impl<'a> Parser<'a> {
                         b'r' => out.push('\r'),
                         b't' => out.push('\t'),
                         b'u' => self.unicode_escape(&mut out)?,
+                        // JSON5-only escapes (see the single-quoted twin).
+                        b'v' if self.allow_json5_numbers => out.push('\u{b}'),
+                        b'0' if self.allow_json5_numbers => out.push('\0'),
                         _ => return Err(self.err("invalid escape sequence")),
                     }
                 }
@@ -925,6 +933,30 @@ mod tests {
         ] {
             assert!(from_json(bad).is_err(), "must reject {bad:?}");
         }
+    }
+
+    #[test]
+    fn json5_supports_vertical_tab_and_nul_escapes() {
+        // JSON5 adds `\v` (U+000B) and `\0` (U+0000) to the string
+        // escape set; they must parse under JSON5 and stay rejected
+        // under strict JSON.
+        let CustomNode::Scalar {
+            value: s,
+            style: ScalarStyle::DoubleQuoted,
+            ..
+        } = &from_json5(r#""a\vb\0c""#).unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(&**s, "a\u{b}b\0c");
+        // Single-quoted twin.
+        let CustomNode::Scalar { value: s, .. } = &from_json5(r#"'x\vy\0z'"#).unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(&**s, "x\u{b}y\0z");
+        // Strict JSON rejects both.
+        assert!(from_json(r#""a\vb""#).is_err());
+        assert!(from_json(r#""a\0b""#).is_err());
     }
 
     #[test]
