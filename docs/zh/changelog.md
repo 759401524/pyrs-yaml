@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **JSON5/JSONC 开放到公开 API** — `pyrs_yaml.from_json5` /
+  `load_json5`，以及 `YamlDocument.to_jsonc()` / `to_json5()`
+  （走原生引擎，注释与 JSON5 风格不丢）。同时修正一个可达性
+  缺口：`from_jsonc` / `load_jsonc` 以前未从 `pyrs_yaml` 包重导出，
+  `pyrs_yaml.from_jsonc(...)` 会报 `AttributeError`；现已列入
+  `__all__`。`to_jsonc`/`to_json5` 新增 `emit_root_leading`，保留文档级
+  独立注释。`test_benchmark_api.py` 补充了 JSON 家族基准。
 - **JSON5 writer（`to_json5_text` / `to_json5_text_pretty`）** —
   契约 B 第 2 步。把 AST 序列化回 JSON5，还原解析器保留的
   单引号字符串与 `0x…`/`.5`/`+7`/`Infinity`/`NaN` 数字形式，

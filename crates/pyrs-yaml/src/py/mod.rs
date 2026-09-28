@@ -169,6 +169,8 @@ mod pyrs_yaml {
     #[pymodule_export]
     pub(crate) use super::functions::from_json;
     #[pymodule_export]
+    pub(crate) use super::functions::from_json5;
+    #[pymodule_export]
     pub(crate) use super::functions::from_jsonc;
     #[pymodule_export]
     pub(crate) use super::functions::from_toml;
@@ -182,6 +184,8 @@ mod pyrs_yaml {
     pub(crate) use super::functions::list_plugins;
     #[pymodule_export]
     pub(crate) use super::functions::list_schemas;
+    #[pymodule_export]
+    pub(crate) use super::functions::load_json5;
     #[pymodule_export]
     pub(crate) use super::functions::load_jsonc;
     #[pymodule_export]

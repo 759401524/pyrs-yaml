@@ -286,6 +286,38 @@ pub(crate) fn load_jsonc(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
 }
 
 #[pyfunction]
+#[pyo3(signature = (json_str: "str") -> "str")]
+/// Convert a JSON5 string to a YAML string. JSON5 supersedes JSONC with
+/// trailing commas, single-quoted strings, unquoted identifier keys and
+/// the `0x…` / `.5` / `Infinity` / `NaN` numeric forms; comments are
+/// stripped for the YAML projection, matching `from_json` semantics.
+pub(crate) fn from_json5(_py: Python, json_str: &str) -> PyResult<String> {
+    let node = pyrs_yaml_core::json::from_json5(json_str).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "json-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    Ok(crate::serializer::to_yaml(&node))
+}
+
+#[pyfunction]
+#[pyo3(signature = (json_str: "str") -> "dict[str, Any] | list[Any]")]
+/// Parse a JSON5 document directly into Python values (dict / list /
+/// scalar). Accepts the full JSON5 grammar without a pre-processing
+/// step, mirroring `load_jsonc` on the wider dialect.
+pub(crate) fn load_json5(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
+    let mut ast = pyrs_yaml_core::json::from_json5(json_str).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "json-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    crate::py::document::resolve_tags(&mut ast, py)?;
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &parse_schema("json")?, false)
+}
+
+#[pyfunction]
 #[pyo3(signature = (toml_str: "str") -> "str")]
 /// Convert a TOML string to a YAML string (hub-and-spoke exchange).
 /// TOML strings keep quoting so values never re-resolve; datetimes gain

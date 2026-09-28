@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON5/JSONC reachable through the public API** —
+  `pyrs_yaml.from_json5` / `load_json5`, and `YamlDocument.to_jsonc()` /
+  `to_json5()` (native-engine emit, so comments and JSON5 styles
+  survive). Also fixes a reachability gap: `from_jsonc` / `load_jsonc`
+  were never re-exported from the `pyrs_yaml` package, so
+  `pyrs_yaml.from_jsonc(...)` raised `AttributeError`; they now appear
+  in `__all__`. `to_jsonc`/`to_json5` gained `emit_root_leading` so a
+  document-level standalone comment is preserved. New JSON-family
+  benchmark coverage added to `test_benchmark_api.py`.
 - **JSON5 writer (`to_json5_text` / `to_json5_text_pretty`)** —
   contract-B step 2. Serializes the AST back to JSON5, restoring
   single-quoted strings and the `0x…`/`.5`/`+7`/`Infinity`/`NaN` numeric

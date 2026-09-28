@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5/JSONC reachable through the public API** — `pyrs_yaml.from_json5`
+  and `pyrs_yaml.load_json5` (the JSON5 counterparts of `from_jsonc` /
+  `load_jsonc`), plus `YamlDocument.to_jsonc()` and `YamlDocument.to_json5()`
+  emit methods that route through the native engine (so comments and
+  JSON5 styles survive) rather than `json.dumps`. Also fixes a
+  long-standing reachability gap: `from_jsonc` / `load_jsonc` were
+  exported by the extension module but never re-exported from the
+  `pyrs_yaml` package `__init__`, so `pyrs_yaml.from_jsonc(...)` raised
+  `AttributeError` — they now appear alongside `from_json` and in
+  `__all__`. `to_jsonc` / `to_json5` gained `emit_root_leading`: a
+  document-level standalone comment (which lands on the root
+  container's `leading_comment` slot) is now emitted before the
+  outermost `{`/`[` instead of being dropped. New benchmark coverage for
+  the whole JSON family (`from_jsonc` / `from_json5` / `load_json5` /
+  `to_jsonc` / `to_json5`) joins `test_benchmark_api.py`.
 - **JSON5 writer (`to_json5_text` / `to_json5_text_pretty`)** —
   contract-B step 2, complementing #120's parse side. Serializes the
   shared AST back to JSON5 text, restoring the JSON5-only spellings the

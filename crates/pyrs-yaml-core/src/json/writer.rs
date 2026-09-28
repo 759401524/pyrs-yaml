@@ -70,6 +70,7 @@ pub fn to_json_text_pretty(node: &CustomNode, indent: usize) -> Result<String, S
 /// compact form because the writer never inserts line breaks.
 pub fn to_jsonc_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::new();
+    emit_root_leading(node, &mut out);
     write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Jsonc)?;
     Ok(out)
 }
@@ -82,6 +83,7 @@ pub fn to_jsonc_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
         return to_jsonc_text(node);
     }
     let mut out = String::new();
+    emit_root_leading(node, &mut out);
     write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Jsonc)?;
     Ok(out)
 }
@@ -93,6 +95,7 @@ pub fn to_jsonc_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
 /// quoting is lossless and simpler). Round-trips `from_json5` output.
 pub fn to_json5_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::new();
+    emit_root_leading(node, &mut out);
     write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Json5)?;
     Ok(out)
 }
@@ -103,8 +106,19 @@ pub fn to_json5_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
         return to_json5_text(node);
     }
     let mut out = String::new();
+    emit_root_leading(node, &mut out);
     write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Json5)?;
     Ok(out)
+}
+
+/// Emit a root container's own leading (standalone) comment before the
+/// top-level value. Nested members get theirs via the pair-loop
+/// `emit_standalone_comment`; the outermost node has no preceding key
+/// slot, so a document-leading `#`/`//` comment would otherwise drop.
+fn emit_root_leading(node: &CustomNode, out: &mut String) {
+    if let Some(c) = node.leading_comment() {
+        let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " "));
+    }
 }
 
 /// The textual form of a mapping key (resolved scalars stringify; the JSON
@@ -641,6 +655,19 @@ mod tests {
             let j5 = to_json5_text(&n).unwrap();
             assert_eq!(j5, src, "json5 should keep {src}");
         }
+    }
+
+    #[test]
+    fn jsonc_preserves_root_leading_comment() {
+        // PR #122: a document-level standalone comment attaches to the
+        // root container's `leading_comment` slot. Nested members emit
+        // theirs via the pair loop; the outermost node has no preceding
+        // key, so `emit_root_leading` is what keeps it from dropping.
+        let ast = crate::parser::parse("# header\nport: 8080\n", crate::parser::yaml::Schema::Core)
+            .unwrap();
+        let out = to_jsonc_text_pretty(&ast, 2).unwrap();
+        assert!(out.starts_with("// header\n"), "{out}");
+        assert!(out.contains("\"port\": 8080"), "{out}");
     }
 
     #[test]

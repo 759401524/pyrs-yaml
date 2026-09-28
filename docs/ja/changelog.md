@@ -17,6 +17,15 @@ status: new
 
 #### 追加
 
+- **JSON5 / JSONC を公開 API から利用可能に** —
+  `pyrs_yaml.from_json5` / `load_json5`、および
+  `YamlDocument.to_jsonc()` / `to_json5()`（ネイティブエンジン経由で
+  コメントと JSON5 スタイルを保持）。同時に到達性の欠陥を修正：
+  `from_jsonc` / `load_jsonc` が `pyrs_yaml` パッケージに再エクスポート
+  されておらず `AttributeError` になっていたが、`__all__` に追加。
+  `to_jsonc`/`to_json5` は `emit_root_leading` でドキュメントレベルの
+  standalone コメントを保持。`test_benchmark_api.py` に JSON 系の
+  ベンチマークを追加。
 - **JSON5 ライター（`to_json5_text` / `to_json5_text_pretty`）** —
   契約 B ステップ 2。AST を JSON5 に再帰列化し、パーサーが
   保持する一重引用符文字列と `0x…`/`.5`/`+7`/`Infinity`/`NaN`
