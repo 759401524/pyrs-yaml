@@ -8,7 +8,7 @@
 
 use crate::ast::CustomNode;
 use crate::error::ParseError;
-use crate::toml::{CowTable, TomlTable, TomlValue, cow_table_to_node};
+use crate::toml::{CowTable, KVAnnotations, TomlTable, TomlValue, cow_table_to_node};
 use indexmap::IndexMap;
 
 /// Parse a TOML document into the shared AST.
@@ -20,6 +20,7 @@ pub fn from_toml(src: &str) -> Result<CustomNode, ParseError> {
         root: CowTable::new(),
         current: Vec::new(),
         defined: Vec::new(),
+        pending_leading: None,
     };
     p.parse_document()?;
     Ok(cow_table_to_node(p.root))
@@ -34,6 +35,11 @@ struct Parser<'a> {
     current: Vec<String>,
     /// Explicit-header paths already opened. Reopening is a duplicate error.
     defined: Vec<String>,
+    /// The most-recent standalone `# ...` comment on a line of its own.
+    /// Consumed by the next KV pair or table header as its `leading`;
+    /// earlier blocks separated by blank lines are dropped so only the
+    /// last block survives (matches the YAML receiver's model).
+    pending_leading: Option<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -89,16 +95,18 @@ impl<'a> Parser<'a> {
         while !self.eof() && self.peek() != Some(b'\n') && self.peek() != Some(b'\r') {
             self.pos += 1;
         }
-        self.text[start..self.pos].trim_end().to_string()
+        self.text[start..self.pos].trim().to_string()
     }
 
-    /// Skip any run of whitespace, comments and line endings.
     fn skip_all_blank(&mut self) {
         loop {
             match self.peek() {
                 Some(b' ') | Some(b'\t') => self.pos += 1,
                 Some(b'#') => {
-                    self.take_comment();
+                    // Standalone comment line: remember the most recent
+                    // one so the next pair or header adopts it as its
+                    // leading. Blank lines in between flush the slot.
+                    self.pending_leading = Some(self.take_comment());
                 }
                 Some(b'\n') => self.pos += 1,
                 Some(b'\r') if self.byte_at(self.pos + 1) == Some(b'\n') => self.pos += 2,
@@ -108,13 +116,18 @@ impl<'a> Parser<'a> {
     }
 
     /// After the semantic content of a line: allow trailing ws, one comment,
-    /// and one line ending. Errors on any other trailing byte.
-    fn finish_line(&mut self) -> Result<(), ParseError> {
+    /// and one line ending. Errors on any other trailing byte. The inline
+    /// comment (if any) is returned so `parse_line` can attach it as the
+    /// pair's trailing annotation.
+    fn finish_line(&mut self) -> Result<Option<String>, ParseError> {
         self.skip_spaces();
-        if self.peek() == Some(b'#') {
-            self.take_comment();
-        }
-        self.consume_line_ending()
+        let inline = if self.peek() == Some(b'#') {
+            Some(self.take_comment())
+        } else {
+            None
+        };
+        self.consume_line_ending()?;
+        Ok(inline)
     }
 
     fn consume_line_ending(&mut self) -> Result<(), ParseError> {
@@ -173,6 +186,9 @@ impl<'a> Parser<'a> {
             self.pos += 1;
             return Ok(());
         }
+        // Take ownership of the pending standalone comment block (if any)
+        // so it becomes THIS pair's leading rather than the next one's.
+        let leading = self.pending_leading.take();
         let key_start = self.pos;
         let key = self.parse_key_path()?;
         self.skip_spaces();
@@ -182,12 +198,15 @@ impl<'a> Parser<'a> {
         self.pos += 1;
         self.skip_spaces();
         let value = self.parse_value()?;
-        self.attach_comment_after_value(&value);
-        self.finish_line()?;
-        self.register_kv(&key, value, key_start)
+        let trailing = self.finish_line()?;
+        let anns = KVAnnotations { leading, trailing };
+        self.register_kv(&key, value, anns, key_start)
     }
 
     fn parse_table_header(&mut self) -> Result<(), ParseError> {
+        // The pending standalone block sits ABOVE the header; take it
+        // before parsing so it becomes this section's leading.
+        let leading = self.pending_leading.take();
         self.expect_byte(b'[', "expected `[`")?;
         let is_array = self.peek() == Some(b'[');
         if is_array {
@@ -209,7 +228,7 @@ impl<'a> Parser<'a> {
             None
         };
         self.consume_line_ending()?;
-        self.register_header(&key, is_array, comment)
+        self.register_header(&key, is_array, comment, leading)
     }
 
     // ------ keys -------------------------------------------------------------
@@ -943,16 +962,11 @@ impl<'a> Parser<'a> {
 
     // ------ AST assembly -----------------------------------------------------
 
-    fn attach_comment_after_value(&mut self, _value: &TomlValue) {
-        // Comments after a value on the same line are attached via finish_line
-        // (currently discarded to keep the AST shape minimal, matching the
-        // historical serde/toml_edit behaviour of not carrying them).
-    }
-
     fn register_kv(
         &mut self,
         key: &[String],
         value: TomlValue,
+        anns: KVAnnotations,
         key_start: usize,
     ) -> Result<(), ParseError> {
         if key.is_empty() {
@@ -999,7 +1013,8 @@ impl<'a> Parser<'a> {
                             key_start,
                         ));
                     }
-                    tbl.entries.insert(seg.clone(), TomlTable::Value(value));
+                    tbl.entries
+                        .insert(seg.clone(), TomlTable::Value(value, anns));
                     return Ok(());
                 }
                 match tbl.entries.get_mut(seg.as_str()) {
@@ -1012,7 +1027,7 @@ impl<'a> Parser<'a> {
                             key_start,
                         ));
                     }
-                    Some(TomlTable::Value(_)) => {
+                    Some(TomlTable::Value(_, _)) => {
                         return Err(Parser::static_err(
                             "dotted key path traverses a non-table value",
                             key_start,
@@ -1043,6 +1058,7 @@ impl<'a> Parser<'a> {
         key: &[String],
         is_array: bool,
         comment: Option<String>,
+        leading: Option<String>,
     ) -> Result<(), ParseError> {
         let joined = key.join(".");
         if !is_array && self.defined.contains(&joined) {
@@ -1073,6 +1089,7 @@ impl<'a> Parser<'a> {
                                 TomlTable::Explicit(CowTable {
                                     entries: taken,
                                     comment: comment.clone(),
+                                    leading: leading.clone(),
                                 }),
                             );
                             self.current = key.to_vec();
@@ -1081,8 +1098,7 @@ impl<'a> Parser<'a> {
                         }
                         root = inner as *mut CowTable;
                     }
-                    Some(TomlTable::Value(v)) => {
-                        let _ = v;
+                    Some(TomlTable::Value(..)) => {
                         return Err(self.err("cannot redefine a value as a table"));
                     }
                     Some(TomlTable::ArrayOfTables(list)) => {
@@ -1093,6 +1109,7 @@ impl<'a> Parser<'a> {
                             list.push(CowTable {
                                 entries: IndexMap::new(),
                                 comment: comment.clone(),
+                                leading: leading.clone(),
                             });
                             let tail = list.last_mut().unwrap() as *mut CowTable;
                             root = tail;
@@ -1109,6 +1126,7 @@ impl<'a> Parser<'a> {
                                 let list = vec![CowTable {
                                     entries: IndexMap::new(),
                                     comment: comment.clone(),
+                                    leading: leading.clone(),
                                 }];
                                 tbl.entries
                                     .insert(seg.clone(), TomlTable::ArrayOfTables(list));
@@ -1122,6 +1140,7 @@ impl<'a> Parser<'a> {
                                     TomlTable::Explicit(CowTable {
                                         entries: IndexMap::new(),
                                         comment: comment.clone(),
+                                        leading: leading.clone(),
                                     }),
                                 );
                                 if let Some(TomlTable::Explicit(inner)) =
