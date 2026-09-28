@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **JSON 双槽注释保真** — JSONC 解析器现在把独立行 `// ...` 注释
+  写入 #114 引入的 `leading_comment` 新槽，同行行尾 `// trailing`
+  仍留在 `comment`。对象成员与数组元素因此可同时拥有两个注释，
+  这是 #112 单槽模型不能表达的形状。`to_jsonc_text_pretty` 优先
+  读新槽，回退到 `comment` 十 `standalone = true` 保持手建 fixture
+  兼容。严格 JSON (`to_json_text`) 行为不变，仍不写 `//`。
 - **TOML 空行与双槽注释保真** — `NodeMeta` 新增
   `leading_comment: Option<Comment>` 与 `blank_before: bool`（均从结构
   化 `Hash` / `PartialEq` 中排除），让 section 头部或 AOT 元素同时携带

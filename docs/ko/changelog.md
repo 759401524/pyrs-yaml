@@ -17,6 +17,14 @@ status: new
 
 #### 추가
 
+- **JSON dual-slot 주석 보전** — JSONC 파서가 독립 행 `// ...` 주석을
+  #114 가 추가한 `leading_comment` 슬롯에 기록하고, 같은 행의
+  `// trailing` 은 `comment` 에 남깁니다. 개체 멤버와 배열 요소가 같은
+  노드에서 두 주석을 모두보존할 수 있게 되며, 이는 #112 의 단일
+  슬롯 모델로는 표현할 수 없는 형태입니다. `to_jsonc_text_pretty` 는
+  `leading_comment` 를 우선 읽고 hand-built fixture 를 위해 `comment`
+  (`standalone = true`) fallback 을 보존합니다. 엄격 JSON
+  (`to_json_text`) 의 동작은 변하지 않습니다 (여전히 `//` 미출력).
 - **TOML 빈 행 + dual-slot 주석 보전** — `NodeMeta`에
   `leading_comment: Option<Comment>` 와 `blank_before: bool` 이
   추가되었습니다 (둘 다 구조적 `Hash` / `PartialEq` 에서 제외).

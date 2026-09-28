@@ -244,12 +244,23 @@ impl<'a> Parser<'a> {
     }
 
     /// Attach the pending comment (if any) to `node` and reset the slot.
+    ///
+    /// PR #115 migrates JSONC's standalone-note capture onto the
+    /// `leading_comment` slot introduced by #114, so an object member
+    /// or array element can carry BOTH the note on the line above AND
+    /// a trailing inline note on the same line as its value. Same-line
+    /// trailing notes keep using `comment` (unchanged from #112).
     fn flush_pending(&mut self, node: &mut CustomNode) {
         if let Some(pc) = self.pending_comment.take() {
-            node.set_comment(crate::ast::Comment {
+            let comment = crate::ast::Comment {
                 text: std::sync::Arc::from(pc.text),
                 standalone: pc.own_line,
-            });
+            };
+            if pc.own_line {
+                node.set_leading_comment(comment);
+            } else {
+                node.set_comment(comment);
+            }
         }
     }
 
@@ -404,10 +415,15 @@ impl<'a> Parser<'a> {
             };
             let mut key_node = quoted_or_plain(key_str);
             if let Some(pc) = key_pending {
-                key_node.set_comment(crate::ast::Comment {
+                let comment = crate::ast::Comment {
                     text: std::sync::Arc::from(pc.text),
                     standalone: pc.own_line,
-                });
+                };
+                if pc.own_line {
+                    key_node.set_leading_comment(comment);
+                } else {
+                    key_node.set_comment(comment);
+                }
             }
             self.ws();
             self.expect(":", "expected `:` after the object key")?;
@@ -451,10 +467,15 @@ impl<'a> Parser<'a> {
             let element_pending = self.pending_comment.take();
             let mut item = self.value()?;
             if let Some(pc) = element_pending {
-                item.set_comment(crate::ast::Comment {
+                let comment = crate::ast::Comment {
                     text: std::sync::Arc::from(pc.text),
                     standalone: pc.own_line,
-                });
+                };
+                if pc.own_line {
+                    item.set_leading_comment(comment);
+                } else {
+                    item.set_comment(comment);
+                }
             }
             self.ws();
             self.flush_pending(&mut item);

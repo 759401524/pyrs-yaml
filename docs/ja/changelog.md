@@ -17,6 +17,15 @@ status: new
 
 #### 追加
 
+- **JSON dual-slot コメント保真** — JSONC パーサーは独立行の
+  `// ...` を #114 が追加した `leading_comment` スロットに書き、
+  同じ行の `// trailing` は `comment` に残します。オブジェクト
+  メンバーや配列要素が同じノードで両方のコメントを保持でき、
+  #112 の単一スロットモデルでは表現不能な形状が可能になります。
+  `to_jsonc_text_pretty` は `leading_comment` を優先読みし、
+  hand-built fixture 向けに `comment` (`standalone = true`) の
+  fallback を保持します。厳密 JSON (`to_json_text`) の挙動は
+  変化しません（依然 `//` を出力しない）。
 - **TOML 空行と dual-slot コメント保真** — `NodeMeta` に
   `leading_comment: Option<Comment>` と `blank_before: bool` を追加
   （どちらも構造的な `Hash` / `PartialEq` から除外）。section ヘッダー
