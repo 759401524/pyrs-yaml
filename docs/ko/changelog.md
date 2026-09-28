@@ -17,6 +17,13 @@ status: new
 
 #### 추가
 
+- **JSONC 파싱** — `pyrs_yaml_core::json::from_jsonc(text)`와
+  `from_json_with_options(text, JsonParseOptions)`가 공백이 허용되는 아무
+  위치에서나 `// 행` 과 `/* 블록 */` 주석을 허용합니다
+  (TypeScript `tsconfig.json`, VS Code `settings.json` 방언). 주석은
+  제거되며 보존되지 않습니다. 후행 쉼표와 JSON5 고유 구문은
+  계속 거부되므로 허용 언어는 RFC 8259의 엄격한 상위 집합으로
+  남습니다. `from_json`의 기본 동작(엄격 모드)은 바뀌지 않습니다.
 - **TOML 주석 보존** — 파서가 페어나 section 헤더 위에 별도 행으로
   나타나는 `# ...` 주석과 행미 주석 (`key = value # ...` /
   `[name] # ...`) 을 모두 캡처하여 공유 AST의 `NodeMeta::comment`에
