@@ -691,6 +691,16 @@ impl<'a> Parser<'a> {
                         // JSON5-only escapes (see the single-quoted twin).
                         b'v' if self.allow_json5_numbers => out.push('\u{b}'),
                         b'0' if self.allow_json5_numbers => out.push('\0'),
+                        b'\'' if self.allow_json5_numbers => out.push('\''),
+                        b'\n' | b'\r' if self.allow_json5_numbers => {
+                            // JSON5 line continuation: a backslash
+                            // immediately before a line terminator removes
+                            // both. Normalise CRLF so the trailing LF is
+                            // not mistaken for an unescaped newline.
+                            if e == b'\r' && self.peek() == Some(b'\n') {
+                                self.pos += 1;
+                            }
+                        }
                         _ => return Err(self.err("invalid escape sequence")),
                     }
                 }
@@ -933,6 +943,23 @@ mod tests {
         ] {
             assert!(from_json(bad).is_err(), "must reject {bad:?}");
         }
+    }
+
+    #[test]
+    fn json5_double_quoted_line_continuation_and_quote_escape() {
+        // PR #127: JSON5 allows a backslash-newline line continuation and
+        // an escaped single quote inside double-quoted strings.
+        let CustomNode::Scalar { value, .. } = &from_json5("\"ab\\\ncd\"").unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(&**value, "abcd");
+        let CustomNode::Scalar { value, .. } = &from_json5("\"it\\'s\"").unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(&**value, "it's");
+        // Strict JSON still rejects both.
+        assert!(from_json("\"ab\\\ncd\"").is_err());
+        assert!(from_json("\"it\\'s\"").is_err());
     }
 
     #[test]
