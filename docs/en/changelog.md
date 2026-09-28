@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **YAML receiver writes standalone comments into
+  `decor.leading_comment`** — PR #117b moves the last engine (the
+  granit-parser receiver) onto the slot convention PR #114 / #115
+  established. Standalone notes on scalars / mappings / sequences
+  land in `NodeMeta::decor.leading_comment` rather than the older
+  `comment(standalone = true)`. Hand-built fixtures stay equal thanks
+  to #117's normalisation, and `CustomNode::remove_comment` now
+  clears **both** slots so Python `Node.remove_comment()` still
+  behaves correctly on YAML-parsed docs.
 - **Cross-slot standalone normalisation + Python
   `Node.leading_comment`** — `NodeMeta::eq` / `Hash` treat the
   standalone note as one concept across the newer `leading_comment`

@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **YAML receiver 将独立行注释写入 `decor.leading_comment`**
+  — PR #117b 把最后一个引擎（granit-parser receiver）迁到 #114 /
+  #115 确立的新槽。scalar / mapping / sequence 的独立行注释现在落在
+  `NodeMeta::decor.leading_comment`，不再写旧的
+  `comment(standalone = true)`。手建 fixture 因 #117 的规范化保持
+  相等；`CustomNode::remove_comment` 同时清空**两槽**，保证
+  Python `Node.remove_comment()` 在 YAML 文档上行为不变。
 - **跨槽独立行注释规范化 + Python `Node.leading_comment`**
   — `NodeMeta::eq` / `Hash` 现在把“独立行注释”视为单一概念，无论
   它存于新的 `leading_comment` 槽（TOML / JSON 引擎使用）还是旧的

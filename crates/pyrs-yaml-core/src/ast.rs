@@ -783,10 +783,23 @@ impl CustomNode {
         }
     }
 
-    /// Remove the node's comment. No-op on `Alias`.
+    /// Remove this node's comment.
+    ///
+    /// PR #117b widens the semantics to "clear every comment on this
+    /// node": the inline `comment` field AND the `decor.leading_comment`
+    /// slot (the destination of standalone notes after the receiver
+    /// migration). Python callers see one unified `Node.remove_comment`
+    /// that removes whichever kind of comment the node currently
+    /// carries, regardless of which slot the writer picked.
     pub fn remove_comment(&mut self) {
         if let Some(meta) = self.meta_mut() {
             meta.comment = None;
+            if let Some(decor) = meta.decor.as_mut() {
+                decor.leading_comment = None;
+                if !decor.blank_before {
+                    meta.decor = None;
+                }
+            }
         }
     }
 

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **YAML receiver writes standalone comments into `decor.leading_comment`**
+  — PR #117b migrates the last remaining engine (the granit-parser
+  receiver in `parser/mod.rs`) onto the slot convention PR #114
+  introduced for TOML and PR #115 for JSONC. Standalone `# ...` notes
+  on scalars, mappings and sequences now land on
+  `NodeMeta::decor.leading_comment` instead of the older
+  `comment(standalone = true)` shape. Every existing hand-built
+  fixture continues to compare equal thanks to #117's AST-layer
+  normalisation, and `CustomNode::remove_comment` now clears **both**
+  slots atomically so `Node.remove_comment()` still does the right
+  thing on YAML-parsed docs (widened semantics).
 - **Cross-slot standalone normalisation + Python
   `Node.leading_comment` API** — `NodeMeta::eq` / `Hash` now treat
   "the standalone note" as one concept regardless of whether it lives
