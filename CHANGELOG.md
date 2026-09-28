@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 value semantics on load** — `load_json5` now resolves the
+  JSON5-only numeric forms to real Python numbers instead of leaving
+  them as strings: hexadecimal integers (`0x1F` → `31`), a leading `+`
+  (`+7` → `7`), a trailing decimal point (`5.` → `5.0`), and
+  `Infinity` / `NaN` → `float('inf')` / `float('nan')`. Implemented as
+  a new `Schema::Json5` value resolver layered on the JSON one (shared
+  forms delegate, so they can't drift), leaving the strict JSON and
+  JSONC loaders byte-for-byte unchanged. Serialization fidelity is
+  unaffected: `to_json5_text` still round-trips the original source
+  spelling (`0x1F` stays `0x1F`) — load value and emit style are now
+  independently correct.
 - **JSON5/JSONC reachable through the public API** — `pyrs_yaml.from_json5`
   and `pyrs_yaml.load_json5` (the JSON5 counterparts of `from_jsonc` /
   `load_jsonc`), plus `YamlDocument.to_jsonc()` and `YamlDocument.to_json5()`

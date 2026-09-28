@@ -314,7 +314,10 @@ pub(crate) fn load_json5(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
         ))
     })?;
     crate::py::document::resolve_tags(&mut ast, py)?;
-    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &parse_schema("json")?, false)
+    // JSON5 numeric grammar (hex, leading `+`, `Infinity`/`NaN`) resolves
+    // to real numbers under the Json5 schema; strict JSON/JSONC keep the
+    // stricter Json resolver that treats those forms as strings.
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &parse_schema("json5")?, false)
 }
 
 #[pyfunction]

@@ -180,6 +180,64 @@ pub fn resolve_json_type(value: &str) -> YamlType<'_> {
     numeric_tail(trimmed, value)
 }
 
+/// Resolve a plain scalar produced by the JSON5 parser.
+///
+/// JSON5's number grammar is a superset of JSON's: hexadecimal integers
+/// (`0x1F`), an explicit leading `+` (`+7`), a trailing decimal point
+/// (`5.`), and the `Infinity` / `NaN` literals all denote numbers even
+/// though JSON has no spelling for them. `resolve_json_type` — used for
+/// strict JSON and JSONC — deliberately maps those extra forms to
+/// strings; JSON5 load must turn them into real numbers. Everything the
+/// two grammars share (decimal ints/floats, leading-dot `.5`, exponent,
+/// `true`/`false`/`null`) is delegated so the two can never drift.
+pub fn resolve_json5_type(value: &str) -> YamlType<'_> {
+    let trimmed = value.trim();
+    match trimmed {
+        "Infinity" | "+Infinity" => return YamlType::Float(f64::INFINITY),
+        "-Infinity" => return YamlType::Float(f64::NEG_INFINITY),
+        "NaN" => return YamlType::Float(f64::NAN),
+        _ => {}
+    }
+    if let Some(n) = parse_json5_hex(trimmed) {
+        return YamlType::Int(n);
+    }
+    // Trailing-dot float: `5.` / `-5.` are floats in JSON5 (numeric_tail
+    // would read the leading digits as an integer or reject the bare dot).
+    if trimmed.ends_with('.') {
+        let core = trimmed.trim_end_matches('.');
+        let core = core.strip_prefix('+').unwrap_or(core);
+        if let Ok(f) = core.parse::<f64>() {
+            return YamlType::Float(f);
+        }
+    }
+    // Leading-plus on an otherwise-JSON number.
+    if let Some(rest) = trimmed.strip_prefix('+') {
+        return match resolve_json_type(rest) {
+            YamlType::Int(n) => YamlType::Int(n),
+            YamlType::Float(f) => YamlType::Float(f),
+            _ => YamlType::Str(Cow::Borrowed(value)),
+        };
+    }
+    resolve_json_type(value)
+}
+
+/// Parse a JSON5 hexadecimal integer (`[+-]?0x[0-9a-fA-F]+`). No
+/// underscore separators (JSON5 only allows them in decimal literals).
+fn parse_json5_hex(trimmed: &str) -> Option<i64> {
+    let (neg, unsigned) = match trimmed.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let hex = unsigned
+        .strip_prefix("0x")
+        .or_else(|| unsigned.strip_prefix("0X"))?;
+    if hex.is_empty() || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let v = i64::from_str_radix(hex, 16).ok()?;
+    Some(if neg { -v } else { v })
+}
+
 /// Resolve a plain scalar as YAML 1.1.
 ///
 /// Same as Core plus legacy boolean lexemes (yes/No/ON/off/y/N/...).
@@ -384,6 +442,39 @@ mod tests {
     }
 
     // ---- yaml1.1 ----
+
+    #[test]
+    fn test_json5_numbers_are_values_not_strings() {
+        // The JSON5-only forms that resolve_json_type (strict) keeps as
+        // strings must resolve to real numbers here.
+        assert_eq!(resolve_json5_type("0x1F"), YamlType::Int(31));
+        assert_eq!(resolve_json5_type("0X1f"), YamlType::Int(31));
+        assert_eq!(resolve_json5_type("-0x10"), YamlType::Int(-16));
+        assert_eq!(resolve_json5_type("+7"), YamlType::Int(7));
+        assert_eq!(resolve_json5_type("5."), YamlType::Float(5.0));
+        assert!(matches!(
+            resolve_json5_type("Infinity"),
+            YamlType::Float(f) if f == f64::INFINITY
+        ));
+        assert!(matches!(
+            resolve_json5_type("-Infinity"),
+            YamlType::Float(f) if f == f64::NEG_INFINITY
+        ));
+        assert!(matches!(resolve_json5_type("NaN"), YamlType::Float(f) if f.is_nan()));
+    }
+
+    #[test]
+    fn test_json5_delegates_shared_forms_to_json() {
+        // Forms the two grammars share resolve identically to the JSON
+        // schema (and NOT to weird places): decimal, leading-dot,
+        // exponent, bools, null, and a real JSON string stays a string.
+        assert_eq!(resolve_json5_type("42"), YamlType::Int(42));
+        assert_eq!(resolve_json5_type("-1.5"), YamlType::Float(-1.5));
+        assert_eq!(resolve_json5_type(".5"), YamlType::Float(0.5));
+        assert_eq!(resolve_json5_type("true"), YamlType::Bool(true));
+        assert_eq!(resolve_json5_type("null"), YamlType::Null);
+        assert_eq!(resolve_json5_type("hello"), YamlType::Str("hello".into()));
+    }
 
     #[test]
     fn test_yaml11_legacy_bool() {

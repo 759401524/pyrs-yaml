@@ -63,6 +63,19 @@ class TestJsonDialects:
         d = pyrs_yaml.load_json5("{a: 1, b: .5, c: 'str', d: [1, 2,],}")
         assert d == {"a": 1, "b": 0.5, "c": "str", "d": [1, 2]}
 
+    def test_load_json5_resolves_exotic_numbers(self):
+        # PR: JSON5 hex / leading-plus / Infinity / NaN are real numbers,
+        # not strings (the Json5 value schema). to_json5 still round-trips
+        # the original source spellings.
+        d = pyrs_yaml.load_json5("{hex: 0x1F, plus: +7, inf: Infinity, nan: NaN, t: 5.}")
+        assert d["hex"] == 31
+        assert d["plus"] == 7
+        assert d["inf"] == float("inf")
+        assert d["nan"] != d["nan"]  # NaN
+        assert d["t"] == 5.0
+        # strict json load still treats those spellings as non-numbers
+        assert pyrs_yaml.load_jsonc('{"hex": 1}')["hex"] == 1
+
     def test_load_json5_rejects_strict_only_via_options(self):
         # trailing comma is JSON5-only; the plain loader still rejects it.
         with pytest.raises(pyrs_yaml.YamlParseError):
