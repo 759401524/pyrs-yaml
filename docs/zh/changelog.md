@@ -17,6 +17,14 @@ status: new
 
 #### 新增
 
+- **TOML 1.1.0 语法** — `from_toml` 解析到 TOML v1.1.0（2025-12-18
+  发布）。四项新增：**(A1)** inline table 可跳行 + 允许尾逗号；
+  **(A2)** 基本字符串中 `\xHH` 字节转义（0x00..=0xFF）；**(A3)**
+  `\e` = U+001B；**(A4)** time / date-time 秒可选（`t = 14:15`、
+  `dt = 2010-02-03 14:15`）。`TomlDialect::V1_0` 与 `from_toml_v1_0`
+  保留为严格 1.0.0 逃生舱；1.0.0 文档两种方言下解析结果一致。
+  同时修复 `space_time_sep` 检测中的索引 off-by-one（导致无 `T`
+  分隔的 date-time 在 1.0 模式下也未能识别）。
 - **JSON 双槽注释保真** — JSONC 解析器现在把独立行 `// ...` 注释
   写入 #114 引入的 `leading_comment` 新槽，同行行尾 `// trailing`
   仍留在 `comment`。对象成员与数组元素因此可同时拥有两个注释，

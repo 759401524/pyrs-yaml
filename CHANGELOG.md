@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML 1.1.0 grammar** — `from_toml` now parses to the [TOML v1.1.0
+  spec](https://toml.io/en/v1.1.0) released 2025-12-18. Four
+  concrete additions over 1.0.0: **(A1)** inline tables may span
+  multiple lines and end with a trailing comma (`{\n a = 1,\n b = 2,
+  \n}`); **(A2)** `\xHH` basic-string escape for codepoints
+  0x00..=0xFF; **(A3)** `\e` escape for U+001B (ESC); **(A4)**
+  seconds are optional in time and date-time values, so `t = 14:15`
+  and `dt = 2010-02-03 14:15` parse and round-trip byte-stable.
+  `TomlDialect::V1_0` and `from_toml_v1_0` remain for consumers
+  pinning the strict 1.0.0 grammar; every 1.0.0 document parses
+  identically under both dialects. The parser-side off-by-one in
+  `space_time_sep` detection (which meant `T`-less date-times were
+  never recognised in 1.0 mode either) was fixed alongside.
 - **JSON dual-slot comment fidelity** — the JSONC parser now writes
   standalone (`// ...` on its own line above a pair or element) notes
   onto the `leading_comment` slot PR #114 introduced, while inline
