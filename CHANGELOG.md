@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML numeric source fidelity** — `to_toml(from_toml(src))` now preserves
+  the source spelling of hex (`0xDEADBEEF`) and octal (`0o755`) integers and
+  exponent-form floats (`1e10`, `-3.14e-2`, `6.02E23`). Radix prefixes are
+  emitted verbatim so the round-trip is byte-stable; underscore separators
+  and explicit `+` signs are canonicalised to plain decimal because YAML
+  Core schema does not accept them (which keeps the shared AST
+  interoperable with the `load_yaml`/`to_dict` pipeline). Negative radix
+  forms (`-0x1F`) also canonicalise for the same reason. Binary (`0b101`)
+  canonicalises to decimal because YAML Core has no binary rule. Comment
+  fidelity and JSONC support land in follow-up PRs (design doc at
+  `docs/superpowers/specs/toml-json-fidelity-design.md`).
 - **pyq feature completion** — the CLI reaches parity with the Python
   CLI's surface: `rename`/`move`/`append`/`insert` splice edits, `validate`
   (parse check, or against schema-language rules via `--schema rules.yaml`),
