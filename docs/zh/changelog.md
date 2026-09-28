@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **JSONC 注释保真** — `from_jsonc` 现在会把采到的 `// 行` 与
+  `/* 块 */` 注释挂到 AST 的 `NodeMeta::comment`（独立部分在 key
+  节点，行尾部分在 value 节点），与 PR #109 建立的 TOML 模型对齐。
+  配套的 `to_jsonc_text(node)` 与 `to_jsonc_text_pretty(node, indent)`
+  按原位置写回；块注释输出时均一为 `//`（AST 仅存主体文本）。严格
+  writer `to_json_text` / `to_json_text_pretty` 保持字节一致，使消费者
+  可以选择性地启用保真。
 - **pyq 多文档编辑** — `-A/--all-docs` 现覆盖全部编辑命令
   （set/delete/rename/move/append/insert/sort-keys）及 `to-json -A`
   （JSON 数组，与 Python 对等）。每个文档针对流中自己的文本段做 splice

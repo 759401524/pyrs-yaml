@@ -23,7 +23,7 @@ use std::fmt::Write as _;
 /// Compact JSON.
 pub fn to_json_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::new();
-    write_value(node, false, 0, &mut Vec::new(), &mut out)?;
+    write_value(node, false, 0, &mut Vec::new(), &mut out, false)?;
     Ok(out)
 }
 
@@ -33,7 +33,30 @@ pub fn to_json_text_pretty(node: &CustomNode, indent: usize) -> Result<String, S
         return to_json_text(node);
     }
     let mut out = String::new();
-    write_value(node, true, indent, &mut Vec::new(), &mut out)?;
+    write_value(node, true, indent, &mut Vec::new(), &mut out, false)?;
+    Ok(out)
+}
+
+/// Compact JSONC: same as [`to_json_text`] but emits `//` comments at the
+/// positions the parser recorded them (`NodeMeta::comment`). Comments
+/// that live on scalars or collection nodes are rendered as a trailing
+/// `// …` after the value; there is no standalone-line placement in the
+/// compact form because the writer never inserts line breaks.
+pub fn to_jsonc_text(node: &CustomNode) -> Result<String, SerializeError> {
+    let mut out = String::new();
+    write_value(node, false, 0, &mut Vec::new(), &mut out, true)?;
+    Ok(out)
+}
+
+/// JSONC pretty-printed. Standalone comments occupy their own line above
+/// the pair they annotate; trailing inline comments sit after the value
+/// and before the `,` that closes the pair.
+pub fn to_jsonc_text_pretty(node: &CustomNode, indent: usize) -> Result<String, SerializeError> {
+    if indent == 0 {
+        return to_jsonc_text(node);
+    }
+    let mut out = String::new();
+    write_value(node, true, indent, &mut Vec::new(), &mut out, true)?;
     Ok(out)
 }
 
@@ -53,6 +76,7 @@ fn write_value(
     step: usize,
     stack: &mut Vec<usize>,
     out: &mut String,
+    comments: bool,
 ) -> Result<(), SerializeError> {
     stack.push(0);
     if stack.len() > DEFAULT_MAX_DEPTH {
@@ -61,9 +85,31 @@ fn write_value(
             DEFAULT_MAX_DEPTH,
         )));
     }
-    let r = write_value_inner(node, pretty, step, stack, out);
+    let r = write_value_inner(node, pretty, step, stack, out, comments);
     stack.pop();
     r
+}
+
+/// Render a `// comment` suffix at the end of the current line. Newlines
+/// inside the comment body are stripped so a single-line comment cannot
+/// escape into the following output.
+fn emit_inline_comment(node: &CustomNode, out: &mut String) {
+    if let Some(c) = node.comment()
+        && !c.standalone
+    {
+        let _ = write!(out, " // {}", c.text.replace(['\n', '\r'], " "));
+    }
+}
+
+/// Emit a standalone comment block on its own line, already indented to
+/// `step * level`.
+fn emit_standalone_comment(node: &CustomNode, step: usize, level: usize, out: &mut String) {
+    if let Some(c) = node.comment()
+        && c.standalone
+    {
+        indent(out, step, level);
+        let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " "));
+    }
 }
 
 fn write_value_inner(
@@ -72,6 +118,7 @@ fn write_value_inner(
     step: usize,
     stack: &mut Vec<usize>,
     out: &mut String,
+    comments: bool,
 ) -> Result<(), SerializeError> {
     match node {
         CustomNode::Null { .. } => out.push_str("null"),
@@ -87,8 +134,14 @@ fn write_value_inner(
             } else if pretty {
                 out.push_str("[\n");
                 for (i, item) in items.iter().enumerate() {
+                    if comments {
+                        emit_standalone_comment(item, step, stack.len(), out);
+                    }
                     indent(out, step, stack.len());
-                    write_value(item, pretty, step, stack, out)?;
+                    write_value(item, pretty, step, stack, out, comments)?;
+                    if comments {
+                        emit_inline_comment(item, out);
+                    }
                     if i + 1 < items.len() {
                         out.push_str(",\n");
                     } else {
@@ -103,7 +156,10 @@ fn write_value_inner(
                     if i > 0 {
                         out.push(',');
                     }
-                    write_value(item, pretty, step, stack, out)?;
+                    write_value(item, pretty, step, stack, out, comments)?;
+                    if comments {
+                        emit_inline_comment(item, out);
+                    }
                 }
                 out.push(']');
             }
@@ -114,10 +170,16 @@ fn write_value_inner(
             } else if pretty {
                 out.push_str("{\n");
                 for (i, (k, v)) in pairs.iter().enumerate() {
+                    if comments {
+                        emit_standalone_comment(k, step, stack.len(), out);
+                    }
                     indent(out, step, stack.len());
                     write_json_string(&key_text(k)?, out);
                     out.push_str(": ");
-                    write_value(v, pretty, step, stack, out)?;
+                    write_value(v, pretty, step, stack, out, comments)?;
+                    if comments {
+                        emit_inline_comment(v, out);
+                    }
                     if i + 1 < pairs.len() {
                         out.push_str(",\n");
                     } else {
@@ -134,7 +196,10 @@ fn write_value_inner(
                     }
                     write_json_string(&key_text(k)?, out);
                     out.push(':');
-                    write_value(v, pretty, step, stack, out)?;
+                    write_value(v, pretty, step, stack, out, comments)?;
+                    if comments {
+                        emit_inline_comment(v, out);
+                    }
                 }
                 out.push('}');
             }
@@ -349,5 +414,50 @@ mod tests {
             text,
             "{\n  \"a\": [\n    1,\n    {\n      \"b\": 2\n    }\n  ]\n}"
         );
+    }
+
+    #[test]
+    fn jsonc_preserves_trailing_line_comment() {
+        // A `// ...` right after a value stays on the same line, before
+        // the `,`. The parser attaches it to the value node's meta so the
+        // writer can place it correctly without positional replay.
+        let src = "{\n  \"port\": 8080 // default port\n}\n";
+        let n = crate::json::from_jsonc(&src[..src.len() - 1]).unwrap();
+        let out = to_jsonc_text_pretty(&n, 2).unwrap();
+        assert!(out.contains("\"port\": 8080 // default port"), "{out}");
+    }
+
+    #[test]
+    fn jsonc_preserves_standalone_line_comment() {
+        // A `// ...` on its own line above a pair rides onto the key
+        // node's `standalone` slot, then back to its own line before
+        // the `key: value` pair.
+        let src = "{\n  // section header\n  \"k\": 1\n}";
+        let n = crate::json::from_jsonc(src).unwrap();
+        let out = to_jsonc_text_pretty(&n, 2).unwrap();
+        assert!(out.contains("// section header\n  \"k\": 1"), "{out}");
+    }
+
+    #[test]
+    fn jsonc_block_comment_renders_as_line_comment() {
+        // Block comments collapse to `//` on emit — the AST stores only
+        // the body text, matching the YAML receiver's `Comment` model.
+        let src = "{\n  /* note */\n  \"a\": 1\n}";
+        let n = crate::json::from_jsonc(src).unwrap();
+        let out = to_jsonc_text_pretty(&n, 2).unwrap();
+        assert!(out.contains("// note"), "{out}");
+        assert!(!out.contains("/*"), "{out}");
+    }
+
+    #[test]
+    fn strict_writer_ignores_comments() {
+        // `to_json_text` stays strict RFC 8259: even if the AST carries
+        // comments (from a JSONC parse), the strict writer emits no
+        // `//` sequences. Guards the round-trip contract for consumers
+        // who pass JSONC ASTs through the plain JSON path.
+        let n = crate::json::from_jsonc("{\"a\": 1 // x\n}").unwrap();
+        let s = to_json_text(&n).unwrap();
+        assert!(!s.contains("//"), "{s}");
+        assert!(!s.contains('x'), "{s}");
     }
 }

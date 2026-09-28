@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSONC comment preservation** — `from_jsonc` now attaches captured
+  `//` line and `/* */` block comments onto the AST's
+  `NodeMeta::comment` (standalone on the key node, inline on the value
+  node), mirroring the TOML model from PR #109. The matching pair
+  `to_jsonc_text(node)` / `to_jsonc_text_pretty(node, indent)` emits
+  them back at their original positions; block comments collapse to
+  `//` on output. Strict writers `to_json_text` / `to_json_text_pretty`
+  remain byte-identical, so consumers opt into preservation selectively.
 - **pyq multi-document edits** — `-A/--all-docs` now covers every edit
   command (set/delete/rename/move/append/insert/sort-keys) plus
   `to-json -A` (JSON array, Python parity). Each document splices

@@ -17,6 +17,15 @@ status: new
 
 #### 追加
 
+- **JSONC コメント保持** — `from_jsonc` が拾った `// 行` と
+  `/* ブロック */` コメントを AST の `NodeMeta::comment` に添付し
+  ます（独立部は key ノード、行末部は value ノード）。PR #109 で
+  導入した TOML モデルと対応します。対となる
+  `to_jsonc_text(node)` / `to_jsonc_text_pretty(node, indent)`
+  が元の位置へ再出力します。ブロックコメントは AST には本文だ
+  けを保存するため、出力時には `//` に正規化されます。厳密 writer
+  `to_json_text` / `to_json_text_pretty` はバイト単位で不変なので、
+  消費側は保真を任意に選択できます。
 - **pyq マルチドキュメント編集** — `-A/--all-docs` が全編集コマンド
   （set/delete/rename/move/append/insert/sort-keys）と `to-json -A`
   （JSON 配列、Python 対応）をカバー。各ドキュメントはストリーム内の

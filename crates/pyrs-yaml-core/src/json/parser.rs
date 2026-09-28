@@ -90,6 +90,7 @@ pub fn from_json_with_options(
         depth: 0,
         max_depth: opts.max_depth,
         allow_comments: opts.allow_comments,
+        pending_comment: None,
     };
     p.ws();
     let value = p.value()?;
@@ -107,6 +108,21 @@ struct Parser<'a> {
     depth: usize,
     max_depth: usize,
     allow_comments: bool,
+    /// The most recent JSONC comment consumed by `ws()`, waiting to
+    /// be attached to the next constructed node. `own_line` records
+    /// whether the comment started on a line of its own (i.e. no
+    /// non-whitespace token on the current line before it), which
+    /// maps directly onto `Comment::standalone`. Only populated when
+    /// `allow_comments` is on.
+    pending_comment: Option<PendingComment>,
+}
+
+/// Intermediate comment record the parser threads between `ws()`
+/// (which consumes the comment bytes) and the value / key sites that
+/// attach it to a `CustomNode`.
+struct PendingComment {
+    text: String,
+    own_line: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -135,40 +151,75 @@ impl<'a> Parser<'a> {
     }
 
     fn ws(&mut self) {
+        // A newline seen at the top of a `ws()` sequence marks any
+        // following comment as `own_line` unless we cross another
+        // non-whitespace token before reaching it. That is the JSONC
+        // analogue of the TOML model's standalone vs trailing split.
+        let mut own_line_seen = false;
         loop {
             match self.peek() {
-                Some(b' ' | b'\t' | b'\n' | b'\r') => self.pos += 1,
+                Some(b' ' | b'\t') => self.pos += 1,
+                Some(b'\n' | b'\r') => {
+                    own_line_seen = true;
+                    self.pos += 1;
+                }
                 Some(b'/') if self.allow_comments => {
-                    // JSONC: `// line ... \n` or `/* block ... */`. Both are
-                    // treated as whitespace when the dialect opts in.
-                    if self.s.get(self.pos + 1) == Some(&b'/') {
-                        self.pos += 2;
+                    let line = self.s.get(self.pos + 1) == Some(&b'/');
+                    let block = self.s.get(self.pos + 1) == Some(&b'*');
+                    if !line && !block {
+                        return;
+                    }
+                    let body_start = self.pos + 2;
+                    if line {
+                        self.pos = body_start;
                         while !self.eof_pos()
                             && self.peek() != Some(b'\n')
                             && self.peek() != Some(b'\r')
                         {
                             self.pos += 1;
                         }
-                    } else if self.s.get(self.pos + 1) == Some(&b'*') {
-                        self.pos += 2;
+                        let body_end = self.pos;
+                        self.pending_comment = Some(PendingComment {
+                            text: self.text[body_start..body_end].trim().to_string(),
+                            own_line: own_line_seen,
+                        });
+                    } else {
+                        self.pos = body_start;
                         loop {
                             if self.pos + 1 >= self.s.len() {
-                                // Unterminated block comment: report at the
-                                // opener so callers get a stable position.
+                                // Unterminated block comment: bail out so
+                                // the outer parser falls through to the
+                                // existing "trailing characters" error.
                                 return;
                             }
                             if self.s[self.pos] == b'*' && self.s[self.pos + 1] == b'/' {
-                                self.pos += 2;
                                 break;
                             }
                             self.pos += 1;
                         }
-                    } else {
-                        return;
+                        let body_end = self.pos;
+                        self.pos += 2;
+                        self.pending_comment = Some(PendingComment {
+                            text: self.text[body_start..body_end].trim().to_string(),
+                            own_line: own_line_seen,
+                        });
+                        // A block comment does not consume the trailing
+                        // newline; the next `ws()` iteration will pick it
+                        // up and reset `own_line_seen` accordingly.
                     }
                 }
                 _ => return,
             }
+        }
+    }
+
+    /// Attach the pending comment (if any) to `node` and reset the slot.
+    fn flush_pending(&mut self, node: &mut CustomNode) {
+        if let Some(pc) = self.pending_comment.take() {
+            node.set_comment(crate::ast::Comment {
+                text: std::sync::Arc::from(pc.text),
+                standalone: pc.own_line,
+            });
         }
     }
 
@@ -231,18 +282,29 @@ impl<'a> Parser<'a> {
         }
         loop {
             self.ws();
+            // Any comment consumed by the leading `ws()` is the key's
+            // standalone note; claim the slot before parsing the key so
+            // the value-side `ws()` below starts with a clean slate.
+            let key_pending = self.pending_comment.take();
             if self.peek() != Some(b'"') {
                 return Err(self.err("expected a quoted object key"));
             }
             let key = self.string()?;
-            let key_node = quoted_or_plain(key);
+            let mut key_node = quoted_or_plain(key);
+            if let Some(pc) = key_pending {
+                key_node.set_comment(crate::ast::Comment {
+                    text: std::sync::Arc::from(pc.text),
+                    standalone: pc.own_line,
+                });
+            }
             self.ws();
             self.expect(":", "expected `:` after the object key")?;
             self.ws();
-            let value = self.value()?;
+            let mut value = self.value()?;
+            self.ws();
+            self.flush_pending(&mut value);
             // duplicate keys: last value wins, first position kept
             pairs.insert(key_node, value);
-            self.ws();
             match self.peek() {
                 Some(b',') => self.pos += 1,
                 Some(b'}') => {
@@ -264,8 +326,20 @@ impl<'a> Parser<'a> {
         }
         loop {
             self.ws();
-            items.push(self.value()?);
+            // A standalone comment between `,` (or `[`) and the element
+            // is the element's leading annotation; claim the slot so
+            // the post-value flush below starts clean.
+            let element_pending = self.pending_comment.take();
+            let mut item = self.value()?;
+            if let Some(pc) = element_pending {
+                item.set_comment(crate::ast::Comment {
+                    text: std::sync::Arc::from(pc.text),
+                    standalone: pc.own_line,
+                });
+            }
             self.ws();
+            self.flush_pending(&mut item);
+            items.push(item);
             match self.peek() {
                 Some(b',') => self.pos += 1,
                 Some(b']') => {

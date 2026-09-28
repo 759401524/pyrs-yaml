@@ -17,6 +17,15 @@ status: new
 
 #### 추가
 
+- **JSONC 주석 보존** — `from_jsonc`이 수집한 `// 행` 및
+  `/* 블록 */` 주석을 AST의 `NodeMeta::comment`에 부착합니다
+  (독립 부분은 key 노드, 행미 부분은 value 노드). PR #109에서
+  도입한 TOML 모델과 동일합니다. 쌍을 이루는
+  `to_jsonc_text(node)` / `to_jsonc_text_pretty(node, indent)`
+  가 원 위치로 재출력하며, 블록 주석은 AST에 본문만 저장되므로
+  출력 시 `//`로 정규화됩니다. 엄밀 writer `to_json_text` /
+  `to_json_text_pretty`는 바이트 단위로 불변이므로 소비측은保전
+  여부는 선택할 수 있습니다.
 - **pyq 다중 문서 편집** — `-A/--all-docs`가 모든 편집 명령(set/delete/rename/
   move/append/insert/sort-keys)과 `to-json -A`(JSON 배열, Python 대응)를 커버.
   각 문서는 스트림 내 자기 구간에 대해 splice(`MultiDocEditor` + `DirtyUnit::
