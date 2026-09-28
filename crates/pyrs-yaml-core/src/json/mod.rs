@@ -26,5 +26,6 @@ pub use parser::{
     from_json_with_options, from_json5, from_jsonc,
 };
 pub use writer::{
-    key_text, to_json_text, to_json_text_pretty, to_jsonc_text, to_jsonc_text_pretty,
+    key_text, to_json_text, to_json_text_pretty, to_json5_text, to_json5_text_pretty,
+    to_jsonc_text, to_jsonc_text_pretty,
 };

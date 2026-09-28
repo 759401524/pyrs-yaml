@@ -17,6 +17,11 @@ status: new
 
 #### 新增
 
+- **JSON5 writer（`to_json5_text` / `to_json5_text_pretty`）** —
+  契约 B 第 2 步。把 AST 序列化回 JSON5，还原解析器保留的
+  单引号字符串与 `0x…`/`.5`/`+7`/`Infinity`/`NaN` 数字形式，
+  并输出 `//` 注释。key 总是加引号（无损）。内部共用一个
+  `Mode`（Json/Jsonc/Json5）；严格与 JSONC 输出不变。
 - **JSON5 数值形式解析** — `from_json5`（新增
   `allow_json5_numbers` 轴）现在接受十六进制（`0xDECAF`）、前/后小数点
   （`.5`、`5.`）、前导 `+`（`+7`）、前导零（`07`）以及裸 `Infinity` /

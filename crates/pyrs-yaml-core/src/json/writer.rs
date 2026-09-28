@@ -20,10 +20,36 @@ use crate::json::parser::DEFAULT_MAX_DEPTH;
 use crate::parser::yaml::{Schema, YamlType};
 use std::fmt::Write as _;
 
+/// Which JSON-family dialect `write_value` targets. `Json5` is a superset
+/// of `Jsonc` (comments) that additionally restores JSON5-only spellings:
+/// single-quoted strings and the `0x…` / `.5` / `+7` / `Infinity` / `NaN`
+/// numeric forms (PR #121). The quote style and number form come straight
+/// off the AST (single-quoted strings carry `ScalarStyle::SingleQuoted`;
+/// JSON5 numbers keep their source text as plain scalars), so this writer
+/// is purely a projection of what the parser already preserved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Strict RFC 8259: no comments ever emitted.
+    Json,
+    /// JSONC: emit `//` comments, everything else RFC 8259.
+    Jsonc,
+    /// JSON5: emit comments plus single-quoted strings and JSON5 numbers.
+    Json5,
+}
+
+impl Mode {
+    fn comments(self) -> bool {
+        !matches!(self, Mode::Json)
+    }
+    fn json5(self) -> bool {
+        matches!(self, Mode::Json5)
+    }
+}
+
 /// Compact JSON.
 pub fn to_json_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::new();
-    write_value(node, false, 0, &mut Vec::new(), &mut out, false)?;
+    write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Json)?;
     Ok(out)
 }
 
@@ -33,7 +59,7 @@ pub fn to_json_text_pretty(node: &CustomNode, indent: usize) -> Result<String, S
         return to_json_text(node);
     }
     let mut out = String::new();
-    write_value(node, true, indent, &mut Vec::new(), &mut out, false)?;
+    write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Json)?;
     Ok(out)
 }
 
@@ -44,7 +70,7 @@ pub fn to_json_text_pretty(node: &CustomNode, indent: usize) -> Result<String, S
 /// compact form because the writer never inserts line breaks.
 pub fn to_jsonc_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::new();
-    write_value(node, false, 0, &mut Vec::new(), &mut out, true)?;
+    write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Jsonc)?;
     Ok(out)
 }
 
@@ -56,7 +82,28 @@ pub fn to_jsonc_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
         return to_jsonc_text(node);
     }
     let mut out = String::new();
-    write_value(node, true, indent, &mut Vec::new(), &mut out, true)?;
+    write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Jsonc)?;
+    Ok(out)
+}
+
+/// Compact JSON5: emits `//` comments, restores single-quoted strings
+/// (any string the parser tagged `ScalarStyle::SingleQuoted`) and writes
+/// the JSON5 numeric forms (`0x…`, `.5`, `5.`, `+7`, `Infinity`, `NaN`)
+/// verbatim. Object keys are always quoted (JSON5 permits bare keys but
+/// quoting is lossless and simpler). Round-trips `from_json5` output.
+pub fn to_json5_text(node: &CustomNode) -> Result<String, SerializeError> {
+    let mut out = String::new();
+    write_value(node, false, 0, &mut Vec::new(), &mut out, Mode::Json5)?;
+    Ok(out)
+}
+
+/// JSON5 pretty-printed. See [`to_json5_text`] for the JSON5-only rules.
+pub fn to_json5_text_pretty(node: &CustomNode, indent: usize) -> Result<String, SerializeError> {
+    if indent == 0 {
+        return to_json5_text(node);
+    }
+    let mut out = String::new();
+    write_value(node, true, indent, &mut Vec::new(), &mut out, Mode::Json5)?;
     Ok(out)
 }
 
@@ -76,7 +123,7 @@ fn write_value(
     step: usize,
     stack: &mut Vec<usize>,
     out: &mut String,
-    comments: bool,
+    mode: Mode,
 ) -> Result<(), SerializeError> {
     stack.push(0);
     if stack.len() > DEFAULT_MAX_DEPTH {
@@ -85,7 +132,7 @@ fn write_value(
             DEFAULT_MAX_DEPTH,
         )));
     }
-    let r = write_value_inner(node, pretty, step, stack, out, comments);
+    let r = write_value_inner(node, pretty, step, stack, out, mode);
     stack.pop();
     r
 }
@@ -124,15 +171,23 @@ fn write_value_inner(
     step: usize,
     stack: &mut Vec<usize>,
     out: &mut String,
-    comments: bool,
+    mode: Mode,
 ) -> Result<(), SerializeError> {
+    let comments = mode.comments();
     match node {
         CustomNode::Null { .. } => out.push_str("null"),
         CustomNode::Scalar {
             value,
             style: ScalarStyle::Plain,
             ..
-        } => write_plain(value, out),
+        } => write_plain(value, mode, out),
+        // PR #121: a single-quoted source string (JSON5-only) round-trips
+        // as `'…'`; every other quoted scalar uses `"…"`.
+        CustomNode::Scalar {
+            value,
+            style: ScalarStyle::SingleQuoted,
+            ..
+        } if mode.json5() => write_single_quoted(value, out),
         CustomNode::Scalar { value, .. } => write_json_string(value, out),
         CustomNode::Sequence { items, .. } => {
             if items.is_empty() {
@@ -144,7 +199,7 @@ fn write_value_inner(
                         emit_standalone_comment(item, step, stack.len(), out);
                     }
                     indent(out, step, stack.len());
-                    write_value(item, pretty, step, stack, out, comments)?;
+                    write_value(item, pretty, step, stack, out, mode)?;
                     if comments {
                         emit_inline_comment(item, out);
                     }
@@ -162,7 +217,7 @@ fn write_value_inner(
                     if i > 0 {
                         out.push(',');
                     }
-                    write_value(item, pretty, step, stack, out, comments)?;
+                    write_value(item, pretty, step, stack, out, mode)?;
                     if comments {
                         emit_inline_comment(item, out);
                     }
@@ -182,7 +237,7 @@ fn write_value_inner(
                     indent(out, step, stack.len());
                     write_json_string(&key_text(k)?, out);
                     out.push_str(": ");
-                    write_value(v, pretty, step, stack, out, comments)?;
+                    write_value(v, pretty, step, stack, out, mode)?;
                     if comments {
                         emit_inline_comment(v, out);
                     }
@@ -202,7 +257,7 @@ fn write_value_inner(
                     }
                     write_json_string(&key_text(k)?, out);
                     out.push(':');
-                    write_value(v, pretty, step, stack, out, comments)?;
+                    write_value(v, pretty, step, stack, out, mode)?;
                     if comments {
                         emit_inline_comment(v, out);
                     }
@@ -220,12 +275,20 @@ fn write_value_inner(
     Ok(())
 }
 
-fn write_plain(value: &str, out: &mut String) {
+fn write_plain(value: &str, mode: Mode, out: &mut String) {
     // Fidelity first: when the text already spells a JSON number (`1e3`,
     // `-0`, `1.0`), pass it through unchanged so large-precision integers
     // and explicit signed-zero survive a `from_json → to_json` round trip
     // without an f64/i64 detour.
     if is_json_number(value) {
+        out.push_str(value);
+        return;
+    }
+    // PR #121: under JSON5, the number spellings the JSON5 parser accepts
+    // and stores verbatim on a plain scalar (hexadecimal, leading/trailing
+    // dot, leading `+`, `Infinity` / `NaN`) emit as-is — they are legal
+    // JSON5 bare tokens, unlike strict JSON which would have to quote them.
+    if mode.json5() && is_json5_number(value) {
         out.push_str(value);
         return;
     }
@@ -248,10 +311,67 @@ fn write_plain(value: &str, out: &mut String) {
         }
         // Non-finite floats (`.inf`, `.nan`) are not JSON literals; quote
         // their text so nothing is silently dropped, matching the previous
-        // `serde_json` path's fallback for unrepresentable values.
+        // `serde_json` path's fallback for unrepresentable values. Under
+        // JSON5 the bare `Infinity` / `NaN` spellings were already handled
+        // above, so this only catches YAML-flavoured infinities.
         YamlType::Float(_) => write_json_string(value, out),
         YamlType::Str(_) => write_json_string(value, out),
     }
+}
+
+/// Whether `text` is a JSON5-only number spelling the parser stored
+/// verbatim: `Infinity` / `NaN` (optionally signed), a hexadecimal
+/// integer, a leading-dot / trailing-dot decimal, or a leading-`+` form.
+fn is_json5_number(text: &str) -> bool {
+    match text {
+        "Infinity" | "-Infinity" | "+Infinity" | "NaN" => return true,
+        _ => {}
+    }
+    // Strip a single leading sign for the numeric checks below.
+    let (sign_len, body) = match text.as_bytes().first() {
+        Some(b'+') | Some(b'-') => (1, &text[1..]),
+        _ => (0, text),
+    };
+    let _ = sign_len;
+    // hexadecimal integer: 0x / 0X + at least one hex digit.
+    if (body.starts_with("0x") || body.starts_with("0X"))
+        && body.len() > 2
+        && body[2..].bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return true;
+    }
+    // leading-dot `.5` or trailing-dot `5.` (JSON5 permits either).
+    if let Some(rest) = body.strip_prefix('.') {
+        return !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit());
+    }
+    if let Some(int) = body.strip_suffix('.') {
+        return !int.is_empty() && int.bytes().all(|b| b.is_ascii_digit());
+    }
+    // leading `+` on an otherwise-strict JSON number (e.g. `+7`, `+1.5`).
+    if text.starts_with('+') && is_json_number(body) {
+        return true;
+    }
+    false
+}
+
+/// Emit a JSON5 single-quoted string. Only reached under `Mode::Json5`
+/// for scalars the parser tagged `ScalarStyle::SingleQuoted`.
+fn write_single_quoted(text: &str, out: &mut String) {
+    out.push('\'');
+    for c in text.chars() {
+        match c {
+            '\'' => out.push_str("\\'"),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(out, "\\u{:04X}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('\'');
 }
 
 fn is_json_number(text: &str) -> bool {
@@ -495,5 +615,43 @@ mod tests {
         let s = to_json_text(&n).unwrap();
         assert!(!s.contains("//"), "{s}");
         assert!(!s.contains('x'), "{s}");
+    }
+
+    #[test]
+    fn json5_restores_single_quoted_strings() {
+        // PR #121: a JSON5 single-quoted string round-trips back to
+        // single quotes; the strict / JSONC writers still emit double
+        // quotes for the same AST (JSON has no single-quote form).
+        let n = crate::json::from_json5("{ 'name': 'chen' }").unwrap();
+        let j5 = to_json5_text(&n).unwrap();
+        assert!(j5.contains("'name'") || j5.contains("'chen'"), "{j5}");
+        let strict = to_json_text(&n).unwrap();
+        assert!(
+            !strict.contains('\''),
+            "strict must not emit single quotes: {strict}"
+        );
+    }
+
+    #[test]
+    fn json5_emits_numeric_forms_verbatim() {
+        // The JSON5 numeric spellings #120 parses stay verbatim through
+        // to_json5_text, whereas the strict writer would quote / canonicalise.
+        for src in ["0xDECAF", ".5", "5.", "+7", "Infinity", "-Infinity", "NaN"] {
+            let n = crate::json::from_json5(src).unwrap();
+            let j5 = to_json5_text(&n).unwrap();
+            assert_eq!(j5, src, "json5 should keep {src}");
+        }
+    }
+
+    #[test]
+    fn json5_round_trip_is_idempotent() {
+        // parse -> emit -> parse -> emit reaches a fixed point, and the
+        // intermediate AST carries no lost comments or exotic numbers.
+        let src = "{ a: 0x1F, b: .5, c: 'str', d: Infinity }";
+        let once = to_json5_text(&crate::json::from_json5(src).unwrap()).unwrap();
+        let twice = to_json5_text(&crate::json::from_json5(&once).unwrap()).unwrap();
+        assert_eq!(once, twice, "not a fixed point:\n{once}\n{twice}");
+        assert!(once.contains("0x1F"), "{once}");
+        assert!(once.contains(".5"), "{once}");
     }
 }

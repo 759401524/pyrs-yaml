@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON5 writer (`to_json5_text` / `to_json5_text_pretty`)** —
+  contract-B step 2. Serializes the AST back to JSON5, restoring
+  single-quoted strings and the `0x…`/`.5`/`+7`/`Infinity`/`NaN` numeric
+  forms the parser preserves, plus `//` comments. Keys are always quoted
+  (lossless). Shares an internal `Mode` (Json/Jsonc/Json5); strict and
+  JSONC output unchanged.
 - **JSON5 numeric forms on the parser** — `from_json5` (new
   `allow_json5_numbers` axis) accepts hex (`0xDECAF`), leading/trailing
   dot (`.5`, `5.`), leading `+` (`+7`), leading zero (`07`), and bare
