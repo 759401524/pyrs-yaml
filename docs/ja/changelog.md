@@ -17,6 +17,13 @@ status: new
 
 #### 追加
 
+- **TOML 数値ソース表記の忠実性** — `to_toml(from_toml(src))` が 16 進
+  (`0xDEADBEEF`)・8 進 (`0o755`) 整数のソース表記と指数形浮動小数点
+  (`1e10`、`-3.14e-2`) をそのまま保持します。区切り `_`・明示的な `+`
+  符号・負の radix 形 (`-0x1F`)・2 進数 (`0b101`) は YAML Core が再読
+  込みできないため 10 進に正規化されます。これにより共有 AST と YAML
+  パイプラインの相互運用性を維持します。コメント忠実性と JSONC は
+  設計ドキュメントに従い後続 PR で実装予定。
 - **pyq 機能補完** — CLI が Python CLI の機能面に追従：`rename`/`move`/`append`/`insert`
   の splice 編集、`validate`（構文チェック、または `--schema rules.yaml` による
   スキーマ言語ルール検証）、`frontmatter`（`--body-out` で本文分割）、

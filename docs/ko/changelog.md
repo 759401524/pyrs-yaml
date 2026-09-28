@@ -17,6 +17,12 @@ status: new
 
 #### 추가
 
+- **TOML 숫자 원문 표기 보존** — `to_toml(from_toml(src))`가 16진
+  (`0xDEADBEEF`)·8진 (`0o755`) 정수의 원문 표기와 지수형 부동소수점
+  (`1e10`、`-3.14e-2`)을 그대로 유지합니다. 밑줄 구분자、명시적 `+` 부호、
+  음수 radix 형식 (`-0x1F`)、2진수 (`0b101`)는 YAML Core가 다시 읽을 수 없어
+  10진수로 정규화됩니다. 이로써 공유 AST와 YAML 파이프라인의 상호운용성을
+  유지합니다。주석 보존과 JSONC 지원은 설계 문서에 따라 후속 PR에서 도입 예정。
 - **pyq 기능 보완** — CLI가 Python CLI 기능면에 대응: `rename`/`move`/`append`/`insert`
   splice 편집, `validate`(파싱 검사 또는 `--schema rules.yaml` 스키마 언어 규칙 검증),
   `frontmatter`(`--body-out` 본문 분리), `get`/`fmt`/`to-json`의 `-A/--all-docs` 다중

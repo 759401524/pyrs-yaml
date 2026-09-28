@@ -30,13 +30,24 @@ pub use parser::from_toml;
 pub use writer::to_toml;
 
 use crate::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
+use std::sync::Arc;
 
 /// A TOML 1.0 value at the leaf of the grammar. Intermediate representation
 /// used by the parser before projection onto `CustomNode`.
+///
+/// Numeric variants carry an optional `source` spelling so `from_toml ->
+/// to_toml` is byte-stable for radix-prefixed integers (`0xDEADBEEF`,
+/// `0o755`, `0b1101`) and exponent floats (`1e10`, `-3.14e-2`). The
+/// spellings we DO preserve are exactly those YAML Core schema also
+/// parses to the same numeric type, so the projected `CustomNode` needs
+/// no `!!int` / `!!float` tag to survive downstream `to_yaml`/`load_*`
+/// round-trips. Underscore-separated digits and explicit `+` signs are
+/// deliberately NOT preserved because YAML Core reads them as strings;
+/// the parser canonicalizes them to plain decimal (matches #107).
 pub(crate) enum TomlValue {
     String(String),
-    Integer(i64),
-    Float(f64),
+    Integer(i64, Option<Arc<str>>),
+    Float(f64, Option<Arc<str>>),
     Boolean(bool),
     /// Full RFC 3339 text (offset/local date-time, local date, local time).
     /// `Some(kind)` for offset date-time (`Z` suffix or `±HH:MM` offset);
@@ -120,8 +131,14 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
             chomping: Chomping::Clip,
             meta: NodeMeta::default(),
         },
-        TomlValue::Integer(i) => CustomNode::plain_scalar(i.to_string()),
-        TomlValue::Float(f) => CustomNode::plain_scalar(fmt_yaml_float(f)),
+        TomlValue::Integer(i, source) => match source {
+            Some(src) => CustomNode::plain_scalar(src),
+            None => CustomNode::plain_scalar(i.to_string()),
+        },
+        TomlValue::Float(f, source) => match source {
+            Some(src) => CustomNode::plain_scalar(src),
+            None => CustomNode::plain_scalar(fmt_yaml_float(f)),
+        },
         TomlValue::Boolean(b) => CustomNode::plain_scalar(b.to_string()),
         TomlValue::Datetime(s, kind) => CustomNode::Scalar {
             value: s.into(),

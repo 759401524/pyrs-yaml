@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **TOML 数字源码保真** — `to_toml(from_toml(src))` 现在保留十六进制
+  (`0xDEADBEEF`) 与八进制 (`0o755`) 整数的源拼写，以及带指数的浮点
+  (`1e10`、`-3.14e-2`)。下划线分隔符、显式 `+` 号、带负号的 radix
+  形式 (`-0x1F`) 与二进制 (`0b101`) 仍归一为十进制，因为 YAML Core
+  schema 无法重新读取它们，从而保证共享 AST 与 YAML 流水线的互操作
+  性。注释保真与 JSONC 支持按设计文档后续 PR 落地。
 - **pyq 功能补齐** — CLI 追平 Python CLI 功能面：`rename`/`move`/`append`/`insert`
   splice 编辑、`validate`（解析检查，或用 `--schema rules.yaml` 按 schema 语言规则
   校验）、`frontmatter`（`--body-out` 分离正文），以及 `get`/`fmt`/`to-json` 的

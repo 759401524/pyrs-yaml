@@ -91,8 +91,28 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                     Err(SerializeError::Internal("toml-cannot-represent-null"))
                 }
                 (ScalarStyle::Plain, YamlType::Bool(b)) => Ok(b.to_string()),
-                (ScalarStyle::Plain, YamlType::Int(i)) => Ok(i.to_string()),
-                (ScalarStyle::Plain, YamlType::Float(f)) => Ok(fmt_toml_float(f)),
+                // Fidelity pass-through: when the plain scalar's textual
+                // form is already a valid TOML integer literal (`0xDEAD`,
+                // `-0`, plain decimal), emit it verbatim. Otherwise fall
+                // back to the canonical `i64` rendering.
+                (ScalarStyle::Plain, YamlType::Int(i)) => {
+                    if is_toml_int_literal(value) {
+                        Ok(value.to_string())
+                    } else {
+                        Ok(i.to_string())
+                    }
+                }
+                // Same rule for floats: an exponent spelling (`1e10`) or
+                // an `inf`/`nan` form the source produced is passed
+                // through; everything else is normalised via
+                // `fmt_toml_float`.
+                (ScalarStyle::Plain, YamlType::Float(f)) => {
+                    if is_toml_float_literal(value) {
+                        Ok(value.to_string())
+                    } else {
+                        Ok(fmt_toml_float(f))
+                    }
+                }
                 // Everything else is text: quoted scalars verbatim, plain
                 // strings resolved-to-Str.
                 _ => Ok(quote_basic(value)),
@@ -176,6 +196,58 @@ fn is_valid_toml_datetime(s: &str) -> bool {
     crate::toml::parser::DateTimeProbe.check_all(s)
 }
 
+/// Whether the plain scalar text is already a legal TOML integer
+/// literal (decimal, `0x` hex, `0o` octal, `0b` binary, with optional
+/// leading `-`). Used by the writer to decide whether to pass through
+/// verbatim instead of re-rendering from `i64`.
+fn is_toml_int_literal(text: &str) -> bool {
+    let (sign_rest, signed) = match text.strip_prefix('-') {
+        Some(rest) => (rest, true),
+        None => (text, false),
+    };
+    let _ = signed;
+    // Reject `+` prefix and empty remainder.
+    if sign_rest.is_empty() || sign_rest.starts_with('+') {
+        return false;
+    }
+    // Radix-prefixed forms: YAML Core parses these too, so the AST
+    // value can carry them and we want to preserve the spelling.
+    if sign_rest.len() > 2 {
+        let (prefix, digits) = (&sign_rest[..2], &sign_rest[2..]);
+        let radix_ok = match prefix {
+            "0x" => !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_hexdigit()),
+            "0o" => !digits.is_empty() && digits.bytes().all(|b| matches!(b, b'0'..=b'7')),
+            "0b" => !digits.is_empty() && digits.bytes().all(|b| matches!(b, b'0' | b'1')),
+            _ => false,
+        };
+        if radix_ok {
+            return true;
+        }
+    }
+    // Plain decimal: every char is `[0-9]` and either single-digit or
+    // not starting with `0` (TOML 1.0 disallows leading zeros).
+    if sign_rest.bytes().all(|b| b.is_ascii_digit()) {
+        return sign_rest.len() == 1 || !sign_rest.starts_with('0');
+    }
+    false
+}
+
+/// Whether the plain scalar text is a legal TOML float spelling that we
+/// want to preserve verbatim (exponent form or explicit fraction whose
+/// canonical `f64` rendering drifts from source). `.inf`/`nan` keyword
+/// forms are intentionally excluded because the writer canonicalises
+/// them to TOML's `inf`/`nan` through `fmt_toml_float`.
+fn is_toml_float_literal(text: &str) -> bool {
+    // Any `e`/`E` exponent form is worth preserving.
+    if text.contains('e') || text.contains('E') {
+        // Reject underscore-separated forms and non-numeric shapes;
+        // those came from elsewhere (YAML loader, hand-built) and must
+        // fall through to canonical rendering.
+        return !text.contains('_');
+    }
+    false
+}
+
 // Silence "unused import" for ParseError under non-test builds.
 #[allow(dead_code)]
 fn _unused_parse_error(e: ParseError) -> String {
@@ -247,5 +319,63 @@ mod tests {
             title_idx < srv_idx,
             "sections must follow top-level: {text}"
         );
+    }
+
+    #[test]
+    fn preserves_radix_integer_source_spelling() {
+        // Fidelity #108: hex and octal integers round-trip with their
+        // original prefix + case intact. Underscore separators are
+        // stripped (YAML Core does not accept them) and binary integers
+        // canonicalise to decimal (YAML Core does not read `0b101`).
+        for (src, expected) in [
+            ("v = 0xDEADBEEF\n", "v = 0xDEADBEEF\n"),
+            ("v = 0o755\n", "v = 0o755\n"),
+            ("v = -0x1F\n", "v = -31\n"),
+            ("v = 0xFF_FF\n", "v = 0xFFFF\n"),
+            ("v = 0b1101_0110\n", "v = 214\n"),
+        ] {
+            let ast = from_toml(src).unwrap();
+            let text = to_toml(&ast).unwrap();
+            assert_eq!(text, expected, "radix fidelity lost on {src:?}");
+        }
+    }
+
+    #[test]
+    fn preserves_exponent_float_source_spelling() {
+        // Fidelity #108: exponent floats round-trip byte-for-byte.
+        for src in [
+            "v = 1e10\n",
+            "v = -3.14e-2\n",
+            "v = 6.02E23\n",
+            "v = 0.0e1\n",
+        ] {
+            let ast = from_toml(src).unwrap();
+            let text = to_toml(&ast).unwrap();
+            assert_eq!(text, src, "float fidelity lost on {src:?}");
+        }
+    }
+
+    #[test]
+    fn canonicalises_underscore_separators_and_plus_signs() {
+        // Deliberate divergence: underscore separators and explicit `+`
+        // signs are NOT in YAML Core's numeric grammar, so we canonicalise
+        // them to plain decimal (matches #107 behaviour). Users who want
+        // the spelling preserved should switch to a TOML-native editor.
+        let ast = from_toml("a = 1_000\nb = +42\n").unwrap();
+        let text = to_toml(&ast).unwrap();
+        assert!(text.contains("a = 1000"), "{text}");
+        assert!(text.contains("b = 42"), "{text}");
+    }
+
+    #[test]
+    fn parse_emit_is_idempotent_on_mixed_forms() {
+        // Full-shape round trip: every numeric spelling we support
+        // stabilises on the second pass, so `to_toml(from_toml(x))`
+        // is a fixed point after one application.
+        let src = "hex = 0xDEADBEEF\ndec = 42\nexp = 1e10\nneg = -3\nzero = 0\n";
+        let once = to_toml(&from_toml(src).unwrap()).unwrap();
+        let twice = to_toml(&from_toml(&once).unwrap()).unwrap();
+        assert_eq!(once, twice);
+        assert_eq!(once, src);
     }
 }

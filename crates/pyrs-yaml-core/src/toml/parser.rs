@@ -290,7 +290,7 @@ impl<'a> Parser<'a> {
         let _ = positive;
         if self.starts_with(b"inf") {
             self.pos += 3;
-            Ok(TomlValue::Float(f64::INFINITY))
+            Ok(TomlValue::Float(f64::INFINITY, None))
         } else {
             Err(self.err("expected `inf`"))
         }
@@ -300,7 +300,7 @@ impl<'a> Parser<'a> {
         let _ = positive;
         if self.starts_with(b"nan") {
             self.pos += 3;
-            Ok(TomlValue::Float(f64::NAN))
+            Ok(TomlValue::Float(f64::NAN, None))
         } else {
             Err(self.err("expected `nan`"))
         }
@@ -312,25 +312,33 @@ impl<'a> Parser<'a> {
             Some(b'i') if !positive => {
                 if self.starts_with(b"inf") {
                     self.pos += 3;
-                    return Ok(TomlValue::Float(f64::NEG_INFINITY));
+                    return Ok(TomlValue::Float(f64::NEG_INFINITY, None));
                 }
                 Err(self.err("expected `inf`"))
             }
             Some(b'i') if positive => {
                 if self.starts_with(b"inf") {
                     self.pos += 3;
-                    return Ok(TomlValue::Float(f64::INFINITY));
+                    return Ok(TomlValue::Float(f64::INFINITY, None));
                 }
                 Err(self.err("expected `inf`"))
             }
             Some(b'n') => {
                 if self.starts_with(b"nan") {
                     self.pos += 3;
-                    return Ok(TomlValue::Float(f64::NAN));
+                    return Ok(TomlValue::Float(f64::NAN, None));
                 }
                 Err(self.err("expected `nan`"))
             }
             Some(b'0'..=b'9') => {
+                // Radix-prefixed integers can carry a leading sign in
+                // TOML (`-0x1F`, `+0o644`). Route them through the
+                // prefixed path so the `0x`/`0o`/`0b` marker is not
+                // mistaken for a decimal `0` followed by garbage.
+                if self.starts_with(b"0x") || self.starts_with(b"0o") || self.starts_with(b"0b") {
+                    let v = self.parse_prefixed_body_via_dispatch()?;
+                    return Ok(if positive { v } else { negate_numeric(v) });
+                }
                 let v = self.parse_decimal_numeric_body()?;
                 Ok(if positive { v } else { negate_numeric(v) })
             }
@@ -338,20 +346,54 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Dispatch to the correct `parse_prefixed_integer_with_source`
+    /// variant based on the currently-visible `0x`/`0o`/`0b` marker.
+    /// Binary canonicalises to decimal (YAML Core does not accept
+    /// `0b101`), so it drops the source spelling. Callers enter with
+    /// `self.pos` at the leading `0`; this helper consumes the full
+    /// `0x`/`0o`/`0b` marker before scanning digits.
+    fn parse_prefixed_body_via_dispatch(&mut self) -> Result<TomlValue, ParseError> {
+        debug_assert_eq!(self.peek(), Some(b'0'));
+        self.pos += 1; // consume the `0`
+        let radix = match self.peek() {
+            Some(b'x') | Some(b'X') => 16,
+            Some(b'o') | Some(b'O') => 8,
+            Some(b'b') | Some(b'B') => 2,
+            _ => return Err(self.err("expected a radix marker after `0`")),
+        };
+        self.pos += 1; // consume the `x`/`o`/`b` marker
+        let (v, src) = self.parse_prefixed_integer_with_source(radix)?;
+        if radix == 2 {
+            Ok(TomlValue::Integer(v, None))
+        } else {
+            Ok(TomlValue::Integer(v, Some(src)))
+        }
+    }
+
     fn parse_unsigned_numeric(&mut self) -> Result<TomlValue, ParseError> {
         // Prefixed integers: 0x / 0o / 0b (TOML 1.0 disallows 0x0x-style
-        // leading zero after the prefix).
+        // leading zero after the prefix). Radix-prefixed spellings are
+        // preserved verbatim because YAML Core resolves them back to the
+        // same integer without needing a tag fence.
         if self.starts_with(b"0x") {
             self.pos += 2;
-            return self.parse_prefixed_integer(16).map(TomlValue::Integer);
+            let (v, src) = self.parse_prefixed_integer_with_source(16)?;
+            return Ok(TomlValue::Integer(v, Some(src)));
         }
         if self.starts_with(b"0o") {
             self.pos += 2;
-            return self.parse_prefixed_integer(8).map(TomlValue::Integer);
+            let (v, src) = self.parse_prefixed_integer_with_source(8)?;
+            return Ok(TomlValue::Integer(v, Some(src)));
         }
         if self.starts_with(b"0b") {
             self.pos += 2;
-            return self.parse_prefixed_integer(2).map(TomlValue::Integer);
+            // YAML Core schema does not recognise binary literals, so
+            // the projected plain scalar would resolve back to Str on
+            // the round trip. We canonicalise binary integers to decimal
+            // rather than introduce a `!!int` tag fence (see design doc
+            // D1: only spellings YAML Core also accepts get preserved).
+            let (v, _src) = self.parse_prefixed_integer_with_source(2)?;
+            return Ok(TomlValue::Integer(v, None));
         }
         // A leading digit could start a date/time or a decimal number.
         // Peek 10 bytes for a date-time prefix (YYYY-MM-DD) or 8+1 for a
@@ -409,20 +451,43 @@ impl<'a> Parser<'a> {
             self.scan_optional_exponent(true, num_start)?;
             return self.emit_float(num_start);
         }
-        // Emit integer if no float marker.
+        // Emit integer if no float marker. The source text carries the
+        // digits (plus any leading `-`/`+` handled upstream).
         let text = &self.text[num_start..self.pos];
-        text.replace('_', "")
-            .parse::<i64>()
-            .map(TomlValue::Integer)
-            .map_err(|_| self.err_at("integer out of range or malformed", num_start))
+        let cleaned = text.replace('_', "");
+        let value: i64 = cleaned
+            .parse()
+            .map_err(|_| self.err_at("integer out of range or malformed", num_start))?;
+        // Preserve `-0` verbatim because YAML Core reads `-0` back as
+        // `Int(0)` and we can round-trip the sign; every other decimal
+        // form either matches `i64::to_string()` (no work needed) or
+        // contains `_`/`+` which we canonicalize away.
+        let source: Option<std::sync::Arc<str>> = if text == "-0" {
+            Some(std::sync::Arc::from(text))
+        } else {
+            None
+        };
+        Ok(TomlValue::Integer(value, source))
     }
 
     fn emit_float(&mut self, num_start: usize) -> Result<TomlValue, ParseError> {
         let text = &self.text[num_start..self.pos];
-        text.replace('_', "")
-            .parse::<f64>()
-            .map(TomlValue::Float)
-            .map_err(|_| self.err_at("malformed float", num_start))
+        let cleaned = text.replace('_', "");
+        let value: f64 = cleaned
+            .parse()
+            .map_err(|_| self.err_at("malformed float", num_start))?;
+        // Preserve exponent spelling (`1e10`, `-3.14e-2`) verbatim: YAML
+        // Core reads them back as Float, so the projected plain scalar
+        // carries no tag and stays fully interoperable with the YAML
+        // pipeline. Canonical decimal forms (`1.5`, `-0.0`) already
+        // match the parsed value's rendering, so no source is recorded.
+        let has_exponent = text.bytes().any(|b| b == b'e' || b == b'E');
+        let source: Option<std::sync::Arc<str>> = if has_exponent && !text.contains('_') {
+            Some(std::sync::Arc::from(text))
+        } else {
+            None
+        };
+        Ok(TomlValue::Float(value, source))
     }
 
     fn scan_int_digits(&mut self) -> Result<(), ParseError> {
@@ -472,7 +537,18 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_prefixed_integer(&mut self, radix: u32) -> Result<i64, ParseError> {
+    /// Parse a `0x`/`0o`/`0b` prefixed integer and return both the decoded
+    /// value and the exact source spelling (with the prefix), so the
+    /// writer can round-trip radix notation verbatim.
+    fn parse_prefixed_integer_with_source(
+        &mut self,
+        radix: u32,
+    ) -> Result<(i64, std::sync::Arc<str>), ParseError> {
+        let prefix_str = match radix {
+            16 => "0x",
+            8 => "0o",
+            _ => "0b",
+        };
         let start = self.pos;
         let digit_test: fn(u8) -> bool = match radix {
             16 => |b: u8| b.is_ascii_hexdigit(),
@@ -491,6 +567,18 @@ impl<'a> Parser<'a> {
             return Err(self.err_at("malformed underscore placement in integer", start));
         }
         i64::from_str_radix(&cleaned, radix)
+            .map(|v| {
+                // Preserve the prefix + digits spelling, but strip `_`
+                // separators: YAML Core's numeric grammar rejects them, so
+                // the projected plain scalar must contain only the radix
+                // prefix and continuous digit run to survive the round trip
+                // through `to_yaml -> load_toml -> to_toml`.
+                let digits_no_underscores = raw.replace('_', "");
+                let mut src = String::with_capacity(prefix_str.len() + digits_no_underscores.len());
+                src.push_str(prefix_str);
+                src.push_str(&digits_no_underscores);
+                (v, std::sync::Arc::from(src))
+            })
             .map_err(|_| self.err_at("prefixed integer out of range", start))
     }
 
@@ -1207,9 +1295,44 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 }
 
 fn negate_numeric(v: TomlValue) -> TomlValue {
+    use std::sync::Arc;
     match v {
-        TomlValue::Integer(i) => TomlValue::Integer(-i),
-        TomlValue::Float(f) => TomlValue::Float(-f),
+        TomlValue::Integer(i, Some(src)) => {
+            // Radix-prefixed spellings (`0x1F`, `0o755`) do NOT accept
+            // a leading `-` under YAML Core's numeric grammar; negating
+            // them loses the fidelity fence, so we canonicalise to
+            // decimal instead of emitting a Str-resolving plain scalar.
+            let is_radix = src.starts_with("0x") || src.starts_with("0o") || src.starts_with("0b");
+            if is_radix {
+                return TomlValue::Integer(-i, None);
+            }
+            let flipped = if let Some(rest) = src.strip_prefix('-') {
+                Arc::<str>::from(rest)
+            } else if let Some(rest) = src.strip_prefix('+') {
+                Arc::<str>::from(rest)
+            } else {
+                Arc::<str>::from(format!("-{src}"))
+            };
+            let new_source = if flipped.starts_with("-0") && flipped.len() == 2 {
+                // negating literal `0` -> `-0` -> canonicalize to 0
+                None
+            } else {
+                Some(flipped)
+            };
+            TomlValue::Integer(-i, new_source)
+        }
+        TomlValue::Integer(i, None) => TomlValue::Integer(-i, None),
+        TomlValue::Float(f, Some(src)) => {
+            let flipped = if let Some(rest) = src.strip_prefix('-') {
+                Arc::<str>::from(rest)
+            } else if let Some(rest) = src.strip_prefix('+') {
+                Arc::<str>::from(rest)
+            } else {
+                Arc::<str>::from(format!("-{src}"))
+            };
+            TomlValue::Float(-f, Some(flipped))
+        }
+        TomlValue::Float(f, None) => TomlValue::Float(-f, None),
         other => other,
     }
 }
