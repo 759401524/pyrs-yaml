@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 line continuation and `\'` escape** — double-quoted JSON5 strings
+  now accept the two escape forms JSON5 adds beyond the JSON set: a backslash
+  immediately before a line terminator (line continuation, which removes both),
+  and an escaped single quote (`\'` → `'`). Gated on JSON5 mode, so strict
+  `from_json` and `from_jsonc` still reject both exactly as before. Mirrors the
+  single-quoted-string handling from #125, completing JSON5 string fidelity.
 - **JSON5 string escapes `\v` and `\0`** — `from_json5` now accepts the
   two string escapes JSON5 adds to the JSON set: `\v` (vertical tab
   U+000B) and `\0` (NUL U+0000), in both double- and single-quoted

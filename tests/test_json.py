@@ -59,6 +59,20 @@ class TestJsonDialects:
         assert "name:" in yaml_str
         assert "Alice" in yaml_str
 
+    def test_load_json5_line_continuation_and_quote_escape(self):
+        # PR #127: JSON5 allows a backslash-newline line continuation and an
+        # escaped single quote inside double-quoted strings. Parity check that
+        # the string *value* matches what these forms should produce.
+        cont = pyrs_yaml.load_json5('{"msg": "ab\\\ncd"}')
+        assert cont == {"msg": "abcd"}
+        esc = pyrs_yaml.load_json5('{"who": "it\\\'s"}')
+        assert esc == {"who": "it's"}
+        # Strict JSON / JSONC keep rejecting both forms.
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc('{"msg": "ab\\\ncd"}')
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc('{"who": "it\\\'s"}')
+
     def test_load_json5_returns_values(self):
         d = pyrs_yaml.load_json5("{a: 1, b: .5, c: 'str', d: [1, 2,],}")
         assert d == {"a": 1, "b": 0.5, "c": "str", "d": [1, 2]}
