@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **TOML 注释保真** — 解析器现在会采集独立注释（`# ...` 单独一行，
+  位于键值对或 section 头部之上）与行尾注释（`key = value # ...` /
+  `[name] # ...`），并通过 `NodeMeta::comment` 挂载到共享 AST（独立部
+  分挂在 key 节点，行尾部分挂在 value 节点）。`to_toml(from_toml(src))`
+  按原位置重新写回，`pyq edit` 与 `YamlDocument.set()` 不再剥离 TOML
+  往返中的注释。空白行分隔仍采用 writer 默认样式（见设计文档）。
 - **TOML 数字源码保真** — `to_toml(from_toml(src))` 现在保留十六进制
   (`0xDEADBEEF`) 与八进制 (`0o755`) 整数的源拼写，以及带指数的浮点
   (`1e10`、`-3.14e-2`)。下划线分隔符、显式 `+` 号、带负号的 radix

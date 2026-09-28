@@ -17,6 +17,13 @@ status: new
 
 #### 추가
 
+- **TOML 주석 보존** — 파서가 페어나 section 헤더 위에 별도 행으로
+  나타나는 `# ...` 주석과 행미 주석 (`key = value # ...` /
+  `[name] # ...`) 을 모두 캡처하여 공유 AST의 `NodeMeta::comment`에
+  부착합니다 (독립 부분은 key 노드, 행미 부분은 value 노드).
+  `to_toml(from_toml(src))`가 원 위치로 재출력하므로 `pyq edit`과
+  `YamlDocument.set()`은 TOML 왕복 중 주석을 더 이상 제거하지 않습니다.
+  빈 행 구분은 설계 문서에 따라 writer 기본 레이아웃 그대로.
 - **TOML 숫자 원문 표기 보존** — `to_toml(from_toml(src))`가 16진
   (`0xDEADBEEF`)·8진 (`0o755`) 정수의 원문 표기와 지수형 부동소수점
   (`1e10`、`-3.14e-2`)을 그대로 유지합니다. 밑줄 구분자、명시적 `+` 부호、

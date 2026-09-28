@@ -28,29 +28,70 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         return Err(SerializeError::Internal("toml-requires-table-root"));
     };
     let mut out = String::new();
-    let mut sections: Vec<(String, &CustomNode)> = Vec::new();
+    let mut sections: Vec<(String, &CustomNode, Option<&CustomNode>)> = Vec::new();
     for (k, v) in pairs {
         let key_str = scalar_key(k)?;
         match v {
             CustomNode::Mapping { pairs: inner, .. } if !inner.is_empty() => {
-                sections.push((key_str, v));
+                sections.push((key_str, v, Some(k)));
             }
             other => {
-                let _ = writeln!(out, "{key_str} = {}", value_str(other)?);
+                emit_pair(&mut out, k, other, &key_str)?;
             }
         }
     }
-    for (name, tbl) in sections {
-        let _ = writeln!(out, "[{name}]");
+    for (name, tbl, key_node) in sections {
+        // Standalone comment block sits above the header on its own line;
+        // the mapping's own meta.comment rides on the header line after
+        // `]` as an inline trailing note.
+        if let Some(k) = key_node
+            && let Some(c) = k.comment()
+            && c.standalone
+        {
+            let _ = writeln!(out, "# {}", c.text);
+        }
+        let header_inline = tbl.comment();
+        match header_inline {
+            Some(c) if !c.standalone => {
+                let _ = writeln!(out, "[{name}] # {}", c.text);
+            }
+            _ => {
+                let _ = writeln!(out, "[{name}]");
+            }
+        }
         let CustomNode::Mapping { pairs, .. } = tbl else {
             unreachable!("sections collected are mappings");
         };
         for (k, v) in pairs {
             let key_str = scalar_key(k)?;
-            let _ = writeln!(out, "{key_str} = {}", value_str(v)?);
+            emit_pair(&mut out, k, v, &key_str)?;
         }
     }
     Ok(out)
+}
+
+/// Emit one `key = value` line together with any leading (standalone) or
+/// trailing (inline) comments attached via `NodeMeta::comment`.
+fn emit_pair(
+    out: &mut String,
+    key_node: &CustomNode,
+    value_node: &CustomNode,
+    key_str: &str,
+) -> Result<(), SerializeError> {
+    if let Some(c) = key_node.comment()
+        && c.standalone
+    {
+        let _ = writeln!(out, "# {}", c.text);
+    }
+    let value_text = value_str(value_node)?;
+    if let Some(c) = value_node.comment()
+        && !c.standalone
+    {
+        let _ = writeln!(out, "{key_str} = {value_text} # {}", c.text);
+    } else {
+        let _ = writeln!(out, "{key_str} = {value_text}");
+    }
+    Ok(())
 }
 
 fn scalar_key(k: &CustomNode) -> Result<String, SerializeError> {
@@ -377,5 +418,43 @@ mod tests {
         let twice = to_toml(&from_toml(&once).unwrap()).unwrap();
         assert_eq!(once, twice);
         assert_eq!(once, src);
+    }
+
+    #[test]
+    fn preserves_trailing_inline_comment_on_kv() {
+        // Fidelity #109: `key = val # comment` retains the same-line note.
+        let src = "port = 8080 # default\nhost = \"localhost\"\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn preserves_standalone_comment_above_kv() {
+        // A `# ...` line above a pair rides into the AST and back out.
+        let src = "# section marker\nkey = 1\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn preserves_section_header_trailing_and_leading() {
+        // `[name] # note` retains the inline note; a `# ...` block on
+        // the line above the header retains its own slot.
+        let src = "# above the section\n[srv] # inline\nport = 1\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, src, "{out}");
+    }
+
+    #[test]
+    fn preserves_comments_across_mixed_pairs_and_sections() {
+        let src =
+            "# top\nkey = 1 # same line\n\n# before section\n[sec] # note\ninner = 2 # tail\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        // The blank-line separator is intentionally not preserved (see
+        // design doc: PR #109 covers comment slots only; whitespace
+        // fidelity would need a NodeMeta::blank_before field).
+        assert!(out.contains("# top\nkey = 1 # same line"), "{out}");
+        assert!(out.contains("# before section\n[sec] # note"), "{out}");
+        assert!(out.contains("inner = 2 # tail"), "{out}");
     }
 }

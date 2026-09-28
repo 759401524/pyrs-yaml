@@ -63,16 +63,38 @@ pub(crate) enum TomlValue {
 /// headers in the source text; `Implicit` cannot be re-opened by `[a]` or
 /// extended by dotted keys.
 pub(crate) enum TomlTable {
-    Value(TomlValue),
+    Value(TomlValue, KVAnnotations),
     Implicit(CowTable),
     Explicit(CowTable),
     ArrayOfTables(Vec<CowTable>),
 }
 
+/// Comments captured for a `key = value` pair during parsing.
+///
+/// The pair projects onto the shared AST as follows:
+/// - `leading` becomes the key node's `NodeMeta::comment` with
+///   `standalone = true` (rendered on its own line before `key = value`).
+/// - `trailing` becomes the value node's `NodeMeta::comment` with
+///   `standalone = false` (rendered after the value on the same line).
+///
+/// Only the LAST contiguous standalone block immediately above a pair
+/// survives; earlier blocks separated by blank lines are dropped, which
+/// matches the YAML receiver's model and `toml_edit`'s decor handling.
+#[derive(Default)]
+pub(crate) struct KVAnnotations {
+    pub(crate) leading: Option<String>,
+    pub(crate) trailing: Option<String>,
+}
+
 /// Insertion-ordered TOML key/value store used during parsing.
+///
+/// `comment` holds the inline trailing text on the `[name] # ...` header
+/// line; `leading` holds the last standalone `# ...` block on the line
+/// immediately above the header.
 pub(crate) struct CowTable {
     pub(crate) entries: indexmap::IndexMap<String, TomlTable>,
     pub(crate) comment: Option<String>,
+    pub(crate) leading: Option<String>,
 }
 
 impl CowTable {
@@ -80,6 +102,7 @@ impl CowTable {
         Self {
             entries: indexmap::IndexMap::new(),
             comment: None,
+            leading: None,
         }
     }
 }
@@ -93,13 +116,51 @@ impl Default for CowTable {
 pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
     let mut pairs = indexmap::IndexMap::new();
     for (k, v) in t.entries {
-        let key = CustomNode::Scalar {
+        // Extract the leading (standalone) comment that rides on the key
+        // node and the trailing (inline) comment that rides on the value
+        // node, then attach them via the `NodeMeta::comment` slot. The
+        // sub-table branches surface their own `CowTable.leading` on the
+        // key node so `[section]` blocks stay attached to the section
+        // name rather than its first inner pair.
+        let (standalone, inline, value_node) = match v {
+            TomlTable::Value(val, anns) => {
+                let n = toml_value_to_node(val);
+                (anns.leading, anns.trailing, n)
+            }
+            TomlTable::Implicit(ct) | TomlTable::Explicit(ct) => {
+                let standalone = ct.leading.clone();
+                let node = cow_table_to_node(ct);
+                (standalone, None, node)
+            }
+            TomlTable::ArrayOfTables(list) => {
+                let node = CustomNode::Sequence {
+                    items: list.into_iter().map(cow_table_to_node).collect(),
+                    flow_style: false,
+                    meta: NodeMeta::default(),
+                };
+                (None, None, node)
+            }
+        };
+        let mut key = CustomNode::Scalar {
             value: k.into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             meta: NodeMeta::default(),
         };
-        pairs.insert(key, toml_table_to_node(v));
+        if let Some(text) = standalone {
+            key.set_comment(crate::ast::Comment {
+                text: std::sync::Arc::from(text),
+                standalone: true,
+            });
+        }
+        let mut val = value_node;
+        if let Some(text) = inline {
+            val.set_comment(crate::ast::Comment {
+                text: std::sync::Arc::from(text),
+                standalone: false,
+            });
+        }
+        pairs.insert(key, val);
     }
     CustomNode::Mapping {
         pairs,
@@ -107,18 +168,6 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
         meta: NodeMeta {
             comment: t.comment.map(into_comment),
             ..Default::default()
-        },
-    }
-}
-
-pub(crate) fn toml_table_to_node(t: TomlTable) -> CustomNode {
-    match t {
-        TomlTable::Value(v) => toml_value_to_node(v),
-        TomlTable::Implicit(ct) | TomlTable::Explicit(ct) => cow_table_to_node(ct),
-        TomlTable::ArrayOfTables(v) => CustomNode::Sequence {
-            items: v.into_iter().map(cow_table_to_node).collect(),
-            flow_style: false,
-            meta: NodeMeta::default(),
         },
     }
 }

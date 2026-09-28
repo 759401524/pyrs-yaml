@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML comment fidelity** — the parser now captures both standalone
+  (`# ...` on its own line above a pair or section header) and inline
+  (`key = value # ...` / `[name] # ...`) comments and attaches them onto
+  the shared AST through `NodeMeta::comment` (standalone on the key
+  node, inline on the value node). `to_toml(from_toml(src))` re-emits
+  those comments at their original positions, so `pyq edit` and
+  `YamlDocument.set()` no longer strip annotation notes from a TOML
+  round trip. Whitespace fidelity (blank-line separators between
+  pairs) stays on the writer's default layout per the design doc.
 - **TOML numeric source fidelity** — `to_toml(from_toml(src))` now preserves
   the source spelling of hex (`0xDEADBEEF`) and octal (`0o755`) integers and
   exponent-form floats (`1e10`, `-3.14e-2`, `6.02E23`). Radix prefixes are
