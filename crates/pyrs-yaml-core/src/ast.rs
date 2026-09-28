@@ -119,25 +119,27 @@ impl Hash for Tag {
 
 /// Metadata shared by all content-bearing node variants (not Alias).
 ///
-/// `leading_comment` and `blank_before` are round-trip fidelity slots
-/// introduced by PR #114 to give the native TOML / JSON engines a place
-/// to carry both the standalone note above a pair AND the trailing
-/// inline note after its value on the same node. They are excluded from
-/// `Hash` and `PartialEq` (same treatment as `source_range`) so
-/// programmatically built nodes keep comparing equal to parsed ones
-/// whenever the structural metadata agrees.
+/// PR #114 introduced two fidelity slots (`leading_comment` and
+/// `blank_before`) so a section header or array-of-tables element can
+/// carry BOTH the standalone note above it AND the inline trailing
+/// note after it. Naively embedding those fields grew `NodeMeta` from
+/// 120 to 152 bytes and cost ~13 % on `clone_ast_10mb` (CodSpeed
+/// flagged the regression on the initial PR push). Boxing the extras
+/// behind a single `Option<Box<NodeDecor>>` grows `NodeMeta` by only
+/// 8 bytes for every node and pays the full 24-byte decoration only
+/// where the source actually carries a standalone note or blank-line
+/// hint — hand-built fixtures and undecorated YAML / JSON nodes keep
+/// cloning at near the pre-#114 cost.
 #[derive(Debug, Clone, Eq, Default)]
 pub struct NodeMeta {
     /// Trailing (inline) comment attached to the node. Rendered after
     /// the value on the same line by the YAML / TOML / JSON writers.
     pub comment: Option<Comment>,
-    /// Leading (standalone) comment rendered on its own line above the
-    /// node's key or header. Currently only produced by the native TOML
-    /// and JSON parsers and the granit-parser receiver for YAML.
-    pub leading_comment: Option<Comment>,
-    /// Whether the source carried at least one blank line immediately
-    /// before this node. Excluded from structural equality.
-    pub blank_before: bool,
+    /// Optional boxed decoration bundle: leading (standalone) comment
+    /// plus blank-line hint. `None` for undecorated nodes, which is
+    /// the common case, keeping this field's hot-path cost at one
+    /// pointer.
+    pub decor: Option<Box<NodeDecor>>,
     /// Anchor name for this node (e.g., "my_anchor").
     pub anchor: Option<String>,
     /// YAML tag (e.g., !!str, !custom).
@@ -146,10 +148,35 @@ pub struct NodeMeta {
     pub source_range: Option<Range<usize>>,
 }
 
+/// Fidelity-only fields, boxed so undecorated nodes pay nothing.
+///
+/// Excluded from `Hash` and `PartialEq` (same treatment as
+/// `source_range`): hand-built fixtures that omit decorations still
+/// compare equal to parsed nodes carrying them.
+#[derive(Debug, Clone, Eq, Default)]
+pub struct NodeDecor {
+    /// Leading (standalone) comment rendered on its own line above the
+    /// node's key or header. Currently only populated by the native
+    /// TOML engine; JSON and YAML migrate in #115 / #117.
+    pub leading_comment: Option<Comment>,
+    /// Whether the source carried at least one blank line immediately
+    /// before this node.
+    pub blank_before: bool,
+}
+
+impl PartialEq for NodeDecor {
+    /// Two `Some(decor)` bundles always compare equal so `NodeMeta::eq`
+    /// can short-circuit on the surrounding `Option`. Fidelity hints
+    /// are intentionally outside structural equality.
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 impl PartialEq for NodeMeta {
-    /// Structural equality excludes `leading_comment`, `blank_before`
-    /// and `source_range` so hand-built fixtures keep matching parsed
-    /// output regardless of whitespace or provenance hints.
+    /// Structural equality excludes `decor` and `source_range` so
+    /// hand-built fixtures keep matching parsed output regardless of
+    /// whitespace or provenance hints.
     fn eq(&self, other: &Self) -> bool {
         self.comment == other.comment && self.anchor == other.anchor && self.tag == other.tag
     }
@@ -596,28 +623,40 @@ impl CustomNode {
     /// line above a pair here, leaving `comment()` for the same-line
     /// trailing note. `None` for programmatically built nodes and for
     /// YAML documents (whose receiver keeps writing standalone notes
-    /// into `comment()` with `standalone = true` until PR #115).
+    /// into `comment()` with `standalone = true` until PR #117).
     pub fn leading_comment(&self) -> Option<&Comment> {
-        self.meta().and_then(|m| m.leading_comment.as_ref())
+        self.meta()
+            .and_then(|m| m.decor.as_ref())
+            .and_then(|d| d.leading_comment.as_ref())
     }
 
-    /// Set the leading (standalone) comment. No-op on `Alias`.
+    /// Set the leading (standalone) comment. Allocates the boxed
+    /// `NodeDecor` on first write. No-op on `Alias`.
     pub fn set_leading_comment(&mut self, new_comment: Comment) {
         if let Some(meta) = self.meta_mut() {
-            meta.leading_comment = Some(new_comment);
+            let decor = meta.decor.get_or_insert_with(Default::default);
+            decor.leading_comment = Some(new_comment);
         }
     }
 
     /// Whether the source carried a blank line immediately before this
     /// node. Excluded from structural equality.
     pub fn blank_before(&self) -> bool {
-        self.meta().is_some_and(|m| m.blank_before)
+        self.meta()
+            .and_then(|m| m.decor.as_ref())
+            .is_some_and(|d| d.blank_before)
     }
 
-    /// Record a preceding blank-line hint. No-op on `Alias`.
+    /// Record a preceding blank-line hint. Allocates the boxed
+    /// `NodeDecor` on first `true` write. No-op on `Alias`.
     pub fn set_blank_before(&mut self, blank: bool) {
         if let Some(meta) = self.meta_mut() {
-            meta.blank_before = blank;
+            if blank {
+                let decor = meta.decor.get_or_insert_with(Default::default);
+                decor.blank_before = true;
+            } else if let Some(decor) = meta.decor.as_mut() {
+                decor.blank_before = false;
+            }
         }
     }
 
@@ -866,8 +905,7 @@ pub(crate) mod proptest_strategies {
         )
             .prop_map(|(comment, anchor, tag)| NodeMeta {
                 comment,
-                leading_comment: None,
-                blank_before: false,
+                decor: None,
                 anchor,
                 tag,
                 source_range: None,

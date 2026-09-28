@@ -205,14 +205,18 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
         }
         pairs.insert(key, val);
     }
+    let mut meta = NodeMeta {
+        comment: t.comment.map(into_comment),
+        ..Default::default()
+    };
+    if t.blank_before {
+        let decor = meta.decor.get_or_insert_with(Default::default);
+        decor.blank_before = true;
+    }
     CustomNode::Mapping {
         pairs,
         flow_style: false,
-        meta: NodeMeta {
-            comment: t.comment.map(into_comment),
-            blank_before: t.blank_before,
-            ..Default::default()
-        },
+        meta,
     }
 }
 
