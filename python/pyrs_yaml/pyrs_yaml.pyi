@@ -315,6 +315,13 @@ def from_json(json_str: "str") -> "str":
     Convert a JSON string to a YAML string.
     """
 
+def from_jsonc(json_str: "str") -> "str":
+    """
+    Convert a JSONC string (JSON with `//` and `/* ... */` comments) to
+    a YAML string. Comments are stripped; everything else matches
+    `from_json` semantics exactly.
+    """
+
 def from_toml(toml_str: "str") -> "str":
     """
     Convert a TOML string to a YAML string (hub-and-spoke exchange).
@@ -353,6 +360,13 @@ def list_schemas() -> "list[str]":
 
     Returns the four built-in schemas (`failsafe`, `json`, `core`, `yaml1.1`)
     plus any schemas registered via `register_schema()` / `load_schema()`.
+    """
+
+def load_jsonc(json_str: "str") -> "dict[str, Any] | list[Any]":
+    """
+    Parse a JSONC document directly into Python values (dict / list /
+    scalar). Handy for TypeScript `tsconfig.json`, VS Code
+    `settings.json`, and similar dialects without a pre-processing step.
     """
 
 def load_schema(name: "str", path: "str") -> "None":

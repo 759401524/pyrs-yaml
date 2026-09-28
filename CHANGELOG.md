@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 dialect** — `pyrs_yaml_core::json::from_json5(text)` and the
+  general `from_json_with_options(text, JsonParseOptions)` accept the
+  full JSON5 axis set: trailing commas in arrays and objects,
+  single-quoted strings, unquoted identifier keys (`A-Z a-z _ $`), and
+  line/block comments. Each axis is individually togglable on
+  `JsonParseOptions { allow_trailing_commas, allow_single_quoted,
+  allow_unquoted_keys, allow_comments }`; `STRICT`, `JSONC`, and `JSON5`
+  constants ship as the common presets.
+- **JSONC/JSON5 bindings and CLI** — `pyrs_yaml.from_jsonc(str)` returns
+  YAML text (mirrors `from_json`), `pyrs_yaml.load_jsonc(str)` returns
+  a Python dict / list directly (mirrors `load_toml`). The `pyq`
+  command gains `--jsonc` and `--json5` flags on `from-json` so
+  `tsconfig.json` / `settings.json` files feed straight into the
+  existing verb pipeline.
 - **JSONC comment preservation** — `from_jsonc` now attaches captured
   `//` line and `/* */` block comments onto the AST's `NodeMeta::comment`
   (standalone on the key node, inline on the value node), mirroring the

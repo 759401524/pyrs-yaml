@@ -194,6 +194,13 @@ pub enum Command {
         json: bool,
         #[arg(long)]
         raw: bool,
+        /// Accept `// line` and `/* block */` comments (JSONC dialect).
+        #[arg(long)]
+        jsonc: bool,
+        /// Accept JSON5 extensions: trailing commas, single-quoted strings,
+        /// unquoted identifier keys, and line/block comments.
+        #[arg(long)]
+        json5: bool,
     },
     /// Read TOML text, emit YAML (optionally a sub-extraction).
     FromToml {
@@ -507,8 +514,20 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             verbs,
             json,
             raw,
+            jsonc,
+            json5,
         } => {
-            let node = json::json_to_node(&read_input(&file)?)?;
+            let src = read_input(&file)?;
+            // `--json5` subsumes `--jsonc`: JSON5 enables comments plus
+            // the other three extensions, so a caller passing both flags
+            // gets JSON5 without an error.
+            let node = if json5 {
+                json::json_to_node_json5(&src)?
+            } else if jsonc {
+                json::json_to_node_jsonc(&src)?
+            } else {
+                json::json_to_node(&src)?
+            };
             emit_selected(&node, &get, &verbs, json, raw)?;
         }
         Command::FromToml {

@@ -255,6 +255,37 @@ pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
+#[pyo3(signature = (json_str: "str") -> "str")]
+/// Convert a JSONC string (JSON with `//` and `/* ... */` comments) to
+/// a YAML string. Comments are stripped; everything else matches
+/// `from_json` semantics exactly.
+pub(crate) fn from_jsonc(_py: Python, json_str: &str) -> PyResult<String> {
+    let node = pyrs_yaml_core::json::from_jsonc(json_str).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "json-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    Ok(crate::serializer::to_yaml(&node))
+}
+
+#[pyfunction]
+#[pyo3(signature = (json_str: "str") -> "dict[str, Any] | list[Any]")]
+/// Parse a JSONC document directly into Python values (dict / list /
+/// scalar). Handy for TypeScript `tsconfig.json`, VS Code
+/// `settings.json`, and similar dialects without a pre-processing step.
+pub(crate) fn load_jsonc(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
+    let mut ast = pyrs_yaml_core::json::from_jsonc(json_str).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "json-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    crate::py::document::resolve_tags(&mut ast, py)?;
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &parse_schema("json")?, false)
+}
+
+#[pyfunction]
 #[pyo3(signature = (toml_str: "str") -> "str")]
 /// Convert a TOML string to a YAML string (hub-and-spoke exchange).
 /// TOML strings keep quoting so values never re-resolve; datetimes gain

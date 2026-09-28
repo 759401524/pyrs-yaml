@@ -17,6 +17,16 @@ status: new
 
 #### 추가
 
+- **JSON5 방언** — `pyrs_yaml_core::json::from_json5(text)`과
+  `from_json_with_options(text, JsonParseOptions)`가 JSON5의 4개 축
+  (후행 쉼표, 한따옴표 문자열, 따옴표 없는 식별자 키, 행/블록
+  주석)을 모두 허용합니다. 각 축은 개별 토글 가능; `STRICT`,
+  `JSONC`, `JSON5` 상수를 기본값으로 제공합니다.
+- **JSONC/JSON5 바인딩과 CLI** — `pyrs_yaml.from_jsonc(str)`은 YAML
+  텍스트를 반환하고, `pyrs_yaml.load_jsonc(str)`는 Python dict / list를
+  바로 반환합니다. `pyq from-json`에 `--jsonc` 및 `--json5` 플래그를
+  추가해 `tsconfig.json` / `settings.json` 이 verb 파이프라인으로 바로
+  이어집니다.
 - **JSONC 주석 보존** — `from_jsonc`이 수집한 `// 행` 및
   `/* 블록 */` 주석을 AST의 `NodeMeta::comment`에 부착합니다
   (독립 부분은 key 노드, 행미 부분은 value 노드). PR #109에서
