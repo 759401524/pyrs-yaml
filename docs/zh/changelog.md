@@ -17,6 +17,15 @@ status: new
 
 #### 新增
 
+- **JSON5 方言** — `pyrs_yaml_core::json::from_json5(text)` 与
+  `from_json_with_options(text, JsonParseOptions)` 接受 JSON5 全部四
+  个轴：尾逗号、单引号字符串、无引号标识符 key 以及行/块
+  注释。每个轴可以单独开关；`STRICT`、`JSONC`、`JSON5` 常量作为
+  预设提供。
+- **JSONC/JSON5 绑定与 CLI** — `pyrs_yaml.from_jsonc(str)` 输出 YAML
+  文本；`pyrs_yaml.load_jsonc(str)` 直接返回 Python dict / list。
+  `pyq from-json` 新增 `--jsonc` 与 `--json5` 旗标，`tsconfig.json` 与
+  `settings.json` 能直接进入 verb 流水线。
 - **JSONC 注释保真** — `from_jsonc` 现在会把采到的 `// 行` 与
   `/* 块 */` 注释挂到 AST 的 `NodeMeta::comment`（独立部分在 key
   节点，行尾部分在 value 节点），与 PR #109 建立的 TOML 模型对齐。

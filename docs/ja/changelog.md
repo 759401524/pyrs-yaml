@@ -17,6 +17,16 @@ status: new
 
 #### 追加
 
+- **JSON5 方言** — `pyrs_yaml_core::json::from_json5(text)` と
+  `from_json_with_options(text, JsonParseOptions)` は JSON5 の全 4
+  軸（後尾カンマ、一重引用符文字列、引用符なし識別子キー、
+  行/ブロックコメント）を受け入れます。各軸は個別に ON/OFF 可。
+  `STRICT`・`JSONC`・`JSON5` 定数をデフォルトとして提供します。
+- **JSONC/JSON5 バインディングと CLI** — `pyrs_yaml.from_jsonc(str)`
+  は YAML テキストを返し、`pyrs_yaml.load_jsonc(str)` は Python の
+  dict / list を直接返します。`pyq from-json` に `--jsonc` と
+  `--json5` フラグを追加し、`tsconfig.json` / `settings.json` を
+  verb パイプラインに直通させます。
 - **JSONC コメント保持** — `from_jsonc` が拾った `// 行` と
   `/* ブロック */` コメントを AST の `NodeMeta::comment` に添付し
   ます（独立部は key ノード、行末部は value ノード）。PR #109 で

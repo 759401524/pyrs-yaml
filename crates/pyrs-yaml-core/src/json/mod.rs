@@ -23,7 +23,7 @@ mod writer;
 
 pub use parser::{
     DEFAULT_MAX_DEPTH, JsonParseOptions, from_json, from_json_with_max_depth,
-    from_json_with_options, from_jsonc,
+    from_json_with_options, from_json5, from_jsonc,
 };
 pub use writer::{
     key_text, to_json_text, to_json_text_pretty, to_jsonc_text, to_jsonc_text_pretty,

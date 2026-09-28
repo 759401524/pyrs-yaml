@@ -23,3 +23,15 @@ pub fn node_to_json_pretty(node: &CustomNode, indent: usize) -> Result<String, S
 pub fn json_to_node(text: &str) -> Result<CustomNode, String> {
     pyrs_yaml_core::json::from_json(text).map_err(|e| format!("JSON parse error: {e}"))
 }
+
+/// JSONC variant of [`json_to_node`]: accepts `// line` and `/* block */`
+/// comments alongside the strict RFC 8259 grammar.
+pub fn json_to_node_jsonc(text: &str) -> Result<CustomNode, String> {
+    pyrs_yaml_core::json::from_jsonc(text).map_err(|e| format!("JSON parse error: {e}"))
+}
+
+/// JSON5 variant of [`json_to_node`]: additionally accepts trailing
+/// commas, single-quoted strings, and unquoted identifier keys.
+pub fn json_to_node_json5(text: &str) -> Result<CustomNode, String> {
+    pyrs_yaml_core::json::from_json5(text).map_err(|e| format!("JSON parse error: {e}"))
+}

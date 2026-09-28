@@ -27,16 +27,20 @@ pub const DEFAULT_MAX_DEPTH: usize = 1000;
 ///
 /// The default [`JsonParseOptions::STRICT`] implements RFC 8259 exactly:
 /// no comments, no trailing commas, one top-level value. [`allow_comments`]
-/// upgrades the parser to JSONC (the dialect popularised by TypeScript's
-/// `tsconfig.json` and VS Code's `settings.json`), accepting `// line`
-/// and `/* block */` comments wherever whitespace is legal. Trailing
-/// commas remain rejected so the accepted language is still a strict
-/// superset of JSON, not JSON5.
+/// upgrades the parser toward JSONC / JSON5, unlocking each axis
+/// individually. Trailing commas, single-quoted strings and unquoted
+/// identifier keys are the three additional JSON5 features surfaced
+/// here; combining all flags yields the JSON5 dialect while
+/// [`JsonParseOptions::JSONC`] keeps the parser a strict superset of
+/// RFC 8259 with only comments enabled.
 ///
 /// [`allow_comments`]: JsonParseOptions::allow_comments
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JsonParseOptions {
     pub allow_comments: bool,
+    pub allow_trailing_commas: bool,
+    pub allow_single_quoted: bool,
+    pub allow_unquoted_keys: bool,
     pub max_depth: usize,
 }
 
@@ -44,11 +48,26 @@ impl JsonParseOptions {
     /// RFC 8259 with the default depth budget. `from_json` maps to this.
     pub const STRICT: JsonParseOptions = JsonParseOptions {
         allow_comments: false,
+        allow_trailing_commas: false,
+        allow_single_quoted: false,
+        allow_unquoted_keys: false,
         max_depth: DEFAULT_MAX_DEPTH,
     };
     /// JSONC: allows `//` and `/* ... */` comments. Everything else strict.
     pub const JSONC: JsonParseOptions = JsonParseOptions {
         allow_comments: true,
+        allow_trailing_commas: false,
+        allow_single_quoted: false,
+        allow_unquoted_keys: false,
+        max_depth: DEFAULT_MAX_DEPTH,
+    };
+    /// JSON5: all four extensions on. Trailing commas, single-quoted
+    /// strings, unquoted identifier keys and line/block comments.
+    pub const JSON5: JsonParseOptions = JsonParseOptions {
+        allow_comments: true,
+        allow_trailing_commas: true,
+        allow_single_quoted: true,
+        allow_unquoted_keys: true,
         max_depth: DEFAULT_MAX_DEPTH,
     };
 }
@@ -72,10 +91,15 @@ pub fn from_json_with_max_depth(text: &str, max_depth: usize) -> Result<CustomNo
     from_json_with_options(
         text,
         JsonParseOptions {
-            allow_comments: false,
             max_depth,
+            ..JsonParseOptions::STRICT
         },
     )
+}
+
+/// Parse one JSON5 document into the shared AST.
+pub fn from_json5(text: &str) -> Result<CustomNode, ParseError> {
+    from_json_with_options(text, JsonParseOptions::JSON5)
 }
 
 /// Parse with a chosen dialect. See [`JsonParseOptions`] for the axes.
@@ -90,6 +114,9 @@ pub fn from_json_with_options(
         depth: 0,
         max_depth: opts.max_depth,
         allow_comments: opts.allow_comments,
+        allow_trailing_commas: opts.allow_trailing_commas,
+        allow_single_quoted: opts.allow_single_quoted,
+        allow_unquoted_keys: opts.allow_unquoted_keys,
         pending_comment: None,
     };
     p.ws();
@@ -108,6 +135,9 @@ struct Parser<'a> {
     depth: usize,
     max_depth: usize,
     allow_comments: bool,
+    allow_trailing_commas: bool,
+    allow_single_quoted: bool,
+    allow_unquoted_keys: bool,
     /// The most recent JSONC comment consumed by `ws()`, waiting to
     /// be attached to the next constructed node. `own_line` records
     /// whether the comment started on a line of its own (i.e. no
@@ -223,6 +253,77 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// JSON5 single-quoted string. Same escape set as RFC 8259 basic
+    /// strings but delimited by `'`; the parser additionally honours the
+    /// JSON5 line-continuation backslash rule (a trailing `\` before a
+    /// newline swallows both).
+    fn single_quoted_string(&mut self) -> Result<String, ParseError> {
+        debug_assert_eq!(self.peek(), Some(b'\''));
+        self.pos += 1;
+        let mut out = String::new();
+        loop {
+            let b = self.peek().ok_or_else(|| self.err("unterminated string"))?;
+            match b {
+                b'\'' => {
+                    self.pos += 1;
+                    return Ok(out);
+                }
+                b'\\' => {
+                    self.pos += 1;
+                    let e = self.peek().ok_or_else(|| self.err("unterminated escape"))?;
+                    self.pos += 1;
+                    match e {
+                        b'\'' => out.push('\''),
+                        b'"' => out.push('"'),
+                        b'\\' => out.push('\\'),
+                        b'/' => out.push('/'),
+                        b'b' => out.push('\u{8}'),
+                        b'f' => out.push('\u{c}'),
+                        b'n' => out.push('\n'),
+                        b'r' => out.push('\r'),
+                        b't' => out.push('\t'),
+                        b'\n' | b'\r' => {
+                            // JSON5 line continuation: nothing appended.
+                        }
+                        b'u' => self.unicode_escape(&mut out)?,
+                        _ => return Err(self.err("invalid escape sequence")),
+                    }
+                }
+                b'\n' | b'\r' => {
+                    return Err(self.err("newline in single-quoted string"));
+                }
+                _ => {
+                    self.pos += 1;
+                    let cut = floor_char_boundary(self.text, self.pos);
+                    if cut > self.pos - 1 {
+                        out.push_str(&self.text[self.pos - 1..cut]);
+                        self.pos = cut;
+                    } else {
+                        out.push(b as char);
+                    }
+                }
+            }
+        }
+    }
+
+    /// JSON5 identifier key (unquoted). Accepted start: A-Z a-Z _ $
+    /// (plus Unicode ID_Start); continuation adds digits and a few more.
+    /// We keep it ASCII-only so the resulting scalar matches what a
+    /// quoted `"a_b"` key would produce, avoiding a Unicode tables dep.
+    fn identifier_key(&mut self) -> Result<String, ParseError> {
+        let start = self.pos;
+        while matches!(
+            self.peek(),
+            Some(b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'$')
+        ) {
+            self.pos += 1;
+        }
+        if self.pos == start {
+            return Err(self.err("expected an identifier key"));
+        }
+        Ok(self.text[start..self.pos].to_string())
+    }
+
     fn eof_pos(&self) -> bool {
         self.pos >= self.s.len()
     }
@@ -253,6 +354,10 @@ impl<'a> Parser<'a> {
             Some(b'[') => self.array(),
             Some(b'"') => {
                 let s = self.string()?;
+                Ok(quoted_or_plain(s))
+            }
+            Some(b'\'') if self.allow_single_quoted => {
+                let s = self.single_quoted_string()?;
                 Ok(quoted_or_plain(s))
             }
             Some(b't') => {
@@ -286,11 +391,18 @@ impl<'a> Parser<'a> {
             // standalone note; claim the slot before parsing the key so
             // the value-side `ws()` below starts with a clean slate.
             let key_pending = self.pending_comment.take();
-            if self.peek() != Some(b'"') {
+            let key_str = if self.peek() == Some(b'"') {
+                self.string()?
+            } else if self.allow_single_quoted && self.peek() == Some(b'\'') {
+                self.single_quoted_string()?
+            } else if self.allow_unquoted_keys
+                && matches!(self.peek(), Some(b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'$'))
+            {
+                self.identifier_key()?
+            } else {
                 return Err(self.err("expected a quoted object key"));
-            }
-            let key = self.string()?;
-            let mut key_node = quoted_or_plain(key);
+            };
+            let mut key_node = quoted_or_plain(key_str);
             if let Some(pc) = key_pending {
                 key_node.set_comment(crate::ast::Comment {
                     text: std::sync::Arc::from(pc.text),
@@ -306,7 +418,14 @@ impl<'a> Parser<'a> {
             // duplicate keys: last value wins, first position kept
             pairs.insert(key_node, value);
             match self.peek() {
-                Some(b',') => self.pos += 1,
+                Some(b',') => {
+                    self.pos += 1;
+                    self.ws();
+                    if self.allow_trailing_commas && self.peek() == Some(b'}') {
+                        self.pos += 1;
+                        return Ok(CustomNode::plain_mapping(pairs));
+                    }
+                }
                 Some(b'}') => {
                     self.pos += 1;
                     return Ok(CustomNode::plain_mapping(pairs));
@@ -341,7 +460,14 @@ impl<'a> Parser<'a> {
             self.flush_pending(&mut item);
             items.push(item);
             match self.peek() {
-                Some(b',') => self.pos += 1,
+                Some(b',') => {
+                    self.pos += 1;
+                    self.ws();
+                    if self.allow_trailing_commas && self.peek() == Some(b']') {
+                        self.pos += 1;
+                        return Ok(CustomNode::plain_sequence(items));
+                    }
+                }
                 Some(b']') => {
                     self.pos += 1;
                     return Ok(CustomNode::plain_sequence(items));
@@ -684,6 +810,82 @@ mod tests {
         ] {
             assert!(from_json(bad).is_err(), "must reject {bad:?}");
         }
+    }
+
+    #[test]
+    fn json5_trailing_commas() {
+        // JSON5 unlocks trailing commas in both arrays and objects.
+        let arr = from_json5("[1, 2, 3,]").unwrap();
+        assert!(matches!(arr, CustomNode::Sequence { .. }));
+        let obj = from_json5(r#"{"a": 1, "b": 2,}"#).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &obj else {
+            unreachable!()
+        };
+        assert_eq!(pairs.len(), 2);
+    }
+
+    #[test]
+    fn json5_single_quoted_strings() {
+        let v = from_json5("'hi'").unwrap();
+        match &v {
+            CustomNode::Scalar { value, .. } => assert_eq!(value.as_ref(), "hi"),
+            other => panic!("{other:?}"),
+        }
+        // Escapes still work in single-quoted strings.
+        let v = from_json5(r#"'a\nb'"#).unwrap();
+        match &v {
+            CustomNode::Scalar { value, .. } => assert_eq!(value.as_ref(), "a\nb"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn json5_unquoted_identifier_keys() {
+        let obj = from_json5("{a: 1, _b2: 2, $c: 3}").unwrap();
+        let CustomNode::Mapping { pairs, .. } = &obj else {
+            unreachable!()
+        };
+        let keys: Vec<String> = pairs
+            .iter()
+            .map(|(k, _)| match k {
+                CustomNode::Scalar { value, .. } => value.to_string(),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(keys, vec!["a", "_b2", "$c"]);
+    }
+
+    #[test]
+    fn json5_combines_all_dialect_axes() {
+        // Single fixture that would be rejected by every narrower dialect
+        // but parses cleanly under JSON5: trailing comma, comments,
+        // single-quoted key + value, unquoted key.
+        let src = "{
+            // leading comment
+            a: 'alpha',
+            \"b\": 2, // trailing comment
+        }";
+        let obj = from_json5(src).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &obj else {
+            unreachable!()
+        };
+        assert_eq!(pairs.len(), 2);
+    }
+
+    #[test]
+    fn json5_rejects_are_isolated_to_their_flags() {
+        // Turning a specific flag off restores the strict rejection on
+        // that axis; the other two JSON5 features still work.
+        let opts = JsonParseOptions {
+            allow_trailing_commas: false,
+            ..JsonParseOptions::JSON5
+        };
+        assert!(from_json_with_options("[1,]", opts).is_err());
+        let opts2 = JsonParseOptions {
+            allow_unquoted_keys: false,
+            ..JsonParseOptions::JSON5
+        };
+        assert!(from_json_with_options("{a: 1}", opts2).is_err());
     }
 
     #[test]
