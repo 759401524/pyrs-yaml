@@ -668,11 +668,17 @@ impl<'a> AstReceiver<'a> {
 
         let mut node = self.create_scalar(value, style, line, range);
 
+        // PR #117b: standalone notes now ride onto the dedicated
+        // `decor.leading_comment` slot rather than the shared
+        // `comment` field with `standalone = true`. Hand-built
+        // fixtures and pre-#117b tests keep comparing equal thanks to
+        // the AST-layer normalisation introduced in #117.
         if let Some(comment) = standalone
             && let CustomNode::Scalar { meta: m, .. } = &mut node
-            && m.comment.is_none()
+            && m.standalone_slot().is_none()
         {
-            m.comment = Some(comment);
+            let decor = m.decor.get_or_insert_with(Default::default);
+            decor.leading_comment = Some(comment);
         }
 
         if let Some(name) = self.register_anchor(anchor_id)
@@ -768,7 +774,7 @@ impl<'a> AstReceiver<'a> {
         }) = self.stack.pop()
         {
             let anchor = self.anchors.get(&anchor_id).cloned();
-            let comment = self.comment_stack.pop().flatten();
+            let standalone = self.comment_stack.pop().flatten();
 
             let end = if !flow_style {
                 pairs
@@ -785,16 +791,26 @@ impl<'a> AstReceiver<'a> {
                 self.span_to_byte_range(&span).end
             };
 
+            let mut meta = NodeMeta {
+                comment: None,
+                decor: None,
+                anchor,
+                tag,
+                source_range: Some(start_byte..end),
+            };
+            // PR #117b: standalone notes on a container surface through
+            // `decor.leading_comment`. The `comment` slot is left for
+            // inline trailing notes (currently only set by
+            // `attach_inline_comment`).
+            if let Some(comment) = standalone {
+                let decor = meta.decor.get_or_insert_with(Default::default);
+                decor.leading_comment = Some(comment);
+            }
+
             let mapping = CustomNode::Mapping {
                 pairs,
                 flow_style,
-                meta: NodeMeta {
-                    comment,
-                    decor: None,
-                    anchor,
-                    tag,
-                    source_range: Some(start_byte..end),
-                },
+                meta,
             };
             self.push_node(mapping);
         }
@@ -835,7 +851,7 @@ impl<'a> AstReceiver<'a> {
         }) = self.stack.pop()
         {
             let anchor = self.anchors.get(&anchor_id).cloned();
-            let comment = self.comment_stack.pop().flatten();
+            let standalone = self.comment_stack.pop().flatten();
 
             let end = if !flow_style {
                 items
@@ -847,16 +863,23 @@ impl<'a> AstReceiver<'a> {
                 self.span_to_byte_range(&span).end
             };
 
+            let mut meta = NodeMeta {
+                comment: None,
+                decor: None,
+                anchor,
+                tag,
+                source_range: Some(start_byte..end),
+            };
+            // PR #117b: same slot split as the mapping case above.
+            if let Some(comment) = standalone {
+                let decor = meta.decor.get_or_insert_with(Default::default);
+                decor.leading_comment = Some(comment);
+            }
+
             let seq = CustomNode::Sequence {
                 items,
                 flow_style,
-                meta: NodeMeta {
-                    comment,
-                    decor: None,
-                    anchor,
-                    tag,
-                    source_range: Some(start_byte..end),
-                },
+                meta,
             };
             self.push_node(seq);
         }
@@ -915,9 +938,40 @@ mod tests {
         let CustomNode::Mapping { meta, .. } = &ast else {
             panic!("expected root mapping")
         };
-        assert_eq!(meta.comment.as_ref().unwrap().text.as_ref(), "header");
+        // PR #117b: standalone notes now ride onto `decor.leading_comment`;
+        // the normalised `standalone_slot()` accessor reads whichever slot
+        // the parser wrote to.
+        assert_eq!(meta.standalone_slot().unwrap().text.as_ref(), "header");
         let yaml = crate::serializer::to_yaml(&ast);
         assert!(yaml.starts_with("# header\n"), "{yaml:?}");
+    }
+
+    #[test]
+    fn receiver_writes_standalone_into_leading_comment_slot() {
+        // Structural invariant introduced by PR #117b: after the
+        // receiver migration a parsed standalone note lands in
+        // `decor.leading_comment`, NOT in the older `comment` field.
+        // The accessor equality from #117 would pass either way, so
+        // this test locks the WRITE location specifically.
+        let ast = parse("key:\n  # above the value\n  value\n", YamlSchema::Core).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            panic!("expected root mapping")
+        };
+        let (_, val) = pairs.iter().next().unwrap();
+        let CustomNode::Scalar { meta, .. } = val else {
+            panic!("expected scalar value")
+        };
+        assert!(
+            meta.decor
+                .as_ref()
+                .and_then(|d| d.leading_comment.as_ref())
+                .is_some(),
+            "standalone comment did not land in the new leading_comment slot"
+        );
+        assert!(
+            meta.comment.is_none(),
+            "legacy `comment` slot should be empty after #117b"
+        );
     }
 
     #[test]

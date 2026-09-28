@@ -17,6 +17,15 @@ status: new
 
 #### 추가
 
+- **YAML 리시버가 standalone 주석을 `decor.leading_comment` 에
+  기록** — PR #117b 로 마지막 엔진(granit-parser 리시버)이 #114 /
+  #115 에서 도입한 새 슬롯으로 이전했습니다. scalar / mapping /
+  sequence 의 standalone note 가 `NodeMeta::decor.leading_comment`
+  에 실리고 오래된 `comment(standalone = true)` 에는 쓰지
+  않습니다. #117 의 규정화로 수작업 fixture 는 여전히 동등하고
+  `CustomNode::remove_comment` 가 **두 슬롯**을 원자적으로
+  비우므로 Python 의 `Node.remove_comment()` 는 YAML 문서에서도
+  변화 없이 동작합니다.
 - **슬롯 간 standalone 주석 규정화 + Python
   `Node.leading_comment`** — `NodeMeta::eq` / `Hash`가 standalone 주석을 새로운
   `leading_comment` 슬롯(TOML / JSON 엔진)이나 오랜

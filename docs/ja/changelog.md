@@ -17,6 +17,16 @@ status: new
 
 #### 追加
 
+- **YAML レシーバーが standalone コメントを
+  `decor.leading_comment` に書く** — PR #117b で最後のエンジン
+  （granit-parser レシーバー）が #114 / #115 で導入した新しい
+  スロットに移行しました。scalar / mapping / sequence の standalone
+  note が `NodeMeta::decor.leading_comment` に載り、古い
+  `comment(standalone = true)` ではなくなります。#117 の正規化で
+  hand-built fixture は引き続き等価、かつ `CustomNode
+  ::remove_comment` が**両スロット**をアトミックにクリアする
+  ので Python の `Node.remove_comment()` は YAML 起源ドキュメントで
+  も従来通り動作します。
 - **スロット横断の standalone 正規化 + Python
   `Node.leading_comment`** — `NodeMeta::eq` / `Hash` は
   standalone コメントを新しい `leading_comment` スロット（TOML /
