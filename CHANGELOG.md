@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 Unicode structural whitespace** — `from_json5` / `load_json5` now
+  treat the whitespace JSON5 adds to RFC 8259's four (tab / space / LF / CR)
+  as inter-token separators: vertical tab, form feed, NBSP (U+00A0), every
+  Unicode `Zs` space separator, the LS/PS line terminators (U+2028 / U+2029)
+  and ZWNBSP (U+FEFF). Implemented with `std`'s `char::is_whitespace` (minus
+  NEL U+0085, which JSON5 does not classify as whitespace) plus an explicit
+  U+FEFF — no new dependency. Gated on JSON5 mode, so strict `from_json` and
+  `from_jsonc` still reject every one of them, byte-for-byte unchanged.
 - **JSON5 line continuation and `\'` escape** — double-quoted JSON5 strings
   now accept the two escape forms JSON5 adds beyond the JSON set: a backslash
   immediately before a line terminator (line continuation, which removes both),
