@@ -339,9 +339,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_key_segment(&mut self) -> Result<String, ParseError> {
+        // Keys are never multi-line; the `multiline` flag from the string
+        // scanners is discarded here.
         match self.peek() {
-            Some(b'"') => self.parse_basic_string_content(),
-            Some(b'\'') => self.parse_literal_string(),
+            Some(b'"') => self.parse_basic_string_content().map(|(s, _)| s),
+            Some(b'\'') => self.parse_literal_string().map(|(s, _)| s),
             _ => self.parse_bare_key(),
         }
     }
@@ -707,14 +709,16 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_literal_or_start_date(&mut self, _hint: Option<()>) -> Result<TomlValue, ParseError> {
-        self.parse_literal_string().map(TomlValue::String)
+        self.parse_literal_string()
+            .map(|(s, ml)| TomlValue::String(s, ml))
     }
 
     fn parse_basic_string(&mut self, _prefix: &str) -> Result<TomlValue, ParseError> {
-        self.parse_basic_string_content().map(TomlValue::String)
+        self.parse_basic_string_content()
+            .map(|(s, ml)| TomlValue::String(s, ml))
     }
 
-    fn parse_basic_string_content(&mut self) -> Result<String, ParseError> {
+    fn parse_basic_string_content(&mut self) -> Result<(String, bool), ParseError> {
         let ml = self.starts_with(b"\"\"\"");
         if ml {
             self.pos += 3;
@@ -724,10 +728,10 @@ impl<'a> Parser<'a> {
             } else if self.starts_with(b"\r\n") {
                 self.pos += 2;
             }
-            self.scan_multiline_basic_content()
+            self.scan_multiline_basic_content().map(|s| (s, true))
         } else {
             self.pos += 1;
-            self.scan_single_line_basic_content()
+            self.scan_single_line_basic_content().map(|s| (s, false))
         }
     }
 
@@ -870,7 +874,7 @@ impl<'a> Parser<'a> {
         matches!(self.byte_at(i), Some(b'\n' | b'\r'))
     }
 
-    fn parse_literal_string(&mut self) -> Result<String, ParseError> {
+    fn parse_literal_string(&mut self) -> Result<(String, bool), ParseError> {
         let ml = self.starts_with(b"'''");
         if ml {
             self.pos += 3;
@@ -887,7 +891,7 @@ impl<'a> Parser<'a> {
                     while self.peek() == Some(b'\'') {
                         self.pos += 1;
                     }
-                    return Ok(strip_extra_quotes(content, true));
+                    return Ok((strip_extra_quotes(content, true), true));
                 }
                 let b = self
                     .peek()
@@ -908,7 +912,7 @@ impl<'a> Parser<'a> {
                 if b == b'\'' {
                     let content = &self.text[start..self.pos];
                     self.pos += 1;
-                    return Ok(content.to_string());
+                    return Ok((content.to_string(), false));
                 }
                 self.pos += 1;
             }

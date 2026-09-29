@@ -63,7 +63,11 @@ use std::sync::Arc;
 /// deliberately NOT preserved because YAML Core reads them as strings;
 /// the parser canonicalizes them to plain decimal (matches #107).
 pub(crate) enum TomlValue {
-    String(String),
+    /// `bool` records whether the source used a multi-line form (`"""…"""`
+    /// or `'''…'''`). PR #132: it lets the projected `CustomNode` carry
+    /// `ScalarStyle::Literal` so the multi-line shape survives the YAML hub
+    /// and `to_toml` re-emits a `"""` block instead of an escaped single line.
+    String(String, bool),
     Integer(i64, Option<Arc<str>>),
     Float(f64, Option<Arc<str>>),
     Boolean(bool),
@@ -240,12 +244,30 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
 
 pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
     match v {
-        TomlValue::String(s) => CustomNode::Scalar {
-            value: s.into(),
-            style: ScalarStyle::DoubleQuoted,
-            chomping: Chomping::Clip,
-            meta: NodeMeta::default(),
-        },
+        TomlValue::String(s, multiline) => {
+            // A multi-line TOML string projects onto a YAML literal block so
+            // the shape survives the hub. The block value keeps its trailing
+            // newlines and chomping records how many (verified convention:
+            // Strip = none, Clip = exactly one, Keep = two or more), so the
+            // YAML writer/parser round-trips the value byte-for-byte.
+            let (style, chomping) = if multiline {
+                let trailing = s.len() - s.trim_end_matches('\n').len();
+                let ch = match trailing {
+                    0 => Chomping::Strip,
+                    1 => Chomping::Clip,
+                    _ => Chomping::Keep,
+                };
+                (ScalarStyle::Literal, ch)
+            } else {
+                (ScalarStyle::DoubleQuoted, Chomping::Clip)
+            };
+            CustomNode::Scalar {
+                value: s.into(),
+                style,
+                chomping,
+                meta: NodeMeta::default(),
+            }
+        }
         TomlValue::Integer(i, source) => match source {
             Some(src) => CustomNode::plain_scalar(src),
             None => CustomNode::plain_scalar(i.to_string()),

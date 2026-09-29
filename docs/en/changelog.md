@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **TOML multi-line string fidelity** — a TOML multi-line string is projected
+  as a `ScalarStyle::Literal` YAML block (surviving the text hub) and re-emitted
+  by `to_toml` as a `"""` block instead of an escaped single line. Values
+  round-trip byte-for-byte and the output is idempotent; a single-line string
+  stays single-line. No AST struct change (reuses `Literal`).
 - **TOML document-level comment fidelity** — `to_toml` now emits the root
   mapping's leading comment, so a document-opening standalone `# note` survives
   a TOML → hub → TOML round trip instead of being dropped (the TOML counterpart
