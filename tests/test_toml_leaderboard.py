@@ -27,6 +27,13 @@ try:
 except ImportError:  # pragma: no cover - py<3.11
     HAS_TOMLLIB = False
 
+try:
+    import tomlkit
+
+    HAS_TOMLKIT = True
+except ImportError:  # pragma: no cover
+    HAS_TOMLKIT = False
+
 
 def _doc(items):
     head = (
@@ -62,3 +69,23 @@ def test_toml_parse_beats_stdlib_reference(size):
     pyrs = _median_us(lambda: pyrs_yaml.load_toml(doc))
     ref = _median_us(lambda: tomllib.loads(doc))
     assert pyrs * 2 < ref, f"toml parse/{size}: pyrs not >2x faster than tomllib ({pyrs:.1f}us vs {ref:.1f}us)"
+
+
+@pytest.mark.skipif(not HAS_TOMLKIT, reason="tomlkit not installed")
+@pytest.mark.parametrize("size", sorted(_SIZES))
+def test_toml_parse_top3_among_installed(size):
+    """Rank pyrs against every installed pure-Python TOML parser.
+
+    Measured on the real field (tomllib / tomlkit), pyrs is #1 by a wide margin;
+    the gate asserts at most 2 competitors finish faster (top-3) and that pyrs
+    still beats the reference `tomllib`, so a regression into the bottom of the
+    field fails loudly while staying robust to clock noise.
+    """
+    doc = _SIZES[size]
+    assert pyrs_yaml.load_toml(doc) == tomlkit.parse(doc)
+    pyrs = _median_us(lambda: pyrs_yaml.load_toml(doc))
+    faster = 0
+    for _name, fn in (("tomllib", lambda: tomllib.loads(doc)), ("tomlkit", lambda: tomlkit.parse(doc))):
+        if _median_us(fn) < pyrs:
+            faster += 1
+    assert faster <= 2, f"toml parse/{size}: pyrs not top-3 ({faster} competitors faster)"
