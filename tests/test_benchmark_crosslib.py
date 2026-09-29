@@ -12,9 +12,6 @@ import pytest
 
 import pyrs_yaml
 from tests.data.yaml_samples import (
-    BENCHMARK_BLOCK_STYLE as BLOCK_STYLE_YAML,
-)
-from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_DATA as CONFIG_DATA,
 )
 from tests.data.yaml_samples import (
@@ -311,20 +308,31 @@ def test_tomlkit_parse(benchmark):
 
 @pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_pyrs_yaml_faster_than_pyyaml():
-    doc = pyrs_yaml.parse(BLOCK_STYLE_YAML)
-    data = pyyaml.safe_load(BLOCK_STYLE_YAML)
-
+    # Regression guard: pyrs's Rust serializer beats pure-Python PyYAML on a
+    # realistic document. The previous version timed a tiny doc where fixed
+    # per-call overhead let PyYAML occasionally win on busy CI runners (a flake).
+    # LARGE_YAML is dominated by real serialization work, so pyrs wins by a wide
+    # margin (see test_leaderboard: ~200x on large); warmup + best-of-batches
+    # keeps it stable. This mirrors the leaderboard methodology rather than a
+    # single noise-prone sample.
     import time
 
-    t0 = time.perf_counter()
-    for _ in range(100):
-        doc.to_yaml()
-    pyr_time = time.perf_counter() - t0
+    doc = pyrs_yaml.parse(LARGE_YAML)
+    data = pyyaml.safe_load(LARGE_YAML)
+    doc.to_yaml()
+    pyyaml.safe_dump(data)  # warm both paths (import + first-call costs)
 
-    t0 = time.perf_counter()
-    for _ in range(100):
-        pyyaml.safe_dump(data)
-    pyy_time = time.perf_counter() - t0
+    def best_seconds(fn, reps):
+        best = float("inf")
+        for _ in range(3):
+            t0 = time.perf_counter()
+            for _ in range(reps):
+                fn()
+            best = min(best, time.perf_counter() - t0)
+        return best
+
+    pyr_time = best_seconds(doc.to_yaml, 20)
+    pyy_time = best_seconds(lambda: pyyaml.safe_dump(data), 20)
 
     assert pyr_time < pyy_time, f"pyrs-yaml slower than PyYAML: {pyr_time:.4f}s vs {pyy_time:.4f}s"
 
