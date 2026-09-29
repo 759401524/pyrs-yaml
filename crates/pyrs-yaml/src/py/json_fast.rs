@@ -28,6 +28,7 @@ const MAX_DEPTH: usize = 1000;
 
 struct Scanner<'a> {
     src: &'a [u8],
+    text: &'a str,
     pos: usize,
 }
 
@@ -44,6 +45,7 @@ impl<'a> Scanner<'a> {
     fn new(s: &'a str) -> Self {
         Scanner {
             src: s.as_bytes(),
+            text: s,
             pos: 0,
         }
     }
@@ -113,9 +115,13 @@ impl<'a> Scanner<'a> {
                 _ => i += 1,
             }
         }
-        let body = &bytes[start..i];
-        let s = std::str::from_utf8(body).ok()?; // valid UTF-8 guaranteed by the input str, but guard anyway
-        self.pos = i + 1; // consume closing quote
+        let end = i;
+        // `text[start..end]` is a valid UTF-8 subslice of the input (multi-byte
+        // lead/continuation bytes are >= 0x80, never a delimiter or control
+        // byte), so slicing needs no re-validation. `get` keeps a pathological
+        // non-boundary a bail to the AST path rather than a panic.
+        let s = self.text.get(start..end)?;
+        self.pos = end + 1; // consume closing quote
         Some(PyString::new(py, s).into_any().unbind())
     }
 
@@ -143,15 +149,17 @@ impl<'a> Scanner<'a> {
             self.pos = start;
             return None;
         }
-        let text = std::str::from_utf8(&self.src[start..self.pos]).ok()?;
-        // Out-of-i64 integers: let the AST path produce pyrs's canonical form.
-        match text.parse::<i64>() {
-            Ok(n) => Some(n.into_pyobject(py).ok()?.into_any().unbind()),
-            Err(_) => {
-                self.pos = start;
-                None
-            }
+        // Manual checked accumulation avoids `str::parse::<i64>` and a UTF-8
+        // re-validation pass per number (the orjson-style tight path). Any
+        // overflow (out-of-i64) bails so the AST path yields pyrs's canonical
+        // form for the value.
+        let negative = self.src[start] == b'-';
+        let mut acc: i64 = 0;
+        for &b in &self.src[digits_start..self.pos] {
+            acc = acc.checked_mul(10)?.checked_add(i64::from(b - b'0'))?;
         }
+        let n = if negative { -acc } else { acc };
+        Some(n.into_pyobject(py).ok()?.into_any().unbind())
     }
 
     fn object(&mut self, py: Python<'a>, depth: usize) -> Bail<PyObject> {
