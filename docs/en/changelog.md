@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON load fast path** — `load_jsonc` parses canonical strict JSON straight
+  into Python objects, skipping the `CustomNode` AST (~5-6x faster, now ahead of
+  stdlib `json.loads`). Non-canonical input (floats, escapes, comments, huge
+  ints, trailing commas) falls back to the general path; values unchanged.
 - **TOML multi-line string fidelity** — a TOML multi-line string is projected
   as a `ScalarStyle::Literal` YAML block (surviving the text hub) and re-emitted
   by `to_toml` as a `"""` block instead of an escaped single line. Values

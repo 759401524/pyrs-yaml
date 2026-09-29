@@ -129,3 +129,69 @@ class TestJsonDialects:
 
         assert json.loads(doc.to_jsonc()) == {"a": 1, "b": [1, 2]}
         assert json.loads(doc.to_json5()) == {"a": 1, "b": [1, 2]}
+
+
+class TestJsonLoadFastPath:
+    """The direct strict-JSON -> Python fast path in `load_jsonc`.
+
+    Canonical documents (objects/arrays, i64 integers, booleans, null,
+    escape-free strings) are built directly, skipping the AST round-trip. Any
+    non-canonical construct must bail to the AST path and yield the identical
+    value, so these cases guard both the fast path's correctness and its
+    fallback.
+    """
+
+    def test_canonical_object_array_scalars(self):
+        got = pyrs_yaml.load_jsonc(
+            '{"s": "hi", "n": 42, "neg": -7, "z": 0, "t": true, "f": false, "nl": null, "arr": [1, 2, 3], "obj": {"k": "v"}}'
+        )
+        assert got == {
+            "s": "hi",
+            "n": 42,
+            "neg": -7,
+            "z": 0,
+            "t": True,
+            "f": False,
+            "nl": None,
+            "arr": [1, 2, 3],
+            "obj": {"k": "v"},
+        }
+
+    def test_top_level_array_and_scalar(self):
+        assert pyrs_yaml.load_jsonc('[1, true, null, "x"]') == [1, True, None, "x"]
+        assert pyrs_yaml.load_jsonc("  123  ") == 123
+        assert pyrs_yaml.load_jsonc("{}") == {}
+        assert pyrs_yaml.load_jsonc("[]") == []
+
+    def test_floats_bail_to_ast_and_stay_correct(self):
+        # Floats / exponents are outside the fast subset: they must fall back
+        # to the AST path and still parse to the right values.
+        got = pyrs_yaml.load_jsonc('{"a": 1.5, "b": 2e3, "c": -0.25}')
+        assert got == {"a": 1.5, "b": 2000.0, "c": -0.25}
+
+    def test_escapes_and_unicode_bail_correctly(self):
+        assert pyrs_yaml.load_jsonc('{"s": "a\\nb"}') == {"s": "a\nb"}
+        assert pyrs_yaml.load_jsonc('{"u": "\\u00e9"}') == {"u": "\u00e9"}
+
+    def test_trailing_content_and_bad_tokens_still_error(self):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc("{} extra")
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc('{"a": }')
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc("[1,]")  # trailing comma -> AST path rejects (JSONC has no trailing commas)
+
+    def test_duplicate_keys_last_wins_first_position(self):
+        got = pyrs_yaml.load_jsonc('{"a": 1, "b": 2, "a": 3}')
+        assert got == {"a": 3, "b": 2}
+        assert list(got) == ["a", "b"]  # first insertion position kept
+
+    def test_leading_zero_is_rejected_by_ast_path(self):
+        # `01` is invalid JSON; the fast path bails and the AST path errors.
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc("[01]")
+
+    def test_out_of_i64_integer_keeps_existing_string_behavior(self):
+        # Pre-existing pyrs behavior (unchanged by the fast path, which bails on
+        # out-of-i64 ints): the huge integer is preserved as its source text.
+        assert pyrs_yaml.load_jsonc('{"big": 99999999999999999999999}') == {"big": "99999999999999999999999"}
