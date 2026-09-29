@@ -16,6 +16,10 @@ rust-i18n = "4.2"
 granit-parser = "1.1"
 regex = "1.11"
 thiserror = "2"
+# JSON5 unquoted identifier keys need exact Unicode ID_Start / ID_Continue
+# properties (all scripts, including combining marks); `std` does not expose
+# those general categories. rustc's own lexer uses this same tiny crate.
+unicode-ident = "1"
 
 [dev-dependencies]
 proptest = "1.5"

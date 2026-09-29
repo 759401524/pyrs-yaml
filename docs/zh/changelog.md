@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **JSON5 Unicode 标识符键** — 无引号对象键不再仅限 ASCII，现在接受完整的
+  Unicode `ID_Start` / `ID_Continue` 集合，因此 `from_json5` / `load_json5`
+  可解析 `{ é: 1, 名: 2, हिन्दी: 3 }`。基于 `unicode-ident` 表（rustc
+  自身的词法分析器所用的 crate）实现，逐文字精确符合规范，含标识符中间的结合
+  字符。仅在 JSON5 模式下启用，因此严格的 `from_json` 与 `from_jsonc` 仍要求
+  为此类键加引号。`\uXXXX` 转义中的孤立 UTF-16 代理项仍被拒绝（Rust `String`
+  无法无损表示）。新增依赖 `unicode-ident`。
 - **JSON5 Unicode 结构空白** — `from_json5` / `load_json5` 现在将 JSON5 在
   RFC 8259 四个空白（制表符 / 空格 / LF / CR）之外新增的空白视为 token 间
   分隔符：垂直制表符、换页符、NBSP（U+00A0）、所有 Unicode `Zs` 空格分隔符、

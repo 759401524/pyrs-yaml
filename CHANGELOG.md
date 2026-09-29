@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSON5 Unicode identifier keys** — unquoted object keys now accept the full
+  Unicode `ID_Start` / `ID_Continue` set rather than ASCII only, so
+  `from_json5` / `load_json5` parse `{ é: 1, 名: 2, हिन्दी: 3 }`.
+  Implemented with the `unicode-ident` tables (the crate rustc’s own lexer
+  uses) for exact per-script conformance, including combining marks
+  mid-identifier. Gated on the JSON5 flag, so strict `from_json` and
+  `from_jsonc` still require such keys to be quoted. Lone UTF-16 surrogates
+  in `\uXXXX` escapes remain rejected (a Rust `String` cannot represent them
+  losslessly). Adds a new dependency (`unicode-ident`).
 - **JSON5 Unicode structural whitespace** — `from_json5` / `load_json5` now
   treat the whitespace JSON5 adds to RFC 8259's four (tab / space / LF / CR)
   as inter-token separators: vertical tab, form feed, NBSP (U+00A0), every
