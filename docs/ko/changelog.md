@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **JSON 로드 고속 경로** — `load_jsonc`가 정준 strict JSON을 `CustomNode` AST 없이 직접 Python 객체로 변환(실측 약 5-6배 빨라 stdlib `json.loads`를 앞섬). 비정준 입력(실수/이스케이프/주석/범위 초과 정수/후행 쉼표)은 일반 경로로 폴백하여 값과 오류가 불변.
 - **TOML 다중 줄 문자열 무결성** — TOML 다중 줄 문자열을 `ScalarStyle::Literal` YAML 블록으로 투영(텍스트 허브 왕복 유지)하여 `to_toml`이 이스케이프 한 줄로 붕괴시키지 않고 `"""` 블록으로 재출력한다. 값은 바이트 단위로 왕복하고 출력은 멱등이며 한 줄 문자열은 한 줄로 유지된다. 기존 `Literal` 재사용으로 AST 구조 변경 없음.
 - **TOML 문서 수준 주석 무결성** — `to_toml`이 루트 매핑의 선행 주석을 출력하게 되어, 문서 맨 앞의 독립 `# 주석`이 TOML→허브→TOML 왕복에서 유지된다(JSON 라이터의 `emit_root_leading`에 해당). 네이티브 TOML 파싱과 주석 없는 문서는 영향 없다.
 - **JSON5 Unicode 식별자 키** — 큰따옴표 없는 객체 키가 ASCII 제한을 넘어 완전한 Unicode `ID_Start` / `ID_Continue` 집합을 받아들인다. `from_json5`/`load_json5`가 `{ é: 1, 名: 2, हिन्दी: 3 }`를 파싱한다. rustc 자체 어휘 분석이 쓰는 `unicode-ident` 테이블로 스크립트별 정확히 적합(식별자 중간 결합 문자 포함). JSON5 모드에서만 켜지므로 엄격 `from_json`/`from_jsonc`는 종래대로 따옴표를 요구한다. `\uXXXX`의 고아 UTF-16 서러게이트는 계속 거부(Rust `String`이 무손실로 표현 불가). 의존성 1개 추가(`unicode-ident`).

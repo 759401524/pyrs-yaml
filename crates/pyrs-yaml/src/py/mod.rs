@@ -7,6 +7,7 @@ pub mod direct_load;
 pub mod document;
 pub mod editing;
 pub mod functions;
+pub mod json_fast;
 pub mod stream_events;
 pub mod stream_iterator;
 pub mod streaming;

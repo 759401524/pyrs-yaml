@@ -275,6 +275,14 @@ pub(crate) fn from_jsonc(_py: Python, json_str: &str) -> PyResult<String> {
 /// scalar). Handy for TypeScript `tsconfig.json`, VS Code
 /// `settings.json`, and similar dialects without a pre-processing step.
 pub(crate) fn load_jsonc(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
+    // Fast path: canonical strict JSON (arrays/objects, i64 integers, booleans,
+    // null, unescaped strings) builds Python objects directly, skipping the
+    // `CustomNode` round-trip. Anything non-canonical (floats, escapes,
+    // comments, trailing commas, out-of-range ints, bad grammar) bails and the
+    // AST path below produces the identical value or the proper error.
+    if let Some(v) = crate::py::json_fast::try_load(py, json_str) {
+        return Ok(v);
+    }
     let mut ast = pyrs_yaml_core::json::from_jsonc(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",

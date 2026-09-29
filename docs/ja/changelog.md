@@ -17,6 +17,7 @@ status: new
 
 #### 追加
 
+- **JSON ロード高速パス** — `load_jsonc` は正規の strict JSON を `CustomNode` AST を経由せず直接 Python オブジェクトへ変換する（実測で約 5-6 倍速、stdlib `json.loads` を上回る）。非正規入力（浮動小数・エスケープ・コメント・範囲外整数・末尾カンマ）は一般パスへ退避し、値とエラーは不変。
 - **TOML マルチライン文字列の再現性** — TOML マルチライン文字列を
   `ScalarStyle::Literal` の YAML ブロックとして投射（テキストハブを往復でき）
   `to_toml` が `"""` ブロックとして再出力する。値はバイト単位で往復し出力は
