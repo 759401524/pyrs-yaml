@@ -4,6 +4,8 @@ All test files should import from here instead of hardcoding YAML strings.
 This ensures consistency and makes it easy to update test data.
 """
 
+import json
+
 # --- Parse samples (YAML strings without trailing newline) ---
 SIMPLE_MAPPING = "key: value"
 NESTED_MAPPING = "parent:\n  child: grandchild"
@@ -364,6 +366,19 @@ BENCHMARK_CONFIG_JSON = (
 # commas) and the JSON5 writer restoring those styles.
 BENCHMARK_CONFIG_JSONC = "{\n  // server\n  " + BENCHMARK_CONFIG_JSON[1:]
 BENCHMARK_CONFIG_JSON5 = "{server: {host: '0.0.0.0', port: 8080, ssl: true}, items: [{name: 'a', value: .5}]}"
+
+# Larger, structurally identical JSON / TOML documents derived from
+# BENCHMARK_CONFIG_DATA so the parse / serialize benchmarks measure real work
+# instead of call overhead, and the cross-library comparison (stdlib ``json`` /
+# ``tomllib``) is apples-to-apples on the same content.
+BENCHMARK_CONFIG_JSON_LARGE = json.dumps(BENCHMARK_CONFIG_DATA)
+BENCHMARK_CONFIG_TOML = (
+    '[server]\nhost = "0.0.0.0"\nport = 8080\nssl = true\nworkers = 4\n'
+    'tags = ["production", "eu-west-1"]\n\n'
+    '[database]\ntype = "postgresql"\n\n'
+    "[database.pool]\nmin_size = 5\nmax_size = 20\ntimeout = 30\n\n"
+    + "".join(f'[[items]]\nname = "item_{index}"\nvalue = {index * 10}\n\n' for index in range(50))
+)
 
 BENCHMARK_SCHEMA = {
     "type": "object",

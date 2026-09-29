@@ -27,7 +27,13 @@ from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON5 as CONFIG_JSON5,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSON_LARGE as CONFIG_JSON_LARGE,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSONC as CONFIG_JSONC,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_TOML as CONFIG_TOML,
 )
 from tests.data.yaml_samples import (
     BENCHMARK_LARGE,
@@ -208,6 +214,38 @@ def test_document_to_json5(benchmark):
     result = benchmark(doc.to_json5)
     assert result.rstrip().endswith("}")
     assert '"server"' in result
+
+
+# ── TOML native-kernel benchmarks ──
+# The TOML spoke (from_toml / load_toml / to_toml) had no benchmark coverage;
+# these pin the core paths so CodSpeed tracks regressions and the cross-library
+# comparison in test_benchmark_crosslib.py has a peer.
+
+
+def test_from_toml(benchmark):
+    result = benchmark(pyrs_yaml.from_toml, CONFIG_TOML)
+    assert "server:" in result
+
+
+def test_load_toml(benchmark):
+    result = benchmark(pyrs_yaml.load_toml, CONFIG_TOML)
+    assert result["server"]["port"] == 8080
+    assert len(result["items"]) == 50
+
+
+def test_to_toml(benchmark):
+    # Setup (TOML -> YAML) is outside the measured call; this times only the
+    # YAML -> TOML writer (node_to_toml hot path).
+    yaml_str = pyrs_yaml.from_toml(CONFIG_TOML)
+    result = benchmark(pyrs_yaml.to_toml, yaml_str)
+    assert "[server]" in result
+
+
+def test_load_jsonc_large(benchmark):
+    """Larger JSON payload through the JSONC loader (parses plain JSON)."""
+    result = benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_LARGE)
+    assert result["server"]["workers"] == 4
+    assert len(result["items"]) == 50
 
 
 def test_safe_dump_ndarray(benchmark):
