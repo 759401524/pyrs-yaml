@@ -86,6 +86,25 @@ except ImportError:
     HAS_TOMLLIB = False
     tomllib = None
 
+# Competitive peers (optional test extras). Benches skip when a wheel is
+# unavailable on a given matrix cell (e.g. free-threaded 3.14t), so these
+# never break the run — they widen the leaderboard field where installable.
+try:
+    import orjson
+
+    HAS_ORJSON = True
+except ImportError:
+    HAS_ORJSON = False
+    orjson = None
+
+try:
+    import tomlkit
+
+    HAS_TOMLKIT = True
+except ImportError:
+    HAS_TOMLKIT = False
+    tomlkit = None
+
 
 def ruamel_load(s):
     return _ruamel_yaml.load(s)
@@ -264,6 +283,27 @@ def test_pyrs_json_dump(benchmark):
 @pytest.mark.benchmark(group="stdlib-json")
 def test_stdlib_json_dump(benchmark):
     benchmark(json.dumps, CONFIG_DATA)
+
+
+# ── Competitive peers: orjson (JSON leader) / tomlkit (TOML) ──
+
+
+@pytest.mark.benchmark(group="orjson")
+@pytest.mark.skipif(not HAS_ORJSON, reason="orjson not installed")
+def test_orjson_load(benchmark):
+    benchmark(orjson.loads, CONFIG_JSON_LARGE)
+
+
+@pytest.mark.benchmark(group="orjson")
+@pytest.mark.skipif(not HAS_ORJSON, reason="orjson not installed")
+def test_orjson_dump(benchmark):
+    benchmark(orjson.dumps, CONFIG_DATA)
+
+
+@pytest.mark.benchmark(group="tomlkit")
+@pytest.mark.skipif(not HAS_TOMLKIT, reason="tomlkit not installed")
+def test_tomlkit_parse(benchmark):
+    benchmark(tomlkit.parse, CONFIG_TOML)
 
 
 # ── Speedup assertion ──
