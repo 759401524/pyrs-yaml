@@ -18,6 +18,7 @@ status: new
 #### 追加
 
 - **`to_json` ネイティブシリアライザ（性能）** — `YamlDocument.to_json` は `to_dict()` + `json.dumps` の二重変換をやめネイティブエンジンを使用。ASCII はバイト単位同一、約 10 倍速（1200 件 ~1450µs→~120µs、`json.dumps` を上回る）。非 ASCII は `\uXXXX` でなく生の UTF-8（`to_jsonc`/`to_json5` と一致）、正当な JSON を維持。
+- **JSON オブジェクトキー直接出力（性能）** — ライタはマッピングキーを出力バッファへ直接書き込み（キーごとの `String` 確保を廃止）。コンパクト `to_json` はさらに約 2 倍速（~120µs→~60µs）、バイト単位同一、シリアライズは現場で #2（orjson のみ上）。
 - **JSON ロード高速パス** — `load_jsonc` は正規の strict JSON を `CustomNode` AST を経由せず直接 Python オブジェクトへ変換する（実測で約 5-6 倍速、stdlib `json.loads` を上回る）。非正規入力（浮動小数・エスケープ・コメント・範囲外整数・末尾カンマ）は一般パスへ退避し、値とエラーは不変。
 - **TOML マルチライン文字列の再現性** — TOML マルチライン文字列を
   `ScalarStyle::Literal` の YAML ブロックとして投射（テキストハブを往復でき）

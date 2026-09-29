@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drops ~1450µs → ~120µs, now beating `json.dumps`). Behavior change: non-ASCII
   is emitted as raw UTF-8 (matching `to_jsonc` / `to_json5`) rather than
   `\uXXXX` escapes; output stays valid JSON that `json.loads` parses the same.
+- **JSON object keys written directly (perf)** — the native JSON/JSONC/JSON5
+  writer emits mapping keys straight into the output buffer instead of
+  allocating a `String` per key via `key_text`. `to_json` on a 1200-item
+  document is ~2x faster still (compact ~120µs → ~60µs), byte-identical output;
+  JSON serialize now measures #2 against the installed field (behind only
+  orjson).
 - **JSON load fast path** — `load_jsonc` now parses canonical strict JSON
   (objects/arrays, `i64` integers, booleans, `null`, escape-free strings)
   straight into Python objects, skipping the intermediate `CustomNode` AST.
