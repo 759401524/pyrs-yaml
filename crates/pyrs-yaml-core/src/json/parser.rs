@@ -365,20 +365,45 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// JSON5 identifier key (unquoted). Accepted start: A-Z a-Z _ $
-    /// (plus Unicode ID_Start); continuation adds digits and a few more.
-    /// We keep it ASCII-only so the resulting scalar matches what a
-    /// quoted `"a_b"` key would produce, avoiding a Unicode tables dep.
+    /// True when the code point at `self.pos` can start a JSON5 identifier
+    /// name: an ASCII `A-Z a-z _ $` or any Unicode `ID_Start` (PR #129). Used
+    /// only as a cheap dispatch guard; `identifier_key` re-checks exactly.
+    fn at_identifier_start(&self) -> bool {
+        match self.peek() {
+            Some(b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'$') => true,
+            // A lead byte means a multi-byte code point begins here; it is a
+            // valid start only if it is Unicode `ID_Start`. A non-boundary
+            // position falls through to `false`.
+            Some(b) if b >= 0x80 && self.text.is_char_boundary(self.pos) => self.text[self.pos..]
+                .chars()
+                .next()
+                .is_some_and(unicode_ident::is_xid_start),
+            _ => false,
+        }
+    }
+
+    /// JSON5 identifier key (unquoted). The first code point is an ASCII
+    /// `A-Z a-z _ $` or any Unicode `ID_Start`; continuation adds digits,
+    /// combining marks and connectors (Unicode `ID_Continue` plus `$`/`_`).
+    /// PR #129 lifted the former ASCII-only limit to full Unicode via the
+    /// `unicode-ident` tables, so e.g. `{ é: 1, 名: 2, हिन्दी: 3 }` parses.
     fn identifier_key(&mut self) -> Result<String, ParseError> {
         let start = self.pos;
-        while matches!(
-            self.peek(),
-            Some(b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'$')
-        ) {
-            self.pos += 1;
-        }
-        if self.pos == start {
+        let first = self.text[start..]
+            .chars()
+            .next()
+            .ok_or_else(|| self.err("expected an identifier key"))?;
+        if !(first == '$' || first == '_' || unicode_ident::is_xid_start(first)) {
             return Err(self.err("expected an identifier key"));
+        }
+        self.pos += first.len_utf8();
+        while self.pos < self.s.len() {
+            match self.text[self.pos..].chars().next() {
+                Some(ch) if ch == '$' || ch == '_' || unicode_ident::is_xid_continue(ch) => {
+                    self.pos += ch.len_utf8();
+                }
+                _ => break,
+            }
         }
         Ok(self.text[start..self.pos].to_string())
     }
@@ -475,9 +500,7 @@ impl<'a> Parser<'a> {
                 self.string()?
             } else if self.allow_single_quoted && self.peek() == Some(b'\'') {
                 self.single_quoted_string()?
-            } else if self.allow_unquoted_keys
-                && matches!(self.peek(), Some(b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'$'))
-            {
+            } else if self.allow_unquoted_keys && self.at_identifier_start() {
                 self.identifier_key()?
             } else {
                 return Err(self.err("expected a quoted object key"));
@@ -1086,6 +1109,28 @@ mod tests {
             })
             .collect();
         assert_eq!(keys, vec!["a", "_b2", "$c"]);
+    }
+
+    #[test]
+    fn json5_unicode_identifier_keys() {
+        // PR #129: unquoted keys accept the full Unicode ID_Start / ID_Continue
+        // set (via unicode-ident), not just ASCII. Devanagari `\u0939` etc.
+        // exercise combining marks (ID_Continue) mid-identifier.
+        let obj = from_json5("{é: 1, 名: 2, हिन्दी: 3, Ωmega: 4}").unwrap();
+        let CustomNode::Mapping { pairs, .. } = &obj else {
+            unreachable!()
+        };
+        let keys: Vec<String> = pairs
+            .iter()
+            .map(|(k, _)| match k {
+                CustomNode::Scalar { value, .. } => value.to_string(),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(keys, vec!["é", "名", "हिन्दी", "Ωmega"]);
+        // STRICT / JSONC still require quoting for a non-ASCII key.
+        assert!(from_json("{é: 1}").is_err());
+        assert!(from_jsonc("{\"é\": 1, é: 2}").is_err());
     }
 
     #[test]

@@ -83,6 +83,15 @@ class TestJsonDialects:
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.from_json("\u000c{}")
 
+    def test_load_json5_accepts_unicode_identifier_keys(self):
+        # PR #129: unquoted keys accept the full Unicode ID_Start / ID_Continue
+        # set (accented Latin, CJK, Devanagari with combining marks).
+        d = pyrs_yaml.load_json5("{\u00e9: 1, \u540d: 2, \u0939\u093f: 3}")
+        assert d == {"\u00e9": 1, "\u540d": 2, "\u0939\u093f": 3}
+        # Strict JSON / JSONC still require quoting a non-ASCII key.
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc("{\u00e9: 1}")
+
     def test_load_json5_returns_values(self):
         d = pyrs_yaml.load_json5("{a: 1, b: .5, c: 'str', d: [1, 2,],}")
         assert d == {"a": 1, "b": 0.5, "c": "str", "d": [1, 2]}

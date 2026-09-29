@@ -17,6 +17,13 @@ status: new
 
 #### 追加
 
+- **JSON5 Unicode 識別子キー** — 引用なしオブジェクトキーが ASCII 限定をやめ、
+  Unicode の `ID_Start` / `ID_Continue` 集合全体を受け入れる。`from_json5` /
+  `load_json5` が `{ é: 1, 名: 2, हिन्दी: 3 }` を解析できる。rustc 自身の
+  字句解析が使う `unicode-ident` テーブルでスクリプトごとに正確に適合（中間の
+  合成文字含む）。JSON5 モード限定のため、厳密な `from_json` / `from_jsonc` は
+  従来通り引用を要求。`\uXXXX` の孤立 UTF-16 サロゲートは引き続き拒否（Rust
+  `String` では無損失で表現不可）。依存を 1 つ追加（`unicode-ident`）。
 - **JSON5 Unicode 構造空白** — `from_json5` / `load_json5` が RFC 8259 の 4 つ
   （タブ / スペース / LF / CR）に JSON5 が加えた空白をトークン間の区切りとして
   受理する：垂直タブ、フォームフィード、NBSP（U+00A0）、全ての Unicode `Zs`

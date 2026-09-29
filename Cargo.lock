@@ -860,6 +860,7 @@ dependencies = [
  "rust-i18n",
  "similar",
  "thiserror",
+ "unicode-ident",
 ]
 
 [[package]]
