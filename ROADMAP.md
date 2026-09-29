@@ -181,6 +181,17 @@ Deliberate hub-model limits in the TOML spoke, pinned by characterization tests 
 
 ---
 
+## Leaderboard & Performance Status (2026-09-29)
+
+Continuous ranking gates run in normal CI (`tests/test_leaderboard.py`, `tests/test_toml_leaderboard.py`); absolute per-op timings live in CodSpeed (`test_benchmark_*`).
+
+- **YAML**: top-3 in class enforced against PyYAML / ruamel / ryaml / yaml_rs — pyrs #1-#2 serialize, #2-#3 parse.
+- **TOML**: `load_toml` gated ≥2× faster than the stdlib reference `tomllib` (measured margin ~2.9-4.6× across sizes). A richer top-3 field (taplo / tomlkit / tomli) needs those optional dependencies — deferred pending a dependency decision.
+- **JSON (open optimization target, NOT yet top-3)**: measured `load_jsonc` → dict is ~4.6× slower than C-accelerated stdlib `json.loads`. Root cause: the hub builds a full `CustomNode` AST then walks it to Python objects, whereas `json` scans directly to a dict. Closing this is core-path work (a direct parse→dict fast path, or faster `node_to_pyobject`) and must be driven by CodSpeed flamegraphs, not guessed. No leaderboard gate is added here because none would honestly pass against stdlib.
+- **JSONC / JSON5**: benchmarked (`test_benchmark_api.py`) against pyrs itself for zero-regression tracking; competitive top-3 against `orjson`/`rapidjson` etc. needs optional deps — deferred.
+
+---
+
 ## Research & Exploration
 
 Tracked as open questions for future roadmap inclusion; not committed to any version.
