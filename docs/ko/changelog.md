@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **TOML 문서 수준 주석 무결성** — `to_toml`이 루트 매핑의 선행 주석을 출력하게 되어, 문서 맨 앞의 독립 `# 주석`이 TOML→허브→TOML 왕복에서 유지된다(JSON 라이터의 `emit_root_leading`에 해당). 네이티브 TOML 파싱과 주석 없는 문서는 영향 없다.
 - **JSON5 Unicode 식별자 키** — 큰따옴표 없는 객체 키가 ASCII 제한을 넘어 완전한 Unicode `ID_Start` / `ID_Continue` 집합을 받아들인다. `from_json5`/`load_json5`가 `{ é: 1, 名: 2, हिन्दी: 3 }`를 파싱한다. rustc 자체 어휘 분석이 쓰는 `unicode-ident` 테이블로 스크립트별 정확히 적합(식별자 중간 결합 문자 포함). JSON5 모드에서만 켜지므로 엄격 `from_json`/`from_jsonc`는 종래대로 따옴표를 요구한다. `\uXXXX`의 고아 UTF-16 서러게이트는 계속 거부(Rust `String`이 무손실로 표현 불가). 의존성 1개 추가(`unicode-ident`).
 - **JSON5 Unicode 구조 공백** — `from_json5`/`load_json5`가 RFC 8259의 4개(탭/스페이스/줄바꿈/CR) 외에 JSON5가 추가한 공백을 토큰 구분자로 받아들인다: 수직 탭, 폼 픽, NBSP(U+00A0), 모든 Unicode `Zs` 구분자, LS/PS 줄 종결자(U+2028/U+2029), ZWNBSP(U+FEFF). `std`의 `char::is_whitespace`(JSON5가 공백으로 보지 않는 NEL U+0085 제외)에 U+FEFF를 더해서 구현, 신규 의존성 없음. JSON5 모드에서만 켜지므로 엄격 `from_json`/`from_jsonc`는 종래대로 전부 거부한다.
 - **JSON5 줄 연속과 `\'` 이스케이프** — 큰따옴표 JSON5 문자열이 JSON 집합 밖의 두 이스케이프를 받아들인다: 줄 종결자 바로 앞의 역슬래시(줄 연속으로 둘 다 제거)와 이스케이프된 작은따옴표(`\'`→`'`). JSON5 모드에서만 켜지므로 엄격 `from_json`/`from_jsonc`는 종래대로 둘 다 거부한다. #125의 작은따옴표 처리를 반영해 JSON5 문자열 무결성을 완성한다.

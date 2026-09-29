@@ -28,6 +28,16 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         return Err(SerializeError::Internal("toml-requires-table-root"));
     };
     let mut out = String::new();
+    // PR #131: a document-level standalone comment (the very first `# note`
+    // of a TOML doc, or a note on a YAML-origin root) lands on the root
+    // mapping's `leading_comment` slot — the same shape the JSON writer
+    // handles via `emit_root_leading`. The pair/section emitters below read
+    // only per-key and per-table slots, so without this the root note is
+    // dropped on a TOML -> hub -> TOML round trip. Native TOML parses place
+    // the first note on the first key instead, so this stays a no-op there.
+    if let Some(c) = node.leading_comment() {
+        let _ = writeln!(out, "# {}", c.text);
+    }
     let mut sections: Vec<(String, &CustomNode, Option<&CustomNode>)> = Vec::new();
     let mut first_pair = true;
     for (k, v) in pairs {

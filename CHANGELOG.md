@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML document-level comment fidelity** — `to_toml` now emits the root
+  mapping's leading comment, so a document-opening standalone `# note`
+  survives a TOML → hub → TOML round trip instead of being dropped. This is
+  the TOML counterpart of the JSON writer's `emit_root_leading` (#114 / #122).
+  The pair and section emitters already handled their own slots; only the
+  root-level note was unreachable. Native TOML parses (which place the first
+  note on the first key) are unaffected, and a comment-free document emits no
+  stray line.
 - **JSON5 Unicode identifier keys** — unquoted object keys now accept the full
   Unicode `ID_Start` / `ID_Continue` set rather than ASCII only, so
   `from_json5` / `load_json5` parse `{ é: 1, 名: 2, हिन्दी: 3 }`.

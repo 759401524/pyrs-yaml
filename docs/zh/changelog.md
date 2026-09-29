@@ -17,6 +17,9 @@ status: new
 
 #### 新增
 
+- **TOML 文档级注释保真** — `to_toml` 现在会输出根映射的前导注释，因此文档
+  开头的独立 `# 注释` 能在 TOML → 中枢 → TOML 往返中存活而不再被丢弃（对应
+  JSON 写入器的 `emit_root_leading`）。原生 TOML 解析与无注释文档不受影响。
 - **JSON5 Unicode 标识符键** — 无引号对象键不再仅限 ASCII，现在接受完整的
   Unicode `ID_Start` / `ID_Continue` 集合，因此 `from_json5` / `load_json5`
   可解析 `{ é: 1, 名: 2, हिन्दी: 3 }`。基于 `unicode-ident` 表（rustc

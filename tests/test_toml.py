@@ -100,3 +100,29 @@ class TestToToml:
         t = pyrs_yaml.to_toml('n: "42"\n')
         assert 'n = "42"' in t
         assert pyrs_yaml.load_toml(t) == {"n": "42"}
+
+
+class TestCommentFidelity:
+    """Document-level comment survival across the TOML -> hub -> TOML round trip.
+
+    PR #131: to_toml reads the root mapping's leading_comment so the very
+    first standalone note is no longer dropped (parity with the JSON writer's
+    emit_root_leading).
+    """
+
+    def test_roundtrip_preserves_root_standalone_comment(self):
+        toml_in = '# top note\nkey = "v"\n'
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(toml_in))
+        assert "# top note" in out, out
+        assert out.index("# top note") < out.index("key"), out
+
+    def test_root_comment_not_duplicated(self):
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml("# solo\nfirst = 1\n"))
+        assert out.count("solo") == 1, out
+
+    def test_root_and_trailing_comments_both_survive(self):
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml('# doc\nkey = "v"  # tail\n'))
+        assert "# doc" in out and "# tail" in out, out
+
+    def test_clean_doc_has_no_stray_comment_line(self):
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml("a = 1\nb = 2\n")) == "a = 1\nb = 2\n"
