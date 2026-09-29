@@ -17,6 +17,10 @@ status: new
 
 #### 新增
 
+- **`to_json` 原生序列化器（性能）** — `YamlDocument.to_json` 改用原生引擎，不再
+  经 `to_dict()` + `json.dumps`。ASCII 逐字节一致，快约 10 倍（1200 项 ~1450µs→
+  ~120µs，快过 `json.dumps`）。非 ASCII 改为原始 UTF-8（同 `to_jsonc`/`to_json5`）
+  而非 `\uXXXX`；仍为合法 JSON。
 - **JSON 载入快路径** — `load_jsonc` 将规范化严格 JSON 直接解析为 Python 对象，
   跳过 `CustomNode` AST（实测快约 5-6 倍，现已超过标准库 `json.loads`）。
   非规范输入（浮点、转义、注释、超大整数、尾逗号）回退到通用路径，值与报错不变。

@@ -883,17 +883,21 @@ impl YamlDocument {
         Ok(())
     }
 
-    /// Serialize to a JSON string (via Python `json.dumps`).
+    /// Serialize to a JSON string via the native engine (single AST pass).
+    ///
+    /// Previously this round-tripped the AST through `to_dict()` + Python
+    /// `json.dumps` — a double conversion that measured ~10x slower than the
+    /// native serializer, for byte-identical output on ASCII documents. Non-
+    /// ASCII is now emitted as raw UTF-8 (like `to_jsonc` / `to_json5`) rather
+    /// than `json.dumps`' `\uXXXX` escapes.
     #[pyo3(signature = (indent: "int" = 2) -> "str")]
-    fn to_json(&self, py: Python, indent: usize) -> PyResult<String> {
-        let obj = self.to_dict(py)?;
-        let json_module = py.import("json")?;
-        let kw = PyDict::new(py);
-        kw.set_item("indent", indent)?;
-        let s = json_module
-            .call_method("dumps", (obj,), Some(&kw))?
-            .extract()?;
-        Ok(s)
+    fn to_json(&self, indent: usize) -> PyResult<String> {
+        pyrs_yaml_core::json::to_json_text_pretty(&self.ast, indent).map_err(|e| {
+            YamlSerializeError::new_err(format_i18n_error(
+                "json-serialize-error",
+                &[("detail", &e.to_string())],
+            ))
+        })
     }
 
     /// Serialize to JSONC text, preserving the comments the AST carries
