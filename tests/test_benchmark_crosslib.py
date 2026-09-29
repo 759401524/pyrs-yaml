@@ -15,6 +15,15 @@ from tests.data.yaml_samples import (
     BENCHMARK_BLOCK_STYLE as BLOCK_STYLE_YAML,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_DATA as CONFIG_DATA,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSON_LARGE as CONFIG_JSON_LARGE,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_TOML as CONFIG_TOML,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_LARGE as LARGE_YAML,
 )
 from tests.data.yaml_samples import (
@@ -66,6 +75,16 @@ try:
 except ImportError:
     HAS_YAML_RS = False
     yaml_rs = None
+
+# tomllib is stdlib on 3.11+ (read-only). It is the reference TOML parser,
+# so pyrs load_toml is compared against it with no extra dependency.
+try:
+    import tomllib
+
+    HAS_TOMLLIB = True
+except ImportError:
+    HAS_TOMLLIB = False
+    tomllib = None
 
 
 def ruamel_load(s):
@@ -200,6 +219,51 @@ def test_yaml_rs_parse(benchmark, size):
 def test_yaml_rs_serialize(benchmark, size):
     data = yaml_rs.loads(YAML_INPUTS[size])
     benchmark(yaml_rs.dumps, data)
+
+
+# ── TOML comparison (pyrs native kernel vs stdlib tomllib) ──
+# Both parse the identical TOML document to a Python dict. tomllib is
+# read-only and ships in 3.11+, so the writer side has no stdlib peer and is
+# covered by the self-API benchmark (test_benchmark_api.test_to_toml) only.
+
+
+@pytest.mark.benchmark(group="pyrs-toml")
+def test_pyrs_load_toml(benchmark):
+    benchmark(pyrs_yaml.load_toml, CONFIG_TOML)
+
+
+@pytest.mark.benchmark(group="tomllib")
+@pytest.mark.skipif(not HAS_TOMLLIB, reason="tomllib requires Python 3.11+")
+def test_tomllib_load(benchmark):
+    benchmark(tomllib.loads, CONFIG_TOML)
+
+
+# ── JSON comparison (pyrs native kernel vs stdlib json) ──
+
+
+@pytest.mark.benchmark(group="pyrs-json")
+def test_pyrs_json_load(benchmark):
+    # load_jsonc is a strict superset of RFC 8259; on this plain-JSON input it
+    # yields the same dict as json.loads, so the two are directly comparable.
+    benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_LARGE)
+
+
+@pytest.mark.benchmark(group="stdlib-json")
+def test_stdlib_json_load(benchmark):
+    benchmark(json.loads, CONFIG_JSON_LARGE)
+
+
+@pytest.mark.benchmark(group="pyrs-json")
+def test_pyrs_json_dump(benchmark):
+    # Setup builds the document once; the measured call is AST -> JSON text,
+    # the peer of json.dumps on the same structure.
+    doc = pyrs_yaml.parse(pyrs_yaml.from_dict(CONFIG_DATA))
+    benchmark(doc.to_json)
+
+
+@pytest.mark.benchmark(group="stdlib-json")
+def test_stdlib_json_dump(benchmark):
+    benchmark(json.dumps, CONFIG_DATA)
 
 
 # ── Speedup assertion ──
