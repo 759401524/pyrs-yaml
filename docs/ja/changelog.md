@@ -17,6 +17,10 @@ status: new
 
 #### 追加
 
+- **TOML ドキュメントレベルのコメント再現性** — `to_toml` がルートマッピングの
+  先頭コメントを出力するようになり、文書冒頭の独立した `# コメント` が TOML →
+  ハブ → TOML の往復で保持されるようになりました（JSON ライターの
+  `emit_root_leading` に対応）。ネイティブ TOML 解析やコメントなし文書は影響なし。
 - **JSON5 Unicode 識別子キー** — 引用なしオブジェクトキーが ASCII 限定をやめ、
   Unicode の `ID_Start` / `ID_Continue` 集合全体を受け入れる。`from_json5` /
   `load_json5` が `{ é: 1, 名: 2, हिन्दी: 3 }` を解析できる。rustc 自身の
