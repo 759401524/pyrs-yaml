@@ -172,6 +172,15 @@ Milestone review of all Research & Exploration items per the revisit rule.
 
 ---
 
+## Known Engine Boundaries (2026-09-29)
+
+Deliberate hub-model limits in the TOML spoke, pinned by characterization tests in `tests/test_toml.py` (classes `TestSectionHeaderCommentBoundary`) so they cannot silently drift. Both stem from the shared YAML text hub (`from_toml` → YAML → `to_toml`), where YAML is the interchange format. **Values always round-trip losslessly**; only certain TOML-only *stylistic* forms are not reproducible.
+
+- **Table-header inline comment (`[sec] # note`).** The shared YAML engine does not capture a comment on a container's key line (verified independently: pure YAML `sec: # note` also drops it on parse), so the note is not re-emitted by `to_toml`. Standalone/leading comments above a header and trailing comments on a leaf `key = value` line *are* preserved. Root-fixing needs a change to the locked granit comment-capture model — high blast radius across all YAML comment output and the 99.75 % compliance guarantee — so it is explicitly declined rather than silently shipped.
+- **Binary integer source (`0b1010`).** Canonicalised to decimal on the round trip because YAML Core has no `0b` spelling (a faithful `0b` in YAML would re-resolve to a string, corrupting the value). Hex/octal source *is* preserved (YAML Core resolves them back to the same integer). Recorded in `toml/parser.rs` (`parse_prefixed_body_via_dispatch`) as a deliberate choice, not a defect.
+
+---
+
 ## Research & Exploration
 
 Tracked as open questions for future roadmap inclusion; not committed to any version.

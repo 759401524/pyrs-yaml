@@ -173,3 +173,41 @@ class TestMultilineStrings:
         out = self._roundtrip(src)
         assert '"""' not in out, out
         assert pyrs_yaml.load_toml(out) == {"x": "a\nb"}
+
+
+class TestSectionHeaderCommentBoundary:
+    """Characterization test for a KNOWN hub boundary (deliberately not root-fixed).
+
+    A comment placed on a TOML table-header line (`[sec] # note`) has no
+    faithful representation in the YAML hub: the shared YAML engine does not
+    capture a comment sitting on a container's key line (verified: pure YAML
+    `sec: # note` loses the note on parse too), so `to_toml` re-emits the header
+    without it. Root-fixing this means changing the locked granit comment-capture
+    model — a high-blast-radius core-engine change explicitly declined. These
+    cases PIN the current behavior (values stay lossless; standalone/leading
+    comments survive; the inline header note is dropped) so it cannot silently
+    drift. See ROADMAP.md "Known engine boundaries".
+    """
+
+    def test_header_inline_comment_dropped_but_value_lossless(self):
+        src = "a = 1\n\n[sec] # note\nx = 1\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        # Value round-trips through the hub unchanged (the real guarantee).
+        assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+        # The header-line inline comment is the documented boundary: dropped.
+        assert "# note" not in out, out
+        assert "[sec]" in out, out
+
+    def test_standalone_section_comment_still_survives(self):
+        # Only the *inline* header comment is lost; a standalone note on the
+        # line above the header is preserved (via the #131 leading-comment path).
+        src = "# above\n[sec]\nx = 1\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert "# above" in out, out
+        assert "[sec]" in out, out
+
+    def test_leaf_value_inline_comment_still_survives(self):
+        # A trailing comment on a leaf key = value line is captured and kept.
+        src = 'key = "v"  # tail\n'
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert "# tail" in out, out
