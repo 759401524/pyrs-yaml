@@ -194,6 +194,12 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                         Ok(fmt_toml_float(f))
                     }
                 }
+                // PR #132: a multi-line string (projected as a YAML literal
+                // block) is re-emitted as a TOML `"""` basic block so the
+                // multi-line shape survives the hub instead of degrading to
+                // an escaped single line. The block value already carries its
+                // trailing newlines, so reconstruction needs only the value.
+                (ScalarStyle::Literal, _) => Ok(quote_multiline(value)),
                 // Everything else is text: quoted scalars verbatim, plain
                 // strings resolved-to-Str.
                 _ => Ok(quote_basic(value)),
@@ -302,6 +308,35 @@ fn quote_basic(s: &str) -> String {
     out
 }
 
+/// Emit a TOML multi-line basic string (`"""…"""`) whose parsed content is
+/// exactly `value` (PR #132). Two TOML rules shape the encoding: a newline
+/// immediately after the opening delimiter is trimmed, so a value that starts
+/// with a newline gets a spare one emitted first; and every `"` is escaped so a
+/// run of quotes can never prematurely close the block. Real newlines and tabs
+/// are kept literal; `\r` and other control chars are escaped.
+fn quote_multiline(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 8);
+    out.push_str("\"\"\"");
+    if value.starts_with('\n') {
+        out.push('\n');
+    }
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push('\n'),
+            '\t' => out.push('\t'),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(out, "\\u{:04X}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push_str("\"\"\"");
+    out
+}
+
 fn is_valid_toml_datetime(s: &str) -> bool {
     // Reuse the parser's strict validator via a probe. The parser module
     // owns the grammar so date-time rules live in one place.
@@ -379,6 +414,22 @@ mod tests {
         let text = to_toml(&ast).unwrap();
         let back = from_toml(&text).unwrap();
         assert_eq!(to_toml(&back).unwrap(), text);
+    }
+
+    #[test]
+    fn to_toml_preserves_multiline_string_shape() {
+        // PR #132: a `"""…"""` source is marked multi-line, projected as a
+        // Literal block, and re-emitted as a `"""` block with the value intact.
+        let src = "x = \"\"\"line1\nline2\"\"\"\n";
+        let ast = from_toml(src).unwrap();
+        let text = to_toml(&ast).unwrap();
+        assert!(text.contains("\"\"\""), "{text}");
+        // Idempotent: re-parsing the emitted text yields the same output.
+        let back = from_toml(&text).unwrap();
+        assert_eq!(to_toml(&back).unwrap(), text);
+        // A single-line basic string is NOT marked multi-line.
+        let single = to_toml(&from_toml("x = \"a\\nb\"\n").unwrap()).unwrap();
+        assert!(!single.contains("\"\"\""), "{single}");
     }
 
     #[test]

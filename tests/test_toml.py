@@ -126,3 +126,50 @@ class TestCommentFidelity:
 
     def test_clean_doc_has_no_stray_comment_line(self):
         assert pyrs_yaml.to_toml(pyrs_yaml.from_toml("a = 1\nb = 2\n")) == "a = 1\nb = 2\n"
+
+
+class TestMultilineStrings:
+    """PR #132: multi-line TOML strings keep their shape through the hub.
+
+    A triple-quoted basic or literal value is projected as a YAML literal
+    block (so the style survives the text hub) and re-emitted by ``to_toml``
+    as a triple-quoted block, while a single-line escaped string stays
+    single-line.
+    """
+
+    def _roundtrip(self, src):
+        return pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+
+    def test_multiline_basic_with_trailing_newline(self):
+        src = 'x = """\nline1\nline2\n"""\n'
+        out = self._roundtrip(src)
+        assert '"""' in out, out
+        assert pyrs_yaml.load_toml(out) == {"x": "line1\nline2\n"}
+
+    def test_multiline_without_trailing_newline(self):
+        src = 'x = """line1\nline2"""\n'
+        out = self._roundtrip(src)
+        assert '"""' in out, out
+        assert pyrs_yaml.load_toml(out) == {"x": "line1\nline2"}
+
+    def test_multiline_literal_value_and_shape_preserved(self):
+        src = "x = '''\nraw \\path\nline'''\n"
+        out = self._roundtrip(src)
+        assert ('"""' in out) or ("'''" in out), out
+        assert pyrs_yaml.load_toml(out) == {"x": "raw \\path\nline"}
+
+    def test_multiline_quotes_and_backslash_preserved(self):
+        src = 'x = """she said \\"hi\\"\nbye"""\n'
+        out = self._roundtrip(src)
+        assert pyrs_yaml.load_toml(out) == {"x": 'she said "hi"\nbye'}
+
+    def test_roundtrip_is_idempotent(self):
+        once = self._roundtrip('x = """a\nb\nc"""\n')
+        twice = self._roundtrip(once)
+        assert once == twice, (once, twice)
+
+    def test_single_line_stays_single_line(self):
+        src = 'x = "a\\nb"\n'
+        out = self._roundtrip(src)
+        assert '"""' not in out, out
+        assert pyrs_yaml.load_toml(out) == {"x": "a\nb"}
