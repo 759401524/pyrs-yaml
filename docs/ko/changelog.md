@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **`to_json` 네이티브 직렬화기(성능)** — `YamlDocument.to_json`이 `to_dict()` + `json.dumps` 이중 변환을 멈추고 네이티브 엔진을 사용. ASCII 는 바이트 단위 동일, 약 10배 빨라짐(1200건 ~1450µs→~120µs, `json.dumps`를 앞섬). 비ASCII는 `\uXXXX` 대신 원시 UTF-8(`to_jsonc`/`to_json5`와 일치)로 출력되며 유효한 JSON 유지.
 - **JSON 로드 고속 경로** — `load_jsonc`가 정준 strict JSON을 `CustomNode` AST 없이 직접 Python 객체로 변환(실측 약 5-6배 빨라 stdlib `json.loads`를 앞섬). 비정준 입력(실수/이스케이프/주석/범위 초과 정수/후행 쉼표)은 일반 경로로 폴백하여 값과 오류가 불변.
 - **TOML 다중 줄 문자열 무결성** — TOML 다중 줄 문자열을 `ScalarStyle::Literal` YAML 블록으로 투영(텍스트 허브 왕복 유지)하여 `to_toml`이 이스케이프 한 줄로 붕괴시키지 않고 `"""` 블록으로 재출력한다. 값은 바이트 단위로 왕복하고 출력은 멱등이며 한 줄 문자열은 한 줄로 유지된다. 기존 `Literal` 재사용으로 AST 구조 변경 없음.
 - **TOML 문서 수준 주석 무결성** — `to_toml`이 루트 매핑의 선행 주석을 출력하게 되어, 문서 맨 앞의 독립 `# 주석`이 TOML→허브→TOML 왕복에서 유지된다(JSON 라이터의 `emit_root_leading`에 해당). 네이티브 TOML 파싱과 주석 없는 문서는 영향 없다.

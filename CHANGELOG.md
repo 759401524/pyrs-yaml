@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`to_json` native serializer (perf)** — `YamlDocument.to_json` now uses the
+  native engine instead of `to_dict()` + Python `json.dumps` (a double
+  conversion). Byte-identical for ASCII and ~10x faster (a 1200-item document
+  drops ~1450µs → ~120µs, now beating `json.dumps`). Behavior change: non-ASCII
+  is emitted as raw UTF-8 (matching `to_jsonc` / `to_json5`) rather than
+  `\uXXXX` escapes; output stays valid JSON that `json.loads` parses the same.
 - **JSON load fast path** — `load_jsonc` now parses canonical strict JSON
   (objects/arrays, `i64` integers, booleans, `null`, escape-free strings)
   straight into Python objects, skipping the intermediate `CustomNode` AST.
