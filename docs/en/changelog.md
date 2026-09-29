@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native engine instead of `to_dict()` + `json.dumps`. Byte-identical for ASCII,
   ~10x faster (1200-item ~1450µs → ~120µs, beating `json.dumps`). Non-ASCII now
   raw UTF-8 (like `to_jsonc`/`to_json5`) instead of `\uXXXX`; still valid JSON.
+- **JSON object keys written directly (perf)** — the writer emits mapping keys
+  straight into the buffer (no per-key `String` alloc); compact `to_json` ~2x
+  faster (~120µs → ~60µs), byte-identical, now #2 in the field.
 - **JSON load fast path** — `load_jsonc` parses canonical strict JSON straight
   into Python objects, skipping the `CustomNode` AST (~5-6x faster, now ahead of
   stdlib `json.loads`). Non-canonical input (floats, escapes, comments, huge

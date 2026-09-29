@@ -131,6 +131,19 @@ pub fn key_text(key: &CustomNode) -> Result<String, SerializeError> {
     }
 }
 
+/// Write a JSON object key directly into `out`, avoiding the intermediate
+/// `String` that [`key_text`] allocates per key (the hot path of `to_json`
+/// on documents with many small keys). Produces byte-identical output to
+/// `write_json_string(&key_text(k)?, out)`.
+fn write_json_key(key: &CustomNode, out: &mut String) -> Result<(), SerializeError> {
+    match key {
+        CustomNode::Scalar { value, .. } => write_json_string(value, out),
+        CustomNode::Null { .. } => write_json_string("null", out),
+        _ => return Err(SerializeError::Internal("json-object-key")),
+    }
+    Ok(())
+}
+
 fn write_value(
     node: &CustomNode,
     pretty: bool,
@@ -249,7 +262,7 @@ fn write_value_inner(
                         emit_standalone_comment(k, step, stack.len(), out);
                     }
                     indent(out, step, stack.len());
-                    write_json_string(&key_text(k)?, out);
+                    write_json_key(k, out)?;
                     out.push_str(": ");
                     write_value(v, pretty, step, stack, out, mode)?;
                     if comments {
@@ -269,7 +282,7 @@ fn write_value_inner(
                     if i > 0 {
                         out.push(',');
                     }
-                    write_json_string(&key_text(k)?, out);
+                    write_json_key(k, out)?;
                     out.push(':');
                     write_value(v, pretty, step, stack, out, mode)?;
                     if comments {

@@ -43,12 +43,15 @@ except ImportError:
     HAS_RAPIDJSON = False
 
 
-def _doc(items):
-    payload = {
+def _payload(items):
+    return {
         "server": {"host": "0.0.0.0", "port": 8080, "ssl": True, "workers": 4},
         "items": [{"name": f"item_{i}", "value": i * 10} for i in range(items)],
     }
-    return json.dumps(payload)
+
+
+def _doc(items):
+    return json.dumps(_payload(items))
 
 
 _SIZES = {"medium": _doc(300), "large": _doc(1200)}
@@ -81,3 +84,31 @@ def test_json_parse_top3(size):
     pyrs = _median_us(lambda: pyrs_yaml.load_jsonc(doc))
     faster = sum(1 for fn in _PEERS if _median_us(lambda f=fn: f(doc)) < pyrs)
     assert faster <= 2, f"json parse/{size}: pyrs not top-3 ({faster} of {len(_PEERS)} competitors faster)"
+
+
+# Serialize: native single-pass to_json(0) vs the field's compact dumps.
+_SERIALIZE_ITEMS = (300, 1200)
+
+
+def _serialize_peers(data):
+    peers = []
+    if HAS_ORJSON:
+        peers.append(lambda: orjson.dumps(data))
+    if HAS_UJSON:
+        peers.append(lambda: ujson.dumps(data))
+    peers.append(lambda: json.dumps(data))
+    if HAS_RAPIDJSON:
+        peers.append(lambda: rapidjson.dumps(data))
+    return peers
+
+
+@pytest.mark.parametrize("items", _SERIALIZE_ITEMS)
+def test_json_serialize_top3(items):
+    data = _payload(items)
+    doc = pyrs_yaml.parse(pyrs_yaml.from_jsonc(json.dumps(data)))
+    # Parity + byte-stability: native compact output must parse back to the data.
+    assert json.loads(doc.to_json(0)) == data
+    pyrs = _median_us(lambda: doc.to_json(0))
+    peers = _serialize_peers(data)
+    faster = sum(1 for peer in peers if _median_us(peer) < pyrs)
+    assert faster <= 2, f"serialize/{items}: {faster} of {len(peers)} competitors beat pyrs"
