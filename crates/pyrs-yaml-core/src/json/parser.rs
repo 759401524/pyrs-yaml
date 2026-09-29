@@ -209,6 +209,33 @@ impl<'a> Parser<'a> {
                     own_line_seen = true;
                     self.pos += 1;
                 }
+                // JSON5 structural whitespace beyond RFC 8259's four
+                // (tab / space / LF / CR): vertical tab and form feed, then
+                // NBSP, the Unicode Zs space separators, the LS/PS line
+                // terminators and ZWNBSP (U+FEFF). Gated on the JSON5 flag
+                // so STRICT / JSONC keep rejecting every one of them.
+                Some(0x0b | 0x0c) if self.allow_json5_numbers => self.pos += 1,
+                Some(b) if self.allow_json5_numbers && b >= 0x80 => {
+                    // `self.pos` always sits on a char boundary (each
+                    // advance in this loop moves by a whole code point), and
+                    // a lead byte >= 0x80 means a multi-byte char starts
+                    // here. Skip it when it is JSON5 whitespace.
+                    if !self.text.is_char_boundary(self.pos) {
+                        return;
+                    }
+                    if let Some(c) = self.text[self.pos..]
+                        .chars()
+                        .next()
+                        .filter(|c| is_json5_ws(*c))
+                    {
+                        if matches!(c, '\u{2028}' | '\u{2029}') {
+                            own_line_seen = true;
+                        }
+                        self.pos += c.len_utf8();
+                    } else {
+                        return;
+                    }
+                }
                 Some(b'/') if self.allow_comments => {
                     let line = self.s.get(self.pos + 1) == Some(&b'/');
                     let block = self.s.get(self.pos + 1) == Some(&b'*');
@@ -758,6 +785,15 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// JSON5 structural whitespace: the Unicode `White_Space` property minus
+/// NEL (U+0085, which JSON5 does not classify as whitespace), plus ZWNBSP
+/// (U+FEFF). This is exactly the spec's `WhiteSpace ∪ LineTerminator` set
+/// (tab, VT, FF, space, NBSP, every Zs separator, CR, LF, LS, PS) minus
+/// the ASCII members, which `ws()` already handles on single bytes.
+fn is_json5_ws(ch: char) -> bool {
+    (ch.is_whitespace() && ch != '\u{85}') || ch == '\u{feff}'
+}
+
 /// JSON strings land in the YAML-shaped AST without ever re-resolving:
 /// text that a plain YAML scalar would reinterpret is quoted (the same
 /// `needs_quotes` discipline the TOML spoke follows).
@@ -960,6 +996,29 @@ mod tests {
         // Strict JSON still rejects both.
         assert!(from_json("\"ab\\\ncd\"").is_err());
         assert!(from_json("\"it\\'s\"").is_err());
+    }
+
+    #[test]
+    fn json5_accepts_unicode_whitespace() {
+        // PR #128: JSON5 treats VT, FF, NBSP, the Unicode Zs separators,
+        // the LS/PS line terminators and ZWNBSP (U+FEFF) as structural
+        // whitespace between tokens (unquoted keys `a` / `b` are JSON5).
+        let node = from_json5("{\u{a0}a\u{2007}:\u{3000}1,\u{2028}b: 2\u{feff}}").unwrap();
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            unreachable!()
+        };
+        assert_eq!(pairs.len(), 2);
+        let node = from_json5("{a: 1\u{0b},\u{0c}b: 2}").unwrap();
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            unreachable!()
+        };
+        assert_eq!(pairs.len(), 2);
+        // STRICT / JSONC keep rejecting every exotic whitespace form.
+        assert!(from_json("{\u{a0}a: 1}").is_err());
+        assert!(from_json("\u{0b}{}").is_err());
+        assert!(from_json("\u{0c}{}").is_err());
+        assert!(from_json("\u{feff}{}").is_err());
+        assert!(from_jsonc("{\u{2028}\"a\": 1}").is_err());
     }
 
     #[test]

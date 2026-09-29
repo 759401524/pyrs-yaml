@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **JSON5 Unicode 구조 공백** — `from_json5`/`load_json5`가 RFC 8259의 4개(탭/스페이스/줄바꿈/CR) 외에 JSON5가 추가한 공백을 토큰 구분자로 받아들인다: 수직 탭, 폼 픽, NBSP(U+00A0), 모든 Unicode `Zs` 구분자, LS/PS 줄 종결자(U+2028/U+2029), ZWNBSP(U+FEFF). `std`의 `char::is_whitespace`(JSON5가 공백으로 보지 않는 NEL U+0085 제외)에 U+FEFF를 더해서 구현, 신규 의존성 없음. JSON5 모드에서만 켜지므로 엄격 `from_json`/`from_jsonc`는 종래대로 전부 거부한다.
 - **JSON5 줄 연속과 `\'` 이스케이프** — 큰따옴표 JSON5 문자열이 JSON 집합 밖의 두 이스케이프를 받아들인다: 줄 종결자 바로 앞의 역슬래시(줄 연속으로 둘 다 제거)와 이스케이프된 작은따옴표(`\'`→`'`). JSON5 모드에서만 켜지므로 엄격 `from_json`/`from_jsonc`는 종래대로 둘 다 거부한다. #125의 작은따옴표 처리를 반영해 JSON5 문자열 무결성을 완성한다.
 - **JSON5 문자열 이스케이프 `\v`와 `\0`** — `from_json5`가 수직 탭(`\v`)과 NUL(`\0`)을 큰따옴표/작은따옴표 문자열 모두에서 받아들인다. 엄격 JSON / JSONC는 종래대로 거부한다. #120(수치)·#124(수치 시맨틱)과 함께 JSON5 문법을 완성한다.
 - **load_json5의 JSON5 수치 시맨틱** — `load_json5`가 JSON5 전용 수치 형식(`0x1F`→31, `+7`→7, `5.`→5.0, `Infinity`/`NaN`)을 새로운 `Schema::Json5`로 실수 값으로 해석한다. 엄격 JSON/JSONC 로더는 불변이며 `to_json5_text`는 원본 표기 그대로 출력한다.

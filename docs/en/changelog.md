@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON5 Unicode structural whitespace** — `from_json5` / `load_json5` accept
+  the whitespace JSON5 adds to RFC 8259's four: VT, FF, NBSP, every Unicode `Zs`
+  separator, the LS/PS line terminators and ZWNBSP (U+FEFF). Built on `std`
+  `char::is_whitespace` (minus NEL U+0085) plus U+FEFF — no new dependency.
+  Strict `from_json` / `from_jsonc` still reject all of them.
 - **JSON5 line continuation and `\'` escape** — double-quoted JSON5 strings
   accept a backslash-newline line continuation (removing both) and an escaped
   single quote (`\'`); strict JSON / JSONC still reject both. Mirrors the

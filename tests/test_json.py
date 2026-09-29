@@ -73,6 +73,16 @@ class TestJsonDialects:
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.load_jsonc('{"who": "it\\\'s"}')
 
+    def test_load_json5_accepts_unicode_whitespace(self):
+        # PR #128: JSON5 treats NBSP, the Unicode Zs separators, the LS/PS
+        # line terminators and ZWNBSP (U+FEFF) as structural whitespace.
+        d = pyrs_yaml.load_json5("{\u00a0a:\u20031,\u2028b: 2\ufeff}")
+        assert d == {"a": 1, "b": 2}
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc("{\u00a0a: 1}")
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.from_json("\u000c{}")
+
     def test_load_json5_returns_values(self):
         d = pyrs_yaml.load_json5("{a: 1, b: .5, c: 'str', d: [1, 2,],}")
         assert d == {"a": 1, "b": 0.5, "c": "str", "d": [1, 2]}

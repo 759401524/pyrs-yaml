@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **JSON5 Unicode 结构空白** — `from_json5` / `load_json5` 现在将 JSON5 在
+  RFC 8259 四个空白（制表符 / 空格 / LF / CR）之外新增的空白视为 token 间
+  分隔符：垂直制表符、换页符、NBSP（U+00A0）、所有 Unicode `Zs` 空格分隔符、
+  LS/PS 行终结符（U+2028 / U+2029）以及 ZWNBSP（U+FEFF）。基于 `std` 的
+  `char::is_whitespace`（减去 JSON5 不归为白空的 U+0085 NEL）加上显式的
+  U+FEFF 实现，无新增依赖。仅在 JSON5 模式下启用，因此严格的 `from_json` 与
+  `from_jsonc` 仍照旧拒绝全部这些空白，行为逐字节不变。
 - **JSON5 行连接与 `\'` 转义** — 双引号 JSON5 字符串现在接受两种转义形式：
   紧邻换行符的反斜杠（续行，会同时移除反斜杠与换行符），以及转义单引号
   （`\'` → `'`）。仅在 JSON5 模式下启用，因此严格的 `from_json` 与 `from_jsonc`
