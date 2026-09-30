@@ -431,7 +431,10 @@ enum ParseState {
         tag: Option<Tag>,
         flow_style: bool,
         start_byte: usize,
-        /// `(flow_open_byte, block_ancestor_indent_col)` for a multi-line flow
+        /// 0-indexed source column of the container start, cached so the flow
+        /// guard can read block indentation in O(1).
+        start_col: usize,
+        /// `(flow_open_line, block_ancestor_col)` for a multi-line flow
         /// collection used as a block value; `None` for block containers and
         /// for flows with no enclosing block collection (document-root flows).
         guard: Option<(usize, usize)>,
@@ -443,6 +446,7 @@ enum ParseState {
         tag: Option<Tag>,
         flow_style: bool,
         start_byte: usize,
+        start_col: usize,
         guard: Option<(usize, usize)>,
     },
 }
@@ -642,66 +646,53 @@ impl<'a> AstReceiver<'a> {
             && self.yaml_text.as_bytes()[byte_offset] == expected_byte
     }
 
-    /// Zero-based visual column of a byte offset (chars from its line start).
-    /// Leading indentation is ASCII whitespace, so byte-column == visual column
-    /// for the indentation check that uses it.
-    fn column_of_byte(&self, byte: usize) -> usize {
-        let byte = byte.min(self.yaml_text.len());
-        let before = &self.yaml_text[..byte];
-        before.len() - before.rfind('\n').map(|i| i + 1).unwrap_or(0)
-    }
-
-    /// Column of the nearest enclosing *block* collection (skipping flow ones).
-    /// `None` when the container sits directly under the document root, i.e. a
-    /// document-root flow collection that carries no block indentation to
-    /// violate.
-    fn nearest_block_ancestor_indent(&self) -> Option<usize> {
-        for state in self.stack.iter().rev() {
-            let (flow_style, start_byte) = match state {
-                ParseState::Mapping {
-                    flow_style,
-                    start_byte,
-                    ..
-                }
-                | ParseState::Sequence {
-                    flow_style,
-                    start_byte,
-                    ..
-                } => (*flow_style, *start_byte),
-            };
-            if !flow_style {
-                return Some(self.column_of_byte(start_byte));
+    /// Column of the nearest enclosing *block* collection (skipping flow ones),
+    /// read from its cached `start_col` so it is O(1). `None` when the container
+    /// sits directly under the document root, i.e. a document-root flow
+    /// collection that carries no block indentation to violate.
+    fn nearest_block_ancestor_col(&self) -> Option<usize> {
+        self.stack.iter().rev().find_map(|state| match state {
+            ParseState::Mapping {
+                flow_style: false,
+                start_col,
+                ..
             }
-        }
-        None
+            | ParseState::Sequence {
+                flow_style: false,
+                start_col,
+                ..
+            } => Some(*start_col),
+            _ => None,
+        })
     }
 
-    /// Guard for a freshly-opened flow collection: `(open_byte, ancestor_col)`
+    /// Guard for a freshly-opened flow collection: `(open_line, ancestor_col)`
     /// when it is a value inside a block collection (so its continuation lines
     /// must out-indent the block), else `None`. Called before the container is
     /// pushed, so `self.stack` holds only its ancestors.
-    fn flow_guard(&self, flow_style: bool, start_byte: usize) -> Option<(usize, usize)> {
+    fn flow_guard(&self, flow_style: bool, span: &Span) -> Option<(usize, usize)> {
         if !flow_style {
             return None;
         }
-        self.nearest_block_ancestor_indent()
-            .map(|anc| (start_byte, anc))
+        self.nearest_block_ancestor_col()
+            .map(|anc| (span.start.line(), anc))
     }
 
-    /// Reject a flow token that resumes on a later line at an indentation no
-    /// deeper than its enclosing block collection -- the `9C9N` pattern that
-    /// granit-parser 1.3 wrongly accepts. Checked for every scalar inside an
-    /// open flow, using only spans granit already computed, so correctly
-    /// indented multi-line flows (the valid majority) are untouched.
-    fn check_flow_continuation(&mut self, byte: usize) {
+    /// Reject a flow token that resumes on a later line at a column no greater
+    /// than its enclosing block collection -- the `9C9N` pattern that
+    /// granit-parser 1.3 wrongly accepts. Reads only the O(1) line/column granit
+    /// already computed per marker, so it adds no per-scalar text scan and no
+    /// quadratic parse cost; correctly indented multi-line flows (the valid
+    /// majority) and document-root flows are untouched.
+    fn check_flow_continuation(&mut self, span: &Span) {
         if self.flow_indent_error.is_some() {
             return;
         }
-        let col = self.column_of_byte(byte);
-        let violated = self.stack.iter().any(|state| {
-            container_guard(state).is_some_and(|(open_byte, anc)| {
-                byte > open_byte && self.yaml_text[open_byte..byte].contains('\n') && col <= anc
-            })
+        let line = span.start.line();
+        let col = span.start.col();
+        let violated = self.stack.iter().any(|state| match container_guard(state) {
+            Some((open_line, anc)) => line > open_line && col <= anc,
+            None => false,
         });
         if violated {
             self.flow_indent_error = Some(ParseError::Syntax {
@@ -770,7 +761,7 @@ impl<'a> AstReceiver<'a> {
         let range = self.span_to_byte_range(&span);
 
         // `9C9N` guard: a flow entry resuming under-indented is invalid.
-        self.check_flow_continuation(range.start);
+        self.check_flow_continuation(&span);
 
         let standalone = self.pending_standalone_comment.take();
 
@@ -859,7 +850,7 @@ impl<'a> AstReceiver<'a> {
         else {
             return;
         };
-        let guard = self.flow_guard(flow_style, start_byte);
+        let guard = self.flow_guard(flow_style, &span);
         self.stack.push(ParseState::Mapping {
             pairs: IndexMap::new(),
             current_key: Box::new(None),
@@ -867,6 +858,7 @@ impl<'a> AstReceiver<'a> {
             tag: tag_obj,
             flow_style,
             start_byte,
+            start_col: span.start.col(),
             guard,
         });
     }
@@ -939,13 +931,14 @@ impl<'a> AstReceiver<'a> {
         else {
             return;
         };
-        let guard = self.flow_guard(flow_style, start_byte);
+        let guard = self.flow_guard(flow_style, &span);
         self.stack.push(ParseState::Sequence {
             items: Vec::new(),
             anchor_id,
             tag: tag_obj,
             flow_style,
             start_byte,
+            start_col: span.start.col(),
             guard,
         });
     }
