@@ -515,6 +515,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Self-referential merge keys no longer overflow the native stack** — a `<<`
+  whose expansion points back at its own anchor (`a: &a` containing
+  `b: {<<: *a}`) expanded forever inside `resolve_merge_keys`, exhausting the
+  native stack and killing the whole interpreter process (Windows exit
+  `0xC00000FD`, a segmentation fault). The cycle guard was applied only while
+  *collecting* merged pairs, never while *walking* the expansion, so recursive
+  re-entry was never caught. The anchor guard is now path-scoped, the same way
+  alias expansion is guarded: an anchor's name stays on the recursion path while
+  its expansion is walked, and a merge that resolves back to an ancestor already
+  on that path terminates as an empty expansion instead of recursing. An acyclic
+  AST cannot carry PyYAML's cyclic dict, so a self-merge now bottoms out at `{}`
+  rather than crashing. Four related merge-semantics defects were fixed in the
+  same pass: a null / scalar / sequence merge source no longer survives as a
+  literal `<<` key, an inline mapping used directly as a merge value
+  (`<<: {x: 1}`) now merges, and a non-alias element in a merge sequence
+  (`<<: [*a, {y: 2}]`) keeps its inline map. Covered by six Rust and nine Python
+  regression tests (`merge::tests`, `tests/test_gaps.py::TestSelfReferentialMerge166`).
+  Reported by [@bourumir-wyngs](https://github.com/bourumir-wyngs) in #166.
 - **NumPy serialization no longer reads Python memory without the GIL** — the
   ndarray writer borrowed the array's data buffer via `unsafe { as_slice() }`
   and then iterated that borrowed slice *inside* `py.detach`, i.e. after

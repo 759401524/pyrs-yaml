@@ -532,6 +532,57 @@ class TestResolveMergesTrue:
         assert child["y"] == 2
 
 
+class TestSelfReferentialMerge166:
+    """issue #166: a self-referential `<<` merge blew the native stack and
+    took the whole interpreter process down (exit 0xC00000FD). These cases
+    must terminate instead. An acyclic AST cannot carry PyYAML's cyclic dict,
+    so a cycle bottoms out at an empty mapping -- assert termination plus the
+    resolved prefix, not an exact structural tie with PyYAML."""
+
+    def test_minimal_self_merge_terminates(self):
+        data = pyrs_yaml.parse("a: &a\n  b:\n    <<: *a\n").to_dict()
+        assert data == {"a": {"b": {"b": {}}}}
+
+    def test_self_merge_with_siblings_terminates(self):
+        data = pyrs_yaml.parse("a: &a\n  b: 1\n  c:\n    <<: *a\n").to_dict()
+        assert data == {"a": {"b": 1, "c": {"b": 1, "c": {}}}}
+
+    def test_nested_self_merge_terminates(self):
+        data = pyrs_yaml.parse("a: &a\n  x: 1\n  sub:\n    <<: *a\nb:\n  <<: *a\n").to_dict()
+        # Both anchors resolve `x` fully and never leave a stray `<<`.
+        assert data["a"]["x"] == 1
+        assert data["b"]["x"] == 1
+        assert "<<" not in data["a"]["sub"]
+        assert "<<" not in data["b"]
+
+    def test_null_merge_source_leaves_no_residual(self):
+        # A null alias source is not a merge; the `<<` key must be stripped,
+        # not survive as a literal key next to the real ones.
+        data = pyrs_yaml.parse("a: &a\nb:\n  <<: *a\n  c: 1\n").to_dict()
+        assert data == {"a": None, "b": {"c": 1}}
+
+    def test_inline_map_merge_value(self):
+        data = pyrs_yaml.parse("b:\n  <<: {x: 1}\n  y: 2\n").to_dict()
+        assert data == {"b": {"x": 1, "y": 2}}
+
+    def test_merge_sequence_keeps_inline_map(self):
+        # The non-alias `{y: 2}` element in the sequence must still merge.
+        data = pyrs_yaml.parse("a: &a\n  x: 1\nb:\n  <<: [*a, {y: 2}]\n  z: 3\n").to_dict()
+        assert data["b"] == {"x": 1, "y": 2, "z": 3}
+
+    @pytest.mark.parametrize(
+        "yaml_str",
+        [
+            "a: &a\n  b:\n    <<: *a\n",
+            "a: &a\n  b: 1\n  c:\n    <<: *a\n",
+            "a: &a\n  x: 1\n  sub:\n    <<: *a\nb:\n  <<: *a\n",
+        ],
+    )
+    def test_to_yaml_roundtrip_terminates(self, yaml_str):
+        # Re-serializing the resolved tree must also terminate (no crash).
+        assert pyrs_yaml.parse(yaml_str).to_yaml()
+
+
 class TestSafeDumpTypes:
     """Test safe_dump with various Python types"""
 
