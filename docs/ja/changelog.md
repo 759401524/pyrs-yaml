@@ -315,6 +315,7 @@ status: new
   `unsafe` バッファ借用であり、他の全 `py.detach` Closure は Rust 所有状態（AST、
   ソーステキスト、`BufWriter<File>`）のみ触及と確認済み。回帰カバレッジは
   `tests/test_numpy.py::TestNumpyConcurrency`。
+  [@bourumir-wyngs](https://github.com/bourumir-wyngs) による #165 の報告。
 - **繰り返しエイリアス参照が `None` にならないよう修正** — `to_dict()` は**グローバル**
   な visited 集合の後でエイリアスを展開し、クリアすることがなかったため、各アンカーの
   **最初の**参照のみが値になり、それ以降は無言で `None` に劣化していた：
@@ -332,6 +333,7 @@ status: new
     依然として終了する。`<<` マージ解決と AST 自体は影響を受けないことを確認済み。
     `tests/test_direct_load.py` に PyYAML との一致を固定する 6 例を追加し、誤った出力を
     期待値として固定していた 2 テストを書き直した。
+    [@bourumir-wyngs](https://github.com/bourumir-wyngs) による #163 の報告。
 - **第一キーの値がネストコンテナの場合のドキュメントヘッダーコメント消失を修正** —
   パーサーは進行中の全コンテナで単一のコメントスロットを共有しており、ネスト
   コンテナの start が未配置の standalone ヘッダーを消していた（parse 段階で
