@@ -125,7 +125,7 @@ def test_toml_test_valid_decodes_match():
         total += 1
         try:
             expected = _decode_expected(json.loads(js.read_text(encoding="utf-8")))
-            actual = _encode_actual(pyrs_yaml.load_toml(toml.read_text(encoding="utf-8")))
+            actual = _encode_actual(pyrs_yaml.load_toml(toml.read_bytes().decode("utf-8")))
         except Exception:
             continue
         if _matches(expected, actual):
@@ -147,7 +147,7 @@ def test_toml_test_invalid_rejected():
     for toml in _iter_invalid():
         total += 1
         try:
-            pyrs_yaml.load_toml(toml.read_text(encoding="utf-8"))
+            pyrs_yaml.load_toml(toml.read_bytes().decode("utf-8"))
         except Exception:
             rejected += 1
     assert total > 0, "no invalid toml-test cases found"
@@ -166,7 +166,7 @@ def test_toml_test_datetime_never_crashes():
     """
     for toml, _js in _iter_valid():
         try:
-            pyrs_yaml.load_toml(toml.read_text(encoding="utf-8"))
+            pyrs_yaml.load_toml(toml.read_bytes().decode("utf-8"))
         except pyrs_yaml.YamlParseError:
             continue  # typed parse error on an unsupported-but-finite grammar
         except ValueError as exc:  # the plugin-crash class we pinned

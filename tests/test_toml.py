@@ -428,3 +428,38 @@ class TestInlineTableCollision:
     )
     def test_legal_inline_tables_still_load(self, src, want):
         assert pyrs_yaml.load_toml(src)["a"] == want
+
+
+class TestBareCarriageReturn:
+    """toml-test strictness: a bare CR (0x0D not followed by 0x0A) is illegal.
+
+    Surfaced by the toml-test ``invalid/control`` corpus. CR handling was
+    scattered across the line/comment/multiline scanners and leaked lone CRs;
+    the parser now rejects any 0x0D that is not part of a CRLF pair, at the
+    entry point. Note: fixtures build the byte via ``chr(13)`` so Python's
+    universal-newline handling never rewrites the CR before it reaches pyrs.
+    """
+
+    CR = chr(0x0D)
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "v = 1" + CR + "w = 2\n",  # bare CR as a line break
+            "v = 1 # c" + CR + "w = 2\n",  # bare CR after a comment
+            'v = """a' + CR + 'b"""\n',  # bare CR inside a multiline string
+            "v = 1\n" + CR,  # trailing bare CR at EOF
+        ],
+    )
+    def test_bare_cr_rejected(self, src):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    def test_crlf_line_endings_still_valid(self):
+        # A proper CRLF pair is legal TOML and must parse.
+        assert pyrs_yaml.load_toml("v = 1\r\nw = 2\r\n") == {"v": 1, "w": 2}
+
+    def test_escaped_cr_in_basic_string_is_data(self):
+        # An escaped \\r is the two bytes 5C 72 (a carriage-return *value*), not a
+        # raw 0x0D byte, so it is legal and decodes to a CR character.
+        assert pyrs_yaml.load_toml('v = "a\\rb"') == {"v": "a\rb"}
