@@ -463,3 +463,39 @@ class TestBareCarriageReturn:
         # An escaped \\r is the two bytes 5C 72 (a carriage-return *value*), not a
         # raw 0x0D byte, so it is legal and decodes to a CR character.
         assert pyrs_yaml.load_toml('v = "a\\rb"') == {"v": "a\rb"}
+
+
+class TestTableRedefinition:
+    """toml-test strictness: dotted-key tables are closed; headers may not reopen.
+
+    Surfaced by the toml-test ``invalid/table`` ``duplicate-key-*`` and
+    ``redefine-*`` corpus (invalid under BOTH 1.0 and 1.1). A table created by a
+    dotted key cannot be re-opened by a later ``[header]``, and a table cannot be
+    redefined as an array of tables. Legitimate implicit super-tables (opened via
+    a header ancestor) and sibling dotted keys must still parse.
+    """
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            '[fruit]\napple.color = "red"\n[fruit.apple]\n',
+            "[fruit]\napple.taste.sweet = true\n[fruit.apple.taste]\n",
+            "[tbl]\n[[tbl]]\n",
+            "[t1]\nt2.t3.v = 0\n[t1.t2]\n",
+            "[t1]\nt2.t3.v = 0\n[t1.t2.t3]\n",
+            "[tbl]\na = 1\n[tbl.a]\n",  # reopening a leaf value as a table
+        ],
+    )
+    def test_redefinition_rejected(self, src):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    def test_implicit_supertable_still_valid(self):
+        # `[a.b.c]` implies `a` and `a.b`; opening them later is LEGAL.
+        d = pyrs_yaml.load_toml("[a.b.c]\nx = 1\n[a]\ny = 2\n")
+        assert d["a"]["b"]["c"]["x"] == 1 and d["a"]["y"] == 2
+
+    def test_sibling_dotted_keys_still_valid(self):
+        # A dotted key closes `t1.t2`, but a SIBLING `t1.z` header is fine.
+        d = pyrs_yaml.load_toml("[t1]\na.b = 1\n[t1.z]\nw = 2\n")
+        assert d["t1"] == {"a": {"b": 1}, "z": {"w": 2}}
