@@ -301,6 +301,14 @@ status: new
 
 #### 修复
 
+- **TOML 拒绝合法的最小 i64 整数** — `from_toml`/`load_toml` 在
+  `-9223372036854775808`（`i64::MIN`）上失败：带符号路径先按无符号绝对值解析，
+  取负号前就溢出。现在符号与数字一并解析（`i64::from_str` 向负方向累加），带符号
+  浮点保留指数拼写，旧的取负通道已删除。由新的 Python 侧 Hypothesis 方言模糊测试
+  （`tests/test_property_dialects.py`，以 stdlib `json`/`tomllib`/`pyjson5` 为预言机
+  做类型严格相等比较；同时钉住两类 AST 歧义拼写——JSON5 裸 `Infinity`/`NaN` 字面量
+  与超 i64 数字串）发现。Rust 回归：
+  `toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`。
 - **错误缩进的流序列续行再次被拒绝** — 将 YAML 解析器升级到 granit-parser 1.3
   （见*变更*）后，开始静默地*接受*这样的输入：多行流集合的续行缩进不比其所在块键
   更深（yaml-test-suite `9C9N`：`flow: [a,` 后接列 0 的 `b,`），使严格性从
