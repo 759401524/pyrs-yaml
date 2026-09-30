@@ -331,3 +331,48 @@ class TestControlCharacterRejection:
     def test_tab_stays_legal(self):
         # Tab (0x09) is explicitly allowed by TOML inside strings.
         assert pyrs_yaml.load_toml('v = "a\tb"') == {"v": "a\tb"}
+
+
+class TestNumberStrictness:
+    """toml-test strictness for integer / float literals.
+
+    Surfaced by the toml-test ``invalid/integer`` and ``invalid/float`` corpora.
+    Each rejection is a spec rule pyrs previously accepted silently.
+    """
+
+    @pytest.mark.parametrize("src", ["v = 01", "v = 007", "v = -01", "v = +01", "v = 01.5"])
+    def test_leading_zero_decimal_rejected(self, src):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize("src", ["v = +0x1F", "v = -0b101", "v = +0o644"])
+    def test_signed_radix_rejected(self, src):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize("src", ["v = 1_", "v = 1__0", "v = 0x1_", "v = 1.5_"])
+    def test_bad_underscore_placement_rejected(self, src):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize(
+        "src,want",
+        [
+            ("v = 0", 0),
+            ("v = -0", 0),
+            ("v = 0.5", 0.5),
+            ("v = -0.0", -0.0),
+            ("v = 0x0", 0),
+            ("v = 0o7", 7),
+            ("v = 1_000_000", 1_000_000),
+            ("v = 1e10", 1e10),
+        ],
+    )
+    def test_legal_numeric_forms_still_load(self, src, want):
+        got = pyrs_yaml.load_toml(src)["v"]
+        assert got == want
+        # -0.0 must keep its sign distinct from 0.0.
+        if src.endswith("-0.0"):
+            import math
+
+            assert math.copysign(1, got) < 0

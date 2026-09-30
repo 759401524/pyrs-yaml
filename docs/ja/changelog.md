@@ -20,6 +20,7 @@ status: new
 - **toml-test 適合性ハーネス** — `tests/test_toml_test_suite.py` は公式 [toml-test](https://github.com/toml-lang/toml-test) を `test_yaml_suite.py` が YAML スイートを実行するのと同じ方式で実行する。未追跡のローカル資産、欠損時 `skipif`、実測フロアのゲート、およびデコード比較用の型タグアダプタ。
 - **TOML 時刻型の正しいデコード** — 日付のみと時刻のみは異なる `!date`/`!time` タグを持つようになりました（日付時は `!timestamp` を維持）。素の時刻（`07:32:00`）、秒省略の時刻（`13:37`）、小文字区切りの日付時（`1987-07-05t17:45:00z`）がいずれも正当な TOML で `ValueError` を投げることを toml-test が発見。`!time` は省略秒を補い、`!timestamp` は小文字 `t`/`z` を正規化。
 - **TOML 制御文字の厳格性** — 基本・字句・複数行文字列内でraw C0 制御コード（NUL、FF、DLE、US 等）と DEL（U+007F）を拒否するように（タブと複数行の改行のみ許可）。toml-test の `invalid/control` が 13 件の誤受理文書を発見。コメント本体・bare CR チェックは後続項目。
+- **TOML 数値リテラルの厳格性** — 先頭ゼロの 10 進数（`01`、`-01`）、基数接頭辞整数への符号（`+0x1F`、`-0b101` — `signed-int` は 10 進数のみ）、末尾/連続アンダースコア（`1_`、`1__0`）を拒否。toml-test の `invalid/integer`+`invalid/float` が 23 件の誤受理を発見（合計 71->48）。従来の「基数整数は符号可」は仕様違反。
 - **TOML 非 ASCII 文字列のクラッシュ修正** — 基本および複数行基本文字列パーサがバイト単位で進み、マルチバイト入力（U+00A0 等）で文字の途中でスライスして panic していた。両ループとも文字単位で消費するよう修正。toml-test で発見、#153 の単一行/JSON 版を補完。
 - **フォーマットファジング + 堅牢性修正** — 新 `proptest` 属性テストが TOML/JSON/JSONC/JSON5 のパーサとライタをファジング（no-panic + 再解析可能性）。発見・修正：TOML と JSON 文字列パーサの中途文字スライス panic、および JSONC/JSON5 のインライン `//` コメントが後続の `,`/`}` を呑み込む不具合。
 - **CLI フォーマット対等性** — CLI に `to-toml`/`from-toml`、`to-jsonc`/`from-jsonc`、`to-json5`/`from-json5` を追加（既存の `to-json`/`from-json` を倣う）。バインディングが扱う全フォーマットがコマンドラインから利用可能に。

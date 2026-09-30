@@ -443,42 +443,16 @@ impl<'a> Parser<'a> {
                 Err(self.err("expected `nan`"))
             }
             Some(b'0'..=b'9') => {
-                // Radix-prefixed integers can carry a leading sign in
-                // TOML (`-0x1F`, `+0o644`). Route them through the
-                // prefixed path so the `0x`/`0o`/`0b` marker is not
-                // mistaken for a decimal `0` followed by garbage.
+                // TOML forbids a sign on radix-prefixed integers: `signed-int`
+                // only ever wraps a *decimal* integer, so `-0x1F` / `+0b1` /
+                // `+0o644` are invalid and must be rejected, not folded away.
                 if self.starts_with(b"0x") || self.starts_with(b"0o") || self.starts_with(b"0b") {
-                    let v = self.parse_prefixed_body_via_dispatch()?;
-                    return Ok(if positive { v } else { negate_numeric(v) });
+                    return Err(self.err("radix-prefixed integer cannot carry a sign"));
                 }
                 let v = self.parse_decimal_numeric_body()?;
                 Ok(if positive { v } else { negate_numeric(v) })
             }
             _ => Err(self.err("expected a signed numeric value")),
-        }
-    }
-
-    /// Dispatch to the correct `parse_prefixed_integer_with_source`
-    /// variant based on the currently-visible `0x`/`0o`/`0b` marker.
-    /// Binary canonicalises to decimal (YAML Core does not accept
-    /// `0b101`), so it drops the source spelling. Callers enter with
-    /// `self.pos` at the leading `0`; this helper consumes the full
-    /// `0x`/`0o`/`0b` marker before scanning digits.
-    fn parse_prefixed_body_via_dispatch(&mut self) -> Result<TomlValue, ParseError> {
-        debug_assert_eq!(self.peek(), Some(b'0'));
-        self.pos += 1; // consume the `0`
-        let radix = match self.peek() {
-            Some(b'x') | Some(b'X') => 16,
-            Some(b'o') | Some(b'O') => 8,
-            Some(b'b') | Some(b'B') => 2,
-            _ => return Err(self.err("expected a radix marker after `0`")),
-        };
-        self.pos += 1; // consume the `x`/`o`/`b` marker
-        let (v, src) = self.parse_prefixed_integer_with_source(radix)?;
-        if radix == 2 {
-            Ok(TomlValue::Integer(v, None))
-        } else {
-            Ok(TomlValue::Integer(v, Some(src)))
         }
     }
 
@@ -554,6 +528,15 @@ impl<'a> Parser<'a> {
     fn parse_decimal_numeric_body(&mut self) -> Result<TomlValue, ParseError> {
         let num_start = self.pos;
         self.scan_int_digits()?;
+        // TOML forbids leading zeros in the decimal integer part (`01`, `007`,
+        // `-01`, `01.5`); only a bare `0` (optionally followed by `.`/`e`) is
+        // legal. Checked on the integer run before the float markers below.
+        {
+            let digits = self.text[num_start..self.pos].replace('_', "");
+            if digits.len() > 1 && digits.starts_with('0') {
+                return Err(self.err_at("leading zeros in decimal integer", num_start));
+            }
+        }
         if self.peek() == Some(b'.') {
             self.pos += 1;
             self.scan_int_digits()?;
@@ -625,7 +608,7 @@ impl<'a> Parser<'a> {
         if self.pos == start {
             return Err(self.err("expected digits"));
         }
-        if self.peek() == Some(b'_') {
+        if self.byte_at(self.pos - 1) == Some(b'_') {
             return Err(self.err("trailing underscore in numeric"));
         }
         Ok(())

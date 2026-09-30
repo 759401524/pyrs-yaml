@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tab, plus newlines in multi-line forms, stay legal). toml-test's `invalid/control`
   corpus surfaced 13 such mis-accepted documents; comment-body and bare-CR checks
   are tracked as follow-ups.
+- **TOML number-literal strictness** — leading-zero decimals (`01`, `-01`), a sign
+  on radix-prefixed integers (`+0x1F`, `-0b101` — `signed-int` is decimal-only),
+  and trailing/double underscores (`1_`, `1__0`) are now rejected. toml-test
+  `invalid/integer` + `invalid/float` surfaced 23 mis-acceptances (total 71 -> 48);
+  the prior "radix integers can be signed" behavior was a spec violation.
 - **TOML non-ASCII string crash fixed** — the basic and multi-line basic string parsers
   advanced byte-wise and could slice mid-character on multi-byte input (U+00A0, …),
   panicking; both now consume whole characters. Found via the toml-test corpus; completes

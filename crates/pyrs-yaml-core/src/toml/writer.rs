@@ -495,13 +495,21 @@ mod tests {
         for (src, expected) in [
             ("v = 0xDEADBEEF\n", "v = 0xDEADBEEF\n"),
             ("v = 0o755\n", "v = 0o755\n"),
-            ("v = -0x1F\n", "v = -31\n"),
+            ("v = -31\n", "v = -31\n"),
             ("v = 0xFF_FF\n", "v = 0xFFFF\n"),
             ("v = 0b1101_0110\n", "v = 214\n"),
         ] {
             let ast = from_toml(src).unwrap();
             let text = to_toml(&ast).unwrap();
             assert_eq!(text, expected, "radix fidelity lost on {src:?}");
+        }
+        // toml-test: a sign is only legal on decimal integers, never on a
+        // `0x`/`0o`/`0b` prefixed literal, so these must be rejected.
+        for bad in ["v = -0x1F\n", "v = +0o644\n", "v = +0b101\n"] {
+            assert!(
+                from_toml(bad).is_err(),
+                "signed radix wrongly accepted on {bad:?}"
+            );
         }
     }
 

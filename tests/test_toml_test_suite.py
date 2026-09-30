@@ -136,7 +136,7 @@ def test_toml_test_valid_decodes_match():
 
 
 def test_toml_test_invalid_rejected():
-    """Invalid TOML is rejected rather than silently accepted (>=80%).
+    """Invalid TOML is rejected rather than silently accepted (>=85%).
 
     A document is "rejected" when loading raises - either a typed
     ``YamlParseError`` or any conversion-time error (a bare ``ValueError`` from
@@ -152,7 +152,7 @@ def test_toml_test_invalid_rejected():
             rejected += 1
     assert total > 0, "no invalid toml-test cases found"
     rate = rejected / total
-    assert rate >= 0.80, f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 80%"
+    assert rate >= 0.85, f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 85%"
 
 
 def test_toml_test_datetime_never_crashes():
