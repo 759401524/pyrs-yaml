@@ -20,6 +20,7 @@ status: new
 - **toml-test 적합성 하네스** — `tests/test_toml_test_suite.py` 가 공식 [toml-test](https://github.com/toml-lang/toml-test) 를 `test_yaml_suite.py` 가 YAML 스위트를 실행하는 것과 동일한 방식으로 실행합니다: 추적되지 않은 로컬 아티팩트, 부재 시 `skipif`, 실측 하한 게이트, 그리고 디코딩 비교를 위한 타입 태그 어댑터.
 - **TOML 시간 타입 정상 디코딩** — 날짜 전용과 시간 전용은 각각 서로 다른 `!date`/`!time` 태그를 가져(날짜시간은 `!timestamp` 유지) `date`/`time.fromisoformat` 를 사용합니다. toml-test 가 맨 시간(`07:32:00`), 초 생략 시간(`13:37`), 소문자 구분자 날짜시간(`1987-07-05t17:45:00z`)이 유효한 TOML 에서 `ValueError` 를 던지는 것을 발견. `!time` 은 생략된 초를 채우고 `!timestamp` 는 소문자 `t`/`z` 를 정규화합니다.
 - **TOML 제어 문자 엄격성** — 기본·자구·다중줄 문자열 내부에서 raw C0 제어 코드(NUL, FF, DLE, US 등)와 DEL(U+007F) 을 거절합니다(탭 및 다중줄 줄바꿈만 허용). toml-test 의 `invalid/control` 이 13 건의 오인식 문서를 발견. 코멘트 본문·bare CR 검사는 후속 항목.
+- **TOML 숫자 리터럴 엄격성** — 선행 0 을 가진 10 진수(`01`, `-01`), 진수 접두 정수에 부호(`+0x1F`, `-0b101` — `signed-int` 는 10 진수 전용), 후행/이중 언더스코어(`1_`, `1__0`) 를 거절합니다. toml-test 의 `invalid/integer`+`invalid/float` 이 23 건의 오인식을 발견(총 71->48). 기존 “진수 정수에 부호 허용” 은 사양 위반이었습니다.
 - **TOML 비 ASCII 문자열 충돌 수정** — 기본 및 다중줄 기본 문자열 파서가 바이트 단위로 전진하며 멀티바이트 입력(U+00A0 등)에서 문자 중간을 슬라이스해 panic 하던 것을 문자 단위로 소비하도록 수정. toml-test 로 발견, #153 의 한줄/JSON 판을 보완.
 - **형식 퍼징 + 견고성 수정** — 새 `proptest` 속성 테스트가 TOML/JSON/JSONC/JSON5 파서와 라이터를 퍼징(no-panic + 재파싱 가능성). 발견·수정: TOML 및 JSON 문자열 파서의 중각 문자 슬라이스 panic, 및 JSONC/JSON5 인라인 `//` 주석이 후속 `,`/`}`를 삼키는 버그.
 - **CLI 형식 대등성** — CLI 에 `to-toml`/`from-toml`, `to-jsonc`/`from-jsonc`, `to-json5`/`from-json5` 추가(기존 `to-json`/`from-json` 본뜬). 바인딩이 처리하는 모든 형식을 명령줄에서 사용 가능.
