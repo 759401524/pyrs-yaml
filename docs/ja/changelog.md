@@ -325,6 +325,14 @@ status: new
 
 #### 修正
 
+- **TOML が合法な最小 i64 整数を拒否** — `from_toml`/`load_toml` が
+  `-9223372036854775808`（`i64::MIN`）で失敗：符号付き経路は絶対値を先に解析するため
+  反転前に溢れていた。現在符号は桁と同時に解析され（`i64::from_str` は負方向に累積）、
+  符号付き浮動小数は指数スペルを保ち、旧 negate 経路は削除。新設の Python 側
+  Hypothesis 方言ファジング（`tests/test_property_dialects.py`、stdlib
+  `json`/`tomllib`/`pyjson5` をオラクルとする型厳密比較で発見；JSON5 のベアラ
+  `Infinity`/`NaN` と i64 超過の数値文字列という AST 曖昧スペル 2 種も固定）。
+  Rust 回帰：`toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`。
 - **誤ってインデントされたフロースケンスの続き行が再び拒否される** — YAML
   パーサを granit-parser 1.3 へアップグレードすると（*変更*を参照）、続き行の
   インデントが enclosing block key よりも浅い複数行フロアコレクション

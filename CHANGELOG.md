@@ -528,6 +528,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **TOML rejected the legal minimum i64 integer** — `from_toml` / `load_toml`
+  failed on `-9223372036854775808` (`i64::MIN`, in range by TOML definition):
+  the signed path stripped the `-`, parsed the magnitude `9223372036854775808`
+  as an unsigned i64, and overflowed before negation could run. The sign now
+  parses *with* the digits (`i64::from_str` accumulates negatively); signed
+  floats negate with their exponent spelling preserved, and the
+  magnitude-then-negate pass is gone. Found by the new Python-side Hypothesis
+  dialect fuzz (`tests/test_property_dialects.py` — property tests for
+  TOML/JSON/JSONC/JSON5 against the stdlib `json` / `tomllib` / `pyjson5`
+  oracles with type-strict equality, which also pins two known AST-ambiguity
+  spellings: bare JSON5 `Infinity`/`NaN` number literals and >i64 digit-string
+  spellings that writers emit verbatim by fidelity contract). Repro:
+  `pyrs_yaml.load_toml("a = -9223372036854775808")` now returns
+  `{"a": -(2**63)}`. Covered by a Rust regression test
+  (`toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`) and
+  the TOML property tests.
 - **Wrongly-indented flow sequence continuation is rejected again** — upgrading
   the YAML parser to granit-parser 1.3 (see *Changed*) silently began *accepting*
   a multi-line flow collection whose continuation line is indented no further

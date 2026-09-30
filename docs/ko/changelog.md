@@ -259,6 +259,15 @@ status: new
 
 #### 수정
 
+- **TOML 이 합법적인 최소 i64 정수를 거부** — `from_toml`/`load_toml` 이
+  `-9223372036854775808`(`i64::MIN`)에서 실패: 부호 경로가 절대값을 먼저 해석해
+  부호 반전 전에 오버플로했습니다. 이제 부호를 자릿수와 함께 해석하고
+  (`i64::from_str` 는 음의 방향으로 누적), 부호 있는 실수는 지수 표기를 유지하며
+  기존 negate 경로는 제거되었습니다. 새 Python 측 Hypothesis 방언 퍼징
+  (`tests/test_property_dialects.py`, stdlib `json`/`tomllib`/`pyjson5` 오라클로
+  타입 엄격 비교) 에서 발견; JSON5 베어 `Infinity`/`NaN` 리터럴과 i64 초과 숫자
+  문자열이라는 AST 모호 표기 2종도 고정했습니다. Rust 회귀:
+  `toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`.
 - **잘못 들여쓰기된 플로우 시퀀스 지속 행이 다시 거부됨** — YAML 파서를
   granit-parser 1.3으로 업그레이드하면(*변경* 참조) 지속 행의 들여쓰기가 포함
   블록 키보다 깊지 않은 다중 행 플로우 콜렉션(yaml-test-suite `9C9N`: `flow: [a,`

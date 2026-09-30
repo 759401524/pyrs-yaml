@@ -507,8 +507,8 @@ impl<'a> Parser<'a> {
                 if self.starts_with(b"0x") || self.starts_with(b"0o") || self.starts_with(b"0b") {
                     return Err(self.err("radix-prefixed integer cannot carry a sign"));
                 }
-                let v = self.parse_decimal_numeric_body()?;
-                Ok(if positive { v } else { negate_numeric(v) })
+                let v = self.parse_decimal_numeric_body(!positive)?;
+                Ok(v)
             }
             _ => Err(self.err("expected a signed numeric value")),
         }
@@ -548,7 +548,7 @@ impl<'a> Parser<'a> {
         if self.looks_like_time_prefix() {
             return self.parse_datetime();
         }
-        self.parse_decimal_numeric_body()
+        self.parse_decimal_numeric_body(false)
     }
 
     fn looks_like_datetime_prefix(&self) -> bool {
@@ -583,7 +583,12 @@ impl<'a> Parser<'a> {
         self.dialect == TomlDialect::V1_1
     }
 
-    fn parse_decimal_numeric_body(&mut self) -> Result<TomlValue, ParseError> {
+    fn parse_decimal_numeric_body(&mut self, negative: bool) -> Result<TomlValue, ParseError> {
+        // The sign travels with the digits on purpose: TOML's i64 range is
+        // asymmetric (`-2^63 ..= 2^63-1`), so a magnitude-then-negate flow
+        // rejects or overflows the legal minimum `-9223372036854775808`
+        // (magnitude 2^63 does not fit `i64`). `i64::from_str` accumulates
+        // negatively and accepts the signed spelling directly.
         let num_start = self.pos;
         self.scan_int_digits()?;
         // TOML forbids leading zeros in the decimal integer part (`01`, `007`,
@@ -604,17 +609,22 @@ impl<'a> Parser<'a> {
             }
             let is_float = true;
             self.scan_optional_exponent(is_float, num_start)?;
-            return self.emit_float(num_start);
+            return self.emit_float(num_start, negative);
         }
         if matches!(self.peek(), Some(b'e' | b'E')) {
             self.scan_optional_exponent(true, num_start)?;
-            return self.emit_float(num_start);
+            return self.emit_float(num_start, negative);
         }
         // Emit integer if no float marker. The source text carries the
         // digits (plus any leading `-`/`+` handled upstream).
         let text = &self.text[num_start..self.pos];
         let cleaned = text.replace('_', "");
-        let value: i64 = cleaned
+        let spelling = if negative {
+            format!("-{cleaned}")
+        } else {
+            cleaned
+        };
+        let value: i64 = spelling
             .parse()
             .map_err(|_| self.err_at("integer out of range or malformed", num_start))?;
         // Preserve `-0` verbatim because YAML Core reads `-0` back as
@@ -629,12 +639,13 @@ impl<'a> Parser<'a> {
         Ok(TomlValue::Integer(value, source))
     }
 
-    fn emit_float(&mut self, num_start: usize) -> Result<TomlValue, ParseError> {
+    fn emit_float(&mut self, num_start: usize, negative: bool) -> Result<TomlValue, ParseError> {
         let text = &self.text[num_start..self.pos];
         let cleaned = text.replace('_', "");
-        let value: f64 = cleaned
+        let magnitude: f64 = cleaned
             .parse()
             .map_err(|_| self.err_at("malformed float", num_start))?;
+        let value = if negative { -magnitude } else { magnitude };
         // Preserve exponent spelling (`1e10`, `-3.14e-2`) verbatim: YAML
         // Core reads them back as Float, so the projected plain scalar
         // carries no tag and stays fully interoperable with the YAML
@@ -642,7 +653,11 @@ impl<'a> Parser<'a> {
         // match the parsed value's rendering, so no source is recorded.
         let has_exponent = text.bytes().any(|b| b == b'e' || b == b'E');
         let source: Option<std::sync::Arc<str>> = if has_exponent && !text.contains('_') {
-            Some(std::sync::Arc::from(text))
+            Some(if negative {
+                std::sync::Arc::from(format!("-{text}"))
+            } else {
+                std::sync::Arc::from(text)
+            })
         } else {
             None
         };
@@ -1662,49 +1677,6 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
     i
 }
 
-fn negate_numeric(v: TomlValue) -> TomlValue {
-    use std::sync::Arc;
-    match v {
-        TomlValue::Integer(i, Some(src)) => {
-            // Radix-prefixed spellings (`0x1F`, `0o755`) do NOT accept
-            // a leading `-` under YAML Core's numeric grammar; negating
-            // them loses the fidelity fence, so we canonicalise to
-            // decimal instead of emitting a Str-resolving plain scalar.
-            let is_radix = src.starts_with("0x") || src.starts_with("0o") || src.starts_with("0b");
-            if is_radix {
-                return TomlValue::Integer(-i, None);
-            }
-            let flipped = if let Some(rest) = src.strip_prefix('-') {
-                Arc::<str>::from(rest)
-            } else if let Some(rest) = src.strip_prefix('+') {
-                Arc::<str>::from(rest)
-            } else {
-                Arc::<str>::from(format!("-{src}"))
-            };
-            let new_source = if flipped.starts_with("-0") && flipped.len() == 2 {
-                // negating literal `0` -> `-0` -> canonicalize to 0
-                None
-            } else {
-                Some(flipped)
-            };
-            TomlValue::Integer(-i, new_source)
-        }
-        TomlValue::Integer(i, None) => TomlValue::Integer(-i, None),
-        TomlValue::Float(f, Some(src)) => {
-            let flipped = if let Some(rest) = src.strip_prefix('-') {
-                Arc::<str>::from(rest)
-            } else if let Some(rest) = src.strip_prefix('+') {
-                Arc::<str>::from(rest)
-            } else {
-                Arc::<str>::from(format!("-{src}"))
-            };
-            TomlValue::Float(-f, Some(flipped))
-        }
-        TomlValue::Float(f, None) => TomlValue::Float(-f, None),
-        other => other,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1809,6 +1781,29 @@ mod tests {
         // time-only uses `time` - routing them to `datetime`/`date`/`time`
         // `fromisoformat` respectively instead of crashing on a bare time.
         assert_eq!(tags, vec!["timestamp", "timestamp", "date", "time"]);
+    }
+
+    #[test]
+    fn i64_lower_bound_negative_integer_is_accepted() {
+        // TOML's i64 range is asymmetric: -2^63 is legal. A magnitude-then-
+        // negate flow overflows because 9223372036854775808 does not fit i64
+        // (found by the Python-side Hypothesis dialect fuzz, PR #172 follow-up).
+        let ast = from_toml("lo = -9223372036854775808\nhi = 9223372036854775807\n").unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            unreachable!()
+        };
+        let vals: Vec<&str> = pairs
+            .values()
+            .map(|v| match v {
+                CustomNode::Scalar { value, .. } => value.as_ref(),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(vals, vec!["-9223372036854775808", "9223372036854775807"]);
+        // One past the lower bound stays a clean rejection, not a panic.
+        assert!(from_toml("lo = -9223372036854775809\n").is_err());
+        // ...and so does one past the upper bound.
+        assert!(from_toml("hi = 9223372036854775808\n").is_err());
     }
 
     #[test]

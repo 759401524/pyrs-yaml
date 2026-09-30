@@ -397,6 +397,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **TOML rejected the legal minimum i64 integer** — `from_toml`/`load_toml` failed
+  on `-9223372036854775808` (`i64::MIN`): the signed path parsed the unsigned
+  magnitude first and overflowed before negation ran. The sign now parses with
+  the digits (`i64::from_str` accumulates negatively), signed floats keep their
+  exponent spelling, and the old negate pass is gone. Found via the new
+  Python-side Hypothesis dialect fuzz (`tests/test_property_dialects.py`, with
+  stdlib `json`/`tomllib`/`pyjson5` oracles and type-strict equality; it also
+  pins the two known AST-ambiguous spellings — bare JSON5 `Infinity`/`NaN`
+  literals and >i64 digit strings). Rust regression:
+  `toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`.
 - **Wrongly-indented flow sequence continuation is rejected again** — upgrading
   the YAML parser to granit-parser 1.3 (see *Changed*) silently began *accepting*
   a multi-line flow collection whose continuation line is indented no further
