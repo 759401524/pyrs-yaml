@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **Format fuzz + robustness fixes** — new `proptest` property tests fuzz the
+  TOML/JSON/JSONC/JSON5 parsers and writers (no-panic + re-parseability). They
+  found and fix a mid-character slice panic in the TOML and JSON string parsers
+  and a JSONC/JSON5 inline-`//`-comment bug that swallowed the following `,`/`}`.
 - **CLI format parity** — the CLI gains `to-toml`/`from-toml`, `to-jsonc`/`from-jsonc`
   and `to-json5`/`from-json5`, mirroring `to-json`/`from-json`, so every binding
   format is reachable from the command line.

@@ -17,6 +17,8 @@ pub mod toml;
 mod integration;
 
 #[cfg(test)]
+mod fmt_pbt;
+#[cfg(test)]
 mod pbt;
 
 rust_i18n::i18n!("src/i18n/locales");

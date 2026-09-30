@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Format fuzz + robustness fixes** — new `proptest` property tests fuzz the
+  TOML / JSON / JSONC / JSON5 parsers and writers with arbitrary input and assert
+  no-panic and re-parseability. They surfaced and fix three real defects: a
+  mid-character slice **panic** in the TOML and JSON basic-string parsers (on
+  certain lossy-decoded inputs), and a JSONC/JSON5 writer bug where an inline
+  `//` comment was not newline-terminated, so it swallowed the following `,` or
+  `}` and produced output that could not re-parse.
 - **CLI format parity** — the `pyrs-yaml` CLI gains `to-toml` / `from-toml`,
   `to-jsonc` / `from-jsonc`, and `to-json5` / `from-json5`, mirroring the existing
   `to-json` / `from-json`. Every format the Python binding handles is now
