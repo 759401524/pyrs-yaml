@@ -229,6 +229,26 @@ class TestJsonLoadFastPath:
         with pytest.raises(ValueError):
             json.loads(r'{"s": "a\qb"}')
 
+    def test_mixed_canonical_stays_on_fast_path(self):
+        # floats + simple escapes + raw non-ASCII together: every construct the
+        # fast path handles, so the whole doc is built directly, equal to json.loads.
+        doc = '{"a": 1.5, "b": "x\\ny\\tz", "c": "café", "d": [2e3, -0.25, true, null]}'
+        assert pyrs_yaml.load_jsonc(doc) == json.loads(doc)
+
+    @pytest.mark.parametrize(
+        "doc,expected",
+        [
+            (r'{"s": "\u00e9", "n": 1}', {"s": "\u00e9", "n": 1}),  # unicode escape -> AST
+            ('{"a": 1.5 // hi\n}', {"a": 1.5}),  # JSONC comment (strict json.loads rejects)
+            (r'{"big": 99999999999999999999999}', {"big": "99999999999999999999999"}),  # >i64 -> source text
+        ],
+    )
+    def test_declined_constructs_fall_back_transparently(self, doc, expected):
+        # Each carries a construct the fast path declines; the WHOLE doc must
+        # route through the AST path and yield the identical value - never a
+        # partial/corrupt result. Guards the #146/#148 fallback invariant.
+        assert pyrs_yaml.load_jsonc(doc) == expected
+
     def test_trailing_content_and_bad_tokens_still_error(self):
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.load_jsonc("{} extra")
