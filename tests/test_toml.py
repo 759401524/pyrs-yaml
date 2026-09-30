@@ -57,6 +57,32 @@ class TestLoadToml:
         assert isinstance(d["created"], datetime.datetime)
         assert d["created"].year == 2026
 
+    def test_local_time_loads_not_crash(self):
+        # toml-test regression: a bare local time once reached
+        # datetime.fromisoformat and raised ValueError on valid TOML.
+        d = pyrs_yaml.load_toml("t = 07:32:00")
+        assert d["t"] == datetime.time(7, 32, 0)
+
+    def test_local_time_without_seconds(self):
+        d = pyrs_yaml.load_toml("t = 13:37")
+        assert d["t"] == datetime.time(13, 37, 0)
+
+    def test_local_date_is_date_not_midnight_datetime(self):
+        d = pyrs_yaml.load_toml("bday = 1987-07-05")
+        assert d["bday"] == datetime.date(1987, 7, 5)
+        assert not isinstance(d["bday"], datetime.datetime)
+
+    def test_lowercase_delimiter_offset_datetime(self):
+        # TOML 1.0 permits a lowercase 't' delimiter and 'z' designator.
+        d = pyrs_yaml.load_toml("dt = 1987-07-05t17:45:00z")
+        assert d["dt"] == datetime.datetime(1987, 7, 5, 17, 45, tzinfo=datetime.timezone.utc)
+
+    def test_temporal_roundtrip_to_toml(self):
+        src = "d = 1987-07-05\nt = 07:32:00\ndt = 1987-07-05T17:45:00Z\n"
+        out = pyrs_yaml.from_toml(src)
+        assert pyrs_yaml.to_toml(out) is not None
+        assert pyrs_yaml.load_toml(pyrs_yaml.to_toml(out)) == pyrs_yaml.load_toml(src)
+
     def test_string_true_stays_string(self):
         d = pyrs_yaml.load_toml('s = "true"\nn = "42"\n')
         assert d == {"s": "true", "n": "42"}
@@ -261,3 +287,35 @@ class TestNonAsciiStrings:
         src = 'table = { name = "\u65e5\u672c\u8a9e\u00a0x" }\n'
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
         assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+
+
+class TestControlCharacterRejection:
+    """toml-test strictness: raw C0 control codes and DEL are forbidden in strings.
+
+    Surfaced by the toml-test ``invalid/control`` corpus: NUL, FF, DLE (0x10),
+    US (0x1F) and DEL (0x7F) must be rejected inside basic / literal and
+    single / multi-line strings rather than silently accepted. Sources are built
+    from ``chr()`` so no literal control byte lives in this file.
+    """
+
+    @pytest.mark.parametrize("byte", [0x00, 0x0C, 0x10, 0x1F, 0x7F])
+    def test_rejected_in_basic_string(self, byte):
+        src = 'v = "abc' + chr(byte) + 'def"\n'
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize("byte", [0x00, 0x0C, 0x10, 0x1F, 0x7F])
+    def test_rejected_in_literal_string(self, byte):
+        src = "v = 'abc" + chr(byte) + "def'\n"
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize("byte", [0x00, 0x0C, 0x10, 0x1F, 0x7F])
+    def test_rejected_in_multiline_basic_string(self, byte):
+        src = 'v = """abc' + chr(byte) + 'def"""\n'
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    def test_tab_stays_legal(self):
+        # Tab (0x09) is explicitly allowed by TOML inside strings.
+        assert pyrs_yaml.load_toml('v = "a\tb"') == {"v": "a\tb"}

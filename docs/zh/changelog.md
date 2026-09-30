@@ -17,6 +17,15 @@ status: new
 
 #### 新增
 
+- **toml-test 一致性测试框架** — `tests/test_toml_test_suite.py` 以与 `test_yaml_suite.py`
+  运行 YAML 套件相同的方式运行官方 [toml-test](https://github.com/toml-lang/toml-test) 语料：
+  未跟踪的本地工件、缺失时 `skipif`、实测下限阈值，并用类型标签适配器做解码比对。
+- **TOML 时间类型正确解码** — 仅日期与仅时间的值现携带不同的 `!date`/`!time` 标签（日期时间仍用
+  `!timestamp`），从而走 `date`/`time.fromisoformat` 而不再崩溃。toml-test 发现裸时间（`07:32:00`）、
+  省略秒的时间（`13:37`）以及小写分隔符的日期时间（`1987-07-05t17:45:00z`）在有效 TOML 上抛
+  `ValueError`；`!time` 现补齐省略的秒，`!timestamp` 规范小写 `t`/`z`。
+- **TOML 控制字符严格性** — 基本、字面与多行字符串内现在拒绝原始 C0 控 制码（NUL、FF、DLE、US 等）与 DEL（U+007F），仅保留制表符（及多行形式中的换行）。
+  toml-test 的 `invalid/control` 语料暴露了 13 份被误承受的文档；注释体与 裸 CR 检查列为后续项。
 - **修复 TOML 非 ASCII 字符串崩溃** — 基本与多行基本字符串解析器按字节前进，在多字节
   输入（U+00A0 等）处可能切到字符中间而 panic；现改为按整字符消费。由 toml-test 发现；
   补齐 #153 对单行/JSON 路径的同类修复。

@@ -753,7 +753,7 @@ impl<'a> Parser<'a> {
                 b'\n' | b'\r' => {
                     return Err(self.err("newline in single-line basic string"));
                 }
-                0x00..=0x08 | 0x0B..=0x0C | 0x0E..=0x1F => {
+                c if Self::forbidden_control(c) => {
                     return Err(self.err("control character in basic string"));
                 }
                 _ => {
@@ -855,6 +855,12 @@ impl<'a> Parser<'a> {
                         self.push_basic_escape(&mut out)?;
                     }
                 }
+                b'\r' if self.byte_at(self.pos + 1) != Some(b'\n') => {
+                    return Err(self.err("bare carriage return in multiline string"));
+                }
+                c if Self::forbidden_control(c) => {
+                    return Err(self.err("control character in multiline string"));
+                }
                 _ => {
                     // Copy one whole character and advance by its UTF-8 length so
                     // `self.pos` stays on a char boundary; the byte-wise
@@ -880,6 +886,14 @@ impl<'a> Parser<'a> {
         matches!(self.byte_at(i), Some(b'\n' | b'\r'))
     }
 
+    /// TOML forbids raw C0 control codes (everything below U+0020 except tab,
+    /// and newline/CR which the callers treat as line breaks) plus DEL (U+007F)
+    /// in every string and comment form. A multi-byte UTF-8 sequence never has
+    /// a byte in this range, so a byte-wise test never false-flags a character.
+    fn forbidden_control(b: u8) -> bool {
+        matches!(b, 0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x1F | 0x7F)
+    }
+
     fn parse_literal_string(&mut self) -> Result<(String, bool), ParseError> {
         let ml = self.starts_with(b"'''");
         if ml {
@@ -902,6 +916,12 @@ impl<'a> Parser<'a> {
                 let b = self
                     .peek()
                     .ok_or_else(|| self.err("unterminated multiline literal"))?;
+                if b == b'\r' && self.byte_at(self.pos + 1) != Some(b'\n') {
+                    return Err(self.err("bare carriage return in multiline literal"));
+                }
+                if Self::forbidden_control(b) {
+                    return Err(self.err("control character in multiline literal"));
+                }
                 self.pos += 1;
                 let _ = b;
             }
@@ -914,6 +934,9 @@ impl<'a> Parser<'a> {
                     .ok_or_else(|| self.err("unterminated literal string"))?;
                 if b == b'\n' || b == b'\r' {
                     return Err(self.err("newline in single-line literal string"));
+                }
+                if Self::forbidden_control(b) {
+                    return Err(self.err("control character in literal string"));
                 }
                 if b == b'\'' {
                     let content = &self.text[start..self.pos];
@@ -1119,13 +1142,19 @@ impl<'a> Parser<'a> {
                 let text = self.text[start..self.pos].to_string();
                 Ok(TomlValue::Datetime(text, None))
             } else {
+                // Date-only (no time component): tag `!date` so the load path
+                // uses `date.fromisoformat` and round-trips as a local date
+                // rather than a midnight `datetime`.
                 let text = self.text[start..self.pos].to_string();
-                Ok(TomlValue::Datetime(text, None))
+                Ok(TomlValue::Datetime(text, Some("date")))
             }
         } else {
+            // Time-only (no date component): tag `!time` so the load path
+            // uses `time.fromisoformat`; `datetime.fromisoformat` rejects a
+            // bare `HH:MM:SS` with `Invalid isoformat string`.
             self.scan_time_body()?;
             let text = self.text[start..self.pos].to_string();
-            Ok(TomlValue::Datetime(text, None))
+            Ok(TomlValue::Datetime(text, Some("time")))
         }
     }
 
@@ -1682,10 +1711,11 @@ mod tests {
             .iter()
             .map(|(_, v)| v.tag().map(|t| t.suffix.clone()).unwrap_or_default())
             .collect();
-        // Every datetime form uses `timestamp` (the plugin tag); the specific
-        // sub-shape (offset / local / date-only / time-only) is carried in
-        // the value text rather than the tag suffix.
-        assert_eq!(tags, vec!["timestamp"; 4]);
+        // Each temporal sub-shape carries the plugin tag it needs to decode:
+        // offset / local date-times use `timestamp`, date-only uses `date`,
+        // time-only uses `time` - routing them to `datetime`/`date`/`time`
+        // `fromisoformat` respectively instead of crashing on a bare time.
+        assert_eq!(tags, vec!["timestamp", "timestamp", "date", "time"]);
     }
 
     #[test]
