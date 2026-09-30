@@ -77,6 +77,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   certain lossy-decoded inputs), and a JSONC/JSON5 writer bug where an inline
   `//` comment was not newline-terminated, so it swallowed the following `,` or
   `}` and produced output that could not re-parse.
+- **YAML merge/alias property fuzz** — the `proptest` suite now generates
+  well-formed anchor / alias / merge-key documents: single aliases, alias
+  sequences, sequences carrying an inline map, the bare inline-map merge, and
+  the scalar / null sources the #166 fix rejects. A toggle emits a
+  self-referential anchor (`base0: &base0` whose body merges `*base0`) and
+  forward chains, plus repeated alias references to one anchor. Previously every
+  property test used `arb_custom_node()`, which emits `meta.anchor` but never an
+  `Alias` node — so the alias-resolution and merge-expansion paths (the exact
+  structure class behind #163 / #166) were never fuzzed in-process, only covered
+  by hand-written unit tests and the subprocess crash harness.
+  `prop_merge_alias_never_panics` asserts parse + merge resolution never panic
+  or blow the native stack, and that any tree which parses re-serializes and
+  re-parses cleanly.
 - **CLI format parity** — the `pyrs-yaml` CLI gains `to-toml` / `from-toml`,
   `to-jsonc` / `from-jsonc`, and `to-json5` / `from-json5`, mirroring the existing
   `to-json` / `from-json`. Every format the Python binding handles is now

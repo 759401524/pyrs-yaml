@@ -59,6 +59,63 @@ mod tests {
         }
     }
 
+    /// Assemble a syntactically-valid YAML document that exercises the
+    /// anchor / alias / merge-key structure class — the shape behind the
+    /// #163 (repeated alias) and #166 (self-referential merge stack overflow)
+    /// crashes. `arb_custom_node()` emits `meta.anchor` but never an `Alias`
+    /// node, so those resolve/merge paths are otherwise never fuzzed.
+    ///
+    /// The builder always produces well-formed source: anchors are defined
+    /// before their aliases, and every merge value is one of the YAML 1.1
+    /// forms (single alias, alias sequence, sequence with an inline map, bare
+    /// inline map) plus the two *invalid* sources (scalar / null) the #166 fix
+    /// now rejects instead of leaving a stray `<<`. A self-referential anchor
+    /// (`a0: &a0` whose body merges `*a0`) and a forward chain (`a1` merging
+    /// `*a0`) are toggled to drive the resolver's path-scoped cycle guard.
+    fn arb_merge_alias_source() -> impl Strategy<Value = String> {
+        (
+            any::<bool>(), // base0 self-merge (name-based cycle)
+            any::<bool>(), // base1 merges *a0 (forward chain)
+            any::<bool>(), // base2 merges *a1 (chain depth 2)
+            0u8..6,        // consumer merge-value shape
+            1usize..4,     // repeated-alias count in a plain sequence
+        )
+            .prop_map(|(self_merge, chain1, chain2, shape, dup)| {
+                let mut s = String::new();
+                // base0 — optionally a `<<: *a0` cycle, the #166 crasher.
+                if self_merge {
+                    s.push_str("base0: &a0\n  <<: *a0\n  p0: q0\n");
+                } else {
+                    s.push_str("base0: &a0\n  p0: q0\n");
+                }
+                // base1 — merges the already-defined *a0 (acyclic forward ref).
+                if chain1 {
+                    s.push_str("base1: &a1\n  <<: *a0\n  p1: q1\n");
+                } else {
+                    s.push_str("base1: &a1\n  p1: q1\n");
+                }
+                // base2 — merges *a1, giving depth-2 chain expansion.
+                if chain2 {
+                    s.push_str("base2: &a2\n  <<: *a1\n  p2: q2\n");
+                } else {
+                    s.push_str("base2: &a2\n  p2: q2\n");
+                }
+                let consumer_merge = match shape {
+                    0 => "<<: *a0",
+                    1 => "<<: [*a0, *a1, *a2]",
+                    2 => "<<: [*a0, {inline: 1}]",
+                    3 => "<<: {inline: 2}",
+                    4 => "<<: scalar", // invalid merge source
+                    _ => "<<: null",   // invalid merge source
+                };
+                s.push_str(&format!("consumer:\n  {consumer_merge}\n  r: s\n"));
+                // Repeated alias references to the same anchor (#163 class).
+                let aliases = vec!["*a0"; dup];
+                s.push_str(&format!("dup: [{}]\n", aliases.join(", ")));
+                s
+            })
+    }
+
     proptest! {
         #[test]
         fn prop_roundtrip(node in arb_custom_node()) {
@@ -318,6 +375,21 @@ mod tests {
         #[test]
         fn prop_schema_parse_no_panic(schema_yaml in "[!#$%&()*+,-./:;<=>?@\\[\\]^_`{}~a-zA-Z0-9 \"']{0,200}\\n*") {
             let _ = crate::parser::yaml::schema_language::parse_schema_yaml(&schema_yaml);
+        }
+
+        /// Anchors + aliases + merge keys (the #163/#166 structure class):
+        /// parsing with merge resolution must never panic or blow the native
+        /// stack, and any tree that parses must re-serialize and re-parse
+        /// cleanly. Before the #166 path-scoped cycle guard, the self-merge
+        /// case overflowed the stack and aborted the process; proptest cannot
+        /// catch an abort, so a green run here is the regression proof.
+        #[test]
+        fn prop_merge_alias_never_panics(src in arb_merge_alias_source()) {
+            let parsed = parse_with_options(&src, true, Schema::Core, 1000, false);
+            if let Ok(node) = parsed {
+                let out = to_yaml(&node);
+                let _ = parse_with_options(&out, true, Schema::Core, 1000, false);
+            }
         }
     }
 }

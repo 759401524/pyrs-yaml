@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TOML/JSON/JSONC/JSON5 parsers and writers (no-panic + re-parseability). They
   found and fix a mid-character slice panic in the TOML and JSON string parsers
   and a JSONC/JSON5 inline-`//`-comment bug that swallowed the following `,`/`}`.
+- **YAML merge/alias property fuzz** — the `proptest` suite now generates well-formed
+  anchor/alias/merge-key docs (single/sequence aliases, inline-map merges, and the
+  scalar/null sources the #166 fix rejects), including a self-referential anchor and
+  repeated alias refs. `arb_custom_node()` emits `meta.anchor` but never an `Alias`,
+  so the alias/merge paths (the #163/#166 structure class) were previously unfuzzed
+  in-process. `prop_merge_alias_never_panics` asserts parse + merge resolution never
+  panic or overflow and that any parsed tree re-serializes and re-parses cleanly.
 - **CLI format parity** — the CLI gains `to-toml`/`from-toml`, `to-jsonc`/`from-jsonc`
   and `to-json5`/`from-json5`, mirroring `to-json`/`from-json`, so every binding
   format is reachable from the command line.
