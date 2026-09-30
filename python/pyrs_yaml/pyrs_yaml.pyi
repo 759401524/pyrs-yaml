@@ -414,6 +414,20 @@ def list_schemas() -> "list[str]":
     plus any schemas registered via `register_schema()` / `load_schema()`.
     """
 
+def load_json(json_str: "str") -> "dict[str, Any] | list[Any]":
+    """
+    Parse a strict JSON document directly into Python values (dict / list /
+    scalar), mirroring the `load_jsonc` / `load_json5` / `load_toml` family.
+    Unlike `load_jsonc` this REJECTS the JSONC/JSON5 extensions — `//` and
+    `/* … */` comments, trailing commas, single-quoted strings, bare
+    `Infinity`/`NaN` and `0x…` forms all raise a parse error, exactly like
+    `json.loads` / `orjson.loads`. Canonical strict JSON takes the same
+    AST-free fast path `load_jsonc` uses (bytes → PyList/PyDict/scalars);
+    any non-canonical shape (floats with exotic spellings, `\u` escapes,
+    out-of-range ints) falls back to the strict AST parser that produces the
+    identical value or the proper `json-parse-error`.
+    """
+
 def load_json5(json_str: "str") -> "dict[str, Any] | list[Any]":
     """
     Parse a JSON5 document directly into Python values (dict / list /

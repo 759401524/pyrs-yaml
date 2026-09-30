@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`load_json` (strict) — completes the `load_*` family parity** — the
+  binding already exposed `load_jsonc` / `load_json5` / `load_toml` for
+  direct JSON-dialect → Python decoding; the strict RFC 8259 counterpart
+  was missing. `pyrs_yaml.load_json(s)` now accepts exactly the strict
+  grammar (matching `json.loads` on every canonical document) and rejects
+  the JSONC / JSON5 extensions with a typed `YamlParseError` — `//` and
+  `/* … */` comments, trailing commas, single-quoted strings, bare
+  `Infinity` / `NaN`, and `0x…` forms. The fast path shares
+  `json_fast::try_load` with `load_jsonc` (which bails on every
+  non-canonical byte, so widening risk is zero); declined constructs
+  route through the STRICT `from_json` AST parser, never `from_jsonc`.
+  This closes the last gap under the CLI ↔ Binding parity entry below:
+  every format the CLI reaches (`to/from json|jsonc|json5|toml`) now has
+  the corresponding Python-side `load_*` sibling — Pillar 1 is complete.
+  `tests/test_json.py::TestLoadJson` pins canonical parity with
+  `json.loads`, per-extension rejection (documenting where `json.loads`
+  itself is looser than RFC 8259 under its default `allow_nan=True`), and
+  the `\u` / out-of-i64 fallback route. Re-exported from
+  `pyrs_yaml.__init__` and listed in `__all__`; `.pyi` regenerated via
+  `maturin generate-stubs`.
 - **Dialect writer fixed-point properties** — `fmt_pbt.rs`'s module header
   always promised a writer fixed point (re-serializing a writer's own
   re-parsed output reproduces it byte-for-byte) but never implemented one.

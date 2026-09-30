@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **`load_json` (엄격) — `load_*` 패밀리 대칭 완성** — binding에는 이미 `load_jsonc` / `load_json5` / `load_toml` 이 있었으나 엄격한 RFC 8259 대응 함수가 빠져 있었습니다. `pyrs_yaml.load_json(s)` 는 정규 입력에서 `json.loads` 와 문자 그대로 일치하며 JSONC/JSON5 확장(`//`, `/* */`, 후행 쉼표, single quote, bare `Infinity`/`NaN`, `0x…`)을 타입이 지정된 `YamlParseError` 로 거부합니다. 고속 경로는 `load_jsonc` 와 `json_fast::try_load` 를 공유(비정규 바이트는 모두 bail → 문법 확대 리스크 0); 거부 대상은 STRICT `from_json` AST 경로로 라우팅. 아래 CLI ↔ Binding 대칭 항목의 마지막 공백을 메워 Pillar 1 이 완성됩니다. `pyrs_yaml.__init__` 에서 재내보내기 및 `__all__` 등재; `.pyi` 는 `maturin generate-stubs` 로 재생성.
 - **방언 writer 고정점 속성** — `fmt_pbt.rs` 헤더가 약속한 writer 고정점(writer 출력을 재파싱→재직렬화하면 문자 그대로 동일)이 구현돼 있지 않았습니다. 4개의 proptest가 이제 JSON/JSONC/JSON5/TOML에서 이를 지키며(유일한 입력 필터 `json_object_domain`는 서로 다른 키가 같은 JSON 이름을 만드는 수작업 AST를 제외 — RFC 8259 object 영역 밖), 이 게이트는 즉시 3개의 실제 주석 충실도 결함을 발견했습니다(아래 수정 참조).
 - **핫스팟 벤치 코퍼스** — 7개 CodSpeed wall-time 벤치가 역사적으로 취약한 직렬화 경로를 대상으로 합니다: YAML 블록 스칼라 문서(6종 헤더 표기 `|`/`|-`/`|+`/`>`/`>-`/`>+`) 및 주석 밀도 문서, TOML multiline 문자열/진법 정수/underscores/지수/날짜시간, JSON5 특수 수치 형식(16진, `+.1`, `5.`, `Infinity`, `NaN`, single quotes, trailing commas). 픽스처는 `tests/data/yaml_samples.py`, 벤치는 `tests/test_benchmark_api.py`. 이 코퍼스 구축 과정에서 중첩 블록 스칼라 들여쓰기 버그가 발견되었습니다.
 - **텍스트 수준 재파싱 게이트(`prop_output_always_parses`)** — Rust proptest 스위트가 생성된 모든 AST의 직렬화 출력이 파서에서 재파싱 가능함을 주장합니다. AST 대 AST 왕복 프로퍼티는 재파싱 불가 형상(`try_roundtrip`이 `None`)을 조용히 건너뛰었음. 새 게이트가 첫 실행에서 6개 실제 버그를 발견했으며, 각각 targeted Rust 단위 테스트와 Python 회귀 클래스(`TestNestedBlockScalarIndent`)로 고정.
