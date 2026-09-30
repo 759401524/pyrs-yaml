@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **CLI ↔ Binding parity gate (`tests/test_cli_binding_parity.py`)** — the
+  Pillar 1 invariant is now an executable contract: CLI's registered
+  commands are checked against a fixed 18-name inventory, every `to-X` /
+  `from-X` verb requires its matching `YamlDocument.to_X` / `from_X` /
+  `load_X` sibling, the `load_*` family symmetry (json/jsonc/json5/toml)
+  is asserted, and editing/validate/compliance verbs map to live Python
+  API. A drift on either surface now fails CI.
 - **`load_json` property tests + CodSpeed benches** — Hypothesis
   (`test_load_json_matches_stdlib_json` + `test_load_json_matches_load_jsonc_on_strict_domain`)
   pins the strict loader against `json.loads` for every generated canonical
