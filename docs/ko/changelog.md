@@ -209,6 +209,17 @@ status: new
 
 #### 변경
 
+- **granit-parser 1.1 → 1.3** — YAML 이벤트 파서을 1.1.0에서 1.3.0으로
+  업그레이드했습니다. 1.x 라인 내 시맨틱 버전 호환 마이너 업그레이드입니다:
+  1.2.0은 특이한 문서의 제한을 위한 선택적 `Options` 필드를 추가했고, 1.2.1은
+  몇 가지 파싱 결과를 YAML 사양에 맞게 강화했으며, 1.3.0은 기본 구현이 있는 두 개의
+  `Input` 메서드(`fetch_block_scalar_line`와 `take_quoted_scalar_ascii_chunk`)를
+  추가하여 스캐너가 블록 및 따옴표 스칼라 바이트를 더 빠르게 건널 수 있게 했습니다.
+  이 프로젝트는 `Parser::new_from_str`을 통해 파서를 소비하고 `EventReceiver` /
+  `SpannedEventReceiver`만 구현하며 `Input`은 구현하지 않으므로 소스 변경이 필요
+  없습니다—새 trait 메서드는 기본 구현으로 해결됩니다. 전체 스위트 통과:
+  `cargo nextest run --all`(359), `pytest`(1436 + 43 numpy), 순수 Rust
+  `--no-default-features` 빌드, 그리고 YAML 테스트 스위트 준수 게이트는 변경 없음.
 - **네이티브 JSON 및 TOML 코어** — `serde_json` 및 `toml_edit` 의존성을 완전히
   제거했습니다. `pyrs-yaml-core`는 RFC 8259 JSON 엔진(바이트 수준 스캐너, 숫자는
   소스 표기를 그대로 보존하여 `from_json → to_json`이 바이트 안정적이고 큰

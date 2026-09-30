@@ -339,6 +339,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Changed
 
+- **granit-parser 1.1 → 1.3** — bumped the YAML event parser from 1.1.0 to
+  1.3.0. The upgrade is a semver-compatible minor bump inside the 1.x line:
+  1.2.0 added optional `Options` fields for exotic-document limits, 1.2.1
+  tightened a few parse results to match the YAML spec, and 1.3.0 added two
+  defaulted `Input` methods (`fetch_block_scalar_line` and
+  `take_quoted_scalar_ascii_chunk`) that let the scanner step over block and
+  quoted scalar bytes faster. The project consumes the parser through
+  `Parser::new_from_str` and implements only `EventReceiver` /
+  `SpannedEventReceiver`, never `Input`, so no source changes were required —
+  the new trait methods resolve to their default implementations. Full suite
+  green: `cargo nextest run --all` (359), `pytest` (1436 + 43 numpy), pure-Rust
+  `--no-default-features` build, and the YAML test-suite compliance gates
+  unchanged.
 - **Native JSON & TOML cores** — the `serde_json` and `toml_edit`
   dependencies are gone. `pyrs-yaml-core` ships an RFC 8259 JSON engine
   (byte-level scanner, verbatim number spelling so `from_json → to_json` is
