@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **CLI ↔ Binding 对等 gate（`tests/test_cli_binding_parity.py`）** —
+  Pillar 1「CLI 与 Python Binding 两端均需具备同等功能」从文档声明
+  升级为可执行契约：CLI 注册命令需与 18 命令固定清单对齐（过滤 cyclopts
+  的 `--help`/`-h`/`--version` 伪命令）；每个 `to-X` / `from-X` 动词必须
+  有对应的 `YamlDocument.to_X` / `from_X` / `load_X`；断言 `load_*` 家族
+  （json/jsonc/json5/toml）四兄弟齐全；编辑/validate/compliance 动词都
+  映射到实时 Python API。两侧任何一者漂移现在都会破 CI。
 - **`load_json` 属性测试 + CodSpeed 基准** — Hypothesis
   （`test_load_json_matches_stdlib_json` 与
   `test_load_json_matches_load_jsonc_on_strict_domain`）为每个生成的

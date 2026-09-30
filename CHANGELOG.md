@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CLI ↔ Binding parity gate (`tests/test_cli_binding_parity.py`)** —
+  Pillar 1's「CLI 与 Python Binding 两端均需具备同等功能」claim was
+  documented in the changelog but only enforced by convention. This test
+  module turns the invariant into an executable contract: the CLI's
+  registered command set is asserted against a fixed 18-command
+  inventory (filtering cyclopts's `--help`/`-h`/`--version` pseudo
+  commands), every CLI `to-X` / `from-X` verb is asserted to have a
+  matching `YamlDocument.to_X` method, a top-level `from_X` converter,
+  and a `load_X` sibling where the family applies; `load_*` family
+  symmetry (`load_json` / `load_jsonc` / `load_json5` / `load_toml`) is
+  asserted; and every editing / validate / compliance verb is mapped to
+  its live Python API. A binding-side rename or an un-re-exported symbol
+  now breaks CI rather than silently drifting the two surfaces apart.
 - **`load_json` property tests + CodSpeed benches** — the strict loader
   lands its oracle-parity guard: `test_load_json_matches_stdlib_json` and
   `test_load_json_matches_load_jsonc_on_strict_domain` (Hypothesis, 200
