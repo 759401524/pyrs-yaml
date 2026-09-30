@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML table-redefinition strictness** — a table created implicitly by a dotted
+  key is now closed: a later `[header]` may not re-open it (`[fruit]` +
+  `apple.color` then `[fruit.apple]`; `[t1]` + `t2.t3.v` then `[t1.t2]`), and a
+  table can no longer be redefined as an array of tables (`[tbl]` then `[[tbl]]`).
+  These are invalid under BOTH TOML 1.0 and 1.1 (toml-test `invalid/table`
+  `duplicate-key-*`/`redefine-*`); legitimate implicit super-tables and sibling
+  dotted keys still parse (mis-acceptance total 30 -> 21, valid decode-match
+  unchanged).
 - **toml-test conformance harness** — `tests/test_toml_test_suite.py` runs the
   official language-agnostic [toml-test](https://github.com/toml-lang/toml-test)
   corpus the same way `test_yaml_suite.py` runs the YAML suite: an untracked
