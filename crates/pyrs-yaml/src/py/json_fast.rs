@@ -106,26 +106,68 @@ impl<'a> Scanner<'a> {
         let start = self.pos;
         let bytes = self.src;
         let mut i = self.pos;
-        // Scan for the closing quote, rejecting any `\` escape or control byte
-        // (fall back for those). Bytes >= 0x80 are UTF-8 continuation/lead bytes
-        // and are copied verbatim below.
+        // Scan to the closing quote, recording the first escape. Decode the
+        // eight two-byte JSON escapes inline (\n, \t, \", \\, ... - common in
+        // configs/logs); bail on \u (surrogate-pair combining) and any other or
+        // invalid escape, and on a raw control byte, so the AST path owns those
+        // cases (and their errors) identically. Bytes >= 0x80 are UTF-8
+        // lead/continuation and pass through untouched.
+        let mut first_escape: Option<usize> = None;
         loop {
             let b = *bytes.get(i)?;
             match b {
                 b'"' => break,
-                b'\\' => return None,
+                b'\\' => {
+                    if first_escape.is_none() {
+                        first_escape = Some(i);
+                    }
+                    match bytes.get(i + 1) {
+                        Some(b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't') => i += 2,
+                        _ => return None, // \u or invalid -> AST path
+                    }
+                }
                 0x00..=0x1f => return None,
                 _ => i += 1,
             }
         }
         let end = i;
-        // `text[start..end]` is a valid UTF-8 subslice of the input (multi-byte
-        // lead/continuation bytes are >= 0x80, never a delimiter or control
-        // byte), so slicing needs no re-validation. `get` keeps a pathological
-        // non-boundary a bail to the AST path rather than a panic.
-        let s = self.text.get(start..end)?;
+        // No escapes: copy the input subslice zero-copy (`get` keeps a
+        // pathological non-boundary a bail rather than a panic).
+        let Some(esc) = first_escape else {
+            let s = self.text.get(start..end)?;
+            self.pos = end + 1; // consume closing quote
+            return Some(PyString::new(py, s).into_any().unbind());
+        };
+        // Decode the simple escapes into an owned buffer, bulk-copying each
+        // escapable-free run between them.
+        let mut buf = String::with_capacity(end - start);
+        buf.push_str(self.text.get(start..esc)?);
+        let mut j = esc;
+        while j < end {
+            if bytes.get(j) == Some(&b'\\') {
+                let c = match bytes.get(j + 1) {
+                    Some(b'"') => '"',
+                    Some(b'\\') => '\\',
+                    Some(b'/') => '/',
+                    Some(b'b') => '\u{8}',
+                    Some(b'f') => '\u{c}',
+                    Some(b'n') => '\n',
+                    Some(b'r') => '\r',
+                    Some(b't') => '\t',
+                    _ => return None,
+                };
+                buf.push(c);
+                j += 2;
+            } else {
+                let run = j;
+                while j < end && bytes[j] != b'\\' {
+                    j += 1;
+                }
+                buf.push_str(self.text.get(run..j)?);
+            }
+        }
         self.pos = end + 1; // consume closing quote
-        Some(PyString::new(py, s).into_any().unbind())
+        Some(PyString::new(py, &buf).into_any().unbind())
     }
 
     fn number(&mut self, py: Python<'a>) -> Bail<PyObject> {

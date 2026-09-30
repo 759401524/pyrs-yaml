@@ -383,6 +383,16 @@ BENCHMARK_CONFIG_JSON_FLOATS = json.dumps(
         "thresholds": {"cpu": 0.75, "mem": 0.9, "latency_ms": 12.5},
     }
 )
+
+# Escape-bearing canonical JSON: strings carry the simple two-byte escapes
+# (\n, \t, \\), so the ``load_jsonc`` fast path exercises its inline escape
+# decoder. Without this, the escape branch would be invisible to the benchmark
+# suite (the same "not reflected" gap the float sample closed).
+BENCHMARK_CONFIG_JSON_ESCAPES = json.dumps(
+    {
+        "logs": [{"msg": f"line\n{i}\tvalue", "path": f"a/b\\{i}.txt"} for i in range(50)],
+    }
+)
 BENCHMARK_CONFIG_TOML = (
     '[server]\nhost = "0.0.0.0"\nport = 8080\nssl = true\nworkers = 4\n'
     'tags = ["production", "eu-west-1"]\n\n'

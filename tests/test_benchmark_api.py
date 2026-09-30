@@ -27,6 +27,9 @@ from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON5 as CONFIG_JSON5,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSON_ESCAPES as CONFIG_JSON_ESCAPES,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON_FLOATS as CONFIG_JSON_FLOATS,
 )
 from tests.data.yaml_samples import (
@@ -261,6 +264,18 @@ def test_load_jsonc_floats(benchmark):
     result = benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_FLOATS)
     assert result["thresholds"]["cpu"] == 0.75
     assert len(result["metrics"]) == 50
+
+
+def test_load_jsonc_escapes(benchmark):
+    """Escape-bearing JSON through the fast path (exercises the escape decoder).
+
+    Simple `\n`/`\t`/`\\` strings are decoded inline on the fast path; without
+    this benchmark the escape branch would be unmeasured (the same "not
+    reflected" gap the float sample closed).
+    """
+    result = benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_ESCAPES)
+    assert result["logs"][0]["msg"] == "line\n0\tvalue"
+    assert len(result["logs"]) == 50
 
 
 def test_safe_dump_ndarray(benchmark):
