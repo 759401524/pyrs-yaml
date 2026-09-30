@@ -117,7 +117,7 @@ pub fn to_json5_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
 /// slot, so a document-leading `#`/`//` comment would otherwise drop.
 fn emit_root_leading(node: &CustomNode, out: &mut String) {
     if let Some(c) = node.leading_comment() {
-        let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " "));
+        let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
     }
 }
 
@@ -172,7 +172,7 @@ fn emit_inline_comment(node: &CustomNode, out: &mut String) {
     if let Some(c) = node.comment()
         && !c.standalone
     {
-        let _ = writeln!(out, " // {}", c.text.replace(['\n', '\r'], " "));
+        let _ = writeln!(out, " // {}", c.text.replace(['\n', '\r'], " ").trim());
     }
 }
 
@@ -189,7 +189,7 @@ fn emit_standalone_comment(node: &CustomNode, step: usize, level: usize, out: &m
         .or_else(|| node.comment().filter(|c| c.standalone));
     if let Some(c) = c {
         indent(out, step, level);
-        let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " "));
+        let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
     }
 }
 

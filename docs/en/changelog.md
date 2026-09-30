@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **Dialect writer fixed-point properties** — `fmt_pbt.rs` promised a writer
+  fixed point in its header but never implemented one. Four proptests now hold
+  it for JSON/JSONC/JSON5/TOML (the sole input filter drops hand-built ASTs whose
+  distinct keys spell the same JSON name — outside RFC 8259's object domain).
+  The gate immediately surfaced three real comment-fidelity defects (Fixed).
 - **Hot-spot benchmark corpus** — seven CodSpeed wall-time benches target the
   historically fragile serialization paths: YAML block-scalar documents (all six
   header spellings `|`, `|-`, `|+`, `>`, `>-`, `>+`) and comment-dense documents,
@@ -413,6 +418,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Dialect writers/parsers lost or misplaced document-level comments** — a
+  file-leading `// note` was misclassified as inline and stolen by the first
+  JSONC/JSON5 object member (vanishing on empty containers) instead of landing
+  on the root the writer annotates; the JSON-family **and TOML** writers now
+  trim comment bodies at emit to match the parser's trimmed storage (an
+  untrimmed comment used to oscillate whitespace across passes); and a
+  comment-only TOML document keeps its leftover note on the empty root instead
+  of serializing to `""` (a hand-built non-empty root carrying both a root and
+  a first-element note is outside TOML's representable domain and filtered from
+  the property). Leading comments across all five formats now reach a
+  byte-stable fixed point (three pinned Rust tests).
 - **Nested block scalar bodies kept their parent's indentation** — a literal or
   folded scalar under a nested key emitted its body lines one fixed indent step
   from column zero instead of one step below the `b: |` header line, so every

@@ -17,6 +17,7 @@ status: new
 
 #### 追加
 
+- **方言 writer の固定点プロパティ** — `fmt_pbt.rs` はヘッダで writer 固定点（writer 出力を再パース→再シリアライズすると逐字一致）を約束していたが未実装だった。4 つの proptest が JSON/JSONC/JSON5/TOML でこれを果たす（唯一の入力フィルタは別々のキーが同一の JSON 名になる手組み AST を除外——RFC 8259 の object 領域外）。このゲートで注释忠実性の実バグ 3 件を即座に発見（下記の修正参照）。
 - **ホットスポットベンチコーパス** — 7 件の CodSpeed wall-time ベンチが歴史的に脆弱なシリアライズ経路を狙う：YAML ブロックスカラー文書（6 種のヘッダ表記 `|`、`|-`、`|+`、`>`、`>-`、`>+`）とコメント密度文書、TOML マルチライン文字列/進数整数/アンダーセリエータ/指数/日付時、JSON5 の特殊数値形式（16 進、`+.1`、`5.`、`Infinity`、`NaN`、シングルクオート、末尾カンマ）。固定種は `tests/data/yaml_samples.py`、ベンチは `tests/test_benchmark_api.py`。このコーパス構築こそが下記のネスト式ブロックスカラーのインデントバグを発見した。
 - **テキストレベル再パースゲート（`prop_output_always_parses`）** — Rust proptest スイートは生成 AST のシリアライズ出力が常にパーサで再読込できることを主張。AST 同士の往復プロパティは再パース不能な形態（`try_roundtrip` が `None`）を黙って飛ばしていた。新ゲートは初回の実行で 6 個の実バグを検出し、それぞれ targeted Rust ユニットテストと Python 回帰クラス（`TestNestedBlockScalarIndent`）で固定。
 - **toml-test 適合性ハーネス** — `tests/test_toml_test_suite.py` は公式 [toml-test](https://github.com/toml-lang/toml-test) を `test_yaml_suite.py` が YAML スイートを実行するのと同じ方式で実行する。未追跡のローカル資産、欠損時 `skipif`、実測フロアのゲート、およびデコード比較用の型タグアダプタ。
@@ -327,6 +328,7 @@ status: new
 
 #### 修正
 
+- **方言 writer/parser がドキュメントレベルの注释を消失・誤配置** — 固定点プロパティが捕捉した 3 欠陥：(a) JSONC/JSON5 の値より前の file-leading `// note` が inline と誤分類（オフセット 0 の前に改行なし）され、writer が注釈する root ではなく最初の object メンバに取られ、空 `{}` や root スカラーでは完全に消失；(b) JSON 系・TOML writer は注释本体を無加工で出力していたが parser は trim して保存するため、未 trim 注释は pass 毎に行末空白振動——writer も出力時 trim し初回スペルから安定；(c) 注释のみ TOML 文書（`# note` 後に key なし）は再パースで注释が落ち空 root が `""` 化——未消費の standalone 注释を空 root テーブルに付加。5 フォーマットの leading 注释がすべて逐字安定の固定点到達（3 件の targeted Rust テストで固定）。
 - **ネスト式ブロックスカラー本体が親行のインデントを保持** — ネストキー下の字句/畳み込みスカラーが本体行を列 0 から固定 1 段で出力しており、`b: |` ヘッダ行の下一層に配置されず、すべてのネスト形態（ペア・シーケンス項・compact dash・任意深度）の出力が再パース不能または誤値になっていた。スカラー出力系は `block_base`（親行の列位置）を全書出箇所に貫流。7 種のネスト形態で往復が完全一致。TOML ホットスポットベンチが共有シリアライザ経由で発見。
 - **シリアライザが再パース可能な YAML のみ出力** — テキストレベルゲートが検出した 5 つの欠陥：(a) 改行分岐での anchor/tag プリエミットが子ノード（スカラー/null/flow 容器）の自己ヘッダと二重化（`A: !a` … `!a null`）→ block 容器のみに限定；(b) flow 容器内のブロックスカラー（`[|`、`{k: >}`）とキー位置はダブルクォートに降格；(c) 自行を開始する flow 容器の行頭インデント欠落と complex key（`?`）の値標識 `:` の列 0 出力→いずれも親インデントに従うよう修正；(d) standalone コメント/tag 付き complex キーの曖昧テキスト（コメントは `?` 上部へ、本文は常に 1 段深い独立行へ）；(e) flow 容器内で先頭/末尾空白または `,[]`{} 埋め込みの plain スカラーはクォート化（素文出力だと token を途切れるか再パースで消える）。さらに tag 付き空 block 容器はヘッダを `{}`/`[]` と同列化、compact dash 項は standalone コメント付き値をインライン化しない。9 個の targeted Rust テストと Python 回帰で各系統を固定。
 - **TOML が合法な最小 i64 整数を拒否** — `from_toml`/`load_toml` が
