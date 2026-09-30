@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **형식 퍼징 + 견고성 수정** — 새 `proptest` 속성 테스트가 TOML/JSON/JSONC/JSON5 파서와 라이터를 퍼징(no-panic + 재파싱 가능성). 발견·수정: TOML 및 JSON 문자열 파서의 중각 문자 슬라이스 panic, 및 JSONC/JSON5 인라인 `//` 주석이 후속 `,`/`}`를 삼키는 버그.
 - **CLI 형식 대등성** — CLI 에 `to-toml`/`from-toml`, `to-jsonc`/`from-jsonc`, `to-json5`/`from-json5` 추가(기존 `to-json`/`from-json` 본뜬). 바인딩이 처리하는 모든 형식을 명령줄에서 사용 가능.
 - **JSON 문자열 이스케이프 고속 경로(성능)** — `load_jsonc` 가 단순한 2바이트 이스케이프 8종을 인라인 디코딩하여 문서 전체를 AST 경로로 피하지 않습니다. 이스케이프가 있는 JSON 이 고속 경로에 탑니다(AST 경로 대비 약 15 배 빠름). 값은 `json.loads` 와 일치; `\u`·잘못된 이스케이프는 계속 AST 경로 경유.
 - **JSON 부동소수점 고속 경로(성능)** — `load_jsonc` 가 정규 부동소수(소수/지수)를 문서 전체를 AST 경로로 피하지 않고 곧바로 Python 객체로 해석합니다. 값은 `json.loads` 와 완전히 일치(올바르게 반올림된 parse). 새 bench 가 이 분기를 회귀 추적합니다.

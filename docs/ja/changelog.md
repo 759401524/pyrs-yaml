@@ -17,6 +17,7 @@ status: new
 
 #### 追加
 
+- **フォーマットファジング + 堅牢性修正** — 新 `proptest` 属性テストが TOML/JSON/JSONC/JSON5 のパーサとライタをファジング（no-panic + 再解析可能性）。発見・修正：TOML と JSON 文字列パーサの中途文字スライス panic、および JSONC/JSON5 のインライン `//` コメントが後続の `,`/`}` を呑み込む不具合。
 - **CLI フォーマット対等性** — CLI に `to-toml`/`from-toml`、`to-jsonc`/`from-jsonc`、`to-json5`/`from-json5` を追加（既存の `to-json`/`from-json` を倣う）。バインディングが扱う全フォーマットがコマンドラインから利用可能に。
 - **JSON 文字列エスケープ高速パス（性能）** — `load_jsonc` は 8 種の単純な 2 バイトエスケープをインライン復号し、ドキュメント全体を AST パスへ退避しなくなりました。エスケープ入り JSON は高速パスに乗ります（AST ルート比 約 15 倍速）。値は `json.loads` と一致；`\u`・不正エスケープは引き続き AST パス経由。
 - **JSON 浮動小数点高速パス（性能）** — `load_jsonc` は正規の浮動小数（小数・指数）をドキュメント全体を AST パスへ退避せず直接 Python オブジェクトへ解析。値は `json.loads` と完全一致（正しく丸められた parse）。新 bench がこの分岐を回帰監視する。

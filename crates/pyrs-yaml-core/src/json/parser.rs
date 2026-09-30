@@ -352,13 +352,16 @@ impl<'a> Parser<'a> {
                     return Err(self.err("newline in single-quoted string"));
                 }
                 _ => {
-                    self.pos += 1;
-                    let cut = floor_char_boundary(self.text, self.pos);
-                    if cut > self.pos - 1 {
-                        out.push_str(&self.text[self.pos - 1..cut]);
-                        self.pos = cut;
-                    } else {
-                        out.push(b as char);
+                    // Copy one whole character and advance by its UTF-8 length so
+                    // `self.pos` stays on a char boundary; the byte-wise
+                    // `floor_char_boundary` path could slice `text[pos-1..cut]`
+                    // from a mid-character offset and panic on lossy-decoded input.
+                    match self.text[self.pos..].chars().next() {
+                        Some(ch) => {
+                            out.push(ch);
+                            self.pos += ch.len_utf8();
+                        }
+                        None => return Err(self.err("unterminated string")),
                     }
                 }
             }

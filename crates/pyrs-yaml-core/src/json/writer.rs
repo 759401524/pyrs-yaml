@@ -164,14 +164,15 @@ fn write_value(
     r
 }
 
-/// Render a `// comment` suffix at the end of the current line. Newlines
-/// inside the comment body are stripped so a single-line comment cannot
-/// escape into the following output.
+/// Render a `// comment` suffix at the end of the current line. The comment is
+/// newline-terminated (and any newlines inside its body are flattened to spaces)
+/// because `//` runs to end-of-line: without the terminator the following `,` or
+/// `}` would be commented out, producing output that cannot re-parse.
 fn emit_inline_comment(node: &CustomNode, out: &mut String) {
     if let Some(c) = node.comment()
         && !c.standalone
     {
-        let _ = write!(out, " // {}", c.text.replace(['\n', '\r'], " "));
+        let _ = writeln!(out, " // {}", c.text.replace(['\n', '\r'], " "));
     }
 }
 
