@@ -293,7 +293,8 @@ status: new
   （`slice.to_vec()`），仅标量→节点转换离线程执行。这是绑定层**唯一**一处
   `unsafe` 缓冲区借用；其余全部 `py.detach` 站点已审查，仅触及 Rust 自有状态
   （AST、源文本、`BufWriter<File>`）。回归覆盖见
-  `tests/test_numpy.py::TestNumpyConcurrency`。
+  `tests/test_numpy.py::TestNumpyConcurrency`。由
+  [@bourumir-wyngs](https://github.com/bourumir-wyngs) 在 #165 中报告。
 - **重复的别名引用不再解析为 `None`** — `to_dict()` 在一个**全局** visited 锚点集合
   后展开别名，且从不清理，导致任一锚点只有**第一次**引用产出值，之后全部静默降级
   为 `None`：
@@ -309,7 +310,8 @@ status: new
     guard 限定在当前递归路径上——仅在一次展开期间压入，随后弹出——因此重复引用与
     兄弟引用各自获得完整构建的值，而真正的环路仍会终止。`<<` 合并解析与 AST 本身经
     审查不受影响。`tests/test_direct_load.py` 新增 6 个与 PyYAML 对齐的用例锁定该
-    行为，另有两个此前将错误输出当作预期的测试被重写。
+    行为，另有两个此前将错误输出当作预期的测试被重写。由
+    [@bourumir-wyngs](https://github.com/bourumir-wyngs) 在 #163 中报告。
 - **首层值为嵌套容器时文档头注释不再丢失** — 解析器曾为所有进行中的
   容器共用单一注释槽，嵌套容器的 start 会提前抹掉尚未落位的 standalone
   头注释（在 parse 层即丢弃；`to_dict` 不可见，`dump` 致命）。现改为
