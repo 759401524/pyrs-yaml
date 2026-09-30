@@ -168,6 +168,30 @@ def test_load_jsonc_matches_stdlib_json(value):
 
 @settings(**MAX)
 @given(json_doc)
+def test_load_json_matches_stdlib_json(value):
+    # Same contract as load_jsonc but through the STRICT RFC 8259 loader.
+    # `json.dumps` only emits canonical strict JSON (no comments, no trailing
+    # commas, no NaN/Infinity — `allow_nan=False` behaviour is what we get by
+    # using the default encoder on finite-value strategies), so the strict
+    # loader must produce the identical value to the stdlib decoder. This
+    # pins the fast path + AST fallback equivalence for the whole `json_doc`
+    # domain, guarding against silent drift between the two loaders.
+    text = json.dumps(value)
+    assert strict_eq(pyrs_yaml.load_json(text), json.loads(text))
+
+
+@settings(**MAX)
+@given(json_doc)
+def test_load_json_matches_load_jsonc_on_strict_domain(value):
+    # Both loaders must agree on every strict-JSON document (the widening
+    # surface of `load_jsonc` is only visible on JSONC/JSON5-only inputs,
+    # which `json.dumps` never emits).
+    text = json.dumps(value)
+    assert strict_eq(pyrs_yaml.load_json(text), pyrs_yaml.load_jsonc(text))
+
+
+@settings(**MAX)
+@given(json_doc)
 def test_from_json_hub_fidelity(value):
     # JSON -> YAML hub conversion must preserve every typed value.
     text = json.dumps(value)

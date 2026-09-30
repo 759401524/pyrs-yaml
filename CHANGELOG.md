@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`load_json` property tests + CodSpeed benches** — the strict loader
+  lands its oracle-parity guard: `test_load_json_matches_stdlib_json` and
+  `test_load_json_matches_load_jsonc_on_strict_domain` (Hypothesis, 200
+  examples over the `json_doc` strategy) pin both the fast path and AST
+  fallback against `json.loads` for every generated canonical document,
+  while the sibling mirrors the two loaders agree byte-for-byte on the
+  strict domain — a divergence between `load_json` and `load_jsonc`
+  (widening the fast path, routing the fallback through `from_jsonc`, or
+  a schema drift) shows up as a property failure, not a silent regression.
+  Three CodSpeed wall-time benches (`test_load_json_large` /
+  `test_load_json_floats` / `test_load_json_escapes`) mirror the existing
+  `load_jsonc` samples so the strict binding layer itself is tracked.
 - **`load_json` (strict) — completes the `load_*` family parity** — the
   binding already exposed `load_jsonc` / `load_json5` / `load_toml` for
   direct JSON-dialect → Python decoding; the strict RFC 8259 counterpart
