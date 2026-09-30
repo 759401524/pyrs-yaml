@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CLI format parity** — the `pyrs-yaml` CLI gains `to-toml` / `from-toml`,
+  `to-jsonc` / `from-jsonc`, and `to-json5` / `from-json5`, mirroring the existing
+  `to-json` / `from-json`. Every format the Python binding handles is now
+  reachable from the command line (the binding's document methods preserve
+  comments, number source and multiline styles through the YAML hub).
 - **JSON string-escape fast path (perf)** — `load_jsonc` now decodes the eight
   simple two-byte JSON escapes (quote, backslash, slash, backspace, form-feed,
   newline, carriage return, tab) inline instead of bailing the whole document to

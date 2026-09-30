@@ -466,6 +466,132 @@ def from_json_cmd(
         fail(str(exc))
 
 
+# ── TOML / JSONC / JSON5 conversion (CLI parity with the Python binding) ──
+# Each mirrors to-json / from-json so every format the core + binding handle is
+# reachable from the command line; the to-* emit the binding's document methods
+# (preserving comments / number source / multiline styles through the hub).
+
+
+@app.command(name="to-toml")
+def to_toml_cmd(file: FILE_ARG = STDIN_FILE, *, output: OUTPUT = None) -> None:
+    """Convert YAML to TOML.
+
+    Parameters
+    ----------
+    file:
+        YAML file to convert; ``-`` or omitted reads stdin.
+
+    The document root must be a mapping; TOML has no top-level scalar/array form.
+    """
+    from pyrs_yaml import YamlSerializeError
+
+    doc = load_document(file)
+    try:
+        emit(doc.to_toml(), output)
+    except YamlSerializeError as exc:
+        fail(str(exc))
+
+
+@app.command(name="from-toml")
+def from_toml_cmd(file: FILE_ARG = STDIN_FILE, *, output: OUTPUT = None) -> None:
+    """Convert TOML to YAML.
+
+    Parameters
+    ----------
+    file:
+        TOML file to convert; ``-`` or omitted reads stdin.
+    """
+    from pyrs_yaml import YamlParseError, from_toml
+
+    text = read_text(file)
+    try:
+        emit(from_toml(text), output)
+    except YamlParseError as exc:
+        fail(str(exc))
+
+
+@app.command(name="to-jsonc")
+def to_jsonc_cmd(
+    file: FILE_ARG = STDIN_FILE,
+    *,
+    output: OUTPUT = None,
+    indent: Annotated[int, Parameter(name=["--indent"])] = 2,
+) -> None:
+    """Convert YAML to JSONC, preserving comments as ``//``.
+
+    Parameters
+    ----------
+    file:
+        YAML file to convert; ``-`` or omitted reads stdin.
+    """
+    from pyrs_yaml import YamlSerializeError
+
+    doc = load_document(file)
+    try:
+        emit(doc.to_jsonc(indent=indent), output)
+    except YamlSerializeError as exc:
+        fail(str(exc))
+
+
+@app.command(name="from-jsonc")
+def from_jsonc_cmd(file: FILE_ARG = STDIN_FILE, *, output: OUTPUT = None) -> None:
+    """Convert JSONC (JSON with comments) to YAML.
+
+    Parameters
+    ----------
+    file:
+        JSONC file to convert; ``-`` or omitted reads stdin.
+    """
+    from pyrs_yaml import YamlParseError, from_jsonc
+
+    text = read_text(file)
+    try:
+        emit(from_jsonc(text), output)
+    except YamlParseError as exc:
+        fail(str(exc))
+
+
+@app.command(name="to-json5")
+def to_json5_cmd(
+    file: FILE_ARG = STDIN_FILE,
+    *,
+    output: OUTPUT = None,
+    indent: Annotated[int, Parameter(name=["--indent"])] = 2,
+) -> None:
+    """Convert YAML to JSON5, preserving comments and exotic number styles.
+
+    Parameters
+    ----------
+    file:
+        YAML file to convert; ``-`` or omitted reads stdin.
+    """
+    from pyrs_yaml import YamlSerializeError
+
+    doc = load_document(file)
+    try:
+        emit(doc.to_json5(indent=indent), output)
+    except YamlSerializeError as exc:
+        fail(str(exc))
+
+
+@app.command(name="from-json5")
+def from_json5_cmd(file: FILE_ARG = STDIN_FILE, *, output: OUTPUT = None) -> None:
+    """Convert JSON5 to YAML.
+
+    Parameters
+    ----------
+    file:
+        JSON5 file to convert; ``-`` or omitted reads stdin.
+    """
+    from pyrs_yaml import YamlParseError, from_json5
+
+    text = read_text(file)
+    try:
+        emit(from_json5(text), output)
+    except YamlParseError as exc:
+        fail(str(exc))
+
+
 @app.command
 def compliance(
     suite_dir: Annotated[str | None, Parameter(allow_leading_hyphen=True)] = None,

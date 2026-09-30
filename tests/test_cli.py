@@ -227,6 +227,61 @@ def test_from_json_round_trip_with_to_json(capsys, monkeypatch):
     assert json.loads(capsys.readouterr().out) == {"a": [1, {"b": None}]}
 
 
+# ── TOML / JSONC / JSON5 conversion (CLI parity with the binding) ────────────
+
+
+def test_to_toml(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "b:\n  c: 2\n")
+    run("to-toml")
+    out = capsys.readouterr().out
+    assert "[b]" in out and "c = 2" in out
+
+
+def test_from_toml(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "[b]\nc = 2\n")
+    run("from-toml")
+    out = capsys.readouterr().out
+    assert "b:" in out and "c: 2" in out
+
+
+def test_toml_cli_round_trip_is_stable(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "b:\n  c: 2\n")
+    run("to-toml")
+    toml1 = capsys.readouterr().out
+    feed_stdin(monkeypatch, toml1)
+    run("from-toml")
+    yaml1 = capsys.readouterr().out
+    feed_stdin(monkeypatch, yaml1)
+    run("to-toml")
+    assert capsys.readouterr().out == toml1  # TOML -> YAML -> TOML is a fixed point
+
+
+def test_to_jsonc(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "b: 2\n")
+    run("to-jsonc")
+    assert '"b": 2' in capsys.readouterr().out
+
+
+def test_from_jsonc_strips_comments(capsys, monkeypatch):
+    feed_stdin(monkeypatch, '{\n  // a note\n  "b": 2\n}')
+    run("from-jsonc")
+    out = capsys.readouterr().out
+    assert "b: 2" in out and "//" not in out
+
+
+def test_to_json5(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "b: 2\n")
+    run("to-json5")
+    out = capsys.readouterr().out
+    assert '"b"' in out and "2" in out
+
+
+def test_from_json5_accepts_wider_grammar(capsys, monkeypatch):
+    feed_stdin(monkeypatch, "{b: 2,}")  # unquoted key + trailing comma
+    run("from-json5")
+    assert "b: 2" in capsys.readouterr().out
+
+
 # ── errors & app surface ─────────────────────────────────────────────────────
 
 
@@ -254,6 +309,12 @@ def test_help_lists_all_commands(capsys):
         "validate",
         "to-json",
         "from-json",
+        "to-toml",
+        "from-toml",
+        "to-jsonc",
+        "from-jsonc",
+        "to-json5",
+        "from-json5",
         "compliance",
     ):
         assert cmd in out
