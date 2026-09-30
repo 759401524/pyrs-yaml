@@ -393,6 +393,17 @@ BENCHMARK_CONFIG_JSON_ESCAPES = json.dumps(
         "logs": [{"msg": f"line\n{i}\tvalue", "path": f"a/b\\{i}.txt"} for i in range(50)],
     }
 )
+
+# Block-comment-dense JSONC document. Objective §测试覆盖 5 explicitly names
+# "block-comment" as a hot sample that must be quantified per change. Until
+# now, only inline ``//`` comments appeared in benchmarks (via
+# BENCHMARK_CONFIG_JSONC); the ``/* ... */`` branch of the tokenizer was
+# measured nowhere. This fixture puts a block comment on every pair plus a
+# header/footer, exercising both the standalone ``/* ... */`` and the
+# trailing-inline ``value /* ... */`` shapes so a scanner regression on the
+# block path shows up as a CodSpeed delta, not silent drift.
+_BLOCK_COMMENT_ITEMS = ",\n".join(f'  /* item {i} */\n  "k{i}": {{"v": {i} /* trailing */}}' for i in range(50))
+BENCHMARK_CONFIG_JSON_BLOCK_COMMENTS = "{\n  /* header */\n" + _BLOCK_COMMENT_ITEMS + "\n  /* footer */\n}\n"
 BENCHMARK_CONFIG_TOML = (
     '[server]\nhost = "0.0.0.0"\nport = 8080\nssl = true\nworkers = 4\n'
     'tags = ["production", "eu-west-1"]\n\n'
