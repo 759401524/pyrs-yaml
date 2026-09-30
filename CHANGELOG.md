@@ -32,8 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where the single-line basic path had guarded C0 but every other form accepted
   them silently. toml-test's `invalid/control` corpus surfaced 13 such
   mis-accepted documents. Comment bodies now reject the same control codes
-  (`# ...\u0000...` etc., 5 further `invalid/control/comment-*` documents); bare-CR
-  line-ending strictness remains a follow-up on the ROADMAP.
+  (`# ...\u0000...` etc., 5 further `invalid/control/comment-*` documents), and a bare
+  carriage return (a `0x0D` outside a CRLF pair, in any context) is now rejected by
+  a central scan at the parse entry (the last 4 `invalid/control/*-cr` documents).
+  The toml-test conformance harness also switched to reading corpus bytes verbatim
+  — its earlier `read_text()` silently applied universal-newline translation, which
+  had rewritten bare CR to LF before the parser ever saw it, masking that whole
+  bug class.
 - **TOML number-literal strictness** — decimal integers with leading zeros
   (`01`, `007`, `-01`, `01.5`), a sign on a radix-prefixed integer (`+0x1F`,
   `-0b101`, `+0o644` — `signed-int` only wraps a decimal integer), and

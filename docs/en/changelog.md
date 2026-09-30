@@ -33,7 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DEL (U+007F) are now rejected inside basic, literal and multi-line strings (only
   tab, plus newlines in multi-line forms, stay legal). toml-test's `invalid/control`
   corpus surfaced 13 such mis-accepted documents; comment bodies now reject the
-  same control codes (5 more `comment-*` documents), leaving bare-CR as a follow-up.
+  same control codes (5 more `comment-*` documents) and a bare carriage return
+  (0x0D outside a CRLF pair) is rejected by a central entry scan (4 more `*-cr`
+  documents). The conformance harness now reads corpus bytes verbatim — its earlier
+  `read_text()` applied universal-newline translation, rewriting bare CR to LF and
+  masking the whole class.
 - **TOML number-literal strictness** — leading-zero decimals (`01`, `-01`), a sign
   on radix-prefixed integers (`+0x1F`, `-0b101` — `signed-int` is decimal-only),
   and trailing/double underscores (`1_`, `1__0`) are now rejected. toml-test

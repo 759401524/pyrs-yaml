@@ -59,6 +59,31 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
         pending_inline_comment: None,
         pending_comment_err: None,
     };
+    // TOML forbids a bare carriage return: every 0x0D must be part of a 0x0D0A
+    // pair, in every context (line endings, comments, and inside strings - an
+    // escaped `\r` is the two bytes 5C 72, never a 0x0D). The per-path scanners
+    // handled CR inconsistently, so toml-test's invalid/control corpus
+    // (bare-cr / comment-cr / multi-cr / rawmulti-cr) leaked lone CRs. One tight
+    // central scan catches all of them; CR is rare so this is a cheap byte walk.
+    {
+        let s = p.s;
+        let mut i = 0usize;
+        let mut bad: Option<usize> = None;
+        while i < s.len() {
+            if s[i] == b'\r' {
+                if i + 1 >= s.len() || s[i + 1] != b'\n' {
+                    bad = Some(i);
+                    break;
+                }
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+        if let Some(off) = bad {
+            return Err(p.err_at("bare carriage return (must be part of a CRLF pair)", off));
+        }
+    }
     p.parse_document()?;
     // Comments are scanned by the infallible `take_comment` (several callers live
     // in non-Result helpers), so a forbidden control byte is accumulated as a
