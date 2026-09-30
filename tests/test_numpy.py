@@ -300,3 +300,47 @@ class TestNumpyEdgeCases:
         assert len(data) == 20001
         assert data[0] == -10000
         assert data[-1] == 10000
+
+
+class TestNumpyConcurrency:
+    """Issue #165: serialization must snapshot the NumPy buffer under the GIL.
+
+    Reading Python-owned memory inside ``py.detach`` (GIL released) let another
+    thread mutate the array mid-serialize. The fix copies to owned memory first,
+    so a concurrent writer that only runs during the detach must NOT appear in
+    the output. Skipped on free-threaded builds (no GIL to release).
+    """
+
+    def test_serialize_snapshots_under_gil(self):
+        import sys
+        import threading
+
+        # Free-threaded builds have no GIL to release; the premise does not apply.
+        if getattr(sys, "_is_gil_enabled", lambda: True)() is False:
+            pytest.skip("requires an enabled GIL")
+
+        pyrs_yaml.safe_dump(numpy.zeros(2, dtype="int64"))  # warm dispatch
+        array = numpy.zeros(500_000, dtype="int64")
+        mutate = threading.Event()
+
+        def writer():
+            if mutate.wait(timeout=30):
+                array[-1] = 123
+
+        t = threading.Thread(target=writer, daemon=True)
+        t.start()
+        interval = sys.getswitchinterval()
+        try:
+            sys.setswitchinterval(60)  # keep this thread on-CPU through the copy
+            mutate.set()  # writer unblocks only once we release the GIL
+            serialized = pyrs_yaml.safe_dump(array)
+        finally:
+            sys.setswitchinterval(interval)
+            mutate.set()
+            t.join(timeout=30)
+
+        # The copy happened before the detach, so the concurrent write is absent.
+        tail = pyrs_yaml.safe_load(serialized)[-1]
+        assert tail == 0, "serialization observed a write made after releasing the GIL"
+        # The writer did run (the race window was exercised).
+        assert array[-1] == 123

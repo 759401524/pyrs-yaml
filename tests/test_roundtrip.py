@@ -113,9 +113,11 @@ class TestRoundTrip:
 class TestAliasCycles:
     """Self-referential anchors/aliases must not recurse infinitely.
 
-    Alias resolution short-circuits on cycles via a visited set
-    (node_to_pyobject_with_anchors), yielding None instead of runaway
-    recursion. Forward references are rejected by the parser.
+    Alias resolution short-circuits on cycles via a path-scoped guard
+    (`in_progress` in `convert.rs`), yielding None instead of runaway
+    recursion. The guard is pushed only for the duration of one expansion,
+    so a *repeated* (non-cyclic) reference expands fully - only a genuine
+    cycle collapses to None. Forward references are rejected by the parser.
     """
 
     def test_self_referential_sequence(self):
@@ -128,14 +130,15 @@ class TestAliasCycles:
         data = doc.to_dict()
         assert data == {"a": {"self": {"self": None}}}
 
-    def test_mutual_reference_resolves_via_visited(self):
+    def test_mutual_reference_resolves_via_cycle_guard(self):
         doc = pyrs_yaml.parse("x: &x {a: 1}\ny: &y\n  x: *x\n  y: *y\n")
         data = doc.to_dict()
-        # The self-reference terminates (visited set) instead of recursing;
-        # one level of expansion happens before aliases collapse to None.
+        # `*y` re-enters `&y` while it is still being expanded, so only that
+        # one edge collapses to None; every other edge expands fully. The
+        # pre-fix accumulation set stopped after a single level.
         assert data == {
             "x": {"a": 1},
-            "y": {"x": {"a": 1}, "y": {"x": None, "y": None}},
+            "y": {"x": {"a": 1}, "y": {"x": {"a": 1}, "y": None}},
         }
 
     def test_forward_anchor_reference_rejected(self):

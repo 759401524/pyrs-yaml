@@ -31,7 +31,14 @@ pub(crate) fn ndarray_to_node(py: Python, obj: &Bound<'_, PyAny>) -> Option<Cust
             if arr.dtype().is_equiv_to(&dtype::<$ty>(py)) {
                 let typed = arr.cast::<PyArrayDyn<$ty>>().ok()?;
                 let slice = unsafe { typed.as_slice() }.ok()?;
-                let flat = py.detach(|| slice.iter().map($to_scalar).collect::<Vec<CustomNode>>());
+                // Snapshot the NumPy-owned buffer into Rust-owned memory WHILE
+                // HOLDING THE GIL. Iterating `slice` inside `py.detach` would
+                // read Python-owned memory after releasing the GIL, letting
+                // another thread mutate the array concurrently (issue #165) -
+                // a data race / UB. The `to_vec` memcpy is cheap and keeps the
+                // scalar→node conversion off-thread.
+                let owned: Vec<$ty> = slice.to_vec();
+                let flat = py.detach(|| owned.iter().map($to_scalar).collect::<Vec<CustomNode>>());
                 let mut result = flat;
                 for &dim in shape[1..].iter().rev() {
                     result = nest_ndarray_sequence(result, dim);
