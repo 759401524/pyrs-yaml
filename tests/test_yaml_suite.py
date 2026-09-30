@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import pyrs_yaml
 from pyrs_yaml.compliance import compute_compliance, load_test_cases, run_test
 
 try:
@@ -102,3 +103,27 @@ def test_compliance_report_missing_data_raises(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         compliance_report(str(tmp_path / "nonexistent"))
+
+
+# ── pinned per-case strictness gates ─────────────────────────────────────────
+# The suite tests above are threshold-gated (>= 95%), so a single-case
+# regression is silently drowned (that is exactly how granit-parser 1.3 shipped
+# the `9C9N` acceptance bug past green CI). These gates assert individual cases
+# on the LITERAL input, independent of the untracked ``Reference/`` corpus, so
+# they run in every environment and fail on any drift.
+
+# yaml-test-suite 9C9N "Wrong indented flow sequence": a multi-line flow
+# collection used as a block value whose continuation line is indented no
+# further than the block key. Invalid YAML; must be rejected.
+WRONGLY_INDENTED_FLOW = "flow: [a,\nb,\nc]\n"
+
+
+def test_9c9n_wrongly_indented_flow_is_rejected():
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        pyrs_yaml.parse(WRONGLY_INDENTED_FLOW)
+
+
+def test_properly_indented_flow_continuation_is_accepted():
+    # The guard must not over-reject: the same flow, correctly out-dented,
+    # is valid and parses to the expected list.
+    assert pyrs_yaml.safe_load("flow: [a,\n  b,\n  c]\n") == {"flow": ["a", "b", "c"]}
