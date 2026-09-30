@@ -102,6 +102,33 @@ class TestToToml:
         assert pyrs_yaml.load_toml(t) == {"n": "42"}
 
 
+class TestDocumentToToml:
+    """`YamlDocument.to_toml()` writes the AST directly (no to_yaml round-trip)."""
+
+    def test_matches_module_to_toml(self):
+        # The document method must be byte-identical to the text round-trip.
+        yaml_src = "name: app\ncount: 3\nnested:\n  a: 1\n"
+        doc = pyrs_yaml.parse(yaml_src)
+        assert doc.to_toml() == pyrs_yaml.to_toml(doc.to_yaml())
+
+    def test_roundtrips_from_parsed_toml(self):
+        toml_in = '[server]\nhost = "0.0.0.0"\nport = 8080\n\n[[items]]\nname = "a"\nvalue = 1\n'
+        doc = pyrs_yaml.parse(pyrs_yaml.from_toml(toml_in))
+        # from_toml gives YAML text; parse it to a document; to_toml writes it
+        # back, and reloading the result equals reloading the original TOML.
+        assert pyrs_yaml.load_toml(doc.to_toml()) == pyrs_yaml.load_toml(toml_in)
+
+    def test_root_scalar_rejected(self):
+        doc = pyrs_yaml.parse("42\n")
+        with pytest.raises(ValueError):
+            doc.to_toml()
+
+    def test_null_rejected(self):
+        doc = pyrs_yaml.parse("k: null\n")
+        with pytest.raises(ValueError, match="null"):
+            doc.to_toml()
+
+
 class TestCommentFidelity:
     """Document-level comment survival across the TOML -> hub -> TOML round trip.
 
