@@ -271,6 +271,35 @@ pub(crate) fn from_jsonc(_py: Python, json_str: &str) -> PyResult<String> {
 
 #[pyfunction]
 #[pyo3(signature = (json_str: "str") -> "dict[str, Any] | list[Any]")]
+/// Parse a strict JSON document directly into Python values (dict / list /
+/// scalar), mirroring the `load_jsonc` / `load_json5` / `load_toml` family.
+/// Unlike `load_jsonc` this REJECTS the JSONC/JSON5 extensions — `//` and
+/// `/* … */` comments, trailing commas, single-quoted strings, bare
+/// `Infinity`/`NaN` and `0x…` forms all raise a parse error, exactly like
+/// `json.loads` / `orjson.loads`. Canonical strict JSON takes the same
+/// AST-free fast path `load_jsonc` uses (bytes → PyList/PyDict/scalars);
+/// any non-canonical shape (floats with exotic spellings, `\u` escapes,
+/// out-of-range ints) falls back to the strict AST parser that produces the
+/// identical value or the proper `json-parse-error`.
+pub(crate) fn load_json(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
+    // Fast path is a strict-JSON-only subset (comments/escapes/trailing
+    // commas make it bail), so routing through it never widens the accepted
+    // grammar beyond what `from_json` itself allows.
+    if let Some(v) = crate::py::json_fast::try_load(py, json_str) {
+        return Ok(v);
+    }
+    let mut ast = pyrs_yaml_core::json::from_json(json_str).map_err(|e| {
+        YamlParseError::new_err(format_i18n_error(
+            "json-parse-error",
+            &[("detail", &e.to_string())],
+        ))
+    })?;
+    crate::py::document::resolve_tags(&mut ast, py)?;
+    crate::py::convert::node_to_pyobject_resolving_anchors(&ast, py, &parse_schema("json")?, false)
+}
+
+#[pyfunction]
+#[pyo3(signature = (json_str: "str") -> "dict[str, Any] | list[Any]")]
 /// Parse a JSONC document directly into Python values (dict / list /
 /// scalar). Handy for TypeScript `tsconfig.json`, VS Code
 /// `settings.json`, and similar dialects without a pre-processing step.

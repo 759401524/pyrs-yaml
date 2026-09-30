@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **`load_json` (strict) — completes the `load_*` family parity** — the binding
+  exposed `load_jsonc` / `load_json5` / `load_toml` but the strict RFC 8259
+  counterpart was missing. `pyrs_yaml.load_json(s)` now matches `json.loads` on
+  canonical documents and rejects the JSONC/JSON5 extensions (`//`, `/* */`,
+  trailing commas, single quotes, bare `Infinity`/`NaN`, `0x…`) with a typed
+  `YamlParseError`. The fast path shares `json_fast::try_load` with
+  `load_jsonc` (which bails on every non-canonical byte — zero widening risk);
+  declined constructs route through the STRICT `from_json` AST parser. Closes
+  the last gap under the CLI ↔ Binding parity entry: every CLI format now has
+  its `load_*` sibling, Pillar 1 complete. Re-exported and in `__all__`;
+  `.pyi` regenerated via `maturin generate-stubs`.
 - **Dialect writer fixed-point properties** — `fmt_pbt.rs` promised a writer
   fixed point in its header but never implemented one. Four proptests now hold
   it for JSON/JSONC/JSON5/TOML (the sole input filter drops hand-built ASTs whose

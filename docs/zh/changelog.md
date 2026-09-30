@@ -17,6 +17,15 @@ status: new
 
 #### 新增
 
+- **`load_json`（严格）——补齐 `load_*` 家族对称** — binding 已有 `load_jsonc` /
+  `load_json5` / `load_toml`，唯独缺严格 RFC 8259 对应物。`pyrs_yaml.load_json(s)`
+  在规范输入上与 `json.loads` 逐位对齐，并对 JSONC/JSON5 扩展（`//`、`/* */`、
+  尾逗号、单引号、裸 `Infinity`/`NaN`、`0x…`）抛出类型化 `YamlParseError`。快速
+  路径与 `load_jsonc` 共用 `json_fast::try_load`（任何非规范字节即 bail，零语法
+  越权风险）；被拒对象走 STRICT `from_json` AST 解析。这就此补完下方 CLI ↔
+  Binding 对等声明中的最后缺口：CLI 每种格式都有对应的 `load_*` 兄弟——支柱 1
+  完成。已从 `pyrs_yaml.__init__` 重新导出并入 `__all__`；`.pyi` 通过
+  `maturin generate-stubs` 重生成。
 - **方言 writer 定点属性测试** — `fmt_pbt.rs` 模块注释一直承诺 writer 定点
   （对 writer 自身输出重解析后再序列化应逐位相同）却从未实现。四个 proptest
   现在为 JSON/JSONC/JSON5/TOML 兑现该承诺；唯一的输入过滤（`json_object_domain`）

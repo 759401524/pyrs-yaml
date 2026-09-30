@@ -271,3 +271,127 @@ class TestJsonLoadFastPath:
         # Pre-existing pyrs behavior (unchanged by the fast path, which bails on
         # out-of-i64 ints): the huge integer is preserved as its source text.
         assert pyrs_yaml.load_jsonc('{"big": 99999999999999999999999}') == {"big": "99999999999999999999999"}
+
+
+class TestLoadJson:
+    """Strict-JSON loader — the `load_*` family counterpart of `load_jsonc`.
+
+    Completes Pillar 1 CLI↔Binding parity: every loader in the family now has
+    a strict JSON variant. The contract is *narrower* than `load_jsonc`:
+    RFC 8259 grammar only, matching `json.loads` bit-for-bit on canonical
+    inputs and raising on every JSONC/JSON5 extension (`//`, `/* */`,
+    trailing commas, single quotes, bare `Infinity`/`NaN`, `0x…`).
+
+    The fast path shares `json_fast::try_load` with `load_jsonc`; because
+    the scanner bails on every non-canonical byte the widening risk is
+    zero — anything the fast path accepts is also strict-valid, and
+    anything it declines falls through to `from_json` (STRICT), never
+    `from_jsonc`.
+    """
+
+    def test_canonical_matches_load_jsonc(self):
+        doc = '{"s": "hi", "n": 42, "t": true, "nl": null, "arr": [1, 2, 3]}'
+        assert pyrs_yaml.load_json(doc) == pyrs_yaml.load_jsonc(doc)
+
+    @pytest.mark.parametrize(
+        "doc",
+        [
+            '{"a":1,"b":[1,2,3]}',
+            "[[1,2],[3,4]]",
+            '"hello"',
+            "null",
+            "true",
+            "123",
+            "1.5e10",
+            "-0.25",
+            r'{"k":"a\nb"}',
+            '{"k":"café"}',
+        ],
+    )
+    def test_parity_with_json_loads(self, doc):
+        assert pyrs_yaml.load_json(doc) == json.loads(doc)
+
+    @pytest.mark.parametrize(
+        "doc,label",
+        [
+            ('{"a":1 // hi\n}', "line-comment"),
+            ('{"a":1 /* hi */}', "block-comment"),
+            ('{"a":1,}', "trailing-comma-object"),
+            ("[1,2,]", "trailing-comma-array"),
+            ("{'a':1}", "single-quote"),
+            ("Infinity", "bare-Infinity"),
+            ("-Infinity", "bare-neg-Infinity"),
+            ("NaN", "bare-NaN"),
+            ("0x1F", "hex-int"),
+            ("+.5", "leading-plus-float"),
+            ("5.", "trailing-dot-float"),
+        ],
+    )
+    def test_strict_rejects_jsonc_and_json5_extensions(self, doc, label):
+        # Every one of these is accepted by `load_jsonc` / `load_json5` and
+        # rejected by strict JSON. `load_json` must side with strictness.
+        #
+        # Oracle note: Python's `json.loads` is NOT a perfect RFC 8259
+        # oracle — its default `allow_nan=True` emits/parsers the three
+        # non-standard literals `NaN` / `Infinity` / `-Infinity` (json-py
+        # historical behaviour). Our loader is stricter than the stdlib
+        # here, matching the spec. For the three tokens we assert only
+        # our own rejection; every other case cross-checks `json.loads`.
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_json(doc)
+        if label in ("bare-Infinity", "bare-neg-Infinity", "bare-NaN"):
+            assert json.loads(doc) != doc  # stdlib accepts — we intentionally do not
+        else:
+            with pytest.raises(ValueError):
+                json.loads(doc)
+
+    @pytest.mark.parametrize(
+        "doc,expected",
+        [
+            (r'{"k":"\u00e9"}', {"k": "\u00e9"}),
+            (r'{"k":"\ud83d\ude00"}', {"k": "\U0001f600"}),
+            ("[01]", "__raises__"),  # leading zero: json.loads raises
+            ('{"a": 007}', "__raises__"),
+        ],
+    )
+    def test_declined_constructs_route_through_ast_strictly(self, doc, expected):
+        # `\u` and multi-digit leading-zero ints bail the fast path; the AST
+        # route (STRICT `from_json`) either produces the same value as
+        # `json.loads` or raises where the stdlib raises.
+        if expected == "__raises__":
+            with pytest.raises(pyrs_yaml.YamlParseError):
+                pyrs_yaml.load_json(doc)
+            with pytest.raises(ValueError):
+                json.loads(doc)
+        else:
+            got = pyrs_yaml.load_json(doc)
+            assert got == expected == json.loads(doc)
+
+    def test_out_of_i64_int_uses_ast_strict_path(self):
+        # >i64 bails the fast path; the AST strict path preserves the same
+        # source-text string form `load_jsonc` yields (no widening, no drift).
+        assert pyrs_yaml.load_json('{"big": 99999999999999999999999}') == {"big": "99999999999999999999999"}
+
+    def test_trailing_content_and_bad_tokens_still_error(self):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_json("{} extra")
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_json('{"a": }')
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_json("[1,]")
+
+    def test_duplicate_keys_last_wins_first_position(self):
+        got = pyrs_yaml.load_json('{"a": 1, "b": 2, "a": 3}')
+        assert got == {"a": 3, "b": 2}
+        assert list(got) == ["a", "b"]
+
+    def test_exported_from_package_and_all(self):
+        # Pillar 1 completeness guard: `load_json` must be re-exported from
+        # `pyrs_yaml` and advertised in `__all__`, alongside load_jsonc /
+        # load_json5 / load_toml — otherwise the family parity is only nominal.
+        import pyrs_yaml as pkg
+
+        assert hasattr(pkg, "load_json")
+        assert "load_json" in pkg.__all__
+        for sibling in ("load_jsonc", "load_json5", "load_toml"):
+            assert sibling in pkg.__all__
