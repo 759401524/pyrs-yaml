@@ -17,6 +17,7 @@ status: new
 
 #### 追加
 
+- **JSON 浮動小数点高速パス（性能）** — `load_jsonc` は正規の浮動小数（小数・指数）をドキュメント全体を AST パスへ退避せず直接 Python オブジェクトへ解析。値は `json.loads` と完全一致（正しく丸められた parse）。新 bench がこの分岐を回帰監視する。
 - **JSON 文字列シリアライズの高速化（性能）** — エスケープ不要な文字列は 1 回の `push_str` で一括コピーし、文字単位の UTF-8 再エンコードをやめる。文字列の多い `to_json` は約 35% 高速（41→27 ns/件）、出力はバイト単位同一。
 - **`YamlDocument.to_toml()`** — ドキュメントは `to_json`/`to_jsonc`/`to_json5` に倣い AST から直接 TOML を出力。`to_toml(doc.to_yaml())` のシリアライズ→再解析の往復が不要になり、出力はバイト単位同一。ライタ自体は `tomli_w` より約 4.3 倍速。
 - **`to_json` ネイティブシリアライザ（性能）** — `YamlDocument.to_json` は `to_dict()` + `json.dumps` の二重変換をやめネイティブエンジンを使用。ASCII はバイト単位同一、約 10 倍速（1200 件 ~1450µs→~120µs、`json.dumps` を上回る）。非 ASCII は `\uXXXX` でなく生の UTF-8（`to_jsonc`/`to_json5` と一致）、正当な JSON を維持。

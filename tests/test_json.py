@@ -1,5 +1,8 @@
 """JSON/YAML conversion tests — from_dict, from_json."""
 
+import json
+import math
+
 import pytest
 
 import pyrs_yaml
@@ -134,11 +137,12 @@ class TestJsonDialects:
 class TestJsonLoadFastPath:
     """The direct strict-JSON -> Python fast path in `load_jsonc`.
 
-    Canonical documents (objects/arrays, i64 integers, booleans, null,
-    escape-free strings) are built directly, skipping the AST round-trip. Any
-    non-canonical construct must bail to the AST path and yield the identical
-    value, so these cases guard both the fast path's correctness and its
-    fallback.
+    Canonical documents (objects/arrays, i64 integers, JSON floats, booleans,
+    null, escape-free strings) are built directly, skipping the AST round-trip.
+    Any non-canonical construct must bail to the AST path and yield the
+    identical value, so these cases guard both the fast path's correctness and
+    its fallback. Floats use a correctly-rounded parse that matches CPython's
+    ``float`` (what ``json.loads`` uses), so parity holds by construction.
     """
 
     def test_canonical_object_array_scalars(self):
@@ -163,11 +167,41 @@ class TestJsonLoadFastPath:
         assert pyrs_yaml.load_jsonc("{}") == {}
         assert pyrs_yaml.load_jsonc("[]") == []
 
-    def test_floats_bail_to_ast_and_stay_correct(self):
-        # Floats / exponents are outside the fast subset: they must fall back
-        # to the AST path and still parse to the right values.
-        got = pyrs_yaml.load_jsonc('{"a": 1.5, "b": 2e3, "c": -0.25}')
-        assert got == {"a": 1.5, "b": 2000.0, "c": -0.25}
+    @pytest.mark.parametrize(
+        "token",
+        [
+            "1.5",
+            "0.0",
+            "-0.0",
+            "2e3",
+            "2E3",
+            "2e+3",
+            "2e-3",
+            "-0.25",
+            "0.5",
+            "3.14159",
+            "6.02e23",
+            "1e400",
+            "1e-400",
+            "1.7976931348623157e308",
+            "5e-324",
+            "123456789.123456789",
+            "-1.5e-10",
+        ],
+    )
+    def test_float_parity_with_json_loads(self, token):
+        # The float fast branch must produce exactly what json.loads produces
+        # (correctly-rounded parse == CPython float): exponent forms, signed
+        # zero, and overflow/underflow to inf/0.0 all included.
+        doc = f'{{"v": {token}}}'
+        got = pyrs_yaml.load_jsonc(doc)
+        assert got == json.loads(doc)
+        # Bit-exact sign for -0.0 / inf, where == hides the sign bit.
+        assert math.copysign(1.0, got["v"]) == math.copysign(1.0, json.loads(doc)["v"])
+
+    def test_floats_and_ints_mixed(self):
+        got = pyrs_yaml.load_jsonc('{"a": 1.5, "b": 2e3, "c": -0.25, "i": 7}')
+        assert got == {"a": 1.5, "b": 2000.0, "c": -0.25, "i": 7}
 
     def test_escapes_and_unicode_bail_correctly(self):
         assert pyrs_yaml.load_jsonc('{"s": "a\\nb"}') == {"s": "a\nb"}

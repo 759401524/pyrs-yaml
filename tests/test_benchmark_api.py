@@ -27,6 +27,9 @@ from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON5 as CONFIG_JSON5,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSON_FLOATS as CONFIG_JSON_FLOATS,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON_LARGE as CONFIG_JSON_LARGE,
 )
 from tests.data.yaml_samples import (
@@ -246,6 +249,18 @@ def test_load_jsonc_large(benchmark):
     result = benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_LARGE)
     assert result["server"]["workers"] == 4
     assert len(result["items"]) == 50
+
+
+def test_load_jsonc_floats(benchmark):
+    """Float-bearing JSON through the fast path (exercises the float branch).
+
+    Every numeric leaf here is a float, so this is the only load benchmark that
+    reaches ``json_fast``'s float handling; without it a float fast-path change
+    would be invisible to CodSpeed regression tracking.
+    """
+    result = benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_FLOATS)
+    assert result["thresholds"]["cpu"] == 0.75
+    assert len(result["metrics"]) == 50
 
 
 def test_safe_dump_ndarray(benchmark):

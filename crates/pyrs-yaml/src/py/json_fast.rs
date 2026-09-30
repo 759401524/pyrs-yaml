@@ -2,12 +2,15 @@
 //!
 //! The general load path parses text into the shared `CustomNode` AST and then
 //! converts it to Python objects. For plain, canonical JSON (arrays, objects,
-//! `i64`-range integers, booleans, `null`, and strings with no escape
-//! sequences) that intermediate AST is pure overhead, so this scanner walks the
-//! bytes and builds `PyList` / `PyDict` / scalars directly.
+//! `i64`-range integers, JSON floats, booleans, `null`, and strings with no
+//! escape sequences) that intermediate AST is pure overhead, so this scanner
+//! walks the bytes and builds `PyList` / `PyDict` / scalars directly. Floats go
+//! through Rust's correctly-rounded `f64` parse, which yields the identical
+//! double to the `float()` that CPython's `json.loads` uses, so parity holds by
+//! construction (overflow to `+/-inf` matches too).
 //!
 //! Correctness is guaranteed by *falling back*, never by reimplementing edge
-//! cases: any input outside the narrow canonical subset — a float, exponent,
+//! cases: any input outside the narrow canonical subset — a malformed number,
 //! leading `+`, out-of-range integer, any `\` escape, a comment, trailing
 //! comma, control byte, non-canonical token, or over-deep nesting — makes the
 //! scanner give up (`None`) and the caller routes the whole document through
@@ -16,7 +19,7 @@
 //! same value the general path would, for a strict subset.
 
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyList, PyNone, PyString};
+use pyo3::types::{PyBool, PyDict, PyFloat, PyList, PyNone, PyString};
 
 /// Owned reference to any Python object (pyo3 0.29 dropped the `PyObject`
 /// alias from the prelude).
@@ -130,8 +133,6 @@ impl<'a> Scanner<'a> {
         if self.peek() == Some(b'-') {
             self.pos += 1;
         }
-        // Integer digits only; a `.` or `e` means a float (fall back to the AST
-        // path, which resolves pyrs's exact JSON5/JSONC number spellings).
         let digits_start = self.pos;
         while matches!(self.peek(), Some(b'0'..=b'9')) {
             self.pos += 1;
@@ -140,16 +141,56 @@ impl<'a> Scanner<'a> {
             self.pos = start;
             return None;
         }
-        // Enforce the JSON integer grammar (`-?(0|[1-9][0-9]*)`): a multi-digit
-        // run may not start with `0` (that is invalid JSON), and `.`/`e` means a
-        // float. Both bail so the AST path owns validation + exact spelling.
-        if bytes_eq_lead_zero_multi(&self.src[digits_start..self.pos])
-            || matches!(self.peek(), Some(b'.') | Some(b'e') | Some(b'E'))
-        {
+        // Enforce the JSON integer-part grammar (`-?(0|[1-9][0-9]*)`): a
+        // multi-digit run may not start with `0` (invalid JSON -> AST reports it).
+        if bytes_eq_lead_zero_multi(&self.src[digits_start..self.pos]) {
             self.pos = start;
             return None;
         }
-        // Manual checked accumulation avoids `str::parse::<i64>` and a UTF-8
+        // A fraction and/or exponent make a float; validate the full JSON number
+        // grammar so any malformed form (`1.`, `1e`, `1e+`) bails and the AST
+        // path raises the identical error.
+        let mut is_float = false;
+        if self.peek() == Some(b'.') {
+            is_float = true;
+            self.pos += 1;
+            let frac_start = self.pos;
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.pos += 1;
+            }
+            if self.pos == frac_start {
+                self.pos = start;
+                return None;
+            }
+        }
+        if matches!(self.peek(), Some(b'e') | Some(b'E')) {
+            is_float = true;
+            self.pos += 1;
+            if matches!(self.peek(), Some(b'+') | Some(b'-')) {
+                self.pos += 1;
+            }
+            let exp_start = self.pos;
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.pos += 1;
+            }
+            if self.pos == exp_start {
+                self.pos = start;
+                return None;
+            }
+        }
+        if is_float {
+            // Rust's f64 parse is correctly rounded, so for a syntactically valid
+            // JSON number it yields the same double as the float() that
+            // json.loads uses; overflow to +/-inf matches too. A parse failure
+            // bails to the AST path.
+            let token = self.text.get(start..self.pos)?;
+            let Ok(f) = token.parse::<f64>() else {
+                self.pos = start;
+                return None;
+            };
+            return Some(PyFloat::new(py, f).to_owned().into_any().unbind());
+        }
+        // Integer: manual checked accumulation avoids `str::parse` and a UTF-8
         // re-validation pass per number (the orjson-style tight path). Any
         // overflow (out-of-i64) bails so the AST path yields pyrs's canonical
         // form for the value.
