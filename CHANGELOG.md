@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PyYAML + ruamel.yaml cross-library parity for YAML** — objective
+  §测试覆盖 3 names both libraries as oracle targets; previously they
+  only appeared in `test_benchmark_crosslib.py` (timed runs + a
+  feature-support printout), never as a value-parity assertion.
+  `tests/test_yaml_crosslib.py` closes the gap: 20 canonical YAML Core
+  1.2 documents × 5 parity surfaces (pyrs-vs-PyYAML load, pyrs-vs-
+  ruamel load, three-way, cross-engine dump-load round-trip) + 2
+  documented divergences (duplicate-key strictness, YAML 1.1 legacy
+  booleans schema-scope) = 122 tests. Optional deps guarded by
+  `skipif`.
 - **tomlkit cross-library parity for `load_toml`** — objective
   §测试覆盖 3 names tomlkit as an oracle target; previously tomlkit
   only appeared in `test_benchmark_crosslib.py` and the leaderboard

@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **YAML 의 PyYAML + ruamel.yaml 跨库 对拍** — objective §테스트 커버리지 3 이 两者 指名 oracle. 以前 `test_benchmark_crosslib.py` 벤치 + 特性 support printout 만。`tests/test_yaml_crosslib.py`: 20 正規 文档 × 5 对拍 面 + 2 文档化 分歧(duplicate-key 严格性, YAML 1.1 傳統 bool schema-scope) = 122 테스트. optional dep skipif 자동 降格.
 - **`load_toml` tomlkit 跨库 对拍** — objective §테스트 커버리지 3 이 tomlkit 을 oracle 로 指名. 以前은 벤치만. `tests/test_toml_crosslib.py` 24 件: 11 正規 구조物에서 pyrs / tomlkit / tomllib 三者 一致, `>i64` 拒否를 仕樣 準據(TOML v1.0 §Integers: 64bit signed)로 固定, `-2^63` 境界(PR #174 修正) 確認. optional dep, skipif 자동 降格.
 - **orjson 을 strict-JSON oracle 로** — objective §테스트 커버리지 3 「orjson 과 자리별 비교」는 그동안 벤치만。16 정규 문서 값 일치, 12 비정규 형식(주석, trailing comma, single quote, bare `NaN`/`Infinity`/`-Infinity`, hex, leading 0, `+.5`, `5.`) 양측 거부 단언. stdlib `json.loads` 는 `allow_nan=True` 하에서 bare literal 을 받아들이지만 orjson 은 거부 — RFC 8259 oracle 로서 stdlib 보다 강함. optional dep, `skipif` 자동 강하.
 - **CLI ↔ Binding 대칭 게이트(`tests/test_cli_binding_parity.py`)** — Pillar 1 의 “CLI 와 Python Binding 양쪽이 동일한 기능” 선언을 문서관에서 실행 가능한 계약으로 승격. CLI 등록 명령을 18 개 고정 목록과 비교(cyclopts 의 `--help`/`-h`/`--version` 의사 명령 제외), 각 `to-X` / `from-X` 동사에 `YamlDocument.to_X` / `from_X` / `load_X` 대응 필수. `load_*` 패밀리(json/jsonc/json5/toml) 네 형제 대칭 단언, editing/validate/compliance 동사는 live Python API 에 매핑. 어느 한쪽 드리프트는 CI 실패로surface.

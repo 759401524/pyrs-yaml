@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **YAML 的 PyYAML + ruamel.yaml 跨库对拍** — 目标 §测试覆盖 3
+  将两库点名作为 oracle；之前仅在 `test_benchmark_crosslib.py`
+  用于基准与特性支持 printout，从未做**正确性**断言。
+  `tests/test_yaml_crosslib.py` 20 个规范文档 × 5 个对拍面 +
+  2 个文档化分歧（重复键严格、YAML 1.1 传统 bool schema 域）= 122
+  测试。可选依赖 `skipif` 自动降级。
 - **`load_toml` tomlkit 跨库对拍** — 目标 §测试覆盖 3 点名 tomlkit
   作为 oracle；之前 tomlkit 仅在 benchmark 出现。`tests/test_toml_crosslib.py`
   新增 24 个测试，覆盖 11 种规范构造的三方对齐（pyrs / tomlkit /
