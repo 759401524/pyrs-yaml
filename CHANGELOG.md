@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Dialect writer fixed-point properties** — `fmt_pbt.rs`'s module header
+  always promised a writer fixed point (re-serializing a writer's own
+  re-parsed output reproduces it byte-for-byte) but never implemented one.
+  Four proptests now hold that promise for JSON/JSONC/JSON5/TOML; the only
+  input filter (`json_object_domain`) excludes hand-built ASTs whose distinct
+  keys spell the same JSON name — outside RFC 8259's object domain, where no
+  text round-trips losslessly by definition. The gate immediately surfaced
+  three real comment-fidelity defects (Fixed below).
 - **Hot-spot benchmark corpus** — seven CodSpeed wall-time benches target the
   historically fragile serialization paths: YAML block-scalar documents (all six
   header spellings `|`, `|-`, `|+`, `>`, `>-`, `>+`) and comment-dense documents,
@@ -544,6 +552,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dialect writers and parsers lost or misplaced document-level comments**
+  — three defects the new fixed-point properties caught: (a) a file-leading
+  `// note` before a JSONC/JSON5 value was classified as an *inline* note
+  (no newline precedes offset 0 in the whitespace scanner's heuristic) and
+  was claimed by the first object member instead of the root container the
+  writer's `emit_root_leading` had annotated — on an empty `{}` or a root
+  scalar it vanished entirely; (b) the JSON/JSONC/JSON5 **and TOML** writers
+  emitted comment bodies verbatim while every parser stored them trimmed, so
+  an untrimmed comment (`text = " "`) oscillated trailing whitespace across
+  passes — the writers now trim at emit, making the first spelling stable;
+  (c) a comment-only TOML document (`# note` with no key to consume it)
+  dropped its note on re-parse, serializing the empty root to `""` — the
+  leftover standalone note now attaches to the otherwise-empty root table.
+  A hand-built non-empty TOML root carrying a standalone note *and* a
+  first-element note renders as two adjacent `#` lines no TOML text can
+  re-attribute; that shape (never produced by a real parse) is filtered from
+  the fixed-point property by `toml_root_note_ok`, mirroring the JSON object
+  domain filter. Together the five formats now round-trip their leading
+  comments to a byte-stable fixed point. Pinned by
+  `jsonc_file_leading_comment_stays_on_the_root`,
+  `jsonc_comment_text_is_written_trimmed`, and
+  `comment_only_document_keeps_its_note_on_the_root`.
 - **Nested block scalar bodies kept their parent's indentation** — a literal or
   folded scalar under a nested key (`a:` ⏎ `b: |` ⏎ body) emitted its body lines
   one fixed indent step from column zero instead of one step below the

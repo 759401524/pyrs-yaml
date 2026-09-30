@@ -92,7 +92,23 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
     if let Some(e) = p.pending_comment_err.take() {
         return Err(e);
     }
-    Ok(cow_table_to_node(p.root))
+    let mut node = cow_table_to_node(p.root);
+    // A comment-only document has no key/table to consume the trailing
+    // standalone note, so `pending_leading` would be dropped and the writer
+    // fixed point (`# …\n` → re-parse → `` → ``) drifts to empty. When the
+    // root is otherwise empty, attach the leftover note to it so the sole
+    // `# …` line survives the round trip. Non-empty documents keep their
+    // notes on keys and leave document-trailing comments unattributed (the
+    // writer never emits those, so their fixed point is unaffected).
+    if matches!(&node, CustomNode::Mapping { pairs, .. } if pairs.is_empty())
+        && let Some(text) = p.pending_leading.take()
+    {
+        node.set_leading_comment(crate::ast::Comment {
+            text: std::sync::Arc::from(text.as_str()),
+            standalone: true,
+        });
+    }
+    Ok(node)
 }
 
 struct Parser<'a> {
@@ -1681,6 +1697,19 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 mod tests {
     use super::*;
     use crate::ast::{CustomNode, ScalarStyle};
+
+    #[test]
+    fn comment_only_document_keeps_its_note_on_the_root() {
+        // A `# …` line with no following key used to drop on re-parse, so
+        // the writer fixed point drifted (`# note` → parse → `` ). The
+        // leftover standalone note now lands on the otherwise-empty root
+        // table and survives a second emit unchanged.
+        let node = from_toml("# only note\n").unwrap();
+        let text = crate::toml::to_toml(&node).unwrap();
+        assert_eq!(text, "# only note\n");
+        let again = crate::toml::to_toml(&from_toml(&text).unwrap()).unwrap();
+        assert_eq!(again, text);
+    }
 
     fn parse_keys(node: &CustomNode) -> Vec<String> {
         let CustomNode::Mapping { pairs, .. } = node else {

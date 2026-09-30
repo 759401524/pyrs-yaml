@@ -36,7 +36,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     // dropped on a TOML -> hub -> TOML round trip. Native TOML parses place
     // the first note on the first key instead, so this stays a no-op there.
     if let Some(c) = node.leading_comment() {
-        let _ = writeln!(out, "# {}", c.text);
+        let _ = writeln!(out, "# {}", c.text.trim());
     }
     let mut sections: Vec<(String, &CustomNode, Option<&CustomNode>)> = Vec::new();
     let mut first_pair = true;
@@ -80,12 +80,12 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
             out.push('\n');
         }
         if let Some(c) = leading {
-            let _ = writeln!(out, "# {}", c.text);
+            let _ = writeln!(out, "# {}", c.text.trim());
         }
         let header_inline = tbl.comment();
         match header_inline {
             Some(c) if !c.standalone => {
-                let _ = writeln!(out, "[{name}] # {}", c.text);
+                let _ = writeln!(out, "[{name}] # {}", c.text.trim());
             }
             _ => {
                 let _ = writeln!(out, "[{name}]");
@@ -121,13 +121,13 @@ fn emit_pair(
         .leading_comment()
         .or_else(|| key_node.comment().filter(|c| c.standalone));
     if let Some(c) = leading {
-        let _ = writeln!(out, "# {}", c.text);
+        let _ = writeln!(out, "# {}", c.text.trim());
     }
     let value_text = value_str(value_node)?;
     if let Some(c) = value_node.comment()
         && !c.standalone
     {
-        let _ = writeln!(out, "{key_str} = {value_text} # {}", c.text);
+        let _ = writeln!(out, "{key_str} = {value_text} # {}", c.text.trim());
     } else {
         let _ = writeln!(out, "{key_str} = {value_text}");
     }
@@ -230,14 +230,14 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                 let count = pairs.len();
                 for (idx, (k, v)) in pairs.iter().enumerate() {
                     if let Some(c) = k.leading_comment() {
-                        out.push_str(&format!("  # {}\n", c.text));
+                        out.push_str(&format!("  # {}\n", c.text.trim()));
                     }
                     let key_str = scalar_key(k)?;
                     let val = value_str(v)?;
                     let trail = v
                         .comment()
                         .filter(|c| !c.standalone)
-                        .map(|c| format!(" # {}", c.text))
+                        .map(|c| format!(" # {}", c.text.trim()))
                         .unwrap_or_default();
                     let sep = if idx + 1 < count { "," } else { "" };
                     out.push_str(&format!("  {key_str} = {val}{sep}{trail}\n"));

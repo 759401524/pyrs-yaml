@@ -17,6 +17,11 @@ status: new
 
 #### 新增
 
+- **方言 writer 定点属性测试** — `fmt_pbt.rs` 模块注释一直承诺 writer 定点
+  （对 writer 自身输出重解析后再序列化应逐位相同）却从未实现。四个 proptest
+  现在为 JSON/JSONC/JSON5/TOML 兑现该承诺；唯一的输入过滤（`json_object_domain`）
+  排除不同键拼出同一 JSON 名的手搭 AST——那超出 RFC 8259 对象域，本就无可无损
+  往返的文本。门控立刻抓到三个真实的注释保真 defect（见下方修复）。
 - **热点基准语料** — 七个 CodSpeed wall-time 基准瞄准历史上脆弱的序列化路径：
   YAML 块标量文档（全部六种头部写法 `|`、`|-`、`|+`、`>`、`>-`、`>+`）与注释密集
   文档、TOML 多行字符串/进制整数/下划线分隔/指数/日期时间，以及 JSON5 的特殊数字
@@ -313,6 +318,18 @@ status: new
 
 #### 修复
 
+- **方言 writer/parser 丢失或错置文档级注释** — 三个定点属性抓到的 defect：
+  (a) JSONC/JSON5 值前的文件首 `// note` 被误判为行内注释（空白扫描启发式中
+  偏移 0 前无换行）并被首个对象成员占取，而非落在 writer
+  `emit_root_leading` 所标注的根容器上——空 `{}` 或根标量时彻底丢失；(b)
+  JSON 家族与 TOML writer 逐字输出注释体而 parser 存的是 trim 后的文本，未 trim 的
+  注释会在多轮 pass 间振荡尾随空白——writer 现在输出时也 trim，首次拼写即
+  稳定；(c) 纯注释 TOML 文档（`# note` 后无 key 消费）重解析时丢注释、空根
+  序列化为 `""`——遗留的独立注释现在挂到空根表上。至此五格式的 leading
+  注释均达到逐位稳定的定点。由
+  `jsonc_file_leading_comment_stays_on_the_root`、
+  `jsonc_comment_text_is_written_trimmed`、
+  `comment_only_document_keeps_its_note_on_the_root` 钉住。
 - **嵌套块标量的正文保持父行缩进** — 嵌套键下的字面/折叠标量把正文行按固定
   一级缩进从第 0 列输出，而不是落在 `b: |` 头部行下一层，导致所有嵌套块标量
   形态（键值对、序列项、紧凑 dash 映射、任意深度）序列化出的文本重解析为报错

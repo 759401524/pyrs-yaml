@@ -135,12 +135,31 @@ pub fn from_json_with_options(
         pending_comment: None,
     };
     p.ws();
+    // A file-leading note belongs to the root container itself, mirroring
+    // the writer's `emit_root_leading` placement. Claim it from the slot
+    // before descending so the first member or element cannot steal it —
+    // otherwise `// A\n{"k":…}` re-reads with the note on the key and the
+    // JSONC/JSON5 writer fixed point drifts.
+    let root_leading = p.pending_comment.take();
     let value = p.value()?;
     p.ws();
     if p.pos != p.s.len() {
         return Err(p.err("trailing characters after the JSON value"));
     }
-    Ok(value)
+    // File-trailing notes are claimed by the first member or element when
+    // one exists, but an empty container (`{}` / `[]`) or a root scalar
+    // leaves them dangling in `pending_comment` — they would silently
+    // vanish from the AST and break the JSONC/JSON5 writer fixed point.
+    // Attach any leftover note to the root node as well.
+    let mut root = value;
+    if let Some(pc) = root_leading {
+        root.set_leading_comment(crate::ast::Comment {
+            text: std::sync::Arc::from(pc.text.as_str()),
+            standalone: true,
+        });
+    }
+    p.flush_pending(&mut root);
+    Ok(root)
 }
 
 struct Parser<'a> {
@@ -201,7 +220,11 @@ impl<'a> Parser<'a> {
         // following comment as `own_line` unless we cross another
         // non-whitespace token before reaching it. That is the JSONC
         // analogue of the TOML model's standalone vs trailing split.
-        let mut own_line_seen = false;
+        // A comment at input offset 0 (file-leading) is also on its own
+        // line even though no newline precedes it in the buffer; seed the
+        // flag so it is classified standalone rather than as a trailing
+        // note the writer would drop on an empty/root container.
+        let mut own_line_seen = self.pos == 0;
         loop {
             match self.peek() {
                 Some(b' ' | b'\t') => self.pos += 1,
@@ -1199,6 +1222,34 @@ mod tests {
         let a = crate::json::to_json_text(&want).unwrap();
         let b = crate::json::to_json_text(&got).unwrap();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn jsonc_file_leading_comment_stays_on_the_root() {
+        // A standalone note on line 1 belongs to the root container
+        // (mirroring the writer's `emit_root_leading`), not to the first
+        // member: it must survive re-parse on an empty container and keep
+        // the JSONC/JSON5 writer output a fixed point.
+        let round = |src: &str| crate::json::to_jsonc_text(&from_jsonc(src).unwrap()).unwrap();
+        assert_eq!(round("// A\n{}"), "// A\n{}");
+        let once = round("// A\n{\"k\": 1}");
+        assert!(once.starts_with("// A\n"), "{once}");
+        assert_eq!(round(&once), once);
+        // JSON5 rides the same root-attachment path.
+        let round5 = |src: &str| crate::json::to_json5_text(&from_json5(src).unwrap()).unwrap();
+        assert_eq!(round5("// A\n{}"), "// A\n{}");
+    }
+
+    #[test]
+    fn jsonc_comment_text_is_written_trimmed() {
+        // The parser stores comment bodies trimmed; the writer must emit
+        // them trimmed too, or `//  spaced  ` would oscillate trailing
+        // whitespace across passes (the fixed point demands a stable
+        // spelling from the first emit onward).
+        let got = crate::json::to_jsonc_text(&from_jsonc("//   spaced   \n{}").unwrap()).unwrap();
+        assert_eq!(got, "// spaced\n{}");
+        let again = crate::json::to_jsonc_text(&from_jsonc(&got).unwrap()).unwrap();
+        assert_eq!(again, got);
     }
 
     #[test]
