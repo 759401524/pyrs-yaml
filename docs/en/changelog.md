@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **tomlkit cross-library parity for `load_toml`** — objective §测试
+  覆盖 3 names tomlkit as an oracle; previously tomlkit only appeared
+  in benchmarks. `tests/test_toml_crosslib.py` adds 24 tests covering
+  11 canonical constructs with three-way agreement (pyrs/tomlkit/
+  tomllib), pins the `>i64` spec-strict divergence, and asserts the
+  `-2^63` boundary. Optional dep, skipif clean.
 - **orjson as strict-JSON oracle for `load_json`** — objective
   §测试覆盖 3 required correctness parity against orjson; previously orjson
   only appeared in benchmarks. 16 canonical documents assert byte-for-byte
