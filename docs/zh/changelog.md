@@ -258,6 +258,16 @@ status: new
 
 #### 变更
 
+- **granit-parser 1.1 → 1.3** — 将 YAML 事件解析器从 1.1.0 升级到 1.3.0。
+  这是 1.x 版本线内语义化版本兼容的次级升级：1.2.0 为特殊文档的限制新增了可选的
+  `Options` 字段，1.2.1 按 YAML 规范收紧了若干解析结果，1.3.0 为 `Input` trait
+  新增了两个带默认实现的方法（`fetch_block_scalar_line` 与
+  `take_quoted_scalar_ascii_chunk`），让扫描器更快地跳过块级与引号标量字节。
+  本项目通过 `Parser::new_from_str` 使用解析器，只实现 `EventReceiver` /
+  `SpannedEventReceiver`，从不实现 `Input`，因此无需改动源码——新增的 trait
+  方法解析到其默认实现。全套测试通过：`cargo nextest run --all`（359）、
+  `pytest`（1436 + 43 numpy）、纯 Rust `--no-default-features` 构建，且 YAML
+  测试套件合规门控保持不变。
 - **原生 JSON 与 TOML 内核** — `serde_json` 和 `toml_edit` 依赖已全部移除。
   `pyrs-yaml-core` 自带 RFC 8259 JSON 引擎（字节级扫描、数字保留原文，因此
   `from_json → to_json` 字节稳定且不会丢失大整数/浮点精度，行/列错误带类型，
