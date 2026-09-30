@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **orjson as strict-JSON oracle for `load_json`** — objective
+  §测试覆盖 3 required correctness parity against orjson; previously orjson
+  only appeared in benchmarks. 16 canonical documents assert byte-for-byte
+  agreement, and 12 non-strict forms (comments, trailing commas, single
+  quotes, `NaN`/`Infinity`/`-Infinity`, hex, leading zero, `+.5`, `5.`) are
+  rejected by both orjson and `load_json`. orjson rejects the bare literals
+  that stdlib `json.loads` accepts under `allow_nan=True`, so it is the
+  stronger RFC 8259 oracle. Optional dep, `skipif` clean.
 - **CLI ↔ Binding parity gate (`tests/test_cli_binding_parity.py`)** — the
   Pillar 1 invariant is now an executable contract: CLI's registered
   commands are checked against a fixed 18-name inventory, every `to-X` /

@@ -17,6 +17,14 @@ status: new
 
 #### 新增
 
+- **orjson 作为 `load_json` 的严格 JSON oracle** — 目标 §测试
+  覆盖 3 要求与 orjson 逐位对比；之前 orjson 仅用于基准。
+  16 个规范文档断言逐字节对齐，12 个非规范形式（注释、尾逗号、
+  单引号、裸 `NaN`/`Infinity`/`-Infinity`、十六进制、前导 0、
+  `+.5`、`5.`）两侧一同拒收。orjson 拒绝 stdlib `json.loads` 在
+  `allow_nan=True` 下默认的裸字面量，严格度上高于 stdlib，
+  作为 RFC 8259 oracle 比 json.loads 更接近标准。可选依赖，
+  `skipif` 自动降级。
 - **CLI ↔ Binding 对等 gate（`tests/test_cli_binding_parity.py`）** —
   Pillar 1「CLI 与 Python Binding 两端均需具备同等功能」从文档声明
   升级为可执行契约：CLI 注册命令需与 18 命令固定清单对齐（过滤 cyclopts

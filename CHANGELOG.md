@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **orjson as strict-JSON oracle for `load_json`** — Pillar 2 §测试覆盖 3
+  「与 orjson 逐位比对」 previously only ran through benchmark, not
+  correctness parity. `tests/test_json_crosslib.py` now asserts
+  `pyrs_yaml.load_json(doc) == orjson.loads(doc)` on 16 canonical
+  documents (objects/arrays/scalars/simple escapes/\u escapes/raw non-
+  ASCII/duplicate keys), and `test_load_json_rejects_what_orjson_rejects`
+  cross-verifies 12 non-strict forms (comments, trailing commas, single
+  quotes, bare `NaN`/`Infinity`/`-Infinity`, hex, leading zero, `+.5`,
+  `5.`). orjson rejects `NaN`/`Infinity`/`-Infinity` while the stdlib
+  `json.loads` accepts them under `allow_nan=True` — pinning orjson
+  as the authority gives the strict loader a stronger spec-conformant
+  oracle than stdlib alone. Tests are `skipif(orjson is None)` so the
+  suite runs identically without the optional dep.
 - **CLI ↔ Binding parity gate (`tests/test_cli_binding_parity.py`)** —
   Pillar 1's「CLI 与 Python Binding 两端均需具备同等功能」claim was
   documented in the changelog but only enforced by convention. This test
