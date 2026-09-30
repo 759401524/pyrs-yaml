@@ -514,6 +514,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   buffer borrow in the binding layer; every other `py.detach` site was audited
   and touches Rust-owned state only (AST, source text, `BufWriter<File>`).
   Covered by `tests/test_numpy.py::TestNumpyConcurrency`.
+  Reported by [@bourumir-wyngs](https://github.com/bourumir-wyngs) in #165.
 - **Repeated alias references no longer resolve to `None`** — `to_dict()`
   expanded aliases behind a *global* visited-anchor set that was never
   cleared, so only the first reference to any anchor produced a value and
@@ -534,7 +535,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     merge resolution and the AST itself were audited and are unaffected. Six
     new PyYAML-parity cases in `tests/test_direct_load.py` pin the agreement,
     and two tests that had pinned the buggy output as expected behaviour were
-    rewritten.
+    rewritten. Reported by [@bourumir-wyngs](https://github.com/bourumir-wyngs)
+    in #163.
 - **Document header comments no longer vanish on nested first values** —
   the parser kept one shared comment slot for all in-progress containers,
   so a nested container start clobbered a standalone header note before

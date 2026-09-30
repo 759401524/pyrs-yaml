@@ -250,6 +250,7 @@ status: new
   이는 bindings 계층의 **유일한** `unsafe` 버퍼 빌림이며, 나머지 모든
   `py.detach` 사이트는 Rust 소유 상태(AST, 소스 텍스트, `BufWriter<File>`)만
   건드림을 확인했다. 회귀 커버리지는 `tests/test_numpy.py::TestNumpyConcurrency`.
+  [@bourumir-wyngs](https://github.com/bourumir-wyngs)의 #165 보고.
 - **반복된 별칭 참조가 `None`으로 해석되지 않음** — `to_dict()`가 **전역** visited
   앵커 집합으로 별칭을 확장하면서 이를 한 번도 지우지 않아, 각 앵커의 **첫
   참조만** 값을 만들고 이후의 참조는 조용히 `None`으로 타락했다:
@@ -268,6 +269,7 @@ status: new
     영향을 받지 않음을 확인했다. `tests/test_direct_load.py`에 PyYAML과의
     일치 여부를 고정하는 6개 케이스를 추가했으며, 잘못된 출력을 기대값으로
     고정하던 테스트 2개를 다시 작성했다.
+    [@bourumir-wyngs](https://github.com/bourumir-wyngs)의 #163 보고.
 - **첫 키 값이 중첩 컨테이너일 때 문서 헤더 주석 소실 수정** — 파서가가 진행 중인
   모든 컨테이너에 단일 주석 슬롯을 공유했고, 중첩 컨테이너 start가 아직 자리 잡지
   못한 standalone 헤더를 지웠다(parse 단계에서 폐기, `to_dict`엔 보이지 않고 `dump`에서
