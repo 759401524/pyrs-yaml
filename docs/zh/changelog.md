@@ -17,6 +17,13 @@ status: new
 
 #### 新增
 
+- **`load_json` 属性测试 + CodSpeed 基准** — Hypothesis
+  （`test_load_json_matches_stdlib_json` 与
+  `test_load_json_matches_load_jsonc_on_strict_domain`）为每个生成的
+  规范文档固定严格 loader 与 `json.loads` 对齐，并断言两个 loader 在
+  strict 域逐字节等价；快速路径越权或回退漂移将作为属性失败暴露。
+  三个 CodSpeed wall-time 基准（`test_load_json_large` / `_floats` /
+  `_escapes`）镜像 `load_jsonc` 样本，将严格 binding 层纳入回归追踪。
 - **`load_json`（严格）——补齐 `load_*` 家族对称** — binding 已有 `load_jsonc` /
   `load_json5` / `load_toml`，唯独缺严格 RFC 8259 对应物。`pyrs_yaml.load_json(s)`
   在规范输入上与 `json.loads` 逐位对齐，并对 JSONC/JSON5 扩展（`//`、`/* */`、

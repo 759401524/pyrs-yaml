@@ -338,6 +338,36 @@ def test_load_jsonc_escapes(benchmark):
     assert len(result["logs"]) == 50
 
 
+# ── Strict `load_json` mirrors ──
+# The three benches above exercise `load_jsonc` on canonical-strict payloads,
+# which is byte-identical to what `load_json` sees (same `json_fast::try_load`
+# scanner). Pinning the strict loader keeps its binding-level overhead tracked
+# and guarantees that a future divergence (e.g. widening the fast path or
+# routing the fallback through `from_jsonc`) shows up as a regression on both
+# sides independently, not just one.
+
+
+def test_load_json_large(benchmark):
+    """Larger strict-JSON payload through the strict loader."""
+    result = benchmark(pyrs_yaml.load_json, CONFIG_JSON_LARGE)
+    assert result["server"]["workers"] == 4
+    assert len(result["items"]) == 50
+
+
+def test_load_json_floats(benchmark):
+    """Float-bearing strict JSON through the loader (float fast branch)."""
+    result = benchmark(pyrs_yaml.load_json, CONFIG_JSON_FLOATS)
+    assert result["thresholds"]["cpu"] == 0.75
+    assert len(result["metrics"]) == 50
+
+
+def test_load_json_escapes(benchmark):
+    """Escape-bearing strict JSON through the loader (escape decoder branch)."""
+    result = benchmark(pyrs_yaml.load_json, CONFIG_JSON_ESCAPES)
+    assert result["logs"][0]["msg"] == "line\n0\tvalue"
+    assert len(result["logs"]) == 50
+
+
 def test_safe_dump_ndarray(benchmark):
     array = np.arange(4096, dtype="float64").reshape(64, 64)
     result = benchmark(pyrs_yaml.safe_dump, array)

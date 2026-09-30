@@ -17,6 +17,7 @@ status: new
 
 #### 追加
 
+- **`load_json` プロパティテスト + CodSpeed ベンチ** — Hypothesis（`test_load_json_matches_stdlib_json` と `test_load_json_matches_load_jsonc_on_strict_domain`）が生成されたすべての正規ドキュメントで STRICT loader と `json.loads` の一致、および両 loader の strict 領域での逐字一致を固定。高速経路の拡大や AST 経路の漂移はプロパティ失敗として顕在化する。3 件の CodSpeed wall-time ベンチ（`test_load_json_large` / `_floats` / `_escapes`）は `load_jsonc` のサンプルをミラーし、STRICT binding 層自体を回帰追跡する。
 - **`load_json`（厳格）— `load_*` 一族の対称性を完成** — binding は既に `load_jsonc` / `load_json5` / `load_toml` を持っていたが、厳格 RFC 8259 の対応関数が欠けていた。`pyrs_yaml.load_json(s)` は正規入力では `json.loads` と逐字一致し、JSONC/JSON5 拡張（`//`、`/* */`、末尾カンマ、シングルクォート、裸の `Infinity`/`NaN`、`0x…`）を型付き `YamlParseError` で拒否。高速経路は `load_jsonc` と `json_fast::try_load` を共有（非正規バイトはすべて bail、構文の拡大リスクはゼロ）；拒否対象は STRICT な `from_json` AST 経路に流れる。これにより下記の CLI ↔ Binding 対等宣言最後のギャップが埋まり、ピラー 1 が完成。`pyrs_yaml.__init__` から再エクスポートし `__all__` に追加；`.pyi` は `maturin generate-stubs` で再生成。
 - **方言 writer の固定点プロパティ** — `fmt_pbt.rs` はヘッダで writer 固定点（writer 出力を再パース→再シリアライズすると逐字一致）を約束していたが未実装だった。4 つの proptest が JSON/JSONC/JSON5/TOML でこれを果たす（唯一の入力フィルタは別々のキーが同一の JSON 名になる手組み AST を除外——RFC 8259 の object 領域外）。このゲートで注释忠実性の実バグ 3 件を即座に発見（下記の修正参照）。
 - **ホットスポットベンチコーパス** — 7 件の CodSpeed wall-time ベンチが歴史的に脆弱なシリアライズ経路を狙う：YAML ブロックスカラー文書（6 種のヘッダ表記 `|`、`|-`、`|+`、`>`、`>-`、`>+`）とコメント密度文書、TOML マルチライン文字列/進数整数/アンダーセリエータ/指数/日付時、JSON5 の特殊数値形式（16 進、`+.1`、`5.`、`Infinity`、`NaN`、シングルクオート、末尾カンマ）。固定種は `tests/data/yaml_samples.py`、ベンチは `tests/test_benchmark_api.py`。このコーパス構築こそが下記のネスト式ブロックスカラーのインデントバグを発見した。

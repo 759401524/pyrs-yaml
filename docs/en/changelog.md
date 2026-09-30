@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **`load_json` property tests + CodSpeed benches** — Hypothesis
+  (`test_load_json_matches_stdlib_json` + `test_load_json_matches_load_jsonc_on_strict_domain`)
+  pins the strict loader against `json.loads` for every generated canonical
+  document and asserts both loaders agree on the strict domain; a widening of
+  the fast path or a fallback drift now surfaces as a property failure.
+  Three CodSpeed benches (`test_load_json_large` / `_floats` / `_escapes`)
+  mirror the load_jsonc samples so the strict binding layer is tracked.
 - **`load_json` (strict) — completes the `load_*` family parity** — the binding
   exposed `load_jsonc` / `load_json5` / `load_toml` but the strict RFC 8259
   counterpart was missing. `pyrs_yaml.load_json(s)` now matches `json.loads` on
