@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON string-escape fast path (perf)** — `load_jsonc` decodes the eight simple
+  two-byte escapes inline instead of bailing the whole doc to the AST path; escape
+  JSON stays on the fast path (~15x faster than the AST route). Matches
+  `json.loads`; `\u`/invalid escapes still route through the AST path.
 - **JSON float fast path (perf)** — `load_jsonc` parses canonical floats
   (decimals/exponents) directly into Python objects instead of bailing the whole
   doc to the AST path; values match `json.loads` exactly (correctly-rounded

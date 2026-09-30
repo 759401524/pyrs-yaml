@@ -203,9 +203,31 @@ class TestJsonLoadFastPath:
         got = pyrs_yaml.load_jsonc('{"a": 1.5, "b": 2e3, "c": -0.25, "i": 7}')
         assert got == {"a": 1.5, "b": 2000.0, "c": -0.25, "i": 7}
 
-    def test_escapes_and_unicode_bail_correctly(self):
-        assert pyrs_yaml.load_jsonc('{"s": "a\\nb"}') == {"s": "a\nb"}
-        assert pyrs_yaml.load_jsonc('{"u": "\\u00e9"}') == {"u": "\u00e9"}
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            (r'{"s": "a\nb"}', {"s": "a\nb"}),
+            (r'{"s": "a\tb"}', {"s": "a\tb"}),
+            (r'{"s": "a\"b"}', {"s": 'a"b'}),
+            (r'{"s": "a\\b"}', {"s": "a\\b"}),
+            (r'{"s": "a\/b"}', {"s": "a/b"}),
+            (r'{"s": "\b\f\r\n\t"}', {"s": "\b\f\r\n\t"}),
+            ('{"s": "café \U0001f600"}', {"s": "café \U0001f600"}),  # raw multibyte passthrough
+            (r'{"s": "\ud83d\ude00"}', {"s": "\U0001f600"}),  # \u -> bails to AST, combines
+        ],
+    )
+    def test_string_escape_parity_with_json_loads(self, raw, expected):
+        # The inline escape decoder must agree with json.loads; \u and any
+        # construct it declines still route through the AST path unchanged.
+        assert pyrs_yaml.load_jsonc(raw) == json.loads(raw) == expected
+
+    def test_invalid_escape_still_errors(self):
+        # `\q` is not a JSON escape: the fast path bails and the AST path raises,
+        # matching json.loads.
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_jsonc(r'{"s": "a\qb"}')
+        with pytest.raises(ValueError):
+            json.loads(r'{"s": "a\qb"}')
 
     def test_trailing_content_and_bad_tokens_still_error(self):
         with pytest.raises(pyrs_yaml.YamlParseError):
