@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and trailing/double underscores (`1_`, `1__0`) are now rejected. toml-test
   `invalid/integer` + `invalid/float` surfaced 23 mis-acceptances (total 71 -> 48);
   the prior "radix integers can be signed" behavior was a spec violation.
+- **TOML inline-table key-collision strictness** — an inline table rejects a dotted
+  key that equals, extends, or is shadowed by a defined path (`{ a = 1, a.b = 2 }`,
+  `{ a.b = 1, a.b.c = 2 }`); sibling paths (`{ a.b = 1, a.c = 2 }`) stay legal.
+  toml-test `invalid/inline-table` duplicate-key/overwrite surfaced these (total 48 -> 39).
 - **TOML non-ASCII string crash fixed** — the basic and multi-line basic string parsers
   advanced byte-wise and could slice mid-character on multi-byte input (U+00A0, …),
   panicking; both now consume whole characters. Found via the toml-test corpus; completes

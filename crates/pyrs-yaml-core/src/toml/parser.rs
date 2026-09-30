@@ -974,6 +974,9 @@ impl<'a> Parser<'a> {
     fn parse_inline_table(&mut self) -> Result<TomlValue, ParseError> {
         self.expect_byte(b'{', "expected `{`")?;
         let mut entries = Vec::new();
+        // Segment paths already defined in this inline table, to detect dotted
+        // key collisions (`a` vs `a.b`, `a.b` vs `a.b.c`) per TOML rules.
+        let mut defined_paths: Vec<Vec<String>> = Vec::new();
         self.skip_inline_ws();
         if self.peek() == Some(b'}') {
             self.pos += 1;
@@ -997,7 +1000,23 @@ impl<'a> Parser<'a> {
                 trailing,
                 blank_before: false,
             };
-            entries.push((key.join("."), v, anns));
+            // toml-test strictness: inline tables reject a key that collides
+            // with any already-defined path - equal, or one a prefix of the
+            // other at segment boundaries (`a` then `a.b`, or `a.b` then
+            // `a.b.c`). Valid sibling dotted keys (`{ a.b = 1, a.c = 2 }`) do
+            // not collide because neither path is a prefix of the other.
+            let conflict = defined_paths
+                .iter()
+                .any(|q| q[..q.len().min(key.len())] == key[..q.len().min(key.len())]);
+            if conflict {
+                return Err(self.err(&format!(
+                    "duplicate key `{}` in inline table",
+                    key.join(".")
+                )));
+            }
+            let joined_key = key.join(".");
+            defined_paths.push(key.clone());
+            entries.push((joined_key, v, anns));
             self.skip_inline_ws();
             if self.peek() == Some(b',') {
                 self.pos += 1;

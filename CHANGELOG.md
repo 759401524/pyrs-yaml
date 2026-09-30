@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corpora surfaced 23 such mis-acceptances (mis-acceptance total 71 -> 48). The
   earlier "radix integers can carry a sign" behavior was a spec violation and is
   now a rejection assertion.
+- **TOML inline-table key-collision strictness** — an inline table now rejects a
+  dotted key that equals, extends, or is shadowed by an already-defined path
+  (`{ a = 1, a.b = 2 }`, `{ a.b = 1, a = 2 }`, `{ a.b = 1, a.b.c = 2 }`,
+  `{ a = { b = 1 }, a.c = 2 }`), while sibling dotted paths (`{ a.b = 1, a.c = 2 }`)
+  stay legal. toml-test's `invalid/inline-table` `duplicate-key-*` and `overwrite-*`
+  groups surfaced these (mis-acceptance total 48 -> 39).
 - **TOML non-ASCII string crash fixed** — the basic and multi-line basic string
   parsers advanced byte-wise and could slice a `&str` mid-character on multi-byte
   content (e.g. U+00A0, U+0251), panicking. Surfaced by the toml-test conformance
