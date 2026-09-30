@@ -390,6 +390,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Wrongly-indented flow sequence continuation is rejected again** — upgrading
+  the YAML parser to granit-parser 1.3 (see *Changed*) silently began *accepting*
+  a multi-line flow collection whose continuation line is indented no further
+  than its enclosing block key (yaml-test-suite `9C9N`: `flow: [a,` then `b,` at
+  column 0), regressing strictness `405/406 → 404/406` — invisible to the suite's
+  ≥95% threshold gate, so it passed green CI. An in-tree post-parse guard in the
+  AST receiver now tracks the enclosing block indentation and rejects an
+  under-indented flow continuation, restoring `405/406`. The guard uses only
+  spans the parser already computes, so correctly indented multi-line flows are
+  untouched. `9C9N` is now pinned as a per-case hard gate (literal input, no
+  `skipif`) in `tests/test_yaml_suite.py`, plus a Rust unit test
+  (`parser::tests::flow_continuation_under_indented_is_rejected`).
 - **Self-referential merge keys no longer overflow the native stack** — a `<<`
   whose expansion points back at its own anchor (`a: &a` containing
   `b: {<<: *a}`) expanded forever inside `resolve_merge_keys`, exhausting the

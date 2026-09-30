@@ -295,6 +295,15 @@ status: new
 
 #### 修复
 
+- **错误缩进的流序列续行再次被拒绝** — 将 YAML 解析器升级到 granit-parser 1.3
+  （见*变更*）后，开始静默地*接受*这样的输入：多行流集合的续行缩进不比其所在块键
+  更深（yaml-test-suite `9C9N`：`flow: [a,` 后接列 0 的 `b,`），使严格性从
+  `405/406` 回退到 `404/406`——由于 suite 的 ≥95% 阈值门，它对 CI 不可见，因而
+  带着“绿”混过。现在 AST receiver 里一个解析后的 in-tree 守卫会跟踪所在块的缩进，
+  并拒绝缩进不足的流续行，恢复 `405/406`。守卫只用解析器已算好的 span，因此正确
+  缩进的多行流不受影响。`9C9N` 现被固化为逐例硬门（字面输入、无 `skipif`）写进
+  `tests/test_yaml_suite.py`，另加一个 Rust 单测
+  （`parser::tests::flow_continuation_under_indented_is_rejected`）。
 - **自引用合并键不再溢出原生栈** — 展开后指回自身锚点（`a: &a` 内含
   `b: {<<: *a}`）的 `<<` 会在 `resolve_merge_keys` 中无限展开，耗尽原生栈并
   拖垮整个解释器进程（Windows 退出码 `0xC00000FD`，即段错误）。循环 guard

@@ -94,6 +94,9 @@ fn load_ast<'a>(
     if let Some(err) = receiver.duplicate_key_error {
         return Err(err);
     }
+    if let Some(err) = receiver.flow_indent_error {
+        return Err(err);
+    }
     if receiver.max_depth_exceeded {
         return Err(ParseError::MaxDepthExceeded(DepthError(max_depth)));
     }
@@ -410,6 +413,12 @@ struct AstReceiver<'a> {
     duplicate_key_error: Option<ParseError>,
     /// Whether any `<<` merge key was detected during parsing
     has_merge_key: bool,
+    /// Set when a multi-line flow collection has a continuation line indented
+    /// no further than its enclosing block collection (yaml-test-suite `9C9N`).
+    /// granit-parser 1.3 wrongly accepts these; this in-tree guard restores the
+    /// strictness the v0.11.5 audit pinned. Stored because `on_event` cannot
+    /// return a `Result`, mirroring `duplicate_key_error`.
+    flow_indent_error: Option<ParseError>,
 }
 
 #[derive(Debug)]
@@ -422,6 +431,10 @@ enum ParseState {
         tag: Option<Tag>,
         flow_style: bool,
         start_byte: usize,
+        /// `(flow_open_byte, block_ancestor_indent_col)` for a multi-line flow
+        /// collection used as a block value; `None` for block containers and
+        /// for flows with no enclosing block collection (document-root flows).
+        guard: Option<(usize, usize)>,
     },
     /// Building a sequence
     Sequence {
@@ -430,7 +443,27 @@ enum ParseState {
         tag: Option<Tag>,
         flow_style: bool,
         start_byte: usize,
+        guard: Option<(usize, usize)>,
     },
+}
+
+/// Extract the flow-indent guard of a parse state, or `None` for block
+/// containers (a guard only applies while inside a flow collection).
+fn container_guard(state: &ParseState) -> Option<(usize, usize)> {
+    match state {
+        ParseState::Mapping {
+            flow_style, guard, ..
+        }
+        | ParseState::Sequence {
+            flow_style, guard, ..
+        } => {
+            if *flow_style {
+                *guard
+            } else {
+                None
+            }
+        }
+    }
 }
 
 impl<'a> AstReceiver<'a> {
@@ -458,6 +491,7 @@ impl<'a> AstReceiver<'a> {
             allow_duplicate_keys,
             duplicate_key_error: None,
             has_merge_key: false,
+            flow_indent_error: None,
         }
     }
 
@@ -607,6 +641,77 @@ impl<'a> AstReceiver<'a> {
         byte_offset < self.yaml_text.len()
             && self.yaml_text.as_bytes()[byte_offset] == expected_byte
     }
+
+    /// Zero-based visual column of a byte offset (chars from its line start).
+    /// Leading indentation is ASCII whitespace, so byte-column == visual column
+    /// for the indentation check that uses it.
+    fn column_of_byte(&self, byte: usize) -> usize {
+        let byte = byte.min(self.yaml_text.len());
+        let before = &self.yaml_text[..byte];
+        before.len() - before.rfind('\n').map(|i| i + 1).unwrap_or(0)
+    }
+
+    /// Column of the nearest enclosing *block* collection (skipping flow ones).
+    /// `None` when the container sits directly under the document root, i.e. a
+    /// document-root flow collection that carries no block indentation to
+    /// violate.
+    fn nearest_block_ancestor_indent(&self) -> Option<usize> {
+        for state in self.stack.iter().rev() {
+            let (flow_style, start_byte) = match state {
+                ParseState::Mapping {
+                    flow_style,
+                    start_byte,
+                    ..
+                }
+                | ParseState::Sequence {
+                    flow_style,
+                    start_byte,
+                    ..
+                } => (*flow_style, *start_byte),
+            };
+            if !flow_style {
+                return Some(self.column_of_byte(start_byte));
+            }
+        }
+        None
+    }
+
+    /// Guard for a freshly-opened flow collection: `(open_byte, ancestor_col)`
+    /// when it is a value inside a block collection (so its continuation lines
+    /// must out-indent the block), else `None`. Called before the container is
+    /// pushed, so `self.stack` holds only its ancestors.
+    fn flow_guard(&self, flow_style: bool, start_byte: usize) -> Option<(usize, usize)> {
+        if !flow_style {
+            return None;
+        }
+        self.nearest_block_ancestor_indent()
+            .map(|anc| (start_byte, anc))
+    }
+
+    /// Reject a flow token that resumes on a later line at an indentation no
+    /// deeper than its enclosing block collection -- the `9C9N` pattern that
+    /// granit-parser 1.3 wrongly accepts. Checked for every scalar inside an
+    /// open flow, using only spans granit already computed, so correctly
+    /// indented multi-line flows (the valid majority) are untouched.
+    fn check_flow_continuation(&mut self, byte: usize) {
+        if self.flow_indent_error.is_some() {
+            return;
+        }
+        let col = self.column_of_byte(byte);
+        let violated = self.stack.iter().any(|state| {
+            container_guard(state).is_some_and(|(open_byte, anc)| {
+                byte > open_byte && self.yaml_text[open_byte..byte].contains('\n') && col <= anc
+            })
+        });
+        if violated {
+            self.flow_indent_error = Some(ParseError::Syntax {
+                message: "YAML parse error: wrongly indented flow collection continuation"
+                    .to_string(),
+                line: 0,
+                col: 0,
+            });
+        }
+    }
 }
 
 impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
@@ -663,6 +768,9 @@ impl<'a> AstReceiver<'a> {
         }
         let line = span.start.line() - 1; // Convert to 0-indexed
         let range = self.span_to_byte_range(&span);
+
+        // `9C9N` guard: a flow entry resuming under-indented is invalid.
+        self.check_flow_continuation(range.start);
 
         let standalone = self.pending_standalone_comment.take();
 
@@ -751,6 +859,7 @@ impl<'a> AstReceiver<'a> {
         else {
             return;
         };
+        let guard = self.flow_guard(flow_style, start_byte);
         self.stack.push(ParseState::Mapping {
             pairs: IndexMap::new(),
             current_key: Box::new(None),
@@ -758,6 +867,7 @@ impl<'a> AstReceiver<'a> {
             tag: tag_obj,
             flow_style,
             start_byte,
+            guard,
         });
     }
 
@@ -829,12 +939,14 @@ impl<'a> AstReceiver<'a> {
         else {
             return;
         };
+        let guard = self.flow_guard(flow_style, start_byte);
         self.stack.push(ParseState::Sequence {
             items: Vec::new(),
             anchor_id,
             tag: tag_obj,
             flow_style,
             start_byte,
+            guard,
         });
     }
 
@@ -992,6 +1104,21 @@ mod tests {
         if let Ok(CustomNode::Sequence { items, .. }) = result {
             assert_eq!(items.len(), 2);
         }
+    }
+
+    #[test]
+    fn flow_continuation_under_indented_is_rejected() {
+        // Regression for the strictness gap granit-parser 1.3 opened
+        // (yaml-test-suite `9C9N`): a multi-line flow collection used as a block
+        // value may not have a continuation line indented at or below the block
+        // key. The in-tree guard rejects it and restores 405/406 compliance.
+        assert!(parse("flow: [a,\nb,\nc]\n", YamlSchema::Core).is_err());
+        // Correctly out-dented continuations still parse (no over-rejection).
+        assert!(parse("flow: [a,\n  b,\n  c]\n", YamlSchema::Core).is_ok());
+        // Single-line flow never has a continuation to check.
+        assert!(parse("flow: [a, b, c]\n", YamlSchema::Core).is_ok());
+        // Same rule via a flow mapping value.
+        assert!(parse("flow: {a: 1,\nb: 2}\n", YamlSchema::Core).is_err());
     }
 
     #[test]
