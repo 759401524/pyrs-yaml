@@ -181,14 +181,19 @@ Deliberate hub-model limits in the TOML spoke, pinned by characterization tests 
 
 ---
 
-## Leaderboard & Performance Status (2026-09-29)
+## Leaderboard & Performance Status (2026-09-30)
 
-Continuous ranking gates run in normal CI (`tests/test_leaderboard.py`, `tests/test_toml_leaderboard.py`); absolute per-op timings live in CodSpeed (`test_benchmark_*`).
+Continuous ranking gates run in normal CI (`tests/test_leaderboard.py`,
+`tests/test_toml_leaderboard.py`, `tests/test_json_leaderboard.py`); absolute
+per-op timings live in CodSpeed (`test_benchmark_*`). Timing gates are deliberately
+**in-process self-relative floors** (a native path vs the AST / round-trip path it
+replaces), never cross-library ranking asserts — those proved flaky on shared CI
+runners (macOS especially) and are tracked in CodSpeed instead.
 
 - **YAML**: top-3 in class enforced against PyYAML / ruamel / ryaml / yaml_rs — pyrs #1-#2 serialize, #2-#3 parse.
-- **TOML**: `load_toml` gated ≥2× faster than the stdlib reference `tomllib` (measured margin ~2.9-4.6× across sizes). A richer top-3 field (taplo / tomlkit / tomli) needs those optional dependencies — deferred pending a dependency decision.
-- **JSON (open optimization target, NOT yet top-3)**: measured `load_jsonc` → dict is ~4.6× slower than C-accelerated stdlib `json.loads`. Root cause: the hub builds a full `CustomNode` AST then walks it to Python objects, whereas `json` scans directly to a dict. Closing this is core-path work (a direct parse→dict fast path, or faster `node_to_pyobject`) and must be driven by CodSpeed flamegraphs, not guessed. No leaderboard gate is added here because none would honestly pass against stdlib.
-- **JSONC / JSON5**: benchmarked (`test_benchmark_api.py`) against pyrs itself for zero-regression tracking; competitive top-3 against `orjson`/`rapidjson` etc. needs optional deps — deferred.
+- **TOML**: `load_toml` gated faster than the stdlib reference `tomllib` (~2.9-4.6× on medium/large); the native writer `doc.to_toml()` is gated against the `to_yaml()` round-trip it replaces and measured ~4.3× `tomli_w` / ~65× `tomlkit` — effectively #1 among installed TOML libraries on both parse and serialize.
+- **JSON (largely optimized; #1 is a C-serializer ceiling)**: `load_jsonc` uses a direct parse→Python fast path (single pass, no intermediate AST) covering objects/arrays, i64 integers, floats, the simple string escapes, booleans/null and escape-free strings — measured **faster than stdlib `json.loads`**, ranking #2 behind `orjson` (fastest-in-class C serializer). Serialize iterated too: a native single-pass writer replacing the old `to_dict()` + `json.dumps` double conversion (~10×), direct key write, and bulk-copy string emission. Open: literal #1 over `orjson` needs an orjson-class from-scratch buffer/number formatter (architectural, parity risk). Output-buffer capacity preallocation was measured (~11% on a 150 KB doc) but **rejected** — the size-estimate walk cancels the saving and a fixed reserve risks small-document regressions.
+- **JSONC / JSON5**: benchmarked (`test_benchmark_api.py`) for zero-regression tracking; competitive ranking against the (few) installed JSONC/JSON5 libraries needs optional deps — deferred pending a dependency decision.
 
 ---
 
