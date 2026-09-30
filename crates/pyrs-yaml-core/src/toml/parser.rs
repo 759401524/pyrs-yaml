@@ -57,8 +57,15 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
         pending_blank: false,
         dialect,
         pending_inline_comment: None,
+        pending_comment_err: None,
     };
     p.parse_document()?;
+    // Comments are scanned by the infallible `take_comment` (several callers live
+    // in non-Result helpers), so a forbidden control byte is accumulated as a
+    // sticky error and surfaced here once the rest of the document parses.
+    if let Some(e) = p.pending_comment_err.take() {
+        return Err(e);
+    }
     Ok(cow_table_to_node(p.root))
 }
 
@@ -87,6 +94,10 @@ struct Parser<'a> {
     /// table on a line of its own. Claimed by the next member as its
     /// `leading` annotation (PR #119 interior-comment fidelity).
     pending_inline_comment: Option<String>,
+    /// First forbidden control-character found inside a comment body, held as a
+    /// deferred error because `take_comment` is infallible (toml-test
+    /// `invalid/control/comment-*`). Surfaced by the document entry point.
+    pending_comment_err: Option<ParseError>,
 }
 
 impl<'a> Parser<'a> {
@@ -141,6 +152,21 @@ impl<'a> Parser<'a> {
         let start = self.pos;
         while !self.eof() && self.peek() != Some(b'\n') && self.peek() != Some(b'\r') {
             self.pos += 1;
+        }
+        // TOML comments may not contain raw control codes (U+0000..U+001F except
+        // tab, plus DEL U+007F). Record the first offense as a sticky error; the
+        // multi-byte-safe byte test never flags a UTF-8 continuation byte.
+        if self.pending_comment_err.is_none() {
+            let mut bad: Option<usize> = None;
+            for i in start..self.pos {
+                if Self::forbidden_control(self.s[i]) {
+                    bad = Some(i);
+                    break;
+                }
+            }
+            if let Some(off) = bad {
+                self.pending_comment_err = Some(self.err_at("control character in comment", off));
+            }
         }
         self.text[start..self.pos].trim().to_string()
     }

@@ -32,8 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TOML control-character strictness** — raw C0 codes (NUL, FF, DLE, US, ...) and
   DEL (U+007F) are now rejected inside basic, literal and multi-line strings (only
   tab, plus newlines in multi-line forms, stay legal). toml-test's `invalid/control`
-  corpus surfaced 13 such mis-accepted documents; comment-body and bare-CR checks
-  are tracked as follow-ups.
+  corpus surfaced 13 such mis-accepted documents; comment bodies now reject the
+  same control codes (5 more `comment-*` documents), leaving bare-CR as a follow-up.
 - **TOML number-literal strictness** — leading-zero decimals (`01`, `-01`), a sign
   on radix-prefixed integers (`+0x1F`, `-0b101` — `signed-int` is decimal-only),
   and trailing/double underscores (`1_`, `1__0`) are now rejected. toml-test
