@@ -238,3 +238,26 @@ class TestSectionHeaderCommentBoundary:
         src = 'key = "v"  # tail\n'
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
         assert "# tail" in out, out
+
+
+class TestNonAsciiStrings:
+    """Multi-byte characters inside TOML strings.
+
+    toml-test surfaced a char-boundary panic when the basic / multi-line string
+    loops advanced byte-wise and sliced mid-character on non-ASCII content
+    (U+00A0, U+0251, U+00A7, ...). Written with unicode escapes so the source has
+    no ambiguous-literal warnings but the runtime string carries the same bytes.
+    """
+
+    def test_basic_string_non_ascii(self):
+        src = 'v = "caf\u00e9\u00a0\u0251\u00a7"\n'
+        assert pyrs_yaml.load_toml(src) == {"v": "caf\u00e9\u00a0\u0251\u00a7"}
+
+    def test_multiline_basic_string_non_ascii(self):
+        src = 'v = """caf\u00e9\u00a0\n\u0251\u00a7"""\n'
+        assert pyrs_yaml.load_toml(src) == {"v": "caf\u00e9\u00a0\n\u0251\u00a7"}
+
+    def test_non_ascii_survives_toml_round_trip(self):
+        src = 'table = { name = "\u65e5\u672c\u8a9e\u00a0x" }\n'
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)

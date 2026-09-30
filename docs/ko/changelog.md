@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **TOML 비 ASCII 문자열 충돌 수정** — 기본 및 다중줄 기본 문자열 파서가 바이트 단위로 전진하며 멀티바이트 입력(U+00A0 등)에서 문자 중간을 슬라이스해 panic 하던 것을 문자 단위로 소비하도록 수정. toml-test 로 발견, #153 의 한줄/JSON 판을 보완.
 - **형식 퍼징 + 견고성 수정** — 새 `proptest` 속성 테스트가 TOML/JSON/JSONC/JSON5 파서와 라이터를 퍼징(no-panic + 재파싱 가능성). 발견·수정: TOML 및 JSON 문자열 파서의 중각 문자 슬라이스 panic, 및 JSONC/JSON5 인라인 `//` 주석이 후속 `,`/`}`를 삼키는 버그.
 - **CLI 형식 대등성** — CLI 에 `to-toml`/`from-toml`, `to-jsonc`/`from-jsonc`, `to-json5`/`from-json5` 추가(기존 `to-json`/`from-json` 본뜬). 바인딩이 처리하는 모든 형식을 명령줄에서 사용 가능.
 - **JSON 문자열 이스케이프 고속 경로(성능)** — `load_jsonc` 가 단순한 2바이트 이스케이프 8종을 인라인 디코딩하여 문서 전체를 AST 경로로 피하지 않습니다. 이스케이프가 있는 JSON 이 고속 경로에 탑니다(AST 경로 대비 약 15 배 빠름). 값은 `json.loads` 와 일치; `\u`·잘못된 이스케이프는 계속 AST 경로 경유.
