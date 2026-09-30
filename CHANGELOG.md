@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML non-ASCII string crash fixed** — the basic and multi-line basic string
+  parsers advanced byte-wise and could slice a `&str` mid-character on multi-byte
+  content (e.g. U+00A0, U+0251), panicking. Surfaced by the toml-test conformance
+  corpus; both loops now consume whole characters. (Completes what #153 fixed for
+  the single-line and JSON string paths.)
 - **Format fuzz + robustness fixes** — new `proptest` property tests fuzz the
   TOML / JSON / JSONC / JSON5 parsers and writers with arbitrary input and assert
   no-panic and re-parseability. They surfaced and fix three real defects: a

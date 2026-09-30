@@ -856,14 +856,16 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {
-                    let cur = self.pos;
-                    self.pos += 1;
-                    let cut = floor_char_boundary(self.text, self.pos);
-                    if cut > cur {
-                        out.push_str(&self.text[cur..cut]);
-                        self.pos = cut;
-                    } else {
-                        out.push(b as char);
+                    // Copy one whole character and advance by its UTF-8 length so
+                    // `self.pos` stays on a char boundary; the byte-wise
+                    // `floor_char_boundary` path could slice `text[cur..cut]`
+                    // from a mid-character offset and panic on non-ASCII content.
+                    match self.text[self.pos..].chars().next() {
+                        Some(ch) => {
+                            out.push(ch);
+                            self.pos += ch.len_utf8();
+                        }
+                        None => return Err(self.err("unterminated multi-line string")),
                     }
                 }
             }

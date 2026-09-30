@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **TOML non-ASCII string crash fixed** — the basic and multi-line basic string parsers
+  advanced byte-wise and could slice mid-character on multi-byte input (U+00A0, …),
+  panicking; both now consume whole characters. Found via the toml-test corpus; completes
+  #153 for the single-line/JSON paths.
 - **Format fuzz + robustness fixes** — new `proptest` property tests fuzz the
   TOML/JSON/JSONC/JSON5 parsers and writers (no-panic + re-parseability). They
   found and fix a mid-character slice panic in the TOML and JSON string parsers
