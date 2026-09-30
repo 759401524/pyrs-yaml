@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **toml-test conformance harness** — `tests/test_toml_test_suite.py` runs the
+  official [toml-test](https://github.com/toml-lang/toml-test) corpus the same way
+  `test_yaml_suite.py` runs the YAML suite: untracked local artifact, `skipif` on
+  absence, measured-floor gates, and a type-tag adapter for decode comparison.
+- **TOML temporal types decode correctly** — date-only and time-only values now
+  carry distinct `!date`/`!time` tags (date-times keep `!timestamp`) so they use
+  `date`/`time.fromisoformat` instead of crashing. toml-test surfaced a bare time
+  (`07:32:00`), a seconds-less time (`13:37`), and a lowercase-delimiter datetime
+  (`1987-07-05t17:45:00z`) each raising `ValueError` on valid TOML; `!time` now
+  pads omitted seconds and `!timestamp` canonicalizes lowercase `t`/`z`.
+- **TOML control-character strictness** — raw C0 codes (NUL, FF, DLE, US, ...) and
+  DEL (U+007F) are now rejected inside basic, literal and multi-line strings (only
+  tab, plus newlines in multi-line forms, stay legal). toml-test's `invalid/control`
+  corpus surfaced 13 such mis-accepted documents; comment-body and bare-CR checks
+  are tracked as follow-ups.
 - **TOML non-ASCII string crash fixed** — the basic and multi-line basic string parsers
   advanced byte-wise and could slice mid-character on multi-byte input (U+00A0, …),
   panicking; both now consume whole characters. Found via the toml-test corpus; completes

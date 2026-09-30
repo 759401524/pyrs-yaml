@@ -110,6 +110,13 @@ jobs:
             git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
           fi
 
+      - name: Download toml-test corpus
+        shell: bash
+        run: |
+          if [ ! -d "Reference/toml-test" ]; then
+            git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
+          fi
+
       - name: Install Python test dependencies
         run: uv sync --group test --no-install-project
 
@@ -247,6 +254,13 @@ jobs:
         run: |
           if [ ! -d "Reference/yaml-test-suite" ]; then
             git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+
+      - name: Download toml-test corpus
+        shell: bash
+        run: |
+          if [ ! -d "Reference/toml-test" ]; then
+            git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
           fi
 
       - name: Install Python test dependencies

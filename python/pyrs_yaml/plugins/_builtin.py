@@ -28,8 +28,12 @@ class TimestampType(CustomType):
         # datetime.fromisoformat only accepts a trailing `Z` (and other
         # ISO-8601 spellings like `+00:00` alternatives) from Python 3.11;
         # normalize UTC-Z so `!timestamp ...Z` and TOML datetimes work on
-        # the full supported floor (3.8+).
-        if value.endswith("Z"):
+        # the full supported floor (3.8+). TOML also permits a lowercase `t`
+        # date/time delimiter and a lowercase `z` UTC designator, which
+        # fromisoformat never accepts - canonicalize both before parsing.
+        if len(value) >= 11 and value[10] == "t":
+            value = value[:10] + "T" + value[11:]
+        if value.endswith(("Z", "z")):
             value = value[:-1] + "+00:00"
         return datetime.fromisoformat(value)
 
@@ -61,6 +65,11 @@ class TimeType(CustomType):
 
     @override
     def from_yaml(self, value: str) -> Any:
+        # TOML allows a local time with seconds omitted (`13:37`), but
+        # datetime.time.fromisoformat only accepts `HH:MM` from Python 3.11;
+        # pad the seconds so `!time` works on the full supported floor (3.8+).
+        if len(value) == 5 and value[2] == ":":
+            value = value + ":00"
         return time.fromisoformat(value)
 
     @override

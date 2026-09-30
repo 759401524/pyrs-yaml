@@ -155,6 +155,8 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                     || t.suffix.contains("localDate")
                     || t.suffix.contains("localTime")
                     || t.suffix.contains("localDatetime")
+                    || t.suffix.contains("date")
+                    || t.suffix.contains("time")
             }) {
                 match Schema::Core.resolve(value) {
                     YamlType::Str(_) => {
