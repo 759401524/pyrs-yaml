@@ -17,6 +17,7 @@ status: new
 
 #### 追加
 
+- **JSONC ブロックコメント・ホットスポットベンチ** — 目標 §テストカバレッジ 5 が「block-comment」を必須のホットサンプルに指定。以前はインライン `//` のみ計測。新フィクスチャで `test_load_jsonc_block_comments` を駆動：50 pair + header/footer、各項に独立 `/* item N */` と末尾 `value /* trailing */` を持たせ、ブロック走査の回帰を CodSpeed で可視化。
 - **YAML の PyYAML + ruamel.yaml 跨库パリティ** — 目標 §テストカバレッジ 3 が両ライブラリを oracle として名指し。以前は `test_benchmark_crosslib.py` のベンチ + 特性 support printout のみ。`tests/test_yaml_crosslib.py` で 20 正規ドキュメント × 5 パリティ面 + 2 ドキュメント化された divergence（duplicate-key 厳格性、YAML 1.1 従来 bool の schema-scope）= 122 テスト。オプション依存 skipif で降格。
 - **`load_toml` の tomlkit 跨库パリティ** — 目標 §テストカバレッジ 3 が tomlkit を oracle として名指し。以前はベンチのみ。`tests/test_toml_crosslib.py` に 24 ケット追加：11 の正規構造で pyrs / tomlkit / tomllib 三者一致、`>i64` 拒否を仕様準拠（TOML v1.0 §Integers：64bit signed）として固定、`-2^63` 境界（PR #174 修正）を確認。オプション依存、skipif で降格。
 - **orjson を STRICT-JSON oracle に** — 目標 §テストカバレッジ 3 「orjson と逐位比較」は今までベンチのみ。`tests/test_json_crosslib.py` で正規ドキュメント 16 件の一致、非正規 12 件（コメント、末尾カンマ、シングルクォート、`NaN`/`Infinity`/`-Infinity`、16 進、先頭 0、`+.5`、`5.`）の両者拒否を断言。stdlib `json.loads` は `allow_nan=True` で裸リテラルを受理するため orjson が RFC 8259 oracle としてより厳格。オプション依存、`skipif` で降格。

@@ -17,6 +17,11 @@ status: new
 
 #### 新增
 
+- **JSONC 块注释热点基准** — 目标 §测试覆盖 5 将「block-comment」
+  列为必需热点样本；之前仅行内 `//` 注释入基。新语料驱动
+  `test_load_jsonc_block_comments`：50 对 pair + header/footer，
+  每 pair 一个独立 `/* item N */` 以及一个尾追 `value /* trailing */`，
+  块扫描回归从此在 CodSpeed 上显形。
 - **YAML 的 PyYAML + ruamel.yaml 跨库对拍** — 目标 §测试覆盖 3
   将两库点名作为 oracle；之前仅在 `test_benchmark_crosslib.py`
   用于基准与特性支持 printout，从未做**正确性**断言。

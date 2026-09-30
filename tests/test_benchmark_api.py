@@ -36,6 +36,9 @@ from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON5 as CONFIG_JSON5,
 )
 from tests.data.yaml_samples import (
+    BENCHMARK_CONFIG_JSON_BLOCK_COMMENTS as CONFIG_JSON_BLOCK_COMMENTS,
+)
+from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_JSON_ESCAPES as CONFIG_JSON_ESCAPES,
 )
 from tests.data.yaml_samples import (
@@ -366,6 +369,22 @@ def test_load_json_escapes(benchmark):
     result = benchmark(pyrs_yaml.load_json, CONFIG_JSON_ESCAPES)
     assert result["logs"][0]["msg"] == "line\n0\tvalue"
     assert len(result["logs"]) == 50
+
+
+def test_load_jsonc_block_comments(benchmark):
+    """Block-comment-dense JSONC through the tokenizer.
+
+    Objective §测试覆盖 5 explicitly names "block-comment" as a hot sample
+    that must be quantified per change. Only inline ``//`` comments were
+    previously measured (via ``test_load_jsonc`` on ``CONFIG_JSONC``);
+    the ``/* ... */`` branch -- both standalone and trailing-inline shapes
+    -- was unbenchmarked. This closes that gap; a scanner regression on
+    the block path now shows up as a CodSpeed delta.
+    """
+    result = benchmark(pyrs_yaml.load_jsonc, CONFIG_JSON_BLOCK_COMMENTS)
+    assert len(result) == 50
+    assert result["k0"]["v"] == 0
+    assert result["k49"]["v"] == 49
 
 
 def test_safe_dump_ndarray(benchmark):

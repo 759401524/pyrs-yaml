@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **JSONC block-comment hot-sample bench** — objective §测试覆盖 5
+  explicitly names "block-comment" as a hot sample that must be
+  quantified per change. Previously only inline `//` comments appeared
+  in benchmarks; the `/* ... */` scanner branch was unmeasured. The new
+  `BENCHMARK_CONFIG_JSON_BLOCK_COMMENTS` fixture (50 pairs, each with
+  a leading standalone `/* item N */` plus a trailing-inline
+  `value /* trailing */`, framed by header/footer blocks) drives
+  `test_load_jsonc_block_comments`. A scanner regression on the block
+  path now surfaces as a CodSpeed delta rather than silent drift.
 - **PyYAML + ruamel.yaml cross-library parity for YAML** — objective
   §测试覆盖 3 names both libraries as oracle targets; previously they
   only appeared in `test_benchmark_crosslib.py` (timed runs + a

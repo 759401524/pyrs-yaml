@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **JSONC block-comment 핫스팟 벤치** — objective §테스트 커버리지 5 가 “block-comment” 热点 样本로 指定。以前 inline `//` 만 计量. 新 fixture 가 `test_load_jsonc_block_comments` 驱动: 50 pair + header/footer, 各项 独立 `/* item N */` 以及 末尾 `value /* trailing */` 持有, 块走查 回归을 CodSpeed 로 可视化.
 - **YAML 의 PyYAML + ruamel.yaml 跨库 对拍** — objective §테스트 커버리지 3 이 两者 指名 oracle. 以前 `test_benchmark_crosslib.py` 벤치 + 特性 support printout 만。`tests/test_yaml_crosslib.py`: 20 正規 文档 × 5 对拍 面 + 2 文档化 分歧(duplicate-key 严格性, YAML 1.1 傳統 bool schema-scope) = 122 테스트. optional dep skipif 자동 降格.
 - **`load_toml` tomlkit 跨库 对拍** — objective §테스트 커버리지 3 이 tomlkit 을 oracle 로 指名. 以前은 벤치만. `tests/test_toml_crosslib.py` 24 件: 11 正規 구조物에서 pyrs / tomlkit / tomllib 三者 一致, `>i64` 拒否를 仕樣 準據(TOML v1.0 §Integers: 64bit signed)로 固定, `-2^63` 境界(PR #174 修正) 確認. optional dep, skipif 자동 降格.
 - **orjson 을 strict-JSON oracle 로** — objective §테스트 커버리지 3 「orjson 과 자리별 비교」는 그동안 벤치만。16 정규 문서 값 일치, 12 비정규 형식(주석, trailing comma, single quote, bare `NaN`/`Infinity`/`-Infinity`, hex, leading 0, `+.5`, `5.`) 양측 거부 단언. stdlib `json.loads` 는 `allow_nan=True` 하에서 bare literal 을 받아들이지만 orjson 은 거부 — RFC 8259 oracle 로서 stdlib 보다 강함. optional dep, `skipif` 자동 강하.
