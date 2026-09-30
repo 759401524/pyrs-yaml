@@ -455,19 +455,35 @@ fn canonical_float(f: f64) -> String {
 
 fn write_json_string(text: &str, out: &mut String) {
     out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
+    // Fast path: when no byte needs escaping (the common case for short ASCII or
+    // already-raw-UTF-8 strings), copy the whole slice in one `push_str` instead
+    // of a per-char loop that re-encodes UTF-8 and checks capacity every char —
+    // the measured hot spot of `to_json`. Byte-identical to the char loop, which
+    // still runs verbatim from the first escapable byte. The boundary `pos` is an
+    // ASCII byte (< 0x20, `"` or `\`), so it is always a `char` boundary.
+    match text
+        .as_bytes()
+        .iter()
+        .position(|&b| b < 0x20 || b == b'"' || b == b'\\')
+    {
+        None => out.push_str(text),
+        Some(pos) => {
+            out.push_str(&text[..pos]);
+            for c in text[pos..].chars() {
+                match c {
+                    '"' => out.push_str("\\\""),
+                    '\\' => out.push_str("\\\\"),
+                    '\n' => out.push_str("\\n"),
+                    '\r' => out.push_str("\\r"),
+                    '\t' => out.push_str("\\t"),
+                    '\u{8}' => out.push_str("\\b"),
+                    '\u{c}' => out.push_str("\\f"),
+                    c if (c as u32) < 0x20 => {
+                        let _ = write!(out, "\\u{:04x}", c as u32);
+                    }
+                    c => out.push(c),
+                }
             }
-            c => out.push(c),
         }
     }
     out.push('"');
