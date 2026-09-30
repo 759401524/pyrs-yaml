@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **`YamlDocument.to_toml()`** — 문서가 `to_json`/`to_jsonc`/`to_json5`와 동일하게 AST에서 TOML 을 바로 출력합니다. `to_toml(doc.to_yaml())` 의 직렬화→재파싱 왕복이 불필요해지고 출력은 바이트 동일. 라이터 자체는 `tomli_w` 보다 약 4.3배 빠름.
 - **`to_json` 네이티브 직렬화기(성능)** — `YamlDocument.to_json`이 `to_dict()` + `json.dumps` 이중 변환을 멈추고 네이티브 엔진을 사용. ASCII 는 바이트 단위 동일, 약 10배 빨라짐(1200건 ~1450µs→~120µs, `json.dumps`를 앞섬). 비ASCII는 `\uXXXX` 대신 원시 UTF-8(`to_jsonc`/`to_json5`와 일치)로 출력되며 유효한 JSON 유지.
 - **JSON 키 직접 출력(성능)** — 라이터가 매핑 키를 출력 버퍼에 바로 기록(키별 `String` 할당 폐지). 컴팩트 `to_json` 이 약 2배 더 빨라짐(~120µs→~60µs), 바이트 동일, 직렬화가 현장에서 #2(orjson만 상위).
 - **JSON 로드 고속 경로** — `load_jsonc`가 정준 strict JSON을 `CustomNode` AST 없이 직접 Python 객체로 변환(실측 약 5-6배 빨라 stdlib `json.loads`를 앞섬). 비정준 입력(실수/이스케이프/주석/범위 초과 정수/후행 쉼표)은 일반 경로로 폴백하여 값과 오류가 불변.

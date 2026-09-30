@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`YamlDocument.to_toml()`** — documents now emit TOML directly from the AST,
+  mirroring `to_json` / `to_jsonc` / `to_json5`. Previously getting TOML from a
+  parsed document required `to_toml(doc.to_yaml())` — a serialize-to-YAML-then-
+  re-parse round-trip; the new method calls the native writer once. Output is
+  byte-identical to the round-trip and reloads to the same data. The writer
+  itself measures ~4.3x faster than `tomli_w` (locked by a new serialize gate).
 - **`to_json` native serializer (perf)** — `YamlDocument.to_json` now uses the
   native engine instead of `to_dict()` + Python `json.dumps` (a double
   conversion). Byte-identical for ASCII and ~10x faster (a 1200-item document

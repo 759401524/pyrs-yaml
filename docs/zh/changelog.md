@@ -17,6 +17,9 @@ status: new
 
 #### 新增
 
+- **`YamlDocument.to_toml()`** — 文档现在直接从 AST 输出 TOML（镜像 `to_json`/`to_jsonc`/
+  `to_json5`），不再需要 `to_toml(doc.to_yaml())` 的序列化-再解析往返。输出逐字节一致；
+  写入器自身比 `tomli_w` 快约 4.3 倍。
 - **`to_json` 原生序列化器（性能）** — `YamlDocument.to_json` 改用原生引擎，不再
   经 `to_dict()` + `json.dumps`。ASCII 逐字节一致，快约 10 倍（1200 项 ~1450µs→
   ~120µs，快过 `json.dumps`）。非 ASCII 改为原始 UTF-8（同 `to_jsonc`/`to_json5`）

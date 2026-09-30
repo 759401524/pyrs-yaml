@@ -928,6 +928,21 @@ impl YamlDocument {
         })
     }
 
+    /// Serialize the document to TOML text via the native engine. Mirrors
+    /// [`to_json`](Self::to_json): the AST is written directly, so a parsed
+    /// document reaches TOML without the `to_yaml()`-then-re-parse round-trip
+    /// that the module-level `to_toml(yaml_str)` helper implies. Errors when
+    /// the root is not a table (TOML has no top-level scalar/array form).
+    #[pyo3(signature = () -> "str")]
+    fn to_toml(&self) -> PyResult<String> {
+        pyrs_yaml_core::toml::to_toml(&self.ast).map_err(|e| {
+            YamlSerializeError::new_err(format_i18n_error(
+                "toml-serialize-error",
+                &[("detail", &e.to_string())],
+            ))
+        })
+    }
+
     /// Validate the document against a JSON Schema.
     #[pyo3(signature = (schema: "str | dict[str, Any]") -> "None")]
     fn validate(&self, py: Python, schema: &Bound<'_, PyAny>) -> PyResult<()> {

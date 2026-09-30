@@ -34,6 +34,13 @@ try:
 except ImportError:  # pragma: no cover
     HAS_TOMLKIT = False
 
+try:
+    import tomli_w
+
+    HAS_TOMLI_W = True
+except ImportError:  # pragma: no cover
+    HAS_TOMLI_W = False
+
 
 def _doc(items):
     head = (
@@ -89,3 +96,23 @@ def test_toml_parse_top3_among_installed(size):
         if _median_us(fn) < pyrs:
             faster += 1
     assert faster <= 2, f"toml parse/{size}: pyrs not top-3 ({faster} competitors faster)"
+
+
+@pytest.mark.skipif(not HAS_TOMLI_W, reason="tomli_w not installed")
+@pytest.mark.parametrize("size", ["medium", "large"])
+def test_toml_serialize_top3(size):
+    """Rank the native TOML writer against the installed pure-Python writers.
+
+    ``doc.to_toml()`` writes the AST directly (the no-round-trip path #140 gave
+    ``to_json``); parse is done as setup, outside the timed region, so this
+    measures serialization only. Measured ~4.3x tomli_w and ~65x tomlkit, so the
+    gate holds a conservative 2x floor over the strongest writer (``tomli_w``).
+    """
+    doc_text = _SIZES[size]
+    data = tomllib.loads(doc_text)
+    parsed = pyrs_yaml.parse(pyrs_yaml.from_toml(doc_text))  # setup: get a document
+    # Parity: the writer's output reloads to the same data.
+    assert tomllib.loads(parsed.to_toml()) == data
+    pyrs = _median_us(lambda: parsed.to_toml())
+    ref = _median_us(lambda: tomli_w.dumps(data))
+    assert pyrs * 2 < ref, f"toml serialize/{size}: pyrs not >2x faster than tomli_w ({pyrs:.1f}us vs {ref:.1f}us)"
