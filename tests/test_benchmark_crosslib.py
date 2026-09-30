@@ -95,6 +95,14 @@ except ImportError:
     orjson = None
 
 try:
+    import pyjson5
+
+    HAS_PYJSON5 = True
+except ImportError:
+    HAS_PYJSON5 = False
+    pyjson5 = None
+
+try:
     import tomlkit
 
     HAS_TOMLKIT = True
@@ -295,6 +303,23 @@ def test_orjson_load(benchmark):
 @pytest.mark.skipif(not HAS_ORJSON, reason="orjson not installed")
 def test_orjson_dump(benchmark):
     benchmark(orjson.dumps, CONFIG_DATA)
+
+
+# ── JSON5/JSONC comparison (pyrs native dialects vs pyjson5 reference) ──
+# CONFIG_JSON_LARGE is plain JSON, a valid subset of both JSON5 and JSONC, so
+# pyrs load_json5/load_jsonc and pyjson5.loads parse the same bytes to the same
+# dict - a directly comparable benchmark for the dialects that had no peer.
+
+
+@pytest.mark.benchmark(group="pyrs-json5")
+def test_pyrs_json5_load(benchmark):
+    benchmark(pyrs_yaml.load_json5, CONFIG_JSON_LARGE)
+
+
+@pytest.mark.benchmark(group="pyjson5")
+@pytest.mark.skipif(not HAS_PYJSON5, reason="pyjson5 not installed")
+def test_pyjson5_load(benchmark):
+    benchmark(pyjson5.loads, CONFIG_JSON_LARGE)
 
 
 @pytest.mark.benchmark(group="tomlkit")
