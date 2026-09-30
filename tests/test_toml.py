@@ -77,6 +77,18 @@ class TestLoadToml:
         d = pyrs_yaml.load_toml("dt = 1987-07-05t17:45:00z")
         assert d["dt"] == datetime.datetime(1987, 7, 5, 17, 45, tzinfo=datetime.timezone.utc)
 
+    def test_fractional_seconds_any_precision(self):
+        # toml-test regression: datetime.fromisoformat only accepts 3- or 6-digit
+        # fractions before 3.11, but TOML allows any precision (e.g. a single
+        # digit); the plugin normalizes to microseconds so it parses on 3.8+.
+        d = pyrs_yaml.load_toml("ms = 1987-07-05T17:45:56.6+00:00")
+        assert d["ms"] == datetime.datetime(1987, 7, 5, 17, 45, 56, 600000, tzinfo=datetime.timezone.utc)
+        assert pyrs_yaml.load_toml("ms = 1987-07-05T17:45:56.555")["ms"].microsecond == 555000
+
+    def test_fractional_seconds_in_local_time(self):
+        d = pyrs_yaml.load_toml("t = 10:32:00.555")
+        assert d["t"] == datetime.time(10, 32, 0, 555000)
+
     def test_temporal_roundtrip_to_toml(self):
         src = "d = 1987-07-05\nt = 07:32:00\ndt = 1987-07-05T17:45:00Z\n"
         out = pyrs_yaml.from_toml(src)

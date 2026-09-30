@@ -17,6 +17,26 @@ from typing_extensions import override
 from .._type_registry import CustomType, register_type
 
 
+def _normalize_fraction(value: str) -> str:
+    """Rewrite a fractional-second field to exactly 6 digits.
+
+    ``datetime``/``time``.fromisoformat only accept a fraction of exactly 3 or 6
+    digits before Python 3.11, while TOML permits any number (``...:56.6``,
+    ``...:56.555``, ``...:56.123456789``). Padding/truncating to microseconds
+    makes every legal TOML fraction parse on the full 3.8+ floor.
+    """
+    dot = value.find(".")
+    if dot == -1:
+        return value
+    end = dot + 1
+    while end < len(value) and value[end].isdigit():
+        end += 1
+    frac = value[dot + 1 : end]
+    if not frac or len(frac) == 6:
+        return value
+    return value[: dot + 1] + (frac + "000000")[:6] + value[end:]
+
+
 @final
 class TimestampType(CustomType):
     """`!timestamp` — serialize/deserialize `datetime` objects."""
@@ -35,7 +55,7 @@ class TimestampType(CustomType):
             value = value[:10] + "T" + value[11:]
         if value.endswith(("Z", "z")):
             value = value[:-1] + "+00:00"
-        return datetime.fromisoformat(value)
+        return datetime.fromisoformat(_normalize_fraction(value))
 
     @override
     def to_yaml(self, obj: Any) -> str:
@@ -70,7 +90,7 @@ class TimeType(CustomType):
         # pad the seconds so `!time` works on the full supported floor (3.8+).
         if len(value) == 5 and value[2] == ":":
             value = value + ":00"
-        return time.fromisoformat(value)
+        return time.fromisoformat(_normalize_fraction(value))
 
     @override
     def to_yaml(self, obj: Any) -> str:

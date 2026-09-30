@@ -26,7 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `date`/`time.fromisoformat` instead of crashing. toml-test surfaced a bare time
   (`07:32:00`), a seconds-less time (`13:37`), and a lowercase-delimiter datetime
   (`1987-07-05t17:45:00z`) each raising `ValueError` on valid TOML; `!time` now
-  pads omitted seconds and `!timestamp` canonicalizes lowercase `t`/`z`.
+  pads omitted seconds, `!timestamp` canonicalizes lowercase `t`/`z`, and both
+  normalize a fractional-second field of any precision (TOML `.6`; pre-3.11
+  `fromisoformat` wants 3 or 6 digits) to microseconds.
 - **TOML control-character strictness** — raw C0 codes (NUL, FF, DLE, US, ...) and
   DEL (U+007F) are now rejected inside basic, literal and multi-line strings (only
   tab, plus newlines in multi-line forms, stay legal). toml-test's `invalid/control`

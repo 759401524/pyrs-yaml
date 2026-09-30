@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by toml-test: a bare local time (`07:32:00`), a seconds-less time (`13:37`), and
   a lowercase-delimiter offset datetime (`1987-07-05t17:45:00z`) each raised a raw
   `ValueError` on *valid* TOML. The `!time` plugin now pads omitted seconds for
-  the 3.8 floor and the `!timestamp` plugin canonicalizes lowercase `t`/`z`.
+  the 3.8 floor, `!timestamp` canonicalizes lowercase `t`/`z`, and both normalize
+  a fractional-second field of any precision (TOML allows `.6`; `fromisoformat`
+  pre-3.11 accepts only 3- or 6-digit fractions) to microseconds.
 - **TOML control-character strictness** — raw C0 control codes (NUL, FF, DLE,
   US, ...) and DEL (U+007F) are now rejected inside basic, literal, and
   multi-line strings (only tab and, in multi-line forms, newlines are legal),
