@@ -136,3 +136,59 @@ class TestBackslashInQuotedScalar:
     def test_backslash_properties_string(self):
         val = r"C:\Program Files\app\0\temp"
         assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(val)) == val
+
+
+class TestNestedBlockScalarIndent:
+    """Regression: a nested block scalar's body used to be indented from a
+    fixed single step instead of its parent line, so `to_yaml` emitted text
+    whose body lines dedented below the header (`a:\n  b: |\n  x`) — every
+    nested literal/folded shape re-parsed as an error or a wrong value.
+    """
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "b: |\n  x\n  y\n",  # top level (worked before — control)
+            "a:\n  b: |\n    x\n    y\n",  # nested pair
+            "a:\n  b:\n    c: |\n      x\n      y\n",  # two levels deep
+            "- |\n  x\n  y\n",  # sequence item
+            "a:\n  - |\n    x\n    y\n",  # nested sequence item
+            "a:\n  - k: |\n      x\n      y\n",  # compact dash mapping
+        ],
+    )
+    def test_block_scalar_roundtrip_preserves_text_and_value(self, src: str):
+        loaded = pyrs_yaml.safe_load(src)
+        out = pyrs_yaml.parse(src).to_yaml()
+        # Style-preserving serialization must reproduce the source exactly…
+        assert out == src
+        # …and at minimum re-parse back to the same data.
+        assert pyrs_yaml.safe_load(out) == loaded
+
+    def test_folded_nested_roundtrips_by_value(self):
+        # `>` folds `x\ny` into the value "x y\n"; re-serializing may
+        # re-wrap the folded body differently while carrying the same value.
+        src = "a:\n  b: >\n    x\n    y\n"
+        loaded = pyrs_yaml.safe_load(src)
+        out = pyrs_yaml.parse(src).to_yaml()
+        assert pyrs_yaml.safe_load(out) == loaded
+
+    def test_flow_block_scalar_demoted_to_quoted(self):
+        # A literal scalar inside a flow container has no legal home (the
+        # body needs its own indented region); it demotes to a quoted
+        # scalar instead of emitting unparseable text.
+        doc = pyrs_yaml.parse("a: [x]\n")
+        pyrs_yaml.Node(doc).find("$.a[0]").set_scalar_style("literal")
+        text = doc.to_yaml()
+        assert pyrs_yaml.safe_load(text) == {"a": ["x"]}
+
+    def test_edge_space_plain_scalars_are_quoted(self):
+        # Plain tokens with edge whitespace are stripped on re-parse; the
+        # serializer must quote them so the value survives.
+        for val in [" ", " %", "x ", "\t"]:
+            assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump({"k": val})) == {"k": val}
+
+    def test_flow_comma_plain_scalars_are_quoted(self):
+        # `,` `[` `]` `{` `}` end a plain token inside a flow collection;
+        # embedding one must not corrupt the flow structure.
+        for val in ["a,b", "x[", "y]"]:
+            assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump([val])) == [val]

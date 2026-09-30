@@ -17,6 +17,8 @@ status: new
 
 #### 추가
 
+- **핫스팟 벤치 코퍼스** — 7개 CodSpeed wall-time 벤치가 역사적으로 취약한 직렬화 경로를 대상으로 합니다: YAML 블록 스칼라 문서(6종 헤더 표기 `|`/`|-`/`|+`/`>`/`>-`/`>+`) 및 주석 밀도 문서, TOML multiline 문자열/진법 정수/underscores/지수/날짜시간, JSON5 특수 수치 형식(16진, `+.1`, `5.`, `Infinity`, `NaN`, single quotes, trailing commas). 픽스처는 `tests/data/yaml_samples.py`, 벤치는 `tests/test_benchmark_api.py`. 이 코퍼스 구축 과정에서 중첩 블록 스칼라 들여쓰기 버그가 발견되었습니다.
+- **텍스트 수준 재파싱 게이트(`prop_output_always_parses`)** — Rust proptest 스위트가 생성된 모든 AST의 직렬화 출력이 파서에서 재파싱 가능함을 주장합니다. AST 대 AST 왕복 프로퍼티는 재파싱 불가 형상(`try_roundtrip`이 `None`)을 조용히 건너뛰었음. 새 게이트가 첫 실행에서 6개 실제 버그를 발견했으며, 각각 targeted Rust 단위 테스트와 Python 회귀 클래스(`TestNestedBlockScalarIndent`)로 고정.
 - **toml-test 적합성 하네스** — `tests/test_toml_test_suite.py` 가 공식 [toml-test](https://github.com/toml-lang/toml-test) 를 `test_yaml_suite.py` 가 YAML 스위트를 실행하는 것과 동일한 방식으로 실행합니다: 추적되지 않은 로컬 아티팩트, 부재 시 `skipif`, 실측 하한 게이트, 그리고 디코딩 비교를 위한 타입 태그 어댑터.
 - **TOML 시간 타입 정상 디코딩** — 날짜 전용과 시간 전용은 각각 서로 다른 `!date`/`!time` 태그를 가져(날짜시간은 `!timestamp` 유지) `date`/`time.fromisoformat` 를 사용합니다. toml-test 가 맨 시간(`07:32:00`), 초 생략 시간(`13:37`), 소문자 구분자 날짜시간(`1987-07-05t17:45:00z`)이 유효한 TOML 에서 `ValueError` 를 던지는 것을 발견. `!time` 은 생략된 초를 채우고 `!timestamp` 는 소문자 `t`/`z` 를 정규화합니다.
 - **TOML 제어 문자 엄격성** — 기본·자구·다중줄 문자열 내부에서 raw C0 제어 코드(NUL, FF, DLE, US 등)와 DEL(U+007F) 을 거절합니다(탭 및 다중줄 줄바꿈만 허용). toml-test 의 `invalid/control` 이 13 건의 오인식 문서를 발견. 코멘트 본문·bare CR 검사는 후속 항목.
@@ -259,6 +261,8 @@ status: new
 
 #### 수정
 
+- **중첩 블록 스칼라 본문이 부모 들여쓰기를 유지** — 중첩 키 아래 literal/folded 스칼라의 본문 줄이 `b: |` 헤더 줄의 다음 단계가 아니라 0열부터 고정 1단계로 출력되어, 모든 중첩 형상의 왕복 텍스트가 재파싱 불가하거나 오류 값이 됨. `block_base`(부모 줄 열 위치) 매개변수를 모든 출력 지점에 관철; 7종 중첩 형식의 왕복이 완전 일치. TOML 핫스팟 벤치가 발견.
+- **직렬화기가 재파싱 가능한 YAML만 출력** — 텍스트 수준 게이트가 발견한 5개 결함: (a) 개행 분기에서 anchor/tag pre-emit이 child(스칼라/null/flow 용기)의 자체 헤더와 중복 → block 용기로 제한; (b) flow 용기 내 블록 스칼라(`[|`, `{k: >}`) 및 키 위치는 double-quoted로 강등; (c) own line을 시작하는 flow 용기의 행두 들여쓰기 결락 및 complex key(`?`) 값 표지 `:`의 0열 출력 → 부모 인덴트 따르도록 수정; (d) standalone 주석/tag가 있는 complex key의 모호한 텍스트(주석 `?` 상단으로, 본문 항상 1단계 깊은 별도 줄); (e) flow 용기 내 선두/후미 공백 또는 `,[]{}` 포함 plain 스칼라는 인용(미인용시 토큰 끊어짐). 추가: tag 부속 빈 block 용기는 헤더를 `{}`/`[]`와 같은 줄에, compact dash 항목은 standalone 주석 부속 값을 인라인하지 않음. 9개 targeted Rust 테스트와 Python 회귀로 각 계통 고정.
 - **TOML 이 합법적인 최소 i64 정수를 거부** — `from_toml`/`load_toml` 이
   `-9223372036854775808`(`i64::MIN`)에서 실패: 부호 경로가 절대값을 먼저 해석해
   부호 반전 전에 오버플로했습니다. 이제 부호를 자릿수와 함께 해석하고

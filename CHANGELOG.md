@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hot-spot benchmark corpus** — seven CodSpeed wall-time benches target the
+  historically fragile serialization paths: YAML block-scalar documents (all six
+  header spellings `|`, `|-`, `|+`, `>`, `>-`, `>+`) and comment-dense documents,
+  TOML multi-line strings / radix integers / underscore separators / exponents /
+  datetimes, and JSON5 exotic number forms (hex, `+.1`, `5.`, `Infinity`, `NaN`,
+  single quotes, trailing commas). Fixtures live in `tests/data/yaml_samples.py`,
+  benches in `tests/test_benchmark_api.py`. Building this corpus is what surfaced
+  the nested block-scalar indentation bug fixed below.
+- **Text-level re-parse gate (`prop_output_always_parses`)** — the Rust proptest
+  suite now asserts that every generated AST serializes to text the parser
+  accepts again. The AST-vs-AST round-trip property silently skipped shapes
+  whose serialized text could not re-parse (`try_roundtrip` returns `None`),
+  leaving an entire defect class invisible; the new gate caught six real
+  serializer bugs on its first runs (see the Fixed entries below), each now
+  additionally pinned by targeted Rust unit tests and a Python regression class
+  (`TestNestedBlockScalarIndent` in `tests/test_roundtrip_bugs.py`).
 - **TOML datetime offset range** — a numeric UTC offset is now range-checked
   (hours 00..=23, minutes 00..=59); `+12:60` / `+24:00` are rejected instead of
   accepted. The offset was shape-checked but its values never validated
@@ -528,6 +544,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Nested block scalar bodies kept their parent's indentation** — a literal or
+  folded scalar under a nested key (`a:` ⏎ `b: |` ⏎ body) emitted its body lines
+  one fixed indent step from column zero instead of one step below the
+  `b: |` header line, so every nested block-scalar shape — pairs, sequence
+  items, compact dash mappings, any depth — serialized to text that re-parsed
+  as an error or a wrong value. The scalar writer now threads a `block_base`
+  (the parent line's column) through every emission site; the round-trip is
+  text-exact for all seven nesting shapes. Found by the TOML hot-spot bench
+  materializing nested block scalars through the shared serializer.
+- **The serializer emits only re-parseable YAML** — five smaller spelling
+  defects, each caught by the new text-level gate: (a) a mapping value forced
+  onto its own line pre-emitted the child's anchor/tag even when the child
+  (scalars, nulls, flow containers) writes its own header, spelling double
+  headers like `A: !a` … `!a null`; the pre-emit is now limited to block
+  containers, which really do suppress it; (b) block scalars inside flow
+  collections (`[|`, `{k: >}`) or key position demote to double-quoted — flow
+  syntax has no room for an indented body region; (c) a flow container starting
+  its own line (after a standalone comment forced the newline) lost its line
+  indent, and complex keys (`? …`) emitted the value marker `:` at column zero,
+  closing any enclosing collection — both now indent from their parent; (d) a
+  complex key whose body carries a standalone comment or tag serialized
+  ambiguous text (`? # c` mid-line, `?` and body split across mismatched
+  indents): the note moves above the `?` marker and the key body always gets
+  its own lines one step deeper; (e) plain scalars with edge whitespace (`" %"`,
+  `" "`) or embedded flow indicators (`,`, `[`, `]`, `{`, `}`) inside flow
+  collections are now quoted — unquoted they terminate the token mid-value or
+  vanish on re-parse (the whitespace case even bypassed the schema-resolution
+  exemption because a token that cannot re-parse has no type promise to keep).
+  Tagged empty block containers additionally fold their header onto the `{}` /
+  `[]` line, and compact `- key: value` items refuse to inline a value carrying
+  a standalone comment. Nine pinned Rust tests (`nested_literal_block_scalar_…`,
+  `plain_scalar_with_comma_in_flow_is_quoted`, …) and the parametrized Python
+  regressions guard each class.
 - **TOML rejected the legal minimum i64 integer** — `from_toml` / `load_toml`
   failed on `-9223372036854775808` (`i64::MIN`, in range by TOML definition):
   the signed path stripped the `-`, parsed the magnitude `9223372036854775808`

@@ -401,6 +401,61 @@ BENCHMARK_CONFIG_TOML = (
     + "".join(f'[[items]]\nname = "item_{index}"\nvalue = {index * 10}\n\n' for index in range(50))
 )
 
+# ── hot-spot samples (objective pillar 2.5) ───────────────────────────────
+# Block scalars, comment scanning, TOML multiline/radix/datetime forms and the
+# JSON5-only number spellings. Same "unmeasured means it can regress" lesson
+# as the float/escape samples: no other benchmark input reaches these parser/
+# writer branches, so a hot-path change there would be invisible to CodSpeed.
+
+_BLOCK_LINES = (
+    "Line one of a fairly long literal block body.\nLine two keeps the newlines.\nLine three ends the body.\n"
+)
+
+
+def _block_scalar_doc() -> str:
+    parts: list[str] = []
+    for index in range(25):
+        style = ("|", "|-", "|+", ">", ">-", ">+")[index % 6]
+        parts.append(f"key_{index}: {style}\n")
+        parts.extend("    " + line for line in _BLOCK_LINES.splitlines(keepends=True))
+    return "".join(parts)
+
+
+BENCHMARK_BLOCK_SCALARS = _block_scalar_doc()
+
+BENCHMARK_YAML_COMMENTS = "".join(
+    f"# standalone note {index}\nkey_{index}: value_{index}  # trailing note\n"
+    f"nested_{index}:\n  # inner note\n  sub: {index}\n"
+    for index in range(25)
+)
+
+BENCHMARK_TOML_HOT = (
+    "# file header\n"
+    "[server]\n"
+    'host = "0.0.0.0"  # inline note\n'
+    'motd = """\nWelcome\nto the machine\n"""\n'
+    "when = 1979-05-27T07:32:00Z\n"
+    "[numbers]\n"
+    "hex = 0xDEADBEEF\n"
+    "oct = 0o755\n"
+    "bin = 0b1101_0110\n"
+    "big = 1_000_000_000\n"
+    "ratio = 5e3\n"
+    "neg = -0.5\n"
+    + "".join(
+        f'\n[[items]] # row {index}\nname = "item_{index}"\nvalue = """multi\nline {index}"""\n' for index in range(25)
+    )
+)
+
+BENCHMARK_JSON5_NUMBERS = (
+    "{\n"
+    "  // hex, signed, dot forms, specials\n"
+    "  hex: 0xDEADBEEF, pos: +7, lead: .5, trail: 5.,\n"
+    "  inf: Infinity, ninf: -Infinity, nan: NaN,\n"
+    "  list: [0x1F, +2, .3, 4., /* block */ 'sq', \"dq\",],\n"
+    "}\n"
+)
+
 BENCHMARK_SCHEMA = {
     "type": "object",
     "required": ["server", "database"],

@@ -84,7 +84,13 @@ pub fn to_yaml_with_options(
     if options.explicit_start {
         serializer.output.push_str("---\n");
     }
-    serializer.serialize_node_internal(node, options.indent_offset, false, 0)?;
+    serializer.serialize_node_internal(
+        node,
+        options.indent_offset,
+        options.indent_offset,
+        false,
+        0,
+    )?;
     if options.explicit_end {
         serializer.output.push_str("...\n");
     }
@@ -160,6 +166,9 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
         } if !pairs.is_empty()
             && pairs.iter().all(|(k, v)| {
                 !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
+                    // A standalone note cannot share the `- key:` line: it
+                    // would emit `# …` mid-line and strand the value.
+                    && v.leading_comment().is_none()
                     && inlineable_value(v)
             })
     )
@@ -263,10 +272,15 @@ impl Serializer {
     }
 
     /// 核心递归序列化方法，处理所有节点类型的缩进和格式化。
+    /// `block_base` is the indentation column governing a block scalar's
+    /// parent line: the `|`/`>` body must sit deeper than that line, so it is
+    /// the *pair/item* indent — not the scalar's own write_indent — whenever a
+    /// header shares a line with its parent (`key: |`, `- |`, compact items).
     fn serialize_node_internal(
         &mut self,
         node: &CustomNode,
         indent_width: usize,
+        block_base: usize,
         in_value_context: bool,
         depth: usize,
     ) -> Result<(), SerializeError> {
@@ -299,7 +313,7 @@ impl Serializer {
                 meta,
                 chomping,
                 ..
-            } => self.write_scalar_node(value, style, meta, chomping, indent_width)?,
+            } => self.write_scalar_node(value, style, meta, chomping, indent_width, block_base)?,
             CustomNode::Mapping {
                 pairs,
                 meta,
@@ -341,12 +355,13 @@ impl Serializer {
         meta: &NodeMeta,
         chomping: &Chomping,
         indent_width: usize,
+        block_base: usize,
     ) -> Result<(), SerializeError> {
         self.write_indent(indent_width);
         if meta.anchor.is_some() || meta.tag.is_some() {
             self.write_anchor_tag(&meta.anchor, &meta.tag);
         }
-        self.write_scalar(value, style, chomping, self.width);
+        self.write_scalar(value, style, chomping, self.width, block_base);
         if let Some(c) = &meta.comment
             && !c.standalone
         {
@@ -386,7 +401,7 @@ impl Serializer {
                     if i > 0 {
                         s.output.push_str(", ");
                     }
-                    s.write_scalar_for_key(key);
+                    s.write_scalar_for_key(key, true);
                     s.output.push_str(": ");
                     s.serialize_flow_value(value, depth + 1)?;
                 }
@@ -489,6 +504,11 @@ impl Serializer {
             close,
         } = *sk;
         if flow_style {
+            // When a flow container starts its own line (a block-context
+            // value under a `key:` whose standalone comment forced the newline
+            // branch), it still needs the line indent; the inline callers
+            // pass indent_width = 0, so this is a no-op for `key: [..]`.
+            self.write_indent(indent_width);
             if meta.anchor.is_some() || meta.tag.is_some() {
                 self.write_anchor_tag(&meta.anchor, &meta.tag);
             }
@@ -505,19 +525,26 @@ impl Serializer {
             }
             self.output.push('\n');
         } else {
-            if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
-                self.write_indent(indent_width);
-                self.write_anchor_tag(&meta.anchor, &meta.tag);
-                self.output.push('\n');
-            }
-
             if empty {
+                // Empty block containers spell as `{}`/`[]`; keep the
+                // anchor/tag header on that same line. A standalone tag
+                // line followed by the braces one indent-shallow (under
+                // an explicit-key `?`) is ambiguous and cannot re-parse.
                 self.write_indent(indent_width);
+                if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
+                    self.write_anchor_tag(&meta.anchor, &meta.tag);
+                }
                 self.output.push(open);
                 self.output.push(close);
                 self.output_empty_node_comment(meta);
                 self.output.push('\n');
                 return Ok(());
+            }
+
+            if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
+                self.write_indent(indent_width);
+                self.write_anchor_tag(&meta.anchor, &meta.tag);
+                self.output.push('\n');
             }
 
             if self.sort_keys {
@@ -571,19 +598,21 @@ impl Serializer {
 
     /// Write a scalar value directly to output based on style and chomping.
     /// `remaining` is the remaining width on the current line (0 = don't wrap).
+    /// `block_base` is the parent-line indent governing a block scalar's body.
     fn write_scalar(
         &mut self,
         value: &str,
         style: &ScalarStyle,
         chomping: &Chomping,
         remaining: usize,
+        block_base: usize,
     ) {
         match style {
             ScalarStyle::Plain => self.write_plain_scalar(value, remaining),
             ScalarStyle::SingleQuoted => self.write_single_quoted_scalar(value),
             ScalarStyle::DoubleQuoted => self.write_double_quoted_scalar(value),
-            ScalarStyle::Literal => self.write_literal_scalar(value, chomping),
-            ScalarStyle::Folded => self.write_folded_scalar(value, chomping),
+            ScalarStyle::Literal => self.write_literal_scalar(value, chomping, block_base),
+            ScalarStyle::Folded => self.write_folded_scalar(value, chomping, block_base),
         }
     }
 
@@ -604,12 +633,32 @@ impl Serializer {
         );
 
         if is_complex_key {
-            // Complex key: use ? indicator
+            // Complex key: use ? indicator. A standalone note on the key
+            // must precede the `?` marker — serializing the key body
+            // mid-line would emit the comment *after* `? ` (spelling
+            // `? # a` + an orphaned key node that cannot re-parse). Emit
+            // the note ourselves, then strip it from the cloned body.
+            let stripped;
+            let key = if let Some(comment) = key.leading_comment() {
+                self.write_indent(indent_width);
+                self.output.push_str("# ");
+                self.output.push_str(&comment.text);
+                self.output.push('\n');
+                stripped = strip_leading_comment(key);
+                &stripped
+            } else {
+                key
+            };
             self.write_indent(indent_width);
-            self.output.push_str("? ");
-            // For complex keys, we need to serialize at the same indent level
-            // but the key content should be indented relative to the ?
-            self.serialize_node_internal(key, indent_width, false, depth + 1)?;
+            self.output.push('?');
+            self.output.push('\n');
+            // The key body lives on its own lines one step deeper than the
+            // `?` marker. Starting it mid-line (`? A: …`) pinned the node's
+            // first column to the `? ` width while every following line used
+            // indent_width, splitting multi-pair / nested keys across two
+            // incompatible indents that could not re-parse.
+            let body_indent = indent_width + self.indent_mapping;
+            self.serialize_node_internal(key, body_indent, body_indent, false, depth + 1)?;
         } else {
             // Simple key
             // Handle standalone comments before the key
@@ -620,9 +669,16 @@ impl Serializer {
                 self.output.push('\n');
             }
             self.write_indent(indent_width);
-            self.write_scalar_for_key(key);
+            self.write_scalar_for_key(key, false);
         }
 
+        if is_complex_key {
+            // The key body always ended its line (`serialize_node_internal`
+            // terminates with `\n`), so the value marker needs its own line
+            // aligned with the `?` indicator — pushing `:` bare would land it
+            // at column 0 and close any enclosing collection.
+            self.write_indent(indent_width);
+        }
         self.output.push(':');
 
         // Check if value needs to be on next line
@@ -638,25 +694,44 @@ impl Serializer {
         )) || is_complex_key
             || (value.leading_comment().is_some() && !Self::is_empty_container(value))
         {
-            // If the value node has an anchor or tag, write it after the colon
-            if let Some(anchor_name) = value.anchor() {
-                self.output.push_str(" &");
-                self.output.push_str(anchor_name);
-            }
-            if let Some(t) = value.tag() {
-                self.output.push(' ');
-                self.output.push_str(&t.to_string());
+            // Write a block container's anchor/tag after the colon: only
+            // block-style Mapping / Sequence suppress their own header in
+            // value context (`write_container_node`'s non-flow branch), so
+            // only those need the parent to pre-emit it. A flow container
+            // (`!tag [..]`) always writes its own header on its line even in
+            // value context — pre-emitting for it duplicated the tag
+            // (`a: !a` … `!a [0]`) and the text could not re-parse. Scalar /
+            // Null nodes likewise still write their own anchor+tag on the
+            // node line — pre-emitting for those duplicated the header
+            // (`A: !a` … `!a null`) and a standalone comment landed
+            // between the two halves.
+            if matches!(
+                value,
+                CustomNode::Mapping {
+                    flow_style: false,
+                    ..
+                } | CustomNode::Sequence {
+                    flow_style: false,
+                    ..
+                }
+            ) {
+                if let Some(anchor_name) = value.anchor() {
+                    self.output.push_str(" &");
+                    self.output.push_str(anchor_name);
+                }
+                if let Some(t) = value.tag() {
+                    self.output.push(' ');
+                    self.output.push_str(&t.to_string());
+                }
             }
             self.output.push('\n');
-            self.serialize_node_internal(
-                value,
-                indent_width + self.indent_mapping,
-                true,
-                depth + 1,
-            )?;
+            let child_indent = indent_width + self.indent_mapping;
+            self.serialize_node_internal(value, child_indent, child_indent, true, depth + 1)?;
         } else {
             self.output.push(' ');
-            self.serialize_node_internal(value, 0, true, depth + 1)?;
+            // Inline value: the header shares the `key:` line, so a block
+            // body must be measured from the pair indent, not from zero.
+            self.serialize_node_internal(value, 0, indent_width, true, depth + 1)?;
         }
 
         Ok(())
@@ -685,10 +760,13 @@ impl Serializer {
                 if pi > 0 {
                     self.write_indent(indent_width + self.indent_sequence);
                 }
-                self.write_scalar_for_key(key);
+                self.write_scalar_for_key(key, false);
                 self.output.push(':');
                 self.output.push(' ');
-                self.serialize_node_internal(value, 0, true, depth + 1)?;
+                // Compact key column is dash indent + `- ` (== indent_sequence
+                // for the default 2-step); a block body hangs off that line.
+                let key_base = indent_width + self.indent_sequence;
+                self.serialize_node_internal(value, 0, key_base, true, depth + 1)?;
             }
         } else if matches!(
             item,
@@ -702,31 +780,32 @@ impl Serializer {
         ) || item.leading_comment().is_some()
         {
             self.output.push('\n');
-            self.serialize_node_internal(
-                item,
-                indent_width + self.indent_sequence,
-                false,
-                depth + 1,
-            )?;
+            let child_indent = indent_width + self.indent_sequence;
+            self.serialize_node_internal(item, child_indent, child_indent, false, depth + 1)?;
         } else {
             // For simple items (including flow-style containers),
             // they go on the same line as the dash. Don't pass
-            // indent_width to avoid extra indentation.
-            self.serialize_node_internal(item, 0, false, depth + 1)?;
+            // indent_width to avoid extra indentation; a block body still
+            // hangs off the dash line, so the base is the dash indent.
+            self.serialize_node_internal(item, 0, indent_width, false, depth + 1)?;
         }
 
         Ok(())
     }
 
     /// Write a scalar formatted as a mapping key.
-    fn write_scalar_for_key(&mut self, node: &CustomNode) {
+    fn write_scalar_for_key(&mut self, node: &CustomNode, flow: bool) {
         match node {
             CustomNode::Scalar {
                 value,
                 style: ScalarStyle::Plain,
                 ..
             } => {
-                if is_short_alphanumeric(value) {
+                if flow && flow_plain_unsafe(value) {
+                    // `,`/`[`,`]`,`{`,`}` end a plain token inside a flow
+                    // collection; quoting is the only lossless escape.
+                    self.write_double_quoted_scalar(value);
+                } else if is_short_alphanumeric(value) {
                     self.output.push_str(value);
                 } else {
                     self.write_plain_scalar(value, 0);
@@ -737,7 +816,16 @@ impl Serializer {
                 style,
                 chomping,
                 ..
-            } => self.write_scalar(value, style, chomping, 0),
+            } => {
+                // A key line cannot host a block scalar header either: the
+                // body would collide with the `:` and the mapping structure.
+                // Quote it, same normalization as flow values.
+                let style = match style {
+                    ScalarStyle::Literal | ScalarStyle::Folded => &ScalarStyle::DoubleQuoted,
+                    other => other,
+                };
+                self.write_scalar(value, style, chomping, 0, 0)
+            }
             _ => {
                 self.output.push_str("null");
             }
@@ -761,7 +849,7 @@ impl Serializer {
     }
 
     /// Write a literal block scalar (`|`) with chomping indicator.
-    fn write_literal_scalar(&mut self, value: &str, chomping: &Chomping) {
+    fn write_literal_scalar(&mut self, value: &str, chomping: &Chomping, block_base: usize) {
         let indicator = match chomping {
             Chomping::Strip => "|-",
             Chomping::Clip => "|",
@@ -769,11 +857,11 @@ impl Serializer {
         };
         self.output.push_str(indicator);
         self.output.push('\n');
-        self.write_base_indent(value);
+        self.write_base_indent(value, block_base);
     }
 
     /// Write a folded block scalar (`>`) with chomping indicator.
-    fn write_folded_scalar(&mut self, value: &str, chomping: &Chomping) {
+    fn write_folded_scalar(&mut self, value: &str, chomping: &Chomping, block_base: usize) {
         let indicator = match chomping {
             Chomping::Strip => ">-",
             Chomping::Clip => ">",
@@ -781,15 +869,17 @@ impl Serializer {
         };
         self.output.push_str(indicator);
         self.output.push('\n');
-        self.write_base_indent(value);
+        self.write_base_indent(value, block_base);
     }
 
     /// Write each line of the block scalar content with base indentation appended.
     /// Writes directly to output (no intermediate Vec or join); indentation goes
     /// through the memoized `write_indent` cache instead of a fresh `repeat()`
-    /// allocation per block scalar.
-    fn write_base_indent(&mut self, value: &str) {
-        let width = self.indent_size;
+    /// allocation per block scalar. The body sits at `block_base + indent_size`
+    /// — one step deeper than the line carrying the `|`/`>` header, wherever
+    /// that line lives (top level, a nested pair, after a dash).
+    fn write_base_indent(&mut self, value: &str, block_base: usize) {
+        let width = block_base + self.indent_size;
         let mut first = true;
         for line in value.lines() {
             if !first {
@@ -815,12 +905,30 @@ impl Serializer {
 
         match node {
             CustomNode::Scalar {
-                value, style, meta, ..
+                value,
+                style,
+                meta,
+                chomping,
+                ..
             } => {
                 if meta.anchor.is_some() || meta.tag.is_some() {
                     self.write_anchor_tag(&meta.anchor, &meta.tag);
                 }
-                self.write_scalar(value, style, &Chomping::Clip, self.width);
+                // A block scalar (`|` / `>`) cannot live inside a flow
+                // collection — its body needs a dedicated, deeper-indented
+                // region that flow syntax has no room for. Downgrade to a
+                // double-quoted scalar so the emitted text always re-parses
+                // (the value survives; only the lost style is normalized,
+                // exactly like ruamel/PyYAML do for block scalars in flow).
+                let style = match style {
+                    ScalarStyle::Literal | ScalarStyle::Folded => &ScalarStyle::DoubleQuoted,
+                    // Flow indicators end a plain token mid-scalar, not just
+                    // at its start — `needs_double_quoted` only guards the
+                    // block-context spelling.
+                    ScalarStyle::Plain if flow_plain_unsafe(value) => &ScalarStyle::DoubleQuoted,
+                    other => other,
+                };
+                self.write_scalar(value, style, chomping, self.width, 0);
             }
             CustomNode::Null { meta, .. } => {
                 if meta.anchor.is_some() || meta.tag.is_some() {
@@ -837,7 +945,7 @@ impl Serializer {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.write_scalar_for_key(key);
+                    self.write_scalar_for_key(key, true);
                     self.output.push_str(": ");
                     self.serialize_flow_value(value, depth + 1)?;
                 }
@@ -934,6 +1042,14 @@ fn needs_double_quoted(value: &str) -> bool {
     if value.is_empty() {
         return true;
     }
+    // A token with edge whitespace can never survive plain emission: the
+    // parser strips it (`" "` reparses as an empty — or in flow, broken —
+    // token), so quote it even when the raw text would schema-resolve to a
+    // non-string (e.g. `" "` → null). The schema promise is moot once
+    // re-parsing cannot recover the token at all.
+    if value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']) {
+        return true;
+    }
     // A plain scalar that resolves to a non-string type (int/float/bool/null)
     // is emitted unquoted: its loaded type under the core schema equals
     // `resolve_core_type(text)`, so plain emission always reproduces that type
@@ -969,6 +1085,41 @@ fn needs_double_quoted(value: &str) -> bool {
         || value.starts_with('|')
         || value.starts_with('>')
         || value.starts_with(',')
+}
+
+/// Clone of a node with its effective leading (standalone) comment removed
+/// from *both* storage slots (`decor.leading_comment` and a standalone
+/// `comment`), so `serialize_node_internal` will not re-emit a note the
+/// caller has already written above a `?` marker.
+fn strip_leading_comment(node: &CustomNode) -> CustomNode {
+    let mut stripped = node.clone();
+    let meta = match &mut stripped {
+        CustomNode::Scalar { meta, .. }
+        | CustomNode::Mapping { meta, .. }
+        | CustomNode::Sequence { meta, .. }
+        | CustomNode::Null { meta, .. } => meta,
+        CustomNode::Alias { .. } => return stripped,
+    };
+    if let Some(decor) = &mut meta.decor {
+        decor.leading_comment = None;
+    }
+    if meta.comment.as_ref().is_some_and(|c| c.standalone) {
+        meta.comment = None;
+    }
+    stripped
+}
+
+/// Whether a plain scalar would break when emitted inside a flow
+/// collection. `needs_double_quoted` already rejects leading indicators and
+/// embedded `:`/`#`; the extra flow-context danger is an *embedded* `,` `[`
+/// `]` `{` `}`, which terminates the plain token per YAML 12.3.3 and corrupts
+/// the surrounding flow structure.
+fn flow_plain_unsafe(value: &str) -> bool {
+    value.contains(',')
+        || value.contains('[')
+        || value.contains(']')
+        || value.contains('{')
+        || value.contains('}')
 }
 
 /// Append `value` to `out` as a plain scalar, double-quoting it if required
@@ -1227,7 +1378,172 @@ mod tests {
         };
 
         let output = to_yaml(&node);
-        assert!(output.contains("? "));
+        assert!(output.contains("?\n"));
+        // The explicit-key spelling must re-parse.
+        let reparsed = crate::parser::parse_with_options(
+            &output,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        );
+        assert!(reparsed.is_ok(), "{output:?} -> {reparsed:?}");
+    }
+
+    /// Serialize `node` and assert the emitted text re-parses; returns the
+    /// text so callers can also pin the exact spelling.
+    fn assert_reparses(node: &CustomNode) -> String {
+        let out = to_yaml(node);
+        let reparsed = crate::parser::parse_with_options(
+            &out,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        );
+        assert!(
+            reparsed.is_ok(),
+            "serialized output failed to re-parse: {out:?} -> {reparsed:?}"
+        );
+        out
+    }
+
+    fn literal_scalar(value: &str) -> CustomNode {
+        let mut node = CustomNode::quoted_scalar(value);
+        node.set_scalar_style(ScalarStyle::Literal);
+        node
+    }
+
+    #[test]
+    fn nested_literal_block_scalar_body_follows_parent_indent() {
+        let mut inner = IndexMap::new();
+        inner.insert(CustomNode::plain_scalar("b"), literal_scalar("x\ny"));
+        let mut outer = IndexMap::new();
+        outer.insert(
+            CustomNode::plain_scalar("a"),
+            CustomNode::Mapping {
+                pairs: inner,
+                flow_style: false,
+                meta: Default::default(),
+            },
+        );
+        let node = CustomNode::Mapping {
+            pairs: outer,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert_yaml_eq!("a:\n  b: |\n    x\n    y\n", &out);
+    }
+
+    #[test]
+    fn seq_item_literal_block_scalar_body_hangs_off_dash() {
+        let seq = CustomNode::Sequence {
+            items: vec![literal_scalar("x\ny")],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&seq);
+        assert_yaml_eq!("- |\n  x\n  y\n", &out);
+    }
+
+    #[test]
+    fn compact_dash_literal_block_scalar_body_indents_past_key() {
+        let mut pairs = IndexMap::new();
+        pairs.insert(CustomNode::plain_scalar("b"), literal_scalar("x\ny"));
+        let seq = CustomNode::Sequence {
+            items: vec![CustomNode::Mapping {
+                pairs,
+                flow_style: false,
+                meta: Default::default(),
+            }],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&seq);
+        assert_yaml_eq!("- b: |\n    x\n    y\n", &out);
+    }
+
+    #[test]
+    fn literal_block_scalar_in_flow_demotes_to_double_quoted() {
+        let seq = CustomNode::Sequence {
+            items: vec![literal_scalar("x")],
+            flow_style: true,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&seq);
+        assert_eq!(&out, "[\"x\"]\n");
+    }
+
+    #[test]
+    fn plain_scalar_with_edge_spaces_is_quoted() {
+        let mut pairs = IndexMap::new();
+        pairs.insert(
+            CustomNode::plain_scalar("k"),
+            CustomNode::plain_scalar(" %"),
+        );
+        let node = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert_eq!(&out, "k: \" %\"\n");
+    }
+
+    #[test]
+    fn plain_scalar_with_comma_in_flow_is_quoted() {
+        let seq = CustomNode::Sequence {
+            items: vec![CustomNode::plain_scalar("a,b")],
+            flow_style: true,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&seq);
+        assert_eq!(&out, "[\"a,b\"]\n");
+    }
+
+    #[test]
+    fn tagged_empty_block_container_puts_header_on_braces_line() {
+        let seq = CustomNode::Sequence {
+            items: vec![],
+            flow_style: false,
+            meta: NodeMeta {
+                tag: Some(Tag {
+                    handle: "!".into(),
+                    suffix: "a".into(),
+                }),
+                ..Default::default()
+            },
+        };
+        let out = assert_reparses(&seq);
+        assert_eq!(&out, "!a []\n");
+    }
+
+    #[test]
+    fn seq_item_value_with_standalone_comment_is_not_compacted() {
+        let mut pairs = IndexMap::new();
+        pairs.insert(
+            CustomNode::plain_scalar("0"),
+            CustomNode::Null {
+                meta: NodeMeta {
+                    comment: Some(crate::ast::Comment {
+                        text: "note".into(),
+                        standalone: true,
+                    }),
+                    ..Default::default()
+                },
+            },
+        );
+        let seq = CustomNode::Sequence {
+            items: vec![CustomNode::Mapping {
+                pairs,
+                flow_style: false,
+                meta: Default::default(),
+            }],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        assert_reparses(&seq);
     }
 
     #[test]
