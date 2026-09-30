@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **CLI format parity** — the CLI gains `to-toml`/`from-toml`, `to-jsonc`/`from-jsonc`
+  and `to-json5`/`from-json5`, mirroring `to-json`/`from-json`, so every binding
+  format is reachable from the command line.
 - **JSON string-escape fast path (perf)** — `load_jsonc` decodes the eight simple
   two-byte escapes inline instead of bailing the whole doc to the AST path; escape
   JSON stays on the fast path (~15x faster than the AST route). Matches

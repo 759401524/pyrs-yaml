@@ -17,6 +17,9 @@ status: new
 
 #### 新增
 
+- **CLI 格式对等性** — CLI 新增 `to-toml`/`from-toml`、`to-jsonc`/`from-jsonc`、
+  `to-json5`/`from-json5`（镜像现有 `to-json`/`from-json`），使绑定层支持的所有格式
+  均可从命令行使用。
 - **JSON 字符串转义快路径（性能）** — `load_jsonc` 将八个简单的双字节转义内联解码，
   不再因转义将整个文档回退到 AST 路径；含转义的 JSON 走快路径（比 AST 路径快约 15 倍）。
   值与 `json.loads` 一致；`\u` 与非法转义仍走 AST 路径。
