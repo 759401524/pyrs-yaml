@@ -499,3 +499,35 @@ class TestTableRedefinition:
         # A dotted key closes `t1.t2`, but a SIBLING `t1.z` header is fine.
         d = pyrs_yaml.load_toml("[t1]\na.b = 1\n[t1.z]\nw = 2\n")
         assert d["t1"] == {"a": {"b": 1}, "z": {"w": 2}}
+
+
+class TestDatetimeOffsetRange:
+    """toml-test strictness: a datetime numeric offset must be 00..23:00..59.
+
+    Surfaced by toml-test ``invalid/datetime/offset-overflow-minute`` (``+12:60``).
+    The offset was shape-checked but not range-checked; out-of-range hours/minutes
+    are illegal in every TOML dialect.
+    """
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "d = 1985-06-18T17:04:07+12:60\n",  # minute 60
+            "d = 1985-06-18T17:04:07+24:00\n",  # hour 24
+            "d = 1985-06-18 17:04:07-00:70\n",  # minute 70, space separator
+        ],
+    )
+    def test_offset_out_of_range_rejected(self, src):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "d = 1985-06-18T17:04:07+23:59\n",
+            "d = 1985-06-18T17:04:07-05:00\n",
+            "d = 1979-05-27T07:32:00Z\n",
+        ],
+    )
+    def test_valid_offsets_still_parse(self, src):
+        assert isinstance(pyrs_yaml.load_toml(src)["d"], datetime.datetime)
