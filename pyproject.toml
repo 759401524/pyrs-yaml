@@ -86,6 +86,7 @@ test = [
     "ujson>=5.8; python_version >= '3.9' and python_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 's390x' and platform_machine != 'ppc64le'",
     "python-rapidjson>=1.18; python_version >= '3.9' and python_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 's390x' and platform_machine != 'ppc64le'",
     "tomlkit>=0.12",
+    "pyjson5>=1.6; python_version >= '3.9' and python_version < '3.14' and platform_machine != 'armv7l' and platform_machine != 's390x' and platform_machine != 'ppc64le'",
     "jsonschema>=4.18.0,<4.25.1; python_version < '3.9'",
     "jsonschema>=4.25.1; python_version >= '3.9'",
     "hypothesis>=6.113.0",
