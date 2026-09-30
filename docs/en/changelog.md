@@ -377,6 +377,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **NumPy serialization no longer reads Python memory without the GIL** — the
+  ndarray writer borrowed the array's data buffer via `unsafe { as_slice() }`
+  and then iterated that borrowed slice *inside* `py.detach`, i.e. after
+  releasing the GIL. `&[T]` is `Send` no matter its provenance, so the borrow
+  checker could not catch it, but the memory is owned by Python and another
+  thread could resize or write the array concurrently — an unsound data race /
+  UB that only surfaces under concurrency. The buffer is now snapshotted into
+  Rust-owned memory while the GIL is still held (`slice.to_vec()`), and only
+  the scalar→node conversion runs off-thread. This was the *only* `unsafe`
+  buffer borrow in the binding layer; every other `py.detach` site was audited
+  and touches Rust-owned state only (AST, source text, `BufWriter<File>`).
+  Covered by `tests/test_numpy.py::TestNumpyConcurrency`.
+- **Repeated alias references no longer resolve to `None`** — `to_dict()`
+  expanded aliases behind a *global* visited-anchor set that was never
+  cleared, so only the first reference to any anchor produced a value and
+  every later one silently degraded to `None`:
+
+    ```yaml
+    a: &x 1
+    b: *x      # 1
+    c: *x      # was None, now 1
+    ```
+
+    The blast radius was wider than "the second reference": two sibling
+    references inside one container poisoned each other too (`{a: &x {p: 1},
+    b: {q: *x}, c: {q: *x}}` gave `b` a value and `c` a `None`). The guard is
+    now scoped to the current recursion path — pushed for the duration of one
+    expansion, popped afterwards — so repeated and sibling references each get
+    their own fully built value while genuine cycles still terminate. `<<`
+    merge resolution and the AST itself were audited and are unaffected. Six
+    new PyYAML-parity cases in `tests/test_direct_load.py` pin the agreement,
+    and two tests that had pinned the buggy output as expected behaviour were
+    rewritten.
 - **Document header comments no longer vanish on nested first values** —
   the parser kept one shared comment slot for all in-progress containers,
   so a nested container start clobbered a standalone header note before

@@ -86,27 +86,26 @@ pub(crate) fn collect_anchors<'a>(
 }
 
 /// 将 `CustomNode` 转换为 Python 对象，解析别名引用（`*alias`）为实际值。
+///
+/// `in_progress` 是**递归路径**上的锚点集合，不是全程累积集（issue #163）：
+/// 只有当一个锚点正处在「展开中」时才说明出现了引用环，此时该分支用
+/// `None` 占位以终止递归。锚点一旦展开完毕就从集合中移除，因此同一锚点
+/// 在兄弟位置被引用任意多次都会各自得到独立的完整副本
+/// （`a: &x 1` / `b: *x` / `c: *x` → `1, 1, 1`），而真正的自引用
+/// （`a: &x [*x]`）仍然安全终止。
 pub(crate) fn node_to_pyobject_with_anchors<'a>(
     node: &'a CustomNode,
     py: Python,
     anchors: &HashMap<&'a str, &'a CustomNode>,
-    visited: &mut HashSet<usize>,
+    in_progress: &mut HashSet<usize>,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     match node {
-        CustomNode::Alias { name } => {
-            if let Some(target) = anchors.get(name.as_str()) {
-                let addr = std::ptr::addr_of!(*target) as usize;
-                if visited.contains(&addr) {
-                    return Ok(py.None());
-                }
-                visited.insert(addr);
-                node_to_pyobject_with_anchors(target, py, anchors, visited, schema)
-            } else {
-                Ok(py.None())
-            }
-        }
-        _ => node_to_pyobject_inner(node, py, anchors, visited, schema),
+        // An alias target that is not currently being expanded has no AST
+        // node to walk - the parser rejected the unknown anchor name, or it
+        // belongs to a different document. Nothing to replay.
+        CustomNode::Alias { .. } => Ok(py.None()),
+        _ => node_to_pyobject_inner(node, py, anchors, in_progress, schema),
     }
 }
 
@@ -135,7 +134,7 @@ fn node_to_pyobject_inner<'a>(
     node: &'a CustomNode,
     py: Python,
     anchors: &HashMap<&'a str, &'a CustomNode>,
-    visited: &mut HashSet<usize>,
+    in_progress: &mut HashSet<usize>,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     match node {
@@ -155,7 +154,7 @@ fn node_to_pyobject_inner<'a>(
         CustomNode::Mapping { pairs, .. } => {
             let dict = PyDict::new(py);
             for (key, value) in pairs {
-                let val = node_to_pyobject_with_anchors(value, py, anchors, visited, schema)?;
+                let val = resolve_alias_target(value, py, anchors, in_progress, schema)?;
                 match key {
                     CustomNode::Scalar { value, .. } => dict.set_item(value.as_ref(), val),
                     _ => dict.set_item(format!("{:?}", key), val),
@@ -167,7 +166,7 @@ fn node_to_pyobject_inner<'a>(
         CustomNode::Sequence { items, .. } => {
             let list = PyList::empty(py);
             for item in items {
-                let val = node_to_pyobject_with_anchors(item, py, anchors, visited, schema)?;
+                let val = resolve_alias_target(item, py, anchors, in_progress, schema)?;
                 list.append(val).ok();
             }
             Ok(list.into_any().unbind())
@@ -177,19 +176,50 @@ fn node_to_pyobject_inner<'a>(
     }
 }
 
+/// Expand an `Alias` node against the anchor table, guarding against
+/// reference cycles with a path-scoped `in_progress` set.
+///
+/// The guard is pushed only for the duration of the expansion, so sibling
+/// references to the same anchor each get their own freshly built object.
+/// Without the pop, the second `*x` in `a: &x 1 / b: *x / c: *x` would hit
+/// the already-visited address and silently degrade to `None` (issue #163).
+fn resolve_alias_target<'a>(
+    node: &'a CustomNode,
+    py: Python,
+    anchors: &HashMap<&'a str, &'a CustomNode>,
+    in_progress: &mut HashSet<usize>,
+    schema: &Schema,
+) -> PyResult<Py<PyAny>> {
+    let CustomNode::Alias { name } = node else {
+        return node_to_pyobject_inner(node, py, anchors, in_progress, schema);
+    };
+    let Some(target) = anchors.get(name.as_str()) else {
+        return Ok(py.None());
+    };
+    let addr = std::ptr::addr_of!(*target) as usize;
+    if !in_progress.insert(addr) {
+        // Cycle: this anchor is already being expanded further up the
+        // recursion path. Emit `None` so the walk terminates.
+        return Ok(py.None());
+    }
+    let result = node_to_pyobject_inner(target, py, anchors, in_progress, schema);
+    in_progress.remove(&addr);
+    result
+}
+
 /// 将 `CustomNode` 转换为 Python 对象，不解析别名（别名节点返回 `None`）。
 ///
-/// Thin wrapper over `node_to_pyobject_with_anchors` with empty anchors/visited
-/// sets: with no anchors registered, alias nodes fall through to `None` and no
-/// cycle tracking is needed.
+/// Thin wrapper over `node_to_pyobject_with_anchors` with an empty anchor
+/// table: with no anchors registered, alias nodes fall through to `None` and
+/// no cycle tracking is needed.
 pub(crate) fn node_to_pyobject_simple(
     node: &CustomNode,
     py: Python,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
     let anchors: HashMap<&str, &CustomNode> = HashMap::new();
-    let mut visited: HashSet<usize> = HashSet::new();
-    node_to_pyobject_with_anchors(node, py, &anchors, &mut visited, schema)
+    let mut in_progress: HashSet<usize> = HashSet::new();
+    node_to_pyobject_with_anchors(node, py, &anchors, &mut in_progress, schema)
 }
 
 /// Convert an AST to a Python object, resolving anchor references only when
@@ -205,8 +235,8 @@ pub(crate) fn node_to_pyobject_resolving_anchors(
     if source_has_anchors {
         let mut anchors = HashMap::new();
         collect_anchors(node, &mut anchors);
-        let mut visited = HashSet::new();
-        node_to_pyobject_with_anchors(node, py, &anchors, &mut visited, schema)
+        let mut in_progress = HashSet::new();
+        node_to_pyobject_with_anchors(node, py, &anchors, &mut in_progress, schema)
     } else {
         node_to_pyobject_simple(node, py, schema)
     }
