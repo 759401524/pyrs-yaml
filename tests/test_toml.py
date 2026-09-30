@@ -376,3 +376,39 @@ class TestNumberStrictness:
             import math
 
             assert math.copysign(1, got) < 0
+
+
+class TestInlineTableCollision:
+    """toml-test strictness: inline-table dotted keys must not collide.
+
+    Surfaced by the toml-test ``invalid/inline-table`` ``duplicate-key-*`` and
+    ``overwrite-*`` groups. A key that equals, extends, or is shadowed by an
+    already-defined path is rejected; sibling dotted paths stay legal.
+    """
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "a = { x = 1, x = 2 }",
+            "a = { x = 1, x.y = 2 }",
+            "a = { x.y = 1, x = 2 }",
+            "a = { x.y = 1, x.y.z = 2 }",
+            "a = { b = { c = 1 }, b.d = 2 }",
+            'tbl = { a.b = "x", a.b.c = "y" }',
+        ],
+    )
+    def test_colliding_key_rejected(self, src):
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize(
+        "src,want",
+        [
+            ("a = { x = 1, y = 2 }", {"x": 1, "y": 2}),
+            ("a = { x.y = 1, x.z = 2 }", {"x.y": 1, "x.z": 2}),
+            ("a = { }", {}),
+            ("a = { b = { c = 1 } }", {"b": {"c": 1}}),
+        ],
+    )
+    def test_legal_inline_tables_still_load(self, src, want):
+        assert pyrs_yaml.load_toml(src)["a"] == want
