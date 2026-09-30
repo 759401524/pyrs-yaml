@@ -302,12 +302,12 @@ class TestNonAsciiStrings:
 
 
 class TestControlCharacterRejection:
-    """toml-test strictness: raw C0 control codes and DEL are forbidden in strings.
+    """toml-test strictness: raw C0 control codes and DEL are forbidden in strings and comments.
 
     Surfaced by the toml-test ``invalid/control`` corpus: NUL, FF, DLE (0x10),
-    US (0x1F) and DEL (0x7F) must be rejected inside basic / literal and
-    single / multi-line strings rather than silently accepted. Sources are built
-    from ``chr()`` so no literal control byte lives in this file.
+    US (0x1F) and DEL (0x7F) must be rejected inside basic / literal /
+    multi-line strings and comment bodies rather than silently accepted. Sources
+    are built from ``chr()`` so no literal control byte lives in this file.
     """
 
     @pytest.mark.parametrize("byte", [0x00, 0x0C, 0x10, 0x1F, 0x7F])
@@ -328,9 +328,25 @@ class TestControlCharacterRejection:
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.load_toml(src)
 
+    @pytest.mark.parametrize("byte", [0x00, 0x0C, 0x10, 0x1F, 0x7F])
+    def test_rejected_in_trailing_comment(self, byte):
+        src = "v = 1 # abc" + chr(byte) + "def\n"
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
+    @pytest.mark.parametrize("byte", [0x00, 0x0C, 0x10, 0x1F, 0x7F])
+    def test_rejected_in_standalone_comment(self, byte):
+        src = "# note" + chr(byte) + "x\nv = 1\n"
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            pyrs_yaml.load_toml(src)
+
     def test_tab_stays_legal(self):
         # Tab (0x09) is explicitly allowed by TOML inside strings.
         assert pyrs_yaml.load_toml('v = "a\tb"') == {"v": "a\tb"}
+
+    def test_printable_and_tab_comment_stays_legal(self):
+        # A comment with normal text + a tab is legal; only control codes break.
+        assert pyrs_yaml.load_toml("v = 1 # ok\ttext\n") == {"v": 1}
 
 
 class TestNumberStrictness:

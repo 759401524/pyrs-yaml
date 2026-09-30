@@ -31,8 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multi-line strings (only tab and, in multi-line forms, newlines are legal),
   where the single-line basic path had guarded C0 but every other form accepted
   them silently. toml-test's `invalid/control` corpus surfaced 13 such
-  mis-accepted documents. Comment-body and bare-CR strictness remain tracked as
-  follow-ups on the ROADMAP.
+  mis-accepted documents. Comment bodies now reject the same control codes
+  (`# ...\u0000...` etc., 5 further `invalid/control/comment-*` documents); bare-CR
+  line-ending strictness remains a follow-up on the ROADMAP.
 - **TOML number-literal strictness** — decimal integers with leading zeros
   (`01`, `007`, `-01`, `01.5`), a sign on a radix-prefixed integer (`+0x1F`,
   `-0b101`, `+0o644` — `signed-int` only wraps a decimal integer), and
