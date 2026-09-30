@@ -17,6 +17,12 @@ status: new
 
 #### 新增
 
+- **`load_toml` tomlkit 跨库对拍** — 目标 §测试覆盖 3 点名 tomlkit
+  作为 oracle；之前 tomlkit 仅在 benchmark 出现。`tests/test_toml_crosslib.py`
+  新增 24 个测试，覆盖 11 种规范构造的三方对齐（pyrs / tomlkit /
+  tomllib），将 `>i64` 拒收钉为规范严格（TOML v1.0 §Integers：
+  64 位有符号），并断言 `-2^63` 边界（PR #174 修复）。可选依赖，
+  `skipif` 自动降级。
 - **orjson 作为 `load_json` 的严格 JSON oracle** — 目标 §测试
   覆盖 3 要求与 orjson 逐位对比；之前 orjson 仅用于基准。
   16 个规范文档断言逐字节对齐，12 个非规范形式（注释、尾逗号、

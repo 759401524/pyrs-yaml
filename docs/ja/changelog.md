@@ -17,6 +17,7 @@ status: new
 
 #### 追加
 
+- **`load_toml` の tomlkit 跨库パリティ** — 目標 §テストカバレッジ 3 が tomlkit を oracle として名指し。以前はベンチのみ。`tests/test_toml_crosslib.py` に 24 ケット追加：11 の正規構造で pyrs / tomlkit / tomllib 三者一致、`>i64` 拒否を仕様準拠（TOML v1.0 §Integers：64bit signed）として固定、`-2^63` 境界（PR #174 修正）を確認。オプション依存、skipif で降格。
 - **orjson を STRICT-JSON oracle に** — 目標 §テストカバレッジ 3 「orjson と逐位比較」は今までベンチのみ。`tests/test_json_crosslib.py` で正規ドキュメント 16 件の一致、非正規 12 件（コメント、末尾カンマ、シングルクォート、`NaN`/`Infinity`/`-Infinity`、16 進、先頭 0、`+.5`、`5.`）の両者拒否を断言。stdlib `json.loads` は `allow_nan=True` で裸リテラルを受理するため orjson が RFC 8259 oracle としてより厳格。オプション依存、`skipif` で降格。
 - **CLI ↔ Binding 対等ゲート（`tests/test_cli_binding_parity.py`）** — Pillar 1 の「CLI と Python Binding 両端で同等機能」を宣言から実行可能な契約に昇格。CLI の登録コマンドを 18 個の固定リストと照合（cyclopts の `--help`/`-h`/`--version` 擬似コマンドは除外）し、各 `to-X` / `from-X` 動詞に `YamlDocument.to_X` / `from_X` / `load_X` の対応があることを確認。`load_*` 一族（json/jsonc/json5/toml）の四兄弟対称性を断言、編集・validate・compliance 動詞は LIVE Python API にマッピング。どちらかの表面の漂移は CI 失敗として顕在化。
 - **`load_json` プロパティテスト + CodSpeed ベンチ** — Hypothesis（`test_load_json_matches_stdlib_json` と `test_load_json_matches_load_jsonc_on_strict_domain`）が生成されたすべての正規ドキュメントで STRICT loader と `json.loads` の一致、および両 loader の strict 領域での逐字一致を固定。高速経路の拡大や AST 経路の漂移はプロパティ失敗として顕在化する。3 件の CodSpeed wall-time ベンチ（`test_load_json_large` / `_floats` / `_escapes`）は `load_jsonc` のサンプルをミラーし、STRICT binding 層自体を回帰追跡する。
