@@ -29,6 +29,19 @@ mod tests {
         }
     }
 
+    /// Key *content* bytes for order-property comparisons, deliberately
+    /// ignoring serialized spelling: a flow-unsafe plain token (`0[`) re-reads
+    /// as the same string under a quoted style, and `null` normalizes between
+    /// the Null variant and a resolved scalar — round-trip-equivalent trees
+    /// must not differ in *order* on those style shifts.
+    fn key_content(k: &crate::ast::CustomNode) -> Vec<u8> {
+        match k {
+            crate::ast::CustomNode::Scalar { value, .. } => value.as_bytes().to_vec(),
+            crate::ast::CustomNode::Null { .. } => b"null".to_vec(),
+            other => to_yaml(other).into_bytes(),
+        }
+    }
+
     /// Recursively apply random scalar style / chomping / flow style to every
     /// node in the tree, exercising the style setters on real data.
     fn deep_apply_styles(
@@ -124,6 +137,23 @@ mod tests {
             }
         }
 
+        /// Text-level re-parseability: every AST the builder can produce must
+        /// serialize to YAML that PARSES AT ALL. The AST-vs-AST round-trip
+        /// above cannot catch invalid *text* — when nested block scalars lost
+        /// their body indent, `parse(to_yaml(x))` failed outright and the
+        /// mismatch was only visible through this gate (serializer base-indent
+        /// regression, found via the TOML hot-spot benchmark sample).
+        #[test]
+        fn prop_output_always_parses(node in arb_custom_node()) {
+            let yaml = to_yaml(&node);
+            let reparsed = parse_with_options(&yaml, true, Schema::Core, 1000, false);
+            prop_assert!(
+                reparsed.is_ok(),
+                "serialized output failed to re-parse: {yaml:?} -> {:?}",
+                reparsed.err()
+            );
+        }
+
         #[test]
         fn prop_no_crash_invalid_utf8(bytes in prop::collection::vec(any::<u8>(), 0..1024)) {
             if let Ok(s) = std::str::from_utf8(&bytes) {
@@ -189,10 +219,7 @@ mod tests {
                     match n {
                         crate::ast::CustomNode::Mapping { pairs, .. } => pairs
                             .keys()
-                            .map(|k| {
-                                let y = to_yaml(k);
-                                y.into_bytes()
-                            })
+                            .map(key_content)
                             .collect(),
                         _ => vec![],
                     }
@@ -222,7 +249,7 @@ mod tests {
                         out.push(
                             pairs
                                 .keys()
-                                .map(|k| to_yaml(k).into_bytes())
+                                .map(key_content)
                                 .collect(),
                         );
                     }

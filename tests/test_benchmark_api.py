@@ -9,6 +9,7 @@ parse_all_docs and parse_stream.
 """
 
 import io
+import math
 from datetime import datetime, timezone
 
 import pytest
@@ -16,6 +17,14 @@ import pytest
 import pyrs_yaml
 from tests.data.yaml_samples import (
     BENCHMARK_ANCHOR as ANCHOR_YAML,
+)
+from tests.data.yaml_samples import (
+    BENCHMARK_BLOCK_SCALARS,
+    BENCHMARK_JSON5_NUMBERS,
+    BENCHMARK_LARGE,
+    BENCHMARK_SMALL,
+    BENCHMARK_TOML_HOT,
+    BENCHMARK_YAML_COMMENTS,
 )
 from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_DATA as CONFIG_DATA,
@@ -40,10 +49,6 @@ from tests.data.yaml_samples import (
 )
 from tests.data.yaml_samples import (
     BENCHMARK_CONFIG_TOML as CONFIG_TOML,
-)
-from tests.data.yaml_samples import (
-    BENCHMARK_LARGE,
-    BENCHMARK_SMALL,
 )
 from tests.data.yaml_samples import (
     BENCHMARK_MEDIUM as CONFIG_YAML,
@@ -245,6 +250,61 @@ def test_to_toml(benchmark):
     yaml_str = pyrs_yaml.from_toml(CONFIG_TOML)
     result = benchmark(pyrs_yaml.to_toml, yaml_str)
     assert "[server]" in result
+
+
+# ── hot-spot samples (objective pillar 2.5) ──
+# Block scalars / comment scanning / TOML multiline+radix+datetime / JSON5-only
+# number spellings. No other benchmark input reaches these parser and writer
+# branches, so changes there would be invisible to CodSpeed tracking.
+
+
+def test_safe_load_block_scalars(benchmark):
+    result = benchmark(pyrs_yaml.safe_load, BENCHMARK_BLOCK_SCALARS)
+    assert result["key_0"].startswith("Line one")
+
+
+def test_to_yaml_block_scalars(benchmark):
+    # Writer side: Literal/Folded styles must survive re-serialization.
+    doc = pyrs_yaml.parse(BENCHMARK_BLOCK_SCALARS)
+    out = benchmark(doc.to_yaml)
+    assert "|" in out and ">" in out
+
+
+def test_safe_load_comments(benchmark):
+    result = benchmark(pyrs_yaml.safe_load, BENCHMARK_YAML_COMMENTS)
+    assert result["key_0"] == "value_0"
+
+
+def test_load_toml_hot(benchmark):
+    # Multi-line strings, comments, radix integers, underscores, exponent
+    # floats and datetimes in one document.
+    result = benchmark(pyrs_yaml.load_toml, BENCHMARK_TOML_HOT)
+    assert result["numbers"]["hex"] == 0xDEADBEEF
+    assert result["server"]["motd"] == "Welcome\nto the machine\n"
+
+
+def test_to_toml_hot(benchmark):
+    yaml_str = pyrs_yaml.from_toml(BENCHMARK_TOML_HOT)
+    out = benchmark(pyrs_yaml.to_toml, yaml_str)
+    # Radix spelling is preserved verbatim by the fidelity contract.
+    assert "0xDEADBEEF" in out
+
+
+def test_load_json5_numbers(benchmark):
+    result = benchmark(pyrs_yaml.load_json5, BENCHMARK_JSON5_NUMBERS)
+    assert result["hex"] == 0xDEADBEEF
+    assert result["pos"] == 7
+    assert result["lead"] == 0.5
+    assert math.isinf(result["inf"]) and result["inf"] > 0
+    assert math.isinf(result["ninf"]) and result["ninf"] < 0
+    assert math.isnan(result["nan"])
+
+
+def test_to_json5_numbers(benchmark):
+    # Writer side: JSON5-only spellings emit verbatim through the hub.
+    doc = pyrs_yaml.parse(pyrs_yaml.from_json5(BENCHMARK_JSON5_NUMBERS))
+    out = benchmark(doc.to_json5)
+    assert "0xDEADBEEF" in out and "Infinity" in out
 
 
 def test_load_jsonc_large(benchmark):

@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **Hot-spot benchmark corpus** — seven CodSpeed wall-time benches target the
+  historically fragile serialization paths: YAML block-scalar documents (all six
+  header spellings `|`, `|-`, `|+`, `>`, `>-`, `>+`) and comment-dense documents,
+  TOML multi-line strings / radix integers / underscore separators / exponents /
+  datetimes, and JSON5 exotic number forms (hex, `+.1`, `5.`, `Infinity`, `NaN`,
+  single quotes, trailing commas). Fixtures live in `tests/data/yaml_samples.py`,
+  benches in `tests/test_benchmark_api.py`. Building this corpus is what surfaced
+  the nested block-scalar indentation bug fixed below.
+- **Text-level re-parse gate (`prop_output_always_parses`)** — the Rust proptest
+  suite now asserts that every generated AST serializes to text the parser
+  accepts again. The AST-vs-AST round-trip property silently skipped shapes
+  whose serialized text could not re-parse (`try_roundtrip` returns `None`),
+  leaving an entire defect class invisible; the new gate caught six real
+  serializer bugs on its first runs (see the Fixed entries below), each now
+  additionally pinned by targeted Rust unit tests and a Python regression class
+  (`TestNestedBlockScalarIndent` in `tests/test_roundtrip_bugs.py`).
 - **TOML datetime offset range** — a numeric UTC offset is now range-checked
   (hours 00..=23, minutes 00..=59); `+12:60` / `+24:00` are rejected instead of
   accepted. Shape was checked but values never were (toml-test
@@ -397,6 +413,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Nested block scalar bodies kept their parent's indentation** — a literal or
+  folded scalar under a nested key emitted its body lines one fixed indent step
+  from column zero instead of one step below the `b: |` header line, so every
+  nested block-scalar shape re-parsed as an error or a wrong value. The writer
+  now threads a `block_base` (the parent line's column) through every emission
+  site; round-trip is text-exact for all seven nesting shapes. Found by the
+  TOML hot-spot bench.
+- **The serializer emits only re-parseable YAML** — five spelling defects caught
+  by the new text-level gate: double anchor/tag headers when a mapping value
+  moved to its own line pre-emitted a header the child also wrote; block
+  scalars inside flow collections (or key position) now demote to
+  double-quoted; flow containers starting their own line and the complex-key
+  value marker `:` lost their parent indentation; complex keys with a
+  standalone comment/tag serialized ambiguous text (the note now moves above
+  `?` and the body gets its own deeper lines); and plain scalars with edge
+  whitespace or embedded flow indicators (`,[]`) inside flow collections are
+  now quoted instead of corrupting the token. Tagged empty containers fold
+  their header onto the `{}`/`[]` line; compact dash items refuse to inline
+  commented values. Pinned by nine Rust tests and Python regressions.
 - **TOML rejected the legal minimum i64 integer** — `from_toml`/`load_toml` failed
   on `-9223372036854775808` (`i64::MIN`): the signed path parsed the unsigned
   magnitude first and overflowed before negation ran. The sign now parses with

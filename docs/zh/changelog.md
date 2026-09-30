@@ -17,6 +17,18 @@ status: new
 
 #### 新增
 
+- **热点基准语料** — 七个 CodSpeed wall-time 基准瞄准历史上脆弱的序列化路径：
+  YAML 块标量文档（全部六种头部写法 `|`、`|-`、`|+`、`>`、`>-`、`>+`）与注释密集
+  文档、TOML 多行字符串/进制整数/下划线分隔/指数/日期时间，以及 JSON5 的特殊数字
+  形式（十六进制、`+.1`、`5.`、`Infinity`、`NaN`、单引号、尾逗号）。语料位于
+  `tests/data/yaml_samples.py`，基准位于 `tests/test_benchmark_api.py`。正是构建
+  这套语料暴露了下面修复的嵌套块标量缩进 bug。
+- **文本级重解析门控（`prop_output_always_parses`）** — Rust proptest 套件现在断言
+  每个生成的 AST 序列化后都能被解析器重新接受。此前的 AST 对 AST round-trip 属性
+  会静默跳过序列化文本无法重解析的形态（`try_roundtrip` 返回 `None`），使整类
+  defect 不可见；新门控首轮就抓到六个真实的 serializer bug（见下方修复条目），
+  每个都已由针对性 Rust 单元测试和 Python 回归类
+  （`tests/test_roundtrip_bugs.py` 的 `TestNestedBlockScalarIndent`）钉住。
 - **toml-test 一致性测试框架** — `tests/test_toml_test_suite.py` 以与 `test_yaml_suite.py`
   运行 YAML 套件相同的方式运行官方 [toml-test](https://github.com/toml-lang/toml-test) 语料：
   未跟踪的本地工件、缺失时 `skipif`、实测下限阈值，并用类型标签适配器做解码比对。
@@ -301,6 +313,21 @@ status: new
 
 #### 修复
 
+- **嵌套块标量的正文保持父行缩进** — 嵌套键下的字面/折叠标量把正文行按固定
+  一级缩进从第 0 列输出，而不是落在 `b: |` 头部行下一层，导致所有嵌套块标量
+  形态（键值对、序列项、紧凑 dash 映射、任意深度）序列化出的文本重解析为报错
+  或错值。标量写入器现在贯穿 `block_base`（父行列位）参数；七种嵌套形态的
+  round-trip 文本逐位忠实。由 TOML 热点基准经由共享 serializer 暴露。
+- **serializer 只输出可重解析的 YAML** — 文本级门控抓到的五个拼写 defect：
+  换行分支对子节点预输出 anchor/tag 而子节点（标量/null/flow 容器）自己也会
+  输出，产生双头部（`A: !a` … `!a null`），现仅限 block 容器；flow 容器内的块
+  标量（`[|`、`{k: >}`）及键位块标量降级为双引号；起新行的 flow 容器丢失行首
+  缩进，复杂键（`?`）的值标记 `:` 落在第 0 列而关闭外层集合——两者现在都从
+  父级缩进；带独立注释/tag 的复杂键产生歧义文本（注释现在移到 `?` 上方，键体
+  整体下移一级独占行）；flow 集合内首尾带空白或嵌入 flow 指示符（`,` `[` `]`
+  `{` `}`）的 plain 标量现在加引号——不加引号会截断 token 或在重解析时消失。
+  另：带 tag 的空 block 容器把头部并入 `{}`/`[]` 行；紧凑 dash 项不再内联带独立
+  注释的值。九个钉住的 Rust 测试加参数化 Python 回归守护每类缺陷。
 - **TOML 拒绝合法的最小 i64 整数** — `from_toml`/`load_toml` 在
   `-9223372036854775808`（`i64::MIN`）上失败：带符号路径先按无符号绝对值解析，
   取负号前就溢出。现在符号与数字一并解析（`i64::from_str` 向负方向累加），带符号
