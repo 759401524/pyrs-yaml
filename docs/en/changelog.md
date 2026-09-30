@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **Faster JSON string serialization (perf)** — strings with no escapable byte
+  are bulk-copied in one `push_str` instead of per-char UTF-8 re-encoding;
+  string-heavy `to_json` ~35% faster (41 -> 27 ns/item), byte-identical output.
 - **`YamlDocument.to_toml()`** — documents emit TOML straight from the AST,
   mirroring `to_json`/`to_jsonc`/`to_json5`, instead of the `to_toml(doc.to_yaml())`
   round-trip. Byte-identical output; the writer is ~4.3x faster than `tomli_w`.
