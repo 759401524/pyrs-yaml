@@ -372,6 +372,17 @@ BENCHMARK_CONFIG_JSON5 = "{server: {host: '0.0.0.0', port: 8080, ssl: true}, ite
 # instead of call overhead, and the cross-library comparison (stdlib ``json`` /
 # ``tomllib``) is apples-to-apples on the same content.
 BENCHMARK_CONFIG_JSON_LARGE = json.dumps(BENCHMARK_CONFIG_DATA)
+
+# Float-bearing canonical JSON: every numeric leaf is a float, so the
+# ``load_jsonc`` fast path exercises its float branch on this doc. The int/string
+# only samples above never reach that branch, so without this the float fast path
+# would be invisible to the benchmark suite.
+BENCHMARK_CONFIG_JSON_FLOATS = json.dumps(
+    {
+        "metrics": [{"name": f"m{index}", "value": index * 1.5, "ratio": index / 7} for index in range(50)],
+        "thresholds": {"cpu": 0.75, "mem": 0.9, "latency_ms": 12.5},
+    }
+)
 BENCHMARK_CONFIG_TOML = (
     '[server]\nhost = "0.0.0.0"\nport = 8080\nssl = true\nworkers = 4\n'
     'tags = ["production", "eu-west-1"]\n\n'

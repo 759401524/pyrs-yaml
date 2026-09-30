@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **JSON float fast path (perf)** — `load_jsonc` parses canonical floats
+  (decimals/exponents) directly into Python objects instead of bailing the whole
+  doc to the AST path; values match `json.loads` exactly (correctly-rounded
+  parse). A new benchmark exercises the branch for regression tracking.
 - **Faster JSON string serialization (perf)** — strings with no escapable byte
   are bulk-copied in one `push_str` instead of per-char UTF-8 re-encoding;
   string-heavy `to_json` ~35% faster (41 -> 27 ns/item), byte-identical output.

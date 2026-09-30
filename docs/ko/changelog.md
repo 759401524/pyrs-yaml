@@ -17,6 +17,7 @@ status: new
 
 #### 추가
 
+- **JSON 부동소수점 고속 경로(성능)** — `load_jsonc` 가 정규 부동소수(소수/지수)를 문서 전체를 AST 경로로 피하지 않고 곧바로 Python 객체로 해석합니다. 값은 `json.loads` 와 완전히 일치(올바르게 반올림된 parse). 새 bench 가 이 분기를 회귀 추적합니다.
 - **JSON 문자열 직렬화 고속화(성능)** — 이스케이프가 필요 없는 문자열은 문자 단위 UTF-8 재인코딩 대신 한 번의 `push_str`로 일괄 복사합니다. 문자열이 많은 `to_json` 은 약 35% 빨라짐(41→27 ns/건), 출력은 바이트 동일.
 - **`YamlDocument.to_toml()`** — 문서가 `to_json`/`to_jsonc`/`to_json5`와 동일하게 AST에서 TOML 을 바로 출력합니다. `to_toml(doc.to_yaml())` 의 직렬화→재파싱 왕복이 불필요해지고 출력은 바이트 동일. 라이터 자체는 `tomli_w` 보다 약 4.3배 빠름.
 - **`to_json` 네이티브 직렬화기(성능)** — `YamlDocument.to_json`이 `to_dict()` + `json.dumps` 이중 변환을 멈추고 네이티브 엔진을 사용. ASCII 는 바이트 단위 동일, 약 10배 빨라짐(1200건 ~1450µs→~120µs, `json.dumps`를 앞섬). 비ASCII는 `\uXXXX` 대신 원시 UTF-8(`to_jsonc`/`to_json5`와 일치)로 출력되며 유효한 JSON 유지.
