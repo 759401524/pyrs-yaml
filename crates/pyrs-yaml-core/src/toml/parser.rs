@@ -1195,6 +1195,15 @@ impl<'a> Parser<'a> {
                         {
                             return Err(self.err("invalid offset in date-time"));
                         }
+                        // Shape is valid; now range-check. TOML numeric offset
+                        // hours are 00..=23 and minutes 00..=59 (toml-test
+                        // invalid/datetime/offset-overflow-minute: `+12:60`).
+                        let off_h = (self.s[self.pos] - b'0') * 10 + (self.s[self.pos + 1] - b'0');
+                        let off_m =
+                            (self.s[self.pos + 3] - b'0') * 10 + (self.s[self.pos + 4] - b'0');
+                        if off_h > 23 || off_m > 59 {
+                            return Err(self.err("offset out of range in date-time"));
+                        }
                         self.pos += 5;
                     }
                     _ => {}

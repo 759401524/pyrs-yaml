@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TOML datetime offset range** — a numeric UTC offset is now range-checked
+  (hours 00..=23, minutes 00..=59); `+12:60` / `+24:00` are rejected instead of
+  accepted. The offset was shape-checked but its values never validated
+  (toml-test `invalid/datetime/offset-overflow-minute`; valid in neither 1.0 nor 1.1).
 - **TOML table-redefinition strictness** — a table created implicitly by a dotted
   key is now closed: a later `[header]` may not re-open it (`[fruit]` +
   `apple.color` then `[fruit.apple]`; `[t1]` + `t2.t3.v` then `[t1.t2]`), and a
