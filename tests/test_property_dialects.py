@@ -74,7 +74,11 @@ def _bare_risk(s):
 
 
 def _safe_text():
-    return roundtrip_safe_text.filter(lambda v: not (isinstance(v, str) and _bare_risk(v)))
+    # `<<` keys join the `_bare_risk` carve-out: a mapping-valued `<<` is
+    # reserved merge-extension syntax the YAML hub consumes by design
+    # (PR #187 contract), so cross-library equality domains must not let
+    # hypothesis generate it as a dictionary key.
+    return roundtrip_safe_text.filter(lambda v: not (isinstance(v, str) and (_bare_risk(v) or v == "<<")))
 
 
 json_leaf = json_leaf.filter(lambda v: not (isinstance(v, str) and _bare_risk(v)))
