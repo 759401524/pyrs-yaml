@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.16.0] — 2026-10-01
+
 #### 추가
 
 - **JSONC block-comment 핫스팟 벤치** — objective §테스트 커버리지 5 가 “block-comment” 热点 样本로 指定。以前 inline `//` 만 计量. 新 fixture 가 `test_load_jsonc_block_comments` 驱动: 50 pair + header/footer, 各项 独立 `/* item N */` 以及 末尾 `value /* trailing */` 持有, 块走查 回归을 CodSpeed 로 可视化.

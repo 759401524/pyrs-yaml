@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.16.0] — 2026-10-01
+
 ### Added
 
 - **JSONC block-comment hot-sample bench** — objective §测试覆盖 5
