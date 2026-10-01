@@ -643,10 +643,9 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_ast::ast::CustomNode;
-    /// use indexmap::IndexMap;
+    /// use pyrs_ast::ast::{CustomNode, NodeMap};
     ///
-    /// let mut pairs = IndexMap::new();
+    /// let mut pairs = NodeMap::default();
     /// pairs.insert(CustomNode::plain_scalar("key"), CustomNode::plain_scalar("value"));
     /// let node = CustomNode::plain_mapping(pairs);
     /// ```
@@ -845,6 +844,7 @@ impl CustomNode {
     ///     value: "42".into(),
     ///     style: ScalarStyle::Plain,
     ///     chomping: Chomping::Clip,
+    ///     block_indent: None,
     ///     meta: Default::default(),
     /// };
     /// assert_eq!(node.anchor(), None);
@@ -917,6 +917,7 @@ impl CustomNode {
     ///     value: "42".into(),
     ///     style: ScalarStyle::Plain,
     ///     chomping: Chomping::Clip,
+    ///     block_indent: None,
     ///     meta: Default::default(),
     /// };
     /// assert_eq!(node.tag(), None);
