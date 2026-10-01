@@ -293,6 +293,14 @@ jobs:
       # Keep the build tree out of `target/` so `dist/` holds only release
       # assets. Every step below mirrors cargo's own layout under this root.
       CARGO_TARGET_DIR: dist/pyq-build
+      # One pinned image string shared by both steps that need a container:
+      # `cross` (via its CROSS_IMAGE env, supported since 0.2.4) for the
+      # build, and `docker run` for the arm smoke. Hardcoding a second
+      # registry path burned `manifest unknown` (dispatch run 5: the smoke
+      # guessed `rust-cross/manylinux2014-cross:<triple>` while cross pulls
+      # `cross-rs/<triple>:0.2.5`); sharing one variable makes drift
+      # impossible. Empty on legs that run no container at all.
+      PYQ_CROSS_IMAGE: ${{ matrix.platform.container && format('ghcr.io/cross-rs/{0}:0.2.5', matrix.platform.std) || '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -331,6 +339,8 @@ jobs:
       # NOTE: no `--out-dir`/`--artifact-dir` here — both are nightly-only on
       # stable cargo, and every platform here runs the stable toolchain.
       - name: Build pyq
+        env:
+          CROSS_IMAGE: ${{ env.PYQ_CROSS_IMAGE }}
         run: >
           ${{ matrix.platform.container && 'cross' || 'cargo' }} build
           --locked
@@ -360,7 +370,7 @@ jobs:
             aarch64-unknown-linux-gnu|armv7-unknown-linux-gnueabihf)
               PLAT=linux/arm64
               if [ "$TRIPLE" = "armv7-unknown-linux-gnueabihf" ]; then PLAT=linux/arm/v7; fi
-              RUN=(docker run --rm -i --platform "$PLAT" -v "$PWD:/io" -w /io "ghcr.io/rust-cross/manylinux2014-cross:$TRIPLE" "dist/pyq-build/$TRIPLE/release/pyq") ;;
+              RUN=(docker run --rm -i --platform "$PLAT" -v "$PWD:/io" -w /io "$PYQ_CROSS_IMAGE" "dist/pyq-build/$TRIPLE/release/pyq") ;;
             *)
               BIN="dist/pyq-build/$TRIPLE/release/pyq"
               [ -x "$BIN" ] || BIN="$BIN.exe"
