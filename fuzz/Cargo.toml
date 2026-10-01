@@ -1,0 +1,48 @@
+[package]
+name = "pyrs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Standalone workspace: fuzz targets are nightly+sanitizer builds and must not
+# join the main `[workspace]` (CI's stable builds and the release profile there
+# would otherwise try to compile libFuzzer instrumentation).
+[workspace]
+
+[dependencies]
+libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
+pyrs-yaml-core = { path = "../crates/pyrs-yaml-core" }
+pyrs-json = { path = "../crates/pyrs-json" }
+pyrs-toml = { path = "../crates/pyrs-toml" }
+pyrs-schema = { path = "../crates/pyrs-schema" }
+
+[[bin]]
+name = "parse_yaml"
+path = "fuzz_targets/parse_yaml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "yaml_roundtrip"
+path = "fuzz_targets/yaml_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_json"
+path = "fuzz_targets/parse_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_toml"
+path = "fuzz_targets/parse_toml.rs"
+test = false
+doc = false
+bench = false
