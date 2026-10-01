@@ -36,6 +36,20 @@ status: new
   뒤로 추가(`--replace-arrays`로 통째 교체), 왕복 YAML로 출력. 두 명령 모두
   `--input`/확장자 판정으로 지원 방언을 읽을 수 있습니다.
 
+#### 변경
+
+- **GitHub Release를 `publish.yml`이 자동 생성** — 지금까지는 publish 마다
+  수동으로 `gh release create`를 실행해 왔는데, 잊기 쉬운 단계가 하나 늘고
+  공개된 버전과 tag가 어긋날 여지도 생겼습니다. 이제 `release` job이 같은
+  `refs/tags/` 조건으로 `uv publish` 성공 후 `gh release create`를 실행하고,
+  릴리스 노트를 자동 생성해 빌드된 wheel을 첨부합니다. 노트와 산출물 모두
+  PyPI에 공개된 것과 동일한 tag에서 나옵니다. `workflow_dispatch` 실행의
+  동작은 그대로입니다(PyPI 공개도 Release 생성도 하지 않음).
+- **`README.md` / `README.zh-CN.md`에 네이티브 `pyq` CLI 문서화** — 두
+  README의 Python CLI 절 옆에 `pyq` 절을 추가했습니다. 체크아웃에서의
+  설치 방법, 실제 실행 가능한 예시 3개, 전체 명령 목록을 담고 자세한 내용은
+  pyq 가이드로 연결합니다.
+
 #### 수정
 
 - **`pyrs-json` 모듈 문서** — 옛 설명은 "주석은 읽을 때 버려지고 다시

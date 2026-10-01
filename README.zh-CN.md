@@ -62,6 +62,24 @@ $ pyrs-yaml to-json config.yaml
 
 命令：`fmt` / `get` / `set` / `delete` / `rename` / `sort-keys` / `move` / `frontmatter` / `validate` / `to-json` / `from-json` / `compliance`，全部编辑/查询命令支持 `-A/--all-docs` 多文档模式——详见 [CLI 指南](https://759401524.github.io/pyrs-yaml/zh/guides/cli/)。
 
+### 原生 CLI（`pyq`）
+
+这些引擎也可以脱离 Python 使用，即 `pyq` 二进制——基于同一 crate 矩阵（`pyrs-yaml-core`、`pyrs-json`、`pyrs-toml`）的 jq/yq 风格工具：
+
+```bash
+cargo install --path crates/pyrs-yaml-cli
+```
+
+```bash
+$ pyq get '.server.host' deploy.yaml
+db.internal
+
+$ pyq diff base.yaml head.yaml          # 语义对比；有差异时退出码 1
+$ pyq merge base.yaml head.yaml         # 右偏深度合并
+```
+
+命令：`fmt` / `get` / `set` / `delete` / `rename` / `move` / `append` / `insert` / `sort-keys` / `frontmatter` / `validate` / `diff` / `merge` / `to-json` / `to-toml` / `from-json` / `from-toml` / `from-ini`。格式按文件扩展名自动识别，`--input jsonc|json5` 可读取 JSONC/JSON5 方言。详见 [pyq 指南](https://759401524.github.io/pyrs-yaml/zh/guides/pyq/)。
+
 ## 环境要求
 
 - **支持的 Python 版本**（安装 wheel）：Python 3.8+（CPython；PyPy 和自由线程 3.14t wheel 也有发布）。abi3 wheel 意味着一个 wheel 覆盖所有支持的 Python 版本。
