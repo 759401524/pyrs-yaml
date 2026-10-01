@@ -366,6 +366,11 @@ status: new
 
 #### 修复
 
+- **`\u` / `\x` 转义后紧跟多字节字符时解析器 panic** — 定宽转义读取器
+  按字节偏移切 `&self.text[pos..pos+width]`；JSON `\u` 或 TOML
+  `\xHH`/`\uXXXX`/`\UXXXX` 后跟多字节字符时切片落在字符中间而 abort（#153
+  非 ASCII 切片崩溃的同族）。现改为字节切片 + UTF-8 校验，畸形转义干净报错。
+  由方言 fuzz 发现，两处解析器均有确定性 Rust 回归测试固定。
 - **字面 `<<` 键（非 merge 值）被静默丢弃** —
   `load(safe_dump({"<<": None}))` 返回 `{}` 丢了键。merge 解析器把任意 `<<`
   都当 merge 消费，即使值是 Null/标量。按 YAML，`<<` 仅当值为映射别名/内联映射/

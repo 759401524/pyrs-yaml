@@ -794,7 +794,14 @@ impl<'a> Parser<'a> {
         if self.pos + 4 > self.s.len() {
             return Err(self.err("truncated \\u escape"));
         }
-        let digits = &self.text[self.pos..self.pos + 4];
+        // Slice the byte buffer, not `self.text`: a `\u` escape followed by a
+        // multibyte char would make `&self.text[pos..pos+4]` land on a
+        // non-char boundary and panic (the JSON sibling of the #153 slice
+        // crashes). Four hex digits are ASCII, so a valid escape survives the
+        // UTF-8 check below; a malformed one that straddles a multibyte char is
+        // rejected cleanly instead of aborting.
+        let digits = std::str::from_utf8(&self.s[self.pos..self.pos + 4])
+            .map_err(|_| self.err("invalid hex digits in \\u escape"))?;
         let value = u32::from_str_radix(digits, 16)
             .map_err(|_| self.err("invalid hex digits in \\u escape"))?;
         self.pos += 4;
@@ -877,6 +884,18 @@ mod tests {
             CustomNode::Scalar { value, .. } => value.to_string(),
             other => panic!("expected scalar, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn escape_followed_by_multibyte_char_errors_not_panics() {
+        // Regression for the char-boundary panic `hex4` used to hit: a `\u`
+        // escape followed by a multibyte char made `&self.text[pos..pos+4]`
+        // slice across a char boundary and abort the process (surfaced by the
+        // dialect no-panic fuzz). Must now be a clean parse error. Two U+FEFF
+        // (3 bytes each) after `\u` put the 4-byte read window inside the second
+        // FEFF.
+        let tricky = "\"\\u\u{feff}\u{feff}";
+        assert!(matches!(from_json(tricky), Err(ParseError::Syntax { .. })));
     }
 
     #[test]

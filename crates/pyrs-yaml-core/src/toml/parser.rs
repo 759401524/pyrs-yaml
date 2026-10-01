@@ -900,7 +900,11 @@ impl<'a> Parser<'a> {
         if self.pos + 2 > self.s.len() {
             return Err(self.err("truncated \\xHH escape"));
         }
-        let digits = &self.text[self.pos..self.pos + 2];
+        // Slice the byte buffer, not `self.text` (see json `hex4`): a `\x`
+        // escape followed by a multibyte char would make
+        // `&self.text[pos..pos+2]` land on a non-char boundary and panic.
+        let digits = std::str::from_utf8(&self.s[self.pos..self.pos + 2])
+            .map_err(|_| self.err("invalid hex in \\xHH escape"))?;
         let value =
             u32::from_str_radix(digits, 16).map_err(|_| self.err("invalid hex in \\xHH escape"))?;
         self.pos += 2;
@@ -913,7 +917,11 @@ impl<'a> Parser<'a> {
         if self.pos + width > self.s.len() {
             return Err(self.err("truncated unicode escape"));
         }
-        let digits = &self.text[self.pos..self.pos + width];
+        // Byte-slice + UTF-8 validate (see json `hex4`): a `\uXXXX` / `\UXXXXXXXX`
+        // escape followed by a multibyte char would otherwise slice
+        // `&self.text[pos..pos+width]` across a char boundary and panic.
+        let digits = std::str::from_utf8(&self.s[self.pos..self.pos + width])
+            .map_err(|_| self.err("invalid hex in unicode escape"))?;
         let value = u32::from_str_radix(digits, 16)
             .map_err(|_| self.err("invalid hex in unicode escape"))?;
         self.pos += width;
@@ -1725,6 +1733,20 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 mod tests {
     use super::*;
     use crate::ast::{CustomNode, ScalarStyle};
+
+    #[test]
+    fn unicode_escape_followed_by_multibyte_char_errors_not_panics() {
+        // The TOML sibling of the json `hex4` fix: `\uXXXX` / `\UXXXXXXXX` and
+        // `\xHH` escape readers sliced `&self.text[pos..pos+width]`, which
+        // panics on a non-char boundary when the escape is followed by a
+        // multibyte char. Must reject cleanly instead of aborting. Two U+FEFF
+        // after `\u` put the 4-byte read window inside the second FEFF.
+        let uni = "a = \"\\u\u{feff}\u{feff}\"";
+        assert!(matches!(from_toml(uni), Err(ParseError::Syntax { .. })));
+        // `\x` (width 2): one FEFF after the escape straddles the 2-byte window.
+        let byte = "a = \"\\x\u{feff}\"";
+        assert!(matches!(from_toml(byte), Err(ParseError::Syntax { .. })));
+    }
 
     /// Run `f` on a thread with a large stack so the recursion-limit tests
     /// exercise the guard, not the runner's default 2 MiB test-thread stack.
