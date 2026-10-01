@@ -16,10 +16,14 @@
 //!   cannot represent them.
 
 use crate::fmt_yaml_float;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::fmt::Write as _;
 use pyrs_ast::ast::{CustomNode, ScalarStyle};
 use pyrs_ast::error::{ParseError, SerializeError};
 use pyrs_schema::types::{Schema, YamlType};
-use std::fmt::Write as _;
 
 /// Render a value-only AST as TOML text. `SerializeError::Internal` carries
 /// the rejection reason for shapes TOML cannot represent.
@@ -430,7 +434,7 @@ mod tests {
     #[test]
     fn to_toml_rejects_root_scalar_and_null() {
         assert!(to_toml(&CustomNode::plain_scalar("x")).is_err());
-        let mut pairs = indexmap::IndexMap::new();
+        let mut pairs = pyrs_ast::ast::NodeMap::default();
         pairs.insert(CustomNode::plain_scalar("k"), CustomNode::plain_null());
         let ast = CustomNode::plain_mapping(pairs);
         assert!(to_toml(&ast).is_err());

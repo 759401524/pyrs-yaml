@@ -25,6 +25,12 @@ status: new
   `default-features = false` 退出，获得固定种子的哈希器。Proptest 节点策略移到
   新的 `test-strategy` feature 之后，普通构建不再承担属性测试成本。CI 任务
   `no-std-check` 为裸机目标交叉编译，确保这一性质不退化。
+- **`pyrs-json` / `pyrs-toml` 也支持 `no_std`** — 两个原生格式引擎仅靠 `alloc`
+  即可构建：`std::sync::Arc` 迁至 `alloc`，`String`/`Vec`/`format!` 预导入改由
+  `#[macro_use] extern crate alloc` 显式提供，解析期键值存储复用 `pyrs-ast` 的
+  `NodeMap` 哈希器别名，`canonical_float` 的整数值判定改为 core-only
+  （`f64::trunc` 是 std 固有方法）。`no-std-check` 作业现覆盖全部四个 crate 的
+  交叉编译。
 - **`pyq` 随每个发布提供预编译二进制** — `publish.yml` 新增 `pyq` 任务，为六个
   平台构建原生 CLI 并把压缩包附到 GitHub Release，用户不再需要 Rust 工具链即可
   获得独立二进制。

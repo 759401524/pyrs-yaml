@@ -15,8 +15,11 @@
 //! - top-level scalars are valid (RFC 8259), trailing commas are not,
 //!   and a document must contain exactly one value.
 
-use indexmap::IndexMap;
-use pyrs_ast::ast::CustomNode;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use pyrs_ast::ast::{CustomNode, NodeMap};
 use pyrs_ast::error::{DepthError, ParseError};
 use pyrs_schema::schema::needs_quotes;
 
@@ -154,7 +157,7 @@ pub fn from_json_with_options(
     let mut root = value;
     if let Some(pc) = root_leading {
         root.set_leading_comment(pyrs_ast::ast::Comment {
-            text: std::sync::Arc::from(pc.text.as_str()),
+            text: alloc::sync::Arc::from(pc.text.as_str()),
             standalone: true,
         });
     }
@@ -319,7 +322,7 @@ impl<'a> Parser<'a> {
     fn flush_pending(&mut self, node: &mut CustomNode) {
         if let Some(pc) = self.pending_comment.take() {
             let comment = pyrs_ast::ast::Comment {
-                text: std::sync::Arc::from(pc.text),
+                text: alloc::sync::Arc::from(pc.text),
                 standalone: pc.own_line,
             };
             if pc.own_line {
@@ -511,7 +514,7 @@ impl<'a> Parser<'a> {
 
     fn object(&mut self) -> Result<CustomNode, ParseError> {
         self.pos += 1; // '{'
-        let mut pairs: IndexMap<CustomNode, CustomNode> = IndexMap::new();
+        let mut pairs: NodeMap<CustomNode, CustomNode> = NodeMap::default();
         self.ws();
         if self.peek() == Some(b'}') {
             self.pos += 1;
@@ -535,7 +538,7 @@ impl<'a> Parser<'a> {
             let mut key_node = quoted_or_plain(key_str);
             if let Some(pc) = key_pending {
                 let comment = pyrs_ast::ast::Comment {
-                    text: std::sync::Arc::from(pc.text),
+                    text: alloc::sync::Arc::from(pc.text),
                     standalone: pc.own_line,
                 };
                 if pc.own_line {
@@ -587,7 +590,7 @@ impl<'a> Parser<'a> {
             let mut item = self.value()?;
             if let Some(pc) = element_pending {
                 let comment = pyrs_ast::ast::Comment {
-                    text: std::sync::Arc::from(pc.text),
+                    text: alloc::sync::Arc::from(pc.text),
                     standalone: pc.own_line,
                 };
                 if pc.own_line {
@@ -801,7 +804,7 @@ impl<'a> Parser<'a> {
         // crashes). Four hex digits are ASCII, so a valid escape survives the
         // UTF-8 check below; a malformed one that straddles a multibyte char is
         // rejected cleanly instead of aborting.
-        let digits = std::str::from_utf8(&self.s[self.pos..self.pos + 4])
+        let digits = core::str::from_utf8(&self.s[self.pos..self.pos + 4])
             .map_err(|_| self.err("invalid hex digits in \\u escape"))?;
         let value = u32::from_str_radix(digits, 16)
             .map_err(|_| self.err("invalid hex digits in \\u escape"))?;

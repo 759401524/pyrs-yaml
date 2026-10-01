@@ -26,6 +26,12 @@ status: new
   Proptest 노드 전략은 새 `test-strategy` feature 뒤로 이동해 일반 빌드에는 속성 테스트
   비용이 없습니다. CI 잡 `no-std-check`이 맨메탈 타깃으로 크로스 컴파일하여 이 성질을
   검증합니다.
+- **`pyrs-json` / `pyrs-toml`도 `no_std` 지원** — 두 네이티브 포맷 엔진이 `alloc` 만으로
+  빌드됩니다: `std::sync::Arc`은 `alloc`으로, `String`/`Vec`/`format!` prelude는
+  `#[macro_use] extern crate alloc`으로 명시 도입, 파싱 시 key/value 스토어는 `pyrs-ast`의
+  `NodeMap` 해시 별칭을 재사용, `canonical_float`의 정수값 판정은 core 전용으로
+  구현(`f64::trunc`은 std 고유의 메서드). `no-std-check` 잡이 이제 네 크레이트 전체를
+  크로스 컴파일합니다.
 - **`pyq` 프리빌드 바이너리 릴리스 동봉** — `publish.yml`의 새 `pyq` 잡이 6개 플랫폼용
   네이티브 CLI를 빌드해 아카이브를 GitHub Release에 첨부합니다. 단독 바이너리를 얻는 데
   Rust 툴체인이 필요하지 않습니다.

@@ -10,8 +10,12 @@
 //! [spec]: https://toml.io/en/v1.1.0
 
 use crate::{CowTable, KVAnnotations, TomlTable, TomlValue, cow_table_to_node};
-use indexmap::IndexMap;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use pyrs_ast::ast::CustomNode;
+use pyrs_ast::ast::NodeMap;
 use pyrs_ast::error::{DepthError, ParseError};
 
 /// Default nesting limit for arrays / inline tables, mirroring the JSON
@@ -115,7 +119,7 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
         && let Some(text) = p.pending_leading.take()
     {
         node.set_leading_comment(pyrs_ast::ast::Comment {
-            text: std::sync::Arc::from(text.as_str()),
+            text: alloc::sync::Arc::from(text.as_str()),
             standalone: true,
         });
     }
@@ -361,7 +365,7 @@ impl<'a> Parser<'a> {
         // Take ownership of the pending standalone comment block (if any)
         // so it becomes THIS pair's leading rather than the next one's.
         let leading = self.pending_leading.take();
-        let blank = std::mem::take(&mut self.pending_blank);
+        let blank = core::mem::take(&mut self.pending_blank);
         let key_start = self.pos;
         let key = self.parse_key_path()?;
         self.skip_spaces();
@@ -385,7 +389,7 @@ impl<'a> Parser<'a> {
         // before parsing so it becomes this section's leading. `pending_blank`
         // travels through the same route to mark the section's blank separator.
         let leading = self.pending_leading.take();
-        let blank = std::mem::take(&mut self.pending_blank);
+        let blank = core::mem::take(&mut self.pending_blank);
         self.expect_byte(b'[', "expected `[`")?;
         let is_array = self.peek() == Some(b'[');
         if is_array {
@@ -675,8 +679,8 @@ impl<'a> Parser<'a> {
         // `Int(0)` and we can round-trip the sign; every other decimal
         // form either matches `i64::to_string()` (no work needed) or
         // contains `_`/`+` which we canonicalize away.
-        let source: Option<std::sync::Arc<str>> = if text == "-0" {
-            Some(std::sync::Arc::from(text))
+        let source: Option<alloc::sync::Arc<str>> = if text == "-0" {
+            Some(alloc::sync::Arc::from(text))
         } else {
             None
         };
@@ -696,11 +700,11 @@ impl<'a> Parser<'a> {
         // pipeline. Canonical decimal forms (`1.5`, `-0.0`) already
         // match the parsed value's rendering, so no source is recorded.
         let has_exponent = text.bytes().any(|b| b == b'e' || b == b'E');
-        let source: Option<std::sync::Arc<str>> = if has_exponent && !text.contains('_') {
+        let source: Option<alloc::sync::Arc<str>> = if has_exponent && !text.contains('_') {
             Some(if negative {
-                std::sync::Arc::from(format!("-{text}"))
+                alloc::sync::Arc::from(format!("-{text}"))
             } else {
-                std::sync::Arc::from(text)
+                alloc::sync::Arc::from(text)
             })
         } else {
             None
@@ -761,7 +765,7 @@ impl<'a> Parser<'a> {
     fn parse_prefixed_integer_with_source(
         &mut self,
         radix: u32,
-    ) -> Result<(i64, std::sync::Arc<str>), ParseError> {
+    ) -> Result<(i64, alloc::sync::Arc<str>), ParseError> {
         let prefix_str = match radix {
             16 => "0x",
             8 => "0o",
@@ -795,7 +799,7 @@ impl<'a> Parser<'a> {
                 let mut src = String::with_capacity(prefix_str.len() + digits_no_underscores.len());
                 src.push_str(prefix_str);
                 src.push_str(&digits_no_underscores);
-                (v, std::sync::Arc::from(src))
+                (v, alloc::sync::Arc::from(src))
             })
             .map_err(|_| self.err_at("prefixed integer out of range", start))
     }
@@ -903,7 +907,7 @@ impl<'a> Parser<'a> {
         // Slice the byte buffer, not `self.text` (see json `hex4`): a `\x`
         // escape followed by a multibyte char would make
         // `&self.text[pos..pos+2]` land on a non-char boundary and panic.
-        let digits = std::str::from_utf8(&self.s[self.pos..self.pos + 2])
+        let digits = core::str::from_utf8(&self.s[self.pos..self.pos + 2])
             .map_err(|_| self.err("invalid hex in \\xHH escape"))?;
         let value =
             u32::from_str_radix(digits, 16).map_err(|_| self.err("invalid hex in \\xHH escape"))?;
@@ -920,7 +924,7 @@ impl<'a> Parser<'a> {
         // Byte-slice + UTF-8 validate (see json `hex4`): a `\uXXXX` / `\UXXXXXXXX`
         // escape followed by a multibyte char would otherwise slice
         // `&self.text[pos..pos+width]` across a char boundary and panic.
-        let digits = std::str::from_utf8(&self.s[self.pos..self.pos + width])
+        let digits = core::str::from_utf8(&self.s[self.pos..self.pos + width])
             .map_err(|_| self.err("invalid hex in unicode escape"))?;
         let value = u32::from_str_radix(digits, 16)
             .map_err(|_| self.err("invalid hex in unicode escape"))?;
@@ -1481,7 +1485,7 @@ impl<'a> Parser<'a> {
                             }
                             // Snapshot the inner entries so we do not hold
                             // two mutable borrows of `tbl.entries` at once.
-                            let taken = std::mem::take(&mut inner.entries);
+                            let taken = core::mem::take(&mut inner.entries);
                             tbl.entries.insert(
                                 seg.clone(),
                                 TomlTable::Explicit(CowTable {
@@ -1506,7 +1510,7 @@ impl<'a> Parser<'a> {
                                 return Err(self.err("cannot redefine an array of tables"));
                             }
                             list.push(CowTable {
-                                entries: IndexMap::new(),
+                                entries: NodeMap::default(),
                                 comment: comment.clone(),
                                 leading: leading.clone(),
                                 blank_before,
@@ -1524,7 +1528,7 @@ impl<'a> Parser<'a> {
                         if last {
                             if is_array {
                                 let list = vec![CowTable {
-                                    entries: IndexMap::new(),
+                                    entries: NodeMap::default(),
                                     comment: comment.clone(),
                                     leading: leading.clone(),
                                     blank_before,
@@ -1539,7 +1543,7 @@ impl<'a> Parser<'a> {
                                 tbl.entries.insert(
                                     seg.clone(),
                                     TomlTable::Explicit(CowTable {
-                                        entries: IndexMap::new(),
+                                        entries: NodeMap::default(),
                                         comment: comment.clone(),
                                         leading: leading.clone(),
                                         blank_before,

@@ -27,6 +27,12 @@ status: new
   Proptest のノード戦略は新しい `test-strategy` feature の後ろに移動し、通常のビルドには
   プロパティテストのコストが乗りません。CI ジョブ `no-std-check` がベアメタルターゲット向けに
   クロスコンパイルを行い、この性質を保証します。
+- **`pyrs-json` / `pyrs-toml` も `no_std` 対応** — ネイティブフォーマットエンジン 2 つも
+  `alloc` のみでビルド可能に：`std::sync::Arc` は `alloc` へ、`String`/`Vec`/`format!`
+  は `#[macro_use] extern crate alloc` で明示導入、パース時の key/value ストアは
+  `pyrs-ast` の `NodeMap` ハッシャーエイリアスを再利用、`canonical_float` の整数値判定は
+  core のみで実装（`f64::trunc` は std のみのメソッド）。`no-std-check` ジョブは
+  4 クレートすべてをクロスコンパイルするようになりました。
 - **`pyq` がリリースごとにプリビルドバイナリとして配布** — `publish.yml` の新しい `pyq`
   ジョブが 6 プラットフォーム向けにネイティブ CLI をビルドし、アーカイブを GitHub Release
   に添付します。スタンドアロンバイナリ入手に Rust ツールチェーンは不要になりました。

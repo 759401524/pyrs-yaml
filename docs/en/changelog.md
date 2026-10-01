@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test-strategy` feature so a plain build carries no property-test cost.
   A `no-std-check` CI job cross-compiles the workspace for a bare-metal
   target to keep the property honest.
+- **`pyrs-json` / `pyrs-toml` are `no_std`-capable too** — the two native
+  format engines build against `alloc` alone: `std::sync::Arc` moves to
+  `alloc`, the `String`/`Vec`/`format!` prelude is spelled explicitly via
+  `#[macro_use] extern crate alloc`, parse-time key/value stores reuse
+  `pyrs-ast`'s `NodeMap` hasher alias, and `canonical_float`'s integral
+  check becomes core-only (`f64::trunc` is an std inherent). The
+  `no-std-check` job now cross-compiles all four crates.
 - **`pyq` ships as a prebuilt binary with every release** — a new `pyq` job in
   `publish.yml` builds the native CLI for six platforms and attaches the
   archives to the GitHub Release, so users no longer need a Rust toolchain to
