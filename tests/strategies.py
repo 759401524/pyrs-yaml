@@ -38,7 +38,10 @@ roundtrip_safe_json = st.recursive(
     roundtrip_safe_leaf,
     lambda children: st.one_of(
         st.lists(children, min_size=0, max_size=8),
-        st.dictionaries(roundtrip_safe_text, children, min_size=0, max_size=8),
+        # `<<` is reserved merge-extension syntax: with a mapping value the
+        # round-trip hub consumes it by design (PR #187 contract), so it
+        # cannot appear as a random key in exact-equality domains.
+        st.dictionaries(roundtrip_safe_text.filter(lambda k: k != "<<"), children, min_size=0, max_size=8),
     ),
     max_leaves=40,
 )
@@ -60,7 +63,8 @@ arbitrary_json = st.recursive(
     ),
     lambda children: st.one_of(
         st.lists(children, min_size=0, max_size=8),
-        st.dictionaries(any_text, children, min_size=0, max_size=8),
+        # Same `<<` merge-extension carve-out as roundtrip_safe_json above.
+        st.dictionaries(any_text.filter(lambda k: k != "<<"), children, min_size=0, max_size=8),
     ),
     max_leaves=40,
 )

@@ -1122,6 +1122,16 @@ pub mod proptest_strategies {
             .prop_map(|(pairs, flow_style, meta)| {
                 let mut map = NodeMap::default();
                 for (k, v) in pairs {
+                    // Empty containers of the same kind always render alike
+                    // (`[]`/`{}`) whatever their `flow_style` or metadata —
+                    // IndexMap's Eq sees two keys, YAML text cannot. Keep the
+                    // first so the generated AST stays re-parseable.
+                    if map
+                        .keys()
+                        .any(|existing| serialization_collides(existing, &k))
+                    {
+                        continue;
+                    }
                     map.insert(k, v);
                 }
                 CustomNode::Mapping {
@@ -1130,6 +1140,20 @@ pub mod proptest_strategies {
                     meta,
                 }
             })
+    }
+
+    /// True when two keys collapse onto one YAML rendering: same-kind empty
+    /// containers, whose distinguishing attributes (flow style, meta) never
+    /// reach the emitted text. A mapping holding both re-parses as a
+    /// duplicate key — the parser's strictness is correct, the pair is not.
+    fn serialization_collides(a: &CustomNode, b: &CustomNode) -> bool {
+        let empty_of_kind = |n: &CustomNode, seq: bool| match n {
+            CustomNode::Sequence { items, .. } => seq && items.is_empty(),
+            CustomNode::Mapping { pairs, .. } => !seq && pairs.is_empty(),
+            _ => false,
+        };
+        empty_of_kind(a, true) && empty_of_kind(b, true)
+            || empty_of_kind(a, false) && empty_of_kind(b, false)
     }
 
     fn arb_sequence(inner: BoxedStrategy<CustomNode>) -> impl Strategy<Value = CustomNode> {
