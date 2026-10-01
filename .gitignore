@@ -20,3 +20,7 @@ benchmark-results.json
 
 # Qoder IDE session artifacts
 .qoder/
+
+# cargo-fuzz crash artifacts; minimized repros are promoted to fuzz/corpus on purpose
+fuzz/artifacts/
+fuzz/sessions/

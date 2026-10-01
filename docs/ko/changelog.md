@@ -17,6 +17,12 @@ status: new
 
 #### 추가
 
+- **엔진용 `cargo-fuzz` 퍼징 기반(`fuzz/`)** — 커버리지 유도형 libFuzzer
+  타깃 4종: `parse_yaml`(단일 + 스트림), `yaml_roundtrip`(파싱 → 직렬화 →
+  재파싱과 직렬화 멱등), `parse_json`(3 방언 × 3 writer 전 조합 재파싱),
+  `parse_toml`(1.0/1.1 및 writer 재파싱). 타깃과 최소화 코퍼스는 저장소
+  포함, 크래치 산출물은 제외. 첫 실행 1분 만에 가치를 증명 — 아래 주석
+  스캐너 수정 참고.
 - **`pyrs-ast` / `pyrs-schema`가 `no_std` 지원** — 모든 포맷 엔진이 그 위에 세워지는 두
   기초 크레이트가 이제 `alloc` 만으로 빌드됩니다: `indexmap`과 `thiserror`의 기본 `std`
   feature를 비활성화하고, 새로 추가된 옵트인 `std` feature로 `std::error::Error` 구현과
@@ -55,6 +61,12 @@ status: new
 
 #### 수정
 
+- **JSON 주석 스캐너가 멀티바이트 문자 중간에서 panic** — `ws()`의 행 주석과
+  미종결 블록 주석 스캔이 `pos`를 바이트 단위로 진행해 후행 멀티바이트 문자
+  (U+FEFF 등) 내부에 pos가 남고, 다음 `&text[pos..]` 슬라이스가 "not a char
+  boundary"로 panic했다(`fuzz/parse_json`이 약 25초 만에 발견:
+  `\r\r{aMNaN/*0\u{feff}`). 이제 행 주석은 코드포인트 단위로 진행하고 미종결
+  블록 주석은 `/`로 되감겨 모든 실패 경로가 다시 타입화된 오류입니다.
 - **Linux 프리스레드(`cp314t`) wheel을 Release에 동봉** — wheel 빌드 매트릭스가
   Windows와 macOS만 프리스레드 산출물을 만들어, Linux의 GIL 없는 인터프리터
   사용자는 설치 수단이 없었습니다: GIL 있는 `cp38-abi3` wheel은

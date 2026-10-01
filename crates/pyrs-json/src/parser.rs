@@ -271,11 +271,19 @@ impl<'a> Parser<'a> {
                     let body_start = self.pos + 2;
                     if line {
                         self.pos = body_start;
-                        while !self.eof_pos()
-                            && self.peek() != Some(b'\n')
-                            && self.peek() != Some(b'\r')
-                        {
-                            self.pos += 1;
+                        while !self.eof_pos() {
+                            // Advance a whole code point: `pos + 1` steps could
+                            // stop inside a multi-byte char, leaving `pos` off
+                            // the boundary for every later `&self.text[pos..]`
+                            // (libFuzzer: `//` + trailing FEFF then `expect`
+                            // panicking with "not a char boundary"). No
+                            // multi-byte char is a line terminator, so this
+                            // breaks exactly where the byte test did.
+                            match self.text[self.pos..].chars().next() {
+                                Some('\n') | Some('\r') => break,
+                                Some(c) => self.pos += c.len_utf8(),
+                                None => break,
+                            }
                         }
                         let body_end = self.pos;
                         self.pending_comment = Some(PendingComment {
@@ -286,9 +294,13 @@ impl<'a> Parser<'a> {
                         self.pos = body_start;
                         loop {
                             if self.pos + 1 >= self.s.len() {
-                                // Unterminated block comment: bail out so
-                                // the outer parser falls through to the
-                                // existing "trailing characters" error.
+                                // Unterminated block comment: rewind to the
+                                // `/` so the outer parser rejects cleanly from
+                                // a char boundary — leaving `pos` wherever the
+                                // byte scan stopped can put it inside a
+                                // multi-byte char, and `expect`/`key_start`
+                                // slice `&self.text[pos..]` next.
+                                self.pos = body_start - 2;
                                 return;
                             }
                             if self.s[self.pos] == b'*' && self.s[self.pos + 1] == b'/' {
@@ -887,6 +899,22 @@ mod tests {
         match node {
             CustomNode::Scalar { value, .. } => value.to_string(),
             other => panic!("expected scalar, got {other:?}"),
+        }
+    }
+
+    /// libFuzzer find (fuzz/artifacts/parse_json/crash-e039bcb…): the
+    /// unterminated-block-comment scanner stepped byte-wise and stopped inside
+    /// the trailing U+FEFF, so the next `&self.text[pos..]` slice panicked with
+    /// "start byte index is not a char boundary". All three dialects must now
+    /// return a typed error instead.
+    #[test]
+    fn truncated_comment_before_multibyte_errors_not_panics() {
+        let block = "\r\r{aMNaN/*0\u{feff}";
+        let line = "//\u{feff}";
+        for src in [block, line] {
+            assert!(from_json(src).is_err(), "strict accepted {src:?}");
+            let _ = from_jsonc(src);
+            let _ = from_json5(src);
         }
     }
 

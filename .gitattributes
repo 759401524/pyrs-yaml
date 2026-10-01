@@ -1,0 +1,4 @@
+# Fuzz corpora and crash payloads are raw byte streams; the bytes ARE the
+# input, so text normalization (CRLF handling) must never touch them.
+fuzz/corpus/** -text
+fuzz/artifacts/** -text

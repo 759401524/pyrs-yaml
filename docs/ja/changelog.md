@@ -17,6 +17,12 @@ status: new
 
 #### 追加
 
+- **エンジン用の `cargo-fuzz` 検証基盤（`fuzz/`）** — カバレッジ誘導型の
+  libFuzzer ターゲット 4 系統：`parse_yaml`（単一 + ストリーム）、
+  `yaml_roundtrip`（解析 → シリアライズ → 再解析と冪等性）、`parse_json`
+  （3 方言 × 3 writer を全組合せで再解析）、`parse_toml`（1.0/1.1 と writer
+  再解析）。ターゲットと最小化コーパスはリポジトリ管理、クラッシュ成果物は
+  除外。初回稼働の 1 分以内に価値を実証 — 下記のコメントスキャナ修正参照。
 - **`pyrs-ast` / `pyrs-schema` が `no_std` 対応に** — すべてのフォーマットエンジンが
   基盤とするこの 2 クレートは、`alloc` のみでビルド可能になりました：`indexmap` と
   `thiserror` のデフォルト `std` feature を無効化し、新しいオプトインの `std`
@@ -55,6 +61,13 @@ status: new
 
 #### 修正
 
+- **JSON コメントスキャナが多文字コードの途中で panic し得た** — `ws()` の
+  行コメントと未終端ブロックコメント走査は `pos` を 1 バイトずつ進めていた
+  ため、末尾の多-byte 文字（U+FEFF 等）の内部に pos が残り、次の
+  `&text[pos..]` スライスが "not a char boundary" で panic した（
+  `fuzz/parse_json` が約 25 秒で発見：`\r\r{aMNaN/*0\u{feff}`）。行コメントは
+  コードポイント単位で進み、未終端ブロックコメントは `/` へ巻き戻され、
+  全失敗経路が再び型付きエラーになります。
 - **Linux フリースレッド（`cp314t`）wheel を Release に同梱** — wheel のビルド
   マトリクスは
   Windows と macOS のみフリースレッド成果物をビルドしており、Linux の GIL なし

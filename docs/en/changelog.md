@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **A `cargo-fuzz` harness for the engines (`fuzz/`)** — four
+  coverage-guided libFuzzer targets over the native frontends: `parse_yaml`
+  (single + stream), `yaml_roundtrip` (parse → serialize → re-parse and
+  serialize-idempotence), `parse_json` (all three dialects crossed with all
+  three writers, each output re-parsed), and `parse_toml` (1.0/1.1 plus
+  writer re-parse). Targets and minimized corpora are committed; crash
+  artifacts stay ignored. The harness paid for itself inside its first
+  minute — see the comment-scanner fix below.
 - **`pyrs-ast` / `pyrs-schema` are `no_std`-capable** — the two foundation
   crates that every format engine sits on now build against `alloc` alone:
   `indexmap` and `thiserror` lose their default `std` features and a new
@@ -63,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **JSON comment scanners could panic mid-character** — the line-comment and
+  unterminated-block-comment scans in `ws()` stepped `pos` one *byte* at a
+  time, so a trailing multi-byte char (e.g. U+FEFF) could leave `pos` inside
+  it; the next `&text[pos..]` slice panicked with "not a char boundary"
+  (found by `fuzz/parse_json` in ~25 seconds: `\r\r{aMNaN/*0\u{feff}`).
+  Line comments now advance a full code point and an unterminated block
+  comment rewinds to its `/`, so every failure path is a typed error again.
 - **Linux free-threaded (`cp314t`) wheels ship in the Release** — the wheel
   matrix only built free-threaded artifacts for Windows and macOS, so Linux
   users on the GIL-less interpreter had nothing to install: the GIL-enabled

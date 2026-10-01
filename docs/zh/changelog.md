@@ -17,6 +17,11 @@ status: new
 
 #### 新增
 
+- **引擎的 `cargo-fuzz` 模糊测试套件（`fuzz/`）** — 四个覆盖引导的 libFuzzer
+  目标：`parse_yaml`（单文档 + 流）、`yaml_roundtrip`（解析 → 序列化 → 重解析
+  与序列化幂等）、`parse_json`（三方言 × 三 writer 全交叉重解析）、`parse_toml`
+  （1.0/1.1 及 writer 重解析）。目标与最小化语料入库，crash 产物不跟踪。
+  套件在首跑一分钟内即证明价值——见下方注释扫描器修复。
 - **`pyrs-ast` / `pyrs-schema` 支持 `no_std`** — 所有格式引擎赖以奠基的两个基础
   crate 现在仅靠 `alloc` 即可构建：`indexmap` 与 `thiserror` 关闭默认 `std`
   feature，新增的 opt-in `std` feature 重新启用 `std::error::Error` 实现与
@@ -51,6 +56,11 @@ status: new
 
 #### 修复
 
+- **JSON 注释扫描器可能在多字节字符中间 panic** — `ws()` 的行注释与未闭合
+  块注释扫描逐字节推进 `pos`，后继多字节字符（如 U+FEFF）会把 pos 留在字符
+  内部，下一个 `&text[pos..]` 切片以 "not a char boundary" panic（由
+  `fuzz/parse_json` 在约 25 秒内发现：`\r\r{aMNaN/*0\u{feff}`）。行注释现在
+  按完整码点前进，未闭合块注释回退到其 `/` 处，所有失败路径重新变为类型化错误。
 - **Linux 免线程（`cp314t`）wheel 随 Release 发布** — wheel 矩阵此前只为
   Windows 和 macOS 构建免线程产物，Linux 上的无 GIL 解释器用户无从安装：
   带 GIL 的 `cp38-abi3` wheel 与 `Py_GIL_DISABLED` 构建 ABI 不兼容，而
