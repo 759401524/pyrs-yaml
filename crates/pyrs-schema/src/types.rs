@@ -80,11 +80,11 @@ impl FromStr for Schema {
 /// is tied to the input slice, not to any enclosing borrow.
 fn resolve_schema_fn<'a, const IDX: u8>(value: &'a str) -> YamlType<'a> {
     match IDX {
-        0 => crate::parser::yaml::schema::resolve_failsafe(value),
-        1 => crate::parser::yaml::schema::resolve_json_type(value),
-        2 => crate::parser::yaml::schema::resolve_core_type(value),
-        4 => crate::parser::yaml::schema::resolve_json5_type(value),
-        _ => crate::parser::yaml::schema::resolve_yaml11_type(value),
+        0 => crate::schema::resolve_failsafe(value),
+        1 => crate::schema::resolve_json_type(value),
+        2 => crate::schema::resolve_core_type(value),
+        4 => crate::schema::resolve_json5_type(value),
+        _ => crate::schema::resolve_yaml11_type(value),
     }
 }
 
@@ -146,8 +146,8 @@ impl YamlType<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::yaml::YamlSchema;
-    use crate::parser::yaml::schema::resolve_yaml_type;
+    use crate::schema::resolve_yaml_type;
+    use crate::types::YamlSchema;
 
     fn format_yaml_type(ty: &YamlType) -> String {
         match ty {

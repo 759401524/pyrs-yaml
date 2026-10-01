@@ -1,5 +1,5 @@
-use crate::parser::yaml::types::{YamlSchema, YamlType};
-use crate::serializer::is_yaml_noncharacter;
+use crate::is_yaml_noncharacter;
+use crate::types::{YamlSchema, YamlType};
 use std::borrow::Cow;
 
 // YamlSchema is defined in types.rs and re-exported via mod.rs.
@@ -105,7 +105,7 @@ fn numeric_tail<'a>(trimmed: &str, value: &'a str) -> YamlType<'a> {
 /// (int/float/bool/null). Shared by [`needs_quotes`] and the serializer's
 /// [`needs_double_quoted`] so the "is this value type-resolvable?" dimension
 /// lives in one place.
-pub(crate) fn core_type_is_non_string(value: &str) -> bool {
+pub fn core_type_is_non_string(value: &str) -> bool {
     !matches!(resolve_core_type(value), YamlType::Str(_))
 }
 

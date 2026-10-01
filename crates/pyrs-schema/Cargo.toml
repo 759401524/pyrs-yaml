@@ -1,0 +1,16 @@
+[package]
+name = "pyrs-schema"
+version = "0.16.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Format-agnostic scalar type vocabulary + YAML-Core/JSON/JSON5/1.1 resolution rules for the pyrs-yaml engine family"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/759401524/pyrs-yaml"
+
+[lib]
+name = "pyrs_schema"
+
+# std-only: no AST, no parser, no i18n, no regex — the shared scalar
+# resolution infrastructure every format engine reuses (JSON writers resolve
+# plain scalars through it; TOML too). A candidate for future `no_std`.
+[dependencies]
