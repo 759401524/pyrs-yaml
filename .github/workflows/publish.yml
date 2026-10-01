@@ -342,24 +342,25 @@ jobs:
       # A released artifact that cannot start is worse than no artifact: it
       # fails on the user's machine instead of at build time. Prove the binary
       # actually runs before it is downloadable. Emulated cross legs (arm)
-      # exec it through a plain `docker run -i` on the same manylinux2014
-      # image: the host has the qemu translator but no foreign
-      # `/lib/ld-linux-*.so` loader, so a direct host exec dies before `main`
-      # (proven by dispatch run 2), and `cross run` silently dropped the
-      # program arguments past `--` — the smoke got clap's no-argument help
-      # with exit 2 instead of `pyq 0.x` (proven by dispatch run 3). `-i`
-      # forwards the piped stdin the `get` assertions read. x86_64 host exec
-      # is native; macOS/Windows run the binary directly.
+      # exec it through a plain `docker run -i` on `cross`'s own
+      # manylinux2014 image — the very one that just built the binary, so no
+      # second registry dependency (quay.io anonymous pulls rate-limited the
+      # armv7 leg with `unauthorized`, dispatch run 4) and no extra image
+      # download. The host has the qemu translator but no foreign
+      # `/lib/ld-linux-*.so` loader, so a direct host exec dies before `main`;
+      # `cross run` silently dropped program arguments (clap no-arg help,
+      # exit 2). `-i` forwards the piped stdin the `get` assertions read.
+      # x86_64 host exec is native; macOS/Windows run the binary directly.
       - name: Smoke test pyq
         shell: bash
         run: |
           set -euo pipefail
           TRIPLE="${{ matrix.platform.std }}"
           case "$TRIPLE" in
-            aarch64-unknown-linux-gnu)
-              RUN=(docker run --rm -i --platform linux/arm64 -v "$PWD:/io" -w /io quay.io/pypa/manylinux2014_aarch64 "dist/pyq-build/$TRIPLE/release/pyq") ;;
-            armv7-unknown-linux-gnueabihf)
-              RUN=(docker run --rm -i --platform linux/arm/v7 -v "$PWD:/io" -w /io quay.io/pypa/manylinux2014_armv7l "dist/pyq-build/$TRIPLE/release/pyq") ;;
+            aarch64-unknown-linux-gnu|armv7-unknown-linux-gnueabihf)
+              PLAT=linux/arm64
+              if [ "$TRIPLE" = "armv7-unknown-linux-gnueabihf" ]; then PLAT=linux/arm/v7; fi
+              RUN=(docker run --rm -i --platform "$PLAT" -v "$PWD:/io" -w /io "ghcr.io/rust-cross/manylinux2014-cross:$TRIPLE" "dist/pyq-build/$TRIPLE/release/pyq") ;;
             *)
               BIN="dist/pyq-build/$TRIPLE/release/pyq"
               [ -x "$BIN" ] || BIN="$BIN.exe"
