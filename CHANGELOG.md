@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`pyrs-ast` / `pyrs-schema` are `no_std`-capable** — the two foundation
+  crates that every format engine sits on now build against `alloc` alone:
+  `indexmap` and `thiserror` lose their default `std` features and a new
+  opt-in `std` feature re-enables `std::error::Error` impls plus the
+  `RandomState` hasher. `std` stays on by default so every existing consumer
+  keeps the exact `IndexMap<K, V, RandomState>` node-map type it already
+  wrote; `no_std` users opt out with `default-features = false` and get a
+  fixed-seed hasher instead. Proptest node strategies move behind a new
+  `test-strategy` feature so a plain build carries no property-test cost.
+  A `no-std-check` CI job cross-compiles the workspace for a bare-metal
+  target to keep the property honest.
+- **`pyq` ships as a prebuilt binary with every release** — a new `pyq` job in
+  `publish.yml` builds the native CLI for six platforms and attaches the
+  archives to the GitHub Release, so users no longer need a Rust toolchain to
+  get a standalone binary.
+
+### Changed
+
+- **`pyq validate` accepts `--input` and honours the real format** — it used
+  to hardcode the YAML parser and had no way to say otherwise, so every
+  non-YAML config it was pointed at (`pyproject.toml`, `package.json`, …)
+  was rejected outright. It now takes `--input auto|yaml|json|jsonc|json5|toml`
+  and routes through the shared loader, which is what made the command
+  usable outside the repo it was written in.
+- **`pyq` prebuilt binaries pin a measured glibc floor** — the Linux targets
+  build through `cargo zigbuild` at `.2.16` (x86_64) and `.2.17` (aarch64)
+  instead of `.2.28`, which covered CentOS 7 / Ubuntu 16.04 / 18.04 /
+  Debian 8 / 9 for free. Both numbers are measured, not guessed: `.2.15`
+  fails to link with `undefined symbol: getauxval` (introduced in glibc
+  2.16) and zig ships no aarch64 libc below 2.17 at all. The two floors
+  differ and cannot be interchanged — zig serves each target its own libc.
+
+### Fixed
+
+- **Block scalars keep their explicit indentation indicator** — a body
+  written as `key: |2` had the `2` silently dropped on write, so the output
+  re-parsed differently from the input whenever the first body line sat
+  deeper than the rest (exactly the `4RWC.yaml` shape: first line indented
+  6, continuation 4). The reader auto-detects indentation from the first
+  body line when no indicator is present, so losing it is a real semantic
+  change, not cosmetic. The indicator now rides the AST and is re-emitted in
+  spec order (`c-b-block-header`: chomping first, then indentation, so a
+  stripped scalar is `|-2`), and the writer measures the body from the line
+  that carries the header rather than from the parent node's column.
+
 ## [v0.17.0] — 2026-10-01
 
 ### Added

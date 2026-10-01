@@ -10,7 +10,8 @@ repository = "https://github.com/759401524/pyrs-yaml"
 [lib]
 name = "pyrs_schema"
 
-# std-only: no AST, no parser, no i18n, no regex — the shared scalar
-# resolution infrastructure every format engine reuses (JSON writers resolve
-# plain scalars through it; TOML too). A candidate for future `no_std`.
+# zero-dependency and `no_std`: no AST, no parser, no i18n, no regex — the shared
+# scalar resolution infrastructure every format engine reuses (JSON writers
+# resolve plain scalars through it; TOML too). Only `alloc` is needed, so the
+# crate cross-compiles to bare-metal targets (CI gate: `no-std-check`).
 [dependencies]

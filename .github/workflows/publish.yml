@@ -233,11 +233,127 @@ jobs:
           name: wheels-sdist
           path: dist
 
+  pyq:
+    name: pyq (${{ matrix.platform.label }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # `zig` marks the targets that build through `cargo zigbuild`; see the
+          # step comments below for why only these two and not all five.
+          # `std` is the plain rustup target: a zig target carries a `.2.NN`
+          # glibc suffix that rustup does not know, so std is spelled out
+          # instead of being derived from `target`.
+          # The `.2.NN` floors below are measured, not guessed: stepping x86_64
+          # down to `.2.15` fails to link (`ld.lld: undefined symbol:
+          # getauxval`, introduced in glibc 2.16), and zig ships no aarch64
+          # libc below 2.17 at all. The two floors differ and cannot be swapped;
+          # zig serves each target its own libc. Together they cover CentOS 7,
+          # Ubuntu 16.04/18.04 and Debian 8/9 instead of stopping at Debian 10.
+          - { label: linux-x86_64, runner: ubuntu-22.04, std: x86_64-unknown-linux-gnu, target: x86_64-unknown-linux-gnu.2.16, zig: true }
+          - { label: linux-aarch64, runner: ubuntu-22.04, std: aarch64-unknown-linux-gnu, target: aarch64-unknown-linux-gnu.2.17, zig: true }
+          # zig cc does not recognise `armv7-unknown-linux-gnueabihf`; the
+          # upstream README lists it as a known issue that needs a manual
+          # `-mcpu=generic` workaround, which is not worth shipping in a
+          # release build. This one target uses the distro cross compiler.
+          - { label: linux-armv7, runner: ubuntu-22.04, std: armv7-unknown-linux-gnueabihf, target: armv7-unknown-linux-gnueabihf, zig: false, apt: gcc-arm-linux-gnueabihf }
+          # macOS and Windows build natively on their own runners, and
+          # cargo-zigbuild supports neither Windows nor cross-Apple-SDK
+          # builds, so there is nothing for zig to solve here.
+          - { label: macos-x86_64, runner: macos-13, std: x86_64-apple-darwin, target: x86_64-apple-darwin, zig: false }
+          - { label: macos-aarch64, runner: macos-14, std: aarch64-apple-darwin, target: aarch64-apple-darwin, zig: false }
+          - { label: windows-x86_64, runner: windows-latest, std: x86_64-pc-windows-msvc, target: x86_64-pc-windows-msvc, zig: false }
+    env:
+      # Keep the build tree out of `target/` so `dist/` holds only release
+      # assets. Every step below mirrors cargo's own layout under this root.
+      CARGO_TARGET_DIR: dist/pyq-build
+    steps:
+      - uses: actions/checkout@v7
+
+      # The gnu targets need a linker for a foreign architecture: the runner's
+      # preinstalled gcc can only drive its own. Zig ships one C compiler that
+      # covers every target in the matrix, so it replaces the per-architecture
+      # apt cross compilers entirely for the linux-x86_64 and linux-aarch64
+      # jobs. It also makes the glibc baseline explicit — the `.2.NN` suffix
+      # pins the produced binaries to a measured floor instead of letting the
+      # runner's own glibc leak in and break older distributions.
+      - name: Install Zig
+        if: ${{ matrix.platform.zig }}
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install the armv7 cross toolchain
+        if: ${{ matrix.platform.apt }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.platform.apt }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.std }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: pyq-${{ matrix.platform.label }}
+
+      # `--release` plus a stripped profile keeps the attached asset small;
+      # without `strip` the raw debug info dwarfs the executable itself.
+      # NOTE: no `--out-dir`/`--artifact-dir` here — both are nightly-only on
+      # stable cargo, and every platform here runs the stable toolchain.
+      - name: Build pyq
+        run: >
+          ${{ matrix.platform.zig && 'cargo zigbuild' || 'cargo build' }}
+          --locked
+          --release
+          --bin pyq
+          --target ${{ matrix.platform.target }}
+          --config profile.release.strip=true
+
+      # A released artifact that cannot start is worse than no artifact: it
+      # fails on the user's machine instead of at build time. Prove the binary
+      # actually runs, on the runner that built it, before it is downloadable.
+      - name: Smoke test pyq
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The `.2.NN` glibc suffix is not a directory name; strip it back off.
+          TRIPLE="${{ matrix.platform.target }}"
+          TRIPLE="${TRIPLE%%.*}"
+          BIN="dist/pyq-build/$TRIPLE/release/pyq"
+          [ -x "$BIN" ] || BIN="$BIN.exe"
+          "$BIN" --version
+          "$BIN" --help > /dev/null
+          printf 'name: pyrs\n' | "$BIN" get .name --raw | grep -qx pyrs
+          printf '{"a":{"b":42}}\n' | "$BIN" get .a.b --raw | grep -qx 42
+
+      # Stage exactly one file: the target dir also holds a `.d` depfile and,
+      # on Windows, a `.pdb` that `strip=true` leaves orphaned and useless.
+      - name: Compress pyq
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRIPLE="${{ matrix.platform.target }}"
+          TRIPLE="${TRIPLE%%.*}"
+          SRC="dist/pyq-build/$TRIPLE/release"
+          mkdir -p dist/pyq
+          if [ -f "$SRC/pyq.exe" ]; then cp "$SRC/pyq.exe" dist/pyq/; else cp "$SRC/pyq" dist/pyq/; fi
+          tar -czf "dist/pyq-${{ matrix.platform.label }}.tar.gz" -C dist/pyq .
+
+      - name: Upload pyq
+        uses: actions/upload-artifact@v7
+        with:
+          name: pyq-${{ matrix.platform.label }}
+          path: dist/pyq-${{ matrix.platform.label }}.tar.gz
+
   release:
     name: Release
     runs-on: ubuntu-latest
     if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
-    needs: [linux, musllinux, windows, macos, sdist]
+    needs: [linux, musllinux, windows, macos, sdist, pyq]
     permissions:
       # Use to sign the release artifacts
       id-token: write
@@ -246,11 +362,29 @@ jobs:
       # Used to generate artifact attestation
       attestations: write
     steps:
+      # `gh release create --verify-tag` shells out to git to prove the tag
+      # exists before publishing notes, so this job needs a real checkout.
+      # Without it v0.17.0 died with "fatal: not a git repository" *after*
+      # `uv publish` had already succeeded — PyPI had the release, GitHub
+      # did not, and the tag/notes/wheels had to be reconciled by hand.
+      - uses: actions/checkout@v7
+        with:
+          # `--verify-tag` only needs the tag object itself, so a shallow
+          # fetch is enough; fetching tags explicitly keeps `git rev-parse`
+          # working even though checkout detaches HEAD.
+          fetch-depth: 1
+          fetch-tags: true
       - uses: actions/download-artifact@v8
+      # Attestation covers everything a user can download: the wheels and the
+      # sdist published to PyPI, plus the pyq binaries attached to the GitHub
+      # Release. Both globs are deliberate: the pyq archives are built by a
+      # plain `cargo build`, so nothing attests them in their own job.
       - name: Generate artifact attestation
         uses: actions/attest@v4
         with:
-          subject-path: 'wheels-*/*'
+          subject-path: |
+            wheels-*/*
+            pyq-*/*
       - name: Install uv
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: astral-sh/setup-uv@v10.0.0
@@ -260,8 +394,15 @@ jobs:
       # GitHub Release was previously created by hand (`gh release create`) after
       # every publish, which is one more step to forget and one more place for the
       # published version and the tag to drift apart. Creating it here means the
-      # release notes and the attached wheels are produced from the same tag that
-      # PyPI was published from, and only after uv publish has succeeded.
+      # release notes and the attached binaries are produced from the same tag
+      # that PyPI was published from, and only after uv publish has succeeded.
+      #
+      # The release carries the pyq binaries ONLY. The wheels and the sdist are
+      # on PyPI, which is the canonical home for the Python distribution;
+      # mirroring the identical files on GitHub only creates a second copy that
+      # can go stale and invites people to `pip install` from a hand-picked
+      # download. pyq has no PyPI distribution at all, so the release is its
+      # only distribution channel.
       - name: Create GitHub Release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         env:
@@ -272,4 +413,4 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             --verify-tag \
-            'wheels-*/*'
+            'pyq-*/*'

@@ -11,13 +11,25 @@ repository = "https://github.com/759401524/pyrs-yaml"
 name = "pyrs_ast"
 
 [dependencies]
-indexmap = "2.7"
-thiserror = "2"
+# `default-features = false` keeps the dependency tree `no_std`-clean; the
+# `std` feature re-enables `thiserror/std` for `std::error::Error` impls.
+indexmap = { version = "2.7", default-features = false }
+thiserror = { version = "2", default-features = false }
 # Property-test node strategies live behind an opt-in feature so the crate has
 # zero dev-facing proptest cost by default (keeps no_std / minimal builds clean);
 # the engine crate enables it only from its dev-dependencies.
 proptest = { version = "1.5", optional = true }
 
 [features]
-default = []
+# `std` is on by default so that every existing consumer keeps the exact
+# `IndexMap<K, V, RandomState>` node-map type it already wrote; `no_std` users
+# opt out with `default-features = false` and get the fixed-seed hasher below.
+# Note the asymmetry with `thiserror`: that one stays opt-in because enabling
+# `std` there only adds impls, never changes a type.
+default = ["std"]
+# Turning this on re-enables `thiserror/std` (std::error::Error impls) and
+# `indexmap/std` (RandomState + DefaultRandomState). Cargo unifies features
+# across the whole graph, so a std crate that pulls in pyrs-ast while some
+# sibling enables `indexmap/std` still agrees on the node-map type.
+std = ["thiserror/std", "indexmap/std"]
 test-strategy = ["dep:proptest"]

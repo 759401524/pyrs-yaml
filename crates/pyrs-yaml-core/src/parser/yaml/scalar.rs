@@ -139,6 +139,67 @@ pub fn detect_chomping(yaml: &str, content_line: usize) -> Chomping {
     Chomping::Clip
 }
 
+/// 块标量头的探测结果：`|`/`>` 后可以带 chomping（`-`/`+`）与显式缩进
+/// 指示器（`1`-`9`），两者可任意组合（如 `|-2`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BlockHeader {
+    /// Chomping 指示符。
+    pub chomping: Chomping,
+    /// 显式缩进指示器（`|2` 中的 `2`）；`None` 表示源码未显式给出。
+    pub indent: Option<u8>,
+}
+
+/// 从原始 YAML 文本中检测块标量头部的 chomping 与显式缩进指示器。
+///
+/// 与 [`detect_chomping`] 同一套行扫描策略（从 `content_line` 向上找到最近
+/// 的 `|`/`>` 头），只是把缩进数字也一并带出来。合成扫描而不是两次调用，
+/// 避免对同一个块标量重复走一遍行迭代器。
+///
+/// # Arguments
+/// * `yaml` - 原始 YAML 文本。
+/// * `content_line` - 块标量内容起始行号（**0 起始**）。
+///
+/// # Returns
+/// 探测到的块标量头；未找到 `|`/`>` 时返回默认值（`Clip` + 无缩进指示器）。
+///
+/// # Examples
+/// ```rust
+/// use pyrs_yaml_core::parser::yaml::scalar::detect_block_header;
+/// let h = detect_block_header("yaml: |2\n  x\n", 1);
+/// assert_eq!(h.indent, Some(2));
+/// ```
+pub fn detect_block_header(yaml: &str, content_line: usize) -> BlockHeader {
+    for check_line in (0..=content_line).rev() {
+        let Some(line_text) = yaml.lines().nth(check_line) else {
+            continue;
+        };
+
+        for (i, ch) in line_text.char_indices() {
+            if ch == '|' || ch == '>' {
+                let mut chomping = Chomping::Clip;
+                let mut indent = None;
+                // Walk the (at most two) indicator characters after the
+                // header. A digit is the explicit indentation indicator; a
+                // `-`/`+` is chomping. Order is irrelevant because each digit
+                // is a single byte in the 1-9 range.
+                for ind_ch in line_text[i + 1..].chars() {
+                    match ind_ch {
+                        '-' => chomping = Chomping::Strip,
+                        '+' => chomping = Chomping::Keep,
+                        '1'..='9' => indent = Some(ind_ch as u8 - b'0'),
+                        // End of the header: a space, a comment, or EOL.
+                        _ => return BlockHeader { chomping, indent },
+                    }
+                }
+                // Header ran to the end of the line.
+                return BlockHeader { chomping, indent };
+            }
+        }
+    }
+
+    BlockHeader::default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

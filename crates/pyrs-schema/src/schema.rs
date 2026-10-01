@@ -1,6 +1,6 @@
 use crate::is_yaml_noncharacter;
 use crate::types::{YamlSchema, YamlType};
-use std::borrow::Cow;
+use alloc::borrow::Cow;
 
 // YamlSchema is defined in types.rs and re-exported via mod.rs.
 

@@ -15,6 +15,43 @@ status: new
 
 ### [Unreleased]
 
+#### 추가
+
+- **`pyrs-ast` / `pyrs-schema`가 `no_std` 지원** — 모든 포맷 엔진이 그 위에 세워지는 두
+  기초 크레이트가 이제 `alloc` 만으로 빌드됩니다: `indexmap`과 `thiserror`의 기본 `std`
+  feature를 비활성화하고, 새로 추가된 옵트인 `std` feature로 `std::error::Error` 구현과
+  `RandomState` 해시를 다시 활성화합니다. `std`는 계속 기본 활성화이므로 기존 모든
+  컨슈머는 전에와 동일한 `IndexMap<K, V, RandomState>` 노드 맵 타입을 그대로 씁니다;
+  `no_std` 사용자는 `default-features = false`로 옵트아웃하여 고정 시드 해시를 얻습니다.
+  Proptest 노드 전략은 새 `test-strategy` feature 뒤로 이동해 일반 빌드에는 속성 테스트
+  비용이 없습니다. CI 잡 `no-std-check`이 맨메탈 타깃으로 크로스 컴파일하여 이 성질을
+  검증합니다.
+- **`pyq` 프리빌드 바이너리 릴리스 동봉** — `publish.yml`의 새 `pyq` 잡이 6개 플랫폼용
+  네이티브 CLI를 빌드해 아카이브를 GitHub Release에 첨부합니다. 단독 바이너리를 얻는 데
+  Rust 툴체인이 필요하지 않습니다.
+
+#### 변경
+
+- **`pyq validate`가 `--input`을 받고 실제 포맷을 존중** — 기존엔 YAML 파서를 하드코딩해
+  바꿀 방법도 없었으므로 `pyproject.toml`, `package.json` 등 비-YAML 설정 파일은 무조건
+  거부됐습니다. 이제 공유 로더를 거치며
+  `--input auto|yaml|json|jsonc|json5|toml`을 받습니다.
+- **`pyq` 프리빌드 바이너리의 glibc 하한을 실측값으로 고정** — Linux 타깃은 `cargo zigbuild`
+  로 `.2.28` 대신 `.2.16`(x86_64)·`.2.17`(aarch64)에서 빌드되어 CentOS 7 / Ubuntu 16.04 /
+  18.04 / Debian 8 / 9를 커버합니다. 두 수치는 추측이 아닌 실측입니다: `.2.15`는
+  `undefined symbol: getauxval`(glibc 2.16에서 도입)로 링크 실패하고, zig은 2.17 미만
+  aarch64 libc를 아예 제공하지 않습니다. 두 하한은 다르며 서로 대체 불가 — zig은 각
+  타깃에 자체 libc를 제공합니다.
+
+#### 수정
+
+- **블록 스칼라가 명시적 들여쓰기 지시자를 보존** — `key: |2`로 작성된 본문은 직렬화할 때 `2`가
+  조용히 사라져, 본문 첫 줄이 뒤 줄보다 깊게 들여쓰인 경우(딱 `4RWC.yaml` 모양: 첫 줄 6,
+  후속 줄 4) 출력의 재파싱 결과가 입력과 달랐습니다. 지시자가 없으면 리더가 본문 첫 줄에서
+  들여쓰기를 자동 감지하므로, 지시자 유실은 외관이 아닌 의미 변경입니다. 이제 지시자가 AST에
+  실리고 사양 순서(`c-b-block-header`: chomping 먼저, 들여쓰기 나중 — 따라서 strip은 `|-2`)로
+  재출력되며, 라이터는 본문 기준을 부모 노드 열이 아니라 헤더를 실은 줄의 열에서 잡습니다.
+
 ### [v0.17.0] — 2026-10-01
 
 #### 추가

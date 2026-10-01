@@ -158,6 +158,10 @@ pub enum Command {
     /// line, exit 1 on any.
     Validate {
         file: Option<PathBuf>,
+        /// Input format; `auto` keys off the file extension. Without this
+        /// a `pyproject.toml` would be fed to the YAML parser and rejected.
+        #[arg(long, value_enum, default_value_t = Format::Auto)]
+        input: Format,
         /// Schema rules file (YAML, core schema language).
         #[arg(long)]
         schema: Option<PathBuf>,
@@ -483,15 +487,30 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             })?;
             write_text(&text, &file, inplace)?;
         }
-        Command::Validate { file, schema } => {
+        Command::Validate {
+            file,
+            input,
+            schema,
+        } => {
             let src = read_input(&file)?;
+            let input_opts = InputOpts {
+                input,
+                schema: SchemaKind::Core,
+            };
             let resolver = match &schema {
                 Some(p) => Some(parser::yaml::parse_schema_yaml(&std::fs::read_to_string(
                     p,
                 )?)?),
                 None => None,
             };
-            let docs = parser::parse_all(&src, Schema::Core)?;
+            // Route through the shared loader so a .toml/.json/.ini file is
+            // checked with its own parser; `validate` used to hardcode YAML
+            // and rejected every real config file in the wild. Only an
+            // explicitly named YAML/JSON format has a document stream to walk;
+            // `auto` must resolve the extension first, so it goes through
+            // `load_source` instead of the stream splitter.
+            let streamable = matches!(input, Format::Yaml | Format::Json);
+            let docs = load_docs(&src, file.as_deref(), &input_opts, streamable)?;
             let mut failures = Vec::new();
             if let Some(rules) = &resolver {
                 for doc in &docs {

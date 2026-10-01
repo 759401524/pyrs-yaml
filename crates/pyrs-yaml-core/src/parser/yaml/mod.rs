@@ -12,7 +12,7 @@ pub use pyrs_schema::{schema, types};
 pub use comment::{RawAnchor, YamlScan, compute_line_offsets, extract_anchors, scan_yaml};
 pub use merge::resolve_merge_keys;
 pub use registry::SchemaRegistry;
-pub use scalar::{detect_chomping, unescape_double_quoted};
+pub use scalar::{BlockHeader, detect_block_header, unescape_double_quoted};
 pub use schema::resolve_yaml_type;
 pub use schema_language::{RuleResolver, YamlTypeKind, parse_schema_yaml};
 pub use types::{Schema, SchemaResolver, YamlSchema, YamlType};
