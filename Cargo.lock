@@ -835,6 +835,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyrs-schema"
+version = "0.16.0"
+
+[[package]]
 name = "pyrs-yaml"
 version = "0.16.0"
 dependencies = [
@@ -866,6 +870,7 @@ dependencies = [
  "indexmap",
  "proptest",
  "pyrs-ast",
+ "pyrs-schema",
  "regex",
  "rust-i18n",
  "similar",

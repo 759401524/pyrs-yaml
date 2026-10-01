@@ -1012,10 +1012,10 @@ pub fn write_single_quoted_scalar(out: &mut String, value: &str) {
 /// Whether `c` is a Unicode noncharacter (U+FFFE/U+FFFF and the plane-end
 /// twins U+1FFFE…U+10FFFF). granit-parser rejects these even inside quoted
 /// scalars, so they must always be escaped.
-pub fn is_yaml_noncharacter(c: char) -> bool {
-    let u = c as u32;
-    u & 0xFFFE == 0xFFFE
-}
+// `is_yaml_noncharacter` now lives in the shared `pyrs-schema` crate (used by
+// both the scalar resolvers and the YAML emitter); re-exported here so
+// `crate::serializer::is_yaml_noncharacter` callers keep resolving.
+pub use pyrs_schema::is_yaml_noncharacter;
 
 /// Append `value` to `out` as a double-quoted YAML scalar, escaping control
 /// and special characters.

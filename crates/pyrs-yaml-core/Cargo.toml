@@ -17,6 +17,7 @@ granit-parser = "1.3"
 regex = "1.11"
 thiserror = "2"
 pyrs-ast = { path = "../pyrs-ast", version = "0.16.0" }
+pyrs-schema = { path = "../pyrs-schema", version = "0.16.0" }
 # JSON5 unquoted identifier keys need exact Unicode ID_Start / ID_Continue
 # properties (all scripts, including combining marks); `std` does not expose
 # those general categories. rustc's own lexer uses this same tiny crate.
