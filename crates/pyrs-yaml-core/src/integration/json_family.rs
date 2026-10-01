@@ -4,8 +4,8 @@
 
 use crate::ast::CustomNode;
 use crate::error::SerializeError;
-use crate::json::{to_json_text, to_json_text_pretty, to_jsonc_text_pretty};
 use crate::parser::{parse, yaml::Schema};
+use pyrs_json::{to_json_text, to_json_text_pretty, to_jsonc_text_pretty};
 
 #[test]
 fn jsonc_preserves_root_leading_comment() {

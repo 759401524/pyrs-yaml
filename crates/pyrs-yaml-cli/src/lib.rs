@@ -13,11 +13,12 @@ pub mod paths;
 pub mod verbs;
 
 use clap::{Parser, Subcommand};
+use pyrs_toml as toml;
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::editing::Segment;
 use pyrs_yaml_core::editing::plan;
 use pyrs_yaml_core::parser::yaml::Schema;
-use pyrs_yaml_core::{parser, serializer, toml};
+use pyrs_yaml_core::{parser, serializer};
 use std::borrow::Cow;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};

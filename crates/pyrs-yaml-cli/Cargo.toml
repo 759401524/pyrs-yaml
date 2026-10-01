@@ -4,7 +4,7 @@ version = "0.16.0"
 edition = "2024"
 rust-version = "1.96"
 license = "MIT OR Apache-2.0"
-description = "pyq - a jq/yq-style command-line tool for YAML, JSON, TOML and INI, powered by pyrs-yaml-core"
+description = "pyq - a jq/yq-style command-line tool for YAML, JSON, TOML and INI, powered by the pyrs engine crate matrix"
 
 [[bin]]
 name = "pyq"
@@ -15,6 +15,8 @@ clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 indexmap = { version = "2", features = ["std"] }
 pyrs-yaml-core = { path = "../pyrs-yaml-core", version = "0.16.0" }
+pyrs-json = { path = "../pyrs-json", version = "0.16.0" }
+pyrs-toml = { path = "../pyrs-toml", version = "0.16.0" }
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "5.0" }
