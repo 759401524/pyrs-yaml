@@ -64,3 +64,77 @@ arbitrary_json = st.recursive(
     ),
     max_leaves=40,
 )
+
+
+# ── dialect grammar fuzz ──────────────────────────────────────────────────────
+# Random byte/text mostly trips the loaders' "expected a value" early exit and
+# never reaches the interesting grammar. `dialect_text` assembles real JSONC /
+# JSON5 / TOML tokens -- comments, trailing commas, unquoted keys, hex /
+# leading-dot / Infinity / NaN spellings, leading zeros, underscores, invalid
+# UTF-8 (lone surrogate, NUL, NBSP, lone CR), unterminated strings -- so the
+# fuzzer exercises the exact constructs the objective calls out (JSON5 trailing
+# comma / comment / unquoted key, huge numbers, illegal UTF-8) instead of
+# floundering on the first byte. The invariant these feed into is pure
+# no-panic: every loader/serializer must return a value or raise a typed
+# parse/serialize error, never abort the process.
+_DIALECT_FRAGMENTS = st.sampled_from(
+    [
+        "// line\n",
+        "/* block */",
+        "# toml note\n",
+        "{",
+        "}",
+        "[",
+        "]",
+        "(",
+        ")",
+        ",",
+        ":",
+        "=",
+        ".",
+        "e",
+        "E",
+        "'",
+        '"',
+        "\\",
+        "\\n",
+        "\\u",
+        "\\u00",
+        "\\ud800",
+        "0x1F",
+        "0XFF",
+        "0o755",
+        "0b101",
+        "+.5",
+        "5.",
+        ".5",
+        "Infinity",
+        "-Infinity",
+        "NaN",
+        "007",
+        "-01",
+        "1_0",
+        "1__0",
+        "1_",
+        "true",
+        "false",
+        "null",
+        "nil",
+        "key",
+        "a.b.c",
+        '"k"',
+        "1e999",
+        "1e-999",
+        "-0",
+        "99999999999999999999999999",
+        "\t",
+        "\r\n",
+        "\x00",
+        "\u00a0",
+        "\u2028",
+        "\ufeff",
+        " ",
+        "\n",
+    ]
+)
+dialect_text = st.lists(_DIALECT_FRAGMENTS, min_size=0, max_size=28).map("".join)
