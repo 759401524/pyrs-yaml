@@ -641,6 +641,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`\u` / `\x` escapes followed by a multibyte char panicked the parser**
+  — the fixed-width escape readers sliced `&self.text[pos..pos+width]` by
+  byte offset assuming one byte per char. When a JSON `\u`, or a TOML `\xHH`
+  / `\uXXXX` / `\UXXXXXXXX`, escape was followed by a multibyte character the
+  slice end landed mid-character and Rust panicked (aborting the process), the
+  sibling of the #153 non-ASCII slice crashes. The readers now slice the byte
+  buffer and UTF-8-validate, so a malformed escape returns a clean parse
+  error instead of aborting. Found by the dialect no-panic fuzz; pinned by
+  deterministic Rust regression tests in both parsers.
 - **A literal `<<` key with a non-merge value was silently dropped** —
   `safe_dump({"<<": None})` → `<<: null` → `load` returned `{}`, losing the
   key (same for `<<: 1`, `<<: "x"`, or `<<:` alongside other keys). The merge

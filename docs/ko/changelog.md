@@ -269,6 +269,7 @@ status: new
 
 #### 수정
 
+- **`\u` / `\x` 이스케이프 뒤 多字节 字符에 parser panic** — 고정폭 이스케이프 리더가 `&self.text[pos..pos+width]`를 字节 오프셋으로 슬라이스. JSON `\u` / TOML `\xHH`/`\uXXXX`/`\UXXXX` 뒤에 多字节 字符가 오면 슬라이스가 字符 中间에 落하 여 프로세스 abort (#153 同族). 字节 슬라이스 + UTF-8 校验로 修改, 不正 이스케이프는 干净히 에러. 方言 fuzz 로 發見, 두 parser 에 決定性 Rust 回归 테스트로 固定.
 - **비(非)머지 값의 리터럴 `<<` 키가 조용히 폐기됨** — `load(safe_dump({"<<": None}))` 이 키를 잃고 `{}` 반환. 머지 리졸버가 Null/Scalar 값에도 모든 `<<` 를 머지로 소비. YAML 에선 `<<` 값이 mapping 별자/inline mapping/그 시퀀스일 때만 머지. Null/스칼라 `<<` 는 일반 키로 왕복 보존. Alias/mapping/sequence 경로(#166 자기참조 앵커 가드 포함) 무변경, yaml-test-suite 405/406 유지. 왕복 속성 fuzz 가 비결정 포착(#163/#165/#166 급 결함), 결정적 Rust 회귀 테스트로 고정.
 - **TOML 深네스팅이 네이티브 스택을 넘어 프로세스를 abort** — TOML 파서엔 중첩 예산이 없어(JSON 은 `DEFAULT_MAX_DEPTH`, YAML 은 `parse` `max_depth`), `parse_value` → `parse_array`/`parse_inline_table` 이 무제한 재귀. 深배열/인라인 테이블은 인터프리터를 즉시 충돌시킴(검증: exit `0xC00000FD` STACK_OVERFLOW) — #166 YAML merge 오버플로의 TOML 판. 파서가 `depth` 추적해 1000 초과시 `ParseError::MaxDepthExceeded` 반환, JSON 과 대칭. in-process Python 경계 테스트 + subprocess crash canary + 大스택 Rust 테스트로 보호.
 - **방언 writer/parser가 문서 수준 주석을 유실·오배치** — 고정점 속성이 잡아낸 3개 결함: (a) JSONC/JSON5 값 앞 파일 선행 `// note`가 inline으로 오분류(오프셋 0 앞 개행 없음)되고 writer가 주석 달는 root가 아닌 첫 object 멤버에 선점돼, 빈 `{}`/root 스칼라에서는 완전히 소실; (b) JSON 계열 및 TOML writer는 주석 본문를 그대로 출력하나 parser는 trim 저장—미trim 주석은 pass마다 후미 공백이 요동—writer도 출력 시 trim해 첫 표기부터 안정; (c) 주석만 있는 TOML 문서(`# note` 뒤 키 없음)는 재파싱 시 주석이 유실돼 빈 root가 `""`화—미소비 standalone 주석을 빈 root 테이블에 부착. 5개 포맷의 leading 주석이 모두 문자 안정 고정점에 도달(3개 Rust 테스트로 고정).
