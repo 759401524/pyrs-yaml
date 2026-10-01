@@ -14,10 +14,10 @@
 //! - aliases/tags of collection nodes and typed collections are stable
 //!   errors: JSON cannot represent them (the caller decides how to report).
 
-use crate::ast::{CustomNode, ScalarStyle};
-use crate::error::{DepthError, SerializeError};
-use crate::json::parser::DEFAULT_MAX_DEPTH;
-use crate::parser::yaml::{Schema, YamlType};
+use crate::parser::DEFAULT_MAX_DEPTH;
+use pyrs_ast::ast::{CustomNode, ScalarStyle};
+use pyrs_ast::error::{DepthError, SerializeError};
+use pyrs_schema::types::{Schema, YamlType};
 use std::fmt::Write as _;
 
 /// Which JSON-family dialect `write_value` targets. `Json5` is a superset
@@ -497,8 +497,7 @@ fn indent(out: &mut String, step: usize, level: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::json::parser::from_json;
-    use crate::parser;
+    use crate::parser::from_json;
 
     #[test]
     fn round_trips_json_documents_byte_stably() {
@@ -514,58 +513,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn yaml_nodes_project_like_the_serde_json_path() {
-        let node = parser::parse(
-            "s: hello\nn: 42\nf: 1.5\nb: true\nq: \"52\"\nnl: ~\nlist: [1, two]\n",
-            Schema::Core,
-        )
-        .unwrap();
-        let text = to_json_text_pretty(&node, 2).unwrap();
-        assert!(text.contains("\"s\": \"hello\""), "{text}");
-        assert!(text.contains("\"n\": 42"), "{text}");
-        assert!(text.contains("\"f\": 1.5"), "{text}");
-        assert!(text.contains("\"b\": true"), "{text}");
-        assert!(text.contains("\"q\": \"52\""), "{text}"); // quoted stays string
-        assert!(text.contains("\"nl\": null"), "{text}");
-        assert!(text.contains("\"two\""), "{text}");
-    }
-
-    #[test]
-    fn exotic_scalars_quote_or_normalize() {
-        let node = parser::parse("a: 0x1F\nb: .inf\nc: !!str 7\n", Schema::Core).unwrap();
-        let text = to_json_text(&node).unwrap();
-        assert!(text.contains("\"a\":31"), "{text}"); // hex normalizes
-        assert!(text.contains("\"b\":\".inf\""), "{text}"); // non-finite as text
-        assert!(text.contains("\"c\":7"), "{text}"); // plain+tag resolves like serde path did
-    }
-
-    #[test]
-    fn alias_and_non_scalar_keys_are_stable_errors() {
-        let node = parser::parse("a: &x 1\nb: *x\n", Schema::Core).unwrap();
-        let CustomNode::Mapping { pairs, .. } = &node else {
-            unreachable!()
-        };
-        // resolve alias manually is out of scope; the alias node errors
-        let (_, b_val) = pairs.get_index(1).unwrap();
-        let err = to_json_text(b_val).unwrap_err();
-        assert!(format!("{err:?}").contains("json-cannot-represent-alias"));
-        // a sequence key cannot be a JSON object key
-        let keyed = CustomNode::Mapping {
-            pairs: [(
-                CustomNode::plain_sequence(vec![CustomNode::plain_scalar("k")]),
-                CustomNode::plain_scalar("v"),
-            )]
-            .into_iter()
-            .collect(),
-            flow_style: false,
-            meta: Default::default(),
-        };
-        assert!(matches!(
-            to_json_text(&keyed),
-            Err(SerializeError::Internal("json-object-key"))
-        ));
-    }
+    // YAML-source projections (`parse -> to_json_text*`) need the YAML parser
+    // and live in `pyrs-yaml-core` `src/integration/json_family.rs`; this
+    // crate must not reach back into the YAML parser.
 
     #[test]
     fn control_characters_and_escaping() {
@@ -592,7 +542,7 @@ mod tests {
         // the `,`. The parser attaches it to the value node's meta so the
         // writer can place it correctly without positional replay.
         let src = "{\n  \"port\": 8080 // default port\n}\n";
-        let n = crate::json::from_jsonc(&src[..src.len() - 1]).unwrap();
+        let n = crate::from_jsonc(&src[..src.len() - 1]).unwrap();
         let out = to_jsonc_text_pretty(&n, 2).unwrap();
         assert!(out.contains("\"port\": 8080 // default port"), "{out}");
     }
@@ -603,7 +553,7 @@ mod tests {
         // node's `standalone` slot, then back to its own line before
         // the `key: value` pair.
         let src = "{\n  // section header\n  \"k\": 1\n}";
-        let n = crate::json::from_jsonc(src).unwrap();
+        let n = crate::from_jsonc(src).unwrap();
         let out = to_jsonc_text_pretty(&n, 2).unwrap();
         assert!(out.contains("// section header\n  \"k\": 1"), "{out}");
     }
@@ -616,7 +566,7 @@ mod tests {
         // trailing on `NodeMeta::comment` — impossible under the
         // single-slot model #112 shipped.
         let src = "{\n  // above\n  \"k\": 1 // after\n}";
-        let n = crate::json::from_jsonc(src).unwrap();
+        let n = crate::from_jsonc(src).unwrap();
         let out = to_jsonc_text_pretty(&n, 2).unwrap();
         assert!(out.contains("// above"), "missing leading: {out}");
         assert!(out.contains("// after"), "missing trailing: {out}");
@@ -632,7 +582,7 @@ mod tests {
         // standalone note on its own line plus a trailing note after
         // the value both survive the round trip.
         let src = "[\n  // lead\n  1 // trail\n]";
-        let n = crate::json::from_jsonc(src).unwrap();
+        let n = crate::from_jsonc(src).unwrap();
         let out = to_jsonc_text_pretty(&n, 2).unwrap();
         assert!(out.contains("// lead"), "missing leading: {out}");
         assert!(out.contains("// trail"), "missing trailing: {out}");
@@ -643,7 +593,7 @@ mod tests {
         // Block comments collapse to `//` on emit — the AST stores only
         // the body text, matching the YAML receiver's `Comment` model.
         let src = "{\n  /* note */\n  \"a\": 1\n}";
-        let n = crate::json::from_jsonc(src).unwrap();
+        let n = crate::from_jsonc(src).unwrap();
         let out = to_jsonc_text_pretty(&n, 2).unwrap();
         assert!(out.contains("// note"), "{out}");
         assert!(!out.contains("/*"), "{out}");
@@ -655,7 +605,7 @@ mod tests {
         // comments (from a JSONC parse), the strict writer emits no
         // `//` sequences. Guards the round-trip contract for consumers
         // who pass JSONC ASTs through the plain JSON path.
-        let n = crate::json::from_jsonc("{\"a\": 1 // x\n}").unwrap();
+        let n = crate::from_jsonc("{\"a\": 1 // x\n}").unwrap();
         let s = to_json_text(&n).unwrap();
         assert!(!s.contains("//"), "{s}");
         assert!(!s.contains('x'), "{s}");
@@ -666,7 +616,7 @@ mod tests {
         // PR #121: a JSON5 single-quoted string round-trips back to
         // single quotes; the strict / JSONC writers still emit double
         // quotes for the same AST (JSON has no single-quote form).
-        let n = crate::json::from_json5("{ 'name': 'chen' }").unwrap();
+        let n = crate::from_json5("{ 'name': 'chen' }").unwrap();
         let j5 = to_json5_text(&n).unwrap();
         assert!(j5.contains("'name'") || j5.contains("'chen'"), "{j5}");
         let strict = to_json_text(&n).unwrap();
@@ -681,32 +631,24 @@ mod tests {
         // The JSON5 numeric spellings #120 parses stay verbatim through
         // to_json5_text, whereas the strict writer would quote / canonicalise.
         for src in ["0xDECAF", ".5", "5.", "+7", "Infinity", "-Infinity", "NaN"] {
-            let n = crate::json::from_json5(src).unwrap();
+            let n = crate::from_json5(src).unwrap();
             let j5 = to_json5_text(&n).unwrap();
             assert_eq!(j5, src, "json5 should keep {src}");
         }
     }
 
-    #[test]
-    fn jsonc_preserves_root_leading_comment() {
-        // PR #122: a document-level standalone comment attaches to the
-        // root container's `leading_comment` slot. Nested members emit
-        // theirs via the pair loop; the outermost node has no preceding
-        // key, so `emit_root_leading` is what keeps it from dropping.
-        let ast = crate::parser::parse("# header\nport: 8080\n", crate::parser::yaml::Schema::Core)
-            .unwrap();
-        let out = to_jsonc_text_pretty(&ast, 2).unwrap();
-        assert!(out.starts_with("// header\n"), "{out}");
-        assert!(out.contains("\"port\": 8080"), "{out}");
-    }
+    // YAML-source root-comment fidelity (`parse → to_jsonc_text_pretty`) is an
+    // engine-level scenario and lives in `pyrs-yaml-core`
+    // `src/integration/json_family.rs`; this crate must not reach back into
+    // the YAML parser.
 
     #[test]
     fn json5_round_trip_is_idempotent() {
         // parse -> emit -> parse -> emit reaches a fixed point, and the
         // intermediate AST carries no lost comments or exotic numbers.
         let src = "{ a: 0x1F, b: .5, c: 'str', d: Infinity }";
-        let once = to_json5_text(&crate::json::from_json5(src).unwrap()).unwrap();
-        let twice = to_json5_text(&crate::json::from_json5(&once).unwrap()).unwrap();
+        let once = to_json5_text(&crate::from_json5(src).unwrap()).unwrap();
+        let twice = to_json5_text(&crate::from_json5(&once).unwrap()).unwrap();
         assert_eq!(once, twice, "not a fixed point:\n{once}\n{twice}");
         assert!(once.contains("0x1F"), "{once}");
         assert!(once.contains(".5"), "{once}");

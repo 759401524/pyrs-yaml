@@ -15,10 +15,10 @@
 //! - top-level scalars are valid (RFC 8259), trailing commas are not,
 //!   and a document must contain exactly one value.
 
-use crate::ast::CustomNode;
-use crate::error::{DepthError, ParseError};
-use crate::parser::yaml::schema::needs_quotes;
 use indexmap::IndexMap;
+use pyrs_ast::ast::CustomNode;
+use pyrs_ast::error::{DepthError, ParseError};
+use pyrs_schema::schema::needs_quotes;
 
 /// Default nesting limit, matching the YAML pipeline's `parse` default.
 pub const DEFAULT_MAX_DEPTH: usize = 1000;
@@ -153,7 +153,7 @@ pub fn from_json_with_options(
     // Attach any leftover note to the root node as well.
     let mut root = value;
     if let Some(pc) = root_leading {
-        root.set_leading_comment(crate::ast::Comment {
+        root.set_leading_comment(pyrs_ast::ast::Comment {
             text: std::sync::Arc::from(pc.text.as_str()),
             standalone: true,
         });
@@ -318,7 +318,7 @@ impl<'a> Parser<'a> {
     /// trailing notes keep using `comment` (unchanged from #112).
     fn flush_pending(&mut self, node: &mut CustomNode) {
         if let Some(pc) = self.pending_comment.take() {
-            let comment = crate::ast::Comment {
+            let comment = pyrs_ast::ast::Comment {
                 text: std::sync::Arc::from(pc.text),
                 standalone: pc.own_line,
             };
@@ -474,9 +474,9 @@ impl<'a> Parser<'a> {
                 // every string double-quoted.
                 Ok(CustomNode::Scalar {
                     value: s.into(),
-                    style: crate::ast::ScalarStyle::SingleQuoted,
-                    chomping: crate::ast::Chomping::Clip,
-                    meta: crate::ast::NodeMeta::default(),
+                    style: pyrs_ast::ast::ScalarStyle::SingleQuoted,
+                    chomping: pyrs_ast::ast::Chomping::Clip,
+                    meta: pyrs_ast::ast::NodeMeta::default(),
                 })
             }
             Some(b't') => {
@@ -533,7 +533,7 @@ impl<'a> Parser<'a> {
             };
             let mut key_node = quoted_or_plain(key_str);
             if let Some(pc) = key_pending {
-                let comment = crate::ast::Comment {
+                let comment = pyrs_ast::ast::Comment {
                     text: std::sync::Arc::from(pc.text),
                     standalone: pc.own_line,
                 };
@@ -585,7 +585,7 @@ impl<'a> Parser<'a> {
             let element_pending = self.pending_comment.take();
             let mut item = self.value()?;
             if let Some(pc) = element_pending {
-                let comment = crate::ast::Comment {
+                let comment = pyrs_ast::ast::Comment {
                     text: std::sync::Arc::from(pc.text),
                     standalone: pc.own_line,
                 };
@@ -876,8 +876,8 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::ScalarStyle;
-    use crate::parser::yaml::Schema;
+    use pyrs_ast::ast::ScalarStyle;
+    use pyrs_schema::types::Schema;
 
     fn scalar_text(node: &CustomNode) -> String {
         match node {
@@ -1238,8 +1238,8 @@ mod tests {
         // `want` and `got` differ only in that `strict` never sees the
         // `,` before `]` — but the shape (values, order) is identical.
         // Re-serialize to compare semantically.
-        let a = crate::json::to_json_text(&want).unwrap();
-        let b = crate::json::to_json_text(&got).unwrap();
+        let a = crate::to_json_text(&want).unwrap();
+        let b = crate::to_json_text(&got).unwrap();
         assert_eq!(a, b);
     }
 
@@ -1249,13 +1249,13 @@ mod tests {
         // (mirroring the writer's `emit_root_leading`), not to the first
         // member: it must survive re-parse on an empty container and keep
         // the JSONC/JSON5 writer output a fixed point.
-        let round = |src: &str| crate::json::to_jsonc_text(&from_jsonc(src).unwrap()).unwrap();
+        let round = |src: &str| crate::to_jsonc_text(&from_jsonc(src).unwrap()).unwrap();
         assert_eq!(round("// A\n{}"), "// A\n{}");
         let once = round("// A\n{\"k\": 1}");
         assert!(once.starts_with("// A\n"), "{once}");
         assert_eq!(round(&once), once);
         // JSON5 rides the same root-attachment path.
-        let round5 = |src: &str| crate::json::to_json5_text(&from_json5(src).unwrap()).unwrap();
+        let round5 = |src: &str| crate::to_json5_text(&from_json5(src).unwrap()).unwrap();
         assert_eq!(round5("// A\n{}"), "// A\n{}");
     }
 
@@ -1265,9 +1265,9 @@ mod tests {
         // them trimmed too, or `//  spaced  ` would oscillate trailing
         // whitespace across passes (the fixed point demands a stable
         // spelling from the first emit onward).
-        let got = crate::json::to_jsonc_text(&from_jsonc("//   spaced   \n{}").unwrap()).unwrap();
+        let got = crate::to_jsonc_text(&from_jsonc("//   spaced   \n{}").unwrap()).unwrap();
         assert_eq!(got, "// spaced\n{}");
-        let again = crate::json::to_jsonc_text(&from_jsonc(&got).unwrap()).unwrap();
+        let again = crate::to_jsonc_text(&from_jsonc(&got).unwrap()).unwrap();
         assert_eq!(again, got);
     }
 
@@ -1329,7 +1329,7 @@ mod tests {
             // resolves to a non-string JSON primitive
             assert!(!matches!(
                 schema.resolve(value),
-                crate::parser::yaml::YamlType::Str(_)
+                pyrs_schema::types::YamlType::Str(_)
             ));
         }
     }

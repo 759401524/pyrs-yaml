@@ -6,7 +6,7 @@
 //! AST nodes onto JSON text with stable rejection reasons.
 //!
 //! ```
-//! use pyrs_yaml_core::json::{from_json, to_json_text};
+//! use pyrs_json::{from_json, to_json_text};
 //! let node = from_json(r#"{"a": [1, 2.5, true]}"#).unwrap();
 //! assert_eq!(to_json_text(&node).unwrap(), r#"{"a":[1,2.5,true]}"#);
 //! ```
