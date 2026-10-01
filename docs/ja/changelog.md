@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.17.0] — 2026-10-01
+
 #### 追加
 
 - **pyq CLI パリティフラグ** — `pyq fmt` に `--indent N`（ブロック

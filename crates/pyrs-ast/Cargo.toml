@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-ast"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Format-agnostic AST + shared error types for the pyrs-yaml engine family"
