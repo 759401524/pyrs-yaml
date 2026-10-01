@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.16.0] — 2026-10-01
+
 #### 追加
 
 - **JSONC ブロックコメント・ホットスポットベンチ** — 目標 §テストカバレッジ 5 が「block-comment」を必須のホットサンプルに指定。以前はインライン `//` のみ計測。新フィクスチャで `test_load_jsonc_block_comments` を駆動：50 pair + header/footer、各項に独立 `/* item N */` と末尾 `value /* trailing */` を持たせ、ブロック走査の回帰を CodSpeed で可視化。

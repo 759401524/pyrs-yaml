@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.16.0] — 2026-10-01
+
 #### 新增
 
 - **JSONC 块注释热点基准** — 目标 §测试覆盖 5 将「block-comment」
