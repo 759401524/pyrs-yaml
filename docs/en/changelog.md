@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Linux free-threaded (`cp314t`) wheels ship in the Release** — the wheel
+  matrix only built free-threaded artifacts for Windows and macOS, so Linux
+  users on the GIL-less interpreter had nothing to install: the GIL-enabled
+  `cp38-abi3` wheels are ABI-incompatible with `Py_GIL_DISABLED` builds and
+  the `abi3t` wheel only starts at CPython 3.15. The `linux` job now builds
+  manylinux cp314t wheels for x86_64/aarch64 from the image's own
+  free-threaded interpreter and smoke-tests the wheel in a `3.14t` venv
+  before it is attached.
 - **Block scalars keep their explicit indentation indicator** — a body
   written as `key: |2` had the `2` silently dropped on write, so the output
   re-parsed differently from the input whenever the first body line sat
