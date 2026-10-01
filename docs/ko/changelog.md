@@ -15,6 +15,22 @@ status: new
 
 ### [Unreleased]
 
+#### 추가
+
+- **pyq CLI 패리티 플래그** — `pyq fmt`에 `--indent N`(블록 들여쓰기, 기본 2),
+  `--width N`(스칼라 소프트 줄바꿈 열폭, 0이면 비활성), `--sort-keys`(직렬화
+  단계 문서 전체 키 정렬), `-i/--inplace`(파일 그 자리 다시 쓰기) 추가,
+  `pyrs-yaml-core::SerializeOptions`의 모든 옵션을 노출하고 Python CLI의
+  `fmt --indent`와 맞춤. `pyq to-json`에 상호 배타적인 `--jsonc` / `--json5`
+  방언 출력을 추가하여 `pyrs-json`의 주석 보존·JSON5 표기 직렬화기
+  (`to_jsonc_text*`, `to_json5_text*`)를 연결.
+
+#### 수정
+
+- **`pyrs-json` 모듈 문서** — 옛 설명은 "주석은 읽을 때 버려지고 다시
+  출력되지 않는다"였으나, #122 이후 주석은 AST 주석 슬롯에 실려
+  JSONC/JSON5 직렬화기가 복원합니다.
+
 ### [v0.16.0] — 2026-10-01
 
 #### 추가

@@ -88,7 +88,12 @@ own source style (`[1, two]` stays flow, `"true"` stays a quoted string).
 ```bash
 pyq fmt k8s.yaml                 # comment-preserving normalization
 pyq fmt --explicit-start cfg.yaml
+pyq fmt --indent 4 --width 0 cfg.yaml   # block indent 4, no plain-scalar wrap
+pyq fmt --sort-keys cfg.yaml     # sort every mapping (whole document)
+pyq fmt --indent 4 -i cfg.yaml   # rewrite the file in place
 pyq to-json config.yaml          # YAML -> JSON (key order kept)
+pyq to-json --jsonc config.yaml  # comments carried on the AST re-emitted
+pyq to-json --json5 config.yaml  # JSON5 spellings ('x', .5, +7, Infinity)
 pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML

@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [Unreleased]
 
+#### Added
+
+- **pyq CLI parity flags** — `pyq fmt` gains `--indent N` (block indent,
+  default 2), `--width N` (plain-scalar soft-wrap column, 0 disables),
+  `--sort-keys` (serializer-level whole-document key sort) and
+  `-i/--inplace` (rewrite the file), exposing the
+  `pyrs-yaml-core::SerializeOptions` knobs and matching the Python CLI's
+  `fmt --indent`. `pyq to-json` gains `--jsonc` / `--json5` dialect
+  output (mutually exclusive), wiring the `pyrs-json` comment-preserving
+  and JSON5-spelling writers (`to_jsonc_text*`, `to_json5_text*`) into
+  the CLI.
+
+#### Fixed
+
+- **`pyrs-json` module documentation** — it still claimed comments were
+  stripped on read and never re-emitted; since #122 they ride the AST
+  comment slots and the JSONC/JSON5 writers reproduce them.
+
 ### [v0.16.0] — 2026-10-01
 
 #### Added

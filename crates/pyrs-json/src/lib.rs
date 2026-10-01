@@ -15,8 +15,11 @@
 //! [`JsonParseOptions`] (or call [`from_jsonc`]) to accept JSONC-style
 //! `//` and `/* ... */` comments — handy for parsing TypeScript
 //! `tsconfig.json`, VS Code `settings.json`, and similar dialects.
-//! Comments are stripped on read; they are not currently re-emitted on
-//! write.
+//! Comments are carried on the AST (leading notes ride the
+//! `leading_comment` slot, inline ones the `comment` slot) and are
+//! re-emitted by [`to_jsonc_text`] / [`to_json5_text`] (#122); the
+//! plain [`to_json_text`] writer drops them, as strict JSON has no
+//! comment syntax.
 
 mod parser;
 mod writer;

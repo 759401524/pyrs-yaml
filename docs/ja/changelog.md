@@ -15,6 +15,23 @@ status: new
 
 ### [Unreleased]
 
+#### 追加
+
+- **pyq CLI パリティフラグ** — `pyq fmt` に `--indent N`（ブロック
+  インデント、既定 2）、`--width N`（スカラーのソフト折返し列幅、0で
+  無効）、`--sort-keys`（シリアライザレベルの文書全体キーソート）、
+  `-i/--inplace`（ファイルをその場で書き換え）を追加し、
+  `pyrs-yaml-core::SerializeOptions` の全オプションを公開、Python CLI の
+  `fmt --indent` と揃えました。`pyq to-json` に排他的な `--jsonc` /
+  `--json5` 方言出力を追加し、`pyrs-json` のコメント保持・JSON5 表記
+  シリアライザ（`to_jsonc_text*`、`to_json5_text*`）を接続。
+
+#### 修正
+
+- **`pyrs-json` モジュールドキュメント** — 旧記述は「コメントは読み取り時
+  に破棄され再出力されない」としていましたが、#122 以降は AST のコメント
+  スロットに保持され、JSONC/JSON5 シリアライザが復元します。
+
 ### [v0.16.0] — 2026-10-01
 
 #### 追加
