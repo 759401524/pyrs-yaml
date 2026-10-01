@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `to-json --jsonc` this gives a comment-preserving
   JSONC→JSONC round-trip in one command. `--all-docs` rejects the
   single-document dialects with a stable message.
+- **`pyq diff` / `pyq merge`** — semantic document comparison and
+  right-biased deep merge (yq `*+` shape), new in the native CLI.
+  `diff` walks both ASTs comparing resolved values, structure and tags
+  (comments/quoting/layout never appear) printing `-/+ /~` path lines,
+  exit 0 equal · 1 differs. `merge` overlays mappings recursively,
+  appends sequences (or swaps them with `--replace-arrays`), and emits
+  round-trip YAML; both commands read any supported input dialect via
+  `--input`/extension detection.
 
 #### Fixed
 

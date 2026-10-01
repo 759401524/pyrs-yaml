@@ -106,6 +106,20 @@ pyq frontmatter README.md --body-out body.md # Markdown フロントマター分
 ネイティブ方言エンジンを経由し、コメントや JSON5 表記は AST に載るため、
 `pyq to-json --input jsonc --jsonc` でコメント保持の往復が可能です。
 
+## 比較とマージ
+
+```bash
+pyq diff base.yaml head.yaml           # 意味的比較：一致 0、差異 1
+pyq merge base.yaml overrides.yaml     # ディープマージ、右優先（yq `*+` 同型）
+pyq merge a.yaml b.yaml --replace-arrays
+```
+
+`diff` は解決後の値・構造・タグを比較します——コメント、引用指定、
+レイアウトは整形ノイズとして一切現れません。差異は
+`- .keep: x` / `+ .c: 4` / `~ .b: 2 -> 3` 形式で出力。`merge` は mapping を
+再帰的に合体し、sequence は末尾に追加（`--replace-arrays` で丸ごと置換）、
+ラウンドトリップ YAML で出力します。
+
 ## 終了コード
 
 - `0` 成功；

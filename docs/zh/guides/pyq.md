@@ -105,6 +105,19 @@ JSON 内容走 YAML 通道也能原样解析；JSONC/JSON5 内容则经由原生
 注释与 JSON5 写法会挂在 AST 上——`pyq to-json --input jsonc --jsonc`
 即可完成保留注释的往返。
 
+## 对比与合并
+
+```bash
+pyq diff base.yaml head.yaml           # 语义对比：相同退 0，有差异退 1
+pyq merge base.yaml overrides.yaml     # 深度合并，右侧优先（同 yq `*+`）
+pyq merge a.yaml b.yaml --replace-arrays
+```
+
+`diff` 比较解析后的值、结构与标签——注释、引号和排版属于格式噪声，
+永不出现；差异路径以 `- .keep: x` / `+ .c: 4` / `~ .b: 2 -> 3` 形式打印。
+`merge` 递归合并映射、追加倍列（`--replace-arrays` 则整体替换），
+输出往返保留的 YAML。
+
 ## 退出码
 
 - `0` 成功；

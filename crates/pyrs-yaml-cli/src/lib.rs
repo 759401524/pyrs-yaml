@@ -7,6 +7,7 @@
 //! benchmarks and tests can drive the components without spawning the
 //! process.
 
+pub mod compare;
 pub mod json;
 pub mod multidoc;
 pub mod paths;
@@ -177,6 +178,34 @@ pub enum Command {
         all_docs: bool,
         #[arg(long, short = 'i')]
         inplace: bool,
+    },
+    /// Compare two documents semantically: resolved values, structure and
+    /// tags - comments, quoting and layout never appear. Lines are
+    /// `- path: left`, `+ path: right`, `~ path: left -> right`; exit 0
+    /// when identical, exit 1 when differences (engine errors also exit
+    /// 1, but with a `pyq:` message on stderr and empty stdout).
+    Diff {
+        /// Base (left) document.
+        base: PathBuf,
+        /// Head (right) document.
+        head: PathBuf,
+        #[command(flatten)]
+        input: InputOpts,
+    },
+    /// Deep-merge two documents, right-biased (yq `*+` shape): mappings
+    /// recurse, sequences append (or replace with `--replace-arrays`),
+    /// every other conflict lets the right node win with its style and
+    /// comments intact. Emits YAML.
+    Merge {
+        /// Base (left) document.
+        base: PathBuf,
+        /// Overlay (right) document.
+        head: PathBuf,
+        /// Replace sequences instead of appending right items.
+        #[arg(long)]
+        replace_arrays: bool,
+        #[command(flatten)]
+        input: InputOpts,
     },
     /// Convert to JSON text.
     ToJson {
@@ -504,6 +533,33 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
                 plan::sort_keys_path(node, &segs, &src, offs).map(|u| vec![u])
             })?;
             write_text(&text, &file, inplace)?;
+        }
+        Command::Diff { base, head, input } => {
+            let a = load(&Some(base), &input)?;
+            let b = load(&Some(head), &input)?;
+            let lines = compare::diff(&a, &b, Schema::from(input.schema));
+            if !lines.is_empty() {
+                for line in &lines {
+                    println!("{line}");
+                }
+                std::process::exit(1);
+            }
+        }
+        Command::Merge {
+            base,
+            head,
+            replace_arrays,
+            input,
+        } => {
+            let a = load(&Some(base), &input)?;
+            let b = load(&Some(head), &input)?;
+            let mode = if replace_arrays {
+                compare::ArrayMode::Replace
+            } else {
+                compare::ArrayMode::Append
+            };
+            let merged = compare::merge(&a, &b, mode);
+            emit_str(&serializer::to_yaml(&merged))?;
         }
         Command::ToJson {
             file,

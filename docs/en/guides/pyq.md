@@ -110,6 +110,20 @@ routes through the native dialect engine, so comments and JSON5
 spellings ride the AST - `pyq to-json --input jsonc --jsonc` is a
 comment-preserving round-trip.
 
+## Diff & merge
+
+```bash
+pyq diff base.yaml head.yaml           # semantic diff: exit 0 equal, 1 differs
+pyq merge base.yaml overrides.yaml     # deep merge, right wins (yq `*+` shape)
+pyq merge a.yaml b.yaml --replace-arrays
+```
+
+`diff` compares resolved values, structure and tags — comments, quoting
+and layout are formatting noise and never appear; differing paths print
+as `- .keep: x` / `+ .c: 4` / `~ .b: 2 -> 3`. `merge` recurses into
+mappings, appends sequences (or swaps them wholesale with
+`--replace-arrays`), and emits round-trip YAML.
+
 ## Exit codes
 
 - `0` success;
