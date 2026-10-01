@@ -284,8 +284,18 @@ jobs:
           # build target; macOS and Windows build natively on their own
           # runners.
           - { label: linux-x86_64, runner: ubuntu-22.04, std: x86_64-unknown-linux-gnu, container: true }
-          - { label: linux-aarch64, runner: ubuntu-22.04, std: aarch64-unknown-linux-gnu, container: true, qemu: true }
-          - { label: linux-armv7, runner: ubuntu-22.04, std: armv7-unknown-linux-gnueabihf, container: true, qemu: true }
+          # `smoke_image`/`smoke_platform`: the *runtime* image the arm smoke
+          # steps exec the binary in. Real pypa manylinux2014 images carry the
+          # foreign arch (dispatch run 4 proved aarch64 end to green there).
+          # NOT `cross-rs/<target>` — those are amd64 build environments with
+          # no arm manifest layer at all (`no matching manifest for
+          # linux/arm/v7`, dispatch run 6). armv7 uses the Debian official
+          # image because quay.io rate-limits anonymous pulls (run 4) and
+          # pypa publishes armv7l only on quay; Debian's official library
+          # ships a linux/arm/v7 manifest, and a runtime only needs glibc
+          # >= the binary's 2.17 floor (bookworm has 2.36).
+          - { label: linux-aarch64, runner: ubuntu-22.04, std: aarch64-unknown-linux-gnu, container: true, qemu: true, smoke_platform: linux/arm64, smoke_image: quay.io/pypa/manylinux2014_aarch64 }
+          - { label: linux-armv7, runner: ubuntu-22.04, std: armv7-unknown-linux-gnueabihf, container: true, qemu: true, smoke_platform: linux/arm/v7, smoke_image: debian:bookworm-slim }
           - { label: macos-x86_64, runner: macos-13, std: x86_64-apple-darwin, container: false }
           - { label: macos-aarch64, runner: macos-14, std: aarch64-apple-darwin, container: false }
           - { label: windows-x86_64, runner: windows-latest, std: x86_64-pc-windows-msvc, container: false }
@@ -293,14 +303,6 @@ jobs:
       # Keep the build tree out of `target/` so `dist/` holds only release
       # assets. Every step below mirrors cargo's own layout under this root.
       CARGO_TARGET_DIR: dist/pyq-build
-      # One pinned image string shared by both steps that need a container:
-      # `cross` (via its CROSS_IMAGE env, supported since 0.2.4) for the
-      # build, and `docker run` for the arm smoke. Hardcoding a second
-      # registry path burned `manifest unknown` (dispatch run 5: the smoke
-      # guessed `rust-cross/manylinux2014-cross:<triple>` while cross pulls
-      # `cross-rs/<triple>:0.2.5`); sharing one variable makes drift
-      # impossible. Empty on legs that run no container at all.
-      PYQ_CROSS_IMAGE: ${{ matrix.platform.container && format('ghcr.io/cross-rs/{0}:0.2.5', matrix.platform.std) || '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -339,8 +341,6 @@ jobs:
       # NOTE: no `--out-dir`/`--artifact-dir` here — both are nightly-only on
       # stable cargo, and every platform here runs the stable toolchain.
       - name: Build pyq
-        env:
-          CROSS_IMAGE: ${{ env.PYQ_CROSS_IMAGE }}
         run: >
           ${{ matrix.platform.container && 'cross' || 'cargo' }} build
           --locked
@@ -352,30 +352,26 @@ jobs:
       # A released artifact that cannot start is worse than no artifact: it
       # fails on the user's machine instead of at build time. Prove the binary
       # actually runs before it is downloadable. Emulated cross legs (arm)
-      # exec it through a plain `docker run -i` on `cross`'s own
-      # manylinux2014 image — the very one that just built the binary, so no
-      # second registry dependency (quay.io anonymous pulls rate-limited the
-      # armv7 leg with `unauthorized`, dispatch run 4) and no extra image
-      # download. The host has the qemu translator but no foreign
-      # `/lib/ld-linux-*.so` loader, so a direct host exec dies before `main`;
-      # `cross run` silently dropped program arguments (clap no-arg help,
-      # exit 2). `-i` forwards the piped stdin the `get` assertions read.
-      # x86_64 host exec is native; macOS/Windows run the binary directly.
+      # exec it through `docker run -i` on a real pypa manylinux2014 runtime
+      # image carrying the foreign arch (see the matrix comments for what
+      # each dispatch run proved). The host has the qemu translator but no
+      # foreign `/lib/ld-linux-*.so` loader, so a direct host exec dies
+      # before `main`; `cross run` silently dropped program arguments (clap
+      # no-arg help, exit 2). `-i` forwards the piped stdin the `get`
+      # assertions read. x86_64 host exec is native; macOS/Windows run the
+      # binary directly.
       - name: Smoke test pyq
         shell: bash
         run: |
           set -euo pipefail
           TRIPLE="${{ matrix.platform.std }}"
-          case "$TRIPLE" in
-            aarch64-unknown-linux-gnu|armv7-unknown-linux-gnueabihf)
-              PLAT=linux/arm64
-              if [ "$TRIPLE" = "armv7-unknown-linux-gnueabihf" ]; then PLAT=linux/arm/v7; fi
-              RUN=(docker run --rm -i --platform "$PLAT" -v "$PWD:/io" -w /io "$PYQ_CROSS_IMAGE" "dist/pyq-build/$TRIPLE/release/pyq") ;;
-            *)
-              BIN="dist/pyq-build/$TRIPLE/release/pyq"
-              [ -x "$BIN" ] || BIN="$BIN.exe"
-              RUN=("$BIN") ;;
-          esac
+          if [ -n "${{ matrix.platform.smoke_image }}" ]; then
+            RUN=(docker run --rm -i --platform "${{ matrix.platform.smoke_platform }}" -v "$PWD:/io" -w /io "${{ matrix.platform.smoke_image }}" "dist/pyq-build/$TRIPLE/release/pyq")
+          else
+            BIN="dist/pyq-build/$TRIPLE/release/pyq"
+            [ -x "$BIN" ] || BIN="$BIN.exe"
+            RUN=("$BIN")
+          fi
           "${RUN[@]}" --version
           "${RUN[@]}" --help > /dev/null
           printf 'name: pyrs\n' | "${RUN[@]}" get .name --raw | grep -qx pyrs
