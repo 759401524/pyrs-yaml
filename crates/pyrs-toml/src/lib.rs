@@ -47,7 +47,7 @@ mod writer;
 pub use parser::{TomlDialect, from_toml, from_toml_v1_0, from_toml_with_options};
 pub use writer::to_toml;
 
-use crate::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
+use pyrs_ast::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
 use std::sync::Arc;
 
 /// A TOML 1.0 value at the leaf of the grammar. Intermediate representation
@@ -167,7 +167,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                 let leading_text = ct.leading.clone();
                 let mut node = cow_table_to_node(ct);
                 if let Some(text) = leading_text {
-                    node.set_leading_comment(crate::ast::Comment {
+                    node.set_leading_comment(pyrs_ast::ast::Comment {
                         text: std::sync::Arc::from(text),
                         standalone: true,
                     });
@@ -182,7 +182,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                         let leading = sub.leading.clone();
                         let mut n = cow_table_to_node(sub);
                         if let Some(text) = leading {
-                            n.set_leading_comment(crate::ast::Comment {
+                            n.set_leading_comment(pyrs_ast::ast::Comment {
                                 text: std::sync::Arc::from(text),
                                 standalone: true,
                             });
@@ -208,14 +208,14 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
             meta: NodeMeta::default(),
         };
         if let Some(text) = standalone {
-            key.set_leading_comment(crate::ast::Comment {
+            key.set_leading_comment(pyrs_ast::ast::Comment {
                 text: std::sync::Arc::from(text),
                 standalone: true,
             });
         }
         let mut val = value_node;
         if let Some(text) = inline {
-            val.set_comment(crate::ast::Comment {
+            val.set_comment(pyrs_ast::ast::Comment {
                 text: std::sync::Arc::from(text),
                 standalone: false,
             });
@@ -309,14 +309,14 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
                 // the same-line trailing note onto its value's
                 // `comment`.
                 if let Some(text) = anns.leading {
-                    key.set_leading_comment(crate::ast::Comment {
+                    key.set_leading_comment(pyrs_ast::ast::Comment {
                         text: std::sync::Arc::from(text),
                         standalone: true,
                     });
                 }
                 let mut value_node = toml_value_to_node(val);
                 if let Some(text) = anns.trailing {
-                    value_node.set_comment(crate::ast::Comment {
+                    value_node.set_comment(pyrs_ast::ast::Comment {
                         text: std::sync::Arc::from(text),
                         standalone: false,
                     });
@@ -349,8 +349,8 @@ pub(crate) fn fmt_yaml_float(f: f64) -> String {
     }
 }
 
-fn into_comment(text: String) -> crate::ast::Comment {
-    crate::ast::Comment {
+fn into_comment(text: String) -> pyrs_ast::ast::Comment {
+    pyrs_ast::ast::Comment {
         text: std::sync::Arc::from(text),
         standalone: false,
     }
