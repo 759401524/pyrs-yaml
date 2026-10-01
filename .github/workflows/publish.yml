@@ -296,7 +296,12 @@ jobs:
           # >= the binary's 2.17 floor (bookworm has 2.36).
           - { label: linux-aarch64, runner: ubuntu-22.04, std: aarch64-unknown-linux-gnu, container: true, qemu: true, smoke_platform: linux/arm64, smoke_image: quay.io/pypa/manylinux2014_aarch64 }
           - { label: linux-armv7, runner: ubuntu-22.04, std: armv7-unknown-linux-gnueabihf, container: true, qemu: true, smoke_platform: linux/arm/v7, smoke_image: debian:bookworm-slim }
-          - { label: macos-x86_64, runner: macos-13, std: x86_64-apple-darwin, container: false }
+          # `macos-15-intel`, not `macos-13`: the retired image left
+          # `pyq (macos-x86_64)` stuck in `queued` for the entire duration of
+          # dispatch runs 6 and 7 (every other job completed). The wheel
+          # `macos` job builds x86_64 on macos-15-intel and has been green
+          # across all seven runs — same proven label here.
+          - { label: macos-x86_64, runner: macos-15-intel, std: x86_64-apple-darwin, container: false }
           - { label: macos-aarch64, runner: macos-14, std: aarch64-apple-darwin, container: false }
           - { label: windows-x86_64, runner: windows-latest, std: x86_64-pc-windows-msvc, container: false }
     env:
