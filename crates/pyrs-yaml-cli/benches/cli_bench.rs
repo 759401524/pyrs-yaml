@@ -6,11 +6,12 @@
 //! the flamegraph, not as noise inside the core parse benches.
 
 use divan::black_box;
+use pyrs_toml as toml;
 use pyrs_yaml_cli::{Format, InputOpts, SchemaKind, ini_to_node, json, load_source, paths};
 use pyrs_yaml_core::ast::CustomNode;
 use pyrs_yaml_core::editing::plan;
 use pyrs_yaml_core::parser::yaml::Schema;
-use pyrs_yaml_core::{parser, serializer, toml};
+use pyrs_yaml_core::{parser, serializer};
 
 fn main() {
     divan::main();

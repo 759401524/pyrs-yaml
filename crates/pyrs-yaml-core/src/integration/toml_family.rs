@@ -3,7 +3,7 @@
 //! (so they need this crate's parser) live here instead.
 
 use crate::parser::{parse, yaml::Schema};
-use crate::toml::{from_toml, to_toml};
+use pyrs_toml::{from_toml, to_toml};
 
 #[test]
 fn to_toml_roundtrip_table_and_array() {

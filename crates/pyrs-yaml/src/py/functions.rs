@@ -245,7 +245,7 @@ pub(crate) fn from_dict(py: Python, data: Py<PyAny>) -> PyResult<String> {
 #[pyo3(signature = (json_str: "str") -> "str")]
 /// Convert a JSON string to a YAML string.
 pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
-    let node = pyrs_yaml_core::json::from_json(json_str).map_err(|e| {
+    let node = pyrs_json::from_json(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",
             &[("detail", &e.to_string())],
@@ -260,7 +260,7 @@ pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
 /// a YAML string. Comments are stripped; everything else matches
 /// `from_json` semantics exactly.
 pub(crate) fn from_jsonc(_py: Python, json_str: &str) -> PyResult<String> {
-    let node = pyrs_yaml_core::json::from_jsonc(json_str).map_err(|e| {
+    let node = pyrs_json::from_jsonc(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",
             &[("detail", &e.to_string())],
@@ -288,7 +288,7 @@ pub(crate) fn load_json(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
     if let Some(v) = crate::py::json_fast::try_load(py, json_str) {
         return Ok(v);
     }
-    let mut ast = pyrs_yaml_core::json::from_json(json_str).map_err(|e| {
+    let mut ast = pyrs_json::from_json(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",
             &[("detail", &e.to_string())],
@@ -312,7 +312,7 @@ pub(crate) fn load_jsonc(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
     if let Some(v) = crate::py::json_fast::try_load(py, json_str) {
         return Ok(v);
     }
-    let mut ast = pyrs_yaml_core::json::from_jsonc(json_str).map_err(|e| {
+    let mut ast = pyrs_json::from_jsonc(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",
             &[("detail", &e.to_string())],
@@ -329,7 +329,7 @@ pub(crate) fn load_jsonc(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
 /// the `0x…` / `.5` / `Infinity` / `NaN` numeric forms; comments are
 /// stripped for the YAML projection, matching `from_json` semantics.
 pub(crate) fn from_json5(_py: Python, json_str: &str) -> PyResult<String> {
-    let node = pyrs_yaml_core::json::from_json5(json_str).map_err(|e| {
+    let node = pyrs_json::from_json5(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",
             &[("detail", &e.to_string())],
@@ -344,7 +344,7 @@ pub(crate) fn from_json5(_py: Python, json_str: &str) -> PyResult<String> {
 /// scalar). Accepts the full JSON5 grammar without a pre-processing
 /// step, mirroring `load_jsonc` on the wider dialect.
 pub(crate) fn load_json5(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
-    let mut ast = pyrs_yaml_core::json::from_json5(json_str).map_err(|e| {
+    let mut ast = pyrs_json::from_json5(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "json-parse-error",
             &[("detail", &e.to_string())],
@@ -363,7 +363,7 @@ pub(crate) fn load_json5(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
 /// TOML strings keep quoting so values never re-resolve; datetimes gain
 /// the `!timestamp` tag consumed by the built-in plugin.
 pub(crate) fn from_toml(toml_str: &str) -> PyResult<String> {
-    let node = pyrs_yaml_core::toml::from_toml(toml_str).map_err(|e| {
+    let node = pyrs_toml::from_toml(toml_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "toml-parse-error",
             &[("detail", &e.to_string())],
@@ -384,7 +384,7 @@ pub(crate) fn to_toml(py: Python, yaml: &str, schema: &str) -> PyResult<String> 
         crate::parser::parse_with_options(yaml, true, schema_clone, 1000, false)
             .map_err(|e| parse_error_to_py_err(e, yaml, 1000))
     })?;
-    pyrs_yaml_core::toml::to_toml(&node).map_err(|e| {
+    pyrs_toml::to_toml(&node).map_err(|e| {
         YamlSerializeError::new_err(format_i18n_error(
             "toml-serialize-error",
             &[("detail", &e.to_string())],
@@ -397,7 +397,7 @@ pub(crate) fn to_toml(py: Python, yaml: &str, schema: &str) -> PyResult<String> 
 /// Parse TOML directly into a Python dict (values, not a document).
 /// Anchors cannot occur in TOML, so no alias resolution pass is needed.
 pub(crate) fn load_toml(py: Python, toml_str: &str) -> PyResult<Py<PyAny>> {
-    let mut ast = pyrs_yaml_core::toml::from_toml(toml_str).map_err(|e| {
+    let mut ast = pyrs_toml::from_toml(toml_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
             "toml-parse-error",
             &[("detail", &e.to_string())],

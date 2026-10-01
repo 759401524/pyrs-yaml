@@ -892,7 +892,7 @@ impl YamlDocument {
     /// than `json.dumps`' `\uXXXX` escapes.
     #[pyo3(signature = (indent: "int" = 2) -> "str")]
     fn to_json(&self, indent: usize) -> PyResult<String> {
-        pyrs_yaml_core::json::to_json_text_pretty(&self.ast, indent).map_err(|e| {
+        pyrs_json::to_json_text_pretty(&self.ast, indent).map_err(|e| {
             YamlSerializeError::new_err(format_i18n_error(
                 "json-serialize-error",
                 &[("detail", &e.to_string())],
@@ -907,7 +907,7 @@ impl YamlDocument {
     /// engine, so a document parsed from JSONC round-trips its notes.
     #[pyo3(signature = (indent: "int" = 2) -> "str")]
     fn to_jsonc(&self, indent: usize) -> PyResult<String> {
-        pyrs_yaml_core::json::to_jsonc_text_pretty(&self.ast, indent).map_err(|e| {
+        pyrs_json::to_jsonc_text_pretty(&self.ast, indent).map_err(|e| {
             YamlSerializeError::new_err(format_i18n_error(
                 "json-serialize-error",
                 &[("detail", &e.to_string())],
@@ -920,7 +920,7 @@ impl YamlDocument {
     /// comments as the native parser preserved them on the AST.
     #[pyo3(signature = (indent: "int" = 2) -> "str")]
     fn to_json5(&self, indent: usize) -> PyResult<String> {
-        pyrs_yaml_core::json::to_json5_text_pretty(&self.ast, indent).map_err(|e| {
+        pyrs_json::to_json5_text_pretty(&self.ast, indent).map_err(|e| {
             YamlSerializeError::new_err(format_i18n_error(
                 "json-serialize-error",
                 &[("detail", &e.to_string())],
@@ -935,7 +935,7 @@ impl YamlDocument {
     /// the root is not a table (TOML has no top-level scalar/array form).
     #[pyo3(signature = () -> "str")]
     fn to_toml(&self) -> PyResult<String> {
-        pyrs_yaml_core::toml::to_toml(&self.ast).map_err(|e| {
+        pyrs_toml::to_toml(&self.ast).map_err(|e| {
             YamlSerializeError::new_err(format_i18n_error(
                 "toml-serialize-error",
                 &[("detail", &e.to_string())],

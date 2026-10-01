@@ -867,6 +867,8 @@ dependencies = [
  "numpy",
  "pyo3",
  "pyo3-build-config",
+ "pyrs-json",
+ "pyrs-toml",
  "pyrs-yaml-core",
 ]
 
@@ -878,6 +880,8 @@ dependencies = [
  "clap_complete",
  "codspeed-divan-compat",
  "indexmap",
+ "pyrs-json",
+ "pyrs-toml",
  "pyrs-yaml-core",
 ]
 

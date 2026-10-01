@@ -14,9 +14,9 @@
 #![cfg(test)]
 
 use crate::ast::proptest_strategies::*;
-use crate::json;
-use crate::toml;
 use proptest::prelude::*;
+use pyrs_json as json;
+use pyrs_toml as toml;
 
 /// Domain filter for the JSON-family fixed points. RFC 8259 objects have
 /// unique names, but a hand-built AST can hold two *distinct* keys that
@@ -27,7 +27,7 @@ use proptest::prelude::*;
 /// outside the object domain; the fixed-point properties assume them away
 /// rather than pretending the drift is a bug.
 fn json_object_domain(node: &crate::ast::CustomNode) -> bool {
-    use crate::json::key_text;
+    use pyrs_json::key_text;
     match node {
         crate::ast::CustomNode::Mapping { pairs, .. } => {
             let mut names: Vec<String> = Vec::new();
