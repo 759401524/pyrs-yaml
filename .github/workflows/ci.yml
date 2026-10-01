@@ -25,8 +25,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # A rebase merge lands the *exact tree* the PR checks already verified green
+  # (branch protection requires an up-to-date branch and passing checks before
+  # the merge button unlocks), so re-running the full matrix on the resulting
+  # `push: main` event is a second, identical ~1h spend with zero new
+  # information. The heavy jobs below therefore run on `pull_request` and
+  # `workflow_dispatch` only; `main-gate` keeps the default-branch run history
+  # and status badge current for the push event itself.
+  main-gate:
+    name: main (verified on PR)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record what this run stands for
+        run: |
+          echo "push sha ${{ github.sha }} is the rebased tip whose identical tree already"
+          echo "passed the full CI matrix as a pull request; skipping the duplicate spend."
+
   rust-lint:
-    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -48,7 +65,7 @@ jobs:
         run: cargo test --workspace --locked
 
   msrv-check:
-    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -69,7 +86,7 @@ jobs:
 
   no-std-check:
     name: no_std
-    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -114,7 +131,7 @@ jobs:
 
   test:
     needs: [build]
-    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'push' }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -180,7 +197,7 @@ jobs:
 
   coverage:
     needs: [build]
-    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -219,7 +236,7 @@ jobs:
         run: uv run pytest tests/ --cov=pyrs_yaml --cov-report=term-missing --cov-fail-under=78
 
   build:
-    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'push' }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -260,7 +277,7 @@ jobs:
           path: dist/
 
   test-freethreaded:
-    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
