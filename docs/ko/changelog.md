@@ -24,6 +24,11 @@ status: new
   `fmt --indent`와 맞춤. `pyq to-json`에 상호 배타적인 `--jsonc` / `--json5`
   방언 출력을 추가하여 `pyrs-json`의 주석 보존·JSON5 표기 직렬화기
   (`to_jsonc_text*`, `to_json5_text*`)를 연결.
+- **pyq JSONC/JSON5 입력 방언** — `Format` 열거형에 `--input jsonc|json5`
+  추가(자동 감지는 `.jsonc` / `.json5` 확장자도 인식). `pyrs-json`
+  네이티브 방언 파서를 거쳐 주석과 JSON5 표기가 AST에 실리며,
+  `to-json --jsonc`과 결합하면 한 명령으로 주석 보존 JSONC→JSONC 왕복이
+  됩니다. `--all-docs`는 단일 문서 방언에서 안정적 오류 메시지로 거부.
 
 #### 수정
 

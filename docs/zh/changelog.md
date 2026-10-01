@@ -24,6 +24,11 @@ status: new
   `fmt --indent`。`pyq to-json` 新增互斥的 `--jsonc` / `--json5` 方言
   输出，接入 `pyrs-json` 的注释保留与 JSON5 写法序列化器
   （`to_jsonc_text*`、`to_json5_text*`）。
+- **pyq JSONC/JSON5 输入方言** — `Format` 枚举新增 `--input jsonc|json5`
+  （自动识别同样支持 `.jsonc` / `.json5` 扩展名），经由 `pyrs-json`
+  原生方言解析器，注释与 JSON5 写法挂在 AST 上；配合 `to-json --jsonc`
+  一条命令即可完成保留注释的 JSONC→JSONC 往返。`--all-docs` 对单文档
+  方言报出稳定错误信息。
 
 #### 修复
 

@@ -25,6 +25,12 @@ status: new
   `fmt --indent` と揃えました。`pyq to-json` に排他的な `--jsonc` /
   `--json5` 方言出力を追加し、`pyrs-json` のコメント保持・JSON5 表記
   シリアライザ（`to_jsonc_text*`、`to_json5_text*`）を接続。
+- **pyq JSONC/JSON5 入力方言** — `Format` 列挙に `--input jsonc|json5`
+  を追加（`.jsonc` / `.json5` 拡張子の自動判定にも対応）。`pyrs-json`
+  ネイティブ方言パーサを経由し、コメントや JSON5 表記は AST に載る。
+  `to-json --jsonc` と組み合わせれば 1 コマンドでコメント保持の
+  JSONC→JSONC 往復が可能。`--all-docs` は単一文書方言では安定した
+  メッセージで拒否。
 
 #### 修正
 

@@ -102,9 +102,13 @@ pyq validate k8s.yaml --schema rules.yaml   # parse + schema-language rules
 pyq frontmatter README.md --body-out body.md # split Markdown front matter
 ```
 
-Input format resolves by file extension (`.json`, `.toml`, `.ini`);
-override with `--input yaml|json|toml|ini`. Since YAML is a JSON
-superset, JSON content also parses on the YAML path unchanged.
+Input format resolves by file extension (`.json`, `.jsonc`, `.json5`,
+`.toml`, `.ini`); override with
+`--input yaml|json|jsonc|json5|toml|ini`. Since YAML is a JSON superset,
+JSON content also parses on the YAML path unchanged. JSONC/JSON5 content
+routes through the native dialect engine, so comments and JSON5
+spellings ride the AST - `pyq to-json --input jsonc --jsonc` is a
+comment-preserving round-trip.
 
 ## Exit codes
 

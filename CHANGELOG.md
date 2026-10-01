@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   output (mutually exclusive), wiring the `pyrs-json` comment-preserving
   and JSON5-spelling writers (`to_jsonc_text*`, `to_json5_text*`) into
   the CLI.
+- **pyq JSONC/JSON5 input dialects** — `--input jsonc|json5` joins the
+  `Format` enum (auto-detection also keys off `.jsonc` / `.json5`
+  extensions) and routes through the native `pyrs-json` dialect
+  parsers, so comments and JSON5 spellings ride the AST; combined with
+  `to-json --jsonc` this gives a comment-preserving
+  JSONC→JSONC round-trip in one command. `--all-docs` rejects the
+  single-document dialects with a stable message.
 
 ### Fixed
 

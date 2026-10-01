@@ -100,9 +100,11 @@ pyq validate k8s.yaml --schema rules.yaml   # 構文チェック + スキーマ�
 pyq frontmatter README.md --body-out body.md # Markdown フロントマター分割
 ```
 
-入力形式は拡張子で判定（`.json`・`.toml`・`.ini`）され、
-`--input yaml|json|toml|ini` で上書きできます。YAML は JSON の上位互集合
-なので、JSON 内容は YAML 経路でもそのまま解析できます。
+入力形式は拡張子で判定（`.json`・`.jsonc`・`.json5`・`.toml`・`.ini`）され、
+`--input yaml|json|jsonc|json5|toml|ini` で上書きできます。YAML は JSON の上位互集合
+なので、JSON 内容は YAML 経路でもそのまま解析できます。JSONC/JSON5 内容は
+ネイティブ方言エンジンを経由し、コメントや JSON5 表記は AST に載るため、
+`pyq to-json --input jsonc --jsonc` でコメント保持の往復が可能です。
 
 ## 終了コード
 

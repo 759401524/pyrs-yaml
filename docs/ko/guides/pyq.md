@@ -100,9 +100,11 @@ pyq validate k8s.yaml --schema rules.yaml   # 파싱 검사 + 스키마 언어 �
 pyq frontmatter README.md --body-out body.md # Markdown 프런트매터 분리
 ```
 
-입력 형식은 확장자로 판정(`.json`, `.toml`, `.ini`)하며
-`--input yaml|json|toml|ini`로 덮어쓸 수 있습니다. YAML은 JSON의 상위
-집합이므로 JSON 내용은 YAML 경로에서도 그대로 해석됩니다.
+입력 형식은 확장자로 판정(`.json`, `.jsonc`, `.json5`, `.toml`, `.ini`)하며
+`--input yaml|json|jsonc|json5|toml|ini`로 덮어쓸 수 있습니다. YAML은 JSON의 상위
+집합이므로 JSON 내용은 YAML 경로에서도 그대로 해석됩니다. JSONC/JSON5 내용은
+네이티브 방언 엔진을 거쳐 주석과 JSON5 표기가 AST에 실리므로,
+`pyq to-json --input jsonc --jsonc`로 주석 보존 왕복이 됩니다.
 
 ## 종료 코드
 

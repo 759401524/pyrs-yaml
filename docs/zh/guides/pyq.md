@@ -99,9 +99,11 @@ pyq validate k8s.yaml --schema rules.yaml   # 解析检查 + schema 语言规则
 pyq frontmatter README.md --body-out body.md # 分离 Markdown front matter
 ```
 
-输入格式按文件扩展名识别（`.json`、`.toml`、`.ini`），可用
-`--input yaml|json|toml|ini` 覆盖。由于 YAML 是 JSON 的超集，JSON
-内容走 YAML 通道也能原样解析。
+输入格式按文件扩展名识别（`.json`、`.jsonc`、`.json5`、`.toml`、`.ini`），
+可用 `--input yaml|json|jsonc|json5|toml|ini` 覆盖。由于 YAML 是 JSON 的超集，
+JSON 内容走 YAML 通道也能原样解析；JSONC/JSON5 内容则经由原生方言引擎，
+注释与 JSON5 写法会挂在 AST 上——`pyq to-json --input jsonc --jsonc`
+即可完成保留注释的往返。
 
 ## 退出码
 

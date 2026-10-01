@@ -532,3 +532,72 @@ fn to_json_dialect_flags_conflict() {
     assert_eq!(code, Some(2));
     assert!(err.contains("cannot be used with"), "{err}");
 }
+
+#[test]
+fn input_jsonc_extracts_values_past_comments() {
+    // `// note` is not YAML-representable; only the native JSONC dialect
+    // path can read this input at all.
+    let (code, out, err) = run_with_stdin(
+        &["get", "--input", "jsonc", ".a.b", "-"],
+        "// note\n{\"a\": {\"b\": 7}}\n",
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "7\n", "{out:?}");
+}
+
+#[test]
+fn input_jsonc_round_trips_comments_to_jsonc() {
+    // comments ride the AST slots from the JSONC parser straight into the
+    // JSONC writer (#122 fidelity, now reachable from one command).
+    let (code, out, err) = run_with_stdin(
+        &["to-json", "--input", "jsonc", "--jsonc", "-"],
+        "// keep me\n{\"a\": 1}\n",
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.starts_with("// keep me\n"), "{out:?}");
+    assert!(out.contains("\"a\": 1"), "{out:?}");
+}
+
+#[test]
+fn input_json5_restores_spellings() {
+    // JSON5 source spellings (single-quoted key + value, trailing comma)
+    // survive parse -> re-emit through the dialect writers.
+    let (code, out, err) = run_with_stdin(
+        &[
+            "to-json", "--input", "json5", "--json5", "--indent", "0", "-",
+        ],
+        "{name: 'x', v: .5,}\n",
+    );
+    assert_eq!(code, Some(0), "{err}");
+    let body = out.trim();
+    assert!(body.contains("'x'"), "{body:?}");
+    assert!(body.contains(".5"), "{body:?}");
+}
+
+#[test]
+fn auto_detects_jsonc_and_json5_extensions() {
+    let dir = std::env::temp_dir().join(format!("pyq-dialect-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let c = dir.join("cfg.jsonc");
+    let five = dir.join("old.json5");
+    std::fs::write(&c, "// hi\n{\"a\": 1}\n").unwrap();
+    std::fs::write(&five, "{a: 'z',}\n").unwrap();
+    let (code1, out1, err1) = run(&["get", ".a", c.to_str().unwrap()]);
+    let (code2, out2, err2) = run(&["get", ".a", five.to_str().unwrap()]);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(code1, Some(0), "{err1}");
+    assert_eq!(out1, "1\n", "{out1:?}");
+    assert_eq!(code2, Some(0), "{err2}");
+    // the JSON5 single-quote style rides the AST into the YAML emission
+    assert_eq!(out2, "'z'\n", "{out2:?}");
+}
+
+#[test]
+fn all_docs_rejects_dialect_inputs() {
+    let (code, _, err) = run_with_stdin(&["to-json", "-A", "--input", "jsonc", "-"], "{\"a\": 1}");
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("--all-docs only applies to YAML or JSON"),
+        "{err}"
+    );
+}
