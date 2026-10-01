@@ -99,6 +99,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
             value: std::sync::Arc::from(yaml_str),
             style: crate::ast::ScalarStyle::Plain,
             chomping: crate::ast::Chomping::Clip,
+            block_indent: None,
             meta: crate::ast::NodeMeta {
                 tag: Some(tag),
                 ..Default::default()
@@ -143,6 +144,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
             value: std::sync::Arc::from(yaml_str),
             style: crate::ast::ScalarStyle::Plain,
             chomping: crate::ast::Chomping::Clip,
+            block_indent: None,
             meta: crate::ast::NodeMeta {
                 tag: Some(tag),
                 ..Default::default()

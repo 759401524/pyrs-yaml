@@ -14,11 +14,17 @@ use crate::ast::{CustomNode, NodeMeta, ScalarStyle};
 pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
     match (target, src) {
         (
-            CustomNode::Scalar { value, style, .. },
+            CustomNode::Scalar {
+                value,
+                style,
+                block_indent,
+                ..
+            },
             CustomNode::Scalar {
                 style: src_style,
                 meta: src_meta,
                 chomping,
+                block_indent: src_block_indent,
                 ..
             },
         ) => {
@@ -40,6 +46,16 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
                     ..Default::default()
                 },
                 chomping: *chomping,
+                // An explicit block indent only means something next to a
+                // `|`/`>` header. Once the edit re-styles the node to a plain
+                // or quoted scalar, carrying the old number would be dead
+                // state that later re-emits a stray `|2`.
+                block_indent: match new_style {
+                    ScalarStyle::Literal | ScalarStyle::Folded => {
+                        block_indent.or(*src_block_indent)
+                    }
+                    _ => None,
+                },
             }
         }
         (
@@ -111,6 +127,7 @@ mod tests {
             value: "".into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta {
                 anchor: Some("myanchor".into()),
                 ..Default::default()
@@ -133,6 +150,7 @@ mod tests {
             value: "".into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta {
                 tag: Some(crate::ast::Tag::local("custom")),
                 ..Default::default()

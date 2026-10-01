@@ -6,7 +6,7 @@ pub use crate::parser::stream::{
     StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
 };
 
-use crate::ast::{Chomping, Comment, CustomNode, NodeMeta, ScalarStyle, Tag};
+use crate::ast::{Comment, CustomNode, NodeMeta, ScalarStyle, Tag};
 use crate::parser::yaml::Schema;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
@@ -16,8 +16,8 @@ use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Arc;
 use yaml::{
-    RawAnchor, compute_line_offsets, detect_chomping, extract_anchors, resolve_merge_keys,
-    unescape_double_quoted,
+    BlockHeader, RawAnchor, compute_line_offsets, detect_block_header, extract_anchors,
+    resolve_merge_keys, unescape_double_quoted,
 };
 
 /// Return true if a mapping key is a null/empty key (`~`, empty, or null).
@@ -515,12 +515,15 @@ impl<'a> AstReceiver<'a> {
             SaphyrScalarStyle::Folded => ScalarStyle::Folded,
         };
 
-        // Detect chomping for block scalars
-        let chomping = if matches!(scalar_style, ScalarStyle::Literal | ScalarStyle::Folded) {
-            detect_chomping(self.yaml_text, line)
+        // Detect the block scalar header (chomping + explicit indent indicator)
+        // from the source text. Both indicators live only in the header, so a
+        // single scan recovers them together.
+        let block_header = if matches!(scalar_style, ScalarStyle::Literal | ScalarStyle::Folded) {
+            detect_block_header(self.yaml_text, line)
         } else {
-            Chomping::Clip
+            BlockHeader::default()
         };
+        let chomping = block_header.chomping;
 
         // Unescape double-quoted strings
         let scalar_value = if matches!(style, SaphyrScalarStyle::DoubleQuoted) {
@@ -534,6 +537,7 @@ impl<'a> AstReceiver<'a> {
             value: scalar_value,
             style: scalar_style,
             chomping,
+            block_indent: block_header.indent,
             meta: NodeMeta {
                 source_range: Some(range),
                 ..Default::default()

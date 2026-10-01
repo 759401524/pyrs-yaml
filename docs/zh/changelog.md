@@ -15,6 +15,40 @@ status: new
 
 ### [Unreleased]
 
+#### 新增
+
+- **`pyrs-ast` / `pyrs-schema` 支持 `no_std`** — 所有格式引擎赖以奠基的两个基础
+  crate 现在仅靠 `alloc` 即可构建：`indexmap` 与 `thiserror` 关闭默认 `std`
+  feature，新增的 opt-in `std` feature 重新启用 `std::error::Error` 实现与
+  `RandomState` 哈希器。`std` 仍默认开启，所以现有所有使用方继续拿到与以往
+  完全一致的 `IndexMap<K, V, RandomState>` 节点映射类型；`no_std` 用户用
+  `default-features = false` 退出，获得固定种子的哈希器。Proptest 节点策略移到
+  新的 `test-strategy` feature 之后，普通构建不再承担属性测试成本。CI 任务
+  `no-std-check` 为裸机目标交叉编译，确保这一性质不退化。
+- **`pyq` 随每个发布提供预编译二进制** — `publish.yml` 新增 `pyq` 任务，为六个
+  平台构建原生 CLI 并把压缩包附到 GitHub Release，用户不再需要 Rust 工具链即可
+  获得独立二进制。
+
+#### 变更
+
+- **`pyq validate` 接受 `--input` 并按真实格式解析** — 此前它硬编码 YAML 解析器且
+  无任何可改途径，指向 `pyproject.toml`、`package.json` 等非 YAML 配置一律被拒绝。
+  现在它接受 `--input auto|yaml|json|jsonc|json5|toml` 并经共享加载器路由。
+- **`pyq` 预编译二进制锁定实测 glibc 下限** — Linux 目标经 `cargo zigbuild` 在
+  `.2.16`（x86_64）与 `.2.17`（aarch64）构建而非 `.2.28`，从而覆盖 CentOS 7 /
+  Ubuntu 16.04 / 18.04 / Debian 8 / 9。两个数字都是实测而非猜测：`.2.15` 链接失败
+  （`undefined symbol: getauxval`，glibc 2.16 引入），而 zig 根本不提供 2.17 以下的
+  aarch64 libc。两个下限彼此不同、不可互换 — zig 为每个目标单独供 libc。
+
+#### 修复
+
+- **块标量保留显式缩进指示器** — 写作 `key: |2` 的正文在序列化时 `2` 被静默丢弃，
+  于是当正文首行比后续行缩进更深时（正是 `4RWC.yaml` 的形状：首行 6、后续 4），输出的
+  重解析结果与输入不同。无指示器时读取器按正文首行自动探测缩进，所以丢失它的是语义
+  变更而非外观问题。指示器现在随 AST 保存并按规范顺序（`c-b-block-header`：chomping
+  在前、缩进在后，故 strip 形式为 `|-2`）重新输出，且写入器以承载 header 的那一行为
+  基准衡量正文，而非父节点的列。
+
 ### [v0.17.0] — 2026-10-01
 
 #### 新增

@@ -67,6 +67,49 @@ jobs:
       - name: cargo test at MSRV
         run: cargo test --workspace --locked
 
+  no-std-check:
+    name: no_std
+    if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # `thumbv7em-none-eabi` has no std at all, so a stray `use std::…`,
+      # an accidentally enabled `indexmap/std`, or a `format!` used outside a
+      # `#[cfg(test)]` block all fail here as hard errors. Building a
+      # `--target` that nobody can run is the only honest gate for a no_std
+      # claim: every other job still links std, so none of them would notice.
+      - name: Install Rust toolchain with bare-metal target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabi
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: no-std
+
+      - name: Build no_std foundation crates
+        run: >
+          cargo build
+          --locked
+          --no-default-features
+          --target thumbv7em-none-eabi
+          -p pyrs-ast
+          -p pyrs-schema
+
+      # The hasher differs across the feature split (std: RandomState, no_std:
+      # fixed-seed FxHash), so the unit tests are the only thing that proves
+      # map lookups still agree with the node Hash/Eq impls on that path.
+      - name: Run no_std unit tests on the host
+        run: cargo test --locked --no-default-features -p pyrs-ast -p pyrs-schema
+
+      # Re-enabling `std` must not have been "achieved" by deleting the
+      # no_std path, so assert the default (std) configuration still compiles
+      # for the same bare-metal-shaped code path.
+      - name: Build with the default std feature
+        run: cargo check --locked -p pyrs-ast -p pyrs-schema
+
   test:
     needs: [build]
     if: ${{ github.event_name != 'push' || github.ref == 'refs/heads/main' }}

@@ -3,6 +3,16 @@ use crate::error::{DepthError, SerializeError};
 use crate::parser::yaml::schema::core_type_is_non_string;
 use indexmap::IndexMap;
 
+/// 块标量头部的两项指示符，作为一组传递，避免在 `write_scalar` 及其下游
+/// 逐层加参数。
+#[derive(Debug, Clone, Copy)]
+struct BlockScalarHeader<'a> {
+    /// Chomping 指示符（`|` / `|-` / `|+`）。
+    chomping: &'a Chomping,
+    /// 显式缩进指示器（`|2` 中的 `2`）；`None` 表示重新探测。
+    indent: Option<u8>,
+}
+
 /// Serialization options
 #[derive(Debug, Clone, PartialEq)]
 pub struct SerializeOptions {
@@ -312,8 +322,19 @@ impl Serializer {
                 style,
                 meta,
                 chomping,
+                block_indent,
                 ..
-            } => self.write_scalar_node(value, style, meta, chomping, indent_width, block_base)?,
+            } => self.write_scalar_node(
+                value,
+                style,
+                meta,
+                BlockScalarHeader {
+                    chomping,
+                    indent: *block_indent,
+                },
+                indent_width,
+                block_base,
+            )?,
             CustomNode::Mapping {
                 pairs,
                 meta,
@@ -353,7 +374,7 @@ impl Serializer {
         value: &str,
         style: &ScalarStyle,
         meta: &NodeMeta,
-        chomping: &Chomping,
+        block: BlockScalarHeader<'_>,
         indent_width: usize,
         block_base: usize,
     ) -> Result<(), SerializeError> {
@@ -361,7 +382,7 @@ impl Serializer {
         if meta.anchor.is_some() || meta.tag.is_some() {
             self.write_anchor_tag(&meta.anchor, &meta.tag);
         }
-        self.write_scalar(value, style, chomping, self.width, block_base);
+        self.write_scalar(value, style, block, self.width, block_base);
         if let Some(c) = &meta.comment
             && !c.standalone
         {
@@ -603,7 +624,7 @@ impl Serializer {
         &mut self,
         value: &str,
         style: &ScalarStyle,
-        chomping: &Chomping,
+        block: BlockScalarHeader<'_>,
         remaining: usize,
         block_base: usize,
     ) {
@@ -626,8 +647,8 @@ impl Serializer {
             }
             ScalarStyle::SingleQuoted => self.write_single_quoted_scalar(value),
             ScalarStyle::DoubleQuoted => self.write_double_quoted_scalar(value),
-            ScalarStyle::Literal => self.write_literal_scalar(value, chomping, block_base),
-            ScalarStyle::Folded => self.write_folded_scalar(value, chomping, block_base),
+            ScalarStyle::Literal => self.write_literal_scalar(value, block, block_base),
+            ScalarStyle::Folded => self.write_folded_scalar(value, block, block_base),
         }
     }
 
@@ -830,6 +851,7 @@ impl Serializer {
                 value,
                 style,
                 chomping,
+                block_indent,
                 ..
             } => {
                 // A key line cannot host a block scalar header either: the
@@ -839,7 +861,18 @@ impl Serializer {
                     ScalarStyle::Literal | ScalarStyle::Folded => &ScalarStyle::DoubleQuoted,
                     other => other,
                 };
-                self.write_scalar(value, style, chomping, 0, 0)
+                // `style` is no longer a block style, so the indentation
+                // indicator never reaches the writer here.
+                self.write_scalar(
+                    value,
+                    style,
+                    BlockScalarHeader {
+                        chomping,
+                        indent: *block_indent,
+                    },
+                    0,
+                    0,
+                )
             }
             _ => {
                 self.output.push_str("null");
@@ -863,38 +896,68 @@ impl Serializer {
         write_double_quoted_scalar(&mut self.output, value);
     }
 
-    /// Write a literal block scalar (`|`) with chomping indicator.
-    fn write_literal_scalar(&mut self, value: &str, chomping: &Chomping, block_base: usize) {
-        let indicator = match chomping {
-            Chomping::Strip => "|-",
-            Chomping::Clip => "|",
-            Chomping::Keep => "|+",
-        };
-        self.output.push_str(indicator);
-        self.output.push('\n');
-        self.write_base_indent(value, block_base);
+    /// Emit a block scalar header: the `|`/`>` sigil, the chomping indicator
+    /// and — when the source pinned one — the explicit indentation indicator.
+    /// Order follows the spec (`c-b-block-header`): chomping precedes
+    /// indentation, so a stripped, explicitly indented scalar is `|-2`.
+    fn write_block_header(&mut self, sigil: char, block: BlockScalarHeader<'_>) {
+        self.output.push(sigil);
+        self.output.push_str(match block.chomping {
+            Chomping::Strip => "-",
+            Chomping::Clip => "",
+            Chomping::Keep => "+",
+        });
+        if let Some(indent) = block.indent.filter(|n| (1..=9).contains(n)) {
+            self.output.push((b'0' + indent) as char);
+        }
     }
 
-    /// Write a folded block scalar (`>`) with chomping indicator.
-    fn write_folded_scalar(&mut self, value: &str, chomping: &Chomping, block_base: usize) {
-        let indicator = match chomping {
-            Chomping::Strip => ">-",
-            Chomping::Clip => ">",
-            Chomping::Keep => ">+",
-        };
-        self.output.push_str(indicator);
+    /// Write a literal block scalar (`|`) with its block header.
+    fn write_literal_scalar(
+        &mut self,
+        value: &str,
+        block: BlockScalarHeader<'_>,
+        block_base: usize,
+    ) {
+        self.write_block_header('|', block);
         self.output.push('\n');
-        self.write_base_indent(value, block_base);
+        self.write_base_indent(value, block_base, block.indent);
+    }
+
+    /// Write a folded block scalar (`>`) with its block header.
+    fn write_folded_scalar(
+        &mut self,
+        value: &str,
+        block: BlockScalarHeader<'_>,
+        block_base: usize,
+    ) {
+        self.write_block_header('>', block);
+        self.output.push('\n');
+        self.write_base_indent(value, block_base, block.indent);
     }
 
     /// Write each line of the block scalar content with base indentation appended.
     /// Writes directly to output (no intermediate Vec or join); indentation goes
     /// through the memoized `write_indent` cache instead of a fresh `repeat()`
-    /// allocation per block scalar. The body sits at `block_base + indent_size`
-    /// — one step deeper than the line carrying the `|`/`>` header, wherever
-    /// that line lives (top level, a nested pair, after a dash).
-    fn write_base_indent(&mut self, value: &str, block_base: usize) {
-        let width = block_base + self.indent_size;
+    /// allocation per block scalar. The body sits one step deeper than the line
+    /// carrying the `|`/`>` header, wherever that line lives (top level, a
+    /// nested pair, after a dash).
+    ///
+    /// `explicit_indent` is the source's indentation indicator, which is
+    /// relative to the *parent* line, not to `self.indent_size`. It has to win:
+    /// the indicator is already on the wire, and if the body did not land at
+    /// exactly `block_base + n` the reader would derive a different content
+    /// indent and silently change the value. A body whose first line is deeper
+    /// than the rest (`|2` over `[1, 2, 3]` / `  `) is the case that needs it —
+    /// auto-detection alone would see the deeper first line and misread the
+    /// shallower one as a dedent. Values carrying an out-of-range indicator
+    /// (only reachable from hand-built ASTs) fall back to `indent_size`, whose
+    /// number the header above did not print, so the two stay consistent.
+    fn write_base_indent(&mut self, value: &str, block_base: usize, explicit_indent: Option<u8>) {
+        let width = match explicit_indent.filter(|n| (1..=9).contains(n)) {
+            Some(n) => block_base + n as usize,
+            None => block_base + self.indent_size,
+        };
         let mut first = true;
         for line in value.lines() {
             if !first {
@@ -924,6 +987,7 @@ impl Serializer {
                 style,
                 meta,
                 chomping,
+                block_indent,
                 ..
             } => {
                 if meta.anchor.is_some() || meta.tag.is_some() {
@@ -943,7 +1007,16 @@ impl Serializer {
                     ScalarStyle::Plain if flow_plain_unsafe(value) => &ScalarStyle::DoubleQuoted,
                     other => other,
                 };
-                self.write_scalar(value, style, chomping, self.width, 0);
+                self.write_scalar(
+                    value,
+                    style,
+                    BlockScalarHeader {
+                        chomping,
+                        indent: *block_indent,
+                    },
+                    self.width,
+                    0,
+                );
             }
             CustomNode::Null { meta, .. } => {
                 if meta.anchor.is_some() || meta.tag.is_some() {
@@ -1336,6 +1409,7 @@ mod tests {
                 ..Default::default()
             },
             chomping: Chomping::Clip,
+            block_indent: None,
         };
         assert_yaml_eq!(to_yaml(&node), "value  # a comment\n");
     }
@@ -1353,6 +1427,7 @@ mod tests {
                 style: ScalarStyle::SingleQuoted,
                 meta: NodeMeta::default(),
                 chomping: Chomping::Clip,
+                block_indent: None,
             };
             let dumped = to_yaml(&node);
             let reparsed = parse_core(&dumped);
@@ -1373,6 +1448,7 @@ mod tests {
                 ..Default::default()
             },
             chomping: Chomping::Clip,
+            block_indent: None,
         };
         assert_yaml_eq!(to_yaml(&node), "!!int 42\n");
     }
@@ -1450,6 +1526,123 @@ mod tests {
         let mut node = CustomNode::quoted_scalar(value);
         node.set_scalar_style(ScalarStyle::Literal);
         node
+    }
+
+    /// A literal scalar pinned to an explicit indentation indicator, as
+    /// `|2` in the source would produce.
+    fn literal_scalar_with_indent(value: &str, indent: u8) -> CustomNode {
+        let mut node = literal_scalar(value);
+        if let CustomNode::Scalar { block_indent, .. } = &mut node {
+            *block_indent = Some(indent);
+        }
+        node
+    }
+
+    /// The `|2` header has to survive a round trip together with the body
+    /// indentation it pins. Without it the reader re-detects the content
+    /// indent from the *first* body line, so a body whose first line is
+    /// deeper than the rest (`4RWC.yaml`) would come back as a dedent.
+    ///
+    /// The indicator is relative to the line carrying the header, so a
+    /// top-level `yaml: |2` puts the body at column 2 — which then leaves the
+    /// second line's own 2 leading spaces as content.
+    #[test]
+    fn explicit_block_indent_indicator_round_trips() {
+        let mut pairs = IndexMap::new();
+        pairs.insert(
+            CustomNode::plain_scalar("yaml"),
+            literal_scalar_with_indent("[1, 2, 3]  \n  \n", 2),
+        );
+        let node = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert_yaml_eq!("yaml: |2\n  [1, 2, 3]  \n    \n", &out);
+
+        // The indicator is the only thing that makes the shallower second
+        // line part of the body rather than a dedent, so the re-parsed value
+        // must be byte-identical to the original.
+        let reparsed = crate::parser::parse_with_options(
+            &out,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        )
+        .expect("re-parse");
+        let CustomNode::Mapping { pairs, .. } = &reparsed else {
+            panic!("unexpected shape: {reparsed:?}");
+        };
+        let Some(CustomNode::Scalar { value, .. }) = pairs.get(&CustomNode::plain_scalar("yaml"))
+        else {
+            panic!("missing `yaml` key: {out:?}");
+        };
+        assert_eq!(value.as_ref(), "[1, 2, 3]  \n  \n");
+    }
+
+    /// Chomping precedes indentation in a block header (`c-b-block-header`),
+    /// so the two indicators have to be emitted in that order.
+    #[test]
+    fn block_indent_indicator_follows_chomping_indicator() {
+        let mut node = literal_scalar_with_indent("x\ny", 2);
+        if let CustomNode::Scalar { chomping, .. } = &mut node {
+            *chomping = Chomping::Strip;
+        }
+        let mut pairs = IndexMap::new();
+        pairs.insert(CustomNode::plain_scalar("a"), node);
+        let mapping = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&mapping);
+        assert_yaml_eq!("a: |-2\n  x\n  y\n", &out);
+    }
+
+    /// The pinned number must drive the body indent, not `indent_size`: at
+    /// `a:\n  b: |-4` the header sits on the `b:` line (column 2), so the body
+    /// lands at column 6. Deriving it from `indent_size` would emit a `|-4`
+    /// header over a column-4 body, and the reader would believe the header.
+    #[test]
+    fn explicit_block_indent_is_relative_to_parent_line() {
+        let mut inner = IndexMap::new();
+        inner.insert(
+            CustomNode::plain_scalar("b"),
+            literal_scalar_with_indent("x\ny", 4),
+        );
+        let mut outer = IndexMap::new();
+        outer.insert(
+            CustomNode::plain_scalar("a"),
+            CustomNode::Mapping {
+                pairs: inner,
+                flow_style: false,
+                meta: Default::default(),
+            },
+        );
+        let node = CustomNode::Mapping {
+            pairs: outer,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert_yaml_eq!("a:\n  b: |4\n      x\n      y\n", &out);
+    }
+
+    /// No indicator in, no indicator out: the writer must not invent one
+    /// (it would pin a value the source never expressed).
+    #[test]
+    fn block_scalar_without_indicator_keeps_derived_indent() {
+        let mut pairs = IndexMap::new();
+        pairs.insert(CustomNode::plain_scalar("b"), literal_scalar("x\ny"));
+        let node = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert_yaml_eq!("b: |\n  x\n  y\n", &out);
     }
 
     #[test]

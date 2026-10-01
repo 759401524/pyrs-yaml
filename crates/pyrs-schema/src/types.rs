@@ -1,6 +1,6 @@
-use std::borrow::Cow;
-use std::str::FromStr;
-use std::sync::Arc;
+use alloc::borrow::Cow;
+use alloc::sync::Arc;
+use core::str::FromStr;
 
 /// YAML schema profile controlling implicit type resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +148,9 @@ mod tests {
     use super::*;
     use crate::schema::resolve_yaml_type;
     use crate::types::YamlSchema;
+    use alloc::format;
+    use alloc::string::{String, ToString};
+    use alloc::vec;
 
     fn format_yaml_type(ty: &YamlType) -> String {
         match ty {

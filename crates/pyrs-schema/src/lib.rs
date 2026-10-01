@@ -5,11 +5,20 @@
 //! resolution rules (YAML 1.2 Core, JSON, JSON5, YAML 1.1, failsafe) plus the
 //! scalar-quoting predicates the serializers share.
 //!
-//! std-only and dependency-free — the generic "which type is this scalar"
+//! `no_std` + dependency-free — the generic "which type is this scalar"
 //! infrastructure every format engine reuses (the JSON/TOML writers resolve
 //! plain scalars through it). Kept separate from `pyrs-ast` (the node model)
 //! and from the YAML-specific schema *registry* / schema-language layers,
 //! which live in the engine crate.
+//!
+//! The crate is `#![no_std]` by default and only pulls in `alloc` for the
+//! owned parts of the scalar model (`String` formatting, `Arc`-shared scalar
+//! strings). `cargo build -p pyrs-schema --target thumbv7em-none-eabi`
+//! is the CI gate that keeps it honest.
+
+#![no_std]
+
+extern crate alloc;
 
 pub mod schema;
 pub mod types;

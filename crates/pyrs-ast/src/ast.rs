@@ -1,8 +1,89 @@
+use alloc::boxed::Box;
+use alloc::string::{String, ToString};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::fmt;
+#[cfg(not(feature = "std"))]
+use core::hash::BuildHasherDefault;
+use core::hash::{Hash, Hasher};
+use core::mem;
+use core::ops::Range;
 use indexmap::IndexMap;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::ops::Range;
-use std::sync::Arc;
+
+/// Insertion-ordered map backing `CustomNode::Mapping`.
+///
+/// `indexmap` only supplies its `S = RandomState` default parameter when its
+/// own `std` feature is on, so spelling `IndexMap<K, V>` in a `#![no_std]` crate
+/// leaves the type with two parameters and every use site fails with E0107.
+/// Aliasing the hasher here keeps a single node-map type on both sides of the
+/// feature split, and keeps every downstream `indexmap::IndexMap::new()`
+/// spelled against node keys compiling unchanged.
+#[cfg(feature = "std")]
+pub type NodeMap<K, V> = IndexMap<K, V, std::hash::RandomState>;
+
+/// `no_std` counterpart of [`NodeMap`]. `RandomState` needs entropy only std
+/// can source, so embedded builds get a fixed-seed FxHash instead: no HashDoS
+/// randomisation, which is the documented trade-off for dragging std into an
+/// image just to seed a table.
+#[cfg(not(feature = "std"))]
+pub type NodeMap<K, V> = IndexMap<K, V, BuildHasherDefault<FxHasher>>;
+
+/// FxHash (rustc-hash) over `u64`, sized for `no_std` map keys.
+#[cfg(not(feature = "std"))]
+#[derive(Default, Clone, Copy)]
+pub struct FxHasher {
+    hash: u64,
+}
+
+#[cfg(not(feature = "std"))]
+impl FxHasher {
+    const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+
+    #[inline]
+    fn add_to_hash(&mut self, i: u64) {
+        self.hash = (self.hash.rotate_left(5) ^ i).wrapping_mul(Self::SEED);
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl Hasher for FxHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.add_to_hash(u64::from(b));
+        }
+    }
+
+    #[inline]
+    fn write_u8(&mut self, i: u8) {
+        self.add_to_hash(u64::from(i));
+    }
+
+    #[inline]
+    fn write_u16(&mut self, i: u16) {
+        self.add_to_hash(u64::from(i));
+    }
+
+    #[inline]
+    fn write_u32(&mut self, i: u32) {
+        self.add_to_hash(u64::from(i));
+    }
+
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.add_to_hash(i);
+    }
+
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.add_to_hash(i as u64);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+}
 
 /// Scalar style preservation for round-trip support
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,13 +114,13 @@ pub enum Chomping {
 
 impl Hash for Chomping {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
+        mem::discriminant(self).hash(state);
     }
 }
 
 impl Hash for ScalarStyle {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
+        mem::discriminant(self).hash(state);
     }
 }
 
@@ -227,11 +308,18 @@ pub enum CustomNode {
         style: ScalarStyle,
         /// Chomping indicator for block scalars (|+, |-, >+, >-)
         chomping: Chomping,
+        /// Explicit block indentation indicator (the `2` in `|2`). `None`
+        /// when the source omitted it, in which case the writer re-probes the
+        /// content indent. Kept verbatim because auto-detection is lossy: a
+        /// body whose first line is indented deeper than the rest (`|2` is the
+        /// only way to write that) would otherwise round-trip into a document
+        /// that no longer parses.
+        block_indent: Option<u8>,
         /// Shared metadata (comment, anchor, tag, source_range)
         meta: NodeMeta,
     },
     Mapping {
-        pairs: IndexMap<CustomNode, CustomNode>,
+        pairs: NodeMap<CustomNode, CustomNode>,
         /// Whether this mapping uses flow style ({key: value}) vs block style
         flow_style: bool,
         /// Shared metadata (comment, anchor, tag, source_range)
@@ -259,6 +347,7 @@ impl Hash for CustomNode {
                 value,
                 style,
                 chomping,
+                block_indent,
                 meta,
             } => {
                 state.write_u8(0);
@@ -266,6 +355,7 @@ impl Hash for CustomNode {
                 style.hash(state);
                 meta.hash(state);
                 chomping.hash(state);
+                block_indent.hash(state);
             }
             CustomNode::Mapping {
                 pairs,
@@ -480,6 +570,7 @@ impl CustomNode {
             value: value.into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta::default(),
         }
     }
@@ -506,6 +597,7 @@ impl CustomNode {
             value: value.into(),
             style: ScalarStyle::SingleQuoted,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta::default(),
         }
     }
@@ -534,6 +626,7 @@ impl CustomNode {
             value: value.into(),
             style: ScalarStyle::DoubleQuoted,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta::default(),
         }
     }
@@ -557,7 +650,7 @@ impl CustomNode {
     /// pairs.insert(CustomNode::plain_scalar("key"), CustomNode::plain_scalar("value"));
     /// let node = CustomNode::plain_mapping(pairs);
     /// ```
-    pub fn plain_mapping(pairs: IndexMap<CustomNode, CustomNode>) -> Self {
+    pub fn plain_mapping(pairs: NodeMap<CustomNode, CustomNode>) -> Self {
         CustomNode::Mapping {
             pairs,
             flow_style: false,
@@ -929,6 +1022,7 @@ impl CustomNode {
 #[cfg(feature = "test-strategy")]
 pub mod proptest_strategies {
     use super::*;
+    use alloc::format;
     use proptest::prelude::*;
     use proptest::strategy::BoxedStrategy;
 
@@ -948,6 +1042,12 @@ pub mod proptest_strategies {
             Just(Chomping::Clip),
             Just(Chomping::Keep),
         ]
+    }
+
+    /// The explicit indentation indicator of a block header. Only block
+    /// styles carry one, and the spec allows a single digit `1`–`9`.
+    pub fn arb_block_indent() -> impl Strategy<Value = Option<u8>> {
+        prop_oneof![Just(None), (1u8..=9).prop_map(Some)]
     }
 
     pub fn arb_tag() -> impl Strategy<Value = Tag> {
@@ -995,14 +1095,21 @@ pub mod proptest_strategies {
                     ScalarStyle::Literal | ScalarStyle::Folded => arb_chomping().boxed(),
                     _ => Just(Chomping::Clip).boxed(),
                 };
-                (Just(style), Just(value), Just(meta), chomp)
+                let indent = match style {
+                    ScalarStyle::Literal | ScalarStyle::Folded => arb_block_indent().boxed(),
+                    _ => Just(None).boxed(),
+                };
+                (Just(style), Just(value), Just(meta), chomp, indent)
             })
-            .prop_map(|(style, value, meta, chomping)| CustomNode::Scalar {
-                value: Arc::from(value),
-                style,
-                chomping,
-                meta,
-            })
+            .prop_map(
+                |(style, value, meta, chomping, block_indent)| CustomNode::Scalar {
+                    value: Arc::from(value),
+                    style,
+                    chomping,
+                    block_indent,
+                    meta,
+                },
+            )
     }
 
     fn arb_mapping(inner: BoxedStrategy<CustomNode>) -> impl Strategy<Value = CustomNode> {
@@ -1012,7 +1119,7 @@ pub mod proptest_strategies {
             arb_node_meta(),
         )
             .prop_map(|(pairs, flow_style, meta)| {
-                let mut map = IndexMap::new();
+                let mut map = NodeMap::default();
                 for (k, v) in pairs {
                     map.insert(k, v);
                 }
@@ -1085,12 +1192,14 @@ pub mod proptest_strategies {
                     value: va,
                     style: sa,
                     chomping: ca,
+                    block_indent: ia,
                     meta: ma,
                 },
                 Scalar {
                     value: vb,
                     style: sb,
                     chomping: cb,
+                    block_indent: ib,
                     meta: mb,
                 },
             ) => {
@@ -1103,7 +1212,12 @@ pub mod proptest_strategies {
                 let style_ok = sa == sb
                     || (*sa == ScalarStyle::Plain
                         && matches!(sb, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted));
-                va == vb && style_ok && ca == cb && meta_equal_ignore_source(ma, mb)
+                // The indentation indicator is compared like chomping: it is
+                // part of the block header the writer re-emits, and dropping it
+                // is lossy for a body whose first line is indented deeper than
+                // the rest (the reader would re-detect that deeper column and
+                // read the shallower lines as a dedent).
+                va == vb && style_ok && ca == cb && ia == ib && meta_equal_ignore_source(ma, mb)
             }
             (
                 Mapping {
@@ -1165,6 +1279,7 @@ pub mod proptest_strategies {
                     value: vb,
                     style: ScalarStyle::Plain,
                     chomping: Chomping::Clip,
+                    block_indent: None,
                     meta: mb,
                 },
             ) => is_null_token(vb) && meta_equal_ignore_source(ma, mb),
@@ -1173,6 +1288,7 @@ pub mod proptest_strategies {
                     value: va,
                     style: ScalarStyle::Plain,
                     chomping: Chomping::Clip,
+                    block_indent: None,
                     meta: ma,
                 },
                 Null { meta: mb },
@@ -1237,7 +1353,7 @@ mod tests {
         // breaking every existing round-trip assertion.
         let legacy = NodeMeta {
             comment: Some(crate::ast::Comment {
-                text: std::sync::Arc::from("hello"),
+                text: Arc::from("hello"),
                 standalone: true,
             }),
             ..Default::default()
@@ -1245,7 +1361,7 @@ mod tests {
         let migrated = NodeMeta {
             decor: Some(Box::new(NodeDecor {
                 leading_comment: Some(crate::ast::Comment {
-                    text: std::sync::Arc::from("hello"),
+                    text: Arc::from("hello"),
                     standalone: true,
                 }),
                 blank_before: false,
@@ -1262,11 +1378,11 @@ mod tests {
         // never carry conflicting text.
         let mut n = CustomNode::plain_scalar("v");
         n.set_comment(crate::ast::Comment {
-            text: std::sync::Arc::from("legacy"),
+            text: Arc::from("legacy"),
             standalone: true,
         });
         n.set_leading_comment(crate::ast::Comment {
-            text: std::sync::Arc::from("new"),
+            text: Arc::from("new"),
             standalone: true,
         });
         assert_eq!(n.leading_comment().map(|c| &*c.text).unwrap(), "new");
@@ -1279,7 +1395,7 @@ mod tests {
     fn remove_leading_comment_clears_both_slots() {
         let mut n = CustomNode::plain_scalar("v");
         n.set_comment(crate::ast::Comment {
-            text: std::sync::Arc::from("legacy"),
+            text: Arc::from("legacy"),
             standalone: true,
         });
         n.remove_leading_comment();
@@ -1293,11 +1409,11 @@ mod tests {
         // survive a set_leading_comment on the same node.
         let mut n = CustomNode::plain_scalar("v");
         n.set_comment(crate::ast::Comment {
-            text: std::sync::Arc::from("inline"),
+            text: Arc::from("inline"),
             standalone: false,
         });
         n.set_leading_comment(crate::ast::Comment {
-            text: std::sync::Arc::from("above"),
+            text: Arc::from("above"),
             standalone: true,
         });
         assert_eq!(n.leading_comment().map(|c| &*c.text).unwrap(), "above");
@@ -1313,6 +1429,7 @@ mod tests {
             value: Arc::from("hello"),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: Default::default(),
         };
         assert_eq!(node.comment(), None);
@@ -1326,6 +1443,7 @@ mod tests {
             value: Arc::from("42"),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta {
                 tag: Some(Tag::primary("int")),
                 ..Default::default()
@@ -1340,6 +1458,7 @@ mod tests {
             value: Arc::from("world"),
             style: ScalarStyle::DoubleQuoted,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta {
                 comment: Some(Comment {
                     text: Arc::from("a greeting"),
@@ -1358,22 +1477,25 @@ mod tests {
             value: Arc::from("b"),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: Default::default(),
         };
         let key2 = CustomNode::Scalar {
             value: Arc::from("a"),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: Default::default(),
         };
         let val = CustomNode::Scalar {
             value: Arc::from("1"),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: Default::default(),
         };
 
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(key1.clone(), val.clone());
         pairs.insert(key2.clone(), val.clone());
 
@@ -1424,7 +1546,7 @@ mod tests {
         node.set_scalar_style(ScalarStyle::SingleQuoted);
         assert_eq!(node.scalar_style(), Some(ScalarStyle::SingleQuoted));
         // Non-scalar nodes return None and set is no-op
-        let mut map = CustomNode::plain_mapping(IndexMap::new());
+        let mut map = CustomNode::plain_mapping(NodeMap::default());
         assert_eq!(map.scalar_style(), None);
         map.set_scalar_style(ScalarStyle::DoubleQuoted);
         assert_eq!(map.scalar_style(), None);
@@ -1432,7 +1554,7 @@ mod tests {
 
     #[test]
     fn test_flow_style_getter_setter() {
-        let mut map = CustomNode::plain_mapping(IndexMap::new());
+        let mut map = CustomNode::plain_mapping(NodeMap::default());
         assert_eq!(map.flow_style(), Some(false));
         map.set_flow_style(true);
         assert_eq!(map.flow_style(), Some(true));
@@ -1456,7 +1578,7 @@ mod tests {
         node.set_chomping(Chomping::Strip);
         assert_eq!(node.chomping(), Some(Chomping::Strip));
         // Non-scalar nodes return None and set is no-op
-        let mut map = CustomNode::plain_mapping(IndexMap::new());
+        let mut map = CustomNode::plain_mapping(NodeMap::default());
         assert_eq!(map.chomping(), None);
         map.set_chomping(Chomping::Keep);
         assert_eq!(map.chomping(), None);

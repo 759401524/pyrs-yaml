@@ -205,6 +205,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
             value: k.into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta::default(),
         };
         if let Some(text) = standalone {
@@ -265,6 +266,9 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
                 value: s.into(),
                 style,
                 chomping,
+                // TOML multi-line strings use `\` escapes, not a YAML block
+                // indentation indicator, so there is nothing to round-trip.
+                block_indent: None,
                 meta: NodeMeta::default(),
             }
         }
@@ -281,6 +285,7 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
             value: s.into(),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
+            block_indent: None,
             meta: NodeMeta {
                 tag: Some(Tag {
                     handle: "!".to_string(),
@@ -301,6 +306,7 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
                     value: k.into(),
                     style: ScalarStyle::Plain,
                     chomping: Chomping::Clip,
+                    block_indent: None,
                     meta: NodeMeta::default(),
                 };
                 // PR #119: interior comments ride the same two-slot

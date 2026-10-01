@@ -1,7 +1,10 @@
 //! Structured error types shared across the core engine.
 //!
-//! All errors implement `std::error::Error` so downstream consumers can use
-//! `Box<dyn Error>` or `?`-chain across crate boundaries.
+//! All errors implement `core::error::Error` (the `no_std` trait) so downstream
+//! consumers can use `Box<dyn Error>` or `?`-chain across crate boundaries.
+//! With the `std` feature enabled they additionally impl `std::error::Error`.
+
+use alloc::string::String;
 
 /// Recursion depth limit exceeded.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

@@ -476,6 +476,7 @@ impl<'a> Parser<'a> {
                     value: s.into(),
                     style: pyrs_ast::ast::ScalarStyle::SingleQuoted,
                     chomping: pyrs_ast::ast::Chomping::Clip,
+                    block_indent: None,
                     meta: pyrs_ast::ast::NodeMeta::default(),
                 })
             }
