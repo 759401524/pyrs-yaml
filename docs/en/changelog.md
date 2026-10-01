@@ -48,14 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was rejected outright. It now takes `--input auto|yaml|json|jsonc|json5|toml`
   and routes through the shared loader, which is what made the command
   usable outside the repo it was written in.
-- **`pyq` prebuilt binaries pin a measured glibc floor** — the Linux targets
-  build through `cargo zigbuild` at `.2.16` (x86_64) and `.2.17` (aarch64)
-  instead of `.2.28`, which covers CentOS 7 / Ubuntu 16.04 / 18.04 /
-  Debian 8 / 9 instead of stopping at Debian 10. Both numbers are measured,
-  not guessed: `.2.15` fails to link with `undefined symbol: getauxval`
-  (introduced in glibc 2.16) and zig ships no aarch64 libc below 2.17 at all.
-  The two floors differ and cannot be interchanged — zig serves each target
-  its own libc.
+- **`pyq` prebuilt binaries build in manylinux2014 containers** — the Linux
+  targets compile natively inside the official CentOS 7 images via `cross`,
+  pinning a glibc 2.17 floor that covers CentOS 7 / Ubuntu 16.04 / 18.04 /
+  Debian 8 / 9 with zero hand-rolled cross toolchains. An earlier zigbuild
+  recipe pinned x86_64 one minor lower (2.16, the measured `getauxval`
+  floor), but the first real run of `publish.yml` — the workflow never
+  executes on ordinary PRs — exposed the whole zig stack was incomplete
+  (`cargo zigbuild: no such command`, an armv7 leg mislinked by the host's
+  default `-fuse-ld=lld`, smoke tests running binaries the runner could not
+  exec); the container recipe replaces all three failure modes with one
+  community-standard tool, at a floor two releases lower than the runner's
+  own glibc.
 
 #### Fixed
 
@@ -64,9 +68,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   users on the GIL-less interpreter had nothing to install: the GIL-enabled
   `cp38-abi3` wheels are ABI-incompatible with `Py_GIL_DISABLED` builds and
   the `abi3t` wheel only starts at CPython 3.15. The `linux` job now builds
-  manylinux cp314t wheels for x86_64/aarch64 from the image's own
-  free-threaded interpreter and smoke-tests the wheel in a `3.14t` venv
-  before it is attached.
+  manylinux cp314t wheels for x86_64 from the image's own free-threaded
+  interpreter and smoke-tests the wheel in a `3.14t` venv before it is
+  attached (aarch64 stays out: maturin must execute the target interpreter
+  for a non-abi3 wheel, and that exec fails under qemu-user).
+- **The `pyq` release job actually builds its Linux artifacts** — alongside
+  the container switch above, the cross-architecture legs now register qemu
+  binfmt handlers (`docker/setup-qemu-action`), which both `cross`'s emulated
+  containers and the smoke tests that exec the aarch64/armv7 binaries depend
+  on. Every leg builds and self-verifies before its archive is uploaded.
 - **Block scalars keep their explicit indentation indicator** — a body
   written as `key: |2` had the `2` silently dropped on write, so the output
   re-parsed differently from the input whenever the first body line sat
