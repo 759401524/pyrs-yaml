@@ -34,6 +34,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-trip YAML; both commands read any supported input dialect via
   `--input`/extension detection.
 
+### Changed
+
+- **GitHub Release is created by `publish.yml`** — the release page used to be
+  made by hand (`gh release create`) after each publish, which is one more step
+  to forget and one more place for the published version and the tag to drift
+  apart. The `release` job now runs `gh release create` after `uv publish`
+  succeeds, gated on the same `refs/tags/` condition, with generated notes and
+  the built wheels attached — notes and assets come from the tag PyPI was
+  published from. `workflow_dispatch` runs are unaffected (no release, no
+  PyPI publish), matching the existing behavior.
+- **`README.md` / `README.zh-CN.md` document the native `pyq` CLI** — both
+  READMEs gained a `pyq` subsection next to the Python CLI section: how to
+  install it from a checkout, three worked examples, and the full command
+  list, pointing at the pyq guide for detail.
+
 ### Fixed
 
 - **`pyrs-json` module documentation** — it still claimed comments were

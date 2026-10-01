@@ -36,6 +36,19 @@ status: new
   替换），输出往返保留的 YAML；两命令均可通过 `--input`/扩展名识别读取
   任意支持的输入方言。
 
+#### 变更
+
+- **GitHub Release 改由 `publish.yml` 自动创建** — 过去每次发布后都需人工
+  执行 `gh release create`，既多一个容易遗忘的步骤，也让已发布版本与 tag
+  多一个漂移点。现在 `release` job 在 `uv publish` 成功后自动执行
+  `gh release create`，复用同一个 `refs/tags/` 条件，自动生成 release notes
+  并附上构建出的 wheel —— notes 与产物均来自发布到 PyPI 的那个 tag。
+  `workflow_dispatch` 运行行为不变（既不发布 PyPI 也不建 Release），
+  与原有行为一致。
+- **`README.md` / `README.zh-CN.md` 补齐原生 `pyq` CLI 文档** — 两份 README
+  在 Python CLI 小节旁新增 `pyq` 小节：从源码安装方式、三条实际可跑的示例，
+  以及完整命令清单，并指向 pyq 指南获取细节。
+
 #### 修复
 
 - **`pyrs-json` 模块文档** — 旧文案仍声称注释读入即丢、不再回写；

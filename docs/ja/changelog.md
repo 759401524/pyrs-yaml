@@ -39,6 +39,20 @@ status: new
   ラウンドトリップ YAML で出力。両コマンドとも `--input`/拡張子判定で
   対応方言を読み込めます。
 
+#### 変更
+
+- **GitHub Release を `publish.yml` が自動作成** — これまで毎回 publish の
+  後に手動で `gh release create` を実行しており、忘れやすい工程が 1 つ増え、
+  公開済みバージョンと tag がずれる余地も生在じていました。`release` job は
+  同じ `refs/tags/` 条件のまま `uv publish` 成功後に `gh release create` を
+  実行し、リリースノートを自動生成してビルド済み wheel を添付します。ノート
+  と成果物はどちらも PyPI 公開と同じ tag 由来です。`workflow_dispatch` 実行の
+  挙動は変わらず（PyPI 公開も Release 作成も行わない）、既存動作と一致します。
+- **`README.md` / `README.zh-CN.md` にネイティブ `pyq` CLI を追記** — 両
+  README の Python CLI セクションの隣に `pyq` セクションを追加。チェックアウト
+  からのインストール方法、実行可能なサンプル 3 つ、完全なコマンド一覧を記載し、
+  詳細は pyq ガイドへ誘導します。
+
 #### 修正
 
 - **`pyrs-json` モジュールドキュメント** — 旧記述は「コメントは読み取り時

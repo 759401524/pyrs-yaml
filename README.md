@@ -63,6 +63,24 @@ $ pyrs-yaml to-json config.yaml
 
 Commands: `fmt` / `get` / `set` / `delete` / `rename` / `sort-keys` / `move` / `frontmatter` / `validate` / `to-json` / `from-json` / `compliance`, with `-A/--all-docs` multi-document support on all edit/query commands — see the [CLI guide](https://759401524.github.io/pyrs-yaml/en/guides/cli/) for details.
 
+### Native CLI (`pyq`)
+
+The engines are also usable without Python, as the `pyq` binary — a jq/yq-style tool over the same crate matrix (`pyrs-yaml-core`, `pyrs-json`, `pyrs-toml`):
+
+```bash
+cargo install --path crates/pyrs-yaml-cli
+```
+
+```bash
+$ pyq get '.server.host' deploy.yaml
+db.internal
+
+$ pyq diff base.yaml head.yaml          # semantic compare; exit 1 if different
+$ pyq merge base.yaml head.yaml         # right-biased deep merge
+```
+
+Commands: `fmt` / `get` / `set` / `delete` / `rename` / `move` / `append` / `insert` / `sort-keys` / `frontmatter` / `validate` / `diff` / `merge` / `to-json` / `to-toml` / `from-json` / `from-toml` / `from-ini`. Format is detected from the file extension, and `--input jsonc|json5` reads the JSONC/JSON5 dialects. See the [pyq guide](https://759401524.github.io/pyrs-yaml/en/guides/pyq/) for details.
+
 ## Requirements
 
 - **Supported Python versions** (installing wheels): Python 3.8+ (CPython; PyPy and free-threaded 3.14t wheels are also published). abi3 wheels mean one wheel covers all supported Python versions.
