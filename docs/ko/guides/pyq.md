@@ -106,6 +106,20 @@ pyq frontmatter README.md --body-out body.md # Markdown 프런트매터 분리
 네이티브 방언 엔진을 거쳐 주석과 JSON5 표기가 AST에 실리므로,
 `pyq to-json --input jsonc --jsonc`로 주석 보존 왕복이 됩니다.
 
+## 비교와 병합
+
+```bash
+pyq diff base.yaml head.yaml           # 시맨틱 비교: 동일 0, 차이 1
+pyq merge base.yaml overrides.yaml     # 딥 병합, 오른쪽 우선 (yq `*+` 형태)
+pyq merge a.yaml b.yaml --replace-arrays
+```
+
+`diff`는 해석된 값·구조·태그만 비교합니다 — 주석, 인용부호, 레이아웃은
+형식 노이즈로 전혀 나타나지 않습니다. 차이 경로는
+`- .keep: x` / `+ .c: 4` / `~ .b: 2 -> 3` 형식으로 출력됩니다.
+`merge`는 mapping을 재귀 병합하고 sequence는 뒤로 추가하며
+(`--replace-arrays`로 통째 교체), 왕복 YAML로 출력합니다.
+
 ## 종료 코드
 
 - `0` 성공;
