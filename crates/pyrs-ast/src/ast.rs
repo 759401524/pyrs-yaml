@@ -926,8 +926,8 @@ impl CustomNode {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod proptest_strategies {
+#[cfg(feature = "test-strategy")]
+pub mod proptest_strategies {
     use super::*;
     use proptest::prelude::*;
     use proptest::strategy::BoxedStrategy;
