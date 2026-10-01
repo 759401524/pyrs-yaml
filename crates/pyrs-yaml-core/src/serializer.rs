@@ -609,6 +609,21 @@ impl Serializer {
     ) {
         match style {
             ScalarStyle::Plain => self.write_plain_scalar(value, remaining),
+            // Single-quoted scalars cannot represent control characters, Unicode
+            // noncharacters, or (losslessly) newlines — a raw `\0` inside `'…'`
+            // is not re-parseable. When a value carries such a char (e.g. a
+            // JSON5 single-quoted string holding a control char, whose
+            // SingleQuoted style the parser preserves for fidelity), downgrade
+            // to double-quoted, which can escape them. Found by the dialect
+            // no-panic / re-parse fuzz: from_json5 emitted `'\0'` that
+            // re-parse rejected.
+            ScalarStyle::SingleQuoted
+                if value.contains('\n')
+                    || value.chars().any(char::is_control)
+                    || value.chars().any(is_yaml_noncharacter) =>
+            {
+                self.write_double_quoted_scalar(value)
+            }
             ScalarStyle::SingleQuoted => self.write_single_quoted_scalar(value),
             ScalarStyle::DoubleQuoted => self.write_double_quoted_scalar(value),
             ScalarStyle::Literal => self.write_literal_scalar(value, chomping, block_base),
@@ -1323,6 +1338,29 @@ mod tests {
             chomping: Chomping::Clip,
         };
         assert_yaml_eq!(to_yaml(&node), "value  # a comment\n");
+    }
+
+    #[test]
+    fn test_single_quoted_control_char_downgrades_to_double_quoted() {
+        // Regression for the dialect re-parse fuzz (from_json5): a JSON5
+        // single-quoted string holding a control char keeps SingleQuoted
+        // style for fidelity, but `'\0'` is not re-parseable YAML. The
+        // serializer must downgrade such values to double-quoted, which
+        // escapes them losslessly.
+        for value in ["\0", "a\u{1f}b", "line\nbreak", "\u{fffe}"] {
+            let node = CustomNode::Scalar {
+                value: Arc::from(value),
+                style: ScalarStyle::SingleQuoted,
+                meta: NodeMeta::default(),
+                chomping: Chomping::Clip,
+            };
+            let dumped = to_yaml(&node);
+            let reparsed = parse_core(&dumped);
+            let CustomNode::Scalar { value: got, .. } = reparsed else {
+                panic!("re-parse of {dumped:?} did not yield a scalar")
+            };
+            assert_eq!(&*got, value, "round-trip via {dumped:?}");
+        }
     }
 
     #[test]
