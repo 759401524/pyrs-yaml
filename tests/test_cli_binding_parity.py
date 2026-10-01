@@ -24,6 +24,7 @@ release process can no longer silently drift the two surfaces apart.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 
 import pytest
 
@@ -59,17 +60,26 @@ CLI_COMMANDS: frozenset[str] = frozenset(
 
 @pytest.fixture(scope="module")
 def cli_app():
-    """Load the CLI module or skip if cyclopts (Python 3.10+ extra) is absent."""
+    """Load the CLI app, skipping cleanly when the cyclopts extra is absent.
+
+    `pyrs_yaml.cli` lives behind the optional `cli` extra (cyclopts, Python
+    3.10+); CI test venvs on some OS/python-version cells do not install it.
+    Probing for cyclopts up front (and guarding the whole import path) makes
+    the fixture SKIP rather than raise ModuleNotFoundError -- an unguarded
+    fallback import errored the parity test on macos/3.9 when cyclopts was
+    missing.
+    """
+    if importlib.util.find_spec("cyclopts") is None:
+        pytest.skip("CLI extra (cyclopts) not installed")
     try:
         mod = importlib.import_module("pyrs_yaml.cli")
+        app = getattr(mod, "app", None) or getattr(mod, "APP", None) or getattr(mod, "_app", None)
+        if app is None:
+            # Fall back to the submodule directly if the package does not re-export.
+            app_mod = importlib.import_module("pyrs_yaml.cli.app")
+            app = getattr(app_mod, "app", None)
     except ImportError as exc:  # pragma: no cover - depends on env
         pytest.skip(f"CLI extra unavailable: {exc}")
-    app = getattr(mod, "app", None) or getattr(mod, "APP", None) or getattr(mod, "_app", None)
-    if app is None:
-        # Fall back to the submodule directly if the package does not re-export.
-        from pyrs_yaml.cli import app as app_mod  # type: ignore[assignment]
-
-        app = getattr(app_mod, "app", None)
     if app is None:  # pragma: no cover
         pytest.skip("Could not locate the cyclopts App instance")
     return app
