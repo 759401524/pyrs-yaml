@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-yaml-core"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Native YAML 1.2 engine — pure Rust, no Python dependencies"
@@ -16,15 +16,15 @@ rust-i18n = "4.2"
 granit-parser = "1.3"
 regex = "1.11"
 thiserror = "2"
-pyrs-ast = { path = "../pyrs-ast", version = "0.16.0" }
-pyrs-schema = { path = "../pyrs-schema", version = "0.16.0" }
+pyrs-ast = { path = "../pyrs-ast", version = "0.17.0" }
+pyrs-schema = { path = "../pyrs-schema", version = "0.17.0" }
 
 [dev-dependencies]
 # Cross-format property/integration suites (fmt_pbt, integration/*) exercise
 # the sibling engines; they are dev-only so the YAML engine no longer links
 # them for downstream consumers.
-pyrs-json = { path = "../pyrs-json", version = "0.16.0" }
-pyrs-toml = { path = "../pyrs-toml", version = "0.16.0" }
+pyrs-json = { path = "../pyrs-json", version = "0.17.0" }
+pyrs-toml = { path = "../pyrs-toml", version = "0.17.0" }
 proptest = "1.5"
 similar = "2"
-pyrs-ast = { path = "../pyrs-ast", version = "0.16.0", features = ["test-strategy"] }
+pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", features = ["test-strategy"] }

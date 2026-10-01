@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-ast"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "indexmap",
  "proptest",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-json"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "indexmap",
  "pyrs-ast",
@@ -846,11 +846,11 @@ dependencies = [
 
 [[package]]
 name = "pyrs-schema"
-version = "0.16.0"
+version = "0.17.0"
 
 [[package]]
 name = "pyrs-toml"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "indexmap",
  "pyrs-ast",
@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "codspeed-divan-compat",
  "granit-parser 1.3.0",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml-cli"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -887,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml-core"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "granit-parser 1.3.0",
  "indexmap",

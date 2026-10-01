@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-schema"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Format-agnostic scalar type vocabulary + YAML-Core/JSON/JSON5/1.1 resolution rules for the pyrs-yaml engine family"

@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.17.0] — 2026-10-01
+
 #### 新增
 
 - **pyq CLI 对齐参数** — `pyq fmt` 新增 `--indent N`（块缩进，默认 2）、

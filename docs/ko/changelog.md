@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.17.0] — 2026-10-01
+
 #### 추가
 
 - **pyq CLI 패리티 플래그** — `pyq fmt`에 `--indent N`(블록 들여쓰기, 기본 2),
