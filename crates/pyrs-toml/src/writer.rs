@@ -15,10 +15,10 @@
 //! - null values, aliases, and non-scalar keys are stable errors: TOML
 //!   cannot represent them.
 
-use crate::ast::{CustomNode, ScalarStyle};
-use crate::error::{ParseError, SerializeError};
-use crate::parser::yaml::{Schema, YamlType};
-use crate::toml::fmt_yaml_float;
+use crate::fmt_yaml_float;
+use pyrs_ast::ast::{CustomNode, ScalarStyle};
+use pyrs_ast::error::{ParseError, SerializeError};
+use pyrs_schema::types::{Schema, YamlType};
 use std::fmt::Write as _;
 
 /// Render a value-only AST as TOML text. `SerializeError::Internal` carries
@@ -342,7 +342,7 @@ fn quote_multiline(value: &str) -> String {
 fn is_valid_toml_datetime(s: &str) -> bool {
     // Reuse the parser's strict validator via a probe. The parser module
     // owns the grammar so date-time rules live in one place.
-    crate::toml::parser::DateTimeProbe.check_all(s)
+    crate::parser::DateTimeProbe.check_all(s)
 }
 
 /// Whether the plain scalar text is already a legal TOML integer
@@ -406,17 +406,10 @@ fn _unused_parse_error(e: ParseError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser;
-    use crate::toml::from_toml;
+    use crate::from_toml;
 
-    #[test]
-    fn to_toml_roundtrip_table_and_array() {
-        let yaml = "a: \"1\"\nb: 2\nc:\n  - x: 1\n  - x: 2\n";
-        let ast = parser::parse(yaml, Schema::Core).unwrap();
-        let text = to_toml(&ast).unwrap();
-        let back = from_toml(&text).unwrap();
-        assert_eq!(to_toml(&back).unwrap(), text);
-    }
+    // The YAML-source round-trip (`parse -> to_toml -> from_toml`) needs the
+    // YAML parser and lives in `pyrs-yaml-core` `src/integration/toml_family.rs`.
 
     #[test]
     fn to_toml_preserves_multiline_string_shape() {

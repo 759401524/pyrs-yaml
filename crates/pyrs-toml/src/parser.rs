@@ -9,13 +9,13 @@
 //!
 //! [spec]: https://toml.io/en/v1.1.0
 
-use crate::ast::CustomNode;
-use crate::error::{DepthError, ParseError};
-use crate::toml::{CowTable, KVAnnotations, TomlTable, TomlValue, cow_table_to_node};
+use crate::{CowTable, KVAnnotations, TomlTable, TomlValue, cow_table_to_node};
 use indexmap::IndexMap;
+use pyrs_ast::ast::CustomNode;
+use pyrs_ast::error::{DepthError, ParseError};
 
 /// Default nesting limit for arrays / inline tables, mirroring the JSON
-/// pipeline's [`DEFAULT_MAX_DEPTH`](crate::json::parser::DEFAULT_MAX_DEPTH).
+/// pipeline's `DEFAULT_MAX_DEPTH` (`pyrs-json`).
 /// TOML's `parse_value` is the single recursion funnel (arrays and inline
 /// tables both re-enter through it), so bounding it here caps the whole
 /// descent. Without it a deeply nested `[[[[…]]]]` / `{a={b={c=…}}}` input
@@ -114,7 +114,7 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
     if matches!(&node, CustomNode::Mapping { pairs, .. } if pairs.is_empty())
         && let Some(text) = p.pending_leading.take()
     {
-        node.set_leading_comment(crate::ast::Comment {
+        node.set_leading_comment(pyrs_ast::ast::Comment {
             text: std::sync::Arc::from(text.as_str()),
             standalone: true,
         });
@@ -1732,7 +1732,7 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{CustomNode, ScalarStyle};
+    use pyrs_ast::ast::{CustomNode, ScalarStyle};
 
     #[test]
     fn unicode_escape_followed_by_multibyte_char_errors_not_panics() {
@@ -1797,9 +1797,9 @@ mod tests {
         // leftover standalone note now lands on the otherwise-empty root
         // table and survives a second emit unchanged.
         let node = from_toml("# only note\n").unwrap();
-        let text = crate::toml::to_toml(&node).unwrap();
+        let text = crate::to_toml(&node).unwrap();
         assert_eq!(text, "# only note\n");
-        let again = crate::toml::to_toml(&from_toml(&text).unwrap()).unwrap();
+        let again = crate::to_toml(&from_toml(&text).unwrap()).unwrap();
         assert_eq!(again, text);
     }
 

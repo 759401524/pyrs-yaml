@@ -19,6 +19,7 @@ thiserror = "2"
 pyrs-ast = { path = "../pyrs-ast", version = "0.16.0" }
 pyrs-schema = { path = "../pyrs-schema", version = "0.16.0" }
 pyrs-json = { path = "../pyrs-json", version = "0.16.0" }
+pyrs-toml = { path = "../pyrs-toml", version = "0.16.0" }
 
 [dev-dependencies]
 proptest = "1.5"

@@ -1,0 +1,16 @@
+[package]
+name = "pyrs-toml"
+version = "0.16.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Native TOML 1.0/1.1 engine producing the shared pyrs-ast CustomNode — pure Rust, no Python dependencies"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/759401524/pyrs-yaml"
+
+[lib]
+name = "pyrs_toml"
+
+[dependencies]
+indexmap = "2.7"
+pyrs-ast = { path = "../pyrs-ast", version = "0.16.0" }
+pyrs-schema = { path = "../pyrs-schema", version = "0.16.0" }
