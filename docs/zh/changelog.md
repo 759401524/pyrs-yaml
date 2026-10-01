@@ -366,6 +366,13 @@ status: new
 
 #### 修复
 
+- **TOML 深嵌套耗尽原生栈并 abort 进程** — TOML 解析器此前无嵌套预算
+  （JSON 有 `DEFAULT_MAX_DEPTH`、YAML 有 `parse` `max_depth`），
+  `parse_value` → `parse_array`/`parse_inline_table` 无界递归。深嵌套数组/内联表
+  直接崩掉解释器（已验证：退出码 `0xC00000FD` STACK_OVERFLOW）——即
+  TOML 版的 #166 YAML merge 栈溢出。解析器现追踪 `depth`，超过 1000
+  返回类型化 `ParseError::MaxDepthExceeded`，与 JSON 对称。由进程内 Python
+  边界测试 + subprocess 崩溃金丝雀 + 大栈 Rust 单元测试共同守护。
 - **方言 writer/parser 丢失或错置文档级注释** — 三个定点属性抓到的 defect：
   (a) JSONC/JSON5 值前的文件首 `// note` 被误判为行内注释（空白扫描启发式中
   偏移 0 前无换行）并被首个对象成员占取，而非落在 writer
