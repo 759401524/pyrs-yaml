@@ -79,6 +79,21 @@ fn collect_anchor_mappings(
     }
 }
 
+/// True if `node`'s subtree contains an `Alias`. A merge value that references
+/// an anchor is unsafe to keep as a literal key: object conversion would follow
+/// the alias and could re-enter the #166 self-referential expansion even when
+/// the cycle guard produced an empty merge here.
+fn references_alias(node: &CustomNode) -> bool {
+    match node {
+        CustomNode::Alias { .. } => true,
+        CustomNode::Sequence { items, .. } => items.iter().any(references_alias),
+        CustomNode::Mapping { pairs, .. } => pairs
+            .iter()
+            .any(|(k, v)| references_alias(k) || references_alias(v)),
+        CustomNode::Null { .. } | CustomNode::Scalar { .. } => false,
+    }
+}
+
 /// Anchor name carried alongside each merged-in key so the expansion it came
 /// from can be told apart from an independent merge elsewhere in the document.
 /// An empty name marks an inline mapping used directly as a merge value.
@@ -92,19 +107,28 @@ fn resolve_mapping_merges(
 ) {
     let merge_key = CustomNode::plain_scalar("<<");
 
-    // A `<<` whose value is a Null or a plain Scalar is NOT a merge: YAML
-    // merges a mapping, an alias to a mapping, or a sequence of those. Such a
-    // `<<` stays an ordinary key so it round-trips (`{'<<': None}` must load
-    // back, not silently lose the key). Only alias / mapping / sequence values
-    // are consumed as merge sources -- the self-referential-anchor (#166) and
-    // invalid-sequence paths all carry an Alias/Sequence and are unaffected.
+    // Decide whether `<<` is consumed as a merge or kept as an ordinary key.
+    // The safety-critical line is any ALIAS in the value's subtree, not just a
+    // top-level alias: a surviving `<<: *a` or `<<: [*a, *a]` node (even when
+    // the cycle guard resolves it to nothing) re-expands during object
+    // conversion and re-triggers the #166 recursion. So an `<<` is kept as a
+    // literal key ONLY when it is alias-free AND yields nothing to merge
+    // (Null / scalar / `<<: []` / `<<: [1, 2]` / `<<: {}`); then `{'<<': []}`
+    // etc. round-trip instead of being silently dropped. Anything alias-bearing
+    // or producing real merged pairs is consumed.
     let merge_data = pairs
         .get(&merge_key)
         .and_then(|merge_value| match merge_value {
-            CustomNode::Alias { .. } | CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
-                Some(collect_merge_data(merge_value, pairs, anchors, path))
+            CustomNode::Null { .. } | CustomNode::Scalar { .. } => None,
+            CustomNode::Alias { .. } => Some(collect_merge_data(merge_value, pairs, anchors, path)),
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
+                let merged = collect_merge_data(merge_value, pairs, anchors, path);
+                if !merged.is_empty() || references_alias(merge_value) {
+                    Some(merged)
+                } else {
+                    None
+                }
             }
-            _ => None,
         });
 
     if let Some(merged_pairs) = merge_data {
@@ -339,12 +363,20 @@ mod tests {
 
     #[test]
     fn test_literal_merge_key_with_non_merge_value_is_kept() {
-        // A `<<` whose value is a Null or a plain Scalar is NOT a merge source;
-        // it must stay an ordinary key so `{'<<': None}` / `{'<<': 1}` survive a
-        // round trip instead of being silently dropped (the regression the
-        // round-trip property fuzz surfaced). Alias / mapping / sequence values
-        // are still consumed as merges (see the other tests).
-        for yaml in ["<<: null\n", "<<: 1\n", "k: 1\n<<: 2\n"] {
+        // A `<<` that is not an effective merge stays an ordinary key so it
+        // round-trips: Null / plain-scalar values, and inline Mapping/Sequence
+        // values that yield nothing to merge (`<<: []`, `<<: [1, 2]`). Surfaced
+        // by the round-trip property fuzz (`{'<<': None}` and `{'<<': []}` were
+        // silently dropped). Alias-valued `<<` (even resolving to nothing) is
+        // still consumed -- the #166 guard tests cover that.
+        for yaml in [
+            "<<: null\n",
+            "<<: 1\n",
+            "k: 1\n<<: 2\n",
+            "<<: []\n",
+            "a: 1\n<<: [1, 2]\n",
+            "<<: {}\n",
+        ] {
             let mut root = parse(yaml, YamlSchema::Core).unwrap();
             resolve_merge_keys(&mut root);
             let pairs = get_mapping(&root);
