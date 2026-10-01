@@ -42,12 +42,16 @@ status: new
   바꿀 방법도 없었으므로 `pyproject.toml`, `package.json` 등 비-YAML 설정 파일은 무조건
   거부됐습니다. 이제 공유 로더를 거치며
   `--input auto|yaml|json|jsonc|json5|toml`을 받습니다.
-- **`pyq` 프리빌드 바이너리의 glibc 하한을 실측값으로 고정** — Linux 타깃은 `cargo zigbuild`
-  로 `.2.28` 대신 `.2.16`(x86_64)·`.2.17`(aarch64)에서 빌드되어 CentOS 7 / Ubuntu 16.04 /
-  18.04 / Debian 8 / 9를 커버합니다. 두 수치는 추측이 아닌 실측입니다: `.2.15`는
-  `undefined symbol: getauxval`(glibc 2.16에서 도입)로 링크 실패하고, zig은 2.17 미만
-  aarch64 libc를 아예 제공하지 않습니다. 두 하한은 다르며 서로 대체 불가 — zig은 각
-  타깃에 자체 libc를 제공합니다.
+- **`pyq` 프리빌드 바이너리, manylinux2014 컨테이너에서 빌드** — Linux 타깃은
+  공식 CentOS 7 이미지 안에서 `cross`로 네이티브 컴파일되어, 수제 크로스
+  툴체인 없이 glibc 2.17 하한(CentOS 7 / Ubuntu 16.04 / 18.04 / Debian 8 / 9
+  커버)을 고정합니다. 이전 zigbuild 안은 x86_64를 한 단계 더 낮게(2.16, 실측
+  `getauxval` 마루) 고정했지만, `publish.yml`의 첫 실환경 실행(이 워크플로는
+  일반 PR에서는 절대 돌지 않음)에서 zig 스택 전체가 미비(`cargo zigbuild: no
+  such command`, armv7 레그의 호스트 기본 `-fuse-ld=lld` 오링크, runner에서
+  실행 불가한 바이너리 스모크 테스트)였음이 드러남. 컨테이너 방식은 세 실패
+  모드를 커뮤니티 표준 도구 하나로 통합하며, 하한은 runner 자체 glibc보다 두
+  메이저 낮습니다.
 
 #### 수정
 
@@ -55,9 +59,16 @@ status: new
   Windows와 macOS만 프리스레드 산출물을 만들어, Linux의 GIL 없는 인터프리터
   사용자는 설치 수단이 없었습니다: GIL 있는 `cp38-abi3` wheel은
   `Py_GIL_DISABLED` 빌드와 ABI 비호환이고 `abi3t` wheel은 CPython 3.15부터
-  적용되기 때문입니다. 이제 `linux` 잡이 x86_64/aarch64에서 이미지 자체의
+  적용되기 때문입니다. 이제 `linux` 잡이 x86_64에서 이미지 자체의
   프리스레드 인터프리터로 manylinux cp314t wheel을 빌드하고 `3.14t` venv에서
-  스모크 테스트를 통과한 뒤 Release에 첨부합니다.
+  스모크 테스트를 통과한 뒤 Release에 첨부합니다(aarch64는 제외: 비-abi3
+  wheel 빌드는 대상 인터프리터를 실제로 실행해야 하는데, qemu-user 환경에서
+  그 실행이 실패하기 때문).
+- **`pyq` 릴리스 잡이 Linux 산출물을 실제로 빌드** — 위 컨테이너 전환과
+  아울러, 크로스 아키텍처 레그에서 `docker/setup-qemu-action`으로 qemu binfmt
+  핸들러를 등록합니다. `cross`의 에뮬레이션 컨테이너도, aarch64/armv7 바이너리
+  를 실행하는 스모크 테스트도 그것에 의존합니다. 이제 모든 레그가 업로드 전
+  빌드·자기검증됩니다.
 - **블록 스칼라가 명시적 들여쓰기 지시자를 보존** — `key: |2`로 작성된 본문은 직렬화할 때 `2`가
   조용히 사라져, 본문 첫 줄이 뒤 줄보다 깊게 들여쓰인 경우(딱 `4RWC.yaml` 모양: 첫 줄 6,
   후속 줄 4) 출력의 재파싱 결과가 입력과 달랐습니다. 지시자가 없으면 리더가 본문 첫 줄에서

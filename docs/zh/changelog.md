@@ -40,20 +40,28 @@ status: new
 - **`pyq validate` 接受 `--input` 并按真实格式解析** — 此前它硬编码 YAML 解析器且
   无任何可改途径，指向 `pyproject.toml`、`package.json` 等非 YAML 配置一律被拒绝。
   现在它接受 `--input auto|yaml|json|jsonc|json5|toml` 并经共享加载器路由。
-- **`pyq` 预编译二进制锁定实测 glibc 下限** — Linux 目标经 `cargo zigbuild` 在
-  `.2.16`（x86_64）与 `.2.17`（aarch64）构建而非 `.2.28`，从而覆盖 CentOS 7 /
-  Ubuntu 16.04 / 18.04 / Debian 8 / 9。两个数字都是实测而非猜测：`.2.15` 链接失败
-  （`undefined symbol: getauxval`，glibc 2.16 引入），而 zig 根本不提供 2.17 以下的
-  aarch64 libc。两个下限彼此不同、不可互换 — zig 为每个目标单独供 libc。
+- **`pyq` 预编译二进制改在 manylinux2014 容器中构建** — Linux 目标经 `cross`
+  在官方 CentOS 7 镜像内原生编译，钉定 glibc 2.17 下限，零手拼交叉工具链地
+  覆盖 CentOS 7 / Ubuntu 16.04 / 18.04 / Debian 8 / 9。更早的 zigbuild 方案
+  把 x86_64 钉得低一个小版本（2.16，实测 `getauxval` 地板），但 `publish.yml`
+  的首次真实运行（该工作流从不在普通 PR 上执行）暴露出整个 zig 栈并不完整
+  （`cargo zigbuild: no such command`、armv7 腿被主机默认 `-fuse-ld=lld` 误链、
+  冒烟测试执行了 runner 跑不了的二进制）；容器方案用一个社区标准工具替换了
+  三种失败模式，且下限比 runner 自带 glibc 低两个大版本。
 
 #### 修复
 
 - **Linux 免线程（`cp314t`）wheel 随 Release 发布** — wheel 矩阵此前只为
   Windows 和 macOS 构建免线程产物，Linux 上的无 GIL 解释器用户无从安装：
   带 GIL 的 `cp38-abi3` wheel 与 `Py_GIL_DISABLED` 构建 ABI 不兼容，而
-  `abi3t` wheel 要到 CPython 3.15 才生效。`linux` 作业现在为 x86_64/aarch64
+  `abi3t` wheel 要到 CPython 3.15 才生效。`linux` 作业现在为 x86_64
   使用镜像自带的免线程解释器构建 manylinux cp314t wheel，并在 `3.14t` venv
-  中冒烟测试通过后才附加到 Release。
+  中冒烟测试通过后才附加到 Release（aarch64 暂不纳入：非 abi3 wheel 构建
+  必须实际执行目标解释器，而该执行在 qemu-user 下失败）。
+- **`pyq` 发布作业现在真正产出 Linux 构件** — 除上述容器切换外，跨架构腿
+  现在通过 `docker/setup-qemu-action` 注册 qemu binfmt 处理程序，`cross` 的
+  模拟容器与执行 aarch64/armv7 二进制冒烟测试都依赖它。现在每条腿在上传
+  压缩包前都能构建并自验证。
 - **块标量保留显式缩进指示器** — 写作 `key: |2` 的正文在序列化时 `2` 被静默丢弃，
   于是当正文首行比后续行缩进更深时（正是 `4RWC.yaml` 的形状：首行 6、后续 4），输出的
   重解析结果与输入不同。无指示器时读取器按正文首行自动探测缩进，所以丢失它的是语义

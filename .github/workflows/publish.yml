@@ -43,10 +43,13 @@ jobs:
       # only starts at CPython 3.15 (`abi3t-py315`), so cp314t needs its own
       # dedicated wheel. Windows and macOS already produce one from the host
       # interpreter; here the manylinux image's own free-threaded build is
-      # reached directly. i686/s390x/ppc64le are skipped — those images do
-      # not ship a cp314t interpreter.
+      # reached directly. Restricted to x86_64: the aarch64 image *does*
+      # carry cp314t, but maturin must execute the target interpreter for a
+      # non-abi3 build, and under qemu-user on an x86_64 runner that exec
+      # fails with `Exec format error (os error 8)` — proven by the first
+      # dispatch run. i686/s390x/ppc64le images carry no cp314t at all.
       - name: Build free-threaded wheels
-        if: ${{ matrix.platform.target == 'x86_64' || matrix.platform.target == 'aarch64' }}
+        if: ${{ matrix.platform.target == 'x86_64' }}
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
@@ -268,30 +271,24 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          # `zig` marks the targets that build through `cargo zigbuild`; see the
-          # step comments below for why only these two and not all five.
-          # `std` is the plain rustup target: a zig target carries a `.2.NN`
-          # glibc suffix that rustup does not know, so std is spelled out
-          # instead of being derived from `target`.
-          # The `.2.NN` floors below are measured, not guessed: stepping x86_64
-          # down to `.2.15` fails to link (`ld.lld: undefined symbol:
-          # getauxval`, introduced in glibc 2.16), and zig ships no aarch64
-          # libc below 2.17 at all. The two floors differ and cannot be swapped;
-          # zig serves each target its own libc. Together they cover CentOS 7,
-          # Ubuntu 16.04/18.04 and Debian 8/9 instead of stopping at Debian 10.
-          - { label: linux-x86_64, runner: ubuntu-22.04, std: x86_64-unknown-linux-gnu, target: x86_64-unknown-linux-gnu.2.16, zig: true }
-          - { label: linux-aarch64, runner: ubuntu-22.04, std: aarch64-unknown-linux-gnu, target: aarch64-unknown-linux-gnu.2.17, zig: true }
-          # zig cc does not recognise `armv7-unknown-linux-gnueabihf`; the
-          # upstream README lists it as a known issue that needs a manual
-          # `-mcpu=generic` workaround, which is not worth shipping in a
-          # release build. This one target uses the distro cross compiler.
-          - { label: linux-armv7, runner: ubuntu-22.04, std: armv7-unknown-linux-gnueabihf, target: armv7-unknown-linux-gnueabihf, zig: false, apt: gcc-arm-linux-gnueabihf }
-          # macOS and Windows build natively on their own runners, and
-          # cargo-zigbuild supports neither Windows nor cross-Apple-SDK
-          # builds, so there is nothing for zig to solve here.
-          - { label: macos-x86_64, runner: macos-13, std: x86_64-apple-darwin, target: x86_64-apple-darwin, zig: false }
-          - { label: macos-aarch64, runner: macos-14, std: aarch64-apple-darwin, target: aarch64-apple-darwin, zig: false }
-          - { label: windows-x86_64, runner: windows-latest, std: x86_64-pc-windows-msvc, target: x86_64-pc-windows-msvc, zig: false }
+          # The Linux legs build inside the official manylinux2014 images via
+          # `cross` — native compilation against a CentOS 7 (glibc 2.17) libc
+          # and linker, the community-standard floor that covers CentOS 7,
+          # Ubuntu 16.04/18.04 and Debian 8/9 without hand-rolled cross
+          # toolchains. An earlier zigbuild recipe pinned x86_64 slightly
+          # lower (2.16, the `getauxval` floor) but needed a zig install, a
+          # pinned armv7 linker and per-target glibc suffixes for one extra
+          # minor version — not worth the moving parts when the whole zig
+          # stack also proved never to have run (the first real dispatch
+          # exposed `cargo zigbuild: no such command`). `std` doubles as the
+          # build target; macOS and Windows build natively on their own
+          # runners.
+          - { label: linux-x86_64, runner: ubuntu-22.04, std: x86_64-unknown-linux-gnu, container: true }
+          - { label: linux-aarch64, runner: ubuntu-22.04, std: aarch64-unknown-linux-gnu, container: true, qemu: true }
+          - { label: linux-armv7, runner: ubuntu-22.04, std: armv7-unknown-linux-gnueabihf, container: true, qemu: true }
+          - { label: macos-x86_64, runner: macos-13, std: x86_64-apple-darwin, container: false }
+          - { label: macos-aarch64, runner: macos-14, std: aarch64-apple-darwin, container: false }
+          - { label: windows-x86_64, runner: windows-latest, std: x86_64-pc-windows-msvc, container: false }
     env:
       # Keep the build tree out of `target/` so `dist/` holds only release
       # assets. Every step below mirrors cargo's own layout under this root.
@@ -299,24 +296,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The gnu targets need a linker for a foreign architecture: the runner's
-      # preinstalled gcc can only drive its own. Zig ships one C compiler that
-      # covers every target in the matrix, so it replaces the per-architecture
-      # apt cross compilers entirely for the linux-x86_64 and linux-aarch64
-      # jobs. It also makes the glibc baseline explicit — the `.2.NN` suffix
-      # pins the produced binaries to a measured floor instead of letting the
-      # runner's own glibc leak in and break older distributions.
-      - name: Install Zig
-        if: ${{ matrix.platform.zig }}
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
+      # qemu binfmt serves two consumers on the cross-arch legs: `cross`
+      # runs the foreign-arch container under emulation, and the Smoke test
+      # below executes the produced aarch64/armv7 binaries on an x86_64
+      # runner. Without registration both fail with `Exec format error` —
+      # proven by the first real publish.yml run (the workflow only executes
+      # on tag/dispatch, so PR CI never surfaces such gaps).
+      - name: Install QEMU
+        if: ${{ matrix.platform.qemu }}
+        uses: docker/setup-qemu-action@v3
 
-      - name: Install the armv7 cross toolchain
-        if: ${{ matrix.platform.apt }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ${{ matrix.platform.apt }}
+      # `cross` pins nothing itself: it is the driver that runs `cargo build`
+      # inside the pinned `ghcr.io/cross-rs/<target>` manylinux2014 images,
+      # one tool covering all three Linux archs. Prebuilt via install-action
+      # rather than a minutes-long `cargo install` compile.
+      - name: Install cross
+        if: ${{ matrix.platform.container }}
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -334,11 +332,11 @@ jobs:
       # stable cargo, and every platform here runs the stable toolchain.
       - name: Build pyq
         run: >
-          ${{ matrix.platform.zig && 'cargo zigbuild' || 'cargo build' }}
+          ${{ matrix.platform.container && 'cross' || 'cargo' }} build
           --locked
           --release
           --bin pyq
-          --target ${{ matrix.platform.target }}
+          --target ${{ matrix.platform.std }}
           --config profile.release.strip=true
 
       # A released artifact that cannot start is worse than no artifact: it
@@ -348,9 +346,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The `.2.NN` glibc suffix is not a directory name; strip it back off.
-          TRIPLE="${{ matrix.platform.target }}"
-          TRIPLE="${TRIPLE%%.*}"
+          TRIPLE="${{ matrix.platform.std }}"
           BIN="dist/pyq-build/$TRIPLE/release/pyq"
           [ -x "$BIN" ] || BIN="$BIN.exe"
           "$BIN" --version
@@ -364,8 +360,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TRIPLE="${{ matrix.platform.target }}"
-          TRIPLE="${TRIPLE%%.*}"
+          TRIPLE="${{ matrix.platform.std }}"
           SRC="dist/pyq-build/$TRIPLE/release"
           mkdir -p dist/pyq
           if [ -f "$SRC/pyq.exe" ]; then cp "$SRC/pyq.exe" dist/pyq/; else cp "$SRC/pyq" dist/pyq/; fi
