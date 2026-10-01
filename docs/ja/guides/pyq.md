@@ -86,7 +86,12 @@ pyq sort-keys '$' -i config.yaml                  # マッピング 1 階層を�
 ```bash
 pyq fmt k8s.yaml                 # コメント保持の正規化
 pyq fmt --explicit-start cfg.yaml
+pyq fmt --indent 4 --width 0 cfg.yaml   # ブロックインデント 4、スカラー折り返しなし
+pyq fmt --sort-keys cfg.yaml     # 全ての mapping をキー順に（ドキュメント全体）
+pyq fmt --indent 4 -i cfg.yaml   # ファイルをその場で書き換え
 pyq to-json config.yaml          # YAML -> JSON（キー順序保持）
+pyq to-json --jsonc config.yaml  # AST に載ったコメントをそのまま再出力
+pyq to-json --json5 config.yaml  # JSON5 表記（'x'、.5、+7、Infinity）
 pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML

@@ -15,6 +15,21 @@ status: new
 
 ### [Unreleased]
 
+#### 新增
+
+- **pyq CLI 对齐参数** — `pyq fmt` 新增 `--indent N`（块缩进，默认 2）、
+  `--width N`（纯量软换行列宽，0 为关闭）、`--sort-keys`（序列化器级
+  全文键排序）与 `-i/--inplace`（就地改写文件），暴露
+  `pyrs-yaml-core::SerializeOptions` 全部旋钮并对齐 Python CLI 的
+  `fmt --indent`。`pyq to-json` 新增互斥的 `--jsonc` / `--json5` 方言
+  输出，接入 `pyrs-json` 的注释保留与 JSON5 写法序列化器
+  （`to_jsonc_text*`、`to_json5_text*`）。
+
+#### 修复
+
+- **`pyrs-json` 模块文档** — 旧文案仍声称注释读入即丢、不再回写；
+  自 #122 起注释挂在 AST 注释槽位上，并由 JSONC/JSON5 序列化器还原。
+
 ### [v0.16.0] — 2026-10-01
 
 #### 新增

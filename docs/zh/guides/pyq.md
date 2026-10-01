@@ -85,7 +85,12 @@ pyq sort-keys '$' -i config.yaml                  # 排序一层映射键
 ```bash
 pyq fmt k8s.yaml                 # 保留注释的规范化
 pyq fmt --explicit-start cfg.yaml
+pyq fmt --indent 4 --width 0 cfg.yaml   # 块缩进 4，纯量不换行
+pyq fmt --sort-keys cfg.yaml     # 排序全部映射（整篇文档）
+pyq fmt --indent 4 -i cfg.yaml   # 就地改写文件
 pyq to-json config.yaml          # YAML -> JSON（保持键序）
+pyq to-json --jsonc config.yaml  # AST 上保留的注释原样回写
+pyq to-json --json5 config.yaml  # JSON5 写法（'x'、.5、+7、Infinity）
 pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML

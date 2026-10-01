@@ -16,6 +16,28 @@ pub fn node_to_json_pretty(node: &CustomNode, indent: usize) -> Result<String, S
     pyrs_json::to_json_text_pretty(node, indent).map_err(|e| e.to_string())
 }
 
+/// AST -> JSONC text (comments carried on the AST re-emitted as
+/// `//` / `/* */` notes; see the #122 comment-preservation work).
+pub fn node_to_jsonc(node: &CustomNode) -> Result<String, String> {
+    pyrs_json::to_jsonc_text(node).map_err(|e| e.to_string())
+}
+
+/// JSONC variant of [`node_to_json_pretty`].
+pub fn node_to_jsonc_pretty(node: &CustomNode, indent: usize) -> Result<String, String> {
+    pyrs_json::to_jsonc_text_pretty(node, indent).map_err(|e| e.to_string())
+}
+
+/// AST -> JSON5 text (single-quoted strings where safer, JSON5 number
+/// spellings, comments).
+pub fn node_to_json5(node: &CustomNode) -> Result<String, String> {
+    pyrs_json::to_json5_text(node).map_err(|e| e.to_string())
+}
+
+/// JSON5 variant of [`node_to_json_pretty`].
+pub fn node_to_json5_pretty(node: &CustomNode, indent: usize) -> Result<String, String> {
+    pyrs_json::to_json5_text_pretty(node, indent).map_err(|e| e.to_string())
+}
+
 /// Parse JSON text into the AST with the CLI's minimum-quoting policy:
 /// strings that would re-resolve (numbers, bool words, null words) are
 /// emitted as DoubleQuoted scalars by the core parser; everything else is

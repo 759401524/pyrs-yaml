@@ -473,3 +473,62 @@ fn inplace_rewrites_the_file() {
     assert_eq!(code, Some(0), "{err}");
     assert_eq!(content, "a: 1  # keep\nb: 2\n");
 }
+
+#[test]
+fn fmt_indent_flag_controls_block_indent() {
+    let (code, out, err) = run_with_stdin(&["fmt", "--indent", "4", "-"], "a:\n  b:\n    c: 1\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "a:\n    b:\n        c: 1\n", "{out:?}");
+}
+
+#[test]
+fn fmt_sort_keys_orders_every_mapping() {
+    let (code, out, err) =
+        run_with_stdin(&["fmt", "--sort-keys", "-"], "b: 1\na:\n  d: 2\n  c: 3\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out, "a:\n  c: 3\n  d: 2\nb: 1\n", "{out:?}");
+}
+
+#[test]
+fn fmt_inplace_rewrites_the_file() {
+    let dir = std::env::temp_dir().join(format!("pyq-fmtip-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("cfg.yaml");
+    std::fs::write(&f, "a:\n  b: 1\n").unwrap();
+    let (code, _, err) = run(&["fmt", "--indent", "4", "--inplace", f.to_str().unwrap()]);
+    let content = std::fs::read_to_string(&f).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(content, "a:\n    b: 1\n", "{content:?}");
+}
+
+#[test]
+fn to_json_jsonc_emits_carried_comments() {
+    // YAML leading comment rides the AST `leading_comment` slot and the
+    // JSONC writer re-emits it as a `//` note (#122 round-trip).
+    let (code, out, err) = run_with_stdin(&["to-json", "--jsonc", "-"], "# note\na: 1\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.starts_with("// note\n"), "{out:?}");
+    assert!(out.contains("\"a\": 1"), "{out:?}");
+    // plain JSON output still drops it (strict RFC 8259)
+    let (_, plain, _) = run_with_stdin(&["to-json", "-"], "# note\na: 1\n");
+    assert!(!plain.contains("note"), "{plain:?}");
+}
+
+#[test]
+fn to_json_json5_restores_single_quotes() {
+    // YAML 'x' parses to a SingleQuoted scalar; the JSON5 writer restores
+    // the spelling (PR #121 dialect fidelity). Keys stay double-quoted here:
+    // unquoted identifier keys are only restored for JSON5-sourced spellings.
+    let (code, out, err) =
+        run_with_stdin(&["to-json", "--json5", "--indent", "0", "-"], "b: 'x'\n");
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(out.trim(), r#"{"b":'x'}"#, "{out:?}");
+}
+
+#[test]
+fn to_json_dialect_flags_conflict() {
+    let (code, _, err) = run_with_stdin(&["to-json", "--jsonc", "--json5", "-"], "a: 1\n");
+    assert_eq!(code, Some(2));
+    assert!(err.contains("cannot be used with"), "{err}");
+}

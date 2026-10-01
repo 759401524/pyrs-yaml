@@ -46,6 +46,19 @@ pub enum Command {
         /// Process every document of a multi-document stream.
         #[arg(long, short = 'A')]
         all_docs: bool,
+        /// Block-indent width per nesting level (default 2, like
+        /// `pyrs-yaml fmt --indent`).
+        #[arg(long, default_value_t = 2, value_name = "N")]
+        indent: usize,
+        /// Soft wrap column for plain scalars (0 disables wrapping).
+        #[arg(long, default_value_t = 80, value_name = "N")]
+        width: usize,
+        /// Sort every mapping by key (whole document, serializer-level).
+        #[arg(long)]
+        sort_keys: bool,
+        /// Rewrite the input file in place instead of printing.
+        #[arg(long, short = 'i')]
+        inplace: bool,
     },
     /// Extract a value at a path (`.a.b[0]`, `$` for the whole document).
     Get {
@@ -176,6 +189,14 @@ pub enum Command {
         /// Pretty-print with the given indent (0 = compact).
         #[arg(long, default_value_t = 2)]
         indent: usize,
+        /// Emit JSONC: preserved leading/inline comments re-appear as
+        /// `//` / `/* */` notes (RFC 8259 otherwise).
+        #[arg(long, conflicts_with = "json5")]
+        jsonc: bool,
+        /// Emit JSON5: single-quoted strings where safer, `0x`/`.5`/`+7`/
+        /// `Infinity`/`NaN` spellings, plus JSONC comments.
+        #[arg(long)]
+        json5: bool,
     },
     /// Convert to TOML text.
     ToToml {
@@ -292,10 +313,19 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             file,
             explicit_start,
             all_docs,
+            indent,
+            width,
+            sort_keys,
+            inplace,
         } => {
             let src = read_input(&file)?;
             let opts = serializer::SerializeOptions {
                 explicit_start,
+                indent_size: indent,
+                indent_mapping: indent,
+                indent_sequence: indent,
+                width,
+                sort_keys,
                 ..Default::default()
             };
             if all_docs {
@@ -305,11 +335,11 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
                     out.push_str("---\n");
                     out.push_str(&serializer::to_yaml_with_options(doc, &opts)?);
                 }
-                emit_str(&out)?;
+                write_text(&out, &file, inplace)?;
             } else {
                 let ast = parser::parse(&src, Schema::Core)?;
                 let out = serializer::to_yaml_with_options(&ast, &opts)?;
-                emit_str(&out)?;
+                write_text(&out, &file, inplace)?;
             }
         }
         Command::Get {
@@ -473,9 +503,34 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             input,
             all_docs,
             indent,
+            jsonc,
+            json5,
         } => {
             let src = read_input(&file)?;
             let docs = load_docs(&src, file.as_deref(), &input, all_docs)?;
+            // Dialect dispatch: `--json5` > `--jsonc` > plain JSON. The
+            // comment-preserving JSONC/JSON5 writers come straight from
+            // `pyrs-json`; leading/inline comments carried on the AST
+            // re-appear as `//` / `/* */` notes.
+            let render = |d: &CustomNode| -> Result<String, String> {
+                Ok(if json5 {
+                    if indent == 0 {
+                        json::node_to_json5(d)?
+                    } else {
+                        json::node_to_json5_pretty(d, indent)?
+                    }
+                } else if jsonc {
+                    if indent == 0 {
+                        json::node_to_jsonc(d)?
+                    } else {
+                        json::node_to_jsonc_pretty(d, indent)?
+                    }
+                } else if indent == 0 {
+                    json::node_to_json(d)?
+                } else {
+                    json::node_to_json_pretty(d, indent)?
+                })
+            };
             // -A emits a JSON array of documents (Python CLI parity);
             // otherwise the single document renders as before. The #107
             // native engine replaces the historical
@@ -485,21 +540,15 @@ pub fn run_command(cmd: Command) -> Result<(), Box<dyn std::error::Error>> {
             let text = if all_docs || docs.len() > 1 {
                 let mut parts = Vec::with_capacity(docs.len());
                 for d in &docs {
-                    parts.push(if indent == 0 {
-                        json::node_to_json(d)?
-                    } else {
-                        json::node_to_json_pretty(d, indent)?
-                    });
+                    parts.push(render(d)?);
                 }
                 if indent == 0 {
                     format!("[{}]", parts.join(","))
                 } else {
                     format!("[\n{}\n]", parts.join(",\n"))
                 }
-            } else if indent == 0 {
-                json::node_to_json(&docs[0])?
             } else {
-                json::node_to_json_pretty(&docs[0], indent)?
+                render(&docs[0])?
             };
             let mut out = text;
             out.push('\n');

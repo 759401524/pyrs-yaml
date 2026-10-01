@@ -86,7 +86,12 @@ pyq sort-keys '$' -i config.yaml                  # 매핑 한 계층 키순 정
 ```bash
 pyq fmt k8s.yaml                 # 주석 보존 정규화
 pyq fmt --explicit-start cfg.yaml
+pyq fmt --indent 4 --width 0 cfg.yaml   # 블록 들여쓰기 4, 스칼라 줄바꿈 없음
+pyq fmt --sort-keys cfg.yaml     # 모든 mapping 키순 정렬 (문서 전체)
+pyq fmt --indent 4 -i cfg.yaml   # 파일을 그 자리에서 다시 쓰기
 pyq to-json config.yaml          # YAML -> JSON (키 순서 보존)
+pyq to-json --jsonc config.yaml  # AST에 남은 주석을 그대로 재출력
+pyq to-json --json5 config.yaml  # JSON5 표기 ('x', .5, +7, Infinity)
 pyq to-toml compose.yaml
 pyq from-toml Cargo.toml         # TOML -> YAML
 pyq from-json package.json       # JSON -> YAML
