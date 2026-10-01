@@ -21,6 +21,19 @@
 //! plain [`to_json_text`] writer drops them, as strict JSON has no
 //! comment syntax.
 
+#![no_std]
+
+// `format!`/`vec!` live in `alloc`'s macro exports, which a `no_std` crate
+// only sees through `#[macro_use]` — the std prelude that carries them for
+// a normal crate is deliberately absent here.
+#[macro_use]
+extern crate alloc;
+// `#![no_std]` drops `std` from the extern prelude, so the std-only
+// `RandomState` node-map hasher (and the host test harness) need it named
+// explicitly when the `std` feature is on.
+#[cfg(feature = "std")]
+extern crate std;
+
 mod parser;
 mod writer;
 

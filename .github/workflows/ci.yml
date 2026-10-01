@@ -97,6 +97,8 @@ jobs:
           --target thumbv7em-none-eabi
           -p pyrs-ast
           -p pyrs-schema
+          -p pyrs-json
+          -p pyrs-toml
 
       # The hasher differs across the feature split (std: RandomState, no_std:
       # fixed-seed FxHash), so the unit tests are the only thing that proves

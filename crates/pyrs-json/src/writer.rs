@@ -15,10 +15,14 @@
 //!   errors: JSON cannot represent them (the caller decides how to report).
 
 use crate::parser::DEFAULT_MAX_DEPTH;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::fmt::Write as _;
 use pyrs_ast::ast::{CustomNode, ScalarStyle};
 use pyrs_ast::error::{DepthError, SerializeError};
 use pyrs_schema::types::{Schema, YamlType};
-use std::fmt::Write as _;
 
 /// Which JSON-family dialect `write_value` targets. `Json5` is a superset
 /// of `Jsonc` (comments) that additionally restores JSON5-only spellings:
@@ -447,7 +451,11 @@ fn is_json_number(text: &str) -> bool {
 }
 
 fn canonical_float(f: f64) -> String {
-    if f.trunc() == f && f.abs() < 1e15 {
+    // `f64::trunc` is an std-only inherent method; under `no_std` the same
+    // integral-value test is exact via an integer round-trip: the `1e15` guard
+    // keeps `f` under 2^53, so the f64→i64→f64 cast is lossless (and the cast
+    // itself is saturating, never UB, even if the guard were removed).
+    if f.abs() < 1e15 && (f as i64) as f64 == f {
         format!("{f}.0")
     } else {
         format!("{f}")
@@ -491,7 +499,7 @@ fn write_json_string(text: &str, out: &mut String) {
 }
 
 fn indent(out: &mut String, step: usize, level: usize) {
-    out.extend(std::iter::repeat_n(' ', step * level));
+    out.extend(core::iter::repeat_n(' ', step * level));
 }
 
 #[cfg(test)]

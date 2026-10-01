@@ -41,14 +41,31 @@
 //!
 //! [toml.io/en/v1.1.0]: https://toml.io/en/v1.1.0
 
+#![no_std]
+
+// `format!`/`vec!` live in `alloc`'s macro exports, which a `no_std` crate
+// only sees through `#[macro_use]` — the std prelude that carries them for
+// a normal crate is deliberately absent here.
+#[macro_use]
+extern crate alloc;
+// `#![no_std]` drops `std` from the extern prelude, so the std-only
+// `RandomState` node-map hasher (and the host test harness) need it named
+// explicitly when the `std` feature is on.
+#[cfg(feature = "std")]
+extern crate std;
+
 pub(crate) mod parser;
 mod writer;
 
 pub use parser::{TomlDialect, from_toml, from_toml_v1_0, from_toml_with_options};
 pub use writer::to_toml;
 
-use pyrs_ast::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
-use std::sync::Arc;
+use alloc::sync::Arc;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use pyrs_ast::ast::{Chomping, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};
 
 /// A TOML 1.0 value at the leaf of the grammar. Intermediate representation
 /// used by the parser before projection onto `CustomNode`.
@@ -118,7 +135,7 @@ pub(crate) struct KVAnnotations {
 /// immediately above the header; `blank_before` records whether a blank
 /// line separated this section from the previous pair.
 pub(crate) struct CowTable {
-    pub(crate) entries: indexmap::IndexMap<String, TomlTable>,
+    pub(crate) entries: NodeMap<String, TomlTable>,
     pub(crate) comment: Option<String>,
     pub(crate) leading: Option<String>,
     pub(crate) blank_before: bool,
@@ -127,7 +144,7 @@ pub(crate) struct CowTable {
 impl CowTable {
     pub(crate) fn new() -> Self {
         Self {
-            entries: indexmap::IndexMap::new(),
+            entries: NodeMap::default(),
             comment: None,
             leading: None,
             blank_before: false,
@@ -142,7 +159,7 @@ impl Default for CowTable {
 }
 
 pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
-    let mut pairs = indexmap::IndexMap::new();
+    let mut pairs = NodeMap::default();
     for (k, v) in t.entries {
         // Comments split across two `NodeMeta` slots (PR #114): the
         // standalone block goes to `leading_comment` (its own line
@@ -168,7 +185,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                 let mut node = cow_table_to_node(ct);
                 if let Some(text) = leading_text {
                     node.set_leading_comment(pyrs_ast::ast::Comment {
-                        text: std::sync::Arc::from(text),
+                        text: alloc::sync::Arc::from(text),
                         standalone: true,
                     });
                 }
@@ -183,7 +200,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                         let mut n = cow_table_to_node(sub);
                         if let Some(text) = leading {
                             n.set_leading_comment(pyrs_ast::ast::Comment {
-                                text: std::sync::Arc::from(text),
+                                text: alloc::sync::Arc::from(text),
                                 standalone: true,
                             });
                         }
@@ -210,14 +227,14 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
         };
         if let Some(text) = standalone {
             key.set_leading_comment(pyrs_ast::ast::Comment {
-                text: std::sync::Arc::from(text),
+                text: alloc::sync::Arc::from(text),
                 standalone: true,
             });
         }
         let mut val = value_node;
         if let Some(text) = inline {
             val.set_comment(pyrs_ast::ast::Comment {
-                text: std::sync::Arc::from(text),
+                text: alloc::sync::Arc::from(text),
                 standalone: false,
             });
         }
@@ -300,7 +317,7 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
             meta: NodeMeta::default(),
         },
         TomlValue::InlineTable(v) => {
-            let mut pairs = indexmap::IndexMap::new();
+            let mut pairs = NodeMap::default();
             for (k, val, anns) in v {
                 let mut key = CustomNode::Scalar {
                     value: k.into(),
@@ -316,14 +333,14 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
                 // `comment`.
                 if let Some(text) = anns.leading {
                     key.set_leading_comment(pyrs_ast::ast::Comment {
-                        text: std::sync::Arc::from(text),
+                        text: alloc::sync::Arc::from(text),
                         standalone: true,
                     });
                 }
                 let mut value_node = toml_value_to_node(val);
                 if let Some(text) = anns.trailing {
                     value_node.set_comment(pyrs_ast::ast::Comment {
-                        text: std::sync::Arc::from(text),
+                        text: alloc::sync::Arc::from(text),
                         standalone: false,
                     });
                 }
@@ -357,7 +374,7 @@ pub(crate) fn fmt_yaml_float(f: f64) -> String {
 
 fn into_comment(text: String) -> pyrs_ast::ast::Comment {
     pyrs_ast::ast::Comment {
-        text: std::sync::Arc::from(text),
+        text: alloc::sync::Arc::from(text),
         standalone: false,
     }
 }

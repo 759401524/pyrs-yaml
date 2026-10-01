@@ -11,10 +11,19 @@ repository = "https://github.com/759401524/pyrs-yaml"
 name = "pyrs_json"
 
 [dependencies]
-indexmap = "2.7"
+# `default-features = false` keeps the tree `no_std`-clean; the `std` feature
+# below re-enables `indexmap/std` so the node-map hasher matches `pyrs-ast`.
+indexmap = { version = "2.7", default-features = false }
 # JSON5 unquoted identifier keys need exact Unicode ID_Start / ID_Continue
 # properties (all scripts, including combining marks); `std` does not expose
 # those general categories. rustc's own lexer uses this same tiny crate.
 unicode-ident = "1"
-pyrs-ast = { path = "../pyrs-ast", version = "0.17.0" }
+pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", default-features = false }
 pyrs-schema = { path = "../pyrs-schema", version = "0.17.0" }
+
+[features]
+# `std` is on by default so existing consumers keep the exact
+# `IndexMap<K, V, RandomState>` node-map type; `no_std` users opt out with
+# `default-features = false` (CI gate: the `no-std-check` job).
+default = ["std"]
+std = ["indexmap/std", "pyrs-ast/std"]
