@@ -272,6 +272,13 @@ pub enum Format {
     Auto,
     Yaml,
     Json,
+    /// JSON with `// line` and `/* block */` comments (TypeScript/VS Code
+    /// dialects); parsed by the native `pyrs-json` engine so comments are
+    /// carried on the AST.
+    Jsonc,
+    /// JSON5: trailing commas, single-quoted strings, unquoted identifier
+    /// keys, comments, `.5`/`+7`/`Infinity`/`NaN` numbers.
+    Json5,
     Toml,
     Ini,
 }
@@ -745,7 +752,10 @@ pub fn load_docs(
     if !all_docs {
         return Ok(vec![load_source(src, path_hint, input)?]);
     }
-    if matches!(input.input, Format::Toml | Format::Ini) {
+    if matches!(
+        input.input,
+        Format::Toml | Format::Ini | Format::Jsonc | Format::Json5
+    ) {
         return Err("--all-docs only applies to YAML or JSON input".into());
     }
     Ok(parser::parse_all(src, Schema::from(input.schema))?)
@@ -795,6 +805,8 @@ pub fn load_source(
             .and_then(|e| e.to_str())
         {
             Some("json") => Format::Json,
+            Some("jsonc") => Format::Jsonc,
+            Some("json5") => Format::Json5,
             Some("toml") => Format::Toml,
             Some("ini") => Format::Ini,
             _ => Format::Yaml,
@@ -805,6 +817,11 @@ pub fn load_source(
         Format::Yaml => parser::parse(src, Schema::from(input.schema))?,
         // YAML 1.2 is a JSON superset: JSON input parses unchanged.
         Format::Json => parser::parse(src, Schema::Json)?,
+        // JSONC/JSON5 go through the native pyrs-json engine: comment-only
+        // syntax is not YAML-representable, and the dialect parsers carry
+        // comments onto the AST slots for `to-json --jsonc` round-trips.
+        Format::Jsonc => json::json_to_node_jsonc(src)?,
+        Format::Json5 => json::json_to_node_json5(src)?,
         Format::Toml => match toml::from_toml(src) {
             Ok(node) => node,
             // auto mode guesses wrong without an extension; retry as YAML.
