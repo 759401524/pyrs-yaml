@@ -92,14 +92,20 @@ fn resolve_mapping_merges(
 ) {
     let merge_key = CustomNode::plain_scalar("<<");
 
-    // A `<<` whose value resolves to nothing is still a merge key: YAML says it
-    // merges a mapping or a sequence of mappings, so a scalar, a sequence, or a
-    // null source is a hard error rather than an ordinary key that happens to
-    // be spelled `<<`. Reading it as a plain key is how a self-referential
-    // anchor used to survive into the output (`a: &a\n  b:\n    <<: *a`).
+    // A `<<` whose value is a Null or a plain Scalar is NOT a merge: YAML
+    // merges a mapping, an alias to a mapping, or a sequence of those. Such a
+    // `<<` stays an ordinary key so it round-trips (`{'<<': None}` must load
+    // back, not silently lose the key). Only alias / mapping / sequence values
+    // are consumed as merge sources -- the self-referential-anchor (#166) and
+    // invalid-sequence paths all carry an Alias/Sequence and are unaffected.
     let merge_data = pairs
         .get(&merge_key)
-        .map(|merge_value| collect_merge_data(merge_value, pairs, anchors, path));
+        .and_then(|merge_value| match merge_value {
+            CustomNode::Alias { .. } | CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
+                Some(collect_merge_data(merge_value, pairs, anchors, path))
+            }
+            _ => None,
+        });
 
     if let Some(merged_pairs) = merge_data {
         // Expansions resolve against the *original* mapping, so an anchor that
@@ -329,6 +335,24 @@ mod tests {
             get_scalar_value(prod_pairs.get(&make_scalar("host")).unwrap()),
             "x"
         );
+    }
+
+    #[test]
+    fn test_literal_merge_key_with_non_merge_value_is_kept() {
+        // A `<<` whose value is a Null or a plain Scalar is NOT a merge source;
+        // it must stay an ordinary key so `{'<<': None}` / `{'<<': 1}` survive a
+        // round trip instead of being silently dropped (the regression the
+        // round-trip property fuzz surfaced). Alias / mapping / sequence values
+        // are still consumed as merges (see the other tests).
+        for yaml in ["<<: null\n", "<<: 1\n", "k: 1\n<<: 2\n"] {
+            let mut root = parse(yaml, YamlSchema::Core).unwrap();
+            resolve_merge_keys(&mut root);
+            let pairs = get_mapping(&root);
+            assert!(
+                pairs.contains_key(&make_scalar("<<")),
+                "`<<` with a non-merge value must remain a key in {yaml:?}"
+            );
+        }
     }
 
     #[test]

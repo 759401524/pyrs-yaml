@@ -366,6 +366,12 @@ status: new
 
 #### 修复
 
+- **字面 `<<` 键（非 merge 值）被静默丢弃** —
+  `load(safe_dump({"<<": None}))` 返回 `{}` 丢了键。merge 解析器把任意 `<<`
+  都当 merge 消费，即使值是 Null/标量。按 YAML，`<<` 仅当值为映射别名/内联映射/
+  其序列时才是 merge；Null/纯标量 `<<` 现保留为普通键并往返保真。Alias/映射/序列
+  路径（含 #166 自引用守卫）不变，yaml-test-suite 仍 405/406。由往返属性 fuzz
+  非确定性地暴露（正是 #163/#165/#166 类缺陷），并新增确定性 Rust 回归测试锁定。
 - **TOML 深嵌套耗尽原生栈并 abort 进程** — TOML 解析器此前无嵌套预算
   （JSON 有 `DEFAULT_MAX_DEPTH`、YAML 有 `parse` `max_depth`），
   `parse_value` → `parse_array`/`parse_inline_table` 无界递归。深嵌套数组/内联表
