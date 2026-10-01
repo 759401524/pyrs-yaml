@@ -48,6 +48,12 @@ status: new
 
 #### 修复
 
+- **Linux 免线程（`cp314t`）wheel 随 Release 发布** — wheel 矩阵此前只为
+  Windows 和 macOS 构建免线程产物，Linux 上的无 GIL 解释器用户无从安装：
+  带 GIL 的 `cp38-abi3` wheel 与 `Py_GIL_DISABLED` 构建 ABI 不兼容，而
+  `abi3t` wheel 要到 CPython 3.15 才生效。`linux` 作业现在为 x86_64/aarch64
+  使用镜像自带的免线程解释器构建 manylinux cp314t wheel，并在 `3.14t` venv
+  中冒烟测试通过后才附加到 Release。
 - **块标量保留显式缩进指示器** — 写作 `key: |2` 的正文在序列化时 `2` 被静默丢弃，
   于是当正文首行比后续行缩进更深时（正是 `4RWC.yaml` 的形状：首行 6、后续 4），输出的
   重解析结果与输入不同。无指示器时读取器按正文首行自动探测缩进，所以丢失它的是语义

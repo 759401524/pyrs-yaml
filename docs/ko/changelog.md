@@ -51,6 +51,13 @@ status: new
 
 #### 수정
 
+- **Linux 프리스레드(`cp314t`) wheel을 Release에 동봉** — wheel 빌드 매트릭스가
+  Windows와 macOS만 프리스레드 산출물을 만들어, Linux의 GIL 없는 인터프리터
+  사용자는 설치 수단이 없었습니다: GIL 있는 `cp38-abi3` wheel은
+  `Py_GIL_DISABLED` 빌드와 ABI 비호환이고 `abi3t` wheel은 CPython 3.15부터
+  적용되기 때문입니다. 이제 `linux` 잡이 x86_64/aarch64에서 이미지 자체의
+  프리스레드 인터프리터로 manylinux cp314t wheel을 빌드하고 `3.14t` venv에서
+  스모크 테스트를 통과한 뒤 Release에 첨부합니다.
 - **블록 스칼라가 명시적 들여쓰기 지시자를 보존** — `key: |2`로 작성된 본문은 직렬화할 때 `2`가
   조용히 사라져, 본문 첫 줄이 뒤 줄보다 깊게 들여쓰인 경우(딱 `4RWC.yaml` 모양: 첫 줄 6,
   후속 줄 4) 출력의 재파싱 결과가 입력과 달랐습니다. 지시자가 없으면 리더가 본문 첫 줄에서
