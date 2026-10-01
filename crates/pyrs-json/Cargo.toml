@@ -1,0 +1,20 @@
+[package]
+name = "pyrs-json"
+version = "0.16.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Native JSON/JSONC/JSON5 engine (RFC 8259 grammar) producing the shared pyrs-ast CustomNode — pure Rust, no Python dependencies"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/759401524/pyrs-yaml"
+
+[lib]
+name = "pyrs_json"
+
+[dependencies]
+indexmap = "2.7"
+# JSON5 unquoted identifier keys need exact Unicode ID_Start / ID_Continue
+# properties (all scripts, including combining marks); `std` does not expose
+# those general categories. rustc's own lexer uses this same tiny crate.
+unicode-ident = "1"
+pyrs-ast = { path = "../pyrs-ast", version = "0.16.0" }
+pyrs-schema = { path = "../pyrs-schema", version = "0.16.0" }
