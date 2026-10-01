@@ -309,8 +309,8 @@ impl Hash for CustomNode {
 /// # Example
 ///
 /// ```rust
-/// use pyrs_yaml_core::ast::CustomNode;
-/// use pyrs_yaml_core::ast::walk;
+/// use pyrs_ast::ast::CustomNode;
+/// use pyrs_ast::ast::walk;
 ///
 /// let node = CustomNode::plain_scalar("hello");
 /// let paths = walk(&node);
@@ -325,8 +325,8 @@ pub fn walk(node: &CustomNode) -> Vec<Vec<&CustomNode>> {
 /// # Example
 ///
 /// ```rust
-/// use pyrs_yaml_core::ast::CustomNode;
-/// use pyrs_yaml_core::ast::scalars;
+/// use pyrs_ast::ast::CustomNode;
+/// use pyrs_ast::ast::scalars;
 ///
 /// let node = CustomNode::plain_scalar("hello");
 /// let paths = scalars(&node);
@@ -470,7 +470,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::CustomNode;
+    /// use pyrs_ast::ast::CustomNode;
     ///
     /// let node = CustomNode::plain_scalar("hello");
     /// assert_eq!(node.comment(), None);
@@ -496,7 +496,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::CustomNode;
+    /// use pyrs_ast::ast::CustomNode;
     ///
     /// // YAML 输出: '-100'
     /// let node = CustomNode::quoted_scalar("-100");
@@ -524,7 +524,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::CustomNode;
+    /// use pyrs_ast::ast::CustomNode;
     ///
     /// // YAML 输出: "true"
     /// let node = CustomNode::double_quoted_scalar("true");
@@ -550,7 +550,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::CustomNode;
+    /// use pyrs_ast::ast::CustomNode;
     /// use indexmap::IndexMap;
     ///
     /// let mut pairs = IndexMap::new();
@@ -575,7 +575,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::CustomNode;
+    /// use pyrs_ast::ast::CustomNode;
     ///
     /// let items = vec![CustomNode::plain_scalar("a"), CustomNode::plain_scalar("b")];
     /// let node = CustomNode::plain_sequence(items);
@@ -595,7 +595,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::CustomNode;
+    /// use pyrs_ast::ast::CustomNode;
     ///
     /// let node = CustomNode::plain_null();
     /// assert!(matches!(node, CustomNode::Null { .. }));
@@ -614,7 +614,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::{CustomNode, Comment};
+    /// use pyrs_ast::ast::{CustomNode, Comment};
     ///
     /// let mut node = CustomNode::plain_scalar("value");
     /// assert_eq!(node.comment(), None);
@@ -634,7 +634,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::{CustomNode, Comment};
+    /// use pyrs_ast::ast::{CustomNode, Comment};
     ///
     /// let mut node = CustomNode::plain_scalar("hello");
     /// node.set_comment(Comment { text: "greeting".into(), standalone: false });
@@ -746,7 +746,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::{CustomNode, ScalarStyle, Chomping};
+    /// use pyrs_ast::ast::{CustomNode, ScalarStyle, Chomping};
     ///
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
@@ -764,7 +764,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::CustomNode;
+    /// use pyrs_ast::ast::CustomNode;
     ///
     /// let mut node = CustomNode::plain_scalar("val");
     /// node.set_anchor("myanchor");
@@ -818,7 +818,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::{CustomNode, Tag, ScalarStyle, Chomping};
+    /// use pyrs_ast::ast::{CustomNode, Tag, ScalarStyle, Chomping};
     ///
     /// let node = CustomNode::Scalar {
     ///     value: "42".into(),
@@ -841,7 +841,7 @@ impl CustomNode {
     ///
     /// # Examples
     /// ```rust
-    /// use pyrs_yaml_core::ast::{CustomNode, Tag};
+    /// use pyrs_ast::ast::{CustomNode, Tag};
     ///
     /// let mut node = CustomNode::plain_scalar("42");
     /// node.set_tag(Tag::primary("int"));
