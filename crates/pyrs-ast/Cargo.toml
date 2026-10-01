@@ -1,0 +1,23 @@
+[package]
+name = "pyrs-ast"
+version = "0.16.0"
+edition = "2024"
+rust-version = "1.96"
+description = "Format-agnostic AST + shared error types for the pyrs-yaml engine family"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/759401524/pyrs-yaml"
+
+[lib]
+name = "pyrs_ast"
+
+[dependencies]
+indexmap = "2.7"
+thiserror = "2"
+# Property-test node strategies live behind an opt-in feature so the crate has
+# zero dev-facing proptest cost by default (keeps no_std / minimal builds clean);
+# the engine crate enables it only from its dev-dependencies.
+proptest = { version = "1.5", optional = true }
+
+[features]
+default = []
+test-strategy = ["dep:proptest"]
