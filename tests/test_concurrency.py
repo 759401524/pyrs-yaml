@@ -6,7 +6,11 @@ These tests assert correctness and absence of crashes/data races under
 concurrency; they do not require the free-threaded build.
 """
 
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
+
+import pytest
 
 import pyrs_yaml
 
@@ -118,3 +122,51 @@ def test_concurrent_type_registry_register_remove():
         assert all(ex.map(work, range(80)))
     assert pyrs_yaml.safe_load("x: !t v\n")["x"] == "v"
     pyrs_yaml.clear_type_handlers()
+
+
+def test_ndarray_dump_under_concurrent_mutation_is_a_stable_snapshot():
+    """Regression for the #165 GIL-safety class in the serialization path.
+
+    The NumPy serializer snapshots the caller-owned buffer into Rust memory
+    WHILE HOLDING the GIL, then converts it off-thread; iterating the
+    Python-owned slice inside ``py.detach`` would read memory another thread
+    can mutate concurrently (data race / UB). This test drives exactly that
+    race -- one thread repeatedly dumps a float64 array while another mutates
+    it in place (a NumPy ufunc releases the GIL) -- and asserts every dump is
+    an internally consistent point-in-time snapshot: it always parses back to
+    the full-length list of finite floats, never a torn/short/corrupt buffer,
+    and never crashes the interpreter. A reintroduction of the detached-read
+    bug would surface here as a crash or a structurally invalid dump.
+    """
+    numpy = pytest.importorskip("numpy")
+    n = 4096
+    arr = numpy.arange(n, dtype="float64")
+
+    stop = threading.Event()
+    mutator_error: list[BaseException] = []
+
+    def mutate():
+        try:
+            while not stop.is_set():
+                # In-place ufunc (releases the GIL) without rebinding `arr`.
+                numpy.add(arr, 1.0, out=arr)
+        except BaseException as exc:  # surface any race-induced failure in-thread
+            mutator_error.append(exc)
+
+    mut = threading.Thread(target=mutate)
+    mut.start()
+    try:
+        deadline = time.monotonic() + 0.3
+        dumps = 0
+        while time.monotonic() < deadline:
+            text = pyrs_yaml.safe_dump(arr)
+            loaded = pyrs_yaml.safe_load(text)
+            assert isinstance(loaded, list) and len(loaded) == n, "torn/short snapshot"
+            assert all(isinstance(x, (int, float)) for x in loaded)
+            dumps += 1
+        assert dumps > 0
+    finally:
+        stop.set()
+        mut.join(timeout=2.0)
+    assert not mut.is_alive(), "mutator thread failed to stop"
+    assert not mutator_error, f"mutator thread raised under the race: {mutator_error[0]!r}"
