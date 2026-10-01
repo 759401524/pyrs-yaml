@@ -469,6 +469,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A literal `<<` key with a non-merge value was silently dropped** —
+  `load(safe_dump({"<<": None}))` returned `{}`, losing the key. The merge
+  resolver consumed any `<<` as a merge even for a Null/Scalar source. A `<<`
+  is only a merge when its value is an alias-to-mapping, inline mapping, or
+  sequence of those; Null/plain-scalar `<<` now stays an ordinary key and
+  round-trips. Alias/mapping/sequence paths (and the #166 anchor guard) are
+  untouched; yaml-test-suite holds 405/406. Surfaced by the round-trip
+  property fuzz, pinned by a deterministic Rust regression test.
 - **TOML deep nesting overflowed the native stack and aborted the process**
   — the TOML parser had no nesting budget (JSON has `DEFAULT_MAX_DEPTH`,
   YAML has `parse` `max_depth`), so `parse_value` → `parse_array` /
