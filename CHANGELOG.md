@@ -64,11 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interpreter and smoke-tests the wheel in a `3.14t` venv before it is
   attached (aarch64 stays out: maturin must execute the target interpreter
   for a non-abi3 wheel, and that exec fails under qemu-user).
-- **The `pyq` release job actually builds its Linux artifacts** — alongside
-  the container switch above, the cross-architecture legs now register qemu
-  binfmt handlers (`docker/setup-qemu-action`), which both `cross`'s emulated
-  containers and the smoke tests that exec the aarch64/armv7 binaries depend
-  on. Every leg builds and self-verifies before its archive is uploaded.
+- **The `pyq` release job actually builds its Linux artifacts** — the
+  cross-architecture legs register qemu binfmt handlers for `cross`'s
+  emulated containers, and their smoke tests exec the fresh binary *inside*
+  the manylinux image: the host has the qemu translator but no foreign
+  `/lib/ld-linux-*.so` loader, so a direct host exec of the aarch64/armv7
+  binaries dies before `main`. Every leg builds and self-verifies before its
+  archive is uploaded.
 - **Block scalars keep their explicit indentation indicator** — a body
   written as `key: |2` had the `2` silently dropped on write, so the output
   re-parsed differently from the input whenever the first body line sat

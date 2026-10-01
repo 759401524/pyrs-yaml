@@ -341,18 +341,29 @@ jobs:
 
       # A released artifact that cannot start is worse than no artifact: it
       # fails on the user's machine instead of at build time. Prove the binary
-      # actually runs, on the runner that built it, before it is downloadable.
+      # actually runs before it is downloadable. Emulated cross legs (arm) run
+      # it through `cross` inside the manylinux image — the host binfmt qemu
+      # can start foreign ELFs but has no foreign `/lib/ld-linux-*.so`, so a
+      # direct host exec dies with `Could not open ... : No such file or
+      # directory` (proven by the dispatch run). The x86_64 container image
+      # produces a binary the host execs natively, and macOS/Windows are
+      # native anyway.
       - name: Smoke test pyq
         shell: bash
         run: |
           set -euo pipefail
           TRIPLE="${{ matrix.platform.std }}"
-          BIN="dist/pyq-build/$TRIPLE/release/pyq"
-          [ -x "$BIN" ] || BIN="$BIN.exe"
-          "$BIN" --version
-          "$BIN" --help > /dev/null
-          printf 'name: pyrs\n' | "$BIN" get .name --raw | grep -qx pyrs
-          printf '{"a":{"b":42}}\n' | "$BIN" get .a.b --raw | grep -qx 42
+          if [ "${{ matrix.platform.container }}" = "true" ] && [ "$TRIPLE" != "x86_64-unknown-linux-gnu" ]; then
+            run_pyq() { cross run -q --locked --release --bin pyq --target "$TRIPLE" -- "$@"; }
+          else
+            BIN="dist/pyq-build/$TRIPLE/release/pyq"
+            [ -x "$BIN" ] || BIN="$BIN.exe"
+            run_pyq() { "$BIN" "$@"; }
+          fi
+          run_pyq --version
+          run_pyq --help > /dev/null
+          printf 'name: pyrs\n' | run_pyq get .name --raw | grep -qx pyrs
+          printf '{"a":{"b":42}}\n' | run_pyq get .a.b --raw | grep -qx 42
 
       # Stage exactly one file: the target dir also holds a `.d` depfile and,
       # on Windows, a `.pdb` that `strip=true` leaves orphaned and useless.
