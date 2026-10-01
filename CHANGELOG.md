@@ -641,6 +641,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **TOML deep nesting overflowed the native stack and aborted the process**
+  — the TOML parser carried no nesting budget (unlike JSON's
+  `DEFAULT_MAX_DEPTH` and YAML's `parse` `max_depth`), so `parse_value` →
+  `parse_array` / `parse_inline_table` recursed without limit. A deeply
+  nested array or inline table (`load_toml("a = " + "["*5000 + "]"*5000)`)
+  crashed the interpreter outright (verified: exit `0xC00000FD`
+  STACK_OVERFLOW, no Python exception) — the TOML analogue of the #166
+  YAML self-referential-merge stack overflow. The parser now tracks a
+  `depth` counter and returns a typed `ParseError::MaxDepthExceeded` past
+  1000, mirroring JSON exactly. Guarded by an in-process Python boundary
+  test (≤500 parses, >1000 raises), a subprocess-isolated crash canary
+  (a regression can no longer kill the whole pytest runner), and a
+  big-stack Rust unit test.
 - **Dialect writers and parsers lost or misplaced document-level comments**
   — three defects the new fixed-point properties caught: (a) a file-leading
   `// note` before a JSONC/JSON5 value was classified as an *inline* note

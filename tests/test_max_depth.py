@@ -1,5 +1,9 @@
 """Tests for max_depth parameter in pyrs-yaml Python API."""
 
+import subprocess
+import sys
+import textwrap
+
 import pytest
 
 import pyrs_yaml
@@ -141,3 +145,58 @@ def test_resolve_tags_with_custom_handler_deep_tree():
         assert data is not None
     finally:
         pyrs_yaml.clear_type_handlers()
+
+
+# ── TOML depth guard ────────────────────────────────────────────────────────
+# The TOML parser previously had NO nesting budget (unlike JSON's
+# DEFAULT_MAX_DEPTH and YAML's parse max_depth): a deeply nested array or
+# inline table recursed `parse_value` until the native stack overflowed and
+# ABORTED the whole process (verified: a 5000-deep array → exit code
+# 0xC00000FD STACK_OVERFLOW, no Python exception). This is the TOML
+# analogue of the #166 YAML merge stack overflow. The parser now carries a
+# 1000-deep guard mirroring JSON, so over-nested input raises cleanly.
+
+
+def _deep_toml_array(n: int) -> str:
+    return "a = " + "[" * n + "]" * n
+
+
+def _deep_toml_inline_table(n: int) -> str:
+    return "a = " + "{b = " * n + "1" + "}" * n
+
+
+@pytest.mark.parametrize("build", [_deep_toml_array, _deep_toml_inline_table], ids=["array", "inline_table"])
+def test_toml_within_max_depth_succeeds(build):
+    # 500 deep is comfortably within the 1000 budget (both constructors).
+    assert pyrs_yaml.load_toml(build(500)) is not None
+
+
+@pytest.mark.parametrize("build", [_deep_toml_array, _deep_toml_inline_table], ids=["array", "inline_table"])
+def test_toml_rejects_exceeded_max_depth_cleanly(build):
+    # Just over the boundary: must surface a typed parse error, not a crash.
+    # Safe in-process because the guard prevents the stack overflow.
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        pyrs_yaml.load_toml(build(2000))
+
+
+def test_toml_extreme_depth_crash_canary():
+    """Regression canary: an absurdly deep array must reject, never abort.
+
+    Runs in a subprocess so that if the depth guard is ever removed, the
+    stack overflow crashes only the child (non-zero exit) and this test
+    fails cleanly -- instead of killing the whole pytest/nextest runner
+    the way the pre-fix abort did.
+    """
+    child = textwrap.dedent(
+        """
+        import sys, pyrs_yaml
+        src = "a = " + "[" * 100000 + "]" * 100000
+        try:
+            pyrs_yaml.load_toml(src)
+        except pyrs_yaml.YamlParseError:
+            print("REJECTED")
+        """
+    )
+    r = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, f"child crashed (stack overflow?): rc={r.returncode} {r.stderr[-200:]}"
+    assert "REJECTED" in r.stdout

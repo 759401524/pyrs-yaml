@@ -10,9 +10,19 @@
 //! [spec]: https://toml.io/en/v1.1.0
 
 use crate::ast::CustomNode;
-use crate::error::ParseError;
+use crate::error::{DepthError, ParseError};
 use crate::toml::{CowTable, KVAnnotations, TomlTable, TomlValue, cow_table_to_node};
 use indexmap::IndexMap;
+
+/// Default nesting limit for arrays / inline tables, mirroring the JSON
+/// pipeline's [`DEFAULT_MAX_DEPTH`](crate::json::parser::DEFAULT_MAX_DEPTH).
+/// TOML's `parse_value` is the single recursion funnel (arrays and inline
+/// tables both re-enter through it), so bounding it here caps the whole
+/// descent. Without it a deeply nested `[[[[…]]]]` / `{a={b={c=…}}}` input
+/// recursed until the native stack overflowed and aborted the process
+/// (verified: 5000-deep array → `0xC00000FD`), the TOML analogue of the
+/// #166 YAML merge stack overflow.
+pub const DEFAULT_MAX_DEPTH: usize = 1000;
 
 /// TOML grammar dialect to accept at parse time.
 ///
@@ -50,6 +60,7 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
         s: src.as_bytes(),
         text: src,
         pos: 0,
+        depth: 0,
         root: CowTable::new(),
         current: Vec::new(),
         defined: Vec::new(),
@@ -115,6 +126,9 @@ struct Parser<'a> {
     s: &'a [u8],
     text: &'a str,
     pos: usize,
+    /// Current `parse_value` recursion depth, gated against
+    /// [`DEFAULT_MAX_DEPTH`] to reject (not crash) over-nested input.
+    depth: usize,
     root: CowTable,
     /// Path of the active table (set by `[a.b]` or `[[a.b]]` headers).
     current: Vec<String>,
@@ -439,6 +453,20 @@ impl<'a> Parser<'a> {
     // ------ values -----------------------------------------------------------
 
     fn parse_value(&mut self) -> Result<TomlValue, ParseError> {
+        // Single recursion funnel: arrays (`parse_string_or_array`) and
+        // inline tables (`parse_inline_table`) both re-enter `parse_value`
+        // for their elements, so bounding it here caps every nesting path.
+        self.depth += 1;
+        if self.depth > DEFAULT_MAX_DEPTH {
+            self.depth -= 1;
+            return Err(ParseError::MaxDepthExceeded(DepthError(DEFAULT_MAX_DEPTH)));
+        }
+        let out = self.parse_value_inner();
+        self.depth -= 1;
+        out
+    }
+
+    fn parse_value_inner(&mut self) -> Result<TomlValue, ParseError> {
         match self.peek() {
             Some(b'"') | Some(b'[') => self.parse_string_or_array(),
             Some(b'\'') => self.parse_literal_or_start_date(None),
@@ -1697,6 +1725,48 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 mod tests {
     use super::*;
     use crate::ast::{CustomNode, ScalarStyle};
+
+    /// Run `f` on a thread with a large stack so the recursion-limit tests
+    /// exercise the guard, not the runner's default 2 MiB test-thread stack.
+    /// Debug builds carry fat frames, so reaching the 1000-deep trip point
+    /// overflows the small default stack before the guard can fire; production
+    /// callers (main thread / the maturin extension) have an 8 MiB stack, so
+    /// the guard is the real backstop there. The oversized thread mirrors that.
+    fn on_big_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn big-stack thread")
+            .join()
+            .expect("big-stack thread panicked")
+    }
+
+    #[test]
+    fn deep_nesting_errors_instead_of_overflowing_the_stack() {
+        // Regression for the TOML analogue of the #166 YAML merge stack
+        // overflow: before the depth guard, a 5000-deep array aborted the
+        // process (native stack overflow, exit 0xC00000FD). With the guard
+        // it must return `MaxDepthExceeded` cleanly, not overflow.
+        on_big_stack(|| {
+            let src = format!("a = {}{}", "[".repeat(5000), "]".repeat(5000));
+            let err = from_toml(&src).expect_err("over-nested array must be rejected");
+            assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+
+            let inline = format!("a = {}1{}", "{b = ".repeat(5000), "}".repeat(5000));
+            let err = from_toml(&inline).expect_err("over-nested inline table must be rejected");
+            assert!(matches!(err, ParseError::MaxDepthExceeded(_)), "{err:?}");
+        });
+    }
+
+    #[test]
+    fn within_depth_budget_parses() {
+        // Comfortably within the 1000 budget: a 500-deep array parses on a
+        // production-sized stack.
+        on_big_stack(|| {
+            let src = format!("a = {}{}", "[".repeat(500), "]".repeat(500));
+            assert!(from_toml(&src).is_ok());
+        });
+    }
 
     #[test]
     fn comment_only_document_keeps_its_note_on_the_root() {
