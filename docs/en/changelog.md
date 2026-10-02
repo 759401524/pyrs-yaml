@@ -79,6 +79,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Empty block containers serialize as a mapping value inline** — an empty
+  `Mapping`/`Sequence` has no block form, but a block-style empty value was
+  emitted as `key:` with the `{}`/`[]` on the next indent. Re-reading that
+  yields a *flow* collection, so `flow_style` flipped and the next round
+  inlined it — `key:\n  {}` vs `key: {}` drifted every serialize (libFuzzer
+  `yaml_roundtrip` crash-d0e84310). Empty containers now always emit inline
+  (`key: {}`), including a value carrying an anchor/tag (`key: &a {}`); the
+  next-line pre-emit is skipped for them so the header is never doubled.
 - **A bare apostrophe in a plain key swallowed every later anchor** —
   `extract_anchors` runs a quote-state machine to skip `&` inside quoted
   scalars, but it toggled on any `'`/`"` even one embedded in a plain scalar
