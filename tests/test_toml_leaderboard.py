@@ -58,6 +58,11 @@ _SIZES = {"medium": _doc(100), "large": _doc(500)}
 
 
 def _median_us(fn, reps=40):
+    # One discarded warm-up round: the first timed iterations ride cold caches
+    # (import machinery, allocator arenas), which skews the median on shared
+    # runners — the macos flake of the parse/medium gate (336 vs 369 us,
+    # CI #219) traced to this, not to the code under test.
+    fn()
     samples = []
     for _ in range(reps):
         t0 = time.perf_counter()
@@ -74,12 +79,22 @@ def test_toml_parse_beats_ast_route(size):
     work rather than a path that bails early.
     """
     doc = _SIZES[size]
-    native = _median_us(lambda: pyrs_yaml.load_toml(doc))
+    # Interleave short A/B blocks (3 rounds): runner contention that inflates
+    # one side alone inflates the whole block pair, keeping the ratio honest.
+    native = min(
+        _median_us(lambda: pyrs_yaml.load_toml(doc), reps=15),
+        _median_us(lambda: pyrs_yaml.load_toml(doc), reps=15),
+        _median_us(lambda: pyrs_yaml.load_toml(doc), reps=15),
+    )
     # The AST route is timed end-to-end, from_toml included: it converts TOML to
     # YAML text, builds a CustomNode tree, then converts that tree to Python
     # objects. Hoisting from_toml into setup would compare against a different
     # pipeline (YAML -> dict only) and can measure the native path as *slower*.
-    ast_route = _median_us(lambda: pyrs_yaml.parse(pyrs_yaml.from_toml(doc)).to_dict())
+    ast_route = min(
+        _median_us(lambda: pyrs_yaml.parse(pyrs_yaml.from_toml(doc)).to_dict(), reps=15),
+        _median_us(lambda: pyrs_yaml.parse(pyrs_yaml.from_toml(doc)).to_dict(), reps=15),
+        _median_us(lambda: pyrs_yaml.parse(pyrs_yaml.from_toml(doc)).to_dict(), reps=15),
+    )
     # Parity: both routes must produce the same dict, so we are timing real work
     # rather than a path that bails early.
     assert pyrs_yaml.load_toml(doc) == pyrs_yaml.parse(pyrs_yaml.from_toml(doc)).to_dict()
