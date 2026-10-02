@@ -166,7 +166,20 @@ fn scan_anchor_name(rest: &str) -> Option<String> {
 
     let mut anchor_name = String::new();
     if first == '"' {
-        if rest[1..].contains('"') {
+        // The closing quote must sit on the SAME line as the anchor: granit's
+        // anchor token never spans a CR/LF break, so a `"` located past a line
+        // terminator does not turn this into a quoted anchor. Reading across the
+        // break smuggled CR, `:` and `&` into the name (`&"X-<CR>:&"X-` produced
+        // anchor `X-\r:&`), which the serializer emitted verbatim and re-parsed
+        // into a different, growing structure (libFuzzer `yaml_roundtrip`,
+        // 11-byte crash-a14073c5). Only a `"` before the first line break counts
+        // as a real closing quote.
+        let tail = &rest[1..];
+        let quote_on_line = match tail.find(['\r', '\n']) {
+            Some(break_idx) => tail[..break_idx].contains('"'),
+            None => tail.contains('"'),
+        };
+        if quote_on_line {
             // True quoted form (`&"name"`): the closing quote bounds the name,
             // spaces included.
             for c in it {
@@ -288,6 +301,29 @@ mod tests {
             crate::serializer::to_yaml(&again),
             "first output: {once:?}"
         );
+    }
+
+    #[test]
+    fn quoted_anchor_closing_quote_must_be_on_same_line() {
+        // libFuzzer `yaml_roundtrip` (11 bytes `&"X-<CR>:&"X-<CR>`): the quoted
+        // scan saw a `"` later in the buffer and read the name across the CR,
+        // producing anchor `X-\r:&`. The serializer emitted it verbatim and the
+        // re-parse grew one round (`:&" ":&\"X-"` -> adds a `'` wrap each time).
+        // granit ends an anchor token at a line break, so a closing quote past
+        // CR/LF must not qualify as a quoted anchor.
+        let yaml = "&\"X-\r:&\"X-\r";
+        for a in extract_anchors(yaml) {
+            assert!(
+                !a.name.contains('\r') && !a.name.contains('\n'),
+                "anchor name crossed a line break: {:?}",
+                a.name
+            );
+        }
+        let node = crate::parser::parse(yaml, pyrs_schema::types::Schema::Core).unwrap();
+        let once = crate::serializer::to_yaml(&node);
+        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core).unwrap();
+        let twice = crate::serializer::to_yaml(&again);
+        assert_eq!(once, twice, "not idempotent: {once:?} vs {twice:?}");
     }
 
     #[test]
