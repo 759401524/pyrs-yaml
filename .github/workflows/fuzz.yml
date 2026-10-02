@@ -51,8 +51,15 @@ jobs:
           # cascade on both CI attempts (runs 36968323617 and 36971431928)
           # while this pin builds; bump deliberately after a local
           # `cargo fuzz build`.
-          # cargo-fuzz rebuilds core/alloc instrumented via -Zbuild-std.
+          # `cargo fuzz` builds Linux targets for musl (statically portable
+          # fuzzer binaries); dtolnay's minimal-profile toolchain ships only
+          # the host std, so cargo-fuzz's musl rebuild died on
+          # "can't find crate for core" (runs 36968323617…36974191871) until
+          # the std for musl was installed explicitly. rust-src likewise: the
+          # instrumented core/alloc build-std needs the sources. Local dev
+          # hides both gaps (full-profile rustup installs them by default).
           toolchain: nightly-2026-08-15
+          targets: x86_64-unknown-linux-musl
           components: rust-src
 
       - name: Install cargo-fuzz
