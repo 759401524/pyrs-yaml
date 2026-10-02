@@ -582,8 +582,11 @@ impl Serializer {
                 // anchor/tag header on that same line. A standalone tag
                 // line followed by the braces one indent-shallow (under
                 // an explicit-key `?`) is ambiguous and cannot re-parse.
+                // An empty container has no block form, so a mapping/sequence
+                // *value* reaches here inline (`key: &a {}`) — emit its own
+                // anchor/tag even in value context, or it would vanish.
                 self.write_indent(indent_width);
-                if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
+                if meta.anchor.is_some() || meta.tag.is_some() {
                     self.write_anchor_tag(&meta.anchor, &meta.tag);
                 }
                 self.output.push(open);
@@ -758,7 +761,8 @@ impl Serializer {
                 flow_style: false,
                 ..
             }
-        )) || is_complex_key
+        ) && !Self::is_empty_container(value))
+            || is_complex_key
             || (value.leading_comment().is_some() && !Self::is_empty_container(value))
         {
             // Write a block container's anchor/tag after the colon: only
@@ -771,7 +775,10 @@ impl Serializer {
             // Null nodes likewise still write their own anchor+tag on the
             // node line — pre-emitting for those duplicated the header
             // (`A: !a` … `!a null`) and a standalone comment landed
-            // between the two halves.
+            // between the two halves. An empty block container reaches the
+            // next-line branch only under a complex key, and now writes its
+            // own anchor/tag in `write_container_node`, so pre-emitting would
+            // duplicate it (`: !a` … `!a {}`).
             if matches!(
                 value,
                 CustomNode::Mapping {
@@ -781,7 +788,8 @@ impl Serializer {
                     flow_style: false,
                     ..
                 }
-            ) {
+            ) && !Self::is_empty_container(value)
+            {
                 if let Some(anchor_name) = value.anchor() {
                     self.output.push_str(" &");
                     self.output.push_str(anchor_name);
@@ -1664,6 +1672,30 @@ mod tests {
                 to_yaml(&again),
                 "literal drift for {input:?}: {once:?}"
             );
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-d0e84310): a block-style *empty*
+    /// mapping/sequence used as a mapping value. An empty collection has no
+    /// block form, so emitting `key:` then `  {}` on the next line re-reads as
+    /// a FLOW mapping (flow_style flips), and the second round inlined it —
+    /// ONCE `key:\n  {}` vs TWICE `key: {}` drift. Empty containers must always
+    /// serialize inline. Pin the crash input plus empty-value shapes with tag.
+    #[test]
+    fn empty_container_value_is_inlined() {
+        for input in [
+            "base: &b\n  \n: 1xchi\n  \n!: 1xchild:\n  <<: *b\n: y: 2  # inline\n",
+            "k:\n  {}\n",
+            "k: !a {}\n",
+            "? {}\n: !a {}\n",
+            "a:\n  b: {}\n  c: []\n",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(once, to_yaml(&again), "drift for {input:?}: {once:?}");
         }
     }
 
