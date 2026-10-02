@@ -1309,6 +1309,29 @@ mod tests {
     use indexmap::IndexMap;
     use std::sync::Arc;
 
+    /// libFuzzer `yaml_roundtrip` find: granit delivers double-quoted scalars
+    /// already decoded, and the receiver's own unescape used to run a *second*
+    /// decode over them — `a: "\\n"` (two literal chars `\` `n`) collapsed to
+    /// LF, and the fuzz repro `!-# \\f"\t0:!` lost a backslash per round-trip.
+    #[test]
+    fn double_quoted_escapes_decode_exactly_once() {
+        let node = crate::parser::parse(r#"a: "\\n""#, pyrs_schema::types::Schema::Core).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            panic!()
+        };
+        let value = pairs.values().next().unwrap();
+        assert!(
+            matches!(value, CustomNode::Scalar { value, .. } if value.as_ref() == r"\n"),
+            "double-decode regressed: {value:?}"
+        );
+        // And the full serialize loop is stable on the original fuzz input.
+        let input = "!-# \\f\"\t0:!";
+        let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core).unwrap();
+        let once = to_yaml(&node);
+        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core).unwrap();
+        assert_eq!(once, to_yaml(&again), "first output: {once:?}");
+    }
+
     /// Print a unified diff when two YAML strings differ, then panic.
     macro_rules! assert_yaml_eq {
         ($expected:expr, $actual:expr) => {{
