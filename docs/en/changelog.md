@@ -22,9 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (single + stream), `yaml_roundtrip` (parse → serialize → re-parse and
   serialize-idempotence), `parse_json` (all three dialects crossed with all
   three writers, each output re-parsed), and `parse_toml` (1.0/1.1 plus
-  writer re-parse). Targets and minimized corpora are committed; crash
-  artifacts stay ignored. The harness paid for itself inside its first
-  minute — see the comment-scanner fix below.
+  writer re-parse). Only the targets are tracked; corpora and crash
+  artifacts are generated locally per session and stay gitignored (crash
+  findings land as regression tests, not as corpus files). The harness paid
+  for itself inside its first minute — see the comment-scanner fix below.
 - **`pyrs-ast` / `pyrs-schema` are `no_std`-capable** — the two foundation
   crates that every format engine sits on now build against `alloc` alone:
   `indexmap` and `thiserror` lose their default `std` features and a new

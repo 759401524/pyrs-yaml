@@ -20,8 +20,9 @@ status: new
 - **엔진용 `cargo-fuzz` 퍼징 기반(`fuzz/`)** — 커버리지 유도형 libFuzzer
   타깃 4종: `parse_yaml`(단일 + 스트림), `yaml_roundtrip`(파싱 → 직렬화 →
   재파싱과 직렬화 멱등), `parse_json`(3 방언 × 3 writer 전 조합 재파싱),
-  `parse_toml`(1.0/1.1 및 writer 재파싱). 타깃과 최소화 코퍼스는 저장소
-  포함, 크래치 산출물은 제외. 첫 실행 1분 만에 가치를 증명 — 아래 주석
+  `parse_toml`(1.0/1.1 및 writer 재파싱). 타깃만 저장소에 추적하고 코퍼스와
+  크래치 산출물은 세션별 로컬 생성·gitignore 유지(크래치 발견은 회귀 테스트로
+  고정, 코퍼스 파일로는 커밋하지 않음). 첫 실행 1분 만에 가치를 증명 — 아래 주석
   스캐너 수정 참고.
 - **`pyrs-ast` / `pyrs-schema`가 `no_std` 지원** — 모든 포맷 엔진이 그 위에 세워지는 두
   기초 크레이트가 이제 `alloc` 만으로 빌드됩니다: `indexmap`과 `thiserror`의 기본 `std`
