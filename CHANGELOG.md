@@ -64,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Unterminated-quote anchor names swallowed the rest of the line** —
+  given `&"X-<CR>:`, `extract_anchors`' quoted scan collected to end-of-line
+  because no closing quote ever arrived, putting a raw CR and colon into the
+  anchor name; the serializer emitted `&X-\r:` verbatim, and granit ends
+  anchor names at whitespace, so re-parsing yielded `X-` — serialize
+  idempotence (`fmt(fmt(x)) == fmt(x)`) broke on a 6-byte input found by
+  `fuzz/yaml_roundtrip`. An unterminated `"` now stops at exactly the
+  character granit's unquoted anchor token stops at; genuine `&"quoted
+  anchor"` names (spaces included) are unchanged.
 - **JSON comment scanners could panic mid-character** — the line-comment and
   unterminated-block-comment scans in `ws()` stepped `pos` one *byte* at a
   time, so a trailing multi-byte char (e.g. U+FEFF) could leave `pos` inside
