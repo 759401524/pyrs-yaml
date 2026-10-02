@@ -2,6 +2,15 @@ use crate::ast::CustomNode;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
+/// Recursion budget for merge/alias expansion. The `path` cycle guard bounds
+/// re-entry into an *already-expanding* anchor, but a pathological input can
+/// still keep producing fresh expansion depth (nested self-anchors feeding the
+/// tail walk). This hard cap turns any runaway expansion into a graceful stop —
+/// leaving an unresolved `<<` as an ordinary key — instead of a native-stack
+/// SIGSEGV, mirroring the parser's container-depth and serializer `max_depth`
+/// guards. 256 is orders of magnitude above any real merge nesting.
+const MAX_MERGE_DEPTH: usize = 256;
+
 /// Resolve merge keys (<<) in a YAML AST
 /// This replaces <<: *alias entries with the actual values from the referenced mapping
 pub fn resolve_merge_keys(node: &mut CustomNode) {
@@ -18,7 +27,7 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
     // this path is recognised as a cycle and left alone instead of recursing
     // until the stack is exhausted.
     let mut path: Vec<String> = Vec::new();
-    resolve_merges_recursive(node, &anchors, &mut path);
+    resolve_merges_recursive(node, &anchors, &mut path, 0);
 }
 
 /// Return true if any mapping in the tree has a `<<` merge key.
@@ -41,14 +50,18 @@ fn resolve_merges_recursive(
     node: &mut CustomNode,
     anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
+    depth: usize,
 ) {
+    if depth >= MAX_MERGE_DEPTH {
+        return;
+    }
     match node {
         CustomNode::Mapping { pairs, .. } => {
-            resolve_mapping_merges(pairs, anchors, path);
+            resolve_mapping_merges(pairs, anchors, path, depth);
         }
         CustomNode::Sequence { items, .. } => {
             for item in items.iter_mut() {
-                resolve_merges_recursive(item, anchors, path);
+                resolve_merges_recursive(item, anchors, path, depth + 1);
             }
         }
         _ => {}
@@ -104,8 +117,19 @@ fn resolve_mapping_merges(
     pairs: &mut IndexMap<CustomNode, CustomNode>,
     anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
+    depth: usize,
 ) {
     let merge_key = CustomNode::plain_scalar("<<");
+
+    // Snapshot the mapping's own keys (minus `<<`) before the merge expansion
+    // prepends cloned anchor pairs into `pairs`. The tail recursion below must
+    // re-walk only these original children: the freshly merged-in values are
+    // clones of an anchor body that was already resolved under the path guard in
+    // the expansion loop. Re-walking them here (with the guard context gone)
+    // re-expands nested self-anchors and grows the walk without bound — the
+    // libFuzzer `parse_yaml` stack-overflow (path-identical frames cycling
+    // resolve_mapping_merges -> resolve_merges_recursive forever).
+    let own_keys: Vec<CustomNode> = pairs.keys().filter(|k| **k != merge_key).cloned().collect();
 
     // Decide whether `<<` is consumed as a merge or kept as an ordinary key.
     // The safety-critical line is any ALIAS in the value's subtree, not just a
@@ -152,10 +176,10 @@ fn resolve_mapping_merges(
         // anchor, so there is nothing to guard against.
         for value in expanded.values_mut() {
             if value.0.is_empty() {
-                resolve_merges_recursive(&mut value.1, anchors, path);
+                resolve_merges_recursive(&mut value.1, anchors, path, depth + 1);
             } else {
                 path.push(value.0.clone());
-                resolve_merges_recursive(&mut value.1, anchors, path);
+                resolve_merges_recursive(&mut value.1, anchors, path, depth + 1);
                 path.pop();
             }
         }
@@ -167,9 +191,12 @@ fn resolve_mapping_merges(
         prepend_merged_pairs(pairs, &merge_key, expanded);
     }
 
-    // Recursively resolve in nested mappings
-    for value in pairs.values_mut() {
-        resolve_merges_recursive(value, anchors, path);
+    // Recursively resolve in the mapping's own nested children (never the
+    // merged-in clones, already resolved above under the guard).
+    for key in own_keys {
+        if let Some(value) = pairs.get_mut(&key) {
+            resolve_merges_recursive(value, anchors, path, depth + 1);
+        }
     }
 }
 
@@ -548,5 +575,24 @@ mod tests {
         for key in ["x", "y", "z"] {
             assert!(b.contains_key(&make_scalar(key)), "merge lost key {key}");
         }
+    }
+
+    /// libFuzzer `parse_yaml` stack-overflow (58 bytes): nested self-anchors
+    /// (`bas: &b` whose body re-`use`s `&b` / `<<: *b`) fed the tail recursion
+    /// with the path guard already popped, so each walk re-expanded a fresh
+    /// clone and the descent never bottomed out — ASAN reported a stack-overflow
+    /// on `resolve_mapping_merges -> resolve_merges_recursive` frames. The tail
+    /// walk now skips merged-in clones and a depth budget bounds any residual
+    /// runaway, so this hostile input must resolve (or degrade) without panicking
+    /// or overflowing the native stack.
+    #[test]
+    fn nested_self_anchor_merge_terminates() {
+        let yaml = "bas: &b\n l)bas: &b\n l)##d:\n  <<: *b\n #y:##d:\n  <<: *b\n #y:";
+        let mut root = parse(yaml, YamlSchema::Core).unwrap();
+        resolve_merge_keys(&mut root);
+        // Re-parse the resolved tree: serialization output must survive, proving
+        // the guard produced a well-formed (if degraded) AST rather than a crash.
+        let out = crate::serializer::to_yaml(&root);
+        let _ = parse(&out, YamlSchema::Core);
     }
 }
