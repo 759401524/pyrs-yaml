@@ -99,6 +99,14 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
         let mut token_end = 0usize;
 
         for (col_idx, ch) in line.char_indices() {
+            // Inside a just-accepted anchor token: granit reads the name as one
+            // atomic run of ns-chars, so a `"` / `#` / `&` that is part of the
+            // name must NOT toggle quote state or start a comment for the rest of
+            // the line — that desync shifted every later id-name pairing (the
+            // root of the libFuzzer anchor family).
+            if col_idx < token_end {
+                continue;
+            }
             // Comment starts (column 0 or preceded by blank, outside quotes)
             // end the anchor scan for this line: `#&&&:&` is comment text, and
             // harvesting anchors from it shifted every later id-name pairing
@@ -111,7 +119,7 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
                 break;
             }
             // 锚点提取：引号外 `&` 视为锚点
-            if !in_single_quote && !in_double_quote && ch == '&' && col_idx >= token_end {
+            if !in_single_quote && !in_double_quote && ch == '&' {
                 let rest = &line[col_idx + 1..];
                 if let Some(anchor_name) = scan_anchor_name(rest) {
                     token_end = col_idx + 1 + anchor_name.len();
@@ -120,11 +128,10 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
                         col: col_idx,
                         name: anchor_name,
                     });
+                    continue;
                 }
             }
-            if is_string_char(&mut in_single_quote, &mut in_double_quote, &mut escaped, ch) {
-                continue;
-            }
+            is_string_char(&mut in_single_quote, &mut in_double_quote, &mut escaped, ch);
         }
     }
 
@@ -159,89 +166,22 @@ fn is_string_char(
 }
 
 /// Scan an anchor name from the text after `&`.
-/// Handles both quoted (`&"name"`) and unquoted (`&name`) forms.
+///
+/// Aligned with granit's authoritative anchor grammar (its scanner reads a
+/// name as `while is_anchor_char(..)`): the name is the maximal run of
+/// anchor-name characters after the `&`. Per YAML 1.2 `:`/`#`/`"`/`&` are
+/// ordinary name characters, and the run ends only at whitespace, a line break
+/// or a flow indicator (`{}[],`). There is deliberately NO quoted-anchor form
+/// and NO value-indicator-colon special case — those hand-invented branches
+/// were a second grammar drifting from granit and are the root of the entire
+/// libFuzzer anchor family (#215/#218/#227/#228). An empty run (`&` followed by
+/// whitespace / EOL / flow) is not an anchor, matching granit.
 fn scan_anchor_name(rest: &str) -> Option<String> {
-    let mut it = rest.chars();
-    let first = it.next()?;
-
-    let mut anchor_name = String::new();
-    if first == '"' {
-        // The closing quote must sit on the SAME line as the anchor: granit's
-        // anchor token never spans a CR/LF break, so a `"` located past a line
-        // terminator does not turn this into a quoted anchor. Reading across the
-        // break smuggled CR, `:` and `&` into the name (`&"X-<CR>:&"X-` produced
-        // anchor `X-\r:&`), which the serializer emitted verbatim and re-parsed
-        // into a different, growing structure (libFuzzer `yaml_roundtrip`,
-        // 11-byte crash-a14073c5). Only a `"` before the first line break counts
-        // as a real closing quote.
-        let tail = &rest[1..];
-        let quote_on_line = match tail.find(['\r', '\n']) {
-            Some(break_idx) => tail[..break_idx].contains('"'),
-            None => tail.contains('"'),
-        };
-        if quote_on_line {
-            // True quoted form (`&"name"`): the closing quote bounds the name,
-            // spaces included.
-            for c in it {
-                if c == '"' {
-                    break;
-                }
-                anchor_name.push(c);
-            }
-        } else {
-            // Unterminated quote: granit never reads this as a quoted anchor,
-            // so collecting to end-of-line smuggled CRs and colons into names
-            // the serializer emitted verbatim — `&"X-<CR>:` yielded anchor
-            // `X-\r:`, which re-parsed to anchor `X-` and broke round-trip
-            // idempotence (libFuzzer `yaml_roundtrip`). Stop where granit's
-            // own unquoted anchor token would stop.
-            for c in it {
-                if c == '"' || !is_valid_anchor_char(c) {
-                    break;
-                }
-                anchor_name.push(c);
-            }
-        }
-    } else if is_valid_anchor_char(first) {
-        // ':' continues the name only when a non-space follows: `key:
-        // &anchor:name value` carries it inside the name (granit agrees),
-        // while `:` + space/EOL is the value indicator — taking it produced
-        // names like `&&&:` that the emitted text cannot survive: re-parse
-        // reads `&&&&: v` as anchor `&&&` plus an indicator, drifting one
-        // character per serialize round (libFuzzer `yaml_roundtrip`, 12 bytes
-        // `&&&&:<LF>#&&&:&`). Scan by byte offset so the lookahead can peek
-        // at the raw remainder without moving the iterator.
-        let mut pos = first.len_utf8();
-        if first == ':' && next_is_space_or_end(&rest[pos..]) {
-            return None;
-        }
-        anchor_name.push(first);
-        while let Some(c) = rest[pos..].chars().next() {
-            if !is_valid_anchor_char(c) {
-                break;
-            }
-            let after = pos + c.len_utf8();
-            if c == ':' && next_is_space_or_end(&rest[after..]) {
-                break;
-            }
-            anchor_name.push(c);
-            pos = after;
-        }
-    } else {
-        return None;
-    }
-
-    if anchor_name.is_empty() {
-        None
-    } else {
-        Some(anchor_name)
-    }
-}
-
-/// True when the anchor scan has no more name material at this position: the
-/// remainder is empty (end of line) or starts with a space/tab.
-fn next_is_space_or_end(rest: &str) -> bool {
-    rest.is_empty() || rest.starts_with([' ', '\t'])
+    let name: String = rest
+        .chars()
+        .take_while(|c| is_valid_anchor_char(*c))
+        .collect();
+    (!name.is_empty()).then_some(name)
 }
 
 #[cfg(test)]
@@ -275,24 +215,34 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_quoted_anchor() {
-        let yaml = r#"key: &"quoted anchor" value"#;
-        let anchors = extract_anchors(yaml);
+    fn anchor_name_is_maximal_run_including_colon() {
+        // granit's scanner has NO quoted-anchor form and treats `:` as an
+        // ordinary name char (its `issue14_anchor_scanner_consumes_colon_as_
+        // name_character`): the name is the maximal run of anchor chars, ending
+        // only at whitespace / a line break / a flow indicator. The old
+        // "quoted anchor"/value-indicator-colon branches were a second grammar
+        // drifting from granit (the fuzz family's root) and are gone.
+        let anchors = extract_anchors("key: &a:b value");
         assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "quoted anchor");
+        assert_eq!(anchors[0].name, "a:b");
+        // A `"` is just a name char too; the run stops at the following space.
+        let anchors = extract_anchors(r#"key: &"q value"#);
+        assert_eq!(anchors[0].name, "\"q");
+        // An empty run (nothing valid after `&`) is not an anchor.
+        assert!(extract_anchors("key: & value").is_empty());
     }
 
     #[test]
-    fn unterminated_quote_never_swallows_line_end() {
-        // libFuzzer `yaml_roundtrip` crash (6 bytes): the quoted scan ran to
-        // end of line without a closing quote, naming the anchor `X-\r:`;
-        // the verbatim `&X-\r:` emission then re-parsed as `X-` — the
-        // serialize/re-parse loop drifted. Same schema entry the fuzz target
-        // uses (`Schema::Core`), asserting output idempotence end to end.
+    fn unterminated_quote_anchor_name_stops_at_line_end() {
+        // libFuzzer `yaml_roundtrip` crash input: under the granit-aligned
+        // maximal-run grammar the name is `"X-` (leading `"` is a name char,
+        // the run stops at the CR) — emitted bare as `&"X- ` it re-scans to the
+        // same run, so serialize/re-parse is stable. The end-to-end idempotence
+        // assertion below is the real contract.
         let yaml = "&\"X-\r:";
         let anchors = extract_anchors(yaml);
         assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "X-");
+        assert_eq!(anchors[0].name, "\"X-");
         let node = crate::parser::parse(yaml, pyrs_schema::types::Schema::Core).unwrap();
         let once = crate::serializer::to_yaml(&node);
         let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core).unwrap();
@@ -335,19 +285,18 @@ mod tests {
     }
 
     #[test]
-    fn value_indicator_colon_is_not_anchor_name() {
-        // libFuzzer `yaml_roundtrip` (12 bytes): `&&&&:` + LF — the colon is
-        // followed by end-of-line, so it is the value indicator, not name
-        // material. Taking it produced `&&&:` which the emitted text cannot
-        // re-parse as one token, drifting a character per serialize round.
+    fn anchor_name_consumes_value_indicator_colon() {
+        // granit consumes `:` as an anchor name char (its issue-14 test), so
+        // `&&&&:` names the anchor `&&&:` (the run stops at the newline) and
+        // `&x: 1` names it `x:` (the run stops at the space). The emit is bare
+        // (`&name `), and a maximal-run re-scan reproduces the name exactly, so
+        // the drift the old value-indicator special case fought is gone by
+        // construction. `test_extract_anchor_with_colon` covers `&x:y`.
         let anchors = extract_anchors("&&&&:\n#&&&:&");
         assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "&&&");
-        // Colon + space ends the name the same way…
+        assert_eq!(anchors[0].name, "&&&:");
         let anchors = extract_anchors("a: &x: 1");
-        assert_eq!(anchors[0].name, "x");
-        // …while a non-space after the colon keeps it inside the name
-        // (covered by `test_extract_anchor_with_colon` too).
+        assert_eq!(anchors[0].name, "x:");
         let anchors = extract_anchors("a: &x:y 1");
         assert_eq!(anchors[0].name, "x:y");
     }
