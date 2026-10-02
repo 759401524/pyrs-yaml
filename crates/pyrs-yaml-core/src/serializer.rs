@@ -964,9 +964,30 @@ impl Serializer {
         block_base: usize,
     ) {
         let chomping = effective_chomping(value, block.chomping);
-        self.write_block_header('|', block, &chomping);
+        // Mirror the folded writer: when the first content line itself begins
+        // with a blank, granit's auto-indent detection would take that deeper
+        // column as the block indent and read the shallower following lines as
+        // a dedent (ending the block / erroring on re-parse) — libFuzzer
+        // `yaml_roundtrip` crash-e432d4b8 (`|1` whose explicit indicator the AST
+        // dropped, leaving a value like ` 1|l\n:t\n`). Force the indicator so
+        // detection is skipped and the leading blanks stay content. The same
+        // resolved indent feeds `write_base_indent` so header and body agree.
+        let auto_width = self.block_width(block_base, block.indent);
+        let first_text_line = value.lines().find(|l| !l.is_empty()).unwrap_or("");
+        let force_indicator = block.indent.is_none() && first_text_line.starts_with([' ', '\t']);
+        let indent = if force_indicator {
+            Some((auto_width - block_base) as u8)
+        } else {
+            block.indent
+        };
+        let header = BlockScalarHeader {
+            chomping: &chomping,
+            indent,
+            comment: block.comment,
+        };
+        self.write_block_header('|', header, &chomping);
         self.output.push('\n');
-        self.write_base_indent(value, block_base, block.indent);
+        self.write_base_indent(value, block_base, indent);
     }
 
     fn write_folded_scalar(
@@ -1613,6 +1634,35 @@ mod tests {
                 scalar_value(&node),
                 scalar_value(&again),
                 "value not preserved for {input:?}: {once:?}"
+            );
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-e432d4b8): a literal (`|`) block
+    /// scalar whose first content line begins with a blank but a later line is
+    /// shallower. The AST drops the source's explicit `|1` indicator, so the
+    /// de-indented value (e.g. ` 1|l\n:t\n`) re-emitted with auto-detect lets
+    /// granit read the deeper first line as the block indent and treat the
+    /// shallower line as a dedent — the output no longer re-parses. The literal
+    /// writer now forces an indentation indicator (mirroring the folded writer)
+    /// so detection is skipped. Pin the crash input plus blank-first-line shapes
+    /// with full value fidelity.
+    #[test]
+    fn literal_leading_blank_line_roundtrip() {
+        for input in [
+            "yaml: |1\n  1|l\n :t  ts  lins  lines\n\n",
+            "k: |1\n   x\n  y\n",
+            "k: |1\n  a\n  b\n c\n",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                to_yaml(&again),
+                "literal drift for {input:?}: {once:?}"
             );
         }
     }
