@@ -71,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Block scalar emission is now closed under re-parse** — two granit-read
+  shapes the serializer never matched: a `Clip` block scalar whose value
+  carries trailing blank lines round-trips only under the `Keep` indicator
+  (a Clip read strips trailing blank lines — the only header form that
+  re-reads to the same value at any document position; libFuzzer
+  `yaml_roundtrip` crash-c18cb1fd), so the emit promotes it — and an inline
+  comment on a block scalar rides the header line (`y: |  # c`) instead of
+  its own line, where it was absorbed as block content (crash-cfb3fa83).
+  Both rules are pure emit-side normalizations: every previously stable
+  document still serializes byte-identically.
 - **Anchor-name grammar aligned with granit — root-fixes the whole drift family** —
   `extract_anchors`/`scan_anchor_name` had grown two hand-written branches
   granit's scanner does not have: a quoted-anchor form (`&"a b"` with spaces)
