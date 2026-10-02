@@ -93,12 +93,28 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
         let mut in_single_quote = false;
         let mut in_double_quote = false;
         let mut escaped = false;
+        // End offset of the last accepted anchor token (`&` + name); scans
+        // starting inside it are re-reading the same anchor's `&` characters
+        // (`&&&&` would otherwise yield names `&&&`, `&&` and `&`).
+        let mut token_end = 0usize;
 
         for (col_idx, ch) in line.char_indices() {
+            // Comment starts (column 0 or preceded by blank, outside quotes)
+            // end the anchor scan for this line: `#&&&:&` is comment text, and
+            // harvesting anchors from it shifted every later id-name pairing
+            // (libFuzzer `yaml_roundtrip` follow-up).
+            if ch == '#'
+                && !in_single_quote
+                && !in_double_quote
+                && (col_idx == 0 || line[..col_idx].ends_with([' ', '\t']))
+            {
+                break;
+            }
             // 锚点提取：引号外 `&` 视为锚点
-            if !in_single_quote && !in_double_quote && ch == '&' {
+            if !in_single_quote && !in_double_quote && ch == '&' && col_idx >= token_end {
                 let rest = &line[col_idx + 1..];
                 if let Some(anchor_name) = scan_anchor_name(rest) {
+                    token_end = col_idx + 1 + anchor_name.len();
                     anchors.push(RawAnchor {
                         line: line_idx,
                         col: col_idx,
@@ -145,15 +161,15 @@ fn is_string_char(
 /// Scan an anchor name from the text after `&`.
 /// Handles both quoted (`&"name"`) and unquoted (`&name`) forms.
 fn scan_anchor_name(rest: &str) -> Option<String> {
-    let mut chars = rest.char_indices();
-    let first = chars.next()?.1;
+    let mut it = rest.chars();
+    let first = it.next()?;
 
     let mut anchor_name = String::new();
     if first == '"' {
         if rest[1..].contains('"') {
             // True quoted form (`&"name"`): the closing quote bounds the name,
             // spaces included.
-            for (_, c) in chars {
+            for c in it {
                 if c == '"' {
                     break;
                 }
@@ -166,7 +182,7 @@ fn scan_anchor_name(rest: &str) -> Option<String> {
             // `X-\r:`, which re-parsed to anchor `X-` and broke round-trip
             // idempotence (libFuzzer `yaml_roundtrip`). Stop where granit's
             // own unquoted anchor token would stop.
-            for (_, c) in chars {
+            for c in it {
                 if c == '"' || !is_valid_anchor_char(c) {
                     break;
                 }
@@ -174,13 +190,29 @@ fn scan_anchor_name(rest: &str) -> Option<String> {
             }
         }
     } else if is_valid_anchor_char(first) {
+        // ':' continues the name only when a non-space follows: `key:
+        // &anchor:name value` carries it inside the name (granit agrees),
+        // while `:` + space/EOL is the value indicator — taking it produced
+        // names like `&&&:` that the emitted text cannot survive: re-parse
+        // reads `&&&&: v` as anchor `&&&` plus an indicator, drifting one
+        // character per serialize round (libFuzzer `yaml_roundtrip`, 12 bytes
+        // `&&&&:<LF>#&&&:&`). Scan by byte offset so the lookahead can peek
+        // at the raw remainder without moving the iterator.
+        let mut pos = first.len_utf8();
+        if first == ':' && next_is_space_or_end(&rest[pos..]) {
+            return None;
+        }
         anchor_name.push(first);
-        for (_, c) in chars {
-            if is_valid_anchor_char(c) {
-                anchor_name.push(c);
-            } else {
+        while let Some(c) = rest[pos..].chars().next() {
+            if !is_valid_anchor_char(c) {
                 break;
             }
+            let after = pos + c.len_utf8();
+            if c == ':' && next_is_space_or_end(&rest[after..]) {
+                break;
+            }
+            anchor_name.push(c);
+            pos = after;
         }
     } else {
         return None;
@@ -191,6 +223,12 @@ fn scan_anchor_name(rest: &str) -> Option<String> {
     } else {
         Some(anchor_name)
     }
+}
+
+/// True when the anchor scan has no more name material at this position: the
+/// remainder is empty (end of line) or starts with a space/tab.
+fn next_is_space_or_end(rest: &str) -> bool {
+    rest.is_empty() || rest.starts_with([' ', '\t'])
 }
 
 #[cfg(test)]
@@ -258,6 +296,24 @@ mod tests {
         let anchors = extract_anchors(yaml);
         assert_eq!(anchors.len(), 1);
         assert_eq!(anchors[0].name, "anchor:name");
+    }
+
+    #[test]
+    fn value_indicator_colon_is_not_anchor_name() {
+        // libFuzzer `yaml_roundtrip` (12 bytes): `&&&&:` + LF — the colon is
+        // followed by end-of-line, so it is the value indicator, not name
+        // material. Taking it produced `&&&:` which the emitted text cannot
+        // re-parse as one token, drifting a character per serialize round.
+        let anchors = extract_anchors("&&&&:\n#&&&:&");
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "&&&");
+        // Colon + space ends the name the same way…
+        let anchors = extract_anchors("a: &x: 1");
+        assert_eq!(anchors[0].name, "x");
+        // …while a non-space after the colon keeps it inside the name
+        // (covered by `test_extract_anchor_with_colon` too).
+        let anchors = extract_anchors("a: &x:y 1");
+        assert_eq!(anchors[0].name, "x:y");
     }
 
     #[test]
