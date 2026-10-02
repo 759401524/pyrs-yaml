@@ -20,7 +20,8 @@ status: new
 - **引擎的 `cargo-fuzz` 模糊测试套件（`fuzz/`）** — 四个覆盖引导的 libFuzzer
   目标：`parse_yaml`（单文档 + 流）、`yaml_roundtrip`（解析 → 序列化 → 重解析
   与序列化幂等）、`parse_json`（三方言 × 三 writer 全交叉重解析）、`parse_toml`
-  （1.0/1.1 及 writer 重解析）。目标与最小化语料入库，crash 产物不跟踪。
+  （1.0/1.1 及 writer 重解析）。仅目标代码入库；语料与 crash 产物为每次
+  会话本地生成、保持不跟踪（crash 发现以回归测试钉住，而非 corpus 文件）。
   套件在首跑一分钟内即证明价值——见下方注释扫描器修复。
 - **`pyrs-ast` / `pyrs-schema` 支持 `no_std`** — 所有格式引擎赖以奠基的两个基础
   crate 现在仅靠 `alloc` 即可构建：`indexmap` 与 `thiserror` 关闭默认 `std`
