@@ -131,20 +131,47 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
                     continue;
                 }
             }
-            is_string_char(&mut in_single_quote, &mut in_double_quote, &mut escaped, ch);
+            is_string_char(
+                &mut in_single_quote,
+                &mut in_double_quote,
+                &mut escaped,
+                ch,
+                quote_can_open(line, col_idx),
+            );
         }
     }
 
     anchors
 }
 
+/// True when a quote character at `col_idx` sits where a quoted scalar may
+/// *begin* — line start or after a structural/space token (` \t:,[]{}-`). A
+/// quote inside a plain scalar (the `'` of a bare key like `bas'e` or `a'`)
+/// is literal content and must not open a quoted region; doing so desynced
+/// the scan and swallowed every `&anchor` that followed (libFuzzer
+/// `yaml_roundtrip` crash-68da2420). Closing a quote is always allowed and is
+/// handled separately in `is_string_char`.
+fn quote_can_open(line: &str, col_idx: usize) -> bool {
+    // O(1): only the single byte immediately before the quote matters. The
+    // boundary set is pure ASCII, and a UTF-8 continuation byte can never equal
+    // one, so a quote following a multibyte char is (correctly) treated as
+    // mid-plain-scalar rather than an opening quote.
+    match line.as_bytes().get(col_idx.wrapping_sub(1)) {
+        None => true, // start of line
+        Some(&b) => matches!(b, b' ' | b'\t' | b':' | b',' | b'[' | b'{' | b'-'),
+    }
+}
+
 /// Advance quote/escape state machine for a single character.
+/// `can_open` gates whether a quote may *start* a region here (see
+/// [`quote_can_open`]); a quote that is already open always closes.
 /// Returns `true` if the character was consumed (quote toggle or escape start).
 fn is_string_char(
     in_single_quote: &mut bool,
     in_double_quote: &mut bool,
     escaped: &mut bool,
     ch: char,
+    can_open: bool,
 ) -> bool {
     if *escaped {
         *escaped = false;
@@ -155,12 +182,26 @@ fn is_string_char(
         return true;
     }
     if ch == '\'' && !*in_double_quote {
-        *in_single_quote = !*in_single_quote;
-        return true;
+        if *in_single_quote {
+            *in_single_quote = false;
+            return true;
+        }
+        if can_open {
+            *in_single_quote = true;
+            return true;
+        }
+        return false;
     }
     if ch == '"' && !*in_single_quote {
-        *in_double_quote = !*in_double_quote;
-        return true;
+        if *in_double_quote {
+            *in_double_quote = false;
+            return true;
+        }
+        if can_open {
+            *in_double_quote = true;
+            return true;
+        }
+        return false;
     }
     false
 }
@@ -195,6 +236,48 @@ mod tests {
         assert_eq!(anchors.len(), 1);
         assert_eq!(anchors[0].name, "defaults");
         assert_eq!(anchors[0].line, 0);
+    }
+
+    /// A `'` inside a *plain* scalar (a bare key like `bas'e`) is literal
+    /// content, not a quote opening. The old state machine toggled
+    /// `in_single_quote` on it, so every `&anchor` on later lines was read as
+    /// quoted content and dropped — anchors vanished from the emit
+    /// (libFuzzer `yaml_roundtrip` crash-68da2420). Opening is gated on a
+    /// token boundary; only a real quoted scalar hides an anchor.
+    #[test]
+    fn apostrophe_in_plain_key_does_not_swallow_later_anchor() {
+        // apostrophe mid-word: anchor after it still extracted
+        let anchors = extract_anchors("bas'e: &b\nnext: &c 1\n");
+        assert_eq!(
+            anchors.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
+            vec!["b", "c"]
+        );
+        // a genuinely single-quoted scalar still hides its `&`
+        assert!(extract_anchors("key: 'a &b c'").is_empty());
+        // double-quote opening at a boundary still hides its `&`
+        assert!(extract_anchors(r#"key: "a &b c""#).is_empty());
+    }
+
+    /// End-to-end: an anchor whose document contains a bare-apostrophe key
+    /// must survive the parse -> serialize -> re-parse -> serialize loop the
+    /// fuzz target exercises.
+    #[test]
+    fn anchor_survives_plain_apostrophe_key_roundtrip() {
+        for input in [
+            "bas'e: &b\n hhhbase: &b\n ild:\n  <<: *b\n  y___: 2  # inline\n",
+            "a': &x\n  b: 1\nc: &x\n  d: 2\n",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "drift for {input:?}: {once:?}"
+            );
+        }
     }
 
     #[test]
