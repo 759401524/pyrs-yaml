@@ -72,6 +72,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **The raw anchor scanner invented anchors the emitted text cannot keep** —
+  `extract_anchors` accepted `:` followed by space/end-of-line into anchor
+  names (`&&&&:` → `&&&:`), harvested anchors from comment text, and rescanned
+  the overlapping `&` characters inside accepted names (`&&&&` yielded
+  phantom `&&&`, `&&` and `&` anchors), shifting the id→name pairing of every
+  later anchor. Each quirk let serialized documents re-parse to different
+  anchor names — the 12-byte libFuzzer find `&&&&:<LF>#&&&:&` drifted a
+  character per round. Names now end at a value-indicator colon, comment text
+  is skipped, and accepted anchor tokens are never re-scanned.
 - **Double-quoted scalars were decoded twice** — granit delivers
   double-quoted values already unescaped, but both receivers ran
   `unescape_double_quoted` over them again: `a: "\\n"` (the literal two
