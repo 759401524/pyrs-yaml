@@ -56,3 +56,8 @@ Commit messages must adhere to the following standardized structure for semantic
 - **subject** (Mandatory): A concise description of the core changes, not exceeding 50 characters.
 - **body** (Optional): Detailed context regarding the motivation for the change and a comparison with previous behavior.
 - **footer** (Optional): Used for referencing issues (e.g., `Closes #123`) or denoting breaking changes (`BREAKING CHANGE`).
+
+### PR Description Convention
+
+- **No manual line breaks**: Each paragraph and each list item in a PR body must be written as a single unwrapped line; line wrapping for display is GitHub's responsibility, not the author's.
+- **Never reuse the commit message as the PR body**: Commit messages follow the 72-column git wrapping convention while PR bodies must remain unwrapped - the two formats are incompatible by design, so a `git commit -F` message file must not be piped into PR creation.
