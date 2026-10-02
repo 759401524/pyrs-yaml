@@ -79,6 +79,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Duplicate keys are rejected by value, not by full node** — the AST
+  `IndexMap` keys by the whole `CustomNode`, so two scalar keys with the same
+  text but a different trailing comment / style / anchor (`key # a` vs
+  `key # b`) stayed distinct: no duplicate fired at parse, yet the serializer
+  drops key decor and emitted two identical `key:` lines that our own parser
+  then rejected on re-parse (libFuzzer `yaml_roundtrip` crash-3b0a7d1d — the
+  emitted document was unparseable). Duplicate detection now identifies a
+  scalar key by its value, the same identity `to_yaml` emits, so such inputs
+  are rejected on the first parse. The `<<` merge key stays exempt: YAML
+  permits a mapping to repeat it.
 - **Empty block containers serialize as a mapping value inline** — an empty
   `Mapping`/`Sequence` has no block form, but a block-style empty value was
   emitted as `key:` with the `{}`/`[]` on the next indent. Re-reading that
