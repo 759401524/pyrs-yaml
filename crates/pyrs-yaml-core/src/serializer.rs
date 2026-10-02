@@ -976,17 +976,33 @@ impl Serializer {
         block_base: usize,
     ) {
         let chomping = effective_chomping(value, block.chomping);
-        self.write_block_header('>', block, &chomping);
+        // granit's folded read map (measured against its scanner):
+        //   - k blank lines before a NORMAL continuation line re-read as k '\n'
+        //     (the break before them folds away);
+        //   - a MORE-INDENTED continuation line keeps its own leading break, so
+        //     k blanks there re-read as k + 1 - one blank less is needed for a
+        //     given run;
+        //   - k blanks right after the header are k leading newlines.
+        // A first content line that itself begins with a blank would also be
+        // eaten by granit's auto-indent detection, so force an explicit
+        // indentation indicator in that case (with it set, detection is skipped
+        // and the leading blanks stay content). Run-consumed segments mean an
+        // empty segment can only ever be the leading one.
+        let auto_width = self.block_width(block_base, block.indent);
+        let first_text_line = value.lines().find(|l| !l.is_empty()).unwrap_or("");
+        let force_indicator = block.indent.is_none() && first_text_line.starts_with([' ', '\t']);
+        let width = auto_width;
+        let header = BlockScalarHeader {
+            chomping: &chomping,
+            indent: if force_indicator {
+                Some((width - block_base) as u8)
+            } else {
+                block.indent
+            },
+            comment: block.comment,
+        };
+        self.write_block_header('>', header, &chomping);
         self.output.push('\n');
-        let width = self.block_width(block_base, block.indent);
-        // Fold-aware emission. granit's folded read gives: k blank lines
-        // between text lines re-read as exactly k '\n' (and no blanks re-read
-        // the break as a space), so a value run of r '\n' between texts must
-        // occupy r blank lines - r + 1 physical newlines. The naive
-        // split-into-lines writer emitted r - 1 blanks, so every folded run
-        // shrank one newline per serialize round (libFuzzer `yaml_roundtrip`
-        // crash-490c4beb: 4 -> 3 -> 2 -> ...). The final line's terminator is
-        // left to `write_scalar_node`'s own newline.
         let mut rest = value;
         let mut started = false;
         loop {
@@ -1010,24 +1026,24 @@ impl Serializer {
                 self.write_indent(width);
                 self.output.push_str(line);
             }
-            // Read-map (measured): k blank lines after the header re-read as
-            // k leading newlines, and k blanks between text lines re-read as k
-            // newlines too. A leading empty segment has no text line to end,
-            // so it costs exactly r newlines; any run after text also needs the
-            // break ending that line: r + 1. (Runs are consumed whole, so an
-            // empty segment can only ever be the leading one.)
+            // The leading run is the only one with no text line to terminate
+            // (empty segment, nothing written yet) - it costs exactly r
+            // newlines. Any run after a text line needs that line's break too:
+            // r + 1 for a normal continuation, but a more-indented next line
+            // keeps its own leading break, so r.
+            let had_text = started || !line.is_empty();
+            if !line.is_empty() {
+                started = true;
+            }
             let newlines = if after.is_empty() {
                 r - 1
-            } else if line.is_empty() && !started {
+            } else if !had_text || after.starts_with([' ', '\t']) {
                 r
             } else {
                 r + 1
             };
             for _ in 0..newlines {
                 self.output.push('\n');
-            }
-            if !line.is_empty() {
-                started = true;
             }
             if after.is_empty() {
                 break;
@@ -1537,6 +1553,8 @@ mod tests {
             for value in [
                 format!("a{}b\n", "\n".repeat(m)),
                 format!("{}b\n", "\n".repeat(m)),
+                format!("a{} b\n", "\n".repeat(m)),
+                format!("{} b\n", "\n".repeat(m)),
             ] {
                 let node = CustomNode::Scalar {
                     value: Arc::from(value.as_str()),
