@@ -79,6 +79,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A bare apostrophe in a plain key swallowed every later anchor** —
+  `extract_anchors` runs a quote-state machine to skip `&` inside quoted
+  scalars, but it toggled on any `'`/`"` even one embedded in a plain scalar
+  (the `'` of a bare key like `bas'e` or `a'`). That phantom quote stayed open
+  for the rest of the document, so the pre-scan returned no anchor names and
+  `register_anchor` handed every node `None` — anchors silently vanished from
+  the emit and the round-trip drifted (libFuzzer `yaml_roundtrip`
+  crash-68da2420). Quote *opening* is now gated on a token boundary (line
+  start or after `\t:,[]{}-`), matching granit; a quote inside a plain scalar
+  is literal content, while a real quoted scalar still hides its `&`.
 - **Literal block scalars force an indent when the first line is blank** —
   the AST stores a `|`/`|N` body de-indented and drops the source's explicit
   indicator, so a value whose first content line starts with a blank but whose
