@@ -78,8 +78,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serialize round (libFuzzer `yaml_roundtrip` crash-490c4beb: 4 → 3 → 2 → …;
   crash-6288e5be drifted the leading blanks the same way). The writer is now
   fold-aware — a run of r newlines occupies r blank lines, with the header
-  break counted for leading runs — closing every run length by construction
-  (verified stable for inner and leading runs 1 through 5).
+  break counted for leading runs and one blank less before a more-indented
+  continuation line (which preserves its own break) — closing every run length
+  by construction (verified stable for inner, leading and more-indented runs 1
+  through 5; a first content line starting with a blank forces an explicit
+  indentation indicator so its blanks stay content).
 - **Block scalar emission is now closed under re-parse** — two granit-read
   shapes the serializer never matched: a `Clip` block scalar whose value
   carries trailing blank lines round-trips only under the `Keep` indicator
