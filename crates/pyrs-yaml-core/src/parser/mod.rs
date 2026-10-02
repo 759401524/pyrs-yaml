@@ -34,6 +34,15 @@ fn is_null_key(key: &CustomNode) -> bool {
     }
 }
 
+/// Return true if a mapping key is the `<<` merge key.
+///
+/// YAML explicitly permits a mapping to repeat `<<` (`<<: *a` plus `<<: *b`),
+/// so the value-key duplicate check must exempt it — collapsing two merge keys
+/// would reject well-formed documents (`nested_self_anchor_merge_terminates`).
+fn is_merge_key(key: &CustomNode) -> bool {
+    matches!(key, CustomNode::Scalar { value, .. } if value.as_ref() == "<<")
+}
+
 /// 使用 granit-parser 解析 YAML 字符串为 `CustomNode` AST。
 ///
 /// # Arguments
@@ -427,6 +436,14 @@ enum ParseState {
     Mapping {
         pairs: IndexMap<CustomNode, CustomNode>,
         current_key: Box<Option<CustomNode>>,
+        /// Scalar-key values already seen, tracked by content so YAML's
+        /// "keys are their value" identity is enforced: `key`, `key # c` and
+        /// `"key"` are the same key even though their `CustomNode` (style /
+        /// trailing comment / anchor) differ. Without this the `IndexMap`
+        /// (keyed by full node) kept both, no duplicate fired, yet the
+        /// serializer drops key decor and emitted two colliding `key:` lines
+        /// that re-parse rejected (libFuzzer `yaml_roundtrip` crash-3b0a7d1d).
+        seen_value_keys: std::collections::HashSet<String>,
         anchor_id: usize,
         tag: Option<Tag>,
         flow_style: bool,
@@ -609,14 +626,39 @@ impl<'a> AstReceiver<'a> {
     fn push_node(&mut self, node: CustomNode) {
         match self.stack.last_mut() {
             Some(ParseState::Mapping {
-                current_key, pairs, ..
+                current_key,
+                pairs,
+                seen_value_keys,
+                ..
             }) => {
                 if current_key.is_none() {
                     **current_key = Some(node);
                 } else if let Some(key) = current_key.take() {
-                    if self.max_depth_exceeded || self.allow_duplicate_keys || is_null_key(&key) {
+                    if self.max_depth_exceeded
+                        || self.allow_duplicate_keys
+                        || is_null_key(&key)
+                        || is_merge_key(&key)
+                    {
                         pairs.insert(key, node);
                     } else {
+                        // YAML identifies a key by its *value*: two scalar keys
+                        // with the same text collide even when their style,
+                        // trailing comment or anchor differ, and the serializer
+                        // emits them identically. The `IndexMap` (keyed by the
+                        // full node) alone misses those, so track the emitted
+                        // value here and reject the collision (crash-3b0a7d1d).
+                        let value_dup: Option<String> = match &key {
+                            CustomNode::Scalar { value, .. } => {
+                                let v = value.to_string();
+                                if seen_value_keys.contains(&v) {
+                                    Some(v)
+                                } else {
+                                    seen_value_keys.insert(v);
+                                    None
+                                }
+                            }
+                            _ => None,
+                        };
                         use indexmap::map::Entry;
                         match pairs.entry(key) {
                             Entry::Vacant(v) => {
@@ -631,6 +673,11 @@ impl<'a> AstReceiver<'a> {
                                 self.duplicate_key_error = Some(ParseError::DuplicateKey(key_str));
                             }
                         };
+                        if let Some(v) = value_dup
+                            && self.duplicate_key_error.is_none()
+                        {
+                            self.duplicate_key_error = Some(ParseError::DuplicateKey(v));
+                        }
                     }
                 }
             }
@@ -858,6 +905,7 @@ impl<'a> AstReceiver<'a> {
         self.stack.push(ParseState::Mapping {
             pairs: IndexMap::new(),
             current_key: Box::new(None),
+            seen_value_keys: std::collections::HashSet::new(),
             anchor_id,
             tag: tag_obj,
             flow_style,
@@ -1036,6 +1084,34 @@ mod tests {
             assert_eq!(value.as_ref(), "hello");
             assert_eq!(style, ScalarStyle::Plain);
         }
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-3b0a7d1d): the `IndexMap` keys by the
+    /// full `CustomNode`, so two scalar keys with the same *value* but different
+    /// trailing comment / style stayed distinct and evaded the exact-node
+    /// duplicate check — yet `to_yaml` drops key decor and emitted two colliding
+    /// `key:` lines that re-parse rejected. Duplicate detection now identifies a
+    /// key by its value (what the serializer emits), while still allowing the
+    /// repeated `<<` merge key YAML permits.
+    #[test]
+    fn duplicate_scalar_key_by_value_is_rejected() {
+        // same value, different inline comment on the key
+        let err = parse("key: &a # tng\nkey: &a # trail\n", YamlSchema::Core)
+            .expect_err("comment-differing duplicate keys must be rejected");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        // plain vs quoted are the same YAML key
+        let err = parse("key: 1\n\"key\": 2\n", YamlSchema::Core)
+            .expect_err("style-differing duplicate keys must be rejected");
+        assert!(matches!(err, ParseError::DuplicateKey(_)), "got {err:?}");
+        // repeated `<<` merge keys are legal and must NOT be flagged
+        assert!(
+            parse(
+                "a: &x {p: 1}\nb: &y {q: 2}\nc:\n  <<: *x\n  <<: *y\n",
+                YamlSchema::Core
+            )
+            .is_ok(),
+            "duplicate merge keys must be allowed"
+        );
     }
 
     #[test]
