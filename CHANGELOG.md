@@ -71,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A backslash no longer escapes the closing quote of a single-quoted
+  scalar in the anchor scan** — `extract_anchors` ran its escape state
+  machine inside single quotes too. YAML single-quoted scalars have no escape
+  processor (only `''`), so the `\` before a key's closing `'` (a
+  backslash-terminated single-quoted key like `'a\'`) was read as escaping the
+  `'`, the quote never closed, and every `&anchor` after it was hidden — the
+  value's anchor vanished on re-parse and the round-trip drifted (libFuzzer
+  `yaml_roundtrip` crash-12f01ee0). Backslash escaping now applies only inside
+  double-quoted scalars; anchor-free, single- and double-quoted documents scan
+  exactly as granit reads them.
 - **A `&` embedded in a plain scalar is no longer read as an anchor** —
   `extract_anchors` harvested every `&` outside quotes, including one inside a
   plain scalar (the `&` of a bare key like `sbb&e`). granit starts an anchor

@@ -180,7 +180,13 @@ fn is_string_char(
         *escaped = false;
         return true;
     }
-    if ch == '\\' && (*in_single_quote || *in_double_quote) {
+    if ch == '\\' && *in_double_quote {
+        // Backslash is an escape lead ONLY in double-quoted scalars. A
+        // single-quoted scalar has no escape processor (its only special
+        // sequence is `''`), so a `\` there is literal. Treating it as an
+        // escape ate the closing `'` of a backslash-terminated single-quoted
+        // key like `'ya |20  fir:\\\'`, leaving the quote open and hiding every
+        // later `&anchor` (libFuzzer `yaml_roundtrip` crash-12f01ee0).
         *escaped = true;
         return true;
     }
@@ -314,6 +320,37 @@ mod tests {
                 "drift for {input:?}: {once:?}"
             );
         }
+    }
+
+    /// A backslash is an escape lead only in a *double*-quoted scalar; a
+    /// single-quoted scalar has no escape processor (only `''`). The old scan
+    /// treated `\` as an escape inside single quotes too, so a `'` following a
+    /// backslash (the closing quote of `'a\'`) was swallowed as "escaped", the
+    /// quote never closed, and every `&anchor` after it was hidden from
+    /// `extract_anchors` — the value's anchor then vanished on re-parse
+    /// (libFuzzer `yaml_roundtrip` crash-12f01ee0).
+    #[test]
+    fn backslash_in_single_quote_does_not_hide_later_anchor() {
+        let anchors = extract_anchors("'a\\': &b v\n");
+        assert_eq!(
+            anchors.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
+            vec!["b"]
+        );
+        let crash: &[u8] = &[
+            0x79, 0x61, 0x20, 0x7c, 0x32, 0x30, 0x20, 0x20, 0x66, 0x69, 0x72, 0x3a, 0x5c, 0x5c,
+            0x5c, 0x3a, 0x20, 0x26, 0x62, 0x0a, 0x20, 0x21, 0x78,
+        ];
+        let input = std::str::from_utf8(crash).unwrap();
+        let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+            .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+        let once = crate::serializer::to_yaml(&node);
+        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+            .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+        assert_eq!(
+            once,
+            crate::serializer::to_yaml(&again),
+            "drift for {input:?}: {once:?}"
+        );
     }
 
     #[test]
