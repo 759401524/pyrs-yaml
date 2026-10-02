@@ -17,6 +17,11 @@ status: new
 
 #### 新增
 
+- **CI 每周定期模糊测试** — `.github/workflows/fuzz.yml` 每周六运行全部
+  四个 libFuzzer 目标（也可手动触发，`fuzz/` 变更时自动触发），用精心挑选
+  的 `fuzz/seeds/`（历史崩溃输入 + 人工写制的形态种子）为每次临时语料库
+  播种，失败时上传崩溃产物以喂养「崩溃 → 回归测试 → 种子 → 修复」流水线。
+  机器生成的语料库仍永不进入 git。
 - **引擎的 `cargo-fuzz` 模糊测试套件（`fuzz/`）** — 四个覆盖引导的 libFuzzer
   目标：`parse_yaml`（单文档 + 流）、`yaml_roundtrip`（解析 → 序列化 → 重解析
   与序列化幂等）、`parse_json`（三方言 × 三 writer 全交叉重解析）、`parse_toml`
