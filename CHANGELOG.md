@@ -71,6 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Folded writer kept the break *after* a more-indented line** — granit's
+  fold rule tracks a `leading_blank` flag that a more-indented line (a
+  continuation starting with a space or tab) sets so that *both* the break
+  before it *and* the break after it stay un-folded. The emit-side run rule
+  only knew the first half: it keyed the suppression off the previous line,
+  so a more-indented line followed by a plain one over-padded the run by one
+  newline and each serialize round gained a blank line (libFuzzer
+  `yaml_roundtrip` crash-b7a2285e). The rule now keys on the line just
+  written, so an r-newline run touching a more-indented neighbour on either
+  side emits exactly r physical newlines; pinned with full value fidelity
+  (re-parse preserves the scalar value), not just byte idempotence.
 - **Folded scalars re-read their own newlines** — granit's folded read
   re-reads k blank lines (leading or between text lines) as exactly k
   newlines, but the line-splitting writer emitted one blank too few per run,

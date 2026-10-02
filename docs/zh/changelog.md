@@ -62,6 +62,14 @@ status: new
 
 #### 修复
 
+- **折叠写入器保留了 more-indented 行之后的 break** — granit 的折叠规则维护一个
+  `leading_blank` 标志：more-indented 行（以空格或制表符开头的续行）不仅自留其
+  前导 break，还会置位该标志使其后那行的 break 同样不被折叠。写入端的连段规则
+  此前只认前半段：它按上一行来判断抑制，导致 more-indented 行后接普通行时连段被
+  多补一个换行，每序列化一轮就多吞一个空行（libFuzzer `yaml_roundtrip`
+  crash-b7a2285e）。规则现改为按刚写出的那一行判断，触碰任一侧 more-indented 邻居
+  的 r 换行连段恰好发出 r 个物理换行；以完整值保真（再解析保留标量值）钉住，
+  而非仅字节幂等。
 - **折叠标量如今能读回自身换行** — granit 的 folded 读取无论行首还是文本行之间，
   都把 k 个空行读回为恰好 k 个换行；而按行切分的写入器每个连段少写一个空行，
   折叠值因此每轮少一个换行（libFuzzer `yaml_roundtrip` crash-490c4beb：
