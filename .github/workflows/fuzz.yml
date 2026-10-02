@@ -44,6 +44,11 @@ jobs:
       # build the targets at all.
       - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@nightly
+        with:
+          # cargo-fuzz builds libFuzzer's runtime with -Zbuild-std; without
+          # rust-src the std rebuild dies on the sanitizer flags
+          # (can't find crate for core + crt-static errors, first scheduled run 36968323617).
+          components: rust-src
 
       - name: Install cargo-fuzz
         uses: taiki-e/install-action@v2
