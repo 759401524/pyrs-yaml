@@ -17,7 +17,7 @@ use std::ops::Range;
 use std::sync::Arc;
 use yaml::{
     BlockHeader, RawAnchor, compute_line_offsets, detect_block_header, extract_anchors,
-    resolve_merge_keys, unescape_double_quoted,
+    resolve_merge_keys,
 };
 
 /// Return true if a mapping key is a null/empty key (`~`, empty, or null).
@@ -525,12 +525,12 @@ impl<'a> AstReceiver<'a> {
         };
         let chomping = block_header.chomping;
 
-        // Unescape double-quoted strings
-        let scalar_value = if matches!(style, SaphyrScalarStyle::DoubleQuoted) {
-            Arc::from(unescape_double_quoted(value))
-        } else {
-            Arc::from(value)
-        };
+        // No unescaping here: granit delivers the *decoded* double-quoted
+        // value, and running our own unescape on top was a second decode —
+        // `"\\n"` (raw backslash-n, meaning the two characters `\` `n`)
+        // silently collapsed to LF (libFuzzer `yaml_roundtrip`). The same
+        // double decode turned the fuzz repro's `\\f` into FF.
+        let scalar_value = Arc::from(value);
 
         // Inline comment scanning now done by granit-parser natively via Event::Comment
         CustomNode::Scalar {

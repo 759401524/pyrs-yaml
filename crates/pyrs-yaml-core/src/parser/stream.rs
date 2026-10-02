@@ -1,5 +1,5 @@
 use crate::ast::{Comment, ScalarStyle, Tag};
-use crate::parser::yaml::{extract_anchors, unescape_double_quoted};
+use crate::parser::yaml::extract_anchors;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
@@ -237,11 +237,10 @@ where
                 SaphyrScalarStyle::Literal => ScalarStyle::Literal,
                 SaphyrScalarStyle::Folded => ScalarStyle::Folded,
             };
-            let scalar_value = if matches!(style, SaphyrScalarStyle::DoubleQuoted) {
-                unescape_double_quoted(&value)
-            } else {
-                value.to_string()
-            };
+            // granit already delivers the decoded double-quoted value; a
+            // second unescape here would decode `"\\n"`-style raw pairs wrong
+            // (see create_scalar in the tree parser).
+            let scalar_value = value.to_string();
             let anchor = resolve_anchor_name(anchor_id, anchor_map, resolve_anchor);
             let tag_obj = convert_tag(tag.as_deref());
             StreamEventType::Scalar {
@@ -726,11 +725,16 @@ mod tests {
     }
 
     #[test]
-    fn event_to_stream_event_scalar_double_quoted_unescapes() {
+    fn event_to_stream_event_double_quoted_is_pass_through() {
+        // granit delivers double-quoted scalars already decoded; the receiver
+        // must NOT unescape a second time (that decode turned raw-pair text
+        // like `\n` into LF — the libFuzzer `yaml_roundtrip` double-decode
+        // bug). Both shapes therefore flow through byte-identical.
         let mut anchor_map = HashMap::new();
-        let event = Event::Scalar("a\\n\\t".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
-        let ev = super::event_to_stream_event(event, mk_span(1, 0), &mut anchor_map, &mut |_| None)
-            .expect("scalar maps to Some");
+        let decoded = Event::Scalar("a\n\t".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
+        let ev =
+            super::event_to_stream_event(decoded, mk_span(1, 0), &mut anchor_map, &mut |_| None)
+                .expect("scalar maps to Some");
         match ev.event_type {
             super::StreamEventType::Scalar {
                 value,
@@ -742,6 +746,17 @@ mod tests {
                 assert_eq!(style, ScalarStyle::DoubleQuoted);
                 assert_eq!(anchor, None);
                 assert_eq!(tag, None);
+            }
+            other => panic!("wrong variant: {:?}", other),
+        }
+        let mut anchor_map = HashMap::new();
+        let raw_pair = Event::Scalar("a\\n".into(), SaphyrScalarStyle::DoubleQuoted, 0, None);
+        let ev =
+            super::event_to_stream_event(raw_pair, mk_span(1, 0), &mut anchor_map, &mut |_| None)
+                .expect("scalar maps to Some");
+        match ev.event_type {
+            super::StreamEventType::Scalar { value, .. } => {
+                assert_eq!(value, "a\\n", "second decode must not collapse raw pairs");
             }
             other => panic!("wrong variant: {:?}", other),
         }
