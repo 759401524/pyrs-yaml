@@ -64,6 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Double-quoted scalars were decoded twice** — granit delivers
+  double-quoted values already unescaped, but both receivers ran
+  `unescape_double_quoted` over them again: `a: "\\n"` (the literal two
+  characters `\` `n`) silently collapsed to a newline, and each
+  serialize/re-parse round stripped one backslash (libFuzzer
+  `yaml_roundtrip`: `!-# \\f"<TAB>0:!`). Both call sites are now pass-
+  through, with stream/AST unit tests pinning the single-decode contract.
 - **Unterminated-quote anchor names swallowed the rest of the line** —
   given `&"X-<CR>:`, `extract_anchors`' quoted scan collected to end-of-line
   because no closing quote ever arrived, putting a raw CR and colon into the
