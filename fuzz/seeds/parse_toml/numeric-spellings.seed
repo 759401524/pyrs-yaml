@@ -1,0 +1,4 @@
+hex = 0xDEAD_beef
+oct = 0o755
+bin = 0b1010
+inf = inf

@@ -1,0 +1,4 @@
+- plain
+- "quoted: key"
+- 'single'
+- @literal

@@ -17,6 +17,11 @@ status: new
 
 #### 추가
 
+- **CI 주간 정기 퍼징** — `.github/workflows/fuzz.yml`가 네 libFuzzer 타깃을
+  매주 토요일(수동 실행 및 `fuzz/` 변경 시 자동) 실행하고, 큐레이션한
+  `fuzz/seeds/`(과거 크래시 입력 + 수작업 형태 시드)로 매 세션 임시 코퍼스를
+  시딩하며, 실패 시 크래시 산출물을 업로드해 '크래시→회귀 테스트→시드→수정'
+  파이프라인에 연결합니다. 기계 생성 코퍼스는 계속 git에 넣지 않습니다.
 - **엔진용 `cargo-fuzz` 퍼징 기반(`fuzz/`)** — 커버리지 유도형 libFuzzer
   타깃 4종: `parse_yaml`(단일 + 스트림), `yaml_roundtrip`(파싱 → 직렬화 →
   재파싱과 직렬화 멱등), `parse_json`(3 방언 × 3 writer 전 조합 재파싱),

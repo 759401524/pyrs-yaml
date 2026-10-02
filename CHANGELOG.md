@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Weekly fuzz schedule in CI** — `.github/workflows/fuzz.yml` runs all
+  four libFuzzer targets every Saturday (plus on demand and whenever `fuzz/`
+  itself changes), seeding the ephemeral per-run corpus from curated
+  `fuzz/seeds/` (historical crash inputs + hand-written shape coverage), and
+  uploading crash artifacts on failure to feed the
+  crash → regression-test → seed → fix pipeline. Machine corpora still never
+  enter git.
 - **A `cargo-fuzz` harness for the engines (`fuzz/`)** — four
   coverage-guided libFuzzer targets over the native frontends: `parse_yaml`
   (single + stream), `yaml_roundtrip` (parse → serialize → re-parse and
