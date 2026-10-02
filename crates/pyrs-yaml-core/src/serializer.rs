@@ -11,6 +11,12 @@ struct BlockScalarHeader<'a> {
     chomping: &'a Chomping,
     /// 显式缩进指示器（`|2` 中的 `2`）；`None` 表示重新探测。
     indent: Option<u8>,
+    /// Inline (`# text`) tail comment for the block header line. granit only
+    /// reads a block-scalar header comment on the header line itself — a
+    /// comment written on the line *after* `|` is absorbed as block content
+    /// (libFuzzer `yaml_roundtrip` crash-cfb3fa83), so it rides here and
+    /// `write_block_header` places it before the newline.
+    comment: Option<&'a str>,
 }
 
 /// Serialization options
@@ -121,6 +127,20 @@ struct Serializer {
     max_depth: usize,
     /// Line width for wrapping (0 = no wrapping)
     width: usize,
+}
+
+/// Chomping actually written for a block scalar. A Clip-chomped value whose
+/// content carries trailing blank lines cannot round-trip as Clip: granit's
+/// Clip read strips every trailing line that ends with a newline, so the only
+/// header form that re-reads to the same value at any position is Keep
+/// (`+`) — libFuzzer `yaml_roundtrip` crash-c18cb1fd. The promotion is a
+/// pure emit-side normalization: the AST keeps its parsed `Clip`.
+fn effective_chomping(value: &str, chomping: &Chomping) -> Chomping {
+    if matches!(chomping, Chomping::Clip) && value.ends_with("\n\n") {
+        Chomping::Keep
+    } else {
+        *chomping
+    }
 }
 
 /// Whether a node can be serialized inline on the same line as a mapping
@@ -336,6 +356,11 @@ impl Serializer {
                 BlockScalarHeader {
                     chomping,
                     indent: *block_indent,
+                    comment: meta
+                        .comment
+                        .as_ref()
+                        .filter(|c| !c.standalone)
+                        .map(|c| &c.text[..]),
                 },
                 indent_width,
                 block_base,
@@ -390,6 +415,7 @@ impl Serializer {
         self.write_scalar(value, style, block, self.width, block_base);
         if let Some(c) = &meta.comment
             && !c.standalone
+            && !matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
         {
             self.output.push_str("  # ");
             self.output.push_str(&c.text);
@@ -874,6 +900,7 @@ impl Serializer {
                     BlockScalarHeader {
                         chomping,
                         indent: *block_indent,
+                        comment: None,
                     },
                     0,
                     0,
@@ -905,15 +932,27 @@ impl Serializer {
     /// and — when the source pinned one — the explicit indentation indicator.
     /// Order follows the spec (`c-b-block-header`): chomping precedes
     /// indentation, so a stripped, explicitly indented scalar is `|-2`.
-    fn write_block_header(&mut self, sigil: char, block: BlockScalarHeader<'_>) {
+    fn write_block_header(
+        &mut self,
+        sigil: char,
+        block: BlockScalarHeader<'_>,
+        chomping: &Chomping,
+    ) {
         self.output.push(sigil);
-        self.output.push_str(match block.chomping {
+        self.output.push_str(match chomping {
             Chomping::Strip => "-",
             Chomping::Clip => "",
             Chomping::Keep => "+",
         });
         if let Some(indent) = block.indent.filter(|n| (1..=9).contains(n)) {
             self.output.push((b'0' + indent) as char);
+        }
+        if let Some(text) = block.comment {
+            // The comment rides the header line: a comment on the line after
+            // `|`/`>` would be absorbed into the block content on re-read
+            // (libFuzzer `yaml_roundtrip` crash-cfb3fa83).
+            self.output.push_str("  # ");
+            self.output.push_str(text);
         }
     }
 
@@ -924,7 +963,8 @@ impl Serializer {
         block: BlockScalarHeader<'_>,
         block_base: usize,
     ) {
-        self.write_block_header('|', block);
+        let chomping = effective_chomping(value, block.chomping);
+        self.write_block_header('|', block, &chomping);
         self.output.push('\n');
         self.write_base_indent(value, block_base, block.indent);
     }
@@ -936,7 +976,8 @@ impl Serializer {
         block: BlockScalarHeader<'_>,
         block_base: usize,
     ) {
-        self.write_block_header('>', block);
+        let chomping = effective_chomping(value, block.chomping);
+        self.write_block_header('>', block, &chomping);
         self.output.push('\n');
         self.write_base_indent(value, block_base, block.indent);
     }
@@ -1018,6 +1059,7 @@ impl Serializer {
                     BlockScalarHeader {
                         chomping,
                         indent: *block_indent,
+                        comment: None,
                     },
                     self.width,
                     0,
@@ -1380,6 +1422,35 @@ mod tests {
         assert_eq!(twice, thrice, "not idempotent (round2->3): {twice:?}");
         // And the anchor name is genuinely preserved, not silently emptied.
         assert!(once.contains("X-"), "anchor lost: {once:?}");
+    }
+
+    /// libFuzzer `yaml_roundtrip` (49 bytes, crash-c18cb1fd; the 43-byte
+    /// crash-cfb3fa83 rides the same writer rules): a Clip-chomped block whose
+    /// value carries a trailing blank line round-trips only with the Keep
+    /// indicator — granit's Clip read strips trailing newlines — and a block
+    /// scalar's inline comment must ride the header line, never a line of its
+    /// own (it would be absorbed as block content). Both closures hold by
+    /// construction now; assert the exact crash inputs re-serialize stable.
+    #[test]
+    fn block_scalar_emission_is_closed_under_reparse() {
+        for input in [
+            "yaml: |2\n  filineam  first\n  lineaml: |-ml: |2\n  ",
+            "base: &b\n  x: 2  f,1\n:&hcild:\n  <<: *b\n  y: |  # inlEEE\n",
+            "y: |2\n  a\n  b\n  ",
+            "y: |\n  a\n  ",
+            "y: |1\n a\n ",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            let twice = to_yaml(&again);
+            assert_eq!(
+                once, twice,
+                "not idempotent for {input:?}: {once:?} vs {twice:?}"
+            );
+        }
     }
 
     /// Print a unified diff when two YAML strings differ, then panic.
