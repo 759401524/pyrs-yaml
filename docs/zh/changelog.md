@@ -57,6 +57,13 @@ status: new
 
 #### 修复
 
+- **未闭合引号的锚点名吞掉了行内剩余内容** — 面对 `&"X-<CR>:`，
+  `extract_anchors` 的 quoted 扫描因始终等不到闭合引号而一路收集到行尾，
+  把裸 CR 和冒号收进锚点名；序列化器原样输出 `&X-\r:`，而 granit 在空白处
+  截断锚名，重解析得到 `X-` —— `fuzz/yaml_roundtrip` 用 6 字节输入打破了
+  序列化幂等（`fmt(fmt(x)) == fmt(x)`）。未闭合的 `"` 现在恰好停在 granit
+  unquoted 锚点 token 停止的那个字符；真正的 `&"quoted anchor"` 名字
+  （含空格）保持不变。
 - **JSON 注释扫描器可能在多字节字符中间 panic** — `ws()` 的行注释与未闭合
   块注释扫描逐字节推进 `pos`，后继多字节字符（如 U+FEFF）会把 pos 留在字符
   内部，下一个 `&text[pos..]` 切片以 "not a char boundary" panic（由
