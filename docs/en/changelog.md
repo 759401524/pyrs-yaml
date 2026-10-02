@@ -79,6 +79,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Quoted anchor names could swallow a line break** — `scan_anchor_name`'s
+  quoted branch treated any later `"` in the buffer as the closing quote, so
+  `&"X-<CR>:&"X-` read the name across the carriage return into `X-\r:&`. The
+  serializer emitted that raw and the re-parse wrapped one extra layer each
+  round (a growing libFuzzer `yaml_roundtrip` non-idempotence, 11 bytes).
+  granit ends an anchor token at a CR/LF break, so a closing quote past a line
+  terminator no longer qualifies as a quoted anchor — names stay single-line
+  and re-emit stable.
 - **Anchor names ending in `:` were emitted in an unstable form** —
   `write_anchor_tag` wrote every anchor as a bare `&name` token. When the
   parsed anchor name ends in `:` (reached through an unterminated quoted
