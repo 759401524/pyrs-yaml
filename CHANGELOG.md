@@ -71,6 +71,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Anchor-name grammar aligned with granit — root-fixes the whole drift family** —
+  `extract_anchors`/`scan_anchor_name` had grown two hand-written branches
+  granit's scanner does not have: a quoted-anchor form (`&"a b"` with spaces)
+  and a value-indicator rule (a `:` before space/EOL ends the name). granit
+  reads the name as a single maximal run of `is_anchor_char` (`:`/`#`/`"`/`&`
+  are ordinary name chars; the run ends only at whitespace / line break / flow
+  indicators — granit's own issue14 tests). Every divergence shifted the
+  id↔name pairing and broke a round-trip; the four entries below (#215/#218/
+  #227/#228) were symptoms of this one cause. The scanner now mirrors granit
+  exactly (maximal run + the anchor token is skipped atomically so a `"`/`#`
+  in the name no longer desyncs quote/comment state) and `write_anchor_tag`
+  emits `&name` bare — closure holds by construction, subsuming the per-shape
+  workarounds; quoted anchors (never round-trippable) are dropped.
 - **Quoted anchor names could swallow a line break** — `scan_anchor_name`'s
   quoted branch treated any later `"` in the buffer as the closing quote, so
   `&"X-<CR>:&"X-` read the name across the carriage return into `X-\r:&`. The
