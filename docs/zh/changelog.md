@@ -57,6 +57,11 @@ status: new
 
 #### 修复
 
+- **双引号标量被解码了两次** — granit 交付的双引号值已完成转义解码，
+  但两个 receiver 又对其跑了一遍 `unescape_double_quoted`：`a: "\\n"`
+  （字面的两个字符 `\` `n`）被静默压缩成换行符，且每序列化/重解析一轮
+  就少一个反斜杠（libFuzzer `yaml_roundtrip`：`!-# \\f"<TAB>0:!`）。
+  两处调用点现在都是直接透传，stream/AST 单元测试钉住单次解码契约。
 - **未闭合引号的锚点名吞掉了行内剩余内容** — 面对 `&"X-<CR>:`，
   `extract_anchors` 的 quoted 扫描因始终等不到闭合引号而一路收集到行尾，
   把裸 CR 和冒号收进锚点名；序列化器原样输出 `&X-\r:`，而 granit 在空白处
