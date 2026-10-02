@@ -46,20 +46,18 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           # Pinned to the nightly this harness is validated with (cargo fuzz
-          # build + ~20 min of fuzzing clean on it). The floating nightly broke
-          # cargo-fuzz's -Zbuild-std with a statically-linked-libc sanitizer
-          # cascade on both CI attempts (runs 36968323617 and 36971431928)
-          # while this pin builds; bump deliberately after a local
-          # `cargo fuzz build`.
-          # `cargo fuzz` builds Linux targets for musl (statically portable
-          # fuzzer binaries); dtolnay's minimal-profile toolchain ships only
-          # the host std, so cargo-fuzz's musl rebuild died on
-          # "can't find crate for core" (runs 36968323617…36974191871) until
-          # the std for musl was installed explicitly. rust-src likewise: the
-          # instrumented core/alloc build-std needs the sources. Local dev
-          # hides both gaps (full-profile rustup installs them by default).
+          # build + ~20 min of fuzzing clean on it); bump deliberately after a
+          # local `cargo fuzz build`.
+          # `cargo fuzz` defaults its Linux build target to musl for a
+          # statically portable fuzzer binary, but libFuzzer/ASAN is
+          # incompatible with musl's statically-linked libc ("sanitizer is
+          # incompatible with statically linked libc"). Installing the musl
+          # std (#223) only moved the failure from "can't find crate for core"
+          # to that linker error (run 36977536975) — the real fix is the host
+          # GNU target on the Fuzz step, where the sanitizer links a dynamic
+          # libc. rust-src stays: the instrumented build-std path wants the
+          # core/alloc sources.
           toolchain: nightly-2026-08-15
-          targets: x86_64-unknown-linux-musl
           components: rust-src
 
       - name: Install cargo-fuzz
@@ -82,7 +80,7 @@ jobs:
           cp fuzz/seeds/${{ matrix.target }}/*.seed fuzz/corpus/${{ matrix.target }}/ 2>/dev/null || true
 
       - name: Fuzz
-        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=600 -rss_limit_mb=3072
+        run: cargo fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=600 -rss_limit_mb=3072
 
       # A discovered crash is only actionable if the bytes survive the runner;
       # attach them to the failed job for the triage->seed->fix pipeline.
