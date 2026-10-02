@@ -1332,6 +1332,27 @@ mod tests {
         assert_eq!(once, to_yaml(&again), "first output: {once:?}");
     }
 
+    /// libFuzzer `yaml_roundtrip` (12 bytes `&&&&:<LF>#&&&:&`): the raw anchor
+    /// scanner took the `:` (followed by end-of-line, i.e. the value indicator)
+    /// as name material and re-harvested phantom anchors from the `#&&&:&`
+    /// comment, so the emitted `&&&&: v` re-parsed as anchor `&&&` plus an
+    /// indicator — drifting one character per serialize round. Pinned here at
+    /// the full parse -> to_yaml -> re-parse -> to_yaml loop the fuzz target
+    /// exercises, not just the `extract_anchors` unit.
+    #[test]
+    fn anchor_value_indicator_roundtrip_is_stable() {
+        let input = "&&&&:\n#&&&:&";
+        let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core).unwrap();
+        let once = to_yaml(&node);
+        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+            .unwrap_or_else(|e| panic!("fmt output failed to re-parse: {e}\n---\n{once}\n---"));
+        assert_eq!(
+            once,
+            to_yaml(&again),
+            "serialization not idempotent: {once:?}"
+        );
+    }
+
     /// Print a unified diff when two YAML strings differ, then panic.
     macro_rules! assert_yaml_eq {
         ($expected:expr, $actual:expr) => {{
