@@ -123,22 +123,6 @@ struct Serializer {
     width: usize,
 }
 
-/// Whether an anchor name cannot be emitted as a plain `&name` token and
-/// survive re-scan by `extract_anchors`. A name ending in `:` merges with the
-/// space the serializer always appends into a value indicator, so the trailing
-/// colon is dropped and the anchor name drifts one character per round-trip
-/// (libFuzzer `yaml_roundtrip`, `&"X-::::…:"). Embedded whitespace or a YAML
-/// flow indicator would likewise truncate the plain token. Such names are
-/// wrapped in double quotes (`&"name"`), which the scanner reads verbatim up to
-/// the closing quote. Names carrying their own `"` cannot be quoted and are
-/// left plain (the scanner never produced those).
-fn anchor_name_needs_quotes(name: &str) -> bool {
-    name.ends_with(':')
-        || name
-            .chars()
-            .any(|c| c.is_whitespace() || matches!(c, '{' | '}' | '[' | ']' | ','))
-}
-
 /// Whether a node can be serialized inline on the same line as a mapping
 /// key's colon (compact sequence item form): scalars, nulls, aliases, and
 /// flow-style containers all end with a newline of their own.
@@ -258,17 +242,13 @@ impl Serializer {
             return;
         }
         if let Some(anchor_name) = anchor {
+            // Emit the bare `&name ` token. Under the granit-aligned scanner
+            // (`scan_anchor_name` = maximal `is_anchor_char` run) any name the
+            // AST can hold re-scans to itself after the trailing space, so no
+            // quoting is needed — the old quoted-emit branch was compensating
+            // for the scanner's invented value-indicator-colon stripping.
             self.output.push('&');
-            if anchor_name_needs_quotes(anchor_name) {
-                // Emit the quoted form so the raw scanner reads the name up to
-                // the closing quote, preserving a trailing `:` / embedded space
-                // that a plain `&name` token would lose on re-scan.
-                self.output.push('"');
-                self.output.push_str(anchor_name);
-                self.output.push('"');
-            } else {
-                self.output.push_str(anchor_name);
-            }
+            self.output.push_str(anchor_name);
             self.output.push(' ');
         }
         if let Some(t) = tag {
