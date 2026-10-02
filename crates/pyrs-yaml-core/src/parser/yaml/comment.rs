@@ -150,11 +150,28 @@ fn scan_anchor_name(rest: &str) -> Option<String> {
 
     let mut anchor_name = String::new();
     if first == '"' {
-        for (_, c) in chars {
-            if c == '"' {
-                break;
+        if rest[1..].contains('"') {
+            // True quoted form (`&"name"`): the closing quote bounds the name,
+            // spaces included.
+            for (_, c) in chars {
+                if c == '"' {
+                    break;
+                }
+                anchor_name.push(c);
             }
-            anchor_name.push(c);
+        } else {
+            // Unterminated quote: granit never reads this as a quoted anchor,
+            // so collecting to end-of-line smuggled CRs and colons into names
+            // the serializer emitted verbatim — `&"X-<CR>:` yielded anchor
+            // `X-\r:`, which re-parsed to anchor `X-` and broke round-trip
+            // idempotence (libFuzzer `yaml_roundtrip`). Stop where granit's
+            // own unquoted anchor token would stop.
+            for (_, c) in chars {
+                if c == '"' || !is_valid_anchor_char(c) {
+                    break;
+                }
+                anchor_name.push(c);
+            }
         }
     } else if is_valid_anchor_char(first) {
         anchor_name.push(first);
@@ -212,6 +229,27 @@ mod tests {
         let anchors = extract_anchors(yaml);
         assert_eq!(anchors.len(), 1);
         assert_eq!(anchors[0].name, "quoted anchor");
+    }
+
+    #[test]
+    fn unterminated_quote_never_swallows_line_end() {
+        // libFuzzer `yaml_roundtrip` crash (6 bytes): the quoted scan ran to
+        // end of line without a closing quote, naming the anchor `X-\r:`;
+        // the verbatim `&X-\r:` emission then re-parsed as `X-` — the
+        // serialize/re-parse loop drifted. Same schema entry the fuzz target
+        // uses (`Schema::Core`), asserting output idempotence end to end.
+        let yaml = "&\"X-\r:";
+        let anchors = extract_anchors(yaml);
+        assert_eq!(anchors.len(), 1);
+        assert_eq!(anchors[0].name, "X-");
+        let node = crate::parser::parse(yaml, pyrs_schema::types::Schema::Core).unwrap();
+        let once = crate::serializer::to_yaml(&node);
+        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core).unwrap();
+        assert_eq!(
+            once,
+            crate::serializer::to_yaml(&again),
+            "first output: {once:?}"
+        );
     }
 
     #[test]
