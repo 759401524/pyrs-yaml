@@ -123,6 +123,22 @@ struct Serializer {
     width: usize,
 }
 
+/// Whether an anchor name cannot be emitted as a plain `&name` token and
+/// survive re-scan by `extract_anchors`. A name ending in `:` merges with the
+/// space the serializer always appends into a value indicator, so the trailing
+/// colon is dropped and the anchor name drifts one character per round-trip
+/// (libFuzzer `yaml_roundtrip`, `&"X-::::…:"). Embedded whitespace or a YAML
+/// flow indicator would likewise truncate the plain token. Such names are
+/// wrapped in double quotes (`&"name"`), which the scanner reads verbatim up to
+/// the closing quote. Names carrying their own `"` cannot be quoted and are
+/// left plain (the scanner never produced those).
+fn anchor_name_needs_quotes(name: &str) -> bool {
+    name.ends_with(':')
+        || name
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '{' | '}' | '[' | ']' | ','))
+}
+
 /// Whether a node can be serialized inline on the same line as a mapping
 /// key's colon (compact sequence item form): scalars, nulls, aliases, and
 /// flow-style containers all end with a newline of their own.
@@ -243,7 +259,16 @@ impl Serializer {
         }
         if let Some(anchor_name) = anchor {
             self.output.push('&');
-            self.output.push_str(anchor_name);
+            if anchor_name_needs_quotes(anchor_name) {
+                // Emit the quoted form so the raw scanner reads the name up to
+                // the closing quote, preserving a trailing `:` / embedded space
+                // that a plain `&name` token would lose on re-scan.
+                self.output.push('"');
+                self.output.push_str(anchor_name);
+                self.output.push('"');
+            } else {
+                self.output.push_str(anchor_name);
+            }
             self.output.push(' ');
         }
         if let Some(t) = tag {
@@ -1351,6 +1376,30 @@ mod tests {
             to_yaml(&again),
             "serialization not idempotent: {once:?}"
         );
+    }
+
+    /// libFuzzer `yaml_roundtrip` (42 bytes `&"X-::::…:<CR>ba`): an anchor name
+    /// ending in `:` was emitted as a plain `&name ` token, so the trailing
+    /// colon merged with the following space into a value indicator and each
+    /// serialize round dropped exactly one colon (drift). The serializer now
+    /// wraps unsafe names in quotes; the emitted form must re-parse and stay
+    /// byte-identical across rounds.
+    #[test]
+    fn anchor_name_with_trailing_colon_roundtrips() {
+        let input = format!("&\"X-{}{}ba", ":".repeat(35), "\r");
+        let node = crate::parser::parse(&input, pyrs_schema::types::Schema::Core).unwrap();
+        let once = to_yaml(&node);
+        let twice =
+            to_yaml(&crate::parser::parse(&once, pyrs_schema::types::Schema::Core).unwrap());
+        let thrice =
+            to_yaml(&crate::parser::parse(&twice, pyrs_schema::types::Schema::Core).unwrap());
+        assert_eq!(
+            once, twice,
+            "not idempotent (round1->2): {once:?} vs {twice:?}"
+        );
+        assert_eq!(twice, thrice, "not idempotent (round2->3): {twice:?}");
+        // And the anchor name is genuinely preserved, not silently emptied.
+        assert!(once.contains("X-"), "anchor lost: {once:?}");
     }
 
     /// Print a unified diff when two YAML strings differ, then panic.
