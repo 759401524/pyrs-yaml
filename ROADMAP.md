@@ -181,6 +181,12 @@ Deliberate hub-model limits in the TOML spoke, pinned by characterization tests 
 - **Table-header inline comment (`[sec] # note`).** The shared YAML engine does not capture a comment on a container's key line (verified independently: pure YAML `sec: # note` also drops it on parse), so the note is not re-emitted by `to_toml`. Standalone/leading comments above a header and trailing comments on a leaf `key = value` line *are* preserved. Root-fixing needs a change to the locked granit comment-capture model — high blast radius across all YAML comment output and the 99.75 % compliance guarantee — so it is explicitly declined rather than silently shipped.
 - **Binary integer source (`0b1010`).** Canonicalised to decimal on the round trip because YAML Core has no `0b` spelling (a faithful `0b` in YAML would re-resolve to a string, corrupting the value). Hex/octal source *is* preserved (YAML Core resolves them back to the same integer). Recorded in `toml/parser.rs` (`parse_prefixed_body_via_dispatch`) as a deliberate choice, not a defect.
 
+### Open fuzz findings (yaml_roundtrip target, 2026-10-02)
+
+Three of four crashes found by `fuzz/yaml_roundtrip` are fixed and pinned by regression tests (JSON comment char-boundary panic #213, unterminated-quote anchor names #215, double-decoded double-quoted scalars #216). One remains open:
+
+- **Anchor + empty-key + leading-comment restructure (`&&&&:<LF>#&&&:&`, 12 bytes, `crash-f8141ece…`).** Parse yields a *Scalar* (`~`) carrying an anchor and a leading comment; serializing it emits `# &&&:&<LF>&&&&: ~` — a *mapping*-shaped document (comment line + anchored empty key). Re-parsing that text lands on a different AST (the anchor name absorbs the `:`), so each serialize round drifts: `&&&&: ~` → `&&&:& ~`. The defect is the serializer emitting a structure at a different nesting level than the AST it walks (comment attached to a scalar root re-emitted as a standalone line before an anchored empty-key mapping); the fix needs the comment/anchor emission path for scalar roots to preserve the root's shape rather than reconstruct a container. Blast radius is narrow (root-level anchors with comments), which is why it survived corpus fuzzing until now. Reproduce: `cargo fuzz run yaml_roundtrip fuzz/artifacts/yaml_roundtrip/crash-f8141ece…`.
+
 ---
 
 ## Leaderboard & Performance Status (2026-09-30)
