@@ -1022,22 +1022,31 @@ impl Serializer {
                 r += 1;
             }
             let after = &rest[nl + r..];
+            let this_more_indented = line.starts_with([' ', '\t']);
             if !line.is_empty() {
                 self.write_indent(width);
                 self.output.push_str(line);
             }
-            // The leading run is the only one with no text line to terminate
-            // (empty segment, nothing written yet) - it costs exactly r
-            // newlines. Any run after a text line needs that line's break too:
-            // r + 1 for a normal continuation, but a more-indented next line
-            // keeps its own leading break, so r.
+            // granit's fold rule keys on `leading_blank`/`trailing_blank`: a
+            // more-indented line (starting with a blank) both keeps its own
+            // leading break un-folded AND sets `leading_blank`, so the break on
+            // the line AFTER it is likewise kept. The break we are about to
+            // emit sits between the line just written (`this_more_indented`, a
+            // more-indented line keeps the break after it) and the next content
+            // line (`next_more_indented`, whose leading break is kept). A run of
+            // r newlines therefore needs no blank padding (just r physical
+            // newlines) when either neighbour is more-indented; only a fold
+            // between two plain text lines costs the extra break (r + 1).
+            // Leading runs have no prior text line and trailing runs defer to
+            // `write_scalar_node`.
             let had_text = started || !line.is_empty();
             if !line.is_empty() {
                 started = true;
             }
+            let next_more_indented = after.starts_with([' ', '\t']);
             let newlines = if after.is_empty() {
                 r - 1
-            } else if !had_text || after.starts_with([' ', '\t']) {
+            } else if !had_text || this_more_indented || next_more_indented {
                 r
             } else {
                 r + 1
@@ -1572,6 +1581,39 @@ mod tests {
                     "folded run drifts for {value:?}: {once:?}"
                 );
             }
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-b7a2285e): a folded scalar whose value
+    /// has a MORE-INDENTED continuation line (leading tab/space) flanked by
+    /// plain text lines. granit's fold rule keys on `leading_blank`: a
+    /// more-indented line keeps the break *before* it and also suppresses the
+    /// fold of the break *after* it, so an r-newline run touching a
+    /// more-indented neighbour needs exactly r physical newlines — not r + 1.
+    /// The writer previously padded every run to r + 1, so each round-trip
+    /// gained a blank line (the ONCE/TWICE drift). Pin the crash input plus
+    /// synthesized normal↔more-indented shapes and assert full value fidelity
+    /// (re-parse preserves the scalar value), not just byte idempotency.
+    #[test]
+    fn folded_more_indented_continuation_roundtrip() {
+        // crash-b7a2285e exact input.
+        let crash = ">\n'\"\"\n\t<\t\t\t(\n(\t\t(\n([";
+        for input in [crash, ">\na\n\tb\n", ">\n \tq\n r\n"] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(once, to_yaml(&again), "crash input drift: {once:?}");
+            let scalar_value = |n: &CustomNode| match n {
+                CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
+                other => panic!("expected scalar, got {other:?}"),
+            };
+            assert_eq!(
+                scalar_value(&node),
+                scalar_value(&again),
+                "value not preserved for {input:?}: {once:?}"
+            );
         }
     }
 
