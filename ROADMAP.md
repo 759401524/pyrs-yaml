@@ -181,9 +181,21 @@ Deliberate hub-model limits in the TOML spoke, pinned by characterization tests 
 - **Table-header inline comment (`[sec] # note`).** The shared YAML engine does not capture a comment on a container's key line (verified independently: pure YAML `sec: # note` also drops it on parse), so the note is not re-emitted by `to_toml`. Standalone/leading comments above a header and trailing comments on a leaf `key = value` line *are* preserved. Root-fixing needs a change to the locked granit comment-capture model — high blast radius across all YAML comment output and the 99.75 % compliance guarantee — so it is explicitly declined rather than silently shipped.
 - **Binary integer source (`0b1010`).** Canonicalised to decimal on the round trip because YAML Core has no `0b` spelling (a faithful `0b` in YAML would re-resolve to a string, corrupting the value). Hex/octal source *is* preserved (YAML Core resolves them back to the same integer). Recorded in `toml/parser.rs` (`parse_prefixed_body_via_dispatch`) as a deliberate choice, not a defect.
 
-### Fuzz findings (yaml_roundtrip target, 2026-10-02)
+### Fuzz findings (weekly-scheduled `fuzz.yml`, engine surfaces, 2026-10-02)
 
-All four crashes found by `fuzz/yaml_roundtrip` are fixed and pinned by regression tests: the JSON comment char-boundary panic (#213), unterminated-quote anchor names (#215), double-decoded double-quoted scalars (#216), and the 12-byte `&&&&:<LF>#&&&:&` anchor restructure (#218 — the raw anchor scanner was taking `:`+EOL as name material, re-harvesting phantom anchors from comment text and overlapping `&` runs, and shifting every later id-name pairing; the emitted `&&&&: v` then re-parsed as anchor `&&&` plus a value indicator). Corpus fuzzing across all four targets runs clean.
+`fuzz.yml` now fuzzes all four engine surfaces on a weekly cron (plus `workflow_dispatch` and a `fuzz/**` path trigger), uploading minimized crash artifacts on failure so the finding pipeline is closed: crash -> regression test -> seed -> fix. Seven crashes have been surfaced and fixed, each pinned by a regression test:
+
+- The JSON comment char-boundary panic (#213).
+- Unterminated-quote anchor names (#215).
+- Double-decoded double-quoted scalars (#216).
+- The 12-byte `&&&&:<LF>#&&&:&` anchor restructure (#218 — the raw anchor scanner took `:`+EOL as name material, re-harvested phantom anchors from comment text and overlapping `&` runs, and shifted every later id-name pairing; the emitted `&&&&: v` then re-parsed as anchor `&&&` plus a value indicator). The full parse -> to_yaml -> re-parse loop is now pinned at pipeline level (#224).
+- The nested self-referential merge stack-overflow (#226 — `resolve_mapping_merges` re-walked freshly prepended anchor clones with the path cycle-guard already popped, so a `&b` body re-using `*b` expanded a fresh clone every round and the descent overflowed the native stack; the tail walk now recurses only into the mapping's own children, plus a `MAX_MERGE_DEPTH` budget).
+- The trailing-colon anchor-name emit drift (#227 — `write_anchor_tag` emitted `&name` bare, so a name ending in `:` merged with the appended space into a value indicator and lost one character per round; unsafe names are now emitted as quoted `&"name"` anchors).
+- The quoted anchor name swallowing a line break (#228 — `scan_anchor_name`'s quoted branch read the name across a carriage return to a closing quote on a later line, producing `X-\r:&`; the growth per round was only caught at pipeline level. granit ends an anchor token at CR/LF, so a closing quote past a line break no longer qualifies).
+
+Four of the seven are the same subsystem: the raw anchor scanner's name grammar drifting from granit's tokenizer. A durable fix would align `scan_anchor_name` with granit's anchor grammar (or consume granit's own anchor names) rather than patch per shape, but that is an architecture change to the locked comment/anchor pipeline (AGENTS.md: ask first) and is deliberately deferred; the schedule keeps surfacing any residual drift before it ships.
+
+The scheduled loop is proven end-to-end: each `workflow_dispatch`/cron run fuzzes the four surfaces and, on a crash, uploads the minimized artifact for triage (findings #226/#227 were surfaced and fixed this way). The engine is never declared "clean" — the point of the schedule is that it keeps surfacing new edge cases to pin, one root cause per PR.
 
 ---
 
