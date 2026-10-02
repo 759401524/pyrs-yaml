@@ -674,6 +674,7 @@ impl Serializer {
             // re-parse rejected.
             ScalarStyle::SingleQuoted
                 if value.contains('\n')
+                    || value.contains('\u{feff}')
                     || value.chars().any(char::is_control)
                     || value.chars().any(is_yaml_noncharacter) =>
             {
@@ -1273,9 +1274,12 @@ pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
             '\x0C' => out.push_str("\\f"),
             '\x1B' => out.push_str("\\e"),
             '/' => out.push_str("\\/"),
-            c if c.is_control() || is_yaml_noncharacter(c) => {
-                // `\u` escapes are 4 hex digits (BMP only); characters above
-                // U+FFFF must use the 8-digit `\U` form.
+            c if c.is_control() || c == '\u{feff}' || is_yaml_noncharacter(c) => {
+                // U+FEFF (BOM / ZWNBSP) is category Cf, so `is_control` misses
+                // it, yet granit rejects a raw BOM inside a document ("a BOM must
+                // not appear inside a document"). Escaping it as \uFEFF keeps the
+                // value while keeping the byte off the stream. `\u` escapes are 4
+                // hex digits (BMP only); chars above U+FFFF use the 8-digit `\U`.
                 let u = c as u32;
                 if u > 0xFFFF {
                     out.push_str(&format!("\\U{:08x}", u));
@@ -1387,6 +1391,7 @@ pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width
     if needs_double_quoted(value) {
         if value.contains('\\')
             && !value.contains('\n')
+            && !value.contains('\u{feff}')
             && !value.chars().any(char::is_control)
             && !value.chars().any(is_yaml_noncharacter)
         {
@@ -1696,6 +1701,44 @@ mod tests {
             let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
                 .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
             assert_eq!(once, to_yaml(&again), "drift for {input:?}: {once:?}");
+        }
+    }
+
+    /// A `U+FEFF` (BOM / ZWNBSP) is category Cf, so the double-quoted escaper's
+    /// `is_control` guard missed it and emitted it raw — but granit rejects a
+    /// raw BOM appearing inside a document ("a BOM must not appear inside a
+    /// document"), so any scalar carrying a BOM round-tripped to unparseable
+    /// text (the double-quoted-scalar half of libFuzzer `yaml_roundtrip`
+    /// crash-f4c74685). The escaper now emits it as `\uFEFF`; re-parse restores
+    /// the exact value with no raw BOM byte in the stream.
+    #[test]
+    fn bom_in_scalar_is_escaped_and_round_trips() {
+        for (value, style) in [
+            ("a\u{feff}b", ScalarStyle::DoubleQuoted),
+            ("\u{feff}lead", ScalarStyle::Plain),
+            ("mid\u{feff}", ScalarStyle::SingleQuoted),
+        ] {
+            let node = CustomNode::Scalar {
+                value: Arc::from(value),
+                style,
+                chomping: Chomping::Clip,
+                block_indent: None,
+                meta: Default::default(),
+            };
+            let once = to_yaml(&node);
+            assert!(
+                !once.contains('\u{feff}'),
+                "raw BOM leaked into output: {once:?}"
+            );
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            match &again {
+                CustomNode::Scalar { value: v, .. } => {
+                    assert_eq!(v.as_ref(), value, "value changed: {once:?}")
+                }
+                _ => panic!("expected scalar, got {again:?}"),
+            }
+            assert_eq!(once, to_yaml(&again), "not idempotent: {once:?}");
         }
     }
 
