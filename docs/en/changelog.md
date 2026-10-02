@@ -79,6 +79,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A `&` embedded in a plain scalar is no longer read as an anchor** —
+  `extract_anchors` harvested every `&` outside quotes, including one inside a
+  plain scalar (the `&` of a bare key like `sbb&e`). granit starts an anchor
+  only where a node can begin, so that phantom `&e` name was pushed onto the
+  ordered `anchor_names` list and desynced the index-based id→name pairing in
+  `register_anchor`: later real anchors got mislabeled (`&b` re-emitted as
+  `&e:`) and the round-trip drifted (libFuzzer `yaml_roundtrip` crash-83cc68c6).
+  Anchor extraction now gates the `&` on the same node-boundary test the quote
+  state machine uses (line start or after `\t:,[]{}-`), so `sbb&e` stays a
+  plain key. Anchor-free and correctly-anchored documents scan identically.
 - **Duplicate keys are rejected by value, not by full node** — the AST
   `IndexMap` keys by the whole `CustomNode`, so two scalar keys with the same
   text but a different trailing comment / style / anchor (`key # a` vs
