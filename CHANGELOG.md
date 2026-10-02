@@ -71,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Anchor names ending in `:` were emitted in an unstable form** —
+  `write_anchor_tag` wrote every anchor as a bare `&name` token. When the
+  parsed anchor name ends in `:` (reached through an unterminated quoted
+  anchor like `&"X-::…:`), the trailing `:` merged with the emitted space into
+  a value indicator and was dropped on re-scan, so each serialize round lost
+  one character — a 42-byte libFuzzer `yaml_roundtrip` find where
+  `fmt(fmt(x)) != fmt(x)`. Unsafe names (trailing `:`, embedded whitespace or
+  flow indicators) are now emitted as quoted `&"name"` anchors, which the raw
+  scanner reads up to the closing quote, preserving the exact bytes across
+  rounds.
 - **Nested self-referential merge anchors overflowed the native stack** — a
   mapping anchored with `&b` whose body re-uses `*b` (directly or through a
   second `&b`) fed `resolve_mapping_merges`' tail recursion with the path

@@ -23,6 +23,7 @@ benchmark-results.json
 
 # cargo-fuzz scratch: corpora and crashes regenerate per session; durable
 # findings are pinned as regression tests, never as tracked byte blobs
+fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
 fuzz/sessions/
