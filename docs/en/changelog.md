@@ -79,6 +79,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Literal block scalars force an indent when the first line is blank** —
+  the AST stores a `|`/`|N` body de-indented and drops the source's explicit
+  indicator, so a value whose first content line starts with a blank but whose
+  later lines are shallower (` 1|l\n:t\n`) re-emitted with no indicator let
+  granit take the deeper first line as the block indent and read the shallower
+  line as a dedent — the output no longer re-parsed (libFuzzer `yaml_roundtrip`
+  crash-e432d4b8). The literal writer now mirrors the folded writer and forces
+  an indentation indicator in exactly that case, so auto-detection is skipped
+  and the leading blanks stay content. Documents without a blank-first-line
+  body serialize byte-identically as before.
 - **Folded writer kept the break *after* a more-indented line** — granit's
   fold rule tracks a `leading_blank` flag that a more-indented line (a
   continuation starting with a space or tab) sets so that *both* the break
