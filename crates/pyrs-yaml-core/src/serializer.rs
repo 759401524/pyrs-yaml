@@ -969,7 +969,6 @@ impl Serializer {
         self.write_base_indent(value, block_base, block.indent);
     }
 
-    /// Write a folded block scalar (`>`) with its block header.
     fn write_folded_scalar(
         &mut self,
         value: &str,
@@ -979,7 +978,74 @@ impl Serializer {
         let chomping = effective_chomping(value, block.chomping);
         self.write_block_header('>', block, &chomping);
         self.output.push('\n');
-        self.write_base_indent(value, block_base, block.indent);
+        let width = self.block_width(block_base, block.indent);
+        // Fold-aware emission. granit's folded read gives: k blank lines
+        // between text lines re-read as exactly k '\n' (and no blanks re-read
+        // the break as a space), so a value run of r '\n' between texts must
+        // occupy r blank lines - r + 1 physical newlines. The naive
+        // split-into-lines writer emitted r - 1 blanks, so every folded run
+        // shrank one newline per serialize round (libFuzzer `yaml_roundtrip`
+        // crash-490c4beb: 4 -> 3 -> 2 -> ...). The final line's terminator is
+        // left to `write_scalar_node`'s own newline.
+        let mut rest = value;
+        let mut started = false;
+        loop {
+            let nl = match rest.find('\n') {
+                Some(k) => k,
+                None => {
+                    if !rest.is_empty() {
+                        self.write_indent(width);
+                        self.output.push_str(rest);
+                    }
+                    break;
+                }
+            };
+            let line = &rest[..nl];
+            let mut r = 1usize;
+            while rest[nl + r..].starts_with('\n') {
+                r += 1;
+            }
+            let after = &rest[nl + r..];
+            if !line.is_empty() {
+                self.write_indent(width);
+                self.output.push_str(line);
+            }
+            // Read-map (measured): k blank lines after the header re-read as
+            // k leading newlines, and k blanks between text lines re-read as k
+            // newlines too. A leading empty segment has no text line to end,
+            // so it costs exactly r newlines; any run after text also needs the
+            // break ending that line: r + 1. (Runs are consumed whole, so an
+            // empty segment can only ever be the leading one.)
+            let newlines = if after.is_empty() {
+                r - 1
+            } else if line.is_empty() && !started {
+                r
+            } else {
+                r + 1
+            };
+            for _ in 0..newlines {
+                self.output.push('\n');
+            }
+            if !line.is_empty() {
+                started = true;
+            }
+            if after.is_empty() {
+                break;
+            }
+            rest = after;
+        }
+    }
+
+    /// Content column of a block body: the explicit indicator wins, else one
+    /// indent step below the header line - the same rule `write_base_indent`
+    /// uses for literal blocks (parsed block content is stored de-indented,
+    /// so sniffing the value for leading spaces would scan the whole body for
+    /// nothing). Keep the two writers in lockstep.
+    fn block_width(&self, block_base: usize, explicit_indent: Option<u8>) -> usize {
+        match explicit_indent.filter(|n| (1..=9).contains(n)) {
+            Some(n) => block_base + n as usize,
+            None => block_base + self.indent_size,
+        }
     }
 
     /// Write each line of the block scalar content with base indentation appended.
@@ -1450,6 +1516,44 @@ mod tests {
                 once, twice,
                 "not idempotent for {input:?}: {once:?} vs {twice:?}"
             );
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` (14 bytes, crash-490c4beb): a folded scalar
+    /// whose value carries a run of newlines between text lines. granit's
+    /// folded read turns k blank lines into exactly k newlines, but the old
+    /// line-splitting writer emitted one blank too few, so every run shrank a
+    /// newline per round (4 -> 3 -> 2 -> ...). The fold-aware writer now closes
+    /// every run length by construction; pin the crash input plus runs 1..=5.
+    #[test]
+    fn folded_newline_runs_roundtrip() {
+        let input = ">\r,2C\u{f6bf}\r\r\r\r\r,";
+        let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core).unwrap();
+        let once = to_yaml(&node);
+        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+            .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+        assert_eq!(once, to_yaml(&again), "crash input drift: {once:?}");
+        for m in 1..=5usize {
+            for value in [
+                format!("a{}b\n", "\n".repeat(m)),
+                format!("{}b\n", "\n".repeat(m)),
+            ] {
+                let node = CustomNode::Scalar {
+                    value: Arc::from(value.as_str()),
+                    style: ScalarStyle::Folded,
+                    chomping: Chomping::Clip,
+                    block_indent: None,
+                    meta: Default::default(),
+                };
+                let once = to_yaml(&node);
+                let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                    .unwrap_or_else(|e| panic!("{value:?}: must re-parse: {e}\n{once:?}"));
+                assert_eq!(
+                    once,
+                    to_yaml(&again),
+                    "folded run drifts for {value:?}: {once:?}"
+                );
+            }
         }
     }
 

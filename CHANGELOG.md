@@ -71,6 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Folded scalars re-read their own newlines** — granit's folded read
+  re-reads k blank lines (leading or between text lines) as exactly k
+  newlines, but the line-splitting writer emitted one blank too few per run,
+  so every folded value with multi-newline runs shrank a newline each
+  serialize round (libFuzzer `yaml_roundtrip` crash-490c4beb: 4 → 3 → 2 → …;
+  crash-6288e5be drifted the leading blanks the same way). The writer is now
+  fold-aware — a run of r newlines occupies r blank lines, with the header
+  break counted for leading runs — closing every run length by construction
+  (verified stable for inner and leading runs 1 through 5).
 - **Block scalar emission is now closed under re-parse** — two granit-read
   shapes the serializer never matched: a `Clip` block scalar whose value
   carries trailing blank lines round-trips only under the `Keep` indicator
