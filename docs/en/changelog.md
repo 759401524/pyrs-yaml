@@ -79,6 +79,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Nested self-referential merge anchors overflowed the native stack** — a
+  mapping anchored with `&b` whose body re-uses `*b` (directly or through a
+  second `&b`) fed `resolve_mapping_merges`' tail recursion with the path
+  cycle-guard already popped, so every walk re-expanded a fresh clone of the
+  anchor and the descent grew without bound (libFuzzer `parse_yaml`, 58-byte
+  `bas: &b … <<: *b …`). The tail walk now recurses only into the mapping's
+  *own* children — merged-in clones are resolved under the guard in the
+  expansion loop — and a `MAX_MERGE_DEPTH` budget turns any residual runaway
+  into a graceful stop, matching the parser's container-depth and serializer
+  `max_depth` guards.
 - **The raw anchor scanner invented anchors the emitted text cannot keep** —
   `extract_anchors` accepted `:` followed by space/end-of-line into anchor
   names (`&&&&:` → `&&&:`), harvested anchors from comment text, and rescanned
