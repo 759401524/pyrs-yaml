@@ -118,8 +118,10 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
             {
                 break;
             }
-            // 锚点提取：引号外 `&` 视为锚点
-            if !in_single_quote && !in_double_quote && ch == '&' {
+            // 锚点提取：节点起始处（行首 / 空白 / `:,[]{}-` 之后）的 `&` 才是锚点。
+            // plain 标量内部的 `&`（如裸键 `sbb&e`）是字面内容，granit 不视作锚点；
+            // 误收会往有序 anchor_names 塞入幻名、错位 id->name 配对（crash-83cc68c6）。
+            if !in_single_quote && !in_double_quote && ch == '&' && at_node_start(line, col_idx) {
                 let rest = &line[col_idx + 1..];
                 if let Some(anchor_name) = scan_anchor_name(rest) {
                     token_end = col_idx + 1 + anchor_name.len();
@@ -136,7 +138,7 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
                 &mut in_double_quote,
                 &mut escaped,
                 ch,
-                quote_can_open(line, col_idx),
+                at_node_start(line, col_idx),
             );
         }
     }
@@ -144,18 +146,19 @@ pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
     anchors
 }
 
-/// True when a quote character at `col_idx` sits where a quoted scalar may
-/// *begin* — line start or after a structural/space token (` \t:,[]{}-`). A
-/// quote inside a plain scalar (the `'` of a bare key like `bas'e` or `a'`)
-/// is literal content and must not open a quoted region; doing so desynced
-/// the scan and swallowed every `&anchor` that followed (libFuzzer
-/// `yaml_roundtrip` crash-68da2420). Closing a quote is always allowed and is
-/// handled separately in `is_string_char`.
-fn quote_can_open(line: &str, col_idx: usize) -> bool {
-    // O(1): only the single byte immediately before the quote matters. The
+/// True when the byte at `col_idx` sits where a *node* may begin — line start
+/// or after a structural/space token (` \t:,[]{}-`). Both a quoted scalar and
+/// an anchor (`&`) only start at such a boundary: a `&` or `'`/`"` embedded in a
+/// plain scalar (the `&` of a bare key like `sbb&e`, the `'` of `bas'e`) is
+/// literal content, not a token start. Treating an embedded `&` as an anchor
+/// added phantom names to the ordered `anchor_names` list and desynced the
+/// id->name pairing in `register_anchor`, so real anchors got mislabeled and
+/// drifted each round (libFuzzer `yaml_roundtrip` crash-83cc68c6; the quote case
+/// is crash-68da2420). Closing a quote is always allowed and handled separately.
+fn at_node_start(line: &str, col_idx: usize) -> bool {
+    // O(1): only the single byte immediately before the char matters. The
     // boundary set is pure ASCII, and a UTF-8 continuation byte can never equal
-    // one, so a quote following a multibyte char is (correctly) treated as
-    // mid-plain-scalar rather than an opening quote.
+    // one, so a char following a multibyte char is (correctly) mid-plain-scalar.
     match line.as_bytes().get(col_idx.wrapping_sub(1)) {
         None => true, // start of line
         Some(&b) => matches!(b, b' ' | b'\t' | b':' | b',' | b'[' | b'{' | b'-'),
@@ -266,6 +269,39 @@ mod tests {
         for input in [
             "bas'e: &b\n hhhbase: &b\n ild:\n  <<: *b\n  y___: 2  # inline\n",
             "a': &x\n  b: 1\nc: &x\n  d: 2\n",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "drift for {input:?}: {once:?}"
+            );
+        }
+    }
+
+    /// A `&` embedded in a *plain* scalar (a bare key like `sbb&e`) is literal
+    /// content, not an anchor start. The old scan harvested it, adding a phantom
+    /// name to the ordered `anchor_names` list; `register_anchor` pairs names to
+    /// nodes by index, so the phantom shifted every later id->name binding and
+    /// real anchors got mislabeled (`&b` emitted as `&e:`), drifting each round
+    /// (libFuzzer `yaml_roundtrip` crash-83cc68c6). Anchor start is now gated on
+    /// a node boundary, mirroring the quote case.
+    #[test]
+    fn ampersand_in_plain_key_is_not_an_anchor() {
+        // `&` mid-key: no anchor harvested; the real `&b` after `: ` is
+        let anchors = extract_anchors("sbb&e: &b\n");
+        assert_eq!(
+            anchors.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
+            vec!["b"]
+        );
+        // end-to-end idempotence on the crash input + a minimal pair
+        for input in [
+            "base]]]]]]]]]]]]]]]]]]] 0]] ] ]]]:  a\nsbb&e: &b\n  be: &b\n   ",
+            "sbb&e: &b\n  be: &b\n",
         ] {
             let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
                 .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
