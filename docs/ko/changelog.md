@@ -67,6 +67,13 @@ status: new
 
 #### 수정
 
+- **매핑 키가 tag/anchor를 보존하고 빈 키는 빈 그대로 유지** —
+  `write_scalar_for_key`가 매핑 키의 `&anchor`/`!tag` 접두어를 잃었다
+  (granit은 `!g a: b`를 읽을 때 태그를 KEY에 묶으므로, 왕복에서 키 메타데이터가
+  몰래 삭제됐다). 빈 plain 키를 맨 토큰으로 출력해 granit이 이를 null `~`로 다시
+  읽었다. 이제 키의 anchor/tag 접두어를 출력하고 빈 plain 키를 `""`로 감싼다.
+  libFuzzer `yaml_roundtrip` crash-86a9ae7b(`!g` 키)와 crash-2e4f441d(`: ~`)를
+  닫고, 과거 열한 개 yaml_roundtrip 크래시가 모두 ASAN에서 클린 재상연된다.
 - **접힌 스칼라가 자기 개행을 다시 읽도록 수정** — granit 접힌 읽기는 선행이든
   텍스트 줄 사이든 빈 줄 k개를 정확히 k개 개행으로 읽는데, 줄 분할 작성자는
   묶음마다 빈 줄을 하나 덜 찍어 접힌 값은 왕복마다 개행이 하나씩 줄었다

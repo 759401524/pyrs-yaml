@@ -62,6 +62,12 @@ status: new
 
 #### 修复
 
+- **映射键保留 tag/anchor，空键保持为空** — `write_scalar_for_key` 丢失了映射键
+  上的 `&anchor`/`!tag` 前缀（granit 读 `!g a: b` 时把 tag 绑定在键上，往返于是
+  悄悄删掉了键级元数据），并把空 plain 键写成裸 token，granit 会将其读回为 null
+  `~`。如今 writer 会发出键的 anchor/tag 前缀，并把空 plain 键包成 `""`。关闭
+  libFuzzer `yaml_roundtrip` crash-86a9ae7b（`!g` 键）与 crash-2e4f441d（`: ~`）；
+  此前十一个 yaml_roundtrip 崩溃 artifact 如今在 ASAN 下全部干净回放。
 - **折叠标量如今能读回自身换行** — granit 的 folded 读取无论行首还是文本行之间，
   都把 k 个空行读回为恰好 k 个换行；而按行切分的写入器每个连段少写一个空行，
   折叠值因此每轮少一个换行（libFuzzer `yaml_roundtrip` crash-490c4beb：

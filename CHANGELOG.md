@@ -71,6 +71,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Mapping keys keep their tag/anchor and empty keys stay empty** —
+  `write_scalar_for_key` dropped a mapping key's `&anchor`/`!tag` prefix
+  (granit binds the tag to the KEY when it reads `!g a: b`, so the round trip
+  silently deleted key metadata) and emitted an empty plain key as a bare
+  token, which granit re-reads as the null `~`. The writer now emits the key's
+  anchor/tag prefix and wraps an empty plain key in `""`. Closes libFuzzer
+  `yaml_roundtrip` crash-86a9ae7b (`!g` key) and crash-2e4f441d (`: ~`); all
+  eleven historical yaml_roundtrip crash artifacts now replay clean under ASAN.
 - **Folded scalars re-read their own newlines** — granit's folded read
   re-reads k blank lines (leading or between text lines) as exactly k
   newlines, but the line-splitting writer emitted one blank too few per run,

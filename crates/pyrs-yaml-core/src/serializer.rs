@@ -861,16 +861,26 @@ impl Serializer {
     }
 
     /// Write a scalar formatted as a mapping key.
+    ///
+    /// A key carries the same anchor/tag metadata as a value: granit reads
+    /// `!g a: b` back with the tag on the KEY, so the writer must emit the
+    /// `&anchor`/`!tag` prefix here too (dropping it made tagged keys drift).
+    /// An empty plain key is unrepresentable in plain form - granit reads the
+    /// bare `token:` empty key back as `~` (null), so `fmt` of an empty key is
+    /// wrapped in `""` to stay a stable empty string across rounds.
     fn write_scalar_for_key(&mut self, node: &CustomNode, flow: bool) {
         match node {
             CustomNode::Scalar {
                 value,
                 style: ScalarStyle::Plain,
+                meta,
                 ..
             } => {
-                if flow && flow_plain_unsafe(value) {
+                self.write_anchor_tag(&meta.anchor, &meta.tag);
+                if value.is_empty() || (flow && flow_plain_unsafe(value)) {
                     // `,`/`[`,`]`,`{`,`}` end a plain token inside a flow
-                    // collection; quoting is the only lossless escape.
+                    // collection; quoting is the only lossless escape, and an
+                    // empty plain token has no stable plain form at all.
                     self.write_double_quoted_scalar(value);
                 } else if is_short_alphanumeric(value) {
                     self.output.push_str(value);
@@ -883,8 +893,10 @@ impl Serializer {
                 style,
                 chomping,
                 block_indent,
+                meta,
                 ..
             } => {
+                self.write_anchor_tag(&meta.anchor, &meta.tag);
                 // A key line cannot host a block scalar header either: the
                 // body would collide with the `:` and the mapping structure.
                 // Quote it, same normalization as flow values.
@@ -1572,6 +1584,27 @@ mod tests {
                     "folded run drifts for {value:?}: {once:?}"
                 );
             }
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-86a9ae7b / crash-2e4f441d): a mapping
+    /// key carries an anchor/tag that the writer must not drop, and an empty
+    /// plain key round-trips through granit's `~` normalisation. Both close now
+    /// that `write_scalar_for_key` emits the key prefix and quotes an empty
+    /// plain key; assert every form re-serialises byte-identically.
+    #[test]
+    fn key_metadata_and_empty_key_roundtrip() {
+        for input in ["!g a: b", "&x a: b", "!g : v", ": ~", "\"\": v", "a: !g b"] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?}: output must re-parse: {e}\n{once:?}"));
+            let twice = to_yaml(&again);
+            assert_eq!(
+                once, twice,
+                "key drift for {input:?}: {once:?} vs {twice:?}"
+            );
         }
     }
 
