@@ -71,6 +71,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Block-header detection is anchored to the scalar's byte span** — the re-derivation
+  (#250) scanned upward from the content line by the parser's line number and took the
+  first `|`/`>`, so a `|` inside a key (`"k:yam  |1": |` or the plain `k:yam  |1: |2`) or
+  a content-line sigil was misread as the header, parsing a bogus indentation indicator
+  and drifting `|` -> `|1` across rounds (libFuzzer `yaml_roundtrip` crash-cad17b2b,
+  extending crash-bdf3f15f). Detection now anchors to the scalar's own source byte span,
+  reads only the physical line above its content, and takes the first sigil whose tail
+  satisfies the block-header grammar (at most one indentation digit and one chomping sign,
+  then only spaces or a `#` comment to end-of-line). Correct by construction for every
+  shape, immune to granit's `\r` line shifts (it treats only `\n` as a break), and it
+  removes the quadratic upward re-scan from the block-scalar hot path. Well-formed
+  `key: |`/`key: |2`/`key: |-2 # c` headers are unaffected.
 - **Width-folding no longer corrupts a long plain scalar's spacing** — a plain
   scalar longer than the wrap `width` is folded at spaces, and a folded line break
   re-parses to a single space. Folding beside a run of 2+ spaces (or a tab) left
