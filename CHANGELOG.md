@@ -71,6 +71,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Width-folding no longer corrupts a long plain scalar's spacing** — a plain
+  scalar longer than the wrap `width` is folded at spaces, and a folded line break
+  re-parses to a single space. Folding beside a run of 2+ spaces (or a tab) left
+  trailing spaces that re-read to a different space count, so the value drifted
+  across rounds (libFuzzer `yaml_roundtrip` crash-9ee754bf: `…999  y|` folded to
+  `…999 \n y|` then `…999\n y|`). `write_plain_scalar` now emits a value that
+  contains a multi-space run or a tab unwrapped (one long, lossless line);
+  single-space values still fold and stay stable, and the value is always exact.
 - **A block scalar's indentation indicator is detected above its content** —
   `detect_block_header` scanned upward from the block's first content line but
   started *on* it, so a content line containing `|`/`>` could be parsed as the
