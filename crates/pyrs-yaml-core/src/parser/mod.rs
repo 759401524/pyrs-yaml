@@ -16,8 +16,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Arc;
 use yaml::{
-    BlockHeader, RawAnchor, compute_line_offsets, detect_block_header, extract_anchors,
-    resolve_merge_keys,
+    BlockHeader, anchor_name_before, compute_line_offsets, detect_block_header, resolve_merge_keys,
 };
 
 /// Return true if a mapping key is a null/empty key (`~`, empty, or null).
@@ -89,8 +88,7 @@ fn load_ast<'a>(
     allow_duplicate_keys: bool,
     collect_documents: bool,
 ) -> Result<AstReceiver<'a>, ParseError> {
-    let raw_anchors = extract_anchors(yaml);
-    let mut receiver = AstReceiver::new(yaml, raw_anchors, max_depth, allow_duplicate_keys);
+    let mut receiver = AstReceiver::new(yaml, max_depth, allow_duplicate_keys);
     receiver.collect_documents = collect_documents;
     let mut parser = SaphyrParser::new_from_str(yaml);
     parser
@@ -377,7 +375,7 @@ pub fn check_node_layout(
 
 /// Build a char-index → byte-offset table. `offsets[char_idx]` is the byte
 /// offset of the `char_idx`-th char. saphyr `Marker::index()` is a char index.
-fn char_to_byte_offsets(text: &str) -> Vec<usize> {
+pub(crate) fn char_to_byte_offsets(text: &str) -> Vec<usize> {
     let mut out = Vec::with_capacity(text.chars().count() + 1);
     out.push(0);
     for (i, c) in text.char_indices() {
@@ -392,10 +390,6 @@ struct AstReceiver<'a> {
     yaml_text: &'a str,
     /// Pre-computed byte offsets for each line start (O(1) line access)
     char_offsets: Option<Vec<usize>>,
-    /// Anchor names extracted from raw text (indexed by anchor_id)
-    anchor_names: Vec<String>,
-    /// Current index into anchor_names
-    anchor_name_idx: usize,
     /// Standalone/inline comment slot per in-progress container, parallel to
     /// `stack`. A single shared slot was clobbered by nested container starts
     /// (a block mapping's header comment vanished when its first value was
@@ -488,12 +482,7 @@ fn container_guard(state: &ParseState) -> Option<(usize, usize)> {
 }
 
 impl<'a> AstReceiver<'a> {
-    fn new(
-        yaml_text: &'a str,
-        raw_anchors: Vec<RawAnchor>,
-        max_depth: usize,
-        allow_duplicate_keys: bool,
-    ) -> Self {
+    fn new(yaml_text: &'a str, max_depth: usize, allow_duplicate_keys: bool) -> Self {
         let is_ascii = yaml_text.is_ascii();
         Self {
             yaml_text,
@@ -503,8 +492,6 @@ impl<'a> AstReceiver<'a> {
             collect_documents: true,
             documents: Vec::new(),
             anchors: std::collections::HashMap::new(),
-            anchor_names: raw_anchors.iter().map(|a| a.name.clone()).collect(),
-            anchor_name_idx: 0,
             comment_stack: Vec::new(),
             pending_standalone_comment: None,
             max_depth,
@@ -816,6 +803,7 @@ impl<'a> AstReceiver<'a> {
 
         let standalone = self.pending_standalone_comment.take();
 
+        let range_start = range.start;
         let mut node = self.create_scalar(value, style, line, range);
 
         // PR #117b: standalone notes now ride onto the dedicated
@@ -831,7 +819,7 @@ impl<'a> AstReceiver<'a> {
             decor.leading_comment = Some(comment);
         }
 
-        if let Some(name) = self.register_anchor(anchor_id)
+        if let Some(name) = self.register_anchor(anchor_id, range_start)
             && let CustomNode::Scalar { meta: m, .. } = &mut node
         {
             m.anchor = Some(name);
@@ -846,18 +834,21 @@ impl<'a> AstReceiver<'a> {
         self.push_node(node);
     }
 
-    /// Consume the next raw anchor name for a granit numeric `anchor_id`,
-    /// recording the mapping for later alias resolution. `None` when this
-    /// node carries no anchor or the name list is exhausted.
-    fn register_anchor(&mut self, anchor_id: usize) -> Option<String> {
-        if anchor_id != 0 && self.anchor_name_idx < self.anchor_names.len() {
-            let name = self.anchor_names[self.anchor_name_idx].clone();
-            self.anchor_name_idx += 1;
-            self.anchors.insert(anchor_id, name.clone());
-            Some(name)
-        } else {
-            None
+    /// Recover the `&name` granit attached to an anchored node by reading it
+    /// back at the node's own source location (`byte_start` = byte offset of the
+    /// event span start). granit only surfaces the numeric `anchor_id`, not the
+    /// name text, and `anchor_id != 0` is its authoritative "this node is
+    /// anchored" decision — so the name is resolved per node, position-isolated,
+    /// instead of consumed from a whole-text pre-scan paired by a counter. Records
+    /// the id->name mapping for later alias resolution; `None` when the node
+    /// carries no anchor.
+    fn register_anchor(&mut self, anchor_id: usize, byte_start: usize) -> Option<String> {
+        if anchor_id == 0 {
+            return None;
         }
+        let name = anchor_name_before(self.yaml_text, byte_start)?;
+        self.anchors.insert(anchor_id, name.clone());
+        Some(name)
     }
 
     /// Shared prologue of `MappingStart`/`SequenceStart`: depth guard, flow
@@ -879,7 +870,7 @@ impl<'a> AstReceiver<'a> {
 
         let standalone = self.pending_standalone_comment.take();
 
-        self.register_anchor(anchor_id);
+        self.register_anchor(anchor_id, start_byte);
 
         let tag_obj = tag.map(|t| convert_tag(&t));
 

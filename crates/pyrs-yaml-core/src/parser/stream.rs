@@ -1,10 +1,9 @@
 use crate::ast::{Comment, ScalarStyle, Tag};
-use crate::parser::yaml::extract_anchors;
+use crate::parser::yaml::anchor_name_before;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Line and column information for a YAML stream event.
@@ -82,12 +81,12 @@ pub enum StreamEventType {
 /// Pending standalone comments are emitted as `StreamEventType::Comment`
 /// events before the next structural event that carries anchor/tag/alias.
 pub struct StreamReceiver<'a> {
-    /// Phantom lifetime to satisfy 'a (no longer needs yaml_text reference)
-    _marker: PhantomData<&'a str>,
-    /// Anchor names extracted from raw text (indexed by anchor_id)
-    anchor_names: Vec<String>,
-    /// Current index into anchor_names
-    anchor_name_idx: usize,
+    /// Raw source text, needed to read an anchored node's `&name` back at its
+    /// span (granit surfaces only the numeric anchor id, never the name).
+    yaml_text: &'a str,
+    /// Char-index to byte-offset table for non-ASCII input (`None` when ASCII,
+    /// so a span char index is already a byte offset).
+    char_offsets: Option<Vec<usize>>,
     events: Vec<StreamEvent>,
     pending_standalone_comment: Option<Comment>,
     anchors: HashMap<usize, String>,
@@ -101,11 +100,10 @@ pub struct StreamReceiver<'a> {
 
 impl<'a> StreamReceiver<'a> {
     fn new_with_options(yaml_text: &'a str, max_depth: usize) -> Self {
-        let raw_anchors = extract_anchors(yaml_text);
+        let is_ascii = yaml_text.is_ascii();
         Self {
-            _marker: PhantomData,
-            anchor_names: raw_anchors.iter().map(|a| a.name.clone()).collect(),
-            anchor_name_idx: 0,
+            yaml_text,
+            char_offsets: (!is_ascii).then(|| super::char_to_byte_offsets(yaml_text)),
             events: Vec::new(),
             pending_standalone_comment: None,
             anchors: HashMap::new(),
@@ -125,6 +123,14 @@ impl<'a> StreamReceiver<'a> {
                 line,
                 column,
             });
+        }
+    }
+
+    /// Byte offset of a span's start char index (identity for ASCII input).
+    fn byte_start_of(&self, span: &Span) -> usize {
+        match &self.char_offsets {
+            None => span.start.index(),
+            Some(t) => t[span.start.index()],
         }
     }
 }
@@ -172,15 +178,11 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
             return;
         }
 
+        let byte_start = self.byte_start_of(&span);
+        let yaml = self.yaml_text;
         let Some(stream_event) =
             event_to_stream_event(event, span, &mut self.anchors, &mut |_id| {
-                if self.anchor_name_idx < self.anchor_names.len() {
-                    let name = self.anchor_names[self.anchor_name_idx].clone();
-                    self.anchor_name_idx += 1;
-                    Some(name)
-                } else {
-                    None
-                }
+                anchor_name_before(yaml, byte_start)
             })
         else {
             return; // non_exhaustive wildcard

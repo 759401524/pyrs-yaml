@@ -79,14 +79,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
-- **A `U+FEFF` (BOM) inside a scalar is now escaped, not emitted raw** —
-  the double-quoted escaper guarded on `is_control`, but U+FEFF is Unicode
-  category Cf, so it slipped through as a literal byte. granit rejects any raw
-  BOM appearing inside a document ("a BOM must not appear inside a document"),
-  so a value carrying a BOM round-tripped to unparseable text. Such scalars now
-  downgrade to double-quoted and emit `\uFEFF`, restoring the exact value on
-  re-parse with no BOM byte in the stream (the quoted-scalar half of libFuzzer
-  `yaml_roundtrip` crash-f4c74685).
+- **Anchor names are recovered per node from granit's own anchor site, not a
+  whole-text pre-scan** — granit does not surface the `&name` text of an anchor,
+  so the parser had recovered it by running a hand-written quote/escape/comment
+  state machine over the raw source (`extract_anchors`) and pairing the *Nth*
+  scanned name to the *Nth* anchored event with a counter (`anchor_name_idx`).
+  That positional pairing desynced the moment the state machine mis-classified a
+  single byte class — a bare apostrophe (`bas'e`), an embedded `&` (`sbb&e`), a
+  single-quote backslash — each previously its own fix and its own libFuzzer
+  `yaml_roundtrip` crash, and each of which then mislabeled every *later* anchor.
+  The pre-scan is gone: granit's event marks a node anchored (`anchor_id != 0`)
+  and gives its exact source span, so the name is now read back locally at that
+  span as the same maximal `is_anchor_char` run granit's scanner used
+  (`anchor_name_before`), keyed by granit's authoritative id. Recovery is
+  position-isolated, so an unreadable byte class can only affect that one node,
+  never shift another anchor's name — the whole drift family is closed by
+  construction rather than patched per shape. It also drops one full document
+  scan from every parse. The BOM-in-an-*anchor-name* emit-representability gap is
+  a distinct root cause and stays tracked separately.
 - **A backslash no longer escapes the closing quote of a single-quoted
   scalar in the anchor scan** — `extract_anchors` ran its escape state
   machine inside single quotes too. YAML single-quoted scalars have no escape
