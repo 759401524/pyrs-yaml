@@ -71,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A block scalar's indentation indicator is detected above its content** —
+  `detect_block_header` scanned upward from the block's first content line but
+  started *on* it, so a content line containing `|`/`>` could be parsed as the
+  header. granit counts only `\n` as a line break, so a source `\r` kept
+  `key: |2` and a `|`-bearing content line on one logical line; re-emitting them
+  split onto `\n`, shifting which line the scan hit and flipping the indicator
+  `|2` <-> `|` every round (libFuzzer `yaml_roundtrip` crash-bdf3f15f). The header
+  is now located only on a line strictly shallower than the block content, so
+  content is never mistaken for it; load-bearing indicators (content deeper than
+  the declared one) are preserved and the value is unchanged.
 - **A plain scalar equal to a document indicator is now quoted** — granit reads a
   leading-space `...` as the string `"..."`, but the writer emitted it bare, and
   `...` at the start of a line is the document-end marker, so the value re-read as

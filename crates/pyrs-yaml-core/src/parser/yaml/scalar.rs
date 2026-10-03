@@ -169,10 +169,29 @@ pub struct BlockHeader {
 /// assert_eq!(h.indent, Some(2));
 /// ```
 pub fn detect_block_header(yaml: &str, content_line: usize) -> BlockHeader {
+    // Indentation (leading-whitespace width) of the block's first content line.
+    // The header line always sits at the *parent* indentation, strictly shallower
+    // than the block content, so a valid header candidate must be less indented
+    // than this. Without the guard the upward scan can land on a *content* line
+    // that itself contains `|`/`>`: granit counts only `\n` as a line break, so a
+    // source `\r` keeps `key: |2` and a `|`-bearing content line on one logical
+    // line, and normalizing `\r`->`\n` on emit shifts which line the scan hits -
+    // flipping `|2`/`|` between rounds (libFuzzer `yaml_roundtrip` crash-bdf3f15f).
+    let content_indent = yaml
+        .lines()
+        .nth(content_line)
+        .map(|l| l.len() - l.trim_start().len())
+        .unwrap_or(0);
+
     for check_line in (0..=content_line).rev() {
         let Some(line_text) = yaml.lines().nth(check_line) else {
             continue;
         };
+        // Lines at or deeper than the block content are content (including the
+        // first content line itself); the header is strictly shallower.
+        if line_text.len() - line_text.trim_start().len() >= content_indent {
+            continue;
+        }
 
         for (i, ch) in line_text.char_indices() {
             if ch == '|' || ch == '>' {
