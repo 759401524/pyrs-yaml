@@ -79,6 +79,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A mapping key now keeps its anchor, tag, and empty-key quoting on emit** —
+  `write_scalar_for_key` wrote the key's scalar token but dropped the key node's
+  anchor and tag (the properties a value scalar emits) and left an empty plain key
+  bare, so a key like `&f& !&&f&&&` (an anchor and a tag on the empty string)
+  emitted `:` and re-read as the null `~` scalar — anchor and tag lost, and the
+  round-trip drifted `: ~` → `~: ~` (libFuzzer `yaml_roundtrip` crash-62bcff6f).
+  Keys now carry their anchor/tag exactly like values, and an empty key is quoted
+  (`""`) so it re-reads as the empty string rather than null. Complex (`? `) keys
+  were already correct — they route through the property-emitting node writer.
 - **Anchor names are recovered per node from granit's own anchor site, not a
   whole-text pre-scan** — granit does not surface the `&name` text of an anchor,
   so the parser had recovered it by running a hand-written quote/escape/comment
