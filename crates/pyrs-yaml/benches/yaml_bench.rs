@@ -178,7 +178,7 @@ folded: >
 "#;
 
 /// LARGE_YAML with the two comment lines removed. No `#`, no `&`:
-/// exercises the extraction fast path (skips the full-text scan).
+/// an anchor-free document for the pure-parse baseline.
 const LARGE_NO_EXTRACT_YAML: &str =
     concat!("\n", items_block!(), config_block!(), database_block!(),);
 
@@ -231,7 +231,8 @@ fn parse_block_scalars() -> pyrs_yaml::ast::CustomNode {
     pyrs_yaml::parser::parse(BLOCK_SCALAR_YAML, YamlSchema::Core).unwrap()
 }
 
-/// No `#`/`&` — extraction fast path avoids the full-text scan.
+/// No `&` anchors — the common anchor-free document; per-event name resolution
+/// is a no-op so this measures the pure parse path.
 #[divan::bench]
 fn parse_large_no_extract() -> pyrs_yaml::ast::CustomNode {
     pyrs_yaml::parser::parse(LARGE_NO_EXTRACT_YAML, YamlSchema::Core).unwrap()
@@ -277,12 +278,6 @@ fn granit_events_medium() -> usize {
 #[divan::bench]
 fn granit_events_large() -> usize {
     granit_event_count(LARGE_YAML)
-}
-
-/// Anchor extraction scan only (the `#`/`&` full-text scan before granit parse).
-#[divan::bench]
-fn extract_anchors_large() -> usize {
-    pyrs_yaml::parser::yaml::extract_anchors(LARGE_YAML).len()
 }
 
 /// Scalar type resolution on a sampled set of scalar strings (schema dispatch

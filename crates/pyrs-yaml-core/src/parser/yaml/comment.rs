@@ -54,217 +54,201 @@ pub fn scan_yaml(yaml: &str) -> YamlScan {
     }
 }
 
-/// 从原始 YAML 文本中提取的锚点信息。
-#[derive(Debug, Clone)]
-pub struct RawAnchor {
-    /// 锚点所在行（0 起始）
-    pub line: usize,
-    /// 锚点起始列（0 起始，`&` 字符的位置）
-    pub col: usize,
-    /// 锚点名称（不含 `&` 前缀）
-    pub name: String,
-}
-
 /// Check if a character is a valid unquoted anchor name character.
 /// YAML 1.2 allows any character except whitespace and flow indicators: `{}[],`
 fn is_valid_anchor_char(c: char) -> bool {
     !c.is_whitespace() && c != '{' && c != '}' && c != '[' && c != ']' && c != ','
 }
 
-/// 从原始 YAML 文本中逐行扫描提取所有锚点定义（`&name`）。
+/// Resolve the anchor name granit attached to a node whose content begins at
+/// byte offset `byte_start`, without re-scanning the whole document.
 ///
-/// 支持非引号锚点名（字母、数字、`-`、`_`、`.`、`:`、`#` 等）和引号锚点名（`&"name"`）。
-/// 锚点名在遇到空白或流指示符（`{}[],`）时终止。
+/// granit's event stream marks a node as anchored (`anchor_id != 0`) but hands
+/// back only the numeric id, never the `&name` text — so the display name for
+/// round-trip re-emission must be recovered from the source. The id *is*
+/// granit's authoritative decision about **which** tokens are anchors, so the
+/// recovery does not need to make that decision again: it only reads the name
+/// back at the exact site granit pointed to.
 ///
-/// # Arguments
-/// * `yaml` - 原始 YAML 文本。
+/// We scan left from `byte_start` for the nearest `&` that (a) sits at a
+/// node-start boundary and (b) is followed by a non-empty `is_valid_anchor_char`
+/// run ending at or before `byte_start`. That run reproduces the maximal name
+/// granit's own `scan_anchor` stored in `TokenType::Anchor`. The lookup is
+/// *position-isolated*: because granit tells us an anchored node begins here and
+/// its `&name` is the nearest qualifying `&` to the left, a misread of any one
+/// byte class can only affect this node's name — it can never shift the naming
+/// of any *other* anchor. That shift was the failure mode of the retired whole-
+/// text quote-state pre-scan + counter pairing, which regenerated the same drift
+/// family every round (libFuzzer `yaml_roundtrip`: apostrophe #68da2420, embedded
+/// `&` #83cc68c6, single-quote backslash #12f01ee0).
 ///
-/// # Returns
-/// 按出现顺序排列的 `RawAnchor` 列表。
-pub fn extract_anchors(yaml: &str) -> Vec<RawAnchor> {
-    // Cheap byte gate: every anchor literal contains `&`; skip the per-char
-    // quote state machine entirely for documents without one (the common case).
-    if !yaml.as_bytes().contains(&b'&') {
-        return Vec::new();
-    }
-    let mut anchors = Vec::new();
-
-    for (line_idx, line) in yaml.lines().enumerate() {
-        let mut in_single_quote = false;
-        let mut in_double_quote = false;
-        let mut escaped = false;
-        // End offset of the last accepted anchor token (`&` + name); scans
-        // starting inside it are re-reading the same anchor's `&` characters
-        // (`&&&&` would otherwise yield names `&&&`, `&&` and `&`).
-        let mut token_end = 0usize;
-
-        for (col_idx, ch) in line.char_indices() {
-            // Inside a just-accepted anchor token: granit reads the name as one
-            // atomic run of ns-chars, so a `"` / `#` / `&` that is part of the
-            // name must NOT toggle quote state or start a comment for the rest of
-            // the line — that desync shifted every later id-name pairing (the
-            // root of the libFuzzer anchor family).
-            if col_idx < token_end {
-                continue;
-            }
-            // Comment starts (column 0 or preceded by blank, outside quotes)
-            // end the anchor scan for this line: `#&&&:&` is comment text, and
-            // harvesting anchors from it shifted every later id-name pairing
-            // (libFuzzer `yaml_roundtrip` follow-up).
-            if ch == '#'
-                && !in_single_quote
-                && !in_double_quote
-                && (col_idx == 0 || line[..col_idx].ends_with([' ', '\t']))
-            {
-                break;
-            }
-            // 锚点提取：节点起始处（行首 / 空白 / `:,[]{}-` 之后）的 `&` 才是锚点。
-            // plain 标量内部的 `&`（如裸键 `sbb&e`）是字面内容，granit 不视作锚点；
-            // 误收会往有序 anchor_names 塞入幻名、错位 id->name 配对（crash-83cc68c6）。
-            if !in_single_quote && !in_double_quote && ch == '&' && at_node_start(line, col_idx) {
-                let rest = &line[col_idx + 1..];
-                if let Some(anchor_name) = scan_anchor_name(rest) {
-                    token_end = col_idx + 1 + anchor_name.len();
-                    anchors.push(RawAnchor {
-                        line: line_idx,
-                        col: col_idx,
-                        name: anchor_name,
-                    });
-                    continue;
-                }
-            }
-            is_string_char(
-                &mut in_single_quote,
-                &mut in_double_quote,
-                &mut escaped,
-                ch,
-                at_node_start(line, col_idx),
+/// Handles every anchored-node shape granit emits:
+/// - plain/quoted scalar (`&x v`): the name run ends before the value offset;
+/// - anchored null or block collection (`&x` then an empty span): the run ends
+///   exactly at `byte_start`;
+/// - block scalar (`&x |`): the anchor lives on the header line while
+///   `byte_start` is on the content line, and the nearest boundary `&` to its
+///   left is still that header anchor.
+pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
+    let bytes = yaml.as_bytes();
+    let b = byte_start.min(yaml.len());
+    // `&` is 0x26 and can never be a UTF-8 continuation byte (those are
+    // 0x80..=0xBF), so a byte scan locates candidate starts without risking a
+    // split multibyte sequence; the maximal name run is then read as chars.
+    let mut i = b;
+    while i > 0 {
+        i -= 1;
+        if bytes[i] != b'&' {
+            continue;
+        }
+        // A `&` only begins an anchor where a node may begin: start of input or
+        // after whitespace / a value indicator / a flow opener. Interior `&`
+        // characters of a name run (`&&&`) fail this and are skipped, so the
+        // leftmost `&` of the token wins and its full run is the name.
+        let boundary = i == 0
+            || matches!(
+                bytes[i - 1],
+                b' ' | b'\t' | b'\n' | b'\r' | b':' | b',' | b'[' | b'{' | b'-'
             );
+        if !boundary {
+            continue;
+        }
+        let name: String = yaml[i + 1..]
+            .chars()
+            .take_while(|c| is_valid_anchor_char(*c))
+            .collect();
+        if name.is_empty() {
+            // `&` followed by whitespace / EOL / flow indicator is not an anchor
+            // (matches granit's empty-run rejection).
+            continue;
+        }
+        // The name run must terminate at or before the node's own content start;
+        // otherwise this `&` is not the anchor granit pointed to.
+        if i + 1 + name.len() <= b {
+            return Some(name);
         }
     }
-
-    anchors
-}
-
-/// True when the byte at `col_idx` sits where a *node* may begin — line start
-/// or after a structural/space token (` \t:,[]{}-`). Both a quoted scalar and
-/// an anchor (`&`) only start at such a boundary: a `&` or `'`/`"` embedded in a
-/// plain scalar (the `&` of a bare key like `sbb&e`, the `'` of `bas'e`) is
-/// literal content, not a token start. Treating an embedded `&` as an anchor
-/// added phantom names to the ordered `anchor_names` list and desynced the
-/// id->name pairing in `register_anchor`, so real anchors got mislabeled and
-/// drifted each round (libFuzzer `yaml_roundtrip` crash-83cc68c6; the quote case
-/// is crash-68da2420). Closing a quote is always allowed and handled separately.
-fn at_node_start(line: &str, col_idx: usize) -> bool {
-    // O(1): only the single byte immediately before the char matters. The
-    // boundary set is pure ASCII, and a UTF-8 continuation byte can never equal
-    // one, so a char following a multibyte char is (correctly) mid-plain-scalar.
-    match line.as_bytes().get(col_idx.wrapping_sub(1)) {
-        None => true, // start of line
-        Some(&b) => matches!(b, b' ' | b'\t' | b':' | b',' | b'[' | b'{' | b'-'),
-    }
-}
-
-/// Advance quote/escape state machine for a single character.
-/// `can_open` gates whether a quote may *start* a region here (see
-/// [`quote_can_open`]); a quote that is already open always closes.
-/// Returns `true` if the character was consumed (quote toggle or escape start).
-fn is_string_char(
-    in_single_quote: &mut bool,
-    in_double_quote: &mut bool,
-    escaped: &mut bool,
-    ch: char,
-    can_open: bool,
-) -> bool {
-    if *escaped {
-        *escaped = false;
-        return true;
-    }
-    if ch == '\\' && *in_double_quote {
-        // Backslash is an escape lead ONLY in double-quoted scalars. A
-        // single-quoted scalar has no escape processor (its only special
-        // sequence is `''`), so a `\` there is literal. Treating it as an
-        // escape ate the closing `'` of a backslash-terminated single-quoted
-        // key like `'ya |20  fir:\\\'`, leaving the quote open and hiding every
-        // later `&anchor` (libFuzzer `yaml_roundtrip` crash-12f01ee0).
-        *escaped = true;
-        return true;
-    }
-    if ch == '\'' && !*in_double_quote {
-        if *in_single_quote {
-            *in_single_quote = false;
-            return true;
-        }
-        if can_open {
-            *in_single_quote = true;
-            return true;
-        }
-        return false;
-    }
-    if ch == '"' && !*in_single_quote {
-        if *in_double_quote {
-            *in_double_quote = false;
-            return true;
-        }
-        if can_open {
-            *in_double_quote = true;
-            return true;
-        }
-        return false;
-    }
-    false
-}
-
-/// Scan an anchor name from the text after `&`.
-///
-/// Aligned with granit's authoritative anchor grammar (its scanner reads a
-/// name as `while is_anchor_char(..)`): the name is the maximal run of
-/// anchor-name characters after the `&`. Per YAML 1.2 `:`/`#`/`"`/`&` are
-/// ordinary name characters, and the run ends only at whitespace, a line break
-/// or a flow indicator (`{}[],`). There is deliberately NO quoted-anchor form
-/// and NO value-indicator-colon special case — those hand-invented branches
-/// were a second grammar drifting from granit and are the root of the entire
-/// libFuzzer anchor family (#215/#218/#227/#228). An empty run (`&` followed by
-/// whitespace / EOL / flow) is not an anchor, matching granit.
-fn scan_anchor_name(rest: &str) -> Option<String> {
-    let name: String = rest
-        .chars()
-        .take_while(|c| is_valid_anchor_char(*c))
-        .collect();
-    (!name.is_empty()).then_some(name)
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_extract_anchors() {
-        let yaml = "defaults: &defaults\n  key: value";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "defaults");
-        assert_eq!(anchors[0].line, 0);
+    /// The byte offset immediately after an `&name` token — the `byte_start` a
+    /// granit event would carry for an anchored collection/null whose span is
+    /// empty right after the name.
+    fn after_anchor(s: &str, anchor: &str) -> usize {
+        s.find(anchor).expect("anchor token present") + anchor.len()
     }
 
-    /// A `'` inside a *plain* scalar (a bare key like `bas'e`) is literal
-    /// content, not a quote opening. The old state machine toggled
-    /// `in_single_quote` on it, so every `&anchor` on later lines was read as
-    /// quoted content and dropped — anchors vanished from the emit
-    /// (libFuzzer `yaml_roundtrip` crash-68da2420). Opening is gated on a
-    /// token boundary; only a real quoted scalar hides an anchor.
+    /// Position-isolated name recovery for the plain, same-line case.
     #[test]
-    fn apostrophe_in_plain_key_does_not_swallow_later_anchor() {
-        // apostrophe mid-word: anchor after it still extracted
-        let anchors = extract_anchors("bas'e: &b\nnext: &c 1\n");
+    fn anchor_name_before_reads_maximal_run() {
         assert_eq!(
-            anchors.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
-            vec!["b", "c"]
+            anchor_name_before(
+                "defaults: &defaults\n  key: value",
+                after_anchor("defaults: &defaults\n  key: value", "&defaults")
+            ),
+            Some("defaults".to_string())
         );
-        // a genuinely single-quoted scalar still hides its `&`
-        assert!(extract_anchors("key: 'a &b c'").is_empty());
-        // double-quote opening at a boundary still hides its `&`
-        assert!(extract_anchors(r#"key: "a &b c""#).is_empty());
+        // Colon, dot and hash are ordinary name chars (granit grammar).
+        assert_eq!(
+            anchor_name_before("key: &a:b value", after_anchor("key: &a:b value", "&a:b")),
+            Some("a:b".to_string())
+        );
+        assert_eq!(
+            anchor_name_before(
+                "key: &anchor.name v",
+                after_anchor("key: &anchor.name v", "&anchor.name")
+            ),
+            Some("anchor.name".to_string())
+        );
+        assert_eq!(
+            anchor_name_before(
+                "key: &anchor#name v",
+                after_anchor("key: &anchor#name v", "&anchor#name")
+            ),
+            Some("anchor#name".to_string())
+        );
+        // A `"` is a name char; the run stops at the following space.
+        assert_eq!(
+            anchor_name_before("key: &\"q value", after_anchor("key: &\"q value", "&\"q")),
+            Some("\"q".to_string())
+        );
+    }
+
+    /// The name run ends at a flow indicator, not swallowing the flow opener.
+    #[test]
+    fn anchor_name_before_stops_at_flow_indicator() {
+        let s = "key: &anchor{sub}";
+        assert_eq!(
+            anchor_name_before(s, after_anchor(s, "&anchor")),
+            Some("anchor".to_string())
+        );
+        let s = "key: &anchor, next";
+        assert_eq!(
+            anchor_name_before(s, after_anchor(s, "&anchor")),
+            Some("anchor".to_string())
+        );
+    }
+
+    /// `&&&&:` names the anchor `&&&:` (colon is a name char): the interior `&`
+    /// characters are not at a node boundary, so the leftmost `&` of the token
+    /// wins and its full run is the name.
+    #[test]
+    fn anchor_name_of_run_of_ampersands() {
+        let s = "a: &&&&:\n";
+        // value is a null node whose empty span starts right after `&&&&:`.
+        let b = s.find("&&&&:").unwrap() + "&&&&:".len();
+        assert_eq!(anchor_name_before(s, b), Some("&&&:".to_string()));
+    }
+
+    /// A `&` embedded in a plain *key* (`sbb&e`) is literal content — granit
+    /// never marks that node anchored, and even if a byte_start were handed in
+    /// it must not harvest the interior `&` (fails the boundary test) but the
+    /// real `&b` that granit did anchor.
+    #[test]
+    fn anchor_name_before_ignores_embedded_ampersand_in_key() {
+        let s = "sbb&e: &b v\n";
+        // anchored scalar value `v`; nearest boundary `&` to its left is `&b`.
+        let b = s.find(" v").unwrap();
+        assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
+    }
+
+    /// A bare apostrophe in a plain key (`bas'e`) is not a quote open, so a
+    /// later anchored node still resolves its name — the family bug #68da2420.
+    #[test]
+    fn anchor_after_plain_apostrophe_key_resolves() {
+        let s = "bas'e: &b v\n";
+        let b = s.find(" v").unwrap();
+        assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
+    }
+
+    /// A single-quoted key ending in a backslash (`'a\'`) does not hide a later
+    /// anchor's name recovery — the family bug #12f01ee0.
+    #[test]
+    fn anchor_after_single_quoted_backslash_key_resolves() {
+        let s = "'a\\': &b v\n";
+        let b = s.find(" v").unwrap();
+        assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
+    }
+
+    /// A block scalar's anchor sits on the header line while granit reports the
+    /// content start; the nearest boundary `&` to the left is that header anchor.
+    #[test]
+    fn anchor_name_before_reaches_block_scalar_header() {
+        let s = "a: &x |\n  line1\n  line2\n";
+        let b = s.find("line1").unwrap();
+        assert_eq!(anchor_name_before(s, b), Some("x".to_string()));
+    }
+
+    /// The name run must end at or before the node's own content start, so an
+    /// empty offset region yields no name (never a spurious one).
+    #[test]
+    fn anchor_name_before_is_none_without_anchor() {
+        assert_eq!(anchor_name_before("key: value", 0), None);
+        assert_eq!(anchor_name_before("key: value", 4), None);
     }
 
     /// End-to-end: an anchor whose document contains a bare-apostrophe key
@@ -289,22 +273,10 @@ mod tests {
         }
     }
 
-    /// A `&` embedded in a *plain* scalar (a bare key like `sbb&e`) is literal
-    /// content, not an anchor start. The old scan harvested it, adding a phantom
-    /// name to the ordered `anchor_names` list; `register_anchor` pairs names to
-    /// nodes by index, so the phantom shifted every later id->name binding and
-    /// real anchors got mislabeled (`&b` emitted as `&e:`), drifting each round
-    /// (libFuzzer `yaml_roundtrip` crash-83cc68c6). Anchor start is now gated on
-    /// a node boundary, mirroring the quote case.
+    /// End-to-end idempotence on the embedded-`&` crash input + a minimal pair
+    /// (the family bug #83cc68c6).
     #[test]
-    fn ampersand_in_plain_key_is_not_an_anchor() {
-        // `&` mid-key: no anchor harvested; the real `&b` after `: ` is
-        let anchors = extract_anchors("sbb&e: &b\n");
-        assert_eq!(
-            anchors.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
-            vec!["b"]
-        );
-        // end-to-end idempotence on the crash input + a minimal pair
+    fn ampersand_in_plain_key_roundtrip() {
         for input in [
             "base]]]]]]]]]]]]]]]]]]] 0]] ] ]]]:  a\nsbb&e: &b\n  be: &b\n   ",
             "sbb&e: &b\n  be: &b\n",
@@ -322,20 +294,10 @@ mod tests {
         }
     }
 
-    /// A backslash is an escape lead only in a *double*-quoted scalar; a
-    /// single-quoted scalar has no escape processor (only `''`). The old scan
-    /// treated `\` as an escape inside single quotes too, so a `'` following a
-    /// backslash (the closing quote of `'a\'`) was swallowed as "escaped", the
-    /// quote never closed, and every `&anchor` after it was hidden from
-    /// `extract_anchors` — the value's anchor then vanished on re-parse
-    /// (libFuzzer `yaml_roundtrip` crash-12f01ee0).
+    /// End-to-end idempotence on the single-quote-backslash crash input (the
+    /// family bug #12f01ee0).
     #[test]
-    fn backslash_in_single_quote_does_not_hide_later_anchor() {
-        let anchors = extract_anchors("'a\\': &b v\n");
-        assert_eq!(
-            anchors.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
-            vec!["b"]
-        );
+    fn backslash_in_single_quote_roundtrip() {
         let crash: &[u8] = &[
             0x79, 0x61, 0x20, 0x7c, 0x32, 0x30, 0x20, 0x20, 0x66, 0x69, 0x72, 0x3a, 0x5c, 0x5c,
             0x5c, 0x3a, 0x20, 0x26, 0x62, 0x0a, 0x20, 0x21, 0x78,
@@ -353,78 +315,11 @@ mod tests {
         );
     }
 
+    /// A name that would cross a line break must not be harvested — granit ends
+    /// an anchor token at a line break.
     #[test]
-    fn test_extract_multiple_anchors() {
-        let yaml = "a: &foo 1\nb: &bar 2";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 2);
-        assert_eq!(anchors[0].name, "foo");
-        assert_eq!(anchors[1].name, "bar");
-    }
-
-    #[test]
-    fn test_extract_anchor_with_dot() {
-        let yaml = "key: &anchor.name value";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "anchor.name");
-    }
-
-    #[test]
-    fn anchor_name_is_maximal_run_including_colon() {
-        // granit's scanner has NO quoted-anchor form and treats `:` as an
-        // ordinary name char (its `issue14_anchor_scanner_consumes_colon_as_
-        // name_character`): the name is the maximal run of anchor chars, ending
-        // only at whitespace / a line break / a flow indicator. The old
-        // "quoted anchor"/value-indicator-colon branches were a second grammar
-        // drifting from granit (the fuzz family's root) and are gone.
-        let anchors = extract_anchors("key: &a:b value");
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "a:b");
-        // A `"` is just a name char too; the run stops at the following space.
-        let anchors = extract_anchors(r#"key: &"q value"#);
-        assert_eq!(anchors[0].name, "\"q");
-        // An empty run (nothing valid after `&`) is not an anchor.
-        assert!(extract_anchors("key: & value").is_empty());
-    }
-
-    #[test]
-    fn unterminated_quote_anchor_name_stops_at_line_end() {
-        // libFuzzer `yaml_roundtrip` crash input: under the granit-aligned
-        // maximal-run grammar the name is `"X-` (leading `"` is a name char,
-        // the run stops at the CR) — emitted bare as `&"X- ` it re-scans to the
-        // same run, so serialize/re-parse is stable. The end-to-end idempotence
-        // assertion below is the real contract.
-        let yaml = "&\"X-\r:";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "\"X-");
-        let node = crate::parser::parse(yaml, pyrs_schema::types::Schema::Core).unwrap();
-        let once = crate::serializer::to_yaml(&node);
-        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core).unwrap();
-        assert_eq!(
-            once,
-            crate::serializer::to_yaml(&again),
-            "first output: {once:?}"
-        );
-    }
-
-    #[test]
-    fn quoted_anchor_closing_quote_must_be_on_same_line() {
-        // libFuzzer `yaml_roundtrip` (11 bytes `&"X-<CR>:&"X-<CR>`): the quoted
-        // scan saw a `"` later in the buffer and read the name across the CR,
-        // producing anchor `X-\r:&`. The serializer emitted it verbatim and the
-        // re-parse grew one round (`:&" ":&\"X-"` -> adds a `'` wrap each time).
-        // granit ends an anchor token at a line break, so a closing quote past
-        // CR/LF must not qualify as a quoted anchor.
+    fn anchor_name_never_crosses_line_break() {
         let yaml = "&\"X-\r:&\"X-\r";
-        for a in extract_anchors(yaml) {
-            assert!(
-                !a.name.contains('\r') && !a.name.contains('\n'),
-                "anchor name crossed a line break: {:?}",
-                a.name
-            );
-        }
         let node = crate::parser::parse(yaml, pyrs_schema::types::Schema::Core).unwrap();
         let once = crate::serializer::to_yaml(&node);
         let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core).unwrap();
@@ -432,52 +327,30 @@ mod tests {
         assert_eq!(once, twice, "not idempotent: {once:?} vs {twice:?}");
     }
 
+    /// Grammar regression round-trips: colon/dot/hash names, quoted-leading
+    /// names and the value-indicator-colon case must all re-emit and re-parse
+    /// to themselves (the emit is bare `&name `, a maximal run re-scans equal).
     #[test]
-    fn test_extract_anchor_with_colon() {
-        let yaml = "key: &anchor:name value";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "anchor:name");
-    }
-
-    #[test]
-    fn anchor_name_consumes_value_indicator_colon() {
-        // granit consumes `:` as an anchor name char (its issue-14 test), so
-        // `&&&&:` names the anchor `&&&:` (the run stops at the newline) and
-        // `&x: 1` names it `x:` (the run stops at the space). The emit is bare
-        // (`&name `), and a maximal-run re-scan reproduces the name exactly, so
-        // the drift the old value-indicator special case fought is gone by
-        // construction. `test_extract_anchor_with_colon` covers `&x:y`.
-        let anchors = extract_anchors("&&&&:\n#&&&:&");
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "&&&:");
-        let anchors = extract_anchors("a: &x: 1");
-        assert_eq!(anchors[0].name, "x:");
-        let anchors = extract_anchors("a: &x:y 1");
-        assert_eq!(anchors[0].name, "x:y");
-    }
-
-    #[test]
-    fn test_extract_anchor_with_hash() {
-        let yaml = "key: &anchor#name value";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "anchor#name");
-    }
-
-    #[test]
-    fn test_extract_anchor_stops_at_flow_indicator() {
-        let yaml = "key: &anchor{sub}";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "anchor");
-    }
-
-    #[test]
-    fn test_extract_anchor_stops_at_comma() {
-        let yaml = "key: &anchor, next";
-        let anchors = extract_anchors(yaml);
-        assert_eq!(anchors.len(), 1);
-        assert_eq!(anchors[0].name, "anchor");
+    fn anchor_grammar_shapes_round_trip() {
+        for input in [
+            "key: &a:b value\n",
+            "key: &anchor.name value\n",
+            "key: &anchor#name value\n",
+            "key: &anchor{sub}\n",
+            "a: &x: 1\n",
+            "a: &x:y 1\n",
+            "&\"X-\r:",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "drift for {input:?}: {once:?}"
+            );
+        }
     }
 }
