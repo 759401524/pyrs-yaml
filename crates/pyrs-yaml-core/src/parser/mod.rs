@@ -508,7 +508,6 @@ impl<'a> AstReceiver<'a> {
         &mut self,
         value: &str,
         style: &SaphyrScalarStyle,
-        line: usize,
         range: Range<usize>,
     ) -> CustomNode {
         let scalar_style = match style {
@@ -520,10 +519,12 @@ impl<'a> AstReceiver<'a> {
         };
 
         // Detect the block scalar header (chomping + explicit indent indicator)
-        // from the source text. Both indicators live only in the header, so a
-        // single scan recovers them together.
+        // from the source text, anchored to the scalar's own byte span. Both
+        // indicators live only in the header, so a single scan recovers them
+        // together; `range.start` is the first content byte (granit points a
+        // block scalar's span at its content, not its header line).
         let block_header = if matches!(scalar_style, ScalarStyle::Literal | ScalarStyle::Folded) {
-            detect_block_header(self.yaml_text, line)
+            detect_block_header(self.yaml_text, range.start)
         } else {
             BlockHeader::default()
         };
@@ -795,7 +796,6 @@ impl<'a> AstReceiver<'a> {
         if value == "<<" {
             self.has_merge_key = true;
         }
-        let line = span.start.line() - 1; // Convert to 0-indexed
         let range = self.span_to_byte_range(&span);
 
         // `9C9N` guard: a flow entry resuming under-indented is invalid.
@@ -804,7 +804,7 @@ impl<'a> AstReceiver<'a> {
         let standalone = self.pending_standalone_comment.take();
 
         let range_start = range.start;
-        let mut node = self.create_scalar(value, style, line, range);
+        let mut node = self.create_scalar(value, style, range);
 
         // PR #117b: standalone notes now ride onto the dedicated
         // `decor.leading_comment` slot rather than the shared
@@ -1078,6 +1078,37 @@ mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
 
+    /// libFuzzer `yaml_roundtrip` (crash-cad17b2b, 36 bytes): a mapping whose key
+    /// contains `|` (a plain `k:yam  |1` or a quoted `"k:yam  |1"`) and whose value
+    /// is a block scalar. An upward line scan used to land on the key's `|` and
+    /// parse a bogus indentation indicator, so the block drifted `|` -> `|1` across
+    /// rounds. `detect_block_header` is now byte-anchored to the content span and
+    /// takes the first sigil whose tail satisfies the block-header grammar (only
+    /// digit/chomping then end-of-line/comment), so the key's `|` is rejected.
+    #[test]
+    fn block_header_after_quoted_key_pipe() {
+        let bytes: &[u8] = &[
+            0x6b, 0x3a, 0x79, 0x61, 0x6d, 0x20, 0x20, 0x7c, 0x31, 0x3a, 0x20, 0x7c, 0x32, 0x0d,
+            0x20, 0x20, 0x78, 0x7c, 0x26, 0x22, 0x2f, 0x26, 0x32, 0x0d, 0x20, 0x20, 0x58, 0x6f,
+            0x6f, 0x6f, 0x6f, 0x6f, 0x6f, 0x6f, 0x2e, 0x2e,
+        ];
+        for src in [
+            std::str::from_utf8(bytes).unwrap().to_string(),
+            "\"q|1\": |\n  body\n".to_string(),
+        ] {
+            let node =
+                parse(&src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "drift for {src:?}: {once:?}"
+            );
+        }
+    }
+
     /// libFuzzer `yaml_roundtrip` (crash-9ee754bf, 83 bytes): a long plain scalar
     /// (>80) whose value contains a run of 2+ spaces. Width-folding broke beside
     /// the run, leaving trailing spaces that re-parse to a different space count,
@@ -1117,13 +1148,13 @@ mod tests {
     }
 
     /// libFuzzer `yaml_roundtrip` (crash-bdf3f15f, and its 12-byte distillation
-    /// `k: |2\r  x|y\n`): `detect_block_header` scanned up from the content line
-    /// but started ON it, so a block *content* line containing `|`/`>` could be
-    /// parsed as the header. granit counts only `\n` as a break, so a source `\r`
-    /// kept `key: |2` and a `|`-bearing content line on one logical line; emitting
-    /// `\n` shifted which line the scan hit, flipping the indicator `|2` <-> `|`
-    /// each round. The header is now found only on a line strictly shallower than
-    /// the block content, so content lines are never mistaken for it.
+    /// `k: |2\r  x|y\n`): the old `detect_block_header` scanned up from the content
+    /// line by the parser's line number, but granit counts only `\n` as a break, so
+    /// a source `\r` kept `key: |2` and a `|`-bearing content line on one logical
+    /// line; emitting `\n` shifted which line the scan hit, flipping the indicator
+    /// `|2` <-> `|` each round. Byte-anchoring to the scalar's source span reads the
+    /// single physical line above the content, so content lines and `\r` shifts can
+    /// never be mistaken for the header.
     #[test]
     fn block_header_detected_above_content_lines() {
         let crash: &[u8] = &[
