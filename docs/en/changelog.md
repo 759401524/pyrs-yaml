@@ -79,6 +79,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **An empty block scalar no longer carries a stray indentation indicator** —
+  an empty `|`/`>` body has nothing to measure an indent against, so granit drops
+  an explicit indicator on re-parse, yet `detect_block_header` had read the `2` of
+  `|2` into the AST and the writer re-emitted it, so `|2` drifted to `|` every
+  serialize round (libFuzzer `yaml_roundtrip` crash-d4ea8a23). Both block writers
+  now omit the indentation indicator when the value is empty, making the empty
+  shape idempotent; non-empty block scalars keep their indicator unchanged.
 - **A mapping key now keeps its anchor, tag, and empty-key quoting on emit** —
   `write_scalar_for_key` wrote the key's scalar token but dropped the key node's
   anchor and tag (the properties a value scalar emits) and left an empty plain key
