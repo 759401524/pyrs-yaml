@@ -1335,13 +1335,16 @@ fn needs_double_quoted(value: &str) -> bool {
     if value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']) {
         return true;
     }
-    // A plain scalar that is exactly a document indicator parses back as the
-    // marker, not the string: bare `...` at line start re-reads as a document-end
-    // (yielding null), and `---` as a document-start. Quote both. `---` is also
-    // caught by the leading-`-` rule below, but `...` starts with `.` - not a
-    // YAML indicator - so it slips past every other clause and drifted
-    // (libFuzzer `yaml_roundtrip` crash-41acfbbe: input ` ...` -> `...` -> null).
-    if value == "..." || value == "---" {
+    // A plain scalar that BEGINS with a document indicator is read back as the
+    // marker, not the string, when it lands at column 0: bare `...` re-reads as a
+    // document-end, `---` as a document-start, and `... k` / `--- k` as a marker
+    // followed by invalid trailing content. Quote the exact indicators AND the
+    // `<marker> …` prefixed forms. `---`/`-…` is partly caught by the leading-`-`
+    // rule below, but `...` starts with `.` - not a YAML indicator - so it slips
+    // past every other clause (libFuzzer `yaml_roundtrip`: crash-41acfbbe ` ...`
+    // -> null; crash-08f05e25 ` ...\nk` -> `... k` -> "invalid content after
+    // document end marker").
+    if value == "..." || value == "---" || value.starts_with("... ") || value.starts_with("--- ") {
         return true;
     }
     // A plain scalar that resolves to a non-string type (int/float/bool/null)
