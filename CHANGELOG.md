@@ -94,8 +94,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `...` at the start of a line is the document-end marker, so the value re-read as
   null (`...` -> `null`) and drifted every serialize round (libFuzzer
   `yaml_roundtrip` crash-41acfbbe). `needs_double_quoted` now treats a value that
-  is exactly `...` or `---` as needing quotes (`---` was already caught by its
-  leading `-`); no other plain scalar is affected.
+  is exactly `...`/`---` OR begins with `... `/`---` (marker + space) as needing
+  quotes — the prefix case folds a following token onto the marker line and then
+  fails to re-parse at all (crash-08f05e25: `... k` -> "invalid content after
+  document end marker"). `---`/`-…` was partly caught by the leading-`-` rule; `...`
+  starts with `.` so it slipped past; no other plain scalar is affected.
 - **A contentless comment is no longer stored or emitted** — granit surfaces a
   bare `#` / `#` as an empty `Event::Comment`, but it will not re-read one, so
   the writer emitted a stray `#` line that the next parse dropped: a trailing

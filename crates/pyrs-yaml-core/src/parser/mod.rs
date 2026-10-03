@@ -1161,7 +1161,19 @@ mod tests {
     /// (null), drifting `...` -> `null` every round. Such scalars are now quoted.
     #[test]
     fn document_indicator_scalar_is_quoted() {
-        for input in [" ...", " ---", "a: ...\n", "a: ---\n", "- ...\n"] {
+        for input in [
+            " ...",
+            " ---",
+            "a: ...\n",
+            "a: ---\n",
+            "- ...\n",
+            // crash-08f05e25: granit folds ` ...\nk` into the plain scalar `... k`,
+            // which emitted at column 0 re-reads as a document-end marker plus
+            // invalid trailing content. The `<marker> ` prefix must be quoted too.
+            " ...\nk",
+            " ... k\n",
+            "\r\r ...\nk",
+        ] {
             let node = parse(input, YamlSchema::Core)
                 .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
             let once = crate::serializer::to_yaml(&node);
