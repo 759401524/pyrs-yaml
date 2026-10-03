@@ -870,13 +870,30 @@ impl Serializer {
 
     /// Write a scalar formatted as a mapping key.
     fn write_scalar_for_key(&mut self, node: &CustomNode, flow: bool) {
+        // A mapping key carries the same node properties as a value: granit
+        // attaches an anchor/tag that precede a simple key to that key node, so
+        // the emitter must write them too. Dropping them lost the metadata on
+        // re-parse (libFuzzer `yaml_roundtrip` crash-62bcff6f: `&f& !&&f&&&  :`,
+        // whose empty key held both an anchor and a tag). Complex keys already
+        // route through `serialize_node_internal`, which emits properties, so
+        // this covers only the scalar / null paths here.
+        if let Some(meta) = match node {
+            CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => Some(meta),
+            _ => None,
+        } {
+            self.write_anchor_tag(&meta.anchor, &meta.tag);
+        }
         match node {
             CustomNode::Scalar {
                 value,
                 style: ScalarStyle::Plain,
                 ..
             } => {
-                if flow && flow_plain_unsafe(value) {
+                if value.is_empty() {
+                    // An unquoted empty key re-reads as the null `~` scalar, not
+                    // an empty string — quote it to keep the value faithful.
+                    self.output.push_str("\"\"");
+                } else if flow && flow_plain_unsafe(value) {
                     // `,`/`[`,`]`,`{`,`}` end a plain token inside a flow
                     // collection; quoting is the only lossless escape.
                     self.write_double_quoted_scalar(value);
@@ -1518,6 +1535,36 @@ mod tests {
             to_yaml(&again),
             "serialization not idempotent: {once:?}"
         );
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-62bcff6f, 14 bytes `&f& !&&f&&&  :`): a
+    /// mapping key carried an anchor and a tag and its scalar was the empty
+    /// string. `write_scalar_for_key` emitted neither property and left the empty
+    /// key bare, so ONCE was `: ~` (the empty key re-read as the null `~` scalar,
+    /// dropping anchor + tag) and TWICE drifted to `~: ~`. The key emitter now
+    /// writes the node's anchor/tag like a value and quotes an empty key, pinning
+    /// idempotence for the crash shape plus adjacent simple-key / null-key /
+    /// complex-key property shapes.
+    #[test]
+    fn key_anchor_tag_and_empty_key_roundtrip() {
+        for input in [
+            "&f& !&&f&&&  :",
+            "&a !t k: v",
+            "a: &k !t {}",
+            "&q : val",
+            "? &s !t k\n: v",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                to_yaml(&again),
+                "key-metadata drift for {input:?}: {once:?}"
+            );
+        }
     }
 
     /// libFuzzer `yaml_roundtrip` (42 bytes `&"X-::::…:<CR>ba`): an anchor name
