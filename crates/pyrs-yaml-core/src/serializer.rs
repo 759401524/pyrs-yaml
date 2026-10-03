@@ -1553,6 +1553,7 @@ mod tests {
             "a: &k !t {}",
             "&q : val",
             "? &s !t k\n: v",
+            "&a !tag anchored-key: value\nkey2: &b !!str anchored-value\n\"\": empty-string-key\n&c !type anchor-and-tag-key: v\n",
         ] {
             let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
                 .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
