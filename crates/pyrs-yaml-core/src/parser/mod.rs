@@ -1078,6 +1078,45 @@ mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
 
+    /// libFuzzer `yaml_roundtrip` (crash-bdf3f15f, and its 12-byte distillation
+    /// `k: |2\r  x|y\n`): `detect_block_header` scanned up from the content line
+    /// but started ON it, so a block *content* line containing `|`/`>` could be
+    /// parsed as the header. granit counts only `\n` as a break, so a source `\r`
+    /// kept `key: |2` and a `|`-bearing content line on one logical line; emitting
+    /// `\n` shifted which line the scan hit, flipping the indicator `|2` <-> `|`
+    /// each round. The header is now found only on a line strictly shallower than
+    /// the block content, so content lines are never mistaken for it.
+    #[test]
+    fn block_header_detected_above_content_lines() {
+        let crash: &[u8] = &[
+            0x26, 0x62, 0x58, 0x2d, 0x0d, 0x57, 0x26, 0x44, 0x44, 0x44, 0x44, 0x21, 0x20, 0x20,
+            0x66, 0x44, 0x44, 0x44, 0x44, 0x44, 0x21, 0x26, 0x26, 0x3a, 0x20, 0x7c, 0x32, 0x0a,
+            0x20, 0x20, 0x66, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x69, 0x72, 0x73, 0x74, 0x65,
+            0x2a, 0x22, 0x61, 0x20, 0x66, 0x21, 0x66, 0x5b, 0x5b, 0x26, 0x26, 0x3a, 0x20, 0x7c,
+            0x26, 0x26, 0x3a, 0x20, 0x7c, 0x32, 0x0a, 0x20, 0x20, 0x66, 0x44, 0x44, 0x44, 0x44,
+            0x44, 0x21, 0x26, 0x26, 0x3a, 0x20, 0x7c, 0x32, 0x0a, 0x20, 0x20, 0x66, 0x44, 0x44,
+            0x44, 0x44, 0x44, 0x32,
+        ];
+        let inputs: Vec<String> = vec![
+            "k: |2\r  x|y\n".into(),
+            "&a\rk: |2\n  x|y\n".into(),
+            "k: |2\n  data |2\n  more\n".into(),
+            std::str::from_utf8(crash).unwrap().to_string(),
+        ];
+        for src in inputs {
+            let node =
+                parse(&src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "drift for {src:?}: {once:?}"
+            );
+        }
+    }
+
     /// libFuzzer `yaml_roundtrip` (crash-41acfbbe, 4 bytes ` ...`): a plain
     /// scalar equal to a document indicator. granit reads ` ...` as the string
     /// `"..."`, but emitting it bare as `...` re-parses as a document-end marker
