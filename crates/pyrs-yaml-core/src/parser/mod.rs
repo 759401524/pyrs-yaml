@@ -437,7 +437,9 @@ enum ParseState {
         /// (keyed by full node) kept both, no duplicate fired, yet the
         /// serializer drops key decor and emitted two colliding `key:` lines
         /// that re-parse rejected (libFuzzer `yaml_roundtrip` crash-3b0a7d1d).
-        seen_value_keys: std::collections::HashSet<String>,
+        /// Holds `Arc<str>` so recording a seen key is a refcount bump off the
+        /// node's existing allocation, not a fresh `String`.
+        seen_value_keys: std::collections::HashSet<Arc<str>>,
         anchor_id: usize,
         tag: Option<Tag>,
         flow_style: bool,
@@ -635,14 +637,17 @@ impl<'a> AstReceiver<'a> {
                         // emits them identically. The `IndexMap` (keyed by the
                         // full node) alone misses those, so track the emitted
                         // value here and reject the collision (crash-3b0a7d1d).
+                        // `HashSet::insert` does the lookup and the store in a
+                        // single hashing pass and returns whether the value was
+                        // new, so the common no-duplicate key costs one probe and
+                        // an `Arc` refcount bump (no `String` allocation); the
+                        // `String` is materialized only when a collision is found.
                         let value_dup: Option<String> = match &key {
                             CustomNode::Scalar { value, .. } => {
-                                let v = value.to_string();
-                                if seen_value_keys.contains(&v) {
-                                    Some(v)
-                                } else {
-                                    seen_value_keys.insert(v);
+                                if seen_value_keys.insert(Arc::clone(value)) {
                                     None
+                                } else {
+                                    Some(value.to_string())
                                 }
                             }
                             _ => None,
