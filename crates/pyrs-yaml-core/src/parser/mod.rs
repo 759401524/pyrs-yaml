@@ -1078,6 +1078,44 @@ mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
 
+    /// libFuzzer `yaml_roundtrip` (crash-9ee754bf, 83 bytes): a long plain scalar
+    /// (>80) whose value contains a run of 2+ spaces. Width-folding broke beside
+    /// the run, leaving trailing spaces that re-parse to a different space count,
+    /// so the fold was not idempotent (`…999  y|` -> `…999 \n y|` -> `…999\n y|`).
+    /// Such values are now emitted unwrapped, preserving the exact spacing. A
+    /// long value with only single spaces still wraps and stays stable.
+    #[test]
+    fn long_plain_scalar_multispace_roundtrips() {
+        let crash =
+            "j99999999999999999999999999999999999999999999999999999999999999999999999999999  y|\n";
+        for src in [crash.to_string(), format!("{}  b\n", "a".repeat(90))] {
+            let node =
+                parse(&src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "wrap drift for {src:?}: {once:?}"
+            );
+            // The double-space value must survive verbatim (not collapsed by a
+            // fold). Both inputs are root-level plain scalars.
+            fn scalar_value(n: &CustomNode) -> String {
+                match n {
+                    CustomNode::Scalar { value, .. } => value.as_ref().to_string(),
+                    _ => String::new(),
+                }
+            }
+            let v = scalar_value(&node);
+            assert!(
+                v.contains("  ") || v.contains('\t'),
+                "test premise: value has multi-ws run: {v:?}"
+            );
+            assert_eq!(v, scalar_value(&again), "value changed across round-trip");
+        }
+    }
+
     /// libFuzzer `yaml_roundtrip` (crash-bdf3f15f, and its 12-byte distillation
     /// `k: |2\r  x|y\n`): `detect_block_header` scanned up from the content line
     /// but started ON it, so a block *content* line containing `|`/`>` could be

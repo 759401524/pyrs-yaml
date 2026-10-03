@@ -1438,7 +1438,18 @@ pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width
         } else {
             write_double_quoted_scalar(out, value);
         }
-    } else if remaining > 0 && value.len() > remaining {
+    } else if remaining > 0
+        && value.len() > remaining
+        // Folding a plain scalar across a line break is lossless only when every
+        // break is a *single* space (a break folds back to exactly one space). If
+        // the value contains a run of 2+ spaces or a tab, the wrap can break
+        // beside it and leave trailing spaces that re-parse to a different number
+        // of spaces, so the value is no longer idempotent (libFuzzer
+        // `yaml_roundtrip` crash-9ee754bf: `…999  y|` folded to `…999 \n y|`).
+        // Emit such values unwrapped (one long, lossless line) instead.
+        && !value.contains("  ")
+        && !value.contains('\t')
+    {
         let safe_remaining = value.floor_char_boundary(remaining);
         match value[..safe_remaining].rfind(' ') {
             Some(split) => {
