@@ -71,6 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A trailing comment on a block container survives the round trip** — the writer
+  cannot hang an inline note (`meta.comment`, `standalone = false`) on the same line as a
+  *block* mapping or sequence, because no line is left after the last item, so it spills
+  the note onto its own trailing line. On re-read granit reports that shape as a standalone
+  comment with no node following it, and the receiver left it stranded in the pending slot,
+  so the note vanished on the second serialize (`&"\n-\r... #-o` -> `&" \n- ~\n# -o\n` ->
+  `&" \n- ~\n`; libFuzzer `yaml_roundtrip` crash-96fa252c). A comment still pending at
+  `DocumentEnd` is now flushed onto the finished document's root - the very slot the writer
+  read it from - so the round trip stays stable *and* keeps the comment.
 - **Block-header detection is anchored to the scalar's byte span** — the re-derivation
   (#250) scanned upward from the content line by the parser's line number and took the
   first `|`/`>`, so a `|` inside a key (`"k:yam  |1": |` or the plain `k:yam  |1: |2`) or
