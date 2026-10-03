@@ -1335,6 +1335,15 @@ fn needs_double_quoted(value: &str) -> bool {
     if value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']) {
         return true;
     }
+    // A plain scalar that is exactly a document indicator parses back as the
+    // marker, not the string: bare `...` at line start re-reads as a document-end
+    // (yielding null), and `---` as a document-start. Quote both. `---` is also
+    // caught by the leading-`-` rule below, but `...` starts with `.` - not a
+    // YAML indicator - so it slips past every other clause and drifted
+    // (libFuzzer `yaml_roundtrip` crash-41acfbbe: input ` ...` -> `...` -> null).
+    if value == "..." || value == "---" {
+        return true;
+    }
     // A plain scalar that resolves to a non-string type (int/float/bool/null)
     // is emitted unquoted: its loaded type under the core schema equals
     // `resolve_core_type(text)`, so plain emission always reproduces that type
