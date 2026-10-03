@@ -1122,10 +1122,11 @@ pub mod proptest_strategies {
             .prop_map(|(pairs, flow_style, meta)| {
                 let mut map = NodeMap::default();
                 for (k, v) in pairs {
-                    // Empty containers of the same kind always render alike
-                    // (`[]`/`{}`) whatever their `flow_style` or metadata —
-                    // IndexMap's Eq sees two keys, YAML text cannot. Keep the
-                    // first so the generated AST stays re-parseable.
+                    // Keys the YAML text cannot tell apart: same-kind empty
+                    // containers (always `[]`/`{}` whatever their flow style or
+                    // metadata), or two scalars carrying the same text. IndexMap's
+                    // Eq sees two keys either way, so keep the first to leave the
+                    // generated AST re-parseable.
                     if map
                         .keys()
                         .any(|existing| serialization_collides(existing, &k))
@@ -1144,9 +1145,16 @@ pub mod proptest_strategies {
 
     /// True when two keys collapse onto one YAML rendering: same-kind empty
     /// containers, whose distinguishing attributes (flow style, meta) never
-    /// reach the emitted text. A mapping holding both re-parses as a
-    /// duplicate key — the parser's strictness is correct, the pair is not.
+    /// reach the emitted text; or two scalars carrying the same *text*, which is
+    /// exactly how the reader identifies a key — an anchor, tag, comment or style
+    /// difference cannot tell two of them apart once re-parsed (crash-3b0a7d1d).
+    /// A mapping holding either pair re-parses as a duplicate key — the parser's
+    /// strictness is correct, the pair is not.
     fn serialization_collides(a: &CustomNode, b: &CustomNode) -> bool {
+        if let (CustomNode::Scalar { value: va, .. }, CustomNode::Scalar { value: vb, .. }) = (a, b)
+        {
+            return va == vb;
+        }
         let empty_of_kind = |n: &CustomNode, seq: bool| match n {
             CustomNode::Sequence { items, .. } => seq && items.is_empty(),
             CustomNode::Mapping { pairs, .. } => !seq && pairs.is_empty(),
