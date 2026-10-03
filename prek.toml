@@ -67,7 +67,7 @@ priority = "checks"
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.16.3"
+rev = "v0.16.10"
 hooks = [
   { id = "ruff", args = ["--fix"], priority = "checks" },
   { id = "ruff-format", priority = "format" },
@@ -76,7 +76,7 @@ hooks = [
 # ── Markdown: rumdl lint + format ───────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/rvben/rumdl-pre-commit"
-rev = "v0.2.55"
+rev = "v0.2.78"
 hooks = [
   { id = "rumdl", priority = "checks" },
   { id = "rumdl-fmt", priority = "format" },
