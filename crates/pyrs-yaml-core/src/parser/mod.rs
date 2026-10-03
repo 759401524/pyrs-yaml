@@ -774,18 +774,49 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
 }
 
 impl<'a> AstReceiver<'a> {
-    /// Handle `DocumentEnd`: move the completed document into the multi-doc
-    /// collection. Ownership is *moved* (not cloned): the next document
-    /// rebuilds `result` from scratch, and `parse_all_with_options` reads the
-    /// documents list — so a per-document deep clone would be pure overhead.
+    /// Handle `DocumentEnd`: flush any trailing note onto the finished
+    /// document, then move the document into the multi-doc collection.
+    /// Ownership is *moved* (not cloned): the next document rebuilds `result`
+    /// from scratch, and `parse_all_with_options` reads the documents list — so
+    /// a per-document deep clone would be pure overhead.
     /// When `DocumentEnd` never fires, `result` is untouched and the
     /// empty-`documents` fallback in the callers still applies.
     fn on_document_end(&mut self) {
+        self.flush_trailing_comment();
         if self.collect_documents
             && let Some(doc) = self.result.take()
         {
             self.documents.push(doc);
         }
+    }
+
+    /// Attach a standalone comment still pending at end-of-document to the
+    /// document root as an inline trailing note.
+    ///
+    /// The writer cannot hang an inline note (`meta.comment`, `standalone =
+    /// false`) on the same line as a *block* container — there is no line left
+    /// after the last item — so it spills the note onto its own trailing line.
+    /// On re-read granit reports that shape as a standalone comment with no
+    /// node following it, which the receiver would otherwise strand in
+    /// `pending_standalone_comment` and drop, so the second serialize lost the
+    /// note and the round trip was not idempotent (libFuzzer `yaml_roundtrip`
+    /// crash-96fa252c: `&"\n-\r... #-o` → `&" \n- ~\n# -o\n` → `&" \n- ~\n`).
+    /// Storing it back into the very slot the writer read it from restores
+    /// stability without changing the AST shape. An existing root note wins.
+    fn flush_trailing_comment(&mut self) {
+        let Some(comment) = self.pending_standalone_comment.take() else {
+            return;
+        };
+        let Some(root) = self.result.as_mut() else {
+            return;
+        };
+        if root.comment().is_some() {
+            return;
+        }
+        root.set_comment(Comment {
+            text: comment.text,
+            standalone: false,
+        });
     }
 
     /// Handle `Scalar`: build a scalar node, attach standalone comment, anchor
@@ -1082,6 +1113,47 @@ impl<'a> AstReceiver<'a> {
 mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
+
+    /// libFuzzer `yaml_roundtrip` (crash-96fa252c, 12 bytes `&"\n-\r... #-o`):
+    /// the writer spills a block container's inline note onto its own trailing
+    /// line, but that shape re-reads as an EOF standalone comment with no node
+    /// after it, so the receiver used to strand and drop it — the second
+    /// serialize lost `# -o`. A still-pending note is now flushed onto the
+    /// document root, which is exactly where the writer read it from, so the
+    /// round trip is stable *and* keeps the comment.
+    #[test]
+    fn eof_trailing_comment_round_trips_stably() {
+        let crash = String::from_utf8(vec![
+            0x26u8, 0x22, 0x0A, 0x2D, 0x0D, 0x2E, 0x2E, 0x2E, 0x20, 0x23, 0x2D, 0x6F,
+        ])
+        .unwrap();
+        for src in [
+            crash,
+            "&\" \n- ~\n# -o\n".to_string(),
+            "a: 1\n# trailing note\n".to_string(),
+            "- 1\n- 2\n# last\n".to_string(),
+        ] {
+            let node =
+                parse(&src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            let twice = crate::serializer::to_yaml(&again);
+            assert_eq!(
+                once, twice,
+                "EOF-comment drift for {src:?}: {once:?} != {twice:?}"
+            );
+            // The note must genuinely survive, not merely become stably absent.
+            let key = if src.contains("trailing note") {
+                "trailing note"
+            } else if src.contains("last") {
+                "last"
+            } else {
+                "-o"
+            };
+            assert!(once.contains(key), "comment lost for {src:?}: {once:?}");
+        }
+    }
 
     /// libFuzzer `yaml_roundtrip` (crash-cad17b2b, 36 bytes): a mapping whose key
     /// contains `|` (a plain `k:yam  |1` or a quoted `"k:yam  |1"`) and whose value
