@@ -1000,7 +1000,14 @@ impl Serializer {
         let auto_width = self.block_width(block_base, block.indent);
         let first_text_line = value.lines().find(|l| !l.is_empty()).unwrap_or("");
         let force_indicator = block.indent.is_none() && first_text_line.starts_with([' ', '\t']);
-        let indent = if force_indicator {
+        let indent = if value.is_empty() {
+            // An empty body cannot carry a recoverable indentation indicator:
+            // on re-parse granit drops it (there is nothing to measure the
+            // indent against), so emitting `|N` for an empty scalar drifts to
+            // `|` the next round (libFuzzer `yaml_roundtrip` crash-d4ea8a23).
+            // Emit the bare sigil so the empty shape is idempotent.
+            None
+        } else if force_indicator {
             Some((auto_width - block_base) as u8)
         } else {
             block.indent
@@ -1040,7 +1047,13 @@ impl Serializer {
         let width = auto_width;
         let header = BlockScalarHeader {
             chomping: &chomping,
-            indent: if force_indicator {
+            indent: if value.is_empty() {
+                // Empty folded body: the indentation indicator is unrecoverable
+                // on re-parse, so emitting `>N` drifts to `>` next round (mirror
+                // of the literal writer; libFuzzer `yaml_roundtrip`
+                // crash-d4ea8a23 family).
+                None
+            } else if force_indicator {
                 Some((width - block_base) as u8)
             } else {
                 block.indent
@@ -1564,6 +1577,36 @@ mod tests {
                 once,
                 to_yaml(&again),
                 "key-metadata drift for {input:?}: {once:?}"
+            );
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-d4ea8a23, 58 bytes): an empty block
+    /// scalar carried an explicit indentation indicator (`|2`), which re-parse
+    /// drops (there is no body to measure the indent against), so the emit
+    /// drifted `|2` -> `|` each round. The block writers now omit the indicator
+    /// for an empty body, making the empty shape idempotent. Pinned on the crash
+    /// input plus bare empty literal / folded indicators followed by a dedent.
+    /// (The raw BOM in the crash body is a separate concern: granit tolerates a
+    /// BOM inside a block body, so it round-trips identically — only the
+    /// indicator drifted.)
+    #[test]
+    fn empty_block_scalar_drops_indent_indicator_roundtrip() {
+        for input in [
+            "yaml: |2\nml: |2\n  >|2\n    MRRRRR\u{feff}st\n\n  \u{feff}st\n  lines\n \n\n",
+            "k: |2\nz: 1\n",
+            "k: >2\nz: 1\n",
+            "a: |1\nb: 2\n",
+        ] {
+            let node = crate::parser::parse(input, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = to_yaml(&node);
+            let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                to_yaml(&again),
+                "empty-block drift for {input:?}: {once:?}"
             );
         }
     }
