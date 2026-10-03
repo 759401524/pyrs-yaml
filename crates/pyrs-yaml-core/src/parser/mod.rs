@@ -552,25 +552,89 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
-    /// Attach an inline comment to the most recently created scalar node, or
-    /// to the currently-open empty container (a `{}`/`[]` has no child to
-    /// attach to, so the comment belongs to the container itself).
-    fn attach_inline_comment(&mut self, text: Arc<str>) {
+    /// True when a `\n` separates the candidate node's end from the comment,
+    /// i.e. the comment is on a strictly later line.
+    ///
+    /// Only the gap between the two is scanned, so this stays `O(distance)`;
+    /// building a whole-document line table here would put an `O(len)` pass on
+    /// the first comment of every document, on the parse hot path. A comment
+    /// that starts at or before `node_end` - notably a note on a block scalar's
+    /// header line, while granit spans that node at its *content* - is never
+    /// reported as separated, so it keeps binding inline.
+    fn line_break_between(text: &str, node_end: usize, comment_byte: usize) -> bool {
+        comment_byte > node_end
+            && text
+                .as_bytes()
+                .get(node_end..comment_byte.min(text.len()))
+                .is_some_and(|gap| gap.contains(&b'\n'))
+    }
+
+    /// Record a trailing (`Placement::Right`) note.
+    ///
+    /// Returns `true` when the note landed on an existing node (or on the
+    /// currently-open empty container, which has no child to compare against),
+    /// and `false` when the note sits on a *later* line than the backwards
+    /// candidate, meaning it annotates a node that has not been produced yet and
+    /// the caller must carry it forward as that node's leading note.
+    ///
+    /// `key: value # note` is on the value's own line and is that value's
+    /// trailing note, and a note on a block scalar's header line (`y: |  # n`)
+    /// precedes the node's range because granit spans a block scalar at its
+    /// *content*, not its header. Only a note separated from the candidate by a
+    /// line break annotates something not yet produced. That is exactly `- #e`:
+    /// the dash line of a *following* sequence item whose own content is empty.
+    /// Binding it backwards mis-homed it on the previous item's value, the writer
+    /// spilled it inside that item's block, and the re-read bound it to the next
+    /// item instead, so ownership flipped every round (libFuzzer
+    /// `yaml_roundtrip` crash-aee06aca, minimized `- :\u{feff}:\n- #e`).
+    fn attach_inline_comment(&mut self, text: Arc<str>, comment_byte: usize) -> bool {
         let comment = Comment {
             text,
             standalone: false,
         };
-        // Check the top of the stack for a scalar to attach to
+
+        // Resolve the backwards candidate without mutating anything, so the line
+        // test can decide before we commit the note anywhere.
+        let candidate: Option<Range<usize>> = match self.stack.last() {
+            Some(ParseState::Mapping {
+                current_key, pairs, ..
+            }) => {
+                let current: &Option<CustomNode> = current_key;
+                let node = match current {
+                    Some(k) => Some(k),
+                    None => pairs.iter().next_back().map(|(_, v)| v),
+                };
+                node.and_then(CustomNode::source_range).cloned()
+            }
+            Some(ParseState::Sequence { items, .. }) => {
+                items.last().and_then(CustomNode::source_range).cloned()
+            }
+            None => self
+                .result
+                .as_ref()
+                .and_then(CustomNode::source_range)
+                .cloned(),
+        };
+
+        if candidate
+            .as_ref()
+            .is_some_and(|range| Self::line_break_between(self.yaml_text, range.end, comment_byte))
+        {
+            return false;
+        }
+
+        // The note still belongs to the candidate (same line, or earlier for a
+        // block-scalar header): keep it where it lived before.
         if let Some(top) = self.stack.last_mut() {
             match top {
                 ParseState::Mapping {
                     current_key, pairs, ..
                 } => {
                     // Attach to the last value if complete, or the current key
-                    let target = if current_key.is_none() {
-                        pairs.iter_mut().last().map(|(_, v)| v)
-                    } else {
+                    let target = if current_key.is_some() {
                         current_key.as_mut().as_mut()
+                    } else {
+                        pairs.iter_mut().last().map(|(_, v)| v)
                     };
                     if target.is_some() {
                         Self::set_scalar_comment(target, comment);
@@ -592,6 +656,7 @@ impl<'a> AstReceiver<'a> {
         } else if let Some(result) = &mut self.result {
             Self::set_scalar_comment(Some(result), comment);
         }
+        true
     }
 
     /// Set the comment on a node if it's a Scalar with no existing comment.
@@ -767,7 +832,7 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
             }
             Event::SequenceEnd => self.on_sequence_end(span),
             Event::Alias(anchor_id) => self.on_alias_event(anchor_id),
-            Event::Comment(text, placement) => self.on_comment_event(&text, placement),
+            Event::Comment(text, placement) => self.on_comment_event(&text, placement, span),
             _ => {} // granit_parser::Event is #[non_exhaustive]
         }
     }
@@ -1084,7 +1149,7 @@ impl<'a> AstReceiver<'a> {
 
     /// Handle `Comment`: stash standalone comments or attach inline comments.
     /// Extracted from `on_event`.
-    fn on_comment_event(&mut self, text: &str, placement: granit_parser::Placement) {
+    fn on_comment_event(&mut self, text: &str, placement: granit_parser::Placement, span: Span) {
         let trimmed = text.trim();
         // granit does not re-read a comment whose text is empty (a bare `#` or
         // `# `): first parse surfaces an empty `Event::Comment`, the writer emits
@@ -1103,7 +1168,16 @@ impl<'a> AstReceiver<'a> {
                 standalone: true,
             });
         } else if placement == granit_parser::Placement::Right {
-            self.attach_inline_comment(text);
+            let at = self.span_to_byte_range(&span).start;
+            if !self.attach_inline_comment(Arc::clone(&text), at) {
+                // The note is not on the previous node's line, so it annotates a
+                // node that has not arrived yet: carry it forward as that node's
+                // leading note instead of binding it backwards.
+                self.pending_standalone_comment = Some(Comment {
+                    text,
+                    standalone: true,
+                });
+            }
         }
         // Placement is #[non_exhaustive]: other variants are ignored.
     }
@@ -1113,6 +1187,47 @@ impl<'a> AstReceiver<'a> {
 mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
+
+    /// libFuzzer `yaml_roundtrip` (crash-aee06aca, 65 bytes, minimized to 12:
+    /// `- :\u{feff}:\n- #e`): a note on the dash line of a sequence item whose own
+    /// content is empty was bound *backwards* onto the previous item's value, so
+    /// the writer spilled it inside that item's block while the re-read bound it
+    /// to the next item - ownership flipped every round. A trailing note now
+    /// travels forward when it sits on a later line than its backwards candidate.
+    /// Two shapes must keep binding inline: a normal same-line note, and a note
+    /// on a block scalar's header line, where granit spans the node at its
+    /// *content* so the note's line precedes the node's range (regression pinned
+    /// by `block_scalar_emission_is_closed_under_reparse`).
+    #[test]
+    fn comment_line_ownership_is_stable_across_rounds() {
+        let minimized = String::from_utf8(vec![
+            0x2Du8, 0x20, 0x3A, 0xEF, 0xBB, 0xBF, 0x3A, 0x0A, 0x2D, 0x20, 0x23, 0x65,
+        ])
+        .unwrap();
+        for (src, note) in [
+            (minimized, "e"),
+            ("- :\u{feff}:\n- #e\n- x: 1\n".to_string(), "e"),
+            ("- a: 1\n  # c\n- 2\n".to_string(), "c"),
+            ("key: value # own line note\n".to_string(), "own line note"),
+            (
+                "base: &b\n  x: 2  f,1\n:&hcild:\n  <<: *b\n  y: |  # inlEEE\n".to_string(),
+                "inlEEE",
+            ),
+        ] {
+            let node =
+                parse(&src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            let twice = crate::serializer::to_yaml(&again);
+            assert_eq!(
+                once, twice,
+                "comment-ownership drift for {src:?}: {once:?} vs {twice:?}"
+            );
+            // The note must survive somewhere, not be silently dropped.
+            assert!(once.contains(note), "comment lost for {src:?}: {once:?}");
+        }
+    }
 
     /// libFuzzer `yaml_roundtrip` (crash-96fa252c, 12 bytes `&"\n-\r... #-o`):
     /// the writer spills a block container's inline note onto its own trailing

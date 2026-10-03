@@ -79,6 +79,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A note on a block item's dash line binds to the item it annotates** — a trailing
+  comment (`Placement::Right`) was always attached to the most recently created node,
+  even when it sat on a later line. In `- :\u{feff}:\n- #e` the note on the second item's
+  dash line landed on the *first* item's value, so the writer spilled it inside the first
+  item's block; re-reading bound it to the second item instead, and ownership flipped on
+  every serialize round (libFuzzer `yaml_roundtrip` crash-aee06aca). `attach_inline_comment`
+  now compares the comment's line against the backwards candidate's: a note on the same
+  line still binds inline, and a note on a block scalar's header line still binds (granit
+  spans the node at its *content*, a later line than the header), while a note on a later
+  line is carried forward as the next node's leading note. Anchors, block scalars and
+  empty-container slots are otherwise untouched.
 - **A trailing comment on a block container survives the round trip** — the writer
   cannot hang an inline note (`meta.comment`, `standalone = false`) on the same line as a
   *block* mapping or sequence, because no line is left after the last item, so it spills
