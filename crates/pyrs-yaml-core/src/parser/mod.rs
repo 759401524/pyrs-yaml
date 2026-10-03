@@ -1049,7 +1049,18 @@ impl<'a> AstReceiver<'a> {
     /// Handle `Comment`: stash standalone comments or attach inline comments.
     /// Extracted from `on_event`.
     fn on_comment_event(&mut self, text: &str, placement: granit_parser::Placement) {
-        let text = Arc::from(text.trim());
+        let trimmed = text.trim();
+        // granit does not re-read a comment whose text is empty (a bare `#` or
+        // `# `): first parse surfaces an empty `Event::Comment`, the writer emits
+        // `# `, and the re-parse then drops it - so the document drifts one stray
+        // `# ` line every serialize round (libFuzzer `yaml_roundtrip`
+        // crash-0de6be17). A contentless comment carries nothing to preserve, so
+        // we do not record it: the AST reflects the re-readable form and
+        // serialization is idempotent.
+        if trimmed.is_empty() {
+            return;
+        }
+        let text = Arc::from(trimmed);
         if is_standalone_placement(&placement) {
             self.pending_standalone_comment = Some(Comment {
                 text,
@@ -1066,6 +1077,49 @@ impl<'a> AstReceiver<'a> {
 mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
+
+    /// libFuzzer `yaml_roundtrip` (crash-0de6be17): a bare `#` / `# ` comment
+    /// with no text. granit surfaces an empty `Event::Comment` on first parse,
+    /// the writer emitted it as a stray `# ` line, and the re-parse then dropped
+    /// it - so ONCE had a trailing `  # ` that TWICE lost, drifting every round.
+    /// A contentless comment is now not recorded, so the AST matches the
+    /// re-readable form. Non-empty comments must survive untouched.
+    #[test]
+    fn empty_comment_is_not_round_tripped_as_drift() {
+        let bytes: &[u8] = &[
+            0x62, 0x61, 0x73, 0x65, 0x3a, 0x20, 0x26, 0x62, 0x0a, 0x20, 0x68, 0x69, 0x6c, 0x64,
+            0x3a, 0x0a, 0x20, 0x20, 0x3c, 0x3c, 0x3a, 0x20, 0x2a, 0x62, 0x0a, 0x3a, 0x20, 0x32,
+            0x20, 0x20, 0x23, 0x20, 0x68, 0x6e, 0x6c, 0x69, 0x6e, 0x65, 0x60, 0x65, 0x2a, 0x62,
+            0x0a, 0x3a, 0x20, 0x32, 0x20, 0x20, 0x23, 0x20, 0x62, 0x0a, 0x3a, 0x68, 0x61, 0x73,
+            0x65, 0x3a, 0x20, 0x26, 0x62, 0x0a, 0x20, 0x68, 0x69, 0x6c, 0x64, 0x3a, 0x0a, 0x20,
+            0x20, 0x3c, 0x3c, 0x3a, 0x20, 0x2a, 0x62, 0x0a, 0x3a, 0x20, 0x32, 0x20, 0x20, 0x23,
+            0x20, 0x20,
+        ];
+        let crash = std::str::from_utf8(bytes).unwrap();
+        for input in [crash, "a: 1 # \n", "a: 1  # \nb: 2\n", "# \n- x\n"] {
+            let node = parse(input, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "drift for {input:?}: {once:?}"
+            );
+            assert!(
+                !once.contains("# \n"),
+                "empty comment leaked into output for {input:?}: {once:?}"
+            );
+        }
+        // A non-empty comment still survives parse -> emit -> re-parse.
+        let node = parse("k: v # keep\n", YamlSchema::Core).unwrap();
+        let once = crate::serializer::to_yaml(&node);
+        assert!(
+            once.contains("# keep"),
+            "non-empty comment dropped: {once:?}"
+        );
+    }
 
     #[test]
     fn test_parse_simple_scalar() {

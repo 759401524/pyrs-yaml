@@ -158,7 +158,15 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
 
         // Handle native comments from granit-parser
         if let Event::Comment(text, placement) = &event {
-            let text = Arc::from(text.trim());
+            let trimmed = text.trim();
+            // granit drops a contentless `#`/`# ` on re-read, so a consumer
+            // round-tripping through these events would drift on it; surface
+            // nothing for an empty comment (mirrors the AST receiver; libFuzzer
+            // `yaml_roundtrip` crash-0de6be17).
+            if trimmed.is_empty() {
+                return;
+            }
+            let text = Arc::from(trimmed);
             if crate::parser::is_standalone_placement(placement) {
                 self.pending_standalone_comment = Some(Comment {
                     text,

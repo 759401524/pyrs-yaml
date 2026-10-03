@@ -71,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A contentless comment is no longer stored or emitted** — granit surfaces a
+  bare `#` / `#` as an empty `Event::Comment`, but it will not re-read one, so
+  the writer emitted a stray `#` line that the next parse dropped: a trailing
+  `#` that drifted the document every serialize round (libFuzzer
+  `yaml_roundtrip` crash-0de6be17). Both the AST and stream receivers now skip a
+  comment whose trimmed text is empty, so a comment with nothing to say is
+  neither recorded nor emitted; non-empty comments are untouched.
 - **An empty block scalar no longer carries a stray indentation indicator** —
   an empty `|`/`>` body has nothing to measure an indent against, so granit drops
   an explicit indicator on re-parse, yet `detect_block_header` had read the `2` of
