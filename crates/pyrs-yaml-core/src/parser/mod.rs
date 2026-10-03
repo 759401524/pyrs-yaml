@@ -1078,6 +1078,26 @@ mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
 
+    /// libFuzzer `yaml_roundtrip` (crash-41acfbbe, 4 bytes ` ...`): a plain
+    /// scalar equal to a document indicator. granit reads ` ...` as the string
+    /// `"..."`, but emitting it bare as `...` re-parses as a document-end marker
+    /// (null), drifting `...` -> `null` every round. Such scalars are now quoted.
+    #[test]
+    fn document_indicator_scalar_is_quoted() {
+        for input in [" ...", " ---", "a: ...\n", "a: ---\n", "- ...\n"] {
+            let node = parse(input, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{input:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+            assert_eq!(
+                once,
+                crate::serializer::to_yaml(&again),
+                "drift for {input:?}: {once:?}"
+            );
+        }
+    }
+
     /// libFuzzer `yaml_roundtrip` (crash-0de6be17): a bare `#` / `# ` comment
     /// with no text. granit surfaces an empty `Event::Comment` on first parse,
     /// the writer emitted it as a stray `# ` line, and the re-parse then dropped
