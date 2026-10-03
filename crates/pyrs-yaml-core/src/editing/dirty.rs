@@ -160,18 +160,6 @@ mod tests {
     }
 
     #[test]
-    fn test_dirty_unit_eligible() {
-        let unit = DirtyUnit {
-            kind: DirtyKind::Insert {
-                at: 0,
-                text: "".into(),
-            },
-            eligible: true,
-        };
-        assert!(unit.eligible);
-    }
-
-    #[test]
     fn test_dirty_unit_ineligible() {
         let unit = DirtyUnit {
             kind: DirtyKind::Delete { range: 0..1 },

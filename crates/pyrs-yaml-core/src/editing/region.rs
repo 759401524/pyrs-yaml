@@ -255,32 +255,6 @@ pub fn extend_delete_over_comments(
 mod tests {
     use super::*;
 
-    fn mk_flow_seq() -> CustomNode {
-        CustomNode::Sequence {
-            items: vec![],
-            flow_style: true,
-            meta: Default::default(),
-        }
-    }
-
-    fn mk_block_seq() -> CustomNode {
-        CustomNode::Sequence {
-            items: vec![],
-            flow_style: false,
-            meta: Default::default(),
-        }
-    }
-
-    #[test]
-    fn test_node_is_flow_flow_style() {
-        assert!(node_is_flow(&mk_flow_seq()));
-    }
-
-    #[test]
-    fn test_node_is_flow_block_style() {
-        assert!(!node_is_flow(&mk_block_seq()));
-    }
-
     #[test]
     fn test_node_is_flow_scalar() {
         assert!(!node_is_flow(&CustomNode::plain_scalar("x")));

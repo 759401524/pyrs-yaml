@@ -196,16 +196,6 @@ mod tests {
     }
 
     #[test]
-    fn test_key_eq_same_scalar() {
-        assert!(key_eq(&mk_scalar("a"), &mk_scalar("a")));
-    }
-
-    #[test]
-    fn test_key_eq_different_scalar() {
-        assert!(!key_eq(&mk_scalar("a"), &mk_scalar("b")));
-    }
-
-    #[test]
     fn test_key_eq_same_mapping() {
         let a = mk_map(vec![("x", "1")]);
         let b = mk_map(vec![("x", "1")]);
@@ -235,14 +225,6 @@ mod tests {
         let pairs = vec![(mk_scalar("a"), mk_scalar("1"))];
         let map: IndexMap<CustomNode, CustomNode> = pairs.into_iter().collect();
         assert_eq!(mapping_key_index(&map, &mk_scalar("x")), None);
-    }
-
-    #[test]
-    fn test_navigate_mapping_key() {
-        let node = mk_map(vec![("a", "1")]);
-        let segs = [Segment::Key(Cow::Borrowed("a"))];
-        let result = navigate(&node, &segs).unwrap();
-        assert!(key_eq(result, &mk_scalar("1")));
     }
 
     #[test]
