@@ -1,0 +1,4 @@
+&a !tag anchored-key: value
+key2: &b !!str anchored-value
+"": empty-string-key
+&c !type anchor-and-tag-key: v
