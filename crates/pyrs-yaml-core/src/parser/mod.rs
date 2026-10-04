@@ -1188,6 +1188,41 @@ mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
 
+    /// libFuzzer `yaml_roundtrip` (crash-b91536ce, 7 bytes `!y5%7c `): granit
+    /// hands the reader the *decoded* tag suffix, so the source tag `!y5%7c`
+    /// arrived as `y5|`. The writer emitted that decoded text, but `|` is not a
+    /// permitted tag character, so the output no longer parsed at all ("while
+    /// scanning a tag, did not find expected whitespace or line break"). Tag
+    /// emission now re-percent-encodes URI-illegal characters, which restores a
+    /// readable spelling - and the same one every round, so the text is stable.
+    #[test]
+    fn tag_suffix_with_illegal_uri_chars_round_trips_stably() {
+        let crash = String::from_utf8(vec![0x21u8, 0x79, 0x35, 0x25, 0x37, 0x63, 0x20]).unwrap();
+        for src in [
+            crash,
+            "!tag foo".to_string(),
+            "key: !a%20b \n".to_string(),
+            "key: !t x\n".to_string(),
+        ] {
+            let node =
+                parse(&src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{once:?} must re-parse: {e}\nfor {src:?}"));
+            let twice = crate::serializer::to_yaml(&again);
+            assert_eq!(once, twice, "tag drift for {src:?}: {once:?} vs {twice:?}");
+        }
+        // The escaped spelling survives rather than degrading to a bare `|`.
+        let node = parse(&crash_input(), YamlSchema::Core).expect("crash input parses");
+        let once = crate::serializer::to_yaml(&node);
+        assert!(once.contains("%7c"), "tag not re-encoded: {once:?}");
+        assert!(!once.contains("!y5|"), "illegal raw `|` emitted: {once:?}");
+    }
+
+    fn crash_input() -> String {
+        String::from_utf8(vec![0x21u8, 0x79, 0x35, 0x25, 0x37, 0x63, 0x20]).unwrap()
+    }
+
     /// libFuzzer `yaml_roundtrip` (crash-aee06aca, 65 bytes, minimized to 12:
     /// `- :\u{feff}:\n- #e`): a note on the dash line of a sequence item whose own
     /// content is empty was bound *backwards* onto the previous item's value, so

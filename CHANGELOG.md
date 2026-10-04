@@ -71,6 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Tag suffixes are re-encoded on write, so a decoded tag still parses** — granit hands
+  the reader the *decoded* tag suffix, so the source tag `!y5%7c` arrived as `y5|`. The
+  writer emitted that decoded text verbatim, but `|` is not a permitted tag character, so
+  the output no longer parsed at all ("while scanning a tag, did not find expected
+  whitespace or line break") and the round trip broke immediately (libFuzzer
+  `yaml_roundtrip` crash-b91536ce, 7 bytes `!y5%7c `). Tag emission now percent-encodes
+  characters outside the tag URI set (`%` included, so a literal percent cannot start a
+  fresh escape), restoring a readable spelling that is identical on every round. Tags
+  needing no escape are emitted unchanged.
 - **A note on a block item's dash line binds to the item it annotates** — a trailing
   comment (`Placement::Right`) was always attached to the most recently created node,
   even when it sat on a later line. In `- :\u{feff}:\n- #e` the note on the second item's

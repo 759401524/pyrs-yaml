@@ -272,9 +272,56 @@ impl Serializer {
             self.output.push(' ');
         }
         if let Some(t) = tag {
-            self.output.push_str(&t.to_string());
+            self.output.push_str(&Self::yaml_tag_text(t));
             self.output.push(' ');
         }
+    }
+
+    /// Render a tag for YAML emission, percent-encoding characters that are not
+    /// valid tag URI characters.
+    ///
+    /// granit hands the reader the *decoded* suffix, so the source tag `!y5%7c`
+    /// arrives as the suffix `y5|`. Emitting that decoded text is not merely
+    /// cosmetic: `|` is not a permitted tag character, so our own reader then
+    /// rejects the output ("while scanning a tag, did not find expected
+    /// whitespace or line break") and the round trip is not idempotent (libFuzzer
+    /// `yaml_roundtrip` crash-b91536ce, 7 bytes `!y5%7c `). Re-encoding on write
+    /// restores a spelling the reader accepts, and the encoding is deterministic
+    /// so the second round emits the same bytes.
+    fn yaml_tag_text(tag: &Tag) -> String {
+        let suffix = Self::encode_tag_uri(&tag.suffix);
+        if tag.handle == "!" && tag.suffix.is_empty() {
+            String::from("!")
+        } else if tag.handle == "!!" {
+            format!("!!{suffix}")
+        } else if tag.handle == "!" {
+            format!("!{suffix}")
+        } else if tag.handle.is_empty() && tag.suffix != "!" {
+            format!("!<{suffix}>")
+        } else {
+            format!("{}{suffix}", tag.handle)
+        }
+    }
+
+    /// Percent-encode everything outside the character set YAML tag URIs allow.
+    /// `%` is itself encoded, so a suffix carrying a literal percent re-reads as
+    /// the same text instead of starting a fresh escape.
+    fn encode_tag_uri(s: &str) -> String {
+        const SAFE: &[u8] = b"!$&'()*+,;=:@/?#[]-._~";
+        if s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || SAFE.contains(&b))
+        {
+            return s.to_string();
+        }
+        let mut out = String::with_capacity(s.len() + 8);
+        for b in s.bytes() {
+            if b.is_ascii_alphanumeric() || SAFE.contains(&b) {
+                out.push(b as char);
+            } else {
+                out.push_str(&format!("%{b:02x}"));
+            }
+        }
+        out
     }
 
     /// An empty container: a `Mapping`/`Sequence` with no entries/items,
@@ -796,7 +843,7 @@ impl Serializer {
                 }
                 if let Some(t) = value.tag() {
                     self.output.push(' ');
-                    self.output.push_str(&t.to_string());
+                    self.output.push_str(&Self::yaml_tag_text(t));
                 }
             }
             self.output.push('\n');
