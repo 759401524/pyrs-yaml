@@ -29,3 +29,32 @@ pub mod types;
 pub fn is_yaml_noncharacter(c: char) -> bool {
     (c as u32) & 0xFFFE == 0xFFFE
 }
+
+/// True when `c` may appear inside YAML document content.
+///
+/// This is YAML 1.2's `c-printable` set - tab, LF, CR, `#x20-#x7E`, `#x85`,
+/// `#xA0-#xD7FF`, `#xE000-#xFFFD`, `#x10000-#x10FFFF` - minus the Unicode
+/// noncharacters (the plane-end `…FFFE`/`…FFFF` twins), which granit rejects
+/// outright. `#xD800-#xDFFF` cannot occur because `char` never holds a surrogate.
+///
+/// U+FEFF is then excluded on top: it *is* printable, but YAML restricts it to
+/// the stream's own leading byte-order mark, so it can never sit inside a body.
+/// Callers that must round-trip text they do not control - notably YAML comments,
+/// which have no escape syntax at all - use this to drop what the reader would
+/// reject rather than emit output that no longer parses.
+pub fn is_yaml_document_char(c: char) -> bool {
+    if c == '\u{FEFF}' {
+        return false;
+    }
+    matches!(
+        c as u32,
+        0x09
+        | 0x0A
+        | 0x0D
+        | 0x20..=0x7E
+        | 0x85
+        | 0xA0..=0xD7FF
+        | 0xE000..=0xFFFD
+        | 0x1_0000..=0x10_FFFF
+    ) && !is_yaml_noncharacter(c)
+}
