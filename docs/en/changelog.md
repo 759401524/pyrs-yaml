@@ -89,6 +89,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   referred to it, this was a data-loss class, not just a formatting drift. A `&` whose
   whitespace-delimited run opens with `!` is now skipped as tag content (found as
   libFuzzer `yaml_roundtrip` crash-f44eca1d, 36 bytes minimised to 12).
+- **A BOM inside a double-quoted scalar is escaped, not written raw** — the escaper's
+  catch-all tested `is_control() || is_yaml_noncharacter()`, and U+FEFF satisfies neither
+  (it is a `Cf` format character, and the noncharacter mask excludes it), so it fell
+  through to the verbatim push and emitted a raw BOM inside quotes, where YAML does have
+  an escape. The parser rejects a mid-document BOM on input, but the edit API reaches the
+  writer directly (`set("$.key", "a<BOM>b")`), producing output that no longer parsed; it
+  now emits `"a\ufeffb"`, which reads back as the same text. Found while chasing
+  crash-2d14c6f6 - the comment and anchor positions have no escape syntax at all and are
+  handled separately by ingest-side filtering.
 - **A byte-order mark inside a comment or anchor no longer breaks the document** —
   U+FEFF is *restricted* to a stream's own leading byte-order mark and may not appear
   inside a document. granit surfaces it inside decoded comment text, and our own

@@ -1350,9 +1350,21 @@ pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
             '\x0C' => out.push_str("\\f"),
             '\x1B' => out.push_str("\\e"),
             '/' => out.push_str("\\/"),
-            c if c.is_control() || is_yaml_noncharacter(c) => {
+            c if c.is_control() || is_yaml_noncharacter(c) || c == '\u{FEFF}' => {
                 // `\u` escapes are 4 hex digits (BMP only); characters above
                 // U+FFFF must use the 8-digit `\U` form.
+                //
+                // U+FEFF needs its own test: YAML treats it as *restricted* (legal
+                // only as a byte-order mark at the very start of a stream), and it
+                // is a `Cf` format character - neither `is_control()` (which covers
+                // `Cc`) nor a Unicode noncharacter - so both existing checks miss it.
+                // granit hands the writer the decoded text, so a scalar carrying a
+                // BOM was emitted raw even inside double quotes, and our own parser
+                // then rejected our output outright: "a BOM must not appear inside a
+                // document" (libFuzzer `yaml_roundtrip` crash-2d14c6f6).
+                // `needs_double_quoted` already forces the quoting (it lists
+                // U+FEFF); this arm supplies the escape that quoting alone cannot
+                // provide, since single- and plain styles have no escape mechanism.
                 let u = c as u32;
                 if u > 0xFFFF {
                     out.push_str(&format!("\\U{:08x}", u));
@@ -1575,6 +1587,29 @@ mod tests {
     use crate::ast::Tag;
     use indexmap::IndexMap;
     use std::sync::Arc;
+
+    /// The escaper's catch-all arm tested `is_control() || is_yaml_noncharacter()`.
+    /// U+FEFF satisfies neither: it is a `Cf` format character, and the noncharacter
+    /// mask `(c as u32) & 0xFFFE == 0xFFFE` is false for FEFF. It therefore fell
+    /// through to the push-verbatim arm and a BOM was written raw even inside
+    /// double quotes, where YAML does have an escape. The parser rejects a
+    /// mid-document BOM on input, so this is reached through the edit API.
+    #[test]
+    fn double_quoted_scalar_escapes_a_bom() {
+        let mut out = String::new();
+        write_double_quoted_scalar(&mut out, "a\u{FEFF}b");
+        assert_eq!(out, "\"a\\ufeffb\"", "BOM must be escaped, not written raw");
+        assert!(
+            !out.contains('\u{FEFF}'),
+            "a raw BOM survived escaping: {out:?}"
+        );
+
+        // The escaped form must read back and re-emit byte-identically.
+        let emitted = format!("key: {out}\n");
+        let node = crate::parser::parse(&emitted, crate::parser::yaml::YamlSchema::Core)
+            .expect("escaped BOM scalar must re-parse");
+        assert_eq!(to_yaml(&node), emitted, "re-emit must be byte-identical");
+    }
 
     /// libFuzzer `yaml_roundtrip` find: granit delivers double-quoted scalars
     /// already decoded, and the receiver's own unescape used to run a *second*
