@@ -23,7 +23,11 @@ hooks = [
   { id = "check-yaml", priority = "checks" },
   { id = "check-toml", priority = "checks" },
   { id = "detect-private-key", priority = "checks" },
-  { id = "trailing-whitespace", priority = "format" },
+  # Fuzz seeds are byte-exact fuzzer inputs in which trailing whitespace is
+  # semantic: `!y5%7c ` is a tag plus its required separator, and stripping the
+  # space leaves a 6-byte input that no longer reproduces the crash it was added
+  # for. Keep the hygiene hook off the fuzz input trees.
+  { id = "trailing-whitespace", priority = "format", exclude = { glob = ["fuzz/seeds/**", "fuzz/corpus/**", "fuzz/artifacts/**"] } },
 ]
 
 # ── Rust: cargo fmt + clippy ────────────────────────────────────────────────
