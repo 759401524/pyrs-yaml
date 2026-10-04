@@ -1233,6 +1233,47 @@ mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
 
+    /// libFuzzer `yaml_roundtrip` (crash-f44eca1d, 36 bytes minimised to 12): a tag
+    /// URI that contains `&` next to an anchor let `anchor_name_before` harvest the
+    /// tag's ampersand instead of the real anchor, so `&F !-&l ` re-read as anchor
+    /// `l`. The name then mutated on every round and emission never reached a fixed
+    /// point - and a renamed anchor silently orphans every `*F` alias that referred
+    /// to it. Rejecting a `&` whose token opens with `!` pins the name.
+    #[test]
+    fn anchor_beside_tag_containing_ampersand_round_trips_stably() {
+        let input = "!-&l &F";
+        let one =
+            crate::serializer::to_yaml(&parse(input, YamlSchema::Core).expect("input parses"));
+        assert_eq!(
+            one, "&F !-&l \n",
+            "anchor must keep its name and the tag its URI"
+        );
+        let two = crate::serializer::to_yaml(
+            &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
+        );
+        assert_eq!(two, one, "emission must be a fixed point");
+    }
+
+    /// The same crash at its authoritative bytes, replayed from the committed seed
+    /// rather than a hand-copy: the minimised case above is derived, this is what
+    /// libFuzzer actually found (36 bytes), and it carries a comment as well as a
+    /// tag and anchor, so it also proves the fix did not disturb comment recovery.
+    /// Asserted as a property because the exact emission is not what regressed.
+    #[test]
+    fn former_crash_f44eca1d_reaches_a_fixed_point() {
+        let raw =
+            include_bytes!("../../../../fuzz/seeds/yaml_roundtrip/former-crash-f44eca1d.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = crate::serializer::to_yaml(&parse(src, YamlSchema::Core).expect("input parses"));
+        let two = crate::serializer::to_yaml(
+            &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
+        );
+        assert_eq!(
+            two, one,
+            "second round must not mutate the first: {one:?} -> {two:?}"
+        );
+    }
+
     /// libFuzzer `yaml_roundtrip` (crash-b91536ce, 7 bytes `!y5%7c `): granit
     /// hands the reader the *decoded* tag suffix, so the source tag `!y5%7c`
     /// arrived as `y5|`. The writer emitted that decoded text, but `|` is not a
