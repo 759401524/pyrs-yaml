@@ -319,7 +319,7 @@ jobs:
       # on tag/dispatch, so PR CI never surfaces such gaps).
       - name: Install QEMU
         if: ${{ matrix.platform.qemu }}
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       # `cross` pins nothing itself: it is the driver that runs `cargo build`
       # inside the pinned `ghcr.io/cross-rs/<target>` manylinux2014 images,
