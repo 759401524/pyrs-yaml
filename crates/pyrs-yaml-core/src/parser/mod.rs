@@ -947,7 +947,27 @@ impl<'a> AstReceiver<'a> {
         if anchor_id == 0 {
             return None;
         }
-        let name = anchor_name_before(self.yaml_text, byte_start)?;
+        let mut name = anchor_name_before(self.yaml_text, byte_start)?;
+        // Same ingest-side rule already applied to comment text: an anchor is
+        // emitted as a bare `&name`, a position with no escape syntax, so a code
+        // point that cannot appear inside a document - U+FEFF is restricted to the
+        // stream's own leading BOM - would otherwise make our output unparseable
+        // (libFuzzer `yaml_roundtrip` crash-2d14c6f6, whose emitted text carried
+        // `&eeeeeeeo\u{FEFF}`). Filtering here, rather than at each writer, keeps
+        // the anchor and every alias pointing at it in agreement because both read
+        // this one stored name; a name with nothing readable left is treated as
+        // unanchored instead of storing a name that cannot be written back.
+        // The `all` probe keeps the common case allocation-free: rebuilding the
+        // string is reserved for text that actually carries a rejected code point.
+        if !name.chars().all(pyrs_schema::is_yaml_document_char) {
+            name = name
+                .chars()
+                .filter(|&c| pyrs_schema::is_yaml_document_char(c))
+                .collect();
+            if name.is_empty() {
+                return None;
+            }
+        }
         self.anchors.insert(anchor_id, name.clone());
         Some(name)
     }
@@ -1161,7 +1181,32 @@ impl<'a> AstReceiver<'a> {
         if trimmed.is_empty() {
             return;
         }
-        let text = Arc::from(trimmed);
+        // Drop code points that cannot sit inside a document at all. A comment has
+        // no escape syntax (unlike a double-quoted scalar), so one forbidden
+        // character does not cost detail - it makes the *whole* document
+        // unparseable: granit hands us decoded text, so a source comment carrying
+        // U+FEFF (restricted to the stream's own leading BOM) came back verbatim
+        // and our parser then rejected our own output - "a BOM must not appear
+        // inside a document" (libFuzzer `yaml_roundtrip` crash-2d14c6f6).
+        // Sanitising on ingest keeps the AST the single authoritative, already-safe
+        // form, so every serializer site is correct by construction instead of
+        // each needing its own filter. Re-trim after filtering: removing a
+        // character can expose edge whitespace that granit would strip on re-read,
+        // which alone would break idempotence. If nothing readable survives, the
+        // note is not recorded at all - the same rule as a contentless comment.
+        let text: Arc<str> = if trimmed.chars().all(pyrs_schema::is_yaml_document_char) {
+            Arc::from(trimmed)
+        } else {
+            let cleaned: String = trimmed
+                .chars()
+                .filter(|&c| pyrs_schema::is_yaml_document_char(c))
+                .collect();
+            let cleaned = cleaned.trim();
+            if cleaned.is_empty() {
+                return;
+            }
+            Arc::from(cleaned)
+        };
         if is_standalone_placement(&placement) {
             self.pending_standalone_comment = Some(Comment {
                 text,
@@ -1221,6 +1266,48 @@ mod tests {
 
     fn crash_input() -> String {
         String::from_utf8(vec![0x21u8, 0x79, 0x35, 0x25, 0x37, 0x63, 0x20]).unwrap()
+    }
+
+    /// libFuzzer `yaml_roundtrip` (crash-2d14c6f6, 55 bytes): U+FEFF is *restricted*
+    /// to a stream's own leading byte-order mark, yet granit surfaces it inside
+    /// decoded comment text, and our `anchor_name_before` text re-scanner swept it
+    /// into an anchor name too. Both positions are emitted bare (`# note`,
+    /// `&name`) with no escape syntax available, so re-emitting it produced output
+    /// our own parser rejected outright ("a BOM must not appear inside a
+    /// document"). Comment and anchor text are now filtered to in-document
+    /// characters on ingest, so the AST is the single already-safe form.
+    #[test]
+    fn unrepresentable_code_points_never_reach_emitted_text() {
+        // The pinned artifact bytes, read straight from the regression seed so this
+        // test cannot drift from the input that actually failed.
+        let artifact =
+            include_bytes!("../../../../fuzz/seeds/yaml_roundtrip/former-crash-2d14c6f6.seed");
+        let shapes = [
+            String::from_utf8(artifact.to_vec()).expect("seed is valid utf-8"),
+            "key: v # a\u{feff}b\n".to_string(),
+            "# t\u{feff}u\nkey: v\n".to_string(),
+            "\u{feff}key: v\n".to_string(),
+        ];
+        for src in shapes {
+            let node =
+                parse(&src, YamlSchema::Core).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            let once = crate::serializer::to_yaml(&node);
+            let again = parse(&once, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{once:?} must re-parse: {e}\nfor {src:?}"));
+            let twice = crate::serializer::to_yaml(&again);
+            assert_eq!(once, twice, "BOM drift for {src:?}: {once:?} vs {twice:?}");
+            assert!(
+                !once.contains('\u{feff}'),
+                "a BOM leaked into emitted text for {src:?}: {once:?}"
+            );
+        }
+        // The note must survive with its readable text, not be dropped wholesale.
+        let kept =
+            crate::serializer::to_yaml(&parse("key: v # a\u{feff}b\n", YamlSchema::Core).unwrap());
+        assert!(
+            kept.contains("# ab"),
+            "comment text lost rather than cleaned: {kept:?}"
+        );
     }
 
     /// libFuzzer `yaml_roundtrip` (crash-aee06aca, 65 bytes, minimized to 12:

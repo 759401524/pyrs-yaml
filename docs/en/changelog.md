@@ -79,6 +79,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A byte-order mark inside a comment or anchor no longer breaks the document** —
+  U+FEFF is *restricted* to a stream's own leading byte-order mark and may not appear
+  inside a document. granit surfaces it inside decoded comment text, and our own
+  `anchor_name_before` text scanner swept it into an anchor name too. Both positions are
+  emitted bare (`# note`, `&name`) with no escape syntax available, so re-emitting the
+  BOM produced text our own parser rejected outright ("a BOM must not appear inside a
+  document"; libFuzzer `yaml_roundtrip` crash-2d14c6f6, 55 bytes). Comment and anchor
+  text are now filtered to in-document characters on ingest, so the AST is the single
+  already-safe form and every writer stays correct by construction - the same "record
+  the re-readable form" rule already applied to contentless comments (#248) and stranded
+  notes (#256/#258). A note keeps its readable text (`# a<FEFF>b` -> `# ab`); one with
+  nothing left is dropped rather than emitted unparseably.
 - **Tag suffixes are re-encoded on write, so a decoded tag still parses** — granit hands
   the reader the *decoded* tag suffix, so the source tag `!y5%7c` arrived as `y5|`. The
   writer emitted that decoded text verbatim, but `|` is not a permitted tag character, so
