@@ -79,6 +79,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **An anchor next to a tag whose URI contains `&` keeps its name** —
+  `anchor_name_before` recovers the display name granit never reports by scanning left
+  from a node for the nearest boundary `&`. But `&` is a legal URI character, and `-`
+  (needed for `- &a v`) is in the boundary set, so for the writer's own
+  `&anchor !tag` ordering the rightmost qualifying `&` sat *inside* the tag: `&F !-&l`
+  re-read as anchor `l`. The name mutated on every round so emission never reached a
+  fixed point, and because a renamed anchor silently orphans every `*F` alias that
+  referred to it, this was a data-loss class, not just a formatting drift. A `&` whose
+  whitespace-delimited run opens with `!` is now skipped as tag content (found as
+  libFuzzer `yaml_roundtrip` crash-f44eca1d, 36 bytes minimised to 12).
 - **A byte-order mark inside a comment or anchor no longer breaks the document** —
   U+FEFF is *restricted* to a stream's own leading byte-order mark and may not appear
   inside a document. granit surfaces it inside decoded comment text, and our own

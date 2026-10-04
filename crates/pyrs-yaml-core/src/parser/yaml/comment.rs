@@ -113,6 +113,20 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
         if !boundary {
             continue;
         }
+        // A tag token (`!` followed by ns-uri-char*) may legally contain `&`, and
+        // `&` also follows `-` (from `- &a v`) and `:` - so the boundary test alone
+        // cannot tell an anchor from an ampersand sitting inside a preceding tag.
+        // Walk the whitespace-delimited run leftwards from here: if it opens with
+        // `!`, this `&` belongs to that tag and granit never meant it as an anchor.
+        // Tags and anchors are always space-separated, so the run's first byte is
+        // exactly the token's first byte.
+        let mut run = i;
+        while run > 0 && !bytes[run - 1].is_ascii_whitespace() {
+            run -= 1;
+        }
+        if bytes[run] == b'!' {
+            continue;
+        }
         let name: String = yaml[i + 1..]
             .chars()
             .take_while(|c| is_valid_anchor_char(*c))
@@ -214,6 +228,29 @@ mod tests {
         // anchored scalar value `v`; nearest boundary `&` to its left is `&b`.
         let b = s.find(" v").unwrap();
         assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
+    }
+
+    /// A tag URI may legally contain `&` (it is an ns-uri-char), and the writer
+    /// emits properties as `&anchor !tag`, so the rightmost boundary `&` left of a
+    /// node can sit *inside the tag* instead of being the anchor (libFuzzer
+    /// `yaml_roundtrip`, crash-f44eca1d minimised to 12 bytes): `&F !-&l ` read back
+    /// as anchor `l`, renaming the anchor every round and orphaning any `*F` alias,
+    /// so emission never reached a fixed point. Rejecting a `&` whose token opens
+    /// with `!` makes the scanner find the real `&F`.
+    #[test]
+    fn anchor_name_before_skips_ampersand_inside_tag_token() {
+        let s = "&F !-&l \n";
+        // granit's empty-scalar span for the anchored node starts at byte 7.
+        assert_eq!(anchor_name_before(s, 7), Some("F".to_string()));
+
+        // The reverse property order worked before and must keep working.
+        let s = "!-&l &F";
+        assert_eq!(anchor_name_before(s, s.len()), Some("F".to_string()));
+
+        // A tag carrying the only `&`, with no anchor at all, must yield nothing
+        // rather than harvesting the tag's innards.
+        let s = "key: !a&b ";
+        assert_eq!(anchor_name_before(s, s.len() - 1), None);
     }
 
     /// A bare apostrophe in a plain key (`bas'e`) is not a quote open, so a
