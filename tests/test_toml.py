@@ -240,32 +240,81 @@ class TestMultilineStrings:
         assert pyrs_yaml.load_toml(out) == {"x": "a\nb"}
 
 
-class TestSectionHeaderCommentBoundary:
-    """Characterization test for a KNOWN hub boundary (deliberately not root-fixed).
+class TestStackedComments:
+    """Every own-line comment above a key survives TOML -> hub -> TOML.
 
-    A comment placed on a TOML table-header line (`[sec] # note`) has no
-    faithful representation in the YAML hub: the shared YAML engine does not
-    capture a comment sitting on a container's key line (verified: pure YAML
-    `sec: # note` loses the note on parse too), so `to_toml` re-emits the header
-    without it. Root-fixing this means changing the locked granit comment-capture
-    model — a high-blast-radius core-engine change explicitly declined. These
-    cases PIN the current behavior (values stay lossless; standalone/leading
-    comments survive; the inline header note is dropped) so it cannot silently
-    drift. See ROADMAP.md "Known engine boundaries".
+    The parser carried one ``Option<String>`` of pending notes and every comment
+    line overwrote it, so ``# a`` + ``# b`` + ``k = 1`` came back with a single
+    note -- output that round-tripped perfectly, which is exactly why no
+    idempotence-based test could see the loss.
     """
 
-    def test_header_inline_comment_dropped_but_value_lossless(self):
+    def test_kv_pair_keeps_every_note(self):
+        src = "# a\n# b\nk = 1\n"
+        out = pyrs_yaml.parse(pyrs_yaml.from_toml(src)).to_toml()
+        assert out == src, out
+
+    def test_section_header_keeps_every_note(self):
+        src = "# h1\n# h2\n[sec]\nk = 1\n"
+        out = pyrs_yaml.parse(pyrs_yaml.from_toml(src)).to_toml()
+        assert out == src, out
+
+    def test_document_only_comments_survive_both_views(self):
+        src = "# d1\n# d2\n"
+        yaml_view = pyrs_yaml.parse(pyrs_yaml.from_toml(src)).to_yaml()
+        assert yaml_view.count("#") == 2, yaml_view
+        assert pyrs_yaml.parse(yaml_view).to_toml() == src
+
+
+class TestSectionHeaderCommentBoundary:
+    """Characterization test for a KNOWN hub boundary.
+
+    A comment placed on a TOML table-header line (`[sec] # note`) has no faithful
+    representation in the YAML hub: the shared YAML engine cannot attach a comment
+    to a container's key line and keep it there (verified: pure YAML `sec: # note`
+    loses the position too). It does not LOSE the note -- that was fixed with the
+    leading-comment list -- and it no longer even leaves the table: the note rides
+    the header's own mapping and the YAML writer puts a container's inline note on
+    the last line of that container's body, which the TOML writer renders as a
+    trailing comment on the table's last `key = value` line. One round of
+    TOML -> hub -> TOML is already stable there. These cases PIN exactly that:
+    values lossless, the note surviving inside the table it annotates, its position
+    not faithful. Root-fixing the position means changing the locked granit
+    comment-capture model, a high-blast-radius core-engine change explicitly
+    declined. See ROADMAP.md "Known engine boundaries".
+    """
+
+    def test_header_inline_comment_is_relocated_not_dropped(self):
         src = "a = 1\n\n[sec] # note\nx = 1\n"
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
         # Value round-trips through the hub unchanged (the real guarantee).
         assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
-        # The header-line inline comment is the documented boundary: dropped.
-        assert "# note" not in out, out
-        assert "[sec]" in out, out
+        # The note survives -- it just cannot stay on the header line.
+        assert "# note" in out, out
+        assert out == "a = 1\n[sec]\nx = 1 # note\n", out
+        assert "[sec] # note" not in out, out
+        # It stays inside the table it annotates rather than escaping to the head:
+        # the last body line of `x = 1` follows `[sec]`, so the note cannot be read
+        # as belonging to another table.
+        assert out.index("[sec]") < out.index("# note"), out
+        # One TOML round through the hub is already a fixed point.
+        again = pyrs_yaml.parse(pyrs_yaml.from_toml(out)).to_toml()
+        assert again == out, again
+
+    def test_relocated_note_lands_on_the_tables_last_entry(self):
+        # The slot a container's inline note borrows is the body's last line, so a
+        # multi-key table pins where that is -- and the note still cannot hop out of
+        # the table or vanish.
+        src = "[sec] # note\nx = 1\ny = 2\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert out == "[sec]\nx = 1\ny = 2 # note\n", out
+        assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out, out
 
     def test_standalone_section_comment_still_survives(self):
-        # Only the *inline* header comment is lost; a standalone note on the
-        # line above the header is preserved (via the #131 leading-comment path).
+        # Only the *inline* header comment changes position; a standalone note on the
+        # line above the header is preserved in place (via the #131 leading-comment
+        # path).
         src = "# above\n[sec]\nx = 1\n"
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
         assert "# above" in out, out

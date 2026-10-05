@@ -135,7 +135,7 @@ pub fn from_json_with_options(
         allow_single_quoted: opts.allow_single_quoted,
         allow_unquoted_keys: opts.allow_unquoted_keys,
         allow_json5_numbers: opts.allow_json5_numbers,
-        pending_comment: None,
+        pending_comment: Vec::new(),
     };
     p.ws();
     // A file-leading note belongs to the root container itself, mirroring
@@ -143,7 +143,7 @@ pub fn from_json_with_options(
     // before descending so the first member or element cannot steal it —
     // otherwise `// A\n{"k":…}` re-reads with the note on the key and the
     // JSONC/JSON5 writer fixed point drifts.
-    let root_leading = p.pending_comment.take();
+    let root_leading = core::mem::take(&mut p.pending_comment);
     let value = p.value()?;
     p.ws();
     if p.pos != p.s.len() {
@@ -155,9 +155,9 @@ pub fn from_json_with_options(
     // vanish from the AST and break the JSONC/JSON5 writer fixed point.
     // Attach any leftover note to the root node as well.
     let mut root = value;
-    if let Some(pc) = root_leading {
-        root.set_leading_comment(pyrs_ast::ast::Comment {
-            text: alloc::sync::Arc::from(pc.text.as_str()),
+    for pc in root_leading {
+        root.push_leading_comment(pyrs_ast::ast::Comment {
+            text: alloc::sync::Arc::from(pc.text),
             standalone: true,
         });
     }
@@ -176,13 +176,32 @@ struct Parser<'a> {
     allow_single_quoted: bool,
     allow_unquoted_keys: bool,
     allow_json5_numbers: bool,
-    /// The most recent JSONC comment consumed by `ws()`, waiting to
-    /// be attached to the next constructed node. `own_line` records
-    /// whether the comment started on a line of its own (i.e. no
-    /// non-whitespace token on the current line before it), which
+    /// The JSONC comments consumed by `ws()` that have not met a node yet, in
+    /// source order. `own_line` records whether the comment started on a line of
+    /// its own (i.e. no non-whitespace token on the current line before it), which
     /// maps directly onto `Comment::standalone`. Only populated when
     /// `allow_comments` is on.
-    pending_comment: Option<PendingComment>,
+    ///
+    /// A list: a member or element may be introduced by any number of comment
+    /// lines, and a single slot kept only the last of them.
+    pending_comment: Vec<PendingComment>,
+}
+
+/// Record a stack of pending notes onto `node`: every standalone one appends to
+/// the node's leading list in source order, while a same-line trailing note keeps
+/// owning the single inline `comment` slot (unchanged from #112).
+fn attach_pending(node: &mut CustomNode, pending: Vec<PendingComment>) {
+    for pc in pending {
+        let comment = pyrs_ast::ast::Comment {
+            text: alloc::sync::Arc::from(pc.text),
+            standalone: pc.own_line,
+        };
+        if pc.own_line {
+            node.push_leading_comment(comment);
+        } else {
+            node.set_comment(comment);
+        }
+    }
 }
 
 /// Intermediate comment record the parser threads between `ws()`
@@ -286,7 +305,7 @@ impl<'a> Parser<'a> {
                             }
                         }
                         let body_end = self.pos;
-                        self.pending_comment = Some(PendingComment {
+                        self.pending_comment.push(PendingComment {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
                         });
@@ -310,7 +329,7 @@ impl<'a> Parser<'a> {
                         }
                         let body_end = self.pos;
                         self.pos += 2;
-                        self.pending_comment = Some(PendingComment {
+                        self.pending_comment.push(PendingComment {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
                         });
@@ -324,25 +343,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Attach the pending comment (if any) to `node` and reset the slot.
+    /// Attach every pending comment (if any) to `node` and reset the slot.
     ///
     /// PR #115 migrates JSONC's standalone-note capture onto the
-    /// `leading_comment` slot introduced by #114, so an object member
-    /// or array element can carry BOTH the note on the line above AND
+    /// `leading_comments` slot introduced by #114, so an object member
+    /// or array element can carry BOTH the notes on the lines above AND
     /// a trailing inline note on the same line as its value. Same-line
     /// trailing notes keep using `comment` (unchanged from #112).
     fn flush_pending(&mut self, node: &mut CustomNode) {
-        if let Some(pc) = self.pending_comment.take() {
-            let comment = pyrs_ast::ast::Comment {
-                text: alloc::sync::Arc::from(pc.text),
-                standalone: pc.own_line,
-            };
-            if pc.own_line {
-                node.set_leading_comment(comment);
-            } else {
-                node.set_comment(comment);
-            }
-        }
+        attach_pending(node, core::mem::take(&mut self.pending_comment));
     }
 
     /// JSON5 single-quoted string. Same escape set as RFC 8259 basic
@@ -537,7 +546,7 @@ impl<'a> Parser<'a> {
             // Any comment consumed by the leading `ws()` is the key's
             // standalone note; claim the slot before parsing the key so
             // the value-side `ws()` below starts with a clean slate.
-            let key_pending = self.pending_comment.take();
+            let key_pending = core::mem::take(&mut self.pending_comment);
             let key_str = if self.peek() == Some(b'"') {
                 self.string()?
             } else if self.allow_single_quoted && self.peek() == Some(b'\'') {
@@ -548,17 +557,7 @@ impl<'a> Parser<'a> {
                 return Err(self.err("expected a quoted object key"));
             };
             let mut key_node = quoted_or_plain(key_str);
-            if let Some(pc) = key_pending {
-                let comment = pyrs_ast::ast::Comment {
-                    text: alloc::sync::Arc::from(pc.text),
-                    standalone: pc.own_line,
-                };
-                if pc.own_line {
-                    key_node.set_leading_comment(comment);
-                } else {
-                    key_node.set_comment(comment);
-                }
-            }
+            attach_pending(&mut key_node, key_pending);
             self.ws();
             self.expect(":", "expected `:` after the object key")?;
             self.ws();
@@ -598,19 +597,9 @@ impl<'a> Parser<'a> {
             // A standalone comment between `,` (or `[`) and the element
             // is the element's leading annotation; claim the slot so
             // the post-value flush below starts clean.
-            let element_pending = self.pending_comment.take();
+            let element_pending = core::mem::take(&mut self.pending_comment);
             let mut item = self.value()?;
-            if let Some(pc) = element_pending {
-                let comment = pyrs_ast::ast::Comment {
-                    text: alloc::sync::Arc::from(pc.text),
-                    standalone: pc.own_line,
-                };
-                if pc.own_line {
-                    item.set_leading_comment(comment);
-                } else {
-                    item.set_comment(comment);
-                }
-            }
+            attach_pending(&mut item, element_pending);
             self.ws();
             self.flush_pending(&mut item);
             items.push(item);

@@ -219,7 +219,10 @@ impl RuleResolver {
 
 impl SchemaResolver for RuleResolver {
     fn resolve<'a>(&self, value: &'a str) -> YamlType<'a> {
-        let trimmed = value.trim();
+        // YAML's own separation set - `str::trim` would also strip NBSP and the
+        // Unicode separators, which are plain-scalar content (see
+        // `resolve_core_type`).
+        let trimmed = value.trim_matches(pyrs_schema::is_yaml_blank);
         for rule in &self.rules {
             if rule.pattern.is_match(trimmed) {
                 return (rule.resolver)(value, trimmed);

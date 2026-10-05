@@ -101,6 +101,29 @@ class TestNodeComment:
         assert Node(doc).find("$.key").comment is None
         assert doc.to_yaml() == "key: value\n"
 
+    def test_leading_comments_keeps_every_stacked_note(self):
+        """A stack of comment lines above a key survives, in source order.
+
+        The receiver carried the next node's notes in a single slot and
+        overwrote it, so ``# alpha`` + ``# beta`` + ``key: 1`` came back one note
+        short. ``leading_comment`` still reports the first note (unchanged for
+        single-note documents); ``leading_comments`` is the new full view. The
+        notes belong to the node the reader hands them to — here the root
+        mapping — exactly as a single leading note already did.
+        """
+        doc = pyrs_yaml.parse("# alpha\n# beta\n# gamma\nkey: 1\n")
+        root = Node(doc).find("$")
+        assert root.leading_comments == ["alpha", "beta", "gamma"]
+        assert root.leading_comment == "alpha"
+        out = doc.to_yaml()
+        assert out == "# alpha\n# beta\n# gamma\nkey: 1\n"
+        assert pyrs_yaml.parse(out).to_yaml() == out
+        # A note-less document reports an empty list -- never ``None`` -- and the
+        # singular accessor keeps returning ``None`` as before.
+        plain_root = Node(pyrs_yaml.parse("key: 1\n")).find("$")
+        assert plain_root.leading_comments == []
+        assert plain_root.leading_comment is None
+
     def test_comment_roundtrip(self):
         doc = pyrs_yaml.parse("key: value")
         Node(doc).find("$.key").set_comment("updated")

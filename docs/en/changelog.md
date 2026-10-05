@@ -2,8 +2,10 @@
 title: Changelog
 description: All notable changes to pyrs-yaml, formatted per Keep a Changelog and Semantic Versioning.
 tags:
-  - docs
+
+- docs
 status: new
+
 ---
 
 ## Changelog
@@ -31,6 +33,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--update` to re-baseline deliberately. Its scenarios read the same documents as
   the divan suite through `pyrs_yaml_core::bench_inputs`, so the two measurements
   cannot drift apart.
+- **Note survival is a gate now, not a hope (`crates/pyrs-yaml-core/tests/note_survival.rs`)**
+  — the round-trip tier's oracle is text idempotence, which every stable-but-short-a-note
+  document passes, and that blind spot is why five silent note losses stayed green behind
+  it. A deterministic test now replays the committed YAML seed corpus on every
+  `cargo nextest`, requiring every note the reader recorded to appear in the emission
+  **and** every input to settle in one round — 37 note-bearing seeds carry the assertion
+  today, and the corpus grows it automatically as crashes become seeds. Its limit is
+  stated in the file and proven by mutation rather than argued: making the reader report
+  success without attaching a note reddens the pinned shape tests and leaves *this* gate
+  green, because a note lost during ingest never reaches the AST the gate measures.
+  Counting `#` in the source instead would redden correct input — the corpus holds
+  `!###0 …`, a tag whose suffix is `#` characters — and a gate that reddes correct output
+  is worse than none, so the reader-side half stays with the fuzz tier and the per-shape
+  pins, and neither half claims to cover the other.
+- **A localized-script purity gate (`scripts/check_cjk_localisation.py`)** — the `ja`,
+  `ko` and `zh` changelogs are now machine-checked to stay in their own writing system:
+  no kana outside `ja`, no Hangul outside `ko`, and no simplified-Chinese-only Han in
+  `ja`/`ko` (the pairs Japanese writes with a different codepoint — 積/积, 連/链, 視/视,
+  層/层). Translated entries drift into neighbouring scripts, and a reader of that locale
+  often cannot tell, because the intruding glyph looks like a variant of the intended
+  one. It runs as the prek hook `cjk-localisation`, honours the filenames the hook
+  passes, and refuses to call an empty scan a pass: the first version pinned its heading
+  pattern to the root file's depth, matched nothing on the nested localized pages, and
+  printed a green OK that meant nothing. Proven by injecting violations and watching the
+  hook fail before trusting it — and on the run that made it real it caught two
+  pre-existing intrusions (a simplified 折叠 in the `ja` page, a katakana ウ inside a
+  Hangul word in `ko`).
 - **Weekly fuzz schedule in CI** — `.github/workflows/fuzz.yml` runs all
   four libFuzzer targets every Saturday (plus on demand and whenever `fuzz/`
   itself changes), seeding the ephemeral per-run corpus from curated
@@ -69,6 +98,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `publish.yml` builds the native CLI for six platforms and attaches the
   archives to the GitHub Release, so users no longer need a Rust toolchain to
   get a standalone binary.
+- **Type stub drift gate (`scripts/check_stub_drift.py`)** — the committed
+  `python/pyrs_yaml/pyrs_yaml.pyi` is machine output that ships inside every
+  wheel, but CI only asserted that it exists and is tracked (`release-guard`),
+  so a binding signature change could leave the public typing contract silently
+  behind. A new `stub-drift` job in `validate.yml` regenerates the stub through
+  the declared route (`uv run maturin generate-stubs`) and fails on any content
+  difference. Two transforms keep the tracked stub fully derived instead of
+  hand-patched: the trailing whitespace prek's hook strips at commit, and one
+  declared fidelity fix for the two `__next__` returns where maturin 1.14.1
+  drops the `Option` the bindings actually return. Every declared fix asserts
+  its expected match count, so a changed signature or a fixed upstream fails
+  loudly instead of being rewritten silently. `mise run stubs` now writes
+  through the same pipeline.
 
 #### Changed
 
@@ -90,9 +132,313 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exec); the container recipe replaces all three failure modes with one
   community-standard tool, at a floor two releases lower than the runner's
   own glibc.
+- **PR-tier fuzz is blocking now (`fuzz.yml`)** — the step-level
+  `continue-on-error` on pull requests was a ratchet kept only while `main`
+  carried drift this tier correctly flagged (crash-f44eca1d, after the
+  predecessors fixed in #256/#258/#261/#262). Re-checked on 2026-10-04 against
+  this tree: all four targets replay the committed seed corpus clean (5/59/6/5
+  seeds, the pinned nightly-2026-08-15, cargo-fuzz 0.13.2, 60 s discovery), so a
+  new crash now fails the PR that introduces it instead of surfacing the
+  following weekend. Measured on 2026-10-05 after the merge-key override landed: the
+  75-file seed replay is clean on all four targets, while a fresh 60 s discovery window
+  still reaches the note-relocation family (`crash-a916de77`, 48 bytes) — recorded in
+  `ROADMAP.md` as the open finding, unseeded and unfixed, because a seed is a promise the
+  input passes. The key-metadata gap the ledger listed next (crash-86a9ae7b)
+  was verified closed by single-input replay; the drift found while checking —
+  `yaml_roundtrip` crash-ac5d9043 — is recorded in `ROADMAP.md` as the current
+  open finding, unseeded and unfixed.
 
 #### Fixed
 
+- **A merge can no longer repeat a key its mapping already owns** — an untagged `y` that
+  carries a note and a merged `y` were two different `IndexMap` keys, so both survived into
+  the emission and `to_yaml` printed `y:` twice at one level: text our own parser refuses,
+  breaking the engine's "we never emit unparseable output" contract (`crash-3495cc86`,
+  72 bytes, minimised to 19). `prepend_merged_pairs` had long claimed its input was
+  "filtered against existing keys by the caller"; nothing filtered. The expansion now drops
+  what the mapping overrides — identity being the *emitted* value of an untagged scalar key,
+  the same rule `push_node`'s duplicate check applies, so the two can never disagree about
+  which pairs may coexist — and a dropped pair's notes are re-homed instead of vanishing
+  with it (`former-crash-3495cc86.seed`, pinned by `a_merge_never_repeats_a_key_the_mapping_owns`
+  and by the corpus gate). Withdrawing the override reddens both and nothing else in 283.
+- **A note beside a root node that carries only properties is no longer dropped** —
+  `!x # note`, `&a # note` and the 69-byte `!###0` wall of notes kept losing their
+  text, and no oracle could see it: a document that is stable and short a note is a
+  perfectly stable document. Two orders, two bugs. granit delivers that note *before*
+  the `Scalar` event, where `attach_inline_comment` had no candidate to hang it on and
+  still answered "handled", so the caller never carried it forward; and for
+  `!m` CR `...` SP `# -o` the note arrives *after* `DocumentEnd`, where binding it back
+  onto the finished root as an inline note produced `!m   # -o` — a spelling whose own
+  re-read reports the note before the node and homes it as a leading note, so the round
+  trip never settled. Only a real attachment may now report success, a note that
+  follows the end of a non-container document is carried forward, and a pending note
+  left when the document finishes rides the root as a leading note instead of being
+  discarded (`former-crash-7918272c.seed`, 11 bytes, and `former-crash-ce106ccc.seed`,
+  69 bytes, pinned by `a_note_beside_a_property_only_root_survives_and_settles`, which
+  asserts the exact emission, the survival of the text and a one-round fixed point for
+  five shapes plus both seeds). Withdrawing the honest return value reddens that test
+  alone. A container root deliberately keeps its inline home — `a: 1` + `# trailing
+  note` re-reads from the last value line, and that is what the two pins on
+  `flush_trailing_comment` hold.
+- **A `#` that is only text no longer evicts a note from its line** — the writer puts
+  a container's own inline note on the line it has just finished, but it first asked
+  whether that line "already has a `#`" by scanning raw bytes. A quoted scalar holding
+  one (`"+#": !-`) answered yes, so the note was demoted to a line of its own — and a
+  bare note line below a value is read back as the *following* node's leading comment,
+  which moved it inside the value block on the second round. The scan now respects
+  quoting and YAML's whitespace rule (`line_has_comment_marker`), so the note rides the
+  pair line and one emission is the fixed point (`former-crash-22cb5f67.seed`, 15 bytes,
+  pinned by `a_quoted_hash_does_not_demote_the_containers_note` plus
+  `comment_marker_scan_respects_quoting`). Withdrawing the new scan reddens exactly the
+  end-to-end test.
+- **A tagged container now lifts every note on its first entry's marker spine** — the
+  lift that clears notes out from under an anchor/tag header line read only the first
+  key's *own* leading stack, so a stack riding a marker inside the body stayed below
+  the header and the reader hoisted it on the next round. The lift now takes the whole
+  spine (`former-crash-e6551c75.seed`, 60 bytes, and the 43-byte `former-crash-8f7085b0.seed`,
+  pinned together by `every_spine_note_clears_a_tagged_containers_header_line`). The
+  ledger had deferred this on the reasoning that the spine walk would pull notes out of
+  *nested* markers and break the pinned compact-key shapes; withdrawing the walk and
+  re-running showed exactly one test reddens and every neighbour in the family passes
+  both ways, so the blast radius had been inferred rather than measured.
+- **`pyrs-toml` builds for a bare-metal target again** — the stacked-note work had put
+  `std::mem::take` into the parser and writer of a `#![no_std]` crate, which every host
+  build forgave and the `no-std-check` job would not. Six call sites now use
+  `core::mem::take`, and `cargo build --locked --no-default-features --target
+  thumbv7em-none-eabi -p pyrs-ast -p pyrs-schema -p pyrs-json -p pyrs-toml` is green
+  locally, which is the gate that job runs.
+- **A tagged container no longer splits its note stacks across its own header line** —
+  the lift that moves a block container's first-entry notes above the anchor/tag header
+  it prints refused to run when the container carried notes of its own, because at the
+  time a node owned a *single* leading slot and a second stack there would have
+  overwritten the first. That slot is a `Vec` now, so the refusal stopped protecting
+  text and only cost a round: `# a` + `!5b4?` + `?` + `# b` + `k: v` wrote `# b` under
+  the header and had to be re-read to hoist it. Measured first — the fixed point of
+  every shape in the family is *all* stacks above the header, in source order — then
+  the guard was removed rather than tuned, and the characterization test that had
+  pinned the old placement was re-derived (`notes_stack_above_a_tagged_containers_own_note`
+  now asserts the order, the survival of both notes and a one-round fixed point;
+  `both_note_stacks_land_above_a_tag_header_in_one_round` replays the window's
+  32-byte carrier `former-crash-fbc8f2ae.seed`). Restoring the guard reddens exactly
+  those two tests.
+- **Every note stack on a marker's spine lifts to the marker line, not just the first** —
+  `hoist_marker_note` walks the chain of `?` markers a single line opens and stopped at
+  the first stack of leading notes it found. A chain can carry more than one, and
+  granit reports each of them at the marker's own level: in crash-f8525a9e the spine is
+  three markers deep with `#` on the middle mapping and `!!"#~` on the innermost `~`
+  key, so hoisting one left the other a level deeper and the emission settled only on
+  its second round. The walk now accumulates, outer before inner — which also closed
+  the 99-byte crash-c9031de4, whose notes sit on the same spine (`former-crash-f8525a9e.seed`,
+  `former-crash-c9031de4.seed`, pinned by
+  `every_note_on_the_marker_spine_lifts_to_the_marker_line`). The first hypothesis for
+  this input — that the hoist missed a note stored in the legacy `comment` slot — was
+  tested and **refuted** (the emission did not change a byte); `take_leading_notes` was
+  still switched to the normalised `leading_comments()` view, because reading only one
+  of the two storage conventions is the fork `standalone_slice()` exists to prevent, but
+  it is justified on that ground alone and not credited with this fix.
+- **A container's own inline note is now written on a line that can hold one** — the
+  writer printed a non-standalone `comment` on a block container as a bare note line
+  below the block, but a reader never reports an inline note from an empty line: the
+  re-read hands that text to the node which ended the block, as its *leading* note,
+  so the first emission was never a fixed point. `:<TAB>!-<CR>... #-o` produced
+  `~: !- \n# -o\n` and only the second round produced
+  `~:\n  # -o\n  !- \n` (libFuzzer `yaml_roundtrip` crash-11ced252, 13 bytes). The
+  note now borrows the line the block just finished — `~: !-   # -o`, stable in one
+  round and exactly the slot granit reports it back from. Ownership of that slot is
+  tracked where lines are written instead of guessed from the output text, so the
+  borrow is refused for a block scalar's body line (an appended note would turn into
+  content), for a wrapped continuation, and for a line already carrying a note.
+  `a_containers_inline_note_lands_on_the_last_value_line` pins the acceptance and
+  `a_block_scalar_body_never_borrows_the_containers_note` the refusal; a mutation
+  check (un-append the note) reddens exactly the first of them while the other 274
+  tests stay green. Through the TOML hub this also sharpens a documented boundary:
+  `[sec] # note` no longer escapes to the document head — it stays inside its own
+  table as a trailing comment on the table's last entry, still one round to a fixed
+  point, so `TestSectionHeaderCommentBoundary` is rewritten to pin survival, the
+  in-table position, and that stability.
+- **A marker line now performs both of its note lifts** — an explicit key can carry a
+  note on its key node *and* leave a second one riding the first entry of the key
+  body, and the reader reports both at the marker's own level. The writer chose
+  between the two lifts with an `if`/`else if`, so whenever the key owned a note the
+  body note was printed one indent deeper and climbed a level on re-read; the emission
+  settled only on its second round (libFuzzer `yaml_roundtrip` crash-456176be, 40
+  bytes: `?` + `### standab:` + `?` + `# ! y%% yam2:#l: tr` + `~: ~`, whose tree
+  keeps the first note on the key mapping and the second on its inner `~` key). The
+  lifts compose now, in source order, above the `?`, and one emission reaches the
+  fixed point — pinned by `a_marker_carries_both_its_own_note_and_its_bodys_first_note`
+  reading the committed seed, and attributed the same way: un-composing them reddens
+  that test alone. Two inputs which shared the symptom, crash-f8525a9e and
+  crash-c9031de4, stayed red after the fix, so they are a different geometry (their
+  note rides a nested marker, not a scalar key) and remain open.
+- **An `&` inside comment text can no longer donate its name to a real anchor** — granit
+  reports only a numeric `anchor_id`, so the display name is recovered by scanning left
+  from the node's content, and that recovery refused a `&` only when the token *directly*
+  before it was a comment opener. A comment body may hold anything: `bg: &b` followed by
+  `# !! &?` re-read as `bg: &?`, because the `&?` sits past a `!!` rather than right after
+  the `#`. A renamed anchor silently orphans every alias that referred to it — the same
+  data-loss class as #265 and crash-04fddeb8, and the third time this cycle the guard was
+  written narrower than the rule it stood for. The refusal now asks the question YAML asks:
+  does a comment start anywhere earlier on this line? A `#` embedded in a scalar still
+  opens nothing, and the one shape that could over-refuse — a quoted `#` earlier on a line
+  that also carries an anchor — has no reachable form, because node properties always
+  precede the value. Pinned by `anchor_name_before_ignores_ampersand_anywhere_in_comment_text`
+  (both directions of the predicate) and
+  `anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand`, which reads its bytes
+  from the new seed `fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed` and asserts the
+  anchor token, the comment text, and a one-step fixed point; the artifact replayed
+  CRASH→CLEAN, and every earlier guard in the file still holds.
+- **Every standalone comment line above a key survives, not just the last one** — the
+  AST held leading notes in a single slot (`NodeDecor.leading_comment: Option<Comment>`)
+  and the YAML receiver, the JSONC parser and the merge pass each *overwrote* it, so a
+  stack of comment lines kept one: `# alpha` + `# beta` + `key: 1` serialised back as
+  `# beta` + `key: 1`. Nothing downstream could see it — the lossy text is stable, and
+  the round-trip tier's oracle asks only for stability after re-serialising, so this is
+  the first class that tier cannot express. `NodeDecor.leading_comments` is now an
+  ordered list; `NodeMeta::standalone_slice()` is the one normalised read (the list, or
+  the legacy `comment(standalone = true)` spelling, as a slice — a slice, not a `Vec`,
+  because `NodeMeta::eq` / `Hash` run on every `IndexMap` probe of every mapping).
+  `leading_comment()` and Python `Node.leading_comment` still report the first note, so
+  nothing existing changes; `Node.leading_comments` is the new full view. Following that
+  thread found three more silent losses of the same shape, each fixed, tested and
+  seeded: a document carrying nothing but comments dropped all of them
+  (`#&l<TAB><TAB>:` → `null`, because `DocumentEnd` never fires without a node), the
+  null-key fold deleted the folded entry's comment with it, and a consumed merge key —
+  or the mapping it merged — took its comments down with it, a hole the merge-identity
+  fix had just made reachable. Notes are re-homed now, never discarded. The TOML spoke carried the same
+  overwrite in its own pending-note slot (`# a` + `# b` + `k = 1` kept one), and an empty container's
+  single inline slot dropped the rest of a stack (`# d1` + `# d2` → `{}  # d1`); both keep every note
+  now, which also changed a documented boundary: a comment on a table-header line can still not stay on
+  that line, but it is relocated to the document head instead of vanishing, and one TOML round through
+  the hub is already stable there. Only the note-survival oracle that found all of this waits for the
+  remaining attachment work, so it does not land red ahead of it.
+- **A merge key is recognised by what it is, not by what it carries** — the merge pass
+  looked `<<` up in the pair map by whole-node equality, so a `<<` whose key node carried a
+  comment was invisible to it: `<<: #*` + `y:` resolved to `{'<<': {'y': None}}` while
+  the same document written `<<:` + `y: ~  # *` resolved to `{'y': None}`. Because the
+  writer *moves* notes between exactly those positions, a round trip changed the
+  document's meaning and the pair vanished on the next round (libFuzzer `yaml_roundtrip`
+  crash-69931a77, minimised by `cargo fuzz tmin` to 10 bytes; crash-0a6fe677,
+  crash-2d3dab18 and crash-f88c2382 closed with it — putting whole-node equality back
+  reddens all four together, which is the attribution rather than the shared assertion).
+  The key is now matched the way YAML resolves it — an untagged plain `<<` — and the entry
+  is addressed by position, not by value; that also fixes the tail walk handing back a
+  merged-in clone whenever the clone compared equal to an own key. Style and tag still
+  decide: a quoted `"<<"` and a tagged `!x <<` remain ordinary keys, pinned by
+  `a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key` and
+  `TestMergeKeyIdentityIgnoresMetadata`. Seeded as
+  `fuzz/seeds/yaml_roundtrip/former-crash-{69931a77,0a6fe677,2d3dab18,f88c2382}.seed`.
+- **A note under a container's own tag line no longer swaps places with it** — granit
+  reports a standalone note written *below* an anchor/tag header line as that tagged
+  node's leading comment, so a note the writer left there moved *above* the header on the
+  next round and a single emission step never reached a fixed point (libFuzzer
+  `yaml_roundtrip` crash-77a8039b, 28 bytes: `!5b4?` then `# yrrrrrrrrrrrr%3c` then
+  `~: ~`; measured to settle only at round 2). Such a note is now lifted above the header —
+  the one line the reader hands it back from — and taken out of the body copy so it is not
+  written twice; a tagged block sequence gets the same lift for its first item. The lift is
+  capped where the reader runs out of slots: a container that already carries a note of its
+  own has one line above its header, and a second would fall into the same single leading
+  slot, so that shape keeps its placement rather than trading drift for lost text
+  (`a_note_is_not_stacked_above_a_tagged_containers_own_note`) — and it is recorded as its
+  own open finding, because that input measurably loses a note today. Seeded as
+  `fuzz/seeds/yaml_roundtrip/former-crash-77a8039b.seed`.
+- **A trailing note is no longer bound across the line break its own node swallowed** —
+  granit spans a block collection *through* the line break that ends its line, so a
+  span end can already sit on the next line. The "is this note on a later line?" test
+  scanned only the gap between the candidate's end byte and the note, found no `\n`
+  inside `?\n`, and bound the note to the deeper node; the writer emitted it inside
+  that block, the re-read handed it to the shallower entry, and ownership climbed a
+  level every round (libFuzzer `yaml_roundtrip` crash-0e1c4378, minimised to 10 bytes
+  `b:<LF> ?<LF>? #i`). The test now backs the candidate end over the blanks the span
+  swallowed before looking for the break. Two guards hold the boundary: crash-105de752
+  (47 bytes) went CLEAN with the same change and the attribution was *measured* —
+  turning the trim off reddens it again next to crash-0e1c4378, so they are one root
+  cause rather than one shared assertion — while
+  `a_note_on_a_multi_line_nodes_last_line_still_trails_it` pins the opposite direction,
+  because a note on the last line of a multi-line node must still trail it. Both
+  inputs are committed as `fuzz/seeds/yaml_roundtrip/former-crash-{0e1c4378,105de752}.seed`.
+  Method note, worth more than the fix: the first version of this rule read the
+  receiver's char-index → byte-offset table as if it were a line table, so on pure-ASCII
+  input (where the table does not exist) it returned `None` and changed nothing at all.
+  It read correctly and did nothing; only the still-red assertion said so.
+- **A note trailing a mapping key is no longer silently dropped** — granit reports a
+  comment between a simple key and its `:` on the *key* node, but once the pair is
+  written as `key: value` that position has no spelling, and the YAML writer lost the
+  note outright (`? a # note` + `: b` emitted `a: b`). It is now emitted after the
+  value — the one slot a reader can report such a note from — so nothing disappears,
+  and the line is a fixed point there; a value carrying a note of its own keeps it,
+  because one line has one trailing slot. The round-trip tier cannot see this class
+  (the text was stable, merely short a note), so `a_note_trailing_a_key_survives` plus
+  `test_from_jsonc_keeps_comments_as_yaml_notes` pin it. Probing it also turned up
+  three places still claiming `from_jsonc` "strips comments" — a statement the
+  changelog recorded as stale since #112/#115 — in the binding's `from_jsonc` /
+  `from_json5` docs and in the generated stub; the new stub-drift gate caught the
+  stale stub the moment the docstrings were corrected, and the stub was re-derived
+  through the declared route rather than hand-edited.
+- **A note that trails an explicit-key marker is written where the reader reports
+  it** — granit attaches such a note one level shallower than the node it lands on,
+  so the indented spelling climbed a column every round and `to_yaml` never settled
+  (libFuzzer `yaml_roundtrip` crash-ac5d9043, minimised by `cargo fuzz tmin` to 8
+  bytes `? ? ? #~`; the `&##` anchor in the found input was incidental). The writer
+  now bubbles a marker-line note up to the marker line that owns it, while a note
+  granit lexed on its own line stays exactly where it is — that geometry already
+  round-tripped, and a guard pins it so the fix cannot widen.
+- **A mapping folds its null keys, and only its null keys** — a `~` key and an
+  empty key are the same key, but `IndexMap` compares whole nodes and the two
+  spellings differ in metadata, so both stayed, both rendered as `~:`, and the
+  reader folded them on re-parse: such a document lost a line every round (libFuzzer
+  `yaml_roundtrip` crash-00e31785, minimised to 9 bytes `: &b #*\r:`). Ingest folds
+  them to the single entry a re-read produces. That fold first deleted data, because
+  `is_null_key` tested only the scalar text: a quoted `"NULL"` / `""` key or a tagged
+  `!a null` key counted as null too, so `{"": None, "NULL": None}` lost its empty key
+  through the JSON5 and TOML round trips (`tests/test_property_dialects.py`) and
+  proptest reported `!a null:` + `!A null:` as a bogus duplicate. Both predicates now
+  ask what YAML asks — implicit resolution applies to untagged plain scalars only.
+- **A block scalar with an empty body no longer advertises a chomping indicator** —
+  granit reports the *default* chomping when it re-reads a header that has no content
+  to act on, so writing `|+` / `>+` for an empty scalar drifted to `|` / `>` on the
+  next round and `to_yaml` never reached a fixed point (libFuzzer `yaml_roundtrip`
+  crash-89d81d99, 5 bytes `>+8<CR>#`; crash-b5dcc38f, 55 bytes, `ancho: |+`). The
+  writer already drops the *indentation* indicator for exactly that reason; it now
+  drops the chomping indicator the same way, and nothing is lost — an empty body has
+  no trailing break to keep or strip, and the AST keeps whatever was parsed.
+- **A comment line no longer donates its `&` to the anchor name** — granit reports
+  only a numeric `anchor_id`, so the display name is read back by scanning left from
+  the node's own content for the nearest boundary `&` (the recovery #265 tightened for
+  tags). A standalone comment sitting *between* that anchor and the content was never
+  excluded, and `&` is legal comment text: `chi&&&: &~:` followed by `# &l` re-read
+  with the anchor renamed to `&l` — the real name `~:` vanished and every alias
+  pointing at it was silently orphaned, the same data-loss class as #265 reached from
+  the other token that may contain `&`. A `&` whose line has already opened a comment
+  is now refused as a candidate, exactly as one inside a tag is; the note itself is
+  kept. (libFuzzer `yaml_roundtrip` crash-04fddeb8.)
+- **A tag suffix holding a flow indicator no longer breaks the document** —
+  granit hands the reader the *decoded* suffix, so the source tag `!a%2cb` arrives
+  as `a,b`. Tag emission re-encoded only what RFC 3986 forbids, and `,` `[` `]` `!`
+  are perfectly legal URI characters — but they are precisely the characters
+  granit's `is_tag_char` refuses, so the suffix scan stops at them and, at flow
+  level 0, the scanner then demands a blank or a line break. Our own `to_yaml`
+  output was therefore rejected outright ("while scanning a tag, did not find
+  expected whitespace or line break"; libFuzzer `yaml_roundtrip` crash-e92ce66f,
+  43 bytes, the same root cause as `!5%2cy7 `). The write set now comes from the
+  reader instead of from the URI grammar: a shorthand tag percent-encodes those
+  four, while a verbatim `!<uri>` keeps them raw because `is_uri_char` accepts them
+  there — `!<tag:yaml.org,2002:str>` still round-trips byte-identically.
+- **Unicode whitespace no longer masquerades as a YAML blank** — six places in the
+  YAML pipeline asked `char::is_whitespace()` / `str::trim()`, which is Unicode-based
+  and also matches NBSP (U+00A0), U+0085 and U+2028/U+2029, none of which YAML treats
+  as separation (granit's blank set is SP and TAB only). The consequences were silent,
+  not cosmetic: a document holding a single NBSP fell through the empty-document fast
+  path and re-read as `null` instead of a scalar (libFuzzer `yaml_roundtrip`
+  crash-512814, 5 bytes: a BOM then a NBSP); `resolve_core_type` and
+  `resolve_yaml11_type` trimmed content away, so `<NBSP>42` resolved to the *integer*
+  42 and `<NBSP>yes` to `true`, and a multi-line NBSP scalar resolved to `Null`, which
+  made the writer skip quoting and emit raw line breaks that collapsed on re-read —
+  emission never settled (crash-b44481b2, 7 bytes); a plain scalar folded for wrapping
+  lost an NBSP at the break; `anchor_name_before` cut `&a<NBSP>b` down to `&a`,
+  silently orphaning every alias that used the full name; and comment bodies lost an
+  NBSP at either edge. All six now test against `pyrs_schema::is_yaml_blank`, the
+  reader's own set. The JSON-family resolvers keep Unicode whitespace on purpose —
+  JSON5 really does treat it as structural whitespace.
 - **An anchor next to a tag whose URI contains `&` keeps its name** —
   `anchor_name_before` recovers the display name granit never reports by scanning left
   from a node for the nearest boundary `&`. But `&` is a legal URI character, and `-`
@@ -424,6 +770,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spec order (`c-b-block-header`: chomping first, then indentation, so a
   stripped scalar is `|-2`), and the writer measures the body from the line
   that carries the header rather than from the parent node's column.
+
+#### Performance
+
+- **Tag emission is table-driven, and escaping no longer allocates** — moving tag
+  encoding onto the reader's own character classes put the per-byte membership test
+  on the serialize hot path, so it became a 128-entry compile-time table (the
+  alphanumeric test folds into the same lookup) and the `%XX` escape is written from
+  a hex-digit table instead of `format!`, which allocated a fresh `String` for every
+  single escaped byte. Measured in one process with alternating best-of-6×40 batches
+  over the suffix corpus the serializer actually meets: 10.53 ns → 2.55 ns per
+  11-suffix sweep (4.1×). The two related substitutions landed ahead as well — the
+  schema resolver's edge trim 0.47 → 0.20 ns (2.3×, because YAML's blank set is five
+  comparisons where Unicode `trim` consults a character-property table), and the
+  anchor-name character test 1.61 → 1.14 ns (1.4×) once it grew an ASCII fast path.
+- **A document with many null keys parses in linear time** — the fold described above
+  first rescanned the mapping for every null key. That is invisible on an all-null
+  document (its folded entry sits at slot 0) and quadratic on the shape that matters:
+  2k distinct keys followed by 2k null keys grew 12.4x for a 4x input (99 ms at
+  8k + 8k). The mapping now remembers its null key's slot, keeping the scan only as a
+  correctness fallback: 11.0 ms for that same input and 4.14x growth — the same slope
+  a distinct-key document already had (4.02x).
+- **Cross-process divan tables cannot settle a sub-10% question on this box** — the
+  same binaries differed by up to ±38% run to run (`parse_medium` read +77% in one
+  batch and −20% in another), so the predicate numbers above come from an in-process
+  A/B instead, and the end-to-end claim is left to the CodSpeed gate that runs on
+  every PR touching `crates/**`. `cargo nextest run --all` stays 449/449 and every
+  committed fuzz seed replays to the same bytes.
 
 ### [v0.17.0] — 2026-10-01
 

@@ -1,4 +1,4 @@
-use crate::ast::CustomNode;
+use crate::ast::{Comment, CustomNode, ScalarStyle};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
@@ -34,8 +34,7 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
 fn has_merge_key(node: &CustomNode) -> bool {
     match node {
         CustomNode::Mapping { pairs, .. } => {
-            let merge_key = CustomNode::plain_scalar("<<");
-            if pairs.contains_key(&merge_key) {
+            if pairs.keys().any(is_merge_key) {
                 return true;
             }
             pairs.values().any(has_merge_key)
@@ -43,6 +42,28 @@ fn has_merge_key(node: &CustomNode) -> bool {
         CustomNode::Sequence { items, .. } => items.iter().any(has_merge_key),
         _ => false,
     }
+}
+
+/// True when a key IS the merge key: an untagged plain scalar holding `<<`.
+///
+/// Identity is what YAML resolves, not the whole node — a comment or an anchor is
+/// metadata. Comparing full `CustomNode`s (the old `== plain_scalar("<<")`) made a
+/// `<<` that carries a note invisible to this pass, so the *same document* meant two
+/// different things depending on where its note sat: `<<: #*<LF>  y:` kept a literal
+/// `<<` key, while the spelling the writer emits for it (`<<:<LF>  y: ~  # *`) consumed
+/// the merge and the pair vanished between rounds (libFuzzer `yaml_roundtrip`
+/// crash-69931a77, minimised to 10 bytes). Style and tag still decide identity, exactly
+/// as the null-key rule does: a quoted `"<<"` or a tagged `!x <<` is not a merge key.
+fn is_merge_key(key: &CustomNode) -> bool {
+    matches!(
+        key,
+        CustomNode::Scalar {
+            value,
+            style: ScalarStyle::Plain,
+            meta,
+            ..
+        } if meta.tag.is_none() && value.as_ref() == "<<"
+    )
 }
 
 /// Recursively resolve merge keys in a node
@@ -119,17 +140,28 @@ fn resolve_mapping_merges(
     path: &mut Vec<String>,
     depth: usize,
 ) {
-    let merge_key = CustomNode::plain_scalar("<<");
+    // The merge entry is addressed by position, never by value: `IndexMap` compares
+    // whole nodes, and a note or an anchor on the key is metadata, not identity. See
+    // [`is_merge_key`].
+    let merge_index = pairs.keys().position(is_merge_key);
 
-    // Snapshot the mapping's own keys (minus `<<`) before the merge expansion
-    // prepends cloned anchor pairs into `pairs`. The tail recursion below must
+    // Snapshot the mapping's own children (minus the merge entry) before the merge
+    // expansion prepends cloned anchor pairs into `pairs`. The tail walk below must
     // re-walk only these original children: the freshly merged-in values are
     // clones of an anchor body that was already resolved under the path guard in
     // the expansion loop. Re-walking them here (with the guard context gone)
     // re-expands nested self-anchors and grows the walk without bound — the
     // libFuzzer `parse_yaml` stack-overflow (path-identical frames cycling
     // resolve_mapping_merges -> resolve_merges_recursive forever).
-    let own_keys: Vec<CustomNode> = pairs.keys().filter(|k| **k != merge_key).cloned().collect();
+    //
+    // Positions, not key clones, because `prepend_merged_pairs` shift-inserts at the
+    // front and would invalidate every index after it — which is why this walk now
+    // runs *before* the prepend. (Looking the children up by key after the prepend,
+    // as this used to, could also hand back a merged-in clone whenever that clone
+    // compared equal to an own key and sat earlier in the map.)
+    let own_indices: Vec<usize> = (0..pairs.len())
+        .filter(|index| Some(*index) != merge_index)
+        .collect();
 
     // Decide whether `<<` is consumed as a merge or kept as an ordinary key.
     // The safety-critical line is any ALIAS in the value's subtree, not just a
@@ -140,9 +172,9 @@ fn resolve_mapping_merges(
     // (Null / scalar / `<<: []` / `<<: [1, 2]` / `<<: {}`); then `{'<<': []}`
     // etc. round-trip instead of being silently dropped. Anything alias-bearing
     // or producing real merged pairs is consumed.
-    let merge_data = pairs
-        .get(&merge_key)
-        .and_then(|merge_value| match merge_value {
+    let merge_data = merge_index
+        .and_then(|index| pairs.get_index(index))
+        .and_then(|(_, merge_value)| match merge_value {
             CustomNode::Null { .. } | CustomNode::Scalar { .. } => None,
             CustomNode::Alias { .. } => Some(collect_merge_data(merge_value, pairs, anchors, path)),
             CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
@@ -155,6 +187,27 @@ fn resolve_mapping_merges(
             }
         });
 
+    let mut expanded = None;
+    // Comments carried by the merge entry — on its key, or on the value node the
+    // merge consumes — are content of this mapping either way, so they re-home onto
+    // the entry the merge contributes. Both halves were silent data loss behind a
+    // stable text, and both were caught by the fuzz tier's note-survival oracle
+    // (libFuzzer `yaml_roundtrip` crash-953bf87a, crash-f453c4e5).
+    let merge_orphans: Vec<Comment> = merge_index
+        .and_then(|index| pairs.get_index(index))
+        .map(|(key, value)| {
+            let mut notes = Vec::new();
+            for carried in [key, value] {
+                notes.extend(carried.leading_comments().iter().cloned());
+                notes.extend(carried.comment().filter(|c| !c.standalone).cloned());
+            }
+            notes
+        })
+        .unwrap_or_default();
+    // Notes of merged pairs that a mapping's own key overrides, collected while the
+    // pairs are dropped below. They are content of this mapping too, so they join
+    // the same re-homing as the merge entry's own notes.
+    let mut overridden_notes: Vec<Comment> = Vec::new();
     if let Some(merged_pairs) = merge_data {
         // Expansions resolve against the *original* mapping, so an anchor that
         // transitively merges another still sees the latter's own merge keys.
@@ -164,17 +217,17 @@ fn resolve_mapping_merges(
         // one anchor and for a collision across the merge value: YAML 1.1 gives
         // each anchor its own precedence among the merge sources and lets the
         // mapping's own keys override all of them.
-        let mut expanded: IndexMap<CustomNode, (String, CustomNode)> =
+        let mut pending: IndexMap<CustomNode, (String, CustomNode)> =
             IndexMap::with_capacity(pairs.len());
         for (source, key, value) in merged_pairs {
-            expanded.entry(key).or_insert((source, value));
+            pending.entry(key).or_insert((source, value));
         }
 
         // The anchor name stays on the path while its expansion is walked, so a
         // merge key inside the expansion that points back at its own ancestor is
         // recognised and left alone. An inline mapping (empty source) pulls in no
         // anchor, so there is nothing to guard against.
-        for value in expanded.values_mut() {
+        for value in pending.values_mut() {
             if value.0.is_empty() {
                 resolve_merges_recursive(&mut value.1, anchors, path, depth + 1);
             } else {
@@ -184,19 +237,87 @@ fn resolve_mapping_merges(
             }
         }
 
-        let expanded: IndexMap<CustomNode, CustomNode> = expanded
-            .into_iter()
-            .map(|(key, (_source, value))| (key, value))
-            .collect();
-        prepend_merged_pairs(pairs, &merge_key, expanded);
+        expanded = Some(
+            pending
+                .into_iter()
+                // A mapping's own key always wins over a merged one (YAML 1.1), and
+                // keeping both was not merely wrong precedence: `IndexMap` keys whole
+                // nodes, so a merged `y` and an own `y # :` sat side by side and the
+                // writer emitted the same key twice at one level — text our own
+                // parser then rejected as a duplicate key, breaking the contract that
+                // `to_yaml` never emits unparseable output (libFuzzer `yaml_roundtrip`
+                // crash-3495cc86, minimised to 19 bytes: `:` LF `# &` LF `y: #:` LF
+                // `<<:` LF `  y:`). Identity here is the same one `push_node`'s
+                // duplicate check uses — the emitted value of an untagged scalar key —
+                // so the two rules cannot drift apart. A dropped pair's notes are
+                // content, so they re-home instead of disappearing with it.
+                .filter(|(key, value): &(_, (String, CustomNode))| {
+                    if owns_owning_key(pairs, merge_index, key) {
+                        for carried in [key, &value.1] {
+                            overridden_notes.extend(carried.leading_comments().iter().cloned());
+                            overridden_notes
+                                .extend(carried.comment().filter(|c| !c.standalone).cloned());
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .map(|(key, (_source, value))| (key, value))
+                .collect::<IndexMap<CustomNode, CustomNode>>(),
+        );
     }
 
     // Recursively resolve in the mapping's own nested children (never the
-    // merged-in clones, already resolved above under the guard).
-    for key in own_keys {
-        if let Some(value) = pairs.get_mut(&key) {
+    // merged-in clones, already resolved above under the guard) while their
+    // snapshot positions still address them.
+    for index in own_indices {
+        if let Some((_, value)) = pairs.get_index_mut(index) {
             resolve_merges_recursive(value, anchors, path, depth + 1);
         }
+    }
+
+    if let Some(expanded) = expanded {
+        let mut orphans = merge_orphans;
+        orphans.extend(overridden_notes);
+        prepend_merged_pairs(pairs, merge_index, expanded, orphans);
+    }
+}
+
+/// Whether `pairs` already holds `key` as one of its own entries, ignoring the
+/// merge entry itself (which is about to be removed).
+///
+/// Identity is what the serializer prints, not the whole node: two untagged scalar
+/// keys with the same text collide whatever their style or carried note, because
+/// they emit identically — the same rule `push_node` uses to reject a duplicate
+/// key, so the merge filter and the duplicate detector can never disagree about
+/// which pairs may coexist.
+fn owns_owning_key(
+    pairs: &IndexMap<CustomNode, CustomNode>,
+    merge_index: Option<usize>,
+    key: &CustomNode,
+) -> bool {
+    pairs
+        .iter()
+        .enumerate()
+        .any(|(index, (own, _))| Some(index) != merge_index && same_emitted_key(own, key))
+}
+
+fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
+    match (a, b) {
+        (
+            CustomNode::Scalar {
+                value: va,
+                meta: ma,
+                ..
+            },
+            CustomNode::Scalar {
+                value: vb,
+                meta: mb,
+                ..
+            },
+        ) => ma.tag.is_none() && mb.tag.is_none() && va == vb,
+        _ => a == b,
     }
 }
 
@@ -329,19 +450,36 @@ fn collect_merged_pairs_for_anchor(
     }
 }
 
-/// Remove the merge key and prepend merged pairs at the beginning of the mapping.
+/// Remove the merge key, prepend merged pairs at the beginning of the mapping, and
+/// re-home the comments `orphans` carries onto the entry the merge contributed.
 fn prepend_merged_pairs(
     pairs: &mut IndexMap<CustomNode, CustomNode>,
-    merge_key: &CustomNode,
+    merge_index: Option<usize>,
     merged_pairs: IndexMap<CustomNode, CustomNode>,
+    orphans: Vec<Comment>,
 ) {
-    pairs.shift_remove(merge_key);
+    if let Some(index) = merge_index {
+        pairs.shift_remove_index(index);
+    }
 
     // Insert merged pairs at the front in order, keeping existing pairs in
-    // place. `merged_pairs` is filtered against existing keys by the caller,
-    // so `shift_insert` cannot collide.
+    // place. `merged_pairs` is filtered against the mapping's own keys by
+    // [`owns_owning_key`] in the caller, so `shift_insert` cannot collide — without
+    // that filter the emission repeated a key and our own reader rejected it.
     for (k, v) in merged_pairs.into_iter().rev() {
         pairs.shift_insert(0, k, v);
+    }
+
+    if orphans.is_empty() {
+        return;
+    }
+    // `IndexMap` never hands out `&mut K`, so take the entry out, add the notes to
+    // its key, and put it back on top.
+    if let Some((mut key, value)) = pairs.shift_remove_index(0) {
+        for note in orphans {
+            key.push_leading_comment(note);
+        }
+        pairs.shift_insert(0, key, value);
     }
 }
 
@@ -412,6 +550,181 @@ mod tests {
                 "`<<` with a non-merge value must remain a key in {yaml:?}"
             );
         }
+    }
+
+    /// A note riding the merge key is metadata, not identity. Whole-node comparison
+    /// made `<<` invisible to the merge pass whenever a comment sat on the key, so the
+    /// same document meant two different things depending on where the note was:
+    /// `<<: #*<LF>  y:` kept a literal `<<`, while the spelling the writer emits for it
+    /// (`<<:<LF>  y: ~  # *`) consumed the merge instead — and the pair then vanished
+    /// between rounds (libFuzzer `yaml_roundtrip` crash-69931a77, minimised to 10
+    /// bytes; crash-0a6fe677, crash-2d3dab18 and crash-f88c2382 replay CRASH→CLEAN with
+    /// it, and all four redden together when identity goes back to whole-node
+    /// equality — that is the attribution, not the shared assertion).
+    #[test]
+    fn a_merge_key_carrying_a_note_is_still_a_merge_key() {
+        let src = "<<: #*\n  y:";
+        let mut root = parse(src, YamlSchema::Core).unwrap();
+        resolve_merge_keys(&mut root);
+        let pairs = get_mapping(&root);
+        assert!(
+            !pairs.keys().any(is_merge_key),
+            "the merge entry is consumed, note and all: {root:?}"
+        );
+        assert_eq!(pairs.len(), 1, "only the merged pair survives: {root:?}");
+        assert_eq!(get_scalar_value(pairs.iter().next().unwrap().0), "y");
+
+        // And one emission step is already the fixed point.
+        let one = crate::serializer::to_yaml(&root);
+        let again = parse(&one, YamlSchema::Core).unwrap();
+        assert_eq!(
+            crate::serializer::to_yaml(&again),
+            one,
+            "{src:?} must settle in one step: {one:?}"
+        );
+    }
+
+    /// The other half of the identity rule: style and tag still decide. A quoted
+    /// `"<<"` and a tagged `!x <<` are not merge keys, so they keep their nested
+    /// mapping as an ordinary value — pinned so the metadata fix cannot widen into
+    /// re-merging what YAML does not resolve as a merge.
+    #[test]
+    fn a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key() {
+        for src in ["\"<<\": #*\n  y: 1\n", "!x <<:\n  y: 1\n"] {
+            let mut root = parse(src, YamlSchema::Core).unwrap();
+            resolve_merge_keys(&mut root);
+            let pairs = get_mapping(&root);
+            assert_eq!(pairs.len(), 1, "{src:?} keeps its single entry: {root:?}");
+            assert!(
+                matches!(pairs.iter().next().unwrap().1, CustomNode::Mapping { .. }),
+                "{src:?} keeps the nested mapping as its value: {root:?}"
+            );
+            let one = crate::serializer::to_yaml(&root);
+            let again = parse(&one, YamlSchema::Core).unwrap();
+            assert_eq!(
+                crate::serializer::to_yaml(&again),
+                one,
+                "{src:?} must settle in one step: {one:?}"
+            );
+        }
+    }
+
+    /// Every note text attached anywhere in `node`.
+    fn gathered_notes(node: &CustomNode, out: &mut Vec<String>) {
+        if let Some(c) = node.comment() {
+            out.push(c.text.to_string());
+        }
+        for c in node.leading_comments() {
+            out.push(c.text.to_string());
+        }
+        match node {
+            CustomNode::Mapping { pairs, .. } => {
+                for (k, v) in pairs.iter() {
+                    gathered_notes(k, out);
+                    gathered_notes(v, out);
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                for item in items {
+                    gathered_notes(item, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The 19-byte minimisation of libFuzzer `yaml_roundtrip` crash-3495cc86: an
+    /// untagged key carrying a note, a `<<` entry, and a merged key with the same
+    /// emitted text. `IndexMap` compares whole nodes, so the merged pair sat beside
+    /// the own pair instead of being overridden, and `to_yaml` printed the key twice
+    /// at one level — text our own parser then refused as a duplicate key, breaking
+    /// the engine's "we never emit unparseable output" contract. The mapping's own
+    /// key wins (YAML 1.1), the merged pair is dropped, and its notes are re-homed
+    /// rather than lost with it.
+    #[test]
+    fn a_merge_never_repeats_a_key_the_mapping_owns() {
+        let src = std::str::from_utf8(include_bytes!(
+            "../../../../../fuzz/seeds/yaml_roundtrip/former-crash-3495cc86.seed"
+        ))
+        .expect("seed is utf-8");
+        let parsed = parse(src, YamlSchema::Core).expect("input parses");
+
+        let mut wanted = Vec::new();
+        gathered_notes(&parsed, &mut wanted);
+
+        let one = crate::serializer::to_yaml(&parsed);
+        assert_eq!(
+            one.matches("\ny:").count(),
+            1,
+            "the key `y` may appear once at this level: {one:?}"
+        );
+        let again = parse(&one, YamlSchema::Core)
+            .unwrap_or_else(|e| panic!("our own emission must re-parse: {e}\n---\n{one}\n---"));
+        let twice = crate::serializer::to_yaml(&again);
+        assert_eq!(twice, one, "one emission is the fixed point: {one:?}");
+
+        let mut kept = Vec::new();
+        gathered_notes(&again, &mut kept);
+        for text in &wanted {
+            assert!(
+                one.contains(text.as_str()),
+                "note {text:?} was lost; wanted {wanted:?}, got {kept:?} in {one:?}"
+            );
+        }
+    }
+
+    /// A comment hung on a `<<` line outlives the merge that consumes the key: it
+    /// moves onto the entry the merge contributes. Losing it is silent data loss in
+    /// a shape whose text stays stable, so nothing but the fuzz tier's
+    /// note-survival oracle could see it — which is exactly how it surfaced
+    /// (libFuzzer `yaml_roundtrip` crash-953bf87a), one step behind the merge-key
+    /// identity fix that made the key visible to the pass at all.
+    #[test]
+    fn a_consumed_merge_key_re_homes_its_comments() {
+        let src = "chi:\n  #&ld:\n  <<:\n    y: 2\n";
+        let mut root = parse(src, YamlSchema::Core).unwrap();
+        resolve_merge_keys(&mut root);
+        let one = crate::serializer::to_yaml(&root);
+        assert!(
+            one.contains("&ld:"),
+            "the merge key's note survives: {src:?} -> {one:?}"
+        );
+        let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+        assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
+
+        // The other half: notes riding the lines of the merge VALUE node, which the
+        // merge consumes along with that node (crash-f453c4e5).
+        let src = "<<: #*&&&:\n#:\n#note-two\n y:\n";
+        let mut root = parse(src, YamlSchema::Core).unwrap();
+        resolve_merge_keys(&mut root);
+        let one = crate::serializer::to_yaml(&root);
+        assert!(
+            one.contains("*&&&:") && one.contains("note-two"),
+            "the merge value's notes survive: {src:?} -> {one:?}"
+        );
+        let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+        assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
+    }
+
+    /// A mapping can spell its merge key twice — once plain, once carrying a note —
+    /// and `IndexMap` kept both while the merge pass addresses a single entry, so one
+    /// pair vanished every round. Folding merge keys exactly like null keys is what
+    /// re-reading the emitted text actually yields. Read from the committed seed so
+    /// the test cannot drift from the bytes that crashed (libFuzzer `yaml_roundtrip`
+    /// crash-973bd522).
+    #[test]
+    fn duplicate_merge_keys_fold_to_a_fixed_point() {
+        let artifact =
+            include_bytes!("../../../../../fuzz/seeds/yaml_roundtrip/former-crash-973bd522.seed");
+        let src = String::from_utf8(artifact.to_vec()).expect("seed is valid utf-8");
+        let mut root = parse(&src, YamlSchema::Core).unwrap();
+        resolve_merge_keys(&mut root);
+        let one = crate::serializer::to_yaml(&root);
+        let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+        assert_eq!(
+            again, one,
+            "{src:?} must settle in one step: {one:?} -> {again:?}"
+        );
     }
 
     #[test]
