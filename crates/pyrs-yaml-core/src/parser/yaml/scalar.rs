@@ -43,8 +43,12 @@ pub fn unescape_double_quoted(s: &str) -> String {
                 Some('e') => result.push('\x1B'),
                 Some(' ') => result.push(' '),
                 Some('\n') => {
+                    // Escaped line break folding (YAML 1.2 §5.7): the break and the
+                    // *s-space* that follows it disappear. `char::is_whitespace` is
+                    // Unicode-wide and would also delete a leading NBSP, which is
+                    // content — the value would come back shorter than it was.
                     while let Some(&next) = chars.clone().peekable().peek() {
-                        if next.is_whitespace() {
+                        if pyrs_schema::is_yaml_blank(next) {
                             chars.next();
                         } else {
                             break;
@@ -256,6 +260,11 @@ mod tests {
     #[test]
     fn test_unescape_line_continuation() {
         assert_eq!(unescape_double_quoted("hello\\\n  world"), "helloworld");
+        // An NBSP after the folded break is content, not separation.
+        assert_eq!(
+            unescape_double_quoted("hello\\\n\u{a0}world"),
+            "hello\u{a0}world"
+        );
     }
 
     #[test]

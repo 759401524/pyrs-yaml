@@ -532,6 +532,36 @@ class TestResolveMergesTrue:
         assert child["y"] == 2
 
 
+class TestMergeKeyIdentityIgnoresMetadata:
+    """A note or anchor on ``<<`` is metadata, not identity.
+
+    The merge pass used to compare whole AST nodes, so a ``<<`` carrying a comment was
+    invisible to it while the identical document without the note resolved -- and since
+    the writer relocates notes, one document changed meaning when re-serialised (the
+    pair vanished on the next round). libFuzzer ``yaml_roundtrip`` crash-69931a77,
+    minimised to ``<<: #*`` + ``  y:``.
+    """
+
+    def test_merge_resolves_regardless_of_note_placement(self):
+        spellings = (
+            "<<: #*\n  y: 1\n",
+            "<<:\n  y: 1  # *\n",
+            "<<:\n  y: 1\n",
+        )
+        assert [pyrs_yaml.safe_load(s) for s in spellings] == [{"y": 1}] * 3
+
+    def test_emission_of_a_noted_merge_key_is_a_fixed_point(self):
+        for src in ("<<: #*\n  y: 1\n", "<<: #*\n  y:"):
+            once = pyrs_yaml.parse(src).to_yaml()
+            assert pyrs_yaml.parse(once).to_yaml() == once, src
+
+    def test_quoted_or_tagged_lookalike_is_not_a_merge(self):
+        # Style and tag still decide identity, so these stay ordinary keys and keep
+        # their nested value -- the metadata fix must not widen into re-merging them.
+        assert pyrs_yaml.safe_load('"<<":\n  y: 1\n') == {"<<": {"y": 1}}
+        assert pyrs_yaml.safe_load("!x <<:\n  y: 1\n") == {"<<": {"y": 1}}
+
+
 class TestSelfReferentialMerge166:
     """issue #166: a self-referential `<<` merge blew the native stack and
     took the whole interpreter process down (exit 0xC00000FD). These cases

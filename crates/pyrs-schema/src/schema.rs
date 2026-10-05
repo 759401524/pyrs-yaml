@@ -18,8 +18,16 @@ fn matches_any(value: &str, candidates: &[&str]) -> bool {
 /// Resolve a plain scalar as YAML 1.2 Core.
 ///
 /// Priority: Null → Bool → Infinity → NaN → Octal → Hex → Float → Decimal int → String.
+///
+/// Edge separation is stripped with [`crate::is_yaml_blank`], not `str::trim`:
+/// `str::trim` is Unicode-based and also removes NBSP, U+0085 and U+2028/U+2029,
+/// which YAML treats as ordinary plain-scalar content. Trimming them away made
+/// `"<NBSP>42"` resolve to the integer `42` and a NBSP-only value resolve to
+/// `Null` — silent type corruption (libFuzzer `yaml_roundtrip` crash-b44481b2,
+/// 7 bytes: a NBSP-only *multi-line* scalar resolved to `Null`, so the writer
+/// skipped quoting it and emitted raw line breaks that collapsed on re-read).
 pub fn resolve_core_type(value: &str) -> YamlType<'_> {
-    let trimmed = value.trim();
+    let trimmed = value.trim_matches(crate::is_yaml_blank);
 
     if trimmed.is_empty() || trimmed == "~" {
         return YamlType::Null;
@@ -151,6 +159,11 @@ pub fn needs_quotes(value: &str) -> bool {
 /// Resolve a plain scalar as JSON-compatible YAML.
 ///
 /// Same as Core minus: inf, nan, octal (0o), hex (0x) — those become strings.
+///
+/// Deliberately keeps `str::trim` (unlike the YAML resolvers): JSON-family
+/// callers feed these already-stripped tokens, and JSON5's own whitespace class
+/// really does include NBSP and the Zs/LS/PS separators — pinning that here
+/// would break `load_json5`, which accepts them as structural whitespace.
 pub fn resolve_json_type(value: &str) -> YamlType<'_> {
     let trimmed = value.trim();
 
@@ -245,7 +258,7 @@ fn parse_json5_hex(trimmed: &str) -> Option<i64> {
 /// 1.2 bools, inf/nan, octal/hex, numbers) is delegated to the core
 /// chain so the two can never drift.
 pub fn resolve_yaml11_type(value: &str) -> YamlType<'_> {
-    let trimmed = value.trim();
+    let trimmed = value.trim_matches(crate::is_yaml_blank);
 
     // YAML 1.1 legacy booleans
     let legacy_bool = match trimmed {

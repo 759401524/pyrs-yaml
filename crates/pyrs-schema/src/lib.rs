@@ -58,3 +58,27 @@ pub fn is_yaml_document_char(c: char) -> bool {
         | 0x1_0000..=0x10_FFFF
     ) && !is_yaml_noncharacter(c)
 }
+
+/// True for the characters YAML may consume as *separation* only: `s-space`
+/// (SP, TAB) plus the break set (CR, LF) and `z` (NUL) — exactly granit's
+/// `is_blank` ∪ `is_breakz`.
+///
+/// This is deliberately **not** `char::is_whitespace`, which is Unicode-based
+/// and also matches NBSP (U+00A0), U+0085, U+2028/U+2029 and the other
+/// separators. YAML gives those no special meaning: a lone NBSP is an ordinary
+/// plain-scalar character and may sit inside an anchor name. Any scan that asks
+/// "is this text blank" therefore has to use this predicate — `str::trim`
+/// silently turns a NBSP-only document into nothing (libFuzzer
+/// `yaml_roundtrip` crash-512814, 5 bytes BOM + NBSP, where the empty-document
+/// fast path reported `null` for a scalar).
+#[must_use]
+pub fn is_yaml_blank(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\r' | '\n' | '\0')
+}
+
+/// True when `text` holds nothing but separation, by [`is_yaml_blank`] — i.e.
+/// what the reader would see as an empty document or an empty comment body.
+#[must_use]
+pub fn is_yaml_blank_only(text: &str) -> bool {
+    text.chars().all(is_yaml_blank)
+}

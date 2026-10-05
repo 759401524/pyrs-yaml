@@ -236,13 +236,38 @@ pub struct NodeMeta {
 /// compare equal to parsed nodes carrying them.
 #[derive(Debug, Clone, Eq, Default)]
 pub struct NodeDecor {
-    /// Leading (standalone) comment rendered on its own line above the
-    /// node's key or header. Currently only populated by the native
-    /// TOML engine; JSON and YAML migrate in #115 / #117.
-    pub leading_comment: Option<Comment>,
+    /// Leading (standalone) comments rendered on their own lines above the
+    /// node's key or header, **in source order**.
+    ///
+    /// A list, not a single slot: a document may stack any number of comment
+    /// lines above one key — the commonest shape in real config files — and a
+    /// single slot silently kept only the last of them. `NodeMeta::standalone_slot`
+    /// still reports the first note, so readers that think in terms of "the leading
+    /// comment" keep working; [`NodeMeta::standalone_slice`] is the full view the
+    /// writers use.
+    pub leading_comments: Vec<Comment>,
     /// Whether the source carried at least one blank line immediately
     /// before this node.
     pub blank_before: bool,
+}
+
+impl NodeDecor {
+    /// The first leading note, if any — the shape older callers expect.
+    pub fn leading_comment(&self) -> Option<&Comment> {
+        self.leading_comments.first()
+    }
+
+    /// Append a leading note, keeping the source order of the ones already there.
+    pub fn push_leading_comment(&mut self, comment: Comment) {
+        self.leading_comments.push(comment);
+    }
+
+    /// Replace every leading note with this one (the "set" semantics the editing
+    /// API and hand-built fixtures use).
+    pub fn set_leading_comment(&mut self, comment: Comment) {
+        self.leading_comments.clear();
+        self.leading_comments.push(comment);
+    }
 }
 
 impl PartialEq for NodeDecor {
@@ -256,14 +281,19 @@ impl PartialEq for NodeDecor {
 
 impl PartialEq for NodeMeta {
     /// Structural equality normalises standalone comments across the
-    /// two slots introduced by #114 / #117. A hand-built fixture that
-    /// attaches a standalone note via `comment(standalone = true)` and
-    /// a parser that produced the same note in `decor.leading_comment`
-    /// compare equal, so YAML receiver migration in #117 does not
-    /// break every existing round-trip assertion. `source_range` is
-    /// still excluded.
+    /// conventions introduced by #114 / #117 and by the leading-note list:
+    /// a hand-built fixture that attaches its notes via
+    /// `comment(standalone = true)` and a parser that produced the same notes
+    /// in `decor.leading_comments` compare equal, so no existing round-trip
+    /// assertion changes meaning. Every note participates at this level — two
+    /// decorations differing only by a stacked second note are different
+    /// metadata, because dropping that note was the defect the list exists to
+    /// prevent. (`CustomNode`'s own structural equality continues to ignore
+    /// decorations entirely, the #114 rule that keeps hand-built fixtures
+    /// matching parsed nodes and duplicate-key folding asking only what YAML
+    /// resolves.) `source_range` is still excluded.
     fn eq(&self, other: &Self) -> bool {
-        self.standalone_slot() == other.standalone_slot()
+        self.standalone_slice() == other.standalone_slice()
             && self.inline_slot() == other.inline_slot()
             && self.anchor == other.anchor
             && self.tag == other.tag
@@ -271,14 +301,30 @@ impl PartialEq for NodeMeta {
 }
 
 impl NodeMeta {
-    /// Effective standalone comment: the leading-comment slot wins,
-    /// falling back to `comment` when its `standalone` flag is set.
-    /// Callers reading either convention can go through this helper.
+    /// Every standalone note above this node, in source order, as one slice.
+    ///
+    /// The `decor` list when it carries any, otherwise the single legacy
+    /// `comment` slot with `standalone = true` that pre-#117 shapes and
+    /// hand-built fixtures still write — spelled as a one-element slice so
+    /// the two conventions have exactly one reading path. Returning a slice
+    /// keeps `PartialEq` / `Hash` allocation-free: they run on every
+    /// `IndexMap` lookup of every mapping in the document.
+    pub fn standalone_slice(&self) -> &[Comment] {
+        match self.decor.as_ref().map(|d| d.leading_comments.as_slice()) {
+            Some(notes) if !notes.is_empty() => notes,
+            _ => match self.comment.as_ref().filter(|c| c.standalone) {
+                Some(note) => core::slice::from_ref(note),
+                None => &[],
+            },
+        }
+    }
+
+    /// Effective standalone comment: the first leading note, falling back to
+    /// `comment` when its `standalone` flag is set. Callers reading either
+    /// convention can go through this helper; [`NodeMeta::standalone_slice`]
+    /// is the view that shows every note.
     pub fn standalone_slot(&self) -> Option<&Comment> {
-        self.decor
-            .as_ref()
-            .and_then(|d| d.leading_comment.as_ref())
-            .or_else(|| self.comment.as_ref().filter(|c| c.standalone))
+        self.standalone_slice().first()
     }
 
     /// Effective inline / trailing comment: only `comment` with
@@ -291,9 +337,9 @@ impl NodeMeta {
 impl Hash for NodeMeta {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // Mirror `PartialEq`'s normalisation so equal nodes hash
-        // equally regardless of which slot the standalone note lives
+        // equally regardless of which slot the standalone notes live
         // in.
-        self.standalone_slot().hash(state);
+        self.standalone_slice().hash(state);
         self.inline_slot().hash(state);
         self.anchor.hash(state);
         self.tag.hash(state);
@@ -738,55 +784,101 @@ impl CustomNode {
         }
     }
 
-    /// Read the leading (standalone) comment slot introduced by PR #114.
+    /// Read the first leading (standalone) comment.
     ///
-    /// PR #117 normalises across conventions: if the AST carries a
-    /// standalone note in the new `decor.leading_comment` slot it is
-    /// returned; otherwise a `Comment` with `standalone = true` living
-    /// in the older `comment` slot (the shape the YAML receiver still
-    /// writes today, and every hand-built fixture predating #114) is
-    /// returned. Callers can therefore treat "the standalone note" as
-    /// one concept without caring which slot produced it.
+    /// PR #117 normalises across conventions: if the AST carries standalone
+    /// notes in the `decor.leading_comments` list the first is returned;
+    /// otherwise a `Comment` with `standalone = true` living in the older
+    /// `comment` slot (the shape hand-built fixtures still write) is returned.
+    /// Callers that think in terms of "the leading note" keep working;
+    /// [`CustomNode::leading_comments`] is the view that shows all of them.
     pub fn leading_comment(&self) -> Option<&Comment> {
         self.meta().and_then(NodeMeta::standalone_slot)
     }
 
-    /// Set the leading (standalone) comment. Allocates the boxed
-    /// `NodeDecor` on first write. No-op on `Alias`.
+    /// Every leading (standalone) note above this node, in source order.
+    ///
+    /// A document may stack any number of comment lines on one key; the single
+    /// slot this replaced kept only the last, so all but one were dropped at
+    /// ingest — silently, and invisibly to a text-idempotence oracle. Writers
+    /// iterate this view.
+    pub fn leading_comments(&self) -> &[Comment] {
+        self.meta().map(NodeMeta::standalone_slice).unwrap_or(&[])
+    }
+
+    /// Whether this node could carry any leading note, without building the
+    /// normalised view.
+    ///
+    /// Both slots live in the inline part of [`NodeMeta`], so this is two
+    /// discriminant tests and never dereferences the boxed `NodeDecor`. Writers
+    /// use it to skip [`CustomNode::leading_comments`] entirely, which is the
+    /// common case: a note-free document still asks every one of its nodes.
+    /// A `Some(decor)` carrying an empty list reports `true`, which only costs
+    /// the caller one more view lookup it would have made anyway.
+    pub fn has_notes(&self) -> bool {
+        self.meta()
+            .is_some_and(|meta| meta.decor.is_some() || meta.comment.is_some())
+    }
+
+    /// Set the leading (standalone) comment, replacing every note already
+    /// there. Allocates the boxed `NodeDecor` on first write. No-op on `Alias`.
     ///
     /// PR #117 makes the write atomic across both conventions: if a
     /// legacy standalone note lives in the older `comment` slot (as
-    /// the YAML receiver still writes and hand-built fixtures still
-    /// construct), it is cleared so the two slots never carry
-    /// conflicting standalone text.
+    /// hand-built fixtures still construct), it is cleared so the two
+    /// conventions never carry conflicting standalone text.
     pub fn set_leading_comment(&mut self, new_comment: Comment) {
         if let Some(meta) = self.meta_mut() {
+            Self::take_legacy_standalone(meta);
             let decor = meta.decor.get_or_insert_with(Default::default);
-            decor.leading_comment = Some(new_comment);
-            if meta.comment.as_ref().is_some_and(|c| c.standalone) {
-                meta.comment = None;
-            }
+            decor.set_leading_comment(new_comment);
         }
     }
 
-    /// Drop the leading (standalone) comment slot. The inline trailing
+    /// Append a leading (standalone) note, keeping the ones already recorded.
+    ///
+    /// This is what ingest uses: every standalone comment line the reader
+    /// reports is kept, in order. A legacy standalone note living in the
+    /// `comment` slot is migrated into the list first, so appending never
+    /// silently discards it.
+    pub fn push_leading_comment(&mut self, comment: Comment) {
+        if let Some(meta) = self.meta_mut() {
+            if let Some(legacy) = Self::take_legacy_standalone(meta) {
+                let decor = meta.decor.get_or_insert_with(Default::default);
+                decor.push_leading_comment(legacy);
+            }
+            let decor = meta.decor.get_or_insert_with(Default::default);
+            decor.push_leading_comment(comment);
+        }
+    }
+
+    /// Lift a legacy `comment(standalone = true)` note out of the old slot so
+    /// the caller can re-record it in the list. Returns `None` when the node
+    /// carries no such note (an inline trailing comment is never touched).
+    fn take_legacy_standalone(meta: &mut NodeMeta) -> Option<Comment> {
+        if meta.comment.as_ref().is_some_and(|c| c.standalone) {
+            meta.comment.take()
+        } else {
+            None
+        }
+    }
+
+    /// Drop every leading (standalone) note. The inline trailing
     /// slot is untouched. If a legacy standalone note still lives in
     /// `comment`, it is cleared as well so `set_leading_comment` /
     /// `remove_leading_comment` behave symmetrically across both
     /// conventions.
     pub fn remove_leading_comment(&mut self) {
         if let Some(meta) = self.meta_mut() {
+            Self::take_legacy_standalone(meta);
             if let Some(decor) = meta.decor.as_mut() {
-                decor.leading_comment = None;
+                decor.leading_comments.clear();
                 if !decor.blank_before {
                     // Nothing else lives in the boxed payload: drop it
                     // so `NodeMeta::default()`-shaped nodes stay
                     // allocation-free.
                     meta.decor = None;
                 }
-            }
-            if meta.comment.as_ref().is_some_and(|c| c.standalone) {
-                meta.comment = None;
             }
         }
     }
@@ -879,8 +971,8 @@ impl CustomNode {
     /// Remove this node's comment.
     ///
     /// PR #117b widens the semantics to "clear every comment on this
-    /// node": the inline `comment` field AND the `decor.leading_comment`
-    /// slot (the destination of standalone notes after the receiver
+    /// node": the inline `comment` field AND the `decor.leading_comments`
+    /// list (the destination of standalone notes after the receiver
     /// migration). Python callers see one unified `Node.remove_comment`
     /// that removes whichever kind of comment the node currently
     /// carries, regardless of which slot the writer picked.
@@ -888,7 +980,7 @@ impl CustomNode {
         if let Some(meta) = self.meta_mut() {
             meta.comment = None;
             if let Some(decor) = meta.decor.as_mut() {
-                decor.leading_comment = None;
+                decor.leading_comments.clear();
                 if !decor.blank_before {
                     meta.decor = None;
                 }
@@ -1376,6 +1468,7 @@ pub mod proptest_strategies {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn node_meta_equality_normalises_standalone_across_slots() {
@@ -1393,15 +1486,96 @@ mod tests {
         };
         let migrated = NodeMeta {
             decor: Some(Box::new(NodeDecor {
-                leading_comment: Some(crate::ast::Comment {
+                leading_comments: vec![crate::ast::Comment {
                     text: Arc::from("hello"),
                     standalone: true,
-                }),
+                }],
                 blank_before: false,
             })),
             ..Default::default()
         };
         assert_eq!(legacy, migrated, "standalone slot mismatch");
+    }
+
+    #[test]
+    fn push_leading_comment_keeps_every_stacked_note_in_order() {
+        // The reason the slot became a list: a document may stack any number of
+        // comment lines above one key, and a single slot kept only the last one.
+        let mut node = CustomNode::plain_scalar("k");
+        for text in ["first", "second", "third"] {
+            node.push_leading_comment(crate::ast::Comment {
+                text: Arc::from(text),
+                standalone: true,
+            });
+        }
+        assert_eq!(
+            node.leading_comments()
+                .iter()
+                .map(|c| &*c.text)
+                .collect::<Vec<_>>(),
+            ["first", "second", "third"],
+            "every note survives, in source order"
+        );
+        assert_eq!(
+            node.leading_comment().map(|c| &*c.text).unwrap(),
+            "first",
+            "the singular accessor reports the first note, as before"
+        );
+    }
+
+    #[test]
+    fn push_leading_comment_migrates_a_legacy_standalone_note() {
+        // Appending must never drop a note a hand-built node recorded the older
+        // way: the legacy `comment(standalone = true)` moves into the list first.
+        let mut node = CustomNode::plain_scalar("k");
+        node.set_comment(crate::ast::Comment {
+            text: Arc::from("legacy"),
+            standalone: true,
+        });
+        node.push_leading_comment(crate::ast::Comment {
+            text: Arc::from("appended"),
+            standalone: true,
+        });
+        assert_eq!(
+            node.leading_comments()
+                .iter()
+                .map(|c| &*c.text)
+                .collect::<Vec<_>>(),
+            ["legacy", "appended"]
+        );
+    }
+
+    #[test]
+    fn a_second_stacked_note_changes_meta_identity() {
+        // `NodeMeta` equality reads every note: losing the second one was the
+        // defect, so a stack and a single note are different metadata. The legacy
+        // one-note spelling still normalises to the same thing, and `CustomNode`
+        // equality deliberately keeps ignoring decorations — this is a metadata
+        // invariant, not a node-identity one.
+        let note = |text: &str| Comment {
+            text: Arc::from(text),
+            standalone: true,
+        };
+        let one = NodeMeta {
+            decor: Some(Box::new(NodeDecor {
+                leading_comments: vec![note("a")],
+                blank_before: false,
+            })),
+            ..Default::default()
+        };
+        let stacked = NodeMeta {
+            decor: Some(Box::new(NodeDecor {
+                leading_comments: vec![note("a"), note("b")],
+                blank_before: false,
+            })),
+            ..Default::default()
+        };
+        let legacy = NodeMeta {
+            comment: Some(note("a")),
+            ..Default::default()
+        };
+        assert_ne!(one, stacked, "a stacked note is content, not noise");
+        assert_eq!(legacy, one, "the older slot describes the same single note");
     }
 
     #[test]

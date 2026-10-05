@@ -6,6 +6,15 @@
 //! unparseable text) and never panic at any depth. A re-parse failure is the
 //! SELF-REPARSE-FAIL class the dogfooding loop hunts — here reachable in
 //! milliseconds per edge case instead of one corpus pass per run.
+//!
+//! A second invariant — note *survival* — is deliberately NOT asserted here: this
+//! tier's oracle is text equality across rounds, and a document that is stable and
+//! merely short a note passes it. That half now lives in
+//! `crates/pyrs-yaml-core/tests/note_survival.rs`, which replays the committed seed
+//! corpus and requires every note the reader recorded to appear in the emission. It
+//! was kept out of this file on purpose: libFuzzer's corpus is nondeterministic, an
+//! assertion that reddes on whatever the fuzzer explores next cannot gate a PR, and
+//! the corpus test runs on every `cargo nextest` instead.
 
 #![no_main]
 

@@ -51,10 +51,37 @@ class TestFromJson:
 class TestJsonDialects:
     """from_jsonc / from_json5 / load_json5 + to_jsonc / to_json5."""
 
-    def test_from_jsonc_strips_comments(self):
-        yaml_str = pyrs_yaml.from_jsonc('{"a": 1, // note\n "b": 2}')
-        assert "a: 1" in yaml_str
-        assert "note" not in yaml_str  # comments dropped for the YAML view
+    def test_from_jsonc_keeps_comments_as_yaml_notes(self):
+        # Since #112/#115 a JSONC comment rides the AST's comment slots so that
+        # `to_jsonc` can reproduce it; the YAML projection renders those slots as
+        # `#` notes instead of throwing the information away. Every position the
+        # reader can report a note from has to survive: after a value, above a key,
+        # and trailing a key (which used to disappear with the key's own slot).
+        after_value = pyrs_yaml.from_jsonc('{"a": 1 /* tail */, "b": 2}')
+        above_key = pyrs_yaml.from_jsonc('{\n  // head\n  "a": 1\n}')
+        after_key = pyrs_yaml.from_jsonc('{"a": 1, // note\n "b": 2}')
+        assert "tail" in after_value
+        assert "head" in above_key
+        assert "note" in after_key
+        # The notes cost nothing to the data, and each view is a fixed point.
+        assert pyrs_yaml.safe_load(after_value) == {"a": 1, "b": 2}
+        assert pyrs_yaml.safe_load(above_key) == {"a": 1}
+        assert pyrs_yaml.safe_load(after_key) == {"a": 1, "b": 2}
+        for text in (after_value, above_key, after_key):
+            assert pyrs_yaml.parse(text).to_yaml() == text
+
+    def test_stacked_jsonc_comments_all_survive(self):
+        # A member may be introduced by any number of comment lines. The parser
+        # kept a single pending note, so `// a` vanished and only `// b` came
+        # back -- stable output, silently short one note, which is why the
+        # round-trip tier could not see it either.
+        stacked = pyrs_yaml.from_jsonc('// a\n// b\n{"k": 1}\n')
+        assert "a" in stacked and "b" in stacked, stacked
+        assert stacked.count("#") >= 2, stacked
+        assert pyrs_yaml.parse(stacked).to_yaml() == stacked
+        block = pyrs_yaml.from_jsonc('/* one */\n/* two */\n{"k": 1}\n')
+        assert "one" in block and "two" in block, block
+        assert pyrs_yaml.parse(block).to_yaml() == block
 
     def test_from_json5_accepts_wider_grammar(self):
         # unquoted keys, single-quoted strings, trailing comma

@@ -115,12 +115,12 @@ pub fn to_json5_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
     Ok(out)
 }
 
-/// Emit a root container's own leading (standalone) comment before the
+/// Emit a root container's own leading (standalone) comments before the
 /// top-level value. Nested members get theirs via the pair-loop
 /// `emit_standalone_comment`; the outermost node has no preceding key
 /// slot, so a document-leading `#`/`//` comment would otherwise drop.
 fn emit_root_leading(node: &CustomNode, out: &mut String) {
-    if let Some(c) = node.leading_comment() {
+    for c in node.leading_comments() {
         let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
     }
 }
@@ -181,17 +181,14 @@ fn emit_inline_comment(node: &CustomNode, out: &mut String) {
 }
 
 /// Emit a standalone comment block on its own line, already indented to
-/// `step * level`.
+/// `step * level` — every note the node carries, in source order.
 ///
-/// PR #115 puts standalone notes onto the dedicated `leading_comment`
+/// PR #115 puts standalone notes onto the dedicated `leading_comments`
 /// slot on the parser side; hand-built fixtures and pre-#115 shapes
 /// that still write into `comment` (with `standalone = true`) keep
-/// rendering thanks to the fallback read here.
+/// rendering thanks to the normalised read in `leading_comments()`.
 fn emit_standalone_comment(node: &CustomNode, step: usize, level: usize, out: &mut String) {
-    let c = node
-        .leading_comment()
-        .or_else(|| node.comment().filter(|c| c.standalone));
-    if let Some(c) = c {
+    for c in node.leading_comments() {
         indent(out, step, level);
         let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
     }

@@ -1,14 +1,14 @@
 {
   "scenarios": {
-    "parse_anchors": 392896375,
-    "parse_block": 146848123,
-    "parse_medium": 358563885,
-    "parse_small": 49753046,
-    "serialize_anchors": 37679984,
-    "serialize_block": 18995718,
-    "serialize_block_scalars": 15632984,
-    "serialize_medium": 41831222,
-    "serialize_small": 5696462
+    "parse_anchors": 349213209,
+    "parse_block": 147692535,
+    "parse_medium": 360894449,
+    "parse_small": 50024724,
+    "serialize_anchors": 39850121,
+    "serialize_block": 19687708,
+    "serialize_block_scalars": 15670984,
+    "serialize_medium": 43367227,
+    "serialize_small": 5888462
   },
   "tolerance_hint": 0.02,
   "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)"

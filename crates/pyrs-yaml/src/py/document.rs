@@ -728,6 +728,22 @@ impl YamlDocument {
         Ok(node.leading_comment().map(|c| c.text.as_ref().to_string()))
     }
 
+    /// Get every leading (standalone) comment on the node at `segments`, in
+    /// source order. A document may stack any number of comment lines above one
+    /// key, and all of them are kept — `_get_leading_comment` returns only the
+    /// first.
+    #[pyo3(signature = (segments: "list") -> "list[str]")]
+    fn _get_leading_comments(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Vec<String>> {
+        let segs = parse_segments(py, &segments)?;
+        let node = pyrs_yaml_core::editing::navigate(&self.ast, &segs)
+            .map_err(|e| YamlEditError::new_err(e.to_string()))?;
+        Ok(node
+            .leading_comments()
+            .iter()
+            .map(|c| c.text.as_ref().to_string())
+            .collect())
+    }
+
     /// Get the anchor name on the node at `segments` (internal).
     #[pyo3(signature = (segments: "list") -> "str | None")]
     fn _get_anchor(&self, py: Python, segments: Vec<Py<PyAny>>) -> PyResult<Option<String>> {
