@@ -1,4 +1,8 @@
 # Fuzz corpora and crash payloads are raw byte streams; the bytes ARE the
-# input, so text normalization (CRLF handling) must never touch them.
+# input, so text normalization (CRLF handling) must never touch them. The
+# committed seeds join the two ephemeral dirs: several carry a bare CR or a
+# trailing space as part of the reproduction (`&"X-\r:`, `!y5%7c `), which a
+# contributor with core.autocrlf enabled would otherwise silently rewrite.
 fuzz/corpus/** -text
 fuzz/artifacts/** -text
+fuzz/seeds/** -text
