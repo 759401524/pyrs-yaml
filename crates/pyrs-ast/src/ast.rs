@@ -332,6 +332,24 @@ impl NodeMeta {
     pub fn inline_slot(&self) -> Option<&Comment> {
         self.comment.as_ref().filter(|c| !c.standalone)
     }
+
+    /// Hash exactly the metadata fields `CustomNode`'s structural equality
+    /// compares, for use by `CustomNode::hash`.
+    ///
+    /// Deliberately not [`NodeMeta::hash`]: that one mirrors [`NodeMeta::eq`],
+    /// which normalises a standalone note across the two slots so hand-built
+    /// fixtures compare equal to parsed nodes (PR #117). `CustomNode` is the type
+    /// that keys an `IndexMap`, and its equality reads the raw `comment` field
+    /// while `NodeDecor` is documented as excluded from `Hash` / `PartialEq`.
+    /// Hashing the normalised view there instead made two nodes compare equal yet
+    /// hash differently, so every `IndexMap` lookup of a key that carries a
+    /// leading note missed it — `doc["key"]`, `"key" in doc` and merge expansion
+    /// all look up by hash. Equal values now always hash equally.
+    pub fn hash_custom_node_identity<H: Hasher>(&self, state: &mut H) {
+        self.comment.hash(state);
+        self.anchor.hash(state);
+        self.tag.hash(state);
+    }
 }
 
 impl Hash for NodeMeta {
@@ -399,7 +417,7 @@ impl Hash for CustomNode {
                 state.write_u8(0);
                 value.hash(state);
                 style.hash(state);
-                meta.hash(state);
+                meta.hash_custom_node_identity(state);
                 chomping.hash(state);
                 block_indent.hash(state);
             }
@@ -413,7 +431,7 @@ impl Hash for CustomNode {
                     k.hash(state);
                     v.hash(state);
                 }
-                meta.hash(state);
+                meta.hash_custom_node_identity(state);
                 flow_style.hash(state);
             }
             CustomNode::Sequence {
@@ -425,12 +443,12 @@ impl Hash for CustomNode {
                 for item in items {
                     item.hash(state);
                 }
-                meta.hash(state);
+                meta.hash_custom_node_identity(state);
                 flow_style.hash(state);
             }
             CustomNode::Null { meta } => {
                 state.write_u8(3);
-                meta.hash(state);
+                meta.hash_custom_node_identity(state);
             }
             CustomNode::Alias { name } => {
                 state.write_u8(4);
@@ -1469,6 +1487,7 @@ pub mod proptest_strategies {
 mod tests {
     use super::*;
     use alloc::vec;
+    use alloc::{format, vec::Vec};
 
     #[test]
     fn node_meta_equality_normalises_standalone_across_slots() {
@@ -1789,5 +1808,87 @@ mod tests {
         assert_eq!(map.chomping(), None);
         map.set_chomping(Chomping::Keep);
         assert_eq!(map.chomping(), None);
+    }
+
+    /// A node whose only decoration is a leading note in the `decor` slot, and
+    /// the same node without it. `NodeDecor` is documented as excluded from
+    /// `Hash` / `PartialEq`, and `CustomNode`'s structural equality compares the
+    /// raw `comment` field, so these two must be equal *and* hash equally.
+    ///
+    /// Built through `push_leading_comment` rather than by naming `NodeDecor`'s
+    /// fields: this case already went stale once when the single
+    /// `leading_comment` became a `leading_comments` list, and the writer API is
+    /// the one that keeps meaning across that kind of change.
+    fn plain_and_noted() -> (CustomNode, CustomNode) {
+        let plain = CustomNode::plain_scalar("key");
+        let mut noted = CustomNode::plain_scalar("key");
+        noted.push_leading_comment(Comment {
+            text: Arc::from("a note above the key"),
+            standalone: true,
+        });
+        (plain, noted)
+    }
+
+    /// A `core`-only hasher, because `DefaultHasher` is `std` and these tests
+    /// must also build under `--no-default-features` (the `no_std` gate).
+    /// Any deterministic hasher works: the assertion is that equal nodes agree,
+    /// not that the digest is good.
+    #[derive(Default)]
+    struct EchoHasher(u64);
+
+    impl Hasher for EchoHasher {
+        fn finish(&self) -> u64 {
+            self.0
+        }
+
+        fn write(&mut self, bytes: &[u8]) {
+            for byte in bytes {
+                self.0 = self.0.rotate_left(8) ^ u64::from(*byte);
+            }
+        }
+    }
+
+    fn hash_of(node: &CustomNode) -> u64 {
+        let mut h = EchoHasher::default();
+        node.hash(&mut h);
+        h.finish()
+    }
+
+    #[test]
+    fn equal_nodes_hash_alike_when_a_note_sits_in_the_decor_slot() {
+        let (plain, noted) = plain_and_noted();
+        assert_eq!(plain, noted, "decorations in `decor` are invisible to eq");
+        assert_eq!(
+            hash_of(&plain),
+            hash_of(&noted),
+            "equal values must hash equally, or every `IndexMap` keyed on them \
+             gains a key that cannot be found"
+        );
+    }
+
+    #[test]
+    fn a_noted_key_is_still_found_by_an_equal_plain_key() {
+        // A one-entry table is not a test: hashbrown's smallest table has three
+        // buckets, so two differing hashes routinely collide and `eq` still finds
+        // the entry. This passed with the contract violation fully in place, which
+        // is why it is written against a table large enough for the hashes to route
+        // apart — the same reason the engine-side measurement needed 64 keys.
+        let mut map: NodeMap<CustomNode, u8> = NodeMap::default();
+        for i in 0..64u32 {
+            let mut key = CustomNode::plain_scalar(format!("k{i}"));
+            key.push_leading_comment(Comment {
+                text: Arc::from("a note above the key"),
+                standalone: true,
+            });
+            map.insert(key, i as u8);
+        }
+        let missed: Vec<u32> = (0..64u32)
+            .filter(|i| map.get(&CustomNode::plain_scalar(format!("k{i}"))) != Some(&(*i as u8)))
+            .collect();
+        assert!(
+            missed.is_empty(),
+            "{} of 64 equal-but-noted keys were not found: {missed:?}",
+            missed.len()
+        );
     }
 }
