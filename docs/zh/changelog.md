@@ -3,6 +3,14 @@ title: Changelog
 description: pyrs-yaml 项目的完整变更日志，记录所有版本的重要变更、新增功能和性能优化。
 tags:
 
+- **键上方有注释时，该键按名字查不到** —— `doc["key"]`、`"key" in doc` 与合并展开
+  都按哈希定位节点，而 `CustomNode::hash` 折入了 `NodeMeta` 的归一化注释视图，
+  `CustomNode::eq` 却只比较原始 `comment` 槽：于是两个节点等值却哈希不同，`IndexMap`
+  对文档里明确存在的键回答「无此键」。`NodeDecor` 的文档写明它被 `Hash` / `PartialEq`
+  排除，所以越界的一方是哈希——`CustomNode::hash` 现在只折入其等值真正比较的字段
+  （`comment` / `anchor` / `tag`），经由新增的 `NodeMeta::hash_custom_node_identity`；
+  `NodeMeta::hash` 仍镜像 `NodeMeta::eq` 的 #117 归一化，两对关系各自自洽。首键之外的
+  每个键都会中招：文档最开头的注释会被记到外层映射上，这正是单键用例从未暴露它的原因。
 - docs
 status: new
 

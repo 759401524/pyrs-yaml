@@ -263,6 +263,25 @@ class TestYamlDocumentDunder:
         with pytest.raises(exc_type):
             _ = pyrs_yaml.parse(yaml)[key]
 
+    def test_getitem_reaches_a_commented_key(self):
+        # A leading note is decoration: `NodeDecor` is documented as excluded
+        # from `Hash` / `PartialEq`, so a key that carries one must still be
+        # reachable by its own text. It was not: `CustomNode::hash` folded the
+        # normalised comment view while `CustomNode::eq` did not, so the stored
+        # key and the query compared equal but hashed apart and `IndexMap` missed
+        # it. The first key of a document is not enough to show this - its note
+        # is reported against the enclosing mapping - so the assertions below
+        # cover the second and third keys as well as membership.
+        yaml = "# above first\nfirst: 1\n# above second\nsecond: two\n# above third\nthird: 3\n"
+        doc = pyrs_yaml.parse(yaml)
+        assert doc["first"] == 1
+        assert doc["second"] == "two"
+        assert doc["third"] == 3
+        assert "second" in doc
+        assert "third" in doc
+        assert "missing" not in doc
+        assert doc.to_dict()["second"] == "two"
+
     @pytest.mark.parametrize(
         "yaml,expected_type",
         [

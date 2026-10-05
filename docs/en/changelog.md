@@ -3,6 +3,18 @@ title: Changelog
 description: All notable changes to pyrs-yaml, formatted per Keep a Changelog and Semantic Versioning.
 tags:
 
+- **A key with a comment above it was unreachable by name** —
+  `doc["key"]`, `"key" in doc` and merge expansion all resolve a node by hash, and
+  `CustomNode::hash` folded `NodeMeta`'s normalised comment view while
+  `CustomNode::eq` compares the raw `comment` slot, so two nodes could compare equal
+  yet hash apart and `IndexMap` answered "no such key" for a key the document plainly
+  holds. `NodeDecor` is documented as excluded from `Hash` / `PartialEq`, so the hash
+  was the side out of contract: `CustomNode::hash` now folds only the fields its own
+  equality compares (`comment` / `anchor` / `tag`), through a new
+  `NodeMeta::hash_custom_node_identity`, while `NodeMeta::hash` keeps mirroring
+  `NodeMeta::eq`'s #117 normalisation so both pairings stay self-consistent. Every key
+  past the first was affected — a document's opening note is reported against the
+  enclosing mapping, which is exactly why single-key fixtures never showed it.
 - docs
 status: new
 

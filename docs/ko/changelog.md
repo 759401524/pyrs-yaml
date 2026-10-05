@@ -6,6 +6,17 @@ tags:
 status: new
 ---
 
+- **키 위에 주석이 있으면 이름으로 조회할 수 없었다** — `doc["key"]`, `"key" in doc`,
+  병합 전개는 모두 해시로 노드를 찾지만, `CustomNode::hash`는 `NodeMeta`의 정규화된 주석
+  뷰를 접어 넣은 반면 `CustomNode::eq`는 원시 `comment` 슬롯만 비교했습니다. 그래서 값은
+  같은데 해시가 다른 짝이 생겼고, `IndexMap`은 문서에 분명히 있는 키에게 "키 없음"이라
+  답했습니다. `NodeDecor`는 `Hash`/`PartialEq`에서 제외한다고 문서에 적혀 있으므로 계약
+  밖인 쪽은 해시였습니다 — `CustomNode::hash`는 이제 자기 등치가 비교하는 필드
+  (`comment` / `anchor` / `tag`)만 새 `NodeMeta::hash_custom_node_identity`를 통해 접고,
+  `NodeMeta::hash`는 `NodeMeta::eq`의 #117 정규화를 계속 거울비침으로써 두 쌍이 각각 자기
+  일관성을 지킵니다. 첫 키 이후의 모든 키가 해당되며, 문서 첫 주석은 바깥 매핑에
+  보고되므로 단일 키 픽스처에서는 결코 드러나지 않았습니다.
+
 ## 변경 이력
 
 이 파일에는 본 프로젝트의 모든 중요 변경 사항이 기록됩니다.
