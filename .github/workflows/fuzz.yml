@@ -98,24 +98,28 @@ jobs:
 
       - name: Fuzz
         id: fuzz
-        # Ratchet, not a loophole. Tolerated on pull requests only, and set on the
-        # STEP rather than the job: job-level continue-on-error still publishes a
-        # failing check run, which is what a merge actually looks at, so it would
-        # neither unblock PRs nor report cleanly. Main already carries drift this
-        # tier correctly flags (crash-f44eca1d, after the predecessors fixed in
-        # #256/#258/#261/#262), so while any backlog remains the check is a true
-        # positive and red on every PR - and a gate that can never be green gets
-        # reverted. Scheduled and manual runs stay blocking, keeping the long-window
-        # signal. TODO: once the drift backlog is drained, delete this line so a
-        # new crash hard-fails the PR that introduces it, turning the gate from
-        # surfacing regressions into preventing them.
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # Blocking everywhere, pull requests included. The step-level tolerance
+        # that used to sit here was a ratchet, not a loophole: main carried drift
+        # this tier correctly flagged (crash-f44eca1d, after the predecessors
+        # fixed in #256/#258/#261/#262), and a gate that can never be green gets
+        # reverted. That premise was re-checked on 2026-10-04 against this tree
+        # and no longer holds: all four targets replay the committed seed corpus
+        # clean (5/17/6/5 seeds, nightly-2026-08-15, cargo-fuzz 0.13.2,
+        # x86_64-unknown-linux-gnu, -max_total_time=60), the historical crashes
+        # now living as `fuzz/seeds/**/former-crash-*.seed` plus the
+        # `key-metadata-anchor-tag.seed` replay that covers the crash-86a9ae7b
+        # key-metadata shape. So a new crash hard-fails the PR that introduces it
+        # instead of only surfacing on the next weekend schedule. Reproduce with:
+        #   mkdir -p fuzz/corpus/<target>
+        #   cp fuzz/seeds/<target>/*.seed fuzz/corpus/<target>/
+        #   cargo fuzz run <target> --target x86_64-unknown-linux-gnu \
+        #     -- -max_total_time=60 -rss_limit_mb=3072
         run: cargo fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=${{ env.FUZZ_TIME }} -rss_limit_mb=3072
 
       # A discovered crash is only actionable if the bytes survive the runner;
       # attach them to the failed job for the triage->seed->fix pipeline. The
-      # step-outcome test keeps this firing on PRs, where the tolerated step no
-      # longer fails the job and so plain failure() would never match.
+      # step-outcome test is now redundant with failure() — the step fails the
+      # job again — but it keeps the upload firing if a tolerance ever returns.
       - name: Upload crash artifacts
         if: failure() || steps.fuzz.outcome == 'failure'
         uses: actions/upload-artifact@v7

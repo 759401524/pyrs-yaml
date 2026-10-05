@@ -27,3 +27,6 @@ fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
 fuzz/sessions/
+
+# Windows venv junction/symlink (a plain `.venv/` dir pattern does not match it)
+/.venv

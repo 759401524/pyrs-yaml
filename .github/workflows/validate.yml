@@ -7,6 +7,14 @@ on:
       - "docs/**/changelog.md"
       - ".github/workflows/publish.yml"
       - ".github/workflows/validate.yml"
+      # Stub sources and the stub itself: the committed `.pyi` is machine output,
+      # so a binding signature/docstring change, a generator (maturin) bump, or
+      # an edit of the stub all have to land on the drift check below.
+      - "crates/pyrs-yaml/src/**"
+      - "python/pyrs_yaml/pyrs_yaml.pyi"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/check_stub_drift.py"
   workflow_dispatch:
 
 permissions:
@@ -30,3 +38,64 @@ jobs:
         run: git ls-files --error-unmatch python/pyrs_yaml/pyrs_yaml.pyi
       - name: Assert py.typed exists in source
         run: test -f python/pyrs_yaml/py.typed
+
+  # The three assertions above only prove the committed stub *exists* and is
+  # tracked; they cannot notice it drifting behind the binding, which is how a
+  # wrong public typing contract ships inside every wheel. This job regenerates
+  # the stub with the route AGENTS.md declares and fails on any content
+  # difference, so the tracked `.pyi` has to stay derived rather than hand-patched.
+  # Costs one debug Rust build plus a locked env sync on validate-triggering PRs;
+  # the `build` job in ci.yml already spends more than that per OS.
+  #
+  # windows-latest, deliberately: maturin 1.14.1 generates stubs by importing the
+  # freshly built extension from an isolated interpreter, and that route does not
+  # work on Linux here. Measured, not assumed — on WSL (same locked maturin, same
+  # uv.lock, Python 3.12) the sequence fails with "Failed to introspect the built
+  # libraries… / No module named pyrs_yaml", and it keeps failing after building a
+  # complete wheel and installing it non-editable so `python -I` resolves the
+  # package inside site-packages. `experimental-inspect` is already enabled on the
+  # pyo3 dependency, so maturin's own hint is not actionable either. The same
+  # sequence succeeds on Windows (stub generated, drift check green), which is also
+  # the platform the release process generates the committed stub on — pinning the
+  # comparison to it keeps the gate checking the route that actually produces the
+  # artifact. Revisit if upstream fixes Linux introspection; until then a Linux job
+  # here would be a permanent red that gets reverted, not a gate.
+  stub-drift:
+    name: Committed type stub is derived
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: stubs
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Create virtualenv
+        run: uv venv .venv
+
+      # Locked, so the generator version is the one `uv.lock` pins rather than
+      # whatever the maturin range allows on the day the PR happens to run.
+      - name: Install locked build dependencies
+        run: uv sync --frozen --no-install-project
+
+      - name: Regenerate stubs (declared route)
+        run: uv run --no-sync maturin generate-stubs --out target/stubs
+
+      - name: Assert the committed stub matches the generated stub
+        run: uv run --no-sync python scripts/check_stub_drift.py

@@ -61,3 +61,27 @@ Commit messages must adhere to the following standardized structure for semantic
 
 - **No manual line breaks**: Each paragraph and each list item in a PR body must be written as a single unwrapped line; line wrapping for display is GitHub's responsibility, not the author's.
 - **Never reuse the commit message as the PR body**: Commit messages follow the 72-column git wrapping convention while PR bodies must remain unwrapped - the two formats are incompatible by design, so a `git commit -F` message file must not be piped into PR creation.
+
+### Jujutsu (jj) Workflow
+
+This repository is a colocated jj/Git repository (`jj git init --colocate`): `.git` remains the object store, so other developers keep using plain Git and `gh`/`prek`/`git status` keep working in the same directory.
+
+**The gate moves, deliberately.** jj 0.45 does not execute `.git/hooks/pre-commit` and has no commit-hook mechanism of its own (verified: `jj commit` returns instantly where `prek run --all-files` takes about a minute, and the only `hooks.*` keys present were inert ones). `prek run --all-files` is therefore a required step **before** `jj git push`, not an optional one - the same checks re-run in CI, so a forgotten local pass surfaces there rather than silently.
+
+| Task | Command |
+| --- | --- |
+| See your own work + trunk | `jj log -r 'author(MuLong) \| trunk()'` |
+| Full history, all branches/tags | `jj log --all` |
+| Start a change off trunk | `jj new main@origin` |
+| See what is in the current change | `jj diff --stat` |
+| Name a change | `jj describe -m "fix(yaml): ..."` (message rules unchanged) |
+| Retarget a branch pointer for pushing | `jj bookmark set fix/x -r @` |
+| Push (after prek) | `prek run --all-files; jj git push --allow-new` |
+| Fold a change into its parent | `jj squash` |
+| Rebase onto moved trunk | `jj rebase -d main@origin` |
+| Undo the last jj operation | `jj undo` |
+| Sync remote refs without pushing | `jj git fetch` |
+
+Colocated jj keeps git `HEAD` detached (it points at the working-copy commit), so read-only Git is fine - `git log`, `git diff`, `git status`, `gh` - while `git commit`/`git checkout`/`git switch` in this directory fight jj: use `jj edit`, `jj new` and `jj bookmark set` instead. Plain Git is unaffected in everyone else's clone.
+
+Gotchas that cost real time here: `jj` re-snapshots the working copy before every command, so keep a Git-only index workflow out of a jj directory (colocate stages untracked paths into the `.git` index as a side effect); `jj` ignores nothing Git ignores plus nothing else, so path patterns must match the actual type - `.venv` is a directory **junction** here and `.venv/` did not match it, which is why `/.venv` is in `.gitignore`; and a `git revert`-style fix to an older change needs `jj edit <change>` first, since `@` snapshots the working tree, not the change you meant. A pushed bookmark is not frozen either: a later `jj edit` or an automatic re-snapshot rewrites the same change, so immediately before `jj git push` re-check the pointer (`jj bookmark list --all-remotes`, then `git diff --stat <remote-sha> <local-sha>`) - in this repository a branch that had just been pushed silently grew four files belonging to the other branch within minutes, and only that comparison caught it.
