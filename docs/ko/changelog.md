@@ -136,6 +136,18 @@ status: new
 
 #### 수정
 
+- **개행만으로 구성된 block scalar 값이 더 이상 빈 문자열로 변하지 않는다** — `>+8\r\r#`는
+  값이 개행 1개, chomping이 `Keep`, 명시적 indent가 8인 folded scalar로 읽힌다. writer가
+  indent 지시자를 남겨 `>+8\n\n`을 출력하고, 이는 재파싱 시 값은 같되 지시자 없는 `Clip`이 되어
+  다음 라운드에서 `>\n\n`을 쓴다 — Clip이 후행 개행을 제거하므로 값의 유일한 개행이 갈 곳을
+  잃는다. *빈* body를冪등으로 만드는 두 규칙(복원 불가한 indent 지시자 제거 / 같은 값으로
+  재읽히는 chomping 출력)이 '빈가' 기준으로 판정되어, 개행 전용 body는 빈 값이 아니라 조건을
+  통과하지 못했다(libFuzzer `yaml_roundtrip`, `crash-2f6b1eff`, 6 bytes — 입력이 더 이상
+  크래시하지 않으므로 `tmin`으로 줄일 수 없음). 두 writer 모두 이제 "내용 행이 없음"을 공통
+  조건으로 쓰고, 모양은 한 라운드에 fixed point에 도달하며 값도 보존된다. 비용: 첫 버전은 같은 값을 두 번 스캔해 `serialize_block_scalars`에서 +0.65%를
+  측정했고 runner에서는 +2.11%로 instruction-count gate의 허용치 2%를 넘어, 게이트가
+  머지 전에 이 변경을 막았다. writer가 이미 계산해 둔 첫 content line 판정을 공유하면
+  +0.15%가 되어 허용 범위 안으로 돌아온다.
 - **merge key가 anchor를 alias 뒤로 옮기지 않는다** — `<<:` 전개에서 병합된 쌍을 mapping
   맨 앞에 prepend했기 때문에, 앞쪽의 own key에서 `&b`를 정의하고 병합되는 map 안에서
   `*b`를 사용하는 문서는 `&b` 정의 전에 `*b`를 출력해, 우리 parser가 거부하는 텍스트

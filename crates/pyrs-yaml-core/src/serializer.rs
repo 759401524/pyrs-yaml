@@ -145,6 +145,20 @@ struct Serializer {
 /// (`+`) — libFuzzer `yaml_roundtrip` crash-c18cb1fd. The promotion is a
 /// pure emit-side normalization: the AST keeps its parsed `Clip`.
 ///
+/// `no_content_line` is the caller's already-computed `first_text_line.is_empty()`: the
+/// body holds no line with text in it, so it is either empty or made of nothing but
+/// line breaks. Both spellings lose the indentation indicator on re-read — measured,
+/// `>+8\n\n` comes back as `Folded`/`Clip`/`block_indent: None` — and for an all-break
+/// body the drift is worse than cosmetic, because the re-read `Clip` then strips the
+/// only break the value consists of, so the *value* decays
+/// (`">+8\r\r#" -> ">+8\n\n" -> ">\n\n" -> ""`). Sharing one computation of that flag
+/// between `effective_chomping` and the indicator branch is a gate requirement, not
+/// micro-optimisation: a standalone scan measured `+0.65%` on
+/// `serialize_block_scalars` (deterministic, three runs identical) which, with the
+/// ~1.45% WSL-to-runner drift the 2% tolerance was calibrated on, landed at `+2.11%`
+/// and failed the committed instruction-count gate for duplicating work both writers
+/// already do.
+///
 /// An **empty** body writes as Clip whatever the AST claims, for the same reason
 /// the indentation indicator is dropped there: there is no content for the
 /// indicator to act on, so granit reports the default chomping when it re-reads
@@ -154,11 +168,11 @@ struct Serializer {
 /// and crash-b5dcc38f (`ancho: |+`). Nothing is lost: an empty body has no trailing
 /// break to keep or strip, so the three spellings denote the same value, and the
 /// AST keeps whatever was parsed.
-fn effective_chomping(value: &str, chomping: &Chomping) -> Chomping {
+fn effective_chomping(value: &str, chomping: &Chomping, no_content_line: bool) -> Chomping {
     if value.is_empty() {
         return Chomping::Clip;
     }
-    if matches!(chomping, Chomping::Clip) && value.ends_with("\n\n") {
+    if matches!(chomping, Chomping::Clip) && (value.ends_with("\n\n") || no_content_line) {
         Chomping::Keep
     } else {
         *chomping
@@ -1320,7 +1334,10 @@ impl Serializer {
         block: BlockScalarHeader<'_>,
         block_base: usize,
     ) {
-        let chomping = effective_chomping(value, block.chomping);
+        let auto_width = self.block_width(block_base, block.indent);
+        let first_text_line = value.lines().find(|l| !l.is_empty()).unwrap_or("");
+        let no_content_line = first_text_line.is_empty();
+        let chomping = effective_chomping(value, block.chomping, no_content_line);
         // Mirror the folded writer: when the first content line itself begins
         // with a blank, granit's auto-indent detection would take that deeper
         // column as the block indent and read the shallower following lines as
@@ -1329,15 +1346,14 @@ impl Serializer {
         // dropped, leaving a value like ` 1|l\n:t\n`). Force the indicator so
         // detection is skipped and the leading blanks stay content. The same
         // resolved indent feeds `write_base_indent` so header and body agree.
-        let auto_width = self.block_width(block_base, block.indent);
-        let first_text_line = value.lines().find(|l| !l.is_empty()).unwrap_or("");
         let force_indicator = block.indent.is_none() && first_text_line.starts_with([' ', '\t']);
-        let indent = if value.is_empty() {
-            // An empty body cannot carry a recoverable indentation indicator:
-            // on re-parse granit drops it (there is nothing to measure the
-            // indent against), so emitting `|N` for an empty scalar drifts to
-            // `|` the next round (libFuzzer `yaml_roundtrip` crash-d4ea8a23).
-            // Emit the bare sigil so the empty shape is idempotent.
+        let indent = if no_content_line {
+            // Neither an empty nor an all-break body can carry a recoverable
+            // indentation indicator: on re-parse granit drops it (there is no content
+            // line to measure the indent against), so emitting `|N` drifts to `|` the
+            // next round (libFuzzer `yaml_roundtrip` crash-d4ea8a23, and the `\r\r#`
+            // shape that also decayed the value). Emit the bare sigil so the shape is
+            // idempotent.
             None
         } else if force_indicator {
             Some((auto_width - block_base) as u8)
@@ -1360,7 +1376,10 @@ impl Serializer {
         block: BlockScalarHeader<'_>,
         block_base: usize,
     ) {
-        let chomping = effective_chomping(value, block.chomping);
+        let auto_width = self.block_width(block_base, block.indent);
+        let first_text_line = value.lines().find(|l| !l.is_empty()).unwrap_or("");
+        let no_content_line = first_text_line.is_empty();
+        let chomping = effective_chomping(value, block.chomping, no_content_line);
         // granit's folded read map (measured against its scanner):
         //   - k blank lines before a NORMAL continuation line re-read as k '\n'
         //     (the break before them folds away);
@@ -1373,16 +1392,14 @@ impl Serializer {
         // indentation indicator in that case (with it set, detection is skipped
         // and the leading blanks stay content). Run-consumed segments mean an
         // empty segment can only ever be the leading one.
-        let auto_width = self.block_width(block_base, block.indent);
-        let first_text_line = value.lines().find(|l| !l.is_empty()).unwrap_or("");
         let force_indicator = block.indent.is_none() && first_text_line.starts_with([' ', '\t']);
         let width = auto_width;
         let header = BlockScalarHeader {
             chomping: &chomping,
-            indent: if value.is_empty() {
-                // Empty folded body: the indentation indicator is unrecoverable
-                // on re-parse, so emitting `>N` drifts to `>` next round (mirror
-                // of the literal writer; libFuzzer `yaml_roundtrip`
+            indent: if no_content_line {
+                // Neither an empty nor an all-break folded body can carry the
+                // indentation indicator on re-parse, so emitting `>N` drifts to `>`
+                // next round (mirror of the literal writer; libFuzzer `yaml_roundtrip`
                 // crash-d4ea8a23 family).
                 None
             } else if force_indicator {
@@ -2118,6 +2135,95 @@ mod tests {
     use indexmap::IndexMap;
     use std::sync::Arc;
 
+    #[test]
+    fn a_block_value_that_is_only_line_breaks_stays_itself() {
+        // libFuzzer `yaml_roundtrip`, 6-byte input `>+8\r\r#`. The reader hands back a
+        // block scalar whose value is a single line break with `Keep` and an explicit
+        // indent of 8; the writer emitted `>+8\n\n`, which re-reads as the same value
+        // but as `Clip` with no indicator (measured), and the next round then wrote
+        // `>\n\n` — a value of `""`. So it was the VALUE that drifted, not just the
+        // header: `">+8\r\r#" -> ">+8\n\n" -> ">\n\n" -> ""`.
+        //
+        // Clip strips trailing breaks, so a body made of nothing but breaks needs
+        // `Keep` to survive, and an indentation indicator has no content line to act
+        // on, so it must be dropped — the two rules the empty body already applies,
+        // which an all-break body walked straight past.
+        for src in [">+8\r\r#", "|+8\r\r#"] {
+            let node = crate::parser::parse(src, crate::parser::yaml::YamlSchema::Core).unwrap();
+            let before = block_value(&node).to_string();
+            let one = crate::serializer::to_yaml(&node);
+            let again = crate::parser::parse(&one, crate::parser::yaml::YamlSchema::Core).unwrap();
+            let two = crate::serializer::to_yaml(&again);
+            assert_eq!(one, two, "not idempotent for {src:?}: {one:?} vs {two:?}");
+            assert_eq!(
+                block_value(&again),
+                before,
+                "value changed across a round for {src:?}: {one:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn clip_cannot_carry_an_all_break_block_body() {
+        // The predicate itself, pinned: one trailing break is the case the existing
+        // `ends_with("\n\n")` promotion misses, and a value with real content plus one
+        // final break must keep Clip exactly as before (that is what `|` means).
+        //
+        // The writers pass the cheap `first_text_line.is_empty()` flag rather than
+        // scanning, so the equivalence of the two definitions is asserted here for
+        // every shape that matters - a future refactor that decouples them would fail
+        // this test rather than silently re-opening the drift.
+        let semantic = |value: &str| value.is_empty() || value.bytes().all(|b| b == b'\n');
+        let cheap = |value: &str| {
+            value
+                .lines()
+                .find(|l| !l.is_empty())
+                .unwrap_or("")
+                .is_empty()
+        };
+        for value in [
+            "", "\n", "\n\n", "x", "x\n", "x\n\n", "\nx", "a\nb", "\n \n",
+        ] {
+            assert_eq!(
+                semantic(value),
+                cheap(value),
+                "flag disagrees for {value:?}"
+            );
+        }
+
+        assert_eq!(
+            effective_chomping("\n", &Chomping::Clip, true),
+            Chomping::Keep
+        );
+        assert_eq!(
+            effective_chomping("\n\n", &Chomping::Clip, true),
+            Chomping::Keep
+        );
+        assert_eq!(
+            effective_chomping("x\n", &Chomping::Clip, false),
+            Chomping::Clip
+        );
+        assert_eq!(
+            effective_chomping("x\n\n", &Chomping::Clip, false),
+            Chomping::Keep
+        );
+        assert_eq!(
+            effective_chomping("", &Chomping::Keep, true),
+            Chomping::Clip
+        );
+        assert_eq!(
+            effective_chomping("x", &Chomping::Strip, false),
+            Chomping::Strip
+        );
+    }
+
+    fn block_value(node: &CustomNode) -> &str {
+        match node {
+            CustomNode::Scalar { value, .. } => value,
+            other => panic!("expected a scalar document root, got {other:?}"),
+        }
+    }
+
     /// An empty block body cannot carry a chomping indicator: granit reports the
     /// default chomping when it re-reads a header with no content, so `|+` written
     /// for an empty scalar drifts to `|` on the next round (libFuzzer
@@ -2129,15 +2235,24 @@ mod tests {
     fn empty_block_body_writes_the_default_chomping() {
         for claimed in [Chomping::Keep, Chomping::Strip, Chomping::Clip] {
             assert_eq!(
-                effective_chomping("", &claimed),
+                effective_chomping("", &claimed, true),
                 Chomping::Clip,
                 "an empty body must not advertise a chomping indicator"
             );
         }
         // Nothing else about the rule moves.
-        assert_eq!(effective_chomping("x\n", &Chomping::Keep), Chomping::Keep);
-        assert_eq!(effective_chomping("x\n\n", &Chomping::Clip), Chomping::Keep);
-        assert_eq!(effective_chomping("x", &Chomping::Strip), Chomping::Strip);
+        assert_eq!(
+            effective_chomping("x\n", &Chomping::Keep, false),
+            Chomping::Keep
+        );
+        assert_eq!(
+            effective_chomping("x\n\n", &Chomping::Clip, false),
+            Chomping::Keep
+        );
+        assert_eq!(
+            effective_chomping("x", &Chomping::Strip, false),
+            Chomping::Strip
+        );
     }
 
     /// The escaper's catch-all arm tested `is_control() || is_yaml_noncharacter()`.
