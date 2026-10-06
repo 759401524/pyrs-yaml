@@ -19,6 +19,11 @@ thiserror = "2"
 pyrs-ast = { path = "../pyrs-ast", version = "0.17.0" }
 pyrs-schema = { path = "../pyrs-schema", version = "0.17.0" }
 
+[features]
+# Opt-in build of the instruction-count gate binary; see the `[[bench]] ir_gate`
+# note below for why the target is feature-gated rather than always present.
+ir-gate = []
+
 [dev-dependencies]
 # Cross-format property/integration suites (fmt_pbt, integration/*) exercise
 # the sibling engines; they are dev-only so the YAML engine no longer links
@@ -28,3 +33,20 @@ pyrs-toml = { path = "../pyrs-toml", version = "0.17.0" }
 proptest = "1.5"
 similar = "2"
 pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", features = ["test-strategy"] }
+
+# Instruction-count gate. `harness = false` because the measurement is a fixed
+# iteration loop with a companion setup-only pass: libtest's own timing harness
+# would decide how many times the work runs, and a sample count that adapts to
+# elapsed time makes the instruction total machine-dependent — the very property
+# the gate exists to remove. See the module docs of `benches/ir_gate.rs`.
+#
+# `required-features` is load-bearing, not decoration: `cargo codspeed build`
+# discovers every benchmark target and `cargo codspeed run` then executes each one
+# with no arguments, so this binary — which needs a scenario name — was run as a
+# benchmark and exited 2 (its own usage error), failing the `Rust benchmarks` job.
+# Gating the target on a feature makes it invisible to every default build,
+# CodSpeed included; only `scripts/ir_gate.py` turns it on.
+[[bench]]
+name = "ir_gate"
+harness = false
+required-features = ["ir-gate"]

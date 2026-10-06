@@ -77,3 +77,40 @@ jobs:
           exclude-allocations: true
           run: >
             uv run --no-sync pytest --codspeed -m "benchmark"
+
+  # Instruction counts, not wall time. The CodSpeed jobs above compare today's
+  # runner against a baseline recorded on different hardware, which for sub-10%
+  # effects is not reproducible: three consecutive pushes that each did strictly
+  # less work reported -7.7%, -10.5% and -9.8% for the same benchmark set.
+  # callgrind Ir repeats to ~0.001% on the same binary, so this job can hold a
+  # real one-percent line. Costs about six seconds of measurement; the build
+  # dominates. See scripts/ir_gate.py.
+  ir:
+    name: Instruction-count baseline
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install valgrind
+        run: >
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends valgrind
+      - name: Install Rust toolchain
+        # The baseline records the toolchain that produced its numbers, because a
+        # codegen change moves every scenario at once and would otherwise show up
+        # as an unexplained regression. Read the pin from the baseline so the two
+        # cannot drift: re-baselining with `ir_gate.py --update` moves the pin too.
+        id: toolchain
+        run: |
+          version=$(python3 -c "import json;print(json.load(open('.ci/ir-baseline.json'))['toolchain'].split()[1])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "pinning rustc $version (from .ci/ir-baseline.json)"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.version }}
+      - name: Measure and gate
+        run: python3 scripts/ir_gate.py
+      - name: How to re-baseline
+        if: failure()
+        run: >
+          echo "If this movement is intended, re-measure locally and commit";
+          echo "scripts/ir_gate.py --update (needs valgrind; WSL works on Windows hosts).";

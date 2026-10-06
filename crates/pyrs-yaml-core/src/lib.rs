@@ -9,6 +9,7 @@
 
 pub use pyrs_ast::{ast, error};
 
+pub mod bench_inputs;
 pub mod editing;
 pub mod i18n;
 pub mod parser;

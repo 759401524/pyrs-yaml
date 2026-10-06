@@ -17,6 +17,14 @@ status: new
 
 #### 新增
 
+- **CI 真正守得住的指令数门禁** —— `CodSpeed` 工作流新增
+  `Instruction-count baseline` 作业，用*计数指令*（`callgrind` Ir）测量引擎热路径，
+  相对 `.ci/ir-baseline.json` 上升超过百分之一即失败。之所以要它：divan 套件上报的
+  wall-time 比较在十个点以内并不可复现——连续三次推送每次都比上一次*少做*工作，却被判
+  −7.7%、−10.5%、−9.8%（同一组基准）。Ir 在同一二进制上复现精度约 ±0.001%，因此这条线
+  是有意义的；整个门禁只花约六秒。用 `python scripts/ir_gate.py` 检查，用 `--update`
+  谨慎地重置基线。它的场景通过 `pyrs_yaml_core::bench_inputs` 读取与 divan 套件相同的
+  文档，两套测量因此不可能各自漂移。
 - **CI 每周定期模糊测试** — `.github/workflows/fuzz.yml` 每周六运行全部
   四个 libFuzzer 目标（也可手动触发，`fuzz/` 变更时自动触发），用精心挑选
   的 `fuzz/seeds/`（历史崩溃输入 + 人工写制的形态种子）为每次临时语料库
