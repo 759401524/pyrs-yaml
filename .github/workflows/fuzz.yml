@@ -49,12 +49,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Discovery budget, used on every event except pull requests (those replay the
-  # corpus without a time budget, so they are deterministic). Scheduled runs keep
-  # the long window; `cargo fuzz` still replays the seeded corpus before it
-  # explores, so a regression is caught on those runs too.
-  # Discovery budget for the events that explore. Pull requests ignore it: they
-  # replay the corpus with -runs=0 below, which is what makes them gate-able.
+  # Discovery budget, for the events that explore. Pull requests ignore it: they
+  # replay the corpus with -runs=0, which is what makes them gate-able. Scheduled
+  # runs keep the long window, and `cargo fuzz` still replays the seeded corpus
+  # before exploring, so a regression is caught there too.
   FUZZ_TIME: 600
 
 jobs:
@@ -110,33 +108,17 @@ jobs:
 
       - name: Fuzz
         id: fuzz
-        # Two modes, chosen by event, because the two make different promises.
-        #
-        # pull_request -> `-runs=0`: every input in `fuzz/corpus/<target>` (the
-        # committed `fuzz/seeds/**/former-crash-*.seed`, copied in by the previous
-        # step) is replayed once and nothing is explored. Deterministic: the same
-        # tree gives the same verdict on every runner, so it may block a merge.
-        # Reproduce with:
+        # Both modes live in scripts/fuzz_rounds.sh so the policy can be run (and
+        # was run) outside CI: `-runs=0` replay on pull requests, which is
+        # deterministic and therefore allowed to block a merge, and the sampled
+        # discovery window with a per-round budget elsewhere, harvesting every
+        # distinct crash signature one run finds. Reproduce the merge-blocking
+        # half with:
         #   mkdir -p fuzz/corpus/<target>
         #   cp fuzz/seeds/<target>/*.seed fuzz/corpus/<target>/
         #   cargo fuzz run <target> --target x86_64-unknown-linux-gnu -- -runs=0
-        #
-        # schedule / dispatch / push-to-main -> `-max_total_time=$FUZZ_TIME`: the
-        # sampler. Blocking here would mean every open backlog item reddens
-        # unrelated work, so the pipeline it feeds is triage, not merge:
-        # artifact -> minimise -> regression test -> seed, after which the finding
-        # is protected by the deterministic mode above.
         shell: bash
-        run: |
-          set -euo pipefail
-          target="${{ matrix.target }}"
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            cargo fuzz run "$target" --target x86_64-unknown-linux-gnu -- \
-              -runs=0 -rss_limit_mb=3072
-          else
-            cargo fuzz run "$target" --target x86_64-unknown-linux-gnu -- \
-              -max_total_time="$FUZZ_TIME" -rss_limit_mb=3072
-          fi
+        run: bash scripts/fuzz_rounds.sh ${{ matrix.target }}
 
       # A discovered crash is only actionable if the bytes survive the runner;
       # attach them to the failed job for the triage->seed->fix pipeline. The
@@ -147,5 +129,48 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts-${{ matrix.target }}
-          path: fuzz/artifacts/${{ matrix.target }}/
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+            fuzz/collected/${{ matrix.target }}/
           if-no-files-found: ignore
+
+  # One place to read the whole picture: which of the four surfaces found
+  # anything, and how many distinct signatures each reported. The matrix jobs stay
+  # parallel and non-cancelling (`fail-fast: false`), so this only collects their
+  # output - it never decides it.
+  report:
+    name: Aggregate crash report
+    needs: fuzz
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download crash artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: fuzz-artifacts-*
+          path: crashes
+          merge-multiple: false
+
+      - name: Report every target's findings
+        shell: bash
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          total=0
+          {
+            echo "## Fuzz report"
+            echo
+            echo "| target | crash inputs | distinct signatures |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for d in crashes/*/; do
+            name=$(basename "$d")
+            files=$(find "$d" -name 'crash-*' | wc -l)
+            sigs=0
+            [ -f "$d/.signatures" ] && sigs=$(grep -c . "$d/.signatures")
+            total=$((total + files))
+            echo "| ${name#fuzz-artifacts-} | $files | $sigs |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ "$total" -gt 0 ]; then
+            echo "::warning::$total crash input(s) collected; each owes the minimize -> regression test -> seed -> fix pipeline"
+          fi
