@@ -136,6 +136,18 @@ status: new
 
 #### 수정
 
+- **접힌 중복 `<<`가 정의한 anchor를 고아로 만들지 않는다** — `<<: &b`는 리터럴·null 값
+  merge key로, 우리 규칙상 평범한 key인데 아래 진짜 `<<:`와 접혔다. fold는 사라진 항목의
+  note만 옮겨 담고 그 항목이 지니던 anchor는 그대로 두었다. 그래서 출력은 어디에도 `&b`
+  정의가 없는 채 `*b`를 쓰는, 우리 parser가 거부하는 텍스트가 됐다 (`found unknown anchor`,
+  "parse 불가능한 출력은 내보내지 않는다" 계약 위반; `crash-43eca7a3`, 18 bytes, fix 이전
+  binary로 15 bytes 최소화 — 이미 고쳐진 입력은 `tmin`으로 줄일 수 없다). receiver는 사라진
+  node를 보관했다가 문서 마무리 시점에 "남은 정의가 없는" 이름의 alias 사용 지점마다 그
+  node를 inline한다. 정상 shared alias는 전혀 건드리지 않고, 이 순회는 fold가 실제로
+  anchor가 붙은 항목을 제거했을 때만 돌므로 일반 경로 비용은 0. `<<: &b LF <<: LF : *b`는 이제
+  `<<: ~ LF ~: &b ~`를 출력하며 한 라운드에 fixed point, 값도 그대로다. 솔직히 적어두면:
+  고아 alias가 가리키던 node로 치환되므로 값 의미는 보존되지만 "같은 node를 공유한다"는
+  표기는 보존되지 않는다. 정의가 사라진 뒤에는 공유할 identity가 남아 있지 않기 때문이다.
 - **개행만으로 구성된 block scalar 값이 더 이상 빈 문자열로 변하지 않는다** — `>+8\r\r#`는
   값이 개행 1개, chomping이 `Keep`, 명시적 indent가 8인 folded scalar로 읽힌다. writer가
   indent 지시자를 남겨 `>+8\n\n`을 출력하고, 이는 재파싱 시 값은 같되 지시자 없는 `Clip`이 되어
