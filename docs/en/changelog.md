@@ -162,6 +162,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A note after a tag-only value now settles in one round for every tag spelling** — the
+  rule added for `crash-cf49fe85` keyed on the non-specific tag `!` alone, on the reading
+  that a *named* tag re-reads its inline note back to the container. Measured directly
+  over that same two-note shape, `!-`, `!:`, `!x` and `!!str` drift exactly as `!` did:
+  each emits `~: <tag>   # -` plus a note line, and the reader hands that line to the
+  pending value. The condition is now about the line, not the tag — an empty plain scalar
+  carrying any tag — which is both smaller and true. Two characterization tests recorded
+  the old inline text for `!-` (`crash-11ced252`, `crash-22cb5f67`) and were rewritten to
+  the routed form: same note text, still exactly one note, and the routed output is what
+  one of those tests had itself logged as “round two”. Stated plainly, because it is a
+  user-visible change to emitted text: `:␉!-␍... #-o` now writes `~:␎··# -o␎··!-·␎`
+  instead of `~: !-···# -o␎`. The four committed seed corpora (5 / 64 / 6 / 5) replay
+  clean, so both historical shapes still reach a fixed point — in one round now, not two.
 - **A mapping's own note can no longer wander onto a bare-tag value's line** — when the
   pair that ends a block mapping's body has a value that renders as a lone `!` (the
   non-specific tag with no text), appending the container's inline note after that line
@@ -261,7 +274,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which moved it inside the value block on the second round. The scan now respects
   quoting and YAML's whitespace rule (`line_has_comment_marker`), so the note rides the
   pair line and one emission is the fixed point (`former-crash-22cb5f67.seed`, 15 bytes,
-  pinned by `a_quoted_hash_does_not_demote_the_containers_note` plus
+  pinned by `a_quoted_hash_key_settles_the_containers_note_at_once` plus
   `comment_marker_scan_respects_quoting`). Withdrawing the new scan reddens exactly the
   end-to-end test.
 - **A tagged container now lifts every note on its first entry's marker spine** — the
@@ -321,7 +334,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tracked where lines are written instead of guessed from the output text, so the
   borrow is refused for a block scalar's body line (an appended note would turn into
   content), for a wrapped continuation, and for a line already carrying a note.
-  `a_containers_inline_note_lands_on_the_last_value_line` pins the acceptance and
+  `a_containers_inline_note_after_a_text_less_value_settles_at_once` pins the acceptance and
   `a_block_scalar_body_never_borrows_the_containers_note` the refusal; a mutation
   check (un-append the note) reddens exactly the first of them while the other 274
   tests stay green. Through the TOML hub this also sharpens a documented boundary:

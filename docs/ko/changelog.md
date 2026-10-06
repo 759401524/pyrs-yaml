@@ -136,6 +136,18 @@ status: new
 
 #### 수정
 
+- **tag만 있는 값 뒤의 note가 이제 모든 tag 표기에 한 라운드에 안정된다** — `crash-cf49fe85`를
+  위해 넣은 규칙은 non-specific tag `!`만 보고 있었고, 근거는 "named tag의 인라인 note는
+  container로 다시 읽힌다"는 해석이었다. 그러나 같은 두-note 모양에서 직접 재본 결과
+  `!-`, `!:`, `!x`, `!!str` 모두 `!`과 똑같이 흔들린다 — `~: <tag>   # -`를 먼저 쓰고 그
+  아래 note 줄을 두면, reader가 그 줄을 아직 끝나지 않은 값에 넘긴다. 그래서 판정은 tag
+  표기가 아니라 그 줄을 본다: tag를 단 빈 plain scalar. `!-`의 옛 인라인 텍스트를 기록하던
+  특성화 테스트 두 개(`crash-11ced252`, `crash-22cb5f67`)는 라우팅된 형태로 고쳤다: note
+  텍스트는 그대로, note는 여전히 정확히 하나, 그리고 라우팅된 출력이 바로 그 테스트들이
+  스스로 "두 번째 라운드"로 적어 둔 모양이다. 출력 텍스트 변경은 사용자에게 보이니 명시한다:
+  `:␉!-␍... #-o`는 이제 `~: !-···# -o␎` 대신 `~:␎··# -o␎··!-·␎`로 나간다. 네 seed
+  corpus(5 / 64 / 6 / 5)가 모두 clean으로 재실행되므로 두 역사적 모양은 여전히 fixed point에
+  닿는다 — 이번에는 한 라운드 만에.
 - **mapping 고유의 note가 맨 `!` 값 줄로 옮겨가지 않는다** — block mapping의 body를 마무리하는
   pair의 값이 `!` 하나로만(본문 없는 non-specific tag) 출력될 때, container의 inline note를 그
   줄에 붙이면 재파싱 시 그 *값*의 leading note로 보고되어 container는 그것을 잃고 문서는 한
@@ -218,7 +230,7 @@ status: new
   놓인 맨 주석 줄은 다시 읽을 때 *다음* 노드의 leading 주석으로 건네지므로 2 라운드째에 값 블록
   안으로 옮겨졌다. 이제 이 훑기는 따옴표와 YAML 의 공백 규칙을 지킨다(`line_has_comment_marker`).
   그래서 주석은 `key:` 와 같은 줄에 얹히고 한 번의 출력이 고정점이 된다(`former-crash-22cb5f67.seed`,
-  15 바이트, `a_quoted_hash_does_not_demote_the_containers_note` 와
+  15 바이트, `a_quoted_hash_key_settles_the_containers_note_at_once` 와
   `comment_marker_scan_respects_quoting` 가 고정). 새 훑기를 없애면 정확히 이 테스트만 빨개진다.
 - **태그가 붙은 컨테이너가 첫 항목의 마커 축 위 주석 더미를 모두 올림** — 헤더 줄 아래에서 주석을
   치워내던 그 올림은 첫 키*자신*의 leading 더미만 읽었다. 그래서 본문 안 마커에 실린 더미는 헤더
@@ -266,7 +278,7 @@ status: new
   한 라운드에 안정적이고, 바로 granit 이 다시 읽어 보고하는 위치다. 슬롯 소유권은 출력 텍스트에서
   추측하지 않고 줄을 쓰는 자리에서 기록하므로 세 경우는 빌기를 거절한다: 블록 스칼라 본문 줄
   (추가하면 내용이 됨), 접기 후의 연속 줄, 이미 주석을 가진 줄.
-  `a_containers_inline_note_lands_on_the_last_value_line` 는 허용 쪽을,
+  `a_containers_inline_note_after_a_text_less_value_settles_at_once` 는 허용 쪽을,
   `a_block_scalar_body_never_borrows_the_containers_note` 는 거절 쪽을 고정한다; 변이 검사
   (추가 되돌리기) 로 첫 테스트만 빨갛게 변하고 나머지 274 는 초록으로 남는다. TOML 허브를
   통하면 기록된 경계도 조여진다: `[sec] # note` 은 이제 문서 맨 앞으로 도망치지 않고 제 테이블
