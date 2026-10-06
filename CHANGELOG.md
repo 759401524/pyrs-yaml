@@ -141,6 +141,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A key's trailing note no longer migrates onto its value's line** — when a
+  value had to move down to take a leading note of its own, the note that belongs
+  to the *key* was still appended to whatever line finished last, i.e. the value's
+  line. Re-reading assigns a trailing note on a tag-only scalar's line to the
+  **value** as a leading note, so the note changed owner each round and the
+  emission never settled: `b: ! # &` + `#~` gave `b:\n  # ~\n  !   # &`, whose
+  re-read gave `b:\n  # ~\n  # &\n  !` (libFuzzer `yaml_roundtrip`
+  crash-1b01ac3f, 93 bytes minimised to 11). The key's note now stays on the
+  `key:` line, which is both the slot a reader reports it from and a one-round
+  fixed point. Costs nothing measurable: the instruction-count gate moved +0.05%.
 - **A merge can no longer repeat a key its mapping already owns** — an untagged `y` that
   carries a note and a merged `y` were two different `IndexMap` keys, so both survived into
   the emission and `to_yaml` printed `y:` twice at one level: text our own parser refuses,

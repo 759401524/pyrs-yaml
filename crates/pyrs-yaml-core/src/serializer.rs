@@ -1049,6 +1049,14 @@ impl Serializer {
         }
         self.output.push(':');
 
+        // Where a simple key's trailing note may still be written: the end of the
+        // `key:` line once the value has moved down to a line of its own, or (by
+        // default) the end of whatever line the pair finishes on. Without the first
+        // case the note lands on the value's line, where a reader reports it as the
+        // *value's* leading note for a tag-only scalar — the note then changes owner
+        // every round and the emission never settles.
+        let mut key_note_at: Option<usize> = None;
+
         // Check if value needs to be on next line
         if (matches!(
             value,
@@ -1098,6 +1106,7 @@ impl Serializer {
                 }
             }
             self.output.push('\n');
+            key_note_at = Some(self.output.len() - 1);
             let child_indent = indent_width + self.indent_mapping;
             self.serialize_node_internal(value, child_indent, child_indent, true, depth + 1)?;
         } else {
@@ -1127,8 +1136,8 @@ impl Serializer {
                 _ => None,
             };
             if let Some(text) = key_note {
-                let at = self.output.len();
-                self.output.insert_str(at - 1, &format!("  # {text}"));
+                let at = key_note_at.unwrap_or(self.output.len() - 1);
+                self.output.insert_str(at, &format!("  # {text}"));
             }
         }
 
@@ -2495,6 +2504,29 @@ mod tests {
             to_yaml(&parse_core(&one)),
             one,
             "one emission is enough to reach the fixed point"
+        );
+    }
+
+    /// A note that trails a *simple key* rode whatever line had just been
+    /// written — which stopped being the pair line as soon as the value moved down
+    /// to take a leading note of its own. On a tag-only value, a trailing note on
+    /// that line re-reads as the *value's* leading note, so the note changed owner
+    /// between rounds and the emission never settled: `b:\n  # ~\n  !   # &` then
+    /// `b:\n  # ~\n  # &\n  ! ` (libFuzzer `yaml_roundtrip` crash-1b01ac3f, 93 bytes
+    /// minimised to 11). The key's note has to stay on the `key:` line.
+    #[test]
+    fn a_keys_note_stays_on_the_key_line_when_the_value_moves_down() {
+        let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-1b01ac3f.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = to_yaml(&parse_core(src));
+        assert_eq!(
+            one, "b:  # &\n  # ~\n  ! \n",
+            "the key's note belongs on the `key:` line, the value's own note below it"
+        );
+        assert_eq!(
+            to_yaml(&parse_core(&one)),
+            one,
+            "one emission must already be the fixed point; first round was {one:?}"
         );
     }
 

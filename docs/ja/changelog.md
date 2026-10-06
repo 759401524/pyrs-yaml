@@ -127,6 +127,14 @@ status: new
 
 #### 修正
 
+- **キーの行末コメントが値の行へ移らなくなった** —— 値が自分の前コメントを受けるために
+  別行へ下がる場合、*キー*に属するコメントがそれでも「最後に終わった行」＝値の行に
+  追加されていた。読み直しでは tag のみのスカラー行末コメントは値の**前**コメントとして
+  扱われるため、コメントが毎ラウンド主人を変えて出力が収束しなかった：`b: ! # &` と
+  `#~` はまず `b:\n  # ~\n  !   # &` を生み、再読で
+  `b:\n  # ~\n  # &\n  !` となる（libFuzzer `yaml_roundtrip` crash-1b01ac3f、93 バイトが
+  11 バイトに最小化）。キーのコメントは `key:` 行に残る——読み直しが報告する位置であり、
+  1 ラウンドで不動点でもある。コストは誤差範囲：命令数ゲートは +0.05%。
 - **マージはマッピング自身が持つキーをもう繰り返さない** —— コメントを載せた非タグ `y` と
   マージされた `y` は別の `IndexMap` キーだったため両方が出力に残り、`to_yaml` は同じ深さに
   `y:` を 2 回印刷した —— このテキストは我々自身のパーサが拒否し、「解析できない出力は出さない」
@@ -239,7 +247,7 @@ status: new
   ノードの属性は常に値より前に来るから。`anchor_name_before_ignores_ampersand_anywhere_in_comment_text`
   （述語の両方向）と `anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand` で
   固定。後者は新シード `fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed` からバイトを
-  読み、アンカー token・コメント本文・一段で不动点を主張する。該当 artifact は CRASH→CLEAN、
+  読み、アンカー token・コメント本文・一段で不動点を主張する。該当 artifact は CRASH→CLEAN、
   同ファイル内の既存の他の守りは全てまだ通る。
 - **キーの上の独立コメント行は最後の 1 行だけでなく全部残る** — AST は leading 注記を
   単一スロット（`NodeDecor.leading_comment: Option<Comment>`）に置き、YAML receiver・
