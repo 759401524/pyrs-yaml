@@ -169,6 +169,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A note on a compact `- key:` line stops vanishing** — the compact-dash branch of
+  `write_sequence_item` builds the `key: value` line itself and had copied only its text, so
+  it never visited the note slots `write_mapping_pair` respects. Measured: `- a: !   # n`
+  loses the note on the *first* emission (`- a: ! `). The CI input `crash-55c199ef`
+  (25 bytes) lost it a round later, because its first emission owned the note through a node
+  the writer does read and the re-read handed to the key. A text-less value and a quoted key
+  were both innocent — `a: !   # n` directly under a document root already kept its note —
+  which is what makes this one root cause rather than a family of looks-alikes. An item's own
+  note stack now goes above the dash, a later pair's stack at the pair's indent, and a key's
+  inline note on its own pair line; items that were already correct keep their shape.
+  Withdrawing each of the three sites reddens exactly the test that guards it, so no slot is
+  credited with protection it does not exercise. `crash-5561902a` (88 bytes), from the same
+  sampler run, is a different root cause and stays open.
 - **A note line after a tag-only value keeps its owner and settles in one round** — a
   value that renders as nothing but its tag (`k: !`, `k: !-`, `k: !!str`) leaves the
   scanner mid-value, so any note line written next was reported as that *value's* leading
