@@ -52,16 +52,23 @@ status: new
   올바른 출력이 빨개진다: 코퍼스에는 접미사가 전부 `#`인 `!###0 …` 태그가 있다.
   올바른 출력을 빨갸게 하는 관문은 없는보다 낫다. 그래서 해석기 쪽은 fuzz 단계와
   형태별 pin이 맡고, 양쪽 모두 상대를 덮었다고 주장하지 않는다.
-- **지역화 문자 체계 순수성 게이트 (`scripts/check_cjk_localisation.py`)** — 이제 ja / ko / zh
-  변경 로그가 각자의 문자 체계로만 작성되는지 기계로 검사한다: ja 외 페이지에 가나 문자 금지,
-  ko 외 페이지에 한글 금지, 그리고 ja / ko 에 간체 중국어 전용 한자(일본어가 다른 코드포인트로
-  쓰는 대응 문자)를 금지한다. 번역 항목은 인접 문자 체계로 새어들기 쉽고, 새어든 글자는 의도한 글자의
-  이체자처럼 보이기 때문에 그 언어를 읽는 사람에게는 대개 드러나지 않는다. prek 후크
-  `cjk-localisation` 으로 실행되며, 후크가 넘기는 파일 이름으로 필터링하고, 빈 스캔을 통과로
-  보고하지 않는다: 첫 버전은 제목 패턴을 루트 파일의 단계에 고정해서 한 단계 깊은 지역화 페이지에서는
-  단 한 줄도 매칭하지 못해, 아무 의미 없는 녹색 OK 를 출력했다. 신뢰하기 전에 위반을 주입해 실패하는
-  것을 확인했고, 실제로 동작한 그 시행에서 기존 혼입 2 건을 찾아냈다 (ja 페이지의 간체 표기와 ko 의
-  한글 단어 안에 섞인 가나 한 글자).
+- **지역화 문자 체계 순수성 게이트 (`scripts/check_cjk_localisation.py`)** — 이제 `ja` /
+  `ko` / `zh`의 모든 페이지가 각자의 문자 체계로만 작성되는지 기계로 검사한다: `ja` 외 페이지에
+  가나 문자 금지, `ko` 외 페이지에 한글 금지, `ja`에 간체 전용 한자 금지, 그리고 `ko` 산문에는
+  한자를 하나도 허용하지 않는다. 한국어 규칙은 본래 간체 전용 코드포인트 13개를 손으로 고른
+  목록이었으니, 바로 그 목록이 이 문지기를 멀게 했다: 일본 신자체 `経`도 번체 `內`도 그 목록에
+  없으므로, 한국어 변경 로그는 한국말과 중국말이 섞인 산문 15줄(`热点 样本` 같은 말이 조사 사이에
+  끼어 있었다)을 안고도 저장소의 모든 검사기가 OK를 출력했다. “모든 한자”로 기준을 바꾸면 목록은
+  더 이상 낡지 않는다. 기술 텍스트는 코드 위치 단위로 면제한다(펜스 블록, 줄 안 코드, 링크 대상).
+  같은 한국어 페이지가 YAML 샘플에서 `title: 文档标题`을 보여주고 `{ é: 1, 名: 2 }`를 parser
+  입력으로 싣는 것은 정당하므로, 줄 단위로 면제하면 두 경우 모두 위반이 된다. 범위는 변경 로그의
+  `[Unreleased]` 블록에서 모든 언어의 모든 페이지로 넓혔으며 먼저 실측했다: `zh`와 `ja`는 각
+  41쪽에서 지적 0건, `ko`의 지적은 전부 `changelog.md`에 몰려 있고 그 15줄은 같은 변경에서 함께
+  고쳤다. 게이트는 prek 후크로서만이 아니라 CI(`Validate` → `script-purity`)에서도 달리며,
+  자기 자신을 위한 테스트(`tests/test_cjk_localisation_gate.py`)도 갖췄다: 잡아낼 모양과 허용할
+  모양을 각각 덮고, 규칙을 끈 채로 테스트를 돌려 증명했다 — `ko`의 한자 규칙을 끄면 마침내 한국어
+  4건만 빨개지고 나머지는 움직이지 않는다. 이 항목의 한국어 번역 자체가 자기가 설명하는 규칙을
+  통과하도록 작성됐다.
 - **CI 주간 정기 퍼징** — `.github/workflows/fuzz.yml`가 네 libFuzzer 타깃을
   매주 토요일(수동 실행 및 `fuzz/` 변경 시 자동) 실행하고, 큐레이션한
   `fuzz/seeds/`(과거 크래시 입력 + 수작업 형태 시드)로 매 세션 임시 코퍼스를
@@ -172,7 +179,7 @@ status: new
   값이 개행 1개, chomping이 `Keep`, 명시적 indent가 8인 folded scalar로 읽힌다. writer가
   indent 지시자를 남겨 `>+8\n\n`을 출력하고, 이는 재파싱 시 값은 같되 지시자 없는 `Clip`이 되어
   다음 라운드에서 `>\n\n`을 쓴다 — Clip이 후행 개행을 제거하므로 값의 유일한 개행이 갈 곳을
-  잃는다. *빈* body를冪등으로 만드는 두 규칙(복원 불가한 indent 지시자 제거 / 같은 값으로
+  잃는다. *빈* body를 멱등으로 만드는 두 규칙(복원 불가한 indent 지시자 제거 / 같은 값으로
   재읽히는 chomping 출력)이 '빈가' 기준으로 판정되어, 개행 전용 body는 빈 값이 아니라 조건을
   통과하지 못했다(libFuzzer `yaml_roundtrip`, `crash-2f6b1eff`, 6 bytes — 입력이 더 이상
   크래시하지 않으므로 `tmin`으로 줄일 수 없음). 두 writer 모두 이제 "내용 행이 없음"을 공통
@@ -576,9 +583,9 @@ status: new
 - **중복 키는 전체 노드가 아닌 값으로 거부** — AST의 `IndexMap`은 전체
   `CustomNode`를 키로 쓰므로, 같은 텍스트이지만 후미 주석/스타일/앵커가 다른 두
   스칼라 키(`key # a` vs `key # b`)는 구분된 채 남았다: 해석 땐 중복이 안 뜨지만,
-  직렬화기가 키 장식을 떨어同一한 `key:` 줄을 두 번 내 우리 parser가 재해석에서
+  직렬화기가 키 장식을 떨어내 동일한 `key:` 줄을 두 번 내뱉어 우리 parser가 재해석에서
   거부했다(libFuzzer `yaml_roundtrip` crash-3b0a7d1d—출력 문서가 재해석 불가).
-  중복 탐지 이제 스칼라 키를 `to_yaml`이 내보내는 것과 같은 「값」으로 식별해,
+  중복 탐지 이제 스칼라 키를 `to_yaml`이 내보내는 것과 같은 “값”으로 식별해,
   그런 입력은 첫 해석에서 거부된다. `<<` 병합 키는 계속 면제: YAML은 맵에서
   이를 반복하는 것을 허용한다.
 - **빈 블록 용기를 맵 값으로 인라인 직렬화** — 빈 `Mapping`/`Sequence`에는 블록
@@ -780,10 +787,10 @@ status: new
 
 #### 추가
 
-- **JSONC block-comment 핫스팟 벤치** — objective §테스트 커버리지 5 가 “block-comment” 热点 样本로 指定。以前 inline `//` 만 计量. 新 fixture 가 `test_load_jsonc_block_comments` 驱动: 50 pair + header/footer, 各项 独立 `/* item N */` 以及 末尾 `value /* trailing */` 持有, 块走查 回归을 CodSpeed 로 可视化.
-- **YAML 의 PyYAML + ruamel.yaml 跨库 对拍** — objective §테스트 커버리지 3 이 两者 指名 oracle. 以前 `test_benchmark_crosslib.py` 벤치 + 特性 support printout 만。`tests/test_yaml_crosslib.py`: 20 正規 文档 × 5 对拍 面 + 2 文档化 分歧(duplicate-key 严格性, YAML 1.1 傳統 bool schema-scope) = 122 테스트. optional dep skipif 자동 降格.
-- **`load_toml` tomlkit 跨库 对拍** — objective §테스트 커버리지 3 이 tomlkit 을 oracle 로 指名. 以前은 벤치만. `tests/test_toml_crosslib.py` 24 件: 11 正規 구조物에서 pyrs / tomlkit / tomllib 三者 一致, `>i64` 拒否를 仕樣 準據(TOML v1.0 §Integers: 64bit signed)로 固定, `-2^63` 境界(PR #174 修正) 確認. optional dep, skipif 자동 降格.
-- **orjson 을 strict-JSON oracle 로** — objective §테스트 커버리지 3 「orjson 과 자리별 비교」는 그동안 벤치만。16 정규 문서 값 일치, 12 비정규 형식(주석, trailing comma, single quote, bare `NaN`/`Infinity`/`-Infinity`, hex, leading 0, `+.5`, `5.`) 양측 거부 단언. stdlib `json.loads` 는 `allow_nan=True` 하에서 bare literal 을 받아들이지만 orjson 은 거부 — RFC 8259 oracle 로서 stdlib 보다 강함. optional dep, `skipif` 자동 강하.
+- **JSONC block-comment 핫스팟 벤치** — objective §테스트 커버리지 5 가 “block-comment”을 핫스팟 표본으로 지정. 이전에는 inline `//` 만 측정했다. 새 fixture 가 `test_load_jsonc_block_comments` 로 구동: 50 pair + header/footer, 각 항목이 독립적인 `/* item N */`를 갖고 말미는 `value /* trailing */`를 보유, 블록 순회 회귀를 CodSpeed 로 시각화.
+- **YAML 의 PyYAML + ruamel.yaml 크로스 라이브러리 대조** — objective §테스트 커버리지 3 이 둘을 oracle 로 지정. 이전에는 `test_benchmark_crosslib.py` 벤치 + 특성 support printout 만 있었다. `tests/test_yaml_crosslib.py`: 정규 문서 20 × 대조 면 5 + 문서화된 분기 2(duplicate-key 엄격성, YAML 1.1 전통 bool schema-scope) = 122 테스트. optional dep 은 skipif 로 자동 강등.
+- **`load_toml` tomlkit 크로스 라이브러리 대조** — objective §테스트 커버리지 3 이 tomlkit 을 oracle 로 지정. 이전에는 벤치만 있었다. `tests/test_toml_crosslib.py` 24 건: 정규 구조물 11 에서 pyrs / tomlkit / tomllib 셋이 일치, `>i64` 거부는 사양 준거(TOML v1.0 §Integers: 64bit signed)로 고정, `-2^63` 경계(PR #174 수정) 확인. optional dep, skipif 자동 강등.
+- **orjson 을 strict-JSON oracle 로** — objective §테스트 커버리지 3 “orjson 과 자리별 비교”는 그동안 벤치만 있었다. 16 정규 문서 값 일치, 12 비정규 형식(주석, trailing comma, single quote, bare `NaN`/`Infinity`/`-Infinity`, hex, leading 0, `+.5`, `5.`) 양측 거부 단언. stdlib `json.loads` 는 `allow_nan=True` 하에서 bare literal 을 받아들이지만 orjson 은 거부 — RFC 8259 oracle 로서 stdlib 보다 강함. optional dep, `skipif` 자동 강하.
 - **CLI ↔ Binding 대칭 게이트(`tests/test_cli_binding_parity.py`)** — Pillar 1 의 “CLI 와 Python Binding 양쪽이 동일한 기능” 선언을 문서관에서 실행 가능한 계약으로 승격. CLI 등록 명령을 18 개 고정 목록과 비교(cyclopts 의 `--help`/`-h`/`--version` 의사 명령 제외), 각 `to-X` / `from-X` 동사에 `YamlDocument.to_X` / `from_X` / `load_X` 대응 필수. `load_*` 패밀리(json/jsonc/json5/toml) 네 형제 대칭 단언, editing/validate/compliance 동사는 live Python API 에 매핑. 어느 한쪽 드리프트는 CI 실패로surface.
 - **`load_json` 속성 테스트 + CodSpeed 벤치** — Hypothesis(`test_load_json_matches_stdlib_json`, `test_load_json_matches_load_jsonc_on_strict_domain`)가 생성된 모든 정규 문서에 대해 STRICT loader 와 `json.loads` 의 일치, 및 두 loader 의 strict 영역 문자 그대로 동의를 고정. 고속 경로 확대나 AST 경로 드리프트는 속성 실패로surface. 3 개 CodSpeed wall-time 벤치(`test_load_json_large` / `_floats` / `_escapes`) 가 `load_jsonc` 샘플을 미러링하여 STRICT binding 레이어 자체를 회귀 추적에 포함.
 - **`load_json` (엄격) — `load_*` 패밀리 대칭 완성** — binding에는 이미 `load_jsonc` / `load_json5` / `load_toml` 이 있었으나 엄격한 RFC 8259 대응 함수가 빠져 있었습니다. `pyrs_yaml.load_json(s)` 는 정규 입력에서 `json.loads` 와 문자 그대로 일치하며 JSONC/JSON5 확장(`//`, `/* */`, 후행 쉼표, single quote, bare `Infinity`/`NaN`, `0x…`)을 타입이 지정된 `YamlParseError` 로 거부합니다. 고속 경로는 `load_jsonc` 와 `json_fast::try_load` 를 공유(비정규 바이트는 모두 bail → 문법 확대 리스크 0); 거부 대상은 STRICT `from_json` AST 경로로 라우팅. 아래 CLI ↔ Binding 대칭 항목의 마지막 공백을 메워 Pillar 1 이 완성됩니다. `pyrs_yaml.__init__` 에서 재내보내기 및 `__all__` 등재; `.pyi` 는 `maturin generate-stubs` 로 재생성.
@@ -889,7 +896,7 @@ status: new
   `to_jsonc_text(node)` / `to_jsonc_text_pretty(node, indent)`
   가 원 위치로 재출력하며, 블록 주석은 AST에 본문만 저장되므로
   출력 시 `//`로 정규화됩니다. 엄밀 writer `to_json_text` /
-  `to_json_text_pretty`는 바이트 단위로 불변이므로 소비측은保전
+  `to_json_text_pretty`는 바이트 단위로 불변이므로 소비 측은 보존
   여부는 선택할 수 있습니다.
 - **pyq 다중 문서 편집** — `-A/--all-docs`가 모든 편집 명령(set/delete/rename/
   move/append/insert/sort-keys)과 `to-json -A`(JSON 배열, Python 대응)를 커버.
@@ -1032,9 +1039,9 @@ status: new
 
 #### 수정
 
-- **`\u` / `\x` 이스케이프 뒤 多字节 字符에 parser panic** — 고정폭 이스케이프 리더가 `&self.text[pos..pos+width]`를 字节 오프셋으로 슬라이스. JSON `\u` / TOML `\xHH`/`\uXXXX`/`\UXXXX` 뒤에 多字节 字符가 오면 슬라이스가 字符 中间에 落하 여 프로세스 abort (#153 同族). 字节 슬라이스 + UTF-8 校验로 修改, 不正 이스케이프는 干净히 에러. 方言 fuzz 로 發見, 두 parser 에 決定性 Rust 回归 테스트로 固定.
-- **비(非)머지 값의 리터럴 `<<` 키가 조용히 폐기됨** — `load(safe_dump({"<<": None}))` 이 키를 잃고 `{}` 반환. 머지 리졸버가 Null/Scalar 값에도 모든 `<<` 를 머지로 소비. YAML 에선 `<<` 값이 mapping 별자/inline mapping/그 시퀀스일 때만 머지. Null/스칼라 `<<` 는 일반 키로 왕복 보존. Alias/mapping/sequence 경로(#166 자기참조 앵커 가드 포함) 무변경, yaml-test-suite 405/406 유지. 왕복 속성 fuzz 가 비결정 포착(#163/#165/#166 급 결함), 결정적 Rust 회귀 테스트로 고정.
-- **TOML 深네스팅이 네이티브 스택을 넘어 프로세스를 abort** — TOML 파서엔 중첩 예산이 없어(JSON 은 `DEFAULT_MAX_DEPTH`, YAML 은 `parse` `max_depth`), `parse_value` → `parse_array`/`parse_inline_table` 이 무제한 재귀. 深배열/인라인 테이블은 인터프리터를 즉시 충돌시킴(검증: exit `0xC00000FD` STACK_OVERFLOW) — #166 YAML merge 오버플로의 TOML 판. 파서가 `depth` 추적해 1000 초과시 `ParseError::MaxDepthExceeded` 반환, JSON 과 대칭. in-process Python 경계 테스트 + subprocess crash canary + 大스택 Rust 테스트로 보호.
+- **`\u` / `\x` 이스케이프 뒤 멀티바이트 문자에서 parser panic** — 고정폭 이스케이프 리더가 `&self.text[pos..pos+width]`를 바이트 오프셋으로 슬라이스. JSON `\u` / TOML `\xHH`/`\uXXXX`/`\UXXXX` 뒤에 멀티바이트 문자가 오면 슬라이스가 문자 중간에 떨어져 프로세스 abort (#153 동족). 바이트 슬라이스 + UTF-8 검증으로 수정, 부정한 이스케이프는 깨끗하게 에러. 방언 fuzz 로 발견, 두 parser 에 결정적 Rust 회귀 테스트로 고정.
+- **비머지 값의 리터럴 `<<` 키가 조용히 폐기됨** — `load(safe_dump({"<<": None}))` 이 키를 잃고 `{}` 반환. 머지 리졸버가 Null/Scalar 값에도 모든 `<<` 를 머지로 소비. YAML 에선 `<<` 값이 mapping 별자/inline mapping/그 시퀀스일 때만 머지. Null/스칼라 `<<` 는 일반 키로 왕복 보존. Alias/mapping/sequence 경로(#166 자기참조 앵커 가드 포함) 무변경, yaml-test-suite 405/406 유지. 왕복 속성 fuzz 가 비결정 포착(#163/#165/#166 급 결함), 결정적 Rust 회귀 테스트로 고정.
+- **TOML 심층 네스팅이 네이티브 스택을 넘어 프로세스를 abort** — TOML 파서엔 중첩 예산이 없어(JSON 은 `DEFAULT_MAX_DEPTH`, YAML 은 `parse` `max_depth`), `parse_value` → `parse_array`/`parse_inline_table` 이 무제한 재귀. 깊은 배열/인라인 테이블은 인터프리터를 즉시 충돌시킴(검증: exit `0xC00000FD` STACK_OVERFLOW) — #166 YAML merge 오버플로의 TOML 판. 파서가 `depth` 추적해 1000 초과시 `ParseError::MaxDepthExceeded` 반환, JSON 과 대칭. in-process Python 경계 테스트 + subprocess crash canary + 대형 스택 Rust 테스트로 보호.
 - **방언 writer/parser가 문서 수준 주석을 유실·오배치** — 고정점 속성이 잡아낸 3개 결함: (a) JSONC/JSON5 값 앞 파일 선행 `// note`가 inline으로 오분류(오프셋 0 앞 개행 없음)되고 writer가 주석 달는 root가 아닌 첫 object 멤버에 선점돼, 빈 `{}`/root 스칼라에서는 완전히 소실; (b) JSON 계열 및 TOML writer는 주석 본문를 그대로 출력하나 parser는 trim 저장—미trim 주석은 pass마다 후미 공백이 요동—writer도 출력 시 trim해 첫 표기부터 안정; (c) 주석만 있는 TOML 문서(`# note` 뒤 키 없음)는 재파싱 시 주석이 유실돼 빈 root가 `""`화—미소비 standalone 주석을 빈 root 테이블에 부착. 5개 포맷의 leading 주석이 모두 문자 안정 고정점에 도달(3개 Rust 테스트로 고정).
 - **중첩 블록 스칼라 본문이 부모 들여쓰기를 유지** — 중첩 키 아래 literal/folded 스칼라의 본문 줄이 `b: |` 헤더 줄의 다음 단계가 아니라 0열부터 고정 1단계로 출력되어, 모든 중첩 형상의 왕복 텍스트가 재파싱 불가하거나 오류 값이 됨. `block_base`(부모 줄 열 위치) 매개변수를 모든 출력 지점에 관철; 7종 중첩 형식의 왕복이 완전 일치. TOML 핫스팟 벤치가 발견.
 - **직렬화기가 재파싱 가능한 YAML만 출력** — 텍스트 수준 게이트가 발견한 5개 결함: (a) 개행 분기에서 anchor/tag pre-emit이 child(스칼라/null/flow 용기)의 자체 헤더와 중복 → block 용기로 제한; (b) flow 용기 내 블록 스칼라(`[|`, `{k: >}`) 및 키 위치는 double-quoted로 강등; (c) own line을 시작하는 flow 용기의 행두 들여쓰기 결락 및 complex key(`?`) 값 표지 `:`의 0열 출력 → 부모 인덴트 따르도록 수정; (d) standalone 주석/tag가 있는 complex key의 모호한 텍스트(주석 `?` 상단으로, 본문 항상 1단계 깊은 별도 줄); (e) flow 용기 내 선두/후미 공백 또는 `,[]{}` 포함 plain 스칼라는 인용(미인용시 토큰 끊어짐). 추가: tag 부속 빈 block 용기는 헤더를 `{}`/`[]`와 같은 줄에, compact dash 항목은 standalone 주석 부속 값을 인라인하지 않음. 9개 targeted Rust 테스트와 Python 회귀로 각 계통 고정.
@@ -1076,7 +1083,7 @@ status: new
   `unsafe { as_slice() }`로 배열 데이터 버퍼를 빌려 그 슬라이스를 `py.detach`
   **내부**(즉 GIL 해제 후)에 순회했다. 출처와 무관하게 `&[T]`는 `Send`이므로
   borrow checker가 잡을 수 없지만, 이 메모리는 Python 소유이므로 다른 스레드가
-  동시에 resize하거나 쓸 수 있다:健全하지 않은 데이터 경쟁 / UB이며 동시성
+  동시에 resize하거나 쓸 수 있다: 건전하지 않은 데이터 경쟁 / UB이며 동시성
   환경에서만 드러난다. 이제는 **GIL을 잡은 채** 버퍼를 Rust 소유 메모리로
   스냅샷(`slice.to_vec()`)하고, 스칼라→노드 변환만 스레드 밖에서 수행한다.
   이는 bindings 계층의 **유일한** `unsafe` 버퍼 빌림이며, 나머지 모든
@@ -1486,7 +1493,7 @@ status: new
 - **CI pydantic 스킵** — `pytest.importorskip("pydantic")`로 pydantic 미설치 시 테스트 통과 (`7be011d`)
 - **Windows의 CI glob 확장** — `pip install dist/*.whl`에 `shell: bash` 사용 (PowerShell은 `*` 확장 안 함) (`2f7778d`)
 - **문자열이 아닌 태그 핸들러 반환이 `YamlTagError`를 발생시킴** — 비`str` 값을 반환하는 핸들러는 이제 `Tag handler '!x' must return a string` 오류 발생 (`src/py/mod.rs:resolve_tags`)
-- **`to_yaml_with_options` 인덴트 연결** — `indent_mapping`/`indent_sequence`/`indent_offset`가 직렬화器에 의해 이제 반영됨 (이전에는 dead 필드; 각각 생략 시 `indent_size`/0으로 기본값)
+- **`to_yaml_with_options` 인덴트 연결** — `indent_mapping`/`indent_sequence`/`indent_offset`가 직렬화기에 의해 이제 반영됨 (이전에는 dead 필드; 각각 생략 시 `indent_size`/0으로 기본값)
 - **`width`가 작은 값에서 멈추지 않음** — `width < continuation indent`일 때 무한 루프 대신 나머지 텍스트를 래핑 없이 출력 (`src/serializer.rs:write_plain_scalar`)
 - **`remove_tag(name)`** — 태그 핸들러를 등록 해제하는 새 함수; `register_tag`/`clear_tag_handlers` 보완
 - **`duplicate-key` 오류가 i18n 적용** — `YamlDuplicateKeyError` 메시지가 이제 모든 4개 locale을 통해 `format_i18n_error`를 통해 흐름
@@ -1513,7 +1520,7 @@ status: new
 - **ryaml 벤치마크 비교** — `tests/test_benchmark.py`에 `ryaml` (Rust YAML 라이브러리) 에 대한 벤치마크 추가 (PyYAML 및 ruamel.yaml와 함께); `benchmark_compare.py` 기능 비교 보고서로 재작성
 - **CI 준수 임계값 상향** — YAML Test Suite 준수 게이트가 `test_compliance_report()`에서 70%에서 75%로 증가; 유효 파싱율 게이트는 95% (`tests/test_yaml_suite.py:251`)
 - **CI 의존성 통합** — 발행 워크플로와 로컬 개발 전반에 통일된 테스트 의존성 관리를 위해 `.ci/requirements-test.txt` 및 `.ci/requirements-test-lite.txt` 추가
-- **벤치마크 현대화** —更快的 C 확장 기반 통계 벤치마킹을 위해 `pytest-benchmark`에서 `pytest-codspeed`로 마이그레이션; 모든 CI 작업은 이제 `-r .ci/requirements-test.txt` 사용
+- **벤치마크 현대화** — 더 빠른 C 확장 기반 통계 벤치마킹을 위해 `pytest-benchmark`에서 `pytest-codspeed`로 마이그레이션; 모든 CI 작업은 이제 `-r .ci/requirements-test.txt` 사용
 - **Rust 벤치마크 Divan으로 마이그레이션** — `codspeed-criterion-compat`를 `codspeed-divan-compat` v5.0.1로 교체; 16개 벤치마크가 Criterion 그룹에서 `#[divan::bench]` 속성으로 재작성 (`Cargo.toml`, `benches/yaml_bench.rs`)
 
 #### 변경
@@ -1525,8 +1532,8 @@ status: new
 
 #### 추가
 
-- **직렬화器 `max_depth` 가드** — `serialize_node_internal`이 이제 재귀 깊이 추적하고 제한 초과 시 `YamlMaxDepthError` 발생 (기본값 1000), 파서 보호 일치 (`src/serializer.rs:135-145`)
-- **직렬화器 핫패쓰 최적화** — 블록 스타일 직렬화를 대상으로 한 5개 최적화로 ~4.9% 루트립 속도 향상:
+- **직렬화기 `max_depth` 가드** — `serialize_node_internal`이 이제 재귀 깊이 추적하고 제한 초과 시 `YamlMaxDepthError` 발생 (기본값 1000), 파서 보호 일치 (`src/serializer.rs:135-145`)
+- **직렬화기 핫패쓰 최적화** — 블록 스타일 직렬화를 대상으로 한 5개 최적화로 ~4.9% 루트립 속도 향상:
     - `write_anchor_tag` 및 `write_inline_comment` None 체크 인라이닝 (~99% 노드에 대한 메서드 호출 제거)
     - `write_indent` hot/cold path 분할 (캐시된 레벨 ≤64에 대한 직접 인덱싱)
     - 짧은 ASCII 영숫자 문자열 (≤8자) 에 대한 `write_plain_scalar` 고속 경로
@@ -1649,7 +1656,7 @@ status: new
 - ndarray 타입 디스패치를 위해 `numpy` crate (v0.29) 의존성 추가
 - PyO3를 0.21에서 0.29로 업그레이드
 - 15+ 보일러플레이트 `CustomNode` constructions를 `plain_scalar()`/`plain_mapping()`/`plain_sequence()`/`plain_null()` 생성자로 교체
-- 직렬화器가 `write_anchor_tag()` 및 `write_inline_comment()` 헬퍼 추출
+- 직렬화기가 `write_anchor_tag()` 및 `write_inline_comment()` 헬퍼 추출
 - 파서가 `detect_flow_style()` 헬퍼 추출
 - 데드 코드 제거: `ParseOptions`, `find_inline_comment`, `find_standalone_comment_before`, `format_yaml_type` (테스트 전용)
 - 6개 중복 테스트 파일 통합, 9개 진단 스크립트를 `scripts/`로 이동

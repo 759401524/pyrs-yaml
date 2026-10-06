@@ -5,6 +5,10 @@ on:
     paths:
       - "CHANGELOG.md"
       - "docs/**/changelog.md"
+      # Localized pages and the gate that polices them: the purity check used to be
+      # a prek hook only, so nothing in CI ever ran it on a full tree.
+      - "docs/**/*.md"
+      - "scripts/check_cjk_localisation.py"
       - ".github/workflows/publish.yml"
       - ".github/workflows/validate.yml"
       # Stub sources and the stub itself: the committed `.pyi` is machine output,
@@ -27,6 +31,21 @@ jobs:
       - uses: actions/checkout@v7
       - name: Check changelog mirrors
         run: python scripts/check_changelog_mirrors.py
+
+  # Localized pages are written with assistance and drift into neighbouring scripts;
+  # a reader of that locale usually cannot see it, because the intruding glyph looks
+  # like a variant of the intended one. The gate scans every page of every locale and
+  # fails on an empty scan, so a renamed directory cannot silently disable it. Only
+  # stdlib is needed here; the gate's own unit tests live in `tests/` and run with the
+  # rest of the suite in ci.yml, which has the built extension that `tests/conftest.py`
+  # imports.
+  script-purity:
+    name: Localized pages stay in their own script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check ja/zh/ko docs for mixed-script intrusions
+        run: python scripts/check_cjk_localisation.py
 
   release-guard:
     runs-on: ubuntu-latest

@@ -63,13 +63,15 @@ priority = "checks"
 # Each localized page must stay in its own writing system. Translations written with
 # an assistant drift into neighbouring scripts (simplified Han in ja, kana in ko) and
 # a human reviewer reading that language often cannot tell, because the intruding
-# glyph looks like a variant of the intended one.
+# glyph looks like a variant of the intended one. Scope is every page, not just the
+# changelog: the Korean changelog shipped clauses of Chinese prose while the gate was
+# pinned to the changelog's `[Unreleased]` block and to a curated codepoint list.
 [[repos.hooks]]
 id = "cjk-localisation"
 name = "localized script purity"
 language = "system"
 entry = "python scripts/check_cjk_localisation.py"
-files = "^docs/(ja|ko|zh)/changelog\\.md$"
+files = "^docs/(ja|ko|zh)/.*\\.md$"
 priority = "checks"
 
 [[repos.hooks]]

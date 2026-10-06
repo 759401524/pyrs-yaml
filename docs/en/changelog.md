@@ -60,18 +60,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is worse than none, so the reader-side half stays with the fuzz tier and the per-shape
   pins, and neither half claims to cover the other.
 - **A localized-script purity gate (`scripts/check_cjk_localisation.py`)** — the `ja`,
-  `ko` and `zh` changelogs are now machine-checked to stay in their own writing system:
-  no kana outside `ja`, no Hangul outside `ko`, and no simplified-Chinese-only Han in
-  `ja`/`ko` (the pairs Japanese writes with a different codepoint — 積/积, 連/链, 視/视,
-  層/层). Translated entries drift into neighbouring scripts, and a reader of that locale
-  often cannot tell, because the intruding glyph looks like a variant of the intended
-  one. It runs as the prek hook `cjk-localisation`, honours the filenames the hook
-  passes, and refuses to call an empty scan a pass: the first version pinned its heading
-  pattern to the root file's depth, matched nothing on the nested localized pages, and
-  printed a green OK that meant nothing. Proven by injecting violations and watching the
-  hook fail before trusting it — and on the run that made it real it caught two
-  pre-existing intrusions (a simplified 折叠 in the `ja` page, a katakana ウ inside a
-  Hangul word in `ko`).
+  `ko` and `zh` pages are machine-checked to stay in their own writing system: no kana
+  outside `ja`, no Hangul outside `ko`, no simplified-Chinese-only Han in `ja`, and no
+  Han at all in `ko` prose. The Korean rule used to be a hand-curated list of thirteen
+  simplified-only codepoints, and that list is precisely why the gate was blind: a
+  Japanese shinjitai 経 or a traditional 內 is not on it, so the Korean changelog shipped
+  fifteen lines of Korean-and-Chinese mixed prose — whole clauses like
+  `热点 样本로 指定。以前 计量 만` — while every checker in the tree printed OK. Keying on
+  "any Han" leaves the rule with no list to fall behind. Technical text is exempt per
+  codepoint (fenced blocks, inline spans, link targets), because the same Korean pages
+  legitimately show `title: 文档标题` in a YAML sample and `{ é: 1, 名: 2 }` as parser
+  input; a line-level exemption would have reddened both. Scope went from the
+  changelog's `[Unreleased]` block to every page of every locale, measured first: `zh`
+  and `ja` produce zero findings across their 41 pages each, `ko` produced findings only
+  in `changelog.md`, and those fifteen lines are repaired in the same change. The gate
+  now runs in CI (`Validate` → `script-purity`) instead of only as a prek hook, and has
+  tests of its own (`tests/test_cjk_localisation_gate.py`) for each shape it must catch
+  and each it must tolerate — proven by mutation, since disabling the `ko` Han rule
+  reddens exactly the four Korean cases and nothing else. The Korean translation of this
+  entry is written to pass the rule it describes.
 - **Weekly fuzz schedule in CI** — `.github/workflows/fuzz.yml` runs all
   four libFuzzer targets every Saturday (plus on demand and whenever `fuzz/`
   itself changes), seeding the ephemeral per-run corpus from curated
