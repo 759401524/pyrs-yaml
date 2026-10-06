@@ -53,7 +53,16 @@ env:
   # replay the corpus with -runs=0, which is what makes them gate-able. Scheduled
   # runs keep the long window, and `cargo fuzz` still replays the seeded corpus
   # before exploring, so a regression is caught there too.
+  # It is a TOTAL: scripts/fuzz_rounds.sh divides it across FUZZ_ROUNDS, because
+  # reading it per-round instead multiplies the wall clock by the round count.
   FUZZ_TIME: 600
+  # Ceiling that budget has to fit under: the job's `timeout-minutes` (25) minus
+  # room for the nightly build. The script refuses to start when FUZZ_TIME exceeds
+  # it, so an over-set budget fails at once as a configuration error rather than
+  # being killed mid-sampling at 25 minutes - a shape that reads exactly like "the
+  # fuzzer found something" (this is what 417ef6's push run did). Change both lines
+  # together, or the tier goes red for arithmetic, not for behaviour.
+  FUZZ_CEILING_MINUTES: 22
 
 jobs:
   fuzz:

@@ -14,18 +14,32 @@
 #   * findings are deduped by crash signature, not by artifact file name, because
 #     the artifact hash covers the input bytes: four artifacts can be one bug.
 #
-# Env: FUZZ_TIME (seconds per round), FUZZ_ROUNDS (max rounds), and
-# GITHUB_EVENT_NAME, which selects the policy:
+# Env: FUZZ_TIME (the TOTAL exploration budget for this target, shared across the
+# rounds), FUZZ_ROUNDS (max rounds), and GITHUB_EVENT_NAME, which selects the
+# policy:
 #   pull_request -> `-runs=0`: replay every committed seed once, explore nothing.
 #     Deterministic, so it is allowed to block a merge.
-#   anything else -> the sampled discovery window, looped as above.
+#   anything else -> the sampled discovery window, looped as above: each round gets
+#     FUZZ_TIME/FUZZ_ROUNDS seconds.
+#
+# FUZZ_TIME is a total, not a per-round figure, because the two readings multiplied
+# rather than divided: when #266's `FUZZ_TIME: 600` (written for a single window)
+# met this script's 3-round default, the job asked for 30 minutes against
+# `timeout-minutes: 25` and the push-to-main run of 417ef6 was cut off mid round 2/3
+# with zero crashes in its log. A timed-out sampler reports "failure" for a missing
+# budget, indistinguishable from a found bug, so the arithmetic is the script's job.
 # Exit 0 when every round came back clean; 1 when anything was found.
 set -uo pipefail
 
 target="${1:?usage: fuzz_rounds.sh <target>}"
-time_per_round="${FUZZ_TIME:-60}"
+total_budget="${FUZZ_TIME:-600}"
 rounds="${FUZZ_ROUNDS:-3}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+if [ "$rounds" -lt 1 ]; then rounds=1; fi
+# Integer division, floored at one second: a round with no budget would spin.
+time_per_round=$(( total_budget / rounds ))
+[ "$time_per_round" -ge 1 ] || time_per_round=1
 
 if [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then
     mode=replay
@@ -35,7 +49,24 @@ else
     mode=explore
     libfuzzer_args=(-max_total_time="$time_per_round")
 fi
-echo "$target: mode=$mode (rounds=$rounds, libFuzzer args: ${libfuzzer_args[*]})"
+echo "$target: mode=$mode (rounds=$rounds, ${libfuzzer_args[*]}, total budget ${total_budget}s)"
+
+# Refuse an impossible budget instead of discovering it by being killed. Exit 2 is a
+# configuration error, deliberately distinct from 1 (crashes found) and 0 (clean), so
+# a reader of the job cannot mistake arithmetic for a finding.
+if [ "$mode" = explore ]; then
+    ceiling_seconds=$(( ${FUZZ_CEILING_MINUTES:-22} * 60 ))
+    if [ "$total_budget" -gt "$ceiling_seconds" ]; then
+        echo "config error: FUZZ_TIME=${total_budget}s exceeds the ${FUZZ_CEILING_MINUTES:-22}m job ceiling (${ceiling_seconds}s)." >&2
+        echo "Lower FUZZ_TIME, or raise FUZZ_CEILING_MINUTES and the job's timeout-minutes together." >&2
+        {
+            echo "## fuzz config error: $target"
+            echo
+            echo "FUZZ_TIME=${total_budget}s > ceiling ${ceiling_seconds}s (timeout-minutes minus build room)."
+        } >> "$summary"
+        exit 2
+    fi
+fi
 
 cd "$(dirname "$0")/../fuzz"
 shopt -s nullglob
