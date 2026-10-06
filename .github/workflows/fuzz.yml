@@ -5,6 +5,15 @@
 # window) so drift is caught by the PR that introduces it, while the schedule
 # carries the long continuous-discovery budget. Individual fixes keep their own
 # PRs (one root cause, one PR).
+#
+# Replay a round locally with:
+#   mkdir -p fuzz/corpus/<target>
+#   cp fuzz/seeds/<target>/*.seed fuzz/corpus/<target>/
+#   cargo fuzz run <target> --target x86_64-unknown-linux-gnu \
+#     -- -max_total_time=60 -rss_limit_mb=3072
+# As of 2026-10-04 all four targets replay the committed seeds clean
+# (5/17/6/5 seeds, nightly-2026-08-15, cargo-fuzz 0.13.2, GNU host target), so a
+# fresh crash is a true positive about the PR that introduced it.
 name: Fuzz
 
 on:
@@ -40,10 +49,13 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # PRs pay seed replay + a minute of discovery; schedule/dispatch/push keep the
-  # long continuous-discovery budget. Regression coverage is identical either
-  # way, because corpus replay is not time-limited - only exploration is.
-  FUZZ_TIME: ${{ github.event_name == 'pull_request' && 60 || 600 }}
+  # Per round, not per job: a round stops at its first crash (a Rust panic aborts
+  # the process, so `-keep_going` cannot help — measured, see the Fuzz step), so
+  # the budget is split across rounds and the loop keeps going until a round comes
+  # back clean. PRs pay seed replay + three short rounds; schedule/dispatch/push
+  # keep the long continuous-discovery budget.
+  FUZZ_TIME: ${{ github.event_name == 'pull_request' && 60 || 300 }}
+  FUZZ_ROUNDS: ${{ github.event_name == 'pull_request' && 3 || 5 }}
 
 jobs:
   fuzz:
@@ -98,23 +110,14 @@ jobs:
 
       - name: Fuzz
         id: fuzz
-        # Blocking everywhere, pull requests included. The step-level tolerance
-        # that used to sit here was a ratchet, not a loophole: main carried drift
-        # this tier correctly flagged (crash-f44eca1d, after the predecessors
-        # fixed in #256/#258/#261/#262), and a gate that can never be green gets
-        # reverted. That premise was re-checked on 2026-10-04 against this tree
-        # and no longer holds: all four targets replay the committed seed corpus
-        # clean (5/17/6/5 seeds, nightly-2026-08-15, cargo-fuzz 0.13.2,
-        # x86_64-unknown-linux-gnu, -max_total_time=60), the historical crashes
-        # now living as `fuzz/seeds/**/former-crash-*.seed` plus the
-        # `key-metadata-anchor-tag.seed` replay that covers the crash-86a9ae7b
-        # key-metadata shape. So a new crash hard-fails the PR that introduces it
-        # instead of only surfacing on the next weekend schedule. Reproduce with:
-        #   mkdir -p fuzz/corpus/<target>
-        #   cp fuzz/seeds/<target>/*.seed fuzz/corpus/<target>/
-        #   cargo fuzz run <target> --target x86_64-unknown-linux-gnu \
-        #     -- -max_total_time=60 -rss_limit_mb=3072
-        run: cargo fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=${{ env.FUZZ_TIME }} -rss_limit_mb=3072
+        # Rounds, dedupe and the corpus sweep live in scripts/fuzz_rounds.sh so
+        # they can be run (and were: three probe sites, three signatures) outside
+        # CI. Blocking everywhere, pull requests included: the step-level tolerance
+        # that used to sit here was a ratchet, not a loophole - main carried drift
+        # this tier correctly flagged - and a gate that can never be green gets
+        # reverted rather than read.
+        shell: bash
+        run: bash scripts/fuzz_rounds.sh ${{ matrix.target }}
 
       # A discovered crash is only actionable if the bytes survive the runner;
       # attach them to the failed job for the triage->seed->fix pipeline. The
@@ -125,5 +128,48 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-artifacts-${{ matrix.target }}
-          path: fuzz/artifacts/${{ matrix.target }}/
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+            fuzz/collected/${{ matrix.target }}/
           if-no-files-found: ignore
+
+  # One place to read the whole picture: which of the four surfaces found
+  # anything, and how many distinct bugs each reported. The four matrix jobs stay
+  # parallel and non-cancelling (`fail-fast: false`), so this only has to collect
+  # their output - it never decides it.
+  report:
+    name: Aggregate crash report
+    needs: fuzz
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download crash artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: fuzz-artifacts-*
+          path: crashes
+          merge-multiple: false
+
+      - name: Report every target's findings
+        shell: bash
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          total_files=0
+          {
+            echo "## Fuzz report"
+            echo
+            echo "| target | crash files | distinct signatures |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for d in crashes/*/; do
+            name=$(basename "$d")
+            files=$(find "$d" -name 'crash-*' | wc -l)
+            sigs=0
+            [ -f "$d/.signatures" ] && sigs=$(grep -c . "$d/.signatures")
+            total_files=$((total_files + files))
+            echo "| ${name#fuzz-artifacts-} | $files | $sigs |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ "$total_files" -gt 0 ]; then
+            echo "::warning::$total_files crash input(s) collected; each needs the minimize -> regression test -> seed -> fix pipeline"
+          fi
