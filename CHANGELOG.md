@@ -160,6 +160,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A note line keeps its column after a tag-only line is closed** — the closing that keeps
+  a note on its own node remembers the tag-only line by an absolute offset into the output.
+  Writing a simple key's inline note inserts text *before* that offset and never moved it, so
+  the closure measured the distance from the wrong place, concluded the pending line was no
+  longer adjacent, and left the value unfinished; the next round then read the following note
+  line as the value's own leading note, and the note slid from column 0 into the value's
+  indent. Measured on `crash-5561902a` (88 bytes, minimised to 15: `b: ! #&` / `#e` / `? #!`):
+  the first emission now writes `! ~`, the note stays on the key it was parsed against, and
+  that first emission is the fixed point. Offsets into output that has
+  already been written are now shifted by every insertion that precedes them.
 - **A note on a compact `- key:` line stops vanishing** — the compact-dash branch of
   `write_sequence_item` builds the `key: value` line itself and had copied only its text, so
   it never visited the note slots `write_mapping_pair` respects. Measured: `- a: !   # n`

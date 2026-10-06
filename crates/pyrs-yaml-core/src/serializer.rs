@@ -508,6 +508,26 @@ impl Serializer {
         self.output.insert_str(at, text);
     }
 
+    /// Insert note text into output that has already been written, at `at`.
+    ///
+    /// `pending_tag_insert_at` is an absolute offset into `self.output`, so an insertion
+    /// strictly before it moves the byte it names. Writers that place a simple key's inline
+    /// note on a line the value has already left must go through here, or the pending line
+    /// silently stops being pending: `close_pending_tag_line` counts newlines from the stale
+    /// offset, finds more than one, concludes the line is no longer adjacent, and leaves the
+    /// value unfinished — which is how the note line after `… ! ` came to be swallowed
+    /// (libFuzzer `yaml_roundtrip` crash-5561902a, minimised to 15 bytes). An insertion
+    /// exactly *at* the marker preserves its meaning — the null text still belongs right
+    /// after the tag — so only a strictly-earlier insert shifts it.
+    fn insert_note_at(&mut self, at: usize, text: &str) {
+        if let Some(pending) = self.pending_tag_insert_at.as_mut()
+            && *pending > at
+        {
+            *pending += text.len();
+        }
+        self.output.insert_str(at, text);
+    }
+
     /// Write a note as a line of its own. This is the single place that knows a note line
     /// is being emitted, so it closes a pending tag-only line first: `k: !-` followed by
     /// `# n` re-reads with the note inside the value (the scanner still has no scalar
@@ -1211,7 +1231,7 @@ impl Serializer {
             };
             if let Some(text) = key_note {
                 let at = key_note_at.unwrap_or(self.output.len() - 1);
-                self.output.insert_str(at, &format!("  # {text}"));
+                self.insert_note_at(at, &format!("  # {text}"));
             }
         }
 
@@ -1298,7 +1318,7 @@ impl Serializer {
                     && self.output.ends_with('\n')
                 {
                     let at = self.output.len() - 1;
-                    self.output.insert_str(at, &format!("  # {}", note.text));
+                    self.insert_note_at(at, &format!("  # {}", note.text));
                 }
             }
         } else if matches!(
@@ -2931,6 +2951,36 @@ mod tests {
         );
         let again = to_yaml(&parse_core(&one));
         assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+    }
+
+    /// libFuzzer `yaml_roundtrip` crash-5561902a (88 bytes, minimised to 15: `b: ! #&`
+    /// LF `#e` LF `? #!`). `close_pending_tag_line` remembers the tag-only line by an
+    /// absolute offset; writing a simple key's inline note inserts text *before* that
+    /// offset, and the remembered position was never shifted — so the closure checked the
+    /// distance from the wrong place, decided the pending line was no longer adjacent, and
+    /// left it open. The next round then read the following column-0 note line as the
+    /// value's own leading note (`tree1` gains a second leading note), and the note moved
+    /// from column 0 to indent 2. Shifting the marker on every earlier insertion keeps the
+    /// line closed, the note on the key it belongs to, and the first emission the fixed point.
+    #[test]
+    fn a_key_note_inserted_before_a_pending_tag_line_keeps_the_closure() {
+        let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-5561902a.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = to_yaml(&parse_core(src));
+        assert!(
+            one.contains("! ~\n"),
+            "the tag-only line must be closed even after an earlier insertion: {one:?}"
+        );
+        assert_eq!(
+            one.matches("# !").count() + one.matches("#!").count(),
+            1,
+            "the column-0 note survives exactly once: {one:?}"
+        );
+        let again = to_yaml(&parse_core(&one));
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
     }
 
     /// The value's own note has priority for the line's trailing slot; the key's note must
