@@ -139,18 +139,15 @@ status: new
 
 #### 修正
 
-- **tag のみの値の後ろの note が、どの tag の綴りでも 1 ラウンドで落ち着くようになった** —
-  `crash-cf49fe85` のために足した規則は non-specific tag の `!` だけを見ていた。根拠は
-  「named tag なら行内 note は container に読み戻される」という読みだったが、同じ二つ
-  note の形状で直接測ると `!-`・`!:`・`!x`・`!!str` も `!` と同じく漂う（それぞれ
-  `~: <tag>   # -` を出した上の note 行を、reader がまだ途中の値へ渡す）。そこで判定は
-  tag の綴りではなく行を見る形になった — tag を持つ空の plain scalar、より小さく、かつ
-  正しい。`!-` の古い行内テキストを記録していた特徴テスト 2 本（`crash-11ced252`、
-  `crash-22cb5f67`）は routed 側へ書き換えた：note の文言は同じ、やはり 1 件だけ、そして
-  routed の出力こそが両テスト自身が「2 ラウンド目」として記録していた形である。出力テキストの
-  変更はユーザーに見えるので明示する：`:␉!-␍... #-o` は `~: !-···# -o␎` ではなく
-  `~:␎··# -o␎··!-·␎` になる。4 つの seed corpus（5 / 64 / 6 / 5）はすべて clean に
-  再実行され、2 つの歴史的形状は不動点に届く — 今は 1 ラウンドで、2 ラウンドではなく。
+- **tag のみの値の後ろの note が、owner を保ったまま 1 ラウンドで落ち着く** — tag だけと
+  出力される値（`k: !`・`k: !-`・`k: !!str`）はスキャナを「値が未完了」の状態に置くため、直後に
+  書かれた note 行はその *値* の leading note として報告されていた（note の owner が動き、文書は
+  2 ラウンド目で安定する）。この経路は三つ — `crash-cf49fe85`（pair 行の slot が埋まっているため
+  container 自身の note が行を余儀なくされるケース）、`crash-c5b367d3`（23 バイト、merge key の
+  note が貢献した pair へ移し替えられる）、および両方の any-tag 版。writer はもう note 行を書く前に
+  保留行を閉じ、値自身の null 本文（`k: !- ~`）を出力するので、note は AST の指す節点に残る。
+  pair 行に行内へ置ける場合は出力は従来どおり。両立しない場合（container の note が行を要し、かつ
+  owner も保つ必要がある）は往復契約の不動点を優先し、その取舍は決定箇所に明記した。
 - **mapping 自身の note が裸の tag 値の行へ流れなくなった** — block mapping の body を終える
    pair の値が lone `!`（non-specific tag で本文なし）として出力される場合、container の
   inline note をその行に足すと再読時に *value* の leading note として報告され、container は

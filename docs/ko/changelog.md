@@ -136,18 +136,15 @@ status: new
 
 #### 수정
 
-- **tag만 있는 값 뒤의 note가 이제 모든 tag 표기에 한 라운드에 안정된다** — `crash-cf49fe85`를
-  위해 넣은 규칙은 non-specific tag `!`만 보고 있었고, 근거는 "named tag의 인라인 note는
-  container로 다시 읽힌다"는 해석이었다. 그러나 같은 두-note 모양에서 직접 재본 결과
-  `!-`, `!:`, `!x`, `!!str` 모두 `!`과 똑같이 흔들린다 — `~: <tag>   # -`를 먼저 쓰고 그
-  아래 note 줄을 두면, reader가 그 줄을 아직 끝나지 않은 값에 넘긴다. 그래서 판정은 tag
-  표기가 아니라 그 줄을 본다: tag를 단 빈 plain scalar. `!-`의 옛 인라인 텍스트를 기록하던
-  특성화 테스트 두 개(`crash-11ced252`, `crash-22cb5f67`)는 라우팅된 형태로 고쳤다: note
-  텍스트는 그대로, note는 여전히 정확히 하나, 그리고 라우팅된 출력이 바로 그 테스트들이
-  스스로 "두 번째 라운드"로 적어 둔 모양이다. 출력 텍스트 변경은 사용자에게 보이니 명시한다:
-  `:␉!-␍... #-o`는 이제 `~: !-···# -o␎` 대신 `~:␎··# -o␎··!-·␎`로 나간다. 네 seed
-  corpus(5 / 64 / 6 / 5)가 모두 clean으로 재실행되므로 두 역사적 모양은 여전히 fixed point에
-  닿는다 — 이번에는 한 라운드 만에.
+- **tag만 있는 값 뒤의 note가 owner를 지키며 한 라운드에 안정된다** — tag만 출력되는 값
+  (`k: !`, `k: !-`, `k: !!str`)은 scanner를 "값 미완성" 상태로 남겨, 그 뒤로 쓰인 note 줄은 그
+  *값*의 leading note로 보고됐다 — note의 owner가 바뀌고 문서는 두 번째 라운드에 안정됐다. 이 경로는
+  셋이다: `crash-cf49fe85`(pair 줄의 slot이 차 있어 container 자신의 note가 줄을 새로 써야 하는
+  경우), `crash-c5b367d3`(23 bytes, merge key의 note가 기여한 pair로 옮겨 심어진 경우), 그리고 두
+  모양의 모든 tag 표기. writer는 이제 note 줄을 쓰기 전에 대기 줄을 닫아 값 자신의 null 본문
+  (`k: !- ~`)을 출력하므로 note는 AST가 가리키는 마디에 남는다. pair 줄에 행 안에 둘 수 있으면 출력은
+  이전과 같다. 두 조건이 실제로 충돌할 때(container note가 줄을 새로 쓰면서 owner도 지켜야 하는
+  경우) 왕복 계약의 fixed point를 우선하며, 그 거래는 결정 지점에 적어 두었다.
 - **mapping 고유의 note가 맨 `!` 값 줄로 옮겨가지 않는다** — block mapping의 body를 마무리하는
   pair의 값이 `!` 하나로만(본문 없는 non-specific tag) 출력될 때, container의 inline note를 그
   줄에 붙이면 재파싱 시 그 *값*의 leading note로 보고되어 container는 그것을 잃고 문서는 한
