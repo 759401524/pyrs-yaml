@@ -1,0 +1,15 @@
+{
+  "scenarios": {
+    "parse_anchors": 392712107,
+    "parse_block": 146846974,
+    "parse_medium": 358566576,
+    "parse_small": 49753301,
+    "serialize_anchors": 37680061,
+    "serialize_block": 18995736,
+    "serialize_block_scalars": 15633101,
+    "serialize_medium": 42011261,
+    "serialize_small": 5696620
+  },
+  "tolerance_hint": 0.01,
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
+}

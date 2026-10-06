@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **An instruction-count gate the CI can actually hold** — the `CodSpeed`
+  workflow now runs an `Instruction-count baseline` job that measures the engine's
+  hot paths in *counted instructions* (`callgrind` Ir) and fails on more than a
+  one-percent rise over `.ci/ir-baseline.json`. It exists because the wall-time
+  comparison the divan suite reports is not reproducible below roughly ten
+  percent: three consecutive pushes, each doing strictly *less* work than the one
+  before, were scored −7.7%, −10.5% and −9.8% for the same benchmark set. Ir
+  repeats to about ±0.001% on the same binary, so the line means something; the
+  whole gate costs about six seconds. Run `python scripts/ir_gate.py` to check,
+  `--update` to re-baseline deliberately. Its scenarios read the same documents as
+  the divan suite through `pyrs_yaml_core::bench_inputs`, so the two measurements
+  cannot drift apart.
 - **Weekly fuzz schedule in CI** — `.github/workflows/fuzz.yml` runs all
   four libFuzzer targets every Saturday (plus on demand and whenever `fuzz/`
   itself changes), seeding the ephemeral per-run corpus from curated

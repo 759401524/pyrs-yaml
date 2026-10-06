@@ -17,6 +17,15 @@ status: new
 
 #### 추가
 
+- **CI가 실제로 지킬 수 있는 명령 수 게이트** — `CodSpeed` 워크플로에
+  `Instruction-count baseline` 잡이 추가되어 엔진의 핫패스를 *실행 명령 수*
+  (`callgrind` Ir)로 측정하고 `.ci/ir-baseline.json` 대비 1% 이상 증가하면 실패합니다.
+  필요한 이유: divan 스위트가 보고하는 wall-time 비교는 10% 미만에서 재현되지 않습니다—
+  연속 세 번의 푸시가 매번 *더 적은* 작업만 했는데도 같은 기준 세트에서 −7.7%, −10.5%, −9.8%로
+  판정됐습니다. Ir은 같은 바이너리에서 약 ±0.001%로 재현되므로 이 기준선은 의미를 갖고,
+  게이트 전체는 약 6초면 끝납니다. 확인은 `python scripts/ir_gate.py`, 의도적으로 기준을
+  갱신하려면 `--update`. 시나리오가 `pyrs_yaml_core::bench_inputs`를 통해 divan 스위트와
+  같은 문서를 읽으므로 두 측정이 서로 어긋날 수 없습니다.
 - **CI 주간 정기 퍼징** — `.github/workflows/fuzz.yml`가 네 libFuzzer 타깃을
   매주 토요일(수동 실행 및 `fuzz/` 변경 시 자동) 실행하고, 큐레이션한
   `fuzz/seeds/`(과거 크래시 입력 + 수작업 형태 시드)로 매 세션 임시 코퍼스를

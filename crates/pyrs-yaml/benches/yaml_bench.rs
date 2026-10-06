@@ -2,35 +2,11 @@ use pyrs_yaml::ast::CustomNode;
 use pyrs_yaml::parser::yaml::YamlSchema;
 use pyrs_yaml::py::editing;
 use pyrs_yaml::splice::SpliceState;
+use pyrs_yaml_core::bench_inputs::{
+    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_YAML, SMALL_YAML,
+};
 use pyrs_yaml_core::editing::Segment;
 use std::sync::Arc;
-
-const SMALL_YAML: &str = "key: value\nname: test\n";
-
-const MEDIUM_YAML: &str = r#"server:
-  host: localhost
-  port: 8080
-  timeout: 30
-
-database:
-  driver: postgres
-  host: db.example.com
-  port: 5432
-  name: myapp
-  pool_size: 10
-
-logging:
-  level: info
-  format: json
-  outputs:
-    - stdout
-    - file:/var/log/app.log
-
-features:
-  auth: true
-  cache: true
-  rate_limit: false
-"#;
 
 // Shared fixtures for the LARGE_* documents below. Each macro expands to a
 // string literal so the variants can `concat!` them, keeping every byte
@@ -131,23 +107,6 @@ const LARGE_YAML: &str = concat!(
     database_block!(),
 );
 
-const ANCHOR_YAML: &str = r#"
-defaults: &defaults
-  timeout: 30
-  retries: 3
-  pool_size: 10
-
-production:
-  <<: *defaults
-  host: prod.example.com
-  debug: false
-
-staging:
-  <<: *defaults
-  host: staging.example.com
-  debug: true
-"#;
-
 const COMMENT_YAML: &str = r#"
 # Server configuration
 server:
@@ -159,22 +118,6 @@ database:
   # Primary database
   host: db.example.com
   port: 5432
-"#;
-
-const BLOCK_STYLE_YAML: &str = "key1: value1\nkey2: value2\nnested:\n  subkey1: subvalue1\n  subkey2: subvalue2\nlist:\n  - item1\n  - item2\n  - item3\n";
-
-const BLOCK_SCALAR_YAML: &str = r#"
-description: |
-  This is a multi-line
-  literal block scalar.
-  It preserves newlines exactly.
-
-  Including blank lines.
-folded: >
-  This is a folded
-  block scalar that
-  will be folded into
-  a single line.
 "#;
 
 /// LARGE_YAML with the two comment lines removed. No `#`, no `&`:
