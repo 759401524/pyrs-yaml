@@ -1226,10 +1226,31 @@ impl Serializer {
         indent_width: usize,
         depth: usize,
     ) -> Result<(), SerializeError> {
+        // Three note slots that `write_mapping_pair` respects are unreachable from this
+        // hand-rolled line, and all three have to be written here:
+        //
+        // * the item's own leading stack, which only a line above the dash can hold — by the
+        //   time the loop below runs, `- ` is already open on the key's line;
+        // * a *later* pair's key leading stack, which goes at the pair's own indent (a first
+        //   pair's key never owns one: measured across twelve crafted shapes, the reader
+        //   hands such a note to the item or to the enclosing sequence);
+        // * a key's inline note, which rides its pair line.
+        //
+        // Measured once: `is_compact_item` walks every pair, and this is a hot path, so the
+        // branch below reuses one answer rather than asking twice.
+        let compact = is_compact_item(item);
+        // `has_notes` first, as every writer here does: it is two discriminant tests and
+        // never dereferences the boxed `NodeDecor`, while `leading_comments` builds the
+        // normalised view — and a note-free item is the common case.
+        if compact && item.has_notes() {
+            for comment in item.leading_comments() {
+                self.write_note_line(indent_width, &comment.text);
+            }
+        }
         self.write_indent(indent_width);
         self.output.push_str("- ");
 
-        if is_compact_item(item) {
+        if compact {
             // Compact form: `- key: value` with subsequent keys
             // indented to align under the first key. Only when the
             // mapping carries no metadata and every key/value can
@@ -1238,16 +1259,47 @@ impl Serializer {
                 return Err(SerializeError::Internal("is_compact_item on non-mapping"));
             };
             for (pi, (key, value)) in pairs.iter().enumerate() {
+                // Compact key column is dash indent + `- ` (== indent_sequence
+                // for the default 2-step); a block body hangs off that line.
+                let key_base = indent_width + self.indent_sequence;
                 if pi > 0 {
-                    self.write_indent(indent_width + self.indent_sequence);
+                    // Same slot rule as `write_mapping_pair`: every note in the stack, in
+                    // source order, on a line of its own at the pair's indent.
+                    if key.has_notes() {
+                        for comment in key.leading_comments() {
+                            self.write_note_line(key_base, &comment.text);
+                        }
+                    }
+                    self.write_indent(key_base);
                 }
                 self.write_scalar_for_key(key, false);
                 self.output.push(':');
                 self.output.push(' ');
-                // Compact key column is dash indent + `- ` (== indent_sequence
-                // for the default 2-step); a block body hangs off that line.
-                let key_base = indent_width + self.indent_sequence;
                 self.serialize_node_internal(value, 0, key_base, true, depth + 1)?;
+
+                // The loop hand-rolls the `key: value` line, and until now it hand-rolled
+                // only the text: a note granit attaches to a simple key had no slot here,
+                // so `- a: !   # n` emitted `- a: ! ` and the note was gone from the first
+                // round — silent data loss rather than a relocation. Same rule as
+                // `write_mapping_pair`: the note rides the line it belongs to, and the
+                // value keeps the slot when it carries a note of its own.
+                //
+                // Ordered for the hot path: a plain field test on the key decides whether
+                // to look any further, so a note-free pair costs one `Option` check rather
+                // than two method calls plus a tail scan.
+                let key_note = match key {
+                    CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => {
+                        meta.comment.as_ref().filter(|c| !c.standalone)
+                    }
+                    _ => None,
+                };
+                if let Some(note) = key_note
+                    && value.comment().is_none()
+                    && self.output.ends_with('\n')
+                {
+                    let at = self.output.len() - 1;
+                    self.output.insert_str(at, &format!("  # {}", note.text));
+                }
             }
         } else if matches!(
             item,
@@ -2778,6 +2830,116 @@ mod tests {
             again, one,
             "not a fixed point in one round: {one:?} -> {again:?}"
         );
+    }
+
+    /// A note that granit attaches to a simple key rides that pair's line, and
+    /// `write_mapping_pair` has a slot for it. The compact dash loop in
+    /// `write_sequence_item` hand-rolls the same `key: value` line without that slot, so
+    /// under a `- ` the note vanished on the *first* emission — silent data loss, not a
+    /// relocation. Measured by holding everything else still: `a: !   # n` at the document
+    /// root keeps its note, `- a: !   # n` dropped it; the tag-only value and the quoted
+    /// key were both innocent.
+    #[test]
+    fn a_note_on_a_compact_dash_key_survives_the_first_emission() {
+        for src in [
+            "- a: !   # n\n",
+            "- \"a\": !   # n\n",
+            "- a: !   # ! - *:\n",
+        ] {
+            let node = parse_core(src);
+            let one = to_yaml(&node);
+            assert!(
+                one.contains("# "),
+                "{src:?} lost the key's note on the first emission: {one:?}"
+            );
+            let again = to_yaml(&parse_core(&one));
+            assert_eq!(
+                again, one,
+                "not a fixed point in one round: {one:?} -> {again:?}"
+            );
+        }
+    }
+
+    /// Each pair of a multi-pair compact item owns its own line, so each key note has to
+    /// land on its own line — and a value that carries a note of its own keeps the slot,
+    /// because one line has exactly one trailing note.
+    #[test]
+    fn each_compact_dash_line_keeps_its_own_key_note() {
+        let src = "- a: !   # one\n  b: !   # two\n";
+        let one = to_yaml(&parse_core(src));
+        assert_eq!(one.matches("# one").count(), 1, "first note: {one:?}");
+        assert_eq!(one.matches("# two").count(), 1, "second note: {one:?}");
+        let again = to_yaml(&parse_core(&one));
+        assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+    }
+
+    /// The same loop also ignored the item's own leading stack: `  -` / `# z` / `a: 1`
+    /// records the note on the item mapping, and the compact branch wrote only the pair,
+    /// emitting `- a: 1` and dropping the note. Only the dash line can hold it, so it is
+    /// hoisted above the dash — which is also where the sibling spelling (`- # z`) already
+    /// puts it, so both inputs land on the same emission.
+    #[test]
+    fn a_leading_note_on_a_compact_dash_item_survives() {
+        for src in [
+            "-\n  # z\n  a: 1\n",
+            "- # z\n  a: 1\n",
+            "-\n  # z1\n  # z2\n  a: 1\n",
+        ] {
+            let one = to_yaml(&parse_core(src));
+            assert!(
+                one.contains("# z"),
+                "{src:?} dropped the item's note: {one:?}"
+            );
+            let again = to_yaml(&parse_core(&one));
+            assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+        }
+    }
+
+    /// A *later* pair can own a leading stack (`- a: 1` / `# z` / `b: 2` measures as
+    /// `root[0][1].key.leading`), and its line begins at the pair indent, so the notes go on
+    /// their own lines above it. The old loop wrote the indent and the key and skipped the
+    /// stack, so the note was gone from the first emission.
+    #[test]
+    fn a_note_above_a_later_compact_dash_key_survives() {
+        for src in [
+            "- a: 1\n  # z\n  b: 2\n",
+            "- a: 1\n  # z1\n  # z2\n  b: 2\n",
+        ] {
+            let one = to_yaml(&parse_core(src));
+            assert_eq!(
+                one, src,
+                "the stack was dropped or the shape moved: {one:?}"
+            );
+            let again = to_yaml(&parse_core(&one));
+            assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+        }
+    }
+
+    /// libFuzzer `yaml_roundtrip` crash-55c199ef (25 bytes, kept as found: the input no
+    /// longer drifts, so `tmin` has nothing to take). `-` TAB `?"."` `:` TAB `!` CR ` #`
+    /// CR CR `... #` TAB `! - *:` round-trips into a pair line whose note the reader hands
+    /// to the **key**, and the compact dash loop had no slot for that, so the second
+    /// emission dropped the note entirely — the class this fix closes.
+    #[test]
+    fn a_note_on_a_dash_key_from_the_ci_artifact_survives_one_round() {
+        let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-55c199ef.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = to_yaml(&parse_core(src));
+        assert!(
+            one.contains("# ! - *:"),
+            "the key's note vanished on the first emission: {one:?}"
+        );
+        let again = to_yaml(&parse_core(&one));
+        assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+    }
+
+    /// The value's own note has priority for the line's trailing slot; the key's note must
+    /// not duplicate it into two notes on one line.
+    #[test]
+    fn a_value_note_still_owns_the_compact_dash_line_slot() {
+        let src = "- a: 1  # own\n";
+        let one = to_yaml(&parse_core(src));
+        assert_eq!(one, src, "value-owned slot changed shape: {one:?}");
     }
 
     /// libFuzzer `yaml_roundtrip` crash-22cb5f67 (15 bytes): a `#` that is only *text*
