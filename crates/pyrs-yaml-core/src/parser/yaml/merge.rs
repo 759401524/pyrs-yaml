@@ -146,7 +146,7 @@ fn resolve_mapping_merges(
     let merge_index = pairs.keys().position(is_merge_key);
 
     // Snapshot the mapping's own children (minus the merge entry) before the merge
-    // expansion prepends cloned anchor pairs into `pairs`. The tail walk below must
+    // expansion inserts cloned anchor pairs into `pairs`. The tail walk below must
     // re-walk only these original children: the freshly merged-in values are
     // clones of an anchor body that was already resolved under the path guard in
     // the expansion loop. Re-walking them here (with the guard context gone)
@@ -154,11 +154,11 @@ fn resolve_mapping_merges(
     // libFuzzer `parse_yaml` stack-overflow (path-identical frames cycling
     // resolve_mapping_merges -> resolve_merges_recursive forever).
     //
-    // Positions, not key clones, because `prepend_merged_pairs` shift-inserts at the
-    // front and would invalidate every index after it — which is why this walk now
-    // runs *before* the prepend. (Looking the children up by key after the prepend,
-    // as this used to, could also hand back a merged-in clone whenever that clone
-    // compared equal to an own key and sat earlier in the map.)
+    // Positions, not key clones, because `insert_merged_pairs` shift-inserts into the
+    // middle of the map and would invalidate every index after it — which is why this
+    // walk now runs *before* the insertion. (Looking the children up by key after the
+    // insertion, as this used to, could also hand back a merged-in clone whenever that
+    // clone compared equal to an own key and sat earlier in the map.)
     let own_indices: Vec<usize> = (0..pairs.len())
         .filter(|index| Some(*index) != merge_index)
         .collect();
@@ -280,7 +280,7 @@ fn resolve_mapping_merges(
     if let Some(expanded) = expanded {
         let mut orphans = merge_orphans;
         orphans.extend(overridden_notes);
-        prepend_merged_pairs(pairs, merge_index, expanded, orphans);
+        insert_merged_pairs(pairs, merge_index, expanded, orphans);
     }
 }
 
@@ -450,24 +450,33 @@ fn collect_merged_pairs_for_anchor(
     }
 }
 
-/// Remove the merge key, prepend merged pairs at the beginning of the mapping, and
-/// re-home the comments `orphans` carries onto the entry the merge contributed.
-fn prepend_merged_pairs(
+/// Remove the merge key, insert the merged pairs in the slot the merge key occupied,
+/// and re-home the comments `orphans` carries onto the entry the merge contributed.
+fn insert_merged_pairs(
     pairs: &mut IndexMap<CustomNode, CustomNode>,
     merge_index: Option<usize>,
     merged_pairs: IndexMap<CustomNode, CustomNode>,
     orphans: Vec<Comment>,
 ) {
+    // Merged pairs land where the `<<:` stood, not at the front of the map. Removing
+    // the merge key shifts every later pair down by one, so reusing that index puts
+    // them back at the position the author wrote. Prepending (`shift_insert(0, ..)`)
+    // was the one reorder that could invert an anchor against its alias: a source
+    // that defines `&b` on an earlier own key and uses `*b` inside the merged map is
+    // valid YAML, and prepending moved the use above the definition, so `to_yaml`
+    // emitted text its own parser rejected (`crash-9b77aea4`). A mapping whose merge
+    // key is already first is unaffected — slot 0 is what prepend already did.
+    let slot = merge_index.unwrap_or(0);
     if let Some(index) = merge_index {
         pairs.shift_remove_index(index);
     }
 
-    // Insert merged pairs at the front in order, keeping existing pairs in
-    // place. `merged_pairs` is filtered against the mapping's own keys by
+    // `merged_pairs` is filtered against the mapping's own keys by
     // [`owns_owning_key`] in the caller, so `shift_insert` cannot collide — without
-    // that filter the emission repeated a key and our own reader rejected it.
-    for (k, v) in merged_pairs.into_iter().rev() {
-        pairs.shift_insert(0, k, v);
+    // that filter the emission repeated a key and our own reader rejected it. Each
+    // insert grows the map by one, so `slot + offset` stays within range.
+    for (offset, (k, v)) in merged_pairs.into_iter().enumerate() {
+        pairs.shift_insert(slot + offset, k, v);
     }
 
     if orphans.is_empty() {
@@ -475,11 +484,11 @@ fn prepend_merged_pairs(
     }
     // `IndexMap` never hands out `&mut K`, so take the entry out, add the notes to
     // its key, and put it back on top.
-    if let Some((mut key, value)) = pairs.shift_remove_index(0) {
+    if let Some((mut key, value)) = pairs.shift_remove_index(slot) {
         for note in orphans {
             key.push_leading_comment(note);
         }
-        pairs.shift_insert(0, key, value);
+        pairs.shift_insert(slot, key, value);
     }
 }
 
@@ -524,6 +533,49 @@ mod tests {
             get_scalar_value(prod_pairs.get(&make_scalar("host")).unwrap()),
             "x"
         );
+    }
+
+    #[test]
+    fn merged_pairs_take_the_merge_keys_own_slot() {
+        // `crash-9b77aea4` (78 bytes, minimised to 15). An *own* key defines the
+        // anchor that a later merge contributes, and the expansion inserted the
+        // merged pair at the front of the map -- so the emission used `*b` before
+        // `&b` was defined and our own reader rejected its own output
+        // ("found unknown anchor"), breaking the contract that `to_yaml` never
+        // emits unparseable text. The merged pair belongs in the slot the `<<:`
+        // occupied: that is where the source put it, and it keeps every anchor
+        // definition ahead of the aliases that came after it.
+        let yaml = "a: &b 1\n<<:\n <: *b\n";
+        let mut root = parse(yaml, YamlSchema::Core).unwrap();
+        resolve_merge_keys(&mut root);
+
+        let text = crate::serializer::to_yaml(&root);
+        assert_eq!(text, "a: &b 1\n<: *b\n");
+        crate::parser::parse(&text, YamlSchema::Core)
+            .unwrap_or_else(|e| panic!("emission failed to re-parse: {e}\ntext={text:?}"));
+    }
+
+    #[test]
+    fn merge_expansion_never_emits_an_alias_before_its_anchor() {
+        // The general invariant, over both the readable shape and the exact bytes
+        // the fuzzer minimised. A valid source defines every anchor before any use
+        // of it, so preserving authored order is enough to keep that true after
+        // expansion -- prepending was the one operation that could invert it.
+        for yaml in [
+            "a: &b 1\n<<:\n <: *b\n",
+            ": &b\n<<:\n <: *b\n",
+            "k: &b 2\nn: &c 3\n<<:\n p: *b\n q: *c\n",
+        ] {
+            let mut root = parse(yaml, YamlSchema::Core).unwrap();
+            resolve_merge_keys(&mut root);
+            let text = crate::serializer::to_yaml(&root);
+            crate::parser::parse(&text, YamlSchema::Core).unwrap_or_else(|e| {
+                panic!("source {yaml:?} expanded to unparseable {text:?}: {e}")
+            });
+            let again =
+                crate::serializer::to_yaml(&crate::parser::parse(&text, YamlSchema::Core).unwrap());
+            assert_eq!(again, text, "expansion is not a fixed point for {yaml:?}");
+        }
     }
 
     #[test]
