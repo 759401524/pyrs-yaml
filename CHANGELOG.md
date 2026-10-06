@@ -153,19 +153,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A note after a tag-only value now settles in one round for every tag spelling** — the
-  rule added for `crash-cf49fe85` keyed on the non-specific tag `!` alone, on the reading
-  that a *named* tag re-reads its inline note back to the container. Measured directly
-  over that same two-note shape, `!-`, `!:`, `!x` and `!!str` drift exactly as `!` did:
-  each emits `~: <tag>   # -` plus a note line, and the reader hands that line to the
-  pending value. The condition is now about the line, not the tag — an empty plain scalar
-  carrying any tag — which is both smaller and true. Two characterization tests recorded
-  the old inline text for `!-` (`crash-11ced252`, `crash-22cb5f67`) and were rewritten to
-  the routed form: same note text, still exactly one note, and the routed output is what
-  one of those tests had itself logged as “round two”. Stated plainly, because it is a
-  user-visible change to emitted text: `:␉!-␍... #-o` now writes `~:␎··# -o␎··!-·␎`
-  instead of `~: !-···# -o␎`. The four committed seed corpora (5 / 64 / 6 / 5) replay
-  clean, so both historical shapes still reach a fixed point — in one round now, not two.
+- **A note line after a tag-only value keeps its owner and settles in one round** — a
+  value that renders as nothing but its tag (`k: !`, `k: !-`, `k: !!str`) leaves the
+  scanner mid-value, so any note line written next was reported as that *value's* leading
+  note: the note changed owner and the document needed a second round to settle. Three
+  shapes reached this way — `crash-cf49fe85` (a container's own note pushed to a line once
+  the pair line's slot was taken), `crash-c5b367d3` (23 bytes, a merge key's note re-homed
+  onto the pair it contributes), and every tag spelling on either shape. The writer now
+  closes the pending line by emitting the value's own null text (`k: !- ~`) before writing
+  a note line, which keeps the note where the AST has it; where a note can stay inline on
+  the pair line it does, unchanged from before. Where the two genuinely conflict — a
+  container note that must go on its own line *and* keep its owner — ownership is
+  sacrificed to the fixed point, and that case is now documented at the decision site
+  rather than assumed.
 - **A mapping's own note can no longer wander onto a bare-tag value's line** — when the
   pair that ends a block mapping's body has a value that renders as a lone `!` (the
   non-specific tag with no text), appending the container's inline note after that line

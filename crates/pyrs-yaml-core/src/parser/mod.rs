@@ -2299,18 +2299,18 @@ mod tests {
         assert_eq!(one, "a: b  # vv\n", "the value's own note wins");
     }
 
-    /// A note granit reports in a *container's* inline slot has to be written where a
-    /// reader reports it from. When the pair ending the body has a value with no text
-    /// (`:<TAB>!-<CR>... #-o` → a bare `!-`), the value stays pending to the scanner,
-    /// so a note line below it is handed back as that value's leading note — the shape
-    /// that made libFuzzer `yaml_roundtrip` crash-11ced252 settle only on its second
-    /// round. The first fix here wrote the note inline on the pair line instead
-    /// (`~: !-   # -o`), which settles for this document too; the uniform rule now
-    /// emits the shape a re-read reports, so one emission is enough — and note the
-    /// routed form is exactly what this test first recorded as round two's output.
-    /// Measured: inlining the note is stable only while the container holds a single
-    /// note; with two notes on the same shape every tag spelling drifted unless the
-    /// rule stopped keying on the tag (see `crash-cf49fe85`'s test in `serializer.rs`).
+    /// A note granit reports in a *container's* inline slot has to be written on a line
+    /// the reader reports inline notes from. With one note the pair line's trailing slot
+    /// serves: `:<TAB>!-<CR>... #-o` → `~: !-   # -o`, which re-reads with the note on the
+    /// key and settles in one round (libFuzzer `yaml_roundtrip` crash-11ced252).
+    ///
+    /// Asserting the inline form is a deliberate guard, because this shape has been
+    /// re-routed twice in pursuit of a rule that was too narrow: moving the note into the
+    /// value's leading slot also settles, but reassigns the note's owner for no gain, and
+    /// closing the tag line (`!- ~`) plus a note line oscillates — owner preservation and
+    /// a one-round fixed point are mutually exclusive here. What the two-note documents
+    /// genuinely need is `close_pending_tag_line` in the writer; that case is covered by
+    /// `crash-cf49fe85`'s test in `serializer.rs`, which pins every tag spelling.
     #[test]
     fn a_containers_inline_note_after_a_text_less_value_settles_at_once() {
         let src = ":\t!-\r... #-o\n";
@@ -2337,8 +2337,8 @@ mod tests {
 
         let one = crate::serializer::to_yaml(&node);
         assert_eq!(
-            one, "~:\n  # -o\n  !- \n",
-            "the note goes where a re-read reports it — inside the value with no text"
+            one, "~: !-   # -o\n",
+            "the container's note rides the pair line, whose slot is free here"
         );
         assert_eq!(
             one.matches('#').count(),
