@@ -9,8 +9,11 @@
 //! change, three consecutive pushes — each doing *strictly less work* than the
 //! previous one — reported −7.7%, −10.5% and −9.8% for the same benchmark set.
 //! `callgrind` instruction counts, by contrast, repeat to within 0.004% on the
-//! same binary, so a committed baseline can gate them with a one-percent
-//! tolerance and say something the wall-time number cannot.
+//! same binary, so a committed baseline can gate them with a real tolerance and
+//! say something the wall-time number cannot. The tolerance is not 0.1% either:
+//! instruction totals include the dynamic loader and malloc of the host image, so
+//! the same code measured +1.45% apart between two Linux images — see
+//! `DEFAULT_TOLERANCE` in `scripts/ir_gate.py`.
 //!
 //! # Method
 //!

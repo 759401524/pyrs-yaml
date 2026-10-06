@@ -19,7 +19,9 @@ status: new
 
 - **CI가 실제로 지킬 수 있는 명령 수 게이트** — `CodSpeed` 워크플로에
   `Instruction-count baseline` 잡이 추가되어 엔진의 핫패스를 *실행 명령 수*
-  (`callgrind` Ir)로 측정하고 `.ci/ir-baseline.json` 대비 1% 이상 증가하면 실패합니다.
+  (`callgrind` Ir)로 측정하고 `.ci/ir-baseline.json` 대비 2% 이상 증가하면 실패합니다(이 허용치는
+  두 Linux 이미지 사이에서 실측된 차이에 맞춰 보정했습니다—WSL에서 만든 기준값이 GitHub
+  runner에서 최대 +1.45%).
   필요한 이유: divan 스위트가 보고하는 wall-time 비교는 10% 미만에서 재현되지 않습니다—
   연속 세 번의 푸시가 매번 *더 적은* 작업만 했는데도 같은 기준 세트에서 −7.7%, −10.5%, −9.8%로
   판정됐습니다. Ir은 같은 바이너리에서 약 ±0.001%로 재현되므로 이 기준선은 의미를 갖고,

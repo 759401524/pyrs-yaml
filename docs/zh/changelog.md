@@ -19,7 +19,8 @@ status: new
 
 - **CI 真正守得住的指令数门禁** —— `CodSpeed` 工作流新增
   `Instruction-count baseline` 作业，用*计数指令*（`callgrind` Ir）测量引擎热路径，
-  相对 `.ci/ir-baseline.json` 上升超过百分之一即失败。之所以要它：divan 套件上报的
+  相对 `.ci/ir-baseline.json` 上升超过百分之二即失败——该容差按两种 Linux 镜像之间实测
+  的漂移校准（WSL 生成的基线在 GitHub runner 上最高 +1.45%）。之所以要它：divan 套件上报的
   wall-time 比较在十个点以内并不可复现——连续三次推送每次都比上一次*少做*工作，却被判
   −7.7%、−10.5%、−9.8%（同一组基准）。Ir 在同一二进制上复现精度约 ±0.001%，因此这条线
   是有意义的；整个门禁只花约六秒。用 `python scripts/ir_gate.py` 检查，用 `--update`

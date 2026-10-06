@@ -12,7 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An instruction-count gate the CI can actually hold** — the `CodSpeed`
   workflow now runs an `Instruction-count baseline` job that measures the engine's
   hot paths in *counted instructions* (`callgrind` Ir) and fails on more than a
-  one-percent rise over `.ci/ir-baseline.json`. It exists because the wall-time
+  two-percent rise over `.ci/ir-baseline.json` — that line calibrated to the drift
+  actually observed between two Linux images (a WSL-generated baseline checked on a
+  GitHub runner sat +1.45% on the most allocation-sensitive scenario). It exists because the wall-time
   comparison the divan suite reports is not reproducible below roughly ten
   percent: three consecutive pushes, each doing strictly *less* work than the one
   before, were scored −7.7%, −10.5% and −9.8% for the same benchmark set. Ir

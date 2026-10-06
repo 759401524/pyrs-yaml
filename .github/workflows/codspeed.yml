@@ -83,8 +83,9 @@ jobs:
   # effects is not reproducible: three consecutive pushes that each did strictly
   # less work reported -7.7%, -10.5% and -9.8% for the same benchmark set.
   # callgrind Ir repeats to ~0.001% on the same binary, so this job can hold a
-  # real one-percent line. Costs about six seconds of measurement; the build
-  # dominates. See scripts/ir_gate.py.
+  # real line — 2%, which is what the same code measured apart between two Linux
+  # images (+1.45% worst scenario: loader and malloc are counted too). Costs about
+  # six seconds of measurement; the build dominates. See scripts/ir_gate.py.
   ir:
     name: Instruction-count baseline
     runs-on: ubuntu-24.04
