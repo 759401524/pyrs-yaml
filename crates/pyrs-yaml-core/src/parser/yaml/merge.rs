@@ -758,6 +758,30 @@ mod tests {
         assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
     }
 
+    /// A fold that removes an entry also removes the anchor that entry *defined*, and
+    /// every alias still pointing at it then names a node the document no longer
+    /// contains. `<<: &b` — a literal, null-valued `<<`, which per our own rule is an
+    /// ordinary key — folded against the real merge `<<:` below it, so the emission
+    /// used `*b` without ever defining `&b`: text our own parser rejects
+    /// (`found unknown anchor`), breaking the "we never emit unparseable output"
+    /// contract (libFuzzer `yaml_roundtrip`, crash-43eca7a3, 18 bytes).
+    #[test]
+    fn a_folded_merge_entrys_anchor_survives_the_fold() {
+        for src in [
+            "\n<<: &b\n<<:\n <: *b",
+            "<<: &b\n<<: {k: *b}",
+            "i: &c 1\n<<: &b\n<<: {j: *b}\nk: *c",
+        ] {
+            let mut root = parse(src, YamlSchema::Core).unwrap();
+            resolve_merge_keys(&mut root);
+            let one = crate::serializer::to_yaml(&root);
+            let re = parse(&one, YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{src:?} expanded to unparseable {one:?}: {e}"));
+            let again = crate::serializer::to_yaml(&re);
+            assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
+        }
+    }
+
     /// A mapping can spell its merge key twice — once plain, once carrying a note —
     /// and `IndexMap` kept both while the merge pass addresses a single entry, so one
     /// pair vanished every round. Folding merge keys exactly like null keys is what

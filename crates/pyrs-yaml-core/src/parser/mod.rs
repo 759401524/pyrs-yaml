@@ -56,6 +56,92 @@ fn is_merge_key(key: &CustomNode) -> bool {
     matches!(key, CustomNode::Scalar { value, .. } if value.as_ref() == "<<")
 }
 
+/// Inline the nodes that defined anchors the duplicate-key fold removed.
+///
+/// A fold may only drop a pair, but a pair can *define* an anchor that aliases elsewhere
+/// in the same document still name. YAML resolves an alias against definitions inside
+/// the document, so a dropped definition turns every surviving `*name` into an
+/// unresolvable reference — the writer emits `<: *b` with no `&b` anywhere, and the
+/// text fails our own reader ("found unknown anchor"), which the engine promises never
+/// to produce. This AST is a value tree (an alias carries no identity beyond the node
+/// it names), so replacing each use with the anchored node preserves the value and puts
+/// the definition before it.
+///
+/// Only names with **no remaining definition** are inlined, so ordinary shared aliases
+/// are never touched, and the walk runs solely when a fold actually dropped an
+/// anchored entry — the common path pays nothing.
+fn repair_orphaned_anchors(root: &mut CustomNode, orphans: Vec<(String, CustomNode)>) {
+    if orphans.is_empty() {
+        return;
+    }
+    let mut defined = Vec::new();
+    collect_anchor_names(root, &mut defined);
+    let mut replacements = std::collections::HashMap::new();
+    for (name, node) in orphans {
+        if defined.contains(&name) || replacements.contains_key(&name) {
+            continue;
+        }
+        replacements.insert(name, node);
+    }
+    if !replacements.is_empty() {
+        inline_aliases(root, &replacements);
+    }
+}
+
+/// Every anchor name defined in `node`'s subtree, including keys' own.
+fn collect_anchor_names(node: &CustomNode, out: &mut Vec<String>) {
+    if let Some(name) = node.anchor() {
+        out.push(name.to_string());
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs.iter() {
+                collect_anchor_names(key, out);
+                collect_anchor_names(value, out);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                collect_anchor_names(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replace each `*name` value-alias in the subtree whose name is in `replacements`.
+///
+/// Mapping keys are deliberately not rewritten: swapping a key node changes the
+/// mapping's identity and order mid-iteration, and the fold that orphans an anchor never
+/// leaves an alias in a key slot pointing at the dropped definition (the surviving
+/// entry supplies the key). If a future finding lands that shape, it owes a deliberate
+/// key-slot rewrite with its own ordering proof — not a silent leave-behind here.
+fn inline_aliases(
+    node: &mut CustomNode,
+    replacements: &std::collections::HashMap<String, CustomNode>,
+) {
+    if let Some(replacement) = match node {
+        CustomNode::Alias { name } => replacements.get(name).cloned(),
+        _ => None,
+    } {
+        *node = replacement;
+        return;
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (_, value) in pairs.iter_mut() {
+                inline_aliases(value, replacements);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items.iter_mut() {
+                inline_aliases(item, replacements);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// 使用 granit-parser 解析 YAML 字符串为 `CustomNode` AST。
 ///
 /// # Arguments
@@ -441,6 +527,12 @@ struct AstReceiver<'a> {
     allow_duplicate_keys: bool,
     /// Stored duplicate key error (since on_event can't return Result)
     duplicate_key_error: Option<ParseError>,
+    /// Anchors defined by entries the duplicate-key fold removed, paired with the node
+    /// that carried them. An alias may still name one of these, and a definition that
+    /// left the tree cannot be re-added by the writer — `finish_document` inlines the
+    /// node at each remaining use so the emission never references an undefined anchor
+    /// (libFuzzer `yaml_roundtrip` crash-43eca7a3).
+    orphaned_anchors: Vec<(String, CustomNode)>,
     /// Whether any `<<` merge key was detected during parsing
     has_merge_key: bool,
     /// Set when a multi-line flow collection has a continuation line indented
@@ -532,6 +624,7 @@ impl<'a> AstReceiver<'a> {
             max_depth_exceeded: false,
             allow_duplicate_keys,
             duplicate_key_error: None,
+            orphaned_anchors: Vec::new(),
             has_merge_key: false,
             flow_indent_error: None,
         }
@@ -844,6 +937,15 @@ impl<'a> AstReceiver<'a> {
                             {
                                 for carried in [dropped_key, dropped_value] {
                                     orphans.extend(carried.leading_comments().iter().cloned());
+                                    if let Some(name) = carried.anchor() {
+                                        // The anchor's definition leaves the tree with this
+                                        // entry, so hold the node: an alias that still names it
+                                        // gets inlined at `finish_document`. Notes alone were
+                                        // re-homed here; an anchor was silently dropped, and the
+                                        // loss only shows as unparseable output, not as drift.
+                                        self.orphaned_anchors
+                                            .push((name.to_string(), carried.clone()));
+                                    }
                                     if let Some(inline) =
                                         carried.comment().filter(|c| !c.standalone)
                                     {
@@ -1059,6 +1161,8 @@ impl<'a> AstReceiver<'a> {
         for note in notes {
             node.push_leading_comment(note);
         }
+        let orphans = core::mem::take(&mut self.orphaned_anchors);
+        repair_orphaned_anchors(&mut node, orphans);
         node
     }
 

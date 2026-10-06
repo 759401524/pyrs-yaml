@@ -162,6 +162,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A folded duplicate `<<` no longer orphans the anchor it defined** — `<<: &b` is a
+  literal, null-valued merge key, which by our own rule is an ordinary key; it folded
+  against the real `<<:` below it, and the fold re-homed the dropped entry's notes but
+  not the anchor it carried. The emission then used `*b` with no `&b` anywhere in the
+  document — text our own parser refuses (`found unknown anchor`), breaking the "we
+  never emit unparseable output" contract (`crash-43eca7a3`, 18 bytes, minimised to 15
+  with a pre-fix binary, since a fixed input cannot be reduced). The receiver now holds
+  the dropped node and, at end-of-document, inlines it at every alias site whose name has
+  no remaining definition: ordinary shared aliases are untouched, and the walk runs only
+  when a fold actually removed an anchored entry, so the common path pays nothing.
+  `<<: &b LF <<: LF : *b` now emits `<<: ~ LF ~: &b ~` — stable in one round, same values.
+  One consequence stated plainly: an orphaned alias is replaced by the node it named, so
+  value semantics survive while the shared-identity spelling does not; there is no
+  identity left to share once the definition is gone.
 - **A block value made of nothing but line breaks no longer decays to empty** — `>+8\r\r#`
   reads as a folded scalar whose value is a single line break with `Keep` and an explicit
   indent of 8. The writer kept the indicator, emitting `>+8\n\n`, which re-reads as the
