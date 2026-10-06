@@ -136,6 +136,19 @@ struct Serializer {
     /// line from a nested mapping line - and consulted only by the writer that
     /// needs the slot (a container's own inline note).
     trailing_note_slot_open: bool,
+    /// A block mapping's own inline note, routed to the last pair's value as one more
+    /// leading note line because the pair's tail line cannot hold it: when that value
+    /// is a bare non-specific tag (a lone `!` with no text), a note appended after it
+    /// re-ingests as the *value's* leading note (the same YAML fact that shaped
+    /// #272's `key_note_at`), so keeping it inline makes the container lose the note on
+    /// re-read and the emission drift for one round (libFuzzer `yaml_roundtrip`,
+    /// crash-cf49fe85). Writing it where the reader would report it makes the first
+    /// emission the fixed point; the AST keeps the note on the container as parsed.
+    /// `None` unless the routing condition is met, so ordinary documents are untouched.
+    carried_container_note: Option<String>,
+    /// Set when `carried_container_note` was written, so the container's own note block
+    /// does not emit the same text a second time.
+    container_note_carried_out: bool,
 }
 
 /// Chomping actually written for a block scalar. A Clip-chomped value whose
@@ -325,6 +338,8 @@ impl Serializer {
             max_depth: options.max_depth,
             width: options.width,
             trailing_note_slot_open: false,
+            carried_container_note: None,
+            container_note_carried_out: false,
         }
     }
 
@@ -709,14 +724,55 @@ impl Serializer {
                     };
                     ka.cmp(kb)
                 });
-                for (key, value) in pairs_vec.iter().copied() {
-                    s.write_mapping_pair(key, value, indent_width, depth)?;
+                // After the sort, so it names the pair that actually ends the body; the
+                // hand-off again stays out of the loop (see the unsorted closure below).
+                let mut carry = if meta.comment.is_some() {
+                    Self::container_note_to_carry(meta, pairs_vec.last().map(|(_, v)| *v))
+                } else {
+                    None
+                };
+                if let Some(note) = carry.take() {
+                    // Rare path: hand the note to the pair that ends the body, which is
+                    // the last one in this sorted order.
+                    let head_len = pairs_vec.len().saturating_sub(1);
+                    for (key, value) in pairs_vec[..head_len].iter().copied() {
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
+                    if let Some((key, value)) = pairs_vec.last().copied() {
+                        s.carried_container_note = Some(note);
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
+                } else {
+                    for (key, value) in pairs_vec.iter().copied() {
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
                 }
                 Ok(())
             },
             |s| {
-                for (key, value) in pairs.iter() {
-                    s.write_mapping_pair(key, value, indent_width, depth)?;
+                // The routed note is rare (a block mapping that owns an inline note AND
+                // ends on a bare-tag value), so it gets its own loop shape: the
+                // overwhelming majority of mappings keep the original single loop
+                // verbatim. Splitting the hot loop unconditionally cost `serialize_small`
+                // ~1.3% of instructions, which the committed gate rejected.
+                let carry = if meta.comment.is_some() {
+                    Self::container_note_to_carry(meta, pairs.last().map(|(_, v)| v))
+                } else {
+                    None
+                };
+                if let Some(note) = carry {
+                    let head_len = pairs.len().saturating_sub(1);
+                    for (key, value) in pairs.iter().take(head_len) {
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
+                    if let Some((key, value)) = pairs.last() {
+                        s.carried_container_note = Some(note);
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
+                } else {
+                    for (key, value) in pairs.iter() {
+                        s.write_mapping_pair(key, value, indent_width, depth)?;
+                    }
                 }
                 Ok(())
             },
@@ -866,6 +922,7 @@ impl Serializer {
 
             if let Some(c) = &meta.comment
                 && !c.standalone
+                && !self.container_note_carried_out
             {
                 // A note in a container's *inline* slot has to land on a line the
                 // reader reports inline notes from. Writing it as a line of its own
@@ -890,6 +947,7 @@ impl Serializer {
                 } else {
                     self.write_note_line(indent_width, &c.text);
                 }
+                self.container_note_carried_out = false;
             }
         }
         Ok(())
@@ -963,6 +1021,50 @@ impl Serializer {
             ScalarStyle::Literal => self.write_literal_scalar(value, block, block_base),
             ScalarStyle::Folded => self.write_folded_scalar(value, block, block_base),
         }
+    }
+
+    /// A scalar that renders as a bare non-specific tag with no text (`!` alone), the
+    /// measured shape in which a note appended after the line re-ingests somewhere
+    /// other than the container that owned it. Deliberately narrow: a *named* tag
+    /// (`!-`) renders as a closed property and its inline note re-reads back to the
+    /// container — pinned by crash-11ced252 / crash-22cb5f67, whose emission must NOT be
+    /// rewritten here — and an anchor-only tail (`&a`) has not been measured, so it
+    /// keeps the old behaviour until a finding says otherwise.
+    fn is_bare_tag_only_scalar(node: &CustomNode) -> bool {
+        matches!(
+            node,
+            CustomNode::Scalar { value, style: ScalarStyle::Plain, meta, .. }
+                if value.is_empty()
+                    && meta.anchor.is_none()
+                    && meta.tag.as_ref().is_some_and(|t| t.handle.is_empty() && t.suffix == "!")
+        )
+    }
+
+    /// The container's own inline note, when it must be routed to the **last emitted**
+    /// pair's value (see [`Serializer::carried_container_note`]). The caller passes the
+    /// value of the pair that ends the body, which is not the insertion-order last one
+    /// once `sort_keys` has reordered the pairs — the note rides the final line, so that
+    /// is the line the test has to look at.
+    ///
+    /// Computed **once per mapping**: the per-pair version of this test measured
+    /// `+2.75%` on `serialize_small` and `+3.90%` on `serialize_anchors`, and the
+    /// committed instruction-count gate rejected it — inside the loop the check is one
+    /// integer comparison, not a match on every pair. Callers also guard on
+    /// `meta.comment.is_some()` **before** the call, because `pairs.last()` is an argument:
+    /// evaluating it unconditionally cost the mappings that have no note at all — almost
+    /// all of them — and kept `serialize_small` at `+1.39%` after the hoisting above.
+    fn container_note_to_carry(meta: &NodeMeta, last_value: Option<&CustomNode>) -> Option<String> {
+        // Cheapest test first, for the same reason as the hoisting below: a container
+        // with no inline note is the overwhelmingly common case, and letting the tag
+        // comparison run in front of that test kept `serialize_small` at +1.90% — inside
+        // tolerance locally, but only ~0.1pp from the limit the runner's ~1.45% drift
+        // has to share. Reordering took it back to the gate's noise.
+        let note = meta.comment.as_ref().filter(|c| !c.standalone)?;
+        let value = last_value?;
+        if !Self::is_bare_tag_only_scalar(value) {
+            return None;
+        }
+        Some(note.text.to_string())
     }
 
     /// Write one `key: value` pair of a block mapping, including indentation,
@@ -1084,6 +1186,9 @@ impl Serializer {
         ) && !Self::is_empty_container(value))
             || is_complex_key
             || (value.leading_comment().is_some() && !Self::is_empty_container(value))
+            // The routed container note needs the value's own line to sit below the key,
+            // exactly as a leading note of the value's does.
+            || self.carried_container_note.is_some()
         {
             // Write a block container's anchor/tag after the colon: only
             // block-style Mapping / Sequence suppress their own header in
@@ -1122,6 +1227,10 @@ impl Serializer {
             self.output.push('\n');
             key_note_at = Some(self.output.len() - 1);
             let child_indent = indent_width + self.indent_mapping;
+            if let Some(text) = self.carried_container_note.take() {
+                self.write_note_line(child_indent, &text);
+                self.container_note_carried_out = true;
+            }
             self.serialize_node_internal(value, child_indent, child_indent, true, depth + 1)?;
         } else {
             self.output.push(' ');
@@ -2222,6 +2331,78 @@ mod tests {
             CustomNode::Scalar { value, .. } => value,
             other => panic!("expected a scalar document root, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_note_after_a_tag_only_value_settles_in_one_round() {
+        // libFuzzer `yaml_roundtrip`, crash-cf49fe85: a block mapping's own inline note
+        // was appended after the line its last pair ends on, and when that value is a
+        // property-only scalar (a bare `!`) a reader reports the note as the *value's*
+        // leading note. The container then loses it on re-read and the document settles
+        // one round late — the idempotence assertion's exact shape:
+        // `~: ! # -\n# -\n` -> `~:  # -\n  # -\n  ! \n` -> stable.
+        //
+        // The note is written where a reader will report it from, so the first emission
+        // is the fixed point. Read from the committed seed so the test cannot drift from
+        // the bytes that crashed; the extra shapes keep it from over-fitting to the
+        // carriage returns.
+        let artifact =
+            include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-cf49fe85.seed");
+        let seed = String::from_utf8(artifact.to_vec()).expect("seed is valid utf-8");
+        for src in [
+            seed.as_str(),
+            "a: 1\nb: !\n# tail\n",
+            "p: ! # own\n",
+            "q: !x\n# z\n",
+        ] {
+            let node = crate::parser::parse(src, crate::parser::yaml::YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{src:?} does not parse: {e}"));
+            let one = crate::serializer::to_yaml(&node);
+            let re = crate::parser::parse(&one, crate::parser::yaml::YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{src:?} emitted unparseable {one:?}: {e}"));
+            let again = crate::serializer::to_yaml(&re);
+            assert_eq!(
+                again, one,
+                "{src:?} did not settle in one round: {one:?} -> {again:?}"
+            );
+        }
+
+        // Both `-` notes survive the re-homing (note survival as a class is owned by
+        // `tests/note_survival.rs`, which replays this seed too; this pins the shape).
+        let node = crate::parser::parse(":\t! #-\r... #-", crate::parser::yaml::YamlSchema::Core)
+            .expect("seed parses");
+        let one = crate::serializer::to_yaml(&node);
+        assert_eq!(
+            one.matches("# -").count(),
+            2,
+            "a note was dropped or duplicated by the re-homing: {one:?}"
+        );
+
+        // The sorted writer emits in a different order than the source, so "the pair
+        // that ends the body" is not "the last pair in insertion order": with the
+        // tag-only value written first and `sort_keys` on, only the sorted view puts the
+        // note where a reader will report it from. Taking the insertion-order last pair
+        // here drifts.
+        let src = "b: !\na: 1\n# tail\n";
+        let opts = SerializeOptions {
+            sort_keys: true,
+            ..Default::default()
+        };
+        let node = crate::parser::parse(src, crate::parser::yaml::YamlSchema::Core)
+            .unwrap_or_else(|e| panic!("{src:?} does not parse: {e}"));
+        let one = crate::serializer::to_yaml_with_options(&node, &opts).expect("serialize");
+        let re = crate::parser::parse(&one, crate::parser::yaml::YamlSchema::Core)
+            .unwrap_or_else(|e| panic!("{src:?} emitted unparseable {one:?}: {e}"));
+        let again = crate::serializer::to_yaml_with_options(&re, &opts).expect("serialize");
+        assert_eq!(
+            one.matches("# tail").count(),
+            1,
+            "the container note did not survive the sorted writer: {one:?}"
+        );
+        assert_eq!(
+            again, one,
+            "sorted emission did not settle: {one:?} -> {again:?}"
+        );
     }
 
     /// An empty block body cannot carry a chomping indicator: granit reports the

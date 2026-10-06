@@ -153,6 +153,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A mapping's own note can no longer wander onto a bare-tag value's line** — when the
+  pair that ends a block mapping's body has a value that renders as a lone `!` (the
+  non-specific tag with no text), appending the container's inline note after that line
+  re-ingests as the *value's* leading note, so the container loses it on re-read and the
+  document settled one round late (`~: ! # -` → `~:  # -\n  # -\n  ! `, libFuzzer
+  `yaml_roundtrip`, `crash-cf49fe85`, minimised to 13 bytes). The writer now places the
+  note where a reader will report it from, so a single emission is the fixed point and
+  the AST keeps the note on the container as parsed. A *named* tag (`!-`) closes its
+  property and re-reads correctly with the note inline, so it is untouched — the two
+  existing pins for that shape (`crash-11ced252`, `crash-22cb5f67`) still assert their
+  original text. Cost after three rejections by the instruction-count gate: `+2.75%` on
+  `serialize_small` when the test ran per pair, `+1.39%` with the check hoisted but its
+  argument evaluated eagerly, `+0.54%` once the rare routing got its own loop and the
+  common one kept the original shape.
 - **A folded duplicate `<<` no longer orphans the anchor it defined** — `<<: &b` is a
   literal, null-valued merge key, which by our own rule is an ordinary key; it folded
   against the real `<<:` below it, and the fold re-homed the dropped entry's notes but
