@@ -36,6 +36,21 @@ BASELINE = REPO / ".ci" / "ir-baseline.json"
 CRATE = "pyrs-yaml-core"
 BENCH = "ir_gate"
 
+# Calibrated, not arbitrary. Repeat precision on one machine is ~0.001% (worst
+# ±5,000 instructions on a 358M scenario), but the *machine* is part of the
+# measurement: the dynamic loader, malloc and valgrind itself are counted, and
+# those come from the OS image, not from rustc. A baseline generated in WSL
+# (Ubuntu 24.04, glibc from that image) and checked on a GitHub runner measured
+# +1.45% on `serialize_block_scalars` — the most allocation-sensitive scenario —
+# while every other scenario stayed inside 1%. A 1% line therefore fails on
+# identical code run elsewhere, which is a broken gate, not a real regression.
+# 2% absorbs the observed drift while staying far tighter than the wall-time
+# channel it replaces (that one swung ±3 percentage points on its own).
+#
+# The proper fix is to generate baselines in the environment that enforces them;
+# until then the tolerance lives in the baseline file so both travel together.
+DEFAULT_TOLERANCE = 0.02
+
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     """Never `shell=True`: argument quoting has burned this project before."""
@@ -122,7 +137,10 @@ def main() -> int:
     ap.add_argument("--update", action="store_true", help="rewrite the baseline")
     ap.add_argument("--only", action="append", default=[], help="scenario filter")
     ap.add_argument(
-        "--tolerance", type=float, default=0.01, help="allowed growth over baseline (fraction, default 1%%)"
+        "--tolerance",
+        type=float,
+        default=None,
+        help="allowed growth over baseline; defaults to the baseline's tolerance_hint",
     )
     ap.add_argument("--report-only", action="store_true", help="print measurements, never fail")
     args = ap.parse_args()
@@ -136,7 +154,11 @@ def main() -> int:
 
     if args.update:
         BASELINE.parent.mkdir(exist_ok=True)
-        payload = {"toolchain": toolchain, "tolerance_hint": args.tolerance, "scenarios": measured}
+        payload = {
+            "toolchain": toolchain,
+            "tolerance_hint": args.tolerance if args.tolerance is not None else DEFAULT_TOLERANCE,
+            "scenarios": measured,
+        }
         BASELINE.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(f"wrote {BASELINE.relative_to(REPO)} ({len(measured)} scenarios)")
         return 0
@@ -152,6 +174,10 @@ def main() -> int:
         return 0
 
     failures: list[str] = []
+    # The tolerance travels with the baseline: a hint recorded at generation time
+    # is what the enforcing run should honour, otherwise a change to either file
+    # silently re-tunes the gate.
+    tol = args.tolerance if args.tolerance is not None else float(ref.get("tolerance_hint", DEFAULT_TOLERANCE))
     if ref.get("toolchain") != toolchain:
         failures.append(
             f"toolchain changed: baseline recorded on {ref.get('toolchain')!r}, "
@@ -166,8 +192,8 @@ def main() -> int:
             continue
         growth = (ir - base) / base
         print(f"{s:26} {base:13,} {ir:13,} {growth:+9.2%}")
-        if growth > args.tolerance:
-            failures.append(f"{s}: +{growth:.2%} over baseline (tolerance {args.tolerance:.2%})")
+        if growth > tol:
+            failures.append(f"{s}: +{growth:.2%} over baseline (tolerance {tol:.2%})")
 
     if failures:
         print("\n" + "\n".join(f"FAIL  {f}" for f in failures))
