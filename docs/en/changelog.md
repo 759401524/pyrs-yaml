@@ -162,6 +162,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A block value made of nothing but line breaks no longer decays to empty** — `>+8\r\r#`
+  reads as a folded scalar whose value is a single line break with `Keep` and an explicit
+  indent of 8. The writer kept the indicator, emitting `>+8\n\n`, which re-reads as the
+  same value but as `Clip` with no indicator; the next round then wrote `>\n\n`, whose
+  value is `""` — Clip strips trailing breaks, so the one break the value consists of had
+  nowhere to live. The two rules that make an *empty* body idempotent (drop the
+  unrecoverable indentation indicator; write the chomping that re-reads the same) were
+  keyed on emptiness, and an all-break body is not empty (libFuzzer `yaml_roundtrip`,
+  `crash-2f6b1eff`, 6 bytes — already minimal: the input no longer crashes, so `tmin`
+  cannot shrink it). Both writers now treat "no content line" as the shared condition, the
+  shape reaches a fixed point in one round, and the value survives it. Cost: the first version scanned the value a second time and measured +0.65% on
+  `serialize_block_scalars` - +2.11% on the runner, over the instruction-count gate's 2%
+  tolerance, so the gate caught the change before merge. Sharing the writers' existing
+  first-content-line computation brings it to +0.15%, inside the gate.
 - **A merge key can no longer move an anchor behind its alias** — expanding `<<:`
   prepended the merged pairs at the front of the mapping, so a document that defines
   `&b` on an earlier own key and uses `*b` inside the merged map emitted `*b` before
