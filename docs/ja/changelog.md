@@ -139,6 +139,18 @@ status: new
 
 #### 修正
 
+- **tag のみの値の後ろの note が、どの tag の綴りでも 1 ラウンドで落ち着くようになった** —
+  `crash-cf49fe85` のために足した規則は non-specific tag の `!` だけを見ていた。根拠は
+  「named tag なら行内 note は container に読み戻される」という読みだったが、同じ二つ
+  note の形状で直接測ると `!-`・`!:`・`!x`・`!!str` も `!` と同じく漂う（それぞれ
+  `~: <tag>   # -` を出した上の note 行を、reader がまだ途中の値へ渡す）。そこで判定は
+  tag の綴りではなく行を見る形になった — tag を持つ空の plain scalar、より小さく、かつ
+  正しい。`!-` の古い行内テキストを記録していた特徴テスト 2 本（`crash-11ced252`、
+  `crash-22cb5f67`）は routed 側へ書き換えた：note の文言は同じ、やはり 1 件だけ、そして
+  routed の出力こそが両テスト自身が「2 ラウンド目」として記録していた形である。出力テキストの
+  変更はユーザーに見えるので明示する：`:␉!-␍... #-o` は `~: !-···# -o␎` ではなく
+  `~:␎··# -o␎··!-·␎` になる。4 つの seed corpus（5 / 64 / 6 / 5）はすべて clean に
+  再実行され、2 つの歴史的形状は不動点に届く — 今は 1 ラウンドで、2 ラウンドではなく。
 - **mapping 自身の note が裸の tag 値の行へ流れなくなった** — block mapping の body を終える
    pair の値が lone `!`（non-specific tag で本文なし）として出力される場合、container の
   inline note をその行に足すと再読時に *value* の leading note として報告され、container は
@@ -225,7 +237,7 @@ status: new
   leading コメントとして渡されるので、2 ラウンド目に値ブロックの内側へ移っていた。この走査はいま
   引用符と YAML の空白規則に従う（`line_has_comment_marker`）。よってコメントは `key:` と同じ行に載り、
   1 回の出力が不動点になる（`former-crash-22cb5f67.seed`、15 バイト、
-  `a_quoted_hash_does_not_demote_the_containers_note` と `comment_marker_scan_respects_quoting` が固定）。
+  `a_quoted_hash_key_settles_the_containers_note_at_once` と `comment_marker_scan_respects_quoting` が固定）。
   新しい走査を取り除くと、赤くなるのはこの 1 件のテストだけだ。
 - **タグ付きコンテナが最初の条目のマーカーの柱にあるコメントをすべて巻き上げる** — ヘッダー行の下から
   コメントを追い出すあの巻き上げは、最初のキー*自身*の leading 積みしか読まなかった。だから本体の中の
@@ -274,7 +286,7 @@ status: new
   まさに granit が読み戻して報告する位置である。スロットの所有権は出力テキストから推測せず行を
   書く箇所で記録するため、次の 3 つの場合は借用を拒否する：ブロックスカラー本文の行（追記すると
   内容になる）、折り返しの継続行、すでにコメントを持つ行。
-  `a_containers_inline_note_lands_on_the_last_value_line` が許可側を、
+  `a_containers_inline_note_after_a_text_less_value_settles_at_once` が許可側を、
   `a_block_scalar_body_never_borrows_the_containers_note` が拒否側を固定する；ミューテーション
   検査（追記を元に戻す）では前者だけが赤くなり、ほかの 274 件は緑のまま。TOML ハブを経由すると
   記録済みの境界も締まった：`[sec] # note` はもはやドキュメント先頭へ逃げず、自分の表の中に留まり、

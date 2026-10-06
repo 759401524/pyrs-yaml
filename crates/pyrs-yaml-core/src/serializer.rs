@@ -1023,20 +1023,32 @@ impl Serializer {
         }
     }
 
-    /// A scalar that renders as a bare non-specific tag with no text (`!` alone), the
-    /// measured shape in which a note appended after the line re-ingests somewhere
-    /// other than the container that owned it. Deliberately narrow: a *named* tag
-    /// (`!-`) renders as a closed property and its inline note re-reads back to the
-    /// container — pinned by crash-11ced252 / crash-22cb5f67, whose emission must NOT be
-    /// rewritten here — and an anchor-only tail (`&a`) has not been measured, so it
-    /// keeps the old behaviour until a finding says otherwise.
-    fn is_bare_tag_only_scalar(node: &CustomNode) -> bool {
+    /// A scalar with no text that carries a tag — so its line ends on the tag itself
+    /// and the value is still "pending" to the scanner: any note line written after it
+    /// is reported as that value's leading note, whoever owned it in the AST.
+    ///
+    /// Not keyed on the tag spelling. Measured over the shape `:` TAB `<tag>` SP `#-`
+    /// CR `...` SP `#-` (the two-note arrangement crash-cf49fe85 came from), only the
+    /// routed form settles, and today only `!` is routed:
+    ///
+    /// | tag | settles today? |
+    /// | --- | --- |
+    /// | `!` | yes |
+    /// | `!-` | no |
+    /// | `!:` / `!x` / `!!str` | no |
+    ///
+    /// `!-` looks healthy on its own — the *single*-note shape behind the
+    /// `crash-11ced252` / `crash-22cb5f67` pins re-reads its inline note back to the
+    /// container — which is why the first cut of this rule whitelisted `!` alone, and
+    /// why that was wrong: the property is about the line, not about the tag. An
+    /// anchor-plus-tag value (`&a !`) swallows the note too, so the anchor is not part
+    /// of the test; an anchor-only value writes its own text (`&a ~`) and never
+    /// leaves a pending value behind.
+    fn is_text_less_tagged_scalar(node: &CustomNode) -> bool {
         matches!(
             node,
             CustomNode::Scalar { value, style: ScalarStyle::Plain, meta, .. }
-                if value.is_empty()
-                    && meta.anchor.is_none()
-                    && meta.tag.as_ref().is_some_and(|t| t.handle.is_empty() && t.suffix == "!")
+                if value.is_empty() && meta.tag.is_some()
         )
     }
 
@@ -1061,7 +1073,7 @@ impl Serializer {
         // has to share. Reordering took it back to the gate's noise.
         let note = meta.comment.as_ref().filter(|c| !c.standalone)?;
         let value = last_value?;
-        if !Self::is_bare_tag_only_scalar(value) {
+        if !Self::is_text_less_tagged_scalar(value) {
             return None;
         }
         Some(note.text.to_string())
@@ -2378,6 +2390,24 @@ mod tests {
             "a note was dropped or duplicated by the re-homing: {one:?}"
         );
 
+        // The rule is about the line, not the tag spelling. Measured over the shape
+        // `crash-cf49fe85` came from, `!-`, `!:`, `!x` and `!!str` all drifted while
+        // only `!` settled — which is what the tag whitelist got wrong.
+        for tag in ["!", "!-", "!:", "!x", "!!str"] {
+            let src = format!(":\t{tag} #-\r... #-\n");
+            let node = crate::parser::parse(&src, crate::parser::yaml::YamlSchema::Core)
+                .unwrap_or_else(|e| panic!("{src:?} does not parse: {e}"));
+            let one = crate::serializer::to_yaml(&node);
+            let again = crate::serializer::to_yaml(
+                &crate::parser::parse(&one, crate::parser::yaml::YamlSchema::Core)
+                    .unwrap_or_else(|e| panic!("{src:?} emitted unparseable {one:?}: {e}")),
+            );
+            assert_eq!(
+                again, one,
+                "tag {tag:?} did not settle in one round: {one:?} -> {again:?}"
+            );
+        }
+
         // The sorted writer emits in a different order than the source, so "the pair
         // that ends the body" is not "the last pair in insertion order": with the
         // tag-only value written first and `sort_keys` on, only the sorted view puts the
@@ -2781,20 +2811,27 @@ mod tests {
         .unwrap()
     }
 
-    /// libFuzzer `yaml_roundtrip` crash-22cb5f67 (15 bytes): the document's own
-    /// inline note has to land on the line just written, and a `#` that is only
-    /// *text* inside a quoted key used to refuse that, demoting the note to a line
-    /// of its own which the reader then hands to the next node — so the emission
-    /// needed two rounds to settle. Asserted exactly, because the refusal was the
-    /// regression and the spelling is what proves the slot was used.
+    /// libFuzzer `yaml_roundtrip` crash-22cb5f67 (15 bytes): a `#` that is only *text*
+    /// inside a quoted key used to refuse the note slot, which stranded the document's
+    /// own inline note on a line the reader hands to the next node — so the emission
+    /// needed two rounds to settle. The slot question is now answered uniformly (a note
+    /// after a text-less value goes inside that value, where a re-read reports it), so
+    /// what this test owes is the original property: the quoted `#` costs nothing, the
+    /// note appears exactly once, and one emission is the fixed point. Asserted exactly,
+    /// because the emission text is the proof.
     #[test]
-    fn a_quoted_hash_does_not_demote_the_containers_note() {
+    fn a_quoted_hash_key_settles_the_containers_note_at_once() {
         let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-22cb5f67.seed");
         let src = std::str::from_utf8(raw).expect("seed is utf-8");
         let one = to_yaml(&parse_core(src));
         assert_eq!(
-            one, "\"+#\": !-   # -o\n",
-            "the note must ride the pair line, not open a line of its own"
+            one, "\"+#\":\n  # -o\n  !- \n",
+            "the note goes where a re-read reports it, not onto the pending tag line"
+        );
+        assert_eq!(
+            one.matches('#').count(),
+            2,
+            "the quoted `#` in the key plus exactly one note, no duplication: {one:?}"
         );
         assert_eq!(
             to_yaml(&parse_core(&one)),

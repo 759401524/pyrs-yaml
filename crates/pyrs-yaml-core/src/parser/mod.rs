@@ -737,12 +737,18 @@ impl<'a> AstReceiver<'a> {
     ///
     /// A container root keeps the inline home, because there the reader really does
     /// report the note back from the last line of the body: `a: 1\n# trailing note`
-    /// and `"+#":\t!-\r... #-o` both ingest inline, both emit `…  # note` on that last
-    /// value line, and both re-read identically — the shapes `flush_trailing_comment`
-    /// was written for (crash-96fa252c) and the pins
-    /// `a_containers_inline_note_lands_on_the_last_value_line` /
-    /// `a_quoted_hash_does_not_demote_the_containers_note` hold. Refusing there would
-    /// trade a settled shape for a relocated one.
+    /// ingests inline, emits `…  # note` on that last value line and re-reads
+    /// identically — the shape `flush_trailing_comment` was written for
+    /// (crash-96fa252c). Refusing there would trade a settled shape for a relocated
+    /// one. That stops holding when the body's last value carries no text (`!`, `!-`,
+    /// any tag): the scanner leaves that value pending, so a note sitting on the pair
+    /// line re-reads as the *value's* leading note — and the writer emits it there
+    /// instead of on the line, which is the routed half of
+    /// `Serializer::carried_container_note`. Pinned by
+    /// `a_containers_inline_note_after_a_text_less_value_settles_at_once` and
+    /// `a_quoted_hash_key_settles_the_containers_note_at_once`, whose `"+#"` document is
+    /// exactly that case; both tests first recorded the routed form as *round two's*
+    /// output, which is how the rule was found.
     fn attach_inline_comment(&mut self, text: Arc<str>, comment_byte: usize) -> bool {
         if self.document_ended
             && !matches!(
@@ -2293,16 +2299,20 @@ mod tests {
         assert_eq!(one, "a: b  # vv\n", "the value's own note wins");
     }
 
-    /// A note granit reports in a *container's* inline slot has to be written on a
-    /// line the reader reports inline notes from. Emitting it as a line of its own
-    /// does not survive a re-read: a bare note below a block is handed back as the
-    /// leading note of the node that ended the block, so the first emission never
-    /// reached a fixed point — `:<TAB>!-<CR>... #-o` wrote `~: !- \n# -o\n` and the
-    /// next round moved that note inside the value block as `~:\n  # -o\n  !- \n`
-    /// (libFuzzer `yaml_roundtrip` crash-11ced252, 13 bytes, the smallest member of
-    /// the open relocation family).
+    /// A note granit reports in a *container's* inline slot has to be written where a
+    /// reader reports it from. When the pair ending the body has a value with no text
+    /// (`:<TAB>!-<CR>... #-o` → a bare `!-`), the value stays pending to the scanner,
+    /// so a note line below it is handed back as that value's leading note — the shape
+    /// that made libFuzzer `yaml_roundtrip` crash-11ced252 settle only on its second
+    /// round. The first fix here wrote the note inline on the pair line instead
+    /// (`~: !-   # -o`), which settles for this document too; the uniform rule now
+    /// emits the shape a re-read reports, so one emission is enough — and note the
+    /// routed form is exactly what this test first recorded as round two's output.
+    /// Measured: inlining the note is stable only while the container holds a single
+    /// note; with two notes on the same shape every tag spelling drifted unless the
+    /// rule stopped keying on the tag (see `crash-cf49fe85`'s test in `serializer.rs`).
     #[test]
-    fn a_containers_inline_note_lands_on_the_last_value_line() {
+    fn a_containers_inline_note_after_a_text_less_value_settles_at_once() {
         let src = ":\t!-\r... #-o\n";
         let node = parse(src, YamlSchema::Core).expect("input parses");
         let CustomNode::Mapping { pairs, meta, .. } = &node else {
@@ -2327,8 +2337,8 @@ mod tests {
 
         let one = crate::serializer::to_yaml(&node);
         assert_eq!(
-            one, "~: !-   # -o\n",
-            "the note borrows the last value line — the one slot a re-read reports it from"
+            one, "~:\n  # -o\n  !- \n",
+            "the note goes where a re-read reports it — inside the value with no text"
         );
         assert_eq!(
             one.matches('#').count(),
