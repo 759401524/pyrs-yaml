@@ -68,10 +68,10 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
         root: CowTable::new(),
         current: Vec::new(),
         defined: Vec::new(),
-        pending_leading: None,
+        pending_leading: Vec::new(),
         pending_blank: false,
         dialect,
-        pending_inline_comment: None,
+        pending_inline_comment: Vec::new(),
         pending_comment_err: None,
         dotted_defined: Vec::new(),
     };
@@ -115,13 +115,13 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
     // `# …` line survives the round trip. Non-empty documents keep their
     // notes on keys and leave document-trailing comments unattributed (the
     // writer never emits those, so their fixed point is unaffected).
-    if matches!(&node, CustomNode::Mapping { pairs, .. } if pairs.is_empty())
-        && let Some(text) = p.pending_leading.take()
-    {
-        node.set_leading_comment(pyrs_ast::ast::Comment {
-            text: alloc::sync::Arc::from(text.as_str()),
-            standalone: true,
-        });
+    if matches!(&node, CustomNode::Mapping { pairs, .. } if pairs.is_empty()) {
+        for text in core::mem::take(&mut p.pending_leading) {
+            node.push_leading_comment(pyrs_ast::ast::Comment {
+                text: alloc::sync::Arc::from(text.as_str()),
+                standalone: true,
+            });
+        }
     }
     Ok(node)
 }
@@ -138,11 +138,13 @@ struct Parser<'a> {
     current: Vec<String>,
     /// Explicit-header paths already opened. Reopening is a duplicate error.
     defined: Vec<String>,
-    /// The most-recent standalone `# ...` comment on a line of its own.
-    /// Consumed by the next KV pair or table header as its `leading`;
-    /// earlier blocks separated by blank lines are dropped so only the
-    /// last block survives (matches the YAML receiver's model).
-    pending_leading: Option<String>,
+    /// The standalone `# ...` comments seen on lines of their own since the last
+    /// pair or header, in source order. All of them are claimed by the next KV
+    /// pair or table header as its leading notes: a stack of comment lines above a
+    /// key is ordinary input, and the `Option<String>` this replaces overwrote all
+    /// but the last — a silent loss the writer could never show, because the
+    /// shortened output round-tripped perfectly.
+    pending_leading: Vec<String>,
     /// True once `skip_all_blank` has crossed at least one blank line
     /// since the last real pair / header / EOF. Claimed by the next pair
     /// or header as its `blank_before` hint so the writer can reproduce
@@ -150,10 +152,11 @@ struct Parser<'a> {
     pending_blank: bool,
     /// Grammar dialect gate for A1 / A2 / A3 / A4 (PR #116).
     dialect: TomlDialect,
-    /// Most-recent `# ...` comment seen inside a multi-line inline
-    /// table on a line of its own. Claimed by the next member as its
-    /// `leading` annotation (PR #119 interior-comment fidelity).
-    pending_inline_comment: Option<String>,
+    /// `# ...` comments seen inside a multi-line inline table on a line of their
+    /// own, in source order. All of them are claimed by the next member as its
+    /// leading notes (PR #119 interior-comment fidelity, list-ified with the
+    /// stacked-comment fix).
+    pending_inline_comment: Vec<String>,
     /// First forbidden control-character found inside a comment body, held as a
     /// deferred error because `take_comment` is infallible (toml-test
     /// `invalid/control/comment-*`). Surfaced by the document entry point.
@@ -250,9 +253,9 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 Some(b' ') | Some(b'\t') => self.pos += 1,
                 Some(b'#') => {
-                    // Standalone comment line: remember the most recent
-                    // one so the next pair or header adopts it as its
-                    // leading. A comment runs to end-of-line, so the
+                    // Standalone comment line: append it to the stack the next
+                    // pair or header adopts as its leading notes. A comment runs to
+                    // end-of-line, so the
                     // newline that terminates it is the comment's own
                     // break, NOT a blank separator. Eat it here and
                     // reset the tally so only genuinely empty lines
@@ -262,7 +265,8 @@ impl<'a> Parser<'a> {
                     // feeds `key = v\n# lead\nkey = v` back through this
                     // parser, and the comment's terminator newline was
                     // being miscounted as a blank line.)
-                    self.pending_leading = Some(self.take_comment());
+                    let note = self.take_comment();
+                    self.pending_leading.push(note);
                     if self.peek() == Some(b'\n') {
                         self.pos += 1;
                     } else if self.peek() == Some(b'\r')
@@ -362,9 +366,9 @@ impl<'a> Parser<'a> {
             self.pos += 1;
             return Ok(());
         }
-        // Take ownership of the pending standalone comment block (if any)
+        // Take ownership of the pending standalone comment stack (if any)
         // so it becomes THIS pair's leading rather than the next one's.
-        let leading = self.pending_leading.take();
+        let leading = core::mem::take(&mut self.pending_leading);
         let blank = core::mem::take(&mut self.pending_blank);
         let key_start = self.pos;
         let key = self.parse_key_path()?;
@@ -385,10 +389,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_table_header(&mut self) -> Result<(), ParseError> {
-        // The pending standalone block sits ABOVE the header; take it
+        // The pending standalone stack sits ABOVE the header; take it
         // before parsing so it becomes this section's leading. `pending_blank`
         // travels through the same route to mark the section's blank separator.
-        let leading = self.pending_leading.take();
+        let leading = core::mem::take(&mut self.pending_leading);
         let blank = core::mem::take(&mut self.pending_blank);
         self.expect_byte(b'[', "expected `[`")?;
         let is_array = self.peek() == Some(b'[');
@@ -1117,7 +1121,7 @@ impl<'a> Parser<'a> {
             // `skip_inline_ws` into `pending_inline_comment`) is the
             // member's leading note. PR #119 plumbs it through the IR
             // so `to_toml` can reproduce interior comments.
-            let leading = self.pending_inline_comment.take();
+            let leading = core::mem::take(&mut self.pending_inline_comment);
             let key = self.parse_key_path()?;
             self.skip_inline_ws();
             self.expect_byte(b'=', "expected `=` in inline table")?;
@@ -1208,9 +1212,10 @@ impl<'a> Parser<'a> {
                     self.pos += 2;
                 }
                 Some(b'#') if self.dialect == TomlDialect::V1_1 => {
-                    // PR #119: remember the most recent own-line comment
-                    // so the next member adopts it as its leading note.
-                    self.pending_inline_comment = Some(self.take_comment());
+                    // PR #119: collect the own-line comments so the next member
+                    // adopts all of them as its leading notes.
+                    let note = self.take_comment();
+                    self.pending_inline_comment.push(note);
                 }
                 _ => return,
             }
@@ -1445,7 +1450,7 @@ impl<'a> Parser<'a> {
         key: &[String],
         is_array: bool,
         comment: Option<String>,
-        leading: Option<String>,
+        leading: Vec<String>,
         blank_before: bool,
     ) -> Result<(), ParseError> {
         let joined = key.join(".");

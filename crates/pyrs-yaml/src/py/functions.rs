@@ -257,8 +257,12 @@ pub(crate) fn from_json(_py: Python, json_str: &str) -> PyResult<String> {
 #[pyfunction]
 #[pyo3(signature = (json_str: "str") -> "str")]
 /// Convert a JSONC string (JSON with `//` and `/* ... */` comments) to
-/// a YAML string. Comments are stripped; everything else matches
-/// `from_json` semantics exactly.
+/// a YAML string. Comments are NOT discarded on this projection: since
+/// #112/#115 they ride the AST's `comment` / `leading_comment` slots (so
+/// `to_jsonc` can reproduce them), and the YAML writer renders those slots
+/// as `#` notes, which keeps the conversion lossless. Strictly a
+/// `//`-to-`#` change of syntax, not a change of language: everything else
+/// matches `from_json` semantics exactly.
 pub(crate) fn from_jsonc(_py: Python, json_str: &str) -> PyResult<String> {
     let node = pyrs_json::from_jsonc(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(
@@ -326,8 +330,8 @@ pub(crate) fn load_jsonc(py: Python, json_str: &str) -> PyResult<Py<PyAny>> {
 #[pyo3(signature = (json_str: "str") -> "str")]
 /// Convert a JSON5 string to a YAML string. JSON5 supersedes JSONC with
 /// trailing commas, single-quoted strings, unquoted identifier keys and
-/// the `0x…` / `.5` / `Infinity` / `NaN` numeric forms; comments are
-/// stripped for the YAML projection, matching `from_json` semantics.
+/// the `0x…` / `.5` / `Infinity` / `NaN` numeric forms; like `from_jsonc`,
+/// comments survive the projection as YAML notes rather than being dropped.
 pub(crate) fn from_json5(_py: Python, json_str: &str) -> PyResult<String> {
     let node = pyrs_json::from_json5(json_str).map_err(|e| {
         YamlParseError::new_err(format_i18n_error(

@@ -1,4 +1,4 @@
-use crate::ast::{Chomping, CustomNode, NodeMeta, ScalarStyle, Tag};
+use crate::ast::{Chomping, Comment, CustomNode, NodeMeta, ScalarStyle, Tag};
 use crate::error::{DepthError, SerializeError};
 use crate::parser::yaml::schema::core_type_is_non_string;
 use indexmap::IndexMap;
@@ -127,6 +127,15 @@ struct Serializer {
     max_depth: usize,
     /// Line width for wrapping (0 = no wrapping)
     width: usize,
+    /// True while the line just finished can still take a trailing note.
+    ///
+    /// A YAML line has exactly one trailing slot, so a note may be appended to a
+    /// line only when nothing has claimed it and the line is a value line rather
+    /// than a note line, a block-scalar body line, or a wrapped continuation.
+    /// Set where the line is written - the text alone cannot tell a block body
+    /// line from a nested mapping line - and consulted only by the writer that
+    /// needs the slot (a container's own inline note).
+    trailing_note_slot_open: bool,
 }
 
 /// Chomping actually written for a block scalar. A Clip-chomped value whose
@@ -135,7 +144,20 @@ struct Serializer {
 /// header form that re-reads to the same value at any position is Keep
 /// (`+`) — libFuzzer `yaml_roundtrip` crash-c18cb1fd. The promotion is a
 /// pure emit-side normalization: the AST keeps its parsed `Clip`.
+///
+/// An **empty** body writes as Clip whatever the AST claims, for the same reason
+/// the indentation indicator is dropped there: there is no content for the
+/// indicator to act on, so granit reports the default chomping when it re-reads
+/// the header. Writing `|+`/`>+` for an empty scalar therefore drifts to `|`/`>`
+/// on the next round — libFuzzer `yaml_roundtrip` crash-89d81d99 (`>+8\r#`, where
+/// the explicit indicator is exactly what makes the reader report `Keep` this once)
+/// and crash-b5dcc38f (`ancho: |+`). Nothing is lost: an empty body has no trailing
+/// break to keep or strip, so the three spellings denote the same value, and the
+/// AST keeps whatever was parsed.
 fn effective_chomping(value: &str, chomping: &Chomping) -> Chomping {
+    if value.is_empty() {
+        return Chomping::Clip;
+    }
     if matches!(chomping, Chomping::Clip) && value.ends_with("\n\n") {
         Chomping::Keep
     } else {
@@ -174,6 +196,53 @@ struct ContainerSkeleton<'a> {
     in_value_context: bool,
     open: char,
     close: char,
+    /// A stack of leading notes belonging to the container's first entry, lifted
+    /// above the anchor/tag header line this skeleton writes — see
+    /// [`first_entry_note`].
+    preamble_note: Option<&'a [Comment]>,
+}
+
+/// Whether a written line already holds a comment marker.
+///
+/// A `#` opens a comment only outside quoted scalars and only when preceded by
+/// the start of the line or whitespace; everywhere else it is ordinary text
+/// (`"+#"`, `!-#`). Walking the line with quote state is what separates the two,
+/// and the escape rules differ per quote style: `''` inside single quotes, a
+/// backslash inside double quotes.
+pub(crate) fn line_has_comment_marker(line: &[u8]) -> bool {
+    let (mut single, mut double, mut after_space) = (false, false, true);
+    let mut i = 0;
+    while i < line.len() {
+        let b = line[i];
+        if single {
+            if b == b'\'' {
+                if line.get(i + 1) == Some(&b'\'') {
+                    // `''` is an escaped quote, so it does not close the scalar.
+                    i += 2;
+                    continue;
+                }
+                single = false;
+            }
+        } else if double {
+            if b == b'\\' {
+                i += 2;
+                continue;
+            }
+            if b == b'"' {
+                double = false;
+            }
+        } else {
+            match b {
+                b'\'' => single = true,
+                b'"' => double = true,
+                b'#' if after_space => return true,
+                _ => {}
+            }
+        }
+        after_space = b == b' ' || b == b'\t';
+        i += 1;
+    }
+    false
 }
 
 /// Whether a block mapping can be emitted in the compact `- key: value`
@@ -241,6 +310,7 @@ impl Serializer {
             indent_sequence: options.indent_sequence,
             max_depth: options.max_depth,
             width: options.width,
+            trailing_note_slot_open: false,
         }
     }
 
@@ -286,39 +356,76 @@ impl Serializer {
     /// rejects the output ("while scanning a tag, did not find expected
     /// whitespace or line break") and the round trip is not idempotent (libFuzzer
     /// `yaml_roundtrip` crash-b91536ce, 7 bytes `!y5%7c `). Re-encoding on write
-    /// restores a spelling the reader accepts, and the encoding is deterministic
+    /// restores a readable spelling, and the encoding is deterministic
     /// so the second round emits the same bytes.
+    ///
+    /// The safe set depends on the *form* being emitted, because the reader uses
+    /// two different predicates; see [`Self::TAG_SHORTHAND_SAFE`] and
+    /// [`Self::TAG_VERBATIM_SAFE`].
     fn yaml_tag_text(tag: &Tag) -> String {
-        let suffix = Self::encode_tag_uri(&tag.suffix);
-        if tag.handle == "!" && tag.suffix.is_empty() {
-            String::from("!")
-        } else if tag.handle == "!!" {
-            format!("!!{suffix}")
-        } else if tag.handle == "!" {
-            format!("!{suffix}")
-        } else if tag.handle.is_empty() && tag.suffix != "!" {
-            format!("!<{suffix}>")
-        } else {
-            format!("{}{suffix}", tag.handle)
+        // granit spells the bare `!` tag as an empty handle with `!` as its
+        // suffix. Encoding that sentinel would yield `%21` — no leading `!`, so
+        // not a tag token at all — hence it keeps its own spelling.
+        if tag.suffix == "!" && tag.handle.is_empty() {
+            return String::from("!");
         }
+        // A verbatim `!<uri>` is scanned with `is_uri_char`, which tolerates flow
+        // indicators inside the URI, so they are re-emitted as they were read:
+        // `!<tag:yaml.org,2002:str>` must not degrade to a percent-spelled URI.
+        if tag.handle.is_empty() {
+            return format!(
+                "!<{}>",
+                Self::encode_tag_uri(&tag.suffix, Self::TAG_VERBATIM_SAFE)
+            );
+        }
+        if tag.suffix.is_empty() && tag.handle == "!" {
+            return String::from("!");
+        }
+        let suffix = Self::encode_tag_uri(&tag.suffix, Self::TAG_SHORTHAND_SAFE);
+        format!("{}{suffix}", tag.handle)
     }
 
-    /// Percent-encode everything outside the character set YAML tag URIs allow.
-    /// `%` is itself encoded, so a suffix carrying a literal percent re-reads as
-    /// the same text instead of starting a fresh escape.
-    fn encode_tag_uri(s: &str) -> String {
-        const SAFE: &[u8] = b"!$&'()*+,;=:@/?#[]-._~";
-        if s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || SAFE.contains(&b))
-        {
+    /// The characters granit's shorthand suffix scan accepts: `is_tag_char` is
+    /// `is_uri_char && !is_flow && c != '!'`. `,`, `[`, `]` and `!` *end* the scan,
+    /// and at flow level 0 the scanner then requires a blank, a line break or EOF,
+    /// so spelling them literally makes our own output unparseable
+    /// (`InvalidTagTerminator`). That is reachable without a hand-built AST: the
+    /// escape `!a%2cb` decodes to a suffix carrying a literal `,`, which the writer
+    /// used to emit raw (libFuzzer `yaml_roundtrip` crash-e92ce66f, 43 bytes
+    /// `!5yrrrrrrrrrrrrrrrrrr'rrrrrrrrrrrrrrrrr%2c `; the same root cause as
+    /// crash-a1516147 `!5%2cy7 `). `%` is absent because it introduces an escape,
+    /// `>`/`{`/`}` because they are not URI characters at all.
+    ///
+    /// Stored as a 128-entry membership table rather than a byte string: the scan
+    /// is per byte of every tag on every serialize, and a table lookup beats a
+    /// linear `slice::contains` (and folds the alphanumeric test into the same one
+    /// lookup).
+    const TAG_SHORTHAND_SAFE: &'static [bool; 128] = &safe_table(b"#$&'()*+/:;=?@-._~");
+
+    /// The characters a verbatim `!<uri>` accepts: granit's `is_uri_char` — the
+    /// shorthand set plus the flow indicators and `!`, all of which are legal
+    /// inside `<...>` and decode to themselves.
+    const TAG_VERBATIM_SAFE: &'static [bool; 128] = &safe_table(b"!#$&'()*+,;=:@/?[]-._~");
+
+    /// Percent-encode everything outside `safe`, the character set the reader
+    /// accepts for this tag form. `%` is always encoded, so a suffix carrying a
+    /// literal percent re-reads as the same text instead of starting a fresh
+    /// escape.
+    fn encode_tag_uri(s: &str, safe: &[bool; 128]) -> String {
+        if s.bytes().all(|b| lookup(safe, b)) {
             return s.to_string();
         }
         let mut out = String::with_capacity(s.len() + 8);
         for b in s.bytes() {
-            if b.is_ascii_alphanumeric() || SAFE.contains(&b) {
+            if lookup(safe, b) {
                 out.push(b as char);
             } else {
-                out.push_str(&format!("%{b:02x}"));
+                // Spelled out rather than `format!("%{b:02x}")`: that allocated a
+                // fresh String for *every* escaped byte, and tag suffixes are the
+                // one place where escapes are the common case, not the exception.
+                out.push('%');
+                out.push(ASCII_HEX[(b >> 4) as usize]);
+                out.push(ASCII_HEX[(b & 0x0f) as usize]);
             }
         }
         out
@@ -338,18 +445,69 @@ impl Serializer {
         }
     }
 
-    /// Emit a comment inline after an empty container token (`  # text`).
+    /// 写入一个空集合的行内注释（`  # text`）。
     ///
     /// Standalone notes on an empty container demote to inline (a bare
-    /// `{}` / `[]` on its own line is invalid YAML), so the writer
-    /// merges the container's `leading_comment` / `comment` slots here.
-    /// PR #117 keeps the semantics identical across both conventions:
-    /// `leading_comment()` normalises so a TOML-origin node's leading
-    /// note lands on the same line as its `{}`.
+    /// `{}` / `[]` on its own line is invalid YAML), so a note's home is that
+    /// single slot here. PR #117 keeps the semantics identical across both
+    /// conventions: `standalone_slot()` normalises so a TOML-origin node's
+    /// leading note lands on the same line as its `{}`.
     fn output_empty_node_comment(&mut self, meta: &NodeMeta) {
-        if let Some(c) = meta.standalone_slot().or_else(|| meta.inline_slot()) {
+        if let Some(c) = empty_slot_notes(meta).0 {
             self.output.push_str("  # ");
             self.output.push_str(&c.text);
+            self.trailing_note_slot_open = false;
+        } else {
+            self.trailing_note_slot_open = true;
+        }
+    }
+
+    /// Write a note as a line of its own.
+    fn write_note_line(&mut self, indent_width: usize, text: &str) {
+        self.write_indent(indent_width);
+        self.output.push_str("# ");
+        self.output.push_str(text);
+        self.output.push('\n');
+        // A note line has used its trailing slot, and a following note cannot
+        // share it.
+        self.trailing_note_slot_open = false;
+    }
+
+    /// True when the line just finished already carries a comment marker.
+    ///
+    /// The writer tracks slot ownership itself, so this only catches the shape it
+    /// cannot distinguish by state: a `#` that sits on the line as *text*. Raw
+    /// byte scanning read every `#` as a marker, so a quoted scalar holding one
+    /// (`"+#": !-`) looked already commented; the refusal then demoted the note to
+    /// a line of its own, and the reader hands such a line to the following node,
+    /// so the emission settled only on its second round (libFuzzer
+    /// `yaml_roundtrip` crash-22cb5f67, 15 bytes). Quoting decides what is text,
+    /// so quoting is what this checks — see [`line_has_comment_marker`].
+    fn tail_line_has_note(&self) -> bool {
+        let bytes = self.output.as_bytes();
+        let end = bytes.len().saturating_sub(1);
+        let start = bytes[..end]
+            .iter()
+            .rposition(|b| *b == b'\n')
+            .map_or(0, |i| i + 1);
+        line_has_comment_marker(&bytes[start..end])
+    }
+
+    /// Write the notes that cannot fit the single inline slot of an empty
+    /// container above its line, so a stack of them is never dropped.
+    ///
+    /// Only possible when the container genuinely starts a line: a value written
+    /// straight after `key: ` has no line left to preface, and text cannot produce
+    /// that shape with a note stack anyway (one inline slot per line). Measured
+    /// before this existed: a comment-only TOML document emitted `{}  # d1` and
+    /// lost `# d2` outright.
+    fn write_empty_slot_notes(&mut self, sk: &ContainerSkeleton<'_>) {
+        let (_, above) = empty_slot_notes(sk.meta);
+        if above.is_empty() || !(self.output.ends_with('\n') || self.output.is_empty()) {
+            return;
+        }
+        for note in above {
+            self.write_note_line(sk.indent_width, &note.text);
         }
     }
 
@@ -370,22 +528,21 @@ impl Serializer {
             return Err(SerializeError::MaxDepthExceeded(DepthError(self.max_depth)));
         }
 
-        // Handle standalone comments first (but not on empty containers,
-        // where a bare `{}`/`[]` on its own line would be invalid YAML —
-        // those comments are demoted to inline by the writer below).
-        // PR #117: `leading_comment()` normalises across the new
-        // `decor.leading_comment` slot (used by the native TOML and
+        // Handle standalone comments first (all of them, in source order — a
+        // stack of note lines above one key is ordinary, and printing only the
+        // first or only the last silently drops the rest), but not on empty
+        // containers, where a bare `{}`/`[]` on its own line would be invalid
+        // YAML — those comments are demoted to inline by the writer below.
+        // PR #117: `leading_comments()` normalises across the new
+        // `decor.leading_comments` slot (used by the native TOML and
         // JSON engines) and the older `comment(standalone = true)`
         // slot the YAML receiver still writes today, so a document
         // converted from TOML / JSON keeps its leading notes when
         // re-serialised as YAML.
-        if let Some(comment) = node.leading_comment()
-            && !Self::is_empty_container(node)
-        {
-            self.write_indent(indent_width);
-            self.output.push_str("# ");
-            self.output.push_str(&comment.text);
-            self.output.push('\n');
+        if !Self::is_empty_container(node) && node.has_notes() {
+            for comment in node.leading_comments() {
+                self.write_note_line(indent_width, &comment.text);
+            }
         }
 
         match node {
@@ -459,14 +616,22 @@ impl Serializer {
         if meta.anchor.is_some() || meta.tag.is_some() {
             self.write_anchor_tag(&meta.anchor, &meta.tag);
         }
+        let line_start = self.output.len();
         self.write_scalar(value, style, block, self.width, block_base);
+        let block_body = matches!(style, ScalarStyle::Literal | ScalarStyle::Folded);
+        let mut noted = false;
         if let Some(c) = &meta.comment
             && !c.standalone
-            && !matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
+            && !block_body
         {
             self.output.push_str("  # ");
             self.output.push_str(&c.text);
+            noted = true;
         }
+        // The slot is used up by this scalar's own note, and neither a block
+        // body's last content line nor a wrapped continuation can host one.
+        self.trailing_note_slot_open =
+            !noted && !block_body && !self.output[line_start..].contains('\n');
         self.output.push('\n');
         Ok(())
     }
@@ -484,6 +649,16 @@ impl Serializer {
         depth: usize,
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
+        // A note stack riding the first entry cannot stay *below* this node's own
+        // anchor/tag header line: granit reports a note in that position as the
+        // tagged node's leading comment, so the next round moves it above the
+        // header and a single emission step never reaches a fixed point (libFuzzer
+        // `yaml_roundtrip` crash-77a8039b, 28 bytes; crash-e6551c75 and
+        // crash-8f7085b0 for the marker-spine half). See [`lift_first_entry_notes`].
+        let (stripped_map, preamble_notes) =
+            lift_first_entry_notes(pairs, meta, flow_style, in_value_context);
+        let pairs: &IndexMap<CustomNode, CustomNode> = stripped_map.as_ref().unwrap_or(pairs);
+        let preamble_notes = preamble_notes.as_deref();
         let sk = ContainerSkeleton {
             empty: pairs.is_empty(),
             meta,
@@ -492,6 +667,7 @@ impl Serializer {
             in_value_context,
             open: '{',
             close: '}',
+            preamble_note: preamble_notes,
         };
         self.write_container_node(
             &sk,
@@ -545,6 +721,11 @@ impl Serializer {
         depth: usize,
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
+        // Same lift as a block mapping's first key: a note under a `&a` / `!tag`
+        // header line re-reads as the sequence's own leading comment.
+        let (stripped_items, preamble_notes) =
+            lift_first_item_notes(items, meta, flow_style, in_value_context);
+        let items: &[CustomNode] = stripped_items.as_deref().unwrap_or(items);
         let sk = ContainerSkeleton {
             empty: items.is_empty(),
             meta,
@@ -553,6 +734,7 @@ impl Serializer {
             in_value_context,
             open: '[',
             close: ']',
+            preamble_note: preamble_notes,
         };
         self.write_container_node(
             &sk,
@@ -601,8 +783,15 @@ impl Serializer {
             in_value_context,
             open,
             close,
+            preamble_note,
         } = *sk;
         if flow_style {
+            // An empty flow token written at a line start gets the same preface as
+            // its block counterpart below; mid-line (`key: []`) there is no line to
+            // preface, which `write_empty_slot_notes` checks.
+            if empty {
+                self.write_empty_slot_notes(sk);
+            }
             // When a flow container starts its own line (a block-context
             // value under a `key:` whose standalone comment forced the newline
             // branch), it still needs the line indent; the inline callers
@@ -621,17 +810,20 @@ impl Serializer {
             } else if let Some(c) = meta.inline_slot() {
                 self.output.push_str("  # ");
                 self.output.push_str(&c.text);
+                self.trailing_note_slot_open = false;
+            } else {
+                self.trailing_note_slot_open = true;
             }
             self.output.push('\n');
         } else {
             if empty {
-                // Empty block containers spell as `{}`/`[]`; keep the
-                // anchor/tag header on that same line. A standalone tag
-                // line followed by the braces one indent-shallow (under
-                // an explicit-key `?`) is ambiguous and cannot re-parse.
+                // Spell as `{}` / `[]` and keep the anchor/tag on the same line: a
+                // standalone tag line followed by the braces one indent shallow
+                // (under an explicit-key `?`) is ambiguous and cannot re-parse.
                 // An empty container has no block form, so a mapping/sequence
                 // *value* reaches here inline (`key: &a {}`) — emit its own
                 // anchor/tag even in value context, or it would vanish.
+                self.write_empty_slot_notes(sk);
                 self.write_indent(indent_width);
                 if meta.anchor.is_some() || meta.tag.is_some() {
                     self.write_anchor_tag(&meta.anchor, &meta.tag);
@@ -644,6 +836,9 @@ impl Serializer {
             }
 
             if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
+                for note in preamble_note.unwrap_or_default() {
+                    self.write_note_line(indent_width, &note.text);
+                }
                 self.write_indent(indent_width);
                 self.write_anchor_tag(&meta.anchor, &meta.tag);
                 self.output.push('\n');
@@ -658,10 +853,29 @@ impl Serializer {
             if let Some(c) = &meta.comment
                 && !c.standalone
             {
-                self.write_indent(indent_width);
-                self.output.push_str("# ");
-                self.output.push_str(&c.text);
-                self.output.push('\n');
+                // A note in a container's *inline* slot has to land on a line the
+                // reader reports inline notes from. Writing it as a line of its own
+                // does not: a bare note below a block re-reads as the leading note of
+                // the node that ended the block, so the first emission was never a
+                // fixed point - `:\t!-<CR>... #-o` gave `~: !- \n# -o\n`, and the
+                // re-read moved that note inside the value block as
+                // `~:\n  # -o\n  !- \n` (libFuzzer `yaml_roundtrip` crash-11ced252).
+                // Append it to the line just finished whenever that line can hold a
+                // trailing note; fall back to a note line when it cannot, because a
+                // note that is merely mis-indented still beats one that corrupts a
+                // block scalar's body or duplicates a line's trailing slot.
+                if self.trailing_note_slot_open
+                    && self.output.ends_with('\n')
+                    && !self.tail_line_has_note()
+                {
+                    self.output.pop();
+                    self.output.push_str("  # ");
+                    self.output.push_str(&c.text);
+                    self.output.push('\n');
+                    self.trailing_note_slot_open = false;
+                } else {
+                    self.write_note_line(indent_width, &c.text);
+                }
             }
         }
         Ok(())
@@ -684,6 +898,9 @@ impl Serializer {
         {
             self.output.push_str("  # ");
             self.output.push_str(&c.text);
+            self.trailing_note_slot_open = false;
+        } else {
+            self.trailing_note_slot_open = true;
         }
         self.output.push('\n');
         Ok(())
@@ -694,6 +911,7 @@ impl Serializer {
         self.write_indent(indent_width);
         self.output.push('*');
         self.output.push_str(name);
+        self.trailing_note_slot_open = true;
         self.output.push('\n');
         Ok(())
     }
@@ -755,17 +973,46 @@ impl Serializer {
             // mid-line would emit the comment *after* `? ` (spelling
             // `? # a` + an orphaned key node that cannot re-parse). Emit
             // the note ourselves, then strip it from the cloned body.
-            let stripped;
-            let key = if let Some(comment) = key.leading_comment() {
-                self.write_indent(indent_width);
-                self.output.push_str("# ");
-                self.output.push_str(&comment.text);
-                self.output.push('\n');
+            //
+            // The two lifts compose rather than compete. A marker chain can carry a
+            // note on the key node *and* leave a second one riding the first entry
+            // of the body, and the reader reports that one at the marker's level too;
+            // taking only the key's own note wrote the body note one indent deeper,
+            // where the next re-read hoisted it — the emission then settled only on
+            // its second round (libFuzzer `yaml_roundtrip` crash-456176be,
+            // crash-f8525a9e, crash-c9031de4: `?` + ` ### standab:` + ` ?` +
+            // `  # ! y%% yam2:#l: tr` + `  ~: ~`, where the source tree holds the
+            // first note on the key mapping and the second on its inner `~` key).
+            let mut stripped;
+            let hoisted;
+            let key_notes = key.leading_comments();
+            let key = if !key_notes.is_empty() {
+                for comment in key_notes {
+                    self.write_note_line(indent_width, &comment.text);
+                }
                 stripped = strip_leading_comment(key);
+                hoisted = hoist_marker_note(&mut stripped);
+                &stripped
+            } else if matches!(
+                key,
+                CustomNode::Mapping {
+                    flow_style: false,
+                    ..
+                }
+            ) {
+                // The key has no note of its own, but a chain of markers on one line
+                // leaves one riding a nested key inside its body, where the reader
+                // will not put it back. Bring it up to this marker's line instead.
+                stripped = key.clone();
+                hoisted = hoist_marker_note(&mut stripped);
                 &stripped
             } else {
+                hoisted = Vec::new();
                 key
             };
+            for note in &hoisted {
+                self.write_note_line(indent_width, note.text.as_ref());
+            }
             self.write_indent(indent_width);
             self.output.push('?');
             self.output.push('\n');
@@ -778,12 +1025,16 @@ impl Serializer {
             self.serialize_node_internal(key, body_indent, body_indent, false, depth + 1)?;
         } else {
             // Simple key
-            // Handle standalone comments before the key
-            if let Some(comment) = key.leading_comment() {
-                self.write_indent(indent_width);
-                self.output.push_str("# ");
-                self.output.push_str(&comment.text);
-                self.output.push('\n');
+            // Handle standalone comments before the key (every note in the stack,
+            // in source order). `has_notes` keeps the note-free case off the
+            // normalised view: it is every simple key of every document.
+            if key.has_notes() {
+                for comment in key.leading_comments() {
+                    self.write_indent(indent_width);
+                    self.output.push_str("# ");
+                    self.output.push_str(&comment.text);
+                    self.output.push('\n');
+                }
             }
             self.write_indent(indent_width);
             self.write_scalar_for_key(key, false);
@@ -797,6 +1048,14 @@ impl Serializer {
             self.write_indent(indent_width);
         }
         self.output.push(':');
+
+        // Where a simple key's trailing note may still be written: the end of the
+        // `key:` line once the value has moved down to a line of its own, or (by
+        // default) the end of whatever line the pair finishes on. Without the first
+        // case the note lands on the value's line, where a reader reports it as the
+        // *value's* leading note for a tag-only scalar — the note then changes owner
+        // every round and the emission never settles.
+        let mut key_note_at: Option<usize> = None;
 
         // Check if value needs to be on next line
         if (matches!(
@@ -847,6 +1106,7 @@ impl Serializer {
                 }
             }
             self.output.push('\n');
+            key_note_at = Some(self.output.len() - 1);
             let child_indent = indent_width + self.indent_mapping;
             self.serialize_node_internal(value, child_indent, child_indent, true, depth + 1)?;
         } else {
@@ -854,6 +1114,31 @@ impl Serializer {
             // Inline value: the header shares the `key:` line, so a block
             // body must be measured from the pair indent, not from zero.
             self.serialize_node_internal(value, 0, indent_width, true, depth + 1)?;
+        }
+
+        // granit attaches a note that trails a simple key to *that key* node, but
+        // once the pair is written as `key: value` there is no spelling for a
+        // comment between the key and its `:` — YAML puts a trailing note after the
+        // value, and re-reading hands it to the value node. The note used to be
+        // dropped outright (`? a # note` + `: b` emitted `a: b`); it now rides the
+        // only slot a reader can report it from, so it survives the round trip and
+        // the line is stable because the next parse agrees on that position. The
+        // value keeps priority when it carries a note of its own — one line has one
+        // trailing slot — and complex keys are left alone, their notes travel with
+        // the `?` body.
+        if !is_complex_key && value.comment().is_none() && self.output.ends_with('\n') {
+            let key_note = match key {
+                CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
+                    .comment
+                    .as_ref()
+                    .filter(|c| !c.standalone)
+                    .map(|c| c.text.clone()),
+                _ => None,
+            };
+            if let Some(text) = key_note {
+                let at = key_note_at.unwrap_or(self.output.len() - 1);
+                self.output.insert_str(at, &format!("  # {text}"));
+            }
         }
 
         Ok(())
@@ -1334,6 +1619,39 @@ pub fn write_single_quoted_scalar(out: &mut String, value: &str) {
 // `crate::serializer::is_yaml_noncharacter` callers keep resolving.
 pub use pyrs_schema::is_yaml_noncharacter;
 
+/// Lower-case hex digits, matching the `%{b:02x}` spelling the round-trip tests
+/// and the committed fuzz seeds pin.
+const ASCII_HEX: [char; 16] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+];
+
+/// Build a byte-membership table from `extra`, with every ASCII alphanumeric
+/// already set — so a tag suffix scan is one indexed load per byte instead of an
+/// alphanumeric test plus a linear slice search.
+const fn safe_table(extra: &[u8]) -> [bool; 128] {
+    let mut table = [false; 128];
+    let mut i = 0usize;
+    while i < 128 {
+        table[i] = (i as u8).is_ascii_alphanumeric();
+        i += 1;
+    }
+    let mut j = 0usize;
+    while j < extra.len() {
+        table[extra[j] as usize] = true;
+        j += 1;
+    }
+    table
+}
+
+/// Membership test that keeps non-ASCII (and anything past the table) out.
+#[inline]
+fn lookup(table: &[bool; 128], b: u8) -> bool {
+    match table.get(usize::from(b)) {
+        Some(&allowed) => allowed,
+        None => false,
+    }
+}
+
 /// Append `value` to `out` as a double-quoted YAML scalar, escaping control
 /// and special characters.
 pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
@@ -1350,9 +1668,21 @@ pub fn write_double_quoted_scalar(out: &mut String, value: &str) {
             '\x0C' => out.push_str("\\f"),
             '\x1B' => out.push_str("\\e"),
             '/' => out.push_str("\\/"),
-            c if c.is_control() || is_yaml_noncharacter(c) => {
+            c if c.is_control() || is_yaml_noncharacter(c) || c == '\u{FEFF}' => {
                 // `\u` escapes are 4 hex digits (BMP only); characters above
                 // U+FFFF must use the 8-digit `\U` form.
+                //
+                // U+FEFF needs its own test: YAML treats it as *restricted* (legal
+                // only as a byte-order mark at the very start of a stream), and it
+                // is a `Cf` format character - neither `is_control()` (which covers
+                // `Cc`) nor a Unicode noncharacter - so both existing checks miss it.
+                // granit hands the writer the decoded text, so a scalar carrying a
+                // BOM was emitted raw even inside double quotes, and our own parser
+                // then rejected our output outright: "a BOM must not appear inside a
+                // document" (libFuzzer `yaml_roundtrip` crash-2d14c6f6).
+                // `needs_double_quoted` already forces the quoting (it lists
+                // U+FEFF); this arm supplies the escape that quoting alone cannot
+                // provide, since single- and plain styles have no escape mechanism.
                 let u = c as u32;
                 if u > 0xFFFF {
                     out.push_str(&format!("\\U{:08x}", u));
@@ -1431,24 +1761,232 @@ fn needs_double_quoted(value: &str) -> bool {
         || value.starts_with(',')
 }
 
-/// Clone of a node with its effective leading (standalone) comment removed
-/// from *both* storage slots (`decor.leading_comment` and a standalone
-/// `comment`), so `serialize_node_internal` will not re-emit a note the
+/// Take every standalone leading note off a node, leaving no empty decoration
+/// behind. Ingest order is preserved, so a stack of comment lines above a key
+/// comes back as the same stack.
+///
+/// Read through `CustomNode::leading_comments()` rather than the `decor` field: a
+/// note lives in one of two conventions — the receiver fills the legacy
+/// `comment { standalone: true }` slot, hand-built fixtures the `decor` list — and
+/// peeking at only one of them is the same fork the `standalone_slice()` normaliser
+/// exists to prevent. Notably the list can hold a note whose `standalone` flag is
+/// `false` (the merge and null-key re-homing moves notes there), which a
+/// convention-by-convention read would either miss or duplicate. `remove_leading_comment`
+/// clears both conventions, so what is taken here cannot also be emitted there.
+fn take_leading_notes(node: &mut CustomNode) -> Vec<crate::ast::Comment> {
+    let notes = node.leading_comments().to_vec();
+    node.remove_leading_comment();
+    notes
+}
+
+/// Pull up the notes that a nested explicit key would otherwise emit inside its
+/// own body: walk the first-pair-key spine of a block mapping (the chain of `?`
+/// markers a single line opens) and take **every** stack sitting on it, outer
+/// before inner.
+///
+/// granit reports a note that trails a marker line one level shallower than the node
+/// our receiver attached it to, so writing it at the body indent cannot survive a
+/// round trip — the note climbs a level every serialization and never settles
+/// (libFuzzer `yaml_roundtrip` crash-ac5d9043, minimised to `? ? ? #~`). The hoisted
+/// spelling above the outermost `?` is the fixed point at every marker depth, and is
+/// where a single-marker line already puts the note, so this keeps both spellings
+/// agreeing. crash-0e1c4378 needed this hoist as one of two fixes — its other half is
+/// the note-binding side, `line_break_between` in the parser.
+///
+/// Taking only the first stack was not enough, and the tree says why: in
+/// crash-f8525a9e the spine is three markers deep and carries two separate stacks —
+/// `#` on the middle mapping and `!!"#~` on the innermost `~` key — while the fixed
+/// point puts both above the outer `?`, in that order. Stopping at the first stack
+/// hoisted one note and left the other a level deeper, so the emission settled only
+/// on its second round.
+fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
+    let CustomNode::Mapping {
+        pairs, flow_style, ..
+    } = key
+    else {
+        return Vec::new();
+    };
+    if *flow_style || pairs.is_empty() {
+        return Vec::new();
+    }
+    // `IndexMap` never hands out `&mut K` (it would break the hash invariant), so
+    // take the entry out, work on the owned key, and put it back where it was.
+    let Some((mut first_key, first_value)) = pairs.shift_remove_index(0) else {
+        return Vec::new();
+    };
+    let mut notes = take_leading_notes(&mut first_key);
+    // Keep walking: a deeper marker can carry its own stack, and the reader
+    // reports that one at this level too.
+    notes.extend(hoist_marker_note(&mut first_key));
+    pairs.shift_insert(0, first_key, first_value);
+    notes
+}
+
+/// Split an empty container's notes between the one inline slot the reader
+/// reports them back from, and the lines above the token.
+///
+/// Returns `(demoted, above)`. An inline `comment` already owns the slot, so then
+/// every standalone note goes above; otherwise the LAST note takes the slot — the
+/// position a re-read reports it from, which is what makes the shape a fixed point
+/// after one emission.
+fn empty_slot_notes(meta: &NodeMeta) -> (Option<&Comment>, &[Comment]) {
+    let notes = meta.standalone_slice();
+    if let Some(inline) = meta.inline_slot() {
+        return (Some(inline), notes);
+    }
+    match notes.split_last() {
+        Some((last, above)) => (Some(last), above),
+        None => (None, notes),
+    }
+}
+
+/// Whether a block container writes its own anchor/tag header line above the
+/// body: the only shape where a note printed *under* that line cannot stay where
+/// it was written, because the reader hands it to the tagged node itself. Flow
+/// containers keep the header on their own line, and a container in value context
+/// has the parent pre-emit the header, so neither is affected.
+fn writes_block_header(meta: &NodeMeta, flow_style: bool, in_value_context: bool) -> bool {
+    !flow_style && !in_value_context && (meta.anchor.is_some() || meta.tag.is_some())
+}
+
+/// Lift a block mapping's first-entry leading-note stack above the anchor/tag
+/// header line [`Serializer::write_container_node`] writes for the container, and
+/// return the body copy with those notes removed so they are not written twice.
+///
+/// `None` (and the untouched body) when there is nothing to lift or when the
+/// container writes no header line. A container that carries notes of its own is
+/// lifted too: `serialize_node_internal` has already written its stack above the
+/// header, so the lifted one lands right after it, and that order is the measured
+/// fixed point — `# a` + `# b` + `!tag` + body. The guard that used to refuse this
+/// (`meta.standalone_slot().is_some()`) existed because a node held one leading
+/// slot, so a second stack there would have overwritten the first and traded drift
+/// for lost text; `decor.leading_comments` is a `Vec` now, so the premise is gone
+/// and the lift is unconditional. The lift costs a map clone and only happens for a
+/// tagged/anchored block container whose first entry carries notes.
+///
+/// The stack is taken off the whole marker spine, not just the first key: a header
+/// line competes with every note the reader would report at this level, and leaving
+/// one in the body puts it *below* the header, where the next round hoists it and
+/// the emission only settles on its second pass. Measured on libFuzzer
+/// `yaml_roundtrip` crash-e6551c75 (60 bytes) and crash-8f7085b0 (43 bytes,
+/// `!3b55?b55?` + ` ? ?` + five note lines + `?` + `  ~: ~` + `:` + `  ~`), whose
+/// first round writes the header then the five notes and whose fixed point is the
+/// notes above the header.
+///
+/// The deferment recorded in `ROADMAP.md` was that this walk would drag notes out
+/// of *nested* markers and break the pinned `- ?` / `# c` / `? a` / `: b` shape.
+/// Withdrawn and re-measured: with the spine walk removed only the test above goes
+/// red, and every other shape in the family (`notes_stack_above_a_tagged_containers_own_note`,
+/// `a_note_under_a_tag_header_is_lifted_above_it`, `notes_above_an_empty_container_all_survive`,
+/// `seq_item_value_with_standalone_comment_is_not_compacted`) passes both ways, so
+/// the blast radius was inferred rather than observed and the fear was unfounded.
+fn lift_first_entry_notes(
+    pairs: &IndexMap<CustomNode, CustomNode>,
+    meta: &NodeMeta,
+    flow_style: bool,
+    in_value_context: bool,
+) -> (
+    Option<IndexMap<CustomNode, CustomNode>>,
+    Option<Vec<Comment>>,
+) {
+    if !writes_block_header(meta, flow_style, in_value_context) {
+        return (None, None);
+    }
+    let Some((first_key, first_value)) = pairs.get_index(0) else {
+        return (None, None);
+    };
+    // Borrow before allocating. Taking the spine needs an owned key and a copy of
+    // the map, and every anchored/tagged block container would pay both — even the
+    // overwhelming majority that carry no note anywhere on the spine. Measured:
+    // cloning unconditionally before this check cost `serialize_small` 16.7%
+    // (7.7 -> 9.3 µs), `serialize_block` 12.6% and `serialize_medium` 10.5% on the
+    // CodSpeed gate, which is what caught it.
+    if first_key.leading_comments().is_empty() && !spine_has_notes(first_key) {
+        return (None, None);
+    }
+    let mut notes = first_key.leading_comments().to_vec();
+    // `IndexMap` never hands out `&mut K`, so take the entry out, strip its
+    // notes, and put it back where it was.
+    let mut stripped = pairs.clone();
+    stripped.shift_remove_index(0);
+    // `strip_leading_comment` also drops the `blank_before` decoration that the
+    // lifted lines now carry, so the body copy goes through it rather than
+    // through a bare `remove_leading_comment`.
+    let mut worked = strip_leading_comment(first_key);
+    notes.extend(hoist_marker_note(&mut worked));
+    if notes.is_empty() {
+        return (None, None);
+    }
+    stripped.shift_insert(0, worked, first_value.clone());
+    (Some(stripped), Some(notes))
+}
+
+/// Whether any note stack sits on the marker spine of `key`, without taking the
+/// spine apart to find out — the read-only twin of [`hoist_marker_note`], used to
+/// keep the caller's clone and allocation off the hot path when there is nothing
+/// to lift.
+fn spine_has_notes(key: &CustomNode) -> bool {
+    let CustomNode::Mapping {
+        pairs, flow_style, ..
+    } = key
+    else {
+        return false;
+    };
+    if *flow_style || pairs.is_empty() {
+        return false;
+    }
+    let (first_key, _) = match pairs.get_index(0) {
+        Some(entry) => entry,
+        None => return false,
+    };
+    !first_key.leading_comments().is_empty() || spine_has_notes(first_key)
+}
+
+/// The [`lift_first_entry_notes`] equivalent for a block sequence's first item.
+fn lift_first_item_notes<'a>(
+    items: &'a [CustomNode],
+    meta: &NodeMeta,
+    flow_style: bool,
+    in_value_context: bool,
+) -> (Option<Vec<CustomNode>>, Option<&'a [Comment]>) {
+    if !writes_block_header(meta, flow_style, in_value_context) {
+        return (None, None);
+    }
+    let Some(first_item) = items.first() else {
+        return (None, None);
+    };
+    let notes = first_item.leading_comments();
+    if notes.is_empty() {
+        return (None, None);
+    }
+    let mut stripped = items.to_vec();
+    stripped[0] = strip_leading_comment(first_item);
+    (Some(stripped), Some(notes))
+}
+
+/// Clone of a node with every effective leading (standalone) comment removed
+/// from *both* storage conventions (`decor.leading_comments` and a standalone
+/// `comment`), so `serialize_node_internal` will not re-emit notes the
 /// caller has already written above a `?` marker.
 fn strip_leading_comment(node: &CustomNode) -> CustomNode {
     let mut stripped = node.clone();
-    let meta = match &mut stripped {
+    stripped.remove_leading_comment();
+    match &mut stripped {
         CustomNode::Scalar { meta, .. }
         | CustomNode::Mapping { meta, .. }
         | CustomNode::Sequence { meta, .. }
-        | CustomNode::Null { meta, .. } => meta,
-        CustomNode::Alias { .. } => return stripped,
-    };
-    if let Some(decor) = &mut meta.decor {
-        decor.leading_comment = None;
-    }
-    if meta.comment.as_ref().is_some_and(|c| c.standalone) {
-        meta.comment = None;
+        | CustomNode::Null { meta, .. } => {
+            if let Some(decor) = &mut meta.decor {
+                decor.leading_comments.clear();
+            }
+            if meta.comment.as_ref().is_some_and(|c| c.standalone) {
+                meta.comment = None;
+            }
+            if meta.decor.as_ref().is_some_and(|d| !d.blank_before) {
+                meta.decor = None;
+            }
+        }
+        CustomNode::Alias { .. } => {}
     }
     stripped
 }
@@ -1504,7 +2042,11 @@ pub fn write_plain_scalar(out: &mut String, value: &str, remaining: usize, width
         match value[..safe_remaining].rfind(' ') {
             Some(split) => {
                 out.push_str(&value[..split]);
-                let rest = value[split..].trim();
+                // Strip with YAML's separation set: the fold supplies exactly the
+                // one space we drop here, but a Unicode `trim` would also eat an
+                // NBSP at the edge — and NBSP is content, so the value would come
+                // back shorter than it went in.
+                let rest = value[split..].trim_matches(pyrs_schema::is_yaml_blank);
                 if !rest.is_empty() {
                     // Continuation lines must be indented past the block
                     // indentation; aligning to the value's own column is always
@@ -1550,7 +2092,7 @@ pub fn wrap_plain_scalar(out: &mut String, value: &str, width: usize, cont_inden
             Some(split) => {
                 out.push_str(&remaining_rest[..split]);
                 out.push('\n');
-                remaining_rest = remaining_rest[split..].trim();
+                remaining_rest = remaining_rest[split..].trim_matches(pyrs_schema::is_yaml_blank);
             }
             None => {
                 // No whitespace to fold across; another folded line would
@@ -1575,6 +2117,51 @@ mod tests {
     use crate::ast::Tag;
     use indexmap::IndexMap;
     use std::sync::Arc;
+
+    /// An empty block body cannot carry a chomping indicator: granit reports the
+    /// default chomping when it re-reads a header with no content, so `|+` written
+    /// for an empty scalar drifts to `|` on the next round (libFuzzer
+    /// `yaml_roundtrip` crash-89d81d99, crash-b5dcc38f). `effective_chomping`
+    /// therefore pins Clip for that shape whatever the AST claims — the same
+    /// "emit the re-readable form" rule both writers already apply to the
+    /// indentation indicator.
+    #[test]
+    fn empty_block_body_writes_the_default_chomping() {
+        for claimed in [Chomping::Keep, Chomping::Strip, Chomping::Clip] {
+            assert_eq!(
+                effective_chomping("", &claimed),
+                Chomping::Clip,
+                "an empty body must not advertise a chomping indicator"
+            );
+        }
+        // Nothing else about the rule moves.
+        assert_eq!(effective_chomping("x\n", &Chomping::Keep), Chomping::Keep);
+        assert_eq!(effective_chomping("x\n\n", &Chomping::Clip), Chomping::Keep);
+        assert_eq!(effective_chomping("x", &Chomping::Strip), Chomping::Strip);
+    }
+
+    /// The escaper's catch-all arm tested `is_control() || is_yaml_noncharacter()`.
+    /// U+FEFF satisfies neither: it is a `Cf` format character, and the noncharacter
+    /// mask `(c as u32) & 0xFFFE == 0xFFFE` is false for FEFF. It therefore fell
+    /// through to the push-verbatim arm and a BOM was written raw even inside
+    /// double quotes, where YAML does have an escape. The parser rejects a
+    /// mid-document BOM on input, so this is reached through the edit API.
+    #[test]
+    fn double_quoted_scalar_escapes_a_bom() {
+        let mut out = String::new();
+        write_double_quoted_scalar(&mut out, "a\u{FEFF}b");
+        assert_eq!(out, "\"a\\ufeffb\"", "BOM must be escaped, not written raw");
+        assert!(
+            !out.contains('\u{FEFF}'),
+            "a raw BOM survived escaping: {out:?}"
+        );
+
+        // The escaped form must read back and re-emit byte-identically.
+        let emitted = format!("key: {out}\n");
+        let node = crate::parser::parse(&emitted, crate::parser::yaml::YamlSchema::Core)
+            .expect("escaped BOM scalar must re-parse");
+        assert_eq!(to_yaml(&node), emitted, "re-emit must be byte-identical");
+    }
 
     /// libFuzzer `yaml_roundtrip` find: granit delivers double-quoted scalars
     /// already decoded, and the receiver's own unescape used to run a *second*
@@ -1896,6 +2483,101 @@ mod tests {
             false,
         )
         .unwrap()
+    }
+
+    /// libFuzzer `yaml_roundtrip` crash-22cb5f67 (15 bytes): the document's own
+    /// inline note has to land on the line just written, and a `#` that is only
+    /// *text* inside a quoted key used to refuse that, demoting the note to a line
+    /// of its own which the reader then hands to the next node — so the emission
+    /// needed two rounds to settle. Asserted exactly, because the refusal was the
+    /// regression and the spelling is what proves the slot was used.
+    #[test]
+    fn a_quoted_hash_does_not_demote_the_containers_note() {
+        let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-22cb5f67.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = to_yaml(&parse_core(src));
+        assert_eq!(
+            one, "\"+#\": !-   # -o\n",
+            "the note must ride the pair line, not open a line of its own"
+        );
+        assert_eq!(
+            to_yaml(&parse_core(&one)),
+            one,
+            "one emission is enough to reach the fixed point"
+        );
+    }
+
+    /// A note that trails a *simple key* rode whatever line had just been
+    /// written — which stopped being the pair line as soon as the value moved down
+    /// to take a leading note of its own. On a tag-only value, a trailing note on
+    /// that line re-reads as the *value's* leading note, so the note changed owner
+    /// between rounds and the emission never settled: `b:\n  # ~\n  !   # &` then
+    /// `b:\n  # ~\n  # &\n  ! ` (libFuzzer `yaml_roundtrip` crash-1b01ac3f, 93 bytes
+    /// minimised to 11). The key's note has to stay on the `key:` line.
+    #[test]
+    fn a_keys_note_stays_on_the_key_line_when_the_value_moves_down() {
+        let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-1b01ac3f.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let one = to_yaml(&parse_core(src));
+        assert_eq!(
+            one, "b:  # &\n  # ~\n  ! \n",
+            "the key's note belongs on the `key:` line, the value's own note below it"
+        );
+        assert_eq!(
+            to_yaml(&parse_core(&one)),
+            one,
+            "one emission must already be the fixed point; first round was {one:?}"
+        );
+    }
+
+    /// The predicate behind that fix, on its own terms: quoting and the
+    /// whitespace rule decide whether a `#` on a written line is a marker.
+    #[test]
+    fn comment_marker_scan_respects_quoting() {
+        assert!(line_has_comment_marker(b"a: 1  # note"));
+        assert!(line_has_comment_marker(b"# whole line"));
+        assert!(line_has_comment_marker(b"a: \"x#y\"  # real"));
+        assert!(!line_has_comment_marker(b"\"+#\": !- "));
+        assert!(!line_has_comment_marker(b"a: \"x#y\""));
+        assert!(!line_has_comment_marker(b"a: 'x#y'"));
+        assert!(!line_has_comment_marker(b"a: \"esc\\\"#still\""));
+        assert!(!line_has_comment_marker(b"a: 'doubled''#still'"));
+        assert!(
+            !line_has_comment_marker(b"!-#tail"),
+            "a `#` with no space before it is text, not a marker"
+        );
+    }
+
+    /// libFuzzer `yaml_roundtrip` crash-e6551c75 (60 bytes) and crash-8f7085b0
+    /// (43 bytes): the notes riding the marker spine inside a tagged container have
+    /// to be lifted *with* the first key's own stack, or the header line is written
+    /// first and the notes land under it — where the reader reports them as the
+    /// tagged node's leading comments, so round 2 moves them above the header.
+    /// Asserted exactly because the ordering *is* the fix.
+    #[test]
+    fn every_spine_note_clears_a_tagged_containers_header_line() {
+        let cases = [
+            (
+                include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-e6551c75.seed")
+                    as &[u8],
+                "# yrrrrrrrr!yrrrr%3c57\n# yrrrrrrrr!yrrrr%3c57%c\n!5j4? \n?\n  ~: ~\n:\n  ~\n",
+            ),
+            (
+                include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-8f7085b0.seed")
+                    as &[u8],
+                "# ycn-r\n# ?\n# y-r\n# r\n# yrrr\n!3b55?b55? \n?\n  ~: ~\n:\n  ~\n",
+            ),
+        ];
+        for (raw, expected) in cases {
+            let src = std::str::from_utf8(raw).expect("seed is utf-8");
+            let one = to_yaml(&parse_core(src));
+            assert_eq!(one, expected, "notes must sit above the header at once");
+            assert_eq!(
+                to_yaml(&parse_core(&one)),
+                one,
+                "one emission is enough to reach the fixed point"
+            );
+        }
     }
 
     #[test]
@@ -2446,6 +3128,111 @@ mod tests {
             crate::serializer::to_yaml(&ast),
             "top:\n  x: 1\n  # c2\n  y: 2\n"
         );
+    }
+
+    /// A note written *under* a container's own anchor/tag header line re-reads as
+    /// that container's leading comment, so one emission step never reached a fixed
+    /// point: the writer put the tag line first, and the next round moved the note
+    /// above it (libFuzzer `yaml_roundtrip` crash-77a8039b, 28 bytes). Such a note is
+    /// now lifted above the header — the one line the reader hands it back from.
+    #[test]
+    fn a_note_under_a_tag_header_is_lifted_above_it() {
+        let yaml = "!5b4?\n ? \n#yrrrrrrrrrrrr%3c ";
+        let ast = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        let one = crate::serializer::to_yaml(&ast);
+        assert!(
+            one.starts_with("# yrrrrrrrrrrrr%3c\n!5b4? \n"),
+            "the note must be lifted above the tag line: {one:?}"
+        );
+        let again = crate::parser::parse_with_options(
+            &one,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::serializer::to_yaml(&again),
+            one,
+            "one emission step must reach the fixed point: {one:?}"
+        );
+    }
+
+    /// Both note stacks go above a block container's tag header, and the first
+    /// emission is already the fixed point. This shape used to be pinned as the
+    /// deliberate *cost* of a guard, because a node owned one leading slot and a
+    /// second stack there would have overwritten the first; the slot is a `Vec`
+    /// now, so refusing the lift only made the emission take an extra round to
+    /// arrive at the same spelling (measured before the change: round 0 kept
+    /// `# b` under the header, round 1 hoisted it, round 2 was the fixed point).
+    /// Re-derived rather than quietly kept, and pinned in both directions: the
+    /// order the reader agrees on, and that no note is lost or duplicated.
+    #[test]
+    fn notes_stack_above_a_tagged_containers_own_note() {
+        let yaml = "# a\n!5b4?\n?\n# b\nk: v\n";
+        let ast = crate::parser::parse_with_options(
+            yaml,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        let one = crate::serializer::to_yaml(&ast);
+        assert_eq!(
+            one.lines().filter(|line| line.starts_with("# ")).count(),
+            2,
+            "both stacks survive above the header: {one:?}"
+        );
+        assert_eq!(one, "# a\n# b\n!5b4? \n~: ~\nk: v\n", "and in source order");
+        let again = crate::parser::parse_with_options(
+            &one,
+            true,
+            crate::parser::yaml::YamlSchema::Core,
+            1000,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            crate::serializer::to_yaml(&again),
+            one,
+            "one emission step must reach the fixed point: {one:?}"
+        );
+    }
+
+    /// An empty container offers one inline slot, so a stack of notes above it used
+    /// to keep only one: the comment-only document `# d1` + `# d2` came back as
+    /// `{}  # d1` with the rest gone. The earlier notes are now written above the
+    /// token — which is also where a reader reports them from — so a single emission
+    /// is already stable.
+    #[test]
+    fn notes_above_an_empty_container_all_survive() {
+        let mut node = CustomNode::Mapping {
+            pairs: IndexMap::new(),
+            flow_style: false,
+            meta: NodeMeta::default(),
+        };
+        for text in ["d1", "d2", "d3"] {
+            node.push_leading_comment(crate::ast::Comment {
+                text: text.into(),
+                standalone: true,
+            });
+        }
+        let one = to_yaml(&node);
+        assert_eq!(one, "# d1\n# d2\n{}  # d3\n", "{one:?}");
+        let again = to_yaml(
+            &crate::parser::parse(&one, crate::parser::yaml::YamlSchema::Core)
+                .expect("emitted document re-parses"),
+        );
+        assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
     }
 
     #[test]

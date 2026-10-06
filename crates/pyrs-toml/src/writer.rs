@@ -34,12 +34,18 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::new();
     // PR #131: a document-level standalone comment (the very first `# note`
     // of a TOML doc, or a note on a YAML-origin root) lands on the root
-    // mapping's `leading_comment` slot — the same shape the JSON writer
+    // mapping's leading-note list — the same shape the JSON writer
     // handles via `emit_root_leading`. The pair/section emitters below read
     // only per-key and per-table slots, so without this the root note is
     // dropped on a TOML -> hub -> TOML round trip. Native TOML parses place
     // the first note on the first key instead, so this stays a no-op there.
-    if let Some(c) = node.leading_comment() {
+    for c in node.leading_comments() {
+        let _ = writeln!(out, "# {}", c.text.trim());
+    }
+    // A note the hub put on the root's inline slot has no `key = value` line to
+    // ride, so it gets a line of its own — which is also where a TOML reader
+    // reports a document-leading comment back from, keeping the round trip stable.
+    if let Some(c) = node.comment().filter(|c| !c.standalone) {
         let _ = writeln!(out, "# {}", c.text.trim());
     }
     let mut sections: Vec<(String, &CustomNode, Option<&CustomNode>)> = Vec::new();
@@ -63,28 +69,33 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         }
     }
     for (idx, (name, tbl, key_node)) in sections.iter().enumerate() {
-        // PR #114 places the section header's leading note on the child
-        // mapping's own `leading_comment`, freeing the parent key slot
-        // for future use and letting a header carry BOTH a leading and
+        // PR #114 places the section header's leading notes on the child
+        // mapping's own list, freeing the parent key slot
+        // for future use and letting a header carry BOTH its leading stack and
         // an inline note. The fallbacks keep #109-era hand-built nodes
         // and YAML-origin documents rendering identically.
-        let leading = tbl
-            .leading_comment()
-            .or_else(|| tbl.comment().filter(|c| c.standalone))
-            .or_else(|| {
-                key_node.and_then(|k| {
-                    k.leading_comment()
-                        .or_else(|| k.comment().filter(|c| c.standalone))
-                })
-            });
+        let own = tbl.leading_comments();
+        let leading: &[pyrs_ast::ast::Comment] = if !own.is_empty() {
+            own
+        } else if let Some(c) = tbl.comment().filter(|c| c.standalone) {
+            core::slice::from_ref(c)
+        } else {
+            key_node.map(|k| k.leading_comments()).unwrap_or_default()
+        };
         // Blank line before a section separator acts like the KV rule:
         // skip it for the first section if any top-level pairs already
         // appeared, since the section break is already visual.
         if tbl.blank_before() && !(idx == 0 && out.is_empty()) {
             out.push('\n');
         }
-        if let Some(c) = leading {
+        for c in leading {
             let _ = writeln!(out, "# {}", c.text.trim());
+        }
+        if leading.is_empty() {
+            // Pre-#114 shape: the note rides the parent key's `comment` field.
+            if let Some(c) = key_node.and_then(|k| k.comment()).filter(|c| c.standalone) {
+                let _ = writeln!(out, "# {}", c.text.trim());
+            }
         }
         let header_inline = tbl.comment();
         match header_inline {
@@ -117,14 +128,16 @@ fn emit_pair(
     value_node: &CustomNode,
     key_str: &str,
 ) -> Result<(), SerializeError> {
-    // PR #114: the native parser puts a leading note into the dedicated
-    // `leading_comment` slot. The pre-#114 shape (a standalone note in
+    // PR #114: the native parser puts leading notes into the dedicated
+    // `leading_comments` list. The pre-#114 shape (a standalone note in
     // `comment`) still renders, so documents produced by the YAML path
-    // (which has not migrated) or hand-built fixtures keep working.
-    let leading = key_node
-        .leading_comment()
-        .or_else(|| key_node.comment().filter(|c| c.standalone));
-    if let Some(c) = leading {
+    // or hand-built fixtures keep working.
+    for c in key_node.leading_comments() {
+        let _ = writeln!(out, "# {}", c.text.trim());
+    }
+    if key_node.leading_comments().is_empty()
+        && let Some(c) = key_node.comment().filter(|c| c.standalone)
+    {
         let _ = writeln!(out, "# {}", c.text.trim());
     }
     let value_text = value_str(value_node)?;
@@ -227,13 +240,13 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
             // compact single-line form so 1.0-compatible output is
             // unchanged.
             let decorated = pairs.iter().any(|(k, v)| {
-                k.leading_comment().is_some() || v.comment().is_some_and(|c| !c.standalone)
+                !k.leading_comments().is_empty() || v.comment().is_some_and(|c| !c.standalone)
             });
             if decorated {
                 let mut out = String::from("{\n");
                 let count = pairs.len();
                 for (idx, (k, v)) in pairs.iter().enumerate() {
-                    if let Some(c) = k.leading_comment() {
+                    for c in k.leading_comments() {
                         out.push_str(&format!("  # {}\n", c.text.trim()));
                     }
                     let key_str = scalar_key(k)?;

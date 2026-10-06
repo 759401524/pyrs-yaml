@@ -111,19 +111,20 @@ pub(crate) enum TomlTable {
 /// Comments captured for a `key = value` pair during parsing.
 ///
 /// The pair projects onto the shared AST as follows:
-/// - `leading` becomes the key node's `NodeMeta::leading_comment` with
-///   `standalone = true` (rendered on its own line before `key = value`).
+/// - `leading` becomes the key node's `NodeMeta::leading_comments`, in source
+///   order (rendered on their own lines before `key = value`).
 /// - `trailing` becomes the value node's `NodeMeta::comment` with
 ///   `standalone = false` (rendered after the value on the same line).
 /// - `blank_before` records a preceding blank line in the source so the
 ///   writer can reproduce the visual grouping.
 ///
-/// Only the LAST contiguous standalone block immediately above a pair
-/// survives; earlier blocks separated by blank lines are dropped, which
-/// matches the YAML receiver's model and `toml_edit`'s decor handling.
+/// Every own-line note above the pair survives. This used to keep only the last
+/// one — an `Option<String>` that each comment line overwrote, which lost text
+/// silently while the output stayed perfectly round-trippable, and the same
+/// overwrite has now been fixed on the YAML and JSONC ingest paths too.
 #[derive(Default)]
 pub(crate) struct KVAnnotations {
-    pub(crate) leading: Option<String>,
+    pub(crate) leading: Vec<String>,
     pub(crate) trailing: Option<String>,
     pub(crate) blank_before: bool,
 }
@@ -131,13 +132,13 @@ pub(crate) struct KVAnnotations {
 /// Insertion-ordered TOML key/value store used during parsing.
 ///
 /// `comment` holds the inline trailing text on the `[name] # ...` header
-/// line; `leading` holds the last standalone `# ...` block on the line
-/// immediately above the header; `blank_before` records whether a blank
+/// line; `leading` holds every standalone `# ...` line stacked immediately above
+/// the header, in source order; `blank_before` records whether a blank
 /// line separated this section from the previous pair.
 pub(crate) struct CowTable {
     pub(crate) entries: NodeMap<String, TomlTable>,
     pub(crate) comment: Option<String>,
-    pub(crate) leading: Option<String>,
+    pub(crate) leading: Vec<String>,
     pub(crate) blank_before: bool,
 }
 
@@ -146,7 +147,7 @@ impl CowTable {
         Self {
             entries: NodeMap::default(),
             comment: None,
-            leading: None,
+            leading: Vec::new(),
             blank_before: false,
         }
     }
@@ -173,7 +174,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                 let n = toml_value_to_node(val);
                 (anns.leading, anns.trailing, anns.blank_before, n)
             }
-            TomlTable::Implicit(ct) | TomlTable::Explicit(ct) => {
+            TomlTable::Implicit(mut ct) | TomlTable::Explicit(mut ct) => {
                 let blank = ct.blank_before;
                 // Detach `leading` before moving `ct` into the recursive
                 // conversion, then reattach it onto the child node's own
@@ -181,25 +182,25 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                 // #114 AST change: a section header's leading note and
                 // its inline trailing note coexist on the same node,
                 // without ever displacing each other.
-                let leading_text = ct.leading.clone();
+                let leading_text = core::mem::take(&mut ct.leading);
                 let mut node = cow_table_to_node(ct);
-                if let Some(text) = leading_text {
-                    node.set_leading_comment(pyrs_ast::ast::Comment {
+                for text in leading_text {
+                    node.push_leading_comment(pyrs_ast::ast::Comment {
                         text: alloc::sync::Arc::from(text),
                         standalone: true,
                     });
                 }
-                (None, None, blank, node)
+                (Vec::new(), None, blank, node)
             }
             TomlTable::ArrayOfTables(list) => {
                 let items: Vec<CustomNode> = list
                     .into_iter()
-                    .map(|sub| {
+                    .map(|mut sub| {
                         let blank = sub.blank_before;
-                        let leading = sub.leading.clone();
+                        let leading = core::mem::take(&mut sub.leading);
                         let mut n = cow_table_to_node(sub);
-                        if let Some(text) = leading {
-                            n.set_leading_comment(pyrs_ast::ast::Comment {
+                        for text in leading {
+                            n.push_leading_comment(pyrs_ast::ast::Comment {
                                 text: alloc::sync::Arc::from(text),
                                 standalone: true,
                             });
@@ -215,7 +216,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                     flow_style: false,
                     meta: NodeMeta::default(),
                 };
-                (None, None, false, node)
+                (Vec::new(), None, false, node)
             }
         };
         let mut key = CustomNode::Scalar {
@@ -225,8 +226,8 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
             block_indent: None,
             meta: NodeMeta::default(),
         };
-        if let Some(text) = standalone {
-            key.set_leading_comment(pyrs_ast::ast::Comment {
+        for text in standalone {
+            key.push_leading_comment(pyrs_ast::ast::Comment {
                 text: alloc::sync::Arc::from(text),
                 standalone: true,
             });
@@ -328,11 +329,11 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
                 };
                 // PR #119: interior comments ride the same two-slot
                 // convention as the surrounding tables — the own-line
-                // note above a member onto its key's `leading_comment`,
+                // notes above a member onto its key's leading list,
                 // the same-line trailing note onto its value's
                 // `comment`.
-                if let Some(text) = anns.leading {
-                    key.set_leading_comment(pyrs_ast::ast::Comment {
+                for text in anns.leading {
+                    key.push_leading_comment(pyrs_ast::ast::Comment {
                         text: alloc::sync::Arc::from(text),
                         standalone: true,
                     });

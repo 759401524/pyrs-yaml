@@ -263,6 +263,25 @@ class TestYamlDocumentDunder:
         with pytest.raises(exc_type):
             _ = pyrs_yaml.parse(yaml)[key]
 
+    def test_getitem_reaches_a_commented_key(self):
+        # A leading note is decoration: `NodeDecor` is documented as excluded
+        # from `Hash` / `PartialEq`, so a key that carries one must still be
+        # reachable by its own text. It was not: `CustomNode::hash` folded the
+        # normalised comment view while `CustomNode::eq` did not, so the stored
+        # key and the query compared equal but hashed apart and `IndexMap` missed
+        # it. The first key of a document is not enough to show this - its note
+        # is reported against the enclosing mapping - so the assertions below
+        # cover the second and third keys as well as membership.
+        yaml = "# above first\nfirst: 1\n# above second\nsecond: two\n# above third\nthird: 3\n"
+        doc = pyrs_yaml.parse(yaml)
+        assert doc["first"] == 1
+        assert doc["second"] == "two"
+        assert doc["third"] == 3
+        assert "second" in doc
+        assert "third" in doc
+        assert "missing" not in doc
+        assert doc.to_dict()["second"] == "two"
+
     @pytest.mark.parametrize(
         "yaml,expected_type",
         [
@@ -530,6 +549,36 @@ class TestResolveMergesTrue:
         child = doc.get("child")
         assert child["x"] == 1
         assert child["y"] == 2
+
+
+class TestMergeKeyIdentityIgnoresMetadata:
+    """A note or anchor on ``<<`` is metadata, not identity.
+
+    The merge pass used to compare whole AST nodes, so a ``<<`` carrying a comment was
+    invisible to it while the identical document without the note resolved -- and since
+    the writer relocates notes, one document changed meaning when re-serialised (the
+    pair vanished on the next round). libFuzzer ``yaml_roundtrip`` crash-69931a77,
+    minimised to ``<<: #*`` + ``  y:``.
+    """
+
+    def test_merge_resolves_regardless_of_note_placement(self):
+        spellings = (
+            "<<: #*\n  y: 1\n",
+            "<<:\n  y: 1  # *\n",
+            "<<:\n  y: 1\n",
+        )
+        assert [pyrs_yaml.safe_load(s) for s in spellings] == [{"y": 1}] * 3
+
+    def test_emission_of_a_noted_merge_key_is_a_fixed_point(self):
+        for src in ("<<: #*\n  y: 1\n", "<<: #*\n  y:"):
+            once = pyrs_yaml.parse(src).to_yaml()
+            assert pyrs_yaml.parse(once).to_yaml() == once, src
+
+    def test_quoted_or_tagged_lookalike_is_not_a_merge(self):
+        # Style and tag still decide identity, so these stay ordinary keys and keep
+        # their nested value -- the metadata fix must not widen into re-merging them.
+        assert pyrs_yaml.safe_load('"<<":\n  y: 1\n') == {"<<": {"y": 1}}
+        assert pyrs_yaml.safe_load("!x <<:\n  y: 1\n") == {"<<": {"y": 1}}
 
 
 class TestSelfReferentialMerge166:

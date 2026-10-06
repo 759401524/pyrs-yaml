@@ -54,10 +54,23 @@ pub fn scan_yaml(yaml: &str) -> YamlScan {
     }
 }
 
-/// Check if a character is a valid unquoted anchor name character.
-/// YAML 1.2 allows any character except whitespace and flow indicators: `{}[],`
+/// Check if a character can continue an unquoted anchor name.
+///
+/// Mirrors granit's `is_anchor_char` — printable, not `s-space`/break, not a flow
+/// indicator, not `z` — so the harvested run is the maximal run the reader
+/// stored. `char::is_whitespace` is the wrong vocabulary here: it also matches
+/// NBSP, which granit treats as ordinary name content, so a Unicode trim would
+/// cut `&a<NBSP>b` down to `a` and silently rename the anchor on re-emission.
+/// `is_yaml_document_char` stays on top because the AST must hold text our own
+/// reader accepts inside a document (U+FEFF and the noncharacters, #262).
 fn is_valid_anchor_char(c: char) -> bool {
-    !c.is_whitespace() && c != '{' && c != '}' && c != '[' && c != ']' && c != ','
+    // ASCII fast path, which is every real anchor name: printable ASCII minus the
+    // flow indicators and the blanks. The flow indicators are all ASCII, so the
+    // non-ASCII arm below needs no test for them.
+    if c.is_ascii() {
+        return matches!(c, '!'..='~') && !matches!(c, '\t' | '{' | '}' | '[' | ']' | ',');
+    }
+    pyrs_schema::is_yaml_document_char(c) && !pyrs_schema::is_yaml_blank(c)
 }
 
 /// Resolve the anchor name granit attached to a node whose content begins at
@@ -113,6 +126,31 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
         if !boundary {
             continue;
         }
+        // A tag token (`!` followed by ns-uri-char*) may legally contain `&`, and
+        // `&` also follows `-` (from `- &a v`) and `:` - so the boundary test alone
+        // cannot tell an anchor from an ampersand sitting inside a preceding tag.
+        // Walk the whitespace-delimited run leftwards from here: if it opens with
+        // `!`, this `&` belongs to that tag and granit never meant it as an anchor.
+        // Tags and anchors are always space-separated, so the run's first byte is
+        // exactly the token's first byte.
+        let mut run = i;
+        while run > 0 && !bytes[run - 1].is_ascii_whitespace() {
+            run -= 1;
+        }
+        if bytes[run] == b'!' {
+            continue;
+        }
+        // A `#` that opens a comment anywhere earlier on this line puts everything
+        // after it — including this `&` — inside comment text, which granit never
+        // treats as an anchor. The earlier form of this guard compared only the
+        // token immediately before the `&`, so `# !! &?` donated its `&?` as the
+        // name across a comment line sitting between `bg: &b` and the node's content:
+        // the anchor was renamed on re-read and every alias pointing at the old name
+        // was orphaned (libFuzzer `yaml_roundtrip` crash-68adf94c — the same class as
+        // crash-04fddeb8, whose `# &l` shape this still refuses).
+        if comment_opens_before_on_line(bytes, i) {
+            continue;
+        }
         let name: String = yaml[i + 1..]
             .chars()
             .take_while(|c| is_valid_anchor_char(*c))
@@ -129,6 +167,27 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
         }
     }
     None
+}
+
+/// True when a comment starts on `byte`'s line before `byte` itself, which makes
+/// `byte` comment text rather than node syntax.
+///
+/// YAML opens a comment at a `#` in the first column or after a blank, so a `#`
+/// embedded in a scalar (`x#y`) does not count and cannot hide an anchor. A quoted
+/// `#` earlier on the line is the one shape this would over-refuse, and it has no
+/// reachable form: node properties (`&anchor`, `!tag`) always precede the node
+/// value, so nothing that granit can mark as an anchor ever follows a quoted
+/// scalar on the same line.
+fn comment_opens_before_on_line(bytes: &[u8], byte: usize) -> bool {
+    let mut line = 0usize;
+    for at in (0..byte).rev() {
+        if matches!(bytes[at], b'\n' | b'\r') {
+            line = at + 1;
+            break;
+        }
+    }
+    (line..byte)
+        .any(|at| bytes[at] == b'#' && (at == line || matches!(bytes[at - 1], b' ' | b'\t')))
 }
 
 #[cfg(test)]
@@ -216,6 +275,29 @@ mod tests {
         assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
     }
 
+    /// A tag URI may legally contain `&` (it is an ns-uri-char), and the writer
+    /// emits properties as `&anchor !tag`, so the rightmost boundary `&` left of a
+    /// node can sit *inside the tag* instead of being the anchor (libFuzzer
+    /// `yaml_roundtrip`, crash-f44eca1d minimised to 12 bytes): `&F !-&l ` read back
+    /// as anchor `l`, renaming the anchor every round and orphaning any `*F` alias,
+    /// so emission never reached a fixed point. Rejecting a `&` whose token opens
+    /// with `!` makes the scanner find the real `&F`.
+    #[test]
+    fn anchor_name_before_skips_ampersand_inside_tag_token() {
+        let s = "&F !-&l \n";
+        // granit's empty-scalar span for the anchored node starts at byte 7.
+        assert_eq!(anchor_name_before(s, 7), Some("F".to_string()));
+
+        // The reverse property order worked before and must keep working.
+        let s = "!-&l &F";
+        assert_eq!(anchor_name_before(s, s.len()), Some("F".to_string()));
+
+        // A tag carrying the only `&`, with no anchor at all, must yield nothing
+        // rather than harvesting the tag's innards.
+        let s = "key: !a&b ";
+        assert_eq!(anchor_name_before(s, s.len() - 1), None);
+    }
+
     /// A bare apostrophe in a plain key (`bas'e`) is not a quote open, so a
     /// later anchored node still resolves its name — the family bug #68da2420.
     #[test]
@@ -241,6 +323,32 @@ mod tests {
         let s = "a: &x |\n  line1\n  line2\n";
         let b = s.find("line1").unwrap();
         assert_eq!(anchor_name_before(s, b), Some("x".to_string()));
+    }
+
+    /// A `&` anywhere inside comment text is never an anchor — not only one that
+    /// follows the `#` directly. `bg: &b` + `# !! &?` + content re-read as `&?`,
+    /// renaming the anchor and orphaning every alias to it (libFuzzer
+    /// `yaml_roundtrip` crash-68adf94c, the shape that escaped the immediate-token
+    /// version of this guard).
+    #[test]
+    fn anchor_name_before_ignores_ampersand_anywhere_in_comment_text() {
+        let s = "bg: &b\n  # !! &?\n  ~: ~\n";
+        let b = s.find("~: ~").expect("content present");
+        assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
+        assert!(
+            comment_opens_before_on_line(s.as_bytes(), s.find("&?").expect("comment amp")),
+            "the ampersand inside the comment body is comment text"
+        );
+        assert!(
+            !comment_opens_before_on_line(s.as_bytes(), s.find("&b").expect("real anchor")),
+            "the real anchor precedes any comment on its line"
+        );
+        // A `#` embedded in a plain scalar opens nothing.
+        let plain = "k: x#y &a v\n";
+        assert!(
+            !comment_opens_before_on_line(plain.as_bytes(), plain.find("&a").expect("anchor")),
+            "a mid-token `#` is not a comment opener"
+        );
     }
 
     /// The name run must end at or before the node's own content start, so an
@@ -271,6 +379,35 @@ mod tests {
                 "drift for {input:?}: {once:?}"
             );
         }
+    }
+
+    /// End-to-end: the document that renamed its anchor by harvesting a `&?` out of
+    /// the comment line below it now keeps the name and settles in one step. Bytes
+    /// are read from the committed seed so the test cannot drift from the input that
+    /// actually crashed (libFuzzer `yaml_roundtrip` crash-68adf94c).
+    #[test]
+    fn anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand() {
+        let raw =
+            include_bytes!("../../../../../fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed");
+        let src = String::from_utf8(raw.to_vec()).expect("seed is utf-8");
+        let node = crate::parser::parse(&src, pyrs_schema::types::Schema::Core)
+            .unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+        let once = crate::serializer::to_yaml(&node);
+        let again = crate::parser::parse(&once, pyrs_schema::types::Schema::Core)
+            .unwrap_or_else(|e| panic!("output must re-parse: {e}\n---\n{once}\n---"));
+        assert!(
+            once.starts_with("bg: &b\n"),
+            "the anchor token stays `&b`, not the comment's `&?`: {once:?}"
+        );
+        assert!(
+            once.contains("# !! &?"),
+            "the comment keeps its own ampersand as text: {once:?}"
+        );
+        assert_eq!(
+            crate::serializer::to_yaml(&again),
+            once,
+            "{src:?} must settle in one step: {once:?}"
+        );
     }
 
     /// End-to-end idempotence on the embedded-`&` crash input + a minimal pair

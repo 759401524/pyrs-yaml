@@ -196,6 +196,19 @@ class Node:
         doc = self._get_doc()
         return doc._get_leading_comment([s for s in self._path])
 
+    @property
+    def leading_comments(self) -> list[str]:
+        """Every leading (standalone) note above this node, in source order.
+
+        A document may stack any number of comment lines directly above one key;
+        all of them are preserved. :attr:`leading_comment` returns only the first,
+        and is unchanged for documents that carry a single note.
+
+        An empty list when the node has no standalone comment.
+        """
+        doc = self._get_doc()
+        return doc._get_leading_comments([s for s in self._path])
+
     def set_leading_comment(self, text: str) -> None:
         """Set (or replace) this node's leading (standalone) comment.
 

@@ -158,7 +158,7 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
 
         // Handle native comments from granit-parser
         if let Event::Comment(text, placement) = &event {
-            let trimmed = text.trim();
+            let trimmed = text.trim_matches(pyrs_schema::is_yaml_blank);
             // granit drops a contentless `#`/`# ` on re-read, so a consumer
             // round-tripping through these events would drift on it; surface
             // nothing for an empty comment (mirrors the AST receiver; libFuzzer
@@ -354,7 +354,7 @@ pub fn parse_stream_with_options(
     yaml: &str,
     max_depth: usize,
 ) -> Result<Vec<StreamEvent>, super::ParseError> {
-    if yaml.trim().is_empty() {
+    if pyrs_schema::is_yaml_blank_only(yaml) {
         return Ok(Vec::new());
     }
 
