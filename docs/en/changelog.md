@@ -162,6 +162,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A merge key can no longer move an anchor behind its alias** — expanding `<<:`
+  prepended the merged pairs at the front of the mapping, so a document that defines
+  `&b` on an earlier own key and uses `*b` inside the merged map emitted `*b` before
+  `&b` was defined: text our own parser refuses (`found unknown anchor`), breaking the
+  engine's "we never emit unparseable output" contract (`crash-9b77aea4`, 78 bytes,
+  minimised to 15). The expansion now inserts at the index the `<<:` occupied, which is
+  authored order — and index 0 when the merge key is first, so the documented
+  `<<: *defaults` shape is untouched (487 -> 489 Rust tests, 1781 Python tests, all
+  passing unchanged).
 - **A key's trailing note no longer migrates onto its value's line** — when a
   value had to move down to take a leading note of its own, the note that belongs
   to the *key* was still appended to whatever line finished last, i.e. the value's
