@@ -136,6 +136,17 @@ status: new
 
 #### 수정
 
+- **mapping 고유의 note가 맨 `!` 값 줄로 옮겨가지 않는다** — block mapping의 body를 마무리하는
+  pair의 값이 `!` 하나로만(본문 없는 non-specific tag) 출력될 때, container의 inline note를 그
+  줄에 붙이면 재파싱 시 그 *값*의 leading note로 보고되어 container는 그것을 잃고 문서는 한
+  라운드 늦게 안정된다 (`~: ! # -` → `~:  # -\n  # -\n  ! `, libFuzzer `yaml_roundtrip`,
+  `crash-cf49fe85`, 13 bytes로 최소화). writer 이제 reader가 보고하는 자리에 note를 두므로 한
+  번의 출력으로 fixed point에 닿고, AST는 해석된 대로 container에 note를 지킨다. *named* tag
+  (`!-`)는 property를 닫으므로 줄 안에 두면 올바르게 재읽히므로 손대지 않았다 — 그 모양의 기존
+  pin 두 개(`crash-11ced252`, `crash-22cb5f67`)는 원본 텍스트를 그대로 주장한다. 비용:
+  instruction-count gate에 세 번 거부된 끝에, 판정을 pair마다 두면 `serialize_small` +2.75%,
+  판정을 loop 밖으로 꺼내도 인자가 먼저 계산되어 +1.39%, 드문 경로만 별도 loop로 두고 일반
+  경로의 형태를 보존해 +0.54%.
 - **접힌 중복 `<<`가 정의한 anchor를 고아로 만들지 않는다** — `<<: &b`는 리터럴·null 값
   merge key로, 우리 규칙상 평범한 key인데 아래 진짜 `<<:`와 접혔다. fold는 사라진 항목의
   note만 옮겨 담고 그 항목이 지니던 anchor는 그대로 두었다. 그래서 출력은 어디에도 `&b`

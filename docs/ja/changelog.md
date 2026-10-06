@@ -139,6 +139,17 @@ status: new
 
 #### 修正
 
+- **mapping 自身の note が裸の tag 値の行へ流れなくなった** — block mapping の body を終える
+   pair の値が lone `!`（non-specific tag で本文なし）として出力される場合、container の
+  inline note をその行に足すと再読時に *value* の leading note として報告され、container は
+  再読でそれを失い、文書は 1 ラウンド遅れて落ち着いた（`~: ! # -` → `~:  # -\n  # -\n  ! `、
+  libFuzzer `yaml_roundtrip`、`crash-cf49fe85`、13 バイトに最小化）。writer はもう、reader が
+  報告する位置に note を書くので 1 回の出力が不動点になり、AST は解析通り container に note を
+  保持する。*named* tag（`!-`）は property を閉じるので行内のまま正しく再読され、無変更である —
+  その形状の既存 pin 2 本（`crash-11ced252`、`crash-22cb5f67`）は元のテキストを主張したままだ。
+  コスト：instruction-count gate に 3 度却下された末、判定を pair ごとに走らせていた
+  `serialize_small` +2.75% → 判定は loop 外へ出したが実参が遅延評価されず +1.39% →
+  まれな経路だけを別ループにして通常経路の形を保ち +0.54%。
 - **畳み込まれた重複 `<<` が定義した anchor を孤児にしなくなった** — `<<: &b` はリテラルで
   null 値の merge key、つまり自前のルールでは通常の key であり、その下にある本物の `<<:` と
   畳み込まれる。ところが fold は落とす条目の note だけを移し替え、携わっていた anchor を
