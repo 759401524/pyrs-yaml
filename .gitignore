@@ -26,6 +26,10 @@ benchmark-results.json
 fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
+# Multi-round harvesting (scripts/fuzz_rounds.sh) keeps every crash a run
+# discovered here, so a later round cannot re-report it; same machine-generated
+# status as the artifact dir above.
+fuzz/collected/
 fuzz/sessions/
 
 # Windows venv junction/symlink (a plain `.venv/` dir pattern does not match it)
