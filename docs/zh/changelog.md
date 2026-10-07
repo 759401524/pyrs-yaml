@@ -27,6 +27,27 @@ status: new
 
 #### 新增
 
+- **卫生类钩子从此在 CI 里跑,行尾策略也有了能强制的形式** —— 新增 `Hygiene` 工作流,在每个
+  pull request、每次推送到 `main`、以及每周,都对整棵树跑 `prek run --all-files`。它存在的原因是
+  同仓使用的 `jj` 从不执行 Git 钩子,于是 `prek.toml` 里的十七个钩子只是本地自觉;十五个被跟踪
+  文件已经带着 CRLF 行尾进入 `main` —— 12,263 行,其中五个是 changelog 镜像 —— 十几行编辑被放大成
+  2,500 行 diff,而每个门禁都说绿灯。`.gitattributes` 声明策略,`scripts/check_line_endings.py`
+  强制这条绝对规则,并在 `prek.toml` 里注册为 `line-endings-lf` 钩子。内置的 `mixed-line-ending`
+  并*不*实现这条规则:注入一个全 CRLF 的文件它仍然 `Passed`,因为它只检测混合行尾。这十五个文件里
+  十三个在此归一;剩下两个刻意保留,因为它们的 CRLF 位于原始字符串内部,正是已提交 Ir 基准所测量的
+  输入(`crates/pyrs-yaml-core/src/bench_inputs.rs`、`crates/pyrs-yaml-core/benches/ir_gate.rs`),
+  归一它们属于数据变更,应与基准重生成一并做。同一个作业也跑 `cargo fmt --check`,而此前没有任何
+  工作流跑过它。 CI 的 clippy 也从 `cargo clippy -- -D warnings` 改为本仓库声明的 `--all --all-targets`
+  范围——改动前先实测:更宽的命令在整棵树上本来就是干净的。
+- **质量防线第一次被度量,而度量本身成了门禁** —— `QUALITY_MATRIX.md` 记录单元、属性、fuzz
+  三档各自能到达与到不了的地方;`scripts/quality_matrix.py` 不抄写这些数字,而是从声明防线的文件
+  (`.github/workflows/*.yml`、`prek.toml`、`fuzz/Cargo.toml`、`scripts/check_*.py`、Ir 基准
+  bench 与 `.ci/ir-baseline.json`)重新推导。`tests/test_quality_matrix.py` 把推导出的盲区与
+  `.ci/quality-holes.json` 台账比对,两个方向都会失败:新盲区不写下退出条件就不许落地,已经堵上的
+  盲区留在台账里同样不允许。首轮实测浮出的结论,没有一条来自推断:CI 里没有任何任务跑钩子集,也没有
+  任何任务跑 `cargo fmt --check`,CI 的 clippy 不看测试与基准,属性测试每次只用 proptest 默认例数,
+  JSON 与 TOML 两个引擎只有解析向 fuzz 目标,写手从未被 fuzz。这个门禁自身的判别力用四次注入验证,
+  每次恰好让为它写的那条测试变红。
 - **CI 真正守得住的指令数门禁** —— `CodSpeed` 工作流新增
   `Instruction-count baseline` 作业，用*计数指令*（`callgrind` Ir）测量引擎热路径，
   相对 `.ci/ir-baseline.json` 上升超过百分之二即失败——该容差按两种 Linux 镜像之间实测

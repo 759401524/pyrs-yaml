@@ -56,8 +56,13 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      # `--all-targets`, not the default `--lib`-ish scope: the repository's own discipline
+      # is `cargo clippy --all --all-targets -- -D warnings`, and linting only `src/` in CI
+      # while tests, benches and examples go unlinted means a green PR can still break the
+      # next person's hook run. Measured before adopting: the same command is clean locally
+      # against the whole tree, so this closes a registered blind spot without trading a red.
       - name: Run cargo clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all --all-targets -- -D warnings
 
       - name: Run cargo tests
         env:

@@ -1,0 +1,74 @@
+name: Hygiene
+
+# The hook set in `prek.toml` is the repository's hygiene gate - line endings, trailing
+# whitespace, oversized and conflicted files, valid YAML/TOML, changelog mirrors,
+# localized script purity, both formatters and both linters. Until now it only ever ran
+# where a person remembered to run it: no workflow invoked `prek`, and the colocated
+# `jj` workflow does not run Git hooks at all. That is how fourteen tracked files ended
+# up holding CRLF - a helper script writing with the platform's default newline turned a
+# dozen changed lines into a 2,500-line diff that every gate called green.
+#
+# Deliberately no `paths:` filter: a full-tree check that only runs when someone touches
+# the checked files is the same hole with a new name. `cargo clippy` is the one hook skipped
+# here, because `ci.yml`'s `rust-lint` job runs it with a warm build cache; `cargo fmt` is
+# NOT skipped, because measuring the matrix showed no workflow anywhere ran it - `--check`
+# only parses, so the whole Rust formatting gate costs seconds, and until this job existed
+# the repository's formatting was policed only where a person remembered to run it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 2 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hygiene-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hooks:
+    name: prek hook set on the full tree
+    runs-on: ubuntu-latest
+    env:
+      # ci.yml's rust-lint owns clippy; re-running it here would add a full compile.
+      SKIP: cargo-clippy
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history is not needed, but `--all-files` walks the working tree, and the
+          # checkout must therefore be the tree as committed (no sparse filtering).
+          fetch-depth: 1
+
+      # Only needed for the `cargo fmt` hook, which parses rather than compiles.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # Locked to the version the repository pins, so the gate cannot quietly change
+      # behaviour under a floating install.
+      - name: Install prek
+        run: uv tool install --from 'prek>=0.1.0' prek
+
+      - name: Line-ending audit (reports the counts, fixes nothing)
+        run: python scripts/check_line_endings.py
+
+      - name: Run every hook over the repository
+        # `--all-files`, not the default staged-files mode: this tree's commits are made by
+        # `jj`, which never runs the hooks, so "what is staged" is not where the damage is.
+        run: prek run --all-files --hook-stage pre-commit

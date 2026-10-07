@@ -28,6 +28,34 @@ hooks = [
   # space leaves a 6-byte input that no longer reproduces the crash it was added
   # for. Keep the hygiene hook off the fuzz input trees.
   { id = "trailing-whitespace", priority = "format", exclude = { glob = ["fuzz/seeds/**", "fuzz/corpus/**", "fuzz/artifacts/**"] } },
+  # Line endings, the same declaration `.gitattributes` makes. Nothing else in the gate
+  # set reads them, so a helper script that wrote a tracked file with the platform default
+  # newline produced a 600-2,500 line diff out of a dozen changed lines and passed every
+  # test - measured, five changelogs and ten other tracked files carried the CRLF into
+  # main before anything looked. Fuzz trees are excluded for the reason above: a seed's
+  # CR bytes are the input, not formatting. Two further files are excluded because their
+  # CRLFs sit inside raw strings the Ir baseline was measured against - see
+  # `scripts/check_line_endings.py`, which keeps the same list.
+  #
+  # `mixed-line-ending` alone is NOT the policy: it fires on a file that mixes endings,
+  # and a file that is entirely CRLF - the actual failure mode here, produced by a writer
+  # using the platform default - reads as consistent and passes. Verified, not assumed:
+  # injecting all-CRLF into a file left this hook Passed while the script below reported
+  # the line count. So the absolute rule is enforced by its own hook, next down.
+  {
+    id = "mixed-line-ending",
+    priority = "checks",
+    args = ["--fix=lf"],
+    exclude = {
+      glob = [
+        "fuzz/seeds/**",
+        "fuzz/corpus/**",
+        "fuzz/artifacts/**",
+        "crates/pyrs-yaml-core/src/bench_inputs.rs",
+        "crates/pyrs-yaml-core/benches/ir_gate.rs",
+      ],
+    },
+  },
 ]
 
 # ── Rust: cargo fmt + clippy ────────────────────────────────────────────────
@@ -49,6 +77,19 @@ name = "cargo clippy"
 language = "system"
 entry = "cargo clippy -- -D warnings"
 files = "\\.(rs|toml|lock)$"
+pass_filenames = false
+priority = "checks"
+
+# The absolute line-ending rule, which `mixed-line-ending` does not express: it reports a
+# file that mixes endings and stays quiet on one that is entirely CRLF - the shape this
+# repository actually accumulated. Measured before adopting: an injected all-CRLF file
+# left the builtin hook `Passed` while this script named its line count. It walks tracked
+# *and* newly created files, because the failure arrives at creation time.
+[[repos.hooks]]
+id = "line-endings-lf"
+name = "text files are LF-only"
+language = "system"
+entry = "python scripts/check_line_endings.py"
 pass_filenames = false
 priority = "checks"
 

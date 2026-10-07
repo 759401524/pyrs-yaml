@@ -21,6 +21,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hygiene hooks run in CI, and the line-ending policy has a form that can be enforced** —
+  a `Hygiene` workflow runs `prek run --all-files` over the whole tree on every pull request,
+  on every push to `main`, and weekly. It exists because the colocated `jj` workflow never
+  executes Git hooks, so the seventeen hooks in `prek.toml` were a local courtesy and fifteen
+  tracked files had reached `main` with CRLF line endings — 12,263 lines, five of them
+  changelog mirrors — turning a dozen edited lines into a 2,500-line diff that every gate
+  called green. `.gitattributes` declares the policy, `scripts/check_line_endings.py` enforces
+  the absolute rule, and `prek.toml` runs it as the `line-endings-lf` hook. The builtin
+  `mixed-line-ending` does *not* implement that rule: an injected all-CRLF file left it
+  `Passed`, because it only detects mixed endings. Thirteen of the fifteen files are normalised
+  here; two are deliberately left alone because their CRLFs sit inside raw strings that are the
+  very input the committed Ir baseline was measured against
+  (`crates/pyrs-yaml-core/src/bench_inputs.rs`, `crates/pyrs-yaml-core/benches/ir_gate.rs`), so
+  normalising them is a data change belonging with a baseline regeneration. The same job also
+  runs `cargo fmt --check`, which no workflow anywhere had run. CI's clippy moved from `cargo clippy -- -D warnings` to this repository's declared `--all --all-targets` scope, after measuring that the wider command is already clean over the whole tree.
+- **The quality defence is measured, and the measurement is a gate** —
+  `QUALITY_MATRIX.md` records what the unit, property and fuzz tiers can and cannot reach,
+  and `scripts/quality_matrix.py` re-derives that picture from the files that declare the
+  defence (`.github/workflows/*.yml`, `prek.toml`, `fuzz/Cargo.toml`, `scripts/check_*.py`,
+  the Ir bench and `.ci/ir-baseline.json`) instead of transcribing it.
+  `tests/test_quality_matrix.py` compares the blind spots that measurement finds with the
+  registry in `.ci/quality-holes.json` and fails in *both* directions: a new blind spot
+  cannot land until it is written down with an exit criterion, and a hole that has closed
+  cannot stay registered as if it were still open. What the first run surfaced, none of it
+  reasoned: no CI job ran the hook set, no CI job ran `cargo fmt --check`, CI's clippy skips
+  tests and benches, every property run used proptest's default case count, and the JSON and
+  TOML engines had parse-only fuzz targets while their writers went unfuzzed. The gate's own
+  discrimination was verified by four injections, each reddening the one test written to
+  notice it.
 - **An instruction-count gate the CI can actually hold** — the `CodSpeed`
   workflow now runs an `Instruction-count baseline` job that measures the engine's
   hot paths in *counted instructions* (`callgrind` Ir) and fails on more than a

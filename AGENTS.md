@@ -16,7 +16,7 @@
 - Build + install: `uv run maturin develop --release`
 - Run tests: `uv run pytest tests/ -v`
 - Rust fmt: `cargo fmt`
-- Rust lint: `cargo clippy --all -- -D warnings`
+- Rust lint: `cargo clippy --all --all-targets -- -D warnings` (CI runs the same scope)
 - Rust tests: `cargo nextest run --all` (preferred over `cargo test`)
 - Pure Rust tests (no Python runtime): `cargo test --all --no-default-features`
 - Python lint: `uv run ruff check . && uv run ruff format .`
@@ -67,6 +67,7 @@ fn parse(yaml: &str) -> PyResult<YamlDocument> { ... }
 ## Testing
 
 - Round-Trip assertion is the primary test pattern
+- The defence matrix is itself a gate: `python scripts/quality_matrix.py` measures which tiers exist per format and what they are blind to, and `tests/test_quality_matrix.py` fails if the measured blind spots differ from `.ci/quality-holes.json` in either direction. See [`QUALITY_MATRIX.md`](QUALITY_MATRIX.md) — closing a hole means deleting its registry entry, and accepting one means adding an entry with an exit criterion, in the same change.
 - Use `uv run pytest tests/ -v` for normal test runs
 - Free-threaded tests exclude numpy: `pytest tests/ -k "not numpy"`
 - Compliance check via `tests/test_yaml_suite.py` on PRs to main
