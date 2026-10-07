@@ -1321,17 +1321,24 @@ impl Serializer {
                     self.insert_note_at(at, &format!("  # {}", note.text));
                 }
             }
-        } else if matches!(
-            item,
-            CustomNode::Mapping {
-                flow_style: false,
-                ..
-            } | CustomNode::Sequence {
-                flow_style: false,
-                ..
-            }
-        ) || item.leading_comment().is_some()
+        } else if !Self::is_empty_container(item)
+            && (matches!(
+                item,
+                CustomNode::Mapping {
+                    flow_style: false,
+                    ..
+                } | CustomNode::Sequence {
+                    flow_style: false,
+                    ..
+                }
+            ) || item.leading_comment().is_some())
         {
+            // An empty block container never takes this branch: `{}` / `[]` have no block
+            // spelling, so a line of their own re-reads as a *flow* node and the next
+            // emission inlines it — `pbt::tests::prop_mapping_order_preserved` caught that
+            // on main (`- ` / `    {}` then `- {}`). On the dash line is the fixed point,
+            // and the same holds when the item carries a note: `- \n  {}  # cn` settles only
+            // once the note has come up to the dash line too.
             self.output.push('\n');
             let child_indent = indent_width + self.indent_sequence;
             self.serialize_node_internal(item, child_indent, child_indent, false, depth + 1)?;
@@ -3019,6 +3026,71 @@ mod tests {
             one,
             "one emission is enough to reach the fixed point"
         );
+    }
+
+    /// An empty block container has no block spelling — `{}` and `[]` re-read as *flow*
+    /// nodes — so giving one a line of its own below a `- ` made the next emission inline
+    /// it: the first emission was never the fixed point. `pbt::tests::prop_mapping_order_preserved`
+    /// found it on a Linux seed with a sequence-wrapped empty mapping used as a mapping key
+    /// (`- ` / `    {}` then `- {}`), a tree no text input produces, so it is pinned from the
+    /// AST here. The note and anchor variants matter because the exemption has to hold for
+    /// them too: `- \n  {}  # cn` needed a round as well, and now settles on the dash line.
+    #[test]
+    fn an_empty_block_container_is_inlined_on_the_dash_line() {
+        let empty_map = || CustomNode::plain_mapping(Default::default());
+
+        let one = to_yaml(&CustomNode::plain_sequence(vec![empty_map()]));
+        assert_eq!(
+            one, "- {}\n",
+            "an empty block mapping has no block spelling"
+        );
+        assert_eq!(
+            to_yaml(&parse_core(&one)),
+            one,
+            "the dash line is where it settles: {one:?}"
+        );
+
+        let one = to_yaml(&CustomNode::plain_sequence(vec![
+            CustomNode::plain_sequence(Vec::new()),
+        ]));
+        assert_eq!(one, "- []\n", "same for an empty block sequence");
+        assert_eq!(to_yaml(&parse_core(&one)), one, "{one:?}");
+
+        let mut noted = empty_map();
+        if let CustomNode::Mapping { meta, .. } = &mut noted {
+            meta.comment = Some(Comment {
+                text: Arc::from("cn"),
+                standalone: true,
+            });
+        }
+        let one = to_yaml(&CustomNode::plain_sequence(vec![noted]));
+        assert_eq!(
+            one, "- {}  # cn\n",
+            "the note comes up to the dash line with its empty item"
+        );
+        assert_eq!(to_yaml(&parse_core(&one)), one, "{one:?}");
+
+        let mut tagged = empty_map();
+        if let CustomNode::Mapping { meta, .. } = &mut tagged {
+            meta.anchor = Some("a".into());
+            meta.tag = Some(Tag {
+                handle: String::new(),
+                suffix: "t".into(),
+            });
+        }
+        let one = to_yaml(&CustomNode::plain_sequence(vec![tagged]));
+        assert_eq!(one, "- &a !<t> {}\n", "anchor and tag ride along");
+        assert_eq!(to_yaml(&parse_core(&one)), one, "{one:?}");
+
+        // Control: a non-empty block mapping still takes its own lines under the dash.
+        let one = to_yaml(&CustomNode::plain_sequence(vec![
+            CustomNode::plain_mapping(
+                [(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"))]
+                    .into_iter()
+                    .collect(),
+            ),
+        ]));
+        assert_eq!(one, "- a: 1\n", "the compact form is untouched: {one:?}");
     }
 
     /// A note that trails a *simple key* rode whatever line had just been

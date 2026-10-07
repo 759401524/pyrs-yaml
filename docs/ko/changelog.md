@@ -143,6 +143,14 @@ status: new
 
 #### 수정
 
+- **sequence 항목의 빈 container는 dump 두 번을 요구하지 않는다** — `{}`와 `[]`에는 block 표기가
+  없지만 두 writer 모두 `-` 아래 줄을 따로 쓰던 터라, 다시 읽으면 *flow* node로 해석되어 다음 dump에서
+  줄 안으로 되돌아왔다. `safe_dump([{}])`는 `"- \n  {}\n"`를 내고, 그것을 다시 dump하면 `"- {}\n"`가
+  나왔다. 값은 한 번도 틀리지 않았지만 텍스트는 계속 움직였고, 바로 그 점이 fuzz 등급이 단언하는 불변량이다.
+  dash 줄에 올리는 자리에서 수렴한다. 트리를 다루는 `Serializer::write_sequence_item`과 Python 객체를
+  다루는 `direct_dump` 고속 경로, 서로 코드를 공유하지 않고 설계상 mirror인 두 구현을 함께 고쳤다. 이제
+  `safe_dump([{}])`는 `"- {}\n"`이고 `[]`와 중첩 경우도 마찬가지이며, 각각에 대해 한 번 더 dump하면 그대로
+  고정점이다. CI의 기본 case 수에서 Linux seed가 `pbt::tests::prop_mapping_order_preserved`로 찾아냈다.
 - **tag뿐인 줄을 닫은 뒤에도 note가 자기 열을 지킨다** — note을 소속 마디에 남기려고 tag뿐인 줄을
   닫는 코드는 그 줄을 출력 안의 절대 offset으로 기억했다. 단순 키의 행 안 note을 쓸 때 그 offset
   앞에 텍스트가 삽입되는데 offset은 옮겨지지 않았다. 그래서 닫기 판정이 잘못된 위치에서 거리를 재고,

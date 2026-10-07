@@ -160,6 +160,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An empty container as a sequence item stops needing two dumps** — `{}` and `[]` have no
+  block spelling, yet both writers put one on a line of its own below the `- `, where it
+  re-read as a *flow* node and the next dump inlined it: `safe_dump([{}])` produced
+  `"- \n  {}\n"`, and dumping that back gave `"- {}\n"`. The data was never wrong; the text
+  kept moving, which is exactly the invariant the fuzz tier asserts. The dash line is where it
+  settles, in both implementations that build it — `Serializer::write_sequence_item` for
+  parsed and edited trees, and the `direct_dump` fast path for Python objects, which mirror
+  each other by design rather than sharing code. `safe_dump([{}])` is now `"- {}\n"`, likewise
+  for `[]` and for nested cases, and re-dumping each of them is a fixed point in one round.
+  Found by `pbt::tests::prop_mapping_order_preserved` on a Linux seed at CI's normal case count.
 - **A note line keeps its column after a tag-only line is closed** — the closing that keeps
   a note on its own node remembers the tag-only line by an absolute offset into the output.
   Writing a simple key's inline note inserts text *before* that offset and never moved it, so
