@@ -272,6 +272,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **`Test matrix (all legs)` waited on three jobs of eleven, so eight could still merge red** — the
+  fan-in added in #300 covered `test`, `test-freethreaded` and `coverage`, which left
+  `rust-lint` (clippy), `property-tier`, `msrv-check`, `no-std-check`, `build`,
+  `compliance-report` and `i18n-check` outside the one check meant to represent the whole run. It now
+  waits on every job in `ci.yml` except itself and `main-gate` (which exists only to keep the
+  default-branch history current on `push`), and runs on `pull_request` alone - a verdict that reddens
+  a manual dispatch has no decision to protect, and trains people to ignore it. Two of its own tests
+  arrived broken and were caught by running them before shipping: the job-name pattern also matched the
+  keys of `on:`, so it demanded a check named `push`, and an unbounded `strategy:` search let every job
+  look like a matrix producer, which #300's assertion had survived only because of an `or` escape that
+  hid the bug. Both are bounded to the `jobs:` block now, and
+  `tests/test_matrix_verdict_gate.py` (14 tests) states the rule exactly: adding a job without adding
+  it to the fan-in reddens the suite. Attribution, run: withdrawing `no-std-check` from `needs` reddens
+  exactly that one test, and the baseline is 14 passed.
 - **`perf-coverage:binding-layer` described a graph the probe had only half read** — the
   measurement reported `ir_harness_crates` as `pyrs-ast, pyrs-schema, pyrs-yaml-core` while the hole it
   derives, and the text filed with it in all five changelog mirrors, named five crates. The probe used

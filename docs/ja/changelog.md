@@ -240,6 +240,17 @@ status: new
 
 #### 修正
 
+- **`Test matrix (all legs)` は 11 個の job のうち 3 個しか待っておらず、8 個は赤のまま合并できた** —
+  #300 で入れた扇入は `test`、`test-freethreaded`、`coverage` のみをカバーし、`rust-lint`(clippy)、
+  `property-tier`、`msrv-check`、`no-std-check`、`build`、`compliance-report`、`i18n-check` を全体の
+  実行を表すはずの単一チェックの外に残していた。いまは `ci.yml` の全 job(自分と `main-gate` を除く)
+  を待ち、`pull_request` だけで発火する — 手動 dispatch を赤にする判定は守るべき判断が存在せず、
+  無視する習慣を養うだけだ。自身のテスト 2 本も壊れた状態で生まれ、出荷前に実行して捕まった:
+  job 名の正規表現が `on:` の鍵まで拾って `push` という检查を要求し、境界なしの `strategy:` 探索が
+  全 job を行列の producer に見せていた(#300 の検証は `or` の逃がし節で偶然通っていただけ)。両方とも
+  `jobs:` の範囲に限定し、`tests/test_matrix_verdict_gate.py`(14 test)は正確な規則として書く: job を
+  増やして扇入へ入れなければテストが赤くなる。帰因は実測: `no-std-check` を `needs` から外すと
+  その 1 本だけが赤になり、baseline は 14 passed。
 - **`perf-coverage:binding-layer` は、プローブが半分しか読んでいない graph を説明していた** —
   計測は `ir_harness_crates` を `pyrs-ast, pyrs-schema, pyrs-yaml-core` と報告していたのに、そこから
   導出される穴と、5 つの changelog mirror に登記された文言は 5 つの crate を上げていた。プローブは

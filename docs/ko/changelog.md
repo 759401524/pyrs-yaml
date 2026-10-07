@@ -235,6 +235,17 @@ status: new
 
 #### 수정
 
+- **`Test matrix (all legs)`는 job 열하나 중 셋만 기다려, 여덟은 빨간 채로 병합됐다** —
+  #300에서 넣은 팬인은 `test`, `test-freethreaded`, `coverage`만 덮고 `rust-lint`(clippy),
+  `property-tier`, `msrv-check`, `no-std-check`, `build`, `compliance-report`, `i18n-check`를
+  전체 실행을 대표한다는 단일 검사 바깥에 남겼다. 이제 `ci.yml`의 모든 job(자신과 `main-gate` 제외)을
+  기다리고 `pull_request`에서만 돈다 — 수동 dispatch를 붉게 만드는 판정에는 지킬 판단이 없고, 그냥
+  무시하는 습관만 키운다. 자기 테스트 둘도 깨진 채로 태어나 출하 전에 돌려 잡아냈다: job 이름 패턴이
+  `on:`의 키까지 주어 `push`라는 검사를 요구했고, 경계 없는 `strategy:` 탐색은 모든 job을 행렬 producer로
+  보이게 했다(#300의 검증은 `or` 탈출 조항 탓에 우연히 통과했을 뿐). 이제 둘 다 `jobs:` 범위로 한정하고
+  `tests/test_matrix_verdict_gate.py`(14 test)는 정확한 규칙으로 박아 둔다: job을 추가하고 팬인에
+  넣지 않으면 테스트가 붉어진다. 귀인은 실측: `no-std-check`을 `needs`에서 빼면 그 하나만 붉어지고
+  baseline은 14 passed.
 - **`perf-coverage:binding-layer`는 계측기가 절반만 읽은 graph를 설명하고 있었다** — 계측은
   `ir_harness_crates`를 `pyrs-ast, pyrs-schema, pyrs-yaml-core`로 보고했지만, 거기서 파생된 결함과 다섯
   changelog mirror에 등록된 글은 crate 다섯 개를 적어 두었다. 계측기가 manifest에서 `re.search`를 써서
