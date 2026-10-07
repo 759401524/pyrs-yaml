@@ -294,6 +294,24 @@ impl DirectWriter {
         Ok(())
     }
 
+    /// Mirror of `Serializer::is_empty_container` for Python objects.
+    ///
+    /// `{}` and `[]` have no block spelling. Putting one on a line of its own re-reads as
+    /// a *flow* node, so the next dump inlines it: the data is right and the text is not
+    /// settled, which is the invariant the round-trip tier asserts. `#287` applied this at
+    /// the dash line in both writers; the route-parity table over the two writers
+    /// (`tests/test_route_parity.py`) found the same decision missing at the mapping-value
+    /// site here, where the node writer had already inlined it.
+    fn is_empty_container(obj: &Bound<'_, PyAny>) -> bool {
+        if let Ok(dict) = obj.cast::<PyDict>() {
+            return dict.is_empty();
+        }
+        if let Ok(list) = obj.cast::<PyList>() {
+            return list.is_empty();
+        }
+        false
+    }
+
     /// Mirror of `Serializer::write_mapping_pair` for each `(key, value)`.
     fn write_mapping(
         &mut self,
@@ -343,8 +361,20 @@ impl DirectWriter {
                 self.write_node_with_kind(py, value, vkind, 0, depth + 1)?;
             }
             Kind::Block | Kind::Other => {
-                self.output.push('\n');
-                self.write_node_with_kind(py, value, vkind, indent_width + 2, depth + 1)?;
+                if Self::is_empty_container(value) {
+                    // An empty container rides the key's line, exactly as a scalar does;
+                    // `write_node*` would indent it onto the next line, where it re-reads
+                    // as flow and the following dump inlines it again.
+                    self.output.push(' ');
+                    self.output.push_str(if value.cast::<PyList>().is_ok() {
+                        "[]\n"
+                    } else {
+                        "{}\n"
+                    });
+                } else {
+                    self.output.push('\n');
+                    self.write_node_with_kind(py, value, vkind, indent_width + 2, depth + 1)?;
+                }
             }
         }
         Ok(())
@@ -438,13 +468,17 @@ impl DirectWriter {
     /// Mirror of `Serializer::is_compact_item` for Python-derived mappings:
     /// non-empty, no metadata, every value inlineable (scalar or null).
     /// ndarray values always produce a block sequence, so they are never
-    /// compact — matching `inlineable_value` on the node form.
+    /// compact — matching `inlineable_value` on the node form. An empty container is
+    /// inlineable too (`{}` / `[]` have no block spelling), and without that the whole
+    /// item loses its compact form as well: `{"a": {}, "b": 1}` was spelled
+    /// `-\n  a:\n    {}\n  b: 1` where the node writer emits `- a: {}\n  b: 1`.
     fn is_compact_mapping(&self, dict: &Bound<'_, PyDict>) -> bool {
         if dict.is_empty() {
             return false;
         }
-        dict.iter()
-            .all(|(_, v)| matches!(classify(&v), Kind::Null | Kind::Scalar))
+        dict.iter().all(|(_, v)| {
+            matches!(classify(&v), Kind::Null | Kind::Scalar) || Self::is_empty_container(&v)
+        })
     }
 
     /// ndarray subtree (serialized via the core serializer with the current
