@@ -169,6 +169,18 @@ status: new
 
 #### 수정
 
+- **key 아래 빈 container는 dump 두 번을 요구하지 않는다** — `#287`로 두 writer 모두 dash 줄에
+  `{}`와 `[]`를 inline 하게 되었지만, Python 객체에서 *mapping value*를 내보내는 경로에는 같은 판단이
+  여전히 빠져 있었다. `safe_dump({"a": {}})`는 `"a:\n  {}\n"`를, AST writer는 `"a: {}\n"`를 냈다.
+  어느 텍스트든 같은 값으로 읽히기 때문에 왕복 검사에서는 보지 못했다. 차이는 한 번의 dump 뒤에도
+  움직임이 멈추는지 여부뿐이었다. 그 뒤에는 또 다른 형태가 숨어 있었다. 항목에 빈 container가 하나
+  있기만 하면 좁은 dash 표기 전체를 잃어버려, `safe_dump([{"a": {}, "b": 1}])`는
+  `"- \n  a:\n    {}\n  b: 1\n"`를 내고 writer의 본래 출력은 `"- a: {}\n  b: 1\n"`였다. 둘 다 고쳤다.
+  그것을 찾아낸 빈틈은 새로 만든 `tests/test_route_parity.py`다 — 같은 값을 두 YAML writer(파싱된 tree를
+  다루는 node writer와 Python 객체를 다루는 `direct_dump` 고속 경로; 둘은 코드를 공유하지 않고 설계상
+  mirror)에 동시에 흘려 넣어 모든 형태에서 byte 단위가 일치하도록 요구하는 표이고, 의도한 차이(quote
+  style, flow style, block scalar, anchor, tag)는 흐리지 않고 차이로서 고정한다. 이 표 덕분에 방어
+  matrix가 등록한 `route-parity:node-writer-vs-direct-dump`는 등록한 이튿날에 막혔다.
 - **자기가 merge되는 template이 상속받은 키를 이제 전달한다** — 어제 낸 merge 수정에는 두 번째 지점이
   있었다. anchor 본문은 merge 해석이 실행되기 전에 스냅샷되므로, `mid: &m {<<: *b, y: 2}`를 가리키는
   `use: {<<: *m}`는 낡은 사본을 읽어 target이 이미 가진다고 생각한 `<<`를 건너뛰었다. 그래서 `use`가

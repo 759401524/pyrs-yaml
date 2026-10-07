@@ -72,3 +72,18 @@ jobs:
         # `--all-files`, not the default staged-files mode: this tree's commits are made by
         # `jj`, which never runs the hooks, so "what is staged" is not where the damage is.
         run: prek run --all-files --hook-stage pre-commit
+
+      # A "files were modified" failure names no file, which makes the job useless for
+      # diagnosis from the log alone: every hook prints `Passed`, and the aggregate says
+      # something changed. This step turns the aggregate into the actual answer - which
+      # paths, and in which direction - and runs only after a failure, so a green tree
+      # never pays for it.
+      - name: Show what the hooks changed
+        if: failure()
+        run: |
+          echo "### paths the hook set rewrote"
+          git status --porcelain
+          echo "### diffstat"
+          git diff --stat
+          echo "### first 80 lines of the diff"
+          git diff --unified=1 | head -n 80

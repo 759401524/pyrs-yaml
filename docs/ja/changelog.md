@@ -173,6 +173,18 @@ status: new
 
 #### 修正
 
+- **key の下の空 container は 2 回の dump を必要としなくなった** — `#287` で両方の writer が
+  dash 行に `{}` と `[]` を inline するようになったが、Python オブジェクトから *mapping value* を
+  出す経路には同じ判断がまだ欠けていた: `safe_dump({"a": {}})` は `"a:\n  {}\n"` を、AST writer は
+  `"a: {}\n"` を出す。どちらの text も同じ data に読み戻せるため round-trip test では見えなかった —
+  違いは 1 回の dump で動きが止まるかどうかだけ。その裏にもう 1 つの形が隠れていた — item に空の
+  container が 1 つあるだけで compact な dash 表記全体を失い、`safe_dump([{"a": {}, "b": 1}])` は
+  `"- \n  a:\n    {}\n  b: 1\n"` を出す、writer の本来の出力は `"- a: {}\n  b: 1\n"`。両方修正した。
+  見つけた缺口は新設の `tests/test_route_parity.py` — 等価な data を 2 つの YAML writer（parse 済み
+  tree を扱う node writer と、Python オブジェクト相手の `direct_dump` 高速経路。両者はコードを共有せず
+  設計上ミラー）に同時に流し込み、すべての形で byte 単位一致を要求する表だ。意図した差分（quote style、
+  flow style、block scalar、anchor、tag）は曖昧にせず差分として pin している。この表によって、防御
+  matrix が登録した `route-parity:node-writer-vs-direct-dump` は登録の翌日に閉じた。
 - **自分で merge する template が、継承した鍵をちゃんと渡すようになった** — 昨日出した merge 修正には
   2 つ目の個所があった。anchor の body は merge 解決が走る前にスナップショットされるため、
   `mid: &m {<<: *b, y: 2}` を指す `use: {<<: *m}` は古いコピーを読み、target が既に持つと思った

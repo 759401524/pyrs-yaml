@@ -153,12 +153,15 @@ measurement no longer reproduces fails CI.
 | `fuzz-no-roundtrip:pyrs-json` | the JSON family has three writers and no target that re-reads what they emit | a `json_roundtrip` target in the matrix with its own seed directory |
 | `fuzz-no-roundtrip:pyrs-toml` | same shape for TOML | a `toml_roundtrip` target in the matrix with its own seed directory |
 | `property-tier:default-case-count` | three writer fixed-point properties fail at 20k cases and are invisible at 256 | a blocking job at an elevated case count, which requires those three to hold first |
-| `route-parity:node-writer-vs-direct-dump` | the two YAML writers mirror each other by design instead of sharing code, and `#287` had to fix the same spelling twice | a table-driven test asserting both routes emit identical text per shape |
 
-Closed while this document was written, and therefore absent from the registry on purpose:
-the hook tier being unwired, `cargo fmt` reaching no job, CI's clippy skipping tests and
-benches, the line-ending policy having no enforceable form, and the conflict-marker-shaped
-hole above.
+Closed while this document was written, and therefore absent from the registry on
+purpose: the hook tier being unwired, `cargo fmt` reaching no job, CI's clippy skipping
+tests and benches, the two YAML writers having no comparison against each other
+(`tests/test_route_parity.py` pins their output byte-for-byte and found the same
+empty-container spelling still unfixed at the mapping-value site of `direct_dump` —
+the second occurrence of the same class, the day after the hole was registered), the
+line-ending policy having no enforceable form, and the conflict-marker-shaped hole
+above.
 
 ## Improvement plan
 
@@ -175,9 +178,10 @@ is done when its test is green, not when the change is merged.
   Acceptance: the `property-tier` hole deleted from the registry.
 - **P1-C, matrix gate** (`done`): this document, the measurement script, the registry and
   the test that compares them.
-- **P1-D, matrix spaces** (`next`): JSON and TOML round-trip fuzz targets, and the
-  route-parity table over the two YAML writers.
-  Acceptance: three holes deleted from the registry in the PRs that close them.
+- **P1-D, matrix spaces** (`partly done`): the route-parity table over the two YAML
+  writers landed and closed its hole; the JSON and TOML round-trip fuzz targets are
+  next. Acceptance: the remaining `fuzz-no-roundtrip` holes deleted from the registry
+  in the PRs that close them.
 - **P2-F, Ir baseline breadth** (`pending`): regenerate the baseline in the gate's own
   execution environment and add `to_json`, `to_toml` and inline-merge scenarios, so the
   perf gate covers the paths the binding actually exposes.

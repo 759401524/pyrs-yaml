@@ -198,6 +198,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **An empty container under a key stops needing two dumps** — `#287` taught both writers to
+  inline `{}` and `[]` on a dash line, but the same decision was still missing where a
+  *mapping value* is emitted from Python objects: `safe_dump({"a": {}})` produced
+  `"a:\n  {}\n"` while the AST writer produced `"a: {}\n"`. Either text re-reads to the
+  same data, which is why no round-trip test saw it; only one of them stops moving after a
+  single round. One more shape hid behind it — an item holding an empty container forfeited
+  its compact dash form entirely, so `safe_dump([{"a": {}, "b": 1}])` produced
+  `"- \n  a:\n    {}\n  b: 1\n"` where the writer emits `"- a: {}\n  b: 1\n"`. Both are
+  fixed. The gap that found them is new: `tests/test_route_parity.py` now feeds equivalent
+  data to the two YAML writers — the node writer over a parsed tree and the `direct_dump`
+  fast path over Python objects, which mirror each other by design rather than share code —
+  and requires byte-identical output for every shape, with the intended differences
+  (quote style, flow style, block scalars, anchors, tags) pinned as differences instead of
+  smoothed over. That table is how the defence-matrix hole
+  `route-parity:node-writer-vs-direct-dump` closed the day after it was registered.
 - **A template that merges for itself now passes what it inherits along** — the merge fix released
   yesterday had a second site: anchor bodies are snapshotted before any merge resolution runs, so
   `use: {<<: *m}` over `mid: &m {<<: *b, y: 2}` read the stale copy, found a `<<` it thought the

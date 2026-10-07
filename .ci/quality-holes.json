@@ -28,12 +28,6 @@
       "opened": "2026-10-07",
       "why": "No workflow sets PROPTEST_CASES, so every CI run uses proptest's default 256 cases. Three fmt_pbt writer properties (JSON, JSON5, TOML) are known to fail at 20,000 cases and are invisible at 256, which is why the case count cannot simply be raised: raising it would redden every PR until those three close.",
       "exit": "A blocking CI job runs the property tier at an agreed elevated case count, which requires prop_json_writers_are_fixed_points, prop_json5_writer_is_fixed_point and prop_toml_writer_is_fixed_point to hold there first."
-    },
-    {
-      "id": "route-parity:node-writer-vs-direct-dump",
-      "opened": "2026-10-07",
-      "why": "The YAML text is produced by two implementations that mirror each other by design rather than share code - Serializer::write_* over parsed nodes and py/direct_dump.rs over Python objects. #287 had to fix the same empty-container spelling in both, and only the manual review noticed the second site. No table-driven test pins the two routes against each other, so the next divergence is found by a fuzzer or a user.",
-      "exit": "tests/test_route_parity.py exists and holds a shape table asserting both routes emit identical text for every row, including comments, anchors, tags and empty containers."
     }
   ]
 }
