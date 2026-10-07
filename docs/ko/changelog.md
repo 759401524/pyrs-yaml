@@ -28,6 +28,14 @@ status: new
 
 #### 추가
 
+- **방어 체계가 자기 안의 구멍을 쟀다: 명령 수 게이트는 Python 바인딩에 못 닿는다** —
+  `quality_matrix.py`는 `ir_gate` 하네스가 실제로 링크하는 crate(bench 소속 crate과 그 workspace
+  의존: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`, `pyrs-toml`)를 뽑아내고, Python API를
+  서비스하는 crate(배치로 특정: `crates/*/src/py/` → `pyrs-yaml`)와 비교한다. 뒤는 그래프에 없으니,
+  `safe_load`의 AST→Python 변환 — 모든 이용자가 지나고 PR #292가 바꾼 길 — 에는 재현 가능한 성능 수가
+  없다. 남은 것은 벽시계뿐인데, 이 repo 자신의 기록은 10% 미만에서 쓸 수 없다고 적었다.
+  `perf-coverage:binding-layer`로 출구 조건과 함께 등록 — 계기가 '무엇을 이름 짓는가'가 아니라
+  '무엇을 컴파일하는가'를 물어 처음 찾은 구멍이다.
 - **테스트 행렬 전체를 대표하는 검사 하나를 추가 (`Test matrix (all legs)`)** — branch protection은
   검사 '이름'으로 짝을 맞추고, 행렬은 다리마다 이름을 하나씩 낸다: 3 OS × 7 Python 으로 21개,
   free-threaded와 coverage까지. 한 시간 안의 두 pull request가 그 대가를 증명했다. #298은

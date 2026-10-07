@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The defence measured a gap in itself: the instruction gate cannot reach the Python binding** —
+  `quality_matrix.py` now derives the crates the `ir_gate` harness actually links (the bench owner
+  plus its workspace dependencies: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`,
+  `pyrs-toml`) and compares them with the crate that serves the Python API, found by layout
+  (`crates/*/src/py/` → `pyrs-yaml`). It is not in the graph, so `safe_load`'s AST-to-Python
+  conversion - the path every user takes, and the one PR #292 changed - has no reproducible
+  performance number: wall time covers it, and this repository's own notes call that channel
+  unusable below ~10%. Registered as `perf-coverage:binding-layer` with the state that removes it,
+  which is the first hole found by asking what the instrument compiles rather than what it names.
 - **One check now stands for the whole test matrix (`Test matrix (all legs)`)** — branch
   protection matches check *names*, and a matrix contributes one name per leg: 21 of them across
   3 OSes × 7 Pythons, plus free-threaded and coverage. Two pull requests in one hour proved what that

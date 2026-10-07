@@ -202,6 +202,39 @@ def declared_artifacts() -> list[tuple[str, bool]]:
     return sorted(found.items())
 
 
+def ir_harness_build_graph() -> set[str]:
+    """Crates the reproducible instrument can actually reach: bench owner + its dependencies.
+
+    `cargo bench --bench ir_gate` compiles the owning crate and what it links, so anything outside
+    that graph is invisible to instruction-count gating no matter what the scenario is named.
+    """
+    crates: set[str] = set()
+    for manifest in sorted((REPO / "crates").glob("*/Cargo.toml")):
+        text = read(manifest)
+        if not re.search(r'^\[\[bench\]\][^\[]*?required-features *= *\[[^\]]*"ir-gate"', text, re.S | re.M):
+            continue
+        crates.add(manifest.parent.name)
+        section = re.search(r"^\[(?:dev-)?dependencies\](.*?)(?=^\[|\Z)", text, re.S | re.M)
+        if section:
+            linked = re.findall(r"^([a-z0-9_-]+) *=", section.group(1), re.M)
+            # Workspace members only: the point of the set is which of *this* repository's layers
+            # the instrument can reach, and third-party links say nothing about that boundary.
+            crates.update(name for name in linked if (REPO / "crates" / name).is_dir())
+    return {name.replace("_", "-") for name in crates}
+
+
+def binding_crate() -> str | None:
+    """The crate that serves the Python API - the one layer a user actually calls into.
+
+    Found by layout (`crates/*/src/py/`), not by name, so renaming the directory moves the answer
+    instead of leaving a stale hard-coded crate behind.
+    """
+    for directory in sorted((REPO / "crates").glob("*/src/py")):
+        if any(directory.glob("*.rs")):
+            return directory.parent.parent.name
+    return None
+
+
 def measure() -> dict:
     commands_by_workflow = workflow_commands()
     all_commands = " ".join(command for commands in commands_by_workflow.values() for command in commands)
@@ -301,7 +334,28 @@ def measure() -> dict:
             ]
         )
 
+    # The instruction gate is the only reproducible instrument in the set (wall time swings by
+    # points the Ir gate resolves to 0.0018%), so which crates it can *compile against* is the
+    # boundary of what can be gated at all. Derived from the bench target's own manifest rather
+    # than from a list of scenario names: the binding layer is where `safe_load` turns an AST into
+    # Python objects, it is what #292 changed, and it appears in no scenario because no scenario
+    # can - the harness never links that crate. Wall-time CodSpeed covers it, at the precision this
+    # repository's own notes call unusable below ~10%.
+    ir_graph = ir_harness_build_graph()
+    served_by = binding_crate()
+    if served_by and served_by not in ir_graph:
+        holes.append(
+            [
+                "perf-coverage",
+                "binding-layer",
+                f"the instruction gate compiles against {sorted(ir_graph)} and never reaches {served_by}, "
+                "so the AST-to-Python conversion the package is used for has no reproducible perf number",
+            ]
+        )
+
     return {
+        "ir_harness_crates": sorted(ir_graph),
+        "python_serving_crate": [served_by] if served_by else [],
         "engines_with_serializer": engines,
         "fuzz_targets": targets,
         "fuzz_ci_matrix": ci_targets,
@@ -319,6 +373,8 @@ def measure() -> dict:
 
 
 SUMMARY_KEYS = (
+    "ir_harness_crates",
+    "python_serving_crate",
     "engines_with_serializer",
     "fuzz_targets",
     "fuzz_ci_matrix",

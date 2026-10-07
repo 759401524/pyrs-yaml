@@ -27,6 +27,13 @@ status: new
 
 #### 新增
 
+- **防线量出了自己身上的一处空档：指令数门禁够不到 Python 绑定层** —
+  `quality_matrix.py` 现在推导 `ir_gate` harness 真正链接的 crate（bench 所属 crate 及其 workspace
+  依赖：`pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`），再与提供 Python API 的
+  crate（按目录布局定位：`crates/*/src/py/` → `pyrs-yaml`）比对。后者不在图里，于是 `safe_load` 的
+  AST→Python 转换 —每个用户都走、也是 PR #292 改的那条路 — 没有可复现的性能数值：只有墙钟覆盖它，而
+  本仓库自己的记录就写着 10% 以下不可信。已按 `perf-coverage:binding-layer` 登记并给出移除条件，这是
+  第一次靠问"这台仪器编译了什么"而不是"它命名了什么"找到的洞。
 - **新增一个代表整个测试矩阵的检查（`Test matrix (all legs)`）** — 分支保护按检查"名字"匹配，而矩阵
   每条腿都贡献一个名字：3 OS × 7 Python 共 21 条，另加 free-threaded 与 coverage。一小时内两个 PR 就
   证明了代价：#298 在 `test (windows-latest, 3.8)` 从未被采信的情况下就 rebase 合了，而那条腿上带着两个
