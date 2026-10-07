@@ -232,6 +232,14 @@ status: new
 
 #### 修正
 
+- **Ir baseline 再生成ジョブが、baseline の記録と違うコンパイラで測ろうとしていた** —
+  初回の実際の実行(`workflow_dispatch` に届くのは `main` だけ)は `rust-toolchain@stable` を使い、
+  runner の stable は rustc 1.99.0 なのに `.ci/ir-baseline.json` は 1.97.1 で作られていた。そのため
+  コードを一切変えずに再生成ファイルは `serialize_medium` +6.7%、`serialize_small` +5.8% に動いた。
+  この artifact をコミットしていれば、コンパイラの退行が baseline になり、ゲートは二度と気づかない。
+  ジョブは今、実行側ジョブと同じ手順(baseline から版を読み取る)で toolchain を決め、ピン移動自体が
+  変更であるケースだけ `toolchain` 入力に任せる。`tests/test_ir_baseline_workflow.py` は手動専用・
+  自動 push 禁止・`@stable` への逆戻り禁止を固定する。
 - **3 つのチェッカーが、この package が支える最下段 Python 3.8 で動かなかった** —
   `scripts/check_changelog_mirrors.py`（`-> set[str]`）と `scripts/check_stub_drift.py`
   （`-> tuple[...]`）は署名注釈を import 時に評価するため、`from __future__ import annotations` 無しでは

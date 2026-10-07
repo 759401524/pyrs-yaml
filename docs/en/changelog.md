@@ -263,6 +263,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **The Ir baseline refresh would have measured with a different compiler than the baseline
+  records** — the job's first real run (dispatched on `main`, which is the only place
+  `workflow_dispatch` can reach it) used `rust-toolchain@stable`: the runner's stable was rustc
+  1.99.0 while `.ci/ir-baseline.json` was made on 1.97.1, and the regenerated file moved
+  `serialize_medium` +6.7% and `serialize_small` +5.8% with the code untouched. Had that artifact
+  been committed, a compiler regression would have become the baseline and the gate could never have
+  seen it. The job now resolves its toolchain the way the enforcing job does — read the version out
+  of the baseline — and takes a `toolchain` input for the one case where moving the pin *is* the
+  change, which stays an explicit act. `tests/test_ir_baseline_workflow.py` pins that the refresh is
+  manual-only, never auto-pushed, and cannot fall back to `@stable`.
 - **Three checkers could not run on Python 3.8, the floor this package supports** —
   `scripts/check_changelog_mirrors.py` (`-> set[str]`) and `scripts/check_stub_drift.py`
   (`-> tuple[...]`) evaluate their signature annotations at import time, which 3.8 rejects without

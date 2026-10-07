@@ -194,6 +194,13 @@ status: new
 
 #### 修复
 
+- **Ir 基线再生成作业原本要用与基线记录不同的编译器来量** — 该作业第一次真跑（能触发
+  `workflow_dispatch` 的只有 `main`）用的是 `rust-toolchain@stable`：runner 的 stable 是 rustc
+  1.99.0，而 `.ci/ir-baseline.json` 是在 1.97.1 上产出的，于是代码未动、重生成的文件就把
+  `serialize_medium` 挪了 +6.7%、`serialize_small` +5.8%。若把那份 artifact 提交，一次编译器退化就此
+  变成基线，门禁再也不会察觉。现在作业按执行门禁那个作业同样的方式解析 toolchain（从基线里读版本号），
+  只把"移动 pin 本身就是变更"这一种情形交给 `toolchain` 输入，仍是显式动作。
+  `tests/test_ir_baseline_workflow.py` 钉住：只能手动触发、绝不自动 push、不许退回 `@stable`。
 - **三个检查器在本包支持的最低版本 Python 3.8 上跑不起来** —
   `scripts/check_changelog_mirrors.py`（`-> set[str]`）与 `scripts/check_stub_drift.py`
   （`-> tuple[...]`）在 import 时求值签名注解，缺 `from __future__ import annotations` 就会被 3.8 拒绝；

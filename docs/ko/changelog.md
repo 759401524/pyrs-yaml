@@ -227,6 +227,14 @@ status: new
 
 #### 수정
 
+- **Ir baseline 재생성 작업이 baseline이 적어 둔 것과 다른 컴파일러로 재려 했다** —
+  이 작업의 첫 실집행(`workflow_dispatch`가 닿는 곳은 `main`뿐)는 `rust-toolchain@stable`을 썼고,
+  runner의 stable은 rustc 1.99.0인데 `.ci/ir-baseline.json`은 1.97.1에서 만들어진 터라, 코드를 하나도
+  안 바꾸고 재생성 파일이 `serialize_medium` +6.7%, `serialize_small` +5.8%로 움직였다. 그 artifact를
+  커밋했다면 컴파일러 후퇴가 baseline이 되어 게이트는 두 번 다시 보지 못한다. 이제 작업은 집행 작업과
+  같은 절차(baseline에서 버전 읽기)로 toolchain을 정하고, 핀 이동 자체가 변경인 경우만 `toolchain`
+  입력에 맡긴다. `tests/test_ir_baseline_workflow.py`는 수동 전용·자동 push 금지·`@stable`로 되돌아감
+  금지를 고정한다.
 - **체커 셋이 이 패키지가 받는 최저 버전 Python 3.8에서 돌아가지 않았다** —
   `scripts/check_changelog_mirrors.py`(`-> set[str]`)와 `scripts/check_stub_drift.py`(`-> tuple[...]`)는
   시그니처 주해를 import 때 평가하므로 `from __future__ import annotations` 없이는 3.8가 거부하고,
