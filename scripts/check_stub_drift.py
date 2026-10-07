@@ -33,6 +33,8 @@ Usage:
 Exit code 0 = in sync; 1 = drift; 2 = the generated stub is missing or unusable.
 """
 
+from __future__ import annotations
+
 import argparse
 import difflib
 import re

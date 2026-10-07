@@ -27,6 +27,17 @@ status: new
 
 #### 新增
 
+- **指令数门禁开始度量 JSON 与 TOML 的 writer，并把门禁自身的余量也记了下来** —
+  `crates/pyrs-yaml-core/benches/ir_gate.rs` 新增 `parse_inline_merge`、`to_json_medium`、
+  `to_toml_medium`（12 个场景，`.ci/ir-baseline.json` 也是 12 个数），于是 `to_json()` 与
+  `to_toml()` 暴露的路径和 YAML 一样被门禁住。量它们的时候也把门禁量了一遍：对今天的树重跑已提交的
+  九个场景，移动从 −2.35%（`parse_anchors`）到 +1.61%（`serialize_anchors`），而新增三个的复测精度是
+  ±0.0005% — 这不是噪声，是取基线之后累积的漂移。漂移的方向才危险：2% 余量有五分之四已被
+  `serialize_anchors` 花掉，`parse_anchors` 上 2.35% 以内的退化会完全看不出来。对策两条。
+  `ir_gate.py --update --only <name>` 现在合并进已提交的文件，并拒绝编造没量过的数（旧行为是把九个
+  数的文件覆盖成一个数）；`ir-baseline.yml` 在执行门禁的 `ubuntu-24.04` 镜像上重新度量全部数值，
+  打印 diff 并作为 artifact 上传，由人读过再提交。该 job 的数值其实已经提交（见 Fixed）：十二个 runner 度量的值、
+  一份 `generated_by` 溯源，以及按实测镜像间一致定出的 0.5% 容差。
 - **JSON 与 TOML 的 writer 有了"落定文本"oracle（`fuzz/fuzz_targets/json_roundtrip.rs`、
   `fuzz/fuzz_targets/toml_roundtrip.rs`）** — #296 交付它时任何发布说明里都没有条目，所以在此补记，
   也正是下面的耦合门禁要抓的那类失败。两个 `parse_*` 目标本来已调用每个 writer，但把重解析结果绑给
@@ -174,6 +185,28 @@ status: new
 
 #### 修复
 
+- **三个检查器在本包支持的最低版本 Python 3.8 上跑不起来** —
+  `scripts/check_changelog_mirrors.py`（`-> set[str]`）与 `scripts/check_stub_drift.py`
+  （`-> tuple[...]`）在 import 时求值签名注解，缺 `from __future__ import annotations` 就会被 3.8 拒绝；
+  `scripts/check_changelog_coupling.py` 调了 3.9 才有的 `str.removeprefix`。之所以没人发现，是因为跑这些
+  脚本的 job 全是 3.12/3.14；把它暴露出来的是 pytest 矩阵的 3.8 那条腿，而触发点是"只读检查器"的
+  coupling 门禁自己的测试文件（它 import 并调用了它们）。那条腿上的实测：import 时
+  `TypeError: 'type' object is not subscriptable`，首次调用时
+  `AttributeError: 'str' object has no attribute 'removeprefix'`。现在这一类被守住了：
+  `tests/test_scripts_import_on_supported_python.py` 用运行测试的解释器 import `scripts/` 下每个文件，
+  静态检查内建泛型注解必须带 future import，并断言最低版本取自 `pyproject.toml` 而非记忆 — 它第一次跑就
+  揪出 `check_stub_drift.py` 这第三处。局限也写在该文件里：函数体内的新 API 调用 import 看不见，所以门禁的
+  行为测试必须继续真正执行那些函数。
+- **Ir 基线改由执行门禁的环境生成，容差从 2% 收到 0.5%** — 同一个 commit 在两个 GitHub runner
+  镜像上度量，十二个场景最多相差 0.0018%（`parse_anchors`：341M 中 6,061 条指令），所以
+  `.ci/ir-baseline.json` 现在装的是 runner 自己的数值并带 `generated_by` 溯源；`scripts/ir_gate.py`
+  在运行机器与记录不符时会打印提示（WSL 运行就打印了）。旧的 2% 是围着"WSL 度量的
+  `serialize_block_scalars` 与 runner 差 1.45%"设计的，两个解释都被试过且都不成立：说
+  `.gitattributes` 正规化了 `BLOCK_SCALAR_YAML` 里的 CR —— 加 `-text` 后 runner 的数只变了
+  16,020,906 中的 28 条，而这份 fixture 存进去的字节本身就不稳定：`git show` 对 `main` 的副本报 0 个
+  CR、对加了 `-text` 的分支报 98 个，Windows 的 checkout 又会把它们插回来 — 这才是要 `-text` 与新的
+  字节相等性测试堵上的可复现性缺口；说镜像之间漂移 —— 两个镜像一致到 0.0018%。于是这道差被记为未解决，
+  真正改变的是门禁不再拿来源不明的数去比。`-text` 只为字节稳定性保留。
 - **TOML 多行内联表中非末位成员的注释，写到读取器报告它的位置** — writer 原先把它放在分隔逗号之后
   （`b = 1, # n`）。`#` 一直到行尾，TOML 无法把逗号留在注释里，于是读取器把那条评论改记为*下一个*键的
   行首注释；第二次输出就会移动它，文本因此永不落定。这一形状无法由合法 TOML 文本产生（所以只有生成器能

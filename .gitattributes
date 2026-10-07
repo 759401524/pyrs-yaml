@@ -15,6 +15,24 @@ fuzz/corpus/** -text
 fuzz/artifacts/** -text
 fuzz/seeds/** -text
 
+# The two benchmark fixtures are data for the instruction-count gate, not prose. Their CR bytes sit
+# *inside* raw strings, so a normalisation there changes the bytes the parser is handed.
+#
+# Measured, three views of the same path: `git show` of `main` stores this fixture with no CR bytes,
+# `git show` of the branch that added `-text` stores it with 98, and a checkout on this Windows box
+# carries 80 of its own. The stored bytes of the *measured input* therefore depended on which tree
+# the last author committed - which is a reproducibility hole, not a formatting preference. `-text`
+# closes the part that can be closed: conversion is refused in both directions, so the tree you
+# measure from is the tree that was committed. `tests/test_line_endings_gate.py` asserts that
+# equality, and `check_line_endings.py`'s exclusion is what it supports rather than replaces.
+#
+# Recorded so the next reader does not repeat the wrong inference: this was tested as the cause of
+# the 1.45% gap between a WSL-measured Ir baseline and the runner's `serialize_block_scalars`, and
+# it is NOT. Adding `-text` moved the runner's number by 28 instructions out of 16,020,906.
+# `scripts/ir_gate.py` carries the measurements and the remaining open question.
+crates/pyrs-yaml-core/src/bench_inputs.rs -text
+crates/pyrs-yaml-core/benches/ir_gate.rs -text
+
 # Binary: never diff or normalize.
 *.pyd binary
 *.so binary

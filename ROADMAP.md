@@ -546,6 +546,120 @@ the trigger list reddens exactly the 2 calibration guards. The mirror list is pi
 `check_changelog_mirrors.py`'s own `FILES` by loading both modules, so the two changelog gates
 cannot drift into policing different files.
 
+**(am) The Ir gate's headroom was measured for the first time, and it is thinner than the
+2% line (2026-10-08).** P2-F asked for two things: cover `to_json` / `to_toml` / inline-merge, and
+regenerate the baseline in the environment that enforces it. The coverage half is in: 12 measured
+scenarios (`parse_inline_merge`, `to_json_medium`, `to_toml_medium` over the existing 9), and
+`.ci/ir-baseline.json` carries twelve numbers, so `quality_matrix.py`'s `ir-unbaselined` probe
+stays silent. The measurement half produced a finding nobody had asked for:
+
+**Re-measuring the committed scenarios against the current tree moved them by −2.35%
+(`parse_anchors`) to +1.61% (`serialize_anchors`), while the three new ones repeated at
+±0.0005% between two runs of the same binary.** The contrast is the point. Callgrind's precision
+claim in `ir_gate.py`'s own docstring is intact — 20,434,726 against 20,434,691 — so the
+spread is accumulated drift between the baseline's tree and today's, not noise. And drift in that
+direction is the unsafe kind: every merged PR that made the engine faster pushed the true cost
+*below* the committed number, widening the band the gate accepts. A 2.35% regression on
+`parse_anchors` today would print as no change, and `serialize_anchors` has 0.39 of the 2%
+budget left for work it may never have grown.
+
+**Two fixes, both measured before claimed.** `ir_gate.py --update --only <scenario>` used to write
+a baseline containing only the scenario it had measured — a nine-number file becomes a one-number
+file and every other scenario then reads as unbaselined; it now merges into what is committed and
+refuses to invent a number it did not measure (used for real here: three measured, twelve
+committed, the nine pre-existing values byte-identical). And
+`.github/workflows/ir-baseline.yml` regenerates the whole file on `ubuntu-24.04` — the image that
+enforces it — prints the diff for a human, and uploads the result as an artifact rather than
+pushing it, because a baseline is a claim about the code and a workflow that rewrites it on a
+schedule turns the gate into a mirror. What that job has not yet done is run; until its artifact
+is committed the numbers are still WSL-measured and the 2% line still pays for the +1.45%
+cross-image gap. Tightening the tolerance is the next step and belongs after that commit, not
+before it.
+
+**The CI run then refuted the last sentence of that paragraph.** #299's own gate measured
+`serialize_block_scalars` at **+2.23% on the runner against +0.78% in WSL** — over the line, job
+red — while the eleven other scenarios, including the three new ones, agreed between the two
+images to 0.003% (`to_json_medium`: 20,434,726 against 20,434,780). A machine gap that hits exactly
+one scenario and spares the other eleven is not a machine gap. It was `.gitattributes`:
+`* text=auto eol=lf` normalises CRLF at checkout on every platform, and it applied to the two files
+`check_line_endings.py` deliberately leaves alone *because their CRLFs sit inside raw strings that
+are the parser's input*. The runner therefore parsed `BLOCK_SCALAR_YAML` with LF, a working tree
+parsed it with CRLF, and `scripts/ir_gate.py` had been attributing the resulting 1.45% to "the
+dynamic loader and malloc of the host image" since #293 — with the tolerance sized around a number
+that was really a **contradiction between two rules introduced in the same pull request**.
+
+Both fixtures are `-text` now, the rule the fuzz seeds already use for the same reason, and
+`tests/test_line_endings_gate.py` pins in both directions that the exclusion list and the checkout
+rule name the same files — including that the excluded fixture still carries the CR bytes it is
+measured on, because a `-text` line protects nothing if a later commit strips the data. What is
+actually left to pay for is drift between the tree the baseline was taken on and the tree being
+gated (-2.35% to +1.61%, measured above), which the refresh workflow closes. The 2% line stays for
+now on a *correct* reason rather than a wrong one, and `ir_gate.py`'s comment says so.
+
+**Then the second experiment refuted that paragraph too, and this is the last version of the story.
+Two of its claims were wrong and both are corrected here rather than edited away.**
+
+1. `-text` did not explain the 1.45%. The push that carried it measured `serialize_block_scalars` at
+   16,020,906 against 16,020,878 before it — 28 instructions out of sixteen million. The hypothesis
+   is dead, and `scripts/ir_gate.py` says so in the comment that used to carry the old attribution.
+2. The premise beneath the whole "measured fixture" story was unstable in a way neither
+   version stated. Probing three views of the same path - `git show` of `main`, `git show` of this
+   branch, and a Windows checkout - gives 0 CR bytes, 98 CR bytes and 80 CR bytes. The fixture's
+   *stored* bytes depended on which tree the last author committed, so #293's note ("their CRLFs sit
+   inside raw strings that are the very input the committed Ir baseline was measured against")
+   described an accident of someone's checkout, and `check_line_endings.py`'s exclusion has been
+   protecting that accident ever since Stripping the CRs from the tree moved `serialize_anchors` by 0.86% and
+   left `serialize_block_scalars` 1.45% off the runner, so the local tree's line endings do reach the
+   measurement — just not in the direction anyone had guessed.
+
+What is therefore settled is the *practice*, not the mechanism. The runner's own numbers are now the
+committed baseline (twelve values, `generated_by` recording image `ubuntu-24.04 20261004.327.1`), two
+images of the same commit agree to ≤0.0018%, `tolerance_hint` is 0.5% — about 280× the observed
+spread — and `ir_gate.py` prints which machine generated the numbers against which machine is reading
+them (a WSL run shows the note). The WSL↔runner gap on two allocation-heavy scenarios is **open**;
+what changed is that a marginal failure now arrives with its own provenance instead of being
+absorbed by a tolerance sized around an unexplained number.
+
+`tests/test_line_endings_gate.py` gained three pins: the exclusion list must be declared `-text`
+in `.gitattributes`; the committed bytes of a measured fixture must equal the bytes in the tree
+that produced them (the reproducibility invariant the whole story was missing); and the
+excluded paths must still exist. Two earlier drafts asserted, respectively, that the working
+copy must *keep* its CR bytes and that the committed blob holds *none* - both were written from
+a probe of one ref and generalised; the first is deleted, the second became the equality test
+above, which is what the measurements actually support.
+
+**(an) The oldest supported Python was untested territory, and the matrix that seemed to cover it
+was not a gate (2026-10-08).** #299 arrived with `test (windows-latest, 3.8)` red and 47 legs green,
+and the red one was not about #299 at all. It read:
+
+```text
+AttributeError: 'str' object has no attribute 'removeprefix'   # scripts/check_changelog_coupling.py
+TypeError: 'type' object is not subscriptable                  # scripts/check_changelog_mirrors.py: _versions -> set[str]
+```
+
+Both are #298's file and a much older one, and both are legal on the interpreters that actually run
+those scripts - the hook environment and two CI jobs, all 3.12/3.14 - while `pyproject.toml` promises
+3.8. The signature-annotation case is worse than a style slip: without
+`from __future__ import annotations`, a `set[str]` return annotation is evaluated at *import* time, so
+`check_changelog_mirrors.py` has been unimportable on the supported floor since it was written, and no
+gate ever tried. It surfaced by luck: #298's own test file imports a checker, so the 3.8 leg ran it.
+
+**Two things were done, one of them only half.** `tests/test_scripts_import_on_supported_python.py`
+now imports every file under `scripts/` on whatever interpreter runs the tests, checks statically that
+any builtin-generic signature carries the future import, and reads the version floor from
+`pyproject.toml` instead of memory; it found a third instance - `check_stub_drift.py`'s
+`-> tuple[...]` - on its first run. Naming the limit matters: an import cannot see a newer-API call
+inside a function body, which is exactly what `removeprefix` was, so the gate's own behaviour tests
+remain the thing that catches that half.
+
+The other half is still open and is the more systemic finding: **a matrix leg can fail without
+failing the pull request.** Branch protection requires checks by name, and `test
+(windows-latest, 3.8)` was not among them - so #298 merged with a latent red, and 20 of the 21
+matrix legs are, as far as merging goes, advisory. A fan-in job (`needs: test`, one name, red if any
+leg is red) is the fix and has not been written; until then "we test on 3.8 through 3.14 on three
+operating systems" describes sampling, not enforcement, and this entry is where that distinction is
+recorded rather than smoothed over.
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.
