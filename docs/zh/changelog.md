@@ -27,6 +27,15 @@ status: new
 
 #### 新增
 
+- **新增一个代表整个测试矩阵的检查（`Test matrix (all legs)`）** — 分支保护按检查"名字"匹配，而矩阵
+  每条腿都贡献一个名字：3 OS × 7 Python 共 21 条，另加 free-threaded 与 coverage。一小时内两个 PR 就
+  证明了代价：#298 在 `test (windows-latest, 3.8)` 从未被采信的情况下就 rebase 合了，而那条腿上带着两个
+  在本包承诺的最低 Python 上跑不动的检查器（其中一个自写下之日起就无法 import）；#299 则因为格式化器的
+  修复没被 squash 进去而让 `Hygiene` 变红。两者同一个形状：不被合并决策消费的检查只是报告。fan-in 就是
+  `needs: [test, test-freethreaded, coverage]` 把 `toJSON(needs)` 交给 `scripts/check_matrix_verdict.py`，
+  它只把 `success` 读作绿 — `skipped`（依赖死掉后兄弟腿的样子）与 `cancelled`（`cancel-in-progress` 的
+  残留）都是拒绝而非缺席。`tests/test_matrix_verdict_gate.py` 钉住这些形状与接线，所以把 `needs:` 删空
+  本身就会变红。PR 内做不到的一件事：必须把这个新检查"加入"分支保护，否则洞仍留在原地。
 - **指令数门禁开始度量 JSON 与 TOML 的 writer，并把门禁自身的余量也记了下来** —
   `crates/pyrs-yaml-core/benches/ir_gate.rs` 新增 `parse_inline_merge`、`to_json_medium`、
   `to_toml_medium`（12 个场景，`.ci/ir-baseline.json` 也是 12 个数），于是 `to_json()` 与

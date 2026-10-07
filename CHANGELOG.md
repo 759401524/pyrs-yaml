@@ -21,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **One check now stands for the whole test matrix (`Test matrix (all legs)`)** — branch
+  protection matches check *names*, and a matrix contributes one name per leg: 21 of them across
+  3 OSes × 7 Pythons, plus free-threaded and coverage. Two pull requests in one hour proved what that
+  costs. #298 was rebase-merged with `test (windows-latest, 3.8)` never consulted, and that leg
+  carried two checkers that cannot run on the Python floor `pyproject.toml` promises (one unimportable
+  since it was written). #299 went red on `Hygiene` because a formatter's fix sat unsquashed next to
+  the commit CI checked. Both are the same shape: a check no merge decision consumes is a report. The
+  fan-in is `needs: [test, test-freethreaded, coverage]` feeding `toJSON(needs)` to
+  `scripts/check_matrix_verdict.py`, which reads only `success` as green — `skipped` (what siblings
+  become when a dependency dies) and `cancelled` (what `cancel-in-progress` leaves) are refusals, not
+  absences. `tests/test_matrix_verdict_gate.py` pins each of those shapes plus the wiring, so a
+  `needs:` list edited down to nothing is itself red. What this cannot do from inside a pull request:
+  the new check has to be *added* to branch protection, or the hole stays exactly where it was.
 - **The instruction-count gate measures the JSON and TOML writers, and its own headroom is on
   record** — `crates/pyrs-yaml-core/benches/ir_gate.rs` gains `parse_inline_merge`,
   `to_json_medium` and `to_toml_medium` (12 scenarios, 12 committed numbers in

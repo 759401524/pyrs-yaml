@@ -364,6 +364,35 @@ jobs:
       - name: Run Python tests
         run: uv run pytest tests/ -v
 
+  # Branch protection matches checks by name, and a matrix contributes one name per leg - 21 of
+  # them here. Measured consequence, twice inside an hour: #298 was rebase-merged with
+  # `test (windows-latest, 3.8)` never consulted (and that leg carried two checkers that cannot run on
+  # the Python floor this package promises), and #299 went red on a formatter's unsquashed fix - a
+  # check no merge decision consumes is a report, not a gate. This job is the single name to make
+  # required: it waits on the whole test surface and turns it into one verdict.
+  matrix-verdict:
+    name: Test matrix (all legs)
+    if: ${{ always() && github.event_name != 'push' }}
+    needs: [test, test-freethreaded, coverage]
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout of the tree is needed for the verdict itself, but the checker lives in
+      # `scripts/` and importing it is what exercises it on the interpreter that ships it.
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.8"
+
+      # 3.8 on purpose: the fan-in is the job that must never be the one that breaks, so it runs on
+      # the floor of the supported range as well, and `scripts/check_matrix_verdict.py` carries the
+      # lazy annotations that makes necessary.
+      - name: Verdict over every leg
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/check_matrix_verdict.py
+
   compliance-report:
     needs: [build]
     runs-on: ubuntu-latest
