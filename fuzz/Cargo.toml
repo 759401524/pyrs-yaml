@@ -46,3 +46,21 @@ path = "fuzz_targets/parse_toml.rs"
 test = false
 doc = false
 bench = false
+
+# Round-trip halves of the JSON and TOML families. The `parse_*` targets already call each
+# writer and re-read its output, then throw the result away - so they prove the reader
+# accepts its own writer, not that the writer has settled. These two assert the fixed point
+# `yaml_roundtrip` asserts, per dialect.
+[[bin]]
+name = "json_roundtrip"
+path = "fuzz_targets/json_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "toml_roundtrip"
+path = "fuzz_targets/toml_roundtrip.rs"
+test = false
+doc = false
+bench = false

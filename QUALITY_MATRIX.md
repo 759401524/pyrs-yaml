@@ -23,7 +23,7 @@ Measured inventory of the three tiers:
 | --- | --- | --- | --- |
 | unit / integration | 509 Rust `#[test]`, 1,216 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 22 `prop_*` functions (proptest), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 4 targets, 87 seeds of which 60 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | only the YAML round trip is generated as a round trip |
+| fuzz | 6 targets, 117 seeds of which 60 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 Orthogonality, tested rather than asserted: the same three defect families that the recent
 fuzz tier found (comment attribution, empty-container spelling, nested merge application)
@@ -38,16 +38,37 @@ Per-format matrix, as measured:
 | format | unit | property | fuzz parse | fuzz round trip | cross-library parity |
 | --- | --- | --- | --- | --- | --- |
 | YAML | yes | yes | yes | yes | yes |
-| JSON / JSONC / JSON5 | yes | yes | yes | **no** | partial |
-| TOML | yes | yes | yes | **no** | yes |
+| JSON / JSONC / JSON5 | yes | yes | yes | yes | partial |
+| TOML | yes | yes | yes | yes | yes |
 | schema validation | yes | yes | no | n/a | n/a |
 
-A parse-only target cannot see a writer. `fmt_pbt` does test JSON/JSON5/TOML writers, but
-its three fixed-point properties fail at 20,000 cases and pass at CI's default, so the
-tier that would catch that regression is the one tier CI does not have.
+**What this row first said was wrong, and the correction is the interesting part.** It
+claimed a parse-only target cannot see a writer. Measured: `parse_json` calls
+`to_json_text` / `to_jsonc_text` / `to_json5_text` and re-reads each result with all three
+readers, and `parse_toml` does the same with `to_toml` — the writers *were* reached. What
+they asserted was that the reader accepts its own writer; the re-parse result was bound to
+`let _ =` and thrown away. So the missing invariant was never "does the writer produce
+loadable text" but "does the writer produce text that has **settled**", and that is a
+different question with a different answer:
+`to_json(parse(to_json(parse(x)))) == to_json(parse(x))`. `json_roundtrip` and
+`toml_roundtrip` now assert it per dialect, and the deterministic halves
+(`crates/pyrs-json/tests/roundtrip_corpus.rs`, `crates/pyrs-toml/tests/roundtrip_corpus.rs`)
+replay the seed corpus on every `cargo nextest` — 33 rounds from 14 JSON seeds and 30 from
+16 TOML seeds, with a floor declared in each file so a corpus that stopped exercising the
+writers fails instead of passing vacuously.
+No writer is unsettled: 33 JSON dialect rounds from 14 seeds and 30 TOML rounds from 16,
+every one satisfying `once == twice`.
+`fmt_pbt`'s three writer fixed-point properties still fail at 20,000 cases and are still
+invisible at CI's default count, which is the one hole the registry now carries.
 
-## 2. Gate integrity
-
+**The exception list this section describes was itself the error.** Three inputs were
+moved out of the replayed corpus and registered as unsettled writers on the strength of
+a truncated test line; a temporary probe then printed both emissions for each and every
+pair was equal. All three are back in the corpus, which now drives 33 JSON dialect rounds
+and 30 TOML ones with nothing excluded. The mechanism that would have kept the exclusions
+honest could not tell an invalid input from a settling one from a real defect, so it was
+removed rather than trusted, and what is left here is the weaker, truer claim: a probe
+that prints values caught in one run what three readings of test output did not.
 Blocking on every pull request, measured: `clippy` (with `--all-targets`, since this
 measurement), `cargo test --workspace`, MSRV
 check, `no_std` bare-metal build, pytest on 3 OSes × 7 Python versions, free-threaded
@@ -150,8 +171,6 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
-| `fuzz-no-roundtrip:pyrs-json` | the JSON family has three writers and no target that re-reads what they emit | a `json_roundtrip` target in the matrix with its own seed directory |
-| `fuzz-no-roundtrip:pyrs-toml` | same shape for TOML | a `toml_roundtrip` target in the matrix with its own seed directory |
 | `property-tier:default-case-count` | three writer fixed-point properties fail at 20k cases and are invisible at 256 | a blocking job at an elevated case count, which requires those three to hold first |
 
 Closed while this document was written, and therefore absent from the registry on
@@ -178,10 +197,12 @@ is done when its test is green, not when the change is merged.
   Acceptance: the `property-tier` hole deleted from the registry.
 - **P1-C, matrix gate** (`done`): this document, the measurement script, the registry and
   the test that compares them.
-- **P1-D, matrix spaces** (`partly done`): the route-parity table over the two YAML
-  writers landed and closed its hole; the JSON and TOML round-trip fuzz targets are
-  next. Acceptance: the remaining `fuzz-no-roundtrip` holes deleted from the registry
-  in the PRs that close them.
+- **P1-D, matrix spaces** (`done`): the route-parity table over the two YAML writers, and
+  JSON/TOML round-trip fuzz targets with deterministic corpus halves that run on every
+  `cargo nextest`. Both closures came with a correction to how this document first
+  described the gap, recorded above rather than edited out.
+  Acceptance: every hole this item covered deleted from the registry, and the measurement
+  agreeing with what is left.
 - **P2-F, Ir baseline breadth** (`pending`): regenerate the baseline in the gate's own
   execution environment and add `to_json`, `to_toml` and inline-merge scenarios, so the
   perf gate covers the paths the binding actually exposes.
