@@ -213,6 +213,24 @@ def test_property_probe_finds_the_real_properties(matrix, measured):
         assert any(name.endswith(f"::{prop}") for name in names), prop
 
 
+def test_the_perf_coverage_probe_describes_a_real_boundary(matrix, monkeypatch):
+    """Discrimination for `perf-coverage:binding-layer`, the newest registered hole.
+
+    The probe compares the crates the reproducible instrument can link against the crate that serves
+    the Python API. If it fired whatever the build graph contained, it would be decoration, so the
+    test moves the graph under it: claim the serving crate is one the harness already links, and the
+    hole has to disappear from a fresh measurement of the same tree.
+    """
+    graph = matrix.ir_harness_build_graph()
+    assert "pyrs-yaml-core" in graph, "the bench owner dropped out of its own build graph"
+    assert "pyrs-yaml" not in graph, "the registered hole went stale: the binding is now linked"
+    assert matrix.binding_crate() == "pyrs-yaml", "the crate was found by name, not by layout"
+
+    monkeypatch.setattr(matrix, "binding_crate", lambda: "pyrs-yaml-core")
+    reported = [hole for hole in matrix.measure()["holes"] if hole[0] == "perf-coverage"]
+    assert reported == [], "the probe reports the gap regardless of the graph it is measuring"
+
+
 def test_holes_are_derived_not_transcribed(measured):
     """The measurement has to be reproducible twice in one process, and stable."""
     again = _load_module().measure()

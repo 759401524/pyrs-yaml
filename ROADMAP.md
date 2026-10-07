@@ -652,13 +652,38 @@ any builtin-generic signature carries the future import, and reads the version f
 inside a function body, which is exactly what `removeprefix` was, so the gate's own behaviour tests
 remain the thing that catches that half.
 
-The other half is still open and is the more systemic finding: **a matrix leg can fail without
-failing the pull request.** Branch protection requires checks by name, and `test
-(windows-latest, 3.8)` was not among them - so #298 merged with a latent red, and 20 of the 21
-matrix legs are, as far as merging goes, advisory. A fan-in job (`needs: test`, one name, red if any
-leg is red) is the fix and has not been written; until then "we test on 3.8 through 3.14 on three
+The other half is still open and is the more systemic finding: **no CI check is required for a merge.**
+Branch protection matches checks by name, and `gh api repos/<repo>/branches/main/protection` reports
+`strict: true` with `contexts: []` and `checks: []` - nothing required at all. So #298 merged with a
+latent red not because one leg was missing from a list, but because no leg is on the list, and
+`test (windows-latest, 3.8)` - the leg carrying two checkers broken on the supported Python floor -
+was simply not part of the question the merge asks. An earlier draft of this entry said "20 of the 21
+matrix legs are advisory"; the measured setting says the true figure is 0 required out of 40+.
+A fan-in job (`needs: test`, one name, red if any leg is not `success`) is the software half and has
+now landed with #300; the configuration half - putting that one name into branch protection - is a
+repository setting, not a pull request. Until it is set, "we test on 3.8 through 3.14 on three
 operating systems" describes sampling, not enforcement, and this entry is where that distinction is
 recorded rather than smoothed over.
+
+**(ao) The defence measured a gap in itself, and registered it instead of fixing it (2026-10-08).**
+Every hole closed so far was found by asking what the defence *names*: does a fuzz target exist for
+this crate, does a workflow run this hook, does a parity table compare these two writers. This one came
+from a different question - what can the instrument **link**? `crates/pyrs-yaml-core/benches/ir_gate.rs`
+is the reproducible channel (two runner images agree to 0.0018% on the same commit), and its build graph
+is the bench owner plus its workspace dependencies: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`,
+`pyrs-json`, `pyrs-toml`. `pyrs-yaml` - the crate that serves the Python API, found by layout via
+`crates/*/src/py/` rather than by name - is not in it. So `safe_load`'s AST-to-Python conversion, the
+path every user takes and the path PR #292 changes, cannot be gated at all: the only number that covers
+it is CodSpeed wall time, which this ledger already documented swinging -7.7%, -10.5%, -9.8% across
+three pushes that each did strictly less work.
+
+Registered as `perf-coverage:binding-layer` with the state that removes it (an `ir_gate` harness compiled
+against the binding crate, with its own committed number), rather than patched in the same breath it was
+found. Two reasons, both earned this cycle: a scenario that needs `PYO3_PYTHON` and a linked interpreter
+is not a same-afternoon change, and the registry's value is that the measurement, not a reader's memory,
+decides whether the gap still exists. It also settles a question #292 had been asking in the wrong
+instrument: its ~+19% local ratio and its -10.52% CodSpeed verdict are both measurements of a path the
+reproducible gate cannot see, which is why neither could be adjudicated against the other.
 
 ### Note survival: the leading slot became a list (2026-10-04)
 

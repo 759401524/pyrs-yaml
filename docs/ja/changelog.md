@@ -29,6 +29,14 @@ status: new
 
 #### 追加
 
+- **防衛策が自分自身の穴を測った: 命令数ゲートは Python バインディングに届かない** —
+  `quality_matrix.py` は `ir_gate` ハーネスが実際にリンクする crate（bench の所属 crate とその
+  workspace 依存: `pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`）を導出し、
+  Python API を提供する crate（配置から特定: `crates/*/src/py/` → `pyrs-yaml`）と突き合わせる。
+  後者はグラフに無いので、`safe_load` の AST→Python 変換 — すべての利用者が通り、PR #292 が変えた道 —
+  は再現可能な性能値を持たない。残っているのは壁時計だけだが、この repo 自身の記録は 10% 未満で
+  使えないと書いている。`perf-coverage:binding-layer` として出口条件つきで登録 — 計器が「何を描くか」でなく
+  「何をコンパイルするか」を問うて最初に見つかった穴。
 - **テスト行列全体を代表するチェックを 1 つ追加 (`Test matrix (all legs)`)** — branch protection
   はチェック「名」で照合する行で、行列は脚ごとに 1 個の名前を出す — 3 OS × 7 Python で 21、
   free-threaded と coverage も含む。1 時間の間で 2 件の pull request がその代償を証明した。#298 は

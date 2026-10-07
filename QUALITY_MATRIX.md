@@ -67,7 +67,7 @@ and `#` runs to end of line, so the reader hands that note to the *following* ke
 emission moved it. Withdrawing the fixed rule leaves all 354 tests green at proptest's default
 256 cases once the persisted shrink case is removed: that count never generates two members
 whose first carries a same-line note, so the case count was load-bearing, not decorative. `ci.yml`
-now runs a blocking `property tier (20k cases)` job; the registry is empty.
+now runs a blocking `property tier (20k cases)` job. That closed the last hole then open; the registry carries a new one, found by measuring what the instrument compiles (below).
 
 **The exception list this section describes was itself the error.** Three inputs were
 moved out of the replayed corpus and registered as unsettled writers on the strength of
@@ -129,18 +129,17 @@ review habit:
   run shows it. `tests/test_line_endings_gate.py` pins the exclusion list against `.gitattributes`
   and against the tree that produced it, so stored bytes and measured bytes cannot drift apart
   silently again.
-- **A red leg of the test matrix does not stop a merge.** `ci.yml` runs `tests/` on 3 operating
-  systems × 7 Python versions - 21 legs - and PR #298 was rebase-merged with `test
-  (windows-latest, 3.8)` never having been consulted: the leg that catches a checker written against
-  a newer Python than the supported floor is not a required check, so the bug reached `main` and only
-  surfaced when the *next* pull request ran it. The general guard (`tests/test_scripts_import_on_supported_python.py`)
-  makes every such leg carry the same signal without needing a matrix row per checker, but the
-  structural point was that a matrix can fail without failing the merge, which reports coverage
-  instead of enforcing it. `Test matrix (all legs)` is the fan-in that closes the checkable half:
-  `needs: [test, test-freethreaded, coverage]`, one name, and `scripts/check_matrix_verdict.py` reads
-  only `success` as green (`skipped` and `cancelled` are refusals). What remains outside a pull
-  request is the one line of repository settings - adding that name to branch protection - and until
-  someone with access does it, the hole is closed in software and open in configuration.
+- **No CI check is required for a merge at all - not one leg of the matrix, not the hook set, not
+  the performance gate.** Read from `gh api repos/<repo>/branches/main/protection`:
+  `strict: true`, `contexts: []`, `checks: []`. Measured consequence: #298 was rebase-merged while
+  `test (windows-latest, 3.8)` - the leg that would have caught two checkers broken on the supported
+  Python floor - had never been consulted, and it was not *red*, it was simply not part of the
+  question the merge asks. Earlier drafts of this bullet said "20 of 21 legs are advisory", which the
+  settings show was still too generous. That is why `Test matrix (all legs)` exists: one name to
+  require instead of 21, so a leg that never starts cannot be satisfied by absence, and
+  `scripts/check_matrix_verdict.py` refuses `skipped`/`cancelled` rather than reading them as
+  agreement. The remaining half is outside a pull request - the name has to be added to branch
+  protection - so this row is the honest state: closed in software, open in configuration.
 
 The strongest evidence that a hook tier is not decoration came from its own author: the five
 files written while building this matrix came out of the editor as CRLF, and
@@ -222,13 +221,14 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
-| — | the registry is empty; every measured blind spot has a gate or a named exit that has run | — |
+| `perf-coverage:binding-layer` | the instruction gate links `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`, `pyrs-toml` and never the crate that serves Python, so `safe_load`'s AST-to-Python conversion has no reproducible performance number | a scenario in an `ir_gate` harness compiled against the binding crate, with its own committed baseline number (`scripts/ir_gate.py --update --only <name>`) |
 
-An empty registry is a claim the gate checks in both directions: `scripts/quality_matrix.py`
-re-measures the defence on every pytest run, and `tests/test_quality_matrix.py` fails if a hole
-appears that is not written down here. So this table being empty is not an opinion about the
-code — it is the state of one specific measurement, taken against the workflows, hooks, fuzz
-manifest and Ir baseline as they stand.
+This table is a measurement, not a mood: `scripts/quality_matrix.py` re-derives it on every
+pytest run and `tests/test_quality_matrix.py` fails in both directions — a hole that appears
+unregistered, and a registered hole the measurement no longer reproduces. It was empty after
+the property tier closed, and it is not empty now, because the same measurement looked at a
+new question: not which scenarios the perf gate names, but which crates it can link. The
+binding layer fails that test, and the row above is what admitting it looks like.
 
 Closed while this document was written, and therefore absent from the registry on
 purpose: the hook tier being unwired, `cargo fmt` reaching no job, CI's clippy skipping
