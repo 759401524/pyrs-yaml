@@ -29,6 +29,19 @@ status: new
 
 #### 追加
 
+- **命令数ゲートが JSON と TOML の書き手も測り、ゲート自身の余裕も記録された** —
+  `crates/pyrs-yaml-core/benches/ir_gate.rs` に `parse_inline_merge`、`to_json_medium`、
+  `to_toml_medium` を増やし（12 シナリオ、`.ci/ir-baseline.json` の数値も 12 個）、`to_json()` と
+  `to_toml()` が公開している道も YAML と同じく検査対象になった。測って分かったのはゲート自身の余裕だった:
+  確定済みの 9 シナリオを今日のツリーで再実行すると −2.35%（`parse_anchors`）から +1.61%
+  （`serialize_anchors`）へ動き、新しい 3 つは ±0.0005% で再現した — ノイズではなく、baseline を
+  取ったツリー以降の累積ドリフトだ。この向きは危険で、2% の余裕の 5 分の 4 が
+  `serialize_anchors` で消費され、`parse_anchors` では 2.35% までの退化が見えなくなる。対応は 2 つ:
+  `ir_gate.py --update --only <name>` は確定済みファイルへマージし、測っていない数値を捏造しない
+  （前は 9 個のファイルへ 1 個だけの baseline を上書きしていた）。そして `ir-baseline.yml` は
+  検査を実行する `ubuntu-24.04` イメージで全数値を再生成し、diff を表示して artifact として
+  アップロードする — 人が読んでからコミットする。その job の数値自体はすでにコミット済み（Fixed を参照）: runner で測った 12 値、
+  `generated_by` の記録、そしてイメージ間の実測一致から決めた 0.5% 許容。
 - **JSON と TOML の書き手に「定着したテキスト」オラクルを追加 (`fuzz/fuzz_targets/json_roundtrip.rs`、
   `fuzz/fuzz_targets/toml_roundtrip.rs`)** — #296 はこれをリリースノートなしで出荷したので、ここで
   遡って記入する。下の結合ゲートが捕まえる失敗そのものだ。2 つの `parse_*` ターゲットはすでにすべての
@@ -207,6 +220,32 @@ status: new
 
 #### 修正
 
+- **3 つのチェッカーが、この package が支える最下段 Python 3.8 で動かなかった** —
+  `scripts/check_changelog_mirrors.py`（`-> set[str]`）と `scripts/check_stub_drift.py`
+  （`-> tuple[...]`）は署名注釈を import 時に評価するため、`from __future__ import annotations` 無しでは
+  3.8 が拒否する。`scripts/check_changelog_coupling.py` は 3.9 で増えた `str.removeprefix` を呼んでいた。
+  気づかれなかった理由は、これらのスクリプトを走らせる job がすべて 3.12 か 3.14 だから。表面化させたのは
+  pytest matrix の 3.8 脚で、しかもチェック対象を読むだけの pull request（結合ゲート自身のテストが
+  チェッカーを import して呼ぶ）が引き金になった。その脚での実測: import 時に
+  `TypeError: 'type' object is not subscriptable`、最初の呼び出しで
+  `AttributeError: 'str' object has no attribute 'removeprefix'`。今は gate 化されている:
+  `tests/test_scripts_import_on_supported_python.py` は `scripts/` 下の全ファイルをテスト実行中の
+  インタプリタで import し、組み込み汎用注釈に future import が要ることを静的に確認し、最下段が
+  記憶でなく `pyproject.toml` から来ることを主張する — 初回実行で `check_stub_drift.py` の事例を
+  見つけた。限界もファイルに明記: 関数本文内の新 API 呼び出しは import では見えないので、ゲートの
+  挙動テストが該当関数を実行し続ける必要がある。
+- **Ir baseline を実行側の環境で生成し、許容線を 2% から 0.5% へ動かした** — 同一コミットを 2
+  種類の GitHub runner イメージで測ると、12 シナリオすべて最大 0.0018% 以内で一致した
+  （`parse_anchors`: 341M 中 6,061 命令）。そこで `.ci/ir-baseline.json` は runner 自身の数値と
+  `generated_by` の記録を持ち、`scripts/ir_gate.py` は別の機械から来た実行で注意行を出す（WSL の
+  実行が実際に出した）。以前の 2% は、WSL で測った `serialize_block_scalars` と runner の値の
+  1.45% の差まわりに設計されていた。二つの説明を試し、どちらも外れた。`.gitattributes` が
+  `BLOCK_SCALAR_YAML` の CR バイトを正規化するという説：`-text` を足すと runner の値は
+  16,020,906 中 28 命令しか動かず、しかもこの fixture の保存済みバイト自体が安定ではなかった: `git show` は
+  `main` のコピーで CR ゼロ、`-text` を足したブランチで 98 を返し、Windows の checkout はそれを
+  入れる。こそが `-text` と新しいバイト一致テストが塞ぐ再現性の穴だ。イメージ間の漂移という
+  説：二つのイメージは 0.0018% で一致。よって差は未解決として記録し、変えたのは発現場所の
+  分からない数値を比較やめるという点だ。`-text` はバイト安定のためだけに残す。
 - **TOML 複数行インラインテーブルで、最後以外メンバーに付いた注釈を読み手が報告する位置へ** —
   書き手はそれを区切りカンマの後 (`b = 1, # n`) に置いていた。`#` は行末まで続くため TOML は注釈の中に
   カンマを収められず、読み手はその注釈を*次の*キーの行頭注釈として格納し直す。つまり 2 回目の出力は注釈を

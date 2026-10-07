@@ -7,7 +7,17 @@ common mistakes — adding an entry to root but forgetting a mirror — without
 requiring translated content to match the English text byte-for-byte.
 
 Exit code 0 = structurally in sync; 1 = drift detected.
+
+Importing this module on Python 3.8 used to raise `TypeError: 'type' object is not
+subscriptable` - `def _versions(text: str) -> set[str]` evaluates its annotation at import time
+without the future import below. The package supports 3.8, so the annotations must stay lazy;
+`tests/test_scripts_import_on_supported_python.py` now imports every checker under the running
+interpreter. The 3.8 leg of the pytest matrix found this one by importing the checker from
+`tests/test_changelog_coupling_gate.py`; that leg is also why a general guard exists now, since
+nothing else ran a checker on the supported floor - hooks and the other jobs use 3.12/3.14.
 """
+
+from __future__ import annotations
 
 import re
 import sys

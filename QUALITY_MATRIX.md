@@ -86,7 +86,7 @@ coupling check (`scripts/check_changelog_coupling.py`, evaluated on the pull req
 because a version-header comparison cannot see a release note that was never written), and —
 as of this document — the `prek` hook set over the whole tree (`hygiene.yml`).
 
-Five blind spots were found by measuring, not by reasoning. One had already done damage in
+Six blind spots were found by measuring, not by reasoning. One had already done damage in
 `main`; the others were caught before merging, which is the difference between a gate and a
 review habit:
 
@@ -113,6 +113,31 @@ review habit:
   597 — and every gate that existed at the time was quiet about it. It never reached
   `main`, but nothing *would have* stopped it: `check-merge-conflict` is a hook, and no job
   ran hooks.
+- **A performance gate was comparing numbers whose provenance nobody could name.** The Ir baseline
+  was generated on one kind of machine and enforced on another, and the 2% line was sized around the
+  difference between them (`serialize_block_scalars`: +0.78% locally against +2.23% on CI). Two
+  explanations were tested and both failed. `.gitattributes` normalising CR bytes inside
+  `BLOCK_SCALAR_YAML` - adding `-text` moved the runner's number by 28 instructions out of
+  16,020,906; and the deeper probe invalidated the premise differently: the fixture's *stored* bytes are not
+  stable either - `git show` reports 98 CR bytes on the branch that added `-text` and none on
+  `main`, while a Windows checkout inserts them again - so "the CRLFs here are the measured
+  input" had been describing whichever tree the last author committed, not repository content. Drift between runner images - two images on one commit agree to 0.0018%.
+  The gap is therefore **open**, and what closed is the practice of comparing across unknown
+  machines: `.ci/ir-baseline.json` now carries the enforcing environment's own twelve values, a
+  `generated_by` banner, a 0.5% line sized from that measured agreement (~280x the observed spread),
+  and `ir_gate.py` prints which machine generated the numbers versus which is reading them - a WSL
+  run shows it. `tests/test_line_endings_gate.py` pins the exclusion list against `.gitattributes`
+  and against the tree that produced it, so stored bytes and measured bytes cannot drift apart
+  silently again.
+- **A red leg of the test matrix does not stop a merge.** `ci.yml` runs `tests/` on 3 operating
+  systems × 7 Python versions - 21 legs - and PR #298 was rebase-merged with `test
+  (windows-latest, 3.8)` never having been consulted: the leg that catches a checker written against
+  a newer Python than the supported floor is not a required check, so the bug reached `main` and only
+  surfaced when the *next* pull request ran it. The general guard (`tests/test_scripts_import_on_supported_python.py`)
+  makes every such leg carry the same signal without needing a matrix row per checker, but the
+  structural point stands and is not yet closed: a matrix that can fail without failing the merge
+  reports coverage rather than enforcing it. The fix is a fan-in job that needs every leg and is the
+  one branch protection requires.
 
 The strongest evidence that a hook tier is not decoration came from its own author: the five
 files written while building this matrix came out of the editor as CRLF, and
@@ -124,6 +149,19 @@ instrument in the set, and it is what flagged a real cost in #292 (plain-string 
 keys, ~+19% in a drift-free local ratio) that wall-clock CodSpeed had already noticed at
 −10%. Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
 with a 2% line instead of a vibe.
+
+**How much of that 2% is left is itself a measurement, and it was never taken until now.**
+Re-measuring the committed scenarios against the current tree, in the image that generated
+them, moved them by −2.35% (`parse_anchors`) to +1.61% (`serialize_anchors`), while the three
+scenarios added by this document's own re-run repeated at ±0.0005% — so the spread is not
+instrument noise, it is drift accumulated since the baseline was taken, and the direction is
+the dangerous one: every PR that made the engine faster widened the accepted band, so a 2.35%
+regression on `parse_anchors` today reads as no change at all, and `serialize_anchors` has
+0.39 points of headroom left. Two things follow. `.github/workflows/ir-baseline.yml`
+regenerates the numbers on the image that enforces them - which has since happened, and is where
+the twelve committed values below come from; and `ir_gate.py --update --only <scenario>` now merges into the
+committed file and refuses to write a baseline with a missing number, because the first version
+silently reduced twelve scenarios to the one it had measured.
 
 ## 3. Root-cause depth
 
@@ -224,11 +262,13 @@ is done when its test is green, not when the change is merged.
   described the gap, recorded above rather than edited out.
   Acceptance: every hole this item covered deleted from the registry, and the measurement
   agreeing with what is left.
-- **P2-F, Ir baseline breadth** (`pending`): regenerate the baseline in the gate's own
-  execution environment and add `to_json`, `to_toml` and inline-merge scenarios, so the
-  perf gate covers the paths the binding actually exposes.
-  Acceptance: scenario count in `.ci/ir-baseline.json` matches the bench, including the new
-  ones, and the gate passes with them.
+- **P2-F, Ir baseline breadth** (`partly done`): the `to_json`, `to_toml` and inline-merge
+  scenarios are in the gate (12 measured scenarios, twelve committed numbers), `--update --only`
+  can no longer write a short baseline, and `ir-baseline.yml` regenerates the numbers on the
+  enforcing image. What remains is to *run* that job on `main` and commit its artifact, which
+  replaces the WSL-measured numbers, and only then to argue the tolerance down from repeat
+  precision. Acceptance: `.ci/ir-baseline.json` carries the runner's toolchain banner, and the
+  tolerance is justified by a measured repeat rather than by the +1.45% cross-image gap.
 
 ## Reading this document
 

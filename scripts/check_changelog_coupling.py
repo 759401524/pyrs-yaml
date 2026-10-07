@@ -81,7 +81,11 @@ TRIGGER_EXACT = (
 
 
 def normalise(path: str) -> str:
-    return path.replace("\\", "/").removeprefix("./")
+    path = path.replace("\\", "/")
+    # `str.removeprefix` is 3.9 and this package supports 3.8; measured, because the matrix's
+    # windows/3.8 leg failed the gate's own test file with `AttributeError: 'str' object has no
+    # attribute 'removeprefix'`.
+    return path[2:] if path.startswith("./") else path
 
 
 def is_trigger(path: str) -> bool:

@@ -61,6 +61,24 @@ staging:
   debug: true
 "#;
 
+/// Merge keys whose sources are written out rather than aliased: `<<: { … }` is folded
+/// at parse time, and the `<<:` inside the second item of a merge sequence is the
+/// nested case whose data loss #290 fixed. `ANCHOR_YAML` cannot reach it - every one
+/// of its merges resolves through a single alias - so this input exists to keep the
+/// inline path measured, not only asserted over.
+pub const MERGE_INLINE_YAML: &str = r#"
+base:
+  <<: { timeout: 30, retries: 3, pool_size: 10 }
+  host: inline.example.com
+  debug: false
+
+nested:
+  <<:
+    - { a: 1, b: 2 }
+    - { <<: { c: 3 }, d: 4 }
+  name: nested
+"#;
+
 /// Block mapping with a nested mapping and a block sequence.
 pub const BLOCK_STYLE_YAML: &str = "key1: value1\nkey2: value2\nnested:\n  subkey1: subvalue1\n  subkey2: subvalue2\nlist:\n  - item1\n  - item2\n  - item3\n";
 

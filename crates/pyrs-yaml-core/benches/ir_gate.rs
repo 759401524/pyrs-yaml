@@ -36,8 +36,10 @@
 //!
 //! Run through `scripts/ir_gate.py`, which does the subtraction, compares against
 //! `.ci/ir-baseline.json` and prints the table CI gates on.
+use pyrs_json::to_json_text;
+use pyrs_toml::to_toml;
 use pyrs_yaml_core::bench_inputs::{
-    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_YAML, SMALL_YAML,
+    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML,
 };
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
@@ -50,6 +52,11 @@ const ITERATIONS: u32 = 2_000;
 enum Work {
     Parse,
     Serialize,
+    /// The hub AST rendered as JSON: the path `YamlDocument.to_json()` takes, and the
+    /// one the instruction gate had no line on until now.
+    ToJson,
+    /// The hub AST rendered as TOML, same reasoning.
+    ToToml,
 }
 
 /// Every scenario the gate measures. Names mirror `yaml_bench.rs` where an
@@ -70,6 +77,14 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         ("parse_medium", MEDIUM_YAML, Work::Parse),
         ("parse_block", BLOCK_STYLE_YAML, Work::Parse),
         ("parse_anchors", ANCHOR_YAML, Work::Parse),
+        // Merge sources written inline instead of aliased: the folding path the
+        // anchor scenario never enters.
+        ("parse_inline_merge", MERGE_INLINE_YAML, Work::Parse),
+        // The two cross-format writers the binding exposes. `MEDIUM_YAML` is the input
+        // both can represent - plain scalars, nested mappings, a block sequence, no
+        // null and no alias - so neither scenario measures a failure path.
+        ("to_json_medium", MEDIUM_YAML, Work::ToJson),
+        ("to_toml_medium", MEDIUM_YAML, Work::ToToml),
     ]
 }
 
@@ -92,7 +107,7 @@ fn main() {
     };
 
     let measured = match work {
-        Work::Serialize => {
+        Work::Serialize | Work::ToJson | Work::ToToml => {
             // Setup is outside the loop on both modes, so it cancels exactly.
             let ast = parse(src, Schema::Core).expect("setup parse");
             if setup_only {
@@ -101,7 +116,17 @@ fn main() {
             } else {
                 let mut acc = 0usize;
                 for _ in 0..ITERATIONS {
-                    acc += std::hint::black_box(to_yaml(std::hint::black_box(&ast))).len();
+                    let text = match work {
+                        Work::Serialize => to_yaml(std::hint::black_box(&ast)),
+                        Work::ToJson => {
+                            std::hint::black_box(to_json_text(std::hint::black_box(&ast)))
+                                .expect("json writes the hub AST")
+                        }
+                        Work::ToToml => std::hint::black_box(to_toml(std::hint::black_box(&ast)))
+                            .expect("toml writes the hub AST"),
+                        Work::Parse => unreachable!("handled below"),
+                    };
+                    acc += std::hint::black_box(text).len();
                 }
                 acc
             }

@@ -28,6 +28,18 @@ status: new
 
 #### 추가
 
+- **명령 수 게이트가 JSON과 TOML writer도 재고, 게이트 자신의 여유도 기록에 남긴** —
+  `crates/pyrs-yaml-core/benches/ir_gate.rs`에 `parse_inline_merge`, `to_json_medium`,
+  `to_toml_medium`을 추가했다(12개 시나리오, `.ci/ir-baseline.json`도 12개 값). 이제 `to_json()`과
+  `to_toml()`이 공개하는 길도 YAML처럼 게이트된다. 재는 과정에서 게이트 자체가 재측정됐다: 커밋된 9개
+  시나리오를 오늘 트리로 다시 재니 −2.35%(`parse_anchors`)에서 +1.61%(`serialize_anchors`)까지
+  움직였고 새 3개는 ±0.0005%로 재현됐다 — 소음 아니라 baseline을 잡은 이후 쌓인 이동이다. 방향이
+  위험하다: 2% 여유의 5분의 4가 `serialize_anchors`에 쓰였고 `parse_anchors`에서는 2.35%까지
+  후퇴가 안 보인다. 대응은 둘. `ir_gate.py --update --only <name>`은 커밋된 파일에 병합하고 재지 않은
+  값은 지어내지 않는다(전에는 9개 파일에 1개짜리 baseline을 덮어썼다). 그리고 `ir-baseline.yml`은
+  게이트를 집행하는 `ubuntu-24.04` 이미지에서 전체를 재측정해 diff를 띄우고 artifact로 올린다 —
+  사람이 읽고 커밋한다. 그 job의 값은 이미 커밋돼 있다(Fixed 참조):
+  runner에서 쟀는 12개 값, `generated_by` 기록, 그리고 이미지 간 실측 일치로 정한 0.5% 허용치.
 - **JSON과 TOML writer에 "정착된 텍스트" 오라클 추가 (`fuzz/fuzz_targets/json_roundtrip.rs`,
   `fuzz/fuzz_targets/toml_roundtrip.rs`)** — #296은 이를 어떤 release note에도 적지 않고 출하했기에
   이곳에서 소급 기록한다. 아래 결합 게이트가 잡는 실패가 바로 그것이다. 두 `parse_*` 타겟은 이미 모든
@@ -203,6 +215,30 @@ status: new
 
 #### 수정
 
+- **체커 셋이 이 패키지가 받는 최저 버전 Python 3.8에서 돌아가지 않았다** —
+  `scripts/check_changelog_mirrors.py`(`-> set[str]`)와 `scripts/check_stub_drift.py`(`-> tuple[...]`)는
+  시그니처 주해를 import 때 평가하므로 `from __future__ import annotations` 없이는 3.8가 거부하고,
+  `scripts/check_changelog_coupling.py`는 3.9에 생긴 `str.removeprefix`를 불렀다. 아무도 못 본 것은 이
+  스크립트를 돌리는 job이 전부 3.12 또는 3.14였기 때문이다. 드러낸 쪽은 pytest 행렬의 3.8 다리였고, 계기는
+  결합 게이트 자신의 테스트 파일이 체커를 import해 부른 것이었다. 그 다리에서 실측: import 때
+  `TypeError: 'type' object is not subscriptable`, 첫 호출에서
+  `AttributeError: 'str' object has no attribute 'removeprefix'`. 이제 게이트가 있다:
+  `tests/test_scripts_import_on_supported_python.py`는 `scripts/` 아래 모든 파일을 테스트를 돌리는
+  인터프리터로 import하고, 내장 제네릭 주해에 future import가 필요한지를 정적으로 확인하고, 최저선이
+  기억이 아니라 `pyproject.toml`에서 온다고 주장한다 — 첫 실행에서 `check_stub_drift.py` 사례를 찾았다.
+  한계도 파일에 적었다: 함수 본문 안의 새 API 호는 import로 보이지 않으므로 게이트의 동작 테스트가 그
+  함수들을 계속 실행해야 한다.
+- **Ir baseline을 집행하는 환경에서 생성하고 허용선을 2%에서 0.5%로 옮긴다** — 같은 커밋을 두
+  GitHub runner 이미지로 재면 12개 시나리오가 최대 0.0018% 안에서 일치했다(`parse_anchors`: 341M 중
+  6,061 명령). 그래서 `.ci/ir-baseline.json`은 runner 자신의 값과 `generated_by` 기록을 담고,
+  `scripts/ir_gate.py`는 다른 기계에서 온 실행에 주의 문구를 찍는다(WSL 실행이 실제로 찍었다). 옛 2%는
+  WSL에서 측정한 `serialize_block_scalars`와 runner 값의 1.45% 차이를 둘러싸고 설계됐었다. 두 설명을
+  시험했으나 둘 다 틀렸다. `.gitattributes`가 `BLOCK_SCALAR_YAML`의 CR 바이트를 정규화한다는 주장:
+  `-text`를 넣자 runner 값이 16,020,906 중 28 명령만 움직였고, 저장된 바이트 자체가 안정적이지도 않았다: `git show`는
+  `main` 사본에서 CR 0개, `-text`를 더한 브랜치에서 98개를 보고하고 Windows checkout은 이를 다시
+  넣는다. 바로 `-text`와 새 바이트 동일성 검사가 막는 재현성 구멍이다.
+  이미지 간 이동이라는 주장: 두 이미지는 0.0018%로 일치한다. 따라서 차이는 미해결로 적어 두고, 바뀐
+  것은 출처를 모르는 값끼리 비교하지 않게 된 점이다. `-text`는 바이트 안정성 때문에만 남긴다.
 - **TOML 다중 행 인라인 테이블에서 마지막이 아닌 항목의 주석을 판독기가 보고하는 자리로** —
   writer는 그것을 구분 쉼표 뒤(`b = 1, # n`)에 두었다. `#`은 행 끝까지 이어지므로 TOML은 주석 안에
   쉼표를 둘 수 없고, 판독기는 그 주석을 *다음* 키의 행두 주석으로 다시 배치한다. 따라서 두 번째
