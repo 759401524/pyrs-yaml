@@ -433,6 +433,42 @@ No changelog entry: the gate is not shipped behaviour, the same rule that kept #
 
 **Registered as pending rather than dropped:** `safe_dump({1: "a"})` emits `1: a`, which reads back as `{"1": "a"}` and is then quoted — the object view resolves values with the schema rules but leaves keys as text. PR #292 closes exactly that, and the rows are pinned at their current values in `test_non_string_keys_do_not_survive_the_object_view_yet` with the mechanism named, so #292 must break them and move the shapes into the parity table. The registry entry was deleted in the same change that added the test, which is the direction the (ah) check is designed to catch.
 
+**(aj) The JSON and TOML round-trip tier, and the correction of what registered it (2026-10-08).** (ah) filed `fuzz-no-roundtrip:pyrs-json` / `:pyrs-toml` with the line "a parse-only target cannot see a writer". Opening the two targets said otherwise: `parse_json` calls `to_json_text` / `to_jsonc_text` / `to_json5_text` and feeds each result back through all three readers, and `parse_toml` does the same with `to_toml`. The claim was inferred from the target's **name**, which is exactly the kind of reading this ledger has been warning about, applied to my own note. What was genuinely missing is narrower and matters more: the re-parse result was bound to `let _ =` and discarded, so those targets assert *"the reader accepts its own writer"* and not *"the writer's text has settled"*. A writer can satisfy the first and violate the second forever, and every comment-relocation defect in this engine lives in that gap.
+
+**Two targets now assert the fixed point, per dialect.** `fuzz/fuzz_targets/json_roundtrip.rs` pairs reader with writer inside each dialect rather than crossing them — `to_jsonc_text` emits comments and `to_json5_text` emits hex numbers and bare keys, none of which the strict reader may accept, so a cross-dialect demand would red correct output, which is the third time this cycle an "obvious" oracle has been rejected for redding right output. `fuzz/fuzz_targets/toml_roundtrip.rs` reads under both grammar revisions and re-reads its output with the 1.1 reader, because `to_toml` emits 1.1 spelling. Both are in the `fuzz.yml` matrix, so the PR tier replays their corpora with `-runs=0` and the schedule explores them; six surfaces now, and the header comment was corrected from "four" in the same edit rather than left as a stale claim.
+
+**A sampler cannot gate a merge, so the invariant got a deterministic half.** `crates/pyrs-json/tests/roundtrip_corpus.rs` and `crates/pyrs-toml/tests/roundtrip_corpus.rs` replay the committed seed corpora on every `cargo nextest`. Measured at commit time: 11 JSON seeds driving 24 dialect rounds and 16 TOML seeds driving 30; each file declares a floor read out of the measurement (18 and 23) so a corpus that stopped exercising the writers fails instead of passing vacuously — the same construction as `crates/pyrs-yaml-core/tests/note_survival.rs`.
+
+**Both floors were read out of a deliberate failure, not guessed.** Setting the floor above what the corpus drives (`999`) makes the assertion message print the measured count — 32 and 30 — which is how a lower bound gets derived from the machine rather than from imagination. The assertions were then proven able to bite by mutating the comparison (`once, twice.clone() + "\n"`): both files reddened on real seeds (`shape-deep-nesting.seed [json]`, `shape-array-of-tables.seed [1.1 input]`) and came back green after a hash-verified restore. The first cut of that mutant used `twice + "\n"` and failed to compile instead (`borrow of moved value`) — a mutation that does not build is not evidence, the same trap (af) and (ag) recorded.
+
+**Result of the new coverage: nothing is unsettled, and the interesting part is how many
+readings it took to say so.** 63 dialect rounds over 30 seeds satisfy `once == twice` — 33
+from 14 JSON inputs, 30 from 16 TOML — counted by setting each floor to an unreachable number
+and reading the real count out of the assertion message rather than guessing one. Three
+misreadings precede that sentence, all recorded here rather than edited out:
+
+1. the first draft claimed two JSON5 writer defects, from a truncated `nextest` line whose
+   only failure was the deliberate floor assertion;
+2. the retraction then read a panic about `json5-number-forms.seed` as "a registered shape
+   settles" when that input is not JSON5 at all (`0o17`, `0b101`) and the reader was right to
+   reject it;
+3. three shapes were then moved out of the replayed corpus into `fuzz/unsettled/` and
+   registered as `writer-not-settled` holes on the strength of an `assert_ne` that had never
+   actually run - the test aborted on the first file, which was the invalid input, so the
+   other three never reached the assertion.
+
+What ended it was not a reading at all but a temporary probe that printed both emissions for
+each shape: every pair equal. The exception directory, its registry entries and the
+mechanism that counted it are gone, the three inputs are coverage in the replayed corpus,
+and the registry is back to one hole - `property-tier:default-case-count`, still blocked by
+the three `fmt_pbt` writer fixed points. The lesson for anyone reading a gate's output next
+week: an assertion that did not run is not a result, and the cheapest tie-breaker is a probe
+that prints values instead of a summary line that names files.
+
+No changelog entry: a fuzz target and two corpus tests ship no behaviour, the rule that kept
+
+## 284's harness and #275's budget out of the release notes
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.
@@ -451,7 +487,7 @@ The scheduled loop is proven end-to-end: each `workflow_dispatch`/cron run fuzze
 
 ---
 
-## Leaderboard & Performance Status (2026-09-30)
+### Leaderboard & Performance Status (2026-09-30)
 
 **The fuzz tier's `slow-unit-*` findings were measured rather than believed, and they split into a false alarm and one real hot-path signal.** libFuzzer writes a `slow-unit` file when an execution crosses its threshold, and a `-runs=1` replay reported **451 ms** for an 18-byte YAML document — which reads like a quadratic bug in the parser. Re-running the same binary over 200 executions of the same input gives **34 ms total (0.17 ms/exec)**, and a 5-byte `a: 1` control costs 29 ms total (0.145 ms/exec): the 451 ms was cold-process cost — instrumentation counter allocation, first-touch page faults, allocator warm-up — paid once per `cargo fuzz run` and attributed by libFuzzer to the only execution it performed. **So a `slow-unit` produced by a `-runs=0`/`-runs=1` replay is not evidence of anything, and the CI replay mode is exactly that.** The method note is the deliverable: any latency claim here needs ≥200 executions and an input-sized control in the same process, or it measures the loader.
 
@@ -476,7 +512,7 @@ runners (macOS especially) and are tracked in CodSpeed instead.
 
 ---
 
-## Research & Exploration
+### Research & Exploration
 
 Tracked as open questions for future roadmap inclusion; not committed to any version.
 

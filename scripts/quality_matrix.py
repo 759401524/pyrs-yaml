@@ -169,6 +169,39 @@ def property_functions() -> list[str]:
     return sorted(names)
 
 
+def declared_artifacts() -> list[tuple[str, bool]]:
+    """Every repository path this repo's own prose promises exists, and whether it does.
+
+    `ROADMAP.md` and `QUALITY_MATRIX.md` are written in backticked file names, and they
+    record gates as delivered (``note_survival.rs`` runs on every PR). When the ledger and
+    the tree disagree the ledger wins in the reader's head, which is the failure this probe
+    exists for: it was found by noticing that this repository's own ledger described a
+    regression tier that had been reverted by a later commit.
+    """
+    found: dict[str, bool] = {}
+    for rel in ("ROADMAP.md", "QUALITY_MATRIX.md"):
+        text = read(REPO / rel)
+        for token in re.findall(r"`([^`]+)`", text):
+            # A backticked span often carries a path plus prose (`crates/x/tests/y.rs runs
+            # on every PR`); take the first whitespace-delimited word of it.
+            token = token.strip().split()[0] if token.strip() else ""
+            # Strip trailing punctuation only: `.ci/quality-holes.json` and
+            # `crates/pyrs-json/tests/roundtrip_corpus.rs` are both real paths whose leading
+            # dot is part of the name, and an early version of this line reported them as
+            # missing artifacts — a gate that invents holes is as bad as one that misses them.
+            token = token.rstrip(".,:;")
+            if "/" not in token or any(ch in token for ch in " *()…"):
+                continue
+            if not re.match(r"^[.,a-zA-Z0-9_-][^ ]*$", token):
+                continue
+            path = REPO / token
+            if path.suffix not in {".rs", ".py", ".toml", ".yml", ".md", ".json", ".sh"}:
+                continue
+            if token not in found:
+                found[token] = path.exists()
+    return sorted(found.items())
+
+
 def measure() -> dict:
     commands_by_workflow = workflow_commands()
     all_commands = " ".join(command for commands in commands_by_workflow.values() for command in commands)
@@ -237,6 +270,21 @@ def measure() -> dict:
             ["lint-scope", "clippy-all-targets", "CI's clippy command does not lint tests, benches or examples"]
         )
 
+    # The ledger and this document promise files by name (`note_survival.rs` runs on every
+    # PR). A promise that outlives the thing it promises is the quietly-worse kind of stale:
+    # the reader trusts the gate exists. So every repository path named in backticks in
+    # those two files has to exist, and a missing one is a hole like any other.
+    declared = declared_artifacts()
+    for path, exists in declared:
+        if not exists:
+            holes.append(
+                [
+                    "artifact-missing",
+                    path,
+                    "the ledger or the assessment promises this file, and the tree does not contain it",
+                ]
+            )
+
     # The two YAML writers (`Serializer` over parsed nodes, `direct_dump` over Python
     # objects) mirror each other by design instead of sharing code, which is precisely
     # how #287 ended up needing the same fix twice. A probe that only asked "does any
@@ -264,6 +312,7 @@ def measure() -> dict:
         "ir_scenarios_baseline": baseline_scenarios,
         "property_function_count": len(props),
         "property_functions": props,
+        "artifact_paths": {"scanned": len(declared), "missing": sum(1 for _p, ok in declared if not ok)},
         "route_parity_tests": route_parity,
         "holes": sorted(holes),
     }
