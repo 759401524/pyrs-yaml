@@ -391,7 +391,12 @@ impl DirectWriter {
             self.write_indent(indent_width);
             self.output.push_str("- ");
             if let Ok(dict) = item.cast::<PyDict>() {
-                if self.is_compact_mapping(dict) {
+                if dict.is_empty() {
+                    // Mirror of the node writer's exemption: `{}` has no block spelling, so
+                    // putting it on a line of its own re-reads as a flow node and the next
+                    // dump inlines it — the dash line is where the text stops moving.
+                    self.output.push_str("{}\n");
+                } else if self.is_compact_mapping(dict) {
                     for (pi, (key, value)) in dict.iter().enumerate() {
                         if pi > 0 {
                             self.write_indent(indent_width + 2);
@@ -405,9 +410,14 @@ impl DirectWriter {
                     self.output.push('\n');
                     self.write_mapping(py, dict, indent_width + 2, depth + 1)?;
                 }
-            } else if item.is_instance_of::<PyList>() {
-                self.output.push('\n');
-                self.write_sequence(py, item.cast().unwrap(), indent_width + 2, depth + 1)?;
+            } else if let Ok(list) = item.cast::<PyList>() {
+                if list.is_empty() {
+                    // Same for `[]`: no block spelling, so no line of its own.
+                    self.output.push_str("[]\n");
+                } else {
+                    self.output.push('\n');
+                    self.write_sequence(py, list, indent_width + 2, depth + 1)?;
+                }
             } else {
                 // Scalars and nulls stay on the dash line; ndarray (block) and
                 // unsupported objects go on their own indented block.

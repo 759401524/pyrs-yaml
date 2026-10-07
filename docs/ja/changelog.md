@@ -146,6 +146,15 @@ status: new
 
 #### 修正
 
+- **sequence 項目の空 container は 2 回の dump を必要としない** — `{}` と `[]` には block 用の綴りが
+  ないのに、両方の writer が `-` の下で別の行に置いていたため、再読時には *flow* node と解釈され、次の
+  dump で行内に戻っていた — `safe_dump([{}])` は `"- \n  {}\n"` を出し、それをもう一度 dump すると
+  `"- {}\n"` になる。値は一度も間違っていなかったが、テキストが動き続けていた — そしてこれは fuzz 段が
+  主張する不変量そのもの。ダッシュ行に乗せて収束させる。変更するのは両実装 — 解析・編集済みの tree を扱う
+  `Serializer::write_sequence_item` と、Python オブジェクト向けの `direct_dump` 高速経路 — で、両者は
+  コードを共有せず設計上ミラーになっている。いまは `safe_dump([{}])` が `"- {}\n"`、`[]` と入れ子の
+  場合も同様で、いずれも 1 回の再 dump が不動点。CI 既定の case 数で Linux の seed により
+  `pbt::tests::prop_mapping_order_preserved` が気づいた。
 - **tag のみの行を閉じたあとも note が自列を保つ** — note を所属 node に残すために tag のみの
   行を閉じる処理は、その行を出力中の絶対 offset で憶えていた。simple key の行内 note を書き込む
   とその offset より前にテキストが挿入されるのに offset は動かされなかったため、閉じる判定は間

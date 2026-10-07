@@ -26,6 +26,17 @@ class TestSafeDump:
         assert "- two" in result
         assert "- true" in result
 
+    def test_empty_containers_are_inlined_under_a_dash(self):
+        # `{}` and `[]` have no block spelling: written on a line of their own below a
+        # `- ` they re-read as flow nodes, so the next dump inlined them and the text
+        # kept moving between rounds. The dash line is where it stops.
+        assert pyrs_yaml.safe_dump([{}]) == "- {}\n"
+        assert pyrs_yaml.safe_dump([[]]) == "- []\n"
+        assert pyrs_yaml.safe_dump([{}, []]) == "- {}\n- []\n"
+        for value in ([{}], [[]], [{"a": [{}]}], [[[]]], [{"x": {}}]):
+            one = pyrs_yaml.safe_dump(value)
+            assert one == pyrs_yaml.safe_dump(pyrs_yaml.safe_load(one)), one
+
     def test_dump_empty_dict(self):
         result = pyrs_yaml.safe_dump({})
         # Empty dict emits the explicit flow form so it re-parses as {} (not null).
