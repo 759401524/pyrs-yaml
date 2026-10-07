@@ -29,6 +29,18 @@ status: new
 
 #### 追加
 
+- **テスト行列全体を代表するチェックを 1 つ追加 (`Test matrix (all legs)`)** — branch protection
+  はチェック「名」で照合する行で、行列は脚ごとに 1 個の名前を出す — 3 OS × 7 Python で 21、
+  free-threaded と coverage も含む。1 時間の間で 2 件の pull request がその代償を証明した。#298 は
+  `test (windows-latest, 3.8)` が参照されないまま rebase マージされ、その脚は `pyproject.toml` が
+  約束する最下段で動かないチェッカーを 2 つ含んでいた（1 つは書かれた時点から import 不能）。#299 は
+  フォーマッタの修正を squash せずに残した commit のせいで `Hygiene` が赤くなった。両者同じ形:
+  マージ判断が消費しないチェックは報告でしかない。fan-in は `needs: [test, test-freethreaded,
+  coverage]` から `toJSON(needs)` を `scripts/check_matrix_verdict.py` に渡し、`success` だけを緑と
+  読む — `skipped`（依存が死んだ兄弟の姿）も `cancelled`（`cancel-in-progress` の残骸）も拒否する。
+  `tests/test_matrix_verdict_gate.py` は各形状と結線を固定するので、`needs:` を空に削ること自体が赤に
+  なる。pull request の内側からできないこと: 新しいチェックを branch protection に「追加」しなければ
+  穴はそのまま残る。
 - **命令数ゲートが JSON と TOML の書き手も測り、ゲート自身の余裕も記録された** —
   `crates/pyrs-yaml-core/benches/ir_gate.rs` に `parse_inline_merge`、`to_json_medium`、
   `to_toml_medium` を増やし（12 シナリオ、`.ci/ir-baseline.json` の数値も 12 個）、`to_json()` と
@@ -220,6 +232,14 @@ status: new
 
 #### 修正
 
+- **Ir baseline 再生成ジョブが、baseline の記録と違うコンパイラで測ろうとしていた** —
+  初回の実際の実行(`workflow_dispatch` に届くのは `main` だけ)は `rust-toolchain@stable` を使い、
+  runner の stable は rustc 1.99.0 なのに `.ci/ir-baseline.json` は 1.97.1 で作られていた。そのため
+  コードを一切変えずに再生成ファイルは `serialize_medium` +6.7%、`serialize_small` +5.8% に動いた。
+  この artifact をコミットしていれば、コンパイラの退行が baseline になり、ゲートは二度と気づかない。
+  ジョブは今、実行側ジョブと同じ手順(baseline から版を読み取る)で toolchain を決め、ピン移動自体が
+  変更であるケースだけ `toolchain` 入力に任せる。`tests/test_ir_baseline_workflow.py` は手動専用・
+  自動 push 禁止・`@stable` への逆戻り禁止を固定する。
 - **3 つのチェッカーが、この package が支える最下段 Python 3.8 で動かなかった** —
   `scripts/check_changelog_mirrors.py`（`-> set[str]`）と `scripts/check_stub_drift.py`
   （`-> tuple[...]`）は署名注釈を import 時に評価するため、`from __future__ import annotations` 無しでは

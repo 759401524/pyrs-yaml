@@ -27,6 +27,15 @@ status: new
 
 #### 新增
 
+- **新增一个代表整个测试矩阵的检查（`Test matrix (all legs)`）** — 分支保护按检查"名字"匹配，而矩阵
+  每条腿都贡献一个名字：3 OS × 7 Python 共 21 条，另加 free-threaded 与 coverage。一小时内两个 PR 就
+  证明了代价：#298 在 `test (windows-latest, 3.8)` 从未被采信的情况下就 rebase 合了，而那条腿上带着两个
+  在本包承诺的最低 Python 上跑不动的检查器（其中一个自写下之日起就无法 import）；#299 则因为格式化器的
+  修复没被 squash 进去而让 `Hygiene` 变红。两者同一个形状：不被合并决策消费的检查只是报告。fan-in 就是
+  `needs: [test, test-freethreaded, coverage]` 把 `toJSON(needs)` 交给 `scripts/check_matrix_verdict.py`，
+  它只把 `success` 读作绿 — `skipped`（依赖死掉后兄弟腿的样子）与 `cancelled`（`cancel-in-progress` 的
+  残留）都是拒绝而非缺席。`tests/test_matrix_verdict_gate.py` 钉住这些形状与接线，所以把 `needs:` 删空
+  本身就会变红。PR 内做不到的一件事：必须把这个新检查"加入"分支保护，否则洞仍留在原地。
 - **指令数门禁开始度量 JSON 与 TOML 的 writer，并把门禁自身的余量也记了下来** —
   `crates/pyrs-yaml-core/benches/ir_gate.rs` 新增 `parse_inline_merge`、`to_json_medium`、
   `to_toml_medium`（12 个场景，`.ci/ir-baseline.json` 也是 12 个数），于是 `to_json()` 与
@@ -185,6 +194,13 @@ status: new
 
 #### 修复
 
+- **Ir 基线再生成作业原本要用与基线记录不同的编译器来量** — 该作业第一次真跑（能触发
+  `workflow_dispatch` 的只有 `main`）用的是 `rust-toolchain@stable`：runner 的 stable 是 rustc
+  1.99.0，而 `.ci/ir-baseline.json` 是在 1.97.1 上产出的，于是代码未动、重生成的文件就把
+  `serialize_medium` 挪了 +6.7%、`serialize_small` +5.8%。若把那份 artifact 提交，一次编译器退化就此
+  变成基线，门禁再也不会察觉。现在作业按执行门禁那个作业同样的方式解析 toolchain（从基线里读版本号），
+  只把"移动 pin 本身就是变更"这一种情形交给 `toolchain` 输入，仍是显式动作。
+  `tests/test_ir_baseline_workflow.py` 钉住：只能手动触发、绝不自动 push、不许退回 `@stable`。
 - **三个检查器在本包支持的最低版本 Python 3.8 上跑不起来** —
   `scripts/check_changelog_mirrors.py`（`-> set[str]`）与 `scripts/check_stub_drift.py`
   （`-> tuple[...]`）在 import 时求值签名注解，缺 `from __future__ import annotations` 就会被 3.8 拒绝；

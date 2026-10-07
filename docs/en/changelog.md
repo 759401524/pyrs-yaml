@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **One check now stands for the whole test matrix (`Test matrix (all legs)`)** — branch
+  protection matches check *names*, and a matrix contributes one name per leg: 21 of them across
+  3 OSes × 7 Pythons, plus free-threaded and coverage. Two pull requests in one hour proved what that
+  costs. #298 was rebase-merged with `test (windows-latest, 3.8)` never consulted, and that leg
+  carried two checkers that cannot run on the Python floor `pyproject.toml` promises (one unimportable
+  since it was written). #299 went red on `Hygiene` because a formatter's fix sat unsquashed next to
+  the commit CI checked. Both are the same shape: a check no merge decision consumes is a report. The
+  fan-in is `needs: [test, test-freethreaded, coverage]` feeding `toJSON(needs)` to
+  `scripts/check_matrix_verdict.py`, which reads only `success` as green — `skipped` (what siblings
+  become when a dependency dies) and `cancelled` (what `cancel-in-progress` leaves) are refusals, not
+  absences. `tests/test_matrix_verdict_gate.py` pins each of those shapes plus the wiring, so a
+  `needs:` list edited down to nothing is itself red. What this cannot do from inside a pull request:
+  the new check has to be *added* to branch protection, or the hole stays exactly where it was.
 - **The instruction-count gate measures the JSON and TOML writers, and its own headroom is on
   record** — `crates/pyrs-yaml-core/benches/ir_gate.rs` gains `parse_inline_merge`,
   `to_json_medium` and `to_toml_medium` (12 scenarios, 12 committed numbers in
@@ -250,6 +263,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **The Ir baseline refresh would have measured with a different compiler than the baseline
+  records** — the job's first real run (dispatched on `main`, which is the only place
+  `workflow_dispatch` can reach it) used `rust-toolchain@stable`: the runner's stable was rustc
+  1.99.0 while `.ci/ir-baseline.json` was made on 1.97.1, and the regenerated file moved
+  `serialize_medium` +6.7% and `serialize_small` +5.8% with the code untouched. Had that artifact
+  been committed, a compiler regression would have become the baseline and the gate could never have
+  seen it. The job now resolves its toolchain the way the enforcing job does — read the version out
+  of the baseline — and takes a `toolchain` input for the one case where moving the pin *is* the
+  change, which stays an explicit act. `tests/test_ir_baseline_workflow.py` pins that the refresh is
+  manual-only, never auto-pushed, and cannot fall back to `@stable`.
 - **Three checkers could not run on Python 3.8, the floor this package supports** —
   `scripts/check_changelog_mirrors.py` (`-> set[str]`) and `scripts/check_stub_drift.py`
   (`-> tuple[...]`) evaluate their signature annotations at import time, which 3.8 rejects without

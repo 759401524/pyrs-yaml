@@ -20,9 +20,25 @@ name: Ir baseline refresh
 # the first attempt to use this job was made from a PR branch and was refused. So the order is:
 # land the scenario change (with WSL-measured numbers), then dispatch here, then commit the
 # artifact as its own change.
+#
+# The toolchain is read from the baseline rather than taken from `@stable`, for the reason the first
+# real run of this job demonstrated: `stable` on the runner was rustc 1.99.0 while the committed
+# numbers came from 1.97.1, and regenerating moved `serialize_medium` +6.7% and `serialize_small`
+# +5.8% - the code was untouched. Committing that artifact would launder a compiler regression into
+# the baseline and the gate would never see it. Moving the pin is a separate, deliberate act: pass
+# `toolchain` below (e.g. `1.99.0`) when the upgrade *is* the change, and say so in the commit that
+# lands the artifact.
 
 on:
   workflow_dispatch:
+    inputs:
+      toolchain:
+        description: >-
+          Rust version to measure with. Leave empty to use the version recorded in
+          .ci/ir-baseline.json, so the artifact is comparable with the numbers it replaces.
+          Set it (e.g. `1.99.0`) only to move the pin deliberately.
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -46,10 +62,26 @@ jobs:
           sudo apt-get update &&
           sudo apt-get install -y --no-install-recommends valgrind
 
+      # Same resolution the enforcing job uses: the pin travels with the baseline, so a regenerated
+      # artifact is by construction comparable with the numbers it replaces. An explicit `toolchain`
+      # input overrides it, which is how a deliberate upgrade gets measured.
+      - name: Resolve the toolchain
+        id: toolchain
+        run: |
+          requested="${{ inputs.toolchain }}"
+          if [ -n "$requested" ]; then
+            echo "toolchain=$requested" >> "$GITHUB_OUTPUT"
+            echo "moving the pin: measuring with $requested (input)"
+          else
+            version=$(python3 -c "import json;print(json.load(open('.ci/ir-baseline.json'))['toolchain'].split()[1])")
+            echo "toolchain=$version" >> "$GITHUB_OUTPUT"
+            echo "measuring with $version, read from .ci/ir-baseline.json"
+          fi
+
       - name: Install Rust toolchain
-        # Not the baseline's pin: the point of this job is to record the toolchain that produced
-        # the new numbers, and `ir_gate.py --update` writes that pin into the file it emits.
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.toolchain }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2

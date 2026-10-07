@@ -28,6 +28,18 @@ status: new
 
 #### 추가
 
+- **테스트 행렬 전체를 대표하는 검사 하나를 추가 (`Test matrix (all legs)`)** — branch protection은
+  검사 '이름'으로 짝을 맞추고, 행렬은 다리마다 이름을 하나씩 낸다: 3 OS × 7 Python 으로 21개,
+  free-threaded와 coverage까지. 한 시간 안의 두 pull request가 그 대가를 증명했다. #298은
+  `test (windows-latest, 3.8)`가 참조되기도 전에 rebase로 병합됐고, 그 다리에는 `pyproject.toml`이
+  약속한 최저 버전에서 못 도는 체커 둘이 있었다(하나는 작성 시점부터 import 불가). #299는 정렬기의 수정을
+  squash하지 않은 채 두고 `Hygiene`가 빨개졌다. 둘 다 같은 형태다: 병합 판단이 소비하지 않는 검사는
+  보고일 뿐. fan-in은 `needs: [test, test-freethreaded, coverage]`에서 `toJSON(needs)`를
+  `scripts/check_matrix_verdict.py`에 넘기고 `success`만 초록으로 읽는다 — `skipped`(의존이 죽은 형제의
+  모습)와 `cancelled`(`cancel-in-progress`의 잔해)도 통과가 아니라 거부다.
+  `tests/test_matrix_verdict_gate.py`가 모든 형태와 배선을 고정하므로 `needs:`를 비로 줄이는 일 자체가
+  빨갛다. pull request 안에서 못 하는 일: 새 검사를 branch protection에 '추가'하지 않으면 구멍은 그대로
+  남는다.
 - **명령 수 게이트가 JSON과 TOML writer도 재고, 게이트 자신의 여유도 기록에 남긴** —
   `crates/pyrs-yaml-core/benches/ir_gate.rs`에 `parse_inline_merge`, `to_json_medium`,
   `to_toml_medium`을 추가했다(12개 시나리오, `.ci/ir-baseline.json`도 12개 값). 이제 `to_json()`과
@@ -215,6 +227,14 @@ status: new
 
 #### 수정
 
+- **Ir baseline 재생성 작업이 baseline이 적어 둔 것과 다른 컴파일러로 재려 했다** —
+  이 작업의 첫 실집행(`workflow_dispatch`가 닿는 곳은 `main`뿐)는 `rust-toolchain@stable`을 썼고,
+  runner의 stable은 rustc 1.99.0인데 `.ci/ir-baseline.json`은 1.97.1에서 만들어진 터라, 코드를 하나도
+  안 바꾸고 재생성 파일이 `serialize_medium` +6.7%, `serialize_small` +5.8%로 움직였다. 그 artifact를
+  커밋했다면 컴파일러 후퇴가 baseline이 되어 게이트는 두 번 다시 보지 못한다. 이제 작업은 집행 작업과
+  같은 절차(baseline에서 버전 읽기)로 toolchain을 정하고, 핀 이동 자체가 변경인 경우만 `toolchain`
+  입력에 맡긴다. `tests/test_ir_baseline_workflow.py`는 수동 전용·자동 push 금지·`@stable`로 되돌아감
+  금지를 고정한다.
 - **체커 셋이 이 패키지가 받는 최저 버전 Python 3.8에서 돌아가지 않았다** —
   `scripts/check_changelog_mirrors.py`(`-> set[str]`)와 `scripts/check_stub_drift.py`(`-> tuple[...]`)는
   시그니처 주해를 import 때 평가하므로 `from __future__ import annotations` 없이는 3.8가 거부하고,

@@ -135,9 +135,12 @@ review habit:
   a newer Python than the supported floor is not a required check, so the bug reached `main` and only
   surfaced when the *next* pull request ran it. The general guard (`tests/test_scripts_import_on_supported_python.py`)
   makes every such leg carry the same signal without needing a matrix row per checker, but the
-  structural point stands and is not yet closed: a matrix that can fail without failing the merge
-  reports coverage rather than enforcing it. The fix is a fan-in job that needs every leg and is the
-  one branch protection requires.
+  structural point was that a matrix can fail without failing the merge, which reports coverage
+  instead of enforcing it. `Test matrix (all legs)` is the fan-in that closes the checkable half:
+  `needs: [test, test-freethreaded, coverage]`, one name, and `scripts/check_matrix_verdict.py` reads
+  only `success` as green (`skipped` and `cancelled` are refusals). What remains outside a pull
+  request is the one line of repository settings - adding that name to branch protection - and until
+  someone with access does it, the hole is closed in software and open in configuration.
 
 The strongest evidence that a hook tier is not decoration came from its own author: the five
 files written while building this matrix came out of the editor as CRLF, and
