@@ -310,6 +310,13 @@ Now: every artifact of every round is archived before anything else can happen, 
 
 No CHANGELOG entry: the tier's output is not a shipped behaviour, and a finding nobody has triaged must not gate an unrelated PR — same reasoning that kept #266's and #275's harness changes out of the changelog.
 
+**Filed by the run that motivated this change, not fixed here.** Two inputs the sampler found on top of #283 (`6bb8446f`), both re-measured on that commit and still drifting, neither losing a note (the shifts are placement, not data):
+
+- `crash-7eb273bc` (24 bytes, `-{TAB}?: !` CR `#U` CR CR `... #` TAB `! - *:`): the emission puts the note inline on the tag-only line (`    !   # ! - *:`), the re-read hands that note back as the value's **leading** note, and the second emission writes it on its own line above the tag. Same neighborhood as #283's key-note slot, different owner — here the note is on the value and the drift is inline ⇄ leading.
+- `crash-d0745105` (64 bytes): a merge key carrying a note (`<<: #*b`), whose note is re-homed by merge consumption and then emitted on its own line at a different indent, dragging the following `::` pair with it.
+
+Both fail the same `assert_eq!` at `yaml_roundtrip.rs:37`, so even with this counting fix they will read as "2 inputs / 1 signature". That is the point of the wording change: the honest statement of what one run found, rather than a number that looks like a root-cause count and is not.
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.
