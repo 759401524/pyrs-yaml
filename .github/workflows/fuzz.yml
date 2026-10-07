@@ -174,12 +174,21 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           for d in crashes/*/; do
             name=$(basename "$d")
-            files=$(find "$d" -name 'crash-*' | wc -l)
-            sigs=0
-            [ -f "$d/.signatures" ] && sigs=$(grep -c . "$d/.signatures")
+            # The archive holds both `artifacts/<target>/` and `collected/<target>/`, and
+            # the second mirrors the first, so inputs are counted by file *name*, not by
+            # path — counting paths reported 3 for 2 crash inputs (measured on run
+            # 37533230933). Signatures come from findings.tsv, which scripts/fuzz_rounds.sh
+            # writes as a normal file under the target's own directory; the previous step
+            # looked for a dotfile at the archive root, where it has never existed, so that
+            # column has been silently reading 0.
+            files=$(find "$d" -name 'crash-*' -printf '%f\n' | sort -u | grep -c .)
+            sigs=$(find "$d" -name 'findings.tsv' -exec cat {} + 2>/dev/null | cut -f1 | sort -u | grep -c .)
             total=$((total + files))
             echo "| ${name#fuzz-artifacts-} | $files | $sigs |" >> "$GITHUB_STEP_SUMMARY"
           done
           if [ "$total" -gt 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "A signature names the assertion that failed, not the root cause: two bugs can" >> "$GITHUB_STEP_SUMMARY"
+            echo "reach the same \`assert_eq!\`. Read the signature column as a lower bound." >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::$total crash input(s) collected; each owes the minimize -> regression test -> seed -> fix pipeline"
           fi
