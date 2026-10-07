@@ -214,9 +214,12 @@ def ir_harness_build_graph() -> set[str]:
         if not re.search(r'^\[\[bench\]\][^\[]*?required-features *= *\[[^\]]*"ir-gate"', text, re.S | re.M):
             continue
         crates.add(manifest.parent.name)
-        section = re.search(r"^\[(?:dev-)?dependencies\](.*?)(?=^\[|\Z)", text, re.S | re.M)
-        if section:
-            linked = re.findall(r"^([a-z0-9_-]+) *=", section.group(1), re.M)
+        # Every dependency section, not the first one. `re.search` here reported a three-crate graph
+        # while `to_json_medium` / `to_toml_medium` link `pyrs-json` and `pyrs-toml` through
+        # `[dev-dependencies]` - the hole's own text claimed five. Printing the derived set in the
+        # summary (`ir_harness_crates`) is the only reason that mismatch was visible at all.
+        for section in re.findall(r"^\[(?:dev-)?dependencies\](.*?)(?=^\[|\Z)", text, re.S | re.M):
+            linked = re.findall(r"^([a-z0-9_-]+) *=", section, re.M)
             # Workspace members only: the point of the set is which of *this* repository's layers
             # the instrument can reach, and third-party links say nothing about that boundary.
             crates.update(name for name in linked if (REPO / "crates" / name).is_dir())

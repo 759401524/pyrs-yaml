@@ -231,6 +231,25 @@ def test_the_perf_coverage_probe_describes_a_real_boundary(matrix, monkeypatch):
     assert reported == [], "the probe reports the gap regardless of the graph it is measuring"
 
 
+def test_the_graph_probe_reads_every_dependency_section(matrix):
+    """The set the registered hole describes, pinned by content.
+
+    `to_json_medium` and `to_toml_medium` link the sibling engines through
+    `[dev-dependencies]`, so a probe that stops at the first section understates what the
+    instrument can reach - which is exactly what this did when it first shipped, reporting three
+    crates while the hole's own text named five. The `why` of the registered hole enumerates the
+    graph, so the enumeration is now checked instead of quoted.
+    """
+    graph = matrix.ir_harness_build_graph()
+    assert {"pyrs-yaml-core", "pyrs-ast", "pyrs-schema", "pyrs-json", "pyrs-toml"} <= graph, graph
+    assert "pyrs-yaml-cli" not in graph, "the CLI is not linked by the harness either way"
+    registered = json.loads((REPO_ROOT / ".ci" / "quality-holes.json").read_text(encoding="utf-8"))["holes"]
+    for hole in registered:
+        if hole["id"].startswith("perf-coverage"):
+            for crate in sorted(graph & {"pyrs-json", "pyrs-toml", "pyrs-ast", "pyrs-schema", "pyrs-yaml-core"}):
+                assert crate in hole["why"], f"{crate}: in the measured graph, missing from the registry text"
+
+
 def test_holes_are_derived_not_transcribed(measured):
     """The measurement has to be reproducible twice in one process, and stable."""
     again = _load_module().measure()

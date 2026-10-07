@@ -201,6 +201,14 @@ status: new
 
 #### 修复
 
+- **`perf-coverage:binding-layer` 描述的图，探针其实只读了一半** — 度量把 `ir_harness_crates`
+  报成 `pyrs-ast, pyrs-schema, pyrs-yaml-core`，而由它导出的洞、以及登记进五份 changelog 镜像的文字都列了
+  五个 crate。探针在 manifest 上用 `re.search`，于是停在 `[dependencies]`，没看
+  `[dev-dependencies]` —— 而 `to_json_medium`、`to_toml_medium` 正是在那里链接 `pyrs-json` 与
+  `pyrs-toml`。结论（`pyrs-yaml` 两节都不在）没错，依据错了；而登记在册的洞里的错数字比缺数字更坏，因为它
+  会被引用。现在所有依赖段都会被读取，
+  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section` 按内容钉住集合，并校验
+  台账文字里出现的 crate 名，度量与叙述再不会各说各话。这靠的是把导出的集合印进摘要，而不是相信引用它的那句话。
 - **Ir 基线再生成作业原本要用与基线记录不同的编译器来量** — 该作业第一次真跑（能触发
   `workflow_dispatch` 的只有 `main`）用的是 `rust-toolchain@stable`：runner 的 stable 是 rustc
   1.99.0，而 `.ci/ir-baseline.json` 是在 1.97.1 上产出的，于是代码未动、重生成的文件就把
