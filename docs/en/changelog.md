@@ -31,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **The property tier has a blocking 20,000-case job (`ci.yml: property-tier`)** — every
+  property run until now used proptest's default 256 cases, because no workflow set
+  `PROPTEST_CASES`; `scripts/quality_matrix.py` measured that and registered it as the defence's
+  last hole. Two of the three writer fixed-point properties that were said to "fail at 20,000
+  cases" never failed: at that count they exhaust proptest's default allowance of 1024 global
+  rejects and die with `Test aborted: Too many global rejects` — measured by setting the budget
+  back to 1024, which kills all three at `fmt_pbt.rs:93`. The dialect properties now carry a
+  budget of 250,000, and the third failure was a real defect (see Fixed). Cost, measured on this
+  tree: `PROPTEST_CASES=20000 cargo test --workspace --locked` runs 305 core tests in 63 s and
+  exits 0. Acceptance: `property-tier:default-case-count` deleted from
+  `.ci/quality-holes.json`, leaving the registry empty — which
+  `tests/test_quality_matrix.py` enforces in the other direction too.
 - **Hygiene hooks run in CI, and the line-ending policy has a form that can be enforced** —
   a `Hygiene` workflow runs `prek run --all-files` over the whole tree on every pull request,
   on every push to `main`, and weekly. It exists because the colocated `jj` workflow never
@@ -198,6 +210,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A note on a non-last member of a multi-line TOML inline table goes where the reader reports
+  it** — the writer put it after the separator comma (`b = 1, # n`). `#` runs to end of line, so
+  TOML cannot keep a comma inside a comment, and the reader re-homes that note as the *following*
+  key's leading comment; the second emission moved it and the text never settled. The shape is
+  unreachable from valid TOML text — which is why it took a generator to find it — and arrives via
+  conversion paths that hand the writer an AST no source produces. The note now takes its own line
+  after the member (`b = 1,` / `# n`), which is exactly where the parser reports it from.
+  Attribution: withdrawing the rule reddens
+  `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line` (the 0.45 s
+  tier) and `fmt_pbt::prop_toml_writer_is_fixed_point` at 20,000 cases, and nothing else; at 256
+  cases with the persisted shrink case removed the whole suite is green, so the elevated tier is
+  what closes this hole.
 - **An empty container under a key stops needing two dumps** — `#287` taught both writers to
   inline `{}` and `[]` on a dash line, but the same decision was still missing where a
   *mapping value* is emitted from Python objects: `safe_dump({"a": {}})` produced

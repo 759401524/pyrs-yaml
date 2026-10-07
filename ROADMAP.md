@@ -465,9 +465,49 @@ the three `fmt_pbt` writer fixed points. The lesson for anyone reading a gate's 
 week: an assertion that did not run is not a result, and the cheapest tie-breaker is a probe
 that prints values instead of a summary line that names files.
 
-No changelog entry: a fuzz target and two corpus tests ship no behaviour, the rule that kept
+No changelog entry: a fuzz target and two corpus tests ship no behaviour, the rule that kept the
+entry for 284's harness and 275's budget out of the release notes. (The `#` of those issue
+numbers was once mid-sentence and once at the start of a wrapped line, where Markdown reads it as
+a heading; referring to them without the sign avoids the trap and the drift it caused.)
 
-## 284's harness and #275's budget out of the release notes
+**(ak) The last registered hole closed, and the third writer defect this cycle found by
+measurement rather than by reading (2026-10-08).** `property-tier:default-case-count` was the one
+entry left in `.ci/quality-holes.json`, blocked by three `fmt_pbt` writer fixed points said to
+fail at 20,000 cases. Two of them never failed. With `max_global_rejects` set back to proptest's
+default 1024 and the case count at 20,000, all three die at `fmt_pbt.rs:93` with
+`Test aborted: Too many global rejects` — the domain filters (`json_object_domain`,
+`toml_root_note_ok`) reject shapes the target format cannot spell, and the allowance was
+calibrated for 256 cases. The harness was reporting its own reject rate as if a writer had
+drifted. The dialect properties now carry a budget of 250,000; nothing about the oracle changed.
+
+**The third failure was real, and it is fixed.** `to_toml` put a same-line note that sits on a
+non-last member of a multi-line inline table after the separator comma (`b = 1, # n`). `#` runs to
+end of line, so a comma cannot live inside a comment, and the reader re-homes that note as the
+*following* key's leading comment — the second emission moved it, so the text never settled. The
+note now gets its own line after the member, which is where the parser reports it from; measured
+with a temporary probe that printed both emissions: `t = [{\n  b = 1,\n  # n\n  c = 2\n}]\n` twice
+over, with the note coming back as `Comment { text: "n", standalone: true }` on `c`. No valid TOML
+produces that AST — which is why only a generator reached it, and why the guard builds the node
+instead of parsing it.
+
+**Two of my own artefacts did not do what I claimed they did, and both were caught by running
+them rather than by reading them.** (i) The first attribution mutant replaced the region up to
+`out.push('}')` and re-emitted the loop's closing brace, deleting the statement that closes the
+inline table; it reported three failures, one of them a unit test that has nothing to do with note
+placement. Diffing the mutant against `main` *before* running it exposed the missing statement, so
+the leg was thrown away and rebuilt from `main`'s own text. (ii) `a_note_between_two_inline_members_keeps_its_own_line`,
+written to pin the rule, passed with the rule withdrawn: its input parses the note as the
+*following* key's leading comment, so the trailing-note branch never runs. The replacement guard
+fails in 0.45 s at the cheap tier and is the only unit test that observes the rule.
+
+**Attribution, all of it measured on `pyrs-toml` + `pyrs-yaml-core`.** Withdrawing the placement
+rule: at 20,000 cases exactly one of 354 tests reddens (`fmt_pbt::prop_toml_writer_is_fixed_point`);
+at 256 cases with the persisted shrink case present, exactly that one again; at 256 cases with the
+persisted case removed, **354 of 354 pass** — the default tier cannot find this defect by sampling,
+which is the evidence the new tier exists for. `ci.yml` gains a blocking `property-tier` job running
+`PROPTEST_CASES=20000 cargo test --workspace --locked`; verified on this tree (exit 0, 305 core
+tests in 63 s). The registry is now empty, and `tests/test_quality_matrix.py` fails if the
+measurement disagrees with that in either direction.
 
 ### Note survival: the leading slot became a list (2026-10-04)
 

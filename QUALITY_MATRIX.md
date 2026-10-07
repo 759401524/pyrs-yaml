@@ -58,8 +58,16 @@ replay the seed corpus on every `cargo nextest` — 33 rounds from 14 JSON seeds
 writers fails instead of passing vacuously.
 No writer is unsettled: 33 JSON dialect rounds from 14 seeds and 30 TOML rounds from 16,
 every one satisfying `once == twice`.
-`fmt_pbt`'s three writer fixed-point properties still fail at 20,000 cases and are still
-invisible at CI's default count, which is the one hole the registry now carries.
+`fmt_pbt`'s three writer fixed-point properties now hold at 20,000 cases, and two of them never
+failed there at all: they were aborting on proptest's default reject budget — measured by
+setting `max_global_rejects` back to 1024, which kills all three with `Test aborted: Too many
+global rejects` at `fmt_pbt.rs:93` rather than with an assertion. The third was real. A note
+carried by a non-last member of a multi-line inline table went out after the separator comma,
+and `#` runs to end of line, so the reader hands that note to the *following* key and the second
+emission moved it. Withdrawing the fixed rule leaves all 354 tests green at proptest's default
+256 cases once the persisted shrink case is removed: that count never generates two members
+whose first carries a same-line note, so the case count was load-bearing, not decorative. `ci.yml`
+now runs a blocking `property tier (20k cases)` job; the registry is empty.
 
 **The exception list this section describes was itself the error.** Three inputs were
 moved out of the replayed corpus and registered as unsettled writers on the strength of
@@ -70,7 +78,7 @@ honest could not tell an invalid input from a settling one from a real defect, s
 removed rather than trusted, and what is left here is the weaker, truer claim: a probe
 that prints values caught in one run what three readings of test output did not.
 Blocking on every pull request, measured: `clippy` (with `--all-targets`, since this
-measurement), `cargo test --workspace`, MSRV
+measurement), `cargo test --workspace`, the 20k-case property tier, MSRV
 check, `no_std` bare-metal build, pytest on 3 OSes × 7 Python versions, free-threaded
 pytest, coverage floor, CodSpeed (Rust + Python), the callgrind Ir gate, the fuzz seed
 replay, changelog-mirror / localized-script-purity / release-guard / stub-drift, and —
@@ -171,7 +179,13 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
-| `property-tier:default-case-count` | three writer fixed-point properties fail at 20k cases and are invisible at 256 | a blocking job at an elevated case count, which requires those three to hold first |
+| — | the registry is empty; every measured blind spot has a gate or a named exit that has run | — |
+
+An empty registry is a claim the gate checks in both directions: `scripts/quality_matrix.py`
+re-measures the defence on every pytest run, and `tests/test_quality_matrix.py` fails if a hole
+appears that is not written down here. So this table being empty is not an opinion about the
+code — it is the state of one specific measurement, taken against the workflows, hooks, fuzz
+manifest and Ir baseline as they stand.
 
 Closed while this document was written, and therefore absent from the registry on
 purpose: the hook tier being unwired, `cargo fmt` reaching no job, CI's clippy skipping
@@ -179,8 +193,11 @@ tests and benches, the two YAML writers having no comparison against each other
 (`tests/test_route_parity.py` pins their output byte-for-byte and found the same
 empty-container spelling still unfixed at the mapping-value site of `direct_dump` —
 the second occurrence of the same class, the day after the hole was registered), the
-line-ending policy having no enforceable form, and the conflict-marker-shaped hole
-above.
+line-ending policy having no enforceable form, the conflict-marker-shaped hole
+above, and the property tier running at 256 cases — which is where the TOML inline-table
+note placement defect hid, and whose closure needed both a writer fix and a wider reject
+budget, because at 20 000 cases two of the three properties were dying on the harness's own
+allowance rather than on an assertion.
 
 ## Improvement plan
 
@@ -192,9 +209,11 @@ is done when its test is green, not when the change is merged.
   hook, `hygiene.yml` runs the hook set in CI, and the polluted files are normalised.
   Acceptance: `tests/test_quality_matrix.py` no longer reports the hook holes, and
   `tests/test_line_endings_gate.py` proves the checker fires on an all-CRLF file.
-- **P0-B, property tier elevation** (`blocked by` three writer fixed points): add a
-  non-blocking high-case job first, then flip it to blocking as each property closes.
-  Acceptance: the `property-tier` hole deleted from the registry.
+- **P0-B, property tier elevation** (`done`): the three writer fixed points hold at 20 000
+  cases — one after a real writer fix, two after the reject budget stopped being read as a
+  drift — and `ci.yml` runs that count as a blocking `property-tier` job.
+  Acceptance: the `property-tier` hole deleted from the registry, which the measurement gate
+  enforces in the other direction too.
 - **P1-C, matrix gate** (`done`): this document, the measurement script, the registry and
   the test that compares them.
 - **P1-D, matrix spaces** (`done`): the route-parity table over the two YAML writers, and

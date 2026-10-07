@@ -69,6 +69,34 @@ jobs:
           PYO3_PYTHON: python
         run: cargo test --workspace --locked
 
+  # The property tier above runs at proptest's default 256 cases, which is a sampling budget
+  # sized for speed. `prop_toml_writer_is_fixed_point` needed more than 256 cases to reach the
+  # shape that relocates a note inside a multi-line inline table: at the default count the
+  # generator never produced two members where the first carries a same-line note, so the writer
+  # looked stable. This job pays for the wider net with the one resource the default tier is
+  # saving - about a minute of measured work per PR, on top of the compile already cached.
+  # It is blocking because all three writer fixed points hold at 20 000 cases; the case count is
+  # written inline rather than in an `env:` block so the defence measurement can see it.
+  property-tier:
+    name: property tier (20k cases)
+    if: ${{ github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: property-tier
+
+      - name: Elevated property tier
+        env:
+          PYO3_PYTHON: python
+        run: PROPTEST_CASES=20000 cargo test --workspace --locked
+
   msrv-check:
     if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest

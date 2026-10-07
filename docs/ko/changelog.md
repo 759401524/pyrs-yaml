@@ -28,6 +28,17 @@ status: new
 
 #### 추가
 
+- **속성 등급에 20,000 케이스 차단 작업 추가 (`ci.yml: property-tier`)** —
+  이제까지 모든 속성 실행은 proptest 기본값인 256 케이스로 돌아갔다. 어떤 워크플로도
+  `PROPTEST_CASES`를 설정하지 않았기 때문이고, `scripts/quality_matrix.py`는 그것을 측정해
+  방어 체계 대장의 마지막 사각지대로 등록했다. "20,000 케이스에서 실패한다"고 알려진 세 writer
+  고정점 속성 가운데 둘은 실제로 실패한 적이 없다. 해당 케이스 수에서는 proptest의 전역 거부
+  기본 허용치 1024를 소진하고 `Test aborted: Too many global rejects`로 죽는다 — 허용치를 1024로
+  되돌리면 셋 모두 `fmt_pbt.rs:93`에서 죽는 것이 측정값이다. 방언 속성의 허용치는 이제 250,000이고
+  세 번째 실패가 진짜 결함이었다(Fixed 참조). 비용은 실측: 이 트리에서
+  `PROPTEST_CASES=20000 cargo test --workspace --locked`는 core의 305개 테스트를 63초에 마치고
+  0으로 끝난다. 완료 조건: `.ci/quality-holes.json`에서 `property-tier:default-case-count`를
+  지워 대장을 비우는 것 — `tests/test_quality_matrix.py`는 반대 방향으로도 이를 강제한다.
 - **위생 후크가 CI에서 돌아가고, 줄바꿈 방침에 강제 가능한 형태가 생겼다** — `Hygiene`
   워크플로를 추가해 pull request마다, `main`에 밀릴 때마다, 매주 트리 전체에
   `prek run --all-files`를 실행한다. 같은 저장소에서 쓰는 `jj`는 Git 후크를 전혀 실행하지 않으니
@@ -169,6 +180,15 @@ status: new
 
 #### 수정
 
+- **TOML 다중 행 인라인 테이블에서 마지막이 아닌 항목의 주석을 판독기가 보고하는 자리로** —
+  writer는 그것을 구분 쉼표 뒤(`b = 1, # n`)에 두었다. `#`은 행 끝까지 이어지므로 TOML은 주석 안에
+  쉼표를 둘 수 없고, 판독기는 그 주석을 *다음* 키의 행두 주석으로 다시 배치한다. 따라서 두 번째
+  출력은 주석을 옮겨 버리고 텍스트는 정착하지 않았다. 이 형태는 올바른 TOML 텍스트에서는 도달 불가능하다 —
+  그래서 생성기에만 발견됐다 — 소스가 만들 수 없는 AST를 writer에 넘기는 변환 경로를 통해 나타난다. 이제
+  주석은 항목 뒤의 독립 행(`b = 1,` / `# n`)에 나온다 — 파서가 보고하는 자리 그 자체다. 귀속: 규칙을
+  되돌리면 `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line`(0.45초
+  등급)와 `fmt_pbt::prop_toml_writer_is_fixed_point`(20,000 케이스)만 빨갛고 나머지는 그대로다. 256
+  케이스에서 영속화된 shrink 사례를 빼면 전체 스위트가 녹색이다 — 높은 등급이 이 구멍을 막는다.
 - **key 아래 빈 container는 dump 두 번을 요구하지 않는다** — `#287`로 두 writer 모두 dash 줄에
   `{}`와 `[]`를 inline 하게 되었지만, Python 객체에서 *mapping value*를 내보내는 경로에는 같은 판단이
   여전히 빠져 있었다. `safe_dump({"a": {}})`는 `"a:\n  {}\n"`를, AST writer는 `"a: {}\n"`를 냈다.
