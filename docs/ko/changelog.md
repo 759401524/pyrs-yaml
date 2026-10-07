@@ -235,6 +235,15 @@ status: new
 
 #### 수정
 
+- **`perf-coverage:binding-layer`는 계측기가 절반만 읽은 graph를 설명하고 있었다** — 계측은
+  `ir_harness_crates`를 `pyrs-ast, pyrs-schema, pyrs-yaml-core`로 보고했지만, 거기서 파생된 결함과 다섯
+  changelog mirror에 등록된 글은 crate 다섯 개를 적어 두었다. 계측기가 manifest에서 `re.search`를 써서
+  `[dependencies]`에서 멈추고, `to_json_medium`과 `to_toml_medium`이 `pyrs-json`/`pyrs-toml`을 링크하는
+  `[dev-dependencies]`를 보지 못했다. 결론(`pyrs-yaml`은 어느 쪽에도 없다)은 맞았지만 근거는 틀렸고,
+  등록된 결함 속 잘못된 수는 인용되므로 빠진 것보다 해롭다. 이제 모든 의존 절을 읽는다.
+  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section`은 집합을 내용으로
+  고정하고 대장 텍스트에 나오는 crate 이름도 대조하므로, 계측과 글이 다시 어긋나지 않는다. 요약에 파생 값을
+  찍어서 알 수 있었고, 그것을 쓴 문장을 믿지 않아서 구제되었다.
 - **Ir baseline 재생성 작업이 baseline이 적어 둔 것과 다른 컴파일러로 재려 했다** —
   이 작업의 첫 실집행(`workflow_dispatch`가 닿는 곳은 `main`뿐)는 `rust-toolchain@stable`을 썼고,
   runner의 stable은 rustc 1.99.0인데 `.ci/ir-baseline.json`은 1.97.1에서 만들어진 터라, 코드를 하나도

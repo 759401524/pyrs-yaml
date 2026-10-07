@@ -240,6 +240,16 @@ status: new
 
 #### 修正
 
+- **`perf-coverage:binding-layer` は、プローブが半分しか読んでいない graph を説明していた** —
+  計測は `ir_harness_crates` を `pyrs-ast, pyrs-schema, pyrs-yaml-core` と報告していたのに、そこから
+  導出される穴と、5 つの changelog mirror に登記された文言は 5 つの crate を上げていた。プローブは
+  manifest に対して `re.search` を使っていたため `[dependencies]` で止まり、`to_json_medium` と
+  `to_toml_medium` が `pyrs-json` / `pyrs-toml` を link する `[dev-dependencies]` を見ていなかった。
+  結論(`pyrs-yaml` はどちらの節にも無い)は正しくとも根拠は間違いで、登記された穴の中の誤数は引用される
+  分だけ欠落より悪い。いまは全ての依存節を読む。
+  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section` は集合を内容で固定し、
+  台帳のテキストに現れる crate 名も照合するので、計測と文章が再び食い違うことはない。これは要約に導出値を
+  印字したことで分かり、それを使った文を信じなかったことで救われた。
 - **Ir baseline 再生成ジョブが、baseline の記録と違うコンパイラで測ろうとしていた** —
   初回の実際の実行(`workflow_dispatch` に届くのは `main` だけ)は `rust-toolchain@stable` を使い、
   runner の stable は rustc 1.99.0 なのに `.ci/ir-baseline.json` は 1.97.1 で作られていた。そのため

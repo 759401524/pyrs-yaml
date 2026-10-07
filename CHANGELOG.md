@@ -263,6 +263,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`perf-coverage:binding-layer` described a graph the probe had only half read** — the
+  measurement reported `ir_harness_crates` as `pyrs-ast, pyrs-schema, pyrs-yaml-core` while the hole it
+  derives, and the text filed with it in all five changelog mirrors, named five crates. The probe used
+  `re.search` over a manifest, so it stopped at `[dependencies]` and never looked at
+  `[dev-dependencies]` - where `to_json_medium` and `to_toml_medium` link `pyrs-json` and `pyrs-toml`.
+  The conclusion was right (`pyrs-yaml` is in neither section), the evidence was not, and a wrong number
+  in a registered hole is worse than a missing one because it gets quoted. Now every dependency section
+  is read; `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section` pins the
+  set by content and checks the crate names that appear in the registry's own text, so the measurement
+  and the prose cannot drift apart again. Found by printing the derived set in the summary rather than
+  trusting the sentence that used it.
 - **The Ir baseline refresh would have measured with a different compiler than the baseline
   records** — the job's first real run (dispatched on `main`, which is the only place
   `workflow_dispatch` can reach it) used `rust-toolchain@stable`: the runner's stable was rustc
