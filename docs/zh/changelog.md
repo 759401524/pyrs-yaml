@@ -27,6 +27,25 @@ status: new
 
 #### 新增
 
+- **JSON 与 TOML 的 writer 有了"落定文本"oracle（`fuzz/fuzz_targets/json_roundtrip.rs`、
+  `fuzz/fuzz_targets/toml_roundtrip.rs`）** — #296 交付它时任何发布说明里都没有条目，所以在此补记，
+  也正是下面的耦合门禁要抓的那类失败。两个 `parse_*` 目标本来已调用每个 writer，但把重解析结果绑给
+  `let _ =` 后丢弃，于是它们断言的是"读取器接受自己的 writer"，而不是"writer 的文本已落定"——
+  本引擎所有注释搬迁类缺陷都住在这个缺口里。新目标逐方言断言 `once == twice`，绝不跨方言
+  （`to_jsonc_text` 会输出注释，`to_json5_text` 会输出严格读取器必须拒绝的十六进制数与裸键），
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` 与 `crates/pyrs-toml/tests/roundtrip_corpus.rs`
+  在每次 `cargo nextest` 确定性重放已提交的 30 个种子——JSON 33 轮、TOML 30 轮，各自在文件里声明下限，
+  因此不再驱动 writer 的语料会失败而不是空过。实测：没有不落定的 writer。
+- **动了产品的变更集也必须动发布说明（`scripts/check_changelog_coupling.py`）** — 针对 pull request
+  文件清单的两条规则：diff 触及 `crates/`、`python/pyrs_yaml/`、`fuzz/`、`scripts/`、`tests/` 或随包
+  发布的 manifest 时必须触及 changelog；触及五份镜像之一就必须五份全触（`AGENTS.md` 的"不许提交部分更新"
+  此前没有执行手段）。`check_changelog_mirrors.py` 两类都看不见：它比对版本头，而版本头只在发版时移动，
+  且 `prek.toml` 的 `files:` 模式在没有 changelog 的 diff 上根本不会触发钩子。采用前用 `main` 最近 40 个
+  commit 校准——8 个会变红，且都属于本仓库自己的说明已经写过的类别；把 `.github/workflows/**` 或
+  `prek.toml` 算进来只会多算两次依赖版本升级，故排除。它跑在 `hygiene.yml` 的 pull request 粒度而非
+  commit 粒度，因为拆分后的 PR 中某一个 commit 不带说明是正当的。判别力由突变证明：撤掉耦合规则恰好
+  3 个测试变红，撤掉完整性规则恰好 2 个，把工作流触发项加回去恰好让 2 个校准哨兵变红
+  （`tests/test_changelog_coupling_gate.py`，29 个测试）。
 - **属性档新增 20,000 用例的阻塞作业（`ci.yml: property-tier`）** —
   此前所有属性测试都跑在 proptest 默认的 256 用例上，因为没有任何 workflow 设置
   `PROPTEST_CASES`；`scripts/quality_matrix.py` 把这一点测了出来，并登记为防线台账里最后的盲区。

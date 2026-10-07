@@ -28,6 +28,29 @@ status: new
 
 #### 추가
 
+- **JSON과 TOML writer에 "정착된 텍스트" 오라클 추가 (`fuzz/fuzz_targets/json_roundtrip.rs`,
+  `fuzz/fuzz_targets/toml_roundtrip.rs`)** — #296은 이를 어떤 release note에도 적지 않고 출하했기에
+  이곳에서 소급 기록한다. 아래 결합 게이트가 잡는 실패가 바로 그것이다. 두 `parse_*` 타겟은 이미 모든
+  writer를 불렀지만 재분석 결과를 `let _ =`에 묶어 버렸으므로 "판독기가 자기 writer를 받아들인다"는 것은
+  검증하고 "writer의 텍스트가 정착한다"는 것은 검증하지 않았다 — 이 engine의 주석 이동 결함은 전부 그 틈에
+  있다. 각 새 타겟은 방언 안에서만 `once == twice`를 검증하고 방언을 넘나들지 않는다
+  (`to_jsonc_text`는 주석을, `to_json5_text`는 엄격한 판독기가 거부할 16진 수와 bare 키를 낸다).
+  `crates/pyrs-json/tests/roundtrip_corpus.rs`와 `crates/pyrs-toml/tests/roundtrip_corpus.rs`는
+  커밋된 30개 seed를 `cargo nextest` 마다 결정적으로 재생한다 — JSON 33라운드, TOML 30라운드, 각 파일이
+  하한을 선언하므로 writer를 돌리지 않는 corpus는 헛되이 통과하는 대신 실패한다. 실측: 정착하지 않은
+  writer는 없다.
+- **제품을 움직이는 변경 집합은 release note도 움직여야 한다 (`scripts/check_changelog_coupling.py`)** —
+  pull request 파일 목록에 대한 두 규칙: `crates/`, `python/pyrs_yaml/`, `fuzz/`, `scripts/`, `tests/`
+  또는 출시 manifest를 건드린 diff는 changelog를 건드려야 하고, 다섯 mirror 중 하나를 건드리면
+  다섯 모두를 건드려야 한다 (`AGENTS.md`의 "partial update 금지"에 집행 수단이 없었다).
+  `check_changelog_mirrors.py`는 두 실패 모두 볼 수 없다 — 버전 헤더를 비교하니 움직이는 시점은 출시뿐이고,
+  `prek.toml`의 `files:` 패턴은 changelog 없는 diff에서는 훅 자체를 태우지 않는다. 채택 전에 `main`의
+  최근 40 commit으로 보정했다 — 8건이 빨개지지만 모두 repo 자신의 note가 이미 적었던 종류.
+  `.github/workflows/**`나 `prek.toml`을 넣으면 의존성 버전 인상 2건이 늘어날 뿐이라 제외했다.
+  commit 등급이 아니라 pull request 등급에서 `hygiene.yml`부터 도는 것은 나뉜 PR의 한 commit이
+  note를 갖지 않는 것이 정당하기 때문이다. 판별력은 돌연변이로 입증: 결합 규칙을 빼면 정확히 3개,
+  완전성 규칙을 빼면 정확히 2개, workflow를 되돌리면 정확히 보정 파수꾼 2개가 빨갛다
+  (`tests/test_changelog_coupling_gate.py`, 29 tests).
 - **속성 등급에 20,000 케이스 차단 작업 추가 (`ci.yml: property-tier`)** —
   이제까지 모든 속성 실행은 proptest 기본값인 256 케이스로 돌아갔다. 어떤 워크플로도
   `PROPTEST_CASES`를 설정하지 않았기 때문이고, `scripts/quality_matrix.py`는 그것을 측정해

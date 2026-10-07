@@ -40,9 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Full history is not needed, but `--all-files` walks the working tree, and the
-          # checkout must therefore be the tree as committed (no sparse filtering).
-          fetch-depth: 1
+          # Full history is not needed for `--all-files`, but the coupling step below diffs
+          # against the pull request's base commit, which is only reachable with the whole graph.
+          # The checkout must also be the tree as committed (no sparse filtering).
+          fetch-depth: 0
 
       # Only needed for the `cargo fmt` hook, which parses rather than compiles.
       - name: Install Rust toolchain
@@ -67,6 +68,15 @@ jobs:
 
       - name: Line-ending audit (reports the counts, fixes nothing)
         run: python scripts/check_line_endings.py
+
+      # The changelog rule is a rule about a *pull request*, so it is policed here and not as a
+      # commit hook: a PR can be split into commits and one of them legitimately carries no release
+      # note (measured on `main`: `0713267a` adds the stub-drift gate, its note arrived in a sibling
+      # commit). A commit-scope hook would red that PR for the wrong reason. `fetch-depth: 0` so the
+      # base commit is present for the `base...HEAD` range.
+      - name: Changelog is coupled to the changeset, in all five mirrors
+        if: ${{ github.event_name == 'pull_request' }}
+        run: python scripts/check_changelog_coupling.py --base ${{ github.event.pull_request.base.sha }}
 
       - name: Run every hook over the repository
         # `--all-files`, not the default staged-files mode: this tree's commits are made by

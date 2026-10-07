@@ -81,7 +81,9 @@ Blocking on every pull request, measured: `clippy` (with `--all-targets`, since 
 measurement), `cargo test --workspace`, the 20k-case property tier, MSRV
 check, `no_std` bare-metal build, pytest on 3 OSes × 7 Python versions, free-threaded
 pytest, coverage floor, CodSpeed (Rust + Python), the callgrind Ir gate, the fuzz seed
-replay, changelog-mirror / localized-script-purity / release-guard / stub-drift, and —
+replay, changelog-mirror / localized-script-purity / release-guard / stub-drift, the changelog
+coupling check (`scripts/check_changelog_coupling.py`, evaluated on the pull request's file list
+because a version-header comparison cannot see a release note that was never written), and —
 as of this document — the `prek` hook set over the whole tree (`hygiene.yml`).
 
 Five blind spots were found by measuring, not by reasoning. One had already done damage in
