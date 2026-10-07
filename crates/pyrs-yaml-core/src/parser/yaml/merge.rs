@@ -44,6 +44,24 @@ fn has_merge_key(node: &CustomNode) -> bool {
     }
 }
 
+/// Whether an inline merge source names `<<` as one of its own keys - the shape whose
+/// contribution the collection step used to discard. Top level only, on purpose: a `<<`
+/// nested inside a *value* of the source is resolved by the ordinary recursive walk
+/// (every mapping in the tree is visited, and merged values are re-walked at their own
+/// level), so looking deeper here would pay a whole-subtree scan for nothing.
+fn source_carries_merge_key(merge_value: &CustomNode) -> bool {
+    match merge_value {
+        CustomNode::Mapping { pairs, .. } => pairs.keys().any(is_merge_key),
+        CustomNode::Sequence { items, .. } => items.iter().any(|item| {
+            matches!(
+                item,
+                CustomNode::Mapping { pairs, .. } if pairs.keys().any(is_merge_key)
+            )
+        }),
+        _ => false,
+    }
+}
+
 /// True when a key IS the merge key: an untagged plain scalar holding `<<`.
 ///
 /// Identity is what YAML resolves, not the whole node — a comment or an anchor is
@@ -178,7 +196,34 @@ fn resolve_mapping_merges(
             CustomNode::Null { .. } | CustomNode::Scalar { .. } => None,
             CustomNode::Alias { .. } => Some(collect_merge_data(merge_value, pairs, anchors, path)),
             CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
-                let merged = collect_merge_data(merge_value, pairs, anchors, path);
+                // Resolve the source before collecting from it. A `<<` inside a merge
+                // source is a merge key *of that source*, and the pairs it brings are
+                // content the document holds; collecting first handed that key to the
+                // ownership test below, whose `contains_key` compares whole nodes
+                // against a map that still contains this mapping's own `<<` entry - so
+                // the nested `<<` matched, was skipped, and the source contributed
+                // nothing. `<<: {<<: {x: 1}}` then kept two literal `<<` levels while
+                // PyYAML and ruamel both resolve it to `x: 1`, and
+                // `<<: {<<: {x: 1, y: 1}, y: 2}` dropped `x` outright: not a different
+                // spelling of the same data, but data missing from the object view.
+                // Resolving in place also gives the precedence the reference libraries
+                // agree on: the source's own keys override what its nested merge brings
+                // (`<<: {<<: {x: 1}, x: 9}` is `x: 9`), because that override happens
+                // inside the source, one level at a time, before its pairs travel up.
+                // The clone is paid only where a nested `<<` actually exists, and only
+                // one level needs looking at: a `<<` deeper inside a value is already
+                // reached by the recursive walk below (`resolve_merges_recursive` visits
+                // every mapping in the tree, and the merged values are re-walked at
+                // their own level), so it cannot be lost the way a top-level one can.
+                let mut resolved;
+                let source = if source_carries_merge_key(merge_value) {
+                    resolved = merge_value.clone();
+                    resolve_merges_recursive(&mut resolved, anchors, path, depth + 1);
+                    &resolved
+                } else {
+                    merge_value
+                };
+                let merged = collect_merge_data(source, pairs, anchors, path);
                 if !merged.is_empty() || references_alias(merge_value) {
                     Some(merged)
                 } else {
@@ -800,6 +845,76 @@ mod tests {
         assert_eq!(
             again, one,
             "{src:?} must settle in one step: {one:?} -> {again:?}"
+        );
+    }
+
+    /// A merge source that itself carries a `<<` key has a merge key *of that source*,
+    /// and the pairs it brings are content the document holds. The collectors skip a
+    /// source key the target already owns by comparing whole nodes - and the target's own
+    /// `<<` entry is still in the map at that moment, so a nested `<<` was dropped rather
+    /// than applied: `<<: {<<: {x: 1}}` resolved to two literal `<<` levels, and
+    /// `<<: {<<: {x: 1, y: 1}, y: 2}` lost `x` outright. Both PyYAML and ruamel resolve
+    /// the nesting to `x: 1` and to `x: 1` + `y: 2` (measured, not assumed), so this was
+    /// not a different spelling of the same data - the pair was missing from the object
+    /// view. `parse` alone, with no explicit second pass: the claim is that ONE parse
+    /// reaches the answer, which is what a caller and the fuzz tier get.
+    #[test]
+    fn a_merge_source_that_itself_merges_contributes_its_nested_pairs() {
+        for (src, want) in [
+            ("<<: {<<: {x: 1}}", "x: 1\n"),
+            ("<<:\n <<:\n   x: 1\n", "x: 1\n"),
+            ("<<:\n <<:\n   <<:\n     x: 1\n", "x: 1\n"),
+            // The source's own key still overrides what its nested merge contributes.
+            ("<<: {<<: {x: 1}, x: 9}\n", "x: 9\n"),
+            // A `<<` nested inside a VALUE travels with it: the guard looks one level
+            // down because that is the only place a pair can be lost - the recursive
+            // walk already visits every mapping deeper in the tree (measured against
+            // PyYAML, which reads all four of these the same way).
+            ("<<: {a: {<<: {x: 1}}}", "a: {x: 1}\n"),
+            ("<<: {<<: {a: {<<: {x: 1}}}}", "a: {x: 1}\n"),
+        ] {
+            let root = parse(src, YamlSchema::Core).unwrap();
+            let one = crate::serializer::to_yaml(&root);
+            assert_eq!(one, want, "{src:?} must resolve the nesting in one parse");
+            let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+            assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
+        }
+    }
+
+    /// Precedence inside the nesting, read off both reference libraries: a nested merge
+    /// contributes the keys the source does not name itself, and the source's own `y`
+    /// overrides the nested `y` - so the pair set is `x: 1` plus `y: 2`, and the order is
+    /// the nested pair first because it arrives in the slot the `<<` occupied.
+    #[test]
+    fn a_nested_merge_adds_the_keys_the_source_does_not_name() {
+        let src = "<<: {<<: {x: 1, y: 1}, y: 2}\n";
+        let root = parse(src, YamlSchema::Core).unwrap();
+        let one = crate::serializer::to_yaml(&root);
+        assert_eq!(one, "x: 1\ny: 2\n", "{src:?} resolves to both keys");
+        let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+        assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
+    }
+
+    /// The fuzz backlog's shape C (`<<:` / ` <<: #b` / `  :`, minimised from
+    /// crash-d0745105): the note rode the *nested* merge key, and because the skip test
+    /// compared whole nodes, the note decided whether a level was consumed at all - the
+    /// first emission kept two levels, the re-read of its own output collapsed to one.
+    /// Same document, two meanings, depending on where a comment sat: exactly the class
+    /// [`is_merge_key`] was rewritten for (crash-69931a77), at its sibling site.
+    #[test]
+    fn a_nested_merge_key_carrying_a_note_means_the_same_thing() {
+        let src = "<<:\n <<: #b\n  :";
+        let root = parse(src, YamlSchema::Core).unwrap();
+        let one = crate::serializer::to_yaml(&root);
+        assert_eq!(one, "# b\n~: ~\n", "{src:?} collapses both levels at once");
+        let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+        assert_eq!(again, one, "{one:?} must settle in one round: {again:?}");
+        // The spelling without the note means the same thing, which is the property the
+        // whole fix is about: metadata must not decide how a document resolves.
+        let plain = crate::serializer::to_yaml(&parse("<<:\n <<:\n  :", YamlSchema::Core).unwrap());
+        assert_eq!(
+            plain, "~: ~\n",
+            "the note-free spelling resolves the same way"
         );
     }
 

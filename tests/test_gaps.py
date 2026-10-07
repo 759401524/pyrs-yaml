@@ -581,6 +581,50 @@ class TestMergeKeyIdentityIgnoresMetadata:
         assert pyrs_yaml.safe_load("!x <<:\n  y: 1\n") == {"<<": {"y": 1}}
 
 
+class TestNestedMergeSourceIsApplied:
+    """A ``<<`` inside a merge source is a merge *of that source*, not a key to keep.
+
+    The collector skipped source keys the target already owns by comparing whole nodes,
+    and the target's own ``<<`` entry was still in the map at that moment, so the nested
+    merge was discarded instead of applied and the pairs it carried were missing from the
+    object view. Both PyYAML and ruamel read ``<<: {<<: {x: 1}}`` as ``{"x": 1}`` (and
+    ``<<: {<<: {x: 1, y: 1}, y: 2}`` as ``x: 1`` plus ``y: 2``) -- measured, not assumed.
+    The fuzz tier cannot see this class at all: an under-resolved document that is stable
+    passes a text-equality oracle. What it did report was the note-dependence -- with a
+    comment on the nested ``<<`` one level was consumed per round (``crash-d0745105``),
+    which is how the divergence became visible.
+    """
+
+    @pytest.mark.parametrize(
+        ("yaml_str", "want"),
+        [
+            ("<<: {<<: {x: 1}}", {"x": 1}),
+            ("<<:\n <<:\n   x: 1\n", {"x": 1}),
+            ("<<:\n <<:\n   <<:\n     x: 1\n", {"x": 1}),
+            ("<<:\n - <<:\n    x: 1\n   y: 2\n", {"x": 1, "y": 2}),
+            # A `<<` inside a *value* of the source travels with it; the guard looks one
+            # level down because that is the only place a pair can be lost.
+            ("<<: {a: {<<: {x: 1}}}", {"a": {"x": 1}}),
+            ("<<: {<<: {a: {<<: {x: 1}}}}", {"a": {"x": 1}}),
+        ],
+    )
+    def test_nested_merge_contributes_its_pairs(self, yaml_str, want):
+        assert pyrs_yaml.safe_load(yaml_str) == want
+
+    def test_the_source_own_key_still_overrides_the_nested_one(self):
+        # Both reference libraries read it this way: the override happens inside the
+        # source, one level at a time, before its pairs travel up.
+        assert pyrs_yaml.safe_load("<<: {<<: {x: 1}, x: 9}") == {"x": 9}
+        assert pyrs_yaml.safe_load("<<: {<<: {x: 1, y: 1}, y: 2}") == {"x": 1, "y": 2}
+
+    def test_a_note_on_the_nested_key_does_not_change_the_meaning(self):
+        spellings = ("<<:\n <<: #b\n  :", "<<:\n <<:\n  :")
+        assert [pyrs_yaml.safe_load(s) for s in spellings] == [{"~": None}] * 2
+        for src in spellings:
+            once = pyrs_yaml.parse(src).to_yaml()
+            assert pyrs_yaml.parse(once).to_yaml() == once, f"{src:?} -> {once:?}"
+
+
 class TestSelfReferentialMerge166:
     """issue #166: a self-referential `<<` merge blew the native stack and
     took the whole interpreter process down (exit 0xC00000FD). These cases
