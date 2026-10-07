@@ -169,6 +169,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A merge key inside a merge source is applied instead of discarded** — `<<: {<<: {x: 1}}` used to
+  keep both `<<` levels as data (`{'<<': {'<<': {'x': 1}}}`) where PyYAML and ruamel read the same
+  document as `{'x': 1}`; `<<: {<<: {x: 1, y: 1}, y: 2}` lost `x` outright, and so did the block form
+  `- <<:` under `<<:`. The collector skipped any source key the target "already owns" by comparing
+  whole nodes, and the target's own `<<` entry was still in the map at that moment, so a nested merge
+  was dropped rather than applied. Because that comparison included the key's metadata, a *comment*
+  changed the answer: the three-line shape whose middle `<<:` carries a comment consumed one level on the first dump and another when
+  its own output was re-read, so the text moved every round — the drift the fuzz tier reports. The
+  stable-but-under-resolved documents never reddened anything: a text-equality oracle cannot see a
+  merge that was simply not applied. One parse now resolves the source first, every spelling of the
+  same document means the same thing, and the source's own keys still override what its nested merge
+  brings (`<<: {<<: {x: 1}, x: 9}` is `x: 9`, as both reference libraries read it).
 - **A note on the first item of a sequence-shaped key stops climbing a level** — the
   writer put it above the `-` at the key body's indent, but a re-read reports a comment
   in that position on the *sequence*, so the next emission hoisted it onto the line above
