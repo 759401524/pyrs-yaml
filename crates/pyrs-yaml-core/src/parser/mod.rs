@@ -2237,6 +2237,68 @@ mod tests {
         }
     }
 
+    /// A block sequence used as an explicit key has the same problem its mapping
+    /// sibling already had: the writer puts the first item's note above the `- ` at
+    /// the body indent, granit reports that line one level up (on the sequence), and
+    /// the next emission hoists it onto the marker line. The note climbed a level per
+    /// round and the document only settled on its second (libFuzzer `yaml_roundtrip`
+    /// crash-1445c91a / crash-f1643b2d, which minimise to the same 10 bytes: `?` plus
+    /// `-` plus `#?` plus a space, a `?` and a trailing space).
+    #[test]
+    fn a_note_on_the_first_item_of_a_sequence_key_adopts_the_marker_line() {
+        let raw =
+            include_bytes!("../../../../fuzz/seeds/yaml_roundtrip/former-crash-1445c91a.seed");
+        let seed = std::str::from_utf8(raw).expect("seed is utf-8");
+        for src in [seed, "?\n-\n#?\n ? "] {
+            let node = parse(src, YamlSchema::Core).expect("input parses");
+            let one = crate::serializer::to_yaml(&node);
+            assert_eq!(
+                one, "# ?\n?\n  - ~: ~\n:\n  ~\n",
+                "the body's note belongs to the marker line, not to the item: {src:?}"
+            );
+            let two = crate::serializer::to_yaml(
+                &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
+            );
+            assert_eq!(two, one, "one emission must reach the fixed point: {src:?}");
+        }
+
+        // The whole stack travels, in source order - taking only the first note would
+        // leave the rest a level down, which is the shape that made the mapping case
+        // need a spine walk.
+        assert_eq!(
+            crate::serializer::to_yaml(
+                &parse("?\n- #a\n  #b\n  x: 1\n: 2\n", YamlSchema::Core).unwrap()
+            ),
+            "# a\n# b\n?\n  - x: 1\n:\n  2\n",
+            "every note above the first item belongs to the marker line"
+        );
+        // A note riding deeper - on the first item's own explicit key - is reached by
+        // the same walk.
+        assert_eq!(
+            crate::serializer::to_yaml(
+                &parse("?\n- #c\n  ? a\n  : b\n: 1\n", YamlSchema::Core).unwrap()
+            ),
+            "# c\n?\n  - a: b\n:\n  1\n",
+            "the walk continues into the item's marker spine"
+        );
+        // Only the first item: a note above a later one already round-trips where it
+        // sits, and hoisting it would move a note a reader reports back correctly.
+        assert_eq!(
+            crate::serializer::to_yaml(
+                &parse("?\n  - k: v\n  # c\n  - 2\n: 1\n", YamlSchema::Core).unwrap()
+            ),
+            "?\n  - k: v\n  - \n    # c\n    2\n:\n  1\n",
+            "a second item's note must stay in the body"
+        );
+        // And only for keys: a sequence in value context is written by the item path,
+        // which the reader agrees with, so the hoist must not reach it.
+        assert_eq!(
+            crate::serializer::to_yaml(&parse("k:\n- #c\n  a: b\n", YamlSchema::Core).unwrap()),
+            "k:\n  # c\n  - a: b\n",
+            "a value sequence keeps its item's note"
+        );
+    }
+
     /// The same accounting for a container's tag header: the container's own stack and
     /// the body's first stack both belong above the header, in that order, and one
     /// emission lands there (crash-fbc8f2ae, 32 bytes - the smallest carrier of this

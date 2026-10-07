@@ -169,12 +169,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A note on the first item of a sequence-shaped key stops climbing a level** — the
+  writer put it above the `-` at the key body's indent, but a re-read reports a comment
+  in that position on the *sequence*, so the next emission hoisted it onto the line above
+  the `?` marker and the document settled only on its second round: `?` + `-` + `#?` +
+  ` ? ` put the note on its own line inside the key body on the first dump, and on the line above the marker on the second. The
+  marker line is where the reader and the writer now agree, so one emission reaches the
+  fixed point and the note stays in the document. Found while working through the fuzz
+  backlog (`crash-1445c91a` and `crash-f1643b2d`, two inputs that minimise to the same 10
+  bytes).
 - **A container's note no longer borrows a pending tag-only line** — closing that line
   (`k: ! ~`) before a note *line* follows has been the rule since the previous releases; the
   hole left was a container's own inline note, which the writer appended to the line its block
   ended on. For `:\t!-<CR>... #-o` that produced `~: !-   # -o`: text-stable, but it re-read
   with the note owned by the **key**, so the container had silently lost it. The note now leads
-  its pair — `# -o` then `~: !- ` — which is a fixed point on the first emission *and* keeps
+  its pair — `# -o` then `~: !-` — which is a fixed point on the first emission *and* keeps
   the note on the node the parser put it on, the properties that had been traded against each
   other. Measured on `crash-7eb273bc` (24 bytes) and `crash-9733643a` (27), each minimised to
   13, where the old spelling needed a second round and moved the note onto the value. Two
