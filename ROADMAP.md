@@ -509,6 +509,43 @@ which is the evidence the new tier exists for. `ci.yml` gains a blocking `proper
 tests in 63 s). The registry is now empty, and `tests/test_quality_matrix.py` fails if the
 measurement disagrees with that in either direction.
 
+**(al) The changelog is now coupled to the changeset, and (aj)'s closing paragraph is the evidence
+(2026-10-08).** Read it again - "No changelog entry: a fuzz target and two corpus tests ship no
+behaviour": this ledger *deliberately* decided that #296 needed no release note,
+and no checker could disagree — `check_changelog_mirrors.py` compares version headers, which only
+move at a release, and `prek.toml` runs it on a `files:` pattern that a changeset without a
+changelog never matches, so the hook did not fire and the comparison had nothing to say. Meanwhile
+
+## 293's tier of the same class — "hygiene hooks run in CI", "the quality defence is measured" — did
+
+get its entries. One of the two judgements is inconsistent with the other, and the tie-breaker
+cannot be prose in a ledger written by the same hand that made the decision.
+
+`scripts/check_changelog_coupling.py` decides it instead, over the pull request's file list: a diff
+under `crates/`, `python/pyrs_yaml/`, `fuzz/`, `scripts/`, `tests/` or touching a shipped manifest
+must touch a changelog, and touching one of the five mirrors means touching all five — which
+`AGENTS.md` had already required ("never commit partial updates") and nothing had enforced. #296's
+note is backfilled in all five, and it is the gate's own first exercise of the rule: the changeset
+that adds the gate carries its entry, in five mirrors, or the CI step reddens it.
+
+**Calibrated before adopting, because a gate that reddens dependabot gets bypassed.** Replaying the
+rule over the last 40 commits of `main` at commit scope reddened 8 — #296's oracle, the merge-parity
+gate, three `fuzz_rounds.sh` harness changes, the stub-drift gate, a proptest domain carve-out and a
+`perf(yaml)` allocation change. Adding `.github/workflows/**` or `prek.toml` to the trigger list
+added two more that are pure dependency bumps (`docker/setup-qemu-action` from dependabot, the
+ruff/rumdl hook pin), so both are out; nothing is lost, because a PR that adds a CI job also adds a
+checker or a test under `scripts/` / `tests/`. Scope is the pull request, not the commit: `0713267a`
+adds the stub-drift gate and carries no note, its note arrived in a sibling commit — a commit-scope
+hook would have red a correct PR for the wrong reason.
+
+**Discrimination proven by mutation, one rule at a time** (`tests/test_changelog_coupling_gate.py`,
+29 tests): withdrawing the coupling branch reddens exactly 3 tests (`test_pr_296_shape_reddens`,
+`test_backslashes_are_normalised`, `test_cli_exit_codes`) and leaves the completeness cases green;
+withdrawing the completeness branch reddens exactly its 2; putting `.github/workflows/` back into
+the trigger list reddens exactly the 2 calibration guards. The mirror list is pinned against
+`check_changelog_mirrors.py`'s own `FILES` by loading both modules, so the two changelog gates
+cannot drift into policing different files.
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.
@@ -527,7 +564,7 @@ The scheduled loop is proven end-to-end: each `workflow_dispatch`/cron run fuzze
 
 ---
 
-### Leaderboard & Performance Status (2026-09-30)
+#### Leaderboard & Performance Status (2026-09-30)
 
 **The fuzz tier's `slow-unit-*` findings were measured rather than believed, and they split into a false alarm and one real hot-path signal.** libFuzzer writes a `slow-unit` file when an execution crosses its threshold, and a `-runs=1` replay reported **451 ms** for an 18-byte YAML document — which reads like a quadratic bug in the parser. Re-running the same binary over 200 executions of the same input gives **34 ms total (0.17 ms/exec)**, and a 5-byte `a: 1` control costs 29 ms total (0.145 ms/exec): the 451 ms was cold-process cost — instrumentation counter allocation, first-touch page faults, allocator warm-up — paid once per `cargo fuzz run` and attributed by libFuzzer to the only execution it performed. **So a `slow-unit` produced by a `-runs=0`/`-runs=1` replay is not evidence of anything, and the CI replay mode is exactly that.** The method note is the deliverable: any latency claim here needs ≥200 executions and an input-sized control in the same process, or it measures the loader.
 
@@ -552,7 +589,7 @@ runners (macOS especially) and are tracked in CodSpeed instead.
 
 ---
 
-### Research & Exploration
+#### Research & Exploration
 
 Tracked as open questions for future roadmap inclusion; not committed to any version.
 

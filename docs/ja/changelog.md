@@ -29,6 +29,29 @@ status: new
 
 #### 追加
 
+- **JSON と TOML の書き手に「定着したテキスト」オラクルを追加 (`fuzz/fuzz_targets/json_roundtrip.rs`、
+  `fuzz/fuzz_targets/toml_roundtrip.rs`)** — #296 はこれをリリースノートなしで出荷したので、ここで
+  遡って記入する。下の結合ゲートが捕まえる失敗そのものだ。2 つの `parse_*` ターゲットはすでにすべての
+  書き手を呼んでいたが、再解析結果を `let _ =` に束縛して捨てていたため「読み手が自分の書き手を受け入れる」ことを
+  検証し「書き手のテキストが定着した」ことは検証していなかった — この engine の注釈移動系欠陥はすべてその隙間に
+  住んでいる。新しい各ターゲットは方言ごとに `once == twice` を検証し、方言をまたいでは検証しない
+  (`to_jsonc_text` は注釈を出し、`to_json5_text` は strict reader が拒否すべき 16 進数と bare key を出す)。
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` と `crates/pyrs-toml/tests/roundtrip_corpus.rs` は
+  コミット済み 30 seed を `cargo nextest` ごとに決定的に再生する — JSON で 33 ラウンド、TOML で 30
+  ラウンド、各ファイルが下限を宣言するので、書き手を書かなくなった corpus は空振りではなく失敗する。
+  実測: 定着していない書き手は無い。
+- **製品を動かす変更セットはリリースノートも動かさねばならぬ (`scripts/check_changelog_coupling.py`)** —
+  pull request のファイル一覧に対する 2 規則: `crates/`、`python/pyrs_yaml/`、`fuzz/`、`scripts/`、
+  `tests/` や出荷する manifest を触る diff は changelog を触ること、そして 5 つの mirror の 1 つを触れば
+  5 つすべてを触ること (`AGENTS.md` の「部分更新を残さない」に執行手段が無かった)。
+  `check_changelog_mirrors.py` はどちらも視えない — 版ヘッダを比べるので動くのは出荷時だけだし、
+  `prek.toml` の `files:` パターンは changelog を含まない diff ではフック自体が走らない。採用前に
+  `main` の直近 40 commit で較正した — 8 件が赤くなるが、すべて repo 自身が既に書いた種類の
+  変更。`.github/workflows/**` や `prek.toml` を入れると依存版上げ 2 件が増えるだけなので除外。
+  commit スコープでなく pull request スコープで `hygiene.yml` から走らせるのは、分割 PR の 1 commit が
+  ノートを持たないことが正当に有り得るためだ。識別力は突然変異で実証: 結合規則を外すとちょうど 3 テスト、
+  完全性規則を外すとちょうど 2 テスト、workflow を戻すとちょうど補正番兵の 2 テストが赤くなる
+  (`tests/test_changelog_coupling_gate.py`、29 テスト)。
 - **プロパティ階層に 20,000 ケースのブロッキングジョブを追加 (`ci.yml: property-tier`)** —
   それまでのプロパティ実行はすべて proptest の既定である 256 ケースで動いていた。どのワークフローも
   `PROPTEST_CASES` を設定していなかったためで、`scripts/quality_matrix.py` はそれを計測し、防衛策の

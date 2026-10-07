@@ -31,6 +31,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **The JSON and TOML writers have a settled-text oracle (`fuzz/fuzz_targets/json_roundtrip.rs`,
+  `fuzz/fuzz_targets/toml_roundtrip.rs`)** — backfilled here because #296 shipped it with no release
+  note anywhere, which is the failure the coupling gate below now catches. The two `parse_*` targets
+  already called every writer, but bound each re-parse result to `let _ =` and threw it away, so
+  they asserted "the reader accepts its own writer" rather than "the writer's text has settled" —
+  the gap every comment-relocation defect in this engine lives in. Each new target asserts
+  `once == twice` per dialect, never across dialects (`to_jsonc_text` emits comments,
+  `to_json5_text` emits hex numbers and bare keys the strict reader must reject), and
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` / `crates/pyrs-toml/tests/roundtrip_corpus.rs` replay
+  the 30 committed seeds deterministically on every `cargo nextest` — 33 JSON dialect rounds and 30
+  TOML rounds, each file declaring a floor so a corpus that stopped driving the writers fails
+  instead of passing vacuously. Measured over that corpus: nothing is unsettled.
+- **A changeset that moves the product must move the release notes
+  (`scripts/check_changelog_coupling.py`)** — two rules over the pull request's file list: a diff
+  touching `crates/`, `python/pyrs_yaml/`, `fuzz/`, `scripts/`, `tests/` or a shipped manifest must
+  touch a changelog, and touching one of the five mirrors means touching all five (the
+  "never commit partial updates" rule in `AGENTS.md`, which had no enforcement).
+  `check_changelog_mirrors.py` cannot see either failure: it compares version headers, which only
+  move at release time, and `prek.toml` runs it on a `files:` pattern a changeset without a
+  changelog never matches. The trigger list was calibrated against the last 40 commits of `main`
+  before adopting — 8 redden, all of a class the repository's own notes had already described — and
+  including `.github/workflows/**` or `prek.toml` would have added two dependency-version bumps, so
+  both are out. It runs at pull-request scope in `hygiene.yml`, not commit scope, because one commit
+  of a split PR legitimately carries no note. Discrimination proven by mutation: withdrawing the
+  coupling rule reddens exactly 3 tests, the completeness rule exactly 2, and re-adding the workflow
+  trigger exactly the 2 calibration guards (`tests/test_changelog_coupling_gate.py`, 29 tests).
 - **The property tier has a blocking 20,000-case job (`ci.yml: property-tier`)** — every
   property run until now used proptest's default 256 cases, because no workflow set
   `PROPTEST_CASES`; `scripts/quality_matrix.py` measured that and registered it as the defence's
