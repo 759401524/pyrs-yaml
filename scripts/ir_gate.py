@@ -159,7 +159,7 @@ def main() -> int:
             "tolerance_hint": args.tolerance if args.tolerance is not None else DEFAULT_TOLERANCE,
             "scenarios": measured,
         }
-        BASELINE.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        BASELINE.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         print(f"wrote {BASELINE.relative_to(REPO)} ({len(measured)} scenarios)")
         return 0
 

@@ -29,6 +29,33 @@ status: new
 
 #### 追加
 
+- **hygiene フックが CI で走るようになり、改行方針に強制できる形を与えた** — `Hygiene`
+  workflow を増やし、pull request ごと・`main` への push ごと・毎週、ツリー全体に
+  `prek run --all-files` を実行する。同梱で使っている `jj` は Git フックを一切実行しないので、
+  `prek.toml` の 17 個のフックはローカルの自覚にすぎず、追跡中の 15 ファイルが CRLF 行尾を帯びた
+  まま `main` に届いていた（12,263 行、うち 5 つは changelog の mirror）。十几行の編集が 2,500 行
+  の diff に膨らんだのに、どのゲートも緑だった。`.gitattributes` が方針を宣言し、
+  `scripts/check_line_endings.py` が絶対ルールを強制し、`prek.toml` には `line-endings-lf` として
+  登録した。組み込みの `mixed-line-ending` はその規則を実装して*いない* — 全部 CRLF のファイルを
+  注入すると `Passed` になる、混在しか検査していないからだ。15 のうち 13 をここで正規化し、残り 2
+  つは意図的にそのまま — その CRLF は raw string の中にあり、コミット済み Ir baseline が測った
+  入力そのもの（`crates/pyrs-yaml-core/src/bench_inputs.rs`、
+  `crates/pyrs-yaml-core/benches/ir_gate.rs`）なので、正規化はデータ変更であり baseline の
+  再生成と行うべきもの。同じ job は `cargo fmt --check` も回すが、それもこれまでのどこにも
+  なかった。 CI の clippy も `cargo clippy -- -D warnings` から、この repo が宣言した
+  `--all --all-targets` の範囲に広げた — 広げる前に、その命令がツリー全体で既に
+  `clean` だと測定済み。
+- **品質防御を測定し、その測定そのものをゲートにした** — `QUALITY_MATRIX.md` は unit・
+  property・fuzz の三段がどこに届きどこに届かないかを記録し、`scripts/quality_matrix.py` は
+  それを書き写すのではなく防御を宣言しているファイル(`.github/workflows/*.yml`、`prek.toml`、
+  `fuzz/Cargo.toml`、`scripts/check_*.py`、Ir bench、`.ci/ir-baseline.json`)から再導出する。
+  `tests/test_quality_matrix.py` は導出できた盲点を `.ci/quality-holes.json` の台帳と突き合わせ、
+  *双方向* で失敗する — 新しい盲点は出口条件を書き加えるまで上陸できず、塞いだ盲点が台帳に残った
+  ままでもいけない。初回の実測で出てきたこと、推論でなく: CI にフック一式を回すジョブは一つも
+  なく、`cargo fmt --check` を回すジョブも一つも無く、CI の clippy は test や
+  bench を見ず、property は毎回 proptest の既定 case 数、JSON と TOML engine には parse 専用
+  target しかなく writer は一度も fuzz されていなかった。このゲート自身の判別力は 4 回の注入で
+  確認し、毎回それを見張るために書いた test ひとつが赤くなった。
 - **CI が本当に保持できる命令数ゲート** — `CodSpeed` ワークフローに
   `Instruction-count baseline` ジョブが増え、エンジンのホットパスを*実行命令数*
   （`callgrind` Ir）で測り、`.ci/ir-baseline.json` 比で 2% 超の増加があれば失敗します

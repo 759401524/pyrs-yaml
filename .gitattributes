@@ -1,3 +1,11 @@
+# Text files are LF in the repository and in the working tree, on every platform.
+#
+# Without this, a contributor's tooling decides: a Python script that writes a tracked
+# file with the platform default newline turns `file.md` into CRLF on Windows and LF on
+# Linux, and the diff - 600 to 2,500 lines for a content change of a dozen - passes every
+# test, because nothing reads line endings. Two hooks now enforce what this declares.
+* text=auto eol=lf
+
 # Fuzz corpora and crash payloads are raw byte streams; the bytes ARE the
 # input, so text normalization (CRLF handling) must never touch them. The
 # committed seeds join the two ephemeral dirs: several carry a bare CR or a
@@ -6,3 +14,16 @@
 fuzz/corpus/** -text
 fuzz/artifacts/** -text
 fuzz/seeds/** -text
+
+# Binary: never diff or normalize.
+*.pyd binary
+*.so binary
+*.pyd-* binary
+*.dll binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.gz binary
+*.zip binary

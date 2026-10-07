@@ -28,6 +28,32 @@ status: new
 
 #### 추가
 
+- **위생 후크가 CI에서 돌아가고, 줄바꿈 방침에 강제 가능한 형태가 생겼다** — `Hygiene`
+  워크플로를 추가해 pull request마다, `main`에 밀릴 때마다, 매주 트리 전체에
+  `prek run --all-files`를 실행한다. 같은 저장소에서 쓰는 `jj`는 Git 후크를 전혀 실행하지 않으니
+  `prek.toml`의 열일곱 개 후크는 지역적 자율에 불과했고, 추적 파일 열다섯 개가 CRLF 줄바꿈을 띤 채
+  `main`에 도착해 있었다(12,263 줄, 그중 다섯은 changelog 사본). 십몇 줄 편집이 2,500 줄 diff로
+  불었는데 모든 관문은 초록이었다. `.gitattributes`가 방침을 선언하고
+  `scripts/check_line_endings.py`가 절대 규칙을 강제하며 `prek.toml`에 `line-endings-lf`로
+  등록했다. 내장 `mixed-line-ending`은 그 규칙을 구현하지 *않았다* — 전부 CRLF인 파일을 넣어도
+  `Passed`한다. 혼합 줄바꿈만 검사하기 때문이다. 열다섯 개 중 열세 개를 여기서 정규화하고 나머지
+  두 개는 의도적으로 그대로 둔다. 그 CRLF는 raw string 안에 있고 커밋된 Ir baseline이 측정한 입력
+  그 자체(`crates/pyrs-yaml-core/src/bench_inputs.rs`,
+  `crates/pyrs-yaml-core/benches/ir_gate.rs`)이므로 정규화는 데이터 변경이며 baseline 재생성과
+  함께 해야 한다. 같은 job은 `cargo fmt --check`도 돌리는데, 그것도 기존 어떤 워크플로에서 없었다. CI의 clippy도 `cargo clippy -- -D warnings`에서 이 저장소가 선언한
+  `--all --all-targets` 범위로 넓혔다. 넓히기에 앞서 그 명령이 트리 전체에서 이미 clean임을
+  먼저 측정했다.
+- **품질 방어 체계를 측정하고, 그 측정 자체를 관문으로 만들었다** — `QUALITY_MATRIX.md`는
+  unit·property·fuzz 세 단계가 어디까지 도달하고 어디에 도달하지 못하는지 기록하고,
+  `scripts/quality_matrix.py`는 그 숫자를 옮겨 적지 않고 방어를 선언하는 파일
+  (`.github/workflows/*.yml`, `prek.toml`, `fuzz/Cargo.toml`, `scripts/check_*.py`, Ir bench,
+  `.ci/ir-baseline.json`)에서 다시 도출한다. `tests/test_quality_matrix.py`는 도출된 맹점을
+  `.ci/quality-holes.json` 대장과 비교해 *두 방향* 모두 실패한다. 새 맹점은 해소 조건을 적기
+  전까지 들어올 수 없고, 막힌 맹점이 대장에 남아 있어서도 안 된다. 첫 실행에서 확인한 사실,
+  추론이 아니다: CI에는 후크 묶음을 돌리는 작업이 하나도 없고 `cargo fmt --check`를 돌리는 작업도 없으며,
+  CI의 clippy는 test와 bench를 보지 않고, property는 언제나 proptest 기본 사례 수로만 돌고, JSON과
+  TOML 엔진에는 해석 전용 fuzz 대상만 있어 writers는 한 번도 fuzz되지 않았다. 이 관문 자체의
+  판별력은 네 번의 주입으로 확인했고, 매번 그것을 감시하려 작성한 test 하나만 빨개졌다.
 - **CI가 실제로 지킬 수 있는 명령 수 게이트** — `CodSpeed` 워크플로에
   `Instruction-count baseline` 잡이 추가되어 엔진의 핫패스를 *실행 명령 수*
   (`callgrind` Ir)로 측정하고 `.ci/ir-baseline.json` 대비 2% 이상 증가하면 실패합니다(이 허용치는

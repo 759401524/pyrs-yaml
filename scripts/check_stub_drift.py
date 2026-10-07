@@ -107,7 +107,12 @@ def read_text(path: Path, hint: str) -> str:
     if not path.is_file():
         print(f"ERROR: {display(path)} not found. {hint}", file=sys.stderr)
         raise SystemExit(2)
-    return path.read_text(encoding="utf-8")
+    # Line endings are not part of the contract this gate checks. The generator writes
+    # with the platform default, so a Windows box produced CRLF, `--fix` wrote that back
+    # over the committed stub, and the next Linux run saw the whole file as drift - 597
+    # lines of churn with no content change, and a PR gate that only agreed with whoever
+    # ran it last. Normalize on read, and write LF on the fix path.
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
 def report_drift(expected: str, actual: str, tracked: Path) -> int:
@@ -162,7 +167,7 @@ def main() -> int:
     actual = normalize(read_text(args.tracked, "It should be committed; check .gitignore."))
     if args.fix:
         if actual != expected:
-            args.tracked.write_text(expected, encoding="utf-8")
+            args.tracked.write_text(expected, encoding="utf-8", newline="\n")
             print(f"Updated {display(args.tracked)} from the regeneration route.")
         else:
             print(f"{display(args.tracked)} already matches the regeneration route.")
