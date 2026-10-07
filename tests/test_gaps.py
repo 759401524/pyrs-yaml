@@ -624,6 +624,35 @@ class TestNestedMergeSourceIsApplied:
             once = pyrs_yaml.parse(src).to_yaml()
             assert pyrs_yaml.parse(once).to_yaml() == once, f"{src:?} -> {once:?}"
 
+    def test_a_template_chain_inherits_every_level(self):
+        # The alias site of the same defect: anchor bodies are snapshotted before any
+        # resolution, so a `<<` inside a body was read from a stale copy and skipped.
+        # This is the everyday GitLab-CI / Ansible shape, and it lost keys silently while
+        # emitting stable text.
+        chain = "base: &b {x: 1}\nmid: &m {<<: *b, y: 2}\nuse:\n  <<: *m\n  z: 3\n"
+        assert pyrs_yaml.safe_load(chain) == {
+            "base": {"x": 1},
+            "mid": {"x": 1, "y": 2},
+            "use": {"x": 1, "y": 2, "z": 3},
+        }
+        three = "a: &A {p: 1}\nb: &B {<<: *A, q: 2}\nc: &C {<<: *B, r: 3}\n<<: *C\n"
+        loaded = pyrs_yaml.safe_load(three)
+        assert loaded["c"] == {"p": 1, "q": 2, "r": 3}
+        assert {k: v for k, v in loaded.items() if k in ("p", "q", "r")} == {
+            "p": 1,
+            "q": 2,
+            "r": 3,
+        }
+
+    def test_a_chain_key_still_overrides_what_it_inherits(self):
+        # The document's own key wins over the chain, and the chain's own key wins over
+        # what it inherits -- one override per level, the same rule PyYAML applies.
+        assert pyrs_yaml.safe_load("b: &B {<<: {x: 1}, y: 2}\n<<: *B\nx: 9\n") == {
+            "b": {"x": 1, "y": 2},
+            "y": 2,
+            "x": 9,
+        }
+
 
 class TestSelfReferentialMerge166:
     """issue #166: a self-referential `<<` merge blew the native stack and
