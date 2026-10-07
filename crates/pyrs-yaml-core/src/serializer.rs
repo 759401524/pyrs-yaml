@@ -1130,11 +1130,17 @@ impl Serializer {
                 CustomNode::Mapping {
                     flow_style: false,
                     ..
+                } | CustomNode::Sequence {
+                    flow_style: false,
+                    ..
                 }
             ) {
                 // The key has no note of its own, but a chain of markers on one line
                 // leaves one riding a nested key inside its body, where the reader
                 // will not put it back. Bring it up to this marker's line instead.
+                // A sequence body has the same problem one level down: the note sits
+                // on its first item, the writer puts it above the `- `, and granit
+                // reports that line on the sequence instead (see `hoist_marker_note`).
                 stripped = key.clone();
                 hoisted = hoist_marker_note(&mut stripped);
                 &stripped
@@ -1989,6 +1995,14 @@ fn take_leading_notes(node: &mut CustomNode) -> Vec<crate::ast::Comment> {
 /// agreeing. crash-0e1c4378 needed this hoist as one of two fixes — its other half is
 /// the note-binding side, `line_break_between` in the parser.
 ///
+/// A block **sequence** body is walked the same way as a mapping's first key: the
+/// writer puts the first item's note above its `- ` at the body indent, and the
+/// reader reports that line on the sequence rather than on the item it was written
+/// for, so the note climbs to the marker line on the next round (crash-1445c91a /
+/// crash-f1643b2d, both minimising to `?` + `-` + `#?` + ` ? `). The item can never
+/// keep the note in place; the marker line is where a re-read agrees with the
+/// emission, and it is where the sequence's own note was already written.
+///
 /// Taking only the first stack was not enough, and the tree says why: in
 /// crash-f8525a9e the spine is three markers deep and carries two separate stacks —
 /// `#` on the middle mapping and `!!"#~` on the innermost `~` key — while the fixed
@@ -1996,25 +2010,38 @@ fn take_leading_notes(node: &mut CustomNode) -> Vec<crate::ast::Comment> {
 /// hoisted one note and left the other a level deeper, so the emission settled only
 /// on its second round.
 fn hoist_marker_note(key: &mut CustomNode) -> Vec<crate::ast::Comment> {
-    let CustomNode::Mapping {
-        pairs, flow_style, ..
-    } = key
-    else {
-        return Vec::new();
-    };
-    if *flow_style || pairs.is_empty() {
-        return Vec::new();
+    let mut notes = Vec::new();
+    match key {
+        CustomNode::Mapping {
+            pairs, flow_style, ..
+        } => {
+            if *flow_style || pairs.is_empty() {
+                return notes;
+            }
+            // `IndexMap` never hands out `&mut K` (it would break the hash invariant),
+            // so take the entry out, work on the owned key, and put it back where it
+            // was.
+            if let Some((mut first_key, first_value)) = pairs.shift_remove_index(0) {
+                notes.extend(take_leading_notes(&mut first_key));
+                // Keep walking: a deeper marker can carry its own stack, and the reader
+                // reports that one at this level too.
+                notes.extend(hoist_marker_note(&mut first_key));
+                pairs.shift_insert(0, first_key, first_value);
+            }
+        }
+        CustomNode::Sequence {
+            items, flow_style, ..
+        } => {
+            if *flow_style || items.is_empty() {
+                return notes;
+            }
+            if let Some(first) = items.first_mut() {
+                notes.extend(take_leading_notes(first));
+                notes.extend(hoist_marker_note(first));
+            }
+        }
+        _ => return notes,
     }
-    // `IndexMap` never hands out `&mut K` (it would break the hash invariant), so
-    // take the entry out, work on the owned key, and put it back where it was.
-    let Some((mut first_key, first_value)) = pairs.shift_remove_index(0) else {
-        return Vec::new();
-    };
-    let mut notes = take_leading_notes(&mut first_key);
-    // Keep walking: a deeper marker can carry its own stack, and the reader
-    // reports that one at this level too.
-    notes.extend(hoist_marker_note(&mut first_key));
-    pairs.shift_insert(0, first_key, first_value);
     notes
 }
 
