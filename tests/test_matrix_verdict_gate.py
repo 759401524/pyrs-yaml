@@ -44,6 +44,39 @@ def gate():
     return _load()
 
 
+def jobs_block(text: str) -> str:
+    """Everything under the top-level `jobs:` key.
+
+    Needed because the job-name pattern also matches the keys of `on:` (`push:`, `schedule:`,
+    `workflow_dispatch:`) two spaces deep, and a test that read `push` as a job demanded a check
+    named `push` in the fan-in. That is how this file's own baseline went red.
+    """
+    return text.split("\njobs:\n", 1)[1]
+
+
+def job_names(text: str) -> set[str]:
+    return set(re.findall(r"^  ([a-z][a-z0-9-]*):\n", jobs_block(text), re.M))
+
+
+def job_body(text: str, name: str) -> str:
+    """One job's own mapping, from its heading to the next job's heading."""
+    match = re.search(rf"^  {name}:\n((?:.*\n)*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)", jobs_block(text), re.M)
+    assert match, f"no job named {name}"
+    return match.group(1)
+
+
+def fan_in_needs(text: str) -> set[str]:
+    body = job_body(text, "matrix-verdict")
+    match = re.search(r"^\s*needs: \[([^\]]+)\]", body, re.M)
+    assert match, "the fan-in declares no needs"
+    return {name.strip() for name in match.group(1).split(",")}
+
+
+def fan_in_body(text: str) -> str:
+    """The `matrix-verdict` job's own text, from its heading to the next job's."""
+    return job_body(text, "matrix-verdict")
+
+
 def leg(result):
     return {"result": result, "outputs": {}, "needs": []}
 
@@ -86,7 +119,7 @@ def test_missing_environment_is_refused(gate, monkeypatch):
 def test_the_fan_in_job_exists_and_waits_on_the_test_surface():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "name: Test matrix (all legs)" in text, "no single check to make required"
-    job = text.split("  matrix-verdict:", 1)[1].split("\n  compliance-report:", 1)[0]
+    job = fan_in_body(text)
     needs = re.search(r"^\s*needs: \[([^\]]+)\]", job, re.M)
     assert needs, "the fan-in declares no needs"
     waited = {name.strip() for name in needs.group(1).split(",")}
@@ -95,19 +128,51 @@ def test_the_fan_in_job_exists_and_waits_on_the_test_surface():
     assert "check_matrix_verdict.py" in job, "the job does not run the checker"
 
 
-def test_every_matrix_leg_is_reachable_from_the_fan_in():
-    """A matrix added to `test` is covered automatically, but a second matrix would not be.
+def test_the_fan_in_waits_on_every_job_in_the_workflow():
+    """The list cannot quietly fall behind the file.
 
-    Asserting the shape rather than the job names: any job that produces a check name the merge should
-    care about must appear in the fan-in's `needs`, directly or as a matrix producer named here.
+    A fan-in over three of eleven names lets a red `clippy`, `no_std`, MSRV or property-tier merge just
+    as easily as the matrix leg that motivated it - so the rule is exact, not a sample: every job in
+    `ci.yml` must be in `needs`, except the verdict itself and `main-gate`, which deliberately runs only
+    on `push` to keep the default-branch history and badge current and would otherwise never have a
+    result to report on a pull request.
     """
     text = WORKFLOW.read_text(encoding="utf-8")
-    jobs = set(re.findall(r"^  ([a-z][a-z0-9-]*):\n", text, re.M))
-    job = text.split("  matrix-verdict:", 1)[1].split("\n  compliance-report:", 1)[0]
-    waited = {name.strip() for name in re.search(r"needs: \[([^\]]+)\]", job).group(1).split(",")}
-    producing = {name for name in jobs if re.search(rf"^  {name}:\n(?:.*\n)*?    strategy:\n", text, re.M)}
-    assert producing <= waited or "test" in waited, (producing, waited)
-    assert waited <= jobs, f"the fan-in waits on jobs that do not exist: {sorted(waited - jobs)}"
+    waited = fan_in_needs(text)
+    expected = job_names(text) - {"matrix-verdict", "main-gate"}
+    assert expected, "no jobs found: the heading pattern stopped matching ci.yml"
+    assert waited == expected, (
+        f"not covered by the fan-in: {sorted(expected - waited)}; unknown jobs listed: {sorted(waited - expected)}"
+    )
+    # `skipped` is a refusal, so a job that does not run on a pull request would make the verdict
+    # permanently red: every job waited on must be one that does.
+    for name in sorted(waited):
+        condition = re.search(r"if: \$\{\{ (.+?) \}\}", job_body(text, name))
+        assert condition is None or "push" in condition.group(1) or "pull_request" in condition.group(1), (
+            f"{name}: conditional on an event outside pull_request, so its absence reads as `skipped`"
+        )
+
+
+def test_the_verdict_only_runs_where_a_merge_decision_exists():
+    """`workflow_dispatch` has no merge to gate; running red there would train people to ignore it."""
+    job = fan_in_body(WORKFLOW.read_text(encoding="utf-8"))
+    assert re.search(r"if: \$\{\{ always\(\) && github.event_name == 'pull_request' \}\}", job), (
+        "the verdict must run on pull requests only, and must survive a red leg (`always()`)"
+    )
+
+
+def test_every_matrix_leg_is_reachable_from_the_fan_in():
+    """A job that produces check names (a `strategy:` matrix) must be waited on.
+
+    Bounded to each job's own body: the first version of this search let `(?:.*\n)*?` run past a job
+    boundary, so every job in the file looked like a matrix producer and the assertion could only pass
+    because of an `or` escape clause that hid it.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    producing = {name for name in job_names(text) if "    strategy:" in job_body(text, name)}
+    assert producing, "no matrix jobs found: the probe for them stopped matching"
+    waited = fan_in_needs(text)
+    assert producing <= waited, f"matrix producers outside the fan-in: {sorted(producing - waited)}"
 
 
 def test_the_checker_stays_loadable_on_the_supported_floor(gate):

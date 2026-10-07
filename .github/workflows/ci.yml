@@ -370,10 +370,17 @@ jobs:
   # the Python floor this package promises), and #299 went red on a formatter's unsquashed fix - a
   # check no merge decision consumes is a report, not a gate. This job is the single name to make
   # required: it waits on the whole test surface and turns it into one verdict.
+  #
+  # It waits on *every* job in this workflow, not only the test matrix: a fan-in over 3 of 11 names
+  # would let a red `clippy`, `no_std`, MSRV or property-tier merge exactly as before. Adding a job
+  # here without adding it to the fan-in reddens
+  # `tests/test_matrix_verdict_gate.py::test_the_fan_in_waits_on_every_job_in_the_workflow`, so the
+  # list cannot quietly fall behind the file. `skipped` is a refusal, which is safe because every job
+  # below runs on `pull_request` - the only event this verdict itself runs on.
   matrix-verdict:
     name: Test matrix (all legs)
-    if: ${{ always() && github.event_name != 'push' }}
-    needs: [test, test-freethreaded, coverage]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [rust-lint, property-tier, msrv-check, no-std-check, build, test, coverage, test-freethreaded, compliance-report, i18n-check]
     runs-on: ubuntu-latest
     steps:
       # No checkout of the tree is needed for the verdict itself, but the checker lives in

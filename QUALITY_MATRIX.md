@@ -138,7 +138,9 @@ review habit:
   settings show was still too generous. That is why `Test matrix (all legs)` exists: one name to
   require instead of 21, so a leg that never starts cannot be satisfied by absence, and
   `scripts/check_matrix_verdict.py` refuses `skipped`/`cancelled` rather than reading them as
-  agreement. The remaining half is outside a pull request - the name has to be added to branch
+  agreement. It waits on **every** job in `ci.yml` - 11 of them, not the 3 it started with - and
+  `tests/test_matrix_verdict_gate.py` compares that list against the jobs declared in the file, so
+  a job added without widening the fan-in reddens the suite. The remaining half is outside a pull request - the name has to be added to branch
   protection - so this row is the honest state: closed in software, open in configuration.
 
 The strongest evidence that a hook tier is not decoration came from its own author: the five

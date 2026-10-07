@@ -201,6 +201,16 @@ status: new
 
 #### 修复
 
+- **`Test matrix (all legs)` 只等 11 个 job 里的 3 个，另外 8 个仍可带着红合并** — #300 加的扇入只覆盖
+  `test`、`test-freethreaded`、`coverage`，把 `rust-lint`(clippy)、`property-tier`、`msrv-check`、
+  `no-std-check`、`build`、`compliance-report`、`i18n-check` 留在了本该代表整场运行的那一个检查之外。
+  现在它等待 `ci.yml` 里除自身与 `main-gate`（只为在 `push` 上维护默认分支历史而存在）之外的所有 job，
+  并且只在 `pull_request` 上触发——把手动 dispatch 判红的裁定并没有需要守护的决定，只会养成忽略它的习惯。
+  它自带的两个测试也是带着缺陷诞生、在出货前靠运行抓出来的：job 名正则连 `on:` 的键一起匹配，于是要求
+  一个叫 `push` 的检查；无界的 `strategy:` 搜索让每个 job 都像矩阵生产者（#300 的断言只是靠一个 `or`
+  逃生条款侥幸通过）。如今两者都限定在 `jobs:` 块内，`tests/test_matrix_verdict_gate.py`（14 个测试）
+  把规则写成精确式：新增 job 而不纳入扇入，测试就变红。归因实测：从 `needs` 里删掉 `no-std-check`
+  只让那一条测试变红，基线为 14 passed。
 - **`perf-coverage:binding-layer` 描述的图，探针其实只读了一半** — 度量把 `ir_harness_crates`
   报成 `pyrs-ast, pyrs-schema, pyrs-yaml-core`，而由它导出的洞、以及登记进五份 changelog 镜像的文字都列了
   五个 crate。探针在 manifest 上用 `re.search`，于是停在 `[dependencies]`，没看
