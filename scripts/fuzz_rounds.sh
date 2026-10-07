@@ -11,8 +11,13 @@
 #
 #   * each crashing input is dropped from the corpus before the next round, else a
 #     later round just re-finds the same bug through the same corpus entry;
-#   * findings are deduped by crash signature, not by artifact file name, because
-#     the artifact hash covers the input bytes: four artifacts can be one bug.
+#   * findings are keyed on the artifact's bytes, and the panic signature is reported
+#     alongside them. The signature is *not* a stop condition: it names the assertion
+#     that failed, and two different root causes can fail the same `assert_eq!` on the
+#     same line — measured with crash-55c199ef and crash-5561902a, which one run of
+#     this script counted as "1 distinct crash signature" while they were two bugs.
+#     So the loop continues while it keeps finding new bytes, and the summary states
+#     inputs and signatures separately.
 #
 # Env: FUZZ_TIME (the TOTAL exploration budget for this target, shared across the
 # rounds), FUZZ_ROUNDS (max rounds), and GITHUB_EVENT_NAME, which selects the
@@ -72,13 +77,14 @@ cd "$(dirname "$0")/../fuzz"
 shopt -s nullglob
 
 mkdir -p "collected/$target"
-: > "collected/$target/.signatures"
+: > "collected/$target/findings.tsv"
 
 found=0
+inputs=0
 for round in $(seq 1 "$rounds"); do
     rm -rf "artifacts/$target"
     mkdir -p "artifacts/$target"
-    log="/tmp/fuzz-$target-round$round.log"
+    log="${TMPDIR:-/tmp}/fuzz-$target-round$round.log"
 
     echo "=== $target round $round/$rounds (${libfuzzer_args[*]})"
     cargo fuzz run "$target" --target x86_64-unknown-linux-gnu -- \
@@ -94,34 +100,51 @@ for round in $(seq 1 "$rounds"); do
     # libFuzzer summary line, whichever comes first.
     signature=$(grep -m1 -hoE "panicked at [^:]+|assertion [^ ]+ failed|SUMMARY: libFuzzer: .*" "$log")
     [ -n "$signature" ] || signature="unknown (see job log)"
-    if grep -qxF "$signature" "collected/$target/.signatures"; then
-        echo "round $round: re-found a known signature, stopping"
+
+    # Every artifact of this round is archived *before* anything else can happen,
+    # including the rounds that find nothing new. The previous cut copied them only
+    # when the signature was new, and otherwise broke out of the loop, so the second
+    # input survived only because the `rm -rf` at the top of the next round had not run
+    # yet — an un-copied finding is a finding nobody can minimise or seed.
+    fresh=0
+    for art in "${crashes[@]}"; do
+        base=$(basename "$art")
+        if [ -e "collected/$target/$base" ]; then
+            continue
+        fi
+        cp "$art" "collected/$target/"
+        printf '%s\t%s\n' "$signature" "$base" >> "collected/$target/findings.tsv"
+        fresh=$((fresh + 1))
+        found=$((found + 1))
+        {
+            printf '### %s, round %s\n\n' "$target" "$round"
+            printf 'signature: `%s`\n\n' "$signature"
+            printf -- '- `%s` (%s bytes)\n' "$base" "$(wc -c < "$art")"
+            echo
+        } >> "$summary"
+        # Stop the next round from tripping on this exact input again.
+        for c in "corpus/$target"/*; do
+            cmp -s "$art" "$c" && rm -f "$c"
+        done
+    done
+    inputs=$((inputs + fresh))
+    if [ "$fresh" -eq 0 ]; then
+        echo "round $round: nothing new (all ${#crashes[@]} artifact(s) already collected), stopping"
         break
     fi
-    printf '%s\n' "$signature" >> "collected/$target/.signatures"
-    found=$((found + 1))
-
-    {
-        printf '### %s, round %s\n\n' "$target" "$round"
-        printf 'signature: `%s`\n\n' "$signature"
-        for art in "${crashes[@]}"; do
-            cp "$art" "collected/$target/"
-            printf -- '- `%s` (%s bytes)\n' "$(basename "$art")" "$(wc -c < "$art")"
-            # Stop the next round from tripping on this exact input again.
-            for c in "corpus/$target"/*; do
-                cmp -s "$art" "$c" && rm -f "$c"
-            done
-        done
-        echo
-    } >> "$summary"
 done
 
 if [ "$found" -gt 0 ]; then
-    # Publish every collected crash under the job's artifact path, and fail once
-    # with the count, so the job says "N distinct bugs" rather than "1 of N".
+    # Publish every collected crash under the job's artifact path, and fail once with
+    # both counts. A signature names the assertion that failed, not the bug: several
+    # distinct root causes can reach one `assert_eq!` on one line — measured with
+    # crash-55c199ef and crash-5561902a, two root causes reported as "1 distinct crash
+    # signature" — so the signature count is a lower bound and is never called a tally.
     cp -f "collected/$target"/crash-* "artifacts/$target/" 2>/dev/null || true
-    signatures=$(wc -l < "collected/$target/.signatures")
-    echo "::error::$target surfaced $signatures distinct crash signature(s); inputs are in the fuzz-artifacts-$target artifact"
+    sigs=$(cut -f1 "collected/$target/findings.tsv" | sort -u | grep -c .)
+    echo "$target surfaced $inputs crash input(s) across $sigs distinct signature(s):"
+    cut -f1 "collected/$target/findings.tsv" | sort | uniq -c | sort -rn | sed 's/^/  /'
+    echo "::error::$target surfaced $inputs crash input(s) / $sigs distinct signature(s); inputs are in the fuzz-artifacts-$target artifact"
     exit 1
 fi
 
