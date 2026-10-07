@@ -169,6 +169,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A template that merges for itself now passes what it inherits along** — the merge fix released
+  yesterday had a second site: anchor bodies are snapshotted before any merge resolution runs, so
+  `use: {<<: *m}` over `mid: &m {<<: *b, y: 2}` read the stale copy, found a `<<` it thought the
+  target already owned, and skipped it. `use` came back as `{y: 2, z: 3}` where PyYAML returns
+  `{x: 1, y: 2, z: 3}` — the inherited `x` was gone, and a three-level chain lost two keys. The
+  emission was stable either way, so no round-trip assertion could see it; the object view was the
+  only witness. Each anchor body is now resolved where it is read, which also puts the override at
+  the right level: a chain's own key beats what it inherits, and the document's own key beats the
+  chain — one step per level, as both reference libraries do it.
 - **A merge key inside a merge source is applied instead of discarded** — `<<: {<<: {x: 1}}` used to
   keep both `<<` levels as data (`{'<<': {'<<': {'x': 1}}}`) where PyYAML and ruamel read the same
   document as `{'x': 1}`; `<<: {<<: {x: 1, y: 1}, y: 2}` lost `x` outright, and so did the block form

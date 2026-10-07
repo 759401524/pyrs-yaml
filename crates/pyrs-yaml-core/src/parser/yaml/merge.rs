@@ -194,7 +194,9 @@ fn resolve_mapping_merges(
         .and_then(|index| pairs.get_index(index))
         .and_then(|(_, merge_value)| match merge_value {
             CustomNode::Null { .. } | CustomNode::Scalar { .. } => None,
-            CustomNode::Alias { .. } => Some(collect_merge_data(merge_value, pairs, anchors, path)),
+            CustomNode::Alias { .. } => {
+                Some(collect_merge_data(merge_value, pairs, anchors, path, depth))
+            }
             CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
                 // Resolve the source before collecting from it. A `<<` inside a merge
                 // source is a merge key *of that source*, and the pairs it brings are
@@ -223,7 +225,7 @@ fn resolve_mapping_merges(
                 } else {
                     merge_value
                 };
-                let merged = collect_merge_data(source, pairs, anchors, path);
+                let merged = collect_merge_data(source, pairs, anchors, path, depth);
                 if !merged.is_empty() || references_alias(merge_value) {
                     Some(merged)
                 } else {
@@ -380,12 +382,13 @@ fn collect_merge_data(
     pairs: &IndexMap<CustomNode, CustomNode>,
     anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
     path: &[String],
+    depth: usize,
 ) -> AnchoredPairs {
     let mut merged_pairs = AnchoredPairs::new();
 
     match merge_value {
         CustomNode::Alias { name } => {
-            collect_merged_pairs_for_anchor(name, pairs, anchors, path, &mut merged_pairs);
+            collect_merged_pairs_for_anchor(name, pairs, anchors, path, depth, &mut merged_pairs);
         }
         CustomNode::Sequence { items, .. } => {
             for item in items {
@@ -395,6 +398,7 @@ fn collect_merge_data(
                         pairs,
                         anchors,
                         path,
+                        depth,
                         &mut merged_pairs,
                     ),
                     CustomNode::Mapping { pairs: sub, .. } => {
@@ -470,6 +474,7 @@ fn collect_merged_pairs_for_anchor(
     pairs: &IndexMap<CustomNode, CustomNode>,
     anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
     path: &[String],
+    depth: usize,
     result: &mut AnchoredPairs,
 ) {
     let Some(merged) = anchors.get(name) else {
@@ -484,7 +489,27 @@ fn collect_merged_pairs_for_anchor(
     if path.iter().any(|open| open == name) {
         return;
     }
-    for (k, v) in merged {
+    // The snapshot is taken before any resolution runs, so an anchor body that
+    // merges for itself is one step stale here - and a `<<` read from that stale
+    // copy hits the same whole-node ownership test below and is skipped, which is
+    // the alias-site twin of the inline-source defect: a template chain
+    // (`use: {<<: *m}` over `mid: &m {<<: *b, y: 2}`) silently loses the keys it
+    // inherits, and the emission is stable, so no round-trip assertion sees it.
+    // Resolving the body here puts the nested merge inside the source, where the
+    // source's own keys override it, exactly as the inline path now does. The
+    // anchor's name joins the path for that walk: an expansion that reaches back
+    // into its own body must terminate, and `depth` keeps the hard budget honest.
+    let mut resolved;
+    let body = if depth < MAX_MERGE_DEPTH && merged.keys().any(is_merge_key) {
+        resolved = merged.clone();
+        let mut nested = path.to_vec();
+        nested.push(name.to_string());
+        resolve_mapping_merges(&mut resolved, anchors, &mut nested, depth + 1);
+        &resolved
+    } else {
+        merged
+    };
+    for (k, v) in body {
         if !pairs.contains_key(k) {
             let mut key = k.clone();
             let mut value = v.clone();
@@ -916,6 +941,65 @@ mod tests {
             plain, "~: ~\n",
             "the note-free spelling resolves the same way"
         );
+    }
+
+    /// The same discard at the other collection site, and the one users hit: a template
+    /// chain. `collect_anchor_mappings` snapshots every anchor body *before* any merge
+    /// resolution runs, and the collector reads that snapshot, so a `<<` inside the body
+    /// is handed to the same whole-node ownership test and skipped. Measured against
+    /// PyYAML: `use` lost the `x: 1` it inherits through `mid`, and a three-level chain
+    /// lost two keys. The text is stable either way, so the round-trip tier is blind to
+    /// this - only the object view shows it.
+    #[test]
+    fn an_anchor_that_itself_merges_contributes_the_inherited_keys() {
+        let src = "base: &b {x: 1}\nmid: &m {<<: *b, y: 2}\nuse:\n  <<: *m\n  z: 3\n";
+        let root = parse(src, YamlSchema::Core).unwrap();
+        let use_pairs = get_mapping(
+            get_mapping(&root)
+                .get(&make_scalar("use"))
+                .expect("`use` is in the document"),
+        );
+        for (key, value) in [("x", "1"), ("y", "2"), ("z", "3")] {
+            let found = use_pairs.get(&make_scalar(key)).unwrap_or_else(|| {
+                panic!("{src:?} inherits `{key}` through the chain: {use_pairs:?}")
+            });
+            assert_eq!(get_scalar_value(found), value, "{key} came from the chain");
+        }
+        assert!(
+            !use_pairs.keys().any(is_merge_key),
+            "no stray merge key left behind: {use_pairs:?}"
+        );
+        let one = crate::serializer::to_yaml(&root);
+        let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+        assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
+    }
+
+    /// Three levels deep, which is where the staleness compounds: each body's snapshot
+    /// is one resolution behind, so `c` lost `p` and the document's own merge lost both
+    /// `p` and `q`. PyYAML resolves the whole chain (`p`, `q`, `r` at the top level).
+    #[test]
+    fn a_three_level_anchor_chain_resolves_to_its_deepest_keys() {
+        let src = "a: &A {p: 1}\nb: &B {<<: *A, q: 2}\nc: &C {<<: *B, r: 3}\n<<: *C\n";
+        let root = parse(src, YamlSchema::Core).unwrap();
+        let top = get_mapping(&root);
+        for key in ["p", "q", "r"] {
+            assert!(
+                top.contains_key(&make_scalar(key)),
+                "{src:?} must carry {key} at the top level: {top:?}"
+            );
+        }
+        assert!(
+            !top.keys().any(is_merge_key),
+            "the merge entry is consumed, not left literal: {top:?}"
+        );
+        let c = get_mapping(top.get(&make_scalar("c")).unwrap());
+        assert!(
+            c.contains_key(&make_scalar("p")),
+            "`c` inherits `p` through two levels: {c:?}"
+        );
+        let one = crate::serializer::to_yaml(&root);
+        let again = crate::serializer::to_yaml(&parse(&one, YamlSchema::Core).unwrap());
+        assert_eq!(again, one, "{one:?} must be a fixed point: {again:?}");
     }
 
     #[test]
