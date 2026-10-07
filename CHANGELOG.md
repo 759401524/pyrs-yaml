@@ -160,6 +160,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A mapping key resolves to the type its text denotes** — the object view resolved every
+  scalar except keys, so `1: a` loaded as `{'1': 'a'}` while `a: 1` loaded the integer 1, and
+  `~: 1` gave the string key `'~'` where PyYAML and ruamel both give `None`. One document meant
+  two things depending on which side of the `:` a scalar sat, and a config keyed by an integer,
+  bool or null could not be reached by lookup. `safe_load` / `safe_loads` / `to_dict()` /
+  `read_markdown*` are typed `dict[Any, Any]` now; the return type of `load_toml` / `load_json*`
+  is unchanged, because a key is a string in those grammars — the bridges quote exactly the
+  spellings YAML would re-type (`"1" = 2` converts to `"1": 2`, not `1: 2`) and leave every
+  other key plain, which is also a conversion fix: previously a TOML key of `""` became a YAML
+  null key on the other side. Round-trip is untouched: the AST keeps the source spelling, so
+  `~: 1` still writes back `~: 1`.
 - **A template that merges for itself now passes what it inherits along** — the merge fix released
   yesterday had a second site: anchor bodies are snapshotted before any merge resolution runs, so
   `use: {<<: *m}` over `mid: &m {<<: *b, y: 2}` read the stale copy, found a `<<` it thought the

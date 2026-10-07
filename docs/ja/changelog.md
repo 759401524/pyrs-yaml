@@ -146,6 +146,15 @@ status: new
 
 #### 修正
 
+- **mapping の key は、そのテキストが示す型として解決される** — object view は scalar を解決しても
+  key は解決していなかったため、`1: a` は `{'1': 'a'}` なのに `a: 1` は整数 1 になり、`~: 1` の
+  key は文字列 `'~'` となった（PyYAML と ruamel はどちらも `None`）。同じテキストが `:` のどちらに
+  あるかで文書は 2 つの意味を持ち、整数・bool・null を key にした設定は lookup でも取り出せなかった。
+  `safe_load` / `safe_loads` / `to_dict()` / `read_markdown*` の型は `dict[Any, Any]` に。
+  `load_toml` / `load_json*` はそのまま — あの文法では key が文字列だからで、ブリッジは YAML が
+  型を変えてしまう綴りだけをクォートし（`"1" = 2` → `"1": 2` であって `1: 2` ではない）他は plain の
+  まま。これは変換の修正でもある — 今まで TOML の key `""` が向こう側で YAML の null key に
+  なっていた。round-trip は不変：AST が元の綴りを持つので `~: 1` はそのまま `~: 1` を書く。
 - **自分で merge する template が、継承した鍵をちゃんと渡すようになった** — 昨日出した merge 修正には
   2 つ目の個所があった。anchor の body は merge 解決が走る前にスナップショットされるため、
   `mid: &m {<<: *b, y: 2}` を指す `use: {<<: *m}` は古いコピーを読み、target が既に持つと思った

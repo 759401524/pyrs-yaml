@@ -95,7 +95,7 @@ print(doc["name"])  # Alice
 Parse YAML into a plain Python `dict` or `list`, resolving anchors and merges.
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str) -> dict[Any, Any] | list[Any]
 ```
 
 **Parameters:**
@@ -129,7 +129,7 @@ alias: *ref
 Parse a multi-document YAML string into a list of `dict`/`list` objects.
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **Parameters:**

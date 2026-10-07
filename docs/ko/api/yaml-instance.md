@@ -95,7 +95,7 @@ print(doc["name"])  # Alice
 YAML을 일반 Python `dict` 또는 `list`로 파싱하고 앵커와 병합을 해석합니다.
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str) -> dict[Any, Any] | list[Any]
 ```
 
 **매개변수:**
@@ -129,7 +129,7 @@ alias: *ref
 다중 문서 YAML 문자열을 `dict`/`list` 객체의 리스트로 파싱합니다.
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **매개변수:**

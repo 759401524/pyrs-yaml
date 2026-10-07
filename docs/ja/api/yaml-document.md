@@ -102,10 +102,10 @@ yaml_str = doc.to_yaml_with_options(
 
 ### `to_dict()`
 
-Python dict/list に変換します。エイリアス参照を解決し、ネイティブ Python タイプを返します。
+Python dict/list に変換します。エイリアス参照を解決し、ネイティブ Python タイプを返します。同じ解決は mapping の key にも等しく適用されます — `~: 1` の key は `None`、`1: a` の key は整数 1。同じテキストなら `:` のどちら側にあっても同じ型になります。
 
 ```python
-to_dict() -> dict[str, Any] | list[Any]
+to_dict() -> dict[Any, Any] | list[Any]
 ```
 
 **戻り値:** 辞書またはリスト

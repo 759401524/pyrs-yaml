@@ -170,8 +170,13 @@ fn json_input_roundtrips_unchanged() {
 
 #[test]
 fn from_toml_emits_yaml_with_minimal_quoting() {
-    let (_, out, err) = run_with_stdin(&["from-toml", "-"], "s = \"true\"\nn = 42\n");
-    assert_eq!(out, "s: \"true\"\nn: 42\n", "{err}");
+    let (_, out, err) = run_with_stdin(&["from-toml", "-"], "s = \"true\"\nport = 42\nn = 7\n");
+    // Minimal, not blanket: `port` needs nothing and is plain. Two things do need
+    // quotes, because an unquoted spelling would be a *different value* to a YAML
+    // reader - `s`'s TOML string `"true"`, and the key `n`, which YAML 1.1 types as a
+    // bool/null. A conversion may not change what a document means, so a key is quoted
+    // by exactly the rule a value is.
+    assert_eq!(out, "s: \"true\"\nport: 42\n\"n\": 7\n", "{err}");
 }
 
 #[test]

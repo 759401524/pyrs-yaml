@@ -106,7 +106,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 Parse a YAML string into a Python dict or list. Uses PyYAML-compatible API.
 
 ```python
-safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> dict[str, Any] | list[Any]
+safe_load(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> dict[Any, Any] | list[Any]
 ```
 
 **Parameters:**
@@ -130,7 +130,7 @@ d = pyrs_yaml.safe_load(
 Parse multiple YAML documents from a string into Python dicts/lists.
 
 ```python
-safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str, schema: str | dict = "core", max_depth: int = 1000, allow_duplicate_keys: bool = False) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **Parameters:**
@@ -557,7 +557,7 @@ asyncio.run(main())
 Extract YAML frontmatter from a Markdown file.
 
 ```python
-read_markdown(path: str, schema: str | dict = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str | dict = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 **Returns:** `(frontmatter_dict, content_string)`. If no frontmatter, `frontmatter` is `None`.
@@ -567,7 +567,7 @@ read_markdown(path: str, schema: str | dict = "core", max_depth: int = 1000) -> 
 Extract YAML frontmatter from a Markdown string.
 
 ```python
-read_markdown_str(content: str, schema: str | dict = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str | dict = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 ### :material-translate: i18n Functions

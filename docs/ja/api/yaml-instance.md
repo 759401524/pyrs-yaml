@@ -95,7 +95,7 @@ print(doc["name"])  # Alice
 YAML をプレーンな Python の `dict` または `list` にパースし、アンカーとマージを解決します。
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str) -> dict[Any, Any] | list[Any]
 ```
 
 **Parameters:**
@@ -129,7 +129,7 @@ alias: *ref
 複数ドキュメントの YAML 文字列をパースし、`dict`/`list` オブジェクトのリストを返します。
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **Parameters:**

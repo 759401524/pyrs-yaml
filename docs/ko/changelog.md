@@ -143,6 +143,16 @@ status: new
 
 #### 수정
 
+- **mapping key는 그 텍스트가 나타내는 타입으로 해석된다** — object view는 scalar를 해석하면서
+  key만 해석하지 않아, `1: a`는 `{'1': 'a'}`인데 `a: 1`은 정수 1이었고, `~: 1`의 key는 문자열
+  `'~'`였다(PyYAML과 ruamel은 둘 다 `None`). 같은 텍스트가 `:`의 어느 쪽에 있느냐로 문서가 두
+  의미를 가졌고, 정수·bool·null을 key로 둔 설정은 lookup으로도 되살릴 수 없었다. `safe_load` /
+  `safe_loads` / `to_dict()` / `read_markdown*`의 타입은 `dict[Any, Any]`로; `load_toml` /
+  `load_json*`는 그대로 —
+  그 문법에서 key는 문자열이기 때문이다. 브리지는 YAML이 타입을 바꾸는 표기만 인용하며
+  (`"1" = 2` → `"1": 2`, `1: 2`가 아님), 나머지는 plain으로 둔다 — 이것도 변환 수정이다: 전에 TOML의
+  key `""`가 반대편에서 YAML null key로 변했다. round-trip은 그대로다: AST가 원본 표기를 간직하므로
+  `~: 1`은 여전히 `~: 1`로 나온다.
 - **자기가 merge되는 template이 상속받은 키를 이제 전달한다** — 어제 낸 merge 수정에는 두 번째 지점이
   있었다. anchor 본문은 merge 해석이 실행되기 전에 스냅샷되므로, `mid: &m {<<: *b, y: 2}`를 가리키는
   `use: {<<: *m}`는 낡은 사본을 읽어 target이 이미 가진다고 생각한 `<<`를 건너뛰었다. 그래서 `use`가

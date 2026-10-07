@@ -155,11 +155,43 @@ fn node_to_pyobject_inner<'a>(
             let dict = PyDict::new(py);
             for (key, value) in pairs {
                 let val = resolve_alias_target(value, py, anchors, in_progress, schema)?;
+                // A key is a node like any other, and YAML resolves it by the same rule
+                // the value side uses: `schema.resolve` for plain scalars, text for
+                // quoted ones. Taking the key's text instead made one document mean two
+                // things depending on which side of the `:` a scalar sat (`~: 1` ->
+                // `{'~': 1}` while `a: ~` -> `{'a': None}`, `1: a` -> `{'1': 'a'}`), so a
+                // config keyed by an integer, bool or null could not be reached by lookup
+                // and disagreed with both reference libraries.
+                //
+                // Two arms, because the hot case deserves the direct route. An untagged
+                // scalar can only become str / int / float / bool / None, every one of
+                // them hashable, so it is resolved inline: no alias wrapper and no error
+                // bookkeeping, which measured ~10 ns per key on a 120-pair mapping and is
+                // what a flagged `to_dict` regression came from. A tagged or aliased key
+                // can reach a custom `from_yaml` and return anything, so it keeps the
+                // shared path, and an unhashable result there falls back to the source
+                // text rather than dropping the pair.
                 match key {
-                    CustomNode::Scalar { value, .. } => dict.set_item(value.as_ref(), val),
-                    _ => dict.set_item(format!("{:?}", key), val),
+                    CustomNode::Scalar {
+                        value, style, meta, ..
+                    } if meta.tag.is_none() => {
+                        dict.set_item(scalar_to_pyobject(py, value, style, schema)?, &val)?;
+                    }
+                    CustomNode::Scalar { .. }
+                    | CustomNode::Null { .. }
+                    | CustomNode::Alias { .. } => {
+                        let k = resolve_alias_target(key, py, anchors, in_progress, schema)?;
+                        if dict.set_item(k, &val).is_err() {
+                            set_text_key(&dict, key, &val)?;
+                        }
+                    }
+                    // A complex key (a nested mapping or sequence) has no hashable
+                    // Python counterpart in this engine yet, and both reference libraries
+                    // refuse it (`ConstructorError`), so it keeps the previous stand-in
+                    // rather than being dropped. Named in ROADMAP as the remaining half of
+                    // key fidelity.
+                    _ => set_text_key(&dict, key, &val)?,
                 }
-                .ok();
             }
             Ok(dict.into_any().unbind())
         }
@@ -173,6 +205,19 @@ fn node_to_pyobject_inner<'a>(
         }
         CustomNode::Null { .. } => Ok(py.None()),
         CustomNode::Alias { .. } => Ok(py.None()),
+    }
+}
+
+/// Put one pair in the dict under a stand-in key: the scalar's own text, or the debug
+/// form of a node that has no scalar text at all (a nested key).
+///
+/// This is what keeps a mapping entry from being dropped: `set_item` fails on an
+/// unhashable object, and losing the pair silently is worse than a key the user can
+/// still see and re-read.
+fn set_text_key(dict: &Bound<'_, PyDict>, key: &CustomNode, value: &Py<PyAny>) -> PyResult<()> {
+    match key {
+        CustomNode::Scalar { value: text, .. } => dict.set_item(text.as_ref(), value),
+        _ => dict.set_item(format!("{key:?}"), value),
     }
 }
 

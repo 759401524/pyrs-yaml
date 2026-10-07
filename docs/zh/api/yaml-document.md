@@ -66,10 +66,10 @@ yaml_str = doc.to_yaml_with_options(
 
 ### `to_dict()`
 
-转换为 Python dict/list。解析别名引用，返回原生 Python 类型。
+转换为 Python dict/list。解析别名引用，返回原生 Python 类型。同一套解析同样作用于映射的键：`~: 1` 的键是 `None`，`1: a` 的键是整数 1——同一段文本，无论在 `:` 的哪一侧，类型一致。
 
 ```python
-to_dict() -> dict[str, Any] | list[Any]
+to_dict() -> dict[Any, Any] | list[Any]
 ```
 
 **返回值:** 字典或列表

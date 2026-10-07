@@ -11,7 +11,8 @@
 //! Semantics mirror the AST path exactly:
 //! - plain scalars resolve through the active schema; quoted scalars are
 //!   always strings (YAML 1.2 rule, see `convert::scalar_to_pyobject`);
-//! - mapping keys are the raw scalar text of the key node, never resolved;
+//! - a mapping key is resolved by exactly that rule too, because it is the same
+//!   kind of node as a value (`convert.rs` reuses its value path outright);
 //! - duplicate keys are last-wins and recorded as
 //!   [`ParseError::DuplicateKey`] unless `allow_duplicate_keys` or the key
 //!   resolves to null (the `is_null_key` exemption in `push_node`);
@@ -218,21 +219,26 @@ impl<'py, 'a> Builder<'py, 'a> {
                     return Some(dict.into_any().unbind());
                 }
                 Some(Event::Scalar(key_text, style, _, _)) => {
-                    // Keys are raw text; merge keys were rejected during
-                    // collection, so every scalar here is a legal key.
-                    let _ = style;
-                    let key = key_text.to_string();
+                    // A key resolves like any other scalar. Leaving it as raw text
+                    // made one text mean two things depending on which side of the
+                    // `:` it sat (`1: a` -> `{'1': 'a'}` while `a: 1` -> `{'a': 1}`,
+                    // `~: 1` -> `{'~': 1}` while `a: ~` -> `{'a': None}`), and put the
+                    // object view out of step with PyYAML and ruamel on both.
+                    let plain = matches!(style, granit_parser::ScalarStyle::Plain);
+                    let key_object = self.scalar_to_py(key_text, plain).ok()?;
                     self.pos += 1;
                     let value = self.build(depth + 1)?;
                     if !self.allow_duplicate_keys
-                        && !self.is_null_key_text(&key)
-                        && dict.contains(&key).unwrap_or(false)
+                        && !self.is_null_key_text(key_text)
+                        && dict.contains(&key_object).unwrap_or(false)
                         && self.duplicate_key.is_none()
                     {
-                        self.duplicate_key = Some(key.clone());
+                        self.duplicate_key = Some(key_text.to_string());
                     }
-                    // Last-wins at the original position = IndexMap::insert.
-                    if dict.set_item(key.as_str(), value).is_err() {
+                    // Last-wins at the original position = IndexMap::insert. An
+                    // unhashable conversion bails to the AST pipeline, which keeps
+                    // the pair under its source text rather than dropping it.
+                    if dict.set_item(&key_object, &value).is_err() {
                         return None;
                     }
                 }

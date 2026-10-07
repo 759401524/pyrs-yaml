@@ -15,6 +15,24 @@ fn matches_any(value: &str, candidates: &[&str]) -> bool {
     candidates.contains(&value)
 }
 
+/// The bytes a typed plain scalar can begin with, across every schema this crate
+/// resolves for, plus the blanks [`crate::is_yaml_blank`] skips - a leading blank can
+/// hide a starter, so those bytes have to fall through to the full chain.
+const POSSIBLE_TYPED_STARTERS: &[u8] = b"~nNtTfFyYoOiI.-+0123456789 \t\r\n\0";
+
+/// Whether the very first byte leaves a typed reading possible at all.
+///
+/// Safe for the YAML resolvers, whose blank class is exactly the five bytes listed
+/// above. The JSON-family resolvers trim with `str::trim` (Unicode), where an NBSP can
+/// hide a starter from a byte-only test, so they must not use this - and do not.
+#[must_use]
+pub fn might_start_typed(text: &str) -> bool {
+    match text.as_bytes().first() {
+        Some(byte) => POSSIBLE_TYPED_STARTERS.contains(byte),
+        None => true,
+    }
+}
+
 /// Resolve a plain scalar as YAML 1.2 Core.
 ///
 /// Priority: Null → Bool → Infinity → NaN → Octal → Hex → Float → Decimal int → String.
@@ -27,6 +45,23 @@ fn matches_any(value: &str, candidates: &[&str]) -> bool {
 /// 7 bytes: a NBSP-only *multi-line* scalar resolved to `Null`, so the writer
 /// skipped quoting it and emitted raw line breaks that collapsed on re-read).
 pub fn resolve_core_type(value: &str) -> YamlType<'_> {
+    // Byte-only pre-check, ahead of the whole-edge scan the chain otherwise starts
+    // with: a scalar whose first byte can neither start a typed lexeme nor hide one
+    // behind a blank is a string whatever the trim finds. The full chain keeps its own
+    // first-byte whitelist (it runs after the trim, where blanks may have been removed);
+    // this only avoids doing the trim at all for the overwhelmingly common case, which
+    // matters because both plain values and - since the key-resolution fix - mapping
+    // keys come through here, so a document pays for roughly twice as many scalars as
+    // before. `fast_bail_agrees_with_the_full_chain` pins the two paths' agreement.
+    if !might_start_typed(value) {
+        return YamlType::Str(Cow::Borrowed(value));
+    }
+    resolve_core_type_full(value)
+}
+
+/// The Core chain without the byte-only pre-check, kept whole so the whitelist above can
+/// be proved against it rather than assumed.
+pub(crate) fn resolve_core_type_full(value: &str) -> YamlType<'_> {
     let trimmed = value.trim_matches(crate::is_yaml_blank);
 
     if trimmed.is_empty() || trimmed == "~" {
@@ -283,6 +318,24 @@ pub fn resolve_yaml_type(value: &str, schema: YamlSchema) -> YamlType<'_> {
     }
 }
 
+/// Whether a plain scalar's text resolves to anything other than a string, under
+/// *either* YAML schema the engine offers.
+///
+/// Cross-format bridges need this question, and they need it answered conservatively.
+/// A TOML or JSON object key is a string by that format's own grammar, but the shared
+/// AST has no marker for "this scalar is a string" except quoting — the same mechanism
+/// TOML string *values* already use. So a bridge that writes the key `"1"` as plain
+/// `1` produces a YAML document whose key is the integer 1, and `""` becomes a null
+/// key: the conversion would change what the document means, which is the one thing a
+/// multi-format AST must not do. Checking core *and* 1.1 keeps that answer the same
+/// whichever profile the reader picks — `yes` is a string under 1.2 and a bool under
+/// 1.1, so it has to be quoted too. Quoting a key that did not need it is harmless;
+/// leaving one that did unquoted is a type change.
+pub fn plain_text_is_typed(text: &str) -> bool {
+    !matches!(resolve_core_type(text), YamlType::Str(_))
+        || !matches!(resolve_yaml11_type(text), YamlType::Str(_))
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers (shared between core and json)
 // ---------------------------------------------------------------------------
@@ -321,6 +374,8 @@ fn is_hex(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use alloc::format;
+
     use super::*;
 
     // ---- failsafe ----
@@ -342,6 +397,157 @@ mod tests {
         assert_eq!(resolve_core_type(""), YamlType::Null);
         assert_eq!(resolve_core_type("null"), YamlType::Null);
         assert_eq!(resolve_core_type("~"), YamlType::Null);
+    }
+
+    // ---- cross-format key guard ----
+
+    /// The byte-only pre-check must never disagree with the chain it skips.
+    ///
+    /// Exhaustive over the cross product of every typed spelling and near-miss this
+    /// crate knows about with the separations that can hide one, rather than over a
+    /// handful of examples: the failure mode of a fast path is a single missed
+    /// interaction (a blank in front of `~`, an NBSP in front of digits), and both of
+    /// those are cases a sample-based test happily passes.
+    #[test]
+    fn fast_bail_agrees_with_the_full_chain() {
+        /// The domain includes NaN, and `NaN != NaN`, so a plain `==` on the resolved
+        /// type fails on the very inputs it is comparing - `.nan` disagrees with itself
+        /// before any fast path is involved. Same trap as the Python key-parity helper
+        /// and for the same reason: the value domain has a non-reflexive member.
+        fn agrees(a: &YamlType<'_>, b: &YamlType<'_>) -> bool {
+            match (a, b) {
+                (YamlType::Float(x), YamlType::Float(y)) => x == y || (x.is_nan() && y.is_nan()),
+                _ => a == b,
+            }
+        }
+
+        let stems = [
+            "",
+            "~",
+            "null",
+            "Null",
+            "NULL",
+            "true",
+            "True",
+            "TRUE",
+            "false",
+            "False",
+            "FALSE",
+            "y",
+            "Y",
+            "n",
+            "N",
+            "yes",
+            "Yes",
+            "YES",
+            "no",
+            "No",
+            "NO",
+            "on",
+            "On",
+            "ON",
+            "off",
+            "Off",
+            "OFF",
+            "inf",
+            "Inf",
+            "INF",
+            "-.inf",
+            ".nan",
+            "NaN",
+            "NAN",
+            "0o17",
+            "0O17",
+            "0x1F",
+            "0X1f",
+            "42",
+            "-7",
+            "+7",
+            "007",
+            "3.5",
+            ".5",
+            "-1.5",
+            "1e3",
+            "1E3",
+            "1.5e+3",
+            "1:30",
+            "a",
+            "host",
+            "_x",
+            "x1",
+            "1x",
+            "3.4.5",
+            "hello world",
+            "\u{a0}42",
+            "\u{a0}",
+            "~ ",
+            " #c",
+            "-",
+            "+",
+            ".",
+            "..",
+            "-.-",
+            "1_000",
+            "0b101",
+            "\u{5e7b}\u{5e7b}",
+        ];
+        let decorations = ["", " ", "\t", " \t ", "\r\n", "\0", " ", "  "];
+        let mut checked = 0usize;
+        for stem in stems {
+            for lead in decorations {
+                for trail in decorations {
+                    let text = format!("{lead}{stem}{trail}");
+                    checked += 1;
+                    assert!(
+                        agrees(&resolve_core_type(&text), &resolve_core_type_full(&text),),
+                        "core disagrees for {text:?}: {:?} vs {:?}",
+                        resolve_core_type(&text),
+                        resolve_core_type_full(&text),
+                    );
+                    // 1.1 runs its legacy words first, then delegates; the reference
+                    // here mirrors that order against the un-pre-checked chain, so the
+                    // only thing under test is the bail - not the profile's semantics.
+                    let legacy = match text.trim_matches(crate::is_yaml_blank) {
+                        "yes" | "Yes" | "YES" | "y" | "Y" | "on" | "On" | "ON" => Some(true),
+                        "no" | "No" | "NO" | "n" | "N" | "off" | "Off" | "OFF" => Some(false),
+                        _ => None,
+                    };
+                    let expected =
+                        legacy.map_or_else(|| resolve_core_type_full(&text), YamlType::Bool);
+                    assert!(
+                        agrees(&resolve_yaml11_type(&text), &expected),
+                        "1.1 disagrees for {text:?}"
+                    );
+                }
+            }
+        }
+        // The matrix has to stay big enough to be worth running: a refactor that
+        // shrinks `stems` silently shrinks the proof.
+        assert!(checked > 3000, "only {checked} combinations checked");
+    }
+
+    #[test]
+    fn plain_text_is_typed_covers_both_schemas() {
+        // Resolved under the 1.2 core profile, so a bridge must quote them as keys.
+        for text in [
+            "", "~", "null", "Null", "1", "-2", "3.5", "true", "0x1F", ".inf", "inf", "1.5e3",
+        ] {
+            assert!(plain_text_is_typed(text), "{text:?} resolves under core");
+        }
+        // Only YAML 1.1 types these, and the engine offers that profile, so they quote
+        // too - that is the point of checking both schemas rather than the default.
+        for text in ["yes", "no", "on", "off", "y", "n", "0755"] {
+            assert!(
+                plain_text_is_typed(text),
+                "{text:?} resolves under YAML 1.1"
+            );
+        }
+        for text in ["port", "host", "text", "a", "v1", "2024-01-01", "0.1.2"] {
+            assert!(
+                !plain_text_is_typed(text),
+                "{text:?} is a string under both"
+            );
+        }
     }
 
     #[test]

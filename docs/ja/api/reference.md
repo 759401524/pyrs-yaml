@@ -96,7 +96,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 YAML をパースしてネイティブ Python 型を返します。
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str) -> dict[Any, Any] | list[Any]
 ```
 
 **以下と同等:** PyYAML の `yaml.safe_load()`
@@ -112,7 +112,7 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 複数の YAML ドキュメントをパースします。
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **以下と同等:** PyYAML の `yaml.safe_loads()`
@@ -544,7 +544,7 @@ asyncio.run(main())
 Markdown ファイルから YAML Front Matterを抽出します。
 
 ```python
-read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 **戻り値:** `(frontmatter_dict, content_string)`。Front Matterがない場合、`frontmatter` は `None`。
@@ -554,7 +554,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 Markdown 文字列から YAML Front Matterを抽出します。
 
 ```python
-read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 ## :material-translate: i18n 関数 {#i18n-functions}
