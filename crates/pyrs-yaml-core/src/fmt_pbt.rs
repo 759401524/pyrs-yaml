@@ -72,7 +72,27 @@ fn toml_root_note_ok(node: &crate::ast::CustomNode) -> bool {
     )
 }
 
+/// Config for the dialect properties: a wider budget for the domain filters.
+///
+/// `json_object_domain` and `toml_root_note_ok` are carve-outs around shapes that have no
+/// faithful text in the target format (two distinct AST keys that spell one JSON name; a
+/// standalone note on both a TOML root and its first key). `prop_assume!` therefore
+/// *rejects* those samples, and proptest's default allowance — 1024 global rejects — was
+/// calibrated against 256 cases. Run at the elevated tier the properties were aborting on
+/// the budget after ~3400 real successes with zero assertion failures, i.e. the harness
+/// was reporting its own reject rate as if a writer had drifted. The fix is the budget, not
+/// the oracle: `PROPTEST_CASES` stays authoritative for how much is explored, and every
+/// non-rejected sample still has to settle byte-for-byte.
+fn dialect_config() -> ProptestConfig {
+    ProptestConfig {
+        max_global_rejects: 250_000,
+        ..Default::default()
+    }
+}
+
 proptest! {
+    #![proptest_config(dialect_config())]
+
     // -- no-panic: parsers on arbitrary (mostly invalid) input ---------------
     #[test]
     fn prop_dialect_parsers_never_panic(bytes in prop::collection::vec(any::<u8>(), 0..512)) {

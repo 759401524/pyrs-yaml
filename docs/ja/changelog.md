@@ -29,6 +29,17 @@ status: new
 
 #### 追加
 
+- **プロパティ階層に 20,000 ケースのブロッキングジョブを追加 (`ci.yml: property-tier`)** —
+  それまでのプロパティ実行はすべて proptest の既定である 256 ケースで動いていた。どのワークフローも
+  `PROPTEST_CASES` を設定していなかったためで、`scripts/quality_matrix.py` はそれを計測し、防衛策の
+  最後の盲点として登録していた。「20,000 ケースで失敗する」とされていた 3 つの書き手固定点性質のうち
+  2 つは、一度も失敗していなかった。そのケース数では proptest の既定である大域拒否 1024 件の許可を
+  使い切り、`Test aborted: Too many global rejects` で終わる — 許可を 1024 に戻すと 3 つとも
+  `fmt_pbt.rs:93` で死ぬ、というのが計測結果。方言性質の許可は現在 250,000 で、3 つ目の失敗は本物の
+  欠陥だった（Fixed を参照）。費用は実測: このツリーで
+  `PROPTEST_CASES=20000 cargo test --workspace --locked` は core の 305 テストを 63 秒で走破し 0 で終わる。
+  受け入れ条件: `.ci/quality-holes.json` から `property-tier:default-case-count` を消して台帳を空にすること。
+  `tests/test_quality_matrix.py` はこれを逆方向からも強制する。
 - **hygiene フックが CI で走るようになり、改行方針に強制できる形を与えた** — `Hygiene`
   workflow を増やし、pull request ごと・`main` への push ごと・毎週、ツリー全体に
   `prek run --all-files` を実行する。同梱で使っている `jj` は Git フックを一切実行しないので、
@@ -173,6 +184,15 @@ status: new
 
 #### 修正
 
+- **TOML 複数行インラインテーブルで、最後以外メンバーに付いた注釈を読み手が報告する位置へ** —
+  書き手はそれを区切りカンマの後 (`b = 1, # n`) に置いていた。`#` は行末まで続くため TOML は注釈の中に
+  カンマを収められず、読み手はその注釈を*次の*キーの行頭注釈として格納し直す。つまり 2 回目の出力は注釈を
+  動かし、テキストは固定しなかった。この形は正しい TOML テキストから到達不能で — だから生成器にしか
+  発見できなかった — ソースが作れない AST を書き手に渡す変換路で現れる。注釈はメンバーの後の独立した
+  行 (`b = 1,` / `# n`) に出す。まさに parser が報告する位置だ。帰属: 規則を取り除くと
+  `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line`（0.45 秒の階層）と
+  `fmt_pbt::prop_toml_writer_is_fixed_point`（20,000 ケース）だけが赤くなり、他は動かない。256 ケースで
+  永続化された shrink 事例を外すと全スイートが緑になる — この高い階層こそが穴を塞ぐ。
 - **key の下の空 container は 2 回の dump を必要としなくなった** — `#287` で両方の writer が
   dash 行に `{}` と `[]` を inline するようになったが、Python オブジェクトから *mapping value* を
   出す経路には同じ判断がまだ欠けていた: `safe_dump({"a": {}})` は `"a:\n  {}\n"` を、AST writer は

@@ -254,10 +254,29 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                     let trail = v
                         .comment()
                         .filter(|c| !c.standalone)
-                        .map(|c| format!(" # {}", c.text.trim()))
-                        .unwrap_or_default();
-                    let sep = if idx + 1 < count { "," } else { "" };
-                    out.push_str(&format!("  {key_str} = {val}{sep}{trail}\n"));
+                        .map(|c| c.text.trim().to_string());
+                    let last = idx + 1 == count;
+                    // A `#` runs to end of line, so the only member line a note can
+                    // legitimately finish is the document's last one: `a = 1 # n,` is not
+                    // TOML at all (measured: the reader rejects it), and writing the note
+                    // *after* the comma - which is what this branch used to do - hands it to
+                    // the next key on re-read, so the next emission moved it and the text
+                    // never settled (proptest `prop_toml_writer_is_fixed_point`, 20 000
+                    // cases). Anywhere but last, the note gets its own line after the
+                    // member, which is the position the reader reports it from.
+                    match trail {
+                        Some(text) if last => {
+                            out.push_str(&format!("  {key_str} = {val} # {text}\n"));
+                        }
+                        Some(text) => {
+                            out.push_str(&format!("  {key_str} = {val},\n"));
+                            out.push_str(&format!("  # {text}\n"));
+                        }
+                        None => {
+                            let sep = if last { "" } else { "," };
+                            out.push_str(&format!("  {key_str} = {val}{sep}\n"));
+                        }
+                    }
                 }
                 out.push('}');
                 Ok(out)
@@ -424,6 +443,7 @@ fn _unused_parse_error(e: ParseError) -> String {
 mod tests {
     use super::*;
     use crate::from_toml;
+    use pyrs_ast::ast::{Comment, NodeMap};
 
     // The YAML-source round-trip (`parse -> to_toml -> from_toml`) needs the
     // YAML parser and lives in `pyrs-yaml-core` `src/integration/toml_family.rs`.
@@ -643,6 +663,62 @@ mod tests {
         assert!(out.contains("# lead b"), "leading b lost: {out}");
         let twice = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, twice, "not idempotent: {out} vs {twice}");
+    }
+
+    #[test]
+    fn a_note_between_two_inline_members_keeps_its_own_line() {
+        // What this pins is the *promotion* path (#119): a decorated top-level inline table
+        // becomes a `[a]` section, and a note line that sits between two members keeps its own
+        // line across that move. It is not the guard for the placement rule below - its input
+        // parses the note as the *following* key's leading comment, so the trailing-note branch
+        // never runs here, and withdrawing that rule leaves this test green. Measured, not
+        // assumed: the attribution run said so.
+        let src = "a = {\n  b = 1,\n  # n\n  c = 2\n}\n";
+        let ast = from_toml(src).unwrap();
+        let out = to_toml(&ast).unwrap();
+        assert_eq!(
+            out, "[a]\nb = 1\n# n\nc = 2\n",
+            "note moved off its own line: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line() {
+        // The guard for the placement rule, and it has to build the AST rather than parse text:
+        // no valid TOML produces this shape, because `#` runs to end of line and the comma that
+        // TOML demands between members cannot sit inside a comment. So the only node carrying a
+        // same-line note with a later member after it is one a conversion path (YAML -> hub ->
+        // TOML) or a generator hands over - which is how `prop_toml_writer_is_fixed_point` found
+        // it at 20 000 cases and could not find it at 256.
+        //
+        // Emitting it as `b = 1, # n` reads back as `c`'s leading note, so the second emission
+        // moves the comment and the text never settles. Writing the note on its own line puts it
+        // exactly where the reader reports it from, which makes the first emission the fixed
+        // point - measured: `# n` comes back as `Comment { text: "n", standalone: true }` on the
+        // following key.
+        let mut b = CustomNode::plain_scalar("1");
+        b.set_comment(Comment {
+            text: "n".into(),
+            standalone: false,
+        });
+        let inner = CustomNode::plain_mapping(NodeMap::from([
+            (CustomNode::plain_scalar("b"), b),
+            (CustomNode::plain_scalar("c"), CustomNode::plain_scalar("2")),
+        ]));
+        let root = CustomNode::plain_mapping(NodeMap::from([(
+            CustomNode::plain_scalar("t"),
+            CustomNode::plain_sequence(vec![inner]),
+        )]));
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "t = [{\n  b = 1,\n  # n\n  c = 2\n}]\n",
+            "the note did not get its own line: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
     }
 
     #[test]

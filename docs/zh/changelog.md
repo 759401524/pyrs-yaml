@@ -27,6 +27,15 @@ status: new
 
 #### 新增
 
+- **属性档新增 20,000 用例的阻塞作业（`ci.yml: property-tier`）** —
+  此前所有属性测试都跑在 proptest 默认的 256 用例上，因为没有任何 workflow 设置
+  `PROPTEST_CASES`；`scripts/quality_matrix.py` 把这一点测了出来，并登记为防线台账里最后的盲区。
+  号称"在 20,000 用例失败"的三个 writer 不动点性质里，有两个从未真正失败：在该用例数下它们耗尽了
+  proptest 默认的 1024 次全局拒绝预算，以 `Test aborted: Too many global rejects` 中止——把预算调回
+  1024 后三个性质都死在 `fmt_pbt.rs:93`，这是实测。方言性质的预算现为 250,000，第三个失败才是真实缺陷
+  （见 Fixed）。成本实测：在本树上 `PROPTEST_CASES=20000 cargo test --workspace --locked` 用 63 秒跑完
+  core 的 305 个测试并以 0 退出。完成判据：把 `property-tier:default-case-count` 从
+  `.ci/quality-holes.json` 删除、让台账为空——`tests/test_quality_matrix.py` 同时从反方向强制这一点。
 - **卫生类钩子从此在 CI 里跑,行尾策略也有了能强制的形式** —— 新增 `Hygiene` 工作流,在每个
   pull request、每次推送到 `main`、以及每周,都对整棵树跑 `prek run --all-files`。它存在的原因是
   同仓使用的 `jj` 从不执行 Git 钩子,于是 `prek.toml` 里的十七个钩子只是本地自觉;十五个被跟踪
@@ -146,6 +155,14 @@ status: new
 
 #### 修复
 
+- **TOML 多行内联表中非末位成员的注释，写到读取器报告它的位置** — writer 原先把它放在分隔逗号之后
+  （`b = 1, # n`）。`#` 一直到行尾，TOML 无法把逗号留在注释里，于是读取器把那条评论改记为*下一个*键的
+  行首注释；第二次输出就会移动它，文本因此永不落定。这一形状无法由合法 TOML 文本产生（所以只有生成器能
+  发现它），只会经由转换路径出现——那些路径交给 writer 一个源码无法表达的 AST。现在注释输出在成员之后的
+  独立一行（`b = 1,` / `# n`），正是解析器报告它的地方。归因：撤回该规则恰好让
+  `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line`（0.45 秒档）与
+  20,000 用例下的 `fmt_pbt::prop_toml_writer_is_fixed_point` 变红，其余不动；而在 256 用例并移除已
+  持久化的 shrink 用例后整套测试全绿——是这个高档位堵住了这个洞。
 - **键下面的空容器也不再需要 dump 两次** —— `#287` 让两个写手都把 `{}` 与 `[]` 内联到 dash
   行，但从 Python 对象发射*映射值*的那条路径仍然缺这同一个判断：`safe_dump({"a": {}})` 产出
   `"a:\n  {}\n"`，而 AST 写手产出 `"a: {}\n"`。两种文本都能读回同一份数据，这就是往返测试

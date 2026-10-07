@@ -8,14 +8,9 @@
     "an obsolete entry reads as an open one.",
     "Fields: id = '<kind>:<name>' exactly as measured; opened = date the measurement found",
     "it; exit = the concrete, checkable state that removes it; why = one line of context.",
-    "QUALITY_MATRIX.md must list every id in this file and no others."
+    "QUALITY_MATRIX.md must list every id in this file and no others.",
+    "An empty list is a measured state, not an aspiration: the same gate that fails on an",
+    "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
-  "holes": [
-    {
-      "id": "property-tier:default-case-count",
-      "opened": "2026-10-07",
-      "why": "No workflow sets PROPTEST_CASES, so every CI run uses proptest's default 256 cases. Three fmt_pbt writer properties (JSON, JSON5, TOML) are known to fail at 20,000 cases and are invisible at 256, which is why the case count cannot simply be raised: raising it would redden every PR until those three close.",
-      "exit": "A blocking CI job runs the property tier at an agreed elevated case count, which requires prop_json_writers_are_fixed_points, prop_json5_writer_is_fixed_point and prop_toml_writer_is_fixed_point to hold there first."
-    }
-  ]
+  "holes": []
 }
