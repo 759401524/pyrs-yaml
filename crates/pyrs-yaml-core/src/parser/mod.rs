@@ -2299,18 +2299,19 @@ mod tests {
         assert_eq!(one, "a: b  # vv\n", "the value's own note wins");
     }
 
-    /// A note granit reports in a *container's* inline slot has to be written on a line
-    /// the reader reports inline notes from. With one note the pair line's trailing slot
-    /// serves: `:<TAB>!-<CR>... #-o` → `~: !-   # -o`, which re-reads with the note on the
-    /// key and settles in one round (libFuzzer `yaml_roundtrip` crash-11ced252).
+    /// A note granit reports in a *container's* inline slot has to be written where the
+    /// reader will report it back to the same node. When the pair ends on a pending tag-only
+    /// line (`… !- `), that line is not such a place: `:\t!-<CR>... #-o` used to emit
+    /// `~: !-   # -o`, which was text-stable but re-read with the note on the **key** — the
+    /// container had lost it, quietly, one slot at a time. The note line above the pair
+    /// settles in one round *and* leaves the note on the mapping, so ownership survives the
+    /// round trip; `a_note_above_a_pending_tag_line_keeps_its_owner` in `serializer.rs`
+    /// covers the crash input that found this (`crash-7eb273bc`, 24 bytes minimised to 13).
     ///
-    /// Asserting the inline form is a deliberate guard, because this shape has been
-    /// re-routed twice in pursuit of a rule that was too narrow: moving the note into the
-    /// value's leading slot also settles, but reassigns the note's owner for no gain, and
-    /// closing the tag line (`!- ~`) plus a note line oscillates — owner preservation and
-    /// a one-round fixed point are mutually exclusive here. What the two-note documents
-    /// genuinely need is `close_pending_tag_line` in the writer; that case is covered by
-    /// `crash-cf49fe85`'s test in `serializer.rs`, which pins every tag spelling.
+    /// Both properties are asserted below because each has been traded for the other at
+    /// some point in this family's history: writing the note below the block settles and
+    /// re-parents it to the value (crash-11ced252), and closing the tag line plus a note
+    /// line oscillates outright (crash-cf49fe85's neighbour).
     #[test]
     fn a_containers_inline_note_after_a_text_less_value_settles_at_once() {
         let src = ":\t!-\r... #-o\n";
@@ -2337,18 +2338,43 @@ mod tests {
 
         let one = crate::serializer::to_yaml(&node);
         assert_eq!(
-            one, "~: !-   # -o\n",
-            "the container's note rides the pair line, whose slot is free here"
+            one, "# -o\n~: !- \n",
+            "the note goes above the pair: on the pending tag line it would re-read as the value's"
         );
         assert_eq!(
             one.matches('#').count(),
             1,
             "the note is moved, not duplicated: {one:?}"
         );
-        let two = crate::serializer::to_yaml(
-            &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
+        let again = parse(&one, YamlSchema::Core).expect("emitted document re-parses");
+        let CustomNode::Mapping { pairs, .. } = &again else {
+            panic!("expected a mapping, got {again:?}");
+        };
+        assert!(
+            again
+                .leading_comments()
+                .iter()
+                .any(|c| c.text.as_ref() == "-o"),
+            "the container still owns the note after one round: {again:?}"
         );
-        assert_eq!(two, one, "one emission has to reach the fixed point");
+        let (again_key, again_value) = pairs.iter().next().expect("the pair survives a round");
+        assert!(
+            again_key.comment().is_none(),
+            "the note must not land on the key, which is what the old inline spelling did: {again:?}"
+        );
+        assert!(
+            again_value.comment().is_none()
+                && !again_value
+                    .leading_comments()
+                    .iter()
+                    .any(|c| c.text.as_ref() == "-o"),
+            "nor on the value, which is what a note below the block did (crash-11ced252): {again:?}"
+        );
+        assert_eq!(
+            crate::serializer::to_yaml(&again),
+            one,
+            "one emission has to reach the fixed point"
+        );
     }
 
     /// The other half of the same rule: a note may only borrow a line that can host

@@ -169,6 +169,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A container's note no longer borrows a pending tag-only line** — closing that line
+  (`k: ! ~`) before a note *line* follows has been the rule since the previous releases; the
+  hole left was a container's own inline note, which the writer appended to the line its block
+  ended on. For `:\t!-<CR>... #-o` that produced `~: !-   # -o`: text-stable, but it re-read
+  with the note owned by the **key**, so the container had silently lost it. The note now leads
+  its pair — `# -o` then `~: !- ` — which is a fixed point on the first emission *and* keeps
+  the note on the node the parser put it on, the properties that had been traded against each
+  other. Measured on `crash-7eb273bc` (24 bytes) and `crash-9733643a` (27), each minimised to
+  13, where the old spelling needed a second round and moved the note onto the value. Two
+  existing pins change shape with it (`crash-11ced252`'s unquoted key, `crash-22cb5f67`'s
+  quoted one), and each now also asserts that the mapping still owns the note after the round.
+  Emitted text changes for those shapes; no document stops parsing, and the seed corpus
+  assertion for one-round settlement covers all 69 `yaml_roundtrip` seeds.
 - **An empty container as a sequence item stops needing two dumps** — `{}` and `[]` have no
   block spelling, yet both writers put one on a line of its own below the `- `, where it
   re-read as a *flow* node and the next dump inlined it: `safe_dump([{}])` produced

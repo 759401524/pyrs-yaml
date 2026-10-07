@@ -144,6 +144,12 @@ struct Serializer {
     /// text at this offset before such a line is written, which keeps both the owner and
     /// the one-round fixed point. `None` unless the last-written scalar was tag-only.
     pending_tag_insert_at: Option<usize>,
+    /// Offset of the first line of the pair or item being written right now.
+    ///
+    /// A container's own note sometimes has to go above the block rather than on its last
+    /// line (see `note_line_above_last_pair`), and "above" means the start of the entry
+    /// that ended the block — which only the writer of that entry knows.
+    pair_line_start: usize,
 }
 
 /// Chomping actually written for a block scalar. A Clip-chomped value whose
@@ -334,6 +340,7 @@ impl Serializer {
             width: options.width,
             trailing_note_slot_open: false,
             pending_tag_insert_at: None,
+            pair_line_start: 0,
         }
     }
 
@@ -526,6 +533,39 @@ impl Serializer {
             *pending += text.len();
         }
         self.output.insert_str(at, text);
+    }
+
+    /// True while the line just finished is the pending tag-only line: its scalar text was
+    /// never written, so anything appended after it belongs to that value on re-read.
+    fn pending_line_is_last(&self) -> bool {
+        let Some(at) = self.pending_tag_insert_at else {
+            return false;
+        };
+        self.output[at..].matches('\n').count() <= 1
+    }
+
+    /// Write a container's own note as a line above the entry that ended its block.
+    ///
+    /// Reached when the last line of that block is a pending tag-only line (`… ! `). A
+    /// comment appended there is read back as that value's leading note, so the container
+    /// loses it and the text needs a second round; a note line *below* the block is read
+    /// back as the leading note of the node that ended the block (crash-11ced252), and
+    /// closing the pending line first then hands the note back to the value as its inline
+    /// comment, which the next emission drags onto the line again — that oscillation is
+    /// what #280 recorded. Measured against those three, above the pair is the only
+    /// placement that is both a fixed point on the first emission and keeps the note on
+    /// the node that owns it: `: !` CR `#U` CR `... #-` settles as
+    /// `# -` / `~:` / `  # U` / `  ! `, where the note stays the root mapping's own.
+    fn note_line_above_last_pair(&mut self, text: &str) {
+        let at = self.pair_line_start.min(self.output.len());
+        let indent: String = self.output[at..]
+            .chars()
+            .take_while(|c| *c == ' ')
+            .collect();
+        // Through `insert_note_at`, because the inserted bytes precede the pending marker:
+        // an untracked insert would leave that offset pointing into the new note line, and
+        // the next closure would then measure from the wrong place (crash-5561902a's defect).
+        self.insert_note_at(at, &format!("{indent}# {text}\n"));
     }
 
     /// Write a note as a line of its own. This is the single place that knows a note line
@@ -936,28 +976,26 @@ impl Serializer {
             if let Some(c) = &meta.comment
                 && !c.standalone
             {
-                // A note in a container's *inline* slot has to land on a line the
-                // reader reports inline notes from. Writing it as a line of its own
-                // does not: a bare note below a block re-reads as the leading note of
-                // the node that ended the block, so the first emission was never a
-                // fixed point - `:\t!-<CR>... #-o` gave `~: !- \n# -o\n`, and the
-                // re-read moved that note inside the value block as
-                // `~:\n  # -o\n  !- \n` (libFuzzer `yaml_roundtrip` crash-11ced252).
-                // Append it to the line just finished whenever that line can hold a
-                // trailing note; fall back to a note line when it cannot, because a
-                // note that is merely mis-indented still beats one that corrupts a
-                // block scalar's body or duplicates a line's trailing slot.
-                //
-                // A pending tag-only line is closed first so the value is no longer
-                // unfinished, and the note then rides that line: `~: !- ~  # -o`. Keeping
-                // the container's ownership instead (closing and writing a note line,
-                // `~: !- ~\n# -o`) was tried and measured: it re-reads with the note on the
-                // value, so the next emission goes inline and the text oscillates — owner
-                // preservation and a one-round fixed point are mutually exclusive for this
-                // shape, and the round-trip contract needs the fixed point. Where the note
-                // belongs to a *following* node, `write_note_line` closes the line and the
-                // note keeps its owner and settles (crash-c5b367d3).
-                if self.trailing_note_slot_open
+                // A note in a container's *inline* slot has to land on a line the reader
+                // reports inline notes from, and for most shapes that is the line the block
+                // just finished: `p: !  # own` keeps the note on the pair line and settles in
+                // one round. It cannot be that line when the line is a pending tag-only line
+                // (`… ! `), because a comment written there is re-read as that value's
+                // leading note — the container loses the note and the document needs a second
+                // round. Neither of the two nearby alternatives holds for that case: a bare
+                // note line *below* the block is read back as the leading note of the node
+                // that ended the block (crash-11ced252), and closing the pending line first
+                // hands the note to the value as its inline comment, which the next emission
+                // drags back onto the line (`… ! ~` + note line → `… ! ~  # -o`) — the
+                // oscillation #280 recorded and settled for by preferring the fixed point.
+                // `note_line_above_last_pair` is the placement that keeps both: it puts the
+                // note above the entry that ended the block, where it re-reads as that
+                // container's own leading note. A note line is still the fallback whenever the
+                // tail line cannot host one for other reasons (a block-scalar body, a wrapped
+                // continuation, or a slot already used).
+                if self.pending_line_is_last() {
+                    self.note_line_above_last_pair(&c.text);
+                } else if self.trailing_note_slot_open
                     && self.output.ends_with('\n')
                     && !self.tail_line_has_note()
                 {
@@ -1054,6 +1092,7 @@ impl Serializer {
         indent_width: usize,
         depth: usize,
     ) -> Result<(), SerializeError> {
+        self.pair_line_start = self.output.len();
         // Check if key is a complex key (mapping or sequence)
         let is_complex_key = matches!(
             key,
@@ -1259,6 +1298,7 @@ impl Serializer {
         // Measured once: `is_compact_item` walks every pair, and this is a hot path, so the
         // branch below reuses one answer rather than asking twice.
         let compact = is_compact_item(item);
+        self.pair_line_start = self.output.len();
         // `has_notes` first, as every writer here does: it is two discriminant tests and
         // never dereferences the boxed `NodeDecor`, while `leading_comments` builds the
         // normalised view — and a note-free item is the common case.
@@ -3002,19 +3042,20 @@ mod tests {
     /// libFuzzer `yaml_roundtrip` crash-22cb5f67 (15 bytes): a `#` that is only *text*
     /// inside a quoted key used to refuse the note slot, stranding the document's own
     /// inline note on a line the reader hands to the next node, so the emission needed two
-    /// rounds. The pair line's slot is the right home here — `"+#": !-   # -o` re-reads
-    /// with the note on the key and settles at once — and the assertion is pinned exactly
-    /// because a routed variant ("move the note under the value") also settles while
-    /// quietly changing its owner; see `a_containers_inline_note_after_a_text_less_value_
-    /// settles_at_once` in `parser/mod.rs` for the same guard on the unquoted key.
+    /// rounds. The document's note now goes above the pair — `# -o` then `"+#": !- ` —
+    /// which settles in one round and leaves the note on the container. The earlier spelling
+    /// `"+#": !-   # -o` also settled, but re-read with the note on the key, so the
+    /// container had silently lost it; see
+    /// `a_containers_inline_note_after_a_text_less_value_settles_at_once` in `parser/mod.rs`
+    /// for the ownership assertion on the unquoted key.
     #[test]
     fn a_quoted_hash_key_settles_the_containers_note_at_once() {
         let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-22cb5f67.seed");
         let src = std::str::from_utf8(raw).expect("seed is utf-8");
         let one = to_yaml(&parse_core(src));
         assert_eq!(
-            one, "\"+#\": !-   # -o\n",
-            "the container's note rides the pair line, which the quoted `#` must not refuse"
+            one, "# -o\n\"+#\": !- \n",
+            "the container's note leads the pair, and the quoted `#` must not refuse it"
         );
         assert_eq!(
             one.matches('#').count(),
@@ -3026,6 +3067,64 @@ mod tests {
             one,
             "one emission is enough to reach the fixed point"
         );
+    }
+
+    /// libFuzzer `yaml_roundtrip` crash-7eb273bc (24 bytes) and crash-9733643a (27 bytes),
+    /// each minimised to 13. A root mapping owns a note in its inline slot while its only
+    /// value is a tag-only scalar that has a leading note of its own; the container's note
+    /// used to be appended to that pending tag line, where the reader hands it to the value,
+    /// so the second emission moved it. Asserted on both properties, because the earlier
+    /// single-line spelling traded one for the other: it settles, but the key ends up
+    /// owning a note the container was given.
+    #[test]
+    fn a_note_above_a_pending_tag_line_keeps_its_owner() {
+        for (name, raw) in [
+            (
+                "7eb273bc",
+                include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-7eb273bc.seed"),
+            ),
+            (
+                "9733643a",
+                include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-9733643a.seed"),
+            ),
+        ] {
+            let src = std::str::from_utf8(raw).expect("seed is utf-8");
+            let tree = parse_core(src);
+            let CustomNode::Mapping { meta, .. } = &tree else {
+                panic!("{name}: {src:?} is not a mapping");
+            };
+            let note = meta
+                .comment
+                .as_ref()
+                .filter(|c| !c.standalone)
+                .expect("the container owns the note inline at the start")
+                .text
+                .clone();
+            let one = to_yaml(&tree);
+            assert!(
+                one.starts_with("# "),
+                "{name}: the container's note leads its pair instead of riding the tag line: {one:?}"
+            );
+            let again = parse_core(&one);
+            let CustomNode::Mapping { pairs, .. } = &again else {
+                panic!("{name}: {one:?} is not a mapping");
+            };
+            assert!(
+                again.leading_comments().iter().any(|c| c.text == note),
+                "{name}: the container no longer owns {note:?} after one round: {one:?}"
+            );
+            for (k, v) in pairs.iter() {
+                assert!(
+                    k.comment().is_none() && v.comment().is_none(),
+                    "{name}: a node other than the container claimed {note:?}: {one:?}"
+                );
+            }
+            assert_eq!(
+                to_yaml(&again),
+                one,
+                "{name}: not a fixed point in one round: {one:?}"
+            );
+        }
     }
 
     /// An empty block container has no block spelling — `{}` and `[]` re-read as *flow*
