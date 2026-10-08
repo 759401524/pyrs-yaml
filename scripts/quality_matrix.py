@@ -159,9 +159,10 @@ def check_scripts() -> list[str]:
 def ir_harness_owners() -> list[str]:
     """Crates declaring an `ir_gate` bench target: the channels the gate can measure.
 
-    Two since the binding layer was closed - `pyrs-yaml-core` (parse, serialize, JSON/TOML writers)
-    and `pyrs-yaml` (AST-to-Python). Derived from the manifests rather than hardcoded, so adding a
-    third crate adds scenarios to the comparison without editing this file.
+    Two since the binding layer was closed - `pyrs-yaml-core` (parse, serialize, the JSON and TOML
+    bridges in both directions) and `pyrs-yaml` (AST-to-Python). Derived from the manifests rather
+    than hardcoded, so adding a third crate adds scenarios to the comparison without editing this
+    file.
     """
     return sorted(
         manifest.parent.name
@@ -200,6 +201,34 @@ def ir_harness_channels() -> dict:
 
 def ir_scenarios_in_baseline() -> list[str]:
     return sorted(json.loads(read(REPO / ".ci" / "ir-baseline.json"))["scenarios"])
+
+
+# Formats the hub AST is written *as* and read *back from*. `python` is deliberately absent:
+# `to_python_*` is the language binding, not a text format, and it has no reader twin - the
+# conversion runs once, in one direction, from bytes the YAML scenarios already measure.
+CROSS_FORMAT_WRITERS = ("json", "jsonc", "json5", "toml", "yaml")
+
+
+def ir_bridge_pairs(channels: dict) -> list[str]:
+    """Cross-format scenarios that are measured in one direction only.
+
+    `to_<format>_<size>` and `from_<format>_<size>` are the two halves of one bridge, and the
+    halves cost different things: the writer decides how to *emit* a key, the reader decides what
+    the key *means*. #292 adds per-key work to the reading half (`load_toml` has to quote a key
+    that either YAML schema would re-type, or the conversion changes what the document says) and
+    the gate had a number for the writing half only, so the cost of that decision was unmeasurable
+    - which is how a change can be adjudicated on the wrong channel and closed.
+    """
+    names = {name for values in channels.values() for name in values}
+    unpaired = []
+    for name in sorted(names):
+        parts = name.split("_")
+        if len(parts) < 3 or parts[0] not in ("to", "from") or parts[1] not in CROSS_FORMAT_WRITERS:
+            continue
+        twin = "_".join(("from" if parts[0] == "to" else "to", *parts[1:]))
+        if twin not in names:
+            unpaired.append(name)
+    return unpaired
 
 
 def property_functions() -> list[str]:
@@ -355,6 +384,19 @@ def measure() -> dict:
         holes.append(["ir-unbaselined", scenario, "a measured scenario has no committed baseline number"])
     for scenario in sorted(set(baseline_scenarios) - set(bench_scenarios)):
         holes.append(["ir-stale-baseline", scenario, "the baseline carries a scenario the bench no longer defines"])
+
+    # A bridge measured in one direction is a hole in the instrument rather than in the code, so it
+    # is reported here instead of being asserted: the fix is a scenario, and until someone adds the
+    # twin the gate should keep saying which half it cannot see.
+    for scenario in ir_bridge_pairs(channels):
+        holes.append(
+            [
+                "ir-bridge-unidirectional",
+                scenario,
+                "one half of a cross-format bridge has a scenario and the other does not, so per-key "
+                "work on the missing half changes nothing the gate can observe",
+            ]
+        )
 
     # The harness set is measured in both directions, because each half has already been wrong once.
     # A declared target whose file is missing leaves the gate silently shorter; a file whose crate

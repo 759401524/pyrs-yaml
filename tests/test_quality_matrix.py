@@ -218,6 +218,39 @@ def test_ir_scenario_probe_reads_every_harness(matrix, measured):
     assert "to_python_small" in measured["ir_scenarios_bench"], measured["ir_scenarios_bench"]
 
 
+def test_the_gate_measures_both_halves_of_every_bridge(matrix, measured):
+    """A writer without its reader is a half-measured path, and #292's cost sat in the missing half.
+
+    `to_toml_medium` numbers the outbound bridge only. The inbound bridge is where a key's meaning is
+    decided - `load_toml` has to quote a key that either YAML schema would re-type - so per-key work
+    added there moved nothing the gate could observe, and the change was adjudicated on wall-clock
+    CodSpeed instead. The rule is the pair, not the name: a future `to_yaml_*` earns a `from_yaml_*`.
+    """
+    channels = matrix.ir_harness_channels()
+    assert matrix.ir_bridge_pairs(channels) == [], channels
+    bench = set(measured["ir_scenarios_bench"])
+    assert {"to_json_medium", "from_json_medium", "to_toml_medium", "from_toml_medium"} <= bench, bench
+    # `to_python_*` is the language binding, not a text format, and has no reader twin; a probe that
+    # invented a `from_python_*` requirement would open its first hole on itself.
+    assert "to_python_medium" in bench and "from_python_medium" not in bench, bench
+
+
+def test_a_bridge_measured_one_way_is_a_hole(matrix, monkeypatch):
+    """Both directions bite, or the rule is a comment about the names rather than a measurement."""
+    real = matrix.ir_harness_channels()
+
+    def thin(drop: str) -> dict:
+        return {crate: [name for name in names if name != drop] for crate, names in real.items()}
+
+    monkeypatch.setattr(matrix, "ir_harness_channels", lambda: thin("from_toml_medium"))
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("ir-bridge-unidirectional", "to_toml_medium") in holes, sorted(holes)
+
+    monkeypatch.setattr(matrix, "ir_harness_channels", lambda: thin("to_json_medium"))
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("ir-bridge-unidirectional", "from_json_medium") in holes, sorted(holes)
+
+
 def test_a_harness_the_gate_cannot_build_is_a_hole(matrix, monkeypatch):
     """The harness set is measured in both directions, and each direction has to bite.
 
