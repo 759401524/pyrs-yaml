@@ -1,7 +1,5 @@
 ---
-title: 変更履歴
-description: pyrs-yaml プロジェクトのすべての注目すべき変更を文書化します。
-tags:
+title: 変更履歴 description: pyrs-yaml プロジェクトのすべての注目すべき変更を文書化します。 tags:
   - docs
 status: new
 ---
@@ -17,130 +15,153 @@ status: new
 
 #### 追加
 
+- **台帳と changelog を組み直し、本文の幅を規則にした** — `ROADMAP.md` に 21,850 文字の行が、
+  `docs/ja/changelog.md` に 884 文字の行があった。Markdown もレンダラも物理的な行長を気にしないの
+  で、代価は読む者にだけ払わせていた。`scripts/check_doc_wrapping.py` は 100 **表示桁**（全角は 2
+  桁）を測り、指摘のあった段落をまとめて組み直す — 行を接ぐのは空白だけを変えることで、1 行ずつ折る
+  と語が孤行になった。兄弟の箇条書きは決して合わせない。検査と整形器を分けて書くと必ずズレ、フックが
+  自分が書いたものを拒否する。フェンス・表・見出し・front matter は触らず、箇条書きの続きは印を足す
+  のでなく字下げし、引用は各行 `>` を保ち、code span とリンク先は分割しない。韓国語は空白でのみ改行
+  する（初版は一語を切った）。幅を超えた 1,299 行がゼロになり、他の文字は一つも動いていない。三つの
+  規則は、この道具が自分を作る途中で作った損壊から得た: `#283` の前で折った行を `rumdl fmt` が見出し
+  に昇格させた（`(au)` が記録したゲートが検知した）、二つの ABI 名をつなぐ字面の `+` の前で折って
+  `docs/ko` に誰も書かなかった箇条書き項目が増え、段落の下にダッシュだけの行が残ったとき `rumdl fmt`
+  は段落全体を 126 桁の見出しに書き換えた。ここで作った「幅が限界の見出し」規則は実測で即座に反証さ
+  れた — 正当な `### (xx)` 導きの 12 個が 100 桁を超える — のでゲートは形を名指しした。帰属も測って
+  以前の判断を覆した: `rumdl fmt` はこの倉庫の Markdown 整形器の座に留まる（外せば 6 行が
+  `MD007`/`MD012` に掛かる）が、本文の組み直しはしない — 587 文字の英語行も 319 桁の韓国語行もそのま
+  ま通り、`line-length` はリンタの設定にすぎず `MD013` は無効化されている。だから幅は誰のものでもな
+  く、言語を問わずここで引き受けた。それでも四行は限界を超えたまま報告しない — 行頭が 101〜127 桁の
+  code span（`cargo build --target thumbv7em-none-eabi …`）で、合法な断点はいずれも予算を超え、span
+  を割ればその中の命令を壊す。だから免除は例外リストではなく修正側の能力そのもの。`ROADMAP.md` に骨
+  格もできた — `**(xx)` 導き 33 個が `### (xx)` 見出しになり、`(w)` 以降は注釈配置の話の節から離れ、
+  浮いていた二つの階層を組み直し、21,850 文字の段落は十の族に分けた一覧になった（3,479 語 → 726 語
+  で、クラッシュ番号・機構・seed はすべて残す）。規約は `DOCS_STANDARDS.md` §10、フックは
+  `doc-line-width` と `doc-heading-integrity`、上の不変量は二つのゲートファイルの 30 個のテスト関数
+  が一つずつ撃つ。
 - **命令数ゲートが書式をまたぐ橋の両側を測るようになった** — `from_json_medium` と
-  `from_toml_medium` を追加し、共有 AST を JSON と TOML のテキストから読み戻す。これまでゲートが
-  番号を振っていたのは書き出す側だけで、キーの意味が決まるのは読み戻す側だ — TOML/JSON のキーはその文法上
-  文字列であり、共有 AST が「これは文字列で、解決しない」を示す唯一の方法は引用符なので、#292 がそこで加えた
-  キーごとの仕事は、ゲートが咎められるどの数値にも動かなかった。読み込むのはコミットされたバイトだ —
-  書き出し側が `MEDIUM_YAML` について作る出力を `tests/ir_fixtures.rs` が固定する — だから読み取り側が
-  書き出し側の表記に気づかれずに引きずられることはない。途中で測ったことも、自分の説明を覆した部分も含めて
-  記録する: setup で入力をレンダリングすると、engine のコードを一も行変えていないのに `to_json_medium` が
-  +1.52%、`to_toml_medium` が +0.26% 動いた — ゲート許容差の三倍で、追加とは無関係なシナリオだ。増えた
-  呼び出し箇所が原因とされたが、バイトをコミットしてその呼び出しを消しても `to_json_medium` は +1.489%
-  動いた。機構は未解決のまま残し、性質は確定として書く — ハーネスの編集は、そのハーネスがすでに生んでいる
-  数値に対して中立ではないので、基準値を再生成したらどれが方法でどれがコードかを述べなければならない
-  （同じバイナリの `serialize_*` と `parse_*` は 0.042% 以内に収まった）。読み取りが解析できなく
-  なったらハーネスは 3 で終了し、それより小さい数を報告はしない — この道は、わざと解析できない
-  文書を片側に与えて実証した。`quality_matrix.py` は `ir-bridge-unidirectional` を導出する: `to_<format>_*` /
-  `from_<format>_*` の一方しか測られていなければ名前が挙がる（`to_python_*` は定義により対象外 — 言語
-  バインディングはテキスト形式ではない）、これで半分だけの橋は次回また発見し直すのではなく報告される。広がった
-  この系で #292 を測り直すことは、台帳がこの変更について記録してきた数値も覆した: マッピングのキーを値と
-  同じ規則で解決するのは binding 系で +1.45〜1.62% 命令、engine の全シナリオで 0.00%。そしてそのコストを
-  相殺するためにこのブランチが加えたバイト単位の事前検査は、engine 側で +0.86〜6.66%、binding 側で
-  +0.72〜1.03% — 助けられるはずだった全ての場所で逆効果だった。各差分は 2 種類の runner イメージと
-  3 種類のホスト CPU のあいだで 0.1 bp 以内に再現され、glibc の機能を固定したことが今も効いている傍証に
-  なる。
+  `from_toml_medium` を追加し、共有 AST を JSON と TOML のテキストから読み戻す。これまでゲートが番号
+  を振っていたのは書き出す側だけで、キーの意味が決まるのは読み戻す側だ — TOML/JSON のキーはその文法
+  上文字列であり、共有 AST が「これは文字列で、解決しない」を示す唯一の方法は引用符なので、#292 がそ
+  こで加えたキーごとの仕事は、ゲートが咎められるどの数値にも動かなかった。読み込むのはコミットされた
+  バイトだ — 書き出し側が `MEDIUM_YAML` について作る出力を `tests/ir_fixtures.rs` が固定する — だか
+  ら読み取り側が書き出し側の表記に気づかれずに引きずられることはない。途中で測ったことも、自分の説明
+  を覆した部分も含めて記録する: setup で入力をレンダリングすると、engine のコードを一も行変えていな
+  いのに `to_json_medium` が +1.52%、`to_toml_medium` が +0.26% 動いた — ゲート許容差の三倍で、追加
+  とは無関係なシナリオだ。増えた呼び出し箇所が原因とされたが、バイトをコミットしてその呼び出しを消し
+  ても `to_json_medium` は +1.489% 動いた。機構は未解決のまま残し、性質は確定として書く — ハーネスの
+  編集は、そのハーネスがすでに生んでいる数値に対して中立ではないので、基準値を再生成したらどれが方法
+  でどれがコードかを述べなければならない（同じバイナリの `serialize_*` と `parse_*` は 0.042% 以内に
+  収まった）。読み取りが解析できなくなったらハーネスは 3 で終了し、それより小さい数を報告はしない —
+  この道は、わざと解析できない文書を片側に与えて実証した。`quality_matrix.py` は
+  `ir-bridge-unidirectional` を導出する: `to_<format>_*` / `from_<format>_*` の一方しか測られていな
+  ければ名前が挙がる（`to_python_*` は定義により対象外 — 言語バインディングはテキスト形式ではな
+  い）、これで半分だけの橋は次回また発見し直すのではなく報告される。広がったこの系で #292 を測り直す
+  ことは、台帳がこの変更について記録してきた数値も覆した: マッピングのキーを値と同じ規則で解決するの
+  は binding 系で +1.45〜1.62% 命令、engine の全シナリオで 0.00%。そしてそのコストを相殺するためにこ
+  のブランチが加えたバイト単位の事前検査は、engine 側で +0.86〜6.66%、binding 側で +0.72〜 1.03% —
+  助けられるはずだった全ての場所で逆効果だった。各差分は 2 種類の runner イメージと 3 種類のホスト
+  CPU のあいだで 0.1 bp 以内に再現され、glibc の機能を固定したことが今も効いている傍証になる。
 - **命令数ゲートが AST→Python 変換を測るようにし、`perf-coverage:binding-layer` を閉じた** —
   `crates/pyrs-yaml/benches/ir_gate.rs` に `to_python_small`、`to_python_medium`、
   `to_python_anchors` を追加し、engine ハーネスと同じ入力バイトについて、全ての利用者が到達する層が
   はじめて命令数を測られるようになった。意図的に P3 の直接ロード近路ではなく `safe_load` の AST 路を
-  測る: 錨なしの fixture だと、タグや錨のあるデータが実際に払う量と別の量を測ってしまう。変換が失敗したり
-  空なら、ハーネスは安い反復として数えるのではなく終了する: 許容差は増加だけを咎めるため、いつの間にやら
-  仕事をやめたハーネスは大きな「改善」を報告して通過してしまうことになる。
-  `scripts/ir_gate.py` は両ハーネスを一つのシナリオ表に統合し（名の重複はエラー、何も列挙しない
-  ハーネスもエラー - 後者を許すと `--update` がその系の行を欠いた基準値を書き換え、何も比較しないまま
-  通過しうる）。`quality_matrix.py` の導出グラフに `pyrs-yaml` が入り、穴は自然に消えた — 登録の解除が
-  強制される検査は、新しい穴を未登録で通すのを拒むのと同じものなので、台帳の設計通り。曖昧にしない
-  限界が三つ: この実行ファイルは CPython をリンクするので Linux 専用（Windows ではビルドは通るが起動時に
-  `0xC000021A` で落ちる実測）、そして `cargo clippy --all --all-targets` は feature 指定つきの bench を
-  見ないので、新ファイルは lint ではなくビルドで検証される。三つ目は実行して見つかった: ハーネスは
-  単独の実行ファイルなので、同じ feature が `pyo3/auto-initialize` も有効にする — 最初の再生成実行は
-  両ハーネスをビルドし両方のシナリオ一覧まで読めたのに、測るループで "The Python interpreter is not
-  initialized" に落ちた。wheel は影響を受けない: `[tool.maturin]` は feature を渡さず、
+  測る: 錨なしの fixture だと、タグや錨のあるデータが実際に払う量と別の量を測ってしまう。変換が失敗
+  したり空なら、ハーネスは安い反復として数えるのではなく終了する: 許容差は増加だけを咎めるため、いつ
+  の間にやら仕事をやめたハーネスは大きな「改善」を報告して通過してしまうことになる。
+  `scripts/ir_gate.py` は両ハーネスを一つのシナリオ表に統合し（名の重複はエラー、何も列挙しないハー
+  ネスもエラー - 後者を許すと `--update` がその系の行を欠いた基準値を書き換え、何も比較しないまま通
+  過しうる）。`quality_matrix.py` の導出グラフに `pyrs-yaml` が入り、穴は自然に消えた — 登録の解除が
+  強制される検査は、新しい穴を未登録で通すのを拒むのと同じものなので、台帳の設計通り。曖昧にしない限
+  界が三つ: この実行ファイルは CPython をリンクするので Linux 専用（Windows ではビルドは通るが起動時
+  に `0xC000021A` で落ちる実測）、そして `cargo clippy --all --all-targets` は feature 指定つきの
+  bench を見ないので、新ファイルは lint ではなくビルドで検証される。三つ目は実行して見つかった: ハー
+  ネスは単独の実行ファイルなので、同じ feature が `pyo3/auto-initialize` も有効にする — 最初の再生成
+  実行は両ハーネスをビルドし両方のシナリオ一覧まで読めたのに、測るループで "The Python interpreter
+  is not initialized" に落ちた。wheel は影響を受けない: `[tool.maturin]` は feature を渡さず、
   `--all-features` でビルドする場所も無い。
 - **防衛策が自分自身の穴を測った: 命令数ゲートは Python バインディングに届かない** —
   `quality_matrix.py` は `ir_gate` ハーネスが実際にリンクする crate（bench の所属 crate とその
   workspace 依存: `pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`）を導出し、
-  Python API を提供する crate（配置から特定: `crates/*/src/py/` → `pyrs-yaml`）と突き合わせる。
-  後者はグラフに無いので、`safe_load` の AST→Python 変換 — すべての利用者が通り、PR #292 が変えた道 —
-  は再現可能な性能値を持たない。残っているのは壁時計だけだが、この repo 自身の記録は 10% 未満で
-  使えないと書いている。`perf-coverage:binding-layer` として出口条件つきで登録 — 計器が「何を描くか」でなく
-  「何をコンパイルするか」を問うて最初に見つかった穴。
-- **テスト行列全体を代表するチェックを 1 つ追加 (`Test matrix (all legs)`)** — branch protection
-  はチェック「名」で照合する行で、行列は脚ごとに 1 個の名前を出す — 3 OS × 7 Python で 21、
+  Python API を提供する crate（配置から特定: `crates/*/src/py/` → `pyrs-yaml`）と突き合わせる。後者
+  はグラフに無いので、`safe_load` の AST→Python 変換 — すべての利用者が通り、PR #292 が変えた道 — は
+  再現可能な性能値を持たない。残っているのは壁時計だけだが、この repo 自身の記録は 10% 未満で使えな
+  いと書いている。`perf-coverage:binding-layer` として出口条件つきで登録 — 計器が「何を描くか」でな
+  く「何をコンパイルするか」を問うて最初に見つかった穴。
+- **テスト行列全体を代表するチェックを 1 つ追加 (`Test matrix (all legs)`)** — branch protection は
+  チェック「名」で照合する行で、行列は脚ごとに 1 個の名前を出す — 3 OS × 7 Python で 21、
   free-threaded と coverage も含む。1 時間の間で 2 件の pull request がその代償を証明した。#298 は
-  `test (windows-latest, 3.8)` が参照されないまま rebase マージされ、その脚は `pyproject.toml` が
-  約束する最下段で動かないチェッカーを 2 つ含んでいた（1 つは書かれた時点から import 不能）。#299 は
-  フォーマッタの修正を squash せずに残した commit のせいで `Hygiene` が赤くなった。両者同じ形:
-  マージ判断が消費しないチェックは報告でしかない。fan-in は `needs: [test, test-freethreaded,
-  coverage]` から `toJSON(needs)` を `scripts/check_matrix_verdict.py` に渡し、`success` だけを緑と
-  読む — `skipped`（依存が死んだ兄弟の姿）も `cancelled`（`cancel-in-progress` の残骸）も拒否する。
-  `tests/test_matrix_verdict_gate.py` は各形状と結線を固定するので、`needs:` を空に削ること自体が赤に
-  なる。pull request の内側からできないこと: 新しいチェックを branch protection に「追加」しなければ
-  穴はそのまま残る。
+  `test (windows-latest, 3.8)` が参照されないまま rebase マージされ、その脚は `pyproject.toml` が約
+  束する最下段で動かないチェッカーを 2 つ含んでいた（1 つは書かれた時点から import 不能）。#299 は
+  フォーマッタの修正を squash せずに残した commit のせいで `Hygiene` が赤くなった。両者同じ形: マー
+  ジ判断が消費しないチェックは報告でしかない。fan-in は `needs: [test, test-freethreaded, coverage]`
+  から `toJSON(needs)` を `scripts/check_matrix_verdict.py` に渡し、`success` だけを緑と読む —
+  `skipped`（依存が死んだ兄弟の姿）も `cancelled`（`cancel-in-progress` の残骸）も拒否する。
+  `tests/test_matrix_verdict_gate.py` は各形状と結線を固定するので、`needs:` を空に削ること自体が赤
+  になる。pull request の内側からできないこと: 新しいチェックを branch protection に「追加」しなけ
+  れば穴はそのまま残る。
 - **命令数ゲートが JSON と TOML の書き手も測り、ゲート自身の余裕も記録された** —
   `crates/pyrs-yaml-core/benches/ir_gate.rs` に `parse_inline_merge`、`to_json_medium`、
   `to_toml_medium` を増やし（12 シナリオ、`.ci/ir-baseline.json` の数値も 12 個）、`to_json()` と
-  `to_toml()` が公開している道も YAML と同じく検査対象になった。測って分かったのはゲート自身の余裕だった:
-  確定済みの 9 シナリオを今日のツリーで再実行すると −2.35%（`parse_anchors`）から +1.61%
-  （`serialize_anchors`）へ動き、新しい 3 つは ±0.0005% で再現した — ノイズではなく、baseline を
-  取ったツリー以降の累積ドリフトだ。この向きは危険で、2% の余裕の 5 分の 4 が
-  `serialize_anchors` で消費され、`parse_anchors` では 2.35% までの退化が見えなくなる。対応は 2 つ:
+  `to_toml()` が公開している道も YAML と同じく検査対象になった。測って分かったのはゲート自身の余裕だ
+  った: 確定済みの 9 シナリオを今日のツリーで再実行すると −2.35%（`parse_anchors`）から +1.61%
+  （`serialize_anchors`）へ動き、新しい 3 つは ±0.0005% で再現した — ノイズではなく、baseline を取
+  ったツリー以降の累積ドリフトだ。この向きは危険で、2% の余裕の 5 分の 4 が `serialize_anchors` で消
+  費され、`parse_anchors` では 2.35% までの退化が見えなくなる。対応は 2 つ:
   `ir_gate.py --update --only <name>` は確定済みファイルへマージし、測っていない数値を捏造しない
-  （前は 9 個のファイルへ 1 個だけの baseline を上書きしていた）。そして `ir-baseline.yml` は
-  検査を実行する `ubuntu-24.04` イメージで全数値を再生成し、diff を表示して artifact として
-  アップロードする — 人が読んでからコミットする。その job の数値自体はすでにコミット済み（Fixed を参照）: runner で測った 12 値、
-  `generated_by` の記録、そしてイメージ間の実測一致から決めた 0.5% 許容。
-- **JSON と TOML の書き手に「定着したテキスト」オラクルを追加 (`fuzz/fuzz_targets/json_roundtrip.rs`、
-  `fuzz/fuzz_targets/toml_roundtrip.rs`)** — #296 はこれをリリースノートなしで出荷したので、ここで
-  遡って記入する。下の結合ゲートが捕まえる失敗そのものだ。2 つの `parse_*` ターゲットはすでにすべての
-  書き手を呼んでいたが、再解析結果を `let _ =` に束縛して捨てていたため「読み手が自分の書き手を受け入れる」ことを
-  検証し「書き手のテキストが定着した」ことは検証していなかった — この engine の注釈移動系欠陥はすべてその隙間に
-  住んでいる。新しい各ターゲットは方言ごとに `once == twice` を検証し、方言をまたいでは検証しない
-  (`to_jsonc_text` は注釈を出し、`to_json5_text` は strict reader が拒否すべき 16 進数と bare key を出す)。
-  `crates/pyrs-json/tests/roundtrip_corpus.rs` と `crates/pyrs-toml/tests/roundtrip_corpus.rs` は
-  コミット済み 30 seed を `cargo nextest` ごとに決定的に再生する — JSON で 33 ラウンド、TOML で 30
-  ラウンド、各ファイルが下限を宣言するので、書き手を書かなくなった corpus は空振りではなく失敗する。
+  （前は 9 個のファイルへ 1 個だけの baseline を上書きしていた）。そして `ir-baseline.yml` は検査を
+  実行する `ubuntu-24.04` イメージで全数値を再生成し、diff を表示して artifact としてアップロードす
+  る — 人が読んでからコミットする。その job の数値自体はすでにコミット済み（Fixed を参照）: runner
+  で測った 12 値、`generated_by` の記録、そしてイメージ間の実測一致から決めた 0.5% 許容。
+- **JSON と TOML の書き手に「定着したテキスト」オラクルを追加
+  (`fuzz/fuzz_targets/json_roundtrip.rs`、`fuzz/fuzz_targets/toml_roundtrip.rs`)** — #296 はこれをリ
+  リースノートなしで出荷したので、ここで遡って記入する。下の結合ゲートが捕まえる失敗そのものだ。2 つ
+  の `parse_*` ターゲットはすでにすべての書き手を呼んでいたが、再解析結果を `let _ =` に束縛して捨て
+  ていたため「読み手が自分の書き手を受け入れる」ことを検証し「書き手のテキストが定着した」ことは検証
+  していなかった — この engine の注釈移動系欠陥はすべてその隙間に住んでいる。新しい各ターゲットは方
+  言ごとに `once == twice` を検証し、方言をまたいでは検証しない (`to_jsonc_text` は注釈を出し、
+  `to_json5_text` は strict reader が拒否すべき 16 進数と bare key を出す)。
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` と `crates/pyrs-toml/tests/roundtrip_corpus.rs` はコ
+  ミット済み 30 seed を `cargo nextest` ごとに決定的に再生する — JSON で 33 ラウンド、TOML で 30 ラ
+  ウンド、各ファイルが下限を宣言するので、書き手を書かなくなった corpus は空振りではなく失敗する。
   実測: 定着していない書き手は無い。
-- **製品を動かす変更セットはリリースノートも動かさねばならぬ (`scripts/check_changelog_coupling.py`)** —
-  pull request のファイル一覧に対する 2 規則: `crates/`、`python/pyrs_yaml/`、`fuzz/`、`scripts/`、
-  `tests/` や出荷する manifest を触る diff は changelog を触ること、そして 5 つの mirror の 1 つを触れば
-  5 つすべてを触ること (`AGENTS.md` の「部分更新を残さない」に執行手段が無かった)。
-  `check_changelog_mirrors.py` はどちらも視えない — 版ヘッダを比べるので動くのは出荷時だけだし、
-  `prek.toml` の `files:` パターンは changelog を含まない diff ではフック自体が走らない。採用前に
-  `main` の直近 40 commit で較正した — 8 件が赤くなるが、すべて repo 自身が既に書いた種類の
-  変更。`.github/workflows/**` や `prek.toml` を入れると依存版上げ 2 件が増えるだけなので除外。
-  commit スコープでなく pull request スコープで `hygiene.yml` から走らせるのは、分割 PR の 1 commit が
-  ノートを持たないことが正当に有り得るためだ。識別力は突然変異で実証: 結合規則を外すとちょうど 3 テスト、
-  完全性規則を外すとちょうど 2 テスト、workflow を戻すとちょうど補正番兵の 2 テストが赤くなる
-  (`tests/test_changelog_coupling_gate.py`、29 テスト)。
-- **プロパティ階層に 20,000 ケースのブロッキングジョブを追加 (`ci.yml: property-tier`)** —
-  それまでのプロパティ実行はすべて proptest の既定である 256 ケースで動いていた。どのワークフローも
+- **製品を動かす変更セットはリリースノートも動かさねばならぬ
+  (`scripts/check_changelog_coupling.py`)** — pull request のファイル一覧に対する 2 規則:
+  `crates/`、`python/pyrs_yaml/`、`fuzz/`、`scripts/`、`tests/` や出荷する manifest を触る diff は
+  changelog を触ること、そして 5 つの mirror の 1 つを触れば 5 つすべてを触ること (`AGENTS.md` の
+  「部分更新を残さない」に執行手段が無かった)。`check_changelog_mirrors.py` はどちらも視えない — 版
+  ヘッダを比べるので動くのは出荷時だけだし、`prek.toml` の `files:` パターンは changelog を含まない
+  diff ではフック自体が走らない。採用前に `main` の直近 40 commit で較正した — 8 件が赤くなるが、す
+  べて repo 自身が既に書いた種類の変更。`.github/workflows/**` や `prek.toml` を入れると依存版上げ 2
+  件が増えるだけなので除外。commit スコープでなく pull request スコープで `hygiene.yml` から走らせる
+  のは、分割 PR の 1 commit がノートを持たないことが正当に有り得るためだ。識別力は突然変異で実証: 結
+  合規則を外すとちょうど 3 テスト、完全性規則を外すとちょうど 2 テスト、workflow を戻すとちょうど補
+  正番兵の 2 テストが赤くなる (`tests/test_changelog_coupling_gate.py`、29 テスト)。
+- **プロパティ階層に 20,000 ケースのブロッキングジョブを追加 (`ci.yml: property-tier`)** — それまで
+  のプロパティ実行はすべて proptest の既定である 256 ケースで動いていた。どのワークフローも
   `PROPTEST_CASES` を設定していなかったためで、`scripts/quality_matrix.py` はそれを計測し、防衛策の
   最後の盲点として登録していた。「20,000 ケースで失敗する」とされていた 3 つの書き手固定点性質のうち
   2 つは、一度も失敗していなかった。そのケース数では proptest の既定である大域拒否 1024 件の許可を
   使い切り、`Test aborted: Too many global rejects` で終わる — 許可を 1024 に戻すと 3 つとも
   `fmt_pbt.rs:93` で死ぬ、というのが計測結果。方言性質の許可は現在 250,000 で、3 つ目の失敗は本物の
   欠陥だった（Fixed を参照）。費用は実測: このツリーで
-  `PROPTEST_CASES=20000 cargo test --workspace --locked` は core の 305 テストを 63 秒で走破し 0 で終わる。
-  受け入れ条件: `.ci/quality-holes.json` から `property-tier:default-case-count` を消して台帳を空にすること。
-  `tests/test_quality_matrix.py` はこれを逆方向からも強制する。
-- **hygiene フックが CI で走るようになり、改行方針に強制できる形を与えた** — `Hygiene`
-  workflow を増やし、pull request ごと・`main` への push ごと・毎週、ツリー全体に
-  `prek run --all-files` を実行する。同梱で使っている `jj` は Git フックを一切実行しないので、
-  `prek.toml` の 17 個のフックはローカルの自覚にすぎず、追跡中の 15 ファイルが CRLF 行尾を帯びた
-  まま `main` に届いていた（12,263 行、うち 5 つは changelog の mirror）。十几行の編集が 2,500 行
-  の diff に膨らんだのに、どのゲートも緑だった。`.gitattributes` が方針を宣言し、
-  `scripts/check_line_endings.py` が絶対ルールを強制し、`prek.toml` には `line-endings-lf` として
-  登録した。組み込みの `mixed-line-ending` はその規則を実装して*いない* — 全部 CRLF のファイルを
-  注入すると `Passed` になる、混在しか検査していないからだ。15 のうち 13 をここで正規化し、残り 2
-  つは意図的にそのまま — その CRLF は raw string の中にあり、コミット済み Ir baseline が測った
-  入力そのもの（`crates/pyrs-yaml-core/src/bench_inputs.rs`、
-  `crates/pyrs-yaml-core/benches/ir_gate.rs`）なので、正規化はデータ変更であり baseline の
-  再生成と行うべきもの。同じ job は `cargo fmt --check` も回すが、それもこれまでのどこにも
-  なかった。 CI の clippy も `cargo clippy -- -D warnings` から、この repo が宣言した
-  `--all --all-targets` の範囲に広げた — 広げる前に、その命令がツリー全体で既に
-  `clean` だと測定済み。
+  `PROPTEST_CASES=20000 cargo test --workspace --locked` は core の 305 テストを 63 秒で走破し 0 で
+  終わる。受け入れ条件: `.ci/quality-holes.json` から `property-tier:default-case-count` を消して台
+  帳を空にすること。`tests/test_quality_matrix.py` はこれを逆方向からも強制する。
+- **hygiene フックが CI で走るようになり、改行方針に強制できる形を与えた** — `Hygiene` workflow を増
+  やし、pull request ごと・`main` への push ごと・毎週、ツリー全体に `prek run --all-files` を実行す
+  る。同梱で使っている `jj` は Git フックを一切実行しないので、`prek.toml` の 17 個のフックはローカ
+  ルの自覚にすぎず、追跡中の 15 ファイルが CRLF 行尾を帯びたまま `main` に届いていた（12,263 行、う
+  ち 5 つは changelog の mirror）。十几行の編集が 2,500 行の diff に膨らんだのに、どのゲートも緑だ
+  った。`.gitattributes` が方針を宣言し、`scripts/check_line_endings.py` が絶対ルールを強制し、
+  `prek.toml` には `line-endings-lf` として登録した。組み込みの `mixed-line-ending` はその規則を実
+  装して*いない* — 全部 CRLF のファイルを注入すると `Passed` になる、混在しか検査していないからだ。
+  15 のうち 13 をここで正規化し、残り 2 つは意図的にそのまま — その CRLF は raw string の中にあり、
+  コミット済み Ir baseline が測った入力そのもの（`crates/pyrs-yaml-core/src/bench_inputs.rs`、
+  `crates/pyrs-yaml-core/benches/ir_gate.rs`）なので、正規化はデータ変更であり baseline の再生成と
+  行うべきもの。同じ job は `cargo fmt --check` も回すが、それもこれまでのどこにもなかった。CI の
+  clippy も `cargo clippy -- -D warnings` から、この repo が宣言した `--all --all-targets` の範囲に
+  広げた — 広げる前に、その命令がツリー全体で既に `clean` だと測定済み。
 - **品質防御を測定し、その測定そのものをゲートにした** — `QUALITY_MATRIX.md` は unit・
   property・fuzz の三段がどこに届きどこに届かないかを記録し、`scripts/quality_matrix.py` は
   それを書き写すのではなく防御を宣言しているファイル(`.github/workflows/*.yml`、`prek.toml`、
@@ -152,35 +173,33 @@ status: new
   bench を見ず、property は毎回 proptest の既定 case 数、JSON と TOML engine には parse 専用
   target しかなく writer は一度も fuzz されていなかった。このゲート自身の判別力は 4 回の注入で
   確認し、毎回それを見張るために書いた test ひとつが赤くなった。
-- **CI が本当に保持できる命令数ゲート** — `CodSpeed` ワークフローに
-  `Instruction-count baseline` ジョブが増え、エンジンのホットパスを*実行命令数*
-  （`callgrind` Ir）で測り、`.ci/ir-baseline.json` 比で 2% 超の増加があれば失敗します
-  （この許容値は 2 つの Linux イメージ間で実測された drift に合わせて較正済み：WSL 生成の
-  ベースラインは GitHub runner で最大 +1.45%）。
-  導入理由：divan スイートが報告する wall-time 比較は 10% 未満では再現しない——連続 3
-  回のプッシュは毎回*少ない*作業しかしていなかったのに、同じ基準集合で −7.7%、−10.5%、
-  −9.8% と判定されました。Ir は同一バイナリで約 ±0.001% の再現性を持つのでこの基準線は
-  意味を持ち、ゲート全体は約 6 秒で済みます。確認は `python scripts/ir_gate.py`、意図的に
-  基準を置き換えるなら `--update`。シナリオは `pyrs_yaml_core::bench_inputs` 経由で
-  divan スイートと同じドキュメントを読むため、二つの測定が離れることはありません。
-- **コメント生存がゲートになった（`crates/pyrs-yaml-core/tests/note_survival.rs`）** —
-  往復ティアの判定は「2 ラウンド目のテキストが 1 ラウンド目と一致するか」なので、コメント 1 個足りないだけの安定文書は
-  通ってしまう。その盲点こそが静かな消失 5 件を緑の光の後ろに隠していた。今後は
-  確定的なテストが毎回の `cargo nextest` でコミット済み YAML シード語料を再生し、
-  reader が記録した全コメントが出力に現れること **と** 各入力が 1 ラウンドで収束する
-  ことを要求する —— 今日それは注釈を持つ 37 件のシードが主張を担い、クラッシュがシードに
-  なるたびに語料が自動でそれを増やす。限界はファイル内に書かれ、議論ではなく突然変形で
-  示した：何も掛けないまま「処理済み」と返させると形状別の pin は赤くなるのにこのゲートは
-  緑のまま —— 摂取段階で失われたコメントはゲートが測る AST に届かないからだ。ソースの `#` を
-  数える方式は正しい出力を赤くする：語料には接尾辞が `#` だけの `!###0 …` タグがある。正しい
-  出力を赤くするゲートは無いより悪い。よって reader 側は fuzz ティアと形状別 pin が持ち、
-  両側とも相手を覆ったとは主張しない。
+- **CI が本当に保持できる命令数ゲート** — `CodSpeed` ワークフローに `Instruction-count baseline` ジ
+  ョブが増え、エンジンのホットパスを*実行命令数*（`callgrind` Ir）で測り、`.ci/ir-baseline.json` 比
+  で 2% 超の増加があれば失敗します（この許容値は 2 つの Linux イメージ間で実測された drift に合わせ
+  て較正済み：WSL 生成のベースラインは GitHub runner で最大 +1.45%）。導入理由：divan スイートが報
+  告する wall-time 比較は 10% 未満では再現しない——連続 3 回のプッシュは毎回*少ない*作業しかしていな
+  かったのに、同じ基準集合で −7.7%、−10.5%、−9.8% と判定されました。Ir は同一バイナリで約 ±0.001% の
+  再現性を持つのでこの基準線は意味を持ち、ゲート全体は約 6 秒で済みます。確認は
+  `python scripts/ir_gate.py`、意図的に基準を置き換えるなら `--update`。シナリオは
+  `pyrs_yaml_core::bench_inputs` 経由で divan スイートと同じドキュメントを読むため、二つの測定が離れ
+  ることはありません。
+- **コメント生存がゲートになった（`crates/pyrs-yaml-core/tests/note_survival.rs`）** — 往復ティアの
+  判定は「2 ラウンド目のテキストが 1 ラウンド目と一致するか」なので、コメント 1 個足りないだけの安定
+  文書は通ってしまう。その盲点こそが静かな消失 5 件を緑の光の後ろに隠していた。今後は確定的なテスト
+  が毎回の `cargo nextest` でコミット済み YAML シード語料を再生し、reader が記録した全コメントが出力
+  に現れること **と** 各入力が 1 ラウンドで収束することを要求する —— 今日それは注釈を持つ 37 件のシ
+  ードが主張を担い、クラッシュがシードになるたびに語料が自動でそれを増やす。限界はファイル内に書か
+  れ、議論ではなく突然変形で示した：何も掛けないまま「処理済み」と返させると形状別の pin は赤くなる
+  のにこのゲートは緑のまま —— 摂取段階で失われたコメントはゲートが測る AST に届かないからだ。ソース
+  の `#` を数える方式は正しい出力を赤くする：語料には接尾辞が `#` だけの `!###0 …` タグがある。正し
+  い出力を赤くするゲートは無いより悪い。よって reader 側は fuzz ティアと形状別 pin が持ち、両側とも
+  相手を覆ったとは主張しない。
 - **局所化書記系ゲート（`scripts/check_cjk_localisation.py`）** — `ja` / `ko` / `zh` の各
   ページが自身の書記体系だけで書かれているかを機械検証する：`ja` 以外に仮名を出さない、`ko`
   以外にハングルを出さない、`ja` に簡体字中国語専用の漢字を出さない、そして `ko` の散文には
   漢字を一切出さない。韓国語の規則はもともと簡体字専用コードポイント 13 個を手作業で選んだ
   一覧だったため、これがまさに門番を失明させていた：日本の新字体 `経` や繁体字 `內` はその一覧に
-  ないので、韓国語変更ログは韓国語と中国語が混ざった散文 15 行（`热点 样本` のような語が助詞の
+  ないので、韓国語変更ログは韓国語と中国語が混ざった散文 15 行（`热点样本` のような語が助詞の
   間に混じっていた）を抱えたまま、ツリーのどの検査器も OK と出力していた。「あらゆる漢字」に
   基準を替えれば、一覧は陳腐化しない。技術テキストはコード位置単位で免除する（フェンス済み
   ブロック、行内コード、リンク先）。同じ韓国語ページが YAML サンプルで `title: 文档标题` を
@@ -198,14 +217,12 @@ status: new
   毎回の一時的コーパスへシードを蒔き、失敗時はクラッシュ成果物をアップロードして
   「クラッシュ→回帰テスト→シード→修正」パイプラインへ接続。機械生成コーパスは
   引き続き git に含めません。
-- **エンジン用の `cargo-fuzz` 検証基盤（`fuzz/`）** — カバレッジ誘導型の
-  libFuzzer ターゲット 4 系統：`parse_yaml`（単一 + ストリーム）、
-  `yaml_roundtrip`（解析 → シリアライズ → 再解析と冪等性）、`parse_json`
-  （3 方言 × 3 writer を全組合せで再解析）、`parse_toml`（1.0/1.1 と writer
-  再解析）。ターゲットのみリポジトリ管理で、コーパスとクラッシュ成果物は
-  各セッションでローカル生成・gitignore まま（クラッシュ発見は回帰テストで
-  固定し、コーパスファイルとしては残しません）。初回稼働の 1 分以内に価値を
-  実証 — 下記のコメントスキャナ修正参照。
+- **エンジン用の `cargo-fuzz` 検証基盤（`fuzz/`）** — カバレッジ誘導型の libFuzzer ターゲット 4 系
+  統：`parse_yaml`（単一 + ストリーム）、`yaml_roundtrip`（解析 → シリアライズ → 再解析と冪等性）、
+  `parse_json`（3 方言 × 3 writer を全組合せで再解析）、`parse_toml`（1.0/1.1 と writer 再解析）。
+  ターゲットのみリポジトリ管理で、コーパスとクラッシュ成果物は各セッションでローカル生成・gitignore
+  まま（クラッシュ発見は回帰テストで固定し、コーパスファイルとしては残しません）。初回稼働の 1 分以
+  内に価値を実証 — 下記のコメントスキャナ修正参照。
 - **`pyrs-ast` / `pyrs-schema` が `no_std` 対応に** — すべてのフォーマットエンジンが
   基盤とするこの 2 クレートは、`alloc` のみでビルド可能になりました：`indexmap` と
   `thiserror` のデフォルト `std` feature を無効化し、新しいオプトインの `std`
@@ -243,140 +260,143 @@ status: new
   パーサをハードコードしており変更手段もなかったため、向けた非 YAML 設定ファイル
   （`pyproject.toml`、`package.json` …）はすべて即座に拒否されていました。現在は共通
   ローダ経由で `--input auto|yaml|json|jsonc|json5|toml` を受け付けます。
-- **`pyq` プリビルドバイナリは manylinux2014 コンテナでビルド** — Linux
-  ターゲットは公式 CentOS 7 イメージ内で `cross` によりネイティブコンパイルされ、
-  手組みクロスツールチェーンゼロで glibc 2.17 下限（CentOS 7 / Ubuntu 16.04 /
-  18.04 / Debian 8 / 9 をカバー）を固定します。以前の zigbuild 案は x86_64 を
-  一段低く（2.16、実測の `getauxval` 床）固定していましたが、`publish.yml` の
-  初の実稼働（このワークフローは通常 PR では走らない）で zig スタック全体が
-  未整備だったことが判明しました（`cargo zigbuild: no such command`、armv7 レグのホスト既定
-  `-fuse-ld=lld` 誤リンク、runner で実行不能なバイナリのスモークテスト）。コンテナ方式は三つの失敗モードをコミュニティ標準の一手に統合し、
-  下限は runner 自身の glibc より二メジャー低くなります。
-- **PR ティアのファジングがブロッキング化（`fuzz.yml`）** — PR 上のステップ
-  レベル `continue-on-error` は、main がこのティアが正しく赤くする drift を
-  抱えている間だけ置く ratchet でした（crash-f44eca1d、#256/#258/#261/#262 の
-  先行修正の後）。2026-10-04 にこのツリーで再確認：4 ターゲットともコミット済み
-  シード語料をクリーンに再生（5/59/6/5 個、固定の nightly-2026-08-15、
-  cargo-fuzz 0.13.2、60 秒探索）。よって新規クラッシュは週末を待たず、それを
-  持ち込んだ PR を即座に失敗させます。2026-10-05 にマージキー上書きルール込みで再測：
-  75 個のシード再生は 4 ターゲットともクリーン、だが新しい 60 秒探索窓は依然として
-  コメント再配置の一族（`crash-a916de77`、48 バイト）に届く —— 未シード・未修正のまま
-  `ROADMAP.md` に未解決所見として記録。シードを採ることは入力が通ることを約束するからだ。
-  台帳で次に挙げられていた key-metadata
-  欠陥（crash-86a9ae7b）は単一入力の再生で解消を確認。検査中に見つかった
-  drift `yaml_roundtrip` crash-ac5d9043 は未シード・未修正のまま `ROADMAP.md`
-  に現在の未解決所見として記録しました。
+- **`pyq` プリビルドバイナリは manylinux2014 コンテナでビルド** — Linux ターゲットは公式 CentOS 7 イ
+  メージ内で `cross` によりネイティブコンパイルされ、手組みクロスツールチェーンゼロで glibc 2.17 下
+  限（CentOS 7 / Ubuntu 16.04 / 18.04 / Debian 8 / 9 をカバー）を固定します。以前の zigbuild 案は
+  x86_64 を一段低く（2.16、実測の `getauxval` 床）固定していましたが、`publish.yml` の初の実稼働
+  （このワークフローは通常 PR では走らない）で zig スタック全体が未整備だったことが判明しました
+  （`cargo zigbuild: no such command`、armv7 レグのホスト既定 `-fuse-ld=lld` 誤リンク、runner で実行
+  不能なバイナリのスモークテスト）。コンテナ方式は三つの失敗モードをコミュニティ標準の一手に統合
+  し、下限は runner 自身の glibc より二メジャー低くなります。
+- **PR ティアのファジングがブロッキング化（`fuzz.yml`）** — PR 上のステップレベル
+  `continue-on-error` は、main がこのティアが正しく赤くする drift を抱えている間だけ置く ratchet で
+  した（crash-f44eca1d、#256/#258/#261/#262 の先行修正の後）。2026-10-04 にこのツリーで再確認：4 タ
+  ーゲットともコミット済みシード語料をクリーンに再生（5/59/6/5 個、固定の nightly-2026-08-15、
+  cargo-fuzz 0.13.2、60 秒探索）。よって新規クラッシュは週末を待たず、それを持ち込んだ PR を即座に
+  失敗させます。2026-10-05 にマージキー上書きルール込みで再測：75 個のシード再生は 4 ターゲットとも
+  クリーン、だが新しい 60 秒探索窓は依然としてコメント再配置の一族（`crash-a916de77`、48 バイト）に
+  届く —— 未シード・未修正のまま `ROADMAP.md` に未解決所見として記録。シードを採ることは入力が通るこ
+  とを約束するからだ。台帳で次に挙げられていた key-metadata 欠陥（crash-86a9ae7b）は単一入力の再生
+  で解消を確認。検査中に見つかった drift `yaml_roundtrip` crash-ac5d9043 は未シード・未修正のまま
+  `ROADMAP.md` に現在の未解決所見として記録しました。
 
 #### 修正
 
-- **台帳の見出し三つは、整形器が文を途中で切っていたものだった** — 硬く折り返した本文では、
-  継続行が issue 参照で始まると Markdown の整形器にはそれが ATX 見出しにに見える。だから
-  `rumdl fmt` はそれを見出しに昇格し、前後を空行で区切って、文を二つに分けてしまった。`ROADMAP.md`
-  には `293's tier of the same class … — did` という見出しが並び、「get its entries」は次の段落に
-  落ちていた。ほか二つは `(as)` と `(at)` を着地させたときに加わった。どれも誰も文句を言わなかった —
-  構造が誤っているのに合法な文書は申告のしようがないからだ: リンターはそれを見出しとして受け入れ、
-  `check_changelog_mirrors.py` は版見出しを読み、`check_i18n.py` はページの並びを読む。三つとも
-  つなぎ直し、行頭を単語にしたので参照が再び昇格することはない。`scripts/check_doc_headings.py` が
-  18 番目のフックだ: 見出しの本文が二位以上の数字で始まり、その次にドットが来ないものを指摘する。
-  規則は断言する前に実物の散文で寸法を取った — 傷んだ文書に通すとちょうどその三行（一行はすでに
-  `main` に出ていたが、二つは作業ツリーの編集途中で生えた）を報じ、修復後の 173 ページでは
-  `### 1-D array`、`#### 0-D Scalar Arrays`、`#### 10. メタデータの操作`、`## 1. Test matrix coverage`
-  には当たらない。フェンス内の追跡もする — フェンスを見ない走査では
-  `docs/ja/contributing/site-i18n.md` のシェルコメントを見出しと誤認し、Markdown ですらない行の
-  修正を要求するからだ。仕組みは推論ではなく再現で確かめた: 同じ形のスクラッチファイルを整形器に
-  通すと継続行が見出しに昇格し、新チェックがそれを行番号で名指した。`tests/test_doc_heading_gate.py`
-  （19 例）は傷んだ文で発火し、同じ文をつなぎ戻すと黙ること、フェンスの内と後の両方、指摘が
-  修正方法を名指すこと、フックが配線されていることを検証する。
+- **台帳の見出し三つは、整形器が文を途中で切っていたものだった** — 硬く折り返した本文では、継続行が
+  issue 参照で始まると Markdown の整形器にはそれが ATX 見出しにに見える。だから `rumdl fmt` はそれを
+  見出しに昇格し、前後を空行で区切って、文を二つに分けてしまった。`ROADMAP.md` には
+  `293's tier of the same class … — did` という見出しが並び、「get its entries」は次の段落に落ちて
+  いた。ほか二つは `(as)` と `(at)` を着地させたときに加わった。どれも誰も文句を言わなかった — 構造
+  が誤っているのに合法な文書は申告のしようがないからだ: リンターはそれを見出しとして受け入れ、
+  `check_changelog_mirrors.py` は版見出しを読み、`check_i18n.py` はページの並びを読む。三つともつな
+  ぎ直し、行頭を単語にしたので参照が再び昇格することはない。`scripts/check_doc_headings.py` が 18 番
+  目のフックだ: 見出しの本文が二位以上の数字で始まり、その次にドットが来ないものを指摘する。規則は
+  断言する前に実物の散文で寸法を取った — 傷んだ文書に通すとちょうどその三行（一行はすでに `main` に
+  出ていたが、二つは作業ツリーの編集途中で生えた）を報じ、修復後の 173 ページでは `### 1-D array`、
+  `#### 0-D Scalar Arrays`、`#### 10. メタデータの操作`、`## 1. Test matrix coverage` には当たらな
+  い。フェンス内の追跡もする — フェンスを見ない走査では `docs/ja/contributing/site-i18n.md` のシェル
+  コメントを見出しと誤認し、Markdown ですらない行の修正を要求するからだ。仕組みは推論ではなく再現で
+  確かめた: 同じ形のスクラッチファイルを整形器に通すと継続行が見出しに昇格し、新チェックがそれを行
+  番号で名指した。`tests/test_doc_heading_gate.py`（19 例）は傷んだ文で発火し、同じ文をつなぎ戻すと
+  黙ること、フェンスの内と後の両方、指摘が修正方法を名指すこと、フックが配線されていることを検証す
+  る。
 - **マッピングのキーは、値としての同じテキストと同じ意味を持つようになった** — これまで `1: a` は
   `{"1": "a"}` と読めるのに `a: 1` は `{"a": 1}` になり、`~: 1` は `{"~": 1}` で `a: ~` は
-  `{"a": None}` だった。同じ文書が `:` のどちら側にスカラーを置くかで二つの意味になり、整数·真偽·空を
-  キーにした設定は検索で到達できず、しかも参照ライブラリ二つはこのどの行でも互いに同じ答えを出す。
-  `py/convert.rs` はキーを、値の変換路の言い換えではなくその経路そのもので変換する — タグなしのスカラーは
-  直接路をとり、タグ付きやエイリアスのキーは共用の道を保ち、カスタムの `from_yaml` がハッシュできない値を
-  返したら元のテキストに退避するので組が落ちることはない — そして `py/direct_load.rs` も速い路に同じ規則を
-  適用する。一つの契約に実装が二つあればまたずれるからだ。橋渡しの側には同じ欠陥の裏の半分があった。TOML
-  のキーはその文法上まぎれもない文字列で、共有 AST がそれを示す唯一の方法は引用符なので、`"1" = 2` は YAML
-  に `1: 2` と届き、`"" = 3` は空のキーになっていた — 文書の意味を変えてしまう変換だ。`load_toml` は YAML
-  の二つのスキーマのどちらかが型を付け直すキーにだけ引用符をつけ、それ以外のキーは素のままで置く。数字は
-  実時間ではなく命令数ゲートで測ったもの — 結合系で +1.54〜1.59%、`from_toml_medium` で +6.2%（引用符の
-  半分であり、#307 がこの橋に読み取りシナリオを入れたまさにその理由）— ほかの十三は 0.00%。契約は動作に伴う:
-  `safe_load`、`safe_loads`、`YAML().safe_load*`、`read_markdown*` は `dict[Any, Any]` で、四言語の 28
-  のシグネチャと `to_dict()` の説明は「キーは文字列」と書き続けていた。`tests/test_key_resolution_parity.py`
-  （76 例）は 24 のテキストのキー==値の解決、PyYAML と ruamel に対する 10 の形の実測一致、1.1 と 1.2 の
-  食い違いを異議を唱える側を名指しで、二つの道の同意、橋の往復、一周での固定点を留める。特徴化テスト三つは
-  理由とともに元の場所で再導出した。そのひとつが `tests/test_route_parity.py` の欠陥ピンで、
-  `PARITY_TABLE` へ移すという約束の実行がこれにあたる。複雑（入れ子）なキーは引き続き Debug の仮置き —
-  両リファレンスともそこで例外を投げる — で、キー忠実性の未完了の半分として残す。
-- **changelog の項目は誰も読まない位置に置くことができた** — 401a8057 はハッシュ忠実性の項目を五つの mirror
-  すべてに追加したが、置き場所は `CHANGELOG.md` では前文より上、en と zh では frontmatter の `tags:`
-  リストの中、ja と ko では frontmatter と最初の見出しの間だった。五つとも本文の外側なのに
-  `scripts/check_changelog_mirrors.py` は緑だった — 比較していたのは版本見出しだけで、散文をどこに置いても
-  それは同じままだから。いま `placement_errors` がこの検査器で強制規則になった: 項目の bullet を最初の版本
-  見出しより前に置くことも、版本見出しの直下（節見出しではない）に置くことも不可。五つのコピーはいずれも
-  `[Unreleased] → Fixed` の新しい順に収めた（移動前に実測: commit の日付から、`crash-9b77aea4` の下・
-  `crash-1b01ac3f` の上）。検査器はさらに各 mirror の `[Unreleased]` 節別項目数を印字し、その不一致は
-  assertion ではなく `changelog-parity:entry-counts` として登記した — root を基準に実測すると
-  `docs/en` は 1 項目不足、`docs/zh` は 5 項目不足（Added 1 と Fixed 5 が無く、他の mirror に無い
-  Changed が 1 件ある） — ほかの人が書き忘れた訳のせいで赤くなるゲートはゲートではなくノイズだからだ。
-  `tests/test_changelog_placement_gate.py` は各規則をそれを名乗る注入で赤くし、mirror が一致すれば
-  カウント・プローブが静かになること、台帳に引かれた不一致が計測の今の不一致であることを検証する。
-- **同じリポジトリ内の二つの runner job が `serialize_block_scalars` を 1.44% 違いで測っており、Ir 基準値はどちらの値かを書いていなかった** —
-  十五個のシナリオのゲートのために `.ci/ir-baseline.json` を再生成したことは、執行側の job（`codspeed.yml` の
-  `Instruction-count baseline`）をそのシナリオで赤くした: 二回の実行で 16,020,942 と 16,020,915 が出る一方、
-  `.github/workflows/ir-baseline.yml` は八回の実行で 15,792,8xx〜15,792,9xx を出す — runner image 二つ、同じ pin の
-  rustc 1.97.1、バイト単位で同一のソース、他の全シナリオは 0.08% 以内で一致する。三つの説明を確かめ、三つとも
-  失敗した: image、復元された build cache（step を消しても値は変わらなかった）、そしてこの台帳が前に書いた
-  「提出済みの値はゲートの外にある機械で作られた」という主張（執行側の job はそれを再現する）。四つ目が原因だった:
-  glibc が起動時にどの文字列ルーチンを結ぶかを決めるのは、VM が公開する CPUID のフラグだ。それを言い当てたのは
-  バイナリのハッシュで — 両 job は同じ `a0386c17b5f1ef38` を出した（valgrind 3.22.0、pin された rustc 1.97.1
-  も同じ）のに、ホストの型は違った（`AMD EPYC 9V74` と `AMD EPYC 9V45`）。測る過程すべてを
-  `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT` の下で走らせるとすき間は消えた:
-  執行側の job は別の型のホストで基準値に対し −0.08% を測った — それ以前は +1.44% だった。固定したあと三つの
-  ホスト型（`9V74`、`9V45`、`7763`）で測り直すと、このシナリオは 0.0002% で一致する。ホストを受け入れるために
-  許容差を広げたのではなく、ホストが握っていた入力を固定したのだ。ゲートを作った日以来記録されてきた WSL から
-  runner への +1.45% の差も同じ現象である。基準値のファイルが実際に失ったのは手で書き込まれた文章だ —
-  `generated_by.note` は PR #299 の head でも toolchain の pin より前でもない commit を名指しし、環境の文字列は
-  `environment()` がその image で出す値ではない — そこで `--update` は全ての key、値を何回採ったかまで書き出し、
-  提出された key 集合は `tests/test_ir_baseline_workflow.py` が生成側に固定する。
-- **新しいバインディングのシナリオは 500 反復ではゲートにかけられないほど小さかった** — 同じ commit の二回の計測は
-  `to_python_small` を 0.83% 離した — かけはずの 0.5% より広い — 一方 engine のシナリオは 0.0009% で一致する。
-  `ITERATIONS` は engine ハーネスと同じ 2 000 になり、同一実行内のばらつきは 0.076〜0.24% に落ちた; 各シナリオは
-  三回採られて最大値が提出され、回数は `generated_by` に記録され執行する側が読み戻す — max-of-3 と単一のサンプルは
-  同じ名前の別の計測器だからだ。全てのサンプルとばらつきが出力されるので、許容差は job のログから論じられる。
+  `{"a": None}` だった。同じ文書が `:` のどちら側にスカラーを置くかで二つの意味になり、整数·真偽·空
+  をキーにした設定は検索で到達できず、しかも参照ライブラリ二つはこのどの行でも互いに同じ答えを出す。
+  `py/convert.rs` はキーを、値の変換路の言い換えではなくその経路そのもので変換する — タグなしのスカ
+  ラーは直接路をとり、タグ付きやエイリアスのキーは共用の道を保ち、カスタムの `from_yaml` がハッシュ
+  できない値を返したら元のテキストに退避するので組が落ちることはない — そして `py/direct_load.rs` も
+  速い路に同じ規則を適用する。一つの契約に実装が二つあればまたずれるからだ。橋渡しの側には同じ欠陥の
+  裏の半分があった。TOML のキーはその文法上まぎれもない文字列で、共有 AST がそれを示す唯一の方法は引
+  用符なので、`"1" = 2` は YAML に `1: 2` と届き、`"" = 3` は空のキーになっていた — 文書の意味を変え
+  てしまう変換だ。`load_toml` は YAML の二つのスキーマのどちらかが型を付け直すキーにだけ引用符をつ
+  け、それ以外のキーは素のままで置く。数字は実時間ではなく命令数ゲートで測ったもの — 結合系で +1.54
+  〜1.59%、`from_toml_medium` で +6.2%（引用符の半分であり、#307 がこの橋に読み取りシナリオを入れた
+  まさにその理由）— ほかの十三は 0.00%。契約は動作に伴う: `safe_load`、`safe_loads`、
+  `YAML().safe_load*`、`read_markdown*` は `dict[Any, Any]` で、四言語の 28 のシグネチャと
+  `to_dict()` の説明は「キーは文字列」と書き続けていた。`tests/test_key_resolution_parity.py`（76
+  例）は 24 のテキストのキー==値の解決、PyYAML と ruamel に対する 10 の形の実測一致、1.1 と 1.2 の食
+  い違いを異議を唱える側を名指しで、二つの道の同意、橋の往復、一周での固定点を留める。特徴化テスト三
+  つは理由とともに元の場所で再導出した。そのひとつが `tests/test_route_parity.py` の欠陥ピンで、
+  `PARITY_TABLE` へ移すという約束の実行がこれにあたる。複雑（入れ子）なキーは引き続き Debug の仮置き
+  — 両リファレンスともそこで例外を投げる — で、キー忠実性の未完了の半分として残す。
+- **changelog の項目は誰も読まない位置に置くことができた** — 401a8057 はハッシュ忠実性の項目を五つの
+  mirror すべてに追加したが、置き場所は `CHANGELOG.md` では前文より上、en と zh では frontmatter の
+  `tags:` リストの中、ja と ko では frontmatter と最初の見出しの間だった。五つとも本文の外側なのに
+  `scripts/check_changelog_mirrors.py` は緑だった — 比較していたのは版本見出しだけで、散文をどこに置
+  いてもそれは同じままだから。いま `placement_errors` がこの検査器で強制規則になった: 項目の bullet
+  を最初の版本見出しより前に置くことも、版本見出しの直下（節見出しではない）に置くことも不可。五つの
+  コピーはいずれも `[Unreleased] → Fixed` の新しい順に収めた（移動前に実測: commit の日付から、
+  `crash-9b77aea4` の下・ `crash-1b01ac3f` の上）。検査器はさらに各 mirror の `[Unreleased]` 節別項
+  目数を印字し、その不一致は assertion ではなく `changelog-parity:entry-counts` として登記した —
+  root を基準に実測すると `docs/en` は 1 項目不足、`docs/zh` は 5 項目不足（Added 1 と Fixed 5 が無
+  く、他の mirror に無い Changed が 1 件ある）— ほかの人が書き忘れた訳のせいで赤くなるゲートはゲート
+  ではなくノイズだからだ。`tests/test_changelog_placement_gate.py` は各規則をそれを名乗る注入で赤く
+  し、mirror が一致すればカウント・プローブが静かになること、台帳に引かれた不一致が計測の今の不一致
+  であることを検証する。
+- **同じリポジトリ内の二つの runner job が `serialize_block_scalars` を 1.44% 違いで測っており、Ir
+  基準値はどちらの値かを書いていなかった** — 十五個のシナリオのゲートのために `.ci/ir-baseline.json`
+  を再生成したことは、執行側の job（`codspeed.yml` の `Instruction-count baseline`）をそのシナリオで
+  赤くした: 二回の実行で 16,020,942 と 16,020,915 が出る一方、`.github/workflows/ir-baseline.yml` は
+  八回の実行で 15,792,8xx〜15,792,9xx を出す — runner image 二つ、同じ pin の rustc 1.97.1、バイト単
+  位で同一のソース、他の全シナリオは 0.08% 以内で一致する。三つの説明を確かめ、三つとも失敗した:
+  image、復元された build cache（step を消しても値は変わらなかった）、そしてこの台帳が前に書いた「提
+  出済みの値はゲートの外にある機械で作られた」という主張（執行側の job はそれを再現する）。四つ目が
+  原因だった: glibc が起動時にどの文字列ルーチンを結ぶかを決めるのは、VM が公開する CPUID のフラグ
+  だ。それを言い当てたのはバイナリのハッシュで — 両 job は同じ `a0386c17b5f1ef38` を出した
+  （valgrind 3.22.0、pin された rustc 1.97.1 も同じ）のに、ホストの型は違った（`AMD EPYC 9V74` と
+  `AMD EPYC 9V45`）。測る過程すべてを
+  `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT` の下で走らせるとすき間は消
+  えた: 執行側の job は別の型のホストで基準値に対し −0.08% を測った — それ以前は +1.44% だった。固定
+  したあと三つのホスト型（`9V74`、`9V45`、`7763`）で測り直すと、このシナリオは 0.0002% で一致する。
+  ホストを受け入れるために許容差を広げたのではなく、ホストが握っていた入力を固定したのだ。ゲートを作
+  った日以来記録されてきた WSL から runner への +1.45% の差も同じ現象である。基準値のファイルが実際
+  に失ったのは手で書き込まれた文章だ — `generated_by.note` は PR #299 の head でも toolchain の pin
+  より前でもない commit を名指しし、環境の文字列は `environment()` がその image で出す値ではない —
+  そこで `--update` は全ての key、値を何回採ったかまで書き出し、提出された key 集合は
+  `tests/test_ir_baseline_workflow.py` が生成側に固定する。
+- **新しいバインディングのシナリオは 500 反復ではゲートにかけられないほど小さかった** — 同じ commit
+  の二回の計測は `to_python_small` を 0.83% 離した — かけはずの 0.5% より広い — 一方 engine のシナリ
+  オは 0.0009% で一致する。`ITERATIONS` は engine ハーネスと同じ 2 000 になり、同一実行内のばらつき
+  は 0.076〜0.24% に落ちた; 各シナリオは三回採られて最大値が提出され、回数は `generated_by` に記録さ
+  れ執行する側が読み戻す — max-of-3 と単一のサンプルは同じ名前の別の計測器だからだ。全てのサンプルと
+  ばらつきが出力されるので、許容差は job のログから論じられる。
 - **命令数ゲートはハーネスファイルを 1 個名指しで読んでおり、基準値は一部手書きだった** —
   `crates/pyrs-yaml/benches/ir_gate.rs` がツリーに入った後でも、
-  `crates/pyrs-yaml-core/benches/ir_gate.rs` だけ名指ししていたシナリオ・プローブは 15 名のうち 12 名
-  しか照合しない: ある系がまるごと基準値に入らないまま、`ir-unbaselined` にも出ない — #303 の graph
-  プローブが最初の `[dependencies]` で止まったのと同じ類だ。`ir_harness_channels()` は manifest から
-  ハーネス一覧を導出し、ディスク上のファイルと双方向で照合する（宣言はあるがソースが消えていれば
-  `ir-harness-missing`、ハーネスファイルはあるが誰もビルドしていなければ `ir-harness-undeclared`）、
-  二つのハーネスが同じシナリオ名を列挙すれば `ir-scenario-duplicate` — 基準値 1 個ではどちらの系か
-  言えない。これらの注入は `tests/test_quality_matrix.py` がそれぞれ赤くする。提出済みの基準値には
-  二つ目の問題があった: `generated_by.note` は手書きの文章で `ir_gate.py --update` は文章を書かない
-  ため、次の再生成 artifact はこのファイルの来歴を説明する段落を消し、diff は判断が下されたように
-  読まれたはずだ。根拠は `QUALITY_MATRIX.md` へ移し、`--update` が生成された note を書き、提出された
-  key は `tests/test_ir_baseline_workflow.py` が job の出力そのものに固定する。
-- **`Test matrix (all legs)` は 11 個の job のうち 3 個しか待っておらず、8 個は赤のまま合并できた** —
-  #300 で入れた扇入は `test`、`test-freethreaded`、`coverage` のみをカバーし、`rust-lint`(clippy)、
-  `property-tier`、`msrv-check`、`no-std-check`、`build`、`compliance-report`、`i18n-check` を全体の
-  実行を表すはずの単一チェックの外に残していた。いまは `ci.yml` の全 job(自分と `main-gate` を除く)
-  を待ち、`pull_request` だけで発火する — 手動 dispatch を赤にする判定は守るべき判断が存在せず、
-  無視する習慣を養うだけだ。自身のテスト 2 本も壊れた状態で生まれ、出荷前に実行して捕まった:
-  job 名の正規表現が `on:` の鍵まで拾って `push` という检查を要求し、境界なしの `strategy:` 探索が
-  全 job を行列の producer に見せていた(#300 の検証は `or` の逃がし節で偶然通っていただけ)。両方とも
-  `jobs:` の範囲に限定し、`tests/test_matrix_verdict_gate.py`(14 test)は正確な規則として書く: job を
-  増やして扇入へ入れなければテストが赤くなる。帰因は実測: `no-std-check` を `needs` から外すと
-  その 1 本だけが赤になり、baseline は 14 passed。
-- **`perf-coverage:binding-layer` は、プローブが半分しか読んでいない graph を説明していた** —
-  計測は `ir_harness_crates` を `pyrs-ast, pyrs-schema, pyrs-yaml-core` と報告していたのに、そこから
-  導出される穴と、5 つの changelog mirror に登記された文言は 5 つの crate を上げていた。プローブは
+  `crates/pyrs-yaml-core/benches/ir_gate.rs` だけ名指ししていたシナリオ・プローブは 15 名のうち 12
+  名しか照合しない: ある系がまるごと基準値に入らないまま、`ir-unbaselined` にも出ない — #303 の
+  graph プローブが最初の `[dependencies]` で止まったのと同じ類だ。`ir_harness_channels()` は
+  manifest からハーネス一覧を導出し、ディスク上のファイルと双方向で照合する（宣言はあるがソースが消
+  えていれば `ir-harness-missing`、ハーネスファイルはあるが誰もビルドしていなければ
+  `ir-harness-undeclared`）、二つのハーネスが同じシナリオ名を列挙すれば `ir-scenario-duplicate` — 基
+  準値 1 個ではどちらの系か言えない。これらの注入は `tests/test_quality_matrix.py` がそれぞれ赤くす
+  る。提出済みの基準値には二つ目の問題があった: `generated_by.note` は手書きの文章で
+  `ir_gate.py --update` は文章を書かないため、次の再生成 artifact はこのファイルの来歴を説明する段落
+  を消し、diff は判断が下されたように読まれたはずだ。根拠は `QUALITY_MATRIX.md` へ移し、 `--update`
+  が生成された note を書き、提出された key は `tests/test_ir_baseline_workflow.py` が job の出力その
+  ものに固定する。
+- **`Test matrix (all legs)` は 11 個の job のうち 3 個しか待っておらず、8 個は赤のまま合并できた**
+  — #300 で入れた扇入は `test`、`test-freethreaded`、`coverage` のみをカバーし、
+  `rust-lint`(clippy)、`property-tier`、`msrv-check`、`no-std-check`、`build`、
+  `compliance-report`、`i18n-check` を全体の実行を表すはずの単一チェックの外に残していた。いまは
+  `ci.yml` の全 job(自分と `main-gate` を除く) を待ち、`pull_request` だけで発火する — 手動 dispatch
+  を赤にする判定は守るべき判断が存在せず、無視する習慣を養うだけだ。自身のテスト 2 本も壊れた状態で
+  生まれ、出荷前に実行して捕まった: job 名の正規表現が `on:` の鍵まで拾って `push` という检查を要求
+  し、境界なしの `strategy:` 探索が全 job を行列の producer に見せていた(#300 の検証は `or` の逃が
+  し節で偶然通っていただけ)。両方とも `jobs:` の範囲に限定し、`tests/test_matrix_verdict_gate.py`(14
+  test)は正確な規則として書く: job を増やして扇入へ入れなければテストが赤くなる。帰因は実測:
+  `no-std-check` を `needs` から外すとその 1 本だけが赤になり、baseline は 14 passed。
+- **`perf-coverage:binding-layer` は、プローブが半分しか読んでいない graph を説明していた** — 計測は
+  `ir_harness_crates` を `pyrs-ast, pyrs-schema, pyrs-yaml-core` と報告していたのに、そこから導出さ
+  れる穴と、5 つの changelog mirror に登記された文言は 5 つの crate を上げていた。プローブは
   manifest に対して `re.search` を使っていたため `[dependencies]` で止まり、`to_json_medium` と
   `to_toml_medium` が `pyrs-json` / `pyrs-toml` を link する `[dev-dependencies]` を見ていなかった。
-  結論(`pyrs-yaml` はどちらの節にも無い)は正しくとも根拠は間違いで、登記された穴の中の誤数は引用される
-  分だけ欠落より悪い。いまは全ての依存節を読む。
-  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section` は集合を内容で固定し、
-  台帳のテキストに現れる crate 名も照合するので、計測と文章が再び食い違うことはない。これは要約に導出値を
-  印字したことで分かり、それを使った文を信じなかったことで救われた。
+  結論(`pyrs-yaml` はどちらの節にも無い)は正しくとも根拠は間違いで、登記された穴の中の誤数は引用され
+  る分だけ欠落より悪い。いまは全ての依存節を読む。
+  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section` は集合を内容で
+  固定し、台帳のテキストに現れる crate 名も照合するので、計測と文章が再び食い違うことはない。これは
+  要約に導出値を印字したことで分かり、それを使った文を信じなかったことで救われた。
 - **Ir baseline 再生成ジョブが、baseline の記録と違うコンパイラで測ろうとしていた** —
   初回の実際の実行(`workflow_dispatch` に届くのは `main` だけ)は `rust-toolchain@stable` を使い、
   runner の stable は rustc 1.99.0 なのに `.ci/ir-baseline.json` は 1.97.1 で作られていた。そのため
@@ -387,75 +407,77 @@ status: new
   自動 push 禁止・`@stable` への逆戻り禁止を固定する。
 - **3 つのチェッカーが、この package が支える最下段 Python 3.8 で動かなかった** —
   `scripts/check_changelog_mirrors.py`（`-> set[str]`）と `scripts/check_stub_drift.py`
-  （`-> tuple[...]`）は署名注釈を import 時に評価するため、`from __future__ import annotations` 無しでは
-  3.8 が拒否する。`scripts/check_changelog_coupling.py` は 3.9 で増えた `str.removeprefix` を呼んでいた。
-  気づかれなかった理由は、これらのスクリプトを走らせる job がすべて 3.12 か 3.14 だから。表面化させたのは
-  pytest matrix の 3.8 脚で、しかもチェック対象を読むだけの pull request（結合ゲート自身のテストが
-  チェッカーを import して呼ぶ）が引き金になった。その脚での実測: import 時に
+  （`-> tuple[...]`）は署名注釈を import 時に評価するため、`from __future__ import annotations` 無し
+  では 3.8 が拒否する。`scripts/check_changelog_coupling.py` は 3.9 で増えた `str.removeprefix` を
+  呼んでいた。気づかれなかった理由は、これらのスクリプトを走らせる job がすべて 3.12 か 3.14 だか
+  ら。表面化させたのは pytest matrix の 3.8 脚で、しかもチェック対象を読むだけの pull request（結合
+  ゲート自身のテストがチェッカーを import して呼ぶ）が引き金になった。その脚での実測: import 時に
   `TypeError: 'type' object is not subscriptable`、最初の呼び出しで
   `AttributeError: 'str' object has no attribute 'removeprefix'`。今は gate 化されている:
-  `tests/test_scripts_import_on_supported_python.py` は `scripts/` 下の全ファイルをテスト実行中の
-  インタプリタで import し、組み込み汎用注釈に future import が要ることを静的に確認し、最下段が
-  記憶でなく `pyproject.toml` から来ることを主張する — 初回実行で `check_stub_drift.py` の事例を
-  見つけた。限界もファイルに明記: 関数本文内の新 API 呼び出しは import では見えないので、ゲートの
-  挙動テストが該当関数を実行し続ける必要がある。
-- **Ir baseline を実行側の環境で生成し、許容線を 2% から 0.5% へ動かした** — 同一コミットを 2
-  種類の GitHub runner イメージで測ると、12 シナリオすべて最大 0.0018% 以内で一致した
-  （`parse_anchors`: 341M 中 6,061 命令）。そこで `.ci/ir-baseline.json` は runner 自身の数値と
-  `generated_by` の記録を持ち、`scripts/ir_gate.py` は別の機械から来た実行で注意行を出す（WSL の
-  実行が実際に出した）。以前の 2% は、WSL で測った `serialize_block_scalars` と runner の値の
-  1.45% の差まわりに設計されていた。二つの説明を試し、どちらも外れた。`.gitattributes` が
-  `BLOCK_SCALAR_YAML` の CR バイトを正規化するという説：`-text` を足すと runner の値は
-  16,020,906 中 28 命令しか動かず、しかもこの fixture の保存済みバイト自体が安定ではなかった: `git show` は
-  `main` のコピーで CR ゼロ、`-text` を足したブランチで 98 を返し、Windows の checkout はそれを
-  入れる。こそが `-text` と新しいバイト一致テストが塞ぐ再現性の穴だ。イメージ間の漂移という
-  説：二つのイメージは 0.0018% で一致。よって差は未解決として記録し、変えたのは発現場所の
-  分からない数値を比較やめるという点だ。`-text` はバイト安定のためだけに残す。
-- **TOML 複数行インラインテーブルで、最後以外メンバーに付いた注釈を読み手が報告する位置へ** —
-  書き手はそれを区切りカンマの後 (`b = 1, # n`) に置いていた。`#` は行末まで続くため TOML は注釈の中に
-  カンマを収められず、読み手はその注釈を*次の*キーの行頭注釈として格納し直す。つまり 2 回目の出力は注釈を
-  動かし、テキストは固定しなかった。この形は正しい TOML テキストから到達不能で — だから生成器にしか
-  発見できなかった — ソースが作れない AST を書き手に渡す変換路で現れる。注釈はメンバーの後の独立した
-  行 (`b = 1,` / `# n`) に出す。まさに parser が報告する位置だ。帰属: 規則を取り除くと
-  `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line`（0.45 秒の階層）と
-  `fmt_pbt::prop_toml_writer_is_fixed_point`（20,000 ケース）だけが赤くなり、他は動かない。256 ケースで
-  永続化された shrink 事例を外すと全スイートが緑になる — この高い階層こそが穴を塞ぐ。
-- **key の下の空 container は 2 回の dump を必要としなくなった** — `#287` で両方の writer が
-  dash 行に `{}` と `[]` を inline するようになったが、Python オブジェクトから *mapping value* を
-  出す経路には同じ判断がまだ欠けていた: `safe_dump({"a": {}})` は `"a:\n  {}\n"` を、AST writer は
+  `tests/test_scripts_import_on_supported_python.py` は `scripts/` 下の全ファイルをテスト実行中のイ
+  ンタプリタで import し、組み込み汎用注釈に future import が要ることを静的に確認し、最下段が記憶で
+  なく `pyproject.toml` から来ることを主張する — 初回実行で `check_stub_drift.py` の事例を見つけ
+  た。限界もファイルに明記: 関数本文内の新 API 呼び出しは import では見えないので、ゲートの挙動テス
+  トが該当関数を実行し続ける必要がある。
+- **Ir baseline を実行側の環境で生成し、許容線を 2% から 0.5% へ動かした** — 同一コミットを 2 種類の
+  GitHub runner イメージで測ると、12 シナリオすべて最大 0.0018% 以内で一致した（`parse_anchors`:
+  341M 中 6,061 命令）。そこで `.ci/ir-baseline.json` は runner 自身の数値と `generated_by` の記録を
+  持ち、`scripts/ir_gate.py` は別の機械から来た実行で注意行を出す（WSL の実行が実際に出した）。以前
+  の 2% は、WSL で測った `serialize_block_scalars` と runner の値の 1.45% の差まわりに設計されてい
+  た。二つの説明を試し、どちらも外れた。`.gitattributes` が `BLOCK_SCALAR_YAML` の CR バイトを正規化
+  するという説：`-text` を足すと runner の値は 16,020,906 中 28 命令しか動かず、しかもこの fixture
+  の保存済みバイト自体が安定ではなかった: `git show` は `main` のコピーで CR ゼロ、`-text` を足した
+  ブランチで 98 を返し、Windows の checkout はそれを入れる。こそが `-text` と新しいバイト一致テスト
+  が塞ぐ再現性の穴だ。イメージ間の漂移という説：二つのイメージは 0.0018% で一致。よって差は未解決と
+  して記録し、変えたのは発現場所の分からない数値を比較やめるという点だ。`-text` はバイト安定のため
+  だけに残す。
+- **TOML 複数行インラインテーブルで、最後以外メンバーに付いた注釈を読み手が報告する位置へ** — 書き手
+  はそれを区切りカンマの後 (`b = 1, # n`) に置いていた。`#` は行末まで続くため TOML は注釈の中にカ
+  ンマを収められず、読み手はその注釈を*次の*キーの行頭注釈として格納し直す。つまり 2 回目の出力は注
+  釈を動かし、テキストは固定しなかった。この形は正しい TOML テキストから到達不能で — だから生成器に
+  しか発見できなかった — ソースが作れない AST を書き手に渡す変換路で現れる。注釈はメンバーの後の独
+  立した行 (`b = 1,` / `# n`) に出す。まさに parser が報告する位置だ。帰属: 規則を取り除くと
+  `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line`（0.45 秒の階層）
+  と `fmt_pbt::prop_toml_writer_is_fixed_point`（20,000 ケース）だけが赤くなり、他は動かない。256 ケ
+  ースで永続化された shrink 事例を外すと全スイートが緑になる — この高い階層こそが穴を塞ぐ。
+- **key の下の空 container は 2 回の dump を必要としなくなった** — `#287` で両方の writer が dash 行
+  に `{}` と `[]` を inline するようになったが、Python オブジェクトから *mapping value* を出す経路
+  には同じ判断がまだ欠けていた: `safe_dump({"a": {}})` は `"a:\n  {}\n"` を、AST writer は
   `"a: {}\n"` を出す。どちらの text も同じ data に読み戻せるため round-trip test では見えなかった —
   違いは 1 回の dump で動きが止まるかどうかだけ。その裏にもう 1 つの形が隠れていた — item に空の
   container が 1 つあるだけで compact な dash 表記全体を失い、`safe_dump([{"a": {}, "b": 1}])` は
   `"- \n  a:\n    {}\n  b: 1\n"` を出す、writer の本来の出力は `"- a: {}\n  b: 1\n"`。両方修正した。
   見つけた缺口は新設の `tests/test_route_parity.py` — 等価な data を 2 つの YAML writer（parse 済み
-  tree を扱う node writer と、Python オブジェクト相手の `direct_dump` 高速経路。両者はコードを共有せず
-  設計上ミラー）に同時に流し込み、すべての形で byte 単位一致を要求する表だ。意図した差分（quote style、
-  flow style、block scalar、anchor、tag）は曖昧にせず差分として pin している。この表によって、防御
-  matrix が登録した `route-parity:node-writer-vs-direct-dump` は登録の翌日に閉じた。
-- **自分で merge する template が、継承した鍵をちゃんと渡すようになった** — 昨日出した merge 修正には
-  2 つ目の個所があった。anchor の body は merge 解決が走る前にスナップショットされるため、
-  `mid: &m {<<: *b, y: 2}` を指す `use: {<<: *m}` は古いコピーを読み、target が既に持つと思った
-  `<<` を飛ばしていた。結果は `{y: 2, z: 3}` で、PyYAML の `{x: 1, y: 2, z: 3}` と比べると継承した
-  `x` が消え、3 段の鎖では 2 つの鍵が失われていた。出力テキストはどちらでも安定なので、往復アサーションでは
-  見えない — 目撃者は object view だけだった。いまは anchor body を読む場所で解決するので、上書き関係も
-  正しい階層になる — 鎖自身の鍵が継承分に勝ち、文書自身の鍵が鎖に勝つ。1 階層ずつ、両参考ライブラリと同じ。
+  tree を扱う node writer と、Python オブジェクト相手の `direct_dump` 高速経路。両者はコードを共有せ
+  ず設計上ミラー）に同時に流し込み、すべての形で byte 単位一致を要求する表だ。意図した差分（quote
+  style、flow style、block scalar、anchor、tag）は曖昧にせず差分として pin している。この表によっ
+  て、防御 matrix が登録した `route-parity:node-writer-vs-direct-dump` は登録の翌日に閉じた。
+- **自分で merge する template が、継承した鍵をちゃんと渡すようになった** — 昨日出した merge 修正に
+  は 2 つ目の個所があった。anchor の body は merge 解決が走る前にスナップショットされるため、
+  `mid: &m {<<: *b, y: 2}` を指す `use: {<<: *m}` は古いコピーを読み、target が既に持つと思った `<<`
+  を飛ばしていた。結果は `{y: 2, z: 3}` で、PyYAML の `{x: 1, y: 2, z: 3}` と比べると継承した `x` が
+  消え、3 段の鎖では 2 つの鍵が失われていた。出力テキストはどちらでも安定なので、往復アサーションで
+  は見えない — 目撃者は object view だけだった。いまは anchor body を読む場所で解決するので、上書き
+  関係も正しい階層になる — 鎖自身の鍵が継承分に勝ち、文書自身の鍵が鎖に勝つ。1 階層ずつ、両参考ライ
+  ブラリと同じ。
 - **merge source の中にあった merge key が、捨てられずに適用される** — `<<: {<<: {x: 1}}` は `<<` の
-  階層をどちらもデータとして残していた（`{'<<': {'<<': {'x': 1}}}`）が、PyYAML と ruamel は同じ文書を
-  `{'x': 1}` と読む。`<<: {<<: {x: 1, y: 1}, y: 2}` は `x` を丸ごと失い、block 形の `- <<:` も同じだった。
-  collector は target が「既に持つ」source key を node 全体の比較で飛ばしており、その瞬間 target 自身の
-  `<<` entry がまだ map に残っていたので、nested merge が適用されずに捨てられていた。その比較に key の
-  metadata が
-  含まれていたため、*コメント* ひとつで答えが変わった — 3 行の綴りで中央の `<<:` にコメントがあれば最初の dump で 1 階層、
-  自分の出力を再読してもう 1 階層を消費し、テキストが毎ラウンド動いた（fuzz 段が報告する drift そのもの）。
-  安定だが解決し足りない文書は何も赤くならなかった — テキスト一致の oracle では「適用されなかった merge」が
-  見えない。いまは 1 回の parse で source を先に解決するので、同じ文書はどの綴りでも同じ意味になり、source
-  自身の key は nested merge が持ってくる鍵を引き続き上書きする（`<<: {<<: {x: 1}, x: 9}` は `x: 9`、
-  両参考ライブラリと同じ読み）。
+  階層をどちらもデータとして残していた（`{'<<': {'<<': {'x': 1}}}`）が、PyYAML と ruamel は同じ文書
+  を `{'x': 1}` と読む。`<<: {<<: {x: 1, y: 1}, y: 2}` は `x` を丸ごと失い、block 形の `- <<:` も同
+  じだった。collector は target が「既に持つ」source key を node 全体の比較で飛ばしており、その瞬間
+  target 自身の `<<` entry がまだ map に残っていたので、nested merge が適用されずに捨てられていた。
+  その比較に key の metadata が含まれていたため、*コメント* ひとつで答えが変わった — 3 行の綴りで中
+  央の `<<:` にコメントがあれば最初の dump で 1 階層、自分の出力を再読してもう 1 階層を消費し、テキ
+  ストが毎ラウンド動いた（fuzz 段が報告する drift そのもの）。安定だが解決し足りない文書は何も赤くな
+  らなかった — テキスト一致の oracle では「適用されなかった merge」が見えない。いまは 1 回の parse
+  で source を先に解決するので、同じ文書はどの綴りでも同じ意味になり、source 自身の key は nested
+  merge が持ってくる鍵を引き続き上書きする（`<<: {<<: {x: 1}, x: 9}` は `x: 9`、両参考ライブラリと同
+  じ読み）。
 - **sequence として書いた key の先頭 item に付いた note が 1 ラウンドごとに 1 階段上る** — writer は
-  key 本体のインデントで `-` の上に書いていたが、再読するとその位置の注釈は *sequence* のものに
-  報告されるため、次の emission では `?` marker の上の行へ繰り上がり、文書は 2 ラウンド目でしか
-  収束しなかった — `?` + `-` + `#?` + ` ? ` は最初に note を key 本体の中の独立した一行として出し、次の emission では marker の上へ繰り上げていた。marker 行こそが reader と writer が今度こそ合意する位置なので、1 回の
-  emission が不動点に到達し、note は文書に残る。fuzz の backlog から見つかった
+  key 本体のインデントで `-` の上に書いていたが、再読するとその位置の注釈は *sequence* のものに報告
+  されるため、次の emission では `?` marker の上の行へ繰り上がり、文書は 2 ラウンド目でしか収束しな
+  かった — `?` + `-` + `#?` + ` ? ` は最初に note を key 本体の中の独立した一行として出し、次の
+  emission では marker の上へ繰り上げていた。marker 行こそが reader と writer が今度こそ合意する位
+  置なので、1 回の emission が不動点に到達し、note は文書に残る。fuzz の backlog から見つかった
   （`crash-1445c91a` と `crash-f1643b2d`、どちらも最小化すると同じ 10 バイト）。
 - **container の note が「tag だけの未完了行」を借りない** — note の*行*が後に続く前にその行を
   閉じる（`k: ! ~`）は前リリースからのルールだが、取りこぼしていたのは container 自身の行内
@@ -471,14 +493,14 @@ status: new
   形状で出力は変化するが、再解析できなくなる文書は無く、1 ラウンドで収束するかの検査は
   `yaml_roundtrip` の 69 件すべての seed をカバーする。
 - **sequence 項目の空 container は 2 回の dump を必要としない** — `{}` と `[]` には block 用の綴りが
-  ないのに、両方の writer が `-` の下で別の行に置いていたため、再読時には *flow* node と解釈され、次の
-  dump で行内に戻っていた — `safe_dump([{}])` は `"- \n  {}\n"` を出し、それをもう一度 dump すると
-  `"- {}\n"` になる。値は一度も間違っていなかったが、テキストが動き続けていた — そしてこれは fuzz 段が
-  主張する不変量そのもの。ダッシュ行に乗せて収束させる。変更するのは両実装 — 解析・編集済みの tree を扱う
-  `Serializer::write_sequence_item` と、Python オブジェクト向けの `direct_dump` 高速経路 — で、両者は
-  コードを共有せず設計上ミラーになっている。いまは `safe_dump([{}])` が `"- {}\n"`、`[]` と入れ子の
-  場合も同様で、いずれも 1 回の再 dump が不動点。CI 既定の case 数で Linux の seed により
-  `pbt::tests::prop_mapping_order_preserved` が気づいた。
+  ないのに、両方の writer が `-` の下で別の行に置いていたため、再読時には *flow* node と解釈され、次
+  の dump で行内に戻っていた — `safe_dump([{}])` は `"- \n  {}\n"` を出し、それをもう一度 dump する
+  と `"- {}\n"` になる。値は一度も間違っていなかったが、テキストが動き続けていた — そしてこれは fuzz
+  段が主張する不変量そのもの。ダッシュ行に乗せて収束させる。変更するのは両実装 — 解析・編集済みの
+  tree を扱う `Serializer::write_sequence_item` と、Python オブジェクト向けの `direct_dump` 高速経路
+  — で、両者はコードを共有せず設計上ミラーになっている。いまは `safe_dump([{}])` が `"- {}\n"`、
+  `[]` と入れ子の場合も同様で、いずれも 1 回の再 dump が不動点。CI 既定の case 数で Linux の seed に
+  より `pbt::tests::prop_mapping_order_preserved` が気づいた。
 - **tag のみの行を閉じたあとも note が自列を保つ** — note を所属 node に残すために tag のみの
   行を閉じる処理は、その行を出力中の絶対 offset で憶えていた。simple key の行内 note を書き込む
   とその offset より前にテキストが挿入されるのに offset は動かされなかったため、閉じる判定は間
@@ -532,19 +554,18 @@ status: new
   出力し — 1 ラウンドで不動点、値も不変。一つ正直に書いておく：孤児の alias はそれが指していた
   ノードに置換されるので、値の意味は保たれるが「同じノードを共有する」表記は保たれません。
   定義が消えた後に共有すべき同一性は残っていないためです。
-- **改行だけで構成される block scalar の値が空文字列へ劣化しなくなった** — `>+8\r\r#` は
-  値が改行 1 個、chomping が `Keep`、明示インデント 8 の folded scalar として読めます。
-  writer はインデント指示符を残して `>+8\n\n` を出力し、これは再読込で値は同じまま `Clip`
-  かつ指示符なしになるため、次のラウンドでは `>\n\n` が書かれ、値は `""` になります——Clip は
-  末尾の改行を剥がすので、値の唯一の改行の行き先がなかったのです。*空* の body を冪等にする
-  2 つの規則（復元不能なインデント指示符を落とす／同じ値に再読込できる chomping を書く）は
-  「空か」で判定されており、改行のみの body は空ではないため条件を外れていました（libFuzzer
-  `yaml_roundtrip`、`crash-2f6b1eff`、6 バイト——入力はもうクラッシュしないので `tmin` では
-  縮められません）。両 writer は現在「内容行がない」を共通条件とし、形状は 1 ラウンドで
-  不動点に達し、値も保たれます。コスト：初版は同じ値をもう一度走査しており `serialize_block_scalars` で +0.65%（runner では
-  +2.11%）を計測し、instruction-count gate の許容値 2% を越えたため、マージ前に gate がこの
-  変更を止めた。writer が既に計算している先頭内容行の判定を共用することで +0.15% になり、
-  許容域内に戻った。
+- **改行だけで構成される block scalar の値が空文字列へ劣化しなくなった** — `>+8\r\r#` は値が改行 1
+  個、chomping が `Keep`、明示インデント 8 の folded scalar として読めます。writer はインデント指示
+  符を残して `>+8\n\n` を出力し、これは再読込で値は同じまま `Clip` かつ指示符なしになるため、次のラ
+  ウンドでは `>\n\n` が書かれ、値は `""` になります——Clip は末尾の改行を剥がすので、値の唯一の改行
+  の行き先がなかったのです。*空* の body を冪等にする 2 つの規則（復元不能なインデント指示符を落とす
+  ／同じ値に再読込できる chomping を書く）は「空か」で判定されており、改行のみの body は空ではない
+  ため条件を外れていました（libFuzzer `yaml_roundtrip`、`crash-2f6b1eff`、6 バイト——入力はもうクラッ
+  シュしないので `tmin` では縮められません）。両 writer は現在「内容行がない」を共通条件とし、形状
+  は 1 ラウンドで不動点に達し、値も保たれます。コスト：初版は同じ値をもう一度走査しており
+  `serialize_block_scalars` で +0.65%（runner では +2.11%）を計測し、instruction-count gate の許容値
+  2% を越えたため、マージ前に gate がこの変更を止めた。writer が既に計算している先頭内容行の判定を
+  共用することで +0.15% になり、許容域内に戻った。
 - **マージキーが anchor を alias の後ろへ動かなくなった** — `<<:` の展開ではマージされた
   ペアが mapping の先頭に prepend されていたため、より前の自身のキーで `&b` を定義し、
   マージされる map の中で `*b` を使うドキュメントは `&b` より先に `*b` を出力してしまい、
@@ -565,14 +586,13 @@ status: new
   `NodeMeta::hash` は #117 の正規化を `NodeMeta::eq` のままミラーし続けることで、両組が
   各自自己整合を保ちます。先頭キー以降のすべてのキーが対象で、文書冒頭のコメントは
   外側のマップに報告されるため、単一キーのフィクスチャでは決して露見しませんでした。
-- **キーの行末コメントが値の行へ移らなくなった** —— 値が自分の前コメントを受けるために
-  別行へ下がる場合、*キー*に属するコメントがそれでも「最後に終わった行」＝値の行に
-  追加されていた。読み直しでは tag のみのスカラー行末コメントは値の**前**コメントとして
-  扱われるため、コメントが毎ラウンド主人を変えて出力が収束しなかった：`b: ! # &` と
-  `#~` はまず `b:\n  # ~\n  !   # &` を生み、再読で
-  `b:\n  # ~\n  # &\n  !` となる（libFuzzer `yaml_roundtrip` crash-1b01ac3f、93 バイトが
-  11 バイトに最小化）。キーのコメントは `key:` 行に残る——読み直しが報告する位置であり、
-  1 ラウンドで不動点でもある。コストは誤差範囲：命令数ゲートは +0.05%。
+- **キーの行末コメントが値の行へ移らなくなった** —— 値が自分の前コメントを受けるために別行へ下がる
+  場合、*キー*に属するコメントがそれでも「最後に終わった行」＝値の行に追加されていた。読み直しでは
+  tag のみのスカラー行末コメントは値の**前**コメントとして扱われるため、コメントが毎ラウンド主人を
+  変えて出力が収束しなかった：`b: ! # &` と `#~` はまず `b:\n  # ~\n  !   # &` を生み、再読で
+  `b:\n  # ~\n  # &\n  !` となる（libFuzzer `yaml_roundtrip` crash-1b01ac3f、93 バイトが 11 バイトに
+  最小化）。キーのコメントは `key:` 行に残る——読み直しが報告する位置であり、1 ラウンドで不動点でも
+  ある。コストは誤差範囲：命令数ゲートは +0.05%。
 - **マージはマッピング自身が持つキーをもう繰り返さない** —— コメントを載せた非タグ `y` と
   マージされた `y` は別の `IndexMap` キーだったため両方が出力に残り、`to_yaml` は同じ深さに
   `y:` を 2 回印刷した —— このテキストは我々自身のパーサが拒否し、「解析できない出力は出さない」
@@ -584,42 +604,40 @@ status: new
   （`former-crash-3495cc86.seed`、`a_merge_never_repeats_a_key_the_mapping_owns` と語料ゲートが
   固定）。上書き規則を外すとこの 2 件だけ赤くなり、283 件の残りは緑。
 - **プロパティだけを乗せたルートノードの隣のコメントはもう捨てられない** —— `!x # note`、
-  `&a # note`、69 バイトの `!###0` のコメントの壁はテキストを失い続けていたが、どのオラクルにも
-  見えなかった：コメント 1 個足りないだけの安定文書は完全に安定だからだ。到着順が 2 つ、
-  不具合も 2 つ。granit はそのコメントを `Scalar` イベント*前*に渡すため、`attach_inline_comment`
-  には掛ける候補が無いのに「処理済み」と答えていた —— だから呼び出し側は次へ運ばなかった。
-  `!m` CR `...` SP `# -o` ではコメントが `DocumentEnd` の*後*に届き、完成済みのルートへインライン
-  コメントとして戻すバインドは `!m   # -o` を生む —— その綴り自身を読み戻すとコメントをノードの
-  前に報告して leading へ移すので、往復は決して収束しなかった。いまは実際に掛かったときだけ
-  成功を返し、非コンテナ文書の末尾より後のコメントは次へ運ばれ、文書終了時に pending スロットへ
-  残ったコメントは破棄されずルートの leading として残る（`former-crash-7918272c.seed` 11 バイト、
-  `former-crash-ce106ccc.seed` 69 バイト。`a_note_beside_a_property_only_root_survives_and_settles` が
-  5 形状と両シードで完全な出力・テキストの生存・1 ラウンド不動点を主張）。正直な戻り値を取り除く
-  とこの 1 件だけ赤くなる。コンテナのルートは意図的にインラインの居所を残す —— `a: 1` +
-  `# trailing note` は最後の値行から読み戻せるし、`flush_trailing_comment` の 2 件の pin が
-  守っているのはそれだ。
-- **テキストにすぎない `#` がコメントを行から追い出さなくなった** — 書き出し器はコンテナ自身の
-  インラインコメントをちょうど書き終えた行に載せるが、その前に「この行にすでに `#` があるか」を
-  生のバイト列で確かめていた。引用符付きスカラーが `#` を含む（`"+#": !-`）と「ある」と答えてしまい、
-  コメントは自分専用の行へ降格した —— 値の下に置かれた生のコメント行は読み戻しで*次の*ノードの
-  leading コメントとして渡されるので、2 ラウンド目に値ブロックの内側へ移っていた。この走査はいま
-  引用符と YAML の空白規則に従う（`line_has_comment_marker`）。よってコメントは `key:` と同じ行に載り、
-  1 回の出力が不動点になる（`former-crash-22cb5f67.seed`、15 バイト、
-  `a_quoted_hash_key_settles_the_containers_note_at_once` と `comment_marker_scan_respects_quoting` が固定）。
-  新しい走査を取り除くと、赤くなるのはこの 1 件のテストだけだ。
-- **タグ付きコンテナが最初の条目のマーカーの柱にあるコメントをすべて巻き上げる** — ヘッダー行の下から
-  コメントを追い出すあの巻き上げは、最初のキー*自身*の leading 積みしか読まなかった。だから本体の中の
-  マーカーに載った積みはヘッダーの下に残り、読み手が 2 ラウンド目に巻き上げていた。いまは柱全体を
-  取る（`former-crash-e6551c75.seed`、60 バイト、および 43 バイトの `former-crash-8f7085b0.seed`、
-  `every_spine_note_clears_a_tagged_containers_header_line` が一緒に固定）。台帳はこの走査が*入れ子に*
-  なったマーカーからコメントを引き剥がし、特徴づけ済みのコンパクトキー形状を壊すと仮定して延期していた。
-  走査を取り除いて再実行すると赤くなるのは 1 件だけ、同じ族の他の形状は両方の書き方で通る ——
+  `&a # note`、69 バイトの `!###0` のコメントの壁はテキストを失い続けていたが、どのオラクルにも見え
+  なかった：コメント 1 個足りないだけの安定文書は完全に安定だからだ。到着順が 2 つ、不具合も 2 つ。
+  granit はそのコメントを `Scalar` イベント*前*に渡すため、`attach_inline_comment` には掛ける候補が
+  無いのに「処理済み」と答えていた —— だから呼び出し側は次へ運ばなかった。`!m` CR `...` SP `# -o` で
+  はコメントが `DocumentEnd` の*後*に届き、完成済みのルートへインラインコメントとして戻すバインドは
+  `!m   # -o` を生む —— その綴り自身を読み戻すとコメントをノードの前に報告して leading へ移すので、
+  往復は決して収束しなかった。いまは実際に掛かったときだけ成功を返し、非コンテナ文書の末尾より後のコ
+  メントは次へ運ばれ、文書終了時に pending スロットへ残ったコメントは破棄されずルートの leading とし
+  て残る（`former-crash-7918272c.seed` 11 バイト、`former-crash-ce106ccc.seed` 69 バイト。
+  `a_note_beside_a_property_only_root_survives_and_settles` が 5 形状と両シードで完全な出力・テキス
+  トの生存・1 ラウンド不動点を主張）。正直な戻り値を取り除くとこの 1 件だけ赤くなる。コンテナのルー
+  トは意図的にインラインの居所を残す —— `a: 1` + `# trailing note` は最後の値行から読み戻せるし、
+  `flush_trailing_comment` の 2 件の pin が守っているのはそれだ。
+- **テキストにすぎない `#` がコメントを行から追い出さなくなった** — 書き出し器はコンテナ自身のインラ
+  インコメントをちょうど書き終えた行に載せるが、その前に「この行にすでに `#` があるか」を生のバイト
+  列で確かめていた。引用符付きスカラーが `#` を含む（`"+#": !-`）と「ある」と答えてしまい、コメント
+  は自分専用の行へ降格した —— 値の下に置かれた生のコメント行は読み戻しで*次の*ノードの leading コメ
+  ントとして渡されるので、2 ラウンド目に値ブロックの内側へ移っていた。この走査はいま引用符と YAML の
+  空白規則に従う（`line_has_comment_marker`）。よってコメントは `key:` と同じ行に載り、1 回の出力が
+  不動点になる（`former-crash-22cb5f67.seed`、15 バイト、
+  `a_quoted_hash_key_settles_the_containers_note_at_once` と `comment_marker_scan_respects_quoting`
+  が固定）。新しい走査を取り除くと、赤くなるのはこの 1 件のテストだけだ。
+- **タグ付きコンテナが最初の条目のマーカーの柱にあるコメントをすべて巻き上げる** — ヘッダー行の下か
+  らコメントを追い出すあの巻き上げは、最初のキー*自身*の leading 積みしか読まなかった。だから本体の
+  中のマーカーに載った積みはヘッダーの下に残り、読み手が 2 ラウンド目に巻き上げていた。いまは柱全体
+  を取る（`former-crash-e6551c75.seed`、60 バイト、および 43 バイトの `former-crash-8f7085b0.seed`、
+  `every_spine_note_clears_a_tagged_containers_header_line` が一緒に固定）。台帳はこの走査が*入れ子
+  に* なったマーカーからコメントを引き剥がし、特徴づけ済みのコンパクトキー形状を壊すと仮定して延期し
+  ていた。走査を取り除いて再実行すると赤くなるのは 1 件だけ、同じ族の他の形状は両方の書き方で通る ——
   影響範囲は測定ではなく推断だった。
 - **`pyrs-toml` がベアメタルターゲットで再びビルドできる** — 積みコメント一式の変更が `#![no_std]`
-  クレートの構文解析器と書き出し器に `std::mem::take` を入れた。ホストでのビルドはすべてそれを見逃すが
-  `no-std-check` ジョブは見逃さない。6 か所を `core::mem::take` に替え、`no-std-check` が走らせる
-  `cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-ast -p pyrs-schema
-  -p pyrs-json -p pyrs-toml` はローカルで緑。
+  クレートの構文解析器と書き出し器に `std::mem::take` を入れた。ホストでのビルドはすべてそれを見逃す
+  が `no-std-check` ジョブは見逃さない。6 か所を `core::mem::take` に替え、`no-std-check` が走らせる
+  `cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-ast -p pyrs-schema -p pyrs-json -p pyrs-toml` はローカルで緑。
 - **タグ付きコンテナが自分のヘッダー行でコメントの積みを分断しなくなった** —
   ブロックコンテナ先頭条目のコメントを、出力する anchor/tag ヘッダー行の上へ巻き上げる
   処理は、コンテナ自身がコメントを持つと実行を拒否していた。当時ノードは*単一*の leading
@@ -644,23 +662,22 @@ status: new
   された（出力は 1 バイトも変わらなかった）；`take_leading_notes` は正規化済みの
   `leading_comments()` 経由へ書き換えたが、それは 2 つの保存規則の一方だけを読むことが
   `standalone_slice()` が防ぐべき分岐だからであり、今回の修正の功績としては数えない。
-- **コンテナ自身の行内コメントが、末尾コメントを置ける行に書かれるようになった** —
-  ライターはブロックコンテナの非 standalone `comment` をブロック下の裸のコメント行として
-  出力していたが、リーダーは空行から行内コメントを報告しない：再読するとそのテキストは
-  ブロックを終えたノードの*先頭*コメントとして渡され、最初の出力は不動点にならなかった。
-  `:<TAB>!-<CR>... #-o` はまず `~: !- \n# -o\n` を出し、2 ラウンド目でようやく
-  `~:\n  # -o\n  !- \n` に収まった（libFuzzer `yaml_roundtrip` crash-11ced252、13 バイト）。
-  コメントはコンテナが書き終えたばかりの行を借りる —— `~: !-   # -o` は 1 ラウンドで安定し、
-  まさに granit が読み戻して報告する位置である。スロットの所有権は出力テキストから推測せず行を
-  書く箇所で記録するため、次の 3 つの場合は借用を拒否する：ブロックスカラー本文の行（追記すると
-  内容になる）、折り返しの継続行、すでにコメントを持つ行。
+- **コンテナ自身の行内コメントが、末尾コメントを置ける行に書かれるようになった** — ライターはブロッ
+  クコンテナの非 standalone `comment` をブロック下の裸のコメント行として出力していたが、リーダーは空
+  行から行内コメントを報告しない：再読するとそのテキストはブロックを終えたノードの*先頭*コメントとし
+  て渡され、最初の出力は不動点にならなかった。`:<TAB>!-<CR>... #-o` はまず `~: !- \n# -o\n` を出し、
+  2 ラウンド目でようやく `~:\n  # -o\n  !- \n` に収まった（libFuzzer `yaml_roundtrip`
+  crash-11ced252、13 バイト）。コメントはコンテナが書き終えたばかりの行を借りる —— `~: !-   # -o` は
+  1 ラウンドで安定し、まさに granit が読み戻して報告する位置である。スロットの所有権は出力テキストか
+  ら推測せず行を書く箇所で記録するため、次の 3 つの場合は借用を拒否する：ブロックスカラー本文の行
+  （追記すると内容になる）、折り返しの継続行、すでにコメントを持つ行。
   `a_containers_inline_note_after_a_text_less_value_settles_at_once` が許可側を、
-  `a_block_scalar_body_never_borrows_the_containers_note` が拒否側を固定する；ミューテーション
-  検査（追記を元に戻す）では前者だけが赤くなり、ほかの 274 件は緑のまま。TOML ハブを経由すると
-  記録済みの境界も締まった：`[sec] # note` はもはやドキュメント先頭へ逃げず、自分の表の中に留まり、
-  その表の最後の `key = value` 行の末尾コメントとして出力され、やはり 1 ラウンドで不動点に達する
-  —— `TestSectionHeaderCommentBoundary` は「生存 + 表の中に留まる + この安定性」を固定するよう
-  書き直した。
+  `a_block_scalar_body_never_borrows_the_containers_note` が拒否側を固定する；ミューテーション検査
+  （追記を元に戻す）では前者だけが赤くなり、ほかの 274 件は緑のまま。TOML ハブを経由すると記録済みの
+  境界も締まった：`[sec] # note` はもはやドキュメント先頭へ逃げず、自分の表の中に留まり、その表の最
+  後の `key = value` 行の末尾コメントとして出力され、やはり 1 ラウンドで不動点に達する ——
+  `TestSectionHeaderCommentBoundary` は「生存 + 表の中に留まる + この安定性」を固定するよう書き直し
+  た。
 - **マーカー行が 2 つのコメント巻き上げをどちらも行うようになった** — 明示的キーはキーノードに
   コメントを持つ*と同時に*キー本体の最初の条目に 2 つ目を乗せていることがあり、リーダーは両方を
   マーカー自身のレベルから報告する。ライターは以前 `if`/`else if` で二つの巻き上げの一方しか
@@ -673,71 +690,64 @@ status: new
   再び排他に戻すとこのテストだけが赤くなる。症状を共有した 2 つの入力 crash-f8525a9e と
   crash-c9031de4 は修正後も赤のままなので、別のもつれ方（コメントがスカラーキーではなく
   ネストされた*マーカー*に乗っている）であり、未解決として残す。
-- **コメント本文の中の `&` は本物のアンカーに名前言を渡さなくなった** — granit は数値の
-  `anchor_id` しか渡さないので、表示名はノード内容から左へ掃引して復元するが、その復元は
-  「`&` の直前の token がコメント開始子」の場合しか拒否していなかった。コメント本文は
-  何でも入り得る：`bg: &b` の次に `# !! &?` を置くと、`&?` の直前は `!!` で `#` ではない
-  ため、読み直しで `bg: &?` になった。アンカーが改名されると、それを指すエイリアスは静かに
-  孤立する — #265 や crash-04fddeb8 と同じデータ喪失級であり、今一周期で「守りが規則
-  より狭く書かれた」三度目でもある。拒否は現在 YAML と同じ問いを聞く：この行のもっと前
-  にコメントが始まっているか？スカラー内の `#` は今も開始しない。誤拒否し得る唯一の形
-  （同じ行のより前に引用符付き `#` があり、その後にアンカーが来る）は到達不能だ：
-  ノードの属性は常に値より前に来るから。`anchor_name_before_ignores_ampersand_anywhere_in_comment_text`
-  （述語の両方向）と `anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand` で
-  固定。後者は新シード `fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed` からバイトを
-  読み、アンカー token・コメント本文・一段で不動点を主張する。該当 artifact は CRASH→CLEAN、
-  同ファイル内の既存の他の守りは全てまだ通る。
-- **キーの上の独立コメント行は最後の 1 行だけでなく全部残る** — AST は leading 注記を
-  単一スロット（`NodeDecor.leading_comment: Option<Comment>`）に置き、YAML receiver・
-  JSONC parser・merge 処理がそれぞれ*上書き*していたため、積み重ねたコメント行は 1 行だけ
-  残った：`# alpha` + `# beta` + `key: 1` は `# beta` + `key: 1` に再シリアライズされた。
-  下流では気づけない — 欠落後のテキストは安定で、往復ティアの判定は「再シリアライズ後に
-  安定か」だけを見るので、そのティアが表現できなかった初のクラスの欠陥である。
-  `NodeDecor.leading_comments` は順序付きリストになり、`NodeMeta::standalone_slice()` が
-  唯一の正規化読み口（リストがあればリスト、なければ旧 `comment(standalone = true)` を
-  1 要素スライスとして読む — `Vec` ではなくスライスなのは `NodeMeta::eq` / `Hash` が全
-  mapping の `IndexMap` 探索ごとに走るため）。`leading_comment()` と Python の
-  `Node.leading_comment` は引き続き最初の 1 本を返すので既存は不変、
-  `Node.leading_comments` が新しい完全ビュー。この糸を辿って同じ形の静かな欠落をあと
-  3 件見つけ、すべて修正・テスト・シード済み：コメントのみの文書はコメントを全部
-  落としていた（`#&l<TAB><TAB>:` → `null`、ノードが無いと `DocumentEnd` が発火しない）、
-  null キーの畳み込みが畳まれた側の注記も消していた、そして消費されたマージキー（または
-  そのマージ元マップ）が注記を連れて消える — マージキー身分の修正がまさに露出させた穴。
-  これからは注記は移し替えるだけで決して捨てない。TOML スポークの待機スロットも同じ上書きで
-  （`# a` + `# b` + `k = 1` は 1 本だけ残った）、空コンテナの行内スロットも積み重ねの残りを
-  落としていた（`# d1` + `# d2` → `{}  # d1`）。いまは両方とも全部残る。これで記録済みの境界も
-  変わった：テーブルヘッダ行のコメントはやはりその行に置けないが、消えず先頭へ移り、TOML を一度
-  往復すればそこで安定する。上記の原因のうち「注記生存」判定だけが残りの帰属作業を待ち、先に
+- **コメント本文の中の `&` は本物のアンカーに名前言を渡さなくなった** — granit は数値の `anchor_id`
+  しか渡さないので、表示名はノード内容から左へ掃引して復元するが、その復元は「`&` の直前の token が
+  コメント開始子」の場合しか拒否していなかった。コメント本文は何でも入り得る：`bg: &b` の次に
+  `# !! &?` を置くと、`&?` の直前は `!!` で `#` ではないため、読み直しで `bg: &?` になった。アンカー
+  が改名されると、それを指すエイリアスは静かに孤立する — #265 や crash-04fddeb8 と同じデータ喪失級で
+  あり、今一周期で「守りが規則より狭く書かれた」三度目でもある。拒否は現在 YAML と同じ問いを聞く：こ
+  の行のもっと前にコメントが始まっているか？スカラー内の `#` は今も開始しない。誤拒否し得る唯一の形
+  （同じ行のより前に引用符付き `#` があり、その後にアンカーが来る）は到達不能だ：ノードの属性は常に
+  値より前に来るから。`anchor_name_before_ignores_ampersand_anywhere_in_comment_text`（述語の両方
+  向）と `anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand` で固定。後者は新シード
+  `fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed` からバイトを読み、アンカー token ・コメント
+  本文・一段で不動点を主張する。該当 artifact は CRASH→CLEAN、同ファイル内の既存の他の守りは全てまだ
+  通る。
+- **キーの上の独立コメント行は最後の 1 行だけでなく全部残る** — AST は leading 注記を単一スロット
+  （`NodeDecor.leading_comment: Option<Comment>`）に置き、YAML receiver・ JSONC parser・merge 処理が
+  それぞれ*上書き*していたため、積み重ねたコメント行は 1 行だけ残った：`# alpha` + `# beta` +
+  `key: 1` は `# beta` + `key: 1` に再シリアライズされた。下流では気づけない — 欠落後のテキストは安
+  定で、往復ティアの判定は「再シリアライズ後に安定か」だけを見るので、そのティアが表現できなかった
+  初のクラスの欠陥である。`NodeDecor.leading_comments` は順序付きリストになり、
+  `NodeMeta::standalone_slice()` が唯一の正規化読み口（リストがあればリスト、なければ旧
+  `comment(standalone = true)` を 1 要素スライスとして読む — `Vec` ではなくスライスなのは
+  `NodeMeta::eq` / `Hash` が全 mapping の `IndexMap` 探索ごとに走るため）。`leading_comment()` と
+  Python の `Node.leading_comment` は引き続き最初の 1 本を返すので既存は不変、
+  `Node.leading_comments` が新しい完全ビュー。この糸を辿って同じ形の静かな欠落をあと 3 件見つけ、す
+  べて修正・テスト・シード済み：コメントのみの文書はコメントを全部落としていた（`#&l<TAB><TAB>:` →
+  `null`、ノードが無いと `DocumentEnd` が発火しない）、null キーの畳み込みが畳まれた側の注記も消し
+  ていた、そして消費されたマージキー（またはそのマージ元マップ）が注記を連れて消える — マージキー身
+  分の修正がまさに露出させた穴。これからは注記は移し替えるだけで決して捨てない。TOML スポークの待機
+  スロットも同じ上書きで（`# a` + `# b` + `k = 1` は 1 本だけ残った）、空コンテナの行内スロットも積
+  み重ねの残りを落としていた（`# d1` + `# d2` → `{}  # d1`）。いまは両方とも全部残る。これで記録済
+  みの境界も変わった：テーブルヘッダ行のコメントはやはりその行に置けないが、消えず先頭へ移り、TOML
+  を一度往復すればそこで安定する。上記の原因のうち「注記生存」判定だけが残りの帰属作業を待ち、先に
   CI を赤くしない。
-- **マージキーは「載せているもの」ではなくキー自身で認識される** — マージ処理は pair
-  テーブルをノード全体の一致で引いていたため、コメントを載せた `<<` はその検索から
-  完全に漏れていた：`<<: #*` + `y:` は `{'<<': {'y': None}}` に解けるのに、同じ文書を
-  `<<:` + `y: ~  # *` と書くと `{'y': None}` に解けた。writer はちょうどこの 2 つの位置の
-  間でコメントを動かすので、1 回の往復が文書の意味を変え、ペアは次のラウンドで消えた
-  （libFuzzer `yaml_roundtrip` crash-69931a77、`cargo fuzz tmin` で 10 バイトまで最小化；
-  crash-0a6fe677・crash-2d3dab18・crash-f88c2382 も同時に解消 — ノード全体の一致に戻すと
-  4 つの入力が揃って赤くなる。これが帰属の根拠であって共通のアサーションではない）。
-  現在は YAML と同じ基準でキーを照合 — tag なし plain の `<<` — し、エントリは値ではなく
-  位置で特定する。これで、自分のキーと等しくなったマージ先クローンを末尾走査が取り
-  違えて返す問題も同時に閉じた。スタイルと tag は今も同一性を決める：引用符で囲んだ
-  `"<<"` と tag 付き `!x <<` は通常のキーのまま —
+- **マージキーは「載せているもの」ではなくキー自身で認識される** — マージ処理は pair テーブルをノー
+  ド全体の一致で引いていたため、コメントを載せた `<<` はその検索から完全に漏れていた：`<<: #*` +
+  `y:` は `{'<<': {'y': None}}` に解けるのに、同じ文書を `<<:` + `y: ~  # *` と書くと `{'y': None}`
+  に解けた。writer はちょうどこの 2 つの位置の間でコメントを動かすので、1 回の往復が文書の意味を変
+  え、ペアは次のラウンドで消えた（libFuzzer `yaml_roundtrip` crash-69931a77、`cargo fuzz tmin` で 10
+  バイトまで最小化；crash-0a6fe677・crash-2d3dab18・crash-f88c2382 も同時に解消 — ノード全体の一致に
+  戻すと 4 つの入力が揃って赤くなる。これが帰属の根拠であって共通のアサーションではない）。現在は
+  YAML と同じ基準でキーを照合 — tag なし plain の `<<` — し、エントリは値ではなく位置で特定する。こ
+  れで、自分のキーと等しくなったマージ先クローンを末尾走査が取り違えて返す問題も同時に閉じた。スタイ
+  ルと tag は今も同一性を決める：引用符で囲んだ `"<<"` と tag 付き `!x <<` は通常のキーのまま —
   `a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key` と
   `TestMergeKeyIdentityIgnoresMetadata` で固定。シード：
   `fuzz/seeds/yaml_roundtrip/former-crash-{69931a77,0a6fe677,2d3dab18,f88c2382}.seed`。
-- **コンテナ自身の tag 行の下にあるコメントはその行と場所を交換しない** — granit は
-  anchor/tag ヘッダ行の*下*に書かれた独立コメントを、その tag 付きノードの leading
-  コメントとして報告する。そのため writer がそこに置いたコメントは次のラウンドで
-  ヘッダの*上*へ移り、1 回の出力では不動点に届かなかった（libFuzzer
-  `yaml_roundtrip` crash-77a8039b、28 バイト：`!5b4?` の次に `# yrrrrrrrrrrrr%3c`、
-  次に `~: ~`；2 ラウンド目で落ち着くことを実測）。こうしたコメントは現在ヘッダの
-  上へ引き上げる — reader が返してくれる唯一の行 — 本文側からは取り除いて二重出力も
-  防ぐ。tag 付きブロックシーケンスの先頭項目も同じ引き上げをする。引き上げは reader
-  のスロットが尽きる所で止める：自分自身のコメントを持つコンテナはヘッダの上に既に
-  1 行あり、2 行目は同じ 1 つの leading スロットに落ちるため、その形は配置を変えない
-  — drift をテキスト喪失に差し替えない
-  （`a_note_is_not_stacked_above_a_tagged_containers_own_note`）。その入力は実測で
-  コメント 1 本を失うため、別の未解決所見として記録した。
-  `fuzz/seeds/yaml_roundtrip/former-crash-77a8039b.seed` にシード済み。
+- **コンテナ自身の tag 行の下にあるコメントはその行と場所を交換しない** — granit は anchor/tag ヘッ
+  ダ行の*下*に書かれた独立コメントを、その tag 付きノードの leading コメントとして報告する。そのため
+  writer がそこに置いたコメントは次のラウンドでヘッダの*上*へ移り、1 回の出力では不動点に届かなかっ
+  た（libFuzzer `yaml_roundtrip` crash-77a8039b、28 バイト：`!5b4?` の次に `# yrrrrrrrrrrrr%3c`、次
+  に `~: ~`；2 ラウンド目で落ち着くことを実測）。こうしたコメントは現在ヘッダの上へ引き上げる —
+  reader が返してくれる唯一の行 — 本文側からは取り除いて二重出力も防ぐ。tag 付きブロックシーケンス
+  の先頭項目も同じ引き上げをする。引き上げは reader のスロットが尽きる所で止める：自分自身のコメント
+  を持つコンテナはヘッダの上に既に 1 行あり、2 行目は同じ 1 つの leading スロットに落ちるため、その
+  形は配置を変えない — drift をテキスト喪失に差し替えない
+  （`a_note_is_not_stacked_above_a_tagged_containers_own_note`）。その入力は実測でコメント 1 本を失
+  うため、別の未解決所見として記録した。`fuzz/seeds/yaml_roundtrip/former-crash-77a8039b.seed` にシ
+  ード済み。
 - **末尾コメントがノード自身に飲み込まれた改行をまたいで誤束縛されない** — granit は
   ブロックコレクションの span をその行を終わる改行の*向こう*まで取るので、span の終端は
   すでに次の行へ届いていた。「このコメントは後の行にあるか」の判定は候補ノードの終端
@@ -755,17 +765,15 @@ status: new
   「char index → byte offset」表を行表として読んでいた。純 ASCII 入力ではこの表自体が
   存在しないので `None` を返し、何も変えていなかった。筋は正しかったが効果はゼロ —
   それでも赤いアサーションだけがそれを語った。
-- **mappings は null キーを畳み、かつ本当の null キーだけを畳む** — `~` キーと
-  空キーは同一のキーだが、`IndexMap` はノード全体を比較するため、両者が残り、
-  どちらも `~:` と出力され、reader は読み直しで畳んだ——この形の文書は往復のたびに
-  1 行減った（libFuzzer `yaml_roundtrip` crash-00e31785、9 バイト
-  `: &b #*\r:` まで最小化）。現在は取り込み段階で、読み直しが得る 1 件に畳む。
-  ただしこの畳み込みは最初にデータを削った：`is_null_key` はスカラーの表記だけを見て
-  いたため、引用付きの `"NULL"` / `""` キーや tag 付き `!a null` キーまで null と数え、
-  `{"": None, "NULL": None}` は JSON5 と TOML の往復で空キーを失い
-  （`tests/test_property_dialects.py`）、proptest は `!a null:` + `!A null:` を
-  不当な重複と報告した。両述語はいま YAML と同じ問いを尋ねる：暗黙の型解決は tag の
-  無い plain スカラーにだけ働く。
+- **mappings は null キーを畳み、かつ本当の null キーだけを畳む** — `~` キーと空キーは同一のキーだ
+  が、`IndexMap` はノード全体を比較するため、両者が残り、どちらも `~:` と出力され、reader は読み直
+  しで畳んだ——この形の文書は往復のたびに 1 行減った（libFuzzer `yaml_roundtrip` crash-00e31785、9 バ
+  イト `: &b #*\r:` まで最小化）。現在は取り込み段階で、読み直しが得る 1 件に畳む。ただしこの畳み込
+  みは最初にデータを削った：`is_null_key` はスカラーの表記だけを見ていたため、引用付きの `"NULL"` /
+  `""` キーや tag 付き `!a null` キーまで null と数え、`{"": None, "NULL": None}` は JSON5 と TOML
+  の往復で空キーを失い（`tests/test_property_dialects.py`）、proptest は `!a null:` + `!A null:` を
+  不当な重複と報告した。両述語はいま YAML と同じ問いを尋ねる：暗黙の型解決は tag の無い plain スカ
+  ラーにだけ働く。
 - **本文が空のブラスカラーは chomping 指示子を申告しなくなった** — 内容の無い
   header を再読込みするとき granit は chomping を*既定値*として報告するため、
   空のスカラーに `|+` / `>+` を出力すると次ラウンドで `|` / `>` に漂移し、`to_yaml`
@@ -782,18 +790,16 @@ status: new
   それを所有するマーカー行まで繰り上げる。一方 granit が独立した行で読んだコメントは
   そのままの位置に残る——こちらの形状はすでに往復できており、ガードの断言が
   修正の範囲を広げないように固定している。
-- **キーに後続するコメントが黙って失われなくなった** — granit は単純キーとその `:` の
-  間のコメントを *キー* ノードに報告するが、ペアを `key: value` と書いた時点でその位置
-  には表記がなく、YAML 側はコメントを取り落としていた（`? a # note` + `: b` は `a: b`
-  だけ）。今は値の後ろに書く — reader がこのコメントを報告する唯一のスロット — ので情報
-  が消えず、その行はそこで不動点になる。値自身のコメントがあればそれを優先（1 行に末尾
-  スロットは 1 つ）。往復ゲートはこの種の欠落を検出できない（テキストは安定、足りないの
-  はコメントだけ）ため、`a_note_trailing_a_key_survives` と
-  `test_from_jsonc_keeps_comments_as_yaml_notes` で固定する。併せて `from_jsonc` が
-  「コメントを除去する」とまだ書いてある 3 か所（#112/#115 以降すでに誤り）も直した：
-  バインディングの `from_jsonc` / `from_json5` の doc と生成スタブ。docstring を直した瞬間
-  に新しいスタブ漂移ゲートが古い `.pyi` を検出し、宣言済みの経路で再生成している（手編集
-  ではない）。
+- **キーに後続するコメントが黙って失われなくなった** — granit は単純キーとその `:` の間のコメントを
+  *キー* ノードに報告するが、ペアを `key: value` と書いた時点でその位置には表記がなく、YAML 側はコ
+  メントを取り落としていた（`? a # note` + `: b` は `a: b` だけ）。今は値の後ろに書く — reader がこ
+  のコメントを報告する唯一のスロット — ので情報が消えず、その行はそこで不動点になる。値自身のコメン
+  トがあればそれを優先（1 行に末尾スロットは 1 つ）。往復ゲートはこの種の欠落を検出できない（テキス
+  トは安定、足りないのはコメントだけ）ため、`a_note_trailing_a_key_survives` と
+  `test_from_jsonc_keeps_comments_as_yaml_notes` で固定する。併せて `from_jsonc` が「コメントを除去
+  する」とまだ書いてある 3 か所（#112/#115 以降すでに誤り）も直した：バインディングの `from_jsonc` /
+  `from_json5` の doc と生成スタブ。docstring を直した瞬間に新しいスタブ漂移ゲートが古い `.pyi` を検
+  出し、宣言済みの経路で再生成している（手編集ではない）。
 - **コメント行が `&` をアンカー名に譲らなくなった** — granit は数値の `anchor_id`
   しか返さないので、表示名はノード自身の位置から左へ最も近い境界の `&` を走査して復元する
   （#265 で締めたのはタグ側）。アンカーと本文の間に挟まった単独コメントは除外されて
@@ -912,10 +918,9 @@ status: new
   毎回漂移した（libFuzzer `yaml_roundtrip` crash-41acfbbe）。`needs_double_quoted` は
   ちょうど `...` または `---` の値をクォート対象とし（`---` は先頭の `-` で既に捕捉）、
   他のプレーンスカラーは影響を受けない。
-- **内容のないコメントは保存も出力もしない** — granit は裸の `#` / `#` を空の
-  `Event::Comment` として報告するが再読時は読み戻さないため、ライターが出した
-  `#` 行は次の解析で落ち、余分な `#` が毎回漂移した（libFuzzer
-  `yaml_roundtrip` crash-0de6be17）。AST・ストリーム両レシーバーとも trim 後空の
+- **内容のないコメントは保存も出力もしない** — granit は裸の `#` / `#` を空の `Event::Comment` とし
+  て報告するが再読時は読み戻さないため、ライターが出した `#` 行は次の解析で落ち、余分な `#` が毎回漂
+  移した（libFuzzer `yaml_roundtrip` crash-0de6be17）。AST・ストリーム両レシーバーとも trim 後空の
   コメントをスキップし、内容のないコメントは記録も出力もしない。非空コメントは不変。
 - **空のブロックスカラーは余分なインデント指定子を持たない** — 空の `|`/`>` 本文は
   インデントを測る対象がないため、granit は再読時に明示的指定子を捨てる。しかし
@@ -939,21 +944,19 @@ status: new
   ロフィ（`bas'e`）、埋め込み `&`（`sbb&e`）、シングルクォートのバックスラッシュ——ずれ込み、
   それぞれが個々の修正かつ個々の libFuzzer `yaml_roundtrip` クラッシュとなっただけでなく、
   後続の全アンカーを誤標識した。プリスキャンは撤去：granit のイベントはノードがアンカー付き
-  （`anchor_id != 0`）であることを示し正確な source span を与えるため、名前は その span 地で
+  （`anchor_id != 0`）であることを示し正確な source span を与えるため、名前はその span 地で
   granit のスキャナと同じ最大 `is_anchor_char` 連なりとして局所に読み戻す
   （`anchor_name_before`）、granit の権威的な id を鍵にする。復元は位置隔離なので、読めない
   バイト級は当該ノードにのみ影響し、他のアンカー名をずらすことはない——漂移族全体を形状ごとの
   補修でなく構造で閉じる。さらに毎回パースで全文スキャン一件分を省く。アンカー名内 BOM の
   emit 表現可能性ギャップは別個の根本原因として個別に追跡。
-- **バックスラッシュがアンカースキャンでシングルクォートスカラーの閉じ引用符を
-  エスケープしなくなった** — `extract_anchors` はシングルクォート内でも
-  エスケープ状態機械を動かしていた。YAML のシングルクォートスカラーには
-  エスケープ処理がない（`''` のみ）ため、キーの閉じ `'` の前の `\`（
-  バックスラッシュで終わる `'a\'` のようなキー）が `'` をエスケープすると
-  読まれ、引用が閉じず、後続の `&アンカー` が全て隠れた——値のアンカーが
-  再解析で消え往復が漂移した（libFuzzer `yaml_roundtrip` crash-12f01ee0）。
-  今やバックスラッシュ・エスケープはダブルクォート内のみ。アンカーなし・
-  シングルクォート・ダブルクォートの文書は granit の読み取りどおりに走査。
+- **バックスラッシュがアンカースキャンでシングルクォートスカラーの閉じ引用符をエスケープしなくなった
+  ** — `extract_anchors` はシングルクォート内でもエスケープ状態機械を動かしていた。YAML のシングルク
+  ォートスカラーにはエスケープ処理がない（`''` のみ）ため、キーの閉じ `'` の前の `\`（バックスラッシ
+  ュで終わる `'a\'` のようなキー）が `'` をエスケープすると読まれ、引用が閉じず、後続の `&アンカー`
+  が全て隠れた——値のアンカーが再解析で消え往復が漂移した（libFuzzer `yaml_roundtrip`
+  crash-12f01ee0）。今やバックスラッシュ・エスケープはダブルクォート内のみ。アンカーなし・シングルク
+  ォート・ダブルクォートの文書は granit の読み取りどおりに走査。
 - **プレーンスカラーに埋まった `&` をアンカーとして読まない** — `extract_anchors`
   は引用外の全ての `&` を採集し、プレーンスカラーに埋まったもの（裸キー `sbb&e`
   の `&`）も拾っていた。granit はノード開始位置でのみアンカーを開くため、その幻
@@ -963,30 +966,26 @@ status: new
   アンカー抽出は `&` を引用状態機と同じノード境界テスト（行頭または `\t:,[]{}-`
   の後）でゲートし、`sbb&e` はプレーンキーのまま。アンカーなし／正しくアンカー
   された文書のスキャンは従来と同一。
-- **重複キーは完全ノードでなく値で拒否** — AST の `IndexMap` は全体の
-  `CustomNode` をキーにするため、同じテキストでも末尾コメント/スタイル/アンカーが
-  異なる2つのスカラーキー（`key # a` と `key # b`）は区別されたままだった：解析では
-  重複が出ず、しかしシリアライザはキーの装飾を落として同一の `key:` 行を2つ出し、
-  我ownパーサが再解析で拒否した（libFuzzer `yaml_roundtrip` crash-3b0a7d1d——
-  出力文書が再解析不能）。重複検出は今やスカラーキーを、`to_yaml` が出力する
-  のと同じ「値」で識別し、こうした入力は初回解析で拒否される。`<<` マージキーは
-  引き続き除外：YAML はマップでの繰り返しを許す。
-- **空のブロックスカラをマップ値としてインライン出力** — 空の
-  `Mapping`/`Sequence` にはブロック形式がないのに、ブロック形式の空値が
-  `key:` として出され `{}`/`[]` が次のインデントに置かれていた。それを読み
-  直すと*フロウ*収集になるため `flow_style` が反転し、次のラウンドでインライン
-  化された——`key:\n  {}` と `key: {}` が毎ラウンド漂移した（libFuzzer
-  `yaml_roundtrip` crash-d0e84310）。今や空の収集は常にインライン（`key: {}`）、
-  アンカー/タグを持つ値（`key: &a {}`）も含む。それらには行頭の预先出を
-  スキップするのでヘッダーは二重化しない。
-- **プレーンキー内の素のアプリオリが後続の全アンカーを飲み込んだ** —
-  `extract_anchors` は引用化された `&` をスキップする引用状態機械を動かすが、
-  プレーンスカラーに埋まった `'`/`"`（裸キー `bas'e` や `a'` の `'`）でも切り替えて
-  いた。その幻の引用は文書末尾まで開いたままになり、プリスキャンはアンカー名を
-  返さず `register_anchor` は全ノードに `None` を渡し、アンカーが出力から静かに
-  消えて往復が漂移した（libFuzzer `yaml_roundtrip` crash-68da2420）。今や引用の
-  「開始」はトークン境界（行頭または `\t:,[]{}-` の後）でゲートされ、granit と一致。
-  プレーンスカラー内の引用はリテラル内容であり、本物の引用スカラーは依然 `&` を隠す。
+- **重複キーは完全ノードでなく値で拒否** — AST の `IndexMap` は全体の `CustomNode` をキーにするた
+  め、同じテキストでも末尾コメント/スタイル/アンカーが異なる2つのスカラーキー（`key # a` と
+  `key # b`）は区別されたままだった：解析では重複が出ず、しかしシリアライザはキーの装飾を落として同
+  一の `key:` 行を2つ出し、我ownパーサが再解析で拒否した（libFuzzer `yaml_roundtrip`
+  crash-3b0a7d1d—— 出力文書が再解析不能）。重複検出は今やスカラーキーを、`to_yaml` が出力するのと同
+  じ「値」で識別し、こうした入力は初回解析で拒否される。`<<` マージキーは引き続き除外：YAML はマッ
+  プでの繰り返しを許す。
+- **空のブロックスカラをマップ値としてインライン出力** — 空の `Mapping`/`Sequence` にはブロック形式
+  がないのに、ブロック形式の空値が `key:` として出され `{}`/`[]` が次のインデントに置かれていた。そ
+  れを読み直すと*フロウ*収集になるため `flow_style` が反転し、次のラウンドでインライン化された
+  ——`key:\n  {}` と `key: {}` が毎ラウンド漂移した（libFuzzer `yaml_roundtrip` crash-d0e84310）。今
+  や空の収集は常にインライン（`key: {}`）、アンカー/タグを持つ値（`key: &a {}`）も含む。それらには
+  行頭の预先出をスキップするのでヘッダーは二重化しない。
+- **プレーンキー内の素のアプリオリが後続の全アンカーを飲み込んだ** — `extract_anchors` は引用化され
+  た `&` をスキップする引用状態機械を動かすが、プレーンスカラーに埋まった `'`/`"`（裸キー `bas'e` や
+  `a'` の `'`）でも切り替えていた。その幻の引用は文書末尾まで開いたままになり、プリスキャンはアンカ
+  ー名を返さず `register_anchor` は全ノードに `None` を渡し、アンカーが出力から静かに消えて往復が漂
+  移した（libFuzzer `yaml_roundtrip` crash-68da2420）。今や引用の「開始」はトークン境界（行頭または
+  `\t:,[]{}-` の後）でゲートされ、granit と一致。プレーンスカラー内の引用はリテラル内容であり、本物
+  の引用スカラーは依然 `&` を隠す。
 - **リテラルブロックスカラは先頭行が空白のときインデントを強制** — AST は `|`/`|N`
   の本文をデインデントして格納し、ソースの明示的指示子を落とす。そのため先頭の
   内容行が空白で始まり後続行が浅い値（` 1|l\n:t\n`）を指示子なしで再出力すると、
@@ -995,45 +994,37 @@ status: new
   リテラルライターは折り畳みライターに倣い、まさにそのケースでインデント指示子を
   強制し、自動検出をスキップして前導空白を内容として保持する。先頭行が空白でない
   文書は従来どおりバイト単位で同一に出力される。
-- **畳み込みライターが more-indented 行の「後ろ」の break を保持するようにした** —
-  granit の折り畳み規則は `leading_blank` フラグを追跡する。more-indented 行（空白
-  またはタブで始まる連続行）は自らの前導 break を保持するだけでなくこのフラグを
-  立て、その翌行の break も折り畳ませない。出力側の連なり規則は前半しか知らず、
-  抑制を「前の行」基準で判定していたため、more-indented 行の後に通常の行が続くと
-  連なりに改行を一つ過剰に補い、往復ごとに空行が増えていた（libFuzzer
-  `yaml_roundtrip` crash-b7a2285e）。規則は「書き出した直後の行」基準に改め、どちら
-  側の近傍も more-indented である r 連なりはちょうど r 個の物理改行を出力する。
-  バイト冪等性だけでなく完全な値の忠実性（再解析がスカラー値を保持）で固定した。
-- **畳み込みスカラーが自身の改行を読み返すようにした** — granit の folded
-  読み取りは行頭でもテキスト行間でも k 個の空行をちょうど k 個の改行として
-  読み返すが、行分割ライターは連なりごとに空行を一つ少なく出力していたため、
-  複数列の折りたたみ値は往復ごとに改行を一つ失っていた（libFuzzer
-  `yaml_roundtrip` crash-490c4beb：4 → 3 → 2 → …、crash-6288e5be は前導空行が
-  同様に漂移）。ライターは折り畳み対応になり、r 個の連なりは r 個の空行を
-  占め（前導はヘッダー改行を計上）、あらゆる連長が構築的に閉じる
-  （内部・前導・more-indented 連続行とも 1〜5 の連なりで安定を検証済み、
-  more-indented 行は自らの break を保持するため空行を一つ減らす）。
-- **ブロックスカラの出力を再解析に対して閉じるようにした** — granit の
-  読み取り形状に、シリアライザが合わせていなかったものが二つある：末尾に
-  空行を含む `Clip` ブロックスカラの値は `Keep` 指示子でのみ往復できる
-  （Clip の読み取りは末尾空行を除去するため、いかなる位置でも同じ値に
-  再読できる唯一のヘッダー形式——libFuzzer `yaml_roundtrip` crash-c18cb1fd）、
-  出力時に昇格させる；ブロックスカラのインラインコメントは専用の行ではく
-  ヘッダー行（`y: |  # c`）に載せる——従来はブロック内容に吸収されていた
-  （crash-cfb3fa83）。両ルールとも出力側の正規化のみ：従来安定だった
-  文書はバイト単位で同一の出力を保つ。
-- **アンカー名文法を granit に揃え、漂流系全体を根修** —
-  `extract_anchors`/`scan_anchor_name` に、granit のスキャナが持たない二つの
-  自作分岐が増えていた：引用付きアンカー形式（`&"a b"` の空白込み）と、
-  値指示子の規則（空白/EOL 直前の `:` で名前を終える）。granit は名前を
-  `is_anchor_char` の極大ランとして読む（`:`/`#`/`"`/`&` は通常の名字符、
-  空白/改行/フロー指示子でのみ終了——granit 自身の issue14 テスト）。両文法の
-  食い違いは毎回 id↔名 の対応をずらし往復を壊した；下記の四項目（#215/#218/
-  #227/#228）はすべて同一原因の症状だった。スキャナは今や granit と完全一致
-  （極大ラン＋受理したアンカートークンを原子的にスキップ、名前の `"`/`#` が
-  もはや引用/コメント状態を乱さない）、`write_anchor_tag` は `&name` を素で出力。
-  閉包は構造により成立し、形状別の暫定対処は吸収される；引用アンカー（本来
-  往復不能）は削除。
+- **畳み込みライターが more-indented 行の「後ろ」の break を保持するようにした** — granit の折り畳み
+  規則は `leading_blank` フラグを追跡する。more-indented 行（空白またはタブで始まる連続行）は自らの
+  前導 break を保持するだけでなくこのフラグを立て、その翌行の break も折り畳ませない。出力側の連な
+  り規則は前半しか知らず、抑制を「前の行」基準で判定していたため、more-indented 行の後に通常の行が
+  続くと連なりに改行を一つ過剰に補い、往復ごとに空行が増えていた（libFuzzer `yaml_roundtrip`
+  crash-b7a2285e）。規則は「書き出した直後の行」基準に改め、どちら側の近傍も more-indented である r
+  連なりはちょうど r 個の物理改行を出力する。バイト冪等性だけでなく完全な値の忠実性（再解析がスカラ
+  ー値を保持）で固定した。
+- **畳み込みスカラーが自身の改行を読み返すようにした** — granit の folded 読み取りは行頭でもテキスト
+  行間でも k 個の空行をちょうど k 個の改行として読み返すが、行分割ライターは連なりごとに空行を一つ
+  少なく出力していたため、複数列の折りたたみ値は往復ごとに改行を一つ失っていた（libFuzzer
+  `yaml_roundtrip` crash-490c4beb：4 → 3 → 2 → …、crash-6288e5be は前導空行が同様に漂移）。ライター
+  は折り畳み対応になり、r 個の連なりは r 個の空行を占め（前導はヘッダー改行を計上）、あらゆる連長が
+  構築的に閉じる（内部・前導・more-indented 連続行とも 1〜5 の連なりで安定を検証済み、 more-indented
+  行は自らの break を保持するため空行を一つ減らす）。
+- **ブロックスカラの出力を再解析に対して閉じるようにした** — granit の読み取り形状に、シリアライザが
+  合わせていなかったものが二つある：末尾に空行を含む `Clip` ブロックスカラの値は `Keep` 指示子でのみ
+  往復できる（Clip の読み取りは末尾空行を除去するため、いかなる位置でも同じ値に再読できる唯一のヘッ
+  ダー形式——libFuzzer `yaml_roundtrip` crash-c18cb1fd）、出力時に昇格させる；ブロックスカラのインラ
+  インコメントは専用の行ではくヘッダー行（`y: |  # c`）に載せる——従来はブロック内容に吸収されていた
+  （crash-cfb3fa83）。両ルールとも出力側の正規化のみ：従来安定だった文書はバイト単位で同一の出力を保
+  つ。
+- **アンカー名文法を granit に揃え、漂流系全体を根修** — `extract_anchors`/`scan_anchor_name` に、
+  granit のスキャナが持たない二つの自作分岐が増えていた：引用付きアンカー形式（`&"a b"` の空白込
+  み）と、値指示子の規則（空白/EOL 直前の `:` で名前を終える）。granit は名前を `is_anchor_char` の
+  極大ランとして読む（`:`/`#`/`"`/`&` は通常の名字符、空白/改行/フロー指示子でのみ終了——granit 自身
+  の issue14 テスト）。両文法の食い違いは毎回 id↔名の対応をずらし往復を壊した；下記の四項目
+  （#215/#218/ #227/#228）はすべて同一原因の症状だった。スキャナは今や granit と完全一致（極大ラン
+  ＋受理したアンカートークンを原子的にスキップ、名前の `"`/`#` がもはや引用/コメント状態を乱さな
+  い）、`write_anchor_tag` は `&name` を素で出力。閉包は構造により成立し、形状別の暫定対処は吸収さ
+  れる；引用アンカー（本来往復不能）は削除。
 - **引用付きアンカー名が改行を飲み込んでいた** — `scan_anchor_name` の引用
   ブランチはバッファ内の後続する任意の `"` を閉じ引用符と見なしていたため、
   `&"X-<CR>:&"X-` で復改文字をまたいで名前を `X-\r:&` と読み取っていた。
@@ -1041,15 +1032,13 @@ status: new
   （成長する libFuzzer `yaml_roundtrip` の非冪等、11 バイト）。granit は CR/LF
   でアンカートークンを終えるため、行終端を越えた閉じ引用符はもはや引用
   アンカーと認められず、名前は単一行に保たれ再出力も安定する。
-- **入れ子の自己参照マージアンカーがネイティブスタックを溢れさせていた** —
-  `&b` でアンカーされたマッピングの本体が `*b` を（直接、または第二の `&b` を
-  介して）再利用すると、パスの循環ガードが既に pop された状態で
-  `resolve_mapping_merges` の末尾再帰に渡され、各走査がアンカーの新しい
-  クローンを再展開して降下が限りなく増大していた（libFuzzer `parse_yaml`、
-  58 バイトの `bas: &b … <<: *b …`）。末尾走査は現在、マッピング自身の
-  *子*ノードのみへ再帰する（マージされたクローンは展開ループ内でガードの
-  下で解決済み）。さらに `MAX_MERGE_DEPTH` の上限により残った暴走も優雅に
-  停止し、パーサのコンテナ深度やシリアライザの `max_depth` ガードと揃える。
+- **入れ子の自己参照マージアンカーがネイティブスタックを溢れさせていた** — `&b` でアンカーされたマッ
+  ピングの本体が `*b` を（直接、または第二の `&b` を介して）再利用すると、パスの循環ガードが既に pop
+  された状態で `resolve_mapping_merges` の末尾再帰に渡され、各走査がアンカーの新しいクローンを再展開
+  して降下が限りなく増大していた（libFuzzer `parse_yaml`、58 バイトの `bas: &b … <<: *b …`）。末尾走
+  査は現在、マッピング自身の *子*ノードのみへ再帰する（マージされたクローンは展開ループ内でガードの
+  下で解決済み）。さらに `MAX_MERGE_DEPTH` の上限により残った暴走も優雅に停止し、パーサのコンテナ深
+  度やシリアライザの `max_depth` ガードと揃える。
 - **`:` で終わるアンカー名が不安定な形で出力されていた** — `write_anchor_tag`
   はすべてのアンカーを素の `&name` トークンとして書いていた。解析済みの
   アンカー名が `:` で終わる場合（未終結の引用アンカー `&"X-::…:` を経て）、
@@ -1059,43 +1048,34 @@ status: new
   （末尾 `:`、埋め込まれた空白やフロー指示子）は現在、引用付き `&"name"`
   アンカーとして出力され、生スキャナは閉じ引用符までを読み、正確なバイト列を
   往復間で保持する。
-- **生のアンカースキャナがテキストで保持できないアンカーを生成していた** —
-  `extract_anchors` は空白/EOL の後続する `:` をアンカー名に採用し
-  （`&&&&:` → `&&&:`）、コメント行からアンカーを採集し、受理済み名の中の
-  重複 `&` を再スキャン（`&&&&` が幽霊アンカー `&&&`・`&&`・`&` を生成）して、
+- **生のアンカースキャナがテキストで保持できないアンカーを生成していた** — `extract_anchors` は空白
+  /EOL の後続する `:` をアンカー名に採用し（`&&&&:` → `&&&:`）、コメント行からアンカーを採集し、受
+  理済み名の中の重複 `&` を再スキャン（`&&&&` が幽霊アンカー `&&&`・`&&`・`&` を生成）して、
 
     以降の id→名前対応をずらしていた。回帰テストで元のクラッシュを再現可能にした。
-- **ダブルクォートスカラーが二重にデコードされていた** — granit は既に
-  エスケープ解除済みの値を渡すのに、両レシーバーが `unescape_double_quoted`
-  を再度適用していた。`a: "\\n"`（文字通り 2 文字の `\` `n`）が黙って
-  改行に縮退し、シリアライズ/再解析のたびにバックスラッシュが 1 本消えた
-  （libFuzzer `yaml_roundtrip`: `!-# \\f"<TAB>0:!`）。両呼び出し箇所は
-  透過となり、stream/AST の単体テストで単一デコード契約を固定。
-- **閉じ引用符のないアンカー名が行末まで飲み込んだ** — `&"X-<CR>:` に対し、
-  `extract_anchors` の quoted スキャンは閉じ引用符が来ないため行末まで収集し、
-  生の CR とコロンがアンカー名に入った；シリアライズが `&X-\r:` を逐語出力し、
-  granit は空白でアンカー名を切るため再パースで `X-` になり、
-  シリアライズ冪等性（`fmt(fmt(x)) == fmt(x)`）が 6 バイト入力で崩れた
-  （`fuzz/yaml_roundtrip` 発見）。閉じない `"` は granit の unquoted
-  アンパートークンが停まるちょうどその字符で停まるようになり、本物の
-  `&"quoted anchor"`（空白含む名）は不変です。
-- **JSON コメントスキャナが多文字コードの途中で panic し得た** — `ws()` の
-  行コメントと未終端ブロックコメント走査は `pos` を 1 バイトずつ進めていた
-  ため、末尾の多-byte 文字（U+FEFF 等）の内部に pos が残り、次の
-  `&text[pos..]` スライスが "not a char boundary" で panic した（
-  `fuzz/parse_json` が約 25 秒で発見：`\r\r{aMNaN/*0\u{feff}`）。行コメントは
-  コードポイント単位で進み、未終端ブロックコメントは `/` へ巻き戻され、
-  全失敗経路が再び型付きエラーになります。
-- **Linux フリースレッド（`cp314t`）wheel を Release に同梱** — wheel のビルド
-  マトリクスは
-  Windows と macOS のみフリースレッド成果物をビルドしており、Linux の GIL なし
-  インタプリタのユーザーは導入手段がありませんでした：GIL ありの `cp38-abi3`
-  wheel は `Py_GIL_DISABLED` ビルドと ABI 非互換で、`abi3t` wheel は CPython 3.15
-  からしか有効にならないためです。`linux` ジョブは現在 x86_64 についてイメージ
-  自体のフリースレッドインタプリタから manylinux cp314t wheel をビルドし、
-  `3.14t` venv でスモークテストに合格してから Release に添付します（aarch64
-  は対象外：非 abi3 wheel のビルドはターゲットインタプリタを実行する必要が
-  あり、qemu-user ではその実行が失敗するため）。
+- **ダブルクォートスカラーが二重にデコードされていた** — granit は既にエスケープ解除済みの値を渡す
+  のに、両レシーバーが `unescape_double_quoted` を再度適用していた。`a: "\\n"`（文字通り 2 文字の
+  `\` `n`）が黙って改行に縮退し、シリアライズ/再解析のたびにバックスラッシュが 1 本消えた
+  （libFuzzer `yaml_roundtrip`: `!-# \\f"<TAB>0:!`）。両呼び出し箇所は透過となり、stream/AST の単体
+  テストで単一デコード契約を固定。
+- **閉じ引用符のないアンカー名が行末まで飲み込んだ** — `&"X-<CR>:` に対し、`extract_anchors` の
+  quoted スキャンは閉じ引用符が来ないため行末まで収集し、生の CR とコロンがアンカー名に入った；シリ
+  アライズが `&X-\r:` を逐語出力し、granit は空白でアンカー名を切るため再パースで `X-` になり、シリ
+  アライズ冪等性（`fmt(fmt(x)) == fmt(x)`）が 6 バイト入力で崩れた（`fuzz/yaml_roundtrip` 発見）。閉
+  じない `"` は granit の unquoted アンパートークンが停まるちょうどその字符で停まるようになり、本物
+  の `&"quoted anchor"`（空白含む名）は不変です。
+- **JSON コメントスキャナが多文字コードの途中で panic し得た** — `ws()` の行コメントと未終端ブロッ
+  クコメント走査は `pos` を 1 バイトずつ進めていたため、末尾の多-byte 文字（U+FEFF 等）の内部に pos
+  が残り、次の `&text[pos..]` スライスが "not a char boundary" で panic した（ `fuzz/parse_json` が
+  約 25 秒で発見：`\r\r{aMNaN/*0\u{feff}`）。行コメントはコードポイント単位で進み、未終端ブロックコ
+  メントは `/` へ巻き戻され、全失敗経路が再び型付きエラーになります。
+- **Linux フリースレッド（`cp314t`）wheel を Release に同梱** — wheel のビルドマトリクスは Windows
+  と macOS のみフリースレッド成果物をビルドしており、Linux の GIL なしインタプリタのユーザーは導入手
+  段がありませんでした：GIL ありの `cp38-abi3` wheel は `Py_GIL_DISABLED` ビルドと ABI 非互換で、
+  `abi3t` wheel は CPython 3.15 からしか有効にならないためです。`linux` ジョブは現在 x86_64 について
+  イメージ自体のフリースレッドインタプリタから manylinux cp314t wheel をビルドし、`3.14t` venv でス
+  モークテストに合格してから Release に添付します（aarch64 は対象外：非 abi3 wheel のビルドはターゲ
+  ットインタプリタを実行する必要があり、qemu-user ではその実行が失敗するため）。
 - **`pyq` リリースジョブが Linux 成果物を実際にビルド** — クロスアーキテクチャ
   レグは `cross` のエミュレーションコンテナ用に qemu binfmt ハンドラを登録し、
   スモークテストは manylinux イメージ*内*で新規バイナリを実行する。ホストには
@@ -1141,27 +1121,21 @@ status: new
 
 #### 追加
 
-- **pyq CLI パリティフラグ** — `pyq fmt` に `--indent N`（ブロック
-  インデント、既定 2）、`--width N`（スカラーのソフト折返し列幅、0で
-  無効）、`--sort-keys`（シリアライザレベルの文書全体キーソート）、
-  `-i/--inplace`（ファイルをその場で書き換え）を追加し、
-  `pyrs-yaml-core::SerializeOptions` の全オプションを公開、Python CLI の
-  `fmt --indent` と揃えました。`pyq to-json` に排他的な `--jsonc` /
-  `--json5` 方言出力を追加し、`pyrs-json` のコメント保持・JSON5 表記
-  シリアライザ（`to_jsonc_text*`、`to_json5_text*`）を接続。
-- **pyq JSONC/JSON5 入力方言** — `Format` 列挙に `--input jsonc|json5`
-  を追加（`.jsonc` / `.json5` 拡張子の自動判定にも対応）。`pyrs-json`
-  ネイティブ方言パーサを経由し、コメントや JSON5 表記は AST に載る。
-  `to-json --jsonc` と組み合わせれば 1 コマンドでコメント保持の
-  JSONC→JSONC 往復が可能。`--all-docs` は単一文書方言では安定した
-  メッセージで拒否。
-- **`pyq diff` / `pyq merge`** — ネイティブ CLI に意味的ドキュメント比較と
-  右優先のディープマージ（yq `*+` 同型）を追加。`diff` は両 AST を走査し
-  解決後の値・構造・タグを比較（コメント/引用/レイアウトは現れない）し、
-  `-`/`+`/`~` パス行を出力、一致 0・差異 1 で終了。`merge` は mapping を
-  再帰的に統合し sequence は末尾追加（`--replace-arrays` で丸ごと置換）、
-  ラウンドトリップ YAML で出力。両コマンドとも `--input`/拡張子判定で
-  対応方言を読み込めます。
+- **pyq CLI パリティフラグ** — `pyq fmt` に `--indent N`（ブロックインデント、既定 2）、`--width N`
+  （スカラーのソフト折返し列幅、0で無効）、`--sort-keys`（シリアライザレベルの文書全体キーソー
+  ト）、`-i/--inplace`（ファイルをその場で書き換え）を追加し、`pyrs-yaml-core::SerializeOptions` の
+  全オプションを公開、Python CLI の `fmt --indent` と揃えました。`pyq to-json` に排他的な `--jsonc`
+  / `--json5` 方言出力を追加し、`pyrs-json` のコメント保持・JSON5 表記シリアライザ
+  （`to_jsonc_text*`、`to_json5_text*`）を接続。
+- **pyq JSONC/JSON5 入力方言** — `Format` 列挙に `--input jsonc|json5` を追加（`.jsonc` / `.json5`
+  拡張子の自動判定にも対応）。`pyrs-json` ネイティブ方言パーサを経由し、コメントや JSON5 表記は AST
+  に載る。`to-json --jsonc` と組み合わせれば 1 コマンドでコメント保持の JSONC→JSONC 往復が可能。
+  `--all-docs` は単一文書方言では安定したメッセージで拒否。
+- **`pyq diff` / `pyq merge`** — ネイティブ CLI に意味的ドキュメント比較と右優先のディープマージ
+  （yq `*+` 同型）を追加。`diff` は両 AST を走査し解決後の値・構造・タグを比較（コメント/引用/レイ
+  アウトは現れない）し、`-`/`+`/`~` パス行を出力、一致 0・差異 1 で終了。`merge` は mapping を再帰
+  的に統合し sequence は末尾追加（`--replace-arrays` で丸ごと置換）、ラウンドトリップ YAML で出力。
+  両コマンドとも `--input`/拡張子判定で対応方言を読み込めます。
 
 #### 変更
 
@@ -1187,23 +1161,84 @@ status: new
 
 #### 追加
 
-- **JSONC ブロックコメント・ホットスポットベンチ** — 目標 §テストカバレッジ 5 が「block-comment」を必須のホットサンプルに指定。以前はインライン `//` のみ計測。新フィクスチャで `test_load_jsonc_block_comments` を駆動：50 pair + header/footer、各項に独立 `/* item N */` と末尾 `value /* trailing */` を持たせ、ブロック走査の回帰を CodSpeed で可視化。
-- **YAML の PyYAML + ruamel.yaml 跨库パリティ** — 目標 §テストカバレッジ 3 が両ライブラリを oracle として名指し。以前は `test_benchmark_crosslib.py` のベンチ + 特性 support printout のみ。`tests/test_yaml_crosslib.py` で 20 正規ドキュメント × 5 パリティ面 + 2 ドキュメント化された divergence（duplicate-key 厳格性、YAML 1.1 従来 bool の schema-scope）= 122 テスト。オプション依存 skipif で降格。
-- **`load_toml` の tomlkit 跨库パリティ** — 目標 §テストカバレッジ 3 が tomlkit を oracle として名指し。以前はベンチのみ。`tests/test_toml_crosslib.py` に 24 ケット追加：11 の正規構造で pyrs / tomlkit / tomllib 三者一致、`>i64` 拒否を仕様準拠（TOML v1.0 §Integers：64bit signed）として固定、`-2^63` 境界（PR #174 修正）を確認。オプション依存、skipif で降格。
-- **orjson を STRICT-JSON oracle に** — 目標 §テストカバレッジ 3 「orjson と逐位比較」は今までベンチのみ。`tests/test_json_crosslib.py` で正規ドキュメント 16 件の一致、非正規 12 件（コメント、末尾カンマ、シングルクォート、`NaN`/`Infinity`/`-Infinity`、16 進、先頭 0、`+.5`、`5.`）の両者拒否を断言。stdlib `json.loads` は `allow_nan=True` で裸リテラルを受理するため orjson が RFC 8259 oracle としてより厳格。オプション依存、`skipif` で降格。
-- **CLI ↔ Binding 対等ゲート（`tests/test_cli_binding_parity.py`）** — Pillar 1 の「CLI と Python Binding 両端で同等機能」を宣言から実行可能な契約に昇格。CLI の登録コマンドを 18 個の固定リストと照合（cyclopts の `--help`/`-h`/`--version` 擬似コマンドは除外）し、各 `to-X` / `from-X` 動詞に `YamlDocument.to_X` / `from_X` / `load_X` の対応があることを確認。`load_*` 一族（json/jsonc/json5/toml）の四兄弟対称性を断言、編集・validate・compliance 動詞は LIVE Python API にマッピング。どちらかの表面の漂移は CI 失敗として顕在化。
-- **`load_json` プロパティテスト + CodSpeed ベンチ** — Hypothesis（`test_load_json_matches_stdlib_json` と `test_load_json_matches_load_jsonc_on_strict_domain`）が生成されたすべての正規ドキュメントで STRICT loader と `json.loads` の一致、および両 loader の strict 領域での逐字一致を固定。高速経路の拡大や AST 経路の漂移はプロパティ失敗として顕在化する。3 件の CodSpeed wall-time ベンチ（`test_load_json_large` / `_floats` / `_escapes`）は `load_jsonc` のサンプルをミラーし、STRICT binding 層自体を回帰追跡する。
-- **`load_json`（厳格）— `load_*` 一族の対称性を完成** — binding は既に `load_jsonc` / `load_json5` / `load_toml` を持っていたが、厳格 RFC 8259 の対応関数が欠けていた。`pyrs_yaml.load_json(s)` は正規入力では `json.loads` と逐字一致し、JSONC/JSON5 拡張（`//`、`/* */`、末尾カンマ、シングルクォート、裸の `Infinity`/`NaN`、`0x…`）を型付き `YamlParseError` で拒否。高速経路は `load_jsonc` と `json_fast::try_load` を共有（非正規バイトはすべて bail、構文の拡大リスクはゼロ）；拒否対象は STRICT な `from_json` AST 経路に流れる。これにより下記の CLI ↔ Binding 対等宣言最後のギャップが埋まり、ピラー 1 が完成。`pyrs_yaml.__init__` から再エクスポートし `__all__` に追加；`.pyi` は `maturin generate-stubs` で再生成。
-- **方言 writer の固定点プロパティ** — `fmt_pbt.rs` はヘッダで writer 固定点（writer 出力を再パース→再シリアライズすると逐字一致）を約束していたが未実装だった。4 つの proptest が JSON/JSONC/JSON5/TOML でこれを果たす（唯一の入力フィルタは別々のキーが同一の JSON 名になる手組み AST を除外——RFC 8259 の object 領域外）。このゲートで注釀忠実性の実バグ 3 件を即座に発見（下記の修正参照）。
-- **ホットスポットベンチコーパス** — 7 件の CodSpeed wall-time ベンチが歴史的に脆弱なシリアライズ経路を狙う：YAML ブロックスカラー文書（6 種のヘッダ表記 `|`、`|-`、`|+`、`>`、`>-`、`>+`）とコメント密度文書、TOML マルチライン文字列/進数整数/アンダーセリエータ/指数/日付時、JSON5 の特殊数値形式（16 進、`+.1`、`5.`、`Infinity`、`NaN`、シングルクオート、末尾カンマ）。固定種は `tests/data/yaml_samples.py`、ベンチは `tests/test_benchmark_api.py`。このコーパス構築こそが下記のネスト式ブロックスカラーのインデントバグを発見した。
-- **テキストレベル再パースゲート（`prop_output_always_parses`）** — Rust proptest スイートは生成 AST のシリアライズ出力が常にパーサで再読込できることを主張。AST 同士の往復プロパティは再パース不能な形態（`try_roundtrip` が `None`）を黙って飛ばしていた。新ゲートは初回の実行で 6 個の実バグを検出し、それぞれ targeted Rust ユニットテストと Python 回帰クラス（`TestNestedBlockScalarIndent`）で固定。
-- **toml-test 適合性ハーネス** — `tests/test_toml_test_suite.py` は公式 [toml-test](https://github.com/toml-lang/toml-test) を `test_yaml_suite.py` が YAML スイートを実行するのと同じ方式で実行する。未追跡のローカル資産、欠損時 `skipif`、実測フロアのゲート、およびデコード比較用の型タグアダプタ。
-- **TOML 時刻型の正しいデコード** — 日付のみと時刻のみは異なる `!date`/`!time` タグを持つようになりました（日付時は `!timestamp` を維持）。素の時刻（`07:32:00`）、秒省略の時刻（`13:37`）、小文字区切りの日付時（`1987-07-05t17:45:00z`）がいずれも正当な TOML で `ValueError` を投げることを toml-test が発見。`!time` は省略秒を補い、`!timestamp` は小文字 `t`/`z` を正規化。
-- **TOML 制御文字の厳格性** — 基本・字句・複数行文字列内でraw C0 制御コード（NUL、FF、DLE、US 等）と DEL（U+007F）を拒否するように（タブと複数行の改行のみ許可）。toml-test の `invalid/control` が 13 件の誤受理文書を発見。コメント本体・bare CR チェックは後続項目。
-- **TOML 数値リテラルの厳格性** — 先頭ゼロの 10 進数（`01`、`-01`）、基数接頭辞整数への符号（`+0x1F`、`-0b101` — `signed-int` は 10 進数のみ）、末尾/連続アンダースコア（`1_`、`1__0`）を拒否。toml-test の `invalid/integer`+`invalid/float` が 23 件の誤受理を発見（合計 71->48）。従来の「基数整数は符号可」は仕様違反。
-- **TOML インラインテーブル鍵衝突の厳格性** — インラインテーブルは定義済みパスと同一・拡張・被覆の関係にある点線鍵（`{ a = 1, a.b = 2 }`、`{ a.b = 1, a.b.c = 2 }`）を拒否。兄弟パス（`{ a.b = 1, a.c = 2 }`）は許可。toml-test `invalid/inline-table` の duplicate-key/overwrite が検出（誤受理総数 48->39）。
-- **TOML 非 ASCII 文字列のクラッシュ修正** — 基本および複数行基本文字列パーサがバイト単位で進み、マルチバイト入力（U+00A0 等）で文字の途中でスライスして panic していた。両ループとも文字単位で消費するよう修正。toml-test で発見、#153 の単一行/JSON 版を補完。
-- **フォーマットファジング + 堅牢性修正** — 新 `proptest` 属性テストが TOML/JSON/JSONC/JSON5 のパーサとライタをファジング（no-panic + 再解析可能性）。発見・修正：TOML と JSON 文字列パーサの中途文字スライス panic、および JSONC/JSON5 のインライン `//` コメントが後続の `,`/`}` を呑み込む不具合。
+- **JSONC ブロックコメント・ホットスポットベンチ** — 目標 §テストカバレッジ 5 が「block-comment」を
+  必須のホットサンプルに指定。以前はインライン `//` のみ計測。新フィクスチャで
+  `test_load_jsonc_block_comments` を駆動：50 pair + header/footer、各項に独立 `/* item N */` と末尾
+  `value /* trailing */` を持たせ、ブロック走査の回帰を CodSpeed で可視化。
+- **YAML の PyYAML + ruamel.yaml 跨库パリティ** — 目標 §テストカバレッジ 3 が両ライブラリを oracle
+  として名指し。以前は `test_benchmark_crosslib.py` のベンチ + 特性 support printout のみ。
+  `tests/test_yaml_crosslib.py` で 20 正規ドキュメント × 5 パリティ面 + 2 ドキュメント化された
+  divergence（duplicate-key 厳格性、YAML 1.1 従来 bool の schema-scope）= 122 テスト。オプション依存
+  skipif で降格。
+- **`load_toml` の tomlkit 跨库パリティ** — 目標 §テストカバレッジ 3 が tomlkit を oracle として名指
+  し。以前はベンチのみ。`tests/test_toml_crosslib.py` に 24 ケット追加：11 の正規構造で pyrs /
+  tomlkit / tomllib 三者一致、`>i64` 拒否を仕様準拠（TOML v1.0 §Integers：64bit signed）として固定、
+  `-2^63` 境界（PR #174 修正）を確認。オプション依存、skipif で降格。
+- **orjson を STRICT-JSON oracle に** — 目標 §テストカバレッジ 3「orjson と逐位比較」は今までベンチ
+  のみ。`tests/test_json_crosslib.py` で正規ドキュメント 16 件の一致、非正規 12 件（コメント、末尾カ
+  ンマ、シングルクォート、`NaN`/`Infinity`/`-Infinity`、16 進、先頭 0、`+.5`、`5.`）の両者拒否を断
+  言。stdlib `json.loads` は `allow_nan=True` で裸リテラルを受理するため orjson が RFC 8259 oracle
+  としてより厳格。オプション依存、`skipif` で降格。
+- **CLI ↔ Binding 対等ゲート（`tests/test_cli_binding_parity.py`）** — Pillar 1 の「CLI と Python
+  Binding 両端で同等機能」を宣言から実行可能な契約に昇格。CLI の登録コマンドを 18 個の固定リストと照
+  合（cyclopts の `--help`/`-h`/`--version` 擬似コマンドは除外）し、各 `to-X` / `from-X` 動詞に
+  `YamlDocument.to_X` / `from_X` / `load_X` の対応があることを確認。`load_*` 一族
+  （json/jsonc/json5/toml）の四兄弟対称性を断言、編集・validate・compliance 動詞は LIVE Python API
+  にマッピング。どちらかの表面の漂移は CI 失敗として顕在化。
+- **`load_json` プロパティテスト + CodSpeed ベンチ** — Hypothesis
+  （`test_load_json_matches_stdlib_json` と `test_load_json_matches_load_jsonc_on_strict_domain`）が
+  生成されたすべての正規ドキュメントで STRICT loader と `json.loads` の一致、および両 loader の
+  strict 領域での逐字一致を固定。高速経路の拡大や AST 経路の漂移はプロパティ失敗として顕在化する。3
+  件の CodSpeed wall-time ベンチ（`test_load_json_large` / `_floats` / `_escapes`）は `load_jsonc`
+  のサンプルをミラーし、STRICT binding 層自体を回帰追跡する。
+- **`load_json`（厳格）— `load_*` 一族の対称性を完成** — binding は既に `load_jsonc` / `load_json5`
+  / `load_toml` を持っていたが、厳格 RFC 8259 の対応関数が欠けていた。`pyrs_yaml.load_json(s)` は正
+  規入力では `json.loads` と逐字一致し、JSONC/JSON5 拡張（`//`、`/* */`、末尾カンマ、シングルクォー
+  ト、裸の `Infinity`/`NaN`、`0x…`）を型付き `YamlParseError` で拒否。高速経路は `load_jsonc` と
+  `json_fast::try_load` を共有（非正規バイトはすべて bail、構文の拡大リスクはゼロ）；拒否対象は
+  STRICT な `from_json` AST 経路に流れる。これにより下記の CLI ↔ Binding 対等宣言最後のギャップが埋
+  まり、ピラー 1 が完成。`pyrs_yaml.__init__` から再エクスポートし `__all__` に追加；`.pyi` は
+  `maturin generate-stubs` で再生成。
+- **方言 writer の固定点プロパティ** — `fmt_pbt.rs` はヘッダで writer 固定点（writer 出力を再パース→
+  再シリアライズすると逐字一致）を約束していたが未実装だった。4 つの proptest が
+  JSON/JSONC/JSON5/TOML でこれを果たす（唯一の入力フィルタは別々のキーが同一の JSON 名になる手組み
+  AST を除外——RFC 8259 の object 領域外）。このゲートで注釀忠実性の実バグ 3 件を即座に発見（下記の修
+  正参照）。
+- **ホットスポットベンチコーパス** — 7 件の CodSpeed wall-time ベンチが歴史的に脆弱なシリアライズ経
+  路を狙う：YAML ブロックスカラー文書（6 種のヘッダ表記 `|`、`|-`、`|+`、`>`、`>-`、`>+`）とコメント
+  密度文書、TOML マルチライン文字列/進数整数/アンダーセリエータ/指数/日付時、JSON5 の特殊数値形式
+  （16 進、`+.1`、`5.`、`Infinity`、`NaN`、シングルクオート、末尾カンマ）。固定種は
+  `tests/data/yaml_samples.py`、ベンチは `tests/test_benchmark_api.py`。このコーパス構築こそが下記の
+  ネスト式ブロックスカラーのインデントバグを発見した。
+- **テキストレベル再パースゲート（`prop_output_always_parses`）** — Rust proptest スイートは生成 AST
+  のシリアライズ出力が常にパーサで再読込できることを主張。AST 同士の往復プロパティは再パース不能な形
+  態（`try_roundtrip` が `None`）を黙って飛ばしていた。新ゲートは初回の実行で 6 個の実バグを検出し、
+  それぞれ targeted Rust ユニットテストと Python 回帰クラス（`TestNestedBlockScalarIndent`）で固定。
+- **toml-test 適合性ハーネス** — `tests/test_toml_test_suite.py` は公式
+  [toml-test](https://github.com/toml-lang/toml-test) を `test_yaml_suite.py` が YAML スイートを実行
+  するのと同じ方式で実行する。未追跡のローカル資産、欠損時 `skipif`、実測フロアのゲート、およびデコ
+  ード比較用の型タグアダプタ。
+- **TOML 時刻型の正しいデコード** — 日付のみと時刻のみは異なる `!date`/`!time` タグを持つようになり
+  ました（日付時は `!timestamp` を維持）。素の時刻（`07:32:00`）、秒省略の時刻（`13:37`）、小文字区
+  切りの日付時（`1987-07-05t17:45:00z`）がいずれも正当な TOML で `ValueError` を投げることを
+  toml-test が発見。`!time` は省略秒を補い、`!timestamp` は小文字 `t`/`z` を正規化。
+- **TOML 制御文字の厳格性** — 基本・字句・複数行文字列内でraw C0 制御コード（NUL、FF、DLE、US 等）と
+  DEL（U+007F）を拒否するように（タブと複数行の改行のみ許可）。toml-test の `invalid/control` が 13
+  件の誤受理文書を発見。コメント本体・bare CR チェックは後続項目。
+- **TOML 数値リテラルの厳格性** — 先頭ゼロの 10 進数（`01`、`-01`）、基数接頭辞整数への符号
+  （`+0x1F`、`-0b101` — `signed-int` は 10 進数のみ）、末尾/連続アンダースコア（`1_`、`1__0`）を拒
+  否。toml-test の `invalid/integer`+`invalid/float` が 23 件の誤受理を発見（合計 71->48）。従来の
+  「基数整数は符号可」は仕様違反。
+- **TOML インラインテーブル鍵衝突の厳格性** — インラインテーブルは定義済みパスと同一・拡張・被覆の関
+  係にある点線鍵（`{ a = 1, a.b = 2 }`、`{ a.b = 1, a.b.c = 2 }`）を拒否。兄弟パス
+  （`{ a.b = 1, a.c = 2 }`）は許可。toml-test `invalid/inline-table` の duplicate-key/overwrite が検
+  出（誤受理総数 48->39）。
+- **TOML 非 ASCII 文字列のクラッシュ修正** — 基本および複数行基本文字列パーサがバイト単位で進み、マ
+  ルチバイト入力（U+00A0 等）で文字の途中でスライスして panic していた。両ループとも文字単位で消費す
+  るよう修正。toml-test で発見、#153 の単一行/JSON 版を補完。
+- **フォーマットファジング + 堅牢性修正** — 新 `proptest` 属性テストが TOML/JSON/JSONC/JSON5 のパー
+  サとライタをファジング（no-panic + 再解析可能性）。発見・修正：TOML と JSON 文字列パーサの中途文字
+  スライス panic、および JSONC/JSON5 のインライン `//` コメントが後続の `,`/`}` を呑み込む不具合。
 - **YAML merge/別名プロパティファジング** — 良形式のアンカー/別名/merge-key
   ドキュメント（単一別名、別名シーケンス、インラインマップ入りシーケンス、インラインマップ
   マージ、#166 が拒否するスカラー/null マージソース）を新たに生成し、自己参照アンカーと
@@ -1212,22 +1247,40 @@ status: new
   マージ展開の経路（まさに #163/#166 の構造クラス）はプロセス内ファジングされていません
   でした。`prop_merge_alias_never_panics` はパース + マージ解決が panic やネイティブ
   スタック溢れなく完了し、解析できる木は再シリアライズ・再パースで安定であることを検証します。
-- **CLI フォーマット対等性** — CLI に `to-toml`/`from-toml`、`to-jsonc`/`from-jsonc`、`to-json5`/`from-json5` を追加（既存の `to-json`/`from-json` を倣う）。バインディングが扱う全フォーマットがコマンドラインから利用可能に。
-- **JSON 文字列エスケープ高速パス（性能）** — `load_jsonc` は 8 種の単純な 2 バイトエスケープをインライン復号し、ドキュメント全体を AST パスへ退避しなくなりました。エスケープ入り JSON は高速パスに乗ります（AST ルート比 約 15 倍速）。値は `json.loads` と一致；`\u`・不正エスケープは引き続き AST パス経由。
-- **JSON 浮動小数点高速パス（性能）** — `load_jsonc` は正規の浮動小数（小数・指数）をドキュメント全体を AST パスへ退避せず直接 Python オブジェクトへ解析。値は `json.loads` と完全一致（正しく丸められた parse）。新 bench がこの分岐を回帰監視する。
-- **JSON 文字列シリアライズの高速化（性能）** — エスケープ不要な文字列は 1 回の `push_str` で一括コピーし、文字単位の UTF-8 再エンコードをやめる。文字列の多い `to_json` は約 35% 高速（41→27 ns/件）、出力はバイト単位同一。
-- **`YamlDocument.to_toml()`** — ドキュメントは `to_json`/`to_jsonc`/`to_json5` に倣い AST から直接 TOML を出力。`to_toml(doc.to_yaml())` のシリアライズ→再解析の往復が不要になり、出力はバイト単位同一。ライタ自体は `tomli_w` より約 4.3 倍速。
-- **`to_json` ネイティブシリアライザ（性能）** — `YamlDocument.to_json` は `to_dict()` + `json.dumps` の二重変換をやめネイティブエンジンを使用。ASCII はバイト単位同一、約 10 倍速（1200 件 ~1450µs→~120µs、`json.dumps` を上回る）。非 ASCII は `\uXXXX` でなく生の UTF-8（`to_jsonc`/`to_json5` と一致）、正当な JSON を維持。
-- **JSON オブジェクトキー直接出力（性能）** — ライタはマッピングキーを出力バッファへ直接書き込み（キーごとの `String` 確保を廃止）。コンパクト `to_json` はさらに約 2 倍速（~120µs→~60µs）、バイト単位同一、シリアライズは現場で #2（orjson のみ上）。
-- **JSON ロード高速パス** — `load_jsonc` は正規の strict JSON を `CustomNode` AST を経由せず直接 Python オブジェクトへ変換する（実測で約 5-6 倍速、stdlib `json.loads` を上回る）。非正規入力（浮動小数・エスケープ・コメント・範囲外整数・末尾カンマ）は一般パスへ退避し、値とエラーは不変。
-- **TOML マルチライン文字列の再現性** — TOML マルチライン文字列を
-  `ScalarStyle::Literal` の YAML ブロックとして投射（テキストハブを往復でき）
-  `to_toml` が `"""` ブロックとして再出力する。値はバイト単位で往復し出力は
-  冪等、単一行文字列は単一行のまま。既存の `Literal` を再利用し AST 構造変更なし。
-- **TOML ドキュメントレベルのコメント再現性** — `to_toml` がルートマッピングの
-  先頭コメントを出力するようになり、文書冒頭の独立した `# コメント` が TOML →
-  ハブ → TOML の往復で保持されるようになりました（JSON ライターの
-  `emit_root_leading` に対応）。ネイティブ TOML 解析やコメントなし文書は影響なし。
+- **CLI フォーマット対等性** — CLI に `to-toml`/`from-toml`、`to-jsonc`/`from-jsonc`、
+  `to-json5`/`from-json5` を追加（既存の `to-json`/`from-json` を倣う）。バインディングが扱う全フォ
+  ーマットがコマンドラインから利用可能に。
+- **JSON 文字列エスケープ高速パス（性能）** — `load_jsonc` は 8 種の単純な 2 バイトエスケープをイン
+  ライン復号し、ドキュメント全体を AST パスへ退避しなくなりました。エスケープ入り JSON は高速パスに
+  乗ります（AST ルート比約 15 倍速）。値は `json.loads` と一致；`\u`・不正エスケープは引き続き AST
+  パス経由。
+- **JSON 浮動小数点高速パス（性能）** — `load_jsonc` は正規の浮動小数（小数・指数）をドキュメント全
+  体を AST パスへ退避せず直接 Python オブジェクトへ解析。値は `json.loads` と完全一致（正しく丸めら
+  れた parse）。新 bench がこの分岐を回帰監視する。
+- **JSON 文字列シリアライズの高速化（性能）** — エスケープ不要な文字列は 1 回の `push_str` で一括コ
+  ピーし、文字単位の UTF-8 再エンコードをやめる。文字列の多い `to_json` は約 35% 高速（41→27 ns/
+  件）、出力はバイト単位同一。
+- **`YamlDocument.to_toml()`** — ドキュメントは `to_json`/`to_jsonc`/`to_json5` に倣い AST から直接
+  TOML を出力。`to_toml(doc.to_yaml())` のシリアライズ→再解析の往復が不要になり、出力はバイト単位同
+  一。ライタ自体は `tomli_w` より約 4.3 倍速。
+- **`to_json` ネイティブシリアライザ（性能）** — `YamlDocument.to_json` は `to_dict()` +
+  `json.dumps` の二重変換をやめネイティブエンジンを使用。ASCII はバイト単位同一、約 10 倍速（1200 件
+  ~1450µs→~120µs、`json.dumps` を上回る）。非 ASCII は `\uXXXX` でなく生の UTF-8
+  （`to_jsonc`/`to_json5` と一致）、正当な JSON を維持。
+- **JSON オブジェクトキー直接出力（性能）** — ライタはマッピングキーを出力バッファへ直接書き込み（キ
+  ーごとの `String` 確保を廃止）。コンパクト `to_json` はさらに約 2 倍速（~120µs→~60µs）、バイト単位
+  同一、シリアライズは現場で #2（orjson のみ上）。
+- **JSON ロード高速パス** — `load_jsonc` は正規の strict JSON を `CustomNode` AST を経由せず直接
+  Python オブジェクトへ変換する（実測で約 5-6 倍速、stdlib `json.loads` を上回る）。非正規入力（浮動
+  小数・エスケープ・コメント・範囲外整数・末尾カンマ）は一般パスへ退避し、値とエラーは不変。
+- **TOML マルチライン文字列の再現性** — TOML マルチライン文字列を `ScalarStyle::Literal` の YAML ブ
+  ロックとして投射（テキストハブを往復でき）`to_toml` が `"""` ブロックとして再出力する。値はバイト
+  単位で往復し出力は冪等、単一行文字列は単一行のまま。既存の `Literal` を再利用し AST 構造変更な
+  し。
+- **TOML ドキュメントレベルのコメント再現性** — `to_toml` がルートマッピングの先頭コメントを出力す
+  るようになり、文書冒頭の独立した `# コメント` が TOML → ハブ → TOML の往復で保持されるようになりま
+  した（JSON ライターの `emit_root_leading` に対応）。ネイティブ TOML 解析やコメントなし文書は影響な
+  し。
 - **JSON5 Unicode 識別子キー** — 引用なしオブジェクトキーが ASCII 限定をやめ、
   Unicode の `ID_Start` / `ID_Continue` 集合全体を受け入れる。`from_json5` /
   `load_json5` が `{ é: 1, 名: 2, हिन्दी: 3 }` を解析できる。rustc 自身の
@@ -1235,152 +1288,110 @@ status: new
   合成文字含む）。JSON5 モード限定のため、厳密な `from_json` / `from_jsonc` は
   従来通り引用を要求。`\uXXXX` の孤立 UTF-16 サロゲートは引き続き拒否（Rust
   `String` では無損失で表現不可）。依存を 1 つ追加（`unicode-ident`）。
-- **JSON5 Unicode 構造空白** — `from_json5` / `load_json5` が RFC 8259 の 4 つ
-  （タブ / スペース / LF / CR）に JSON5 が加えた空白をトークン間の区切りとして
-  受理する：垂直タブ、フォームフィード、NBSP（U+00A0）、全ての Unicode `Zs`
-  区切り、LS/PS 行終端（U+2028 / U+2029）、ZWNBSP（U+FEFF）。`std` の
-  `char::is_whitespace`（JSON5 が空白としない NEL U+0085 を除く）に U+FEFF を
-  足して実装、新規依存なし。JSON5 モード限定のため、厳密な `from_json` /
-  `from_jsonc` は従来通り全てを拒否し、挙動は一バイト変わらない。
+- **JSON5 Unicode 構造空白** — `from_json5` / `load_json5` が RFC 8259 の 4 つ（タブ / スペース / LF
+  / CR）に JSON5 が加えた空白をトークン間の区切りとして受理する：垂直タブ、フォームフィード、NBSP
+  （U+00A0）、全ての Unicode `Zs` 区切り、LS/PS 行終端（U+2028 / U+2029）、ZWNBSP（U+FEFF）。`std`
+  の `char::is_whitespace`（JSON5 が空白としない NEL U+0085 を除く）に U+FEFF を足して実装、新規依存
+  なし。JSON5 モード限定のため、厳密な `from_json` / `from_jsonc` は従来通り全てを拒否し、挙動は一バ
+  イト変わらない。
 - **JSON5 行継続と `\'` エスケープ** — 二重引用符 JSON5 文字列が 2 つの
   エスケープを受理：行終端直前のバックスラッシュ（行継続で両方を除去）、
   およびエスケープされた一重引用符（`\'` → `'`）。JSON5 モード限定のため、
   厳密な `from_json` / `from_jsonc` は従来通り両方を拒否。#125 の一重引用符
   処理を反映し、JSON5 文字列の再現性を完成。
-- **JSON5 文字列エスケープ `\v` と `\0`** — `from_json5` が垂直
-  タブ（`\v`）と NUL（`\0`）を二重/一重引用符文字列で受理。厳密
-  JSON / JSONC は従来通り拒否。#120（数値）・#124（数値意味）と
-  合わせ JSON5 文法を完成。
-- **load_json5 の JSON5 数値セマンティクス** — `load_json5` が
-  JSON5 独特の数値形式（`0x1F`→31、`+7`→7、`5.`→5.0、`Infinity`/
-  `NaN`）を新しい `Schema::Json5` で実数として解決。厳密 JSON /
-  JSONC ローダは不変、`to_json5_text` は元の表記のまま出力。
-- **JSON5 / JSONC を公開 API から利用可能に** —
-  `pyrs_yaml.from_json5` / `load_json5`、および
-  `YamlDocument.to_jsonc()` / `to_json5()`（ネイティブエンジン経由で
-  コメントと JSON5 スタイルを保持）。同時に到達性の欠陥を修正：
-  `from_jsonc` / `load_jsonc` が `pyrs_yaml` パッケージに再エクスポート
-  されておらず `AttributeError` になっていたが、`__all__` に追加。
-  `to_jsonc`/`to_json5` は `emit_root_leading` でドキュメントレベルの
-  standalone コメントを保持。`test_benchmark_api.py` に JSON 系の
-  ベンチマークを追加。
-- **JSON5 ライター（`to_json5_text` / `to_json5_text_pretty`）** —
-  契約 B ステップ 2。AST を JSON5 に再帰列化し、パーサーが
-  保持する一重引用符文字列と `0x…`/`.5`/`+7`/`Infinity`/`NaN`
-  の数値形式、および `//` コメントを復元。キーは常に引用符付き
-  （損失なし）。内部では `Mode`（Json/Jsonc/Json5）を共用、厳密 /
-  JSONC 出力は不変。
-- **パーサーに JSON5 数値形式を追加** — `from_json5`（新規
-  `allow_json5_numbers`）が十六進（`0xDECAF`）、前/後小数点（`.5`、
-  `5.`）、前置 `+`（`+7`）、先頭ゼロ（`07`）、素の `Infinity` /
-  `NaN` / `-Infinity` を受理。各形式は原文を保持し、将来の JSON5
-  ライターが再現できます。STRICT / JSONC はこの軸を OFF のまま従来通り
-  拒否。`from_jsonc` の旧い「コメントは破棄される」doc を修正。
-- **TOML インラインテーブル内部コメント保真** — PR #119 は
-  インラインテーブル内の `# ...` を捕捉し（メンバー上の独立行
-  → leading、値の同じ行の後 → trailing）、IR を通して往復させます。
-  装飾のないインラインテーブルはコンパクトな一行形式を維持し、
-  配列にネストされた装飾付きテーブルは複数行に昇格します。同時に
-  #114 の潜在バグ（`skip_all_blank` が standalone コメント自身の改行を
-  空行と誤認）を修正。
-- **YAML レシーバーが standalone コメントを
-  `decor.leading_comment` に書く** — PR #117b で最後のエンジン
-  （granit-parser レシーバー）が #114 / #115 で導入した新しい
-  スロットに移行しました。scalar / mapping / sequence の standalone
-  note が `NodeMeta::decor.leading_comment` に載り、古い
-  `comment(standalone = true)` ではなくなります。#117 の正規化で
-  hand-built fixture は引き続き等価、かつ `CustomNode
-  ::remove_comment` が**両スロット**をアトミックにクリアする
-  ので Python の `Node.remove_comment()` は YAML 起源ドキュメントで
-  も従来通り動作します。
-- **スロット横断の standalone 正規化 + Python
-  `Node.leading_comment`** — `NodeMeta::eq` / `Hash` は
-  standalone コメントを新しい `leading_comment` スロット（TOML /
-  JSON エンジンが使用）と古い `comment(standalone = true)`
-  スロット（YAML レシーバーと hand-built fixture が現在も使用中）
-  のどちらにあっても同一概念として扱います。setter / remover は
-  両スロットにアトミックに作用し、YAML シリアライザは正規化され
-  たビューを読むので `to_yaml(toml_ast)` の leading note が失われ
-  ません。Python の `Node.leading_comment` getter / setter /
-  remover は `Node.comment` をミラーし、TOML / JSONC ソースの
-  standalone note を初めて Python 側に露出します。
-- **TOML 1.1.0 文法** — `from_toml` が TOML v1.1.0（2025-12-18
-  公開）を解析します。四つの追加：**(A1)** インラインテーブルの
-  改行と後尾カンマ許容、**(A2)** 基本文字列 `\xHH` バイトエスケープ
-  （0x00..=0xFF）、**(A3)** `\e` = U+001B、**(A4)** time /
-  date-time の秒省略（`t = 14:15` / `dt = 2010-02-03 14:15`）。
-  厳密 1.0.0 用のエスケープハッチとして `TomlDialect::V1_0` と
-  `from_toml_v1_0` を保持。1.0.0 ドキュメントは両方言で同じ解析
-  結果になります。同時に space 区切り date-time 検出の off-by-one
-  索引バグ（`T` 無し date-time が 1.0 モードでも認識されなかった）
+- **JSON5 文字列エスケープ `\v` と `\0`** — `from_json5` が垂直タブ（`\v`）と NUL（`\0`）を二重/一
+  重引用符文字列で受理。厳密 JSON / JSONC は従来通り拒否。#120（数値）・#124（数値意味）と合わせ
+  JSON5 文法を完成。
+- **load_json5 の JSON5 数値セマンティクス** — `load_json5` が JSON5 独特の数値形式（`0x1F`→31、
+  `+7`→7、`5.`→5.0、`Infinity`/ `NaN`）を新しい `Schema::Json5` で実数として解決。厳密 JSON / JSONC
+  ローダは不変、`to_json5_text` は元の表記のまま出力。
+- **JSON5 / JSONC を公開 API から利用可能に** — `pyrs_yaml.from_json5` / `load_json5`、および
+  `YamlDocument.to_jsonc()` / `to_json5()`（ネイティブエンジン経由でコメントと JSON5 スタイルを保
+  持）。同時に到達性の欠陥を修正：`from_jsonc` / `load_jsonc` が `pyrs_yaml` パッケージに再エクスポ
+  ートされておらず `AttributeError` になっていたが、`__all__` に追加。`to_jsonc`/`to_json5` は
+  `emit_root_leading` でドキュメントレベルの standalone コメントを保持。`test_benchmark_api.py` に
+  JSON 系のベンチマークを追加。
+- **JSON5 ライター（`to_json5_text` / `to_json5_text_pretty`）** — 契約 B ステップ 2。AST を JSON5
+  に再帰列化し、パーサーが保持する一重引用符文字列と `0x…`/`.5`/`+7`/`Infinity`/`NaN` の数値形式、
+  および `//` コメントを復元。キーは常に引用符付き（損失なし）。内部では `Mode`（Json/Jsonc/Json5）
+  を共用、厳密 / JSONC 出力は不変。
+- **パーサーに JSON5 数値形式を追加** — `from_json5`（新規 `allow_json5_numbers`）が十六進
+  （`0xDECAF`）、前/後小数点（`.5`、`5.`）、前置 `+`（`+7`）、先頭ゼロ（`07`）、素の `Infinity` /
+  `NaN` / `-Infinity` を受理。各形式は原文を保持し、将来の JSON5 ライターが再現できます。STRICT /
+  JSONC はこの軸を OFF のまま従来通り拒否。`from_jsonc` の旧い「コメントは破棄される」doc を修正。
+- **TOML インラインテーブル内部コメント保真** — PR #119 はインラインテーブル内の `# ...` を捕捉し
+  （メンバー上の独立行 → leading、値の同じ行の後 → trailing）、IR を通して往復させます。装飾のない
+  インラインテーブルはコンパクトな一行形式を維持し、配列にネストされた装飾付きテーブルは複数行に昇
+  格します。同時に #114 の潜在バグ（`skip_all_blank` が standalone コメント自身の改行を空行と誤認）
   を修正。
-- **JSON dual-slot コメント保真** — JSONC パーサーは独立行の
-  `// ...` を #114 が追加した `leading_comment` スロットに書き、
-  同じ行の `// trailing` は `comment` に残します。オブジェクト
-  メンバーや配列要素が同じノードで両方のコメントを保持でき、
-  #112 の単一スロットモデルでは表現不能な形状が可能になります。
-  `to_jsonc_text_pretty` は `leading_comment` を優先読みし、
-  hand-built fixture 向けに `comment` (`standalone = true`) の
-  fallback を保持します。厳密 JSON (`to_json_text`) の挙動は
-  変化しません（依然 `//` を出力しない）。
-- **TOML 空行と dual-slot コメント保真** — `NodeMeta` に
-  `leading_comment: Option<Comment>` と `blank_before: bool` を追加
-  （どちらも構造的な `Hash` / `PartialEq` から除外）。section ヘッダー
-  や AOT 要素が `]` の後ろにある行末コメントと、その上にある独立行
-  の先頭コメントを同時保持できるようになりました。`to_toml` は元の
-  空行区切りを再現します（`a = 1\n\nb = 2` は byte-stable に往復）。
-  手構築ノードと YAML 由来ノードは writer の fallback 読み取りで
-  そのままレンダリングできます。
+- **YAML レシーバーが standalone コメントを `decor.leading_comment` に書く** — PR #117b で最後のエン
+  ジン（granit-parser レシーバー）が #114 / #115 で導入した新しいスロットに移行しました。scalar /
+  mapping / sequence の standalone note が `NodeMeta::decor.leading_comment` に載り、古い
+  `comment(standalone = true)` ではなくなります。#117 の正規化で hand-built fixture は引き続き等価、
+  かつ `CustomNode ::remove_comment` が**両スロット**をアトミックにクリアするので Python の
+  `Node.remove_comment()` は YAML 起源ドキュメントでも従来通り動作します。
+- **スロット横断の standalone 正規化 + Python `Node.leading_comment`** — `NodeMeta::eq` / `Hash` は
+  standalone コメントを新しい `leading_comment` スロット（TOML / JSON エンジンが使用）と古い
+  `comment(standalone = true)` スロット（YAML レシーバーと hand-built fixture が現在も使用中）のど
+  ちらにあっても同一概念として扱います。setter / remover は両スロットにアトミックに作用し、YAML シ
+  リアライザは正規化されたビューを読むので `to_yaml(toml_ast)` の leading note が失われません。
+  Python の `Node.leading_comment` getter / setter / remover は `Node.comment` をミラーし、TOML /
+  JSONC ソースの standalone note を初めて Python 側に露出します。
+- **TOML 1.1.0 文法** — `from_toml` が TOML v1.1.0（2025-12-18 公開）を解析します。四つの追加：
+  **(A1)** インラインテーブルの改行と後尾カンマ許容、**(A2)** 基本文字列 `\xHH` バイトエスケープ
+  （0x00..=0xFF）、**(A3)** `\e` = U+001B、**(A4)** time / date-time の秒省略（`t = 14:15` /
+  `dt = 2010-02-03 14:15`）。厳密 1.0.0 用のエスケープハッチとして `TomlDialect::V1_0` と
+  `from_toml_v1_0` を保持。1.0.0 ドキュメントは両方言で同じ解析結果になります。同時に space 区切り
+  date-time 検出の off-by-one 索引バグ（`T` 無し date-time が 1.0 モードでも認識されなかった）を修
+  正。
+- **JSON dual-slot コメント保真** — JSONC パーサーは独立行の `// ...` を #114 が追加した
+  `leading_comment` スロットに書き、同じ行の `// trailing` は `comment` に残します。オブジェクトメ
+  ンバーや配列要素が同じノードで両方のコメントを保持でき、#112 の単一スロットモデルでは表現不能な形
+  状が可能になります。`to_jsonc_text_pretty` は `leading_comment` を優先読みし、hand-built fixture
+  向けに `comment` (`standalone = true`) の fallback を保持します。厳密 JSON (`to_json_text`) の挙動
+  は変化しません（依然 `//` を出力しない）。
+- **TOML 空行と dual-slot コメント保真** — `NodeMeta` に `leading_comment: Option<Comment>` と
+  `blank_before: bool` を追加（どちらも構造的な `Hash` / `PartialEq` から除外）。section ヘッダーや
+  AOT 要素が `]` の後ろにある行末コメントと、その上にある独立行の先頭コメントを同時保持できるように
+  なりました。`to_toml` は元の空行区切りを再現します（`a = 1\n\nb = 2` は byte-stable に往復）。手構
+  築ノードと YAML 由来ノードは writer の fallback 読み取りでそのままレンダリングできます。
 - **JSON5 方言** — `pyrs_yaml_core::json::from_json5(text)` と
-  `from_json_with_options(text, JsonParseOptions)` は JSON5 の全 4
-  軸（後尾カンマ、一重引用符文字列、引用符なし識別子キー、
-  行/ブロックコメント）を受け入れます。各軸は個別に ON/OFF 可。
-  `STRICT`・`JSONC`・`JSON5` 定数をデフォルトとして提供します。
-- **JSONC/JSON5 バインディングと CLI** — `pyrs_yaml.from_jsonc(str)`
-  は YAML テキストを返し、`pyrs_yaml.load_jsonc(str)` は Python の
-  dict / list を直接返します。`pyq from-json` に `--jsonc` と
-  `--json5` フラグを追加し、`tsconfig.json` / `settings.json` を
-  verb パイプラインに直通させます。
-- **JSONC コメント保持** — `from_jsonc` が拾った `// 行` と
-  `/* ブロック */` コメントを AST の `NodeMeta::comment` に添付し
-  ます（独立部は key ノード、行末部は value ノード）。PR #109 で
-  導入した TOML モデルと対応します。対となる
-  `to_jsonc_text(node)` / `to_jsonc_text_pretty(node, indent)`
-  が元の位置へ再出力します。ブロックコメントは AST には本文だ
-  けを保存するため、出力時には `//` に正規化されます。厳密 writer
-  `to_json_text` / `to_json_text_pretty` はバイト単位で不変なので、
-  消費側は保真を任意に選択できます。
+  `from_json_with_options(text, JsonParseOptions)` は JSON5 の全 4 軸（後尾カンマ、一重引用符文字
+  列、引用符なし識別子キー、行/ブロックコメント）を受け入れます。各軸は個別に ON/OFF 可。`STRICT` ・
+  `JSONC`・`JSON5` 定数をデフォルトとして提供します。
+- **JSONC/JSON5 バインディングと CLI** — `pyrs_yaml.from_jsonc(str)` は YAML テキストを返し、
+  `pyrs_yaml.load_jsonc(str)` は Python の dict / list を直接返します。`pyq from-json` に `--jsonc`
+  と `--json5` フラグを追加し、`tsconfig.json` / `settings.json` を verb パイプラインに直通させま
+  す。
+- **JSONC コメント保持** — `from_jsonc` が拾った `// 行` と `/* ブロック */` コメントを AST の
+  `NodeMeta::comment` に添付します（独立部は key ノード、行末部は value ノード）。PR #109 で導入し
+  た TOML モデルと対応します。対となる `to_jsonc_text(node)` / `to_jsonc_text_pretty(node, indent)`
+  が元の位置へ再出力します。ブロックコメントは AST には本文だけを保存するため、出力時には `//` に正
+  規化されます。厳密 writer `to_json_text` / `to_json_text_pretty` はバイト単位で不変なので、消費側
+  は保真を任意に選択できます。
 - **pyq マルチドキュメント編集** — `-A/--all-docs` が全編集コマンド
-  （set/delete/rename/move/append/insert/sort-keys）と `to-json -A`
-  （JSON 配列、Python 対応）をカバー。各ドキュメントはストリーム内の
-  自身のセグメントに対して splice（`MultiDocEditor` + `DirtyUnit::shifted`）：
-  触れていないドキュメントと全ての `---` 区切り行はバイト単位で保持、
-  パス不一致のドキュメントはスキップ（Python の try/skip 意味と一致、
-  全不一致はエラー）、レイアウト異常のドキュメントは単独でフォールバックし
-  近隣を巻き込まない。
+  （set/delete/rename/move/append/insert/sort-keys）と `to-json -A`（JSON 配列、Python 対応）をカバ
+  ー。各ドキュメントはストリーム内の自身のセグメントに対して splice（`MultiDocEditor` +
+  `DirtyUnit::shifted`）：触れていないドキュメントと全ての `---` 区切り行はバイト単位で保持、パス不
+  一致のドキュメントはスキップ（Python の try/skip 意味と一致、全不一致はエラー）、レイアウト異常の
+  ドキュメントは単独でフォールバックし近隣を巻き込まない。
 - **JSONC パース** — `pyrs_yaml_core::json::from_jsonc(text)` と
-  `from_json_with_options(text, JsonParseOptions)` は、ホワイトスペース
-  が許される任意的位置で `// 行` と `/* ブロック */` のコメントを受
+  `from_json_with_options(text, JsonParseOptions)` は、ホワイトスペースが許される任意的位置で
+  `// 行` と `/* ブロック */` のコメントを受
 
-    け入れます（TypeScript の `tsconfig.json` や VS Code の
-    `settings.json` で使われる方言）。コメントは除去され保持されません。
-    末尾カンマや JSON5 固有の構文は引き続き拒否されるため、受理される言語
-    は RFC 8259 の厳密な上位集合のままです。`from_json` の既定動作
-    （モード）は変わりません。
-- **TOML コメント忠実性** — パーサーがペアやセクションヘッダーの上に
-  独立した行で現れる `# ...` コメントと、行末コメント (`key = value # ...`
-  / `[name] # ...`) の両方をキャプチャし、共有 AST の `NodeMeta::comment`
-  に添付します (独立部は key ノード、行末部は value ノード)。
-  `to_toml(from_toml(src))` が元の位置に再出力するため、`pyq edit` や
-  `YamlDocument.set()` は TOML 往返中の注釈を剥がさなくなりました。空
-  行区切りは設計文書に従い writer の既定レイアウトのまま。
-- **TOML 数値ソース表記の忠実性** — `to_toml(from_toml(src))` が 16 進
-  (`0xDEADBEEF`)・8 進 (`0o755`) 整数のソース表記と指数形浮動小数点
-  (`1e10`、`-3.14e-2`) をそのまま保持します。区切り `_`・明示的な `+`
-  符号・負の radix 形 (`-0x1F`)・2 進数 (`0b101`) は YAML Core が再読
-  込みできないため 10 進に正規化されます。これにより共有 AST と YAML
-  パイプラインの相互運用性を維持します。コメント忠実性と JSONC は
-  設計ドキュメントに従い後続 PR で実装予定。
+    け入れます（TypeScript の `tsconfig.json` や VS Code の `settings.json` で使われる方言）。コメン
+    トは除去され保持されません。末尾カンマや JSON5 固有の構文は引き続き拒否されるため、受理される言
+    語は RFC 8259 の厳密な上位集合のままです。`from_json` の既定動作（モード）は変わりません。
+- **TOML コメント忠実性** — パーサーがペアやセクションヘッダーの上に独立した行で現れる `# ...` コメ
+  ントと、行末コメント (`key = value # ...` / `[name] # ...`) の両方をキャプチャし、共有 AST の
+  `NodeMeta::comment` に添付します (独立部は key ノード、行末部は value ノード)。
+  `to_toml(from_toml(src))` が元の位置に再出力するため、`pyq edit` や `YamlDocument.set()` は TOML
+  往返中の注釈を剥がさなくなりました。空行区切りは設計文書に従い writer の既定レイアウトのまま。
+- **TOML 数値ソース表記の忠実性** — `to_toml(from_toml(src))` が 16 進 (`0xDEADBEEF`)・8 進
+  (`0o755`) 整数のソース表記と指数形浮動小数点 (`1e10`、`-3.14e-2`) をそのまま保持します。区切り `_`
+  ・明示的な `+` 符号・負の radix 形 (`-0x1F`)・2 進数 (`0b101`) は YAML Core が再読込みできないた
+  め 10 進に正規化されます。これにより共有 AST と YAML パイプラインの相互運用性を維持します。コメン
+  ト忠実性と JSONC は設計ドキュメントに従い後続 PR で実装予定。
 - **pyq 機能補完** — CLI が Python CLI の機能面に追従：`rename`/`move`/`append`/`insert`
   の splice 編集、`validate`（構文チェック、または `--schema rules.yaml` による
   スキーマ言語ルール検証）、`frontmatter`（`--body-out` で本文分割）、
@@ -1388,28 +1399,26 @@ status: new
   エンジンのバグを発見：`move_path` が移動先 INSERT ユニットのみ返し、splice
   テキストに移動元サブツリーが残存（フォールバック時は invisible）。両ユニットを
   返し bindings はバッチ splice 経路で適用する仕様に修正。
-- **`pyq` 絞り込み動詞** — マッチ列への jq スタイル構造化後処理：
-  `--select 'PATH OP LITERAL'`、`--sort-by PATH` / `--desc`、`--unique`、
-  `--first` / `--last`、`--skip N` / `--take N`、`--join SEP`。
-  `get` と `from-*` で固定パイプライン `select -> sort -> unique -> slice`
-  → `join` を適用。意図的にフラグ設計（式言語なし）：述語は微細構文 1
-  パース（約 40 行）、型不一致は false（jq の全順序との既知差）、起動は瞬時。
+- **`pyq` 絞り込み動詞** — マッチ列への jq スタイル構造化後処理： `--select 'PATH OP LITERAL'`、
+  `--sort-by PATH` / `--desc`、`--unique`、 `--first` / `--last`、`--skip N` / `--take N`、
+  `--join SEP`。 `get` と `from-*` で固定パイプライン `select -> sort -> unique -> slice` → `join`
+  を適用。意図的にフラグ設計（式言語なし）：述語は微細構文 1 パース（約 40 行）、型不一致は false
+  （jq の全順序との既知差）、起動は瞬時。
 - **`pyq completion`** — bash・zsh・fish・PowerShell のシェル補完スクリプトを
   出力（`pyq completion bash > ...`）。`clap_complete` 実装（承認済みの CLI
   クレート依存追加。`pyrs-yaml-cli` バイナリ内に完結し Python 配布に影響せず）。
 - **`pyq sort-keys`** — 任意パス（`$` はルート）のMapping キーを並び替え。
   `set`/`delete` と同じコア plan/splice エンジン経由で、その場書き換えにも
   標準出力にも対応し、Python CLI の `sort-keys` との対応差を解消。
-- **コマンドラインインターフェース** — 新しい `pyrs-yaml` コマンド（
-  `pip install "pyrs-yaml[cli]"` でオプトイン、Python 3.10+ 必須）により、ライブラリの
-  中核機能をターミナルから利用できます：`fmt`（コメント・アンカー・順序を保持する
-  ラウンドトリップ整形）、`get`（JSONPath クエリ、`--format yaml|json|text` 対応）、
-  `set` / `delete` / `rename`（パスベースの編集、`--inplace`・`--string`・
-  `--create-missing` をサポート）、`validate`（CI フレンドリーな終了コード）、および `to-json` / `from-json` 変換。すべての
-  コマンドは `-` で stdin を読み、デフォルトで stdout に出力します。実装は純粋な
-  Python（`python/pyrs_yaml/cli/`）で、[Cyclopts](https://github.com/BrianPugh/cyclopts)
-  をオプション extra として使用するため、ベースインストールは追加依存ゼロと
-  Python 3.8 サポートを維持します。
+- **コマンドラインインターフェース** — 新しい `pyrs-yaml` コマンド（ `pip install "pyrs-yaml[cli]"`
+  でオプトイン、Python 3.10+ 必須）により、ライブラリの中核機能をターミナルから利用できます：`fmt`
+  （コメント・アンカー・順序を保持するラウンドトリップ整形）、`get`（JSONPath クエリ、
+  `--format yaml|json|text` 対応）、`set` / `delete` / `rename`（パスベースの編集、`--inplace`・
+  `--string`・ `--create-missing` をサポート）、`validate`（CI フレンドリーな終了コード）、および
+  `to-json` / `from-json` 変換。すべてのコマンドは `-` で stdin を読み、デフォルトで stdout に出力
+  します。実装は純粋な Python（`python/pyrs_yaml/cli/`）で、
+  [Cyclopts](https://github.com/BrianPugh/cyclopts) をオプション extra として使用するため、ベースイ
+  ンストールは追加依存ゼロと Python 3.8 サポートを維持します。
 - **CLI 拡張** — `sort-keys`（パス位置のマッピングキーをソート）、`move`
   （サブツリーを既存の宛先へ移動）、`frontmatter`（Markdown フロントマターを YAML で
   抽出、本文の分割も可能）、`compliance`（YAML Test Suite レポート、`--json` 対応）
@@ -1439,40 +1448,34 @@ status: new
   ドロップイン代替で、PyYAML の代わりに pyrs-yaml（YAML 1.2 コアスキーマ）で解析します。
   遅延エクスポートされるため `import pyrs_yaml` に pydantic-settings は不要です。
   `pip install "pyrs-yaml[settings]"` でインストールします（Python 3.10+）。
-  `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されました。
-- **`pyq` — Rust ネイティブ CLI クレート** — `crates/pyrs-yaml-cli`
-  （ワークスペースメンバー、clap ベース）は `pyrs-yaml-core` を jq/yq
-  スタイルの CLI に直接接続し、実行時に Python を不要にします：
-  `fmt`（コメント保持のラウンドトリップ）、`get <path>`（JSONPath-lite、
-  `--json`/`--raw` 対応）、`set <path> <value>` と `delete <path>`（yq 風の
-  編集、`--create-missing` と `-i/--inplace` 対応、出力はラウンドトリップ
-  シリアライザ経由でコメントと値のスタイルを保持）、`to-json`（順序保持）、
-  `to-toml`、導入コマンド
-  `from-json` / `from-toml` / `from-ini`。入力形式は拡張子で判定
-  （`--input` で上書き）、stdin は `-`、失敗時は core の安定したエラー
-  テキストで非ゼロ終了。
-- **TOML と INI の交換フォーマット** — YAML を唯一の編集可能表現とする
-  ハブ・スポーク構成のマルチフォーマット対応：`from_toml`/`to_toml` で
-  TOML テキスト ⇄ YAML テキストを変換（Rust `toml_edit`）、`load_toml` は
-  TOML を Python 値へ直接読み出し（datetime は内蔵 `!timestamp` プラグイン
-  経由、TOML 文字列は再解決されない）、`load_ini` は標準ライブラリ
-  configparser で INI を読み取り（厳格モード・読み取り専用）。TOML 出力は
-  表現不能な構造を安定したエラーで拒否。ラウンドトリップ編集は YAML 限定。
+  `dump_pydantic` と `parse_as` も同じモジュールレベル `__getattr__` の遅延エクスポートに変更されま
+  した。
+- **`pyq` — Rust ネイティブ CLI クレート** — `crates/pyrs-yaml-cli`（ワークスペースメンバー、clap ベ
+  ース）は `pyrs-yaml-core` を jq/yq スタイルの CLI に直接接続し、実行時に Python を不要にします：
+  `fmt`（コメント保持のラウンドトリップ）、`get <path>`（JSONPath-lite、`--json`/`--raw` 対応）、
+  `set <path> <value>` と `delete <path>`（yq 風の編集、`--create-missing` と `-i/--inplace` 対応、
+  出力はラウンドトリップシリアライザ経由でコメントと値のスタイルを保持）、`to-json`（順序保持）、
+  `to-toml`、導入コマンド `from-json` / `from-toml` / `from-ini`。入力形式は拡張子で判定（`--input`
+  で上書き）、stdin は `-`、失敗時は core の安定したエラーテキストで非ゼロ終了。
+- **TOML と INI の交換フォーマット** — YAML を唯一の編集可能表現とするハブ・スポーク構成のマルチフ
+  ォーマット対応：`from_toml`/`to_toml` で TOML テキスト ⇄ YAML テキストを変換（Rust `toml_edit`）、
+  `load_toml` は TOML を Python 値へ直接読み出し（datetime は内蔵 `!timestamp` プラグイン経由、TOML
+  文字列は再解決されない）、`load_ini` は標準ライブラリ configparser で INI を読み取り（厳格モード・
+  読み取り専用）。TOML 出力は表現不能な構造を安定したエラーで拒否。ラウンドトリップ編集は YAML 限
+  定。
 
 #### 変更
 
-- **granit-parser 1.1 → 1.3** — YAML イベントパーサを 1.1.0 から 1.3.0 へ
-  バンプしました。1.x 系列内でのセムバー互換のマイナー升级です：1.2.0 は
-  特殊なドキュメントの制限向けのオプションの `Options` フィールドを追加し、
-  1.2.1 はいくつかの解析結果を YAML 仕様に合わせて厳密化し、1.3.0 は
-  デフォルト実装付きの 2 つの `Input` メソッド（`fetch_block_scalar_line` と
-  `take_quoted_scalar_ascii_chunk`）を追加して、スキャナがブロック・引用符付き
-  スカラーのバイトをより速く進めるようにしました。本プロジェクトは
-  `Parser::new_from_str` 経由でパーサを消費し、`EventReceiver` /
-  `SpannedEventReceiver` のみを実装して `Input` は実装しないため、ソース変更は
-  不要でした——新規の trait メソッドはデフォルト実装に解決されます。全テスト
-  正常：`cargo nextest run --all`（359）、`pytest`（1436 + 43 numpy）、純 Rust
-  `--no-default-features` ビルド、および YAML テストスイートの適合ゲートは不変。
+- **granit-parser 1.1 → 1.3** — YAML イベントパーサを 1.1.0 から 1.3.0 へバンプしました。1.x 系列内
+  でのセムバー互換のマイナー升级です：1.2.0 は特殊なドキュメントの制限向けのオプションの `Options`
+  フィールドを追加し、1.2.1 はいくつかの解析結果を YAML 仕様に合わせて厳密化し、1.3.0 はデフォルト
+  実装付きの 2 つの `Input` メソッド（`fetch_block_scalar_line` と
+  `take_quoted_scalar_ascii_chunk`）を追加して、スキャナがブロック・引用符付きスカラーのバイトをよ
+  り速く進めるようにしました。本プロジェクトは `Parser::new_from_str` 経由でパーサを消費し、
+  `EventReceiver` / `SpannedEventReceiver` のみを実装して `Input` は実装しないため、ソース変更は不
+  要でした——新規の trait メソッドはデフォルト実装に解決されます。全テスト正常：
+  `cargo nextest run --all`（359）、`pytest`（1436 + 43 numpy）、純 Rust `--no-default-features` ビ
+  ルド、および YAML テストスイートの適合ゲートは不変。
 - **ネイティブ JSON / TOML コア** — `serde_json` と `toml_edit` 依存を完全に
   削除しました。`pyrs-yaml-core` は RFC 8259 に準拠した JSON エンジン（バイトレベル
   スキャナ、数字はソース表記を保持するため `from_json → to_json` がバイト安定で、
@@ -1505,32 +1508,64 @@ status: new
 
 #### 修正
 
-- **`\u` / `\x` エスケープ直後のマルチバイト文字でパーサが panic** — 固定長エスケープ読み取りが `&self.text[pos..pos+width]` をバイトオフセットで切っていた。JSON `\u` / TOML `\xHH`/`\uXXXX`/`\UXXXX` の後にマルチバイト文字が来るとスライスが文字途中に落ちプロセス abort（#153 の同族）。バイト切り＋UTF-8 検証に直し、不正エスケープはクリーンにエラー。方言 fuzz で発見、両パーサに決定的 Rust 回帰テストで固定。
-- **非マージ値のリテラル `<<` キーが黙って破棄されていた** — `load(safe_dump({"<<": None}))` はキーを失い `{}` を返した。マージ解決器は Null/Scalar 値でも全ての `<<` をマージとして消費していた。YAML では `<<` は値がマッピングのエイリアス / インラインマッピング / そのシーケンスのときのみマージ。Null/プレーンスカラーの `<<`、およびエイリアスを含まず合成内容が無い `<<`（`<<: []`、`<<: [1, 2]`、`<<: {}`）は通常のキーとして往復保持される。Alias/mapping/sequence 経路（#166 の自己参照アンカーガード含む）は無変更、yaml-test-suite は 405/406 維持。往復プロパティ fuzz が非決定に検出（#163/#165/#166 級の欠陥）、決定的な Rust 回帰テストで固定。
-- **TOML 深いネストがネイティブスタックを溢れプロセスを abort** — TOML パーサにはネスト予算が無く（JSON は `DEFAULT_MAX_DEPTH`、YAML は `parse` の `max_depth`）、`parse_value` → `parse_array`/`parse_inline_table` が無制限に再帰。深い配列/インラインテーブルは解釈器を即クラッシュ（検証済み：exit `0xC00000FD` STACK_OVERFLOW）— #166 の YAML merge オーバーフローの TOML 版。パーサは `depth` を追跡し 1000 超で `ParseError::MaxDepthExceeded` を返し JSON と対称に。プロセス内 Python 境界テスト + subprocess クラッシュカナリア + 大スタック Rust テストで守る。
-- **方言 writer/parser がドキュメントレベルの注釀を消失・誤配置** — 固定点プロパティが捕捉した 3 欠陥：(a) JSONC/JSON5 の値より前の file-leading `// note` が inline と誤分類（オフセット 0 の前に改行なし）され、writer が注釈する root ではなく最初の object メンバに取られ、空 `{}` や root スカラーでは完全に消失；(b) JSON 系・TOML writer は注釀本体を無加工で出力していたが parser は trim して保存するため、未 trim 注釀は pass 毎に行末空白振動——writer も出力時 trim し初回スペルから安定；(c) 注釀のみ TOML 文書（`# note` 後に key なし）は再パースで注釀が落ち空 root が `""` 化——未消費の standalone 注釀を空 root テーブルに付加。5 フォーマットの leading 注釀がすべて逐字安定の固定点到達（3 件の targeted Rust テストで固定）。
-- **ネスト式ブロックスカラー本体が親行のインデントを保持** — ネストキー下の字句/畳み込みスカラーが本体行を列 0 から固定 1 段で出力しており、`b: |` ヘッダ行の下一層に配置されず、すべてのネスト形態（ペア・シーケンス項・compact dash・任意深度）の出力が再パース不能または誤値になっていた。スカラー出力系は `block_base`（親行の列位置）を全書出箇所に貫流。7 種のネスト形態で往復が完全一致。TOML ホットスポットベンチが共有シリアライザ経由で発見。
-- **シリアライザが再パース可能な YAML のみ出力** — テキストレベルゲートが検出した 5 つの欠陥：(a) 改行分岐での anchor/tag プリエミットが子ノード（スカラー/null/flow 容器）の自己ヘッダと二重化（`A: !a` … `!a null`）→ block 容器のみに限定；(b) flow 容器内のブロックスカラー（`[|`、`{k: >}`）とキー位置はダブルクォートに降格；(c) 自行を開始する flow 容器の行頭インデント欠落と complex key（`?`）の値標識 `:` の列 0 出力→いずれも親インデントに従うよう修正；(d) standalone コメント/tag 付き complex キーの曖昧テキスト（コメントは `?` 上部へ、本文は常に 1 段深い独立行へ）；(e) flow 容器内で先頭/末尾空白または `,[]`{} 埋め込みの plain スカラーはクォート化（素文出力だと token を途切れるか再パースで消える）。さらに tag 付き空 block 容器はヘッダを `{}`/`[]` と同列化、compact dash 項は standalone コメント付き値をインライン化しない。9 個の targeted Rust テストと Python 回帰で各系統を固定。
-- **TOML が合法な最小 i64 整数を拒否** — `from_toml`/`load_toml` が
-  `-9223372036854775808`（`i64::MIN`）で失敗：符号付き経路は絶対値を先に解析するため
-  反転前に溢れていた。現在符号は桁と同時に解析され（`i64::from_str` は負方向に累積）、
-  符号付き浮動小数は指数スペルを保ち、旧 negate 経路は削除。新設の Python 側
-  Hypothesis 方言ファジング（`tests/test_property_dialects.py`、stdlib
-  `json`/`tomllib`/`pyjson5` をオラクルとする型厳密比較で発見；JSON5 のベアラ
-  `Infinity`/`NaN` と i64 超過の数値文字列という AST 曖昧スペル 2 種も固定）。
-  Rust 回帰：`toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`。
-- **誤ってインデントされたフロースケンスの続き行が再び拒否される** — YAML
-  パーサを granit-parser 1.3 へアップグレードすると（*変更*を参照）、続き行の
-  インデントが enclosing block key よりも浅い複数行フロアコレクション
-  （yaml-test-suite `9C9N`：`flow: [a,` の次に行頭 column 0 の `b,`）を静かに
-  *受理*するようになり、厳密性が `405/406 → 404/406` へ後退した — suite の
-  ≥95% しきい値ゲートには見えないため緑 CI を通過した。AST receiver の
-  パース後 in-tree ガードが enclosing block のインデントを追跡し、インデントが
-  足りないフロア続き行を拒否して `405/406` を回復する。ガードはパーサが既に
-  計算済みの span のみを使うため、正しくインデントされた複数行フロアは影響を
-  受けない。`9C9N` は `tests/test_yaml_suite.py` にケース単位のハードゲート
-  （リテラル入力、`skipif` なし）として固定され、加えて Rust ユニットテスト
-  （`parser::tests::flow_continuation_under_indented_is_rejected`）を追加。
+- **`\u` / `\x` エスケープ直後のマルチバイト文字でパーサが panic** — 固定長エスケープ読み取りが
+  `&self.text[pos..pos+width]` をバイトオフセットで切っていた。JSON `\u` / TOML
+  `\xHH`/`\uXXXX`/`\UXXXX` の後にマルチバイト文字が来るとスライスが文字途中に落ちプロセス abort
+  （#153 の同族）。バイト切り＋UTF-8 検証に直し、不正エスケープはクリーンにエラー。方言 fuzz で発
+  見、両パーサに決定的 Rust 回帰テストで固定。
+- **非マージ値のリテラル `<<` キーが黙って破棄されていた** — `load(safe_dump({"<<": None}))` はキー
+  を失い `{}` を返した。マージ解決器は Null/Scalar 値でも全ての `<<` をマージとして消費していた。
+  YAML では `<<` は値がマッピングのエイリアス / インラインマッピング / そのシーケンスのときのみマー
+  ジ。Null/プレーンスカラーの `<<`、およびエイリアスを含まず合成内容が無い `<<`（`<<: []`、
+  `<<: [1, 2]`、`<<: {}`）は通常のキーとして往復保持される。Alias/mapping/sequence 経路（#166 の自己
+  参照アンカーガード含む）は無変更、yaml-test-suite は 405/406 維持。往復プロパティ fuzz が非決定に
+  検出（#163/#165/#166 級の欠陥）、決定的な Rust 回帰テストで固定。
+- **TOML 深いネストがネイティブスタックを溢れプロセスを abort** — TOML パーサにはネスト予算が無く
+  （JSON は `DEFAULT_MAX_DEPTH`、YAML は `parse` の `max_depth`）、`parse_value` →
+  `parse_array`/`parse_inline_table` が無制限に再帰。深い配列/インラインテーブルは解釈器を即クラッシ
+  ュ（検証済み：exit `0xC00000FD` STACK_OVERFLOW）— #166 の YAML merge オーバーフローの TOML 版。パ
+  ーサは `depth` を追跡し 1000 超で `ParseError::MaxDepthExceeded` を返し JSON と対称に。プロセス内
+  Python 境界テスト + subprocess クラッシュカナリア + 大スタック Rust テストで守る。
+- **方言 writer/parser がドキュメントレベルの注釀を消失・誤配置** — 固定点プロパティが捕捉した 3 欠
+  陥：(a) JSONC/JSON5 の値より前の file-leading `// note` が inline と誤分類（オフセット 0 の前に改
+  行なし）され、writer が注釈する root ではなく最初の object メンバに取られ、空 `{}` や root スカラ
+  ーでは完全に消失；(b) JSON 系・TOML writer は注釀本体を無加工で出力していたが parser は trim して
+  保存するため、未 trim 注釀は pass 毎に行末空白振動——writer も出力時 trim し初回スペルから安定；(c)
+  注釀のみ TOML 文書（`# note` 後に key なし）は再パースで注釀が落ち空 root が `""` 化——未消費の
+  standalone 注釀を空 root テーブルに付加。5 フォーマットの leading 注釀がすべて逐字安定の固定点到達
+  （3 件の targeted Rust テストで固定）。
+- **ネスト式ブロックスカラー本体が親行のインデントを保持** — ネストキー下の字句/畳み込みスカラーが本
+  体行を列 0 から固定 1 段で出力しており、`b: |` ヘッダ行の下一層に配置されず、すべてのネスト形態
+  （ペア・シーケンス項・compact dash・任意深度）の出力が再パース不能または誤値になっていた。スカラー
+  出力系は `block_base`（親行の列位置）を全書出箇所に貫流。7 種のネスト形態で往復が完全一致。TOML ホ
+  ットスポットベンチが共有シリアライザ経由で発見。
+- **シリアライザが再パース可能な YAML のみ出力** — テキストレベルゲートが検出した 5 つの欠陥：(a) 改
+  行分岐での anchor/tag プリエミットが子ノード（スカラー/null/flow 容器）の自己ヘッダと二重化
+  （`A: !a` … `!a null`）→ block 容器のみに限定；(b) flow 容器内のブロックスカラー（`[|`、`{k: >}`）
+  とキー位置はダブルクォートに降格；(c) 自行を開始する flow 容器の行頭インデント欠落と complex key
+  （`?`）の値標識 `:` の列 0 出力→いずれも親インデントに従うよう修正；(d) standalone コメント/tag 付
+  き complex キーの曖昧テキスト（コメントは `?` 上部へ、本文は常に 1 段深い独立行へ）；(e) flow 容器
+  内で先頭/末尾空白または `,[]`{} 埋め込みの plain スカラーはクォート化（素文出力だと token を途切れ
+  るか再パースで消える）。さらに tag 付き空 block 容器はヘッダを `{}`/`[]` と同列化、compact dash 項
+  は standalone コメント付き値をインライン化しない。9 個の targeted Rust テストと Python 回帰で各系
+  統を固定。
+- **TOML が合法な最小 i64 整数を拒否** — `from_toml`/`load_toml` が `-9223372036854775808`
+  （`i64::MIN`）で失敗：符号付き経路は絶対値を先に解析するため反転前に溢れていた。現在符号は桁と同
+  時に解析され（`i64::from_str` は負方向に累積）、符号付き浮動小数は指数スペルを保ち、旧 negate 経
+  路は削除。新設の Python 側 Hypothesis 方言ファジング（`tests/test_property_dialects.py`、stdlib
+  `json`/`tomllib`/`pyjson5` をオラクルとする型厳密比較で発見；JSON5 のベアラ `Infinity`/`NaN` と
+  i64 超過の数値文字列という AST 曖昧スペル 2 種も固定）。Rust 回帰：
+  `toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`。
+- **誤ってインデントされたフロースケンスの続き行が再び拒否される** — YAML パーサを granit-parser 1.3
+  へアップグレードすると（*変更*を参照）、続き行のインデントが enclosing block key よりも浅い複数行
+  フロアコレクション（yaml-test-suite `9C9N`：`flow: [a,` の次に行頭 column 0 の `b,`）を静かに *受
+  理*するようになり、厳密性が `405/406 → 404/406` へ後退した — suite の ≥95% しきい値ゲートには見え
+  ないため緑 CI を通過した。AST receiver のパース後 in-tree ガードが enclosing block のインデントを
+  追跡し、インデントが足りないフロア続き行を拒否して `405/406` を回復する。ガードはパーサが既に計算
+  済みの span のみを使うため、正しくインデントされた複数行フロアは影響を受けない。`9C9N` は
+  `tests/test_yaml_suite.py` にケース単位のハードゲート（リテラル入力、`skipif` なし）として固定さ
+  れ、加えて Rust ユニットテスト（`parser::tests::flow_continuation_under_indented_is_rejected`）を
+  追加。
 - **自己参照マージキーがネイティブスタックを溢れさせなくなった** — 展開が自分
   自身のアンカー（`a: &a` に `b: {<<: *a}`）へ戻る `<<` は `resolve_merge_keys` 内で
   無限に展開され、ネイティブスタックを枯渇させてインタプリタプロセス全体を
@@ -1546,34 +1581,28 @@ status: new
   インラインマップを保持する。Rust 6 件・Python 9 件の回帰テストでカバー
   （`merge::tests`、`tests/test_gaps.py::TestSelfReferentialMerge166`）。
   [@bourumir-wyngs](https://github.com/bourumir-wyngs) による #166 の報告。
-- **NumPy シリアライズが GIL 無しで Python メモリを読まなくなった** — ndarray
-  ライタは `unsafe { as_slice() }` で配列のデータバッファを借用し、その借用スライスを
-  `py.detach` の**内側**（＝ GIL 解放後）に反復していた。`&[T]` は出所によらず
-  `Send` なので借用チェッカーは捕捉できないが、このメモリは Python 所有であり他スレッド
-  が並行して resize / 書き込みしうる：不健全なデータ競合 / UB で、並行時のみ顕在化。
-  バッファは**GIL を保持したまま** Rust 所有メモリへスナップショット（`slice.to_vec()`）
-  するようになり、スカラー→ノード変換のみをスレッド外で行う。bindings 層で唯一の
-  `unsafe` バッファ借用であり、他の全 `py.detach` Closure は Rust 所有状態（AST、
-  ソーステキスト、`BufWriter<File>`）のみ触及と確認済み。回帰カバレッジは
-  `tests/test_numpy.py::TestNumpyConcurrency`。
-  [@bourumir-wyngs](https://github.com/bourumir-wyngs) による #165 の報告。
+- **NumPy シリアライズが GIL 無しで Python メモリを読まなくなった** — ndarray ライタは
+  `unsafe { as_slice() }` で配列のデータバッファを借用し、その借用スライスを `py.detach` の**内側**
+  （＝ GIL 解放後）に反復していた。`&[T]` は出所によらず `Send` なので借用チェッカーは捕捉できない
+  が、このメモリは Python 所有であり他スレッドが並行して resize / 書き込みしうる：不健全なデータ競
+  合 / UB で、並行時のみ顕在化。バッファは**GIL を保持したまま** Rust 所有メモリへスナップショット
+  （`slice.to_vec()`）するようになり、スカラー→ノード変換のみをスレッド外で行う。bindings 層で唯一
+  の `unsafe` バッファ借用であり、他の全 `py.detach` Closure は Rust 所有状態（AST、ソーステキス
+  ト、`BufWriter<File>`）のみ触及と確認済み。回帰カバレッジは
+  `tests/test_numpy.py::TestNumpyConcurrency`。[@bourumir-wyngs](https://github.com/bourumir-wyngs)
+  による #165 の報告。
 - **繰り返しエイリアス参照が `None` にならないよう修正** — `to_dict()` は**グローバル**
   な visited 集合の後でエイリアスを展開し、クリアすることがなかったため、各アンカーの
   **最初の**参照のみが値になり、それ以降は無言で `None` に劣化していた：
 
-    ```yaml
-    a: &x 1
-    b: *x      # 1
-    c: *x      # 従来は None、現在は 1
-    ```
+    ```yaml a: &x 1 b: *x      # 1 c: *x      # 従来は None、現在は 1```
 
     影響範囲は「2 回目の参照」より広く、同一コンテナ内の兄弟参照同士も汚染し合った
-    （`{a: &x {p: 1}, b: {q: *x}, c: {q: *x}}` で `b` は値、`c` は `None`）。この
-    guard を現在の再帰パスに限定し、1 回の展開中のみ push してその後 pop するように
-    なったため、繰り返し参照と兄弟参照はそれぞれ完全に構築された値を得、真の循環は
-    依然として終了する。`<<` マージ解決と AST 自体は影響を受けないことを確認済み。
-    `tests/test_direct_load.py` に PyYAML との一致を固定する 6 例を追加し、誤った出力を
-    期待値として固定していた 2 テストを書き直した。
+    （`{a: &x {p: 1}, b: {q: *x}, c: {q: *x}}` で `b` は値、`c` は `None`）。この guard を現在の再帰
+    パスに限定し、1 回の展開中のみ push してその後 pop するようになったため、繰り返し参照と兄弟参照
+    はそれぞれ完全に構築された値を得、真の循環は依然として終了する。`<<` マージ解決と AST 自体は影
+    響を受けないことを確認済み。`tests/test_direct_load.py` に PyYAML との一致を固定する 6 例を追加
+    し、誤った出力を期待値として固定していた 2 テストを書き直した。
     [@bourumir-wyngs](https://github.com/bourumir-wyngs) による #163 の報告。
 - **第一キーの値がネストコンテナの場合のドキュメントヘッダーコメント消失を修正** —
   パーサーは進行中の全コンテナで単一のコメントスロットを共有しており、ネスト
@@ -1583,21 +1612,19 @@ status: new
   pair/item 自身の standalone コメントを含む場合、置換範囲が旧コメント行を
   覆わず両方が残っていた。plan がコメント行へ範囲を拡張（`pyq set`/`delete`
   と bindings の splice 経路が共通で修正）。
-- **`!timestamp` がサポート全 Python で末尾 `Z` を受理** —
-  `datetime.fromisoformat` は UTC-`Z` 接尾辞を 3.11 以降でしか認識せず、
-  プラグインで `...Z` を `+00:00` に正規化し、3.8～3.10 における YAML
-  `!timestamp` スカラーおよび `load_toml` / `from_toml` 経由の TOML
-  datetime の `Invalid isoformat string` を解消。
+- **`!timestamp` がサポート全 Python で末尾 `Z` を受理** — `datetime.fromisoformat` は UTC-`Z` 接尾
+  辞を 3.11 以降でしか認識せず、プラグインで `...Z` を `+00:00` に正規化し、3.8～3.10 における YAML
+  `!timestamp` スカラーおよび `load_toml` / `from_toml` 経由の TOML datetime の
+  `Invalid isoformat string` を解消。
 
 #### パフォーマンス
 
-- **イベントストリーム→Python オブジェクトの直接構築** — `safe_load`、
-  `safe_loads`、`YAML().safe_load*` は完全な AST を構築してから
-  `convert.rs` で再走査する代わりに、granit イベントストリームを一度
-  走査して Python オブジェクトを構築する。schema 解決・原文マップキー・
-  重複キーエラーの意味論は完全に一致。アンカー/tag/merge/マルチドキュメント
-  はゼロコストの事前除外で AST 経路にフォールバック。WSL 実測：スカラー中心の
-  `safe_load` −21~25%、ファミリー全体 −13~18%、フォールバックは変化なし。
+- **イベントストリーム→Python オブジェクトの直接構築** — `safe_load`、`safe_loads`、
+  `YAML().safe_load*` は完全な AST を構築してから `convert.rs` で再走査する代わりに、granit イベント
+  ストリームを一度走査して Python オブジェクトを構築する。schema 解決・原文マップキー・重複キーエラ
+  ーの意味論は完全に一致。アンカー/tag/merge/マルチドキュメントはゼロコストの事前除外で AST 経路にフ
+  ォールバック。WSL 実測：スカラー中心の `safe_load` −21~25%、ファミリー全体 −13~18%、フォールバック
+  は変化なし。
 - **アンカー抽出のバイトゲート** — `extract_anchors` は `&` のバイト含有チェック 1 回で
   空を返し、アンカーなしドキュメントでは文字単位のクォート状態機械を完全にスキップ。
   Rust 側 `parse_*` ベンチの中央値で 11〜18% 改善、スキャン自体は 1.5µs → 38ns。
@@ -1611,10 +1638,10 @@ status: new
   完成したドキュメントをクローンではなくコレクションへ移動します（次のドキュメントで
   result は再構築されるためクローンは純粋なオーバーヘッド）。WSL 実測:
   `parse_all_docs` −9.7%、`safe_loads`（マルチドキュメント）−9.5%、`YAML().safe_loads` −6.7%。
-- **ストリーミング書き込みは文書間で単一バッファを再利用** — 新しい
-  `direct_dump_into` は各文書を再利用の `String` へ書き込み、`dump_iterable` は
-  テキストが改行 1 つで終わる通常ケースで `normalize_doc` の再コピーをスキップ。
-  WSL 実測: `dump_stream_multi_doc` −27.2%、`dump_stream` −4.4%。
+- **ストリーミング書き込みは文書間で単一バッファを再利用** — 新しい `direct_dump_into` は各文書を再
+  利用の `String` へ書き込み、`dump_iterable` はテキストが改行 1 つで終わる通常ケースで
+  `normalize_doc` の再コピーをスキップ。WSL 実測: `dump_stream_multi_doc` −27.2%、`dump_stream`
+  −4.4%。
 - **AST ビルダのスカラ高速パス** — `unescape_double_quoted` はバックスラッシュなしでは
   即返答、`detect_chomping` はブロックスカラ毎に全文行を collect せず遅延取得。
   WSL 実測: `to_dict` 系 −4〜9%、スカラ型ロード −3〜4%、退行なし。
@@ -1630,38 +1657,74 @@ status: new
 
 #### 追加
 
-- **ノードメタデータのセッター/ゲッター** — `Node.comment` / `Node.anchor` / `Node.tag` 読み取りプロパティと `set_comment` / `set_anchor` / `set_tag`（および `remove_*` 系）を追加。エイリアスや存在しないパスへの編集はエラーになります。インラインスカラー値・シーケンス項目上のスタンドアロンコメントは独自のインデント行に出力されるようになりました（`child:\n  # c\n  val` と `- a\n# c\n- b` の既存のラウンドトリップ不具合を修正）。
-- **バーベイタムタグ** — `set_tag("!<tag:yaml.org,2002:str>")` はバーベイタムタグ（空ハンドル）を生成し、ソースから解析したバーベイタムタグはラウンドトリップで保持されます：`Tag` の `Display` は空ハンドルタグを `!<...>` で囲んで出力し、`parse_tag` は `!<...>` 形式を認識し、ストリームイベントは `Display` 経由でタグを直列化します。
-- **スキーマファイル IO と一覧** — `load_schema(name, path)` はファイルからスキーマ定義を読み込んで登録し、`list_schemas()` は登録済みのすべてのスキーマ名（組み込み `failsafe`/`json`/`core`/`yaml1.1` + カスタム）を返します。
-- **ノード style/format セッター/ゲッター** — `Node.scalar_style` / `Node.flow_style` / `Node.chomping` 読み取りプロパティと `set_scalar_style` / `set_flow_style` / `set_chomping` メソッド。ScalarStyle/Chomping が `Copy` を derive するようになりました。非スカラーノードは `None` 返却 / no-op、エイリアスや存在しないパスはエラーになります。
-- **スキーマ構造検証** — スキーマ定義の `validate` セクションで構造チェック（パス限定スカラー型、`sequence_of`/`mapping_of` コンテナ、`required`）を追加。`validate_against_schema(data, schema_yaml)` はすべての失敗を列挙して `YamlValidateError` を送出します。
-- **`Node.copy()`** — サブツリーをドキュメントから独立した Python 値（dict/list/scalar）として深くコピーします。`set_value()` で貼り付けるのに便利です。
-- **詳細編集 API** — `doc.set_many({path: value})` で複数パス（ワイルドカード `[*]` とディープスキャン `..` 対応）を単一スプライスバーストで設定。`doc.sort_keys()` でマッピングキーをその場で並べ替え。`Node.move(new_path)` でサブツリーを移動。`Node.path` / `Node.find_first()` / `Node.value_eq()` でパスアクセス・最初のワイルドカード検索・値比較を追加。
-- **0.14+ 機能のプロパティベーステスト** — `validate_node` / schema 解析 / style round-trip の Rust proptest、`set_many` ワイルドカード / metadata 編集 / `sort_keys` の Python hypothesis テストを追加。`hypothesis` を `test` グループへ移動し、CI でプロパティテストが実行されるように。
-- **シリアライザ修正** — 空フローコンテナ（`key: {}` / `key: []`）上のスタンドアロンコメントが無効な YAML を生成していたのを修正（インラインへ降格）。
+- **ノードメタデータのセッター/ゲッター** — `Node.comment` / `Node.anchor` / `Node.tag` 読み取りプロ
+  パティと `set_comment` / `set_anchor` / `set_tag`（および `remove_*` 系）を追加。エイリアスや存在
+  しないパスへの編集はエラーになります。インラインスカラー値・シーケンス項目上のスタンドアロンコメン
+  トは独自のインデント行に出力されるようになりました（`child:\n  # c\n  val` と `- a\n# c\n- b` の既
+  存のラウンドトリップ不具合を修正）。
+- **バーベイタムタグ** — `set_tag("!<tag:yaml.org,2002:str>")` はバーベイタムタグ（空ハンドル）を生
+  成し、ソースから解析したバーベイタムタグはラウンドトリップで保持されます：`Tag` の `Display` は空
+  ハンドルタグを `!<...>` で囲んで出力し、`parse_tag` は `!<...>` 形式を認識し、ストリームイベントは
+  `Display` 経由でタグを直列化します。
+- **スキーマファイル IO と一覧** — `load_schema(name, path)` はファイルからスキーマ定義を読み込んで
+  登録し、`list_schemas()` は登録済みのすべてのスキーマ名（組み込み
+  `failsafe`/`json`/`core`/`yaml1.1` + カスタム）を返します。
+- **ノード style/format セッター/ゲッター** — `Node.scalar_style` / `Node.flow_style` /
+  `Node.chomping` 読み取りプロパティと `set_scalar_style` / `set_flow_style` / `set_chomping` メソッ
+  ド。ScalarStyle/Chomping が `Copy` を derive するようになりました。非スカラーノードは `None` 返却
+  / no-op、エイリアスや存在しないパスはエラーになります。
+- **スキーマ構造検証** — スキーマ定義の `validate` セクションで構造チェック（パス限定スカラー型、
+  `sequence_of`/`mapping_of` コンテナ、`required`）を追加。
+  `validate_against_schema(data, schema_yaml)` はすべての失敗を列挙して `YamlValidateError` を送出し
+  ます。
+- **`Node.copy()`** — サブツリーをドキュメントから独立した Python 値（dict/list/scalar）として深くコ
+  ピーします。`set_value()` で貼り付けるのに便利です。
+- **詳細編集 API** — `doc.set_many({path: value})` で複数パス（ワイルドカード `[*]` とディープスキャ
+  ン `..` 対応）を単一スプライスバーストで設定。`doc.sort_keys()` でマッピングキーをその場で並べ替
+  え。`Node.move(new_path)` でサブツリーを移動。`Node.path` / `Node.find_first()` /
+  `Node.value_eq()` でパスアクセス・最初のワイルドカード検索・値比較を追加。
+- **0.14+ 機能のプロパティベーステスト** — `validate_node` / schema 解析 / style round-trip の Rust
+  proptest、`set_many` ワイルドカード / metadata 編集 / `sort_keys` の Python hypothesis テストを追
+  加。`hypothesis` を `test` グループへ移動し、CI でプロパティテストが実行されるように。
+- **シリアライザ修正** — 空フローコンテナ（`key: {}` / `key: []`）上のスタンドアロンコメントが無効な
+  YAML を生成していたのを修正（インラインへ降格）。
 
 #### 変更
 
-- **フリースレッド (cp314t) ホイールで NumPy を再有効化** — cp314t ビルド引数から `--no-default-features` を削除。rust-numpy 0.29 はフリースレッド Python をサポートし、`numpy.ndarray` シリアライズがフリースレッドホイールで利用可能になりました（NumPy のインストールは実行時に自動検出）。
+- **フリースレッド (cp314t) ホイールで NumPy を再有効化** — cp314t ビルド引数から
+  `--no-default-features` を削除。rust-numpy 0.29 はフリースレッド Python をサポートし、
+  `numpy.ndarray` シリアライズがフリースレッドホイールで利用可能になりました（NumPy のインストールは
+  実行時に自動検出）。
 
 #### ドキュメント
 
-- **全言語（en/zh/ja/ko）ドキュメントの古い参照を修正** — `saphyr-parser` → `granit-parser`、YAML 準拠率 98.1% → 99.75%（スイート 405/406 件）、ABI3 サポート 3.9–3.13 → 3.8–3.15（py3.9+ → py3.8+）、ベンチマーク表を現在の CodSpeed CI 数値（パース 21〜43 倍、シリアライズ 55〜177 倍 PyYAML 比高速）に更新。Rust 側ベンチマーク章を Criterion から divan へ移行（`benches/yaml_bench.rs` → `crates/pyrs-yaml/benches/yaml_bench.rs`）。
+- **全言語（en/zh/ja/ko）ドキュメントの古い参照を修正** — `saphyr-parser` → `granit-parser`、YAML 準
+  拠率 98.1% → 99.75%（スイート 405/406 件）、ABI3 サポート 3.9–3.13 → 3.8–3.15（py3.9+ → py3.8+）、
+  ベンチマーク表を現在の CodSpeed CI 数値（パース 21〜43 倍、シリアライズ 55〜177 倍 PyYAML 比高速）
+  に更新。Rust 側ベンチマーク章を Criterion から divan へ移行（`benches/yaml_bench.rs` →
+  `crates/pyrs-yaml/benches/yaml_bench.rs`）。
 
 ### [v0.14.1] — 2026-08-15
 
 #### 修正
 
-- **バックスラッシュ+制御文字/非文字を含む単一引用スカラー** — このような値は二重引用を使用するようになりました。単一引用は制御文字/非文字をエスケープできません。
-- **非文字と BOM の引用** — `needs_quotes` / `needs_double_quoted` は U+FFFE/U+FFFF/平面末尾非文字および U+FEFF（BOM）を引用必須として扱うようになりました。
-- **二重引用エスケープ幅** — U+FFFF を超える符号位置は 8 桁の `\Uxxxxxxxx` 形式で出力します（4 桁の `\u` は BMP 専用）。
-- **折り返し plain スカラーの継続インデント** — 継続インデントを値の開始列から導出し、ネストしたシーケンス/マッピング項目の継続行が親ブロックインデントを超えるようにしました。
-- **マルチバイト折り返し境界** — `wrap_plain_scalar` は折り返しスライスを文字境界に切り詰め、4 バイト UTF-8 が境界をまたぐ際の panic を防ぎます。
-- **publish テスト要件に `hypothesis`** — `.ci/requirements-test.txt` に `hypothesis>=6.113.0` を固定し、公開ワークフローがプロパティテストを実行できるようにしました。
+- **バックスラッシュ+制御文字/非文字を含む単一引用スカラー** — このような値は二重引用を使用するよう
+  になりました。単一引用は制御文字/非文字をエスケープできません。
+- **非文字と BOM の引用** — `needs_quotes` / `needs_double_quoted` は U+FFFE/U+FFFF/平面末尾非文字お
+  よび U+FEFF（BOM）を引用必須として扱うようになりました。
+- **二重引用エスケープ幅** — U+FFFF を超える符号位置は 8 桁の `\Uxxxxxxxx` 形式で出力します（4 桁の
+  `\u` は BMP 専用）。
+- **折り返し plain スカラーの継続インデント** — 継続インデントを値の開始列から導出し、ネストしたシー
+  ケンス/マッピング項目の継続行が親ブロックインデントを超えるようにしました。
+- **マルチバイト折り返し境界** — `wrap_plain_scalar` は折り返しスライスを文字境界に切り詰め、4 バイ
+  ト UTF-8 が境界をまたぐ際の panic を防ぎます。
+- **publish テスト要件に `hypothesis`** — `.ci/requirements-test.txt` に `hypothesis>=6.113.0` を固
+  定し、公開ワークフローがプロパティテストを実行できるようにしました。
 
 #### 追加
 
-- **`scripts/fuzz_panics.py`** — dump/parse/edit/冪等性にわたる敵対的戦略を用いたローカル大規模 Hypothesis fuzz ハーネス。
+- **`scripts/fuzz_panics.py`** — dump/parse/edit/冪等性にわたる敵対的戦略を用いたローカル大規模
+  Hypothesis fuzz ハーネス。
 
 ### [v0.14.0] — 2026-08-14
 
@@ -1676,41 +1739,42 @@ status: new
 
 #### 変更
 
-- **スキーマ解決がプラグイン可能に** — `SchemaResolver` トレイト +
-  `Schema` 列挙型 + グローバル `SchemaRegistry`。組み込みスキーマは
-  ゼロコストディスパッチを維持。
-- **`node_to_pyobject` と `direct_dump` が `CustomType` をチェック** —
-   タグ付きスカラは `from_yaml()` で変換、Python オブジェクトは
-  `to_yaml()` でシリアライズ。
-- **`get()` はリテラルキーのみ** — `YamlDocument.get()` は `.` や `[` を含むキーを JSONPath と推定しなくなり、常にトップレベルのマッピングキーとして扱います（`__getitem__`/`__setitem__` と一貫）。パスアクセスは `find()`/`node()` を利用してください。
+- **スキーマ解決がプラグイン可能に** — `SchemaResolver` トレイト + `Schema` 列挙型 + グローバル
+  `SchemaRegistry`。組み込みスキーマはゼロコストディスパッチを維持。
+- **`node_to_pyobject` と `direct_dump` が `CustomType` をチェック** — タグ付きスカラは
+  `from_yaml()` で変換、Python オブジェクトは `to_yaml()` でシリアライズ。
+- **`get()` はリテラルキーのみ** — `YamlDocument.get()` は `.` や `[` を含むキーを JSONPath と推定し
+  なくなり、常にトップレベルのマッピングキーとして扱います（`__getitem__`/`__setitem__` と一貫）。パ
+  スアクセスは `find()`/`node()` を利用してください。
 
 #### 修正
 
-- **クォート付きスカラーは常に文字列として読み込まれる** — 暗黙の型解決はプレーンスカラーのみに適用（YAML 1.2）。`safe_load('"true"')` は文字列 `"true"`（`True` ではない）を返す。シリアライザはドキュメント（`to_yaml`）経路でも負数を正しく往復させます。
-- **一重/二重引用符のみのキーが往復保存される** — 単一の `'` または `"` であるマッピングキーは引用スカラーとして出力され、解析不能な YAML になりません。
-- **空コレクションは `{}`/`[]` を出力** — 空のマッピング/シーケンスのダンプが、再解析で `None` になる空ドキュメントを生成しなくなります。
+- **クォート付きスカラーは常に文字列として読み込まれる** — 暗黙の型解決はプレーンスカラーのみに適用
+  （YAML 1.2）。`safe_load('"true"')` は文字列 `"true"`（`True` ではない）を返す。シリアライザはドキ
+  ュメント（`to_yaml`）経路でも負数を正しく往復させます。
+- **一重/二重引用符のみのキーが往復保存される** — 単一の `'` または `"` であるマッピングキーは引用ス
+  カラーとして出力され、解析不能な YAML になりません。
+- **空コレクションは `{}`/`[]` を出力** — 空のマッピング/シーケンスのダンプが、再解析で `None` にな
+  る空ドキュメントを生成しなくなります。
 
 ### [v0.13.0] — 2026-08-10
 
 #### 変更
 
-- **Rust MSRV を 1.96 に引き上げ、edition を 2024 に変更** — 両 crate は
-  `rust-version = "1.96"` および `edition = "2024"` を宣言します。CI は
-  `build`/`test-freethreaded` ジョブを Rust 1.96 に固定し、決定論的な wheel
-  ビルドを実現します。また、`msrv-check` ジョブを追加し、MSRV で
-  `cargo check`/`cargo test` を実行して静かな MSRV ドリフトを防ぎます
-  （`rust-lint` ジョブは `stable` のまま）。バージョンの床は
-  PyO3 0.29 自身の基線（rustc 1.83）よりも上に設定され、std API の先行対応
-  （例: `assert_matches!`、1.96 で安定化）を目的としています。
-  `TAG_REGISTRY`（タグハンドラ管理）が `std::sync::LazyLock` にリファクタされ、
-  `Mutex<Option<...>>` の間接レイヤーが除去されました。
+- **Rust MSRV を 1.96 に引き上げ、edition を 2024 に変更** — 両 crate は `rust-version = "1.96"` お
+  よび `edition = "2024"` を宣言します。CI は `build`/`test-freethreaded` ジョブを Rust 1.96 に固定
+  し、決定論的な wheel ビルドを実現します。また、`msrv-check` ジョブを追加し、MSRV で
+  `cargo check`/`cargo test` を実行して静かな MSRV ドリフトを防ぎます（`rust-lint` ジョブは `stable`
+  のまま）。バージョンの床は PyO3 0.29 自身の基線（rustc 1.83）よりも上に設定され、std API の先行対
+  応（例: `assert_matches!`、1.96 で安定化）を目的としています。`TAG_REGISTRY`（タグハンドラ管理）が
+  `std::sync::LazyLock` にリファクタされ、`Mutex<Option<...>>` の間接レイヤーが除去されました。
 
 #### パフォーマンス
 
-- **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer**
-  — 中間 `CustomNode` AST を介さず Python→YAML シリアライズ。
-  単一パス `direct_dump` が従来の 2 パス `pyobject_to_node` + `to_yaml` を置換。
-  `safe_dump` で 7 倍高速化（28ns→4ns）、`from_dict` で 6 倍高速化（35ns→6ns）。(#60)
+- **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer** — 中間 `CustomNode`
+  AST を介さず Python→YAML シリアライズ。単一パス `direct_dump` が従来の 2 パス `pyobject_to_node` +
+  `to_yaml` を置換。`safe_dump` で 7 倍高速化（28ns→4ns）、`from_dict` で 6 倍高速化（35ns→6ns）。
+  (#60)
 - **`safe_load` / `safe_loads` / `to_dict`: fast-path skip anchor tracking**
   — 入力に `&` 文字がない場合、`collect_anchors` + アンカー解決を省略し、
   より単純な `node_to_pyobject_simple` パスを使用。(#59)
@@ -1732,11 +1796,11 @@ status: new
 
 #### 追加
 
-- **`max_depth` をストリーム & frontmatter API に追加** — `parse_stream(yaml, on_event, max_depth)`、
-  `read_markdown(path, schema, max_depth)`、`read_markdown_str(content, schema, max_depth)`
-  が `max_depth` を受け付ける（デフォルト 1000）。ストリーム解析はコアの
-  `parse_stream_with_options` によりネスト深さ制限を強制するようになった
-  （従来のストリームイベントには深さ制限がなかった）。
+- **`max_depth` をストリーム & frontmatter API に追加** —
+  `parse_stream(yaml, on_event, max_depth)`、`read_markdown(path, schema, max_depth)`、
+  `read_markdown_str(content, schema, max_depth)` が `max_depth` を受け付ける（デフォルト 1000）。ス
+  トリーム解析はコアの `parse_stream_with_options` によりネスト深さ制限を強制するようになった（従来
+  のストリームイベントには深さ制限がなかった）。
 - **Pydantic 統合** — `dump_pydantic()` は Pydantic モデルを YAML 文字列に
   シリアライズ（`model_dump(mode='json')` + `safe_dump`）；`parse_as()`
   は YAML 文字列を Pydantic モデルインスタンスにパース。両方とも遅延インポート、
@@ -1744,27 +1808,23 @@ status: new
 
 #### 内部
 
-- **`py/mod.rs` の分割** — 巨大な 1786 行のモジュールを
-  `document.rs`（YamlDocument）、`yaml_instance.rs`（YAML クラス）、
-  `functions.rs`（モジュールレベル関数）、`stream_iterator.rs`、
+- **`py/mod.rs` の分割** — 巨大な 1786 行のモジュールを `document.rs`（YamlDocument）、
+  `yaml_instance.rs`（YAML クラス）、 `functions.rs`（モジュールレベル関数）、`stream_iterator.rs`、
   `walk_helpers.rs` に分割。`mod.rs` は 128 行に削減。(#61)
-- **`needs_quotes()` ガード + `double_quoted_scalar()` コンストラクタ** —
-  `'true'` / `'42'` / `'null'` のような文字列は、コアスキーマで再パース時に
-  誤読されないようダブルクォートのスカラーとして出力
-  （`pyobject_to_node` + `json_value_to_node`）。
-- **CodSpeed ベンチマークを `codspeed-divan-compat` に統一** —
-  `exclude-allocations` でアロケータノイズを除去。クロスライブラリの
-  ベンチマークを `tests/test_benchmark_crosslib.py` に統合し、共通の
+- **`needs_quotes()` ガード + `double_quoted_scalar()` コンストラクタ** — `'true'` / `'42'` /
+  `'null'` のような文字列は、コアスキーマで再パース時に誤読されないようダブルクォートのスカラーとし
+  て出力（`pyobject_to_node` + `json_value_to_node`）。
+- **CodSpeed ベンチマークを `codspeed-divan-compat` に統一** — `exclude-allocations` でアロケータノ
+  イズを除去。クロスライブラリのベンチマークを `tests/test_benchmark_crosslib.py` に統合し、共通の
   `tests/data/yaml_samples.py` フィクスチャとストリーミングのカバレッジを追加。
 
 ### [v0.12.1] — 2026-08-06
 
 #### 追加
 
-- **`set(create_missing=True)`** — 編集パス上の欠落中間マッピングキーがネストしたマッピングとして作成されます
-  （例: `a: 1` に対して `a.b.c` を設定すると `b` と `c` が作成されます）；
-  未解決のインデックスセグメントは依然としてエラーとなり、
-  パス上のスカラー中間ノードも依然として例外を発生させます。
+- **`set(create_missing=True)`** — 編集パス上の欠落中間マッピングキーがネストしたマッピングとして作
+  成されます（例: `a: 1` に対して `a.b.c` を設定すると `b` と `c` が作成されます）；未解決のインデッ
+  クスセグメントは依然としてエラーとなり、パス上のスカラー中間ノードも依然として例外を発生させます。
 - **`doc.walk()` / `doc.scalars()`** — Rust 実装の深さ優先 AST 走査で、
   ノードごとの `to_dict()` 解決を回避した `Node` オブジェクトを返します。
   `walk()` は全ノードを返します；`scalars()` はスカラー/null ノードのみを返します。
@@ -1778,16 +1838,14 @@ status: new
 
 #### 変更
 
-- **モノレポワークスペース** — ソースコードを `crates/pyrs-yaml-core/`（純粋 Rust、PyO3 なし）
-  と `crates/pyrs-yaml/`（PyO3 バインディング）に分割。ルート
-  `Cargo.toml` はワークスペースになりました。旧 `src/` ディレクトリと
-  `build.rs` は削除されました。
+- **モノレポワークスペース** — ソースコードを `crates/pyrs-yaml-core/`（純粋 Rust、PyO3 なし）と
+  `crates/pyrs-yaml/`（PyO3 バインディング）に分割。ルート `Cargo.toml` はワークスペースになりまし
+  た。旧 `src/` ディレクトリと `build.rs` は削除されました。
 - **pyproject.toml** — `tool.maturin.manifest-path` を
   `crates/pyrs-yaml/Cargo.toml` に追加。
-- **パースホットパス** — 単一パスコメント/アンカー抽出、遅延
-  重複キー検出、`shift_insert` マージプリペンド、および単一ドキュメント
-  パース用の `DocumentEnd` ディープクローンのスキップにより、大規模ドキュメントの
-  パースコストを約 19% 削減（CodSpeed: parse[large] +13.9%、parse[medium] +16.6%、
+- **パースホットパス** — 単一パスコメント/アンカー抽出、遅延重複キー検出、`shift_insert` マージプリ
+  ペンド、および単一ドキュメントパース用の `DocumentEnd` ディープクローンのスキップにより、大規模ド
+  キュメントのパースコストを約 19% 削減（CodSpeed: parse[large] +13.9%、parse[medium] +16.6%、
   roundtrip[large] +12.2%）。
 - **`Arc<str>` スカラーストレージ** — `CustomNode::Scalar` とコメント/イベント
   テキストは `Arc<str>` を介して割り当てを共有；AST ノードが 8 バイト縮小し、
@@ -1808,13 +1866,11 @@ status: new
 
 #### 変更
 
-- **stub-build-check から release-guard に置換** — v0.10.0 の
-  `--generate-stubs` 失敗モードを再現するために意図的に失敗する常時失敗の
-  コンテナビルド（`validate.yml`）を、リポジトリが正しい場合に**合格する**
-  3 つの静的アサーションに置換：`grep` で `publish.yml` が
-  `--generate-stubs` に対してガードされ、`git ls-files` がコミットされた
-  `.pyi` が追跡されていることを確認し、`test -f` が `py.typed` の存在を
-  確認します。ジョブは正しい状態で緑の CI を返し、回帰時のみ赤になります。
+- **stub-build-check から release-guard に置換** — v0.10.0 の `--generate-stubs` 失敗モードを再現す
+  るために意図的に失敗する常時失敗のコンテナビルド（`validate.yml`）を、リポジトリが正しい場合に**
+  合格する** 3 つの静的アサーションに置換：`grep` で `publish.yml` が `--generate-stubs` に対してガ
+  ードされ、`git ls-files` がコミットされた `.pyi` が追跡されていることを確認し、`test -f` が
+  `py.typed` の存在を確認します。ジョブは正しい状態で緑の CI を返し、回帰時のみ赤になります。
 
 #### 追加
 
@@ -1827,17 +1883,15 @@ status: new
 
 #### 変更
 
-- **Free-threaded（cp314t）wheel が numpy なしに** —
-  `--no-default-features` でビルドされるため、rust-numpy は完全に除外されます
-  （バイナリが小さく、ランタイムプローブなし）。`numpy.ndarray` に対する
-  `safe_dump` は free-threaded ビルドで `YamlTypeError` を発生させます；
-  GIL ビルド（Python 3.8-3.15）は完全な ndarray シリアライズを保持します。
+- **Free-threaded（cp314t）wheel が numpy なしに** — `--no-default-features` でビルドされるため、
+  rust-numpy は完全に除外されます（バイナリが小さく、ランタイムプローブなし）。`numpy.ndarray` に対
+  する `safe_dump` は free-threaded ビルドで `YamlTypeError` を発生させます；GIL ビルド（Python
+  3.8-3.15）は完全な ndarray シリアライズを保持します。
 
 #### 追加
 
-- **Free-threaded CI 検証** — `test-freethreaded` ジョブが
-  `--no-default-features` でビルドとテストを行うようになり、出荷される
-  free-threaded wheel 構成と一致します。
+- **Free-threaded CI 検証** — `test-freethreaded` ジョブが `--no-default-features` でビルドとテスト
+  を行うようになり、出荷される free-threaded wheel 構成と一致します。
 - **インストールドキュメント** — `docs/{en,zh,ja,ko}` が free-threaded
   wheel が numpy なしであることを明記（cp314t での ndarray シリアライズは利用不可）。
 
@@ -1881,9 +1935,9 @@ status: new
 
 #### 追加
 
-- ストリーミング書き込み：`YAML.dump_stream(file_obj, iterable)` /
-  `YAML.dump_file(path, iterable)` — ドキュメントレベルの一定メモリ、自動
-  `---` セパレータ、`explicit_start`/`explicit_end` フラグ付き
+- ストリーミング書き込み：`YAML.dump_stream(file_obj, iterable)` / `YAML.dump_file(path, iterable)`
+  — ドキュメントレベルの一定メモリ、自動 `---` セパレータ、`explicit_start`/`explicit_end` フラグ付
+  き
 - `YamlDocument` の `with` コンテキストマネージャー：スナップショット/ロールバック
   トランザクションスコーピング
 - `compliance_report()`：公開 YAML Test Suite 合格率レポート（バージョン一貫）
@@ -1927,17 +1981,16 @@ status: new
 
 #### 追加
 
-- **外科的シリアライズ** — 全 AST ノードのバイトレベルソーススパン追跡；
-  セグメントベーススプライス — 編集はタッチされた領域のみ再生成、
-  未変更テキストはバイトコピー
+- **外科的シリアライズ** — 全 AST ノードのバイトレベルソーススパン追跡；セグメントベーススプライス —
+  編集はタッチされた領域のみ再生成、未変更テキストはバイトコピー
 - プロパティテスト（proptest、新規開発依存）
 - 10MB 編集フラッシュベンチマーク（divan）
 
 #### 変更
 
-- `flush_source` がセグメントスプライスを使用；フロースタイル領域、
-  非デフォルトレイアウト文書、マージキー、CRLF/BOM 文書、materialize 後
-  （シングルバーストモデル）では全量シリアライズにフォールバック
+- `flush_source` がセグメントスプライスを使用；フロースタイル領域、非デフォルトレイアウト文書、マー
+  ジキー、CRLF/BOM 文書、materialize 後（シングルバーストモデル）では全量シリアライズにフォールバッ
+  ク
 - スプライス編集は `---`/`...`/ディレクティブマーカー行を未変更バイトとして保持
   （全量シリアライズは以前それらを削除 — 意図的な動作差）
 
@@ -1947,9 +2000,8 @@ status: new
 
 - **インプレース編集** — フォーマットメタデータを失わずに解析済みドキュメントを編集：
     - パス API：`doc.set(path, value)`、`doc.insert(path, index, value)`、
-    `doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`、
-    JSONPath スタイルのパス（`$.a.b[0]`）；ルート用糖衣構文
-    `doc["key"] = value` と `del doc["key"]`
+      `doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`、 JSONPath スタイル
+      のパス（`$.a.b[0]`）；ルート用糖衣構文 `doc["key"] = value` と `del doc["key"]`
     - ノード API：`doc.node()` / `doc.find(path)` は `Node` オブジェクトを返し、
     `set_value` / `append` / `insert` / `delete` / `rename` とツリー走査
     （`parent`、`children`、`walk`、`filter`）をサポート
@@ -1973,14 +2025,12 @@ status: new
 
 #### 追加
 
-- **Python 3.13、3.14、3.15 サポート** — PyO3 `abi3-py38` wheel が
-  Python 3.8-3.15 をカバー（GIL ビルド）；`abi3t` + `abi3t-py315` は
-  free-threaded 安定 ABI を提供
-- **Free-threaded CPython（GIL なし）サポート** —
-  `#[pymodule(gil_used = false)]` がモジュールを free-threaded Python 向けに
-  スレッドセーフと宣言；`Py_GIL_DISABLED` cfg フラグで numpy をゲート
-  （rust-numpy は free-threaded 未対応 — free-threaded ビルドでは
-  `--no-default-features` で numpy feature を無効化）
+- **Python 3.13、3.14、3.15 サポート** — PyO3 `abi3-py38` wheel が Python 3.8-3.15 をカバー（GIL ビ
+  ルド）；`abi3t` + `abi3t-py315` は free-threaded 安定 ABI を提供
+- **Free-threaded CPython（GIL なし）サポート** — `#[pymodule(gil_used = false)]` がモジュールを
+  free-threaded Python 向けにスレッドセーフと宣言；`Py_GIL_DISABLED` cfg フラグで numpy をゲート
+  （rust-numpy は free-threaded 未対応 — free-threaded ビルドでは `--no-default-features` で numpy
+  feature を無効化）
 - **CI free-threaded ジョブ** — 新しい `test-freethreaded` ワークフロージョブが
   Python 3.14t でコンパイルとテストを検証
 - **`pyo3-build-config` ビルド依存** — `build.rs` 経由で
@@ -1988,26 +2038,23 @@ status: new
 - **`numpy` をオプション化** — `numpy` feature の背後にゲート（デフォルト有効）；
   `Py_GIL_DISABLED` 下では自動的に除外
 - **`allow_duplicate_keys`** — `YAML(allow_duplicate_keys=True)`、
-  `parse(..., allow_duplicate_keys=True)`、`parse_file`、`safe_load`、
-  `safe_loads`、`parse_all_docs` がすべてフラグを受け入れます；
-  重複マッピングキーはデフォルトで `YamlDuplicateKeyError` を発生、
-  許可時は `last value wins`
-- **`SerializeOptions` の拡張** — `doc.to_yaml_with_options()` が
-  `width`（行ラップ、0 = 無効）、`indent_mapping`、`indent_sequence`、
-  `indent_offset` を既存の `indent_size`/`explicit_start`/`explicit_end`/
-  `sort_keys`/`max_depth` とともに追加（`src/py/mod.rs:432`）
-- **タグハンドラレジストリ** — `register_tag("!custom")` デコレータと
-  インペラティブフォーム + `clear_tag_handlers()`；登録タグを持つスカラーノードは
-  ハンドラを介して変換されます（`src/py/tag_registry.rs`）
-- **優先度付きタグハンドラチェーン** — 複数のハンドラがタグごとに昇順
-  `priority` で実行；`YamlTagSkip` はハンドラが次のハンドラに通すことを許可、
-  fallback は元の値を保持
+  `parse(..., allow_duplicate_keys=True)`、`parse_file`、`safe_load`、`safe_loads`、
+  `parse_all_docs` がすべてフラグを受け入れます；重複マッピングキーはデフォルトで
+  `YamlDuplicateKeyError` を発生、許可時は `last value wins`
+- **`SerializeOptions` の拡張** — `doc.to_yaml_with_options()` が `width`（行ラップ、0 = 無効）、
+  `indent_mapping`、`indent_sequence`、 `indent_offset` を既存の
+  `indent_size`/`explicit_start`/`explicit_end`/ `sort_keys`/`max_depth` とともに追加
+  （`src/py/mod.rs:432`）
+- **タグハンドラレジストリ** — `register_tag("!custom")` デコレータとインペラティブフォーム +
+  `clear_tag_handlers()`；登録タグを持つスカラーノードはハンドラを介して変換されます
+  （`src/py/tag_registry.rs`）
+- **優先度付きタグハンドラチェーン** — 複数のハンドラがタグごとに昇順 `priority` で実行；
+  `YamlTagSkip` はハンドラが次のハンドラに通すことを許可、 fallback は元の値を保持
 - **Pydantic 統合** — `parse_as(Model, yaml, **yaml_kwargs)` が YAML をパースし
   Pydantic v2 モデルに対して検証；pydantic がない場合は `ImportError` を
   ガイド付きで発生（`python/pyrs_yaml/pydantic.py`）
-- **`.pyi` 型スタブ** — maturin によって自動生成されコミットされ、
-  `register_tag`、`parse_as`、`to_yaml_with_options` および新しい例外が
-  型チェッカーから見えるようになります。
+- **`.pyi` 型スタブ** — maturin によって自動生成されコミットされ、`register_tag`、`parse_as`、
+  `to_yaml_with_options` および新しい例外が型チェッカーから見えるようになります。
 
 #### 変更
 
@@ -2020,49 +2067,42 @@ status: new
   abi3 wheel を生成し、テストジョブが `maturin develop` を実行する代わりに
   インストールするため、21 のマトリクスジョブから Rust コンパイルを除去
   （約 86% のコンパイル削減）；`Swatinem/rust-cache` を全ジョブに追加
-- **pydantic テスト依存関係** — `pydantic>=2.10.6` を
-  `[dependency-groups] test` と `.ci/requirements-test.txt` に追加
-  （ci.yml 内の `uv sync` による SSOT）
+- **pydantic テスト依存関係** — `pydantic>=2.10.6` を `[dependency-groups] test` と
+  `.ci/requirements-test.txt` に追加（ci.yml 内の `uv sync` による SSOT）
 
 #### 修正
 
-- **Windows DLL 読み込み** — `src/py/tag_registry.rs` から
-  `#[cfg(test)]` ブロックを削除し、Windows での `import pyrs_yaml` を
-  修正（`250b8d0`）
+- **Windows DLL 読み込み** — `src/py/tag_registry.rs` から `#[cfg(test)]` ブロックを削除し、Windows
+  での `import pyrs_yaml` を修正（`250b8d0`）
 - **Python 3.8 互換性** — `pydantic.py` に `from __future__ import annotations`
   を追加（`63d2495`）
 - **CI pydantic スキップ** — `pytest.importorskip("pydantic")` を追加し、
   pydantic が未インストールでもテストがパスするよう修正（`7be011d`）
 - **CI の Windows でのグロブ展開** — `pip install dist/*.whl` の
   `shell: bash` を追加（PowerShell は `*` を展開しない）（`2f7778d`）
-- **文字列以外を返すタグハンドラが `YamlTagError` を発生** — 非 `str` 値を
-  返すハンドラ（以前は黙って無視され元のスカラーを保持）が、
-  `Tag handler '!x' must return a string` でエラーを発生（`src/py/mod.rs:resolve_tags`）
-- **`to_yaml_with_options` インデント配線** — `indent_mapping`/`indent_sequence`/
-  `indent_offset` がシリアライザによって尊重されるようになりました
-  （以前は死んだフィールド）；省略時はそれぞれ `indent_size`/0 にデフォルト
-  （`src/serializer.rs`）
-- **`width` が小さな値でハングしない** — `width < continuation indent` の場合、
-  永久ループの代わりに未ラップで残りを出力するフォールバックに
-  （`src/serializer.rs:write_plain_scalar`）
+- **文字列以外を返すタグハンドラが `YamlTagError` を発生** — 非 `str` 値を返すハンドラ（以前は黙っ
+  て無視され元のスカラーを保持）が、`Tag handler '!x' must return a string` でエラーを発生
+  （`src/py/mod.rs:resolve_tags`）
+- **`to_yaml_with_options` インデント配線** — `indent_mapping`/`indent_sequence`/ `indent_offset` が
+  シリアライザによって尊重されるようになりました（以前は死んだフィールド）；省略時はそれぞれ
+  `indent_size`/0 にデフォルト（`src/serializer.rs`）
+- **`width` が小さな値でハングしない** — `width < continuation indent` の場合、永久ループの代わりに
+  未ラップで残りを出力するフォールバックに（`src/serializer.rs:write_plain_scalar`）
 - **`remove_tag(name)`** — タグハンドラの登録解除用新関数；
   `register_tag`/`clear_tag_handlers` を補完（`src/py/tag_registry.rs`）
-- **`duplicate-key` エラーが多言語化** — `YamlDuplicateKeyError` メッセージが
-  全 4 ロケールで `format_i18n_error` を経由するようになりました
-  （`src/i18n/locales/*.yml`）
+- **`duplicate-key` エラーが多言語化** — `YamlDuplicateKeyError` メッセージが全 4 ロケールで
+  `format_i18n_error` を経由するようになりました（`src/i18n/locales/*.yml`）
 
 ### [0.8.0] — 2026-07-30
 
 #### 追加
 
 - **`YAML()` インスタンス API** — 再利用可能な設定付き
-  `YAML(typ="rt"|"safe"|"full", schema="core"|"yaml1.1", max_depth=1000)`；
-  `.parse()`、`.safe_load()`、`.safe_loads()`、`.parse_file()`、
-  `.parse_all_docs()` メソッド
-- **Python `Node` API** — AST 操作のための
-  `Node` クラス：`find()`、`filter()`、`walk()`、`to_yaml()`、`parent`、
-  `children`、`root_type`、`value`；JSONPath 風クエリ言語
-  （`$.key.sub`、`$.arr[0]`、`$..deep`）
+  `YAML(typ="rt"|"safe"|"full", schema="core"|"yaml1.1", max_depth=1000)`； `.parse()`、
+  `.safe_load()`、`.safe_loads()`、`.parse_file()`、 `.parse_all_docs()` メソッド
+- **Python `Node` API** — AST 操作のための `Node` クラス：`find()`、`filter()`、`walk()`、
+  `to_yaml()`、`parent`、`children`、`root_type`、`value`；JSONPath 風クエリ言語（`$.key.sub`、
+  `$.arr[0]`、`$..deep`）
 - **`doc.version` メタデータ** — `YamlDocument.version()` が YAML 仕様バージョンを返す
   （デフォルト "1.2"）
 - **`MergedView`** — `doc.merged()` がマージキー解決済みのおよび読み取り専用
@@ -2080,22 +2120,17 @@ status: new
 
 #### 追加
 
-- **ryaml ベンチマーク比較** — `tests/test_benchmark.py` が
-  PyYAML と ruamel.yaml と並んで `ryaml`（Rust YAML ライブラリ）とも比較するよう
-  になり；`benchmark_compare.py` が機能比較レポートとして書き直されました
-  （`tests/test_benchmark.py:25-28`、`.github/workflows/ci.yml:219`）
-- **CI 準拠閾値の引き上げ** — YAML Test Suite 準拠ゲートが
-  `test_compliance_report()` で 70% から 75% に増加；
-  有効パースレートゲート 95%（`tests/test_yaml_suite.py:251`）
-- **CI 依存関係の統合** — パブリッシュワークフローとローカル開発全体の
-  統一テスト依存関係管理のため、`.ci/requirements-test.txt` と
-  `.ci/requirements-test-lite.txt` を追加
-- **ベンチマークの近代化** — 高速な C 拡張ベースの統計ベンチマークのため
-  `pytest-benchmark` から `pytest-codspeed` へ移行；全 CI ジョブが
-  `-r .ci/requirements-test.txt` を使用するようになりました
-- **Rust ベンチマークを Divan に移行** — `codspeed-criterion-compat` を
-  `codspeed-divan-compat` v5.0.1 に置換；16 個のベンチマークを
-  Criterion グループから `#[divan::bench]` 属性に書き直し
+- **ryaml ベンチマーク比較** — `tests/test_benchmark.py` が PyYAML と ruamel.yaml と並んで `ryaml`
+  （Rust YAML ライブラリ）とも比較するようになり；`benchmark_compare.py` が機能比較レポートとして書
+  き直されました（`tests/test_benchmark.py:25-28`、`.github/workflows/ci.yml:219`）
+- **CI 準拠閾値の引き上げ** — YAML Test Suite 準拠ゲートが `test_compliance_report()` で 70% から
+  75% に増加；有効パースレートゲート 95%（`tests/test_yaml_suite.py:251`）
+- **CI 依存関係の統合** — パブリッシュワークフローとローカル開発全体の統一テスト依存関係管理のた
+  め、`.ci/requirements-test.txt` と `.ci/requirements-test-lite.txt` を追加
+- **ベンチマークの近代化** — 高速な C 拡張ベースの統計ベンチマークのため `pytest-benchmark` から
+  `pytest-codspeed` へ移行；全 CI ジョブが `-r .ci/requirements-test.txt` を使用するようになりました
+- **Rust ベンチマークを Divan に移行** — `codspeed-criterion-compat` を `codspeed-divan-compat`
+  v5.0.1 に置換；16 個のベンチマークを Criterion グループから `#[divan::bench]` 属性に書き直し
   （`Cargo.toml`、`benches/yaml_bench.rs`）
 
 #### 変更
@@ -2108,9 +2143,9 @@ status: new
 
 #### 追加
 
-- **シリアライザ `max_depth` ガード** — `serialize_node_internal` が
-  再帰深度を追跡し、制限（デフォルト 1000）を超えると `YamlMaxDepthError` を
-  発生（パーサーの保護と一致、`src/serializer.rs:135-145`）
+- **シリアライザ `max_depth` ガード** — `serialize_node_internal` が再帰深度を追跡し、制限（デフォ
+  ルト 1000）を超えると `YamlMaxDepthError` を発生（パーサーの保護と一致、
+  `src/serializer.rs:135-145`）
 - **シリアライザホットパス最適化** — ブロックスタイルシリアライズを対象とした
   5 つの最適化で約 4.9% のラウンドトリップ高速化：
     - `write_anchor_tag` および `write_inline_comment` の None チェックをインライン化
@@ -2118,10 +2153,9 @@ status: new
     - `write_indent` のホット/コールドパス分離（キャッシュレベル ≤64 の直接インデックス）
     - `write_plain_scalar` の短小 ASCII 英数字文字列（≤8 文字）用高速パス
     - `write_scalar_for_key` の Plain スカラー用直接ディスパッチ（ディスパッチチェーンを回避）
-- **pytest-benchmark 移行** — Python ベンチマークが
-  統計的厳密さ、構造化 JSON 出力、CI 統合のため
-  生 `time.perf_counter()` から `pytest-benchmark` へ移行
-  （`tests/test_benchmark.py` + 更新済み `tests/test_performance.py`）
+- **pytest-benchmark 移行** — Python ベンチマークが統計的厳密さ、構造化 JSON 出力、CI 統合のため生
+  `time.perf_counter()` から `pytest-benchmark` へ移行（`tests/test_benchmark.py` + 更新済み
+  `tests/test_performance.py`）
 
 #### 変更
 
@@ -2138,12 +2172,10 @@ status: new
 
 #### 追加
 
-- **非同期シリアライズ** — `asyncio.run_in_executor` 経由の
-  `safe_dumps_async`、`safe_dump_async`、`safe_loads_async`、
-  `safe_load_async`（`python/pyrs_yaml/async_dump.py`）
-- **JSON Schema 検証** — `YamlValidateError` 例外 +
-  `YamlDocument.validate(schema)` メソッド（`str` または `dict` を接受）；
-  Python `jsonschema` モジュールに委譲
+- **非同期シリアライズ** — `asyncio.run_in_executor` 経由の `safe_dumps_async`、`safe_dump_async`、
+  `safe_loads_async`、 `safe_load_async`（`python/pyrs_yaml/async_dump.py`）
+- **JSON Schema 検証** — `YamlValidateError` 例外 + `YamlDocument.validate(schema)` メソッド（`str`
+  または `dict` を接受）； Python `jsonschema` モジュールに委譲
 - **`YamlDocument.to_json()`** — ドキュメントを JSON 文字列にシリアライズ
   （Python `json.dumps` を使用）
 - **増分再パース** — `YamlDocument` がソーステキストを保持するようになりました
@@ -2207,9 +2239,8 @@ status: new
   None 値、空辞書/リスト
 - **`from_json` ラウンドトリップ** — ネスト構造、配列、不正 JSON エラー
 - **`dump_file` テスト** — 成功パス、不正パスエラー
-- **YAML Test Suite 個別ケーステスト** — 8 進数、16 進数、科学表記法、
-  NaN、無限大、マージキー、明示的/暗黙的キー、bool/null 変種、
-  ブロックスカラーストリップ（`|-`）、フローコレクション
+- **YAML Test Suite 個別ケーステスト** — 8 進数、16 進数、科学表記法、NaN、無限大、マージキー、明示
+  的/暗黙的キー、bool/null 変種、ブロックスカラーストリップ（`|-`）、フローコレクション
 - **`resolve_merges` パラメータテスト** — 無効時は `<<` を保持、
   デフォルトで解決
 - **フローコレクションラウンドトリップ** — ルートレベルとネストされた
@@ -2231,9 +2262,8 @@ status: new
 
 #### 追加
 
-- **NumPy ndarray シリアライズ** — `safe_dump()` / `safe_dumps()` /
-  `from_dict()` / `dump_file()` が全次元（0-D から N-D）の
-  `numpy.ndarray` をサポートするようになりました
+- **NumPy ndarray シリアライズ** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` が
+  全次元（0-D から N-D）の `numpy.ndarray` をサポートするようになりました
     - 対応 dtype：`int8/16/32/64`、`uint8/16/32/64`、`float32/64`、
     `complex64/128`、`bool`
     - 多次元配列は正しいインデントでネストした YAML リストとしてシリアライズ
@@ -2264,9 +2294,9 @@ status: new
 
 #### 修正
 
-- **負の数ラウンドトリップ** — YAML 1.2 のブロックシーケンスに
-  `-` で始まるプレーンスカラーは含められないため、負の数はシリアライズ時に
-  引用され、整数/浮動小数点数として正しくパースされるようになりました
+- **負の数ラウンドトリップ** — YAML 1.2 のブロックシーケンスに `-` で始まるプレーンスカラーは含めら
+  れないため、負の数はシリアライズ時に引用され、整数/浮動小数点数として正しくパースされるようになり
+  ました
 - **N-D 配列サポート** — 1-D のみに限定されず任意次元の配列をサポートするよう
   `PyArray1<T>` を `PyArrayDyn<T>` に置換
 - **正しいネスト深さ** — 多次元配列がちょうど N レベルのネストを生成
@@ -2302,7 +2332,7 @@ status: new
 - PyYAML 互換 API（`safe_load`/`safe_dump`）
 - `from_dict`/`from_json` 変換関数
 - YAML フロント matter 抽出用 `read_markdown`/`read_markdown_str`
-- チョンピング インジケータ付きブロックスカラー（`|`/`>`、`|-`/`|+`/`>-`/`>+`）
+- チョンピングインジケータ付きブロックスカラー（`|`/`>`、`|-`/`|+`/`>-`/`>+`）
 - エスケープシーケンス（`\n`、`\t`、`\uXXXX`、`\xXX`）
 - YAML 1.2 型解決（null、bool、int、float、無限大、NaN）
 - マージキー解決（`<<: *alias`）

@@ -17,6 +17,14 @@ future line-initial `#1234 …` fails the hook instead of quietly restructuring 
 
 Headings inside fenced code blocks are not headings, so the scan tracks fences: the
 repository documents shell sessions whose comments (`# 2025 timings`) match the pattern.
+
+A second signature was added after the first was already in the tree: a run of dashes or equals
+sitting directly under a prose line, which is a setext heading to CommonMark. `rumdl fmt` produced
+exactly that while answering a transient `MD003`, promoting a whole paragraph into a heading and
+leaving every gate green. The first attempt at a rule here measured the width of heading text
+against the 100-column prose convention - falsified immediately, because twelve legitimate
+`### (xx)` lead-ins on these pages are wider than that. So the rule names the shape instead: no
+paragraph may end on the line above a dash run. A `---` separator is fine; it needs its blank line.
 """
 
 from __future__ import annotations
@@ -34,6 +42,22 @@ EXCLUDED_PREFIXES = ("Reference/", "site/", "target/", "node_modules/", ".venv",
 
 HEADING = re.compile(r"^(#{1,6}) (\d{2,})([^\d.])")
 FENCE = re.compile(r"^\s{0,3}(?:`{3,}|~{3,})")
+SETEXT = re.compile(r"^\s{0,3}(?:-{2,}|={2,})\s*$")
+TABLE = re.compile(r"^\s{0,3}\|")
+
+
+def front_matter_end(lines) -> int:
+    """Index just past a document's YAML front matter, or 0 when it has none.
+
+    The closing `---` of front matter sits under a content line by definition, so a rule about
+    dash runs has to know it is not prose. Only a first line of exactly `---` opens it.
+    """
+    if not lines or lines[0].strip() != "---":
+        return 0
+    for index in range(1, len(lines)):
+        if lines[index].strip() in ("---", "..."):
+            return index + 1
+    return len(lines)
 
 
 def heading_damage(lines, name):
@@ -60,6 +84,38 @@ def heading_damage(lines, name):
                 "    the paragraph, or start the line with a word (`PR #292 …`) so the reference cannot\n"
                 "    lead the line."
             )
+    return findings
+
+
+def setext_damage(lines, name) -> list:
+    """Findings for a paragraph that ends on the line above a dash or equals run.
+
+    CommonMark reads that pair as a setext heading, so the paragraph *becomes* a title - and a
+    formatter asked to reconcile the two will rewrite the sentence as an ATX heading, which is what
+    happened to a `ROADMAP.md` paragraph here. A thematic break is legal, it needs its blank line.
+    """
+    findings = []
+    in_fence = False
+    start = front_matter_end(lines)
+    for index in range(start, len(lines)):
+        line = lines[index]
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence or index < 1:
+            continue
+        above = lines[index - 1]
+        if not SETEXT.match(line) or not above.strip():
+            continue
+        if HEADING.match(above) or TABLE.match(above) or above.strip() in ("---", "..."):
+            continue
+        findings.append(
+            f"{name}:{index + 1}: {line.strip()[:40]!r} sits under prose\n"
+            f"    {above.strip()[:72]}\n"
+            "    a dash run directly under a paragraph is a setext heading, not a separator: the\n"
+            "    sentence above it turns into a title, and the formatter will rewrite it that way.\n"
+            "    Put a blank line above the run."
+        )
     return findings
 
 
@@ -93,6 +149,7 @@ def main(argv=()) -> int:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         findings.extend(heading_damage(text.splitlines(), rel))
+        findings.extend(setext_damage(text.splitlines(), rel))
     if findings:
         print(f"markdown headings that are really split sentences ({len(findings)}):")
         for finding in findings:
