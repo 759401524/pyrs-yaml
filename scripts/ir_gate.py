@@ -77,28 +77,25 @@ HARNESSES = (("pyrs-yaml-core", "ir_gate"), ("pyrs-yaml", "ir_gate"))
 # making the refresh job compile differently: REFUTED by removing `Swatinem/rust-cache` from
 # `.github/workflows/ir-baseline.yml` - the job still reported 15,792,928.
 #
-# What is left is a difference that correlates perfectly with the *job* and with nothing else: eight
-# runs of the refresh job, on two images, cached and uncached, all report 15,792,8xx-15,792,9xx, and
-# two runs of the enforcing job in `codspeed.yml` report 16,020,942 and 16,020,915 - while every other
-# scenario agrees between the two jobs to within 0.08%. Inside each job the number is stable to
-# ~30 instructions, so this is not noise: a restored tree, the same pinned rustc 1.97.1, the same
-# script and the same fixtures produce two binaries, or two runtimes, 1.44% apart on the
-# memcpy-heaviest scenario - three times the tolerance. The committed value matches the *enforcing*
-# job, so the file's numbers were made by the configuration that gates them; what was hand-written was
-# the note (its commit citation is not PR #299's head and predates the toolchain pin, and its
-# environment string is not what `environment()` emits for that image today).
+# What is left is a difference that correlated perfectly with the *job* and with nothing else: eight
+# runs of the refresh job, on two images, cached and uncached, all reported 15,792,8xx-15,792,9xx, and
+# two runs of the enforcing job in `codspeed.yml` reported 16,020,942 and 16,020,915 - while every other
+# scenario agreed between the two jobs to within 0.08%. Inside each job the number was stable to
+# ~30 instructions, so this was not noise. The cause was found with `build_exe`'s binary hashes: both
+# jobs measured the *same* bytes (`a0386c17b5f1ef38`), the same valgrind and compiler, on hosts whose
+# reported models differed (`AMD EPYC 9V74` against `9V45`) - so the variable was the ISA glibc binds
+# for its string routines from the VM's CPUID flags, which `MEASUREMENT_ENV` now pins.
 #
 # Recorded because the first reading of this data was wrong twice: it looked like proof the committed
-# values had been generated off-runner, and then like proof the refresh job's build cache was the
-# cause. Both sentences were written into documents before the control runs refuted them, and both
-# corrections are here rather than edited out. `build_exe` now prints the SHA-256 of the binary it
-# measures and both jobs print `nproc`/`valgrind --version`/`rustc -Vv`, so the next answer is a
-# measurement: whether the two jobs produce the same bytes and run them on different hardware, or
-# produce different bytes at all.
+# values had been generated off-runner, and then like proof the refresh job's build cache was the cause.
+# Both sentences were written into documents before the control runs refuted them, and both corrections
+# are here rather than edited out. What remains unexplained is narrower than it looks: why the two
+# hosts' CPUID masks differ at all, and why only the copy-heavy scenario notices it.
 #
-# Until that is known, treat a marginal failure on an allocation-heavy scenario as a hint about the
-# environment, never as a licence to widen the line: re-measure with
-# `gh workflow run 'Ir baseline refresh'` and read the samples the run prints.
+# Because the mechanism is a CPUID mask rather than a code path, a marginal failure on a copy-heavy
+# scenario is still a hint about the environment and never a licence to widen the line: re-measure with
+# `gh workflow run 'Ir baseline refresh'`, and read the samples, the hashes and the printed env before
+# believing a regression.
 DEFAULT_TOLERANCE = 0.005
 
 # Environment every measured process runs under, to make the count belong to the code instead of to
@@ -111,9 +108,10 @@ DEFAULT_TOLERANCE = 0.005
 # CPUID flags a VM exposes and can differ between hosts of the same model. `serialize_block_scalars`
 # is the most memcpy-heavy scenario in the set, and it is the only one that moves.
 #
-# Masking the vector caps makes that choice deterministic. This is a hypothesis under test, not a
-# settled cause: if the two jobs still disagree with this set, the honest move is to exempt the
-# scenario with its measured envelope rather than widen the global line.
+# Masking the vector caps makes the choice deterministic - and it is confirmed, not assumed: the two
+# jobs now differ by two instructions on that scenario (15,780,927 in the refresh job against
+# 15,780,929 in the enforcing one, on hosts of different models), where with the caps unmasked they were
+# 1.44% apart. The line was not widened to absorb the host; the input the host controlled was pinned.
 MEASUREMENT_ENV = {"GLIBC_TUNABLES": "glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT"}
 
 # Written into every baseline this script generates, verbatim. The first committed baseline carried a
