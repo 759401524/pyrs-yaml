@@ -59,8 +59,12 @@ HARNESSES = (("pyrs-yaml-core", "ir_gate"), ("pyrs-yaml", "ir_gate"))
 #
 # Binding channel, same two runs: `to_python_small` moved 126,865 instructions on 15.2M - 0.83%, more
 # than the tolerance - and `to_python_anchors` 0.045%. CPython's own paths are not as reproducible as
-# the engine's, which is why the committed number is the largest of `--repeats` samples (see
-# `DEFAULT_REPEATS`) rather than a single draw of a 0.8%-wide distribution.
+# the engine's at that sample size, so two things changed: the binding harness measures 2 000
+# iterations instead of 500 (four times the work, the same order of magnitude as its siblings), and
+# every scenario is sampled `--repeats` (3) times with the largest value baselined - a single draw of
+# a distribution wider than the line would let a no-op change redden the gate. The run prints each
+# scenario's samples and spread, so the claim is auditable in the job log instead of being a sentence
+# in this file.
 #
 # What the 2% used to be: the gap between a baseline generated in WSL and the same code measured on a
 # runner, concentrated on `serialize_block_scalars` (+1.45%). Two explanations were tested then and a
@@ -195,10 +199,9 @@ def loop_instructions(exe: str, scenario: str) -> int:
     return full - setup
 
 
-def measured_loop(exe: str, scenario: str, repeats: int) -> int:
-    """The worst of `repeats` measurements of one scenario (see `DEFAULT_REPEATS`)."""
-    samples = [loop_instructions(exe, scenario) for _ in range(max(1, repeats))]
-    return max(samples)
+def loop_samples(exe: str, scenario: str, repeats: int) -> list:
+    """Every measurement taken for one scenario, so the spread stays visible."""
+    return [loop_instructions(exe, scenario) for _ in range(max(1, repeats))]
 
 
 def resolve_repeats(explicit, recorded, default: int = DEFAULT_REPEATS) -> int:
@@ -287,7 +290,17 @@ def main() -> int:
             recorded = None
     repeats = resolve_repeats(args.repeats, recorded)
 
-    measured = {s: measured_loop(exes[s], s, repeats) for s in scenarios}
+    drawn = {s: loop_samples(exes[s], s, repeats) for s in scenarios}
+    measured = {s: max(drawn[s]) for s in scenarios}
+
+    # The spread of the samples is the evidence behind the tolerance and the sample size, so the job
+    # log carries it. Without this, "0.5% is a real line" is a sentence rather than a number.
+    if repeats > 1:
+        print(f"{'scenario':26} {'spread':>8}  samples")
+        for s in scenarios:
+            values = drawn[s]
+            spread = (max(values) - min(values)) / max(values)
+            print(f"{s:26} {spread:>7.3%}  " + ", ".join(f"{v:,}" for v in values))
 
     if args.update:
         # `--update --only X` used to write a baseline containing *only* X: every other

@@ -59,11 +59,14 @@
 use pyrs_yaml::py::functions::bench_to_python;
 use pyrs_yaml_core::bench_inputs::{ANCHOR_YAML, MEDIUM_YAML, SMALL_YAML};
 
-/// Fixed for every run and every machine. Smaller than the engine harness's 2 000 because each
-/// iteration also allocates and releases Python objects: 500 iterations of `MEDIUM_YAML` already
-/// counts seven-figure work, and a scenario that takes minutes under callgrind gets the gate skipped
-/// rather than tolerated.
-const ITERATIONS: u32 = 500;
+/// Fixed for every run and every machine, and the same 2 000 the engine harness uses - for a reason
+/// measured on the runner rather than assumed. At 500 iterations two refresh runs of this file
+/// disagreed by 0.83% on `to_python_small` (126,865 instructions on 15.2M) while the engine scenarios
+/// agreed to 0.0009%: the loop was too small relative to the run-to-run variation of the interpreter
+/// work inside it, and 0.83% is wider than the 0.5% line the gate holds. Four times the work puts the
+/// smallest scenario in the same order of magnitude as its siblings, which is what makes the count
+/// comparable across machines at all.
+const ITERATIONS: u32 = 2_000;
 
 /// Every scenario the binding-side gate measures. Names mirror the engine harness with a `to_python_`
 /// prefix so the two channels can be read side by side in one baseline file.
