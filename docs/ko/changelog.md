@@ -39,9 +39,12 @@ status: new
   허용하면 `--update`가 그 계통 행이 빠진 기준값을 쓰고, 아무것도 비교하지 않은 채 통과할 수 있다).
   `quality_matrix.py`가 파생하는 그래프에 `pyrs-yaml`이 들어 구멍은 저절로 사라졌다 — 등록 해제를 강제하는
   검사가 새 결함을 미등록으로 통과시키는 것을 막는 바로 그 검사이므로, 대장 설계대로다. 명확히 적는 한계
-  둘: 이 실행 파일은 CPython을 링크해 Linux 전용(Windows에서는 빌드는 되고 기동 시 `0xC000021A`로 죽는
+  셋: 이 실행 파일은 CPython을 링크해 Linux 전용(Windows에서는 빌드는 되고 기동 시 `0xC000021A`로 죽는
   것을 실측), 그리고 `cargo clippy --all --all-targets`는 feature로 막힌 bench를 보지 않으므로 새 파일은
-  lint가 아니라 빌드로 검증된다.
+  lint가 아니라 빌드로 검증된다. 세 번째는 돌려서 알게 됐다: 하네스는 독립 실행 파일이라 같은 feature가
+  `pyo3/auto-initialize`도 켠다 — 첫 재생성 실행은 두 하네스를 모두 빌드하고 두 시나리오 목록까지
+  읽었지만, 재는 루프에서 "The Python interpreter is not initialized"로 죽었다. wheel은 영향이 없다:
+  `[tool.maturin]`은 feature를 넘기지 않고 `--all-features`로 빌드하는 곳도 없다.
 - **방어 체계가 자기 안의 구멍을 쟀다: 명령 수 게이트는 Python 바인딩에 못 닿는다** —
   `quality_matrix.py`는 `ir_gate` 하네스가 실제로 링크하는 crate(bench 소속 crate과 그 workspace
   의존: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`, `pyrs-toml`)를 뽑아내고, Python API를

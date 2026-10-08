@@ -43,13 +43,19 @@
 //! # Where it runs
 //!
 //! Unlike the engine harness, this binary links CPython: it needs an interpreter at *run* time, not
-//! only at build time. Measured on Windows - `cargo bench --no-run` succeeds and the built binary
-//! then dies at start-up with `0xC000021A` (DLL not found) before printing anything, because the
-//! venv's `python3xx.dll` is not on the search path for a bare exe. So this harness is Linux-only in
-//! practice, which is also where `valgrind` lives: run it on the GitHub runner or in WSL, never
-//! directly on a Windows host. The gate script does not attempt to hide that - if `--list` cannot run,
-//! the failure surfaces as a build/exec error rather than an empty scenario list, which would read as
-//! "no scenarios to measure" and pass.
+//! only at build time, which is why the `ir-gate` feature turns on `pyo3/auto-initialize` - the
+//! shipped wheel runs inside an interpreter that is already up, this one has to start it. Measured:
+//! the first refresh run built, listed its scenarios, and then failed in the measured loop with "The
+//! Python interpreter is not initialized and the `auto-initialize` feature is not enabled", which is
+//! also how `--list` succeeding and the measurement failing stay distinguishable.
+//!
+//! Measured on Windows - `cargo bench --no-run` succeeds and the built binary then dies at start-up
+//! with `0xC000021A` (DLL not found) before printing anything, because the venv's `python3xx.dll` is
+//! not on the search path for a bare exe. So this harness is Linux-only in practice, which is also
+//! where `valgrind` lives: run it on the GitHub runner or in WSL, never directly on a Windows host.
+//! The gate script does not attempt to hide that - if `--list` cannot run, the failure surfaces as a
+//! build/exec error rather than an empty scenario list, which would read as "no scenarios to measure"
+//! and pass.
 use pyrs_yaml::py::functions::bench_to_python;
 use pyrs_yaml_core::bench_inputs::{ANCHOR_YAML, MEDIUM_YAML, SMALL_YAML};
 

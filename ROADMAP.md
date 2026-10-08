@@ -718,7 +718,14 @@ Two limits recorded rather than smoothed over: the binding binary links CPython,
 and runs only on Linux (measured on Windows — `cargo bench --no-run` succeeds and the exe then dies at
 start-up with `0xC000021A`, before printing a scenario list), and `cargo clippy --all --all-targets`
 does not compile a `required-features` bench target, so the new file is guarded by building it, not by
-the lint job. What (ao) could only register is now an instrument: the conversion #292 changed has a
+the lint job. A third limit was found by running it: the harness is a standalone executable and has to
+start the interpreter itself, so the `ir-gate` feature turns on `pyo3/auto-initialize` — the first
+refresh run built, listed its scenarios, and only then failed in the measured loop with "The Python
+interpreter is not initialized and the `auto-initialize` feature is not enabled", which is the good
+outcome (a `--list` that works and a measurement that refuses stay distinguishable, and `ir_gate.py`
+exits on a non-zero harness instead of writing a short baseline). The feature is where that belongs: the
+shipped wheel runs inside an interpreter that is already up, so nothing about the extension changes.
+What (ao) could only register is now an instrument: the conversion #292 changed has a
 counted-instruction number, so that dispute can be settled with the reproducible channel instead of two
 machines disagreeing.
 

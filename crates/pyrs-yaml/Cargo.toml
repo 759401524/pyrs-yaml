@@ -31,7 +31,13 @@ numpy = ["dep:numpy"]
 # Opt-in build of the instruction-count harness binary below. Nothing in the shipped
 # extension depends on it: the seam (`bench_to_python`) is compiled out of every build that does not
 # ask for it, so the Python-visible surface is unchanged by adding a performance target.
-ir-gate = []
+#
+# `pyo3/auto-initialize` belongs here and nowhere else: the harness is a standalone executable, so
+# it has to start CPython itself, while the shipped wheel runs inside an interpreter that is already
+# up. Measured - the first refresh run built fine, listed its scenarios, and then died in the
+# measured loop with "The Python interpreter is not initialized and the `auto-initialize` feature is
+# not enabled". Keeping it behind this feature is what stops that change from reaching the wheel.
+ir-gate = ["pyo3/auto-initialize"]
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "5.0" }

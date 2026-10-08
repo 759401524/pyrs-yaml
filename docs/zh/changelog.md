@@ -36,9 +36,12 @@ status: new
   `scripts/ir_gate.py` 现在把两个 harness 汇成一张场景表（名字重复
   即报错，某个 harness 什么都不列也报错——后者会让 `--update` 写出缺该通道数值的 baseline，并靠"什么都没
   比较"而通过）。`quality_matrix.py` 导出的图里出现了 `pyrs-yaml`，洞随之自行消失——注销被强制的方式与
-  "新洞未登记不许过"是同一条测试，正是台账的设计。两点局限如实写明：该可执行文件链接 CPython，只能在
+  "新洞未登记不许过"是同一条测试，正是台账的设计。三点局限如实写明：该可执行文件链接 CPython，只能在
   Linux 跑（Windows 实测：能编出来，启动即 `0xC000021A` 崩），且 `cargo clippy --all --all-targets`
-  看不见带 feature 门的 bench，新文件靠构建而非 lint 校验。
+  看不见带 feature 门的 bench，新文件靠构建而非 lint 校验。第三条是跑出来的：harness 是独立可执行
+  文件，所以同一个 feature 还要打开 `pyo3/auto-initialize`——第一次再生成运行把两个 harness 都编好了、
+  两份场景清单都读到了，却在被测的循环里以 "The Python interpreter is not initialized" 失败。wheel
+  不受影响：`[tool.maturin]` 不带 feature，也没有任何东西用 `--all-features` 构建。
 - **防线量出了自己身上的一处空档：指令数门禁够不到 Python 绑定层** —
   `quality_matrix.py` 现在推导 `ir_gate` harness 真正链接的 crate（bench 所属 crate 及其 workspace
   依赖：`pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`），再与提供 Python API 的

@@ -35,10 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   channel's rows missing and let the gate pass by comparing nothing).
   `quality_matrix.py`'s derived graph gained `pyrs-yaml` and the hole disappeared on its own, which is
   the registry working as designed: the deletion of the entry is enforced by the same test that would
-  have caught an unregistered new hole. Two limits recorded rather than smoothed over: this binary links
+  have caught an unregistered new hole. Three limits recorded rather than smoothed over: this binary links
   CPython, so it runs only on Linux (measured on Windows: builds fine, then dies at start-up with
   `0xC000021A`), and `cargo clippy --all --all-targets` does not lint a feature-gated bench, so the new
-  file is checked by building it, not by the lint job.
+  file is checked by building it, not by the lint job. A third limit was found by running it: the
+  harness is a standalone executable, so the same feature also turns on `pyo3/auto-initialize` — the
+  first refresh run built both harnesses, read both scenario lists, and then failed in the measured
+  loop with "The Python interpreter is not initialized". The wheel is unaffected: `[tool.maturin]`
+  passes no features and nothing builds with `--all-features`.
 - **The defence measured a gap in itself: the instruction gate cannot reach the Python binding** —
   `quality_matrix.py` now derives the crates the `ir_gate` harness actually links (the bench owner
   plus its workspace dependencies: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`,
