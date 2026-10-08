@@ -383,6 +383,12 @@ class TestSchemaRounding:
         assert d["y"] == ".inf"
 
     def test_yaml11_preserves_legacy_bools(self):
-        d = pyrs_yaml.parse("x: yes\ny: on", schema="yaml1.1").to_dict()
+        d = pyrs_yaml.parse("x: yes\nz: on", schema="yaml1.1").to_dict()
         assert d["x"] is True
-        assert d["y"] is True
+        assert d["z"] is True
+        # The profile is symmetric, and that is what makes it a profile rather than a
+        # value-side hack: under 1.1 the legacy spellings resolve as keys too, exactly
+        # as PyYAML resolves `y: on` to `{True: True}`; under the 1.2 core profile both
+        # sides stay strings.
+        assert pyrs_yaml.parse("y: on", schema="yaml1.1").to_dict() == {True: True}
+        assert pyrs_yaml.parse("y: on").to_dict() == {"y": "on"}

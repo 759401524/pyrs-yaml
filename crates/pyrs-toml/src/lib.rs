@@ -219,9 +219,10 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
                 (Vec::new(), None, false, node)
             }
         };
+        let key_style = toml_key_style(&k);
         let mut key = CustomNode::Scalar {
             value: k.into(),
-            style: ScalarStyle::Plain,
+            style: key_style,
             chomping: Chomping::Clip,
             block_indent: None,
             meta: NodeMeta::default(),
@@ -320,9 +321,10 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
         TomlValue::InlineTable(v) => {
             let mut pairs = NodeMap::default();
             for (k, val, anns) in v {
+                let key_style = toml_key_style(&k);
                 let mut key = CustomNode::Scalar {
                     value: k.into(),
-                    style: ScalarStyle::Plain,
+                    style: key_style,
                     chomping: Chomping::Clip,
                     block_indent: None,
                     meta: NodeMeta::default(),
@@ -353,6 +355,23 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
                 meta: NodeMeta::default(),
             }
         }
+    }
+}
+
+/// The style a TOML key must carry so that reading the equivalent YAML gives back the
+/// same string.
+///
+/// A TOML key is a string by TOML's grammar, and the shared AST expresses "this scalar
+/// is a string" the way YAML does - by quoting, which is what the string *values* above
+/// already do. So `"1" = 2` must arrive as a quoted key, or `to_yaml` writes `1: 2` and
+/// the next reader sees an integer; `"" = 3` would otherwise become a null key. Keys
+/// that no YAML schema types (`host`, `port`) keep the plain style, so converting a
+/// real config to YAML stays clean.
+pub(crate) fn toml_key_style(key: &str) -> ScalarStyle {
+    if pyrs_schema::schema::plain_text_is_typed(key) {
+        ScalarStyle::DoubleQuoted
+    } else {
+        ScalarStyle::Plain
     }
 }
 

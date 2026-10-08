@@ -53,6 +53,13 @@ PARITY_TABLE = [
     ("multiple keys", "a: 1\nb: 2\nc: 3\n", {"a": 1, "b": 2, "c": 3}),
     ("unicode value", "a: 中文 \U0001f600\n", {"a": "中文 \U0001f600"}),
     ("quoted key", '"1": a\n', {"1": "a"}),
+    # Keys are nodes like any other, and both writers resolve them by the value rules: these
+    # three shapes were pinned as a known defect until #292 landed, and the promise written
+    # there was that they would move into this table - which is the strongest form of the
+    # claim, because every row here is asserted against both writers and a fixed point.
+    ("integer key", "1: a\n", {1: "a"}),
+    ("bool key", "true: a\n", {True: "a"}),
+    ("null key", "null: 1\n", {None: 1}),
     ("deep mix", "a:\n  b:\n    c:\n      - 1\n      - d: {}\n", {"a": {"b": {"c": [1, {"d": {}}]}}}),
 ]
 
@@ -128,18 +135,24 @@ def test_style_preservation_diverges_on_purpose(text, obj):
     assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump(obj)) == obj
 
 
-def test_non_string_keys_do_not_survive_the_object_view_yet():
-    """A pin for a known defect, not an endorsement of it.
+def test_non_string_keys_survive_the_object_view():
+    """The pin this file kept for a defect is now a pin for the fix, on the load side.
 
-    The object view resolves a scalar *value* with the schema rules but leaves keys as text,
-    so `1: a` dumps to `1: a` and reads back as `{"1": "a"}` — and the second dump then
-    quotes it. PR #292 closes exactly that. The rows stay here, pinned at their actual
-    values with the mechanism named, because a parity table that quietly *omitted* them
-    would report green while the class went unmeasured; when that PR lands these asserts
-    break and the shapes move into `PARITY_TABLE`.
+    `PARITY_TABLE` compares the two *writers*. What the table cannot express is the reader:
+    a scalar used to mean one thing as a value and another as a key (`1: a` loaded as
+    `{"1": "a"}` while `a: 1` loaded as `{"a": 1}`), so a document keyed by an integer, bool
+    or null could not be reached by lookup. Every value below is measured output, including
+    the YAML 1.1 spelling, which resolves under that profile alone - and quoting stays the
+    marker for "this key is a string" on both sides, which is the half that must not move.
     """
-    assert pyrs_yaml.safe_dump({1: "a"}) == "1: a\n"
-    assert pyrs_yaml.safe_load("1: a\n") == {"1": "a"}
-    assert pyrs_yaml.safe_dump(pyrs_yaml.safe_load("1: a\n")) == '"1": a\n'
-    assert pyrs_yaml.safe_dump({True: "a"}) == "true: a\n"
-    assert pyrs_yaml.safe_load("true: a\n") == {"true": "a"}
+    assert pyrs_yaml.safe_load("1: a\n") == {1: "a"}
+    assert pyrs_yaml.safe_load("true: a\n") == {True: "a"}
+    assert pyrs_yaml.safe_load("~: 1\n") == {None: 1}
+    assert pyrs_yaml.safe_load(".inf: 1\n") == {float("inf"): 1}
+    assert pyrs_yaml.safe_load("y: 1\n", schema="yaml1.1") == {True: 1}
+    assert pyrs_yaml.safe_load('"1": a\n') == {"1": "a"}
+    assert pyrs_yaml.safe_dump({"1": "a"}) == '"1": a\n'
+    # The object view sits on a fixed point: a second dump reproduces the first text.
+    for obj in ({1: "a"}, {True: "a"}, {None: 1}, {float("inf"): 1}):
+        once = pyrs_yaml.safe_dump(obj)
+        assert pyrs_yaml.safe_dump(pyrs_yaml.safe_load(once)) == once, obj

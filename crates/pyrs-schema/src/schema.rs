@@ -283,6 +283,24 @@ pub fn resolve_yaml_type(value: &str, schema: YamlSchema) -> YamlType<'_> {
     }
 }
 
+/// Whether a plain scalar's text resolves to anything other than a string, under
+/// *either* YAML schema the engine offers.
+///
+/// Cross-format bridges need this question, and they need it answered conservatively.
+/// A TOML or JSON object key is a string by that format's own grammar, but the shared
+/// AST has no marker for "this scalar is a string" except quoting — the same mechanism
+/// TOML string *values* already use. So a bridge that writes the key `"1"` as plain
+/// `1` produces a YAML document whose key is the integer 1, and `""` becomes a null
+/// key: the conversion would change what the document means, which is the one thing a
+/// multi-format AST must not do. Checking core *and* 1.1 keeps that answer the same
+/// whichever profile the reader picks — `yes` is a string under 1.2 and a bool under
+/// 1.1, so it has to be quoted too. Quoting a key that did not need it is harmless;
+/// leaving one that did unquoted is a type change.
+pub fn plain_text_is_typed(text: &str) -> bool {
+    !matches!(resolve_core_type(text), YamlType::Str(_))
+        || !matches!(resolve_yaml11_type(text), YamlType::Str(_))
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers (shared between core and json)
 // ---------------------------------------------------------------------------
@@ -342,6 +360,32 @@ mod tests {
         assert_eq!(resolve_core_type(""), YamlType::Null);
         assert_eq!(resolve_core_type("null"), YamlType::Null);
         assert_eq!(resolve_core_type("~"), YamlType::Null);
+    }
+
+    // ---- cross-format key guard ----
+
+    #[test]
+    fn plain_text_is_typed_covers_both_schemas() {
+        // Resolved under the 1.2 core profile, so a bridge must quote them as keys.
+        for text in [
+            "", "~", "null", "Null", "1", "-2", "3.5", "true", "0x1F", ".inf", "inf", "1.5e3",
+        ] {
+            assert!(plain_text_is_typed(text), "{text:?} resolves under core");
+        }
+        // Only YAML 1.1 types these, and the engine offers that profile, so they quote
+        // too - that is the point of checking both schemas rather than the default.
+        for text in ["yes", "no", "on", "off", "y", "n", "0755"] {
+            assert!(
+                plain_text_is_typed(text),
+                "{text:?} resolves under YAML 1.1"
+            );
+        }
+        for text in ["port", "host", "text", "a", "v1", "2024-01-01", "0.1.2"] {
+            assert!(
+                !plain_text_is_typed(text),
+                "{text:?} is a string under both"
+            );
+        }
     }
 
     #[test]

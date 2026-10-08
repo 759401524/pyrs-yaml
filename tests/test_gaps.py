@@ -375,10 +375,15 @@ class TestSafeLoad:
         assert check(result[key]), f"Failed for {key}"
 
     def test_safe_load_with_special_float(self):
-        result = pyrs_yaml.safe_load("inf: .inf\nninf: -.inf\nnan: .nan")
-        assert math.isinf(result["inf"])
-        assert math.isinf(result["ninf"])
-        assert math.isnan(result["nan"])
+        result = pyrs_yaml.safe_load("a: .inf\nb: -.inf\nc: .nan")
+        assert math.isinf(result["a"])
+        assert math.isinf(result["b"])
+        assert math.isnan(result["c"])
+        # The spellings themselves are typed scalars, so as keys they resolve like the
+        # values they are - which is why the assertions above use neutral key names.
+        typed = pyrs_yaml.safe_load("inf: .inf\nnan: .nan")
+        assert math.isinf(next(iter(typed))), f"keys resolve too: {typed!r}"
+        assert math.isnan(list(typed)[1]), f"keys resolve too: {typed!r}"
 
 
 class TestSafeLoads:
@@ -619,7 +624,11 @@ class TestNestedMergeSourceIsApplied:
 
     def test_a_note_on_the_nested_key_does_not_change_the_meaning(self):
         spellings = ("<<:\n <<: #b\n  :", "<<:\n <<:\n  :")
-        assert [pyrs_yaml.safe_load(s) for s in spellings] == [{"~": None}] * 2
+        # The null key resolves to None like any other null scalar, and both spellings
+        # agree - which is the property this test exists for. (It read `{"~": None}`
+        # when written, because keys were never resolved at all; see
+        # tests/test_key_resolution_parity.py.)
+        assert [pyrs_yaml.safe_load(s) for s in spellings] == [{None: None}] * 2
         for src in spellings:
             once = pyrs_yaml.parse(src).to_yaml()
             assert pyrs_yaml.parse(once).to_yaml() == once, f"{src:?} -> {once:?}"

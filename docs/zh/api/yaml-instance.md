@@ -95,7 +95,7 @@ print(doc["name"])  # Alice
 将 YAML 解析为纯 Python `dict` 或 `list`，解析锚点和合并。
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str) -> dict[Any, Any] | list[Any]
 ```
 
 **Parameters:**
@@ -129,7 +129,7 @@ alias: *ref
 将多文档 YAML 字符串解析为 `dict`/`list` 对象的列表。
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **Parameters:**

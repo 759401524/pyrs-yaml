@@ -266,7 +266,7 @@ def safe_load(
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
-) -> dict[str, Any] | list[Any]:
+) -> dict[Any, Any] | list[Any]:
     return _safe_load(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
@@ -275,7 +275,7 @@ def safe_loads(
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
-) -> list[dict[str, Any] | list[Any]]:
+) -> list[dict[Any, Any] | list[Any]]:
     return _safe_loads(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
@@ -312,7 +312,7 @@ def read_markdown(
     content: str,
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
-) -> tuple[dict[str, Any] | None, str]:
+) -> tuple[dict[Any, Any] | None, str]:
     return _read_markdown(content, _coerce_schema(schema), max_depth)
 
 
@@ -320,7 +320,7 @@ def read_markdown_str(
     content: str,
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
-) -> tuple[dict[str, Any] | None, str]:
+) -> tuple[dict[Any, Any] | None, str]:
     return _read_markdown_str(content, _coerce_schema(schema), max_depth)
 
 

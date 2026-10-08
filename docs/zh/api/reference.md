@@ -99,7 +99,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 解析 YAML 并返回原生 Python 类型。
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str) -> dict[Any, Any] | list[Any]
 ```
 
 **等价于:** PyYAML 的 `yaml.safe_load()`
@@ -115,7 +115,7 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 解析多个 YAML 文档。
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **等价于:** PyYAML 的 `yaml.safe_loads()`
@@ -547,7 +547,7 @@ asyncio.run(main())
 从 Markdown 文件提取 YAML Front Matter。
 
 ```python
-read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 **返回值:** `(frontmatter_dict, content_string)`。没有Front Matter时，`frontmatter` 为 `None`。
@@ -557,7 +557,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 从 Markdown 字符串提取 YAML Front Matter。
 
 ```python
-read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 ## :material-translate: i18n 函数 {#i18n-functions}

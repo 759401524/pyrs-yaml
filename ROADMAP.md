@@ -854,6 +854,23 @@ stumbled into. **Consequence for #292:** reviving it is now a measured decision 
 resolution without the pre-check, ~1.5% Ir on the one channel users hit, and let the new bridge
 scenarios price the TOML quoting instead of guessing at it.
 
+**(at) The key-resolution change landed without the mitigation that made it look expensive (2026-10-08).**
+(as)'s verdict was applied rather than filed: `py/convert.rs` and `py/direct_load.rs` now resolve a
+mapping key with the value path itself, `load_toml` quotes a key that either YAML schema would re-type,
+and the byte-only pre-check inside `resolve_core_type` is **not** part of the change - it was measured
+as a pessimization on every scenario the gate has, so shipping it would have bought a regression in the
+engines to save nothing in the binding. The refreshed baseline says what the landed shape costs:
+`to_python_small` +1.539%, `to_python_medium` +1.592%, `to_python_anchors` +1.553%, and **0.002% or less
+on the other thirteen**. Among those thirteen is the number (as) predicted would only exist once the
+reader scenarios did: **`from_toml_medium` +6.196%** - four times the YAML key cost, on the half of the
+bridge that had never been measured at all, from `plain_text_is_typed` running the Core chain and the
+1.1 chain per key. That answer is deliberately conservative (a TOML or JSON key is a string by its own
+grammar and quoting is the shared AST's only marker for it; over-quoting is harmless, under-quoting is a
+type change), and it is now cheap to argue about: a one-chain form plus the 1.1 word list is a proposal
+the gate can price in one re-baseline instead of one more debate. Registered as the pillar-four follow-up
+rather than attempted in the same change - (as) and (ap) are both about what happens when a perf claim
+gets shipped ahead of the instrument that can check it.
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.

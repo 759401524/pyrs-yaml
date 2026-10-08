@@ -200,6 +200,15 @@ worse than doing nothing — a claim in a code comment, never measured, in the o
 can now see. That the same code repeated to 0.0–0.1 basis points across three CPU models is the
 cross-check that the pinned environment holds; the pair's deltas were identical in both runs.
 
+**The verdict was then applied, and the instrument paid for itself on the first use.** The
+key-resolution change landed in the pre-check-off form, and the landed cost is what the gate reports:
++1.539% / +1.592% / +1.553% on the binding channel, 0.002% or less on thirteen of the fourteen engine
+scenarios, and **+6.196% on `from_toml_medium`** — the reader scenario this section justifies itself
+with, because that is the half the change touches and the half no number had ever covered: the bridge
+resolves a candidate key through the Core chain *and* the 1.1 chain, where the object view resolves one
+scalar once. A cheaper one-chain form is now a proposal the gate can price in a re-baseline instead of
+an argument conducted without one.
+
 Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
 with a measured line instead of a vibe. That line is 0.5%. Within one run, three samples of each
 scenario spread at most 0.002% on the engine channel (`parse_inline_merge`, 7,792 instructions out of

@@ -58,7 +58,7 @@ class YAML:
         """
         Parse a YAML file and return a `YamlDocument`.
         """
-    def safe_load(self, /, yaml: "str") -> "dict[str, Any] | list[Any]":
+    def safe_load(self, /, yaml: "str") -> "dict[Any, Any] | list[Any]":
         """
         Parse YAML into a dict/list (resolves anchors and merges).
         """
@@ -493,12 +493,12 @@ def parse_stream(yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool
     Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
     """
 
-def read_markdown(path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]":
+def read_markdown(path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[Any, Any] | None, str]":
     """
     Read a Markdown file and extract YAML front matter, returning `(frontmatter, body)`.
     """
 
-def read_markdown_str(content: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]":
+def read_markdown_str(content: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[Any, Any] | None, str]":
     """
     Extract YAML front matter from a Markdown string, returning `(frontmatter, body)`.
     """
@@ -543,12 +543,12 @@ def safe_dump(data: "dict[str, Any] | list[Any]") -> "str":
     Serialize a Python dict/list to a YAML string.
     """
 
-def safe_load(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "dict[str, Any] | list[Any]":
+def safe_load(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "dict[Any, Any] | list[Any]":
     """
     Parse YAML into a Python dict/list, resolving anchors and merges.
     """
 
-def safe_loads(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "list[dict[str, Any] | list[Any]]":
+def safe_loads(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "list[dict[Any, Any] | list[Any]]":
     """
     Parse a multi-document YAML stream into a list of dicts/lists.
     """
