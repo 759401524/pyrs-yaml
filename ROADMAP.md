@@ -685,6 +685,43 @@ decides whether the gap still exists. It also settles a question #292 had been a
 instrument: its ~+19% local ratio and its -10.52% CodSpeed verdict are both measurements of a path the
 reproducible gate cannot see, which is why neither could be adjudicated against the other.
 
+**(ap) The registered hole closed by the artefact its own exit criterion named (2026-10-08).**
+`crates/pyrs-yaml/benches/ir_gate.rs` adds `to_python_small`, `to_python_medium` and
+`to_python_anchors`: the same fixture bytes the engine harness parses, measured one layer higher,
+through a `#[cfg(feature = "ir-gate")]` seam (`bench_to_python` in `crates/pyrs-yaml/src/py/functions.rs`)
+that mirrors `safe_load`'s AST path and skips the P3 direct-load shortcut on purpose — measuring the
+shortcut would report a different quantity than the one anchor- and tag-bearing data pays for, and an
+anchor-free fixture would have hidden a direct-load regression. `required-features` is load-bearing:
+`cargo codspeed run` executes every discovered bench target with no arguments, so an ungated scenario
+binary would exit 2 and redden the `Rust benchmarks` job. Each iteration has to convert one document or
+the harness exits 3 — the seam returns its error instead of defaulting it, because the tolerance
+punishes growth only, so a harness that quietly stopped doing the work would otherwise report a large
+improvement and pass. The entry deleted itself from the registry
+because `quality_matrix.py`'s derived graph gained `pyrs-yaml`, which is the exit criterion being
+honoured rather than a reader deciding the gap looked closed.
+
+**Building the second harness found a defect in the measurement of the first.** The scenario probe read
+`crates/pyrs-yaml-core/benches/ir_gate.rs` by name, so with two harnesses it would have compared twelve
+of fifteen names and let `--update` write a baseline missing an entire channel — the same class as #303's
+graph probe stopping at the first `[dependencies]` section, caught here by adding a harness instead of by
+luck. `ir_harness_channels()` now derives the harness list from the manifests and compares it against the
+files on disk in both directions (`ir-harness-missing`, `ir-harness-undeclared`), reports a scenario name
+listed by two harnesses (`ir-scenario-duplicate`, because one baseline number cannot say which channel
+produced it), and `ir_gate.py` refuses to build a scenario map from a harness that lists nothing. Each
+direction is tested by injection, not by reading the code. The refresh job's artifact also proved the
+committed baseline was part transcription: its `generated_by.note` was hand-written and `--update` writes
+no prose, so the next refresh would have dropped that paragraph and the diff would have read as a
+decision — the prose moved to `QUALITY_MATRIX.md`, and `tests/test_ir_baseline_workflow.py` pins the file's
+keys to exactly what the generator writes.
+
+Two limits recorded rather than smoothed over: the binding binary links CPython, so it builds anywhere
+and runs only on Linux (measured on Windows — `cargo bench --no-run` succeeds and the exe then dies at
+start-up with `0xC000021A`, before printing a scenario list), and `cargo clippy --all --all-targets`
+does not compile a `required-features` bench target, so the new file is guarded by building it, not by
+the lint job. What (ao) could only register is now an instrument: the conversion #292 changed has a
+counted-instruction number, so that dispute can be settled with the reproducible channel instead of two
+machines disagreeing.
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.

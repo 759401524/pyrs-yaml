@@ -135,6 +135,43 @@ pub(crate) fn safe_load(
     )
 }
 
+/// Feature-gated seam for the instruction-count harness (`crates/pyrs-yaml/benches/ir_gate.rs`).
+///
+/// Why a seam at all: the AST-to-Python conversion is the layer every user actually reaches
+/// (`safe_load`, `to_dict`) and the layer PR #292 changed, yet the reproducible instruction-count gate
+/// could not see it - the harness lived entirely inside `pyrs-yaml-core` and never linked this crate.
+/// That gap is the registered hole `perf-coverage:binding-layer`.
+///
+/// It mirrors `safe_load`'s AST path *without* the P3 direct-load fast path on purpose: measuring the
+/// shortcut would report a different quantity than the one anchor- and tag-bearing data actually pays
+/// for, and a direct-load regression could hide behind an anchor-free fixture. Not a `#[pyfunction]`:
+/// Rust-only, invisible to Python, and compiled out of every build that does not ask for it.
+///
+/// The error is returned, never swallowed. A fixture that stopped parsing would otherwise fall into an
+/// early return, the harness would count a fraction of its own work, and a one-sided tolerance reads
+/// that as an enormous speedup - the gate flags growth, so the dangerous direction is the silent
+/// improvement. The harness exits non-zero on `Err`, and `ir_gate.py` refuses a non-zero harness.
+#[cfg(feature = "ir-gate")]
+#[doc(hidden)]
+pub fn bench_to_python(yaml: &str) -> Result<usize, pyo3::PyErr> {
+    pyo3::Python::attach(|py| {
+        let schema = parse_schema("core")?;
+        let mut ast = crate::parser::parse_with_options(yaml, true, schema.clone(), 1000, false)
+            .map_err(|e| parse_error_to_py_err(e, yaml, 1000))?;
+        resolve_tags(&mut ast, py)?;
+        let value = crate::py::convert::node_to_pyobject_resolving_anchors(
+            &ast,
+            py,
+            &schema,
+            yaml.bytes().any(|b| b == b'&'),
+        )?;
+        // An opaque read that keeps the object alive past the call without adding allocator-visible
+        // work; the harness counts one per iteration, so the conversion cannot be elided and cannot
+        // silently stop happening.
+        Ok(usize::from(!value.as_ptr().is_null()))
+    })
+}
+
 #[pyfunction]
 #[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[dict[str, Any] | list[Any]]")]
 /// Parse a multi-document YAML stream into a list of dicts/lists.

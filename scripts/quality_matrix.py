@@ -38,6 +38,13 @@ SERIALIZER_RE = re.compile(
 )
 
 
+# The declaration that a crate owns an instruction-count harness: a `[[bench]]` target gated behind
+# the `ir-gate` feature. Read from the manifest, not from the file list, because the gate builds what
+# the manifest declares - a `benches/ir_gate.rs` with no such target is never compiled, and its
+# scenarios would sit in the baseline unmeasured.
+IR_GATE_TARGET_RE = re.compile(r'^\[\[bench\]\][^\[]*?required-features *= *\[[^\]]*"ir-gate"', re.S | re.M)
+
+
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
@@ -148,13 +155,46 @@ def check_scripts() -> list[str]:
     return sorted(p.name for p in (REPO / "scripts").glob("check_*.py"))
 
 
-def ir_scenarios_in_bench() -> list[str]:
-    text = read(REPO / "crates" / "pyrs-yaml-core" / "benches" / "ir_gate.rs")
-    body = text.split("fn scenarios()", 1)[-1].split("fn main()", 1)[0]
-    # Scenario names are the lowercase string literals; the inputs are `SCREAMING_CASE`
-    # constants and `Work::Variant` paths. Matching the whole tuple instead missed
-    # `serialize_block_scalars`, whose name sits on its own line after a wrap.
-    return sorted(set(re.findall(r'"([a-z_0-9]{4,})"', body)))
+def ir_harness_owners() -> list[str]:
+    """Crates declaring an `ir_gate` bench target: the channels the gate can measure.
+
+    Two since the binding layer was closed - `pyrs-yaml-core` (parse, serialize, JSON/TOML writers)
+    and `pyrs-yaml` (AST-to-Python). Derived from the manifests rather than hardcoded, so adding a
+    third crate adds scenarios to the comparison without editing this file.
+    """
+    return sorted(
+        manifest.parent.name
+        for manifest in (REPO / "crates").glob("*/Cargo.toml")
+        if IR_GATE_TARGET_RE.search(read(manifest))
+    )
+
+
+def ir_harness_files() -> list[str]:
+    """Crates that carry a `benches/ir_gate.rs`, whether or not anything builds it."""
+    return sorted(path.relative_to(REPO).parts[1] for path in (REPO / "crates").glob("*/benches/ir_gate.rs"))
+
+
+def ir_harness_channels() -> dict:
+    """crate -> the scenario names its harness declares, for every crate the gate builds.
+
+    The old probe read `crates/pyrs-yaml-core/benches/ir_gate.rs` by name, which is the same failure
+    class as the graph probe that stopped at the first dependency section: when a second harness
+    appeared, the scenarios only it lists would have been absent from the comparison, so the committed
+    baseline could carry numbers nobody re-measured and the gate could not say a channel went missing.
+    """
+    channels = {}
+    for crate in ir_harness_owners():
+        path = REPO / "crates" / crate / "benches" / "ir_gate.rs"
+        if not path.exists():
+            channels[crate] = []
+            continue
+        text = read(path)
+        body = text.split("fn scenarios()", 1)[-1].split("fn main()", 1)[0]
+        # Scenario names are the lowercase string literals; the inputs are `SCREAMING_CASE`
+        # constants and `Work::Variant` paths. Matching the whole tuple instead missed
+        # `serialize_block_scalars`, whose name sits on its own line after a wrap.
+        channels[crate] = sorted(set(re.findall(r'"([a-z_0-9]{4,})"', body)))
+    return channels
 
 
 def ir_scenarios_in_baseline() -> list[str]:
@@ -209,10 +249,9 @@ def ir_harness_build_graph() -> set[str]:
     that graph is invisible to instruction-count gating no matter what the scenario is named.
     """
     crates: set[str] = set()
-    for manifest in sorted((REPO / "crates").glob("*/Cargo.toml")):
+    for crate in ir_harness_owners():
+        manifest = REPO / "crates" / crate / "Cargo.toml"
         text = read(manifest)
-        if not re.search(r'^\[\[bench\]\][^\[]*?required-features *= *\[[^\]]*"ir-gate"', text, re.S | re.M):
-            continue
         crates.add(manifest.parent.name)
         # Every dependency section, not the first one. `re.search` here reported a three-crate graph
         # while `to_json_medium` / `to_toml_medium` link `pyrs-json` and `pyrs-toml` through
@@ -247,7 +286,8 @@ def measure() -> dict:
     ci_targets = fuzz_ci_matrix()
     engines = engine_crates(fuzz_crates())
     scripts = check_scripts()
-    bench_scenarios = ir_scenarios_in_bench()
+    channels = ir_harness_channels()
+    bench_scenarios = sorted({name for names in channels.values() for name in names})
     baseline_scenarios = ir_scenarios_in_baseline()
     props = property_functions()
 
@@ -299,6 +339,41 @@ def measure() -> dict:
         holes.append(["ir-unbaselined", scenario, "a measured scenario has no committed baseline number"])
     for scenario in sorted(set(baseline_scenarios) - set(bench_scenarios)):
         holes.append(["ir-stale-baseline", scenario, "the baseline carries a scenario the bench no longer defines"])
+
+    # The harness set is measured in both directions, because each half has already been wrong once.
+    # A declared target whose file is missing leaves the gate silently shorter; a file whose crate
+    # declares no target compiles never, so its scenarios would be numbers in a JSON file and nothing
+    # else. And two harnesses naming one scenario makes the baseline ambiguous - `ir_gate.py` refuses
+    # that at run time, and the probe refuses it here so the refusal is not the only defence.
+    for crate in sorted(set(channels) - set(ir_harness_files())):
+        holes.append(
+            [
+                "ir-harness-missing",
+                crate,
+                "the gate declares an ir_gate target for this crate, but benches/ir_gate.rs is not there",
+            ]
+        )
+    for crate in sorted(set(ir_harness_files()) - set(channels)):
+        holes.append(
+            [
+                "ir-harness-undeclared",
+                crate,
+                "a benches/ir_gate.rs exists in a crate with no `ir-gate` bench target, so nothing builds it",
+            ]
+        )
+    owner_of: dict = {}
+    for crate, names in channels.items():
+        for name in names:
+            if name in owner_of:
+                holes.append(
+                    [
+                        "ir-scenario-duplicate",
+                        name,
+                        f"{owner_of[name]} and {crate} both list it, so one baseline number cannot say which was measured",
+                    ]
+                )
+            else:
+                owner_of[name] = crate
 
     ci_commands = " ".join(commands_by_workflow.get("ci.yml", []))
     if "--all-targets" not in ci_commands:
@@ -358,6 +433,7 @@ def measure() -> dict:
 
     return {
         "ir_harness_crates": sorted(ir_graph),
+        "ir_harness_owners": sorted(channels),
         "python_serving_crate": [served_by] if served_by else [],
         "engines_with_serializer": engines,
         "fuzz_targets": targets,
@@ -366,6 +442,7 @@ def measure() -> dict:
         "hooks_skipped_in_ci": skipped,
         "check_scripts": scripts,
         "ir_scenarios_bench": bench_scenarios,
+        "ir_scenario_channels": [f"{crate}:{len(names)}" for crate, names in sorted(channels.items())],
         "ir_scenarios_baseline": baseline_scenarios,
         "property_function_count": len(props),
         "property_functions": props,
@@ -377,6 +454,7 @@ def measure() -> dict:
 
 SUMMARY_KEYS = (
     "ir_harness_crates",
+    "ir_harness_owners",
     "python_serving_crate",
     "engines_with_serializer",
     "fuzz_targets",
@@ -385,6 +463,7 @@ SUMMARY_KEYS = (
     "hooks_skipped_in_ci",
     "check_scripts",
     "ir_scenarios_bench",
+    "ir_scenario_channels",
     "ir_scenarios_baseline",
     "property_function_count",
     "route_parity_tests",

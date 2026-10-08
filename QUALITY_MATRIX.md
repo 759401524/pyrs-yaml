@@ -3,7 +3,8 @@
 Assessment of how this repository finds defects, and the gate that keeps the assessment
 true. Everything below is measured out of the files that declare the defence
 (`.github/workflows/*.yml`, `prek.toml`, `fuzz/Cargo.toml`, `scripts/check_*.py`,
-`crates/pyrs-yaml-core/benches/ir_gate.rs`, `.ci/ir-baseline.json`) by
+`crates/pyrs-yaml-core/benches/ir_gate.rs`, `crates/pyrs-yaml/benches/ir_gate.rs`,
+`.ci/ir-baseline.json`) by
 `scripts/quality_matrix.py`. `tests/test_quality_matrix.py` re-runs that measurement on
 every pull request and compares it with `.ci/quality-holes.json`, so neither the numbers
 nor the list of known blind spots can rot into prose nobody checks.
@@ -67,7 +68,10 @@ and `#` runs to end of line, so the reader hands that note to the *following* ke
 emission moved it. Withdrawing the fixed rule leaves all 354 tests green at proptest's default
 256 cases once the persisted shrink case is removed: that count never generates two members
 whose first carries a same-line note, so the case count was load-bearing, not decorative. `ci.yml`
-now runs a blocking `property tier (20k cases)` job. That closed the last hole then open; the registry carries a new one, found by measuring what the instrument compiles (below).
+now runs a blocking `property tier (20k cases)` job. That closed the last hole then open; the registry
+carried a new one, found by measuring what the instrument compiles rather than what it names — and
+that hole is closed too, by the second harness described under *Registered blind spots*, not by an
+edit to the registry.
 
 **The exception list this section describes was itself the error.** Three inputs were
 moved out of the replayed corpus and registered as unsettled writers on the strength of
@@ -123,8 +127,8 @@ review habit:
   `main`, while a Windows checkout inserts them again - so "the CRLFs here are the measured
   input" had been describing whichever tree the last author committed, not repository content. Drift between runner images - two images on one commit agree to 0.0018%.
   The gap is therefore **open**, and what closed is the practice of comparing across unknown
-  machines: `.ci/ir-baseline.json` now carries the enforcing environment's own twelve values, a
-  `generated_by` banner, a 0.5% line sized from that measured agreement (~280x the observed spread),
+  machines: `.ci/ir-baseline.json` now carries the enforcing environment's own values (fifteen, since
+  the binding harness joined it), a `generated_by` banner, a 0.5% line sized from that measured agreement (~280x the observed spread),
   and `ir_gate.py` prints which machine generated the numbers versus which is reading them - a WSL
   run shows it. `tests/test_line_endings_gate.py` pins the exclusion list against `.gitattributes`
   and against the tree that produced it, so stored bytes and measured bytes cannot drift apart
@@ -152,20 +156,32 @@ Non-obvious consequence for performance claims: the Ir gate is the only reproduc
 instrument in the set, and it is what flagged a real cost in #292 (plain-string mapping
 keys, ~+19% in a drift-free local ratio) that wall-clock CodSpeed had already noticed at
 −10%. Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
-with a 2% line instead of a vibe.
+with a measured line instead of a vibe. That line is 0.5%, sized from the agreement between
+two GitHub runner images on one commit (worst spread 0.0018%: `parse_anchors`, 6,061
+instructions out of 341M; the largest absolute gap of the set is `parse_inline_merge`, 4,145
+out of 451M) — roughly 280x what was observed. What the old 2% was: the distance between a
+WSL-generated baseline and the same code measured on a runner (+1.45% on
+`serialize_block_scalars`), a gap two hypotheses tried to explain and neither did. The
+numbers now come from the enforcing image, so the margin is no longer spent on the
+environment gap; the +1.45% itself stays **unexplained and recorded**, not absorbed.
 
-**How much of that 2% is left is itself a measurement, and it was never taken until now.**
+**How much of that band is left is itself a measurement, and it was never taken until now.**
 Re-measuring the committed scenarios against the current tree, in the image that generated
 them, moved them by −2.35% (`parse_anchors`) to +1.61% (`serialize_anchors`), while the three
 scenarios added by this document's own re-run repeated at ±0.0005% — so the spread is not
 instrument noise, it is drift accumulated since the baseline was taken, and the direction is
 the dangerous one: every PR that made the engine faster widened the accepted band, so a 2.35%
 regression on `parse_anchors` today reads as no change at all, and `serialize_anchors` has
-0.39 points of headroom left. Two things follow. `.github/workflows/ir-baseline.yml`
-regenerates the numbers on the image that enforces them - which has since happened, and is where
-the twelve committed values below come from; and `ir_gate.py --update --only <scenario>` now merges into the
-committed file and refuses to write a baseline with a missing number, because the first version
-silently reduced twelve scenarios to the one it had measured.
+0.39 points of headroom left. Three things follow. `.github/workflows/ir-baseline.yml`
+regenerates the numbers on the image that enforces them — which has since happened, and is
+where every value in `.ci/ir-baseline.json` comes from. `ir_gate.py --update --only <scenario>`
+now merges into the committed file and refuses to write a baseline with a missing number,
+because the first version silently reduced the scenario set to the one it had measured. And the
+file has to be re-generable in full: its first committed version carried a hand-written
+`generated_by.note` explaining its own provenance, `--update` writes no prose, so the next
+refresh would have deleted that paragraph and the diff would have read as a decision. The
+explanation lives in this document; the file's keys are pinned by
+`tests/test_ir_baseline_workflow.py` to exactly what the job writes.
 
 ## 3. Root-cause depth
 
@@ -223,14 +239,39 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
-| `perf-coverage:binding-layer` | the instruction gate links `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`, `pyrs-toml` and never the crate that serves Python, so `safe_load`'s AST-to-Python conversion has no reproducible performance number | a scenario in an `ir_gate` harness compiled against the binding crate, with its own committed baseline number (`scripts/ir_gate.py --update --only <name>`) |
 
 This table is a measurement, not a mood: `scripts/quality_matrix.py` re-derives it on every
 pytest run and `tests/test_quality_matrix.py` fails in both directions — a hole that appears
-unregistered, and a registered hole the measurement no longer reproduces. It was empty after
-the property tier closed, and it is not empty now, because the same measurement looked at a
-new question: not which scenarios the perf gate names, but which crates it can link. The
-binding layer fails that test, and the row above is what admitting it looks like.
+unregistered, and a registered hole the measurement no longer reproduces. It has been empty twice,
+and both transitions were measured rather than declared. It was empty after the property tier
+closed; the same measurement then asked a new question — not which scenarios the perf gate names,
+but which crates it can link — and the crate that serves the Python API failed it. That is how
+`perf-coverage:binding-layer` was registered (#302), with the artefact that would remove it named
+in its exit criterion.
+
+`crates/pyrs-yaml/benches/ir_gate.rs` is that artefact: `to_python_small`, `to_python_medium` and
+`to_python_anchors` — the same fixture bytes as the engine harness, measured one layer higher,
+reaching the conversion through a `#[cfg(feature = "ir-gate")]` seam (`bench_to_python`) that
+mirrors `safe_load`'s AST path and skips the P3 direct-load shortcut deliberately, because an
+anchor-free fixture would have reported the shortcut, which is a different quantity than the one
+tag- and anchor-bearing data pays for. The entry left the registry because the derived graph gained
+`pyrs-yaml`, which is the registry working as designed: the deletion is enforced by the same test
+that would have caught an unregistered hole. Two limits are recorded rather than smoothed over:
+this binary links CPython, so it builds anywhere and runs only on Linux (measured on Windows —
+`cargo bench --no-run` succeeds, then the exe dies at start-up with `0xC000021A`), and
+`cargo clippy --all --all-targets` does not compile a `required-features` bench target, so the new
+file is checked by building it, not by the lint job.
+
+Closing a hole with a second harness is also how a third defect of a familiar class turned up: a
+reader that stops early passes silently, which is exactly what #303's graph probe had done. The
+scenario probe named `crates/pyrs-yaml-core/benches/ir_gate.rs` outright, so with two harnesses it
+would have compared twelve of fifteen names and let `--update` write a baseline missing an entire
+channel. `ir_harness_channels()` now derives the harness list from the manifests and compares it
+with the harness files on disk in both directions — a declared target whose harness source vanished,
+and a harness file whose crate declares no target, so that nothing ever compiles it — and one scenario
+name in two harnesses is a finding too, because a single baseline number cannot say which channel
+produced it. `ir_gate.py` refuses the same collision at run time, and refuses to write a baseline
+from a harness it cannot list: an unreadable harness is not an empty one.
 
 Closed while this document was written, and therefore absent from the registry on
 purpose: the hook tier being unwired, `cargo fmt` reaching no job, CI's clippy skipping
@@ -239,10 +280,11 @@ tests and benches, the two YAML writers having no comparison against each other
 empty-container spelling still unfixed at the mapping-value site of `direct_dump` —
 the second occurrence of the same class, the day after the hole was registered), the
 line-ending policy having no enforceable form, the conflict-marker-shaped hole
-above, and the property tier running at 256 cases — which is where the TOML inline-table
+above, the property tier running at 256 cases — which is where the TOML inline-table
 note placement defect hid, and whose closure needed both a writer fix and a wider reject
 budget, because at 20 000 cases two of the three properties were dying on the harness's own
-allowance rather than on an assertion.
+allowance rather than on an assertion — and `perf-coverage:binding-layer`, opened by measuring what
+the instrument compiles and closed by building the harness it named.
 
 ## Improvement plan
 
@@ -267,13 +309,15 @@ is done when its test is green, not when the change is merged.
   described the gap, recorded above rather than edited out.
   Acceptance: every hole this item covered deleted from the registry, and the measurement
   agreeing with what is left.
-- **P2-F, Ir baseline breadth** (`partly done`): the `to_json`, `to_toml` and inline-merge
-  scenarios are in the gate (12 measured scenarios, twelve committed numbers), `--update --only`
-  can no longer write a short baseline, and `ir-baseline.yml` regenerates the numbers on the
-  enforcing image. What remains is to *run* that job on `main` and commit its artifact, which
-  replaces the WSL-measured numbers, and only then to argue the tolerance down from repeat
-  precision. Acceptance: `.ci/ir-baseline.json` carries the runner's toolchain banner, and the
-  tolerance is justified by a measured repeat rather than by the +1.45% cross-image gap.
+- **P2-F, Ir baseline breadth** (`done`): the `to_json`, `to_toml` and inline-merge scenarios are in
+  the gate, and so are the three `to_python_*` scenarios that close `perf-coverage:binding-layer` — 15
+  measured scenarios, 15 committed numbers. `--update --only` can no longer write a short baseline,
+  `ir-baseline.yml` regenerates the numbers on the enforcing image, and its artifact is what is
+  committed: the runner's toolchain banner is in the file, and the 0.5% line is sized from the measured
+  agreement between two images on one commit instead of from the +1.45% WSL-to-runner gap. Why that gap
+  exists on `serialize_block_scalars` is still **unresolved**, and it is recorded above rather than
+  absorbed into a wider tolerance. Acceptance: `tests/test_ir_baseline_workflow.py` pins the committed
+  keys to exactly what `--update` writes, and `ir-unbaselined` / `ir-stale-baseline` stay empty.
 
 ## Reading this document
 

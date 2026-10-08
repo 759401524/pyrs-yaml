@@ -31,6 +31,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- **The instruction gate now measures the AST-to-Python conversion, closing `perf-coverage:binding-layer`**
+  — `crates/pyrs-yaml/benches/ir_gate.rs` adds `to_python_small`, `to_python_medium` and
+  `to_python_anchors` over the same fixture bytes the engine harness parses, so the layer every user
+  reaches has a counted-instruction number for the first time. It measures `safe_load`'s AST path and
+  not the P3 direct-load shortcut, deliberately: an anchor-free fixture would otherwise report a
+  different quantity than the one tag- and anchor-bearing data pays for. A failed or empty conversion
+  makes the harness exit instead of counting a cheap iteration: the tolerance punishes growth only, so
+  a harness that quietly stopped doing the work would otherwise report a large improvement and pass.
+  `scripts/ir_gate.py` now builds
+  both harnesses into one scenario map (a name listed twice is an error, and a harness that lists
+  nothing is an error - the second would otherwise let `--update` rewrite the baseline with that
+  channel's rows missing and let the gate pass by comparing nothing).
+  `quality_matrix.py`'s derived graph gained `pyrs-yaml` and the hole disappeared on its own, which is
+  the registry working as designed: the deletion of the entry is enforced by the same test that would
+  have caught an unregistered new hole. Two limits recorded rather than smoothed over: this binary links
+  CPython, so it runs only on Linux (measured on Windows: builds fine, then dies at start-up with
+  `0xC000021A`), and `cargo clippy --all --all-targets` does not lint a feature-gated bench, so the new
+  file is checked by building it, not by the lint job.
 - **The defence measured a gap in itself: the instruction gate cannot reach the Python binding** —
   `quality_matrix.py` now derives the crates the `ir_gate` harness actually links (the bench owner
   plus its workspace dependencies: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`,
@@ -272,6 +290,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **The instruction gate read one harness file by name, and its baseline was part transcribed** — with
+  `crates/pyrs-yaml/benches/ir_gate.rs` in the tree, the scenario probe that named only
+  `crates/pyrs-yaml-core/benches/ir_gate.rs` would have compared twelve of fifteen names: a channel the
+  baseline never carried, and one `ir-unbaselined` could not report — the same class as #303's graph
+  probe stopping at the first `[dependencies]` section. `ir_harness_channels()` derives the harness list
+  from the manifests now and compares it against the files on disk in both directions
+  (`ir-harness-missing` for a declared target whose harness source is gone, `ir-harness-undeclared` for
+  a harness file nothing compiles), and reports one scenario name listed by two harnesses
+  (`ir-scenario-duplicate`), because a single baseline number cannot say which channel produced it;
+  `tests/test_quality_matrix.py` reddens on each of those injections. The committed baseline had a
+  second problem: its `generated_by.note` was hand-written prose that `ir_gate.py --update` never
+  writes, so the next refresh artifact would have dropped the paragraph explaining the file's own
+  provenance and the diff would have read as a decision. The reasoning moved to `QUALITY_MATRIX.md`,
+  `--update` writes a generated note, and `tests/test_ir_baseline_workflow.py` pins the committed keys
+  to exactly what the job writes.
 - **`Test matrix (all legs)` waited on three jobs of eleven, so eight could still merge red** — the
   fan-in added in #300 covered `test`, `test-freethreaded` and `coverage`, which left
   `rust-lint` (clippy), `property-tier`, `msrv-check`, `no-std-check`, `build`,

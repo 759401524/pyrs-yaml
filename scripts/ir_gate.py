@@ -10,10 +10,17 @@ to within 0.004% on the same binary, so a committed baseline can gate a real
 one-percent tolerance. See `crates/pyrs-yaml-core/benches/ir_gate.rs` for the
 measurement method (setup-only pass subtracted out, fixed iteration count).
 
+Two harnesses feed one baseline: the engine crate's (parse, serialize, the JSON and
+TOML writers) and the binding crate's (`to_python_*`, the AST-to-Python conversion
+`safe_load` performs). The second one links CPython, so it builds anywhere and runs
+only on Linux — measured on Windows, the binary dies at start-up with `0xC000021A`
+before printing anything. Run this script where `valgrind` is: the GitHub runner or
+WSL, never a bare Windows host.
+
 Usage:
     python scripts/ir_gate.py                 # measure and gate
     python scripts/ir_gate.py --update        # re-measure, rewrite the baseline
-    python scripts/ir_gate.py --only serialize_small --only parse_medium
+    python scripts/ir_gate.py --only serialize_small --only to_python_medium
     python scripts/ir_gate.py --tolerance 0.02
     python scripts/ir_gate.py --report-only   # measure, never fail (diagnostics)
 
@@ -35,8 +42,11 @@ import tempfile
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 BASELINE = REPO / ".ci" / "ir-baseline.json"
-CRATE = "pyrs-yaml-core"
-BENCH = "ir_gate"
+# Two harnesses, one gate. `pyrs-yaml-core` measures parse and serialize; `pyrs-yaml` measures the
+# AST-to-Python conversion that users actually call and that the engine harness cannot link at all -
+# the gap registered as `perf-coverage:binding-layer`. Both are built the same way and both feed the
+# same baseline file, so a scenario from either channel is compared against the same provenance rule.
+HARNESSES = (("pyrs-yaml-core", "ir_gate"), ("pyrs-yaml", "ir_gate"))
 
 # Calibrated by measurement, and twice recalibrated by measurement that refuted the earlier
 # explanation.
@@ -69,6 +79,17 @@ BENCH = "ir_gate"
 # hint to re-measure, not to widen the line. `--update` regenerates both numbers and provenance.
 DEFAULT_TOLERANCE = 0.005
 
+# Written into every baseline this script generates, verbatim. The first committed baseline carried a
+# hand-written `generated_by.note` explaining where its numbers came from; `--update` does not write
+# prose, so the refresh job's artifact silently dropped that paragraph, and a file that is part
+# transcription and part measurement cannot be re-generated faithfully. The explanation now lives in
+# `QUALITY_MATRIX.md` (section 2), and `tests/test_ir_baseline_workflow.py` pins the committed keys to
+# exactly what `--update` writes.
+PROVENANCE_NOTE = (
+    "Written by `scripts/ir_gate.py --update`; no value in this file is transcribed. The reasoning "
+    "behind the tolerance, and the measurements that sized it, are in QUALITY_MATRIX.md section 2."
+)
+
 
 def environment() -> str:
     """A one-line description of where this measurement came from.
@@ -89,7 +110,7 @@ def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, check=False, text=True, **kw)
 
 
-def build_exe() -> str:
+def build_exe(crate: str, bench: str) -> str:
     """Return the release benchmark binary, via cargo's JSON so no filename
     guessing (hash suffixes change with every build).
 
@@ -103,9 +124,9 @@ def build_exe() -> str:
             "cargo",
             "bench",
             "-p",
-            CRATE,
+            crate,
             "--bench",
-            BENCH,
+            bench,
             "--features",
             "ir-gate",
             "--no-run",
@@ -122,9 +143,9 @@ def build_exe() -> str:
         except json.JSONDecodeError:
             continue
         exe = msg.get("executable")
-        if exe and f"{BENCH}-" in pathlib.Path(exe).name:
+        if exe and f"{bench}-" in pathlib.Path(exe).name:
             return exe
-    sys.exit("cargo did not report an ir_gate executable")
+    sys.exit(f"cargo did not report an {bench} executable for {crate}")
 
 
 def callgrind_total(exe: str, args: list[str]) -> int:
@@ -183,12 +204,31 @@ def main() -> int:
     ap.add_argument("--report-only", action="store_true", help="print measurements, never fail")
     args = ap.parse_args()
 
-    exe = build_exe()
-    listed = run([exe, "--list"], capture_output=True).stdout.split()
-    scenarios = [s for s in listed if not args.only or s in args.only]
+    # One build per harness, one scenario -> binary map across both. A scenario name is unique by
+    # convention (`to_python_*` on the binding side), and a collision would silently measure the wrong
+    # channel, so it is checked rather than assumed.
+    exes: dict[str, str] = {}
+    for crate, bench in HARNESSES:
+        exe = build_exe(crate, bench)
+        listed_proc = run([exe, "--list"], capture_output=True)
+        names = listed_proc.stdout.split()
+        if listed_proc.returncode != 0 or not names:
+            sys.exit(
+                f"{crate}/{bench} listed nothing (exit {listed_proc.returncode}).\n"
+                f"{listed_proc.stderr.strip()[-500:]}\n"
+                "An unreadable harness is not an empty one: treating it as such would let `--update`"
+                " rewrite the committed baseline without that channel's scenarios, and let the gate"
+                " pass by comparing nothing. This binary links CPython, so on a host without a"
+                " discoverable interpreter it fails at start-up - run the gate on Linux (WSL or CI)."
+            )
+        for name in names:
+            if name in exes:
+                sys.exit(f"scenario {name!r} is listed by two harnesses; the measurement would be ambiguous")
+            exes[name] = exe
+    scenarios = [s for s in exes if not args.only or s in args.only]
     toolchain = rustc_banner()
 
-    measured = {s: loop_instructions(exe, s) for s in scenarios}
+    measured = {s: loop_instructions(exes[s], s) for s in scenarios}
 
     if args.update:
         # `--update --only X` used to write a baseline containing *only* X: every other
@@ -201,6 +241,7 @@ def main() -> int:
             if not BASELINE.exists():
                 sys.exit(f"--update --only needs the existing baseline at {BASELINE}; it is missing")
             previous = dict(json.loads(BASELINE.read_text(encoding="utf-8"))["scenarios"])
+        listed = sorted(exes)
         final: dict[str, int] = {}
         for name in listed:
             if name in measured:
@@ -212,7 +253,12 @@ def main() -> int:
         BASELINE.parent.mkdir(exist_ok=True)
         payload = {
             "toolchain": toolchain,
-            "generated_by": {"environment": environment(), "rustc": rustc_short(toolchain), "tool": "callgrind"},
+            "generated_by": {
+                "environment": environment(),
+                "rustc": rustc_short(toolchain),
+                "tool": "callgrind",
+                "note": PROVENANCE_NOTE,
+            },
             "tolerance_hint": args.tolerance if args.tolerance is not None else DEFAULT_TOLERANCE,
             "scenarios": final,
         }

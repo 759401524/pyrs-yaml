@@ -29,6 +29,20 @@ status: new
 
 #### 追加
 
+- **命令数ゲートが AST→Python 変換を測るようにし、`perf-coverage:binding-layer` を閉じた** —
+  `crates/pyrs-yaml/benches/ir_gate.rs` に `to_python_small`、`to_python_medium`、
+  `to_python_anchors` を追加し、engine ハーネスと同じ入力バイトについて、全ての利用者が到達する層が
+  はじめて命令数を測られるようになった。意図的に P3 の直接ロード近路ではなく `safe_load` の AST 路を
+  測る: 錨なしの fixture だと、タグや錨のあるデータが実際に払う量と別の量を測ってしまう。変換が失敗したり
+  空なら、ハーネスは安い反復として数えるのではなく終了する: 許容差は増加だけを咎めるため、いつの間にやら
+  仕事をやめたハーネスは大きな「改善」を報告して通過してしまうことになる。
+  `scripts/ir_gate.py` は両ハーネスを一つのシナリオ表に統合し（名の重複はエラー、何も列挙しない
+  ハーネスもエラー - 後者を許すと `--update` がその系の行を欠いた基準値を書き換え、何も比較しないまま
+  通過しうる）。`quality_matrix.py` の導出グラフに `pyrs-yaml` が入り、穴は自然に消えた — 登録の解除が
+  強制される検査は、新しい穴を未登録で通すのを拒むのと同じものなので、台帳の設計通り。曖昧にしない
+  限界が二つ: この実行ファイルは CPython をリンクするので Linux 専用（Windows ではビルドは通るが起動時に
+  `0xC000021A` で落ちる実測）、そして `cargo clippy --all --all-targets` は feature 指定つきの bench を
+  見ないので、新ファイルは lint ではなくビルドで検証される。
 - **防衛策が自分自身の穴を測った: 命令数ゲートは Python バインディングに届かない** —
   `quality_matrix.py` は `ir_gate` ハーネスが実際にリンクする crate（bench の所属 crate とその
   workspace 依存: `pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`）を導出し、
@@ -240,6 +254,19 @@ status: new
 
 #### 修正
 
+- **命令数ゲートはハーネスファイルを 1 個名指しで読んでおり、基準値は一部手書きだった** —
+  `crates/pyrs-yaml/benches/ir_gate.rs` がツリーに入った後でも、
+  `crates/pyrs-yaml-core/benches/ir_gate.rs` だけ名指ししていたシナリオ・プローブは 15 名のうち 12 名
+  しか照合しない: ある系がまるごと基準値に入らないまま、`ir-unbaselined` にも出ない — #303 の graph
+  プローブが最初の `[dependencies]` で止まったのと同じ類だ。`ir_harness_channels()` は manifest から
+  ハーネス一覧を導出し、ディスク上のファイルと双方向で照合する（宣言はあるがソースが消えていれば
+  `ir-harness-missing`、ハーネスファイルはあるが誰もビルドしていなければ `ir-harness-undeclared`）、
+  二つのハーネスが同じシナリオ名を列挙すれば `ir-scenario-duplicate` — 基準値 1 個ではどちらの系か
+  言えない。これらの注入は `tests/test_quality_matrix.py` がそれぞれ赤くする。提出済みの基準値には
+  二つ目の問題があった: `generated_by.note` は手書きの文章で `ir_gate.py --update` は文章を書かない
+  ため、次の再生成 artifact はこのファイルの来歴を説明する段落を消し、diff は判断が下されたように
+  読まれたはずだ。根拠は `QUALITY_MATRIX.md` へ移し、`--update` が生成された note を書き、提出された
+  key は `tests/test_ir_baseline_workflow.py` が job の出力そのものに固定する。
 - **`Test matrix (all legs)` は 11 個の job のうち 3 個しか待っておらず、8 個は赤のまま合并できた** —
   #300 で入れた扇入は `test`、`test-freethreaded`、`coverage` のみをカバーし、`rust-lint`(clippy)、
   `property-tier`、`msrv-check`、`no-std-check`、`build`、`compliance-report`、`i18n-check` を全体の

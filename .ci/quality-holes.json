@@ -12,12 +12,5 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
-  "holes": [
-    {
-      "id": "perf-coverage:binding-layer",
-      "opened": "2026-10-08",
-      "why": "The instruction-count gate is the only reproducible perf instrument in the set (two runner images agree to 0.0018%), and `ir_gate` compiles against pyrs-yaml-core, pyrs-ast, pyrs-schema, pyrs-json and pyrs-toml - never pyrs-yaml, the crate that serves the Python API. So the conversion every user goes through (`safe_load`, `to_python`) has no number that can gate a regression: wall-time CodSpeed covers it, and this repository's own notes report that channel swinging +-7.7/-10.5/-9.8% on runs that did strictly less work. Found by deriving the harness's build graph, not by reading scenario names.",
-      "exit": "A scenario in an `ir_gate` bench target compiled against the binding crate (PyO3 + a Python interpreter, so `PYO3_PYTHON` and the `abi3` feature are in scope) measures the AST-to-Python conversion in counted instructions, with its own number committed through `python scripts/ir_gate.py --update --only <name>`; the probe then stops emitting this hole because the crate is in the graph."
-    }
-  ]
+  "holes": []
 }

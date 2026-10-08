@@ -28,6 +28,20 @@ status: new
 
 #### 추가
 
+- **명령 수 게이트가 AST→Python 변환을 재도록 해서 `perf-coverage:binding-layer`를 닫았다** —
+  `crates/pyrs-yaml/benches/ir_gate.rs`에 `to_python_small`, `to_python_medium`, `to_python_anchors`를
+  추가했다. engine 하네스가 파싱하는 것과 같은 입력 바이트로, 모든 이용자가 도달하는 층이 처음으로
+  명령 수 값을 갖는다. P3 직접 로드 지름길이 아니라 `safe_load`의 AST 경로를 재는 것이 의도다: 닻 없는
+  fixture로는 태그·닻이 있는 데이터가 실제로 치르는 값과 다른 값을 재게 된다. 변환이 실패하거나 비면
+  게이트는 값싼 반복으로 세지 않고 빠져나간다: 허용차는 증가만 징벌하므로, 몰래 작업을 멈춘 하네스는 큰
+  개선으로 보고하고 통과할 것이기 때문이다. `scripts/ir_gate.py`는 두
+  하네스를 하나의 시나리오 표로 합친다(이름 중복은 오류, 아무것도 나열하지 않는 하네스도 오류 — 후자를
+  허용하면 `--update`가 그 계통 행이 빠진 기준값을 쓰고, 아무것도 비교하지 않은 채 통과할 수 있다).
+  `quality_matrix.py`가 파생하는 그래프에 `pyrs-yaml`이 들어 구멍은 저절로 사라졌다 — 등록 해제를 강제하는
+  검사가 새 결함을 미등록으로 통과시키는 것을 막는 바로 그 검사이므로, 대장 설계대로다. 명확히 적는 한계
+  둘: 이 실행 파일은 CPython을 링크해 Linux 전용(Windows에서는 빌드는 되고 기동 시 `0xC000021A`로 죽는
+  것을 실측), 그리고 `cargo clippy --all --all-targets`는 feature로 막힌 bench를 보지 않으므로 새 파일은
+  lint가 아니라 빌드로 검증된다.
 - **방어 체계가 자기 안의 구멍을 쟀다: 명령 수 게이트는 Python 바인딩에 못 닿는다** —
   `quality_matrix.py`는 `ir_gate` 하네스가 실제로 링크하는 crate(bench 소속 crate과 그 workspace
   의존: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`, `pyrs-toml`)를 뽑아내고, Python API를
@@ -235,6 +249,19 @@ status: new
 
 #### 수정
 
+- **명령 수 게이트는 harness 원문을 이름으로 하나만 읽었고, 기준값은 일부 손으로 옮겨 적혀 있었다** —
+  `crates/pyrs-yaml/benches/ir_gate.rs`가 트리에 들어온 뒤에도
+  `crates/pyrs-yaml-core/benches/ir_gate.rs`만 이름으로 지정한 시나리오 탐침은 열다섯 이름 중 열둘만
+  견주게 된다: 계통 하나가 통째로 기준값에 들지 못한 채 `ir-unbaselined`도 잡지 못한다 — #303의 graph
+  탐침이 첫 `[dependencies]`에서 멈춘 것과 같은 부류다. `ir_harness_channels()`는 이제 manifest에서
+  harness 목록을 뽑고 디스크의 파일과 양쪽으로 견준다(선언은 있는데 원문이 사라지면 `ir-harness-missing`,
+  원문은 있는데 아무도 컴파일하지 않으면 `ir-harness-undeclared`), 두 harness가 같은 시나리오 이름을
+  올리면 `ir-scenario-duplicate`로 보고한다 — 기준값 하나로 어느 계통인지 말할 수 없기 때문이다; 위 각
+  주입은 `tests/test_quality_matrix.py`가 하나씩 빨갛게 만든다. 제출된 기준값에는 두 번째 문제가 있었다:
+  `generated_by.note`가 손으로 쓴 문장이었고 `ir_gate.py --update`는 문장을 쓰지 않으므로, 다음 재생성
+  artifact는 이 파일의 출처를 설명한 단락을 지웠을 것이고 diff는 판단이 내려진 것처럼 읽혔을 것이다.
+  근거는 `QUALITY_MATRIX.md`로 옮기고, `--update`가 note를 생성해 쓰며, 제출된 key는
+  `tests/test_ir_baseline_workflow.py`가 작업이 출력하는 그대로 고정한다.
 - **`Test matrix (all legs)`는 job 열하나 중 셋만 기다려, 여덟은 빨간 채로 병합됐다** —
   #300에서 넣은 팬인은 `test`, `test-freethreaded`, `coverage`만 덮고 `rust-lint`(clippy),
   `property-tier`, `msrv-check`, `no-std-check`, `build`, `compliance-report`, `i18n-check`를
