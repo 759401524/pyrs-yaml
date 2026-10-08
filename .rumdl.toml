@@ -2,7 +2,7 @@
 # https://rumdl.dev/configuration/
 
 [global]
-extend-disable = ["MD013", "MD051", "MD036"]  # MD013 line length handled by general formatting; MD051 false-positive on CJK anchors (rumdl slugs are ASCII-only, but GitHub/mkdocs keep CJK)
+extend-disable = ["MD013", "MD051", "MD036"]  # MD013 counts characters, not display columns, and `rumdl fmt` does not re-wrap prose at all (measured: a 587-char line passes through unchanged) — width is enforced by the `doc-line-width` hook instead; MD051 false-positive on CJK anchors (rumdl slugs are ASCII-only, but GitHub/mkdocs keep CJK)
 flavor = "mkdocs"
 exclude = [
     ".git",

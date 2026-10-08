@@ -1,7 +1,6 @@
 ---
-title: Changelog
-description: pyrs-yaml 项目的完整变更日志，记录所有版本的重要变更、新增功能和性能优化。
-tags:
+title: Changelog description: pyrs-yaml 项目的完整变更日志，记录所有版本的重要变更、新增功能和性能优
+化。 tags:
 
 - docs
 status: new
@@ -19,105 +18,129 @@ status: new
 
 #### 新增
 
+- **台账与各 changelog 重新排了版，正文宽度从此是条规则** — `ROADMAP.md` 里有一行长达 21,850 字符，
+  `docs/ja/changelog.md` 里有一行 884；Markdown 和渲染器都不关心物理行长，所以代价全落在读者身上。
+  `scripts/check_doc_wrapping.py` 以 100 个**显示列**为准（全角字符计 2 列），检查与 `--fix` 同在一
+  处，被报的段落整块重切：拼接只动空白，而一行行地折会把每行末尾的词甩成孤行；兄弟列表项绝不合并。
+  分开写的检查器和格式化器必然漂移，所以两半必须在同一份实现里。围栏、表格、标题与 frontmatter 不
+  动，列表续行只缩进不重新加标记，引用每行保留 `>`，code span 与链接目标不可切分；朝鲜文只在空格处断
+  行（第一版把 `내` 从 `보내는` 里切开了）。1,299 处超长行归零，其他字符一个没动。三条规则来自工具自
+  己建造时踩的坑：在 `#283` 前断行让它被 `rumdl fmt` 提升成标题（`(au)` 的门禁抓到）；在一个连接两个
+  ABI 名的字面 `+` 前断行，让 `docs/ko` 多出一个没人写过的列表项；一行破折号留在段落底下，
+  `rumdl fmt` 就把整段改写成 126 列的标题——按“标题宽度超限”补的规则一测就被否证，因为这本仓库有 12
+  个合法的 `### (xx)` 引导词超过 100 列，于是门禁改认形状：段落不得压在破折号行上。归属也是量出来
+  的，而且推翻了自己先前的判断：`rumdl fmt` 仍是这本仓库的 Markdown 格式化器（排除它会让六行同时违反
+  `MD007`/`MD012`），但它根本不重排正文——587 字符的英文行与 319 列的朝鲜文行原样进出，`line-length`
+  只配置检查器，而本仓库把 `MD013` 关了。所以宽度此前无人认领，现在中英文与朝鲜文一视同仁地重排；只
+  有四行仍然超限且刻意不上报：每行行首都是 101 到 127 列的 code span（一条
+  `cargo build --target thumbv7em-none-eabi …` 命令），任何合法断点都超预算，拆开 span 就毁掉了它承
+  载的命令——豁免因此是修复器自身的能力，而不是一张例外名单。`ROADMAP.md` 也有了大纲：33 个 `**(xx)`
+  引导词变成 `### (xx)` 标题，`(w)` 及之后离开讲注释放置的那一节，两处悬空层级重新定级，那段 21,850
+  字符的正文变成按族归类的十条清单（3,479 词降到 726 词，每个崩溃编号、机制与 seed 都仍在）。约定写
+  在 `DOCS_STANDARDS.md` §10，钩子是 `doc-line-width` 与 `doc-heading-integrity`，两个门禁文件里 30
+  个测试函数逐项钉住上面的不变量。
 - **指令数门禁把跨格式桥的两半都量到了** — 新增 `from_json_medium` 与 `from_toml_medium`，把共享 AST
-  从 JSON/TOML 文本读回来；此前门禁只给写出的那一半编号。读回来的这一半才决定键的含义 —— TOML/JSON 的键按其
-  自身语法是字符串，而共享 AST 表达「这是字符串、不要去解析」的唯一办法就是加引号 —— 所以 #292 在那里加的每键
-  开销动不到任何可被门禁盯住的数字。读的是提交下来的字节 —— 写出器为 `MEDIUM_YAML` 产出的结果，由
-  `tests/ir_fixtures.rs` 钉住 —— 这样读取场景就不会无意中跟着写出器的拼法一起变。路上量到的事一并记下，
-  包括推翻自己解释的那一半：在 setup 里现渲染输入，会在引擎代码一行未改的情况下把 `to_json_medium` 推高
-  +1.52%、`to_toml_medium` 推高 +0.26%，是门禁容差的三倍，而这两个场景根本不在新增的必经之路上；多出来的
-  调用点被当成原因，可把字节提交下来去掉了那个调用，`to_json_medium` 照样 +1.489%。机制留作未决，性质
-  却已确定：改 harness 对它自己已经产出的那些数字并不中立，重新取基准时必须说清哪些变动来自方法、哪些
-  来自代码（同一个二进制里的 `serialize_*` 与 `parse_*` 都落在 0.042% 以内）。某条读取要是解析不开了，
-  harness 以 3 退出，而不是报出一个更小的数 —— 这条路径是靠往一侧喂一个故意解析不了的文档验证的。`quality_matrix.py` 会导出 `ir-bridge-unidirectional`：任何
-  `to_<format>_*` / `from_<format>_*` 只量了一个方向都会被点名（`to_python_*` 依定义豁免：语言绑定不是文本
-  格式），于是下一条只做一半的桥会被报出来，而不是等下一个人重新发现。在这条加宽的通道上重测 #292，也推翻了
-  台账此前替它记下的数：按与值相同的规则解析映射键，在绑定通道上是 +1.45–1.62% 指令，在引擎的每个场景上都是
-  0.00%；而那个分支为抵偿这笔开销加的字节级预检，在引擎场景上是 +0.86–6.66%、在绑定场景上是 +0.72–1.03%
-  —— 在它本应帮忙的每一处都是负优化。每个差值在两个 runner 镜像、三种主机 CPU 型号之间复现到 0.1 个基点以内，
-  这正是被钉住的 glibc 能力依旧成立的旁证。
+  从 JSON/TOML 文本读回来；此前门禁只给写出的那一半编号。读回来的这一半才决定键的含义 —— TOML/JSON
+  的键按其自身语法是字符串，而共享 AST 表达「这是字符串、不要去解析」的唯一办法就是加引号 —— 所
+  以 #292 在那里加的每键开销动不到任何可被门禁盯住的数字。读的是提交下来的字节 —— 写出器为
+  `MEDIUM_YAML` 产出的结果，由 `tests/ir_fixtures.rs` 钉住 —— 这样读取场景就不会无意中跟着写出器的拼
+  法一起变。路上量到的事一并记下，包括推翻自己解释的那一半：在 setup 里现渲染输入，会在引擎代码一行
+  未改的情况下把 `to_json_medium` 推高 +1.52%、`to_toml_medium` 推高 +0.26%，是门禁容差的三倍，而这
+  两个场景根本不在新增的必经之路上；多出来的调用点被当成原因，可把字节提交下来去掉了那个调用，
+  `to_json_medium` 照样 +1.489%。机制留作未决，性质却已确定：改 harness 对它自己已经产出的那些数字并
+  不中立，重新取基准时必须说清哪些变动来自方法、哪些来自代码（同一个二进制里的 `serialize_*` 与
+  `parse_*` 都落在 0.042% 以内）。某条读取要是解析不开了，harness 以 3 退出，而不是报出一个更小的数
+  —— 这条路径是靠往一侧喂一个故意解析不了的文档验证的。`quality_matrix.py` 会导出
+  `ir-bridge-unidirectional`：任何 `to_<format>_*` / `from_<format>_*` 只量了一个方向都会被点名
+  （`to_python_*` 依定义豁免：语言绑定不是文本格式），于是下一条只做一半的桥会被报出来，而不是等下一
+  个人重新发现。在这条加宽的通道上重测 #292，也推翻了台账此前替它记下的数：按与值相同的规则解析映射
+  键，在绑定通道上是 +1.45–1.62% 指令，在引擎的每个场景上都是 0.00%；而那个分支为抵偿这笔开销加的字
+  节级预检，在引擎场景上是 +0.86–6.66%、在绑定场景上是 +0.72–1.03% —— 在它本应帮忙的每一处都是负优
+  化。每个差值在两个 runner 镜像、三种主机 CPU 型号之间复现到 0.1 个基点以内，这正是被钉住的 glibc
+  能力依旧成立的旁证。
 - **指令数门禁开始度量 AST→Python 转换，关掉 `perf-coverage:binding-layer`** —
   `crates/pyrs-yaml/benches/ir_gate.rs` 新增 `to_python_small`、`to_python_medium`、
-  `to_python_anchors`，用与引擎 harness 相同的输入字节，让每个用户都会经过的那一层第一次有了可数的指令
-  数值。刻意测 `safe_load` 的 AST 路径而不是 P3 直接加载捷径：不带锚点的 fixture 会让我们量到与带标签、
-  带锚点的数据实际付出的量不同的东西。转换失败或产出空对象时，harness 直接退出，而不是把这一轮算成
-  便宜的一轮：容差只追究增长，所以悄悄不再干活的 harness 本来会报出一个巨大的“改进”并通过。
-  `scripts/ir_gate.py` 现在把两个 harness 汇成一张场景表（名字重复
-  即报错，某个 harness 什么都不列也报错——后者会让 `--update` 写出缺该通道数值的 baseline，并靠"什么都没
-  比较"而通过）。`quality_matrix.py` 导出的图里出现了 `pyrs-yaml`，洞随之自行消失——注销被强制的方式与
-  "新洞未登记不许过"是同一条测试，正是台账的设计。三点局限如实写明：该可执行文件链接 CPython，只能在
-  Linux 跑（Windows 实测：能编出来，启动即 `0xC000021A` 崩），且 `cargo clippy --all --all-targets`
-  看不见带 feature 门的 bench，新文件靠构建而非 lint 校验。第三条是跑出来的：harness 是独立可执行
-  文件，所以同一个 feature 还要打开 `pyo3/auto-initialize`——第一次再生成运行把两个 harness 都编好了、
-  两份场景清单都读到了，却在被测的循环里以 "The Python interpreter is not initialized" 失败。wheel
-  不受影响：`[tool.maturin]` 不带 feature，也没有任何东西用 `--all-features` 构建。
-- **防线量出了自己身上的一处空档：指令数门禁够不到 Python 绑定层** —
-  `quality_matrix.py` 现在推导 `ir_gate` harness 真正链接的 crate（bench 所属 crate 及其 workspace
-  依赖：`pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`），再与提供 Python API 的
-  crate（按目录布局定位：`crates/*/src/py/` → `pyrs-yaml`）比对。后者不在图里，于是 `safe_load` 的
-  AST→Python 转换 —每个用户都走、也是 PR #292 改的那条路 — 没有可复现的性能数值：只有墙钟覆盖它，而
-  本仓库自己的记录就写着 10% 以下不可信。已按 `perf-coverage:binding-layer` 登记并给出移除条件，这是
-  第一次靠问"这台仪器编译了什么"而不是"它命名了什么"找到的洞。
+  `to_python_anchors`，用与引擎 harness 相同的输入字节，让每个用户都会经过的那一层第一次有了可数的指
+  令数值。刻意测 `safe_load` 的 AST 路径而不是 P3 直接加载捷径：不带锚点的 fixture 会让我们量到与带
+  标签、带锚点的数据实际付出的量不同的东西。转换失败或产出空对象时，harness 直接退出，而不是把这一轮
+  算成便宜的一轮：容差只追究增长，所以悄悄不再干活的 harness 本来会报出一个巨大的“改进”并通过。
+  `scripts/ir_gate.py` 现在把两个 harness 汇成一张场景表（名字重复即报错，某个 harness 什么都不列也
+  报错——后者会让 `--update` 写出缺该通道数值的 baseline，并靠"什么都没比较"而通过）。
+  `quality_matrix.py` 导出的图里出现了 `pyrs-yaml`，洞随之自行消失——注销被强制的方式与 "新洞未登记不
+  许过"是同一条测试，正是台账的设计。三点局限如实写明：该可执行文件链接 CPython，只能在 Linux 跑
+  （Windows 实测：能编出来，启动即 `0xC000021A` 崩），且 `cargo clippy --all --all-targets` 看不见带
+  feature 门的 bench，新文件靠构建而非 lint 校验。第三条是跑出来的：harness 是独立可执行文件，所以同
+  一个 feature 还要打开 `pyo3/auto-initialize`——第一次再生成运行把两个 harness 都编好了、两份场景清
+  单都读到了，却在被测的循环里以 "The Python interpreter is not initialized" 失败。wheel 不受影响：
+  `[tool.maturin]` 不带 feature，也没有任何东西用 `--all-features` 构建。
+- **防线量出了自己身上的一处空档：指令数门禁够不到 Python 绑定层** — `quality_matrix.py` 现在推导
+  `ir_gate` harness 真正链接的 crate（bench 所属 crate 及其 workspace 依赖：`pyrs-yaml-core`、
+  `pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`），再与提供 Python API 的 crate（按目录布局定
+  位：`crates/*/src/py/` → `pyrs-yaml`）比对。后者不在图里，于是 `safe_load` 的 AST→Python 转换 —每
+  个用户都走、也是 PR #292 改的那条路 — 没有可复现的性能数值：只有墙钟覆盖它，而本仓库自己的记录就
+  写着 10% 以下不可信。已按 `perf-coverage:binding-layer` 登记并给出移除条件，这是第一次靠问"这台仪
+  器编译了什么"而不是"它命名了什么"找到的洞。
 - **新增一个代表整个测试矩阵的检查（`Test matrix (all legs)`）** — 分支保护按检查"名字"匹配，而矩阵
   每条腿都贡献一个名字：3 OS × 7 Python 共 21 条，另加 free-threaded 与 coverage。一小时内两个 PR 就
-  证明了代价：#298 在 `test (windows-latest, 3.8)` 从未被采信的情况下就 rebase 合了，而那条腿上带着两个
-  在本包承诺的最低 Python 上跑不动的检查器（其中一个自写下之日起就无法 import）；#299 则因为格式化器的
-  修复没被 squash 进去而让 `Hygiene` 变红。两者同一个形状：不被合并决策消费的检查只是报告。fan-in 就是
-  `needs: [test, test-freethreaded, coverage]` 把 `toJSON(needs)` 交给 `scripts/check_matrix_verdict.py`，
-  它只把 `success` 读作绿 — `skipped`（依赖死掉后兄弟腿的样子）与 `cancelled`（`cancel-in-progress` 的
-  残留）都是拒绝而非缺席。`tests/test_matrix_verdict_gate.py` 钉住这些形状与接线，所以把 `needs:` 删空
-  本身就会变红。PR 内做不到的一件事：必须把这个新检查"加入"分支保护，否则洞仍留在原地。
+  证明了代价：#298 在 `test (windows-latest, 3.8)` 从未被采信的情况下就 rebase 合了，而那条腿上带着
+  两个在本包承诺的最低 Python 上跑不动的检查器（其中一个自写下之日起就无法 import）；#299 则因为格式
+  化器的修复没被 squash 进去而让 `Hygiene` 变红。两者同一个形状：不被合并决策消费的检查只是报告。
+  fan-in 就是 `needs: [test, test-freethreaded, coverage]` 把 `toJSON(needs)` 交给
+  `scripts/check_matrix_verdict.py`，它只把 `success` 读作绿 — `skipped`（依赖死掉后兄弟腿的样子）
+  与 `cancelled`（`cancel-in-progress` 的残留）都是拒绝而非缺席。
+  `tests/test_matrix_verdict_gate.py` 钉住这些形状与接线，所以把 `needs:` 删空本身就会变红。PR 内做
+  不到的一件事：必须把这个新检查"加入"分支保护，否则洞仍留在原地。
 - **指令数门禁开始度量 JSON 与 TOML 的 writer，并把门禁自身的余量也记了下来** —
   `crates/pyrs-yaml-core/benches/ir_gate.rs` 新增 `parse_inline_merge`、`to_json_medium`、
   `to_toml_medium`（12 个场景，`.ci/ir-baseline.json` 也是 12 个数），于是 `to_json()` 与
-  `to_toml()` 暴露的路径和 YAML 一样被门禁住。量它们的时候也把门禁量了一遍：对今天的树重跑已提交的
-  九个场景，移动从 −2.35%（`parse_anchors`）到 +1.61%（`serialize_anchors`），而新增三个的复测精度是
+  `to_toml()` 暴露的路径和 YAML 一样被门禁住。量它们的时候也把门禁量了一遍：对今天的树重跑已提交的九
+  个场景，移动从 −2.35%（`parse_anchors`）到 +1.61%（`serialize_anchors`），而新增三个的复测精度是
   ±0.0005% — 这不是噪声，是取基线之后累积的漂移。漂移的方向才危险：2% 余量有五分之四已被
   `serialize_anchors` 花掉，`parse_anchors` 上 2.35% 以内的退化会完全看不出来。对策两条。
-  `ir_gate.py --update --only <name>` 现在合并进已提交的文件，并拒绝编造没量过的数（旧行为是把九个
-  数的文件覆盖成一个数）；`ir-baseline.yml` 在执行门禁的 `ubuntu-24.04` 镜像上重新度量全部数值，
-  打印 diff 并作为 artifact 上传，由人读过再提交。该 job 的数值其实已经提交（见 Fixed）：十二个 runner 度量的值、
-  一份 `generated_by` 溯源，以及按实测镜像间一致定出的 0.5% 容差。
+  `ir_gate.py --update --only <name>` 现在合并进已提交的文件，并拒绝编造没量过的数（旧行为是把九个数
+  的文件覆盖成一个数）；`ir-baseline.yml` 在执行门禁的 `ubuntu-24.04` 镜像上重新度量全部数值，打印
+  diff 并作为 artifact 上传，由人读过再提交。该 job 的数值其实已经提交（见 Fixed）：十二个 runner 度
+  量的值、一份 `generated_by` 溯源，以及按实测镜像间一致定出的 0.5% 容差。
 - **JSON 与 TOML 的 writer 有了"落定文本"oracle（`fuzz/fuzz_targets/json_roundtrip.rs`、
   `fuzz/fuzz_targets/toml_roundtrip.rs`）** — #296 交付它时任何发布说明里都没有条目，所以在此补记，
   也正是下面的耦合门禁要抓的那类失败。两个 `parse_*` 目标本来已调用每个 writer，但把重解析结果绑给
-  `let _ =` 后丢弃，于是它们断言的是"读取器接受自己的 writer"，而不是"writer 的文本已落定"——
-  本引擎所有注释搬迁类缺陷都住在这个缺口里。新目标逐方言断言 `once == twice`，绝不跨方言
-  （`to_jsonc_text` 会输出注释，`to_json5_text` 会输出严格读取器必须拒绝的十六进制数与裸键），
-  `crates/pyrs-json/tests/roundtrip_corpus.rs` 与 `crates/pyrs-toml/tests/roundtrip_corpus.rs`
-  在每次 `cargo nextest` 确定性重放已提交的 30 个种子——JSON 33 轮、TOML 30 轮，各自在文件里声明下限，
-  因此不再驱动 writer 的语料会失败而不是空过。实测：没有不落定的 writer。
+  `let _ =` 后丢弃，于是它们断言的是"读取器接受自己的 writer"，而不是"writer 的文本已落定"—— 本引擎
+  所有注释搬迁类缺陷都住在这个缺口里。新目标逐方言断言 `once == twice`，绝不跨方言（`to_jsonc_text`
+  会输出注释，`to_json5_text` 会输出严格读取器必须拒绝的十六进制数与裸键），
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` 与 `crates/pyrs-toml/tests/roundtrip_corpus.rs` 在每
+  次 `cargo nextest` 确定性重放已提交的 30 个种子——JSON 33 轮、TOML 30 轮，各自在文件里声明下限，因
+  此不再驱动 writer 的语料会失败而不是空过。实测：没有不落定的 writer。
 - **动了产品的变更集也必须动发布说明（`scripts/check_changelog_coupling.py`）** — 针对 pull request
   文件清单的两条规则：diff 触及 `crates/`、`python/pyrs_yaml/`、`fuzz/`、`scripts/`、`tests/` 或随包
-  发布的 manifest 时必须触及 changelog；触及五份镜像之一就必须五份全触（`AGENTS.md` 的"不许提交部分更新"
-  此前没有执行手段）。`check_changelog_mirrors.py` 两类都看不见：它比对版本头，而版本头只在发版时移动，
-  且 `prek.toml` 的 `files:` 模式在没有 changelog 的 diff 上根本不会触发钩子。采用前用 `main` 最近 40 个
-  commit 校准——8 个会变红，且都属于本仓库自己的说明已经写过的类别；把 `.github/workflows/**` 或
-  `prek.toml` 算进来只会多算两次依赖版本升级，故排除。它跑在 `hygiene.yml` 的 pull request 粒度而非
-  commit 粒度，因为拆分后的 PR 中某一个 commit 不带说明是正当的。判别力由突变证明：撤掉耦合规则恰好
-  3 个测试变红，撤掉完整性规则恰好 2 个，把工作流触发项加回去恰好让 2 个校准哨兵变红
-  （`tests/test_changelog_coupling_gate.py`，29 个测试）。
-- **属性档新增 20,000 用例的阻塞作业（`ci.yml: property-tier`）** —
-  此前所有属性测试都跑在 proptest 默认的 256 用例上，因为没有任何 workflow 设置
-  `PROPTEST_CASES`；`scripts/quality_matrix.py` 把这一点测了出来，并登记为防线台账里最后的盲区。
-  号称"在 20,000 用例失败"的三个 writer 不动点性质里，有两个从未真正失败：在该用例数下它们耗尽了
-  proptest 默认的 1024 次全局拒绝预算，以 `Test aborted: Too many global rejects` 中止——把预算调回
-  1024 后三个性质都死在 `fmt_pbt.rs:93`，这是实测。方言性质的预算现为 250,000，第三个失败才是真实缺陷
-  （见 Fixed）。成本实测：在本树上 `PROPTEST_CASES=20000 cargo test --workspace --locked` 用 63 秒跑完
-  core 的 305 个测试并以 0 退出。完成判据：把 `property-tier:default-case-count` 从
-  `.ci/quality-holes.json` 删除、让台账为空——`tests/test_quality_matrix.py` 同时从反方向强制这一点。
-- **卫生类钩子从此在 CI 里跑,行尾策略也有了能强制的形式** —— 新增 `Hygiene` 工作流,在每个
-  pull request、每次推送到 `main`、以及每周,都对整棵树跑 `prek run --all-files`。它存在的原因是
-  同仓使用的 `jj` 从不执行 Git 钩子,于是 `prek.toml` 里的十七个钩子只是本地自觉;十五个被跟踪
-  文件已经带着 CRLF 行尾进入 `main` —— 12,263 行,其中五个是 changelog 镜像 —— 十几行编辑被放大成
-  2,500 行 diff,而每个门禁都说绿灯。`.gitattributes` 声明策略,`scripts/check_line_endings.py`
-  强制这条绝对规则,并在 `prek.toml` 里注册为 `line-endings-lf` 钩子。内置的 `mixed-line-ending`
-  并*不*实现这条规则:注入一个全 CRLF 的文件它仍然 `Passed`,因为它只检测混合行尾。这十五个文件里
-  十三个在此归一;剩下两个刻意保留,因为它们的 CRLF 位于原始字符串内部,正是已提交 Ir 基准所测量的
-  输入(`crates/pyrs-yaml-core/src/bench_inputs.rs`、`crates/pyrs-yaml-core/benches/ir_gate.rs`),
-  归一它们属于数据变更,应与基准重生成一并做。同一个作业也跑 `cargo fmt --check`,而此前没有任何
-  工作流跑过它。 CI 的 clippy 也从 `cargo clippy -- -D warnings` 改为本仓库声明的 `--all --all-targets`
-  范围——改动前先实测:更宽的命令在整棵树上本来就是干净的。
+  发布的 manifest 时必须触及 changelog；触及五份镜像之一就必须五份全触（`AGENTS.md` 的"不许提交部分
+  更新" 此前没有执行手段）。`check_changelog_mirrors.py` 两类都看不见：它比对版本头，而版本头只在发
+  版时移动，且 `prek.toml` 的 `files:` 模式在没有 changelog 的 diff 上根本不会触发钩子。采用前用
+  `main` 最近 40 个 commit 校准——8 个会变红，且都属于本仓库自己的说明已经写过的类别；把
+  `.github/workflows/**` 或 `prek.toml` 算进来只会多算两次依赖版本升级，故排除。它跑在 `hygiene.yml`
+  的 pull request 粒度而非 commit 粒度，因为拆分后的 PR 中某一个 commit 不带说明是正当的。判别力由突
+  变证明：撤掉耦合规则恰好 3 个测试变红，撤掉完整性规则恰好 2 个，把工作流触发项加回去恰好让 2 个校
+  准哨兵变红（`tests/test_changelog_coupling_gate.py`，29 个测试）。
+- **属性档新增 20,000 用例的阻塞作业（`ci.yml: property-tier`）** — 此前所有属性测试都跑在 proptest
+  默认的 256 用例上，因为没有任何 workflow 设置 `PROPTEST_CASES`；`scripts/quality_matrix.py` 把这一
+  点测了出来，并登记为防线台账里最后的盲区。号称"在 20,000 用例失败"的三个 writer 不动点性质里，有
+  两个从未真正失败：在该用例数下它们耗尽了 proptest 默认的 1024 次全局拒绝预算，以
+  `Test aborted: Too many global rejects` 中止——把预算调回 1024 后三个性质都死在 `fmt_pbt.rs:93`，这
+  是实测。方言性质的预算现为 250,000，第三个失败才是真实缺陷（见 Fixed）。成本实测：在本树上
+  `PROPTEST_CASES=20000 cargo test --workspace --locked` 用 63 秒跑完 core 的 305 个测试并以 0 退
+  出。完成判据：把 `property-tier:default-case-count` 从 `.ci/quality-holes.json` 删除、让台账为空
+  ——`tests/test_quality_matrix.py` 同时从反方向强制这一点。
+- **卫生类钩子从此在 CI 里跑,行尾策略也有了能强制的形式** —— 新增 `Hygiene` 工作流,在每个 pull
+  request、每次推送到 `main`、以及每周,都对整棵树跑 `prek run --all-files`。它存在的原因是同仓使用
+  的 `jj` 从不执行 Git 钩子,于是 `prek.toml` 里的十七个钩子只是本地自觉;十五个被跟踪文件已经带着
+  CRLF 行尾进入 `main` —— 12,263 行,其中五个是 changelog 镜像 —— 十几行编辑被放大成 2,500 行 diff,而
+  每个门禁都说绿灯。`.gitattributes` 声明策略,`scripts/check_line_endings.py` 强制这条绝对规则,并在
+  `prek.toml` 里注册为 `line-endings-lf` 钩子。内置的 `mixed-line-ending` 并*不*实现这条规则:注入一
+  个全 CRLF 的文件它仍然 `Passed`,因为它只检测混合行尾。这十五个文件里十三个在此归一;剩下两个刻意保
+  留,因为它们的 CRLF 位于原始字符串内部,正是已提交 Ir 基准所测量的输入
+  (`crates/pyrs-yaml-core/src/bench_inputs.rs`、`crates/pyrs-yaml-core/benches/ir_gate.rs`), 归一它
+  们属于数据变更,应与基准重生成一并做。同一个作业也跑 `cargo fmt --check`,而此前没有任何工作流跑过
+  它。CI 的 clippy 也从 `cargo clippy -- -D warnings` 改为本仓库声明的 `--all --all-targets` 范围——
+  改动前先实测:更宽的命令在整棵树上本来就是干净的。
 - **质量防线第一次被度量,而度量本身成了门禁** —— `QUALITY_MATRIX.md` 记录单元、属性、fuzz
   三档各自能到达与到不了的地方;`scripts/quality_matrix.py` 不抄写这些数字,而是从声明防线的文件
   (`.github/workflows/*.yml`、`prek.toml`、`fuzz/Cargo.toml`、`scripts/check_*.py`、Ir 基准
@@ -127,15 +150,13 @@ status: new
   任何任务跑 `cargo fmt --check`,CI 的 clippy 不看测试与基准,属性测试每次只用 proptest 默认例数,
   JSON 与 TOML 两个引擎只有解析向 fuzz 目标,写手从未被 fuzz。这个门禁自身的判别力用四次注入验证,
   每次恰好让为它写的那条测试变红。
-- **CI 真正守得住的指令数门禁** —— `CodSpeed` 工作流新增
-  `Instruction-count baseline` 作业，用*计数指令*（`callgrind` Ir）测量引擎热路径，
-  相对 `.ci/ir-baseline.json` 上升超过百分之二即失败——该容差按两种 Linux 镜像之间实测
-  的漂移校准（WSL 生成的基线在 GitHub runner 上最高 +1.45%）。之所以要它：divan 套件上报的
-  wall-time 比较在十个点以内并不可复现——连续三次推送每次都比上一次*少做*工作，却被判
-  −7.7%、−10.5%、−9.8%（同一组基准）。Ir 在同一二进制上复现精度约 ±0.001%，因此这条线
-  是有意义的；整个门禁只花约六秒。用 `python scripts/ir_gate.py` 检查，用 `--update`
-  谨慎地重置基线。它的场景通过 `pyrs_yaml_core::bench_inputs` 读取与 divan 套件相同的
-  文档，两套测量因此不可能各自漂移。
+- **CI 真正守得住的指令数门禁** —— `CodSpeed` 工作流新增 `Instruction-count baseline` 作业，用*计数
+  指令*（`callgrind` Ir）测量引擎热路径，相对 `.ci/ir-baseline.json` 上升超过百分之二即失败——该容差
+  按两种 Linux 镜像之间实测的漂移校准（WSL 生成的基线在 GitHub runner 上最高 +1.45%）。之所以要它：
+  divan 套件上报的 wall-time 比较在十个点以内并不可复现——连续三次推送每次都比上一次*少做*工作，却被
+  判 −7.7%、−10.5%、−9.8%（同一组基准）。Ir 在同一二进制上复现精度约 ±0.001%，因此这条线是有意义
+  的；整个门禁只花约六秒。用 `python scripts/ir_gate.py` 检查，用 `--update` 谨慎地重置基线。它的场
+  景通过 `pyrs_yaml_core::bench_inputs` 读取与 divan 套件相同的文档，两套测量因此不可能各自漂移。
 - **注释存活现在是一道门禁，而不是一种指望（`crates/pyrs-yaml-core/tests/note_survival.rs`）**
   —— 往返档的预言机是文本幂等，而一份稳定但少一条注释的文档恰好能通过它；这个盲区正是五起
   静默丢注释能藏在绿光后面的原因。现在有一个确定性测试在每次 `cargo nextest` 重放已提交的
@@ -165,24 +186,21 @@ status: new
   `default-features = false` 退出，获得固定种子的哈希器。Proptest 节点策略移到
   新的 `test-strategy` feature 之后，普通构建不再承担属性测试成本。CI 任务
   `no-std-check` 为裸机目标交叉编译，确保这一性质不退化。
-- **`pyrs-json` / `pyrs-toml` 也支持 `no_std`** — 两个原生格式引擎仅靠 `alloc`
-  即可构建：`std::sync::Arc` 迁至 `alloc`，`String`/`Vec`/`format!` 预导入改由
-  `#[macro_use] extern crate alloc` 显式提供，解析期键值存储复用 `pyrs-ast` 的
-  `NodeMap` 哈希器别名，`canonical_float` 的整数值判定改为 core-only
-  （`f64::trunc` 是 std 固有方法）。`no-std-check` 作业现覆盖全部四个 crate 的
-  交叉编译。
+- **`pyrs-json` / `pyrs-toml` 也支持 `no_std`** — 两个原生格式引擎仅靠 `alloc` 即可构建：
+  `std::sync::Arc` 迁至 `alloc`，`String`/`Vec`/`format!` 预导入改由
+  `#[macro_use] extern crate alloc` 显式提供，解析期键值存储复用 `pyrs-ast` 的 `NodeMap` 哈希器别
+  名，`canonical_float` 的整数值判定改为 core-only（`f64::trunc` 是 std 固有方法）。`no-std-check`
+  作业现覆盖全部四个 crate 的交叉编译。
 - **`pyq` 随每个发布提供预编译二进制** — `publish.yml` 新增 `pyq` 任务，为六个
   平台构建原生 CLI 并把压缩包附到 GitHub Release，用户不再需要 Rust 工具链即可
   获得独立二进制。
-- **类型桩漂移门禁（`scripts/check_stub_drift.py`）** — 已提交的
-  `python/pyrs_yaml/pyrs_yaml.pyi` 是机器生成物，随每个 wheel 分发；但 CI 此前只
-  断言它存在且被追踪（`release-guard`），因此绑定签名一变，公开的类型契约就可能
-  静默落后。`validate.yml` 新增 `stub-drift` 作业，用声明的再生成路径
-  （`uv run maturin generate-stubs`）重生成桩，内容有任何差异即失败。两处归一化让
-  被追踪的桩保持完全派生而非手工打补丁：prek 钩子在提交时剥掉的行尾空白，以及一
-  处声明式保真正例——maturin 1.14.1 对两个 `__next__` 返回丢掉了绑定实际返回的
-  `Option`。每条声明的正例都会断言预期命中数，因此签名变化或上游修复会明确失败，
-  而不是被静默改写。`mise run stubs` 现在也走同一条管线写入。
+- **类型桩漂移门禁（`scripts/check_stub_drift.py`）** — 已提交的 `python/pyrs_yaml/pyrs_yaml.pyi` 是
+  机器生成物，随每个 wheel 分发；但 CI 此前只断言它存在且被追踪（`release-guard`），因此绑定签名一
+  变，公开的类型契约就可能静默落后。`validate.yml` 新增 `stub-drift` 作业，用声明的再生成路径
+  （`uv run maturin generate-stubs`）重生成桩，内容有任何差异即失败。两处归一化让被追踪的桩保持完全
+  派生而非手工打补丁：prek 钩子在提交时剥掉的行尾空白，以及一处声明式保真正例——maturin 1.14.1 对两
+  个 `__next__` 返回丢掉了绑定实际返回的 `Option`。每条声明的正例都会断言预期命中数，因此签名变化或
+  上游修复会明确失败，而不是被静默改写。`mise run stubs` 现在也走同一条管线写入。
 
 #### 变更
 
@@ -201,7 +219,7 @@ status: new
   `zh` 的每一个页面是否只用自己这套书写系统：非 `ja` 页不得出现假名，非 `ko` 页不得出现谚文，
   `ja` 页不得出现仅简体中文使用的汉字，而 `ko` 正文一个汉字都不许出现。韩语那条规则原本是一份
   手工挑选的十三个简体独有码点清单，而这份清单正是门禁失明之处：日语新字体 `経` 与繁体 `內` 都
-  不在其上，于是韩语变更日志带着十五行韩中混杂的散文发了出去——像 `热点 样本` 那样的词组混在
+  不在其上，于是韩语变更日志带着十五行韩中混杂的散文发了出去——像 `热点样本` 那样的词组混在
   韩语助词之间——而仓库里每个检查器都打印 OK。改判“任何汉字”之后，规则不再需要同步任何清单。
   技术文本按码位豁免（围栏代码块、行内代码、链接目标），因为同一批韩语页面本就应当在 YAML
   样例里展示 `title: 文档标题`，并把 `{ é: 1, 名: 2 }` 列为解析器输入；若按行豁免，这两处都会
@@ -211,144 +229,146 @@ status: new
   并有了针对自身的测试（`tests/test_cjk_localisation_gate.py`），覆盖它必须抓住的每种形状与
   必须容忍的每种形状——以突变证明：关掉 `ko` 的汉字规则恰好让那四个韩语用例变红，其余不动。
   本条的韩语译文同样写得通过它所描述的那条规则。
-- **PR 档模糊测试现已阻断（`fuzz.yml`）** — PR 上的步骤级
-  `continue-on-error` 只是棘轮而非漏洞，它存在的唯一理由是 main 仍带着这道档会
-  正确标红的漂移（crash-f44eca1d，#256/#258/#261/#262 修复其前序之后）。2026-10-04
-  在当前树上复核：四个目标重放已提交种子语料全部干净（5/59/6/5 枚种子，钉住的
-  nightly-2026-08-15、cargo-fuzz 0.13.2、60 秒发现窗口），于是新崩溃会让引入它的
-  PR 直接失败，而不再等到下个周末才暴露。2026-10-05 在合并键覆盖规则落地后重新复核：
-  75 枚种子重放四个目标全部干净，但新跑的 60 秒发现窗口仍会触及注释重定位这一族
-  （`crash-a916de77`，48 字节）—— 已记入 `ROADMAP.md`，未播种也未修复，因为播种就是
-  承诺该输入能过。账本里列为下一个的 key-metadata 缺口
-  （crash-86a9ae7b）已用单输入重放确认关闭；核查过程中发现的漂移
-  `yaml_roundtrip` crash-ac5d9043 作为当前未关闭项写入 `ROADMAP.md`，未播种也未修复。
+- **PR 档模糊测试现已阻断（`fuzz.yml`）** — PR 上的步骤级 `continue-on-error` 只是棘轮而非漏洞，它存
+  在的唯一理由是 main 仍带着这道档会正确标红的漂移（crash-f44eca1d，#256/#258/#261/#262 修复其前序
+  之后）。2026-10-04 在当前树上复核：四个目标重放已提交种子语料全部干净（5/59/6/5 枚种子，钉住的
+  nightly-2026-08-15、cargo-fuzz 0.13.2、60 秒发现窗口），于是新崩溃会让引入它的 PR 直接失败，而不再
+  等到下个周末才暴露。2026-10-05 在合并键覆盖规则落地后重新复核：75 枚种子重放四个目标全部干净，但
+  新跑的 60 秒发现窗口仍会触及注释重定位这一族（`crash-a916de77`，48 字节）—— 已记入 `ROADMAP.md`，
+  未播种也未修复，因为播种就是承诺该输入能过。账本里列为下一个的 key-metadata 缺口
+  （crash-86a9ae7b）已用单输入重放确认关闭；核查过程中发现的漂移 `yaml_roundtrip` crash-ac5d9043 作
+  为当前未关闭项写入 `ROADMAP.md`，未播种也未修复。
 
 #### 修复
 
-- **台账里有三个标题其实是被格式化器拦腰截断的句子** — 在硬换行的正文里，一个以 issue 编号开头的
-  续行，在 Markdown 格式化器眼里就是一个 ATX 标题，于是 `rumdl fmt` 把它升级成标题、上下加空行，句子
-  被劈开成两段：`ROADMAP.md` 里出现了一个内容为 `293's tier of the same class … — did` 的标题，
-  “get its entries” 另起一段，另外两处随 `(as)` 与 `(at)` 条目出现。没有任何门禁报警，因为一份结构错误
-  但合法的文件无从申诉 —— linter 接受这个标题，`check_changelog_mirrors.py` 比较版本标题，
+- **台账里有三个标题其实是被格式化器拦腰截断的句子** — 在硬换行的正文里，一个以 issue 编号开头的续
+  行，在 Markdown 格式化器眼里就是一个 ATX 标题，于是 `rumdl fmt` 把它升级成标题、上下加空行，句子被
+  劈开成两段：`ROADMAP.md` 里出现了一个内容为 `293's tier of the same class … — did` 的标题，“get
+  its entries” 另起一段，另外两处随 `(as)` 与 `(at)` 条目出现。没有任何门禁报警，因为一份结构错误但
+  合法的文件无从申诉 —— linter 接受这个标题，`check_changelog_mirrors.py` 比较版本标题，
   `check_i18n.py` 比较页面清单。三处都已重新拼回，并让一个词坐在行首，使引用编号不可能再被升级；
-  `scripts/check_doc_headings.py` 成为第十八个钩子：文本以两个以上数字开头且其后不是点的标题即为违规。
-  规则先对着现有正文定标再断言 —— 拿受损的文本跑，它恰好报出那三行（一行已进了 `main`，两行出现在
-  工作副本里）；拿修复后的 173 个被跟踪页面跑，它不命中 `### 1-D array`、`#### 0-D Scalar Arrays`、
-  `#### 13. 深度编辑` 或 `## 1. Test matrix coverage`；它跟踪围栏块，因为不看围栏的扫描会把
-  `docs/ja/contributing/site-i18n.md` 里的一条 shell 注释当成标题，要求去改一行根本不是 Markdown 的文字。
-  机制是复现出来的而非推测：把那个形状写进一个临时文件交给格式化器，续行就被
-  升级成标题，而新检查器点名了它。`tests/test_doc_heading_gate.py`（19 例）在受损文本上开火，证明同一句
-  话拼回去就安静，检查围栏内与围栏后两种情形，要求提示信息说出怎么修，并断言钩子已接线。
+  `scripts/check_doc_headings.py` 成为第十八个钩子：文本以两个以上数字开头且其后不是点的标题即为违
+  规。规则先对着现有正文定标再断言 —— 拿受损的文本跑，它恰好报出那三行（一行已进了 `main`，两行出现
+  在工作副本里）；拿修复后的 173 个被跟踪页面跑，它不命中 `### 1-D array`、
+  `#### 0-D Scalar Arrays`、`#### 13. 深度编辑` 或 `## 1. Test matrix coverage`；它跟踪围栏块，因为
+  不看围栏的扫描会把 `docs/ja/contributing/site-i18n.md` 里的一条 shell 注释当成标题，要求去改一行根
+  本不是 Markdown 的文字。机制是复现出来的而非推测：把那个形状写进一个临时文件交给格式化器，续行就被
+  升级成标题，而新检查器点名了它。`tests/test_doc_heading_gate.py`（19 例）在受损文本上开火，证明同
+  一句话拼回去就安静，检查围栏内与围栏后两种情形，要求提示信息说出怎么修，并断言钩子已接线。
 - **映射键现在与同一段文本作为值时的含义一致** — 此前 `1: a` 读入为 `{"1": "a"}` 而 `a: 1` 读入为
-  `{"a": 1}`，`~: 1` 是 `{"~": 1}` 而 `a: ~` 是 `{"a": None}`：同一份文档因标量坐在 `:` 的哪一侧而有两种
-  意思，以整数、布尔或空值为键的配置根本无法靠查阅命中，而两个参考库在每一行上都彼此一致。`py/convert.rs`
-  现在用值转换路径本身去转换键，而不是它的一份转述 —— 无标签的标量走直路，带标签或别名引用的键保留共享
-  路径，并在自定义 `from_yaml` 返还不可哈希对象时退回源文本，于是一对不会静默丢失；`py/direct_load.rs` 在
-  快路径上用同一条规则，因为一份契约的两套实现否则会再次漂移。桥接那侧是同一缺陷的另一半：TOML 的键按其
-  自身文法是字符串，而共享 AST 表达它的唯一办法就是加引号，于是 `"1" = 2` 到 YAML 成了 `1: 2`，`"" = 3`
-  成了空值键 —— 一次改变了文档意思的转换；`load_toml` 现在恰好给两个 YAML schema 任一会重新定型的键加引号，
-  其余键保持裸写。数字来自指令数门禁而非论证：绑定通道 +1.54~1.59%，`from_toml_medium` +6.2% —— 那正是
-  #307 为这座桥补上读取场景的原因 —— 其余十三个场景 0.00%。契约跟着行为改：`safe_load`、`safe_loads`、
-  `YAML().safe_load*`、`read_markdown*` 都是 `dict[Any, Any]`，而四语文档里 28 个签名加上 `to_dict()` 的
-  文字都还写着「键是字符串」。`tests/test_key_resolution_parity.py`（76 例）钉住了 24 个文本的键==值解析、
-  与 PyYAML 和 ruamel 在 10 种形状上的实测一致、1.1 与 1.2 的分歧并点名持异议的那家、两条路径互相同意、
-  桥接往返，以及一轮即达的不动点。三个表征测试带着理由在原处重新导出，其中一个就是
-  `tests/test_route_parity.py` 里那条缺陷钉住 —— 它承诺要搬进 `PARITY_TABLE`，这里正是那次搬迁。复杂（嵌套）
-  键仍取 Debug 兜底 —— 两个参考实现都在那里报错 —— 仍是键保真度未完成的那一半。
+  `{"a": 1}`，`~: 1` 是 `{"~": 1}` 而 `a: ~` 是 `{"a": None}`：同一份文档因标量坐在 `:` 的哪一侧而有
+  两种意思，以整数、布尔或空值为键的配置根本无法靠查阅命中，而两个参考库在每一行上都彼此一致。
+  `py/convert.rs` 现在用值转换路径本身去转换键，而不是它的一份转述 —— 无标签的标量走直路，带标签或别
+  名引用的键保留共享路径，并在自定义 `from_yaml` 返还不可哈希对象时退回源文本，于是一对不会静默丢
+  失；`py/direct_load.rs` 在快路径上用同一条规则，因为一份契约的两套实现否则会再次漂移。桥接那侧是同
+  一缺陷的另一半：TOML 的键按其自身文法是字符串，而共享 AST 表达它的唯一办法就是加引号，于是
+  `"1" = 2` 到 YAML 成了 `1: 2`，`"" = 3` 成了空值键 —— 一次改变了文档意思的转换；`load_toml` 现在恰
+  好给两个 YAML schema 任一会重新定型的键加引号，其余键保持裸写。数字来自指令数门禁而非论证：绑定通
+  道 +1.54~1.59%，`from_toml_medium` +6.2% —— 那正是 #307 为这座桥补上读取场景的原因 —— 其余十三个场
+  景 0.00%。契约跟着行为改：`safe_load`、`safe_loads`、`YAML().safe_load*`、`read_markdown*` 都是
+  `dict[Any, Any]`，而四语文档里 28 个签名加上 `to_dict()` 的文字都还写着「键是字符串」。
+  `tests/test_key_resolution_parity.py`（76 例）钉住了 24 个文本的键==值解析、与 PyYAML 和 ruamel 在
+  10 种形状上的实测一致、1.1 与 1.2 的分歧并点名持异议的那家、两条路径互相同意、桥接往返，以及一轮即
+  达的不动点。三个表征测试带着理由在原处重新导出，其中一个就是 `tests/test_route_parity.py` 里那条缺
+  陷钉住 —— 它承诺要搬进 `PARITY_TABLE`，这里正是那次搬迁。复杂（嵌套）键仍取 Debug 兜底 —— 两个参考
+  实现都在那里报错 —— 仍是键保真度未完成的那一半。
 - **changelog 条目可以被放到没人会看的地方** — 401a8057 给五个镜像各加了一条哈希保真条目，却把它放在
-  `CHANGELOG.md` 前言之上、en 与 zh 的 frontmatter `tags:` 列表里、以及 ja 与 ko 的 frontmatter 与第一个
-  标题之间，于是在五个文件里它都在 changelog 正文之外，而 `scripts/check_changelog_mirrors.py` 依旧全绿：
-  它只比版本标题，而散文放哪里都不改变那些标题相同。`placement_errors` 现在是该检查器里的硬规则——条目
-  项目符不得出现在第一个版本标题之前，也不得挂在版本标题而非小节标题之下——五份副本都已按“新的在前”归到
-  `[Unreleased] → Fixed`（移动前先量邻位：按 commit 日期，它应在 `crash-9b77aea4` 那条之下、
-  `crash-1b01ac3f` 那条之上）。检查器还会打印每个镜像 `[Unreleased]` 各小节的条目数，而它们的不一致是登记为
-  `changelog-parity:entry-counts` 而不是直接断言——以 root 为基准量得：`docs/en` 少一条，`docs/zh` 少五条
-  （一条 Added 与五条 Fixed 缺失，另有一条别的镜像都没有的 Changed）——因别人漏译而变红的门禁是噪声，不是门禁。
-  `tests/test_changelog_placement_gate.py` 用点名各自的注入验证每条规则会红，验证镜像一致时计数探针会沉默，
-  并核对台账里引用的不一致就是度量当前报出的不一致。
-- **同一仓库里的两个 runner 作业把 `serialize_block_scalars` 量差了 1.44%，而 Ir baseline 没说它的数来自哪一个** —
-  为十五个场景的门禁重生成 `.ci/ir-baseline.json`，把执行作业（`codspeed.yml` 里的 `Instruction-count baseline`）
-  在这一个场景上弄红了：它两次运行报 16,020,942 与 16,020,915，而 `.github/workflows/ir-baseline.yml` 八次
-  运行报 15,792,8xx–15,792,9xx —— 两个 runner 镜像、同一个锁定的 rustc 1.97.1、逐字节相同的源码，其余场景
-  彼此相符到 0.08%。三个解释被检验并被推翻：镜像、被还原的构建缓存（把那一步删掉数值依旧），以及本台账
-  先前“已提交值产自门禁之外机器”的说法（执行作业能复现它们）。第四个成立：glibc 在启动时按 VM 暴露的
-  CPUID 位绑定哪一套字符串例程。二进制哈希把问题定下来——两个作业打印出同一个 `a0386c17b5f1ef38`
-  （valgrind 3.22.0 与锁定的 rustc 1.97.1 也相同），而主机型号不同（`AMD EPYC 9V74` 对 `9V45`）。让每个
-  被测进程都跑在 `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT` 之下就把差距消
-  掉了：执行作业在另一型号的主机上量得相对基线 −0.08%，而此前是 +1.44%；钉住之后在三种主机型号
-  （`9V74`、`9V45`、`7763`）上重测，该场景相符到 0.0002%。没有把线放宽去迁就主机，而是把
-  主机控制的那个输入钉住，`ir_gate.py` 会把设置连同哈希一起打印。自门禁建立以来记下的 WSL 到 runner
-  +1.45% 差距就是同一件事。
-  baseline 文件确实失去了被手抄进去的那段文字——它的 `generated_by.note` 引用了一个既不是 PR #299 head、
-  又早于 toolchain 锁定的 commit，而它的环境串也不是 `environment()` 在该镜像上会写出的值——于是 `--update`
-  现在写出每一个键，包括数值采了几次，提交的键集合由 `tests/test_ir_baseline_workflow.py` 钉成生成的那个。
-- **新加的绑定场景在 500 次迭代下太小，没法进门禁** — 同一 commit 的两次运行把 `to_python_small` 差出 0.83%，
-  比它们即将被要求的 0.5% 线更宽，而引擎场景相符到 0.0009%。`ITERATIONS` 现在与引擎 harness 一样是 2 000，
-  运行内散布降到 0.076–0.24%；每个场景采样三次并提交最大值，次数记在 `generated_by` 里由执行作业读回——
-  三次取大与单次取样是两件同名的不同仪器。每个样本与散布都会被打印，容差因此是从作业日志论证的。
+  `CHANGELOG.md` 前言之上、en 与 zh 的 frontmatter `tags:` 列表里、以及 ja 与 ko 的 frontmatter 与第
+  一个标题之间，于是在五个文件里它都在 changelog 正文之外，而 `scripts/check_changelog_mirrors.py`
+  依旧全绿：它只比版本标题，而散文放哪里都不改变那些标题相同。`placement_errors` 现在是该检查器里的
+  硬规则——条目项目符不得出现在第一个版本标题之前，也不得挂在版本标题而非小节标题之下——五份副本都已按
+  “新的在前”归到 `[Unreleased] → Fixed`（移动前先量邻位：按 commit 日期，它应在 `crash-9b77aea4` 那
+  条之下、`crash-1b01ac3f` 那条之上）。检查器还会打印每个镜像 `[Unreleased]` 各小节的条目数，而它们
+  的不一致是登记为 `changelog-parity:entry-counts` 而不是直接断言——以 root 为基准量得：`docs/en` 少
+  一条，`docs/zh` 少五条（一条 Added 与五条 Fixed 缺失，另有一条别的镜像都没有的 Changed）——因别人漏
+  译而变红的门禁是噪声，不是门禁。`tests/test_changelog_placement_gate.py` 用点名各自的注入验证每条
+  规则会红，验证镜像一致时计数探针会沉默，并核对台账里引用的不一致就是度量当前报出的不一致。
+- **同一仓库里的两个 runner 作业把 `serialize_block_scalars` 量差了 1.44%，而 Ir baseline 没说它的数
+  来自哪一个** — 为十五个场景的门禁重生成 `.ci/ir-baseline.json`，把执行作业（`codspeed.yml` 里的
+  `Instruction-count baseline`）在这一个场景上弄红了：它两次运行报 16,020,942 与 16,020,915，而
+  `.github/workflows/ir-baseline.yml` 八次运行报 15,792,8xx–15,792,9xx —— 两个 runner 镜像、同一个锁
+  定的 rustc 1.97.1、逐字节相同的源码，其余场景彼此相符到 0.08%。三个解释被检验并被推翻：镜像、被还
+  原的构建缓存（把那一步删掉数值依旧），以及本台账先前“已提交值产自门禁之外机器”的说法（执行作业能复
+  现它们）。第四个成立：glibc 在启动时按 VM 暴露的 CPUID 位绑定哪一套字符串例程。二进制哈希把问题定
+  下来——两个作业打印出同一个 `a0386c17b5f1ef38`（valgrind 3.22.0 与锁定的 rustc 1.97.1 也相同），而
+  主机型号不同（`AMD EPYC 9V74` 对 `9V45`）。让每个被测进程都跑在
+  `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT` 之下就把差距消掉了：执行作
+  业在另一型号的主机上量得相对基线 −0.08%，而此前是 +1.44%；钉住之后在三种主机型号（`9V74`、
+  `9V45`、`7763`）上重测，该场景相符到 0.0002%。没有把线放宽去迁就主机，而是把主机控制的那个输入钉
+  住，`ir_gate.py` 会把设置连同哈希一起打印。自门禁建立以来记下的 WSL 到 runner +1.45% 差距就是同一
+  件事。baseline 文件确实失去了被手抄进去的那段文字——它的 `generated_by.note` 引用了一个既不是
+  PR #299 head、又早于 toolchain 锁定的 commit，而它的环境串也不是 `environment()` 在该镜像上会写出
+  的值——于是 `--update` 现在写出每一个键，包括数值采了几次，提交的键集合由
+  `tests/test_ir_baseline_workflow.py` 钉成生成的那个。
+- **新加的绑定场景在 500 次迭代下太小，没法进门禁** — 同一 commit 的两次运行把 `to_python_small` 差
+  出 0.83%，比它们即将被要求的 0.5% 线更宽，而引擎场景相符到 0.0009%。`ITERATIONS` 现在与引擎
+  harness 一样是 2 000，运行内散布降到 0.076–0.24%；每个场景采样三次并提交最大值，次数记在
+  `generated_by` 里由执行作业读回 —— 三次取大与单次取样是两件同名的不同仪器。每个样本与散布都会被打
+  印，容差因此是从作业日志论证的。
 - **指令数门禁按名字只读一个 harness 文件，而它的 baseline 有一半是手抄的** — 树上已经有了
-  `crates/pyrs-yaml/benches/ir_gate.rs`，只点名 `crates/pyrs-yaml-core/benches/ir_gate.rs` 的场景探针
-  却仍只会比十五个名字里的十二个：一整条通道从未进过 baseline，`ir-unbaselined` 也报不出它 — 与 #303
-  的图探针停在第一个 `[dependencies]` 是同一类。`ir_harness_channels()` 现在从 manifest 推导 harness
-  清单，并与磁盘上的文件双向比对（声明了 target 而 harness 源码不见了是 `ir-harness-missing`，有 harness
-  文件却没有谁编译它是 `ir-harness-undeclared`），两个 harness 列出同一个场景名也是发现（
-  `ir-scenario-duplicate`）——一个 baseline 数值说不出它来自哪条通道；上述每种注入都有
-  `tests/test_quality_matrix.py` 负责变红。已提交的 baseline 还有第二处问题：它的 `generated_by.note`
-  是手写的，而 `ir_gate.py --update` 不写文字，所以下一次再生成的 artifact 会把那段解释本文件自身出处
-  的话删掉，diff 看起来倒像是有人做了个决定。理由已搬进 `QUALITY_MATRIX.md`，`--update` 写一条生成的
-  note，提交内容的键则由 `tests/test_ir_baseline_workflow.py` 钉死为作业写出的那些。
-- **`Test matrix (all legs)` 只等 11 个 job 里的 3 个，另外 8 个仍可带着红合并** — #300 加的扇入只覆盖
-  `test`、`test-freethreaded`、`coverage`，把 `rust-lint`(clippy)、`property-tier`、`msrv-check`、
-  `no-std-check`、`build`、`compliance-report`、`i18n-check` 留在了本该代表整场运行的那一个检查之外。
-  现在它等待 `ci.yml` 里除自身与 `main-gate`（只为在 `push` 上维护默认分支历史而存在）之外的所有 job，
-  并且只在 `pull_request` 上触发——把手动 dispatch 判红的裁定并没有需要守护的决定，只会养成忽略它的习惯。
-  它自带的两个测试也是带着缺陷诞生、在出货前靠运行抓出来的：job 名正则连 `on:` 的键一起匹配，于是要求
-  一个叫 `push` 的检查；无界的 `strategy:` 搜索让每个 job 都像矩阵生产者（#300 的断言只是靠一个 `or`
-  逃生条款侥幸通过）。如今两者都限定在 `jobs:` 块内，`tests/test_matrix_verdict_gate.py`（14 个测试）
-  把规则写成精确式：新增 job 而不纳入扇入，测试就变红。归因实测：从 `needs` 里删掉 `no-std-check`
-  只让那一条测试变红，基线为 14 passed。
-- **`perf-coverage:binding-layer` 描述的图，探针其实只读了一半** — 度量把 `ir_harness_crates`
-  报成 `pyrs-ast, pyrs-schema, pyrs-yaml-core`，而由它导出的洞、以及登记进五份 changelog 镜像的文字都列了
-  五个 crate。探针在 manifest 上用 `re.search`，于是停在 `[dependencies]`，没看
+  `crates/pyrs-yaml/benches/ir_gate.rs`，只点名 `crates/pyrs-yaml-core/benches/ir_gate.rs` 的场景探
+  针却仍只会比十五个名字里的十二个：一整条通道从未进过 baseline，`ir-unbaselined` 也报不出它 —
+  与 #303 的图探针停在第一个 `[dependencies]` 是同一类。`ir_harness_channels()` 现在从 manifest 推导
+  harness 清单，并与磁盘上的文件双向比对（声明了 target 而 harness 源码不见了是
+  `ir-harness-missing`，有 harness 文件却没有谁编译它是 `ir-harness-undeclared`），两个 harness 列出
+  同一个场景名也是发现（ `ir-scenario-duplicate`）——一个 baseline 数值说不出它来自哪条通道；上述每种
+  注入都有 `tests/test_quality_matrix.py` 负责变红。已提交的 baseline 还有第二处问题：它的
+  `generated_by.note` 是手写的，而 `ir_gate.py --update` 不写文字，所以下一次再生成的 artifact 会把
+  那段解释本文件自身出处的话删掉，diff 看起来倒像是有人做了个决定。理由已搬进 `QUALITY_MATRIX.md`，
+  `--update` 写一条生成的 note，提交内容的键则由 `tests/test_ir_baseline_workflow.py` 钉死为作业写出
+  的那些。
+- **`Test matrix (all legs)` 只等 11 个 job 里的 3 个，另外 8 个仍可带着红合并** — #300 加的扇入只覆
+  盖 `test`、`test-freethreaded`、`coverage`，把 `rust-lint`(clippy)、`property-tier`、
+  `msrv-check`、`no-std-check`、`build`、`compliance-report`、`i18n-check` 留在了本该代表整场运行的
+  那一个检查之外。现在它等待 `ci.yml` 里除自身与 `main-gate`（只为在 `push` 上维护默认分支历史而存
+  在）之外的所有 job，并且只在 `pull_request` 上触发——把手动 dispatch 判红的裁定并没有需要守护的决
+  定，只会养成忽略它的习惯。它自带的两个测试也是带着缺陷诞生、在出货前靠运行抓出来的：job 名正则连
+  `on:` 的键一起匹配，于是要求一个叫 `push` 的检查；无界的 `strategy:` 搜索让每个 job 都像矩阵生产者
+  （#300 的断言只是靠一个 `or` 逃生条款侥幸通过）。如今两者都限定在 `jobs:` 块内，
+  `tests/test_matrix_verdict_gate.py`（14 个测试）把规则写成精确式：新增 job 而不纳入扇入，测试就变
+  红。归因实测：从 `needs` 里删掉 `no-std-check` 只让那一条测试变红，基线为 14 passed。
+- **`perf-coverage:binding-layer` 描述的图，探针其实只读了一半** — 度量把 `ir_harness_crates` 报成
+  `pyrs-ast, pyrs-schema, pyrs-yaml-core`，而由它导出的洞、以及登记进五份 changelog 镜像的文字都列
+  了五个 crate。探针在 manifest 上用 `re.search`，于是停在 `[dependencies]`，没看
   `[dev-dependencies]` —— 而 `to_json_medium`、`to_toml_medium` 正是在那里链接 `pyrs-json` 与
-  `pyrs-toml`。结论（`pyrs-yaml` 两节都不在）没错，依据错了；而登记在册的洞里的错数字比缺数字更坏，因为它
-  会被引用。现在所有依赖段都会被读取，
-  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section` 按内容钉住集合，并校验
-  台账文字里出现的 crate 名，度量与叙述再不会各说各话。这靠的是把导出的集合印进摘要，而不是相信引用它的那句话。
+  `pyrs-toml`。结论（`pyrs-yaml` 两节都不在）没错，依据错了；而登记在册的洞里的错数字比缺数字更坏，
+  因为它会被引用。现在所有依赖段都会被读取，
+  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section` 按内容钉住集
+  合，并校验台账文字里出现的 crate 名，度量与叙述再不会各说各话。这靠的是把导出的集合印进摘要，而不
+  是相信引用它的那句话。
 - **Ir 基线再生成作业原本要用与基线记录不同的编译器来量** — 该作业第一次真跑（能触发
   `workflow_dispatch` 的只有 `main`）用的是 `rust-toolchain@stable`：runner 的 stable 是 rustc
   1.99.0，而 `.ci/ir-baseline.json` 是在 1.97.1 上产出的，于是代码未动、重生成的文件就把
   `serialize_medium` 挪了 +6.7%、`serialize_small` +5.8%。若把那份 artifact 提交，一次编译器退化就此
-  变成基线，门禁再也不会察觉。现在作业按执行门禁那个作业同样的方式解析 toolchain（从基线里读版本号），
-  只把"移动 pin 本身就是变更"这一种情形交给 `toolchain` 输入，仍是显式动作。
+  变成基线，门禁再也不会察觉。现在作业按执行门禁那个作业同样的方式解析 toolchain（从基线里读版本
+  号），只把"移动 pin 本身就是变更"这一种情形交给 `toolchain` 输入，仍是显式动作。
   `tests/test_ir_baseline_workflow.py` 钉住：只能手动触发、绝不自动 push、不许退回 `@stable`。
-- **三个检查器在本包支持的最低版本 Python 3.8 上跑不起来** —
-  `scripts/check_changelog_mirrors.py`（`-> set[str]`）与 `scripts/check_stub_drift.py`
-  （`-> tuple[...]`）在 import 时求值签名注解，缺 `from __future__ import annotations` 就会被 3.8 拒绝；
-  `scripts/check_changelog_coupling.py` 调了 3.9 才有的 `str.removeprefix`。之所以没人发现，是因为跑这些
-  脚本的 job 全是 3.12/3.14；把它暴露出来的是 pytest 矩阵的 3.8 那条腿，而触发点是"只读检查器"的
-  coupling 门禁自己的测试文件（它 import 并调用了它们）。那条腿上的实测：import 时
-  `TypeError: 'type' object is not subscriptable`，首次调用时
-  `AttributeError: 'str' object has no attribute 'removeprefix'`。现在这一类被守住了：
-  `tests/test_scripts_import_on_supported_python.py` 用运行测试的解释器 import `scripts/` 下每个文件，
-  静态检查内建泛型注解必须带 future import，并断言最低版本取自 `pyproject.toml` 而非记忆 — 它第一次跑就
-  揪出 `check_stub_drift.py` 这第三处。局限也写在该文件里：函数体内的新 API 调用 import 看不见，所以门禁的
-  行为测试必须继续真正执行那些函数。
-- **Ir 基线改由执行门禁的环境生成，容差从 2% 收到 0.5%** — 同一个 commit 在两个 GitHub runner
-  镜像上度量，十二个场景最多相差 0.0018%（`parse_anchors`：341M 中 6,061 条指令），所以
+- **三个检查器在本包支持的最低版本 Python 3.8 上跑不起来** — `scripts/check_changelog_mirrors.py`
+  （`-> set[str]`）与 `scripts/check_stub_drift.py`（`-> tuple[...]`）在 import 时求值签名注解，缺
+  `from __future__ import annotations` 就会被 3.8 拒绝；`scripts/check_changelog_coupling.py` 调了
+  3.9 才有的 `str.removeprefix`。之所以没人发现，是因为跑这些脚本的 job 全是 3.12/3.14；把它暴露出
+  来的是 pytest 矩阵的 3.8 那条腿，而触发点是"只读检查器"的 coupling 门禁自己的测试文件（它 import
+  并调用了它们）。那条腿上的实测：import 时 `TypeError: 'type' object is not subscriptable`，首次调
+  用时 `AttributeError: 'str' object has no attribute 'removeprefix'`。现在这一类被守住了：
+  `tests/test_scripts_import_on_supported_python.py` 用运行测试的解释器 import `scripts/` 下每个文
+  件，静态检查内建泛型注解必须带 future import，并断言最低版本取自 `pyproject.toml` 而非记忆 — 它第
+  一次跑就揪出 `check_stub_drift.py` 这第三处。局限也写在该文件里：函数体内的新 API 调用 import 看
+  不见，所以门禁的行为测试必须继续真正执行那些函数。
+- **Ir 基线改由执行门禁的环境生成，容差从 2% 收到 0.5%** — 同一个 commit 在两个 GitHub runner 镜像上
+  度量，十二个场景最多相差 0.0018%（`parse_anchors`：341M 中 6,061 条指令），所以
   `.ci/ir-baseline.json` 现在装的是 runner 自己的数值并带 `generated_by` 溯源；`scripts/ir_gate.py`
   在运行机器与记录不符时会打印提示（WSL 运行就打印了）。旧的 2% 是围着"WSL 度量的
   `serialize_block_scalars` 与 runner 差 1.45%"设计的，两个解释都被试过且都不成立：说
   `.gitattributes` 正规化了 `BLOCK_SCALAR_YAML` 里的 CR —— 加 `-text` 后 runner 的数只变了
   16,020,906 中的 28 条，而这份 fixture 存进去的字节本身就不稳定：`git show` 对 `main` 的副本报 0 个
   CR、对加了 `-text` 的分支报 98 个，Windows 的 checkout 又会把它们插回来 — 这才是要 `-text` 与新的
-  字节相等性测试堵上的可复现性缺口；说镜像之间漂移 —— 两个镜像一致到 0.0018%。于是这道差被记为未解决，
-  真正改变的是门禁不再拿来源不明的数去比。`-text` 只为字节稳定性保留。
+  字节相等性测试堵上的可复现性缺口；说镜像之间漂移 —— 两个镜像一致到 0.0018%。于是这道差被记为未解
+  决，真正改变的是门禁不再拿来源不明的数去比。`-text` 只为字节稳定性保留。
 - **TOML 多行内联表中非末位成员的注释，写到读取器报告它的位置** — writer 原先把它放在分隔逗号之后
-  （`b = 1, # n`）。`#` 一直到行尾，TOML 无法把逗号留在注释里，于是读取器把那条评论改记为*下一个*键的
-  行首注释；第二次输出就会移动它，文本因此永不落定。这一形状无法由合法 TOML 文本产生（所以只有生成器能
-  发现它），只会经由转换路径出现——那些路径交给 writer 一个源码无法表达的 AST。现在注释输出在成员之后的
-  独立一行（`b = 1,` / `# n`），正是解析器报告它的地方。归因：撤回该规则恰好让
+  （`b = 1, # n`）。`#` 一直到行尾，TOML 无法把逗号留在注释里，于是读取器把那条评论改记为*下一个*键
+  的行首注释；第二次输出就会移动它，文本因此永不落定。这一形状无法由合法 TOML 文本产生（所以只有生
+  成器能发现它），只会经由转换路径出现——那些路径交给 writer 一个源码无法表达的 AST。现在注释输出在
+  成员之后的独立一行（`b = 1,` / `# n`），正是解析器报告它的地方。归因：撤回该规则恰好让
   `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line`（0.45 秒档）与
   20,000 用例下的 `fmt_pbt::prop_toml_writer_is_fixed_point` 变红，其余不动；而在 256 用例并移除已
   持久化的 shrink 用例后整套测试全绿——是这个高档位堵住了这个洞。
@@ -361,22 +381,23 @@ status: new
   它们的缺口是新增的：`tests/test_route_parity.py` 把等价数据同时喂给两个 YAML 写手——解析后树上
   的节点写手，以及面向 Python 对象的 `direct_dump` 快路径；二者按设计互为镜像而不共享代码——并要求
   每个形状逐字节一致，同时把有意保留的差异（引号风格、流式风格、块标量、锚点、标签）作为差异钉住而
-  不是抹平。防线度量里登记的 `route-parity:node-writer-vs-direct-dump` 就是靠这张表在登记次日关闭的。
-- **自己参与合并的模板现在会把继承来的键继续传下去** —— 昨天发布的合并修复还有第二个位点：锚点体在任何合并解析
-  之前就被快照，所以 `use: {<<: *m}` 引用 `mid: &m {<<: *b, y: 2}` 时读的是过期副本，看到一个以为目标
-  已经拥有的 `<<`，就把它跳过了。`use` 返回 `{y: 2, z: 3}`，而 PyYAML 返回 `{x: 1, y: 2, z: 3}`——继承来的
-  `x` 没了，三层链则一次丢两个键。输出文本始终稳定，所以往返断言看不见它；只有对象视图能作证。现在每个锚点体在
-  被读取的地方先解析，覆盖关系也因此落在正确的层级：链自己的键胜过它继承的，文档自己的键胜过整条链——每层一步，
-  与两个参考库一致。
-- **合并源内部的合并键现在会被应用，而不是被丢弃** —— `<<: {<<: {x: 1}}` 此前会把两层 `<<` 都当作数据
-  留下（`{'<<': {'<<': {'x': 1}}}`），而 PyYAML 与 ruamel 对同一份文档读出的是 `{'x': 1}`；
+  不是抹平。防线度量里登记的 `route-parity:node-writer-vs-direct-dump` 就是靠这张表在登记次日关闭
+  的。
+- **自己参与合并的模板现在会把继承来的键继续传下去** —— 昨天发布的合并修复还有第二个位点：锚点体在任
+  何合并解析之前就被快照，所以 `use: {<<: *m}` 引用 `mid: &m {<<: *b, y: 2}` 时读的是过期副本，看到
+  一个以为目标已经拥有的 `<<`，就把它跳过了。`use` 返回 `{y: 2, z: 3}`，而 PyYAML 返回
+  `{x: 1, y: 2, z: 3}`——继承来的 `x` 没了，三层链则一次丢两个键。输出文本始终稳定，所以往返断言看不
+  见它；只有对象视图能作证。现在每个锚点体在被读取的地方先解析，覆盖关系也因此落在正确的层级：链自
+  己的键胜过它继承的，文档自己的键胜过整条链—— 每层一步，与两个参考库一致。
+- **合并源内部的合并键现在会被应用，而不是被丢弃** —— `<<: {<<: {x: 1}}` 此前会把两层 `<<` 都当作数
+  据留下（`{'<<': {'<<': {'x': 1}}}`），而 PyYAML 与 ruamel 对同一份文档读出的是 `{'x': 1}`；
   `<<: {<<: {x: 1, y: 1}, y: 2}` 直接丢掉 `x`，块式写法 `<<:` 下的 `- <<:` 同样丢。收集器会跳过目标
   “已经拥有”的源键，判断方式是整节点比较，而此刻目标自己的 `<<` 条目还在表里，于是嵌套的合并被丢弃而
-  非执行。又因为该比较把键的元数据也算进去，一条*注释*就能改变结果：三行写法中只要中间那行的 `<<:` 带注释，第一次
-  dump 就消费一层、再读它自己的输出时又消费一层，文本每轮都在动——这正是 fuzz 档报告的漂移。而那些“稳定但
-  合并没做完”的文档从来不会让任何测试变红：文本等价的预言机看不见一次未被执行的合并。现在一次解析就会先把
-  源解析完，同一文档的每种写法含义一致，且源自己的键仍然覆盖嵌套合并带进来的键（`<<: {<<: {x: 1}, x: 9}`
-  就是 `x: 9`，与两个参考库一致）。
+  非执行。又因为该比较把键的元数据也算进去，一条*注释*就能改变结果：三行写法中只要中间那行的 `<<:`
+  带注释，第一次 dump 就消费一层、再读它自己的输出时又消费一层，文本每轮都在动——这正是 fuzz 档报告的
+  漂移。而那些“稳定但合并没做完”的文档从来不会让任何测试变红：文本等价的预言机看不见一次未被执行的
+  合并。现在一次解析就会先把源解析完，同一文档的每种写法含义一致，且源自己的键仍然覆盖嵌套合并带进
+  来的键（`<<: {<<: {x: 1}, x: 9}` 就是 `x: 9`，与两个参考库一致）。
 - **序列式键首项上的注释不再每轮爬一层** —— 写手把它放在键体缩进下、`-` 的上面，可是再读时这个位置的
   注释会被报到*序列*上，于是下一次输出又把它提升到 `?` 标记的上一行，文档要到第二轮才收敛：
   `?` + `-` + `#?` + ` ? ` 第一次输出把注释写成键体内独立的一行，第二次输出才把它抬到标记的上面。
@@ -391,20 +412,21 @@ status: new
   把注释挪到值上。两条既有 pin 随之外形改变（`crash-11ced252` 的未引号键、`crash-22cb5f67` 的
   引号键），且它们现在都额外断言“一轮之后映射仍然拥有这条注释”。这些形状的发射文本有变化；没有
   任何文档变得不可解析，且语料库里“一轮收敛”的断言覆盖全部 69 个 `yaml_roundtrip` 种子。
-- **序列项里的空容器不再需要 dump 两次** —— `{}` 与 `[]` 没有块式写法，可两个写手都把它们放到
-  `-` 下面另起一行，于是再读时成了*流式*节点，下一次 dump 又把它内联回来：`safe_dump([{}])` 产出
-  `"- \n  {}\n"`，再 dump 它则得到 `"- {}\n"`。数据从来没错，是文本一直在动——而这正是 fuzz 档所断言的
-  不变量。落在 dash 那一行才收敛，两个实现同时改：处理解析/编辑后树的 `Serializer::write_sequence_item`，
-  以及面向 Python 对象的 `direct_dump` 快路径；二者按设计互为镜像而不共享代码。现在 `safe_dump([{}])`
-  就是 `"- {}\n"`，`[]` 与嵌套情形同样如此，且对它们各自再 dump 一次即是不动点。由
-  `pbt::tests::prop_mapping_order_preserved` 在 Linux 种子上以 CI 常规例数发现。
-- **闭合只有标签的行之后，注释行仍守住自己那一列** —— 为了让注释留在它所属的节点上，写手会
-  闭合那条只有标签的行，而它用**输出中的绝对偏移**记住这一行。写出简单键的行内注释时，文本被
-  插入到该偏移之前，而偏移从未随之移动：于是闭合判断从错误的位置量起距离，认定挂起的行已不再
-  紧邻，就把值留在了未完成状态；下一轮随即把后面的注释行读成该值自己的前导注释，注释便从第 0
-  列滑进值的缩进里。在 `crash-5561902a`（88 字节，化简到 15：`b: ! #&` / `#e` / `? #!`）上实测：
-  第一次发射现在写出 `! ~`，注释仍挂在它被解析时所归属的键上，而且第一次发射就是不动点。对已经写出的输出做插入时，
-  位于插入点之后的偏移现在都会随之平移。
+- **序列项里的空容器不再需要 dump 两次** —— `{}` 与 `[]` 没有块式写法，可两个写手都把它们放到 `-` 下
+  面另起一行，于是再读时成了*流式*节点，下一次 dump 又把它内联回来：`safe_dump([{}])` 产出
+  `"- \n  {}\n"`，再 dump 它则得到 `"- {}\n"`。数据从来没错，是文本一直在动——而这正是 fuzz 档所断言
+  的不变量。落在 dash 那一行才收敛，两个实现同时改：处理解析/编辑后树的
+  `Serializer::write_sequence_item`，以及面向 Python 对象的 `direct_dump` 快路径；二者按设计互为镜
+  像而不共享代码。现在 `safe_dump([{}])` 就是 `"- {}\n"`，`[]` 与嵌套情形同样如此，且对它们各自再
+  dump 一次即是不动点。由 `pbt::tests::prop_mapping_order_preserved` 在 Linux 种子上以 CI 常规例数发
+  现。
+- **闭合只有标签的行之后，注释行仍守住自己那一列** —— 为了让注释留在它所属的节点上，写手会闭合那条只
+  有标签的行，而它用**输出中的绝对偏移**记住这一行。写出简单键的行内注释时，文本被插入到该偏移之前，
+  而偏移从未随之移动：于是闭合判断从错误的位置量起距离，认定挂起的行已不再紧邻，就把值留在了未完成状
+  态；下一轮随即把后面的注释行读成该值自己的前导注释，注释便从第 0 列滑进值的缩进里。在
+  `crash-5561902a`（88 字节，化简到 15：`b: ! #&` / `#e` / `? #!`）上实测：第一次发射现在写出
+  `! ~`，注释仍挂在它被解析时所归属的键上，而且第一次发射就是不动点。对已经写出的输出做插入时，位于
+  插入点之后的偏移现在都会随之平移。
 - **紧凑 `- key:` 行上的注释不再消失** —— `write_sequence_item` 的紧凑 dash 分支自己组装
   `key: value` 这一行，却只抄写了正文，因此 `write_mapping_pair` 所尊重的那几个注释槽位一次也
   没有走到。实测：`- a: !   # n` 在**第一次**发射时就丢了注释（输出 `- a: ! `）；CI 输入
@@ -422,13 +444,12 @@ status: new
   （`comment` / `anchor` / `tag`），经由新增的 `NodeMeta::hash_custom_node_identity`；
   `NodeMeta::hash` 仍镜像 `NodeMeta::eq` 的 #117 归一化，两对关系各自自洽。首键之外的
   每个键都会中招：文档最开头的注释会被记到外层映射上，这正是单键用例从未暴露它的原因。
-- **键的行尾注释不再迁到值的行上** —— 当值为了容纳自己的前导注释而必须下移到独立行时，
-  属于*键*的那条注释仍被追加到「最后结束的那一行」，也就是值的行。而重读时，只带 tag
-  的标量行尾的注释会作为**前导**注释归到值上，于是注释每轮换一次主人，发射永不动点：
-  `b: ! # &` 加 `#~` 先得到 `b:\n  # ~\n  !   # &`，重读又得到
-  `b:\n  # ~\n  # &\n  ! `（libFuzzer `yaml_roundtrip` crash-1b01ac3f，93 字节最小化到
-  11）。现在键的注释留在 `key:` 行——那既是读者会上报它的位置，也是单轮即达的不动点。
-  代价可忽略：指令数门禁只动了 +0.05%。
+- **键的行尾注释不再迁到值的行上** —— 当值为了容纳自己的前导注释而必须下移到独立行时，属于*键*的那条
+  注释仍被追加到「最后结束的那一行」，也就是值的行。而重读时，只带 tag 的标量行尾的注释会作为**前导
+  **注释归到值上，于是注释每轮换一次主人，发射永不动点：`b: ! # &` 加 `#~` 先得到
+  `b:\n  # ~\n  !   # &`，重读又得到 `b:\n  # ~\n  # &\n  ! `（libFuzzer `yaml_roundtrip`
+  crash-1b01ac3f，93 字节最小化到 11）。现在键的注释留在 `key:` 行——那既是读者会上报它的位置，也是单
+  轮即达的不动点。代价可忽略：指令数门禁只动了 +0.05%。
 - **合并不再重复映射已经拥有的键** —— 一个带着注释的未标记 `y` 与被合并进来的 `y` 是两个
   不同的 `IndexMap` 键，于是两者都活到了发射里，`to_yaml` 在同一层把 `y:` 打印了两次：这段
   文本被我们自己的解析器拒绝，破坏了引擎“绝不发射不可解析文本”的契约（`crash-3495cc86`，
@@ -451,32 +472,33 @@ status: new
   发射、文本存活与一步不动点）。把诚实的返回值撤掉只让这一条测试变红。容器根节点有意保留它的
   行内归属 —— `a: 1` + `# trailing note` 会从最后一行值上读回来，那正是钉住 `flush_trailing_comment`
   的两条测试所守的东西。
-- **纯文本的 `#` 不再把注释从它该待的行上挤走** —— 写入器会把容器自己的行内注释贴在刚写完的那一行上，
-  但它先要问“这一行是不是已经有 `#`”，而这个问题是按原始字节扫出来的。带引号的标量里含 `#`
-  （`"+#": !-`）就会被答成“有”，于是注释被降级成单独一行——而值下面的裸注释行重读时会交给*后一个*
-  节点当 leading 注释，第二轮就把它挪进了值块内部。现在这个扫描尊重引号与 YAML 的空格规则
-  （`line_has_comment_marker`），注释便贴在键值对那一行，一次发射即是不动点（`former-crash-22cb5f67.seed`，
-  15 字节，由 `a_quoted_hash_key_settles_the_containers_note_at_once` 与 `comment_marker_scan_respects_quoting`
+- **纯文本的 `#` 不再把注释从它该待的行上挤走** —— 写入器会把容器自己的行内注释贴在刚写完的那一行
+  上，但它先要问“这一行是不是已经有 `#`”，而这个问题是按原始字节扫出来的。带引号的标量里含 `#`
+  （`"+#": !-`）就会被答成“有”，于是注释被降级成单独一行——而值下面的裸注释行重读时会交给*后一个* 节
+  点当 leading 注释，第二轮就把它挪进了值块内部。现在这个扫描尊重引号与 YAML 的空格规则
+  （`line_has_comment_marker`），注释便贴在键值对那一行，一次发射即是不动点
+  （`former-crash-22cb5f67.seed`，15 字节，由
+  `a_quoted_hash_key_settles_the_containers_note_at_once` 与 `comment_marker_scan_respects_quoting`
   钉住）。撤掉新的扫描恰好只让那条端到端测试变红。
 - **带标签的容器现在把首个条目标记脊柱上的每一叠注释都上提** —— 把注释从头行下方清出去的那个提升，
-  原先只读第一个键*自己*的 leading 注释叠，于是骑在体内标记上的那一叠留在头行下面，被读取端在下一轮上提。
-  现在这个提升取走整条脊柱（`former-crash-e6551c75.seed`，60 字节，以及 43 字节的 `former-crash-8f7085b0.seed`，
-  由 `every_spine_note_clears_a_tagged_containers_header_line` 一起钉住）。台账曾以这条遍历会把注释从
-  *嵌套*标记里拽出来、破坏已钉住的紧凑键形状为理由推迟它；把该遍历撤回并重跑后，变红的恰好只有一条测试，
-  同族其余形状两种写法都通过，可见当时的影响范围是推断出来的而非测量出来的。
-- **`pyrs-toml` 重新能在裸机目标上构建** —— 堆叠注释的那批改动把一个 `#![no_std]` crate 的解析器与写入器
-  里放进了 `std::mem::take`；宿主上的每次构建都放过它，`no-std-check` 作业不会。现在六处调用改用
-  `core::mem::take`，而 `cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-ast
-  -p pyrs-schema -p pyrs-json -p pyrs-toml` 在本地是绿的，那正是那个作业跑的命令。
-- **带标签的容器不再把注释梅拆到自己的头行两侧** —— 把块容器首个条目的注释上提到它打印的
-  anchor/tag 头行之上的那个提升，在容器自带注释时拒绝运行；因为在当时一个节点只有*单个*
-  leading 槽，第二叠写在那里会把第一叠覆盖掉。那个槽现在是 `Vec`，于是这份拒绝不再保护文本，
-  只是多花一轮：`# a` + `!5b4?` + `?` + `# b` + `k: v` 把 `# b` 写在头行之下，必须重读才被
-  上提。先测量再动手 —— 这一族每个形状的不动点都是*所有*注释梅按源顺序位于头行之上 ——
-  然后守卫直接移除而不是调参，并把原先钉住旧位置的特征测试重新推导：
-  `notes_stack_above_a_tagged_containers_own_note` 现在断言顺序、两条注释都存活、一步不动点；
-  `both_note_stacks_land_above_a_tag_header_in_one_round` 重放发现窗口给出的 32 字节载体
-  `former-crash-fbc8f2ae.seed`。把守卫放回去恰好只让这两个测试变红。
+  原先只读第一个键*自己*的 leading 注释叠，于是骑在体内标记上的那一叠留在头行下面，被读取端在下一轮
+  上提。现在这个提升取走整条脊柱（`former-crash-e6551c75.seed`，60 字节，以及 43 字节的
+  `former-crash-8f7085b0.seed`，由 `every_spine_note_clears_a_tagged_containers_header_line` 一起钉
+  住）。台账曾以这条遍历会把注释从 *嵌套*标记里拽出来、破坏已钉住的紧凑键形状为理由推迟它；把该遍历
+  撤回并重跑后，变红的恰好只有一条测试，同族其余形状两种写法都通过，可见当时的影响范围是推断出来的
+  而非测量出来的。
+- **`pyrs-toml` 重新能在裸机目标上构建** —— 堆叠注释的那批改动把一个 `#![no_std]` crate 的解析器与写
+  入器里放进了 `std::mem::take`；宿主上的每次构建都放过它，`no-std-check` 作业不会。现在六处调用改
+  用 `core::mem::take`，而
+  `cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-ast -p pyrs-schema -p pyrs-json -p pyrs-toml` 在本地是绿的，那正是那个作业跑的命令。
+- **带标签的容器不再把注释梅拆到自己的头行两侧** —— 把块容器首个条目的注释上提到它打印的 anchor/tag
+  头行之上的那个提升，在容器自带注释时拒绝运行；因为在当时一个节点只有*单个* leading 槽，第二叠写在
+  那里会把第一叠覆盖掉。那个槽现在是 `Vec`，于是这份拒绝不再保护文本，只是多花一轮：`# a` +
+  `!5b4?` + `?` + `# b` + `k: v` 把 `# b` 写在头行之下，必须重读才被上提。先测量再动手 —— 这一族每
+  个形状的不动点都是*所有*注释梅按源顺序位于头行之上 —— 然后守卫直接移除而不是调参，并把原先钉住旧位
+  置的特征测试重新推导：`notes_stack_above_a_tagged_containers_own_note` 现在断言顺序、两条注释都存
+  活、一步不动点；`both_note_stacks_land_above_a_tag_header_in_one_round` 重放发现窗口给出的 32 字
+  节载体 `former-crash-fbc8f2ae.seed`。把守卫放回去恰好只让这两个测试变红。
 - **标记脊柱上的每一叠注释都上提到标记行，不只是第一叠** —— `hoist_marker_note` 沿单行开启的
   `?` 标记链行走，原先在遇到的第一叠 leading 注释处停下。一条链可以带多叠，而 granit 把它们
   都报告在标记自己那一层：crash-f8525a9e 的脊柱深三层标记，`#` 在中间那个映射上、`!!"#~` 在
@@ -487,20 +509,18 @@ status: new
   上提漏掉了存在 legacy `comment` 槽里的那条注释 —— 被检验并**否证**（发射一字未变）；
   `take_leading_notes` 仍改用归一化的 `leading_comments()` 视图，因为只读两种存放约定中的一种
   正是 `standalone_slice()` 要防止的分叉，但它只以这条理由自证，不记为本次修复的功劳。
-- **容器自己的行内注释现在写在能容纳尾注的行上** —— 写入器会把块容器上非 standalone 的
-  `comment` 打印成块下方一行裸注释，但读取器从不从空行报告行内注释：重读时那段文本被交给
-  结束该块的那个节点，成为它的*前置*注释，于是第一次发射从来不是不动点。
-  `:<TAB>!-<CR>... #-o` 先写出 `~: !- \n# -o\n`，要到第二轮才得到
-  `~:\n  # -o\n  !- \n`（libFuzzer `yaml_roundtrip` crash-11ced252，13 字节）。现在注释借用
-  块刚写完的那一行 —— `~: !-   # -o`，一步就稳定，也正是 granit 回读时报告它的位置。
-  这个槽位的归属是在写行时记录的，而不是从输出文本猜的，因此三种情形拒绝借用：块标量的
-  正文行（追加进去会变成内容）、折行的续行、以及已经带着注释的行。
+- **容器自己的行内注释现在写在能容纳尾注的行上** —— 写入器会把块容器上非 standalone 的 `comment` 打
+  印成块下方一行裸注释，但读取器从不从空行报告行内注释：重读时那段文本被交给结束该块的那个节点，成
+  为它的*前置*注释，于是第一次发射从来不是不动点。`:<TAB>!-<CR>... #-o` 先写出 `~: !- \n# -o\n`，要
+  到第二轮才得到 `~:\n  # -o\n  !- \n`（libFuzzer `yaml_roundtrip` crash-11ced252，13 字节）。现在注
+  释借用块刚写完的那一行 —— `~: !-   # -o`，一步就稳定，也正是 granit 回读时报告它的位置。这个槽位
+  的归属是在写行时记录的，而不是从输出文本猜的，因此三种情形拒绝借用：块标量的正文行（追加进去会变
+  成内容）、折行的续行、以及已经带着注释的行。
   `a_containers_inline_note_after_a_text_less_value_settles_at_once` 钉住允许的一侧，
-  `a_block_scalar_body_never_borrows_the_containers_note` 钉住拒绝的一侧；突变检查（把追加退回）
-  只让前者变红，其余 274 个测试仍为绿。经由 TOML 中枢这也收紧了一条已记录的边界：
-  `[sec] # note` 不再逃到文档开头，而是留在它自己的表里，作为该表最后一条 `key = value` 的
-  行尾注释，同样一轮到不动点，所以 `TestSectionHeaderCommentBoundary` 被改写为钉住“存活 +
-  留在表内 + 这一步稳定性”。
+  `a_block_scalar_body_never_borrows_the_containers_note` 钉住拒绝的一侧；突变检查（把追加退回）只
+  让前者变红，其余 274 个测试仍为绿。经由 TOML 中枢这也收紧了一条已记录的边界：`[sec] # note` 不再
+  逃到文档开头，而是留在它自己的表里，作为该表最后一条 `key = value` 的行尾注释，同样一轮到不动点，
+  所以 `TestSectionHeaderCommentBoundary` 被改写为钉住“存活 + 留在表内 + 这一步稳定性”。
 - **标记行现在执行它的两次注释上提** —— 显式键可以在键节点上带一条注释，*同时*留下第二条挂在
   键体首个条目上，而读取器把两条都报告在标记自己那一层。写入器原先用 `if`/`else if` 在两次
   上提之间二选一，所以只要键自有注释，体内那条就被写在深一级的位置，重读时又爬一级；发射要
@@ -510,71 +530,66 @@ status: new
   `a_marker_carries_both_its_own_note_and_its_bodys_first_note` 钉住，归因方式相同：把它们拆回
   二选一只会让这一个测试变红。两条症状相同的输入 crash-f8525a9e 与 crash-c9031de4 在修复后仍
   是红的，所以它们是另一种几何（注释挂在嵌套*标记*上而非标量键上），保持未关闭。
-- **注释文本里的 `&` 不再能把名字让给真正的锚点** —— granit 只交回数字 `anchor_id`，所以
-  显示名要靠从节点内容向左扫回来还原；而那个还原只在“紧邻 `&` 的前一个 token 就是注释
-  开启符”时才拒绝。注释正文可以包含任何东西：`bg: &b` 后面跟 `# !! &?`，重读就变成了
-  `bg: &?`，因为 `&?` 前面是 `!!` 而不是紧贴着的 `#`。锚点被改名就会静默悬空所有指向它的
-  别名 —— 与 #265、crash-04fddeb8 同一数据丢失类，也是本周期第三次“守护写得比它代表的规则
-  更窄”。拒绝现在问 YAML 自己问的那个问题：这一行更靠前的位置是否开启了注释？藏在标量里
-  的 `#` 仍然不算开启；唯一可能误拒的形状（同一行更早处有带引号的 `#`，而后又出现锚点）没有
-  可达形式，因为节点属性总在值之前。由 `anchor_name_before_ignores_ampersand_anywhere_in_comment_text`
-  （谓词的两个方向）与 `anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand`
-  钉住，后者从新种子 `fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed` 读字节，并断言
-  锚点记号、注释文本与一步不动点；该 artifact 重放 CRASH→CLEAN，文件里原有的其余守护仍成立。
+- **注释文本里的 `&` 不再能把名字让给真正的锚点** —— granit 只交回数字 `anchor_id`，所以显示名要靠
+  从节点内容向左扫回来还原；而那个还原只在“紧邻 `&` 的前一个 token 就是注释开启符”时才拒绝。注释正
+  文可以包含任何东西：`bg: &b` 后面跟 `# !! &?`，重读就变成了 `bg: &?`，因为 `&?` 前面是 `!!` 而不是
+  紧贴着的 `#`。锚点被改名就会静默悬空所有指向它的别名 —— 与 #265、crash-04fddeb8 同一数据丢失类，
+  也是本周期第三次“守护写得比它代表的规则更窄”。拒绝现在问 YAML 自己问的那个问题：这一行更靠前的位
+  置是否开启了注释？藏在标量里的 `#` 仍然不算开启；唯一可能误拒的形状（同一行更早处有带引号的 `#`，
+  而后又出现锚点）没有可达形式，因为节点属性总在值之前。由
+  `anchor_name_before_ignores_ampersand_anywhere_in_comment_text`（谓词的两个方向）与
+  `anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand` 钉住，后者从新种子
+  `fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed` 读字节，并断言锚点记号、注释文本与一步不动
+  点；该 artifact 重放 CRASH→CLEAN，文件里原有的其余守护仍成立。
 - **键上方的每一行独立注释都会保留，而不是只留最后一行** —— AST 把 leading 注释放在单槽里
-  （`NodeDecor.leading_comment: Option<Comment>`），而 YAML receiver、JSONC parser 与 merge
-  阶段都会*覆盖*它，所以一叠注释行只剩一行：`# alpha` + `# beta` + `key: 1` 回写成
-  `# beta` + `key: 1`。下游谁也看不见它 —— 丢失后的文本照样稳定，而往返档判据只问“再序列化后
-  是否稳定”，所以那是那一档无法表达的第一类缺陷。`NodeDecor.leading_comments` 现在是有序列表；
-  `NodeMeta::standalone_slice()` 是唯一的规范化读取（有列表就读列表，否则把旧的
-  `comment(standalone = true)` 写法当作一元片——返回片而不是 `Vec`，因为 `NodeMeta::eq` /
-  `Hash` 会在每个 mapping 的每次 `IndexMap` 探测上运行）。`leading_comment()` 与 Python 的
-  `Node.leading_comment` 仍报第一条，既有行为不变；`Node.leading_comments` 是新的完整视图。
-  顺这条线又找到三处同形状的静默丢失，每处都已修复、加测并播种：只含注释的文档会把注释全丢
-  （`#&l<TAB><TAB>:` → `null`，因为没有节点时 `DocumentEnd` 不会触发）、null 键折叠会把被折叠
-  那条的注释一并删掉、被消费的合并键（或它合并进来的那个映射）会把注释带走 —— 最后这处正是合并键
-  身份修复刚刚暴露出来的洞。现在注释一律重新安放，绝不丢弃。TOML spoke 的 pending 槽是同一型覆盖（`# a` + `# b` + `k = 1`
-  只留一条），空集合的单个行内槽也会丢掉一叠注释的其余部分（`# d1` + `# d2` → `{}  # d1`）；
-  现在两者都全量保留。这也改了一条已记录边界：表格头行的注释仍然不能留在那一行，但不再消失，
-  而是被搬到文档开头，且经 hub 走一轮 TOML 就已稳定。只有“注释存活”判据还等剩下的归属工作
-  收尾，不会先把 CI 弄红。
-- **合并键按它本身被识别，而不是按它携带什么** —— 合并阶段用整节点相等在 pair 表里查
-  `<<`，所以键节点上挂了注释的 `<<` 对它完全隐形：`<<: #*` + `y:` 解成
-  `{'<<': {'y': None}}`，而同一份文档写成 `<<:` + `y: ~  # *` 却解成 `{'y': None}`。
-  正因为写入器会把注释在这两个位置之间搬来搬去，一次往返就改变了文档的含义，配对在下一
-  轮直接消失（libFuzzer `yaml_roundtrip` crash-69931a77，`cargo fuzz tmin` 最小化到 10
-  字节；crash-0a6fe677、crash-2d3dab18、crash-f88c2382 同时关闭 —— 把整节点相等放回去，
-  四份输入一起变红，这才是归因而非同一条断言）。现在按 YAML 自己的解析方式匹配键 ——
-  无 tag 的 plain `<<` —— 并按位置而不是按值定位该条目；这顺带修好了尾遍历在本体克隆与
-  自有键相等时把克隆交回来的情形。风格与 tag 仍然决定身份：引号 `"<<"` 和带 tag 的
-  `!x <<` 照旧是普通键，由 `a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key`
-  与 `TestMergeKeyIdentityIgnoresMetadata` 钉住。已播种为
+  （`NodeDecor.leading_comment: Option<Comment>`），而 YAML receiver、JSONC parser 与 merge 阶段都会
+  *覆盖*它，所以一叠注释行只剩一行：`# alpha` + `# beta` + `key: 1` 回写成 `# beta` + `key: 1`。下游
+  谁也看不见它 —— 丢失后的文本照样稳定，而往返档判据只问“再序列化后是否稳定”，所以那是那一档无法表
+  达的第一类缺陷。`NodeDecor.leading_comments` 现在是有序列表；`NodeMeta::standalone_slice()` 是唯
+  一的规范化读取（有列表就读列表，否则把旧的 `comment(standalone = true)` 写法当作一元片——返回片而不
+  是 `Vec`，因为 `NodeMeta::eq` / `Hash` 会在每个 mapping 的每次 `IndexMap` 探测上运行）。
+  `leading_comment()` 与 Python 的 `Node.leading_comment` 仍报第一条，既有行为不变；
+  `Node.leading_comments` 是新的完整视图。顺这条线又找到三处同形状的静默丢失，每处都已修复、加测并
+  播种：只含注释的文档会把注释全丢（`#&l<TAB><TAB>:` → `null`，因为没有节点时 `DocumentEnd` 不会触
+  发）、null 键折叠会把被折叠那条的注释一并删掉、被消费的合并键（或它合并进来的那个映射）会把注释带
+  走 —— 最后这处正是合并键身份修复刚刚暴露出来的洞。现在注释一律重新安放，绝不丢弃。TOML spoke 的
+  pending 槽是同一型覆盖（`# a` + `# b` + `k = 1` 只留一条），空集合的单个行内槽也会丢掉一叠注释的
+  其余部分（`# d1` + `# d2` → `{}  # d1`）；现在两者都全量保留。这也改了一条已记录边界：表格头行的
+  注释仍然不能留在那一行，但不再消失，而是被搬到文档开头，且经 hub 走一轮 TOML 就已稳定。只有“注释
+  存活”判据还等剩下的归属工作收尾，不会先把 CI 弄红。
+- **合并键按它本身被识别，而不是按它携带什么** —— 合并阶段用整节点相等在 pair 表里查 `<<`，所以键节
+  点上挂了注释的 `<<` 对它完全隐形：`<<: #*` + `y:` 解成 `{'<<': {'y': None}}`，而同一份文档写成
+  `<<:` + `y: ~  # *` 却解成 `{'y': None}`。正因为写入器会把注释在这两个位置之间搬来搬去，一次往返
+  就改变了文档的含义，配对在下一轮直接消失（libFuzzer `yaml_roundtrip` crash-69931a77，
+  `cargo fuzz tmin` 最小化到 10 字节；crash-0a6fe677、crash-2d3dab18、crash-f88c2382 同时关闭 —— 把
+  整节点相等放回去，四份输入一起变红，这才是归因而非同一条断言）。现在按 YAML 自己的解析方式匹配键
+  —— 无 tag 的 plain `<<` —— 并按位置而不是按值定位该条目；这顺带修好了尾遍历在本体克隆与自有键相等
+  时把克隆交回来的情形。风格与 tag 仍然决定身份：引号 `"<<"` 和带 tag 的 `!x <<` 照旧是普通键，由
+  `a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key` 与
+  `TestMergeKeyIdentityIgnoresMetadata` 钉住。已播种为
   `fuzz/seeds/yaml_roundtrip/former-crash-{69931a77,0a6fe677,2d3dab18,f88c2382}.seed`。
-- **容器自己 tag 行之下的注释，不再和 tag 行互换位置** —— granit 会把写在 anchor/tag
-  header 行*下方*的独立注释报成那个带 tag 节点的 leading 注释，所以写入器留在那里的
-  注释下一轮就跑到 header *上方*，一次发射永远到不了不动点（libFuzzer
-  `yaml_roundtrip` crash-77a8039b，28 字节：`!5b4?` 接 `# yrrrrrrrrrrrr%3c` 接 `~: ~`；
-  实测要到第 2 轮才停下）。这类注释现在上提到 header 之上 —— reader 会把它交回的那一行
-  —— 同时从正文副本里取走，免得写两遍；带 tag 的块序列首项同样上提。上提在 reader 槽位
-  用尽处收口：自带注释的容器在 header 上方已占一行，再来一行会落进同一个 leading 单槽，
-  所以那个形状保持原位置，不把漂移换成丢文本
-  （`a_note_is_not_stacked_above_a_tagged_containers_own_note`）—— 并作为独立开放项记录，
-  因为该输入今天确实实测会丢一条注释。已播种为
+- **容器自己 tag 行之下的注释，不再和 tag 行互换位置** —— granit 会把写在 anchor/tag header 行*下方*
+  的独立注释报成那个带 tag 节点的 leading 注释，所以写入器留在那里的注释下一轮就跑到 header *上方
+  *，一次发射永远到不了不动点（libFuzzer `yaml_roundtrip` crash-77a8039b，28 字节：`!5b4?` 接
+  `# yrrrrrrrrrrrr%3c` 接 `~: ~`；实测要到第 2 轮才停下）。这类注释现在上提到 header 之上 —— reader
+  会把它交回的那一行 —— 同时从正文副本里取走，免得写两遍；带 tag 的块序列首项同样上提。上提在 reader
+  槽位用尽处收口：自带注释的容器在 header 上方已占一行，再来一行会落进同一个 leading 单槽，所以那个
+  形状保持原位置，不把漂移换成丢文本（`a_note_is_not_stacked_above_a_tagged_containers_own_note`）
+  —— 并作为独立开放项记录，因为该输入今天确实实测会丢一条注释。已播种为
   `fuzz/seeds/yaml_roundtrip/former-crash-77a8039b.seed`。
-- **尾部注释不再跨过自身节点吞掉的换行被错挂** —— granit 给块级集合的 span 会*越过*
-  结束本行的那个换行，于是 span 末尾其实已经落在下一行。“这条注释是否在更后的行上”
-  的检查只扫描候选结束字节与注释之间的缝隙，在 `?\n` 里看不到 `\n`，就把注释挂到了更
-  深的节点上；写入器把它写进那个块里，重读时又交给浅一层的条目，所有权每往一轮就升一
-  层（libFuzzer `yaml_roundtrip` crash-0e1c4378，最小化到 10 字节
-  `b:<LF> ?<LF>? #i`）。现在该检查先把 span 吞掉的空白退回去，再找换行。两侧都有断言
-  守住边界：crash-105de752（47 字节）随同一改动变 CLEAN，而归因是*测出来的* —— 关掉
-  这个回退，它会与 crash-0e1c4378 一起重新变红，所以是同一根因而非同一条失败断言；
-  `a_note_on_a_multi_line_nodes_last_line_still_trails_it` 则钉住反方向，因为跨多行节点
-  最后一行上的注释仍必须属于那个节点。两份输入都已提交为
-  `fuzz/seeds/yaml_roundtrip/former-crash-{0e1c4378,105de752}.seed`。
-  方法记录，比修复本身更值钱：这条规则的第一版把 receiver 的“字符序号 → 字节偏移”表
-  当成了行表来读，而纯 ASCII 输入下这张表根本不存在，于是它返回 `None`，什么也没改变。
-  它读起来是对的，实际什么都没做；只有那条仍然发红的断言说了真话。
+- **尾部注释不再跨过自身节点吞掉的换行被错挂** —— granit 给块级集合的 span 会*越过* 结束本行的那个换
+  行，于是 span 末尾其实已经落在下一行。“这条注释是否在更后的行上” 的检查只扫描候选结束字节与注释之
+  间的缝隙，在 `?\n` 里看不到 `\n`，就把注释挂到了更深的节点上；写入器把它写进那个块里，重读时又交
+  给浅一层的条目，所有权每往一轮就升一层（libFuzzer `yaml_roundtrip` crash-0e1c4378，最小化到 10 字
+  节 `b:<LF> ?<LF>? #i`）。现在该检查先把 span 吞掉的空白退回去，再找换行。两侧都有断言守住边界：
+  crash-105de752（47 字节）随同一改动变 CLEAN，而归因是*测出来的* —— 关掉这个回退，它会与
+  crash-0e1c4378 一起重新变红，所以是同一根因而非同一条失败断言；
+  `a_note_on_a_multi_line_nodes_last_line_still_trails_it` 则钉住反方向，因为跨多行节点最后一行上的
+  注释仍必须属于那个节点。两份输入都已提交为
+  `fuzz/seeds/yaml_roundtrip/former-crash-{0e1c4378,105de752}.seed`。方法记录，比修复本身更值钱：这
+  条规则的第一版把 receiver 的“字符序号 → 字节偏移”表当成了行表来读，而纯 ASCII 输入下这张表根本不
+  存在，于是它返回 `None`，什么也没改变。它读起来是对的，实际什么都没做；只有那条仍然发红的断言说了
+  真话。
 - **mapping 会折叠它的 null 键，且只折叠真正的 null 键** —— `~` 键与空键是同一个键，
   但 `IndexMap` 比较的是整个节点，两种拼写在元数据上不同，于是两条都留下、都渲染成
   `~:`，而 reader 回读时又把它们折叠——这类文档每往一轮就少一行（libFuzzer
@@ -621,26 +636,23 @@ status: new
   写入字符集现在取自 reader 而非 URI 语法：简写 tag 对这四个做百分号编码，而 verbatim
   `!<uri>` 保留原样，因为那里的 `is_uri_char` 接受它们——`!<tag:yaml.org,2002:str>`
   仍逐字节往返。
-- **Unicode 空白不再冒充 YAML 空白** — YAML 流水线上有六处用了
-  `char::is_whitespace()` / `str::trim()`，那是 Unicode 定义，也会匹配 NBSP（U+00A0）、
-  U+0085、U+2028/U+2029，而 YAML 从不把它们当作分隔符（granit 的空白集只有 SP 与 TAB）。
-  后果是静默的而不是表面：只含一个 NBSP 的文档被“空文档”快速路径吞掉，重读成 `null`
-  而不是标量（libFuzzer `yaml_roundtrip` crash-512814，5 字节：BOM 加一个 NBSP）；
-  `resolve_core_type` 与 `resolve_yaml11_type` 把内容剪掉了，于是 `<NBSP>42` 解成*整数*
-  42、`<NBSP>yes` 解成 `true`，而跨行的 NBSP 标量解成 `Null`，使 writer 跳过加引号、
-  裸写换行，回读时空行塌缩——发射永远到不了不动点（crash-b44481b2，7 字节）；被折行
-  排版的普通标量在换行处丢了 NBSP；`anchor_name_before` 把 `&a<NBSP>b` 截成 `&a`，
-  让引用全名的别名静悄悄地悬空；注释文本两端的 NBSP 也被吃掉。六处现在统一用 reader 自己的
-  集合 `pyrs_schema::is_yaml_blank`。JSON 家族解析器故意保留 Unicode 空白——JSON5 确实
-  把它们当作结构性空白。
-- **毗邻含 `&` 的 tag URI 的锚点不再丢名字** — granit 不报告锚点名，
-  `anchor_name_before` 便从节点向左扫描最近的边界 `&` 来还原显示名。但 `&` 是
-  合法的 URI 字符，而 `-`（`- &a v` 需要它）又在边界集里，于是对 writer 自己采用的
-  `&anchor !tag` 顺序而言，最右侧符合条件的 `&` 其实落在 tag *内部*：`&F !-&l`
-  被重读成锚点 `l`。名字每一轮都在变，发射永远到不了不动点；而锚点一旦被改名，
-  引用它的 `*F` 别名就全部悬空——这是数据丢失级别的问题，不只是格式漂移。现在若某个
-  `&` 左侧以空白分隔的那一段以 `!` 开头，就当作 tag 内容跳过（libFuzzer
-  `yaml_roundtrip` crash-f44eca1d，36 字节最小化到 12 字节）。
+- **Unicode 空白不再冒充 YAML 空白** — YAML 流水线上有六处用了 `char::is_whitespace()` /
+  `str::trim()`，那是 Unicode 定义，也会匹配 NBSP（U+00A0）、U+0085、U+2028/U+2029，而 YAML 从不把
+  它们当作分隔符（granit 的空白集只有 SP 与 TAB）。后果是静默的而不是表面：只含一个 NBSP 的文档被
+  “空文档”快速路径吞掉，重读成 `null` 而不是标量（libFuzzer `yaml_roundtrip` crash-512814，5 字节：
+  BOM 加一个 NBSP）；`resolve_core_type` 与 `resolve_yaml11_type` 把内容剪掉了，于是 `<NBSP>42` 解
+  成*整数* 42、`<NBSP>yes` 解成 `true`，而跨行的 NBSP 标量解成 `Null`，使 writer 跳过加引号、裸写换
+  行，回读时空行塌缩——发射永远到不了不动点（crash-b44481b2，7 字节）；被折行排版的普通标量在换行处
+  丢了 NBSP；`anchor_name_before` 把 `&a<NBSP>b` 截成 `&a`，让引用全名的别名静悄悄地悬空；注释文本
+  两端的 NBSP 也被吃掉。六处现在统一用 reader 自己的集合 `pyrs_schema::is_yaml_blank`。JSON 家族解
+  析器故意保留 Unicode 空白——JSON5 确实把它们当作结构性空白。
+- **毗邻含 `&` 的 tag URI 的锚点不再丢名字** — granit 不报告锚点名，`anchor_name_before` 便从节点向
+  左扫描最近的边界 `&` 来还原显示名。但 `&` 是合法的 URI 字符，而 `-`（`- &a v` 需要它）又在边界集
+  里，于是对 writer 自己采用的 `&anchor !tag` 顺序而言，最右侧符合条件的 `&` 其实落在 tag *内部*：
+  `&F !-&l` 被重读成锚点 `l`。名字每一轮都在变，发射永远到不了不动点；而锚点一旦被改名，引用它的
+  `*F` 别名就全部悬空——这是数据丢失级别的问题，不只是格式漂移。现在若某个 `&` 左侧以空白分隔的那一段
+  以 `!` 开头，就当作 tag 内容跳过（libFuzzer `yaml_roundtrip` crash-f44eca1d，36 字节最小化到 12 字
+  节）。
 - **双引号标量内的 BOM 会被转义而不是原样写出** — 转义器的兜底分支只测
   `is_control() || is_yaml_noncharacter()`，而 U+FEFF 两者都不满足（它是 `Cf`
   格式字符，非字符掩码也排除它），于是一路落到原样输出，把 BOM 直接写进引号内
@@ -689,11 +701,10 @@ status: new
 - **以文档指示符开头的普通标量也被引号包裹**（补全 #249）— 以 `... `/`---` 开头的值
   （如 `... k`）裸发在行首会被当作文档标记加非法尾随内容而无法重解析（crash-08f05e25）；
   现将该前缀形态一并引号化。
-- **按宽度折行不再破坏长普通标量的空格** — 超过换行 `width` 的普通标量会在空格处
-  折行，而折出的换行重解析会还原成单个空格。在 2 个及以上连续空格（或制表符）旁
-  折行会留下行尾空格，重读成不同数量的空格，值因此逐轮漂移（libFuzzer
-  `yaml_roundtrip` crash-9ee754bf）。`write_plain_scalar` 现在对含多空格串或制表符的
-  值不再折行（发成一条无损长行）；仅含单空格的值仍照常折行且稳定，值始终精确。
+- **按宽度折行不再破坏长普通标量的空格** — 超过换行 `width` 的普通标量会在空格处折行，而折出的换行
+  重解析会还原成单个空格。在 2 个及以上连续空格（或制表符）旁折行会留下行尾空格，重读成不同数量的空
+  格，值因此逐轮漂移（libFuzzer `yaml_roundtrip` crash-9ee754bf）。`write_plain_scalar` 现在对含多空
+  格串或制表符的值不再折行（发成一条无损长行）；仅含单空格的值仍照常折行且稳定，值始终精确。
 - **块标量的缩进指示符改为在其内容行之上探测** — `detect_block_header` 从块首个
   内容行向上扫描，却从该行本身开始，于是含 `|`/`>` 的内容行可能被当成头部解析。
   granit 只把 `\n` 计为换行，故源里的 `\r` 会把 `key: |2` 与一个含 `|` 的内容行
@@ -744,33 +755,28 @@ status: new
   `&e:`），往返发生漂移（libFuzzer `yaml_roundtrip` crash-83cc68c6）。现在锚点
   提取对 `&` 施加与引号状态机相同的节点边界门控（行首或 `\t:,[]{}-` 之后），
   故 `sbb&e` 仍是普通键。无锚与正确锚定的文档扫描结果不变。
-- **重复键按值而非整个节点拒绝** — AST 的 `IndexMap` 以整个 `CustomNode`
-  为键，因此文本相同但后随注释/风格/锚点不同的两个标量键（`key # a` 与
-  `key # b`）仍被视为互异：解析时不报重复，而序列化器丢弃键装饰并发出两行
-  完全相同的 `key:`，导致我方 parser 在再解析时拒绝（libFuzzer
-  `yaml_roundtrip` crash-3b0a7d1d——输出的文档无法解析）。重复键检测现按标量
-  键的值识别，与 `to_yaml` 发出的同一身份，故此类输入在首次解析即被拒绝。
-  `<<` 合并键仍豁免：YAML 允许一个映射重复它。
+- **重复键按值而非整个节点拒绝** — AST 的 `IndexMap` 以整个 `CustomNode` 为键，因此文本相同但后随注
+  释/风格/锚点不同的两个标量键（`key # a` 与 `key # b`）仍被视为互异：解析时不报重复，而序列化器丢弃
+  键装饰并发出两行完全相同的 `key:`，导致我方 parser 在再解析时拒绝（libFuzzer `yaml_roundtrip`
+  crash-3b0a7d1d——输出的文档无法解析）。重复键检测现按标量键的值识别，与 `to_yaml` 发出的同一身份，
+  故此类输入在首次解析即被拒绝。`<<` 合并键仍豁免：YAML 允许一个映射重复它。
 - **空块容器作为映射值时内联序列化** — 空的 `Mapping`/`Sequence` 没有块形式，
   但块式的空值被发出为 `key:` 并将 `{}`/`[]` 放在下一个缩进处。重新读取会得
   到一个*流式*集合，于是 `flow_style` 翻转，下一轮把它内联了——`key:\n  {}` 与
   `key: {}` 每轮序列化都漂移（libFuzzer `yaml_roundtrip` crash-d0e84310）。现在
   空容器总是内联发出（`key: {}`），包括带锚点/标签的值（`key: &a {}`）；对其
   跳过换行预发，故报头永不重复。
-- **普通键中的裸撇号吞掉了后续所有锚点** — `extract_anchors` 运行一个引号
-  状态机以跳过被引号包裹的 `&`，但它对任意 `'`/`"` 都翻转状态，即便它嵌在
-  普通标量里（如裸键 `bas'e` 或 `a'` 中的 `'`）。那个幻影引号会持续到文档
-  结尾，导致预扫描不返回任何锚名、`register_anchor` 给每个节点都返回 `None`，
-  锚点静默地从输出中消失，往返发生漂移（libFuzzer `yaml_roundtrip`
-  crash-68da2420）。现在引号的“开启”受 token 边界门控（行首或 `\t:,[]{}-` 之后），
-  与 granit 一致；普通标量内的引号是字面内容，而真带引号的标量仍会遮蔽其 `&`。
-- **字面块标量在首行为空白时强制缩进指示符** — AST 将 `|`/`|N` 正文去缩进
-  存储，井丢弃源头的显式指示符；因此首行以空白开头、后续行更浅的值
-  （` 1|l\n:t\n`）在无指示符重新发出时，会让 granit 把更深的首行当作块缩进，
-  将更浅的那行读成降级缩进——输出不再可重新解析（libFuzzer `yaml_roundtrip`
-  crash-e432d4b8）。字面写入器现在镜像折叠写入器，止好在该情形下强制缩进
-  指示符，从而跳过自动探测、使前导空白保留为内容。首行非空白的文档仍按字节
-  相同输出。
+- **普通键中的裸撇号吞掉了后续所有锚点** — `extract_anchors` 运行一个引号状态机以跳过被引号包裹的
+  `&`，但它对任意 `'`/`"` 都翻转状态，即便它嵌在普通标量里（如裸键 `bas'e` 或 `a'` 中的 `'`）。那个
+  幻影引号会持续到文档结尾，导致预扫描不返回任何锚名、`register_anchor` 给每个节点都返回 `None`，锚
+  点静默地从输出中消失，往返发生漂移（libFuzzer `yaml_roundtrip` crash-68da2420）。现在引号的“开启”
+  受 token 边界门控（行首或 `\t:,[]{}-` 之后），与 granit 一致；普通标量内的引号是字面内容，而真带引
+  号的标量仍会遮蔽其 `&`。
+- **字面块标量在首行为空白时强制缩进指示符** — AST 将 `|`/`|N` 正文去缩进存储，井丢弃源头的显式指示
+  符；因此首行以空白开头、后续行更浅的值（` 1|l\n:t\n`）在无指示符重新发出时，会让 granit 把更深的
+  首行当作块缩进，将更浅的那行读成降级缩进——输出不再可重新解析（libFuzzer `yaml_roundtrip`
+  crash-e432d4b8）。字面写入器现在镜像折叠写入器，止好在该情形下强制缩进指示符，从而跳过自动探测、
+  使前导空白保留为内容。首行非空白的文档仍按字节相同输出。
 - **折叠写入器保留了 more-indented 行之后的 break** — granit 的折叠规则维护一个
   `leading_blank` 标志：more-indented 行（以空格或制表符开头的续行）不仅自留其
   前导 break，还会置位该标志使其后那行的 break 同样不被折叠。写入端的连段规则
@@ -786,22 +792,18 @@ status: new
   r 个换行的连段占 r 个空行（前导计入头换行；more-indented 续行会自留其
   break，故少一空行），任意连长由构造封闭（内部、前导与 more-indented 的
   1 至 5 连段均已验证稳定）。
-- **块标量输出如今在再解析下封闭** — 两种 granit 读取形状此前不被序列化器
-  匹配：尾部含空行的 `Clip` 块标量值只能在 `Keep` 指示符下往返（Clip 读取
-  会剥掉尾部空行——它是任何文档位置都能读回同值的唯一头形式；libFuzzer
-  `yaml_roundtrip` crash-c18cb1fd），故输出时提升之；块标量的行内注释现在
-  搭载在头行（`y: |  # c`）而非独立成行（此前会被吸收为块内容；
-  crash-cfb3fa83）。两条规则都是纯输出侧规范化：此前稳定的所有文档仍
-  逐字节一致地序列化。
-- **锚点名语法对齐 granit，一次性根治整个漂移族** —
-  `extract_anchors`/`scan_anchor_name` 长出了两个 granit 扫描器并不有的手写分支：
-  引号锚形式（`&"a b"` 含空格）与值指示规则（空格/EOL 前的 `:` 终止名字）。granit
-  把名字读作一段极大 `is_anchor_char` 游程（`:`/`#`/`"`/`&` 都是普通名字字符，
-  仅在空白/换行/流指示符处终止——granit 自己的 issue14 测试）。两套语法每一次分歧
-  都会错位 id↔名 配对、破坏往返；下方四条（#215/#218/#227/#228）都是同一因的
-  症状。现在扫描器与 granit 完全一致（极大游程 + 原子跳过整个锚 token，名字内的
-  `"`/`#` 不再扰乱引用/注释状态），`write_anchor_tag` 裸发 `&name`——闭包由构造
-  成立，四个逐形状的补丁被吸收；本就无法往返的引号锚被删除。
+- **块标量输出如今在再解析下封闭** — 两种 granit 读取形状此前不被序列化器匹配：尾部含空行的 `Clip`
+  块标量值只能在 `Keep` 指示符下往返（Clip 读取会剥掉尾部空行——它是任何文档位置都能读回同值的唯一头
+  形式；libFuzzer `yaml_roundtrip` crash-c18cb1fd），故输出时提升之；块标量的行内注释现在搭载在头行
+  （`y: |  # c`）而非独立成行（此前会被吸收为块内容；crash-cfb3fa83）。两条规则都是纯输出侧规范化：
+  此前稳定的所有文档仍逐字节一致地序列化。
+- **锚点名语法对齐 granit，一次性根治整个漂移族** — `extract_anchors`/`scan_anchor_name` 长出了两个
+  granit 扫描器并不有的手写分支：引号锚形式（`&"a b"` 含空格）与值指示规则（空格/EOL 前的 `:` 终止
+  名字）。granit 把名字读作一段极大 `is_anchor_char` 游程（`:`/`#`/`"`/`&` 都是普通名字字符，仅在空
+  白/换行/流指示符处终止——granit 自己的 issue14 测试）。两套语法每一次分歧都会错位 id↔名配对、破坏
+  往返；下方四条（#215/#218/#227/#228）都是同一因的症状。现在扫描器与 granit 完全一致（极大游程 + 原
+  子跳过整个锚 token，名字内的 `"`/`#` 不再扰乱引用/注释状态），`write_anchor_tag` 裸发 `&name`—— 闭
+  包由构造成立，四个逐形状的补丁被吸收；本就无法往返的引号锚被删除。
 - **引号锚点名曾吞掉换行** — `scan_anchor_name` 的引号分支把缓冲区中任意靠后
   的 `"` 当作闭合引号，于是 `&"X-<CR>:&"X-` 越过回车把名字读成 `X-\r:&`。序列化器
   原样发出它，重新解析时每轮多裹一层（一个不断增长的 libFuzzer `yaml_roundtrip`
@@ -821,37 +823,29 @@ status: new
   `yaml_roundtrip` 发现，`fmt(fmt(x)) != fmt(x)`。现在不安全的名字（以 `:` 结尾、
   含空白或流指示符）会以带引号的 `&"name"` 锚点发出，原始扫描器读到闭合引号
   为止，从而跨轮保留确切字节。
-- **原始锚点扫描器会发明文本无法保留的锚点** — `extract_anchors` 把后接
-  空格/行尾的 `:` 收进锚点名（`&&&&:` → `&&&:`），从注释文本里扫锚点，
-  并在已接受锚点名内部重扫重叠的 `&`（`&&&&` 产生幽灵锚点 `&&&`、`&&`、
-  `&`），使后续所有 id→名称配对错位。每种缺陷都会让序列化文档重解析成
-  不同的锚名——libFuzzer 发现的 12 字节输入 `&&&&:<LF>#&&&:&` 每轮漂移
-  一个字符。现在：值指示冒号处截断名字、跳过注释文本、已接受锚点 token
-  不再重复扫描。
-- **双引号标量被解码了两次** — granit 交付的双引号值已完成转义解码，
-  但两个 receiver 又对其跑了一遍 `unescape_double_quoted`：`a: "\\n"`
-  （字面的两个字符 `\` `n`）被静默压缩成换行符，且每序列化/重解析一轮
-  就少一个反斜杠（libFuzzer `yaml_roundtrip`：`!-# \\f"<TAB>0:!`）。
-  两处调用点现在都是直接透传，stream/AST 单元测试钉住单次解码契约。
-- **未闭合引号的锚点名吞掉了行内剩余内容** — 面对 `&"X-<CR>:`，
-  `extract_anchors` 的 quoted 扫描因始终等不到闭合引号而一路收集到行尾，
-  把裸 CR 和冒号收进锚点名；序列化器原样输出 `&X-\r:`，而 granit 在空白处
-  截断锚名，重解析得到 `X-` —— `fuzz/yaml_roundtrip` 用 6 字节输入打破了
-  序列化幂等（`fmt(fmt(x)) == fmt(x)`）。未闭合的 `"` 现在恰好停在 granit
-  unquoted 锚点 token 停止的那个字符；真正的 `&"quoted anchor"` 名字
-  （含空格）保持不变。
-- **JSON 注释扫描器可能在多字节字符中间 panic** — `ws()` 的行注释与未闭合
-  块注释扫描逐字节推进 `pos`，后继多字节字符（如 U+FEFF）会把 pos 留在字符
-  内部，下一个 `&text[pos..]` 切片以 "not a char boundary" panic（由
-  `fuzz/parse_json` 在约 25 秒内发现：`\r\r{aMNaN/*0\u{feff}`）。行注释现在
-  按完整码点前进，未闭合块注释回退到其 `/` 处，所有失败路径重新变为类型化错误。
-- **Linux 免线程（`cp314t`）wheel 随 Release 发布** — wheel 矩阵此前只为
-  Windows 和 macOS 构建免线程产物，Linux 上的无 GIL 解释器用户无从安装：
-  带 GIL 的 `cp38-abi3` wheel 与 `Py_GIL_DISABLED` 构建 ABI 不兼容，而
-  `abi3t` wheel 要到 CPython 3.15 才生效。`linux` 作业现在为 x86_64
-  使用镜像自带的免线程解释器构建 manylinux cp314t wheel，并在 `3.14t` venv
-  中冒烟测试通过后才附加到 Release（aarch64 暂不纳入：非 abi3 wheel 构建
-  必须实际执行目标解释器，而该执行在 qemu-user 下失败）。
+- **原始锚点扫描器会发明文本无法保留的锚点** — `extract_anchors` 把后接空格/行尾的 `:` 收进锚点名
+  （`&&&&:` → `&&&:`），从注释文本里扫锚点，并在已接受锚点名内部重扫重叠的 `&`（`&&&&` 产生幽灵锚点
+  `&&&`、`&&`、`&`），使后续所有 id→名称配对错位。每种缺陷都会让序列化文档重解析成不同的锚名
+  ——libFuzzer 发现的 12 字节输入 `&&&&:<LF>#&&&:&` 每轮漂移一个字符。现在：值指示冒号处截断名字、跳
+  过注释文本、已接受锚点 token 不再重复扫描。
+- **双引号标量被解码了两次** — granit 交付的双引号值已完成转义解码，但两个 receiver 又对其跑了一遍
+  `unescape_double_quoted`：`a: "\\n"`（字面的两个字符 `\` `n`）被静默压缩成换行符，且每序列化/重解
+  析一轮就少一个反斜杠（libFuzzer `yaml_roundtrip`：`!-# \\f"<TAB>0:!`）。两处调用点现在都是直接透
+  传，stream/AST 单元测试钉住单次解码契约。
+- **未闭合引号的锚点名吞掉了行内剩余内容** — 面对 `&"X-<CR>:`，`extract_anchors` 的 quoted 扫描因始
+  终等不到闭合引号而一路收集到行尾，把裸 CR 和冒号收进锚点名；序列化器原样输出 `&X-\r:`，而 granit
+  在空白处截断锚名，重解析得到 `X-` —— `fuzz/yaml_roundtrip` 用 6 字节输入打破了序列化幂等
+  （`fmt(fmt(x)) == fmt(x)`）。未闭合的 `"` 现在恰好停在 granit unquoted 锚点 token 停止的那个字符；
+  真正的 `&"quoted anchor"` 名字（含空格）保持不变。
+- **JSON 注释扫描器可能在多字节字符中间 panic** — `ws()` 的行注释与未闭合块注释扫描逐字节推进
+  `pos`，后继多字节字符（如 U+FEFF）会把 pos 留在字符内部，下一个 `&text[pos..]` 切片以 "not a char
+  boundary" panic（由 `fuzz/parse_json` 在约 25 秒内发现：`\r\r{aMNaN/*0\u{feff}`）。行注释现在按完
+  整码点前进，未闭合块注释回退到其 `/` 处，所有失败路径重新变为类型化错误。
+- **Linux 免线程（`cp314t`）wheel 随 Release 发布** — wheel 矩阵此前只为 Windows 和 macOS 构建免线程
+  产物，Linux 上的无 GIL 解释器用户无从安装：带 GIL 的 `cp38-abi3` wheel 与 `Py_GIL_DISABLED` 构建
+  ABI 不兼容，而 `abi3t` wheel 要到 CPython 3.15 才生效。`linux` 作业现在为 x86_64 使用镜像自带的免
+  线程解释器构建 manylinux cp314t wheel，并在 `3.14t` venv 中冒烟测试通过后才附加到 Release（aarch64
+  暂不纳入：非 abi3 wheel 构建必须实际执行目标解释器，而该执行在 qemu-user 下失败）。
 - **`pyq` 发布作业现在真正产出 Linux 构件** — 跨架构腿为 `cross` 的模拟
   容器注册 qemu binfmt 处理程序，其冒烟测试在 manylinux 镜像*内部*执行刚
   构建的二进制：主机有 qemu 翻译器却没有外族 `/lib/ld-linux-*.so` 加载器，
@@ -887,34 +881,27 @@ status: new
 
 #### 新增
 
-- **pyq CLI 对齐参数** — `pyq fmt` 新增 `--indent N`（块缩进，默认 2）、
-  `--width N`（纯量软换行列宽，0 为关闭）、`--sort-keys`（序列化器级
-  全文键排序）与 `-i/--inplace`（就地改写文件），暴露
-  `pyrs-yaml-core::SerializeOptions` 全部旋钮并对齐 Python CLI 的
-  `fmt --indent`。`pyq to-json` 新增互斥的 `--jsonc` / `--json5` 方言
-  输出，接入 `pyrs-json` 的注释保留与 JSON5 写法序列化器
+- **pyq CLI 对齐参数** — `pyq fmt` 新增 `--indent N`（块缩进，默认 2）、`--width N`（纯量软换行列
+  宽，0 为关闭）、`--sort-keys`（序列化器级全文键排序）与 `-i/--inplace`（就地改写文件），暴露
+  `pyrs-yaml-core::SerializeOptions` 全部旋钮并对齐 Python CLI 的 `fmt --indent`。`pyq to-json` 新增
+  互斥的 `--jsonc` / `--json5` 方言输出，接入 `pyrs-json` 的注释保留与 JSON5 写法序列化器
   （`to_jsonc_text*`、`to_json5_text*`）。
-- **pyq JSONC/JSON5 输入方言** — `Format` 枚举新增 `--input jsonc|json5`
-  （自动识别同样支持 `.jsonc` / `.json5` 扩展名），经由 `pyrs-json`
-  原生方言解析器，注释与 JSON5 写法挂在 AST 上；配合 `to-json --jsonc`
-  一条命令即可完成保留注释的 JSONC→JSONC 往返。`--all-docs` 对单文档
-  方言报出稳定错误信息。
-- **`pyq diff` / `pyq merge`** — 原生 CLI 新增语义文档对比与右侧优先的
-  深度合并（yq `*+` 形态）。`diff` 遍历两棵 AST，比较解析后的值、结构
-  与标签（注释/引号/排版永不出现），输出 `-`/`+`/`~` 路径行，相同退 0、
-  有差异退 1。`merge` 递归叠加映射、追加倍列（`--replace-arrays` 整体
-  替换），输出往返保留的 YAML；两命令均可通过 `--input`/扩展名识别读取
-  任意支持的输入方言。
+- **pyq JSONC/JSON5 输入方言** — `Format` 枚举新增 `--input jsonc|json5`（自动识别同样支持 `.jsonc`
+  / `.json5` 扩展名），经由 `pyrs-json` 原生方言解析器，注释与 JSON5 写法挂在 AST 上；配合
+  `to-json --jsonc` 一条命令即可完成保留注释的 JSONC→JSONC 往返。`--all-docs` 对单文档方言报出稳定
+  错误信息。
+- **`pyq diff` / `pyq merge`** — 原生 CLI 新增语义文档对比与右侧优先的深度合并（yq `*+` 形态）。
+  `diff` 遍历两棵 AST，比较解析后的值、结构与标签（注释/引号/排版永不出现），输出 `-`/`+`/`~` 路径
+  行，相同退 0、有差异退 1。`merge` 递归叠加映射、追加倍列（`--replace-arrays` 整体替换），输出往返
+  保留的 YAML；两命令均可通过 `--input`/扩展名识别读取任意支持的输入方言。
 
 #### 变更
 
-- **GitHub Release 改由 `publish.yml` 自动创建** — 过去每次发布后都需人工
-  执行 `gh release create`，既多一个容易遗忘的步骤，也让已发布版本与 tag
-  多一个漂移点。现在 `release` job 在 `uv publish` 成功后自动执行
-  `gh release create`，复用同一个 `refs/tags/` 条件，自动生成 release notes
-  并附上构建出的 wheel —— notes 与产物均来自发布到 PyPI 的那个 tag。
-  `workflow_dispatch` 运行行为不变（既不发布 PyPI 也不建 Release），
-  与原有行为一致。
+- **GitHub Release 改由 `publish.yml` 自动创建** — 过去每次发布后都需人工执行 `gh release create`，
+  既多一个容易遗忘的步骤，也让已发布版本与 tag 多一个漂移点。现在 `release` job 在 `uv publish` 成功
+  后自动执行 `gh release create`，复用同一个 `refs/tags/` 条件，自动生成 release notes 并附上构建出
+  的 wheel —— notes 与产物均来自发布到 PyPI 的那个 tag。`workflow_dispatch` 运行行为不变（既不发布
+  PyPI 也不建 Release），与原有行为一致。
 - **`README.md` / `README.zh-CN.md` 补齐原生 `pyq` CLI 文档** — 两份 README
   在 Python CLI 小节旁新增 `pyq` 小节：从源码安装方式、三条实际可跑的示例，
   以及完整命令清单，并指向 pyq 指南获取细节。
@@ -928,54 +915,39 @@ status: new
 
 #### 新增
 
-- **JSONC 块注释热点基准** — 目标 §测试覆盖 5 将「block-comment」
-  列为必需热点样本；之前仅行内 `//` 注释入基。新语料驱动
-  `test_load_jsonc_block_comments`：50 对 pair + header/footer，
-  每 pair 一个独立 `/* item N */` 以及一个尾追 `value /* trailing */`，
-  块扫描回归从此在 CodSpeed 上显形。
-- **YAML 的 PyYAML + ruamel.yaml 跨库对拍** — 目标 §测试覆盖 3
-  将两库点名作为 oracle；之前仅在 `test_benchmark_crosslib.py`
-  用于基准与特性支持 printout，从未做**正确性**断言。
-  `tests/test_yaml_crosslib.py` 20 个规范文档 × 5 个对拍面 +
-  2 个文档化分歧（重复键严格、YAML 1.1 传统 bool schema 域）= 122
-  测试。可选依赖 `skipif` 自动降级。
-- **`load_toml` tomlkit 跨库对拍** — 目标 §测试覆盖 3 点名 tomlkit
-  作为 oracle；之前 tomlkit 仅在 benchmark 出现。`tests/test_toml_crosslib.py`
-  新增 24 个测试，覆盖 11 种规范构造的三方对齐（pyrs / tomlkit /
-  tomllib），将 `>i64` 拒收钉为规范严格（TOML v1.0 §Integers：
-  64 位有符号），并断言 `-2^63` 边界（PR #174 修复）。可选依赖，
-  `skipif` 自动降级。
-- **orjson 作为 `load_json` 的严格 JSON oracle** — 目标 §测试
-  覆盖 3 要求与 orjson 逐位对比；之前 orjson 仅用于基准。
-  16 个规范文档断言逐字节对齐，12 个非规范形式（注释、尾逗号、
-  单引号、裸 `NaN`/`Infinity`/`-Infinity`、十六进制、前导 0、
-  `+.5`、`5.`）两侧一同拒收。orjson 拒绝 stdlib `json.loads` 在
-  `allow_nan=True` 下默认的裸字面量，严格度上高于 stdlib，
-  作为 RFC 8259 oracle 比 json.loads 更接近标准。可选依赖，
-  `skipif` 自动降级。
-- **CLI ↔ Binding 对等 gate（`tests/test_cli_binding_parity.py`）** —
-  Pillar 1「CLI 与 Python Binding 两端均需具备同等功能」从文档声明
-  升级为可执行契约：CLI 注册命令需与 18 命令固定清单对齐（过滤 cyclopts
-  的 `--help`/`-h`/`--version` 伪命令）；每个 `to-X` / `from-X` 动词必须
-  有对应的 `YamlDocument.to_X` / `from_X` / `load_X`；断言 `load_*` 家族
-  （json/jsonc/json5/toml）四兄弟齐全；编辑/validate/compliance 动词都
-  映射到实时 Python API。两侧任何一者漂移现在都会破 CI。
-- **`load_json` 属性测试 + CodSpeed 基准** — Hypothesis
-  （`test_load_json_matches_stdlib_json` 与
-  `test_load_json_matches_load_jsonc_on_strict_domain`）为每个生成的
-  规范文档固定严格 loader 与 `json.loads` 对齐，并断言两个 loader 在
-  strict 域逐字节等价；快速路径越权或回退漂移将作为属性失败暴露。
-  三个 CodSpeed wall-time 基准（`test_load_json_large` / `_floats` /
-  `_escapes`）镜像 `load_jsonc` 样本，将严格 binding 层纳入回归追踪。
-- **`load_json`（严格）——补齐 `load_*` 家族对称** — binding 已有 `load_jsonc` /
-  `load_json5` / `load_toml`，唯独缺严格 RFC 8259 对应物。`pyrs_yaml.load_json(s)`
-  在规范输入上与 `json.loads` 逐位对齐，并对 JSONC/JSON5 扩展（`//`、`/* */`、
-  尾逗号、单引号、裸 `Infinity`/`NaN`、`0x…`）抛出类型化 `YamlParseError`。快速
-  路径与 `load_jsonc` 共用 `json_fast::try_load`（任何非规范字节即 bail，零语法
-  越权风险）；被拒对象走 STRICT `from_json` AST 解析。这就此补完下方 CLI ↔
-  Binding 对等声明中的最后缺口：CLI 每种格式都有对应的 `load_*` 兄弟——支柱 1
-  完成。已从 `pyrs_yaml.__init__` 重新导出并入 `__all__`；`.pyi` 通过
-  `maturin generate-stubs` 重生成。
+- **JSONC 块注释热点基准** — 目标 §测试覆盖 5 将「block-comment」列为必需热点样本；之前仅行内 `//`
+  注释入基。新语料驱动 `test_load_jsonc_block_comments`：50 对 pair + header/footer，每 pair 一个独
+  立 `/* item N */` 以及一个尾追 `value /* trailing */`，块扫描回归从此在 CodSpeed 上显形。
+- **YAML 的 PyYAML + ruamel.yaml 跨库对拍** — 目标 §测试覆盖 3 将两库点名作为 oracle；之前仅在
+  `test_benchmark_crosslib.py` 用于基准与特性支持 printout，从未做**正确性**断言。
+  `tests/test_yaml_crosslib.py` 20 个规范文档 × 5 个对拍面 + 2 个文档化分歧（重复键严格、YAML 1.1 传
+  统 bool schema 域）= 122 测试。可选依赖 `skipif` 自动降级。
+- **`load_toml` tomlkit 跨库对拍** — 目标 §测试覆盖 3 点名 tomlkit 作为 oracle；之前 tomlkit 仅在
+  benchmark 出现。`tests/test_toml_crosslib.py` 新增 24 个测试，覆盖 11 种规范构造的三方对齐（pyrs /
+  tomlkit / tomllib），将 `>i64` 拒收钉为规范严格（TOML v1.0 §Integers： 64 位有符号），并断言
+  `-2^63` 边界（PR #174 修复）。可选依赖， `skipif` 自动降级。
+- **orjson 作为 `load_json` 的严格 JSON oracle** — 目标 §测试覆盖 3 要求与 orjson 逐位对比；之前
+  orjson 仅用于基准。16 个规范文档断言逐字节对齐，12 个非规范形式（注释、尾逗号、单引号、裸
+  `NaN`/`Infinity`/`-Infinity`、十六进制、前导 0、`+.5`、`5.`）两侧一同拒收。orjson 拒绝 stdlib
+  `json.loads` 在 `allow_nan=True` 下默认的裸字面量，严格度上高于 stdlib，作为 RFC 8259 oracle 比
+  json.loads 更接近标准。可选依赖，`skipif` 自动降级。
+- **CLI ↔ Binding 对等 gate（`tests/test_cli_binding_parity.py`）** — Pillar 1「CLI 与 Python
+  Binding 两端均需具备同等功能」从文档声明升级为可执行契约：CLI 注册命令需与 18 命令固定清单对齐
+  （过滤 cyclopts 的 `--help`/`-h`/`--version` 伪命令）；每个 `to-X` / `from-X` 动词必须有对应的
+  `YamlDocument.to_X` / `from_X` / `load_X`；断言 `load_*` 家族（json/jsonc/json5/toml）四兄弟齐
+  全；编辑/validate/compliance 动词都映射到实时 Python API。两侧任何一者漂移现在都会破 CI。
+- **`load_json` 属性测试 + CodSpeed 基准** — Hypothesis（`test_load_json_matches_stdlib_json` 与
+  `test_load_json_matches_load_jsonc_on_strict_domain`）为每个生成的规范文档固定严格 loader 与
+  `json.loads` 对齐，并断言两个 loader 在 strict 域逐字节等价；快速路径越权或回退漂移将作为属性失败
+  暴露。三个 CodSpeed wall-time 基准（`test_load_json_large` / `_floats` / `_escapes`）镜像
+  `load_jsonc` 样本，将严格 binding 层纳入回归追踪。
+- **`load_json`（严格）——补齐 `load_*` 家族对称** — binding 已有 `load_jsonc` / `load_json5` /
+  `load_toml`，唯独缺严格 RFC 8259 对应物。`pyrs_yaml.load_json(s)` 在规范输入上与 `json.loads` 逐位
+  对齐，并对 JSONC/JSON5 扩展（`//`、`/* */`、尾逗号、单引号、裸 `Infinity`/`NaN`、`0x…`）抛出类型
+  化 `YamlParseError`。快速路径与 `load_jsonc` 共用 `json_fast::try_load`（任何非规范字节即 bail，
+  零语法越权风险）；被拒对象走 STRICT `from_json` AST 解析。这就此补完下方 CLI ↔ Binding 对等声明中
+  的最后缺口：CLI 每种格式都有对应的 `load_*` 兄弟——支柱 1 完成。已从 `pyrs_yaml.__init__` 重新导出
+  并入 `__all__`；`.pyi` 通过 `maturin generate-stubs` 重生成。
 - **方言 writer 定点属性测试** — `fmt_pbt.rs` 模块注释一直承诺 writer 定点
   （对 writer 自身输出重解析后再序列化应逐位相同）却从未实现。四个 proptest
   现在为 JSON/JSONC/JSON5/TOML 兑现该承诺；唯一的输入过滤（`json_object_domain`）
@@ -987,23 +959,28 @@ status: new
   形式（十六进制、`+.1`、`5.`、`Infinity`、`NaN`、单引号、尾逗号）。语料位于
   `tests/data/yaml_samples.py`，基准位于 `tests/test_benchmark_api.py`。正是构建
   这套语料暴露了下面修复的嵌套块标量缩进 bug。
-- **文本级重解析门控（`prop_output_always_parses`）** — Rust proptest 套件现在断言
-  每个生成的 AST 序列化后都能被解析器重新接受。此前的 AST 对 AST round-trip 属性
-  会静默跳过序列化文本无法重解析的形态（`try_roundtrip` 返回 `None`），使整类
-  defect 不可见；新门控首轮就抓到六个真实的 serializer bug（见下方修复条目），
-  每个都已由针对性 Rust 单元测试和 Python 回归类
+- **文本级重解析门控（`prop_output_always_parses`）** — Rust proptest 套件现在断言每个生成的 AST 序
+  列化后都能被解析器重新接受。此前的 AST 对 AST round-trip 属性会静默跳过序列化文本无法重解析的形态
+  （`try_roundtrip` 返回 `None`），使整类 defect 不可见；新门控首轮就抓到六个真实的 serializer bug
+  （见下方修复条目），每个都已由针对性 Rust 单元测试和 Python 回归类
   （`tests/test_roundtrip_bugs.py` 的 `TestNestedBlockScalarIndent`）钉住。
 - **toml-test 一致性测试框架** — `tests/test_toml_test_suite.py` 以与 `test_yaml_suite.py`
   运行 YAML 套件相同的方式运行官方 [toml-test](https://github.com/toml-lang/toml-test) 语料：
   未跟踪的本地工件、缺失时 `skipif`、实测下限阈值，并用类型标签适配器做解码比对。
 - **TOML 时间类型正确解码** — 仅日期与仅时间的值现携带不同的 `!date`/`!time` 标签（日期时间仍用
-  `!timestamp`），从而走 `date`/`time.fromisoformat` 而不再崩溃。toml-test 发现裸时间（`07:32:00`）、
-  省略秒的时间（`13:37`）以及小写分隔符的日期时间（`1987-07-05t17:45:00z`）在有效 TOML 上抛
-  `ValueError`；`!time` 现补齐省略的秒，`!timestamp` 规范小写 `t`/`z`。
-- **TOML 控制字符严格性** — 基本、字面与多行字符串内现在拒绝原始 C0 控 制码（NUL、FF、DLE、US 等）与 DEL（U+007F），仅保留制表符（及多行形式中的换行）。
-  toml-test 的 `invalid/control` 语料暴露了 13 份被误承受的文档；注释体与 裸 CR 检查列为后续项。
-- **TOML 数字字面量严格性** — 前导零十进制（`01`、`-01`）、给进位前缀整数加符号（`+0x1F`、`-0b101` — `signed-int` 只支持十进制），以及尾随/双下划线（`1_`、`1__0`）现均被拒绝。toml-test 的 `invalid/integer` 与 `invalid/float` 暴露 23 份误承受（总数 71 -> 48）；此前“进位整数可带符号”属违反规范。
-- **TOML 内联表键冲突严格性** — 内联表现拒绝与已定义路径相等、扩展或被其遮蔽的点号键（`{ a = 1, a.b = 2 }`、`{ a.b = 1, a.b.c = 2 }`）；同属相路径（`{ a.b = 1, a.c = 2 }`）仍合法。toml-test `invalid/inline-table` 的 duplicate-key/overwrite 暴露此类（误接受总数 48 -> 39）。
+  `!timestamp`），从而走 `date`/`time.fromisoformat` 而不再崩溃。toml-test 发现裸时间
+  （`07:32:00`）、省略秒的时间（`13:37`）以及小写分隔符的日期时间（`1987-07-05t17:45:00z`）在有效
+  TOML 上抛 `ValueError`；`!time` 现补齐省略的秒，`!timestamp` 规范小写 `t`/`z`。
+- **TOML 控制字符严格性** — 基本、字面与多行字符串内现在拒绝原始 C0 控制码（NUL、FF、DLE、US 等）与
+  DEL（U+007F），仅保留制表符（及多行形式中的换行）。 toml-test 的 `invalid/control` 语料暴露了 13
+  份被误承受的文档；注释体与裸 CR 检查列为后续项。
+- **TOML 数字字面量严格性** — 前导零十进制（`01`、`-01`）、给进位前缀整数加符号（`+0x1F`、`-0b101` —
+  `signed-int` 只支持十进制），以及尾随/双下划线（`1_`、`1__0`）现均被拒绝。toml-test 的
+  `invalid/integer` 与 `invalid/float` 暴露 23 份误承受（总数 71 -> 48）；此前“进位整数可带符号”属违
+  反规范。
+- **TOML 内联表键冲突严格性** — 内联表现拒绝与已定义路径相等、扩展或被其遮蔽的点号键
+  （`{ a = 1, a.b = 2 }`、`{ a.b = 1, a.b.c = 2 }`）；同属相路径（`{ a.b = 1, a.c = 2 }`）仍合法。
+  toml-test `invalid/inline-table` 的 duplicate-key/overwrite 暴露此类（误接受总数 48 -> 39）。
 - **修复 TOML 非 ASCII 字符串崩溃** — 基本与多行基本字符串解析器按字节前进，在多字节
   输入（U+00A0 等）处可能切到字符中间而 panic；现改为按整字符消费。由 toml-test 发现；
   补齐 #153 对单行/JSON 路径的同类修复。
@@ -1047,13 +1024,12 @@ status: new
 - **TOML 文档级注释保真** — `to_toml` 现在会输出根映射的前导注释，因此文档
   开头的独立 `# 注释` 能在 TOML → 中枢 → TOML 往返中存活而不再被丢弃（对应
   JSON 写入器的 `emit_root_leading`）。原生 TOML 解析与无注释文档不受影响。
-- **JSON5 Unicode 标识符键** — 无引号对象键不再仅限 ASCII，现在接受完整的
-  Unicode `ID_Start` / `ID_Continue` 集合，因此 `from_json5` / `load_json5`
-  可解析 `{ é: 1, 名: 2, हिन्दी: 3 }`。基于 `unicode-ident` 表（rustc
-  自身的词法分析器所用的 crate）实现，逐文字精确符合规范，含标识符中间的结合
-  字符。仅在 JSON5 模式下启用，因此严格的 `from_json` 与 `from_jsonc` 仍要求
-  为此类键加引号。`\uXXXX` 转义中的孤立 UTF-16 代理项仍被拒绝（Rust `String`
-  无法无损表示）。新增依赖 `unicode-ident`。
+- **JSON5 Unicode 标识符键** — 无引号对象键不再仅限 ASCII，现在接受完整的 Unicode `ID_Start` /
+  `ID_Continue` 集合，因此 `from_json5` / `load_json5` 可解析 `{ é: 1, 名: 2, हिन्दी: 3 }`。基于
+  `unicode-ident` 表（rustc 自身的词法分析器所用的 crate）实现，逐文字精确符合规范，含标识符中间的结
+  合字符。仅在 JSON5 模式下启用，因此严格的 `from_json` 与 `from_jsonc` 仍要求为此类键加引号。
+  `\uXXXX` 转义中的孤立 UTF-16 代理项仍被拒绝（Rust `String` 无法无损表示）。新增依赖
+  `unicode-ident`。
 - **JSON5 Unicode 结构空白** — `from_json5` / `load_json5` 现在将 JSON5 在
   RFC 8259 四个空白（制表符 / 空格 / LF / CR）之外新增的空白视为 token 间
   分隔符：垂直制表符、换页符、NBSP（U+00A0）、所有 Unicode `Zs` 空格分隔符、
@@ -1065,141 +1041,108 @@ status: new
   紧邻换行符的反斜杠（续行，会同时移除反斜杠与换行符），以及转义单引号
   （`\'` → `'`）。仅在 JSON5 模式下启用，因此严格的 `from_json` 与 `from_jsonc`
   仍照旧拒绝两者。与 #125 的单引号字符串处理保持一致，补齐 JSON5 字符串保真。
-- **JSON5 字符串转义 `\v` 与 `\0`** — `from_json5` 现在接受
-  垂直制表符（`\v`）与 NUL（`\0`），双引号与单引号字符串均可；
-  严格 JSON / JSONC 仍拒绝。与 #120（数值）、#124（数值语义）
-  一起补齐 JSON5 语法。
-- **load_json5 的 JSON5 数值语义** — `load_json5` 现在把 JSON5
-  独有的数值形式（`0x1F`→31、`+7`→7、`5.`→5.0、`Infinity`/`NaN`）
-  解析为真正的数字（新增 `Schema::Json5`），严格 JSON/JSONC 加载
-  器不变，`to_json5_text` 仍按源文拼写输出。
-- **JSON5/JSONC 开放到公开 API** — `pyrs_yaml.from_json5` /
-  `load_json5`，以及 `YamlDocument.to_jsonc()` / `to_json5()`
-  （走原生引擎，注释与 JSON5 风格不丢）。同时修正一个可达性
-  缺口：`from_jsonc` / `load_jsonc` 以前未从 `pyrs_yaml` 包重导出，
-  `pyrs_yaml.from_jsonc(...)` 会报 `AttributeError`；现已列入
-  `__all__`。`to_jsonc`/`to_json5` 新增 `emit_root_leading`，保留文档级
+- **JSON5 字符串转义 `\v` 与 `\0`** — `from_json5` 现在接受垂直制表符（`\v`）与 NUL（`\0`），双引号
+  与单引号字符串均可；严格 JSON / JSONC 仍拒绝。与 #120（数值）、#124（数值语义）一起补齐 JSON5 语
+  法。
+- **load_json5 的 JSON5 数值语义** — `load_json5` 现在把 JSON5 独有的数值形式（`0x1F`→31、`+7`→7、
+  `5.`→5.0、`Infinity`/`NaN`）解析为真正的数字（新增 `Schema::Json5`），严格 JSON/JSONC 加载器不
+  变，`to_json5_text` 仍按源文拼写输出。
+- **JSON5/JSONC 开放到公开 API** — `pyrs_yaml.from_json5` / `load_json5`，以及
+  `YamlDocument.to_jsonc()` / `to_json5()` （走原生引擎，注释与 JSON5 风格不丢）。同时修正一个可达性
+  缺口：`from_jsonc` / `load_jsonc` 以前未从 `pyrs_yaml` 包重导出， `pyrs_yaml.from_jsonc(...)` 会报
+  `AttributeError`；现已列入 `__all__`。`to_jsonc`/`to_json5` 新增 `emit_root_leading`，保留文档级
   独立注释。`test_benchmark_api.py` 补充了 JSON 家族基准。
-- **JSON5 writer（`to_json5_text` / `to_json5_text_pretty`）** —
-  契约 B 第 2 步。把 AST 序列化回 JSON5，还原解析器保留的
-  单引号字符串与 `0x…`/`.5`/`+7`/`Infinity`/`NaN` 数字形式，
-  并输出 `//` 注释。key 总是加引号（无损）。内部共用一个
-  `Mode`（Json/Jsonc/Json5）；严格与 JSONC 输出不变。
-- **JSON5 数值形式解析** — `from_json5`（新增
-  `allow_json5_numbers` 轴）现在接受十六进制（`0xDECAF`）、前/后小数点
-  （`.5`、`5.`）、前导 `+`（`+7`）、前导零（`07`）以及裸 `Infinity` /
-  `NaN` / `-Infinity`，每项都保留原文本供后续 JSON5 writer 使
-  用。STRICT / JSONC 仍默认关闭该轴，像以前一样拒绝。同时修正了
-  `from_jsonc` 陈旧的“注释被丢弃”文档（#112/#115 后注释已保真）。
-- **TOML inline table 内部注释保真** — PR #119 捕捉 inline
-  table 内部的 `# ...` 注释（成员上方独立行 → leading，值同行
-  后面 → trailing）并贯串 IR，使它们能往返而不丢失。无装饰
-  的 inline table 保持紧凑单行形式；嵌套在数组内的有装饰项
-  会提升为多行。同时修复了 #114 遗留 bug：`skip_all_blank` 将
-  独立注释自身的终止换行误判为空行。
-- **YAML receiver 将独立行注释写入 `decor.leading_comment`**
-  — PR #117b 把最后一个引擎（granit-parser receiver）迁到 #114 /
-  #115 确立的新槽。scalar / mapping / sequence 的独立行注释现在落在
-  `NodeMeta::decor.leading_comment`，不再写旧的
-  `comment(standalone = true)`。手建 fixture 因 #117 的规范化保持
-  相等；`CustomNode::remove_comment` 同时清空**两槽**，保证
-  Python `Node.remove_comment()` 在 YAML 文档上行为不变。
-- **跨槽独立行注释规范化 + Python `Node.leading_comment`**
-  — `NodeMeta::eq` / `Hash` 现在把“独立行注释”视为单一概念，无论
-  它存于新的 `leading_comment` 槽（TOML / JSON 引擎使用）还是旧的
-  `comment(standalone = true)` 槽（YAML receiver 与手建 fixture 仍
-  在用）。setter / remover 对两槽原子操作，YAML serializer 读规范化
-  视图，`to_yaml(toml_ast)` 不再丢头注。Python
-  `Node.leading_comment` getter / setter / remover 镜像
-  `Node.comment`，TOML / JSONC 来文档的独立行注释首次对 Python 调用方可见。
-- **TOML 1.1.0 语法** — `from_toml` 解析到 TOML v1.1.0（2025-12-18
-  发布）。四项新增：**(A1)** inline table 可跳行 + 允许尾逗号；
-  **(A2)** 基本字符串中 `\xHH` 字节转义（0x00..=0xFF）；**(A3)**
-  `\e` = U+001B；**(A4)** time / date-time 秒可选（`t = 14:15`、
-  `dt = 2010-02-03 14:15`）。`TomlDialect::V1_0` 与 `from_toml_v1_0`
-  保留为严格 1.0.0 逃生舱；1.0.0 文档两种方言下解析结果一致。
-  同时修复 `space_time_sep` 检测中的索引 off-by-one（导致无 `T`
-  分隔的 date-time 在 1.0 模式下也未能识别）。
-- **JSON 双槽注释保真** — JSONC 解析器现在把独立行 `// ...` 注释
-  写入 #114 引入的 `leading_comment` 新槽，同行行尾 `// trailing`
-  仍留在 `comment`。对象成员与数组元素因此可同时拥有两个注释，
-  这是 #112 单槽模型不能表达的形状。`to_jsonc_text_pretty` 优先
-  读新槽，回退到 `comment` 十 `standalone = true` 保持手建 fixture
-  兼容。严格 JSON (`to_json_text`) 行为不变，仍不写 `//`。
-- **TOML 空行与双槽注释保真** — `NodeMeta` 新增
-  `leading_comment: Option<Comment>` 与 `blank_before: bool`（均从结构
-  化 `Hash` / `PartialEq` 中排除），让 section 头部或 AOT 元素同时携带
-  上方的独立注释与 `]` 后的行尾注释，互不隐盖。`to_toml` 现在会
-  重现源文中的空行分隔（`a = 1\n\nb = 2` 字节稳定往返）；文档开头
-  第一对KV不写前导空行。手建 / YAML 来源的节点仍通过 writer 的
-  fallback 读取保持兼容渲染。
+- **JSON5 writer（`to_json5_text` / `to_json5_text_pretty`）** — 契约 B 第 2 步。把 AST 序列化回
+  JSON5，还原解析器保留的单引号字符串与 `0x…`/`.5`/`+7`/`Infinity`/`NaN` 数字形式，并输出 `//` 注
+  释。key 总是加引号（无损）。内部共用一个 `Mode`（Json/Jsonc/Json5）；严格与 JSONC 输出不变。
+- **JSON5 数值形式解析** — `from_json5`（新增 `allow_json5_numbers` 轴）现在接受十六进制
+  （`0xDECAF`）、前/后小数点（`.5`、`5.`）、前导 `+`（`+7`）、前导零（`07`）以及裸 `Infinity` /
+  `NaN` / `-Infinity`，每项都保留原文本供后续 JSON5 writer 使用。STRICT / JSONC 仍默认关闭该轴，像
+  以前一样拒绝。同时修正了 `from_jsonc` 陈旧的“注释被丢弃”文档（#112/#115 后注释已保真）。
+- **TOML inline table 内部注释保真** — PR #119 捕捉 inline table 内部的 `# ...` 注释（成员上方独立行
+  → leading，值同行后面 → trailing）并贯串 IR，使它们能往返而不丢失。无装饰的 inline table 保持紧凑
+  单行形式；嵌套在数组内的有装饰项会提升为多行。同时修复了 #114 遗留 bug：`skip_all_blank` 将独立注
+  释自身的终止换行误判为空行。
+- **YAML receiver 将独立行注释写入 `decor.leading_comment`** — PR #117b 把最后一个引擎
+  （granit-parser receiver）迁到 #114 / #115 确立的新槽。scalar / mapping / sequence 的独立行注释现
+  在落在 `NodeMeta::decor.leading_comment`，不再写旧的 `comment(standalone = true)`。手建 fixture
+  因 #117 的规范化保持相等；`CustomNode::remove_comment` 同时清空**两槽**，保证 Python
+  `Node.remove_comment()` 在 YAML 文档上行为不变。
+- **跨槽独立行注释规范化 + Python `Node.leading_comment`** — `NodeMeta::eq` / `Hash` 现在把“独立行注
+  释”视为单一概念，无论它存于新的 `leading_comment` 槽（TOML / JSON 引擎使用）还是旧的
+  `comment(standalone = true)` 槽（YAML receiver 与手建 fixture 仍在用）。setter / remover 对两槽原
+  子操作，YAML serializer 读规范化视图，`to_yaml(toml_ast)` 不再丢头注。Python
+  `Node.leading_comment` getter / setter / remover 镜像 `Node.comment`，TOML / JSONC 来文档的独立行
+  注释首次对 Python 调用方可见。
+- **TOML 1.1.0 语法** — `from_toml` 解析到 TOML v1.1.0（2025-12-18 发布）。四项新增：**(A1)** inline
+  table 可跳行 + 允许尾逗号；**(A2)** 基本字符串中 `\xHH` 字节转义（0x00..=0xFF）；**(A3)** `\e` =
+  U+001B；**(A4)** time / date-time 秒可选（`t = 14:15`、`dt = 2010-02-03 14:15`）。
+  `TomlDialect::V1_0` 与 `from_toml_v1_0` 保留为严格 1.0.0 逃生舱；1.0.0 文档两种方言下解析结果一
+  致。同时修复 `space_time_sep` 检测中的索引 off-by-one（导致无 `T` 分隔的 date-time 在 1.0 模式下也
+  未能识别）。
+- **JSON 双槽注释保真** — JSONC 解析器现在把独立行 `// ...` 注释写入 #114 引入的 `leading_comment`
+  新槽，同行行尾 `// trailing` 仍留在 `comment`。对象成员与数组元素因此可同时拥有两个注释，这
+  是 #112 单槽模型不能表达的形状。`to_jsonc_text_pretty` 优先读新槽，回退到 `comment` 十
+  `standalone = true` 保持手建 fixture 兼容。严格 JSON (`to_json_text`) 行为不变，仍不写 `//`。
+- **TOML 空行与双槽注释保真** — `NodeMeta` 新增 `leading_comment: Option<Comment>` 与
+  `blank_before: bool`（均从结构化 `Hash` / `PartialEq` 中排除），让 section 头部或 AOT 元素同时携
+  带上方的独立注释与 `]` 后的行尾注释，互不隐盖。`to_toml` 现在会重现源文中的空行分隔
+  （`a = 1\n\nb = 2` 字节稳定往返）；文档开头第一对KV不写前导空行。手建 / YAML 来源的节点仍通过
+  writer 的 fallback 读取保持兼容渲染。
 - **JSON5 方言** — `pyrs_yaml_core::json::from_json5(text)` 与
-  `from_json_with_options(text, JsonParseOptions)` 接受 JSON5 全部四
-  个轴：尾逗号、单引号字符串、无引号标识符 key 以及行/块
-  注释。每个轴可以单独开关；`STRICT`、`JSONC`、`JSON5` 常量作为
-  预设提供。
-- **JSONC/JSON5 绑定与 CLI** — `pyrs_yaml.from_jsonc(str)` 输出 YAML
-  文本；`pyrs_yaml.load_jsonc(str)` 直接返回 Python dict / list。
-  `pyq from-json` 新增 `--jsonc` 与 `--json5` 旗标，`tsconfig.json` 与
-  `settings.json` 能直接进入 verb 流水线。
-- **JSONC 注释保真** — `from_jsonc` 现在会把采到的 `// 行` 与
-  `/* 块 */` 注释挂到 AST 的 `NodeMeta::comment`（独立部分在 key
-  节点，行尾部分在 value 节点），与 PR #109 建立的 TOML 模型对齐。
-  配套的 `to_jsonc_text(node)` 与 `to_jsonc_text_pretty(node, indent)`
-  按原位置写回；块注释输出时均一为 `//`（AST 仅存主体文本）。严格
-  writer `to_json_text` / `to_json_text_pretty` 保持字节一致，使消费者
-  可以选择性地启用保真。
+  `from_json_with_options(text, JsonParseOptions)` 接受 JSON5 全部四个轴：尾逗号、单引号字符串、无
+  引号标识符 key 以及行/块注释。每个轴可以单独开关；`STRICT`、`JSONC`、`JSON5` 常量作为预设提供。
+- **JSONC/JSON5 绑定与 CLI** — `pyrs_yaml.from_jsonc(str)` 输出 YAML 文本；
+  `pyrs_yaml.load_jsonc(str)` 直接返回 Python dict / list。 `pyq from-json` 新增 `--jsonc` 与
+  `--json5` 旗标，`tsconfig.json` 与 `settings.json` 能直接进入 verb 流水线。
+- **JSONC 注释保真** — `from_jsonc` 现在会把采到的 `// 行` 与 `/* 块 */` 注释挂到 AST 的
+  `NodeMeta::comment`（独立部分在 key 节点，行尾部分在 value 节点），与 PR #109 建立的 TOML 模型对
+  齐。配套的 `to_jsonc_text(node)` 与 `to_jsonc_text_pretty(node, indent)` 按原位置写回；块注释输出
+  时均一为 `//`（AST 仅存主体文本）。严格 writer `to_json_text` / `to_json_text_pretty` 保持字节一
+  致，使消费者可以选择性地启用保真。
 - **pyq 多文档编辑** — `-A/--all-docs` 现覆盖全部编辑命令
-  （set/delete/rename/move/append/insert/sort-keys）及 `to-json -A`
-  （JSON 数组，与 Python 对等）。每个文档针对流中自己的文本段做 splice
-  （`MultiDocEditor` + `DirtyUnit::shifted`）：未触碰的文档与所有 `---`
-  分隔行逐字节保持原样；路径未命中的文档跳过（与 Python try/skip 语义
-  一致，全部未命中仍报错退出）；布局异常的文档单独回退，不连带邻居。
+  （set/delete/rename/move/append/insert/sort-keys）及 `to-json -A`（JSON 数组，与 Python 对等）。
+  每个文档针对流中自己的文本段做 splice（`MultiDocEditor` + `DirtyUnit::shifted`）：未触碰的文档与
+  所有 `---` 分隔行逐字节保持原样；路径未命中的文档跳过（与 Python try/skip 语义一致，全部未命中仍
+  报错退出）；布局异常的文档单独回退，不连带邻居。
 - **JSONC 解析** — `pyrs_yaml_core::json::from_jsonc(text)` 与
-  `from_json_with_options(text, JsonParseOptions)` 接受任意空白位置的
-  `// 行` 与 `/* 块 */` 注释（即 TypeScript `tsconfig.json` 与 VS Code
-  `settings.json` 使用的方言）。注释仅剥离，不保留。尾逗号及其他 JSON5
-  独有形式仍拒绝，接受语言保持为 RFC 8259 的严格超集。`from_json` 默认
-  行为不变（仍为严格模式）。
-- **TOML 注释保真** — 解析器现在会采集独立注释（`# ...` 单独一行，
-  位于键值对或 section 头部之上）与行尾注释（`key = value # ...` /
-  `[name] # ...`），并通过 `NodeMeta::comment` 挂载到共享 AST（独立部
-  分挂在 key 节点，行尾部分挂在 value 节点）。`to_toml(from_toml(src))`
-  按原位置重新写回，`pyq edit` 与 `YamlDocument.set()` 不再剥离 TOML
-  往返中的注释。空白行分隔仍采用 writer 默认样式（见设计文档）。
-- **TOML 数字源码保真** — `to_toml(from_toml(src))` 现在保留十六进制
-  (`0xDEADBEEF`) 与八进制 (`0o755`) 整数的源拼写，以及带指数的浮点
-  (`1e10`、`-3.14e-2`)。下划线分隔符、显式 `+` 号、带负号的 radix
-  形式 (`-0x1F`) 与二进制 (`0b101`) 仍归一为十进制，因为 YAML Core
-  schema 无法重新读取它们，从而保证共享 AST 与 YAML 流水线的互操作
-  性。注释保真与 JSONC 支持按设计文档后续 PR 落地。
+  `from_json_with_options(text, JsonParseOptions)` 接受任意空白位置的 `// 行` 与 `/* 块 */` 注释（即
+  TypeScript `tsconfig.json` 与 VS Code `settings.json` 使用的方言）。注释仅剥离，不保留。尾逗号及其
+  他 JSON5 独有形式仍拒绝，接受语言保持为 RFC 8259 的严格超集。`from_json` 默认行为不变（仍为严格模
+  式）。
+- **TOML 注释保真** — 解析器现在会采集独立注释（`# ...` 单独一行，位于键值对或 section 头部之上）与
+  行尾注释（`key = value # ...` / `[name] # ...`），并通过 `NodeMeta::comment` 挂载到共享 AST（独立
+  部分挂在 key 节点，行尾部分挂在 value 节点）。`to_toml(from_toml(src))` 按原位置重新写回，
+  `pyq edit` 与 `YamlDocument.set()` 不再剥离 TOML 往返中的注释。空白行分隔仍采用 writer 默认样式
+  （见设计文档）。
+- **TOML 数字源码保真** — `to_toml(from_toml(src))` 现在保留十六进制 (`0xDEADBEEF`) 与八进制
+  (`0o755`) 整数的源拼写，以及带指数的浮点 (`1e10`、`-3.14e-2`)。下划线分隔符、显式 `+` 号、带负号的
+  radix 形式 (`-0x1F`) 与二进制 (`0b101`) 仍归一为十进制，因为 YAML Core schema 无法重新读取它们，从
+  而保证共享 AST 与 YAML 流水线的互操作性。注释保真与 JSONC 支持按设计文档后续 PR 落地。
 - **pyq 功能补齐** — CLI 追平 Python CLI 功能面：`rename`/`move`/`append`/`insert`
   splice 编辑、`validate`（解析检查，或用 `--schema rules.yaml` 按 schema 语言规则
   校验）、`frontmatter`（`--body-out` 分离正文），以及 `get`/`fmt`/`to-json` 的
   `-A/--all-docs` 多文档流。接线过程揪出核心引擎 bug：`move_path` 只返回目标
   INSERT 单元，splice 文本会残留被移动子树的副本（文档回退全重序列化时不可见）；
   现返回两个单元，bindings 经批量 splice 通道依次应用。
-- **`pyq` 过滤动词** — 匹配流上的结构化 jq 风格后处理：
-  `--select 'PATH OP LITERAL'`、`--sort-by PATH` / `--desc`、`--unique`、
-  `--first` / `--last`、`--skip N` / `--take N`、`--join SEP`，在 `get` 与
-  `from-*` 上按固定管线 `select -> sort -> unique -> slice` 后接 `join`
-  作用。有意选择旗标而非表达式语言：谓词仅一次微语法解析（约 40 行），
-  类型不匹配一律 `false`（与 jq 全序的已知差异，已入文档），启动保持瞬时。
-- **`pyq completion`** — 输出 bash、zsh、fish、PowerShell 的 shell 补全
-  脚本（`pyq completion bash > ...`），由 `clap_complete` 驱动（已批准
-  添加到 CLI crate 的依赖；仅存在于 `pyrs-yaml-cli` 二进制内，不影响
-  Python 分发）。
+- **`pyq` 过滤动词** — 匹配流上的结构化 jq 风格后处理：`--select 'PATH OP LITERAL'`、
+  `--sort-by PATH` / `--desc`、`--unique`、`--first` / `--last`、`--skip N` / `--take N`、
+  `--join SEP`，在 `get` 与 `from-*` 上按固定管线 `select -> sort -> unique -> slice` 后接 `join` 作
+  用。有意选择旗标而非表达式语言：谓词仅一次微语法解析（约 40 行），类型不匹配一律 `false`（与 jq 全
+  序的已知差异，已入文档），启动保持瞬时。
+- **`pyq completion`** — 输出 bash、zsh、fish、PowerShell 的 shell 补全脚本
+  （`pyq completion bash > ...`），由 `clap_complete` 驱动（已批准添加到 CLI crate 的依赖；仅存在于
+  `pyrs-yaml-cli` 二进制内，不影响 Python 分发）。
 - **`pyq sort-keys`** — 对任意路径（`$` 为根）的映射键排序，可原地回写
   或输出到 stdout，与 `set`/`delete` 共用核心 plan/splice 引擎，补齐与
   Python CLI `sort-keys` 的对等性。
-- **命令行工具** — 新增 `pyrs-yaml` 命令（通过 `pip install "pyrs-yaml[cli]"` 安装，
-  需 Python 3.10+），在终端中暴露库的核心能力：`fmt`（往返重新格式化，保留注释/
-  锚点/顺序）、`get`（JSONPath 查询，支持 `--format yaml|json|text`）、`set` /
-  `delete` / `rename`（基于路径的编辑，支持 `--inplace`、`--string`、
-  `--create-missing`）、`validate`（对 CI 友好的退出码）以及 `to-json` / `from-json` 转换。所有命令通过 `-` 读取 stdin，默认输出到
-  stdout。实现为纯 Python（`python/pyrs_yaml/cli/`），基于
-  [Cyclopts](https://github.com/BrianPugh/cyclopts) 作为可选 extra，基础安装保持零额外依赖并继续支持 Python 3.8。
-  基础安装保持零额外依赖并继续支持 Python 3.8。
+- **命令行工具** — 新增 `pyrs-yaml` 命令（通过 `pip install "pyrs-yaml[cli]"` 安装，需 Python
+  3.10+），在终端中暴露库的核心能力：`fmt`（往返重新格式化，保留注释/ 锚点/顺序）、`get`（JSONPath
+  查询，支持 `--format yaml|json|text`）、`set` / `delete` / `rename`（基于路径的编辑，支持
+  `--inplace`、`--string`、`--create-missing`）、`validate`（对 CI 友好的退出码）以及 `to-json` /
+  `from-json` 转换。所有命令通过 `-` 读取 stdin，默认输出到 stdout。实现为纯 Python
+  （`python/pyrs_yaml/cli/`），基于 [Cyclopts](https://github.com/BrianPugh/cyclopts) 作为可选
+  extra，基础安装保持零额外依赖并继续支持 Python 3.8。基础安装保持零额外依赖并继续支持 Python 3.8。
 - **CLI 扩展** —— 新增 `sort-keys`（对路径处映射键排序）、`move`（将子树移动到已存在的目标）、
   `frontmatter`（提取 Markdown front matter 为 YAML，可选拆分正文）与 `compliance`
   （YAML Test Suite 报告，支持 `--json`）命令；为 `fmt`/`get`/`set`/`delete`/`rename`/
@@ -1218,11 +1161,10 @@ status: new
   中的 `_register_third_party`）。每个插件使用独立标签，不影响现有 `!timestamp` /
   `!date` / `!uuid` 处理器；标准库 `timedelta` 绝不会被 `!duration` 匹配。
 - **pydantic-settings YAML 配置来源** — `PyrsYamlConfigSettingsSource`
-  （`python/pyrs_yaml/settings.py`）是 `pydantic_settings.YamlConfigSettingsSource`
-  的即插即用替代，使用 pyrs-yaml（YAML 1.2 核心 schema）而非 PyYAML 解析。采用惰性
-  导出，`import pyrs_yaml` 不依赖 pydantic-settings；通过
-  `pip install "pyrs-yaml[settings]"` 安装（Python 3.10+）。`dump_pydantic` 与
-  `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
+  （`python/pyrs_yaml/settings.py`）是 `pydantic_settings.YamlConfigSettingsSource` 的即插即用替代，
+  使用 pyrs-yaml（YAML 1.2 核心 schema）而非 PyYAML 解析。采用惰性导出，`import pyrs_yaml` 不依赖
+  pydantic-settings；通过 `pip install "pyrs-yaml[settings]"` 安装（Python 3.10+）。`dump_pydantic`
+  与 `parse_as` 也已改为相同的模块级 `__getattr__` 惰性导出模式。
 - **`pyq` — Rust 原生 CLI crate** — `crates/pyrs-yaml-cli`（workspace 成员，
   基于 clap）将 `pyrs-yaml-core` 直接接入 jq/yq 风格命令行，运行时无需
   Python：`fmt`（保留注释的往返格式化）、`get <path>`（JSONPath-lite，支持
@@ -1231,25 +1173,21 @@ status: new
   保留注释与值自身风格）、`to-json`（保序）、`to-toml`，以及导入命令 `from-json` /
   `from-toml` / `from-ini`；输入格式按扩展名识别（`--input` 可覆盖），`-` 或
   省略时读 stdin，失败时以 core 的稳定错误文本非零退出。
-- **TOML 与 INI 交换格式** — 轮毂-辐射式多格式支持，YAML 仍是唯一可编辑
-  表示：`from_toml`/`to_toml` 在 TOML 文本 ⇄ YAML 文本间转换（Rust
-  `toml_edit`）；`load_toml` 将 TOML 直接读为 Python 值（datetime 经内建
-  `!timestamp` 插件；TOML 字符串不会被重新解析）；`load_ini` 经标准库
-  configparser 读取 INI（严格模式，只读）。TOML 输出对不可表达结构报
-  稳定错误；往返编辑按设计仅 YAML 支持。
+- **TOML 与 INI 交换格式** — 轮毂-辐射式多格式支持，YAML 仍是唯一可编辑表示：`from_toml`/`to_toml`
+  在 TOML 文本 ⇄ YAML 文本间转换（Rust `toml_edit`）；`load_toml` 将 TOML 直接读为 Python 值
+  （datetime 经内建 `!timestamp` 插件；TOML 字符串不会被重新解析）；`load_ini` 经标准库 configparser
+  读取 INI（严格模式，只读）。TOML 输出对不可表达结构报稳定错误；往返编辑按设计仅 YAML 支持。
 
 #### 变更
 
-- **granit-parser 1.1 → 1.3** — 将 YAML 事件解析器从 1.1.0 升级到 1.3.0。
-  这是 1.x 版本线内语义化版本兼容的次级升级：1.2.0 为特殊文档的限制新增了可选的
-  `Options` 字段，1.2.1 按 YAML 规范收紧了若干解析结果，1.3.0 为 `Input` trait
-  新增了两个带默认实现的方法（`fetch_block_scalar_line` 与
-  `take_quoted_scalar_ascii_chunk`），让扫描器更快地跳过块级与引号标量字节。
-  本项目通过 `Parser::new_from_str` 使用解析器，只实现 `EventReceiver` /
-  `SpannedEventReceiver`，从不实现 `Input`，因此无需改动源码——新增的 trait
-  方法解析到其默认实现。全套测试通过：`cargo nextest run --all`（359）、
-  `pytest`（1436 + 43 numpy）、纯 Rust `--no-default-features` 构建，且 YAML
-  测试套件合规门控保持不变。
+- **granit-parser 1.1 → 1.3** — 将 YAML 事件解析器从 1.1.0 升级到 1.3.0。这是 1.x 版本线内语义化版本
+  兼容的次级升级：1.2.0 为特殊文档的限制新增了可选的 `Options` 字段，1.2.1 按 YAML 规范收紧了若干解
+  析结果，1.3.0 为 `Input` trait 新增了两个带默认实现的方法（`fetch_block_scalar_line` 与
+  `take_quoted_scalar_ascii_chunk`），让扫描器更快地跳过块级与引号标量字节。本项目通过
+  `Parser::new_from_str` 使用解析器，只实现 `EventReceiver` / `SpannedEventReceiver`，从不实现
+  `Input`，因此无需改动源码——新增的 trait 方法解析到其默认实现。全套测试通过：
+  `cargo nextest run --all`（359）、`pytest`（1436 + 43 numpy）、纯 Rust `--no-default-features` 构
+  建，且 YAML 测试套件合规门控保持不变。
 - **原生 JSON 与 TOML 内核** — `serde_json` 和 `toml_edit` 依赖已全部移除。
   `pyrs-yaml-core` 自带 RFC 8259 JSON 引擎（字节级扫描、数字保留原文，因此
   `from_json → to_json` 字节稳定且不会丢失大整数/浮点精度，行/列错误带类型，
@@ -1262,52 +1200,43 @@ status: new
 - **内部重复代码清理** — 基准 fixture 改由共享块拼接，PyO3 路径编辑方法委托给现有
   `apply_metadata_edit` 助手，重复的文件读取/错误映射与行偏移样板收敛为共享函数。
   公开行为无变化；jscpd 测量的重复代码率从 5.25% 降至 3.45%。
-- **`YamlDocument.validate()` 缓存编译后的 validator** — schema（JSON 文本或
-  dict）首次校验成功后即缓存编译好的 `jsonschema` validator；后续调用跳过 schema
-  解析、meta-schema 检查与 validator 构建。dict schema 按对象身份键控并辅以深拷贝
-  快照守卫：原地修改会在下次使用时通过 `==` 检出并透明重编译。缓存路径抛出
-  `exceptions.best_match(validator.iter_errors(instance))`，与
+- **`YamlDocument.validate()` 缓存编译后的 validator** — schema（JSON 文本或 dict）首次校验成功后即
+  缓存编译好的 `jsonschema` validator；后续调用跳过 schema 解析、meta-schema 检查与 validator 构建。
+  dict schema 按对象身份键控并辅以深拷贝快照守卫：原地修改会在下次使用时通过 `==` 检出并透明重编
+  译。缓存路径抛出 `exceptions.best_match(validator.iter_errors(instance))`，与
   `jsonschema.validate()` 语义完全一致。WSL 实测：`document_validate` −98%。
-- **解析/序列化内核结构化去重** — mapping 与 sequence 渲染共享单一
-  `write_container_node` 骨架（输出字节级一致，`serialize_*` 中位数 −5~11%）；
-  单/多文档解析入口共享同一 `load_ast` 错误契约；schema 解析链共享
-  `bool_word`/`numeric_tail`，YAML 1.1 不再逐标量重复 core 的 null/bool 检查；
-  锚点注册（`register_anchor`）与独立/行内注释分类（`is_standalone_placement`）
-  在 AST 与流 receiver 间单源化。仓库重复代码率 3.38% → 2.60%。
+- **解析/序列化内核结构化去重** — mapping 与 sequence 渲染共享单一 `write_container_node` 骨架（输出
+  字节级一致，`serialize_*` 中位数 −5~11%）；单/多文档解析入口共享同一 `load_ast` 错误契约；schema
+  解析链共享 `bool_word`/`numeric_tail`，YAML 1.1 不再逐标量重复 core 的 null/bool 检查；锚点注册
+  （`register_anchor`）与独立/行内注释分类（`is_standalone_placement`）在 AST 与流 receiver 间单源
+  化。仓库重复代码率 3.38% → 2.60%。
 
 #### 修复
 
-- **`\u` / `\x` 转义后紧跟多字节字符时解析器 panic** — 定宽转义读取器
-  按字节偏移切 `&self.text[pos..pos+width]`；JSON `\u` 或 TOML
-  `\xHH`/`\uXXXX`/`\UXXXX` 后跟多字节字符时切片落在字符中间而 abort（#153
-  非 ASCII 切片崩溃的同族）。现改为字节切片 + UTF-8 校验，畸形转义干净报错。
+- **`\u` / `\x` 转义后紧跟多字节字符时解析器 panic** — 定宽转义读取器按字节偏移切
+  `&self.text[pos..pos+width]`；JSON `\u` 或 TOML `\xHH`/`\uXXXX`/`\UXXXX` 后跟多字节字符时切片落在
+  字符中间而 abort（#153 非 ASCII 切片崩溃的同族）。现改为字节切片 + UTF-8 校验，畸形转义干净报错。
   由方言 fuzz 发现，两处解析器均有确定性 Rust 回归测试固定。
-- **字面 `<<` 键（非 merge 值）被静默丢弃** —
-  `load(safe_dump({"<<": None}))` 返回 `{}` 丢了键。merge 解析器把任意 `<<`
-  都当 merge 消费，即使值是 Null/标量。按 YAML，`<<` 仅当值为映射别名/内联映射/
-  其序列时才是 merge；Null/纯标量 `<<`，以及不含别名且无内容可合并的 `<<`（`<<: []`、`<<: [1, 2]`、
-`<<: {}`）现保留为普通键并往返保真。Alias/映射/序列
-  路径（含 #166 自引用守卫）不变，yaml-test-suite 仍 405/406。由往返属性 fuzz
-  非确定性地暴露（正是 #163/#165/#166 类缺陷），并新增确定性 Rust 回归测试锁定。
-- **TOML 深嵌套耗尽原生栈并 abort 进程** — TOML 解析器此前无嵌套预算
-  （JSON 有 `DEFAULT_MAX_DEPTH`、YAML 有 `parse` `max_depth`），
-  `parse_value` → `parse_array`/`parse_inline_table` 无界递归。深嵌套数组/内联表
-  直接崩掉解释器（已验证：退出码 `0xC00000FD` STACK_OVERFLOW）——即
-  TOML 版的 #166 YAML merge 栈溢出。解析器现追踪 `depth`，超过 1000
-  返回类型化 `ParseError::MaxDepthExceeded`，与 JSON 对称。由进程内 Python
-  边界测试 + subprocess 崩溃金丝雀 + 大栈 Rust 单元测试共同守护。
-- **方言 writer/parser 丢失或错置文档级注释** — 三个定点属性抓到的 defect：
-  (a) JSONC/JSON5 值前的文件首 `// note` 被误判为行内注释（空白扫描启发式中
-  偏移 0 前无换行）并被首个对象成员占取，而非落在 writer
-  `emit_root_leading` 所标注的根容器上——空 `{}` 或根标量时彻底丢失；(b)
-  JSON 家族与 TOML writer 逐字输出注释体而 parser 存的是 trim 后的文本，未 trim 的
-  注释会在多轮 pass 间振荡尾随空白——writer 现在输出时也 trim，首次拼写即
-  稳定；(c) 纯注释 TOML 文档（`# note` 后无 key 消费）重解析时丢注释、空根
-  序列化为 `""`——遗留的独立注释现在挂到空根表上。至此五格式的 leading
-  注释均达到逐位稳定的定点。由
-  `jsonc_file_leading_comment_stays_on_the_root`、
-  `jsonc_comment_text_is_written_trimmed`、
-  `comment_only_document_keeps_its_note_on_the_root` 钉住。
+- **字面 `<<` 键（非 merge 值）被静默丢弃** — `load(safe_dump({"<<": None}))` 返回 `{}` 丢了键。
+  merge 解析器把任意 `<<` 都当 merge 消费，即使值是 Null/标量。按 YAML，`<<` 仅当值为映射别名/内联映
+  射/ 其序列时才是 merge；Null/纯标量 `<<`，以及不含别名且无内容可合并的 `<<`（`<<: []`、
+  `<<: [1, 2]`、`<<: {}`）现保留为普通键并往返保真。Alias/映射/序列路径（含 #166 自引用守卫）不变，
+  yaml-test-suite 仍 405/406。由往返属性 fuzz 非确定性地暴露（正是 #163/#165/#166 类缺陷），并新增确
+  定性 Rust 回归测试锁定。
+- **TOML 深嵌套耗尽原生栈并 abort 进程** — TOML 解析器此前无嵌套预算（JSON 有 `DEFAULT_MAX_DEPTH`、
+  YAML 有 `parse` `max_depth`），`parse_value` → `parse_array`/`parse_inline_table` 无界递归。深嵌
+  套数组/内联表直接崩掉解释器（已验证：退出码 `0xC00000FD` STACK_OVERFLOW）——即 TOML 版的 #166 YAML
+  merge 栈溢出。解析器现追踪 `depth`，超过 1000 返回类型化 `ParseError::MaxDepthExceeded`，与 JSON
+  对称。由进程内 Python 边界测试 + subprocess 崩溃金丝雀 + 大栈 Rust 单元测试共同守护。
+- **方言 writer/parser 丢失或错置文档级注释** — 三个定点属性抓到的 defect：(a) JSONC/JSON5 值前的文
+  件首 `// note` 被误判为行内注释（空白扫描启发式中偏移 0 前无换行）并被首个对象成员占取，而非落在
+  writer `emit_root_leading` 所标注的根容器上——空 `{}` 或根标量时彻底丢失；(b) JSON 家族与 TOML
+  writer 逐字输出注释体而 parser 存的是 trim 后的文本，未 trim 的注释会在多轮 pass 间振荡尾随空白
+  ——writer 现在输出时也 trim，首次拼写即稳定；(c) 纯注释 TOML 文档（`# note` 后无 key 消费）重解析
+  时丢注释、空根序列化为 `""`——遗留的独立注释现在挂到空根表上。至此五格式的 leading 注释均达到逐位
+  稳定的定点。由 `jsonc_file_leading_comment_stays_on_the_root`、
+  `jsonc_comment_text_is_written_trimmed`、`comment_only_document_keeps_its_note_on_the_root` 钉
+  住。
 - **嵌套块标量的正文保持父行缩进** — 嵌套键下的字面/折叠标量把正文行按固定
   一级缩进从第 0 列输出，而不是落在 `b: |` 头部行下一层，导致所有嵌套块标量
   形态（键值对、序列项、紧凑 dash 映射、任意深度）序列化出的文本重解析为报错
@@ -1323,85 +1252,65 @@ status: new
   `{` `}`）的 plain 标量现在加引号——不加引号会截断 token 或在重解析时消失。
   另：带 tag 的空 block 容器把头部并入 `{}`/`[]` 行；紧凑 dash 项不再内联带独立
   注释的值。九个钉住的 Rust 测试加参数化 Python 回归守护每类缺陷。
-- **TOML 拒绝合法的最小 i64 整数** — `from_toml`/`load_toml` 在
-  `-9223372036854775808`（`i64::MIN`）上失败：带符号路径先按无符号绝对值解析，
-  取负号前就溢出。现在符号与数字一并解析（`i64::from_str` 向负方向累加），带符号
-  浮点保留指数拼写，旧的取负通道已删除。由新的 Python 侧 Hypothesis 方言模糊测试
-  （`tests/test_property_dialects.py`，以 stdlib `json`/`tomllib`/`pyjson5` 为预言机
-  做类型严格相等比较；同时钉住两类 AST 歧义拼写——JSON5 裸 `Infinity`/`NaN` 字面量
-  与超 i64 数字串）发现。Rust 回归：
+- **TOML 拒绝合法的最小 i64 整数** — `from_toml`/`load_toml` 在 `-9223372036854775808`（`i64::MIN`）
+  上失败：带符号路径先按无符号绝对值解析，取负号前就溢出。现在符号与数字一并解析（`i64::from_str` 向
+  负方向累加），带符号浮点保留指数拼写，旧的取负通道已删除。由新的 Python 侧 Hypothesis 方言模糊测试
+  （`tests/test_property_dialects.py`，以 stdlib `json`/`tomllib`/`pyjson5` 为预言机做类型严格相等比
+  较；同时钉住两类 AST 歧义拼写——JSON5 裸 `Infinity`/`NaN` 字面量与超 i64 数字串）发现。Rust 回归：
   `toml::parser::tests::i64_lower_bound_negative_integer_is_accepted`。
-- **错误缩进的流序列续行再次被拒绝** — 将 YAML 解析器升级到 granit-parser 1.3
-  （见*变更*）后，开始静默地*接受*这样的输入：多行流集合的续行缩进不比其所在块键
-  更深（yaml-test-suite `9C9N`：`flow: [a,` 后接列 0 的 `b,`），使严格性从
-  `405/406` 回退到 `404/406`——由于 suite 的 ≥95% 阈值门，它对 CI 不可见，因而
-  带着“绿”混过。现在 AST receiver 里一个解析后的 in-tree 守卫会跟踪所在块的缩进，
-  并拒绝缩进不足的流续行，恢复 `405/406`。守卫只用解析器已算好的 span，因此正确
-  缩进的多行流不受影响。`9C9N` 现被固化为逐例硬门（字面输入、无 `skipif`）写进
-  `tests/test_yaml_suite.py`，另加一个 Rust 单测
+- **错误缩进的流序列续行再次被拒绝** — 将 YAML 解析器升级到 granit-parser 1.3（见*变更*）后，开始静
+  默地*接受*这样的输入：多行流集合的续行缩进不比其所在块键更深（yaml-test-suite `9C9N`：`flow: [a,`
+  后接列 0 的 `b,`），使严格性从 `405/406` 回退到 `404/406`——由于 suite 的 ≥95% 阈值门，它对 CI 不可
+  见，因而带着“绿”混过。现在 AST receiver 里一个解析后的 in-tree 守卫会跟踪所在块的缩进，并拒绝缩进
+  不足的流续行，恢复 `405/406`。守卫只用解析器已算好的 span，因此正确缩进的多行流不受影响。`9C9N` 现
+  被固化为逐例硬门（字面输入、无 `skipif`）写进 `tests/test_yaml_suite.py`，另加一个 Rust 单测
   （`parser::tests::flow_continuation_under_indented_is_rejected`）。
-- **自引用合并键不再溢出原生栈** — 展开后指回自身锚点（`a: &a` 内含
-  `b: {<<: *a}`）的 `<<` 会在 `resolve_merge_keys` 中无限展开，耗尽原生栈并
-  拖垮整个解释器进程（Windows 退出码 `0xC00000FD`，即段错误）。循环 guard
-  此前只在*收集*合并对时生效，从不在*遍历*展开结果时生效，因此递归重入
-  从未被拦截。现在锚点 guard 与别名展开一样按路径作用域：某锚点名在其展开被
-  遍历期间始终留在递归路径上，解析回该路径上已存在的祖先的合并会终止为空展开
-  而非递归。无环 AST 无法承载 PyYAML 的循环 dict，因此自引用合并现在收敛到
-  `{}` 而不再崩溃。同批修复 4 个相关合并语义缺陷：null/标量/序列合并源不再
-  残留为字面 `<<` 键；直接作为合并值的内联映射（`<<: {x: 1}`）现在会被合并；
-  合并序列中的非别名元素（`<<: [*a, {y: 2}]`）会保留其内联映射。由 6 个 Rust
-  与 9 个 Python 回归测试覆盖（`merge::tests`、
-  `tests/test_gaps.py::TestSelfReferentialMerge166`）。
-  由 [@bourumir-wyngs](https://github.com/bourumir-wyngs) 在 #166 报告。
-- **NumPy 序列化不再在不持有 GIL 时读取 Python 内存** — ndarray 写入器曾通过
-  `unsafe { as_slice() }` 借用数组数据缓冲区，并在 `py.detach` **内部**（即已释放
-  GIL 之后）遍历该借用切片。无论来源为何，`&[T]` 都是 `Send`，因此借用检查器无法
-  拦截；但这块内存归 Python 所有，其他线程可并发 resize 或写入，构成不健全的数据
-  竞态 / UB，仅在并发下暴露。现改为在**仍持有 GIL** 时把缓冲区快照为 Rust 自有内存
-  （`slice.to_vec()`），仅标量→节点转换离线程执行。这是绑定层**唯一**一处
-  `unsafe` 缓冲区借用；其余全部 `py.detach` 站点已审查，仅触及 Rust 自有状态
-  （AST、源文本、`BufWriter<File>`）。回归覆盖见
-  `tests/test_numpy.py::TestNumpyConcurrency`。由
+- **自引用合并键不再溢出原生栈** — 展开后指回自身锚点（`a: &a` 内含 `b: {<<: *a}`）的 `<<` 会在
+  `resolve_merge_keys` 中无限展开，耗尽原生栈并拖垮整个解释器进程（Windows 退出码 `0xC00000FD`，即
+  段错误）。循环 guard 此前只在*收集*合并对时生效，从不在*遍历*展开结果时生效，因此递归重入从未被拦
+  截。现在锚点 guard 与别名展开一样按路径作用域：某锚点名在其展开被遍历期间始终留在递归路径上，解析
+  回该路径上已存在的祖先的合并会终止为空展开而非递归。无环 AST 无法承载 PyYAML 的循环 dict，因此自
+  引用合并现在收敛到 `{}` 而不再崩溃。同批修复 4 个相关合并语义缺陷：null/标量/序列合并源不再残留为
+  字面 `<<` 键；直接作为合并值的内联映射（`<<: {x: 1}`）现在会被合并；合并序列中的非别名元素
+  （`<<: [*a, {y: 2}]`）会保留其内联映射。由 6 个 Rust 与 9 个 Python 回归测试覆盖（`merge::tests`、
+  `tests/test_gaps.py::TestSelfReferentialMerge166`）。由
+  [@bourumir-wyngs](https://github.com/bourumir-wyngs) 在 #166 报告。
+- **NumPy 序列化不再在不持有 GIL 时读取 Python 内存** — ndarray 写入器曾通过 `unsafe { as_slice() }`
+  借用数组数据缓冲区，并在 `py.detach` **内部**（即已释放 GIL 之后）遍历该借用切片。无论来源为何，
+  `&[T]` 都是 `Send`，因此借用检查器无法拦截；但这块内存归 Python 所有，其他线程可并发 resize 或写
+  入，构成不健全的数据竞态 / UB，仅在并发下暴露。现改为在**仍持有 GIL** 时把缓冲区快照为 Rust 自有
+  内存（`slice.to_vec()`），仅标量→节点转换离线程执行。这是绑定层**唯一**一处 `unsafe` 缓冲区借用；
+  其余全部 `py.detach` 站点已审查，仅触及 Rust 自有状态（AST、源文本、`BufWriter<File>`）。回归覆盖
+  见 `tests/test_numpy.py::TestNumpyConcurrency`。由
   [@bourumir-wyngs](https://github.com/bourumir-wyngs) 在 #165 中报告。
 - **重复的别名引用不再解析为 `None`** — `to_dict()` 在一个**全局** visited 锚点集合
   后展开别名，且从不清理，导致任一锚点只有**第一次**引用产出值，之后全部静默降级
   为 `None`：
 
-    ```yaml
-    a: &x 1
-    b: *x      # 1
-    c: *x      # 原为 None，现为 1
-    ```
+    ```yaml a: &x 1 b: *x      # 1 c: *x      # 原为 None，现为 1```
 
     影响面比“第二次引用”更宽：同一容器内的两个兄弟引用也会互相污染
-    （`{a: &x {p: 1}, b: {q: *x}, c: {q: *x}}` 中 `b` 有值而 `c` 为 `None`）。现将该
-    guard 限定在当前递归路径上——仅在一次展开期间压入，随后弹出——因此重复引用与
-    兄弟引用各自获得完整构建的值，而真正的环路仍会终止。`<<` 合并解析与 AST 本身经
-    审查不受影响。`tests/test_direct_load.py` 新增 6 个与 PyYAML 对齐的用例锁定该
-    行为，另有两个此前将错误输出当作预期的测试被重写。由
+    （`{a: &x {p: 1}, b: {q: *x}, c: {q: *x}}` 中 `b` 有值而 `c` 为 `None`）。现将该 guard 限定在当
+    前递归路径上——仅在一次展开期间压入，随后弹出——因此重复引用与兄弟引用各自获得完整构建的值，而真
+    正的环路仍会终止。`<<` 合并解析与 AST 本身经审查不受影响。`tests/test_direct_load.py` 新增 6 个
+    与 PyYAML 对齐的用例锁定该行为，另有两个此前将错误输出当作预期的测试被重写。由
     [@bourumir-wyngs](https://github.com/bourumir-wyngs) 在 #163 中报告。
-- **首层值为嵌套容器时文档头注释不再丢失** — 解析器曾为所有进行中的
-  容器共用单一注释槽，嵌套容器的 start 会提前抹掉尚未落位的 standalone
-  头注释（在 parse 层即丢弃；`to_dict` 不可见，`dump` 致命）。现改为
-  每容器独立槽的栈式管理。
-- **splice 编辑不再重复前导注释** — 重生成的区域文本携带 pair/item 自身
-  的 standalone 注释时，被替换区域未覆盖旧注释行，两条注释并存；plan
-  现将区域回扩至注释行（`pyq set`/`delete` 与 bindings splice 路径共享
-  此修复）。
-- **`!timestamp` 在所有受支持 Python 上接受结尾 `Z`** —
-  `datetime.fromisoformat` 仅从 3.11 起识别 UTC-`Z` 后缀；插件现将
-  `...Z` 归一为 `+00:00`，修复 3.8–3.10 上 YAML `!timestamp` 标量及
-  `load_toml` / `from_toml` 引入的 TOML datetime 报 `Invalid isoformat
-  string` 的问题。
+- **首层值为嵌套容器时文档头注释不再丢失** — 解析器曾为所有进行中的容器共用单一注释槽，嵌套容器的
+  start 会提前抹掉尚未落位的 standalone 头注释（在 parse 层即丢弃；`to_dict` 不可见，`dump` 致命）。
+  现改为每容器独立槽的栈式管理。
+- **splice 编辑不再重复前导注释** — 重生成的区域文本携带 pair/item 自身的 standalone 注释时，被替换
+  区域未覆盖旧注释行，两条注释并存；plan 现将区域回扩至注释行（`pyq set`/`delete` 与 bindings splice
+  路径共享此修复）。
+- **`!timestamp` 在所有受支持 Python 上接受结尾 `Z`** — `datetime.fromisoformat` 仅从 3.11 起识别
+  UTC-`Z` 后缀；插件现将 `...Z` 归一为 `+00:00`，修复 3.8–3.10 上 YAML `!timestamp` 标量及
+  `load_toml` / `from_toml` 引入的 TOML datetime 报 `Invalid isoformat string` 的问题。
 
 #### 性能
 
-- **事件流→Python 对象的直接物化** — `safe_load`、`safe_loads`、
-  `YAML().safe_load*` 现在单次遍历 granit 事件流直接构建 Python 对象，
-  不再先建完整 AST 再在 `convert.rs` 中二次遍历；schema 解析、原文映射
-  键与重复键报错语义完全一致。带锚点/tag/merge/多文档的输入经零成本
-  预否决回退 AST 管线。WSL 实测：标量密集 `safe_load` −21~25%，
-  家族整体 −13~18%，回退形态不变。
+- **事件流→Python 对象的直接物化** — `safe_load`、`safe_loads`、`YAML().safe_load*` 现在单次遍历
+  granit 事件流直接构建 Python 对象，不再先建完整 AST 再在 `convert.rs` 中二次遍历；schema 解析、原
+  文映射键与重复键报错语义完全一致。带锚点/tag/merge/多文档的输入经零成本预否决回退 AST 管线。WSL 实
+  测：标量密集 `safe_load` −21~25%，家族整体 −13~18%，回退形态不变。
 - **锚点提取字节门控** — `extract_anchors` 先做一次 `&` 字节包含检查，无锚点文档
   直接返回空，整体跳过逐字符引号状态机。Rust 侧 `parse_*` 基准中位数提升 11–18%，
   扫描本身从 1.5µs 降至 38ns。
@@ -1410,9 +1319,9 @@ status: new
   `parse_stream` −34%、`parse_stream_multidoc` −39%、`load_stream` −22%。
 - **分解微基准** — 新增 `granit_events_*` 基准，将 granit 纯事件管道成本与 AST
   构建分离（仅基准）。
-- **多文档解析免除逐文档深拷贝** — `on_document_end` 改为将完成文档的所有权移动
-  进集合而非深拷贝（下一文档会重建 result，克隆是纯开销）。WSL 实测：
-  `parse_all_docs` −9.7%、`safe_loads`（多文档）−9.5%、`YAML().safe_loads` −6.7%。
+- **多文档解析免除逐文档深拷贝** — `on_document_end` 改为将完成文档的所有权移动进集合而非深拷贝（下
+  一文档会重建 result，克隆是纯开销）。WSL 实测：`parse_all_docs` −9.7%、`safe_loads`（多文档）
+  −9.5%、`YAML().safe_loads` −6.7%。
 - **流式写入跨文档复用单一缓冲** — 新增 `direct_dump_into` 将每个文档写入复用的
   `String`，`dump_iterable` 在文本已以恰好一个换行结尾（正常情况）时跳过
   `normalize_doc` 的重新拷贝。WSL 实测：`dump_stream_multi_doc` −27.2%、
@@ -1432,38 +1341,64 @@ status: new
 
 #### 新增
 
-- **Node 元数据 setter/getter** — 新增 `Node.comment` / `Node.anchor` / `Node.tag` 只读属性和 `set_comment` / `set_anchor` / `set_tag`（及 `remove_*` 系列）。编辑别名或不存在路径会报错；内联标量值和序列项上的独立注释现在输出到独立的缩进行（修复 `child:\n  # c\n  val` 与 `- a\n# c\n- b` 既有的 round-trip 缺陷）。
-- **Verbatim 标签** — `set_tag("!<tag:yaml.org,2002:str>")` 现在生成 verbatim 标签（空 handle），且从源码解析的 verbatim 标签在 round-trip 中保留：`Tag` 的 `Display` 对空 handle 标签以 `!<...>` 包裹输出，`parse_tag` 识别 `!<...>` 形式，流事件通过 `Display` 序列化标签。
-- **Schema 文件 IO 与列表** — `load_schema(name, path)` 从文件读取 schema 定义并注册，`list_schemas()` 返回所有已注册的 schema 名称（内置 `failsafe`/`json`/`core`/`yaml1.1` + 自定义）。
-- **Node style/format setter/getter** — 新增 `Node.scalar_style` / `Node.flow_style` / `Node.chomping` 只读属性和 `set_scalar_style` / `set_flow_style` / `set_chomping` 方法。ScalarStyle/Chomping 现在 derive `Copy`。非标量节点返回 `None` / no-op，别名和缺失路径报错。
-- **Schema 结构化校验** — 在 schema 定义的 `validate` 段添加结构检查（路径限定标量类型、`sequence_of`/`mapping_of` 容器、`required`）。`validate_against_schema(data, schema_yaml)` 列出所有失败项并抛 `YamlValidateError`。
-- **`Node.copy()`** — 将子树深度复制为与文档分离的独立 Python 值（dict/list/scalar），可用于通过 `set_value()` 粘贴。
-- **深度编辑 API** — `doc.set_many({path: value})` 在单次 splice 突发中设置多个路径（支持通配符 `[*]` 和深度扫描 `..`）；`doc.sort_keys()` 原地排序映射键；`Node.move(new_path)` 移动子树；`Node.path` / `Node.find_first()` / `Node.value_eq()` 新增路径访问、首通配符查找、值比较。
-- **0.14+ 新功能的属性测试** — `validate_node` / schema 解析 / style round-trip 的 Rust proptest，`set_many` 通配符 / metadata 编辑 / `sort_keys` 的 Python hypothesis 测试。`hypothesis` 移至 `test` 组，确保 CI 运行属性测试。
-- **序列化器修复** — 空 flow 容器（`key: {}` / `key: []`）上的独立注释不再产生无效 YAML（降级为行内）。
+- **Node 元数据 setter/getter** — 新增 `Node.comment` / `Node.anchor` / `Node.tag` 只读属性和
+  `set_comment` / `set_anchor` / `set_tag`（及 `remove_*` 系列）。编辑别名或不存在路径会报错；内联标
+  量值和序列项上的独立注释现在输出到独立的缩进行（修复 `child:\n  # c\n  val` 与 `- a\n# c\n- b` 既
+  有的 round-trip 缺陷）。
+- **Verbatim 标签** — `set_tag("!<tag:yaml.org,2002:str>")` 现在生成 verbatim 标签（空 handle），且
+  从源码解析的 verbatim 标签在 round-trip 中保留：`Tag` 的 `Display` 对空 handle 标签以 `!<...>` 包
+  裹输出，`parse_tag` 识别 `!<...>` 形式，流事件通过 `Display` 序列化标签。
+- **Schema 文件 IO 与列表** — `load_schema(name, path)` 从文件读取 schema 定义并注册，
+  `list_schemas()` 返回所有已注册的 schema 名称（内置 `failsafe`/`json`/`core`/`yaml1.1` + 自定
+  义）。
+- **Node style/format setter/getter** — 新增 `Node.scalar_style` / `Node.flow_style` /
+  `Node.chomping` 只读属性和 `set_scalar_style` / `set_flow_style` / `set_chomping` 方法。
+  ScalarStyle/Chomping 现在 derive `Copy`。非标量节点返回 `None` / no-op，别名和缺失路径报错。
+- **Schema 结构化校验** — 在 schema 定义的 `validate` 段添加结构检查（路径限定标量类型、
+  `sequence_of`/`mapping_of` 容器、`required`）。`validate_against_schema(data, schema_yaml)` 列出所
+  有失败项并抛 `YamlValidateError`。
+- **`Node.copy()`** — 将子树深度复制为与文档分离的独立 Python 值（dict/list/scalar），可用于通过
+  `set_value()` 粘贴。
+- **深度编辑 API** — `doc.set_many({path: value})` 在单次 splice 突发中设置多个路径（支持通配符
+  `[*]` 和深度扫描 `..`）；`doc.sort_keys()` 原地排序映射键；`Node.move(new_path)` 移动子树；
+  `Node.path` / `Node.find_first()` / `Node.value_eq()` 新增路径访问、首通配符查找、值比较。
+- **0.14+ 新功能的属性测试** — `validate_node` / schema 解析 / style round-trip 的 Rust proptest，
+  `set_many` 通配符 / metadata 编辑 / `sort_keys` 的 Python hypothesis 测试。`hypothesis` 移至
+  `test` 组，确保 CI 运行属性测试。
+- **序列化器修复** — 空 flow 容器（`key: {}` / `key: []`）上的独立注释不再产生无效 YAML（降级为行
+  内）。
 
 #### 变更
 
-- **NumPy 在自由线程 (cp314t) wheel 上重新启用** — 从 cp314t 构建参数移除 `--no-default-features`；rust-numpy 0.29 支持自由线程 Python，`numpy.ndarray` 序列化现可在自由线程 wheel 上使用（运行时自动检测 NumPy 是否安装）。
+- **NumPy 在自由线程 (cp314t) wheel 上重新启用** — 从 cp314t 构建参数移除 `--no-default-features`；
+  rust-numpy 0.29 支持自由线程 Python，`numpy.ndarray` 序列化现可在自由线程 wheel 上使用（运行时自动
+  检测 NumPy 是否安装）。
 
 #### 文档
 
-- **修正全部语言（en/zh/ja/ko）文档中的过时引用** — `saphyr-parser` → `granit-parser`，YAML 合规率 98.1% → 99.75%（405/406 套件用例），ABI3 支持 3.9–3.13 → 3.8–3.15（py3.9+ → py3.8+），并更新基准测试表为当前 CodSpeed CI 数据（解析快 21–43 倍、序列化快 55–177 倍于 PyYAML）。Rust 侧基准测试章节从 Criterion 迁移到 divan（`benches/yaml_bench.rs` → `crates/pyrs-yaml/benches/yaml_bench.rs`）。
+- **修正全部语言（en/zh/ja/ko）文档中的过时引用** — `saphyr-parser` → `granit-parser`，YAML 合规率
+  98.1% → 99.75%（405/406 套件用例），ABI3 支持 3.9–3.13 → 3.8–3.15（py3.9+ → py3.8+），并更新基准测
+  试表为当前 CodSpeed CI 数据（解析快 21–43 倍、序列化快 55–177 倍于 PyYAML）。Rust 侧基准测试章节从
+  Criterion 迁移到 divan（`benches/yaml_bench.rs` → `crates/pyrs-yaml/benches/yaml_bench.rs`）。
 
 ### [v0.14.1] — 2026-08-15
 
 #### 修复
 
 - **含反斜杠+控制字符/非字符的单引号标量** — 此类值改用双引号输出；单引号无法转义控制字符/非字符。
-- **非字符与 BOM 引用** — `needs_quotes` / `needs_double_quoted` 现对 U+FFFE/U+FFFF/平面末尾非字符及 U+FEFF（BOM）要求引用。
+- **非字符与 BOM 引用** — `needs_quotes` / `needs_double_quoted` 现对 U+FFFE/U+FFFF/平面末尾非字符及
+  U+FEFF（BOM）要求引用。
 - **双引号转义宽度** — U+FFFF 以上的码点现以 8 位 `\Uxxxxxxxx` 形式转义（4 位 `\u` 仅限 BMP）。
 - **折叠 plain 标量续行缩进** — 续行缩进改由值起始列推导，使嵌套序列/映射项续行缩进超过父块缩进。
-- **多字节折叠边界** — `wrap_plain_scalar` 对折叠切片做 char boundary 向下取整，避免 4 字节 UTF-8 跨边界时 panic。
-- **publish 测试依赖含 `hypothesis`** — `.ci/requirements-test.txt` 固定 `hypothesis>=6.113.0`，使发布工作流能运行属性测试。
+- **多字节折叠边界** — `wrap_plain_scalar` 对折叠切片做 char boundary 向下取整，避免 4 字节 UTF-8 跨
+  边界时 panic。
+- **publish 测试依赖含 `hypothesis`** — `.ci/requirements-test.txt` 固定 `hypothesis>=6.113.0`，使发
+  布工作流能运行属性测试。
 
 #### Added
 
-- **`scripts/fuzz_panics.py`** — 本地大规模 Hypothesis fuzz 脚本，含恶意策略覆盖 dump/parse/edit/幂等。
+- **`scripts/fuzz_panics.py`** — 本地大规模 Hypothesis fuzz 脚本，含恶意策略覆盖 dump/parse/edit/幂
+  等。
 
 ### [v0.14.0] — 2026-08-14
 
@@ -1485,41 +1420,39 @@ status: new
 
 #### 修复
 
-- **带引号标量恒为字符串** — 隐式类型解析仅作用于纯标量（YAML 1.2）。`safe_load('"true"')` 返回字符串 `"true"`（而非 `True`）。序列化器保持文档（`to_yaml`）路径下的负数正确往返。
-- **单引号/双引号单字符键可往返** — 值为单个 `'` 或 `"` 的映射键以引号标量输出，不再产生无法解析的 YAML。
+- **带引号标量恒为字符串** — 隐式类型解析仅作用于纯标量（YAML 1.2）。`safe_load('"true"')` 返回字符
+  串 `"true"`（而非 `True`）。序列化器保持文档（`to_yaml`）路径下的负数正确往返。
+- **单引号/双引号单字符键可往返** — 值为单个 `'` 或 `"` 的映射键以引号标量输出，不再产生无法解析的
+  YAML。
 - **空集合输出 `{}`/`[]`** — 空映射/序列序列化后不再是解析为 `None` 的空文档。
 
 #### 变更
 
-- **`get()` 仅接受字面键** — `YamlDocument.get()` 不再将含 `.`/`[` 的键视为 JSONPath；所有键都按顶层映射键处理（与 `__getitem__`/`__setitem__` 一致）。路径访问请使用 `find()`/`node()`。
+- **`get()` 仅接受字面键** — `YamlDocument.get()` 不再将含 `.`/`[` 的键视为 JSONPath；所有键都按顶层
+  映射键处理（与 `__getitem__`/`__setitem__` 一致）。路径访问请使用 `find()`/`node()`。
 
 ### [v0.13.0] — 2026-08-10
 
 #### 变更
 
-- **Rust MSRV 提升至 1.96，edition 升级为 2024** — 两个 crate 均声明
-  `rust-version = "1.96"` 和 `edition = "2024"`；CI 将 `build`/`test-freethreaded`
-  任务固定在 Rust 1.96 以生成确定性 wheel；新增 `msrv-check` 任务在 MSRV
-  上运行 `cargo check`/`cargo test` 防止静默漂移（`rust-lint` 仍使用 `stable`）。
-  版本基线高于 PyO3 0.29 自身的基线（rustc 1.83），目的是获得 std API 的前瞻性
-  支持（如 `assert_matches!`，1.96 稳定），无需代码迁移。
-  `TAG_REGISTRY`（标签处理器存储）重构为 `std::sync::LazyLock`，
-  移除了 `Mutex<Option<...>>` 间接层。
+- **Rust MSRV 提升至 1.96，edition 升级为 2024** — 两个 crate 均声明 `rust-version = "1.96"` 和
+  `edition = "2024"`；CI 将 `build`/`test-freethreaded` 任务固定在 Rust 1.96 以生成确定性 wheel；新
+  增 `msrv-check` 任务在 MSRV 上运行 `cargo check`/`cargo test` 防止静默漂移（`rust-lint` 仍使用
+  `stable`）。版本基线高于 PyO3 0.29 自身的基线（rustc 1.83），目的是获得 std API 的前瞻性支持（如
+  `assert_matches!`，1.96 稳定），无需代码迁移。`TAG_REGISTRY`（标签处理器存储）重构为
+  `std::sync::LazyLock`，移除了 `Mutex<Option<...>>` 间接层。
 
 #### Performance
 
-- **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer**
-  — Python→YAML 序列化无需中间 `CustomNode` AST。
-  单次 `direct_dump` 替换旧的两次传递 `pyobject_to_node` + `to_yaml`。
+- **`safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: direct writer** — Python→YAML 序列化
+  无需中间 `CustomNode` AST。单次 `direct_dump` 替换旧的两次传递 `pyobject_to_node` + `to_yaml`。
   `safe_dump` 提速 7 倍（28ns→4ns），`from_dict` 提速 6 倍（35ns→6ns）。(#60)
-- **`safe_load` / `safe_loads` / `to_dict`: fast-path skip anchor tracking**
-  — 当输入不含 `&` 字符时，跳过 `collect_anchors` 和锚点解析，
-  使用更简单的 `node_to_pyobject_simple` 路径。(#59)
+- **`safe_load` / `safe_loads` / `to_dict`: fast-path skip anchor tracking** — 当输入不含 `&` 字符
+  时，跳过 `collect_anchors` 和锚点解析，使用更简单的 `node_to_pyobject_simple` 路径。(#59)
 - **`resolve_core_type`: first-byte dispatch whitelist** — 非数字/
   非布尔首字节立即返回 `Str`，避免常见情况下的 schema 解析开销。(#59)
-- **迁移到 granit-parser** — 用 granit-parser 1.0.1 替换 saphyr-parser，
-  借助原生 `Event::Comment` 输出消除了全文 `scan_yaml()` 预扫描。
-  parse_small -18%、parse_large -21%、roundtrip_large -18%。
+- **迁移到 granit-parser** — 用 granit-parser 1.0.1 替换 saphyr-parser，借助原生 `Event::Comment` 输
+  出消除了全文 `scan_yaml()` 预扫描。parse_small -18%、parse_large -21%、roundtrip_large -18%。
 
 #### Fixed
 
@@ -1551,15 +1484,15 @@ status: new
   常规路径零开销。`<<: &b LF <<: LF : *b` 现在发射 `<<: ~ LF ~: &b ~`——一轮即稳定，值不变。
   一句实话：孤儿别名会被它指向的节点替换，因此值语义保住而"共享同一节点"的拼法不再保住；
   定义都没了，本就无可共享的身份。
-- **只由换行组成的块标量值不再退化成空串** — `>+8\r\r#` 读作一个值为单个换行、chomping
-  为 `Keep`、显式缩进为 8 的折叠标量。写手保留了缩进指示符，发射出 `>+8\n\n`；它重读时值
-  不变但变成 `Clip` 且无指示符，于是下一轮发射 `>\n\n`，值就成了 `""`——Clip 会剥掉尾部换行，
-  而该值仅有的那一个换行无处安放。让*空* body 保持幂等的那两条规则（丢弃不可恢复的缩进指示符；
-  写出能重读回同一值的 chomping）都以“空”为条件，而“全是换行”的 body 并不为空（libFuzzer
-  `yaml_roundtrip`，`crash-2f6b1eff`，6 字节——已是最小：输入不再崩溃，`tmin` 无从缩小）。两个
-  写手现在都以“没有内容行”为共同条件，形状一轮即达不动点，值也保住了。代价：首版对同一个值多扫了一遍，`serialize_block_scalars` 实测 +0.65%——在 runner 上是
-  +2.11%，越过指令数门禁的 2% 容差，于是门禁在合并前拦下了这次改动。改为复用写手已经算出的
-  首个内容行判据后降到 +0.15%，回到容差内。
+- **只由换行组成的块标量值不再退化成空串** — `>+8\r\r#` 读作一个值为单个换行、chomping 为 `Keep`、显
+  式缩进为 8 的折叠标量。写手保留了缩进指示符，发射出 `>+8\n\n`；它重读时值不变但变成 `Clip` 且无指
+  示符，于是下一轮发射 `>\n\n`，值就成了 `""`——Clip 会剥掉尾部换行，而该值仅有的那一个换行无处安放。
+  让*空* body 保持幂等的那两条规则（丢弃不可恢复的缩进指示符；写出能重读回同一值的 chomping）都以
+  “空”为条件，而“全是换行”的 body 并不为空（libFuzzer `yaml_roundtrip`，`crash-2f6b1eff`，6 字节——
+  已是最小：输入不再崩溃，`tmin` 无从缩小）。两个写手现在都以“没有内容行”为共同条件，形状一轮即达不
+  动点，值也保住了。代价：首版对同一个值多扫了一遍，`serialize_block_scalars` 实测 +0.65%——在 runner
+  上是 +2.11%，越过指令数门禁的 2% 容差，于是门禁在合并前拦下了这次改动。改为复用写手已经算出的首个
+  内容行判据后降到 +0.15%，回到容差内。
 - **合并键不再把 anchor 挪到别名的后面** — 展开 `<<:` 时合并对曾被前插到映射开头，于是
   在较早的自有键上定义 `&b`、又在被合并的映射里使用 `*b` 的文档，会先发射 `*b` 再发射
   `&b`：那是自家解析器都会拒绝的文本（`found unknown anchor`），破坏了引擎“从不发射不可
@@ -1577,23 +1510,20 @@ status: new
   `read_markdown(path, schema, max_depth)`、`read_markdown_str(content, schema, max_depth)`
   接受 `max_depth`（默认 1000）。流式解析现通过核心 `parse_stream_with_options`
   强制嵌套深度限制（此前流式事件没有深度限制）。
-- **Pydantic 集成** — `dump_pydantic()` 将 Pydantic 模型序列化为 YAML
-  字符串（`model_dump(mode='json')` + `safe_dump`）；`parse_as()` 将
-  YAML 字符串解析为 Pydantic 模型实例。两者均使用延迟导入，无硬性
-  pydantic 依赖。(#61)
+- **Pydantic 集成** — `dump_pydantic()` 将 Pydantic 模型序列化为 YAML 字符串
+  （`model_dump(mode='json')` + `safe_dump`）；`parse_as()` 将 YAML 字符串解析为 Pydantic 模型实例。
+  两者均使用延迟导入，无硬性 pydantic 依赖。(#61)
 
 #### Internal
 
-- **拆分 `py/mod.rs`** — 单体 1786 行模块拆分为
-  `document.rs`（YamlDocument）、`yaml_instance.rs`（YAML 类）、
-  `functions.rs`（模块级函数）、`stream_iterator.rs`、
-  `walk_helpers.rs`。`mod.rs` 缩减至 128 行。(#61)
-- **`needs_quotes()` 守卫 + `double_quoted_scalar()` 构造器** —
-  `'true'` / `'42'` / `'null'` 等字符串现以双引号标量输出，避免 core schema
-  重新解析时被误读（`pyobject_to_node` + `json_value_to_node`）。
-- **CodSpeed 基准统一到 `codspeed-divan-compat`** — `exclude-allocations`
-  去除分配器噪声；跨库基准合并到 `tests/test_benchmark_crosslib.py`，
-  引入共享 `tests/data/yaml_samples.py` 夹具和流式覆盖。
+- **拆分 `py/mod.rs`** — 单体 1786 行模块拆分为 `document.rs`（YamlDocument）、`yaml_instance.rs`
+  （YAML 类）、 `functions.rs`（模块级函数）、`stream_iterator.rs`、 `walk_helpers.rs`。`mod.rs` 缩
+  减至 128 行。(#61)
+- **`needs_quotes()` 守卫 + `double_quoted_scalar()` 构造器** — `'true'` / `'42'` / `'null'` 等字符
+  串现以双引号标量输出，避免 core schema 重新解析时被误读（`pyobject_to_node` +
+  `json_value_to_node`）。
+- **CodSpeed 基准统一到 `codspeed-divan-compat`** — `exclude-allocations` 去除分配器噪声；跨库基准合
+  并到 `tests/test_benchmark_crosslib.py`，引入共享 `tests/data/yaml_samples.py` 夹具和流式覆盖。
 
 ### [v0.12.1] — 2026-08-06
 
@@ -1602,32 +1532,27 @@ status: new
 - **`set(create_missing=True)`** - 编辑路径上缺失的中间映射键会创建为嵌套映射
   （例如，对 `a: 1` 设置 `a.b.c` 会创建 `b` 和 `c`）；索引段缺失仍报错，
   路径上的标量中间层仍会引发异常。
-- **`doc.walk()` / `doc.scalars()`** - Rust 后端的深度优先 AST 遍历，
-  返回 `Node` 对象，避免逐节点 `to_dict()` 解析。
-  `walk()` 返回所有节点；`scalars()` 仅返回标量/null 节点。
-- **Rust 核心模块测试** - 39 个新测试，覆盖 `editing::navigate`
-  （key_eq、navigate、navigate_mut、normalize_index、mapping_key_index）、
-  `editing::region`（行辅助函数、node_is_flow、extend_delete_over_comments、
-  nav_err）、`editing::dirty`（DirtyKind/DirtyUnit 构造函数）以及
+- **`doc.walk()` / `doc.scalars()`** - Rust 后端的深度优先 AST 遍历，返回 `Node` 对象，避免逐节点
+  `to_dict()` 解析。`walk()` 返回所有节点；`scalars()` 仅返回标量/null 节点。
+- **Rust 核心模块测试** - 39 个新测试，覆盖 `editing::navigate` （key_eq、navigate、navigate_mut、
+  normalize_index、mapping_key_index）、 `editing::region`（行辅助函数、node_is_flow、
+  extend_delete_over_comments、 nav_err）、`editing::dirty`（DirtyKind/DirtyUnit 构造函数）以及
   `editing::metadata`（with_metadata_from、needs_quoting）。
 - **Python doc.walk() 边界测试** - 9 个新测试，覆盖空文档、空值、
   深度嵌套、流集合、混合类型。
 
 #### Changed
 
-- **Monorepo workspace** - 源码拆分为 `crates/pyrs-yaml-core/`
-  （纯 Rust，无 PyO3）和 `crates/pyrs-yaml/`（PyO3 绑定）。根
-  `Cargo.toml` 现在是 workspace。旧的 `src/` 目录和 `build.rs`
+- **Monorepo workspace** - 源码拆分为 `crates/pyrs-yaml-core/` （纯 Rust，无 PyO3）和
+  `crates/pyrs-yaml/`（PyO3 绑定）。根 `Cargo.toml` 现在是 workspace。旧的 `src/` 目录和 `build.rs`
   已移除。
 - **pyproject.toml** - 新增 `tool.maturin.manifest-path` 指向
   `crates/pyrs-yaml/Cargo.toml`。
-- **解析热路径** - 单次注释/锚点提取、延迟重复键检测、`shift_insert`
-  合并预处理，以及单文档解析跳过 `DocumentEnd` 深拷贝，大文档
-  解析成本降低约 19%（CodSpeed: parse[large] +13.9%，parse[medium] +16.6%，
-  roundtrip[large] +12.2%）。
-- **`Arc<str>` 标量存储** - `CustomNode::Scalar` 和注释/事件
-  文本通过 `Arc<str>` 共享分配；AST 节点缩减 8 字节，
-  克隆变为引用计数递增而非深拷贝。
+- **解析热路径** - 单次注释/锚点提取、延迟重复键检测、`shift_insert` 合并预处理，以及单文档解析跳过
+  `DocumentEnd` 深拷贝，大文档解析成本降低约 19%（CodSpeed: parse[large] +13.9%，parse[medium]
+  +16.6%，roundtrip[large] +12.2%）。
+- **`Arc<str>` 标量存储** - `CustomNode::Scalar` 和注释/事件文本通过 `Arc<str>` 共享分配；AST 节点
+  缩减 8 字节，克隆变为引用计数递增而非深拷贝。
 
 #### Fixed
 
@@ -1642,35 +1567,28 @@ status: new
 
 #### Changed
 
-- **stub-build-check 替换为 release-guard** — 故意失败以复现
-  v0.10.0 `--generate-stubs` 失败模式的总是失败的容器构建
-  （`validate.yml`）被三个静态断言替换，当仓库正确时**通过**：
-  `grep` 保护 `publish.yml` 不含 `--generate-stubs`，
-  `git ls-files` 断言提交的 `.pyi` 已追踪，
-  `test -f` 检查 `py.typed` 存在。任务现在在正确状态下给出绿色 CI，
-  仅在回归时红色。
+- **stub-build-check 替换为 release-guard** — 故意失败以复现 v0.10.0 `--generate-stubs` 失败模式的总
+  是失败的容器构建（`validate.yml`）被三个静态断言替换，当仓库正确时**通过**：`grep` 保护
+  `publish.yml` 不含 `--generate-stubs`，`git ls-files` 断言提交的 `.pyi` 已追踪，`test -f` 检查
+  `py.typed` 存在。任务现在在正确状态下给出绿色 CI，仅在回归时红色。
 
 #### Added
 
-- **Numpy free-threaded 跟踪** — ROADMAP.md 现在跟踪 `rust-numpy`
-  free-threaded 支持状态（PyO3/rust-numpy#476），作为 Rust
-  绑定成熟后在 cp314t wheel 上重新启用 ndarray 序列化的依赖。
+- **Numpy free-threaded 跟踪** — ROADMAP.md 现在跟踪 `rust-numpy` free-threaded 支持状态
+  （PyO3/rust-numpy#476），作为 Rust 绑定成熟后在 cp314t wheel 上重新启用 ndarray 序列化的依赖。
 
 ### [0.11.6] - 2026-08-04
 
 #### Changed
 
-- **Free-threaded（cp314t）wheel 不再包含 numpy** — 使用
-  `--no-default-features` 构建，rust-numpy 完全排除（更小的
-  二进制，无运行时探测）。free-threaded 构建上对 `numpy.ndarray`
-  调用 `safe_dump` 会引发 `YamlTypeError`；GIL 构建（Python 3.8-3.15）
-  保留完整的 ndarray 序列化。
+- **Free-threaded（cp314t）wheel 不再包含 numpy** — 使用 `--no-default-features` 构建，rust-numpy 完
+  全排除（更小的二进制，无运行时探测）。free-threaded 构建上对 `numpy.ndarray` 调用 `safe_dump` 会
+  引发 `YamlTypeError`；GIL 构建（Python 3.8-3.15）保留完整的 ndarray 序列化。
 
 #### Added
 
-- **Free-threaded CI 验证** — `test-freethreaded` 任务现在使用
-  `--no-default-features` 构建和测试，与分发的 free-threaded
-  wheel 配置匹配。
+- **Free-threaded CI 验证** — `test-freethreaded` 任务现在使用 `--no-default-features` 构建和测试，
+  与分发的 free-threaded wheel 配置匹配。
 - **安装文档** — `docs/{en,zh,ja,ko}` 注明 free-threaded
   wheel 不含 numpy（cp314t 上不可用 ndarray 序列化）。
 
@@ -1678,19 +1596,15 @@ status: new
 
 #### Changed
 
-- **解析器健壮性项目 3/4/5 通过 Phase 0 严格性审计关闭** —
-  70 探针语料库（缩进、块映射键、流上下文）与 PyYAML 预言机对比，
-  显示**无可修复的接受但无效案例**（64/70 匹配；6 处分歧是
-  有意为之的 YAML 1.2 / yaml-test-suite 要求，PyYAML 是异常项，
-  另有一个有意为之的重复键严格性）。合规率保持在
-  **99.75%（405/406）**。完整说明见 `ROADMAP.md` §v0.11.5
-  和 `tests/test_strictness_audit.py`。
+- **解析器健壮性项目 3/4/5 通过 Phase 0 严格性审计关闭** — 70 探针语料库（缩进、块映射键、流上下文）
+  与 PyYAML 预言机对比，显示**无可修复的接受但无效案例**（64/70 匹配；6 处分歧是有意为之的 YAML 1.2
+  / yaml-test-suite 要求，PyYAML 是异常项，另有一个有意为之的重复键严格性）。合规率保持在 **99.75%
+  （405/406）**。完整说明见 `ROADMAP.md` §v0.11.5 和 `tests/test_strictness_audit.py`。
 
 #### Added
 
-- `tests/test_strictness_audit.py` — 70 探针严格性回归语料库，
-  固定当前拒绝/接受行为（两个方向），使未来解析器变更无法
-  静默降低严格性或过度拒绝。
+- `tests/test_strictness_audit.py` — 70 探针严格性回归语料库，固定当前拒绝/接受行为（两个方向），使
+  未来解析器变更无法静默降低严格性或过度拒绝。
 
 ### [0.11.4] - 2026-08-04
 
@@ -1714,9 +1628,8 @@ status: new
 
 #### Added
 
-- 流式写入：`YAML.dump_stream(file_obj, iterable)` /
-  `YAML.dump_file(path, iterable)`，文档级恒定内存，自动 `---`
-  分隔符，以及 `explicit_start`/`explicit_end` 标志
+- 流式写入：`YAML.dump_stream(file_obj, iterable)` / `YAML.dump_file(path, iterable)`，文档级恒定内
+  存，自动 `---` 分隔符，以及 `explicit_start`/`explicit_end` 标志
 - `YamlDocument` `with` 上下文管理器：快照/回滚事务作用域
 - `compliance_report()`：公开 YAML Test Suite 通过率报告（版本一致）
 
@@ -1741,10 +1654,9 @@ status: new
 
 #### Performance
 
-- **解析不再计算拼接资格** — O(文档) 布局检查现在在首次编辑时通过
-  `YamlDocument.splice_checked` 惰性运行，恢复 v0.11.0 回归：
-  parse_comments -59%、parse_anchors -42%、parse/roundtrip/edit -10~35%
-  全部回到 v0.10.0 水平
+- **解析不再计算拼接资格** — O(文档) 布局检查现在在首次编辑时通过 `YamlDocument.splice_checked` 惰性
+  运行，恢复 v0.11.0 回归： parse_comments -59%、parse_anchors -42%、parse/roundtrip/edit -10~35% 全
+  部回到 v0.10.0 水平
 - **线性游标布局检查** — 取代基于预计算行偏移的逐节点二分查找
   （单调源码顺序遍历）
 
@@ -1764,9 +1676,8 @@ status: new
 
 #### Changed
 
-- `flush_source` 现在使用分段拼接；回退到全量序列化：流风格区域、
-  非默认布局文档、合并键、CRLF/BOM 文档，以及 materialize 之后
-  （单次爆发模型）
+- `flush_source` 现在使用分段拼接；回退到全量序列化：流风格区域、非默认布局文档、合并键、CRLF/BOM 文
+  档，以及 materialize 之后（单次爆发模型）
 - 拼接编辑保留 `---`/`...`/指令标记行为未触碰字节
   （全量序列化之前会丢弃它们 — 设计上的行为差异）
 
@@ -1776,12 +1687,10 @@ status: new
 
 - **就地编辑** — 编辑已解析的文档而不丢失格式元数据：
     - 路径 API：`doc.set(path, value)`、`doc.insert(path, index, value)`、
-      `doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`，
-      使用 JSONPath 风格路径（`$.a.b[0]`）；根节点语法糖
-      `doc["key"] = value` 和 `del doc["key"]`
-    - 节点 API：`doc.node()` / `doc.find(path)` 返回 `Node` 对象，
-      支持 `set_value` / `append` / `insert` / `delete` / `rename`，
-      以及树遍历（`parent`、`children`、`walk`、`filter`）
+      `doc.append(path, value)`、`doc.delete(path)`、`doc.rename(path, new_key)`，使用 JSONPath 风格
+      路径（`$.a.b[0]`）；根节点语法糖 `doc["key"] = value` 和 `del doc["key"]`
+    - 节点 API：`doc.node()` / `doc.find(path)` 返回 `Node` 对象，支持 `set_value` / `append` /
+      `insert` / `delete` / `rename`，以及树遍历（`parent`、`children`、`walk`、`filter`）
     - 完整元数据保留 — 被替换的标量保留注释/锚点/标签/引号；
       重命名的键保留位置和注释；删除时映射顺序保留
     - 原子编辑 — 失败的操作不会改动文档（及其修订号）
@@ -1804,12 +1713,10 @@ status: new
 
 #### Added
 
-- **Python 3.13、3.14 和 3.15 支持** — PyO3 `abi3-py38` wheel 覆盖
-  Python 3.8-3.15（GIL 构建）；`abi3t` + `abi3t-py315` 提供
-  free-threaded 稳定 ABI
-- **Free-threaded CPython（无 GIL）支持** — `#[pymodule(gil_used = false)]`
-  声明模块对 free-threaded Python 线程安全；`Py_GIL_DISABLED` cfg
-  标志门控 numpy（rust-numpy 尚不支持 free-threaded — 通过
+- **Python 3.13、3.14 和 3.15 支持** — PyO3 `abi3-py38` wheel 覆盖 Python 3.8-3.15（GIL 构建）；
+  `abi3t` + `abi3t-py315` 提供 free-threaded 稳定 ABI
+- **Free-threaded CPython（无 GIL）支持** — `#[pymodule(gil_used = false)]` 声明模块对 free-threaded
+  Python 线程安全；`Py_GIL_DISABLED` cfg 标志门控 numpy（rust-numpy 尚不支持 free-threaded — 通过
   `--no-default-features` 为 free-threaded 构建禁用 numpy feature）
 - **CI free-threaded 任务** — 新增 `test-freethreaded` 工作流任务，
   针对 Python 3.14t 验证编译和测试
@@ -1818,25 +1725,20 @@ status: new
 - **`numpy` 改为可选** — 由 `numpy` feature 门控（默认启用）；
   在 `Py_GIL_DISABLED` 下自动排除
 - **`allow_duplicate_keys`** — `YAML(allow_duplicate_keys=True)`、
-  `parse(..., allow_duplicate_keys=True)`、`parse_file`、`safe_load`、
-  `safe_loads`、`parse_all_docs` 均接受该标志；重复映射键默认
-  引发 `YamlDuplicateKeyError`，允许时采用"最后值生效"
-- **`SerializeOptions` 扩展** — `doc.to_yaml_with_options()` 新增
-  `width`（行包裹，0 = 关闭）、`indent_mapping`、`indent_sequence`、
-  `indent_offset`，与现有的 `indent_size`/`explicit_start`/
-  `explicit_end`/`sort_keys`/`max_depth` 并列
-  （`src/py/mod.rs:432`）
+  `parse(..., allow_duplicate_keys=True)`、`parse_file`、`safe_load`、`safe_loads`、
+  `parse_all_docs` 均接受该标志；重复映射键默认引发 `YamlDuplicateKeyError`，允许时采用"最后值生效"
+- **`SerializeOptions` 扩展** — `doc.to_yaml_with_options()` 新增 `width`（行包裹，0 = 关闭）、
+  `indent_mapping`、`indent_sequence`、`indent_offset`，与现有的 `indent_size`/`explicit_start`/
+  `explicit_end`/`sort_keys`/`max_depth` 并列（`src/py/mod.rs:432`）
 - **标签处理器注册表** — `register_tag("!custom")` 装饰器和命令式形式
     - `clear_tag_handlers()`；携带已注册标签的标量节点通过处理器转换
   （`src/py/tag_registry.rs`）
 - **标签处理器优先级链** — 同一标签的多个处理器按升序 `priority`
   执行；`YamlTagSkip` 让处理器传递给下一个，fallback 保留原值
-- **Pydantic 集成** — `parse_as(Model, yaml, **yaml_kwargs)` 解析
-  YAML 并针对 Pydantic v2 模型验证；缺少 pydantic 时引发
-  `ImportError` 并附指导信息（`python/pyrs_yaml/pydantic.py`）
-- **`.pyi` 类型存根** — 由 maturin 自动生成并提交，使
-  `register_tag`、`parse_as`、`to_yaml_with_options` 和新异常
-  对类型检查器可见
+- **Pydantic 集成** — `parse_as(Model, yaml, **yaml_kwargs)` 解析 YAML 并针对 Pydantic v2 模型验证；
+  缺少 pydantic 时引发 `ImportError` 并附指导信息（`python/pyrs_yaml/pydantic.py`）
+- **`.pyi` 类型存根** — 由 maturin 自动生成并提交，使 `register_tag`、`parse_as`、
+  `to_yaml_with_options` 和新异常对类型检查器可见
 
 #### Changed
 
@@ -1844,52 +1746,43 @@ status: new
 - 稳定 ABI：`abi3-py39` → `abi3-py38`（更广的 Python 3.8+ 支持），
   新增 `abi3t` + `abi3t-py315`（free-threaded 稳定 ABI）
 - `pyproject.toml` classifiers 更新 3.13、3.14、3.15 条目
-- **CI 优化：消除冗余 Rust 编译** — 单个 `rust-lint` 任务运行
-  `cargo clippy` + `cargo test` 一次；`build` 任务为每个 OS
-  生成一个 abi3 wheel，测试任务安装而非运行 `maturin develop`，
-  将 Rust 编译从 21 个矩阵任务中移除（减少约 86% 编译量）；
-  所有任务添加 `Swatinem/rust-cache`
-- **pydantic 测试依赖** — `pydantic>=2.10.6` 加入
-  `[dependency-groups] test` 和 `.ci/requirements-test.txt`
-  （通过 `uv sync` 在 ci.yml 中统一管理）
+- **CI 优化：消除冗余 Rust 编译** — 单个 `rust-lint` 任务运行 `cargo clippy` + `cargo test` 一次；
+  `build` 任务为每个 OS 生成一个 abi3 wheel，测试任务安装而非运行 `maturin develop`，将 Rust 编译从
+  21 个矩阵任务中移除（减少约 86% 编译量）；所有任务添加 `Swatinem/rust-cache`
+- **pydantic 测试依赖** — `pydantic>=2.10.6` 加入 `[dependency-groups] test` 和
+  `.ci/requirements-test.txt` （通过 `uv sync` 在 ci.yml 中统一管理）
 
 #### Fixed
 
-- **Windows DLL 加载** — 移除 `src/py/tag_registry.rs` 中的
-  `#[cfg(test)]` 块，该块在 Windows 上破坏了 `import pyrs_yaml`
-  （`250b8d0`）
+- **Windows DLL 加载** — 移除 `src/py/tag_registry.rs` 中的 `#[cfg(test)]` 块，该块在 Windows 上破坏
+  了 `import pyrs_yaml` （`250b8d0`）
 - **Python 3.8 兼容性** — `pydantic.py` 中添加
   `from __future__ import annotations`（`63d2495`）
 - **CI pydantic 跳过** — 使用 `pytest.importorskip("pydantic")`
   使测试在未安装 pydantic 时通过（`7be011d`）
 - **CI Windows glob 展开** — `pip install dist/*.whl` 使用
   `shell: bash`（PowerShell 不展开 `*`）（`2f7778d`）
-- **非字符串标签处理器返回值现在引发 `YamlTagError`** — 返回
-  非 `str` 值的处理器（之前被静默忽略，保留原标量）现在报错
-  `Tag handler '!x' must return a string`（`src/py/mod.rs:resolve_tags`）
-- **`to_yaml_with_options` 缩进连线** — `indent_mapping`/
-  `indent_sequence`/`indent_offset` 现在被序列化器尊重
-  （之前为死字段）；省略时分别默认 `indent_size`/0
-  （`src/serializer.rs`）
+- **非字符串标签处理器返回值现在引发 `YamlTagError`** — 返回非 `str` 值的处理器（之前被静默忽略，保
+  留原标量）现在报错 `Tag handler '!x' must return a string`（`src/py/mod.rs:resolve_tags`）
+- **`to_yaml_with_options` 缩进连线** — `indent_mapping`/ `indent_sequence`/`indent_offset` 现在被序
+  列化器尊重（之前为死字段）；省略时分别默认 `indent_size`/0（`src/serializer.rs`）
 - **`width` 不再对极小值死循环** — `width < 续行缩进` 时回退为
   直接输出未包裹的剩余内容而非无限循环（`src/serializer.rs:write_plain_scalar`）
 - **`remove_tag(name)`** — 新增函数用于注销标签处理器；
   补充 `register_tag`/`clear_tag_handlers`（`src/py/tag_registry.rs`）
-- **`duplicate-key` 错误国际化** — `YamlDuplicateKeyError` 消息
-  现通过 `format_i18n_error` 在所有 4 个语言区域中传递
-  （`src/i18n/locales/*.yml`）
+- **`duplicate-key` 错误国际化** — `YamlDuplicateKeyError` 消息现通过 `format_i18n_error` 在所有 4
+  个语言区域中传递（`src/i18n/locales/*.yml`）
 
 ### [0.8.0] - 2026-07-30
 
 #### Added
 
 - **`YAML()` 实例 API** — `YAML(typ="rt"|"safe"|"full", schema="core"|"yaml1.1", max_depth=1000)`，
-  可复用配置；`.parse()`、`.safe_load()`、`.safe_loads()`、
-  `.parse_file()`、`.parse_all_docs()` 方法
-- **Python `Node` API** — `Node` 类，具有 `find()`、`filter()`、
-  `walk()`、`to_yaml()`、`parent`、`children`、`root_type`、
-  `value`，用于 AST 导航；JSONPath 风格查询语言
-  （`$.key.sub`、`$.arr[0]`、`$..deep`）
+  可复用配置；`.parse()`、`.safe_load()`、`.safe_loads()`、 `.parse_file()`、`.parse_all_docs()` 方
+  法
+- **Python `Node` API** — `Node` 类，具有 `find()`、`filter()`、`walk()`、`to_yaml()`、`parent`、
+  `children`、`root_type`、`value`，用于 AST 导航；JSONPath 风格查询语言（`$.key.sub`、 `$.arr[0]`、
+  `$..deep`）
 - **`doc.version` 元数据** — `YamlDocument.version()` 返回 YAML
   规范版本（默认 "1.2"）
 - **`MergedView`** — `doc.merged()` 返回解析合并键后的只读
@@ -1907,22 +1800,17 @@ status: new
 
 #### Added
 
-- **ryaml 基准对比** — `tests/test_benchmark.py` 现在与
-  `ryaml`（Rust YAML 库） alongside PyYAML 和 ruamel.yaml 进行
-  基准测试；`benchmark_compare.py` 重写为特性对比报告
+- **ryaml 基准对比** — `tests/test_benchmark.py` 现在与 `ryaml`（Rust YAML 库）alongside PyYAML 和
+  ruamel.yaml 进行基准测试；`benchmark_compare.py` 重写为特性对比报告
   （`tests/test_benchmark.py:25-28`、`.github/workflows/ci.yml:219`）
-- **CI 合规阈值提升** — YAML Test Suite 合规阈值从 70% 提升至
-  75%（`test_compliance_report()`）；有效解析率阈值 95%
-  （`tests/test_yaml_suite.py:251`）
-- **CI 依赖整合** — 新增 `.ci/requirements-test.txt` 和
-  `.ci/requirements-test-lite.txt`，用于发布工作流和本地开发
-  的统一测试依赖管理
-- **基准测试现代化** — 从 `pytest-benchmark` 迁移至
-  `pytest-codspeed` 以实现更快的 C 扩展统计基准测试；
-  所有 CI 任务现在使用 `-r .ci/requirements-test.txt`
-- **Rust 基准测试迁移至 Divan** — 用 `codspeed-divan-compat`
-  v5.0.1 替换 `codspeed-criterion-compat`；16 个基准测试从
-  Criterion 组重写为 `#[divan::bench]` 属性
+- **CI 合规阈值提升** — YAML Test Suite 合规阈值从 70% 提升至 75%（`test_compliance_report()`）；有
+  效解析率阈值 95% （`tests/test_yaml_suite.py:251`）
+- **CI 依赖整合** — 新增 `.ci/requirements-test.txt` 和 `.ci/requirements-test-lite.txt`，用于发布工
+  作流和本地开发的统一测试依赖管理
+- **基准测试现代化** — 从 `pytest-benchmark` 迁移至 `pytest-codspeed` 以实现更快的 C 扩展统计基准测
+  试；所有 CI 任务现在使用 `-r .ci/requirements-test.txt`
+- **Rust 基准测试迁移至 Divan** — 用 `codspeed-divan-compat` v5.0.1 替换
+  `codspeed-criterion-compat`；16 个基准测试从 Criterion 组重写为 `#[divan::bench]` 属性
   （`Cargo.toml`、`benches/yaml_bench.rs`）
 
 #### Changed
@@ -1935,9 +1823,8 @@ status: new
 
 #### Added
 
-- **序列化器 `max_depth` 守卫** — `serialize_node_internal` 现在
-  跟踪递归深度，超出限制时引发 `YamlMaxDepthError`（默认 1000），
-  与解析器保护一致（`src/serializer.rs:135-145`）
+- **序列化器 `max_depth` 守卫** — `serialize_node_internal` 现在跟踪递归深度，超出限制时引发
+  `YamlMaxDepthError`（默认 1000），与解析器保护一致（`src/serializer.rs:135-145`）
 - **序列化器热路径优化** — 5 项针对块风格序列化的优化，约
   4.9% 往返加速：
     - 内联 `write_anchor_tag` 和 `write_inline_comment` None 检查
@@ -1946,9 +1833,8 @@ status: new
     - `write_plain_scalar` 短 ASCII 字母数字字符串快速路径
       （≤8 字符）
     - `write_scalar_for_key` Plain 标量直接分派（避免分派链）
-- **pytest-benchmark 迁移** — Python 基准测试从原始
-  `time.perf_counter()` 迁移至 `pytest-benchmark` 以获得统计严谨性、
-  结构化 JSON 输出和 CI 集成（`tests/test_benchmark.py` + 更新的
+- **pytest-benchmark 迁移** — Python 基准测试从原始 `time.perf_counter()` 迁移至 `pytest-benchmark`
+  以获得统计严谨性、结构化 JSON 输出和 CI 集成（`tests/test_benchmark.py` + 更新的
   `tests/test_performance.py`）
 
 #### Changed
@@ -1965,17 +1851,14 @@ status: new
 
 #### Added
 
-- **异步序列化** — `safe_dumps_async`、`safe_dump_async`、
-  `safe_loads_async`、`safe_load_async`，通过 `asyncio.run_in_executor`
-  （`python/pyrs_yaml/async_dump.py`）
-- **JSON Schema 验证** — `YamlValidateError` 异常 +
-  `YamlDocument.validate(schema)` 方法（接受 `str` 或 `dict`）；
-  委托至 Python `jsonschema` 模块
+- **异步序列化** — `safe_dumps_async`、`safe_dump_async`、 `safe_loads_async`、`safe_load_async`，通
+  过 `asyncio.run_in_executor` （`python/pyrs_yaml/async_dump.py`）
+- **JSON Schema 验证** — `YamlValidateError` 异常 + `YamlDocument.validate(schema)` 方法（接受 `str`
+  或 `dict`）；委托至 Python `jsonschema` 模块
 - **`YamlDocument.to_json()`** — 将文档序列化为 JSON 字符串
   （使用 Python `json.dumps`）
-- **增量重新解析** — `YamlDocument` 现在存储源文本
-  （`doc.source()`）；`doc.reparse(resolve_merges=True, schema="core")`
-  就地重新解析
+- **增量重新解析** — `YamlDocument` 现在存储源文本（`doc.source()`）；
+  `doc.reparse(resolve_merges=True, schema="core")` 就地重新解析
 - **29 个新测试** — 跨 `test_async.py`（8）、`test_validate.py`
   （14）、`test_reparse.py`（7）
 
@@ -2000,9 +1883,8 @@ status: new
 
 #### Fixed
 
-- **`Serializer::write_node`** — `block_mapping`/`block_sequence`
-  中 `.unwrap()` on `values.iter().next().unwrap()` 替换为安全
-  索引访问，消除边缘 AST 的潜在 panic
+- **`Serializer::write_node`** — `block_mapping`/`block_sequence` 中 `.unwrap()` on
+  `values.iter().next().unwrap()` 替换为安全索引访问，消除边缘 AST 的潜在 panic
 - **`YAML_SCHEMA` 常量** — 拼写错误 `yamorg2002` 修正为
   `yamlorg2002`（匹配 YAML 1.2 规范 URL）
 - **开发文档** — `AGENTS.md` 更新，为 Python 命令添加强制
@@ -2031,9 +1913,8 @@ status: new
   空字典/列表
 - **`from_json` 往返** — 嵌套结构、数组、无效 JSON 错误
 - **`dump_file` 测试** — 成功路径、无效路径错误
-- **YAML Test Suite 单个用例测试** — 八进制、十六进制、科学计数法、
-  NaN、无穷大、合并键、显式/隐式键、布尔/空变体、块标量截断
-  （`|-`）、流集合
+- **YAML Test Suite 单个用例测试** — 八进制、十六进制、科学计数法、NaN、无穷大、合并键、显式/隐式
+  键、布尔/空变体、块标量截断（`|-`）、流集合
 - **`resolve_merges` 参数测试** — 禁用时保留 `<<`，默认时解析
 - **流集合往返** — 根级和嵌套流映射/序列
 - **非标量节点上的锚点** — 映射锚点（`&defaults`）和序列锚点（`&items`）
@@ -2052,9 +1933,8 @@ status: new
 
 #### Added
 
-- **NumPy ndarray 序列化** — `safe_dump()` / `safe_dumps()` /
-  `from_dict()` / `dump_file()` 现在支持所有维度的
-  `numpy.ndarray`（0-D 至 N-D）
+- **NumPy ndarray 序列化** — `safe_dump()` / `safe_dumps()` / `from_dict()` / `dump_file()` 现在支持
+  所有维度的 `numpy.ndarray`（0-D 至 N-D）
     - 支持的数据类型：`int8/16/32/64`、`uint8/16/32/64`、
       `float32/64`、`complex64/128`、`bool`
     - 多维数组序列化为嵌套 YAML 列表，缩进正确

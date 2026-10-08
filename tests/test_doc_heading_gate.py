@@ -23,6 +23,13 @@ so `scripts/check_doc_headings.py` asserts the shape: a heading whose text begin
 more digits that are not followed by a dot. The digit-headings this repository *does* mean
 (`### 1-D array`, `#### 10. メタデータの操作`, `## 1. Test matrix coverage`) are in the tests
 below, because a rule that reddes legitimate writing is a rule that gets disabled.
+
+A second shape came from the re-flow work, and its first rule was falsified before it shipped.
+Re-flowing a paragraph can leave a run of dashes as the next line, which CommonMark reads as a
+setext underline: the paragraph *is* a heading then, and `rumdl fmt` answered its own `MD003` by
+rewriting a whole sentence into a 126-column `## ` one. The rule tried first — flag any heading
+wider than the 100-column prose convention — matched twelve legitimate `### (xx)` lead-ins in
+`ROADMAP.md`, so it was discarded and the shape is named directly instead.
 """
 
 from __future__ import annotations
@@ -146,6 +153,52 @@ def test_the_finding_tells_the_reader_how_to_comply(checker):
     findings = checker.heading_damage(DAMAGED, "ROADMAP.md")
     assert "Join it back" in findings[0], findings[0]
     assert "PR #292" in findings[0], findings[0]
+
+
+def test_a_dash_run_under_a_paragraph_is_a_promoted_paragraph(checker):
+    """The setext shape, fired by injection: prose on one line, dashes on the next.
+
+    This is the damage the re-flow caused and no gate saw. A separator is legal, so the finding is
+    the missing blank line, not the dashes themselves.
+    """
+    damaged = ["A paragraph that ends here, and the sentence continues on no line at all.", "---"]
+    found = checker.setext_damage(damaged, "page.md")
+    assert len(found) == 1, found
+    assert "setext heading" in found[0], found[0]
+    separated = [damaged[0], "", damaged[1]]
+    assert checker.setext_damage(separated, "page.md") == [], separated
+
+
+def test_front_matter_closing_dashes_are_not_findings(checker):
+    """A front matter block ends with `---` under a content line by definition.
+
+    Measured reason: the localized changelog pages all carry mkdocs front matter, and a rule that
+    reddes on it is a rule that gets disabled rather than a rule that gets obeyed.
+    """
+    page = ["---", "title: Changelog", "---", "", "## 0.15.0", "", "Prose here.", "", "---"]
+    assert checker.setext_damage(page, "page.md") == [], page
+
+
+def test_a_dash_run_inside_a_fenced_block_is_not_a_finding(checker):
+    fenced = ["```text", "a shell session line", "-----", "```"]
+    assert checker.setext_damage(fenced, "page.md") == [], fenced
+
+
+def test_the_heading_gate_fires_on_the_tree_it_was_built_from(checker):
+    """The promoted paragraph, as it was in the tree before repair, reddens the check.
+
+    Copying the damaged line here rather than trusting the story is what keeps the gate honest: the
+    width-based rule that came first passed this file and reddened twelve legitimate headings.
+    """
+    promoted = [
+        "### (au) A Markdown formatter had been rewriting the ledger's sentences into headings",
+        "",
+        "A third finding was about the hook tier rather than the text. Two formatters on one page",
+        "converge: `rumdl fmt` re-wraps prose at its own width, so",
+        "-----",
+    ]
+    assert checker.setext_damage(promoted, "ROADMAP.md") != [], promoted
+    assert checker.heading_damage(promoted, "ROADMAP.md") == [], "the digit rule sees nothing here"
 
 
 def test_the_hook_is_wired(checker):

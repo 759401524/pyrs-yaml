@@ -141,6 +141,26 @@ entry = "python scripts/check_doc_headings.py"
 files = "\\.md$"
 priority = "checks"
 
+# Prose here is hard-wrapped, and nothing enforced the wrap: `ROADMAP.md` reached one line of
+# 21,850 characters, and the localized changelogs reached 884 because a tool that only breaks at
+# spaces cannot wrap CJK at all. `rumdl fmt` stays the repository's Markdown formatter - excluding it
+# left `MD007`/`MD012` findings on six lines it had been keeping honest - but measured through stdin
+# it does not re-wrap prose at all: a 587-character English line and a 319-column Korean one pass
+# straight through, and `line-length` configures only the linter, whose `MD013` this repository
+# disables. So width was unowned until this hook, which reports any prose line past 100 **display
+# columns** (fullwidth = 2) that a legal cut could bring inside, and skips the four whose shortest
+# legal cut is already past the limit - each opens with a 101-127 column code span that must not be
+# split. `--fix` reflows exactly the reported lines, which is what keeps two passes from overwriting
+# each other; the probe that alternates them settles with neither rewriting anything. Scope is the six
+# pages whose prose this repository grows continuously; the docs tree keeps its own wrapping.
+[[repos.hooks]]
+id = "doc-line-width"
+name = "prose fits 100 display columns"
+language = "system"
+entry = "python scripts/check_doc_wrapping.py"
+files = "^(CHANGELOG|ROADMAP)\\.md$|^docs/(en|ja|ko|zh)/changelog\\.md$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
