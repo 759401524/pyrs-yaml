@@ -101,6 +101,21 @@ HARNESSES = (("pyrs-yaml-core", "ir_gate"), ("pyrs-yaml", "ir_gate"))
 # `gh workflow run 'Ir baseline refresh'` and read the samples the run prints.
 DEFAULT_TOLERANCE = 0.005
 
+# Environment every measured process runs under, to make the count belong to the code instead of to
+# the hypervisor. Two jobs in this repository ran the *same* binary (sha256 `a0386c17b5f1ef38`, printed
+# by `build_exe`), the same valgrind 3.22.0, the same pinned rustc 1.97.1, the same `nproc`, on hosts
+# both reporting "AMD EPYC 9V74 80-Core Processor", and still counted `serialize_block_scalars` 1.44%
+# apart: 15,792,928 in the refresh job against 16,020,942 in the enforcing one, each stable to ~30
+# instructions inside its own run. Same bytes, same toolchain, same model name - the remaining
+# candidate is the ISA that glibc selects for its string routines at start-up, which comes from the
+# CPUID flags a VM exposes and can differ between hosts of the same model. `serialize_block_scalars`
+# is the most memcpy-heavy scenario in the set, and it is the only one that moves.
+#
+# Masking the vector caps makes that choice deterministic. This is a hypothesis under test, not a
+# settled cause: if the two jobs still disagree with this set, the honest move is to exempt the
+# scenario with its measured envelope rather than widen the global line.
+MEASUREMENT_ENV = {"GLIBC_TUNABLES": "glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT"}
+
 # Written into every baseline this script generates, verbatim. The first committed baseline carried a
 # hand-written `generated_by.note` explaining where its numbers came from; `--update` does not write
 # prose, so the refresh job's artifact silently dropped that paragraph, and a file that is part
@@ -201,6 +216,7 @@ def callgrind_total(exe: str, args: list[str]) -> int:
                 *args,
             ],
             capture_output=True,
+            env={**os.environ, **MEASUREMENT_ENV},
         )
         if res.returncode != 0:
             sys.exit(f"valgrind failed on {args}:\n{res.stderr[-1500:]}")
@@ -298,6 +314,8 @@ def main() -> int:
             exes[name] = exe
     scenarios = [s for s in exes if not args.only or s in args.only]
     toolchain = rustc_banner()
+    env_note = ", ".join(f"{key}={value}" for key, value in sorted(MEASUREMENT_ENV.items()))
+    print(f"measurement env: {env_note}")
 
     # A repeated measurement is part of the baseline's provenance, not a local knob: comparing a
     # single sample against a max-of-3 envelope (or the reverse) silently changes what the tolerance
