@@ -216,6 +216,20 @@ status: new
 
 #### 修复
 
+- **同一仓库里的两个 runner 作业把 `serialize_block_scalars` 量差了 1.44%，而 Ir baseline 没说它的数来自哪一个** —
+  为十五个场景的门禁重生成 `.ci/ir-baseline.json`，把执行作业（`codspeed.yml` 里的 `Instruction-count baseline`）
+  在这一个场景上弄红了：它两次运行报 16,020,942 与 16,020,915，而 `.github/workflows/ir-baseline.yml` 八次
+  运行报 15,792,8xx–15,792,9xx —— 两个 runner 镜像、同一个锁定的 rustc 1.97.1、逐字节相同的源码，其余场景
+  彼此相符到 0.08%。三个解释都被检验并且都被推翻：镜像、被还原的构建缓存（把那一步删掉数值依旧），以及本台账
+  先前“已提交值产自门禁之外机器”的说法（执行作业能复现它们）。原因仍未命名，但命名它的仪器已经就位：
+  `build_exe` 打印所测二进制的 SHA-256，两个作业都打印 `nproc`、`valgrind --version`、`rustc -vV` 与 CPU 型号。
+  baseline 文件确实失去了被手抄进去的那段文字——它的 `generated_by.note` 引用了一个既不是 PR #299 head、
+  又早于 toolchain 锁定的 commit，而它的环境串也不是 `environment()` 在该镜像上会写出的值——于是 `--update`
+  现在写出每一个键，包括数值采了几次，提交的键集合由 `tests/test_ir_baseline_workflow.py` 钉成生成的那个。
+- **新加的绑定场景在 500 次迭代下太小，没法进门禁** — 同一 commit 的两次运行把 `to_python_small` 差出 0.83%，
+  比它们即将被要求的 0.5% 线更宽，而引擎场景相符到 0.0009%。`ITERATIONS` 现在与引擎 harness 一样是 2 000，
+  运行内散布降到 0.076–0.24%；每个场景采样三次并提交最大值，次数记在 `generated_by` 里由执行作业读回——
+  三次取大与单次取样是两件同名的不同仪器。每个样本与散布都会被打印，容差因此是从作业日志论证的。
 - **指令数门禁按名字只读一个 harness 文件，而它的 baseline 有一半是手抄的** — 树上已经有了
   `crates/pyrs-yaml/benches/ir_gate.rs`，只点名 `crates/pyrs-yaml-core/benches/ir_gate.rs` 的场景探针
   却仍只会比十五个名字里的十二个：一整条通道从未进过 baseline，`ir-unbaselined` 也报不出它 — 与 #303

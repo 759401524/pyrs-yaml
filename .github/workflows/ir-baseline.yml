@@ -84,10 +84,22 @@ jobs:
         with:
           toolchain: ${{ steps.toolchain.outputs.toolchain }}
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ir-baseline
+      # No build cache here. Not because it explains anything - it was tested as the cause of the
+      # 1.44% gap between this job's `serialize_block_scalars` and the enforcing job's, and REFUTED:
+      # with the cache step removed this job still reported 15,792,928 while `codspeed.yml`'s
+      # `Instruction-count baseline` job reports 16,020,9xx (see `scripts/ir_gate.py` for the
+      # measurements and the two hypotheses this finding has already outlived). What it does
+      # guarantee is that a hand-dispatched measurement job starts from a tree nobody else warmed,
+      # which is the only way its numbers are comparable with a gate that builds fresh.
+
+      - name: Measurement environment
+        # `ir_gate.py` prints the SHA-256 of each binary it measures; this is the machine around
+        # those bytes, so a difference between two jobs can be attributed rather than argued.
+        run: |
+          echo "nproc=$(nproc)"
+          echo "valgrind=$(valgrind --version)"
+          rustc -vV
+          grep -m1 'model name' /proc/cpuinfo || true
 
       - name: Measure and rewrite the baseline
         run: python3 scripts/ir_gate.py --update

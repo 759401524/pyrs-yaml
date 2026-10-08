@@ -258,6 +258,23 @@ status: new
 
 #### 修正
 
+- **同じリポジトリ内の二つの runner job が `serialize_block_scalars` を 1.44% 違いで測っており、Ir 基準値はどちらの値かを書いていなかった** —
+  十五個のシナリオのゲートのために `.ci/ir-baseline.json` を再生成したことは、執行側の job（`codspeed.yml` の
+  `Instruction-count baseline`）をそのシナリオで赤くした: 二回の実行で 16,020,942 と 16,020,915 が出る一方、
+  `.github/workflows/ir-baseline.yml` は八回の実行で 15,792,8xx〜15,792,9xx を出す — runner image 二つ、同じ pin の
+  rustc 1.97.1、バイト単位で同一のソース、他の全シナリオは 0.08% 以内で一致する。三つの説明を確かめ、三つとも
+  失敗した: image、復元された build cache（step を消しても値は変わらなかった）、そしてこの台帳が前に書いた
+  「提出済みの値はゲートの外にある機械で作られた」という主張（執行側の job はそれを再現する）。原因は未命名のままで、
+  命名するための器具は今のところある: `build_exe` は測るバイナリの SHA-256 を出し、両 job は `nproc`、
+  `valgrind --version`、`rustc -vV`、CPU モデルを印字する。基準値のファイルが実際に失ったのは手で書き込まれた文章だ —
+  `generated_by.note` は PR #299 の head でも toolchain の pin より前でもない commit を名指しし、環境の文字列は
+  `environment()` がその image で出す値ではない — そこで `--update` は全ての key、値を何回採ったかまで書き出し、
+  提出された key 集合は `tests/test_ir_baseline_workflow.py` が生成側に固定する。
+- **新しいバインディングのシナリオは 500 反復ではゲートにかけられないほど小さかった** — 同じ commit の二回の計測は
+  `to_python_small` を 0.83% 離した — かけはずの 0.5% より広い — 一方 engine のシナリオは 0.0009% で一致する。
+  `ITERATIONS` は engine ハーネスと同じ 2 000 になり、同一実行内のばらつきは 0.076〜0.24% に落ちた; 各シナリオは
+  三回採られて最大値が提出され、回数は `generated_by` に記録され執行する側が読み戻す — max-of-3 と単一のサンプルは
+  同じ名前の別の計測器だからだ。全てのサンプルとばらつきが出力されるので、許容差は job のログから論じられる。
 - **命令数ゲートはハーネスファイルを 1 個名指しで読んでおり、基準値は一部手書きだった** —
   `crates/pyrs-yaml/benches/ir_gate.rs` がツリーに入った後でも、
   `crates/pyrs-yaml-core/benches/ir_gate.rs` だけ名指ししていたシナリオ・プローブは 15 名のうち 12 名

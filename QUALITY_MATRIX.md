@@ -117,22 +117,41 @@ review habit:
   597 — and every gate that existed at the time was quiet about it. It never reached
   `main`, but nothing *would have* stopped it: `check-merge-conflict` is a hook, and no job
   ran hooks.
-- **A performance gate was comparing numbers whose provenance nobody could name.** The Ir baseline
-  was generated on one kind of machine and enforced on another, and the 2% line was sized around the
-  difference between them (`serialize_block_scalars`: +0.78% locally against +2.23% on CI). Two
-  explanations were tested and both failed. `.gitattributes` normalising CR bytes inside
-  `BLOCK_SCALAR_YAML` - adding `-text` moved the runner's number by 28 instructions out of
-  16,020,906; and the deeper probe invalidated the premise differently: the fixture's *stored* bytes are not
-  stable either - `git show` reports 98 CR bytes on the branch that added `-text` and none on
-  `main`, while a Windows checkout inserts them again - so "the CRLFs here are the measured
-  input" had been describing whichever tree the last author committed, not repository content. Drift between runner images - two images on one commit agree to 0.0018%.
-  The gap is therefore **open**, and what closed is the practice of comparing across unknown
-  machines: `.ci/ir-baseline.json` now carries the enforcing environment's own values (fifteen, since
-  the binding harness joined it), a `generated_by` banner, a 0.5% line sized from that measured agreement (~280x the observed spread),
-  and `ir_gate.py` prints which machine generated the numbers versus which is reading them - a WSL
-  run shows it. `tests/test_line_endings_gate.py` pins the exclusion list against `.gitattributes`
-  and against the tree that produced it, so stored bytes and measured bytes cannot drift apart
-  silently again.
+- **A performance gate was comparing numbers whose provenance nobody could name, and two of this
+  repository's own jobs turn out not to measure the same thing.** The Ir baseline was generated on one
+  kind of machine and enforced on another, and the 2% line used to be sized around that difference
+  (`serialize_block_scalars`: +0.78% locally against +2.23% on CI). Four explanations have been tested
+  and all four failed. `.gitattributes` normalising CR bytes inside `BLOCK_SCALAR_YAML`: adding `-text`
+  moved the runner's number by 28 instructions out of 16,020,906 — though the probe did expose a real
+  reproducibility hole, the fixture's *stored* bytes depending on which tree the last author committed,
+  now closed and asserted by `tests/test_line_endings_gate.py`. Drift between runner images: two images
+  on one commit agree to 0.0018%. The committed values having been generated off-runner: refuted — the
+  enforcing job reports the numbers the file carries. A restored build cache making
+  `.github/workflows/ir-baseline.yml` compile differently: refuted by deleting the cache step and
+  watching the job report 15,792,928 anyway.
+
+    What is left is a **1.44% disagreement between two jobs in this repository**, on
+    `serialize_block_scalars`, with the same image family, the same pinned rustc 1.97.1, the same script
+    and byte-identical sources (`git rev-parse` of `crates/pyrs-yaml-core/src/bench_inputs.rs` agrees
+    across them): eight runs of the refresh job — cached and uncached, on two images — produced
+    15,792,8xx to 15,792,9xx, and two runs of the `Instruction-count baseline` job in `codspeed.yml`
+    produced 16,020,942 and 16,020,915. Every other scenario agrees between the two jobs to within 0.08%,
+    and inside a job a scenario is stable to ~30 instructions, so this is a property of how the
+    measurement is taken, not of noise. It is also the WSL-to-runner gap of the earlier paragraphs
+    reproduced between two runner jobs on the same image, which retires the machine-class explanation and
+    leaves the cause unnamed. `build_exe` now prints the SHA-256 of the binary it measures and both jobs
+    print `nproc`, `valgrind --version`, `rustc -vV` and the CPU model, so the next statement about it
+    will be a measurement rather than an inference.
+
+    What the exercise did establish is that the file's own prose was not generated. Its
+    `generated_by.note` cites a commit that is not PR #299's head and predates the toolchain pin — that
+    job would have measured with the image's `@stable`, rustc 1.99.0, which moves this scenario −6.6% and
+    `serialize_medium` +6.7% — and its environment string reads `ubuntu-24.04` where `environment()`
+    emits `ubuntu24` for that image. So the note is gone; `--update` writes every key, including the
+    sample size the numbers were drawn with (which the enforcing run reads back), the key set is pinned
+    by `tests/test_ir_baseline_workflow.py`, and the reasoning lives here. Saying "every value comes from
+    the environment that enforces it" was premature while two of those environments disagreed; the honest
+    form is that a baseline is a claim about a *job*, and this repository has two that do not agree.
 - **No CI check is required for a merge at all - not one leg of the matrix, not the hook set, not
   the performance gate.** Read from `gh api repos/<repo>/branches/main/protection`:
   `strict: true`, `contexts: []`, `checks: []`. Measured consequence: #298 was rebase-merged while
@@ -156,32 +175,41 @@ Non-obvious consequence for performance claims: the Ir gate is the only reproduc
 instrument in the set, and it is what flagged a real cost in #292 (plain-string mapping
 keys, ~+19% in a drift-free local ratio) that wall-clock CodSpeed had already noticed at
 −10%. Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
-with a measured line instead of a vibe. That line is 0.5%, sized from the agreement between
-two GitHub runner images on one commit (worst spread 0.0018%: `parse_anchors`, 6,061
-instructions out of 341M; the largest absolute gap of the set is `parse_inline_merge`, 4,145
-out of 451M) — roughly 280x what was observed. What the old 2% was: the distance between a
-WSL-generated baseline and the same code measured on a runner (+1.45% on
-`serialize_block_scalars`), a gap two hypotheses tried to explain and neither did. The
-numbers now come from the enforcing image, so the margin is no longer spent on the
-environment gap; the +1.45% itself stays **unexplained and recorded**, not absorbed.
+with a measured line instead of a vibe. That line is 0.5%. Within one run, three samples of each
+scenario spread at most 0.002% on the engine channel (`parse_inline_merge`, 7,792 instructions out of
+451M) and at most 0.24% on the binding channel (`to_python_small`), so 0.5% is ~250x the engine's
+within-run spread and ~2x the binding's worst. What the old 2% was: the distance between a
+WSL-generated baseline and the same code measured on a runner, +1.45% on `serialize_block_scalars` —
+and that offset is now reproduced **between two runner jobs on the same image**, which retires the
+machine-class explanation without replacing it (the bullet above carries the measurements). The
+tolerance is therefore argued from the spread the instrument shows inside a job, and the cross-job
+disagreement is an open defect of the instrument, not a margin the line absorbs.
 
-**How much of that band is left is itself a measurement, and it was never taken until now.**
-Re-measuring the committed scenarios against the current tree, in the image that generated
-them, moved them by −2.35% (`parse_anchors`) to +1.61% (`serialize_anchors`), while the three
-scenarios added by this document's own re-run repeated at ±0.0005% — so the spread is not
-instrument noise, it is drift accumulated since the baseline was taken, and the direction is
-the dangerous one: every PR that made the engine faster widened the accepted band, so a 2.35%
-regression on `parse_anchors` today reads as no change at all, and `serialize_anchors` has
-0.39 points of headroom left. Three things follow. `.github/workflows/ir-baseline.yml`
-regenerates the numbers on the image that enforces them — which has since happened, and is
-where every value in `.ci/ir-baseline.json` comes from. `ir_gate.py --update --only <scenario>`
-now merges into the committed file and refuses to write a baseline with a missing number,
-because the first version silently reduced the scenario set to the one it had measured. And the
-file has to be re-generable in full: its first committed version carried a hand-written
-`generated_by.note` explaining its own provenance, `--update` writes no prose, so the next
-refresh would have deleted that paragraph and the diff would have read as a decision. The
-explanation lives in this document; the file's keys are pinned by
-`tests/test_ir_baseline_workflow.py` to exactly what the job writes.
+**The binding channel had to be widened before it could be gated.** At 500 iterations
+`to_python_small` came out 0.83% apart between two runs of one commit — more than the tolerance it
+was about to be held to — while the engine scenarios agreed to 0.0009%. The loop was too small for
+the variation inside it, so the harness runs 2 000 iterations like its engine sibling, which brought
+its within-run spread down to 0.076-0.24%. Each scenario is also sampled three times and the *largest*
+value is what gets committed, because a single draw of a distribution that wide enforced at 0.5% is a
+flaky gate. The sample count travels inside `generated_by` and the enforcing run reads it from there:
+max-of-3 against a single sample, or the reverse, is a different instrument wearing the same name, and
+the run prints every sample and spread so the claim is auditable in the job log rather than a sentence
+in a comment.
+
+**How much of that band is left is itself a measurement, and it was taken again here.** The enforcing
+job's own table against the refreshed baseline moved `serialize_block_scalars` by +1.44% and every
+other scenario by at most 0.08% — the first is the cross-job disagreement above, and the rest says the
+band is essentially unused: on twelve of fifteen scenarios the gate has 0.42 points of headroom left,
+where the ledger of #299 had measured 0.39 on one and a *negative* margin on another. Three things
+follow, and all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
+with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
+from — fifteen of them, since the binding harness joined. `ir_gate.py --update --only <scenario>`
+merges into the committed file and refuses to write a baseline with a missing number, because the
+first version silently reduced the scenario set to the one it had measured. And the file has to be
+re-generable in full: its first committed version carried a hand-written `generated_by.note`
+explaining its own provenance, which turned out to be wrong in three checkable ways (recorded in
+the bullet above), and `--update` writes no prose at all. The explanation lives here; the file's
+keys are pinned by `tests/test_ir_baseline_workflow.py` to exactly what the job writes.
 
 ## 3. Root-cause depth
 
@@ -313,15 +341,21 @@ is done when its test is green, not when the change is merged.
   described the gap, recorded above rather than edited out.
   Acceptance: every hole this item covered deleted from the registry, and the measurement
   agreeing with what is left.
-- **P2-F, Ir baseline breadth** (`done`): the `to_json`, `to_toml` and inline-merge scenarios are in
-  the gate, and so are the three `to_python_*` scenarios that close `perf-coverage:binding-layer` — 15
-  measured scenarios, 15 committed numbers. `--update --only` can no longer write a short baseline,
-  `ir-baseline.yml` regenerates the numbers on the enforcing image, and its artifact is what is
-  committed: the runner's toolchain banner is in the file, and the 0.5% line is sized from the measured
-  agreement between two images on one commit instead of from the +1.45% WSL-to-runner gap. Why that gap
-  exists on `serialize_block_scalars` is still **unresolved**, and it is recorded above rather than
-  absorbed into a wider tolerance. Acceptance: `tests/test_ir_baseline_workflow.py` pins the committed
-  keys to exactly what `--update` writes, and `ir-unbaselined` / `ir-stale-baseline` stay empty.
+- **P2-F, Ir baseline breadth** (`partly done`): the `to_json`, `to_toml` and inline-merge scenarios are
+  in the gate, and so are the three `to_python_*` scenarios that close `perf-coverage:binding-layer` — 15
+  measured scenarios, 15 committed numbers, all generated rather than transcribed: `--update` writes every
+  key including the sample size, `--update --only` can no longer write a short baseline, each scenario is
+  the largest of three samples, and every run prints its samples and their spread. The 0.5% line is sized
+  from that within-run spread (≤0.002% engine, ≤0.24% binding) instead of the +1.45% figure the ledger used
+  to quote.
+  **What is not done is the claim this item was meant to deliver.** "The numbers come from the environment
+  that enforces them" held of the image and of the compiler, and no further: two runner jobs in this
+  repository, same image family, same pinned rustc 1.97.1, byte-identical sources, disagree by 1.44% on
+  `serialize_block_scalars` (section 2), and the build cache was tested as the explanation and refuted.
+  Until that is attributed — the binary hashes and the host fields both jobs now print exist to answer
+  it — a baseline is a claim about the job that generated it, and `.ci/ir-baseline.json` is generated by a
+  job that is not the gate. Acceptance: one instrument measures and enforces the same numbers, evidenced
+  by matching hashes across the two jobs, and `ir-unbaselined` / `ir-stale-baseline` stay empty.
 
 ## Reading this document
 

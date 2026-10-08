@@ -31,6 +31,7 @@ Requires valgrind. On this development box run it inside WSL:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -67,25 +68,37 @@ HARNESSES = (("pyrs-yaml-core", "ir_gate"), ("pyrs-yaml", "ir_gate"))
 # in this file.
 #
 # What the 2% used to be: the gap between a baseline generated in WSL and the same code measured on a
-# runner, concentrated on `serialize_block_scalars` (+1.45%). Two explanations were tested then and a
-# third now. (1) `.gitattributes` normalising CR bytes inside `BLOCK_SCALAR_YAML`: adding `-text`
-# changed the runner's number by 28 instructions out of 16,020,906 - REFUTED, though the probe did find
-# a real reproducibility hole (the stored bytes of the measured input depended on which tree the last
-# author committed), now closed and asserted by `tests/test_line_endings_gate.py`. (2) Drift between
-# runner images: REFUTED, both images report the same numbers. (3) The provenance of the committed
-# value itself: the refresh job run at the commit its own `generated_by.note` names produced nothing
-# like it. That commit predates the toolchain pin (#301 was the response to its first real run), so the
-# job measured with the image's `@stable` - rustc 1.99.0 - and 1.99.0 moves this very scenario to
-# 14,960,866 (-6.6%) while `serialize_medium` goes +6.7%. Nor is the named commit even the PR head:
-# #299's head was a different sha. What today's runner reports for `serialize_block_scalars`, on two
-# images, is 15,792,882: 1.42% *below* the committed value, which is the same scenario-specific offset
-# the WSL comparison had recorded. So the committed number was not made by the environment that
-# enforces it, whatever its note said - the mechanism of the WSL-to-runner difference is still unknown,
-# and the practice that ends it is that every value here comes from the image that runs the gate.
+# runner, concentrated on `serialize_block_scalars` (+1.45%). Three explanations have been tested and
+# all three failed. (1) `.gitattributes` normalising CR bytes inside `BLOCK_SCALAR_YAML`: adding
+# `-text` changed the runner's number by 28 instructions out of 16,020,906 - REFUTED, though the probe
+# did find a real reproducibility hole (the stored bytes of the measured input depended on which tree
+# the last author committed), now closed and asserted by `tests/test_line_endings_gate.py`. (2) Drift
+# between runner images: REFUTED, both images report the same numbers. (3) A restored build cache
+# making the refresh job compile differently: REFUTED by removing `Swatinem/rust-cache` from
+# `.github/workflows/ir-baseline.yml` - the job still reported 15,792,928.
 #
-# If this gate is ever run somewhere other than the environment recorded below, expect a
-# percentage-point of drift on the allocation-heavy scenarios and treat a marginal failure as a hint to
-# re-measure on the enforcing image (`gh workflow run 'Ir baseline refresh'`), not to widen the line.
+# What is left is a difference that correlates perfectly with the *job* and with nothing else: eight
+# runs of the refresh job, on two images, cached and uncached, all report 15,792,8xx-15,792,9xx, and
+# two runs of the enforcing job in `codspeed.yml` report 16,020,942 and 16,020,915 - while every other
+# scenario agrees between the two jobs to within 0.08%. Inside each job the number is stable to
+# ~30 instructions, so this is not noise: a restored tree, the same pinned rustc 1.97.1, the same
+# script and the same fixtures produce two binaries, or two runtimes, 1.44% apart on the
+# memcpy-heaviest scenario - three times the tolerance. The committed value matches the *enforcing*
+# job, so the file's numbers were made by the configuration that gates them; what was hand-written was
+# the note (its commit citation is not PR #299's head and predates the toolchain pin, and its
+# environment string is not what `environment()` emits for that image today).
+#
+# Recorded because the first reading of this data was wrong twice: it looked like proof the committed
+# values had been generated off-runner, and then like proof the refresh job's build cache was the
+# cause. Both sentences were written into documents before the control runs refuted them, and both
+# corrections are here rather than edited out. `build_exe` now prints the SHA-256 of the binary it
+# measures and both jobs print `nproc`/`valgrind --version`/`rustc -Vv`, so the next answer is a
+# measurement: whether the two jobs produce the same bytes and run them on different hardware, or
+# produce different bytes at all.
+#
+# Until that is known, treat a marginal failure on an allocation-heavy scenario as a hint about the
+# environment, never as a licence to widen the line: re-measure with
+# `gh workflow run 'Ir baseline refresh'` and read the samples the run prints.
 DEFAULT_TOLERANCE = 0.005
 
 # Written into every baseline this script generates, verbatim. The first committed baseline carried a
@@ -136,6 +149,11 @@ def build_exe(crate: str, bench: str) -> str:
     `required-features`, which keeps it out of every default build — including
     `cargo codspeed run`, which executes each discovered benchmark with no
     arguments and would otherwise trip the binary's usage error.
+
+    The binary's SHA-256 goes to stderr so it lands in the job log. Two jobs that
+    pin the same compiler and the same sources were seen to report 1.44% apart on
+    one scenario, and the cheapest way to tell "different bytes" from "same bytes on
+    different hardware" is to print the bytes' hash.
     """
     res = run(
         [
@@ -162,6 +180,8 @@ def build_exe(crate: str, bench: str) -> str:
             continue
         exe = msg.get("executable")
         if exe and f"{bench}-" in pathlib.Path(exe).name:
+            digest = hashlib.sha256(pathlib.Path(exe).read_bytes()).hexdigest()[:16]
+            print(f"{crate}/{bench} exe={pathlib.Path(exe).name} sha256={digest}", file=sys.stderr)
             return exe
     sys.exit(f"cargo did not report an {bench} executable for {crate}")
 

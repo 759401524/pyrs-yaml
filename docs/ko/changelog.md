@@ -252,6 +252,23 @@ status: new
 
 #### 수정
 
+- **같은 저장소의 두 runner 작업이 `serialize_block_scalars`를 1.44% 차이로 재고 있었고, Ir 기준값은 어느 작업의 값인지 적지 않았다** —
+  열다섯 시나리오 게이트를 위해 `.ci/ir-baseline.json`을 다시 만든 일은 집행 작업(`codspeed.yml`의
+  `Instruction-count baseline`)을 이 시나리오에서 빨갛게 만들었다: 두 실행에서 16,020,942와 16,020,915가
+  나오는데, `.github/workflows/ir-baseline.yml`은 여덟 실행에서 15,792,8xx~15,792,9xx를 낸다 — runner image
+  둘, 같은 pinned rustc 1.97.1, 바이트 단위로 같은 소스, 나머지 시나리오는 0.08% 안에서 맞는다. 세 가지 설명을
+  시험했고 셋 다 실패했다: image, 되살린 build cache(단계를 지워도 값은 그대로였다), 그리고 이 대장이 앞서 적었던
+  "제출된 값이 게이트 밖 기계에서 만들어졌다"는 주장(집행 작업이 그것을 재현한다). 원인은 아직 이름이 없고, 이름을
+  지을 도구는 지금 생겼다: `build_exe`가 재는 바이너리의 SHA-256을 찍고, 두 작업 모두 `nproc`,
+  `valgrind --version`, `rustc -vV`, CPU 모델을 출력한다. 기준값 파일이 실제로 잃은 것은 손으로 옮겨 적힌
+  문장이다 — `generated_by.note`가 PR #299의 head도 아니고 toolchain 고정보다 앞인 commit을 지명했고, 그
+  환경 문자열은 `environment()`가 그 image에서 내놓는 값이 아니었다 — 그래서 `--update`가 모든 key를, 값을 몇
+  번 셌는지도 함께 쓰며, 제출된 key 집합은 `tests/test_ir_baseline_workflow.py`가 생성 쪽에 고정한다.
+- **새로 넣은 바인딩 시나리오는 500 반복으로는 게이트에 걸 수 없을 만큼 작았다** — 같은 commit의 두 실행이
+  `to_python_small`을 0.83% 떨어뜨렸다 — 걸으려던 0.5% 선보다 넓다 — engine 시나리오는 0.0009%에서 맞았다.
+  `ITERATIONS`은 engine 하네스와 같은 2 000이 됐고 같은 실행 안의 흩어짐은 0.076~0.24%로 내렸다; 각 시나리오는
+  세 번 재서 가장 큰 값을 제출하고, 그 횟수는 `generated_by`에 실려 집행 작업이 읽는다 — max-of-3과 표본 하나는
+  같은 이름을 쓴 다른 계측기이기 때문이다. 표본과 흩어짐을 모두 찍으므로 허용차는 작업 로그에서 논해진다.
 - **명령 수 게이트는 harness 원문을 이름으로 하나만 읽었고, 기준값은 일부 손으로 옮겨 적혀 있었다** —
   `crates/pyrs-yaml/benches/ir_gate.rs`가 트리에 들어온 뒤에도
   `crates/pyrs-yaml-core/benches/ir_gate.rs`만 이름으로 지정한 시나리오 탐침은 열다섯 이름 중 열둘만
