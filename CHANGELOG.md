@@ -1,17 +1,5 @@
 # Changelog
 
-- **A key with a comment above it was unreachable by name** —
-  `doc["key"]`, `"key" in doc` and merge expansion all resolve a node by hash, and
-  `CustomNode::hash` folded `NodeMeta`'s normalised comment view while
-  `CustomNode::eq` compares the raw `comment` slot, so two nodes could compare equal
-  yet hash apart and `IndexMap` answered "no such key" for a key the document plainly
-  holds. `NodeDecor` is documented as excluded from `Hash` / `PartialEq`, so the hash
-  was the side out of contract: `CustomNode::hash` now folds only the fields its own
-  equality compares (`comment` / `anchor` / `tag`), through a new
-  `NodeMeta::hash_custom_node_identity`, while `NodeMeta::hash` keeps mirroring
-  `NodeMeta::eq`'s #117 normalisation so both pairings stay self-consistent. Every key
-  past the first was affected — a document's opening note is reported against the
-  enclosing mapping, which is exactly why single-key fixtures never showed it.
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -285,6 +273,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A changelog entry could be filed where no reader looks** — 401a8057 added one hash-fidelity entry
+  to all five mirrors and put it above the preamble in `CHANGELOG.md`, inside the `tags:` list of the en
+  and zh frontmatter, and between the frontmatter and the first heading in ja and ko, so it was outside
+  the changelog body in every file while `scripts/check_changelog_mirrors.py` stayed green: it compares
+  version headers, and translation leaves those identical no matter where the prose goes. `placement_errors`
+  is now a hard rule in that checker — no entry bullet before the first version heading, and none whose
+  nearest heading is a version rather than a section — and all five copies of the entry are filed under
+  `[Unreleased] → Fixed` in newest-first order (measured before moving: the correct neighbour is the
+  `crash-9b77aea4` entry above the `crash-1b01ac3f` one, from the commit dates). The checker also prints
+  each mirror's `[Unreleased]` entry counts per section position, and their divergence is registered as
+  `changelog-parity:entry-counts` rather than asserted — measured against root, `docs/en` is one entry
+  behind and `docs/zh` five (one Added and five Fixed missing, plus one Changed bullet no other mirror
+  has) — because a gate that is red for someone else's missing translation is noise, not a gate.
+  `tests/test_changelog_placement_gate.py` fires each rule on the injection that names it, checks the
+  counts probe goes quiet when the mirrors agree, and checks that the divergence quoted in the registry
+  is the divergence the measurement reports today.
 - **Two runner jobs in this repository measure `serialize_block_scalars` 1.44% apart, and the Ir
   baseline did not say which one its numbers came from** — regenerating `.ci/ir-baseline.json` for the
   fifteen-scenario gate turned the enforcing job (`Instruction-count baseline` in `codspeed.yml`) red on
@@ -301,8 +305,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the enforcing job, on a host of the other model, measured −0.08% against the baseline where it had
   measured +1.44%; re-measured under the pin on three host models (`AMD EPYC 9V74`, `9V45` and `7763`),
   the scenario agrees to 0.0002%. The line was not widened to absorb the host; the input the host
-  controlled was pinned,
-  and `ir_gate.py` prints it beside the hashes. The +1.45% WSL-to-runner gap recorded since the gate was
+  controlled was pinned, and `ir_gate.py` prints it beside the hashes. The +1.45% WSL-to-runner gap
+  recorded since the gate was
   built is the same effect. What the baseline file did lose is prose that had been typed into it — its
   `generated_by.note` cited a commit that is not PR #299's head and predates the toolchain pin, and its
   environment string is not what `environment()` emits for that image — so `--update` writes every key
@@ -561,6 +565,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authored order — and index 0 when the merge key is first, so the documented
   `<<: *defaults` shape is untouched (487 -> 489 Rust tests, 1781 Python tests, all
   passing unchanged).
+- **A key with a comment above it was unreachable by name** —
+  `doc["key"]`, `"key" in doc` and merge expansion all resolve a node by hash, and
+  `CustomNode::hash` folded `NodeMeta`'s normalised comment view while
+  `CustomNode::eq` compares the raw `comment` slot, so two nodes could compare equal
+  yet hash apart and `IndexMap` answered "no such key" for a key the document plainly
+  holds. `NodeDecor` is documented as excluded from `Hash` / `PartialEq`, so the hash
+  was the side out of contract: `CustomNode::hash` now folds only the fields its own
+  equality compares (`comment` / `anchor` / `tag`), through a new
+  `NodeMeta::hash_custom_node_identity`, while `NodeMeta::hash` keeps mirroring
+  `NodeMeta::eq`'s #117 normalisation so both pairings stay self-consistent. Every key
+  past the first was affected — a document's opening note is reported against the
+  enclosing mapping, which is exactly why single-key fixtures never showed it.
 - **A key's trailing note no longer migrates onto its value's line** — when a
   value had to move down to take a leading note of its own, the note that belongs
   to the *key* was still appended to whatever line finished last, i.e. the value's

@@ -3,14 +3,6 @@ title: Changelog
 description: pyrs-yaml 项目的完整变更日志，记录所有版本的重要变更、新增功能和性能优化。
 tags:
 
-- **键上方有注释时，该键按名字查不到** —— `doc["key"]`、`"key" in doc` 与合并展开
-  都按哈希定位节点，而 `CustomNode::hash` 折入了 `NodeMeta` 的归一化注释视图，
-  `CustomNode::eq` 却只比较原始 `comment` 槽：于是两个节点等值却哈希不同，`IndexMap`
-  对文档里明确存在的键回答「无此键」。`NodeDecor` 的文档写明它被 `Hash` / `PartialEq`
-  排除，所以越界的一方是哈希——`CustomNode::hash` 现在只折入其等值真正比较的字段
-  （`comment` / `anchor` / `tag`），经由新增的 `NodeMeta::hash_custom_node_identity`；
-  `NodeMeta::hash` 仍镜像 `NodeMeta::eq` 的 #117 归一化，两对关系各自自洽。首键之外的
-  每个键都会中招：文档最开头的注释会被记到外层映射上，这正是单键用例从未暴露它的原因。
 - docs
 status: new
 
@@ -216,6 +208,17 @@ status: new
 
 #### 修复
 
+- **changelog 条目可以被放到没人会看的地方** — 401a8057 给五个镜像各加了一条哈希保真条目，却把它放在
+  `CHANGELOG.md` 前言之上、en 与 zh 的 frontmatter `tags:` 列表里、以及 ja 与 ko 的 frontmatter 与第一个
+  标题之间，于是在五个文件里它都在 changelog 正文之外，而 `scripts/check_changelog_mirrors.py` 依旧全绿：
+  它只比版本标题，而散文放哪里都不改变那些标题相同。`placement_errors` 现在是该检查器里的硬规则——条目
+  项目符不得出现在第一个版本标题之前，也不得挂在版本标题而非小节标题之下——五份副本都已按“新的在前”归到
+  `[Unreleased] → Fixed`（移动前先量邻位：按 commit 日期，它应在 `crash-9b77aea4` 那条之下、
+  `crash-1b01ac3f` 那条之上）。检查器还会打印每个镜像 `[Unreleased]` 各小节的条目数，而它们的不一致是登记为
+  `changelog-parity:entry-counts` 而不是直接断言——以 root 为基准量得：`docs/en` 少一条，`docs/zh` 少五条
+  （一条 Added 与五条 Fixed 缺失，另有一条别的镜像都没有的 Changed）——因别人漏译而变红的门禁是噪声，不是门禁。
+  `tests/test_changelog_placement_gate.py` 用点名各自的注入验证每条规则会红，验证镜像一致时计数探针会沉默，
+  并核对台账里引用的不一致就是度量当前报出的不一致。
 - **同一仓库里的两个 runner 作业把 `serialize_block_scalars` 量差了 1.44%，而 Ir baseline 没说它的数来自哪一个** —
   为十五个场景的门禁重生成 `.ci/ir-baseline.json`，把执行作业（`codspeed.yml` 里的 `Instruction-count baseline`）
   在这一个场景上弄红了：它两次运行报 16,020,942 与 16,020,915，而 `.github/workflows/ir-baseline.yml` 八次
@@ -364,6 +367,14 @@ status: new
   pair 的注释栈写在 pair 缩进处，键的行内注释跟着它自己的 pair 行；原本正确的项外形不变。逐个
   撤掉这三处写入，恰好只有守卫它的那一条测试变红，因此没有任何槽位被记上了它并不具备的保护。
   同一次采样里的 `crash-5561902a`（88 字节）是另一个根因，仍保持开放。
+- **键上方有注释时，该键按名字查不到** —— `doc["key"]`、`"key" in doc` 与合并展开
+  都按哈希定位节点，而 `CustomNode::hash` 折入了 `NodeMeta` 的归一化注释视图，
+  `CustomNode::eq` 却只比较原始 `comment` 槽：于是两个节点等值却哈希不同，`IndexMap`
+  对文档里明确存在的键回答「无此键」。`NodeDecor` 的文档写明它被 `Hash` / `PartialEq`
+  排除，所以越界的一方是哈希——`CustomNode::hash` 现在只折入其等值真正比较的字段
+  （`comment` / `anchor` / `tag`），经由新增的 `NodeMeta::hash_custom_node_identity`；
+  `NodeMeta::hash` 仍镜像 `NodeMeta::eq` 的 #117 归一化，两对关系各自自洽。首键之外的
+  每个键都会中招：文档最开头的注释会被记到外层映射上，这正是单键用例从未暴露它的原因。
 - **键的行尾注释不再迁到值的行上** —— 当值为了容纳自己的前导注释而必须下移到独立行时，
   属于*键*的那条注释仍被追加到「最后结束的那一行」，也就是值的行。而重读时，只带 tag
   的标量行尾的注释会作为**前导**注释归到值上，于是注释每轮换一次主人，发射永不动点：
