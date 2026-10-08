@@ -300,14 +300,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that scenario: it reports 16,020,942 and 16,020,915 across two runs, while
   `.github/workflows/ir-baseline.yml` reports 15,792,8xx–15,792,9xx across eight — two runner images,
   the same pinned rustc 1.97.1, byte-identical sources, and every other scenario agreeing to 0.08%.
-  Three explanations were tested and all three failed: the image, a restored build cache (the step was
-  deleted and the number stayed), and this ledger's own earlier claim that the committed values had been
-  made off-runner (the enforcing job reproduces them). The cause is unnamed, and the instrument to name
-  it exists now: `build_exe` prints the SHA-256 of the binary it measures and both jobs print `nproc`,
-  `valgrind --version`, `rustc -vV` and the CPU model. What the baseline file did lose is prose that had
-  been typed into it — its `generated_by.note` cited a commit that is not PR #299's head and predates the
-  toolchain pin, and its environment string is not what `environment()` emits for that image — so
-  `--update` writes every key now, including the sample size the numbers were drawn with, and
+  Three explanations were tested and failed — the image, a restored build cache (the step was deleted
+  and the number stayed), and this ledger's own earlier claim that the committed values had been made
+  off-runner (the enforcing job reproduces them) — and the fourth held: the ISA that glibc binds for its
+  string routines at start-up, chosen from CPUID flags the VM exposes. The binary hashes settled it —
+  both jobs printed the same one (`a0386c17b5f1ef38`, same valgrind 3.22.0, same pinned rustc 1.97.1),
+  while the hosts reported different models (`AMD EPYC 9V74` against `9V45`). Running every measured
+  process under `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT` closed the gap:
+  the enforcing job, on a host of the other model, measured −0.08% against the baseline where it had
+  measured +1.44%; re-measured under the pin on three host models (`AMD EPYC 9V74`, `9V45` and `7763`),
+  the scenario agrees to 0.0002%. The line was not widened to absorb the host; the input the host
+  controlled was pinned,
+  and `ir_gate.py` prints it beside the hashes. The +1.45% WSL-to-runner gap recorded since the gate was
+  built is the same effect. What the baseline file did lose is prose that had been typed into it — its
+  `generated_by.note` cited a commit that is not PR #299's head and predates the toolchain pin, and its
+  environment string is not what `environment()` emits for that image — so `--update` writes every key
+  now, including the sample size the numbers were drawn with, and
   `tests/test_ir_baseline_workflow.py` pins the committed key set to the generated one.
 - **The new binding scenarios were too small to gate at 500 iterations** — two runs of one commit put
   `to_python_small` 0.83% apart, wider than the 0.5% line they were about to be held to, while the engine
