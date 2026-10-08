@@ -57,3 +57,49 @@ def test_the_baseline_records_a_single_toolchain():
     version = data["toolchain"].split()[1]
     assert re.fullmatch(r"\d+\.\d+(\.\d+)?", version), data["toolchain"]
     assert data["generated_by"]["environment"], "provenance is the point of the file"
+
+
+def _load(rel):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(rel.stem, REPO_ROOT / rel)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_committed_baseline_is_exactly_what_the_job_writes():
+    """No key of `.ci/ir-baseline.json` may be hand-written.
+
+    The refresh job's output is an artifact a human commits, and the file committed after the first
+    run carried a `generated_by.note` that `--update` never writes. Committing the next artifact would
+    then have deleted that paragraph, and the diff would look like the note had been *decided* rather
+    than dropped: a file that is part measurement and part transcription cannot be re-generated
+    faithfully, and cannot be reviewed as one either. The prose moved to `QUALITY_MATRIX.md`; what is
+    left here is the rule that the committed keys are the generated keys.
+    """
+    import json
+
+    gate = _load(Path("scripts") / "ir_gate.py")
+    data = json.loads(BASELINE.read_text(encoding="utf-8"))
+    assert set(data) == {"toolchain", "generated_by", "tolerance_hint", "scenarios"}, sorted(data)
+    assert set(data["generated_by"]) == {"environment", "rustc", "tool", "note"}, sorted(data["generated_by"])
+    assert data["generated_by"]["note"] == gate.PROVENANCE_NOTE, "the note is generated, not transcribed"
+
+
+def test_the_gate_measures_every_harness_the_repository_declares():
+    """`ir_gate.py`'s harness list and the manifests must not be allowed to disagree.
+
+    A crate that declares an `ir_gate` target the gate script does not know about is measured by
+    nobody, and its scenarios would only surface as `ir-unbaselined` holes after someone noticed the
+    count changed. The reverse - a harness entry pointing at a crate that dropped the target - makes
+    `--update` fail on a build error, which is the louder half and already covered by the script's own
+    refusal to write a baseline from an unreadable harness.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    matrix = _load(Path("scripts") / "quality_matrix.py")
+    assert sorted(crate for crate, _bench in gate.HARNESSES) == matrix.ir_harness_owners(), (
+        "a harness was added or removed in one place only"
+    )
+    assert all(bench == "ir_gate" for _crate, bench in gate.HARNESSES), gate.HARNESSES

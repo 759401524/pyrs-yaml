@@ -28,6 +28,10 @@ pyo3-build-config = "0.29.2"
 [features]
 default = ["numpy"]
 numpy = ["dep:numpy"]
+# Opt-in build of the instruction-count harness binary below. Nothing in the shipped
+# extension depends on it: the seam (`bench_to_python`) is compiled out of every build that does not
+# ask for it, so the Python-visible surface is unchanged by adding a performance target.
+ir-gate = []
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "5.0" }
@@ -35,3 +39,16 @@ divan = { package = "codspeed-divan-compat", version = "5.0" }
 [[bench]]
 name = "yaml_bench"
 harness = false
+
+# The binding-side half of the instruction-count gate. `pyrs-yaml-core`'s harness cannot reach the
+# AST-to-Python conversion (it never links this crate), which is the registered hole
+# `perf-coverage:binding-layer`; these scenarios close it.
+#
+# `required-features` is load-bearing, not decoration: `cargo codspeed build` discovers every
+# benchmark target and `cargo codspeed run` executes each with no arguments, so a scenario-name-only
+# binary would exit 2 and fail the `Rust benchmarks` job. Gating it keeps the target out of every
+# default build, CodSpeed included - the same arrangement as `pyrs-yaml-core`'s `ir_gate`.
+[[bench]]
+name = "ir_gate"
+harness = false
+required-features = ["ir-gate"]

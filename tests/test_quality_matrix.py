@@ -199,6 +199,57 @@ def test_ir_scenario_probe_reads_a_wrapped_tuple(matrix, measured):
     assert bench == baseline, "bench and baseline scenario sets must agree by construction"
 
 
+def test_ir_scenario_probe_reads_every_harness(matrix, measured):
+    """Both channels, or the second one's numbers would be compared against nothing.
+
+    The probe that shipped named one file - `crates/pyrs-yaml-core/benches/ir_gate.rs`. Adding the
+    binding harness would then have left `to_python_*` out of the bench set, so `--update` could write
+    a baseline without them and the `ir-unbaselined` probe could never fire for the channel it exists
+    to protect. That is the same shape as the graph probe stopping at the first `[dependencies]`
+    section (#303), measured here instead of assumed.
+    """
+    owners = matrix.ir_harness_owners()
+    assert owners == ["pyrs-yaml", "pyrs-yaml-core"], owners
+    channels = matrix.ir_harness_channels()
+    assert {"to_python_small", "to_python_medium", "to_python_anchors"} <= set(channels["pyrs-yaml"]), channels
+    # An owner that yields no scenario names is the empty-set failure again: the probe read the file
+    # and found nothing, which has to look like a finding rather than like a channel with no work.
+    assert all(channels[crate] for crate in owners), channels
+    assert "to_python_small" in measured["ir_scenarios_bench"], measured["ir_scenarios_bench"]
+
+
+def test_a_harness_the_gate_cannot_build_is_a_hole(matrix, monkeypatch):
+    """The harness set is measured in both directions, and each direction has to bite.
+
+    A declared target whose file is gone shortens the gate silently. A file whose crate declares no
+    target is worse, because it looks like coverage: its scenarios would sit in the baseline as
+    numbers that nothing compiles and nobody re-measures.
+    """
+    monkeypatch.setattr(matrix, "ir_harness_files", lambda: ["pyrs-yaml"])
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("ir-harness-missing", "pyrs-yaml-core") in holes, sorted(holes)
+
+    monkeypatch.setattr(matrix, "ir_harness_files", lambda: ["pyrs-yaml", "pyrs-yaml-core", "pyrs-json"])
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("ir-harness-undeclared", "pyrs-json") in holes, sorted(holes)
+
+
+def test_one_scenario_name_in_two_harnesses_is_a_hole(matrix, monkeypatch):
+    """Ambiguity is a finding, not a tie-break.
+
+    `ir_gate.py` refuses to run on a collision. That refusal is the last line of defence only if the
+    probe also reports it: otherwise a duplicated name quietly measures one channel against the other
+    channel's committed number.
+    """
+    monkeypatch.setattr(
+        matrix,
+        "ir_harness_channels",
+        lambda: {"pyrs-yaml-core": ["parse_small"], "pyrs-yaml": ["parse_small", "to_python_small"]},
+    )
+    reported = [hole for hole in matrix.measure()["holes"] if hole[0] == "ir-scenario-duplicate"]
+    assert [hole[1] for hole in reported] == ["parse_small"], reported
+
+
 def test_property_probe_finds_the_real_properties(matrix, measured):
     names = measured["property_functions"]
     assert measured["property_function_count"] == len(names)
@@ -214,40 +265,54 @@ def test_property_probe_finds_the_real_properties(matrix, measured):
 
 
 def test_the_perf_coverage_probe_describes_a_real_boundary(matrix, monkeypatch):
-    """Discrimination for `perf-coverage:binding-layer`, the newest registered hole.
+    """The probe is a measurement, in both the open and the closed direction.
 
-    The probe compares the crates the reproducible instrument can link against the crate that serves
-    the Python API. If it fired whatever the build graph contained, it would be decoration, so the
-    test moves the graph under it: claim the serving crate is one the harness already links, and the
-    hole has to disappear from a fresh measurement of the same tree.
+    It was registered by #302 as the gap where `ir_gate` could not reach the crate serving the Python
+    API; #305 added `crates/pyrs-yaml/benches/ir_gate.rs` and the hole disappeared from the
+    derivation without anyone editing the registry to say so. Both directions need to be checkable, or
+    the probe is a comment:
+
+    * closed today: the binding crate is in the build graph, and a fresh measurement reports no
+      `perf-coverage` hole;
+    * still able to bite: claim the Python-facing crate is some layer the harness does not link, and
+      the hole comes back on the same tree.
+
+    The registry entry was deleted in the same changeset that closed the gap, which is what
+    `test_measured_holes_match_the_registry` enforces from the other side - a stale registered hole
+    reads as an open one.
     """
     graph = matrix.ir_harness_build_graph()
-    assert "pyrs-yaml-core" in graph, "the bench owner dropped out of its own build graph"
-    assert "pyrs-yaml" not in graph, "the registered hole went stale: the binding is now linked"
-    assert matrix.binding_crate() == "pyrs-yaml", "the crate was found by name, not by layout"
+    served = matrix.binding_crate()
+    assert served == "pyrs-yaml", "the crate is found by name, not by layout"
+    assert served in graph, f"{served} left the harness graph again: {sorted(graph)}"
+    assert [hole for hole in matrix.measure()["holes"] if hole[0] == "perf-coverage"] == []
 
-    monkeypatch.setattr(matrix, "binding_crate", lambda: "pyrs-yaml-core")
+    monkeypatch.setattr(matrix, "binding_crate", lambda: "pyrs-some-unlinked-layer")
     reported = [hole for hole in matrix.measure()["holes"] if hole[0] == "perf-coverage"]
-    assert reported == [], "the probe reports the gap regardless of the graph it is measuring"
+    assert len(reported) == 1, "the probe cannot detect the gap it detected before, so it detects nothing"
+    assert "pyrs-some-unlinked-layer" in reported[0][2], reported[0]
 
 
 def test_the_graph_probe_reads_every_dependency_section(matrix):
-    """The set the registered hole describes, pinned by content.
+    """Every workspace crate the harness links, read from every dependency section.
 
-    `to_json_medium` and `to_toml_medium` link the sibling engines through
-    `[dev-dependencies]`, so a probe that stops at the first section understates what the
-    instrument can reach - which is exactly what this did when it first shipped, reporting three
-    crates while the hole's own text named five. The `why` of the registered hole enumerates the
-    graph, so the enumeration is now checked instead of quoted.
+    `to_json_medium` and `to_toml_medium` reach the sibling engines through
+    `[dev-dependencies]`, so a probe that stops at the first section understates what the instrument
+    can reach - which is exactly what it did when it first shipped, reporting three crates while the
+    registered hole's own text named five (#303). The set is pinned by content, because the graph is
+    what `perf-coverage` compares against: an undercount there reads as "the binding is unreachable"
+    when it is really "the probe stopped early".
     """
     graph = matrix.ir_harness_build_graph()
-    assert {"pyrs-yaml-core", "pyrs-ast", "pyrs-schema", "pyrs-json", "pyrs-toml"} <= graph, graph
-    assert "pyrs-yaml-cli" not in graph, "the CLI is not linked by the harness either way"
-    registered = json.loads((REPO_ROOT / ".ci" / "quality-holes.json").read_text(encoding="utf-8"))["holes"]
-    for hole in registered:
-        if hole["id"].startswith("perf-coverage"):
-            for crate in sorted(graph & {"pyrs-json", "pyrs-toml", "pyrs-ast", "pyrs-schema", "pyrs-yaml-core"}):
-                assert crate in hole["why"], f"{crate}: in the measured graph, missing from the registry text"
+    assert {
+        "pyrs-yaml-core",
+        "pyrs-yaml",
+        "pyrs-ast",
+        "pyrs-schema",
+        "pyrs-json",
+        "pyrs-toml",
+    } <= graph, graph
+    assert "pyrs-yaml-cli" not in graph, "the CLI is not linked by either harness"
 
 
 def test_holes_are_derived_not_transcribed(measured):

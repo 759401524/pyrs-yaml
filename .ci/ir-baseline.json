@@ -1,7 +1,7 @@
 {
   "generated_by": {
     "environment": "github-runner ubuntu-24.04, image 20261004.327.1",
-    "note": "Measured by the Instruction-count baseline job on PR #299 (commit fb2cb505), which is the environment that enforces these numbers. A cross-check run on image 20260927.320.1 agrees with these values to at most 0.0018% (parse_anchors, 6,061 instructions on 341M); the largest is parse_inline_merge at 4,145 on 451M. The tolerance is sized from that spread, not from a guess: a baseline generated in WSL differed from these by 1.45% on serialize_block_scalars, which is why the numbers now come from the enforcing environment.",
+    "note": "Written by `scripts/ir_gate.py --update`; no value in this file is transcribed. The reasoning behind the tolerance, and the measurements that sized it, are in QUALITY_MATRIX.md section 2.",
     "rustc": "1.97.1 (8bab26f4f 2026-07-14)",
     "tool": "callgrind"
   },

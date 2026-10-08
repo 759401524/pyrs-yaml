@@ -27,6 +27,18 @@ status: new
 
 #### 新增
 
+- **指令数门禁开始度量 AST→Python 转换，关掉 `perf-coverage:binding-layer`** —
+  `crates/pyrs-yaml/benches/ir_gate.rs` 新增 `to_python_small`、`to_python_medium`、
+  `to_python_anchors`，用与引擎 harness 相同的输入字节，让每个用户都会经过的那一层第一次有了可数的指令
+  数值。刻意测 `safe_load` 的 AST 路径而不是 P3 直接加载捷径：不带锚点的 fixture 会让我们量到与带标签、
+  带锚点的数据实际付出的量不同的东西。转换失败或产出空对象时，harness 直接退出，而不是把这一轮算成
+  便宜的一轮：容差只追究增长，所以悄悄不再干活的 harness 本来会报出一个巨大的“改进”并通过。
+  `scripts/ir_gate.py` 现在把两个 harness 汇成一张场景表（名字重复
+  即报错，某个 harness 什么都不列也报错——后者会让 `--update` 写出缺该通道数值的 baseline，并靠"什么都没
+  比较"而通过）。`quality_matrix.py` 导出的图里出现了 `pyrs-yaml`，洞随之自行消失——注销被强制的方式与
+  "新洞未登记不许过"是同一条测试，正是台账的设计。两点局限如实写明：该可执行文件链接 CPython，只能在
+  Linux 跑（Windows 实测：能编出来，启动即 `0xC000021A` 崩），且 `cargo clippy --all --all-targets`
+  看不见带 feature 门的 bench，新文件靠构建而非 lint 校验。
 - **防线量出了自己身上的一处空档：指令数门禁够不到 Python 绑定层** —
   `quality_matrix.py` 现在推导 `ir_gate` harness 真正链接的 crate（bench 所属 crate 及其 workspace
   依赖：`pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`），再与提供 Python API 的
@@ -201,6 +213,17 @@ status: new
 
 #### 修复
 
+- **指令数门禁按名字只读一个 harness 文件，而它的 baseline 有一半是手抄的** — 树上已经有了
+  `crates/pyrs-yaml/benches/ir_gate.rs`，只点名 `crates/pyrs-yaml-core/benches/ir_gate.rs` 的场景探针
+  却仍只会比十五个名字里的十二个：一整条通道从未进过 baseline，`ir-unbaselined` 也报不出它 — 与 #303
+  的图探针停在第一个 `[dependencies]` 是同一类。`ir_harness_channels()` 现在从 manifest 推导 harness
+  清单，并与磁盘上的文件双向比对（声明了 target 而 harness 源码不见了是 `ir-harness-missing`，有 harness
+  文件却没有谁编译它是 `ir-harness-undeclared`），两个 harness 列出同一个场景名也是发现（
+  `ir-scenario-duplicate`）——一个 baseline 数值说不出它来自哪条通道；上述每种注入都有
+  `tests/test_quality_matrix.py` 负责变红。已提交的 baseline 还有第二处问题：它的 `generated_by.note`
+  是手写的，而 `ir_gate.py --update` 不写文字，所以下一次再生成的 artifact 会把那段解释本文件自身出处
+  的话删掉，diff 看起来倒像是有人做了个决定。理由已搬进 `QUALITY_MATRIX.md`，`--update` 写一条生成的
+  note，提交内容的键则由 `tests/test_ir_baseline_workflow.py` 钉死为作业写出的那些。
 - **`Test matrix (all legs)` 只等 11 个 job 里的 3 个，另外 8 个仍可带着红合并** — #300 加的扇入只覆盖
   `test`、`test-freethreaded`、`coverage`，把 `rust-lint`(clippy)、`property-tier`、`msrv-check`、
   `no-std-check`、`build`、`compliance-report`、`i18n-check` 留在了本该代表整场运行的那一个检查之外。
