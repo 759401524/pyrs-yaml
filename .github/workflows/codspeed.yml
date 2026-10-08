@@ -83,9 +83,11 @@ jobs:
   # effects is not reproducible: three consecutive pushes that each did strictly
   # less work reported -7.7%, -10.5% and -9.8% for the same benchmark set.
   # callgrind Ir repeats to ~0.001% on the same binary, so this job can hold a
-  # real line — 2%, which is what the same code measured apart between two Linux
-  # images (+1.45% worst scenario: loader and malloc are counted too). Costs about
-  # six seconds of measurement; the build dominates. See scripts/ir_gate.py.
+  # real line - 0.5%, sized from two runner images agreeing to 0.0018% on one
+  # commit. Each scenario is the largest of `--repeats` (3) measurements, because
+  # the binding channel moves 0.83% run to run and a single sample of that would
+  # let a no-op change trip the line. Measurement is tens of seconds; the build
+  # dominates. See scripts/ir_gate.py.
   ir:
     name: Instruction-count baseline
     runs-on: ubuntu-24.04
@@ -113,5 +115,7 @@ jobs:
       - name: How to re-baseline
         if: failure()
         run: >
-          echo "If this movement is intended, re-measure locally and commit";
-          echo "scripts/ir_gate.py --update (needs valgrind; WSL works on Windows hosts).";
+          echo "If this movement is intended, regenerate the numbers on the enforcing image:";
+          echo "gh workflow run 'Ir baseline refresh' --ref <branch>, then commit the artifact it uploads.";
+          echo "A local scripts/ir_gate.py --update measures a different machine - which is how the";
+          echo "committed values came to sit 1.42% above what this image reports for the same code.";
