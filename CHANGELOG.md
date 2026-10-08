@@ -285,6 +285,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two runner jobs in this repository measure `serialize_block_scalars` 1.44% apart, and the Ir
+  baseline did not say which one its numbers came from** — regenerating `.ci/ir-baseline.json` for the
+  fifteen-scenario gate turned the enforcing job (`Instruction-count baseline` in `codspeed.yml`) red on
+  that scenario: it reports 16,020,942 and 16,020,915 across two runs, while
+  `.github/workflows/ir-baseline.yml` reports 15,792,8xx–15,792,9xx across eight — two runner images,
+  the same pinned rustc 1.97.1, byte-identical sources, and every other scenario agreeing to 0.08%.
+  Three explanations were tested and all three failed: the image, a restored build cache (the step was
+  deleted and the number stayed), and this ledger's own earlier claim that the committed values had been
+  made off-runner (the enforcing job reproduces them). The cause is unnamed, and the instrument to name
+  it exists now: `build_exe` prints the SHA-256 of the binary it measures and both jobs print `nproc`,
+  `valgrind --version`, `rustc -vV` and the CPU model. What the baseline file did lose is prose that had
+  been typed into it — its `generated_by.note` cited a commit that is not PR #299's head and predates the
+  toolchain pin, and its environment string is not what `environment()` emits for that image — so
+  `--update` writes every key now, including the sample size the numbers were drawn with, and
+  `tests/test_ir_baseline_workflow.py` pins the committed key set to the generated one.
+- **The new binding scenarios were too small to gate at 500 iterations** — two runs of one commit put
+  `to_python_small` 0.83% apart, wider than the 0.5% line they were about to be held to, while the engine
+  scenarios agreed to 0.0009%. `ITERATIONS` is 2 000 now, like the engine harness, which brings the
+  within-run spread to 0.076-0.24%; each scenario is sampled three times and the largest value is
+  committed, the count travels in `generated_by` and the enforcing run reads it back, because max-of-3
+  against a single sample is a different instrument wearing the same name. Every sample and spread is
+  printed, so the tolerance is argued from the job log rather than from a comment.
 - **The instruction gate read one harness file by name, and its baseline was part transcribed** — with
   `crates/pyrs-yaml/benches/ir_gate.rs` in the tree, the scenario probe that named only
   `crates/pyrs-yaml-core/benches/ir_gate.rs` would have compared twelve of fifteen names: a channel the

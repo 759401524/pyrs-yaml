@@ -1,23 +1,27 @@
 {
   "generated_by": {
-    "environment": "github-runner ubuntu-24.04, image 20261004.327.1",
+    "environment": "github-runner ubuntu24, image 20261004.327.1",
     "note": "Written by `scripts/ir_gate.py --update`; no value in this file is transcribed. The reasoning behind the tolerance, and the measurements that sized it, are in QUALITY_MATRIX.md section 2.",
-    "rustc": "1.97.1 (8bab26f4f 2026-07-14)",
+    "repeats": 3,
+    "rustc": "1.97.1",
     "tool": "callgrind"
   },
   "scenarios": {
-    "parse_anchors": 340998234,
-    "parse_block": 146076767,
-    "parse_inline_merge": 451496215,
-    "parse_medium": 355815979,
-    "parse_small": 49557018,
-    "serialize_anchors": 40490000,
-    "serialize_block": 19749711,
-    "serialize_block_scalars": 16020906,
-    "serialize_medium": 43769246,
-    "serialize_small": 5932455,
-    "to_json_medium": 20434695,
-    "to_toml_medium": 56324838
+    "parse_anchors": 341005993,
+    "parse_block": 146073832,
+    "parse_inline_merge": 451492359,
+    "parse_medium": 355816822,
+    "parse_small": 49557300,
+    "serialize_anchors": 40490084,
+    "serialize_block": 19749762,
+    "serialize_block_scalars": 15792910,
+    "serialize_medium": 43769202,
+    "serialize_small": 5932448,
+    "to_json_medium": 20434798,
+    "to_python_anchors": 389806776,
+    "to_python_medium": 414673362,
+    "to_python_small": 61300779,
+    "to_toml_medium": 56324855
   },
   "tolerance_hint": 0.005,
   "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
