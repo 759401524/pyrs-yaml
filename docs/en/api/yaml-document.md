@@ -71,10 +71,10 @@ yaml_str = doc.to_yaml_with_options(
 Convert to a Python dict/list, resolving alias references.
 
 ```python
-to_dict() -> dict[str, Any] | list[Any]
+to_dict() -> dict[Any, Any] | list[Any]
 ```
 
-**Returns:** Native Python types. Anchors (`&name`) are inlined, aliases (`*name`) are replaced with actual values. Scalars are converted to Python native types (bool/int/float/str/None).
+**Returns:** Native Python types. Anchors (`&name`) are inlined, aliases (`*name`) are replaced with actual values. Scalars are converted to Python native types (bool/int/float/str/None). The same resolution applies to mapping keys, so `~: 1` loads with a `None` key and `1: a` with the integer 1 - one text, one type, whichever side of the `:` it sits on.
 
 **Example:**
 

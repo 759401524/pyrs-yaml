@@ -102,10 +102,10 @@ yaml_str = doc.to_yaml_with_options(
 
 ### `to_dict()`
 
-Python dict/list로 변환합니다. 별칭 참조를 해석하여 네이티브 Python 타입을 반환합니다.
+Python dict/list로 변환합니다. 별칭 참조를 해석하여 네이티브 Python 타입을 반환합니다. 같은 해석은 mapping key에도 똑같이 적용됩니다 — `~: 1`의 key는 `None`, `1: a`의 key는 정수 1. 같은 텍스트라면 `:`의 어느 쪽에 있든 같은 타입이 됩니다.
 
 ```python
-to_dict() -> dict[str, Any] | list[Any]
+to_dict() -> dict[Any, Any] | list[Any]
 ```
 
 **반환값:** 딕셔너리 또는 리스트

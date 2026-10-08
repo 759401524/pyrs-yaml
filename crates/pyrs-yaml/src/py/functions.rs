@@ -95,7 +95,7 @@ pub(crate) fn parse_all_docs(
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "dict[str, Any] | list[Any]")]
+#[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "dict[Any, Any] | list[Any]")]
 /// Parse YAML into a Python dict/list, resolving anchors and merges.
 pub(crate) fn safe_load(
     py: Python,
@@ -173,7 +173,7 @@ pub fn bench_to_python(yaml: &str) -> Result<usize, pyo3::PyErr> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[dict[str, Any] | list[Any]]")]
+#[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[dict[Any, Any] | list[Any]]")]
 /// Parse a multi-document YAML stream into a list of dicts/lists.
 pub(crate) fn safe_loads(
     py: Python,
@@ -463,7 +463,7 @@ pub(crate) fn dump_file(py: Python, data: Py<PyAny>, path: &str) -> PyResult<()>
 }
 
 #[pyfunction]
-#[pyo3(signature = (path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]")]
+#[pyo3(signature = (path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[Any, Any] | None, str]")]
 /// Read a Markdown file and extract YAML front matter, returning `(frontmatter, body)`.
 pub(crate) fn read_markdown(
     py: Python,
@@ -476,7 +476,7 @@ pub(crate) fn read_markdown(
 }
 
 #[pyfunction]
-#[pyo3(signature = (content: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[str, Any] | None, str]")]
+#[pyo3(signature = (content: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[Any, Any] | None, str]")]
 /// Extract YAML front matter from a Markdown string, returning `(frontmatter, body)`.
 pub(crate) fn read_markdown_str(
     _py: Python,

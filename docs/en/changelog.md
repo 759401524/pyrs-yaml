@@ -305,6 +305,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **A mapping key now means what the same text means as a value** — `1: a` loaded as `{"1": "a"}`
+  while `a: 1` loaded as `{"a": 1}`, and `~: 1` as `{"~": 1}` while `a: ~` gave `{"a": None}`: one
+  document meant two things depending on which side of the `:` a scalar sat, so a config keyed by an
+  integer, bool or null could not be reached by lookup, and both reference libraries agree with each
+  other on every one of those rows. `py/convert.rs` converts a key with the value path itself rather
+  than a paraphrase of it — an untagged scalar takes the direct route, a tagged or aliased key keeps
+  the shared path and falls back to the source text when a custom `from_yaml` returns something
+  unhashable, so no pair is dropped — and `py/direct_load.rs` applies the same rule on the fast route,
+  because two implementations of one contract otherwise drift again. The mirror defect was in the
+  bridges: a TOML key is a string by TOML's grammar and the shared AST marks that with quoting, so
+  `"1" = 2` reached YAML as `1: 2` and `"" = 3` as a null key — a conversion that changed what the
+  document means — and `load_toml` now quotes exactly the keys either YAML schema would re-type while
+  leaving every other key plain. Measured on the instruction gate rather than argued: +1.54~1.59% on
+  the binding channel, +6.2% on `from_toml_medium` — the quoting half, the reason #307 added a reader
+  scenario for that bridge in the first place — and 0.00% on the other thirteen. The contract follows
+  the behaviour — `safe_load`, `safe_loads`,
+  `YAML().safe_load*` and `read_markdown*` are `dict[Any, Any]` — and 28 documented signatures plus the
+  `to_dict()` prose across four locales said "string keys". `tests/test_key_resolution_parity.py` (76
+  cases) pins key==value resolution for 24 texts, live parity against PyYAML and ruamel on 10 shapes,
+  the 1.1-vs-1.2 disagreements with the dissenting library named, the two routes agreeing, bridge round
+  trips and a one-round fixed point. Three characterization tests re-derived with the reason where they
+  live, one of them `tests/test_route_parity.py`'s defect pin, whose promised move into `PARITY_TABLE`
+  this is. Complex (nested) keys still take the Debug stand-in — both references raise there — and remain
+  the open half of key fidelity.
 - **A changelog entry could be filed where no reader looks** — 401a8057 added one hash-fidelity entry
   to all five mirrors and put it above the preamble in `CHANGELOG.md`, inside the `tags:` list of the en
   and zh frontmatter, and between the frontmatter and the first heading in ja and ko, so it was outside

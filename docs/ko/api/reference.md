@@ -96,7 +96,7 @@ docs = pyrs_yaml.parse_all_docs("a: 1\n---\nb: 2")
 YAML를 파싱하여 네이티브 Python 타입을 반환합니다.
 
 ```python
-safe_load(yaml: str) -> dict[str, Any] | list[Any]
+safe_load(yaml: str) -> dict[Any, Any] | list[Any]
 ```
 
 **다음과 동일:** PyYAML의 `yaml.safe_load()`
@@ -112,7 +112,7 @@ data = pyrs_yaml.safe_load("key: value")  # {'key': 'value'}
 여러 YAML 문서를 파싱합니다.
 
 ```python
-safe_loads(yaml: str) -> list[dict[str, Any] | list[Any]]
+safe_loads(yaml: str) -> list[dict[Any, Any] | list[Any]]
 ```
 
 **다음과 동일:** PyYAML의 `yaml.safe_loads()`
@@ -546,7 +546,7 @@ asyncio.run(main())
 Markdown 파일에서 YAML Front Matter를 추출합니다.
 
 ```python
-read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 **반환값:** `(frontmatter_dict, content_string)`. Front Matter가 없으면 `frontmatter`는 `None`.
@@ -556,7 +556,7 @@ read_markdown(path: str, schema: str = "core", max_depth: int = 1000) -> tuple[d
 Markdown 문자열에서 YAML Front Matter를 추출합니다.
 
 ```python
-read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[str, Any] | None, str]
+read_markdown_str(content: str, schema: str = "core", max_depth: int = 1000) -> tuple[dict[Any, Any] | None, str]
 ```
 
 ## :material-translate: i18n 함수 {#i18n-functions}

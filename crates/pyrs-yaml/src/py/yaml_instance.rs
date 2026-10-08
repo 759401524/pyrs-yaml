@@ -69,7 +69,7 @@ impl YAML {
     }
 
     /// Parse YAML into a dict/list (resolves anchors and merges).
-    #[pyo3(signature = (yaml: "str") -> "dict[str, Any] | list[Any]")]
+    #[pyo3(signature = (yaml: "str") -> "dict[Any, Any] | list[Any]")]
     fn safe_load(&self, py: Python, yaml: &str) -> PyResult<Py<PyAny>> {
         let schema_enum = parse_schema(&self.schema)?;
         match crate::py::direct_load::try_direct_load(
