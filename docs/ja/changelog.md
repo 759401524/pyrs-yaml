@@ -40,9 +40,13 @@ status: new
   ハーネスもエラー - 後者を許すと `--update` がその系の行を欠いた基準値を書き換え、何も比較しないまま
   通過しうる）。`quality_matrix.py` の導出グラフに `pyrs-yaml` が入り、穴は自然に消えた — 登録の解除が
   強制される検査は、新しい穴を未登録で通すのを拒むのと同じものなので、台帳の設計通り。曖昧にしない
-  限界が二つ: この実行ファイルは CPython をリンクするので Linux 専用（Windows ではビルドは通るが起動時に
+  限界が三つ: この実行ファイルは CPython をリンクするので Linux 専用（Windows ではビルドは通るが起動時に
   `0xC000021A` で落ちる実測）、そして `cargo clippy --all --all-targets` は feature 指定つきの bench を
-  見ないので、新ファイルは lint ではなくビルドで検証される。
+  見ないので、新ファイルは lint ではなくビルドで検証される。三つ目は実行して見つかった: ハーネスは
+  単独の実行ファイルなので、同じ feature が `pyo3/auto-initialize` も有効にする — 最初の再生成実行は
+  両ハーネスをビルドし両方のシナリオ一覧まで読めたのに、測るループで "The Python interpreter is not
+  initialized" に落ちた。wheel は影響を受けない: `[tool.maturin]` は feature を渡さず、
+  `--all-features` でビルドする場所も無い。
 - **防衛策が自分自身の穴を測った: 命令数ゲートは Python バインディングに届かない** —
   `quality_matrix.py` は `ir_gate` ハーネスが実際にリンクする crate（bench の所属 crate とその
   workspace 依存: `pyrs-yaml-core`、`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml`）を導出し、

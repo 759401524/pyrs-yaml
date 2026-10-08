@@ -256,11 +256,15 @@ mirrors `safe_load`'s AST path and skips the P3 direct-load shortcut deliberatel
 anchor-free fixture would have reported the shortcut, which is a different quantity than the one
 tag- and anchor-bearing data pays for. The entry left the registry because the derived graph gained
 `pyrs-yaml`, which is the registry working as designed: the deletion is enforced by the same test
-that would have caught an unregistered hole. Two limits are recorded rather than smoothed over:
+that would have caught an unregistered hole. Three limits are recorded rather than smoothed over:
 this binary links CPython, so it builds anywhere and runs only on Linux (measured on Windows —
-`cargo bench --no-run` succeeds, then the exe dies at start-up with `0xC000021A`), and
+`cargo bench --no-run` succeeds, then the exe dies at start-up with `0xC000021A`);
 `cargo clippy --all --all-targets` does not compile a `required-features` bench target, so the new
-file is checked by building it, not by the lint job.
+file is checked by building it, not by the lint job; and a third was found by running it on the
+enforcing image — the harness is a standalone executable that must bring CPython up itself, so the
+same feature turns on `pyo3/auto-initialize`, because the first refresh run built both harnesses, read
+both scenario lists, and only then failed in the measured loop with "The Python interpreter is not
+initialized".
 
 Closing a hole with a second harness is also how a third defect of a familiar class turned up: a
 reader that stops early passes silently, which is exactly what #303's graph probe had done. The
