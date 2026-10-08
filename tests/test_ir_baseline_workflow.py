@@ -84,8 +84,32 @@ def test_the_committed_baseline_is_exactly_what_the_job_writes():
     gate = _load(Path("scripts") / "ir_gate.py")
     data = json.loads(BASELINE.read_text(encoding="utf-8"))
     assert set(data) == {"toolchain", "generated_by", "tolerance_hint", "scenarios"}, sorted(data)
-    assert set(data["generated_by"]) == {"environment", "rustc", "tool", "note"}, sorted(data["generated_by"])
+    assert set(data["generated_by"]) == {"environment", "rustc", "tool", "repeats", "note"}, sorted(
+        data["generated_by"]
+    )
+    assert data["generated_by"]["repeats"] >= 1, "the gate's sample size is part of the claim"
+    assert data["generated_by"]["repeats"] == gate.DEFAULT_REPEATS, (
+        "the enforcing job reads this count, so a baseline made with a different one is a different gate"
+    )
     assert data["generated_by"]["note"] == gate.PROVENANCE_NOTE, "the note is generated, not transcribed"
+
+
+def test_the_sample_size_is_read_from_the_baseline_not_from_memory():
+    """The gate has to enforce the same envelope the baseline was drawn with.
+
+    max-of-3 versus a single sample is not a cosmetic difference: the binding channel moves 0.83%
+    run to run, so a one-shot enforcing run against a max-of-3 baseline reads low, and a max-of-3
+    enforcing run against a single-sample baseline reads high. Precedence is explicit > recorded >
+    default, and a missing or zero recorded count falls through instead of configuring a gate that
+    measures nothing.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    assert gate.resolve_repeats(None, None) == gate.DEFAULT_REPEATS
+    assert gate.resolve_repeats(None, 5) == 5
+    assert gate.resolve_repeats(2, 5) == 2
+    assert gate.resolve_repeats(None, 0) == gate.DEFAULT_REPEATS
+    assert gate.resolve_repeats(0, None) == gate.DEFAULT_REPEATS
+    assert gate.resolve_repeats("", "nonsense") == gate.DEFAULT_REPEATS
 
 
 def test_the_gate_measures_every_harness_the_repository_declares():

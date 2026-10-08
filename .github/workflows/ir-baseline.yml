@@ -2,13 +2,14 @@ name: Ir baseline refresh
 
 # The instruction-count gate enforces numbers that were *generated somewhere else*.
 # `scripts/ir_gate.py` says it plainly: a baseline generated in WSL and checked on a GitHub
-# runner measured +1.45% apart on the most allocation-sensitive scenario, which is why the
-# tolerance is 2% and not 0.1% - the margin is spent on the environment gap, not on noise.
+# runner measured +1.45% apart on the most allocation-sensitive scenario - and the committed
+# values turned out to carry exactly that offset, which is the second reason this job exists.
 #
-# This job closes that gap deliberately instead of by accident. It runs the same measurement on
-# the same image the gate runs on and uploads the resulting file; committing the artifact moves
-# every number to the environment that enforces them, and the tolerance can then be re-argued
-# against a real repeat measurement instead of a cross-image guess.
+# This job closes the gap deliberately instead of by accident. It runs the same measurement on the
+# same image the gate runs on, taking the largest of `--repeats` samples per scenario, and uploads
+# the resulting file; committing the artifact moves every number to the environment that enforces
+# them, and the tolerance can then be re-argued against a real repeat measurement instead of a
+# cross-image guess.
 #
 # Nothing here is automatic on purpose: a baseline is a claim about the code, and a workflow that
 # rewrites it whenever it likes would turn the gate into a mirror. Run it when the toolchain is
