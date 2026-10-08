@@ -10,7 +10,9 @@
 //!
 //! Kept byte-exact against their originals, including leading newlines: an
 //! implicit-document start changes indentation probing, so the instruction count
-//! is part of the fixture's identity.
+//! is part of the fixture's identity. The two non-YAML literals below are pinned the
+//! same way, and `crates/pyrs-yaml-core/tests/ir_fixtures.rs` is what keeps them from
+//! rotting into documents the engines no longer emit.
 #![doc(hidden)]
 
 /// Two plain pairs, no comments, no anchors: the smallest realistic mapping.
@@ -95,4 +97,33 @@ folded: >
   block scalar that
   will be folded into
   a single line.
+"#;
+
+/// [`MEDIUM_YAML`] rendered as JSON, committed as bytes rather than rendered at run
+/// time. `to_json_medium` numbers the writer; `from_json_medium` numbers the reader, and
+/// the reader must not inherit the writer's day - a change to how `to_json_text` spells
+/// output would otherwise move the reading scenario and be read as a reading regression.
+/// Re-derived deliberately, never accidentally: `tests/ir_fixtures.rs` requires these
+/// bytes to equal what the writer produces today.
+pub const MEDIUM_JSON: &str = r#"{"server":{"host":"localhost","port":8080,"timeout":30},"database":{"driver":"postgres","host":"db.example.com","port":5432,"name":"myapp","pool_size":10},"logging":{"level":"info","format":"json","outputs":["stdout","file:/var/log/app.log"]},"features":{"auth":true,"cache":true,"rate_limit":false}}"#;
+
+/// [`MEDIUM_YAML`] rendered as TOML, for the reason [`MEDIUM_JSON`] states.
+pub const MEDIUM_TOML: &str = r#"[server]
+host = "localhost"
+port = 8080
+timeout = 30
+[database]
+driver = "postgres"
+host = "db.example.com"
+port = 5432
+name = "myapp"
+pool_size = 10
+[logging]
+level = "info"
+format = "json"
+outputs = ["stdout", "file:/var/log/app.log"]
+[features]
+auth = true
+cache = true
+rate_limit = false
 "#;

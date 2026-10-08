@@ -810,6 +810,50 @@ measured, printed on every run of the hook and registered, and
 measurement — comparing per-section *gaps* rather than counts, so an entry added to all five mirrors
 leaves the claim true while adding one to a single mirror makes it false.
 
+**(as) #292 was adjudicated on a channel that could not see it, and re-adjudicated on one that can (2026-10-08).**
+
+## 292 (resolve mapping keys with the same rule as values) is closed, and the closing evidence was a
+
+wall-clock CodSpeed regression of −10.5% on `test_to_dict` while this ledger claimed the Ir gate saw
+"~+19%". Neither number was reproducible, so the change was re-measured properly: three variants
+through `.github/workflows/ir-baseline.yml` — `main`, the branch as written, and the branch with its
+byte-only pre-check switched off — each run twice, landing on two runner images and three host CPU
+models. Resolving keys like values costs **+1.45%…+1.62% on the binding channel and 0.00% on every
+engine scenario**. The pre-check the branch added to offset that (`might_start_typed` ahead of the
+whole-edge trim in `resolve_core_type`, justified in a code comment and never measured) is a
+pessimization everywhere the gate can look: **+0.72%…+1.03%** on the binding scenarios it was written
+to protect, **+0.86%…+6.66%** on the engine ones, `to_json_medium` worst at +6.66%; switch it off and
+each engine scenario returns to `main`'s value within 0.003%. The old +19% was measured on an
+instrument that did not exist yet, and the 0.0–0.1 basis-point repetition of every delta across three
+CPU models is the cross-check that the pinned environment of (ao)/(ap) actually holds. Recorded rather
+than edited out: the behaviour change is ~13× cheaper than claimed here, and the mitigation written
+for it was worse than no change.
+
+**The half that still could not be seen is why the gate is wider now.** #292's other change is on the
+*reading* side of a cross-format bridge — `load_toml` must quote a key that either YAML schema would
+re-type, or the conversion silently changes what the document means — and the scenario set had
+`to_toml_medium` (the writer) with no reader twin, so per-key work added there moved nothing the gate
+could observe. `from_json_medium` and `from_toml_medium` are in, reading **committed** bytes — the
+writer's output for `MEDIUM_YAML`, pinned to it by `crates/pyrs-yaml-core/tests/ir_fixtures.rs` — a
+choice made after a
+measurement that then refuted its own explanation: rendering the input in setup (so the writer's cost
+cancels in the subtraction) moved `to_json_medium` +1.52% and `to_toml_medium` +0.26% with the engines
+untouched, three times the tolerance on scenarios the addition never enters, and the extra call site
+was blamed. Committing the bytes removed the call and `to_json_medium` moved +1.489% anyway. So the
+mechanism is recorded as unresolved — the movement tracks the harness binary changing shape, not the
+fixture's provenance — while the property is settled: a harness edit is not neutral for the numbers
+that harness already produces, and a re-baseline after one separates method from code by saying so.
+`serialize_*` and `parse_*` in the same binary stayed inside 0.042%. The readers exit 3 rather
+than report a number if the fixture stops parsing — proven by injecting an unparseable document into one
+arm — and
+`quality_matrix.py` now derives `ir-bridge-unidirectional` for any `to_<format>_*`/`from_<format>_*`
+scenario whose twin is missing, with both directions of the rule fired by deletion in
+`tests/test_quality_matrix.py`. `to_python_*` is excluded by the rule's own definition (a language
+binding is not a text format), which is the kind of exemption a probe needs stated rather than
+stumbled into. **Consequence for #292:** reviving it is now a measured decision — land the key
+resolution without the pre-check, ~1.5% Ir on the one channel users hit, and let the new bridge
+scenarios price the TOML quoting instead of guessing at it.
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.
@@ -853,7 +897,7 @@ runners (macOS especially) and are tracked in CodSpeed instead.
 
 ---
 
-#### Research & Exploration
+##### Research & Exploration
 
 Tracked as open questions for future roadmap inclusion; not committed to any version.
 

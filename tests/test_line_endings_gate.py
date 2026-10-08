@@ -172,20 +172,59 @@ def test_the_fixtures_commit_exactly_what_the_tree_holds(gate):
     The earlier draft of this test asserted the committed blob holds no CR bytes. That was false on
     the branch adding it, which is how it was caught: the assertion was written from a probe of one
     ref and applied to all of them.
+
+    The draft after that compared the tree against `HEAD:<path>`, and this file replaces it, because
+    that comparison cannot tell "the branch edited the file" from "checkout converted it". It fired
+    on this branch for a code-only change - `git show HEAD:.../bench_inputs.rs` reports 2,953 bytes
+    and 98 CR where the tree holds 4,410 and 129 CR - and it can only ever pass there on a file
+    nobody touched: under `jj`'s colocated layout `HEAD` is the *parent* commit, so the reference is
+    whatever the branch started from rather than what the branch holds. Asking the filter pipeline
+    directly - `git hash-object` with and without the repository's filters - measures the same
+    invariant without depending on which commit happens to be checked out, and answers identically
+    in CI and in a working copy.
+
+    Recorded here because it undercuts the premise of the exclusion and is a separate change: rustc
+    normalizes CRLF inside raw strings. `MEDIUM_YAML` compiles to 0 CR from a file that stores 98,
+    and `to_toml`'s output matches the compiled literal byte for byte - so a normaliser touching
+    these *source* files would not change what the Ir scenarios parse. Whether `-text` and the
+    hook exclusion still earn their keep is a question with a measurable answer, not one to settle
+    inside a performance-instrument PR.
     """
     for fixture in gate.DATA_FIXTURES:
-        stored = subprocess.run(
-            ["git", "show", f"HEAD:{fixture.replace(chr(92), '/')}"], capture_output=True, check=False
-        ).stdout
-        if not stored:
-            continue  # no such ref in this checkout (a scratch clone); the attribute test covers it
-        on_disk = (REPO_ROOT / fixture).read_bytes()
-        crs_stored = stored.count(CR)
-        crs_tree = on_disk.count(CR)
-        assert stored == on_disk, (
-            f"{fixture}: the committed bytes ({len(stored)}, {crs_stored} CR) differ from the tree "
-            f"({len(on_disk)}, {crs_tree} CR) - the measurement is not reproducible"
+        filtered, as_stored = _filter_hashes(REPO_ROOT, fixture.replace(chr(92), "/"))
+        assert filtered == as_stored, (
+            f"{fixture}: the repository's filters rewrite these bytes on commit "
+            f"({filtered[:12]} with filters, {as_stored[:12]} as they lie on disk) - a checkout "
+            "on another machine would parse a different input"
         )
+
+
+def _filter_hashes(root: Path, rel: str) -> tuple:
+    """The object id git would store for `rel`, with and without the repository's filters."""
+    out = []
+    for args in (["git", "hash-object", "--"], ["git", "hash-object", "--no-filters", "--"]):
+        out.append(subprocess.run([*args, rel], capture_output=True, check=True, cwd=root).stdout.decode().strip())
+    return out[0], out[1]
+
+
+def test_the_filter_comparison_bites_when_conversion_is_allowed(tmp_path):
+    """The replacement assertion has to fail on the shape it exists to catch.
+
+    A scratch repository with the blanket rule and no `-text` stores a CRLF file as LF, so the two
+    hashes differ and the guard fires; add `-text` and the same bytes hash identically both ways,
+    which is the state the real fixtures are pinned to. Without this, the assertion would be a
+    statement about one repository that no injection has ever tried to break.
+    """
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "fixture.rs").write_bytes(b"a\r\nb\r\n")
+
+    (tmp_path / ".gitattributes").write_text("* text=auto eol=lf\n", encoding="utf-8")
+    filtered, as_stored = _filter_hashes(tmp_path, "fixture.rs")
+    assert filtered != as_stored, "the guard cannot see a checkout that converts line endings"
+
+    (tmp_path / ".gitattributes").write_text("* text=auto eol=lf\nfixture.rs -text\n", encoding="utf-8")
+    filtered, as_stored = _filter_hashes(tmp_path, "fixture.rs")
+    assert filtered == as_stored, "`-text` did not stop the conversion the fixtures depend on"
 
 
 def test_the_excluded_fixtures_are_the_declared_ones(gate):

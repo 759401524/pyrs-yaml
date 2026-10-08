@@ -36,10 +36,11 @@
 //!
 //! Run through `scripts/ir_gate.py`, which does the subtraction, compares against
 //! `.ci/ir-baseline.json` and prints the table CI gates on.
-use pyrs_json::to_json_text;
-use pyrs_toml::to_toml;
+use pyrs_json::{from_json, to_json_text};
+use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::bench_inputs::{
-    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML,
+    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_TOML, MEDIUM_YAML,
+    MERGE_INLINE_YAML, SMALL_YAML,
 };
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
@@ -57,6 +58,14 @@ enum Work {
     ToJson,
     /// The hub AST rendered as TOML, same reasoning.
     ToToml,
+    /// TOML text read into the hub AST: the path `load_toml()` takes. The two writers
+    /// above measure the outbound half of each bridge only. The inbound half is where a
+    /// key's *style* is decided - a TOML or JSON key is a string by its own grammar, and
+    /// the shared AST marks that with quoting - so per-key work added there is invisible
+    /// to every scenario that exists today.
+    FromToml,
+    /// JSON text read into the hub AST, same reasoning as [`Work::FromToml`].
+    FromJson,
 }
 
 /// Every scenario the gate measures. Names mirror `yaml_bench.rs` where an
@@ -85,6 +94,21 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // null and no alias - so neither scenario measures a failure path.
         ("to_json_medium", MEDIUM_YAML, Work::ToJson),
         ("to_toml_medium", MEDIUM_YAML, Work::ToToml),
+        // The same two bridges read back, from committed bytes rather than bytes
+        // rendered here. `tests/ir_fixtures.rs` requires the literals to equal what the
+        // writers emit today, so a change in how the writers *spell* output re-derives
+        // them on purpose instead of quietly moving what the reader is measured on.
+        //
+        // Rendering them here was tried first, on the theory that a second call site in
+        // setup would shift the writer scenarios; the measurement refuted that theory.
+        // `to_json_medium` came out +1.52% against `main` with the call and +1.489% with
+        // the bytes committed - the movement tracks the harness binary changing shape, not
+        // how the fixture got there, and `serialize_*` / `parse_*` in that same binary
+        // stayed inside 0.042%. Unresolved, and stated rather than smoothed over: a
+        // re-baseline that follows a harness edit mixes method with code, so the change
+        // that moves a number for a reason the library did not do has to say so.
+        ("from_json_medium", MEDIUM_JSON, Work::FromJson),
+        ("from_toml_medium", MEDIUM_TOML, Work::FromToml),
     ]
 }
 
@@ -124,9 +148,36 @@ fn main() {
                         }
                         Work::ToToml => std::hint::black_box(to_toml(std::hint::black_box(&ast)))
                             .expect("toml writes the hub AST"),
-                        Work::Parse => unreachable!("handled below"),
+                        _ => unreachable!("handled by the other arms"),
                     };
                     acc += std::hint::black_box(text).len();
+                }
+                acc
+            }
+        }
+        Work::FromJson | Work::FromToml => {
+            if setup_only {
+                std::hint::black_box(src);
+                0
+            } else {
+                let mut acc = 0usize;
+                for index in 0..ITERATIONS {
+                    let parsed = match work {
+                        Work::FromToml => from_toml(std::hint::black_box(src)),
+                        _ => from_json(std::hint::black_box(src)),
+                    };
+                    // A reader that started failing would still loop, still return a
+                    // number, and that number would be read as a speedup. Same rule the
+                    // binding harness prints at exit 3: a harness that measured nothing
+                    // does not get to report a result.
+                    let node = parsed.unwrap_or_else(|error| {
+                        eprintln!(
+                            "{name} iteration {index}: {error} - the fixture no longer reaches \
+                             the path being measured"
+                        );
+                        std::process::exit(3);
+                    });
+                    acc += usize::from(std::hint::black_box(&node).comment().is_some());
                 }
                 acc
             }

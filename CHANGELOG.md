@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The instruction gate measures both halves of every cross-format bridge** — `from_json_medium` and
+  `from_toml_medium` read the hub AST back from JSON and TOML text; until now the gate numbered the
+  writers only. The reader is where a key's meaning is decided — a TOML or JSON key is a string by its own
+  grammar, and the shared AST marks "a string, do not resolve" the only way it can, by quoting — so the
+  per-key work #292 adds there moved no number anyone could gate. The readers take committed bytes — the
+  writer's output for `MEDIUM_YAML`, pinned to it by `tests/ir_fixtures.rs`, so a reader never inherits
+  the writer's spelling by accident. What was measured on the way is recorded, including the part that
+  refuted its own explanation: rendering the input in setup moved `to_json_medium` +1.52% and
+  `to_toml_medium` +0.26% with no engine code changed — three times the tolerance on scenarios the
+  addition never enters — the extra call site was blamed, and committing the bytes moved
+  `to_json_medium` +1.489% anyway. The mechanism is left unresolved; the property is not, because a
+  harness edit is not neutral for the numbers that harness already produces and a re-baseline has to say
+  which movements are method and which are code (`serialize_*` and `parse_*` in that same binary stayed
+  inside 0.042%). A reader that stopped parsing exits 3 rather than reporting a smaller number, and that
+  path was proved by feeding one arm an unparseable document. `quality_matrix.py` derives `ir-bridge-unidirectional` for any
+  `to_<format>_*` / `from_<format>_*` pair measured in one direction only (`to_python_*` is exempt: a
+  language binding is not a text format), so the next half-bridge is reported rather than rediscovered.
+  Re-measuring #292 on the widened channel refuted the figure this ledger carried for it: resolving
+  mapping keys by the same rule as values costs +1.45–1.62% instructions on the binding channel and 0.00%
+  on every engine scenario, while the byte-only pre-check that branch added to offset the cost is
+  +0.86–6.66% on the engine scenarios and +0.72–1.03% on the binding ones — a pessimization on every
+  scenario it was written to help. Each delta repeated across two runner images and three host CPU models
+  to within 0.1 basis points, which is the cross-check that the pinned glibc capabilities hold.
 - **The instruction gate now measures the AST-to-Python conversion, closing `perf-coverage:binding-layer`**
   — `crates/pyrs-yaml/benches/ir_gate.rs` adds `to_python_small`, `to_python_medium` and
   `to_python_anchors` over the same fixture bytes the engine harness parses, so the layer every user

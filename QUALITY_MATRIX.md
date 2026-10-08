@@ -181,9 +181,26 @@ files written while building this matrix came out of the editor as CRLF, and
 failure mode, reproduced by the tool that polices it, caught by the tool.
 
 Non-obvious consequence for performance claims: the Ir gate is the only reproducible
-instrument in the set, and it is what flagged a real cost in #292 (plain-string mapping
-keys, ~+19% in a drift-free local ratio) that wall-clock CodSpeed had already noticed at
-−10%. Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
+instrument in the set. What it says about #292 is below, and it is not what this paragraph
+used to say: the ledger carried "~+19% in a drift-free local ratio" for the plain-string
+mapping-key change, a figure taken before this instrument existed and since refuted. The A/B
+that replaces it ran three variants through `.github/workflows/ir-baseline.yml` — `main`, the
+
+## 292 branch as written, and the #292 branch with its byte-only pre-check switched off — twice
+
+each, on two runner images and three host CPU models (`AMD EPYC 9V74`, `7763`, `Intel Xeon
+8573C`). Resolving mapping keys like values costs **+1.45% to +1.62%** on the binding channel
+and **0.00%** on every engine scenario. The pre-check written to offset that cost is a
+pessimization on every scenario in the set: **+0.72% to +1.03%** on the binding channel it was
+meant to protect and **+0.86% to +6.66%** on the engine channel (`to_json_medium` +6.66%,
+`to_toml_medium` +3.98%, `serialize_anchors` +2.03%), while switching it off returns each
+engine scenario to `main`'s number within 0.003%. Two things are worth keeping separately: the
+behaviour change is ~13× cheaper than the ledger claimed, and the mitigation written for it was
+worse than doing nothing — a claim in a code comment, never measured, in the one layer the gate
+can now see. That the same code repeated to 0.0–0.1 basis points across three CPU models is the
+cross-check that the pinned environment holds; the pair's deltas were identical in both runs.
+
+Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
 with a measured line instead of a vibe. That line is 0.5%. Within one run, three samples of each
 scenario spread at most 0.002% on the engine channel (`parse_inline_merge`, 7,792 instructions out of
 451M) and at most 0.19% on the binding channel (`to_python_small`), and across jobs and hosts — with the
@@ -212,7 +229,8 @@ first run `serialize_block_scalars` came in at +1.44% before the ISA was pinned.
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — fifteen of them, since the binding harness joined. `ir_gate.py --update --only <scenario>`
+from — seventeen of them, since the binding harness joined and since each cross-format
+bridge grew its reader. `ir_gate.py --update --only <scenario>`
 merges into the committed file and refuses to write a baseline with a missing number, because the
 first version silently reduced the scenario set to the one it had measured. And the file has to be
 re-generable in full: its first committed version carried a hand-written `generated_by.note`
@@ -220,7 +238,35 @@ explaining its own provenance, which turned out to be wrong in three checkable w
 the bullet above), and `--update` writes no prose at all. The explanation lives here; the file's
 keys are pinned by `tests/test_ir_baseline_workflow.py` to exactly what the job writes.
 
-## 3. Root-cause depth
+**A bridge measured in one direction is not measured.** `to_json_medium` and `to_toml_medium`
+numbered the outbound half of each cross-format bridge; nothing read anything back, and the
+reading half is where a key's *meaning* is decided — a TOML or JSON key is a string by its own
+grammar, and the hub AST marks "string, do not resolve" the only way it can, by quoting, so
+`load_toml` has to ask what a key would become under YAML before emitting it. Per-key work on
+that path is exactly what #292 adds, and the gate had no line on it: the scenario set grew
+`from_json_medium` and `from_toml_medium`, and `quality_matrix.py` keeps the pairing as a rule
+rather than a recollection — `ir-bridge-unidirectional` names any `to_<format>_*` /
+`from_<format>_*` scenario whose twin is missing, so the next bridge added in one direction only is
+reported instead of rediscovered. The readers take *committed* bytes — the writer's output for
+`MEDIUM_YAML`, pinned by `crates/pyrs-yaml-core/tests/ir_fixtures.rs` — and how that came about is a
+measurement that refuted its own first explanation. Rendering the input in setup, so the writer's cost
+would cancel in the subtraction, put `to_json_medium` +1.52% and `to_toml_medium` +0.26% above `main`
+with no engine code changed at all — past three times the tolerance on scenarios the addition never
+enters. The extra
+call site was blamed. Committing the bytes removed the call, and `to_json_medium` still came out
++1.489%: the movement tracks the harness binary changing shape, not how the fixture got there, and the
+mechanism is recorded as unresolved rather than re-explained on the spot. `serialize_*` and `parse_*`
+in that same binary stayed inside 0.042%. What is settled is the property: a harness edit is not a
+neutral act for the numbers that harness already produces, so a re-baseline that follows one has to
+say which movements are method and which are code.
+`to_python_*` is exempt by construction: it is the language binding, not a text format, and a
+probe that invented a `from_python_*` requirement would open its first hole on itself. Both
+readers exit rather than reporting a number if the fixture stops parsing, and the path was
+proved live rather than assumed: with one arm fed a deliberately unparseable document the
+binary printed `from_json_medium iteration 0: YAML parse error: expected a JSON value at line 1
+column 4 - the fixture no longer reaches the path being measured` and exited 3.
+
+### 3. Root-cause depth
 
 This is the dimension where the practice is genuinely systematic, and the evidence is in
 the ledger: in `ROADMAP.md` the words `mutation` (17), `attribut*` (34) and
@@ -247,7 +293,7 @@ resolution defect (`1:`, `true:`, `~:`, `.inf:` as keys) was found by a *user-fa
 parity comparison, not by the pipeline that found everything above. Depth of analysis was
 high once a signal existed; the signals were the bottleneck.
 
-## 4. Regression protection
+### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
 minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (60 of them), a named
@@ -267,7 +313,7 @@ Two structural gaps, both now enforced:
   harness now has its own tests, `tests/test_fuzz_rounds.py`, replaying a plan file through
   a `cargo` stub.
 
-## Registered blind spots
+### Registered blind spots
 
 Each id below is emitted by `scripts/quality_matrix.py` and registered in
 `.ci/quality-holes.json` with the date it was measured and the concrete state that removes
@@ -343,7 +389,7 @@ budget, because at 20 000 cases two of the three properties were dying on the ha
 allowance rather than on an assertion — and `perf-coverage:binding-layer`, opened by measuring what
 the instrument compiles and closed by building the harness it named.
 
-## Improvement plan
+### Improvement plan
 
 Ordered by how much defence per unit of work, with the acceptance test named — a plan item
 is done when its test is green, not when the change is merged.
@@ -378,7 +424,7 @@ is done when its test is green, not when the change is merged.
   keys to exactly what `--update` writes and the sample size to the default; the two jobs agree at
   `24fcba0a`; and `ir-unbaselined` / `ir-stale-baseline` stay empty.
 
-## Reading this document
+### Reading this document
 
 The measurement is a normal pytest module, so it runs in the tier CI already has:
 
