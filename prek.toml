@@ -123,6 +123,24 @@ entry = "python scripts/check_i18n.py"
 files = "^docs/(en|ja|ko|zh)/.*\\.md$"
 priority = "checks"
 
+# A wrapped paragraph whose continuation line starts with an issue reference (`#292 branch
+# as written, ...`) is not a continuation to a Markdown formatter: `rumdl fmt` promotes it
+# into a heading, blanks around it, and the sentence is left split across a heading. Three
+# such headings were in the tree at once while every gate stayed green, because a document
+# with a bogus heading is still valid Markdown - nothing asked whether the heading was
+# meant. The mechanism was reproduced, not inferred: a scratch file with the continuation
+# line came out of `rumdl fmt` with `## 292 branch as written, and more`. The rule is a
+# heading whose text starts with two or more digits not followed by a dot, measured against
+# every tracked page so it fires on the damage and on none of `### 1-D array`,
+# `#### 10. メタデータの操作` or `## 1. Test matrix coverage`.
+[[repos.hooks]]
+id = "doc-heading-integrity"
+name = "no split-sentence headings"
+language = "system"
+entry = "python scripts/check_doc_headings.py"
+files = "\\.md$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"

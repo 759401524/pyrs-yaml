@@ -305,6 +305,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **Three headings in the ledger were sentences a formatter had cut in half** — in hard-wrapped prose,
+  a continuation line that begins with an issue reference is an ATX heading as far as a Markdown
+  formatter is concerned, so `rumdl fmt` promoted it, blanked around it, and left the sentence split:
+  `ROADMAP.md` carried a heading reading `293's tier of the same class … — did` with "get its entries"
+  starting the next paragraph, and two more arrived with the `(as)` and `(at)` entries. Nothing
+  complained, because a document whose structure is wrong but legal has no way to report it — the
+  linter accepts the heading, `check_changelog_mirrors.py` reads version headers, `check_i18n.py` reads
+  page inventories. All three are rejoined, with a word leading the line so no reference can be
+  promoted again, and `scripts/check_doc_headings.py` is the eighteenth hook: a heading whose text
+  begins with two or more digits not followed by a dot. The rule was sized against the prose before
+  being asserted — run over the damaged text it reports exactly those three lines (one had reached
+  `main`, two appeared in the working copy), and over the 173 tracked pages of repaired prose it
+  reports none of `### 1-D array`,
+  `#### 0-D Scalar Arrays`, `#### 10. メタデータの操作` or `## 1. Test matrix coverage` — and it tracks
+  fenced blocks, because a fence-blind scan reports a shell comment in `docs/ja/contributing/site-i18n.md`
+  and demands a fix to a line that is not Markdown at all. The mechanism was reproduced rather than
+  inferred: a scratch file with the shape came back from the formatter with its continuation line
+  promoted, and the checker named it. `tests/test_doc_heading_gate.py` (19 cases) fires the rule on the
+  damaged text, proves the same sentence joined back is silent, checks the fence tracking inside and
+  after a block, requires the finding to name the fix, and asserts the hook is wired.
 - **A mapping key now means what the same text means as a value** — `1: a` loaded as `{"1": "a"}`
   while `a: 1` loaded as `{"a": 1}`, and `~: 1` as `{"~": 1}` while `a: ~` gave `{"a": None}`: one
   document meant two things depending on which side of the `:` a scalar sat, so a config keyed by an

@@ -180,17 +180,34 @@ files written while building this matrix came out of the editor as CRLF, and
 `scripts/check_line_endings.py` named them before anything was committed. That is the
 failure mode, reproduced by the tool that polices it, caught by the tool.
 
+The tier had a blind spot of the opposite kind — a defect the tools could not be asked about,
+because it produces *valid* output. A hard-wrapped paragraph whose continuation line begins with an
+issue reference is, to a Markdown formatter, an ATX heading: it gets promoted, blanked around, and
+the sentence is left split across a heading. Three such headings were in the tree at once, and the
+linter, the changelog mirror checker, the i18n checker and the link checker all stayed silent —
+nobody had asked whether a heading was *meant*. `scripts/check_doc_headings.py` asks now, as an
+eighteenth hook: a heading whose text begins with two or more digits not followed by a dot. The rule
+was sized against the prose before it was asserted — run over the damaged text it fires on exactly
+those three lines (one had already reached `main`, two more appeared in the working copy while
+landing the entries above), and over the 173 tracked pages it reports none of the digit headings this
+repository actually means (`### 1-D array`,
+`#### 10. メタデータの操作`, `## 1. Test matrix coverage`) — and it skips fenced blocks, because a
+scan that did not would report a shell comment in `docs/ja/contributing/site-i18n.md` and demand a
+fix to a line that is not Markdown at all. The mechanism was reproduced rather than inferred: a
+scratch file whose continuation line began with an issue reference came out of `rumdl fmt` with that
+line promoted into a heading, and the new checker named it at the line number.
+
 Non-obvious consequence for performance claims: the Ir gate is the only reproducible
 instrument in the set. What it says about #292 is below, and it is not what this paragraph
 used to say: the ledger carried "~+19% in a drift-free local ratio" for the plain-string
 mapping-key change, a figure taken before this instrument existed and since refuted. The A/B
 that replaces it ran three variants through `.github/workflows/ir-baseline.yml` — `main`, the
-
-## 292 branch as written, and the #292 branch with its byte-only pre-check switched off — twice
-
-each, on two runner images and three host CPU models (`AMD EPYC 9V74`, `7763`, `Intel Xeon
-8573C`). Resolving mapping keys like values costs **+1.45% to +1.62%** on the binding channel
-and **0.00%** on every engine scenario. The pre-check written to offset that cost is a
+PR #292 branch as written, and that branch with its byte-only pre-check switched off — twice
+each, on two runner images and three host CPU models (`AMD EPYC 9V74`, `7763`, `Intel Xeon`
+`8573C`). Resolving mapping keys like values costs **+1.45% to +1.62%** on the binding channel
+and **0.00%** on every engine scenario the gate had at that point — which did not include a TOML
+reader, and the paragraph below reports what the reader found once #307 added one. The pre-check
+written to offset that cost is a
 pessimization on every scenario in the set: **+0.72% to +1.03%** on the binding channel it was
 meant to protect and **+0.86% to +6.66%** on the engine channel (`to_json_medium` +6.66%,
 `to_toml_medium` +3.98%, `serialize_anchors` +2.03%), while switching it off returns each

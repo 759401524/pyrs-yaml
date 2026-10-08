@@ -515,9 +515,7 @@ behaviour": this ledger *deliberately* decided that #296 needed no release note,
 and no checker could disagree — `check_changelog_mirrors.py` compares version headers, which only
 move at a release, and `prek.toml` runs it on a `files:` pattern that a changeset without a
 changelog never matches, so the hook did not fire and the comparison had nothing to say. Meanwhile
-
-## 293's tier of the same class — "hygiene hooks run in CI", "the quality defence is measured" — did
-
+PR #293's tier of the same class — "hygiene hooks run in CI", "the quality defence is measured" — did
 get its entries. One of the two judgements is inconsistent with the other, and the tie-breaker
 cannot be prose in a ledger written by the same hand that made the decision.
 
@@ -811,9 +809,7 @@ measurement — comparing per-section *gaps* rather than counts, so an entry add
 leaves the claim true while adding one to a single mirror makes it false.
 
 **(as) #292 was adjudicated on a channel that could not see it, and re-adjudicated on one that can (2026-10-08).**
-
-## 292 (resolve mapping keys with the same rule as values) is closed, and the closing evidence was a
-
+PR #292 (resolve mapping keys with the same rule as values) is closed, and the closing evidence was a
 wall-clock CodSpeed regression of −10.5% on `test_to_dict` while this ledger claimed the Ir gate saw
 "~+19%". Neither number was reproducible, so the change was re-measured properly: three variants
 through `.github/workflows/ir-baseline.yml` — `main`, the branch as written, and the branch with its
@@ -870,6 +866,14 @@ type change), and it is now cheap to argue about: a one-chain form plus the 1.1 
 the gate can price in one re-baseline instead of one more debate. Registered as the pillar-four follow-up
 rather than attempted in the same change - (as) and (ap) are both about what happens when a perf claim
 gets shipped ahead of the instrument that can check it.
+
+**(au) A Markdown formatter had been rewriting the ledger's sentences into headings, and no gate could see it (2026-10-09).**
+
+Three headings in the tree were not headings. `ROADMAP.md` carried `## 293's tier of the same class — "hygiene hooks run in CI" … — did`, with the rest of that sentence sitting in its own paragraph underneath, and two more appeared while landing `(as)` and `(at)`. Every gate stayed green on all three, for the same reason and a different one each time: the linter accepts them because they are valid ATX, `check_changelog_mirrors.py` compares version headers, `check_i18n.py` compares page inventories — a document whose structure is wrong but *legal* has no way to complain. The cause is what happens when hard-wrapped prose meets a formatter: a continuation line that begins with an issue reference is, to the parser, a heading, so `rumdl fmt` promotes it and blanks around it. Reproduced rather than inferred — a scratch file with that exact shape came back with the line rewritten into `## 292 branch as written, and more`.
+
+`scripts/check_doc_headings.py` asserts the shape now, wired as the eighteenth hook (`doc-heading-integrity`). Its rule — a heading whose text starts with two or more digits not followed by a dot — was sized against the prose before it was asserted: run over the damaged text it reports exactly those three lines (one was already committed on `main`, two appeared in the working copy while `(as)` and `(at)` were being written), and over the 173 tracked pages of repaired prose it reports none of the digit headings this repository means (`### 1-D array`, `#### 0-D Scalar Arrays`, `#### 10. メタデータの操作`, `## 1. Test matrix coverage`). It tracks fenced blocks, and that came from the same measurement rather than from caution: `docs/ja/contributing/site-i18n.md` line 60 is a shell comment inside a console block, and a fence-blind scan would have demanded a fix to a line that is not Markdown at all. `tests/test_doc_heading_gate.py` (19 cases) fires the rule on the damaged text, proves the same sentence *joined back* is silent — so the guard is about the shape and not about citing pull requests — pins each legitimate digit heading as a non-finding, checks the fence tracking both inside and after a block, requires the message to name the fix, and asserts the hook is wired.
+
+Worth stating as a category the matrix had not considered. Every guard so far checks that content agrees with something else — a baseline, a mirror, a registry, a header. This one checks that the document is still the document the author wrote: an invariant over what a formatter does to prose, not over a disagreement between two sources.
 
 ### Note survival: the leading slot became a list (2026-10-04)
 
