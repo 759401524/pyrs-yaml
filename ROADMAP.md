@@ -784,6 +784,32 @@ the sample count is recorded in `generated_by` and the enforcing run reads it fr
 against a single sample is a different instrument wearing the same name. `ir_gate.py` prints every sample
 and its spread, so the tolerance is argued from the job log rather than from a comment.
 
+**(ar) A changelog entry could be committed where no reader looks, and now it cannot (2026-10-08).**
+401a8057 added a Fixed entry to all five mirrors and filed it above the preamble in `CHANGELOG.md`,
+inside the `tags:` list of the en and zh frontmatter, and between the frontmatter and the first heading
+in ja and ko. Five placements, one shared property: every one of them sits outside the changelog body,
+and every one is invisible to `scripts/check_changelog_mirrors.py`, which compares version headers while
+translation leaves those identical wherever the prose goes. The entry is now under
+`[Unreleased] → Fixed` in every mirror, in newest-first order — the position was measured rather than
+guessed: by commit date it belongs under the `crash-9b77aea4` entry and above the `crash-1b01ac3f` one —
+and `placement_errors` rejects both shapes hard: a bullet before the first version heading, and a bullet
+whose nearest heading is a version rather than a section. The second rule was measured before it was
+asserted (zero violations across the five mirrors on the tree of the day), which is the difference
+between a gate and a rule that has to be bypassed in its first week.
+
+**The same blindness in completeness form is registered here, not fixed.** The checker now prints each
+mirror's `[Unreleased]` entry counts by section position, and they differ: against root, `docs/en` is one
+entry behind and `docs/zh` five (one Added and five Fixed missing, plus one Changed bullet no other
+mirror has) — the recorded consequence of `AGENTS.md`'s "never commit partial updates" being enforced
+only by a check that cannot see one. `changelog-parity:entry-counts` in `.ci/quality-holes.json` holds
+that gap with the backfill as its exit criterion. Turning it into an assertion was declined in this
+change for the reason this ledger keeps relearning: a gate that goes red because three other mirrors are
+missing translations somebody else did not write gets disabled, not obeyed. So the divergence is
+measured, printed on every run of the hook and registered, and
+`tests/test_changelog_placement_gate.py` fails if the registered statement stops matching the
+measurement — comparing per-section *gaps* rather than counts, so an entry added to all five mirrors
+leaves the claim true while adding one to a single mirror makes it false.
+
 ### Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train everyone to ignore the tier" — held for as long as inputs failed it, and they no longer do, so the assertion is committed as `crates/pyrs-yaml-core/tests/note_survival.rs`: a deterministic replay of the committed YAML seed corpus that requires every note the reader recorded to appear in the emission **and** every input to reach a fixed point in one round. It runs under `cargo nextest`, i.e. on every PR, which is where the fuzz tier's `-runs=0` replay of the same files already sits. Measured coverage at commit time: **36** of the corpus's YAML seeds carry notes that the assertion can act on (`former-crash-ce106ccc.seed` and `former-crash-7918272c.seed` among them), so the test declares a floor of 30 rather than passing vacuously — a corpus that stopped carrying comments would fail the coverage assertion, not silently satisfy it.

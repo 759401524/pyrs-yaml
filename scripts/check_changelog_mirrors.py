@@ -6,7 +6,15 @@ headers (## [X.Y.Z]) and must contain a [Unreleased] section. This catches
 common mistakes — adding an entry to root but forgetting a mirror — without
 requiring translated content to match the English text byte-for-byte.
 
-Exit code 0 = structurally in sync; 1 = drift detected.
+It also checks *placement*, which the version-header comparison cannot see: an entry
+bullet has to sit under a section heading (`### Fixed` and friends) inside a version
+block. 401a8057 put one hash-fidelity entry above the preamble in root, inside the
+`tags:` list of the en and zh frontmatter, and between the frontmatter and the first
+heading in ja and ko - invisible in the changelog body in all five files, and green
+under every gate that existed, because "the same version headers exist" says nothing
+about where a reader looks. `placement_errors` is the rule that would have caught it.
+
+Exit code 0 = structurally in sync and every entry in place; 1 = drift detected.
 
 Importing this module on Python 3.8 used to raise `TypeError: 'type' object is not
 subscriptable` - `def _versions(text: str) -> set[str]` evaluates its annotation at import time
@@ -35,6 +43,13 @@ FILES = [
 _VERSION_RE = re.compile(r"^#{2,3} \[(v?\d+\.\d+\.\d+)\](?:[ —][^\]]+)?\s*$", re.M)
 _UNRELEASED_RE = re.compile(r"^#{2,3} \[Unreleased\]", re.M)
 
+# A release-note entry, a version heading (any locale's `[Unreleased]` or `[X.Y.Z]`), and any
+# heading at all. Entry bullets are `**bold lead-in**` by this changelog's convention, which is what
+# distinguishes them from the `>` quotes and `- ` lists that appear in prose.
+_ENTRY_RE = re.compile(r"^- \*\*")
+_HEADING_RE = re.compile(r"^#{1,6} ")
+_VERSION_HEADING_RE = re.compile(r"^#{2,4} \[(?:Unreleased|v?\d+\.\d+\.\d+)\]")
+
 
 def _versions(text: str) -> set[str]:
     return set(_VERSION_RE.findall(text))
@@ -44,13 +59,86 @@ def _has_unreleased(text: str) -> bool:
     return bool(_UNRELEASED_RE.search(text))
 
 
+def placement_errors(text: str, name: str) -> list[str]:
+    """Every entry bullet in this file that no reader of the changelog would ever find.
+
+    Two shapes, both measured on the tree before being asserted: a bullet before the first version
+    heading (the 401a8057 damage - above the preamble, or inside YAML front matter), and a bullet
+    whose nearest heading is a version heading rather than a section heading, i.e. an entry filed
+    under no category. All five mirrors are clean on the second rule today, so enforcing it costs
+    nothing now and catches the next paste that lands in the wrong nesting.
+    """
+    lines = text.splitlines()
+    errors = []
+    versions = [i for i, line in enumerate(lines) if _VERSION_HEADING_RE.match(line)]
+    if not versions:
+        return [f"{name}: no version heading at all, so no entry can be filed under one"]
+    heading = None
+    for index, line in enumerate(lines):
+        if _HEADING_RE.match(line):
+            heading = line
+        elif not _ENTRY_RE.match(line):
+            continue
+        elif index < versions[0]:
+            errors.append(
+                f"{name} line {index + 1}: entry bullet {line[:40]!r} sits before the first version "
+                f"heading ({lines[versions[0]]!r}) - invisible in the changelog body"
+            )
+        elif heading is None or _VERSION_HEADING_RE.match(heading):
+            errors.append(
+                f"{name} line {index + 1}: entry bullet {line[:40]!r} is under no section heading "
+                f"(nearest is {heading!r}) - it is not filed as Added/Changed/Fixed/Performance"
+            )
+    return errors
+
+
+def unreleased_counts(text: str) -> dict[str, int]:
+    """Entry bullets per section heading inside [Unreleased], keyed by the heading as written.
+
+    Section names are translated (`#### 修正`, `#### 수정`, `#### 修复`), so the keys differ per
+    locale and the values are what is comparable: the count at a given position in the section order.
+    `scripts/quality_matrix.py` compares those positions across mirrors and registers a blind spot
+    when they diverge; this script prints them so the divergence is visible wherever the hook runs.
+    """
+    inside = False
+    section = None
+    out = {}
+    for line in text.splitlines():
+        if _VERSION_HEADING_RE.match(line):
+            inside = bool(re.match(r"^#{2,4} \[Unreleased\]", line))
+            section = None
+            continue
+        if not inside:
+            continue
+        if re.match(r"^#{3,4} ", line):
+            section = line.lstrip("#").strip()
+        elif _ENTRY_RE.match(line) and section:
+            out[section] = out.get(section, 0) + 1
+    return out
+
+
+def positioned_counts(text: str) -> list[int]:
+    """The [Unreleased] bullets per section, as a position-keyed list (locale-independent).
+
+    Public because `scripts/quality_matrix.py` calls it rather than re-implementing "what counts as
+    an entry": two parsers of the same rule is how a parity check ends up disagreeing with the hook
+    that enforces it.
+    """
+    counts = unreleased_counts(text)
+    return [counts[key] for key in sorted(counts, key=lambda k: list(counts).index(k))]
+
+
 def main() -> int:
     errors: list[str] = []
     root_text = FILES[0].read_text(encoding="utf-8")
     root_versions = _versions(root_text)
+    texts = {path: path.read_text(encoding="utf-8") for path in FILES}
+
+    for path, text in texts.items():
+        errors.extend(placement_errors(text, path.name))
 
     for path in FILES[1:]:
-        text = path.read_text(encoding="utf-8")
+        text = texts[path]
         versions = _versions(text)
         unreleased = _has_unreleased(text)
 
@@ -65,10 +153,9 @@ def main() -> int:
 
     # Also verify root has all versions the mirrors do (catches root missing
     # entries after mirrors are updated first, which sometimes happens).
-    mirror_texts = {p.name: p.read_text(encoding="utf-8") for p in FILES[1:]}
     mirror_versions = set()
-    for t in mirror_texts.values():
-        mirror_versions |= _versions(t)
+    for path in FILES[1:]:
+        mirror_versions |= _versions(texts[path])
     root_missing = mirror_versions - root_versions
     if root_missing:
         errors.append(f"root CHANGELOG.md: missing versions {sorted(root_missing)}")
@@ -77,7 +164,13 @@ def main() -> int:
         print("changelog structural drift detected:")
         print("\n".join(errors))
         return 1
-    print("OK: all 5 changelogs structurally in sync")
+    # Reported, not asserted: the mirrors do not carry equal entry counts per [Unreleased] section
+    # today, and that divergence is registered in `.ci/quality-holes.json` with this script's counts
+    # as the exit criterion. Printing them here keeps an unregistered regression visible in the log
+    # while the gap is still open.
+    print("OK: all 5 changelogs structurally in sync and every entry filed under a section")
+    for path in FILES:
+        print(f"  {path.relative_to(ROOT).as_posix():24} [Unreleased] sections {positioned_counts(texts[path])}")
     return 0
 
 

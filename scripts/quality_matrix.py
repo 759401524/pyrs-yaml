@@ -20,6 +20,7 @@ Usage:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import sys
@@ -277,6 +278,21 @@ def binding_crate() -> str | None:
     return None
 
 
+def changelog_mirror_counts() -> dict:
+    """Per-mirror [Unreleased] entry counts, by section position, from the mirror checker itself.
+
+    This calls `scripts/check_changelog_mirrors.py` instead of parsing the changelogs a second way:
+    the hook and this probe have to agree about what counts as an entry, or the matrix reports clean
+    while the gate that enforces the same rule disagrees (and vice versa).
+    """
+    path = REPO / "scripts" / "check_changelog_mirrors.py"
+    spec = importlib.util.spec_from_file_location("check_changelog_mirrors", path)
+    assert spec is not None and spec.loader is not None, f"cannot load {path}"
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    return {mirror.relative_to(REPO).as_posix(): checker.positioned_counts(read(mirror)) for mirror in checker.FILES}
+
+
 def measure() -> dict:
     commands_by_workflow = workflow_commands()
     all_commands = " ".join(command for commands in commands_by_workflow.values() for command in commands)
@@ -431,6 +447,23 @@ def measure() -> dict:
             ]
         )
 
+    # `AGENTS.md` says never commit partial changelog updates, and the mirror checker compares version
+    # headers, which translation leaves identical - so an entry added to three mirrors and missing from
+    # two passes it, which is how 401a8057's entry ended up invisible in four of five files. Section
+    # positions are locale-independent (every mirror keeps the same Added/Changed/Fixed/Performance
+    # order), so unequal counts at the same position are the measurable form of the rule. Divergence
+    # today is registered rather than silently tolerated; the checker prints the counts either way.
+    mirrors = changelog_mirror_counts()
+    if len({tuple(counts) for counts in mirrors.values()}) > 1:
+        holes.append(
+            [
+                "changelog-parity",
+                "entry-counts",
+                f"the mirrors disagree on how many entries [Unreleased] holds {mirrors}, and no gate "
+                "compares those counts",
+            ]
+        )
+
     return {
         "ir_harness_crates": sorted(ir_graph),
         "ir_harness_owners": sorted(channels),
@@ -447,6 +480,7 @@ def measure() -> dict:
         "property_function_count": len(props),
         "property_functions": props,
         "artifact_paths": {"scanned": len(declared), "missing": sum(1 for _p, ok in declared if not ok)},
+        "changelog_entry_counts": [f"{name}={counts}" for name, counts in sorted(mirrors.items())],
         "route_parity_tests": route_parity,
         "holes": sorted(holes),
     }
@@ -467,6 +501,7 @@ SUMMARY_KEYS = (
     "ir_scenarios_baseline",
     "property_function_count",
     "route_parity_tests",
+    "changelog_entry_counts",
 )
 
 

@@ -276,11 +276,12 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
+| `changelog-parity:entry-counts` | the mirror checker compares version headers, which translation leaves identical, so an entry present in three mirrors and missing from two passes it — measured against root: `docs/en` is one `[Unreleased]` entry behind, `docs/zh` one Added and five Fixed behind while carrying one Changed bullet no other mirror has; the checker prints the per-section counts on every run | `scripts/check_changelog_mirrors.py` exits non-zero when those per-section counts differ, which first needs the missing translated entries backfilled |
 
 This table is a measurement, not a mood: `scripts/quality_matrix.py` re-derives it on every
 pytest run and `tests/test_quality_matrix.py` fails in both directions — a hole that appears
 unregistered, and a registered hole the measurement no longer reproduces. It has been empty twice,
-and both transitions were measured rather than declared. It was empty after the property tier
+and every transition since has been measured rather than declared. It was empty after the property tier
 closed; the same measurement then asked a new question — not which scenarios the perf gate names,
 but which crates it can link — and the crate that serves the Python API failed it. That is how
 `perf-coverage:binding-layer` was registered (#302), with the artefact that would remove it named
@@ -313,6 +314,21 @@ and a harness file whose crate declares no target, so that nothing ever compiles
 name in two harnesses is a finding too, because a single baseline number cannot say which channel
 produced it. `ir_gate.py` refuses the same collision at run time, and refuses to write a baseline
 from a harness it cannot list: an unreadable harness is not an empty one.
+
+A changelog entry that is present and unreadable is the same blindness in placement form, and nothing
+measured it until 401a8057: that commit's hash-fidelity entry landed above the preamble in
+`CHANGELOG.md`, inside the `tags:` list of the en and zh frontmatter, and between the frontmatter and
+the first heading in ja and ko — outside the changelog body in all five files, while the mirror checker
+stayed green because every version header was still present and equally matched. `placement_errors` is
+the rule that was missing, and it is a hard one now: no entry bullet before the first version heading,
+and none whose nearest heading is a version heading rather than a section heading. The second half was
+measured before it was asserted — zero violations across the five mirrors on the tree of the day, so it
+costs nothing today and catches the next mis-nested paste. Entry counts per section position are
+printed by that checker on every run (section order is locale-independent even where the names are
+translated, so the positions are comparable), and their divergence is what `changelog-parity:entry-counts`
+registers above. Asserting them was not an option in this changeset: a gate that is red because three
+other mirrors are missing translations someone else wrote stops being a gate and becomes noise, so the
+backfill is the exit criterion and the registry is the reminder.
 
 Closed while this document was written, and therefore absent from the registry on
 purpose: the hook tier being unwired, `cargo fmt` reaching no job, CI's clippy skipping

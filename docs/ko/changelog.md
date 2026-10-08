@@ -6,17 +6,6 @@ tags:
 status: new
 ---
 
-- **키 위에 주석이 있으면 이름으로 조회할 수 없었다** — `doc["key"]`, `"key" in doc`,
-  병합 전개는 모두 해시로 노드를 찾지만, `CustomNode::hash`는 `NodeMeta`의 정규화된 주석
-  뷰를 접어 넣은 반면 `CustomNode::eq`는 원시 `comment` 슬롯만 비교했습니다. 그래서 값은
-  같은데 해시가 다른 짝이 생겼고, `IndexMap`은 문서에 분명히 있는 키에게 "키 없음"이라
-  답했습니다. `NodeDecor`는 `Hash`/`PartialEq`에서 제외한다고 문서에 적혀 있으므로 계약
-  밖인 쪽은 해시였습니다 — `CustomNode::hash`는 이제 자기 등치가 비교하는 필드
-  (`comment` / `anchor` / `tag`)만 새 `NodeMeta::hash_custom_node_identity`를 통해 접고,
-  `NodeMeta::hash`는 `NodeMeta::eq`의 #117 정규화를 계속 거울비침으로써 두 쌍이 각각 자기
-  일관성을 지킵니다. 첫 키 이후의 모든 키가 해당되며, 문서 첫 주석은 바깥 매핑에
-  보고되므로 단일 키 픽스처에서는 결코 드러나지 않았습니다.
-
 ## 변경 이력
 
 이 파일에는 본 프로젝트의 모든 중요 변경 사항이 기록됩니다.
@@ -252,6 +241,20 @@ status: new
 
 #### 수정
 
+- **changelog 항목은 아무도 보지 않는 자리에 들어갈 수 있었다** — 401a8057이 해시 충실성 항목을 다섯 거울에
+  모두 넣었지만 그 위치는 `CHANGELOG.md`에서는 머리글 위, en과 zh에서는 frontmatter의 `tags:` 목록 안,
+  ja와 ko에서는 frontmatter와 첫 머리글 사이였다. 다섯 모두 본문 밖이었음에도
+  `scripts/check_changelog_mirrors.py`는 초록이었다 — 비교한 것이 버전 머리글뿐이었고, 산문을 어디에 두든
+  그것은 그대로 같았기 때문이다. 이제 `placement_errors`가 그 검사기의 강제 규칙이다: 항목 표지를 첫 버전
+  머리글 앞에 두는 것, 버전 머리글 바로 아래(절 머리글이 아닌)에 두는 것도 불가. 다섯 사본은 모두
+  `[Unreleased] → Fixed`의 최신 우선 순서로 되돌렸다(이동 전에 실측: commit 날짜로 보면
+  `crash-9b77aea4` 항목 아래, `crash-1b01ac3f` 항목 위). 검사기는 ayrıca 각 거울의 `[Unreleased]` 절별
+  항목 개수를 출력하고, 그 불일치는 단정이 아니라 `changelog-parity:entry-counts`로 등록했다 —
+  root를 기준으로 재면 `docs/en`은 항목 1개, `docs/zh`는 5개가 모자란다(Added 1개와 Fixed 5개 없음,
+  대신 다른 거울에 없는 Changed 1개 있음) — 남이 빠뜨린 번역 때문에 빨개지는 문은 문이 아니라 소음이기
+  때문이다. `tests/test_changelog_placement_gate.py`는 각 규칙을 그 이름을 대는 주입으로 빨개짐을
+  확인하고, 거울이 같아지면 개수 탐침이 조용해짐을, 대장에 적힌 불일치가 계측이 지금 보고하는 불일치임을
+  검증한다.
 - **같은 저장소의 두 runner 작업이 `serialize_block_scalars`를 1.44% 차이로 재고 있었고, Ir 기준값은 어느 작업의 값인지 적지 않았다** —
   열다섯 시나리오 게이트를 위해 `.ci/ir-baseline.json`을 다시 만든 일은 집행 작업(`codspeed.yml`의
   `Instruction-count baseline`)을 이 시나리오에서 빨갛게 만들었다: 두 실행에서 16,020,942와 16,020,915가
@@ -476,6 +479,16 @@ status: new
   전개는 `<<:`가 차지했던 index, 즉 작성이 순서대로 삽입합니다 — merge key가 첫 번째면
   여전히 0이므로 문서에 쓰인 `<<: *defaults` 형태는 그대로입니다 (Rust 487 → 489,
   Python 1781 tests 변경 없이 모두 통과).
+- **키 위에 주석이 있으면 이름으로 조회할 수 없었다** — `doc["key"]`, `"key" in doc`,
+  병합 전개는 모두 해시로 노드를 찾지만, `CustomNode::hash`는 `NodeMeta`의 정규화된 주석
+  뷰를 접어 넣은 반면 `CustomNode::eq`는 원시 `comment` 슬롯만 비교했습니다. 그래서 값은
+  같은데 해시가 다른 짝이 생겼고, `IndexMap`은 문서에 분명히 있는 키에게 "키 없음"이라
+  답했습니다. `NodeDecor`는 `Hash`/`PartialEq`에서 제외한다고 문서에 적혀 있으므로 계약
+  밖인 쪽은 해시였습니다 — `CustomNode::hash`는 이제 자기 등치가 비교하는 필드
+  (`comment` / `anchor` / `tag`)만 새 `NodeMeta::hash_custom_node_identity`를 통해 접고,
+  `NodeMeta::hash`는 `NodeMeta::eq`의 #117 정규화를 계속 거울비침으로써 두 쌍이 각각 자기
+  일관성을 지킵니다. 첫 키 이후의 모든 키가 해당되며, 문서 첫 주석은 바깥 매핑에
+  보고되므로 단일 키 픽스처에서는 결코 드러나지 않았습니다.
 - **키의 행 끝 주석이 값 행으로 이사가지 않는다** —— 값이 자기 앞 주석을 받으려 별도 행으로
   내려갈 때, *키*에 속한 주석은 여전히 «마지막으로 끝난 행» 즉 값 행에 붙었다. 다시 읽을 때
   tag뿐인 스칼라 행 끝 주석은 값의 **앞** 주석으로 귀속되므로, 주석이 라운드마다 주인을
