@@ -238,6 +238,15 @@ status: new
   JSON5 解析器接受喂给它的这些拼写。严格 JSON 与 JSONC 仍会给拼不出的非有限浮点数加引号：这条裁决留
   在 `ROADMAP.md` 里，不在 bug 修复里悄悄替用户决定。— (details: quality-ledger (bh))
 
+- **含非 ASCII 键的规则路径会让进程中止，而 `$` 现在也能作为规则目标。** —
+  `rule_path_to_segments` 每次只把游标推进一个字节，却整个推入解码出的字符，于是 `$.café` 停在 `é`
+  的内部，下一次切片直接 panic："start byte index 4 is not a char boundary"。这是一条合法而非畸形的
+  规则就会触发的 `PanicException`（`$.emoji😀key` 同理）。游标现在按解码字符的宽度前进。修好它之后
+  第二半问题才显形：代码先要求有分隔符、之后才测试路径是否为空，所以裸 `$`（即整个文档）永远无法成为
+  规则目标；而 `$x` 仍被判为不可解析，不会被误读成键名。`path: $` 配 `mapping_of` 可以校验根文档的
+  值了。找出这个 panic 的那次排查还在 `ROADMAP.md` 留下一项待裁决：`mapping_of`/`sequence_of` 只查
+  元素，不查容器本身的类型。 — (details: quality-ledger (bj))
+
 #### 性能
 
 - **标签发出改为表驱动，转义不再分配内存。** — 把标签编码挪到读取器自己的字符类上，就让逐字节的归属

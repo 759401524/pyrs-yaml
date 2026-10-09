@@ -29,6 +29,60 @@ class TestValidateAgainstSchema:
             VALIDATE_SCHEMA,
         )
 
+    def test_rule_path_with_a_multibyte_key_fires_on_the_right_node(self):
+        """A non-ASCII rule path used to abort the process, and must still name the node it matched.
+
+        `rule_path_to_segments` advanced its cursor one byte at a time, so a path like `$.café` stopped inside
+        the multi-byte key and the next slice panicked with "start byte index is not a char boundary" - through
+        the public API, on a valid schema. The passing case proves no panic; the raising case proves the path
+        actually navigated, because a walk that silently matched nothing would also "pass".
+        """
+        schema = """name: multibyte
+extends: core
+validate:
+  - path: $.café
+    type: str
+    required: true
+"""
+        pyrs_yaml.validate_against_schema("café: crème\n", schema)
+        with pytest.raises(pyrs_yaml.YamlValidateError) as exc:
+            pyrs_yaml.validate_against_schema("café: 5\n", schema)
+        assert "expected str" in str(exc.value)
+        # A rule that matched nothing would also "pass" the case above, so prove the path selects the key and
+        # not just any node: the same document with the wrong type under an ASCII key must not fire the rule.
+        pyrs_yaml.validate_against_schema("café: crème\nother: 5\n", schema)
+
+        emoji = """name: emoji
+extends: core
+validate:
+  - path: $.emoji\U0001f600key
+    type: int
+"""
+        pyrs_yaml.validate_against_schema("emoji\U0001f600key: 7\n", emoji)
+        with pytest.raises(pyrs_yaml.YamlValidateError) as exc:
+            pyrs_yaml.validate_against_schema("emoji\U0001f600key: seven\n", emoji)
+        assert "expected int" in str(exc.value)
+
+    def test_the_root_document_can_be_a_rule_target(self):
+        """`path: $` addresses the document itself.
+
+        The parser had a branch for exactly that path, but a separator was required before the emptiness was
+        tested, so a root rule could never be reached - and `$x` must stay unparseable rather than be read as
+        a key. The element paths it produces (`$.a`) are what show the root was walked, not skipped.
+        """
+        schema = """name: root
+extends: core
+validate:
+  - path: $
+    mapping_of: int
+"""
+        pyrs_yaml.validate_against_schema("a: 1\nb: 2\n", schema)
+        with pytest.raises(pyrs_yaml.YamlValidateError) as exc:
+            pyrs_yaml.validate_against_schema("a: 1\nb: two\n", schema)
+        # The wording names the mapping-value check, which only runs once the rule has been applied to the
+        # document itself - a root rule that never resolved would leave this call silently passing.
+        assert "expected mapping value int" in str(exc.value)
+
     def test_invalid_type_raises(self):
         with pytest.raises(pyrs_yaml.YamlValidateError) as exc:
             pyrs_yaml.validate_against_schema("port: abc\nnote: hi\n", VALIDATE_SCHEMA)
