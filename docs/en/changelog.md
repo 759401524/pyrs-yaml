@@ -79,6 +79,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (details: quality-ledger (az))
 - **The type stub shipped in every wheel parses, so type checkers read the contract.** — (details:
   quality-ledger (bb))
+- **A prose-only pull request can merge, and the site is built before it does.** — (details:
+  quality-ledger (bd))
 
 #### Performance
 

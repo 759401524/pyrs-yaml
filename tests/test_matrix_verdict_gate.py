@@ -9,7 +9,10 @@ be soft is the verdict itself. Each case below is a shape a real run produces:
   case a naive "no failures reported" check waves through;
 * one leg `cancelled` - what `concurrency: cancel-in-progress` leaves when a newer push supersedes the
   run, i.e. the leg never spoke at all;
-* an empty object - a fan-in whose `needs:` list was edited away would then green-light anything.
+* an empty object - a fan-in whose `needs:` list was edited away would then green-light anything;
+* a leg `skipped` by the change classification - a prose-only pull request is *not* owed a Rust matrix, and
+  the verdict says so only when the classifier reported `code=false`, which is the difference between a
+  documented exemption and a hole.
 
 Wiring is asserted too: a verdict no job runs is documentation, and a job whose `needs:` stops
 matching the matrix is the same hole re-opened quietly.
@@ -97,6 +100,48 @@ def test_anything_else_is_red(gate, result):
     assert "b" in problems[0], problems
 
 
+def test_a_skipped_leg_is_red_by_default(gate):
+    """The default is the strict answer: an unread classification must demand the full matrix."""
+    needs = {"a": leg("success"), "b": leg("skipped")}
+    assert gate.verdict(needs) == ["b: skipped"]
+    assert gate.verdict(needs, code_changed=True) == ["b: skipped"]
+
+
+def test_a_prose_only_changeset_excuses_the_heavy_legs(gate):
+    """`skipped` is a documented exemption only while the classifier says nothing code-affecting changed."""
+    needs = {"changes": leg("success"), "docs-gates": leg("success"), "build": leg("skipped"), "test": leg("skipped")}
+    assert gate.verdict(needs, code_changed=False) == []
+
+
+def test_the_classifier_and_the_docs_gates_are_never_excused(gate):
+    """The jobs that justify the tolerance are the ones that must not rely on it.
+
+    If `changes` can be skipped, "nothing changed" becomes self-attested, and if `docs-gates` can be, a
+    prose-only pull request merges with the prose unverified - the exact hole the exemption replaces.
+    """
+    needs = {"changes": leg("skipped"), "docs-gates": leg("success"), "build": leg("skipped")}
+    assert gate.verdict(needs, code_changed=False) == ["changes: skipped"]
+    needs = {"changes": leg("success"), "docs-gates": leg("failure"), "build": leg("skipped")}
+    assert gate.verdict(needs, code_changed=False) == ["docs-gates: failure"]
+
+
+def test_a_red_leg_stays_red_whatever_the_classification(gate):
+    for code_changed in (True, False):
+        needs = {"changes": leg("success"), "docs-gates": leg("success"), "clippy": leg("failure")}
+        assert gate.verdict(needs, code_changed=code_changed) == ["clippy: failure"]
+
+
+def test_cli_reads_the_classification_and_defaults_to_strict(gate, monkeypatch):
+    payload = json.dumps({"changes": leg("success"), "build": leg("skipped")})
+    monkeypatch.setenv("NEEDS", payload)
+    monkeypatch.setenv("CODE_CHANGED", "false")
+    assert gate.main(["x"]) == 0
+    monkeypatch.setenv("CODE_CHANGED", "")
+    assert gate.main(["x"]) == 1, "a missing classification must not excuse a skipped leg"
+    monkeypatch.setenv("CODE_CHANGED", "false")
+    assert gate.main(["x", "--code-changed", "true"]) == 1, "an explicit flag beats the environment"
+
+
 def test_a_silently_empty_fan_in_is_red(gate):
     assert gate.verdict({}) == ["no jobs were reported: the fan-in lists nothing to wait for"]
 
@@ -144,13 +189,28 @@ def test_the_fan_in_waits_on_every_job_in_the_workflow():
     assert waited == expected, (
         f"not covered by the fan-in: {sorted(expected - waited)}; unknown jobs listed: {sorted(waited - expected)}"
     )
-    # `skipped` is a refusal, so a job that does not run on a pull request would make the verdict
-    # permanently red: every job waited on must be one that does.
-    for name in sorted(waited):
+    # `skipped` is a refusal except where the change classification *says* it is the designed outcome, so
+    # the exemption has to be attributable to that job and cannot be used to excuse anything else.
+    for name in sorted(waited - {"changes", "docs-gates"}):
         condition = re.search(r"if: \$\{\{ (.+?) \}\}", job_body(text, name))
-        assert condition is None or "push" in condition.group(1) or "pull_request" in condition.group(1), (
-            f"{name}: conditional on an event outside pull_request, so its absence reads as `skipped`"
+        if condition is None:
+            continue
+        clause = condition.group(1)
+        assert "push" in clause or "pull_request" in clause or "needs.changes.outputs.code" in clause, (
+            f"{name}: conditional on something outside the event and the classification, so its absence "
+            f"reads as `skipped` for a reason the verdict cannot attribute: {clause}"
         )
+    # The classifier itself must be unconditional: an exemption that reports its own verdict can be
+    # self-attested, and the heavy legs must name it in `needs` or GitHub resolves the reference to an
+    # empty string and silently skips them.
+    classifier = job_body(text, "changes")
+    assert "if:" not in classifier, "the classifier must run on every pull request"
+    for name in sorted(waited - {"changes", "docs-gates", "matrix-verdict"}):
+        body = job_body(text, name)
+        if "needs.changes.outputs.code" in body:
+            assert re.search(r"^\s*needs: [^\n]*changes", body, re.M), (
+                f"{name}: reads the classification without declaring `changes` in needs"
+            )
 
 
 def test_the_verdict_only_runs_where_a_merge_decision_exists():

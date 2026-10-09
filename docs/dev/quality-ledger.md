@@ -15,7 +15,7 @@ Related documents: [engine boundaries](boundaries.md), [performance status](perf
 ## Contents
 
 - The placement family - (h) through (v)
-- The quality defence, entry by entry - (w) through (bb)
+- The quality defence, entry by entry - (w) through (bd)
 - Note survival: the leading slot became a list
 - Shipped milestone scoping - the v0.11.3 to v0.12.0 tables after they shipped
 
@@ -2182,6 +2182,59 @@ griffe reports `builtins.YamlDocument`: the PyO3 classes do not set `#[pyo3(modu
 is not harmless for `repr()`, for anything that introspects a wheel built without stubs, or for a
 generator that prefers live objects. It belongs in a binding change with its own stub regeneration,
 not smuggled into a repair.
+
+### (bd) A documentation-only pull request could not be merged at all (2026-10-10)
+
+Found by trying to merge one. PR #319 - changelog prose, nothing else - came back with every check
+it produced passing and `gh pr merge` refusing:
+`GraphQL: Required status check "Test matrix (all legs)" is expected`. The repository settings
+explain it exactly: `required_status_checks.contexts == ["Test matrix (all legs)"]`, `strict: true`,
+`enforce_admins.enabled == true`, `required_approving_review_count: 0`. The one required context
+lives in `ci.yml`, and `ci.yml` triggered on `pull_request` with
+`paths-ignore: docs/**, *.md, AGENTS.md, CHANGELOG.md, prek.toml, .rumdl.toml` - every path a prose
+change touches. The workflow never ran, the check never reported, and `--admin` was refused as well:
+with admin enforcement on, an administrator cannot bypass it either.
+
+The general shape is worth naming, because it reads as a broken pipeline rather than as a rule: **a
+required check that never reports is not a green light, it is a deadlock.** The four prose pull
+requests before it also touched `scripts/`, `tests/` or `pyproject.toml`, so CI ran for an unrelated
+reason and nothing showed.
+
+The fix keeps the gate honest instead of routing around it. `ci.yml` triggers on every pull request;
+a `changes` job (unconditional, one checkout, `git diff --name-only` with `:(exclude)*.md` and
+`:(exclude)docs/**`) classifies the changeset; the heavy legs are conditioned on that
+classification; and a `docs-gates` job that always runs does the work a prose change actually owes -
+page metadata, headings, mirror counts, script purity, i18n, prose width, then
+`scripts/build-docs.py` for all four locales under `--strict`.
+
+`check_matrix_verdict.py` takes the classification as a second input and the tolerance is
+deliberately narrow: a `skipped` leg is excused only while `CODE_CHANGED=false`, only outside
+`ALWAYS_RUNNING = ("changes", "docs-gates")`, and never for a `failure` or `cancelled`. A missing or
+garbled classification reads as "code changed", so the exemption cannot be obtained by not
+answering. That is the whole difference between a documented exemption and a hole - the skipped leg
+has to be attributable to a job that itself must succeed.
+
+`tests/test_matrix_verdict_gate.py` grew 5 tests over exactly those shapes (prose-only excuses the
+heavy legs; the classifier and the docs gates are never excused; a red leg stays red under either
+classification; the CLI defaults strict and an explicit flag beats the environment), and the fan-in
+test now enforces the wiring instead of trusting it: every leg reading `needs.changes.outputs.code`
+must declare `changes` in its own `needs`, because GitHub otherwise resolves the reference to an
+empty string and skips the leg silently - which would make the exemption self-attesting. The
+classifier is asserted unconditional.
+
+Closing this also closed the hole registered at (az) as `docs-rendering:unbuilt-on-pr`: four
+changelog pages carried metadata the generator cannot parse through three merged pull requests
+because nothing before merge had ever rendered them. `renders_the_site()` derives that fact from the
+workflow files, finds the new job, and so the registry entry and its `QUALITY_MATRIX.md` row came
+out - the registry fails in both directions, and an obsolete entry reads as an open one.
+
+The new job went red on its first run, and the reason is the kind only a runner teaches:
+`error: Failed to spawn: prek / No such file or directory`. The step read `uv run --no-sync prek`,
+which assumes the tool lives in the project environment - `prek` is a tool, not a dependency, and
+`hygiene.yml` provisions it with `uv tool install --from 'prek>=0.1.0' prek`. The equivalent step
+passed locally, as it always will here, because this machine has `prek` on `PATH` from an unrelated
+install. A gate written against a tool the job never installs is a gate that exists on one machine,
+which is the sentence this file exists to repeat.
 
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 

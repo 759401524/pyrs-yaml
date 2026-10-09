@@ -66,6 +66,7 @@ status: new
 - **站点更新日志页恢复自身描述，折叠的历史版本也能正常渲染。** — (details: quality-ledger (az))
 - **随 wheel 发布的类型存根不再是非法 Python，类型检查器能读到真实契约。** — (details:
   quality-ledger (bb))
+- **纯文档的 PR 现在能合了，而且合并前会先构建站点。** — (details: quality-ledger (bd))
 
 #### 性能
 
