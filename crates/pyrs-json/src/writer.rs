@@ -136,7 +136,7 @@ pub fn key_text(key: &CustomNode) -> Result<String, SerializeError> {
     match key {
         CustomNode::Scalar { value, .. } => Ok(value.to_string()),
         CustomNode::Null { .. } => Ok("null".to_string()),
-        _ => Err(SerializeError::Internal("json-object-key")),
+        _ => Err(SerializeError::UnsupportedValue("json-object-key")),
     }
 }
 
@@ -148,7 +148,7 @@ fn write_json_key(key: &CustomNode, out: &mut String) -> Result<(), SerializeErr
     match key {
         CustomNode::Scalar { value, .. } => write_json_string(value, out),
         CustomNode::Null { .. } => write_json_string("null", out),
-        _ => return Err(SerializeError::Internal("json-object-key")),
+        _ => return Err(SerializeError::UnsupportedValue("json-object-key")),
     }
     Ok(())
 }
@@ -214,7 +214,7 @@ fn write_value_inner(
             value,
             style: ScalarStyle::Plain,
             ..
-        } => write_plain(value, mode, out),
+        } => write_plain(value, mode, out)?,
         // PR #121: a single-quoted source string (JSON5-only) round-trips
         // as `'…'`; every other quoted scalar uses `"…"`.
         CustomNode::Scalar {
@@ -303,20 +303,22 @@ fn write_value_inner(
         // process-level matching possible (tags are resolved away, the
         // historical serde_json projection behaviour).
         CustomNode::Alias { .. } => {
-            return Err(SerializeError::Internal("json-cannot-represent-alias"));
+            return Err(SerializeError::UnsupportedValue(
+                "json-cannot-represent-alias",
+            ));
         }
     }
     Ok(())
 }
 
-fn write_plain(value: &str, mode: Mode, out: &mut String) {
+fn write_plain(value: &str, mode: Mode, out: &mut String) -> Result<(), SerializeError> {
     // Fidelity first: when the text already spells a JSON number (`1e3`,
     // `-0`, `1.0`), pass it through unchanged so large-precision integers
     // and explicit signed-zero survive a `from_json → to_json` round trip
     // without an f64/i64 detour.
     if is_json_number(value) {
         out.push_str(value);
-        return;
+        return Ok(());
     }
     // PR #121: under JSON5, the number spellings the JSON5 parser accepts
     // and stores verbatim on a plain scalar (hexadecimal, leading/trailing
@@ -325,7 +327,7 @@ fn write_plain(value: &str, mode: Mode, out: &mut String) {
     // are deliberately NOT in this set: see `is_json5_number`.
     if mode.json5() && is_json5_number(value) {
         out.push_str(value);
-        return;
+        return Ok(());
     }
     match Schema::Core.resolve(value) {
         // JSON's literal spellings for null / bool / int are canonical:
@@ -338,32 +340,41 @@ fn write_plain(value: &str, mode: Mode, out: &mut String) {
         YamlType::Int(i) => {
             let _ = write!(out, "{i}");
         }
-        // Non-source-spelled finite floats (hex/oct forms resolved as ints
-        // already returned above; this branch catches YAML notations like
-        // `0.5e1` or `1_000` where the source text is not JSON-valid).
-        YamlType::Float(f) if f.is_finite() => {
-            out.push_str(&canonical_float(f));
-        }
-        // Non-finite floats. JSON5 has a bare token for the value, so emitting it keeps the number
-        // a number in the dialect that can spell it; strict JSON / JSONC have no such spelling and
-        // quote the text instead of inventing a literal. The token comes from the resolved *value*,
-        // never from the word, because a YAML plain scalar `Infinity` is a string under the core
-        // schema and must stay a string (#312).
-        YamlType::Float(f) if !f.is_finite() && mode.json5() => {
-            out.push_str(if f.is_nan() {
-                "NaN"
-            } else if f > 0.0 {
-                "Infinity"
+        // Floats, in the three cases the target dialect can tell apart.
+        //
+        // A finite float that is not spelled as a JSON number (`0.5e1`, `1_000`, YAML notations the
+        // fidelity pass above could not pass through) is canonicalised.
+        //
+        // A non-finite float depends on the dialect. JSON5 has a bare token, so the number stays a number
+        // - and the token is derived from the resolved *value*, never from the word, because a YAML plain
+        // scalar `Infinity` is a string under the core schema and must stay one (#312).
+        //
+        // Strict JSON and JSONC have no literal for infinity or NaN (RFC 8259), so they refuse. Every
+        // alternative quietly changes the value: `".inf"` is a string where a number was, `null` - what
+        // `JSON.stringify` emits - is a different number, and a bare `Infinity` is text this library's own
+        // strict reader rejects on purpose. A stable reason key names the problem and the route that works
+        // (`to_json5` spells the value, or convert it before emitting), which is how this writer already
+        // treats an unrepresentable alias rather than dropping it silently.
+        YamlType::Float(f) => {
+            if f.is_finite() {
+                out.push_str(&canonical_float(f));
+            } else if mode.json5() {
+                out.push_str(if f.is_nan() {
+                    "NaN"
+                } else if f > 0.0 {
+                    "Infinity"
+                } else {
+                    "-Infinity"
+                });
             } else {
-                "-Infinity"
-            });
+                return Err(SerializeError::UnsupportedValue(
+                    "json-cannot-represent-non-finite",
+                ));
+            }
         }
-        // Non-finite floats in a dialect that cannot spell them: quote the text so nothing is
-        // silently dropped, matching the previous `serde_json` path's fallback for unrepresentable
-        // values. This is the open policy question in `ROADMAP.md` (Planned item 2), not a fix here.
-        YamlType::Float(_) => write_json_string(value, out),
         YamlType::Str(_) => write_json_string(value, out),
     }
+    Ok(())
 }
 
 /// Whether `text` is a JSON5-only number spelling the parser stored
@@ -692,12 +703,52 @@ mod tests {
                 j5,
                 "{j5} must be a fixed point"
             );
-            let strict = to_json_text(&n).unwrap();
+            let strict = to_json_text(&n);
+            assert!(
+                matches!(
+                    strict,
+                    Err(SerializeError::UnsupportedValue(
+                        "json-cannot-represent-non-finite"
+                    ))
+                ),
+                "strict JSON has no spelling for {hub}, so it must refuse rather than reinterpret: {strict:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_json_refuses_a_non_finite_float_instead_of_respelling_it() {
+        // The ruling `ROADMAP.md` left open once #312 had fixed the hub spelling. Strict JSON and JSONC
+        // cannot hold infinity or NaN, and every way of saying it anyway loses the value silently:
+        // `".inf"` is a string where a number was (and a reader cannot tell the two apart), `null` - what
+        // `JSON.stringify` emits - is a different number, and a bare `Infinity` is text this library's own
+        // strict reader rejects on purpose. Refusal is the only option that keeps a document honest about
+        // what it did, and it is how this writer already treats an unrepresentable alias.
+        for source in ["{a: Infinity}", "{a: -Infinity}", "{a: NaN}", "[Infinity]"] {
+            let node = crate::from_json5(source).unwrap();
+            for emitted in [to_json_text(&node), to_jsonc_text(&node)] {
+                assert!(
+                    matches!(
+                        emitted,
+                        Err(SerializeError::UnsupportedValue(
+                            "json-cannot-represent-non-finite"
+                        ))
+                    ),
+                    "{source} emitted {emitted:?}"
+                );
+            }
+            // The dialect that owns the token still emits it, nested as well as at the root, and still
+            // reads back to the same text - the pair is a round trip, not a rendering.
+            let json5 = to_json5_text(&node).unwrap();
+            assert!(
+                json5.contains("Infinity") || json5.contains("NaN"),
+                "{source} lost its token: {json5}"
+            );
+            let again = crate::from_json5(&json5).unwrap();
             assert_eq!(
-                strict,
-                format!("\"{hub}\""),
-                "strict JSON has no spelling for {hub}; quoting is the open policy question, not a \
-                 number"
+                to_json5_text(&again).unwrap(),
+                json5,
+                "{json5} is not a fixed point"
             );
         }
     }

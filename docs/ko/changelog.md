@@ -83,6 +83,18 @@ status: new
 
 #### 변경
 
+- **엄격한 JSON 내보내기는 비유한 부동소수를 다른 표기로 바꾸지 않고 거부합니다.** — RFC 8259 에는
+  무한대나 NaN 의 리터럴이 없어서 `to_json` / `to_jsonc` 는 허브의 텍스트에 따옴표를 씌운
+  `{"b": ".inf"}` 로 답했고, `load_json` 은 그것을 문자열로 되돌려 주었습니다. 나가는 길에 숫자가
+  문자열이 되어 그 텍스트를 값으로 지닌 문서와 구별할 수 없었는데, 이는 #312 이 들어가는 길에 고친
+  것과 같은 종류의 손실입니다. 대안은 저울에 달지 않고 측정했습니다: `null`(`JSON.stringify` 의 답)
+  은 다른 수이고, 맨 `Infinity` 는 이 라이브러리의 엄격한 해석기가 의도적으로 거부하는 텍스트입니다
+  (여기서 CPython 의 `json.loads` 보다 엄격합니다). 이제 내보내기는 안정 사유 키
+  `json-cannot-represent-non-finite` 를 실은 `YamlSerializeError` 를 던지고, 그 어구를 가진
+  `to_json5` 는 왕복을 지킵니다. 거부가 내부 고장을 가장하지도 않습니다: 새 변형
+  `SerializeError::UnsupportedValue` 는「그 형식은 이 값을 담을 수 없다」전용이며, 이전에는
+  키·별칭·null· 타임스탬프가 `internal-error` 로 보고되던 곳이 바로 그 곳이었습니다.
+
 - **`pyq validate` 가 `--input` 을 받고 실제로 읽은 형식을 따른다.** — YAML 파서를 하드코드해서
   `pyproject.toml` 이나 `package.json` 은 곧바로 거부됐습니다. 이제
   `--input auto|yaml|json|jsonc|json5|toml` 을 받고 공용 loader 경로를 탑니다.

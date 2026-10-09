@@ -77,20 +77,24 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: two rulings the engine has not made
+### Open: one ruling the engine has not made
 
 | # | Item | Layer | Priority |
 |:--|:-----|:------|:--------:|
-| 1 | **Decide the writer-side policy for non-finite floats** - JSON has no spelling for them, so the strict writers emit `".inf"`, a string-shaped answer to a numeric question. Choose between `null`, the JSON5-only bare token where the dialect allows it, and refusing the value at construction | Rust + API contract | 🟡 |
-| 2 | **`mapping_of` / `sequence_of` do not assert the container** - measured while fixing the rule-path panic: the element check sits inside `if let CustomNode::Mapping`/`Sequence` with no other branch, so `$.config` with `mapping_of: str` passes when `config` is a scalar or a sequence. Either reject the wrong kind, or document that the container is optional and only its elements are checked - both are user-visible, so it is ruled at a milestone review rather than inside a panic fix | Rust (`pyrs-yaml-core` schema language) | 🟡 |
+| 1 | **`mapping_of` / `sequence_of` do not assert the container** - measured while fixing the rule-path panic: the element check sits inside `if let CustomNode::Mapping`/`Sequence` with no other branch, so `$.config` with `mapping_of: str` passes when `config` is a scalar or a sequence. Either reject the wrong kind, or document that the container is optional and only its elements are checked - both are user-visible, so it is ruled at a milestone review rather than inside a panic fix | Rust (`pyrs-yaml-core` schema language) | 🟡 |
 
-Both were found by measurement, not by review, and both are the residue of the work that closed
-[#312](https://github.com/759401524/pyrs-yaml/issues/312): the item-1 question is the one that fix
-could not answer without changing what `to_json` emits for everyone (ledger (bh)), and item 2
-surfaced in the same function as the char-boundary crash found while auditing `unwrap` in production
-code (ledger (bj)). The hub spelling itself is no longer listed here - `from_json5` now writes
-`.inf` / `-.inf` / `.nan`, asserted by the Rust and Python pair of tests named in ledger (bh) -
-because an item may not stay in this section once it ships.
+Found by measurement, not by review, and it is the residue of the work that closed
+[#312](https://github.com/759401524/pyrs-yaml/issues/312): it surfaced in the same function as the
+char-boundary crash found while auditing `unwrap` in production code (ledger (bj)).
+
+The other item that used to sit here - what the strict JSON writers should do with a non-finite
+float - is ruled and shipped: they refuse it, with the reason key
+`json-cannot-represent-non-finite`, because every substitute silently changes the value. The
+measurement, the alternatives that were considered and why each one loses information are in the
+engineering record (ledger (bk)); `to_json5` remains the dialect that carries the value. What is
+*not* offered is a lenient `null`, because nothing has asked for a documented way to lose the value
+on purpose - if that demand appears, it arrives as an option with its own name rather than as a
+default.
 
 ### How the next scope is written
 

@@ -25,11 +25,11 @@ use pyrs_ast::ast::{CustomNode, ScalarStyle};
 use pyrs_ast::error::{ParseError, SerializeError};
 use pyrs_schema::types::{Schema, YamlType};
 
-/// Render a value-only AST as TOML text. `SerializeError::Internal` carries
+/// Render a value-only AST as TOML text. `SerializeError::UnsupportedValue` carries
 /// the rejection reason for shapes TOML cannot represent.
 pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     let CustomNode::Mapping { pairs, .. } = node else {
-        return Err(SerializeError::Internal("toml-requires-table-root"));
+        return Err(SerializeError::UnsupportedValue("toml-requires-table-root"));
     };
     let mut out = String::new();
     // PR #131: a document-level standalone comment (the very first `# note`
@@ -154,7 +154,9 @@ fn emit_pair(
 fn scalar_key(k: &CustomNode) -> Result<String, SerializeError> {
     match k {
         CustomNode::Scalar { value, .. } => Ok(quote_key(value)),
-        _ => Err(SerializeError::Internal("toml-keys-must-be-scalars")),
+        _ => Err(SerializeError::UnsupportedValue(
+            "toml-keys-must-be-scalars",
+        )),
     }
 }
 
@@ -179,17 +181,19 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                     YamlType::Str(_) => {
                         // Only accept when it truly parses as a TOML datetime.
                         if !is_valid_toml_datetime(value) {
-                            return Err(SerializeError::Internal("toml-timestamp-malformed"));
+                            return Err(SerializeError::UnsupportedValue(
+                                "toml-timestamp-malformed",
+                            ));
                         }
                         return Ok(value.to_string());
                     }
-                    _ => return Err(SerializeError::Internal("toml-timestamp-malformed")),
+                    _ => return Err(SerializeError::UnsupportedValue("toml-timestamp-malformed")),
                 }
             }
             match (style, Schema::Core.resolve(value)) {
-                (ScalarStyle::Plain, YamlType::Null) => {
-                    Err(SerializeError::Internal("toml-cannot-represent-null"))
-                }
+                (ScalarStyle::Plain, YamlType::Null) => Err(SerializeError::UnsupportedValue(
+                    "toml-cannot-represent-null",
+                )),
                 (ScalarStyle::Plain, YamlType::Bool(b)) => Ok(b.to_string()),
                 // Fidelity pass-through: when the plain scalar's textual
                 // form is already a valid TOML integer literal (`0xDEAD`,
@@ -289,8 +293,10 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                 Ok(format!("{{{}}}", parts.join(", ")))
             }
         }
-        CustomNode::Null { .. } => Err(SerializeError::Internal("toml-cannot-represent-null")),
-        CustomNode::Alias { .. } => Err(SerializeError::Internal("toml-unsupported-node")),
+        CustomNode::Null { .. } => Err(SerializeError::UnsupportedValue(
+            "toml-cannot-represent-null",
+        )),
+        CustomNode::Alias { .. } => Err(SerializeError::UnsupportedValue("toml-unsupported-node")),
     }
 }
 
