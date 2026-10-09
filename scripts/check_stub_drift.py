@@ -24,6 +24,23 @@ tracked file stays fully derived instead of being patched by hand:
    this is a narrow generator gap, not a project convention. Each fix declares how
    many times it must match; an unexpected count fails instead of silently
    rewriting, so a changed return type or a fixed upstream forces a review.
+3. `escape_docstring_backslashes` repairs a defect with a wider blast radius: the
+   generator writes a runtime `__doc__` into a triple-quoted string *verbatim*, so a
+   doc comment containing a backslash lands in the stub unescaped and the file stops
+   being valid Python. Measured on `maturin 1.14.1`: two docstring lines carry one
+   (`to_json`'s prose about `json.dumps` escaping, and the JSON5 loader's note about
+   exotic float spellings), and `ast.parse` fails at the first with
+   `'unicodeescape' codec can't decode bytes … truncated \\uXXXX escape`. That is not
+   cosmetic: the stub ships inside every wheel as the public typing contract, so
+   mypy, pyright and griffe each read a file they cannot parse. Doubling the
+   backslash inside the docstring restores the exact text `help()` already shows.
+   The transform is generic, and `EXPECTED_DOCSTRING_ESCAPES` is the tripwire that
+   makes a third site (or an upstream fix that removes one) a review rather than a
+   silent change of count.
+
+After all transforms the derived text must parse: `verify_parses` re-reads it with
+`ast`, so a generator misbehaviour that is not yet described by a declared fix fails
+the gate naming its line instead of shipping as an unusable artifact.
 
 Usage:
     uv run maturin generate-stubs --out target/stubs
@@ -36,6 +53,7 @@ Exit code 0 = in sync; 1 = drift; 2 = the generated stub is missing or unusable.
 from __future__ import annotations
 
 import argparse
+import ast
 import difflib
 import re
 import sys
@@ -64,6 +82,84 @@ FIDELITY_FIXES = (
 
 MAX_DIFF_LINES = 120
 
+# Measured on the pinned generator: two docstring lines contain a backslash, both written by maturin
+# 1.14.1 straight out of the Rust doc comment. A third site or a fixed upstream changes the count, and
+# that change is exactly what should make a person look at this file.
+EXPECTED_DOCSTRING_ESCAPES = 2
+
+DOCSTRING_DELIMITERS = ('"""', "'''")
+
+
+def docstring_body_lines(text: str) -> set[int]:
+    """The 1-based numbers of lines that sit inside a triple-quoted string body.
+
+    Scanned line by line instead of parsed with `ast`, because the whole point of this transform is that
+    the text it receives is not parseable yet. Generator output opens a docstring on a line of its own and
+    closes it on a line of its own, so the body is everything strictly between those two markers; a
+    delimiter that opens and closes on one line has no body lines and is handled by the same state change.
+    """
+    bodies: set[int] = set()
+    delimiter = None
+    for number, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if delimiter is None:
+            for candidate in DOCSTRING_DELIMITERS:
+                if not stripped.startswith(candidate):
+                    continue
+                # A closing delimiter later on the same line means the string ends where it started.
+                if stripped.count(candidate) >= 2:
+                    break
+                delimiter = candidate
+                break
+            continue
+        if delimiter in stripped:
+            delimiter = None
+            continue
+        bodies.add(number)
+    return bodies
+
+
+def escape_docstring_backslashes(text: str) -> tuple[str, int]:
+    """Double every backslash inside a docstring, and report how many lines changed.
+
+    Args:
+        text: freshly generated stub text.
+
+    Returns:
+        The text with backslashes escaped the way Python source requires, plus the number of lines that
+        needed it - the caller compares that count with `EXPECTED_DOCSTRING_ESCAPES` so an undocumented
+        change of shape is a failure rather than a quiet improvement.
+    """
+    bodies = docstring_body_lines(text)
+    changed = 0
+    lines = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if number in bodies and "\\" in line:
+            lines.append(line.replace("\\", "\\\\"))
+            changed += 1
+        else:
+            lines.append(line)
+    trailing = "\n" if text.endswith("\n") else ""
+    return "\n".join(lines) + trailing, changed
+
+
+def verify_parses(text: str, origin: str) -> str | None:
+    """Return a problem description when the derived stub is not valid Python, otherwise None.
+
+    The stub is the public typing contract shipped inside every wheel, so "it parses" is not a nicety: an
+    unparseable file is one that mypy, pyright and griffe each refuse to read. Naming the line is the point
+    - a syntax error is otherwise reported against a generated artifact nobody is allowed to edit by hand.
+    """
+    try:
+        ast.parse(text)
+    except SyntaxError as error:
+        return (
+            f"{origin} is not valid Python: {error.msg} (line {error.lineno}). "
+            "If the generator introduced a new unescaped character in a docstring, declare it in "
+            "escape_docstring_backslashes' expected count instead of hand-patching the artifact."
+        )
+    return None
+
 
 def display(path: Path) -> str:
     """Render a path relative to the repository when it lives inside it."""
@@ -88,10 +184,22 @@ def derived_text(generated: str) -> tuple[str, list[str]]:
     Returns:
         The normalized text and a list of problems found while applying the
         declared fidelity fixes. A non-empty problem list means the caller must
-        fail: the rewrite was not applied for that fix.
+        fail: the rewrite was not applied for that fix. Escaping docstring
+        backslashes is different in kind - the transform is generic, so it always
+        runs - but its site count is still checked, and the result still has to
+        parse, so a generator change is noticed instead of absorbed.
     """
     problems: list[str] = []
     text = normalize(generated)
+    text, escapes = escape_docstring_backslashes(text)
+    if escapes != EXPECTED_DOCSTRING_ESCAPES:
+        problems.append(
+            f"docstring backslash escapes: rewrote {escapes} line(s), expected "
+            f"{EXPECTED_DOCSTRING_ESCAPES}. maturin 1.14.1 copies __doc__ into the stub "
+            "without escaping, so a new line is a new unparseable site and a disappeared one "
+            "is an upstream fix; either way review EXPECTED_DOCSTRING_ESCAPES instead of "
+            "trusting the rewrite."
+        )
     for fix in FIDELITY_FIXES:
         matches = fix["pattern"].findall(text)
         if len(matches) != fix["expected_matches"]:
@@ -102,6 +210,9 @@ def derived_text(generated: str) -> tuple[str, list[str]]:
             )
             continue
         text = fix["pattern"].sub(fix["template"], text)
+    parse_problem = verify_parses(text, "the derived stub")
+    if parse_problem:
+        problems.append(parse_problem)
     return text, problems
 
 

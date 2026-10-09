@@ -276,7 +276,7 @@ class YamlDocument:
         `json.dumps` — a double conversion that measured ~10x slower than the
         native serializer, for byte-identical output on ASCII documents. Non-
         ASCII is now emitted as raw UTF-8 (like `to_jsonc` / `to_json5`) rather
-        than `json.dumps`' `\uXXXX` escapes.
+        than `json.dumps`' `\\uXXXX` escapes.
         """
     def to_json5(self, /, indent: "int" = 2) -> "str":
         """
@@ -434,7 +434,7 @@ def load_json(json_str: "str") -> "dict[str, Any] | list[Any]":
     `Infinity`/`NaN` and `0x…` forms all raise a parse error, exactly like
     `json.loads` / `orjson.loads`. Canonical strict JSON takes the same
     AST-free fast path `load_jsonc` uses (bytes → PyList/PyDict/scalars);
-    any non-canonical shape (floats with exotic spellings, `\u` escapes,
+    any non-canonical shape (floats with exotic spellings, `\\u` escapes,
     out-of-range ints) falls back to the strict AST parser that produces the
     identical value or the proper `json-parse-error`.
     """

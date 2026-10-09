@@ -64,6 +64,8 @@ status: new
   (ap), (aq), (ar))
 - **条目不能再放进没人看的位置（前言之上、front matter 之内）。** — (details: quality-ledger (ar))
 - **站点更新日志页恢复自身描述，折叠的历史版本也能正常渲染。** — (details: quality-ledger (az))
+- **随 wheel 发布的类型存根不再是非法 Python，类型检查器能读到真实契约。** — (details:
+  quality-ledger (bb))
 
 #### 性能
 

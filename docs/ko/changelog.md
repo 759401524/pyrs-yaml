@@ -64,6 +64,8 @@ status: new
   (ao), (ap), (aq), (ar))
 - **아무도 보지 않는 자리에 항목을 넣을 수 없다.** — (details: quality-ledger (ar))
 - **변경 로그 페이지의 설명과 접힌 릴리스 표시를 복원합니다.** — (details: quality-ledger (az))
+- **릴리스에 포함된 형식 스텁이 다시 해석됩니다 — 형식 검사가 계약을 읽을 수 있습니다.** —
+  (details: quality-ledger (bb))
 
 #### 성능
 
