@@ -45,11 +45,26 @@
 
 ## Non-Obvious
 
-- `mkdocstrings` is configured, installed and invoked by the build — and renders nothing: no file under
-  `docs/` contains a `:::` directive, so `docs/<locale>/api/*.md` are hand-typed. Registered as
-  `docs-generation:plugin-unused`. Until it closes, a docs toolchain bump cannot be measured on generated
-  output, and adding `:::` to a page triggers the i18n obligation (every page under `docs/en` needs zh/ja/ko
-  twins), so it is a content decision rather than a config one.
+- `docs/<locale>/api/*.md` are generated: each page carries `:::` directives and mkdocstrings renders the
+  extension's signatures and docstrings into it. That closed `docs-generation:plugin-unused` (#321), so the
+  obligation is now the inverse of what this bullet used to describe: a `:::` block added to an `en` page needs
+  its zh/ja/ko twins, and "the build was green" is not evidence the content arrived — `scripts/build-docs.py`
+  output is measured by counting rendered signature/class markers, not by the exit code (a page missing its
+  directives renders perfectly while showing nothing).
+- Switching jj changes does not rebuild the extension. `python/pyrs_yaml/pyrs_yaml.pyd` belongs to whichever
+  sources were checked out when it was last built, so a Python run after `jj edit`/`jj rebase` can silently
+  test another branch's binary — which has now produced three misleading results in one session (a JSON5 test
+  failing against a pre-#312 build, a schema test failing against a pre-#327 build, a passing run that had
+  proved nothing). Rebuild after moving the working copy. When `maturin develop` cannot install its dependency
+  groups (a PyPI outage), `cargo build --release -p pyrs-yaml` and copying `target/release/pyrs_yaml.dll` over
+  the `.pyd` produces the same binary without touching the network; note it is a *build* substitute, not a
+  wheel install, so the packaging steps still need maturin.
+- Local `cargo fuzz` on this tree needs two things the error messages do not say: `RUSTUP_TOOLCHAIN=nightly`
+  (a bare `cargo fuzz build` under stable reports a rustc-looking failure because `-Zsanitizer` is unstable),
+  and on WSL a `CARGO_TARGET_DIR` on the Linux filesystem — building with the target directory under `/mnt/d`
+  dies mid-compile with "Cannot allocate memory" while writing `.rmeta`, which is a 9p limit and looks exactly
+  like a broken target. New targets go in `fuzz/Cargo.toml` **and** the `fuzz.yml` matrix: the quality matrix
+  derives from both, and `tests/test_quality_matrix.py` reddens on either half missing.
 - An upgrade applied with a bare `uv run --group docs` re-resolves **the whole project** and rewrites
   `pyproject.toml` and `uv.lock` — that is how a documentation change arrived at the stub-drift job with
   `maturin` moved from 1.14.1 to 1.15.0. Use `uv lock --upgrade-package <name>` for a scoped bump.
