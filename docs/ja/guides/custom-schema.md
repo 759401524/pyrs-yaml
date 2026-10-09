@@ -112,6 +112,8 @@ validate:
     sequence_of: int
   - path: $.config
     mapping_of: str
+  - path: $.extra
+    type: map
 ```
 
 ```python
@@ -131,10 +133,23 @@ pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
 pyrs_yaml.validate_against_schema("port: abc\n", schema)
 ```
 
-- `path` — JSONPath 風の場所（`$.key`、`$.a.b`、`$.tags[*]`）；省略時はすべてのスカラー
-- `type` — スカラーがこの YAML 型（`null`/`bool`/`int`/`float`/`str`）に解決されること
-- `sequence_of` / `mapping_of` — すべての要素 / 値が指定型であること
+- `path` — JSONPath 風の場所（`$.key`、`$.a.b`、`$.tags[*]`）。省略時はすべてのスカラーを指します。
+  `[*]` は一つの要素だけを指すため、`$.rows[*]` は `$.rows[0].a` に届きません
+- `type` — スカラーがこの YAML 型（`null`/`bool`/`int`/`float`/`str`）に解決されること。または
+  ノードがこの容器の形（`map`/`seq`。`mapping`/`object`、`sequence`/`array`/`list` も受け付けます）を
+  持つこと。容器の型には `path` が必要です
+- `sequence_of` / `mapping_of` — ノードがその容器であり、すべての要素 / 値が指定型であること。
+  指定型には `map` や `seq` も使えます
 - `required` — パスが存在し非 null であること（`type` と組み合わせ可能）
+
+規則が主張する量はスコープが決めます。`path` を書いた規則はそのノードに関するものなので、形が
+違えば失敗になります。`$.port` がマップなら `type: int` に反し、`$.config` がスカラーなら
+`mapping_of: str` に反します。`path` を省略した規則はノードを指定できないため、説明できるノードを
+形で選ぶ側に回ります。パスなしの `type: str` は「すべてのスカラーは文字列」という意味で、文書の
+残りは問いません。パスなしの `type: map` は何も選ばないので、書かれた時点で拒否されます。要素は
+どちらの場合も検査されます。`sequence_of: int` は要素が何かをすでに述べており、入れ子の配列は
+int ではないからです。一つの規則が持てる検査は一つだけで、`required` は検査と併用できます。別名の
+ノード（`b: *x`）についての規則は判定しません。別名は形ではなく名前を保持するからです。
 
 ### インラインディクスキーマ
 

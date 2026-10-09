@@ -14,5 +14,5 @@ pub use merge::resolve_merge_keys;
 pub use registry::SchemaRegistry;
 pub use scalar::{BlockHeader, detect_block_header, unescape_double_quoted};
 pub use schema::resolve_yaml_type;
-pub use schema_language::{RuleResolver, YamlTypeKind, parse_schema_yaml};
+pub use schema_language::{RuleResolver, TypeSpec, YamlTypeKind, parse_schema_yaml};
 pub use types::{Schema, SchemaResolver, YamlSchema, YamlType};

@@ -77,15 +77,16 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: one ruling the engine has not made
+### Open: nothing awaits a ruling
 
-| # | Item | Layer | Priority |
-|:--|:-----|:------|:--------:|
-| 1 | **`mapping_of` / `sequence_of` do not assert the container** - measured while fixing the rule-path panic: the element check sits inside `if let CustomNode::Mapping`/`Sequence` with no other branch, so `$.config` with `mapping_of: str` passes when `config` is a scalar or a sequence. Either reject the wrong kind, or document that the container is optional and only its elements are checked - both are user-visible, so it is ruled at a milestone review rather than inside a panic fix | Rust (`pyrs-yaml-core` schema language) | 🟡 |
-
-Found by measurement, not by review, and it is the residue of the work that closed
-[#312](https://github.com/759401524/pyrs-yaml/issues/312): it surfaced in the same function as the
-char-boundary crash found while auditing `unwrap` in production code (ledger (bj)).
+The item that used to sit here - whether `mapping_of` / `sequence_of` should assert their
+container - is ruled and shipped: they do, and the language gained the words to say so (`type: map`
+/ `type: seq`, and `map` / `seq` as member types too). Scope decides the strength: a rule naming a
+path asserts that node, a pathless rule selects the nodes it can describe, and members are asserted
+either way. Found by measurement rather than by review, in the same function as the char-boundary
+crash that closed the `unwrap` audit (ledger (bj)); the seven passing shapes that made the ruling,
+the greedy `[*]` matcher it exposed, the two-checks-in-one-rule silent drop and the alias boundary
+it deliberately leaves are all in the engineering record (ledger (bm)).
 
 The other item that used to sit here - what the strict JSON writers should do with a non-finite
 float - is ruled and shipped: they refuse it, with the reason key
@@ -95,6 +96,10 @@ engineering record (ledger (bk)); `to_json5` remains the dialect that carries th
 *not* offered is a lenient `null`, because nothing has asked for a documented way to lose the value
 on purpose - if that demand appears, it arrives as an option with its own name rather than as a
 default.
+
+An item arrives in this section when measurement finds the engine has made a choice nobody decided,
+and leaves the moment a change ships the decision. That is why it stays short rather than growing
+into a second ledger: a ruling without an open item is a ruling someone has to re-derive.
 
 ### How the next scope is written
 

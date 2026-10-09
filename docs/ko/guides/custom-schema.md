@@ -97,6 +97,8 @@ validate:
     sequence_of: int
   - path: $.config
     mapping_of: str
+  - path: $.extra
+    type: map
 ```
 
 ```python
@@ -116,10 +118,24 @@ pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
 pyrs_yaml.validate_against_schema("port: abc\n", schema)
 ```
 
-- `path` — JSONPath 형식 위치(`$.key`, `$.a.b`, `$.tags[*]`); 생략 시 모든 스칼라
-- `type` — 스칼라가 이 YAML 타입(`null`/`bool`/`int`/`float`/`str`)으로 해석되어야 함
-- `sequence_of` / `mapping_of` — 모든 요소 / 값이 지정 타입이어야 함
+- `path` — JSONPath 형식 위치(`$.key`, `$.a.b`, `$.tags[*]`); 생략 시 모든 스칼라. `[*]`는
+  하나의 요소만 가리키므로 `$.rows[*]`는 `$.rows[0].a`에 닿지 않음
+- `type` — 스칼라가 이 YAML 타입(`null`/`bool`/`int`/`float`/`str`)으로 해석되거나, 노드가 이
+  컨테이너 형태(`map`/`seq`; `mapping`/`object`, `sequence`/`array`/`list`도 허용)를 가져야 함.
+  컨테이너 타입에는 `path`가 필요함
+- `sequence_of` / `mapping_of` — 노드가 그 컨테이너여야 하고 모든 요소 / 값이 지정 타입이어야
+  함. 지정 타입 자체도 `map`이나 `seq`일 수 있음
 - `required` — 경로가 존재하고 null이 아니어야 함(`type`과 조합 가능)
+
+범위가 규칙이 주장하는 양을 결정합니다. `path`를 쓴 규칙은 해당 노드에 대한 것이므로 형태가
+다르면 실패합니다. `$.port`에 맵이 있으면 `type: int`를 위반하고, `$.config`가 스칼라이면
+`mapping_of: str`를 위반합니다. `path`가 없는 규칙은 노드를 지명할 수 없으므로 설명할 수 있는
+노드를 형태로 고르는 쪽으로 돌아섭니다. 경로 없는 `type: str`은 "모든 스칼라는 문자열"이라는
+뜻이며 문서의 나머지 부분은 관계없습니다. 경로 없는 `type: map`은 아무것도 고르지 못하므로
+적힌 자리에서 거부됩니다. 구성 요소는 두 경우 모두 검사됩니다. `sequence_of: int`는 이미
+요소가 무엇인지 말했고 중첩된 시퀀스는 int가 아니기 때문입니다. 한 규칙은 검사 항목을 하나만
+가질 수 있고, `required`는 검사와 경쟁하지 않고 결합됩니다. 별칭 노드(`b: *x`)에 대한 규칙은
+판정하지 않습니다. 별칭은 형태가 아니라 이름을 담고 있기 때문입니다.
 
 ### 인라인 Dict 스키마
 

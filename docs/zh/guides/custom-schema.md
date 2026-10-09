@@ -112,6 +112,8 @@ validate:
     sequence_of: int
   - path: $.config
     mapping_of: str
+  - path: $.extra
+    type: map
 ```
 
 ```python
@@ -131,10 +133,22 @@ pyrs_yaml.validate_against_schema("port: 80\n", schema)  # OK
 pyrs_yaml.validate_against_schema("port: abc\n", schema)
 ```
 
-- `path` — JSONPath 风格位置（`$.key`、`$.a.b`、`$.tags[*]`）；省略时应用于所有标量
-- `type` — 标量必须解析为该 YAML 类型（`null`/`bool`/`int`/`float`/`str`）
-- `sequence_of` / `mapping_of` — 每个元素 / 值必须为指定类型
+- `path` — JSONPath 风格位置（`$.key`、`$.a.b`、`$.tags[*]`）；省略时应用于所有标量。
+  单个 `[*]` 只指代一个元素，所以 `$.rows[*]` 不会触及 `$.rows[0].a`
+- `type` — 标量必须解析为该 YAML 类型（`null`/`bool`/`int`/`float`/`str`），或者节点必须具有
+  该容器形状（`map`/`seq`，也接受 `mapping`/`object`、`sequence`/`array`/`list`）。容器形状
+  必须给出 `path`
+- `sequence_of` / `mapping_of` — 节点必须是该容器，且每个元素 / 值都为指定类型，该类型本身
+  也可以是 `map` 或 `seq`
 - `required` — 路径必须存在且非 null（可与 `type` 组合）
+
+作用范围决定一条规则断言多少内容。给出了 `path` 的规则针对该节点，所以形状不符就会失败：
+`$.port` 处是映射则违反 `type: int`，`$.config` 处是标量则违反 `mapping_of: str`。省略 `path`
+的规则无法指名节点，于是它按形状筛选自己能够描述的节点：不带路径的 `type: str` 意为「所有标量
+都是字符串」，不管文档其余部分是什么；不带路径的 `type: map` 什么也选不出来，因而在书写处就被
+拒绝。成员在两种情形下都会被校验：`sequence_of: int` 已经说明元素是什么，嵌套序列不是 int。
+一条规则只能承载一项检查（`required` 与检查组合，而非与之竞争）。关于别名节点（`b: *x`）的规则
+不作判定，因为别名保存的是名字而不是形状。
 
 ### 内联 Dict Schema
 
