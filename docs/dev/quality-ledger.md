@@ -2183,6 +2183,49 @@ is not harmless for `repr()`, for anything that introspects a wheel built withou
 generator that prefers live objects. It belongs in a binding change with its own stub regeneration,
 not smuggled into a repair.
 
+### (bc) The release notes described their own first line, and an outside review said so (2026-10-10)
+
+An external review of `ROADMAP.md` and `CHANGELOG.md` arrived as a link, and the useful response was
+to measure each claim against the tree rather than accept or argue with the opinion. Four claims
+held, one was false in its premise, and one was false in a way that would have re-broken the site.
+
+- **Every fold summary is its version's first entry** - true, and the worst case is v0.16.0, whose
+  summary read `JSONC block-comment hot-sample bench` over 93 entries in five sections. Measured for
+  all 21 folds by comparing the `<summary>` text with the first bullet that follows it: **21 of 21
+  matched**. A changelog that folds its history is a table of contents, and this one only ever
+  listed line one.
+- **Folding is inconsistent** - true: 24 releases, 21 folds, and the three outside the pattern are
+  exactly `0.11.4`, `0.11.3` and `0.1.0`. They fold like the rest now, in all five mirrors.
+- **`markdown="1"` is legacy GitHub syntax, drop it** - false here, and following it would have
+  returned the defect recorded at (az). The attribute is for Python-Markdown's `md_in_html`, not for
+  GitHub; measured on the deployed generator a bare `<details>` yields 11 headings and 3 literal
+  `####` leaks where `markdown="1"` yields 69 and 0. `scripts/check_doc_metadata.py` refuses a bare
+  `<details>`, so the advice would not even have passed this repository's own gate.
+- **The research history is duplicated between `ROADMAP.md` and this file** - false in its premise:
+  `9C9N` occurs eight times in `ROADMAP.md` and not once here, and `26.8`, `29.7`, `0.42` and
+  `granit 1.3` are only in the roadmap. Nothing had been migrated. The *shape* it argues for -
+  roadmap keeps the decision and a link, the record keeps the experiment - is the one already
+  agreed, and it stays open rather than being half-done in a pull request about something else.
+- **`[Unreleased]` had been compressed into slogans** - true as a reading, and also what was asked
+  for at the time (40-80 characters plus a pointer). The more detailed granularity has since been
+  chosen, so entries carry the behaviour, the API name and the number - `1: a` versus `a: 1` and
+  what each used to load as; 21,232,786 / 22,176,851 / 22,974,851 instructions with the 4.4% and
+  8.2% costs; the `139.4us vs 359.6us (2.58x)` report - and keep the pointer. The method narrative
+  stays here.
+
+Restoring the detail from history rather than rewriting it from memory matters: the block at
+`89bbfbee^` holds 112 entries against the compressed 32, so the numbers and API names are the ones
+written when each change landed. The pairing cannot be positional - the compression merged several
+entries per line - so it was made by reading, which is also why the two shapes differ in count by
+design.
+
+Two process notes. The mirror gate compares per-section entry counts *by position* while allowing
+translated section names, so four language drafts have to move in lockstep - the drafts are
+generated from one table rather than hand-copied five times. And `check_cjk_localisation.py` caught
+a Japanese katakana word that my own Korean repair table had injected: kana in a `ko` page, reported
+with its line number. The mirror and the table that produced it were both fixed, because a repaired
+artifact with an unfixed producer is not a repair.
+
 ### (bd) A documentation-only pull request could not be merged at all (2026-10-10)
 
 Found by trying to merge one. PR #319 - changelog prose, nothing else - came back with every check
