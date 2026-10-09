@@ -22,6 +22,9 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "scripts/check_stub_drift.py"
+      # The job installs the extension into the venv so the derivation can read the exception types off
+      # the live classes, so a binding change is this gate's business too.
+      - "crates/pyrs-yaml/src/py/**"
   workflow_dispatch:
 
 permissions:
@@ -132,6 +135,16 @@ jobs:
 
       - name: Regenerate stubs (declared route)
         run: uv run --no-sync maturin generate-stubs --out target/stubs
+
+      # The route reads the extension's exception types from the live classes, because maturin's own
+      # introspection emits none of them (PyO3 `import_exception!` classes are not what its stub emitter
+      # walks). `maturin generate-stubs` builds in an isolated environment, so it does not leave the module
+      # importable in `.venv` — measured when this job first went red with `No module named 'pyrs_yaml'`.
+      # Installing the built extension here is what lets the check ask the same question on a runner as it
+      # can ask locally; without it the gate would either fail always or have to guess the list, and a
+      # guessed list is the drift this job exists to prevent.
+      - name: Install the built extension (the derivation reads it)
+        run: uv run --no-sync maturin develop
 
       - name: Assert the committed stub matches the generated stub
         run: uv run --no-sync python scripts/check_stub_drift.py

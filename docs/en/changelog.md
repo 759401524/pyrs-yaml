@@ -244,6 +244,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the documentation gates and `scripts/build-docs.py` for four locales under `--strict` - the way
   the registered rendering blind spot closed. — (details: quality-ledger (bd))
 
+- **The typing contract shipped in every wheel declared no exception type.** — the package exports
+  ten error types and `python/pyrs_yaml/pyrs_yaml.pyi` declared none, because maturin 1.14.1's
+  introspection route walks no PyO3 `import_exception!` class; `except pyrs_yaml.YamlParseError:`
+  was therefore invisible to mypy and pyright. The drift route now appends the declarations derived
+  from the built classes (name, base, docstring), counts them against `EXPECTED_EXCEPTION_CLASSES`,
+  orders a base before its subclass so the file parses, and exits 2 rather than emitting a contract
+  missing them. `exceptions.md` is generated in all four locales as a result. — (details:
+  quality-ledger (bf))
+
 #### Performance
 
 - **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the

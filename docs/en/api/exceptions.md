@@ -302,3 +302,18 @@ def load_yaml(path):
         print(f"Failed to read {path}: {e}")
         return None
 ```
+
+## Generated API reference
+
+Rendered by `mkdocstrings` from the generated type stub, so the base class shown for each error is the one the bindings actually declare.
+
+::: pyrs_yaml.YamlParseError
+::: pyrs_yaml.YamlSerializeError
+::: pyrs_yaml.YamlTypeError
+::: pyrs_yaml.YamlValidateError
+::: pyrs_yaml.YamlEditError
+::: pyrs_yaml.YamlPathError
+::: pyrs_yaml.YamlMaxDepthError
+::: pyrs_yaml.YamlDuplicateKeyError
+::: pyrs_yaml.YamlTagError
+::: pyrs_yaml.YamlTagSkip

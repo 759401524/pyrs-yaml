@@ -200,6 +200,13 @@ status: new
   结论跳过，而 `docs-gates` 每次都跑文档门禁并对四个语言站点做 `--strict` 构建 —— 登记过的渲染盲区
   正是这样关闭的。 — (details: quality-ledger (bd))
 
+- **随每个 wheel 发布的类型契约居然一个异常类型都没声明。** — 本包导出十个错误类型，而
+  `python/pyrs_yaml/pyrs_yaml.pyi` 一个都没写：maturin 1.14.1 的自省路由不会遍历 PyO3
+  `import_exception!` 类。于是 `except pyrs_yaml.YamlParseError:` 对 mypy 与 pyright 隐形。漂移路由
+  现在会从已构建的类派生这些声明（名、基类、docstring），用 `EXPECTED_EXCEPTION_CLASSES` 计数把关，
+  把基类排在子类之前以保证文件可解析，并在无法导入时退出码 2 而不是交出一个缺失声明的契约。因此
+  `exceptions.md` 也已在四个语言全部改为生成。— (details: quality-ledger (bf))
+
 #### 性能
 
 - **标签发出改为表驱动，转义不再分配内存。** — 把标签编码挪到读取器自己的字符类上，就让逐字节的归属

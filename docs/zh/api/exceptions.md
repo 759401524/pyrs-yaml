@@ -292,3 +292,18 @@ except pyrs_yaml.YamlTypeError as e:
 ```
 
 **注意:** 大多数自定义异常继承自 `ValueError`（`YamlDocumentError` 继承自 `Exception`），因此可以用 `except ValueError` 批量捕获大部分错误。但为了更细粒度的错误处理，建议使用具体的异常类。
+
+## 生成的 API 参考
+
+以下内容由 `mkdocstrings` 从生成的类型存根渲染，因此每个异常显示的基类就是绑定实际声明的那个。
+
+::: pyrs_yaml.YamlParseError
+::: pyrs_yaml.YamlSerializeError
+::: pyrs_yaml.YamlTypeError
+::: pyrs_yaml.YamlValidateError
+::: pyrs_yaml.YamlEditError
+::: pyrs_yaml.YamlPathError
+::: pyrs_yaml.YamlMaxDepthError
+::: pyrs_yaml.YamlDuplicateKeyError
+::: pyrs_yaml.YamlTagError
+::: pyrs_yaml.YamlTagSkip

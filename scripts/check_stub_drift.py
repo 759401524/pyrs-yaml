@@ -42,6 +42,14 @@ After all transforms the derived text must parse: `verify_parses` re-reads it wi
 `ast`, so a generator misbehaviour that is not yet described by a declared fix fails
 the gate naming its line instead of shipping as an unusable artifact.
 
+4. `exception_block` appends what the generator omits completely: the extension's ten exception types.
+   maturin 1.14.1 walks the module's own classes, and a PyO3 `import_exception!` type is not among the
+   objects it emits, so the stub - the file `py.typed` advertises to mypy and pyright inside every wheel -
+   declared no error type at all, and `except pyrs_yaml.YamlParseError:` was unresolvable. The names, base
+   classes and docstrings are read from the built extension rather than kept in a list here, so the
+   declarations cannot go stale; `EXPECTED_EXCEPTION_CLASSES` is the tripwire for an exception appearing or
+   disappearing, and an unimportable extension exits 2 instead of quietly producing a thinner contract.
+
 Usage:
     uv run maturin generate-stubs --out target/stubs
     python scripts/check_stub_drift.py            # verify only
@@ -81,6 +89,18 @@ FIDELITY_FIXES = (
 )
 
 MAX_DIFF_LINES = 120
+
+# The extension's exception types never reach the generator's output at all: maturin 1.14.1 introspects the
+# built module, and a PyO3 `import_exception!` class is not the kind of object its emitter walks. The package
+# exports ten of them - measured against the built extension, not against a list someone believes - so the
+# public typing contract that ships inside every wheel declared no exception type, and `except
+# pyrs_yaml.YamlParseError:` is invisible to mypy and pyright. The declarations below are derived from the
+# live classes at derivation time (names, bases, docstrings), so the stub cannot drift from the bindings it
+# describes; `EXPECTED_EXCEPTION_CLASSES` is the tripwire that makes a new or removed exception a review.
+EXPECTED_EXCEPTION_CLASSES = 10
+
+EXCEPTION_SUFFIXES = ("Error", "Exception")
+EXCEPTION_ALIASES = ("YamlTagSkip",)
 
 # Measured on the pinned generator: two docstring lines contain a backslash, both written by maturin
 # 1.14.1 straight out of the Rust doc comment. A third site or a fixed upstream changes the count, and
@@ -143,6 +163,104 @@ def escape_docstring_backslashes(text: str) -> tuple[str, int]:
     return "\n".join(lines) + trailing, changed
 
 
+class StubInputError(RuntimeError):
+    """An input the derivation cannot do without.
+
+    Raised instead of guessing: a missing extension or an unexpected shape means the derived stub would be
+    incomplete in a way a reader would never see, so the route stops with exit code 2 and says what to run.
+    """
+
+
+def order_by_base(entries: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """Reorder `(name, base, docstring)` triples so a declared base precedes its subclass.
+
+    A `.pyi` is Python source, so `class YamlTagSkip(YamlTagError)` only parses if `YamlTagError` was declared
+    above it - and the natural alphabetical listing is not guaranteed to get that right. Bases outside the set
+    (`ValueError`, `TypeError`) are already declared by whoever reads the file, so they impose no order.
+
+    Raises:
+        StubInputError: when no remaining class can be placed, i.e. the bases form a cycle or name a class
+            this block does not declare. Both would emit a file that fails to parse, and neither is worth
+            discovering from a syntax error in an artifact nobody may hand-edit.
+    """
+    declared = {name for name, _base, _doc in entries}
+    ordered: list[tuple[str, str, str]] = []
+    pending = sorted(entries)
+    while pending:
+        placed = {name for name, _base, _doc in ordered}
+        ready = [item for item in pending if item[1] not in declared or item[1] in placed]
+        if not ready:
+            raise StubInputError(f"exception bases form a cycle or name an undeclared base: {pending}")
+        for item in ready:
+            ordered.append(item)
+            pending.remove(item)
+    return ordered
+
+
+def extension_exceptions() -> list[tuple[str, str, str]]:
+    """The extension's exported exception types, as `(name, base, docstring)`, ordered and deterministic.
+
+    Raises:
+        StubInputError: when the built extension cannot be imported, or an error type does not have exactly
+            one base. Reading these from the live classes is the point - a hand-kept list would go stale the
+            day an exception is added, and the alternative is shipping a typing contract that quietly omits
+            them.
+
+    Returns:
+        One triple per exported error type, ordered so that a base declared inside the set precedes the
+        class that inherits from it, which is what makes the appended declarations parse.
+    """
+    try:
+        import pyrs_yaml
+    except ImportError as error:
+        raise StubInputError(
+            f"cannot import pyrs_yaml to read its exception types ({error}); the committed stub is only "
+            "derivable while the built extension is importable - run `uv run maturin develop` first"
+        ) from error
+
+    found = []
+    for name in dir(pyrs_yaml):
+        if name.startswith("_"):
+            continue
+        if not (name.endswith(EXCEPTION_SUFFIXES) or name in EXCEPTION_ALIASES):
+            continue
+        obj = getattr(pyrs_yaml, name)
+        if not isinstance(obj, type) or getattr(obj, "__module__", "") != "pyrs_yaml":
+            continue
+        bases = [base.__name__ for base in obj.__bases__]
+        if len(bases) != 1:
+            raise StubInputError(f"{name} has bases {bases}; this route declares exactly one")
+        found.append((name, bases[0], (obj.__doc__ or "").strip()))
+
+    return order_by_base(found)
+
+
+def exception_block(text: str) -> tuple[str, int]:
+    """Append the derived exception declarations, and report how many were written.
+
+    Args:
+        text: the stub text after the other fidelity transforms.
+
+    Returns:
+        The text with one `class Name(Base)` declaration per extension exception - carrying the live
+        docstring, with backslashes doubled the way Python source requires for a string literal - plus the
+        count, which the caller compares with `EXPECTED_EXCEPTION_CLASSES`.
+    """
+    entries = extension_exceptions()
+    lines = [text.rstrip("\n"), ""]
+    for name, base, doc in entries:
+        lines.append(f"class {name}({base}):")
+        if doc:
+            lines.append('    """')
+            for row in doc.splitlines():
+                lines.append(("    " + row).replace("\\", "\\\\"))
+            lines.append('    """')
+        else:
+            lines.append("    ...")
+        lines.append("")
+    return "\n".join(lines) + "\n", len(entries)
+
+
 def verify_parses(text: str, origin: str) -> str | None:
     """Return a problem description when the derived stub is not valid Python, otherwise None.
 
@@ -187,7 +305,11 @@ def derived_text(generated: str) -> tuple[str, list[str]]:
         fail: the rewrite was not applied for that fix. Escaping docstring
         backslashes is different in kind - the transform is generic, so it always
         runs - but its site count is still checked, and the result still has to
-        parse, so a generator change is noticed instead of absorbed.
+        parse, so a generator change is noticed instead of absorbed. The same
+        holds for the exception declarations, which the generator omits entirely:
+        they are appended from the live classes, counted against
+        `EXPECTED_EXCEPTION_CLASSES`, and the extension being unimportable is an
+        error (`StubInputError`) rather than a thinner contract shipped quietly.
     """
     problems: list[str] = []
     text = normalize(generated)
@@ -199,6 +321,14 @@ def derived_text(generated: str) -> tuple[str, list[str]]:
             "without escaping, so a new line is a new unparseable site and a disappeared one "
             "is an upstream fix; either way review EXPECTED_DOCSTRING_ESCAPES instead of "
             "trusting the rewrite."
+        )
+    text, exceptions = exception_block(text)
+    if exceptions != EXPECTED_EXCEPTION_CLASSES:
+        problems.append(
+            f"exception declarations: wrote {exceptions} class(es), expected "
+            f"{EXPECTED_EXCEPTION_CLASSES}. These are read from the built extension because "
+            "maturin 1.14.1 emits none of them; a count change means an exception was added "
+            "or removed, and the public typing contract has to be re-checked either way."
         )
     for fix in FIDELITY_FIXES:
         matches = fix["pattern"].findall(text)
@@ -271,7 +401,14 @@ def main() -> int:
     args = parser.parse_args()
 
     hint = "Run: uv run maturin generate-stubs --out target/stubs"
-    expected, problems = derived_text(read_text(args.generated, hint))
+    try:
+        expected, problems = derived_text(read_text(args.generated, hint))
+    except StubInputError as error:
+        # Exit 2, the same code as an unusable generated file: the derivation could not be done, so neither
+        # "in sync" nor "drift" is a truthful answer, and a green run here must never mean "the exception
+        # declarations were skipped today".
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 2
     if problems:
         for problem in problems:
             print(f"ERROR: {problem}", file=sys.stderr)
