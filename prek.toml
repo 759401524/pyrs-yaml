@@ -184,6 +184,23 @@ entry = "python scripts/check_doc_metadata.py"
 files = "^docs/(en|ja|ko|zh)/.*\\.md$"
 priority = "checks"
 
+# The file an agent trusts most was the one artefact outside the quality gate. `AGENTS.md` described
+# `mkdocstrings` as configured-and-rendering-nothing and named `docs-generation:plugin-unused` as an open hole
+# for a whole milestone after #321 had closed it, because the matrix compared the registry with the derived
+# document and nothing read the prose - and the sentence was not merely stale, it pointed the next agent the
+# wrong way about what to do with an API page. The rule is narrow on purpose: an id counts as a hole id only
+# when `scripts/quality_matrix.py` can emit its kind, which is read off the probe rather than listed here, so
+# `line:column` in a changelog entry is not a claim; and a named id must be one the measurement reproduces now.
+# History keeps its ids - the five release-note pages and `docs/dev/quality-ledger.md` are dated records. An
+# instruction file is present tense, which is why only the two agent files are in scope.
+[[repos.hooks]]
+id = "hole-claims"
+name = "instruction files name measured holes"
+language = "system"
+entry = "python scripts/check_hole_claims.py"
+files = "^(AGENTS|CLAUDE)\\.md$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"

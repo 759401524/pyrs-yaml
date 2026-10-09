@@ -84,6 +84,15 @@ status: new
   这些拼写同样接受，因为 schema 由人书写而非工具生成。不带 `path` 的容器类型在书写处即被拒绝：没有
   指名的节点，它就什么都选不出、什么都查不到。— (details: quality-ledger (bm))
 
+- **给指令文件也装上量尺，而不是轻信它。** — `scripts/check_hole_claims.py` 断言 `AGENTS.md` 与
+  `CLAUDE.md` 里点名的每个质量盲区 id，都是矩阵此刻量到的盲区。促成这条检查的文件正是 `AGENTS.md` 自
+  己：它在整整一个里程碑里把 `mkdocstrings` 描述成「渲染不出任何东西」—— 一句现在时的指令，说的
+  是 #321 已经关闭的缺口，于是继续把下一个读者指向错误的方向。测量本身没有错：矩阵会双向比对
+  `.ci/quality-holes.json` 与 `QUALITY_MATRIX.md`，止步于那份派生文档。只有当某个 token 的 kind 是探
+  针能发出的种类时才算盲区 id —— 种类是从 `quality_matrix.py` 读出来的，而不是在旁边抄一份 —— 所以正
+  文里的 `line:column` 不是一条主张；读不全种类的检查会退 2，绝不假装通过。带日期的记录保留 id：历史
+  可以提及已关闭的盲区，指令文件用的是现在时。— (details: quality-ledger (bn))
+
 #### 变更
 
 - **给出 `path` 的校验规则会断言它所指名的节点。** — 改动前先测量：`$.config` 配 `mapping_of: str`

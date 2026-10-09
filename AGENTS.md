@@ -46,11 +46,17 @@
 ## Non-Obvious
 
 - `docs/<locale>/api/*.md` are generated: each page carries `:::` directives and mkdocstrings renders the
-  extension's signatures and docstrings into it. That closed `docs-generation:plugin-unused` (#321), so the
-  obligation is now the inverse of what this bullet used to describe: a `:::` block added to an `en` page needs
-  its zh/ja/ko twins, and "the build was green" is not evidence the content arrived — `scripts/build-docs.py`
-  output is measured by counting rendered signature/class markers, not by the exit code (a page missing its
-  directives renders perfectly while showing nothing).
+  extension's signatures and docstrings into it. That gap closed with #321, so the obligation is now the
+  inverse of what this bullet used to describe: a `:::` block added to an `en` page needs its zh/ja/ko twins,
+  and "the build was green" is not evidence the content arrived — `scripts/build-docs.py` output is measured
+  by counting rendered signature/class markers, not by the exit code (a page missing its directives renders
+  perfectly while showing nothing).
+- This file is gated. `scripts/check_hole_claims.py` asserts that every quality-hole id named here or in
+  `CLAUDE.md` is an id the matrix measures right now, because for a milestone this file described a closed
+  gap as open and nothing read it: the matrix compared the registry with `QUALITY_MATRIX.md` in both
+  directions and stopped there. Keep the rule honest rather than working around it — state the defence as it
+  is now, name the pull request that closed a gap instead of the id of it, and leave histories to the dated
+  records (`CHANGELOG.md`, `docs/dev/quality-ledger.md`), where naming a closed hole is the point.
 - Switching jj changes does not rebuild the extension. `python/pyrs_yaml/pyrs_yaml.pyd` belongs to whichever
   sources were checked out when it was last built, so a Python run after `jj edit`/`jj rebase` can silently
   test another branch's binary — which has now produced three misleading results in one session (a JSON5 test
