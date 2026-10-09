@@ -452,3 +452,24 @@ def test_the_check_says_nothing_about_a_line_it_forbids_moving(checker):
     reported = {number for _name, number, _width, _snippet in checker.offenders(lines, "page.md")}
     assert 3 not in reported, "the over-long `description:` line was reported although it may not move"
     assert reported, "the over-long prose line was missed"
+
+
+def test_the_joiner_never_writes_the_gap_the_checker_reports(checker):
+    """A re-joined paragraph must not contain the artifact the same script then reports.
+
+    The glue used to be decided from a script class, and U+3001 (ideographic comma) is General
+    Punctuation - neither Han nor kana - so a line ending in `、` was joined to the following kana with a
+    space, and `spacing_artifacts` reported the very gap the joiner had written. Measured on
+    `docs/ja/changelog.md`, where `--fix` could not converge because each pass recreated the finding.
+    Asking the two residue patterns makes the disagreement structurally impossible.
+    """
+    joined = checker.join_lines(["文章が、", "その続きを書きます"])
+    assert "が、その続き" in joined, joined
+    assert checker._outside_spans(joined, checker.CJK_PUNCT_SPACE) == []
+    assert checker._outside_spans(joined, checker.CJK_WORD_SPACE) == []
+
+
+def test_a_boundary_touching_a_code_span_keeps_its_space(checker):
+    """The other half of the same rule: `は `docs.md` にある` is normal typography."""
+    joined = checker.join_lines(["YAML Core は", "`docs.md` にある"])
+    assert joined == "YAML Core は `docs.md` にある"

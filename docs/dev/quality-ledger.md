@@ -2489,6 +2489,40 @@ passed / 4 skipped) and the gate exits 2, so "green on the machine that authored
 the state being shipped. Route re-derives with no drift; `pytest tests/ -q` 2334 passed / 10
 skipped; changelog counts identical across five mirrors.
 
+### (bi) The prose fixer wrote the gap its own checker reported (2026-10-10)
+
+Adding a Japanese changelog entry, `check_doc_wrapping.py --fix` answered with a finding and refused
+to converge: `docs/ja/changelog.md:241 (1 gap(s)) [wrap residue]`, and running it again produced the
+same line. The gap was not in the text that was typed. The fixer wrote it.
+
+`join_lines` decides the glue between two physical lines of one paragraph, and the rule it used was
+`"" if _is_han_kana(out[-1]) and _is_han_kana(following[0]) else " "`. U+3001 (ideographic comma) is
+General Punctuation: neither Han nor kana. A line ending in `、` therefore glued to the following
+kana with a space - and `CJK_WORD_SPACE` in the same file treats a space between two CJK-class
+characters as the artifact it strips and reports, because its class is `\u3000-\u303f` plus
+`\uff01-\uff5e`, which does include U+3001.
+
+One rule, written twice, encoded differently. The checker's version was right and the joiner's was
+not, so each pass fixed the paragraph and then re-broke it. The repair is to stop restating the
+rule: `join_lines` now asks `CJK_PUNCT_SPACE` and `CJK_WORD_SPACE` whether a space at that boundary
+would be an artifact, and `_is_han_kana` is gone - the function that could disagree with the
+patterns it was supposed to mirror.
+
+Two tests hold it: `test_the_joiner_never_writes_the_gap_the_checker_reports` (a `、` boundary
+fuses, and neither pattern finds anything in the result) and
+`test_a_boundary_touching_a_code_span_keeps_its_space` (the other half: `は `docs.md` にある` is
+normal typography and must not fuse).
+
+While the joiner was wrong, `--fix` over CJK pages was unsafe: the repair itself was creating
+findings. The interim route, and the one that should be used until this lands, is to re-flow only
+the English governed pages and hand-wrap the localized ones - `target/probe/fix_english_only.py`.
+Hand-wrapping was also what let 104- and 108-column lines into the ledger in the first place, so the
+English pages still go through the fixer.
+
+Verified: `pytest tests/test_doc_wrapping_gate.py` 30 passed; doc gates green over all nine governed
+pages; the localized pages needed exactly one manual repair (`が、 その文末` -> `が、その文末`) that
+the fixed joiner now refuses to write.
+
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

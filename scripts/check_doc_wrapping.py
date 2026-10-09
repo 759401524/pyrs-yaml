@@ -207,15 +207,6 @@ def _is_hangul(character: str) -> bool:
     return "\u1100" <= character <= "\u11ff" or "\uac00" <= character <= "\ud7a3"
 
 
-def _is_han_kana(character: str) -> bool:
-    """Whether `character` is Han or kana, the scripts that carry no word spaces.
-
-    Hangul is excluded: Korean words are space-separated, so gluing two Korean lines would fuse a
-    particle onto the following noun.
-    """
-    return "\u3040" <= character <= "\u30ff" or "\u4e00" <= character <= "\u9fff"
-
-
 def join_lines(body: list) -> str:
     """Join physical lines of one paragraph back into a single logical line.
 
@@ -224,14 +215,23 @@ def join_lines(body: list) -> str:
     and *wrong* between two Han or kana glyphs, where a space is precisely the artifact
     `spacing_artifacts` reports. A boundary touching a Latin, a digit or a code span keeps its space,
     because `は `docs.md` にある` is normal typography.
+
+    The rule is asked rather than restated: `CJK_PUNCT_SPACE` and `CJK_WORD_SPACE` decide whether a
+    space at this boundary is an artifact, so the joiner and the checker cannot disagree. Deciding it
+    from a script class instead did exactly that - a line ending in `、` (U+3001, General Punctuation,
+    not Han or kana) glued a space onto the following kana and the same run then reported the gap it had
+    written, on `docs/ja/changelog.md`.
     """
     out = body[0]
     for following in body[1:]:
         if not out or not following:
             out = out + following
             continue
-        glue = "" if _is_han_kana(out[-1]) and _is_han_kana(following[0]) else " "
-        out = out.rstrip() + glue + following.lstrip()
+        head, tail = out.rstrip(), following.lstrip()
+        boundary = head[-1:] + " " + tail[:1]
+        artifact = _outside_spans(boundary, CJK_PUNCT_SPACE) or _outside_spans(boundary, CJK_WORD_SPACE)
+        glue = "" if artifact else " "
+        out = head + glue + tail
     return out
 
 
