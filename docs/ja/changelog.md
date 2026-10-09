@@ -1,5 +1,7 @@
 ---
-title: 変更履歴 description: pyrs-yaml プロジェクトのすべての注目すべき変更を文書化します。 tags:
+title: 変更履歴
+description: pyrs-yaml プロジェクトのすべての注目すべき変更を文書化します。
+tags:
   - docs
 status: new
 ---
@@ -57,6 +59,7 @@ status: new
 - **ゲート計器側の六つの欠陥を修正（Python 下限含む）。** — (details: quality-ledger (ah), (an),
   (ao), (ap), (aq), (ar))
 - **誰も見ない位置への登録を禁止。** — (details: quality-ledger (ar))
+- **更新ログページ自身の説明と折りたたみ版の表示を復元。** — (details: quality-ledger (az))
 
 #### パフォーマンス
 
@@ -66,7 +69,7 @@ status: new
 
 ### [v0.17.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>pyq CLI パリティフラグ</summary>
 
 #### 追加
@@ -111,7 +114,7 @@ status: new
 
 ### [v0.16.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>JSONC ブロックコメント・ホットスポットベンチ</summary>
 
 #### 追加
@@ -609,7 +612,7 @@ status: new
 
 ### [v0.15.0] — 2026-08-19
 
-<details>
+<details markdown="1">
 <summary>ノードメタデータのセッター/ゲッター</summary>
 
 #### 追加
@@ -665,7 +668,7 @@ status: new
 
 ### [v0.14.1] — 2026-08-15
 
-<details>
+<details markdown="1">
 <summary>バックスラッシュ+制御文字/非文字を含む単一引用スカラー</summary>
 
 #### 修正
@@ -692,7 +695,7 @@ status: new
 
 ### [v0.14.0] — 2026-08-14
 
-<details>
+<details markdown="1">
 <summary>YAML Schema Language</summary>
 
 #### 追加
@@ -728,7 +731,7 @@ status: new
 
 ### [v0.13.0] — 2026-08-10
 
-<details>
+<details markdown="1">
 <summary>Rust MSRV を 1.96 に引き上げ、edition を 2024 に変更</summary>
 
 #### 変更
@@ -794,7 +797,7 @@ status: new
 
 ### [v0.12.1] — 2026-08-06
 
-<details>
+<details markdown="1">
 <summary>`set(create_missing=True)`</summary>
 
 #### 追加
@@ -843,7 +846,7 @@ status: new
 
 ### [0.11.7] — 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>stub-build-check から release-guard に置換</summary>
 
 #### 変更
@@ -865,7 +868,7 @@ status: new
 
 ### [0.11.6] — 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>Free-threaded（cp314t）wheel が numpy なしに</summary>
 
 #### 変更
@@ -886,7 +889,7 @@ status: new
 
 ### [0.11.5] — 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>パーサー堅牢性項目 3/4/5 がフェーズ 0 厳格監査でクローズ</summary>
 
 #### 変更
@@ -952,7 +955,7 @@ status: new
 
 ### [0.11.2] — 2026-08-03
 
-<details>
+<details markdown="1">
 <summary>パースはスプライス資格を計算しない</summary>
 
 #### 追加
@@ -978,7 +981,7 @@ status: new
 
 ### [0.11.0] — 2026-08-02
 
-<details>
+<details markdown="1">
 <summary>外科的シリアライズ</summary>
 
 #### 追加
@@ -1000,7 +1003,7 @@ status: new
 
 ### [0.10.0] — 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>インプレース編集</summary>
 
 #### 追加
@@ -1032,7 +1035,7 @@ status: new
 
 ### [0.9.0] — 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>Python 3.13、3.14、3.15 サポート</summary>
 
 #### 追加
@@ -1109,7 +1112,7 @@ status: new
 
 ### [0.8.0] — 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>`YAML()` インスタンス API</summary>
 
 #### 追加
@@ -1137,7 +1140,7 @@ status: new
 
 ### [0.7.1] — 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>ryaml ベンチマーク比較</summary>
 
 #### 追加
@@ -1165,7 +1168,7 @@ status: new
 
 ### [0.7.0] — 2026-07-29
 
-<details>
+<details markdown="1">
 <summary>シリアライザ `max_depth` ガード</summary>
 
 #### 追加
@@ -1199,7 +1202,7 @@ status: new
 
 ### [0.6.0] — 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>非同期シリアライズ</summary>
 
 #### 追加
@@ -1237,7 +1240,7 @@ status: new
 
 ### [0.5.0] — 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>`Serializer::write_node`</summary>
 
 #### 修正
@@ -1254,7 +1257,7 @@ status: new
 
 ### [0.4.0] — 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>132 個の新規ギャップフィルテスト</summary>
 
 #### 追加
@@ -1304,7 +1307,7 @@ status: new
 
 ### [0.3.0] — 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>NumPy ndarray シリアライズ</summary>
 
 #### 追加

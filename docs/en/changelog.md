@@ -1,8 +1,10 @@
 ---
-title: Changelog description: All notable changes to pyrs-yaml, formatted per Keep a Changelog and
-Semantic Versioning. tags:
+title: Changelog
+description: All notable changes to pyrs-yaml, formatted per Keep a Changelog and Semantic Versioning.
+tags:
 
-- docs status: new
+- docs
+status: new
 
 ---
 
@@ -71,6 +73,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Six defects in the gate instrument itself fixed, incl. the MSRV leg.** — (details:
   quality-ledger (ah), (an), (ao), (ap), (aq), (ar))
 - **An entry can no longer be filed where no reader looks.** — (details: quality-ledger (ar))
+- **Published changelog pages carry their own description, and a folded release renders.** —
+  (details: quality-ledger (az))
 
 #### Performance
 
@@ -82,7 +86,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [v0.17.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>pyq CLI parity flags</summary>
 
 #### Added
@@ -127,7 +131,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [v0.16.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>JSONC block-comment hot-sample bench</summary>
 
 #### Added
@@ -643,7 +647,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [v0.15.0] — 2026-08-19
 
-<details>
+<details markdown="1">
 <summary>Node metadata setters/getters</summary>
 
 #### Added
@@ -699,7 +703,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [v0.14.1] — 2026-08-15
 
-<details>
+<details markdown="1">
 <summary>Single-quoted scalars with backslash + control/noncharacter</summary>
 
 #### Fixed
@@ -726,7 +730,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [v0.14.0] — 2026-08-14
 
-<details>
+<details markdown="1">
 <summary>YAML Schema Language</summary>
 
 #### Added
@@ -763,7 +767,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [v0.13.0] — 2026-08-10
 
-<details>
+<details markdown="1">
 <summary>Rust MSRV raised to 1.96 and edition bumped to 2024</summary>
 
 #### Changed
@@ -824,7 +828,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [v0.12.1] — 2026-08-06
 
-<details>
+<details markdown="1">
 <summary>`set(create_missing=True)`</summary>
 
 #### Added
@@ -868,7 +872,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.11.7] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>stub-build-check replaced with release-guard</summary>
 
 #### Changed
@@ -889,7 +893,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.11.6] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>Free-threaded (cp314t) wheels are now numpy-free</summary>
 
 #### Changed
@@ -910,7 +914,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.11.5] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>Parser robustness items 3/4/5 closed via Phase 0 strictness audit</summary>
 
 #### Changed
@@ -970,7 +974,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.11.2] - 2026-08-03
 
-<details>
+<details markdown="1">
 <summary>Parse no longer computes splice eligibility</summary>
 
 #### Added
@@ -995,7 +999,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.11.0] - 2026-08-02
 
-<details>
+<details markdown="1">
 <summary>Surgical Serialization</summary>
 
 #### Added
@@ -1017,7 +1021,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.10.0] - 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>In-place editing</summary>
 
 #### Added
@@ -1049,7 +1053,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.9.0] - 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>Python 3.13, 3.14 and 3.15 support</summary>
 
 #### Added
@@ -1123,7 +1127,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.8.0] - 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>`YAML()` instance API</summary>
 
 #### Added
@@ -1150,7 +1154,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.7.1] - 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>ryaml benchmark comparison</summary>
 
 #### Added
@@ -1179,7 +1183,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.7.0] - 2026-07-29
 
-<details>
+<details markdown="1">
 <summary>Serializer `max_depth` guard</summary>
 
 #### Added
@@ -1212,7 +1216,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.6.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>Async serialization</summary>
 
 #### Added
@@ -1246,7 +1250,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.5.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>`Serializer::write_node`</summary>
 
 #### Fixed
@@ -1263,7 +1267,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.4.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>132 new gap-filling tests</summary>
 
 #### Added
@@ -1307,7 +1311,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [0.3.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>NumPy ndarray serialization</summary>
 
 #### Added

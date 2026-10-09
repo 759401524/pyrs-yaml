@@ -397,17 +397,32 @@ def is_skipped(line: str) -> bool:
     return any(pattern.match(line) for pattern in SKIP_PATTERNS)
 
 
+def front_matter(lines: list) -> set:
+    """The 1-based line numbers of a document's metadata block, empty when there is none.
+
+    That block is data the site generator parses, not prose. Re-flowing it glues `title:` to
+    `description:` and `tags:` onto one line that is no longer valid YAML, and a page whose metadata
+    does not parse loses its title, description and tags - or fails the build outright on a stricter
+    generator. `paragraph_blocks` used to skip only the opening `---` and then treated the body as a
+    paragraph, which joined the changelog pages' `description:` for three merged pull requests
+    without one gate noticing: the damage was *inside* the width limit, so the width rule was
+    satisfied by the thing it caused.
+    """
+    if not lines or lines[0].strip() != "---":
+        return set()
+    end = next((index for index in range(1, len(lines)) if lines[index].strip() == "---"), None)
+    if end is None:
+        return set()
+    return set(range(1, end + 1))
+
+
 def wrap_text(text: str, width: int = MAX_WIDTH) -> str:
     """Re-wrap every prose line in a document, leaving structure untouched."""
     out = []
-    in_front_matter = text.startswith("---\n")
-    for line, in_fence in scan(text):
-        if in_front_matter:
-            out.append(line)
-            if line.strip() == "---":
-                in_front_matter = False
-            continue
-        if in_fence or not line.strip() or is_skipped(line):
+    lines = text.split("\n")
+    meta = front_matter(lines)
+    for number, (line, in_fence) in enumerate(scan(text), 1):
+        if number in meta or in_fence or not line.strip() or is_skipped(line):
             out.append(line)
             continue
         out.extend(reflow_paragraph(line, width))
@@ -424,8 +439,9 @@ def offenders(lines: list, name: str = "") -> list:
     `rumdl fmt` preserves author line breaks and excuses none of them.
     """
     out = []
+    meta = front_matter(lines)
     for number, line, in_fence in _scan_list(lines):
-        if in_fence or not line.strip() or is_skipped(line):
+        if number in meta or in_fence or not line.strip() or is_skipped(line):
             continue
         width = display_width(line)
         if width <= MAX_WIDTH:
@@ -460,15 +476,11 @@ def paragraph_blocks(text: str):
     """
     blocks = []
     lines = text.split("\n")
-    index = 0
-    skip_next = text.startswith("---\n")
+    # Start after the metadata block rather than after its opening delimiter: the block is data, and
+    # the join that used to happen here is the reason `front_matter` exists.
+    index = max(front_matter(lines), default=0)
     while index < len(lines):
         line = lines[index]
-        if skip_next:
-            if line.strip() == "---":
-                skip_next = False
-            index += 1
-            continue
         if not line.strip() or is_skipped(line) or NOT_A_BLOCK.match(line):
             index += 1
             continue
@@ -551,8 +563,9 @@ def spacing_artifacts(lines: list, name: str = "") -> list:
     these gaps was itself reverted - the class exists to keep it from coming back.
     """
     out = []
+    meta = front_matter(lines)
     for number, line, in_fence in _scan_list(lines):
-        if in_fence or not line.strip() or is_skipped(line):
+        if number in meta or in_fence or not line.strip() or is_skipped(line):
             continue
         matches = _outside_spans(line, CJK_WORD_SPACE)
         if matches:

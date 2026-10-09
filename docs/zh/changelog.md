@@ -1,6 +1,7 @@
 ---
-title: Changelog description: pyrs-yaml 项目的完整变更日志，记录所有版本的重要变更、新增功能和性能优
-化。 tags:
+title: Changelog
+description: pyrs-yaml 项目的完整变更日志，记录所有版本的重要变更、新增功能和性能优化。
+tags:
 
 - docs
 status: new
@@ -61,6 +62,7 @@ status: new
 - **门禁仪器自身的六处缺陷修复，含 Python 下界未测。** — (details: quality-ledger (ah), (an), (ao),
   (ap), (aq), (ar))
 - **条目不能再放进没人看的位置（前言之上、front matter 之内）。** — (details: quality-ledger (ar))
+- **站点更新日志页恢复自身描述，折叠的历史版本也能正常渲染。** — (details: quality-ledger (az))
 
 #### 性能
 
@@ -70,7 +72,7 @@ status: new
 
 ### [v0.17.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>pyq CLI 对齐参数</summary>
 
 #### 新增
@@ -109,7 +111,7 @@ status: new
 
 ### [v0.16.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>JSONC 块注释热点基准</summary>
 
 #### 新增
@@ -538,7 +540,7 @@ status: new
 
 ### [v0.15.0] — 2026-08-19
 
-<details>
+<details markdown="1">
 <summary>Node 元数据 setter/getter</summary>
 
 #### 新增
@@ -587,7 +589,7 @@ status: new
 
 ### [v0.14.1] — 2026-08-15
 
-<details>
+<details markdown="1">
 <summary>含反斜杠+控制字符/非字符的单引号标量</summary>
 
 #### 修复
@@ -611,7 +613,7 @@ status: new
 
 ### [v0.14.0] — 2026-08-14
 
-<details>
+<details markdown="1">
 <summary>YAML Schema Language</summary>
 
 #### Added
@@ -647,7 +649,7 @@ status: new
 
 ### [v0.13.0] — 2026-08-10
 
-<details>
+<details markdown="1">
 <summary>Rust MSRV 提升至 1.96，edition 升级为 2024</summary>
 
 #### 变更
@@ -746,7 +748,7 @@ status: new
 
 ### [v0.12.1] — 2026-08-06
 
-<details>
+<details markdown="1">
 <summary>`set(create_missing=True)`</summary>
 
 #### Added
@@ -789,7 +791,7 @@ status: new
 
 ### [0.11.7] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>stub-build-check 替换为 release-guard</summary>
 
 #### Changed
@@ -808,7 +810,7 @@ status: new
 
 ### [0.11.6] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>Free-threaded（cp314t）wheel 不再包含 numpy</summary>
 
 #### Changed
@@ -828,7 +830,7 @@ status: new
 
 ### [0.11.5] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>解析器健壮性项目 3/4/5 通过 Phase 0 严格性审计关闭</summary>
 
 #### Changed
@@ -886,7 +888,7 @@ status: new
 
 ### [0.11.2] - 2026-08-03
 
-<details>
+<details markdown="1">
 <summary>解析不再计算拼接资格</summary>
 
 #### Added
@@ -911,7 +913,7 @@ status: new
 
 ### [0.11.0] - 2026-08-02
 
-<details>
+<details markdown="1">
 <summary>精准序列化</summary>
 
 #### Added
@@ -932,7 +934,7 @@ status: new
 
 ### [0.10.0] - 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>就地编辑</summary>
 
 #### Added
@@ -965,7 +967,7 @@ status: new
 
 ### [0.9.0] - 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>Python 3.13、3.14 和 3.15 支持</summary>
 
 #### Added
@@ -1034,7 +1036,7 @@ status: new
 
 ### [0.8.0] - 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>`YAML()` 实例 API</summary>
 
 #### Added
@@ -1062,7 +1064,7 @@ status: new
 
 ### [0.7.1] - 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>ryaml 基准对比</summary>
 
 #### Added
@@ -1090,7 +1092,7 @@ status: new
 
 ### [0.7.0] - 2026-07-29
 
-<details>
+<details markdown="1">
 <summary>序列化器 `max_depth` 守卫</summary>
 
 #### Added
@@ -1123,7 +1125,7 @@ status: new
 
 ### [0.6.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>异步序列化</summary>
 
 #### Added
@@ -1160,7 +1162,7 @@ status: new
 
 ### [0.5.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>`Serializer::write_node`</summary>
 
 #### Fixed
@@ -1176,7 +1178,7 @@ status: new
 
 ### [0.4.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>132 个新功能填补测试</summary>
 
 #### Added
@@ -1220,7 +1222,7 @@ status: new
 
 ### [0.3.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>NumPy ndarray 序列化</summary>
 
 #### Added

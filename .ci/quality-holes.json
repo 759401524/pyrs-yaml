@@ -12,5 +12,12 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
- "holes": []
+ "holes": [
+    {
+      "id": "docs-rendering:unbuilt-on-pr",
+      "opened": "2026-10-10",
+      "exit": "a job in a workflow whose triggers include pull_request runs scripts/build-docs.py and fails the build when a page cannot be rendered, which is what quality_matrix.renders_the_site() measures",
+      "why": "the site is built on push to main, so a defect that only the generator can see - unreadable page metadata, Markdown inside a raw HTML block - is found by whoever opens the deployed page"
+    }
+  ]
 }

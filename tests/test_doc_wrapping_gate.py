@@ -389,3 +389,66 @@ def test_the_hook_is_wired(checker):
     prek = (REPO_ROOT / "prek.toml").read_text(encoding="utf-8")
     assert 'id = "doc-line-width"' in prek, prek
     assert "python scripts/check_doc_wrapping.py" in prek, prek
+
+
+# ── page metadata ────────────────────────────────────────────────────────────────
+
+# A page whose metadata block holds the shape that reached `main`: the `description:` line is over the
+# limit, so it is exactly the input that got joined, and the prose below is over the limit too, so the
+# pass has work to do either way.
+LONG_DESCRIPTION = (
+    "description: All notable changes to pyrs-yaml are recorded here, version by version, "
+    + "including the fixes, the gates and the measurements that proved them. " * 2
+)
+METADATA_PAGE = "\n".join(
+    [
+        "---",
+        "title: Changelog",
+        LONG_DESCRIPTION,
+        "tags:",
+        "- docs",
+        "status: new",
+        "---",
+        "",
+        "## [Unreleased]",
+        "",
+        "Prose that has to be re-flowed by this pass, so the test cannot pass by doing nothing: "
+        + "and here is the rest of the sentence." * 3,
+    ]
+)
+
+
+def test_the_metadata_range_covers_the_block_and_not_the_body(checker):
+    lines = METADATA_PAGE.split("\n")
+    assert checker.front_matter(lines) == set(range(1, 7)), checker.front_matter(lines)
+    assert checker.front_matter(["# no block", "", "prose"]) == set()
+    # An unterminated block is not metadata: treating it as such would ignore the whole document.
+    assert checker.front_matter(["---", "title: x"]) == set()
+
+
+def test_the_fixer_leaves_metadata_alone_and_still_wraps_the_prose(checker):
+    """The block is data the generator parses; a re-flow of it is a broken page, not a wide line.
+
+    `paragraph_blocks` skipped only the opening `---` and then treated the body as a paragraph, so this
+    input came out with `title:`, `description:` and `tags:` on one line - valid-looking Markdown, an
+    invalid mapping, and a site build that stops with `error reading page metadata`. The prose is
+    asserted to change in the same call, because a pass that skipped everything would pass the first
+    half of this test by accident.
+    """
+    fixed = checker.format_text(METADATA_PAGE)
+    head = lambda text: text[: text.index("\n---\n") + 1]  # noqa: E731
+    assert head(fixed) == head(METADATA_PAGE), "metadata was rewritten"
+    assert len(fixed.split("\n")) > len(METADATA_PAGE.split("\n")), "the pass never ran on the prose"
+    assert checker.format_text(fixed) == fixed, "not idempotent"
+
+
+def test_the_check_says_nothing_about_a_line_it_forbids_moving(checker):
+    """Reporting a line the fixer must not re-flow would make the gate impossible to satisfy.
+
+    This is the reason no hook ever caught the damage: after the join, every metadata line fit inside
+    100 columns, so the width rule was *satisfied by the thing it caused*.
+    """
+    lines = METADATA_PAGE.split("\n")
+    reported = {number for _name, number, _width, _snippet in checker.offenders(lines, "page.md")}
+    assert 3 not in reported, "the over-long `description:` line was reported although it may not move"
+    assert reported, "the over-long prose line was missed"

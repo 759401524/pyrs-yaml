@@ -262,6 +262,25 @@ def property_functions() -> list[str]:
     return sorted(names)
 
 
+def renders_the_site() -> bool:
+    """Whether a workflow that runs on a pull request also runs the documentation build.
+
+    Asked of the declaring files rather than of a list kept beside them: a job counts only if its own
+    workflow triggers on `pull_request` *and* one of its `run:` steps invokes `scripts/build-docs.py`.
+    Mentioning the script in a comment, or in a job that only runs on push, is not a gate - which is the
+    distinction that let four changelog pages carry unreadable metadata through three merges while
+    `.github/workflows/docs.yml` printed green on every push.
+    """
+    for workflow in sorted(WORKFLOWS.glob("*.yml")):
+        text = read(workflow)
+        triggers = text.split("jobs:")[0]
+        if "pull_request" not in triggers:
+            continue
+        if any("build-docs.py" in command for command in run_commands(text)):
+            return True
+    return False
+
+
 def declared_artifacts() -> list[tuple[str, bool]]:
     """Every repository path this repo's own prose promises exists, and whether it does.
 
@@ -505,6 +524,20 @@ def measure() -> dict:
     if "--all-targets" not in ci_commands:
         holes.append(
             ["lint-scope", "clippy-all-targets", "CI's clippy command does not lint tests, benches or examples"]
+        )
+
+    # Whether any pull request *renders* the published pages. The site is built by a workflow that
+    # triggers on push to `main`, so every property that only a generator decides - a metadata block it
+    # must parse, Markdown inside an HTML block, an anchor a locale translated away - is discovered by
+    # whoever opens the deployed page. Measured rather than asserted, because the alternative is a claim
+    # about coverage that no file makes.
+    if not renders_the_site():
+        holes.append(
+            [
+                "docs-rendering",
+                "unbuilt-on-pr",
+                "no pull-request job builds the site, so a page that fails only when rendered reaches main",
+            ]
         )
 
     # The ledger and this document promise files by name (`note_survival.rs` runs on every
