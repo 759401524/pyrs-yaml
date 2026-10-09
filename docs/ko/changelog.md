@@ -66,6 +66,7 @@ status: new
 - **변경 로그 페이지의 설명과 접힌 릴리스 표시를 복원합니다.** — (details: quality-ledger (az))
 - **릴리스에 포함된 형식 스텁이 다시 해석됩니다 — 형식 검사가 계약을 읽을 수 있습니다.** —
   (details: quality-ledger (bb))
+- **문서만 바꾼 PR도 병합되고, 병합 전에 사이트를 빌드합니다.** — (details: quality-ledger (bd))
 
 #### 성능
 

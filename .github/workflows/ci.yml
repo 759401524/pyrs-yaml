@@ -3,15 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+  # Unconditional on purpose. Branch protection requires the check named `Test matrix (all legs)`, and a
+  # required check that never reports is not a green light - it is a deadlock. Measured on PR #319: a pull
+  # request touching only `*.md` and `docs/**` ran every other workflow, every check it produced passed, and
+  # the merge was refused with `Required status check "Test matrix (all legs)" is expected` because this
+  # workflow's `paths-ignore` had excluded exactly those files. What a changeset owes the engine is decided
+  # by the `changes` job below - which always runs - not by whether the workflow ran at all.
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "*.md"
-      - "AGENTS.md"
-      - "CHANGELOG.md"
-      - ".gitignore"
-      - "prek.toml"
-      - ".rumdl.toml"
   workflow_dispatch:
 
 concurrency:
@@ -42,8 +40,95 @@ jobs:
           echo "push sha ${{ github.sha }} is the rebased tip whose identical tree already"
           echo "passed the full CI matrix as a pull request; skipping the duplicate spend."
 
+  # Everything the merge decision consumes is classified here first. Prose-only changes skip the heavy legs
+  # *on purpose*, and the verdict is told that they were: `check_matrix_verdict.py` tolerates a skipped leg
+  # only when this job reports `code=false` and refuses one when it reports `code=true`, so the
+  # classification cannot be used to hide a leg that failed to run for another reason.
+  changes:
+    name: what the changeset touches
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            paths=$(git diff --name-only "$BASE" "$GITHUB_SHA" -- ':(exclude)*.md' ':(exclude)docs/**')
+            if [ -z "$paths" ]; then
+              echo "code=false" >> "$GITHUB_OUTPUT"
+              echo "prose-only changeset: heavy legs are not owed"
+              exit 0
+            fi
+            echo "changes outside prose: $(printf '%s\n' "$paths" | head -3)"
+          fi
+          echo "code=true" >> "$GITHUB_OUTPUT"
+
+  # The documentation is a built artifact with a renderer, and no pull request had ever built it:
+  # `.github/workflows/docs.yml` triggers on push to `main`, which is how four changelog pages carrying
+  # unreadable front matter reached the deployed site with every source-level gate green. Registered as
+  # `docs-rendering:unbuilt-on-pr`; this job is its exit. Minutes, not a matrix.
+  docs-gates:
+    name: docs gates and site build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # Pinned to the version the repository declares, the way `hygiene.yml` pins it: the hook set is the
+      # gate and a floating install would change behaviour under it. Measured on this job's first run -
+      # `error: Failed to spawn: prek / No such file or directory` - because `uv run --no-sync prek` assumed
+      # the tool lived in the project environment, and `prek` is a tool, not a dependency.
+      - name: Install prek
+        run: uv tool install --from 'prek>=0.1.0' prek
+
+      - name: Stdlib gates (metadata, width, mirrors, headings, script purity, i18n)
+        run: |
+          python scripts/check_doc_metadata.py
+          python scripts/check_doc_headings.py
+          python scripts/check_changelog_mirrors.py
+          python scripts/check_cjk_localisation.py
+          python scripts/check_i18n.py
+
+      - name: Create virtualenv
+        run: uv venv .venv
+
+      - name: Build and install
+        uses: PyO3/maturin-action@v1
+        with:
+          command: develop
+          args: --release
+
+      # `--strict` is inside `scripts/build-docs.py`, so a warning is a failure here, and the width rule is
+      # checked through the same hook the commit uses rather than a hand-written file list that can fall
+      # behind the governed set.
+      - name: Prose width, on the governed set
+        run: prek run doc-line-width --all-files
+
+      - name: Build all four locales
+        run: uv run --group docs python scripts/build-docs.py
+
   rust-lint:
-    if: ${{ github.event_name != 'push' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -79,7 +164,8 @@ jobs:
   # written inline rather than in an `env:` block so the defence measurement can see it.
   property-tier:
     name: property tier (20k cases)
-    if: ${{ github.event_name != 'push' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -98,7 +184,8 @@ jobs:
         run: PROPTEST_CASES=20000 cargo test --workspace --locked
 
   msrv-check:
-    if: ${{ github.event_name != 'push' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -119,7 +206,8 @@ jobs:
 
   no-std-check:
     name: no_std
-    if: ${{ github.event_name != 'push' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -163,8 +251,8 @@ jobs:
         run: cargo check --locked -p pyrs-ast -p pyrs-schema
 
   test:
-    needs: [build]
-    if: ${{ github.event_name != 'push' }}
+    needs: [build, changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -229,8 +317,8 @@ jobs:
           " >> $GITHUB_STEP_SUMMARY
 
   coverage:
-    needs: [build]
-    if: ${{ github.event_name != 'push' }}
+    needs: [build, changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -269,7 +357,8 @@ jobs:
         run: uv run pytest tests/ --cov=pyrs_yaml --cov-report=term-missing --cov-fail-under=78
 
   build:
-    if: ${{ github.event_name != 'push' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -310,7 +399,8 @@ jobs:
           path: dist/
 
   test-freethreaded:
-    if: ${{ github.event_name != 'push' }}
+    needs: [changes]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -380,7 +470,7 @@ jobs:
   matrix-verdict:
     name: Test matrix (all legs)
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [rust-lint, property-tier, msrv-check, no-std-check, build, test, coverage, test-freethreaded, compliance-report, i18n-check]
+    needs: [changes, docs-gates, rust-lint, property-tier, msrv-check, no-std-check, build, test, coverage, test-freethreaded, compliance-report, i18n-check]
     runs-on: ubuntu-latest
     steps:
       # No checkout of the tree is needed for the verdict itself, but the checker lives in
@@ -398,10 +488,12 @@ jobs:
       - name: Verdict over every leg
         env:
           NEEDS: ${{ toJSON(needs) }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
         run: python scripts/check_matrix_verdict.py
 
   compliance-report:
-    needs: [build]
+    needs: [build, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -429,7 +521,8 @@ jobs:
           path: compliance.json
 
   i18n-check:
-    if: ${{ github.event_name == 'pull_request' }}
+    needs: [changes]
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

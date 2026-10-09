@@ -64,6 +64,7 @@ status: new
 - **更新ログページ自身の説明と折りたたみ版の表示を復元。** — (details: quality-ledger (az))
 - **wheel に同梱される型スタブが Python として解析できるように。型チェッカーが契約を読める。** —
   (details: quality-ledger (bb))
+- **文書のみの変更もマージでき、マージ前にサイトがビルドされる。** — (details: quality-ledger (bd))
 
 #### パフォーマンス
 
