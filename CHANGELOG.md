@@ -67,6 +67,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **An entry can no longer be filed where no reader looks.** — (details: quality-ledger (ar))
 - **Published changelog pages carry their own description, and a folded release renders.** —
   (details: quality-ledger (az))
+- **The type stub shipped in every wheel parses, so type checkers read the contract.** — (details:
+  quality-ledger (bb))
 
 ### Performance
 

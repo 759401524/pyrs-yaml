@@ -15,7 +15,7 @@ Related documents: [engine boundaries](boundaries.md), [performance status](perf
 ## Contents
 
 - The placement family - (h) through (v)
-- The quality defence, entry by entry - (w) through (ba)
+- The quality defence, entry by entry - (w) through (bb)
 - Note survival: the leading slot became a list
 - Shipped milestone scoping - the v0.11.3 to v0.12.0 tables after they shipped
 
@@ -2134,6 +2134,54 @@ also the reason the option-name check lives in a test rather than in the build. 
 tried to compare the hand-typed API signatures against the generated `.pyi` and died on a regex with
 three groups and a two-tuple unpack: the drift comparison remains open, and is the substance of the
 registered hole rather than something to assert about.
+
+### (bb) The type stub shipped inside every wheel was not parseable Python (2026-10-10)
+
+Found by asking the previous entry's question properly. If `mkdocstrings` renders nothing because no
+page asks it to, then the first thing to establish is whether it *could*:
+`griffe.load("pyrs_yaml", search_paths=["python"])` parsed the package, resolved the pure-Python
+`pyrs_yaml.node.Node` with its docstring, and raised `AliasResolutionError` for every re-exported
+extension class - `YamlDocument`, `YamlParseError`, `YAML`. The extension submodule was not
+discoverable at all, which is the same thing as the generated stub being invisible.
+
+It was invisible because it is not Python. maturin 1.14.1's stub route imports the freshly built
+extension and writes each `__doc__` into a triple-quoted string *verbatim*, so a doc comment
+containing a backslash lands unescaped - and a lone `\u` inside a non-raw string literal is a syntax
+error. Two of this project's Rust doc comments contain one: `crates/pyrs-yaml/src/py/document.rs`
+describing what `to_json` no longer does, and the JSON5 loader's note about exotic spellings.
+`ast.parse` and `compile` both fail on `python/pyrs_yaml/pyrs_yaml.pyi` at the first of them, with
+the error reported against a line that holds nothing but an opening delimiter - the parser blames
+the `"""`, not the escape, which is why the message matters more than the fix.
+
+The blast radius is not cosmetic. The stub is marked by `py.typed` and ships inside every wheel, so
+mypy and pyright users are reading a file they cannot parse, in the one artifact that defines the
+public typing contract; and no documentation generator can reach the API through it either. With the
+two backslashes doubled, every layout resolves: a stub-only package gives `YamlDocument` as a class
+with 55 members, and the repository's own mixed `.py` + `.pyi` layout resolves it through the alias.
+That is the difference between the handler's 67 options being decoration and being a generator.
+
+Every gate was green, which is the part worth keeping. `Committed type stub is derived` compares the
+tracked file against generator output - and the generator carries the defect, so the comparison
+agreed. Two copies of a broken artifact matching is not a check; it is the same shape as (az), where
+the width rule was satisfied by the damage the fixer caused. Nothing anywhere asked the artifact the
+one question a type checker asks: does it parse.
+
+The repair lives in the route, not in the artifact, because the artifact may not be hand-edited. A
+second declared fidelity transform escapes backslashes inside docstring bodies - counted, with
+`EXPECTED_DOCSTRING_ESCAPES = 2` as the tripwire, so a third unescaped site or an upstream fix that
+removes one fails the gate instead of being absorbed - and `verify_parses` then runs `ast` over the
+derived text, so a generator misbehaviour that no declared fix describes yet is reported by line
+number. `--fix` rewrote the stub from the pinned generator; a re-run of the route reports no drift,
+and `tests/test_stub_fidelity_gate.py` (5 tests) pins both the transform on synthetic generator
+output and the parsed artifact itself, including the assertion that the escaped docstring still
+*says* `\uXXXX` - the escape is Python source syntax, not a change of content.
+
+One defect is named here and deliberately not fixed. Under inspection rather than stub reading,
+griffe reports `builtins.YamlDocument`: the PyO3 classes do not set `#[pyo3(module = …)]`, so
+`__module__` is `builtins` for every extension type. It is harmless while the stub resolves, and it
+is not harmless for `repr()`, for anything that introspects a wheel built without stubs, or for a
+generator that prefers live objects. It belongs in a binding change with its own stub regeneration,
+not smuggled into a repair.
 
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 
