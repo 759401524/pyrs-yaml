@@ -284,6 +284,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   spell: that ruling stays open in `ROADMAP.md` rather than being decided quietly inside a bug fix.
   — (details: quality-ledger (bh))
 
+- **A schema rule path with a non-ASCII key aborted the process, and `$` is a rule target now.** —
+  `rule_path_to_segments` advanced its cursor one byte at a time while pushing whole characters, so
+  `$.café` stopped inside the `é` and the next slice panicked with "start byte index 4 is not a char
+  boundary" - a `PanicException` out of `validate_against_schema`, reached by a valid schema rather
+  than a malformed one (`$.emoji😀key` behaved the same way). The walk now advances by the decoded
+  character's width. Fixing it exposed the second half: a separator was required before the
+  empty-path branch was tested, so a bare `$` - the document itself - could never be a rule target,
+  while `$x` stays unparseable rather than being read as a key. `path: $` with `mapping_of`
+  validates the root's values, and the sweep that found the crash left a follow-up open in
+  `ROADMAP.md`: `mapping_of`/`sequence_of` check elements but not the container's kind. — (details:
+  quality-ledger (bj))
+
 ### Performance
 
 - **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the

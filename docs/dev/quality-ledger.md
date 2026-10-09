@@ -2654,6 +2654,60 @@ Verified: `cargo fmt --check`, `cargo clippy --all --all-targets -- -D warnings`
 writer, one Python through the public API - plus the two guard tests above. Changelog counts
 identical across the five mirrors at [11, 4, 21, 3].
 
+### (bj) A byte-wise walk of a character-indexed string, found by feeding the API a valid schema
+
+(2026-10-10)
+
+The sweep that found it was the repository's own rule: no `unwrap`/`expect` in business logic.
+Filtering to code before each file's `mod tests`, and dropping the parser method named `expect` that
+returns a `Result`, left 29 sites - test helpers, integration harnesses, invariants that hold - and
+one real defect. `unwrap` is not merely a style offence here; this one was a reachable crash.
+
+`rule_path_to_segments` walks a schema rule path (`$.a.b[0]`) and decoded each character with
+`rest[i..].chars().next()`, pushed it, then advanced `i` by **one byte**. A multi-byte key therefore
+left the cursor inside the character it had just consumed, and the next slice panicked. Measured
+through the public API rather than reasoned about:
+
+```text
+$ pyrs_yaml.validate_against_schema("café: 5", "- path: $.café\n  type: str")
+PanicException: start byte index 4 is not a char boundary; it is inside 'é' (bytes 3..5 of string)
+```
+
+The input is a *valid* schema over an ordinary document - a French key, a Japanese key, an emoji in
+an identifier
+
+- so this was never a malformed-input guard; it was a crash on the happy path for anyone whose
+  configuration keys are not ASCII. `$.emoji😀key` panicked at the same line. The fix is the
+  character's own width: `i += c.len_utf8()`, with the `[n]` branch untouched because `]` is one
+  byte and its index comes from `find`.
+
+Fixing it made the second half visible. The function began with `strip_prefix('$')` then
+`strip_prefix('.')`, and *after* that tested whether the remainder was empty, with a comment reading
+`// path "$"`. A path consisting of just `$` cannot survive the second strip, so the branch was dead
+and the root document could not be a rule target at all - an unfinished feature hiding one line
+below the crash. Now a `$` with nothing after it resolves to the empty segment list (the document
+itself), `$…` still requires its separator, and `$x` stays unparseable rather than being silently
+reinterpreted as a key.
+
+The same function leaves a question this change does not answer, and `ROADMAP.md` now carries it as
+an open item: `mapping_of` and `sequence_of` check elements *inside*
+`if let CustomNode::Mapping`/`Sequence` with no other branch, so `$.config` with `mapping_of: str`
+passes when `config` is a scalar. Making the wrong container kind an error is a user-visible ruling
+about whether these keys assert the container or merely describe its elements; it is not a decision
+to take as a by-product of a panic fix.
+
+One more time, in this ledger's own words: the corpus was the hole. Every existing schema test used
+ASCII paths, so a defect in the character-walk could not be reached by any of them, and the third
+route in - fuzzing - covers the parsers, not the schema language. The two new tests name the key and
+the path they check (`a_rule_path_with_a_multibyte_key_is_walked_by_character`,
+`test_rule_path_with_a_multibyte_key_fires_on_the_right_node`), and the Python one asserts a
+violation *fires* as well as no panic: a path that navigates to nothing would also have looked
+healthy.
+
+Verified: 522 nextest tests, 2338 Python tests (10 skipped), clippy `-D warnings`,
+`cargo fmt --check`, the `PanicException` repro now returning "ok (no violation)" / "expected str",
+and doc gates green across nine governed pages.
+
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

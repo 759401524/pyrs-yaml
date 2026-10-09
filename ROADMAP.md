@@ -77,16 +77,20 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: a non-finite float changes type on the way through the hub
+### Open: two rulings the engine has not made
 
 | # | Item | Layer | Priority |
 |:--|:-----|:------|:--------:|
-| 1 | **[#312](https://github.com/759401524/pyrs-yaml/issues/312) `from_json5` writes a non-finite float as a bare word** - `Infinity` and `NaN` reach the YAML hub unquoted, and no YAML schema reads either back as a number, so `load_json5` is right in memory and wrong after one hub round trip; `-Infinity` is emitted quoted, the same loss in better manners | Rust (`pyrs-json` hub projection) | 🔴 |
-| 2 | **Decide the writer-side policy for non-finite floats** - JSON has no spelling for them, so the strict writers emit `".inf"`, a string-shaped answer to a numeric question. Fix and policy have to be chosen together: emit `null`, emit the JSON5-only bare token where the dialect allows it, or refuse the value at construction | Rust + API contract | 🟡 |
+| 1 | **Decide the writer-side policy for non-finite floats** - JSON has no spelling for them, so the strict writers emit `".inf"`, a string-shaped answer to a numeric question. Choose between `null`, the JSON5-only bare token where the dialect allows it, and refusing the value at construction | Rust + API contract | 🟡 |
+| 2 | **`mapping_of` / `sequence_of` do not assert the container** - measured while fixing the rule-path panic: the element check sits inside `if let CustomNode::Mapping`/`Sequence` with no other branch, so `$.config` with `mapping_of: str` passes when `config` is a scalar or a sequence. Either reject the wrong kind, or document that the container is optional and only its elements are checked - both are user-visible, so it is ruled at a milestone review rather than inside a panic fix | Rust (`pyrs-yaml-core` schema language) | 🟡 |
 
-Both were found by measurement, not by review: item 1 surfaced while writing the JSONC/JSON5
-instruction-count parity test, and item 2 is the question item 1 cannot be fixed without
-answering. Neither is absorbed into a commit that merely numbers the paths.
+Both were found by measurement, not by review, and both are the residue of the work that closed
+[#312](https://github.com/759401524/pyrs-yaml/issues/312): the item-1 question is the one that fix
+could not answer without changing what `to_json` emits for everyone (ledger (bh)), and item 2
+surfaced in the same function as the char-boundary crash found while auditing `unwrap` in production
+code (ledger (bj)). The hub spelling itself is no longer listed here - `from_json5` now writes
+`.inf` / `-.inf` / `.nan`, asserted by the Rust and Python pair of tests named in ledger (bh) -
+because an item may not stay in this section once it ships.
 
 ### How the next scope is written
 

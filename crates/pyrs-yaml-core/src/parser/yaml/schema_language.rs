@@ -582,7 +582,14 @@ fn contains_path(ast: &CustomNode, path: &str) -> bool {
 fn rule_path_to_segments(path: &str) -> Option<Vec<crate::editing::Segment<'static>>> {
     use crate::editing::Segment;
     let rest = path.strip_prefix('$')?;
-    let rest = rest.strip_prefix('.')?;
+    // A bare `$` is the root document, and the empty-path branch below was written to handle it - but
+    // requiring a separator before testing for emptiness meant `path: $` never reached that branch, so the
+    // root could not be a rule target at all. Anything after `$` that is not `.` is still not a path.
+    let rest = match rest.chars().next() {
+        None => "",              // the bare `$`, which is the whole document
+        Some('.') => &rest[1..], // `.` is one byte, so this slice is always on a boundary
+        Some(_) => return None,
+    };
     if rest.is_empty() {
         return Some(Vec::new()); // path "$"
     }
@@ -590,7 +597,14 @@ fn rule_path_to_segments(path: &str) -> Option<Vec<crate::editing::Segment<'stat
     let mut cur_key = String::new();
     let mut i = 0;
     while i < rest.len() {
-        let c = rest[i..].chars().next().unwrap();
+        // The cursor is advanced by the decoded character's width, not by one byte. Walking a path
+        // byte-wise left it inside a multi-byte key - `$.café`, `$.emoji😀key` - and the next `rest[i..]` slice
+        // panicked with "start byte index is not a char boundary". A rule path is user-authored text, and user
+        // text is not ASCII, so the panic was reachable from a valid schema rather than from a malformed one.
+        let Some(c) = rest[i..].chars().next() else {
+            break;
+        };
+        let width = c.len_utf8();
         match c {
             '.' => {
                 if !cur_key.is_empty() {
@@ -598,7 +612,7 @@ fn rule_path_to_segments(path: &str) -> Option<Vec<crate::editing::Segment<'stat
                         &mut cur_key,
                     ))));
                 }
-                i += 1;
+                i += width;
             }
             '[' => {
                 if !cur_key.is_empty() {
@@ -617,7 +631,7 @@ fn rule_path_to_segments(path: &str) -> Option<Vec<crate::editing::Segment<'stat
             }
             _ => {
                 cur_key.push(c);
-                i += 1;
+                i += width;
             }
         }
     }
@@ -760,6 +774,44 @@ mod tests {
 
     fn resolve<'a>(r: &'a RuleResolver, v: &'a str) -> YamlType<'a> {
         r.resolve(v)
+    }
+
+    #[test]
+    fn a_rule_path_with_a_multibyte_key_is_walked_by_character() {
+        // Measured as a panic before the cursor advanced by `len_utf8`: the byte-wise walk stopped inside
+        // 'é' and the next slice aborted with "start byte index is not a char boundary". A rule path is
+        // user-authored text, so this was reachable from a valid schema, not a malformed one.
+        use crate::editing::Segment;
+
+        let segments = rule_path_to_segments("$.café").expect("path parses");
+        assert_eq!(segments.len(), 1);
+        assert!(
+            matches!(&segments[0], Segment::Key(key) if key.as_ref() == "café"),
+            "{segments:?}"
+        );
+
+        let nested = rule_path_to_segments("$.emoji😀key[2].port").expect("path parses");
+        let names: Vec<String> = nested
+            .iter()
+            .map(|segment| match segment {
+                Segment::Key(key) => key.to_string(),
+                Segment::Index(index) => format!("[{index}]"),
+            })
+            .collect();
+        assert_eq!(names, ["emoji😀key", "[2]", "port"]);
+    }
+
+    #[test]
+    fn a_rule_path_at_its_own_end_is_not_a_panic() {
+        // The boundary shapes around the walk: a path with nothing after `$`, and one that stops at a
+        // separator, must both answer rather than index past the last character.
+        assert!(rule_path_to_segments("$").unwrap().is_empty());
+        assert!(rule_path_to_segments("$.").unwrap().is_empty());
+        assert_eq!(rule_path_to_segments("$.a.").unwrap().len(), 1);
+        assert_eq!(rule_path_to_segments("$.é.").unwrap().len(), 1);
+        assert_eq!(rule_path_to_segments("$.café.x").unwrap().len(), 2);
+        // `$` with no separator and no key is the root; `$x` is not a path at all.
+        assert!(rule_path_to_segments("$x").is_none());
     }
 
     #[test]

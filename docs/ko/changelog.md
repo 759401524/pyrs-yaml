@@ -264,6 +264,16 @@ status: new
   JSONC 는 표기할 수 없는 비유한 부동소수에게 여전히 따옴표를 씌웁니다. 이 결정은 `ROADMAP.md` 에
   열린 채로 두고, 결함 고침 안에서 몰래 정하지는 않습니다. — (details: quality-ledger (bh))
 
+- **ASCII 가 아닌 키를 담은 규칙 경로는 프로세스를 세웠고, `$` 이제 규칙 대상입니다.** —
+  `rule_path_to_segments` 커서는 1바이트씩 전진하는데 문자는 통째로 밀어 넣었기 때문에, `$.café` 는
+  `é` 안에서 멈추고 다음 슬라이스가 "start byte index 4 is not a char boundary" 로 패닉했습니다.
+  올바른 스키마로 도달하는 `PanicException` 입니다 (`$.emoji😀key` 도 같음). 이제 디코딩한 문자의
+  폭만큼 전진합니다. 고르고 나서야 뒷반도 보였습니다: 구분자를 요구한 뒤 빈 값을 검사했으므로
+  맨 `$` (문서 자체) 은 규칙 대상이 될 수 없고, `$x` 는 해석 불능으로 남습니다. `path: $` 에
+  `mapping_of` 를 쓰면 루트 문서의 값이 검사됩니다. 패닉을 찾은 조사는 `ROADMAP.md` 에 쟁점도
+  남겼습니다: `mapping_of` / `sequence_of` 는 요소는 보되 컨테이너 종류는 보지 않습니다.
+  — (details: quality-ledger (bj))
+
 #### 성능
 
 - **태그 출력은 표 기반, escape 은 더 이상 할당하지 않는다.** — 태그 인코딩을 해석기 자신의 문자
