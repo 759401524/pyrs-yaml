@@ -322,6 +322,30 @@ def changelog_mirror_counts() -> dict:
     return {mirror.relative_to(REPO).as_posix(): checker.positioned_counts(read(mirror)) for mirror in checker.FILES}
 
 
+def timing_floors_unpaired(root: Path | None = None) -> list[str]:
+    """Test files that time wall-clock in ordinary CI without sampling their two phases together.
+
+    Three of them did until this was measured: the TOML parse gate ran every candidate block before
+    every reference block, and the TOML serialize and both JSON gates took a single block per side.
+    A block is only comparable inside itself, so a scheduler spike on one phase flips the verdict on a
+    step that really is twice as cheap - the recorded macos incident measured that pair at 1.10x. The
+    shared sampler in `tests/timing.py` alternates the phases per block and reports a majority.
+
+    CodSpeed-owned files are excluded: their timing is the product being measured, not a gate about
+    another path, and they run on a pinned runner rather than alongside the whole matrix.
+    """
+    out = []
+    for path in sorted(((root or REPO) / "tests").glob("test_*.py")):
+        text = read(path)
+        if "perf_counter" not in text:
+            continue
+        if "pytest.mark.benchmark" in text or "codspeed" in text.lower():
+            continue
+        if "from tests.timing import" not in text:
+            out.append(f"tests/{path.name}")
+    return out
+
+
 def measure() -> dict:
     commands_by_workflow = workflow_commands()
     all_commands = " ".join(command for commands in commands_by_workflow.values() for command in commands)
@@ -395,6 +419,17 @@ def measure() -> dict:
                 scenario,
                 "one half of a cross-format bridge has a scenario and the other does not, so per-key "
                 "work on the missing half changes nothing the gate can observe",
+            ]
+        )
+
+    for rel in timing_floors_unpaired():
+        holes.append(
+            [
+                "timing-floor-unpaired",
+                rel,
+                "a wall-clock gate in ordinary CI times its candidate and its reference in separate "
+                "blocks, so one scheduler spike decides the verdict; sample the pair through "
+                "tests/timing.py instead",
             ]
         )
 

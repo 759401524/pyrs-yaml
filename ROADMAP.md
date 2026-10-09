@@ -2093,6 +2093,43 @@ inside a section about note placement; two dangling sections were re-levelled; a
 crash id, mechanism and seed still named. `DOCS_STANDARDS.md` §10 states the convention, the hook is
 `doc-line-width`.
 
+### (aw) Timing floors sampled phases apart, and a red could not be attributed (2026-10-09)
+
+Three leaderboard files asserted a structural property - "this path does less work" - from
+wall-clock, each with a different estimator. `test_toml_leaderboard.py` ran every candidate block
+before every reference block; `test_json_leaderboard.py` and the serialize gate took a single block
+per side; `test_leaderboard.py` timed the candidate once and then each peer once. A block is only
+comparable inside itself, so whichever phase a scheduler spike landed on decided the verdict, and
+the message quoted two medians and nothing else. The claim that timing both sides end to end in one
+process keeps the ratio honest holds only while the process owns its cores.
+
+Measured before touching anything, because the fix has to be aimed at a real number. The parse pair
+sits at 2.21-2.33x locally; across 96 trials with 23 busy workers it never fell below 2.02x and
+never inverted - so CPU saturation on a 24-core box is not the mechanism, and saying so would have
+been the second false premise in this ledger. The margin does collapse elsewhere: the same gate's
+recorded macos-latest incident is 336us against 369us, 1.10x, on a cell with two cores where the
+whole process is preempted. One red arrived in roughly six full local runs and could not be
+reproduced in four more, and because the assertion text was never captured, its cause stayed
+undiagnosed. The defect named here is that unattributability, not the flake rate.
+
+`tests/timing.py` is now the single sampler. Candidate and reference are measured adjacently inside
+each block, the verdict requires winning all but one of five pairs, and the failure message carries
+every pair, so the next red distinguishes "one side inflated in one block" from "the two really are
+close". `median_us` keeps the discarded warm-up round that the macOS flake originally traced to cold
+allocator arenas. Cross-library floors keep their 5x and top-3 thresholds - measured 38x-280x
+against PyYAML and 71x-77x against ruamel, so the floor is not the fragile part - and change only
+their estimator, sampling the pure-Python reference with fewer repetitions per block because the
+pair, not the repetition count, is what cancels drift.
+
+The methodology is measured, not entrusted to a docstring: `scripts/quality_matrix.py` derives
+`timing-floor-unpaired` for any `tests/test_*.py` that reads `perf_counter` outside CodSpeed and
+does not import the sampler, with the root as a parameter so the check is fired on injected files
+rather than argued about. It measures zero today. Nine tests in
+`tests/test_timing_gate_discipline.py` pin the alternation as a phase-switch count (sequential
+blocks give one switch, alternating give five), the tolerance bound, the fact that a genuinely
+slower candidate still goes red, and that a synthetic unpaired gate is named while a benchmark file
+is not.
+
 ## Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train
