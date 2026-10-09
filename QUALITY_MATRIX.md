@@ -348,6 +348,7 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
+| `docs-rendering:unbuilt-on-pr` | the site is rendered by a workflow that triggers on push to `main`, so a page that only fails when *rendered* is found by whoever opens it: four changelog pages carried metadata the generator cannot parse through three merged pull requests, each with every gate green, because the joined text satisfied the width rule, the heading rule, the mirror checker and `rumdl` — the damage was inside every measurement the tree had | a workflow whose triggers include `pull_request` runs `scripts/build-docs.py` and fails when a page cannot be rendered, which `quality_matrix.renders_the_site()` measures off the declaring files rather than off a list kept beside them |
 | *none measured* | the mirror checker compares version headers, which translation leaves identical, so an entry present in three mirrors and missing from two used to pass it — `docs/en` was one `[Unreleased]` entry behind and `docs/zh` one Added and five Fixed behind, with one Changed bullet no other mirror had. Condensing `[Unreleased]` into user-facing entries, written into all five pages in the same pass, closed the divergence, and `check_changelog_mirrors.py` now asserts the per-section counts instead of printing them | satisfied: the five pages report equal counts and the probe derives nothing |
 
 This table is a measurement, not a mood: `scripts/quality_matrix.py` re-derives it on every

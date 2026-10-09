@@ -1,6 +1,7 @@
 ---
-title: Changelog description: pyrs-yaml의 모든 중요 변경 사항 — Keep a Changelog 형식, Semantic
-Versioning 준수 tags:
+title: Changelog
+description: pyrs-yaml의 모든 중요 변경 사항 — Keep a Changelog 형식, Semantic Versioning 준수
+tags:
   - docs
 status: new
 ---
@@ -60,6 +61,7 @@ status: new
 - **관문 계기 자체의 여섯 결함을 고쳤다(Python 하한 포함).** — (details: quality-ledger (ah), (an),
   (ao), (ap), (aq), (ar))
 - **아무도 보지 않는 자리에 항목을 넣을 수 없다.** — (details: quality-ledger (ar))
+- **변경 로그 페이지의 설명과 접힌 릴리스 표시를 복원합니다.** — (details: quality-ledger (az))
 
 #### 성능
 
@@ -70,7 +72,7 @@ status: new
 
 ### [v0.17.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>pyq CLI 패리티 플래그</summary>
 
 #### 추가
@@ -114,7 +116,7 @@ status: new
 
 ### [v0.16.0] — 2026-10-01
 
-<details>
+<details markdown="1">
 <summary>JSONC block-comment 핫스팟 벤치</summary>
 
 #### 추가
@@ -593,7 +595,7 @@ status: new
 
 ### [v0.15.0] — 2026-08-19
 
-<details>
+<details markdown="1">
 <summary>노드 메타데이터 세터/게터</summary>
 
 #### 추가
@@ -647,7 +649,7 @@ status: new
 
 ### [v0.14.1] — 2026-08-15
 
-<details>
+<details markdown="1">
 <summary>백슬래시+제어 문자/비문자를 포함한 단일 인용 스칼라</summary>
 
 #### 수정
@@ -674,7 +676,7 @@ status: new
 
 ### [v0.14.0] — 2026-08-14
 
-<details>
+<details markdown="1">
 <summary>YAML Schema Language</summary>
 
 #### 추가됨
@@ -713,7 +715,7 @@ status: new
 
 ### [v0.13.0] — 2026-08-10
 
-<details>
+<details markdown="1">
 <summary>Rust MSRV를 1.96으로 업그레이드하고 edition을 2024로 변경</summary>
 
 #### 변경 사항
@@ -775,7 +777,7 @@ status: new
 
 ### [v0.12.1] — 2026-08-06
 
-<details>
+<details markdown="1">
 <summary>`set(create_missing=True)`</summary>
 
 #### 추가
@@ -822,7 +824,7 @@ status: new
 
 ### [0.11.7] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>stub-build-check replaced with release-guard</summary>
 
 #### 변경
@@ -845,7 +847,7 @@ status: new
 
 ### [0.11.6] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>Free-threaded (cp314t) wheels are now numpy-free</summary>
 
 #### 변경
@@ -866,7 +868,7 @@ status: new
 
 ### [0.11.5] - 2026-08-04
 
-<details>
+<details markdown="1">
 <summary>Parser robustness items 3/4/5 closed via Phase 0 strictness audit</summary>
 
 #### 변경
@@ -926,7 +928,7 @@ status: new
 
 ### [0.11.2] - 2026-08-03
 
-<details>
+<details markdown="1">
 <summary>파싱 시 스플라이스 자격 계산 안 함</summary>
 
 #### 추가
@@ -951,7 +953,7 @@ status: new
 
 ### [0.11.0] - 2026-08-02
 
-<details>
+<details markdown="1">
 <summary>Surgical Serialization</summary>
 
 #### 추가
@@ -972,7 +974,7 @@ status: new
 
 ### [0.10.0] - 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>제자리 편집</summary>
 
 #### 추가
@@ -1002,7 +1004,7 @@ status: new
 
 ### [0.9.0] - 2026-08-01
 
-<details>
+<details markdown="1">
 <summary>Python 3.13, 3.14, 3.15 지원</summary>
 
 #### 추가
@@ -1070,7 +1072,7 @@ status: new
 
 ### [0.8.0] - 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>`YAML()` 인스턴스 API</summary>
 
 #### 추가
@@ -1095,7 +1097,7 @@ status: new
 
 ### [0.7.1] - 2026-07-30
 
-<details>
+<details markdown="1">
 <summary>ryaml 벤치마크 비교</summary>
 
 #### 추가
@@ -1121,7 +1123,7 @@ status: new
 
 ### [0.7.0] - 2026-07-29
 
-<details>
+<details markdown="1">
 <summary>직렬화기 `max_depth` 가드</summary>
 
 #### 추가
@@ -1152,7 +1154,7 @@ status: new
 
 ### [0.6.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>비동기 직렬화</summary>
 
 #### 추가
@@ -1186,7 +1188,7 @@ status: new
 
 ### [0.5.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>`Serializer::write_node`</summary>
 
 #### 수정
@@ -1202,7 +1204,7 @@ status: new
 
 ### [0.4.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>132개 새 gap-filling 테스트</summary>
 
 #### 추가
@@ -1244,7 +1246,7 @@ status: new
 
 ### [0.3.0] - 2026-07-27
 
-<details>
+<details markdown="1">
 <summary>NumPy ndarray 직렬화</summary>
 
 #### 추가

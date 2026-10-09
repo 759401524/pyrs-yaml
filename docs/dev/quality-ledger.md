@@ -15,7 +15,7 @@ Related documents: [engine boundaries](boundaries.md), [performance status](perf
 ## Contents
 
 - The placement family - (h) through (v)
-- The quality defence, entry by entry - (w) through (ay)
+- The quality defence, entry by entry - (w) through (az)
 - Note survival: the leading slot became a list
 - Shipped milestone scoping - the v0.11.3 to v0.12.0 tables after they shipped
 
@@ -2013,6 +2013,75 @@ fixed this way). The engine is never declared "clean" — the point of the sched
 surfacing new edge cases to pin, one root cause per PR.
 
 ---
+
+### (az) The width fixer rewrote page metadata, and a fold printed its own markup (2026-10-10)
+
+Two defects shipped together, and the report came from a reader of the site rather than from a gate.
+`https://759401524.github.io/pyrs-yaml/zh/changelog/` showed a released version's heading running
+into its body (`pyq CLI 对齐参数#### 新增`). Reading the page for what else had gone found the
+second thing: the changelog's `<meta description>` was the site's, not the page's.
+
+The first is older than the second and was bisected to (av)'s own commit: `paragraph_blocks`
+documents that front matter stays, and it skipped only the *opening* `---`, so the block's body was
+a paragraph - joined, balanced, re-wrapped. `title: Changelog description: … tags:` on one line is
+not a mapping, and four pages, `docs/{en,ja,ko,zh}/changelog.md`, carried that through three merged
+pull requests.
+
+What the generator does with it is not one answer, and the difference is the part worth keeping. The
+locked version (`zensical` 0.0.56, what CI and the deployed site build) **accepts** the page: build
+exits 0, and the `<meta name="description">` of the changelog becomes the *site's* description -
+`High-performance Python YAML library with perfect round-trip support…` where the page had said what
+the changelog holds - with the tags gone with it. The title is unaffected, because the title it
+prints is the one the damaged line still begins with. The newer 0.0.69, which a local
+`uv run --group docs` pulled in by resolving an unbounded constraint, **refuses**:
+`error reading page metadata 'changelog.md'`, build fails. So the same bytes are a silent metadata
+loss on the version that ships and a broken deploy on the version the lock will move to. A green
+`Docs` run proved nothing in either case; the first failure mode is invisible, and it is the one
+readers got.
+
+The gate could not see it because the damage *satisfied* the gate: after the join, every metadata
+line fitted inside 100 display columns. A check that measures width cannot notice a loss of
+structure, and the only reader that cares - the site build - runs on push to `main` in
+`.github/workflows/docs.yml`, never on a pull request. So the repair is stated in three places:
+`front_matter()` is now one range shared by `offenders`, `spacing_artifacts`, `wrap_text` and
+`paragraph_blocks`, so the checker and the fixer cannot disagree about which lines are data;
+`scripts/check_doc_metadata.py` asks the generator's question structurally (one key per line, no
+duplicate key, a `title` present) with no third-party dependency, wired as the `doc-metadata` hook
+and as a `page-metadata` job in Validate; and `tests/test_doc_wrapping_gate.py` pins the block
+byte-for-byte while asserting the prose in the same document still gets re-flowed, because a pass
+that skipped everything would pass a metadata-only test by accident. The four blocks were restored
+from the newest revision that parses (`89979030`), and each restore was proved to be a repair rather
+than a substitution by comparing the whitespace-squashed text before and after - identical, so
+nothing but the joining was undone.
+
+The second defect is the fold itself. `<details>`/`<summary>` is the shape everyone uses on GitHub,
+where the body is parsed as Markdown whatever the markup looks like; this site is built by a
+Python-Markdown pipeline, and `md_in_html` parses the content of a raw HTML block only when the
+opening tag carries the `markdown` attribute. Without it all 21 folded releases printed their `####`
+headings, bullet lists and code fences as text - correct on GitHub, broken on the site, and
+invisible to every source-level gate for the same reason as the first defect.
+`<details markdown="1">` is inert on GitHub and load-bearing here, so the five pages now carry it
+uniformly, and the checker refuses a bare `<details>` under `docs/`.
+
+The measurement that decided each fix, not the story, and on the generator the site is built with.
+The fold was tested by A/B with everything else held equal: the same zh page built with
+`<details markdown="1">` renders 69 `<h4>` and no leaked markup, and built with a bare `<details>`
+renders 11 while printing `#### 新增` and `#### 变更` as text inside the fold - 21 `<details>`
+elements either way, so the fold *opens* and only its body is lost, which is why a glance at the
+page looked merely untidy rather than broken. The metadata was tested the same way, per version, and
+is the paragraph above; the numbers there are why "CI is green" is not a statement about the page.
+
+A bug in the new test was found on the way and is worth recording, because it is the common shape of
+a useless gate: `pages()` listed `docs/<locale>/**/*.md`, a git pathspec that skips a locale's own
+top level, which is exactly where the four changelog pages live - 140 pages selected, every one of
+them clean, and the check protecting nothing it was written for. It is now 164 pages, and the
+coverage test names the four changelog paths instead of trusting a count, which is the only reason
+the hole was noticed.
+
+What this does not close: no pull request renders the site, so a property that only the *renderer*
+decides is still checked here by rules about markup rather than by markup being rendered. The exit
+criterion for that - a PR job that runs `scripts/build-docs.py` - is registered in
+`.ci/quality-holes.json` as `docs-rendering:unbuilt-on-pr` rather than left as an impression.
 
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 

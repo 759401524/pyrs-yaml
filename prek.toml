@@ -164,6 +164,26 @@ entry = "python scripts/check_doc_wrapping.py"
 files = "^(CHANGELOG|ROADMAP)\\.md$|^docs/(en|ja|ko|zh)/changelog\\.md$|^docs/dev/[a-z-]+\\.md$"
 priority = "checks"
 
+# Every published page opens with a YAML block that decides its title, its `<meta description>`, its
+# tags and its place in the navigation. The width fixer was written to skip that block and skipped only
+# its opening `---`, so the body was joined and re-wrapped as prose: `title:`/`description:`/`tags:` on
+# one line is not a mapping. The locked generator publishes such a page anyway, with the page's own
+# description replaced by the site's; the newer one fails the build with `error reading page metadata`.
+# A green deploy proved nothing either way, and the site is built on push to `main` rather than on pull
+# requests, so three merged pull requests carried it. Structural rules only, so this hook needs nothing
+# but the standard library. The second rule belongs here for the same reason: `md_in_html` parses the
+# body of a raw HTML block only when the opening tag carries the `markdown` attribute, and a fold
+# without it prints its own `####` headings, lists and code fences as text - which is how all 21 folded
+# releases arrived on the site. GitHub parses `<details>` bodies either way, so the source looked right
+# wherever a human read it.
+[[repos.hooks]]
+id = "doc-metadata"
+name = "page metadata parses and folds render"
+language = "system"
+entry = "python scripts/check_doc_metadata.py"
+files = "^docs/(en|ja|ko|zh)/.*\\.md$"
+priority = "checks"
+
 # ── Python: ruff lint + format ──────────────────────────────────────────────
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"

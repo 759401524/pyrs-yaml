@@ -389,3 +389,38 @@ def test_declared_hole_kinds_are_kinds_the_probe_can_emit(measured, registry):
     assert declared <= measurable, (
         f"registry declares kind(s) the measurement cannot emit: {sorted(declared - measurable)}"
     )
+
+
+def test_site_rendering_reachability_is_read_off_the_workflows(matrix, tmp_path, monkeypatch):
+    """A job is a gate only when its own workflow triggers on a pull request.
+
+    `docs.yml` renders the site on push to `main`, and that is the fact `docs-rendering:unbuilt-on-pr`
+    records: four changelog pages carried metadata the generator cannot parse through three merged pull
+    requests because nothing before merge asked a page to render. Two near-misses are included on
+    purpose - a push-only build, and a step that merely quotes the build command - since either would
+    satisfy a probe written as a substring search over the file.
+    """
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    monkeypatch.setattr(matrix, "WORKFLOWS", workflows)
+
+    def write(name: str, text: str) -> None:
+        (workflows / name).write_text(text, encoding="utf-8")
+
+    write(
+        "docs.yml",
+        "name: Docs\non:\n  push:\n    branches: [main]\njobs:\n  build:\n    steps:\n"
+        "      - run: python scripts/build-docs.py\n",
+    )
+    write(
+        "mentions.yml",
+        "name: Mentions\non:\n  pull_request:\njobs:\n  talk:\n    steps:\n"
+        '      - run: echo "python scripts/build-docs.py is the deploy command"\n',
+    )
+    assert matrix.renders_the_site() is False, "a push-only build or a quoted mention is not a gate"
+
+    write(
+        "preview.yml",
+        "name: Preview\non:\n  pull_request:\njobs:\n  site:\n    steps:\n      - run: python scripts/build-docs.py\n",
+    )
+    assert matrix.renders_the_site() is True, "a PR-triggered render must be recognised"

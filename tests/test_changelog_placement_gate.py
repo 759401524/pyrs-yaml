@@ -194,12 +194,16 @@ def test_a_mirror_that_drops_a_translated_entry_fails(checker):
     assert "14" in found[0] and "13" in found[0], found
 
 
-def test_the_registry_is_empty_because_the_measurement_is_quiet(checker, matrix):
-    """An empty registry is a measured state here, not an aspiration.
+def test_the_parity_hole_stays_closed_whatever_else_the_registry_carries(checker, matrix):
+    """The mirror divergence is closed, and this asserts the closure rather than an empty file.
 
-    `tests/test_quality_matrix.py` fails if the derived set and the registered set differ in either
-    direction, so this asserts only what that gate does not already: the page that documented the
-    divergence cites nothing now, and the checker is the reason.
+    The first version of this test asserted `holes == []`. That was true when it was written and was
+    never the point: `tests/test_quality_matrix.py` already fails if the derived set and the registered
+    set disagree in either direction, so pinning emptiness made an unrelated blind spot - registered
+    later, with its own exit criterion - look like a regression here. What belongs in this file is that
+    *no* `changelog-parity` hole is measured and none is declared, which is the state the checker's
+    `count_drift` enforcement produces.
     """
-    assert json.loads(REGISTRY.read_text(encoding="utf-8"))["holes"] == []
+    declared = [entry["id"] for entry in json.loads(REGISTRY.read_text(encoding="utf-8"))["holes"]]
+    assert not any(hole.startswith("changelog-parity") for hole in declared), declared
     assert not any(kind == "changelog-parity" for kind, _name, _why in matrix.measure()["holes"])
