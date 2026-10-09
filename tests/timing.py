@@ -9,20 +9,22 @@ peers were timed once per side in a loop. Every one of them therefore compares p
 share an environment: a scheduler spike, a cold arena, or a GC pause landing on one phase inflates
 one side only, and the assertion cannot tell that apart from a regression.
 
-Two properties fix that, and they are the reason this module exists:
+Two properties carry this module, and the second one is a correction the CI wrote for us:
 
-- **Pairs, not phases.** Each block measures the candidate and the reference back to back, so a block
-  is an internally consistent comparison. The verdict is a majority over blocks: one inverted pair is
-  noise, four of five is a fact. Measured locally the margin is ~2.2x for `load_toml` and ~4.5x for
-  `to_toml`, but the same parse gate recorded 336us vs 369us (1.10x) on a macos-latest runner - a
-  small shared cell leaves a minima-comparison with nothing to spend, while five pairs each seeing
-  the same contention stay comparable.
-- **A red must be attributable.** The result carries every pair, so a failure message shows whether
-  one side was inflated in a single block (measurement) or the two are genuinely close (product).
+- **A red must be attributable.** Each block measures the candidate and the reference back to back, and
+  the result keeps every pair, so a failure message shows whether one side was inflated in a few blocks
+  (measurement) or the two are genuinely close (product). Without it, a red on this gate is a rumour.
+- **The verdict is the minima, not a majority of pair signs.** The first version asked the candidate to
+  win all but one pair, on the theory that a burst inside a pair cancels. It does not: bursts outlast
+  pairs. A macos-latest run reported `2.58x` of real headroom and failed that rule because three of five
+  candidate blocks sat at ~3x their own floor - `139.4/1001.3, 145.9/385.5, 405.8/359.6, 379.1/1006.8,
+  437.2/375.8`. An undisturbed block exists on both sides precisely because both sides are measured in
+  every block, so `min` is the stable statistic and `majority()` keeps a two-win floor so one lucky
+  block cannot carry a verdict alone.
 
-`tests/test_timing_gate_discipline.py` pins both properties: that the sampler alternates phases
-inside a block, that a slowed fast path turns the gate red, and that `scripts/quality_matrix.py`
-refuses a comparison gate that bypasses this module.
+`tests/test_timing_gate_discipline.py` pins the properties: that the sampler alternates phases inside a
+block, that the CI log above passes while a genuinely slower candidate still goes red, and that
+`scripts/quality_matrix.py` refuses a comparison gate that bypasses this module.
 """
 
 from __future__ import annotations
@@ -82,8 +84,8 @@ def compare(candidate, reference, blocks=5, reps=25, reference_reps=None):
     """Sample `candidate` and `reference` in adjacent blocks and return a `Paired`.
 
     The alternation is the point: measuring all candidate blocks before all reference blocks lets a
-    single scheduler spike decide the outcome. `majority` checks the candidate wins all but one pair,
-    which five blocks make a deliberate tolerance for one bad pair rather than a shrug.
+    single scheduler spike decide the outcome. The verdict that `majority` reaches is the minima of
+    those blocks, with a floor on how many blocks the candidate has to win.
 
     `reference_reps` exists for cross-library pairs, where the reference is a pure-Python parser and
     its own repetitions dominate the cost: five blocks of it would make the suite slower without
@@ -99,11 +101,24 @@ def compare(candidate, reference, blocks=5, reps=25, reference_reps=None):
     return Paired(pairs)
 
 
-def majority(result, allow_one_loss=True):
-    """Whether `result` won enough pairs to be called faster.
+def majority(result, minimum_wins=2):
+    """Whether `result` is faster, judged on block minima with a floor on pair wins.
 
-    Tolerating one lost pair is what makes a spike survivable; `allow_one_loss=False` is for margins
-    that are supposed to be decisive rather than merely ordered.
+    The first version of this rule asked the candidate to win all but one pair, on the theory that a
+    pair is a same-environment comparison and therefore a sign flip is noise. A macOS runner said
+    otherwise, and the log is the argument:
+
+        candidate 139.4us vs reference 359.6us (2.58x), won 3/5 pairs.
+        per-pair us: 139.4/1001.3, 145.9/385.5, 405.8/359.6, 379.1/1006.8, 437.2/375.8
+
+    The document really is 2.58x cheaper, and three of five candidate blocks were inflated to roughly
+    three times their own floor by scheduler bursts that lasted longer than a block. Per-pair signs are
+    therefore not a stable verdict on a shared cell: the burst does not respect the pair boundary. The
+    minima are - a block that is undisturbed exists on both sides, because both sides are measured in
+    every block, which is what the alternation buys. So the verdict is the minima comparison, and
+    `minimum_wins` is the floor that stops one lucky block from carrying it alone.
+
+    Keeping the pairs in the message is not decoration: it is how a reader tells this shape (a few
+    inflated blocks, ratio intact) from a genuine narrowing (every pair close, ratio near 1).
     """
-    needed = result.blocks - 1 if allow_one_loss else result.blocks
-    return result.candidate_wins >= needed and result.candidate_us < result.reference_us
+    return result.candidate_wins >= minimum_wins and result.candidate_us < result.reference_us
