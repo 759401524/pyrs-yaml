@@ -266,6 +266,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unavailability now answers exit 2 and a skipped test, never a pass. — (details: quality-ledger
   (bg))
 
+- **The prose fixer no longer writes the gap its own checker reports.** — adding a Japanese entry
+  made `check_doc_wrapping.py --fix` answer `1 gap(s) [wrap residue]` and refuse to converge: the
+  fixer chose the glue between two physical lines from a script class that omits U+3001, so a line
+  ending in `、` was joined to the following kana with a space, while the residue class in that same
+  file does include the code point and calls such a gap an artifact. One rule, written twice,
+  encoded differently - and each repair pass recreated the finding it reported. `join_lines` now
+  asks the two residue patterns themselves, and the added tests hold both halves: a `、` boundary
+  fuses, `は docs.md にある` keeps its space. — (details: quality-ledger (bi))
+
 #### Performance
 
 - **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the
