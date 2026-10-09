@@ -3,16 +3,17 @@
 401a8057 added a Fixed entry to all five mirrors and filed none of them where a reader looks: above
 the preamble in `CHANGELOG.md`, inside the `tags:` list of the en and zh frontmatter, and between the
 frontmatter and the first heading in ja and ko. `scripts/check_changelog_mirrors.py` stayed green,
-because comparing version headers says nothing about *placement*. And it still says nothing about
-*completeness* - the entry counts per `[Unreleased]` section differ across mirrors today (against root,
-`docs/en` is one entry behind and `docs/zh` five net), which is
-`.ci/quality-holes.json`'s `changelog-parity:entry-counts` rather than an assertion, because a red gate
-that names someone else's missing translation stops being a gate.
+because comparing version headers says nothing about *placement*. It also used to say nothing about
+*completeness*: the entry counts per `[Unreleased]` section drifted across mirrors (one entry behind in
+`docs/en`, five net in `docs/zh`) and the checker only printed them, which is why the divergence lived
+as `.ci/quality-holes.json`'s `changelog-parity:entry-counts` instead of an assertion - a red gate that
+names someone else's missing translation stops being a gate. Condensing the release notes into
+user-facing entries with the translations written in the same pass closed the gap, and the checker now
+asserts the equality instead of reporting it, so the registered hole is gone in both directions: the
+measurement finds nothing, and the registry no longer claims it does.
 
 So the rules below are tested the way every other fix here is: each one has to fire on the injection
-that names it, the counts probe has to go quiet when the mirrors agree, and the gap written into the
-registry has to equal the gap the measurement computes (one entry behind in `docs/en`, five net in
-`docs/zh` against root, which is the shape of the divergence, not a snapshot that rots).
+that names it, and the counts probe has to stay quiet while the five pages agree.
 """
 
 from __future__ import annotations
@@ -170,56 +171,35 @@ def test_counts_cover_only_the_unreleased_block(checker):
     assert checker.positioned_counts(DOC_SHAPE) == [1]
 
 
-def _gaps(matrix):
-    """How far each mirror sits behind root, per [Unreleased] section position.
+def test_the_five_pages_carry_equal_entry_counts_now(checker, matrix):
+    """The condition the registered hole described is closed, so the gate asserts it instead.
 
-    Differences rather than absolute counts on purpose: a commit that adds an entry to all five
-    mirrors moves every count and no difference, so the registered statement below stays true while
-    the backfill is outstanding, and goes false exactly when it should - when a mirror is added to or
-    catches up.
+    Equality is checked positionally: every mirror keeps Added/Changed/Fixed/Performance in the same
+    order, so a count difference at the same position can only mean a translated entry is missing.
     """
     counts = matrix.changelog_mirror_counts()
-    root = counts["CHANGELOG.md"]
-    return {
-        name: [behind - ahead for behind, ahead in zip(values, root)]
-        for name, values in sorted(counts.items())
-        if values != root
+    assert len({tuple(values) for values in counts.values()}) == 1, counts
+    assert checker.count_drift(counts) == [], counts
+
+
+def test_a_mirror_that_drops_a_translated_entry_fails(checker):
+    """Fitness: the enforcement bites on the shape it exists for."""
+    counts = {
+        "CHANGELOG.md": [11, 3, 14, 3],
+        "docs/en/changelog.md": [11, 3, 14, 3],
+        "docs/zh/changelog.md": [11, 3, 13, 3],
     }
+    found = checker.count_drift(counts)
+    assert len(found) == 1 and "docs/zh/changelog.md" in found[0], found
+    assert "14" in found[0] and "13" in found[0], found
 
 
-def test_the_probe_reports_the_measured_divergence(matrix):
-    counts = matrix.changelog_mirror_counts()
-    assert len({tuple(values) for values in counts.values()}) > 1, (
-        f"the mirrors agree today, so this test's premise moved: {counts}"
-    )
-    assert _gaps(matrix) == {
-        "docs/en/changelog.md": [0, 0, -1, 0],
-        "docs/zh/changelog.md": [-1, 1, -5, 0],
-    }, counts
-    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
-    assert ("changelog-parity", "entry-counts") in holes, sorted(holes)
+def test_the_registry_is_empty_because_the_measurement_is_quiet(checker, matrix):
+    """An empty registry is a measured state here, not an aspiration.
 
-
-def test_the_counts_probe_goes_quiet_when_the_mirrors_agree(matrix, monkeypatch):
-    """Both directions, or the probe is a comment about the mirrors rather than a measurement."""
-    counts = matrix.changelog_mirror_counts()
-    agreed = {name: [18, 3, 80, 3] for name in counts}
-    monkeypatch.setattr(matrix, "changelog_mirror_counts", lambda: agreed)
-    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
-    assert ("changelog-parity", "entry-counts") not in holes, sorted(holes)
-
-
-def test_the_registry_quotes_the_divergence_the_measurement_reports(matrix):
-    """The registered hole cites numbers, so a test has to cite them back.
-
-    A wrong figure inside a registered blind spot is worse than a missing one, because it gets quoted
-    (#303 measured exactly that). The comparison is against the per-section gaps, which is what the
-    registry stores - absolute counts would go stale on the next entry any one mirror receives.
+    `tests/test_quality_matrix.py` fails if the derived set and the registered set differ in either
+    direction, so this asserts only what that gate does not already: the page that documented the
+    divergence cites nothing now, and the checker is the reason.
     """
-    entry = next(
-        e
-        for e in json.loads(REGISTRY.read_text(encoding="utf-8"))["holes"]
-        if e["id"] == "changelog-parity:entry-counts"
-    )
-    assert entry["measured"] == _gaps(matrix), entry["measured"]
-    assert "docs/en" in entry["why"] and "docs/zh" in entry["why"], entry["why"]
+    assert json.loads(REGISTRY.read_text(encoding="utf-8"))["holes"] == []
+    assert not any(kind == "changelog-parity" for kind, _name, _why in matrix.measure()["holes"])

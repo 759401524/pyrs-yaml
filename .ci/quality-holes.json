@@ -12,16 +12,5 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
-  "holes": [
-    {
-      "id": "changelog-parity:entry-counts",
-      "opened": "2026-10-08",
-      "why": "AGENTS.md forbids partial changelog updates, but scripts/check_changelog_mirrors.py compares version headers, which translation leaves identical, so an entry added to three mirrors and omitted from two passes it. Measured against root: docs/en carries one fewer [Unreleased] entry and docs/zh one fewer Added, one extra Changed and five fewer Fixed. The same blindness in placement form is what 401a8057 shipped: its entry landed above the preamble, inside the en and zh frontmatter, and before the first heading in ja and ko - invisible in all five bodies, green under every gate of the day.",
-      "exit": "scripts/check_changelog_mirrors.py exits non-zero when the five mirrors' [Unreleased] entry counts are not equal at every section position, which first needs the backfill: the missing Fixed entry in docs/en, the missing Added and five missing Fixed entries in docs/zh, and a ruling on the Changed bullet docs/zh holds that no other mirror has.",
-      "measured": {
-        "docs/en/changelog.md": [0, 0, -1, 0],
-        "docs/zh/changelog.md": [-1, 1, -5, 0]
-      }
-    }
-  ]
+ "holes": []
 }

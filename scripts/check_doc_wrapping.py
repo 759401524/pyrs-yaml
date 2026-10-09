@@ -80,6 +80,10 @@ SKIP_PATTERNS = (
     re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$"),  # thematic break
     re.compile(r"^!!!\s"),  # admonition
     re.compile(r"^\?\?\?\s"),  # collapsible section
+    # A standalone HTML tag line: the changelog folds released versions in <details>/<summary>, and
+    # re-flowing one of those would break the tag across two lines and produce markup that renders as
+    # literal text - the failure this whole tool is written to avoid, so structure wins over width.
+    re.compile(r"^\s*</?[a-z][a-z0-9-]*(?:\s[^>]*)?>\s*$"),
     re.compile(r"^\s{0,3}\[\^\d+\]:"),  # footnote definition body start
 )
 # An opener is a fence run with at most an info string after it, and it only opens a block

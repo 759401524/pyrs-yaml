@@ -152,13 +152,16 @@ priority = "checks"
 # legal cut is already past the limit - each opens with a 101-127 column code span that must not be
 # split. `--fix` reflows exactly the reported lines, which is what keeps two passes from overwriting
 # each other; the probe that alternates them settles with neither rewriting anything. Scope is the six
-# pages whose prose this repository grows continuously; the docs tree keeps its own wrapping.
+# pages whose prose this repository grows continuously: the five release-note pages, the roadmap, and
+# the development records under `docs/dev/` (quality ledger, engine boundaries, performance status) -
+# outside the published site, so they carry no i18n mirror obligation but the same typographic one. The
+# docs tree keeps its own wrapping.
 [[repos.hooks]]
 id = "doc-line-width"
 name = "prose fits 100 display columns"
 language = "system"
 entry = "python scripts/check_doc_wrapping.py"
-files = "^(CHANGELOG|ROADMAP)\\.md$|^docs/(en|ja|ko|zh)/changelog\\.md$"
+files = "^(CHANGELOG|ROADMAP)\\.md$|^docs/(en|ja|ko|zh)/changelog\\.md$|^docs/dev/[a-z-]+\\.md$"
 priority = "checks"
 
 # ── Python: ruff lint + format ──────────────────────────────────────────────

@@ -19,6 +19,14 @@ exclude = [
 respect-gitignore = true
 
 [per-file-ignores]
+# Each changelog page folds its released versions in <details>/<summary> so the file reads as a list
+# of releases instead of a wall of prose. Raw HTML is the only fold that works on GitHub, where the
+# root CHANGELOG.md is read, so the inline-HTML rule is scoped away for those five pages only.
+"CHANGELOG.md" = ["MD033"]
+"docs/en/changelog.md" = ["MD033"]
+"docs/zh/changelog.md" = ["MD033"]
+"docs/ja/changelog.md" = ["MD033"]
+"docs/ko/changelog.md" = ["MD033"]
 # CLAUDE.md: no H1 heading, uses <comet-ambient-resume> HTML tags
 "CLAUDE.md" = ["MD033", "MD041"]
 # AGENTS.md: uses <comet-ambient-resume> HTML tags

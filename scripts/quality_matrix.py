@@ -557,22 +557,12 @@ def measure() -> dict:
             ]
         )
 
-    # `AGENTS.md` says never commit partial changelog updates, and the mirror checker compares version
-    # headers, which translation leaves identical - so an entry added to three mirrors and missing from
-    # two passes it, which is how 401a8057's entry ended up invisible in four of five files. Section
-    # positions are locale-independent (every mirror keeps the same Added/Changed/Fixed/Performance
-    # order), so unequal counts at the same position are the measurable form of the rule. Divergence
-    # today is registered rather than silently tolerated; the checker prints the counts either way.
+    # `AGENTS.md` says never commit partial changelog updates, and section positions are
+    # locale-independent, so equal [Unreleased] counts at the same positions are the measurable form
+    # of the rule. `check_changelog_mirrors.py` now asserts that instead of printing it, which closed
+    # the registered hole this block used to derive; the counts stay reported here because a measure the
+    # probe publishes is a measure a test can fire on.
     mirrors = changelog_mirror_counts()
-    if len({tuple(counts) for counts in mirrors.values()}) > 1:
-        holes.append(
-            [
-                "changelog-parity",
-                "entry-counts",
-                f"the mirrors disagree on how many entries [Unreleased] holds {mirrors}, and no gate "
-                "compares those counts",
-            ]
-        )
 
     return {
         "ir_harness_crates": sorted(ir_graph),

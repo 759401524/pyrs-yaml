@@ -16,1134 +16,62 @@ status: new
 
 #### 추가
 
-- **타이밍 게이트는 다시 블록 최솟값으로 판정한다. 지난 주 넣은「짝 다수결」을 macOS 실행이
-  뒤집었다** — #311은 제각각이던 세 벽시계 추정기를 하나의 표집기로 모으고 판정을「다섯 짝 중 넷
-  승리」로 정했다. 후보와 기준을 붙여 재면 짝 안의 요동은 서로 상쇄된다는 논리였다. 논리는 틀렸고,
-  공유 실행 환경에서만 드러나는 방식으로 틀렸다: 요동은 짝보다 오래 간다.
-  `test (macos-latest, 3.13)` 보고가 논거다 —
-  `candidate 139.4us vs reference 359.6us (2.58x), won 3/5 pairs`. 문서는 실제로 2.58배 싼데, 다섯
-  짝 중 세 짝의 후보 블록이 제 최저치의 세 배 부근까지 올라가 있었다. 코드를 바꾸지 않고 관문이
-  빨개졌고, 그것은 표집기가 없애려던 실패 그 자체다. 그래서 판정을 블록 최솟값으로 되돌리고, 행운의
-  한 짝이 결론을 혼자 지지 못하게「최소 두 짝 승리」 마루를 둔다. 붙여 재기는 남긴다 — 매 짝에서
-  양쪽을 재야 교란 없는 블록이 양쪽에 존재함이 보장된다. 이번 고쳐 쓰기가 실제로 얻은 것은 귀속
-  가능성이다: 실패 메시지가 모든 짝을 인쇄하니, 이 빨강이 퇴행이 아니라 측정 소음임을 한 번 읽고
-  구분할 수 있다. 그 로그는 통과 사례로 재생되므로, 보지 않은 사람이 규칙을 다시 흔들림의 근원으로
-  조여 올릴 수 없다.
-- **명령 수 관문이 JSONC와 JSON5 열 경로를 넘버링하고 방언 쓰기의 비용을 밝혔다** — `from_jsonc`,
-  `from_json5`, `to_jsonc_text`, `to_json5_text` 네 공개 함수엔 기준값이 아예 없었다. 주석 스캐너도,
-  맨 키와 꼬리 쉼표 문법도, 두 방언 쓰기 경로도 무회귀 관문 밖에 있었다. 이름으로 내건 형식인데 잰
-  적이 없으니 측정 구멍이다. 같은 허브 AST에서 세 쓰기는 이제 각각 21,232,786 / 22,176,851 /
-  22,974,851 명령 — 주석을 내는 건 엄격 JSON보다 4.4%, JSON5 표기는 8.2% 비싸다. 전에는 말할 수 없던
-  비용이다. 읽는 쪽도 잰다. 다만 의도적으로 쓰기의 출력이 아니라 손으로 지은 바이트에서 만든다: 주석
-  없는 AST에 `to_jsonc_text`를 적용하면 픽스처에 주석이 없어, 재야 할 스캐너를 통과하지 않기
-  때문이다. 그래서 읽기 수는 엄격 JSON과 바이트로 대응하지 않고, `tests/ir_fixtures.rs`는 다른
-  불변량을 못 박는다 — 해석된다, 방언 특성이 남아 있다, `MEDIUM_JSON`과 같은 키와 값을 이룬다. 그
-  동일성 검사를 쓰는 도중에 진짜 충실성 결함이 나왔다. 그 자리에 삼키지 않고 #312로 세웠다:
-  `from_json5`는 유한하지 않은 실수를 맨 단어 `Infinity`로 허브에 쓰는데 YAML 어느 스키마도 숫자로
-  되읽지 않으니, `load_json5`는 메모리에서 맞는데 허브를 한 바퀴 돌면 타입이 문자열이 된다. 계기엔
-  두 번째 맹점도 있었다. `ir_bridge_pairs`는 이름의 짝을 찾으므로 반쪽도 없는 형식에겐 비교할
-  시작점이 아예 없고, 그래서 매트릭스는 초록을 냈다. 이제 `quality_matrix.py`가 형식별로
-  `ir-bridge-absent`를 길어내고, JSON5 두 짝을 지워 구멍이 드러남을 검증한다. 갱신으로 기존 숫자는
-  최대 0.05% 움직였다. runner 이미지가 `20260927.320.1`에서 `20261004.327.1`로 바뀌었기 때문이며,
-  이는 방법이 바뀐 것이지 코드가 바뀐 것이 아니므로 장부에 적어 둔다.
-- **프로세스 내 벽시계 게이트를 짝으로 재고, 빨간 불이 누구 움직임을 말하게 했다** — 세 leaderboard
-  파일이 “이 경로가 일이 덜하다”를 벽시계로 단언하는데 추정기가 세 종류였다. TOML parse는 후보
-  블록을 셋 다 돌린 뒤에 기준 블록을 돌리고, TOML serialize와 JSON 두 게이트는 쪽당 한 블록만,
-  라이브러리 비교는 쪽당 한 번만 재었다. 블록은 자기 안에서만 비교 가능하니 스케줄 요동이 한쪽을
-  때리면 그쪽이 판정을 정하고, 메시지에는 두 숫자만 남는다. 고치기 전에 잰 값: parse 짝은 로컬
-  2.21~2.33배이고, CPU를 가득 채워 96번 시도해도 2.02배 아래로 내려가지 않는다. 같은 게이트가
-  macos-latest에 남긴 사고는 336us 대 369us, 즉 1.10배 — 코어 두 개를 공유하는 실행 환경에서는
-  위상을 가른 최소값 비교가 이렇게 무너진다. 로컬 전체 여섯 번에 한 번 빨갛게 떴고 다음 네 번은
-  재현되지 않았으며, assert 문구가 남아 있지 않으면 원인도 남지 않았다. 여기서 고치는 것은 판정을
-  되돌려 붙일 수 없음이지 발생률이 아니다. `tests/timing.py`가 유일한 표집기가 되어 각 블록에서
-  후보와 기준을 붙여 재고, 판정은 다섯 짝 중 한 짝까지 지는 것을 허용하며, 실패 메시지는 모든 짝을
-  옮겨 싣는다. 라이브러리 비교 게이트는 5배와 top-3 기준을 그대로 두고(재본 값 PyYAML 상대 38~280배,
-  ruamel 상대 71~77배) 추정기만 바꾼다. 순수 Python 기준 쪽은 반복 수를 줄인다 — 요동을 지우는 것은
-  반복이 아니라 짝이므로. `scripts/quality_matrix.py`는 `timing-floor-unpaired`를 길어내어 표집기를
-  거르는 파일을 짚는다. 방침이 세 추정기로 되돌아가지 못하게 하기 위함이고, 오늘 잰 값은 0이다. 아홉
-  검사가 주입으로 점화를 증명하고, 붙임성과 허용치, “정말 느려지면 여전히 빨개야 한다”를 하나씩
-  쏜다.
-- **대장과 changelog를 다시 줄 세우고, 본문 폭을 규칙으로 만들었다** — `ROADMAP.md`에 21,850글자
-  줄이, `docs/ja/changelog.md`에 884글자 줄이 있었다. Markdown도 렌더러도 물리 줄 길이를 신경 쓰지
-  않으므로 대가는 읽는 사람만 치렀다. `scripts/check_doc_wrapping.py`는 100 **표시 열**(전각은
-  2열)을 재고, 짚힌 단락째 다시 고른다 — 줄을 잇는 것은 공백만 움직이는 바꿈이고, 한 줄씩 접으면
-  줄마다 마지막 낱말이 외톨이가 되었다. 형제 목록 항목은 결코 합치지 않는다. 검사와 형식기를 따로
-  쓰면 반드시 어긋나서 후크가 방금 쓴 것을 거부한다. 울타리·표·제목·front matter는 그대로 두고, 목록
-  이어줄은 표지를 다시 넣지 않고 들여쓰기만 하며, 인용은 각 줄에 `>`를 남기고, code span과 링크
-  대상은 갈라지 않는다. 한국어는 띄어쓰기에서만 줄을 끊는다(첫 버전은 한 낱말을 갈랐다). 길이를 넘은
-  1,299줄이 0이 되었고 다른 글자는 하나도 움직이지 않았다. 세 규칙은 이 도구가 자신을 만드는 도중에
-  낸 손상에서 나왔다: `#283` 앞에서 접자 `rumdl fmt`가 그것을 제목으로 승격시켰고(`(au)`가 기록한
-  관문이 잡아 냈다), 두 ABI 이름을 잇는 글자 그대로의 `+` 앞에서 접자 아무도 쓰지 않은 목록 항목이
-  `docs/ko`에 생겼고, 본문 아래에 `---` 줄만 남자 `rumdl fmt`가 그 단락 전체를 126열 제목으로 바꿔
-  썼다. 이때 시도한「너무 넓은 제목」규칙은 즉시 반증됐다 — 정당한 `### (xx)` 머릿글 12개가 100열을
-  넘는다 — 그래서 관문은 모양을 지목했다. 소유도 쟀고 앞선 자기 판단을 뒤집었다: `rumdl fmt`는 이
-  창고의 Markdown 형식기 자리에 그대로 있다(빼면 여섯 줄이 `MD007`/`MD012`에 걸린다) — 그러나 본문
-  줄 다시 감기를 아예 하지 않는다. 587글자 영어 줄도 319열 한국어 줄도 그대로 나오고,
-  `line-length`는 검사기 설정일 뿐이며 이 저장소는 `MD013`을 껐다. 그래서 폭은 그간 주인이 없었고
-  여기서 언어를 가리지 않고 맡았다. 그래도 네 줄은 한계를 넘은 채로 보고하지 않는다 — 각 줄 머리가
-  101~127열 code span(`cargo build --target thumbv7em-none-eabi …`)이라 합법인 끊는 곳도 모두 예산을
-  넘고, span을 갈라면 그 안의 명령을 망친다. 면제는 따라서 예외 목록이 아니라 고쳐 내는 쪽의
-  능력이다. `ROADMAP.md`에도 골격이 생겼다 — `**(xx)` 머릿글 33개가 `### (xx)` 제목이 되었고, `(w)`
-  이후는 주석 배치에 관한 절에서 벗어났으며, 떠 있던 두 계층을 바로 세웠고, 21,850글자 단락은 열 개
-  계열로 나눈 목록이 되었다(3,479 단어 → 726 단어, 크래시 번호·기전·seed는 그대로 남긴다). 규약은
-  `DOCS_STANDARDS.md` §10, 후크는 `doc-line-width`와 `doc-heading-integrity`, 위 불변량은 두 관문
-  파일의 30개 테스트 함수가 하나씩 쏜다.
-- **명령 수 게이트가 형식 사이 다리의 양쪽을 모두 재게 됐다** — `from_json_medium`과
-  `from_toml_medium`을 추가해 공통 AST를 JSON과 TOML 텍스트로 되읽는다. 게이트가 번호를 매긴 쪽은
-  내보내는 쪽뿐인데, 키의 의미가 정해지는 것은 되읽는 쪽이다 — TOML/JSON의 키는 그 문법상
-  문자열이고, 공통 AST가 “문자열이며 해석하지 않는다”를 표시하는 유일한 방법이 따옴표이므로, #292가
-  거기서 추가한 키별 작업은 게이트가 잡아낼 수 있는 어떤 값도 움직이지 않았다. 읽어 들이는 입력은
-  등록해 둔 바이트다 — 내보내는 쪽이 `MEDIUM_YAML`에 대해 만들어 내는 출력을
-  `tests/ir_fixtures.rs`가 고정한다 — 그래서 읽는 쪽이 쓰는 쪽의 표기에 끌려가지 않는다. 도중에 잰
-  것은 스스로의 설명을 뒤집은 부분까지 함께 적어 둔다: setup에서 입력을 그려 내면 engine 코드를
-  조금도 바꾸지 않고 `to_json_medium`을 +1.52%, `to_toml_medium`을 +0.26% 움직였고, 게이트 허용차의
-  세 배였다 — 새로 추가한 것과 무관한 시나리오에서. 늘어난 호출 지점을 원인으로 지목했지만 바이트를
-  등록하고 그 호출을 지워도 `to_json_medium`은 +1.489% 움직였다. 메커니즘은 미해결로 남기고 성질은
-  확정해 적는다 — 하네스 편집은 그 하네스가 이미 내놓는 수치에 중립이 아니므로, 기준값을 다시 뽑으면
-  어느 쪽이 방법의 변화이고 어느 쪽이 코드인지 밝혀야 한다(같은 바이너리의 `serialize_*`와
-  `parse_*`는 0.042% 안에 묶였다). 읽기가 해석을 못 하게 되면 하네스는 3으로 빠져나가고 더 작은 값을
-  보고하지 않는다 — 이 경로는 의도적으로 해석할 수 없는 문서를 한쪽에 넣어 실증했다.
-  `quality_matrix.py`는 `ir-bridge-unidirectional`을 파생한다: `to_<format>_*` / `from_<format>_*`
-  짝 중 한쪽만 재면 이름이 올라온다(`to_python_*`는 정의상 대상이 아니다 — 언어 바인딩은 텍스트
-  형식이 아니다). 그래서 절반만 있는 다리는 다음 사람이 다시 발견하는 대신 보고된다. 넓힌 이
-  계통으로 #292를 다시 잰 것은, 대장이 이 변경에 대해 적어 둔 값도 뒤집었다: 매핑 키를 값과 같은
-  규칙으로 해석하는 것은 binding 계통에서 +1.45~1.62% 명령, engine의 모든 시나리오에서 0.00%다.
-  그리고 그 비용을 상쇄하려고 이 브랜치가 추가한 바이트 단위 사전 검사는 engine 쪽에서 +0.86~6.66%,
-  binding 쪽에서 +0.72~1.03% — 도와줄 자릿 모두에서 역효과였다. 각 차이는 두 가지 runner 이미지와 세
-  가지 호스트 CPU 사이에서 0.1 bp 안에 재현되며, glibc 기능을 고정해 둔 것이 아직 듣는다는 방증이다.
-- **명령 수 게이트가 AST→Python 변환을 재도록 해서 `perf-coverage:binding-layer`를 닫았다** —
-  `crates/pyrs-yaml/benches/ir_gate.rs`에 `to_python_small`, `to_python_medium`,
-  `to_python_anchors`를 추가했다. engine 하네스가 파싱하는 것과 같은 입력 바이트로, 모든 이용자가
-  도달하는 층이 처음으로 명령 수 값을 갖는다. P3 직접 로드 지름길이 아니라 `safe_load`의 AST 경로를
-  재는 것이 의도다: 닻 없는 fixture로는 태그·닻이 있는 데이터가 실제로 치르는 값과 다른 값을 재게
-  된다. 변환이 실패하거나 비면 게이트는 값싼 반복으로 세지 않고 빠져나간다: 허용차는 증가만
-  징벌하므로, 몰래 작업을 멈춘 하네스는 큰 개선으로 보고하고 통과할 것이기 때문이다.
-  `scripts/ir_gate.py`는 두 하네스를 하나의 시나리오 표로 합친다(이름 중복은 오류, 아무것도 나열하지
-  않는 하네스도 오류 — 후자를 허용하면 `--update`가 그 계통 행이 빠진 기준값을 쓰고, 아무것도
-  비교하지 않은 채 통과할 수 있다). `quality_matrix.py`가 파생하는 그래프에 `pyrs-yaml`이 들어
-  구멍은 저절로 사라졌다 — 등록 해제를 강제하는 검사가 새 결함을 미등록으로 통과시키는 것을 막는
-  바로 그 검사이므로, 대장 설계대로다. 명확히 적는 한계 셋: 이 실행 파일은 CPython을 링크해 Linux
-  전용(Windows에서는 빌드는 되고 기동 시 `0xC000021A`로 죽는 것을 실측), 그리고
-  `cargo clippy --all --all-targets`는 feature로 막힌 bench를 보지 않으므로 새 파일은 lint가 아니라
-  빌드로 검증된다. 세 번째는 돌려서 알게 됐다: 하네스는 독립 실행 파일이라 같은 feature가
-  `pyo3/auto-initialize`도 켠다 — 첫 재생성 실행은 두 하네스를 모두 빌드하고 두 시나리오 목록까지
-  읽었지만, 재는 루프에서 "The Python interpreter is not initialized"로 죽었다. wheel은 영향이 없다:
-  `[tool.maturin]`은 feature를 넘기지 않고 `--all-features`로 빌드하는 곳도 없다.
-- **방어 체계가 자기 안의 구멍을 쟀다: 명령 수 게이트는 Python 바인딩에 못 닿는다** —
-  `quality_matrix.py`는 `ir_gate` 하네스가 실제로 링크하는 crate(bench 소속 crate과 그 workspace
-  의존: `pyrs-yaml-core`, `pyrs-ast`, `pyrs-schema`, `pyrs-json`, `pyrs-toml`)를 뽑아내고, Python
-  API를 서비스하는 crate(배치로 특정: `crates/*/src/py/` → `pyrs-yaml`)와 비교한다. 뒤는 그래프에
-  없으니, `safe_load`의 AST→Python 변환 — 모든 이용자가 지나고 PR #292가 바꾼 길 — 에는 재현 가능한
-  성능 수가 없다. 남은 것은 벽시계뿐인데, 이 repo 자신의 기록은 10% 미만에서 쓸 수 없다고 적었다.
-  `perf-coverage:binding-layer`로 출구 조건과 함께 등록 — 계기가 '무엇을 이름 짓는가'가
-  아니라 '무엇을 컴파일하는가'를 물어 처음 찾은 구멍이다.
-- **테스트 행렬 전체를 대표하는 검사 하나를 추가 (`Test matrix (all legs)`)** — branch protection은
-  검사 '이름'으로 짝을 맞추고, 행렬은 다리마다 이름을 하나씩 낸다: 3 OS × 7 Python 으로 21개,
-  free-threaded와 coverage까지. 한 시간 안의 두 pull request가 그 대가를 증명했다. #298은
-  `test (windows-latest, 3.8)`가 참조되기도 전에 rebase로 병합됐고, 그 다리에는 `pyproject.toml`이
-  약속한 최저 버전에서 못 도는 체커 둘이 있었다(하나는 작성 시점부터 import 불가). #299는 정렬기의
-  수정을 squash하지 않은 채 두고 `Hygiene`가 빨개졌다. 둘 다 같은 형태다: 병합 판단이 소비하지 않는
-  검사는 보고일 뿐. fan-in은 `needs: [test, test-freethreaded, coverage]`에서 `toJSON(needs)`를
-  `scripts/check_matrix_verdict.py`에 넘기고 `success`만 초록으로 읽는다 — `skipped`(의존이 죽은
-  형제의 모습)와 `cancelled`(`cancel-in-progress`의 잔해)도 통과가 아니라 거부다.
-  `tests/test_matrix_verdict_gate.py`가 모든 형태와 배선을 고정하므로 `needs:`를 비로 줄이는 일
-  자체가 빨갛다. pull request 안에서 못 하는 일: 새 검사를 branch protection에 '추가'하지 않으면
-  구멍은 그대로 남는다.
-- **명령 수 게이트가 JSON과 TOML writer도 재고, 게이트 자신의 여유도 기록에 남긴** —
-  `crates/pyrs-yaml-core/benches/ir_gate.rs`에 `parse_inline_merge`, `to_json_medium`,
-  `to_toml_medium`을 추가했다(12개 시나리오, `.ci/ir-baseline.json`도 12개 값). 이제 `to_json()`과
-  `to_toml()`이 공개하는 길도 YAML처럼 게이트된다. 재는 과정에서 게이트 자체가 재측정됐다: 커밋된
-  9개 시나리오를 오늘 트리로 다시 재니 −2.35%(`parse_anchors`)에서 +1.61%(`serialize_anchors`)까지
-  움직였고 새 3개는 ±0.0005%로 재현됐다 — 소음 아니라 baseline을 잡은 이후 쌓인 이동이다. 방향이
-  위험하다: 2% 여유의 5분의 4가 `serialize_anchors`에 쓰였고 `parse_anchors`에서는 2.35%까지 후퇴가
-  안 보인다. 대응은 둘. `ir_gate.py --update --only <name>`은 커밋된 파일에 병합하고 재지 않은 값은
-  지어내지 않는다(전에는 9개 파일에 1개짜리 baseline을 덮어썼다). 그리고 `ir-baseline.yml`은
-  게이트를 집행하는 `ubuntu-24.04` 이미지에서 전체를 재측정해 diff를 띄우고 artifact로 올린다 —
-  사람이 읽고 커밋한다. 그 job의 값은 이미 커밋돼 있다(Fixed 참조): runner에서 쟀는 12개 값,
-  `generated_by` 기록, 그리고 이미지 간 실측 일치로 정한 0.5% 허용치.
-- **JSON과 TOML writer에 "정착된 텍스트" 오라클 추가 (`fuzz/fuzz_targets/json_roundtrip.rs`,
-  `fuzz/fuzz_targets/toml_roundtrip.rs`)** — #296은 이를 어떤 release note에도 적지 않고 출하했기에
-  이곳에서 소급 기록한다. 아래 결합 게이트가 잡는 실패가 바로 그것이다. 두 `parse_*` 타겟은 이미
-  모든 writer를 불렀지만 재분석 결과를 `let _ =`에 묶어 버렸으므로 "판독기가 자기 writer를
-  받아들인다"는 것은 검증하고 "writer의 텍스트가 정착한다"는 것은 검증하지 않았다 — 이 engine의 주석
-  이동 결함은 전부 그 틈에 있다. 각 새 타겟은 방언 안에서만 `once == twice`를 검증하고 방언을
-  넘나들지 않는다 (`to_jsonc_text`는 주석을, `to_json5_text`는 엄격한 판독기가 거부할 16진 수와 bare
-  키를 낸다). `crates/pyrs-json/tests/roundtrip_corpus.rs`와
-  `crates/pyrs-toml/tests/roundtrip_corpus.rs`는 커밋된 30개 seed를 `cargo nextest` 마다 결정적으로
-  재생한다 — JSON 33라운드, TOML 30라운드, 각 파일이 하한을 선언하므로 writer를 돌리지 않는 corpus는
-  헛되이 통과하는 대신 실패한다. 실측: 정착하지 않은 writer는 없다.
-- **제품을 움직이는 변경 집합은 release note도 움직여야 한다
-  (`scripts/check_changelog_coupling.py`)** — pull request 파일 목록에 대한 두 규칙: `crates/`,
-  `python/pyrs_yaml/`, `fuzz/`, `scripts/`, `tests/` 또는 출시 manifest를 건드린 diff는 changelog를
-  건드려야 하고, 다섯 mirror 중 하나를 건드리면 다섯 모두를 건드려야 한다 (`AGENTS.md`의 "partial
-  update 금지"에 집행 수단이 없었다). `check_changelog_mirrors.py`는 두 실패 모두 볼 수 없다 — 버전
-  헤더를 비교하니 움직이는 시점은 출시뿐이고, `prek.toml`의 `files:` 패턴은 changelog 없는
-  diff에서는 훅 자체를 태우지 않는다. 채택 전에 `main`의 최근 40 commit으로 보정했다 — 8건이
-  빨개지지만 모두 repo 자신의 note가 이미 적었던 종류. `.github/workflows/**`나 `prek.toml`을 넣으면
-  의존성 버전 인상 2건이 늘어날 뿐이라 제외했다. commit 등급이 아니라 pull request 등급에서
-  `hygiene.yml`부터 도는 것은 나뉜 PR의 한 commit이 note를 갖지 않는 것이 정당하기 때문이다.
-  판별력은 돌연변이로 입증: 결합 규칙을 빼면 정확히 3개, 완전성 규칙을 빼면 정확히 2개, workflow를
-  되돌리면 정확히 보정 파수꾼 2개가 빨갛다 (`tests/test_changelog_coupling_gate.py`, 29 tests).
-- **속성 등급에 20,000 케이스 차단 작업 추가 (`ci.yml: property-tier`)** —
-  이제까지 모든 속성 실행은 proptest 기본값인 256 케이스로 돌아갔다. 어떤 워크플로도
-  `PROPTEST_CASES`를 설정하지 않았기 때문이고, `scripts/quality_matrix.py`는 그것을 측정해
-  방어 체계 대장의 마지막 사각지대로 등록했다. "20,000 케이스에서 실패한다"고 알려진 세 writer
-  고정점 속성 가운데 둘은 실제로 실패한 적이 없다. 해당 케이스 수에서는 proptest의 전역 거부
-  기본 허용치 1024를 소진하고 `Test aborted: Too many global rejects`로 죽는다 — 허용치를 1024로
-  되돌리면 셋 모두 `fmt_pbt.rs:93`에서 죽는 것이 측정값이다. 방언 속성의 허용치는 이제 250,000이고
-  세 번째 실패가 진짜 결함이었다(Fixed 참조). 비용은 실측: 이 트리에서
-  `PROPTEST_CASES=20000 cargo test --workspace --locked`는 core의 305개 테스트를 63초에 마치고
-  0으로 끝난다. 완료 조건: `.ci/quality-holes.json`에서 `property-tier:default-case-count`를
-  지워 대장을 비우는 것 — `tests/test_quality_matrix.py`는 반대 방향으로도 이를 강제한다.
-- **위생 후크가 CI에서 돌아가고, 줄바꿈 방침에 강제 가능한 형태가 생겼다** — `Hygiene` 워크플로를
-  추가해 pull request마다, `main`에 밀릴 때마다, 매주 트리 전체에 `prek run --all-files`를 실행한다.
-  같은 저장소에서 쓰는 `jj`는 Git 후크를 전혀 실행하지 않으니 `prek.toml`의 열일곱 개 후크는 지역적
-  자율에 불과했고, 추적 파일 열다섯 개가 CRLF 줄바꿈을 띤 채 `main`에 도착해 있었다(12,263 줄, 그중
-  다섯은 changelog 사본). 십몇 줄 편집이 2,500 줄 diff로 불었는데 모든 관문은 초록이었다.
-  `.gitattributes`가 방침을 선언하고 `scripts/check_line_endings.py`가 절대 규칙을 강제하며
-  `prek.toml`에 `line-endings-lf`로 등록했다. 내장 `mixed-line-ending`은 그 규칙을 구현하지 *않았다*
-  — 전부 CRLF인 파일을 넣어도 `Passed`한다. 혼합 줄바꿈만 검사하기 때문이다. 열다섯 개 중 열세 개를
-  여기서 정규화하고 나머지 두 개는 의도적으로 그대로 둔다. 그 CRLF는 raw string 안에 있고 커밋된 Ir
-  baseline이 측정한 입력 그 자체(`crates/pyrs-yaml-core/src/bench_inputs.rs`,
-  `crates/pyrs-yaml-core/benches/ir_gate.rs`)이므로 정규화는 데이터 변경이며 baseline 재생성과 함께
-  해야 한다. 같은 job은 `cargo fmt --check`도 돌리는데, 그것도 기존 어떤 워크플로에서 없었다. CI의
-  clippy도 `cargo clippy -- -D warnings`에서 이 저장소가 선언한 `--all --all-targets` 범위로 넓혔다.
-  넓히기에 앞서 그 명령이 트리 전체에서 이미 clean임을 먼저 측정했다.
-- **품질 방어 체계를 측정하고, 그 측정 자체를 관문으로 만들었다** — `QUALITY_MATRIX.md`는
-  unit·property·fuzz 세 단계가 어디까지 도달하고 어디에 도달하지 못하는지 기록하고,
-  `scripts/quality_matrix.py`는 그 숫자를 옮겨 적지 않고 방어를 선언하는 파일
-  (`.github/workflows/*.yml`, `prek.toml`, `fuzz/Cargo.toml`, `scripts/check_*.py`, Ir bench,
-  `.ci/ir-baseline.json`)에서 다시 도출한다. `tests/test_quality_matrix.py`는 도출된 맹점을
-  `.ci/quality-holes.json` 대장과 비교해 *두 방향* 모두 실패한다. 새 맹점은 해소 조건을 적기 전까지
-  들어올 수 없고, 막힌 맹점이 대장에 남아 있어서도 안 된다. 첫 실행에서 확인한 사실, 추론이 아니다:
-  CI에는 후크 묶음을 돌리는 작업이 하나도 없고 `cargo fmt --check`를 돌리는 작업도 없으며, CI의
-  clippy는 test와 bench를 보지 않고, property는 언제나 proptest 기본 사례 수로만 돌고, JSON과 TOML
-  엔진에는 해석 전용 fuzz 대상만 있어 writers는 한 번도 fuzz되지 않았다. 이 관문 자체의 판별력은 네
-  번의 주입으로 확인했고, 매번 그것을 감시하려 작성한 test 하나만 빨개졌다.
-- **CI가 실제로 지킬 수 있는 명령 수 게이트** — `CodSpeed` 워크플로에 `Instruction-count baseline`
-  잡이 추가되어 엔진의 핫패스를 *실행 명령 수* (`callgrind` Ir)로 측정하고 `.ci/ir-baseline.json`
-  대비 2% 이상 증가하면 실패합니다(이 허용치는 두 Linux 이미지 사이에서 실측된 차이에 맞춰
-  보정했습니다—WSL에서 만든 기준값이 GitHub runner에서 최대 +1.45%). 필요한 이유: divan 스위트가
-  보고하는 wall-time 비교는 10% 미만에서 재현되지 않습니다— 연속 세 번의 푸시가 매번 *더 적은*
-  작업만 했는데도 같은 기준 세트에서 −7.7%, −10.5%, −9.8%로 판정됐습니다. Ir은 같은 바이너리에서 약
-  ±0.001%로 재현되므로 이 기준선은 의미를 갖고, 게이트 전체는 약 6초면 끝납니다. 확인은
-  `python scripts/ir_gate.py`, 의도적으로 기준을 갱신하려면 `--update`. 시나리오가
-  `pyrs_yaml_core::bench_inputs`를 통해 divan 스위트와 같은 문서를 읽으므로 두 측정이 서로 어긋날 수
-  없습니다.
-- **주석 생존이 이제 관문이 되었다 (`crates/pyrs-yaml-core/tests/note_survival.rs`)** —
-  이 단계의 판단은 “2번째 라운드의 텍스트가 1번째와 일치하는가”이므로, 주석 하나만 빠진
-  안정 문서는 그대로 통과한다. 바로 그 사각지대가 조용한 주석 손실 5건을 초록 불빛 뒤에 숨겼다.
-  이제 결정적인 테스트가 매 `cargo nextest`마다 커밋된 YAML 시드 코퍼스를 재생해서,
-  해석기가 기록한 모든 주석이 출력에 나타나는 것과 모든 입력이 한 라운드에 수렴하는 것을
-  함께 요구한다 — 오늘 그것은 주석을 실은 37개 시드가 이 단언을 실제로 지탱하며,
-  크래시가 시드가 될 때마다 코퍼스가 자동으로 그것을 키운다. 한계는 파일 안에 적혔고
-  논의가 아니라 돌연변리로 입증했다: 아무데도 걸지 않고 “처리됨”이라 반환하게 두면
-  형태별 pin은 빨개지는데 이 관문은 초록으로 남는다 — 수집 단계에서 사라진 주석은
-  관문이 재는 AST에 아예 닿지 않기 때문이다. 소스의 `#`을 세는 방식으로 바꾸면
-  올바른 출력이 빨개진다: 코퍼스에는 접미사가 전부 `#`인 `!###0 …` 태그가 있다.
-  올바른 출력을 빨갸게 하는 관문은 없는보다 낫다. 그래서 해석기 쪽은 fuzz 단계와
-  형태별 pin이 맡고, 양쪽 모두 상대를 덮었다고 주장하지 않는다.
-- **지역화 문자 체계 순수성 게이트 (`scripts/check_cjk_localisation.py`)** — 이제 `ja` /
-  `ko` / `zh`의 모든 페이지가 각자의 문자 체계로만 작성되는지 기계로 검사한다: `ja` 외 페이지에
-  가나 문자 금지, `ko` 외 페이지에 한글 금지, `ja`에 간체 전용 한자 금지, 그리고 `ko` 산문에는
-  한자를 하나도 허용하지 않는다. 한국어 규칙은 본래 간체 전용 코드포인트 13개를 손으로 고른
-  목록이었으니, 바로 그 목록이 이 문지기를 멀게 했다: 일본 신자체 `経`도 번체 `內`도 그 목록에
-  없으므로, 한국어 변경 로그는 한국말과 중국말이 섞인 산문 15줄(`热点样本` 같은 말이 조사 사이에
-  끼어 있었다)을 안고도 저장소의 모든 검사기가 OK를 출력했다. “모든 한자”로 기준을 바꾸면 목록은
-  더 이상 낡지 않는다. 기술 텍스트는 코드 위치 단위로 면제한다(펜스 블록, 줄 안 코드, 링크 대상).
-  같은 한국어 페이지가 YAML 샘플에서 `title: 文档标题`을 보여주고 `{ é: 1, 名: 2 }`를 parser
-  입력으로 싣는 것은 정당하므로, 줄 단위로 면제하면 두 경우 모두 위반이 된다. 범위는 변경 로그의
-  `[Unreleased]` 블록에서 모든 언어의 모든 페이지로 넓혔으며 먼저 실측했다: `zh`와 `ja`는 각
-  41쪽에서 지적 0건, `ko`의 지적은 전부 `changelog.md`에 몰려 있고 그 15줄은 같은 변경에서 함께
-  고쳤다. 게이트는 prek 후크로서만이 아니라 CI(`Validate` → `script-purity`)에서도 달리며,
-  자기 자신을 위한 테스트(`tests/test_cjk_localisation_gate.py`)도 갖췄다: 잡아낼 모양과 허용할
-  모양을 각각 덮고, 규칙을 끈 채로 테스트를 돌려 증명했다 — `ko`의 한자 규칙을 끄면 마침내 한국어
-  4건만 빨개지고 나머지는 움직이지 않는다. 이 항목의 한국어 번역 자체가 자기가 설명하는 규칙을
-  통과하도록 작성됐다.
-- **CI 주간 정기 퍼징** — `.github/workflows/fuzz.yml`가 네 libFuzzer 타깃을 매주 토요일(수동 실행
-  및 `fuzz/` 변경 시 자동) 실행하고, 큐레이션한 `fuzz/seeds/`(과거 크래시 입력 + 수작업 형태 시드)로
-  매 세션 임시 코퍼스를 시딩하며, 실패 시 크래시 산출물을 업로드해 '크래시→회귀 테스트→시드→수정'
-  파이프라인에 연결합니다. 기계 생성 코퍼스는 계속 git에 넣지 않습니다.
-- **엔진용 `cargo-fuzz` 퍼징 기반(`fuzz/`)** — 커버리지 유도형 libFuzzer
-  타깃 4종: `parse_yaml`(단일 + 스트림), `yaml_roundtrip`(파싱 → 직렬화 →
-  재파싱과 직렬화 멱등), `parse_json`(3 방언 × 3 writer 전 조합 재파싱),
-  `parse_toml`(1.0/1.1 및 writer 재파싱). 타깃만 저장소에 추적하고 코퍼스와
-  크래치 산출물은 세션별 로컬 생성·gitignore 유지(크래치 발견은 회귀 테스트로
-  고정, 코퍼스 파일로는 커밋하지 않음). 첫 실행 1분 만에 가치를 증명 — 아래 주석
-  스캐너 수정 참고.
-- **`pyrs-ast` / `pyrs-schema`가 `no_std` 지원** — 모든 포맷 엔진이 그 위에 세워지는 두
-  기초 크레이트가 이제 `alloc` 만으로 빌드됩니다: `indexmap`과 `thiserror`의 기본 `std`
-  feature를 비활성화하고, 새로 추가된 옵트인 `std` feature로 `std::error::Error` 구현과
-  `RandomState` 해시를 다시 활성화합니다. `std`는 계속 기본 활성화이므로 기존 모든
-  컨슈머는 전에와 동일한 `IndexMap<K, V, RandomState>` 노드 맵 타입을 그대로 씁니다;
-  `no_std` 사용자는 `default-features = false`로 옵트아웃하여 고정 시드 해시를 얻습니다.
-  Proptest 노드 전략은 새 `test-strategy` feature 뒤로 이동해 일반 빌드에는 속성 테스트
-  비용이 없습니다. CI 잡 `no-std-check`이 맨메탈 타깃으로 크로스 컴파일하여 이 성질을
-  검증합니다.
-- **`pyrs-json` / `pyrs-toml`도 `no_std` 지원** — 두 네이티브 포맷 엔진이 `alloc` 만으로
-  빌드됩니다: `std::sync::Arc`은 `alloc`으로, `String`/`Vec`/`format!` prelude는
-  `#[macro_use] extern crate alloc`으로 명시 도입, 파싱 시 key/value 스토어는 `pyrs-ast`의
-  `NodeMap` 해시 별칭을 재사용, `canonical_float`의 정수값 판정은 core 전용으로
-  구현(`f64::trunc`은 std 고유의 메서드). `no-std-check` 잡이 이제 네 크레이트 전체를
-  크로스 컴파일합니다.
-- **`pyq` 프리빌드 바이너리 릴리스 동봉** — `publish.yml`의 새 `pyq` 잡이 6개 플랫폼용
-  네이티브 CLI를 빌드해 아카이브를 GitHub Release에 첨부합니다. 단독 바이너리를 얻는 데
-  Rust 툴체인이 필요하지 않습니다.
-- **타입 스텁 드리프트 게이트(`scripts/check_stub_drift.py`)** — 커밋된
-  `python/pyrs_yaml/pyrs_yaml.pyi`는 기계 생성물로 모든 wheel에 동봉되지만, CI는
-  존재와 추적 여부만 선언(`release-guard`)했으므로 바인딩 서명이 바뀌면 공개 타입
-  계약이 조용히 뒤처질 수 있었습니다. `validate.yml`의 새 잡 `stub-drift`가 선언된
-  경로(`uv run maturin generate-stubs`)로 스텁을 재생성하고 내용 차이가 있으면
-  실패합니다. 추적되는 스텁을 수동 패치가 아니라 완전히 파생된 상태로 남기 위해 두
-  변환을 적용합니다: prek 후크가 커밋 시 제거하는 줄 끝 공백, 그리고 maturin 1.14.1이
-  바인딩이 실제로 돌려보내는 `Option`을 빠뜨리는 두 개의 `__next__` 반환에 대한
-  선언된 fidelity 수정. 각 선언 수정은 기대 일치 개수를 선언하므로 서명 변경이나 상위
-  수정은 조용히 재작성되지 않고 명확히 실패합니다. `mise run stubs`도 같은 파이프라인으로
-  씁니다.
+- **YAML 주석·앵커·태그가 왕복 후에도 남고 전 시드로 관문 검증.** — (details: quality-ledger — Note
+  survival, (w), (ac))
+- **중첩·별칭 병합 키가 버려지지 않고 적용된다.** — (details: quality-ledger (ae), (af), (ag), (o),
+  (q), (s))
+- **CI 명령 수 관문이 모든 형식 다리를 양방향으로 덮는다.** — (details: quality-ledger (am), (ap),
+  (aq), (as), (ax))
+- **품질 방어 스스로를 재고, 공백은 발견 항목으로 드러난다.** — (details: quality-ledger (ah), (ai),
+  (aj), (ak), (an), (ao))
+- **제품을 움직인 변경집합은 릴리스 노트도 움직인다.** — (details: quality-ledger (al), (ar))
+- **타이밍 관문은 인접 표집으로 바뀌고 실패 시 표본을 출력.** — (details: quality-ledger (aw), (ay))
+- **본문은 100 표시 열, 잘려 만든 제목은 거부된다.** — (details: quality-ledger (au), (av))
+- **엔진마다 퍼징 표적을 두고 주간 실행과 PR 차단.** — (details: quality-ledger (aj))
+- **네 개의 기반 크레이트는 `no_std` 대응, 맨 메탈로 검증.** — (details: boundaries — Known Engine
+  Boundaries)
+- **`pyq` 를 매 릴리스 사전 빌드로 배포.** — (details: perf — Leaderboard & Performance Status)
+- **타입 스텁을 실제 빌드 확장 대조로 검증.** — (details: quality-ledger (ap))
 
 #### 변경
 
-- **`pyq validate`가 `--input`을 받고 실제 포맷을 존중** — 기존엔 YAML 파서를 하드코딩해 바꿀 방법도
-  없었으므로 `pyproject.toml`, `package.json` 등 비-YAML 설정 파일은 무조건 거부됐습니다. 이제 공유
-  로더를 거치며 `--input auto|yaml|json|jsonc|json5|toml`을 받습니다.
-- **`pyq` 프리빌드 바이너리, manylinux2014 컨테이너에서 빌드** — Linux 타깃은
-  공식 CentOS 7 이미지 안에서 `cross`로 네이티브 컴파일되어, 수제 크로스
-  툴체인 없이 glibc 2.17 하한(CentOS 7 / Ubuntu 16.04 / 18.04 / Debian 8 / 9
-  커버)을 고정합니다. 이전 zigbuild 안은 x86_64를 한 단계 더 낮게(2.16, 실측
-  `getauxval` 마루) 고정했지만, `publish.yml`의 첫 실환경 실행(이 워크플로는
-  일반 PR에서는 절대 돌지 않음)에서 zig 스택 전체가 미비(`cargo zigbuild: no
-  such command`, armv7 레그의 호스트 기본 `-fuse-ld=lld` 오링크, runner에서
-  실행 불가한 바이너리 스모크 테스트)였음이 드러남. 컨테이너 방식은 세 실패
-  모드를 커뮤니티 표준 도구 하나로 통합하며, 하한은 runner 자체 glibc보다 두
-  메이저 낮습니다.
-- **PR 단계 퍼징이 이제 차단합니다(`fuzz.yml`)** — PR의 단계 수준 `continue-on-error`는 main이 이
-  단계가 정확히 붉게 표시하는 drift를 안고 있는 동안만 두던
-  ratchet이었습니다(crash-f44eca1d, #256/#258/#261/#262의 선행 수정 이후). 2026-10-04 이 트리에서
-  재확인: 네 타깃 모두 커밋된 시드 코퍼스를 깨끗하게 재생(5/59/6/5개, 고정 nightly-2026-08-15,
-  cargo-fuzz 0.13.2, 60초 탐색). 따라서 새 크래시는 다음 주말을 기다리지 않고 그것을 도입한 PR을
-  실패시킵니다. 2026-10-05에 병합 키 덮어쓰기 규칙을 반영한 뒤 다시 재확인: 75개 시드 재생은 네 타깃
-  모두 깨끗하지만, 새로 돌린 60초 탐색 창은 여전히 주석 재배치 그룹(`crash-a916de77`, 48바이트)에
-  닿습니다 — 미시딩·미수정으로 `ROADMAP.md`에 기록했습니다. 시드를 넣는다는 것은 그 입력이
-  통과한다는 약속이기 때문입니다. 대장이 다음으로 꼽던 key-metadata 결함(crash-86a9ae7b)은 단일 입력
-  재생으로 해소 확인. 확인 중 발견한 drift `yaml_roundtrip` crash-ac5d9043은 미시딩·미수정 상태로
-  `ROADMAP.md`에 현재 미해결 소견으로 기록했습니다.
+- **`pyq validate` 는 `--input` 로 실제 형식을 검증.**
+- **PR 등급 퍼징은 차단형으로 바뀌었다.** — (details: quality-ledger (aa))
 
 #### 수정
 
-- **대장의 머리글 세 개는 형식 지정기가 문장을 반으로 자른 결과였다** — 단단히 줄바꿈한 본문에서
-  계속 행이 issue 번호로 시작하면, Markdown 형식 지정기에는 그것이 ATX 머리글이다. 그래서
-  `rumdl fmt`는 그것을 머리글로 승격하고 위아래를 빈 줄로 갈라 문장을 둘로 쪼갰다: `ROADMAP.md`에는
-  `293's tier of the same class … — did` 라는 머리글이 놓이고 "get its entries"는 다음 단락으로
-  떨어졌으며, 나머지 둘은 `(as)`와 `(at)` 항목을 올리며 생겼다. 아무도 불평하지 않았다 — 구조가
-  틀렸지만 합법인 문서는 신고할 방법이 없기 때문이다: 린터는 머리글로 받아들이고,
-  `check_changelog_mirrors.py`는 버전 머리글을, `check_i18n.py`는 페이지 목록을 읽는다. 세 곳 모두
-  다시 잇고 행 첫머리를 단어로 두어 참조가 다시 승격되지 않게 했다.
-  `scripts/check_doc_headings.py`가 열여덟째 후크다: 머리글 텍스트가 두 자리 이상 숫자로 시작하고
-  뒤에 점이 오지 않으면 지적한다. 규칙은 단언하기 전에 실제 문장에다 크기를 재었다 — 손상된 글을
-  통과시키면 그 세 줄만(한 줄은 이미 `main`에 들어가 있었고 둘은 작업 트리에서 고치기 전에 생겼다)
-  걸리고, 고친 뒤 추적되는 173개 페이지에서는 `### 1-D array`, `#### 0-D Scalar Arrays`,
-  `## 1. Test matrix coverage`에 걸리지 않는다. 울타리 블록도 추적한다 — 울타리를 보지 않는 탐색은
-  `docs/ja/contributing/site-i18n.md`의 셸 주석을 머리글로 잘못 지목하고 Markdown조차 아닌 줄을
-  고치라 요구하기 때문이다. 기전은 추론이 아니라 재현으로 확인했다: 같은 모양의 임시 파일을 형식
-  지정기에 통과시키면 계속 행이 머리글로 승격됐고, 새 검사기가 그것을 줄 번호로 지목했다.
-  `tests/test_doc_heading_gate.py`(19 사례)는 손상된 문구에서 발화하고, 같은 문장을 다시 이으면
-  조용해지며, 울타리 안과 뒤 양쪽을 확인하고, 지적 문구가 고치는 방법을 적어 두고, 후크가 배선돼
-  있음을 검사한다.
-- **매핑 키가 값으로서의 같은 텍스트와 같은 의미가 됐다** — 이제까지는 `1: a`가 `{"1": "a"}`로
-  읽히는데 `a: 1`은 `{"a": 1}`로 읽히고, `~: 1`은 `{"~": 1}`인데 `a: ~`는 `{"a": None}`였다. 같은
-  문서가 `:` 어느 쪽에 스칼라를 두느냐로 두 뜻이 됐고, 정수·참거짓·빈 값을 키로 둔 설정은 조회로
-  도달할 수 없었으며, 참고 구현 둘은 이 모든 행에서 서로 같은 답을 낸다. `py/convert.rs`는 키를 값
-  변환 경로의 재진술이 아니라 그 경로 자체로 바꾼다 — 태그 없는 스칼라는 곧바로 가고, 태그나 별칭이
-  있는 키는 공통 경로를 유지한 채 사용자 `from_yaml`이 해시할 수 없는 값을 내면 원본 텍스트로
-  물러나므로 짝이 사라지지 않는다 — 그리고 `py/direct_load.rs`도 빠른 경로에 같은 규칙을 적용한다.
-  하나의 계약에 구현이 둘이면 다시 어긋나기 때문이다. 다리 쪽에 같은 결함의 뒷면이 있었다. TOML의
-  키는 그 문법상 명백한 문자열이고 공용 AST가 그것을 표시하는 유일한 방법이 따옴표이므로,
-  `"1" = 2`는 YAML에 `1: 2`로 닿고 `"" = 3`은 빈 키가 됐다 — 문서의 뜻을 바꿔치는 변환이었다.
-  `load_toml`은 YAML 스키마 두 쪽 어느 쪽이 다시 유형을 정하는 키에만 따옴표를 붙이고 나머지는
-  그대로 둔다. 수치는 실측 시간이 아니라 명령 수 게이트로 잰 것이다 — 결합 계통에서 +1.54~1.59%,
-  `from_toml_medium`에서 +6.2%(따옴표 쪽이며, #307이 이 다리에 읽기 시나리오를 넣은 바로 그 이유),
-  나머지 열세 개는 0.00%. 계약은 동작을 따른다: `safe_load`, `safe_loads`, `YAML().safe_load*`,
-  `read_markdown*`는 `dict[Any, Any]`이고, 네 언어의 28개 서명과 `to_dict()`의 글은 한결같이 "키는
-  문자열"이라고 적혀 있었다. `tests/test_key_resolution_parity.py`(76 사례)는 24개 텍스트의 키==값
-  해석, PyYAML과 ruamel에 대한 10개 형태의 실측 일치, 1.1과 1.2의 견해 차를 다른 편을 지목해
-  기록하고, 두 길의 합의, 다리의 왕복, 한 바퀴 고정점을 묶는다. 특성화 검사 세 개는 이유를 제자리에
-  두고 다시 뽑았다. 그 하나가 `tests/test_route_parity.py`의 결함 고정이며, `PARITY_TABLE`로
-  옮기겠다는 약속의 실행이 이다. 복잡한 (중첩) 키는 계속 Debug 임시 값을 쓴다 — 두 참고 구현 모두 그
-  자리에서 예외를 던진다 — 그리고 키 충실성에서 끝내지 않은 절반으로 남는다.
-- **changelog 항목은 아무도 보지 않는 자리에 들어갈 수 있었다** — 401a8057이 해시 충실성 항목을 다섯
-  거울에 모두 넣었지만 그 위치는 `CHANGELOG.md`에서는 머리글 위, en과 zh에서는 frontmatter의 `tags:`
-  목록 안, ja와 ko에서는 frontmatter와 첫 머리글 사이였다. 다섯 모두 본문 밖이었음에도
-  `scripts/check_changelog_mirrors.py`는 초록이었다 — 비교한 것이 버전 머리글뿐이었고, 산문을 어디에
-  두든 그것은 그대로 같았기 때문이다. 이제 `placement_errors`가 그 검사기의 강제 규칙이다: 항목
-  표지를 첫 버전 머리글 앞에 두는 것, 버전 머리글 바로 아래(절 머리글이 아닌)에 두는 것도 불가. 다섯
-  사본은 모두 `[Unreleased] → Fixed`의 최신 우선 순서로 되돌렸다(이동 전에 실측: commit 날짜로 보면
-  `crash-9b77aea4` 항목 아래, `crash-1b01ac3f` 항목 위). 검사기는 ayrıca 각 거울의 `[Unreleased]`
-  절별 항목 개수를 출력하고, 그 불일치는 단정이 아니라 `changelog-parity:entry-counts`로 등록했다 —
-  root를 기준으로 재면 `docs/en`은 항목 1개, `docs/zh`는 5개가 모자란다(Added 1개와 Fixed 5개 없음,
-  대신 다른 거울에 없는 Changed 1개 있음) — 남이 빠뜨린 번역 때문에 빨개지는 문은 문이 아니라
-  소음이기 때문이다. `tests/test_changelog_placement_gate.py`는 각 규칙을 그 이름을 대는 주입으로
-  빨개짐을 확인하고, 거울이 같아지면 개수 탐침이 조용해짐을, 대장에 적힌 불일치가 계측이 지금
-  보고하는 불일치임을 검증한다.
-- **같은 저장소의 두 runner 작업이 `serialize_block_scalars`를 1.44% 차이로 재고 있었고, Ir 기준값은
-  어느 작업의 값인지 적지 않았다** — 열다섯 시나리오 게이트를 위해 `.ci/ir-baseline.json`을 다시
-  만든 일은 집행 작업(`codspeed.yml`의 `Instruction-count baseline`)을 이 시나리오에서 빨갛게
-  만들었다: 두 실행에서 16,020,942와 16,020,915가 나오는데, `.github/workflows/ir-baseline.yml`은
-  여덟 실행에서 15,792,8xx~15,792,9xx를 낸다 — runner image 둘, 같은 pinned rustc 1.97.1, 바이트
-  단위로 같은 소스, 나머지 시나리오는 0.08% 안에서 맞는다. 세 가지 설명을 시험했고 셋 다 실패했다:
-  image, 되살린 build cache(단계를 지워도 값은 그대로였다), 그리고 이 대장이 앞서 적었던 "제출된
-  값이 게이트 밖 기계에서 만들어졌다"는 주장(집행 작업이 그것을 재현한다). 네 번째가 원인이었다:
-  glibc이 시작 때 어느 문자열 루틴을 붙드는지는 VM이 노출하는 CPUID 깃발이 정한다. 그것을 알아낸
-  도구는 바이너리 해시였다 — 두 작업은 같은 `a0386c17b5f1ef38`를 찍었고(valgrind 3.22.0, 고정된
-  rustc 1.97.1도 같다), 그런데 호스트 모델은 달랐다(`AMD EPYC 9V74`와 `AMD EPYC 9V45`). 재는 모든
-  과정을 `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT` 아래 돌리니
-  어긋남이 사라졌다: 집행 작업은 다른 모델의 호스트에서 기준값 대비 −0.08%를 잤다 — 그 이전에는
-  +1.44%였다. 고정한 뒤 세 호스트 모델(`9V74`, `9V45`, `7763`)에서 다시 재면 이 시나리오는 0.0002%로
-  맞는다. 호스트를 받아들여 허용차를 넓힌 것이 아니라, 호스트가 쥐고 있던 입력을 고정했다. 게이트를
-  만든 이래 적어 둔 WSL에서 runner로의 +1.45% 차이도 같은 현상이다. 기준값 파일이 실제로 잃은 것은
-  손으로 옮겨 적힌 문장이다 — `generated_by.note`가 PR #299의 head도 아니고 toolchain 고정보다 앞인
-  commit을 지명했고, 그 환경 문자열은 `environment()`가 그 image에서 내놓는 값이 아니었다 — 그래서
-  `--update`가 모든 key를, 값을 몇 번 셌는지도 함께 쓰며, 제출된 key 집합은
-  `tests/test_ir_baseline_workflow.py`가 생성 쪽에 고정한다.
-- **새로 넣은 바인딩 시나리오는 500 반복으로는 게이트에 걸 수 없을 만큼 작았다** — 같은 commit의 두
-  실행이 `to_python_small`을 0.83% 떨어뜨렸다 — 걸으려던 0.5% 선보다 넓다 — engine 시나리오는
-  0.0009%에서 맞았다. `ITERATIONS`은 engine 하네스와 같은 2 000이 됐고 같은 실행 안의 흩어짐은
-  0.076~0.24%로 내렸다; 각 시나리오는 세 번 재서 가장 큰 값을 제출하고, 그 횟수는 `generated_by`에
-  실려 집행 작업이 읽는다 — max-of-3과 표본 하나는 같은 이름을 쓴 다른 계측기이기 때문이다. 표본과
-  흩어짐을 모두 찍으므로 허용차는 작업 로그에서 논해진다.
-- **명령 수 게이트는 harness 원문을 이름으로 하나만 읽었고, 기준값은 일부 손으로 옮겨 적혀 있었다**
-  — `crates/pyrs-yaml/benches/ir_gate.rs`가 트리에 들어온 뒤에도
-  `crates/pyrs-yaml-core/benches/ir_gate.rs`만 이름으로 지정한 시나리오 탐침은 열다섯 이름 중 열둘만
-  견주게 된다: 계통 하나가 통째로 기준값에 들지 못한 채 `ir-unbaselined`도 잡지 못한다 — #303의
-  graph 탐침이 첫 `[dependencies]`에서 멈춘 것과 같은 부류다. `ir_harness_channels()`는 이제
-  manifest에서 harness 목록을 뽑고 디스크의 파일과 양쪽으로 견준다(선언은 있는데 원문이 사라지면
-  `ir-harness-missing`, 원문은 있는데 아무도 컴파일하지 않으면 `ir-harness-undeclared`), 두
-  harness가 같은 시나리오 이름을 올리면 `ir-scenario-duplicate`로 보고한다 — 기준값 하나로 어느
-  계통인지 말할 수 없기 때문이다; 위 각 주입은 `tests/test_quality_matrix.py`가 하나씩 빨갛게
-  만든다. 제출된 기준값에는 두 번째 문제가 있었다: `generated_by.note`가 손으로 쓴 문장이었고
-  `ir_gate.py --update`는 문장을 쓰지 않으므로, 다음 재생성 artifact는 이 파일의 출처를 설명한
-  단락을 지웠을 것이고 diff는 판단이 내려진 것처럼 읽혔을 것이다. 근거는 `QUALITY_MATRIX.md`로
-  옮기고, `--update`가 note를 생성해 쓰며, 제출된 key는 `tests/test_ir_baseline_workflow.py`가
-  작업이 출력하는 그대로 고정한다.
-- **`Test matrix (all legs)`는 job 열하나 중 셋만 기다려, 여덟은 빨간 채로 병합됐다** — #300에서
-  넣은 팬인은 `test`, `test-freethreaded`, `coverage`만 덮고 `rust-lint`(clippy), `property-tier`,
-  `msrv-check`, `no-std-check`, `build`, `compliance-report`, `i18n-check`를 전체 실행을 대표한다는
-  단일 검사 바깥에 남겼다. 이제 `ci.yml`의 모든 job(자신과 `main-gate` 제외)을 기다리고
-  `pull_request`에서만 돈다 — 수동 dispatch를 붉게 만드는 판정에는 지킬 판단이 없고, 그냥 무시하는
-  습관만 키운다. 자기 테스트 둘도 깨진 채로 태어나 출하 전에 돌려 잡아냈다: job 이름 패턴이 `on:`의
-  키까지 주어 `push`라는 검사를 요구했고, 경계 없는 `strategy:` 탐색은 모든 job을 행렬 producer로
-  보이게 했다(#300의 검증은 `or` 탈출 조항 탓에 우연히 통과했을 뿐). 이제 둘 다 `jobs:` 범위로
-  한정하고 `tests/test_matrix_verdict_gate.py`(14 test)는 정확한 규칙으로 박아 둔다: job을 추가하고
-  팬인에 넣지 않으면 테스트가 붉어진다. 귀인은 실측: `no-std-check`을 `needs`에서 빼면 그 하나만
-  붉어지고 baseline은 14 passed.
-- **`perf-coverage:binding-layer`는 계측기가 절반만 읽은 graph를 설명하고 있었다** — 계측은
-  `ir_harness_crates`를 `pyrs-ast, pyrs-schema, pyrs-yaml-core`로 보고했지만, 거기서 파생된 결함과
-  다섯 changelog mirror에 등록된 글은 crate 다섯 개를 적어 두었다. 계측기가 manifest에서
-  `re.search`를 써서 `[dependencies]`에서 멈추고, `to_json_medium`과 `to_toml_medium`이
-  `pyrs-json`/`pyrs-toml`을 링크하는 `[dev-dependencies]`를 보지 못했다. 결론(`pyrs-yaml`은 어느
-  쪽에도 없다)은 맞았지만 근거는 틀렸고, 등록된 결함 속 잘못된 수는 인용되므로 빠진 것보다 해롭다.
-  이제 모든 의존 절을 읽는다.
-  `tests/test_quality_matrix.py::test_the_graph_probe_reads_every_dependency_section`은 집합을
-  내용으로 고정하고 대장 텍스트에 나오는 crate 이름도 대조하므로, 계측과 글이 다시 어긋나지 않는다.
-  요약에 파생 값을 찍어서 알 수 있었고, 그것을 쓴 문장을 믿지 않아서 구제되었다.
-- **Ir baseline 재생성 작업이 baseline이 적어 둔 것과 다른 컴파일러로 재려 했다** — 이 작업의 첫
-  실집행(`workflow_dispatch`가 닿는 곳은 `main`뿐)는 `rust-toolchain@stable`을 썼고, runner의
-  stable은 rustc 1.99.0인데 `.ci/ir-baseline.json`은 1.97.1에서 만들어진 터라, 코드를 하나도 안
-  바꾸고 재생성 파일이 `serialize_medium` +6.7%, `serialize_small` +5.8%로 움직였다. 그 artifact를
-  커밋했다면 컴파일러 후퇴가 baseline이 되어 게이트는 두 번 다시 보지 못한다. 이제 작업은 집행
-  작업과 같은 절차(baseline에서 버전 읽기)로 toolchain을 정하고, 핀 이동 자체가 변경인 경우만
-  `toolchain` 입력에 맡긴다. `tests/test_ir_baseline_workflow.py`는 수동 전용·자동 push
-  금지·`@stable`로 되돌아감 금지를 고정한다.
-- **체커 셋이 이 패키지가 받는 최저 버전 Python 3.8에서 돌아가지 않았다** —
-  `scripts/check_changelog_mirrors.py`(`-> set[str]`)와
-  `scripts/check_stub_drift.py`(`-> tuple[...]`)는 시그니처 주해를 import 때 평가하므로
-  `from __future__ import annotations` 없이는 3.8가 거부하고,
-  `scripts/check_changelog_coupling.py`는 3.9에 생긴 `str.removeprefix`를 불렀다. 아무도 못 본 것은
-  이 스크립트를 돌리는 job이 전부 3.12 또는 3.14였기 때문이다. 드러낸 쪽은 pytest 행렬의 3.8
-  다리였고, 계기는 결합 게이트 자신의 테스트 파일이 체커를 import해 부른 것이었다. 그 다리에서 실측:
-  import 때 `TypeError: 'type' object is not subscriptable`, 첫 호출에서
-  `AttributeError: 'str' object has no attribute 'removeprefix'`. 이제 게이트가 있다:
-  `tests/test_scripts_import_on_supported_python.py`는 `scripts/` 아래 모든 파일을 테스트를 돌리는
-  인터프리터로 import하고, 내장 제네릭 주해에 future import가 필요한지를 정적으로 확인하고, 최저선이
-  기억이 아니라 `pyproject.toml`에서 온다고 주장한다 — 첫 실행에서 `check_stub_drift.py` 사례를
-  찾았다. 한계도 파일에 적었다: 함수 본문 안의 새 API 호는 import로 보이지 않으므로 게이트의 동작
-  테스트가 그 함수들을 계속 실행해야 한다.
-- **Ir baseline을 집행하는 환경에서 생성하고 허용선을 2%에서 0.5%로 옮긴다** — 같은 커밋을 두 GitHub
-  runner 이미지로 재면 12개 시나리오가 최대 0.0018% 안에서 일치했다(`parse_anchors`: 341M 중 6,061
-  명령). 그래서 `.ci/ir-baseline.json`은 runner 자신의 값과 `generated_by` 기록을 담고,
-  `scripts/ir_gate.py`는 다른 기계에서 온 실행에 주의 문구를 찍는다(WSL 실행이 실제로 찍었다). 옛
-  2%는 WSL에서 측정한 `serialize_block_scalars`와 runner 값의 1.45% 차이를 둘러싸고 설계됐었다. 두
-  설명을 시험했으나 둘 다 틀렸다. `.gitattributes`가 `BLOCK_SCALAR_YAML`의 CR 바이트를 정규화한다는
-  주장: `-text`를 넣자 runner 값이 16,020,906 중 28 명령만 움직였고, 저장된 바이트 자체가
-  안정적이지도 않았다: `git show`는 `main` 사본에서 CR 0개, `-text`를 더한 브랜치에서 98개를
-  보고하고 Windows checkout은 이를 다시 넣는다. 바로 `-text`와 새 바이트 동일성 검사가 막는 재현성
-  구멍이다. 이미지 간 이동이라는 주장: 두 이미지는 0.0018%로 일치한다. 따라서 차이는 미해결로 적어
-  두고, 바뀐 것은 출처를 모르는 값끼리 비교하지 않게 된 점이다. `-text`는 바이트 안정성 때문에만
-  남긴다.
-- **TOML 다중 행 인라인 테이블에서 마지막이 아닌 항목의 주석을 판독기가 보고하는 자리로** — writer는
-  그것을 구분 쉼표 뒤(`b = 1, # n`)에 두었다. `#`은 행 끝까지 이어지므로 TOML은 주석 안에 쉼표를 둘
-  수 없고, 판독기는 그 주석을 *다음* 키의 행두 주석으로 다시 배치한다. 따라서 두 번째 출력은 주석을
-  옮겨 버리고 텍스트는 정착하지 않았다. 이 형태는 올바른 TOML 텍스트에서는 도달 불가능하다 — 그래서
-  생성기에만 발견됐다 — 소스가 만들 수 없는 AST를 writer에 넘기는 변환 경로를 통해 나타난다. 이제
-  주석은 항목 뒤의 독립 행(`b = 1,` / `# n`)에 나온다 — 파서가 보고하는 자리 그 자체다. 귀속: 규칙을
-  되돌리면 `writer::tests::a_same_line_note_on_a_non_last_member_is_emitted_on_its_own_line`(0.45초
-  등급)와 `fmt_pbt::prop_toml_writer_is_fixed_point`(20,000 케이스)만 빨갛고 나머지는 그대로다. 256
-  케이스에서 영속화된 shrink 사례를 빼면 전체 스위트가 녹색이다 — 높은 등급이 이 구멍을 막는다.
-- **key 아래 빈 container는 dump 두 번을 요구하지 않는다** — `#287`로 두 writer 모두 dash 줄에
-  `{}`와 `[]`를 inline 하게 되었지만, Python 객체에서 *mapping value*를 내보내는 경로에는 같은
-  판단이 여전히 빠져 있었다. `safe_dump({"a": {}})`는 `"a:\n  {}\n"`를, AST writer는 `"a: {}\n"`를
-  냈다. 어느 텍스트든 같은 값으로 읽히기 때문에 왕복 검사에서는 보지 못했다. 차이는 한 번의 dump
-  뒤에도 움직임이 멈추는지 여부뿐이었다. 그 뒤에는 또 다른 형태가 숨어 있었다. 항목에 빈 container가
-  하나 있기만 하면 좁은 dash 표기 전체를 잃어버려, `safe_dump([{"a": {}, "b": 1}])`는
-  `"- \n  a:\n    {}\n  b: 1\n"`를 내고 writer의 본래 출력은 `"- a: {}\n  b: 1\n"`였다. 둘 다
-  고쳤다. 그것을 찾아낸 빈틈은 새로 만든 `tests/test_route_parity.py`다 — 같은 값을 두 YAML
-  writer(파싱된 tree를 다루는 node writer와 Python 객체를 다루는 `direct_dump` 고속 경로; 둘은
-  코드를 공유하지 않고 설계상 mirror)에 동시에 흘려 넣어 모든 형태에서 byte 단위가 일치하도록
-  요구하는 표이고, 의도한 차이(quote style, flow style, block scalar, anchor, tag)는 흐리지 않고
-  차이로서 고정한다. 이 표 덕분에 방어 matrix가 등록한 `route-parity:node-writer-vs-direct-dump`는
-  등록한 이튿날에 막혔다.
-- **자기가 merge되는 template이 상속받은 키를 이제 전달한다** — 어제 낸 merge 수정에는 두 번째
-  지점이 있었다. anchor 본문은 merge 해석이 실행되기 전에 스냅샷되므로, `mid: &m {<<: *b, y: 2}`를
-  가리키는 `use: {<<: *m}`는 낡은 사본을 읽어 target이 이미 가진다고 생각한 `<<`를 건너뛰었다.
-  그래서 `use`가 `{y: 2, z: 3}`으로 돌아왔고 PyYAML의 `{x: 1, y: 2, z: 3}`과 비교하면 상속한 `x`가
-  사라졌으며, 3단계 사슬에서는 두 개의 키를 잃었다. 출력 텍스트는 어느 쪽이든 안정적이니 왕복
-  단언으로는 보이지 않는다 — 목격자는 object view뿐이었다. 이제 anchor 본문을 읽는 자리에서
-  해석하므로 우선순위도 알맞은 단계에 놓인다 — 사슬 자신의 키가 상속한 것을 이기고, 문서 자신의 키가
-  사슬을 이긴다. 한 단계씩, 두 참고 라이브러리와 같이.
-- **merge source 안의 merge key가 버려지지 않고 적용된다** — `<<: {<<: {x: 1}}`은 두 `<<` 단계를
-  모두 데이터로 남겼다(`{'<<': {'<<': {'x': 1}}}`). 그런데 PyYAML과 ruamel은 같은 문서를
-  `{'x': 1}`로 읽는다. `<<: {<<: {x: 1, y: 1}, y: 2}`는 `x`를 그대로 잃었고 block 형태 `- <<:`도
-  마찬가지였다. collector는 target이 "이미 가진" source key를 노드 전체 비교로 건너뛰었고, 그 순간
-  target 자신의 `<<` entry가 아직 map 안에 있었으므로 중첩 merge는 적용되지 않고 버려졌다. 그 비교에
-  key의 metadata가 포함됐기 때문에 *주석* 하나만으로 답이 달라졌다 — 3줄 표기에서 가운데 `<<:`에
-  주석이 있으면 첫 dump에서 한 단계를, 자기 출력을 다시 읽을 때 한 단계를 소비했으니 텍스트가 매
-  라운드 움직였다(fuzz 등급이 보고하는 drift 그 자체). 안정적이지만 미해결된 문서는 아무것도 붉히지
-  못했다 — 텍스트 동일성 오라클은 '적용되지 않은 merge'를 볼 수 없다. 이제 parse 한 번이 source를
-  먼저 해결하므로 같은 문서는 어떤 철자든 같은 의미가 되고, source 자신의 key는 중첩 merge가 가져온
-  키를 계속 우선한다(`<<: {<<: {x: 1}, x: 9}`는 `x: 9`, 두 참고 라이브러리와 같은 해석).
-- **sequence 모양 key의 첫 항목에 붙은 note가 라운드마다 한 단씩 올라가지 않는다** — writer는 key
-  본문 들여쓰기에서 `-` 위에 그 노트를 두지만, 다시 읽으면 그 위치의 주석은 *sequence*의 것으로
-  보고되므로 다음 emission은 이를 `?` marker 윗줄로 끌어올렸고, 문서는 두 번째 라운드에야 수렴했다 —
-  `?` + `-` + `#?` + ` ? `는 처음에 노트를 key 본문 안의 독립적인 한 줄로 내고, 그 다음
-  emission에서는 marker 위로 끌어올렸다. marker 줄이 이제 reader와 writer가 일치하는 자리이니 한
-  번의 emission이 고정점에 도달하고 note는 문서에 남는다. fuzz backlog에서 찾아낸 것
-  (`crash-1445c91a`와 `crash-f1643b2d`, 두 입력을 최소화하면 같은 10바이트가 된다).
-- **container의 note가 “tag뿐인 미종료 줄”을 빌리지 않는다** — note *줄*이 뒤따르기 전에 그
-  줄을 닫는(`k: ! ~`) 규칙은 앞 릴리스부터 있었다. 남았던 구멍은 container 자신의 행 안 note로,
-  writer는 그것을 블록이 끝난 줄에 붙여 왔다. `:\t!-<CR>... #-o`에서는 `~: !-   # -o`가 나왔는
-  데, 텍스트는 안정적이지만 다시 읽으면 note의 owner가 **키**로 옮겨 가 있었다(container는 소리
-  없이 잃은 셈). 이제 note가 자기 pair 앞에 선다 — 먼저 `# -o`, 그 다음 `~: !-` — 이러면 첫
-  출력이 곧 고정점이고, 동시에 parser가 내려둔 마디에 note이 남는다. 서로 맞바꿔야 했다고 적힌
-  두 성질이 이 모양에서는 함께 성립한다. `crash-7eb273bc`(24 bytes)와 `crash-9733643a`(27 bytes,
-  둘 다 13 bytes로 축소)에서 실측했다: 옛 표기는 두 번째 라운드를 필요로 했고 note은 값으로
-  옮겨 갔다. 기존 pin 두 개(`crash-11ced252`의 따옴표 없는 키, `crash-22cb5f67`의 따옴표 붙은 키)
-  도 같은 이유로 출력 텍스트가 바뀌며, 둘 다 “한 라운드 뒤에 mapping이 여전히 note을 소유하는지”를
-  함께 검증한다. 이 모양들의 출력은 변하지만 재파싱에 실패하는 문서는 없고, 한 라운드 수렴
-  검사는 `yaml_roundtrip`의 seed 69개 전체를 덮는다.
-- **sequence 항목의 빈 container는 dump 두 번을 요구하지 않는다** — `{}`와 `[]`에는 block 표기가
-  없지만 두 writer 모두 `-` 아래 줄을 따로 쓰던 터라, 다시 읽으면 *flow* node로 해석되어 다음
-  dump에서 줄 안으로 되돌아왔다. `safe_dump([{}])`는 `"- \n  {}\n"`를 내고, 그것을 다시 dump하면
-  `"- {}\n"`가 나왔다. 값은 한 번도 틀리지 않았지만 텍스트는 계속 움직였고, 바로 그 점이 fuzz 등급이
-  단언하는 불변량이다. dash 줄에 올리는 자리에서 수렴한다. 트리를 다루는
-  `Serializer::write_sequence_item`과 Python 객체를 다루는 `direct_dump` 고속 경로, 서로 코드를
-  공유하지 않고 설계상 mirror인 두 구현을 함께 고쳤다. 이제 `safe_dump([{}])`는 `"- {}\n"`이고
-  `[]`와 중첩 경우도 마찬가지이며, 각각에 대해 한 번 더 dump하면 그대로 고정점이다. CI의 기본 case
-  수에서 Linux seed가 `pbt::tests::prop_mapping_order_preserved`로 찾아냈다.
-- **tag뿐인 줄을 닫은 뒤에도 note가 자기 열을 지킨다** — note을 소속 마디에 남기려고 tag뿐인 줄을
-  닫는 코드는 그 줄을 출력 안의 절대 offset으로 기억했다. 단순 키의 행 안 note을 쓸 때 그 offset
-  앞에 텍스트가 삽입되는데 offset은 옮겨지지 않았다. 그래서 닫기 판정이 잘못된 위치에서 거리를 재고,
-  대기 줄이 더 이상 맞닿아 있지 않다고 결론내려 값을 미완성으로 남겼고, 다음 라운드에서는 뒤따르는
-  note 줄을 그 값 자신의 leading note으로 읽어 note이 열 0에서 값의 들여쓰기로 미끄러졌다.
-  `crash-5561902a`(88 bytes, 15 bytes로 축소: `b: ! #&` / `#e` / `? #!`)에서 실측한 결과 첫 출력이
-  이제 `! ~`를 쓰고, note은 해석될 때 소속이었던 키에 남으며, 그 첫 출력이 그대로 고정점이다.
-  이미 써 낸 출력에 삽입할 때는 그 뒤의 offset도 반드시 함께 옮겨 적는다.
-- **콤팩트한 `- key:` 줄의 note가 사라지지 않는다** — `write_sequence_item`의 콤팩트 대시
-  분기는 `key: value` 줄을 스스로 조립하면서 본문만 옮겨 적었고, 그래서 `write_mapping_pair`가
-  지키는 note 자리에 한 번도 들어가지 않았다. 실측하면 `- a: !   # n`의 note는 첫 출력에서
-  사라진다(`- a: ! `). CI 입력 `crash-55c199ef`(25 bytes)는 한 라운드 늦게 잃었다 — 첫 출력이
-  note를 writer가 읽는 마디에 올려두었고 다시 읽을 때 키로 넘겼기 때문이다. 본문 없는 값도
-  따옴표 붙은 키도 결백하며, 문서 바로 아래에 놓은 `a: !   # n`은 본래 note를 지킨다. 따라서 이는
-  하나의 근본 원인이지 같은 모양의 다른 현상이 아니다. 이제 항목 자신의 note 묶음은 대시 위에,
-  뒤따르는 pair의 묶음은 pair 들여쓰기에, 키의 행 안 note은 자기 pair 줄에 놓는다. 이미 옳았던
-  항목의 모양은 그대로다. 세 지점을 하나씩 끄면 정확히 그것을 지키는 한 개 테스트만 빨개지므로,
-  지키지 않는 자리가 지킨 것으로 치부되지 않는다. 같은 채집 실행의 `crash-5561902a`(88 bytes)는
-  다른 근본 원인으로 열린 채로 남는다.
-- **tag만 있는 값 뒤의 note가 owner를 지키며 한 라운드에 안정된다** — tag만 출력되는 값 (`k: !`,
-  `k: !-`, `k: !!str`)은 scanner를 "값 미완성" 상태로 남겨, 그 뒤로 쓰인 note 줄은 그 *값*의 leading
-  note로 보고됐다 — note의 owner가 바뀌고 문서는 두 번째 라운드에 안정됐다. 이 경로는 셋이다:
-  `crash-cf49fe85`(pair 줄의 slot이 차 있어 container 자신의 note가 줄을 새로 써야 하는 경우),
-  `crash-c5b367d3`(23 bytes, merge key의 note가 기여한 pair로 옮겨 심어진 경우), 그리고 두 모양의
-  모든 tag 표기. writer는 이제 note 줄을 쓰기 전에 대기 줄을 닫아 값 자신의 null 본문 (`k: !- ~`)을
-  출력하므로 note는 AST가 가리키는 마디에 남는다. pair 줄에 행 안에 둘 수 있으면 출력은 이전과 같다.
-  두 조건이 실제로 충돌할 때(container note가 줄을 새로 쓰면서 owner도 지켜야 하는 경우) 왕복 계약의
-  fixed point를 우선하며, 그 거래는 결정 지점에 적어 두었다.
-- **mapping 고유의 note가 맨 `!` 값 줄로 옮겨가지 않는다** — block mapping의 body를 마무리하는
-  pair의 값이 `!` 하나로만(본문 없는 non-specific tag) 출력될 때, container의 inline note를 그
-  줄에 붙이면 재파싱 시 그 *값*의 leading note로 보고되어 container는 그것을 잃고 문서는 한
-  라운드 늦게 안정된다 (`~: ! # -` → `~:  # -\n  # -\n  ! `, libFuzzer `yaml_roundtrip`,
-  `crash-cf49fe85`, 13 bytes로 최소화). writer 이제 reader가 보고하는 자리에 note를 두므로 한
-  번의 출력으로 fixed point에 닿고, AST는 해석된 대로 container에 note를 지킨다. *named* tag
-  (`!-`)는 property를 닫으므로 줄 안에 두면 올바르게 재읽히므로 손대지 않았다 — 그 모양의 기존
-  pin 두 개(`crash-11ced252`, `crash-22cb5f67`)는 원본 텍스트를 그대로 주장한다. 비용:
-  instruction-count gate에 세 번 거부된 끝에, 판정을 pair마다 두면 `serialize_small` +2.75%,
-  판정을 loop 밖으로 꺼내도 인자가 먼저 계산되어 +1.39%, 드문 경로만 별도 loop로 두고 일반
-  경로의 형태를 보존해 +0.54%.
-- **접힌 중복 `<<`가 정의한 anchor를 고아로 만들지 않는다** — `<<: &b`는 리터럴·null 값
-  merge key로, 우리 규칙상 평범한 key인데 아래 진짜 `<<:`와 접혔다. fold는 사라진 항목의
-  note만 옮겨 담고 그 항목이 지니던 anchor는 그대로 두었다. 그래서 출력은 어디에도 `&b`
-  정의가 없는 채 `*b`를 쓰는, 우리 parser가 거부하는 텍스트가 됐다 (`found unknown anchor`,
-  "parse 불가능한 출력은 내보내지 않는다" 계약 위반; `crash-43eca7a3`, 18 bytes, fix 이전
-  binary로 15 bytes 최소화 — 이미 고쳐진 입력은 `tmin`으로 줄일 수 없다). receiver는 사라진
-  node를 보관했다가 문서 마무리 시점에 "남은 정의가 없는" 이름의 alias 사용 지점마다 그
-  node를 inline한다. 정상 shared alias는 전혀 건드리지 않고, 이 순회는 fold가 실제로
-  anchor가 붙은 항목을 제거했을 때만 돌므로 일반 경로 비용은 0. `<<: &b LF <<: LF : *b`는 이제
-  `<<: ~ LF ~: &b ~`를 출력하며 한 라운드에 fixed point, 값도 그대로다. 솔직히 적어두면:
-  고아 alias가 가리키던 node로 치환되므로 값 의미는 보존되지만 "같은 node를 공유한다"는
-  표기는 보존되지 않는다. 정의가 사라진 뒤에는 공유할 identity가 남아 있지 않기 때문이다.
-- **개행만으로 구성된 block scalar 값이 더 이상 빈 문자열로 변하지 않는다** — `>+8\r\r#`는 값이 개행
-  1개, chomping이 `Keep`, 명시적 indent가 8인 folded scalar로 읽힌다. writer가 indent 지시자를 남겨
-  `>+8\n\n`을 출력하고, 이는 재파싱 시 값은 같되 지시자 없는 `Clip`이 되어 다음 라운드에서 `>\n\n`을
-  쓴다 — Clip이 후행 개행을 제거하므로 값의 유일한 개행이 갈 곳을 잃는다. *빈* body를 멱등으로
-  만드는 두 규칙(복원 불가한 indent 지시자 제거 / 같은 값으로 재읽히는 chomping 출력)이 '빈가'
-  기준으로 판정되어, 개행 전용 body는 빈 값이 아니라 조건을 통과하지 못했다(libFuzzer
-  `yaml_roundtrip`, `crash-2f6b1eff`, 6 bytes — 입력이 더 이상 크래시하지 않으므로 `tmin`으로 줄일
-  수 없음). 두 writer 모두 이제 "내용 행이 없음"을 공통 조건으로 쓰고, 모양은 한 라운드에 fixed
-  point에 도달하며 값도 보존된다. 비용: 첫 버전은 같은 값을 두 번 스캔해
-  `serialize_block_scalars`에서 +0.65%를 측정했고 runner에서는 +2.11%로 instruction-count gate의
-  허용치 2%를 넘어, 게이트가 머지 전에 이 변경을 막았다. writer가 이미 계산해 둔 첫 content line
-  판정을 공유하면 +0.15%가 되어 허용 범위 안으로 돌아온다.
-- **merge key가 anchor를 alias 뒤로 옮기지 않는다** — `<<:` 전개에서 병합된 쌍을 mapping
-  맨 앞에 prepend했기 때문에, 앞쪽의 own key에서 `&b`를 정의하고 병합되는 map 안에서
-  `*b`를 사용하는 문서는 `&b` 정의 전에 `*b`를 출력해, 우리 parser가 거부하는 텍스트
-  (`found unknown anchor`)가 나왔습니다. 이는 "parse 불가능한 출력은 내보내지 않는다"는
-  engine 계약을 깨는 것이었습니다 (`crash-9b77aea4`, 78 bytes, 15 bytes로 최소화). 이제
-  전개는 `<<:`가 차지했던 index, 즉 작성이 순서대로 삽입합니다 — merge key가 첫 번째면
-  여전히 0이므로 문서에 쓰인 `<<: *defaults` 형태는 그대로입니다 (Rust 487 → 489,
-  Python 1781 tests 변경 없이 모두 통과).
-- **키 위에 주석이 있으면 이름으로 조회할 수 없었다** — `doc["key"]`, `"key" in doc`,
-  병합 전개는 모두 해시로 노드를 찾지만, `CustomNode::hash`는 `NodeMeta`의 정규화된 주석
-  뷰를 접어 넣은 반면 `CustomNode::eq`는 원시 `comment` 슬롯만 비교했습니다. 그래서 값은
-  같은데 해시가 다른 짝이 생겼고, `IndexMap`은 문서에 분명히 있는 키에게 "키 없음"이라
-  답했습니다. `NodeDecor`는 `Hash`/`PartialEq`에서 제외한다고 문서에 적혀 있으므로 계약
-  밖인 쪽은 해시였습니다 — `CustomNode::hash`는 이제 자기 등치가 비교하는 필드
-  (`comment` / `anchor` / `tag`)만 새 `NodeMeta::hash_custom_node_identity`를 통해 접고,
-  `NodeMeta::hash`는 `NodeMeta::eq`의 #117 정규화를 계속 거울비침으로써 두 쌍이 각각 자기
-  일관성을 지킵니다. 첫 키 이후의 모든 키가 해당되며, 문서 첫 주석은 바깥 매핑에
-  보고되므로 단일 키 픽스처에서는 결코 드러나지 않았습니다.
-- **키의 행 끝 주석이 값 행으로 이사가지 않는다** —— 값이 자기 앞 주석을 받으려 별도 행으로
-  내려갈 때, *키*에 속한 주석은 여전히 «마지막으로 끝난 행» 즉 값 행에 붙었다. 다시 읽을 때
-  tag뿐인 스칼라 행 끝 주석은 값의 **앞** 주석으로 귀속되므로, 주석이 라운드마다 주인을
-  바꿔 방출이 수렴하지 못했다: `b: ! # &` + `#~`는 먼저 `b:\n  # ~\n  !   # &`를 주고,
-  재파싱하면 `b:\n  # ~\n  # &\n  ! `가 된다(libFuzzer `yaml_roundtrip` crash-1b01ac3f,
-  93바이트를 11바이트로 최소화). 이제 키 주석은 `key:` 행에 남는다 — 독자가 보고하는 위치이자
-  한 라운드 만에 도달하는 고정점이다. 비용은 오차 범위: 명령 수 게이트는 +0.05%.
-- **병합은 매핑이 이미 가진 키를 다시 되풀이하지 않음** — 주석을 달고 있는 비태그 `y`와 병합된 `y`는
-  서로 다른 `IndexMap` 키였기에 둘 다 출력까지 살아남아, `to_yaml`가 같은 층에 `y:`를 두 번 인쇄했다
-  — 그 텍스트를 우리 해석기 자신이 중복 키로 거부하므로 “분석 불가능한 출력은 내지 않는다”는 약속이
-  깨진 셈이다(`crash-3495cc86`, 72바이트, 최소화하면 19바이트). `prepend_merged_pairs`는 오래도록
-  “호출 측에서 기존 키로 걸러졌다”고 주장했지만 아무 필터도 없었다. 이제 전개는 매핑 자신이 덮어쓰는
-  항을 버린다 — 동일성은 비태그 스칼라 키의 *출력 값*이며 `push_node`의 중복 판정과 같은 규칙이어서
-  두 쪽이 “어떤 키가 함께 있을 수 있는가”에서 어긎날 일이 없다 — 버려진 항의 주석은 버리지 않고 옮겨
-  심는다(`former-crash-3495cc86.seed`, `a_merge_never_repeats_a_key_the_mapping_owns`와 코퍼스
-  관문이 고정). 덮어쓰기 규칙을 빼면 이 두 개만 빨개지고 283개 나머지는 초록이다.
-- **속성만 실은 루트 노드 곁의 주석이 더 이상 버려지지 않음** — `!x # note`, `&a # note`,
-  69 바이트의 `!###0` 주석 벽은 계속 텍스트를 잃었다. 그런데 어떤 오라클도 그것을 보지
-  못했다: 주석 하나 빠진 안정 문서는 여전히 완전히 안정적이기 때문이다. 도착 순서가 둘,
-  결함도 둘이다. granit 은 그 주석을 `Scalar` 이벤트 *앞*에서 넘겨주기 때문에
-  `attach_inline_comment` 에 걸 후보가 없음에도 “처리됨”이라 답했다 — 그래서 호출 쪽이
-  다음으로 실어 나르지 못했다. `!m` CR `...` SP `# -o` 는 주석이 `DocumentEnd` *뒤*에
-  도착하는데, 이미 끝난 루트에 인라인 주석으로 되돌려 걸면 `!m   # -o` 가 나오고, 그
-  표기를 다시 읽으면 주석이 노드 앞에 보고되어 leading 으로 옮겨지므로 왕복은 결코
-  수렴하지 않았다. 이제 실제로 걸었을 때만 성공을 알리고, 비컨테이너 문서 끝 이후의
-  주석은 다음으로 넘기며, 문서가 끝날 때 pending 슬롯에 남은 주석은 버림 대신 루트의
-  leading 주석으로 남는다(`former-crash-7918272c.seed` 11 바이트, `former-crash-ce106ccc.seed`
-  69 바이트. `a_note_beside_a_property_only_root_survives_and_settles` 가 다섯 성과와 두 시드로
-  정확한 출력·텍스트 생존·1 라운드 고정점을 주장). 정직한 반환값을 되돌리면 이 테스트만
-  빨개진다. 컨테이너 루트는 의도적으로 인라인 자리를 지킨다 — `a: 1` + `# trailing note` 는
-  마지막 값 줄에서 다시 읽히며, `flush_trailing_comment` 의 두 pin 이 지키는 것이 그것이다.
-- **텍스트일 뿐인 `#` 가 주석을 줄에서 쫓아내지 않음** — 기록기는 컨테이너 자신의 인라인 주석을 방금
-  쓴 줄에 얹지만, 그 전에 “이 줄에 이미 `#` 가 있나”를 원시 바이트로 훑었다. 따옴표로 감긴 스칼라에
-  `#` 가 들어 있으면(`"+#": !-`) 있다고 답이 나와 주석은 자기 줄로 격하됐다 — 값 아래에 놓인 맨 주석
-  줄은 다시 읽을 때 *다음* 노드의 leading 주석으로 건네지므로 2 라운드째에 값 블록 안으로 옮겨졌다.
-  이제 이 훑기는 따옴표와 YAML 의 공백 규칙을 지킨다(`line_has_comment_marker`). 그래서 주석은
-  `key:` 와 같은 줄에 얹히고 한 번의 출력이 고정점이 된다(`former-crash-22cb5f67.seed`, 15 바이트,
-  `a_quoted_hash_key_settles_the_containers_note_at_once` 와 `comment_marker_scan_respects_quoting`
-  가 고정). 새 훑기를 없애면 정확히 이 테스트만 빨개진다.
-- **태그가 붙은 컨테이너가 첫 항목의 마커 축 위 주석 더미를 모두 올림** — 헤더 줄 아래에서 주석을
-  치워내던 그 올림은 첫 키*자신*의 leading 더미만 읽었다. 그래서 본문 안 마커에 실린 더미는 헤더
-  아래에 남고, 읽는 쪽이 2 라운드에 위로 올렸다. 이제 올림은 축 전체를 가져간다
-  (`former-crash-e6551c75.seed`, 60 바이트, 그리고 43 바이트의 `former-crash-8f7085b0.seed`,
-  `every_spine_note_clears_a_tagged_containers_header_line` 가 함께 고정). 이 대장은 그 순회가
-  *중첩* 마커에서 주석을 끌어내 이미 고정된 컴팩트 키 형태를 망칠 것이라는 추론으로 보류했다.
-  순회를 걷어 내고 다시 돌리면 빨개지는 건 정확히 하나이고, 같은 그룹의 다른 형태는 두 방식 모두
-  통과한다 — 영향 범위는 측정이 아니라 추론이었음.
-- **`pyrs-toml` 이 맨메탈 타깃에서 다시 빌드됨** — 주석 더미 관련 변경이 `#![no_std]` 크레이트의
-  해석기와 기록기에 `std::mem::take` 를 섞었다. 호스트 빌드는 전부 그것을 통과시키지만
-  `no-std-check` 잡장은 통과하지 않는다. 여섯 곳을 `core::mem::take` 로 바꿨고, 그 잡장이 돌리는
-  `cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-ast -p pyrs-schema -p pyrs-json -p pyrs-toml` 는 로컬에서 초록이다.
-- **태그가 붙은 컨테이너가 자신의 헤더 줄에서 주석 더미를 가르지 않음** — 블록 컨테이너 첫 항목의
-  주석을 컨테이너가 출력하는 anchor/tag 헤더 줄 위로 올리는 동작은, 컨테이너 스스로 주석을 가질 때
-  실행을 거부했다. 당시 노드는 *단일* leading 슬롯만 갖고 두 번째 더미를 그 자리에 놓으면 첫 번째를
-  덮어썼기 때문이다. 그 슬롯은 이제 `Vec` 이므로 이 거절은 텍스트를 보호하지 못하고 한 라운드만
-  낭비했다: `# a` + `!5b4?` + `?` + `# b` + `k: v` 는 `# b` 를 헤더 아래에 쓰고 다시 읽어서야
-  올려졌다. 먼저 측정했다 — 이 그룹의 모든 형태에서 고정점은 “모든 더미가 소스 순서로 헤더 위” — 그
-  다음 가드를 조정이 아닌 제거로 처리하고, 이전 배치를 고정하던 특성화 테스트를 재도출했다:
-  `notes_stack_above_a_tagged_containers_own_note` 는 순서·두 주석 생존·한 라운드 고정점을 주장하고,
-  `both_note_stacks_land_above_a_tag_header_in_one_round` 는 탐색 창이 만든 32 바이트 담당한
-  `former-crash-fbc8f2ae.seed` 를 재생한다. 가드를 되돌리면 정확히 이 두 테스트만 빨개진다.
-- **마커 축 위의 모든 주석 더미를 마커 줄로 올림 (첫 더미만 아님)** — `hoist_marker_note` 는
-  한 줄이 여는 `?` 마커 사슬을 거슬러 올라가지만 처음 발견한 더미에서 멈췄다. 사슬은 여러
-  더미를 실을 수 있고 granit 는 그것 모두를 마커 자체 레벨에서 보고한다: crash-f8525a9e 의
-  축은 세 단 깊어서 `#` 는 가운데 매핑에, `!!"#~` 는 가장 안쪽 `~` 키에 붙 있으므로, 한
-  더미만 올리면 다른 한 더미는 한 단 아래에 남아 출력은 두 번째 라운드까지 수렴하지 않았다.
-  이제는 모든 더미를 바깥 우선 소스 순서로 모은다 — 이로써 99 바이트 crash-c9031de4 도
-  닫혔다(그 주석도 같은 축 위에 있음: `former-crash-f8525a9e.seed`, `former-crash-c9031de4.seed`,
-  `every_note_on_the_marker_spine_lifts_to_the_marker_line` 가 고정). 이 입력에 대한 첫
-  가설 — 올리기 동작이 legacy `comment` 슬롯의 주석을 놓쳤다는 설명 — 은 검증 끝에 **반증**
-  되었다(출력은 한 바이트도 변하지 않았다); `take_leading_notes` 는 정규화된
-  `leading_comments()` 경로로 바꿨지만, 그것은 두 저장 규칙 중 하나만 읽는 것이
-  `standalone_slice()` 가 막아야 할 분기이기 때문이며 이번 수정의 공로로는 세지 않는다.
-- **컨테이너 자신의 인라인 주석이 이제 꼬리 주석을 담을 수 있는 줄에 씀** — writer 는 블록
-  컨테이너의 non-standalone `comment` 를 블록 아래 별도 주석 줄로 출력했다. 그러나 reader 는 빈
-  줄에서 인라인 주석을 보고하지 않는다: 다시 읽으면 그 텍스트가 블록을 끝낸 노드의 *선행* 주석으로
-  넘어가므로 첫 출력은 고정점이 아니었다. `:<TAB>!-<CR>... #-o` 는 먼저 `~: !- \n# -o\n` 을 내고 두
-  번째 라운드에 가서야 `~:\n  # -o\n  !- \n` 에 도달했다(libFuzzer `yaml_roundtrip` crash-11ced252,
-  13바이트). 이제 주석은 컨테이너가 방금 끝낸 줄을 빌린다 — `~: !-   # -o` 는 한 라운드에
-  안정적이고, 바로 granit 이 다시 읽어 보고하는 위치다. 슬롯 소유권은 출력 텍스트에서 추측하지 않고
-  줄을 쓰는 자리에서 기록하므로 세 경우는 빌기를 거절한다: 블록 스칼라 본문 줄 (추가하면 내용이 됨),
-  접기 후의 연속 줄, 이미 주석을 가진 줄.
-  `a_containers_inline_note_after_a_text_less_value_settles_at_once` 는 허용 쪽을,
-  `a_block_scalar_body_never_borrows_the_containers_note` 는 거절 쪽을 고정한다; 변이 검사 (추가
-  되돌리기) 로 첫 테스트만 빨갛게 변하고 나머지 274 는 초록으로 남는다. TOML 허브를 통하면 기록된
-  경계도 조여진다: `[sec] # note` 은 이제 문서 맨 앞으로 도망치지 않고 제 테이블 안에 남아서, 그
-  테이블 마지막 `key = value` 줄의 꼬리 주석으로 출력되고 역시 한 라운드에 고정점에 도달한다 —
-  `TestSectionHeaderCommentBoundary` 는 “생존 + 테이블 안에 잔류 + 이 안정성”을 고정하도록 다시
-  썼다.
-- **마커 줄이 두 개의 주석 올려쓰기를 모두 수행** — 명시적 키는 키 노드에 주석을 가진 *동시에*
-  키 본문 첫 항목에 두 번째 주석을 얹을 수 있고, reader 는 둘 모두를 마커 자체 레벨에서 보고한다.
-  writer 는 이전엔 `if`/`else if` 로 두 올려쓰기 중 하나만 골랐기 때문에, 키 자체에 주석이 있으면
-  본문 쪽 주석은 한 단계 더 깊게 쓰이고 다시 읽을 때 한 단계 더 올라갔다; 출력은 두 번째 라운드까지
-  수렴하지 않았다(libFuzzer `yaml_roundtrip` crash-456176be, 40바이트: `?` + `### standab:` +
-  `?` + `# ! y%% yam2:#l: tr` + `~: ~`, 트리는 첫 주석을 키 매핑에, 둘째를 안쪽 `~` 키에
-  둔다). 이제 두 올려쓰기는 소스 순서로 `?` 위에 겹치고 한 번의 출력으로 고정점에 도달한다 —
-  심어진 시드를 읽는 `a_marker_carries_both_its_own_note_and_its_bodys_first_note` 가 고정하고,
-  귀인 방식도 같다: 다시 배타로 되돌리면 이 테스트만 빨갛게 변한다. 증상을 공유한 두 입력
-  crash-f8525a9e 와 crash-c9031de4 는 수정 후에도 여전히 빨갛기 때문에, 다른 기하(주석이 스칼라
-  키가 아니라 중첩 *마커*에 올라 있음)이며 미해결로 남긴다.
-- **댓글 본문 안의 `&` 은 더 이상 진짜 앵커에 이름을 넘기지 않음** — granit 는 숫자
-  `anchor_id` 만 넘기므로 표시 이름은 노드 내용에서 왼쪽으로 훑어 복원한다. 그런데 그
-  복원이 “`&` 바로 앞 토큰이 댓글 시작자”일 때만 거절했다. 댓글 본문은 무엇을 담든 상관없다:
-  `bg: &b` 다음에 `# !! &?` 를 두면 `&?` 의 바로 앞은 `!!` 지 `#` 가 아니므로 다시 읽을 때
-  `bg: &?` 가 되었다. 이름이 바뀐 앵커를 가리키던 별명은 조용히 고아가 된다 — #265,
-  crash-04fddeb8 와 같은 데이터 손실급이고, 이번 주기에서 “방어 코드가 자기 규칙보다
-  좁게 쓰인” 세 번째 사례다. 이제 거절은 YAML 이 던지는 질문 그 자체를 묻는다: 이 줄의
-  더 앞 위치에서 댓글이 시작되었는가? 스칼라 안의 `#` 은 여전히 시작자가 아니다. 과다
-  거절을 만들 수 있는 유일한 모양（같은 줄 앞에 인용부호 안의 `#` 이 있고 그 뒤에 앵커가
-  오는 경우） 은 도달 불가능하다 — 노드 속성은 항상 값 앞에 오기 때문이다.
-  `anchor_name_before_ignores_ampersand_anywhere_in_comment_text`（술어의 양방향）과
-  `anchor_keeps_its_name_across_a_comment_line_holding_an_ampersand` 로 고정했다. 후자는 새
-  시드 `fuzz/seeds/yaml_roundtrip/former-crash-68adf94c.seed` 에서 바이트를 읽고 앵커 토큰·
-  댓글 본문·한 바퀴 고정점을 주장한다. 해당 아티팩트는 CRASH→CLEAN 으로 재생됐고, 같은 파일에
-  있는 나머지 방어 코드는 모두 여전히 통과한다.
-- **키 위의 독립 댓글 줄은 마지막 하나만이 아니라 전부 남음** — AST 는 leading 주석을 단일
-  슬롯（`NodeDecor.leading_comment: Option<Comment>`）에 담았고 YAML receiver·JSONC parser·병합
-  통과가 각각 그것을 *덮어썼*기 때문에, 쌓아올린 댓글 줄은 한 줄만 남았다: `# alpha` + `# beta` +
-  `key: 1` 은 `# beta` + `key: 1` 으로 다시 직렬화되었다. 하류에서는 알 수 없었다 — 잃은 뒤에도
-  텍스트는 안정적이고, 왕복 단계의 판정은 “다시 직렬화해도 안정적인가”만 보므로, 그 단계가 표현할 수
-  없던 첫 결함류다. `NodeDecor.leading_comments` 는 순서가 있는 목록이 되었고,
-  `NodeMeta::standalone_slice()` 가 유일한 정규화 읽기 창구다（목록이 있으면 목록을, 없으면 옛
-  `comment(standalone = true)` 를 한 요소 슬라이스로 읽는다. `Vec` 가 아니라 슬라이드인 까닭은
-  `NodeMeta::eq` / `Hash` 가 모든 mapping 의 `IndexMap` 탐색마다 돈다）. `leading_comment()` 와
-  Python `Node.leading_comment` 는 그대로 첫 하나를 반환하니 기존은 불변이고,
-  `Node.leading_comments` 가 새로운 전체 뷰다. 이 가닥을 따라 같은 모양의 조용한 손실을 세 개 더
-  찾아 각각 수정·테스트·시드했다: 댓글만 있는 문서는 댓글을 전부 잃었다（`#&l<TAB><TAB>:` → `null`,
-  노드가 없으면 `DocumentEnd` 가 뜨지 않는다）, null 키 접기는 접힌 쪽의 주석까지 지웠다, 그리고
-  소비된 병합 키（또는 병합된 그 맵）가 주석을 데리고 사라진다 — 병합 키 신원 수정이 바로 드러낸
-  구멍이다. 이제는 주석을 옮기기만 하고 절대 버리지 않는다. TOML 스포크의 대기 슬롯도 같은
-  덮어쓰기였고（`# a` + `# b` + `k = 1` 은 하나만 남겼다）, 빈 컨테이너의 행내 슬롯도 쌓인 댓글의
-  나머지를 잃었다（`# d1` + `# d2` → `{}  # d1`）. 이제 둘 다 전부 지킨다. 그래서 기록된 경계도
-  바뀌었다: 표 헤더 줄의 댓글은 여전히 그 줄에 못 있지만 사라지지 않고 문서 맨 앞으로 옮기며, TOML
-  을 한 바퀴 돌면 이미 안정적이다. 위 원인을 모두 찾아낸 “댓글 생존” 판정만 남은 귀속 작업을
-  기다리고, 먼저 CI 를 붉게 만들지는 않는다.
-- **병합 키는 얹은 것이 아니라 키 그 자체로 인식됨** — 병합 통과가 pair 표를 노드 전체 동일성으로
-  찾았으므로, 주석을 얹은 `<<` 는 그 검색에서 완전히 빠졌다: `<<: #*` + `y:` 는
-  `{'<<': {'y': None}}` 으로 풀리는데 같은 문서를 `<<:` + `y: ~  # *` 로 쓰면 `{'y': None}` 으로
-  풀렸다. 기록자가 바로 그 두 자리 사이에서 주석을 옮기므로 왕복 한 번이 문서의 뜻을 바꾸었고, 짝은
-  다음 라운드에서 사라졌다(libFuzzer `yaml_roundtrip` crash-69931a77, `cargo fuzz tmin` 으로 10
-  바이트까지 최소화; crash-0a6fe677, crash-2d3dab18, crash-f88c2382 가 함께 닫혔다 — 노드 전체
-  동일성을 되돌리면 네 입력이 함께 붉어지는데, 그것이 귀속의 근거이지 같은 단정이 아니다). 이제 키는
-  YAML 과 같은 기준으로 맞춘다 — tag 없는 plain `<<` — 그리고 항목은 값이 아니라 위치로 짚는다;
-  그래서 자기 키와 같아진 병합 사본을 뒤 순회가 잘못 되돌려 주던 문제도 함께 닫힌다. 스타일과 tag 는
-  여전히 신원을 정한다: 인용한 `"<<"` 와 tag 단 `!x <<` 는 평범한 키로 남는다 —
-  `a_quoted_or_tagged_merge_lookalike_stays_an_ordinary_key` 와
-  `TestMergeKeyIdentityIgnoresMetadata` 로 고정. 시드:
-  `fuzz/seeds/yaml_roundtrip/former-crash-{69931a77,0a6fe677,2d3dab18,f88c2382}.seed`.
-- **컨테이너 자기 tag 줄 아래에 있던 주석이 그 줄과 자리를 바꾸지 않음** — granit 은 anchor/tag 헤더
-  줄 *아래*에 쓰인 독립 주석을 그 tag 달린 노드의 leading 주석으로 돌려주므로, 기록자가 그 자리에
-  남긴 주석은 다음 라운드에 헤더 *위*로 옮겨 가서 출력 한 단계로는 고정점에 닿지 않았다(libFuzzer
-  `yaml_roundtrip` crash-77a8039b, 28 바이트: `!5b4?` 다음 `# yrrrrrrrrrrrr%3c` 다음 `~: ~`; 2
-  라운드에서 가라앉는 것을 실측). 이제 그런 주석은 헤더 위로 올린다 — reader 가 되돌려 주는 유일한
-  줄 — 그리고 본문 사본에서는 거두어 두 번 쓰이지 않게 한다; tag 달린 블록 시퀀스의 첫 항목도 같은
-  올리기를 적용한다. 올리기는 reader 의 칸이 다 탄 곳에서 멈춘다: 자기 주석을 지닌 컨테이너는 헤더
-  위에 이미 한 줄이 있고 두 번째는 같은 leading 한 칸에 떨어지므로, 그 모양은 배치 그대로 둔다 —
-  drift 를 텍스트 손실로 바꾸지 않는다 (`a_note_is_not_stacked_above_a_tagged_containers_own_note`).
-  그 입력은 실제로 주석 하나를 잃는다고 측정되었으니 별개의 미해결 소견으로 기록했다.
-  `fuzz/seeds/yaml_roundtrip/former-crash-77a8039b.seed` 에 시드했다.
-- **끝주석이 자기 노드에 삼켜진 개행을 넘어 잘못 묶이지 않음** — granit 은 블록 컬렉션의 span 을 그
-  행을 끝내는 개행 *너머*까지 잡으므로 span 끝은 이미 다음 행에 닿아 있었다. “이 주석이 더 뒤 행에
-  있는가”를 보는 판정은 후보 노드의 끝 바이트와 주석 사이 틈만 훑어서 `?\n` 안에서 `\n` 을 찾지
-  못했고, 주석을 더 깊은 노드에 묶었다. 기록자는 그 주석을 블록 안으로 내보내고 다시 읽기는 그것을
-  더 얕은 항목에 넘기므로 소유권이 라운드마다 한 층씩 올라갔다(libFuzzer `yaml_roundtrip`
-  crash-0e1c4378, 10 바이트 `b:<LF> ?<LF>? #i` 까지 최소화). 이제 판정은 span 이 삼킨 공백을 먼저
-  되돌린 뒤 개행을 찾는다. 양쪽 방향을 단정으로 고정했다: crash-105de752 (47 바이트)는 같은 변경으로
-  CLEAN 이 되었고 그 귀속은 *실측*이다 — trim 을 되돌리면 crash-0e1c4378 와 함께 다시 붉어지므로
-  같은 근본 원인이지 같은 실패 단정이 아니다.
-  `a_note_on_a_multi_line_nodes_last_line_still_trails_it` 은 반대 방향을 지킨다. 여러 행 노드의
-  마지막 행에 있는 주석은 여전히 그 노드에 붙어야 한다. 두 입력 모두
-  `fuzz/seeds/yaml_roundtrip/former-crash-{0e1c4378,105de752}.seed` 로 커밋했다. 방법 기록(수정보다
-  값어치가 있다): 이 규칙의 첫 구현은 receiver 의 「char index → byte offset」 표를 행 표로 읽었다.
-  순수 ASCII 입력에서는 그 표 자체가 없으니 `None` 을 돌려 아무것도 바뀌지 않았다. 논리는 옳았지만
-  효과는 0 — 그래도 붉은 단정만이 그것을 말해 주었다.
-- **mapping 은 null 키를 접고, 참으로 null 인 키만 접음** — `~` 키와 빈 키는 같은
-  키지만 `IndexMap` 은 노드 전체를 비교하므로 두 항목이 남고, 둘 다 `~:` 로 출력되고,
-  reader 는 다시 읽을 때 접었다 — 이 모양의 문서는 라운드마다 행 하나를 잃었다
-  (libFuzzer `yaml_roundtrip` crash-00e31785, 9 바이트 `: &b #*\r:` 까지 최소화).
-  이제 유입 단계에서 다시 읽은 결과를 접는다. 이 접기는 처음엔 데이터를 깎았다:
-  `is_null_key` 는 스칼라 표기만 봐서 인용한 `"NULL"` / `""` 키나 tag 달린
-  `!a null` 키까지 null 로 센 뒤라, `{"": None, "NULL": None}` 은 JSON5 와 TOML
-  왕복에서 빈 키를 잃었고(`tests/test_property_dialects.py`), proptest 은
-  `!a null:` + `!A null:` 을 부당한 중복으로 보고했다. 두 술어는 이제 YAML 과 같은
-  질문을 한다 — 암시적 형 결정은 tag 없는 plain 스칼라에만 적용된다.
-- **본문이 빈 블록 스칼라는 chomping 지시자를 밝히지 않음** — 내용 붙을 곳이 없는
-  header를 다시 읽을 때 granit은 chomping을 *기본값*으로 보고하므로, 빈 스칼라에
-  `|+` / `>+`를 쓰면 다음 라운드에서 `|` / `>`로 틀어져 `to_yaml`가 고정점에 닿지
-  않았다(libFuzzer `yaml_roundtrip` crash-89d81d99, 5바이트 `>+8<CR>#`; crash-b5dcc38f,
-  55바이트, `ancho: |+`). 라이터는 완전히 같은 이유로 *들여쓰기* 지시자는 이미
-  출력하지 않았으니, chomping 지시자도 같이 버리도록 했다. 잃는 것은 없다 — 본문이
-  비면 보존도 제거도 할 뒷 개행이 없고, AST는 읽힌 값을 그대로 지닌다.
-- **키를 따르는 주석이 조용히 사라지지 않음** — granit 은 단순 키와 그 `:` 사이의 주석을 *키* 마디에
-  붙여 보고한다. 그런데 쌍을 `key: value` 로 쓰는 순간 그 자리엔 표기가 남지 않아 YAML 쪽은 주석을
-  그냥 흘렸다(`? a # note` + `: b` 는 `a: b` 만 출력). 이제 값 뒤에 쓴다 — reader 가 이 주석을
-  보고하는 유일한 자리 — 정보도 남고 그 줄은 거기서 고정점이 된다. 값 자신의 주석이 있으면 그쪽이
-  우선이다(한 줄에 끝자리는 하나). 왕복 관문은 이 종류 누락을 볼 수 없다(텍스트는 안정, 주석만
-  없었음) 때문에 `a_note_trailing_a_key_survives` 와 `test_from_jsonc_keeps_comments_as_yaml_notes`
-  로 묶는다. 아울러 `from_jsonc` 가 “주석을 제거한다”고 아직 적어 둔 세 곳(#112/#115 이후 이미
-  틀림)도 고쳤다 — 바인딩의 `from_jsonc` / `from_json5` 문서와 생성된 스텁. docstring 을 고치자마자
-  새 스텁 표류 관문이 낡은 `.pyi` 를 잡아냈고, 선언된 경로로 다시 생성했다(손편집 아님).
-- **명시적 키 표지 줄을 따르는 주석은 reader 가 보고하는 자리에 씀** — granit 은
-  이런 주석을 착지점보다 한 겹 얕은 마디에 붙이므로, 들여쓴 표기는 라운드마다 열 하나씩
-  올라 `to_yaml` 가 고정점에 닿지 않았다(libFuzzer `yaml_roundtrip` crash-ac5d9043,
-  `cargo fuzz tmin` 으로 8 바이트 `? ? ? #~` 까지 최소화. 원 입력의 `&##` 앵커는
-  본질이 아니다). 쓰기 쪽은 표지 줄의 주석을 그것을 소유한 표지 줄로 올린다. 반면
-  granit 이 따로 한 줄에서 읽은 주석은 그 자리에 둔다 — 그 모양은 이미 왕복되었고,
-  가드 단언이 수습 범위를 넓히지 못하게 묶어 둔다.
-- **주석 줄이 `&`를 앵커 이름에 넘기지 않음** — granit은 수치 `anchor_id`만
-  보고하므로 표시 이름은 노드 자기 위치에서 왼쪽으로 가장 가까운 경계의 `&`를 훑어
-  복원한다(#265에서 조인 것은 태그 쪽). 앵커와 본문 사이에 낀 독립 주석은 제외되지
-  않았고, `&`는 주석으로 합법적인 문자다. `chi&&&: &~:` 뒤에 `# &l` 줄이 이어지면
-  다시 읽을 때 앵커가 `&l`로 이름이 바뀌 — 본 이름 `~:`은 사라지고 그것을 참조하던
-  별칭이 모두 조용히 외톨이가 됐다. `&`를 합법적으로 포함하는 다른 토큰 쪽에서
-  들어온, #265와 같은 데이터 손실 계열이다. 이미 주석이 열린 줄의 `&`은 태그 안의
-  경우처럼 후보에서 거부하도록 고쳤고, 주석 자체는 그대로 둔다(libFuzzer
-  `yaml_roundtrip` crash-04fddeb8).
-- **플로우 표시자를 포함하는 태그 접미사가 더 이상 문서를 깨뜨리지 않음** — granit이
-  reader에 건네는 것은 *디코딩된* 접미사라서 source의 `!a%2cb`는 `a,b`로 도착한다.
-  태그 출력은 RFC 3986이 금하는 문자만 재인코딩했는데 `,` `[` `]` `!`는 합법적인 URI
-  문자다—그러나 바로 그곳이 granit의 `is_tag_char`가 거부해 접미사 묶음이 멈추는 자리이고,
-  flow level 0에서는 이어 공백 또는 개행이 요구된다. 그래서 우리 `to_yaml` 출력을 우리
-  파서가 곧바로 거부했다("while scanning a tag, did not find expected whitespace or
-  line break", libFuzzer `yaml_roundtrip` crash-e92ce66f, 43바이트, `!5%2cy7 `와 같은
-  근본 원인). 이제 출력 집합은 URI 문법이 아니라 reader에서 가져온다: shorthand 태그는
-  네 문자를 퍼센트-인코딩하고, verbatim `!<uri>`는 그 자리에서 `is_uri_char`이 허용하므로
-  그대로 둔다—`!<tag:yaml.org,2002:str>`는 여전히 바이트 단위로 동일하게 왕복한다.
-- **Unicode 공백이 더 이상 YAML 공백을 사칭하지 않음** — YAML 파이프라인 여섯 곳이
-  `char::is_whitespace()` / `str::trim()`을 썼고, 이는 Unicode 기준이라 NBSP(U+00A0),
-  U+0085, U+2028/U+2029에도 걸린다. YAML은 그것들을 결코 분리자로 다루지 않는다
-  (granit의 공백 집합은 SP와 TAB뿐). 그래서 NBSP 하나로만 된 문서는 빈 문서 고속 경로에
-  빠져 스칼라가 아니라 `null`로 다시 읽혔다(libFuzzer `yaml_roundtrip` crash-512814,
-  5바이트: BOM 뒤 NBSP). `resolve_core_type`과 `resolve_yaml11_type`은 내용을 잘라내서
-  `<NBSP>42`가 *정수* 42로, `<NBSP>yes`가 `true`로 해석됐고, 여러 줄에 걸친 NBSP 스칼라는
-  `Null`로 해석되어 writer가 인용을 건너뛰고 개행을 그대로 출력했다—다시 읽을 때 빈 줄이
-  사라져 출력은 고정점에 도달하지 못했다(crash-b44481b2, 7바이트). 접어 쓴 평문 스칼라는
-  개행 위치에서 NBSP를 잃고, `anchor_name_before`에서는 `&a<NBSP>b`를 `&a`로 잘라 정식
-  이름을 쓰던 별칭을 조용히 외톨이로 만들며, 주석 본문 양쪽의 NBSP도 삼켜졌다. 여섯 자리
-  모두 reader의 집합 `pyrs_schema::is_yaml_blank`로 통일했다. JSON 계열 해석기가 Unicode
-  공백을 그대로 두는 것은 의도된 선택이다—JSON5는 그것을 구조적 공백으로 취급한다.
-- **URI에 `&`를 포함하는 태그 곁의 앵커는 이름을 지킴** — granit은 이름을
-  보고하지 않으므로 `anchor_name_before`가 노드에서 왼쪽으로 가장 가까운 경계의
-  `&`를 훑는다. 그러나 `&`는 합법적인 URI 문자이고, `-`(`- &a v`에 필요)도 경계
-  집합에 들어 있다. 그래서 writer가 쓰는 `&anchor !tag` 순서에서는 조건을 만족하는
-  가장 오른쪽 `&`가 태그 *안*에 있어 `&F !-&l `가 앵커 `l`로 다시 읽혔다. 이름이
-  매 라운드 변조되어 출력은 고정점에 도달하지 못했고, 이름이 바뀐 앵커를 참조하는
-  `*F` 별칭은 모두 외톨이가 되므로 이는 형식 붕괴가 아니라 데이터 손실 계열이다.
-  따라서 공백으로 구분된 구간이 `!`로 시작하는 `&`는 태그 내용으로 건너뛴다
-  (libFuzzer `yaml_roundtrip` crash-f44eca1d, 36바이트를 12바이트로 축소).
-- **따옴표 표량 안의 BOM을 그대로 쓰지 않고 이스케이프함** — 이스케이프의 마지막
-  분기는 `is_control() || is_yaml_noncharacter()`만 검사하고 U+FEFF은 둘 다
-  충족하지 않는다(`Cf` 서식 문자이며 비문자 마스크도 제외). 그래서 원문 처리로
-  넘어가 따옴표 안에 BOM을 그대로 적었지만, YAML에는 여기서 쓸 수 있는 이스케이프가
-  존재한다. 파서는 입력 단계에서 문서 중간 BOM을 거부하지만 edit API는 writer에 직접
-  닿아(`set("$.key","a<BOM>b")`) 재파싱 불가 출력을 냈다. 이제는 `"a\ufeffb"`로
-  내어 같은 텍스트로 되돌아온다. crash-2d14c6f6 추적으로 발견; 주석과 앵커에는
-  이스케이프 문법이 전혀 없으므로 수집 단계에서 별도로 처리한다.
-- **주석이나 앵커 안의 BOM이 문서를 깨지 않음** — U+FEFF은 스트림 선두 BOM으로만
-  *허용*되며 문서 안에는 올 수 없다. granit은 이를 디코딩된 주석 텍스트에 담아
-  반환하고, 우리 `anchor_name_before` 텍스트 주사도 그것을 앵커 이름에 흡입했다.
-  두 위치 모두 그대로(`# note`, `&name`) 출력되고 이스케이프 문법이 전혀 없어서,
-  BOM을 다시 내보내면 우리 파서가 그 출력을 거부했다("a BOM must not appear inside a
-  document", libFuzzer `yaml_roundtrip` crash-2d14c6f6, 55바이트). 이제 주석과
-  앵커 텍스트를 수집 시점에 문서 허용 문자로 걸러내 AST가 유일한 안전 형태가 되고
-  모든 출력 지점은 구조상 올바르게 유지된다—빈 주석(#248)이나 고립된 노트
-  (#256/#258)에서 쓴 "재읽을 수 있는 형태를 기록한다"와 같은 규칙이다. 주석은 읽을 수
-  있는 텍스트를 유지하고(`# a<FEFF>b` -> `# ab`), 남는 내용이 없면 해석 불가능한
-  형태로 출력하지 않고 버린다.
-- **태그 접미어를 쓸 때 다시 인코딩해 디코딩된 태그도 재파싱됨** — granit은 리더에게
-  *디코딩된* 접미어를 주므로 소스의 `!y5%7c`는 `y5|`로 도착한다. writer는 그 디코딩된
-  텍스트를 그대로 내보냈지만 `|`는 태그에서 허용되지 않는 문자라 출력이 아예 재파싱되지
-  않았다("while scanning a tag, did not find expected whitespace or line break", libFuzzer
-  `yaml_roundtrip` crash-b91536ce, 7바이트 `!y5%7c `). 이제 태그 출력은 태그 URI 문자
-  집합 밖의 문자를 퍼센트 인코딩한다(`%` 자체도 포함하므로 리터럴 퍼센트가 새 이스케이프의
-  시작이 되지 않음). 매 라운드 동일한 표기로 복원되며 이스케이프가 필요 없는 태그는
-  그대로 출력된다.
-- **블록 항목의 대시 줄에 있는 주석이 실제로 주석 다는 항목에 연결됨** — 후행 주석
-  (`Placement::Right`)은 더 뒤의 줄에 있어도 항상 가장 최근 생성된 노드에 붙었다.
-  `- :\u{feff}:\n- #e`에서 둘째 항목 대시 줄의 주석이 *첫째* 항목의 값에 붙어 writer가
-  그 주석을 첫째 항목 블록 안으로 밀어냈고, 재읽기는 둘째 항목에 연결해 소유권이 매
-  라운드 뒤바뀌었다(libFuzzer `yaml_roundtrip` crash-aee06aca). `attach_inline_comment`는
-  이제 주석 줄과 역추적 후보를 비교한다. 같은 줄이면 기존처럼 인라인으로, 블록 스칼라
-  헤더 줄의 주석도 그대로 연결되고(granit은 노드를 *내용* 기준으로 span하므로 헤더보다
-  뒤의 줄이 됨), 더 뒤의 줄에 있는 주석은 다음 노드의 선행 주석으로 앞으로 넘긴다. 앵커,
-  블록 스칼라, 빈 컨테이너 슬롯은 그대로다.
-- **블록 컨테이너의 후행 주석이 왕복에서 보존됨** — writer는 인라인 주석
-  (`meta.comment`, `standalone = false`)을 *블록* 맵이나 시퀀스와 같은 줄에 둘 수
-  없다(마지막 항목 뒤에 줄이 남지 않으므로). 그래서 주석을 별도 후행 줄로 옮겨
-  기록했다. 재읽을 때 granit은 이를 뒤에 노드가 없는 standalone 주석으로 보고하고
-  리시버는 pending 슬롯에 남긴 채 버렸기 때문에 두 번째 직렬화에서 주석이
-  사라졌다(`&"\n-\r... #-o` -> `&" \n- ~\n# -o\n` -> `&" \n- ~\n`, libFuzzer
-  `yaml_roundtrip` crash-96fa252c). 이제 `DocumentEnd`에서 남아 있는 주석은 완성된
-  문서의 루트로(writer가 읽어간 바로 그 슬롯으로) flush되므로 왕복이 안정적이고
-  주석도 남는다.
-- **블록 헤더 인식을 스칼라의 바이트 span에 고정** — 헤더 재추출(#250)은 파서 줄 번호로
-  내용 줄에서 위쪽으로 훑어 첫 `|`/`>`를 취했다. 그래서 키 안의 `|`(따옴표 `"k:yam  |1": |`
-  또는 평범 `k:yam  |1: |2`)나 내용 줄의 기호를 헤더로 오인해 잘못된 들여쓰기 지시자를
-  해석하고 `|`↔`|1`가 매 라운드 표류했다(crash-cad17b2b, crash-bdf3f15f 확장). 이제 인식은
-  스칼라 자신의 소스 바이트 span에 고정되어 그 내용 바로 위 한 물리 줄만 읽고, 꼬리말이
-  블록 헤더 문법(들여쓰기 숫자 최대 하나와 chomping 부호 최대 하나, 그 뒤는 공백이나 `#`
-  주석으로 줄 끝까지)을 만족하는 첫 기호를 택한다. 모든 형태에서 구성상 정확하고, granit의
-  `\r` 줄 이동에 면역(`\n`만 줄바꿈으로 봄)이며, 블록 헤더 핫 경로에서 위쪽으로 줄마다
-  다시 훑던 2차 재스캔을 제거한다. 정상 헤더는 그대로.
-- **문서 지시자로 시작하는 평범 스칼라도 인용**(#249 보강) — `... `/`--- `로 시작하는
-  값(`... k` 등)을 줄 시작에 날것으로 두면 문서 지시자+잘못된 후속 내용으로 재해석
-  실패한다(crash-08f05e25). 이제 이 접두 형태도 인용한다.
-- **너비 접기가 긴 평범 스칼라의 공백을 망가뜨리지 않음** — `width`를 넘는 평범 스칼라는
-  공백에서 접히지만 접은 줄바꿈은 재해석 시 단일 공백이 된다. 2개 이상 연속 공백(또는 탭)
-  옆에서 접으면 줄 끝 공백이 남아 재읽을 때 공백 수가 달라져 값이 매 라운드 표류했다
-  (libFuzzer `yaml_roundtrip` crash-9ee754bf). 이제 `write_plain_scalar`는 다중 공백
-  연속이나 탭을 포함하는 값은 접지 않고 긴 무손실 한 줄로 출력한다. 단일 공백만이면
-  그대로 접혀 안정적이고 값은 항상 정확하다.
-- **블록 스칼라 들여쓰기 지시자를 내용 행 위에서만 탐지** — `detect_block_header`는 첫 내용 행에서
-  위로 스캔하되 그 행에서 시작했기에 `|`/`>`를 포함 내용 행이 헤더로 해석될 수 있었다. granit은
-  `\n`만 줄바꿈으로 세므로 소스의 `\r`이 `key: |2`와 `|` 포함 내용 행을 한 논리 줄에 두고, 재출력 시
-  `\n` 분리로 스캔이 다른 줄에 닿아 `|2`와 `|`가 매 라운드 뒤집혔다(libFuzzer `yaml_roundtrip`
-  crash-bdf3f15f). 이제 헤더는 블록 내용보다 엄격히 얕은 줄에서만 찾아 내용이 오판되지 않으며,
-  하중을 지는 지시자(내용이 선언보다 깊음)는 보존되고 값은 그대로다.
-- **문서 지시자와 같은 평범 스칼라는 이제 인용** — granit은 앞 공백이 있는 `...`를
-  문자열 `"..."`로 읽지만 작성자는 이를 날것으로 냈다. 줄 시작의 `...`는 문서 끝
-  표지이므로 값이 null(`...` -> `null`)로 재해석돼 매 라운드 표류했다(libFuzzer
-  `yaml_roundtrip` crash-41acfbbe). `needs_double_quoted`는 이제 정확히 `...` 또는
-  `---`인 값을 인용 대상으로 한다(`---`는 선행 `-`로 이미 포착). 다른 평범 스칼라는 영향 없음.
-- **내용 없는 주석은 저장도 출력도 하지 않음** — granit은 맨 `#`/`# `를 빈 `Event::Comment`로
-  보고하지만 재읽을 때는 되읽지 않으므로, 작성자가 낸 `#` 줄이 다음 해석에서 떨어져 여분의 `  # `가
-  매 라운드 표류했다(libFuzzer `yaml_roundtrip` crash-0de6be17). AST·스트림 리시버 모두 trim 후 빈
-  주석을 건너뛰어 할 말 없는 주석은 기록도 출력도 하지 않는다. 비어 있지 않은 주석은 그대로.
-- **빈 블록 스칼라는 여분의 들여쓰기 지시자를 갖지 않음** — 빈 `|`/`>` 본문은
-  들여쓰기를 잴 대상이 없어 granit은 재해석 시 명시적 지시자를 버린다. 그러나
-  `detect_block_header`가 `|2`의 `2`를 AST에 읽고 작성자가 이를 다시 내보내
-  `|2`가 매회 `|`로 표류했다(libFuzzer `yaml_roundtrip` crash-d4ea8a23). 이제 두
-  블록 작성자는 값이 빈 경우 들여쓰기 지시자를 생략해 빈 형태를 멱등으로 만든다.
-  논빈 블록 스칼라의 지시자는 그대로 유지.
-- **맵 키가 출력 시 앵커·태그·빈 키 인용을 보존** — `write_scalar_for_key`는 키의 스칼라
-  토큰을 내면서 키 노드의 앵커와 태그(값 스칼라는 내보내는 속성)를 떨구고 빈 평범 키를
-  날것으로 두어, `&f& !&&f&&&  `(빈 문자열의 앵커와 태그) 같은 키가 `:`로 출력돼 null
-  `~` 스칼라로 재해석됐다—앵커와 태그가 사라지고 왕복이 `: ~` → `~: ~`로 표류했다
-  (libFuzzer `yaml_roundtrip` crash-62bcff6f). 이제 키는 값과 같이 앵커/태그를 싣고,
-  빈 키는 인용(`""`)해 null이 아닌 빈 문자열로 재해석된다. 복잡한 키(`? `)는 원래
-  옳았다—속성을 내보내는 노드 작성자를 거친다.
-- **앵커 이름을 노드별로 granit의 앵커 위치에서 복원, 전문 사전 스캔 폐지** — granit은
-  앵커의 `&name` 텍스트를 주지 않으므로, 파서는 raw source에서 손으로 쓴 따옴표/이스케이프/
-  주석 상태 기계(`extract_anchors`)를 돌려 이름을 복원하고, 카운터(`anchor_name_idx`)로
-  N번째 스캔 이름을 N번째 앵커 이벤트에 짝지었다. 그 위치 기반 짝지기는 상태 기계가 단 하나의
-  바이트 류를 오분류하는 순간—맨 아포스트로피(`bas'e`), 묻힌 `&`(`sbb&e`), 한쪽따옴표
-  역슬래시—매번 어긋났고, 각각이 separate fix이자 separate libFuzzer `yaml_roundtrip`
-  crash가 되었을 뿐만 아니라 이후 모든 앵커까지 잘못 표기했다. 사전 스캔을 제거: granit
-  이벤트는 노드가 앵커를 가짐(`anchor_id != 0`)을 표시하고 정확한 source span을 주므로,
-  이름은 이제 그 span 위치에서 granit 스캐너와 같은 최대 `is_anchor_char` 묶음으로 국소
-  재읽기(`anchor_name_before`), granit의 권위 id를 키로 쓴다. 복원이 위치 격리되니 읽을
-  수 없는 바이트 류는 그 노드에만 영향, 다른 앵커 이름은 절대 어긋나지 않는다—표류 가족
-  전체를 형태별 때움질이 아닌 구조로 폐한다. 또한 매 파싱마다 전문 스캔 한 번을 줄인다.
-  앵커 이름 안 BOM의 emit 표현가능성 격차는 별개의 근본 원인으로 별도 추적.
-- **역슬래시가 앵커 스캔에서 한쪽 따옴표 스칼라의 닫는 큰따옴표를 이스케이프하지 않음** —
-  `extract_anchors`는 따옴표 안에서도 이스케이프 상태 기계를 돌렸다. YAML 한쪽따옴표 스칼라엔
-  이스케이프 처리가 없어(`''`만), 키 닫는 `'` 앞의 `\`(역슬래시로 끝나는 `'a\'` 같은 키)가 `'`를
-  이스케이프하는 걸로 읽혀 따옴표가 닫히지 않고 뒤의 모든 `&앵커`가 숨겨졌다—값의 앵커가 재해석에서
-  사라져 왕복이 표류했다(libFuzzer `yaml_roundtrip` crash-12f01ee0). 이제 역슬래시 이스케이프는
-  두쪽따옴표 안에서만. 앵커 없음/한쪽/두쪽따옴표 문서는 granit 읽기 그대로 스캔된다.
-- **평범 스칼안에 묻힌 `&`를 더 이상 앵커로 읽지 않는다** — `extract_anchors`는
-  인용 밖의 모든 `&`를 줍고, 평범 스칼안에 묻힌 것(맨 키 `sbb&e`의 `&`)도 담았다.
-  granit은 노드 시작 위치에서만 앵커를 여므로, 그 환상 `&e` 이름이 순서 있는
-  `anchor_names`에 쌓여 `register_anchor`의 인덱스 기반 id→name 짝을 어긋나게 하고,
-  후진 진짜 앵커가 잘못 표기됐다(`&b`가 `&e:`로 재출력)—왕복이 표류했다(libFuzzer
-  `yaml_roundtrip` crash-83cc68c6). 이제 앵커 추출은 `&`를 인용 상태 기계와 같은
-  노드 경계 테스트(행두 또는 `\t:,[]{}-` 뒤)로 게이팅해 `sbb&e`는 평범 키로 남는다.
-  앵커 없음/정상 앵커 문서는 전과 동일하게 스캔된다.
-- **중복 키는 전체 노드가 아닌 값으로 거부** — AST의 `IndexMap`은 전체
-  `CustomNode`를 키로 쓰므로, 같은 텍스트이지만 후미 주석/스타일/앵커가 다른 두
-  스칼라 키(`key # a` vs `key # b`)는 구분된 채 남았다: 해석 땐 중복이 안 뜨지만,
-  직렬화기가 키 장식을 떨어내 동일한 `key:` 줄을 두 번 내뱉어 우리 parser가 재해석에서
-  거부했다(libFuzzer `yaml_roundtrip` crash-3b0a7d1d—출력 문서가 재해석 불가).
-  중복 탐지 이제 스칼라 키를 `to_yaml`이 내보내는 것과 같은 “값”으로 식별해,
-  그런 입력은 첫 해석에서 거부된다. `<<` 병합 키는 계속 면제: YAML은 맵에서
-  이를 반복하는 것을 허용한다.
-- **빈 블록 용기를 맵 값으로 인라인 직렬화** — 빈 `Mapping`/`Sequence`에는 블록
-  형태가 없는데, 블록 형태의 빈 값을 `key:`로 내고 `{}`/`[]`를 다음 들여쓰기에
-  두었다. 이를 다시 읽으면 *플로우* 수집이 되어 `flow_style`이 반전하고 다음
-  라운드에 인라인됐다—`key:\n  {}` 와 `key: {}`가 매 라운드 표류했다(libFuzzer
-  `yaml_roundtrip` crash-d0e84310). 이제 빈 용기는 항상 인라인(`key: {}`)이고,
-  앵커/태그를 단 값(`key: &a {}`)도 포함한다. 그것들엔 행두 선출력을 건너뛰어
-  헤더가 중복되지 않는다.
-- **평범한 키 속 맨 어포스트로피가 이후 모든 앵커를 삼켰다** — `extract_anchors`는
-  인용된 `&`를 건너뛰기 위해 인용 상태 기계을 돌리지만, 평범 스칼안에 묻힌
-  `'`/`"`(맨 키 `bas'e`나 `a'`의 `'`)에서도 토글했다. 그 환상 인용은 문서 끝까지 열린
-  채 남아, 프리스캔은 앵커 이름을 하나도 반환하지 않고 `register_anchor`가 모든 노드에
-  `None`를 건네 — 앵커가 출력에서 조용히 사라져 왕복이 표류했다(libFuzzer
-  `yaml_roundtrip` crash-68da2420). 이제 인용 「열기」는 토큰 경계(행두 또는 `\t:,[]{}-`
-  뒤)로 게이팅해 granit과 일치한다. 평범 스칼안의 인용은 리터럴 내용이고, 진짜 인용
-  스칼라는 여전히 `&`를 숨긴다.
-- **리터럴 블록 스칼라는 첫 줄이 공백일 때 들여쓰기를 강제** — AST는 `|`/`|N` 본문을
-  들여쓰기 제거해 저장하고 원문의 명시적 지시자를 버린다. 그래서 첫 내용 줄은 공백으로
-  시작하지만 이후 줄은 더 얕은 값(` 1|l\n:t\n`)을 지시자 없이 다시 출력하면, granit이
-  더 깊은 첫 줄을 블록 들여쓰기로 삼고 얕은 줄을 디들렌트로 읽어 — 출력이 재파싱되지
-  않는다(libFuzzer `yaml_roundtrip` crash-e432d4b8). 리터럴 작성자는 접힘 작성자를
-  본떠 바로 그 케이스에서 들여쓰기 지시자를 강제해 자동 탐지를 건너뛰고 선두 공백을
-  내용으로 보존한다. 첫 줄이 공백이 아닌 문서는 전과 같이 바이트 단위로 동일하게
-  직렬화된다.
-- **접기 작성자가 more-indented 줄 「뒤」의 break를 보존하도록 수정** — granit 접기
-  규칙은 `leading_blank` 플래트를 추적한다. more-indented 줄(공백 또는 탭으로 시작하는
-  연속 줄)은 자기 선행 break를 보존할 뿐 아니라 이 플래트를 세워 그 다음 줄의 break도
-  접지 않는다. 출력 쪽 묶음 규칙은 앞부분만 알고 억제 판단을 「이전 줄」 기준으로 내렸기
-  때문에, more-indented 줄 뒤에 평범한 줄이 이어지면 묶음에 개행을 하나 과잉 채워 왕복마다
-  빈 줄이 하나씩 늘었다(libFuzzer `yaml_roundtrip` crash-b7a2285e). 이제 규칙을 「방금 쓴
-  줄」 기준으로 바껴, 어느 쪽 이웃이 more-indented든 r개 묶음은 정확히 r개 물리 개행을
-  출력한다. 바이트 멍등성뿐 아니라 완전한 값 충실성(재파싱이 스칼라 값을 보존)으로 고정.
-- **접힌 스칼라가 자기 개행을 다시 읽도록 수정** — granit 접힌 읽기는 선행이든
-  텍스트 줄 사이든 빈 줄 k개를 정확히 k개 개행으로 읽는데, 줄 분할 작성자는
-  묶음마다 빈 줄을 하나 덜 찍어 접힌 값은 왕복마다 개행이 하나씩 줄었다
-  (libFuzzer `yaml_roundtrip` crash-490c4beb: 4 → 3 → 2 → …; crash-6288e5be도
-  선행 빈 줄이 같은 방식으로 표류). 이제 접기 인식 작성자로 r개 묶음은 빈 줄
-  r개를 차지하고(선행은 헤더 개행 포함), 모든 연장이 구성적으로 폐쇄(내부·선행
-  ·more-indented 연속 줄 모두 1~5 길이 검증; more-indented 줄은 자기 break를
-  보존하므로 빈 줄 하나 덜).
-- **블록 스칼라 출력을 재파싱에 대해 닫히도록 수정** — granit 판독 형태에 직렬화기가 맞지 않았던 두
-  가지: 말미 빈 줄을 담은 `Clip` 블록 스칼라 값은 `Keep` 지시자로만 왕복된다(Clip 판독은 말미 빈
-  줄을 제거하므로—어느 위치에서나 같은 값으로 재독되는 유일한 헤더 형식—libFuzzer `yaml_roundtrip`
-  crash-c18cb1fd), 출력 시 승격. 블록 스칼라의 인라인 댓글은 별도 줄이 아닌 헤더 줄(`y: |  # c`)에
-  실린다—종종 블록 내용에 흡수됐다(crash-cfb3fa83). 두 규칙 모두 출력 쪽 정규화만 수행: 기존에
-  안정적이던 문서는 바이트 단위로 동일 출력을 유지.
-- **앵커 이름 문법을 granit과 정렬 — 표류 계열 전체를 근본 해결** —
-  `extract_anchors`/`scan_anchor_name`에 granit 스캐너에는 없는 두 개의 자체 분기가 늘었다: 인용
-  앵커 형식(`&"a b"` 공백 포함)과 값 표시 규칙(공백/EOL 앞의 `:`로 이름을 종료). granit은 이름을
-  `is_anchor_char`의 최대 연속으로 읽는다(`:`/`#`/`"`/`&`는 평범한 이름 문자; 공백/개행/플로우
-  표시자에서만 종료 — granit 자신의 issue14 테스트). 두 문법의 불일치는 매번 id↔이름 대응을 어긋나게
-  해 왕복을 깨뜨렸고, 아래 네 항목(#215/#218/#227/#228)은 모두 이 하나의 원인 증상이다. 이제
-  스캐너는 granit과 완전히 일치하며(최대 연속 + 앵커 토큰을 원자적으로 건너뛰어 이름 속 `"`/`#`이 더
-  이상 인용/주석 상태를 어지럽힘 없음), `write_anchor_tag`는 `&name`을 그대로 출력한다 — 폐합이
-  구성상 성립해 형태별 임시 대응이 흡수되고, 인용 앵커(애초 왕복 불가)은 제거.
-- **인용된 앵커 이름이 줄바꿈을 삼켰던 문제** — `scan_anchor_name`의 인용 분기가
-  버퍼 뒤쪽의 임의의 `"`를 닫는 인용부호로 취급해, `&"X-<CR>:&"X-`에서 개문자를
-  넘어 이름을 `X-\r:&`로 읽었다. 직렬화기가 그것을 그대로 출력했고 재파싱은 왕복마다
-  한 겹씩 더 감쌌다(커지는 libFuzzer `yaml_roundtrip` 비멱등, 11바이트). granit은
-  CR/LF에서 앵커 토큰을 끝내므로, 줄 종결을 넘은 닫는 인용부호는 더 이상 인용
-  앵커로 인정되지 않아 이름이 한 줄로 유지되고 재출력도 안정된다.
-- **중첩된 자기참조 병합 앵커가 네이티브 스택을 넘쳤던 문제** — `&b`로
-  앵커된 매핑의 본문이 `*b`를(직접 또는 두 번째 `&b`를 통해) 재사용하면,
-  경로 순환 가드가 이미 pop된 상태에서 `resolve_mapping_merges`의 후미
-  재귀로 흘러들어, 각 탐색이 앵커의 새 복제본을 재전개하여 하강이 끝없이
-  커졌다(libFuzzer `parse_yaml`, 58바이트 `bas: &b … <<: *b …`). 이제 후미
-  탐색은 매핑 *고유* 자식에만 재귀한다(병합된 복제본은 전개 루프에서 가드
-  아래 이미 해석됨). 또한 `MAX_MERGE_DEPTH` 한도가 남은 폭주를 우아하게
-  정지시켜, 파서의 컨테이너 깊이·직렬화기의 `max_depth` 가드와 정렬한다.
-- **`:`로 끝나는 앵커 이름이 불안정한 형태로 출력됐던 문제** — `write_anchor_tag`가
-  모든 앵커를 맨 `&name` 토큰으로 썼다. 파싱된 앵커 이름이 `:`로 끝나면(종결되지
-  않은 인용 앵커 `&"X-::…:`를 통해), 끝의 `:`가 출력된 공백과 합쳐져 값 표시자가
-  되고 재스캔 시 사라져, 각 직렬화 왕복마다 한 글자씩 잃었다(42바이트 libFuzzer
-  `yaml_roundtrip` 발견, `fmt(fmt(x)) != fmt(x)`). 안전하지 않은 이름(끝에 `:`,
-  포함된 공백이나 흐름 표시자)은 이제 인용된 `&"name"` 앵커로 출력되며, 원시
-  스캐너가 닫는 인용부호까지 읽어 왕복 간 정확한 바이트를 보존한다.
-- **원시 앵커 스캐너가 텍스트로 보존할 수 없는 앵커를 만들어냈음** — `extract_anchors`가 공백/줄바꿈
-  뒤의 `:`를 앵커 이름에 포함하고(`&&&&:` → `&&&:`) 주석 텍스트에서 앵커를 수집하며, 채택된 이름
-  안의 중복 `&`를 다시 스캔(`&&&&`가 유령 앵커 `&&&`, `&&`, `&`를 생성)해 이후 id→이름 대응이 모두
-  어긋났습니다. 회귀 테스트로 원본 크래시를 재현 가능하게 했습니다.
-- **큰따옴표 스칼라가 두 번 디코딩됨** — granit이 이미 이스케이프 해제된 값을 전달하는데도 두
-  리시버가 `unescape_double_quoted`를 다시 적용했습니다. `a: "\\n"`(글자 그대로 `\` `n` 두 문자)이
-  개행으로 조용히 축소되고 직렬화/재파싱마다 역슬래시가 하나씩 사라졌습니다 (libFuzzer
-  `yaml_roundtrip`: `!-# \\f"<TAB>0:!`). 이제 두 호출 지점은 그대로 통과하며 stream/AST 단위
-  테스트로 단일 디코딩 계약을 고정합니다.
-- **닫지 않은 따옴표 앵커 이름이 행 나머지를 삼켰음** — `&"X-<CR>:`에서
-  `extract_anchors`의 quoted 스캔이 닫는 따옴표를 끝내 못 만나 행 끝까지 모아
-
-    raw CR과 콜론이 앵커 이름에 들어갔고, 직렬화가 `&X-\r:`를 그대로 내보낸 뒤 granit은 공백에서
-    앵커 이름을 끊어 재파싱 결과가 `X-`가 됨 — `fuzz/yaml_roundtrip`이 6바이트 입력으로 직렬화 멱등
-    (`fmt(fmt(x)) == fmt(x)`)을 깼음. 닫지 않은 `"`는 이제 granit 비따옴표 앵커 토큰이 멈추는 바로
-    그 문자에서 멈추고, 진짜 `&"quoted anchor"` (공백 포함 이름)는 그대로입니다.
-- **JSON 주석 스캐너가 멀티바이트 문자 중간에서 panic** — `ws()`의 행 주석과 미종결 블록 주석 스캔이
-  `pos`를 바이트 단위로 진행해 후행 멀티바이트 문자 (U+FEFF 등) 내부에 pos가 남고, 다음
-  `&text[pos..]` 슬라이스가 "not a char boundary"로 panic했다(`fuzz/parse_json`이 약 25초 만에 발견:
-  `\r\r{aMNaN/*0\u{feff}`). 이제 행 주석은 코드포인트 단위로 진행하고 미종결 블록 주석은 `/`로
-  되감겨 모든 실패 경로가 다시 타입화된 오류입니다.
-- **Linux 프리스레드(`cp314t`) wheel을 Release에 동봉** — wheel 빌드 매트릭스가 Windows와 macOS만
-  프리스레드 산출물을 만들어, Linux의 GIL 없는 인터프리터 사용자는 설치 수단이 없었습니다: GIL 있는
-  `cp38-abi3` wheel은 `Py_GIL_DISABLED` 빌드와 ABI 비호환이고 `abi3t` wheel은 CPython 3.15부터
-  적용되기 때문입니다. 이제 `linux` 잡이 x86_64에서 이미지 자체의 프리스레드 인터프리터로 manylinux
-  cp314t wheel을 빌드하고 `3.14t` venv에서 스모크 테스트를 통과한 뒤 Release에 첨부합니다(aarch64는
-  제외: 비-abi3 wheel 빌드는 대상 인터프리터를 실제로 실행해야 하는데, qemu-user 환경에서 그 실행이
-  실패하기 때문).
-- **`pyq` 릴리스 잡이 Linux 산출물을 실제로 빌드** — 크로스 아키텍처 레그는
-  `cross` 에뮬레이션 컨테이너용 qemu binfmt 핸들러를 등록하고, 스모크 테스트는
-  manylinux 이미지 *내부*에서 갓 빌드한 바이너리를 실행합니다. 호스트에는 qemu
-  번역기가 있어도 이기종의 `/lib/ld-linux-*.so` 로더가 없어 aarch64/armv7 바이너리를
-  호스트에서 직접 exec하면 `main` 이전에서 죽습니다. 이제 모든 레그가 업로드 전
-  빌드·자기검증됩니다.
-- **블록 스칼라가 명시적 들여쓰기 지시자를 보존** — `key: |2`로 작성된 본문은 직렬화할 때 `2`가
-  조용히 사라져, 본문 첫 줄이 뒤 줄보다 깊게 들여쓰인 경우(딱 `4RWC.yaml` 모양: 첫 줄 6,
-  후속 줄 4) 출력의 재파싱 결과가 입력과 달랐습니다. 지시자가 없으면 리더가 본문 첫 줄에서
-  들여쓰기를 자동 감지하므로, 지시자 유실은 외관이 아닌 의미 변경입니다. 이제 지시자가 AST에
-  실리고 사양 순서(`c-b-block-header`: chomping 먼저, 들여쓰기 나중 — 따라서 strip은 `|-2`)로
-  재출력되며, 라이터는 본문 기준을 부모 노드 열이 아니라 헤더를 실은 줄의 열에서 잡습니다.
+- **맵핑 키는 값으로서의 같은 텍스트와 같은 의미를 갖는다.** — (details: quality-ledger (as), (at))
+- **앵커 이름 문법을 읽기와 맞춰 표류 일가를 닫았다.** — (details: boundaries — Fuzz findings, (x),
+  (y), (z))
+- **표지·태그·용기 위의 주석이 제 자리를 지킨다.** — (details: quality-ledger (h), (i), (m), (n),
+  (p), (t), (u), (v), (ad))
+- **병합 정체성과 깊이를 수정해 스택 넘침도 없앴다.** — (details: quality-ledger (o), (q), (r), (s),
+  (y))
+- **블록 스칼라는 한 번에 안정화, 지시자 탐지도 정확해졌다.** — (details: quality-ledger (aa), (ab),
+  (r))
+- **Unicode 공백·BOM·태그 접미사가 문서를 깨지 않는다.** — (details: boundaries — Fuzz findings,
+  Blank set)
+- **JSON·JSONC 주석 스캐너의 패닉을 고쳤다.** — (details: boundaries — Fuzz findings)
+- **중복 키는 값으로 거부하고 null 키만 접는다.** — (details: quality-ledger (ae))
+- **빈 용기는 한 번에 인라인 직렬화된다.** — (details: quality-ledger (ab))
+- **`pyrs-toml` 은 맨 메탈로 빌드되고 표 주석도 남는다.** — (details: boundaries — Known Engine
+  Boundaries)
+- **Linux 자유스레드 wheel 과 `pyq` 산출물이 배포된다.** — (details: quality-ledger (aq))
+- **관문 계기 자체의 여섯 결함을 고쳤다(Python 하한 포함).** — (details: quality-ledger (ah), (an),
+  (ao), (ap), (aq), (ar))
+- **아무도 보지 않는 자리에 항목을 넣을 수 없다.** — (details: quality-ledger (ar))
 
 #### 성능
 
-- **태그 출력은 테이블 조회로, 이스케이프는 더 이상 할당하지 않음** — 태그 인코딩을
-  reader 자신의 문자 클래스에 맞춘 결과, 1바이트 소속 검사가 직렬화 열경로에 떨어졌다.
-  그래서 그것을 컴파일 때 만드는 128항 테이블로 바꾸고(영숫자 판정도 같은 한 번의 조회에
-  접어넣고), `%XX` 이스케이프는 16진 숫자 표에서 조립하는 형태로 했다. `format!`은
-  이스케이프되는 바이트마다 새 `String`을 확보하고 있었기 때문이다. 같은 프로세스 안에서
-  best-of-6×40를 교대로, 실제 직렬화기가 만나는 접미사 말뚝으로 재면 11개 접미사 한
-  스윕이 10.53 ns → 2.55 ns(4.1배)였다. 관련 두 자리 치환도 빨랐다: schema 해석자의
-  가장자리 트리밍 0.47 → 0.20 ns(2.3배 — YAML 공백 집합은 비교 다섯 번으로 끝나지만
-  Unicode `trim`은 문자 속성 표를 끌어온다), 앵커 이름 문자 판정은 ASCII 빠른 경로를
-  얻어 1.61 → 1.14 ns(1.4배).
-- **null 키가 많은 문서는 선형 시간으로 해석됨** — 위의 접기는 처음엔 null 키마다
-  mapping 을 다시 훑었다. 전부 null 인 문서에서는 안 보인다(접힌 항목이 0번 슬롯에
-  앉기 때문) — 그러나 문제는 그 모양에서 제곱이 된다: 서로 다른 키 2k 개 뒤에 null 키
-  2k 개를 붙이면, 입력을 4 배 늘릴 때 시간이 12.4 배(8k + 8k 에서 99 ms) 늘었다.
-  이제 mapping 은 null 키 슬롯을 기억하고, 훑기는 옳음의 안전장치로만 남긴다:
-  같은 입력에서 11.0 ms, 증가율 4.14 배 — 서로 다른 키 문서의 기울기(4.02 배)와 같다.
-- **이 기계에서는 프로세스 간 divan 표로 10% 미만 차를 확정할 수 없다** — 같은 바이너리인데 실행 간
-  차가 최대 ±38% 났다(`parse_medium` 한 배치는 +77%, 다른 배치는 −20%). 따라서 위 술어의 수치는 같은
-  프로세스 내 A/B에서 따랐고, 종단 간 결론은 `crates/**`를 건드리는 PR마다 실행되는 CodSpeed
-  게이트에 맡긴다. `cargo nextest run --all`는 449/449를 유지하고 커밋된 fuzz 시드는 모두 같은
-  바이트열로 재생된다.
+- **태그 발사는 표 드라이브, 이스케이프는 할당 없음.** — (details: perf — Leaderboard & Performance
+  Status)
+- **null 키가 많은 문서는 선형 시간에 해석된다.** — (details: quality-ledger (ae))
+- **10% 미만 물음은 명령 수 기준으로 결정.** — (details: quality-ledger (am), (as))
 
 ### [v0.17.0] — 2026-10-01
+
+<details>
+<summary>pyq CLI 패리티 플래그</summary>
 
 #### 추가
 
@@ -1182,7 +110,12 @@ status: new
 - **`pyrs-json` 모듈 문서** — 옛 설명은 "주석은 읽을 때 버려지고 다시 출력되지 않는다"였으나, #122
   이후 주석은 AST 주석 슬롯에 실려 JSONC/JSON5 직렬화기가 복원합니다.
 
+</details>
+
 ### [v0.16.0] — 2026-10-01
+
+<details>
+<summary>JSONC block-comment 핫스팟 벤치</summary>
 
 #### 추가
 
@@ -1601,9 +534,7 @@ status: new
 - **반복된 별칭 참조가 `None`으로 해석되지 않음** — `to_dict()`가 **전역** visited
   앵커 집합으로 별칭을 확장하면서 이를 한 번도 지우지 않아, 각 앵커의 **첫
   참조만** 값을 만들고 이후의 참조는 조용히 `None`으로 타락했다:
-
     ```yaml a: &x 1 b: *x      # 1 c: *x      # 이전에는 None, 현재는 1```
-
     영향 범위는 "두 번째 참조"보다 넓었다. 같은 컨테이너 안의 형제 참조끼리도 서로
     오염했다(`{a: &x {p: 1}, b: {q: *x}, c: {q: *x}}`에서 `b`는 값이었고 `c`는 `None`). 이제 이
     guard는 현재 재귀 경로로 한정되어, 한 번의 확장 동안에만 push되고 이후 pop된다. 따라서 반복
@@ -1658,7 +589,12 @@ status: new
   고정)은 맨 스칼라로 직렬화(`assert data == 42`)합니다. 4개 로케일 텍스트를 정정했고
   en 문서에 0-D `bool` → `1.0` rust-numpy 특성 경고 admonition을 추가했습니다.
 
+</details>
+
 ### [v0.15.0] — 2026-08-19
+
+<details>
+<summary>노드 메타데이터 세터/게터</summary>
 
 #### 추가
 
@@ -1707,7 +643,12 @@ status: new
   Rust 측 벤치마크 섹션을 Criterion에서 divan으로 마이그레이션(`benches/yaml_bench.rs` →
   `crates/pyrs-yaml/benches/yaml_bench.rs`).
 
+</details>
+
 ### [v0.14.1] — 2026-08-15
+
+<details>
+<summary>백슬래시+제어 문자/비문자를 포함한 단일 인용 스칼라</summary>
 
 #### 수정
 
@@ -1729,7 +670,12 @@ status: new
 - **`scripts/fuzz_panics.py`** — dump/parse/edit/멱등성에 걸친 적대적 전략을 사용한 로컬 대규모
   Hypothesis fuzz 하네스.
 
+</details>
+
 ### [v0.14.0] — 2026-08-14
+
+<details>
+<summary>YAML Schema Language</summary>
 
 #### 추가됨
 
@@ -1763,7 +709,12 @@ status: new
   않으며, 항상 최상위 맵 키로 취급합니다(`__getitem__`/`__setitem__`과 일관). 경로 접근은
   `find()`/`node()`를 사용하세요.
 
+</details>
+
 ### [v0.13.0] — 2026-08-10
+
+<details>
+<summary>Rust MSRV를 1.96으로 업그레이드하고 edition을 2024로 변경</summary>
 
 #### 변경 사항
 
@@ -1820,7 +771,12 @@ status: new
   제거. 크로스 라이브러리 벤치마크를 `tests/test_benchmark_crosslib.py`로 통합하고 공용
   `tests/data/yaml_samples.py` 픽스처와 스트리밍 커버리지 추가.
 
+</details>
+
 ### [v0.12.1] — 2026-08-06
+
+<details>
+<summary>`set(create_missing=True)`</summary>
 
 #### 추가
 
@@ -1862,7 +818,12 @@ status: new
 - **Standalone comments before simple mapping keys** - round-trip previously dropped standalone
   comments attached to simple-key nodes; now preserved (two regression tests).
 
+</details>
+
 ### [0.11.7] - 2026-08-04
+
+<details>
+<summary>stub-build-check replaced with release-guard</summary>
 
 #### 변경
 
@@ -1880,7 +841,12 @@ status: new
   threaded support status (PyO3/rust-numpy#476) as a dependency for re-enabling
   ndarray serialization on cp314t wheels when the Rust binding matures.
 
+</details>
+
 ### [0.11.6] - 2026-08-04
+
+<details>
+<summary>Free-threaded (cp314t) wheels are now numpy-free</summary>
 
 #### 변경
 
@@ -1896,7 +862,12 @@ status: new
 - **Install docs** - `docs/{en,zh,ja,ko}` note that free-threaded
   wheels are numpy-free (ndarray serialization unavailable on cp314t).
 
+</details>
+
 ### [0.11.5] - 2026-08-04
+
+<details>
+<summary>Parser robustness items 3/4/5 closed via Phase 0 strictness audit</summary>
 
 #### 변경
 
@@ -1912,6 +883,8 @@ status: new
 - `tests/test_strictness_audit.py` — 70-probe strictness regression corpus pinning current
   rejection/acceptance behavior (both directions), so future parser changes cannot silently regress
   strictness or over-reject.
+
+</details>
 
 ### [0.11.4] - 2026-08-04
 
@@ -1953,6 +926,9 @@ status: new
 
 ### [0.11.2] - 2026-08-03
 
+<details>
+<summary>파싱 시 스플라이스 자격 계산 안 함</summary>
+
 #### 추가
 
 - `YAML.load_stream(file_obj)` / `YAML.load_stream_file(path)`: O(앵커 + 청크) 메모리의 지연 이벤트
@@ -1971,7 +947,12 @@ status: new
 - `parse_with_options`가 `CustomNode`를 반환 (기존 `(CustomNode, bool)`); 스플라이스 자격은 이제
   `YamlDocument` 내부에 있으며 요청 시 계산
 
+</details>
+
 ### [0.11.0] - 2026-08-02
+
+<details>
+<summary>Surgical Serialization</summary>
 
 #### 추가
 
@@ -1987,7 +968,12 @@ status: new
 - 스플라이스 편집이 `---`/`...`/지시자 마커 라인을 미변경 바이트로 보존 (전체 직렬화는 이전에 이를
   제거 — 의도적인 동작 차이)
 
+</details>
+
 ### [0.10.0] - 2026-08-01
+
+<details>
+<summary>제자리 편집</summary>
 
 #### 추가
 
@@ -2012,7 +998,12 @@ status: new
 
 - `YamlDocument.source()`가 `str`을 반환하고 제자리 편집 후 지연 재직렬화
 
+</details>
+
 ### [0.9.0] - 2026-08-01
+
+<details>
+<summary>Python 3.13, 3.14, 3.15 지원</summary>
 
 #### 추가
 
@@ -2075,7 +1066,12 @@ status: new
 - **`duplicate-key` 오류가 i18n 적용** — `YamlDuplicateKeyError` 메시지가 이제 모든 4개 locale을
   통해 `format_i18n_error`를 통해 흐름
 
+</details>
+
 ### [0.8.0] - 2026-07-30
+
+<details>
+<summary>`YAML()` 인스턴스 API</summary>
 
 #### 추가
 
@@ -2095,7 +1091,12 @@ status: new
 - `parse()` / `safe_load()`가 이제 구문 당용으로 `YAML().parse()` / `.safe_load()`에 위임
 - `YamlDocument`가 이제 문서 메타데이터를 위해 `version` 필드 저장
 
+</details>
+
 ### [0.7.1] - 2026-07-30
+
+<details>
+<summary>ryaml 벤치마크 비교</summary>
 
 #### 추가
 
@@ -2116,7 +1117,12 @@ status: new
 - CI 벤치마크 작업은 교차 라이브러리 비교를 위해 `ryaml` 설치
 - `benchmark_compare.py`는 이제 타이밍을 `pytest-benchmark`에 위임하고 기능 비교/보고 도구로 역할
 
+</details>
+
 ### [0.7.0] - 2026-07-29
+
+<details>
+<summary>직렬화기 `max_depth` 가드</summary>
 
 #### 추가
 
@@ -2142,7 +1148,12 @@ status: new
 - `write_inline_comment` 메서드 — 모든 호출 위치에서 인라이닝됨
 - 직렬화기에서 `Comment` import — 이제 불필요
 
+</details>
+
 ### [0.6.0] - 2026-07-27
+
+<details>
+<summary>비동기 직렬화</summary>
 
 #### 추가
 
@@ -2171,7 +1182,12 @@ status: new
 - 런타임 의존성: `jsonschema>=4.25.1`
 - 개발 의존성: `pytest-asyncio>=0.23` (런타임에서 이동, 더 이상 고정되지 않음)
 
+</details>
+
 ### [0.5.0] - 2026-07-27
+
+<details>
+<summary>`Serializer::write_node`</summary>
 
 #### 수정
 
@@ -2182,7 +1198,12 @@ status: new
 - **개발 문서** — Python 명령어에 필수 `uv run` 접두사 및 Rust 명령어에 직접 `cargo` 추가하여
   `AGENTS.md` 업데이트
 
+</details>
+
 ### [0.4.0] - 2026-07-27
+
+<details>
+<summary>132개 새 gap-filling 테스트</summary>
 
 #### 추가
 
@@ -2219,7 +1240,12 @@ status: new
   Cargo.toml/pyproject.toml과 일치
 - `dist/`에서 구버전 0.2.0 wheel 아티팩트 제거
 
+</details>
+
 ### [0.3.0] - 2026-07-27
+
+<details>
+<summary>NumPy ndarray 직렬화</summary>
 
 #### 추가
 
@@ -2275,6 +1301,8 @@ status: new
   `format_yaml_type` (테스트 전용)
 - 6개 중복 테스트 파일 통합, 9개 진단 스크립트를 `scripts/`로 이동
 - 키/인덱스/타입 컨텍스트로 오류 메시지 개선
+
+</details>
 
 ### [0.1.0] - 2026-07-25
 
