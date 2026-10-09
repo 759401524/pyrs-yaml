@@ -17,65 +17,220 @@ status: new
 
 #### 追加
 
-- **YAML の注釈・アンカー・タグが往復後も残り、全シードでゲート化。** — (details: quality-ledger —
-  Note survival, (w), (ac))
-- **入れ子とエイリアス経由のマージキーが捨てられず適用される。** — (details: quality-ledger (ae),
-  (af), (ag), (o), (q), (s))
-- **CI の命令数ゲートが全形式の橋を双方向で対象化。** — (details: quality-ledger (am), (ap), (aq),
-  (as), (ax))
-- **品質防御自体を計測し、空白は所見として表面化する。** — (details: quality-ledger (ah), (ai),
-  (aj), (ak), (an), (ao))
-- **成果物を動かす変更集はリリースノートも動かす。** — (details: quality-ledger (al), (ar))
-- **計時ゲートは隣接採样にし、失敗時は全样本を印字。** — (details: quality-ledger (aw), (ay))
-- **本文は 100 表示桁以内、切断で見出しは拒否。** — (details: quality-ledger (au), (av))
-- **エンジンごとにファジング標的を持ち、週次と PR 遮断。** — (details: quality-ledger (aj))
-- **四つの基盤クレートは `no_std` 対応、ベアメタルで検証。** — (details: boundaries — Known Engine
-  Boundaries)
-- **`pyq` を毎回プレビルドで配布。** — (details: perf — Leaderboard & Performance Status)
-- **型スタブを実ビルド拡張と照合し逸脱を拒否。** — (details: quality-ledger (ap))
+- **YAML のコメント・アンカー・タグが往復し、全シードを門として検査。** —
+  `crates/pyrs-yaml-core/tests/note_survival.rs` は確定済みのシード語料を毎回の `cargo nextest run`
+  で再生し、読み取り側が記録したコメントがすべて出力テキストに現れることを要求します。往復層の判定基
+  準はテキスト冪等性なので「安定だがコメント 1 本足りない」文書は素通りします。沈黙したコメント消失
+  5 件が緑のまま続いた原因がこれです。— (details: quality-ledger — Note survival, (w), (ac))
+
+- **入れ子・エイリアス付きマージキーが実際に適用される。** — `<<: {<<: {x: 1}}` は 2 層の `<<` を
+  データとして保持し（`{'<<': {'<<': {'x': 1}}}`）、PyYAML と ruamel が `{'x': 1}` と読むのと差が
+  ありました。`<<: {<<: {x: 1, y: 1}, y: 2}` では `x` が消え、ブロック形の `- <<:` も同じでした。
+  収集側はノード全体の一致で「既に持っている」と判断しなくなりました。 — (details: quality-ledger
+  (ae), (af), (ag), (o), (q), (s))
+
+- **命令数ゲートが書式間の橋を双方向で数える。** — `from_jsonc`、`from_json5`、`to_jsonc_text`、
+  `to_json5_text`、`to_python_small/medium/anchors`、JSON/TOML の読み取り経路が
+  `.ci/ir-baseline.json` の基準値を持ちます。同じ hub AST で 3 つの writers は
+  21,232,786 / 22,176,851 / 22,974,851 命令：コメント出力で 4.4%、JSON5 の綴りで 8.2% の追加コスト、
+  という数字を初めて示せます。 — (details: quality-ledger (am), (ap), (aq), (as), (ax))
+
+- **品質防御が自身を測定し、穴は findings として出る。** — `scripts/quality_matrix.py` は防御を宣言
+  するファイル（`.github/workflows/*.yml`、`prek.toml`、`fuzz/Cargo.toml`、`scripts/check_*.py`、Ir
+  ベンチ、 `.ci/ir-baseline.json`）から `QUALITY_MATRIX.md` を再導出し、転記はしません。報告された穴
+  は `.ci/quality-holes.json` に両方向の出口を明示して登録され、注入ツリーで発火するテストを備えま
+  す。 — (details: quality-ledger (ah), (ai), (aj), (ak), (an), (ao))
+
+- **プロダクトを動かす変更はリリースノートも動かす。** — `scripts/check_changelog_coupling.py` は PR
+  のファイル一覧に 2 規則を適用します：`crates/`、`python/pyrs_yaml/`、`fuzz/`、`scripts/`、
+  `tests/`、同梱マニフェストに触れる diff は changelog に触れる必要があり、5 つのミラーのいずれかを
+  変えたら 5 つすべてを変えます。ある機能がノート無しで出荷された後に追加されました。— (details:
+  quality-ledger (al), (ar))
+
+- **タイミング下限は 2 相を隣接サンプリングし、証拠を印字する。** — `tests/timing.py` が唯一の
+  サンプラーです：候補と参照を同一ブロック内で隣接計測し、判定はブロック最小値・最低 2 ペアの勝利、
+  失敗メッセージは全ペアを引用するので、赤はどちらが動いたかを語ります。`macos-latest` の
+  `139.4us vs 359.6us (2.58x)` という報告で 5 ブロック中 3 ブロックが自身の下限の約 3 倍に並んだ件が
+  これに当たります。ライブラリ間の下限は 5 倍と top-3 を維持（実測 PyYAML 比 38x-280x、ruamel 比
+  71x-77x）。 — (details: quality-ledger (aw), (ay))
+
+- **散文は 100 表示桁、整形器に切られた見出しは拒否。** — `ROADMAP.md` に 21,850 字、
+  `docs/ja/changelog.md` に 884 字の行がありました。`scripts/check_doc_wrapping.py` は表示桁を測り
+  （全角 2 桁）`--fix` を持ちます。`check_doc_headings.py` は、折り返し後半行が issue 参照で始まった
+  とき `rumdl fmt` が昇格させる見出しを拒否します。— (details: quality-ledger (au), (av))
+
+- **各エンジンに fuzz ターゲット、週次実行と PR 層のブロッキング。** — 4 つの libFuzzer ターゲット
+  （`parse_yaml`、`yaml_roundtrip`、3 ディアレクト × 3 writers を交差させて各出力を再パースする
+  `parse_json`、`parse_toml`）、シードは `fuzz/seeds/`。追跡するのはターゲットとシードだけで、機械語
+  料はリポジトリに入りません。— (details: quality-ledger (aj))
+
+- **`pyrs-ast`・`pyrs-schema`・`pyrs-json`・`pyrs-toml` が `no_std` 対応。** — 4 クレートは `alloc`
+  だけでビルドされます：`indexmap` と `thiserror` の既定 `std` feature を切り、オプトインの `std`
+  feature が `std::error::Error` と `RandomState` を復元します。既定は `std` のままなので、既存利用
+  者のノードマップ型は変わりません。— (details: boundaries — Known Engine Boundaries)
+
+- **`pyq` を各リリースでプリビルドバイナリとして同梱。** — `publish.yml` の `pyq` ジョブが 6 プラッ
+  トフォームのネイティブ CLI をビルドし、アーカイブを GitHub Release に添付します。独立バイナリに
+  Rust 環境は不要になりました。Linux 側は manylinux2014 コンテナ内で `cross` によりネイティブコンパ
+  イルし、 glibc 2.17 を下限に固定します。— (details: perf — Leaderboard & Performance Status)
+
+- **確定済みの型スタブをビルド済み拡張と比較する。** — `scripts/check_stub_drift.py` は宣言済みの経
+  路で `python/pyrs_yaml/pyrs_yaml.pyi` を再生成し、差異があれば失敗します。このジョブは
+  `windows-latest` で動きます — maturin の自省経路は Linux コンテナで拡張を読み込めないため。以前は
+  存在と追跡だけを検査していたので、公開型の契約が静かに遅れられました。— (details: quality-ledger
+  (ap))
 
 #### 変更
 
-- **`pyq validate` は `--input` で実形式を検証。**
-- **PR 段階のファジングはブロッキング化。** — (details: quality-ledger (aa))
-- **ドキュメント生成の道具を最新版へ。型スタブを作る生成器は意図的にそのまま。** — (details:
-  quality-ledger (ba))
+- **`pyq validate` が `--input` を受け取り、実際に読んだ形式に従う。** — YAML パーサをハードコードし
+  ていたため `pyproject.toml` や `package.json` は即座に拒否されていました。現在は
+  `--input auto|yaml|json|jsonc|json5|toml` を受け取り、共通ローダ経由で読みます。
+
+- **PR 層の fuzzing をブロッキングに。** — ステップ単位の `continue-on-error` は、`main` がこの層が
+  正しく指摘したドリフトを抱えている間だけ置く留め金でした。現在のツリーで再検証：4 ターゲットとも確
+  定済みシードをクリーンに再生（5/59/6/5 シード、nightly-2026-08-15、cargo-fuzz 0.13.2）。 —
+  (details: quality-ledger (aa))
+
+- **Docs 環境を最新版へ、スタブ生成器は意図的に据え置き。** — `zensical` 0.0.56 → 0.0.69、
+  `mkdocstrings-python` 1.11.1 → 2.0.9（`mkdocstrings` 1.0.6、`griffelib` 2.2.0、いずれも Python
+  3.11 必須）。一方 `maturin` は 1.14.1 のままです — 確定済みの `.pyi` と漂移検査の照合規則がその出
+  力を前提にするため。設定された 14 の handler オプションは導入済み `PythonOptions` と照合し、未知の
+  オプションはビルドが黙って無視するので検査はテスト側に置かれました。— (details: quality-ledger
+  (ba))
 
 #### 修正
 
-- **マッピング鍵は値としての同じテキストと同義に。** — (details: quality-ledger (as), (at))
-- **アンカー名文法を読み手に一致、漂移の一族を解消。** — (details: boundaries — Fuzz findings, (x),
-  (y), (z))
-- **マーカー・タグ・コンテナの注釈が所在を維持。** — (details: quality-ledger (h), (i), (m), (n),
-  (p), (t), (u), (v), (ad))
-- **マージの同一性と深さを修正、スタック溢れも解消。** — (details: quality-ledger (o), (q), (r),
-  (s), (y))
-- **ブロックスカラーは一回で安定、指示子検出も正確に。** — (details: quality-ledger (aa), (ab), (r))
-- **Unicode 空白・BOM・タグ接尾辞の破壊を修正。** — (details: boundaries — Fuzz findings, Blank set)
-- **JSON/JSONC 注釈スキャナpanic を修正。** — (details: boundaries — Fuzz findings)
-- **重複キーは値で拒否、畳むのは自前 null 鍵のみ。** — (details: quality-ledger (ae))
-- **空コンテナは即インライン出力。** — (details: quality-ledger (ab))
-- **`pyrs-toml` はベアメタル対応、行内表注釈も所在維持。** — (details: boundaries — Known Engine
-  Boundaries)
-- **Linux free-threaded wheel と `pyq` 成果物を配布。** — (details: quality-ledger (aq))
-- **ゲート計器側の六つの欠陥を修正（Python 下限含む）。** — (details: quality-ledger (ah), (an),
-  (ao), (ap), (aq), (ar))
-- **誰も見ない位置への登録を禁止。** — (details: quality-ledger (ar))
-- **更新ログページ自身の説明と折りたたみ版の表示を復元。** — (details: quality-ledger (az))
-- **wheel に同梱される型スタブが Python として解析できるように。型チェッカーが契約を読める。** —
-  (details: quality-ledger (bb))
-- **文書のみの変更もマージでき、マージ前にサイトがビルドされる。** — (details: quality-ledger (bd))
+- **マッピングキーが、同じテキストを値に置いたときの意味を持つ。** — `1: a` は `{"1": "a"}`、 `a: 1`
+  は `{"a": 1}`、`~: 1` は `{"~": 1}`、`a: ~` は `{"a": None}` と読めていました。同じ文書が `:` のど
+  ちら側にスカラーがあるかで 2 つの意味になり、整数・真偽・null をキーにした設定は検索に到達しませ
+  ん。キーは値と同じ schema 経路で解決され、PyYAML・ruamel と一致します。`load_toml` はどちらの YAML
+  schema でも型が変わるキーを引用符で括ります。— (details: quality-ledger (as), (at))
+
+- **アンカー名の文法を読み取り側と整え、ドリフトの一系列を閉じた。** — 出力側が読み取り側に拒否され
+  るアンカー名（`found unknown anchor`）を出しうるため、「解析不能な出力は作らない」という契約を破っ
+  ていました。`:` 終わりは毎巡 1 字落ち、引用付き名は改行を飲み込み、素のスキャナはコメントテキスト
+  や重なる `&` から存在しないアンカーを作り出します。現在は granit と同じく、アンカー文字の最長連続
+  列として読みます。— (details: boundaries — Fuzz findings, (x), (y), (z))
+
+- **コメントがマーカー・タグ・コンテナを越えて所有者を保つ。** — 初の出力と再読み取りのあいだでコメ
+  ントが所有者を変えたり消えたりする系列です：タグだけの値（`k: !`）が直後の行を先頭コメントとして抱
+  える、コンテナ自身の行内コメントが保持できない行に落ちる、引用内の `#` を素のバイト走査が追い出
+  す、簡潔な `- key:` 分岐がテキストだけ写してコメント槽を見ない、先頭コメントが単一 *スロット* なの
+  で最後に重ねたものだけが残る（`# alpha` + `# beta` + `key: 1` → `# beta`）。先頭コメントは現在リス
+  トで、全 writers が従います。— (details: quality-ledger (h), (i), (m), (n), (p), (t), (u), (v),
+  (ad))
+
+- **マージの同一性と深さを修正、ネイティブスタック溢れも解消。** — `<<: &b` は値が null のリテラルな
+  マージキーなのに下の本物の `<<:` と畳み込まれ、畳む過程でdropped 側のエントリのコメントは運びます
+  がアンカーは運びませんでした。コメント付きの非タグ `y` とマージされた `y` は別の `IndexMap` キーな
+  ので `to_yaml` が同じ層に `y:` を 2 度印刷し、入れ子・自己参照の連鎖は循環ガードを pop 済みの状態
+  で末尾再帰に流れ、深さに上限なく溢れました（58 バイトの libFuzzer 発見）。コメント付き `<<` キーノ
+  ードはこのパスに見えていませんでした。— (details: quality-ledger (o), (q), (r), (s), (y))
+
+- **ブロックスカラーは 1 回の出力で収束し、指示子も正しく判定。** — `>+8\r\r#` は値が改行 1 つ・
+  `Keep`・明示インデント 8 の折りたたみスカラーとして読めます。出力側は指示子を残して `>+8\n\n` を出
+  し、それは `Clip`・指示子なしで読み戻るので、*2 巡目* は `>\n\n` — Clip は末尾改行を剥がすため値は
+  `""` です。値が空へ崩落するのに各巡は「安定」に見えました。折りたたみの連続改行、`4RWC` 型の明示イ
+  ンデント、先頭が空のリテラルも同じ作業で再解析に対して閉じられました。— (details: quality-ledger
+  (aa), (ab), (r))
+
+- **Unicode の空白・BOM・タグ接尾辞が文書を壊さない。** — ディアレクト fuzzing が到達した空白集合、
+  BOM の位置、タグ接尾辞の境界を読み取り側自身の文法に合わせ、それぞれ確定済みシードと決定的な Rust
+  回帰テストで固定しました。— (details: boundaries — Fuzz findings, Blank set)
+
+- **JSON/JSONC のコメント走査が文字の途中で panic しない。** — 行コメントと未閉鎖ブロックコメントの
+  走査が `pos` を 1 バイトずつ進めていたため、末尾のマルチバイト文字（U+FEFF、fuzzing 約 25 秒で到
+  達）が内側に停止点を作リ、次回の `&text[pos..]` が「not a char boundary」でクラッシュしました。現
+  在は完全なコードポイント単位で進み、不正入力は clean に拒否します。— (details: boundaries — Fuzz
+  findings)
+
+- **重複キーは値で拒否し、畳むのは null キーだけ。** — 比較は値基準なので `{a: 1, a: 2}` は引き続き
+  `YamlDuplicateKeyError`、空・null キー（`: a` + `: b`、`~: a` + `~: b`）は yaml-test-suite `2JQS`
+  の要求どおり畳みます。コメント付きキーが名前で到達できない問題も直りました：`CustomNode::hash` が
+  正規化後のコメント表示を畳む一方 `eq` は素のスロットを比較するため、`doc["key"]`、`in`、マージ展開
+  が明らかなキーに「そのようなキーはない」と答えていました。— (details: quality-ledger (ae))
+
+- **空コンテナはインラインで出力され、2 巡目を要求しない。** — `safe_dump({"a": {}})` は
+  `"a:\n  {}\n"` を作る一方、AST 側 writer は `"a: {}\n"` を作ります。シーケンス下の `- \n  {}` は
+  flow ノードとして読み戻され、もう一度動きます。どちらのテキストも同じデータに戻るため往復テストに
+  は見えませんでした — fuzz 層が主張する不変条件は*テキスト*が不動点だという事です。 — (details:
+  quality-ledger (ab))
+
+- **`pyrs-toml` がベアメタルで再びビルドできる。** — 積みコメント作業が `#![no_std]` クレートに
+  `std::mem::take` を入れており、ホストビルドは許容しても `no-std-check` は許しません。6 か所を
+  `core::mem::take` に変更。別件で、複数行インラインテーブルの末尾でないメンバーのコメントが区切りコ
+  ンマの後に出力され — TOML はコメント内にコンマを保てない — 読み取り側が次のキーの先頭コメントへ移
+  すため、テキストが収束しませんでした。— (details: boundaries — Known Engine Boundaries)
+
+- **Linux の free-threaded wheel が出荷し、`pyq` も成果物をビルド。** — wheel 行列は Windows と
+  macOS のみ free-threaded を作っていたため、GIL なし実行系の Linux ユーザーに導入物がありませんでし
+  た：GIL ありの `cp38-abi3` は `Py_GIL_DISABLED` と ABI 非互換で、`abi3t` は 3.15 から。クロスアー
+  キの `pyq` レグは qemu binfmt を登録し manylinux イメージ内で自身を検証します — ホストには翻訳機が
+  あり外部の loader が無いので、 aarch64/armv7 を直接実行すると `main` の前で死にます。— (details:
+  quality-ledger (aq))
+
+- **ゲート装置自体の 6 欠陥を修正（MSRV レグを含む）。** — 3 つのチェッカーが Python 3.8 で import
+  不可（import 時に評価される注釈、`str.removeprefix`）、シナリオ探索が 1 つの harness ファイルしか
+  名指さず 2 番目の経路が門を外れ、Ir の crate 集合は `[dependencies]` で止まり半分だけ読んだ図を説
+  明し、基準更新が rustc 1.99.0 で 1.97.1 の記録に合わせ `serialize_medium` を +6.7% 動かし、集合チ
+  ェックは 11 ジョブ中 3 つだけを待ち、プロパティ層は `PROPTEST_CASES` を誰も設定せず proptest 既定
+  の 256 用例で回っていました。— (details: quality-ledger (ah), (an), (ao), (ap), (aq), (ar))
+
+- **誰も見ない位置へエントリを登録できない。** — あるコミットは 5 ミラーすべてにノートを加えながら、
+  `CHANGELOG.md` では前置きの上に、en と zh では `tags:` リストの中に、ja と ko では front matter と
+  最初の見出しの間に置きました。全ファイルで本文の外なのにミラー検査は緑でした —「版見出しの集合が同
+  じ」は読者がどこを見るかを何も言わないためです。`placement_errors()` が位置を検査します。 —
+  (details: quality-ledger (ar))
+
+- **更新ログページが自身の説明を取り戻し、折りたたみ版も表示される。** — 幅の修正器がページ YAML
+  front matter の開始 `---` だけを飛ばしたため、4 言語ページの `title:`/`description:`/`tags:` が 1
+  行へ再整形され、デプロイ済みの生成器はページ説明をサイト説明に置き換えて公開し、新しい版はビルドを
+  失敗させます。折りたたみ版は素の `<details>` で開かれ、Python-Markdown はその内容を解析しません —
+  デプロイ版での実測で見出し 11・そのまま出る `####` の漏れ 3、属性ありでは見出し 69・漏れ 0。
+  `scripts/check_doc_metadata.py` が両方を検査します。— (details: quality-ledger (az))
+
+- **wheel に同梱される型スタブが Python として解釈できる。** — maturin 1.14.1 は実行時の `__doc__`
+  をトリルクォートへそのまま書き込むため、本プロジェクトの Rust doc comment 2 か所にバックスラッシュ
+  があって `python/pyrs_yaml/pyrs_yaml.pyi` は unicode エスケープの切り出しで `ast.parse` に失敗して
+  いました。`py.typed` と共にこのファイルがユーザーの mypy/pyright が読む型の契約であり、あらゆるド
+  キュメント生成器もここから API に到達できません。漂移経路は docstring 内のバックスラッシュをエスケ
+  ープし（箇所数を門に）、派生テキストの構文解析を要求します。— (details: quality-ledger (bb))
+
+- **リリースノートが版全体を説明し、最初の 1 行だけではない。** — 折りたたみ履歴の各 `<summary>` が
+  その版の最初のエントリだったため、読者は展開する価値があるか判断できません（v0.16.0 は 93 分の 1：
+  Added 64・Fixed 14・Performance 8）。今は各サマリが版全体を要約し、折りたたまれていなかった 0.11.4
+  ・ 0.11.3・0.1.0 も他と同じ形に揃え、5 ミラー同期で適用しました。— (details: quality-ledger (bc))
+
+- **文書のみの pull request はマージできず、サイトをビルドする pull request もなかった。** — ブラン
+  チ保護が要求するチェックは `Test matrix (all legs)` の 1 本だけで、それを出す workflow は `*.md`
+  と `docs/**` をトリガから除外していた。PR #319 は出揃った検査がすべて緑なのに
+  `Required status check … is expected` で拒否され、管理者強制が有効なので `--admin` も通らない。現
+  在は `ci.yml` が毎回走り、`changes` が変更を分類して重い脚はその回答で条件化、`docs-gates` が毎回
+  文書ゲートと 4 ロケールの `--strict` ビルドを実行する —— 登録済みの描画の盲点はそのように閉じた。
+  — (details: quality-ledger (bd))
 
 #### パフォーマンス
 
-- **タグ出力は表駆動、escape は非アロケート。** — (details: perf — Leaderboard & Performance Status)
-- **null 鍵の多い文書は線形時間で解析。** — (details: quality-ledger (ae))
-- **10% 未満の問いは命令数基準で確定。** — (details: quality-ledger (am), (as))
+- **タグ出力はテーブル駆動、エスケープはメモリを確保しない。** — タグ符号化を読み取り側の文字クラス
+  に寄せたことで 1 バイトごとの所属判定が逐次化のホットパスに入り、128 項のコンパイル時テーブルにな
+  りました（英数字判定も同じ参照に畳み込み）、`%XX` エスケープは 16 進表から書き、エスケープされる文
+  字ごとに `String` を作っていた `format!` をやめました。— (details: perf — Leaderboard &
+  Performance Status)
+
+- **null キーが多い文書の解析が線形時間。** — null キーの畳み込みは null キーごとにマップを再走査し
+  ていました。すべて null の文書では見えにくく（畳まれた項目は slot 0）、本質的な形では二次です：2k
+  の別キーの後に 2k の null キーだと 4 倍入力で 12.4 倍増（8k + 8k で 99 ms）。マップは null キーの
+  slot を記憶し、走査は正しさのフォールバックとして残します。— (details: quality-ledger (ae))
+
+- **10% 未満の議論は確定済みの命令基準で決着。** — 2 つの runner ジョブは
+  `serialize_block_scalars` を 1.44% 差で測る一方、同一バイナリの繰り返しは ±0.0005% です。runner の
+  ノイズ以下の wall clock では何も決まらないため、基準は生成環境を記録し、`scripts/ir_gate.py` が
+  異なる出所を注記します。 — (details: quality-ledger (am), (as))
 
 ### [v0.17.0] — 2026-10-01
 
 <details markdown="1">
-<summary>pyq CLI パリティフラグ</summary>
+<summary>pyq 互換フラグ · JSONC/JSON5 入力 · diff/merge · Release 自動化</summary>
 
 #### 追加
 
@@ -120,7 +275,8 @@ status: new
 ### [v0.16.0] — 2026-10-01
 
 <details markdown="1">
-<summary>JSONC ブロックコメント・ホットスポットベンチ</summary>
+<summary>ライブラリ間パリティ · `load_json` · TOML 1.1 と toml-test · JSON5/JSONC · pyq · 高速化
+</summary>
 
 #### 追加
 
@@ -618,7 +774,7 @@ status: new
 ### [v0.15.0] — 2026-08-19
 
 <details markdown="1">
-<summary>ノードメタデータのセッター/ゲッター</summary>
+<summary>Node メタデータ/スタイル API · Schema ファイル IO · 深編集 · cp314t の numpy 再開</summary>
 
 #### 追加
 
@@ -674,7 +830,7 @@ status: new
 ### [v0.14.1] — 2026-08-15
 
 <details markdown="1">
-<summary>バックスラッシュ+制御文字/非文字を含む単一引用スカラー</summary>
+<summary>引用符とエスケープの境界：単一引用符のバックスラッシュ、BOM、非文字、多バイト改行</summary>
 
 #### 修正
 
@@ -701,7 +857,7 @@ status: new
 ### [v0.14.0] — 2026-08-14
 
 <details markdown="1">
-<summary>YAML Schema Language</summary>
+<summary>YAML Schema 言語と差替可能な解決 · 引用符スカラー · 空コレクション</summary>
 
 #### 追加
 
@@ -737,7 +893,7 @@ status: new
 ### [v0.13.0] — 2026-08-10
 
 <details markdown="1">
-<summary>Rust MSRV を 1.96 に引き上げ、edition を 2024 に変更</summary>
+<summary>MSRV 1.96 と edition 2024 · 直接ライタと読込高速化 · granit 移行</summary>
 
 #### 変更
 
@@ -803,7 +959,7 @@ status: new
 ### [v0.12.1] — 2026-08-06
 
 <details markdown="1">
-<summary>`set(create_missing=True)`</summary>
+<summary>`set(create_missing)` · `walk`/`scalars` · monorepo · 解析ホットパス</summary>
 
 #### 追加
 
@@ -852,7 +1008,7 @@ status: new
 ### [0.11.7] — 2026-08-04
 
 <details markdown="1">
-<summary>stub-build-check から release-guard に置換</summary>
+<summary>常に失敗していた検査を release-guard の静的断言へ · numpy 追跡</summary>
 
 #### 変更
 
@@ -874,7 +1030,7 @@ status: new
 ### [0.11.6] — 2026-08-04
 
 <details markdown="1">
-<summary>Free-threaded（cp314t）wheel が numpy なしに</summary>
+<summary>cp314t wheel から numpy を除去 · free-threaded CI · インストール文書</summary>
 
 #### 変更
 
@@ -895,7 +1051,7 @@ status: new
 ### [0.11.5] — 2026-08-04
 
 <details markdown="1">
-<summary>パーサー堅牢性項目 3/4/5 がフェーズ 0 厳格監査でクローズ</summary>
+<summary>パーサ堅牢性 3/4/5：監査結果ゼロでクローズ</summary>
 
 #### 変更
 
@@ -917,6 +1073,9 @@ status: new
 
 ### [0.11.4] — 2026-08-04
 
+<details markdown="1">
+<summary>空キー重複を許容（2JQS）· 正しい拒否も計上 · tab 復号</summary>
+
 #### 修正
 
 - 重複する null/空マッピングキーがエラーを発生させなくなりました（`: a\n: b`、`~: a\n~: b`）—
@@ -933,7 +1092,12 @@ status: new
 - 既知の逸脱を文書化：`ZYU8`（`%YAML 1.1 1.2`）は設計上拒否されます
   （YAML 1.2 文法に違反、PyYAML/libyaml に一致）
 
+</details>
+
 ### [0.11.3] — 2026-08-03
+
+<details markdown="1">
+<summary>ストリーム書き出し · 行オフセットキャッシュ · publish 事前検証 · 適合報告</summary>
 
 #### 追加
 
@@ -958,10 +1122,12 @@ status: new
 - パブリッシュ stub 事前検証：CI がリリース前に v0.10.0 クラスの
   `--generate-stubs` コンテナ失敗を再現
 
+</details>
+
 ### [0.11.2] — 2026-08-03
 
 <details markdown="1">
-<summary>パースはスプライス資格を計算しない</summary>
+<summary>解析は splice 適格計算を省略 · 線形カーソルレイアウト検査</summary>
 
 #### 追加
 
@@ -987,7 +1153,7 @@ status: new
 ### [0.11.0] — 2026-08-02
 
 <details markdown="1">
-<summary>外科的シリアライズ</summary>
+<summary>メスを入れる逐次化：編集反映で文書全体を組み替えない</summary>
 
 #### 追加
 
@@ -1009,7 +1175,7 @@ status: new
 ### [0.10.0] — 2026-08-01
 
 <details markdown="1">
-<summary>インプレース編集</summary>
+<summary>インプレース編集 API と編集ベンチマーク</summary>
 
 #### 追加
 
@@ -1041,7 +1207,7 @@ status: new
 ### [0.9.0] — 2026-08-01
 
 <details markdown="1">
-<summary>Python 3.13、3.14、3.15 サポート</summary>
+<summary>CPython 3.13/3.14/3.15 と no-GIL · タグハンドラ · pydantic · `.pyi`</summary>
 
 #### 追加
 
@@ -1118,7 +1284,7 @@ status: new
 ### [0.8.0] — 2026-07-30
 
 <details markdown="1">
-<summary>`YAML()` インスタンス API</summary>
+<summary>`YAML()` インスタンス API · Python Node API · `MergedView` · ライフサイクル警告</summary>
 
 #### 追加
 
@@ -1146,7 +1312,7 @@ status: new
 ### [0.7.1] — 2026-07-30
 
 <details markdown="1">
-<summary>ryaml ベンチマーク比較</summary>
+<summary>ryaml とのベンチ比較 · 適合基準の引き上げ · Divan 移行</summary>
 
 #### 追加
 
@@ -1174,7 +1340,7 @@ status: new
 ### [0.7.0] — 2026-07-29
 
 <details markdown="1">
-<summary>シリアライザ `max_depth` ガード</summary>
+<summary>シリアライザの `max_depth` 防御 · ホットパス最適化 · pytest-benchmark</summary>
 
 #### 追加
 
@@ -1208,7 +1374,7 @@ status: new
 ### [0.6.0] — 2026-07-27
 
 <details markdown="1">
-<summary>非同期シリアライズ</summary>
+<summary>非同期逐次化 · JSON Schema 検証 · `to_json()` · 増分再解析</summary>
 
 #### 追加
 
@@ -1246,7 +1412,7 @@ status: new
 ### [0.5.0] — 2026-07-27
 
 <details markdown="1">
-<summary>`Serializer::write_node`</summary>
+<summary>`Serializer::write_node` 修正 · `YAML_SCHEMA` 定数 · 開発文書</summary>
 
 #### 修正
 
@@ -1263,7 +1429,7 @@ status: new
 ### [0.4.0] — 2026-07-27
 
 <details markdown="1">
-<summary>132 個の新規ギャップフィルテスト</summary>
+<summary>132 件の補完テスト：i18n・複数ドキュメント・バイト入力・套件逐例</summary>
 
 #### 追加
 
@@ -1313,7 +1479,7 @@ status: new
 ### [0.3.0] — 2026-07-27
 
 <details markdown="1">
-<summary>NumPy ndarray シリアライズ</summary>
+<summary>NumPy ndarray 逐次化（N-D）· 引用符スカラーの型 · 負数の往復</summary>
 
 #### 追加
 
@@ -1380,6 +1546,9 @@ status: new
 
 ### [0.1.0] — 2026-07-25
 
+<details markdown="1">
+<summary>初回リリース：YAML 1.2 のフルメタデータ AST · 往復保持 · PyYAML 互換 API</summary>
+
 #### 追加
 
 - saphyr-parser による YAML 1.2 準拠の初期リリース
@@ -1394,3 +1563,5 @@ status: new
 - YAML 1.2 型解決（null、bool、int、float、無限大、NaN）
 - マージキー解決（`<<: *alias`）
 - 複合キー（シーケンス/マッピングをキーとして）
+
+</details>

@@ -19,65 +19,202 @@ status: new
 
 #### 新增
 
-- **YAML 注释、锚点与标签可跨往返存活，并由全部种子语料与常驻门禁背书。** — (details: quality-ledger
-  — Note survival, (w), (ac))
-- **嵌套与经别名引用的合并键不再被丢弃，模板链可正常展开。** — (details: quality-ledger (ae), (af),
-  (ag), (o), (q), (s))
-- **CI 指令数门禁覆盖全部格式桥的双向路径，并带实测余量。** — (details: quality-ledger (am), (ap),
-  (aq), (as), (ax))
-- **质量防线自我度量：覆盖缺口以发现项浮出，不再靠自觉。** — (details: quality-ledger (ah), (ai),
-  (aj), (ak), (an), (ao))
-- **改动产品的变更集必须同步 release note，且须放在读者可见处。** — (details: quality-ledger (al),
-  (ar))
-- **进程内计时门禁改为配对相邻采样，失败消息列出全部样本。** — (details: quality-ledger (aw), (ay))
-- **文档正文限 100 显示列，并被切断成标题的句子。** — (details: quality-ledger (au), (av))
-- **每个引擎都有 fuzz 目标，每周跑且 PR 档阻塞。** — (details: quality-ledger (aj))
-- **四个基础 crate 支持 `no_std`，由裸机构建检查守护。** — (details: boundaries — Known Engine
-  Boundaries)
-- **`pyq` 随每次发布提供预编译二进制。** — (details: perf — Leaderboard & Performance Status)
-- **已提交的类型桩会与真实构建的扩展比对，杜绝漂移。** — (details: quality-ledger (ap))
+- **YAML 注释、锚点与标签可完成往返，并以每个种子作门禁。** —
+  `crates/pyrs-yaml-core/tests/note_survival.rs` 在每次 `cargo nextest run` 重放已提交的种子语料，
+  要求读取器记录的每条注释都出现在输出文本里。往返层的判据是文本幂等，任何「稳定但少一条注释」
+  的文档都能通过 —— 五处静默注释丢失正是这样一路绿过来的。
+  — (details: quality-ledger — Note survival, (w), (ac))
+
+- **嵌套与被别名引用的合并键会被应用，而不再被丢弃。** — `<<: {<<: {x: 1}}` 原先把两层 `<<` 都当数据
+  保留（`{'<<': {'<<': {'x': 1}}}`），而 PyYAML 与 ruamel 读出 `{'x': 1}`；
+  `<<: {<<: {x: 1, y: 1}, y: 2}` 直接丢掉 `x`，块式 `- <<:` 嵌在 `<<:` 下同样丢失。收集器不再用整节
+  点相等来判断目标「已拥有」某个源键。— (details: quality-ledger (ae), (af), (ag), (o), (q), (s))
+
+- **指令数门禁覆盖每条跨格式桥，双向都数。** — `from_jsonc`、`from_json5`、`to_jsonc_text`、
+  `to_json5_text`、`to_python_small/medium/anchors` 以及 JSON/TOML 读取路径都有了
+  `.ci/ir-baseline.json` 基线。同一棵 hub AST 上三个写手实测 21,232,786 / 22,176,851 / 22,974,851
+  条指令：带注释多花 4.4%，JSON5 拼写多花 8.2%。 — (details: quality-ledger (am), (ap), (aq), (as),
+  (ax))
+
+- **质量防线度量自身，缺口以 findings 呈现。** — `scripts/quality_matrix.py` 从声明这套防线的文件
+  （`.github/workflows/*.yml`、`prek.toml`、`fuzz/Cargo.toml`、`scripts/check_*.py`、Ir 基准、
+  `.ci/ir-baseline.json`）重新推导 `QUALITY_MATRIX.md`，而不是抄写它；每个洞都登记在
+  `.ci/quality-holes.json`，两个方向都写明出口，并有注入树来触发。 — (details: quality-ledger (ah),
+  (ai), (aj), (ak), (an), (ao))
+
+- **改动产品的变更集必须同时改动发布说明。** — `scripts/check_changelog_mirrors.py` 之外的
+  `scripts/check_changelog_coupling.py` 按 PR 文件清单执行两条规则：触及 `crates/`、
+  `python/pyrs_yaml/`、`fuzz/`、`scripts/`、`tests/` 或随包清单的 diff 必须改动某个 changelog；改动
+  五镜像之一就必须改全五个。这条规则是在某个特性发布时任何地方都没有发布说明之后补上的。
+  — (details: quality-ledger (al), (ar))
+
+- **计时地板线相邻采样两个阶段，并打印证据。** — `tests/timing.py` 成为唯一采样器：候选与参照在
+  同一块内相邻测量，判据取块最小值并要求至少赢下两对，失败消息打印每一对，于是一次红色会说明是哪
+  一侧移动。`macos-latest` 上报 `139.4us vs 359.6us (2.58x)` 而五块中有三块逼近自身地板线 3 倍，就是
+  这种情况；跨库地板线保留 5 倍与前三阈值（实测相对 PyYAML 38x-280x，相对 ruamel 71x-77x）。
+  — (details: quality-ledger (aw), (ay))
+
+- **文档正文限制在 100 显示列；被格式化器切断的标题会被拒绝。** — `ROADMAP.md` 曾有一行 21,850 字
+  符，`docs/ja/changelog.md` 有一行 884 字符。`scripts/check_doc_wrapping.py` 按显示列计量（全角字符
+  算两列）并带 `--fix`；`check_doc_headings.py` 拒绝续行以 issue 引用开头时被格式化器升格成的标题。—
+  (details: quality-ledger (au), (av))
+
+- **每个引擎都有 fuzz 目标，每周定时运行，PR 层级阻塞。** — 四个 libFuzzer 目标：`parse_yaml`
+  （单文档与流）、`yaml_roundtrip`（解析→序列化→再解析→序列化幂等）、`parse_json`（三种方言 × 三种
+  写手，每个输出再解析）、`parse_toml`（1.0/1.1 加写手再解析），种子来自 `fuzz/seeds/`。仓库只跟踪
+  目标与种子，机器语料永不入库。 — (details: quality-ledger (aj))
+
+- **`pyrs-ast`、`pyrs-schema`、`pyrs-json`、`pyrs-toml` 具备 `no_std` 能力。** — 四个 crate 只依赖
+  `alloc` 即可构建：`indexmap` 与 `thiserror` 关掉默认 `std` feature，新增可选 `std` feature 重新启
+  用 `std::error::Error` 实现与 `RandomState` hasher。默认仍开 `std`，现有使用者的节点映射类型不变。
+  — (details: boundaries — Known Engine Boundaries)
+
+- **`pyq` 随每次发布提供预编译二进制。** — `publish.yml` 新增 `pyq` 作业，为六个平台构建原生 CLI 并
+  把压缩包附到 GitHub Release，独立二进制不再需要用户自备 Rust 工具链。Linux 侧在 manylinux2014 容器
+  内经 `cross` 原生编译，钉住 glibc 2.17 下限。— (details: perf — Leaderboard & Performance Status)
+
+- **已提交类型存根会对照构建出的扩展检查。** — `scripts/check_stub_drift.py` 沿声明过的路由重新生成
+  `python/pyrs_yaml/pyrs_yaml.pyi`，有任何差异即失败；该作业跑在 `windows-latest`，因为 maturin 的自
+  省路由无法在 Linux 容器里加载扩展。此前 CI 只断言文件存在且被跟踪，于是一处绑定签名变化可以让公开
+  类型契约悄悄落后。— (details: quality-ledger (ap))
 
 #### 变更
 
-- **`pyq validate` 接受 `--input` 并按真实格式校验。**
-- **PR 档 fuzz 改为阻塞，崩溃无法被合并过去。** — (details: quality-ledger (aa))
-- **文档工具链升到最新，桩文件生成器有意保持不变。** — (details: quality-ledger (ba))
+- **`pyq validate` 接受 `--input`，并按真正读到的格式处理。** — 它原先硬编码 YAML 解析器，指向
+  `pyproject.toml`、`package.json` 这类配置时一律拒绝。现在接受
+  `--input auto|yaml|json|jsonc|json5|toml`，并走共享加载器。
+
+- **PR 层 fuzzing 改为阻塞，崩溃无法被合并过去。** — 步骤级的 `continue-on-error` 只是暂时棘轮：
+  `main` 上还留着这一层正确标记出的漂移。针对当前树重新验证：四个目标干净重放已提交种子语料
+  （5/59/6/5 个种子，nightly-2026-08-15，cargo-fuzz 0.13.2）。 — (details: quality-ledger (aa))
+
+- **文档工具链升到当前稳定版，存根生成器刻意按住不动。** — `zensical` 0.0.56 → 0.0.69、
+  `mkdocstrings-python` 1.11.1 → 2.0.9（连带 `mkdocstrings` 1.0.6、`griffelib` 2.2.0，两者都要求
+  Python 3.11），而 `maturin` 保持 1.14.1 —— 已提交的 `.pyi` 与漂移检查的调和规则描述的就是它的输
+  出。配置里的 14 个 handler 选项逐个对照已安装的 `PythonOptions` 校验过；未被识别的选项构建时静默忽
+  略，所以只能由测试检出。— (details: quality-ledger (ba))
 
 #### 修复
 
-- **映射键与同样的文本作为取值时同义，两条读路一致。** — (details: quality-ledger (as), (at))
-- **锚点名语法与读取器对齐，收掉一族漂移缺陷。** — (details: boundaries — Fuzz findings, (x), (y),
-  (z))
-- **标记行、标签与容器上的注释都留在原位。** — (details: quality-ledger (h), (i), (m), (n), (p),
-  (t), (u), (v), (ad))
-- **合并识别与深度修正，自引用不再撑爆原生栈。** — (details: quality-ledger (o), (q), (r), (s), (y))
-- **块标量一次发射即稳定，缩进与 chomping 指示符检测正确。** — (details: quality-ledger (aa), (ab),
-  (r))
-- **Unicode 空白、BOM 与标签后缀不再破坏文档。** — (details: boundaries — Fuzz findings, Blank set)
-- **JSON 与 JSONC 注释扫描器不再在字符中间 panic。** — (details: boundaries — Fuzz findings)
-- **重复键按取值拒绝，映射只折叠自己的 null 键。** — (details: quality-ledger (ae))
-- **空容器内联发射，不再多 dump 一轮。** — (details: quality-ledger (ab))
-- **`pyrs-toml` 恢复裸机构建，行内表注释留在原位。** — (details: boundaries — Known Engine
-  Boundaries)
-- **Linux 自由线程 wheel 进入 Release，`pyq` 产物真正构建。** — (details: quality-ledger (aq))
-- **门禁仪器自身的六处缺陷修复，含 Python 下界未测。** — (details: quality-ledger (ah), (an), (ao),
-  (ap), (aq), (ar))
-- **条目不能再放进没人看的位置（前言之上、front matter 之内）。** — (details: quality-ledger (ar))
-- **站点更新日志页恢复自身描述，折叠的历史版本也能正常渲染。** — (details: quality-ledger (az))
-- **随 wheel 发布的类型存根不再是非法 Python，类型检查器能读到真实契约。** — (details:
-  quality-ledger (bb))
-- **纯文档的 PR 现在能合了，而且合并前会先构建站点。** — (details: quality-ledger (bd))
+- **映射键终于与同样的文本作值时同义。** — `1: a` 读作 `{"1": "a"}` 而 `a: 1` 读作 `{"a": 1}`，
+  `~: 1` 读作 `{"~": 1}` 而 `a: ~` 给 `{"a": None}`：同一份文档因标量位于 `:` 的哪一侧而有两种含义，
+  以整数、布尔或 null 作键的配置根本无法被查到位。现在键走与值相同的 schema 路径，与 PyYAML、ruamel
+  一致；`load_toml` 会把任一 YAML schema 会重新定性的键加引号。— (details: quality-ledger (as),
+  (at))
+
+- **锚点名文法与读取器对齐，收掉一整族漂移。** — 写手可能发出读取器拒绝再摄入的锚点名
+  （`found unknown anchor`），破坏「绝不发出不可解析输出」的契约：以 `:` 结尾的名字每轮掉一个字符，
+  带引号的名字吞掉换行，裸扫描器还会从注释文本与重叠的 `&` 里凭空造出锚点。现在按 granit 的方式读，
+  即锚点字符的一个极大连续串。 — (details: boundaries — Fuzz findings, (x), (y), (z))
+
+- **注释在标记、标签与容器之间守得住自己的归属。** — 一族「首次发出与再读之间注释换主人或消失」的位
+  置：只渲染出标签的值（`k: !`）把紧随其后的注释行据为己有；容器自己的行内注释落在无法承载它的行上；
+  引号标量里的 `#` 因为裸字节扫描而挤掉注释；紧凑的 `- key:` 分支只复制文本不复制注释槽位；而前导注
+  释的单个 *槽位* 只保留一叠注释的最后一条 —— `# alpha` + `# beta` + `key: 1` 回来时只剩 `# beta`。
+  前导注释现在是列表，所有写手都尊重它。— (details: quality-ledger (h), (i), (m), (n), (p), (t),
+  (u), (v), (ad))
+
+- **合并的身份与深度问题修复，不再爆原生栈。** — `<<: &b` 是字面的 null 值合并键，却与下方真正的
+  `<<:` 折叠在一起，折叠时搬走了被丢弃条目的注释却没搬它携带的锚点；带注释的非标签 `y` 与合并来的
+  `y` 是两个不同的 `IndexMap` 键，于是 `to_yaml` 在同一层打出两次 `y:`；嵌套或自引用的合并链在环守卫
+  已弹出之后喂给解析器的尾递归，深度无上界地爆栈（58 字节的 libFuzzer 发现）；而带注释的 `<<` 键节点
+  对该遍完全隐形。— (details: quality-ledger (o), (q), (r), (s), (y))
+
+- **块标量一次发出即收敛，指示符也被正确识别。** — `>+8\r\r#` 读作值为一个换行、`Keep` 且显式缩进 8
+  的折叠标量；写手保留指示符发出 `>+8\n\n`，它再读变成 `Clip` 且无指示符，于是*第二轮*发出 `>\n\n`，
+  其值是 `""` —— Clip 会剥掉尾部换行，值就此衰减为空，而每一轮看起来都很「稳定」。折叠换行串、
+  `4RWC` 式显式缩进与首行为空的字面块由同一批工作在再解析下闭合。 — (details: quality-ledger (aa),
+  (ab), (r))
+
+- **Unicode 空白、BOM 与标签后缀不再损坏文档。** — 方言 fuzzing 触及的空白集、BOM 位置与标签后缀边界
+  改按读取器自身的文法处理，每一处都由已提交种子与确定性 Rust 回归测试钉住。
+  — (details: boundaries — Fuzz findings, Blank set)
+
+- **JSON 与 JSONC 注释扫描器不再在字符中间 panic。** — 行注释与未闭合块注释扫描把 `pos` 每次只推进一
+  个 *字节*，于是一个尾随的多字节字符（U+FEFF，约 25 秒 fuzzing 就命中）会让 `pos` 停在它内部，下一
+  次 `&text[pos..]` 切片以「not a char boundary」崩溃。注释现在按完整码位推进，畸形输入干净报错。—
+  (details: boundaries — Fuzz findings)
+
+- **重复按键的值判定拒绝，且只有 null 键折叠。** — 比较按值进行，所以 `{a: 1, a: 2}` 仍抛
+  `YamlDuplicateKeyError`，而空键与 null 键（`: a` + `: b`、`~: a` + `~: b`）按 yaml-test-suite
+  `2JQS` 的要求折叠。带注释的键也不再无法寻址：`CustomNode::hash` 折叠了归一化后的注释视图，而 `eq`
+  比较原始槽位，于是 `doc["key"]`、`in` 与合并展开都会对文档明明持有的键回答「无此键」。— (details:
+  quality-ledger (ae))
+
+- **空容器内联发出，不再需要第二轮。** — `safe_dump({"a": {}})` 产生 `"a:\n  {}\n"`，而 AST 写手产生
+  `"a: {}\n"`；序列项下的 `- \n  {}` 再读为 flow 节点，还要再移动一次。两种文本都读回相同数据，这就
+  是往返测试看不见它的原因：fuzz 层断言的不变量是*文本*本身为不动点。— (details: quality-ledger
+  (ab))
+
+- **`pyrs-toml` 重新能为裸机构建；内联表注释留在原位。** — 叠注工作把 `std::mem::take` 放进了
+  `#![no_std]` crate，任何宿主构建都放过它、而 `no-std-check` 不会；六处改用 `core::mem::take`。另一
+  处是多行内联表非末位成员上的注释被发在分隔逗号之后 —— TOML 无法在注释里保留逗号 —— 于是读取器把它
+  改归下一个键的前导注释，文本永远不收敛。— (details: boundaries — Known Engine Boundaries)
+
+- **Linux 自由线程 wheel 出货，`pyq` 也产出其构建物。** — wheel 矩阵只为 Windows 与 macOS 构建
+  free-threaded 产物，用无 GIL 解释器的 Linux 用户无从安装：开 GIL 的 `cp38-abi3` wheel 与
+  `Py_GIL_DISABLED` 构建 ABI 不兼容，而 `abi3t` 从 3.15 才开始。跨架构的 `pyq` 步骤还会注册 qemu
+  binfmt 并在 manylinux 镜像内自校验 —— 宿主机只有翻译器、没有外来 loader，直接执行 aarch64/armv7 二
+  进制会在 `main` 之前死掉。— (details: quality-ledger (aq))
+
+- **门禁仪器自身的六处缺陷修复，含 MSRV 那条腿。** — 三个检查器无法在 Python 3.8 导入（导入期求值的
+  注解、`str.removeprefix`）；场景探针只点名一个 harness 文件，于是第二条通道无从把门；Ir harness 的
+  crate 集合停在 `[dependencies]`，描述了它只读了一半的图；一次基线刷新用 rustc 1.99.0 去对照 1.97.1
+  的记录，把 `serialize_medium` 移动了 +6.7%；汇聚检查只等 11 个作业中的 3 个；而属性层跑的是
+  proptest 默认的 256 个用例，因为没有任何 workflow 设置 `PROPTEST_CASES`。— (details:
+  quality-ledger (ah), (an), (ao), (ap), (aq), (ar))
+
+- **条目再也不能被放进没人看的位置。** — 某次提交给五镜像都加了发布说明，却把它放在 `CHANGELOG.md`
+  前言之上、en 与 zh 的 `tags:` 列表之内、ja 与 ko 的 front matter 与首个标题之间 —— 在每个文件里都
+  位于更新日志正文之外，而镜像检查器仍然绿，因为「版本表头集合相同」完全不说明读者会去哪里看。
+  `placement_errors()` 现在管位置。 — (details: quality-ledger (ar))
+
+- **站点更新日志页恢复自身描述，折叠的历史版本也能正常渲染。** — 宽度修复器只跳过了页面 YAML front
+  matter 的起始 `---`，于是四个语言页的 `title:`、`description:`、`tags:` 被重排到一行；已部署的生成
+  器照样发布，只是把页面描述换成站点描述，而更新版本直接让构建失败。折叠版本还以裸 `<details>` 开
+  头， Python-Markdown 对其内容不解析 —— 在部署版本上实测：11 个标题、3 处字面 `####` 泄漏，对比带属
+  性时的 69 个标题、0 泄漏。`scripts/check_doc_metadata.py` 同时把住这两关。— (details:
+  quality-ledger (az))
+
+- **随 wheel 发布的类型存根不再是非法 Python。** — maturin 1.14.1 把运行时的 `__doc__` 原样写进三引
+  号，而本项目有两处 Rust 文档注释含反斜杠，于是 `python/pyrs_yaml/pyrs_yaml.pyi` 以截断的 unicode
+  转义通不过 `ast.parse`。这个文件配着 `py.typed` 就是用户的 mypy 与 pyright 所读的类型契约，任何文
+  档生成器也无法经它到达 API。漂移路由现在会转义 docstring 内的反斜杠（站点数作 tripwire），并要求派
+  生文本可解析。— (details: quality-ledger (bb))
+
+- **发布说明开始描述整个版本，而不只是它的第一行。** — 折叠历史里每个 `<summary>` 都是该版本的第一
+  条，于是读者在决定要不要展开时看到的是九十三分之一（v0.16.0：64 条 Added、14 条 Fixed、8 条
+  Performance）。现在每条都概括整个版本；`0.11.4`、`0.11.3`、`0.1.0` 这三个当初没被折叠的也一并折
+  上，五镜像同步。— (details: quality-ledger (bc))
+
+- **纯文档的 PR 此前合不进去，也从来没有 PR 构建过站点。** — 分支保护只要求一个检查
+  `Test matrix (all legs)`，而产出它的 workflow 恰恰把 `*.md` 与 `docs/**` 从触发条件里排除了。
+  PR #319 所有能产出的检查看着都绿，合并仍被 `Required status check … is expected` 拒绝；管理员强制
+  开启，连 `--admin` 也走不通。现在 `ci.yml` 对每个 PR 都触发，`changes` 作业给变更集分类、重活按该
+  结论跳过，而 `docs-gates` 每次都跑文档门禁并对四个语言站点做 `--strict` 构建 —— 登记过的渲染盲区
+  正是这样关闭的。 — (details: quality-ledger (bd))
 
 #### 性能
 
-- **标签发射改为表驱动，转义不再分配内存。** — (details: perf — Leaderboard & Performance Status)
-- **含大量 null 键的文档以线性时间解析。** — (details: quality-ledger (ae))
-- **10% 以内的性能问题改由已提交的指令数基线裁决。** — (details: quality-ledger (am), (as))
+- **标签发出改为表驱动，转义不再分配内存。** — 把标签编码挪到读取器自己的字符类上，就让逐字节的归属
+  判定进了序列化热路径，于是它变成一张 128 项的编译期表（字母数字判定折进同一次查表），而 `%XX` 转义
+  从十六进制字符表写出，不再用 `format!` —— 后者每个被转义字符都要新建一个 `String`。
+  — (details: perf — Leaderboard & Performance Status)
+
+- **大量 null 键的文档解析时间降为线性。** — null 键折叠原先每见一个 null 键就重扫整个映射：在全
+  null 文档上看不见（折叠项就在 0 号槽），在真正要紧的形状上是二次的 —— 2k 个不同键后接 2k 个 null
+  键，输入放大 4 倍耗时增长 12.4 倍（8k + 8k 时 99 ms）。映射现在记住 null 键的槽位，扫描只作为正确
+  性兜底。 — (details: quality-ledger (ae))
+
+- **10% 以下的问题由已提交的指令基线来裁定。** — 两个 runner 作业测出的 `serialize_block_scalars` 相
+  差 1.44%，而同一二进制自身重复在 ±0.0005% 内 —— 低于 runner 噪声的墙钟时间说明不了任何事。基线现在
+  记录产生它的环境，`scripts/ir_gate.py` 在来源不同时报注一句。— (details: quality-ledger (am),
+  (as))
 
 ### [v0.17.0] — 2026-10-01
 
 <details markdown="1">
-<summary>pyq CLI 对齐参数</summary>
+<summary>pyq 对齐参数 · JSONC/JSON5 输入 · diff/merge · Release 自动化</summary>
 
 #### 新增
 
@@ -116,7 +253,7 @@ status: new
 ### [v0.16.0] — 2026-10-01
 
 <details markdown="1">
-<summary>JSONC 块注释热点基准</summary>
+<summary>跨库 parity · `load_json` · TOML 1.1 与 toml-test · JSON5/JSONC · pyq · 性能</summary>
 
 #### 新增
 
@@ -545,7 +682,7 @@ status: new
 ### [v0.15.0] — 2026-08-19
 
 <details markdown="1">
-<summary>Node 元数据 setter/getter</summary>
+<summary>Node 元数据/样式 API · Schema 文件 IO · 深编辑 · cp314t 重开 numpy</summary>
 
 #### 新增
 
@@ -594,7 +731,7 @@ status: new
 ### [v0.14.1] — 2026-08-15
 
 <details markdown="1">
-<summary>含反斜杠+控制字符/非字符的单引号标量</summary>
+<summary>引号与转义边界：单引号反斜杠、BOM、非字符、多字节换行</summary>
 
 #### 修复
 
@@ -618,7 +755,7 @@ status: new
 ### [v0.14.0] — 2026-08-14
 
 <details markdown="1">
-<summary>YAML Schema Language</summary>
+<summary>YAML Schema 语言与可插拔解析 · 引号标量 · 空集合输出</summary>
 
 #### Added
 
@@ -654,7 +791,7 @@ status: new
 ### [v0.13.0] — 2026-08-10
 
 <details markdown="1">
-<summary>Rust MSRV 提升至 1.96，edition 升级为 2024</summary>
+<summary>MSRV 1.96 与 edition 2024 · 直接写入器与加载快路径 · granit 迁移</summary>
 
 #### 变更
 
@@ -753,7 +890,7 @@ status: new
 ### [v0.12.1] — 2026-08-06
 
 <details markdown="1">
-<summary>`set(create_missing=True)`</summary>
+<summary>`set(create_missing)` · `walk`/`scalars` · monorepo · 解析热路径</summary>
 
 #### Added
 
@@ -796,7 +933,7 @@ status: new
 ### [0.11.7] - 2026-08-04
 
 <details markdown="1">
-<summary>stub-build-check 替换为 release-guard</summary>
+<summary>release-guard 静态断言取代常红的 stub-build-check · numpy 追踪</summary>
 
 #### Changed
 
@@ -815,7 +952,7 @@ status: new
 ### [0.11.6] - 2026-08-04
 
 <details markdown="1">
-<summary>Free-threaded（cp314t）wheel 不再包含 numpy</summary>
+<summary>cp314t wheel 去 numpy · free-threaded CI 校验 · 安装文档</summary>
 
 #### Changed
 
@@ -835,7 +972,7 @@ status: new
 ### [0.11.5] - 2026-08-04
 
 <details markdown="1">
-<summary>解析器健壮性项目 3/4/5 通过 Phase 0 严格性审计关闭</summary>
+<summary>解析健壮性 3/4/5：审计结论为空，关闭并钉住回归语料</summary>
 
 #### Changed
 
@@ -853,6 +990,9 @@ status: new
 
 ### [0.11.4] - 2026-08-04
 
+<details markdown="1">
+<summary>重复空键不再报错（2JQS）· 合规统计计入正确拒绝 · tab 解码</summary>
+
 #### Fixed
 
 - 重复的空/空映射键不再报错（`: a\n: b`、`~: a\n~: b`）— 与
@@ -869,7 +1009,12 @@ status: new
 - 记录已知偏差：`ZYU8`（`%YAML 1.1 1.2`）按设计拒绝（YAML 1.2
   语法无效，与 PyYAML/libyaml 一致）
 
+</details>
+
 ### [0.11.3] - 2026-08-03
+
+<details markdown="1">
+<summary>流式写入 · 行偏移缓存 · publish 预校验 · 合规报告</summary>
 
 #### Added
 
@@ -890,10 +1035,12 @@ status: new
 - 发布存根预验证：CI 在 Release 前复现 v0.10.0 类 `--generate-stubs`
   容器失败
 
+</details>
+
 ### [0.11.2] - 2026-08-03
 
 <details markdown="1">
-<summary>解析不再计算拼接资格</summary>
+<summary>解析不再预计算拼接资格 · 线性游标布局检查</summary>
 
 #### Added
 
@@ -918,7 +1065,7 @@ status: new
 ### [0.11.0] - 2026-08-02
 
 <details markdown="1">
-<summary>精准序列化</summary>
+<summary>外科手术式序列化：编辑写回不重排整篇文档</summary>
 
 #### Added
 
@@ -939,7 +1086,7 @@ status: new
 ### [0.10.0] - 2026-08-01
 
 <details markdown="1">
-<summary>就地编辑</summary>
+<summary>就地编辑 API 与编辑基准</summary>
 
 #### Added
 
@@ -972,7 +1119,7 @@ status: new
 ### [0.9.0] - 2026-08-01
 
 <details markdown="1">
-<summary>Python 3.13、3.14 和 3.15 支持</summary>
+<summary>CPython 3.13/3.14/3.15 与 no-GIL · 标签处理器注册表 · pydantic · `.pyi`</summary>
 
 #### Added
 
@@ -1041,7 +1188,7 @@ status: new
 ### [0.8.0] - 2026-07-30
 
 <details markdown="1">
-<summary>`YAML()` 实例 API</summary>
+<summary>`YAML()` 实例 API · Python `Node` API · `MergedView` · 生命周期告警</summary>
 
 #### Added
 
@@ -1069,7 +1216,7 @@ status: new
 ### [0.7.1] - 2026-07-30
 
 <details markdown="1">
-<summary>ryaml 基准对比</summary>
+<summary>ryaml 基准对比 · 合规阈值上调 · Divan 迁移</summary>
 
 #### Added
 
@@ -1097,7 +1244,7 @@ status: new
 ### [0.7.0] - 2026-07-29
 
 <details markdown="1">
-<summary>序列化器 `max_depth` 守卫</summary>
+<summary>序列化器 `max_depth` 防护 · 热路径优化 · pytest-benchmark 迁移</summary>
 
 #### Added
 
@@ -1130,7 +1277,7 @@ status: new
 ### [0.6.0] - 2026-07-27
 
 <details markdown="1">
-<summary>异步序列化</summary>
+<summary>异步序列化 · JSON Schema 校验 · `to_json()` · 增量重解析</summary>
 
 #### Added
 
@@ -1167,7 +1314,7 @@ status: new
 ### [0.5.0] - 2026-07-27
 
 <details markdown="1">
-<summary>`Serializer::write_node`</summary>
+<summary>`Serializer::write_node` 修复 · `YAML_SCHEMA` 常量 · 开发文档</summary>
 
 #### Fixed
 
@@ -1183,7 +1330,7 @@ status: new
 ### [0.4.0] - 2026-07-27
 
 <details markdown="1">
-<summary>132 个新功能填补测试</summary>
+<summary>132 个补漏测试：i18n、多文档、字节输入、逐例套件、保真</summary>
 
 #### Added
 
@@ -1227,7 +1374,7 @@ status: new
 ### [0.3.0] - 2026-07-27
 
 <details markdown="1">
-<summary>NumPy ndarray 序列化</summary>
+<summary>NumPy ndarray 序列化（N-D）· 引号标量类型 · 负数往返</summary>
 
 #### Added
 
@@ -1265,6 +1412,9 @@ status: new
 
 ### [0.1.0] - 2026-07-25
 
+<details markdown="1">
+<summary>首个版本：YAML 1.2 全元数据 AST、往返保真、PyYAML 兼容 API</summary>
+
 #### Added
 
 - 初始发布，通过 saphyr-parser 实现 YAML 1.2 合规
@@ -1278,3 +1428,5 @@ status: new
 - YAML 1.2 类型解析（null、bool、int、float、infinity、NaN）
 - 合并键解析（`<<: *alias`）
 - 复杂键（序列/映射作为键）
+
+</details>

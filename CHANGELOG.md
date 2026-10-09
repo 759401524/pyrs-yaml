@@ -9,81 +9,247 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **YAML comments, anchors and tags survive a round trip, gated on every seed.** — (details:
-  quality-ledger — Note survival, (w), (ac))
-- **Nested and aliased merge keys are applied instead of dropped.** — (details: quality-ledger (ae),
-  (af), (ag), (o), (q), (s))
-- **Instruction-count gate in CI covers every format bridge, both directions.** — (details:
-  quality-ledger (am), (ap), (aq), (as), (ax))
-- **The quality defence measures itself; gaps surface as findings, not oversights.** — (details:
+- **YAML comments, anchors and tags survive a round trip, gated on every seed.** —
+  `crates/pyrs-yaml-core/tests/note_survival.rs` replays the committed seed corpus on every
+  `cargo nextest run` and requires every note the reader recorded to appear in the emitted text. The
+  round-trip tier's oracle is text idempotence, which any stable-but-short-a-note document passes:
+  five silent note losses stayed green behind it. — (details: quality-ledger — Note survival, (w),
+  (ac))
+
+- **Nested and aliased merge keys are applied instead of dropped.** — `<<: {<<: {x: 1}}` kept both
+  `<<` levels as data (`{'<<': {'<<': {'x': 1}}}`) where PyYAML and ruamel read `{'x': 1}`, and
+  `<<: {<<: {x: 1, y: 1}, y: 2}` lost `x` outright, as did the block form `- <<:` under `<<:`. The
+  collector no longer skips a source key the target "already owns" by comparing whole nodes.
+  — (details: quality-ledger (ae), (af), (ag), (o), (q), (s))
+
+- **The instruction-count gate covers every format bridge, in both directions.** — `from_jsonc`,
+  `from_json5`, `to_jsonc_text`, `to_json5_text`, `to_python_small/medium/anchors` and the JSON/TOML
+  readers now have baselines in `.ci/ir-baseline.json`. On one hub AST the three writers measure
+  21,232,786 / 22,176,851 / 22,974,851 instructions: emitting comments costs 4.4% and the JSON5
+  spelling 8.2% over strict JSON. — (details: quality-ledger (am), (ap), (aq), (as), (ax))
+
+- **The quality defence measures itself, and gaps surface as findings.** —
+  `scripts/quality_matrix.py` re-derives `QUALITY_MATRIX.md` from the files that declare the defence
+  (`.github/workflows/*.yml`, `prek.toml`, `fuzz/Cargo.toml`, `scripts/check_*.py`, the Ir bench,
+  `.ci/ir-baseline.json`) instead of transcribing it, and every hole it reports is registered with
+  its exit named in both directions and a test that fires it on an injected tree. — (details:
   quality-ledger (ah), (ai), (aj), (ak), (an), (ao))
-- **A changeset that moves the product must move the release notes.** — (details: quality-ledger
-  (al), (ar))
-- **Timing floors sample their phases adjacently and print the evidence.** — (details:
-  quality-ledger (aw), (ay))
-- **Docs prose fits 100 display columns; formatter-split headings rejected.** — (details:
-  quality-ledger (au), (av))
-- **Each engine has a fuzz target, with a weekly run and a blocking PR tier.** — (details:
-  quality-ledger (aj))
-- **`pyrs-ast`, `pyrs-schema`, `pyrs-json` and `pyrs-toml` are `no_std`-capable.** — (details:
-  boundaries — Known Engine Boundaries)
-- **`pyq` ships as a prebuilt binary with every release.** — (details: perf — Leaderboard &
-  Performance Status)
-- **Committed type stubs are checked against the built extension.** — (details: quality-ledger (ap))
+
+- **A changeset that moves the product must move the release notes.** —
+  `scripts/check_changelog_coupling.py` applies two rules to the pull request's file list: a diff
+  touching `crates/`, `python/pyrs_yaml/`, `fuzz/`, `scripts/`, `tests/` or a shipped manifest must
+  touch a changelog, and touching one of the five mirrors means touching all five. Added after a
+  feature shipped with no release note anywhere. — (details: quality-ledger (al), (ar))
+
+- **Timing floors sample their phases adjacently and print the evidence.** — `tests/timing.py` is
+  the single sampler: candidate and reference are measured inside each block, the verdict is the
+  block minima with a floor of two pair wins, and the failure message quotes every pair so a red
+  says which side moved. A `macos-latest` run reporting `139.4us vs 359.6us (2.58x)` while three of
+  five blocks sat near 3x their own floor is the case this settles; the cross-library floors keep 5x
+  and top-3 (measured 38x-280x against PyYAML, 71x-77x against ruamel). — (details: quality-ledger
+  (aw), (ay))
+
+- **Docs prose fits 100 display columns; formatter-split headings are rejected.** — `ROADMAP.md` had
+  a 21,850-character line and `docs/ja/changelog.md` one of 884. `scripts/check_doc_wrapping.py`
+  measures display columns (a fullwidth glyph counts as two) and carries `--fix`;
+  `check_doc_headings.py` rejects the heading a formatter invents when a wrapped continuation line
+  begins with an issue reference. — (details: quality-ledger (au), (av))
+
+- **Each engine has a fuzz target, with a weekly run and a blocking PR tier.** — four libFuzzer
+  targets: `parse_yaml` (single and stream), `yaml_roundtrip` (parse, serialize, re-parse,
+  serialize-idempotence), `parse_json` (three dialects crossed with three writers, each output
+  re-parsed) and `parse_toml` (1.0/1.1 plus writer re-parse), seeded from `fuzz/seeds/`. Only
+  targets and seeds are tracked; corpora never enter the repository. — (details: quality-ledger
+  (aj))
+
+- **`pyrs-ast`, `pyrs-schema`, `pyrs-json` and `pyrs-toml` are `no_std`-capable.** — the four crates
+  build against `alloc` alone: `indexmap` and `thiserror` lose their default `std` features, and a
+  new opt-in `std` feature re-enables `std::error::Error` impls and the `RandomState` hasher. `std`
+  stays on by default, so every existing consumer keeps the same node-map type.
+  — (details: boundaries — Known Engine Boundaries)
+
+- **`pyq` ships as a prebuilt binary with every release.** — a `pyq` job in `publish.yml` builds the
+  native CLI for six platforms and attaches the archives to the GitHub Release, so a standalone
+  binary no longer needs a Rust toolchain. The Linux legs compile inside manylinux2014 containers
+  via `cross`, pinning a glibc 2.17 floor. — (details: perf — Leaderboard & Performance Status)
+
+- **The committed type stub is checked against the built extension.** —
+  `scripts/check_stub_drift.py` regenerates `python/pyrs_yaml/pyrs_yaml.pyi` through the declared
+  route and fails on any difference; the job runs on `windows-latest` because maturin's
+  introspection route cannot load the extension in the Linux containers. Before it, CI only asserted
+  the file exists and is tracked, so a binding signature change could leave the public typing
+  contract behind. — (details: quality-ledger (ap))
 
 ### Changed
 
-- **`pyq validate` accepts `--input` and honours the format actually read.**
-- **PR-tier fuzzing is blocking, so a crash cannot be merged past.** — (details: quality-ledger
-  (aa))
-- **Docs toolchain at latest, with the stub generator deliberately held back.** — (details:
-  quality-ledger (ba))
+- **`pyq validate` accepts `--input` and honours the format actually read.** — it hardcoded the YAML
+  parser, so every non-YAML config it was pointed at (`pyproject.toml`, `package.json`) was rejected
+  outright. It now takes `--input auto|yaml|json|jsonc|json5|toml` and routes through the shared
+  loader.
+
+- **PR-tier fuzzing is blocking, so a crash cannot be merged past.** — the step-level
+  `continue-on-error` was a ratchet kept only while `main` carried drift this tier correctly
+  flagged. Re-checked against this tree: all four targets replay the committed seed corpus clean
+  (5/59/6/5 seeds, nightly-2026-08-15, cargo-fuzz 0.13.2). — (details: quality-ledger (aa))
+
+- **The docs toolchain is at the current stable releases, and the stub generator is deliberately
+  held back.** — `zensical` 0.0.56 to 0.0.69 and `mkdocstrings-python` 1.11.1 to 2.0.9
+  (`mkdocstrings` 1.0.6, `griffelib` 2.2.0), both requiring Python 3.11, while `maturin` stays at
+  1.14.1 because the committed `.pyi` and the drift checker's rules describe that generator's
+  output. All fourteen configured handler options were checked against the installed
+  `PythonOptions`, and an unrecognised one is now caught by a test because the build ignores it in
+  silence. — (details: quality-ledger (ba))
 
 ### Fixed
 
-- **A mapping key now means what the same text means as a value.** — (details: quality-ledger (as),
-  (at))
-- **Anchor-name grammar matches the reader, closing a drift family.** — (details: boundaries — Fuzz
-  findings, (x), (y), (z))
-- **Notes keep their owner across markers, tags and containers.** — (details: quality-ledger (h),
-  (i), (m), (n), (p), (t), (u), (v), (ad))
-- **Merge identity and depth fixed; no more native-stack overflow.** — (details: quality-ledger (o),
-  (q), (r), (s), (y))
-- **Block scalars settle in one emission; indicators detected correctly.** — (details:
-  quality-ledger (aa), (ab), (r))
-- **Unicode blanks, BOMs and tag suffixes no longer corrupt a document.** — (details: boundaries —
-  Fuzz findings, Blank set)
-- **JSON and JSONC comment scanners no longer panic mid-character.** — (details: boundaries — Fuzz
-  findings)
-- **Duplicate keys are rejected by value, and only null keys fold.** — (details: quality-ledger
-  (ae))
-- **Empty containers serialise inline without a second pass.** — (details: quality-ledger (ab))
-- **`pyrs-toml` builds for bare metal; inline-table notes stay in place.** — (details: boundaries —
-  Known Engine Boundaries)
-- **Linux free-threaded wheels ship, and `pyq` builds its artifacts.** — (details: quality-ledger
-  (aq))
-- **Six defects in the gate instrument itself fixed, incl. the MSRV leg.** — (details:
-  quality-ledger (ah), (an), (ao), (ap), (aq), (ar))
-- **An entry can no longer be filed where no reader looks.** — (details: quality-ledger (ar))
-- **Published changelog pages carry their own description, and a folded release renders.** —
-  (details: quality-ledger (az))
-- **The type stub shipped in every wheel parses, so type checkers read the contract.** — (details:
-  quality-ledger (bb))
-- **A prose-only pull request can merge, and the site is built before it does.** — (details:
-  quality-ledger (bd))
+- **A mapping key now means what the same text means as a value.** — `1: a` loaded as `{"1": "a"}`
+  while `a: 1` loaded as `{"a": 1}`, and `~: 1` as `{"~": 1}` while `a: ~` gave `{"a": None}`: one
+  document meant two things depending on which side of the `:` a scalar sat, so a config keyed by an
+  integer, bool or null could not be reached by lookup. Keys now resolve through the same schema
+  path as values, agreeing with PyYAML and ruamel; `load_toml` quotes any key either schema would
+  re-type. — (details: quality-ledger (as), (at))
+
+- **The anchor-name grammar matches the reader, closing a drift family.** — the writer could emit an
+  anchor name the reader refused to re-ingest (`found unknown anchor`), which broke the engine's "we
+  never emit unparseable output" contract: names ending in `:` lost a character each round, quoted
+  names swallowed a line break, and the raw scanner invented anchors out of comment text and
+  overlapping `&`. It now reads a name the way granit does, as one maximal run of anchor characters.
+  — (details: boundaries — Fuzz findings, (x), (y), (z))
+
+- **Notes keep their owner across markers, tags and containers.** — a family of positions where a
+  note changed owner or vanished between the first emission and its re-read: a tag-only value
+  (`k: !`) adopting the note line after it, a container's inline note landing on a line that cannot
+  hold one, a `#` inside a quoted scalar evicting a note by a raw-byte scan, a compact `- key:` line
+  copying text but not note slots, and a leading-comment *slot* that kept only the last of a stack -
+  `# alpha` + `# beta` + `key: 1` came back as `# beta`. Leading notes are a list now and every
+  writer respects it. — (details: quality-ledger (h), (i), (m), (n), (p), (t), (u), (v), (ad))
+
+- **Merge identity and depth fixed; no more native-stack overflow.** — `<<: &b` is a literal,
+  null-valued merge key and folded against the real `<<:` below it, re-homing the dropped entry's
+  notes but not the anchor it carried; an untagged `y` with a note and a merged `y` were two
+  `IndexMap` keys, so `to_yaml` printed `y:` twice; a nested or self-referential merge chain fed the
+  resolver's tail recursion with the cycle guard already popped and overflowed the native stack (a
+  58-byte libFuzzer find); and a `<<` whose key node carried a comment was invisible to the pass.
+  — (details: quality-ledger (o), (q), (r), (s), (y))
+
+- **Block scalars settle in one emission, and their indicators are detected correctly.** —
+  `>+8\r\r#` reads as a folded scalar of one line break, `Keep`, explicit indent 8; the writer kept
+  the indicator and emitted `>+8\n\n`, which re-reads as `Clip` with no indicator, and the *second*
+  round wrote `>\n\n` whose value is `""` because Clip strips trailing breaks - the value decayed to
+  empty while every round looked stable. Folded newline runs, `4RWC`-style explicit indents and
+  blank-first-line literals are closed under re-parse by the same work. — (details: quality-ledger
+  (aa), (ab), (r))
+
+- **Unicode blanks, BOMs and tag suffixes no longer corrupt a document.** — the blank set, BOM
+  placement and tag-suffix boundaries reached by the dialect fuzzers are fixed against the reader's
+  own grammar, each pinned by a committed seed and a deterministic Rust regression test.
+  — (details: boundaries — Fuzz findings, Blank set)
+
+- **The JSON and JSONC comment scanners no longer panic mid-character.** — the line-comment and
+  unterminated-block-comment scans stepped `pos` one *byte* at a time, so a trailing multi-byte
+  character (U+FEFF, reached in ~25 seconds of fuzzing) left `pos` inside it and the next
+  `&text[pos..]` slice panicked with "not a char boundary". Comments now advance a full code point
+  and malformed input rejects cleanly. — (details: boundaries — Fuzz findings)
+
+- **Duplicate keys are rejected by value, and only null keys fold.** — comparison is by value, so
+  `{a: 1, a: 2}` still raises `YamlDuplicateKeyError`, while empty and null keys (`: a` + `: b`,
+  `~: a` + `~: b`) fold as yaml-test-suite `2JQS` requires. A key whose node carried a comment also
+  stopped being unreachable: `CustomNode::hash` folded the normalised comment view while `eq`
+  compared the raw slot, so `doc["key"]`, `in` and merge expansion answered "no such key" for a key
+  the document plainly holds. — (details: quality-ledger (ae))
+
+- **Empty containers serialise inline, without a second pass.** — `safe_dump({"a": {}})` produced
+  `"a:\n  {}\n"` while the AST writer produced `"a: {}\n"`, and under a sequence item
+  `- \n  {}` re-read as a flow node and moved again. Both texts re-read to the same data, which is
+  why no round-trip test saw it: the invariant the fuzz tier asserts is that the *text* is a fixed
+  point. — (details: quality-ledger (ab))
+
+- **`pyrs-toml` builds for bare metal again, and inline-table notes stay in place.** — the
+  stacked-note work had put `std::mem::take` into a `#![no_std]` crate, which every host build
+  forgave and `no-std-check` would not; six sites use `core::mem::take` now. Separately, a note on a
+  non-last member of a multi-line inline table was emitted after the separator comma - and TOML
+  cannot keep a comma inside a comment - so the reader re-homed it as the following key's leading
+  note and the text never settled. — (details: boundaries — Known Engine Boundaries)
+
+- **Linux free-threaded wheels ship, and `pyq` builds its artifacts.** — the wheel matrix only built
+  free-threaded artifacts for Windows and macOS, so Linux users on the GIL-less interpreter had
+  nothing to install: the GIL-enabled `cp38-abi3` wheels are ABI-incompatible with `Py_GIL_DISABLED`
+  and `abi3t` starts at 3.15. The cross-architecture `pyq` legs also register qemu binfmt handlers
+  and self-verify inside the manylinux image, because the host has the translator but no foreign
+  loader. — (details: quality-ledger (aq))
+
+- **Six defects in the gate instrument itself are fixed, including the MSRV leg.** — three checkers
+  could not be imported on Python 3.8 (annotations evaluated at import, `str.removeprefix`); the
+  scenario probe named one harness file, so a second channel was ungateable; the Ir-harness crate
+  set stopped at `[dependencies]` and described a graph it had only half read; a baseline refresh
+  ran on rustc 1.99.0 against a 1.97.1 record and moved `serialize_medium` +6.7%; the fan-in check
+  waited on three of eleven jobs; and the property tier ran proptest's default 256 cases because no
+  workflow set `PROPTEST_CASES`. — (details: quality-ledger (ah), (an), (ao), (ap), (aq), (ar))
+
+- **An entry can no longer be filed where no reader looks.** — one commit added a release note to
+  all five mirrors and placed it above the preamble in `CHANGELOG.md`, inside the `tags:` list in en
+  and zh, and between the front matter and the first heading in ja and ko - outside the changelog
+  body in every file, and green under the checker, because "the same version headers exist" says
+  nothing about where a reader looks. `placement_errors()` polices position. — (details:
+  quality-ledger (ar))
+
+- **Published changelog pages carry their own description, and a folded release renders.** — the
+  width fixer skipped only the opening `---` of a page's YAML front matter, so `title:`,
+  `description:` and `tags:` were re-flowed onto one line in four locale pages; the deployed
+  generator published them anyway with the site's description, and the newer one fails the build
+  outright. Folded releases also opened with a bare `<details>`, which Python-Markdown treats as
+  opaque - measured on the deployed version, 11 headings and 3 literal `####` leaks against 69
+  headings and 0 with the attribute. `scripts/check_doc_metadata.py` gates both. — (details:
+  quality-ledger (az))
+
+- **The type stub shipped in every wheel parses, so type checkers read the contract.** — maturin
+  1.14.1 copies each runtime `__doc__` into a triple-quoted string verbatim, and two Rust doc
+  comments contain a backslash, so `python/pyrs_yaml/pyrs_yaml.pyi` failed `ast.parse` with a
+  truncated unicode escape. With `py.typed` set, that file is the typing contract users' mypy and
+  pyright read, and no documentation generator could reach the API through it. The drift route now
+  escapes docstring backslashes under a counted tripwire and requires the derived text to parse.
+  — (details: quality-ledger (bb))
+
+- **Release notes describe their release, not only its first line.** — every `<summary>` in the
+  folded history was the version's first entry, so a reader deciding whether to expand saw one
+  bullet out of ninety-three (v0.16.0: 64 Added, 14 Fixed, 8 Performance). Each now states the
+  release as a whole, and `0.11.4`, `0.11.3` and `0.1.0` - the three that never got a fold - are
+  folded with the rest, in all five mirrors. — (details: quality-ledger (bc))
+
+- **A prose-only pull request could not be merged, and no pull request ever built the site.** —
+  Branch protection requires exactly one check, `Test matrix (all legs)`, and the workflow that
+  produces it excluded `*.md` and `docs/**` from its triggers. PR #319 arrived with every check it
+  produced passing and the merge refused with
+  `Required status check "Test matrix (all legs)" is expected`; `--admin` was refused too, because
+  admin enforcement is on. `ci.yml` now triggers on every pull request, a `changes` job classifies
+  the changeset and the heavy legs are conditioned on that answer, while `docs-gates` always runs
+  the documentation gates and `scripts/build-docs.py` for four locales under `--strict` - the way
+  the registered rendering blind spot closed. — (details: quality-ledger (bd))
 
 ### Performance
 
-- **Tag emission is table-driven and escaping no longer allocates.** — (details: perf — Leaderboard
-  & Performance Status)
-- **A document with many null keys parses in linear time.** — (details: quality-ledger (ae))
-- **Sub-10% questions are settled on the committed instruction baseline.** — (details:
+- **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the
+  reader's own character classes made the per-byte membership test part of the serialize hot path,
+  so it became a 128-entry compile-time table (the alphanumeric test folds into the same lookup) and
+  the `%XX` escape writes from a hex-digit table instead of `format!`, which allocated a fresh
+  `String` per escaped character. — (details: perf — Leaderboard & Performance Status)
+
+- **A document with many null keys parses in linear time.** — the null-key fold first rescanned the
+  mapping for every null key: invisible on an all-null document, whose folded entry sits at slot 0,
+  and quadratic on the shape that matters, where 2k distinct keys followed by 2k null keys grew
+  12.4x for a 4x input (99 ms at 8k + 8k). The mapping remembers its null key's slot and keeps the
+  scan only as a correctness fallback. — (details: quality-ledger (ae))
+
+- **Sub-10% questions are settled on the committed instruction baseline.** — two runner jobs measure
+  `serialize_block_scalars` 1.44% apart while the same binary repeats within +/-0.0005%, so a wall
+  clock below a runner's noise decides nothing: the baseline now records the environment that
+  produced it and `scripts/ir_gate.py` says when a run comes from a different one. — (details:
   quality-ledger (am), (as))
 
 ## [v0.17.0] — 2026-10-01
 
 <details markdown="1">
-<summary>pyq CLI parity flags</summary>
+<summary>pyq parity flags · JSONC/JSON5 input · pyq diff/merge · automated GitHub Release</summary>
 
 ### Added
 
@@ -128,7 +294,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [v0.16.0] — 2026-10-01
 
 <details markdown="1">
-<summary>JSONC block-comment hot-sample bench</summary>
+<summary>cross-library parity suites · load_json · TOML 1.1 + toml-test · JSON5/JSONC · pyq ·
+perf</summary>
 
 ### Added
 
@@ -820,7 +987,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [v0.15.0] — 2026-08-19
 
 <details markdown="1">
-<summary>Node metadata setters/getters</summary>
+<summary>Node metadata and style API · schema file IO · deep editing · numpy back on
+cp314t</summary>
 
 ### Added
 
@@ -881,7 +1049,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [v0.14.1] — 2026-08-15
 
 <details markdown="1">
-<summary>Single-quoted scalars with backslash + control/noncharacter</summary>
+<summary>quoting and escape edges: single-quote backslash, BOM, noncharacters, multibyte
+wrap</summary>
 
 ### Fixed
 
@@ -917,7 +1086,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [v0.14.0] — 2026-08-14
 
 <details markdown="1">
-<summary>YAML Schema Language</summary>
+<summary>YAML Schema language and pluggable resolution · quoted scalars · empty
+collections</summary>
 
 ### Added
 
@@ -960,7 +1130,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [v0.13.0] — 2026-08-10
 
 <details markdown="1">
-<summary>Rust MSRV raised to 1.96 and edition bumped to 2024</summary>
+<summary>MSRV 1.96 and edition 2024 · direct writer and load fast paths · granit migration</summary>
 
 ### Changed
 
@@ -1021,7 +1191,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [v0.12.1] — 2026-08-06
 
 <details markdown="1">
-<summary>`set(create_missing=True)`</summary>
+<summary>set(create_missing) · walk/scalars · monorepo workspace · parse hot paths,
+Arc<str></summary>
 
 ### Added
 
@@ -1065,7 +1236,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.11.7] - 2026-08-04
 
 <details markdown="1">
-<summary>stub-build-check replaced with release-guard</summary>
+<summary>release-guard static assertions replace the always-red stub check · numpy
+tracking</summary>
 
 ### Changed
 
@@ -1086,7 +1258,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.11.6] - 2026-08-04
 
 <details markdown="1">
-<summary>Free-threaded (cp314t) wheels are now numpy-free</summary>
+<summary>cp314t wheels drop numpy · free-threaded CI validation · install docs</summary>
 
 ### Changed
 
@@ -1107,7 +1279,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.11.5] - 2026-08-04
 
 <details markdown="1">
-<summary>Parser robustness items 3/4/5 closed via Phase 0 strictness audit</summary>
+<summary>parser robustness items closed by an audit that found no fixable case</summary>
 
 ### Changed
 
@@ -1128,6 +1300,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.11.4] - 2026-08-04
 
+<details markdown="1">
+<summary>duplicate empty keys accepted (2JQS) · compliance counts correct rejections · tab
+decoding</summary>
+
 ### Fixed
 
 - Duplicate null/empty mapping keys no longer error (`: a\n: b`, `~: a\n~: b`) — matches
@@ -1143,7 +1319,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Known deviation documented: `ZYU8` (`%YAML 1.1 1.2`) is rejected by design (invalid per YAML 1.2
   grammar, matches PyYAML/libyaml)
 
+</details>
+
 ## [0.11.3] - 2026-08-03
+
+<details markdown="1">
+<summary>streaming write · line-offset cache · publish pre-validation · compliance report</summary>
 
 ### Added
 
@@ -1164,10 +1345,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Publish stub pre-validation: CI reproduces v0.10.0-class `--generate-stubs` container failures
   before Release
 
+</details>
+
 ## [0.11.2] - 2026-08-03
 
 <details markdown="1">
-<summary>Parse no longer computes splice eligibility</summary>
+<summary>parse skips splice eligibility · linear-cursor layout check (v0.11.0 regression)</summary>
 
 ### Added
 
@@ -1192,7 +1375,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.11.0] - 2026-08-02
 
 <details markdown="1">
-<summary>Surgical Serialization</summary>
+<summary>surgical serialization: an edit writes back without re-laying-out the document</summary>
 
 ### Added
 
@@ -1214,7 +1397,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.10.0] - 2026-08-01
 
 <details markdown="1">
-<summary>In-place editing</summary>
+<summary>in-place editing API, with edit benchmarks</summary>
 
 ### Added
 
@@ -1246,7 +1429,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.9.0] - 2026-08-01
 
 <details markdown="1">
-<summary>Python 3.13, 3.14 and 3.15 support</summary>
+<summary>CPython 3.13/3.14/3.15 and no-GIL · tag handler registry · pydantic · .pyi stubs</summary>
 
 ### Added
 
@@ -1320,7 +1503,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.8.0] - 2026-07-30
 
 <details markdown="1">
-<summary>`YAML()` instance API</summary>
+<summary>YAML() instance API · Python Node API · doc.version · MergedView · lifecycle
+warnings</summary>
 
 ### Added
 
@@ -1347,7 +1531,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.7.1] - 2026-07-30
 
 <details markdown="1">
-<summary>ryaml benchmark comparison</summary>
+<summary>ryaml benchmark comparison · compliance threshold raised · Divan benchmark
+migration</summary>
 
 ### Added
 
@@ -1376,7 +1561,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.7.0] - 2026-07-29
 
 <details markdown="1">
-<summary>Serializer `max_depth` guard</summary>
+<summary>serializer max_depth guard · hot-path optimization · pytest-benchmark migration</summary>
 
 ### Added
 
@@ -1409,7 +1594,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.6.0] - 2026-07-27
 
 <details markdown="1">
-<summary>Async serialization</summary>
+<summary>async serialization · JSON Schema validation · to_json() · incremental re-parse</summary>
 
 ### Added
 
@@ -1443,7 +1628,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.5.0] - 2026-07-27
 
 <details markdown="1">
-<summary>`Serializer::write_node`</summary>
+<summary>Serializer::write_node fix · YAML_SCHEMA constant · development documentation</summary>
 
 ### Fixed
 
@@ -1460,7 +1645,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.4.0] - 2026-07-27
 
 <details markdown="1">
-<summary>132 new gap-filling tests</summary>
+<summary>132 gap-filling tests: i18n, multi-document, bytes input, suite cases, fidelity</summary>
 
 ### Added
 
@@ -1504,7 +1689,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.3.0] - 2026-07-27
 
 <details markdown="1">
-<summary>NumPy ndarray serialization</summary>
+<summary>NumPy ndarray serialization (N-D) · quoted-scalar typing · negative round-trip</summary>
 
 ### Added
 
@@ -1568,6 +1753,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.0] - 2026-07-25
 
+<details markdown="1">
+<summary>initial release: YAML 1.2 AST with full metadata, round-trip, PyYAML-compatible
+API</summary>
+
 ### Added
 
 - Initial release with YAML 1.2 compliance via saphyr-parser
@@ -1581,3 +1770,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - YAML 1.2 type resolution (null, bool, int, float, infinity, NaN)
 - Merge key resolution (`<<: *alias`)
 - Complex keys (sequence/mapping as key)
+
+</details>
