@@ -36,6 +36,9 @@ STUB = REPO_ROOT / "python" / "pyrs_yaml" / "pyrs_yaml.pyi"
 # Generator output with both shapes present: a docstring that carries a backslash, a docstring that does
 # not, and a backslash in code (an annotation) that must be left exactly alone.
 GENERATED = '''
+class Node: ...
+
+
 class Document:
     """Round-trip document."""
 
@@ -178,6 +181,7 @@ def test_the_count_is_a_tripwire_not_a_preference(checker, monkeypatch):
     a synthetic snippet carrying two iterator signatures would otherwise report a problem for the wrong rule.
     """
     monkeypatch.setattr(checker, "FIDELITY_FIXES", ())
+    monkeypatch.setattr(checker, "EXPECTED_RUST_TYPE_SITES", 0)
     _, problems = checker.derived_text(GENERATED)
     assert not problems, problems
     three_sites = (
@@ -194,6 +198,59 @@ def test_an_unparseable_stub_is_named_by_line(checker):
     assert "is not valid Python" in problem
     assert "declare it in" in problem, problem
     assert checker.verify_parses(checker.escape_docstring_backslashes(GENERATED)[0], "the derived stub") is None
+
+
+def test_rust_type_spellings_are_rewritten_and_counted(checker):
+    """`u32` and `Py<PyAny>` are Rust names in a Python file, and a type checker says so.
+
+    The count is the point as much as the rewrite: a fifth site means a new Rust type reached the public
+    contract, and that is a decision to make rather than a substitution to absorb.
+    """
+    generated = (
+        'def register_tag(name: "str", handler: "Py<PyAny>", priority: "u32" = 0) -> None: ...\n'
+        'def other(x: "Py<PyAny>") -> "Py<PyAny>": ...\n'
+    )
+    text, sites = checker.rewrite_rust_spellings(generated)
+    assert sites == 4, sites
+    assert "u32" not in text and "Py<PyAny>" not in text, text
+    assert 'priority: "int" = 0' in text and 'handler: "Any"' in text, text
+
+
+def test_annotations_missing_a_typing_import_get_it_merged(checker):
+    """The generator writes an annotation referencing `typing.Callable` and imports neither.
+
+    The scan is annotation-only on purpose: an earlier version of this looked at every quoted string in the
+    file and reported words from docstrings - `AST`, `Accepts`, `Community` - as undefined names. A rule that
+    flags prose is a rule people will silence.
+    """
+    generated = (
+        'from typing import Any, final\n\n\ndef go(cb: "Callable[[int], bool] | None") -> "Any":\n'
+        '    """Accepts any AST node."""\n    ...\n'
+    )
+    assert checker.missing_annotation_imports(generated) == ["Callable"]
+    text, added, unfixed = checker.add_typing_imports(generated)
+    assert added == ["Callable"] and not unfixed, (added, unfixed)
+    assert "from typing import Any, Callable, final" in text, text
+
+
+def test_a_name_no_import_can_fix_is_a_problem(checker):
+    """A Rust type that maps to nothing in `typing` must stop the run, not gain a wrong import."""
+    generated = 'from typing import Any\n\n\ndef go(x: "Py<PyAny>") -> None: ...\n'
+    _, added, unfixed = checker.add_typing_imports(
+        checker.rewrite_rust_spellings(generated)[0] + '\nx: "NotAThing" = 0\n'
+    )
+    assert not added, added
+    assert "NotAThing" in unfixed, unfixed
+
+
+def test_derived_text_reports_the_spelling_count_and_refuses_unfixable_names(checker, monkeypatch):
+    """Both new transforms are wired into the route, with their counts enforced."""
+    monkeypatch.setattr(checker, "FIDELITY_FIXES", ())
+    monkeypatch.setattr(checker, "exception_block", lambda text: (text, checker.EXPECTED_EXCEPTION_CLASSES))
+    monkeypatch.setattr(checker, "EXPECTED_DOCSTRING_ESCAPES", 0)
+    monkeypatch.setattr(checker, "EXPECTED_RUST_TYPE_SITES", 9)
+    _, problems = checker.derived_text('def f(x: "u32") -> None: ...\n')
+    assert any("expected 9" in problem for problem in problems), problems
 
 
 def test_the_committed_stub_is_valid_python():

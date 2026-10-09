@@ -15,7 +15,7 @@ Related documents: [engine boundaries](boundaries.md), [performance status](perf
 ## Contents
 
 - The placement family - (h) through (v)
-- The quality defence, entry by entry - (w) through (bf)
+- The quality defence, entry by entry - (w) through (bg)
 - Note survival: the leading slot became a list
 - Shipped milestone scoping - the v0.11.3 to v0.12.0 tables after they shipped
 
@@ -2387,6 +2387,107 @@ refused, which the design intentionally accepts. One called `main([...])` on a s
 `sys.argv`. And the regression lock for the artifact - every exported error name must appear as a
 `class` in the shipped stub - reads the package by syntax tree, not by import, so it holds on a
 machine where the extension is not built; on a tree that still had the gap, it fails.
+
+### (bg) The stub parsed and type checked nothing alike, so a checker joined the gate (2026-10-10)
+
+(bb) made the shipped stub parseable, (bf) made it declare its exception types, and after both a
+type checker still reported **five errors inside our file**: `Name "Callable" is not defined`,
+`Name "u32" is not defined`, and three `Invalid type comment or annotation` for `Py<PyAny>`. Every
+gate in the tree was green, including the `ast.parse` check added at (bb) - which is the point.
+`ast.parse` proves the file is Python; a `.pyi` is not Python, it is typing, and the only question a
+user's editor asks is the second one. Those five diagnostics are attributed to this library in the
+file `py.typed` advertises.
+
+The cause is the same generator, a different symptom: maturin 1.14.1 copies Rust-side spellings into
+annotations, and writes a `typing.Callable` reference without importing `Callable`. Fixed in the
+route, in the shape the other two fixes already had: `rewrite_rust_spellings` maps `Py<PyAny>` to
+`Any` and `u32` to `int` inside quoted annotations, counted against `EXPECTED_RUST_TYPE_SITES = 4`,
+and `add_typing_imports` merges whatever an annotation references and the file never defines into
+its `typing` import. A name that maps to nothing in `typing` is a failure rather than a guess,
+because emitting `from typing import Whatever` trades an undefined name for an import error.
+
+That check has its own lesson. The first version scanned *every* quoted string in the file for
+names, and reported `AST`, `Accepts`, `Community` - words from docstrings - as undefined types.
+`ast` distinguishes an annotation from a sentence, so the scan walks annotations and parses the
+quoted ones; the earlier version would have had to be loosened until it stopped meaning anything,
+which is how rules die.
+
+`scripts/check_stub_types.py` is the gate. It builds the scratch package a user's tooling sees -
+`py.typed`, the committed stub, a module importing the library - because pointing mypy at a bare
+`.pyi` is a different question and crashes outright on this file. It parses output rather than
+trusting exit codes, distinguishes "our file has findings" (1) from "the check could not run" (2),
+and treats a run that examined no files as a failure. Both checkers run in the stub-drift job,
+pinned in the invocation (`uv run --with 'mypy==2.4.0'`, `--with 'ty==0.0.85'`) rather than added as
+project dependencies, the way `hygiene.yml` pins `prek`.
+
+**Should `ty` replace `mypy`? Measured, no - and it joins as a second opinion.** Pointed at the
+known-broken artifact, `ty` catches all five defects under its own rule names
+(`unresolved-reference`, `invalid-syntax-in-forward-annotation`). But three things keep it from
+being the sole authority, each measured rather than assumed:
+
+- `ty check <directory>` - the invocation anyone would write - answers `All checks passed!` with
+  `WARN No python files found` for a package whose only content is a `.pyi`, and exits 0. A gate
+  that passes by examining nothing is the exact failure this file documents over and over, so the
+  script names the file.
+- Its exit code is not usable as-is: with the correctness rules selected and zero findings for our
+  file, it still returns 1, because it also counted rules the gate deliberately does not enforce.
+- Unscoped, it reports **32 further findings** on the repaired stub: 29 `missing-type-argument`
+  (bare `dict`, `list`) and 3 `missing-override-decorator`. Those are accurate observations about
+  generator output, not noise, and they are recorded here rather than silenced or turned into a red
+  nobody clears. mypy is also the closer match to what users run, and the contract's audience is
+  users.
+
+`ty` paid for itself immediately, though: `missing-type-argument` fired on `def __next__(self, /) ->
+dict
+|None`, and that spelling is not the generator's - it is text *this* repository's fidelity fix writes. The
+bare `dict` is now `dict[Any, Any]`, which is what the binding returns and what ty was asking for. A
+tool found an imprecision in the tool that fixes tools.
+
+Two workflow facts, because they cost time and would cost the next person the same:
+
+- An edit to `check_stub_drift.py` (547 lines, five transforms) silently restored the file from a
+  stale buffer, dropping ~250 lines while reporting a two-line change. `target/probe/funcprobe.py` -
+  which lists the route's expected functions and constants - exists now and is run after every edit
+  to that file.
+- A file created inside a `jj` change that is later rewritten with `jj restore`/`jj new` disappears:
+  `check_stub_types.py` was written, then gone, and had to be recreated. Untracked-in-a-change is
+  not the same as safe.
+
+Two things went wrong while writing this entry, and both are the record's, not the author's.
+
+The width fixer was run over a hand-typed file list that included `AGENTS.md` - a file the hook does
+not govern and whose 170-line re-flow buried the one line that had changed - thirty lines of ledger
+after (be) wrote the sentence "a list typed next to a command is a copy of that rule, and copies
+fall behind". Restoring the file fixed the diff, not the lesson: the guard is
+`prek run doc-line-width --all-files`, which `docs-gates` already runs, and naming files for that
+script is now known to be wrong even in the session that wrote the warning.
+
+A created file also vanished once: `check_stub_types.py` was written into a change, the change was
+rewritten during the (bf) sequencing, and the file was gone without a trace. `jj` snapshots the
+working copy, so "added but not yet in a commit you keep" is not a state to rely on mid-rebase.
+
+The gate then went red on CI while staying green at the desk, for a reason this ledger has now
+written down three times in different clothes: `subprocess.run(["ty", "--version"])` on a machine
+without `ty` does not return a non-zero code, it raises `FileNotFoundError`. Neither checker is a
+project dependency, so every `ci.yml` leg that runs pytest met the raise, and the author's machine -
+where `ty.exe` happens to sit in `~/.local/bin` - met nothing. Absence has to be an answer rather
+than an exception: the gate reports 2 ("could not check"), the tests skip, and
+`test_an_absent_binary_is_answered_not_raised` asks for a binary that is really missing, so the
+catch cannot quietly narrow back to `returncode`. Proved by subtracting the tool's own directory
+from `PATH`: before the change 2 failed with `FileNotFoundError`, after it 11 passed / 4 skipped /
+rc 0.
+
+A sweep for the same class across `scripts/`, `tests/` and `python/` found exactly one bare-tool
+site - the guarded one. `git` and `cargo` are deliberately not in that category: they are
+preconditions of the workflows that invoke them, and a leg without them fails loudly elsewhere.
+
+Verified: `uv run --with mypy==2.4.0 python scripts/check_stub_types.py` and the same with ty both
+report the committed stub clean; against `origin/main`'s stub both report 5 findings and exit 1 -
+the negative control is a test (`tests/test_stub_types_gate.py`), not a manual step, and it refuses
+to pass when neither checker is installed. With `ty` removed from `PATH` the same file skips (11
+passed / 4 skipped) and the gate exits 2, so "green on the machine that authored it" is no longer
+the state being shipped. Route re-derives with no drift; `pytest tests/ -q` 2334 passed / 10
+skipped; changelog counts identical across five mirrors.
 
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 

@@ -253,6 +253,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   missing them. `exceptions.md` is generated in all four locales as a result. — (details:
   quality-ledger (bf))
 
+- **The shipped stub parsed and still did not type check.** — mypy reported five errors *inside*
+  `python/pyrs_yaml/pyrs_yaml.pyi`: `Name "u32" is not defined`, `Name "Callable" is not defined`,
+  and three `Invalid type comment or annotation` for `Py<PyAny>` - all attributed to this library in
+  the user's editor, while every AST-level gate stayed green. maturin 1.14.1 copies Rust spellings
+  into annotations and never imports `Callable`, so the route now rewrites the spellings (counted, 4
+  sites), merges annotation-referenced names into the `typing` import, and
+  `scripts/check_stub_types.py` runs mypy and `ty` against the artifact in CI. `ty` also flagged
+  `-> dict` from our own fidelity template, now `dict[Any, Any]`; its 32 remaining strictness
+  findings are recorded, not enforced. The gate then went red on every CI test leg for want of the
+  tool it calls: a binary that is not installed raises instead of returning a code, so
+  unavailability now answers exit 2 and a skipped test, never a pass. — (details: quality-ledger
+  (bg))
+
 #### Performance
 
 - **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the

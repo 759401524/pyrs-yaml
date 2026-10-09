@@ -5,7 +5,7 @@ pyrs-yaml: high-performance YAML parsing with perfect round-trip support.
 """
 
 from _typeshed import Incomplete
-from typing import Any, final
+from typing import Any, Callable, final
 
 @final
 class StreamIterator:
@@ -16,7 +16,7 @@ class StreamIterator:
         """
         Return self (iterator protocol).
         """
-    def __next__(self, /) -> dict |None:
+    def __next__(self, /) -> dict[Any, Any] |None:
         """
         Yield the next event dict; return `None` when the stream ends.
         """
@@ -329,7 +329,7 @@ class YamlStream:
     """
     def __del__(self, /) -> None: ...
     def __iter__(self, /) -> YamlStream: ...
-    def __next__(self, /) -> dict |None: ...
+    def __next__(self, /) -> dict[Any, Any] |None: ...
     def __repr__(self, /) -> str: ...
     def close(self, /) -> None:
         """
@@ -518,12 +518,12 @@ def register_schema(name: "str", schema_yaml: "str") -> None:
     Once registered, the schema can be used as `YAML(schema="myapp")`.
     """
 
-def register_tag(name: "str", handler: "Py<PyAny>", priority: "u32" = 0) -> None:
+def register_tag(name: "str", handler: "Any", priority: "int" = 0) -> None:
     """
     Register a custom tag handler.
     """
 
-def register_type(name: "str", handler: "Py<PyAny>") -> None:
+def register_type(name: "str", handler: "Any") -> None:
     """
     Register a custom type handler (Community Plugins).
     """
@@ -585,7 +585,7 @@ def validate_against_schema(data: "str", schema_yaml: "str") -> "None":
     not conform to the schema's `validate` section.
     """
 
-def validate_custom_types(obj: "Py<PyAny>") -> None:
+def validate_custom_types(obj: "Any") -> None:
     """
     Validate a Python object against all registered CustomType validators.
 
