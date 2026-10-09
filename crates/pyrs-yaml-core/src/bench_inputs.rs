@@ -107,6 +107,44 @@ folded: >
 /// bytes to equal what the writer produces today.
 pub const MEDIUM_JSON: &str = r#"{"server":{"host":"localhost","port":8080,"timeout":30},"database":{"driver":"postgres","host":"db.example.com","port":5432,"name":"myapp","pool_size":10},"logging":{"level":"info","format":"json","outputs":["stdout","file:/var/log/app.log"]},"features":{"auth":true,"cache":true,"rate_limit":false}}"#;
 
+/// The same document as JSON-with-comments: `//` after a value and a `/* … */` block between
+/// members. This is the only reason the constant exists — the comment scanner in the JSON lexer is
+/// a hot path the strict-JSON scenario never enters, so `load_jsonc` and `to_jsonc_text` had no
+/// instruction-count number at all, and a change to comment skipping could not be adjudicated.
+///
+/// Not the writer's output, unlike [`MEDIUM_JSON`]: `to_jsonc_text` emits comments it is *handed*,
+/// and the hub AST built from `MEDIUM_YAML` has none. Pinning this to a writer would therefore
+/// erase the feature being measured, so `tests/ir_fixtures.rs` pins what the fixture must keep
+/// instead — that it parses, that it parses to exactly the values `MEDIUM_JSON` does, and that the
+/// comments are really in the bytes.
+pub const MEDIUM_JSONC: &str = r#"{
+  // server coordinates, read first by the boot sequence
+  "server":{"host":"localhost","port":8080,"timeout":30},
+  /* connection pool lives here, and the driver name is checked against the image */
+  "database":{"driver":"postgres","host":"db.example.com","port":5432,"name":"myapp","pool_size":10},
+  "logging":{"level":"info", // level is the only knob operators touch
+    "format":"json","outputs":["stdout","file:/var/log/app.log"]},
+  "features":{"auth":true,"cache":true,"rate_limit":false}
+}"#;
+
+/// The same document again in JSON5, whose reader path is wider still: unquoted keys, single-quoted
+/// strings, and a trailing comma before every closing brace and bracket. Comment skipping is shared
+/// with JSONC, so this fixture exists to enter the key-and-terminator grammar specifically.
+///
+/// `timeout` is spelled plainly on purpose. `3e1` was tried first, and the parity test then failed for
+/// a reason that is now issue #312 rather than a mistake to smooth over: a JSON5 number whose spelling
+/// YAML has no word for does not survive the hub as a number, and an exponent literal is preserved
+/// verbatim into JSON, so byte parity between the two fixtures is exactly the property that bug
+/// breaks. `port` keeps `0x1F90` because the JSON writer must canonicalise hex, which it does.
+pub const MEDIUM_JSON5: &str = r#"{
+  // the boot sequence reads these four sections in order
+  server:{host:'localhost',port:0x1F90,timeout:30,},
+  /* pool settings, spelled from the container image */
+  database:{driver:'postgres',host:'db.example.com',port:5432,name:'myapp',pool_size:10,},
+  logging:{level:'info',format:'json',outputs:['stdout','file:/var/log/app.log',],},
+  features:{auth:true,cache:true,rate_limit:false,},
+}"#;
+
 /// [`MEDIUM_YAML`] rendered as TOML, for the reason [`MEDIUM_JSON`] states.
 pub const MEDIUM_TOML: &str = r#"[server]
 host = "localhost"

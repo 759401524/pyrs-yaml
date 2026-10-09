@@ -2130,6 +2130,46 @@ blocks give one switch, alternating give five), the tolerance bound, the fact th
 slower candidate still goes red, and that a synthetic unpaired gate is named while a benchmark file
 is not.
 
+### (ax) The instruction gate had no number for two of its five formats (2026-10-09)
+
+`from_jsonc`, `from_json5`, `to_jsonc_text` and `to_json5_text` are public, engine-level, per-key
+paths, and none of them was measured: the gate numbered strict JSON and TOML in both directions and
+stopped. The comment scanner, the unquoted-key and trailing-comma grammar, and both dialect writers
+were therefore outside the zero-regression instrument, which is the opposite of what a named-format
+infrastructure promises.
+
+On one and the same hub AST the three writers now read 21,232,786 / 22,176,851 / 22,974,851
+instructions for JSON / JSONC / JSON5, so emitting notes costs 4.4% and the JSON5 spelling 8.2% over
+strict JSON. Those three are directly comparable because they share an input, and that is the value
+of putting them in the same harness: the cost of a dialect is now a number someone can decide
+against, instead of a feeling about "comments are cheap".
+
+The readers are measured from authored bytes, which breaks the rule the strict fixtures follow, and
+deliberately so. `to_jsonc_text` of a comment-free AST emits no comments, so a fixture derived from
+the writer would not pass through the scanner under measurement; a fixture has to *contain* the
+thing whose cost is being counted. `tests/ir_fixtures.rs` therefore pins the three properties that
+make the scenario mean something: the bytes keep their dialect, the reader accepts them, and they
+resolve to the same names and numbers as `MEDIUM_JSON`.
+
+Writing that parity check found a real defect and it is filed rather than absorbed: `from_json5`
+writes a non-finite float into the hub as the bare word `Infinity`, which no YAML schema reads back
+as a number, so `load_json5` is correct in memory while one hub round trip turns the value into a
+string; `-Infinity` was emitted quoted, which is the same loss wearing better manners. The fixture
+spells the exponent case plainly and pins the good behaviour separately (`3e1` survives as a number
+because JSON can spell it, hex canonicalises because JSON cannot), and #312 carries the bug.
+
+The instrument was blind in a second way, worth naming because it is the general lesson:
+`ir_bridge_pairs` compares a scenario name to its twin, so it can only report a *half*-missing
+bridge. A format with neither half offers no name to start from, and the matrix printed green -
+which is precisely how this gap sat unnoticed while the probe that exists to catch asymmetric
+coverage was running on every commit. `quality_matrix.py` now derives `ir-bridge-absent` per format,
+and a test deletes both JSON5 scenarios to prove the hole appears rather than asserting that it
+would.
+
+Re-measuring moved the seventeen existing numbers by at most 0.05%, because the runner image changed
+underneath (`20260927.320.1` to `20261004.327.1`). That is method and not code, so it is written
+here instead of being absorbed into a silent baseline update.
+
 ### (ay) The verdict rule I shipped last week was refuted by its own CI log
 
 The entry above is the correction; the ledger keeps the shape of the mistake, because it is a shape

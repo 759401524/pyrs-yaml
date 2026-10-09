@@ -36,11 +36,11 @@
 //!
 //! Run through `scripts/ir_gate.py`, which does the subtraction, compares against
 //! `.ci/ir-baseline.json` and prints the table CI gates on.
-use pyrs_json::{from_json, to_json_text};
+use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
 use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::bench_inputs::{
-    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_TOML, MEDIUM_YAML,
-    MERGE_INLINE_YAML, SMALL_YAML,
+    ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
+    MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML,
 };
 use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
@@ -66,6 +66,19 @@ enum Work {
     FromToml,
     /// JSON text read into the hub AST, same reasoning as [`Work::FromToml`].
     FromJson,
+    /// The two JSON dialects the hub also exposes - `load_jsonc`/`from_jsonc` and their JSON5
+    /// siblings. Their reading half skips comments and, for JSON5, accepts a key grammar strict JSON
+    /// rejects, none of which any existing scenario entered: the gate had no instruction number for
+    /// the comment scanner at all, so a change to it could not be adjudicated.
+    FromJsonc,
+    /// JSON5 read into the hub AST: comment skipping plus the unquoted-key, single-quote and
+    /// trailing-comma grammar.
+    FromJson5,
+    /// The hub AST rendered as JSONC, the writer half of the same two bridges. `to_jsonc_text` and
+    /// `to_json5_text` decide how to spell a key or a note per node, and both were unmeasured.
+    ToJsonc,
+    /// The hub AST rendered as JSON5.
+    ToJson5,
 }
 
 /// Every scenario the gate measures. Names mirror `yaml_bench.rs` where an
@@ -109,6 +122,14 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         // that moves a number for a reason the library did not do has to say so.
         ("from_json_medium", MEDIUM_JSON, Work::FromJson),
         ("from_toml_medium", MEDIUM_TOML, Work::FromToml),
+        // The dialects, both halves. The reader fixtures are authored bytes rather than writer
+        // output on purpose - a fixture derived from `to_jsonc_text` of a comment-free AST would
+        // contain no comments, and the comment scanner is the path being measured. `tests/ir_fixtures.rs`
+        // pins that they still parse and still mean `MEDIUM_JSON`.
+        ("from_jsonc_medium", MEDIUM_JSONC, Work::FromJsonc),
+        ("from_json5_medium", MEDIUM_JSON5, Work::FromJson5),
+        ("to_jsonc_medium", MEDIUM_YAML, Work::ToJsonc),
+        ("to_json5_medium", MEDIUM_YAML, Work::ToJson5),
     ]
 }
 
@@ -131,7 +152,7 @@ fn main() {
     };
 
     let measured = match work {
-        Work::Serialize | Work::ToJson | Work::ToToml => {
+        Work::Serialize | Work::ToJson | Work::ToToml | Work::ToJsonc | Work::ToJson5 => {
             // Setup is outside the loop on both modes, so it cancels exactly.
             let ast = parse(src, Schema::Core).expect("setup parse");
             if setup_only {
@@ -148,6 +169,14 @@ fn main() {
                         }
                         Work::ToToml => std::hint::black_box(to_toml(std::hint::black_box(&ast)))
                             .expect("toml writes the hub AST"),
+                        Work::ToJsonc => {
+                            std::hint::black_box(to_jsonc_text(std::hint::black_box(&ast)))
+                                .expect("jsonc writes the hub AST")
+                        }
+                        Work::ToJson5 => {
+                            std::hint::black_box(to_json5_text(std::hint::black_box(&ast)))
+                                .expect("json5 writes the hub AST")
+                        }
                         _ => unreachable!("handled by the other arms"),
                     };
                     acc += std::hint::black_box(text).len();
@@ -155,7 +184,7 @@ fn main() {
                 acc
             }
         }
-        Work::FromJson | Work::FromToml => {
+        Work::FromJson | Work::FromToml | Work::FromJsonc | Work::FromJson5 => {
             if setup_only {
                 std::hint::black_box(src);
                 0
@@ -164,6 +193,8 @@ fn main() {
                 for index in 0..ITERATIONS {
                     let parsed = match work {
                         Work::FromToml => from_toml(std::hint::black_box(src)),
+                        Work::FromJsonc => from_jsonc(std::hint::black_box(src)),
+                        Work::FromJson5 => from_json5(std::hint::black_box(src)),
                         _ => from_json(std::hint::black_box(src)),
                     };
                     // A reader that started failing would still loop, still return a
