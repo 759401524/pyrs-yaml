@@ -42,23 +42,23 @@ json_leaf = st.one_of(
 
 
 def _bare_risk(s):
-    """Strings a JSON/JSON5 writer may emit *bare* even when the AST holds a
-    string, because the spelling is number-grammar in JSON but string under
-    the YAML core schema (which caps plain ints at i64 and does not read
-    `Infinity`/`NaN` as floats). Two documented fidelity contracts collide:
-    `from_json -> to_json` keeps big-digit spellings verbatim (precision
-    preservation), and the JSON5 writer keeps JSON5-only spellings verbatim
-    (PR #120/#121 idempotency). An identically-spelled *string* passing
-    through the hub therefore re-reads as a number: a known, pinned
-    limitation (see test_json5_ambiguous_spellings_are_bare and
-    test_big_digit_string_spelling_is_verbatim). Disambiguating needs an
-    AST-level marker on JSON5/overflow number literals — a representation
-    change requiring sign-off — so fuzz strategies exclude these spellings
-    from string positions instead of asserting cross-library equality on
-    them.
+    """Strings a JSON writer may emit *bare* even when the AST holds a string, because the spelling
+    is number-grammar in JSON but string under the YAML core schema (which caps plain ints at i64).
+    Two documented fidelity contracts collide: `from_json -> to_json` keeps big-digit spellings
+    verbatim (precision preservation), and the JSON5 writer keeps JSON5-only spellings verbatim
+    (PR #120/#121 idempotency). An identically-spelled *string* passing through the hub therefore
+    re-reads as a number: a known, pinned limitation (see
+    test_big_digit_string_spelling_is_verbatim). Disambiguating the digit spellings needs an
+    AST-level marker on overflow literals - a representation change requiring sign-off - so fuzz
+    strategies exclude these spellings from string positions instead of asserting cross-library
+    equality on them.
+
+    The `Infinity` / `NaN` words used to be listed here explicitly. They are not an exception any
+    more: #312 made the hub store a JSON5 infinity as `.inf` / `.nan`, and the dialect writer emits
+    its bare token from the resolved *value*, so a string that merely spells the word is quoted.
+    `complex()` accepts these words anyway, so the carve-out below still declines them - the domain
+    is unchanged, only its reason.
     """
-    if s in ("Infinity", "-Infinity", "+Infinity", "NaN"):
-        return True
     body = s[1:] if s[:1] in "+-" else s
     if body[:2] in ("0x", "0X") and len(body) > 2 and all(c in "0123456789abcdefABCDEF" for c in body[2:]):
         return True
@@ -234,21 +234,22 @@ def test_json5_matches_pyjson5(value):
     assert strict_eq(pyjson5.loads(text), value)
 
 
-def test_json5_ambiguous_spellings_are_bare():
-    """Pin the documented JSON5 string/number ambiguity (known limitation).
+def test_json5_spelling_a_word_is_not_a_number():
+    """The JSON5 string/number ambiguity of #312, pinned as closed.
 
-    A string that spells a JSON5-only number (`Infinity` / `NaN`) survives
-    `safe_dump` as a *plain* scalar, which the JSON5 writer emits bare: the
-    AST cannot distinguish it from a JSON5 number literal. `-Infinity`,
-    `+Infinity` and `NaN` are quoted by the YAML dumper itself, so only the
-    exact `Infinity` spelling corrupts through the hub. If the disambiguation
-    (tagged JSON5 number literals) ever lands, update this test's expectation
-    and drop the strategy filter above.
+    A string that spells `Infinity` used to reach the hub as a plain scalar and leave through the
+    JSON5 writer *bare*, because the writer recognised the word. It now derives the token from the
+    resolved value: the hub spells the number `.inf`, and a plain scalar `Infinity` is a string under
+    the core schema, so the string stays a string in both directions.
     """
     text = pyrs_yaml.parse(pyrs_yaml.safe_dump(["Infinity"])).to_json5()
-    assert "Infinity" in text and '"Infinity"' not in text
-    # Known consequence: reading it back yields the number, not the string.
-    assert pyrs_yaml.load_json5(text) == [float("inf")]
+    assert '"Infinity"' in text, text
+    assert pyrs_yaml.load_json5(text) == ["Infinity"]
+    # And the number still reaches the dialect's own token, which is the other half of the fix: the
+    # writer is not simply quoting everything that used to be bare.
+    number = pyrs_yaml.parse(pyrs_yaml.from_json5("{i: Infinity}")).to_json5()
+    assert "Infinity" in number and '"Infinity"' not in number, number
+    assert pyrs_yaml.load_json5(number) == {"i": float("inf")}
 
 
 def test_big_digit_string_spelling_is_verbatim():

@@ -203,12 +203,19 @@ pub fn resolve_json_type(value: &str) -> YamlType<'_> {
 /// strings; JSON5 load must turn them into real numbers. Everything the
 /// two grammars share (decimal ints/floats, leading-dot `.5`, exponent,
 /// `true`/`false`/`null`) is delegated so the two can never drift.
+///
+/// The hub's own spellings are accepted too. `pyrs-json` stores a JSON5 infinity as `.inf` /
+/// `-.inf` / `.nan` because the projection it emits is YAML text and `Infinity` re-reads there as a
+/// string (#312); the resolver that consumes those ASTs has to agree with the parser that produced
+/// them, or the in-memory loader and the round-tripped document disagree about the type.
 pub fn resolve_json5_type(value: &str) -> YamlType<'_> {
     let trimmed = value.trim();
     match trimmed {
-        "Infinity" | "+Infinity" => return YamlType::Float(f64::INFINITY),
-        "-Infinity" => return YamlType::Float(f64::NEG_INFINITY),
-        "NaN" => return YamlType::Float(f64::NAN),
+        "Infinity" | "+Infinity" | ".inf" | ".Inf" | ".INF" => {
+            return YamlType::Float(f64::INFINITY);
+        }
+        "-Infinity" | "-.inf" | "-.Inf" | "-.INF" => return YamlType::Float(f64::NEG_INFINITY),
+        "NaN" | ".nan" | ".NaN" | ".NAN" => return YamlType::Float(f64::NAN),
         _ => {}
     }
     if let Some(n) = parse_json5_hex(trimmed) {

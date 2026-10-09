@@ -7,7 +7,9 @@
 //! - plain scalars resolve through the core schema: `true`/`false`/`null`
 //!   and finite numbers pass as JSON literals; anything resolving to a
 //!   string quotes; non-finite floats emit their text quoted (JSON has no
-//!   NaN/Infinity spelling, same as the previous `serde_json` path);
+//!   NaN/Infinity spelling, same as the previous `serde_json` path) - under
+//!   JSON5 the dialect's own bare token is emitted instead, derived from the
+//!   *value*, never from a word that a YAML string could also spell;
 //! - quoted scalars are always JSON strings (never re-typed);
 //! - mapping keys are scalar text (resolved scalars stringify); non-scalar
 //!   keys are a stable error;
@@ -26,11 +28,14 @@ use pyrs_schema::types::{Schema, YamlType};
 
 /// Which JSON-family dialect `write_value` targets. `Json5` is a superset
 /// of `Jsonc` (comments) that additionally restores JSON5-only spellings:
-/// single-quoted strings and the `0x…` / `.5` / `+7` / `Infinity` / `NaN`
-/// numeric forms (PR #121). The quote style and number form come straight
-/// off the AST (single-quoted strings carry `ScalarStyle::SingleQuoted`;
-/// JSON5 numbers keep their source text as plain scalars), so this writer
-/// is purely a projection of what the parser already preserved.
+/// single-quoted strings and the `0x…` / `.5` / `+7` numeric forms (PR #121),
+/// plus the bare `Infinity` / `NaN` tokens of a non-finite float. The quote
+/// style and the hex / dot / plus forms come straight off the AST (single-quoted
+/// strings carry `ScalarStyle::SingleQuoted`, JSON5 numbers keep their source text
+/// as plain scalars), but the infinities are derived from the resolved *value*: the
+/// hub spells them `.inf` / `-.inf` / `.nan` so YAML reads them back as numbers
+/// (#312), and those words would otherwise be indistinguishable from a string that
+/// happens to spell them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     /// Strict RFC 8259: no comments ever emitted.
@@ -315,8 +320,9 @@ fn write_plain(value: &str, mode: Mode, out: &mut String) {
     }
     // PR #121: under JSON5, the number spellings the JSON5 parser accepts
     // and stores verbatim on a plain scalar (hexadecimal, leading/trailing
-    // dot, leading `+`, `Infinity` / `NaN`) emit as-is — they are legal
-    // JSON5 bare tokens, unlike strict JSON which would have to quote them.
+    // dot, leading `+`) emit as-is — they are legal JSON5 bare tokens,
+    // unlike strict JSON which would have to quote them. `Infinity` / `NaN`
+    // are deliberately NOT in this set: see `is_json5_number`.
     if mode.json5() && is_json5_number(value) {
         out.push_str(value);
         return;
@@ -338,24 +344,38 @@ fn write_plain(value: &str, mode: Mode, out: &mut String) {
         YamlType::Float(f) if f.is_finite() => {
             out.push_str(&canonical_float(f));
         }
-        // Non-finite floats (`.inf`, `.nan`) are not JSON literals; quote
-        // their text so nothing is silently dropped, matching the previous
-        // `serde_json` path's fallback for unrepresentable values. Under
-        // JSON5 the bare `Infinity` / `NaN` spellings were already handled
-        // above, so this only catches YAML-flavoured infinities.
+        // Non-finite floats. JSON5 has a bare token for the value, so emitting it keeps the number
+        // a number in the dialect that can spell it; strict JSON / JSONC have no such spelling and
+        // quote the text instead of inventing a literal. The token comes from the resolved *value*,
+        // never from the word, because a YAML plain scalar `Infinity` is a string under the core
+        // schema and must stay a string (#312).
+        YamlType::Float(f) if !f.is_finite() && mode.json5() => {
+            out.push_str(if f.is_nan() {
+                "NaN"
+            } else if f > 0.0 {
+                "Infinity"
+            } else {
+                "-Infinity"
+            });
+        }
+        // Non-finite floats in a dialect that cannot spell them: quote the text so nothing is
+        // silently dropped, matching the previous `serde_json` path's fallback for unrepresentable
+        // values. This is the open policy question in `ROADMAP.md` (Planned item 2), not a fix here.
         YamlType::Float(_) => write_json_string(value, out),
         YamlType::Str(_) => write_json_string(value, out),
     }
 }
 
 /// Whether `text` is a JSON5-only number spelling the parser stored
-/// verbatim: `Infinity` / `NaN` (optionally signed), a hexadecimal
-/// integer, a leading-dot / trailing-dot decimal, or a leading-`+` form.
+/// verbatim: a hexadecimal integer, a leading-dot / trailing-dot decimal, or a
+/// leading-`+` form.
+///
+/// `Infinity` and `NaN` are absent on purpose. The hub spells those values `.inf` /
+/// `-.inf` / `.nan` (see `crate::parser`), so the words reach this writer only when a document
+/// really holds a *string* that happens to be spelled like a JSON5 literal; treating it as a number
+/// was the second half of #312, and the bare token for a value is emitted by `write_plain` from the
+/// resolved float instead.
 fn is_json5_number(text: &str) -> bool {
-    match text {
-        "Infinity" | "-Infinity" | "+Infinity" | "NaN" => return true,
-        _ => {}
-    }
     // Strip a single leading sign for the numeric checks below.
     let (sign_len, body) = match text.as_bytes().first() {
         Some(b'+') | Some(b'-') => (1, &text[1..]),
@@ -635,6 +655,9 @@ mod tests {
     fn json5_emits_numeric_forms_verbatim() {
         // The JSON5 numeric spellings #120 parses stay verbatim through
         // to_json5_text, whereas the strict writer would quote / canonicalise.
+        // `Infinity` / `-Infinity` / `NaN` are in this list because the dialect output is identical
+        // either way; they now reach it through the hub's `.inf` / `.nan` spelling and the
+        // value-derived token below, not through a preserved word.
         for src in ["0xDECAF", ".5", "5.", "+7", "Infinity", "-Infinity", "NaN"] {
             let n = crate::from_json5(src).unwrap();
             let j5 = to_json5_text(&n).unwrap();
@@ -646,6 +669,59 @@ mod tests {
     // engine-level scenario and lives in `pyrs-yaml-core`
     // `src/integration/json_family.rs`; this crate must not reach back into
     // the YAML parser.
+
+    #[test]
+    fn json5_infinity_is_written_from_the_value_not_from_a_word() {
+        // #312's writer half. The hub carries YAML's own float spelling, so the dialect's token has to
+        // be derived by resolving it: emitting the text would hand a reader `".inf"`, a string in
+        // every JSON dialect. These nodes are built directly rather than parsed, because `.inf` is the
+        // hub's spelling and not a JSON5 token - the JSON5 reader would be right to reject it.
+        for (hub, want) in [
+            (".inf", "Infinity"),
+            ("-.inf", "-Infinity"),
+            (".nan", "NaN"),
+        ] {
+            let n = CustomNode::plain_scalar(hub);
+            let j5 = to_json5_text(&n).unwrap();
+            assert_eq!(j5, want, "json5 should spell {hub} as {want}");
+            // The dialect's own token reads back to the same hub spelling, which is what makes the
+            // pair a round trip rather than a one-way rendering.
+            let back = crate::from_json5(&j5).unwrap();
+            assert_eq!(
+                to_json5_text(&back).unwrap(),
+                j5,
+                "{j5} must be a fixed point"
+            );
+            let strict = to_json_text(&n).unwrap();
+            assert_eq!(
+                strict,
+                format!("\"{hub}\""),
+                "strict JSON has no spelling for {hub}; quoting is the open policy question, not a \
+                 number"
+            );
+        }
+    }
+
+    #[test]
+    fn a_string_that_spells_infinity_stays_a_string() {
+        // The other half of #312, and the reason `is_json5_number` no longer lists these words. Under
+        // the core schema `Infinity` is a *string* - the hub's spelling of the number is `.inf` - so
+        // emitting the word bare turned text into a number on the way out. This was pinned as a known
+        // limitation (`test_json5_ambiguous_spellings_are_bare` in the Python suite); the
+        // value-derived writer closes it.
+        //
+        // `NaN` is deliberately not in this list: the core schema resolves it to a float, so a plain
+        // `NaN` *is* a number and the dialect emits it bare. Only the spellings core reads as strings
+        // are the ambiguity.
+        for word in ["Infinity", "-Infinity", "+Infinity"] {
+            let n = CustomNode::plain_scalar(word);
+            let j5 = to_json5_text(&n).unwrap();
+            assert_eq!(j5, format!("\"{word}\""), "{word} is a string, not a token");
+            // And reading that back keeps it a string: the type survives the round trip.
+            let back = crate::from_json5(&j5).unwrap();
+            assert_eq!(to_json5_text(&back).unwrap(), j5);
+        }
+    }
 
     #[test]
     fn json5_round_trip_is_idempotent() {

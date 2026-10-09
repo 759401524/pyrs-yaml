@@ -227,6 +227,17 @@ status: new
   问题。现在 `join_lines` 直接询问那两个残渣模式；新增的两个测试各自守住一半：`、` 边界会粘连，代码
   跨度前的空格照常保留。— (details: quality-ledger (bi))
 
+- **JSON5 非有限浮点数经中枢往返后，两个方向都保住了类型。** — `from_json5` 交回的是中枢文档，而这段
+  文本的两端对同样三个词的理解不一致：YAML Core 把 `.inf` / `-.inf` / `.nan` 解析为浮点数，把裸词
+  `Infinity` 解析为字符串，于是照抄来源拼写就把数字变成字符串，凡重新读取该投影的使用方都拿到
+  `'Infinity'`；`load_json5("{a: Infinity}")` 在内存里解析，结果是对的。先测量才看清报告只说了一半：
+  加引号那一侧错在相反的方向，因为 `quoted_or_plain` 用 `needs_quotes`（一个 core schema 的提问）去
+  判断解码后的 JSON 字符串要不要引号，于是 `"Infinity"` 被存成明文标量，`load_json5('["Infinity"]')`
+  返回 `[inf]`，而 `load_jsonc`、`load_json` 与 `json.loads` 都返回 `['Infinity']`。同一份文档两种类
+  型，取决于哪个加载器读了它。发射器现在从解析后的*值*导出该方言的裸词，中枢存 YAML 自身的拼写，
+  JSON5 解析器接受喂给它的这些拼写。严格 JSON 与 JSONC 仍会给拼不出的非有限浮点数加引号：这条裁决留
+  在 `ROADMAP.md` 里，不在 bug 修复里悄悄替用户决定。— (details: quality-ledger (bh))
+
 #### 性能
 
 - **标签发出改为表驱动，转义不再分配内存。** — 把标签编码挪到读取器自己的字符类上，就让逐字节的归属
