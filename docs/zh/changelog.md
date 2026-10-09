@@ -207,6 +207,16 @@ status: new
   把基类排在子类之前以保证文件可解析，并在无法导入时退出码 2 而不是交出一个缺失声明的契约。因此
   `exceptions.md` 也已在四个语言全部改为生成。— (details: quality-ledger (bf))
 
+- **桩能解析，却依然通不过类型检查。** — mypy 在 `python/pyrs_yaml/pyrs_yaml.pyi` **内部**报出五处错
+  误：`Name "u32" is not defined`、`Name "Callable" is not defined`，以及三处 `Py<PyAny>` 的
+  `Invalid type comment or annotation`。这些诊断在用户编辑器里归属于本库，而所有 AST 级门禁都是绿
+  的。根因是 maturin 1.14.1 把 Rust 拼写抄进注解且从不导入 `Callable`；如今路由会重写这些拼写（计数
+  4 处）、把注解引用的名字并入 `typing` 导入，并由 `scripts/check_stub_types.py` 在 CI 同时用 mypy
+  与 `ty` 检查产物。`ty` 还指出我们自己保真模板写出的 `-> dict`，现已改为 `dict[Any, Any]`；它余下
+  32 条严格性诊断按记录处理，暂不强制。这道门禁随后让每条 CI 测试腿都变红，缺的正是它要调用的
+  工具：可执行文件不存在时抛出的是异常而非返回码，于是无法检查如今回答退出码 2 并跳过测试，绝
+  不是一次通过。 — (details: quality-ledger (bg))
+
 #### 性能
 
 - **标签发出改为表驱动，转义不再分配内存。** — 把标签编码挪到读取器自己的字符类上，就让逐字节的归属

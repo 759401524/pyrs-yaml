@@ -148,3 +148,18 @@ jobs:
 
       - name: Assert the committed stub matches the generated stub
         run: uv run --no-sync python scripts/check_stub_drift.py
+
+      # "It parses" (ledger (bb)) is not "it type checks". mypy reported five errors inside the stub this
+      # route produced - `u32`, an unimported `Callable`, three `Py<PyAny>` forward annotations - while every
+      # AST-level check stayed green, so the gate asks a checker directly. Pinned rather than floating: a
+      # gate whose behaviour changes because PyPI did is not a gate.
+      - name: Assert the stub type checks (mypy)
+        run: uv run --with 'mypy==2.4.0' python scripts/check_stub_types.py --checker mypy
+
+      # Second checker, same artifact: `ty` found every defect mypy did, under different rule names, and is
+      # scoped with `--ignore all --error <rule>` because unscoped it also raises strictness findings about
+      # generator output that this gate is not here to settle. One trap belongs in the file that uses it:
+      # `ty check <directory>` answers "All checks passed!" for a package holding only a `.pyi`, having found
+      # no files - which is why the script names the file and refuses a vacuous run.
+      - name: Assert the stub type checks (ty)
+        run: uv run --with 'ty==0.0.85' python scripts/check_stub_types.py --checker ty

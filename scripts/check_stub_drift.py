@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import builtins
 import difflib
 import re
 import sys
@@ -80,10 +81,11 @@ FIDELITY_FIXES = (
         "name": "next-return-drops-optional",
         "pattern": NEXT_RETURN,
         "expected_matches": 2,
-        "template": r"\g<1>def __next__(self, /) -> dict |None\g<2>",
+        "template": r"\g<1>def __next__(self, /) -> dict[Any, Any] |None\g<2>",
         "reason": (
             "maturin 1.14.1 emits the yield type for __next__ and drops the Option "
-            "the binding returns; both __next__ methods return dict | None."
+            "the binding returns; both __next__ methods return dict | None, spelled "
+            "dict[Any, Any] because the key type is only known at the call site."
         ),
     },
 )
@@ -108,6 +110,103 @@ EXCEPTION_ALIASES = ("YamlTagSkip",)
 EXPECTED_DOCSTRING_ESCAPES = 2
 
 DOCSTRING_DELIMITERS = ('"""', "'''")
+
+# The generator also copies Rust-side spellings into annotations, and mypy - the tool `py.typed` exists to
+# serve - reports them as errors in our file: `Name "u32" is not defined` and three
+# `Invalid type comment or annotation` for `Py<PyAny>`, plus `Name "Callable" is not defined` because the
+# emitter writes an annotation referencing `typing.Callable` without importing it. Each mapping is a Python
+# spelling for the same value, and the site count is declared so a fourth `Py<PyAny>` is a review.
+RUST_TYPE_SPELLINGS = {"Py<PyAny>": "Any", "u32": "int", "usize": "int"}
+EXPECTED_RUST_TYPE_SITES = 4
+
+
+def rewrite_rust_spellings(text: str) -> tuple[str, int]:
+    """Replace Rust-side type spellings inside annotations with their Python equivalent.
+
+    Only quoted annotations are touched - a bare `u32` in the file would be a name someone defined, not a
+    generator artifact - and the site count is returned so the caller can hold it to
+    `EXPECTED_RUST_TYPE_SITES`.
+    """
+    count = 0
+    for spelling, replacement in RUST_TYPE_SPELLINGS.items():
+        pattern = re.compile(r'"([^"]*)' + re.escape(spelling) + r'([^"]*)"')
+        # `replacement` is bound as a default rather than closed over: a lambda that reads a loop variable is
+        # correct only while the call stays inside the loop, and that is a constraint nobody writes down.
+        text, hits = pattern.subn(
+            lambda match, value=replacement: '"' + match.group(1) + value + match.group(2) + '"', text
+        )
+        count += hits
+    return text, count
+
+
+def missing_annotation_imports(text: str) -> list[str]:
+    """Names used in annotations that the file neither defines nor imports.
+
+    Annotations, not every string: an early attempt here scanned all quoted text and reported `AST`, `Accepts`
+    and `Community` as undefined names, because those are words inside docstrings. `ast` knows which strings
+    are annotations, so it is asked instead of a regular expression.
+    """
+    tree = ast.parse(text)
+    declared = {
+        node.name for node in tree.body if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    declared.update(dir(builtins))  # `int`, `str`, `bytes` and friends appear in annotations and import nothing
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            declared.update((alias.asname or alias.name).split(".")[0] for alias in node.names)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            declared.add(node.id)
+
+    used: set[str] = set()
+
+    def names_of(node):
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name):
+                used.add(child.id)
+            elif isinstance(child, ast.Constant) and isinstance(child.value, str):
+                # Quoted (forward) annotations are strings to the parser and types to the checker.
+                try:
+                    expression = ast.parse(child.value, mode="eval")
+                except SyntaxError:
+                    continue
+                names_of(expression)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.arg) and node.annotation is not None:
+            names_of(node.annotation)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
+            names_of(node.returns)
+        elif isinstance(node, ast.AnnAssign) and node.annotation is not None:
+            names_of(node.annotation)
+    return sorted(used - declared)
+
+
+def add_typing_imports(text: str) -> tuple[str, list[str], list[str]]:
+    """Merge annotation-only missing names into the file's `typing` import, and report what happened.
+
+    Returns:
+        The rewritten text, the names added, and the names this cannot fix. A name `typing` does not export
+        is a problem rather than a guess: emitting `from typing import Whatever` for it would trade one
+        undefined name for an import error, and the caller is expected to fail on a non-empty third element.
+    """
+    import typing
+
+    exports = set(getattr(typing, "__all__", ())) | set(dir(typing))
+    absent = missing_annotation_imports(text)
+    missing = [name for name in absent if name not in exports]
+    addable = [name for name in absent if name in exports]
+    if not addable:
+        return text, addable, missing
+    pattern = re.compile(r"^from typing import (?P<names>.+)$", re.M)
+    match = pattern.search(text)
+    if match:
+        names = sorted({part.strip() for part in match.group("names").split(",") if part.strip()} | set(addable))
+        replacement = "from typing import " + ", ".join(names)
+        return text[: match.start()] + replacement + text[match.end() :], addable, missing
+    lines = text.split("\n")
+    insert_at = next((n for n, line in enumerate(lines) if line.startswith(("from ", "import "))), 0)
+    lines[insert_at:insert_at] = ["from typing import " + ", ".join(sorted(addable)), ""]
+    return "\n".join(lines), addable, missing
 
 
 def docstring_body_lines(text: str) -> set[int]:
@@ -330,6 +429,25 @@ def derived_text(generated: str) -> tuple[str, list[str]]:
             "maturin 1.14.1 emits none of them; a count change means an exception was added "
             "or removed, and the public typing contract has to be re-checked either way."
         )
+    text, rust_sites = rewrite_rust_spellings(text)
+    if rust_sites != EXPECTED_RUST_TYPE_SITES:
+        problems.append(
+            f"rust type spellings: rewrote {rust_sites} annotation site(s), expected "
+            f"{EXPECTED_RUST_TYPE_SITES}. maturin 1.14.1 copies them out of the binding signatures and a "
+            "type checker rejects them in our file; a new site is a new Rust type reaching the public "
+            "contract, which needs a Python spelling decided rather than absorbed."
+        )
+    text, added, unfixed = add_typing_imports(text)
+    if unfixed:
+        problems.append(
+            "annotations reference names no import can fix: " + ", ".join(unfixed) + "; the generator "
+            "emitted a type this file cannot name, so declare the mapping in RUST_TYPE_SPELLINGS."
+        )
+    if added:
+        # Informational, not a failure: importing what an annotation references is the repair, and the
+        # type-checker gate downstream is what proves it worked. Reporting it keeps the run honest about the
+        # generator still omitting the import without turning a fixed file into a red one.
+        print("route note: imported " + ", ".join(added) + " for annotations that referenced it")
     for fix in FIDELITY_FIXES:
         matches = fix["pattern"].findall(text)
         if len(matches) != fix["expected_matches"]:
