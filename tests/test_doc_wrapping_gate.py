@@ -33,6 +33,12 @@ GOVERNED = [
     "docs/ja/changelog.md",
     "docs/ko/changelog.md",
     "docs/zh/changelog.md",
+    # The three development documents the roadmap's history moved into: they grow one entry per fix
+    # like the release notes do, so the same typographic rule has to hold them or they drift back to a
+    # 21,850-character line.
+    "docs/dev/quality-ledger.md",
+    "docs/dev/boundaries.md",
+    "docs/dev/perf.md",
 ]
 
 CJK_RUN = "这是一段很长的中文说明用来验证换行器能不能在没有任何空格的情况下断行" * 3

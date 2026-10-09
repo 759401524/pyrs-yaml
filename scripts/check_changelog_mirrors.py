@@ -128,6 +128,23 @@ def positioned_counts(text: str) -> list[int]:
     return [counts[key] for key in sorted(counts, key=lambda k: list(counts).index(k))]
 
 
+def count_drift(counts: dict) -> list[str]:
+    """Findings for mirrors whose [Unreleased] per-section counts differ from the canonical page.
+
+    Split out of `main` so a test can fire it on injected counts: a rule that can only be exercised by
+    editing five real changelogs is a rule nobody proves.
+    """
+    items = list(counts.items())
+    if len(items) < 2:
+        return []
+    canonical = items[0][1]
+    return [
+        f"{name}: [Unreleased] sections {got} do not match the canonical {canonical}"
+        for name, got in items[1:]
+        if got != canonical
+    ]
+
+
 def main() -> int:
     errors: list[str] = []
     root_text = FILES[0].read_text(encoding="utf-8")
@@ -164,13 +181,20 @@ def main() -> int:
         print("changelog structural drift detected:")
         print("\n".join(errors))
         return 1
-    # Reported, not asserted: the mirrors do not carry equal entry counts per [Unreleased] section
-    # today, and that divergence is registered in `.ci/quality-holes.json` with this script's counts
-    # as the exit criterion. Printing them here keeps an unregistered regression visible in the log
-    # while the gap is still open.
-    print("OK: all 5 changelogs structurally in sync and every entry filed under a section")
+    # The [Unreleased] entry counts per section are the measurable form of "AGENTS.md forbids partial
+    # changelog updates": section order is locale-independent (every mirror keeps Added/Changed/Fixed/
+    # Performance), so an entry added to root and not translated shows up as a count difference at the
+    # same position. This used to be reported rather than asserted, which is what let 401a8057's entry
+    # sit invisible in four of five files; the divergence is now a failure.
+    counts = {path.name: positioned_counts(texts[path]) for path in FILES}
+    drift = count_drift(counts)
+    if drift:
+        print("changelog entry-count drift detected:")
+        print("\n".join(drift))
+        return 1
+    print("OK: all 5 changelogs structurally in sync, every entry filed under a section, counts equal")
     for path in FILES:
-        print(f"  {path.relative_to(ROOT).as_posix():24} [Unreleased] sections {positioned_counts(texts[path])}")
+        print(f"  {path.relative_to(ROOT).as_posix():24} [Unreleased] sections {counts[path.name]}")
     return 0
 
 

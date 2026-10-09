@@ -348,7 +348,7 @@ measurement no longer reproduces fails CI.
 
 | hole | why it matters | exit |
 | --- | --- | --- |
-| `changelog-parity:entry-counts` | the mirror checker compares version headers, which translation leaves identical, so an entry present in three mirrors and missing from two passes it — measured against root: `docs/en` is one `[Unreleased]` entry behind, `docs/zh` one Added and five Fixed behind while carrying one Changed bullet no other mirror has; the checker prints the per-section counts on every run | `scripts/check_changelog_mirrors.py` exits non-zero when those per-section counts differ, which first needs the missing translated entries backfilled |
+| *none measured* | the mirror checker compares version headers, which translation leaves identical, so an entry present in three mirrors and missing from two used to pass it — `docs/en` was one `[Unreleased]` entry behind and `docs/zh` one Added and five Fixed behind, with one Changed bullet no other mirror had. Condensing `[Unreleased]` into user-facing entries, written into all five pages in the same pass, closed the divergence, and `check_changelog_mirrors.py` now asserts the per-section counts instead of printing them | satisfied: the five pages report equal counts and the probe derives nothing |
 
 This table is a measurement, not a mood: `scripts/quality_matrix.py` re-derives it on every
 pytest run and `tests/test_quality_matrix.py` fails in both directions — a hole that appears
