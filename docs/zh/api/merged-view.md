@@ -133,3 +133,9 @@ assert merged["prod"]["host"] == "prod.example.com"  # 被覆盖
 assert merged["prod"]["port"] == 8080  # 继承
 assert merged["prod"]["debug"] is False  # 自有键
 ```
+
+## 生成的 API 参考
+
+以下内容由 `mkdocstrings` 从库自身的 docstring 与生成的类型存根渲染，签名来自代码，不是手抄。
+
+::: pyrs_yaml.MergedView

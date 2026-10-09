@@ -460,3 +460,9 @@ print("name" in doc)  # True
 for key in doc:
     print(key, doc[key])  # name Alice, age 30
 ```
+
+## Generated API reference
+
+Rendered by `mkdocstrings` from the library's own docstrings and generated type stub, so the signatures below come out of the code rather than being retyped.
+
+::: pyrs_yaml.YamlDocument

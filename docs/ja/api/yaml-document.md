@@ -452,3 +452,9 @@ print("name" in doc)  # True
 for key in doc:
     print(key, doc[key])  # name Alice, age 30
 ```
+
+## 自動生成の API リファレンス
+
+以下の内容は `mkdocstrings` がライブラリ自身の docstring と生成された型スタブから描画するため、署名はコード由来であり書き写しではありません。
+
+::: pyrs_yaml.YamlDocument

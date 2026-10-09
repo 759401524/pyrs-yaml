@@ -431,3 +431,9 @@ print("name" in doc)  # True
 for key in doc:
     print(key, doc[key])  # name Alice, age 30
 ```
+
+## 生成的 API 参考
+
+以下内容由 `mkdocstrings` 从库自身的 docstring 与生成的类型存根渲染，签名来自代码，不是手抄。
+
+::: pyrs_yaml.YamlDocument

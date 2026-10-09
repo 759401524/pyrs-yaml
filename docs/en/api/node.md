@@ -464,3 +464,9 @@ print(doc.to_yaml())
 #   c: [3, 4, 5]
 # greeting: hello
 ```
+
+## Generated API reference
+
+Rendered by `mkdocstrings` from the library's own docstrings and generated type stub, so the signatures below come out of the code rather than being retyped.
+
+::: pyrs_yaml.Node

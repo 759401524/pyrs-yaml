@@ -12,12 +12,5 @@
     "An empty list is a measured state, not an aspiration: the same gate that fails on an",
     "unregistered hole fails on a registered one the measurement no longer reproduces."
   ],
- "holes": [
-    {
-      "id": "docs-generation:plugin-unused",
-      "opened": "2026-10-10",
-      "exit": "a published page under docs/<locale>/ carries a `:::` directive that the declared python handler renders, or the handler's configuration is deleted; measured by quality_matrix.mkdocstrings_directives() against mkdocstrings_declared()",
-      "why": "zensical.toml declares the python handler, its load paths and fourteen render options, and no page asks it for anything - so the API reference is hand-typed signatures that nothing compares with the generated .pyi"
-    }
-  ]
+ "holes": []
 }

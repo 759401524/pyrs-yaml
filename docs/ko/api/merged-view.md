@@ -133,3 +133,9 @@ assert merged["prod"]["host"] == "prod.example.com"  # overridden
 assert merged["prod"]["port"] == 8080  # inherited
 assert merged["prod"]["debug"] is False  # own key
 ```
+
+## 자동 생성 API 참조
+
+아래 내용은 `mkdocstrings`가 라이브러리 자체 docstring과 생성된 형식 stub에서 그려 낸 것이므로, 서명은 코드에서 온 것이지 손으로 옮긴 것이 아닙니다.
+
+::: pyrs_yaml.MergedView
