@@ -38,6 +38,8 @@ status: new
 
 - **`pyq validate` 는 `--input` 로 실제 형식을 검증.**
 - **PR 등급 퍼징은 차단형으로 바뀌었다.** — (details: quality-ledger (aa))
+- **문서 도구를 최신으로 올립니다. 타입 스텁을 만드는 생성기는 의도적으로 그대로 둡니다.** —
+  (details: quality-ledger (ba))
 
 #### 수정
 

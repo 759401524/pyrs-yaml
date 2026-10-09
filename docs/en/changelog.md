@@ -46,6 +46,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`pyq validate` accepts `--input` and honours the format actually read.**
 - **PR-tier fuzzing is blocking, so a crash cannot be merged past.** — (details: quality-ledger
   (aa))
+- **Docs toolchain at latest, with the stub generator deliberately held back.** — (details:
+  quality-ledger (ba))
 
 #### Fixed
 

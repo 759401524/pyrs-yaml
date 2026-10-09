@@ -262,6 +262,40 @@ def property_functions() -> list[str]:
     return sorted(names)
 
 
+DOCS_LOCALES = ("en", "ja", "ko", "zh")
+
+
+def mkdocstrings_declared(root: Path | None = None) -> bool:
+    """Whether the site configuration declares the Python handler at all."""
+    base = root or REPO
+    config = base / "zensical.toml"
+    if not config.is_file():
+        return False
+    return bool(re.search(r"^\[project\.plugins\.mkdocstrings\.handlers\.python\]", read(config), re.M))
+
+
+def mkdocstrings_directives(root: Path | None = None) -> list[str]:
+    """Every published page that asks the handler for something, i.e. contains a `:::` directive.
+
+    A configured handler is not a used one. This distinction is what makes the measurement worth its
+    cost: `zensical.toml` declares the Python handler, its load paths and a page of render options,
+    while the docs tree contains no directive - so those options are inert, the API reference is
+    hand-typed signatures, and no dependency bump can be checked against what it was supposed to
+    improve. Indented directives count because a `:::` block inside an admonition or a tab is still a
+    directive; `:::` with no identifier after it is a Markdown divider, not a request.
+    """
+    base = root or REPO
+    found = []
+    for locale in DOCS_LOCALES:
+        directory = base / "docs" / locale
+        if not directory.is_dir():
+            continue
+        for page in sorted(directory.rglob("*.md")):
+            if re.search(r"^\s*:::\s+\S", read(page), re.M):
+                found.append(page.relative_to(base).as_posix())
+    return found
+
+
 def renders_the_site() -> bool:
     """Whether a workflow that runs on a pull request also runs the documentation build.
 
@@ -537,6 +571,20 @@ def measure() -> dict:
                 "docs-rendering",
                 "unbuilt-on-pr",
                 "no pull-request job builds the site, so a page that fails only when rendered reaches main",
+            ]
+        )
+
+    # Whether the Python docstring handler is actually asked for anything, as opposed to merely declared
+    # with a load path and a page of render options. Measured because the difference decides whether the
+    # docs toolchain does work at all: a bump of `zensical` or `mkdocstrings-python` cannot improve
+    # generated quality when nothing is being generated, and hand-typed API signatures are the one
+    # artefact class this repository has repeatedly had to correct against the code.
+    if mkdocstrings_declared() and not mkdocstrings_directives():
+        holes.append(
+            [
+                "docs-generation",
+                "plugin-unused",
+                "the python handler is declared with render options and no page uses `:::`, so the API reference is hand-typed",
             ]
         )
 

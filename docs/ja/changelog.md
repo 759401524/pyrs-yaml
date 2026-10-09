@@ -38,6 +38,8 @@ status: new
 
 - **`pyq validate` は `--input` で実形式を検証。**
 - **PR 段階のファジングはブロッキング化。** — (details: quality-ledger (aa))
+- **ドキュメント生成の道具を最新版へ。型スタブを作る生成器は意図的にそのまま。** — (details:
+  quality-ledger (ba))
 
 #### 修正
 
