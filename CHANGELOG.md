@@ -88,6 +88,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rather than emitted by a tool. A container type with no `path` is refused where it is written:
   with no node named it would select nothing and check nothing. — (details: quality-ledger (bm))
 
+- **The instruction files are measured, not trusted.** — `scripts/check_hole_claims.py` asserts that
+  every quality-hole id named in `AGENTS.md` or `CLAUDE.md` is one the matrix measures now. The file
+  that motivated it is `AGENTS.md` itself, which for a whole milestone described `mkdocstrings` as
+  rendering nothing - a present-tense instruction naming a gap #321 had closed, still pointing an
+  agent the wrong way. Nothing was wrong with the measurement: the matrix compares
+  `.ci/quality-holes.json` with `QUALITY_MATRIX.md` in both directions and stopped at the derived
+  document. A token counts as a hole id only when its kind is one the probe can emit - read off
+  `quality_matrix.py` rather than listed beside it - so `line:column` in prose is not a claim, and a
+  vocabulary the checker cannot fully read exits 2 instead of passing. Dated records keep their ids:
+  history may name a closed hole, an instruction file is present tense. — (details: quality-ledger
+  (bn))
+
 ### Changed
 
 - **A validate rule that names a path asserts the node it names.** — measured before the change:

@@ -2865,6 +2865,58 @@ two-check and alias cases, each asserting the exact complaint text), 2350 Python
 including the same ruling through `validate_against_schema`, clippy `-D warnings`, and the four
 locale guides rewritten to the new semantics.
 
+### (bn) The document describing the defence was the one artefact outside it (2026-10-10)
+
+Every other entry in this ledger ends by naming the gate that now holds the finding. This one is
+about a gate that did not exist, and about how the repository found out: not from a measurement, but
+from reading `AGENTS.md` while fixing something else. The file said `mkdocstrings` is "configured,
+installed and invoked by the build - **and renders nothing**", registered the gap as
+`docs-generation:plugin-unused`, and drew the obvious conclusion - API prose is a hand-typed content
+decision. #321 had closed that gap: twenty pages across four locales carry `:::` directives, the
+registry is empty, and the matrix prints `derived holes (0)`. The instruction was not merely out of
+date, it pointed the opposite way.
+
+The defence was not at fault. `scripts/quality_matrix.py` re-derives `QUALITY_MATRIX.md` from the
+files that declare the defence, and `tests/test_quality_matrix.py` compares the measured set with
+`.ci/quality-holes.json` in both directions - an unregistered blind spot fails, and a registered one
+the measurement no longer reproduces fails too. Both halves are instrumented. What was missing is
+the sentence *about* the instrumentation, which lives in the file an agent trusts most and reads
+first, and which no probe opened. #330 rewrote that bullet and said so in its own description:
+nothing compares AGENTS.md's claims about the defence with the defence.
+
+`scripts/check_hole_claims.py` closes it with one rule: a hole id named in an instruction file must
+be an id the matrix measures now. Three choices make the rule hold rather than rot in its turn:
+
+- **The vocabulary is derived.** A token is a hole id only when its kind is one `quality_matrix.py`
+  can emit, read off the probe's own `holes.append(["<kind>", ...])` sites. A list kept beside the
+  probe would be a second transcription - the same mistake as a transcribed matrix - and would
+  silently stop covering kinds someone adds later. The derivation is checked against the number of
+  reporting sites: if an append starts with anything other than a literal, the vocabulary is
+  provably shorter than the probe, and that is reported as exit 2, not as a smaller job that passes.
+- **Presence is not the target; tense is.** Scope is `AGENTS.md` and `CLAUDE.md` only. The five
+  release-note pages, this ledger and `QUALITY_MATRIX.md`'s own narrative name closed holes on
+  purpose - a dated record is the place the evidence lives, and forbidding ids there would delete
+  the history this ledger exists to keep. An instruction file is present tense, so a closed id in it
+  is a false statement rather than a false annotation.
+- **A true claim must stay legal.** Otherwise the only way to satisfy the gate is to stop writing
+  anything, and a silenced instruction file is worse than a stale one.
+  `test_an_id_the_matrix_actually_measures_is_allowed` asserts that;
+  `test_a_colon_that_is_not_a_hole_claim_is_ignored` asserts that `line:column`, a URL with a port
+  and `key: value` are not readings of the shape.
+
+The checker's first finding was the file it was written for: `AGENTS.md:49`, naming the gap #330 had
+just finished describing. That is the negative control this class of gate needs - a hook that
+reddens on the sentence that motivated it, in the same session, before any prose was softened to
+satisfy it. The remedy was not to delete the sentence but to state the obligation the closure
+created (a directive added to one locale needs its three twins) and to leave the id out, since the
+id now describes nothing the measurement reproduces.
+
+Verified: 7 gate tests (the rotting sentence caught, every emittable kind covered by the derived
+vocabulary, a measured id allowed, non-claims ignored, a short vocabulary exiting 2, an unreadable
+file exiting 2), the quality matrix reporting no new hole for the checker itself (`orphan-gate`
+would fire if it were unwired; the `prek.toml` hook `hole-claims` is what answers it),
+`ruff check`/`format` clean, and the doc gates green over the five mirrors.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
