@@ -2482,12 +2482,45 @@ site - the guarded one. `git` and `cargo` are deliberately not in that category:
 preconditions of the workflows that invoke them, and a leg without them fails loudly elsewhere.
 
 Verified: `uv run --with mypy==2.4.0 python scripts/check_stub_types.py` and the same with ty both
-report the committed stub clean; against `origin/main`'s stub both report 5 findings and exit 1 -
-the negative control is a test (`tests/test_stub_types_gate.py`), not a manual step, and it refuses
-to pass when neither checker is installed. With `ty` removed from `PATH` the same file skips (11
-passed / 4 skipped) and the gate exits 2, so "green on the machine that authored it" is no longer
-the state being shipped. Route re-derives with no drift; `pytest tests/ -q` 2334 passed / 10
+report the committed stub clean; against the stub that shipped in `v0.17.0` both report findings and
+exit 1 - the negative control is a test (`tests/test_stub_types_gate.py`), not a manual step, and it
+refuses to pass when neither checker is installed. With `ty` removed from `PATH` the same file skips
+(11 passed / 4 skipped) and the gate exits 2, so "green on the machine that authored it" is no
+longer the state being shipped. Route re-derives with no drift; `pytest tests/ -q` 2334 passed / 10
 skipped; changelog counts identical across five mirrors.
+
+**The control decayed the day its own fix merged, and reported a failure while doing it.** That
+sentence above said the negative control asserts against `origin/main`, and for the week that was
+true: main held the stub with `u32` and `Py<PyAny>` in it. #323 merged, main's stub became the clean
+one, and the very next verification run failed with "ty passed on the broken stub". Nothing was
+wrong with the checker; the control had silently stopped describing a broken artifact. A control
+whose source is a moving ref is not a control - it decays at the moment it succeeds, which is the
+worst possible time to stop meaning anything.
+
+Two changes, both small, both necessary:
+
+- `BROKEN_REFS = ("5ea2c0a3", "v0.17.0")` - the commit that carried the defect first, because it is
+  the exact file this fix replaced, with a release tag as the fallback - and the fetched file is
+  checked for the spellings it is supposed to contain before any checker is asked. If no pinned ref
+  yields them, the test skips: history rewritten is a fact to report, not a pass.
+- The control now runs where it can actually run. It needs a checker installed *and* the git
+  history, and no job had both: on the test legs every checker is absent so the file skips, and the
+  stub-drift job had the checkers but never invoked pytest. It does now, under one overlay with
+  `mypy==2.4.0` and `ty==0.0.85`, with `fetch-depth: 0` on that job's checkout because a depth-1
+  clone has no tags - which would have made the re-pinned control skip forever, the quietest
+  possible way for a gate to stop existing.
+
+The first CI run of that new step earned its place immediately. Pinned to `v0.17.0`, mypy exited 1
+as required but reported **three** findings where the assertion demanded five: the older release's
+stub carried fewer of the spelling sites, so the threshold had silently become a property of one
+particular file rather than of the defect. The assertion now says what it means - the run must exit
+1, and `u32` must appear among the findings blamed on our file, with the count a floor rather than
+the claim. A threshold copied from whichever artifact happened to be checked first is the same
+mistake as a ref that moves: both make the control about the sample instead of about the property.
+
+Verified: with `ty` on `PATH` the file reports 13 passed / 2 skipped, and both skips name mypy - the
+control bites against the pinned artifact, and CI's own run of the step is what measured mypy's
+count.
 
 ### (bi) The prose fixer wrote the gap its own checker reported (2026-10-10)
 

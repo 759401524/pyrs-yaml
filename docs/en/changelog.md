@@ -263,8 +263,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `-> dict` from our own fidelity template, now `dict[Any, Any]`; its 32 remaining strictness
   findings are recorded, not enforced. The gate then went red on every CI test leg for want of the
   tool it calls: a binary that is not installed raises instead of returning a code, so
-  unavailability now answers exit 2 and a skipped test, never a pass. — (details: quality-ledger
-  (bg))
+  unavailability now answers exit 2 and a skipped test, never a pass. Its own negative control then
+  decayed: it asserted against `origin/main`, and main held the clean stub the day this fix merged,
+  so the control now names an immutable ref - the commit that carried the defect, with `v0.17.0` as
+  fallback - checks the file for the spellings it should contain, and runs in CI where both checkers
+  exist. — (details: quality-ledger (bg))
 
 - **The prose fixer no longer writes the gap its own checker reports.** — adding a Japanese entry
   made `check_doc_wrapping.py --fix` answer `1 gap(s) [wrap residue]` and refuse to converge: the
