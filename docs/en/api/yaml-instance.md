@@ -449,3 +449,9 @@ yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 - [`YamlStream`](reference.md#yamlstream) — the lazy event stream iterator
 - [`parse()`](reference.md#parse) — module-level convenience function
 - [`safe_load()`](reference.md#safe_load) — module-level convenience function
+
+## Generated API reference
+
+Rendered by `mkdocstrings` from the library's own docstrings and generated type stub, so the signatures below come out of the code rather than being retyped.
+
+::: pyrs_yaml.YAML

@@ -98,6 +98,13 @@ status: new
   출력을 전제하기 때문. 설정된 14 개 handler 옵션은 설치된 `PythonOptions` 와 비교했고, 알 수 없는
   옵션은 빌드가 조용히 무시하므로 검사는 시험 쪽에 두었습니다. — (details: quality-ledger (ba))
 
+- **API 참조는 라이브러리 자체 docstring과 형식 stub에서 생성됩니다.** —
+  `docs/<locale>/api/{reference,yaml-document,yaml-instance,node,merged-view}.md` 에 `mkdocstrings`
+  디렉티브를 넣어, 사이트의 서명은 손으로 옮긴 것이 아니라 코드에서 나옵니다. 네 로케일 모두
+  빌드하고 검증했습니다: `YamlDocument` 에 서명 23 개, `Node` 에 41 개, 모듈 페이지에 48 개,
+  디렉티브가 없는 쪽은 0 그대로. `exceptions.md` 는 손글씨로 남깁니다 — 생성된 stub 이 클래스를 넷만
+  선언하고 예외 형식은 하나도 포함하지 않기 때문입니다. — (details: quality-ledger (be))
+
 #### 수정
 
 - **맵핑 키는 값에 있을 때와 같은 의미를 갖는다.** — `1: a` 는 `{"1": "a"}` 로, `a: 1` 은 `{"a": 1}`

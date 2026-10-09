@@ -94,6 +94,12 @@ status: new
   出。配置里的 14 个 handler 选项逐个对照已安装的 `PythonOptions` 校验过；未被识别的选项构建时静默忽
   略，所以只能由测试检出。— (details: quality-ledger (ba))
 
+- **API 参考现在由库自身的 docstring 与类型存根生成。** —
+  `docs/<locale>/api/{reference,yaml-document,yaml-instance,node,merged-view}.md` 都加上了
+  `mkdocstrings` 指令，站点上的签名出自代码而不是手抄。四个语言均已构建并核验：`YamlDocument` 下 23
+  个签名、`Node` 下 41 个、模块页 48 个，而未写指令的那页仍为 0。`exceptions.md` 保持手写 —— 生成的
+  类型存根只声明了四个类，不含任何异常类型。— (details: quality-ledger (be))
+
 #### 修复
 
 - **映射键终于与同样的文本作值时同义。** — `1: a` 读作 `{"1": "a"}` 而 `a: 1` 读作 `{"a": 1}`，

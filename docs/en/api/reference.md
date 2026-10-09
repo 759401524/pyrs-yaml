@@ -635,3 +635,53 @@ See [Exceptions](exceptions.md) for full details.
 ```python
 __version__ = "0.14.0"
 ```
+
+## Generated API reference
+
+Rendered by `mkdocstrings` from the library's own docstrings and generated type stub, so the signatures below come out of the code rather than being retyped.
+
+::: pyrs_yaml
+    options:
+      members:
+        - parse
+        - parse_file
+        - parse_all_docs
+        - parse_stream
+        - safe_load
+        - safe_loads
+        - safe_dump
+        - dump_file
+        - from_dict
+        - from_json
+        - from_jsonc
+        - from_json5
+        - from_toml
+        - load_json
+        - load_jsonc
+        - load_json5
+        - load_toml
+        - load_ini
+        - read_markdown
+        - read_markdown_str
+        - register_tag
+        - remove_tag
+        - clear_tag_handlers
+        - register_type
+        - remove_type
+        - clear_type_handlers
+        - register_schema
+        - list_schemas
+        - load_schema
+        - compliance_report
+        - CustomType
+        - YamlStream
+        - detect_language
+        - get_language
+        - set_language
+        - list_languages
+        - negotiate_language
+        - discover_plugins
+        - get_plugin
+        - list_plugins
+        - get_discovery_errors
+      show_submodules: false

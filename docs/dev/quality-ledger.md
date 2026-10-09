@@ -15,7 +15,7 @@ Related documents: [engine boundaries](boundaries.md), [performance status](perf
 ## Contents
 
 - The placement family - (h) through (v)
-- The quality defence, entry by entry - (w) through (bd)
+- The quality defence, entry by entry - (w) through (be)
 - Note survival: the leading slot became a list
 - Shipped milestone scoping - the v0.11.3 to v0.12.0 tables after they shipped
 
@@ -2278,6 +2278,58 @@ which assumes the tool lives in the project environment - `prek` is a tool, not 
 passed locally, as it always will here, because this machine has `prek` on `PATH` from an unrelated
 install. A gate written against a tool the job never installs is a gate that exists on one machine,
 which is the sentence this file exists to repeat.
+
+### (be) The API reference is generated now, which is the thing the toolchain upgrade was for (2026-10-10)
+
+Two entries earlier the docs toolchain was taken to the current stable releases, and the honest
+finding was that nothing could be observed improving: no page under any locale contained a single
+`:::`, so the handler was configured, installed and invoked while rendering nothing. That is the
+blind spot this entry closes, and the sequence matters - it could not have been closed before (bb),
+because the generated stub was not parseable and griffe therefore could not see the extension's
+classes at all.
+
+Five pages per locale now carry directives - the module reference and the `YamlDocument`, `YAML`,
+`Node` and `MergedView` classes - in all four locales, because the pages are one set and the site is
+built four times. The measurement is the build's own output, not the exit code: `yaml-document`
+renders 24 content blocks with 23 signatures, `node` 41 and 41, the module page 47 and 48, and the
+control page that names no directive stays at zero - which is what makes the count evidence rather
+than a number that would look the same if the generator had produced nothing. A rendered signature
+reads `__contains__(key)`, `__delitem__(key)`, `__enter__()`, and the class docstring is the one
+carried in the generated stub.
+
+The member list on the module page was extracted, not written: `docs/en/api/reference.md` documents
+33 symbols, 30 of which resolve as members of `pyrs_yaml` under the same loader the handler uses,
+and those 30 plus the module's own classes are what the directive names. The three that do not
+resolve (`dump_pydantic`, `parse_as`, `PyrsYamlConfigSettingsSource`) live in submodules with their
+own pages, so putting them in a module-level `members:` list would have been a build error
+manufactured out of a plausible looking list. The check runs before the pages are written, so an
+unresolvable name is a refusal here rather than a mystery in CI.
+
+The first attempt did produce exactly that mystery: the directive's `options:` block had its list
+items at the same indentation as their key, and `zensical build` died inside the directive's own
+YAML. A green local run of everything else was no help, because none of the other gates read a `:::`
+block. Recorded because the shape of the lesson is the one this file keeps repeating - the renderer
+is a gate of its own.
+
+`exceptions.md` deliberately stays hand-written. The generated stub declares four classes and none
+of the exception types, so `::: pyrs_yaml.YamlParseError` cannot resolve: maturin 1.14.1's
+introspection route does not emit the PyO3 exception classes it imports, which means the public
+typing contract has no exception types in it either - the same file users' `py.typed` promises to
+their type checkers. That is a defect wider than documentation, and it is the subject of its own
+entry rather than being quietly worked around here by hand-editing a generated artifact.
+
+The hole `docs-generation:plugin-unused` came out of `.ci/quality-holes.json`, and its
+`QUALITY_MATRIX.md` row became a closure row. `quality_matrix.py` now derives zero holes, which the
+registry's own two-directional equality test accepts - an empty list is a measured state, not an
+aspiration, and the probe still fires on an injected tree that declares a handler without using one.
+
+One repeat mistake belongs here because this file has now caught it twice. Re-wrapping prose for the
+width gate was run over a hand-written file list that included `QUALITY_MATRIX.md`, which the hook
+does not govern, and the result was a 357-line diff that re-flowed a Markdown table. The governed
+set - `^(CHANGELOG|ROADMAP)\.md$`, `docs/<locale>/changelog.md`, `docs/dev/[a-z-]+\.md` - lives in
+`prek.toml`; a list typed next to a command is a copy of that rule, and copies fall behind it. The
+fix is to run the fixer through the hook (`prek run doc-line-width --all-files`), the way `ci.yml`'s
+new `docs-gates` job does, rather than naming files in the middle of a change.
 
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 

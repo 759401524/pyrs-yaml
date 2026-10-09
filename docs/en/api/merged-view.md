@@ -133,3 +133,9 @@ assert merged["prod"]["host"] == "prod.example.com"  # overridden
 assert merged["prod"]["port"] == 8080  # inherited
 assert merged["prod"]["debug"] is False  # own key
 ```
+
+## Generated API reference
+
+Rendered by `mkdocstrings` from the library's own docstrings and generated type stub, so the signatures below come out of the code rather than being retyped.
+
+::: pyrs_yaml.MergedView

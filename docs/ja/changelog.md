@@ -98,6 +98,13 @@ status: new
   オプションはビルドが黙って無視するので検査はテスト側に置かれました。— (details: quality-ledger
   (ba))
 
+- **API リファレンスはライブラリ自身の docstring と型スタブから生成される。** —
+  `docs/<locale>/api/{reference,yaml-document,yaml-instance,node,merged-view}.md` に `mkdocstrings`
+  ディレクティブを置き、サイトの署名は書き写しでなくコードから出るようにしました。4 ロケールともビル
+  ドして検証済み：`YamlDocument` に 23 の署名、`Node` に 41、モジュールページに 48、ディレクティブの
+  ないページは 0 のまま。`exceptions.md` は手書きのままです — 生成されたスタブがクラスを 4 つしか宣
+  言せず、例外型が一つも含まれないため。— (details: quality-ledger (be))
+
 #### 修正
 
 - **マッピングキーが、同じテキストを値に置いたときの意味を持つ。** — `1: a` は `{"1": "a"}`、 `a: 1`

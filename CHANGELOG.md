@@ -100,6 +100,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `PythonOptions`, and an unrecognised one is now caught by a test because the build ignores it in
   silence. — (details: quality-ledger (ba))
 
+- **The API reference is generated from the library's own docstrings and type stub.** —
+  `docs/<locale>/api/{reference,yaml-document,yaml-instance,node,merged-view}.md` now carry
+  `mkdocstrings` directives, so a signature on the site comes out of the code rather than being
+  retyped. Rendered and verified in all four locales: 23 signatures under `YamlDocument`, 41 under
+  `Node`, 48 on the module page, while the page that names no directive stays at zero.
+  `exceptions.md` remains hand-written because the generated stub declares only four classes and
+  none of the exception types. — (details: quality-ledger (be))
+
 ### Fixed
 
 - **A mapping key now means what the same text means as a value.** — `1: a` loaded as `{"1": "a"}`

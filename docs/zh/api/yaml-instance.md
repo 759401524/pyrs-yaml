@@ -449,3 +449,9 @@ yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 - [`YamlStream`](reference.md#yamlstream) — 惰性事件流迭代器
 - [`parse()`](reference.md#parse) — 模块级便捷函数
 - [`safe_load()`](reference.md#safe_load) — 模块级便捷函数
+
+## 生成的 API 参考
+
+以下内容由 `mkdocstrings` 从库自身的 docstring 与生成的类型存根渲染，签名来自代码，不是手抄。
+
+::: pyrs_yaml.YAML

@@ -449,3 +449,9 @@ yaml.dump_file("multi.yaml", [{"id": 1}, {"id": 2}], explicit_start=True)
 - [`YamlStream`](reference.md#yamlstream) — 遅延イベントストリームイテレーター
 - [`parse()`](reference.md#parse) — モジュールレベルの便利関数
 - [`safe_load()`](reference.md#safe_load) — モジュールレベルの便利関数
+
+## 自動生成の API リファレンス
+
+以下の内容は `mkdocstrings` がライブラリ自身の docstring と生成された型スタブから描画するため、署名はコード由来であり書き写しではありません。
+
+::: pyrs_yaml.YAML

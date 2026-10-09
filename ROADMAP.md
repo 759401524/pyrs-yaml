@@ -134,7 +134,7 @@ asks no translations of them):
 
 | document | holds |
 |:---------|:------|
-| [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md) | the entry-by-entry record `(h)`-`(bd)`, the note-survival invariant, and the milestone scopes after they shipped |
+| [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md) | the entry-by-entry record `(h)`-`(be)`, the note-survival invariant, and the milestone scopes after they shipped |
 | [`docs/dev/boundaries.md`](docs/dev/boundaries.md) | deliberate engine boundaries, and the fuzz findings by family |
 | [`docs/dev/perf.md`](docs/dev/perf.md) | the cross-library ranking snapshot and the Ir gate history |
 
