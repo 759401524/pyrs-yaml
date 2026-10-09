@@ -293,3 +293,18 @@ except pyrs_yaml.YamlTypeError as e:
 ```
 
 **注意:** すべてのカスタム例外は `ValueError` を継承しているため、`except ValueError` で一括キャッチできます。ただし、エラーハンドリングを細かく制御する場合は、具体的な例外クラスを使用してください。
+
+## 自動生成の API リファレンス
+
+以下の内容は生成された型スタブから `mkdocstrings` が描画したものなので、各例外に表示される基底クラスはバインディングが実際に宣言しているものです。
+
+::: pyrs_yaml.YamlParseError
+::: pyrs_yaml.YamlSerializeError
+::: pyrs_yaml.YamlTypeError
+::: pyrs_yaml.YamlValidateError
+::: pyrs_yaml.YamlEditError
+::: pyrs_yaml.YamlPathError
+::: pyrs_yaml.YamlMaxDepthError
+::: pyrs_yaml.YamlDuplicateKeyError
+::: pyrs_yaml.YamlTagError
+::: pyrs_yaml.YamlTagSkip

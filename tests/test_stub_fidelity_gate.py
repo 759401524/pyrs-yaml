@@ -22,6 +22,9 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import re
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -55,6 +58,93 @@ def checker():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def exported_exceptions() -> list[str]:
+    """The error names `python/pyrs_yaml/__init__.py` re-exports, read out of its syntax tree.
+
+    Static on purpose: the assertion this feeds has to hold on any machine, including one where the
+    extension is not built, because "the contract omits the exceptions" is exactly the state a machine
+    without the build would otherwise bless.
+    """
+    tree = ast.parse((REPO_ROOT / "python" / "pyrs_yaml" / "__init__.py").read_text(encoding="utf-8"))
+    names = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.endswith("pyrs_yaml"):
+            names.extend(alias.name for alias in node.names if alias.name.endswith(("Error", "Exception")))
+            names.extend(alias.name for alias in node.names if alias.name == "YamlTagSkip")
+    return sorted(set(names))
+
+
+def test_the_shipped_stub_declares_every_exported_exception():
+    """A wheel whose `py.typed` contract names no error type makes `except pyrs_yaml.YamlParseError` invisible.
+
+    maturin 1.14.1 introspects the built module and emits nothing for PyO3 exception classes, so all ten
+    were missing until the route appended them. This is the assertion that keeps them there: the names come
+    from the package's own re-export list, and each has to appear as a `class` declaration in the artifact
+    that ships.
+    """
+    source = STUB.read_text(encoding="utf-8")
+    names = exported_exceptions()
+    assert len(names) >= 10, names
+    missing = [name for name in names if not re.search(rf"^class {name}\(", source, re.M)]
+    assert not missing, f"python/pyrs_yaml/pyrs_yaml.pyi declares no such class: {missing}"
+
+
+def test_exception_declarations_are_derived_in_base_first_order(checker, monkeypatch):
+    """The declarations come from the built classes, in an order the file can parse, docstrings included.
+
+    A fake module stands in for the extension so the real derivation runs end to end: sorting the names
+    alphabetically puts the subclass first, which is exactly the case the ordering exists to fix.
+    """
+    tag_error = type("YamlTagError", (ValueError,), {"__module__": "pyrs_yaml", "__doc__": "Raised on a bad tag."})
+    parse_error = type("ZyabError", (ValueError,), {"__module__": "pyrs_yaml", "__doc__": None})
+    skip = type("AaefError", (tag_error,), {"__module__": "pyrs_yaml", "__doc__": None})
+    fake = types.ModuleType("pyrs_yaml")
+    fake.YamlTagError, fake.ZyabError, fake.AaefError = tag_error, parse_error, skip
+    monkeypatch.setitem(sys.modules, "pyrs_yaml", fake)
+
+    text, count = checker.exception_block("def f() -> None: ...\n")
+    assert count == 3, text
+    assert text.index("class YamlTagError") < text.index("class AaefError"), text
+    assert "Raised on a bad tag." in text, text
+    ast.parse(text)
+
+
+def test_an_unexpected_exception_count_is_a_problem_not_a_rewrite(checker, monkeypatch):
+    """The declared count is a tripwire: an exception appearing or disappearing must be looked at."""
+    monkeypatch.setattr(checker, "exception_block", lambda text: (text, 11))
+    monkeypatch.setattr(checker, "EXPECTED_DOCSTRING_ESCAPES", 0)
+    _, problems = checker.derived_text("x: int = 0\n")
+    assert any("expected 10" in problem for problem in problems), problems
+
+
+def test_order_by_base_refuses_a_cycle_between_declared_exceptions(checker):
+    """An ordering the route cannot satisfy is reported, not emitted as a file that will not parse.
+
+    A base outside the set is not an error - `ValueError` and `TypeError` are the caller's builtins - so the
+    refusal is specifically the shape Python source cannot express: two declared classes each needing the
+    other first.
+    """
+    with pytest.raises(checker.StubInputError):
+        checker.order_by_base([("A", "B", ""), ("B", "A", "")])
+    ordered = checker.order_by_base([("Sub", "Base", ""), ("Base", "ValueError", "")])
+    assert [name for name, _b, _d in ordered] == ["Base", "Sub"]
+
+
+def test_an_unimportable_extension_stops_the_derivation_rather_than_thinning_it(checker, monkeypatch, tmp_path):
+    """Skipping the exception block quietly would ship a contract smaller than the bindings.
+
+    Exit 2 is the code for "the derivation could not be done", deliberately different from the 1 that reports
+    drift: a green run must never be able to mean "the exception declarations were skipped today".
+    """
+    generated = tmp_path / "gen.pyi"
+    generated.write_text("def f() -> None: ...\n", encoding="utf-8")
+    monkeypatch.setitem(sys.modules, "pyrs_yaml", None)
+    with pytest.raises(checker.StubInputError):
+        checker.exception_block("x: int = 0\n")
+    monkeypatch.setattr(sys, "argv", ["check_stub_drift", "--generated", str(generated), "--tracked", str(generated)])
+    assert checker.main() == 2, "an unusable derivation must not read as in-sync or as drift"
 
 
 def test_only_docstring_bodies_are_candidates(checker):

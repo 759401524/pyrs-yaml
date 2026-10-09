@@ -293,3 +293,18 @@ except pyrs_yaml.YamlTypeError as e:
 ```
 
 **참고:** 모든 사용자 정의 예외는 `ValueError`를 상속하므로 `except ValueError`로 일괄 캡처할 수 있습니다. 하지만 더 세밀한 오류 처리를 위해서는 구체적인 예외 클래스를 사용하는 것이 좋습니다.
+
+## 자동 생성 API 참조
+
+아래 내용은 생성된 형식 stub에서 `mkdocstrings`가 그려 낸 것이므로, 각 예외에 보이는 기반 클래스는 바인딩이 실제로 선언한 그 클래스입니다.
+
+::: pyrs_yaml.YamlParseError
+::: pyrs_yaml.YamlSerializeError
+::: pyrs_yaml.YamlTypeError
+::: pyrs_yaml.YamlValidateError
+::: pyrs_yaml.YamlEditError
+::: pyrs_yaml.YamlPathError
+::: pyrs_yaml.YamlMaxDepthError
+::: pyrs_yaml.YamlDuplicateKeyError
+::: pyrs_yaml.YamlTagError
+::: pyrs_yaml.YamlTagSkip

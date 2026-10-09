@@ -216,6 +216,15 @@ status: new
   文書ゲートと 4 ロケールの `--strict` ビルドを実行する —— 登録済みの描画の盲点はそのように閉じた。
   — (details: quality-ledger (bd))
 
+- **すべての wheel に同梱される型契約が、例外クラスを一つも宣言していなかった。** — パッケージは 10
+  個のエラー型を export するのに `python/pyrs_yaml/pyrs_yaml.pyi` には一つも無い — maturin 1.14.1 の
+  自省経路は PyO3 の `import_exception!` クラスを辿らないためです。それで
+  `except pyrs_yaml.YamlParseError:` は mypy と pyright に見えませんでした。漂移経路はビルド済みのク
+  ラスから宣言（名前・基底・docstring）を追記し、 `EXPECTED_EXCEPTION_CLASSES` で数を門にし、ファイ
+  ルが構文解析できるよう基底を subclass より前に並べ、 import できないときは契約を薄くして通すのでは
+  なく exit 2 で止まります。これにより `exceptions.md` も 4 ロケールすべてで自動生成になりました。—
+  (details: quality-ledger (bf))
+
 #### パフォーマンス
 
 - **タグ出力はテーブル駆動、エスケープはメモリを確保しない。** — タグ符号化を読み取り側の文字クラス

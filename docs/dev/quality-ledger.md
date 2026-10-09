@@ -15,7 +15,7 @@ Related documents: [engine boundaries](boundaries.md), [performance status](perf
 ## Contents
 
 - The placement family - (h) through (v)
-- The quality defence, entry by entry - (w) through (be)
+- The quality defence, entry by entry - (w) through (bf)
 - Note survival: the leading slot became a list
 - Shipped milestone scoping - the v0.11.3 to v0.12.0 tables after they shipped
 
@@ -2330,6 +2330,63 @@ set - `^(CHANGELOG|ROADMAP)\.md$`, `docs/<locale>/changelog.md`, `docs/dev/[a-z-
 `prek.toml`; a list typed next to a command is a copy of that rule, and copies fall behind it. The
 fix is to run the fixer through the hook (`prek run doc-line-width --all-files`), the way `ci.yml`'s
 new `docs-gates` job does, rather than naming files in the middle of a change.
+
+### (bf) The shipped typing contract declared no exception type at all (2026-10-10)
+
+Found through a docs failure. (be) left `exceptions.md` hand-written because
+`::: pyrs_yaml.YamlParseError` would not resolve, and the reason turned out to be wider than the
+docs: the package exports ten error types - nine `*Error` plus `YamlTagSkip` - and
+`python/pyrs_yaml/pyrs_yaml.pyi` declared **none of them**. Measured before acting: the names
+`__init__.py` re-exports from the extension, the `class` lines the stub contains (four, none of them
+errors), and the runtime picture of each object - `__module__` `pyrs_yaml`, seven bases
+`ValueError`, one `TypeError`, `YamlTagSkip` under `YamlTagError`.
+
+That file is what `py.typed` advertises. A user running mypy or pyright was being told the library
+has no exception types, so `except pyrs_yaml.YamlParseError:` - the single most likely thing anyone
+writes against this package - was invisible to the tool checking their code. maturin 1.14.1 builds
+stubs by introspecting the module, and a PyO3 `import_exception!` class is not the kind of object
+its emitter walks, so nothing reached the output.
+
+The repair follows the rule this file keeps repeating: fix the route, never the artifact.
+`check_stub_drift.py` gained `exception_block`, which appends the declarations **derived from the
+live classes** - name, single base, docstring, backslashes doubled the way a Python literal
+requires. Nothing is hand-listed, so adding an exception to the bindings adds it to the contract on
+the next run, and `EXPECTED_EXCEPTION_CLASSES = 10` is the tripwire that makes that change a review
+rather than a silent rederivation. Two details make it correct rather than merely convenient:
+
+- `order_by_base` places a declared base before its subclass, because the output is Python source
+  and `class YamlTagSkip(YamlTagError)` does not parse with them the other way round. A base outside
+  the set is fine - `ValueError` is the reader's builtin - and a cycle between declared classes
+  raises `StubInputError` instead of emitting a file that cannot be read.
+- If the extension cannot be imported, the derivation exits 2. It is deliberately *not* allowed to
+  produce a stub without the exception block: a green gate that occasionally means "the declarations
+  were skipped today" is worse than a red one, and exit 2 distinguishes "could not be derived" from
+  the 1 that means "drift".
+
+`exceptions.md` is now generated in all four locales too - ten directives, ten rendered entries per
+locale in the built HTML, alongside the curated prose that explains when each error is raised, which
+no stub can carry.
+
+The first run of this on a runner went red, and it is the same lesson (bd) recorded in a different
+dress: `Committed type stub is derived` failed with `No module named 'pyrs_yaml'` while the
+identical command was green here. `maturin generate-stubs` builds in an isolated environment and
+leaves nothing importable in `.venv`; `maturin develop` - which `docs.yml` already uses for the same
+reason - does. The job installs the built extension before deriving now, and
+`crates/pyrs-yaml/src/py/**` joined its path triggers because a binding change is exactly what the
+derivation reads. The alternative was to hard-code the ten names in the script, which is how a
+contract quietly drifts from the bindings it describes, so the precondition is stated as a step
+rather than assumed. Local green said nothing about the runner's environment - the fourth time this
+file has had to write that sentence, and the reason every gate here is phrased as an executable
+question.
+
+Three tests wrote themselves wrong before they wrote themselves right, and the shapes are the useful
+part. One monkeypatched `extension_exceptions` to return a fixture and then asserted the ordering it
+was patched away from doing - a test that passes by construction; the ordering now lives in
+`order_by_base`, called end-to-end through a fake module. One asserted that an out-of-set base is
+refused, which the design intentionally accepts. One called `main([...])` on a script that reads
+`sys.argv`. And the regression lock for the artifact - every exported error name must appear as a
+`class` in the shipped stub - reads the package by syntax tree, not by import, so it holds on a
+machine where the extension is not built; on a tree that still had the gap, it fails.
 
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 

@@ -218,6 +218,15 @@ status: new
   문서 검사와 네 로케일 `--strict` 빌드를 돌립니다 — 등록해 둔 렌더링 사각지대가 이렇게 닫혔습니다.
   — (details: quality-ledger (bd))
 
+- **모든 wheel에 동봉되는 형식 계약이 예외 클래스를 하나도 선언하지 않았습니다.** — 패키지는 열 개의
+  오류 형식을 export 하는데 `python/pyrs_yaml/pyrs_yaml.pyi` 에는 하나도 없습니다 — maturin 1.14.1
+  의 introspection 경로가 PyO3 `import_exception!` 클래스를 살피지 않기 때문입니다. 그래서
+  `except pyrs_yaml.YamlParseError:` 는 mypy 와 pyright 에게 보이지 않았습니다. drift 경로는 빌드된
+  클래스에서 선언 (이름·기반·docstring) 을 읽어 붙이고, `EXPECTED_EXCEPTION_CLASSES` 로 수를 잠그고,
+  파일이 해석될 수 있도록 기반 클래스를 subclass 앞에 배치하고, import 가 안 되면 계약을 덜어낸 채로
+  통과하는 대신 exit 2 로 멈춥니다. 이로써 `exceptions.md` 도 네 로케일 모두 자동 생성이 되었습니다.
+  — (details: quality-ledger (bf))
+
 #### 성능
 
 - **태그 출력은 표 기반, escape 은 더 이상 할당하지 않는다.** — 태그 인코딩을 해석기 자신의 문자
