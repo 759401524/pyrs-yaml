@@ -11,8 +11,10 @@ measurement artefact from a regression.
 Fixing the files is half of it. The other half is that nothing said *why*: a convention written in a
 docstring is a convention someone deletes under pressure, so `scripts/quality_matrix.py` now measures
 any ordinary-CI wall-clock gate that bypasses the shared sampler (`timing-floor-unpaired`), and these
-tests fire that measurement on injected text. They also pin the sampler's two properties directly:
-phases alternate inside a block, and one lost pair is tolerated while two are not.
+tests fire that measurement on injected text. They also pin the sampler itself: phases alternate
+inside a block, the verdict is the block minima with a two-win floor, and the macOS log that refuted
+the stricter majority rule this module first shipped with is replayed as a passing case rather than
+argued about.
 """
 
 from __future__ import annotations
@@ -86,20 +88,35 @@ def test_the_reference_can_be_sampled_fewer_times_than_the_candidate():
     assert counts["peer"] == 3 * (2 + 1), counts
 
 
-def test_one_lost_pair_is_noise_and_two_are_a_verdict():
-    """The tolerance is deliberate and bounded, so a spike cannot decide but a slowdown can."""
-    won_every_pair = Paired([(10.0, 20.0), (11.0, 21.0), (10.5, 20.5), (12.0, 22.0), (10.0, 19.0)])
-    assert majority(won_every_pair)
-    assert won_every_pair.candidate_wins == 5
+def test_the_macos_log_that_broke_the_first_rule_now_passes():
+    """Replays the numbers a CI job printed, because the argument is that log, not a preference.
 
-    one_bad_block = Paired([(10.0, 20.0), (99.0, 20.5), (10.2, 20.2), (10.1, 20.1), (10.4, 20.4)])
-    assert one_bad_block.candidate_wins == 4, one_bad_block.pairs
-    assert majority(one_bad_block), "a single inflated pair must not redden the gate"
-    assert one_bad_block.candidate_us == 10.0 and one_bad_block.reference_us == 20.0
+    The first verdict rule demanded four of five pair wins. This run produced three while the document
+    was 2.58x cheaper than its baseline, because bursts of roughly three times the floor landed on
+    three of the five candidate blocks. Per-pair signs are not stable when a disturbance outlives a
+    pair; the minima are, because both sides are sampled in every block.
+    """
+    ci_log = Paired([(139.4, 1001.3), (145.9, 385.5), (405.8, 359.6), (379.1, 1006.8), (437.2, 375.8)])
+    assert ci_log.candidate_wins == 3, ci_log.pairs
+    assert ci_log.ratio == pytest.approx(359.6 / 139.4, rel=1e-6), ci_log.verdict("replayed")
+    assert majority(ci_log), ci_log.verdict("replayed macos run")
 
-    two_bad_blocks = Paired([(99.0, 20.0), (98.0, 20.5), (10.2, 20.2), (10.1, 20.1), (10.4, 20.4)])
-    assert two_bad_blocks.candidate_wins == 3, two_bad_blocks.pairs
-    assert not majority(two_bad_blocks), "three of five is not a claim that the path is faster"
+
+def test_one_lucky_block_does_not_carry_a_verdict():
+    """The floor still bites: minima alone would accept a single undisturbed pair and four losses."""
+    lucky = Paired([(10.0, 400.0), (410.0, 405.0), (420.0, 415.0), (430.0, 425.0), (440.0, 435.0)])
+    assert lucky.candidate_us < lucky.reference_us, lucky.pairs
+    assert lucky.candidate_wins == 1, lucky.pairs
+    assert not majority(lucky), lucky.verdict("one lucky block")
+
+
+def test_a_real_regression_is_still_red():
+    """A candidate that is actually slower fails, whatever the estimator's tolerance is.
+
+    Without this, "the verdict is a minimum" is indistinguishable from a gate that cannot go red.
+    """
+    inverted = Paired([(90.0, 30.0), (95.0, 31.0), (88.0, 29.0), (92.0, 30.5), (91.0, 30.2)])
+    assert not majority(inverted), inverted.verdict("slower candidate")
 
 
 def test_a_genuinely_slower_candidate_goes_red():

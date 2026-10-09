@@ -33,15 +33,18 @@ Both native paths do strictly less work than their baselines on every platform, 
 and still fail loudly if a fast path regresses back through the slow route. Sizes are medium/large: a
 tiny document is dominated by fixed call overhead.
 
-**Contention does not move the two sides together, and that is measured, not assumed.** The claim this
-file used to make - that timing both baselines end to end in one process keeps the ratio honest - held
-only while the process owned its cores. The recorded macos-latest incident has `load_toml` at 336us
-against 369us for the AST route, 1.10x, where the same pair measures ~2.2x locally: on a two-core
-runner the whole process is preempted, so a spike lands on whichever phase happens to be running. Two
-sequential blocks per side therefore cannot cancel it, which is why both gates below sample through
-`tests/timing.py`: candidate and reference are measured adjacently inside each block, the verdict is
-a majority of the pairs, and the failure message carries all five pairs so a red can be attributed to
-one inflated side or to a genuinely thin margin.
+**Shared-CI noise does not move the two sides together, and the statistic that survives it is the
+minimum.** The claim this file used to make - that timing both routes end to end in one process keeps
+the ratio honest - held only while the process owned its cores, and a macos-latest run of the old
+phased code recorded `load_toml` at 336us against 369us (1.10x) where the same pair measures ~2.2x
+locally. The first fix here - measure each pair adjacently and call the candidate faster if it wins
+most pairs - was itself refuted by a macOS run two days later, whose report is replayed as a test in
+`tests/test_timing_gate_discipline.py`: 2.58x of genuine headroom, three of five candidate blocks
+inflated to ~3x their own floor, and a pair-majority verdict that failed. Bursts outlast pairs, so
+per-pair signs are not stable. Both gates now sample through `tests/timing.py` - candidate and
+reference adjacently in every block, which is what guarantees an undisturbed block exists on both
+sides - and judge the minima with a two-win floor, while the message carries every pair so a red says
+whether a few blocks were inflated (measurement) or the two really are close (regression).
 """
 
 import pytest

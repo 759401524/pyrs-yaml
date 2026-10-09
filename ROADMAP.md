@@ -2130,6 +2130,23 @@ blocks give one switch, alternating give five), the tolerance bound, the fact th
 slower candidate still goes red, and that a synthetic unpaired gate is named while a benchmark file
 is not.
 
+### (ay) The verdict rule I shipped last week was refuted by its own CI log
+
+The entry above is the correction; the ledger keeps the shape of the mistake, because it is a shape
+that recurs. A timing gate was rebuilt once already in this ledger - phases separated, then paired
+with a majority verdict - and both times the change was argued from what a burst *could* do rather
+than from what a burst *does* on the runners that execute the gate. The first version's failure was
+invisible because the message printed two medians; the second version's failure was legible in one
+line because the message printed every block, which is the argument for spending complexity on
+attribution rather than on a cleverer estimator.
+
+Two things generalise. Adjacency is worth keeping for a different reason than the one I claimed: it
+does not make per-pair signs stable, but it does guarantee both sides are sampled inside every
+window, which is what makes a minimum meaningful at all. And a tolerance added to fight noise has to
+be calibrated on the noisiest cell, not on the local machine - the local run this rule was checked
+against showed 2.21-2.33x with no inversion at all, so no amount of local re-measurement would have
+caught it.
+
 ## Note survival: the leading slot became a list (2026-10-04)
 
 **The survival invariant is a gate now.** The decision recorded below — "landing it red would train

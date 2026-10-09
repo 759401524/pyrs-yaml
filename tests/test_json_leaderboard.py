@@ -45,8 +45,8 @@ def test_json_parse_beats_ast_route(size):
 
     Measured locally at 11-17x, so the margin is not the concern; the estimator was. Both sides used
     to be timed in one block each, back to back, which hands the verdict to whatever the scheduler
-    did during those two blocks. `tests/timing.py` measures the pair adjacently in five blocks and
-    asks for a majority, and quotes every pair when it fails.
+    did during those two blocks. `tests/timing.py` measures the pair adjacently in five blocks, judges
+    the minima with a floor of two pair wins, and quotes every pair when it fails.
     """
     doc = _SIZES[size]
     # Parity: fast path, AST route, and the reference parser must all agree.

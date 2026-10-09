@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The timing floors judge block minima again, because a macOS run refuted the majority rule I put
+  in last week** — #311 gathered three ad-hoc wall-clock estimators into one sampler and made its
+  verdict "win four of five pairs", on the theory that measuring candidate and reference adjacently
+  makes a burst inside a pair cancel. The theory was wrong in a way only a shared runner would show:
+  bursts outlast pairs. The report from `test (macos-latest, 3.13)` is the argument —
+  `candidate 139.4us vs reference 359.6us (2.58x), won 3/5 pairs`, with three of five candidate
+  blocks sitting near 3x their own floor while the document really is 2.58x cheaper. That is a red
+  gate on unchanged code, which is the exact failure mode the sampler was written to remove. The
+  verdict is therefore the block minima again, with a floor of two pair wins so a single lucky block
+  cannot carry it, and alternation stays because measuring both sides in every block is what
+  guarantees an undisturbed block exists on each side. What the rewrite genuinely bought is
+  attribution: the failure message now prints every pair, which is how this run could be classified
+  as measurement rather than regression in one reading — and that log is replayed as a passing test,
+  so the rule cannot be re-tightened into a flake by someone who has not seen it.
 - **The in-process timing floors sample their two phases as pairs, and a red explains itself** —
   three leaderboard files asserted "this path does less work" from wall-clock with three different
   estimators: the TOML parse gate ran every candidate block before every reference block, the TOML
