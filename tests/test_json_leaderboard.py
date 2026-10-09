@@ -18,12 +18,11 @@ are medium/large: a tiny document is dominated by fixed call overhead.
 """
 
 import json
-import statistics
-import time
 
 import pytest
 
 import pyrs_yaml
+from tests.timing import compare, majority
 
 
 def _payload(items):
@@ -40,25 +39,20 @@ def _doc(items):
 _SIZES = {"medium": _doc(300), "large": _doc(1200)}
 
 
-def _median_us(fn, reps=50):
-    samples = []
-    for _ in range(reps):
-        t0 = time.perf_counter()
-        fn()
-        samples.append(time.perf_counter() - t0)
-    return statistics.median(samples) * 1e6
-
-
 @pytest.mark.parametrize("size", sorted(_SIZES))
 def test_json_parse_beats_ast_route(size):
+    """Native load_jsonc must beat the AST route it replaces, sampled in pairs.
+
+    Measured locally at 11-17x, so the margin is not the concern; the estimator was. Both sides used
+    to be timed in one block each, back to back, which hands the verdict to whatever the scheduler
+    did during those two blocks. `tests/timing.py` measures the pair adjacently in five blocks and
+    asks for a majority, and quotes every pair when it fails.
+    """
     doc = _SIZES[size]
     # Parity: fast path, AST route, and the reference parser must all agree.
     assert pyrs_yaml.load_jsonc(doc) == pyrs_yaml.parse(doc).to_dict() == json.loads(doc)
-    fast = _median_us(lambda: pyrs_yaml.load_jsonc(doc))
-    ast_route = _median_us(lambda: pyrs_yaml.parse(doc).to_dict())
-    assert fast < ast_route, (
-        f"parse/{size}: native fast path not faster than the AST route it bypasses ({fast:.1f}us vs {ast_route:.1f}us)"
-    )
+    result = compare(lambda: pyrs_yaml.load_jsonc(doc), lambda: pyrs_yaml.parse(doc).to_dict())
+    assert majority(result), f"json parse/{size}: " + result.verdict("native load_jsonc vs the AST route it bypasses")
 
 
 _SERIALIZE_ITEMS = (300, 1200)
@@ -66,13 +60,12 @@ _SERIALIZE_ITEMS = (300, 1200)
 
 @pytest.mark.parametrize("items", _SERIALIZE_ITEMS)
 def test_json_serialize_beats_old_round_trip(items):
+    """Native compact to_json must beat the to_dict()+json.dumps it replaced, in pairs."""
     data = _payload(items)
     doc = pyrs_yaml.parse(pyrs_yaml.from_jsonc(json.dumps(data)))
     # Parity + byte-stability: native compact output must parse back to the data.
     assert json.loads(doc.to_json(0)) == data
-    native = _median_us(lambda: doc.to_json(0))
-    round_trip = _median_us(lambda: json.dumps(doc.to_dict()))
-    assert native < round_trip, (
-        f"serialize/{items}: native to_json not faster than the old "
-        f"to_dict()+json.dumps round-trip it replaced ({native:.1f}us vs {round_trip:.1f}us)"
+    result = compare(lambda: doc.to_json(0), lambda: json.dumps(doc.to_dict()))
+    assert majority(result), f"json serialize/{items}: " + result.verdict(
+        "native to_json vs the to_dict()+json.dumps round trip"
     )

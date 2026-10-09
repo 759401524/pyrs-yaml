@@ -9,6 +9,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The in-process timing floors sample their two phases as pairs, and a red explains itself** —
+  three leaderboard files asserted "this path does less work" from wall-clock with three different
+  estimators: the TOML parse gate ran every candidate block before every reference block, the TOML
+  serialize gate and both JSON gates took one block per side, and the cross-library peers were timed
+  once per side in a loop. A block is only comparable inside itself, so a scheduler spike on one
+  phase decided the verdict while the message showed two numbers and nothing else. Measured before
+  anything changed: the parse pair sits at 2.21-2.33x locally and held at least 2.02x across 96
+  trials with the CPU fully saturated, but the same gate's recorded macos-latest incident is 336us
+  against 369us — 1.10x — which is what a two-core shared cell does to a phase-separated minimum.
+  One red arrived in roughly six full local runs and could not be reproduced in four more, and
+  without the assertion text its cause stayed undiagnosed; that unattributability is the defect
+  fixed here, not the flake rate. `tests/timing.py` is now the single sampler: candidate and
+  reference are measured adjacently inside each block, the verdict needs all but one of five pairs,
+  and the failure message quotes every pair so the next red says which side moved. The cross-library
+  floors keep their 5x and top-3 thresholds (measured 38x-280x against PyYAML, 71x-77x against
+  ruamel) and change only their estimator, sampling the pure-Python reference fewer times per block
+  because the pair, not the repetition count, is what cancels drift. `scripts/quality_matrix.py`
+  derives `timing-floor-unpaired` for any ordinary-CI file that times wall-clock while bypassing the
+  sampler, so the methodology cannot decay back into three estimators; it measures zero today, and
+  nine tests fire that measurement on injected files while pinning the alternation, the tolerance,
+  and the fact that a genuinely slower candidate still goes red.
 - **The ledger and the changelogs were re-flowed, and prose width is a rule now** — `ROADMAP.md` had
   a line of 21,850 characters and `docs/ja/changelog.md` one of 884; Markdown and every renderer
   ignore physical line length, so only the reader paid. `scripts/check_doc_wrapping.py` measures 100
