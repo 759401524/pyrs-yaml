@@ -92,6 +92,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The strict JSON writers refuse a non-finite float instead of respelling it.** — RFC 8259 has no
+  literal for infinity or NaN, and `to_json` / `to_jsonc` answered by quoting the hub's text:
+  `{"b": ".inf"}`, which `load_json` hands back as a string. A number became a string on the way
+  out, indistinguishable from a document whose value really was that text - the same class of
+  loss #312 fixed on the way in. The alternatives were measured rather than weighed: `null` (what
+  `JSON.stringify` emits) is a different number, and a bare `Infinity` is text this library's own
+  strict reader rejects on purpose, being stricter than CPython's `json.loads` here by design. So
+  the writers now raise `YamlSerializeError` carrying the stable reason key
+  `json-cannot-represent-non-finite`, and `to_json5` - the dialect that owns the token - stays a
+  round trip. The rejection also stopped masquerading as an internal fault:
+  `SerializeError::UnsupportedValue` is a new variant for "the format has no room for this value",
+  which is what the JSON and TOML writers had been reporting as `internal-error` for keys, aliases,
+  nulls and timestamps alike.
+
 - **`pyq validate` accepts `--input` and honours the format actually read.** — it hardcoded the YAML
   parser, so every non-YAML config it was pointed at (`pyproject.toml`, `package.json`) was rejected
   outright. It now takes `--input auto|yaml|json|jsonc|json5|toml` and routes through the shared

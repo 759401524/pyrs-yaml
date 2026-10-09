@@ -277,6 +277,12 @@ class YamlDocument:
         native serializer, for byte-identical output on ASCII documents. Non-
         ASCII is now emitted as raw UTF-8 (like `to_jsonc` / `to_json5`) rather
         than `json.dumps`' `\\uXXXX` escapes.
+
+        Raises `YamlSerializeError` whose message is the stable reason key
+        `json-cannot-represent-non-finite` when the document holds infinity or NaN:
+        RFC 8259 has no literal for either, and every substitute would silently
+        change the value (`".inf"` reads back as text, `null` is a different number).
+        Use `to_json5`, which owns the token, or convert the value first.
         """
     def to_json5(self, /, indent: "int" = 2) -> "str":
         """
@@ -287,10 +293,11 @@ class YamlDocument:
     def to_jsonc(self, /, indent: "int" = 2) -> "str":
         """
         Serialize to JSONC text, preserving the comments the AST carries
-        (both `//` line and `/* */` block, emitted as `//`). Unlike
-        [`to_json`](Self::to_json) — which goes through `json.dumps` and
-        so drops comments and type info — this routes through the native
-        engine, so a document parsed from JSONC round-trips its notes.
+        (both `//` line and `/* */` block, emitted as `//`). Like
+        [`to_json`](Self::to_json) this routes through the native engine rather
+        than `json.dumps`, so a document parsed from JSONC round-trips its notes;
+        comments are the only thing JSONC adds over strict JSON here, and a
+        non-finite float is refused for the same reason it is there.
         """
     def to_toml(self, /) -> "str":
         """

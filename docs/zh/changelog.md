@@ -80,6 +80,15 @@ status: new
 
 #### 变更
 
+- **严格 JSON 写出遇到非有限浮点数时改为拒绝，而不是换个写法。** — RFC 8259 没有无穷与 NaN 的字面
+  量，`to_json` / `to_jsonc` 过去的回答是把中枢文本加引号：`{"b": ".inf"}`，而 `load_json` 会把它当
+  字符串交回去。数字在输出时变成了字符串，与一份本就写着该文本的文档无法区分——这与 #312 修的是同一类
+  失真，只是方向相反。其余候选是量出来的而非拍板的：`null`（`JSON.stringify` 的答案）是另一个数，裸
+  `Infinity` 则是本库严格读取器有意拒绝的文本（此处我们比 CPython 的 `json.loads` 更严）。现在写出会
+  抛 `YamlSerializeError`，消息就是稳定原因键 `json-cannot-represent-non-finite`；拥有该词法的
+  `to_json5` 仍是无损往返。拒绝也不再伪装成内部故障：新增 `SerializeError::UnsupportedValue` 专门表
+  示「该格式装不下这个值」，而键、别名、null 与时间戳此前都被报成 `internal-error`。
+
 - **`pyq validate` 接受 `--input`，并按真正读到的格式处理。** — 它原先硬编码 YAML 解析器，指向
   `pyproject.toml`、`package.json` 这类配置时一律拒绝。现在接受
   `--input auto|yaml|json|jsonc|json5|toml`，并走共享加载器。

@@ -169,6 +169,36 @@ class TestJsonDialects:
         # the word is a red test rather than a silent regression.
         assert pyrs_yaml.from_json5("{i: Infinity}").strip() == "i: .inf"
 
+    def test_strict_json_refuses_a_non_finite_float(self):
+        """The ruling #312 left open: JSON has no literal for infinity or NaN.
+
+        Quoting it emitted `"b": ".inf"`, which `load_json` hands back as text - a number turning into a
+        string on the way out, indistinguishable from a document whose value really was that string.
+        `null` (what `JSON.stringify` answers) is a different number, and a bare `Infinity` is text
+        `load_json` rejects here by design. So the strict writers refuse, with a stable reason key a caller
+        can match on; the dialect that owns the token still round-trips, and YAML is untouched.
+        """
+        for hub in ("b: .inf\n", "b: -.inf\n", "b: .nan\n"):
+            doc = pyrs_yaml.parse(hub)
+            for emit in (doc.to_json, doc.to_jsonc):
+                with pytest.raises(pyrs_yaml.YamlSerializeError) as exc:
+                    emit()
+                assert "json-cannot-represent-non-finite" in str(exc.value)
+            # The value survives somewhere in the family, which is what makes the refusal a routing
+            # answer rather than a dead end.
+            assert "Infinity" in doc.to_json5() or "NaN" in doc.to_json5()
+
+        # Nested, not just at the root: the refusal has to reach through containers.
+        nested = pyrs_yaml.parse("items:\n  - .inf\n  - 1\n")
+        with pytest.raises(pyrs_yaml.YamlSerializeError):
+            nested.to_json()
+        assert nested.to_json5().count("Infinity") == 1
+
+        # YAML owns these spellings, so dumping the same value is unaffected.
+        assert pyrs_yaml.safe_load(pyrs_yaml.safe_dump({"b": math.inf})) == {"b": math.inf}
+        # A string that merely looks like the hub's spelling is still a string, and still emits quoted.
+        assert pyrs_yaml.parse('b: ".inf"\n').to_json() == '{\n  "b": ".inf"\n}'
+
     def test_document_to_jsonc_preserves_comments(self):
         doc = pyrs_yaml.parse("# above the key\nport: 8080\n")
         out = doc.to_jsonc()

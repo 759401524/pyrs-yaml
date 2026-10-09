@@ -55,6 +55,15 @@ pub enum SerializeError {
     /// Internal invariant violation / unexpected state.
     #[error("internal-error: {0}")]
     Internal(&'static str),
+    /// The target format has no representation for this value or shape, so the writer refused.
+    ///
+    /// Separate from [`SerializeError::Internal`] because the caller did nothing wrong: a document
+    /// holding an infinity, an alias, or a non-scalar object key is a valid document that JSON or TOML
+    /// simply cannot spell. The `&'static str` is a stable reason key (`json-cannot-represent-non-finite`),
+    /// greppable out of a user's exception message - and it must not be phrased as "internal error", which
+    /// tells the reader the library broke rather than that the format has no room for the value.
+    #[error("{0}")]
+    UnsupportedValue(&'static str),
 }
 
 /// Edit-path parsing failures.

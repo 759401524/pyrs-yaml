@@ -5,7 +5,7 @@
 use crate::ast::CustomNode;
 use crate::error::SerializeError;
 use crate::parser::{parse, yaml::Schema};
-use pyrs_json::{to_json_text, to_json_text_pretty, to_jsonc_text_pretty};
+use pyrs_json::{to_json_text, to_json_text_pretty, to_json5_text, to_jsonc_text_pretty};
 
 #[test]
 fn jsonc_preserves_root_leading_comment() {
@@ -38,11 +38,24 @@ fn yaml_nodes_project_like_the_serde_json_path() {
 
 #[test]
 fn exotic_scalars_quote_or_normalize() {
-    let node = parse("a: 0x1F\nb: .inf\nc: !!str 7\n", Schema::Core).unwrap();
+    let node = parse("a: 0x1F\nc: !!str 7\n", Schema::Core).unwrap();
     let text = to_json_text(&node).unwrap();
     assert!(text.contains("\"a\":31"), "{text}"); // hex normalizes
-    assert!(text.contains("\"b\":\".inf\""), "{text}"); // non-finite as text
     assert!(text.contains("\"c\":7"), "{text}"); // plain+tag resolves like serde path did
+
+    // A non-finite float has no JSON literal, so the projection refuses it instead of quoting it into
+    // a string: `"b":".inf"` used to come back from `load_json` as text, indistinguishable from a
+    // document whose value really was that string. JSON5 owns the token, so the same node still
+    // projects losslessly there.
+    let infinity = parse("b: .inf\n", Schema::Core).unwrap();
+    let err = to_json_text(&infinity).unwrap_err();
+    assert!(
+        format!("{err:?}").contains("json-cannot-represent-non-finite"),
+        "{err:?}"
+    );
+    let json5 = to_json5_text(&infinity).unwrap();
+    assert!(json5.contains("Infinity"), "{json5}");
+    assert!(!json5.contains("\"Infinity\""), "{json5} quoted a number");
 }
 
 #[test]
@@ -68,6 +81,6 @@ fn alias_and_non_scalar_keys_are_stable_errors() {
     };
     assert!(matches!(
         to_json_text(&keyed),
-        Err(SerializeError::Internal("json-object-key"))
+        Err(SerializeError::UnsupportedValue("json-object-key"))
     ));
 }

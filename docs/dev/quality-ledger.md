@@ -2708,14 +2708,60 @@ Verified: 522 nextest tests, 2338 Python tests (10 skipped), clippy `-D warnings
 `cargo fmt --check`, the `PanicException` repro now returning "ok (no violation)" / "expected str",
 and doc gates green across nine governed pages.
 
-## Shipped milestone scoping (v0.11.3 → v0.12.0)
+### (bk) What a format cannot spell, it must not answer with a lie (2026-10-10)
+
+Issue 312 fixed what a non-finite float looked like on the way into the hub. This is the half that
+fix could not answer: what the strict JSON writers do with a value RFC 8259 has no literal for. It
+was written into `ROADMAP.md` as a ruling to make, with three candidates and no measurement attached
+to any of them.
+
+Measured, from the running library rather than from the design:
+
+```text
+b: .inf  ->  to_json   { "b": ".inf" }      load_json gives str, not float
+b: .inf  ->  to_json5  { "b": Infinity }    load_json5 gives float  ✓
+```
+
+So the strict writers were turning a number into a string on the way out - the mirror image of the
+bug that was just fixed, and equally invisible: nothing in the output distinguishes a document whose
+value was the text `.inf` from one whose value was the number.
+
+Each candidate was then asked the same question - what comes back if you read it?
+
+| emission | reads back as | verdict |
+|:--|:--|:--|
+| `".inf"` (before) | `str` | the value's type changes silently |
+| `null` (`JSON.stringify`'s answer) | `None` | a different number, silently |
+| `Infinity` (CPython's default) | rejected here | text `load_json` refuses on purpose; this loader is stricter than the stdlib by design, matching the spec |
+| refuse | - | the value is not lost, and the caller chooses |
+
+Refusal is the only row that does not assert something false about the data. `to_json5` already
+carries the number losslessly, so the caller is not stranded - which is why no lenient `null` was
+added: nothing has asked for a documented way to lose a value on purpose, and a default that loses
+it silently is what this entry exists to remove.
+
+The same sweep found the message was lying too. `SerializeError::Internal` carried every writer
+rejection, so `to_json` on an alias, `to_toml` on a null or on a non-table root, and a malformed
+TOML timestamp all reached the user as `internal-error: toml-cannot-represent-null` - wording that
+tells a reader the library broke instead of telling them their document has a value the format
+cannot hold. A new `UnsupportedValue` variant now carries those stable reason keys, and `Internal`
+is left meaning what its name says: a violated invariant, of which the YAML serializer has exactly
+one.
+
+Verified: 526 nextest tests (including the strict-writer refusal, nested as well as at the root, and
+JSON5's fixed point), 2338 Python tests (10 skipped), clippy `-D warnings`, the stub regenerated
+through the declared route (`maturin generate-stubs` + `check_stub_drift.py`, which carries the new
+docstring), and `to_json`'s docstring naming the reason key so the refusal is in the API reference
+and not only in the source.
+
+### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
 *reasons* are the useful part - which scope closed empty, which audit settled the argument, which
 decision was deferred and against what date - and a plan silently deleted at release leaves the
 next reviewer without the previous reviewer's evidence.
 
-### v0.11.3 — "Streaming Write + Process Hardening" (target: Q3 2026)
+#### v0.11.3 — "Streaming Write + Process Hardening" (target: Q3 2026)
 
 > Complete the big-file story v0.11.2 opened (read is constant-memory, write still isn't) and close
 > the two process debts flagged in the 2026-08-02 closure that caused v0.10.0-class release
@@ -2740,7 +2786,7 @@ no real edit regression).
 
 ---
 
-### v0.11.5 — "Parser Robustness" (target: Q3 2026)
+#### v0.11.5 — "Parser Robustness" (target: Q3 2026)
 
 > Reframed from the original v0.12.0 "Compliance Improvement" items 3/4/5. The YAML Test Suite pass
 > rate is saturated at **99.75%** (405/406 — only `ZYU8` fails, rejected by design), so these items
@@ -2780,7 +2826,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-### v0.11.6 — "numpy-free free-threaded wheel" (target: Q3 2026)
+#### v0.11.6 — "numpy-free free-threaded wheel" (target: Q3 2026)
 
 > Ship `cp314t` (free-threaded) wheels built with `--no-default-features` so rust-numpy is excluded
 > entirely. Current free-threaded wheels compile the numpy feature (default) but runtime-probe it
@@ -2798,7 +2844,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-### v0.11.7 — "CI signal hygiene" (target: Q3 2026)
+#### v0.11.7 — "CI signal hygiene" (target: Q3 2026)
 
 > Replace the deliberately-failing `stub-build-check` CI job with static assertions that pass when
 > the repo is correct (green CI), fail only on regression. Track `rust-numpy` free-threaded support
@@ -2813,7 +2859,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-### v0.12.0 — "Competitive Response" (target: Q3 2026)
+#### v0.12.0 — "Competitive Response" (target: Q3 2026)
 
 > Respond to `yaml-edit` competitor features with a fast, round-trip-preserving editing story. D3
 > ships the create-missing path write; D4 adds Rust-backed AST traversal.

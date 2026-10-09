@@ -82,6 +82,17 @@ status: new
 
 #### 変更
 
+- **厳格 JSON の書き出しは非有限浮動小数を別の表記にせず拒否します。** — RFC 8259 に無限大や NaN の
+  リテラルが無いので、`to_json` / `to_jsonc` は中枢のテキストを引用して `{"b": ".inf"}` と答えていま
+  した。`load_json` はそれを文字列として返すため、出力の途中で数が文字列になり、そのテキストを値とし
+  て持つ文書と区別できません。#312 が入口で直したのと同じ種類の失損です。代案は秤にかけず測定しまし
+  た：`null`（`JSON.stringify` の答え）は別の数ですし、裸の `Infinity` は本ライブラリの厳格リーダー
+  が意図通り拒否するテキストです（ここは CPython の `json.loads` より厳い）。いまの書き出しは安定理
+  由キー `json-cannot-represent-non-finite` を載せた `YamlSerializeError` を投げます。語を持つ
+  `to_json5` は往復を保ちます。拒否が内部障害を装わなくなりました：新変種
+  `SerializeError::UnsupportedValue` は「その形式はこの値を載せられない」専用にあたり、キー・エイリ
+  アス・null・タイムスタンプが従来 `internal-error` と報告されていたのはそこでした。
+
 - **`pyq validate` が `--input` を受け取り、実際に読んだ形式に従う。** — YAML パーサをハードコードし
   ていたため `pyproject.toml` や `package.json` は即座に拒否されていました。現在は
   `--input auto|yaml|json|jsonc|json5|toml` を受け取り、共通ローダ経由で読みます。
