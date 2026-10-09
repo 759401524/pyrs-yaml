@@ -310,6 +310,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ROADMAP.md`: `mapping_of`/`sequence_of` check elements but not the container's kind. — (details:
   quality-ledger (bj))
 
+- **The fuzz tier had no target for the schema language, and a crash lived there (PR #329).** — six
+  targets fed the engine documents; none ever fed it a schema, which is how `path: $.café` was able
+  to abort the process in code review's blind spot (ledger (bj)) - every hand-written schema test
+  used ASCII keys, so no tier in the matrix could reach the path navigator. The seventh target
+  splits its input on the first NUL and passes the halves to `parse_schema_yaml` and
+  `validate_node`, so one corpus entry carries both grammars and the interaction between them.
+  Seeded with the exact input that used to crash, it joins the pull-request tier (deterministic
+  `-runs=0` replay of the seeds) rather than waiting on the weekly sampler. Its bite is
+  demonstrated, not assumed: with the fix reverted the replay surfaces one crash input at
+  `schema_language.rs`, and with the fix in place the same seed replays clean, as does 150 s of
+  exploration.
+
 ### Performance
 
 - **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the
