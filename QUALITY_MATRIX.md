@@ -24,7 +24,7 @@ Measured inventory of the three tiers:
 | --- | --- | --- | --- |
 | unit / integration | 509 Rust `#[test]`, 1,216 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 22 `prop_*` functions (proptest), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 6 targets, 117 seeds of which 60 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 7 targets, 118 seeds of which 60 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 Orthogonality, tested rather than asserted: the same three defect families that the recent
 fuzz tier found (comment attribution, empty-container spelling, nested merge application)

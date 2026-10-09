@@ -64,3 +64,14 @@ path = "fuzz_targets/toml_roundtrip.rs"
 test = false
 doc = false
 bench = false
+
+# The schema language, which is a second grammar with its own path navigator: every other target
+# feeds the engine a document, and the crash this one covers (a non-ASCII rule path aborting the
+# process, ledger (bj)) was reachable only by feeding it a schema. One input carries both, split on
+# its first NUL.
+[[bin]]
+name = "validate_schema"
+path = "fuzz_targets/validate_schema.rs"
+test = false
+doc = false
+bench = false

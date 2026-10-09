@@ -2754,14 +2754,55 @@ through the declared route (`maturin generate-stubs` + `check_stub_drift.py`, wh
 docstring), and `to_json`'s docstring naming the reason key so the refusal is in the API reference
 and not only in the source.
 
-### Shipped milestone scoping (v0.11.3 → v0.12.0)
+#### (bl) A test matrix measures the surfaces it feeds, not the ones it names (2026-10-10)
+
+The fuzz tier had six targets. Read individually, each is sound: `parse_yaml`, `yaml_roundtrip`,
+`parse_json`, `json_roundtrip`, `parse_toml`, `toml_roundtrip`. Read as a matrix, they say something
+no individual file says: every one of them hands the engine a *document*. The engine also parses
+*schemas* - a second grammar with its own path navigator - and nothing in the tree had ever given it
+one.
+
+That is where `(bj)`'s crash lived. The observation worth keeping is not "add a target for the
+schema language" but the method that found it: the matrix was described in prose ("unit / property /
+fuzz / cross-library"), which is a true statement about every named surface and silent about whether
+the set of surfaces is complete. `QUALITY_MATRIX.md` now carries 7 targets / 118 seeds / 60
+former-crash seeds, and the row is derived from `fuzz/Cargo.toml` and the workflow matrix rather
+than typed, so a declared target whose file is missing - or a file no CI job runs - reddens
+`tests/test_quality_matrix.py`.
+
+Two constraints the new target had to satisfy that a private `cargo fuzz run` would have skipped:
+
+- one input has to carry *both* grammars, so it is split on the first NUL. A rule path is only
+  navigated when the document parses, and a schema that does not parse returns early; fuzzing either
+  half alone mostly explores reject paths.
+- it has to fit `scripts/fuzz_rounds.sh`, whose pull-request tier replays committed seeds with
+  `-runs=0` and nothing else, because that is the only fuzz mode deterministic enough to block a
+  merge. The seed is the exact input from (bj), so the crash class is gated per pull request instead
+  of being rediscovered weekly.
+
+The target is then proven to bite, because "clean" is also what a broken probe reports: reverting
+the `schema_language.rs` fix and replaying the seed produced `crash-59b1501e9e598d3f…`, panicking at
+`schema_language.rs`; restoring the fix made the same replay clean, as did 150 s of scheduled-mode
+exploration.
+
+Two environment facts worth recording, both discovered while building rather than reading:
+`cargo fuzz` needs the toolchain pinned explicitly (`RUSTUP_TOOLCHAIN=nightly` - `-Zsanitizer` is
+not a stable option and the failure reads as a rustc bug otherwise), and a target directory under
+`/mnt/d` dies mid-build with "Cannot allocate memory" while writing `.rmeta`. The second is a 9p
+limit, not a defect in the target, and it looks exactly like one until you have hit it.
+
+Verified: `cargo fuzz build --dev validate_schema` rc=0, PR-mode seed replay clean on the fixed tree
+and crashing on the reverted one, `cargo check --manifest-path fuzz/Cargo.toml --bins`, and
+`pytest tests/test_quality_matrix.py` 23 passed with the derived rows updated.
+
+## Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
 *reasons* are the useful part - which scope closed empty, which audit settled the argument, which
 decision was deferred and against what date - and a plan silently deleted at release leaves the
 next reviewer without the previous reviewer's evidence.
 
-#### v0.11.3 — "Streaming Write + Process Hardening" (target: Q3 2026)
+### v0.11.3 — "Streaming Write + Process Hardening" (target: Q3 2026)
 
 > Complete the big-file story v0.11.2 opened (read is constant-memory, write still isn't) and close
 > the two process debts flagged in the 2026-08-02 closure that caused v0.10.0-class release
