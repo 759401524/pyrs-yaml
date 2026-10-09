@@ -103,7 +103,11 @@ jobs:
     name: Committed type stub is derived
     runs-on: windows-latest
     steps:
+      # Tags as well as commits: the gate's own negative control names the release whose shipped stub was
+      # broken (`v0.17.0`), and a depth-1 checkout has no tags, so the control would skip forever.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -163,3 +167,10 @@ jobs:
       # no files - which is why the script names the file and refuses a vacuous run.
       - name: Assert the stub type checks (ty)
         run: uv run --with 'ty==0.0.85' python scripts/check_stub_types.py --checker ty
+
+      # The two steps above assert the artifact is clean; this one asserts the gate would have noticed if it
+      # were not, against the stub that actually shipped broken. It runs here and nowhere else because it needs
+      # a checker installed *and* the git history, which no other job has: on the test legs both checkers are
+      # absent and the tests skip, and a control that only ever runs on one laptop is a control in name only.
+      - name: Assert the gate bites the artifact that shipped broken
+        run: uv run --with 'mypy==2.4.0' --with 'ty==0.0.85' python -m pytest tests/test_stub_types_gate.py -q

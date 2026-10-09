@@ -172,24 +172,47 @@ def test_the_committed_stub_checks_clean_under_both_checkers(checker, tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_the_gate_catches_the_artifact_that_was_broken(tmp_path):
-    """Negative control, from the real history: `origin/main`'s stub must fail the gate.
+# The known-bad artifact, named by refs that cannot move. The commit is the exact file this fix replaced, so it
+# carries every spelling; the release tag is the fallback for a checkout that has tags but not that commit.
+BROKEN_REFS = ("5ea2c0a3", "v0.17.0")
 
-    The file is fetched from Git rather than reconstructed, so this asserts against the bytes that actually
-    shipped the defect - `u32`, three `Py<PyAny>` forward annotations, an unimported `Callable`.
+
+def broken_stub(tmp_path):
+    """Fetch the bytes that actually shipped the defect, or return None if no pinned ref yields them.
+
+    Two properties are checked rather than assumed: the ref must exist, and the file it names must still
+    contain `u32` and `Py<PyAny>`. The second one is what keeps this control honest - a control pointed at a
+    moving ref (`origin/main`, until this fix landed) stops describing a broken artifact exactly when the fix
+    succeeds, and then either passes for the wrong reason or fails for the right one.
     """
-    shown = subprocess.run(
-        ["git", "show", "origin/main:python/pyrs_yaml/pyrs_yaml.pyi"],
-        capture_output=True,
-        check=False,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    if shown.returncode != 0:
-        pytest.skip("origin/main is not available in this checkout")
-    broken = tmp_path / "broken.pyi"
-    broken.write_text(shown.stdout, encoding="utf-8", newline="\n")
+    for ref in BROKEN_REFS:
+        shown = subprocess.run(
+            ["git", "show", f"{ref}:python/pyrs_yaml/pyrs_yaml.pyi"],
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if shown.returncode != 0:
+            continue
+        if "u32" not in shown.stdout or "Py<PyAny>" not in shown.stdout:
+            continue
+        path = tmp_path / "broken.pyi"
+        path.write_text(shown.stdout, encoding="utf-8", newline="\n")
+        return path
+    return None
+
+
+def test_the_gate_catches_the_artifact_that_was_broken(tmp_path):
+    """Negative control against a release tag: `v0.17.0`'s shipped stub must fail the gate.
+
+    Asserting against the artifact rather than a reconstruction is the point - the file is what maturin 1.14.1
+    emitted, with `u32`, three `Py<PyAny>` forward annotations and an unimported `Callable` in it.
+    """
+    broken = broken_stub(tmp_path)
+    if broken is None:
+        pytest.skip("no pinned ref in this checkout carries the known-bad stub")
     script = REPO_ROOT / "scripts" / "check_stub_types.py"
     ran = 0
     for checker in ("mypy", "ty"):
@@ -206,6 +229,11 @@ def test_the_gate_catches_the_artifact_that_was_broken(tmp_path):
         )
         findings = [line for line in (result.stdout + result.stderr).splitlines() if "pyrs_yaml.pyi" in line]
         assert result.returncode == 1, f"{checker} passed on the broken stub: {result.stdout[:200]}"
-        assert len(findings) >= 5, (checker, findings)
+        # Not "some finding" but the finding this file is about: a control that passes because a checker
+        # complained about something unrelated keeps biting while proving nothing. Measured across the two
+        # checkers and the two pinned refs the counts differ (5 and 3), so the count is a floor and the
+        # spelling is the assertion.
+        assert any("u32" in line for line in findings), (checker, findings)
+        assert len(findings) >= 3, (checker, findings)
     if ran == 0:
         pytest.skip("neither checker is installed here; the stub-drift CI job runs both")
