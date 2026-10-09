@@ -377,7 +377,9 @@ mod tests {
                 vec![crate::parser::yaml::schema_language::ValidateRule::new(
                     None,
                     crate::parser::yaml::schema_language::ValidateKind::Type(
-                        crate::parser::yaml::schema_language::YamlTypeKind::Str,
+                        crate::parser::yaml::schema_language::TypeSpec::Scalar(
+                            crate::parser::yaml::schema_language::YamlTypeKind::Str,
+                        ),
                     ),
                 )],
             );

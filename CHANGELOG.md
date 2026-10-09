@@ -80,7 +80,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the file exists and is tracked, so a binding signature change could leave the public typing
   contract behind. — (details: quality-ledger (ap))
 
+- **The schema language can name a container.** — `type: map` and `type: seq` assert the shape of a
+  node without saying what it holds, and `map` / `seq` are accepted as member types too, so
+  `mapping_of: seq` says "every value of this mapping is a sequence" - a claim that had no spelling,
+  since the `[*]` wildcard reaches sequence indices and not mapping keys. `mapping`, `object`,
+  `sequence`, `array` and `list` are accepted spellings, because a schema is typed by a person
+  rather than emitted by a tool. A container type with no `path` is refused where it is written:
+  with no node named it would select nothing and check nothing. — (details: quality-ledger (bm))
+
 ### Changed
+
+- **A validate rule that names a path asserts the node it names.** — measured before the change:
+  `$.config` with `mapping_of: str` passed when `config` was a scalar or a sequence, `$.port` with
+  `type: int` passed when `port` was a mapping, and `sequence_of: int` passed over `[[1, 2]]`. Every
+  check sat inside an `if let` for the one node kind it could describe, so a node of any other kind
+  was walked past - a validator answering "valid" about a document it never looked at. Members are
+  asserted the same way: a nested sequence is not an `int`. A pathless rule keeps its old, different
+  meaning, because it cannot name a node and so selects the nodes it can describe - pathless
+  `type: str` still means every scalar is a string, whatever else the document holds. A rule about
+  an aliased node is still not decided: an alias carries a name rather than a shape, and the
+  validator holds no anchor table. — (details: quality-ledger (bm))
+
+- **One `[*]` names one element, not a whole subtree.** — `$.rows[*]` also matched `$.rows[0].a`,
+  because the matcher compared a prefix and a suffix and required only that something sat between
+  them. It stayed invisible while rules ignored the shapes they were not written for; once they
+  assert one, every nested value under a matched element became a false violation. `$.rows[*].a`
+  still reaches the member it names. — (details: quality-ledger (bm))
+
+- **A validate rule carries one check.** — a rule that spelled `type` and `mapping_of` ran only the
+  check written last and never mentioned the other, because every parser arm assigned to the same
+  field. Two checks in one rule now fail the schema parse; `required` is orthogonal and still
+  combines with any check. — (details: quality-ledger (bm))
 
 - **The strict JSON writers refuse a non-finite float instead of respelling it.** — RFC 8259 has no
   literal for infinity or NaN, and `to_json` / `to_jsonc` answered by quoting the hub's text:
@@ -123,6 +153,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   none of the exception types. — (details: quality-ledger (be))
 
 ### Fixed
+
+- **A located validation error still names the path it matched.** — `SchemaValidationError` printed
+  either `line:column: message` or `path: message`, so the moment a node carried a source range the
+  schema author lost the half they had written: `1:9: expected map but got sequence` never says
+  which key. Both halves print now. — (details: quality-ledger (bm))
 
 - **A mapping key now means what the same text means as a value.** — `1: a` loaded as `{"1": "a"}`
   while `a: 1` loaded as `{"a": 1}`, and `~: 1` as `{"~": 1}` while `a: ~` gave `{"a": None}`: one

@@ -2754,7 +2754,7 @@ through the declared route (`maturin generate-stubs` + `check_stub_drift.py`, wh
 docstring), and `to_json`'s docstring naming the reason key so the refusal is in the API reference
 and not only in the source.
 
-#### (bl) A test matrix measures the surfaces it feeds, not the ones it names (2026-10-10)
+### (bl) A test matrix measures the surfaces it feeds, not the ones it names (2026-10-10)
 
 The fuzz tier had six targets. Read individually, each is sound: `parse_yaml`, `yaml_roundtrip`,
 `parse_json`, `json_roundtrip`, `parse_toml`, `toml_roundtrip`. Read as a matrix, they say something
@@ -2795,7 +2795,77 @@ Verified: `cargo fuzz build --dev validate_schema` rc=0, PR-mode seed replay cle
 and crashing on the reverted one, `cargo check --manifest-path fuzz/Cargo.toml --bins`, and
 `pytest tests/test_quality_matrix.py` 23 passed with the derived rows updated.
 
-## Shipped milestone scoping (v0.11.3 → v0.12.0)
+### (bm) A validator that answers "valid" about a node it never looked at (2026-10-10)
+
+The rule-path panic of (bj) left one sentence in `ROADMAP.md`: `mapping_of` and `sequence_of` check
+elements but not the container. It was written there as a choice between two user-visible outcomes,
+so it waited for a ruling instead of being fixed in passing. The ruling began by asking the running
+library what it does today, through the public surface:
+
+```text
+$.config  mapping_of: str    with  config: hello      PASS
+$.config  mapping_of: str    with  config: [a, b]     PASS
+$.numbers sequence_of: int   with  numbers: 5         PASS
+$.numbers sequence_of: int   with  numbers: {a: 1}    PASS
+$.port    type: int          with  port: {a: 1}       PASS
+$.port    type: int          with  port: [1, 2]       PASS
+$.n       sequence_of: int   with  n: [1, [2, 3]]     PASS
+```
+
+Seven shapes a schema named and the engine declined to consider. The cause was the same in all
+seven: every check sat inside an `if let` for the one node kind it could describe - `if let
+CustomNode::Mapping` with no other branch - so a node of any other kind was walked past without a
+word. A validator that reports nothing about a document it did not examine is not stricter than one
+that rejects it; it is a validator that has stopped validating.
+
+The ruling is that **scope decides how much a rule asserts**. A rule that names a `path` is about
+that node, so the node's shape is part of the claim: `$.config mapping_of: str` now fails on a
+scalar, and `$.port type: int` fails on a mapping. A pathless rule cannot name a node, so it selects
+the nodes it can describe and leaves the rest - which is not a loophole but the only meaning
+pathless `type: str` has ever had: *every scalar is a string*, whatever else the document holds.
+Turning that into an assertion would have broken the common case to honour the rare one, and a
+pathless `type: map` would select nothing at all, so it is refused where it is written rather than
+accepted as a rule that silently passes every document.
+
+Members are asserted either way, which is what the seventh row above measures. `sequence_of: int`
+has already said what its elements are, and a nested sequence is not one of them; skipping it was
+the same false negative one level down. Leaving members lenient while tightening the named node
+would have shipped half a ruling and opened a second item for the other half.
+
+Being able to assert a shape then exposed what the language could not say: there was no spelling for
+"this node must be a mapping", and none for "every value of this mapping is a sequence" - the
+wildcard reaches sequence indices, never mapping keys. `type:` and the member position of
+`sequence_of` / `mapping_of` now accept `map` and `seq` (`mapping`, `object`, `sequence`, `array`,
+`list` too, because a schema is typed by a person and the synonyms cost nothing). A `rules:` pattern
+still refuses them: a pattern resolves the text of a scalar and can never produce a container, and
+the error says so instead of only saying "invalid".
+
+Three defects surfaced while the ruling was being written, each found by touching the same code:
+
+- **`$.rows[*]` matched `$.rows[0].a`.** The wildcard matcher compared a prefix and a suffix and
+  required only that *something* sat between them, so `[*]` meant "this element and its whole
+  subtree". Invisible while rules ignored shapes; a false positive on every nested value the moment
+  they assert one. A wildcard now stands for exactly one index, and `$.rows[*].a` still names the
+  member it reaches.
+- **A rule with two checks ran one.** `type` and `mapping_of` in the same rule assigned to the same
+  field, so the check written first was dropped without a trace. A rule may now carry one check, and
+  `required` stays orthogonal because it combines rather than competes.
+- **A located error lost the path.** `SchemaValidationError` printed `line:column: message` *or*
+  `path: message`, so as soon as a node carried a source range the schema author lost the half they
+  had written: `1:9: expected map but got sequence` never says which key. Both print now.
+
+One boundary is left deliberately, pinned rather than hoped for. An alias node carries a name, not a
+shape, and the validator holds no anchor table, so a rule about `$.b` in `a: &x 5\nb: *x` cannot be
+decided. It passes. `an_alias_is_passed_rather_than_guessed` (Rust) and
+`test_an_alias_is_passed_rather_than_guessed` (Python) record that, so making the validator
+alias-aware has to break two named tests rather than quietly change what a schema means.
+
+Verified: 541 nextest tests (the container, member, synonym, pathless-selection, wildcard-scope,
+two-check and alias cases, each asserting the exact complaint text), 2350 Python tests (10 skipped)
+including the same ruling through `validate_against_schema`, clippy `-D warnings`, and the four
+locale guides rewritten to the new semantics.
+
+### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
 *reasons* are the useful part - which scope closed empty, which audit settled the argument, which
