@@ -228,11 +228,38 @@ def test_the_gate_measures_both_halves_of_every_bridge(matrix, measured):
     """
     channels = matrix.ir_harness_channels()
     assert matrix.ir_bridge_pairs(channels) == [], channels
+    assert matrix.ir_bridges_absent(channels) == [], channels
     bench = set(measured["ir_scenarios_bench"])
     assert {"to_json_medium", "from_json_medium", "to_toml_medium", "from_toml_medium"} <= bench, bench
+    # The two dialects the hub also reads and writes. Their halves were all four missing until this
+    # line existed: comment skipping, the unquoted-key grammar and both dialect writers carried no
+    # instruction count, and the paired-half rule could not see that because it starts from a name.
+    assert {
+        "to_jsonc_medium",
+        "from_jsonc_medium",
+        "to_json5_medium",
+        "from_json5_medium",
+    } <= bench, bench
     # `to_python_*` is the language binding, not a text format, and has no reader twin; a probe that
     # invented a `from_python_*` requirement would open its first hole on itself.
     assert "to_python_medium" in bench and "from_python_medium" not in bench, bench
+
+
+def test_a_format_with_no_bridge_at_all_is_a_hole(matrix, monkeypatch):
+    """The other half of the same blindness, fired on injected names.
+
+    Removing one scenario leaves a unidirectional bridge, which the rule above catches. Removing a
+    whole dialect leaves nothing for that rule to start from - so this test drops all four JSON5
+    scenarios and requires the hole to appear by format name, not by scenario name.
+    """
+    real = matrix.ir_harness_channels()
+    dropped = ("to_json5_medium", "from_json5_medium")
+    thin = {crate: [name for name in names if name not in dropped] for crate, names in real.items()}
+    assert matrix.ir_bridges_absent(thin) == ["json5"], thin
+
+    monkeypatch.setattr(matrix, "ir_harness_channels", lambda: thin)
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("ir-bridge-absent", "json5") in holes, sorted(holes)
 
 
 def test_a_bridge_measured_one_way_is_a_hole(matrix, monkeypatch):

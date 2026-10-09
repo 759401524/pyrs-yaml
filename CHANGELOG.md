@@ -23,6 +23,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   attribution: the failure message now prints every pair, which is how this run could be classified
   as measurement rather than regression in one reading — and that log is replayed as a passing test,
   so the rule cannot be re-tightened into a flake by someone who has not seen it.
+- **The instruction gate now numbers the JSONC and JSON5 hot paths, and costs the dialect writers**
+  — four public functions had no instruction-count baseline at all: `from_jsonc`, `from_json5`,
+  `to_jsonc_text` and `to_json5_text`. The comment scanner, the unquoted-key and trailing-comma
+  grammar, and both dialect writers were therefore outside the zero-regression gate the engine holds
+  itself to, even though JSONC and JSON5 are named formats. On one and the same hub AST the writers
+  now measure 21,232,786 / 22,176,851 / 22,974,851 instructions for JSON / JSONC / JSON5: emitting
+  notes costs 4.4% and the JSON5 spelling 8.2% over strict JSON, which is a number the repository
+  had never been able to state. The two readers are measured too, from authored bytes rather than
+  writer output - a fixture derived from `to_jsonc_text` of a comment-free AST contains no comments,
+  and the scanner is the thing under measurement - so reader numbers are not comparable to the
+  strict ones byte for byte, and `tests/ir_fixtures.rs` pins what they must keep instead: each
+  parses, each still carries its dialect, and each resolves to the same names and numbers as
+  `MEDIUM_JSON`. Writing that parity check surfaced a genuine fidelity bug, filed as #312 rather
+  than absorbed here: `from_json5` writes a non-finite float into the YAML hub as the bare word
+  `Infinity`, which no YAML schema reads back as a number, so `load_json5` is right in memory while
+  one hub round trip turns the value into a string. The instrument had a second blindness:
+  `ir_bridge_pairs` compares a name to its twin, so a format with neither half offers nothing to
+  compare and the matrix printed green - `quality_matrix.py` now derives `ir-bridge-absent` per
+  format, and a test drops both JSON5 scenarios to prove the hole appears. The refresh moved every
+  pre-existing number by at most 0.05% because the runner image changed under it (`20260927.320.1`
+  to `20261004.327.1`); that is method, not code, and is recorded as such.
 - **The in-process timing floors sample their two phases as pairs, and a red explains itself** —
   three leaderboard files asserted "this path does less work" from wall-clock with three different
   estimators: the TOML parse gate ran every candidate block before every reference block, the TOML

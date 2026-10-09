@@ -231,6 +231,29 @@ def ir_bridge_pairs(channels: dict) -> list[str]:
     return unpaired
 
 
+def ir_bridges_absent(channels: dict) -> list[str]:
+    """Formats the hub converts to and from that the instruction gate has no number for at all.
+
+    `ir_bridge_pairs` can only notice a missing twin for a format that already has one half, so a
+    format with neither half is invisible to it. That is how the JSONC and JSON5 paths - the comment
+    scanner, the unquoted-key grammar, the two dialect writers - carried no instruction count while
+    the gate printed green over the bridge it could see.
+    """
+    names = {name for values in channels.values() for name in values}
+    absent = []
+    for fmt in CROSS_FORMAT_WRITERS:
+        if fmt == "yaml":
+            continue  # the hub's own text, measured by `parse_*` and `serialize_*`, not a bridge
+        halves = [
+            name
+            for name in names
+            if len(name.split("_")) > 1 and name.split("_")[0] in ("to", "from") and name.split("_")[1] == fmt
+        ]
+        if not halves:
+            absent.append(fmt)
+    return absent
+
+
 def property_functions() -> list[str]:
     names = []
     for rs in sorted((REPO / "crates").rglob("*.rs")):
@@ -419,6 +442,16 @@ def measure() -> dict:
                 scenario,
                 "one half of a cross-format bridge has a scenario and the other does not, so per-key "
                 "work on the missing half changes nothing the gate can observe",
+            ]
+        )
+
+    for fmt in ir_bridges_absent(channels):
+        holes.append(
+            [
+                "ir-bridge-absent",
+                fmt,
+                "the hub reads and writes this format, and the instruction gate has no scenario in "
+                "either direction, so work added to that hot path cannot be adjudicated at all",
             ]
         )
 
