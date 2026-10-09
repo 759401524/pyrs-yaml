@@ -391,6 +391,59 @@ def test_declared_hole_kinds_are_kinds_the_probe_can_emit(measured, registry):
     )
 
 
+DECLARED_HANDLER = """\
+[project]
+docs_dir = "docs/en"
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["python"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+heading_level = 3
+"""
+
+
+def test_a_declared_handler_with_no_directive_is_reported(matrix, tmp_path):
+    """The probe distinguishes 'configured' from 'used', and says so when they disagree.
+
+    `zensical.toml` declares the Python handler with fourteen render options while no page contains a
+    `:::` directive, so the handler renders nothing and the API reference is hand-typed. The measurement
+    has to notice that in both directions: a tree that uses the handler emits no hole, and a tree that
+    declares none emits no hole either - only the mismatch is a finding, which is why both cases are
+    asserted rather than the one that happens to be true today.
+    """
+    (tmp_path / "zensical.toml").write_text(DECLARED_HANDLER, encoding="utf-8")
+    page = tmp_path / "docs" / "en" / "api"
+    page.mkdir(parents=True)
+    (page / "reference.md").write_text("## Reference\n\nHand-typed.\n", encoding="utf-8")
+
+    assert matrix.mkdocstrings_declared(tmp_path) is True
+    assert matrix.mkdocstrings_directives(tmp_path) == []
+
+    (page / "reference.md").write_text("## Reference\n\n::: pyrs_yaml.parse\n", encoding="utf-8")
+    assert matrix.mkdocstrings_directives(tmp_path) == ["docs/en/api/reference.md"]
+
+    # A directive indented inside an admonition or a content tab is still a request to the handler.
+    (page / "reference.md").write_text("!!! example\n\n    ::: pyrs_yaml.parse\n", encoding="utf-8")
+    assert matrix.mkdocstrings_directives(tmp_path) == ["docs/en/api/reference.md"]
+
+    # And the opposite shape: no handler configured at all is not a blind spot, just a choice.
+    (tmp_path / "zensical.toml").write_text('[project]\ndocs_dir = "docs/en"\n', encoding="utf-8")
+    assert matrix.mkdocstrings_declared(tmp_path) is False
+
+
+def test_the_repository_state_the_probe_reports_is_the_state_of_the_tree(matrix):
+    """Today's tree declares the handler and uses nothing, so the hole must be measured today.
+
+    If this ever goes red because the docs tree *does* use `:::`, that is the hole closing: delete the
+    registry entry in the same change, or the other direction of the equality test will fail.
+    """
+    assert matrix.mkdocstrings_declared() is True
+    found = matrix.mkdocstrings_directives()
+    measured = {f"{kind}:{name}" for kind, name, _why in matrix.measure()["holes"]}
+    assert ("docs-generation:plugin-unused" in measured) == (not found), (found, sorted(measured))
+
+
 def test_site_rendering_reachability_is_read_off_the_workflows(matrix, tmp_path, monkeypatch):
     """A job is a gate only when its own workflow triggers on a pull request.
 

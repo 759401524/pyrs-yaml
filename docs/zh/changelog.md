@@ -41,6 +41,7 @@ status: new
 
 - **`pyq validate` 接受 `--input` 并按真实格式校验。**
 - **PR 档 fuzz 改为阻塞，崩溃无法被合并过去。** — (details: quality-ledger (aa))
+- **文档工具链升到最新，桩文件生成器有意保持不变。** — (details: quality-ledger (ba))
 
 #### 修复
 

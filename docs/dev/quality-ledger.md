@@ -15,7 +15,7 @@ Related documents: [engine boundaries](boundaries.md), [performance status](perf
 ## Contents
 
 - The placement family - (h) through (v)
-- The quality defence, entry by entry - (w) through (az)
+- The quality defence, entry by entry - (w) through (ba)
 - Note survival: the leading slot became a list
 - Shipped milestone scoping - the v0.11.3 to v0.12.0 tables after they shipped
 
@@ -2082,6 +2082,58 @@ What this does not close: no pull request renders the site, so a property that o
 decides is still checked here by rules about markup rather than by markup being rendered. The exit
 criterion for that - a PR job that runs `scripts/build-docs.py` - is registered in
 `.ci/quality-holes.json` as `docs-rendering:unbuilt-on-pr` rather than left as an impression.
+
+### (ba) The docs toolchain was upgraded properly, and the upgrade reported that nothing uses it (2026-10-10)
+
+`zensical` 0.0.56 - the version `uv.lock` pinned and the deployed site was built with - to 0.0.69,
+and `mkdocstrings-python` to 2.0.9 (the newest stable releases of both, with `mkdocstrings` 1.0.6
+and `griffelib` 2.2.0 resolved with them). Both require Python 3.11, so the docs group is now marked
+`python_version >= '3.11'` instead of resolving an unusable old version for the interpreters that
+cannot run it.
+
+`maturin` was held at 1.14.1 on purpose, and that is the part of this entry worth the reading.
+Getting here cost the same mistake twice: an unpinned `uv run --group docs` re-resolved the whole
+project, moved `maturin` to 1.15.0, rewrote `pyproject.toml` and `uv.lock`, and a documentation pull
+request arrived at `Committed type stub is derived` red - because that job regenerates the `.pyi`
+with whatever the lock holds, and the reconciliation rules in `check_stub_drift.py` describe
+1.14.1's output. A dependency change that rides along silently is indistinguishable from a code
+change in the artefact it breaks. So `tests/test_docs_config_gate.py` now asserts the locked
+`maturin`, with a message naming the route to take if it moves deliberately, and the same file
+asserts the two docs tools are at least the version the manifest asks for - read from the lock, not
+from whatever happens to be installed, because CI resolves the lock and a half-upgraded pair is
+exactly the state that was almost shipped.
+
+The compatibility question was answered against the installed handler rather than a changelog. Its
+`PythonOptions` exposes 67 fields and every one of the fourteen keys configured in `zensical.toml`
+is among them, so no rename or removal landed on this configuration. What the check is really
+guarding is the other half of the measurement: adding `this_option_does_not_exist = true` leaves
+`zensical build --strict` exiting 0 with byte-identical output, so an option the handler has never
+heard of is *silently ignored*, and a configuration that outlives a version produces no signal at
+all. (A duplicated key is different - the TOML parser rejects it and the build fails, which is why
+the earlier probe of this saw `rc=1` and had to be re-read: the probe was injecting a duplicate, not
+testing an unknown name.)
+
+Then the finding that reframes the request. `mkdocstrings` is configured, installed and invoked by
+the build - and renders nothing, because no page in `docs/{en,ja,ko,zh}` contains a single `:::`
+directive; `docs/<locale>/api/*.md` are hand-typed signatures under `#### `name()`` headings.
+Upgrading a generator cannot improve output it is never asked to produce, and the fourteen render
+options are decoration until something asks for them. So the fact is registered rather than noted:
+`quality_matrix.mkdocstrings_declared()` against `mkdocstrings_directives()` emits
+`docs-generation:plugin-unused` while the config and the tree disagree, with the exit named in both
+directions - a page that uses the handler, or the handler's configuration deleted. Closing it is a
+content decision with an i18n consequence (every page under `docs/en` owes zh/ja/ko twins), which is
+precisely why it is written down rather than half-started here.
+
+Two probes were wrong before they were right, and both are recorded because a measurement that
+quietly replaces itself hides the reason for the second one. The first feature-comparison script
+reported zero pages for *every* variant - it rewrote a `site_dir` line the real config does not
+contain, so the builds went to the normal output directory and the probe read an empty path; it
+produced a uniform, tidy, completely false result. The second reported the same numbers for the
+unknown option as for the real ones, which is the expected answer once the path is fixed - and is
+also the reason the option-name check lives in a test rather than in the build. The third probe
+tried to compare the hand-typed API signatures against the generated `.pyi` and died on a regex with
+three groups and a two-tuple unpack: the drift comparison remains open, and is the substance of the
+registered hole rather than something to assert about.
 
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 
