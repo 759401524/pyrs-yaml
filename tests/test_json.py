@@ -144,6 +144,31 @@ class TestJsonDialects:
         with pytest.raises(pyrs_yaml.YamlParseError):
             pyrs_yaml.from_json("{a: 1,}")
 
+    def test_from_json5_non_finite_survives_the_hub_as_a_number(self):
+        """#312: a JSON5 infinity must mean the same thing in every reader of the hub.
+
+        `from_json5` returns YAML text, and the core schema has no rule that reads the word
+        `Infinity` as a float - it reads `.inf`. Keeping the source word meant the projection the
+        engine hands to every other component disagreed with `load_json5` about the value's type:
+        right in memory, a string after one round trip. The dialect's token is restored by
+        `to_json5`, so the fix is not "emit a different word" but "the number stays a number".
+        """
+        for source, want in (
+            ("{i: Infinity}", float("inf")),
+            ("{i: +Infinity}", float("inf")),
+            ("{i: -Infinity}", float("-inf")),
+        ):
+            hub = pyrs_yaml.from_json5(source)
+            assert pyrs_yaml.parse(hub).to_dict() == {"i": want}, hub
+            written = pyrs_yaml.parse(hub).to_json5()
+            assert pyrs_yaml.load_json5(written) == {"i": want}, written
+        nan_hub = pyrs_yaml.from_json5("{n: NaN}")
+        assert math.isnan(pyrs_yaml.parse(nan_hub).to_dict()["n"]), nan_hub
+        assert math.isnan(pyrs_yaml.load_json5(pyrs_yaml.parse(nan_hub).to_json5())["n"])
+        # The hub spelling is the user-visible half of the contract, pinned so a future drift back to
+        # the word is a red test rather than a silent regression.
+        assert pyrs_yaml.from_json5("{i: Infinity}").strip() == "i: .inf"
+
     def test_document_to_jsonc_preserves_comments(self):
         doc = pyrs_yaml.parse("# above the key\nport: 8080\n")
         out = doc.to_jsonc()

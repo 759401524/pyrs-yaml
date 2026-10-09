@@ -278,6 +278,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   asks the two residue patterns themselves, and the added tests hold both halves: a `、` boundary
   fuses, `は docs.md にある` keeps its space. — (details: quality-ledger (bi))
 
+- **A JSON5 non-finite float kept its type through the hub, in both directions (#312).** —
+  `from_json5` returns the hub document, and the two ends of that text disagreed about the same
+  three words: YAML Core resolves `.inf` / `-.inf` / `.nan` as floats and the bare word `Infinity`
+  as a string, so storing the source spelling turned a number into a string for every consumer that
+  re-read the projection — `load_json5("{a: Infinity}")` resolved in memory and was right,
+  `parse(from_json5(...))` handed back `'Infinity'`. Measured first, and the report described half
+  of it: the quoted direction was wrong the opposite way, because `quoted_or_plain` asked
+  `needs_quotes` - a core-schema question - whether a decoded JSON string needed quoting, so
+  `"Infinity"` was stored plain and `load_json5('["Infinity"]')` returned `[inf]` where
+  `load_jsonc`, `load_json` and `json.loads` all returned `['Infinity']`. One document, two types,
+  decided by which loader happened to read it. The emitter now derives the dialect's bare token from
+  the resolved *value*, the hub stores YAML's own spelling, and the JSON5 resolver accepts the
+  spellings the parser feeds it. Strict JSON and JSONC keep quoting a non-finite float they cannot
+  spell: that ruling stays open in `ROADMAP.md` rather than being decided quietly inside a bug fix.
+  — (details: quality-ledger (bh))
+
 #### Performance
 
 - **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the

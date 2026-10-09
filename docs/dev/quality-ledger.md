@@ -2556,6 +2556,104 @@ Verified: `pytest tests/test_doc_wrapping_gate.py` 30 passed; doc gates green ov
 pages; the localized pages needed exactly one manual repair (`が、 その文末` -> `が、その文末`) that
 the fixed joiner now refuses to write.
 
+### (bh) One schema chose the hub's spelling and another read it (#312, 2026-10-10)
+
+`from_json5` returns YAML text - the hub document - and the two ends of that text disagreed about
+the same three words. YAML Core resolves `.inf` / `-.inf` / `.nan` as floats and the bare word
+`Infinity` as a string, so storing the source spelling turned a number into a string for every
+consumer that re-read the projection: `load_json5("{a: Infinity}")` resolved in memory and was
+right, `parse(from_json5(...))` handed back `'Infinity'`.
+
+Measured first, and the report described only half of it. The quoted direction was wrong the
+opposite way: `quoted_or_plain` asked `needs_quotes` - a core-schema question - whether a decoded
+JSON string needed quoting. `Infinity` is a string under core and a number under JSON5, so the JSON
+string `"Infinity"` was stored as a plain scalar and `load_json5('["Infinity"]')` returned `[inf]`
+while `load_jsonc`, `load_json` and `json.loads` all returned `['Infinity']`. One document, two
+types, decided by which loader happened to read it.
+
+One root cause, two symptoms, both closed by asking the widest question available rather than the
+one that happens to be implemented:
+
+- `pyrs-json/src/parser.rs`: a JSON5 non-finite literal reaches the hub as `.inf` / `-.inf` /
+  `.nan`; a JSON string is quoted when either the core or the JSON5 resolver would re-read it as a
+  value.
+- `pyrs-json/src/writer.rs`: JSON5 emits the dialect's bare token from the resolved *value*, never
+  from a word. Dropping the word list from `is_json5_number` also closed a documented ambiguity that
+  `test_json5_ambiguous_spellings_are_bare` had pinned as a known limitation - the test's own
+  docstring named this exit criterion, so it now asserts the fidelity instead of the gap.
+- `pyrs-schema/src/schema.rs`: the JSON5 resolver accepts the hub spellings the parser now feeds it,
+  or the in-memory loader and the round-tripped document disagree about the type.
+
+Strict JSON and JSONC keep quoting a non-finite float they cannot spell. JSON has no literal for
+infinity, so the choice is `null`, an error, or the string - a ruling that belongs to the user, and
+it stays open in `ROADMAP.md` rather than being decided quietly inside a bug fix.
+
+Two workflow facts, both of which cost an hour:
+
+- A parked change replays cleanly only if nothing moved underneath it. Checked rather than assumed:
+  `jj diff --from <parent> --to main@origin --summary` listed the 41 paths main touched since, and
+  none of them was one of the five files - so the replay was a copy of whole files, not a conflict
+  to resolve.
+- `maturin develop` cannot overwrite `python/pyrs_yaml/pyrs_yaml.pyd` while any process has it
+  mapped, and on Windows that is `os error 32`, not a warning. The holder here was a
+  `zensical serve` left running from an earlier docs preview - mkdocstrings loads the extension to
+  render the API reference. The interim route (and it worked) is to stage the package elsewhere with
+  the freshly built `target/maturin/pyrs_yaml.dll` swapped in and `PYTHONPATH` ahead, then print
+  `pyrs_yaml.__file__` so "this run used the new binary" is checked instead of assumed; it is a
+  workaround, not a habit, and it makes the compliance tests fail on a path that only exists
+  relative to the real tree.
+
+The instruction-count gate caught the cost of this fix before it could ship, which is precisely what
+it is for. `from_json_medium +14.24%`, `from_jsonc_medium +13.22%`, `from_json5_medium +9.73%`
+against a 0.50% tolerance, on the branch's first CI run. Reading the diff explained the surprising
+half: asking "would the JSON5 resolver re-read this as a value?" was unconditional, so the strict
+JSON and JSONC readers paid a second full resolve for a hazard that only the JSON5 round trip has.
+
+The answer is not to stop asking - the question is what keeps one document from meaning two types -
+but to ask only where an answer is possible. `resolve_json5_type` trims and then dispatches on `-`,
+`+`, `.`, a digit, `I` or `N`; everything else is a string by construction, so
+`json5_could_be_typed` tests that first byte and the resolver runs only behind it. Two tests hold
+the shape: `the_guard_changes_no_strings_verdict` compares guarded against unguarded over a corpus,
+because the claim is "same output, less work" and not "fewer calls";
+`json5_guard_is_a_sound_superset` asserts the one direction that matters within the domain the guard
+is ever asked about. That scope is not a convenience - the first version of the test failed on `""`,
+which resolves to a null, and the failure is what showed where the boundary actually sits:
+`quoted_or_plain` short-circuits on `needs_quotes`, so `""` and `null` never reach the guard, and an
+unscoped assertion would have described a call path that does not exist.
+
+The guard itself was measured three times before it was cheap enough, and the numbers are the
+interesting part: `text.trim()` plus a byte test gave `from_json_medium +2.13%`,
+`from_jsonc_medium +1.97%`, `from_json5_medium +1.45%`; decoding one `char` instead gave +0.61% /
++0.57% / +0.41%; a chain of byte compares gave +0.51% / +0.47% / +0.35%. Tolerance is 0.50%, and the
+samples' own spread was 0.002% - so the residual was real, reproducible, and per-string: this runs
+on every text the core schema was content to leave plain, and the medium fixture holds tens of
+thousands of those. Nothing about the logic changed between the three versions; only the shape of
+the test did.
+
+The last step is a 128-entry lookup table for the first byte - the same move the serializer made for
+tag emission, for the same reason - with three states: cannot begin a JSON5 value, does, or is
+whitespace (including the bytes above ASCII, where JSON5's whitespace set actually lives: NBSP, the
+U+2000 separators, LS/PS) and the following bytes must be consulted. A leading `é` and a padded
+` Infinity ` take the same rare branch and get different answers from `str::trim`, which is what
+`resolve_json5_type` itself performs; duplicating Unicode's whitespace table to avoid that branch
+would be a second source of truth, the mistake this file keeps documenting.
+
+`json5_guard_is_a_sound_superset` carries the corpus for all of it - padded, non-ASCII-leading, and
+the bare `-`, `+`, `.` that a byte test must not turn into more work than it is - and
+`the_guard_changes_no_strings_verdict` is unchanged, which is the point: the cost came down and the
+output did not move.
+
+A third workflow fact: the local WSL route for `scripts/ir_gate.py` cannot build the binding here
+(`rust-lld: error: unable to find library -lpython3.12`), so CI is the only place this project
+measures instructions. Worth stating plainly because it changes the loop: a claim about hot-path
+cost is not verifiable at the desk, and pushing to be measured is the honest procedure rather than a
+guess dressed up as one.
+
+Verified: `cargo fmt --check`, `cargo clippy --all --all-targets -- -D warnings`, 525 nextest tests,
+2337 Python tests (10 skipped), five tests holding the pair - two Rust in the parser, two in the
+writer, one Python through the public API - plus the two guard tests above. Changelog counts
+identical across the five mirrors at [11, 4, 21, 3].
+
 ## Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

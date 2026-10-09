@@ -22,6 +22,7 @@ use alloc::{
 use pyrs_ast::ast::{CustomNode, NodeMap};
 use pyrs_ast::error::{DepthError, ParseError};
 use pyrs_schema::schema::needs_quotes;
+use pyrs_schema::types::{Schema, YamlType};
 
 /// Default nesting limit, matching the YAML pipeline's `parse` default.
 pub const DEFAULT_MAX_DEPTH: usize = 1000;
@@ -519,14 +520,21 @@ impl<'a> Parser<'a> {
             // JSON5 numeric forms (PR #120): a leading `+` or `.` and the
             // bare `Infinity` / `NaN` literals. Gated so STRICT / JSONC
             // keep treating them as "expected a JSON value" errors.
+            //
+            // The two words are stored in the hub's own spelling (`.inf` / `.nan`), not verbatim.
+            // `Infinity` is a YAML *string* under the Core schema, so keeping the source word would
+            // make every consumer that re-reads the projection change the value's type (#312);
+            // `.inf` is the spelling that resolves to `f64::INFINITY` there, and the JSON5 writer
+            // restores the dialect's token from the value. The other JSON5-only forms (`0x…`, `.5`,
+            // `5.`, `+7`) stay verbatim because YAML already reads them as numbers.
             Some(b'+') | Some(b'.') if self.allow_json5_numbers => self.number(),
             Some(b'I') if self.allow_json5_numbers => {
                 self.expect("Infinity", "expected `Infinity`")?;
-                Ok(CustomNode::plain_scalar("Infinity"))
+                Ok(CustomNode::plain_scalar(".inf"))
             }
             Some(b'N') if self.allow_json5_numbers => {
                 self.expect("NaN", "expected `NaN`")?;
-                Ok(CustomNode::plain_scalar("NaN"))
+                Ok(CustomNode::plain_scalar(".nan"))
             }
             Some(b'-') | Some(b'0'..=b'9') => self.number(),
             _ => Err(self.err("expected a JSON value")),
@@ -634,12 +642,16 @@ impl<'a> Parser<'a> {
         // JSON5 signed `Infinity` (`-Infinity` / `+Infinity`): the token
         // starts with a sign, so it reaches `number()` rather than the
         // bare `Infinity` dispatch in `value_inner`. `NaN` is unsigned,
-        // so it is not handled here.
+        // so it is not handled here. Signed or not, the hub keeps YAML's
+        // float spelling - see `value_inner` for why the word cannot stay.
         if json5 && self.peek() == Some(b'I') {
             self.expect("Infinity", "expected `Infinity` after sign")?;
-            return Ok(CustomNode::plain_scalar(
-                self.text[start..self.pos].to_string(),
-            ));
+            let negative = self.text[start..self.pos].starts_with('-');
+            return Ok(CustomNode::plain_scalar(if negative {
+                "-.inf"
+            } else {
+                ".inf"
+            }));
         }
         // JSON5 hexadecimal integer: `0x` / `0X` followed by one or more
         // hex digits. The raw slice is preserved verbatim so #121's
@@ -855,15 +867,88 @@ fn is_json5_ws(ch: char) -> bool {
     (ch.is_whitespace() && ch != '\u{85}') || ch == '\u{feff}'
 }
 
-/// JSON strings land in the YAML-shaped AST without ever re-resolving:
-/// text that a plain YAML scalar would reinterpret is quoted (the same
-/// `needs_quotes` discipline the TOML spoke follows).
+/// JSON strings land in the YAML-shaped AST without ever re-resolving: text that a plain YAML scalar
+/// would reinterpret is quoted (the same `needs_quotes` discipline the TOML spoke follows).
+///
+/// The question has to be asked against the widest reader the hub serves, not just the core schema.
+/// `needs_quotes` resolves under YAML Core, and Core reads `Infinity` as a string while the JSON5
+/// resolver reads it as a number - so a JSON string spelled `"Infinity"` stored plain came back a
+/// float from `load_json5` while `load_jsonc` and `load_json` kept it a string, one document meaning
+/// two things per reader (#312, the direction the projection *receives*). Quoting a string that did
+/// not need it costs a pair of bytes in the hub and changes no value; leaving one that did unquoted is
+/// a type change. The same reasoning as `plain_text_is_typed` for cross-format mapping keys.
+///
+/// Asking it of every string was itself a defect: measured by `.ci/ir-baseline.json`, the unconditional second
+/// resolver cost `from_json_medium` +14.24% and `from_jsonc_medium` +13.22% of their instructions against a
+/// 0.50% tolerance. The value is kept, the cost is not: `json5_could_be_typed` decides whether the resolver
+/// could answer at all, and it is a sound filter rather than a guessed one - `resolve_json5_type` trims and
+/// then dispatches on `-`, `+`, `.`, a digit, `I` or `N`, so anything else is a string by construction and the
+/// resolver would have said so. Strict JSON and JSONC keep identical output; they simply stop paying a full
+/// resolve for text that cannot be a number.
 fn quoted_or_plain(value: String) -> CustomNode {
-    if needs_quotes(&value) {
+    if needs_quotes(&value)
+        || (json5_could_be_typed(&value)
+            && !matches!(Schema::Json5.resolve(&value), YamlType::Str(_)))
+    {
         CustomNode::double_quoted_scalar(value)
     } else {
         CustomNode::plain_scalar(value)
     }
+}
+
+/// Whether `text` can resolve to anything other than a string under the JSON5 profile.
+///
+/// The direction that must hold is one-way and it is the safe one: *if the resolver would return a non-string,
+/// this returns true*. Skipping a text the resolver would have called a string changes nothing, because the
+/// caller only quotes on a non-string answer. `json5_guard_is_a_sound_superset` checks it against the resolver
+/// itself over the spellings that made #312, so the filter cannot drift from the grammar it stands in for.
+///
+/// The shape is a measurement rather than a style preference. `text.trim()` cost `from_json_medium` +2.13%;
+/// decoding one `char` cost +0.61%; a chain of byte compares still landed on +0.51% against a 0.50% tolerance
+/// (`.ci/ir-baseline.json`). All of it is work done once per text the core schema was content to leave plain,
+/// and a medium fixture holds tens of thousands of those - so the decision is now one table lookup on the first
+/// byte, the same 128-entry-table move the serializer made for tag emission.
+fn json5_could_be_typed(text: &str) -> bool {
+    let Some(&first) = text.as_bytes().first() else {
+        return false;
+    };
+    match json5_first_byte_class(first) {
+        0 => false,
+        1 => true,
+        _ => text.trim().chars().next().is_some_and(json5_value_start),
+    }
+}
+
+/// One byte, three answers: cannot begin a JSON5 value (`0`), does (`1`), or is whitespace, where the bytes
+/// after it decide (`2`). High bytes are class `2` deliberately: JSON5's whitespace set lives above ASCII - NBSP,
+/// the U+2000 separators, LS/PS - and `resolve_json5_type` trims before it dispatches, so a padded ` Infinity `
+/// really is a float while a leading `é` is not. Both are settled by asking the resolver's own precondition in
+/// the rare branch rather than by duplicating the Unicode whitespace table here.
+fn json5_first_byte_class(byte: u8) -> u8 {
+    const TABLE: [u8; 128] = {
+        let mut table = [0u8; 128];
+        let mut index = 0usize;
+        while index < 128 {
+            let character = index as u8;
+            if matches!(character, b'-' | b'+' | b'.' | b'I' | b'N') || character.is_ascii_digit() {
+                table[index] = 1;
+            } else if matches!(character, 0x09..=0x0d | b' ') {
+                table[index] = 2;
+            }
+            index += 1;
+        }
+        table
+    };
+    if byte >= 0x80 {
+        return 2;
+    }
+    TABLE[usize::from(byte)]
+}
+
+/// The characters a JSON5 value can begin with: the non-finite spellings start with `I` or `N`, and JSON5
+/// numbers start with a digit, a sign, or a leading dot.
+fn json5_value_start(ch: char) -> bool {
+    matches!(ch, '-' | '+' | '.' | '0'..='9' | 'I' | 'N')
 }
 
 /// Stable equivalent of `str::floor_char_boundary` (unstable on `str`).
@@ -1378,12 +1463,96 @@ mod tests {
         }
     }
 
+    /// Spellings that decide whether the guard is sound: the ones that made #312, whitespace-padded
+    /// variants of them, and text that merely looks numeric. Split on `|`, so the empty leading and
+    /// trailing fields are the empty string - a case that matters, see the scoped assertion below.
+    const JSON5_CORPUS: &str = "|Infinity|+Infinity|-Infinity|NaN|nan|0x1F|5.|-5.|+7|1e3|-0|.5| Infinity |\tNaN|\u{a0}Infinity|\u{2009}NaN|\u{feff}.5|\u{2028}-5.|port|host|yes|index|nation|2024-01-01|0.1.2|null|true|~|a|-one|.com|N/A|9 lives|12 Orchard Rd|é|Ελλάδα|-|+|.| |";
+
     #[test]
-    fn json5_parses_infinity_and_nan() {
-        for (src, want) in [
-            ("Infinity", "Infinity"),
-            ("-Infinity", "-Infinity"),
-            ("NaN", "NaN"),
+    fn json5_guard_is_a_sound_superset() {
+        // The filter may skip the resolver only where the resolver would have answered "string" - within
+        // the domain it is ever asked about. `quoted_or_plain` short-circuits on `needs_quotes`, so text the
+        // core schema already resolves never reaches the guard and needs no cover; asserting the unscoped
+        // superset would have been a claim about a function that is never called that way. The empty string
+        // is exactly that case: `""` is a null under both profiles and is quoted before the guard runs.
+        for text in JSON5_CORPUS.split('|') {
+            if needs_quotes(text) {
+                continue;
+            }
+            let guarded = json5_could_be_typed(text);
+            let typed = !matches!(Schema::Json5.resolve(text), YamlType::Str(_));
+            assert!(
+                !typed || guarded,
+                "{text:?} resolves to a value but the guard skipped it"
+            );
+        }
+    }
+
+    #[test]
+    fn the_guard_changes_no_strings_verdict() {
+        // The claim the guard exists to make is not "fewer calls" but "the same output, for fewer calls",
+        // so it is asserted against the unguarded expression case by case. Compared as debug text because
+        // `CustomNode`'s equality deliberately ignores style and notes (a noted key must still match a plain
+        // one) and style is precisely what this function decides.
+        for text in JSON5_CORPUS.split('|') {
+            let guarded = quoted_or_plain(text.to_string());
+            let unguarded =
+                if needs_quotes(text) || !matches!(Schema::Json5.resolve(text), YamlType::Str(_)) {
+                    CustomNode::double_quoted_scalar(text.to_string())
+                } else {
+                    CustomNode::plain_scalar(text.to_string())
+                };
+            assert_eq!(format!("{guarded:?}"), format!("{unguarded:?}"), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_json_string_spelling_a_json5_number_keeps_its_type_in_every_reader() {
+        // #312's other direction, and the reason `quoted_or_plain` asks the widest resolver. The core
+        // schema reads `Infinity` as a string, so the plain spelling used to survive into the hub - and
+        // the JSON5 reader then resolved it as a number, giving one document two types depending on
+        // which loader read it. A quoted JSON string is a string in every dialect of the family.
+        for word in ["Infinity", "-Infinity", "+Infinity"] {
+            let src = format!("[\"{word}\"]");
+            for node in [from_json(&src), from_jsonc(&src), from_json5(&src)] {
+                let CustomNode::Sequence { items, .. } = node.unwrap() else {
+                    unreachable!()
+                };
+                assert!(
+                    matches!(
+                        &items[0],
+                        CustomNode::Scalar {
+                            style: ScalarStyle::DoubleQuoted,
+                            ..
+                        }
+                    ),
+                    "{word} must land quoted, got {:?}",
+                    items[0]
+                );
+                assert_eq!(scalar_text(&items[0]), word);
+            }
+        }
+        // A number spelled the same way is still a number - quoting is what separates them, not a
+        // different representation of the same thing.
+        let CustomNode::Sequence { items, .. } = &from_json5("[Infinity]").unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(scalar_text(&items[0]), ".inf");
+    }
+
+    #[test]
+    fn json5_parses_infinity_and_nan_into_a_number_the_hub_can_carry() {
+        // #312. The projection this parser feeds is YAML text, and YAML's core schema resolves
+        // `.inf` / `-.inf` / `.nan` as floats but the words `Infinity` and `NaN` as strings. Storing
+        // the source word therefore changed the value's type for every consumer that re-read the hub,
+        // while `load_json5` - which resolves in memory - was right. The two disagreeing paths is the
+        // defect; the hub spelling is the fix, and the JSON5 token is restored by the writer from the
+        // resolved value (see `writer::tests`).
+        for (src, hub, want) in [
+            ("Infinity", ".inf", Ok(f64::INFINITY)),
+            ("+Infinity", ".inf", Ok(f64::INFINITY)),
+            ("-Infinity", "-.inf", Ok(f64::NEG_INFINITY)),
+            ("NaN", ".nan", Err("")),
         ] {
             let n = from_json5(src).unwrap_or_else(|e| panic!("{src}: {e:?}"));
             let CustomNode::Scalar {
@@ -1394,7 +1563,19 @@ mod tests {
             else {
                 panic!("{src} should be a plain scalar: {n:?}")
             };
-            assert_eq!(value.as_ref(), want);
+            assert_eq!(value.as_ref(), hub, "{src} did not reach the hub spelling");
+            match (
+                pyrs_schema::types::Schema::Core.resolve(value.as_ref()),
+                want,
+            ) {
+                (pyrs_schema::types::YamlType::Float(f), Ok(want)) => {
+                    assert_eq!(f, want, "{src} resolved to the wrong float")
+                }
+                (pyrs_schema::types::YamlType::Float(f), Err(_)) => {
+                    assert!(f.is_nan(), "{src} should resolve to NaN, got {f}")
+                }
+                other => panic!("{src} should resolve to a float, got {other:?}"),
+            }
         }
     }
 
