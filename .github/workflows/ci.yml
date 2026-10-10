@@ -123,6 +123,12 @@ jobs:
       - name: Prose width, on the governed set
         run: prek run doc-line-width --all-files
 
+      # A published page that types `f(path=...)` for a function accepting `content` is still valid HTML, so the
+      # site builds green over it. The checker reads the shipped object, so it needs the extension this job has
+      # just built - and the pytest tier runs the same rule for changes that touch no docs at all.
+      - name: Published signatures match the shipped object
+        run: uv run python scripts/check_doc_signatures.py
+
       - name: Build all four locales
         run: uv run --group docs python scripts/build-docs.py
 

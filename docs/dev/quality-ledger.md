@@ -2917,6 +2917,74 @@ file exiting 2), the quality matrix reporting no new hole for the checker itself
 would fire if it were unwired; the `prek.toml` hook `hole-claims` is what answers it),
 `ruff check`/`format` clean, and the doc gates green over the five mirrors.
 
+### (bo) The published signature and the shipped callable disagreed, and the page was the honest one (2026-10-10)
+
+The task looked like a documentation sweep: measure how many hand-typed signature blocks still sit
+on the API pages now that #321 generates members from the code. 238 of them, it turned out, across
+28 pages - and the way to tell a *false* one from a *lossy* one was to ask the running package. That
+question returned something nobody had expected to find:
+
+```text
+$ python -c "import pyrs_yaml; print(pyrs_yaml.read_markdown(path='note.md'))"
+TypeError: read_markdown() got an unexpected keyword argument 'path'
+
+$ python -c "import pyrs_yaml; print(pyrs_yaml.read_markdown('---\ntitle: x\n---\nbody'))"
+OSError: Failed to read file: ... (os error 123)
+```
+
+The committed stub declares `read_markdown(path: str, schema, max_depth)`. The function *reads a
+file at that value* - feeding it Markdown text fails on the filesystem, which is what a parameter
+named `path` predicts. But `python/pyrs_yaml/__init__.py` re-exports the name through a wrapper that
+had renamed the parameter to `content`, and maturin generates the stub from the extension, which
+never sees the wrapper. So the published page and the stub agreed with each other, the runtime
+disagreed with both, and the keyword that describes the argument is the one that raises.
+`validate_against_schema` carried the same drift in the opposite direction: the stub wrote
+`schema_yaml`, the callable has always taken `schema`.
+
+Two principles came out of that, and both are now gates:
+
+- **The authority for a published signature is the shipped object.**
+  `scripts/check_doc_signatures.py` imports the package and compares parameter lists: a name, an
+  order, or a dropped *required* parameter is a finding; a required prefix with its optional tail
+  omitted is what a reference page legitimately looks like, so it passes; and an example call with
+  real values (`register_type("!timestamp", TimestampType())`) is usage, not a claim. A checker that
+  trusted only the stub would have reported the documentation as the defect here - the failure mode
+  that makes a gate ignored rather than obeyed.
+- **The stub must describe the callable, name by name.** `tests/test_stub_runtime_parity.py`
+  compares the parameter names the committed `.pyi` declares against `inspect.signature` of the
+  exported object for all 40 module functions, and asserts the inventory is non-trivial so the
+  comparison cannot go vacuous. The two mislabels are fixed at their source - the wrapper now says
+  `path`, the native parameter is renamed to `schema`, and the stub was regenerated through the
+  declared route - and 40/40 agree.
+
+The localized pages were not innocent either, and their defect was a different one: `zh`/`ja`/`ko`
+type `register_schema(name, schema: str | dict)` and `register_type(tag, type_handler, priority)`.
+Neither layer has those names, `dict` raises `TypeError`, and `priority=` raises too. The English
+page was correct, so this was translation drift rather than a stale copy - the i18n mirror checker
+compares *structure*, and a wrong parameter name is structurally perfect. The gate now runs over
+every locale, and the pages type what the object accepts.
+
+Three measured gaps are left open, recorded here so the next reader does not re-derive them:
+
+- **The shipped stub omits most of the surface the documentation pages render.** `Node` (41 members)
+  and `MergedView` (6) are not declared at all, and 13 members of `YamlDocument` - the whole editing
+  and query set: `set`, `set_many`, `insert`, `append`, `delete`, `rename`, `sort_keys`, `walk`,
+  `scalars`, `find`, `node`, `merged` - are missing, because they are attached to the native class
+  from Python after import. An editor sees one class, the runtime offers another. Fixing it is an
+  architectural decision about which artefact the stub describes, not a rename.
+- **The tour sections still retype signatures the same page already generates.** Duplication is not
+  contradiction, so the gate stays quiet; it is where the next drift will appear.
+- **An inline dict schema loses its `validate` section.** `_schema_to_yaml` - the helper that turns
+  the dict accepted by `safe_load(schema={...})` into text - emits `extends` and `rules` only, so a
+  validation section supplied as a dict is dropped without a word, and `register_schema` refuses the
+  dict entirely. The silent loss is the defect; the refusal at least raises.
+
+Verified: 16 gate and parity tests (the published pages pass; the four false shapes caught; three
+faithful ones quiet; an unreadable inventory exits 2; the parameter-name parity over 40 functions),
+2380 Python tests (10 skipped), 541 nextest, clippy `-D warnings`, `check_stub_drift.py` clean after
+the regeneration, the doc gates green with five mirrors agreeing at [14, 8, 26, 3], and the
+four-locale site build.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -318,13 +318,14 @@ clear_tag_handlers() -> None
 カスタムスキーマを登録します。
 
 ```python
-register_schema(name: str, schema: str | dict) -> None
+register_schema(name: str, schema_yaml: str) -> None
 ```
 
 **パラメーター:**
 
 - `name` — スキーマ名
-- `schema` — YAML 文字列または dict（`extends`、`rules`、`validate` キーを含む）
+- `schema_yaml` — YAML 文字列（`extends`、`rules`、`validate` キーを含む）。インライン dict は `YAML(schema=...)`
+  の方が受け付けます
 
 **例:**
 
@@ -396,7 +397,7 @@ class CustomType:
 カスタムタイプを登録します。
 
 ```python
-register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
+register_type(name: str, handler: CustomType | None = None) -> None
 ```
 
 **例:**

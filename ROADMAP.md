@@ -77,25 +77,30 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: nothing awaits a ruling
+### Open: two things the measurement found and no change has ruled yet
 
-The item that used to sit here - whether `mapping_of` / `sequence_of` should assert their
-container - is ruled and shipped: they do, and the language gained the words to say so (`type: map`
-/ `type: seq`, and `map` / `seq` as member types too). Scope decides the strength: a rule naming a
-path asserts that node, a pathless rule selects the nodes it can describe, and members are asserted
-either way. Found by measurement rather than by review, in the same function as the char-boundary
-crash that closed the `unwrap` audit (ledger (bj)); the seven passing shapes that made the ruling,
-the greedy `[*]` matcher it exposed, the two-checks-in-one-rule silent drop and the alias boundary
-it deliberately leaves are all in the engineering record (ledger (bm)).
+| # | Item | Layer | Priority |
+|:--|:-----|:------|:--------:|
+| 1 | **Which artefact does the shipped `.pyi` describe?** - found while verifying published signatures against the running package. The stub is generated from the extension, so whatever `python/pyrs_yaml/__init__.py` adds afterwards is invisible to it: `Node` (41 members) and `MergedView` (6) are not declared at all, and 13 editing/query members of `YamlDocument` (`set`, `set_many`, `insert`, `append`, `delete`, `rename`, `sort_keys`, `walk`, `scalars`, `find`, `node`, `merged`) are missing. An editor sees one class and the runtime offers another, which no amount of doc checking can repair. The options are a Python-typed public layer the generator can reach, moving those members behind the extension boundary, or a declared reconciliation in `check_stub_drift.py` - and each answers what "the stub" means, so it is a design decision rather than a patch | Rust (`pyrs-yaml` binding) + Python package | 🔴 |
+| 2 | **An inline dict schema loses its `validate` section.** `_schema_to_yaml` - which turns the dict that `safe_load(schema={...})` accepts into the text the engine parses - emits `extends` and `rules` only, so validation rules supplied as a dict vanish without a word, while `register_schema` refuses a dict outright with `TypeError`. The silent loss is the defect: the serializer should emit the whole dict through the package's own writer - the round-trip-faithful route used everywhere else here - and the documented promise that a dict is accepted should become true | Rust + Python (`__init__.py`) | 🔴 |
 
-The other item that used to sit here - what the strict JSON writers should do with a non-finite
-float - is ruled and shipped: they refuse it, with the reason key
-`json-cannot-represent-non-finite`, because every substitute silently changes the value. The
-measurement, the alternatives that were considered and why each one loses information are in the
-engineering record (ledger (bk)); `to_json5` remains the dialect that carries the value. What is
-*not* offered is a lenient `null`, because nothing has asked for a documented way to lose the value
-on purpose - if that demand appears, it arrives as an option with its own name rather than as a
-default.
+Both were found by measuring rather than by review, and both are written up with their evidence in
+the engineering record (ledger (bo)).
+
+The rulings that used to sit here are shipped. Whether `mapping_of` / `sequence_of` should assert
+their container: they do, and the language gained the words to say so (`type: map` / `type: seq`,
+and `map` / `seq` as member types). Scope decides the strength - a rule naming a path asserts that
+node, a pathless rule selects the nodes it can describe, and members are asserted either way. Found
+in the same function as the char-boundary crash that closed the `unwrap` audit (ledger (bj)); the
+seven passing shapes that made the ruling, the greedy `[*]` matcher it exposed, the
+two-checks-in-one-rule silent drop and the alias boundary it deliberately leaves are in the record
+(ledger (bm)).
+
+What the strict JSON writers should do with a non-finite float is shipped too: they refuse it, with
+the reason key `json-cannot-represent-non-finite`, because every substitute silently changes the
+value (ledger (bk)). `to_json5` remains the dialect that carries the value. What is *not* offered is
+a lenient `null`, because nothing has asked for a documented way to lose the value on purpose - if
+that demand appears, it arrives as an option with its own name rather than as a default.
 
 An item arrives in this section when measurement finds the engine has made a choice nobody decided,
 and leaves the moment a change ships the decision. That is why it stays short rather than growing

@@ -320,13 +320,13 @@ clear_tag_handlers() -> None
 사용자 정의 스키마를 등록합니다.
 
 ```python
-register_schema(name: str, schema: str | dict) -> None
+register_schema(name: str, schema_yaml: str) -> None
 ```
 
 **매개변수:**
 
 - `name` — 스키마 이름
-- `schema` — YAML 문자열 또는 dict（`extends`, `rules`, `validate` 키 포함）
+- `schema_yaml` — YAML 문자열（`extends`, `rules`, `validate` 키 포함）. 인라인 dict는 `YAML(schema=...)`이 받습니다
 
 **예제:**
 
@@ -398,7 +398,7 @@ class CustomType:
 사용자 정의 타입을 등록합니다.
 
 ```python
-register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
+register_type(name: str, handler: CustomType | None = None) -> None
 ```
 
 **예제:**

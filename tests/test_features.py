@@ -40,6 +40,35 @@ class TestReadMarkdown:
             if Path(test_file).exists():
                 Path(test_file).unlink()
 
+    def test_read_markdown_names_its_argument_a_path(self, tmp_path):
+        """The keyword a caller reaches for is the one that describes the argument.
+
+        The Python layer renamed this parameter `content` while the function opens the file it is given, so
+        `read_markdown(path=...)` raised `TypeError` and `read_markdown(content=...)` was accepted by the type
+        checker and then failed on the filesystem. The pair below is the whole contract: the name that works is
+        the one that is true, and the one that lies is gone.
+        """
+        document = tmp_path / "note.md"
+        document.write_text("---\ntitle: Keyword\n---\nBody", encoding="utf-8")
+
+        frontmatter, content = pyrs_yaml.read_markdown(path=str(document))
+        assert frontmatter == {"title": "Keyword"}
+        assert content == "Body"
+
+        with pytest.raises(TypeError):
+            pyrs_yaml.read_markdown(content="---\ntitle: x\n---\nbody")
+
+    def test_read_markdown_str_names_its_argument_content(self, tmp_path):
+        """The sibling really does take text, and says so."""
+        document = tmp_path / "note.md"
+        document.write_text("---\ntitle: Text\n---\nBody", encoding="utf-8")
+        text = document.read_text(encoding="utf-8")
+
+        frontmatter, _content = pyrs_yaml.read_markdown_str(content=text)
+        assert frontmatter == {"title": "Text"}
+        with pytest.raises(TypeError):
+            pyrs_yaml.read_markdown_str(path=str(document))
+
     def test_from_dict_nested(self):
         data = {"app": {"name": "myapp", "version": "1.0"}, "features": ["auth", "logging"]}
         yaml_str = pyrs_yaml.from_dict(data)

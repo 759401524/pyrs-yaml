@@ -100,6 +100,16 @@ status: new
   끝나고 통과한 척하지 않습니다. 날짜가 있는 기록은 id 를 남깁니다. 역사는 닫힌 구멍을 이름 삼을 수
   있지만 지침 파일은 현재 시제이기 때문입니다. — (details: quality-ledger (bn))
 
+- **게시되는 서명을 페이지가 아니라 출하된 대상과 비교한다.** — `scripts/check_doc_signatures.py` 는
+  28개 API 페이지에서 서명 형태의 펜스 블록을 모두 읽어, 실행 중인 패키지가 그 파라미터를
+  받아들이는지 묻는다 (238개 블록, 279개 이름). 파라미터 이름을 틀려도 HTML 로서는 타당하므로
+  사이트는 초록 상태로 게시된다. 생성된 `.pyi` 만 읽는 검사기는 `read_markdown(path=...)` 에서 문서
+  탓을 했을 것이다 - 문서가 맞았던 유일한 경우다. 정당한 축약(필수 앞부분만 쓰고 기본값이 있는
+  나머지는 생략)은 통과하고, 어떤 선언에도 없는 이름·순서· 빠진 필수 파라미터는 실패한다.
+  `tests/test_stub_runtime_parity.py` 는 그 아래층을 고박한다 — 스터이의 40개 모듈 함수 파라미터
+  이름은 대상 자신의 이름과 같아야 하고, 이 불변식을 살피지 않은 것이 두 결함의 공통 원인이었다. —
+  (details: quality-ledger (bo))
+
 #### 변경
 
 - **`path` 를 적은 검증 규칙은 그 노드를 주장한다.** — 변경 전에 측정했습니다: `$.config` 에
@@ -159,6 +169,22 @@ status: new
   선언하고 예외 형식은 하나도 포함하지 않기 때문입니다. — (details: quality-ledger (be))
 
 #### 수정
+
+- **두 공개 함수가 자기 스터이가 받았다고 적은 키워드를 받지 못했다.** —
+  `pyrs_yaml.read_markdown(path="note.md")` 는 `TypeError` 를 던졌다. 커밋된 스터이는 그 파라미터를
+  `path` 로 선언했는데, `__init__.py` 의 Python 감싸기 함수가 `content` 로 고쳐 부르기 때문이었다.
+  게다가 함수는 받은 값의 파일을 열므로, 이름이 이끄는 `read_markdown(content=text)` 쪽이 파일
+  시스템에서 실패했다. 이제 감싸기 함수는 `path` 를 쓰고 `read_markdown_str` 은 `content` 를
+  유지하며, 두 함수는 그 차이를 적는다. 같은 드리프트가 반대 방향으로도 있었다:
+  `validate_against_schema` 는 스터이에 `schema_yaml`, 호출자가 줄곧 쓴 것은 `schema` 였다. 네이티브
+  파라미터를 고치고 스터이를 선언된 경로로 다시 생성했다. — (details: quality-ledger (bo))
+
+- **세 언어의 API 페이지가 라이브러리에 없는 파라미터를 적고 있었다.** — zh/ja/ko 참고 페이지는
+  `register_schema(name, schema: str | dict)` 와 `register_type(tag, type_handler, priority)` 를
+  실었지만, 두 층의 선언은 `register_schema(name, schema_yaml: str)` 와
+  `register_type(name, handler)` 이고 `priority=` 는 `TypeError` 를 낸다. 영어 페이지는 맞았으니
+  오래된 필사가 아니라 번역 과정에서 생긴 어긋남이다. 페이지는 대상이 받아들이는 것을 적고, 게이트는
+  어떤 언어에서의 재발도 거부한다. — (details: quality-ledger (bo))
 
 - **위치를 담은 검증 오류도 일치한 `path` 를 말한다.** — `SchemaValidationError` 는
   `line:column: message` 또는 `path: message` 중 하나만 인쇄해서, 노드에 소스 범위가 붙는 순간
