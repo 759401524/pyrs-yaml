@@ -3200,6 +3200,112 @@ Still open from `(bq)`: an empty tagged value emits a trailing space (`n: !!null
 see `(bz)`. That was byte exactness of emission, not fidelity of data, and a serializer question
 rather than an editor one.
 
+### (bu) The loader began reading tags; the bridges went on reading text (2026-10-11)
+
+PR #335 made a standard tag state the type on load. It changed nothing else, so the engine spent a
+release with one AST and two answers, measured on `main` before this entry:
+
+| document | `safe_load` | `to_json` | `to_toml` |
+|:--|:--|:--|:--|
+| `v: !!str 1.20` | `'1.20'` | `1.2` | `v = 1.2` |
+| `v: !!bool yes` | `True` | `"yes"` | `v = "yes"` |
+| `v: !!int 0b101` | `5` | `"0b101"` | `v = "0b101"` |
+| `v: !!str 1e3` | `'1e3'` | `1000.0` | `v = "1e3"` |
+
+Every row is the same line of code read twice: `write_plain` in `pyrs-json/src/writer.rs` and
+`value_str` in `pyrs-toml/src/writer.rs` called `Schema::Core.resolve(value)` on the text, and the
+JSON writer's scalar pattern did not even bind `meta`. A stale comment called it "the historical
+serde_json projection behaviour", which is a description of an accident: serde_json is not what YAML
+§6.1 says, and since #335 it was not even what our own loader did. The writer's `is_json_number`
+pass-through (PR #121, added to preserve spellings like `1e3`) made the `!!str` row worse, because a
+heuristic on the text beat an explicit statement in the document.
+
+**One rule, in the crate that owns scalar types.** `pyrs-schema` gained
+`standard_tag_kind(handle, suffix)` and `TagKind::resolve(text)`: the shorthand handle, the verbatim
+`tag:yaml.org,2002:` URI, and YAML 1.1's lexeme sets - the tag is what makes `yes` a boolean and
+`0b101` an integer, under a Core-schema document too. It is the same grammar #335 put in the
+binding's `tags.rs`, so the second copy is now a delegation target rather than a permanent fork.
+`pyrs-schema` stays AST-free (its `Cargo.toml` says "no AST, no parser, no regex" and CI enforces
+`no_std`), which is why the entry point takes the tag *as text* and each caller passes
+`handle`/`suffix`.
+
+**A tag the text cannot satisfy is refused.** `!!int hello` now raises
+`SerializeError::UnsupportedValue("json-tag-text-mismatch")` / `"toml-tag-text-mismatch"` instead of
+becoming a string. That is the #328 rule - a strict format refuses what it cannot spell - and it
+matches `YamlTypeError` on the load side. The alternative (retype silently) is how the table above
+got written in the first place.
+
+**What is deliberately untouched, and pinned that way.** Local and application tags (`!int 7`) still
+fall back to the implicit resolution - a local tag is the plugin system's address, and #335 chose
+leniency for a reason - so do unknown `!!` suffixes, and so does `!!binary`, whose base64 text still
+projects as a string: JSON and TOML have no byte-string type, and deciding that mapping is a ruling,
+not a type resolution. It stays open in #340, as does the question of whether `tags.rs` should now
+delegate to `pyrs-schema`.
+
+Two predictions of mine were wrong and both are recorded rather than edited out. I expected a local
+`!int 7` to reach JSON as the string `"7"`; it reaches it as the number `7`, because the fallback is
+the implicit resolution and the loader agrees - so those two assertions now state the *relation*
+(bridge == loader) alongside the value. And I expected `1.` to be rejected as a `!!float`; YAML
+1.2's own grammar allows it and both reference libraries read it as `1.0`, so the test says so with
+the reason.
+
+Also recorded, because it is a gate gap rather than a typo: the ja changelog entry first shipped
+with the Cyrillic word `теперь` inside Japanese prose. `check_cjk_localisation.py` scans for scripts
+that intrude on *each other's* locale (Hangul in ja, Han in ko) and passed it, because Cyrillic is
+not in its class. The entry is fixed; the scanner's blind spot is not, and it is the kind of hole
+the quality matrix registers rather than remembers.
+
+The width fixer also did something worth naming: given a paragraph whose first line began with an
+issue reference, `check_doc_wrapping.py --fix` rewrote it as
+`## 335 made a standard tag state the type...` - a promoted heading, plus a blank line driven
+through the middle of the sentence. The heading gate then caught what the fixer had broken, and CI
+redded `docs gates and site build` and the prek hook on it while my local check had looked green: I
+had read `prek run --all-files` through its last three lines, which hid the one hook that failed.
+Two rules come out of that. A formatter that can invent a heading is a formatter whose output has to
+be gated - which is why `check_doc_headings.py` exists and why the fixer is not the last word. And a
+hook run is read by its verdict, not by its tail.
+
+**Two shapes of this fix were measured on the hot path before one was kept.** Threading an
+`Option<TagKind>` through `write_plain` - so every plain scalar, tagged or not, carried an extra
+argument and two extra branches - measured `to_json_medium` 21,232,786 → 21,444,770: **+1.00%**
+against a 0.5% line. Restructuring to dodge that - the call site matches on `meta.tag`, and both
+arms then funnelled through one shared `write_resolved` helper so the emit block stayed in a single
+place - measured **+7.17%** (22,754,717): the tidy version had handed every untagged scalar a call
+it never needed. Both numbers are the gate's, not an estimate; `to_toml_medium` held at +0.30%
+throughout and the YAML writer never moved (≤ +0.05%).
+
+What shipped is the first shape after all: `write_plain` takes the `Option<TagKind>` and one early
+branch, the emit block stays where it is, and nothing is duplicated. It is the cheapest of the
+three, and the two attempts to buy back its 1.00% cost more - the cold arm and its duplicated emit
+block measured +3.84%, the single shared helper measured +7.17%. The reason is in the fixture:
+`to_json_medium` numbers the writer over `MEDIUM_YAML`, a document containing no tags at all, so the
+tagged path never once runs and everything those shapes cost was structural - a lost inlining
+boundary in `write_value_inner`, paid by every scalar. That is also the lesson the `quoted_or_plain`
+guard wrote at this gate, now with its converse attached: restructuring to avoid paying per call can
+move the call instead, and only measurement says which.
+
+No shape reached the line, and the artifact from the dispatch-only refresh job was **not**
+committed - for a reason that matters more than this fix. Re-measuring the shipped shape on that job
+returned 22,048,805 where the enforcing job had measured 21,444,770: the same sources, the same
+pinned rustc 1.97.1, repeats=3 and the same `MEASUREMENT_ENV`, 2.8% apart - more than double the
+0.005 tolerance the gate is calibrated to. Committing a baseline over that would turn a measurement
+question into a silent permission. Two things are open and both need a ruling, not a workaround:
+whether `to_json_medium` is repeatable across the two jobs at 0.5% at all (the calibration behind
+`QUALITY_MATRIX.md` section 2 compared two *refresh* runs, never a refresh run against an enforcing
+one), and whether the fidelity fix is worth moving the committed number if it is not. The first
+question is filed as #344, with the three readings above and the cross-job self-check the refresh
+job is missing; the second stays a maintainer's call, which is why the branch carries no
+re-generated baseline.
+
+Verified: 5 Rust unit tests on the grammar (`0b101`, `0x1F`, `010` as legacy octal, `1_000`, `.inf`
+vs `inf`, the local/unknown/binary exclusions), `cargo nextest run --all` 558 tests, 37 tests in
+`tests/test_cross_format_tags.py` over JSON, JSONC, JSON5 and TOML - each asserted against the
+loader, which is the reference the bridges have to match - 2502 Python tests,
+`cargo clippy --all --all-targets -- -D warnings`, and the five changelog mirrors agreeing at [15,
+9, 30, 3]. One existing assertion was corrected, not conceded: `exotic_scalars_quote_or_normalize`
+required `"c":7` for `c: !!str 7` and its own comment said why ("resolves like serde path did"); the
+reason expired with #335.
+
 ### (bv) Regenerating the performance baseline was a silent way to move it (2026-10-12)
 
 Found while deciding what to do about `(bu)`'s sibling measurement problem, not by an audit: to
@@ -4187,7 +4293,7 @@ The planning tables `ROADMAP.md` carried after their milestones shipped. They st
 decision was deferred and against what date - and a plan silently deleted at release leaves the
 next reviewer without the previous reviewer's evidence.
 
-### v0.11.3 — "Streaming Write + Process Hardening" (target: Q3 2026)
+#### v0.11.3 — "Streaming Write + Process Hardening" (target: Q3 2026)
 
 > Complete the big-file story v0.11.2 opened (read is constant-memory, write still isn't) and close
 > the two process debts flagged in the 2026-08-02 closure that caused v0.10.0-class release
@@ -4212,7 +4318,7 @@ no real edit regression).
 
 ---
 
-#### v0.11.5 — "Parser Robustness" (target: Q3 2026)
+##### v0.11.5 — "Parser Robustness" (target: Q3 2026)
 
 > Reframed from the original v0.12.0 "Compliance Improvement" items 3/4/5. The YAML Test Suite pass
 > rate is saturated at **99.75%** (405/406 — only `ZYU8` fails, rejected by design), so these items
@@ -4252,7 +4358,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-#### v0.11.6 — "numpy-free free-threaded wheel" (target: Q3 2026)
+##### v0.11.6 — "numpy-free free-threaded wheel" (target: Q3 2026)
 
 > Ship `cp314t` (free-threaded) wheels built with `--no-default-features` so rust-numpy is excluded
 > entirely. Current free-threaded wheels compile the numpy feature (default) but runtime-probe it
@@ -4270,7 +4376,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-#### v0.11.7 — "CI signal hygiene" (target: Q3 2026)
+##### v0.11.7 — "CI signal hygiene" (target: Q3 2026)
 
 > Replace the deliberately-failing `stub-build-check` CI job with static assertions that pass when
 > the repo is correct (green CI), fail only on regression. Track `rust-numpy` free-threaded support
@@ -4285,7 +4391,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-#### v0.12.0 — "Competitive Response" (target: Q3 2026)
+##### v0.12.0 — "Competitive Response" (target: Q3 2026)
 
 > Respond to `yaml-edit` competitor features with a fast, round-trip-preserving editing story. D3
 > ships the create-missing path write; D4 adds Rust-backed AST traversal.
