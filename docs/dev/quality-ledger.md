@@ -2985,6 +2985,44 @@ faithful ones quiet; an unreadable inventory exits 2; the parameter-name parity 
 the regeneration, the doc gates green with five mirrors agreeing at [14, 8, 26, 3], and the
 four-locale site build.
 
+### (bp) The dict a caller wrote and the schema the engine saw were not the same object (2026-10-10)
+
+`safe_load(text, schema={"extends": "core", "rules": [...]})` is documented as equivalent to writing
+that schema as YAML, and the guides show it. The equivalence held for the part of the definition the
+bridge between them knew about, because `_schema_to_yaml` assembled the text with
+`f"  - pattern: '{pattern}'"` - a hand-written emitter inside a package whose entire purpose is
+faithful emission.
+
+Two failures fell out of that, and both were measured before being rewritten:
+
+- **The `validate` section was dropped.** The emitter knew `extends` and `rules`. A dict carrying
+  validation rules was registered without them, and the failure was invisible in exactly the way a
+  validator's failure always is: a schema with no rules accepts every document, so the caller who
+  asked for enforcement got silence. The fix's own test has to be a *raising* pair - `expected int`
+  and `required path is missing` - because "it did not complain" is what the bug looked like.
+- **The quoting rule was one-sided.** `'...'` unless the value contains an apostrophe, then
+  `"..."` - and nothing escaped the `"` a YAML pattern inevitably carries. `^["']?[0-9]+["']?$` came
+  out as `pattern: "^["']?[0-9]+["']?$"`, which the parser rejects:
+  `invalid trailing content after double-quoted scalar`. Reconstructing the old output and
+  registering it is a test now, so the contrast stands as a measurement rather than a claim.
+
+The remedy is not a better hand-written emitter. The dict is passed to `from_dict` - the serializer
+this library uses to guarantee that anything it writes re-parses to the same value - after the same
+input validation, with `extends` defaulted to `core` as before. Arbitrary pattern text needs no
+quoting at all under it (`pattern: ^["']?[0-9]+["']?$` is a valid plain scalar), every key survives,
+and a dict now resolves identically to the YAML text a user would have written.
+
+The rule this entry exists to keep: **a conversion from data to text inside a round-trip library has
+to go through its own writer.** Every hand-built emitter is a place where a key, a character or a
+whole section can vanish without an error, and "the output is shorter than the input" is invisible
+to any test that only checks whether the call raised.
+
+Verified: 6 tests in `tests/test_inline_schema_dict.py` (the `validate` section enforced through the
+registered name, including the two raising cases; every key written; a dict and its equivalent text
+resolving the same; `extends` still defaulting to core; a both-quotes pattern surviving; the old
+output rejected), 2386 Python tests (10 skipped), and the doc gates green with five mirrors agreeing
+at [14, 8, 27, 3].
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -77,15 +77,20 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: two things the measurement found and no change has ruled yet
+### Open: one ruling the measurement found and no change has made yet
 
 | # | Item | Layer | Priority |
 |:--|:-----|:------|:--------:|
 | 1 | **Which artefact does the shipped `.pyi` describe?** - found while verifying published signatures against the running package. The stub is generated from the extension, so whatever `python/pyrs_yaml/__init__.py` adds afterwards is invisible to it: `Node` (41 members) and `MergedView` (6) are not declared at all, and 13 editing/query members of `YamlDocument` (`set`, `set_many`, `insert`, `append`, `delete`, `rename`, `sort_keys`, `walk`, `scalars`, `find`, `node`, `merged`) are missing. An editor sees one class and the runtime offers another, which no amount of doc checking can repair. The options are a Python-typed public layer the generator can reach, moving those members behind the extension boundary, or a declared reconciliation in `check_stub_drift.py` - and each answers what "the stub" means, so it is a design decision rather than a patch | Rust (`pyrs-yaml` binding) + Python package | 🔴 |
-| 2 | **An inline dict schema loses its `validate` section.** `_schema_to_yaml` - which turns the dict that `safe_load(schema={...})` accepts into the text the engine parses - emits `extends` and `rules` only, so validation rules supplied as a dict vanish without a word, while `register_schema` refuses a dict outright with `TypeError`. The silent loss is the defect: the serializer should emit the whole dict through the package's own writer - the round-trip-faithful route used everywhere else here - and the documented promise that a dict is accepted should become true | Rust + Python (`__init__.py`) | 🔴 |
 
 Both were found by measuring rather than by review, and both are written up with their evidence in
 the engineering record (ledger (bo)).
+
+The second has since shipped: an inline dict schema carried only the sections the emitter knew
+about, so a `validate` section vanished silently and a pattern containing both quote characters
+serialised into text the parser rejected. The dict now goes through `from_dict`, the library's own
+round-trip writer, which is also the general lesson - inside a round-trip library, converting data
+to text is the writer's job, never a hand-built one (ledger (bp)).
 
 The rulings that used to sit here are shipped. Whether `mapping_of` / `sequence_of` should assert
 their container: they do, and the language gained the words to say so (`type: map` / `type: seq`,

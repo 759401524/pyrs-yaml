@@ -170,6 +170,16 @@ status: new
 
 #### 수정
 
+- **인라인 dict 스키마가 직렬화기가 몰랐던 부분을 잃지 않는다.** — `safe_load(schema={...})` 와
+  `YAML(schema={...})` 는 `_schema_to_yaml` 로 Python dict 를 엔진이 읽는 스키마 텍스트로 바꾼다. 그
+  함수는 행별로 텍스트를 조립했고 `extends` 와 `rules` 만 알고 있었으므로, `validate` 절을 담은 dict
+  는 그 규칙이 빠진 채 조용히 등록되었다. 규칙 없는 스키마는 모든 문서를 통과시키니 아무것도
+  보고하지 않았다. 게다가 유일한 손글씨 인용 규칙（값에 어포스트로피가 있으면 큰따옴표）은 두
+  인용부를 모두 담은 패턴에서 안쪽 `"` 를 이스케이프하지 않아
+  `invalid trailing content after double-quoted scalar` 를 냈다. 이제 dict 전체를 `from_dict` — 다른
+  곳에서 왕복 충실도를 보장하는 그 직렬화기 — 에 넘기므로, 모든 키가 남고 임의의 패턴 텍스트도
+  올바르게 인용된다. — (details: quality-ledger (bp))
+
 - **두 공개 함수가 자기 스터이가 받았다고 적은 키워드를 받지 못했다.** —
   `pyrs_yaml.read_markdown(path="note.md")` 는 `TypeError` 를 던졌다. 커밋된 스터이는 그 파라미터를
   `path` 로 선언했는데, `__init__.py` 의 Python 감싸기 함수가 `content` 로 고쳐 부르기 때문이었다.

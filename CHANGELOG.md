@@ -177,6 +177,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An inline dict schema no longer loses the parts the emitter did not know about.** —
+  `_schema_to_yaml` is what `safe_load(schema={...})` and `YAML(schema={...})` run to turn a Python
+  dict into the schema text the engine parses. It built that text line by line and knew only
+  `extends` and `rules`, so a dict carrying a `validate` section was registered with those rules
+  dropped silently - and a schema with no rules accepts every document, so nothing reported it. Its
+  one hand-written quoting rule (double quotes when the value contains an apostrophe) also produced
+  a double-quoted scalar with an unescaped `"` inside it for a pattern holding both quote
+  characters: `invalid trailing content after double-quoted scalar`. The dict is now written by
+  `from_dict` - the same serializer that guarantees round-trip fidelity everywhere else - so every
+  key survives and arbitrary pattern text is quoted as written. — (details: quality-ledger (bp))
+
 - **Two public functions accepted a keyword their own stub said they did not.** —
   `pyrs_yaml.read_markdown(path="note.md")` raised `TypeError` while the committed stub declared the
   parameter `path`: the Python wrapper in `__init__.py` had renamed it to `content` while the
