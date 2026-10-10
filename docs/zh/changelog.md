@@ -93,6 +93,14 @@ status: new
   文里的 `line:column` 不是一条主张；读不全种类的检查会退 2，绝不假装通过。带日期的记录保留 id：历史
   可以提及已关闭的盲区，指令文件用的是现在时。— (details: quality-ledger (bn))
 
+- **发布的签名比对已发布对象，而不是比对页面。** — `scripts/check_doc_signatures.py` 读取 28 个 API
+  页面上的每个围栏签名，并询问运行中的包是否接受那些参数：238 个块、279 个名字。参数名写错仍是一份合
+  法 HTML，所以站点会绿着发布出去；而只读生成 `.pyi` 的检查器会把 `read_markdown(path=...)` 判成文档
+  的错 ——那恰好是文档对、库错的一例。合法的缩写（只写必需前缀、省略可选尾巴）放行；没有任何声明能匹
+  配的名字、顺序或缺掉的必需参数则失败。`tests/test_stub_runtime_parity.py` 钉住更下层：桩里 40 个模
+  块函数的参数名必须等于对象自身的——两个缺陷的共同成因就是这条不变量没人看。— (details:
+  quality-ledger (bo))
+
 #### 变更
 
 - **给出 `path` 的校验规则会断言它所指名的节点。** — 改动前先测量：`$.config` 配 `mapping_of: str`
@@ -142,6 +150,19 @@ status: new
   类型存根只声明了四个类，不含任何异常类型。— (details: quality-ledger (be))
 
 #### 修复
+
+- **两个公开函数不接受自家桩声称它们接受的关键词。** — `pyrs_yaml.read_markdown(path="note.md")` 抛
+  `TypeError`，而已提交的桩把该参数声明为 `path`：`__init__.py` 里的 Python 包装层把它改成了
+  `content`，而这个函数打开的是它收到的文件；于是名字引导出的调用 `read_markdown(content=text)` 反而
+  在文件系统上失败。现在包装层叫 `path`，`read_markdown_str` 保留 `content`，两者均写下区别。同一种
+  漂移反方向发生在 `validate_against_schema`：桩里叫 `schema_yaml`，而调用方一直用 `schema`；现在原
+  生参数已重命名，桩沿声明路由重新生成。— (details: quality-ledger (bo))
+
+- **三个语言的 API 页面写出了库中不曾存在的参数。** — zh/ja/ko 参考页写了
+  `register_schema(name, schema: str | dict)` 与 `register_type(tag, type_handler, priority)`，而两
+  层声明都是 `register_schema(name, schema_yaml: str)` 与 `register_type(name, handler)`——而且
+  `priority=` 会招来 `TypeError`。英文页是对的，所以这是翻译阶段的偏差而非陈旧副本：页面现在写对象接
+  受的东西，而门禁会拒绝任何语言里再出现一次。— (details: quality-ledger (bo))
 
 - **带位置的校验错误仍然说出它匹配的 `path`。** — `SchemaValidationError` 要么打印
   `line:column: message`，要么打印 `path: message`，因此节点一旦带有源码区间，schema 作者就失去了自

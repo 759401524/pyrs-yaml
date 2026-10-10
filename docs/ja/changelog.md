@@ -98,6 +98,16 @@ status: new
   きれない語彙では 2 で終了し、通ったふりはしません。日付のある記録は ID を残します。歴史は閉じたホ
   ールを記載できて、指示ファイルは現在形だからです。— (details: quality-ledger (bn))
 
+- **公開する署名はページではなく、出荷された対象と比較します。** — `scripts/check_doc_signatures.py`
+  は 28 の API ページから署名型のフェンス付きブロックをすべて読み、実行中のパッケージがそのパラメー
+  タを受け付けるかを問います（238 ブロック、279 名前）。パラメータ名を誤っても HTML としては妥当なの
+  で、サイトは緑のまま公開されてしまいます。生成された `.pyi` だけを読む検査器は
+  `read_markdown(path=...)` をドキュメント側のせいにしてしまいました - そこだけドキュメントが正しい
+  例です。正当な省略（必須の先頭部分だけ書き、既定値付きの末尾を落とす）は通し、どの宣言にもない名前
+  ・順序・必須パラメータの欠落は失敗になります。`tests/test_stub_runtime_parity.py` はその下層を留め
+  ます — スタブの 40 のモジュール関数のパラメータ名は対象自身の名前と一致しなければならず、この不変
+  条件を見落ちていたことが両方の欠陥の共通原因でした。— (details: quality-ledger (bo))
+
 #### 変更
 
 - **`path` を書いた検証規則はそのノードを主張します。** — 変更前に測定済み：`$.config` に
@@ -155,6 +165,24 @@ status: new
   言せず、例外型が一つも含まれないため。— (details: quality-ledger (be))
 
 #### 修正
+
+- **2 つのパブリック関数が、自分専用スタブが受け付けると書いたキーワードを受け付けませんでした。** —
+  `pyrs_yaml.read_markdown(path="note.md")` は `TypeError` を送出していました — コミット済みのスタブ
+  はそのパラメータを `path` と宣言しているのに、`__init__.py` の Python ラッパーが `content` に改名
+  していたためです。しかも関数は受け取った値のファイルを開くので、名前が誘導する
+  `read_markdown(content=text)` のほうがファイルシステムで失敗していました。ラッパーは `path` に戻
+  し、`read_markdown_str` は `content` を保ち、両者はその違いを記述します。同じ漂移は逆方向にもあ
+  り、`validate_against_schema` はスタブでは `schema_yaml`、呼び出し側がずっと使ってきたのは
+  `schema` でした。ネイティブ側を改名し、スタブは宣言済みの経路で再生成しています。— (details:
+  quality-ledger (bo))
+
+- **3 か国語の API ページが、ライブラリに存在しないパラメータを書いていました。** — zh/ja/ko のリフ
+  ァレンスページは `register_schema(name, schema: str | dict)` と
+  `register_type(tag, type_handler, priority)` を掲げていましたが、両層の宣言は
+  `register_schema(name, schema_yaml: str)` と `register_type(name, handler)` であり、`priority=` は
+  `TypeError` を出します。英語ページは正しかったので、これは古い写しではなく翻訳の段階で生れた偏りで
+  す。ページは対象が受け付けるものを写し、ゲートはどの言語での再発も拒否します。— (details:
+  quality-ledger (bo))
 
 - **位置付きの検証エラーも、一致した `path` を示します。** — `SchemaValidationError` は
   `line:column: message` か `path: message` のどちらかだけを印字していたので、ノードにソース範囲が

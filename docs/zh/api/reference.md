@@ -321,13 +321,13 @@ clear_tag_handlers() -> None
 注册一个自定义 Schema。
 
 ```python
-register_schema(name: str, schema: str | dict) -> None
+register_schema(name: str, schema_yaml: str) -> None
 ```
 
 **参数:**
 
 - `name` — Schema 名称
-- `schema` — YAML 字符串或 dict（包含 `extends`、`rules`、`validate` 键）
+- `schema_yaml` — YAML 字符串（包含 `extends`、`rules`、`validate` 键）；内联 dict 由 `YAML(schema=...)` 接受
 
 **示例:**
 
@@ -399,7 +399,7 @@ class CustomType:
 注册自定义类型。
 
 ```python
-register_type(tag: str, type_handler: CustomType, priority: int = 0) -> None
+register_type(name: str, handler: CustomType | None = None) -> None
 ```
 
 **示例:**

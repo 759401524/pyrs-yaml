@@ -309,11 +309,18 @@ def parse_all_docs(
 
 
 def read_markdown(
-    content: str,
+    path: str,
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
 ) -> tuple[dict[Any, Any] | None, str]:
-    return _read_markdown(content, _coerce_schema(schema), max_depth)
+    """Read a Markdown file and extract its YAML front matter, returning `(frontmatter, body)`.
+
+    The argument is a path, not the text: `read_markdown_str` is the variant that takes content. The parameter was
+    named `content` here while the native function it forwards to reads the file at that value, so the keyword
+    `path=` - the only one that describes what the argument is - raised `TypeError`, and introspection reported a
+    signature the runtime did not honour.
+    """
+    return _read_markdown(path, _coerce_schema(schema), max_depth)
 
 
 def read_markdown_str(
@@ -321,6 +328,7 @@ def read_markdown_str(
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
 ) -> tuple[dict[Any, Any] | None, str]:
+    """Extract YAML front matter from a Markdown string, returning `(frontmatter, body)`."""
     return _read_markdown_str(content, _coerce_schema(schema), max_depth)
 
 

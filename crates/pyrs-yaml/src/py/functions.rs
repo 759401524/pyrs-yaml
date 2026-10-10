@@ -688,20 +688,24 @@ pub(crate) fn get_plugin(py: Python<'_>, tag: &str) -> Option<(String, String)> 
 }
 
 #[pyfunction]
-#[pyo3(signature = (data: "str", schema_yaml: "str") -> "None")]
+#[pyo3(signature = (data: "str", schema: "str") -> "None")]
 /// Validate a YAML document against a schema definition's `validate` rules.
 ///
-/// `data` is a YAML string; `schema_yaml` is a schema definition (the same
+/// `data` is a YAML string; `schema` is a schema definition (the same
 /// format passed to `register_schema`). Raises `YamlValidateError` listing
 /// each structural validation failure (path + reason) when the document does
 /// not conform to the schema's `validate` section.
-pub(crate) fn validate_against_schema(data: &str, schema_yaml: &str) -> PyResult<()> {
+///
+/// The parameter is named `schema`, not `schema_yaml`, because that is the keyword the
+/// public wrapper has always forwarded: a stub naming a different one tells an editor to
+/// write a call the runtime rejects.
+pub(crate) fn validate_against_schema(data: &str, schema: &str) -> PyResult<()> {
     use pyrs_yaml_core::parser::yaml::Schema;
     use pyrs_yaml_core::parser::yaml::schema_language::{parse_schema_yaml, validate_node};
 
     let ast = pyrs_yaml_core::parser::parse(data, Schema::Core)
         .map_err(|e| YamlParseError::new_err(format!("failed to parse data: {}", e)))?;
-    let resolver = parse_schema_yaml(schema_yaml)
+    let resolver = parse_schema_yaml(schema)
         .map_err(|e| YamlParseError::new_err(format!("Schema parse error: {}", e)))?;
     match validate_node(&ast, &resolver, data) {
         Ok(()) => Ok(()),

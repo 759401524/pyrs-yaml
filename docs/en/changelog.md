@@ -110,6 +110,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   history may name a closed hole, an instruction file is present tense. — (details: quality-ledger
   (bn))
 
+- **Published signatures are compared with the shipped object, not with the page.** —
+  `scripts/check_doc_signatures.py` reads every fenced signature on the 28 API pages and asks the
+  running package whether it accepts those parameters: 238 blocks, 279 names. A wrong parameter name
+  is valid HTML, so the site builds green over it, and a checker that read only the generated `.pyi`
+  would have blamed the documentation for `read_markdown(path=...)` - the one case where the
+  documentation was right. Legitimate abbreviations (a required prefix, an optional tail dropped)
+  pass; a name, order or required parameter that no declaration has fails.
+  `tests/test_stub_runtime_parity.py` pins the layer below it: the stub's parameter names must equal
+  the object's for all 40 module functions, which is the invariant whose absence caused both
+  defects. — (details: quality-ledger (bo))
+
 #### Changed
 
 - **A validate rule that names a path asserts the node it names.** — measured before the change:
@@ -175,6 +186,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   none of the exception types. — (details: quality-ledger (be))
 
 #### Fixed
+
+- **Two public functions accepted a keyword their own stub said they did not.** —
+  `pyrs_yaml.read_markdown(path="note.md")` raised `TypeError` while the committed stub declared the
+  parameter `path`: the Python wrapper in `__init__.py` had renamed it to `content` while the
+  function opens the file it is given, so `read_markdown(content=text)` - the call the name
+  suggested - failed on the filesystem instead. The wrapper now says `path`, `read_markdown_str`
+  keeps `content`, and both document the difference. The same drift in the other direction left
+  `validate_against_schema` declared as `schema_yaml` in the stub while the callable has always
+  taken `schema`; the native parameter is renamed and the stub regenerated through the declared
+  route. — (details: quality-ledger (bo))
+
+- **Three locales' API pages typed parameters the library never had.** —
+  `register_schema(name, schema: str | dict)` and `register_type(tag, type_handler, priority)`
+  appeared in the zh/ja/ko reference pages while both layers declare
+  `register_schema(name, schema_yaml: str)` and `register_type(name, handler)` — and `priority=`
+  raises `TypeError`. The English page was correct, so this was translation drift, not a stale copy:
+  the pages now type what the object accepts, and the gate refuses the regression in any locale. —
+  (details: quality-ledger (bo))
 
 - **A located validation error still names the path it matched.** — `SchemaValidationError` printed
   either `line:column: message` or `path: message`, so the moment a node carried a source range the
