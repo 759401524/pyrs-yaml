@@ -151,16 +151,34 @@ class TestBytesWriteRoute:
         # Documents already on disk. Dropping this would turn a spelling fix into data loss.
         assert pyrs_yaml.safe_load("d: !binary aGk=\n") == {"d": b"hi"}
 
-    def test_the_edit_route_drops_the_tag_for_now(self):
-        """Known gap, asserted rather than hoped away: `set` splices text, not metadata.
+    def test_the_edit_route_carries_the_tag_it_was_given(self):
+        """Assigning a tagged value through `set` emits the tag, not just its text.
 
-        The splicing editor writes a replaced scalar's text and leaves its anchor/tag behind, so a bytes
-        value assigned through `YamlDocument.set` loses the tag - the same gap any tagged value has on
-        that route, and the reason the fix belongs to the editor rather than to the tag reading.
+        The splicing editor used to inherit every metadata field from the node being replaced, so
+        `doc.set("$.d", b"hi")` wrote the base64 body of a `!!binary` value onto a line with no tag -
+        and re-reading gave the string `"aGk="`, a different type than the caller assigned. A tag states
+        the type of the value that sits there now, which is precisely what the edit changes; the note and
+        the anchor keep coming from the document, which the next two tests pin from the other side.
         """
         doc = pyrs_yaml.parse("d: x\n")
         doc.set("$.d", b"hi")
-        assert doc.to_yaml() == "d: aGk=\n"
+        assert doc.to_yaml() == "d: !!binary aGk=\n"
+        assert pyrs_yaml.safe_load(doc.to_yaml()) == {"d": b"hi"}
+
+    def test_an_edit_keeps_the_documents_own_tag_for_an_untagged_value(self):
+        """An incoming value that carries no tag must not delete the author's spelling."""
+        doc = pyrs_yaml.parse("port: !!int 8080\n")
+        doc.set("$.port", 9090)
+        assert doc.to_yaml() == "port: !!int 9090\n"
+
+    def test_an_edit_keeps_the_note_and_the_anchor_of_the_line(self):
+        """Replacing a value says nothing about its line's note, and must not orphan an alias."""
+        doc = pyrs_yaml.parse("a: &defaults x  # keep me\nb: *defaults\n")
+        doc.set("$.a", "y")
+        emitted = doc.to_yaml()
+        assert "# keep me" in emitted, emitted
+        assert "&defaults" in emitted, emitted
+        assert pyrs_yaml.safe_load(emitted) == {"a": "y", "b": "y"}
 
 
 class TestParityWithPyYAML:

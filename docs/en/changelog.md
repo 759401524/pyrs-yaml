@@ -206,6 +206,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **An edit no longer overwrites the new value's type with the old value's tag.** —
+  `doc.set("$.d", b"hi")` emitted `d: aGk=`. The assignment builds a scalar carrying `!!binary`, and
+  the splicing editor's metadata inheritance then took `comment`, `anchor` *and* `tag` from the node
+  being replaced, so the type the caller assigned was deleted by the very function that
+  documents "replaced scalars keep their comment/anchor/tag". The rule is now per field: the
+  document owns the note and the anchor name (an alias in the same document still has to resolve),
+  the value owns its type. An incoming value that carries no tag keeps the author's spelling -
+  `port: !!int 8080` set to `9090` still reads `!!int` - and mappings, sequences and nulls inherit
+  the same way, because they shared the defect. — (details: quality-ledger (bt))
+
 - **Two spellings of null are one key; the generator had been handing both to the writer.** — the 20
   000-case property tier reported `DuplicateKey("null")` for `!E null: A  # 0` beside `!E null: a`.
   A `Null` node carries no text of its own and the writer emits the word `null` for it, so the two
