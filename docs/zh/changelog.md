@@ -151,6 +151,15 @@ status: new
 
 #### 修复
 
+- **内联 dict schema 不再丢掉序列化器不认识的那部分。** — `safe_load(schema={...})` 与
+  `YAML(schema={...})` 靠 `_schema_to_yaml` 把 Python dict 转成引擎解析的 schema 文本。它逐行拼接文
+  本，只认 `extends` 与 `rules`，所以带了 `validate` 段的 dict 会被静默删掉那些规则注册进去——而无规
+  则的 schema 接受一切文档，于是没有任何东西报告此事。它那唯一一条手写的引号规则（值含撇号就用双引
+  号）对同时含两种引号的正则会产生内部未转义的双引号标量：
+  `invalid trailing content after double-quoted scalar`。现在整个 dict 交给 `from_dict` 写——就是其他
+  地方用来保障往返保真的那个序列化器——于是每个键都能活下来，任意模式文本也能按原样被正确引用。—
+  (details: quality-ledger (bp))
+
 - **两个公开函数不接受自家桩声称它们接受的关键词。** — `pyrs_yaml.read_markdown(path="note.md")` 抛
   `TypeError`，而已提交的桩把该参数声明为 `path`：`__init__.py` 里的 Python 包装层把它改成了
   `content`，而这个函数打开的是它收到的文件；于是名字引导出的调用 `read_markdown(content=text)` 反而

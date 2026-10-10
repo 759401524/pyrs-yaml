@@ -166,6 +166,16 @@ status: new
 
 #### 修正
 
+- **インライン dict スキーマが、シリアライザの知らない部分を失わなくなりました。** —
+  `safe_load(schema={...})` と `YAML(schema={...})` は `_schema_to_yaml` で Python の dict をエンジ
+  ンが読むスキーマテキストに変換します。この関数は行ごとにテキストを組み立て `extends` と `rules` し
+  か知らなかったため、`validate` 節を積んだ dict はその規則を省かれたまま黙って登録されていました
+  （規則のないスキーマはあらゆる文書を通すので、何も報告しません）。さらに唯一つの手書きクォート規則
+  （値にアポストロフィがあれば二重引用符）は、両方の引用符を含むパターンでは内部の `"` をエスケープ
+  しないまま残し、`invalid trailing content after double-quoted scalar` を出していました。いまは
+  dict 全体を `from_dict` — よそで往復忠実性を保証している同じシリアライザ — に渡すので、すべてのキ
+  ーが残り、任意のパターンテキストも正しい形で引用されます。— (details: quality-ledger (bp))
+
 - **2 つのパブリック関数が、自分専用スタブが受け付けると書いたキーワードを受け付けませんでした。** —
   `pyrs_yaml.read_markdown(path="note.md")` は `TypeError` を送出していました — コミット済みのスタブ
   はそのパラメータを `path` と宣言しているのに、`__init__.py` の Python ラッパーが `content` に改名

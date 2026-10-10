@@ -171,7 +171,20 @@ def _is_schema_dict(val: object) -> TypeGuard[_SchemaDict]:
 
 
 def _schema_to_yaml(schema: _SchemaDict) -> str:
-    """Convert an inline schema dict to a YAML schema string."""
+    """Convert an inline schema dict to a YAML schema string.
+
+    The dict is written by this library's own serializer rather than emitted line by line, for two reasons the
+    hand-rolled version had:
+
+    - A pattern is arbitrary text. The only quoting rule that keeps it identical through a round trip is the one
+      `from_dict` already implements; choosing `'...'` unless the value contained an apostrophe produced text
+      like `"["']"`, which closes the string it was written inside.
+    - The schema language accepts a `validate` section, and the line emitter knew only `extends` and `rules`. A
+      dict that looked equivalent to the YAML text was registered with its validation rules silently removed, so
+      the schema it named accepted everything.
+
+    `extends` keeps its old default of `core`, since a dict without it used to resolve against core.
+    """
     if not isinstance(schema, dict):
         raise TypeError(f"schema must be a dict, got {type(schema).__name__}")
     if "rules" not in schema or not schema["rules"]:
@@ -179,22 +192,12 @@ def _schema_to_yaml(schema: _SchemaDict) -> str:
     rules = schema["rules"]
     if not isinstance(rules, list):
         raise ValueError("schema 'rules' must be a list")
-    lines = [f"extends: {schema.get('extends', 'core')}"]
-    lines.append("rules:")
     for rule in rules:
         if not isinstance(rule, dict) or "pattern" not in rule or "type" not in rule:
             raise ValueError(f"each rule must have 'pattern' and 'type' keys, got {rule}")
-        pattern = rule["pattern"]
-        typ = rule["type"]
-        if "'" in pattern:
-            lines.append(f'  - pattern: "{pattern}"')
-        else:
-            lines.append(f"  - pattern: '{pattern}'")
-        if "'" in typ:
-            lines.append(f'    type: "{typ}"')
-        else:
-            lines.append(f"    type: '{typ}'")
-    return "\n".join(lines) + "\n"
+    ordered: dict[str, Any] = {"extends": schema.get("extends", "core")}
+    ordered.update({key: value for key, value in schema.items() if key != "extends"})
+    return from_dict(ordered)
 
 
 def _coerce_schema(schema: str | _SchemaDict) -> str:
