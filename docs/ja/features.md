@@ -193,7 +193,7 @@ out = pyrs_yaml.safe_dump(data)
 
 **組み込みプラグイン**（インポート時に登録）:
 `!timestamp` → `datetime`、`!date` → `datetime.date`、`!time` → `datetime.time`、
-`!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!binary` → `bytes`、
+`!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!!binary` → `bytes`、
 `!regex` → `re.Pattern`、`!set` → `str`
 
 **オプションのサードパーティプラグイン**（ライブラリがインストールされている場合に自動登録）:

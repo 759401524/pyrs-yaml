@@ -191,7 +191,7 @@ out = pyrs_yaml.safe_dump(data)
 
 **内置插件**（导入时注册）:
 `!timestamp` → `datetime`、`!date` → `datetime.date`、`!time` → `datetime.time`、
-`!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!binary` → `bytes`、
+`!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!!binary` → `bytes`、
 `!regex` → `re.Pattern`、`!set` → `str`
 
 **可选的第三方插件**（安装对应库后自动注册）:

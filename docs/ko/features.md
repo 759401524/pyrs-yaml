@@ -195,7 +195,7 @@ out = pyrs_yaml.safe_dump(data)
 
 **내장 플러그인** (import 시 등록):
 `!timestamp` → `datetime`, `!date` → `datetime.date`, `!time` → `datetime.time`,
-`!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!binary` → `bytes`,
+`!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!!binary` → `bytes`,
 `!regex` → `re.Pattern`, `!set` → `str`
 
 **선택적 서드파티 플러그인** (라이브러리가 설치된 경우 자동 등록):

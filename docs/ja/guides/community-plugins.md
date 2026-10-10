@@ -23,7 +23,7 @@ pyrs-yaml にはインポート時に自動登録される組み込みプラグ�
 | :material-clock: `!time` | `datetime.time` | ISO 8601 時刻（日付なし） |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID 文字列 ↔ オブジェクト |
 | :material-decimal: `!decimal` | `decimal.Decimal` | 任意精度の小数 |
-| :material-binary: `!binary` | `bytes` | Base64 エンコードされたバイナリデータ |
+| :material-binary: `!!binary` | `bytes` | Base64 エンコードのバイナリデータ；ローカル表記 `!binary` も読みます |
 | :material-language-python: `!regex` | `re.Pattern` | コンパイル済み正規表現 |
 | :material-format-list-bulleted: `!set` | `str` | YAML セット（キー無しマッピング） |
 

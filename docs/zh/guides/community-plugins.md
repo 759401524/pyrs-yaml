@@ -22,7 +22,7 @@ pyrs-yaml 内置了在导入时自动注册的插件：
 | :material-clock: `!time` | `datetime.time` | ISO 8601 时间（不含日期） |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID 字符串 ↔ 对象 |
 | :material-decimal: `!decimal` | `decimal.Decimal` | 任意精度十进制数 |
-| :material-binary: `!binary` | `bytes` | Base64 编码的二进制数据 |
+| :material-binary: `!!binary` | `bytes` | Base64 编码的二进制数据；仍读取本地写法 `!binary` |
 | :material-language-python: `!regex` | `re.Pattern` | 已编译的正则表达式 |
 | :material-format-list-bulleted: `!set` | `str` | YAML 集合（无键映射） |
 

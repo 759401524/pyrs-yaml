@@ -91,10 +91,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
         && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
     {
         let (tag_name, yaml_str) = result?;
-        let tag = crate::ast::Tag {
-            handle: "!".to_string(),
-            suffix: tag_name.trim_start_matches('!').to_string(),
-        };
+        let tag = crate::py::tags::tag_of(&tag_name);
         return Ok(CustomNode::Scalar {
             value: std::sync::Arc::from(yaml_str),
             style: crate::ast::ScalarStyle::Plain,
@@ -136,10 +133,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
         type_registry::try_to_yaml(py, &obj_ref)
     } {
         let (tag_name, yaml_str) = result?;
-        let tag = crate::ast::Tag {
-            handle: "!".to_string(),
-            suffix: tag_name.trim_start_matches('!').to_string(),
-        };
+        let tag = crate::py::tags::tag_of(&tag_name);
         return Ok(CustomNode::Scalar {
             value: std::sync::Arc::from(yaml_str),
             style: crate::ast::ScalarStyle::Plain,

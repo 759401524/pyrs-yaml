@@ -23,7 +23,7 @@ pyrs-yaml ships with built-in plugins registered at import time:
 | :material-clock: `!time` | `datetime.time` | ISO 8601 time (no date) |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID string ↔ object |
 | :material-decimal: `!decimal` | `decimal.Decimal` | Arbitrary-precision decimal |
-| :material-binary: `!binary` | `bytes` | Base64-encoded binary data |
+| :material-binary: `!!binary` | `bytes` | Base64-encoded binary data; the local `!binary` spelling is still read |
 | :material-language-python: `!regex` | `re.Pattern` | Compiled regex pattern |
 | :material-format-list-bulleted: `!set` | `str` | YAML set (unkeyed mapping) — experimental, no round-trip serialization |
 

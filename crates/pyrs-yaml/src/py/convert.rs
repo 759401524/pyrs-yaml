@@ -141,6 +141,15 @@ fn node_to_pyobject_inner<'a>(
         CustomNode::Scalar {
             value, style, meta, ..
         } => {
+            // An explicit standard tag states the type, so it is read first: the document's schema
+            // resolves `1.20` to a float and `aGk=` to a string, and both answers contradict the
+            // tag its author wrote. A plugin registered on one of these tags no longer wins over
+            // the tag itself - the standard reading is what both reference libraries apply.
+            if let Some(t) = meta.tag.as_ref()
+                && let Some(tagged) = crate::py::tags::tagged_scalar(py, &t.to_string(), value)?
+            {
+                return Ok(tagged);
+            }
             // Resolve the scalar value first, then try custom type conversion
             // so that `from_yaml` receives the resolved Python object.
             let py_obj = scalar_to_pyobject(py, value, style, schema)?;

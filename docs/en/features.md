@@ -241,7 +241,7 @@ out = pyrs_yaml.safe_dump(data)
 
 **Built-in plugins** (registered at import time):
 `!timestamp` → `datetime`, `!date` → `datetime.date`, `!time` → `datetime.time`,
-`!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!binary` → `bytes`,
+`!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!!binary` → `bytes`,
 `!regex` → `re.Pattern`, `!set` → `str`
 
 **Optional third-party plugins** (auto-registered when the library is installed):
