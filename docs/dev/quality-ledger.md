@@ -3072,12 +3072,10 @@ registers under the standard name now (keeping the local one for documents alrea
 dropping it would convert a spelling fix into data loss), and the two places that built a `Tag` from
 a registered name were collapsing every handle to `!`: `tag_of` keeps `!!` when the name carries it.
 
-Two measured gaps stay open, both asserted so a future change decides them on purpose:
+Two measured gaps were recorded here, both asserted so a future change would decide them on purpose:
 
-- **`YamlDocument.set` loses a tag.** The splicing editor writes a replaced scalar's text and not
-  its metadata, so `doc.set("$.d", b"hi")` emits `d: aGk=` - a base64 string where a binary was
-  assigned. The gap is the editor's, not the tag reading's, and any tagged value assigned through
-  that route shares it.
+- **`YamlDocument.set` loses a tag.** Closed - see `(bt)`, which is where the cause turned out to be
+  (the editor's metadata inheritance, not the tag reading).
 - **An empty tagged value emits a trailing space.** `n: !!null` round-trips as `n: !!null `; the
   value, the re-parse and the idempotence all hold, so this is byte-exactness of emission rather
   than fidelity of data.
@@ -3149,6 +3147,59 @@ Verified: 548 nextest (547 plus this guard), `PROPTEST_CASES=20000 cargo test -p
 included; `cargo clippy --all -- -D warnings` and the same over `--all-targets` for the two crates;
 the five changelog mirrors agreeing at [14, 8, 28, 3] for this change alone - [15, 9, 28, 3]
 once the standard-tag change that was in flight lands beside it.
+
+### (bt) The edit that promises to keep metadata was using it to overwrite the value's type (2026-10-10)
+
+`(bq)` closed with a gap it named rather than hid: `doc.set("$.d", b"hi")` emitted `d: aGk=`. The
+assignment converts `bytes` through the registry into a scalar carrying `tag: !!binary` and the text
+`aGk=` - so the tag was present and then removed. The removal is `with_metadata_from`, in the
+splicing copy of `crates/pyrs-yaml-core/src/editing/metadata.rs`, which took **all three** metadata
+fields from the node being replaced:
+
+```rust
+meta: NodeMeta { comment: src_meta.comment.clone(),
+                 anchor:   src_meta.anchor.clone(),
+                 tag:      src_meta.tag.clone(), .. }
+```
+
+The function is what backs the documented claim that "replaced scalars keep their
+comment/anchor/tag/quoting" (`docs/en/features.md`). For two of the three fields that inheritance is
+right, and the reason is the same for both: a note is the line's, and an anchor is a name the rest
+of the document already refers to - dropping it would leave a `*defaults` pointing at nothing. The
+third field is not line furniture. A tag states the type of the value sitting there, and the value
+is exactly what the edit changes, so the incoming tag is the truth and the old one describes a value
+that is gone. `port: !!int 8080` set to `9090` still has to read the author's spelling, which is why
+the rule is per-field rather than "new wins":
+
+```rust
+comment: replaced.clone().or_else(incoming)   // the document owns the note
+anchor:  replaced.clone().or_else(incoming)   // the document owns the name
+tag:     incoming.clone().or_else(replaced)   // the value owns its type
+```
+
+Applied to every arm that had the pattern - scalar, mapping, sequence, null - because a tagged
+container assignment shares the defect; the mixed-kind cases already fell through to
+`target.clone()` and keep the incoming node whole, which is the same conclusion reached by a
+different route.
+
+**A control that proved nothing, recorded rather than deleted.** The first negative control flipped
+`tag: incoming.or_else(replaced)` to `tag: replaced.or_else(incoming)` and the new tests stayed
+green - because each test pins one direction and its fixture leaves the other side empty, so only
+the plain override of the old code exercises the difference. The control was re-run against the
+*original* rule (`tag: src_meta.tag.clone()`) and `an_incoming_tag_survives_the_replacement` failed
+on it, which is the evidence the tests bite. A passing mutation of a two-sided rule is not a test of
+that rule.
+
+Verified: 5 Rust unit tests for the three directions (incoming tag survives; incoming untagged keeps
+the author's tag; anchor and note keep coming from the document; a tagged mapping survives),
+`cargo nextest run --all` 553 tests, 80 tests in `tests/test_standard_tags.py` (the edit route now
+asserts `d: !!binary aGk=` and re-reads as `b"hi"`; two new tests pin the untagged-incoming and the
+note-plus-alias cases through the real `set`), 2466 Python tests (10 skipped), `cargo clippy --all
+--all-targets -- -D warnings`, and the gap pointer updated in `(bq)`.
+
+Still open from `(bq)`: an empty tagged value emits a trailing space (`n: !!null `). That is byte
+exactness of emission, not fidelity of data, and it is a serializer question rather than an editor
+one.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
