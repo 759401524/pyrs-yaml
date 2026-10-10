@@ -3023,6 +3023,65 @@ resolving the same; `extends` still defaulting to core; a both-quotes pattern su
 output rejected), 2386 Python tests (10 skipped), and the doc gates green with five mirrors agreeing
 at [14, 8, 27, 3].
 
+### (br) Two spellings of null are one key, and the generator had not been told (2026-10-10)
+
+The `property tier (20k cases)` job came back red on `prop_output_always_parses`, minimised to a
+serialization of
+
+```yaml
+a:
+  A:
+    !E null: A  # 0
+    !E null: a
+```
+
+which re-reads as `DuplicateKey("null")`. Nothing in the change under review touches
+`pyrs-yaml-core` - `jj diff --name-only` names no core file - so the red was a pre-existing hole in
+the *generator's* model of its own writer, reached because 20 000 cases is a wider net than the
+256-case default tier. It is written down rather than re-run: a flake that produces a smaller
+falsifying shape than the last one is evidence, and a retry that happens to pass suppresses it.
+
+Two AST shapes explain that text and they do not need the same fix: two `Null` variants separated
+only by metadata (one carrying the note), or a `Null` variant beside a plain `Scalar` whose printed
+text is the word `null`. The shipped package settled which pair the reader cannot see apart -
+parsing the text under `allow_duplicate_keys=True` yields *one* entry, so the two re-read keys are
+fully equal and whatever separated them in the tree is a field the reader never looks at. Both
+shapes were real gaps: the rule looked at scalar text and at empty containers, and never once at a
+null.
+
+Four measurements replaced four assumptions made while writing the fix:
+
+| assumed | measured |
+|:--|:--|
+| an anchor on the key separates two nulls, because it is printed | `&a null: one` + `&b null: two` re-read as **one** entry - a mapping holds one bare null key whatever rides it. An anchor separates only once a tag has taken the key out of the null fold (`!E` + `&a` vs `!E` + `&b` stay two entries) |
+| a plain scalar spelled `null` is an ordinary string key | the writer's short-alphanumeric fast path emits it raw, so `null` and `Null` land on the same line and the reader folds them |
+| `NULL:` and `null:` are two texts, so two keys | the reader decides on the *resolved* key, not the spelling - both fold onto the mapping's single null key |
+| an empty plain key is a null spelling, as `is_null_key` reads it in source | the writer refuses to emit it: it quotes (`"": v`), so an empty-string key keeps its own entry |
+
+The rule is now `keys_collide_in_text` (was the private `serialization_collides`) and it is public
+for one reason: the model of a writer and a reader, maintained by hand in a third crate, needs its
+agreement pinned against both. `pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader` runs
+15 classes in both directions - a pair the rule calls distinct must still hold two entries when its
+real serialization is re-read strictly, a pair it calls identical must be refused or folded - and
+asserts the balance of the table (8 distinct) so a rule degraded to "everything collides" fails
+instead of quietly leaving the generator with single-key mappings. Where the node map itself merges
+the two keys (two identical empty mappings) the text oracle cannot run, and the guard asserts the
+rule agrees with that outcome rather than skipping it.
+
+The guard was proved to bite: with the null branch forced to `false`, the table fails on
+`two tagged nulls, one carrying a note` - the exact CI shape - rather than passing silently.
+
+What this does *not* close is the product half. A hand-built mapping holding either pair still
+reaches `to_yaml`, which returns `String` and cannot object: three of the six measured classes fold
+without a word, the document one line shorter than the tree. Recorded as issue #336 with the table
+of measured emissions and the three options (fold like the reader, report through
+`to_yaml_with_options`, or declare the invariant), and as the second open ruling in `ROADMAP.md`.
+
+Verified: 548 nextest (547 plus this guard), `PROPTEST_CASES=20000 cargo test -p pyrs-yaml-core
+--lib` at the same budget the CI tier uses - 321 tests, 0 failures, `prop_output_always_parses`
+included; `cargo clippy --all -- -D warnings` and the same over `--all-targets` for the two crates;
+the five changelog mirrors agreeing at [15, 9, 28, 3].
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

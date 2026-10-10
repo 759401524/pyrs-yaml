@@ -1234,12 +1234,12 @@ pub mod proptest_strategies {
                 for (k, v) in pairs {
                     // Keys the YAML text cannot tell apart: same-kind empty
                     // containers (always `[]`/`{}` whatever their flow style or
-                    // metadata), or two scalars carrying the same text. IndexMap's
-                    // Eq sees two keys either way, so keep the first to leave the
-                    // generated AST re-parseable.
+                    // metadata), two scalars carrying the same text, or two
+                    // spellings of null. IndexMap's Eq sees two keys either way, so
+                    // keep the first to leave the generated AST re-parseable.
                     if map
                         .keys()
-                        .any(|existing| serialization_collides(existing, &k))
+                        .any(|existing| keys_collide_in_text(existing, &k))
                     {
                         continue;
                     }
@@ -1255,12 +1255,25 @@ pub mod proptest_strategies {
 
     /// True when two keys collapse onto one YAML rendering: same-kind empty
     /// containers, whose distinguishing attributes (flow style, meta) never
-    /// reach the emitted text; or two scalars carrying the same *text*, which is
+    /// reach the emitted text; two scalars carrying the same *text*, which is
     /// exactly how the reader identifies a key — an anchor, tag, comment or style
-    /// difference cannot tell two of them apart once re-parsed (crash-3b0a7d1d).
-    /// A mapping holding either pair re-parses as a duplicate key — the parser's
-    /// strictness is correct, the pair is not.
-    fn serialization_collides(a: &CustomNode, b: &CustomNode) -> bool {
+    /// difference cannot tell two of them apart once re-parsed (crash-3b0a7d1d);
+    /// or two spellings of null, which the reader folds into the mapping's single
+    /// null key. A mapping holding any of these re-parses as a duplicate key — the
+    /// parser's strictness is correct, the pair is not.
+    ///
+    /// Public so the engine crate can pin this rule against what its writer
+    /// actually emits and what its reader actually folds
+    /// (`pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader`): the rule
+    /// is a hand-maintained model of two other components, and every gap between
+    /// them has shown up first as a random property-tier failure.
+    pub fn keys_collide_in_text(a: &CustomNode, b: &CustomNode) -> bool {
+        // Checked first because the reader decides on the *resolved* key, not the
+        // spelling: `NULL:` and `null:` are two different texts that still fold
+        // onto one null key, so neither can carry a mapping of its own.
+        if let (Some(x), Some(y)) = (null_key_identity(a), null_key_identity(b)) {
+            return x == y;
+        }
         if let (CustomNode::Scalar { value: va, .. }, CustomNode::Scalar { value: vb, .. }) = (a, b)
         {
             return va == vb;
@@ -1272,6 +1285,44 @@ pub mod proptest_strategies {
         };
         empty_of_kind(a, true) && empty_of_kind(b, true)
             || empty_of_kind(a, false) && empty_of_kind(b, false)
+    }
+
+    /// `(tag, anchor)` for a key the reader resolves to null — the `Null` variant or
+    /// a plain scalar spelled `~` or `null` in any case — and `None` for anything the
+    /// reader keeps as its own key.
+    ///
+    /// The empty string is deliberately absent: an empty plain *key* in source reads
+    /// as null, but the writer will not emit one — it quotes it (`"": v`) so an AST
+    /// holding an empty-string key stays the string key it was written as.
+    ///
+    /// `Null` carries no text of its own: the writer emits the word `null` for it,
+    /// so a null cannot be told from another null, nor from a plain scalar spelled
+    /// like one. A note rides the *line* rather than the key, so it separates
+    /// nothing; the reader then folds the two lines into one entry and reports the
+    /// second key as a duplicate (property tier at 20 000 cases: `!E null: A  # 0`
+    /// beside `!E null: a`).
+    ///
+    /// An anchor is only consulted once a tag is present. Measured, not assumed: a
+    /// mapping does hold one bare null key whatever anchors ride it — `&a null: one`
+    /// and `&b null: two` re-read as a single entry — while a tag takes the key out
+    /// of the null fold and the reader then compares whole nodes, so `&a !E null`
+    /// and `&b !E null` stay two keys.
+    fn null_key_identity(node: &CustomNode) -> Option<(Option<&Tag>, Option<&String>)> {
+        let meta = match node {
+            CustomNode::Null { meta } => meta,
+            CustomNode::Scalar {
+                value, style, meta, ..
+            } if *style == ScalarStyle::Plain
+                && (value.as_ref() == "~" || value.eq_ignore_ascii_case("null")) =>
+            {
+                meta
+            }
+            _ => return None,
+        };
+        Some(match &meta.tag {
+            None => (None, None),
+            Some(tag) => (Some(tag), meta.anchor.as_ref()),
+        })
     }
 
     fn arb_sequence(inner: BoxedStrategy<CustomNode>) -> impl Strategy<Value = CustomNode> {

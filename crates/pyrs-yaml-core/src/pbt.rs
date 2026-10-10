@@ -421,4 +421,208 @@ mod tests {
             }
         }
     }
+
+    /// The generator's key rule, this crate's writer and this crate's reader have to
+    /// describe the same mapping, and nothing but a table like this one proves it.
+    /// `keys_collide_in_text` lives in `pyrs-ast` and is a hand-maintained model of
+    /// the two components here; every gap between the model and the reality has shown
+    /// up first as a random property-tier failure. The gap that wrote this guard
+    /// reported `DuplicateKey("null")` for `!E null: A  # 0` beside `!E null: a` — a
+    /// pair of `Null` nodes the rule did not look at at all.
+    ///
+    /// Both directions are pinned against real text. A pair the rule calls
+    /// distinguishable must still hold two entries once its serialization is re-read
+    /// strictly; a pair it calls identical must be refused or folded by the reader.
+    /// A rule degraded to "everything collides" would leave the generator emitting
+    /// single-key mappings and the tier green, so the table asserts the count of
+    /// classes on each side as well.
+    #[test]
+    fn the_key_rule_agrees_with_the_writer_and_the_reader() {
+        use crate::ast::{Comment, NodeMap, ScalarStyle, Tag};
+        use pyrs_ast::ast::proptest_strategies::keys_collide_in_text;
+
+        let null = |tag: Option<(&str, &str)>, anchor: Option<&str>, note: Option<&str>| {
+            let mut node = crate::ast::CustomNode::Null {
+                meta: Default::default(),
+            };
+            if let Some((handle, suffix)) = tag {
+                node.set_tag(Tag {
+                    handle: handle.to_string(),
+                    suffix: suffix.to_string(),
+                });
+            }
+            if let Some(name) = anchor {
+                node.set_anchor(name);
+            }
+            if let Some(text) = note {
+                node.set_comment(Comment {
+                    text: text.into(),
+                    standalone: false,
+                });
+            }
+            node
+        };
+        let scalar = |value: &str, style: ScalarStyle, tag: Option<(&str, &str)>| {
+            let mut node = crate::ast::CustomNode::plain_scalar(value);
+            node.set_scalar_style(style);
+            if let Some((handle, suffix)) = tag {
+                node.set_tag(Tag {
+                    handle: handle.to_string(),
+                    suffix: suffix.to_string(),
+                });
+            }
+            node
+        };
+        let plain = |value: &str| scalar(value, ScalarStyle::Plain, None);
+        let mapping_key = |keys: &[(&str, &str)]| {
+            let mut pairs = NodeMap::default();
+            for (k, v) in keys {
+                pairs.insert(plain(k), plain(v));
+            }
+            crate::ast::CustomNode::plain_mapping(pairs)
+        };
+        let sequence_key = |items: &[&str]| {
+            crate::ast::CustomNode::plain_sequence(items.iter().map(|item| plain(item)).collect())
+        };
+
+        // (label, key a, key b, whether the rule claims the text tells them apart)
+        let cases: Vec<(&str, crate::ast::CustomNode, crate::ast::CustomNode, bool)> = vec![
+            // --- distinguishable: two entries must survive a strict re-read ---
+            (
+                "two plain scalars, different text",
+                plain("k"),
+                plain("v"),
+                true,
+            ),
+            (
+                "a null and a string",
+                null(None, None, None),
+                plain("hello"),
+                true,
+            ),
+            (
+                "two nulls under different tags",
+                null(Some(("!", "E")), None, None),
+                null(Some(("!", "F")), None, None),
+                true,
+            ),
+            (
+                "a tagged null and a bare null",
+                null(Some(("!", "E")), None, None),
+                null(None, None, None),
+                true,
+            ),
+            (
+                "two tagged nulls under different anchors",
+                null(Some(("!", "E")), Some("a"), None),
+                null(Some(("!", "E")), Some("b"), None),
+                true,
+            ),
+            (
+                "two nested mappings, different content",
+                mapping_key(&[("x", "1")]),
+                mapping_key(&[("x", "2")]),
+                true,
+            ),
+            (
+                "an empty mapping and an empty sequence",
+                mapping_key(&[]),
+                sequence_key(&[]),
+                true,
+            ),
+            // The writer quotes an empty plain key (`"": v`) instead of emitting the
+            // null spelling the reader would fold, so a tilde key keeps its own entry.
+            ("a tilde and an empty key", plain("~"), plain(""), true),
+            // --- identical: the reader must refuse or fold, never keep both ---
+            (
+                "two tagged nulls, one carrying a note",
+                null(Some(("!", "E")), None, Some("0")),
+                null(Some(("!", "E")), None, None),
+                false,
+            ),
+            (
+                "two bare nulls under different anchors",
+                null(None, Some("a"), None),
+                null(None, Some("b"), None),
+                false,
+            ),
+            (
+                "a null and a plain scalar spelled null",
+                null(None, None, None),
+                plain("null"),
+                false,
+            ),
+            (
+                "the NULL and null spellings",
+                plain("NULL"),
+                plain("null"),
+                false,
+            ),
+            (
+                "a null and a tilde",
+                null(None, None, None),
+                plain("~"),
+                false,
+            ),
+            (
+                "the same text, plain and quoted",
+                plain("k"),
+                scalar("k", ScalarStyle::SingleQuoted, None),
+                false,
+            ),
+            (
+                "two empty mappings",
+                mapping_key(&[]),
+                mapping_key(&[]),
+                false,
+            ),
+            (
+                "two empty sequences",
+                sequence_key(&[]),
+                sequence_key(&[]),
+                false,
+            ),
+        ];
+        let distinguishable = cases.iter().filter(|(_, _, _, keepable)| *keepable).count();
+        assert_eq!(
+            distinguishable, 8,
+            "the table must keep a real share of its classes on each side"
+        );
+
+        for (label, a, b, keepable) in cases {
+            assert_eq!(
+                keys_collide_in_text(&a, &b),
+                !keepable,
+                "{label}: the rule disagrees with the table"
+            );
+            // Values that differ, so a fold is visible as a lost entry rather than
+            // an overwritten one.
+            let mut pairs = NodeMap::default();
+            pairs.insert(a.clone(), plain("one"));
+            // `IndexMap::insert` hands back the value it replaced: nothing replaced
+            // means both keys are now in the map.
+            let held_both = pairs.insert(b.clone(), plain("two")).is_none();
+            if !held_both {
+                // The node map itself cannot hold the pair — the same conclusion the
+                // rule reaches, and a reason the text oracle below cannot run.
+                assert!(!keepable, "{label}: the node map folded a distinct pair");
+                continue;
+            }
+            let yaml = to_yaml(&crate::ast::CustomNode::plain_mapping(pairs));
+            match parse_with_options(&yaml, true, Schema::Core, 1000, false) {
+                Ok(crate::ast::CustomNode::Mapping { pairs: read, .. }) => {
+                    assert_eq!(
+                        read.len(),
+                        if keepable { 2 } else { 1 },
+                        "{label}: {yaml:?} re-read as {read:?}"
+                    );
+                }
+                Ok(other) => panic!("{label}: {yaml:?} re-read as a {other:?}"),
+                Err(err) => assert!(
+                    !keepable,
+                    "{label}: a distinct pair {yaml:?} was refused: {err}"
+                ),
+            }
+        }
+    }
 }
