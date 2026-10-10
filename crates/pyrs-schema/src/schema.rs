@@ -1,6 +1,7 @@
 use crate::is_yaml_noncharacter;
 use crate::types::{YamlSchema, YamlType};
 use alloc::borrow::Cow;
+use alloc::string::String;
 
 // YamlSchema is defined in types.rs and re-exported via mod.rs.
 
@@ -306,6 +307,298 @@ pub fn resolve_yaml_type(value: &str, schema: YamlSchema) -> YamlType<'_> {
 pub fn plain_text_is_typed(text: &str) -> bool {
     !matches!(resolve_core_type(text), YamlType::Str(_))
         || !matches!(resolve_yaml11_type(text), YamlType::Str(_))
+}
+
+// ---------------------------------------------------------------------------
+// Standard tags: the type a document states outright
+// ---------------------------------------------------------------------------
+
+/// The scalar types YAML's standard tag vocabulary names, restricted to the ones a
+/// cross-format bridge can project without changing their meaning.
+///
+/// `!!binary` is deliberately absent: JSON and TOML have no byte-string type, so what its
+/// base64 text should become is a mapping decision, not a type-resolution one. It stays with
+/// the caller that has to make it (issue #340 records that this is still open).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagKind {
+    /// `!!null` - the text must spell a null.
+    Null,
+    /// `!!bool` - the YAML 1.1 lexeme set, which is what the tag itself defines.
+    Bool,
+    /// `!!int` - the YAML 1.1 resolvable integer, `0b`/`0x`/`0o`/legacy octal/underscores.
+    Int,
+    /// `!!float` - including the `.inf`/`.nan` spellings.
+    Float,
+    /// `!!str` - whatever the text says, read as text.
+    Str,
+}
+
+/// The [`TagKind`] a *standard* tag states, or `None` when the tag names nothing this crate
+/// can act on: a local or application tag (`!myclass`, `!int`), an unrecognised `!!` suffix
+/// (`!!weird`), or `!!binary`.
+///
+/// A tag *replaces* the implicit resolution. YAML 1.2 §6.1 says so, and since #335 the loader
+/// obeys it - `!!str 1.20` is the string `"1.20"`, `!!bool yes` is `true`. The bridges kept
+/// reading the text alone, so the same AST answered two different questions: `to_json` turned
+/// `!!str 1.20` into the number `1.2` (changing its type *and* dropping the trailing zero) and
+/// `!!bool yes` into the string `"yes"`. This is the one place that grammar now lives, so a
+/// bridge cannot drift from the loader again.
+///
+/// Both spellings a standard tag reaches the AST in are recognised: the shorthand handle
+/// (`!!int`) and the verbatim URI (`!<tag:yaml.org,2002:int>`, stored with an empty handle),
+/// which is what `Node.set_tag` writes.
+#[must_use]
+pub fn standard_tag_kind(handle: &str, suffix: &str) -> Option<TagKind> {
+    let name: &str = if handle == "!!" {
+        suffix
+    } else if handle.is_empty() {
+        suffix.strip_prefix("tag:yaml.org,2002:")?
+    } else {
+        return None;
+    };
+    match name {
+        "null" => Some(TagKind::Null),
+        "bool" => Some(TagKind::Bool),
+        "int" => Some(TagKind::Int),
+        "float" => Some(TagKind::Float),
+        "str" => Some(TagKind::Str),
+        _ => None,
+    }
+}
+
+impl TagKind {
+    /// Read `text` as the type this tag states, or `None` when the text is not that type.
+    ///
+    /// `None` is a refusal, not a fall-through. Resolving `!!int hello` back to a string is
+    /// how a bridge ends up agreeing with no reference implementation: the loader raises
+    /// `YamlTypeError` for the same input (#335), and a writer has
+    /// `SerializeError::UnsupportedValue` for the same job (#328 set that precedent for
+    /// values a strict format cannot spell).
+    #[must_use]
+    pub fn resolve<'a>(self, text: &'a str) -> Option<YamlType<'a>> {
+        match self {
+            // A `!!str` tag means the text is the value, exactly as written - that is the
+            // whole content of the tag, so nothing here can fail.
+            TagKind::Str => Some(YamlType::Str(Cow::Borrowed(text))),
+            // The null spellings the engine already recognises, both schemas: `~`, `null`
+            // in any case, and empty. 1.1 adds nothing to that list.
+            TagKind::Null => match resolve_core_type(text) {
+                YamlType::Null => Some(YamlType::Null),
+                _ => None,
+            },
+            // `!!bool` carries its own lexeme set - YAML 1.1's, which is why `yes` is a
+            // boolean under a Core-schema document too: it is the tag making it one.
+            TagKind::Bool => match resolve_yaml11_type(text) {
+                YamlType::Bool(b) => Some(YamlType::Bool(b)),
+                _ => None,
+            },
+            TagKind::Int => resolvable_int11(text).map(YamlType::Int),
+            TagKind::Float => resolvable_float11(text).map(YamlType::Float),
+        }
+    }
+}
+
+/// The YAML 1.1 `resolvable int`: optional sign, then decimal (with `_` separators),
+/// `0x`/`0X` hex, `0o`/`0O` octal, `0b`/`0B` binary, or the legacy form - a leading `0`
+/// followed by octal digits, so `010` is 8. Underscores are stripped before parsing, and a
+/// trailing or doubled underscore fails, as 1.1 requires.
+///
+/// This is the rule #335 put in the loader's tag reader. It lives here now because the
+/// bridges need the same answer, and two copies of a grammar is how the loader and the
+/// writers came to disagree about one document.
+fn resolvable_int11(text: &str) -> Option<i64> {
+    let (body, sign) = match text.strip_prefix('-') {
+        Some(rest) => (rest, -1i64),
+        None => (text.strip_prefix('+').unwrap_or(text), 1),
+    };
+    if body.is_empty() || body.starts_with('_') || body.ends_with('_') || body.contains("__") {
+        return None;
+    }
+    let digits: String = body.chars().filter(|c| *c != '_').collect();
+    let (radix, rest) = if digits.len() > 2 {
+        match &digits[..2] {
+            "0x" | "0X" => (16, &digits[2..]),
+            "0o" | "0O" => (8, &digits[2..]),
+            "0b" | "0B" => (2, &digits[2..]),
+            _ => (10, digits.as_str()),
+        }
+    } else {
+        (10, digits.as_str())
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    // Legacy octal: a leading `0` before other decimal digits (`0o7` took the radix path
+    // above, so anything still starting with `0` here is either `"0"` itself or 1.1 octal).
+    let value = if radix == 10 && rest.len() > 1 && rest.starts_with('0') {
+        i64::from_str_radix(trim_zeros(rest), 8).ok()?
+    } else {
+        i64::from_str_radix(rest, radix).ok()?
+    };
+    value.checked_mul(sign)
+}
+
+/// The digits of a legacy 1.1 octal, with every leading zero the source stacked (`007` is
+/// still 7) - `from_str_radix` accepts them, but only after the first digit was claimed as
+/// the octal marker.
+fn trim_zeros(rest: &str) -> &str {
+    let kept = rest.trim_start_matches('0');
+    if kept.is_empty() { "0" } else { kept }
+}
+
+#[cfg(test)]
+mod standard_tag_tests {
+    use super::TagKind::*;
+    use super::{YamlType, standard_tag_kind};
+
+    #[test]
+    fn a_standard_tag_names_a_kind_in_both_spellings() {
+        for (suffix, kind) in [
+            ("null", Null),
+            ("bool", Bool),
+            ("int", Int),
+            ("float", Float),
+            ("str", Str),
+        ] {
+            assert_eq!(
+                standard_tag_kind("!!", suffix),
+                Some(kind),
+                "{suffix} as a shorthand tag"
+            );
+            assert_eq!(
+                standard_tag_kind("", &alloc::format!("tag:yaml.org,2002:{suffix}")),
+                Some(kind),
+                "{suffix} as a verbatim URI"
+            );
+        }
+    }
+
+    /// A local tag is how the plugin system is addressed, so naming a standard type with it
+    /// must not be read as a standard type: `!int` is the author's own tag, `!!int` is YAML's.
+    #[test]
+    fn a_local_or_unknown_tag_names_nothing() {
+        for (handle, suffix) in [
+            ("!", "int"),
+            ("!", "myclass"),
+            ("!!", "weird"),
+            ("", "tag:example.com,2020:int"),
+            // `!!binary` has no JSON or TOML type to project into; deciding that mapping is a
+            // separate question (issue #340), so the bridges must not guess at it here.
+            ("!!", "binary"),
+        ] {
+            assert_eq!(
+                standard_tag_kind(handle, suffix),
+                None,
+                "{handle}{suffix} names no standard type"
+            );
+        }
+    }
+
+    #[test]
+    fn int_follows_the_yaml_11_lexeme_set() {
+        for (text, want) in [
+            ("10", 10),
+            ("0b101", 5),
+            ("0x1F", 31),
+            ("0o17", 15),
+            ("010", 8),
+            ("1_000", 1000),
+            ("-7", -7),
+            ("+7", 7),
+        ] {
+            assert_eq!(
+                Int.resolve(text),
+                Some(YamlType::Int(want)),
+                "{text} is not the integer the tag states"
+            );
+        }
+        for text in ["hello", "1_", "__1", "", "0b2", "1.5", "y"] {
+            assert_eq!(Int.resolve(text), None, "{text} is not an !!int");
+        }
+    }
+
+    /// `.inf`/`.nan` are YAML's spellings; `inf`/`NaN` are Python's, and 1.1 never defines
+    /// them - accepting both would let one document mean two things again.
+    #[test]
+    fn float_follows_the_yaml_11_lexeme_set() {
+        assert_eq!(Float.resolve("1.20"), Some(YamlType::Float(1.2)));
+        assert_eq!(Float.resolve("1e3"), Some(YamlType::Float(1000.0)));
+        assert_eq!(Float.resolve("-1E+3"), Some(YamlType::Float(-1000.0)));
+        assert_eq!(Float.resolve(".inf"), Some(YamlType::Float(f64::INFINITY)));
+        assert_eq!(
+            Float.resolve("-.INF"),
+            Some(YamlType::Float(f64::NEG_INFINITY))
+        );
+        assert!(matches!(
+            Float.resolve(".nan"),
+            Some(YamlType::Float(f)) if f.is_nan()
+        ));
+        // `1.` is accepted on purpose: YAML 1.2's Core float resolver allows digits with an
+        // empty fraction (`[0-9]+ (\. [0-9]* )?`), and both reference libraries read it as
+        // 1.0 - measured while #335 was written, where the same question came up.
+        for text in ["inf", "NaN", ".", "1e", "hello", "", "~"] {
+            assert_eq!(Float.resolve(text), None, "{text} is not a !!float");
+        }
+    }
+
+    /// `!!bool` carries its own lexeme set - which is why `yes` is a boolean in a
+    /// Core-schema document too - and `!!str` takes whatever the text says.
+    #[test]
+    fn bool_and_str_read_the_way_the_tag_states() {
+        for text in ["yes", "Yes", "on", "y", "true", "TRUE"] {
+            assert_eq!(Bool.resolve(text), Some(YamlType::Bool(true)), "{text}");
+        }
+        for text in ["no", "OFF", "n", "false"] {
+            assert_eq!(Bool.resolve(text), Some(YamlType::Bool(false)), "{text}");
+        }
+        assert_eq!(Bool.resolve("1"), None);
+        for text in ["1.20", "yes", "", "0x1F"] {
+            assert_eq!(
+                Str.resolve(text),
+                Some(YamlType::Str(text.into())),
+                "{text} as !!str"
+            );
+        }
+        for text in ["~", "null", "NULL", ""] {
+            assert_eq!(Null.resolve(text), Some(YamlType::Null), "{text}");
+        }
+        assert_eq!(Null.resolve("0"), None);
+    }
+}
+
+/// The YAML 1.1 `resolvable float`: the `.inf`/`.nan` spellings, or a decimal number with a
+/// mandatory digit on at least one side of the point and an optional exponent. `1e3` and
+/// `1E+3` qualify; a bare sign, `"1."` with no fraction, or a word like `inf` does not - the
+/// last is Python's spelling, not YAML's, and 1.1 never defines it.
+fn resolvable_float11(text: &str) -> Option<f64> {
+    let (body, negate) = match text.strip_prefix('-') {
+        Some(rest) => (rest, true),
+        None => (text.strip_prefix('+').unwrap_or(text), false),
+    };
+    let value = match body {
+        ".inf" | ".Inf" | ".INF" => f64::INFINITY,
+        ".nan" | ".NaN" | ".NAN" => f64::NAN,
+        other => {
+            let digits: String = other.chars().filter(|c| *c != '_').collect();
+            if digits.is_empty()
+                || !digits
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
+                || !digits.chars().any(|c| c.is_ascii_digit())
+            {
+                return None;
+            }
+            // Rust accepts `inf`, `NaN` and a leading `+`; YAML 1.1 does not, and a value
+            // that only one of the two readers can spell is exactly the drift this function
+            // exists to stop.
+            let parsed = digits.parse::<f64>().ok()?;
+            if !parsed.is_finite() {
+                return None;
+            }
+            parsed
+        }
+    };
+    Some(if negate { -value } else { value })
 }
 
 // ---------------------------------------------------------------------------

@@ -37,7 +37,11 @@ forms are not reproducible.
 - **Binary integer source (`0b1010`).** Canonicalised to decimal on the round trip because YAML Core
   has no `0b` spelling (a faithful `0b` in YAML would re-resolve to a string, corrupting the value).
   Hex/octal source *is* preserved (YAML Core resolves them back to the same integer). Recorded in
-  `toml/parser.rs` (`parse_prefixed_body_via_dispatch`) as a deliberate choice, not a defect.
+  `toml/parser.rs` (`parse_prefixed_body_via_dispatch`) as a deliberate choice, not a defect. What
+  changed with `(bu)`: a document that *states* the type - `v: !!int 0b101` - is no longer
+  canonicalised, because the tag settles the question the hub spelling could not and the writer's
+  TOML-literal pass-through keeps the `0b` text. The deliberate limit was about implicit spellings,
+  never about declared ones.
 
 ### Fuzz findings (weekly-scheduled `fuzz.yml`, engine surfaces, 2026-10-02)
 

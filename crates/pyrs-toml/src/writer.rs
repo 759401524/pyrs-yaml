@@ -190,7 +190,21 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                     _ => return Err(SerializeError::UnsupportedValue("toml-timestamp-malformed")),
                 }
             }
-            match (style, Schema::Core.resolve(value)) {
+            let tag_kind = meta
+                .tag
+                .as_ref()
+                .and_then(|t| pyrs_schema::schema::standard_tag_kind(&t.handle, &t.suffix));
+            // A standard tag states the type, so it decides before the text is consulted - the
+            // loader has honoured it since #335 and this bridge reading only the text made
+            // `!!bool yes` and `!!str 1.20` arrive in TOML as something other than what the
+            // document said. A tag the text cannot satisfy is refused, not re-typed.
+            let resolved = match tag_kind {
+                Some(kind) => kind
+                    .resolve(value)
+                    .ok_or(SerializeError::UnsupportedValue("toml-tag-text-mismatch"))?,
+                None => Schema::Core.resolve(value),
+            };
+            match (style, resolved) {
                 (ScalarStyle::Plain, YamlType::Null) => Err(SerializeError::UnsupportedValue(
                     "toml-cannot-represent-null",
                 )),
