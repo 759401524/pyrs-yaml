@@ -187,6 +187,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **Two spellings of null are one key; the generator had been handing both to the writer.** — the 20
+  000-case property tier reported `DuplicateKey("null")` for `!E null: A  # 0` beside `!E null: a`.
+  A `Null` node carries no text of its own and the writer emits the word `null` for it, so the two
+  lines re-read as one key. `keys_collide_in_text` - the rule that keeps generated mappings
+  representable - looked at scalar text and at empty containers and never at a null. It now covers
+  every spelling a reader resolves to null, and separates what genuinely distinguishes two such keys
+  (a tag; an anchor, but only once a tag is present) from what distinguishes nothing (a note, which
+  rides the line rather than the key). Rule, writer and reader are pinned against each other in both
+  directions: a pair the rule calls distinct must still hold two entries when its text is re-read
+  strictly, and a pair it calls identical must be refused or folded. — (details: quality-ledger
+  (br))
+
 - **An inline dict schema no longer loses the parts the emitter did not know about.** —
   `_schema_to_yaml` is what `safe_load(schema={...})` and `YAML(schema={...})` run to turn a Python
   dict into the schema text the engine parses. It built that text line by line and knew only

@@ -77,20 +77,23 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: one ruling the measurement found and no change has made yet
+### Open: two rulings the measurement found and no change has made yet
 
 | # | Item | Layer | Priority |
 |:--|:-----|:------|:--------:|
 | 1 | **Which artefact does the shipped `.pyi` describe?** - found while verifying published signatures against the running package. The stub is generated from the extension, so whatever `python/pyrs_yaml/__init__.py` adds afterwards is invisible to it: `Node` (41 members) and `MergedView` (6) are not declared at all, and 13 editing/query members of `YamlDocument` (`set`, `set_many`, `insert`, `append`, `delete`, `rename`, `sort_keys`, `walk`, `scalars`, `find`, `node`, `merged`) are missing. An editor sees one class and the runtime offers another, which no amount of doc checking can repair. The options are a Python-typed public layer the generator can reach, moving those members behind the extension boundary, or a declared reconciliation in `check_stub_drift.py` - and each answers what "the stub" means, so it is a design decision rather than a patch | Rust (`pyrs-yaml` binding) + Python package | 🔴 |
+| 2 | **What should the writer do with a mapping whose keys the reader cannot tell apart?** - found while attributing the property tier's `DuplicateKey("null")` failure. The node map keys a mapping by the whole node, so `!E null` carrying a note and a bare `!E null` sit side by side, `to_yaml` writes one text for both, and the document re-reads either as a duplicate key or as one line shorter than the tree that produced it - silently in three of the six measured classes (ledger (br)). The generator no longer builds such a mapping, and a 15-class table pins its rule against the writer and the reader. The product question is what is left: fold on write the way the reader folds, report it through `to_yaml_with_options`, or declare the invariant and leave the hand-built path unsupervised (issue #336) | Rust (`pyrs-yaml-core` serializer) | 🟠 |
 
-Both were found by measuring rather than by review, and both are written up with their evidence in
-the engineering record (ledger (bo)).
+Both were found by measuring rather than by review. The first is written up with its evidence in the
+engineering record (ledger (bo)), the second in the entry that came out of the property tier
+(ledger (br)).
 
-The second has since shipped: an inline dict schema carried only the sections the emitter knew
-about, so a `validate` section vanished silently and a pattern containing both quote characters
-serialised into text the parser rejected. The dict now goes through `from_dict`, the library's own
-round-trip writer, which is also the general lesson - inside a round-trip library, converting data
-to text is the writer's job, never a hand-built one (ledger (bp)).
+The second of the two that used to sit in this table has since shipped: an inline dict schema
+carried only the sections the emitter knew about, so a `validate` section vanished silently and a
+pattern containing both quote characters serialised into text the parser rejected. The dict now goes
+through `from_dict`, the library's own round-trip writer, which is also the general lesson - inside
+a round-trip library, converting data to text is the writer's job, never a hand-built one (ledger
+(bp)).
 
 The rulings that used to sit here are shipped. Whether `mapping_of` / `sequence_of` should assert
 their container: they do, and the language gained the words to say so (`type: map` / `type: seq`,
