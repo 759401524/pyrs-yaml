@@ -101,7 +101,21 @@ status: new
   块函数的参数名必须等于对象自身的——两个缺陷的共同成因就是这条不变量没人看。— (details:
   quality-ledger (bo))
 
+- **标准 `!!` 标签现在决定加载出的类型。** — `!!str`、`!!int`、`!!float`、`!!bool` 与 `!!binary` 按
+  标签自身的定义读取，而不是按文档的隐式 schema；两种拼写都管：简写，以及 `Node.set_tag` 会写出的完
+  整形式 `!<tag:yaml.org,2002:str>`。对照 PyYAML 与 ruamel 实测，两者在每个用例上一致：`!!str 1.20`
+  是字符串 `"1.20"`（此前加载成浮点 `1.2`，既变了类型又丢了末尾的零），`!!float 1` 是 `1.0`，
+  `!!bool yes` 是 `True`，`!!binary aGk=` 是 `b'hi'`，超出 i64 的 `!!int` 仍是整数。文本不符合标签所
+  指类型时抛 `YamlTypeError`，而不是回一个字符串；未知的应用标签保持宽容——插件机制就靠它寻址——而这个
+  选择写进了测试，不靠运气。— (details: quality-ledger (bq))
+
 #### 变更
+
+- **`bytes` 值现在写成它本意的标签。** — 内建插件此前写出 `!binary`，那是一个*本地*标签。标准名是
+  `!!binary`，于是本库写出的每个二进制文档对被它借用的那套库都读不出来；而 `{"d": b""}` 写出的是
+  `!binary` 后面空无一物，重读时得到 `None` 并在插件里抛 `TypeError`。现在导出走 `!!binary`，空载荷
+  也一样，并且已断言 PyYAML 能读我们写出的文本。本地拼写仍注册用于加载：删掉它会让一次拼写修正变成
+  已有文档的数据丢失。— (details: quality-ledger (bq))
 
 - **给出 `path` 的校验规则会断言它所指名的节点。** — 改动前先测量：`$.config` 配 `mapping_of: str`
   在 `config` 是标量或序列时通过，`$.port` 配 `type: int` 在 `port` 是映射时通过，`sequence_of: int`

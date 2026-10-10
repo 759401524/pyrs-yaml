@@ -418,7 +418,7 @@ class CustomType:
 
 Built-in plugins include `!timestamp` (maps to `datetime`), `!date` (`datetime.date`),
 `!time` (`datetime.time`), `!uuid` (`uuid.UUID`), `!decimal` (`decimal.Decimal`),
-`!binary` (bytes, base64-encoded), `!regex` (`re.Pattern`), and `!set`.
+`!!binary` (bytes, base64-encoded; the local `!binary` is still read), `!regex` (`re.Pattern`), and `!set`.
 
 #### `register_type()`
 

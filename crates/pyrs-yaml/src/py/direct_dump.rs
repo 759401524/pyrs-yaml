@@ -252,8 +252,10 @@ impl DirectWriter {
                         && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
                     {
                         let (tag_name, yaml_str) = result?;
-                        self.output
-                            .push_str(&format!("!{} ", tag_name.trim_start_matches('!')));
+                        let tag = crate::py::tags::tag_of(&tag_name);
+                        self.output.push_str(&tag.handle);
+                        self.output.push_str(&tag.suffix);
+                        self.output.push(' ');
                         self.output.push_str(&yaml_str);
                     } else {
                         self.output.push_str(&float_to_yaml_string(f));
@@ -523,8 +525,10 @@ impl DirectWriter {
         if let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind()) {
             let (tag_name, yaml_str) = result?;
             self.write_indent(indent_width);
-            self.output
-                .push_str(&format!("!{} ", tag_name.trim_start_matches('!')));
+            let tag = crate::py::tags::tag_of(&tag_name);
+            self.output.push_str(&tag.handle);
+            self.output.push_str(&tag.suffix);
+            self.output.push(' ');
             self.output.push_str(&yaml_str);
             self.output.push('\n');
             return Ok(());

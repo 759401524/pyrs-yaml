@@ -23,7 +23,7 @@ pyrs-yaml에는 임포트 시 자동 등록되는 내장 플러그인이 포함�
 | :material-clock: `!time` | `datetime.time` | ISO 8601 시간(날짜 없음) |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID 문자열 ↔ 객체 |
 | :material-decimal: `!decimal` | `decimal.Decimal` | 임의 정밀도 십진수 |
-| :material-binary: `!binary` | `bytes` | Base64 인코딩 바이너리 데이터 |
+| :material-binary: `!!binary` | `bytes` | Base64 인코딩 바이너리 데이터; 지역 표기 `!binary` 도 읽습니다 |
 | :material-language-python: `!regex` | `re.Pattern` | 컴파일된 정규식 |
 | :material-format-list-bulleted: `!set` | `str` | YAML 세트(키 없는 매핑) |
 

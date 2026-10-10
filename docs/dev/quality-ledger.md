@@ -3023,6 +3023,73 @@ resolving the same; `extends` still defaulting to core; a both-quotes pattern su
 output rejected), 2386 Python tests (10 skipped), and the doc gates green with five mirrors agreeing
 at [14, 8, 27, 3].
 
+### (bq) An explicit tag is a statement of type, and the loader had been ignoring it (2026-10-10)
+
+Asked of the shipped package and of both reference libraries, the same eight documents:
+
+| document | PyYAML | ruamel | us, before |
+|:--|:--|:--|:--|
+| `!!str 1.20` | `'1.20'` | `'1.20'` | `1.2` |
+| `!!float 1` | `1.0` | `1.0` | `1` |
+| `!!bool yes` | `True` | `True` | `'yes'` |
+| `!!binary aGk=` | `b'hi'` | `b'hi'` | `'aGk='` |
+| `!!int 123456789012345678901234567890` | bigint | bigint | string |
+| `!!int hello` | `ValueError` | `ValueError` | `'hello'` |
+| `!!float inf` | `ValueError` | `ValueError` | `'inf'` |
+| `!!binary` with an empty body | `b''` | `b''` | `''` |
+
+One cause: the loader resolved the *text* through the document's schema and consulted the tag only
+to ask a plugin registry. A tag states a type, so that ordering is backwards - and `!!str 1.20`
+shows what it costs: the type changed *and* the trailing zero disappeared, in a document whose only
+purpose was to keep both.
+
+`crates/pyrs-yaml/src/py/tags.rs` now reads the standard tags before the schema is consulted, in
+both spellings a document carries them in (`!!str`, and the verbatim `!<tag:yaml.org,2002:str>` that
+`Node.set_tag` writes), with the tag's own lexical set - YAML 1.1's - which is why `!!bool yes` is
+`True` under the Core schema: the tag is what makes it a boolean. A text that is not the tagged type
+raises `YamlTypeError` rather than coming back as a string, and `!!int` past i64 is still an integer
+(`int(text, 0)` on the Python side, which is what the tag's unbounded range asks for). `y`/`n` for
+`!!bool` is the single place the references disagree - PyYAML refuses them, ruamel accepts them -
+and the spec side is taken, with the divergence named in the file.
+
+Unknown tags are left lenient on purpose. Both references raise on `!!weird`; we do not, because a
+local tag is how the plugin system is addressed and the tag survives a round trip either way. That
+choice is a test (`test_an_unknown_tag_stays_lenient_by_design`) rather than an accident someone
+could reverse without noticing.
+
+The dump side turned out to be its own defect, found by asking what `safe_dump({"d": b"hi"})`
+produced:
+
+```text
+d:
+  !binary aGk=
+```
+
+`!binary` is a *local* tag. The standard is `!!binary`, so every binary document this library wrote
+was unreadable to the libraries whose name it had borrowed - and `{"d": b""}` wrote `!binary` with
+an empty body, which re-read as `None` and raised `TypeError` inside the plugin. The plugin
+registers under the standard name now (keeping the local one for documents already on disk, because
+dropping it would convert a spelling fix into data loss), and the two places that built a `Tag` from
+a registered name were collapsing every handle to `!`: `tag_of` keeps `!!` when the name carries it.
+
+Two measured gaps stay open, both asserted so a future change decides them on purpose:
+
+- **`YamlDocument.set` loses a tag.** The splicing editor writes a replaced scalar's text and not
+  its metadata, so `doc.set("$.d", b"hi")` emits `d: aGk=` - a base64 string where a binary was
+  assigned. The gap is the editor's, not the tag reading's, and any tagged value assigned through
+  that route shares it.
+- **An empty tagged value emits a trailing space.** `n: !!null` round-trips as `n: !!null `; the
+  value, the re-parse and the idempotence all hold, so this is byte-exactness of emission rather
+  than fidelity of data.
+
+Verified: 6 Rust unit tests (known-answer base64 - read against text produced by Python's
+`b64encode`, not against this file's own encoder; the 1.1 integer spellings; the float boundaries
+including `.inf`/`.nan` and the rejection of Python-only spellings), 78 Python tests in
+`tests/test_standard_tags.py` (each document through load, dump and the PyYAML oracle; empty and
+long `bytes`; the local spelling still loading; both open gaps pinned), 547 nextest, 2464 Python
+tests (10 skipped), clippy `-D warnings`, the doc gates green, and `check_doc_signatures.py` clean
+over the pages that now name `!!binary`.
+
 ### (br) Two spellings of null are one key, and the generator had not been told (2026-10-10)
 
 The `property tier (20k cases)` job came back red on `prop_output_always_parses`, minimised to a
@@ -3080,7 +3147,8 @@ of measured emissions and the three options (fold like the reader, report throug
 Verified: 548 nextest (547 plus this guard), `PROPTEST_CASES=20000 cargo test -p pyrs-yaml-core
 --lib` at the same budget the CI tier uses - 321 tests, 0 failures, `prop_output_always_parses`
 included; `cargo clippy --all -- -D warnings` and the same over `--all-targets` for the two crates;
-the five changelog mirrors agreeing at [15, 9, 28, 3].
+the five changelog mirrors agreeing at [14, 8, 28, 3] for this change alone - [15, 9, 28, 3]
+once the standard-tag change that was in flight lands beside it.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 

@@ -121,7 +121,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the object's for all 40 module functions, which is the invariant whose absence caused both
   defects. — (details: quality-ledger (bo))
 
+- **The standard `!!` tags now decide the loaded type.** — `!!str`, `!!int`, `!!float`, `!!bool` and
+  `!!binary` are read from the tag's own definition rather than from the document's implicit schema,
+  in both spellings a document uses: the shorthand, and the verbatim `!<tag:yaml.org,2002:str>`.
+  Measured against PyYAML and ruamel, which agree with each other on every case: `!!str 1.20` is the
+  string `"1.20"` (it loaded as the float `1.2`, changing the type *and* dropping the trailing
+  zero), `!!float 1` is `1.0`, `!!bool yes` is `True`, `!!binary aGk=` is `b'hi'`, and an `!!int`
+  past i64 is still an integer. A text that is not the tagged type now raises `YamlTypeError`
+  instead of answering with a string; an unknown application tag stays lenient, which is what lets
+  the plugin system keep working, and that choice is stated in a test rather than left to luck. —
+  (details: quality-ledger (bq))
+
 #### Changed
+
+- **A `bytes` value is written as the tag it means.** — the built-in plugin dumped `!binary`, a
+  *local* tag. The standard name is `!!binary`, so every document this library wrote with binary
+  data was unreadable to the libraries whose tag it had borrowed - and an empty `bytes` wrote
+  `!binary` with nothing after it, which came back as `None` and raised inside the plugin. Dumps
+  now emit `!!binary`, empty payload included, and PyYAML reads what we write, asserted. The local
+  spelling stays registered for loading: dropping it would turn a spelling fix into data loss for
+  documents already on disk. — (details: quality-ledger (bq))
 
 - **A validate rule that names a path asserts the node it names.** — measured before the change:
   `$.config` with `mapping_of: str` passed when `config` was a scalar or a sequence, `$.port` with

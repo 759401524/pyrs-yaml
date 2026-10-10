@@ -129,7 +129,13 @@ class DecimalType(CustomType):
 
 @final
 class BinaryType(CustomType):
-    """`!binary` — base64-encoded bytes (YAML 1.1 binary tag)."""
+    """`!!binary` — base64-encoded bytes (YAML's standard binary tag).
+
+    Registered under the standard spelling, which is what PyYAML and ruamel both read and write. The local
+    `!binary` alias stays registered because documents this library already emitted carry it, and a name that
+    stops resolving would turn a spelling fix into data loss. Reverse registration order makes the standard
+    name the one dumps choose.
+    """
 
     python_type = bytes
 
@@ -244,6 +250,7 @@ def _register_builtins():
     register_type("!uuid", UUIDType())
     register_type("!decimal", DecimalType())
     register_type("!binary", BinaryType())
+    register_type("!!binary", BinaryType())
     register_type("!regex", RegexType())
     register_type("!set", SetType())
 
