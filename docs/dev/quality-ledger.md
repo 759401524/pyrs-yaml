@@ -3263,6 +3263,61 @@ an empty change cannot carry a claim about its own content, and the first search
 literal - that run would have printed nothing whether or not the text existed. The re-run without
 `-SimpleMatch` is the evidence.
 
+### (bx) A gate that knows three scripts cannot see a fourth (2026-10-12)
+
+`(bw)` named the hole and fixed its control in advance; this is both. The rule could not have been
+"add Cyrillic to the list", because that list is what failed: the file already carries a
+thirteen-codepoint `SIMPLIFIED_ONLY` set and its own header explains that keying on *any* Han
+removed the curation burden that had let fifteen lines of mixed Chinese prose ship in the Korean
+changelog while every checker said OK. So the new rule is the same inversion applied from the other
+side - list the scripts a page may carry (Latin, Han, Kana, Hangul) and report every other
+alphabetic letter. Greek, Arabic, Hebrew, Thai, Georgian and Devanagari are caught without anyone
+having to name them, which is the only property that makes a script gate worth keeping.
+
+Classification goes through `unicodedata.name()` rather than a codepoint table for the same reason:
+`CYRILLIC SMALL LETTER TE` and `GREEK SMALL LETTER ALPHA` refuse themselves, and a future script
+that does not exist in the table cannot slip in.
+
+**The first cut reddened the shipped tree 25+ times and every finding was legitimate.**
+`µ` (U+00B5 MICRO SIGN) satisfies `str.isalpha()` and appears in every benchmark row -
+`docs/ja/performance/benchmarks.md:52` through `:72`, its `ko` twin, and four changelog lines - and
+`々` (U+3005 IDEOGRAPHIC ITERATION MARK) is ordinary Japanese, reported twice at
+`docs/ja/changelog.md:399` and `:532`. Both classes are now allowed by construction: letters below
+U+0100 are Latin-family and Latin is allowed by the half-measure below, and `IDEOGRAPHIC` joins
+the allowed name marks because the iteration marks are not named `CJK UNIFIED IDEOGRAPH-*`. This is
+the failure mode the gate's own header warns about - "a gate that reddens legitimate text teaches
+people to bypass it" - and it arrived on the first run of a rule written by someone who had read
+that header.
+
+**The deliberate half-measure, and where `(bw)` oversold it.** `(bw)` wrote that "a Latin word in a
+zh page" would also be a finding. It is not, and the honest reason is that a technical page cannot
+be written without Latin: identifiers, option names, `PyYAML`, `orjson`. A term allow list is the
+curation burden this file's precedent rejects, so Latin stays allowed and a Latin intrusion stays
+invisible. #346 asked for the non-CJK scripts, which is what landed, so #346 is closed by this and
+the Latin case remains a boundary rather than a hole the gate pretends to cover.
+
+Proven to bite, twice, because a name-based allow list can silently allow everything:
+
+- **Positive control on the real tree.** Inserting `- теперь probe` into `docs/ja/changelog.md`
+  produced `docs/ja/changelog.md:18: CYRILLIC is not a page script here: т(U+0442) е(U+0435)
+  п(U+043F) р(U+0440) ь(U+044C)` and `FAIL: 1 mixed-script intrusion(s)`, exit 1.
+- **Mutation on the rule.** Forcing the new branch off (`if rules.foreign and False:`) reddened
+  exactly the two detection tests out of 18 - `test_a_cyrillic_word_in_a_japanese_page_is_a_finding`
+  and `test_scripts_never_named_in_the_gate_are_still_caught` - while the three allowance tests and
+  the sixteen pre-existing ones stayed green. The branch was restored from that mutated state, not
+  rewritten.
+- **A control that did not happen, recorded.** The first attempt inserted the probe with a CRLF
+  pattern against an LF file, so nothing matched, the gate ran on the unchanged page and printed OK
+  over 1776 prose lines. `jj restore` then reported `Nothing changed`, which is how the dead run was
+  caught rather than believed. The gate is LF-only (`check_line_endings.py`), so the probe had to be
+  written with `\n`.
+
+Verified: 18 tests in `tests/test_cjk_localisation_gate.py` (5 new: the Cyrillic control, Greek and
+Arabic with no entry anywhere in the rule, the Latin/unit-sign allowance, the iteration marks,
+Devanagari inside a code span), the shipped tree green at 123 pages / 17431 prose lines scanned and
+0 findings, `ruff format`/`check` clean (which also caught RUF001/2/3 flagging the `〇` literal in
+the new test - now `\u3007`), and five changelog mirrors in sync at [17, 9, 29, 3].
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
