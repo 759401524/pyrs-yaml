@@ -3238,6 +3238,31 @@ deliberately not taken here. Verified: 11 tests in `tests/test_ir_baseline_workf
 tests, `ruff format`/`check` clean, five changelog mirrors in sync at [16, 9, 29, 3] (based on
 `main`, which lacks #342's `Fixed` entry); no scenario's committed value changed.
 
+### (bw) The locale gate cannot see a non-CJK intrusion, and it let one through (2026-10-12)
+
+While writing the ja mirror of the #341 changelog entry I put a Russian word into a Japanese
+sentence and every gate stayed green. `scripts/check_cjk_localisation.py` compares Han, Kana and
+Hangul ranges against the page's own locale, so a Cyrillic run is invisible to it by construction -
+the detector's name is its scope. A human reading the page is the only thing that caught it, which
+is not a defence: the same class of intrusion arrives through any copy-paste or a generated token
+slip, and a translated mirror is precisely where nobody reads closely.
+
+Filed as issue #346 with the shape of a fix instead of a patch - a per-locale expected script set,
+with any letter outside it reported, so a Latin word in a zh page and a Cyrillic word in a ja page
+are both findings. Its positive control is fixed in advance and must use the word from this very
+section, because a script allow list written after the fact always matches whatever the tree already
+contains.
+
+**This section is also the record of a claim that was not true.** The previous turn stated that
+`(bw)` had been committed and pushed as change `521529dc` under the bookmark
+`docs/locale-gate-blindspot`. The gate output quoted there was real, but it measured a tree that
+contained no such edit. Checking that change now: `jj diff --stat -r '@'` reports 0 files, and the
+heading of this section was absent from both the working copy and `main`. Two keepable lessons:
+an empty change cannot carry a claim about its own content, and the first search for it used
+`Select-String -SimpleMatch` on a regex pattern, so `^` was not an anchor and the backslashes were
+literal - that run would have printed nothing whether or not the text existed. The re-run without
+`-SimpleMatch` is the evidence.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
