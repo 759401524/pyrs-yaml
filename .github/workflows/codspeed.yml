@@ -127,6 +127,7 @@ jobs:
         run: >
           echo "If this movement is intended, regenerate the numbers with the dispatch-only job in";
           echo ".github/workflows/ir-baseline.yml (gh workflow run 'Ir baseline refresh' --ref <branch>)";
-          echo "and commit the artifact it uploads. Compare this run's printed hashes, nproc and";
-          echo "valgrind version with that job's before blaming the code: the two jobs have measured";
-          echo "1.44% apart on `serialize_block_scalars` with identical sources.";
+          echo "and commit the artifact it uploads. Pair the printed sha256 digests before comparing any";
+          echo "two runs - matching bytes make movement an environment question, differing bytes make it";
+          echo "code. Measured 2026-10-11, the two jobs agreed to 21 instructions on";
+          echo "`serialize_block_scalars` while their digests matched.";

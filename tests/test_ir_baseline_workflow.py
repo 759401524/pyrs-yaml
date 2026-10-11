@@ -132,14 +132,16 @@ def test_the_gate_measures_every_harness_the_repository_declares():
 def test_a_baseline_move_has_to_be_named_before_it_is_written():
     """`--update` may not loosen the gate as a side effect of being run.
 
-    The numbers are not invented: they are `to_json_medium` as PR #342 measured it - 21,444,836 on the
-    enforcing job and 22,048,805 on the refresh job, for identical sources. Committing the second as a
-    baseline would grant the JSON writer 2.82% of silence, five times the line the same file declares, and
-    the diff would show only a number.
+    The numbers are not invented: they are the artifact diff a PR #342 dispatch printed for
+    `to_json_medium` - the committed 21,232,786 against the 22,048,805 that dispatch measured. That
+    second number came from a different build (its own SHA-256 names it), so it is not a regression in
+    the writer; it is a different shape of the change. Either way, committing it would have granted the
+    JSON writer 3.84% of silence - seven times the line the same file declares - and the diff would
+    have shown only a number.
     """
     gate = _load(Path("scripts") / "ir_gate.py")
-    assert gate.drift_report({"to_json_medium": 21_444_836}, {"to_json_medium": 22_048_805}, 0.005) == [
-        "to_json_medium: 21,444,836 -> 22,048,805 (+2.82%)"
+    assert gate.drift_report({"to_json_medium": 21_232_786}, {"to_json_medium": 22_048_805}, 0.005) == [
+        "to_json_medium: 21,232,786 -> 22,048,805 (+3.84%)"
     ]
 
 
@@ -184,3 +186,75 @@ def test_the_refusal_is_wired_into_the_update_path():
     update_branch = source[source.index("if args.update:") : following.start()]
     assert "drift_report" in update_branch, "the check runs after the file is already written"
     assert "BASELINE.write_text" in update_branch
+
+
+def test_two_builds_are_never_reported_as_the_same_code():
+    """The pairing that would have prevented issue #344.
+
+    A refresh artifact was compared with a gate run and the 2.82% between them was filed as an
+    environment defect. The digests say why that could not be true: the two builds were different
+    bytes, so the difference was code all along. Measured on matching bytes the same two jobs are 21
+    instructions apart, which is the reproducibility the 0.5% line rests on.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    (line,) = gate.binary_pairing({"pyrs-yaml/ir_gate": "40a4a290df069cb2"}, {"pyrs-yaml/ir_gate": "a64ca39b772fae54"})
+    assert "differs from the baseline build (was 40a4a290df069cb2, now a64ca39b772fae54)" in line
+    assert "movement below is code" in line, "the pairing must attribute, not merely observe"
+
+
+def test_identical_bytes_are_reported_as_a_real_pairing():
+    """The case the guard exists to allow: a comparison that means something.
+
+    `serialize_block_scalars` measured 15,796,883 and 15,796,904 under these two digests, across jobs.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    digest = "364e072f5fea6687"
+    (line,) = gate.binary_pairing({"pyrs-yaml-core/ir_gate": digest}, {"pyrs-yaml-core/ir_gate": digest})
+    assert f"matches the baseline ({digest})" in line, line
+    assert "identical bytes" in line and "the host rather than the code" in line, (
+        "the other half of the rule: matching bytes make movement an environment question"
+    )
+
+
+def test_a_baseline_without_recorded_digests_says_so():
+    """Every committed baseline predates this field, and that is a fact worth printing.
+
+    Silence here would read as 'paired, nothing to report' - the exact misunderstanding that produced
+    issue #344. Both shapes of "no record" count: a missing key and an empty one.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    current = {"pyrs-yaml/ir_gate": "a64ca39b772fae54"}
+    for recorded in (None, {}):
+        (line,) = gate.binary_pairing(recorded, current)
+        assert "records no digests" in line, (recorded, line)
+        assert "by name only" in line, (recorded, line)
+
+
+def test_a_harness_the_baseline_has_never_seen_is_reported_unpaired():
+    """A new channel must not look like a matching one.
+
+    The binding harness arrived after the engine's, so the first run pairing against that baseline had
+    one match and one new; collapsing both into silence would hide the half that cannot be judged.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    lines = gate.binary_pairing(
+        {"pyrs-yaml-core/ir_gate": "364e072f5fea6687"},
+        {"pyrs-yaml-core/ir_gate": "364e072f5fea6687", "pyrs-yaml/ir_gate": "a64ca39b772fae54"},
+    )
+    assert len(lines) == 2, lines
+    assert any("matches the baseline" in line for line in lines), lines
+    assert any("is new to the baseline" in line for line in lines), lines
+
+
+def test_the_pairing_is_wired_into_the_run_and_the_file():
+    """A pure function can be written and never consulted, in either direction.
+
+    The four tests above all pass with `binary_pairing` deleted from `main()` and the `binaries` key
+    absent from the payload, so this reads the source: the guard prints during enforcement and the
+    digests travel with the numbers they describe. Proven by mutation - renaming the call in the
+    enforcing branch reddened this test alone, leaving the pure ones green.
+    """
+    source = (REPO_ROOT / "scripts" / "ir_gate.py").read_text(encoding="utf-8")
+    assert 'binary_pairing(ref.get("binaries"), binaries)' in source, "nothing names the bytes at enforcement"
+    assert '"binaries": binaries' in source, "the digests are measured but never recorded"
+    assert "def binary_pairing(" in source, "the pairing exists only as an inline expression"

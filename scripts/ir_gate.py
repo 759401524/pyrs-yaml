@@ -193,10 +193,20 @@ def build_exe(crate: str, bench: str) -> str:
             continue
         exe = msg.get("executable")
         if exe and f"{bench}-" in pathlib.Path(exe).name:
-            digest = hashlib.sha256(pathlib.Path(exe).read_bytes()).hexdigest()[:16]
-            print(f"{crate}/{bench} exe={pathlib.Path(exe).name} sha256={digest}", file=sys.stderr)
+            print(f"{crate}/{bench} exe={pathlib.Path(exe).name} sha256={digest_of(exe)}", file=sys.stderr)
             return exe
     sys.exit(f"cargo did not report an {bench} executable for {crate}")
+
+
+def digest_of(exe: str) -> str:
+    """The bytes that are about to be measured, as a short digest.
+
+    Printed already by `build_exe`, and now also written into the baseline. A number means nothing
+    until the bytes behind it are named: two measurements of the same scenario are comparable only
+    when their digests match, and every cross-job argument that skipped that check has ended in a
+    difference attributed to the host. See `binary_pairing`.
+    """
+    return hashlib.sha256(pathlib.Path(exe).read_bytes()).hexdigest()[:16]
 
 
 def callgrind_total(exe: str, args: list[str]) -> int:
@@ -267,14 +277,54 @@ def rustc_short(banner: str) -> str:
     return parts[1] if len(parts) > 1 else banner
 
 
+def binary_pairing(recorded: dict[str, str] | None, current: dict[str, str]) -> list[str]:
+    """Say whether these numbers belong to the same bytes the baseline was drawn from.
+
+    This exists because a refresh artifact was compared with a gate run and the gap between them was
+    filed as an environment mystery. It was not an environment: the two builds had different SHA-256
+    digests, so the numbers described different code. The rule the digests give is symmetric, and both
+    halves matter: matching bytes whose numbers move points at the host, differing bytes point at the
+    code. Under the pinned `MEASUREMENT_ENV` below, matching bytes measured across the two jobs land 21
+    instructions apart (`to_json_medium` 21,444,780 against 21,444,880), which is how large the host
+    term is; before the ISA was pinned the same bytes on two hosts moved 1.44%, which is why the env is
+    printed alongside.
+    """
+    if not recorded:
+        return [
+            "binaries: the baseline records no digests, so this run is paired with it by name only; "
+            "a delta here cannot be attributed to code or host until a regeneration records the bytes"
+        ]
+    lines: list[str] = []
+    for harness, digest in sorted(current.items()):
+        was = recorded.get(harness)
+        if was is None:
+            lines.append(f"binaries: {harness} is new to the baseline ({digest}); its scenarios have no pairing")
+        elif was != digest:
+            lines.append(
+                f"binaries: {harness} differs from the baseline build (was {was}, now {digest}) - the "
+                "movement below is code, and these numbers pair with no other run's"
+            )
+        else:
+            lines.append(
+                f"binaries: {harness} matches the baseline ({digest}) - identical bytes, so any movement "
+                "below is the host rather than the code"
+            )
+    return lines
+
+
 def drift_report(before: dict[str, int], final: dict[str, int], line: float) -> list[str]:
     """The scenarios `--update` would move *up* past the line the baseline itself enforces.
 
     A baseline is the gate's memory, and `--update` used to rewrite it as a side effect of running: the
     first measurement whose numbers happened to differ set a new bar nobody had agreed to. This is not
-    hypothetical - PR #342 measured `to_json_medium` at 21,444,836 on the enforcing job and 22,048,805 on
-    the refresh job for identical sources, and committing that artifact unchanged would have loosened the
-    gate by 2.82%, more than five times its own 0.5% line, with nothing in the diff to say so.
+    hypothetical - a dispatch on PR #342 produced a `to_json_medium` of 22,048,805 against the committed
+    21,232,786, and committing that artifact unchanged would have loosened the gate by 3.84%, more than
+    seven times its own 0.5% line, with nothing in the diff to say so.
+
+    The reason matters as much as the number. That artifact was not the same code measured twice: the two
+    builds carried different SHA-256 digests, because the dispatch had run against an earlier shape of the
+    change. Attributing the gap to the jobs instead of to the bytes is what turned a routine comparison
+    into a filed environment defect - see `binary_pairing`, which names the bytes on every run now.
 
     Only growth counts: a scenario that gets cheaper is the point of the project, and refusing to record
     an improvement would just discourage updating. Returned strings lead with the scenario name, because the
@@ -327,8 +377,10 @@ def main() -> int:
     # convention (`to_python_*` on the binding side), and a collision would silently measure the wrong
     # channel, so it is checked rather than assumed.
     exes: dict[str, str] = {}
+    binaries: dict[str, str] = {}
     for crate, bench in HARNESSES:
         exe = build_exe(crate, bench)
+        binaries[f"{crate}/{bench}"] = digest_of(exe)
         listed_proc = run([exe, "--list"], capture_output=True)
         names = listed_proc.stdout.split()
         if listed_proc.returncode != 0 or not names:
@@ -418,6 +470,7 @@ def main() -> int:
                 "repeats": repeats,
                 "note": PROVENANCE_NOTE,
             },
+            "binaries": binaries,
             "tolerance_hint": args.tolerance if args.tolerance is not None else DEFAULT_TOLERANCE,
             "scenarios": final,
         }
@@ -445,6 +498,8 @@ def main() -> int:
         return 0
 
     print(f"each scenario is the largest of {repeats} measurements")
+    for line in binary_pairing(ref.get("binaries"), binaries):
+        print(line)
     failures: list[str] = []
     # The tolerance travels with the baseline: a hint recorded at generation time
     # is what the enforcing run should honour, otherwise a change to either file
