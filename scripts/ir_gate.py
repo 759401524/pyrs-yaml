@@ -267,6 +267,30 @@ def rustc_short(banner: str) -> str:
     return parts[1] if len(parts) > 1 else banner
 
 
+def drift_report(before: dict[str, int], final: dict[str, int], line: float) -> list[str]:
+    """The scenarios `--update` would move *up* past the line the baseline itself enforces.
+
+    A baseline is the gate's memory, and `--update` used to rewrite it as a side effect of running: the
+    first measurement whose numbers happened to differ set a new bar nobody had agreed to. This is not
+    hypothetical - PR #342 measured `to_json_medium` at 21,444,836 on the enforcing job and 22,048,805 on
+    the refresh job for identical sources, and committing that artifact unchanged would have loosened the
+    gate by 2.82%, more than five times its own 0.5% line, with nothing in the diff to say so.
+
+    Only growth counts: a scenario that gets cheaper is the point of the project, and refusing to record
+    an improvement would just discourage updating. Returned strings lead with the scenario name, because the
+    caller keys `--accept-drift` off that first field.
+    """
+    report: list[str] = []
+    for name, now in final.items():
+        before_value = before.get(name)
+        if not before_value:
+            continue
+        delta = (now - before_value) / before_value
+        if delta > line:
+            report.append(f"{name}: {before_value:,} -> {now:,} ({delta:+.2%})")
+    return report
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--update", action="store_true", help="rewrite the baseline")
@@ -278,6 +302,16 @@ def main() -> int:
         help="allowed growth over baseline; defaults to the baseline's tolerance_hint",
     )
     ap.add_argument("--report-only", action="store_true", help="print measurements, never fail")
+    ap.add_argument(
+        "--accept-drift",
+        action="append",
+        default=[],
+        metavar="SCENARIO",
+        help=(
+            "name a scenario whose movement past the tolerance you intend to commit; without it,"
+            " --update refuses to move any scenario up by more than the line it enforces"
+        ),
+    )
     ap.add_argument(
         "--repeats",
         type=int,
@@ -358,6 +392,22 @@ def main() -> int:
                 final[name] = previous[name]
             else:
                 sys.exit(f"baseline would be incomplete: no number for {name!r} - drop --only or measure it too")
+        line = args.tolerance if args.tolerance is not None else DEFAULT_TOLERANCE
+        if BASELINE.exists():
+            committed = dict(json.loads(BASELINE.read_text(encoding="utf-8"))["scenarios"])
+            moved = drift_report(committed, final, line)
+            unnamed = [d for d in moved if d.split(":", 1)[0] not in args.accept_drift]
+            if unnamed:
+                sys.exit(
+                    f"--update would move {len(unnamed)} scenario(s) past the {line:.1%} line this file"
+                    " enforces:\n  "
+                    + "\n  ".join(unnamed)
+                    + "\nName each one with --accept-drift <scenario> if the movement is intended, or"
+                    " measure on the environment that enforces the numbers. A baseline is a claim about"
+                    " the code, so it is no longer rewritten as a side effect of running this script."
+                )
+            for detail in moved:
+                print(f"accepted drift: {detail}")
         BASELINE.parent.mkdir(exist_ok=True)
         payload = {
             "toolchain": toolchain,

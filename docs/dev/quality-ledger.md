@@ -3201,6 +3201,43 @@ Still open from `(bq)`: an empty tagged value emits a trailing space (`n: !!null
 exactness of emission, not fidelity of data, and it is a serializer question rather than an editor
 one.
 
+### (bv) Regenerating the performance baseline was a silent way to move it (2026-10-12)
+
+Found while deciding what to do about `(bu)`'s sibling measurement problem, not by an audit: to
+settle whether #342's +1.00% on `to_json_medium` deserved a re-baseline, the route the gate itself
+names on failure is `ir_gate.py --update` on the refresh job. Reading that script showed nothing
+anywhere compared the numbers it was about to write with the ones already committed - `--update` had
+one guard, and it was about *completeness* (refuse to write a baseline missing a scenario), never
+about movement. Whoever ran the script owned the bar.
+
+That was not a hypothetical risk. #342 produced three readings of the same sources: 21,444,770 and
+21,444,836 on two runs of the enforcing job - 66 instructions apart, 0.0003% - and 22,048,805 from
+the refresh job's artifact, 2.82% higher, i.e. more than five times the 0.005 `tolerance_hint`
+sitting in the same file. Committing it would have read as a routine refresh: one number in a JSON
+blob, no word about what it permitted.
+
+`drift_report(before, final, line)` is now run before the write: any scenario that would move **up**
+past the tolerance the baseline enforces stops `--update` and is named with its old → new values,
+and the only way past it is `--accept-drift <scenario>`, per scenario, which also prints the
+accepted movement into the job log so the artifact records what was agreed. Three decisions inside
+it are deliberate: improvements never count as drift (refusing them would train everyone to pass the
+flag on sight, which is how a guard dies); a scenario with no committed number is not drift either,
+so new coverage still gets baselined; and the tolerance itself is untouched at 0.005 - the guard
+restricts movement, it does not price it.
+
+Proven to bite, because a pure function can be wired to nothing: `drift_report`'s own tests pass
+with the call removed from the `--update` branch, so a fourth test reads the branch's source text.
+It was checked by mutation - renaming the call inside the branch reddened exactly that test with
+`nothing compares before writing` while the three pure ones stayed green. The positive control
+is #342's real pair, asserted as `to_json_medium: 21,444,836 -> 22,048,805 (+2.82%)`.
+
+What this does **not** do is explain the 2.82% or move the bar: the mechanism question (build cache,
+the glibc float-format path, codegen decisions) is filed as #344 with the readings above, and the
+ruling #342 needs - accept +1.00%, narrow the fix, or wait for #344 - is a maintainer's call,
+deliberately not taken here. Verified: 11 tests in `tests/test_ir_baseline_workflow.py`, 2470 Python
+tests, `ruff format`/`check` clean, five changelog mirrors in sync at [16, 9, 29, 3] (based on
+`main`, which lacks #342's `Fixed` entry); no scenario's committed value changed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

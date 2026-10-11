@@ -19,6 +19,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The instruction-count baseline can no longer be loosened as a side effect of regenerating it.**
+  — `ir_gate.py --update` wrote whatever it measured; nothing compared the new numbers with the
+  committed ones. Measured on #342: `to_json_medium` reads 21,444,770 and 21,444,836 on two runs of
+  the enforcing job and 22,048,805 on the refresh job for identical sources - 2.82% apart, more than
+  five times the 0.005 line the same file declares. `--update` now refuses any scenario moving up
+  past that line unless it is named with `--accept-drift <scenario>`, prints accepted drift to the
+  job log, and never counts an improvement as drift. The tolerance is unchanged and no baseline
+  value moved. — (details: quality-ledger (bv))
+
 - **YAML comments, anchors and tags survive a round trip, gated on every seed.** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` replays the committed seed corpus on every
   `cargo nextest run` and requires every note the reader recorded to appear in the emitted text. The
