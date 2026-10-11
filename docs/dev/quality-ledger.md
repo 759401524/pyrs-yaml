@@ -3076,9 +3076,8 @@ Two measured gaps were recorded here, both asserted so a future change would dec
 
 - **`YamlDocument.set` loses a tag.** Closed - see `(bt)`, which is where the cause turned out to be
   (the editor's metadata inheritance, not the tag reading).
-- **An empty tagged value emits a trailing space.** `n: !!null` round-trips as `n: !!null `; the
-  value, the re-parse and the idempotence all hold, so this is byte-exactness of emission rather
-  than fidelity of data.
+- **An empty tagged value emits a trailing space.** Closed - see `(bz)`, where the cause turned out
+  to be a property separator left behind for scalar text that never arrives.
 
 Verified: 6 Rust unit tests (known-answer base64 - read against text produced by Python's
 `b64encode`, not against this file's own encoder; the 1.1 integer spellings; the float boundaries
@@ -3197,9 +3196,9 @@ asserts `d: !!binary aGk=` and re-reads as `b"hi"`; two new tests pin the untagg
 note-plus-alias cases through the real `set`), 2466 Python tests (10 skipped), `cargo clippy --all
 --all-targets -- -D warnings`, and the gap pointer updated in `(bq)`.
 
-Still open from `(bq)`: an empty tagged value emits a trailing space (`n: !!null `). That is byte
-exactness of emission, not fidelity of data, and it is a serializer question rather than an editor
-one.
+Still open from `(bq)`: an empty tagged value emits a trailing space (`n: !!null `) - since closed,
+see `(bz)`. That was byte exactness of emission, not fidelity of data, and a serializer question
+rather than an editor one.
 
 ### (bv) Regenerating the performance baseline was a silent way to move it (2026-10-12)
 
@@ -3382,6 +3381,56 @@ Verified: 16 tests in `tests/test_ir_baseline_workflow.py` (5 new: the mismatchi
 attribution, the matching-pair attribution, the no-digests case, a harness new to the
 baseline, and the wiring), `ruff format`/`check` clean, both workflow YAMLs parse, and the five
 changelog mirrors updated in place (no new entry, so the counts hold at [17, 9, 29, 3]).
+
+### (bz) A separator written for text that never arrives (2026-10-12)
+
+Issue #339, recorded by `(bq)` and left open through two failed attempts. The cause is one line:
+`write_anchor_tag` appends `' '` after the tag so the tag token terminates before content, and the
+plain empty-scalar path writes no content, so the line ends on that separator. Measured shapes, all
+before the change:
+
+```text
+"n: !!null\n"          -> "n: !!null \n"
+"n: !!null  # c\n"     -> "n: !!null   # c\n"      <- three spaces, not two
+"a:\n  b: !!null\n"    -> "a:\n  b: !!null \n"
+"n: !!str\n"           -> "n: !!str \n"
+```
+
+**Why the two earlier routes died and this one does not.** Popping the space at the line terminator
+moved a byte that `pending_tag_insert_at` had already indexed, and the writer panicked on a
+mid-character index; suppressing the key/value separator at its source moved a note off the line the
+AST owns. Both failures were the same mistake in opposite directions: touching the separator from a
+place that does not know whether any text follows.
+
+`Serializer::write_scalar` is that place. It has the emptiness, the style and the tag in scope,
+and it already records `pending_tag_insert_at` on exactly this condition - so the drop happens
+there, one byte before the index is taken. The mechanism's own tolerance made this safe rather
+than merely plausible: `close_pending_tag_line` spells its null text `"~"` or `" ~"` depending
+on whether a space precedes the insertion point, so a line that gets closed keeps the spelling
+it had (`!- ~`, and the `contains("! ~" + newline)` assertion at `serializer.rs:3082` stayed
+green untouched), while a line that never gets closed loses only the phantom byte. That is the
+whole test: the fix touches lines where **nothing follows**, and the suite says nothing else
+moved.
+
+Five expectations had to change, and every diff was the space alone: `~: !- `, `!x `, two rows
+of `!m `, `!###0 `, `"+#": !- `, `&F !-&l `, `!` - and the Python test that had *pinned the
+gap* by name (`..._keeps_its_meaning_though_not_its_bytes`) became
+`..._keeps_its_bytes_too`. Each carries the comment naming #339 rather than being silently
+edited, and the ownership assertions beside them - which line holds the key's note, which holds
+the value's, how many `#` the document contains - were left exactly as they were and still pass.
+No seed file was
+touched: the seed loops assert a fixed point and note survival, not spelling, and
+`note_survival::every_note_in_the_seed_corpus_survives_one_emission` is green over all 76.
+
+**The asymmetry worth keeping.** `"n: &a\n"` emits `&a ~` - an added byte, and *correct*, because an
+anchor-only line must be closed or the next line's note is claimed by it. Fidelity is not "emit only
+what came in": it is emitting what the reader will read back as the same tree. That is why this fix
+drops a space that carries no information and leaves an insertion that carries all of it.
+
+Verified: 554 nextest (`--all`, 0 failed), `PROPTEST_CASES=20000` 327 lib tests 0 failed, clippy
+`--all --all-targets -D warnings` clean, 2480 Python tests (10 skipped), red-first on the new Rust
+test (`"n: !!null \n" != "n: !!null\n"` before the change), binding-level confirmation
+`pyrs_yaml.parse("n: !!null\n").to_yaml() == "n: !!null\n"`.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
