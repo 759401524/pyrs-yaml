@@ -1667,7 +1667,7 @@ mod tests {
         let one =
             crate::serializer::to_yaml(&parse(input, YamlSchema::Core).expect("input parses"));
         assert_eq!(
-            one, "&F !-&l \n",
+            one, "&F !-&l\n",
             "anchor must keep its name and the tag its URI"
         );
         let two = crate::serializer::to_yaml(
@@ -2400,7 +2400,7 @@ mod tests {
 
         let one = crate::serializer::to_yaml(&node);
         assert_eq!(
-            one, "# -o\n~: !- \n",
+            one, "# -o\n~: !-\n",
             "the note goes above the pair: on the pending tag line it would re-read as the value's"
         );
         assert_eq!(
@@ -2660,14 +2660,17 @@ mod tests {
     /// Every case here must keep its text **and** settle in one emission.
     #[test]
     fn a_note_beside_a_property_only_root_survives_and_settles() {
+        // The trailing space these rows used to expect was issue #339: `write_anchor_tag` left a
+        // separator for scalar text that never came. The note placement, the ownership and the
+        // one-round fixed point below are all unchanged without it.
         for (src, expected) in [
-            ("!x # note\n", "# note\n!x \n"),
+            ("!x # note\n", "# note\n!x\n"),
             ("&a # note\n", "# note\n&a ~\n"),
-            ("!m   # -o\n", "# -o\n!m \n"),
-            ("!m\r... #-o\n", "# -o\n!m \n"),
+            ("!m   # -o\n", "# -o\n!m\n"),
+            ("!m\r... #-o\n", "# -o\n!m\n"),
             (
                 "!###0 ##################################################, #######&b #",
-                "# #################################################, #######&b #\n!###0 \n",
+                "# #################################################, #######&b #\n!###0\n",
             ),
         ] {
             let one = crate::serializer::to_yaml(&parse(src, YamlSchema::Core).expect("parses"));

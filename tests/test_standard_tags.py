@@ -65,16 +65,20 @@ class TestTagDecidesTheType:
     def test_the_verbatim_uri_form_agrees_with_the_shorthand(self):
         assert pyrs_yaml.safe_load("v: !<tag:yaml.org,2002:str> 1.20\n") == {"v": "1.20"}
 
-    def test_an_empty_tagged_value_keeps_its_meaning_though_not_its_bytes(self):
-        """`n: !!null` re-emits as `n: !!null ` - a trailing space, not a lost value.
+    def test_an_empty_tagged_value_keeps_its_bytes_too(self):
+        """Issue #339: `n: !!null` used to re-emit as `n: !!null ` - a space the document never had.
 
-        Recorded here so the writer's tag-then-empty-scalar path is not a surprise to whoever makes the
-        emission byte-exact: the value and the idempotence both hold today.
+        Pinned here as a gap while the value and the idempotence held but the bytes did not. The
+        writer now drops the separator it had left for scalar text that never arrives, so the
+        emission is byte-exact as well as faithful - including the shape where that separator
+        stacked onto a trailing note's own two-space lead.
         """
         emitted = pyrs_yaml.parse("n: !!null\n").to_yaml()
-        assert emitted == "n: !!null \n"
+        assert emitted == "n: !!null\n"
         assert pyrs_yaml.safe_load(emitted) == {"n": None}
         assert pyrs_yaml.parse(emitted).to_yaml() == emitted
+        noted = pyrs_yaml.parse("n: !!null  # c\n").to_yaml()
+        assert noted == "n: !!null  # c\n", repr(noted)
 
     def test_a_tagged_mapping_key_is_read_by_the_same_rule(self):
         # `!!str 1` as a key is the string "1", so it is a different key from the integer 1 - the

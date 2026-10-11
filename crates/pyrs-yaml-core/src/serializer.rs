@@ -735,6 +735,16 @@ impl Serializer {
         // keeps the note's owner; see `close_pending_tag_line`.
         self.pending_tag_insert_at =
             if value.is_empty() && matches!(style, ScalarStyle::Plain) && meta.tag.is_some() {
+                // Issue #339: `write_anchor_tag` left a separator for content that never comes, so
+                // the line ended on a space (`n: !!null `, and worse, `n: !!null   # c` with a
+                // trailing note). Dropped here rather than popped at the terminator: this is the
+                // one place that knows both facts - the text is empty and the properties were just
+                // written - and the recorded index is taken *after* the drop, so
+                // `close_pending_tag_line` stays byte-consistent and already spells its `~` with a
+                // leading space when there is no longer one behind it.
+                if self.output.ends_with(' ') {
+                    self.output.pop();
+                }
                 Some(self.output.len())
             } else {
                 None
@@ -2342,6 +2352,33 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    fn a_tagged_empty_value_does_not_leave_a_trailing_space() {
+        // Issue #339: `n: !!null` re-emitted as `n: !!null `. The value, the re-parse and the
+        // idempotence all hold, so this is byte-exactness of emission - but a round trip that adds
+        // a space the document never had is a round trip that is not lossless, and every tool that
+        // diffs bytes sees it.
+        for src in ["n: !!null\n", "n: !!str\n"] {
+            let node = crate::parser::parse(src, crate::parser::yaml::YamlSchema::Core).unwrap();
+            let one = crate::serializer::to_yaml(&node);
+            assert_eq!(
+                one, src,
+                "emission moved bytes the document did not have: {src:?}"
+            );
+            let again = crate::parser::parse(&one, crate::parser::yaml::YamlSchema::Core).unwrap();
+            assert_eq!(crate::serializer::to_yaml(&again), one, "not a fixed point");
+        }
+        // The separator used to collide with the note's own two-space lead, so the same defect
+        // showed up as three spaces before the `#`.
+        let node = crate::parser::parse("n: !!null  # c\n", crate::parser::yaml::YamlSchema::Core)
+            .unwrap();
+        let one = crate::serializer::to_yaml(&node);
+        assert_eq!(
+            one, "n: !!null  # c\n",
+            "tag, separator and note lead doubled up: {one:?}"
+        );
+    }
+
+    #[test]
     fn a_block_value_that_is_only_line_breaks_stays_itself() {
         // libFuzzer `yaml_roundtrip`, 6-byte input `>+8\r\r#`. The reader hands back a
         // block scalar whose value is a single line break with `Keep` and an explicit
@@ -3081,7 +3118,7 @@ mod tests {
         let src = std::str::from_utf8(raw).expect("seed is utf-8");
         let one = to_yaml(&parse_core(src));
         assert_eq!(
-            one, "# -o\n\"+#\": !- \n",
+            one, "# -o\n\"+#\": !-\n",
             "the container's note leads the pair, and the quoted `#` must not refuse it"
         );
         assert_eq!(
@@ -3232,7 +3269,7 @@ mod tests {
         let src = std::str::from_utf8(raw).expect("seed is utf-8");
         let one = to_yaml(&parse_core(src));
         assert_eq!(
-            one, "b:  # &\n  # ~\n  ! \n",
+            one, "b:  # &\n  # ~\n  !\n",
             "the key's note belongs on the `key:` line, the value's own note below it"
         );
         assert_eq!(

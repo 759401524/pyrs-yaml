@@ -228,6 +228,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **An empty tagged value no longer emits a space the document did not have.** —
+  `write_anchor_tag` appends a separator so the tag token ends before its content, and a plain
+  empty scalar never brings content, so `n: !!null` re-emitted as `n: !!null` - and
+  `n: !!null  # c` wrote three spaces before its note. The drop happens in `write_scalar`, where
+  the emptiness, the style and the tag are in scope, one byte before `pending_tag_insert_at` is
+  recorded, so a line that a
+  following note closes still spells `!- ~` and no note changed owner. Two earlier routes were tried
+  and rejected: popping at the terminator panicked on the index the pending mechanism had taken, and
+  suppressing the key separator moved a note off its owner's line. Closes #339. — (details:
+  quality-ledger (bz))
+
 - **An edit no longer overwrites the new value's type with the old value's tag.** —
   `doc.set("$.d", b"hi")` emitted `d: aGk=`. The assignment builds a scalar carrying `!!binary`, and
   the splicing editor's metadata inheritance then took `comment`, `anchor` *and* `tag` from the node
