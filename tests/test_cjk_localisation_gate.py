@@ -165,6 +165,62 @@ def test_a_gate_that_scans_nothing_fails(gate, tmp_path: Path) -> None:
     assert gate.main([], root=tmp_path) == 1
 
 
+def test_a_cyrillic_word_in_a_japanese_page_is_a_finding(gate, tmp_path: Path) -> None:
+    """The control promised in `docs/dev/quality-ledger.md` (bw).
+
+    `теперь` is the exact word that shipped inside a Japanese sentence while every
+    gate in the tree reported OK, because the gate only knew Han, Kana and Hangul.
+    """
+    root = make_tree(tmp_path, {"docs/ja/changelog.md": "# 変更履歴\n\nこの項目は теперь 固定されます。\n"})
+    hits = findings_for(gate, root)
+    assert len(hits) == 1, hits
+    assert "CYRILLIC is not a page script here" in hits[0]
+    assert "т(U+0442)" in hits[0]
+
+
+def test_scripts_never_named_in_the_gate_are_still_caught(gate, tmp_path: Path) -> None:
+    """Greek and Arabic are not mentioned anywhere in the rule, and still fail."""
+    root = make_tree(
+        tmp_path,
+        {
+            "docs/zh/changelog.md": "# 变更\n\n这里有一个 αβ 希腊词。\n",
+            "docs/ja/changelog.md": "# 変更\n\nここには مثال という語があります。\n",
+        },
+    )
+    hits = findings_for(gate, root)
+    assert len(hits) == 2, hits
+    assert any("GREEK" in hit for hit in hits)
+    assert any("ARABIC" in hit for hit in hits)
+
+
+def test_latin_terms_and_unit_signs_stay_allowed(gate, tmp_path: Path) -> None:
+    """The deliberate half-measure, asserted so it stays a decision and not a hole.
+
+    Latin is allowed because a technical page cannot be written without it. `µ`
+    (U+00B5) is `isalpha()` yet is a unit sign: the first cut of the rule flagged
+    sixty-plus of them across the ja/ko benchmark tables, which is the
+    false-positive failure mode this gate's header warns about.
+    """
+    root = make_tree(
+        tmp_path,
+        {"docs/ja/changelog.md": "# 変更\n\nPyYAML と orjson の差は 85.6 µs、é 版で固定。\n"},
+    )
+    assert findings_for(gate, root) == []
+
+
+def test_japanese_iteration_marks_stay_allowed(gate, tmp_path: Path) -> None:
+    """U+3005 and U+3007 are named IDEOGRAPHIC *, not CJK UNIFIED IDEOGRAPH."""
+    root = make_tree(tmp_path, {"docs/ja/changelog.md": "# 変更\n\n試々\u3007と繰り返します。\n"})
+    assert findings_for(gate, root) == []
+
+
+def test_a_foreign_script_inside_technical_text_is_not_a_finding(gate, tmp_path: Path) -> None:
+    """The exemption is per codepoint, so parser input stays legal evidence."""
+    page = "# 変更に\n\n入力は `हिन्दी` です。\n\n```yaml\nkey: wartość\n```\n"
+    root = make_tree(tmp_path, {"docs/ja/changelog.md": page})
+    assert findings_for(gate, root) == []
+
+
 def test_the_shipped_docs_pass_the_gate(gate) -> None:
     """Dogfood: the repository's own localized pages satisfy the rule they enforce."""
     assert gate.main([], root=REPO_ROOT) == 0

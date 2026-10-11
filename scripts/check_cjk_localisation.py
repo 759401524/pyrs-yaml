@@ -35,6 +35,18 @@ The scan refuses to call an empty result a pass. The first version of this gate
 pinned its heading pattern to one nesting depth, matched nothing on the localized
 pages, and printed a green OK over zero scanned lines.
 
+Third rule, added later for a different reason: any letter outside Latin and the
+East Asian scripts already policed above is reported. The gate shipped for a
+month while a Cyrillic word sat in a Japanese sentence unnoticed, because every
+check in it keyed on Han, Kana and Hangul - the detector's name was its scope.
+"Keying on any Han removes the curation burden" applies here too, inverted: the
+rule lists the scripts that are *allowed* (Latin, Han, Kana, Hangul) and reports
+everything else, so Greek, Arabic, Thai, Devanagari or Georgian need no entry to
+be caught. Latin stays allowed because a technical page cannot avoid it -
+identifiers, option names, `PyYAML`. That is the deliberate half-measure: a Latin
+term leaking into a zh page is still invisible to this gate, and is named as such
+in `docs/dev/quality-ledger.md` rather than hidden behind a term allow list.
+
 Usage:
     uv run python scripts/check_cjk_localisation.py [paths...]
 
@@ -48,6 +60,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -95,6 +108,7 @@ class Rules:
     hangul: bool
     simplified: bool
     han: bool
+    foreign: bool = True
 
 
 # Only the `han` column differs from the historical table, and only for `ko`,
@@ -151,6 +165,37 @@ def describe(glyphs: str) -> str:
     return " ".join(f"{c}(U+{ord(c):04X})" for c in seen[:8])
 
 
+# The scripts a localized page may legitimately carry. Matching on the Unicode
+# name rather than on a codepoint table is what keeps this from becoming the
+# thirteen-entry `SIMPLIFIED_ONLY` list again: `CYRILLIC SMALL LETTER TE` and
+# `GREEK SMALL LETTER ALPHA` are refused without anyone having to add them.
+# `IDEOGRAPHIC` covers the two Japanese iteration marks - U+3005 repeats the
+# previous kanji and U+3007 is the zero ideograph - which live in the same block
+# the `HAN` regex already claims.
+ALLOWED_LETTER_NAMES = ("LATIN", "CJK UNIFIED IDEOGRAPH", "HIRAGANA", "KATAKANA", "HANGUL", "IDEOGRAPHIC")
+
+
+def foreign_letters(line: str) -> str:
+    """Every alphabetic character outside Latin and the East Asian scripts."""
+    intruders: list[str] = []
+    for char in line:
+        if char.isascii() or not char.isalpha():
+            continue
+        if ord(char) < 0x0100:
+            # Latin-1 Supplement. Latin is allowed by design, and the letters here
+            # that Unicode does not name LATIN are unit and ordinal signs (MICRO
+            # SIGN in `85.6 µs`, FEMININE ORDINAL) - never a script intrusion.
+            # Measured: the first cut of this rule reported 60+ µ signs across the
+            # ja/ko benchmark tables, which is the false-positive failure mode this
+            # file's own header warns about.
+            continue
+        name = unicodedata.name(char, "")
+        if name and any(mark in name for mark in ALLOWED_LETTER_NAMES):
+            continue
+        intruders.append(char)
+    return "".join(intruders)
+
+
 def check_line(line: str, rules: Rules) -> list[tuple[str, str]]:
     """Return (kind, detail) for every script violation in one prose line."""
     findings: list[tuple[str, str]] = []
@@ -166,6 +211,11 @@ def check_line(line: str, rules: Rules) -> list[tuple[str, str]]:
         glyphs = "".join(m.group() for m in HAN.finditer(line))
         if glyphs:
             findings.append((f"Han in a Hangul-only page: {describe(glyphs)}", "Han"))
+    if rules.foreign:
+        glyphs = foreign_letters(line)
+        if glyphs:
+            script = unicodedata.name(glyphs[0], "unnamed").split(" ")[0]
+            findings.append((f"{script} is not a page script here: {describe(glyphs)}", "foreign"))
     return findings
 
 

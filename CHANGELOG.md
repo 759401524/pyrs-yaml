@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The localized-docs gate reports scripts it had never heard of.** —
+  `check_cjk_localisation.py` keyed on Han, Kana and Hangul, so a Cyrillic word inside a Japanese
+  sentence passed every hook in the tree. The rule is inverted: Latin, Han, Kana and Hangul are
+  allowed and every other alphabetic script is reported, so Greek, Arabic, Thai and Devanagari need
+  no entry to be caught. Latin stays allowed on purpose - identifiers and unit signs are
+  unavoidable in technical prose, and a first cut that ignored this flagged sixty-plus `µ` in the
+  benchmark tables. Proven with the control the ledger promised: `теперь` inserted into
+  `docs/ja/changelog.md` reddens the gate, and withdrawing the new branch reddens 2 of 18 gate
+  tests and nothing else. Closes #346. — (details: quality-ledger (bx))
+
 - **The instruction-count baseline can no longer be loosened as a side effect of regenerating it.**
   — `ir_gate.py --update` wrote whatever it measured; nothing compared the new numbers with the
   committed ones. Measured on #342: `to_json_medium` reads 21,444,770 and 21,444,836 on two runs of
