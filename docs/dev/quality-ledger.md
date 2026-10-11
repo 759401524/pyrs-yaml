@@ -3432,6 +3432,76 @@ Verified: 554 nextest (`--all`, 0 failed), `PROPTEST_CASES=20000` 327 lib tests 
 test (`"n: !!null \n" != "n: !!null\n"` before the change), binding-level confirmation
 `pyrs_yaml.parse("n: !!null\n").to_yaml() == "n: !!null\n"`.
 
+### (ca) The TOML writer emitted text its own parser rejected (2026-10-12)
+
+The repository ran toml-test in one direction only. The file said so out loud - "toml-test is a
+*decode* conformance suite" - and nothing in the tree drove the writer from the official corpus, so
+`to_toml` had no cross-library compliance gate at all while `load_toml` had one. Adding the
+encoder half (268 `valid/*.json`, fed to the writer and judged by `tomllib` rather than our own
+reader) measured **97.0% on its first run**, and every one of the 8 misses was informative.
+
+**Two real writer defects, both with the emitted bytes as the witness.**
+
+- `quote_basic` and `quote_multiline` escaped `(c as u32) < 0x20` and pushed everything else
+  literally, so DEL came out raw: `k = "x\u{7f}y"`. `parser::forbidden_control` one file over
+  refuses `0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x1F | 0x7F` and its comment states the rule - "TOML
+  forbids raw C0 control codes ... plus DEL (U+007F) in every string and comment form". The reader
+  knew; the writer had a smaller set. `tomllib` answered `Illegal character '\x7f'`, four cases.
+- A run of newlines in a basic string escaped the first and then pushed the rest **as real line
+  breaks** (`out.push('\n')` inside the run loop), producing `k = "a\n<LF>b"` - `Illegal character
+  '\n'`, and rejected by our own parser too (`newline in single-line basic string`). The removed
+  comment justified this as a CRLF compromise; CRLF never reaches that arm, which has its own `\r`
+  case, so the run is nothing but newlines and every one of them must be escaped.
+
+**The comparator was wrong too, and that mattered more than it looks.** Four cases failed as
+`decoded differs` while the emitted text and the reference decode were byte-identical: `_matches`
+compared floats with `==`, and `nan != nan` by IEEE. Fixed with `_num_eq`, which treats NaN as
+matching itself because the question is "did the value survive", not "is the bit pattern equal".
+Left alone it would have been recorded as four product failures, and the next person would have
+gone hunting for a writer bug that did not exist. A gate's arithmetic errors cost the same as the
+defects it hides.
+
+After both fixes the encoder half runs **268/268**, so the floor is pinned at `rate == 1.0` with the
+failure list in the assertion message - the strictest value the measurement supports, which is the
+same rule the decode floors follow (measured, not aspirational). Red-first holds at both levels: the
+two Rust tests failed with the exact emitted text before the fixes, and the corpus gate went 97.0%
+-> 100% across the same change.
+
+**Correctness cost 1.34%, and the gate said so before anyone argued.** The first CI run of the fix
+came back `FAIL to_toml_medium: +1.34% over baseline (tolerance 0.50%)`. The extra DEL test is one
+more comparison per character in both quoting loops, and that scenario's fixture carries two block
+scalars - long strings that were previously copied by a cheaper loop.
+
+The obvious answer was a bulk-write path: copy the value in one write when no byte of it needs
+escaping. The first attempt returned `format!("\"{s}\"")` from the quoting function, which allocated
+a second string and copied the whole value again, and measured **+13.20%** - ten times worse than
+the loop it replaced. What I recorded here at the time ("the scanning cost exceeds the character
+loop") was a wrong attribution: the scan was never the problem, the allocation was. Rewritten to
+append into the caller's buffer, with the escape set stated once as `forbidden_single_line` /
+`forbidden_multi_line`, the same change measures **-4.90%** on `to_toml_medium` (56,485,015
+baseline against 53,714,933 now, three samples inside 0.0001% of each other). The correctness fix
+cost +1.34% and the rewrite paid for it six times over - most values in that fixture need no
+escaping at all, and used to walk a per-code-point loop that now runs only when a byte says it must.
+
+Two forms write every string (`quote_basic`, `quote_multiline`), so two tests hold the pair
+honest. One compares the bulk branch against a reference escaper written from the grammar over
+**all 256 byte values**, and pins the multi-line asymmetry: a tab and a newline stay literal there,
+a CR may not. The other requires every emitted form to read back as the value it started as. The
+corpus gate checks the same property against `tomllib`; these name the value and the spelling when
+they break. The byte walk took its own fee immediately - it failed first, and the fault was my
+expectation of an escaped newline inside a multi-line body, not the writer.
+
+**The shape worth remembering.** Two rule tables for one language, maintained apart in adjacent
+files, and only the reader's was complete. The shared predicate that would prevent the class is not
+free - the parser tests bytes for UTF-8 safety, the writer matches `char` - so both sites now cite
+the same rule sentence; the durable protection is the corpus gate, which does not care how the two
+tables got out of step.
+
+Verified: 54 pyrs-toml nextest (5 new), 4 tests in `tests/test_toml_test_suite.py` (1 new), 559
+nextest across the workspace, 2481 Python tests, clippy `-D warnings`, `prek run --all-files` clean,
+`Instruction-count baseline` green at -4.90%, and the encoder corpus count re-checked against the
+tree: `(Get-ChildItem Reference/toml-test/tests/valid -Recurse -Filter *.json)` returns 268.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

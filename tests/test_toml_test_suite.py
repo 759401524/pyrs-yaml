@@ -2,21 +2,33 @@
 
 Handled the same way as ``test_yaml_suite.py``: the corpus is an untracked local
 dev artifact (``Reference/toml-test``, excluded via ``.git/info/exclude``), so
-every test ``skipif`` the directory is absent. toml-test is a *decode* conformance
-suite - each ``valid/<dir>/<name>.toml`` pairs with a ``<name>.json`` describing
-the decoded data using TOML type tags (``{"type": "integer", "value": "42"}``,
-``datetime``/``datetime-local``/``date-local``/``time-local``), and each
-``invalid/<...>.toml`` must be rejected. The adapter below maps ``load_toml``
-output to that tagged form for comparison.
+every test ``skipif`` the directory is absent.
 
-The threshold gates are honest floors pinned to the *measured* compliance of the
-current parser, not aspirational 100% - they exist to stop regression, and the
-known gap categories (TOML 1.1 super-table re-opening, control-character and
+**Both directions run, and they are different claims.** The decode half takes
+each ``valid/<dir>/<name>.toml`` with its ``<name>.json`` (values described with
+TOML type tags - ``{"type": "integer", "value": "42"}``, ``datetime``,
+``date-local``, ``time-local``) and checks ``load_toml`` against it, plus every
+``invalid/<...>.toml`` must be rejected. The encode half drives the writer from
+the same 268 JSON files and judges the emitted text with **``tomllib``, CPython's
+reference decoder** - never our own reader, because comparing a writer to the
+parser beside it only proves two halves of one implementation agree, which is the
+thing a conformance suite exists to refuse.
+
+The encode gate holds at 100% and is asserted as such, which it only can because
+the two writer defects it found are fixed: a raw DEL (U+007F) inside a basic
+string, and a run of newlines written literally into a single-line string - both
+forbidden by TOML and both rejected by this crate's own parser, so ``to_toml``
+was emitting text no one could read back.
+
+The decode threshold gates stay honest floors pinned to the *measured* compliance
+of the current parser, not aspirational 100% - they exist to stop regression, and
+the known gap categories (TOML 1.1 super-table re-opening, control-character and
 float-underscore strictness, inline-table duplicate keys) are tracked on the
 ROADMAP rather than silently excused.
 """
 
 import json
+import math
 from datetime import date, datetime, time
 from pathlib import Path
 
@@ -93,23 +105,35 @@ def _canon_temporal(v):
     return s
 
 
+def _num_eq(expected, actual) -> bool:
+    """Compare two numeric spellings, treating NaN as matching itself.
+
+    IEEE says `nan != nan`, but a conformance comparison asks whether the *value survived*, and
+    `nan = nan` is exactly what TOML requires of a writer. Without this the encoder gate fails four
+    corpus cases that the reference decoder reads back identically - a comparator artifact, not a
+    product defect, and worse to hide inside a percentage than to write down.
+    """
+    try:
+        left = float(expected)
+        right = float(actual)
+    except (TypeError, ValueError):
+        return False
+    if math.isnan(left) or math.isnan(right):
+        return math.isnan(left) and math.isnan(right)
+    return left == right
+
+
 def _matches(expected, actual):
     if isinstance(expected, tuple) and isinstance(actual, tuple):
         te, ve = expected
         ta, va = actual
         if te in ("integer", "float"):
-            try:
-                return float(ve) == float(va)
-            except (ValueError, TypeError):
-                pass
+            return _num_eq(ve, va)
         if te in ("datetime", "datetime-local", "date-local", "time-local"):
             return te == ta and _canon_temporal(ve) == _canon_temporal(va)
         return te == ta and ve == va
     if isinstance(expected, float) or isinstance(actual, float):
-        try:
-            return float(expected) == float(actual)
-        except (ValueError, TypeError):
-            return False
+        return _num_eq(expected, actual)
     if isinstance(expected, dict) and isinstance(actual, dict):
         return set(expected) == set(actual) and all(_matches(expected[k], actual[k]) for k in expected)
     if isinstance(expected, list) and isinstance(actual, list):
@@ -153,6 +177,76 @@ def test_toml_test_invalid_rejected():
     assert total > 0, "no invalid toml-test cases found"
     rate = rejected / total
     assert rate >= 0.85, f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 85%"
+
+
+def _tagged_to_python(node):
+    """toml-test expected JSON -> native Python, for driving the *writer* instead of the reader.
+
+    The encoder half of toml-test feeds the implementation the decoded data and judges the TOML it
+    writes by having a reference parser read it back. Same corpus, opposite direction: nothing here
+    consults our own parser, so a shared bug cannot hide behind a shared reader.
+    """
+    if isinstance(node, dict):
+        if set(node) == {"type", "value"}:
+            kind, value = node["type"], node["value"]
+            if kind == "integer":
+                return int(value)
+            if kind == "float":
+                return float(value)
+            if kind == "bool":
+                return value == "true"
+            if kind == "string":
+                return value
+            if kind == "datetime":
+                return datetime.fromisoformat(value.replace("Z", "+00:00").replace("z", "+00:00"))
+            if kind == "datetime-local":
+                return datetime.fromisoformat(value)
+            if kind == "date-local":
+                return date.fromisoformat(value)
+            if kind == "time-local":
+                return time.fromisoformat(value)
+            raise AssertionError(f"unknown toml-test type {kind!r}")
+        return {key: _tagged_to_python(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_tagged_to_python(item) for item in node]
+    return node
+
+
+def _iter_json_inputs():
+    """Every `valid/*.json` - 268 of them, the encoder corpus."""
+    yield from sorted((SUITE_DIR / "valid").rglob("*.json"))
+
+
+def test_toml_test_encodes_and_reference_decodes():
+    """The writer must round-trip the official corpus through someone else's parser.
+
+    Every `valid` case is fed to `to_toml` as data, and the emitted text is decoded by `tomllib` -
+    the CPython reference - not by `load_toml`. Comparing against our own reader would prove only
+    that two halves of one implementation agree with each other, which is exactly the kind of claim
+    a conformance suite exists to refuse.
+    """
+    tomllib = pytest.importorskip("tomllib", reason="reference TOML decoder needs Python 3.11+")
+    total = 0
+    matched = 0
+    failures: list[str] = []
+    for js in _iter_json_inputs():
+        total += 1
+        name = js.relative_to(SUITE_DIR).as_posix()
+        try:
+            data = _tagged_to_python(json.loads(js.read_text(encoding="utf-8")))
+            text = pyrs_yaml.to_toml(pyrs_yaml.safe_dump(data))
+            back = tomllib.loads(text)
+        except Exception as exc:  # a writer that cannot express it, or a reference that rejects it
+            failures.append(f"{name}: {type(exc).__name__}: {str(exc)[:80]}")
+            continue
+        if _matches(_decode_expected(json.loads(js.read_text(encoding="utf-8"))), _encode_actual(back)):
+            matched += 1
+        else:
+            failures.append(f"{name}: decoded differs")
+    assert total > 0, "no toml-test encoder cases found"
+    rate = matched / total
+    assert not failures, f"encoder failures ({len(failures)}/{total}):\n" + "\n".join(failures[:10])
+    assert rate == 1.0, f"encoder match rate {rate:.1%} ({matched}/{total}) below floor"
 
 
 def test_toml_test_datetime_never_crashes():
