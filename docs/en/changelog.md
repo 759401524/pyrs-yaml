@@ -228,6 +228,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **`to_toml` emitted text that was not valid TOML.** — Two escaping defects, both surfaced by the
+  toml-test encoder corpus added for the writer: DEL (U+007F) went out raw inside a basic string
+  (`k = "x<DEL>y"`, rejected by `tomllib` and by this crate's own parser), and a run of newlines
+  escaped the first one then wrote the rest as real line breaks inside a single-line string. Every
+  newline of a run is escaped now, and DEL joins the C0 codes in both string forms. The gate that
+  found it judges our output with `tomllib`, never with our own reader. — (details: quality-ledger
+  (ca))
+
 - **An empty tagged value no longer emits a space the document did not have.** —
   `write_anchor_tag` appends a separator so the tag token ends before its content, and a plain
   empty scalar never brings content, so `n: !!null` re-emitted as `n: !!null` - and
