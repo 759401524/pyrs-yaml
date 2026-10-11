@@ -3210,11 +3210,18 @@ anywhere compared the numbers it was about to write with the ones already commit
 one guard, and it was about *completeness* (refuse to write a baseline missing a scenario), never
 about movement. Whoever ran the script owned the bar.
 
-That was not a hypothetical risk. #342 produced three readings of the same sources: 21,444,770 and
-21,444,836 on two runs of the enforcing job - 66 instructions apart, 0.0003% - and 22,048,805 from
-the refresh job's artifact, 2.82% higher, i.e. more than five times the 0.005 `tolerance_hint`
-sitting in the same file. Committing it would have read as a routine refresh: one number in a JSON
-blob, no word about what it permitted.
+That was not a hypothetical risk. A dispatch on #342's branch produced an artifact carrying
+`to_json_medium: 22,048,805` against the committed 21,232,786 - +3.84%, more than seven times the
+0.005 `tolerance_hint` sitting in the same file. Committing it would have read as a routine refresh:
+one number in a JSON blob, no word about what it permitted.
+
+**The story told here at the time was wrong, and `(by)` is the correction.** This section
+asserted the three numbers were "readings of the same sources", 2.82% apart across the two
+jobs, and filed #344 to explain an environment gap that did not exist. The artifacts' binary
+digests settle it: the enforcing job measured `364e072f5fea6687`/`a64ca39b772fae54` and the
+dispatch that produced 22,048,805 measured `40a4a290df069cb2`/`2d0022d056a8b3b0` - different
+builds of a different shape of the change. Two measurements of the *same* bytes across the
+two jobs are 21 instructions apart.
 
 `drift_report(before, final, line)` is now run before the write: any scenario that would move **up**
 past the tolerance the baseline enforces stops `--update` and is named with its old → new values,
@@ -3229,12 +3236,13 @@ Proven to bite, because a pure function can be wired to nothing: `drift_report`'
 with the call removed from the `--update` branch, so a fourth test reads the branch's source text.
 It was checked by mutation - renaming the call inside the branch reddened exactly that test with
 `nothing compares before writing` while the three pure ones stayed green. The positive control
-is #342's real pair, asserted as `to_json_medium: 21,444,836 -> 22,048,805 (+2.82%)`.
+is the artifact diff above, asserted as `to_json_medium: 21,232,786 -> 22,048,805 (+3.84%)`.
 
-What this does **not** do is explain the 2.82% or move the bar: the mechanism question (build cache,
-the glibc float-format path, codegen decisions) is filed as #344 with the readings above, and the
-ruling #342 needs - accept +1.00%, narrow the fix, or wait for #344 - is a maintainer's call,
-deliberately not taken here. Verified: 11 tests in `tests/test_ir_baseline_workflow.py`, 2470 Python
+What this does **not** do is move the bar: the tolerance is untouched at 0.005 and no
+committed value changed. The ruling #342 needs - accept +1.00% or narrow the fix - is a
+maintainer's call, deliberately not taken here, and `(by)` removed the third option ("wait
+for the environment mystery to be explained") by showing there was no environment mystery.
+Verified: 11 tests in `tests/test_ir_baseline_workflow.py`, 2470 Python
 tests, `ruff format`/`check` clean, five changelog mirrors in sync at [16, 9, 29, 3] (based on
 `main`, which lacks #342's `Fixed` entry); no scenario's committed value changed.
 
@@ -3317,6 +3325,63 @@ Arabic with no entry anywhere in the rule, the Latin/unit-sign allowance, the it
 Devanagari inside a code span), the shipped tree green at 123 pages / 17431 prose lines scanned and
 0 findings, `ruff format`/`check` clean (which also caught RUF001/2/3 flagging the `〇` literal in
 the new test - now `\u3007`), and five changelog mirrors in sync at [17, 9, 29, 3].
+
+### (by) Two numbers were compared without naming their bytes, and a defect was filed (2026-10-12)
+
+`(bv)` left an open question: the enforcing job read `to_json_medium` at 21,444,836 and a refresh
+artifact said 22,048,805, "for identical sources", 2.82% apart, and #344 was filed to explain the
+mechanism. The measurement environment was the suspect, so the two jobs' own logs were read: same
+runner image, same `nproc=4`, same `valgrind-3.22.0`, same rustc 1.97.1 (`commit-hash
+8bab26f4f68e0e26f0bb7960be334d5b520ea452`), same `AMD EPYC 7763`. Then the digests were
+compared, which is the step that had been skipped:
+
+| run | binary digests | `to_json_medium` | `serialize_block_scalars` |
+|:--|:--|:--|:--|
+| enforcing (PR #342, shape A) | `364e072f5fea6687`, `a64ca39b772fae54` | 21,444,755 / 775 / **780** | 15,796,883 / 883 / **883** |
+| refresh, same branch | identical digests | 21,444,826 / **880** / 845 | 15,796,904 / 904 / **904** |
+| refresh, `5b0827dc` | `40a4a290df069cb2`, `2d0022d056a8b3b0` | **22,048,805** | 15,796,884 |
+
+The two jobs agree to 100 instructions (0.00047%) and 21 instructions (0.00013%) on the
+scenarios where their digests match, and one job's three samples of
+`serialize_block_scalars` are byte-for-byte identical. The 22,048,805 belongs to a build with
+different digests - an earlier shape of the same change. So there was no environment gap: the
+numbers were real, the pairing was invented, and #344 is a defect that describes a comparison
+nobody can reproduce. Closed with this table.
+
+**The rule the digests give, both halves.** Matching bytes whose numbers move points at the
+host; differing bytes point at the code. Only the first half was ever argued in this
+repository's prose, and the second half is what got missed - `ir_gate.py` already documented
+a same-binary, different-host 1.44% gap that the ISA pinning then closed to two instructions,
+so it knew to print a digest. What it
+never did was *record* one, so nothing tied a number to the bytes it described. Now
+`.ci/ir-baseline.json` gains a `binaries` map at `--update` time and every enforcing run prints
+`binaries:` lines naming the pairing before it prints a single delta. The committed baseline is
+deliberately not hand-filled: writing digests into it would claim a provenance nobody measured, so
+until the next regeneration the gate reports "records no digests ... paired by name only", which is
+the truth and is what the third test pins.
+
+Proven to bite by mutation: renaming the call in the enforcing branch reddened
+`test_the_pairing_is_wired_into_the_run_and_the_file` with `nothing names the bytes at enforcement`
+(1 failed, 15 passed) while the four pure pairing tests stayed green - the same failure mode
+`drift_report` had, which is why both have a wiring test rather than a nicer message.
+
+Two files carried the stale present tense and were corrected against these readings:
+`ir-baseline.yml` said the enforcing job *reports* 16,020,9xx (it reported 15,796,883 on the
+paired run), and `codspeed.yml`'s failure hint told people to compare hashes "before blaming
+the code" while quoting a 1.44% gap "with identical sources" - a pre-pinning observation
+presented as a standing property of the two jobs. Both now state the pairing rule and the
+measured agreement.
+
+The cost of this is one mis-filed issue and one paragraph in `(bv)` that had to be rewritten,
+and the reason it survived review is worth keeping: a delta between two jobs *sounds* like an
+environment story, and an environment story needs no reviewer. A number without bytes behind
+it is not a measurement, and the comparison should be impossible to write before the pairing
+is stated.
+
+Verified: 16 tests in `tests/test_ir_baseline_workflow.py` (5 new: the mismatching-pair
+attribution, the matching-pair attribution, the no-digests case, a harness new to the
+baseline, and the wiring), `ruff format`/`check` clean, both workflow YAMLs parse, and the five
+changelog mirrors updated in place (no new entry, so the counts hold at [17, 9, 29, 3]).
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
