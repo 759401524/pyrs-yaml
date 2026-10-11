@@ -320,9 +320,39 @@ fn quote_key(s: &str) -> String {
     if bare { s.to_string() } else { quote_basic(s) }
 }
 
+/// Bytes a single-line basic string may not contain raw: the C0 codes and DEL (which
+/// `parser::forbidden_control` refuses on the way in as well), plus the two characters that would
+/// close or corrupt the string. Everything else - including every byte of a multi-byte UTF-8 sequence
+/// - is legal literal content, so one byte scan decides whether the whole value can be copied at once.
+const fn forbidden_single_line(b: u8) -> bool {
+    matches!(b, 0x00..=0x1f | 0x7f | b'"' | b'\\')
+}
+
+/// The same for a multi-line basic string, where a tab and a newline are legal content. The ranges
+/// leave exactly those two out: `..=0x08` stops before the tab, and `0x0b..` starts after `\n`.
+const fn forbidden_multi_line(b: u8) -> bool {
+    matches!(b, 0x00..=0x08 | 0x0b..=0x1f | 0x7f | b'"' | b'\\')
+}
+
 fn quote_basic(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
+    write_basic_body(s, &mut out);
+    out.push('"');
+    out
+}
+
+/// Append `s` to `out` as the body of a single-line basic string.
+///
+/// The bulk branch exists because most values need no escaping at all, and one scan plus one copy
+/// beats a loop that encodes a code point at a time. It allocates nothing: an earlier attempt returned
+/// `format!("\"{s}\"")` from here, which allocated and copied the whole string again and measured
+/// worse than the loop it replaced - the mistake was the allocation, not the scan.
+fn write_basic_body(s: &str, out: &mut String) {
+    if !s.bytes().any(forbidden_single_line) {
+        out.push_str(s);
+        return;
+    }
     let mut it = s.chars().peekable();
     while let Some(c) = it.next() {
         match c {
@@ -331,25 +361,29 @@ fn quote_basic(s: &str) -> String {
             '\u{8}' => out.push_str("\\b"),
             '\t' => out.push_str("\\t"),
             '\n' => {
-                // Collapse a run of newlines into `\n\n…` (TOML 1.0 has no
-                // single char for CRLF; a `\r\n` pair is only valid inside
-                // a multiline basic string, so we degrade to `\n`).
+                // Every newline is escaped, including the rest of a run. A single-line basic string
+                // may not contain a raw newline at all: the old branch wrote `\n` once and then the
+                // remaining newlines literally, so `"a\n\nb"` came back out as `"a\n<LF>b"` - text
+                // that `tomllib` and this crate's own reader both reject (toml-test encoder corpus).
+                // The CRLF argument in the removed comment never applied: `\r` has its own arm below,
+                // so a run reaching here is nothing but newlines.
                 out.push_str("\\n");
                 while it.peek() == Some(&'\n') {
                     it.next();
-                    out.push('\n');
+                    out.push_str("\\n");
                 }
             }
             '\r' => out.push_str("\\r"),
             '\u{c}' => out.push_str("\\f"),
-            c if (c as u32) < 0x20 => {
+            // TOML forbids the C0 codes *and* DEL raw in a basic string; `parser::forbidden_control`
+            // refuses the same set on the way in, so escaping only `< 0x20` left the writer emitting
+            // text this crate's own reader rejects (toml-test encoder corpus, issue-tracked here).
+            c if (c as u32) < 0x20 || c == '\u{7f}' => {
                 let _ = write!(out, "\\u{:04X}", c as u32);
             }
             c => out.push(c),
         }
     }
-    out.push('"');
-    out
 }
 
 /// Emit a TOML multi-line basic string (`"""…"""`) whose parsed content is
@@ -364,17 +398,23 @@ fn quote_multiline(value: &str) -> String {
     if value.starts_with('\n') {
         out.push('\n');
     }
-    for c in value.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push('\n'),
-            '\t' => out.push('\t'),
-            '\r' => out.push_str("\\r"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04X}", c as u32);
+    if !value.bytes().any(forbidden_multi_line) {
+        out.push_str(value);
+    } else {
+        for c in value.chars() {
+            match c {
+                '\\' => out.push_str("\\\\"),
+                '"' => out.push_str("\\\""),
+                '\n' => out.push('\n'),
+                '\t' => out.push('\t'),
+                '\r' => out.push_str("\\r"),
+                c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                    // Same set as `quote_basic`: a multi-line basic string is still a basic string, so
+                    // DEL is forbidden raw there too.
+                    let _ = write!(out, "\\u{:04X}", c as u32);
+                }
+                c => out.push(c),
             }
-            c => out.push(c),
         }
     }
     out.push_str("\"\"\"");
@@ -449,10 +489,177 @@ fn _unused_parse_error(e: ParseError) -> String {
 mod tests {
     use super::*;
     use crate::from_toml;
+
+    #[test]
+    fn the_bulk_path_and_the_loop_escape_identically_over_every_byte() {
+        // A second implementation, written from the TOML grammar rather than from this module, so the
+        // bulk branch and the character loop cannot both be wrong in the same way. All 256 byte-values
+        // are walked because that is precisely where the two branches disagree in risk: one table
+        // decides which strings skip the loop, and the loop decides what escaping means.
+        let reference = |s: &str| {
+            let mut out = String::from("\"");
+            for c in s.chars() {
+                match c {
+                    '"' => out.push_str("\\\""),
+                    '\\' => out.push_str("\\\\"),
+                    '\u{8}' => out.push_str("\\b"),
+                    '\t' => out.push_str("\\t"),
+                    '\n' => out.push_str("\\n"),
+                    '\r' => out.push_str("\\r"),
+                    '\u{c}' => out.push_str("\\f"),
+                    c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                        out.push_str(&format!("\\u{:04X}", c as u32));
+                    }
+                    c => out.push(c),
+                }
+            }
+            out.push('"');
+            out
+        };
+        for b in 0u32..=0xff {
+            let c = char::from_u32(b).expect("every byte is a Unicode scalar when widened");
+            let s = c.to_string();
+            assert_eq!(
+                quote_basic(&s),
+                reference(&s),
+                "byte {b:#04x} escaped wrong"
+            );
+        }
+
+        // Multi-line: the predicate claims a tab and a newline may stay literal. Check that claim
+        // against text that exercises it rather than trusting the table - and check the other side too,
+        // because a predicate that is too generous emits raw CR, which no reader accepts.
+        let literal = "line1\nline2\ttabbed";
+        assert!(
+            !literal.bytes().any(forbidden_multi_line),
+            "predicate rejects legal literal content"
+        );
+        assert_eq!(quote_multiline(literal), format!("\"\"\"{literal}\"\"\""));
+        let needs_crlf = "a\r\nb";
+        assert!(
+            needs_crlf.bytes().any(forbidden_multi_line),
+            "CR must leave the bulk path"
+        );
+        // The asymmetry is the point: a multi-line body may keep a newline literal, so only the CR is
+        // escaped. (An earlier draft of this assertion demanded an escaped newline too, and was wrong
+        // - the code was not.)
+        assert_eq!(quote_multiline(needs_crlf), "\"\"\"a\\r\nb\"\"\"");
+    }
+
+    /// The scalar text of the single value in a decoded one-key table, for comparing a round trip
+    /// against the string it started as.
+    fn text_of(node: &pyrs_ast::ast::CustomNode) -> String {
+        let pyrs_ast::ast::CustomNode::Mapping { pairs, .. } = node else {
+            panic!("expected a table, got {node:?}");
+        };
+        let (_, value) = pairs.iter().next().expect("one key-value pair");
+        let pyrs_ast::ast::CustomNode::Scalar { value, .. } = value else {
+            panic!("expected a scalar string, got {value:?}");
+        };
+        value.to_string()
+    }
     use pyrs_ast::ast::{Comment, NodeMap};
 
     // The YAML-source round-trip (`parse -> to_toml -> from_toml`) needs the
     // YAML parser and lives in `pyrs-yaml-core` `src/integration/toml_family.rs`.
+
+    #[test]
+    fn the_two_quoting_forms_agree_with_their_readers() {
+        // Both writers must produce text that reads back as the value it started with, for inputs on
+        // both sides of every escaping boundary: quote, backslash, tab, newline, a run of newlines,
+        // CR, DEL, a C0 code, non-ASCII text that must survive as UTF-8, and empty. The corpus gate
+        // checks the same property against `tomllib`; this checks it per form, where a failure names
+        // the value and the spelling instead of a percentage.
+        for value in [
+            "plain",
+            "a b",
+            "with \"quote\"",
+            "back\\slash",
+            "tab\there",
+            "nl\nhere",
+            "run\n\n\nof them",
+            "del\u{7f}here",
+            "caf\u{e9}",
+            "\u{1}",
+            "cr\rhere",
+            "mixed \"q\"\ttab\u{7f}",
+            "",
+        ] {
+            let one = quote_basic(value);
+            let back = crate::from_toml(&format!("k = {one}\n"))
+                .unwrap_or_else(|e| panic!("{value:?} -> {one:?} rejected: {e}"));
+            assert_eq!(
+                text_of(&back),
+                value,
+                "basic round trip broke for {value:?}: {one:?}"
+            );
+            let multi = quote_multiline(value);
+            let back = crate::from_toml(&format!("k = {multi}\n"))
+                .unwrap_or_else(|e| panic!("{value:?} -> {multi:?} rejected: {e}"));
+            assert_eq!(
+                text_of(&back),
+                value,
+                "multi-line round trip broke for {value:?}: {multi:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_of_newlines_stays_escaped_in_a_single_line_string() {
+        // toml-test `valid/string/hex-escape`: the basic-string writer escaped the first newline
+        // and then emitted the rest of the run as *raw* newlines, which a single-line basic string
+        // may not contain - `tomllib` reports `Illegal character '\n'`. The collapse was written for
+        // the line-ending-backslash trick, which only exists inside a multi-line string.
+        for src in [
+            "k = \"a\\nb\"\n",
+            "k = \"a\\n\\nb\"\n",
+            "k = \"a\\n\\n\\nb\"\n",
+            "k = \"a\\n\\r\\nb\"\n",
+        ] {
+            let ast = from_toml(src).unwrap_or_else(|e| panic!("fixture must parse {src:?}: {e}"));
+            let text = to_toml(&ast).expect("serializes");
+            let body = text
+                .strip_prefix("k = \"")
+                .and_then(|t| t.strip_suffix("\"\n"))
+                .unwrap_or_else(|| panic!("expected a single-line basic string: {text:?}"));
+            assert!(
+                !body.contains('\n'),
+                "raw newline inside a single-line string: {text:?}"
+            );
+            assert!(from_toml(&text).is_ok(), "output must re-parse: {text:?}");
+        }
+    }
+
+    #[test]
+    fn a_del_in_a_basic_string_is_escaped_because_toml_forbids_it_raw() {
+        // toml-test's encoder corpus surfaced this: `to_toml` wrote `"x\u{7f}y"` with DEL raw, and
+        // TOML forbids DEL in every string and comment form - the rule `parser::forbidden_control`
+        // states and enforces. So the writer emitted text that this crate's own reader rejects,
+        // let alone a reference one.
+        let ast = from_toml("k = \"x\\u007Fy\"\n").expect("fixture parses");
+        let text = to_toml(&ast).expect("serializes");
+        assert!(!text.contains('\u{7f}'), "raw DEL emitted: {text:?}");
+        assert_eq!(
+            text, "k = \"x\\u007Fy\"\n",
+            "the escaped spelling must be stable"
+        );
+        assert!(from_toml(&text).is_ok(), "output must re-parse: {text:?}");
+    }
+
+    #[test]
+    fn a_del_in_a_multiline_string_is_escaped_too() {
+        // Same rule, other form: a multi-line basic string may not hold a raw DEL either, so the
+        // two escaping paths cannot be fixed independently.
+        let ast = from_toml("k = \"\"\"a\\u007Fb\"\"\"\n").expect("fixture parses");
+        let text = to_toml(&ast).expect("serializes");
+        assert!(!text.contains('\u{7f}'), "raw DEL emitted: {text:?}");
+        let again = from_toml(&text).expect("output re-parses");
+        assert_eq!(
+            to_toml(&again).expect("re-serializes"),
+            text,
+            "not a fixed point"
+        );
+    }
 
     #[test]
     fn to_toml_preserves_multiline_string_shape() {
