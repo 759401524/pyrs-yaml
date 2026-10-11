@@ -127,3 +127,60 @@ def test_the_gate_measures_every_harness_the_repository_declares():
         "a harness was added or removed in one place only"
     )
     assert all(bench == "ir_gate" for _crate, bench in gate.HARNESSES), gate.HARNESSES
+
+
+def test_a_baseline_move_has_to_be_named_before_it_is_written():
+    """`--update` may not loosen the gate as a side effect of being run.
+
+    The numbers are not invented: they are `to_json_medium` as PR #342 measured it - 21,444,836 on the
+    enforcing job and 22,048,805 on the refresh job, for identical sources. Committing the second as a
+    baseline would grant the JSON writer 2.82% of silence, five times the line the same file declares, and
+    the diff would show only a number.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    assert gate.drift_report({"to_json_medium": 21_444_836}, {"to_json_medium": 22_048_805}, 0.005) == [
+        "to_json_medium: 21,444,836 -> 22,048,805 (+2.82%)"
+    ]
+
+
+def test_movement_the_tolerance_already_permits_is_not_reported():
+    """The guard has to bite at the line and not before it, or it would block every refresh.
+
+    +0.26% is inside a 0.5% line, and -1.3% is an improvement: refusing either would train the operator to
+    pass `--accept-drift` on sight, which is how a guard dies.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    assert gate.drift_report({"parse_small": 49_565_307}, {"parse_small": 49_694_000}, 0.005) == []
+    assert gate.drift_report({"parse_small": 49_565_307}, {"parse_small": 48_940_000}, 0.005) == []
+
+
+def test_a_scenario_without_a_committed_number_is_not_drift():
+    """New coverage is not a loosening.
+
+    A harness scenario the baseline has never carried has nothing to move relative to; `--update` still has
+    to refuse to write an *incomplete* baseline, which that path does on its own terms.
+    """
+    gate = _load(Path("scripts") / "ir_gate.py")
+    assert gate.drift_report({}, {"to_json5_medium": 23_602_792}, 0.005) == []
+
+
+def test_the_refusal_is_wired_into_the_update_path():
+    """The comparison has to run where the file is written, not merely exist.
+
+    `drift_report` is pure, so the three tests above pass with the guard unhooked from `--update`; this is
+    the half that keeps it hooked, and it reads the source because no test can afford a valgrind run.
+    Checked by renaming the call inside the branch once: this test reddened with "nothing compares before
+    writing" while the three pure tests stayed green, which is exactly the failure mode it exists for.
+    """
+    source = (REPO_ROOT / "scripts" / "ir_gate.py").read_text(encoding="utf-8")
+    assert "args.accept_drift" in source, "no scenario can be named, so the guard cannot be satisfied"
+    assert "drift_report(committed, final, line)" in source, "nothing compares before writing"
+    assert "--accept-drift" in source, "the escape hatch itself is gone"
+    # The branch ends at the *statement* that follows it, four spaces deep: the same condition text appears
+    # nested inside `--update` itself, and splitting on the bare string cuts the slice short before the
+    # lines this test exists to check.
+    following = re.search(r"\n    if not BASELINE\.exists\(\):", source)
+    assert following, "the enforcing path moved; re-derive the slice below"
+    update_branch = source[source.index("if args.update:") : following.start()]
+    assert "drift_report" in update_branch, "the check runs after the file is already written"
+    assert "BASELINE.write_text" in update_branch
