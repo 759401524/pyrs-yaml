@@ -196,6 +196,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A standard tag now decides the type in every format, not only on load.** — the loader began
+  honouring `!!str` / `!!int` / `!!float` / `!!bool` in #335, but the bridges to JSON, JSONC, JSON5
+  and TOML still resolved the scalar *text* and dropped `meta.tag`, so one document meant two
+  things: `v: !!str 1.20` loaded as the string `"1.20"` while `to_json` emitted `1.2` - the type
+  changed *and* the trailing zero the author wrote on purpose disappeared. The rule now lives in one
+  place, `pyrs-schema` (`standard_tag_kind` / `TagKind::resolve`, YAML 1.1's lexemes, both the `!!x`
+  shorthand and the verbatim `!<tag:yaml.org,2002:x>`), and the JSON writer, the TOML writer and the
+  CLI's typed comparison all ask it. A tag the text cannot satisfy is refused
+  (`*-tag-text-mismatch`) rather than quietly re-typed as a string. Local tags (`!int`), unknown
+  `!!` suffixes and the undecided `!!binary` mapping are unchanged, and pinned as unchanged. —
+  (details: quality-ledger (bu))
+
 - **An edit no longer overwrites the new value's type with the old value's tag.** —
   `doc.set("$.d", b"hi")` emitted `d: aGk=`. The assignment builds a scalar carrying `!!binary`, and
   the splicing editor's metadata inheritance then took `comment`, `anchor` *and* `tag` from the node

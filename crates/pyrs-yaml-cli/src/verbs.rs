@@ -160,10 +160,25 @@ fn typed(node: &CustomNode) -> Typed<'_> {
     if let CustomNode::Scalar {
         value,
         style: ScalarStyle::Plain,
+        meta,
         ..
     } = node
     {
-        return match Schema::Core.resolve(value) {
+        // A standard tag states the type here as it does in the loader and the format
+        // bridges: ordering or filtering `!!str 1.20` as the number 1.2 answers a different
+        // question than the document asked. A tag the text cannot satisfy has no typed view,
+        // which this function already reports as incomparable - the honest answer for a
+        // comparison, rather than a guess at one side of it.
+        let resolved = match meta.tag.as_ref().and_then(|t| {
+            pyrs_yaml_core::parser::yaml::schema::standard_tag_kind(&t.handle, &t.suffix)
+        }) {
+            Some(kind) => match kind.resolve(value) {
+                Some(typed) => typed,
+                None => return Typed::Other,
+            },
+            None => Schema::Core.resolve(value),
+        };
+        return match resolved {
             YamlType::Int(i) => Typed::Num(i as f64),
             YamlType::Float(f) if f.is_finite() => Typed::Num(f),
             YamlType::Str(s) => Typed::Str(s),

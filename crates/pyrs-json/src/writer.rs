@@ -213,8 +213,16 @@ fn write_value_inner(
         CustomNode::Scalar {
             value,
             style: ScalarStyle::Plain,
+            meta,
             ..
-        } => write_plain(value, mode, out)?,
+        } => write_plain(
+            value,
+            mode,
+            out,
+            meta.tag
+                .as_ref()
+                .and_then(|t| pyrs_schema::schema::standard_tag_kind(&t.handle, &t.suffix)),
+        )?,
         // PR #121: a single-quoted source string (JSON5-only) round-trips
         // as `'…'`; every other quoted scalar uses `"…"`.
         CustomNode::Scalar {
@@ -300,8 +308,10 @@ fn write_value_inner(
             }
         }
         // JSON cannot carry alias indirection; stable reason keys keep
-        // process-level matching possible (tags are resolved away, the
-        // historical serde_json projection behaviour).
+        // process-level matching possible. (A standard tag is no longer resolved away here:
+        // `write_plain` asks it for the type, so a `!!str` value reaches JSON as a string, as the
+        // loader reads it too. Only tags this engine cannot name - local and application ones - fall
+        // back to the text.)
         CustomNode::Alias { .. } => {
             return Err(SerializeError::UnsupportedValue(
                 "json-cannot-represent-alias",
@@ -311,12 +321,22 @@ fn write_value_inner(
     Ok(())
 }
 
-fn write_plain(value: &str, mode: Mode, out: &mut String) -> Result<(), SerializeError> {
-    // Fidelity first: when the text already spells a JSON number (`1e3`,
-    // `-0`, `1.0`), pass it through unchanged so large-precision integers
-    // and explicit signed-zero survive a `from_json → to_json` round trip
-    // without an f64/i64 detour.
-    if is_json_number(value) {
+fn write_plain(
+    value: &str,
+    mode: Mode,
+    out: &mut String,
+    tag: Option<pyrs_schema::schema::TagKind>,
+) -> Result<(), SerializeError> {
+    // A standard tag states the type outright, and that beats every spelling heuristic:
+    // `!!str 1.20` is a string however much the text looks like a number, and passing the
+    // source text through would emit the number 1.20 - losing both the type and the
+    // trailing zero the document took care to write. The loader has honoured the tag since
+    // #335; the bridge reading only the text is what made one AST answer two questions.
+    if tag.is_none() && is_json_number(value) {
+        // Fidelity first: when the text already spells a JSON number (`1e3`,
+        // `-0`, `1.0`), pass it through unchanged so large-precision integers
+        // and explicit signed-zero survive a `from_json → to_json` round trip
+        // without an f64/i64 detour.
         out.push_str(value);
         return Ok(());
     }
@@ -325,11 +345,20 @@ fn write_plain(value: &str, mode: Mode, out: &mut String) -> Result<(), Serializ
     // dot, leading `+`) emit as-is — they are legal JSON5 bare tokens,
     // unlike strict JSON which would have to quote them. `Infinity` / `NaN`
     // are deliberately NOT in this set: see `is_json5_number`.
-    if mode.json5() && is_json5_number(value) {
+    if tag.is_none() && mode.json5() && is_json5_number(value) {
         out.push_str(value);
         return Ok(());
     }
-    match Schema::Core.resolve(value) {
+    let resolved = match tag {
+        // A tag the text cannot satisfy is refused rather than quietly re-typed as a
+        // string: `!!int hello` has no honest JSON projection, and inventing one is how a
+        // bridge comes to disagree with both the loader and the reference libraries.
+        Some(kind) => kind
+            .resolve(value)
+            .ok_or(SerializeError::UnsupportedValue("json-tag-text-mismatch"))?,
+        None => Schema::Core.resolve(value),
+    };
+    match resolved {
         // JSON's literal spellings for null / bool / int are canonical:
         // YAML allows `~`, `Null`, `TRUE`, `0x1F`, `0o17` — a JSON reader
         // would reject any of those, so we always normalise to the JSON

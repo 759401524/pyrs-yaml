@@ -41,7 +41,12 @@ fn exotic_scalars_quote_or_normalize() {
     let node = parse("a: 0x1F\nc: !!str 7\n", Schema::Core).unwrap();
     let text = to_json_text(&node).unwrap();
     assert!(text.contains("\"a\":31"), "{text}"); // hex normalizes
-    assert!(text.contains("\"c\":7"), "{text}"); // plain+tag resolves like serde path did
+    // A `!!str` tag states the type, so the text `7` is the string "7" (YAML 1.2 §6.1). This line
+    // used to assert `"c":7`, matching the historical serde_json projection that read the text and
+    // ignored the tag - but the loader has resolved this same document to `{'c': '7'}` since #335,
+    // so reader and bridge disagreed about one AST. That disagreement was issue #340; the
+    // assertion follows the tag, which is what both reference libraries do too.
+    assert!(text.contains("\"c\":\"7\""), "{text}");
 
     // A non-finite float has no JSON literal, so the projection refuses it instead of quoting it into
     // a string: `"b":".inf"` used to come back from `load_json` as text, indistinguishable from a
