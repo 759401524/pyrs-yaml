@@ -181,6 +181,12 @@ status: new
 
 #### 修复
 
+- **`to_toml` 写出的文本本身不是合法 TOML。** — 两处转义缺陷，都由新加的 toml-test 编码向
+  语料发现：DEL（U+007F）在 basic string 里被原样发出（`k = "x<DEL>y"`，`tomllib` 与本
+  crate 自己的解析器都拒绝它）；连续换行时只转义第一个，其余按真换行写进单行字符串。现在
+  一串里的每个换行都转义，DEL 在两种字符串形式里与 C0 码同列。发现它的那个门禁拿 `tomllib`
+  判定我们的输出，而不是拿我们自己的读取器。— (details: quality-ledger (ca))
+
 - **空的带标签值不再写出文档里根本没有的空格。** — `write_anchor_tag` 会在标签后补一个
   分隔空格，好让标签 token 在其内容之前结束；而空的 plain scalar 从不带内容，所以
   `n: !!null` 会重写成 `n: !!null `，`n: !!null  # c` 更在注释前写出三个空格。这次去掉发生在
