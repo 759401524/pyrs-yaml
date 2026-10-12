@@ -3724,6 +3724,40 @@ The first 3.15 run then taught two more things, both fixed in the same pass.
   matrix is for. It is now `fail-fast: false`, which is also what makes a future 3.15 regression
   read as one red cell among twenty-three green ones rather than as twenty-four unknowns.
 
+### (cj) The job that moves the baseline could not move it (2026-10-12)
+
+The guard that stops `ir_gate.py --update` loosening the gate as a side effect of being run arrived
+in #345: a scenario moving up past the tolerance has to be named with `--accept-drift`. The guard is
+right, and the channel that produces baselines never learned to honour it -
+`.github/workflows/ir-baseline.yml` ran a bare `python3 scripts/ir_gate.py --update`. So the one job
+whose purpose is "move every number to the image that enforces them" could not do it at exactly the
+moment a change was meant to pay for a move, which is the case that needs the artefact most.
+
+Measured on the first attempt to use it that way: a dispatch at the #360 head (run 38273567698)
+installed the pinned rustc, built both harnesses, measured all 21 scenarios three times each and
+printed the whole sample table, then exited non-zero on `--update would move 3 scenario(s) past the
+0.5% line` and wrote nothing. The refusal was the correct verdict about the numbers and a dead end
+for the workflow. What was left would have been transcribing values out of a job log, the failure
+mode `test_the_committed_baseline_is_exactly_what_the_job_writes` exists to prevent - "no value in
+this file is transcribed".
+
+Fixed in the channel rather than in the guard: the job now takes an optional `accept_drift` input,
+space- or newline-separated scenario names forwarded one `--accept-drift` flag at a time, and the
+step prints which half it ran, so a guarded refresh and an opened one are distinguishable in the log
+without reading the diff. An empty input keeps the bare `--update`, so refusing stays the default,
+and a name matching nothing the guard reported is simply unused - a typo reddens the job instead of
+loosening it.
+
+Three tests in `tests/test_ir_baseline_workflow.py`, in the source-reading style the neighbouring
+wiring tests use because no test can afford a valgrind run, and each proven by mutation: replacing
+`--accept-drift` with an inert flag reddens `test_the_input_is_actually_passed_to_the_guard` alone,
+hard-coding `to_json_medium` into the loop reddens `test_an_empty_input_keeps_the_refusal` alone,
+and restoring the file gives 19 passed. No baseline value and no tolerance moved in this change.
+
+What it does not settle, named so nobody reads it as settled: whether #360's measured +1.30% /
++5.11% / +4.98% against `main` is accepted is still the ruling (cg) leaves open. This entry only
+unblocks the mechanism that would write those numbers down.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
