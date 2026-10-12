@@ -191,7 +191,24 @@ struct Parser<'a> {
 /// Record a stack of pending notes onto `node`: every standalone one appends to
 /// the node's leading list in source order, while a same-line trailing note keeps
 /// owning the single inline `comment` slot (unchanged from #112).
+///
+/// One exception, and it is measured rather than assumed (issue #361): when a node is introduced by
+/// **two or more** same-line comments, the single inline slot cannot hold them and the loop below
+/// overwrote each with the next. Text this library wrote itself was the casualty - the compact form
+/// puts a node's notes on one line, so `{/* note 0 *//* note 1 */"k":1}` reached the AST with one
+/// note and the writer's second round differed. All of them now go to the leading list, which holds
+/// any number and preserves source order. A lone same-line comment still owns the inline slot, so the
+/// nuance a human writes (`{"k": 1 // the port\n}`) is untouched.
 fn attach_pending(node: &mut CustomNode, pending: Vec<PendingComment>) {
+    if pending.len() > 1 && pending.iter().filter(|pc| !pc.own_line).count() > 1 {
+        for pc in pending {
+            node.push_leading_comment(pyrs_ast::ast::Comment {
+                text: alloc::sync::Arc::from(pc.text),
+                standalone: true,
+            });
+        }
+        return;
+    }
     for pc in pending {
         let comment = pyrs_ast::ast::Comment {
             text: alloc::sync::Arc::from(pc.text),
@@ -1596,6 +1613,38 @@ mod tests {
             assert!(from_json(src).is_err(), "{src} must be invalid strict JSON");
             assert!(from_jsonc(src).is_err(), "{src} must be invalid JSONC");
         }
+    }
+
+    #[test]
+    fn a_run_of_same_line_comments_keeps_every_note() {
+        // Issue #361. Two comments sharing a line used to compete for the single inline slot and each
+        // overwrote the last, so `{/* a *//* b */}` reached the AST with one note - which is how the
+        // compact writer lost comments on re-reading its own output. Measured placement after the fix:
+        // both notes on the value's leading list in source order, inline slot empty.
+        let ast = crate::from_jsonc("{\n\"k\": 1 /* unit */ /* owner */\n}").unwrap();
+        let pyrs_ast::ast::CustomNode::Mapping { pairs, .. } = &ast else {
+            panic!("an object was expected")
+        };
+        let (_, value) = pairs.iter().next().expect("one pair");
+        let notes: Vec<&str> = value
+            .leading_comments()
+            .iter()
+            .map(|c| c.text.as_ref())
+            .collect();
+        assert_eq!(
+            notes,
+            ["unit", "owner"],
+            "the run of same-line notes did not survive"
+        );
+        assert_eq!(value.comment().map(|c| c.text.as_ref()), None);
+        // A lone same-line comment is the spelling a human writes, and still owns the inline slot.
+        let one = crate::from_jsonc("{\n\"k\": 1 // port\n}").unwrap();
+        let pyrs_ast::ast::CustomNode::Mapping { pairs, .. } = &one else {
+            panic!("an object was expected")
+        };
+        let (_, value) = pairs.iter().next().expect("one pair");
+        assert_eq!(value.comment().map(|c| c.text.as_ref()), Some("port"));
+        assert!(value.leading_comments().is_empty());
     }
 
     #[test]

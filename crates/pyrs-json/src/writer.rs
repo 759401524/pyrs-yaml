@@ -1063,16 +1063,11 @@ mod tests {
                         ));
                         continue;
                     };
-                    // Measured, and left failing on purpose is not an option: the compact route is
-                    // not a fixed point once a node carries two or more notes, because it puts them
-                    // on one line and the reader's own rule - a same-line note owns the single inline
-                    // slot - then keeps only the last. `{/* note 0 *//* note 1 */"k":1}` re-reads with
-                    // one note, so the second round differs. That is issue #361, a separate root
-                    // cause from the slot blindness fixed here; the presence assertions above still
-                    // hold for the compact form, which is why they run for all four layouts.
-                    if step == 0 {
-                        continue;
-                    }
+                    // Compact used to fail here for stacks of two or more notes: it writes them on
+                    // one line, and the parser gave a same-line note the single inline slot, so each
+                    // overwrote the last and `{/* note 0 *//* note 1 */"k":1}` re-read with one note
+                    // (issue #361). A run of same-line notes now goes to the leading list, which holds
+                    // any number in source order, so every layout is checked below.
                     let twice = match (step, label.starts_with("jsonc")) {
                         (2, true) => to_jsonc_text_pretty(&reread, 2).unwrap(),
                         (2, false) => to_json5_text_pretty(&reread, 2).unwrap(),
