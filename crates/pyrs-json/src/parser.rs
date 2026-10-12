@@ -691,13 +691,13 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 Some(b'0') => {
                     self.pos += 1;
-                    if json5 {
-                        // JSON5 tolerates a leading zero (`07` parses as
-                        // decimal 7); keep consuming the digit run.
-                        while matches!(self.peek(), Some(b'0'..=b'9')) {
-                            self.pos += 1;
-                        }
-                    } else if matches!(self.peek(), Some(b'0'..=b'9')) {
+                    // JSON5's `DecimalIntegerLiteral` is `0 | NonZeroDigit DigitalDigits?` - the very
+                    // production RFC 8259 uses - so `07` is not a legal JSON5 number either. The
+                    // dialect's latitude lives in the integer prefixes handled above (`0x`/`0X`) and
+                    // in the dot forms, not in leading zeros. Measured against `pyjson5`, which
+                    // rejects `[012]`, `[-01]` and `[-012]`; this branch used to accept them, citing a
+                    // spec allowance that is not in the grammar.
+                    if matches!(self.peek(), Some(b'0'..=b'9')) {
                         return Err(self.err("leading zero in number"));
                     }
                 }
@@ -1599,10 +1599,37 @@ mod tests {
     }
 
     #[test]
-    fn json5_leading_zero_relaxed() {
-        // JSON5 permits a leading zero (it is octal-ish legacy in JS, but
-        // the spec treats `07` as decimal 7); STRICT rejects it.
-        assert!(from_json5("07").is_ok());
-        assert!(from_json("07").is_err());
+    fn json5_rejects_leading_zeros_exactly_like_strict() {
+        // The reversal of a decision that was pinned in the wrong direction: JSON5 permits `0x` and
+        // `.5` and `5.`, but its decimal integer is `0 | NonZeroDigit DigitalDigits?`. `pyjson5`
+        // rejects every case below, and so does the corpus file `n_number_with_leading_zero.json`.
+        for src in ["07", "012", "-01", "-012", "+07"] {
+            assert!(
+                from_json5(src).is_err(),
+                "{src} is not a JSON5 number: leading zero"
+            );
+            assert!(
+                from_json(src).is_err(),
+                "{src} must stay invalid strict JSON"
+            );
+        }
+        // The two `0`-prefixed forms that ECMAScript has but JSON5's grammar does
+        // not: the reference implementation rejects these too, so the only latitude
+        // this parser keeps on the zero prefix is hexadecimal.
+        for src in ["0o17", "0b101", "-0o17", "0O17"] {
+            assert!(
+                from_json5(src).is_err(),
+                "{src} is not a JSON5 number: no octal or binary prefix in the grammar"
+            );
+        }
+        // What the zero prefix *may* legally do: stand alone, take a fraction or exponent, or be the
+        // start of a hexadecimal literal that JSON5 does allow.
+        for src in ["0", "-0", "0.5", "0e1", "0E+1", "0x0", "0XFF", "-0x1F"] {
+            assert!(
+                from_json5(src).is_ok(),
+                "{src} must stay valid JSON5: {:?}",
+                from_json5(src).err()
+            );
+        }
     }
 }

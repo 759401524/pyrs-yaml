@@ -249,6 +249,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **JSON5 no longer accepts leading zeros its grammar forbids.** — `[012]`, `[-01]` and `[-012]`
+  parsed as JSON5 numbers because the parser carried an explicit relaxation claiming "JSON5
+  tolerates a leading zero", and a test pinned that claim as intended behavior. JSON5's
+  `DecimalIntegerLiteral` is `0 | NonZeroDigit DigitalDigits?` — the production RFC 8259 uses — and
+  `pyjson5` rejects all three. The relaxation is removed and the test inverted. Three dialect rules
+  that were only measured are now asserted: every valid JSON is accepted by both supersets; where
+  the reference refuses an invalid document so must we; and JSONC may diverge from strict JSON only
+  where a comment marker is present. Corpus loosening for JSON5 drops 30 → 27 and containment stays
+  clean. — (details: quality-ledger (ce))
+
 - **`to_toml` emitted text that was not valid TOML.** — Two escaping defects, both surfaced by the
   toml-test encoder corpus added for the writer: DEL (U+007F) went out raw inside a basic string
   (`k = "x<DEL>y"`, rejected by `tomllib` and by this crate's own parser), and a run of newlines

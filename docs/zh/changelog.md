@@ -198,6 +198,14 @@ status: new
 
 #### 修复
 
+- **JSON5 不再接受它自己语法禁止的前导零。** — `[012]`、`[-01]`、`[-012]` 此前能作
+  为 JSON5 数字解析，因为解析器里写着一条明文放宽“JSON5 容忍前导零”，而且有用例把
+  这条声明钉成预期行为。但 JSON5 的 `DecimalIntegerLiteral` 就是 `0 | NonZeroDigit
+  DigitalDigits?`，与 RFC 8259 同一生产式，`pyjson5` 三例全拒。放宽已删除、用例已反向
+  钉住。三条原本只在本地量过的方言规则现在进了断言：合法 JSON 必须被两个 superset 接受；
+  参考实现拒绝的非法文档我们也必须拒绝；JSONC 只能在注释标记存在处偏离严格 JSON。JSON5
+  的语料放宽从 30 降到 27，包含性仍零违反。— (details: quality-ledger (ce))
+
 - **`to_toml` 写出的文本本身不是合法 TOML。** — 两处转义缺陷，都由新加的 toml-test 编码向
   语料发现：DEL（U+007F）在 basic string 里被原样发出（`k = "x<DEL>y"`，`tomllib` 与本
   crate 自己的解析器都拒绝它）；连续换行时只转义第一个，其余按真换行写进单行字符串。现在
