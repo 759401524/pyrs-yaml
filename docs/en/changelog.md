@@ -19,6 +19,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **JSON gained a conformance corpus gate, and refusals are checked by shape, not just by fact.**
+  — `tests/test_json_test_suite.py` runs JSONTestSuite's 283 determinate cases through the strict
+  RFC 8259 loader: 95 must parse, 188 must be refused, and the 35 the corpus itself calls
+  implementation-defined are excluded by count as well as by name. Measured on the first run: zero
+  disagreements, so the floor is 1.0 rather than a comfort value. A second test asks how each
+  refusal happened - anything reaching the parser must answer with a typed `YamlParseError`, so a
+  `RecursionError` or a panic cannot pass as a rejection. Twelve files are stored as bytes that are
+  not valid UTF-8 and cannot reach a text-taking loader; that count is asserted too, and the
+  boundary it reveals (no bytes entry point) is named in `docs/dev/quality-ledger.md` (cb) rather
+  than papered over. CI clones the corpus beside toml-test and yaml-test-suite, and the runner
+  refuses to pass on an empty corpus. — (details: quality-ledger (cb))
+
 - **The localized-docs gate reports scripts it had never heard of.** —
   `check_cjk_localisation.py` keyed on Han, Kana and Hangul, so a Cyrillic word inside a Japanese
   sentence passed every hook in the tree. The rule is inverted: Latin, Han, Kana and Hangul are

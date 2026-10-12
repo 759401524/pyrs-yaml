@@ -306,6 +306,17 @@ jobs:
             git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
           fi
 
+      # Without this the JSON suite silently `skipif`s and reports a green run that checked
+      # nothing, which is the failure mode `test_cjk_localisation_gate.py` exists to punish in the
+      # docs gate and `tests/test_json_test_suite.py` guards itself against by asserting the corpus
+      # unpacked at least 280 determinate cases.
+      - name: Download JSONTestSuite corpus
+        shell: bash
+        run: |
+          if [ ! -d "Reference/JSONTestSuite" ]; then
+            git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
+          fi
+
       - name: Install Python test dependencies
         run: uv sync --group test --no-install-project
 
@@ -452,6 +463,17 @@ jobs:
         run: |
           if [ ! -d "Reference/toml-test" ]; then
             git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
+          fi
+
+      # Without this the JSON suite silently `skipif`s and reports a green run that checked
+      # nothing, which is the failure mode `test_cjk_localisation_gate.py` exists to punish in the
+      # docs gate and `tests/test_json_test_suite.py` guards itself against by asserting the corpus
+      # unpacked at least 280 determinate cases.
+      - name: Download JSONTestSuite corpus
+        shell: bash
+        run: |
+          if [ ! -d "Reference/JSONTestSuite" ]; then
+            git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
           fi
 
       - name: Install Python test dependencies
