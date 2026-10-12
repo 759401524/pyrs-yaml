@@ -171,6 +171,25 @@ proptest! {
     }
 
     #[test]
+    fn prop_pretty_json_writers_are_fixed_points(node in arb_custom_node()) {
+        prop_assume!(json_object_domain(&node));
+        // The fixed point watched the compact route only, which left the pretty route's placement of
+        // comments - the part that writes them on lines of their own - pinned by hand-built tables.
+        // Generated trees are the stronger oracle, and this is what the (cg) entry named as the gap.
+        let Ok(text) = json::to_json_text_pretty(&node, 2) else { return Ok(()) };
+        let text2 = json::to_json_text_pretty(&json::from_json(&text)?, 2)?;
+        prop_assert_eq!(text, text2, "pretty JSON writer not idempotent on own output");
+
+        let Ok(text) = json::to_jsonc_text_pretty(&node, 2) else { return Ok(()) };
+        let text2 = json::to_jsonc_text_pretty(&json::from_jsonc(&text)?, 2)?;
+        prop_assert_eq!(text, text2, "pretty JSONC writer not idempotent on own output");
+
+        let Ok(text) = json::to_json5_text_pretty(&node, 2) else { return Ok(()) };
+        let text2 = json::to_json5_text_pretty(&json::from_json5(&text)?, 2)?;
+        prop_assert_eq!(text, text2, "pretty JSON5 writer not idempotent on own output");
+    }
+
+    #[test]
     fn prop_toml_writer_is_fixed_point(node in arb_custom_node()) {
         prop_assume!(toml_root_note_ok(&node));
         let Ok(text) = toml::to_toml(&node) else { return Ok(()) };

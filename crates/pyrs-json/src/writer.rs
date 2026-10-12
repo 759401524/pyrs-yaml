@@ -75,8 +75,12 @@ pub fn to_json_text_pretty(node: &CustomNode, indent: usize) -> Result<String, S
 /// Compact JSONC: same as [`to_json_text`] but emits `//` comments at the
 /// positions the parser recorded them (`NodeMeta::comment`). Comments
 /// that live on scalars or collection nodes are rendered as a trailing
-/// `// …` after the value; there is no standalone-line placement in the
-/// compact form because the writer never inserts line breaks.
+/// `// …` after the value; a note that has no line to share (standalone, or
+/// carried by a pair key) gets a line of its own before the member, because
+/// `//` runs to end of line and the only alternative is dropping it. The root
+/// node's leading notes were always written this way — a comment the parser
+/// put one member deeper was not, which made the compact form lose notes that
+/// the same document kept at the top level.
 pub fn to_jsonc_text(node: &CustomNode) -> Result<String, SerializeError> {
     let mut out = String::new();
     emit_root_leading(node, &mut out);
@@ -125,6 +129,9 @@ pub fn to_json5_text_pretty(node: &CustomNode, indent: usize) -> Result<String, 
 /// `emit_standalone_comment`; the outermost node has no preceding key
 /// slot, so a document-leading `#`/`//` comment would otherwise drop.
 fn emit_root_leading(node: &CustomNode, out: &mut String) {
+    if !node.has_notes() {
+        return;
+    }
     for c in node.leading_comments() {
         let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
     }
@@ -178,6 +185,9 @@ fn write_value(
 /// because `//` runs to end-of-line: without the terminator the following `,` or
 /// `}` would be commented out, producing output that cannot re-parse.
 fn emit_inline_comment(node: &CustomNode, out: &mut String) {
+    if !node.has_notes() {
+        return;
+    }
     if let Some(c) = node.comment()
         && !c.standalone
     {
@@ -193,9 +203,109 @@ fn emit_inline_comment(node: &CustomNode, out: &mut String) {
 /// that still write into `comment` (with `standalone = true`) keep
 /// rendering thanks to the normalised read in `leading_comments()`.
 fn emit_standalone_comment(node: &CustomNode, step: usize, level: usize, out: &mut String) {
+    if !node.has_notes() {
+        return;
+    }
     for c in node.leading_comments() {
         indent(out, step, level);
         let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
+    }
+}
+
+/// A comment in the flow (compact) spelling: `/* … */`, terminated in place.
+///
+/// The compact writer has no line breaks to spend, and `//` would consume everything after it -
+/// including the separator that follows. Measured consequence: a `//` note written on its own line
+/// inside a flow container is re-read as one *trailing* the element, and a *pair* of notes written
+/// that way comes back swapped (`// 1` then `// 0` became `// 0` then `// 1` on the second round),
+/// which is the drift `fmt_pbt::prop_json_writers_are_fixed_points` refuses. A block comment belongs
+/// to whatever it sits next to and moves nothing.
+fn push_block_note(text: &str, out: &mut String) {
+    let flat = text.replace(['\n', '\r'], " ").trim().replace("*/", "* /");
+    let _ = write!(out, "/* {flat} */");
+}
+
+/// The notes a pair's **key** carries, as block comments ahead of the key.
+///
+/// The compact loop has no line to spare, so a note the parser recorded on the key would otherwise
+/// be dropped entirely (issue #359). Block form is what stays put: measured, a `//` comment written
+/// on its own line inside a flow container comes back as one *trailing* the member, and two of them
+/// come back swapped - the drift `fmt_pbt::prop_json_writers_are_fixed_points` refuses.
+fn emit_key_block_notes(key: &CustomNode, out: &mut String) {
+    if !key.has_notes() {
+        return;
+    }
+    for c in key.leading_comments() {
+        push_block_note(&c.text, out);
+    }
+    if let Some(c) = key.comment()
+        && !c.standalone
+    {
+        push_block_note(&c.text, out);
+    }
+}
+
+/// The notes a value or flow element carries, as block comments right after it - the position the
+/// reader reports them from, so the second round writes the same text.
+fn emit_value_block_notes(value: &CustomNode, out: &mut String) {
+    if !value.has_notes() {
+        return;
+    }
+    for c in value.leading_comments() {
+        push_block_note(&c.text, out);
+    }
+    if let Some(c) = value.comment()
+        && !c.standalone
+    {
+        push_block_note(&c.text, out);
+    }
+}
+
+/// Every note a pair carries, on either side of it, on the lines above the pair.
+///
+/// Four slots exist per pair and the loop used to read two: the key's standalone notes
+/// (`emit_standalone_comment`) and the value's line-end note (`emit_inline_comment`). A
+/// standalone note on the *value* and a line-end note on the *key* were never looked at, and both
+/// writers dropped them silently (issue #359) - the text stayed valid JSONC, so nothing reported the
+/// loss while `to_yaml` printed the note.
+///
+/// Cost, measured rather than assumed: the first version of this loop called `has_notes()` four
+/// times per pair (two helpers, each testing both nodes) and the gate reported `to_jsonc_medium`
+/// +4.77% / `to_json5_medium` +3.78% / `to_json_medium` +0.94% - on a fixture whose hub AST carries no
+/// notes at all (bench_inputs.rs records that). Collapsing to one guard per node, the shape below,
+/// moved every number by under 100 instructions on re-measurement, so the guard is not the cost and
+/// the drift is not avoidable by pruning slot probes. `to_json_medium`, which emits no comments and
+/// calls none of these helpers, rising by the same fraction as the dialect writers points at layout
+/// and inlining in this function instead. Recorded in the PR rather than re-baselined quietly.
+///
+/// Placement: notes the source put on the key stay above the pair; the value's notes go above it too,
+/// because between the colon and the value is the only alternative and a `//` there forces the value
+/// onto a further-indented line - which breaks the closing-bracket indentation invariant for every
+/// collection shape.
+fn emit_pair_notes(
+    key: &CustomNode,
+    value: &CustomNode,
+    step: usize,
+    level: usize,
+    out: &mut String,
+) {
+    if key.has_notes() {
+        for c in key.leading_comments() {
+            indent(out, step, level);
+            let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
+        }
+        if let Some(c) = key.comment()
+            && !c.standalone
+        {
+            indent(out, step, level);
+            let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
+        }
+    }
+    if value.has_notes() {
+        for c in value.leading_comments() {
+            indent(out, step, level);
+            let _ = writeln!(out, "// {}", c.text.replace(['\n', '\r'], " ").trim());
+        }
     }
 }
 
@@ -251,9 +361,14 @@ fn write_value_inner(
                     if i > 0 {
                         out.push(',');
                     }
+                    // In a flow sequence an element has no key to anchor a note, so a comment on its
+                    // own line is re-read as one trailing the element - and the next round then moves
+                    // it. The counterexample, from `fmt_pbt::prop_json_writers_are_fixed_points`:
+                    // `{"a":[// A\n{"A":"a"}]}` came back as `{"a":[{"A":"a"} // A\n]}`. Writing it
+                    // where the reader reports it makes the first round the fixed point.
                     write_value(item, pretty, step, stack, out, mode)?;
                     if comments {
-                        emit_inline_comment(item, out);
+                        emit_value_block_notes(item, out);
                     }
                 }
                 out.push(']');
@@ -266,7 +381,7 @@ fn write_value_inner(
                 out.push_str("{\n");
                 for (i, (k, v)) in pairs.iter().enumerate() {
                     if comments {
-                        emit_standalone_comment(k, step, stack.len(), out);
+                        emit_pair_notes(k, v, step, stack.len(), out);
                     }
                     indent(out, step, stack.len());
                     write_json_key(k, out)?;
@@ -289,11 +404,14 @@ fn write_value_inner(
                     if i > 0 {
                         out.push(',');
                     }
+                    if comments {
+                        emit_key_block_notes(k, out);
+                    }
                     write_json_key(k, out)?;
                     out.push(':');
                     write_value(v, pretty, step, stack, out, mode)?;
                     if comments {
-                        emit_inline_comment(v, out);
+                        emit_value_block_notes(v, out);
                     }
                 }
                 out.push('}');
@@ -648,6 +766,71 @@ mod tests {
     }
 
     #[test]
+    fn pair_notes_on_the_two_slots_the_loop_used_to_skip_are_emitted() {
+        // Issue #359. The mapping loop consulted the key's standalone slot and the value's inline
+        // slot only, so a note the parser put on the pair's *value* node (`H`) and a line-end note
+        // carried by the *key* (`Y`) were dropped while `to_yaml` kept both - silently, because the
+        // text stayed valid JSONC either way.
+        let value_note = crate::from_jsonc("{\"k\": 1\n/* H */}").unwrap();
+        let key_note = crate::from_jsonc("{\"a\": 1, /* Y */ \"b\": [1, 2]}").unwrap();
+        let pretty = to_jsonc_text_pretty(&value_note, 2).unwrap();
+        assert!(pretty.contains("// H"), "{pretty}");
+        let pretty = to_jsonc_text_pretty(&key_note, 2).unwrap();
+        assert!(pretty.contains("// Y"), "{pretty}");
+        // Same in JSON5, which shares the writer.
+        assert!(
+            to_json5_text_pretty(&value_note, 2)
+                .unwrap()
+                .contains("// H")
+        );
+        assert!(to_json5_text_pretty(&key_note, 2).unwrap().contains("// Y"));
+    }
+
+    #[test]
+    fn compact_pair_notes_stay_put_across_rounds() {
+        // The compact route keeps every note the source carried, in block form, and its own output
+        // re-parses to the same tree: a `//` comment on a line of its own would be re-read as
+        // trailing the previous member, moving on the next round.
+        let ast = crate::from_json5("{a:1, 'b':2, /*c*/ d:3}").unwrap();
+        let once = to_json5_text(&ast).unwrap();
+        assert!(once.contains("/* c */"), "note dropped: {once}");
+        let twice = to_json5_text(&crate::from_json5(&once).unwrap()).unwrap();
+        assert_eq!(
+            once, twice,
+            "compact JSON5 moved its own comment on the second round"
+        );
+        let ast = crate::from_jsonc("{\"a\":1, /* Y */ \"b\":2}").unwrap();
+        let once = to_jsonc_text(&ast).unwrap();
+        let twice = to_jsonc_text(&crate::from_jsonc(&once).unwrap()).unwrap();
+        assert_eq!(
+            once, twice,
+            "compact JSONC moved its own comment on the second round"
+        );
+    }
+
+    #[test]
+    fn a_note_on_an_empty_flow_container_stays_put_across_rounds() {
+        // Shrunk counterexample from `fmt_pbt::prop_json5_writer_is_fixed_point`: a note on an empty
+        // mapping inside a sequence was printed on the line above, and the reader hands that shape
+        // back as an inline note, so round two moved it - `left: {"a":[// A\n{}]}` against
+        // `right: {"a":[{} // A\n]}`. The writer now emits it where the reader will report it.
+        let src = "{\"a\":[{} // A\n]}";
+        let once = to_json5_text(&crate::from_json5(src).unwrap()).unwrap();
+        assert!(once.contains('A'), "note dropped: {once}");
+        let twice = to_json5_text(&crate::from_json5(&once).unwrap()).unwrap();
+        assert_eq!(
+            once, twice,
+            "JSON5 moved the note on an empty container between rounds"
+        );
+        let once = to_jsonc_text(&crate::from_jsonc(src).unwrap()).unwrap();
+        let twice = to_jsonc_text(&crate::from_jsonc(&once).unwrap()).unwrap();
+        assert_eq!(
+            once, twice,
+            "JSONC moved the note on an empty container between rounds"
+        );
+    }
+
+    #[test]
     fn json5_restores_single_quoted_strings() {
         // PR #121: a JSON5 single-quoted string round-trips back to
         // single quotes; the strict / JSONC writers still emit double
@@ -784,5 +967,131 @@ mod tests {
         assert_eq!(once, twice, "not a fixed point:\n{once}\n{twice}");
         assert!(once.contains("0x1F"), "{once}");
         assert!(once.contains(".5"), "{once}");
+    }
+
+    #[test]
+    fn every_comment_position_survives_both_dialect_writers() {
+        // Issue #359's eleven positions, asserted on the **Rust route** (`from_jsonc` straight into the
+        // hub AST). The Python matrix in `tests/test_json.py` reaches the same shapes through
+        // `parse(from_jsonc(..))`, i.e. via a YAML text round trip, which re-attributes the note: the
+        // parsed key carries `Y` in `comment(standalone = false)` while the YAML route hands it over as
+        // a leading note. Deleting the key's line-end branch therefore left both suites green - found
+        // by mutation control, and the reason this test exists.
+        const CASES: [(&str, &str); 11] = [
+            ("// A\n{\"k\": 1}", "A"),
+            ("{\n  // B\n  \"k\": 1\n}", "B"),
+            ("{\"k\": 1 // C\n}", "C"),
+            ("{\"k\": /* D */ 1}", "D"),
+            ("{\"a\": [1, /* E */ 2]}", "E"),
+            ("{\"a\": [1, 2] /* T */}", "T"),
+            ("{\"a\": {\"b\": 1 /* G */}}", "G"),
+            ("{\"a\": 1, /* X */ \"b\": 2}", "X"),
+            ("{\"a\": 1, /* Y */ \"b\": [1, 2]}", "Y"),
+            ("{\"a\": 1, /* Z */ \"b\": {\"c\": 2}}", "Z"),
+            ("{\"k\": 1\n/* H */}", "H"),
+        ];
+        let mut dropped = Vec::new();
+        for (src, marker) in CASES {
+            let ast = crate::from_jsonc(src).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+            for (label, text) in [
+                ("jsonc pretty", to_jsonc_text_pretty(&ast, 2).unwrap()),
+                ("jsonc compact", to_jsonc_text(&ast).unwrap()),
+                ("json5 pretty", to_json5_text_pretty(&ast, 2).unwrap()),
+                ("json5 compact", to_json5_text(&ast).unwrap()),
+            ] {
+                if !text.contains(marker) {
+                    dropped.push(format!("{marker:?} lost by {label}: {text:?}"));
+                }
+            }
+        }
+        assert!(dropped.is_empty(), "dropped notes:\n{}", dropped.join("\n"));
+    }
+
+    #[test]
+    fn stacked_leading_notes_survive_both_layouts_and_reach_a_fixed_point() {
+        // The generated-tree fixed points in `fmt_pbt` never fill `decor` - `arb_node_meta` leaves it
+        // `None` - so a *stack* of leading notes, what `NodeDecor::push_leading_comment` exists for,
+        // was pinned only by a hand-written Python case on the YAML route.
+        //
+        // Four placements, not one: the first version of this test stacked notes only ahead of the
+        // document, which the root emission writes, so truncating the pair loop's stack to a single
+        // note passed it. Mutation control caught that, and the shapes below are the answer.
+        let mut failures = Vec::new();
+        for count in 1..=4usize {
+            let top: String = (0..count).map(|i| format!("// note {i}\n")).collect();
+            let inside: String = (0..count).map(|i| format!("  // note {i}\n")).collect();
+            let trailing: String = (0..count).map(|i| format!("// note {i}\n")).collect();
+            let flow: String = (0..count).map(|i| format!("// note {i} ")).collect();
+            let sources = [
+                ("above the document", format!("{top}{{\"k\": 1}}")),
+                ("above the key", format!("{{\n{inside}  \"k\": 1\n}}")),
+                (
+                    "above a collection value",
+                    format!("{{\"a\": 1, {flow}\n  \"b\": [1, 2]\n}}"),
+                ),
+                ("after the last member", format!("{{\"k\": 1\n{trailing}}}")),
+            ];
+            for (place, src) in sources {
+                let ast =
+                    crate::from_jsonc(&src).unwrap_or_else(|e| panic!("{src:?} must parse: {e}"));
+                let emitted = [
+                    (
+                        "jsonc pretty",
+                        2usize,
+                        to_jsonc_text_pretty(&ast, 2).unwrap(),
+                    ),
+                    ("jsonc compact", 0, to_jsonc_text(&ast).unwrap()),
+                    ("json5 pretty", 2, to_json5_text_pretty(&ast, 2).unwrap()),
+                    ("json5 compact", 0, to_json5_text(&ast).unwrap()),
+                ];
+                for (label, step, once) in emitted {
+                    for i in 0..count {
+                        if !once.contains(&format!("note {i}")) {
+                            failures.push(format!(
+                                "{label} lost note {i} of a stack of {count} {place}: {once:?}\nfrom {src:?}"
+                            ));
+                        }
+                    }
+                    let reread = if label.starts_with("jsonc") {
+                        crate::from_jsonc(&once)
+                    } else {
+                        crate::from_json5(&once)
+                    };
+                    let Ok(reread) = reread else {
+                        failures.push(format!(
+                            "{label} ({count} notes {place}) wrote text that will not re-read: {once:?}"
+                        ));
+                        continue;
+                    };
+                    // Measured, and left failing on purpose is not an option: the compact route is
+                    // not a fixed point once a node carries two or more notes, because it puts them
+                    // on one line and the reader's own rule - a same-line note owns the single inline
+                    // slot - then keeps only the last. `{/* note 0 *//* note 1 */"k":1}` re-reads with
+                    // one note, so the second round differs. That is issue #361, a separate root
+                    // cause from the slot blindness fixed here; the presence assertions above still
+                    // hold for the compact form, which is why they run for all four layouts.
+                    if step == 0 {
+                        continue;
+                    }
+                    let twice = match (step, label.starts_with("jsonc")) {
+                        (2, true) => to_jsonc_text_pretty(&reread, 2).unwrap(),
+                        (2, false) => to_json5_text_pretty(&reread, 2).unwrap(),
+                        (_, true) => to_jsonc_text(&reread).unwrap(),
+                        (_, false) => to_json5_text(&reread).unwrap(),
+                    };
+                    if once != twice {
+                        failures.push(format!(
+                            "{label} moved a stack of {count} notes {place}:\n  first:  {once:?}\n  second: {twice:?}"
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} stacked-note cases failed:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
     }
 }

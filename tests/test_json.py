@@ -7,6 +7,25 @@ import pytest
 
 import pyrs_yaml
 
+# Every position a JSONC comment can sit in, measured against `to_yaml` - which keeps all of them -
+# after `to_jsonc` and `to_json5` were found to drop three (issue #359). The dropped positions were
+# the two the pair loop never consulted: a standalone note on a mapping's *value* node, and a
+# line-end note carried by the *key* of a pair whose value is a collection. The writers read two of
+# four slots, so this table names all four.
+JSONC_COMMENT_POSITIONS = [
+    ('// A\n{"k": 1}', "A"),
+    ('{\n  // B\n  "k": 1\n}', "B"),
+    ('{"k": 1 // C\n}', "C"),
+    ('{"k": /* D */ 1}', "D"),
+    ('{"a": [1, /* E */ 2]}', "E"),
+    ('{"a": [1, 2] /* T */}', "T"),
+    ('{"a": {"b": 1 /* G */}}', "G"),
+    ('{"a": 1, /* X */ "b": 2}', "X"),
+    ('{"a": 1, /* Y */ "b": [1, 2]}', "Y"),
+    ('{"a": 1, /* Z */ "b": {"c": 2}}', "Z"),
+    ('{"k": 1\n/* H */}', "H"),
+]
+
 
 class TestFromDict:
     """Test from_dict function"""
@@ -214,6 +233,49 @@ class TestJsonDialects:
 
         assert json.loads(doc.to_jsonc()) == {"a": 1, "b": [1, 2]}
         assert json.loads(doc.to_json5()) == {"a": 1, "b": [1, 2]}
+
+    def test_jsonc_and_json5_keep_every_comment_position(self):
+        pyjson5 = pytest.importorskip("pyjson5", reason="reference JSON5 parser not installed")
+        missing = []
+        for src, marker in JSONC_COMMENT_POSITIONS:
+            doc = pyrs_yaml.parse(pyrs_yaml.from_jsonc(src))
+            # The hub must hold it first: a note lost on the way in is a different defect, and
+            # asserting it here keeps this test honest about which layer failed.
+            assert marker in doc.to_yaml(), f"the hub lost {marker!r}: {src!r}"
+            expected = pyjson5.loads(src)
+            for emit in (doc.to_jsonc, doc.to_json5):
+                # `indent=0` is the compact route, which used to keep the root node's leading note
+                # and drop the same shape one member deeper - so the positions are checked in both
+                # layouts, not just the default pretty one.
+                for layout, out in (("pretty", emit()), ("compact", emit(indent=0))):
+                    # Pretty writes a note on its own line as `// …`; the compact route has no line
+                    # to spare and uses `/* … */`, because a `//` there is re-read as trailing the
+                    # member it precedes - and two of them come back swapped (see `fmt_pbt`).
+                    if f"// {marker}" not in out and f"/* {marker} */" not in out:
+                        missing.append(f"{marker!r} dropped by {emit.__name__} ({layout}): {out!r}")
+                        continue
+                    # Printing the note is not enough - the text still has to parse, to the same
+                    # document, which is what rules out "emit it somewhere legal" at any position.
+                    assert pyjson5.loads(out) == expected, (
+                        f"{emit.__name__} ({layout}) output no longer reads back: {out!r}"
+                    )
+        assert not missing, "comment positions dropped:\n  " + "\n  ".join(missing)
+
+    def test_a_note_holding_the_block_terminator_cannot_end_its_own_comment(self):
+        """The compact route comments with `/* … */`, so a note carrying `*/` has to be neutralised.
+
+        Reachable without hostile intent: a YAML `#` note may contain `*/`, and writing it verbatim
+        between `/*` and `*/` closes the comment early - the document no longer parses, or worse,
+        parses to a different tree. The line-comment route keeps the text exactly.
+        """
+        pyjson5 = pytest.importorskip("pyjson5", reason="reference JSON5 parser not installed")
+        doc = pyrs_yaml.parse("# x*/y\na: 1\n")
+        assert "x*/y" in doc.to_yaml(), doc.to_yaml()
+        for emit in (doc.to_jsonc, doc.to_json5):
+            pretty, compact = emit(), emit(indent=0)
+            assert "x*/y" in pretty, pretty
+            assert pyjson5.loads(pretty) == {"a": 1}, pretty
+            assert pyjson5.loads(compact) == {"a": 1}, compact
 
 
 class TestJsonLoadFastPath:
