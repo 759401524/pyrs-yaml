@@ -3571,6 +3571,50 @@ Verified: 3 tests in `tests/test_ci_corpus_gates.py`, 11 with the YAML suite, `p
 run --all-files` clean, `check_line_endings.py` 0 (the new file arrived CRLF again and was
 normalised), and `ci.yml` parses with the three steps added to the coverage job.
 
+### (ce) A spec allowance the grammar does not grant (2026-10-12)
+
+The JSON gate stopped at the strict dialect's accept/reject boundary and said nothing about whether
+the two looser dialects stayed inside their own contracts. Measured over the same corpus: 95 valid
+JSON documents were accepted by both `load_jsonc` and `load_json5` (containment held, 0 violations),
+and JSON5 additionally accepted 30 documents that strict JSON refuses. Nineteen of those are what
+JSON5 is for - hex, `.5`, `5.`, single quotes, unquoted keys, trailing commas, comments. Eleven sat
+in one filename category: `number`.
+
+`[012]`, `[-01]`, `[-012]` were accepted. They should not be: JSON5's `DecimalIntegerLiteral` is
+`0 | NonZeroDigit DigitalDigits?`, the production RFC 8259 uses, and the dialect's extra room is in
+the *prefixes* the grammar actually grants: `0x` is accepted, while `0o17`, `0b101` and `0O17` are
+rejected here and by `pyjson5`. Leading zeros were never part of the latitude.
+`crates/pyrs-json/src/parser.rs` had the relaxation written explicitly, with a comment
+asserting "JSON5 tolerates a leading zero (`07` parses as decimal 7)" - and
+`json5_leading_zero_relaxed` pinned it as intended behavior. `pyjson5` rejects all three.
+
+So this was not an oversight that escaped review; it was a **documented decision resting on a claim
+that is not in the grammar**, and the test gave it the appearance of a verified contract. The
+relaxation is removed, the pinned test is inverted into
+`json5_rejects_leading_zeros_exactly_like_strict`, which also holds what the zero prefix may legally
+do (`0`, `-0`, `0.5`, `0e1`, `0E+1`, `0x0`, `0XFF`, `-0x1F`), rejects the octal and binary forms the
+grammar omits, and the corpus loosening drops 30 -> 27 with no containment violation.
+
+Three rules are now pinned that were only measured before: every valid JSON is accepted by both
+supersets; where `pyjson5` refuses an invalid document, `load_json5` must too (120+ cases, which is
+what found this); and JSONC may only differ from strict JSON where the text contains a `/`, since a
+comment is the whole of its claimed latitude. The last two are the shape of check that catches a
+*documented* wrongness, which no amount of internal agreement can catch - the parser, its comment
+and its test were all consistent with each other and all wrong about the spec.
+
+**One exemption, with the evidence rather than the authority.** `pyjson5` rejects `[0.e1]` while
+accepting `[1.e1]`. JSON5's numeric grammar is ECMAScript's, and `node -e "eval('0.e1')"` yields `0`
+(`1.e1` yields `10`), so the reference implementation is the outlier and the parser is right; the
+file is carried in a named `exempt` set inside the oracle test instead of the check being loosened
+or the divergence being "fixed" to match a bug. I had drafted an issue asking for a ruling on it,
+and dropped the draft once node answered the question - an open question worth filing is one a
+stronger oracle has not already closed.
+
+Verified: 5 tests in `tests/test_json_test_suite.py` (3 new), 51 pyrs-json nextest, 559 workspace
+nextest, 2489 Python tests, clippy and `cargo fmt --check` clean, and the negative control:
+restoring the old branch made the oracle test fail naming `n_number_-01.json`,
+`n_number_with_leading_zero.json` and `n_number_neg_int_starting_with_zero.json`.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
