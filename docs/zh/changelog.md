@@ -19,6 +19,17 @@ status: new
 
 #### 新增
 
+- **CI 开始在 Python 3.15 上跑套件。** — 正式版已发（devguide 版本表记首次发布于 2026-10-09，状态
+  `bugfix`），`3.15` classifier 与 `abi3t` + `abi3t-py315` 特性早已入库，abi3 wheel 也能装在 3.15 上
+  ——但从来没有任何作业在它上面跑过套件，于是版本是被宣称而非被验过的。`test` 现在覆盖 3.8-3.15（21
+  腿 → 24 腿）；`test-freethreaded` 从单解释器变成两条矩阵：`3.14t` 是装不上已发布 `abi3t` wheel 的
+  那个情形，`3.15t` 才是那份 wheel 的开始。README 两份与 `docs/*/installation.md` 同步改了说法，并解
+  释为何存在两个自由线程 wheel。3.15 两条腿只能由 CI 首次实测：本机 `uv` 还没提供 3.15 正式版构建。
+  三个竞品包（`ryaml`、`yaml-edit`、`yaml-rs`）已限在 3.15 以下：它们没有 3.15 wheel，钉住的 PyO3 又
+  拒绝该解释器，于是安装在本套件跑起来之前就死了 —— 这些对比套件现在在 3.15 上跳过。矩阵也不再
+  fail-fast：一条腿的失败曾取消了同批 22 条腿，那次运行对其他任何解释器都没能报告。— (details:
+  quality-ledger (ci))
+
 - **CI 作业不能再拿着从未下载的语料跑套件。** — `coverage` 作业调 `pytest tests/` 却没有任何
   clone 步骤，于是三个一致性套件（`yaml-test-suite`、`toml-test`、`JSONTestSuite`）在那里全部
   跳过，作业仍是绿的。`tests/test_ci_corpus_gates.py` 现在从 `tests/*.py` 对 `Reference/` 下什
@@ -143,6 +154,15 @@ status: new
   选择写进了测试，不靠运气。— (details: quality-ledger (bq))
 
 #### 变更
+
+- **覆盖率门禁不再重复跑一整套。** — `coverage` 作业自己建 venv、下载 ubuntu wheel、克隆三个语料，然
+  后把 `pytest tests/` 再跑一遍，解释器正是 `test` 已覆盖的 ubuntu/3.12。现在它只是那条腿上多一个
+  旗标（`--cov-fail-under=78` 不变），而三条克隆步骤进了共用的 composite action
+  (`.github/actions/fetch-corpora`)，由两个跑整套件的作业共用。这个形状恰好能掩盖克隆门禁要抓的漏洞
+  —— 什么都有，看起来像什么都没 —— 所以 `tests/test_ci_corpus_gates.py` 现在会跟着局部 `uses:` 走进
+  action 自己的步骤，并由新测试钉住两头：解析出的名字必须覆盖每个语料，路径无法解析时必须报出全部
+  缺失。把 action 目录改名会让三条测试变红，这正是解析在承重的证据。扇入 `needs:` 去掉了
+  `coverage`——拿它与文件里每个作业对比的门禁本就会要求这么改。— (details: quality-ledger (ci))
 
 - **`bytes` 值现在写成它本意的标签。** — 内建插件此前写出 `!binary`，那是一个*本地*标签。标准名是
   `!!binary`，于是本库写出的每个二进制文档对被它借用的那套库都读不出来；而 `{"d": b""}` 写出的是

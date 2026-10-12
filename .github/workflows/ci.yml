@@ -260,9 +260,13 @@ jobs:
     needs: [build, changes]
     if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     strategy:
+      # Measured reason: with the default `true`, one leg's failure cancelled 22 siblings mid-flight,
+      # so a run that reported a real problem could say nothing about every other interpreter it was
+      # supposed to characterise. A matrix exists to report per-cell results; cancelling them defeats it.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -292,36 +296,26 @@ jobs:
         shell: bash
         run: pip install dist/*.whl
 
-      - name: Download YAML Test Suite
-        shell: bash
-        run: |
-          if [ ! -d "Reference/yaml-test-suite" ]; then
-            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
-          fi
-
-      - name: Download toml-test corpus
-        shell: bash
-        run: |
-          if [ ! -d "Reference/toml-test" ]; then
-            git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
-          fi
-
-      # Without this the JSON suite silently `skipif`s and reports a green run that checked
-      # nothing, which is the failure mode `test_cjk_localisation_gate.py` exists to punish in the
-      # docs gate and `tests/test_json_test_suite.py` guards itself against by asserting the corpus
-      # unpacked at least 280 determinate cases.
-      - name: Download JSONTestSuite corpus
-        shell: bash
-        run: |
-          if [ ! -d "Reference/JSONTestSuite" ]; then
-            git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
-          fi
+      # Every corpus the Python suite reads lives under the untracked `Reference/`, and each suite
+      # `skipif`s its directory away, so a leg that fetches nothing reports a green run that checked
+      # nothing. Shared with `test-freethreaded` through one composite action; the pairing is enforced
+      # by `tests/test_ci_corpus_gates.py`, which resolves the action's own steps.
+      - name: Fetch conformance corpora
+        uses: ./.github/actions/fetch-corpora
 
       - name: Install Python test dependencies
         run: uv sync --group test --no-install-project
 
+      # The coverage gate used to be its own job: the same suite, the same three corpora, the same wheel,
+      # run a second time on ubuntu/3.12. Folding it into the leg that already runs that interpreter costs
+      # one extra flag instead of a duplicate fan-out, and the flag is why this one leg keeps `-v` off:
+      # `--cov-report=term-missing` is the readable half of the record.
       - name: Run Python tests
-        run: uv run pytest tests/ -v
+        run: >-
+          uv run pytest tests/
+          ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+              && '--cov=pyrs_yaml --cov-report=term-missing --cov-fail-under=78 -q'
+              || '-v' }}
 
       - name: Compliance summary
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
@@ -332,71 +326,6 @@ jobs:
           r = compute_compliance()
           print(f'Compliance: {r[\"rate\"]*100:.1f}% ({r[\"passed\"]}/{r[\"total\"]} passed)')
           " >> $GITHUB_STEP_SUMMARY
-
-  coverage:
-    needs: [build, changes]
-    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.0
-        with:
-          version: "latest"
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Create virtualenv
-        run: uv venv .venv
-
-      - name: Download abi3 wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: wheel-ubuntu-latest
-          path: dist/
-
-      - name: Install wheel
-        shell: bash
-        run: pip install dist/*.whl
-
-      # The coverage job runs the whole suite, so it needs every corpus the suite reads: without
-      # these three steps `test_yaml_suite.py`, `test_toml_test_suite.py` and
-      # `test_json_test_suite.py` each `skipif` away and the run reports full coverage of a suite that
-      # never touched a conformance corpus. `tests/test_ci_corpus_gates.py` enforces that pairing.
-      - name: Download YAML Test Suite
-        shell: bash
-        run: |
-          if [ ! -d "Reference/yaml-test-suite" ]; then
-            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
-          fi
-
-      - name: Download toml-test corpus
-        shell: bash
-        run: |
-          if [ ! -d "Reference/toml-test" ]; then
-            git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
-          fi
-
-      - name: Download JSONTestSuite corpus
-        shell: bash
-        run: |
-          if [ ! -d "Reference/JSONTestSuite" ]; then
-            git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
-          fi
-
-      - name: Install Python test dependencies
-        run: uv sync --group test --no-install-project
-
-      - name: Coverage report + gate
-        # Python wrapper coverage (Rust extension is measured separately).
-        # Gate prevents regression below the measured baseline (91%).
-        run: uv run pytest tests/ --cov=pyrs_yaml --cov-report=term-missing --cov-fail-under=78
 
   build:
     needs: [changes]
@@ -444,6 +373,13 @@ jobs:
     needs: [changes]
     if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Both free-threaded versions, for different reasons. `3.14t` is the one interpreter that
+        # cannot load the `abi3t` wheel this project publishes - `abi3t-py315` starts one version later -
+        # so it is the boundary publish.yml has to carry a dedicated `cp314t` artifact for. `3.15t` is
+        # the floor where that stable-ABI wheel begins, and nothing else in CI installs it.
+        python-version: ["3.14t", "3.15t"]
     steps:
       - uses: actions/checkout@v7
 
@@ -453,12 +389,12 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: freethreaded
+          key: freethreaded-${{ matrix.python-version }}
 
       - name: Set up free-threaded Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.14t"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.0
@@ -476,30 +412,10 @@ jobs:
           command: develop
           args: --release
 
-      - name: Download YAML Test Suite
-        shell: bash
-        run: |
-          if [ ! -d "Reference/yaml-test-suite" ]; then
-            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
-          fi
-
-      - name: Download toml-test corpus
-        shell: bash
-        run: |
-          if [ ! -d "Reference/toml-test" ]; then
-            git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
-          fi
-
-      # Without this the JSON suite silently `skipif`s and reports a green run that checked
-      # nothing, which is the failure mode `test_cjk_localisation_gate.py` exists to punish in the
-      # docs gate and `tests/test_json_test_suite.py` guards itself against by asserting the corpus
-      # unpacked at least 280 determinate cases.
-      - name: Download JSONTestSuite corpus
-        shell: bash
-        run: |
-          if [ ! -d "Reference/JSONTestSuite" ]; then
-            git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
-          fi
+      # The same pairing the `test` legs honour: this job runs the whole suite, so it owes every corpus
+      # the suite reads. `tests/test_ci_corpus_gates.py` derives the requirement from the tests themselves.
+      - name: Fetch conformance corpora
+        uses: ./.github/actions/fetch-corpora
 
       - name: Install Python test dependencies
         run: uv sync --group test --no-install-project
@@ -507,14 +423,14 @@ jobs:
       - name: Run Python tests
         run: uv run pytest tests/ -v
 
-  # Branch protection matches checks by name, and a matrix contributes one name per leg - 21 of
+  # Branch protection matches checks by name, and a matrix contributes one name per leg - 24 of
   # them here. Measured consequence, twice inside an hour: #298 was rebase-merged with
   # `test (windows-latest, 3.8)` never consulted (and that leg carried two checkers that cannot run on
   # the Python floor this package promises), and #299 went red on a formatter's unsquashed fix - a
   # check no merge decision consumes is a report, not a gate. This job is the single name to make
   # required: it waits on the whole test surface and turns it into one verdict.
   #
-  # It waits on *every* job in this workflow, not only the test matrix: a fan-in over 3 of 11 names
+  # It waits on *every* job in this workflow, not only the test matrix: a fan-in over 3 of the 11 names
   # would let a red `clippy`, `no_std`, MSRV or property-tier merge exactly as before. Adding a job
   # here without adding it to the fan-in reddens
   # `tests/test_matrix_verdict_gate.py::test_the_fan_in_waits_on_every_job_in_the_workflow`, so the
@@ -523,7 +439,7 @@ jobs:
   matrix-verdict:
     name: Test matrix (all legs)
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [changes, docs-gates, rust-lint, property-tier, msrv-check, no-std-check, build, test, coverage, test-freethreaded, compliance-report, i18n-check]
+    needs: [changes, docs-gates, rust-lint, property-tier, msrv-check, no-std-check, build, test, test-freethreaded, compliance-report, i18n-check]
     runs-on: ubuntu-latest
     steps:
       # No checkout of the tree is needed for the verdict itself, but the checker lives in

@@ -3654,6 +3654,76 @@ separately measured at 95 valid JSONTestSuite documents with 0 disagreements for
 stdlib `json`; pinning that as a gate is deliberately not in this change (different root cause: a
 missing gate, not a wrong value).
 
+### (ci) Python 3.15 legs, and the duplicate suite run that went with them (2026-10-12)
+
+Checked before changing anything: the release is real. The devguide version table records 3.15 with
+a first release of 2026-10-09 and status `bugfix`, so it is out, not scheduled. Also already in
+place, and worth recording so nobody adds it twice: the `3.15` trove classifier in `pyproject.toml`,
+the `abi3t` + `abi3t-py315` feature pair in `crates/pyrs-yaml/Cargo.toml`, and the docs' claim that
+one ABI3 wheel spans "Python 3.8 through 3.15". What did not exist was any job that ran the suite on
+it.
+
+Three gaps, now closed:
+
+- `test` matrix `"3.8" … "3.15"` (21 legs → 24). `requires-python` already allowed 3.15 and the abi3
+  wheel installs on it, so the version was *claimed* while untested.
+- `test-freethreaded` went from one interpreter to a two-leg matrix, because the two free-threaded
+  versions are different cases: `3.14t` is the one interpreter that cannot load the published
+  `abi3t` wheel (`abi3t-py315` starts one version later), and `3.15t` is the floor where that wheel
+  applies - which nothing in CI installed before.
+- The published-version prose followed: README pair and `docs/*/installation.md` now name 3.15t and
+  explain why two free-threaded wheels exist.
+
+The duplication the same audit found was bigger than the missing version. `coverage` was a separate
+job that built a venv, downloaded the ubuntu wheel, cloned all three corpora and ran the whole
+suite - a second time, on the interpreter `test` already covered (ubuntu/3.12). It is now one flag
+on that leg (`--cov=pyrs_yaml --cov-report=term-missing --cov-fail-under=78`), which keeps the gate
+and drops a full duplicate fan-out. The clone steps moved into one composite action
+(`.github/actions/fetch-corpora`) used by both whole-suite jobs.
+
+That refactor is exactly where a gate can go quietly vacuous, and it is why the two gate files
+changed rather than the workflow alone. `tests/test_ci_corpus_gates.py` matched corpus names against
+a job's step names; behind a single `uses:` step those names disappear, so a job fetching everything
+would have looked like a job fetching nothing. The derivation now follows a local `uses:` into the
+action's own steps, and `test_a_local_action_step_reports_the_steps_it_hides` pins both edges of
+that: the resolved names must cover every corpus, and an unresolvable path must report every corpus
+missing. Mutation check: renaming the action directory reds three tests with
+`corpus-blind jobs in ci.yml`, so the resolution is load-bearing and not decoration. On the fan-in
+side, dropping `coverage` from `needs:` was forced by
+`test_the_fan_in_waits_on_every_job_in_the_workflow` (it compares the list against every job in the
+file), and the stale hard-coded `{"test", "test-freethreaded", "coverage"}` subset assertion was
+updated with it.
+
+Three limits, stated rather than left for the next reader to rediscover:
+
+- The 3.15 legs cannot be measured locally: `uv python list` on this machine offers `3.15.0rc2`, GIL
+  and free-threaded, but no final 3.15 build. CI is therefore the first real run of both, and a red
+  there should be read as an untested-interpreter finding, not a flake.
+- The optional cross-library dependencies stay capped at `python_version < '3.14'` (numpy, orjson,
+  ujson, python-rapidjson, pyjson5), so on 3.15 those suites `importorskip` away - the same as on
+  3.14. The new leg is an engine-and-conformance leg, not a cross-library one. The caps were not
+  relaxed because no evidence was gathered that those projects ship 3.15 wheels; relaxing markers on
+  a guess is how a matrix turns into a resolution failure.
+- `push` to `main` still does not re-run the suite. The heavy legs are gated on
+  `github.event_name != 'push'` deliberately (measured: a rebase merge lands the identical tree the
+  PR verified, so the push run is a second identical ~1h spend), so "full suite on push" stays false
+  by design while `main-gate` keeps the branch history current.
+
+The first 3.15 run then taught two more things, both fixed in the same pass.
+
+- The competitor packages the comparison suites use cannot be installed on 3.15 at all: `uv sync`
+  died on `ryaml==0.5.1`, which ships no 3.15 wheel, and building its sdist fails in `pyo3-ffi
+  v0.26.0` with `the configured Python interpreter version (3.15) is newer than PyO3's maximum
+  supported version`. Our own abi3 wheel installed fine - the failure was in the optional comparison
+  group, and it killed the leg before our suite could run. `ryaml`, `yaml-edit` and `yaml-rs` are
+  therefore capped `python_version < '3.15'`, the treatment `numpy`, `orjson`, `ujson`,
+  `python-rapidjson` and `pyjson5` already had for 3.14, so those suites `importorskip` on 3.15
+  instead of breaking the install. Relax the caps when upstream ships a pyo3 that accepts 3.15.
+- The matrix had `fail-fast` at its default, so that one leg's failure cancelled 22 siblings in
+  flight and the run reported nothing about any other interpreter - the opposite of what a per-cell
+  matrix is for. It is now `fail-fast: false`, which is also what makes a future 3.15 regression
+  read as one red cell among twenty-three green ones rather than as twenty-four unknowns.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

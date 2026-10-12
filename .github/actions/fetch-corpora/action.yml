@@ -1,0 +1,38 @@
+name: Fetch conformance corpora
+description: >-
+  Clone every conformance corpus the Python suite reads from `Reference/`. The directory is
+  untracked, and each corpus test `skipif`s its own directory away - a job that fetches nothing
+  therefore reports a green run that checked nothing, which is the failure mode
+  `tests/test_ci_corpus_gates.py` exists to refuse.
+
+# Shared by the jobs that run the whole suite (`test`, `test-freethreaded`). The step names below are
+# load-bearing: that gate matches a corpus name against the step names of the job, so renaming a step
+# into something unrecognisable turns a passing check into a silent skip. Add a corpus-reading test
+# without adding its clone here and the gate goes red on the next run, which is the point.
+runs:
+  using: composite
+  steps:
+    - name: Download YAML Test Suite
+      shell: bash
+      run: |
+        if [ ! -d "Reference/yaml-test-suite" ]; then
+          git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+        fi
+
+    - name: Download toml-test corpus
+      shell: bash
+      run: |
+        if [ ! -d "Reference/toml-test" ]; then
+          git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
+        fi
+
+    # Without this the JSON suite silently `skipif`s and reports a green run that checked
+    # nothing, which is the failure mode `test_cjk_localisation_gate.py` exists to punish in the
+    # docs gate and `tests/test_json_test_suite.py` guards itself against by asserting the corpus
+    # unpacked at least 280 determinate cases.
+    - name: Download JSONTestSuite corpus
+      shell: bash
+      run: |
+        if [ ! -d "Reference/JSONTestSuite" ]; then
+          git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
+        fi

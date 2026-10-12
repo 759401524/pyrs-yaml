@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **CI runs the suite on Python 3.15.** — The release is out (first release 2026-10-09, status
+  `bugfix` in the devguide table), the `3.15` trove classifier and the `abi3t` + `abi3t-py315`
+  feature pair were already committed, and the abi3 wheel installs on 3.15 - but no job had ever
+  executed the suite there, so the version was claimed while untested. `test` now spans 3.8-3.15 (21
+  legs → 24), and `test-freethreaded` became a two-leg matrix rather than one interpreter: `3.14t`
+  is the case that cannot load the published `abi3t` wheel, `3.15t` is the floor where it applies.
+  The README pair and `docs/*/installation.md` now say the same and explain why two free-threaded
+  wheels exist. The 3.15 legs are measured by CI, not locally: this box's `uv` offers no final 3.15
+  build yet. Three competitor packages (`ryaml`, `yaml-edit`, `yaml-rs`) are capped below 3.15: they
+  ship no 3.15 wheel and their pinned pyo3 refuses the interpreter, so the install died before the
+  suite could run - those comparison suites now skip on 3.15 instead. The matrix also stopped
+  failing fast, after one leg's failure cancelled 22 siblings and the run reported nothing about any
+  other interpreter. — (details: quality-ledger (ci))
+
 - **A CI job can no longer run the suite over corpora it never downloaded.** — `coverage` invoked
   `pytest tests/` with no clone step, so all three conformance suites (`yaml-test-suite`,
   `toml-test`, `JSONTestSuite`) skipped there and the job still reported green.
@@ -166,6 +180,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (details: quality-ledger (bq))
 
 ### Changed
+
+- **The coverage gate stopped duplicating a whole suite run.** — `coverage` created its own
+  virtualenv, downloaded the ubuntu wheel, cloned all three corpora and ran `pytest tests/` a second
+  time on the interpreter `test` already covered (ubuntu/3.12). It is now one flag on that leg, with
+  the same `--cov-fail-under=78`, and the three clone steps moved into a shared composite action
+  (`.github/actions/fetch-corpora`) used by both whole-suite jobs. That shape can hide the very gap
+  the clone gate exists to catch - a job fetching everything looks like one fetching nothing - so
+  `tests/test_ci_corpus_gates.py` now follows a local `uses:` into the action's own steps, and a new
+  test pins both edges: resolved names must cover every corpus, an unresolvable path must report
+  every corpus missing. Renaming the action directory reds three tests, which is what proves the
+  resolution is load-bearing. The fan-in `needs:` lost `coverage`, as the gate comparing it against
+  every job in the file requires. — (details: quality-ledger (ci))
 
 - **A `bytes` value is written as the tag it means.** — the built-in plugin dumped `!binary`, a
   *local* tag. The standard name is `!!binary`, so every document this library wrote with binary
