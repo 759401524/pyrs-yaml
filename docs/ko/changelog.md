@@ -71,6 +71,19 @@ status: new
   개선은 변동으로 세지 않는다. 허용치는 그대로이고 기준선 값도 하나도 옮기지 않았다.
   — (details: quality-ledger (bv), (by))
 
+- **베이스라인 갱신 잡은 어떤 상향이 의도된 것인지 지시받을 수 있다.** — `ir_gate.py --update`는
+  베이스라인 스스로 강제하는 선을 넘어 나빠지는 시나리오를 이름으로 지목하지 않으면 쓰지 않는다.
+  그런데 `.github/workflows/ir-baseline.yml`은 맨 명령만 실행했다: 수치를 강제 이미지로 옮기려고
+  존재하는 잡이, 어떤 변경이 그 비용을 낼 의도일 때 오히려 옮기지 못했다. 2026-10-12 실측, #360
+  head에서 dispatch하면 두 harness를 빌드하고 21개 시나리오를 재고 모든 표본을 출력한 뒤 "`--update`
+  would move 3 scenario(s) past the 0.5% line"으로 끝나며 아무것도 쓰지 않았다. 이제 잡은 선택 입력
+  `accept_drift`(공백 또는 줄바꿈으로 구분한 시나리오 이름, 하나마다 `--accept-drift` 인자 하나)를
+  받고, 비워 두면 종래대로 맨 `--update`가 실행되므로 거부가 기본값으로 남고 로그가 어느 쪽을
+  실행했는지 말한다. `tests/test_ir_baseline_workflow.py`에 검사 3개를 추가하고 각각 변이 테스트로
+  확인했다: 인자를 무력화하면 `test_the_input_is_actually_passed_to_the_guard`만 빨개지고,
+  `to_json_medium`을 반복문에 하드코딩하면 `test_an_empty_input_keeps_the_refusal`만 빨개진다.
+  베이스라인 수치도 허용 오차도 움직이지 않았다. — (자세히: quality-ledger (cj))
+
 - **YAML 주석·앵커·태그가 왕복하며 모든 시드를 검사한다.** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` 는 커밋된 시드 corpus 를 매 `cargo nextest run` 에
   재생하고, 해석기가 기록한 주석이 모두 출력 텍스트에 나타나는지 요구합니다. 왕복 검사 기준은 텍스트

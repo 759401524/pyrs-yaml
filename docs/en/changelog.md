@@ -76,6 +76,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drift to the job log, and never counts an improvement as drift. The tolerance is unchanged and no
   value moved. — (details: quality-ledger (bv), (by))
 
+- **The baseline refresh job can be told which move is intended.** — `ir_gate.py --update` refuses
+  to write a scenario that moves up past the line the baseline itself enforces unless that scenario
+  is named, and `.github/workflows/ir-baseline.yml` ran the bare command: the job that exists to
+  move numbers onto the enforcing image could not move them when a change was meant to pay for one.
+  Measured 2026-10-12, a dispatch at the #360 head built both harnesses, measured all 21 scenarios,
+  printed every sample, then exited on "`--update` would move 3 scenario(s) past the 0.5% line" with
+  nothing written. The job now takes an optional `accept_drift` input - space- or newline-separated
+  scenario names, one `--accept-drift` flag each - while an empty input keeps the plain `--update`,
+  so refusing stays the default and the log says which of the two ran. Three tests added to
+  `tests/test_ir_baseline_workflow.py`, each proven by mutation: making the flag inert reddens
+  `test_the_input_is_actually_passed_to_the_guard` alone, and hard-coding `to_json_medium` into the
+  loop reddens `test_an_empty_input_keeps_the_refusal` alone. No baseline value and no tolerance
+  moved. — (details: quality-ledger (cj))
+
 - **YAML comments, anchors and tags survive a round trip, gated on every seed.** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` replays the committed seed corpus on every
   `cargo nextest run` and requires every note the reader recorded to appear in the emitted text. The

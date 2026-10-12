@@ -40,6 +40,14 @@ on:
           Set it (e.g. `1.99.0`) only to move the pin deliberately.
         required: false
         default: ""
+      accept_drift:
+        description: >-
+          Space- or newline-separated scenario names whose movement past the tolerance is
+          intended, one --accept-drift flag each. Leave empty for a refresh that may only move
+          numbers inside the line the baseline itself enforces - which is the default because
+          refusing is the point of the guard.
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -108,7 +116,30 @@ jobs:
           grep -m1 'model name' /proc/cpuinfo || true
 
       - name: Measure and rewrite the baseline
-        run: python3 scripts/ir_gate.py --update
+        # `ir_gate.py --update` refuses to write a file that moves a scenario up past the line the
+        # baseline itself enforces, unless that scenario is named (`drift_report`, added in #345). The
+        # guard is right and the channel could not honour it: measured on 2026-10-12, a dispatch on the
+        # #360 head ran the whole measurement, printed all twenty-one samples, and then exited on
+        # "--update would move 3 scenario(s) past the 0.5% line" with nothing written. A refresh that
+        # is meant to record an intended cost was therefore impossible to produce here, which is the
+        # only way a baseline can be moved by the change that grew it instead of around it. An empty
+        # input keeps the plain `--update`: the refusal stays the default, and a name that matches no
+        # scenario the guard reported is simply unused, so a typo redds the job rather than passing.
+        env:
+          ACCEPT_DRIFT: ${{ inputs.accept_drift }}
+        run: |
+          set -euo pipefail
+          read -ra names <<< "$ACCEPT_DRIFT"
+          args=()
+          for name in "${names[@]+"${names[@]}"}"; do
+            args+=(--accept-drift "$name")
+          done
+          if [ ${#args[@]} -gt 0 ]; then
+            echo "accepting drift for ${#args[@]} scenario(s): ${names[*]}"
+          else
+            echo "no scenario named: any move past the tolerance will refuse to be written"
+          fi
+          python3 scripts/ir_gate.py --update "${args[@]+"${args[@]}"}"
 
       - name: What moved
         # Numbers travel with a review. A human reads this before committing, because the file
