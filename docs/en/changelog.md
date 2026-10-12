@@ -289,6 +289,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **`to_jsonc` and `to_json5` no longer drop comments the document carries.** — Of the eleven
+  positions a JSONC comment can occupy, three were printed by `to_yaml` and lost by both dialect
+  writers: a standalone note on a pair's value node, a line-end note on its key, and a note after
+  the last member. The mapping loop read two of the four slots, and the text stayed valid JSONC,
+  which is what made the loss silent. The pretty route now prints the two missing slots above the
+  pair; the compact route comments with `/* … */` instead, because a `//` given its own line inside
+  a flow container is re-read as trailing the member it precedes - and two of them come back
+  swapped - which the writer's fixed point refuses. A note whose text contains `*/` is neutralised
+  in the compact spelling so it cannot close its own comment. — (details: quality-ledger (cg))
+
 - **A Python integer wider than 64 bits no longer leaves the dumper as a float.** —
   `safe_dump({"k": 10 ** 30})` wrote `k: 1000000000000000000000000000000.0`: the fallback meant for
   protocol-convertible types called `extract::<f64>()`, which succeeds on every `PyLong`, so the
