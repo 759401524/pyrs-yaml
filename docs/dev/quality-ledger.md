@@ -3654,6 +3654,106 @@ separately measured at 95 valid JSONTestSuite documents with 0 disagreements for
 stdlib `json`; pinning that as a gate is deliberately not in this change (different root cause: a
 missing gate, not a wrong value).
 
+### (cg) A writer that read two of four comment slots (2026-10-12)
+
+The JSONC writer had no external oracle while JSON5 did, so the plan was to pin one. Building it
+meant enumerating where a JSONC comment can sit, and three of the eleven positions came back empty
+from `to_jsonc` and `to_json5` while `to_yaml` printed them - the hub held the note, the dialect
+writer dropped it, and the emitted text stayed valid JSONC, which is what made the loss silent
+(issue #359).
+
+The AST has four slots per pair and the mapping loop consulted two: `emit_standalone_comment(key)`
+for the key's leading notes and `emit_inline_comment(value)` for the value's line-end note. The two
+it never read are where the dropped notes lived. Which slot a note lands in depends on the **route**
+that built the AST, and reading only one route gives the wrong picture: probed through
+`parse(from_jsonc(..))` - a YAML text round trip - `{"a": 1, /* X */ "b": 2}` appeared to put `X` on
+the value and `{"a": 1, /* Y */ "b": [1, 2]}` to put `Y` on the key, while the direct
+`from_jsonc(..)` route puts `X`, `Y` **and** `Z` in the pair key's line-end slot,
+`comment(standalone = false)`, which `leading_comments()` deliberately does not report. Stated
+plainly because it cost a blind spot: the Python table asserts the YAML route, so the branch
+carrying those three notes on the parsed route had no test until the mutation control below found
+it.
+
+The pretty route got the two missing slots, printed above the pair. The compact route could not use
+line comments at all: `//` eats the rest of a line that has no rest, and two counterexamples from
+`fmt_pbt` (which asserts the fixed point `to_x(parse(to_x(parse(v)))) == to_x(parse(v))` over
+generated trees) showed what that costs. First, a note on an element inside a flow sequence printed
+as its own line came back as one *trailing* the element - `[// A\n{}]` rewrote to `[{} // A\n]` - so
+the second round moved it. Second, with two notes on one pair, the reader handed them back swapped
+(`// 1` then `// 0` became `// 0` then `// 1`). Both are the same failure: in flow context
+  the reader decides placement, and a writer that spends line breaks is fighting it. Compact now
+  emits every note as `/* … */` - key notes before the key, value notes after the value - and both
+  properties pass.
+
+A note whose own text contains `*/` is neutralised to `* /` in the compact spelling, because writing
+it verbatim closes the comment early. That is reachable without hostile input - a YAML `#` note may
+contain `*/` - so the compact output re-reads the same *document* while the note text differs by one
+space; the line-comment route keeps it verbatim. Pinned by
+`test_a_note_holding_the_block_terminator_cannot_end_its_own_comment`.
+
+Verified: the 11-position table in `tests/test_json.py` runs against both writers in both layouts
+and requires each output to re-parse to the same document, not merely to contain the text; the same
+11 positions are asserted a second time in Rust
+(`every_comment_position_survives_both_dialect_writers`) on the direct `from_jsonc` route, both
+writers, pretty and compact; 4 new Rust writer tests; 564 workspace nextest including
+`prop_json_writers_are_fixed_points`, `prop_json5_writer_is_fixed_point` and the new
+`prop_pretty_json_writers_are_fixed_points`, which extends the generated-tree fixed point to the
+pretty route; 2496 Python tests; clippy `-D warnings`, `cargo fmt --check`, ruff and
+`prek --all-files` clean.
+
+Mutation control, and it earned its keep twice. Replacing `emit_key_block_notes(k, out)` with a
+discard failed `compact_pair_notes_stay_put_across_rounds`, and deleting the call outright failed to
+build as `dead_code`. Then blanking the key's line-end branch in `emit_pair_notes` left **both** the
+Python table and the pretty fixed-point property green: idempotence cannot see a note that is
+dropped on both rounds, and the Python route never reaches that slot. That blank is what produced
+the Rust matrix test above, and the new test names `X`, `Y` and `Z` as lost under it.
+
+What the new property still cannot see, named rather than implied: `arb_node_meta()` builds metadata
+with `decor: None` and a single `comment` slot, so generated trees exercise a *single* note per slot
+in either flavour, never a **stack** of leading notes (`decor.leading_comments` with two or more).
+Closing that by hand - `stacked_leading_notes_survive_both_layouts_and_reach_a_fixed_point` builds
+stacks of 1 to 4 in four positions on the direct `from_jsonc` route - found a defect the generator
+could not have: the **compact** route is not a fixed point for a node with two or more notes,
+because it writes them onto one line and the parser's own rule gives a same-line note the single
+inline slot, so all but the last survive only until the re-read (`{/* note 0 *//* note 1 */"k":1}`
+comes back with one note). Twelve measured cases, both dialects, stacks of 2 to 4, in the two
+positions inside an object; the pretty route is clean. Issue #361, with the two candidate fixes and
+their trade-offs - separate the notes in the compact writer, or let a run of same-line comments
+accumulate. The Rust test asserts presence in all four layouts and the fixed point in the pretty
+two; the skipped compact assertion is marked in the source so the follow-up un-skips it rather than
+re-deriving it.
+
+Stacked notes reaching the writers at all still rests on `test_stacked_jsonc_comments_all_survive`
+(Python, YAML route) for line comments; teaching the generator to fill `decor` would replace both.
+
+The instruction-count gate refuses this change, and not for the expected reason. Measured on the
+gate: `to_jsonc_medium +4.77%`, `to_json5_medium +3.78%`, `to_json_medium +0.94%` against a 0.50%
+tolerance. The first guess was redundant slot probing - four `has_notes()` calls per pair - so the
+loop was collapsed to one guard per node and re-measured: every number moved by under 100
+instructions, i.e. identical within pairing. The fixture's hub AST carries no notes at all
+(`bench_inputs.rs` records that), so those rounds write no comment text, and `to_json_medium` emits
+no comments and calls none of the note helpers yet rose by the same fraction as the dialect writers.
+What is left is layout and inlining in `write_value_inner`, which grew by four functions and a wider
+pair loop. Two routes remain undecided: make the dialect a const-generic parameter so the strict
+writer compiles the note machinery out, or accept the cost of no longer losing comments and
+re-baseline deliberately (`python scripts/ir_gate.py --update`). The PR is held for that ruling
+instead of merging under `--admin` or re-baselining as a side effect of a correctness fix - the same
+open question as #342, now with a second data point.
+
+Both attempts to shrink that cost were measured and refuted, so they are recorded rather than
+re-tried from memory. (1) Collapse the per-pair slot probes: three heads whose helper shapes
+differed (a guard per node, a guard per pair, guards merged into one call) measured **+4.77% /
++3.78% / +0.94% to the basis point**, so the probe count is not the variable. (2) Read the metadata
+bundle once per node instead of once per view - `CustomNode::meta` made public so a writer could
+take `Option<&NodeMeta>` and derive both views from one fetch. That made it **worse by four times**:
+`to_jsonc_medium +18.70%`, `to_json5_medium +17.22%`, while `to_json_medium` fell from +0.94% to
++0.53%. Reverted; the shipped shape is the one from (1). The reading is that passing a borrowed
+`NodeMeta` across the crate boundary costs more per node than the small accessors it replaced - the
+accessors inline and the reference-taking helpers do not - which also means the remaining drift is
+not removable by pruning probes. Whatever ruling is taken on the baseline should be taken with that
+measurement in hand, and the second option (a const-generic dialect parameter, so the strict writer
+never compiles the note machinery) is still untried.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
