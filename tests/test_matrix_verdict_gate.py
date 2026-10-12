@@ -88,7 +88,7 @@ def leg(result):
 
 
 def test_all_success_is_the_only_green(gate):
-    needs = {"test (ubuntu-latest, 3.8)": leg("success"), "coverage": leg("success")}
+    needs = {"test (ubuntu-latest, 3.8)": leg("success"), "test-freethreaded": leg("success")}
     assert gate.verdict(needs) == []
 
 
@@ -168,7 +168,7 @@ def test_the_fan_in_job_exists_and_waits_on_the_test_surface():
     needs = re.search(r"^\s*needs: \[([^\]]+)\]", job, re.M)
     assert needs, "the fan-in declares no needs"
     waited = {name.strip() for name in needs.group(1).split(",")}
-    assert {"test", "test-freethreaded", "coverage"} <= waited, waited
+    assert {"test", "test-freethreaded", "build"} <= waited, waited
     assert "toJSON(needs)" in job, "the verdict is not fed the legs' results"
     assert "check_matrix_verdict.py" in job, "the job does not run the checker"
 

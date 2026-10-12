@@ -10,7 +10,7 @@ status: new
 
 | :material-language-python: 要件 | 詳細 |
 |---|---|
-| **Python** | ≥ 3.8 (CPython)、3.14t free-threaded を含む |
+| **Python** | ≥ 3.8 (CPython)、free-threaded 3.14t と 3.15t を含む |
 | :material-monitor: **プラットフォーム** | Linux、macOS、Windows |
 | :material-hammer-wrench: **ビルド** | Rust ツールチェーン（ソースビルドのみ） |
 
@@ -34,9 +34,11 @@ cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
-## フリースレッド Python (cp314t)
+## フリースレッド Python (cp314t と cp315t)
 
-CPython 3.14t 向けのフリースレッド（GIL なし）ホイールは NumPy 統合を含みます。環境に NumPy がインストールされている場合、`safe_dump` / `from_dict` は `numpy.ndarray` 値を通常通りシリアライズします。NumPy が存在しない場合、統合は非アクティブになり、呼び出しはデフォルトのオブジェクトハンドラにフォールスルーします。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
+CPython 3.14t と 3.15t 向けのフリースレッド（GIL なし）ホイールは NumPy 統合を含みます。環境に NumPy がインストールされている場合、`safe_dump` / `from_dict` は `numpy.ndarray` 値を通常通りシリアライズします。NumPy が存在しない場合、統合は非アクティブになり、呼び出しはデフォルトのオブジェクトハンドラにフォールスルーします。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
+
+二つのフリースレッドホイールは作りが異なり、それが両方必要な理由です。フリースレッドビルドの安定 ABI（`abi3t`）は 3.15 から始まるため、`cp315t` 以降は ABI ホイールでカバーされます。3.14t はその ABI より前なので専用のホイールが必要で、バージョン別の成果物として公開されています。
 
 !!! note "NumPy は実行時に自動検出されます"
     NumPy 統合はすべてのホイール（GIL およびフリースレッド）にコンパイルされていますが、NumPy がインポート可能な場合にのみアクティブになります。NumPy がインストールされていない場合、`numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します（値が認識された型ではないため）。

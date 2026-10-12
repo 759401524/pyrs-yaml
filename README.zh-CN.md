@@ -82,7 +82,7 @@ $ pyq merge base.yaml head.yaml         # 右偏深度合并
 
 ## 环境要求
 
-- **支持的 Python 版本**（安装 wheel）：Python 3.8+（CPython；PyPy 和自由线程 3.14t wheel 也有发布）。abi3 wheel 意味着一个 wheel 覆盖所有支持的 Python 版本。
+- **支持的 Python 版本**（安装 wheel）：Python 3.8+（CPython；PyPy 和自由线程 3.14t、3.15t wheel 也有发布）。abi3 wheel 意味着一个 wheel 覆盖所有支持的 Python 版本。
 - **Rust 工具链**（仅从源码构建时）：Rust 1.96 或更高（MSRV，edition 2024）。这高于 PyO3 自身的基线（PyO3 0.29 需 rustc 1.83+），是为了 std API 余量而有意选择的。安装 wheel 的终端用户无需 Rust。
 
 ## 文档

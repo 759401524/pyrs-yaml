@@ -12,7 +12,7 @@ status: new
 
 | :material-language-python: Requirement | Details |
 |---|---|
-| **Python** | ≥ 3.8 (CPython), including 3.14t free-threaded |
+| **Python** | ≥ 3.8 (CPython), including free-threaded 3.14t and 3.15t |
 | :material-monitor: **Platform** | Linux, macOS, Windows |
 | :material-hammer-wrench: **Build** | Rust toolchain (for source builds only) |
 
@@ -36,9 +36,11 @@ cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
-### Free-Threaded Python (cp314t)
+### Free-Threaded Python (cp314t and cp315t)
 
-Free-threaded (no-GIL) wheels for CPython 3.14t include the NumPy integration. When NumPy is installed in the environment, `safe_dump` / `from_dict` serialize `numpy.ndarray` values normally; when NumPy is absent, the integration is inert and calls fall through to the default object handler. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
+Free-threaded (no-GIL) wheels for CPython 3.14t and 3.15t include the NumPy integration. When NumPy is installed in the environment, `safe_dump` / `from_dict` serialize `numpy.ndarray` values normally; when NumPy is absent, the integration is inert and calls fall through to the default object handler. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
+
+The two free-threaded wheels differ in how they are built, which is why both exist. The stable ABI for free-threaded builds (`abi3t`) starts at 3.15, so the `cp315t`-and-later case is covered by an ABI wheel; 3.14t predates that ABI and needs its own compiled wheel, so it is published as a version-specific artifact.
 
 !!! note "NumPy is auto-detected at runtime"
     The NumPy integration is compiled in on every wheel (GIL and free-threaded)

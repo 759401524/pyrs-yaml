@@ -10,7 +10,7 @@ status: new
 
 | :material-language-python: 要求 | 详情 |
 |---|---|
-| **Python** | ≥ 3.8 (CPython)，包括 3.14t free-threaded |
+| **Python** | ≥ 3.8 (CPython)，包括 free-threaded 3.14t 与 3.15t |
 | :material-monitor: **平台** | Linux、macOS、Windows |
 | :material-hammer-wrench: **构建** | Rust 工具链（仅源码构建需要） |
 
@@ -34,9 +34,11 @@ cd pyrs-yaml
 uv run --frozen maturin develop --release
 ```
 
-## 自由线程 Python (cp314t)
+## 自由线程 Python (cp314t 与 cp315t)
 
-CPython 3.14t 的自由线程（无 GIL）wheel 包含 NumPy 集成。当环境中安装了 NumPy 时，`safe_dump` / `from_dict` 正常序列化 `numpy.ndarray`；当 NumPy 不存在时，集成自动停用，调用回退到默认对象处理。GIL 构建（Python 3.8–3.15）保留完整的 ndarray 序列化支持。
+CPython 3.14t 与 3.15t 的自由线程（无 GIL）wheel 包含 NumPy 集成。当环境中安装了 NumPy 时，`safe_dump` / `from_dict` 正常序列化 `numpy.ndarray`；当 NumPy 不存在时，集成自动停用，调用回退到默认对象处理。GIL 构建（Python 3.8–3.15）保留完整的 ndarray 序列化支持。
+
+两个自由线程 wheel 的构建方式不同，这也是它们各自存在的原因。自由线程构建的稳定 ABI（`abi3t`）从 3.15 才开始，所以 `cp315t` 及更高版本由 ABI wheel 覆盖；3.14t 早于该 ABI，需要自己的专用 wheel，因此按版本单独发布。
 
 !!! note "NumPy 运行时自动检测"
     NumPy 集成编译进每个 wheel（GIL 和自由线程），但仅在 NumPy 可导入时激活。若未安装 NumPy，对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`（值不是受支持类型）。

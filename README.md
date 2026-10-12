@@ -83,7 +83,7 @@ Commands: `fmt` / `get` / `set` / `delete` / `rename` / `move` / `append` / `ins
 
 ## Requirements
 
-- **Supported Python versions** (installing wheels): Python 3.8+ (CPython; PyPy and free-threaded 3.14t wheels are also published). abi3 wheels mean one wheel covers all supported Python versions.
+- **Supported Python versions** (installing wheels): Python 3.8+ (CPython; PyPy and free-threaded 3.14t and 3.15t wheels are also published). abi3 wheels mean one wheel covers all supported Python versions.
 - **Rust toolchain** (building from source only): Rust 1.96 or later (MSRV, edition 2024). This is above PyO3's own baseline (rustc 1.83+ for PyO3 0.29) and is chosen deliberately for std API headroom — it keeps current stable APIs (e.g. `assert_matches!`, stabilized in 1.96) available without waiting for a future MSRV bump. End users installing wheels never need Rust.
 
 ## Documentation
