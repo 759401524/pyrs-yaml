@@ -3754,6 +3754,52 @@ not removable by pruning probes. Whatever ruling is taken on the baseline should
 measurement in hand, and the second option (a const-generic dialect parameter, so the strict writer
 never compiles the note machinery) is still untried.
 
+### (ch) A run of same-line comments used to erase itself (2026-10-12)
+
+Followed from (cg): the stacked-note test added there found that the compact dialect writers were
+not a fixed point for a node carrying two or more comments. The text was legal; the notes were
+simply gone on re-read:
+
+```text
+first:  "{/* note 0 *//* note 1 */\"k\":1}"
+second: "{/* note 1 */\"k\":1}"
+```
+
+The cause sat in the reader, not the writer. `attach_pending` classifies each comment by whether it
+began on a line of its own: standalone notes append to the leading list, a same-line note takes the
+single inline `comment` slot. Two same-line notes therefore overwrote each other, and the compact
+form
+
+- which never emits a line break inside a member - always writes a node's notes that way. Twelve
+measured cases: both dialects, stacks of 2 to 4, in the two positions inside an object; the pretty
+route was clean because it puts each note on its own line.
+
+Fixing the writer was considered and rejected by reasoning, not by a run. Putting each note on its
+own line does not look salvageable: the first note after `{` still shares that line, so it stays
+same-line while the rest become standalone, and the pair would re-read with the notes split across
+two slots - the shape that already oscillated once in (cg).
+
+So the reader changed: a run of more than one same-line comment now goes entirely to the leading
+list, in source order, `standalone = true`, the only slot that can hold a plurality. A lone
+same-line comment still owns the inline slot, so the spelling a human writes
+(`{"k": 1 // the port}`) is unchanged; `a_run_of_same_line_comments_keeps_every_note` pins both
+halves with the measured placement - both notes on the value's leading list, inline slot empty. The
+new branch is guarded by `pending.len() > 1` so a zero- or one-comment node pays a length test
+rather than a scan, in a function the `from_jsonc_medium` scenario runs per node.
+
+What it costs, recorded rather than hidden: with two or more comments on one line the writer can no
+longer tell which of them was same-line, so the pretty form renders all of them on their own lines.
+Nothing is dropped and nothing moves between rounds - the trade was loss versus positional flavour,
+and loss is the one the fidelity requirement refuses.
+
+Verified: 566 workspace nextest with the compact fixed point un-skipped in
+`stacked_leading_notes_survive_both_layouts_and_reach_a_fixed_point`, 2496 Python tests, clippy
+`-D warnings`, `cargo fmt --check`, ruff and `prek --all-files` exit 0. Mutation control earned its
+keep again here: the first version of the stacked test put its notes only ahead of the document,
+which the root emission writes, so truncating the pair loop's stack to one note passed both the
+Python matrix and the idempotence property - the four placements in the test are what that discovery
+produced.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

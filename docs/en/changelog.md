@@ -249,6 +249,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **Re-reading compact JSONC or JSON5 no longer erases a run of comments.** — A node introduced by
+  two or more same-line comments kept only the last: the reader gives a same-line note the single
+  inline slot, so each overwrote the one before. The compact writers emit a node's notes exactly
+  that way, so text this library wrote itself lost comments on being read back
+  (`{/* note 0 *//* note 1 */`) and the second round differed. Such a run now goes to the leading
+  list, which holds any number in source order; a lone same-line comment still owns the inline slot,
+  so the spelling a human writes is unchanged. The cost is one nuance, recorded: with several
+  comments on a line the writer can no longer tell which was same-line, so the pretty form puts each
+  on its own line. Nothing is dropped and nothing moves between rounds. — (details: quality-ledger
+  (ch))
+
 - **`to_jsonc` and `to_json5` no longer drop comments the document carries.** — Of the eleven
   positions a JSONC comment can occupy, three were printed by `to_yaml` and lost by both dialect
   writers: a standalone note on a pair's value node, a line-end note on its key, and a note after
