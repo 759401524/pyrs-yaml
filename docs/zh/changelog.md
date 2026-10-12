@@ -19,6 +19,13 @@ status: new
 
 #### 新增
 
+- **CI 作业不能再拿着从未下载的语料跑套件。** — `coverage` 作业调 `pytest tests/` 却没有任何
+  clone 步骤，于是三个一致性套件（`yaml-test-suite`、`toml-test`、`JSONTestSuite`）在那里全部
+  跳过，作业仍是绿的。`tests/test_ci_corpus_gates.py` 现在从 `tests/*.py` 对 `Reference/` 下什
+  么目录的引用推出语料清单，从谁调用 `pytest tests/` 推出作业清单，要求每个作业下载每个语料，
+  并在“删掉一个下载步骤却没人发现”时报错。三个 clone 步骤已补进 coverage 作业。— (details:
+  quality-ledger (cc))
+
 - **JSON 有了一致性语料门禁，并按“拒绝的形状”而非仅按“是否拒绝”检查。** —
   `tests/test_json_test_suite.py` 把 JSONTestSuite 的 283 个可判定用例送入严格的 RFC 8259
   加载器：95 个必须解析，188 个必须被拒绝；另有 35 个语料自身标为“实现自定义”的用例
