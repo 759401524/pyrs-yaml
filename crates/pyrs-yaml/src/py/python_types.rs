@@ -14,7 +14,7 @@ use crate::parser::yaml::types::YamlType;
 use indexmap::IndexMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytesMethods, PyDict, PyList, PyString, PyStringMethods};
+use pyo3::types::{PyBytesMethods, PyDict, PyInt, PyList, PyString, PyStringMethods};
 use std::sync::Arc;
 
 /// 将 Python 字符串零拷贝借用后转 `Arc<str>`：`encode_utf8` 产出 UTF-8 `PyBytes`
@@ -40,6 +40,17 @@ pub(crate) fn float_to_yaml_string(f: f64) -> String {
         s.push_str(".0");
     }
     s
+}
+
+/// Whether `text` is exactly what `str()` produces for a CPython `int`: an optional leading `-`,
+/// then digits and nothing else.
+///
+/// The writers use it to tell a genuine integer spelling from an `int` subclass that overrides
+/// `__str__` (`IntEnum` prints `<Klass.MEMBER>` on some versions), so such a subclass keeps the
+/// route it always had instead of gaining a scalar text the reader could never resolve.
+pub(crate) fn is_decimal_digits(text: &str) -> bool {
+    let body = text.strip_prefix('-').unwrap_or(text);
+    !body.is_empty() && body.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// 将 Python 对象递归转换为 `CustomNode` AST 节点，支持 dict/list/str/int/float/bool/None/ndarray。
@@ -102,6 +113,18 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
                 ..Default::default()
             },
         });
+    }
+
+    // A Python int wider than `i64` has to be caught before the `f64` extraction below: that one
+    // *succeeds* on every `PyLong`, so a 30-digit integer used to leave the hub as
+    // `123456789012345680000000000000.0` - a float spelling of a different number than the caller
+    // passed. YAML puts no width limit on integers; the reader's i64 cap is a separate, documented
+    // boundary. An `int` subclass whose text is not a number falls through to the old behaviour.
+    if obj.cast::<PyInt>().is_ok() {
+        let digits = py_string_to_arc(&obj.str()?)?;
+        if is_decimal_digits(&digits) {
+            return Ok(CustomNode::plain_scalar(digits));
+        }
     }
 
     if let Ok(f) = obj.extract::<f64>() {

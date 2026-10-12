@@ -27,7 +27,7 @@ use crate::parser::yaml::schema::needs_quotes;
 use crate::py::convert::format_i18n_error;
 #[cfg(feature = "numpy")]
 use crate::py::ndarray::ndarray_to_node;
-use crate::py::python_types::{float_to_yaml_string, py_string_to_arc};
+use crate::py::python_types::{float_to_yaml_string, is_decimal_digits, py_string_to_arc};
 use crate::py::type_registry;
 #[cfg(feature = "numpy")]
 use crate::serializer::{SerializeOptions, to_yaml_with_options};
@@ -36,6 +36,7 @@ use crate::serializer::{
     write_single_quoted_scalar,
 };
 use crate::{YamlMaxDepthError, YamlTypeError};
+use std::sync::Arc;
 
 const MAX_DEPTH: usize = 1000;
 const WIDTH: usize = 80;
@@ -59,6 +60,8 @@ enum Kind {
 enum ScalarValue {
     Bool(bool),
     Int(i64),
+    /// A Python int too wide for `i64`, kept as the exact decimal text `str()` produced.
+    BigInt(Arc<str>),
     Float(f64),
 }
 
@@ -88,6 +91,16 @@ fn extract_scalar_value(obj: &Bound<'_, PyAny>) -> PyResult<Option<ScalarValue>>
         && let Ok(f) = obj.extract::<f64>()
     {
         return Ok(Some(ScalarValue::Float(f)));
+    }
+    // A native int that did not fit `i64` must not reach the `f64` fallback below: `extract::<f64>()`
+    // succeeds on *every* `PyLong`, so it captured wide integers and emitted a float spelling of a
+    // different value (`123456789012345678901234567890` left as `1.2345678901234568e+29`, which also
+    // silently re-typed wide integer *keys*). YAML integers have no width limit on the writer side.
+    if obj.cast::<pyo3::types::PyInt>().is_ok() {
+        let digits = py_string_to_arc(&obj.str()?)?;
+        if is_decimal_digits(&digits) {
+            return Ok(Some(ScalarValue::BigInt(digits)));
+        }
     }
     // Fallback via extract for protocol-convertible types (numpy scalars,
     // Python big ints that overflow i64, etc.).
@@ -247,6 +260,7 @@ impl DirectWriter {
             match v {
                 ScalarValue::Bool(b) => self.output.push_str(if b { "true" } else { "false" }),
                 ScalarValue::Int(n) => self.output.push_str(&n.to_string()),
+                ScalarValue::BigInt(digits) => self.output.push_str(&digits),
                 ScalarValue::Float(f) => {
                     if !type_registry::is_empty()
                         && let Some(result) = type_registry::try_to_yaml(py, &obj.clone().unbind())
@@ -287,6 +301,7 @@ impl DirectWriter {
                     self.output.push_str(if b { "true" } else { "false" })
                 }
                 Some(ScalarValue::Int(n)) => self.output.push_str(&n.to_string()),
+                Some(ScalarValue::BigInt(digits)) => self.output.push_str(&digits),
                 Some(ScalarValue::Float(f)) => self.output.push_str(&float_to_yaml_string(f)),
                 None => return Err(self.unsupported_type()),
             },
@@ -395,6 +410,15 @@ impl DirectWriter {
                     Ok(if b { "true" } else { "false" }.to_string())
                 } else if let Ok(n) = key.extract::<i64>() {
                     Ok(n.to_string())
+                } else if key.cast::<pyo3::types::PyInt>().is_ok()
+                    && let Ok(text) = key.str()
+                    && is_decimal_digits(&text.to_string())
+                {
+                    // A wide integer sorts on the digits it will be written as, which is what the
+                    // node-side comparator sees; ordering it by the `f64` fallback would sort on a
+                    // rounded value the output never contains. Non-int objects keep the old route,
+                    // because every Python object has a `str`.
+                    Ok(text.to_string())
                 } else if let Ok(f) = key.extract::<f64>() {
                     Ok(float_to_yaml_string(f))
                 } else {
