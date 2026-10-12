@@ -3732,27 +3732,64 @@ tolerance. The first guess was redundant slot probing - four `has_notes()` calls
 loop was collapsed to one guard per node and re-measured: every number moved by under 100
 instructions, i.e. identical within pairing. The fixture's hub AST carries no notes at all
 (`bench_inputs.rs` records that), so those rounds write no comment text, and `to_json_medium` emits
-no comments and calls none of the note helpers yet rose by the same fraction as the dialect writers.
-What is left is layout and inlining in `write_value_inner`, which grew by four functions and a wider
-pair loop. Two routes remain undecided: make the dialect a const-generic parameter so the strict
-writer compiles the note machinery out, or accept the cost of no longer losing comments and
-re-baseline deliberately (`python scripts/ir_gate.py --update`). The PR is held for that ruling
-instead of merging under `--admin` or re-baselining as a side effect of a correctness fix - the same
-open question as #342, now with a second data point.
+no comments and calls none of the note helpers yet rose at all - not by the same fraction as the
+dialect writers (+0.94% against +4.77%, the phrase written here first was wrong), but by enough to
+clear the line. What is left is layout and inlining in `write_value_inner`, which grew by four
+functions and a wider pair loop. Two routes were left open: make the dialect a const-generic
+parameter so the strict writer compiles the note machinery out, or accept the cost of no longer
+losing comments and re-baseline deliberately (`python scripts/ir_gate.py --update`). The PR is held
+for that ruling instead of merging under `--admin` or re-baselining as a side effect of a
+correctness fix - the same open question as #342, now with a second data point. The first route
+has since been built and measured; (3) below closes it.
 
-Both attempts to shrink that cost were measured and refuted, so they are recorded rather than
-re-tried from memory. (1) Collapse the per-pair slot probes: three heads whose helper shapes
-differed (a guard per node, a guard per pair, guards merged into one call) measured **+4.77% /
-+3.78% / +0.94% to the basis point**, so the probe count is not the variable. (2) Read the metadata
-bundle once per node instead of once per view - `CustomNode::meta` made public so a writer could
-take `Option<&NodeMeta>` and derive both views from one fetch. That made it **worse by four times**:
-`to_jsonc_medium +18.70%`, `to_json5_medium +17.22%`, while `to_json_medium` fell from +0.94% to
-+0.53%. Reverted; the shipped shape is the one from (1). The reading is that passing a borrowed
-`NodeMeta` across the crate boundary costs more per node than the small accessors it replaced - the
-accessors inline and the reference-taking helpers do not - which also means the remaining drift is
-not removable by pruning probes. Whatever ruling is taken on the baseline should be taken with that
-measurement in hand, and the second option (a const-generic dialect parameter, so the strict writer
-never compiles the note machinery) is still untried.
+The two probe-side attempts to shrink that cost were measured and refuted, so they are recorded
+rather than re-tried from memory. (1) Collapse the per-pair slot probes: three heads whose helper
+shapes differed (a guard per node, a guard per pair, guards merged into one call) measured
+**+4.77% / +3.78% / +0.94% to the basis point**, so the probe count is not the variable. (2) Read
+the metadata bundle once per node instead of once per view - `CustomNode::meta` made public so a
+writer could take `Option<&NodeMeta>` and derive both views from one fetch. That made it **worse by
+four times**: `to_jsonc_medium +18.70%`, `to_json5_medium +17.22%`, while `to_json_medium` fell
+from +0.94% to +0.53%. Reverted; the shipped shape is the one from (1). The reading is that passing
+a borrowed `NodeMeta` across the crate boundary costs more per node than the small accessors it
+replaced - the accessors inline and the reference-taking helpers do not - which also means the
+remaining drift is not removable by pruning probes. Whatever ruling is taken on the baseline should
+be taken with that measurement in hand.
+
+**(3) is the second option, tried instead of argued about.** `perf/json-const-dialect` at `36c7763a`
+makes the dialect two const parameters of the recursive writer (`write_value::<COMMENTS, JSON5>`),
+so `to_json_text` never *compiles* the note machinery rather than trusting the optimiser to fold it
+out; 391 `pyrs-json` + `pyrs-yaml-core` tests and clippy `-D warnings` pass on it, so the comparison
+is between two working shapes. Measured on the enforcing image, largest of 3: the split reports
+21,750,822 / 24,022,781 / 23,964,916 for `to_json_medium`, `to_jsonc_medium`, `to_json5_medium`
+against 21,158,801 / 22,104,838 / 22,712,863 on `main` and 21,432,792 / 23,234,868 / 23,842,746 at
+this head - **+2.80% / +8.68% / +5.51% over `main`**, and +1.48% / +3.39% / +0.51% over the shape
+held here, worse on all three including the strict writer the split exists to protect. The two
+channels differ and (aq) is exactly about that, so the pairing is checked rather than assumed: the
+split's numbers come from `Ir baseline refresh` (run 38273567698) and the other two from the
+enforcing `Instruction-count baseline` job, and on a scenario no part of this can touch -
+`to_toml_medium` - the refresh job reads 53,714,856 against the enforcing job's 53,715,006, 150
+instructions or 0.0003%. The direction reproduces on a second host and toolchain (WSL, valgrind
+3.22.0, rustc 1.99.0 against the pinned 1.97.1), where `to_json_medium` reads 21,521,433 on `main`,
+21,520,801 at this head, 21,838,872 with the split. Specialising the recursion therefore buys
+nothing and pays for copies of a recursive function; the branch is measurement-only and is not a
+candidate.
+
+**Reading the gate's numbers needed one correction that is not about this PR.** The committed
+baseline sits *above* today's `main` on exactly these scenarios (+0.35% / +0.32% / +1.14%), so the
+printed +0.94% / +4.77% / +3.78% understates what the change costs: against current code it is
+**+1.30% / +5.11% / +4.98%**. `to_toml_medium` shows the same drift with its sign visible - `main`
+measures 53,715,006 against a committed 56,485,015, a -4.90% the gate charges nobody for - and the
+head's log says the pairing is missing in its own words ("the baseline records no digests, so this
+run is paired with it by name only"). One premise from earlier in this section is also wrong and is
+fixed here rather than left standing: the dialect scenarios are not measuring note *emission*.
+`to_jsonc_medium` and `to_json5_medium` take `MEDIUM_YAML` as input
+(`crates/pyrs-yaml-core/benches/ir_gate.rs:131`), and that fixture carries no comment
+(`bench_inputs.rs:22-45`), so both dialect writers emit zero note text on the measured path; what is
+priced is the shape of the pair loop. The same arithmetic settles #362: it is red on
+`from_json_medium` +0.59% / `from_jsonc_medium` +0.55% / `from_json5_medium` +0.50% while `main`
+already reads +0.27% / +0.25% / +0.18% on those three, so its own cost is about +0.31% - inside the
+line it fails. A deliberate refresh at this head (`--accept-drift` naming each scenario) moves both,
+and it is the only route left now that (3) is measured.
 
 ### (ci) Python 3.15 legs, and the duplicate suite run that went with them (2026-10-12)
 
