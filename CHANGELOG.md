@@ -239,6 +239,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A Python integer wider than 64 bits no longer leaves the dumper as a float.** —
+  `safe_dump({"k": 10 ** 30})` wrote `k: 1000000000000000000000000000000.0`: the fallback meant for
+  protocol-convertible types called `extract::<f64>()`, which succeeds on every `PyLong`, so the
+  caller's number was replaced by the decimalisation of its nearest double. Keys were mangled the
+  same way, and two wide keys could then collide on re-read. Both writer routes emit the exact
+  `str()` digits for an `int` outside `i64`; an `int` subclass whose text is not a number keeps the
+  previous route. The reader's `i64` cap is unchanged, so `safe_load` returns those digits as a
+  string — the value survives, the type does not. — (details: quality-ledger (cf))
+
 - **JSON5 no longer accepts leading zeros its grammar forbids.** — `[012]`, `[-01]` and `[-012]`
   parsed as JSON5 numbers because the parser carried an explicit relaxation claiming "JSON5
   tolerates a leading zero", and a test pinned that claim as intended behavior. JSON5's

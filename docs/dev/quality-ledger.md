@@ -3615,6 +3615,45 @@ nextest, 2489 Python tests, clippy and `cargo fmt --check` clean, and the negati
 restoring the old branch made the oracle test fail naming `n_number_-01.json`,
 `n_number_with_leading_zero.json` and `n_number_neg_int_starting_with_zero.json`.
 
+### (cf) A float fallback that swallowed every wide integer (2026-10-12)
+
+The question was "who judges what `to_jsonc` emits?" - JSON5 had `pyjson5` as an external oracle and
+JSONC had only our own reader. Measuring that walked straight into the dumper:
+`safe_dump({"k": 10 ** 30})` returned `k: 1000000000000000000000000000000.0`. The caller's integer
+left the library as a float spelling of a *different number*, and keys were mangled the same way
+(`123456789012345680000000000000.0: 1`), which also makes two distinct wide keys collide on re-read.
+
+One fallback line caused it. `extract::<f64>()` **succeeds on every `PyLong`**, so the branch whose
+own comment says it is for "protocol-convertible types (numpy scalars, Python big ints that overflow
+i64, etc.)" was the branch that captured wide integers and replaced them with the decimalisation of
+their nearest double. The comment named the exact case it broke.
+
+Nothing in the matrix could see it: the round-trip tier dumps in-range integers, and the one test
+about wide digits (`test_big_digit_string_spelling_is_verbatim`) documents the *reader's* i64 cap
+and the `from_json -> to_json` verbatim contract - both true, because digits that arrive as text
+never pass through a Python int. The defect lived on the Python-object route, which no test fed an
+out-of-range int.
+
+Both routes now intercept a `PyInt` whose `i64` extraction failed and emit `str()` verbatim ahead of
+the `f64` fallback. The guard is a `cast::<PyInt>()` *plus* a shape check on the text, because
+measured: `int.__str__(E.BIG)` on an `IntEnum` yields `<E.BIG: 1000000000000000000000000000000>` -
+the unbound slot is not subclass-safe, so an int subclass whose `str()` is not numeric keeps its old
+route instead of gaining a scalar text no reader could resolve. `key_sort_string` needed the same
+branch, otherwise `sort_keys` would order a wide key by a rounded value the output never contains.
+
+A boundary was kept rather than quietly widened: the hub's reader still caps integers at i64, so
+`safe_load(safe_dump(10 ** 30))` returns the *digits as a string* (measured) - the value survives,
+the type does not, and re-dumping that text is byte-stable. Whether the reader should grow arbitrary
+precision is an API ruling, not part of this fix.
+
+Verified: 5 new tests in `tests/test_safe_dump.py`, all red before the change with the corrupted
+text quoted in the failure output, 2494 Python tests, 559 workspace nextest, clippy `-D warnings`
+and `cargo fmt --check` clean. After the fix, `to_json`, `to_jsonc` and `to_json5` of the same hub
+are read back by stdlib `json` as the exact integer. The oracle question that opened this is
+separately measured at 95 valid JSONTestSuite documents with 0 disagreements for `to_jsonc` under
+stdlib `json`; pinning that as a gate is deliberately not in this change (different root cause: a
+missing gate, not a wrong value).
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
