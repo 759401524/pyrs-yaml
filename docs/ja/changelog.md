@@ -17,6 +17,14 @@ status: new
 
 #### 追加
 
+- **CI ジョブが、一度もダウンロードしていないコーパスでスイートを回せなくなった。** —
+  `coverage` は clone ステップなしで `pytest tests/` を走らせていたため、三つの適合性スイート
+  （`yaml-test-suite`、`toml-test`、`JSONTestSuite`）はそこでスキップされ、ジョブは緑のまま
+  だった。`tests/test_ci_corpus_gates.py` は `tests/*.py` の `Reference/` 参照からコーパスを、
+  `pytest tests/` の呼び出し元からジョブを導き出し、各ジョブに各コーパスのダウンロードを要求する。
+  ダウンロードステップを落としても報告が変わらなければ失敗する。三つの clone ステップは
+  coverage ジョブに追加済み。— (details: quality-ledger (cc))
+
 - **JSON に適合性コーパスの門禁が加わり、拒否の「仕方」も検証する。** —
   `tests/test_json_test_suite.py` は JSONTestSuite の判定可能な 283 件を厳格な RFC 8259
   ローダへ流す。95 件は解析、188 件は拒否が正解。コーパス自身が「実装依存」と呼ぶ

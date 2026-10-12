@@ -19,6 +19,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **A CI job can no longer run the suite over corpora it never downloaded.** — `coverage` invoked
+  `pytest tests/` with no clone step, so all three conformance suites (`yaml-test-suite`,
+  `toml-test`, `JSONTestSuite`) skipped there and the job still reported green.
+  `tests/test_ci_corpus_gates.py` now derives the corpora from whatever `tests/*.py` references
+  under
+  `Reference/`, derives the jobs from whatever invokes `pytest tests/`, requires each job to
+  download each corpus, and fails if a removed download step stops being noticed. The three clone
+  steps were added to the coverage job. — (details: quality-ledger (cc))
+
 - **JSON gained a conformance corpus gate, and refusals are checked by shape, not just by fact.**
   — `tests/test_json_test_suite.py` runs JSONTestSuite's 283 determinate cases through the strict
   RFC 8259 loader: 95 must parse, 188 must be refused, and the 35 the corpus itself calls

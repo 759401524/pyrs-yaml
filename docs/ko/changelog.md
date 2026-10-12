@@ -17,6 +17,14 @@ status: new
 
 #### 추가
 
+- **CI 잡이 한 번도 내려받지 않은 코퍼스로 검사 묶음을 돌릴 수 없게 됐다.** —
+  `coverage` 는 clone 단계 없이 `pytest tests/` 를 실행해, 세 적합성 검사 묶음
+  (`yaml-test-suite`, `toml-test`, `JSONTestSuite`) 이 거기서 건너뛰어졌는데도
+  잡은 초록이었다. `tests/test_ci_corpus_gates.py` 는 `tests/*.py` 가 `Reference/`
+  아래를 참조한 곳에서 코퍼스를, `pytest tests/` 호출에서 잡을 뽑아, 모든 잡에 모든
+  코퍼스 다운로드를 요구한다. 다운로드 단계를 지워도 보고가 변하지 않으면 실패한다.
+  세 clone 단계는 coverage 잡에 추가했다. — (details: quality-ledger (cc))
+
 - **JSON 에 적합성 코퍼스 검사가 생겼고, 거절의 “방법”까지 검사한다.** —
   `tests/test_json_test_suite.py` 는 JSONTestSuite 의 판정 가능 사례 283 건을 엄격한
   RFC 8259 로더에 보낸다. 95 건은 파싱, 188 건은 거절이 정답이고, 코퍼스 스스로

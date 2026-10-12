@@ -365,6 +365,31 @@ jobs:
         shell: bash
         run: pip install dist/*.whl
 
+      # The coverage job runs the whole suite, so it needs every corpus the suite reads: without
+      # these three steps `test_yaml_suite.py`, `test_toml_test_suite.py` and
+      # `test_json_test_suite.py` each `skipif` away and the run reports full coverage of a suite that
+      # never touched a conformance corpus. `tests/test_ci_corpus_gates.py` enforces that pairing.
+      - name: Download YAML Test Suite
+        shell: bash
+        run: |
+          if [ ! -d "Reference/yaml-test-suite" ]; then
+            git clone --depth 1 https://github.com/yaml/yaml-test-suite.git Reference/yaml-test-suite
+          fi
+
+      - name: Download toml-test corpus
+        shell: bash
+        run: |
+          if [ ! -d "Reference/toml-test" ]; then
+            git clone --depth 1 https://github.com/toml-lang/toml-test.git Reference/toml-test
+          fi
+
+      - name: Download JSONTestSuite corpus
+        shell: bash
+        run: |
+          if [ ! -d "Reference/JSONTestSuite" ]; then
+            git clone --depth 1 https://github.com/nst/JSONTestSuite.git Reference/JSONTestSuite
+          fi
+
       - name: Install Python test dependencies
         run: uv sync --group test --no-install-project
 

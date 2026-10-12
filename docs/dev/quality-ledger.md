@@ -3538,6 +3538,39 @@ Verified: 2 tests in `tests/test_json_test_suite.py`, `ruff check`/`format` clea
 parses (14 jobs), and the corpus counts re-checked against the tree: 318 files, 283 determinate, 35
 indeterminate.
 
+### (cc) A green CI job that downloaded nothing (2026-10-12)
+
+Merging the JSON corpus gate left a question the CI logs answered: the suite ran in three jobs, and
+`coverage` reported both JSON tests as **SKIPPED** while `test` and `test-freethreaded` reported
+PASSED. A `skipif` on a corpus directory that was never cloned is a green checkmark that tested
+nothing, and no gate anywhere in the repository could see that happening.
+
+Re-running the new checker's own functions against the committed pre-fix `ci.yml` shows the hole was
+wider than the one that revealed it:
+
+```text
+corpora derived from tests/: ['JSONTestSuite', 'toml-test', 'yaml-test-suite']
+job 'test':              whole suite, missing=none
+job 'coverage':          whole suite, missing=['JSONTestSuite', 'toml-test', 'yaml-test-suite']
+job 'test-freethreaded': whole suite, missing=none
+```
+
+So the YAML and TOML suites had been skipping in `coverage` all along. The fix is not a list of
+jobs: `tests/test_ci_corpus_gates.py` derives the corpora from whatever `tests/*.py` references
+under `Reference/`, derives the jobs from whatever invokes `pytest tests/`, and requires every job
+to download every corpus. Add a corpus-reading test tomorrow without teaching CI to fetch it and
+this file reddens - which is the only moment the omission is cheap to repair.
+
+Two controls, because a derived check can be silently vacuous. In the test file:
+`test_the_report_names_a_corpus_when_a_download_step_is_removed` deletes a download step from a real
+job's step list and requires the report to name the corpus, so a matcher that never fires cannot
+pass it. Outside the test file, the run above against the pre-fix workflow - the gate's first act
+was to convict a job that had been green for some time.
+
+Verified: 3 tests in `tests/test_ci_corpus_gates.py`, 11 with the YAML suite, `prek
+run --all-files` clean, `check_line_endings.py` 0 (the new file arrived CRLF again and was
+normalised), and `ci.yml` parses with the three steps added to the coverage job.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
