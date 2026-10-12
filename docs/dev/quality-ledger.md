@@ -3502,6 +3502,42 @@ nextest across the workspace, 2481 Python tests, clippy `-D warnings`, `prek run
 `Instruction-count baseline` green at -4.90%, and the encoder corpus count re-checked against the
 tree: `(Get-ChildItem Reference/toml-test/tests/valid -Recurse -Filter *.json)` returns 268.
 
+### (cb) JSON had no conformance corpus at all (2026-10-12)
+
+TOML had toml-test, YAML had yaml-test-suite, and the format the objective lists first after
+TOML had nothing: no JSONTestSuite clone in CI, no runner in `tests/`, no number anywhere. The
+claim "strict RFC 8259" was backed by property tests against stdlib `json` - a real defence for
+the values, and none at all for the accept/reject boundary, because a generated document is
+well-formed by construction. JSONTestSuite is 316 files of deliberately hostile input: 100 000
+open arrays, lone surrogates, truncated escapes, BOM fragments, invalid UTF-8 inside a number.
+
+Measured on the first run, before any assertion was written: **283 determinate cases, 0
+disagreements** (95 `y_*` accepted, 188 `n_*` refused). The 35 `i_*` files are excluded because
+the corpus itself calls them implementation-defined - and the count is asserted (`>= 30`), so an
+exclusion that quietly grows fails instead of reconfiguring itself. Both floors follow the
+measurement: `1.0` and `>= 280`, not what would be convenient if it had gone worse.
+
+A second test asks a different question than "did it refuse": **how** did it refuse. Every `n_*`
+that reaches the parser must come back as `YamlParseError`, because `RecursionError`, an unwrap
+panic or a `UnicodeEncodeError` all satisfy "an exception was raised" while being exactly the
+crashes this corpus was written to find.
+
+**Twelve cases are refused at the decode rather than the parse, and that is a boundary of this
+binding, not a pass.** `load_json` takes text - feeding it bytes gives `TypeError: 'bytes'
+object is not an instance of 'str'`, measured, not recalled - so a file that is not valid UTF-8
+never reaches the parser. That count is asserted at `== 12` so it cannot drift unnoticed, and
+what it leaves open is stated plainly: a bytes-taking entry point would let those twelve
+exercise the parser's own UTF-8 validation instead of Python's, and adding one is an API
+decision rather than a fix to slip in here.
+
+CI clones the corpus beside the other two, and the new test guards its own vacuity (`>= 280` cases
+must be found), because a `skipif` on a directory that failed to download is precisely the green run
+that checks nothing - the same failure this file has punished the docs gate for twice.
+
+Verified: 2 tests in `tests/test_json_test_suite.py`, `ruff check`/`format` clean, `ci.yml` still
+parses (14 jobs), and the corpus counts re-checked against the tree: 318 files, 283 determinate, 35
+indeterminate.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
