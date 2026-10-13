@@ -565,6 +565,17 @@ status: new
 
 #### 性能
 
+- **节点的摘要只读相等性真正读取的那些字段，于是每条读取路径都变便宜了。** — `CustomNode::eq` 比较标
+  量的取值、风格、chomping 与三个身份字段，显式的块缩进指示符并不在其中，可 `Hash` 却把它算了进去。
+  于是映射视为同一个键的两个节点被路由到不同的桶——这正是 `plain_and_noted` 为另一个字段已经守住的那
+  条契约。`Hash` 现在不再读 `block_indent`，而无装饰的节点不再为元数据写下三个 `Option` 判别值，而是
+  什么都不写。`callgrind` 在指令门禁自己的 harness 上、同一主机同一编译参数下定价：`Hasher::write`
+  自身成本 20.95M → 9.95M 条指令，整个进程 `from_json_medium` -7.80%、`from_json5_medium` -7.71%、
+  `from_toml_medium` -5.66%、`parse_medium` -3.38%。键比较并未变多（`__memcmp_avx2` 10,720,143 →
+  10,720,033），所以更便宜的摘要没有牺牲该夹具上的探测质量。被测的是 `std` 路径——节点映射在那里以
+  `RandomState` 为键，而 `no_std` 早已改用定种子的 FxHash（`ast.rs:29`）。裁决权仍归施测镜像上的
+  `.ci/ir-baseline.json`，而这些场景预期会向下移动。— (details: quality-ledger (cq))
+
 - **方言写出器不再丢注释，代价以计数指令记在账上。** — `to_jsonc` 与 `to_json5` 现在会读每对键值此前
   从未看过的那两个注释槽位（#359），`ir_gate.py` 量出变宽的键值循环：`to_jsonc_medium` +4.77%、
   `to_json5_medium` +3.78%、`to_json_medium` +0.94%。`.ci/ir-baseline.json` 在施测镜像上重新生成，这

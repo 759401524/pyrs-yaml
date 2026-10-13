@@ -346,6 +346,16 @@ impl NodeMeta {
     /// leading note missed it — `doc["key"]`, `"key" in doc` and merge expansion
     /// all look up by hash. Equal values now always hash equally.
     pub fn hash_custom_node_identity<H: Hasher>(&self, state: &mut H) {
+        // A node with no identity metadata writes nothing. That is not a weakening of
+        // the rule above - two nodes that are equal in these three fields either both
+        // have metadata and hash it, or have none and hash nothing, so equal still
+        // implies equal digest. It is the hot path: the three `Option` discriminants
+        // are three `Hasher::write` calls per undecorated node, and `write` measured
+        // as the largest single self cost of every reader in the instruction-count
+        // harness (see `docs/dev/perf.md`, 2026-10-13).
+        if self.comment.is_none() && self.anchor.is_none() && self.tag.is_none() {
+            return;
+        }
         self.comment.hash(state);
         self.anchor.hash(state);
         self.tag.hash(state);
@@ -411,15 +421,18 @@ impl Hash for CustomNode {
                 value,
                 style,
                 chomping,
-                block_indent,
                 meta,
+                ..
             } => {
                 state.write_u8(0);
                 value.hash(state);
                 style.hash(state);
                 meta.hash_custom_node_identity(state);
                 chomping.hash(state);
-                block_indent.hash(state);
+                // `block_indent` is deliberately not hashed: `CustomNode::eq` does not
+                // compare it, and a field Eq ignores but Hash reads gives two equal
+                // nodes two digests - the one rule a `Hash` implementation may not
+                // break, because `IndexMap` routes by hash before it ever calls `eq`.
             }
             CustomNode::Mapping {
                 pairs,
@@ -1914,6 +1927,29 @@ mod tests {
             hash_of(&noted),
             "equal values must hash equally, or every `IndexMap` keyed on them \
              gains a key that cannot be found"
+        );
+    }
+
+    #[test]
+    fn equal_nodes_hash_alike_when_only_the_block_indent_differs() {
+        // `CustomNode::eq` compares value, style, chomping and the three identity
+        // metadata fields; the explicit indentation indicator is not among them, so
+        // `|2` and `|` over one body are the same key. `Hash` hashed it anyway, which
+        // is the contract violation `plain_and_noted` already records for the other
+        // field: equal nodes, two digests, an entry that cannot be found.
+        let keyed = |indent: Option<u8>| CustomNode::Scalar {
+            value: Arc::from("body"),
+            style: ScalarStyle::Literal,
+            chomping: Chomping::Clip,
+            block_indent: indent,
+            meta: NodeMeta::default(),
+        };
+        let (indicated, bare) = (keyed(Some(2)), keyed(None));
+        assert_eq!(indicated, bare, "eq ignores the indentation indicator");
+        assert_eq!(
+            hash_of(&indicated),
+            hash_of(&bare),
+            "so Hash has to ignore it too, or a table keyed on one loses the other"
         );
     }
 

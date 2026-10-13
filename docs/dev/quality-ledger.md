@@ -4425,6 +4425,54 @@ untagged text resolves to a string. The seed-corpus fixed-point test stays green
 mutation, which is the expected split: it pins stability, not fidelity. The mutation was reverted
 before this entry was committed.
 
+### (cq) A digest that read what equality does not, and what fixing it priced (2026-10-13)
+
+The attribution `docs/dev/perf.md` now carries named `Hasher::write` as the largest single self cost
+of every reader. Going into `CustomNode`'s hash to see what could be removed found a defect first.
+`PartialEq` compares a scalar's value, style, chomping and the three identity fields, and the
+explicit block indentation indicator is not among them - but `Hash` wrote `block_indent` as well. So
+`a == b` could hold while `hash(a) != hash(b)`, which is the one rule a `Hash` implementation may
+not break: `IndexMap` routes by digest and calls `eq` only afterwards, so the second node is a key
+that cannot be found. The crate's own documentation for `hash_custom_node_identity` already states
+the rule ("hash exactly the metadata fields `CustomNode`'s structural equality compares"); it was
+the scalar arm that did not follow it.
+
+Written as a test before the fix, and it reddened on `main` with `108230566608641` against
+`144115610851506687`. `equal_nodes_hash_alike_when_only_the_block_indent_differs` now sits beside
+`plain_and_noted`, which guards the same contract for the `decor` slot, so the rule is pinned per
+field instead of asserted in a comment.
+
+The second half is what the profiler asked for: an undecorated node writes nothing at all for
+metadata, instead of three `Option` discriminants. Equal-and-clean nodes still agree (both write
+nothing), and a node that carries metadata still disagrees with one that does not, which is what
+equality says. The `Hasher::write` self cost of `from_json_medium` fell from 20,954,000 to 9,954,000
+instructions.
+
+Measured before and after on the same host, same build flags, same harness, in one session:
+`from_json_medium` 153,972,194 → 141,960,063 (-7.80%), `from_json5_medium` 155,787,106 → 143,778,309
+(-7.71%), `from_toml_medium` 212,135,514 → 200,130,125 (-5.66%), `parse_medium` 355,652,599 →
+343,644,911 (-3.38%). Key comparison did not grow - `__memcmp_avx2_movbe` 10,720,143 → 10,720,033 -
+which is the evidence that the thinner digest did not buy its saving with probe quality; a hash that
+turned lookups into scans would have surfaced in that column first.
+
+Stated as what it is not: the enforcing image's `scripts/ir_gate.py` remains the arbiter and
+`.ci/ir-baseline.json` was not touched here. These scenarios are expected to move *down*, which the
+gate accepts without ceremony, so the change ships no re-baseline; the local numbers are a
+direction, not a verdict - and the verdict arrived the same day from the image that owns it. The
+`Instruction-count baseline` job on PR #372 reports against the committed baseline:
+`from_json_medium` 154,041,906 → 141,699,963 (-8.01%), `from_json5_medium` 156,883,384 → 144,540,451
+(-7.87%), `from_toml_medium` 218,560,766 → 206,244,157 (-5.64%), `parse_medium` 355,874,562 →
+343,536,527 (-3.47%), then `OK: every scenario within tolerance`. The local and enforcing deltas
+agree within 0.21 percentage points on all four scenarios, which is the first time this ledger could
+check its own wall-free A/B against the channel that adjudicates it. The route measured is also the
+`std` one, where `NodeMap` is `IndexMap<K, V, RandomState>` (`ast.rs:22`): the `no_std` side already
+keys the same map on a fixed-seed FxHash (`ast.rs:29`), so this is not a cost embedded builds were
+paying and are now rescued from - they never paid SipHash here.
+
+Verified: `cargo nextest run --all` 574 tests including the new invariant test, `cargo test --all
+--no-default-features` clean, `cargo clippy --all --all-targets -- -D warnings`, `prek run
+--all-files`, `uv run pytest tests/` 2719 pass / 10 skip, five changelog mirrors at [25, 11, 38, 5].
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
