@@ -4674,6 +4674,63 @@ the Python side the extension was rebuilt (`maturin develop --release`) before
 that enumerate crates; neither keys on the crate list. No behaviour changed, so no instruction-count
 scenario should move - that is the claim CI's `Instruction-count baseline` job checks for this PR.
 
+### (cv) A control that deletes the claim, not the code (2026-10-13)
+
+The JSON producer for the event vocabulary was written the way `docs/dev/event-stream.md` argued
+for: one traversal, two outputs. `from_json_with_options` passed a sink whose `ENABLED` constant is
+`false`, so every emit - and the `String` a scalar event builds - was to fold out of the tree path.
+The commit message, the changelog bullet and the ledger entry drafted for that change said so in
+those words, and the pull request was opened on that claim. The gate answered:
+
+```text
+FAIL  from_json_medium:  +0.70%   from_jsonc_medium: +0.61%   from_json5_medium: +1.05%
+```
+
+The attribution is the part worth recording, because the obvious reading was wrong. Four shapes were
+measured against the same baseline binary in one session on one host (callgrind Ir, loop = full
+minus `--setup-only`, `from_json_medium`): the shipped fold +1.47%, the same emits behind call-site
+guards +1.52%, **the same generic sink with every emit call deleted +1.60%**, and a non-generic
+`Option<Recorder>` field tested at each site +2.33%. The third is the control, and it says the
+events cost nothing at all: what the tree path pays is the *parameter threaded through* `value`,
+`object` and `array`. `#[inline]` on `walk`, `value`, `value_inner`, `object` and `array` recovered
+none of it - the reading moved 0.007%. `callgrind_annotate` names the mechanism: 75% of the delta is
+`__memcpy_avx_unaligned_erms`, 660 counted instructions per parse of a 380-byte document - node
+copies that used to be inlined into a return slot are libc calls once the functions carrying them
+are instantiated per sink. Nothing in `pyrs-json`'s algorithm changed.
+
+So "a constant folds away, therefore the path is free" is a claim about a compiler's inlining
+budgets, and a budget is not a property of the code you wrote: it is a property of the whole
+function, which the new parameter also changed. The discipline that follows is specific - when the
+claim is that an addition costs nothing, the control is a build with the addition deleted, not a
+build with the addition guarded. And the prose gets written after that measurement, not before it:
+the first version of this analysis blamed the per-arm `let node = ...` pattern, and the code change
+that blame produced moved the reading by 0.05% - nowhere near the 1.5% it was meant to explain. That
+is how I know the first version was a story rather than a result.
+
+What the ruling did with it (maintainer, same day): shelve the producer rather than buy it. Three
+options were on the table and two lose on evidence already in this ledger. Re-baselining three read
+scenarios by 0.6-1.0% taxes a path that has no consumer yet, and `AGENTS.md` makes an upward move a
+separate deliberate act precisely so a floor cannot drift as a side effect of shipping a feature.
+Writing a second, tree-free tokenizer walk costs the tree path nothing but puts the JSON5/JSONC
+dialect gates - hex integers, signed `Infinity`, leading-dot forms, identifier keys, comment slots -
+in two places, guarded by one fold-and-compare test that can only see the inputs it touches.
+Reordering wins: the tax exists *because* the traversal still builds a tree, and the streaming
+reader that this vocabulary was asked for in the first place drops the tree, at which point a
+producer has nothing left to tax - and the same ruling settled decision 2 on the way: a multi-format
+`parse_stream` is promised to users, in Python and in Rust, so that reader is a feature rather than
+an excuse for stopping. `docs/dev/event-stream.md` now carries the table, the mechanism and the
+reordered sequence, and the four questions the closed attempt did answer (spans are not derivable
+from the tree; a JSON `null` is a resolution, not an event; the stream is finer than the tree on
+duplicate members; JSON5 `'k'` keys reach the hub `Plain`) stand with it.
+
+Verified: the CI verdict above is from the enforcing image (`rustc 1.97.1`, tolerance 0.50%). The
+local pairs are `rustc 1.99.0` on WSL and read about twice the CI delta for the same commit, so they
+are used here for *attribution* - which shape costs what, and where the instructions go - and never
+as the gate's number; the stripped/unstripped pair of the same tree differed by 0.003%, which is the
+floor they clear. No code shipped, so no test or gate ran: `cargo nextest run -p pyrs-json` (63) and
+the workspace build/lint pair were green on the closed branch, and the documents in this change are
+checked by `python scripts/check_doc_wrapping.py` and `prek run --all-files`.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
