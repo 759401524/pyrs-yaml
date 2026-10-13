@@ -95,6 +95,42 @@ test → *only then* the Python-visible surface. Each step gates on the committe
 with zero upward movement, and the replay test is what makes step 2-4 reviewable rather than
 hopeful: events that cannot rebuild the AST the parsers already build are the wrong events.
 
+## What the second producer answered (2026-10-13, step 2)
+
+`pyrs_json::to_events(text, opts)` records an event at each decision of the traversal that builds
+the AST (`crates/pyrs-json/src/parser.rs`, `EventSink`). Four questions in this document stopped
+being guesses:
+
+- **Spans need the tokenizer.** A hub node carries no position: `NodeMeta::source_range` is `None`
+  for everything the JSON and TOML engines build - neither crate ever assigns the field (a grep for
+  `source_range` in `crates/pyrs-json/src` and `crates/pyrs-toml/src` finds one test assertion and
+  no write, `duplicate_keys_last_wins_first_position` at `parser.rs:1648` checking it for keys). So
+  a stream folded *from* the tree could not have filled `line`/`column` at all. Position is the one
+  thing this output provides that the tree cannot, which is why the producer sits inside the parse
+  rather than after it.
+- **`null` is a resolution, not an event.** The vocabulary has no null case and the hub
+  distinguishes a `Null` node from the plain word. The JSON producer emits the plain word, which is
+  exactly what granit's YAML stream does, so both producers agree and the replay builder owns the
+  resolution - the only place it can live, since the YAML path already needs it there.
+- **The stream is finer-grained than the tree, in one place that matters.** `{"a":1,"a":2}` is four
+  scalar events and one mapping entry: `NodeMap` keeps the last value at the first position. A
+  replay that promises the tree has to fold, not append, and
+  `duplicate_members_are_visible_in_the_stream_and_folded_in_the_tree` pins both halves so neither
+  side can be "fixed" into the other by accident.
+- **Comment order is only expressible as a stream.** In the tree a note is a slot on one node; the
+  tree cannot say that `/* mid */` sat between the value before it and the key after it. The events
+  can, at their own offsets (`PendingComment::at`, read only by this path - the AST has nowhere to
+  put it), and `a_comment_is_an_event_between_the_nodes_it_bridges` fixes the positions.
+
+One dialect detail fell out of it, and it is not a bug to chase but a fact to know: a JSON5 key
+written `'k'` reaches the hub as a plain scalar, because keys go through `quoted_or_plain`, which
+quotes only what a resolver would re-interpret. The stream repeats what the tree holds rather than
+what the bytes said - for a *key*, the quote style is therefore not a fact the hub keeps.
+
+The cost is a constant, not a hope: `NoSink::ENABLED` is `false`, so every emit - including the
+`String` a `Scalar` arm builds - folds out of the AST path. `Instruction-count baseline` on the
+enforcing image is the check that says so; the sentence above only states the mechanism.
+
 ## What this is not for
 
 - **Not a performance play.** `docs/dev/perf.md` prices the read path's dominant costs in hashing,
@@ -105,16 +141,21 @@ hopeful: events that cannot rebuild the AST the parsers already build are the wr
 - **Not a Python-visible change until the last step of B**, so no `.pyi` regeneration or stub-drift
   work before then.
 
-## Decisions this document needs from the maintainer
+## Decisions, and where each one stands
 
-1. **B or C.** (A only as B's first PR.)
-2. If B: is a multi-format `parse_stream` a *promised user-facing capability* (Python and Rust), or
-   internal plumbing for the hub? The answer decides whether steps 2-4 need docs locales and stubs
-   at all.
-3. If B: does the neutral event **borrow** from the input (`&'a str`, which the replay test can
-   drive from a single buffer) or keep owning `String`? Borrowing is the smaller-allocations answer
-   and the harder-lifetimes one; today's `StreamReceiver` already keeps the source text alive
-   alongside its events (`stream.rs:86`), which suggests it is possible.
+1. **B or C.** (A only as B's first PR.) — **ruled B, 2026-10-13.** A landed as #379 and step 2 with
+   it.
+2. Is a multi-format `parse_stream` a *promised user-facing capability* (Python and Rust), or
+   internal plumbing for the hub? **Still open**, and it now decides only the last step: the
+   producers are crate-internal APIs, so nothing before that step touches stubs or doc locales.
+3. Does the neutral event **borrow** from the input (`&'a str`, which the replay test can drive from
+   a single buffer) or keep owning `String`? **Deferred, not avoided.** Step 2 reads the text and
+   the style back off the node the parser just built, so an event cannot outlive the parse until the
+   traversal stops building nodes; borrowing pays exactly then, which is the AST-free streaming read
+   this step does not yet attempt.
 4. If B: how are TOML dotted keys expressed — nested `MappingStart`/`MappingEnd` per level, matching
-   the AST, or a flat key event with the source span? One sentence from you fixes what would
-   otherwise be two implementations of the same question.
+   the AST, or a flat key event with the source span? **Open, and it is step 3's first question.**
+   The parser keeps which levels a dotted key created implicitly
+   (`pyrs-toml/src/parser.rs:164`), so a stream of nested starts replays into the right tree and
+   drops a fact the engine has. One sentence from the maintainer fixes what would otherwise be two
+   answers to the same question.

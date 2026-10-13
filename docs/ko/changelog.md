@@ -17,6 +17,19 @@ status: new
 
 #### 추가
 
+- **`pyrs_json::to_events`: JSON·JSONC·JSON5 를 이벤트 열로 내보냅니다.** — 중립 어휘에 필요한 두
+  번째 생산자이고, `docs/dev/event-stream.md` 의 네 가지 추측이 사실이 된 이유입니다. 허브 노드는
+  위치를 지니지 않습니다(`source_range` 는 JSON 과 TOML 엔진 모두에서 대입되지 않음), 따라서 행과
+  열은 이 경로에서만 존재합니다. `null` 은 YAML 열과 똑같이 평문 단어로 나갑니다. 어휘에 null
+  이벤트가 없고 구별은 해석(resolution) 이 소유하기 때문입니다. `{"a":1,"a":2}` 는 이벤트 네 개에
+  대응하는 저장 항목 하나입니다 — 그러므로 재생은 중복을 덧붙이는 대신 접어야 합니다. 그리고 주석이
+  두 회원 *사이* 에 있다는 사실은 여기서 표현할 수 있지만, 노트를 노드의 슬롯으로 저장하는
+  트리에서는 표현할 수 없습니다. AST 를 만드는 유일한 순회에 sink 로 담았습니다 — 기존 모든 진입점이
+  지나는 경로에서는 `EventSink::ENABLED` 가 `false` 이므로 각 emit 과 scalar 팔이 만드는 `String`
+  까지 접힙니다. 이 문장이 근거가 아니라 확정된 명령수 관문이 근거입니다. 테스트는 여섯 개, 그중
+  하나는 세 방언의 네 문서에서 열을 접어 트리와 견줍니다. `MappingStart` 를 `SequenceStart` 로
+  바꾸면 세개가 붉어집니다. — (자세히: quality-ledger (cv))
+
 - **`pyrs-event`: 문서 이벤트 어휘를 독립 크레이트로 만들었습니다.** — AST 와 나란한, 아키텍처
   기둥이 지정한 두 번째 핵심 추상입니다. `StreamEvent` 와 그 열한 가지 변형을
   `crates/pyrs-yaml-core/src/parser/stream.rs` 에서 옮겨 `#![no_std]` + `alloc` 이고 `pyrs-ast` 만

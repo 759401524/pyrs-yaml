@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`pyrs_json::to_events`: JSON, JSONC and JSON5 as an event stream.** — the second producer the
+  neutral vocabulary needs, and the reason four guesses in `docs/dev/event-stream.md` became facts.
+  A hub node carries no position (`source_range` is assigned by neither the JSON nor the TOML
+  engine), so spans exist only on this path; `null` is emitted as the plain word exactly as the YAML
+  stream does, because the vocabulary has no null event and resolution owns the distinction;
+  `{"a":1,"a":2}` is four events against one mapping entry, so a replay has to fold duplicates
+  rather than append them; and a comment's place *between* two members is expressible here and not
+  in a tree that keeps notes as slots on a node. Written as a sink on the one traversal that builds
+  the AST - `EventSink::ENABLED` is `false` for the path every existing entry point takes, so each
+  emit and the `String` a scalar arm builds fold away with it, and the committed instruction gate
+  rather than this bullet is the check on that. Six tests, one of them a fold-and-compare against
+  the tree over four documents in three dialects; swapping `MappingStart` for `SequenceStart`
+  reddens three of them.
+
 - **`pyrs-event`: the document event vocabulary is its own crate.** — the second core abstraction
   the architecture pillar names beside the AST. `StreamEvent` and its eleven variants moved out of
   `crates/pyrs-yaml-core/src/parser/stream.rs` into a `#![no_std]` + `alloc` crate that depends only
