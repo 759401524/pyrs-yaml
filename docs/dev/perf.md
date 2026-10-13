@@ -174,4 +174,31 @@ harness, and this box's WSL has no `libpython3.12` to link it, so measure the en
 --no-run` (the profile's `strip = true` is what leaves `callgrind_annotate` reporting `???:0x…`),
 then `valgrind --tool=callgrind <that binary> from_json_medium`.
 
+## The string path was not allocating twice (2026-10-13)
+
+The table above puts 25.3% of the read path in the allocator, so the obvious next cut was
+`Parser::string`: it builds a `String` byte-run by byte-run and the node builder then makes the
+`Arc<str>` the AST holds - which reads like two allocations per string, on a fixture whose 26
+`malloc` calls per parse are almost exactly its 26 `string` calls. The change was written and
+tested: `string()` returns `Cow<'a, str>`, the escape-free path borrows the source, and
+`quoted_or_plain` takes the `Cow` so the buffer is made once, by whoever owns the node.
+
+It made the path slower. `from_json_medium` 120,164,607 → 120,858,397 counted instructions,
+**+0.58%**, with the two scenarios the change cannot enter repeating as controls in the same pair
+of runs (`from_toml_medium` -0.002%, `parse_medium` -0.0002%), so the +0.58% is the change and not
+the machine. The 57 JSON tests passed either way, which is what makes the number the only evidence
+worth having.
+
+The reason is a detail worth keeping: a `String` filled by one `push_str` of its exact length has
+`capacity == len`, and `Arc<str>::from(String)` steals such a buffer instead of copying it. There
+was never a second allocation to remove; borrowing the source replaces a steal with an allocation
+*plus* a copy of bytes the parser already held. Reverted, nothing shipped.
+
+What that leaves: the allocator's share on this path is the tree's own footprint, not slack in the
+string decoding. The remaining candidates are the containers (each object and array grows its
+`IndexMap` / `Vec` buffer) and the per-node shape of the AST itself - and the second is the
+architecture the repository has already ruled out rewriting for fit-of-purpose reasons (see
+`AGENTS.md`, the no-refactor rulings on the AST and the binding boundary), so any attempt on it has
+to arrive as its own design decision rather than as an optimisation smuggled in beside one.
+
 ---
