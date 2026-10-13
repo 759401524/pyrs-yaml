@@ -82,6 +82,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (three names logged as 6), so it now counts the names and a fourth test pins it. — (details:
   quality-ledger (cj))
 
+- **The quality ledger's lettered sections are in order, and a gate keeps them there.** — `### (xy)`
+  sections grow by insertion at whichever anchor a branch used, and two had ended up behind later
+  letters: `(bh)` after `(bi)`, `(ch)` after `(cj)`. Nothing was red, because
+  `(details: quality-ledger (ch))` still resolves; the file simply no longer matched its own
+  numbering. Both moved as whole blocks (98 and 46 lines) with the file's line multiset asserted
+  unchanged, so a reorder cannot silently drop or duplicate a paragraph.
+  `tests/test_ledger_section_order.py` requires the headings to run strictly increasing and no
+  letter to repeat, each proven by mutation - renaming a section to a letter already used reddens
+  both tests, since a repeat is also a step backwards. Gaps are not reported: `bs`/`bu`/`cd` were
+  claimed and closed elsewhere, while `ak`-`an` exist here as the older bold lead-in form, not as
+  headings. — (details: quality-ledger (ck))
+
 - **YAML comments, anchors and tags survive a round trip, gated on every seed.** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` replays the committed seed corpus on every
   `cargo nextest run` and requires every note the reader recorded to appear in the emitted text. The

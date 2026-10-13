@@ -2522,40 +2522,6 @@ Verified: with `ty` on `PATH` the file reports 13 passed / 2 skipped, and both s
 control bites against the pinned artifact, and CI's own run of the step is what measured mypy's
 count.
 
-### (bi) The prose fixer wrote the gap its own checker reported (2026-10-10)
-
-Adding a Japanese changelog entry, `check_doc_wrapping.py --fix` answered with a finding and refused
-to converge: `docs/ja/changelog.md:241 (1 gap(s)) [wrap residue]`, and running it again produced the
-same line. The gap was not in the text that was typed. The fixer wrote it.
-
-`join_lines` decides the glue between two physical lines of one paragraph, and the rule it used was
-`"" if _is_han_kana(out[-1]) and _is_han_kana(following[0]) else " "`. U+3001 (ideographic comma) is
-General Punctuation: neither Han nor kana. A line ending in `、` therefore glued to the following
-kana with a space - and `CJK_WORD_SPACE` in the same file treats a space between two CJK-class
-characters as the artifact it strips and reports, because its class is `\u3000-\u303f` plus
-`\uff01-\uff5e`, which does include U+3001.
-
-One rule, written twice, encoded differently. The checker's version was right and the joiner's was
-not, so each pass fixed the paragraph and then re-broke it. The repair is to stop restating the
-rule: `join_lines` now asks `CJK_PUNCT_SPACE` and `CJK_WORD_SPACE` whether a space at that boundary
-would be an artifact, and `_is_han_kana` is gone - the function that could disagree with the
-patterns it was supposed to mirror.
-
-Two tests hold it: `test_the_joiner_never_writes_the_gap_the_checker_reports` (a `、` boundary
-fuses, and neither pattern finds anything in the result) and
-`test_a_boundary_touching_a_code_span_keeps_its_space` (the other half: `は `docs.md` にある` is
-normal typography and must not fuse).
-
-While the joiner was wrong, `--fix` over CJK pages was unsafe: the repair itself was creating
-findings. The interim route, and the one that should be used until this lands, is to re-flow only
-the English governed pages and hand-wrap the localized ones - `target/probe/fix_english_only.py`.
-Hand-wrapping was also what let 104- and 108-column lines into the ledger in the first place, so the
-English pages still go through the fixer.
-
-Verified: `pytest tests/test_doc_wrapping_gate.py` 30 passed; doc gates green over all nine governed
-pages; the localized pages needed exactly one manual repair (`が、 その文末` -> `が、その文末`) that
-the fixed joiner now refuses to write.
-
 ### (bh) One schema chose the hub's spelling and another read it (#312, 2026-10-10)
 
 `from_json5` returns YAML text - the hub document - and the two ends of that text disagreed about
@@ -2653,6 +2619,40 @@ Verified: `cargo fmt --check`, `cargo clippy --all --all-targets -- -D warnings`
 2337 Python tests (10 skipped), five tests holding the pair - two Rust in the parser, two in the
 writer, one Python through the public API - plus the two guard tests above. Changelog counts
 identical across the five mirrors at [11, 4, 21, 3].
+
+### (bi) The prose fixer wrote the gap its own checker reported (2026-10-10)
+
+Adding a Japanese changelog entry, `check_doc_wrapping.py --fix` answered with a finding and refused
+to converge: `docs/ja/changelog.md:241 (1 gap(s)) [wrap residue]`, and running it again produced the
+same line. The gap was not in the text that was typed. The fixer wrote it.
+
+`join_lines` decides the glue between two physical lines of one paragraph, and the rule it used was
+`"" if _is_han_kana(out[-1]) and _is_han_kana(following[0]) else " "`. U+3001 (ideographic comma) is
+General Punctuation: neither Han nor kana. A line ending in `、` therefore glued to the following
+kana with a space - and `CJK_WORD_SPACE` in the same file treats a space between two CJK-class
+characters as the artifact it strips and reports, because its class is `\u3000-\u303f` plus
+`\uff01-\uff5e`, which does include U+3001.
+
+One rule, written twice, encoded differently. The checker's version was right and the joiner's was
+not, so each pass fixed the paragraph and then re-broke it. The repair is to stop restating the
+rule: `join_lines` now asks `CJK_PUNCT_SPACE` and `CJK_WORD_SPACE` whether a space at that boundary
+would be an artifact, and `_is_han_kana` is gone - the function that could disagree with the
+patterns it was supposed to mirror.
+
+Two tests hold it: `test_the_joiner_never_writes_the_gap_the_checker_reports` (a `、` boundary
+fuses, and neither pattern finds anything in the result) and
+`test_a_boundary_touching_a_code_span_keeps_its_space` (the other half: `は `docs.md` にある` is
+normal typography and must not fuse).
+
+While the joiner was wrong, `--fix` over CJK pages was unsafe: the repair itself was creating
+findings. The interim route, and the one that should be used until this lands, is to re-flow only
+the English governed pages and hand-wrap the localized ones - `target/probe/fix_english_only.py`.
+Hand-wrapping was also what let 104- and 108-column lines into the ledger in the first place, so the
+English pages still go through the fixer.
+
+Verified: `pytest tests/test_doc_wrapping_gate.py` 30 passed; doc gates green over all nine governed
+pages; the localized pages needed exactly one manual repair (`が、 その文末` -> `が、その文末`) that
+the fixed joiner now refuses to write.
 
 ### (bj) A byte-wise walk of a character-indexed string, found by feeding the API a valid schema
 
@@ -3815,6 +3815,52 @@ the test whose claim is exactly that the committed keys are what the job writes.
 names `binaries` and requires the digests to cover every harness the gate measures, so the file
 cannot be regenerated into a shape the test has never seen.
 
+### (ch) A run of same-line comments used to erase itself (2026-10-12)
+
+Followed from (cg): the stacked-note test added there found that the compact dialect writers were
+not a fixed point for a node carrying two or more comments. The text was legal; the notes were
+simply gone on re-read:
+
+```text
+first:  "{/* note 0 *//* note 1 */\"k\":1}"
+second: "{/* note 1 */\"k\":1}"
+```
+
+The cause sat in the reader, not the writer. `attach_pending` classifies each comment by whether it
+began on a line of its own: standalone notes append to the leading list, a same-line note takes the
+single inline `comment` slot. Two same-line notes therefore overwrote each other, and the compact
+form
+
+- which never emits a line break inside a member - always writes a node's notes that way. Twelve
+measured cases: both dialects, stacks of 2 to 4, in the two positions inside an object; the pretty
+route was clean because it puts each note on its own line.
+
+Fixing the writer was considered and rejected by reasoning, not by a run. Putting each note on its
+own line does not look salvageable: the first note after `{` still shares that line, so it stays
+same-line while the rest become standalone, and the pair would re-read with the notes split across
+two slots - the shape that already oscillated once in (cg).
+
+So the reader changed: a run of more than one same-line comment now goes entirely to the leading
+list, in source order, `standalone = true`, the only slot that can hold a plurality. A lone
+same-line comment still owns the inline slot, so the spelling a human writes
+(`{"k": 1 // the port}`) is unchanged; `a_run_of_same_line_comments_keeps_every_note` pins both
+halves with the measured placement - both notes on the value's leading list, inline slot empty. The
+new branch is guarded by `pending.len() > 1` so a zero- or one-comment node pays a length test
+rather than a scan, in a function the `from_jsonc_medium` scenario runs per node.
+
+What it costs, recorded rather than hidden: with two or more comments on one line the writer can no
+longer tell which of them was same-line, so the pretty form renders all of them on their own lines.
+Nothing is dropped and nothing moves between rounds - the trade was loss versus positional flavour,
+and loss is the one the fidelity requirement refuses.
+
+Verified: 566 workspace nextest with the compact fixed point un-skipped in
+`stacked_leading_notes_survive_both_layouts_and_reach_a_fixed_point`, 2496 Python tests, clippy
+`-D warnings`, `cargo fmt --check`, ruff and `prek --all-files` exit 0. Mutation control earned its
+keep again here: the first version of the stacked test put its notes only ahead of the document,
+which the root emission writes, so truncating the pair loop's stack to one note passed both the
+Python matrix and the idempotence property - the four placements in the test are what that discovery
+produced.
+
 ### (ci) Python 3.15 legs, and the duplicate suite run that went with them (2026-10-12)
 
 Checked before changing anything: the release is real. The devguide version table records 3.15 with
@@ -3933,51 +3979,34 @@ Measured while writing the fix rather than assumed: `read -ra names` over an emp
 branch with or without the `|| true` standing guard. Both halves were run - empty, and three names -
 before either claim was written down.
 
-### (ch) A run of same-line comments used to erase itself (2026-10-12)
+### (ck) A ledger whose sections are not in the order its citations assume (2026-10-13)
 
-Followed from (cg): the stacked-note test added there found that the compact dialect writers were
-not a fixed point for a node carrying two or more comments. The text was legal; the notes were
-simply gone on re-read:
+`### (xy)` sections grow by insertion at whatever anchor a branch used, and two of them ended up
+behind letters that came later: `(bh)` after `(bi)`, `(ch)` after `(cj)`. Found by reading the
+heading sequence of the file rather than by following a broken link, and that is the reason nothing
+was red: a citation like `(details: quality-ledger (ch))` still resolves, so the only cost is that
+the file no longer matches its own numbering, and a reader scanning for the newest entries meets
+them out of order.
 
-```text
-first:  "{/* note 0 *//* note 1 */\"k\":1}"
-second: "{/* note 1 */\"k\":1}"
-```
+Moved as whole blocks - 98 and 46 lines - with the multiset of the file's lines asserted unchanged
+before and after. A reorder that silently drops or duplicates a paragraph is the failure mode this
+kind of edit is prone to, and the check costs one line.
 
-The cause sat in the reader, not the writer. `attach_pending` classifies each comment by whether it
-began on a line of its own: standalone notes append to the leading list, a same-line note takes the
-single inline `comment` slot. Two same-line notes therefore overwrote each other, and the compact
-form
+Two tests now pin it, in `tests/test_ledger_section_order.py`: the lettered headings run strictly
+increasing, and no letter repeats. Proven by mutation, and the second mutation said something the
+plan had not predicted - renaming the last section to a letter already used reddens *both* tests,
+because a repeated letter is also a step backwards. The duplicate rule stays separate because it is
+the one whose message names the cause. Restoring the file gives 2 passed.
 
-- which never emits a line break inside a member - always writes a node's notes that way. Twelve
-measured cases: both dialects, stacks of 2 to 4, in the two positions inside an object; the pretty
-route was clean because it puts each note on its own line.
-
-Fixing the writer was considered and rejected by reasoning, not by a run. Putting each note on its
-own line does not look salvageable: the first note after `{` still shares that line, so it stays
-same-line while the rest become standalone, and the pair would re-read with the notes split across
-two slots - the shape that already oscillated once in (cg).
-
-So the reader changed: a run of more than one same-line comment now goes entirely to the leading
-list, in source order, `standalone = true`, the only slot that can hold a plurality. A lone
-same-line comment still owns the inline slot, so the spelling a human writes
-(`{"k": 1 // the port}`) is unchanged; `a_run_of_same_line_comments_keeps_every_note` pins both
-halves with the measured placement - both notes on the value's leading list, inline slot empty. The
-new branch is guarded by `pending.len() > 1` so a zero- or one-comment node pays a length test
-rather than a scan, in a function the `from_jsonc_medium` scenario runs per node.
-
-What it costs, recorded rather than hidden: with two or more comments on one line the writer can no
-longer tell which of them was same-line, so the pretty form renders all of them on their own lines.
-Nothing is dropped and nothing moves between rounds - the trade was loss versus positional flavour,
-and loss is the one the fidelity requirement refuses.
-
-Verified: 566 workspace nextest with the compact fixed point un-skipped in
-`stacked_leading_notes_survive_both_layouts_and_reach_a_fixed_point`, 2496 Python tests, clippy
-`-D warnings`, `cargo fmt --check`, ruff and `prek --all-files` exit 0. Mutation control earned its
-keep again here: the first version of the stacked test put its notes only ahead of the document,
-which the root emission writes, so truncating the pair loop's stack to one note passed both the
-Python matrix and the idempotence property - the four placements in the test are what that discovery
-produced.
+Gaps are deliberately not reported, for two different reasons that are easy to conflate. `bs`, `bu`
+and `cd` are letters a branch claimed and then closed by another route. `ak` through `an` are not
+missing: they are in this file as bold lead-ins (`**(ak) The last registered hole closed…**`) under
+the older family headings, not as `### (ak)`. Measured before this very section was appended, the
+file carried 55 lettered headings, and a repo-wide scan for cited letters found 26 two-letter tokens
+with no such heading - a mixture of these bold-form sections and ordinary prose collisions like "the
+ledger (is" or "(of …)". A citation-resolving gate therefore has to know both section forms and must
+not match a parenthesised pair in passing prose; that is a separate change, and naming the
+requirement here is the point rather than shipping a check that reddens on English.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
