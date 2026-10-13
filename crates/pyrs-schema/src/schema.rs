@@ -20,7 +20,8 @@ fn matches_any(value: &str, candidates: &[&str]) -> bool {
 ///
 /// Priority: Null → Bool → Infinity → NaN → Octal → Hex → Float → Decimal int → String.
 ///
-/// Edge separation is stripped with [`crate::is_yaml_blank`], not `str::trim`:
+/// Edge separation is stripped with [`crate::trim_yaml_blank`], which trims exactly what
+/// [`crate::is_yaml_blank`] accepts and not `str::trim`:
 /// `str::trim` is Unicode-based and also removes NBSP, U+0085 and U+2028/U+2029,
 /// which YAML treats as ordinary plain-scalar content. Trimming them away made
 /// `"<NBSP>42"` resolve to the integer `42` and a NBSP-only value resolve to
@@ -28,7 +29,7 @@ fn matches_any(value: &str, candidates: &[&str]) -> bool {
 /// 7 bytes: a NBSP-only *multi-line* scalar resolved to `Null`, so the writer
 /// skipped quoting it and emitted raw line breaks that collapsed on re-read).
 pub fn resolve_core_type(value: &str) -> YamlType<'_> {
-    let trimmed = value.trim_matches(crate::is_yaml_blank);
+    let trimmed = crate::trim_yaml_blank(value);
 
     if trimmed.is_empty() || trimmed == "~" {
         return YamlType::Null;
@@ -291,7 +292,7 @@ fn parse_json5_hex(trimmed: &str) -> Option<i64> {
 /// 1.2 bools, inf/nan, octal/hex, numbers) is delegated to the core
 /// chain so the two can never drift.
 pub fn resolve_yaml11_type(value: &str) -> YamlType<'_> {
-    let trimmed = value.trim_matches(crate::is_yaml_blank);
+    let trimmed = crate::trim_yaml_blank(value);
 
     // YAML 1.1 legacy booleans
     let legacy_bool = match trimmed {
@@ -693,6 +694,90 @@ mod tests {
             }
         }
         assert_eq!(disagreements, 0, "code points disagree, first: {first:?}");
+    }
+
+    // The guard that skips `trim_matches` reads the first and last *byte*, so it is checked
+    // at both ends of every code point. Stack buffers, not `format!`: 2.2M allocations would
+    // make the sweep a test of the allocator. `…42` puts the code point where a leading blank
+    // could hide, `42…` where a trailing one could, and the `42` keeps the core resolver
+    // interested in the text either way.
+    #[test]
+    fn trim_yaml_blank_agrees_with_str_trim_for_every_code_point_at_either_end() {
+        let mut disagreements = 0usize;
+        let mut first = None;
+        for cp in 0..=0x10FFFF_u32 {
+            let Some(c) = char::from_u32(cp) else {
+                continue;
+            };
+            for leading_end in [true, false] {
+                let mut buf = [0u8; 6];
+                let bytes = if leading_end {
+                    let width = c.encode_utf8(&mut buf).len();
+                    buf[width..width + 2].copy_from_slice(b"42");
+                    &buf[..width + 2]
+                } else {
+                    buf[..2].copy_from_slice(b"42");
+                    let width = c.encode_utf8(&mut buf[2..]).len();
+                    &buf[..2 + width]
+                };
+                let text = core::str::from_utf8(bytes).unwrap();
+                let (got, want) = (
+                    crate::trim_yaml_blank(text),
+                    text.trim_matches(crate::is_yaml_blank),
+                );
+                if got != want {
+                    disagreements += 1;
+                    if first.is_none() {
+                        first = Some((cp, alloc::string::ToString::to_string(text)));
+                    }
+                }
+            }
+        }
+        assert_eq!(disagreements, 0, "code points disagree, first: {first:?}");
+    }
+
+    // A byte the table calls blank has to be one the predicate calls blank, at both ends of
+    // the ASCII range and in the gap where a UTF-8 continuation byte could be mistaken for
+    // separation. This is the tripwire for the table being edited instead of derived.
+    #[test]
+    fn the_blank_table_covers_exactly_the_predicate() {
+        for byte in 0u8..=0xff {
+            assert_eq!(
+                crate::is_blank_byte(byte),
+                crate::is_yaml_blank(byte as char),
+                "byte {byte:#04x}"
+            );
+        }
+    }
+
+    #[test]
+    fn trim_yaml_blank_removes_only_yaml_separation() {
+        for (text, want) in [
+            ("", ""),
+            (" ", ""),
+            ("\u{0}", ""),
+            ("\t\r\n", ""),
+            (" 42 ", "42"),
+            ("  name", "name"),
+            ("name ", "name"),
+            ("  a  b  ", "a  b"),
+            ("\u{a0}42", "\u{a0}42"),
+            ("42\u{a0}", "42\u{a0}"),
+            ("\u{a0}", "\u{a0}"),
+            ("\u{85}42", "\u{85}42"),
+            ("é", "é"),
+            ("42é", "42é"),
+            ("\u{1f600}42", "\u{1f600}42"),
+            ("42\u{1f600}", "42\u{1f600}"),
+            (" \u{a0} ", "\u{a0}"),
+        ] {
+            assert_eq!(
+                crate::trim_yaml_blank(text),
+                text.trim_matches(crate::is_yaml_blank),
+                "{text:?}"
+            );
+            assert_eq!(crate::trim_yaml_blank(text), want, "{text:?}");
+        }
     }
 
     // ---- failsafe ----

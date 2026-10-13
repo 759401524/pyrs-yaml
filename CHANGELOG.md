@@ -725,6 +725,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- **The scalar resolvers stopped trimming text that had nothing to trim.** — every JSON, TOML and
+  YAML scalar asks `resolve_core_type` "is this a number or a word?", and the first thing that
+  answer did was strip edge separation with a two-ended predicate walk: 38 counted instructions per
+  call, on strings that almost never start or end blank, and paid twice over by a YAML 1.1 scalar
+  because `resolve_yaml11_type` trimmed before delegating to the core chain. Every blank YAML
+  accepts is ASCII (`SP TAB CR LF NUL`), and UTF-8 keeps an ASCII byte out of a multi-byte sequence,
+  so the first and last byte decide whether there is anything to strip at all: two reads of a class
+  table built at compile time *from* `is_yaml_blank` — not a restatement of it — now answer before
+  the walk is attempted, and the walk still runs whenever either end really is blank. Measured in
+  one pair of runs of the same harness binary: `from_json_medium` −0.74%, `from_toml_medium` −0.92%,
+  and because the writers resolve through the same crate `to_json_medium` −1.68% with
+  `serialize_medium` −0.36%, while `parse_medium` repeated at +0.0014% as the control that makes
+  those two deltas count. `#[inline]` on the guard measured −0.003%, inside the same-binary spread,
+  so it was dropped rather than kept as an unmeasured hint.
+
 - **The instruction-count floor moved to the code that is on `main`.** — the committed baseline
   still held the pre-`d7177efc`/`dd211c8d` numbers, so the gate's band had widened by drift rather
   than by decision: `from_json_medium` sat 21.61% above what the engine now measures,

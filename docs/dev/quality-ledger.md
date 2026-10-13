@@ -4550,6 +4550,83 @@ pre-fix harness FAILED with the EPIPE panic, `cargo clippy --all --all-targets -
 `-0.0009%`-style instruction totals are untouched by a test-harness edit, so no gate re-baseline was
 asked for.
 
+### (ct) Two bytes answer what a two-ended walk used to ask (2026-10-13)
+
+The profile that priced this change - `callgrind` over the gate's own harness, the run recorded in
+`docs/dev/perf.md` - found a cost the earlier table had not named:
+`<str>::trim_matches::<is_yaml_blank>` at 1.64% of `from_json_medium`: 1,976,000 counted
+instructions over 52,000 calls, 38 per call. The cost belongs to the resolver, not to the reader:
+every scalar the JSON, TOML and YAML paths hand to `resolve_core_type` ("is this a number or a
+word?") first pays to strip edge separation, and the keys that ask are ordinary words like `name`,
+which have nothing to strip. `resolve_yaml11_type` trimmed, then delegated to the core chain, which
+trimmed the same text again.
+
+The rule that settles the question in two reads: every character `is_yaml_blank` accepts -
+`SP TAB CR LF NUL` - is ASCII, and UTF-8 never places an ASCII byte inside a multi-byte sequence. So
+a value begins or ends blank exactly when its first or last *byte* is one of those five. This is a
+guard, not a replacement: whenever either end really is blank, the original
+`trim_matches(is_yaml_blank)` still runs, so what gets removed stays defined in exactly one place.
+The byte table is const-evaluated by *calling* that predicate over the 128 ASCII positions - which
+is why `is_yaml_blank` became a `const fn` - because `(bi)` in this file is the record of what
+happens when a rule is written twice and encoded differently.
+
+Measured as one pair of runs of the same engine harness binary (`callgrind`, whole-process `I refs`,
+2,000 iterations, WSL build): `from_json_medium` 120,167,551 to 119,281,047 (-0.74%),
+`from_toml_medium` 200,129,565 to 198,295,602 (-0.92%), `to_json_medium` 22,244,247 to 21,870,305
+(-1.68%), `serialize_medium` 47,556,611 to 47,386,528 (-0.36%), with `parse_medium` repeating at
++0.0014% as the control the pair needs - the two pre-change `from_json_medium` runs differed by
+0.005%, so everything above that line is the change and not the machine. The write scenarios moved
+because the writers resolve plain scalars through the same crate: the shared schema layer doing its
+job, and the reason a reader-side cut has to be checked on both sides of the round trip.
+
+The mechanism, not only the total: after the change the profile carries no `trim_matches` entry and
+`trim_yaml_blank` costs 1,092,000, so 884,000 of the 888,571 instructions the scenario lost belong
+to the function that was removed. One refinement was tried and refused on the same kind of
+evidence - `#[inline]` on the guard measured 119,277,876 against 119,281,047, -0.003%, inside the
+same-binary spread - so the attribute was dropped instead of kept as a preference dressed as a
+measurement.
+
+Three tests hold the correctness half, each checked against a mutant that has to redden it:
+`the_blank_table_covers_exactly_the_predicate` walks all 256 byte values against the predicate, so
+the table cannot be edited into disagreement with it (`byte <= 0x80` is caught there by indexing
+past the 128 ASCII positions);
+`trim_yaml_blank_agrees_with_str_trim_for_every_code_point_at_either_end` places every code point at
+both ends of `...42` / `42...` and compares against `trim_matches` - reading the wrong end byte dies
+there with `first: Some((0, "42\0"))`, which is the shape that would have shipped silently
+otherwise; `trim_yaml_blank_removes_only_yaml_separation` pins the prose the resolvers promise,
+including NUL, `"  a  b  "`, NBSP and NEL at either end, and an astral tail. The sweep uses stack
+buffers rather than `format!` twice over 1.1M points, so it exercises the rule instead of the
+allocator.
+
+Two workflow facts, both learned the slow way:
+
+- The edits for this change landed in the working copy of a commit that had already been pushed as
+  PR #376's head, so the bookmark turned `ci-ir-rebaseline*` and `jj git push --dry-run` reported
+  `bookmark: move sideways from de3b303b to 1287778a` - a rewrite of a branch under review for
+  content that belonged to a different change. The repair is mechanical: copy the two touched files
+  aside, `jj restore -- <path>`, `jj new`, copy them back, `jj rebase -d main@origin`, then
+  *prove* the pushed commit is intact with `jj diff --from de3b303b75a4 --to 1287778ac169 --stat`
+  reading `0 files changed`. The habit that avoids it is ordering: `jj new` before starting the next
+  change, not after the previous one has been pushed.
+- A mirrored changelog bullet does not belong to the section whose heading you found first.
+  `docs/zh/changelog.md` keeps its historical entries under English `#### Performance` headings, so
+  inserting at the first one wrote a new `[Unreleased]` entry into the v0.13.0 history - invisible
+  to an eye reading the diff, and not invisible to `scripts/check_changelog_mirrors.py`, which
+  counts entry bullets per section and reported `[25, 11, 39, 6]` against the canonical
+  `[25, 11, 39, 7]`. The `[Unreleased]` headings are localized: 性能, パフォーマンス, 성능.
+
+Verified: `cargo nextest run --all` 579 tests (the three above included),
+`cargo test --all --no-default-features` clean, `cargo clippy --all --all-targets -- -D warnings`,
+`cargo fmt --all`, `uv run pytest tests/` 2719 pass / 10 skip against a rebuilt extension,
+`prek run --all-files`, five changelog mirrors at [25, 11, 39, 8]. The `no_std` gate's own command -
+the thumbv7em build of the four foundation crates `ci.yml` runs - finishes green with the const
+table in it. The gate then owned the verdict and agreed with the local pair, on the enforcing image:
+`from_json_medium` -0.72%, `from_toml_medium` -0.89%, `from_jsonc_medium` -0.66%,
+`from_json5_medium` -0.47%, `to_json_medium` -1.73%, `to_jsonc_medium` -1.59%,
+`to_json5_medium` -1.56%, `to_toml_medium` -0.95%, `serialize_*` -0.21…-0.51%,
+`to_python_*` -0.04…-0.36%, and all four `parse_*` scenarios at +0.00% - twenty-one scenarios
+measured, and not one of them moved up.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
