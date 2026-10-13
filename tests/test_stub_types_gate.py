@@ -199,7 +199,10 @@ def broken_stub(tmp_path):
         if "u32" not in shown.stdout or "Py<PyAny>" not in shown.stdout:
             continue
         path = tmp_path / "broken.pyi"
-        path.write_text(shown.stdout, encoding="utf-8", newline="\n")
+        # `write_text(newline=)` is 3.10+; this fixture is built on the 3.8 leg too, where the
+        # reference below may or may not be present, so the write must not be the thing that fails.
+        with path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(shown.stdout)
         return path
     return None
 

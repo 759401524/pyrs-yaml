@@ -665,7 +665,10 @@ def fix(paths: list) -> int:
         before = path.read_text(encoding="utf-8")
         after = format_text(before)
         if after != before:
-            path.write_text(after, encoding="utf-8", newline="\n")
+            # `Path.write_text(newline=...)` only exists on 3.10+, and the interpreter that has to be
+            # able to run this is the 3.8 leg of the matrix. `open` has taken `newline` since 3.5.
+            with path.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write(after)
             changed += 1
             print(f"wrapped {rel}")
     return changed
