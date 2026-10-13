@@ -108,10 +108,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
             style: crate::ast::ScalarStyle::Plain,
             chomping: crate::ast::Chomping::Clip,
             block_indent: None,
-            meta: crate::ast::NodeMeta {
-                tag: Some(tag),
-                ..Default::default()
-            },
+            meta: crate::ast::NodeMeta::with_tag(tag),
         });
     }
 
@@ -162,10 +159,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
             style: crate::ast::ScalarStyle::Plain,
             chomping: crate::ast::Chomping::Clip,
             block_indent: None,
-            meta: crate::ast::NodeMeta {
-                tag: Some(tag),
-                ..Default::default()
-            },
+            meta: crate::ast::NodeMeta::with_tag(tag),
         });
     }
 

@@ -312,6 +312,79 @@ therefore comparable in cost to building one, and the walk - not `free` - is the
 make cheaper without touching what a node holds. Not attempted here: the claim would need the same
 paired-run evidence this file keeps asking for, and the scenario that would show it
 (`from_json_medium` with its tree dropped at the end of each iteration) is the gate's own harness,
-so it is measurable in one more session rather than in one more guess.
+so it is measurable in one more session rather than in one more guess. The next section is that
+session.
+
+## A node was 208 bytes and 128 of them were metadata (2026-10-14)
+
+That target had a shape, and the shape was measured rather than guessed. `std::mem::size_of` on the
+tree as it stood:
+
+| type | bytes |
+|:--|--:|
+| `CustomNode` | 208 |
+| `NodeMeta` | 128 |
+| `Tag` | 48 |
+| `NodeMap<CustomNode, CustomNode>` | 72 |
+| `NodeDecor` | 32 |
+| `Comment` | 24 |
+
+61% of a node was the metadata a strict JSON document never fills, and each of `NodeMeta`'s five
+`Option` slots was a branch of its own when a tree is dropped. The two costs the section above
+prices then follow the size: the copies (`memcpy`, 7.88%, 4,702 instructions per parse) move
+208-byte nodes, and the teardown walk (4.58%, 2,730 per parse) asks five questions per node before a
+single `free` starts.
+
+The first change is not the layout, it is the door. Every read and write of those five slots now
+goes through `NodeMeta`'s own accessors - `comment()` / `set_comment()` / `take_comment()` and the
+same trio for the anchor, the tag and the source range, `decor_mut()` for the boxed leading-note
+bundle, `is_identity_clean()` where the serializer used a pattern to ask whether a node carries no
+comment, anchor or tag - and the struct literals that named every field became `with_comment()`,
+`with_tag()`, `with_anchor()`, `with_source_range()` and `scanned()`. Nothing outside `pyrs-ast`
+reaches a metadata field now.
+
+The door was going to cost nothing, and that was the wrong control. The claim was a hash: the
+`ir_gate` harness binary built from the accessor tree and the one built from its parent came out the
+*same bytes* (sha256 `c504386fe4b52efc`), and identical machine code cannot move an instruction
+count. Both builds used the host's rustc 1.99.0. The gate pins **rustc 1.97.1** - a different
+codegen - and PR #382's CI run said `serialize_small +0.61%`. Measured paired on 1.97.1 in WSL the
+accessor-only pass reads `serialize_small +5.49%`, concentrated in `write_plain_scalar` (+81
+counted instructions per iteration) and `write_scalar_for_key`, i.e. in the two calls the pattern
+match became a function call. So byte-identity on a compiler the gate does not use is evidence about
+nothing; the only control that settles a "costs nothing" claim is the gate's own toolchain.
+
+What ships is therefore the door and the layout as one measured change, because together they are
+net negative on 1.97.1. `NodeMeta { comment, decor: Box<_>, source_range, fidelity: Box<Fidelity> }`
+with `Fidelity { anchor, tag }` takes the struct from 128 to **64** bytes and `CustomNode` from 208
+to **144** in the default `std` build - the feature split swaps the node map's hasher (`RandomState`
+for `std`, the crate's own fixed-seed `FxHasher` otherwise), and on that path the node lands at
+**128**; the `no_std` CI job found that by reddening on a tripwire that pinned 144 alone.
+The test `node_layout_is_part_of_the_hot_path_contract` pins all four numbers, so the table above
+cannot rot silently. The paired run (2,000 iterations minus `--setup-only`, `m197.bin` vs the
+retuned binary):
+
+| scenario | paired delta on rustc 1.97.1 |
+|:--|--:|
+| `from_json_medium` | −4.83% |
+| `from_jsonc_medium` | −4.02% |
+| `serialize_anchors` | −3.95% |
+| `from_json5_medium` | −3.50% |
+| `parse_inline_merge` | −3.53% |
+| `parse_anchors` | −3.45% |
+| `parse_medium` | −1.51% |
+| `from_toml_medium` | +0.74% |
+| `serialize_medium` | +0.17% |
+| `serialize_small` | −0.07% |
+
+The rest sit inside ±0.2%. What decided the grouping is the first attempt's number: boxing the
+`source_range` too - which the YAML adapter records for *every* node it reads - gave
+`parse_medium +5.94%`, `parse_block +4.38%` and `serialize_medium +3.16%` in exchange for
+`from_json_medium −7.41%`. A field written per node must stay flat; only the anchor and the tag,
+which only an explicitly anchored or tagged source ever produces, go behind the pointer. Comments
+and the leading-note bundle stay where the fidelity formats can reach them without an allocation.
+
+Two cheaper variants are deliberately not on the list: shrinking `Tag` (48 bytes) or swapping
+`anchor: Option<String>` for `Option<Arc<str>>`. Each saves bytes and neither shortens the drop
+walk, so they would be measured against a node shape this change has now moved anyway.
 
 ---

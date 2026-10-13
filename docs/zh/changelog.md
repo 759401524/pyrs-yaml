@@ -228,6 +228,22 @@ status: new
 
 #### 变更
 
+- **`CustomNode` 是 144 字节，不再是 208。** — 节点的一半曾是它的 `NodeMeta`：208 字节里的 128 字
+  节，五个 `Option` 槽位，而这个尺寸正压在每条读取热路径上——建节点要写它，节点移动要拷它，销毁树时还
+  要逐字段检查它（`docs/dev/perf.md` — `memcpy` 占 `from_json_medium` 的 7.88%，拆解占 4.58%）。两步
+  作为一个改动落地，因为单独哪一步都不免费。除 `pyrs-ast` 之外的每个 crate 现在都走该类型自己的访问
+  器：`comment()`、`set_comment()`、`take_comment()`，anchor、tag 与 source range 也各是同样三个；装
+  箱的首行注释用 `decor_mut()`；序列化器原先用模式问「此节点是否不带 comment、anchor、tag」，现在问
+  `is_identity_clean()`；逐个点名字段的构造字面量改用 `with_comment()`、`with_tag()`、`scanned()`。
+  只有带 anchor 或带 tag 的源码才会填的两个槽位，现在共用一个指针。在性能门禁固定的编译器上配对测量
+  （rustc 1.97.1）：`from_json_medium` −4.8%、`serialize_anchors` −4.0%、`parse_inline_merge`
+  −3.5%、`parse_medium` −1.5%、`from_toml_medium` +0.7%，没有任何场景越过 0.50% 容差。哪些字段可以搬
+  走是这次的结论：把 source range 也装箱——YAML 适配器为*每个*节点都记录它——会让 `parse_medium`
+  +5.9%，只为换来 `from_json_medium` −7.4%，所以每节点写入的槽位保持平铺，只有 `{anchor, tag}` 进
+  箱。`node_layout_is_part_of_the_hot_path_contract` 钉住元数据的 72 与 64，以及节点在两种构建下的各
+  自尺寸——默认 `std` 是 144，节点映射换用自带哈希器的 `no_std` 是 128——因为这个形状的节点是一条测量
+  出来的声明，不是实现细节。
+
 - **TOML 二进制整数保住自己的写法。** — `b = 0b1010` 回来时变成了 `b = 10`。这条 spoke 是有意归一化
   的：YAML Core 没有 `0b` 词法，一个不带标签的 plain `0b1010` 到了中枢会被重读为*字符串*，而设计规则
   D1（只保留 YAML Core 也接受的写法）选择丢写法而不是坏掉取值。桥梁学会读标签之后，这个理由就过期了

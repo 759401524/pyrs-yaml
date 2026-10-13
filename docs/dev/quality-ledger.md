@@ -4731,6 +4731,72 @@ floor they clear. No code shipped, so no test or gate ran: `cargo nextest run -p
 the workspace build/lint pair were green on the closed branch, and the documents in this change are
 checked by `python scripts/check_doc_wrapping.py` and `prek run --all-files`.
 
+### (cw) A control measured on the wrong compiler is a story, not a proof (2026-10-14)
+
+`(cv)` ended with a rule: a claim that an addition costs nothing has to be tested by deleting the
+addition. The node-metadata accessor pass is the same claim one level down - "an accessor inlines,
+so routing 84 field reads and 16 struct literals through `NodeMeta`'s own methods cannot move the
+instruction count" - and it was nearly accepted on a hash. The `ir_gate` harness binary built from
+that tree and the one built from its parent came out with the **same sha256**, `c504386fe4b52efc`,
+and the section wrote that identical machine code cannot differ in counted instructions.
+
+It was true and it proved nothing. Both binaries were built by the host's rustc 1.99.0; the gate
+pins **rustc 1.97.1** (`.ci/ir-baseline.json` records the toolchain and the image), and CI on the
+accessor-only PR reported `serialize_small +0.61%` - inside nothing, outside the 0.50% tolerance.
+Re-measured paired on 1.97.1 the accessor pass alone reads `serialize_small +5.49%`, concentrated in
+`write_plain_scalar` (+81 counted instructions per iteration) and `write_scalar_for_key`, the two
+places where a pattern match became a call. A byte-identical build rules out a *counted-instruction*
+difference **on the compiler that produced it**; it says nothing about codegen across versions, and
+the gate's verdict is the only one that counts. `docs/dev/perf.md` carries the numbers.
+
+The step still shipped, with the layout it was a prerequisite for, because measured together on
+1.97.1 the pair is net negative: `from_json_medium` −4.83%, `serialize_anchors` −3.95%,
+`parse_inline_merge` −3.53%, `parse_medium` −1.51%, `serialize_small` −0.07%, and nothing above the
+tolerance. That is the honest form of "a door costs nothing": not a hash, a paired run on the
+enforcing toolchain.
+
+How the pair was measured, since the method is the point: build
+`cargo build --release -p pyrs-yaml-core --bench ir_gate --features ir-gate` with
+`CARGO_PROFILE_RELEASE_STRIP=false` on both trees with `cargo +1.97.1`, then subtract the
+`--setup-only` total from the full total per scenario. Three details bit the attempts. Cargo's
+fingerprint followed `jj`'s restored mtimes, so a rebuild after switching changes silently re-used
+the previous binary and both hashes matched for the wrong reason -
+`cargo clean -p pyrs-ast -p pyrs-json -p pyrs-toml -p pyrs-schema -p pyrs-event -p pyrs-yaml-core`
+between the two builds is what makes the comparison mean anything. WSL's `/tmp` is a tmpfs that dies
+with the VM: the stashed binaries were gone before the annotation ran, so the artifacts of an A/B
+belong under `target/`. And installing the pinned toolchain with `--profile minimal` left it without
+`core`/`std` until `rustup toolchain install 1.97.1 --force --profile minimal` re-ran it.
+
+The sizes that motivate the step are in `docs/dev/perf.md` as a table - `CustomNode` was 208 bytes,
+`NodeMeta` 128 of them, `Tag` 48 - and they explain the two costs `(cp)`/`(cr)` priced: a `memcpy`
+share of 7.88% moving 208-byte nodes, and a 4.58% teardown that asks five `Option` questions per
+node. Encapsulating first also found a duplicated question: the serializer asked a pattern whether a
+node carries no comment, anchor or tag in the same breath that `hash_custom_node_identity` asks it
+three times, and both now call `NodeMeta::is_identity_clean()`. What the grouping then taught is
+which fields may move: boxing `source_range` alongside the anchor and the tag - the YAML adapter
+records a range on *every* node - cost `parse_medium +5.94%` to buy `from_json_medium −7.41%`, so
+per-node-written slots stay flat and only `{anchor, tag}` went behind the pointer.
+`node_layout_is_part_of_the_hot_path_contract` pins the resulting sizes - 72 / 64 and 144 for the
+`std` node, 128 for the `no_std` one, because the feature split swaps the node map's hasher too - so
+the claim in that file cannot rot into a comment. The first version pinned 144 alone and CI's
+`cargo test --locked --no-default-features -p pyrs-ast -p pyrs-schema` job reddened on it: a node
+size is a per-configuration fact, and the job that measures a configuration is the one that catches
+the assumption.
+
+Verified: the paired deltas above were measured on `rustc +1.97.1`, the compiler the baseline names,
+in WSL, with `CARGO_PROFILE_RELEASE_STRIP=false` and the scenario loop taken as the full run minus
+`--setup-only`. The comparison script sat under `target/ab/`, which is gitignored scratch, so the
+numbers are reproducible by the recipe in this entry but not by a repo tool; CI's
+`Ir instruction-count baseline` check is the verdict for the shipped tree, and `from_toml_medium`
+(+0.74% local, about half that on the runners) is the one scenario likely to need
+`--accept-drift`. Gates on the shipped tree: `cargo nextest run --all` 580 (the layout tripwire
+included), `cargo test --all --no-default-features` 618,
+`cargo clippy --all --all-targets -- -D warnings`, the extension rebuilt with `maturin develop
+--release` before `uv run pytest tests/` - 2719 passed, 10 skipped - `maturin generate-stubs` plus
+`check_stub_drift.py` clean, `prek run --all-files`, `check_changelog_mirrors.py` (all five mirrors
+at [26, 12, 39, 8]), and `check_doc_wrapping.py --fix` over the changelogs and `docs/dev/perf.md` -
+the wrapping gate reddened a first attempt at this section, which is exactly what it is for.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

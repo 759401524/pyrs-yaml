@@ -114,16 +114,17 @@ pub fn with_metadata_from(target: &CustomNode, src: &CustomNode) -> CustomNode {
 /// `decor` and `source_range` describe the old node's place in the source text, so neither travels;
 /// the region writer re-derives both.
 fn merged_meta(incoming: &NodeMeta, replaced: &NodeMeta) -> NodeMeta {
-    NodeMeta {
-        comment: replaced
-            .comment
-            .clone()
-            .or_else(|| incoming.comment.clone()),
-        anchor: replaced.anchor.clone().or_else(|| incoming.anchor.clone()),
-        tag: incoming.tag.clone().or_else(|| replaced.tag.clone()),
-        decor: None,
-        source_range: None,
+    let mut meta = NodeMeta::default();
+    if let Some(comment) = replaced.comment().or_else(|| incoming.comment()) {
+        meta.set_comment(comment.clone());
     }
+    if let Some(anchor) = replaced.anchor().or_else(|| incoming.anchor()) {
+        meta.set_anchor(anchor);
+    }
+    if let Some(tag) = incoming.tag().or_else(|| replaced.tag()) {
+        meta.set_tag(tag.clone());
+    }
+    meta
 }
 
 fn needs_quoting(value: &str) -> bool {
@@ -146,16 +147,13 @@ mod tests {
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             block_indent: None,
-            meta: NodeMeta {
-                anchor: Some("myanchor".into()),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_anchor("myanchor"),
         };
         let result = with_metadata_from(&target, &src);
         match result {
             CustomNode::Scalar { value, meta, .. } => {
                 assert_eq!(value.as_ref(), "val");
-                assert_eq!(meta.anchor, Some("myanchor".into()));
+                assert_eq!(meta.anchor(), Some("myanchor"));
             }
             _ => panic!("expected Scalar"),
         }
@@ -169,15 +167,12 @@ mod tests {
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             block_indent: None,
-            meta: NodeMeta {
-                tag: Some(crate::ast::Tag::local("custom")),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_tag(crate::ast::Tag::local("custom")),
         };
         let result = with_metadata_from(&target, &src);
         match result {
             CustomNode::Scalar { meta, .. } => {
-                assert_eq!(meta.tag, Some(crate::ast::Tag::local("custom")));
+                assert_eq!(meta.tag(), Some(&crate::ast::Tag::local("custom")));
             }
             _ => panic!("expected Scalar"),
         }

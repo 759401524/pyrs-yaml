@@ -169,7 +169,7 @@ fn typed(node: &CustomNode) -> Typed<'_> {
         // question than the document asked. A tag the text cannot satisfy has no typed view,
         // which this function already reports as incomparable - the honest answer for a
         // comparison, rather than a guess at one side of it.
-        let resolved = match meta.tag.as_ref().and_then(|t| {
+        let resolved = match meta.tag().and_then(|t| {
             pyrs_yaml_core::parser::yaml::schema::standard_tag_kind(&t.handle, &t.suffix)
         }) {
             Some(kind) => match kind.resolve(value) {

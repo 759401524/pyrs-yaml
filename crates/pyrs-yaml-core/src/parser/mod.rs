@@ -34,13 +34,13 @@ use yaml::{
 /// so duplicate-key detection must not reject them.
 fn is_null_key(key: &CustomNode) -> bool {
     match key {
-        CustomNode::Null { meta, .. } if meta.tag.is_none() => true,
+        CustomNode::Null { meta, .. } if meta.tag().is_none() => true,
         CustomNode::Scalar {
             value,
             style: ScalarStyle::Plain,
             meta,
             ..
-        } if meta.tag.is_none() => {
+        } if meta.tag().is_none() => {
             value.is_empty() || value.as_ref() == "~" || value.eq_ignore_ascii_case("null")
         }
         _ => false,
@@ -670,10 +670,7 @@ impl<'a> AstReceiver<'a> {
             style: scalar_style,
             chomping,
             block_indent: block_header.indent,
-            meta: NodeMeta {
-                source_range: Some(range),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_source_range(range),
         }
     }
 
@@ -989,7 +986,7 @@ impl<'a> AstReceiver<'a> {
                             // and `!A null` are different keys: their emitted lines
                             // carry the tag and re-read apart, which is exactly what
                             // must not be reported as a collision.
-                            CustomNode::Scalar { value, meta, .. } if meta.tag.is_none() => {
+                            CustomNode::Scalar { value, meta, .. } if meta.tag().is_none() => {
                                 if seen_value_keys.insert(Arc::clone(value)) {
                                     None
                                 } else {
@@ -1244,7 +1241,7 @@ impl<'a> AstReceiver<'a> {
             && let CustomNode::Scalar { meta: m, .. } = &mut node
             && m.standalone_slot().is_none()
         {
-            let decor = m.decor.get_or_insert_with(Default::default);
+            let decor = m.decor_mut();
             for comment in standalone {
                 decor.push_leading_comment(comment);
             }
@@ -1253,13 +1250,13 @@ impl<'a> AstReceiver<'a> {
         if let Some(name) = self.register_anchor(anchor_id, range_start)
             && let CustomNode::Scalar { meta: m, .. } = &mut node
         {
-            m.anchor = Some(name);
+            m.set_anchor(name);
         }
 
         if let Some(tag) = tag
             && let CustomNode::Scalar { meta: m, .. } = &mut node
         {
-            m.tag = Some(convert_tag(&tag));
+            m.set_tag(convert_tag(&tag));
         }
 
         self.push_node(node);
@@ -1388,13 +1385,7 @@ impl<'a> AstReceiver<'a> {
                 self.span_to_byte_range(&span).end
             };
 
-            let mut meta = NodeMeta {
-                comment: None,
-                decor: None,
-                anchor,
-                tag,
-                source_range: Some(start_byte..end),
-            };
+            let mut meta = NodeMeta::scanned(anchor, tag, start_byte..end);
             // PR #117b: standalone notes on a container surface through
             // `decor.leading_comments`. The `comment` slot is left for
             // inline trailing notes (currently only set by
@@ -1407,7 +1398,7 @@ impl<'a> AstReceiver<'a> {
             // of the block body — where it drifts one level per round again
             // (`marker_note_settles_on_the_marker_line` pins this).
             for comment in standalone {
-                let decor = meta.decor.get_or_insert_with(Default::default);
+                let decor = meta.decor_mut();
                 decor.push_leading_comment(comment);
             }
 
@@ -1470,17 +1461,11 @@ impl<'a> AstReceiver<'a> {
                 self.span_to_byte_range(&span).end
             };
 
-            let mut meta = NodeMeta {
-                comment: None,
-                decor: None,
-                anchor,
-                tag,
-                source_range: Some(start_byte..end),
-            };
+            let mut meta = NodeMeta::scanned(anchor, tag, start_byte..end);
             // PR #117b: same slot split as the mapping case above, same
             // flag-blind reason.
             for comment in standalone {
-                let decor = meta.decor.get_or_insert_with(Default::default);
+                let decor = meta.decor_mut();
                 decor.push_leading_comment(comment);
             }
 
@@ -2336,7 +2321,7 @@ mod tests {
         let (key, value) = pairs.iter().next().expect("one pair");
         assert!(
             matches!(key, CustomNode::Scalar { meta, .. }
-                if meta.comment.as_ref().is_some_and(|c| c.text.as_ref() == "note")),
+                if meta.comment().is_some_and(|c| c.text.as_ref() == "note")),
             "the source tree keeps the note on the key node"
         );
         assert!(
@@ -2387,8 +2372,7 @@ mod tests {
             "one pair: the empty key and its tagged value"
         );
         assert!(
-            meta.comment
-                .as_ref()
+            meta.comment()
                 .is_some_and(|c| !c.standalone && c.text.as_ref() == "-o"),
             "granit reports the note as the mapping's own inline slot: {node:?}"
         );
@@ -2450,7 +2434,7 @@ mod tests {
         let CustomNode::Mapping { meta, .. } = &mut node else {
             panic!("expected a mapping, got {node:?}");
         };
-        meta.comment = Some(Comment {
+        meta.set_comment(Comment {
             text: Arc::from("cn"),
             standalone: false,
         });
@@ -2474,9 +2458,7 @@ mod tests {
             "the block scalar keeps its content: {again:?}"
         );
         assert!(
-            meta.comment
-                .as_ref()
-                .is_some_and(|c| c.text.as_ref() == "cn"),
+            meta.comment().is_some_and(|c| c.text.as_ref() == "cn"),
             "and the fallback line still reports the note back to the container: {again:?}"
         );
     }
@@ -2992,14 +2974,11 @@ mod tests {
             panic!("expected scalar value")
         };
         assert!(
-            meta.decor
-                .as_ref()
-                .and_then(|d| d.leading_comment())
-                .is_some(),
+            meta.decor().and_then(|d| d.leading_comment()).is_some(),
             "standalone comment did not land in the new leading_comment slot"
         );
         assert!(
-            meta.comment.is_none(),
+            meta.comment().is_none(),
             "legacy `comment` slot should be empty after #117b"
         );
     }
@@ -3050,8 +3029,7 @@ mod tests {
                     && value.as_ref() == "name"
                     && let CustomNode::Scalar { meta, .. } = v
                 {
-                    assert!(meta.tag.is_some());
-                    assert_eq!(meta.tag.unwrap().suffix, "str");
+                    assert_eq!(meta.tag().map(|t| t.suffix.as_str()), Some("str"));
                 }
             }
         }
@@ -3085,8 +3063,7 @@ mod tests {
                     && value.as_ref() == "defaults"
                     && let CustomNode::Mapping { meta, .. } = v
                 {
-                    assert!(meta.anchor.is_some());
-                    assert_eq!(meta.anchor.unwrap(), "defaults");
+                    assert_eq!(meta.anchor(), Some("defaults"));
                 }
             }
         }
@@ -3151,7 +3128,7 @@ mod tests {
         let CustomNode::Mapping { pairs, meta, .. } = node else {
             panic!()
         };
-        assert_eq!(meta.source_range, Some(0usize..9)); // up to the last child ("1") end
+        assert_eq!(meta.source_range(), Some(&(0usize..9))); // up to the last child ("1") end
         let inner = pairs.values().next().unwrap();
         let CustomNode::Mapping { pairs, .. } = inner else {
             panic!()
@@ -3178,7 +3155,7 @@ mod tests {
         let CustomNode::Mapping { meta, .. } = node else {
             panic!()
         };
-        assert_eq!(meta.source_range, Some(0usize..6)); // covers "{a: 1}" incl. '}'
+        assert_eq!(meta.source_range(), Some(&(0usize..6))); // covers "{a: 1}" incl. '}'
     }
 
     #[test]

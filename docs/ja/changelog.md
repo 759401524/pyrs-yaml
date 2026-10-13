@@ -254,6 +254,26 @@ status: new
 
 #### 変更
 
+- **`CustomNode` は 208 バイトではなく 144 バイトです。** — ノードの半分は `NodeMeta` でした。208 バ
+  イトのうち 128 バイト、`Option` スロット五つで、その大きさはすべての読み取りの熱経路に載っていま
+  す。ノードを作る時に書き、ノードが動くたびにコピーし、ツリーを破棄する時はフィールドを一つずつ検査
+  します（`docs/dev/perf.md` — `memcpy` が `from_json_medium` の 7.88%、破棄が 4.58%）。二つの段階は
+  どちらも単独では無料でないため、一つの変更として出します。`pyrs-ast` 以外のすべての crate は型自身
+  のアクセサを通ります。`comment()`、`set_comment()`、`take_comment()`、そして anchor・tag・source
+  range も同じ三つ組みです。先頭コメントの箱には `decor_mut()`、シリアライザが pattern で「このノー
+  ドに comment・anchor・tag がないか」と聞いていた所は `is_identity_clean()`、すべてのフィールド名を
+  書いていた構造体リテラルは `with_comment()`、`with_tag()`、`scanned()` に。anchor や tag を明示し
+  たソースだけが埋める二つのスロットは、いまポインタ一つを共有します。ゲートが固定するコンパイラで対
+  にして測定しました（rustc 1.97.1）：`from_json_medium` −4.8%、`serialize_anchors` −4.0%、
+  `parse_inline_merge` −3.5%、`parse_medium` −1.5%、`from_toml_medium` +0.7% で、0.50% の許容範囲を
+  外れるものはありません。どのフィールドを動かしうるかが今回の知見です。source range も箱に入れる —
+  YAML アダプタは*すべての*ノードにそれを記録します — と、`from_json_medium` の −7.4% を買うために
+  `parse_medium` で +5.9% を払う結果になるので、ノードごとに書き込まれるスロットはフラットなままにし
+  て、`{anchor, tag}` だけ箱に入れます。`node_layout_is_part_of_the_hot_path_contract` が元データの
+  72 と 64、そしてノードが持ちうる二つの大きさ（既定の `std` では 144、ノードマップのハッシャが違う
+  `no_std` では 128）を固定します。この形のノードは測定された主張であって、実装の細部ではありませ
+  ん。
+
 - **TOML の 2 進整数が綴りを保つようになりました。** — `b = 0b1010` が `b = 10` と戻ってきました。こ
   の spoke は意図的に正規化していました。YAML Core に `0b` の語彙がないため、タグなしの plain
   `0b1010` はハブで*文字列*として読み直され、設計規則 D1（YAML Core も受け入れる綴りだけを残す）は値
