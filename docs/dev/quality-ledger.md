@@ -3306,6 +3306,35 @@ loader, which is the reference the bridges have to match - 2502 Python tests,
 required `"c":7` for `c: !!str 7` and its own comment said why ("resolves like serde path did"); the
 reason expired with #335.
 
+The cost was measured on the enforcing image before it was accepted, and the accepted numbers are
+the ones the gate printed: `to_json_medium` 21,432,843 -> 21,672,879 (+1.12%), `to_jsonc_medium`
+23,234,840 -> 23,474,799 (+1.03%), `to_json5_medium` 23,842,757 -> 24,038,882 (+0.82%). Nothing else
+crossed the 0.5% line. The same refresh tightened `from_json_medium` by 0.46% and
+`from_jsonc_medium` by 0.42%; that is recorded as the artifact reports it, not claimed as an
+improvement of this change. `.ci/ir-baseline.json` is regenerated inside this pull request through
+the `Ir baseline refresh` channel with those three scenarios named to the drift guard - the route
+that only became usable once the refresh job could carry `accept_drift` (#364) and count the names
+rather than the flags (#365); the job's line
+`accepting drift for 3 scenario(s): to_json_medium to_jsonc_medium to_json5_medium` is the first
+production use of that correction. The refresh job and the enforcing job agree on all three
+percentages, so this ruling is not channel-dependent, and the `binaries` field moved as it must
+(`9cfd4b05c0cc3152 -> 19f0134be0191eb4`, `a89b9ec282ff22d8 -> 981a2fcedb546eee`), which is what
+pairs these numbers with this code rather than with any other run's.
+
+A defect in this branch's own rebase is recorded because no gate could see it. The resolution left a
+line holding nothing but `)` at the end of the entry, in all five changelogs at once. It came from
+the resolution step, not from git: reproducing the same conflict byte-for-byte in a scratch worktree
+(the original commit applied with `git cherry-pick --no-commit` onto current `main`) shows the diff3
+labels on one line each and no stray parenthesis anywhere, and neither `main`'s blob nor the
+original commit's contains one. `changelog-sync`, the placement rule, the mirror parity check and
+`rumdl` all stayed green, because a line with nothing but a parenthesis is neither a bullet nor a
+heading - the defence reads structure, and this was not structure. `git diff main HEAD`, which
+compares what changed against what was already there rather than asking what the file means, is what
+surfaced it. The first explanation written here - that git wraps a long conflict label, leaving its
+tail on its own line - was refuted by that measurement and has been replaced by it. The lesson is
+the operational one: a conflict resolution has to be checked against both parents by diff, not only
+by the gates that parse its output.
+
 ### (bv) Regenerating the performance baseline was a silent way to move it (2026-10-12)
 
 Found while deciding what to do about `(bu)`'s sibling measurement problem, not by an audit: to

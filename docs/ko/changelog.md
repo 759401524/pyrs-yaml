@@ -362,17 +362,20 @@ status: new
   구분자를 없애면 주석이 주인 줄에서 움직였다. #339 를 닫는다. — (details: quality-ledger
   (bz))
 
-- **표준 태그가 로드할 때만이 아니라 모든 포맷에서 타입을 결정한다.** — #335 으로 로더는
-  `!!str` / `!!int` / `!!float` / `!!bool` 을 존중하게 됐지만, JSON·JSONC·JSON5·TOML 로 가는
-  브리지는 스칼라의 *텍스트*만 해석하고 `meta.tag` 를 버렸기에 같은 문서가 두 답을 냈다:
-  `v: !!str 1.20` 은 문자열 `"1.20"` 으로 읽히는데 `to_json` 은 `1.2` 를 내놓았다 — 타입이
-  바뀌었고 작성자가 일부러 남긴 뒤의 0 도 사라졌다. 이제 규칙은 한 곳에 산다: `pyrs-schema`
-  (`standard_tag_kind` / `TagKind::resolve`, YAML 1.1 어휘, `!!x` 축약형과 완전형
-  `!<tag:yaml.org,2002:x` 모두), JSON 기록자·TOML 기록자·CLI 의 타입 비교가 모두 거기에 묻는다.
-  텍스트가 태그가 밝힌 타입을 만족하지 않으면 문자열로 바꿔치기하지 않고 거부한다
-  (`*-tag-text-mismatch`). 로컬 태그(`!int`), 알 수 없는 `!!` 접미사, 미결정으로 남은
-  `!!binary` 매핑은 그대로이며, 그대로임을 테스트로 고정했다. — (details: quality-ledger (bu))
-)
+- **표준 태그가 로드할 때만이 아니라 모든 포맷에서 타입을 결정한다.** — #335 으로 로더는 `!!str` /
+  `!!int` / `!!float` / `!!bool` 을 존중하게 됐지만, JSON·JSONC·JSON5·TOML 로 가는 브리지는 스칼라의
+  *텍스트*만 해석하고 `meta.tag` 를 버렸기에 같은 문서가 두 답을 냈다: `v: !!str 1.20` 은 문자열
+  `"1.20"` 으로 읽히는데 `to_json` 은 `1.2` 를 내놓았다 — 타입이 바뀌었고 작성자가 일부러 남긴 뒤의
+  0 도 사라졌다. 이제 규칙은 한 곳에 산다: `pyrs-schema` (`standard_tag_kind` / `TagKind::resolve`,
+  YAML 1.1 어휘, `!!x` 축약형과 완전형 `!<tag:yaml.org,2002:x` 모두), JSON 기록자·TOML 기록자·CLI 의
+  타입 비교가 모두 거기에 묻는다. 텍스트가 태그가 밝힌 타입을 만족하지 않으면 문자열로 바꿔치기하지
+  않고 거부한다 (`*-tag-text-mismatch`). 로컬 태그(`!int`), 알 수 없는 `!!` 접미사, 미결정으로 남은
+  `!!binary` 매핑은 그대로이며, 그대로임을 테스트로 고정했다. 대가는 측정 이미지에서 재고
+  받아들였습니다. 태그를 먼저 묻는 쌍 반복자는 `to_json_medium`에서 +1.12%, `to_jsonc_medium`에서
+  +1.03%, `to_json5_medium`에서 +0.82%를 쓰고, `to_toml_medium`은 -0.07% 움직였으며 나머지는 선을
+  넘지 않습니다. `.ci/ir-baseline.json`은 이 pull request 안에서 다시 만들고 이 셋을 드리프트 관문에
+  지목했습니다. 같은 측정에서 `from_json_medium`이 -0.46%, `from_jsonc_medium`이 -0.42% 조여졌는데,
+  그것은 부탁한 적이 없습니다. — (details: quality-ledger (bu))
 
 - **편집이 새 값의 타입을 옛 값의 태그로 덮어썼다.** — `doc.set("$.d", b"hi")` 는
   `d: aGk=` 를 출력했다. 이 대입은 `!!binary` 를 가진 스칼라를 만드는데, 스플리스 편집기의

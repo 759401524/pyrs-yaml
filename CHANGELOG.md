@@ -393,9 +393,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shorthand and the verbatim `!<tag:yaml.org,2002:x>`), and the JSON writer, the TOML writer and the
   CLI's typed comparison all ask it. A tag the text cannot satisfy is refused
   (`*-tag-text-mismatch`) rather than quietly re-typed as a string. Local tags (`!int`), unknown
-  `!!` suffixes and the undecided `!!binary` mapping are unchanged, and pinned as unchanged. —
+  `!!` suffixes and the undecided `!!binary` mapping are unchanged, and pinned as unchanged. The
+  cost is measured on the enforcing image and accepted: a pair loop that now asks the tag first
+  spends `to_json_medium` +1.12%, `to_jsonc_medium` +1.03% and `to_json5_medium` +0.82%, while
+  `to_toml_medium` moves -0.07% and nothing else crosses the line. `.ci/ir-baseline.json` is
+  regenerated inside this pull request with those three scenarios named to the drift guard; the same
+  run tightened `from_json_medium` -0.46% and `from_jsonc_medium` -0.42% without being asked to. —
   (details: quality-ledger (bu))
-)
 
 - **An edit no longer overwrites the new value's type with the old value's tag.** —
   `doc.set("$.d", b"hi")` emitted `d: aGk=`. The assignment builds a scalar carrying `!!binary`, and
