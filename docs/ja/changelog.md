@@ -17,6 +17,21 @@ status: new
 
 #### 追加
 
+- **`pyrs-event`：文書イベント語彙を独立 crate にしました。** — AST と並ぶ、アーキテクチャの柱が挙げ
+  る二つ目の核心抽象です。`StreamEvent` とその 11 の変数を
+  `crates/pyrs-yaml-core/src/parser/stream.rs` から移し、`#![no_std]` + `alloc` で `pyrs-ast` のみに
+  依存する crate にしました。依存は `ScalarStyle` と `Tag` を共有するためで、イベント列とそこから作
+  る木が style や tag の意味で食い違わないようにするためです。エンジン側は両方の名前を re-export し
+  続けるので、`pyrs_yaml_core::parser::{StreamEvent, StreamEventType}` はそのまま解決でき、呼び出し
+  側の変更はありません。形は意図的に変えていません。まだ YAML の語彙のままです。中性の語彙は第二の生
+  産者を前にして設計する必要があり、その生産者はまだ存在しないからです。`docs/dev/event-stream.md`
+  が裁定（option B）と、それを成立させる順序——JSON 生産者、TOML 生産者、そしてイベントから直接パーサ
+  が作る木を再構築できることを示すリプレイ性質テスト——を記録しており、本項目はその第一歩です。だから
+  こそ crate 自身のドキュメントに、どのフィールドが YAML の文法なのか（JSON に anchor があるという主
+  張ではない）を明記しています。挙動変更なし、新規依存なし、ホットパスへの追加なし：この crate の
+  thumbv7em `no_std` ビルドが階層を正直に保つゲートで、他の基盤 crate と並べて `no_std` ジョブに入り
+  ました。—（詳細：quality-ledger (cu)）
+
 - **CI が Python 3.15 でスイートを実行するようになった。** — 正式リリース済み（devguide のバージョン
   表では初回リリース 2026-10-09、状態は `bugfix`）、`3.15` の classifier と `abi3t` + `abi3t-py315`
   の機能指定はすでにコミット済みで、abi3 ホイールも 3.15 に導入できる。それなのにどのジョブもそこで

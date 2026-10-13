@@ -19,6 +19,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **`pyrs-event`: the document event vocabulary is its own crate.** — the second core abstraction
+  the architecture pillar names beside the AST. `StreamEvent` and its eleven variants moved out of
+  `crates/pyrs-yaml-core/src/parser/stream.rs` into a `#![no_std]` + `alloc` crate that depends only
+  on `pyrs-ast` - for `ScalarStyle` and `Tag`, so a stream and a tree built from it cannot disagree
+  about what a style or a tag is - while the engine re-exports both names, so
+  `pyrs_yaml_core::parser::{StreamEvent, StreamEventType}` keeps resolving and no call site changed.
+  The shape is deliberately *unchanged*: it is still YAML's vocabulary, because a neutral one has to
+  be designed against a second producer and none exists yet. `docs/dev/event-stream.md` records the
+  ruling (option B) and the sequence that makes it true - JSON producer, TOML producer, then a
+  replay property test showing events rebuild the AST the direct parsers build; this is step one of
+  that roadmap, and it is why the crate's own documentation says which fields are YAML's grammar
+  rather than a claim that JSON has anchors. No behaviour change, no new dependency, nothing added
+  to a hot path: the thumbv7em `no_std` build of the crate is the gate that keeps the layering
+  honest, and it now runs in the `no_std` job alongside the other foundation crates. — (details:
+  quality-ledger (cu))
+
 - **CI runs the suite on Python 3.15.** — The release is out (first release 2026-10-09, status
   `bugfix` in the devguide table), the `3.15` trove classifier and the `abi3t` + `abi3t-py315`
   feature pair were already committed, and the abi3 wheel installs on 3.15 - but no job had ever

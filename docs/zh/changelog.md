@@ -19,6 +19,18 @@ status: new
 
 #### 新增
 
+- **`pyrs-event`：文档事件词汇表成为独立 crate。** — 这是架构支柱中与 AST 并列的第二个核心抽象。
+  `StreamEvent` 及其十一个变体从 `crates/pyrs-yaml-core/src/parser/stream.rs` 移入一个
+  `#![no_std]` + `alloc` 的 crate，只依赖 `pyrs-ast`——为的是共享 `ScalarStyle` 与 `Tag`，让事件流与
+  由它构建的树不会在 style 或 tag 的含义上产生分歧；引擎仍重新导出这两个名字，所以
+  `pyrs_yaml_core::parser::{StreamEvent, StreamEventType}` 依旧可解析，没有任何调用点需要改动。类型
+  形状刻意保持不变：它仍是 YAML 的词汇表，因为中性的词表必须针对第二个生产者来设计，而那个生产者还不
+  存在。`docs/dev/event-stream.md` 记录了裁定（option B）与让它成立的顺序——JSON 生产者、TOML 生产
+  者，再到一个回放属性测试（证明事件能重建成直接解析器所构建的 AST）；本条就是该路线图的第一步，这也
+  是 crate 自己的文档要写明哪些字段属于 YAML 语法、而不是宣称 JSON 也有锚点的原因。无行为变更，无新
+  依赖，热路径没有增加任何东西：该 crate 的 thumbv7em `no_std` 构建就是保持这层依赖诚实的门禁，它现
+  在与其它基础设施 crate 一起跑在 `no_std` 作业里。— (details: quality-ledger (cu))
+
 - **CI 开始在 Python 3.15 上跑套件。** — 正式版已发（devguide 版本表记首次发布于 2026-10-09，状态
   `bugfix`），`3.15` classifier 与 `abi3t` + `abi3t-py315` 特性早已入库，abi3 wheel 也能装在 3.15 上
   ——但从来没有任何作业在它上面跑过套件，于是版本是被宣称而非被验过的。`test` 现在覆盖 3.8-3.15（21

@@ -6,72 +6,7 @@ use granit_parser::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Line and column information for a YAML stream event.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StreamEvent {
-    /// The type of event that occurred.
-    pub event_type: StreamEventType,
-    /// The line number (0-indexed) where the event starts.
-    pub line: usize,
-    /// The column number (0-indexed) where the event starts.
-    pub column: usize,
-}
-
-/// The type of a streaming YAML event, representing a single occurrence
-/// in the YAML document stream.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StreamEventType {
-    /// The beginning of the YAML stream.
-    StreamStart,
-    /// The end of the YAML stream.
-    StreamEnd,
-    /// The beginning of a YAML document.
-    DocumentStart,
-    /// The end of a YAML document.
-    DocumentEnd,
-    /// A scalar value.
-    Scalar {
-        /// The scalar text value.
-        value: String,
-        /// The scalar style (plain, quoted, literal, folded).
-        style: ScalarStyle,
-        /// The anchor name, if present.
-        anchor: Option<String>,
-        /// The YAML tag, if present.
-        tag: Option<Tag>,
-    },
-    /// The beginning of a mapping node.
-    MappingStart {
-        /// The anchor name, if present.
-        anchor: Option<String>,
-        /// The YAML tag, if present.
-        tag: Option<Tag>,
-    },
-    /// The end of a mapping node.
-    MappingEnd,
-    /// The beginning of a sequence node.
-    SequenceStart {
-        /// The anchor name, if present.
-        anchor: Option<String>,
-        /// The YAML tag, if present.
-        tag: Option<Tag>,
-    },
-    /// The end of a sequence node.
-    SequenceEnd,
-    /// An alias reference.
-    Alias {
-        /// The alias name.
-        name: String,
-    },
-    /// A comment line or inline comment.
-    Comment {
-        /// The comment text (without the `#` prefix and leading space).
-        text: Arc<str>,
-        /// Whether this is a standalone line comment (`true`) or an inline
-        /// comment at the end of a line (`false`).
-        standalone: bool,
-    },
-}
+pub use pyrs_event::{StreamEvent, StreamEventType};
 
 /// Event receiver that collects `StreamEvent`s from granit-parser.
 ///

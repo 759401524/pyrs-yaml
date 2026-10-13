@@ -817,6 +817,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyrs-event"
+version = "0.17.0"
+dependencies = [
+ "pyrs-ast",
+]
+
+[[package]]
 name = "pyrs-json"
 version = "0.17.0"
 dependencies = [
@@ -875,6 +882,7 @@ dependencies = [
  "indexmap",
  "proptest",
  "pyrs-ast",
+ "pyrs-event",
  "pyrs-json",
  "pyrs-schema",
  "pyrs-toml",
