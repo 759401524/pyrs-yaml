@@ -583,6 +583,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- **Keeping the comments the dialect writers used to drop is paid for in counted instructions.** —
+  `to_jsonc` and `to_json5` now read the two comment slots per pair they had never looked at (#359),
+  and `ir_gate.py` prices the wider pair loop at `to_jsonc_medium` +4.77%, `to_json5_medium` +3.78%
+  and `to_json_medium` +0.94%. `.ci/ir-baseline.json` was regenerated on the image that enforces it
+  with those three named via `--accept-drift`; the same refresh tightened `to_toml_medium`
+  by -4.90% - drift accumulated while the baseline stood still, not a regression - and recorded the
+  SHA-256 of both harness binaries, so a future delta names the bytes it describes. The tolerance is
+  unchanged. — (details: quality-ledger (cg))
+
 - **Tag emission is table-driven, and escaping no longer allocates.** — putting tag encoding on the
   reader's own character classes made the per-byte membership test part of the serialize hot path,
   so it became a 128-entry compile-time table (the alphanumeric test folds into the same lookup) and

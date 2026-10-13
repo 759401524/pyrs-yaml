@@ -78,12 +78,28 @@ def test_the_committed_baseline_is_exactly_what_the_job_writes():
     than dropped: a file that is part measurement and part transcription cannot be re-generated
     faithfully, and cannot be reviewed as one either. The prose moved to `QUALITY_MATRIX.md`; what is
     left here is the rule that the committed keys are the generated keys.
+
+    `binaries` joined that set when the digests started being written (#349), and the assertion was
+    left behind: it passed only because the committed file was older than the field. That is the same
+    class of defect this file exists to catch - a gate that reads green for a reason that has nothing
+    to do with what it claims - so the key set now includes it and the digests are required to name
+    every harness the gate measures, not merely to exist.
     """
     import json
 
     gate = _load(Path("scripts") / "ir_gate.py")
     data = json.loads(BASELINE.read_text(encoding="utf-8"))
-    assert set(data) == {"toolchain", "generated_by", "tolerance_hint", "scenarios"}, sorted(data)
+    assert set(data) == {
+        "toolchain",
+        "generated_by",
+        "binaries",
+        "tolerance_hint",
+        "scenarios",
+    }, sorted(data)
+    assert set(data["binaries"]) == {f"{crate}/{bench}" for crate, bench in gate.HARNESSES}, (
+        "the numbers are recorded without naming the bytes behind them"
+    )
+    assert all(len(digest) == 16 for digest in data["binaries"].values()), data["binaries"]
     assert set(data["generated_by"]) == {"environment", "rustc", "tool", "repeats", "note"}, sorted(
         data["generated_by"]
     )

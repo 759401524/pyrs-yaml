@@ -3789,7 +3789,31 @@ priced is the shape of the pair loop. The same arithmetic settles #362: it is re
 `from_json_medium` +0.59% / `from_jsonc_medium` +0.55% / `from_json5_medium` +0.50% while `main`
 already reads +0.27% / +0.25% / +0.18% on those three, so its own cost is about +0.31% - inside the
 line it fails. A deliberate refresh at this head (`--accept-drift` naming each scenario) moves both,
-and it is the only route left now that (3) is measured.
+and it is the only route left now that (3) is measured. **Ruling taken: the baseline moves here,
+deliberately.** `Ir baseline refresh` dispatched at this head with the three names (run 38326122129,
+through #364's `accept_drift` input) wrote the file this PR now carries. Against the values it
+replaces: `to_json_medium` 21,232,786 -> 21,432,843 (+0.94%), `to_jsonc_medium` 22,176,851 ->
+23,234,840 (+4.77%), `to_json5_medium` 22,974,851 -> 23,842,757 (+3.78%) - those three named, and no
+other scenario moved up past the line. Eighteen changed by at most +0.28%, and one moved *down*:
+`to_toml_medium` 56,485,015 -> 53,714,967, -4.90% of drift that had sat unclaimed since some earlier
+PR made the TOML writer faster. A per-scenario `--only` update would have left that in place, which
+is the reason the full refresh was the shape taken: a baseline sitting 4.9% above the code it
+describes lets a 4.9% regression through reported as no change.
+
+**The digests make the pairing rule operative instead of aspirational.** The file records
+`pyrs-yaml-core/ir_gate` `9cfd4b05c0cc3152` and `pyrs-yaml/ir_gate` `a89b9ec282ff22d8` - the same
+two strings the enforcing job printed for this head - so what #344 and (aq) demand ("name the bytes
+before comparing numbers") is now satisfied by construction rather than by an author remembering to.
+Every delta measured on this branch before the refresh had to be read under the gate's own
+caveat, "paired with it by name only".
+
+One stale assertion surfaced because of this change rather than by luck:
+`test_the_committed_baseline_is_exactly_what_the_job_writes` compared the committed key set against
+a hand-written four-key list, and it had been green only because the committed file predated the
+`binaries` field #349 started writing - the first refresh that adds the field would have reddened
+the test whose claim is exactly that the committed keys are what the job writes. The expectation now
+names `binaries` and requires the digests to cover every harness the gate measures, so the file
+cannot be regenerated into a shape the test has never seen.
 
 ### (ci) Python 3.15 legs, and the duplicate suite run that went with them (2026-10-12)
 
