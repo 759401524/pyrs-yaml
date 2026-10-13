@@ -21,6 +21,7 @@ use alloc::{
 };
 use pyrs_ast::ast::{CustomNode, NodeMap};
 use pyrs_ast::error::{DepthError, ParseError};
+use pyrs_event::{StreamEvent, StreamEventType};
 use pyrs_schema::schema::needs_quotes;
 use pyrs_schema::types::{Schema, YamlType};
 
@@ -125,6 +126,43 @@ pub fn from_json_with_options(
     text: &str,
     opts: JsonParseOptions,
 ) -> Result<CustomNode, ParseError> {
+    walk(text, opts, &mut NoSink)
+}
+
+/// The document as a stream of [`StreamEvent`]s instead of a tree.
+///
+/// The traversal is the one that builds the AST - same grammar, same dialect gates, same comment
+/// capture - so the two outputs cannot drift on where a token started or which note belongs to
+/// which member; a second walker written beside this one would be a second answer to those
+/// questions. What the stream adds is position: a node in the hub carries no line or column, and a
+/// comment in it is a slot on one node rather than an event between two, so the offsets and the
+/// ordering here exist only on this path.
+///
+/// Two things it does not yet do, both because the vocabulary has to answer them before the code
+/// pretends to:
+/// - It still builds the tree on the way. Dropping that is a change to `value`'s return type, and
+///   the point of doing it is a streaming *reader*, which is the Python-facing step of the
+///   roadmap in `docs/dev/event-stream.md`.
+/// - A JSON `null` is emitted as a plain `null` scalar, exactly as the YAML stream does it: the
+///   stream has no null event, and the distinction between "the word null" and "a null node" is
+///   made by resolution, not by the producer.
+pub fn to_events(text: &str, opts: JsonParseOptions) -> Result<Vec<StreamEvent>, ParseError> {
+    let mut sink = VecSink::new(text);
+    sink.event(0, StreamEventType::StreamStart);
+    sink.event(0, StreamEventType::DocumentStart);
+    let end = text.len();
+    let _root = walk(text, opts, &mut sink)?;
+    sink.event(end, StreamEventType::DocumentEnd);
+    sink.event(end, StreamEventType::StreamEnd);
+    Ok(sink.events)
+}
+
+/// The single traversal, shared by the tree and the event output.
+fn walk<S: EventSink>(
+    text: &str,
+    opts: JsonParseOptions,
+    sink: &mut S,
+) -> Result<CustomNode, ParseError> {
     let mut p = Parser {
         s: text.as_bytes(),
         text,
@@ -145,7 +183,8 @@ pub fn from_json_with_options(
     // otherwise `// A\n{"k":…}` re-reads with the note on the key and the
     // JSONC/JSON5 writer fixed point drifts.
     let root_leading = core::mem::take(&mut p.pending_comment);
-    let value = p.value()?;
+    sink.notes(&root_leading);
+    let value = p.value(sink)?;
     p.ws();
     if p.pos != p.s.len() {
         return Err(p.err("trailing characters after the JSON value"));
@@ -162,6 +201,7 @@ pub fn from_json_with_options(
             standalone: true,
         });
     }
+    sink.notes(&p.pending_comment);
     p.flush_pending(&mut root);
     Ok(root)
 }
@@ -186,6 +226,28 @@ struct Parser<'a> {
     /// A list: a member or element may be introduced by any number of comment
     /// lines, and a single slot kept only the last of them.
     pending_comment: Vec<PendingComment>,
+}
+
+/// The `Scalar` event a node yields, read back off the node rather than restated from the
+/// call site's locals: the style is whatever the tree ended up carrying, so the stream cannot
+/// report a string as plain while the AST calls it quoted. A container or a `Null` node emits
+/// nothing here - a mapping and a sequence announce themselves at their brackets, and JSON has no
+/// syntax for an anchor or a tag, which is why those two are read rather than assumed `None`.
+#[inline]
+fn emit_scalar<S: EventSink>(sink: &mut S, at: usize, node: &CustomNode) {
+    if S::ENABLED
+        && let CustomNode::Scalar { value, style, .. } = node
+    {
+        sink.event(
+            at,
+            StreamEventType::Scalar {
+                value: value.to_string(),
+                style: *style,
+                anchor: node.anchor().map(str::to_string),
+                tag: node.tag().cloned(),
+            },
+        );
+    }
 }
 
 /// Record a stack of pending notes onto `node`: every standalone one appends to
@@ -228,6 +290,110 @@ fn attach_pending(node: &mut CustomNode, pending: Vec<PendingComment>) {
 struct PendingComment {
     text: String,
     own_line: bool,
+    /// Byte offset of the `/` that opened the note. The AST has no place for it - a
+    /// comment is a slot on a node, not an event - so only the event output reads it.
+    at: usize,
+}
+
+/// A second output for the one traversal: an event at each structural decision, stamped with the
+/// byte offset where the token began.
+///
+/// `ENABLED` is what keeps the AST path free. A `StreamEventType::Scalar` arm builds a `String`,
+/// and an argument the callee ignores is still constructed at the call site, so the branch has to
+/// be constant-folded rather than inlined away: `NoSink::ENABLED` is `false`, and every emit
+/// expression disappears from the monomorphised `from_json` together with its clone. The event
+/// entry point is the only implementation that sets it `true`.
+trait EventSink {
+    const ENABLED: bool;
+
+    /// Record `kind` as beginning at byte offset `at`.
+    fn event(&mut self, at: usize, kind: StreamEventType);
+
+    /// Record the notes a node is about to claim, in source order, at their own offsets.
+    fn notes(&mut self, pending: &[PendingComment]);
+}
+
+/// The sink that asks for nothing, which is every existing entry point.
+struct NoSink;
+
+impl EventSink for NoSink {
+    const ENABLED: bool = false;
+
+    #[inline]
+    fn event(&mut self, _at: usize, _kind: StreamEventType) {}
+
+    #[inline]
+    fn notes(&mut self, _pending: &[PendingComment]) {}
+}
+
+/// The sink behind [`to_events`]: a `Vec` of events, positioned as it goes.
+struct VecSink<'a> {
+    text: &'a str,
+    events: Vec<StreamEvent>,
+    /// Forward walk state. Events arrive in increasing byte order, so a position is an advance
+    /// over the bytes not yet looked at - `O(text)` for the stream instead of `O(text × events)`
+    /// that re-slicing from the start would cost.
+    cursor: usize,
+    line: usize,
+    column: usize,
+}
+
+impl<'a> VecSink<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            text,
+            events: Vec::new(),
+            cursor: 0,
+            line: 0,
+            column: 0,
+        }
+    }
+
+    /// 0-indexed line and column of a byte offset, on the same rule `Parser::err` uses - lines
+    /// counted by `\n`, column the characters after the last one - so a position in an event and a
+    /// position in a parse error mean the same thing. A continuation byte is not a character start
+    /// and adds nothing; a `\r` of a CRLF pair is a character and does, exactly as `err` reports.
+    fn line_col(&mut self, at: usize) -> (usize, usize) {
+        let end = at.min(self.text.len());
+        let bytes = self.text.as_bytes();
+        while self.cursor < end {
+            let byte = bytes[self.cursor];
+            if byte == b'\n' {
+                self.line += 1;
+                self.column = 0;
+            } else if byte & 0xc0 != 0x80 {
+                self.column += 1;
+            }
+            self.cursor += 1;
+        }
+        (self.line, self.column)
+    }
+}
+
+impl EventSink for VecSink<'_> {
+    const ENABLED: bool = true;
+
+    fn event(&mut self, at: usize, kind: StreamEventType) {
+        let (line, column) = self.line_col(at);
+        self.events.push(StreamEvent {
+            event_type: kind,
+            line,
+            column,
+        });
+    }
+
+    fn notes(&mut self, pending: &[PendingComment]) {
+        for note in pending {
+            let at = note.at;
+            self.event(
+                at,
+                StreamEventType::Comment {
+                    text: note.text.as_str().into(),
+                    standalone: note.own_line,
+                },
+            );
+        }
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -300,6 +466,7 @@ impl<'a> Parser<'a> {
                     }
                 }
                 Some(b'/') if self.allow_comments => {
+                    let comment_at = self.pos;
                     let line = self.s.get(self.pos + 1) == Some(&b'/');
                     let block = self.s.get(self.pos + 1) == Some(&b'*');
                     if !line && !block {
@@ -326,6 +493,7 @@ impl<'a> Parser<'a> {
                         self.pending_comment.push(PendingComment {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
+                            at: comment_at,
                         });
                     } else {
                         self.pos = body_start;
@@ -350,6 +518,7 @@ impl<'a> Parser<'a> {
                         self.pending_comment.push(PendingComment {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
+                            at: comment_at,
                         });
                         // A block comment does not consume the trailing
                         // newline; the next `ws()` iteration will pick it
@@ -489,24 +658,27 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn value(&mut self) -> Result<CustomNode, ParseError> {
+    fn value<S: EventSink>(&mut self, sink: &mut S) -> Result<CustomNode, ParseError> {
         self.depth += 1;
         if self.depth > self.max_depth {
             self.depth -= 1;
             return Err(ParseError::MaxDepthExceeded(DepthError(self.max_depth)));
         }
-        let out = self.value_inner();
+        let out = self.value_inner(sink);
         self.depth -= 1;
         out
     }
 
-    fn value_inner(&mut self) -> Result<CustomNode, ParseError> {
+    fn value_inner<S: EventSink>(&mut self, sink: &mut S) -> Result<CustomNode, ParseError> {
+        let at = self.pos;
         match self.peek() {
-            Some(b'{') => self.object(),
-            Some(b'[') => self.array(),
+            Some(b'{') => self.object(sink),
+            Some(b'[') => self.array(sink),
             Some(b'"') => {
                 let s = self.string()?;
-                Ok(quoted_or_plain(s))
+                let node = quoted_or_plain(s);
+                emit_scalar(sink, at, &node);
+                Ok(node)
             }
             Some(b'\'') if self.allow_single_quoted => {
                 let s = self.single_quoted_string()?;
@@ -514,24 +686,44 @@ impl<'a> Parser<'a> {
                 // only path, so STRICT / JSONC never produce this) so
                 // `to_json5_text` can reproduce `'…'` rather than forcing
                 // every string double-quoted.
-                Ok(CustomNode::Scalar {
+                let node = CustomNode::Scalar {
                     value: s.into(),
                     style: pyrs_ast::ast::ScalarStyle::SingleQuoted,
                     chomping: pyrs_ast::ast::Chomping::Clip,
                     block_indent: None,
                     meta: pyrs_ast::ast::NodeMeta::default(),
-                })
+                };
+                emit_scalar(sink, at, &node);
+                Ok(node)
             }
             Some(b't') => {
                 self.expect("true", "expected literal `true`")?;
-                Ok(CustomNode::plain_scalar("true"))
+                let node = CustomNode::plain_scalar("true");
+                emit_scalar(sink, at, &node);
+                Ok(node)
             }
             Some(b'f') => {
                 self.expect("false", "expected literal `false`")?;
-                Ok(CustomNode::plain_scalar("false"))
+                let node = CustomNode::plain_scalar("false");
+                emit_scalar(sink, at, &node);
+                Ok(node)
             }
+            // A JSON `null` is the hub's `Null` node, and a *plain scalar* in the stream: the
+            // vocabulary has no null event, because YAML's does not either - granit hands over
+            // `null` as a plain scalar and the resolution step makes it `Null`. Emitting the word
+            // keeps the two producers describing a null the same way; the distinction lives in
+            // resolution, not in the stream.
             Some(b'n') => {
                 self.expect("null", "expected literal `null`")?;
+                sink.event(
+                    at,
+                    StreamEventType::Scalar {
+                        value: "null".to_string(),
+                        style: pyrs_ast::ast::ScalarStyle::Plain,
+                        anchor: None,
+                        tag: None,
+                    },
+                );
                 Ok(CustomNode::plain_null())
             }
             // JSON5 numeric forms (PR #120): a leading `+` or `.` and the
@@ -544,26 +736,46 @@ impl<'a> Parser<'a> {
             // `.inf` is the spelling that resolves to `f64::INFINITY` there, and the JSON5 writer
             // restores the dialect's token from the value. The other JSON5-only forms (`0x…`, `.5`,
             // `5.`, `+7`) stay verbatim because YAML already reads them as numbers.
-            Some(b'+') | Some(b'.') if self.allow_json5_numbers => self.number(),
+            // The event carries the same projected spelling, so a stream consumer sees what the
+            // hub stores rather than a token the hub would re-type.
+            Some(b'+') | Some(b'.') if self.allow_json5_numbers => self.number(sink),
             Some(b'I') if self.allow_json5_numbers => {
                 self.expect("Infinity", "expected `Infinity`")?;
-                Ok(CustomNode::plain_scalar(".inf"))
+                let node = CustomNode::plain_scalar(".inf");
+                emit_scalar(sink, at, &node);
+                Ok(node)
             }
             Some(b'N') if self.allow_json5_numbers => {
                 self.expect("NaN", "expected `NaN`")?;
-                Ok(CustomNode::plain_scalar(".nan"))
+                let node = CustomNode::plain_scalar(".nan");
+                emit_scalar(sink, at, &node);
+                Ok(node)
             }
-            Some(b'-') | Some(b'0'..=b'9') => self.number(),
+            Some(b'-') | Some(b'0'..=b'9') => self.number(sink),
             _ => Err(self.err("expected a JSON value")),
         }
     }
 
-    fn object(&mut self) -> Result<CustomNode, ParseError> {
+    fn object<S: EventSink>(&mut self, sink: &mut S) -> Result<CustomNode, ParseError> {
+        let open = self.pos;
         self.pos += 1; // '{'
+        if S::ENABLED {
+            sink.event(
+                open,
+                StreamEventType::MappingStart {
+                    anchor: None,
+                    tag: None,
+                },
+            );
+        }
         let mut pairs: NodeMap<CustomNode, CustomNode> = NodeMap::default();
         self.ws();
         if self.peek() == Some(b'}') {
+            let close = self.pos;
             self.pos += 1;
+            if S::ENABLED {
+                sink.event(close, StreamEventType::MappingEnd);
+            }
             return Ok(CustomNode::plain_mapping(pairs));
         }
         loop {
@@ -572,6 +784,8 @@ impl<'a> Parser<'a> {
             // standalone note; claim the slot before parsing the key so
             // the value-side `ws()` below starts with a clean slate.
             let key_pending = core::mem::take(&mut self.pending_comment);
+            sink.notes(&key_pending);
+            let key_at = self.pos;
             let key_str = if self.peek() == Some(b'"') {
                 self.string()?
             } else if self.allow_single_quoted && self.peek() == Some(b'\'') {
@@ -583,11 +797,15 @@ impl<'a> Parser<'a> {
             };
             let mut key_node = quoted_or_plain(key_str);
             attach_pending(&mut key_node, key_pending);
+            emit_scalar(sink, key_at, &key_node);
             self.ws();
             self.expect(":", "expected `:` after the object key")?;
             self.ws();
-            let mut value = self.value()?;
+            let mut value = self.value(sink)?;
             self.ws();
+            // The notes trailing this member are its own annotation, in the AST as in the stream:
+            // emit them where the node claims them.
+            sink.notes(&self.pending_comment);
             self.flush_pending(&mut value);
             // duplicate keys: last value wins, first position kept
             pairs.insert(key_node, value);
@@ -596,12 +814,20 @@ impl<'a> Parser<'a> {
                     self.pos += 1;
                     self.ws();
                     if self.allow_trailing_commas && self.peek() == Some(b'}') {
+                        let close = self.pos;
                         self.pos += 1;
+                        if S::ENABLED {
+                            sink.event(close, StreamEventType::MappingEnd);
+                        }
                         return Ok(CustomNode::plain_mapping(pairs));
                     }
                 }
                 Some(b'}') => {
+                    let close = self.pos;
                     self.pos += 1;
+                    if S::ENABLED {
+                        sink.event(close, StreamEventType::MappingEnd);
+                    }
                     return Ok(CustomNode::plain_mapping(pairs));
                 }
                 _ => return Err(self.err("expected `,` or `}` in object")),
@@ -609,12 +835,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn array(&mut self) -> Result<CustomNode, ParseError> {
+    fn array<S: EventSink>(&mut self, sink: &mut S) -> Result<CustomNode, ParseError> {
+        let open = self.pos;
         self.pos += 1; // '['
+        if S::ENABLED {
+            sink.event(
+                open,
+                StreamEventType::SequenceStart {
+                    anchor: None,
+                    tag: None,
+                },
+            );
+        }
         let mut items: Vec<CustomNode> = Vec::new();
         self.ws();
         if self.peek() == Some(b']') {
+            let close = self.pos;
             self.pos += 1;
+            if S::ENABLED {
+                sink.event(close, StreamEventType::SequenceEnd);
+            }
             return Ok(CustomNode::plain_sequence(items));
         }
         loop {
@@ -623,9 +863,11 @@ impl<'a> Parser<'a> {
             // is the element's leading annotation; claim the slot so
             // the post-value flush below starts clean.
             let element_pending = core::mem::take(&mut self.pending_comment);
-            let mut item = self.value()?;
+            sink.notes(&element_pending);
+            let mut item = self.value(sink)?;
             attach_pending(&mut item, element_pending);
             self.ws();
+            sink.notes(&self.pending_comment);
             self.flush_pending(&mut item);
             items.push(item);
             match self.peek() {
@@ -633,12 +875,20 @@ impl<'a> Parser<'a> {
                     self.pos += 1;
                     self.ws();
                     if self.allow_trailing_commas && self.peek() == Some(b']') {
+                        let close = self.pos;
                         self.pos += 1;
+                        if S::ENABLED {
+                            sink.event(close, StreamEventType::SequenceEnd);
+                        }
                         return Ok(CustomNode::plain_sequence(items));
                     }
                 }
                 Some(b']') => {
+                    let close = self.pos;
                     self.pos += 1;
+                    if S::ENABLED {
+                        sink.event(close, StreamEventType::SequenceEnd);
+                    }
                     return Ok(CustomNode::plain_sequence(items));
                 }
                 _ => return Err(self.err("expected `,` or `]` in array")),
@@ -646,10 +896,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// The scalar event for the number token about to be built, then the node itself.
+    ///
+    /// A wrapper rather than an emit inside `number_inner`, because that function returns from five
+    /// places and each would need its own call; the offset is taken before the token is consumed,
+    /// so it is the token's start like every other scalar event's.
+    fn number<S: EventSink>(&mut self, sink: &mut S) -> Result<CustomNode, ParseError> {
+        let at = self.pos;
+        let node = self.number_inner()?;
+        emit_scalar(sink, at, &node);
+        Ok(node)
+    }
+
     /// `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?` - grammar-exact.
     /// The matched slice is kept verbatim as a plain scalar (no f64 round
     /// trip), which preserves arbitrary-precision integer and float text.
-    fn number(&mut self) -> Result<CustomNode, ParseError> {
+    fn number_inner(&mut self) -> Result<CustomNode, ParseError> {
         let start = self.pos;
         let json5 = self.allow_json5_numbers;
         // Sign. STRICT / JSONC allow only `-`; JSON5 also allows `+`.
@@ -990,6 +1252,245 @@ mod tests {
         match node {
             CustomNode::Scalar { value, .. } => value.to_string(),
             other => panic!("expected scalar, got {other:?}"),
+        }
+    }
+
+    /// One line per event: `line:column kind`, with the scalar's text and style. An exact
+    /// expectation is the point — the positions are what this output exists to carry, and a
+    /// readable diff is the only way a test can show them.
+    fn render(events: &[StreamEvent]) -> Vec<String> {
+        events
+            .iter()
+            .map(|e| {
+                let kind = match &e.event_type {
+                    StreamEventType::StreamStart => "stream_start".to_string(),
+                    StreamEventType::StreamEnd => "stream_end".to_string(),
+                    StreamEventType::DocumentStart => "document_start".to_string(),
+                    StreamEventType::DocumentEnd => "document_end".to_string(),
+                    StreamEventType::MappingStart { .. } => "mapping_start".to_string(),
+                    StreamEventType::MappingEnd => "mapping_end".to_string(),
+                    StreamEventType::SequenceStart { .. } => "sequence_start".to_string(),
+                    StreamEventType::SequenceEnd => "sequence_end".to_string(),
+                    StreamEventType::Alias { name } => format!("alias {name:?}"),
+                    StreamEventType::Comment { text, standalone } => format!(
+                        "comment {text:?}{}",
+                        if *standalone { " own-line" } else { "" }
+                    ),
+                    StreamEventType::Scalar { value, style, .. } => {
+                        format!("scalar {value:?} {style:?}")
+                    }
+                };
+                format!("{}:{} {kind}", e.line, e.column)
+            })
+            .collect()
+    }
+
+    /// The tree as the stream sees it: framing stripped, containers and scalars in document order.
+    fn shape_of_node(node: &CustomNode, out: &mut Vec<String>) {
+        match node {
+            CustomNode::Scalar { value, style, .. } => out.push(format!("{value:?} {style:?}")),
+            // The stream has no null event - see `to_events` - so a `Null` node is the word.
+            CustomNode::Null { .. } => out.push("\"null\" Plain".to_string()),
+            CustomNode::Mapping { pairs, .. } => {
+                out.push("mapping".to_string());
+                for (key, value) in pairs {
+                    shape_of_node(key, out);
+                    shape_of_node(value, out);
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                out.push("sequence".to_string());
+                for item in items {
+                    shape_of_node(item, out);
+                }
+            }
+            other => panic!("the JSON engine built a node it should not: {other:?}"),
+        }
+        if matches!(
+            node,
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+        ) {
+            out.push("end".to_string());
+        }
+    }
+
+    /// The same projection taken off the event stream, by folding it with a stack.
+    fn shape_of_events(events: &[StreamEvent]) -> Vec<String> {
+        let mut out = Vec::new();
+        for event in events {
+            match &event.event_type {
+                StreamEventType::Scalar { value, style, .. } => {
+                    out.push(format!("{value:?} {style:?}"));
+                }
+                StreamEventType::MappingStart { .. } => out.push("mapping".to_string()),
+                StreamEventType::SequenceStart { .. } => out.push("sequence".to_string()),
+                StreamEventType::MappingEnd | StreamEventType::SequenceEnd => {
+                    out.push("end".to_string());
+                }
+                StreamEventType::Comment { .. } => {
+                    // Deliberately skipped: the tree stores a note as a slot on one node, so it
+                    // cannot say where among its children the note sat - which is the one thing the
+                    // stream can say. `a_comment_is_an_event_between_the_nodes_it_bridges` tests
+                    // that ordering; comparing structure with comments in would assert the tree
+                    // holds information it does not keep.
+                }
+                StreamEventType::Alias { name } => out.push(format!("alias {name:?}")),
+                StreamEventType::StreamStart
+                | StreamEventType::StreamEnd
+                | StreamEventType::DocumentStart
+                | StreamEventType::DocumentEnd => {}
+            }
+        }
+        out
+    }
+
+    /// The claim step 2 exists to test: one traversal, so the stream and the tree cannot be two
+    /// answers to "what document is this". Comments are in the comparison too - the tree keeps them
+    /// as slots on nodes and the stream keeps them as events, and only the *ordering* has to agree.
+    #[test]
+    fn the_event_stream_and_the_tree_describe_the_same_document() {
+        let corpus = [
+            (JsonParseOptions::STRICT, r#"{"a":1,"b":[true,null,"x"]}"#),
+            (JsonParseOptions::STRICT, r#"[[],{},[{"k":-0.0e0}]]"#),
+            (
+                JsonParseOptions::JSONC,
+                "// lead\n{\"a\": 1 /* mid */, \"b\": 2 // trail\n}",
+            ),
+            (
+                JsonParseOptions::JSON5,
+                "{unquoted: 0xFF, sq: 'text', dot: .5, tail: 5., inf: Infinity, nan: NaN,}",
+            ),
+        ];
+        for (opts, src) in corpus {
+            let tree = from_json_with_options(src, opts).expect(src);
+            let events = to_events(src, opts).expect(src);
+            let mut from_tree = Vec::new();
+            shape_of_node(&tree, &mut from_tree);
+            assert_eq!(shape_of_events(&events), from_tree, "stream vs tree: {src}");
+        }
+    }
+
+    /// Positions, spelled out. Every number below is a byte offset translated the way
+    /// `Parser::err` translates one, so an event and a diagnostic point at the same character.
+    /// The keys read `Plain` rather than `DoubleQuoted` because that is what the tree holds: a
+    /// JSON key goes through `quoted_or_plain`, which quotes only what the resolver would
+    /// re-interpret, so `"a"` and `a` arrive at the hub as the same node - and a stream consumer
+    /// sees that instead of discovering it in the writer.
+    #[test]
+    fn events_carry_the_position_the_source_gives_them() {
+        let src = "{\n  \"a\": 1,\n  \"b\": [true, null]\n}";
+        assert_eq!(
+            render(&to_events(src, JsonParseOptions::STRICT).unwrap()),
+            [
+                "0:0 stream_start",
+                "0:0 document_start",
+                "0:0 mapping_start",
+                "1:2 scalar \"a\" Plain",
+                "1:7 scalar \"1\" Plain",
+                "2:2 scalar \"b\" Plain",
+                "2:7 sequence_start",
+                "2:8 scalar \"true\" Plain",
+                "2:14 scalar \"null\" Plain",
+                "2:18 sequence_end",
+                "3:0 mapping_end",
+                "3:1 document_end",
+                "3:1 stream_end",
+            ]
+        );
+    }
+
+    /// A note is an event at its own offset, in the place the AST attaches it: before the key it
+    /// introduces, after the value it trails. The tree cannot show this ordering - both notes are
+    /// slots on different nodes - which is why the stream is worth having.
+    #[test]
+    fn a_comment_is_an_event_between_the_nodes_it_bridges() {
+        let src = "// lead\n{\"a\": 1 // inline\n}";
+        assert_eq!(
+            render(&to_events(src, JsonParseOptions::JSONC).unwrap()),
+            [
+                "0:0 stream_start",
+                "0:0 document_start",
+                "0:0 comment \"lead\" own-line",
+                "1:0 mapping_start",
+                "1:1 scalar \"a\" Plain",
+                "1:6 scalar \"1\" Plain",
+                "1:8 comment \"inline\"",
+                "2:0 mapping_end",
+                "2:1 document_end",
+                "2:1 stream_end",
+            ]
+        );
+    }
+
+    /// The first thing the second producer answers, and it is not in the vocabulary: a stream shows
+    /// both `a` members, the hub's `NodeMap` keeps the last value at the first position. Neither is
+    /// wrong - one is the document, the other is the tree - but a replay that promises the tree
+    /// folds like the parser, and `docs/dev/event-stream.md` now says so out loud.
+    #[test]
+    fn duplicate_members_are_visible_in_the_stream_and_folded_in_the_tree() {
+        let src = "{\"a\":1,\"a\":2}";
+        let events = to_events(src, JsonParseOptions::STRICT).unwrap();
+        let scalars = render(&events)
+            .into_iter()
+            .filter(|line| line.contains("scalar"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            scalars,
+            [
+                "0:1 scalar \"a\" Plain",
+                "0:5 scalar \"1\" Plain",
+                "0:7 scalar \"a\" Plain",
+                "0:11 scalar \"2\" Plain",
+            ]
+        );
+        let tree = from_json_with_options(src, JsonParseOptions::STRICT).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &tree else {
+            panic!("expected a mapping");
+        };
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(scalar_text(pairs.values().next().unwrap()), "2");
+    }
+
+    /// JSON5's extra tokens reach the stream already projected onto the hub's spellings, because
+    /// the stream describes the tree the engine builds, not the bytes it read (`#312`). The two
+    /// keys that quote themselves - `inf`, `nan` - are the interesting part: YAML 1.2 Core reads
+    /// them as floats, so `quoted_or_plain` protects them, and a stream consumer sees the same
+    /// protection the writer will apply.
+    #[test]
+    fn json5_spellings_arrive_projected_and_styled() {
+        let src = "{ inf: Infinity, neg: -Infinity, nan: NaN, hex: 0xFF, dot: .5 }";
+        let events = to_events(src, JsonParseOptions::JSON5).unwrap();
+        let body = &render(&events)[3..events.len() - 3];
+        assert_eq!(
+            body,
+            [
+                "0:2 scalar \"inf\" DoubleQuoted",
+                "0:7 scalar \".inf\" Plain",
+                "0:17 scalar \"neg\" Plain",
+                "0:22 scalar \"-.inf\" Plain",
+                "0:33 scalar \"nan\" DoubleQuoted",
+                "0:38 scalar \".nan\" Plain",
+                "0:43 scalar \"hex\" Plain",
+                "0:48 scalar \"0xFF\" Plain",
+                "0:54 scalar \"dot\" Plain",
+                "0:59 scalar \".5\" Plain",
+            ]
+        );
+    }
+
+    /// One grammar, so a document the parser refuses the event output refuses too - the same entry
+    /// point with a different sink, never a second accept/reject rule.
+    #[test]
+    fn to_events_rejects_what_the_parser_rejects() {
+        for src in ["1 2", "{\"a\":}", "[1", "[1,]", "{,}", "{\"a\" 1}"] {
+            assert!(
+                to_events(src, JsonParseOptions::STRICT).is_err(),
+                "accepted as events: {src}"
+            );
+            assert!(
+                from_json_with_options(src, JsonParseOptions::STRICT).is_err(),
+                "accepted as a tree: {src}"
+            );
         }
     }
 

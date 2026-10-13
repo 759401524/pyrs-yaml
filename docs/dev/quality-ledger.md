@@ -4674,6 +4674,41 @@ the Python side the extension was rebuilt (`maturin develop --release`) before
 that enumerate crates; neither keys on the crate list. No behaviour changed, so no instruction-count
 scenario should move - that is the claim CI's `Instruction-count baseline` job checks for this PR.
 
+### (cv) A mutant that does not compile is not a mutant (2026-10-13)
+
+The event producer this file's design note asked for is only as good as the tests that say what it
+must do, so each was checked against a mutation before it was believed. The first mutation proved
+nothing, and it nearly passed as proof.
+
+Deleting the `MappingStart` emission left the `open` offset unused. This shell denies warnings, so
+`cargo test` failed to **compile** - and the grep used to read the result was
+`grep -E "test result|failures:"`, which printed nothing but a stale `test result: ok` line from the
+other targets. "0 failed" next to a build error reads like a clean mutation, and it was not: an
+unused-variable error is a statement about liveness, not about behaviour. The mutation that counted
+changed meaning without touching liveness - `MappingStart` → `SequenceStart` at the same call - and
+it failed three tests: `events_carry_the_position_the_source_gives_them`,
+`a_comment_is_an_event_between_the_nodes_it_bridges` and
+`the_event_stream_and_the_tree_describe_the_same_document`. The rule, now stated where it belongs: a
+mutation is evidence only if (a) the crate compiled, (b) named tests failed, and (c) the failure
+message describes the mutation. Grep for `error` in the same output, not around it.
+
+The same discipline applied to the position expectations, which were written by counting byte
+offsets by hand and disagreed with the run in four places. Every changed number was re-derived from
+the document before the expectation was edited - `{"a":1,"a":2}` really does put the second `a` at
+column 7, because the closing quote, the colon and the value are one byte each - and the one case
+where the recount sided with the code (`inf` and `nan` quoting themselves as keys because YAML 1.2
+Core reads them as floats) became a documented fact in `docs/dev/event-stream.md` rather than a
+fixed test. A test expectation copied from failing output would have preserved the same number and
+lost that.
+
+Verified: `cargo test -p pyrs-json` 62 passed (56 before, six new), the mutation above,
+`cargo clippy --all --all-targets -- -D warnings`, `cargo fmt --all`,
+`cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-json -p pyrs-event`
+green (the event path is `no_std`-clean), `cargo nextest run --all` 585 tests,
+`cargo test --all --no-default-features` with no failure, `uv run maturin develop --release` then
+`uv run pytest tests/` 2719 pass / 10 skip against the rebuilt extension, `prek run --all-files` 21
+hooks, five changelog mirrors at [27, 11, 39, 8].
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

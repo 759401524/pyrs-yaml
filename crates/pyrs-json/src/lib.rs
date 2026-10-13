@@ -39,8 +39,10 @@ mod writer;
 
 pub use parser::{
     DEFAULT_MAX_DEPTH, JsonParseOptions, from_json, from_json_with_max_depth,
-    from_json_with_options, from_json5, from_jsonc,
+    from_json_with_options, from_json5, from_jsonc, to_events,
 };
+// `to_events` returns these, so a caller should not have to name a second crate to read them.
+pub use pyrs_event::{StreamEvent, StreamEventType};
 pub use writer::{
     key_text, to_json_text, to_json_text_pretty, to_json5_text, to_json5_text_pretty,
     to_jsonc_text, to_jsonc_text_pretty,

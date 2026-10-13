@@ -17,6 +17,19 @@ status: new
 
 #### 追加
 
+- **`pyrs_json::to_events`：JSON・JSONC・JSON5 をイベント列として出力。** — 中性な語彙が必要としてい
+  た第二の生産者で、`docs/dev/event-stream.md` の四つの推測が事実になった理由でもあります。ハブのノ
+  ードは位置を持ちません（`source_range` は JSON にも TOML にも代入されない）ので、行と列はこの経路
+  でしか存在しません。`null` は YAML の列と同じく平文の語として出力されます。語彙に null のイベント
+  がなく、区別は解決（resolution）側の所有だからです。`{"a":1,"a":2}` はイベント四つに対してマッピン
+  グの一項、つまりリプレイは重複を追加ではなく畳み込まねばなりません。コメントが前の値と次のキーの
+  *間*にあるという事実はここでは表せますが、ノートをノードのスロットとして持つ木では表せません。AST
+  を作る唯一の走査に sink として組み込みました——既存のすべての入口が通る経路では
+  `EventSink::ENABLED` が `false` なので、各 emit も scalar 腕が作る `String` も折り畳まれます。この
+  文が証拠ではなく、確定済みの命令数ゲートが証拠です。テストは六本、うち一本は三种の方言の四文書で列
+  を畳んで木と突き合わせるものです。`MappingStart` を `SequenceStart` に置き換えると三本が赤くなりま
+  す。—（詳細：quality-ledger (cv)）
+
 - **`pyrs-event`：文書イベント語彙を独立 crate にしました。** — AST と並ぶ、アーキテクチャの柱が挙げ
   る二つ目の核心抽象です。`StreamEvent` とその 11 の変数を
   `crates/pyrs-yaml-core/src/parser/stream.rs` から移し、`#![no_std]` + `alloc` で `pyrs-ast` のみに

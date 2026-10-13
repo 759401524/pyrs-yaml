@@ -19,6 +19,16 @@ status: new
 
 #### 新增
 
+- **`pyrs_json::to_events`：把 JSON、JSONC 与 JSON5 作为事件流输出。** — 中性词表需要的第二个生产
+  者，也是 `docs/dev/event-stream.md` 里四个猜测变成事实的原因。中枢节点不携带位置（JSON 与 TOML 引
+  擎都不给 `source_range` 赋值），所以只有这条路径能给出行列；`null` 以平文词的形式发出，与 YAML 流
+  完全一致——词表没有 null 事件，区分由解析（resolution）负责；`{"a":1,"a":2}` 是四个事件对一条映射记
+  目，所以回放必须折叠重复键而不是顺序追加；注释位于两个成员*之间*这件事，在这里可以表达，而在把注释
+  存成节点槽位的树里不行。实现为唯一那次遍历（就是构建 AST 的那次）的 sink——对现有所有入口走的那条路
+  径而言 `EventSink::ENABLED` 为 `false`，于是每次 emit 以及 scalar 分支构造的 `String` 都被折叠掉，
+  而这句话不是证据，已提交的指令数门禁才是。六个测试，其中之一在三种方言的四份文档上把事件流折叠后与
+  树对拍；把 `MappingStart` 换成 `SequenceStart` 会让其中三个变红。
+
 - **`pyrs-event`：文档事件词汇表成为独立 crate。** — 这是架构支柱中与 AST 并列的第二个核心抽象。
   `StreamEvent` 及其十一个变体从 `crates/pyrs-yaml-core/src/parser/stream.rs` 移入一个
   `#![no_std]` + `alloc` 的 crate，只依赖 `pyrs-ast`——为的是共享 `ScalarStyle` 与 `Tag`，让事件流与
