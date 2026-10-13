@@ -336,6 +336,17 @@ status: new
 
 #### 수정
 
+- **CLI 테스트 장치가 거절로 stdin 이 닫힐 때 패닉하지 않는다.** — `run_with_stdin` 은 자식의 stdin
+  에 쓰며 어떤 오류든 패닉했지만, 인자를 거절하는 CLI 는 읽기 전에 끝나므로 그 쓰기는 닫힌 파이프와
+  경주했다. 같은 호출이 로컬에서는 통과하고 `msrv-check` 를 붉히며
+  `write stdin: Os { code: 32, kind: BrokenPipe }` 를 냈다. 이제 장치는 핸들을 받아들이고 쓰기
+  실패를 허용한 뒤 기다리기 전에 닫는다 — 실제로 읽는 자식에 필요한 것도 (열려 있는 파이프가 아니라)
+  EOF 다. 뭉갠 것이 아니다: 종료 코드와 stderr 에 대한 단언이 여전히 합불을 정한다.
+  `a_refusal_closes_stdin_before_the_harness_finishes_writing` 은 240 KB(파이프 버퍼 이상)를 흘려
+  넣어 그 겹침을 결정적으로 만든다. 옛 장치에서는 매번 실패하고
+  (`Os { code: 109, kind: BrokenPipe }`), 고친 뒤에는 48 개 CLI 테스트가 통과한다. — (details:
+  quality-ledger (cs))
+
 - **압축 JSONC/JSON5를 다시 읽을 때 같은 줄 댓글 묶음이 사라지지 않는다.** — 같은 줄 댓글이 둘 이상
   있는 노드는 마지막 하나만 남았다. 읽는 쪽이 같은 줄 댓글을 하나의 inline 칸에 넣기 때문에 뒤에 온
   것이 앞을 덮었다. 압축 writer는 노드의 주석을 정확히 그 형태로 쓰므로, 이 라이브러리가 스스로 쓴

@@ -367,6 +367,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The CLI test harness no longer panics when a refusal closes its stdin.** — `run_with_stdin`
+  wrote the child's stdin and panicked on any error, but a CLI that refuses its arguments exits
+  *before* it reads, so the write races the closed pipe: the same invocation passed locally and
+  reddened `msrv-check` with `write stdin: Os { code: 32, kind: BrokenPipe }`. The harness now takes
+  the handle, tolerates the failed write, and closes it before the wait — which is also what a child
+  that *does* read needs (end-of-file, not a pipe held open). Nothing is papered over: the
+  assertions on exit code and stderr still decide the test.
+  `a_refusal_closes_stdin_before_the_harness_finishes_writing` makes the interleaving deterministic
+  by feeding 240 KB, more than a pipe buffer; against the old harness it fails every time
+  (`Os { code: 109, kind: BrokenPipe }`), and the 48 CLI tests pass with the fix. — (details:
+  quality-ledger (cs))
+
 - **Re-reading compact JSONC or JSON5 no longer erases a run of comments.** — A node introduced by
   two or more same-line comments kept only the last: the reader gives a same-line note the single
   inline slot, so each overwrote the one before. The compact writers emit a node's notes exactly

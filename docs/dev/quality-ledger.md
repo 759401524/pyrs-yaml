@@ -4507,9 +4507,48 @@ this box cannot link the binding harness. The numbers above are therefore the di
 enforcing image's `Instruction-count baseline` job reports the verdict against the committed
 baseline, which since `(cq)` also carries that change's -8.01% on `from_json_medium`.
 
+The enforcing image then priced what the same-host pair had called a direction. On PR #373,
+`Instruction-count baseline` read `from_json_medium` 154,041,906 → 120,758,043 (-21.61% against the
+committed baseline) and `from_json5_medium` -16.72%, while the two scenarios neither change enters
+held at the values #372 had moved them to - `from_toml_medium` -5.64%, `parse_medium` -3.47%. Both
+savings share that first column: #372 alone read -8.01%, so the quoting pass took the JSON read a
+further ~-14%, twice what the local A/B estimated. The local numbers stay because the untouched
+scenarios are what made them readable at all; the magnitude did not travel between the channels,
+which is the reason the gate owns the verdict and not the laptop.
+
 Verified: `cargo nextest run --all` 575 tests (the oracle included), `cargo clippy --all
 --all-targets -- -D warnings` and `cargo fmt --all` clean, `prek run --all-files`,
 `uv run pytest tests/` 2719 pass / 10 skip, five changelog mirrors at [25, 11, 38, 5].
+
+### (cs) A harness that panicked on the behavior its own test was checking (2026-10-13)
+
+`msrv-check` reddened on a branch whose diff could not have touched it
+(`write stdin: Os { code: 32, kind: BrokenPipe }` at `cli.rs:35`), while the same test passed on
+every other leg and on the machine of the author. The temptation is to call that a flake and press
+rerun; the log said otherwise. `run_with_stdin` wrote the child's stdin and panicked on any error,
+but the test that failed - `to_json_dialect_flags_conflict` - asserts that the CLI *refuses* two
+mutually exclusive flags, and a refusal exits before anything reads the pipe. So the harness
+panicked on exactly the behavior the test exists to pin, and whether it did depended on which side
+won the race: Linux runners lose, a warm local run wins.
+
+The fix is in the harness, not in the assertion: take the stdin handle, tolerate the failed write,
+close it before waiting. Closing it is not incidental — a child that *does* read needs end-of-file,
+which is what the old code left open until `wait_with_output`. And nothing is being swept up: the
+exit code and stderr assertions still decide pass or fail, so a CLI that genuinely misbehaves still
+reddens the test.
+
+Made deterministic rather than left to luck:
+`a_refusal_closes_stdin_before_the_harness_finishes_writing` feeds 240 KB - more than a pipe
+buffer - to the same refusal, so the write cannot slip through unread. Against the old harness it
+fails every run, locally with `Os { code: 109, kind: BrokenPipe }` (Windows' name for the same
+condition the runner reported as 32); with the fix, all 48 CLI tests pass, and 12 consecutive runs
+of the whole file stayed green.
+
+Verified: `cargo test -p pyrs-yaml-cli --test cli` 48 passed (was 47), the same command against the
+pre-fix harness FAILED with the EPIPE panic, `cargo clippy --all --all-targets -- -D warnings`,
+`cargo fmt --all`, `prek run --all-files`, five changelog mirrors. No engine code changed - the
+`-0.0009%`-style instruction totals are untouched by a test-harness edit, so no gate re-baseline was
+asked for.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
