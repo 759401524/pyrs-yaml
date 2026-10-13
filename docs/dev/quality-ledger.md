@@ -4008,6 +4008,127 @@ ledger (is" or "(of …)". A citation-resolving gate therefore has to know both 
 not match a parenthesised pair in passing prose; that is a separate change, and naming the
 requirement here is the point rather than shipping a check that reddens on English.
 
+### (cl) The CI matrix was a cross product, and two gates were hidden inside it as string comparisons (2026-10-13)
+
+Two questions arrived together: whether the 8 x 3 interpreter matrix is worth what it costs, and
+whether the cost can be moved without losing coverage. Both were answered by measuring the existing
+matrix rather than by reasoning about it.
+
+**Cost.** Over six recent CI runs and 144 matrix legs, a leg's median wall time is 138 s on ubuntu,
+186 s on macOS and 251 s on Windows, of which the suite itself is 116 / 141 / 183 - so 76% of the
+spend is the same ~2 500 assertions re-executed per interpreter, and the same cell costs 1.8x on
+Windows what it costs on ubuntu for identical content. The full grid is 78.2 minutes of leg time per
+pull request, and the pull requests arrive at 70 per 30 days (~16 a week), which is ~21 hours a week
+of runner time on this one job.
+
+**Yield.** Over the last 30 pull-request runs, 642 legs executed. Not one failure was confined to a
+single interpreter version across OSes, and not one was confined to a single OS across versions; the
+only red groups were whole-row cancellations, which is the behaviour #363 already removed by setting
+`fail-fast: false`. That is a short window and mostly documentation work in it, so it does not prove
+the axis is worthless - what it locates is where the axis pays: at the boundaries. #298 was merged
+over an unconsulted `test (windows-latest, 3.8)`, and the 3.15 legs earned their existence in their
+first run by finding that three comparison packages refuse that interpreter.
+
+**The defect the shape was hiding, and the reason to restructure rather than shrink.** Two gates are
+selected by cells:
+
+```yaml
+${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && '--cov-fail-under=78 ...' }}
+if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+```
+
+Delete or move either cell and both conditions go false. The suite still passes, the run is green,
+and the coverage threshold is never evaluated. That is not a hypothesis about a possible future
+edit: it is the same class the fan-in job exists for (#298, #299 - a check that never reports is not
+a gate), parked in the matrix where nobody was looking. So the grid is now *planned* by
+`scripts/ci_matrix_plan.py`, which reads the interpreter list out of `pyproject.toml`'s classifiers,
+and the gates are *roles* carried by legs. `--check` runs in the planner job, before any leg is paid
+for, and refuses a plan without exactly one coverage leg and exactly one compliance leg.
+
+**What the pull-request tier runs now: 14 suite legs and 10 smoke legs, covering the same 24
+cells.** Every declared version runs the suite on ubuntu; the floor (3.8), the top (3.15) and the
+coverage carrier (3.12) run it on all three OSes. The remaining cells are not dropped -
+`wheel-smoke` installs the abi3 wheel that platform built and round-trips one document through YAML,
+JSON, JSONC, JSON5 and TOML, which is the claim `docs/en/installation.md` actually makes for those
+cells ("a single wheel from 3.8 to 3.15 on three platforms") and costs a setup, 22 s to 68 s, rather
+than a suite. The full grid runs with the suite every Sunday at 02:30 UTC, which is what makes the
+demotion reviewable rather than a one-way ratchet: chosen over a nightly full grid because a nightly
+would spend ~9 h a week on the cross product and cost back most of what the slim tier saves.
+
+Measured result: 78.2 min -> ~49 min of leg time per pull request (-37%), 24 -> 14 full-suite legs
+(-42%), no cell of the cross product left unexercised.
+
+**Proven to be able to fail.** A validator that only ever sees the shape it was written against is
+the same defect as the condition that cannot fire, so `check()` takes a plan as an argument and four
+tests hand it doctored ones: strip the coverage role and it names the role; delete `ubuntu/3.9`'s
+only leg and it names the version; delete `windows/3.8` and it names the boundary cell; put one cell
+in both tiers and it names the overlap. A fifth test adds a `3.99` classifier to a copy of
+`pyproject.toml` and requires the plan to grow a leg for it, because the derivation from published
+metadata is the load-bearing part and a hard-coded list would pass every other test here.
+
+**One measured limit of the new tier, found by writing it.** `scripts/wheel_smoke.py` first demanded
+that a parsed document's `to_yaml()` return the input byte for byte, and on the first run it was
+wrong: a standalone `# note` on its own line at the end of a short document comes back attached to
+the previous member (`b: [1, 2]  # note`). Nothing is lost and the second pass is stable, so the
+assertion was rewritten to hold survival plus the fixed point, which is the property a per-cell
+wheel check should own, and the re-attaching behaviour is left to the round-trip tier that
+characterises it deliberately rather than being reported as a break by a smoke test.
+
+**Three stale sentences the change would otherwise have left standing**, corrected in the same
+commit rather than left as prose that no longer matches the machine: `check_matrix_verdict.py` and
+`test_matrix_verdict_gate.py` both quoted a leg count ("twenty-one"), and `test_docs_config_gate.py`
+claimed "the CI matrix covers 3.11 through 3.14 on three OSes" - untrue twice over, since 3.15 is
+declared and the mid-range versions no longer run on three OSes.
+
+**What is not covered, named because the summary above reads as if it is.** A bug that needs a
+non-boundary interpreter *and* a specific OS at the same time is now caught on the schedule rather
+than on the pull request that introduced it; that is the price of the -37%, and the weekly grid is
+the guarantee. Separately measured and deliberately untouched here, so it is not mistaken for fixed:
+`publish.yml` smoke-tests the built wheels on 3.8 (linux, macOS) and 3.13 (windows), so the release
+path never installs the artefact on the newest declared version while `installation.md` promises 3.8
+through 3.15. It is not an engine ruling, so it does not belong in `ROADMAP.md`'s open table; it is
+recorded here, and whoever touches the release path next should make the publish smoke run over the
+same version list the planner emits.
+
+Verified: 2533 Python tests pass and 10 skip (the count after the fixer guard in the next entry), 87
+across the planner, fan-in, corpus-gate and script-import modules, `prek run --all-files` exit 0
+including `check yaml`, and `ci_matrix_plan.py --check` reports the plan recorded above.
+
+### (cm) The width fixer rewrote a Python file when it was pointed at one (2026-10-13)
+
+`scripts/check_doc_wrapping.py --fix <path>` rewrites whatever path it is handed. Invoked on
+`scripts/ci_matrix_plan.py` - by the author of this change, while writing it - it treated the module
+as Markdown prose and re-flowed it: the docstring, and then the statements under it, joining `def`,
+`if` and `raise` onto shared lines until the file no longer parsed. The damage was total enough that
+the script was rewritten from scratch rather than patched, which is also why nothing was lost: the
+file was uncommitted work in progress.
+
+The hook cannot do this. `prek.toml` gives `doc-line-width` a `files:` pattern, so the script never
+sees a path outside the governed pages - which is exactly the shape of the bug: the safety lived in
+the caller, and the command line had none. A tool that repairs the repository's prose should refuse
+to touch anything that is not prose, so the governed set moved into the script as `GOVERNED`, `main`
+refuses any other path with exit 2 before it writes a byte, and the refusal names every offending
+argument rather than the first.
+
+Four tests in `tests/test_doc_wrapping_gate.py`, one of them the control this file keeps insisting
+on: `test_the_guard_is_what_protects_it` patches `is_governed` to always accept and requires the
+fixer to *actually* rewrite the same file. Without it, the passing test would only show that this
+particular input survived, which is not the same claim as the guard working. The fourth test
+compares `GOVERNED` against the hook's own `files:` regex over both the example list and every page
+currently in `docs/dev/`, because two lists describing one boundary are two chances to drift.
+
+Two traps found while writing them, both recorded because each produces a confidently wrong test:
+`prek.toml` puts hook entries in inline tables that span lines, which the TOML spec forbids, so
+`tomllib.loads` fails on it and the file has to be read the way `scripts/quality_matrix.py` already
+reads it; and `Path.relative_to` yields `docs\dev\boundaries.md` on Windows while `prek` and `git`
+hand over `docs/dev/…`, so the comparison has to normalise one side or it reports a path separator
+as a disagreement about scope.
+
+Verified: 2533 Python tests pass, 10 skip; the guard rejects `scripts/*.py`, `README.md`,
+`AGENTS.md`, `QUALITY_MATRIX.md`, `prek.toml` and `.github/workflows/ci.yml` while accepting all
+nine governed pages; `prek run --all-files` green, which is the hook exercising the same script
+through its filtered path list.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

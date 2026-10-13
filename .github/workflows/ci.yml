@@ -3,6 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+  # Weekly, and it is the reason the pull-request tier is allowed to be cheap: the full
+  # OS x interpreter cross product runs in full every Sunday, so a cell that was demoted to a smoke
+  # leg on a pull request is still executed with the whole suite once a week rather than never.
+  # Chosen over a nightly full grid because measured cost of one full grid is 78 minutes of runner
+  # time, and the pull requests in this repository arrive at ~16 per week - nightly would spend more
+  # on the cross product than the slim tier saves.
+  schedule:
+    - cron: "30 2 * * 0"
   # Unconditional on purpose. Branch protection requires the check named `Test matrix (all legs)`, and a
   # required check that never reports is not a green light - it is a deadlock. Measured on PR #319: a pull
   # request touching only `*.md` and `docs/**` ran every other workflow, every check it produced passed, and
@@ -39,6 +47,43 @@ jobs:
         run: |
           echo "push sha ${{ github.sha }} is the rebased tip whose identical tree already"
           echo "passed the full CI matrix as a pull request; skipping the duplicate spend."
+
+  # The interpreter grid is planned rather than written out, by `scripts/ci_matrix_plan.py`. The
+  # version list comes from `pyproject.toml`'s classifiers, so the matrix cannot drift away from the
+  # range the package publishes; the coverage and compliance gates are *roles* attached to legs rather
+  # than `matrix.os && matrix.python-version` conditionals, which is the difference between a cell
+  # removal failing the plan and a cell removal quietly switching a gate off while everything stays
+  # green. `--check` enforces that here, before any leg is paid for.
+  matrix-plan:
+    name: plan the interpreter grid
+    if: ${{ github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    outputs:
+      suite-legs: ${{ steps.plan.outputs.suite_legs }}
+      smoke-legs: ${{ steps.plan.outputs.smoke_legs }}
+      smoke-count: ${{ steps.plan.outputs.smoke_count }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # 3.11 because the planner must run on an interpreter that is not itself in the grid it emits:
+      # a plan computed by a leg of the plan could be tuned to that version's syntax ceiling. It is
+      # also the version this repository's docs tooling already requires.
+      - name: Validate the plan, then emit both tiers
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          python scripts/ci_matrix_plan.py --check
+          echo "suite_legs=$(python scripts/ci_matrix_plan.py --event "$EVENT")" >> "$GITHUB_OUTPUT"
+          smoke=$(python scripts/ci_matrix_plan.py --event "$EVENT" --smoke)
+          echo "smoke_legs=$smoke" >> "$GITHUB_OUTPUT"
+          echo "smoke_count=$(python -c 'import json,sys; print(len(json.loads(sys.argv[1])))' "$smoke")" >> "$GITHUB_OUTPUT"
 
   # Everything the merge decision consumes is classified here first. Prose-only changes skip the heavy legs
   # *on purpose*, and the verdict is told that they were: `check_matrix_verdict.py` tolerates a skipped leg
@@ -257,16 +302,22 @@ jobs:
         run: cargo check --locked -p pyrs-ast -p pyrs-schema
 
   test:
-    needs: [build, changes]
+    needs: [build, changes, matrix-plan]
     if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' }}
     strategy:
       # Measured reason: with the default `true`, one leg's failure cancelled 22 siblings mid-flight,
       # so a run that reported a real problem could say nothing about every other interpreter it was
       # supposed to characterise. A matrix exists to report per-cell results; cancelling them defeats it.
       fail-fast: false
+      # The legs come from `matrix-plan` rather than an `os x python-version` cross product, for the
+      # reason recorded in `scripts/ci_matrix_plan.py`: measured over 144 legs, a leg costs 138 s on
+      # ubuntu, 186 s on macOS and 251 s on Windows and 76% of that is the suite re-running the same
+      # assertions, so the cross product - not the version list - was the expensive part. The name is
+      # written out because the plan carries extra flags, and the default rendering would append them
+      # to every check name; branch protection and `check_matrix_verdict.py` both match on the name.
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+        include: ${{ fromJSON(needs.matrix-plan.outputs.suite-legs) }}
+    name: test (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -310,15 +361,21 @@ jobs:
       # run a second time on ubuntu/3.12. Folding it into the leg that already runs that interpreter costs
       # one extra flag instead of a duplicate fan-out, and the flag is why this one leg keeps `-v` off:
       # `--cov-report=term-missing` is the readable half of the record.
+      #
+      # `matrix.coverage` rather than a comparison on os and version: measured, the condition
+      # `matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'` silently stops holding the
+      # moment a matrix edit drops or moves that cell, and the suite keeps passing with the threshold
+      # never evaluated - a coverage gate that switches itself off green. The plan now owns the role,
+      # and `scripts/ci_matrix_plan.py --check` refuses a plan without exactly one coverage leg.
       - name: Run Python tests
         run: >-
           uv run pytest tests/
-          ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+          ${{ matrix.coverage
               && '--cov=pyrs_yaml --cov-report=term-missing --cov-fail-under=78 -q'
               || '-v' }}
 
       - name: Compliance summary
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+        if: matrix.compliance
         run: |
           uv run python -c "
           import sys; sys.path.insert(0, 'tests')
@@ -423,8 +480,55 @@ jobs:
       - name: Run Python tests
         run: uv run pytest tests/ -v
 
-  # Branch protection matches checks by name, and a matrix contributes one name per leg - 24 of
-  # them here. Measured consequence, twice inside an hour: #298 was rebase-merged with
+  # The cross product, kept. Every (OS, interpreter) cell the suite tier does not run still installs the
+  # wheel that cell would actually download and executes one round trip through each dialect, because the
+  # claim being tested here is the one `docs/en/installation.md` makes: a single abi3 wheel from 3.8 to
+  # 3.15 on three platforms. That claim is per-cell and cheap to check, and it is the part of the old 24-cell
+  # matrix that was not already covered by another cell - the suite, by contrast, runs the same 2 500
+  # assertions in every one of them. Measured cost of a leg without the suite is the setup the suite tier
+  # already pays per OS: 22 s on ubuntu, 45 s on macOS, 68 s on Windows.
+  #
+  # Deliberately no `pytest` in this job's steps: `tests/test_ci_corpus_gates.py` decides which jobs owe
+  # which corpus clones by looking for a whole-suite run, and a smoke tier that pretends to be one would
+  # either inherit a requirement it does not need or hide the requirement from a job that does.
+  wheel-smoke:
+    name: wheel smoke (${{ matrix.os }}, ${{ matrix.python-version }})
+    needs: [build, changes, matrix-plan]
+    if: ${{ github.event_name != 'push' && needs.changes.outputs.code == 'true' && needs.matrix-plan.outputs.smoke-count != '0' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix-plan.outputs.smoke-legs) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download abi3 wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist/
+
+      - name: Install the wheel the published way
+        shell: bash
+        run: pip install dist/*.whl
+
+      # Import, then a round trip per format family: YAML with a comment and an anchor, the three JSON
+      # dialects, and TOML - through the shipped module, not a test helper. It lives in `scripts/` on
+      # purpose: a `python -c` program inside a YAML plain scalar is not valid YAML (`a: 1` reads as a
+      # mapping, measured on this job's first draft), and every `scripts/*.py` is imported by the 3.8 leg
+      # so this cannot quietly become 3.9-only syntax.
+      - name: Exercise every dialect
+        run: python scripts/wheel_smoke.py
+
+  # Branch protection matches checks by name, and a matrix contributes one name per leg - fourteen
+  # suite legs and ten smoke legs here, where it used to be twenty-four of the first. Measured
+  # consequence, twice inside an hour: #298 was rebase-merged with
   # `test (windows-latest, 3.8)` never consulted (and that leg carried two checkers that cannot run on
   # the Python floor this package promises), and #299 went red on a formatter's unsquashed fix - a
   # check no merge decision consumes is a report, not a gate. This job is the single name to make
@@ -439,7 +543,7 @@ jobs:
   matrix-verdict:
     name: Test matrix (all legs)
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [changes, docs-gates, rust-lint, property-tier, msrv-check, no-std-check, build, test, test-freethreaded, compliance-report, i18n-check]
+    needs: [changes, matrix-plan, docs-gates, rust-lint, property-tier, msrv-check, no-std-check, build, test, wheel-smoke, test-freethreaded, compliance-report, i18n-check]
     runs-on: ubuntu-latest
     steps:
       # No checkout of the tree is needed for the verdict itself, but the checker lives in

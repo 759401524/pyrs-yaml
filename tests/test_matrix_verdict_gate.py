@@ -1,7 +1,7 @@
 """Self-test for the matrix fan-in (`scripts/check_matrix_verdict.py`).
 
-The point of the fan-in is that one check name can require twenty-one legs, so the thing that must not
-be soft is the verdict itself. Each case below is a shape a real run produces:
+The point of the fan-in is that one check name can require every leg of the matrix, so the thing that
+must not be soft is the verdict itself. Each case below is a shape a real run produces:
 
 * every leg green - the only pass;
 * one leg `failure` - what a red matrix row looks like;

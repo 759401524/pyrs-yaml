@@ -72,6 +72,21 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 MAX_WIDTH = 100
 
+# The pages this rule owns. It has to be stated here as well as in `prek.toml`, because the command
+# line takes whatever it is pointed at and a re-flow is a Markdown operation on text it assumes is
+# prose. Measured, not theorised: running `--fix scripts/ci_matrix_plan.py` re-wrapped that file's
+# module docstring *and the statements under it*, joining `def`, `if` and `raise` onto shared lines
+# until the module raised `SyntaxError`. The hook cannot do that - its `files:` pattern filters the
+# paths before the script ever sees them - so the guard exists only for the human-invoked path, and
+# `tests/test_doc_wrapping_gate.py` pins that the two patterns still say the same thing.
+GOVERNED = re.compile(r"^(?:CHANGELOG|ROADMAP)\.md$|^docs/(?:en|ja|ko|zh)/changelog\.md$|^docs/dev/[a-z-]+\.md$")
+
+
+def is_governed(rel: str) -> bool:
+    """Whether this rule owns the page. Forward slashes, as `prek` and `git` hand paths over."""
+    return bool(GOVERNED.match(rel.replace("\\", "/")))
+
+
 # Lines matching these are never re-wrapped: they are structure, or their whitespace is
 # meaningful (a table cell, a code sample, a heading an anchor is computed from).
 SKIP_PATTERNS = (
@@ -661,6 +676,17 @@ def main(argv: list) -> int:
     paths = [a for a in argv if not a.startswith("--")]
     if not paths:
         print("usage: check_doc_wrapping.py [--fix] <file.md>...", file=sys.stderr)
+        return 2
+    # Before anything is written: a governed check on a path list that also contains code would still
+    # have fixed the code, and the check is the half someone runs when they are already worried.
+    outside = [rel for rel in paths if not is_governed(rel)]
+    if outside:
+        print(
+            "refusing pages this rule does not own: " + ", ".join(outside) + "\n"
+            "`--fix` reflows Markdown prose and rewrites the file in place; the governed set is\n"
+            "`GOVERNED` here and the `files:` pattern of the `doc-line-width` hook in prek.toml.",
+            file=sys.stderr,
+        )
         return 2
     if fixing:
         fix(paths)

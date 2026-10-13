@@ -2,8 +2,9 @@
 """Fail unless every job a pull request's merge gate depends on actually succeeded.
 
 Why this exists, measured rather than theorised: branch protection matches check *names*, and a
-matrix contributes one name per leg - `test (windows-latest, 3.8)`, `test (macos-latest, 3.14)`,
-twenty-one of them. Two pull requests in one hour got through that:
+matrix contributes one name per leg - `test (windows-latest, 3.8)`, `wheel smoke (macos-latest, 3.14)`,
+fourteen of the first and ten of the second since `scripts/ci_matrix_plan.py` took over the grid. Two
+pull requests in one hour got through that:
 
 * #298 was rebase-merged while `test (windows-latest, 3.8)` had never been consulted; the leg carried
   a real defect - two checkers could not run on the floor `pyproject.toml` promises, one of them
@@ -11,7 +12,7 @@ twenty-one of them. Two pull requests in one hour got through that:
 * #299 went red on `Hygiene` for a formatter's fix that sat unsquashed next to the commit CI was
   checking, which is the same shape: a check that no merge decision consumes is a report, not a gate.
 
-So one job here is the thing to make required: it `needs` the whole matrix and turns 21 names into 1.
+So one job here is the thing to make required: it `needs` the whole matrix and turns those names into 1.
 The job feeds it `toJSON(needs)` - GitHub's own record of each leg's result - and the verdict is a
 pure function so `tests/test_matrix_verdict_gate.py` can hand it the shapes that must bite
 (a skipped leg, a cancelled leg, a success) instead of waiting for a real runner to misbehave.

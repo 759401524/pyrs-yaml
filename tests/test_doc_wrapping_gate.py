@@ -473,3 +473,113 @@ def test_a_boundary_touching_a_code_span_keeps_its_space(checker):
     """The other half of the same rule: `は `docs.md` にある` is normal typography."""
     joined = checker.join_lines(["YAML Core は", "`docs.md` にある"])
     assert joined == "YAML Core は `docs.md` にある"
+
+
+# A re-flow is a Markdown operation on text it assumes is prose, and `--fix` rewrites in place. Measured
+# on this repository: `python scripts/check_doc_wrapping.py --fix scripts/ci_matrix_plan.py` re-wrapped a
+# Python module - docstring *and* the statements under it - joining `def`, `if` and `raise` onto shared
+# lines until the file no longer parsed. The hook cannot reach that, because `prek.toml` filters the
+# paths before the script sees them; only the command line needed a boundary of its own.
+
+OVER_LONG_CODE = '''#!/usr/bin/env python3
+"""A module whose one-line summary is deliberately past the width this rule enforces so that it would
+be a candidate for re-flow if anything handed this file to the fixer."""
+
+
+def f():
+    x = 1
+    if x:
+        return 2
+    return 3
+'''
+
+
+def test_the_cli_refuses_a_file_this_rule_does_not_own(checker, tmp_path, monkeypatch):
+    victim = tmp_path / "not_prose.py"
+    victim.write_text(OVER_LONG_CODE, encoding="utf-8", newline="\n")
+    monkeypatch.setattr(checker, "REPO", tmp_path)
+    before = victim.read_bytes()
+    assert checker.main(["--fix", victim.name]) == 2
+    assert victim.read_bytes() == before, "the file was rewritten although the path is not a page"
+
+
+def test_the_guard_is_what_protects_it(checker, tmp_path, monkeypatch):
+    """The control: remove the boundary and the same call does destroy the file.
+
+    Without this, a test that only ever sees a refusing `main` cannot tell the guard apart from a
+    fixer that happens to leave this particular input alone - and the whole point is that it does not.
+    """
+    victim = tmp_path / "not_prose.py"
+    victim.write_text(OVER_LONG_CODE, encoding="utf-8", newline="\n")
+    monkeypatch.setattr(checker, "REPO", tmp_path)
+    monkeypatch.setattr(checker, "is_governed", lambda _rel: True)
+    before = victim.read_bytes()
+    checker.main(["--fix", victim.name])
+    assert victim.read_bytes() != before, (
+        "the fixer left a 101-column Python file alone even with the guard off, so the test above "
+        "proves nothing about the guard"
+    )
+    assert b"def f():" in before, "the fixture lost its shape"
+
+
+def test_the_refusal_list_is_every_path_not_a_first_hit(checker, tmp_path, monkeypatch, capsys):
+    """One code path in a mixed list is enough to refuse the whole call.
+
+    Stopping at the first offender would name one file and still be safe, but the message is for a
+    human who meant to fix three pages and typed a fourth argument: list them all.
+    """
+    for name in ("a.py", "b.py"):
+        (tmp_path / name).write_text(OVER_LONG_CODE, encoding="utf-8", newline="\n")
+    monkeypatch.setattr(checker, "REPO", tmp_path)
+    assert checker.main(["--fix", "a.py", "b.py"]) == 2
+    err = capsys.readouterr().err
+    assert "a.py" in err and "b.py" in err, err
+
+
+def test_the_governed_set_and_the_hook_that_feeds_it_agree(checker):
+    """`prek.toml` filters the paths the hook runs on; this script filters the ones the CLI runs on.
+
+    Two lists that disagree are the bug, in either direction: a hook-only path would make the CI gate
+    check something the local fixer refuses to touch, and a script-only path would let `--fix` be
+    pointed at prose nobody owns. Compared over the examples plus the pages in the tree today.
+
+    Read with the same regex `scripts/quality_matrix.py` uses rather than `tomllib`, measured here:
+    `prek.toml` puts its hook entries in inline tables that span lines, and the TOML spec forbids that,
+    so `tomllib.loads` fails on the first one with "Invalid initial character for a key part". That is
+    the hook tool's dialect of TOML, not a broken file - and the reason the repo already parses it this
+    way everywhere else.
+    """
+    text = (REPO_ROOT / "prek.toml").read_text(encoding="utf-8")
+    hooks = re.findall(r"\[\[repos\.hooks\]\](.*?)(?=\[\[|\Z)", text, re.S)
+    assert hooks, "no [[repos.hooks]] blocks found: the config shape changed"
+    hook = next((body for body in hooks if 'id = "doc-line-width"' in body), None)
+    assert hook, "the doc-line-width hook is gone; this test and the pattern it checks are both stale"
+    files = re.search(r'files\s*=\s*"([^"]+)"', hook)
+    assert files, "the hook declares no `files` pattern to compare against"
+    # The captured text is a TOML *basic* string, so `\\.` in the file means `\.` in the regex. Passing
+    # it through un-decoded is the trap: `\\.md` then matches a literal backslash, never a filename, and
+    # the comparison would report the governed pages as disagreements.
+    pattern = re.compile(files.group(1).encode("utf-8").decode("unicode_escape"))
+    samples = [
+        *GOVERNED,
+        "scripts/ci_matrix_plan.py",
+        "scripts/ir_gate.py",
+        "README.md",
+        "AGENTS.md",
+        "QUALITY_MATRIX.md",
+        "CONTRIBUTING.md",
+        "docs/en/index.md",
+        "python/pyrs_yaml/__init__.py",
+        "prek.toml",
+        ".github/workflows/ci.yml",
+    ]
+    for rel in samples:
+        assert checker.is_governed(rel) == bool(pattern.match(rel)), rel
+    real = [str(p.relative_to(REPO_ROOT)) for p in (REPO_ROOT / "docs" / "dev").glob("*.md")]
+    assert real, "no development pages found to compare"
+    for rel in real:
+        # `prek` receives git-style forward-slash paths even on Windows, while `Path.relative_to` here
+        # yields `docs\dev\boundaries.md`. The script normalises that on purpose; the comparison has to
+        # compare the same form or it reports a separator as a disagreement about scope.
+        posix = rel.replace("\\", "/")
+        assert checker.is_governed(rel) == bool(pattern.match(posix)), rel

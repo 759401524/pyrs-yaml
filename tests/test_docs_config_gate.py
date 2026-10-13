@@ -9,8 +9,9 @@ the build: the parser is strict about TOML and lax about names, so the only plac
 removed option is against the handler's own option fields.
 
 Skipped below Python 3.11, where the docs group is not installed at all (`zensical` and
-`mkdocstrings-python` both require it); the CI matrix covers 3.11 through 3.14 on three OSes, so the
-check runs where it can.
+`mkdocstrings-python` both require it). The interpreter grid is planned by
+`scripts/ci_matrix_plan.py`, which runs the suite on every declared version on ubuntu - so 3.11 through
+3.15 reach this check there, and the versions below it skip it by design rather than by accident.
 """
 
 from __future__ import annotations
