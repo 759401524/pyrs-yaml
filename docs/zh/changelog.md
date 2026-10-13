@@ -565,6 +565,16 @@ status: new
 
 #### 性能
 
+- **给字符串定引号不再扫它三遍。** — 每座桥都要问 `needs_quotes`「这段文本若写成 plain 标量会不会被
+  误读」，而它的答案先按字符读一遍，再为 NBSP 与 BOM 各搜一遍。ASCII 文本里两者都不可能出现，所以现
+  在一遍字节扫描就定下 ASCII 的情况，凡是带高于 `0x7F` 字节的文本仍原样交给字符规则。穷举式对照
+  `needs_quotes_agrees_with_the_char_rule_for_every_code_point` 把两条路径与字符规则在全部 1,114,112
+  个码位上比对，并且能判出一条写错的字节规则：把边界挪一格（把空格算作控制符）它就红了，报
+  `first: Some((32, true, false))`。`callgrind` 在门禁的 harness 上、同一台主机测得：
+  `from_json_medium` -6.89%、`from_json5_medium` -1.87%，而本改动进不去的 `from_toml_medium`
+  （-0.0009%）与 `parse_medium`（+0.0002%）在两次运行间复现——正是这一点让前两个差值成为证据，而不是
+  环境噪声。— (details: quality-ledger (cr))
+
 - **节点的摘要只读相等性真正读取的那些字段，于是每条读取路径都变便宜了。** — `CustomNode::eq` 比较标
   量的取值、风格、chomping 与三个身份字段，显式的块缩进指示符并不在其中，可 `Hash` 却把它算了进去。
   于是映射视为同一个键的两个节点被路由到不同的桶——这正是 `plain_and_noted` 为另一个字段已经守住的那

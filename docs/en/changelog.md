@@ -723,6 +723,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **Quoting a string stopped scanning it three times.** — every bridge asks
+  `needs_quotes` "would this text be misread as a plain scalar?", and the answer read the value as
+  characters and then searched it twice more for NBSP and BOM. Neither can occur in ASCII text, so
+  one byte pass now decides the ASCII case and hands any text carrying a byte above `0x7F` to the
+  character rule unchanged. The exhaustive control
+  `needs_quotes_agrees_with_the_char_rule_for_every_code_point` compares the two paths against the
+  character rule over the whole code point range - 1,114,112 points, the 2,048 surrogates no `char`
+  can hold excepted - and it convicts a wrong byte rule: shifting the
+  bound by one (space counted as a control) reddens it with `first: Some((32, true, false))`.
+  `callgrind` on the gate's harness, same host: `from_json_medium` -6.89% and `from_json5_medium`
+  -1.87%, while `from_toml_medium` (-0.0009%) and `parse_medium` (+0.0002%) — the two scenarios this
+  change does not enter — repeated across the runs, which is what makes the first two deltas
+  evidence rather than ambient noise. — (details: quality-ledger (cr))
+
 - **A node's digest reads exactly what its equality reads, and every reader got cheaper.** —
   `CustomNode::eq` compares a scalar's value, style, chomping and three identity fields; the
   explicit block indentation indicator is not among them, yet `Hash` hashed it. Two nodes the map
