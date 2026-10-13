@@ -249,6 +249,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   because the fix is an exemption and the exemptions outlive the API. — (details: quality-ledger
   (cn))
 
+- **The JSON writers are read back by a reference implementation, on every valid document.** — the
+  corpus gated which documents the parsers *accept*; nothing gated what the writers *emit*, so
+  `to_json`, `to_jsonc` and `to_json5` were checked only against this repository's own reader. All
+  95 valid documents now re-read through stdlib `json` (190 writer re-reads) and `to_json5` through
+  `pyjson5`. Equality is type-strict, because `[1] == [1.0]` and `0 == False` are both `True` in
+  Python: a value-only comparison accepts the exact defect class #358 fixed. Three mutation controls
+  carry the evidence. Writing an integer as `{i}.0` reddens 38 of 190 re-reads and 4 of 95 JSON5
+  re-reads, naming input, output and emitted text; reversing the writer's pair loop reddens six
+  documents, reported by the value comparison, which walks keys in document order; and emitting
+  every member twice - still valid JSON, and equal as dicts because the repeats collapse - is caught
+  only by the pair lists, 18 of 190. The first control passed when it was tried, and that was the
+  finding: `write_plain` returns a JSON-spelled number verbatim through its fidelity pass, so a
+  corpus that arrives via `from_json` never reaches the number-normalising arm the substitution
+  lives in - making it observable took that pass switched off as well. The YAML spellings that arm
+  exists for (`0x1F` as `31`, `!!str 7` as `"7"`) are pinned on the Rust side by
+  `exotic_scalars_quote_or_normalize`. What the gate cannot see is written in its docstring rather
+  than in a footnote: the corpus is comment-free and anchor-free, so #359's comment slots stay the
+  business of `tests/test_json.py`. — (details: quality-ledger (co))
+
 #### Changed
 
 - **The coverage gate stopped duplicating a whole suite run.** — `coverage` created its own
