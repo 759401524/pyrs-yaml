@@ -309,16 +309,18 @@ status: new
   在终止处 pop 会让 pending 机制取到的索引 panic，抑制键分隔符则把注释移出它的主人所在行。
   关闭 #339。— (details: quality-ledger (bz))
 
-- **标准标签现在在每个格式里都决定类型，不再只在加载时生效。** — #335 让加载器开始尊重
-  `!!str` / `!!int` / `!!float` / `!!bool`，但通往 JSON、JSONC、JSON5 与 TOML 的桥梁仍然只解析
-  标量*文本*、丢掉 `meta.tag`，于是一份文档有了两个答案：`v: !!str 1.20` 加载为字符串
-  `"1.20"`，而 `to_json` 却发出 `1.2`——类型变了，作者特意写下的末尾零也没了。规则现在只存在
-  一处：`pyrs-schema`（`standard_tag_kind` / `TagKind::resolve`，用 YAML 1.1 词法，`!!x` 简写与
-  完整形式 `!<tag:yaml.org,2002:x>` 都认），JSON 写入器、TOML 写入器与 CLI 的类型化比较统一
-  来问它。文本凑不上标签所宣称的类型时报错（`*-tag-text-mismatch`），而不是悄悄当字符串。
-  本地标签（`!int`）、未知的 `!!` 后缀、尚未裁定的 `!!binary` 映射均维持原状，并已钉住。
-  — (details: quality-ledger (bu))
-)
+- **标准标签现在在每个格式里都决定类型，不再只在加载时生效。** — #335 让加载器开始尊重 `!!str` /
+  `!!int` / `!!float` / `!!bool`，但通往 JSON、JSONC、JSON5 与 TOML 的桥梁仍然只解析标量*文本*、丢掉
+  `meta.tag`，于是一份文档有了两个答案：`v: !!str 1.20` 加载为字符串 `"1.20"`，而 `to_json` 却发出
+  `1.2`——类型变了，作者特意写下的末尾零也没了。规则现在只存在一处：`pyrs-schema`
+  （`standard_tag_kind` / `TagKind::resolve`，用 YAML 1.1 词法，`!!x` 简写与完整形式
+  `!<tag:yaml.org,2002:x>` 都认），JSON 写入器、TOML 写入器与 CLI 的类型化比较统一来问它。文本凑不上
+  标签所宣称的类型时报错（`*-tag-text-mismatch`），而不是悄悄当字符串。本地标签（`!int`）、未知的
+  `!!` 后缀、尚未裁定的 `!!binary` 映射均维持原状，并已钉住。代价在施测镜像上量出并被接受：现在会先
+  问一次标签的键值循环让 `to_json_medium` 花 +1.12%、`to_jsonc_medium` +1.03%、`to_json5_medium`
+  +0.82%，而 `to_toml_medium` 动 -0.07%，其余没有一项越过那条线。`.ci/ir-baseline.json` 在本 pull
+  request 内重新生成，并把这三个场景点名给漂移守卫；同一次刷新顺带把 `from_json_medium` 收
+  紧 -0.46%、`from_jsonc_medium` 收紧 -0.42%，这并不是我们要求的。— (details: quality-ledger (bu))
 
 - **编辑不再用旧值的标签覆写新值的类型。** — `doc.set("$.d", b"hi")` 发出的是
   `d: aGk=`。这次赋值本会构造一个携带 `!!binary` 的标量，但拼接式编辑器的元数据继承从被
