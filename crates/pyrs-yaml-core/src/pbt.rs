@@ -289,8 +289,7 @@ mod tests {
                     | crate::ast::CustomNode::Sequence { meta, .. }
                     | crate::ast::CustomNode::Null { meta, .. } => {
                         let mut v = meta
-                            .comment
-                            .as_ref()
+                            .comment()
                             .map(|c| vec![c.text.to_string()])
                             .unwrap_or_default();
                         match n {
@@ -331,8 +330,7 @@ mod tests {
                     | crate::ast::CustomNode::Sequence { meta, .. }
                     | crate::ast::CustomNode::Null { meta, .. } => {
                         let mut v = meta
-                            .tag
-                            .as_ref()
+                            .tag()
                             .map(|t| vec![t.to_string()])
                             .unwrap_or_default();
                         match n {

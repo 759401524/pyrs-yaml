@@ -329,8 +329,7 @@ fn write_value_inner(
             value,
             mode,
             out,
-            meta.tag
-                .as_ref()
+            meta.tag()
                 .and_then(|t| pyrs_schema::schema::standard_tag_kind(&t.handle, &t.suffix)),
         )?,
         // PR #121: a single-quoted source string (JSON5-only) round-trips

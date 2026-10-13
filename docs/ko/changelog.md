@@ -262,6 +262,25 @@ status: new
 
 #### 변경
 
+- **`CustomNode` 는 144 바이트, 208 이 아닙니다.** — 노드의 절반은 `NodeMeta` 였습니다. 208 바이트
+  중 128 바이트, `Option` 슬롯 다섯 개였고 그 크기는 모든 읽기 경로의 한복판에 있었습니다. 노드를
+  지을 때 쓰고, 노드가 옮겨질 때마다 복사하고, 트리를 버릴 때 필드마다 확인합니다
+  (`docs/dev/perf.md` — `memcpy` 가 `from_json_medium` 의 7.88%, 해체가 4.58%). 두 단계는 각자
+  무료가 아니므로 한 변경으로 함께 냅니다. 이제 `pyrs-ast` 를 제외한 모든 크레이트가 이 타입 고유의
+  접근자로 슬롯에 닿습니다. `comment()`, `set_comment()`, `take_comment()`, 그리고 anchor, tag,
+  source range 도 같은 세 가지씩. 앞줄 주석 상자는 `decor_mut()`, 직렬화기가 패턴으로「이 노드에
+  comment, anchor, tag 가 없는가」를 물던 자리는 `is_identity_clean()`, 모든 필드 이름을 적던 구조체
+  리터럴은 `with_comment()`, `with_tag()`, `scanned()` 로 바꿨습니다. 그리고 anchor 나 tag 가 명시된
+  소스만 채우는 두 슬롯은 이제 포인터 하나를 공유합니다. 관문이 고정하는 컴파일러에서 짝을 지어
+  측정했습니다 (rustc 1.97.1): `from_json_medium` −4.8%, `serialize_anchors` −4.0%,
+  `parse_inline_merge` −3.5%, `parse_medium` −1.5%, `from_toml_medium` +0.7%, 0.50% 허용 범위를
+  벗어나는 항목은 없습니다. 어느 필드를 옮길 수 있는지가 이번 발견입니다. source range 까지 상자에
+  넣으면 — YAML 어댑터가 *모든* 노드에 적어 두는 값 — `parse_medium` 이 +5.9% 를 지불하고
+  `from_json_medium` 의 −7.4% 를 사는 결과가 됩니다. 그래서 노드마다 기록되는 슬롯은 평면에 두고
+  `{anchor, tag}` 만 상자에 넣었습니다. `node_layout_is_part_of_the_hot_path_contract` 가 두 구성의
+  최종 크기를 고정합니다. 메타데이터는 72 와 64 로 같고, 노드는 기본 `std` 에서 144, 노드 맵 해셔가
+  다른 `no_std` 에서 128 입니다.
+
 - **TOML 2진 정수가 자기 표기를 지킨다.** — `b = 0b1010` 이 `b = 10` 으로 돌아왔다. 이 spoke 는
   의도적으로 정규화했다: YAML Core 에 `0b` 어휘가 없으므로 태그 없는 plain `0b1010` 은 허브에서
   *문자열*로 다시 읽히고, 설계 규칙 D1 (YAML Core 도 받아들이는 표기만 지킨다) 은 값을 망가뜨리지

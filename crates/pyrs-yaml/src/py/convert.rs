@@ -145,7 +145,7 @@ fn node_to_pyobject_inner<'a>(
             // resolves `1.20` to a float and `aGk=` to a string, and both answers contradict the
             // tag its author wrote. A plugin registered on one of these tags no longer wins over
             // the tag itself - the standard reading is what both reference libraries apply.
-            if let Some(t) = meta.tag.as_ref()
+            if let Some(t) = meta.tag()
                 && let Some(tagged) = crate::py::tags::tagged_scalar(py, &t.to_string(), value)?
             {
                 return Ok(tagged);
@@ -153,7 +153,7 @@ fn node_to_pyobject_inner<'a>(
             // Resolve the scalar value first, then try custom type conversion
             // so that `from_yaml` receives the resolved Python object.
             let py_obj = scalar_to_pyobject(py, value, style, schema)?;
-            if let Some(t) = meta.tag.as_ref()
+            if let Some(t) = meta.tag()
                 && let Some(result) = try_custom_type(py, &t.to_string(), py_obj.bind(py))?
             {
                 return Ok(result);
@@ -183,7 +183,7 @@ fn node_to_pyobject_inner<'a>(
                 match key {
                     CustomNode::Scalar {
                         value, style, meta, ..
-                    } if meta.tag.is_none() => {
+                    } if meta.tag().is_none() => {
                         dict.set_item(scalar_to_pyobject(py, value, style, schema)?, &val)?;
                     }
                     CustomNode::Scalar { .. }

@@ -215,18 +215,47 @@ impl Hash for Tag {
 pub struct NodeMeta {
     /// Trailing (inline) comment attached to the node. Rendered after
     /// the value on the same line by the YAML / TOML / JSON writers.
-    pub comment: Option<Comment>,
-    /// Optional boxed decoration bundle: leading (standalone) comment
-    /// plus blank-line hint. `None` for undecorated nodes, which is
-    /// the common case, keeping this field's hot-path cost at one
-    /// pointer.
-    pub decor: Option<Box<NodeDecor>>,
+    ///
+    /// Flat rather than boxed: comments are the metadata the fidelity formats actually populate,
+    /// so moving it behind a pointer would tax exactly the JSONC / JSON5 / YAML round trips this
+    /// crate exists to protect, to save 16 bytes on nodes that never had one.
+    comment: Option<Comment>,
+    /// Leading (standalone) comments plus the blank-line hint. `None` for undecorated nodes, which
+    /// is the common case, keeping this field's hot-path cost at one pointer.
+    decor: Option<Box<NodeDecor>>,
+    /// Byte range of this node in the original source text. Flat rather than boxed because the YAML
+    /// adapter records it for *every* node it reads, and the grouped version paid an allocation per
+    /// node for it (measured 2026-10-14: `parse_medium` +5.9%).
+    source_range: Option<Range<usize>>,
+    /// The two slots only an anchored or tagged source fills, behind one pointer.
+    fidelity: Option<Box<Fidelity>>,
+}
+
+/// The two slots only an anchored or tagged source fills, behind one pointer.
+///
+/// Boxed as a pair rather than as two `Option`s because the node's size is paid three times over:
+/// `NodeMeta` was 128 of the 208 bytes a `CustomNode` was, `memcpy` is 7.88% of `from_json_medium`,
+/// and teardown 4.58% (`docs/dev/perf.md`, 2026-10-14). The two fields cost 72 bytes flat and only
+/// an explicitly anchored or tagged source ever produces either.
+///
+/// What the first grouping taught: put anything the YAML adapter writes per node - the source range,
+/// a comment, a leading note - in the same box and every YAML node pays an allocation for it, which
+/// is how `parse_medium` came to read +5.9% while `from_json_medium` read −7.4%. Those three stayed
+/// flat. The retuned shape measured net negative on the compiler the gate pins (rustc 1.97.1):
+/// `NodeMeta` 64 bytes, `CustomNode` 144, `from_json_medium` −4.8%, no scenario outside
+/// tolerance.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Fidelity {
     /// Anchor name for this node (e.g., "my_anchor").
-    pub anchor: Option<String>,
+    anchor: Option<String>,
     /// YAML tag (e.g., !!str, !custom).
-    pub tag: Option<Tag>,
-    /// Byte range of this node in the original source text.
-    pub source_range: Option<Range<usize>>,
+    tag: Option<Tag>,
+}
+
+impl Fidelity {
+    fn is_empty(&self) -> bool {
+        self.anchor.is_none() && self.tag.is_none()
+    }
 }
 
 /// Fidelity-only fields, boxed so undecorated nodes pay nothing.
@@ -295,8 +324,8 @@ impl PartialEq for NodeMeta {
     fn eq(&self, other: &Self) -> bool {
         self.standalone_slice() == other.standalone_slice()
             && self.inline_slot() == other.inline_slot()
-            && self.anchor == other.anchor
-            && self.tag == other.tag
+            && self.anchor() == other.anchor()
+            && self.tag() == other.tag()
     }
 }
 
@@ -309,8 +338,9 @@ impl NodeMeta {
     /// the two conventions have exactly one reading path. Returning a slice
     /// keeps `PartialEq` / `Hash` allocation-free: they run on every
     /// `IndexMap` lookup of every mapping in the document.
+    #[inline]
     pub fn standalone_slice(&self) -> &[Comment] {
-        match self.decor.as_ref().map(|d| d.leading_comments.as_slice()) {
+        match self.decor().map(|d| d.leading_comments.as_slice()) {
             Some(notes) if !notes.is_empty() => notes,
             _ => match self.comment.as_ref().filter(|c| c.standalone) {
                 Some(note) => core::slice::from_ref(note),
@@ -353,12 +383,229 @@ impl NodeMeta {
         // are three `Hasher::write` calls per undecorated node, and `write` measured
         // as the largest single self cost of every reader in the instruction-count
         // harness (see `docs/dev/perf.md`, 2026-10-13).
-        if self.comment.is_none() && self.anchor.is_none() && self.tag.is_none() {
+        if self.is_identity_clean() {
             return;
         }
         self.comment.hash(state);
-        self.anchor.hash(state);
-        self.tag.hash(state);
+        self.anchor().hash(state);
+        self.tag().hash(state);
+    }
+
+    // The four fields above are the whole of a node's metadata, and every reader of them now goes
+    // through the accessors below rather than the field. That is not tidiness: `NodeMeta` was 128 of
+    // the 208 bytes a `CustomNode` was, so the layout is the hot path - it is written on every node
+    // the parsers build, moved whenever a node moves, and checked slot by slot when the tree is
+    // dropped (`docs/dev/perf.md`, 2026-10-13: `memcpy` 7.88% and teardown 4.58% of
+    // `from_json_medium`). Once nothing reaches the fields, the half of them only an anchored or
+    // tagged source fills can live behind one pointer - which took `NodeMeta` to 64 bytes and
+    // `CustomNode` to 144, and left the slots a reader writes per node flat, where boxing them would
+    // have cost an allocation for every node (see `Fidelity`).
+
+    /// The fidelity bundle, allocated by the first write that needs it.
+    fn fidelity_mut(&mut self) -> &mut Fidelity {
+        self.fidelity
+            .get_or_insert_with(|| Box::new(Fidelity::default()))
+    }
+
+    /// Release the bundle once nothing is left in it, so a node that loses its tag or its leading
+    /// note does not keep paying for an empty box.
+    fn prune_fidelity(&mut self) {
+        if self.fidelity.as_deref().is_some_and(Fidelity::is_empty) {
+            self.fidelity = None;
+        }
+    }
+
+    /// True when nothing here takes part in a node's identity: no inline comment, no anchor, no
+    /// tag. `decor` and `source_range` are deliberately not identity, so a node with a leading note
+    /// can still be clean. [`NodeMeta::hash_custom_node_identity`] writes nothing for exactly these
+    /// nodes, and the serializer's compact-item guard asks the same question.
+    #[inline]
+    pub fn is_identity_clean(&self) -> bool {
+        self.comment.is_none() && self.anchor().is_none() && self.tag().is_none()
+    }
+
+    /// What the YAML scanner knows about a node the moment it reads one: the anchor and the tag as
+    /// the source spelled them, and the byte range the event covered. Comments are not part of it -
+    /// they arrive later, through [`NodeMeta::set_comment`] and [`NodeMeta::decor_mut`].
+    #[inline]
+    pub fn scanned(anchor: Option<String>, tag: Option<Tag>, source_range: Range<usize>) -> Self {
+        let mut meta = Self::default();
+        if let Some(name) = anchor {
+            meta.set_anchor(name);
+        }
+        if let Some(new_tag) = tag {
+            meta.set_tag(new_tag);
+        }
+        meta.set_source_range(source_range);
+        meta
+    }
+
+    /// A node carrying exactly one inline comment. The spelling callers reach for instead of a
+    /// `NodeMeta { comment: Some(..), ..Default::default() }` literal, which names every field of a
+    /// layout that is about to stop being flat.
+    #[inline]
+    pub fn with_comment(comment: Comment) -> Self {
+        Self {
+            comment: Some(comment),
+            ..Default::default()
+        }
+    }
+
+    /// A node carrying exactly an anchor. See [`NodeMeta::with_comment`].
+    #[inline]
+    pub fn with_anchor(name: impl Into<String>) -> Self {
+        let mut meta = Self::default();
+        meta.set_anchor(name);
+        meta
+    }
+
+    /// A node carrying exactly a tag. See [`NodeMeta::with_comment`].
+    #[inline]
+    pub fn with_tag(new_tag: Tag) -> Self {
+        let mut meta = Self::default();
+        meta.set_tag(new_tag);
+        meta
+    }
+
+    /// A node carrying exactly a source range. See [`NodeMeta::with_comment`].
+    /// A node carrying exactly a leading-note bundle. See [`NodeMeta::with_comment`].
+    pub fn with_decor(decor: NodeDecor) -> Self {
+        let mut meta = Self::default();
+        *meta.decor_mut() = decor;
+        meta
+    }
+
+    #[inline]
+    pub fn with_source_range(r: Range<usize>) -> Self {
+        let mut meta = Self::default();
+        meta.set_source_range(r);
+        meta
+    }
+
+    /// The inline (trailing) slot, read-only.
+    #[inline]
+    pub fn comment(&self) -> Option<&Comment> {
+        self.comment.as_ref()
+    }
+
+    /// Replace the inline slot.
+    #[inline]
+    pub fn set_comment(&mut self, new_comment: Comment) {
+        self.comment = Some(new_comment);
+    }
+
+    /// The inline slot, or `None` after [`NodeMeta::take_comment`] removed it.
+    pub fn take_comment(&mut self) -> Option<Comment> {
+        self.comment.take()
+    }
+
+    /// Drop the inline slot. Use [`NodeMeta::set_comment`] to replace it.
+    pub fn clear_comment(&mut self) {
+        self.comment = None;
+    }
+
+    /// The anchor name, read-only, or `None` for the far more common undecorated node.
+    #[inline]
+    pub fn anchor(&self) -> Option<&str> {
+        self.fidelity.as_ref()?.anchor.as_deref()
+    }
+
+    /// Attach an anchor.
+    #[inline]
+    pub fn set_anchor(&mut self, name: impl Into<String>) {
+        self.fidelity_mut().anchor = Some(name.into());
+    }
+
+    /// Remove and return the anchor.
+    pub fn take_anchor(&mut self) -> Option<String> {
+        let taken = self.fidelity.as_mut()?.anchor.take();
+        self.prune_fidelity();
+        taken
+    }
+
+    /// Drop the anchor.
+    pub fn clear_anchor(&mut self) {
+        if let Some(fid) = &mut self.fidelity {
+            fid.anchor = None;
+        }
+        self.prune_fidelity();
+    }
+
+    /// The tag, read-only.
+    #[inline]
+    pub fn tag(&self) -> Option<&Tag> {
+        self.fidelity.as_ref()?.tag.as_ref()
+    }
+
+    /// Attach a tag.
+    #[inline]
+    pub fn set_tag(&mut self, new_tag: Tag) {
+        self.fidelity_mut().tag = Some(new_tag);
+    }
+
+    /// Remove and return the tag.
+    pub fn take_tag(&mut self) -> Option<Tag> {
+        let taken = self.fidelity.as_mut()?.tag.take();
+        self.prune_fidelity();
+        taken
+    }
+
+    /// Drop the tag.
+    pub fn clear_tag(&mut self) {
+        if let Some(fid) = &mut self.fidelity {
+            fid.tag = None;
+        }
+        self.prune_fidelity();
+    }
+
+    /// The byte range this node occupies in its source text.
+    #[inline]
+    pub fn source_range(&self) -> Option<&Range<usize>> {
+        self.source_range.as_ref()
+    }
+
+    /// Record where this node came from.
+    #[inline]
+    pub fn set_source_range(&mut self, r: Range<usize>) {
+        self.source_range = Some(r);
+    }
+
+    /// Drop the source range.
+    pub fn clear_source_range(&mut self) {
+        self.source_range = None;
+    }
+
+    /// The leading-decoration bundle, read-only.
+    #[inline]
+    pub fn decor(&self) -> Option<&NodeDecor> {
+        self.decor.as_deref()
+    }
+
+    /// The leading-decoration bundle, built on first use.
+    ///
+    /// This is the accessor rather than `decor_mut()` on an `Option` on purpose: callers that
+    /// append a leading note should not have to know that the bundle may be absent, and the
+    /// `get_or_insert_with` they would have written is the same two lines here.
+    #[inline]
+    pub fn decor_mut(&mut self) -> &mut NodeDecor {
+        self.decor
+            .get_or_insert_with(|| Box::new(NodeDecor::default()))
+    }
+
+    /// The decoration bundle for mutation only if the node already has one, so that a caller
+    /// clearing notes does not create the very box it is about to drop.
+    pub fn decor_mut_if_any(&mut self) -> Option<&mut NodeDecor> {
+        self.decor.as_deref_mut()
+    }
+
+    /// Remove and return the whole decoration bundle.
+    pub fn take_decor(&mut self) -> Option<Box<NodeDecor>> {
+        self.decor.take()
+    }
+
+    /// Drop the decoration bundle, leaving the inline comment slot untouched.
+    pub fn clear_decor(&mut self) {
+        self.decor = None;
     }
 }
 
@@ -369,8 +616,8 @@ impl Hash for NodeMeta {
         // in.
         self.standalone_slice().hash(state);
         self.inline_slot().hash(state);
-        self.anchor.hash(state);
-        self.tag.hash(state);
+        self.anchor().hash(state);
+        self.tag().hash(state);
     }
 }
 
@@ -572,8 +819,8 @@ impl PartialEq for CustomNode {
                     && b == b2
                     && c == c2
                     && d.comment == d2.comment
-                    && d.anchor == d2.anchor
-                    && d.tag == d2.tag
+                    && d.anchor() == d2.anchor()
+                    && d.tag() == d2.tag()
             }
             (
                 CustomNode::Mapping {
@@ -592,8 +839,8 @@ impl PartialEq for CustomNode {
                 a == a2
                     && b == b2
                     && c.comment == c2.comment
-                    && c.anchor == c2.anchor
-                    && c.tag == c2.tag
+                    && c.anchor() == c2.anchor()
+                    && c.tag() == c2.tag()
             }
             (
                 CustomNode::Sequence {
@@ -612,11 +859,11 @@ impl PartialEq for CustomNode {
                 a == a2
                     && b == b2
                     && c.comment == c2.comment
-                    && c.anchor == c2.anchor
-                    && c.tag == c2.tag
+                    && c.anchor() == c2.anchor()
+                    && c.tag() == c2.tag()
             }
             (CustomNode::Null { meta: a, .. }, CustomNode::Null { meta: a2, .. }) => {
-                a.comment == a2.comment && a.anchor == a2.anchor && a.tag == a2.tag
+                a.comment == a2.comment && a.anchor() == a2.anchor() && a.tag() == a2.tag()
             }
             (CustomNode::Alias { name: a }, CustomNode::Alias { name: a2 }) => a == a2,
             _ => false,
@@ -848,7 +1095,7 @@ impl CustomNode {
     /// the caller one more view lookup it would have made anyway.
     pub fn has_notes(&self) -> bool {
         self.meta()
-            .is_some_and(|meta| meta.decor.is_some() || meta.comment.is_some())
+            .is_some_and(|meta| meta.decor().is_some() || meta.comment().is_some())
     }
 
     /// Set the leading (standalone) comment, replacing every note already
@@ -861,7 +1108,7 @@ impl CustomNode {
     pub fn set_leading_comment(&mut self, new_comment: Comment) {
         if let Some(meta) = self.meta_mut() {
             Self::take_legacy_standalone(meta);
-            let decor = meta.decor.get_or_insert_with(Default::default);
+            let decor = meta.decor_mut();
             decor.set_leading_comment(new_comment);
         }
     }
@@ -875,10 +1122,10 @@ impl CustomNode {
     pub fn push_leading_comment(&mut self, comment: Comment) {
         if let Some(meta) = self.meta_mut() {
             if let Some(legacy) = Self::take_legacy_standalone(meta) {
-                let decor = meta.decor.get_or_insert_with(Default::default);
+                let decor = meta.decor_mut();
                 decor.push_leading_comment(legacy);
             }
-            let decor = meta.decor.get_or_insert_with(Default::default);
+            let decor = meta.decor_mut();
             decor.push_leading_comment(comment);
         }
     }
@@ -887,8 +1134,8 @@ impl CustomNode {
     /// the caller can re-record it in the list. Returns `None` when the node
     /// carries no such note (an inline trailing comment is never touched).
     fn take_legacy_standalone(meta: &mut NodeMeta) -> Option<Comment> {
-        if meta.comment.as_ref().is_some_and(|c| c.standalone) {
-            meta.comment.take()
+        if meta.comment().is_some_and(|c| c.standalone) {
+            meta.take_comment()
         } else {
             None
         }
@@ -902,13 +1149,13 @@ impl CustomNode {
     pub fn remove_leading_comment(&mut self) {
         if let Some(meta) = self.meta_mut() {
             Self::take_legacy_standalone(meta);
-            if let Some(decor) = meta.decor.as_mut() {
+            if let Some(decor) = meta.decor_mut_if_any() {
                 decor.leading_comments.clear();
                 if !decor.blank_before {
                     // Nothing else lives in the boxed payload: drop it
                     // so `NodeMeta::default()`-shaped nodes stay
                     // allocation-free.
-                    meta.decor = None;
+                    meta.clear_decor();
                 }
             }
         }
@@ -918,7 +1165,7 @@ impl CustomNode {
     /// node. Excluded from structural equality.
     pub fn blank_before(&self) -> bool {
         self.meta()
-            .and_then(|m| m.decor.as_ref())
+            .and_then(|m| m.decor())
             .is_some_and(|d| d.blank_before)
     }
 
@@ -927,9 +1174,9 @@ impl CustomNode {
     pub fn set_blank_before(&mut self, blank: bool) {
         if let Some(meta) = self.meta_mut() {
             if blank {
-                let decor = meta.decor.get_or_insert_with(Default::default);
+                let decor = meta.decor_mut();
                 decor.blank_before = true;
-            } else if let Some(decor) = meta.decor.as_mut() {
+            } else if let Some(decor) = meta.decor_mut_if_any() {
                 decor.blank_before = false;
             }
         }
@@ -941,7 +1188,7 @@ impl CustomNode {
     /// 返回 `Some(&Range<usize>)` 表示节点覆盖的 `[start, end)` 字节范围，
     /// 或 `None` 表示没有范围信息（例如编程式构造的节点或 `Alias` 变体）。
     pub fn source_range(&self) -> Option<&Range<usize>> {
-        self.meta().and_then(|m| m.source_range.as_ref())
+        self.meta().and_then(|m| m.source_range())
     }
 
     /// 设置节点在原始源文本中的字节区间。
@@ -949,7 +1196,7 @@ impl CustomNode {
     /// 对 `Alias` 变体调用此方法是空操作（别名永远不携带源区间）。
     pub fn set_source_range(&mut self, r: Range<usize>) {
         if let Some(meta) = self.meta_mut() {
-            meta.source_range = Some(r);
+            meta.set_source_range(r);
         }
     }
 
@@ -973,7 +1220,7 @@ impl CustomNode {
     /// assert_eq!(node.anchor(), None);
     /// ```
     pub fn anchor(&self) -> Option<&str> {
-        self.meta().and_then(|m| m.anchor.as_deref())
+        self.meta().and_then(|m| m.anchor())
     }
 
     /// Set the node's anchor name. No-op on `Alias`.
@@ -988,14 +1235,14 @@ impl CustomNode {
     /// ```
     pub fn set_anchor(&mut self, name: impl Into<String>) {
         if let Some(meta) = self.meta_mut() {
-            meta.anchor = Some(name.into());
+            meta.set_anchor(name);
         }
     }
 
     /// Remove the node's anchor. No-op on `Alias`.
     pub fn remove_anchor(&mut self) {
         if let Some(meta) = self.meta_mut() {
-            meta.anchor = None;
+            meta.clear_anchor();
         }
     }
 
@@ -1009,11 +1256,11 @@ impl CustomNode {
     /// carries, regardless of which slot the writer picked.
     pub fn remove_comment(&mut self) {
         if let Some(meta) = self.meta_mut() {
-            meta.comment = None;
-            if let Some(decor) = meta.decor.as_mut() {
+            meta.clear_comment();
+            if let Some(decor) = meta.decor_mut_if_any() {
                 decor.leading_comments.clear();
                 if !decor.blank_before {
-                    meta.decor = None;
+                    meta.clear_decor();
                 }
             }
         }
@@ -1022,7 +1269,7 @@ impl CustomNode {
     /// Remove the node's tag. No-op on `Alias`.
     pub fn remove_tag(&mut self) {
         if let Some(meta) = self.meta_mut() {
-            meta.tag = None;
+            meta.clear_tag();
         }
     }
 
@@ -1046,7 +1293,7 @@ impl CustomNode {
     /// assert_eq!(node.tag(), None);
     /// ```
     pub fn tag(&self) -> Option<&Tag> {
-        self.meta().and_then(|m| m.tag.as_ref())
+        self.meta().and_then(|m| m.tag())
     }
 
     /// 设置节点的 YAML 标签。
@@ -1066,7 +1313,7 @@ impl CustomNode {
     /// ```
     pub fn set_tag(&mut self, new_tag: Tag) {
         if let Some(meta) = self.meta_mut() {
-            meta.tag = Some(new_tag);
+            meta.set_tag(new_tag);
         }
     }
 
@@ -1200,12 +1447,18 @@ pub mod proptest_strategies {
             proptest::option::of("[a-zA-Z_][a-zA-Z0-9_-]*"),
             proptest::option::of(arb_tag()),
         )
-            .prop_map(|(comment, anchor, tag)| NodeMeta {
-                comment,
-                decor: None,
-                anchor,
-                tag,
-                source_range: None,
+            .prop_map(|(comment, anchor, tag)| {
+                let mut meta = match comment {
+                    Some(comment) => NodeMeta::with_comment(comment),
+                    None => NodeMeta::default(),
+                };
+                if let Some(name) = anchor {
+                    meta.set_anchor(name);
+                }
+                if let Some(new_tag) = tag {
+                    meta.set_tag(new_tag);
+                }
+                meta
             })
     }
 
@@ -1320,7 +1573,7 @@ pub mod proptest_strategies {
     /// and `&b null: two` re-read as a single entry — while a tag takes the key out
     /// of the null fold and the reader then compares whole nodes, so `&a !E null`
     /// and `&b !E null` stay two keys.
-    fn null_key_identity(node: &CustomNode) -> Option<(Option<&Tag>, Option<&String>)> {
+    fn null_key_identity(node: &CustomNode) -> Option<(Option<&Tag>, Option<&str>)> {
         let meta = match node {
             CustomNode::Null { meta } => meta,
             CustomNode::Scalar {
@@ -1332,9 +1585,9 @@ pub mod proptest_strategies {
             }
             _ => return None,
         };
-        Some(match &meta.tag {
-            None => (None, None),
-            Some(tag) => (Some(tag), meta.anchor.as_ref()),
+        Some(match (meta.tag(), meta.anchor()) {
+            (None, _) => (None, None),
+            (Some(tag), anchor) => (Some(tag), anchor),
         })
     }
 
@@ -1511,7 +1764,7 @@ pub mod proptest_strategies {
     }
 
     fn meta_equal_ignore_source(a: &NodeMeta, b: &NodeMeta) -> bool {
-        a.comment == b.comment && a.anchor == b.anchor && a.tag == b.tag
+        a.comment() == b.comment() && a.anchor() == b.anchor() && a.tag() == b.tag()
     }
 
     /// Collect every concrete path in a `CustomNode` tree as a JSONPath string
@@ -1554,6 +1807,21 @@ mod tests {
     use alloc::{format, vec::Vec};
 
     #[test]
+    fn node_layout_is_part_of_the_hot_path_contract() {
+        // docs/dev/perf.md prices the node size three times over (default-write, memcpy, drop walk),
+        // so a change to this layout is a change to a measured number, not an implementation detail.
+        assert_eq!(core::mem::size_of::<Fidelity>(), 72);
+        assert_eq!(core::mem::size_of::<NodeMeta>(), 64);
+        // The metadata half is the same either way; the content half is not, because the `std`
+        // feature split swaps the node map's hasher (RandomState for the default build, fixed-seed
+        // FxHash for `default-features = false`), and that is 16 bytes of the node.
+        #[cfg(feature = "std")]
+        assert_eq!(core::mem::size_of::<CustomNode>(), 144);
+        #[cfg(not(feature = "std"))]
+        assert_eq!(core::mem::size_of::<CustomNode>(), 128);
+    }
+
+    #[test]
     fn node_meta_equality_normalises_standalone_across_slots() {
         // PR #117: a hand-built node carrying `comment(standalone =
         // true)` compares equal to a parser that produced the same
@@ -1567,16 +1835,13 @@ mod tests {
             }),
             ..Default::default()
         };
-        let migrated = NodeMeta {
-            decor: Some(Box::new(NodeDecor {
-                leading_comments: vec![crate::ast::Comment {
-                    text: Arc::from("hello"),
-                    standalone: true,
-                }],
-                blank_before: false,
-            })),
+        let migrated = NodeMeta::with_decor(NodeDecor {
+            leading_comments: vec![crate::ast::Comment {
+                text: Arc::from("hello"),
+                standalone: true,
+            }],
             ..Default::default()
-        };
+        });
         assert_eq!(legacy, migrated, "standalone slot mismatch");
     }
 
@@ -1639,20 +1904,14 @@ mod tests {
             text: Arc::from(text),
             standalone: true,
         };
-        let one = NodeMeta {
-            decor: Some(Box::new(NodeDecor {
-                leading_comments: vec![note("a")],
-                blank_before: false,
-            })),
-            ..Default::default()
-        };
-        let stacked = NodeMeta {
-            decor: Some(Box::new(NodeDecor {
-                leading_comments: vec![note("a"), note("b")],
-                blank_before: false,
-            })),
-            ..Default::default()
-        };
+        let one = NodeMeta::with_decor(NodeDecor {
+            leading_comments: vec![note("a")],
+            blank_before: false,
+        });
+        let stacked = NodeMeta::with_decor(NodeDecor {
+            leading_comments: vec![note("a"), note("b")],
+            blank_before: false,
+        });
         let legacy = NodeMeta {
             comment: Some(note("a")),
             ..Default::default()
@@ -1734,10 +1993,7 @@ mod tests {
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             block_indent: None,
-            meta: NodeMeta {
-                tag: Some(Tag::primary("int")),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_tag(Tag::primary("int")),
         };
         assert_eq!(node.tag().unwrap().suffix, "int");
     }

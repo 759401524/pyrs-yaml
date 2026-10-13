@@ -277,6 +277,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A `CustomNode` is 144 bytes, not 208.** — half a node used to be its `NodeMeta`: 128 of 208
+  bytes, five `Option` slots, and that size sits on the hot path of every reader — written when a
+  node is built, copied whenever a node moves, and checked field by field when the tree is dropped
+  (`docs/dev/perf.md`: `memcpy` is 7.88% and teardown 4.58% of `from_json_medium`). Two steps ship
+  as one because neither is free on its own. Every crate outside `pyrs-ast` now reaches the slots
+  through the type's own accessors — `comment()` / `set_comment()` / `take_comment()`, the same trio
+  for the anchor, the tag and the source range, `decor_mut()` for the boxed leading-note bundle,
+  `is_identity_clean()` where the serializer used to ask a pattern whether a node carries none of
+  them, and `with_comment()` / `with_tag()` / `scanned()` where a struct literal named every field —
+  and the two slots only an anchored or tagged source ever fills now share one pointer. Measured
+  paired on the compiler the gate pins (rustc 1.97.1): `from_json_medium` −4.8%, `serialize_anchors`
+  −4.0%, `parse_inline_merge` −3.5%, `parse_medium` −1.5%, `from_toml_medium` +0.7%, and nothing
+  outside the 0.50% tolerance. Which fields may move is the finding: boxing the source range as well
+  — which the YAML adapter records on *every* node it reads — cost `parse_medium +5.9%` to buy
+  `from_json_medium −7.4%`, so a per-node-written slot stays flat and only `{anchor, tag}` goes
+  behind the box. `node_layout_is_part_of_the_hot_path_contract` pins 72 and 64 for the metadata,
+  and both sizes the node can have - 144 with the default `std` feature, 128 with `no_std`, where
+  the node map's own hasher differs - because a node this shape is a measured claim, not a detail.
+
 - **TOML binary integers keep their spelling.** — `b = 0b1010` came back as `b = 10`. The spoke
   canonicalised it on purpose: YAML Core has no `0b` lexeme, so an untagged plain `0b1010` reaches
   the hub and re-reads as a *string*, and design rule D1 ("only spellings YAML Core also accepts get

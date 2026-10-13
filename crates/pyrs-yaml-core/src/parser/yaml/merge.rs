@@ -80,7 +80,7 @@ fn is_merge_key(key: &CustomNode) -> bool {
             style: ScalarStyle::Plain,
             meta,
             ..
-        } if meta.tag.is_none() && value.as_ref() == "<<"
+        } if meta.tag().is_none() && value.as_ref() == "<<"
     )
 }
 
@@ -115,8 +115,8 @@ fn collect_anchor_mappings(
 ) {
     match node {
         CustomNode::Mapping { pairs, meta, .. } => {
-            if let Some(anchor_name) = &meta.anchor {
-                anchors.insert(anchor_name.clone(), pairs.clone());
+            if let Some(anchor_name) = meta.anchor() {
+                anchors.insert(anchor_name.to_string(), pairs.clone());
             }
             for (_key, value) in pairs {
                 collect_anchor_mappings(value, anchors);
@@ -363,7 +363,7 @@ fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
                 meta: mb,
                 ..
             },
-        ) => ma.tag.is_none() && mb.tag.is_none() && va == vb,
+        ) => ma.tag().is_none() && mb.tag().is_none() && va == vb,
         _ => a == b,
     }
 }
@@ -431,7 +431,7 @@ fn clear_source_ranges(node: &mut CustomNode) {
         | CustomNode::Mapping { meta, .. }
         | CustomNode::Sequence { meta, .. }
         | CustomNode::Null { meta, .. } => {
-            meta.source_range = None;
+            meta.clear_source_range();
         }
         CustomNode::Alias { .. } => {}
     }

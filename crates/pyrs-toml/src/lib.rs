@@ -248,13 +248,12 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
         }
         pairs.insert(key, val);
     }
-    let mut meta = NodeMeta {
-        comment: t.comment.map(into_comment),
-        ..Default::default()
+    let mut meta = match t.comment.map(into_comment) {
+        Some(comment) => NodeMeta::with_comment(comment),
+        None => NodeMeta::default(),
     };
     if t.blank_before {
-        let decor = meta.decor.get_or_insert_with(Default::default);
-        decor.blank_before = true;
+        meta.decor_mut().blank_before = true;
     }
     CustomNode::Mapping {
         pairs,
@@ -325,13 +324,10 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             block_indent: None,
-            meta: NodeMeta {
-                tag: Some(Tag {
-                    handle: "!".to_string(),
-                    suffix: kind.unwrap_or("timestamp").to_string(),
-                }),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_tag(Tag {
+                handle: "!".to_string(),
+                suffix: kind.unwrap_or("timestamp").to_string(),
+            }),
         },
         TomlValue::Array(v) => CustomNode::Sequence {
             items: v.into_iter().map(toml_value_to_node).collect(),

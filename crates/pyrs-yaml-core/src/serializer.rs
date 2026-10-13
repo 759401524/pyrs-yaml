@@ -282,15 +282,11 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
         node,
         CustomNode::Mapping {
             pairs,
-            meta: NodeMeta {
-                comment: None,
-                anchor: None,
-                tag: None,
-                ..
-            },
+            meta,
             flow_style: false,
             ..
-        } if !pairs.is_empty()
+        } if meta.is_identity_clean()
+            && !pairs.is_empty()
             && pairs.iter().all(|(k, v)| {
                 !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
                     // A standalone note cannot share the `- key:` line: it
@@ -357,7 +353,8 @@ impl Serializer {
     }
 
     /// 写入锚点（`&name`）和标签（`!!type`）前缀。
-    fn write_anchor_tag(&mut self, anchor: &Option<String>, tag: &Option<Tag>) {
+    fn write_anchor_tag(&mut self, meta: &pyrs_ast::ast::NodeMeta) {
+        let (anchor, tag) = (meta.anchor(), meta.tag());
         if anchor.is_none() && tag.is_none() {
             return;
         }
@@ -673,8 +670,7 @@ impl Serializer {
                     chomping,
                     indent: *block_indent,
                     comment: meta
-                        .comment
-                        .as_ref()
+                        .comment()
                         .filter(|c| !c.standalone)
                         .map(|c| &c.text[..]),
                 },
@@ -725,8 +721,8 @@ impl Serializer {
         block_base: usize,
     ) -> Result<(), SerializeError> {
         self.write_indent(indent_width);
-        if meta.anchor.is_some() || meta.tag.is_some() {
-            self.write_anchor_tag(&meta.anchor, &meta.tag);
+        if meta.anchor().is_some() || meta.tag().is_some() {
+            self.write_anchor_tag(meta);
         }
         // A value that renders as nothing but its tag leaves the line "pending": the
         // scanner has seen no scalar text, so a note line written next is reported as
@@ -734,7 +730,7 @@ impl Serializer {
         // so the next note line can close the line first (`… !- ~`) — the only fix that
         // keeps the note's owner; see `close_pending_tag_line`.
         self.pending_tag_insert_at =
-            if value.is_empty() && matches!(style, ScalarStyle::Plain) && meta.tag.is_some() {
+            if value.is_empty() && matches!(style, ScalarStyle::Plain) && meta.tag().is_some() {
                 // Issue #339: `write_anchor_tag` left a separator for content that never comes, so
                 // the line ended on a space (`n: !!null `, and worse, `n: !!null   # c` with a
                 // trailing note). Dropped here rather than popped at the terminator: this is the
@@ -753,7 +749,7 @@ impl Serializer {
         self.write_scalar(value, style, block, self.width, block_base);
         let block_body = matches!(style, ScalarStyle::Literal | ScalarStyle::Folded);
         let mut noted = false;
-        if let Some(c) = &meta.comment
+        if let Some(c) = meta.comment()
             && !c.standalone
             && !block_body
         {
@@ -930,8 +926,8 @@ impl Serializer {
             // branch), it still needs the line indent; the inline callers
             // pass indent_width = 0, so this is a no-op for `key: [..]`.
             self.write_indent(indent_width);
-            if meta.anchor.is_some() || meta.tag.is_some() {
-                self.write_anchor_tag(&meta.anchor, &meta.tag);
+            if meta.anchor().is_some() || meta.tag().is_some() {
+                self.write_anchor_tag(meta);
             }
             self.output.push(open);
             if !empty {
@@ -958,8 +954,8 @@ impl Serializer {
                 // anchor/tag even in value context, or it would vanish.
                 self.write_empty_slot_notes(sk);
                 self.write_indent(indent_width);
-                if meta.anchor.is_some() || meta.tag.is_some() {
-                    self.write_anchor_tag(&meta.anchor, &meta.tag);
+                if meta.anchor().is_some() || meta.tag().is_some() {
+                    self.write_anchor_tag(meta);
                 }
                 self.output.push(open);
                 self.output.push(close);
@@ -968,12 +964,12 @@ impl Serializer {
                 return Ok(());
             }
 
-            if !in_value_context && (meta.anchor.is_some() || meta.tag.is_some()) {
+            if !in_value_context && (meta.anchor().is_some() || meta.tag().is_some()) {
                 for note in preamble_note.unwrap_or_default() {
                     self.write_note_line(indent_width, &note.text);
                 }
                 self.write_indent(indent_width);
-                self.write_anchor_tag(&meta.anchor, &meta.tag);
+                self.write_anchor_tag(meta);
                 self.output.push('\n');
             }
 
@@ -983,7 +979,7 @@ impl Serializer {
                 block(self)?
             }
 
-            if let Some(c) = &meta.comment
+            if let Some(c) = meta.comment()
                 && !c.standalone
             {
                 // A note in a container's *inline* slot has to land on a line the reader
@@ -1030,11 +1026,11 @@ impl Serializer {
         indent_width: usize,
     ) -> Result<(), SerializeError> {
         self.write_indent(indent_width);
-        if meta.anchor.is_some() || meta.tag.is_some() {
-            self.write_anchor_tag(&meta.anchor, &meta.tag);
+        if meta.anchor().is_some() || meta.tag().is_some() {
+            self.write_anchor_tag(meta);
         }
         self.output.push_str("null");
-        if let Some(c) = &meta.comment
+        if let Some(c) = meta.comment()
             && !c.standalone
         {
             self.output.push_str("  # ");
@@ -1278,8 +1274,7 @@ impl Serializer {
         if !is_complex_key && value.comment().is_none() && self.output.ends_with('\n') {
             let key_note = match key {
                 CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
-                    .comment
-                    .as_ref()
+                    .comment()
                     .filter(|c| !c.standalone)
                     .map(|c| c.text.clone()),
                 _ => None,
@@ -1365,7 +1360,7 @@ impl Serializer {
                 // than two method calls plus a tail scan.
                 let key_note = match key {
                     CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => {
-                        meta.comment.as_ref().filter(|c| !c.standalone)
+                        meta.comment().filter(|c| !c.standalone)
                     }
                     _ => None,
                 };
@@ -1422,7 +1417,7 @@ impl Serializer {
             CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => Some(meta),
             _ => None,
         } {
-            self.write_anchor_tag(&meta.anchor, &meta.tag);
+            self.write_anchor_tag(meta);
         }
         match node {
             CustomNode::Scalar {
@@ -1730,8 +1725,8 @@ impl Serializer {
                 block_indent,
                 ..
             } => {
-                if meta.anchor.is_some() || meta.tag.is_some() {
-                    self.write_anchor_tag(&meta.anchor, &meta.tag);
+                if meta.anchor().is_some() || meta.tag().is_some() {
+                    self.write_anchor_tag(meta);
                 }
                 // A block scalar (`|` / `>`) cannot live inside a flow
                 // collection — its body needs a dedicated, deeper-indented
@@ -1760,14 +1755,14 @@ impl Serializer {
                 );
             }
             CustomNode::Null { meta, .. } => {
-                if meta.anchor.is_some() || meta.tag.is_some() {
-                    self.write_anchor_tag(&meta.anchor, &meta.tag);
+                if meta.anchor().is_some() || meta.tag().is_some() {
+                    self.write_anchor_tag(meta);
                 }
                 self.output.push_str("null");
             }
             CustomNode::Mapping { pairs, meta, .. } => {
-                if meta.anchor.is_some() || meta.tag.is_some() {
-                    self.write_anchor_tag(&meta.anchor, &meta.tag);
+                if meta.anchor().is_some() || meta.tag().is_some() {
+                    self.write_anchor_tag(meta);
                 }
                 self.output.push('{');
                 for (i, (key, value)) in pairs.iter().enumerate() {
@@ -1781,8 +1776,8 @@ impl Serializer {
                 self.output.push('}');
             }
             CustomNode::Sequence { items, meta, .. } => {
-                if meta.anchor.is_some() || meta.tag.is_some() {
-                    self.write_anchor_tag(&meta.anchor, &meta.tag);
+                if meta.anchor().is_some() || meta.tag().is_some() {
+                    self.write_anchor_tag(meta);
                 }
                 self.output.push('[');
                 for (i, item) in items.iter().enumerate() {
@@ -2079,7 +2074,7 @@ fn empty_slot_notes(meta: &NodeMeta) -> (Option<&Comment>, &[Comment]) {
 /// containers keep the header on their own line, and a container in value context
 /// has the parent pre-emit the header, so neither is affected.
 fn writes_block_header(meta: &NodeMeta, flow_style: bool, in_value_context: bool) -> bool {
-    !flow_style && !in_value_context && (meta.anchor.is_some() || meta.tag.is_some())
+    !flow_style && !in_value_context && (meta.anchor().is_some() || meta.tag().is_some())
 }
 
 /// Lift a block mapping's first-entry leading-note stack above the anchor/tag
@@ -2209,14 +2204,14 @@ fn strip_leading_comment(node: &CustomNode) -> CustomNode {
         | CustomNode::Mapping { meta, .. }
         | CustomNode::Sequence { meta, .. }
         | CustomNode::Null { meta, .. } => {
-            if let Some(decor) = &mut meta.decor {
+            if let Some(decor) = meta.decor_mut_if_any() {
                 decor.leading_comments.clear();
             }
-            if meta.comment.as_ref().is_some_and(|c| c.standalone) {
-                meta.comment = None;
+            if meta.comment().is_some_and(|c| c.standalone) {
+                meta.clear_comment();
             }
-            if meta.decor.as_ref().is_some_and(|d| !d.blank_before) {
-                meta.decor = None;
+            if meta.decor().is_some_and(|d| !d.blank_before) {
+                meta.clear_decor();
             }
         }
         CustomNode::Alias { .. } => {}
@@ -3158,8 +3153,7 @@ mod tests {
                 panic!("{name}: {src:?} is not a mapping");
             };
             let note = meta
-                .comment
-                .as_ref()
+                .comment()
                 .filter(|c| !c.standalone)
                 .expect("the container owns the note inline at the start")
                 .text
@@ -3221,7 +3215,7 @@ mod tests {
 
         let mut noted = empty_map();
         if let CustomNode::Mapping { meta, .. } = &mut noted {
-            meta.comment = Some(Comment {
+            meta.set_comment(Comment {
                 text: Arc::from("cn"),
                 standalone: true,
             });
@@ -3235,8 +3229,8 @@ mod tests {
 
         let mut tagged = empty_map();
         if let CustomNode::Mapping { meta, .. } = &mut tagged {
-            meta.anchor = Some("a".into());
-            meta.tag = Some(Tag {
+            meta.set_anchor("a");
+            meta.set_tag(Tag {
                 handle: String::new(),
                 suffix: "t".into(),
             });
@@ -3383,13 +3377,10 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("value"),
             style: ScalarStyle::Plain,
-            meta: NodeMeta {
-                comment: Some(crate::ast::Comment {
-                    text: Arc::from("a comment"),
-                    standalone: false,
-                }),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_comment(crate::ast::Comment {
+                text: Arc::from("a comment"),
+                standalone: false,
+            }),
             chomping: Chomping::Clip,
             block_indent: None,
         };
@@ -3425,10 +3416,7 @@ mod tests {
         let node = CustomNode::Scalar {
             value: Arc::from("42"),
             style: ScalarStyle::Plain,
-            meta: NodeMeta {
-                tag: Some(Tag::primary("int")),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_tag(Tag::primary("int")),
             chomping: Chomping::Clip,
             block_indent: None,
         };
@@ -3720,13 +3708,10 @@ mod tests {
         let seq = CustomNode::Sequence {
             items: vec![],
             flow_style: false,
-            meta: NodeMeta {
-                tag: Some(Tag {
-                    handle: "!".into(),
-                    suffix: "a".into(),
-                }),
-                ..Default::default()
-            },
+            meta: NodeMeta::with_tag(Tag {
+                handle: "!".into(),
+                suffix: "a".into(),
+            }),
         };
         let out = assert_reparses(&seq);
         assert_eq!(&out, "!a []\n");
@@ -3738,13 +3723,10 @@ mod tests {
         pairs.insert(
             CustomNode::plain_scalar("0"),
             CustomNode::Null {
-                meta: NodeMeta {
-                    comment: Some(crate::ast::Comment {
-                        text: "note".into(),
-                        standalone: true,
-                    }),
-                    ..Default::default()
-                },
+                meta: NodeMeta::with_comment(crate::ast::Comment {
+                    text: "note".into(),
+                    standalone: true,
+                }),
             },
         );
         let seq = CustomNode::Sequence {

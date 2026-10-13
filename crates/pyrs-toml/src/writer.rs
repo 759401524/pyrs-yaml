@@ -168,7 +168,7 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
         } => {
             // Tagged timestamps round-trip through strict RFC 3339 validation
             // so a malformed text never silently becomes a TOML string.
-            if meta.tag.as_ref().is_some_and(|t| {
+            if meta.tag().is_some_and(|t| {
                 t.suffix.contains("timestamp")
                     || t.suffix.contains("datetime")
                     || t.suffix.contains("localDate")
@@ -191,8 +191,7 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                 }
             }
             let tag_kind = meta
-                .tag
-                .as_ref()
+                .tag()
                 .and_then(|t| pyrs_schema::schema::standard_tag_kind(&t.handle, &t.suffix));
             // A standard tag states the type, so it decides before the text is consulted - the
             // loader has honoured it since #335 and this bridge reading only the text made

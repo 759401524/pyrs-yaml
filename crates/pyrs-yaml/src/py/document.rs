@@ -1224,11 +1224,12 @@ pub(crate) fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) ->
         return Ok(());
     }
     match node {
-        crate::ast::CustomNode::Scalar {
-            value,
-            meta: crate::ast::NodeMeta { tag: Some(t), .. },
-            ..
-        } => {
+        crate::ast::CustomNode::Scalar { value, meta, .. } => {
+            // Only a tagged scalar has a handler to look up: the old arm pattern-matched
+            // `tag: Some(t)` and let everything else fall through to the no-op arm below.
+            let Some(t) = meta.tag() else {
+                return Ok(());
+            };
             let tag_name = t.to_string();
             if let Some(handlers) = get_handlers(&tag_name, py) {
                 for (_priority, handler) in handlers {

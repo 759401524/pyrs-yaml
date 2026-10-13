@@ -59,7 +59,7 @@ fn sem_eq(a: &CustomNode, b: &CustomNode, schema: &Schema) -> bool {
                 ..
             },
         ) => {
-            if m1.tag != m2.tag {
+            if m1.tag() != m2.tag() {
                 return false;
             }
             // Only plain scalars are schema-resolved (YAML 1.2); quoted or
@@ -76,7 +76,7 @@ fn sem_eq(a: &CustomNode, b: &CustomNode, schema: &Schema) -> bool {
             };
             t1 == t2
         }
-        (CustomNode::Null { meta: m1 }, CustomNode::Null { meta: m2 }) => m1.tag == m2.tag,
+        (CustomNode::Null { meta: m1 }, CustomNode::Null { meta: m2 }) => m1.tag() == m2.tag(),
         (CustomNode::Alias { name: n1 }, CustomNode::Alias { name: n2 }) => n1 == n2,
         _ => false,
     }
