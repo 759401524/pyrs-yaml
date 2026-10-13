@@ -64,15 +64,17 @@ status: new
   作业日志；变快不算漂移。容差未动，基线数值一个也没改。— (details: quality-ledger (bv), (by))
 
 - **基线刷新作业现在可以被告知哪一次上移是有意为之。** — `ir_gate.py --update` 拒绝写入越过基线自身
-  强制上限而上移的场景，除非点名它；`.github/workflows/ir-baseline.yml` 跑的一直是裸命令：这个专为
-  "把数值搬到施测镜像" 而存在的作业，在一个变化本意就是要付出那份代价时反而搬不动。2026-10-12 实测：
-  在 #360 head 上 dispatch，两个 harness 都建成、21 个场景都量了、每个样本都打印了，然后停在
-  "`--update` would move 3 scenario(s) past the 0.5% line"，什么都没写。作业现在接受一个可选的
+  强制上限而上移的场景，除非点名它；`.github/workflows/ir-baseline.yml` 跑的一直是裸命令：这个专为 "
+  把数值搬到施测镜像" 而存在的作业，在一个变化本意就是要付出那份代价时反而搬不动。2026-10-12 实测：
+  在 #360 head 上 dispatch，两个 harness 都建成、21 个场景都量了、每个样本都打印了，然后停
+  在 "`--update` would move 3 scenario(s) past the 0.5% line"，什么都没写。作业现在接受一个可选的
   `accept_drift` 输入 —— 空格或换行分隔的场景名，每个换一条 `--accept-drift` —— 留空则仍跑裸
   `--update`，所以 "拒绝" 依旧是默认，且日志会说明走的是哪一条。`tests/test_ir_baseline_workflow.py`
-  新增三个测试，逐个用突变对照验证：把标志换成无效项只会让
+  新增四个测试，逐个用突变对照验证：把标志换成无效项只会让
   `test_the_input_is_actually_passed_to_the_guard` 变红，把 `to_json_medium` 硬编码进循环只会让
-  `test_an_empty_input_keeps_the_refusal` 变红。基线数值与容差都没动。—（详情：quality-ledger (cj)）
+  `test_an_empty_input_keeps_the_refusal` 变红。基线数值与容差都没动。首次真实使用时实测：作业打印的
+  那行把标志当成了场景（三个名字打成 6），现在改为数场景名，并由第四个测试钉住。—（详情：
+  quality-ledger (cj)）
 
 - **YAML 注释、锚点与标签可完成往返，并以每个种子作门禁。** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` 在每次 `cargo nextest run` 重放已提交的种子语料，

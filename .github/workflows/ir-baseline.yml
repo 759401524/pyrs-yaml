@@ -129,13 +129,21 @@ jobs:
           ACCEPT_DRIFT: ${{ inputs.accept_drift }}
         run: |
           set -euo pipefail
-          read -ra names <<< "$ACCEPT_DRIFT"
+          # Defensive, not load-bearing: measured on bash 5.x, `read -ra names` over an empty
+          # here-string yields an empty array and status 0, so the default input reaches the "no
+          # scenario named" branch with or without this. It stays because a non-zero status here would
+          # abort the step under `set -e` before the branch that explains itself in the log.
+          read -ra names <<< "$ACCEPT_DRIFT" || true
           args=()
           for name in "${names[@]+"${names[@]}"}"; do
             args+=(--accept-drift "$name")
           done
-          if [ ${#args[@]} -gt 0 ]; then
-            echo "accepting drift for ${#args[@]} scenario(s): ${names[*]}"
+          # Count the names, not the flags: `args` holds two entries per scenario, and the first real
+          # use of this input (run 38326122129, three names) logged "accepting drift for 6
+          # scenario(s)". A reviewer reads this line to decide whether an artefact was opened on
+          # purpose, so the number it carries has to be the number of scenarios.
+          if [ ${#names[@]} -gt 0 ]; then
+            echo "accepting drift for ${#names[@]} scenario(s): ${names[*]}"
           else
             echo "no scenario named: any move past the tolerance will refuse to be written"
           fi

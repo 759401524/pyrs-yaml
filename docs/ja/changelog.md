@@ -77,10 +77,11 @@ status: new
   move 3 scenario(s) past the 0.5% line" で終了し、何も書かなかった。ジョブは任意の `accept_drift`
   入力（空白または改行で区切ったシナリオ名、一つが `--accept-drift` 一つ分）を受け取るようになり、空
   なら従来どおり裸の `--update` なので「拒否」が既定のまま、ログがどちらを実行したか語る。
-  `tests/test_ir_baseline_workflow.py` に 3 検測を追加、いずれも変異で確認：フラグを無効化すると
+  `tests/test_ir_baseline_workflow.py` に 4 検測を追加、いずれも変異で確認：フラグを無効化すると
   `test_the_input_is_actually_passed_to_the_guard` だけが赤、`to_json_medium` をループにハードコード
-  すると `test_an_empty_input_keeps_the_refusal` だけが赤。ベースラインの数値も容差も動いていない。—
-  （詳細：quality-ledger (cj)）
+  すると `test_an_empty_input_keeps_the_refusal` だけが赤。ベースラインの数値も容差も動いていな
+  い。初めて実使用した際に実測：ステップが印字する行はフラグをシナリオに数えていた（3 個の名前が 6
+  として出る）ため、いまは名前を数え、4 検測目がそれを固定する。—（詳細：quality-ledger (cj)）
 
 - **YAML のコメント・アンカー・タグが往復し、全シードを門として検査。** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` は確定済みのシード語料を毎回の `cargo nextest run`
