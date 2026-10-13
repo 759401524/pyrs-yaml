@@ -735,6 +735,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The instruction-count floor moved to the code that is on `main`.** — the committed baseline
+  still held the pre-`d7177efc`/`dd211c8d` numbers, so the gate's band had widened by drift rather
+  than by decision: `from_json_medium` sat 21.61% above what the engine now measures,
+  `from_jsonc_medium` 19.83% and `from_json5_medium` 16.72%, and a regression of that size would
+  have passed silently. Regenerated through the `Ir baseline refresh` channel on the enforcing image
+  — toolchain read from the file itself (`rustc 1.97.1`), image `20261004.327.1`, largest of three
+  samples per scenario, binary digests written with the numbers — so nothing is transcribed and
+  nothing crossed the 0.5% line upward: the three scenarios that ticked at all did so by 0.0001% of
+  process noise. The write scenarios did not move, which is the shape two changes to how keys are
+  hashed and quoted should leave behind.
+
 - **Quoting a string stopped scanning it three times.** — every bridge asks
   `needs_quotes` "would this text be misread as a plain scalar?", and the answer read the value as
   characters and then searched it twice more for NBSP and BOM. Neither can occur in ASCII text, so
