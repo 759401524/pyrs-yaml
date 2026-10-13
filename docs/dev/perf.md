@@ -139,4 +139,39 @@ proved flaky on shared CI runners (macOS especially) and are tracked in CodSpeed
   the serialize scenarios while `parse_anchors` gains 11%, and #267 now carries the re-baselined
   numbers.
 
+## The per-node constant, attributed on the Ir channel (2026-10-13)
+
+The 2026-09-30 lead named three candidate mechanisms and claimed none of them. `callgrind` over the
+gate's own harness, at the gate's own 2,000 iterations, finds one of them is the largest single
+function in every reader except the YAML one:
+
+| scenario | largest self cost | its share | `Hasher::write` share |
+|:--|:--|--:|--:|
+| `from_json_medium` | `core::hash::sip::Hasher::write` | 13.61% | 13.61% |
+| `from_json5_medium` | `core::hash::sip::Hasher::write` | 13.45% | 13.45% |
+| `from_toml_medium` | `core::hash::sip::Hasher::write` | 13.12% | 13.12% |
+| `parse_medium` | `granit_parser::parser::Parser::peek_token` | 11.39% | 6.93% (third) |
+
+In `from_json_medium` the whole key-cost family is `Hasher::write` 13.61% + `<CustomNode as
+Hash>::hash` 1.45% + `NodeMeta::hash_custom_node_identity` 1.08% + `reserve_rehash` 1.25% = 17.4%
+**hashing**, and `__memcmp_avx2_movbe` is a further 6.96% - key *comparison*, what the map does
+after the hash. Allocation traffic in the same run (`_int_malloc`, `_int_free`, `malloc`, `free`,
+`malloc_consolidate`, `unlink_chunk`, `finish_grow`, `do_reserve_and_handle`) totals 25.3%. So both
+halves of that guess are real - the node-key hash and the per-node allocation - and the third is
+not: the offset/line machinery does not appear in the top twenty at all.
+
+What this is **not** is a measured win. The shares come from a rebuilt binary (`strip=false` for
+symbols) whose whole-process totals sit -0.05%…-2.9% from the committed baseline for that reason
+and for the image difference `(aq)` and `(by)` already record, so they are quoted as shares only;
+and this run did not subtract the setup pass, so no per-iteration count is stated. The table
+licenses one hypothesis - a cheaper node-key hash removes work from every reader at once - and the
+arbiter stays `scripts/ir_gate.py` on the enforcing image, with the invariant tests that already pin
+key equality and hash/`Eq` consistency carrying the correctness half.
+
+Reproducing it where the gate itself cannot run: `scripts/ir_gate.py` also builds the binding
+harness, and this box's WSL has no `libpython3.12` to link it, so measure the engine harness alone -
+`CARGO_PROFILE_RELEASE_STRIP=false cargo bench -p pyrs-yaml-core --bench ir_gate --features ir-gate
+--no-run` (the profile's `strip = true` is what leaves `callgrind_annotate` reporting `???:0x…`),
+then `valgrind --tool=callgrind <that binary> from_json_medium`.
+
 ---
