@@ -233,6 +233,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the plugin system keep working, and that choice is stated in a test rather than left to luck. —
   (details: quality-ledger (bq))
 
+- **The interpreter floor is now checked where it actually breaks: at call time, not just at
+  import.** — `tests/test_scripts_import_on_supported_python.py` imported every `scripts/*.py` on
+  every leg, and its own docstring named the half it could not see: an API younger than the floor
+  raises when the *function runs*, so a module that imports cleanly on 3.8 can still die there. That
+  half cost a full matrix run. A static scan over `scripts/`, `tests/` and the shipped `python/`
+  package now holds the catalogue - `write_text`/`read_text` with the `newline` keyword,
+  `removeprefix`, `zip(strict=)`, `functools.cache`, `int.bit_count`, `datetime.UTC`, `StrEnum`,
+  `ExceptionGroup`, `typing.override` - with string literals and comments stripped first, so that
+  naming an API is not the same as calling it, and every pattern proven to fire by one fixture
+  compared for set equality, so a dead regex cannot report a clean tree. Two candidate entries were
+  rejected as written, both measured: `\.walk\(\)` returned seven findings that were this project's
+  own `walk()` verb, and `@override\b` found the `typing_extensions.override` shim this repository
+  standardises on. A pattern that collides with the code it polices is worse than no pattern,
+  because the fix is an exemption and the exemptions outlive the API. — (details: quality-ledger
+  (cn))
+
 #### Changed
 
 - **The coverage gate stopped duplicating a whole suite run.** — `coverage` created its own
@@ -642,6 +658,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and writes nothing, and it names every offending argument. Four tests, including a control that
   switches the guard off and requires the fixer to really rewrite the file - otherwise the passing
   test only shows this input survived. — (details: quality-ledger (cm))
+
+- **Seven `Path.write_text` calls that passed the `newline` keyword raised `TypeError` on Python 3.8
+  and 3.9.** — the keyword arrived in 3.10, and exactly the four legs that still run the whole suite
+  on the two oldest interpreters answered it (`3.8` on all three OSes, `3.9` on ubuntu), failing
+  inside fixture setup before reaching the behaviour under test. Three were written this week; four
+  had sat unnoticed in `scripts/check_doc_wrapping.py`, `scripts/check_stub_drift.py`,
+  `scripts/check_stub_types.py` and `tests/test_stub_types_gate.py`, green only because nothing
+  executed those paths on a floor interpreter - the two stub scripts run in a modern Windows job,
+  and that gate test skips on 3.8, where a shallow clone has no known-bad tag to read. Each now
+  writes through `open(..., newline="\n")`, which has accepted the keyword since 3.5 and produces
+  byte-identical output. Verified on real CPython 3.8.20 and 3.9.25 rather than by reading version
+  tables: 235 of 238 on 3.8, 218 of 218 on 3.9; the three left are scripts importing `pyrs_yaml`,
+  for which a bare environment has no wheel. — (details: quality-ledger (cn))
 
 #### Performance
 

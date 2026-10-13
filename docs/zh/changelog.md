@@ -188,6 +188,18 @@ status: new
   指类型时抛 `YamlTypeError`，而不是回一个字符串；未知的应用标签保持宽容——插件机制就靠它寻址——而这个
   选择写进了测试，不靠运气。— (details: quality-ledger (bq))
 
+- **解释器下限的检查搬到了它真正崩掉的地方：调用时，而不只是导入时。** —
+  `tests/test_scripts_import_on_supported_python.py` 一直在每条腿上导入所有 `scripts/*.py`，而它自己
+  的 docstring 就写明了看不见的另一半：比下限年轻的 API 是在*函数运行*时才抛异常，所以一个在 3.8 上
+  能干净导入的模块照样可能在那里死掉。这一次，那“另一半”赔掉了一整轮矩阵。现在有一个静态扫描覆盖
+  `scripts/`、`tests/` 与出厂的 `python/` 包，目录里是带 `newline` 关键字的
+  `write_text`/`read_text`、`removeprefix`、`zip(strict=)`、`functools.cache`、`int.bit_count`、
+  `datetime.UTC`、`StrEnum`、`ExceptionGroup` 与 `typing.override`：先剥掉字符串字面量与注释，好让
+  “提到一个 API”不等于“调用它”；再用一份对照输入按集合相等验证每条模式都真的会命中——否则失效的正则会
+  冒充“树是干净的”。两条候选模式被实测否掉：`\.walk\(\)` 返回的七处命中全是本项目自己的 `walk()` 动
+  词，`@override\b` 撞上的是仓库统一使用的 `typing_extensions.override` 垫片。与它所管束的代码撞名的
+  模式比没有模式更糟——修法只能是开豁免，而豁免会比 API 活得更久。—（详情：quality-ledger (cn)）
+
 #### 变更
 
 - **覆盖率门禁不再重复跑一整套。** — `coverage` 作业自己建 venv、下载 ubuntu wheel、克隆三个语料，然
@@ -502,6 +514,17 @@ status: new
   对其它路径一律以退出码 2 拒绝且不写一个字节，并列出所有越界参数。四个测试，其中一个是对照：关掉这
   道守卫并要求修复器真的改写该文件——否则通过的测试只能说明这份输入碰巧没被改坏。—（详情：
   quality-ledger (cm)）
+
+- **七处带 `newline` 关键字的 `Path.write_text` 在 Python 3.8 与 3.9 上抛 `TypeError`。** — 这个关键
+  字 3.10 才有，而仍在两个最老解释器上跑完整套件的恰好是四条腿（三个 OS 的 `3.8`，加上 ubuntu 的
+  `3.9`）：它们在准备 fixture 的阶段就失败，还没走到被测行为。其中三处是本周新写的，另外四处早就躺在
+  `scripts/check_doc_wrapping.py`、`scripts/check_stub_drift.py`、`scripts/check_stub_types.py` 和
+  `tests/test_stub_types_gate.py` 里，之所以一直绿着，只是因为没有任何东西在下限解释器上执行过这些路
+  径 — 两个 stub 脚本跑在现代的 Windows 作业里，而那个门禁测试在 3.8 上会跳过（浅克隆没有可读的
+  known-bad 标签）。现在都改用 `open(..., newline="\n")` 写入：该关键字自 3.5 起就被接受，产出字节完
+  全相同。验证是在真解释器上做的，而不是查版本表：CPython 3.8.20 与 3.9.25 实测，3.8 上 238 项过 235
+  项，3.9 上 218 项全过；余下三项是导入 `pyrs_yaml` 的脚本，裸环境本来就没有对应的 wheel。—（详情：
+  quality-ledger (cn)）
 
 #### 性能
 

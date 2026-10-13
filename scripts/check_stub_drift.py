@@ -535,7 +535,11 @@ def main() -> int:
     actual = normalize(read_text(args.tracked, "It should be committed; check .gitignore."))
     if args.fix:
         if actual != expected:
-            args.tracked.write_text(expected, encoding="utf-8", newline="\n")
+            # `newline=` on `write_text` is 3.10+; this script has to stay loadable on the 3.8 floor,
+            # and the LF it writes is the whole point of the reconciliation, so `open` keeps the
+            # translation off without asking a newer interpreter for the keyword.
+            with args.tracked.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write(expected)
             print(f"Updated {display(args.tracked)} from the regeneration route.")
         else:
             print(f"{display(args.tracked)} already matches the regeneration route.")

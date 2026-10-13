@@ -208,6 +208,19 @@ status: new
   す。未知のアプリケーショタグは寛大のまま — プラグイン機構がそれでアドレスしている — そしてこの方針
   はテストに書かれています。— (details: quality-ledger (bq))
 
+- **下限の解釈器が実際に壊れる場所で検査する：import 時ではなく呼び出し時。** —
+  `tests/test_scripts_import_on_supported_python.py` は全脚で `scripts/*.py` を import してきたが、
+  自分の docstring に見えぬ半分を書き残していた：下限より新しい API は*関数が走った*ときに落ちる。
+  3.8 で素通しに import できるモジュールでも、そこで死ぬ。この「半分」が行列一跑を喰った。いまでは
+  `scripts/`、`tests/` および配布中の `python/` パッケージを歩く静的走査が名簿を持つ：`newline` 付き
+  の `write_text`/`read_text`、`removeprefix`、`zip(strict=)`、`functools.cache`、`int.bit_count`、
+  `datetime.UTC`、`StrEnum`、`ExceptionGroup`、`typing.override`。文字列リテラルとコメントを先に落と
+  すので、API を*名指す*ことは*呼ぶ* ことではない。各パターンは 1 個の対照入力を集合等値で確かめる -
+  死んだ正規表現が「無傷のツリー」を装えないようにするため。候補 2 個は実測で却下：`\.walk\(\)` が返
+  した 7 件はすべてこのプロジェクト自身の `walk()` 動詞、`@override\b` が拾ったのは本リポジトリが統
+  一している `typing_extensions.override` の継ぎ目だった。統制する側のコードと衝突するパターンは、無
+  い方がマシ - 直し方は免除になり、免除は API より長く生きる。—（詳細：quality-ledger (cn)）
+
 #### 変更
 
 - **カバレッジゲートがスイート全体の重複実行をやめた。** — `coverage` は専用の venv を作り、ubuntu
@@ -575,6 +588,18 @@ status: new
   象外の引数をすべて表示する。検測 4 件、うち 1 件は対照: ガードをオフにして、修復器が実際にそのファ
   イルを書き換えることを要求する。それが無いと、通っている検測は「この入力が生き残った」ことしか示さ
   ない。—（詳細：quality-ledger (cm)）
+
+- **`newline` 付きの `Path.write_text` 7 個が Python 3.8 と 3.9 で `TypeError` を出した。** — このキ
+  ーワードは 3.10 で増え、2 個の最も古い解釈器でまだスイート全体を回す 4 脚（三つの OS の `3.8`、
+  ubuntu の `3.9`）がまさにそれに答えて、検査対象の挙動に到達する前に fixture 準備の途中で死んだ。3
+  個は今週書かれ、4 個はずっと `scripts/check_doc_wrapping.py`、`scripts/check_stub_drift.py`、
+  `scripts/check_stub_types.py`、`tests/test_stub_types_gate.py` に転がっていた - 下限の解釈器でその
+  経路を誰も実行しなかっただけ。2 個の stub スクリプトは新しい Windows ジョブで走り、あの門番検測は
+  3.8 ではスキップされる（浅い clone に読む既知不良タグが無い）。いまでは全て
+  `open(..., newline="\n")` で書く - 3.5 からこのキーワードを受けていて、出力バイトは完全に同一。文
+  表を読むのではなく実際の解釈器で確認した：CPython 3.8.20 と 3.9.25 で実測、3.8 は 238 中 235、3.9
+  は 218 中 218。残り 3 件は `pyrs_yaml` を import するスクリプトで、むき出しの環境にホイールが無い
+  だけ。—（詳細：quality-ledger (cn)）
 
 #### パフォーマンス
 

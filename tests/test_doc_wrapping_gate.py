@@ -494,9 +494,20 @@ def f():
 '''
 
 
+def write_lf(path, text):
+    """Write `text` with its newlines untranslated, on every interpreter the matrix runs.
+
+    `Path.write_text` only grew the `newline` keyword in 3.10, so the three tests below raised
+    `TypeError` on the 3.8 and 3.9 legs before reaching the behaviour they exist to pin. `Path.open`
+    has taken `newline` since 3.5 and writes the identical bytes.
+    """
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+
 def test_the_cli_refuses_a_file_this_rule_does_not_own(checker, tmp_path, monkeypatch):
     victim = tmp_path / "not_prose.py"
-    victim.write_text(OVER_LONG_CODE, encoding="utf-8", newline="\n")
+    write_lf(victim, OVER_LONG_CODE)
     monkeypatch.setattr(checker, "REPO", tmp_path)
     before = victim.read_bytes()
     assert checker.main(["--fix", victim.name]) == 2
@@ -510,7 +521,7 @@ def test_the_guard_is_what_protects_it(checker, tmp_path, monkeypatch):
     fixer that happens to leave this particular input alone - and the whole point is that it does not.
     """
     victim = tmp_path / "not_prose.py"
-    victim.write_text(OVER_LONG_CODE, encoding="utf-8", newline="\n")
+    write_lf(victim, OVER_LONG_CODE)
     monkeypatch.setattr(checker, "REPO", tmp_path)
     monkeypatch.setattr(checker, "is_governed", lambda _rel: True)
     before = victim.read_bytes()
@@ -529,7 +540,7 @@ def test_the_refusal_list_is_every_path_not_a_first_hit(checker, tmp_path, monke
     human who meant to fix three pages and typed a fourth argument: list them all.
     """
     for name in ("a.py", "b.py"):
-        (tmp_path / name).write_text(OVER_LONG_CODE, encoding="utf-8", newline="\n")
+        write_lf(tmp_path / name, OVER_LONG_CODE)
     monkeypatch.setattr(checker, "REPO", tmp_path)
     assert checker.main(["--fix", "a.py", "b.py"]) == 2
     err = capsys.readouterr().err

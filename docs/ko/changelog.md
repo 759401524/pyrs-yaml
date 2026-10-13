@@ -214,6 +214,20 @@ status: new
   애플리케이션 태그는 관대하게 남깁니다 — 플러그인 체계가 그 이름으로 주소를 찾습니다 — 그리고 이
   선택은 테스트로 적어 두었습니다. — (details: quality-ledger (bq))
 
+- **해석기 하한이 실제로 무너지는 자리에서 검사한다: import 때가 아니라 호출 때.** —
+  `tests/test_scripts_import_on_supported_python.py`는 모든 줄에서 `scripts/*.py`를 import 해 왔고,
+  자기 docstring에 보이지 않는 절반을 적어 두었다: 하한보다 젊은 API는 *함수가 실행될* 때 터지므로
+  3.8에서 깨끗이 import 되는 모듈도 거기서 죽는다. 그 절반이 행렬 한 바퀴를 삼켰다. 이제 `scripts/`,
+  `tests/`, 배포되는 `python/` 패키지를 도는 정적 훑기가 목록을 갖는다: `newline` 옵션이 붙은
+  `write_text`/`read_text`, `removeprefix`, `zip(strict=)`, `functools.cache`, `int.bit_count`,
+  `datetime.UTC`, `StrEnum`, `ExceptionGroup`, `typing.override`. 문자열 리터럴과 주석을 먼저
+  지우므로 API를 *이름 짓는* 것은 *호출*하는 것이 아니다. 모든 패턴은 대조 입력 하나로 집합 동일하게
+  검증한다 - 죽은 정규식이 "깨끗한 트리"를 사칭하지 못하게. 후보 둘은 실측으로 기각됐다:
+  `\.walk\(\)`가 돌려준 7건은 이 프로젝트 자체의 `walk()` 동사였고, `@override\b`가 잡은 것은
+  저장고가 표준으로 쓰는 `typing_extensions.override` 어댑터였다. 자기가 단속하는 코드와 이름이
+  부딪히는 패턴은 없는 것보다 나쁘다 - 고치는 방법이 면제뿐이고, 면제는 API보다 오래 남는다. —
+  (자세히: quality-ledger (cn))
+
 #### 변경
 
 - **커버리지 게이트가 검사 묶음 전체를 중복 실행하지 않는다.** — `coverage` 는 venv 을 따로 만들고
@@ -584,6 +598,18 @@ status: new
   관리하지 않는 경로를 exit 2로 거부하며 한 글자도 쓰지 않고 대상 외 인자를 모두 적는다. 검사 넷,
   그중에 대조가 하나: 이 방어막을 껐을 때 복구기가 그 파일을 실제로 고쳐 쓰는지 요구한다. 그것이
   없으면 통과하는 검사는 "이 입력이 우연히 살아남았다"만 보인다. — (자세히: quality-ledger (cm))
+
+- **`newline` 옵션을 쓴 `Path.write_text` 일곱 곳이 Python 3.8과 3.9에서 `TypeError`를 냈다.** — 그
+  옵션은 3.10에 들어왔고, 두 가장 오래된 해석기에서 여전히 묶음 전체를 돌리는 네 줄(`3.8` 세 OS,
+  ubuntu의 `3.9`)이 바로 그에 답했다 — 검사 대상 동작에 닿기도 전에 fixture 준비에서 죽었다. 셋은
+  이번 주에 썼고 넷은 오래전부터 `scripts/check_doc_wrapping.py`, `scripts/check_stub_drift.py`,
+  `scripts/check_stub_types.py`, `tests/test_stub_types_gate.py`에 잠들어 있었는데, 하한 해석기에서
+  그 경로를 아무도 실행하지 않았을 뿐이다. 스텁 스크립트 둘은 최신 Windows 잡에서 돌고, 그 검사
+  하나는 3.8에서 건너뛴다(얕은 clone에 읽을 known-bad 태그가 없다). 이제 모두
+  `open(..., newline="\n")`로 쓴다 — 3.5부터 이 옵션을 받고 산출 바이트는 완전히 같다. 표를 읽는
+  대신 실제 해석기로 확인했다: CPython 3.8.20과 3.9.25에서 실측해 3.8은 238개 중 235, 3.9는 218개
+  전부 통과. 남은 셋은 `pyrs_yaml`을 import 하는 스크립트로, 맨 환경에 휠이 없을 뿐이다. — (자세히:
+  quality-ledger (cn))
 
 #### 성능
 

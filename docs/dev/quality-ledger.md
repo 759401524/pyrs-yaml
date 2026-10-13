@@ -4092,7 +4092,9 @@ same version list the planner emits.
 
 Verified: 2533 Python tests pass and 10 skip (the count after the fixer guard in the next entry), 87
 across the planner, fan-in, corpus-gate and script-import modules, `prek run --all-files` exit 0
-including `check yaml`, and `ci_matrix_plan.py --check` reports the plan recorded above.
+including `check yaml`, and `ci_matrix_plan.py --check` reports the plan recorded above. (cn) raises
+those two counts to 2673 and 208 by adding the floor scan; the numbers above are what this entry
+measured, kept rather than overwritten so each entry reports its own run.
 
 ### (cm) The width fixer rewrote a Python file when it was pointed at one (2026-10-13)
 
@@ -4127,7 +4129,56 @@ as a disagreement about scope.
 Verified: 2533 Python tests pass, 10 skip; the guard rejects `scripts/*.py`, `README.md`,
 `AGENTS.md`, `QUALITY_MATRIX.md`, `prek.toml` and `.github/workflows/ci.yml` while accepting all
 nine governed pages; `prek run --all-files` green, which is the hook exercising the same script
-through its filtered path list.
+through its filtered path list. Three of this entry's own tests then died on the 3.8 and 3.9 legs
+for want of a 3.10 keyword - (cn) - and the suite count there is 2673.
+
+### (cn) An API younger than the floor raises at call time, where no import check can see it (2026-10-13)
+
+Four legs of the first planned matrix went red: Python 3.8 on all three operating systems, and 3.9
+on ubuntu only. The shape was the diagnosis before the log was - those are exactly the legs the new
+plan still gives a full suite, and 3.9 keeps one only on the cheap OS.
+`tests/test_doc_wrapping_gate.py` raised
+`TypeError: write_text() got an unexpected keyword argument 'newline'` while building its own
+fixture, three tests deep in (cm), before reaching any behaviour under test.
+
+`Path.write_text` gained the `newline` keyword in 3.10. Nothing about the module could reveal that:
+it imports on 3.8, its annotations are lazy, and the offending call sits in a function body.
+`tests/test_scripts_import_on_supported_python.py` had already named this as its remaining blind
+spot in its own docstring, and the named gap cost a full matrix round trip (about 75 minutes of wall
+time per pull request) to find what a sub-second static scan finds.
+
+Seven sites in the tree, not three. The other four were latent: `scripts/check_doc_wrapping.py` (the
+`--fix` write path, reached by (cm)'s control test), `scripts/check_stub_drift.py` (`--fix`),
+`scripts/check_stub_types.py` (the mypy overlay) and `tests/test_stub_types_gate.py` (a fixture read
+from a pinned ref). Each had stayed green purely because nothing executed that path on a floor
+interpreter - the two stub scripts run inside a modern Windows job, and the gate test skips on 3.8
+where a shallow clone carries no known-bad tag. All seven now write through
+`with path.open("w", encoding="utf-8", newline="\n")`, which has accepted the keyword since 3.5 and
+produces byte-identical output, so the repair removes no intent.
+
+The prevention is a static catalogue, `TOO_NEW_FOR_THE_FLOOR`, scanned over `scripts/`, `tests/` and
+the shipped `python/` package - the last included because a 3.10-only keyword in code users run is a
+crash, not a red test. `_code_only` strips docstrings, then string literals, then comments, in that
+order: naming an API must not read as calling it, and stripping comments first would let a `#`
+inside a string delete the code that follows it. The scan is pinned by a fixture holding one
+reachable shape per entry, compared for *set equality*, so an entry whose pattern never matches is
+reported the day it is added; `FLOOR` is compared against `requires-python` rather than trusted.
+
+Two entries were rejected as written, both by measurement rather than argument. `\.walk\(\)` came
+back with seven findings, every one of them this project's own `walk()` verb on a document node;
+`@override\b` caught the `typing_extensions.override` shim the repository standardises on, which is
+legal on 3.8 and is the reason that decorator is written the way it is. The surviving entry names
+the import that actually breaks (`from typing import ... override`) instead of the identifier. The
+lesson is on the list itself: a pattern that collides with the code it polices is worse than no
+pattern, because the only way to make it pass is an exemption, and exemptions outlive the APIs they
+were written for.
+
+Verified on the interpreters rather than by reading version tables: real CPython 3.8.20 and 3.9.25,
+`uv run --python 3.8 --with pytest --with pyyaml --no-project -- python -m pytest
+tests/test_doc_wrapping_gate.py tests/test_ci_matrix_plan.py --noconftest` (the wheel is what
+`--no-project` cannot provide, so the three tests that import
+`pyrs_yaml` are excluded by hand). 235 of 238 on 3.8, 218 of 218 on 3.9 with those three deselected;
+the previously red three tests pass on both. The scan costs 0.32 s over 182 items on every leg.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 

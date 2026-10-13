@@ -108,7 +108,10 @@ def run(checker: str, stub: pathlib.Path, work: pathlib.Path) -> tuple[list[str]
 
     if checker == "mypy":
         (package / "__init__.py").write_text("from .pyrs_yaml import *\n", encoding="utf-8")
-        (work / "user.py").write_text(USER_SNIPPET, encoding="utf-8", newline="\n")
+        # `newline=` on `write_text` is a 3.10 keyword, and the mypy overlay is written from the
+        # floor interpreter too; `open` has accepted it since 3.5 and keeps the LF untranslated.
+        with (work / "user.py").open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(USER_SNIPPET)
         command = [
             sys.executable,
             "-m",
