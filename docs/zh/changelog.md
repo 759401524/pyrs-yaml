@@ -289,6 +289,15 @@ status: new
 
 #### 修复
 
+- **CLI 测试工装不再因为一次拒绝关掉 stdin 而 panic。** — `run_with_stdin` 写子进程的 stdin 时对所有
+  错误都 panic，可 CLI 若拒绝自己的参数，会在读取之前就退出，于是这次写与已关闭的管道相撞：同一条调
+  用在本机通过，却把 `msrv-check` 写红，报 `write stdin: Os { code: 32, kind: BrokenPipe }`。工装现
+  在先取过句柄、容忍写失败，并在等待之前把它关掉——这也正是真要去读的子进程需要的（EOF，而不是一直挂
+  着的管道）。这不算把问题抹平：退出码与 stderr 上的断言仍然决定测试结果。
+  `a_refusal_closes_stdin_before_the_harness_finishes_writing` 喂进 240 KB（超过一个管道缓冲）把这个
+  交织变成确定性的；对着旧工装它每次都红（`Os { code: 109, kind: BrokenPipe }`），修好后 48 条 CLI
+  测试全过。— (details: quality-ledger (cs))
+
 - **重读紧凑 JSONC/JSON5 不再抹掉同一行的多条注释。** — 一个节点若被两条以上同行注释引导，此前只留下
   最后一条：读侧把同行注释放进单个 inline 槽，后来者覆盖前者。紧凑 writer 正是这样写一个节点的注释，
   于是库自己产出的文本重读时会丢注释（`{/* note 0 *//* note 1 */`），第二轮结果也不同。这样的连续注

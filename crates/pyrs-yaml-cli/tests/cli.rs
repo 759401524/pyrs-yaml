@@ -27,12 +27,17 @@ fn run_with_stdin(args: &[&str], input: &str) -> (Option<i32>, String, String) {
         .stderr(Stdio::piped())
         .spawn()
         .expect("pyq failed to spawn");
-    child
-        .stdin
-        .as_mut()
-        .expect("stdin")
-        .write_all(input.as_bytes())
-        .expect("write stdin");
+    // A CLI that refuses its arguments exits before it reads, so the write below
+    // can legitimately fail with EPIPE - and `to_json_dialect_flags_conflict`
+    // depends on exactly that refusal. Panicking here made that test a race: it
+    // passed when the child happened to block on stdin and reddened `msrv-check`
+    // when it did not (Os { code: 32, kind: BrokenPipe }). Nothing is being
+    // tolerated away, because the assertions on the exit code and stderr still
+    // have to hold; and taking the handle closes it before the wait, so a child
+    // that does read sees end-of-file instead of hanging.
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(input.as_bytes());
+    }
     let out = child.wait_with_output().expect("pyq failed");
     (
         out.status.code(),
@@ -535,6 +540,21 @@ fn to_json_json5_restores_single_quotes() {
 fn to_json_dialect_flags_conflict() {
     let (code, _, err) = run_with_stdin(&["to-json", "--jsonc", "--json5", "-"], "a: 1\n");
     assert_eq!(code, Some(2));
+    assert!(err.contains("cannot be used with"), "{err}");
+}
+
+#[test]
+fn a_refusal_closes_stdin_before_the_harness_finishes_writing() {
+    // The same call with input too large to park in the kernel's pipe buffer
+    // (~64 KB), so the write is guaranteed to meet the closed pipe rather than
+    // to slip through before the child exits. `run_with_stdin` used to panic on
+    // that error - `write stdin: Os { code: 32, kind: BrokenPipe }` - which made
+    // the test above a race that reddened `msrv-check` and passed locally. This
+    // one is the deterministic version of the same interleaving: if the harness
+    // stops tolerating EPIPE, it fails every time, on every platform.
+    let big = "a: 1\n".repeat(40_000);
+    let (code, _, err) = run_with_stdin(&["to-json", "--jsonc", "--json5", "-"], &big);
+    assert_eq!(code, Some(2), "{err}");
     assert!(err.contains("cannot be used with"), "{err}");
 }
 
