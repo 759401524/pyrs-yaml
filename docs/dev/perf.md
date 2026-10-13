@@ -261,4 +261,57 @@ all twenty-one scenarios against this head on the enforcing image - `from_json_m
 hundredths of a percent, which is the build/image residual the `-0.05%…-2.9%` note above already
 warns about; what travelled between the two channels is the shape, and the shape is the claim.
 
+## The containers were not the allocator's problem either (2026-10-13)
+
+Two hypotheses about the same 25.3% have now been measured and put down. The first was a double
+allocation per string, refuted by an A/B in "The string path was not allocating twice" above. The
+second was the sentence that same section ended on: "the remaining candidates are the containers
+(each object and array grows its `IndexMap` / `Vec` buffer)". The containers are priced below, and
+they are not where the money is.
+
+Method, and what it can and cannot see. `callgrind` over the gate's own harness gives self cost per
+function and a call count per edge; `valgrind --tool=dhat` gives blocks, bytes and lifetimes per
+allocation point. Two things learned on the way are worth recording because they will bite the next
+attempt: dhat's compact JSON (`dhatFileVersion: 2`) carries file/line indices but **no function
+names** for its point paths, so it is usable for totals and lifetimes only; and attributing
+allocator cost to its *callers* through callgrind edges is unreliable on this binary, because
+several symbol blocks are written nameless (`fn=(820)`) and the largest edge in the graph lands in
+an unnamed caller. What follows therefore quotes self costs and call counts, not inclusive caller
+totals.
+
+`from_json_medium`, one run of the current tree, 119,278,980 counted instructions, 2,000 iterations:
+
+| cost centre | self instructions | share | per parse |
+|:--|--:|--:|--:|
+| libc allocator (`_int_malloc` 10.49M, `_int_free` 9.15M, `malloc` 6.66M, `free` 4.26M, `malloc_consolidate` 2.34M, `unlink_chunk` 1.45M, `_int_free_merge_chunk` 0.97M, `arena.c:free` 0.46M, `_int_free_maybe_consolidate` 0.36M) | 36,124,074 | 30.3% | 18,062 |
+| `RawVecInner::finish_grow` | 3,056,000 | 2.56% | 1,528 |
+| `RawVecInner::reserve::do_reserve_and_handle` | 1,508,000 | 1.26% | 754 |
+| `IndexMap` `reserve_rehash` | 1,924,152 | 1.61% | 962 |
+| tree teardown (`drop_glue<CustomNode>` ×2 + `drop_glue<NodeMeta>` + `Arc<str>::drop_slow`) | 5,460,000 | 4.58% | 2,730 |
+| `__memcpy_avx_unaligned_erms` | 9,403,098 | 7.88% | 4,702 |
+
+The Rust-side growth machinery - the thing a "reserve the containers better" change would shrink -
+is 6,488,152 instructions, **5.4%** of the scenario, and it runs *two* `realloc`s and *two*
+rehashes per parse: 4,003 and 4,000 calls over 2,000 iterations. Growth is amortised doubling on a
+handful of buffers, not per-node churn, so there is no per-node win available there. `IndexMap`
+growth was the specific guess and it is 962 instructions per parse.
+
+dhat sizes the whole thing from the other side: **156,015 blocks / 29,298,570 bytes over 2,000
+parses = 78 allocations and 14,649 bytes per parse**, against **48 blocks / 12,416 bytes live at the
+peak**, and 2 blocks at the end. So the fixture's tree is 48 heap objects, the transient part of the
+run is about 30 more, and the allocator's 30.3% is what glibc charges to make and unmake roughly
+that many blocks 2,000 times. It is not slack in the parser: it is the price of the node model, and
+the model is the thing `AGENTS.md` rules out rewriting for fit-of-purpose reasons. Reducing it means
+interning scalars, an arena, or an inline small-string node - each a design decision about the AST,
+each needing its own argument, none of them an optimisation that can be slipped in beside one.
+
+One number in that table is worth carrying forward as the cheapest remaining target that *is* inside
+the current model: teardown is 4.58% of the run and it walks the tree twice over (`drop_glue` self
+cost 2.54% + 1.44% for `NodeMeta`) before the frees it triggers even start. Dropping an AST is
+therefore comparable in cost to building one, and the walk - not `free` - is the part a change could
+make cheaper without touching what a node holds. Not attempted here: the claim would need the same
+paired-run evidence this file keeps asking for, and the scenario that would show it
+(`from_json_medium` with its tree dropped at the end of each iteration) is the gate's own harness,
+so it is measurable in one more session rather than in one more guess.
+
 ---
