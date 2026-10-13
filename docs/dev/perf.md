@@ -201,4 +201,64 @@ architecture the repository has already ruled out rewriting for fit-of-purpose r
 `AGENTS.md`, the no-refactor rulings on the AST and the binding boundary), so any attempt on it has
 to arrive as its own design decision rather than as an optimisation smuggled in beside one.
 
+## Every resolver trimmed text that had nothing to trim (2026-10-13)
+
+The same profile that found `Hasher::write` put 1.64% of `from_json_medium` in
+`<str>::trim_matches::<is_yaml_blank>`: 1,976,000 counted instructions over 52,000 calls, **38 per
+call** - and 52,000 is one call per scalar the JSON reader touches, key or value, almost all of
+which neither start nor end in separation. `resolve_core_type` asks "is this text a number or a
+word?" and its first act was to strip edge separation, so `name` paid a two-ended predicate walk to
+discover that nothing was stripped. `resolve_yaml11_type` then trimmed again before delegating to
+the core chain, so a YAML 1.1 scalar paid it twice.
+
+The rule that makes the walk free to skip: every character `is_yaml_blank` accepts is ASCII
+(`SP TAB CR LF NUL`), and UTF-8 keeps an ASCII byte out of a multi-byte sequence. So `value` starts
+or ends blank exactly when its **first or last byte** is one of those five bytes, and two table
+reads answer a question that previously cost 38 instructions. When either end is blank the trim is
+the original `trim_matches(is_yaml_blank)`; the guard only declines work it can prove is not there.
+The class table is built at compile time *by calling the predicate* over the 128 ASCII positions,
+not by restating the set - `(bi)` in the ledger is the record of a rule written twice and
+disagreeing.
+
+Measured in one pair of runs of the same harness binary (`callgrind`, whole-process `I refs`,
+local build, 2 000 iterations each):
+
+| scenario | before | after | |
+|:--|--:|--:|--:|
+| `from_json_medium` | 120,167,551 | 119,281,047 | **−0.74%** |
+| `from_toml_medium` | 200,129,565 | 198,295,602 | −0.92% |
+| `to_json_medium` | 22,244,247 | 21,870,305 | −1.68% |
+| `serialize_medium` | 47,556,611 | 47,386,528 | −0.36% |
+| `parse_medium` | 343,640,135 | 343,645,084 | +0.0014% |
+
+The last row is the control the project's A/B discipline asks for: the YAML text reader does not ask
+this question per scalar, and it repeated inside the same-binary spread (the two `from_json_medium`
+runs before the change differed by 0.005%). The two write scenarios moved because the writers
+resolve plain scalars through the same crate - which is the point of a shared schema layer, and the
+reason a reader-side cut lands on both sides of the round trip.
+
+The mechanism, not just the total: after the change `<str>::trim_matches` is gone from the profile
+and `trim_yaml_blank` costs 1,092,000 (0.92%), so 884,000 of the 888,571 instructions the scenario
+lost are accounted for by the function that was removed. One refinement was tried and refused:
+`#[inline]` on the guard gave 119,277,876 against 119,281,047, −0.003%, inside the noise floor -
+LLVM had already folded what mattered, so the attribute was an unmeasured hint and it was dropped.
+
+Three tests carry the correctness half: `the_blank_table_covers_exactly_the_predicate` (all 256 byte
+values, so the ASCII-domain assumption is checked rather than asserted),
+`trim_yaml_blank_agrees_with_str_trim_for_every_code_point_at_either_end` (every code point placed
+at both ends of `…42` / `42…`, built in stack buffers so the sweep does not test the allocator), and
+`trim_yaml_blank_removes_only_yaml_separation` for the shapes the resolvers care about - `"\0"`,
+`"  a  b  "`, NBSP and NEL at either end, an emoji tail. Mutants confirm they bite: reading the
+wrong end byte reddens the sweep with `first: Some((0, "42\0"))`, and widening the table's bound to
+`byte <= 0x80` is caught by the domain test.
+
+The arbiter agreed, and it is the number that ships: the `Instruction-count baseline` job measured
+all twenty-one scenarios against this head on the enforcing image - `from_json_medium` 120,751,446 →
+119,876,976 (-0.72%), `from_toml_medium` -0.89%, `from_jsonc_medium` -0.66%,
+`from_json5_medium` -0.47%, `to_json_medium` -1.73%, `to_jsonc_medium` -1.59%,
+`to_json5_medium` -1.56%, `to_toml_medium` -0.95%, the `serialize_*` writes -0.21…-0.51%,
+`to_python_*` -0.04…-0.36% - and every `parse_*` scenario at +0.00%. Local and CI differ by
+hundredths of a percent, which is the build/image residual the `-0.05%…-2.9%` note above already
+warns about; what travelled between the two channels is the shape, and the shape is the claim.
+
 ---

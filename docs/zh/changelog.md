@@ -574,6 +574,18 @@ status: new
 
 #### 性能
 
+- **标量解析器不再裁剪本就没有空白的文本。** — 每个 JSON、TOML 与 YAML 标量都要问
+  `resolve_core_type` “这是数字还是一个词？”，而这个答案做的第一件事是用一次双端谓词遍历去掉首尾分隔
+  字符：每次调用 38 条计数指令，而这些字符串几乎从不以空白开头或结尾；YAML 1.1 标量更要把这笔开销付
+  两次，因为 `resolve_yaml11_type` 在委托给 core 链之前先裁剪了一遍。YAML 接受的所有空白都是 ASCII
+  （`SP TAB CR LF NUL`），而 UTF-8 不会把 ASCII 字节放进多字节序列，所以首尾两个字节就足以判定有没有
+  东西可裁：改为读取一张在编译期*由* `is_yaml_blank` 生成（而非把它重述一遍）的分类表两次，遍历只在
+  某一端确实是空白时才执行。同一个 harness 二进制的一对测量：`from_json_medium` −0.74%、
+  `from_toml_medium` −0.92%，而写入器同样经由这个 crate 解析标量，于是 `to_json_medium` −1.68%、
+  `serialize_medium` −0.36%；作为对照的 `parse_medium` 重复在 +0.0014%，正是它让前面两个差值成为证
+  据。给守卫加 `#[inline]` 测得 −0.003%，落在同一二进制的重复误差之内，于是删掉而不是留下一个未经测
+  量的提示。— (details: quality-ledger (ct))
+
 - **指令数下限搬到了 `main` 上的代码。** — 已提交的基线还停在 `d7177efc`/`dd211c8d` 之前的数字上，于
   是门禁的余量是被漂移撑大的、不是被决定撑大的：`from_json_medium` 比引擎现在的实测高 21.61%、
   `from_jsonc_medium` 高 19.83%、`from_json5_medium` 高 16.72%——这么大的回退会一声不响地通过。基线经

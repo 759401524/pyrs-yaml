@@ -72,8 +72,50 @@ pub fn is_yaml_document_char(c: char) -> bool {
 /// `yaml_roundtrip` crash-512814, 5 bytes BOM + NBSP, where the empty-document
 /// fast path reported `null` for a scalar).
 #[must_use]
-pub fn is_yaml_blank(c: char) -> bool {
+pub const fn is_yaml_blank(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\r' | '\n' | '\0')
+}
+
+/// The bytes [`is_yaml_blank`] accepts, indexed by byte value.
+///
+/// Built at compile time *by calling the predicate*, so it cannot state a blank set that
+/// `is_yaml_blank` disagrees with — the failure mode `(bi)` in `docs/dev/quality-ledger.md`
+/// records for a rule written twice and encoded differently. The 128 high positions are
+/// never blank: every blank is ASCII, and UTF-8 keeps an ASCII byte out of a multi-byte
+/// sequence, so a lead or continuation byte settles the question on its own.
+const YAML_BLANK_BYTE: [bool; 128] = {
+    let mut table = [false; 128];
+    let mut byte = 0usize;
+    while byte < 128 {
+        table[byte] = is_yaml_blank(byte as u8 as char);
+        byte += 1;
+    }
+    table
+};
+
+/// Whether the `char` starting at `byte` can be separation.
+fn is_blank_byte(byte: u8) -> bool {
+    byte < 0x80 && YAML_BLANK_BYTE[usize::from(byte)]
+}
+
+/// `value` with leading and trailing [`is_yaml_blank`] separation removed.
+///
+/// Same answer as `value.trim_matches(is_yaml_blank)`, at the cost of two table reads
+/// instead of a scan when there is nothing to remove. Only the two end bytes can decide
+/// that: separation is ASCII, so `value` starts or ends blank exactly when its first or
+/// last byte is a blank byte. `str::trim_matches` calls the predicate on both ends before
+/// it knows this, which measured 1.64% of `from_json_medium` (`docs/dev/perf.md`) because
+/// every scalar the JSON, TOML and YAML readers hand to a resolver asks.
+pub(crate) fn trim_yaml_blank(value: &str) -> &str {
+    let Some((&first, rest)) = value.as_bytes().split_first() else {
+        return value;
+    };
+    let last = *rest.last().unwrap_or(&first);
+    if is_blank_byte(first) || is_blank_byte(last) {
+        value.trim_matches(is_yaml_blank)
+    } else {
+        value
+    }
 }
 
 /// True when `text` holds nothing but separation, by [`is_yaml_blank`] — i.e.
