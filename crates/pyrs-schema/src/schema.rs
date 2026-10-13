@@ -135,6 +135,31 @@ pub fn needs_quotes(value: &str) -> bool {
     if value.starts_with(' ') || value.ends_with(' ') {
         return true;
     }
+    // One byte pass settles the ASCII case, which is almost every text the bridges
+    // see: a byte below 0x20 or DEL is exactly what `char::is_control` means for
+    // ASCII, `is_yaml_noncharacter` needs a code point ending in `FFFE`/`FFFF`
+    // (unreachable in seven bits), and both NBSP and BOM are non-ASCII by
+    // definition - so the character scan and the two `contains` passes that followed
+    // it can never fire here. UTF-8 never hides a control byte: every lead and
+    // continuation byte is >= 0x80, and the first one hands the decision to the
+    // authoritative path below, which reads the whole text as characters.
+    //
+    // The three passes it replaces measured 6.04% of `from_json_medium` on its own
+    // (`docs/dev/perf.md`, 2026-10-13); `needs_quotes_agrees_with_the_char_rule_for_every_code_point`
+    // pins that both paths answer the same question.
+    for &byte in value.as_bytes() {
+        if byte < 0x20 || byte == 0x7f {
+            return true;
+        }
+        if byte >= 0x80 {
+            return text_holds_an_unemittable_char(value);
+        }
+    }
+    false
+}
+
+/// The character-level half of [`needs_quotes`]: what a plain scalar cannot carry.
+fn text_holds_an_unemittable_char(value: &str) -> bool {
     if value
         .chars()
         .any(|c| c.is_control() || is_yaml_noncharacter(c))
@@ -640,6 +665,35 @@ fn is_hex(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The fast path of `needs_quotes` reads bytes and its authoritative path reads
+    // characters, so the two are checked against the character rule itself - over
+    // every code point in the Unicode space (0x0000..=0x10FFFF, 1,114,112 of them;
+    // the 2,048 surrogates no `char` can hold are skipped by construction), each
+    // wrapped in `q…q` so the core resolver is content to leave the text plain and
+    // neither early exit can decide the answer for the wrong reason.
+    #[test]
+    fn needs_quotes_agrees_with_the_char_rule_for_every_code_point() {
+        let rule = |c: char| {
+            c.is_control() || is_yaml_noncharacter(c) || c == '\u{00a0}' || c == '\u{feff}'
+        };
+        let mut disagreements = 0usize;
+        let mut first = None;
+        for cp in 0..=0x10FFFF_u32 {
+            let Some(c) = char::from_u32(cp) else {
+                continue;
+            };
+            let text = alloc::format!("q{c}q");
+            let (got, want) = (needs_quotes(&text), rule(c));
+            if got != want {
+                disagreements += 1;
+                if first.is_none() {
+                    first = Some((cp, got, want));
+                }
+            }
+        }
+        assert_eq!(disagreements, 0, "code points disagree, first: {first:?}");
+    }
 
     // ---- failsafe ----
 

@@ -4473,6 +4473,44 @@ Verified: `cargo nextest run --all` 574 tests including the new invariant test, 
 --no-default-features` clean, `cargo clippy --all --all-targets -- -D warnings`, `prek run
 --all-files`, `uv run pytest tests/` 2719 pass / 10 skip, five changelog mirrors at [25, 11, 38, 5].
 
+### (cr) Three passes to decide one quote, and the control that made the two deltas count (2026-10-13)
+
+`(cq)` took the digest off the top of the readers' cost table; the next entry down was the same kind
+of work in the bridge's quoting guard. Every format asks `needs_quotes` whether a text would be
+misread as a plain scalar, and the function read the value once as characters, then searched it
+again for NBSP and a third time for BOM. Neither of those two can occur in ASCII text - U+00A0 and
+U+FEFF are non-ASCII by definition, `is_control` over ASCII is exactly
+`byte < 0x20 || byte == 0x7F`, and `is_yaml_noncharacter` needs a code point ending in
+`FFFE`/`FFFF`, which seven bits cannot reach. So one byte pass now decides that case and only text
+carrying a byte above `0x7F` still goes to the character rule, unchanged. UTF-8 makes the split
+safe: no continuation or lead byte is ever below `0x20`, so a control byte cannot hide inside a
+multi-byte sequence.
+
+The control is exhaustive rather than sampled:
+`needs_quotes_agrees_with_the_char_rule_for_every_ code_point` builds `q<c>q` for all 1,114,112 code
+points a `char` can hold and compares both paths to the character rule itself. Mutating the byte
+rule by one (`byte < 0x21`, which reads a space as a control) reddens it with
+`first: Some((32, true, false))` - the test convicts the specific wrong answer, which is what makes
+it a check on the fast path rather than a restatement of it.
+
+What made the measurement readable was an accident that turned into the method: the two scenarios
+this change cannot enter - `from_toml_medium` and `parse_medium`, which never call the quoting
+guard - repeated across the runs at -0.0009% and +0.0002%, while the two it does enter moved -6.89%
+(`from_json_medium`) and -1.87% (`from_json5_medium`). A same-host pair of untouched scenarios
+agreeing to three decimal places is the calibration that says the other four numbers came from the
+code and not from the machine; the ledger's earlier rule that cross-session readings are not
+comparable stands, but this is how to check whether they are when they claim to be.
+
+Measured on `callgrind` over the gate's own engine harness (`--features ir-gate`,
+`CARGO_PROFILE_RELEASE_STRIP=false`), because the committed baseline's own image is the arbiter and
+this box cannot link the binding harness. The numbers above are therefore the direction; the
+enforcing image's `Instruction-count baseline` job reports the verdict against the committed
+baseline, which since `(cq)` also carries that change's -8.01% on `from_json_medium`.
+
+Verified: `cargo nextest run --all` 575 tests (the oracle included), `cargo clippy --all
+--all-targets -- -D warnings` and `cargo fmt --all` clean, `prek run --all-files`,
+`uv run pytest tests/` 2719 pass / 10 skip, five changelog mirrors at [25, 11, 38, 5].
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
