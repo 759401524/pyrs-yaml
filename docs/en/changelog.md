@@ -723,6 +723,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **A node's digest reads exactly what its equality reads, and every reader got cheaper.** —
+  `CustomNode::eq` compares a scalar's value, style, chomping and three identity fields; the
+  explicit block indentation indicator is not among them, yet `Hash` hashed it. Two nodes the map
+  calls one key therefore routed to different buckets — the same contract `plain_and_noted` already
+  guards, for the other field. `Hash` no longer reads `block_indent`, and an undecorated node writes
+  nothing for metadata instead of three `Option` discriminants. `callgrind` over the instruction
+  gate's own harness, same host and same build flags, prices it: `Hasher::write` self cost 20.95M →
+  9.95M instructions, and the whole process -7.80% on `from_json_medium`, -7.71% on
+  `from_json5_medium`, -5.66% on `from_toml_medium`, -3.38% on `parse_medium`. Key comparison did
+  not grow (`__memcmp_avx2` 10,720,143 → 10,720,033), so the cheaper digest did not cost probe
+  quality on the counted fixture. The measured route is the `std` one, where the node map is keyed
+  on `RandomState` — `no_std` already keys it on a fixed-seed FxHash (`ast.rs:29`).
+  `.ci/ir-baseline.json` on the enforcing image stays the arbiter, and those scenarios should move
+  down. — (details: quality-ledger (cq))
+
 - **Keeping the comments the dialect writers used to drop is paid for in counted instructions.** —
   `to_jsonc` and `to_json5` now read the two comment slots per pair they had never looked at (#359),
   and `ir_gate.py` prices the wider pair loop at `to_jsonc_medium` +4.77%, `to_json5_medium` +3.78%
