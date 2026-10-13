@@ -327,3 +327,26 @@ def test_an_empty_input_keeps_the_refusal():
     assert "no scenario named" in block, "the log cannot distinguish a guarded run from an open one"
     flags = re.findall(r"args\+=\(--accept-drift (\S+)\)", block)
     assert flags == ['"$name"'], f"the flag list must grow only from the input, one name per iteration (found {flags})"
+
+
+def test_the_log_counts_the_names_not_the_flags():
+    """The first real use of this input printed a number that was twice the truth.
+
+    Run 38326122129 named three scenarios and the step logged `accepting drift for 6 scenario(s)`:
+    the count came from `args`, which holds a flag *and* its value per name. That line is what a
+    reviewer reads to decide whether an artefact was opened deliberately, so the number on it has to
+    be the number of scenarios rather than a quantity nobody named. The branch decision is equivalent
+    either way - a flag count is twice the name count, and the measured behaviour of both halves is
+    recorded in the ledger - so it is keyed on `names` to keep the message and its condition the same
+    quantity instead of asking a reader to know that `args` holds pairs.
+
+    Proven by mutation: pointing both the count and the condition back at `args` reddens this test
+    alone and leaves the three wiring tests green.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    block = text[text.index("- name: Measure and rewrite the baseline") :]
+    assert "accepting drift for ${#names[@]} scenario(s)" in block, (
+        "the log counts flags, which is twice the number of scenarios named"
+    )
+    assert "if [ ${#names[@]} -gt 0 ]" in block, "the branch decides on the wrong array"
+    assert "${#args[@]}" not in block, "a flag count leaked back into the message"

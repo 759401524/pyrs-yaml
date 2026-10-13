@@ -3915,9 +3915,23 @@ wiring tests use because no test can afford a valgrind run, and each proven by m
 hard-coding `to_json_medium` into the loop reddens `test_an_empty_input_keeps_the_refusal` alone,
 and restoring the file gives 19 passed. No baseline value and no tolerance moved in this change.
 
-What it does not settle, named so nobody reads it as settled: whether #360's measured +1.30% /
-+5.11% / +4.98% against `main` is accepted is still the ruling (cg) leaves open. This entry only
-unblocks the mechanism that would write those numbers down.
+What it unblocked has since happened. The ruling on #360's measured +1.30% / +5.11% / +4.98% against
+`main` was taken, the refresh ran on the enforcing image as run 38326122129, and the artefact it
+produced is committed on that PR - so the numbers a change has to pay for were claimed by that
+change, in its own diff, which is the ordering this file keeps asking for. **The first real use
+found a defect in the channel.** The refresh produced the artefact, which was the point, and it also
+logged `accepting drift for 6 scenario(s): to_json_medium to_jsonc_medium to_json5_medium` - three
+names, six, because the count came from `args`, which holds a flag *and* its value per name. That
+line is exactly what a reviewer reads to decide whether an artefact was opened on purpose, so a
+doubled number in it is not cosmetic. The step counts names now, and
+`test_the_log_counts_the_names_not_the_flags` pins both the message and the condition it branches
+on: pointing either back at `args` reddens that test alone, and restoring the file gives 20 passed -
+19 before this test existed, which is the same count the paragraph above reports for its own moment.
+
+Measured while writing the fix rather than assumed: `read -ra names` over an empty here-string under
+`set -euo pipefail` yields an empty array and status 0, so the default input reaches the refusal
+branch with or without the `|| true` standing guard. Both halves were run - empty, and three names -
+before either claim was written down.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 

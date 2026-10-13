@@ -74,11 +74,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   printed every sample, then exited on "`--update` would move 3 scenario(s) past the 0.5% line" with
   nothing written. The job now takes an optional `accept_drift` input - space- or newline-separated
   scenario names, one `--accept-drift` flag each - while an empty input keeps the plain `--update`,
-  so refusing stays the default and the log says which of the two ran. Three tests added to
+  so refusing stays the default and the log says which of the two ran. Four tests added to
   `tests/test_ir_baseline_workflow.py`, each proven by mutation: making the flag inert reddens
   `test_the_input_is_actually_passed_to_the_guard` alone, and hard-coding `to_json_medium` into the
   loop reddens `test_an_empty_input_keeps_the_refusal` alone. No baseline value and no tolerance
-  moved. — (details: quality-ledger (cj))
+  moved. Measured on its first real use the line the step prints counted flags instead of scenarios
+  (three names logged as 6), so it now counts the names and a fourth test pins it. — (details:
+  quality-ledger (cj))
 
 - **YAML comments, anchors and tags survive a round trip, gated on every seed.** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` replays the committed seed corpus on every
