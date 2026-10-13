@@ -34,14 +34,19 @@ forms are not reproducible.
   compliance guarantee — so it is explicitly declined rather than silently shipped.
   Standalone/leading comments above a header and trailing comments on a leaf `key = value` line
   *are* preserved in place.
-- **Binary integer source (`0b1010`).** Canonicalised to decimal on the round trip because YAML Core
-  has no `0b` spelling (a faithful `0b` in YAML would re-resolve to a string, corrupting the value).
-  Hex/octal source *is* preserved (YAML Core resolves them back to the same integer). Recorded in
-  `toml/parser.rs` (`parse_prefixed_body_via_dispatch`) as a deliberate choice, not a defect. What
-  changed with `(bu)`: a document that *states* the type - `v: !!int 0b101` - is no longer
-  canonicalised, because the tag settles the question the hub spelling could not and the writer's
-  TOML-literal pass-through keeps the `0b` text. The deliberate limit was about implicit spellings,
-  never about declared ones.
+- **Binary integer source (`0b1010`).** Closed by `(cp)` — the spelling now survives the round trip.
+  It was canonicalised to decimal while the bridges read scalar text only: YAML Core has no `0b`
+  spelling, so a faithful untagged `0b` re-resolves to a string and design rule D1 ("only spellings
+  YAML Core also accepts get preserved") excluded it. Once a standard tag decided the type in every
+  format (`(bu)`, #340), the projection could state the type instead of dropping the text:
+  `from_toml("b = 0b1010")` is the hub scalar `!!int 0b1010`, which the loader reads as `10`,
+  `to_toml` writes back as `0b1010`, and the JSON writers project as `10`. Pinned by
+  `tests/test_toml.py::TestBinaryIntegerFidelity` and
+  `binary_spelling_reaches_the_hub_under_an_int_tag`. Two things are still deliberately not
+  faithful, and neither is a spelling the writer could keep: underscore separators (`0b1101_0110`)
+  and an explicit `+` are canonicalised, because TOML's own literal grammar rejects them, and an
+  *untagged* `0b1010` in a hand-built node still re-reads as a string — the tag is what carries the
+  type. Hex and octal need no tag at all, since YAML Core resolves them back to the same integer.
 
 ### Fuzz findings (weekly-scheduled `fuzz.yml`, engine surfaces, 2026-10-02)
 

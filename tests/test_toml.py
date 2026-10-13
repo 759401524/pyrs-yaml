@@ -5,6 +5,7 @@ built-in !timestamp plugin active on the load path.
 """
 
 import datetime
+import json
 
 import pytest
 
@@ -441,6 +442,51 @@ class TestNumberStrictness:
             import math
 
             assert math.copysign(1, got) < 0
+
+
+class TestBinaryIntegerFidelity:
+    """Issue #340 step 3: `0b` source keeps its spelling through the hub.
+
+    The spelling was dropped for as long as the bridges read scalar text only: YAML Core
+    has no `0b` lexeme, so an untagged plain `0b1010` re-resolved to a string and the spoke
+    chose decimal instead. The projection now states the type with `!!int`, which the loader
+    and every writer have honoured since #335, so the text the document wrote stays put.
+    """
+
+    def test_hub_tags_binary_and_only_binary(self):
+        assert pyrs_yaml.from_toml("b = 0b1010\n") == "b: !!int 0b1010\n"
+        # Core reads hex and octal back as integers, so those spellings need no fence
+        # and the hub text must stay exactly as it was before.
+        assert pyrs_yaml.from_toml("h = 0xFF\no = 0o17\nd = 42\n") == "h: 0xFF\no: 0o17\nd: 42\n"
+
+    @pytest.mark.parametrize(
+        "src,want",
+        [
+            ("b = 0b1010\n", "b = 0b1010\n"),
+            ("b = 0b1101_0110\n", "b = 0b11010110\n"),
+            ("b = 0b0\n", "b = 0b0\n"),
+        ],
+    )
+    def test_toml_to_toml_keeps_the_spelling_and_settles_in_one_round(self, src, want):
+        emitted = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert emitted == want, src
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(emitted)) == want, src
+
+    def test_one_document_one_type_across_formats(self):
+        doc = pyrs_yaml.parse(pyrs_yaml.from_toml("b = 0b1010\n"))
+        assert pyrs_yaml.safe_load(doc.to_yaml()) == {"b": 10}
+        assert json.loads(doc.to_json()) == {"b": 10}
+        assert json.loads(doc.to_jsonc()) == {"b": 10}
+        assert json.loads(doc.to_json5()) == {"b": 10}
+        assert pyrs_yaml.load_toml(doc.to_toml()) == {"b": 10}
+
+    def test_an_untagged_binary_text_still_refuses_to_be_an_integer(self):
+        """The tag is what carries the type, so removing it must not smuggle the value through.
+
+        A hand-written hub scalar with no tag re-reads as a string under Core, exactly as the
+        deliberate limit described before this change.
+        """
+        assert pyrs_yaml.safe_load("b: 0b1010\n") == {"b": "0b1010"}
 
 
 class TestInlineTableCollision:

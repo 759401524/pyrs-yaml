@@ -568,9 +568,9 @@ impl<'a> Parser<'a> {
 
     fn parse_unsigned_numeric(&mut self) -> Result<TomlValue, ParseError> {
         // Prefixed integers: 0x / 0o / 0b (TOML 1.0 disallows 0x0x-style
-        // leading zero after the prefix). Radix-prefixed spellings are
-        // preserved verbatim because YAML Core resolves them back to the
-        // same integer without needing a tag fence.
+        // leading zero after the prefix). Radix-prefixed spellings are kept
+        // verbatim; the two YAML Core also reads back as integers need no tag,
+        // and the one it does not (`0b`) is tagged on projection.
         if self.starts_with(b"0x") {
             self.pos += 2;
             let (v, src) = self.parse_prefixed_integer_with_source(16)?;
@@ -583,13 +583,14 @@ impl<'a> Parser<'a> {
         }
         if self.starts_with(b"0b") {
             self.pos += 2;
-            // YAML Core schema does not recognise binary literals, so
-            // the projected plain scalar would resolve back to Str on
-            // the round trip. We canonicalise binary integers to decimal
-            // rather than introduce a `!!int` tag fence (see design doc
-            // D1: only spellings YAML Core also accepts get preserved).
-            let (v, _src) = self.parse_prefixed_integer_with_source(2)?;
-            return Ok(TomlValue::Integer(v, None));
+            // The spelling is kept, and `toml_value_to_node` tags it `!!int`:
+            // YAML Core does not recognise a binary literal, so an untagged
+            // plain scalar would re-resolve to a string. Canonicalising to
+            // decimal was the alternative the spoke took while its writers read
+            // only text; since (bu) a standard tag decides the type in every
+            // format, so the spelling can stay where it was written.
+            let (v, src) = self.parse_prefixed_integer_with_source(2)?;
+            return Ok(TomlValue::Integer(v, Some(src)));
         }
         // A leading digit could start a date/time or a decimal number.
         // Peek 10 bytes for a date-time prefix (YYYY-MM-DD) or 8+1 for a
@@ -795,10 +796,10 @@ impl<'a> Parser<'a> {
         i64::from_str_radix(&cleaned, radix)
             .map(|v| {
                 // Preserve the prefix + digits spelling, but strip `_`
-                // separators: YAML Core's numeric grammar rejects them, so
-                // the projected plain scalar must contain only the radix
-                // prefix and continuous digit run to survive the round trip
-                // through `to_yaml -> load_toml -> to_toml`.
+                // separators: neither the hub's plain scalar nor the writer's
+                // TOML-literal gate accepts them, so an underscored spelling
+                // could only ever canonicalise — strip it here and keep the
+                // `to_yaml -> load_toml -> to_toml` text continuous.
                 let digits_no_underscores = raw.replace('_', "");
                 let mut src = String::with_capacity(prefix_str.len() + digits_no_underscores.len());
                 src.push_str(prefix_str);
@@ -1953,6 +1954,53 @@ mod tests {
                 }
             ));
         }
+    }
+
+    #[test]
+    fn binary_spelling_reaches_the_hub_under_an_int_tag() {
+        // YAML Core has no `0b` lexeme, so an untagged `0b1010` plain scalar
+        // re-resolves to a string. The projection keeps the spelling and states
+        // the type instead; hex and octal need no such fence because Core reads
+        // them back as integers and a tag would only change the hub text.
+        let observed = |src: &str| -> (String, Option<(String, String)>) {
+            let ast = from_toml(src).unwrap();
+            let CustomNode::Mapping { pairs, .. } = &ast else {
+                unreachable!()
+            };
+            let (_, v) = pairs.iter().next().unwrap();
+            let CustomNode::Scalar { value, .. } = v else {
+                unreachable!()
+            };
+            (
+                value.to_string(),
+                v.tag().map(|t| (t.handle.clone(), t.suffix.clone())),
+            )
+        };
+        assert_eq!(
+            observed("b = 0b1010\n"),
+            (
+                "0b1010".to_string(),
+                Some(("!!".to_string(), "int".to_string()))
+            )
+        );
+        assert_eq!(
+            observed("h = 0xDEADBEEF\n"),
+            ("0xDEADBEEF".to_string(), None)
+        );
+        assert_eq!(observed("o = 0o755\n"), ("0o755".to_string(), None));
+        assert_eq!(observed("d = 42\n"), ("42".to_string(), None));
+    }
+
+    #[test]
+    fn the_fence_reaches_values_inside_a_container() {
+        // The projection is one function, so an array or inline-table member
+        // gets the same answer as a top-level pair. (The inline table itself
+        // re-emits as a `[section]` - a writer choice this change does not
+        // touch - so the fixed point is asserted on the second emission.)
+        let src = "arr = [0b10, 0x1F]\ninline = { b = 0b11, d = 7 }\n";
+        let once = crate::to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(once, "arr = [0b10, 0x1F]\n[inline]\nb = 0b11\nd = 7\n");
+        assert_eq!(once, crate::to_toml(&from_toml(&once).unwrap()).unwrap());
     }
 
     #[test]

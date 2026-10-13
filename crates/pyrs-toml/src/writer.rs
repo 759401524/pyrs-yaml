@@ -745,16 +745,18 @@ mod tests {
 
     #[test]
     fn preserves_radix_integer_source_spelling() {
-        // Fidelity #108: hex and octal integers round-trip with their
-        // original prefix + case intact. Underscore separators are
-        // stripped (YAML Core does not accept them) and binary integers
-        // canonicalise to decimal (YAML Core does not read `0b101`).
+        // Fidelity #108: radix integers round-trip with their original prefix +
+        // case intact, binary included — `0b` rides the hub under a `!!int` tag,
+        // which every writer has honoured since (bu). Underscore separators are
+        // still stripped: TOML's own literal grammar rejects them, so a source
+        // spelling containing one could only ever canonicalise.
         for (src, expected) in [
             ("v = 0xDEADBEEF\n", "v = 0xDEADBEEF\n"),
             ("v = 0o755\n", "v = 0o755\n"),
             ("v = -31\n", "v = -31\n"),
             ("v = 0xFF_FF\n", "v = 0xFFFF\n"),
-            ("v = 0b1101_0110\n", "v = 214\n"),
+            ("v = 0b101\n", "v = 0b101\n"),
+            ("v = 0b1101_0110\n", "v = 0b11010110\n"),
         ] {
             let ast = from_toml(src).unwrap();
             let text = to_toml(&ast).unwrap();
