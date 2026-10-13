@@ -85,6 +85,19 @@ status: new
   被别的收尾路径占用过，而 `ak`-`an` 在本文件里以较早的加粗起头形式存在，不是标题。—（详情：
   quality-ledger (ck)）
 
+- **CI 的解释器矩阵改为按包声明生成，藏在里面的两道门禁变成了"角色"。** — `ci.yml` 原先直接写
+  `os x python-version` 共 24 格；按 144 条腿实测，一条腿在 ubuntu 是 138 秒、macOS 186 秒、Windows
+  251 秒，其中 76% 只是同一套 ~2 500 断言在每个解释器上重跑（每次 pull request 花掉 78.2 分钟运行时
+  间），而最近 30 次运行里没有一次失败被隔离在单个版本或单个 OS 上。现在 `scripts/ci_matrix_plan.py`
+  从 `pyproject.toml` 的 classifiers 生成矩阵：每个声明版本都在 ubuntu 上跑完整套件，3.8 / 3.12 /
+  3.15 在三个 OS 上都跑，其余 10 格安装该平台真实产出的 abi3 wheel 并把一份文档在 YAML、JSON、
+  JSONC、JSON5 与 TOML 间走一遭（`scripts/wheel_smoke.py`，22-68 秒），完整交叉积则每周日带着套件全
+  量跑一次。实测结果：每次 pull request 78.2 → 约 49 分钟（-37%），完整套件腿 24 → 14，没有任何一格
+  被放弃。之所以是重构而不是单纯削减：`--cov-fail-under=78` 与合规摘要原先由
+  `matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'` 挑选，删掉那格就把两道门禁**绿着
+  ** 关掉了；如今它们是腿上的角色，且规划作业在花钱开腿之前先校验计划 —— 四个"人为破坏计划"的对照测
+  试，外加一个"新增 `3.99` classifier 必须多出一条腿"的测试来证明。—（详情：quality-ledger (cl)）
+
 - **YAML 注释、锚点与标签可完成往返，并以每个种子作门禁。** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` 在每次 `cargo nextest run` 重放已提交的种子语料，
   要求读取器记录的每条注释都出现在输出文本里。往返层的判据是文本幂等，任何「稳定但少一条注释」
@@ -480,6 +493,15 @@ status: new
   携带两种语法以及它们之间的相互作用。种子就是当初崩溃的那个输入，所以它进入拉取请求层（对种子做确定
   性的 `-runs=0` 重放），而不必只等每周采样。它能发现问题这一点是被验证过的，不是想当然：回退修复后
   重放会在 `schema_language.rs` 浮出一个崩溃输入，装上修复后同一种子干净重放，150 秒的探索同样干净。
+
+- **`check_doc_wrapping.py --fix` 现在拒绝不属于受管页面的路径。** — 把它指向一个 Python 模块时，它
+  把文件当作 Markdown 正文重排：先是 docstring，然后是底下的语句，把 `def`、`if`、`raise` 拼到同一
+  行，直到模块抛出 SyntaxError。在矩阵那次改动中于 `scripts/ci_matrix_plan.py` 实测发生，正因为该文
+  件尚未提交，才可完整重写而不是丢失。钩子走不到这一步——`prek.toml` 的 `files:` 模式在脚本运行前就把
+  路径筛掉了——所以安全性长在调用方，命令行自己却没有。如今脚本内用 `GOVERNED` 复刻那个模式，`main`
+  对其它路径一律以退出码 2 拒绝且不写一个字节，并列出所有越界参数。四个测试，其中一个是对照：关掉这
+  道守卫并要求修复器真的改写该文件——否则通过的测试只能说明这份输入碰巧没被改坏。—（详情：
+  quality-ledger (cm)）
 
 #### 性能
 

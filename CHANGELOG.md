@@ -94,6 +94,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   claimed and closed elsewhere, while `ak`-`an` exist here as the older bold lead-in form, not as
   headings. — (details: quality-ledger (ck))
 
+- **The CI interpreter matrix is planned from what the package declares, and its two hidden gates
+  are roles now.** — `ci.yml` wrote `os x python-version`, 24 cells. Measured over 144 legs, a leg
+  costs 138 s on ubuntu, 186 s on macOS and 251 s on Windows, and 76% of that is the same ~2 500
+  assertions re-run per interpreter: 78.2 minutes of runner time per pull request. Over the last 30
+  runs no failure was isolated to one interpreter version or to one OS. `scripts/ci_matrix_plan.py`
+  now builds the grid from `pyproject.toml`'s classifiers: every declared version runs the suite on
+  ubuntu, 3.8 / 3.12 / 3.15 run it on all three OSes, and the other ten cells install that
+  platform's real abi3 wheel and round-trip one document through YAML, JSON, JSONC, JSON5 and TOML
+  (`scripts/wheel_smoke.py`, 22-68 s). The full cross product runs with the suite every Sunday.
+  Measured: 78.2 -> ~49 min per pull request (-37%), 24 -> 14 suite legs, no cell unexercised. The
+  reason this is a restructure and not a cut: `--cov-fail-under=78` and the compliance summary were
+  selected by `matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'`, so deleting that
+  cell switched both gates off *green*. They are leg roles now, and the planner job validates the
+  plan before any leg is paid for - shown by four doctored-plan controls and a test requiring that a
+  new `3.99` classifier grows a leg. — (details: quality-ledger (cl))
+
 - **YAML comments, anchors and tags survive a round trip, gated on every seed.** —
   `crates/pyrs-yaml-core/tests/note_survival.rs` replays the committed seed corpus on every
   `cargo nextest run` and requires every note the reader recorded to appear in the emitted text. The
@@ -605,6 +621,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   demonstrated, not assumed: with the fix reverted the replay surfaces one crash input at
   `schema_language.rs`, and with the fix in place the same seed replays clean, as does 150 s of
   exploration.
+
+- **`check_doc_wrapping.py --fix` refuses paths that are not governed pages.** — Pointed at a Python
+  module it treated the file as Markdown prose and re-flowed it: the docstring, then the statements
+  under it, joining `def`, `if` and `raise` onto shared lines until the module raised SyntaxError.
+  Measured on `scripts/ci_matrix_plan.py` during the matrix work, which is why the file was
+  reconstructible rather than lost. The hook cannot reach that path - `prek.toml`'s `files:` pattern
+  filters before the script runs - so the safety lived in the caller and the command line had none.
+  `GOVERNED` now mirrors that pattern inside the script, `main` refuses any other path with exit 2
+  and writes nothing, and it names every offending argument. Four tests, including a control that
+  switches the guard off and requires the fixer to really rewrite the file - otherwise the passing
+  test only shows this input survived. — (details: quality-ledger (cm))
 
 ### Performance
 
