@@ -4627,6 +4627,53 @@ table in it. The gate then owned the verdict and agreed with the local pair, on 
 `to_python_*` -0.04…-0.36%, and all four `parse_*` scenarios at +0.00% - twenty-one scenarios
 measured, and not one of them moved up.
 
+### (cu) A crate boundary drawn from a fact-checked design note (2026-10-13)
+
+The architecture pillar names two core abstractions to split out: the AST, which became
+`pyrs-ast`, and `事件流` - the event stream. The second one was written as a goal, not as a measured
+design, so before touching the layout the claim was checked against the tree, and the check changed
+it: there is one event vocabulary (`crates/pyrs-yaml-core/src/parser/stream.rs`), one producer
+(granit's `Event`), one consumer (the PyO3 stream API), and of its eleven variants `anchor`, `tag`
+and `Alias` are YAML's grammar while `style` is *shared* - the AST already carries
+`ScalarStyle::SingleQuoted` for JSON5. The type also has two lifetimes today: `StreamReceiver`
+collects everything into a `Vec`, while the binding pulls one `(StreamEvent, Span)` at a time from a
+live parser. "Split the event stream into a crate" is therefore not a refactor of shared code; the
+shared code does not exist yet.
+
+That finding was written up as an option list with the cost of each, and the maintainer ruled option
+B (neutral core plus per-format payload, proven by JSON and TOML producers and a replay property
+test). What shipped here is the first step of B and deliberately *not* the neutral shape: the type
+moved verbatim into `pyrs-event` (`#![no_std]` + `alloc`, depending only on `pyrs-ast`), the engine
+re-exports both names, and no call site changed. The crate-level documentation says in as many words
+that the vocabulary is still YAML's and which fields are not a claim about JSON, so a reader cannot
+mistake step 1 for the finished abstraction. An abstraction with one implementation is a guess about
+the second; the guess is deferred to the step where the second producer forces an answer.
+
+Two workflow facts, both from being wrong in place:
+
+- A design document is only reviewable where a reviewer can open it. `docs/superpowers/` is excluded
+  by `.git/info/exclude` (11th line: `/docs/superpowers/`) and `git ls-files docs/superpowers`
+  returns nothing, so a document written there - as four earlier specs are - is a local artifact: a
+  `cargo` crate comment citing it would point at a file that does not exist in the repository. The
+  design note moved to `docs/dev/event-stream.md`, which is tracked, is English-only like its
+  neighbours (`boundaries.md`, `perf.md`), and is covered by the 100-column prose gate.
+- A pipeline's exit status is its last command's.
+  `uv run python script.py | tail -6 && rm script.py` reported success and deleted the script even
+  though the insertion had raised - because `tail` exited
+  0. When a step is followed by cleanup, run the command without a pipe (or check the artifact), and
+    verify the *file* rather than the message: here `check_changelog_mirrors.py` per-section counts
+    are the evidence that an entry landed, not a printed "inserted".
+
+Verified: `cargo build --workspace`, `cargo clippy --all --all-targets -- -D warnings`,
+`cargo nextest run --all` 579 tests, `cargo test --all --no-default-features`, and the `no_std` gate
+command extended to the new crate -
+`cargo build --locked --no-default-features --target thumbv7em-none-eabi -p pyrs-event` - green. On
+the Python side the extension was rebuilt (`maturin develop --release`) before
+`uv run pytest tests/`, so the stream API is exercised against the moved type rather than a stale
+`.pyd`. The quality-matrix and changelog-coupling gates were run by name because they are the ones
+that enumerate crates; neither keys on the crate list. No behaviour changed, so no instruction-count
+scenario should move - that is the claim CI's `Instruction-count baseline` job checks for this PR.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

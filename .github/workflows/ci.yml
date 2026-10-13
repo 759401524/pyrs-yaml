@@ -285,6 +285,7 @@ jobs:
           --no-default-features
           --target thumbv7em-none-eabi
           -p pyrs-ast
+          -p pyrs-event
           -p pyrs-schema
           -p pyrs-json
           -p pyrs-toml

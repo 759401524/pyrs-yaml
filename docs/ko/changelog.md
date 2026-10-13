@@ -17,6 +17,22 @@ status: new
 
 #### 추가
 
+- **`pyrs-event`: 문서 이벤트 어휘를 독립 크레이트로 만들었습니다.** — AST 와 나란한, 아키텍처
+  기둥이 지정한 두 번째 핵심 추상입니다. `StreamEvent` 와 그 열한 가지 변형을
+  `crates/pyrs-yaml-core/src/parser/stream.rs` 에서 옮겨 `#![no_std]` + `alloc` 이고 `pyrs-ast` 만
+  의존하는 크레이트에 담았습니다. 의존하는 까닭은 `ScalarStyle` 과 `Tag` 를 공유하기 위해서이고,
+  그렇게 하면 이벤트 열과 거기서 짓는 트리가 style 이나 tag 의 뜻에서 어긋나지 않습니다. 엔진은 두
+  이름을 계속 re-export 하므로 `pyrs_yaml_core::parser::{StreamEvent, StreamEventType}` 이 그대로
+  해석되고 호출 지점은 하나도 바뀌지 않았습니다. 형태는 의도적으로 그대로 두었습니다. 아직 YAML 의
+  어휘입니다. 중립적인 어휘는 두 번째 생산자를 놓고 설계해야 하는데 그 생산자는 아직 없기
+  때문입니다. `docs/dev/event-stream.md` 가 판결(option B) 과 그것을 실제로 만드는 순서 — JSON
+  생산자, TOML 생산자, 그리고 이벤트로 직접 파서가 만든 트리를 복원함을 보이는 재생 성질 테스트 — 를
+  기록하며, 이 항목은 그 계획의 첫 단계입니다. 그래서 크레이트 자신의 문서에 어떤 필드가 YAML
+  문법인지(JSON 에 anchor 가 있다는 주장이 아님) 를 적었습니다. 동작 변경 없음, 새 의존성 없음, 열
+  경로에 추가된 것 없음: 이 크레이트의 thumbv7em `no_std` 빌드가 그 계층 구조를 정직하게 지키는
+  관문이고, 이제 다른 기초 크레이트들과 함께 `no_std` 작업에 들어갑니다. — (자세히: quality-ledger
+  (cu))
+
 - **CI 가 Python 3.15 에서 검사 묶음을 돌린다.** — 정식 릴리스는 나와 있다(devguide 버전 표는 최초
   릴리스를 2026-10-09, 상태를 `bugfix` 로 적는다). `3.15` classifier 와 `abi3t` + `abi3t-py315` 특성
   지정은 이미 저장소에 있었고 abi3 휠도 3.15 에 설치할 수 있다. 그런데도 어떤 잡도 거기서 묶음을
