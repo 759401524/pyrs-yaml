@@ -72,13 +72,14 @@ use pyrs_ast::ast::{Chomping, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};
 ///
 /// Numeric variants carry an optional `source` spelling so `from_toml ->
 /// to_toml` is byte-stable for radix-prefixed integers (`0xDEADBEEF`,
-/// `0o755`, `0b1101`) and exponent floats (`1e10`, `-3.14e-2`). The
-/// spellings we DO preserve are exactly those YAML Core schema also
-/// parses to the same numeric type, so the projected `CustomNode` needs
-/// no `!!int` / `!!float` tag to survive downstream `to_yaml`/`load_*`
-/// round-trips. Underscore-separated digits and explicit `+` signs are
-/// deliberately NOT preserved because YAML Core reads them as strings;
-/// the parser canonicalizes them to plain decimal (matches #107).
+/// `0o755`, `0b1101`) and exponent floats (`1e10`, `-3.14e-2`). A spelling
+/// YAML Core cannot read back as the same type gets a standard tag on the
+/// projected node: Core has no `0b` lexeme, so the untagged text would
+/// re-resolve to a string, while `!!int` states the type the document gave —
+/// and a standard tag decides the type in every format since (bu).
+/// Underscore-separated digits and explicit `+` signs are deliberately NOT
+/// preserved: the writer emits a source spelling only where TOML's own
+/// grammar accepts it verbatim, and neither form qualifies (matches #107).
 pub(crate) enum TomlValue {
     /// `bool` records whether the source used a multi-line form (`"""…"""`
     /// or `'''…'''`). PR #132: it lets the projected `CustomNode` carry
@@ -292,7 +293,26 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
             }
         }
         TomlValue::Integer(i, source) => match source {
-            Some(src) => CustomNode::plain_scalar(src),
+            Some(src) => {
+                let mut node = CustomNode::plain_scalar(src.clone());
+                // A preserved spelling only survives the hub if YAML Core reads
+                // it back as the same type. `0b1010` does not — Core has no binary
+                // lexeme, so an untagged plain scalar re-resolves to a string. The
+                // tag states the type instead, which is the route the spoke
+                // declined while the bridges still read text alone; since (bu) the
+                // loader, `to_yaml`, `to_toml` and the JSON writers all ask the tag
+                // first, so one answer cannot drift from another.
+                if !matches!(
+                    pyrs_schema::types::Schema::Core.resolve(&src),
+                    pyrs_schema::types::YamlType::Int(_)
+                ) {
+                    node.set_tag(Tag {
+                        handle: "!!".to_string(),
+                        suffix: "int".to_string(),
+                    });
+                }
+                node
+            }
             None => CustomNode::plain_scalar(i.to_string()),
         },
         TomlValue::Float(f, source) => match source {

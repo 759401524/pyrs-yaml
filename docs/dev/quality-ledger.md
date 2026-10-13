@@ -4373,6 +4373,58 @@ exits
 0. No Rust source changed - `git diff --stat` ends at the test file, the five changelog pages and
 this section.
 
+### (cp) A spelling the hub could not hold is now a type it can state (2026-10-13)
+
+`(bu)` shipped steps 1-2 of #340 and left step 3 on purpose, because the two halves are ordered: the
+TOML spoke could not keep `0b1010` as written until a standard tag decided the type in every format.
+Measured on `main` before this change, `from_toml("b = 0b1010")` returned `b: 10` and `to_toml` of
+that `b = 10`, while `0x1f` and `0o17` kept their spelling. The canonicalisation was not a defect
+but design rule D1 ("only spellings YAML Core also accepts get preserved") doing its job — Core has
+no `0b` lexeme, so an untagged plain `0b1010` re-reads as a string, and losing the text was the half
+of the trade that kept the value.
+
+The projection now asks the question every other consumer asks. `toml_value_to_node` resolves the
+preserved spelling through `Schema::Core` and, when Core does not read it back as an integer, tags
+the node `!!int`. The rejected alternative was `src.starts_with("0b")` — a second copy of a grammar,
+which is precisely the shape #340 was filed against, and one that would have gone quietly wrong the
+next time Core gained or lost a lexeme. `from_toml("b = 0b1010")` is now the hub scalar
+`!!int 0b1010`: the loader reads `10`, `to_toml` writes `0b1010`, `to_json`/`to_jsonc`/`to_json5`
+project `10`, and the TOML text is a fixed point after one round rather than after two.
+
+Two things stay unfaithful, and neither is a spelling the writer could keep. `0b1101_0110` loses its
+separators: TOML's own literal grammar rejects `_`, so `is_toml_int_literal` would refuse the text
+and canonicalise it anyway — the parser strips them rather than emitting a tag that cannot pay. A
+hand-built *untagged* `0b1010` still re-reads as a string, which is the point: the tag is what
+carries the type, and this change moved no boundary of what Core resolves on its own. The undecided
+`!!binary` mapping (#340's remaining ruling) is untouched.
+
+The cost is not measurable on the counted scenarios, and the reason is stated rather than assumed:
+`MEDIUM_TOML`, the fixture behind `from_toml_medium` and `to_toml_medium`, holds no radix-prefixed
+integer (`sed -n '149,167p' crates/pyrs-yaml-core/src/bench_inputs.rs | grep -c '0x\|0o\|0b'` reads
+`0`), so the new branch is guarded by `Some(src)` and never fires. `scripts/ir_gate.py`
+could not confirm it on this box: the WSL build stops at the linking step of `pyrs-yaml` with
+`rust-lld: error: unable to find library -lpython3.12` (no `python3-dev` there), which is an
+environment limit, not a defect in this change. The enforcing image runs the gate.
+
+Verified: `cargo nextest run --all` 573 tests, including the inverted pair `v = 0b1101_0110` →
+`v = 0b11010110` in `preserves_radix_integer_source_spelling`, the new
+`binary_spelling_reaches_the_hub_under_an_int_tag`, which pins tagged-binary/untagged-hex side by
+side so the fence cannot be applied twice or forgotten, and
+`the_fence_reaches_values_inside_a_container` for array and inline-table members.
+`tests/test_toml.py::TestBinaryIntegerFidelity` (6 cases) asserts hub text byte-for-byte, the
+one-round fixed point, and that the five formats agree on the *type* of the same node.
+`cargo clippy --all --all-targets -- -D warnings` and `cargo fmt --all` clean, the suite is
+2719 pass / 10 skip, and `prek run --all-files` exits 0 — including the mirror gate, which reads all
+five changelogs at once.
+
+That the tests carry the change rather than restate it was checked by mutation: with the tag
+condition short-circuited (`if false && !matches!(…)`), two tests redden and name the cause —
+`binary_spelling_reaches_the_hub_under_an_int_tag` reads `("0b1010", None)` against
+`Some(("!!", "int"))`, and `preserves_radix_integer_source_spelling` emits `v = "0b101"` because the
+untagged text resolves to a string. The seed-corpus fixed-point test stays green under the same
+mutation, which is the expected split: it pins stability, not fidelity. The mutation was reverted
+before this entry was committed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

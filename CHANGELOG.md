@@ -260,6 +260,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **TOML binary integers keep their spelling.** — `b = 0b1010` came back as `b = 10`. The spoke
+  canonicalised it on purpose: YAML Core has no `0b` lexeme, so an untagged plain `0b1010` reaches
+  the hub and re-reads as a *string*, and design rule D1 ("only spellings YAML Core also accepts get
+  preserved") dropped the spelling rather than corrupt the value. That argument expired when the
+  bridges learned to read tags (`(bu)`, and the ordering #340 set for it): the projection now keeps
+  the text and states the type, so `from_toml("b = 0b1010")` is the hub scalar `!!int 0b1010` - the
+  loader reads it as `10`, `to_toml` writes `0b1010` back, and the JSON writers project `10`. One
+  document, one type, in every format that sees it, and the TOML text settles in one round. What is
+  still not faithful is what TOML itself cannot spell: `0b1101_0110` loses its separators, and a
+  hand-built *untagged* `0b1010` still re-reads as a string - the tag is what carries the type. The
+  undecided `!!binary` mapping is untouched and stays open on that issue. — (details:
+  quality-ledger (cp))
+
 - **The coverage gate stopped duplicating a whole suite run.** — `coverage` created its own
   virtualenv, downloaded the ubuntu wheel, cloned all three corpora and ran `pytest tests/` a second
   time on the interpreter `test` already covered (ubuntu/3.12). It is now one flag on that leg, with
