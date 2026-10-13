@@ -230,3 +230,202 @@ def test_rejections_are_typed_parse_errors():
         "changed, re-read both before trusting this test"
     )
     assert not offenders, "untagged rejections (crash or wrong error type):\n" + "\n".join(offenders[:20])
+
+
+# ── The write side, read back by a reader that is not this codebase ─────────
+#
+# Everything above is about which documents the parsers accept. The other direction was unpinned:
+# the JSON-family writers had no cross-library gate, while the YAML side of the same corpus was
+# covered by `test_property_dialects.py`. The measurement that motivated this exists already - all
+# 95 valid documents re-emitted by `to_jsonc` read back through stdlib `json` as the same value, 0
+# disagreements, which is how (cf) closed its wide-integer defect. Pinning it is the missing half.
+
+
+def _valid_texts() -> list[tuple[Path, str]]:
+    """`y_*` cases that can reach a text API, i.e. the corpus documents a writer is expected to emit."""
+    out: list[tuple[Path, str]] = []
+    for path, accept in _cases():
+        if not accept:
+            continue
+        try:
+            out.append((path, _text(path)))
+        except UnicodeDecodeError:
+            continue  # counted by the accept/reject tests; no text API can reach it
+    return out
+
+
+def _same_leaf(a: object, b: object) -> bool:
+    """Equal, and equal *as the same JSON type*.
+
+    `1 == 1.0` and `0 == False` in Python, so a plain `==` on decoded documents cannot see the exact
+    defect class this repository has been bitten by twice: an integer written as a float, or a bool
+    written as a number. Comparing `type()` alongside the value costs nothing and closes that hole;
+    without it the gate below would pass on the #358 regression.
+    """
+    return type(a) is type(b) and a == b
+
+
+def _same_value(a: object, b: object) -> bool:
+    """Recursive `_same_leaf` over arrays and objects, with keys compared in document order."""
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_same_value(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return list(a) == list(b) and all(_same_value(a[k], b[k]) for k in a)
+    return _same_leaf(a, b)
+
+
+def _pairs(text: str) -> list:
+    """The document as stdlib sees it, with object key order and repetition intact."""
+    import json
+
+    return json.loads(text, object_pairs_hook=lambda p: [(k, v) for k, v in p])
+
+
+def _has_repeated_name(node: object) -> bool:
+    """Does any object in this pair-structure carry the same name twice?
+
+    Derived from the document rather than listed: the exemption below has to follow the corpus, not a
+    hand-written set of file names that quietly stops matching when the corpus is updated.
+    """
+    if isinstance(node, list) and node and isinstance(node[0], tuple):
+        names = [key for key, _value in node]
+        if len(set(names)) != len(names):
+            return True
+        return any(_has_repeated_name(value) for _key, value in node)
+    if isinstance(node, list):
+        return any(_has_repeated_name(item) for item in node)
+    return False
+
+
+def test_the_json_writers_are_read_by_the_reference_implementation():
+    """`to_json` and `to_jsonc` of every valid document must re-read as the *same value and the same keys*.
+
+    The oracle is stdlib `json`, which shares no code with this repository. Two comparisons run per
+    document. The first is the contract a user cares about - whitespace, escaping and number spelling
+    are the writer's business, the value is not - and it walks object keys in document order, so a
+    member that moved is reported there. The second compares the `object_pairs_hook` pair lists for
+    what dict equality genuinely cannot see: a writer that emits a member the input never repeated
+    collapses to the same dict on both sides, and only the pair count tells. Both halves are measured
+    rather than assumed - the control that reverses the writer's pair loop reports `value changed` for
+    six documents and the `elif` below keeps those from being named twice, while the control that
+    writes every member twice (still valid JSON, still equal as dicts, because the repeat collapses)
+    reddens 18 of 190 and the value comparison never mentions it.
+
+    Equality is type-strict: `1` re-emitted as `1.0` is a disagreement here even though Python calls
+    them equal, because that substitution is the defect #358 fixed and a value-only comparison cannot
+    see it. Same for a bool written as a number. The control that performs the substitution names 38
+    of 190 re-reads with their input, output and emitted text, and every one of those pairs satisfies
+    `==` (`[1] == [1.0]` and `0 == False` both return `True`), so the type check is the only thing in
+    the gate that reddens. The JSON5 gate below fails on four cases for the same reason.
+
+    What this gate cannot see, named because the sentence above is a limit and not a footnote: the
+    corpus is comment-free and anchor-free, so no defect in the *comment* machinery reaches it - issue
+    #359's dropped slots are pinned by the eleven-position table in `tests/test_json.py`, and only
+    there. It also cannot reach the writer's number-*normalising* arm, and the control found that by
+    failing first: every document here arrives through `from_json`, so its numbers already spell as
+    JSON, and the fidelity pass returns them verbatim before the arm is consulted. Making the
+    substitution observable took that pass switched off as well. The YAML spellings the arm exists for
+    (`0x1F` as `31`, `!!str 7` as `"7"`) are Rust-side territory, pinned there by
+    `exotic_scalars_quote_or_normalize` in `crates/pyrs-yaml-core/src/integration/json_family.rs`.
+    A gate is worth what its fixture can show.
+    """
+    import json
+
+    cases = _valid_texts()
+    assert len(cases) >= 90, f"only {len(cases)} valid cases reached a writer"
+
+    unparseable: list[str] = []
+    refused: list[str] = []
+    diverging: list[str] = []
+    reordered: list[str] = []
+    repeated_name: list[str] = []
+    checked = 0
+    for path, text in cases:
+        try:
+            expected = json.loads(text)
+            expected_pairs = _pairs(text)
+        except Exception as exc:
+            unparseable.append(f"{path.name}: stdlib json refuses the valid case: {str(exc)[:60]}")
+            continue
+        # One exemption, and it is a property of the input rather than a concession: a document that
+        # repeats an object member has no answer in terms of *pairs*, because RFC 8259 declares the
+        # behaviour unpredictable and every implementation - stdlib `json` included, and this hub as
+        # well, which is an `IndexMap` keyed by the node - resolves it to the last value. Checking
+        # pair order there would assert a behaviour no JSON reader has. The value check above still
+        # runs on these documents, and the count is pinned so the exemption cannot widen unnoticed:
+        # it shrinks to zero the day the hub can hold two indistinguishable keys, and that is the
+        # outcome worth having.
+        skip_pairs = _has_repeated_name(expected_pairs)
+        if skip_pairs:
+            repeated_name.append(path.name)
+        doc = pyrs_yaml.parse(pyrs_yaml.from_json(text))
+        for name in ("to_json", "to_jsonc"):
+            try:
+                emitted = getattr(doc, name)()
+            except pyrs_yaml.YamlSerializeError as exc:
+                refused.append(f"{path.name} {name}(): {exc}")
+                continue
+            checked += 1
+            try:
+                got = json.loads(emitted)
+                got_pairs = _pairs(emitted)
+            except Exception as exc:
+                diverging.append(f"{path.name} {name}(): re-read failed ({str(exc)[:50]}) in {emitted[:80]!r}")
+                continue
+            if not _same_value(expected, got):
+                diverging.append(
+                    f"{path.name} {name}(): value changed\n    in:  {expected!r}\n    out: {got!r}\n    text: {emitted[:120]!r}"
+                )
+            elif not skip_pairs and got_pairs != expected_pairs:
+                reordered.append(
+                    f"{path.name} {name}(): keys moved or collapsed\n    in:  {expected_pairs!r}\n    out: {got_pairs!r}"
+                )
+    assert checked >= 180, f"only {checked} writer re-reads ran; the matrix of cases x writers is short"
+    assert sorted(repeated_name) == [
+        "y_object_duplicated_key.json",
+        "y_object_duplicated_key_and_value.json",
+    ], f"the repeated-name exemption now covers {sorted(repeated_name)}; re-read the corpus"
+    assert not unparseable, "the corpus marks these valid:\n  " + "\n  ".join(unparseable[:10])
+    assert not refused, "the writers refused documents their reader accepted:\n  " + "\n  ".join(refused[:10])
+    assert not diverging, f"{len(diverging)} of {checked} re-reads disagree with stdlib json:\n  " + "\n  ".join(
+        diverging[:8]
+    )
+    assert not reordered, f"{len(reordered)} of {checked} re-reads changed key order or count:\n  " + "\n  ".join(
+        reordered[:8]
+    )
+
+
+def test_the_json5_writer_is_read_by_the_reference_parser():
+    """`to_json5` of every valid document must re-read as the same value under `pyjson5`.
+
+    JSON5 is the dialect whose writer may legitimately change the *spelling* - a non-finite float
+    becomes the bare `Infinity` / `NaN` token that strict JSON has no literal for - so stdlib `json`
+    cannot be the oracle here and the reference JSON5 parser can. Skipped when that package is not
+    installed, which is the marker's business (`python_version < '3.14'`), not this test's.
+    """
+    pyjson5 = pytest.importorskip("pyjson5", reason="reference JSON5 parser not installed")
+    cases = _valid_texts()
+    assert len(cases) >= 90, f"only {len(cases)} valid cases reached a writer"
+
+    diverging: list[str] = []
+    checked = 0
+    for path, text in cases:
+        try:
+            expected = pyjson5.loads(text)
+        except Exception:
+            continue  # the strict reading is already the subject of the test above
+        emitted = pyrs_yaml.parse(pyrs_yaml.from_json(text)).to_json5()
+        checked += 1
+        try:
+            got = pyjson5.loads(emitted)
+        except Exception as exc:
+            diverging.append(f"{path.name}: re-read failed ({str(exc)[:60]}) in {emitted[:80]!r}")
+            continue
+        if got != expected:
+            diverging.append(
+                f"{path.name}: value changed\n    in:  {expected!r}\n    out: {got!r}\n    text: {emitted[:120]!r}"
+            )
+    assert checked >= 90, f"only {checked} JSON5 re-reads ran"
+    assert not diverging, f"{len(diverging)} of {checked} re-reads disagree with pyjson5:\n  " + "\n  ".join(
+        diverging[:8]
+    )

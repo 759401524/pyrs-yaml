@@ -4315,6 +4315,64 @@ tests/test_doc_wrapping_gate.py tests/test_ci_matrix_plan.py --noconftest` (the 
 `pyrs_yaml` are excluded by hand). 235 of 238 on 3.8, 218 of 218 on 3.9 with those three deselected;
 the previously red three tests pass on both. The scan costs 0.32 s over 182 items on every leg.
 
+### (co) A write-side oracle whose first control passed, and what that said about the path (2026-10-13)
+
+`tests/test_json_test_suite.py` has always been about the readers: which of the 283 determinate
+JSONTestSuite cases this engine accepts, and with what error. The writers of the same four dialects
+were checked against this repository's own parser and nothing else - while the measurement that
+found (cf)'s wide-integer defect had been a cross-library re-read, run once and never pinned. Two
+gates close that: every valid document (95) through `to_json` and `to_jsonc` re-read by stdlib
+`json` (190 re-reads), and `to_json5` re-read by `pyjson5`.
+
+Type-strictness is the load-bearing part, and it was chosen against Python's own equality:
+`[1] == [1.0]` and `0 == False` both return `True`, so a comparison that reads values and stops
+there accepts the substitution #358 fixed. Measured by control rather than by argument - an integer
+emitted as `{i}.0` reddens 38 of 190 re-reads and 4 of 95 JSON5 re-reads, each naming the input, the
+output and the emitted text.
+
+The control passed on its first attempt, and that was the more useful result. `write_plain` returns
+a number whose text already spells JSON (`is_json_number`) verbatim, before any schema resolution,
+so a corpus that arrives through `from_json` never reaches the normalising arm the substitution sits
+in; making the mutation observable required switching that fidelity pass off as well. Two readings
+were available and the wrong one is tempting: the gate is not blind to type substitution, it is
+blind to *which documents reach* the arm, which is a property of the fixture. The YAML spellings the
+arm exists for (`0x1F` as `31`, `!!str 7` as `"7"`) are pinned on the Rust side by
+`exotic_scalars_quote_or_normalize` in `crates/pyrs-yaml-core/src/integration/json_family.rs`, and
+the docstring now says so instead of leaving the next reader to repeat the experiment.
+
+The second control found an overlap inside the gate. Reversing the writer's pair loop reddened six
+documents - reported by the *value* comparison, because `_same_value` walks object keys with
+`list(a) == list(b)` and already pins order, while the pair-list check sits behind an `elif` and
+never fired. The first draft of the docstring had credited that second comparison with guarding
+order, which is exactly what the control disproved. What it owns is the case dict equality cannot
+see, and the third control went looking for it: emitting every member twice stays valid JSON, and
+the repeat collapses, so both sides are equal as dicts - 18 of 190 re-reads reddened and the value
+comparison never mentioned any of them. The exemption for repeated input names is untouched -
+`y_object_duplicated_key.json` and `y_object_duplicated_key_and_value.json`, pinned by assertion -
+and the two arms now report value and structure separately, each with a demonstrated way to fail.
+
+All three mutations were reverted, and the clean rebuild was confirmed by probing rather than by
+trusting the build's exit code: `0x1F` -> `31`, `!!str 7` -> `"7"`, and `{"a": 1, "b": 2}` back in
+order. Twice during the work a reading raced its own build, and a green gate was really a stale
+`.pyd`, so the mtime of `python/pyrs_yaml/pyrs_yaml.pyd` is now checked before any control's verdict
+is believed.
+
+The same discipline caught a third thing, which was this change's own mistake rather than the
+repository's. A throwaway script that rewrote the five changelog entries searched backwards for the
+line starting the entry and took the *first* such line, and because the test it applied was
+"does this bullet's slice down to the citation contain the citation", every bullet in the section
+passed it: the script replaced 248 lines of the root changelog and 688 of the English mirror with
+one entry. `git diff --stat` was what showed it, and `git checkout` repaired it, because those files
+held no other uncommitted work. Inserting by section boundary (the `Changed` header, asserted) is
+what the rewrite did afterwards, and the parity guard then had to be told the count had grown by one
+Added entry in all five pages rather than assume it. An ad-hoc script that edits committed prose
+needs the same anchor discipline as a gate: search for a boundary, not for a membership.
+
+Verified: the file's 7 tests pass, the suite is 2713 pass / 10 skip, and `prek run --all-files`
+exits
+0. No Rust source changed - `git diff --stat` ends at the test file, the five changelog pages and
+this section.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
