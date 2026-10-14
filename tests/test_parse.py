@@ -180,6 +180,17 @@ class TestComplexKeys:
         assert "Mapping {" not in str(raised.value)
         assert "Sequence {" not in str(raised.value)
 
+    def test_the_refusal_does_not_point_at_a_route_that_also_refuses(self):
+        # The message first shipped told the reader to project the document with
+        # to_json()/to_toml(). Both raise on that same key — `json-object-key` and
+        # `toml-keys-must-be-scalars`, measured here — so the advice sent the reader into two
+        # more errors. Only the AST route survives, and the message now says that.
+        with pytest.raises(TypeError, match="unhashable key") as raised:
+            pyrs_yaml.safe_load("? {a: 1}\n: v\n")
+        text = str(raised.value)
+        assert "or project it with" not in text
+        assert "to_json() and to_toml() refuse this key as well." in text
+
     def test_a_nested_sequence_key_keeps_pythons_own_refusal(self):
         # Only the outer container becomes a tuple, exactly as ruamel does it, so a nested
         # list is refused by Python rather than by a message this engine adds for it.
