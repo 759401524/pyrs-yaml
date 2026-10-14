@@ -19,6 +19,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **A prose count in the defence matrix is now checked against the file it describes.** —
+  `QUALITY_MATRIX.md` section 2 said the baseline carried "seventeen" scenarios while
+  `.ci/ir-baseline.json` carried twenty-one, which is also the number the refresh job prints and the
+  number this repository's own test docstring names. The keys of that file were already pinned, so a
+  reader would have found the claim green — the same shape as every other defect this file records:
+  a check that passes for a reason unrelated to what it assures.
+  `tests/test_ir_baseline_workflow.py` now counts the scenarios in the committed file and requires
+  section 2 to state the same one, so adding a scenario to `benches/ir_gate.rs` has to revisit the
+  sentence or redden the run. Verified by mutation: restoring the old "seventeen" fails this test
+  and nothing else, and the page was returned byte-identical afterwards. The same paragraph carried
+  two measurement claims that today's cross-host recheck (PR #402's comment) proved imprecise, and
+  they are corrected rather than removed: the "agrees with a baseline generated elsewhere by at most
+  0.10%" figure holds for the engine channel and is wider there than stated for the binding one
+  (+0.26% on `to_python_medium`, +0.19% on `to_python_small`, against that channel's own 0.076–0.24%
+  within-run spread), so the bound is now named per channel; and `serialize_block_scalars`, the
+  scenario whose name carried the old 1.45% drift, now reads 12,288,634 on WSL2 against the
+  refresh's 12,288,686 — 0.0004% between two hosts.
+
 - **The instruction-count gate can now say *where* a scenario's instructions go.** — every
   optimization round in `docs/dev/perf.md` began from the same throwaway probe: build the release
   benchmark unstripped, run it under callgrind twice, subtract `--setup-only`, rank the functions.

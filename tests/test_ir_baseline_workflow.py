@@ -350,3 +350,60 @@ def test_the_log_counts_the_names_not_the_flags():
     )
     assert "if [ ${#names[@]} -gt 0 ]" in block, "the branch decides on the wrong array"
     assert "${#args[@]}" not in block, "a flag count leaked back into the message"
+
+
+MATRIX = REPO_ROOT / "QUALITY_MATRIX.md"
+
+# The words section 2 uses when it counts the scenarios out loud, up to the fifties.
+_ONES = [
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+]
+_TENS = {2: "twenty", 3: "thirty", 4: "forty", 5: "fifty"}
+
+
+def _count_word(n: int) -> str:
+    """The English words section 2 uses when it counts the scenarios out loud."""
+    if n < 20:
+        return _ONES[n]
+    tens, ones = divmod(n, 10)
+    return _TENS[tens] if not ones else f"{_TENS[tens]}-{_ONES[ones]}"
+
+
+def test_the_page_counts_the_scenarios_the_file_carries():
+    """`QUALITY_MATRIX.md` section 2 states how many scenarios the baseline holds; it has to be right.
+
+    The page carried "seventeen of them" while `.ci/ir-baseline.json` held twenty-one - the count that
+    the refresh job itself prints, and the count this file's own docstring names. Nothing read it,
+    because the file's *keys* were pinned and its *prose* was not, which is the same shape as the
+    defect above: a check that passes for a reason unrelated to what it claims to assure. A scenario
+    is added by editing `benches/ir_gate.rs`, and if that edit never revisits this sentence, the
+    number here silently becomes a historical one.
+    """
+    import json
+
+    count = len(json.loads(BASELINE.read_text(encoding="utf-8"))["scenarios"])
+    page = MATRIX.read_text(encoding="utf-8")
+    phrase = f"{_count_word(count)} of them, since the binding harness joined"
+    assert phrase in page, (
+        f"the baseline holds {count} scenarios; QUALITY_MATRIX.md section 2 says otherwise, "
+        f"and no gate but this one reads it"
+    )
