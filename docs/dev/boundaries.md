@@ -163,13 +163,30 @@ machinery and the PyO3 stack are simply not in that graph. That is the fine-grai
 `pyrs-ast`, `pyrs-event`, `pyrs-schema`, `pyrs-json` and `pyrs-toml` for `thumbv7em-none-eabi`, a
 target with no std at all, so those closures cannot be reaching `std` anywhere.
 
-**Incremental cost, not measured.** The obvious experiment - edit one file, count what recompiles -
-was attempted on this tree and produced `0 units rebuilt` in every case, because the edit never
-reached the file: the append was inside a nested shell quote that ate it, and cargo's fingerprint
-correctly saw an unchanged tree. A zero that came from a broken probe is not a result, and the claim
-stays open. What a correct probe has to do: change file *contents* (a real comment line, verified by
-reading the file back), warm the full workspace once so nothing rebuilds for being unseen, then
-count `Compiling` lines for `cargo check -p pyrs-json -p pyrs-toml` after touching
-`crates/pyrs-yaml-core/src/serializer.rs` - the isolation number the table above predicts, zero -
-and after touching `crates/pyrs-ast/src/ast.rs` for the hub's fan-out. Until those two numbers
-exist, this file's claim is the closure table, not a rebuild time.
+**Incremental cost, probed - and the probe says the claim is only half true.** Unit counts, not wall
+clock: this box's timings move with the shared-folder filesystem, and `cargo check` prints
+`Checking` rather than `Compiling`, which is why a first attempt counted zero units by grepping the
+wrong verb. Method that works: warm `cargo check --workspace` until a clean tree reports 0, append
+one comment line, count units, restore.
+
+- Edit `crates/pyrs-ast/src/ast.rs` (the hub) -> `cargo check --workspace` re-checks **7** units.
+- Edit `crates/pyrs-yaml-core/src/serializer.rs` (one engine) -> `cargo check -p pyrs-yaml-core`
+  re-checks **1**, and `cargo check -p pyrs-json -p pyrs-toml` re-checks **1**: `pyrs-json`, while
+  `pyrs-toml` stayed fresh.
+
+So the YAML engine does not touch the TOML engine, and the hub's 7 is the price of the shared node
+model - both are what the split is supposed to buy. The surprise is the middle result: a change
+inside the YAML serializer pulled the JSON engine back in, which the closure table above says should
+be impossible (`pyrs-json` does not depend on `pyrs-yaml-core`). The likeliest cause is feature
+unification through `pyrs-ast` or `indexmap` - one crate built two ways in the same workspace
+directory invalidates the other consumer - but that is a hypothesis, not a result, and the two
+engines sharing a target directory is not controlled for either. The open question is therefore
+specific and cheap to settle: repeat the serializer probe with separate target directories per
+engine, and if the JSON recheck disappears the fix is a build-side convention, not an architecture
+change. Until then this file claims the closure table and the fan-out counts, and does not claim
+that editing one engine is free for the others.
+
+Two environment facts belong to this measurement because they wasted it first: `cargo +1.97.1` on
+the Windows host fails with `missing manifest in toolchain 1.97.1-x86_64-pc-windows-msvc` (that
+install is broken; use WSL for the pinned toolchain), and a `touch` is not an edit here - cargo
+fingerprints contents, so a mtime-only change legitimately rebuilds nothing.
