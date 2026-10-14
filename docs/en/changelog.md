@@ -296,6 +296,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **`granit-parser` 1.3 → 2.0.** — the major bump needed no source change (neither removed public
+  helper, `found_tabs` nor `has_valid_yaml_ws`, is referenced anywhere in `crates/` or `python/`),
+  `cargo nextest run --workspace --exclude pyrs-yaml` reports 579 passed,
+  `uv run pytest tests/ -k "not numpy"` reports 2678 passed / 10 skipped - which is the part that
+  matters, because it is the comment, anchor and cross-library compliance tier that a compile cannot
+  vouch for - and `scripts/ir_gate.py` on the gate's rustc 1.97.1 finishes "OK: every scenario
+  within tolerance of the committed baseline" (`to_python_medium` +0.26%, `to_python_small` +0.13%,
+  `from_json_medium` −0.00%). `cargo tree` confirms the graph really carries v2.0.0 while measuring.
+
 - **Two mapping keys are the same key only where the reader says so.** — the rule that decides
   whether two keys collide in text, `keys_collide_in_text`, compared a scalar's raw value and
   ignored the rest: it called `!a k:` and `!b k:` one key, and `null:` and `'null':` one key, while

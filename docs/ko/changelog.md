@@ -272,6 +272,14 @@ status: new
 
 #### 변경
 
+- **`granit-parser` 1.3 → 2.0.** — major 올림을 실측 후 적용했다. 소스 변경 없이 타입 체킹이
+  통과한다(지워진 공개 헬퍼 `found_tabs`와 `has_valid_yaml_ws` 모두 `crates/`와
+  `python/` 어디에서도 참조되지 않습니다). `cargo nextest run --workspace --exclude pyrs-yaml`은 579
+  통과, `uv run pytest tests/ -k "not numpy"`는 2678 통과 / 10 건너뛰기입니다. 핵심은 후자인데,
+  컴파일로는 보증할 수 없는 주석·앵커·라이브러리 간 규격 계층까지 통과하기 때문입니다. 게이트가
+  고정하는 rustc 1.97.1에서 `scripts/ir_gate.py`는 "모든 시나리오가 허용 오차 이내"로 끝납니다
+  (`to_python_medium` +0.26%, `from_json_medium` −0.00%). `cargo tree`가 v2.0.0을 확인했습니다.
+
 - **두 mapping 키는 리더가 그렇다고 보는 곳에서만 같은 키입니다.** — 두 키가 텍스트에서 충돌하는지
   정하는 `keys_collide_in_text` 규칙은 scalar의 원시 값만 비교하고 나머지는 무시했습니다. `!a k:`와
   `!b k:`를 한 키로, `null:`과 `'null':`도 한 키로 불렀지만, 내보낸 텍스트를 다시 읽는 리더는 양쪽

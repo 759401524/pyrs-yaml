@@ -265,6 +265,14 @@ status: new
 
 #### 変更
 
+- **`granit-parser` 1.3 → 2.0.** — major の引き上げを実測のうえ適用した。ソース変更なしで型検査が
+  通る（削除された公開ヘルパー `found_tabs` と `has_valid_yaml_ws` は
+  `crates/` にも `python/` にも参照がない）。`cargo nextest run --workspace --exclude pyrs-yaml` は
+  579 件成功、`uv run pytest tests/ -k "not numpy"` は 2678 件成功／10 件スキップ。ここが要点で、
+  コンパイルが保証できないコメント・アンカー・ライブラリ間互換の層まで通るということです。ゲートが
+  固定する rustc 1.97.1 での `scripts/ir_gate.py` は「全シナリオが許容範囲内」で終了
+  （`to_python_medium` +0.26%、`from_json_medium` −0.00%）。`cargo tree` は実際に v2.0.0 を確認。
+
 - **二つの mapping キーは、リーダーがそう見ると場で同じキーです。** — 二つのキーがテキスト上で衝突す
   るかを決める規則 `keys_collide_in_text` は scalar の生の値だけ比べて他を無視していました。`!a k:`
   と `!b k:` を同じキー、`null:` と `'null':` も同じキーと判定しますが、出力を読み直すリーダーはどち
