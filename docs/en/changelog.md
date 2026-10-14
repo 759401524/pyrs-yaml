@@ -820,6 +820,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The JSON reader stopped paying for two calls that had nothing to do.** — attribution on
+  `from_json_medium` found `Parser::ws` at 6.63% of the scenario on a fixture with *no whitespace at
+  all*: roughly ninety calls per parse, thirty-odd instructions each, for a question whose answer is
+  almost always "the next byte is not separation". `attach_pending` was the same shape at 3.23% on a
+  document with no comments, met by every key and every value. `ws` is now an inlined guard over one
+  predicate, `at_separation`, with the loop moved to `ws_extended` unchanged, and `attach_pending`
+  returns as soon as it sees an empty list. The guard is a sound superset of the loop in the
+  direction that matters — if the loop would consume a byte, the guard says so — and that is pinned
+  by `the_whitespace_guard_never_declines_what_the_loop_would`, which asks guard and loop the same
+  question over all 128 ASCII bytes, five multi-byte separators plus one non-separator, three
+  comment shapes and three dialects, and requires the same position and pending-note count back.
+  Mutation-checked: making the guard answer `false` for `/` fails it with `left: (0, 0) right:
+  (4, 1)` on `"//x\n1"` under JSONC, which is the under-call that would have dropped a comment
+  silently. Paired on rustc 1.97.1 as three binaries from three commits of one branch, so each guard
+  carries its own number: `from_json_medium` −4.33% then −1.56%, `from_jsonc_medium` −3.52% then
+  −1.25%, `from_json5_medium` −4.49% then −1.40%, with `to_json_medium` +0.00% as the control that
+  calls neither. `docs/dev/perf.md` records why the first row beats the arithmetic that predicted
+  it, and what the guards do not recover.
+
 - **Two readers copy the source run instead of decoding one character at a time.** — the JSON5
   single-quoted scanner and the TOML single-line basic-string scanner were the last two readers
   still calling `chars().next()` and `push(ch)` per code point where the double-quoted JSON scanner

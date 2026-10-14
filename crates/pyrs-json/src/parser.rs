@@ -200,6 +200,13 @@ struct Parser<'a> {
 /// any number and preserves source order. A lone same-line comment still owns the inline slot, so the
 /// nuance a human writes (`{"k": 1 // the port\n}`) is untouched.
 fn attach_pending(node: &mut CustomNode, pending: Vec<PendingComment>) {
+    // Every key and every value meets this function, and in a document without comments the whole
+    // job is discovering that the list is empty - which `from_json_medium` measured at 3.23% of its
+    // counted instructions. The list can only be filled by the `Some(b'/')` arm of the separation
+    // loop, so an empty answer is the common case rather than an edge case.
+    if pending.is_empty() {
+        return;
+    }
     if pending.len() > 1 && pending.iter().filter(|pc| !pc.own_line).count() > 1 {
         for pc in pending {
             node.push_leading_comment(pyrs_ast::ast::Comment {
@@ -255,7 +262,38 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Whether the byte at `self.pos` is separation this dialect can consume.
+    ///
+    /// One copy of the question, asked twice: `ws` guards on it and `ws_extended` answers it
+    /// again per byte. The sets here are a *sound superset* of the loop's, the direction that
+    /// matters being "if the loop would consume something, this says so" - the loop's high-byte arm
+    /// can still decline a character that is not JSON5 separation, and calling it for nothing costs
+    /// a call, never a wrong position. `the_whitespace_guard_never_declines_what_the_loop_would`
+    /// asks both the same question over every byte and every dialect, so the two cannot drift.
+    #[inline]
+    fn at_separation(&self) -> bool {
+        match self.peek() {
+            Some(b' ' | b'\t' | b'\n' | b'\r') => true,
+            Some(b'/') => self.allow_comments,
+            Some(0x0b | 0x0c) => self.allow_json5_numbers,
+            Some(b) => b >= 0x80 && self.allow_json5_numbers,
+            None => false,
+        }
+    }
+
+    /// Skip separation before the next token, comments and all.
+    ///
+    /// A compact document calls this roughly ninety times per parse and has nothing to skip on
+    /// almost every one of them, so the job of this function is to answer "no" without a call:
+    /// `from_json_medium` spent 6.63% of its counted instructions in the call itself.
+    #[inline]
     fn ws(&mut self) {
+        if self.at_separation() {
+            self.ws_extended();
+        }
+    }
+
+    fn ws_extended(&mut self) {
         // A newline seen at the top of a `ws()` sequence marks any
         // following comment as `own_line` unless we cross another
         // non-whitespace token before reaching it. That is the JSONC
@@ -1253,6 +1291,68 @@ mod tests {
             unreachable!()
         };
         assert_eq!(pairs.len(), 2);
+    }
+
+    #[test]
+    fn the_whitespace_guard_never_declines_what_the_loop_would() {
+        // `ws` answers "nothing to skip" without calling `ws_extended`. That is sound only while
+        // the loop's byte set stays inside the guard's, so ask both the same question over every
+        // byte a token boundary can present, in every dialect that changes the answer, and require
+        // the same position and the same number of pending notes afterwards.
+        let mut cases: Vec<(JsonParseOptions, String)> = Vec::new();
+        for opts in [
+            JsonParseOptions::STRICT,
+            JsonParseOptions::JSONC,
+            JsonParseOptions::JSON5,
+        ] {
+            for byte in 0u8..=0x7f {
+                cases.push((opts, format!("{}1", char::from(byte))));
+            }
+            // JSON5's high-byte separation - NBSP, a U+2000 separator, LS/PS, the BOM - and one
+            // high character that is not separation at all, which the loop declines and the guard
+            // over-calls for. Over-calling is the safe direction: it cannot move a position.
+            for ch in [
+                '\u{a0}', '\u{2000}', '\u{2028}', '\u{2029}', '\u{feff}', 'é',
+            ] {
+                cases.push((opts, format!("{ch}1")));
+            }
+            // The `/` answer depends on the flag and on what follows it, so both comment forms
+            // and the bare slash are here.
+            for head in ["//x\n", "/*x*/", "/x"] {
+                cases.push((opts, format!("{head}1")));
+            }
+        }
+        for (opts, src) in cases {
+            let guarded = {
+                let mut p = whitespace_probe(&src, opts);
+                p.ws();
+                (p.pos, p.pending_comment.len())
+            };
+            let direct = {
+                let mut p = whitespace_probe(&src, opts);
+                p.ws_extended();
+                (p.pos, p.pending_comment.len())
+            };
+            assert_eq!(guarded, direct, "{src:?} under {opts:?}");
+        }
+    }
+
+    /// A parser positioned at the start of `src`, with nothing read yet - the state both halves of
+    /// the guard-equivalence test above need.
+    fn whitespace_probe(src: &str, opts: JsonParseOptions) -> Parser<'_> {
+        Parser {
+            s: src.as_bytes(),
+            text: src,
+            pos: 0,
+            depth: 0,
+            max_depth: DEFAULT_MAX_DEPTH,
+            allow_comments: opts.allow_comments,
+            allow_trailing_commas: opts.allow_trailing_commas,
+            allow_single_quoted: opts.allow_single_quoted,
+            allow_unquoted_keys: opts.allow_unquoted_keys,
+            allow_json5_numbers: opts.allow_json5_numbers,
+            pending_comment: Vec::new(),
+        }
     }
 
     #[test]
