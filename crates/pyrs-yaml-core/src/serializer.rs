@@ -117,7 +117,6 @@ struct Serializer {
     indent_size: usize,
     sort_keys: bool,
     /// Memoized indent strings by width (avoids `repeat()` on every call)
-    indent_cache: Vec<String>,
     /// Indent step per block-mapping nesting level
     indent_mapping: usize,
     /// Indent step per block-sequence nesting level
@@ -322,13 +321,10 @@ pub fn item_to_string(
 
 impl Serializer {
     fn new(options: &SerializeOptions) -> Self {
-        let mut cache = Vec::with_capacity(128);
-        cache.push(String::new()); // width 0 = empty
         Self {
             output: String::new(),
             indent_size: options.indent_size,
             sort_keys: options.sort_keys,
-            indent_cache: cache,
             indent_mapping: options.indent_mapping,
             indent_sequence: options.indent_sequence,
             max_depth: options.max_depth,
@@ -339,16 +335,19 @@ impl Serializer {
         }
     }
 
-    /// Ensure indent_cache has an entry for the given width, then write it to output.
-    /// Does not return a reference to avoid overlapping borrows.
+    /// Append `width` spaces.
+    ///
+    /// This was a `Vec<String>` cache: a length test, a `resize` the first time a depth appeared, a
+    /// `" ".repeat` that allocated one string per distinct width, and a borrow of the entry. The
+    /// whole job is a slice of a run of spaces, and a document indented past the end of the table
+    /// is not what this function is measured on.
     fn write_indent(&mut self, width: usize) {
-        if self.indent_cache.len() <= width {
-            self.indent_cache.resize(width + 1, String::new());
+        const SPACES: &str = "                                                                ";
+        if width <= SPACES.len() {
+            self.output.push_str(&SPACES[..width]);
+        } else {
+            self.output.extend(core::iter::repeat_n(' ', width));
         }
-        if self.indent_cache[width].is_empty() {
-            self.indent_cache[width] = " ".repeat(width);
-        }
-        self.output.push_str(&self.indent_cache[width]);
     }
 
     /// 写入锚点（`&name`）和标签（`!!type`）前缀。
@@ -1941,30 +1940,64 @@ fn needs_double_quoted(value: &str) -> bool {
     // Genuine strings: quote only when raw emission would be ambiguous or
     // invalid YAML (YAML indicator characters at the token start, an embedded
     // colon or hash, or a newline).
-    value.contains(':')
-        || value.contains('#')
-        || value.contains('\n')
-        || value.contains('\u{00a0}')
-        || value.contains('\u{feff}')
-        || value.chars().any(char::is_control)
-        || value.chars().any(is_yaml_noncharacter)
-        || value.starts_with('-')
-        || value.starts_with('{')
-        || value.starts_with('}')
-        || value.starts_with('[')
-        || value.starts_with(']')
-        || value.starts_with('*')
-        || value.starts_with('&')
-        || value.starts_with('!')
-        || value.starts_with('?')
-        || value.starts_with('%')
-        || value.starts_with('@')
-        || value.starts_with('`')
-        || value.starts_with('\'')
-        || value.starts_with('"')
-        || value.starts_with('|')
-        || value.starts_with('>')
-        || value.starts_with(',')
+    //
+    // One byte pass answers what used to be four `contains`, two `chars().any`
+    // and sixteen `starts_with` scans of the same text. For a seven-bit byte,
+    // `char::is_control` is exactly `b < 0x20 || b == 0x7f`, and every code point
+    // this list cares about above ASCII - NBSP, the BOM, a C1 control, a YAML
+    // non-character - contributes a byte >= 0x80, which the same pass records and
+    // hands to the character-level half below. UTF-8 never hides one of those
+    // bytes inside another character, so a text made only of bytes below 0x80 has
+    // already been answered by the loop. The test
+    // `needs_double_quoted_agrees_with_the_scan_for_every_code_point` pins both
+    // halves against the reference form.
+    let bytes = value.as_bytes();
+    if leading_indicator(bytes[0]) {
+        return true;
+    }
+    let mut saw_high_byte = false;
+    for &b in bytes {
+        if b < 0x20 || b == 0x7f || b == b':' || b == b'#' {
+            return true;
+        }
+        if b >= 0x80 {
+            saw_high_byte = true;
+        }
+    }
+    // No byte above ASCII means none of the remaining cases - NBSP, the BOM, a C1
+    // control, a non-character - can be present, so the answer is "plain is fine".
+    saw_high_byte && beyond_ascii_needs_quotes(value)
+}
+
+/// Whether `b` cannot begin a plain token. The characters this replaces one by one
+/// were `- { } [ ] * & ! ? % @ ` ' " | > ,`, each asked with its own `starts_with`.
+const fn leading_indicator(b: u8) -> bool {
+    matches!(
+        b,
+        b'-' | b'{'
+            | b'}'
+            | b'['
+            | b']'
+            | b'*'
+            | b'&'
+            | b'!'
+            | b'?'
+            | b'%'
+            | b'@'
+            | b'`'
+            | b'\''
+            | b'"'
+            | b'|'
+            | b'>'
+            | b','
+    )
+}
+
+/// The character-level half, reached only for a text that actually holds a byte above ASCII.
+fn beyond_ascii_needs_quotes(value: &str) -> bool {
+    value
+        .chars()
+        .any(|c| matches!(c, '\u{00a0}' | '\u{feff}') || c.is_control() || is_yaml_noncharacter(c))
 }
 
 /// Take every standalone leading note off a node, leaving no empty decoration
@@ -2341,6 +2374,92 @@ pub fn is_short_alphanumeric(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The six-scan form this module replaced, kept here and never shipped, so the
+    /// one-byte-pass claim can be checked against an independent restatement rather than
+    /// against itself. Every code point, in the leading position and embedded, plus both
+    /// edge-whitespace cases: the positions the fast path answers differently.
+    fn reference_needs_double_quoted(value: &str) -> bool {
+        if value.is_empty() {
+            return true;
+        }
+        if value.starts_with([' ', '\t']) || value.ends_with([' ', '\t']) {
+            return true;
+        }
+        if value == "..."
+            || value == "---"
+            || value.starts_with("... ")
+            || value.starts_with("--- ")
+        {
+            return true;
+        }
+        if core_type_is_non_string(value) {
+            return false;
+        }
+        value.contains(':')
+            || value.contains('#')
+            || value.contains('\n')
+            || value.contains('\u{00a0}')
+            || value.contains('\u{feff}')
+            || value.chars().any(char::is_control)
+            || value.chars().any(is_yaml_noncharacter)
+            || value.starts_with('-')
+            || value.starts_with('{')
+            || value.starts_with('}')
+            || value.starts_with('[')
+            || value.starts_with(']')
+            || value.starts_with('*')
+            || value.starts_with('&')
+            || value.starts_with('!')
+            || value.starts_with('?')
+            || value.starts_with('%')
+            || value.starts_with('@')
+            || value.starts_with('`')
+            || value.starts_with('\'')
+            || value.starts_with('"')
+            || value.starts_with('|')
+            || value.starts_with('>')
+            || value.starts_with(',')
+    }
+
+    #[test]
+    fn needs_double_quoted_agrees_with_the_scan_for_every_code_point() {
+        let mut cases: Vec<String> = Vec::new();
+        let mut push = |c: char| {
+            let s = c.to_string();
+            cases.extend([
+                s.clone(),
+                format!("a{s}"),
+                format!("{s}b"),
+                format!("a{s}b"),
+                format!("{s} "),
+                format!(" {s}"),
+            ]);
+        };
+        for cp in 0u32..0x1_0000 {
+            if let Some(c) = char::from_u32(cp) {
+                push(c);
+            }
+        }
+        // Astral planes are sampled rather than walked: this is 65k cases per plane and the
+        // only thing above the BMP that changes the answer is a non-character or a control,
+        // both of which the sampled steps include.
+        for cp in (0x1_0000u32..0x11_0000).step_by(251) {
+            if let Some(c) = char::from_u32(cp) {
+                push(c);
+            }
+        }
+        for c in ['\u{fffd}', '\u{fffe}', '\u{ffff}', '\u{1fffe}', '\u{1ffff}'] {
+            push(c);
+        }
+        for value in cases {
+            assert_eq!(
+                needs_double_quoted(&value),
+                reference_needs_double_quoted(&value),
+                "{value:?}"
+            );
+        }
+    }
     use crate::ast::Tag;
     use std::sync::Arc;
 

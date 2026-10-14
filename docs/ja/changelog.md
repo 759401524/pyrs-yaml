@@ -739,6 +739,27 @@ status: new
 
 #### パフォーマンス
 
+- **YAML ライターがノードごとに同じコストを 2 種類の形で払っていた。** — 同じプロファイルの 2 行が 1
+  回の文書出力を占めていた: `write_plain_scalar` と `write_scalar_for_key` が `serialize_medium` の
+  9.21% と 9.29%、その下のパターン走査に約 10%、そして `write_indent` が 8.10%。前者は 1 つの関数
+  `needs_double_quoted` で「このトークンは plain で出せるか」に同じテキストへ `contains` 4 回、
+  `chars().any` 2 回、`starts_with` 16 回で答えていた。いまはバイト 1 回の走査で、同じ走査が 0x80 以
+  上のバイトを見たときだけ文字レベルの半分（NBSP、BOM、C1 制御、YAML 非文字）を呼び直す - UTF-8 では
+  それらが別の文字の中に隠れないから。この論拠は `pyrs-schema` の `needs_quotes` がすでに使ってい
+  て、ライターの側が追いついていなかっただけ。後者は幅で引く `Vec<String>` キャッシュで、行ごとに長
+  さ判定、深さが増えるたび `resize`、幅ごとに `" ".repeat` の確保、それから表項を借りてコピー - を、
+  定数の 64 桁の空白列のスライスに置き換えた。固定したのは速さではなく等価性:
+  `needs_double_quoted_agrees_with_the_scan_for_every_code_point` は 6 回走査の形を基準に残し、
+  U+10000 未満の全コードポイントへ 5 つの位置（単独・先頭・末尾・内部・空白のとなり）で同じ問いをか
+  け、面を打って astral と非文字も明示的に見る。これは最初の版の誤りを自力で見つけた: 末尾が
+  `!saw_high_byte || …` で純粋な ASCII 文字列すべてに引用符を付けており、基準実装が `"a b"` において
+  他のどのテストより先に食い違いを示した。`b == b':'` をバイト判定から外すと等価テストと
+  `prop_output_always_parses` がいっしょに赤くなる。rustc 1.97.1 で同じブランチの 3 コミットから 3
+  バイナリを作り対測定（2 回の繰り返しは命令単位で一致）: バイト走査が `serialize_anchors` -28.01%、
+  `serialize_medium` -18.09%、`serialize_block_scalars` -13.05%、インデント表が
+  `serialize_medium` -8.20%、`serialize_block` -10.82%、`serialize_small` -29.81%、合わせて
+  `serialize_medium` -24.81%。対照の `parse_medium` は +0.00%（どちらも呼ばない）。
+
 - **TOML ライターが出力のあらゆるピースに一時オブジェクトを作らなくなった。** — `to_toml_medium` は
   53,218,850 命令を数えたが、同じ文書の `to_json_medium` は 21,283,040。出力行はすべて `writeln!` を
   通っていたうえ、キーも値もそれぞれ `String` になってから文書バッファへコピーされ、配列とインライン

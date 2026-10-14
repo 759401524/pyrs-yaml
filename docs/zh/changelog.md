@@ -640,6 +640,24 @@ status: new
 
 #### 性能
 
+- **YAML 写入器对每个节点用两种方式使用同样的开销。** — 同一份 profile 里有两行主导一次文档输出：
+  `write_plain_scalar` 与 `write_scalar_for_key` 各占 `serialize_medium` 的 9.21% 与 9.29%，底下还有
+  约 10% 花在模式扫描上；`write_indent` 占 8.10%。前者是一个函数 `needs_double_quoted`，在同一段文本
+  上做四次 `contains`、两次 `chars().any` 和十六次 `starts_with`；现在是一遍字节扫描，只有当这一遍看
+  到 >= 0x80 的字节时才把字符级的另一半（NBSP、BOM、C1 控制符、YAML 非字符）请回来，因为 UTF-8 不会
+  让那些字节藏在别的字符里。这套论据 `pyrs-schema` 的 `needs_quotes` 早已在用，只是写入器这份没跟
+  上。后者是一个按宽度索引的 `Vec<String>` 缓存——每行一次长度判断、每加深一层一次 `resize`、每个不同
+  宽度一次 `" ".repeat` 分配，然后再借用表项去复制——现在换成对一个常量 64 列空格串取切片。钉住的是等
+  价而不是速度：`needs_double_quoted_agrees_with_the_scan_for_every_code_point` 把六遍扫描的形式留作
+  参照，对 U+10000 以下的每个码点、在五种位置（单独、行首、行尾、中间、紧挨空格）各问一遍，再按步长
+  抽样星平面并显式包含非字符。它没等别人帮忙就抓到了第一版的错：结尾写成 `!saw_high_byte || …`，给所
+  有纯 ASCII 字符串都加了引号，参照实现在 `"a b"` 上先于其他任何测试指出分歧。把 `b == b':'` 从字节
+  判定里删掉，会让等价测试和 `prop_output_always_parses` 一起变红。在 rustc 1.97.1 上以同一分支三个
+  提交产出三个二进制配对测量，两次重复逐指令一致：字节扫描给出 `serialize_anchors` -28.01%、
+  `serialize_medium` -18.09%、`serialize_block_scalars` -13.05%；缩进表给出
+  `serialize_medium` -8.20%、`serialize_block` -10.82%、`serialize_small` -29.81%；合起来
+  `serialize_medium` 是 -24.81%，对照组 `parse_medium` +0.00% 两个都不调用。
+
 - **TOML 写入器不再为它输出的每一小块分配临时对象。** — `to_toml_medium` 数到 53,218,850 条指令，而
   同一份文档的 `to_json_medium` 只有 21,283,040 条：每一行输出都走 `writeln!`，每个键和每个值都先成
   为自己的 `String`，再复制进文档，数组和内联表还先建一个 `Vec<String>` 来 join、再格式化、再复制一

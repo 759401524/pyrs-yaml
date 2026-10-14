@@ -811,6 +811,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- **The YAML writer asked the same question twice per node, in two different ways.** — Two rows
+  of the same profile owned one document: `write_plain_scalar` and `write_scalar_for_key` at 9.21%
+  and 9.29% of `serialize_medium` with ~10% more in the pattern-scan rows under them, and
+  `write_indent` at 8.10%. The first was one function, `needs_double_quoted`, answering "can this
+  token go out plain?" with four `contains`, two `chars().any` and sixteen `starts_with` over the
+  same text; it is now one byte pass, with the character-level half - NBSP, the BOM, a C1 control, a
+  YAML non-character - entered only when that same pass saw a byte at or above 0x80, because UTF-8
+  never hides one of those inside another character. That is the reasoning `pyrs-schema`'s
+  `needs_quotes` already uses; the writer's copy had not caught up. The second was a `Vec<String>`
+  cache indexed by width - a length test per line, a `resize` at each new depth, a `" ".repeat`
+  allocating one string per distinct width, then a borrow of the entry to copy - replaced by a slice
+  of a constant 64-column run of spaces. Equivalence, not speed, is what is pinned:
+  `needs_double_quoted_agrees_with_the_scan_for_every_code_point` keeps the six-scan form as a
+  reference and asks both the same question over every code point below U+10000 in five positions -
+  alone, leading, trailing, interior, beside a space - plus a stride through the astral planes and
+  the non-characters explicitly. It caught the first version's mistake unaided: the tail read
+  `!saw_high_byte || …`, which quoted every plain ASCII string, and the reference disagreed on
+  `"a b"` before any other test ran. Mutating `b == b':'` out of the byte test reddens it and
+  `prop_output_always_parses` together. Paired on rustc 1.97.1 as three binaries from three commits
+  of one branch, two repeats agreeing to the instruction: the byte pass gives `serialize_anchors`
+  -28.01%, `serialize_medium` -18.09% and `serialize_block_scalars` -13.05%; the indent table gives
+  `serialize_medium` -8.20%, `serialize_block` -10.82% and `serialize_small` -29.81%; together
+  `serialize_medium` is -24.81%, with `parse_medium` +0.00% as the control that calls neither.
+
 - **The TOML writer stopped allocating a temporary for everything it emitted.** — `to_toml_medium`
   counted 53,218,850 instructions against `to_json_medium`'s 21,283,040 for the *same* document:
   every line went through `writeln!`, every key and every value was a `String` of its own before
