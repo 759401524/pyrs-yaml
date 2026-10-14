@@ -510,8 +510,14 @@ extends - the keys come from a file the caller chose, the tables die with the tr
 `IndexMap` keeps insertion order so a collision costs probes, not changed output - and it is
 recorded on `NodeMap` rather than left implicit.
 
-Cheapest remaining targets in the same profile, in order: the hash row is not finished, because
-this crate's `FxHasher::write` still folds one byte per round - rustc-hash reads eight at a time,
-and 90 keys per parse is where that shows. Then `memcpy` at 6.67% and 8.05%, which is the node
-model the file has already ruled out rewriting. Allocator churn stays the biggest number and the
-least actionable.
+Cheapest remaining targets in the same profile, and the first of them is now closed by measurement
+rather than by work: this crate's `FxHasher::write` folds one byte per round, where rustc-hash reads
+eight at a time, and 90 keys per parse looked like the place that would show. It does not. Paired on
+1.97.1 against the same tree with only that loop changed to word-at-a-time (3 repeats,
+`from_json_medium` 98,994,200 → 98,854,200): `from_json_medium` −0.14%, `parse_medium` −0.04%,
+`to_json_medium` −0.00%. The keys here are short - a handful of bytes each - so the tail loop runs
+whatever the shape, and what is left of the hash row is the 180,000 digest calls themselves, not the
+byte loop inside them. A change that cannot move a scenario past the gate's 0.50% tolerance is not a
+win available at this address, so the word-at-a-time variant was measured and dropped. What remains
+in the profile is `memcpy` at 6.67% and 8.05% and the allocator's 29.1%, both of which are the node
+model the file has already ruled out rewriting.
