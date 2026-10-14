@@ -935,8 +935,31 @@ fn type_mismatch(node: &CustomNode, expected: TypeSpec, resolver: &RuleResolver)
         // `null` is both a resolved scalar and a node kind, so either spelling satisfies
         // a rule that wants a null.
         (TypeSpec::Scalar(YamlTypeKind::Null), CustomNode::Null { .. }) => None,
-        (TypeSpec::Scalar(kind), CustomNode::Scalar { value, .. }) => {
-            let resolved = resolver.resolve(value.as_ref());
+        (TypeSpec::Scalar(kind), CustomNode::Scalar { value, meta, .. }) => {
+            // Ask the tag before the text (#340). A tag *replaces* the implicit resolution, so
+            // `!!str 1` states a string: reading only the text accepted it as an int, and the same
+            // AST then meant one thing to the loader and another to the validator. The tag grammar
+            // is the writers' own - `standard_tag_kind` plus `TagKind::resolve` - so there is one
+            // source, not two that have to be kept agreeing. A tag the text cannot satisfy is a
+            // refusal, not a fall-through back to the text, exactly as the loader and the spoke
+            // writers refuse it.
+            let tagged = meta
+                .tag()
+                .and_then(|t| pyrs_schema::schema::standard_tag_kind(&t.handle, &t.suffix));
+            let resolved = match tagged {
+                Some(tag_kind) => match tag_kind.resolve(value.as_ref()) {
+                    Some(resolved) => resolved,
+                    None => {
+                        let tag = meta.tag();
+                        return Some(format!(
+                            "{kind} but got a scalar tagged !{}{} the text cannot satisfy",
+                            tag.map(|t| t.handle.as_str()).unwrap_or(""),
+                            tag.map(|t| t.suffix.as_str()).unwrap_or("")
+                        ));
+                    }
+                },
+                None => resolver.resolve(value.as_ref()),
+            };
             if yaml_type_matches(&resolved, kind) {
                 None
             } else {
@@ -1240,6 +1263,149 @@ rules:
             let found = complaints(&validate_schema(&rule), against);
             assert_eq!(found.len(), 1, "{spelling} vs {against}: {found:?}");
         }
+    }
+
+    #[test]
+    fn a_tag_replaces_the_resolution_a_rule_checks_against() {
+        // Issue #340: the loader honoured an explicit tag (PR #335) and the spoke writers resolve
+        // through it, but this validator read only the scalar's text, so `!!str 1` passed a rule
+        // demanding an int - one AST meaning two things. The rule engine is live (the controls
+        // below complain), so a silence here is the tag being ignored.
+        let want_int = validate_schema(
+            "  - path: $.docs
+    mapping_of: int
+",
+        );
+        let want_str = validate_schema(
+            "  - path: $.docs
+    mapping_of: str
+",
+        );
+
+        // Controls: the same rules still reject what they always rejected.
+        assert!(
+            complaints(
+                &want_int,
+                "docs:
+  v: 1
+"
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            complaints(
+                &want_int,
+                "docs:
+  v: hello
+"
+            )
+            .len(),
+            1
+        );
+        assert_eq!(
+            complaints(
+                &want_str,
+                "docs:
+  v: 1
+"
+            )
+            .len(),
+            1
+        );
+
+        // The tag decides, not the spelling.
+        assert_eq!(
+            complaints(
+                &want_int,
+                "docs:
+  v: !!str 1
+"
+            ),
+            ["$.docs.v: expected mapping value int but got Str(\"1\")".to_string()],
+            "a `!!str` scalar passed an int rule"
+        );
+        assert_eq!(
+            complaints(
+                &want_str,
+                "docs:
+  v: !!int 0b1010
+"
+            ),
+            ["$.docs.v: expected mapping value str but got Int(10)".to_string()],
+            "a `!!int` scalar (YAML 1.1 lexeme) passed a str rule"
+        );
+        assert_eq!(
+            complaints(
+                &want_str,
+                "docs:
+  v: !!bool yes
+"
+            )
+            .len(),
+            1,
+            "a `!!bool` scalar passed a str rule"
+        );
+        // `!!float 1` is a float, so it fails an int rule and satisfies a float rule.
+        assert_eq!(
+            complaints(
+                &want_int,
+                "docs:
+  v: !!float 1
+"
+            )
+            .len(),
+            1
+        );
+        let want_float = validate_schema(
+            "  - path: $.docs
+    mapping_of: float
+",
+        );
+        assert!(
+            complaints(
+                &want_float,
+                "docs:
+  v: !!float 1
+"
+            )
+            .is_empty()
+        );
+
+        // A tag the spec says nothing about keeps the implicit resolution - `!x 1` is still a number.
+        assert!(
+            complaints(
+                &want_int,
+                "docs:
+  v: !x 1
+"
+            )
+            .is_empty()
+        );
+        // Verbatim form is the same tag.
+        assert_eq!(
+            complaints(
+                &want_int,
+                "docs:
+  v: !<tag:yaml.org,2002:str> 1
+"
+            )
+            .len(),
+            1
+        );
+
+        // A tag the text cannot satisfy is refused rather than re-typed back to a string, matching
+        // `TagKind::resolve`'s documented refusal.
+        let found = complaints(
+            &want_int,
+            "docs:
+  v: !!int hello
+",
+        );
+        assert_eq!(found.len(), 1, "!!int hello passed an int rule: {found:?}");
+        assert!(
+            found[0].contains("cannot satisfy"),
+            "the refusal should say the tag and text disagree: {found:?}"
+        );
     }
 
     #[test]

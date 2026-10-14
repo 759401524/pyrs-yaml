@@ -288,6 +288,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   number are not exempt, because there the reader really does compare text. The pinned table holding
   the rule beside the writer and the reader it models grows from 15 classes to 18.
 
+- **Schema validation asks the tag before the text.** — a validate rule checked only a scalar's
+  *spelling*, so a document writing `v: !!str 1` satisfied a rule demanding an int while the loader
+  read that value as the string `"1"` and the JSON and TOML writers emitted it as one - one AST, two
+  meanings (#340). The check now resolves through the tag when the tag is a standard one (`!!str`,
+  `!!int`, `!!bool`, `!!float`, `!!null`, and the verbatim `!<tag:yaml.org,2002:...>` form), using
+  the grammar the spoke writers already use - `standard_tag_kind` plus `TagKind::resolve` - so there
+  is one source of that grammar rather than two to keep agreeing. A tag the text cannot satisfy is
+  refused instead of re-typed: `!!int hello` no longer validates as a string. A tag the spec says
+  nothing about (`!x 1`) keeps the ordinary implicit resolution, so it is still a number.
+  `!!int 0b1010` now validates as the integer 10 it states, on the YAML 1.1 lexeme set the loader
+  already implements.
+
 - **A `CustomNode` is 144 bytes, not 208.** — half a node used to be its `NodeMeta`: 128 of 208
   bytes, five `Option` slots, and that size sits on the hot path of every reader — written when a
   node is built, copied whenever a node moves, and checked field by field when the tree is dropped
