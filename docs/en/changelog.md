@@ -835,6 +835,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The instruction-count floor moved down to the engine that earned it.** — four optimization PRs
+  landed between refreshes, and the committed baseline had not followed them. The `Ir baseline
+  refresh` workflow re-measured all twenty-one scenarios on the enforcing image (`github-runner
+  ubuntu24`, image 20261004.327.1, rustc 1.97.1 — the same toolchain the baseline already named, so
+  this moves numbers and not a compiler) and its artifact is committed unchanged: `to_toml_medium`
+  53,218,877 → 28,763,688 (−45.95%), `serialize_anchors` −30.25%, `serialize_small` −29.83%,
+  `serialize_block` −26.42%, `serialize_medium` −24.81% (32,648,850), `serialize_block_scalars`
+  −21.99%, then the readers `from_json5_medium` −11.17%, `from_toml_medium` −7.29%,
+  `from_json_medium` −5.82%, `from_jsonc_medium` −4.72%. Nothing moved up past 0.10% — the seven
+  scenarios that moved at all in the wrong direction are parser and binding paths, and all of them
+  sit inside the 0.5% line the file itself declares. A floor left 46% above the engine is a gate
+  that tolerates a 46% regression in silence, which is precisely the failure the zero-regression
+  promise exists to prevent. The same pair of runs sizes what a local measurement can be trusted
+  for: on identical sources WSL reads `serialize_medium` at 32,648,888 against the image's
+  32,648,850 (+0.0001%) and `to_python_medium` at 386,665,602 against 385,871,983 (+0.21%), so the
+  +1.45% cross-image figure `ir-baseline.yml` quotes is closed for the pure-Rust harness and what
+  remains lives in the CPython-linked one. No number here was transcribed by hand.
+
 - **The YAML writer asked the same question twice per node, in two different ways.** — Two rows
   of the same profile owned one document: `write_plain_scalar` and `write_scalar_for_key` at 9.21%
   and 9.29% of `serialize_medium` with ~10% more in the pattern-scan rows under them, and
