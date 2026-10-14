@@ -3103,6 +3103,35 @@ mod tests {
         }
     }
 
+    /// granit 2.0 accepts an explicit key whose key or value is empty: `?`, `? `, `?\t` and
+    /// `?\n:\n` are documents, not errors. The writer has no marker for an *empty* explicit key,
+    /// so each re-emits as the null pair `~: ~` — the mapping the reader actually built, since an
+    /// empty explicit key *is* the null key — and the second round is the first. Ruled
+    /// 2026-10-14: accepted, with the re-emitted spelling recorded here and in
+    /// `docs/dev/boundaries.md`, rather than the loader refusing input the pinned parser accepts.
+    /// What is deliberately not preserved is the source's `?` layout: `? a` comes back compact as
+    /// `a: b`, and only a key that needs the marker to round-trip at all (`? ?`) keeps it.
+    #[test]
+    fn a_degenerate_explicit_key_is_accepted_and_re_emits_the_null_pair() {
+        for (src, emitted) in [
+            ("?", "~: ~\n"),
+            ("? ", "~: ~\n"),
+            ("?\t", "~: ~\n"),
+            ("?\n:\n", "~: ~\n"),
+            ("? ?", "?\n  ~: ~\n:\n  ~\n"),
+            ("? a\n: b", "a: b\n"),
+        ] {
+            let node = parse_core(src);
+            let one = to_yaml(&node);
+            assert_eq!(one, emitted, "{src:?} does not re-emit as measured");
+            let again = to_yaml(&parse_core(&one));
+            assert_eq!(
+                again, one,
+                "not a fixed point in one round: {one:?} -> {again:?}"
+            );
+        }
+    }
+
     /// Each pair of a multi-pair compact item owns its own line, so each key note has to
     /// land on its own line — and a value that carries a note of its own keeps the slot,
     /// because one line has exactly one trailing note.
