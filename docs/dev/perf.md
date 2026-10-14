@@ -388,3 +388,59 @@ Two cheaper variants are deliberately not on the list: shrinking `Tag` (48 bytes
 walk, so they would be measured against a node shape this change has now moved anyway.
 
 ---
+
+## What folding on write costs (2026-10-14)
+
+Issue #336 describes a real fidelity hole: a mapping can hold two entries whose keys the reader
+resolves alike (`!E null` twice, `null:` beside `'null':`, `k:` beside `'k':`, two empty `{}` keys),
+because the node map compares whole nodes while the reader identifies a key by what it resolves to.
+Emission then produced either text the strict reader refuses (`duplicate key: null`) or text that
+re-reads a line shorter than the tree, and `to_yaml` returns a `String`, so it cannot say so. The
+ruling was to fold on write - last entry wins, the dropped line's notes re-home - and this section
+is the price of doing it that way.
+
+Implemented on branch `yaml-writer-key-fold-336` (987d98b6), together with three tests: five rows of
+the issue's table re-emitted and strictly re-read; the anchor boundary asserted as a test; and note
+ordering pinned to document order. All three fail when the fold is disabled. Measured paired on the
+compiler the gate pins (rustc 1.97.1, `GLIBC_TUNABLES` as `.ci/ir-baseline.json` records it, loop =
+full run minus `--setup-only`), with the *same tree* and the fold switched off as the base:
+
+| scenario | fold on write |
+|:--|--:|
+| `serialize_anchors` | +33.655% |
+| `serialize_medium` | +32.585% |
+| `serialize_block` | +31.801% |
+| `serialize_small` | +31.481% |
+| `serialize_block_scalars` | +12.529% |
+| `parse_small` | +0.000% |
+
+The first attempt read +40-55%. callgrind attributed the excess to what the check allocated rather
+than to what it computed: one `Vec` of key references and one `HashMap` per mapping, with SipHash
+over borrowed tag strings. Rewriting detection to reuse a single fingerprint map across the document
+(Fx-style multiply-xor over the class, identity re-verified only on a hash hit, `Other` keys skipped
+because the node map already compares those as nodes) removed the allocations and brought
+`serialize_small` from +40.6% to +31.5%.
+
+What is left is structural, not incidental. In these fixtures a key line costs about 55 counted
+instructions to write, so any per-key duplicate check is a large *relative* tax: +31% of
+`serialize_small` is roughly 14 instructions per key. No implementation of "look at every key before
+writing the mapping" is going to land inside the gate's 0.50% tolerance, which makes this a
+deliberate-upward-movement decision (`accept_drift` on the baseline-refresh workflow) rather than an
+optimisation to grind on.
+
+It is also not the place the defect comes from. A tree that came from the reader cannot hold the
+pair - the reader folds it or refuses it - so the writer would re-derive a fact it already knows.
+The shape enters through the editing API, where two path segments that spell differently and resolve
+alike (`~` and `null`) both insert into the same mapping. Folding there is cheap - one scan per
+edit, not per key of every document ever written - but it is not enough on its own: `set_path`
+returns an *insert* dirty unit, so patching the source adds the new line and leaves the old one, and
+the document text would still hold the duplicate. The work #336 needs is therefore in the edit layer
+plus a Replace/Remove unit in the dirty plan, not in the serializer.
+
+That is why this branch is shelved rather than merged with a re-baselined floor: the tax is
+permanent, the guarantee it adds is available at a place that costs nothing, and the gate's
+zero-regression premise is what makes the next measurement trustworthy. The identity model the fold
+needed (`CustomNode::key_identity`, `KeyIdentity`) is merged and independent of the decision -
+PR #383 - so the edit-layer fold will not have to re-derive it.
+
+---
