@@ -521,3 +521,78 @@ byte loop inside them. A change that cannot move a scenario past the gate's 0.50
 win available at this address, so the word-at-a-time variant was measured and dropped. What remains
 in the profile is `memcpy` at 6.67% and 8.05% and the allocator's 29.1%, both of which are the node
 model the file has already ruled out rewriting.
+
+---
+
+## Two readers still decoded one character at a time (2026-10-14)
+
+The section above closed with "what remains is `memcpy` and the allocator", which was true of the
+node model and premature about the file: re-attributing the readers on 1.97.1 after the hasher
+landed (`full - --setup-only`, per-function `callgrind_annotate`) collapsed the hash row of
+`from_json_medium` from 13.11% to 3.62% and left the allocator at 33.36%, but it also showed two
+scanners that had never been given the source-run treatment. The JSON reader's double-quoted
+`string()` bulk-scans to the next byte that needs a decision and copies the run; its JSON5
+single-quoted twin, and the TOML reader's single-line basic-string scanner, were still decoding one
+code point per iteration - `chars().next()`, then `push(ch)`, then advance by `len_utf8()` - so each
+character cost a UTF-8 decode, a capacity check and a push. The two rows were 6.30% of
+`from_json5_medium` (6,916,000 counted instructions) and 5.10% of `from_toml_medium`
+(`parse_basic_string_content`, 8,648,000), which on that fixture's eight basic strings is about 540
+per value of nine characters: roughly sixty instructions to move a byte that was already in the
+buffer.
+
+Both now bulk-copy. The stop set is the bytes that need a decision and nothing else: `"` `\` and the
+two line terminators, plus `forbidden_control` for TOML's basic string. It is sound for the same
+reason the existing bulk scan in `string()` is: every byte in the set is ASCII, and UTF-8 keeps an
+ASCII byte out of a multi-byte sequence, so a run that stops only on those begins and ends on a char
+boundary - which is what the per-character loop had been guaranteeing by decoding. JSON5's dialect
+matters for the boundary in the other direction: a control character is *legal* inside a
+single-quoted string, so it is not in that scanner's stop set and the run copies through it.
+
+Both now bulk-copy. The stop set is the bytes that need a decision and nothing else: `"` `\` and the
+two line terminators, plus `forbidden_control` for TOML's basic string. It is sound for the same
+reason the existing bulk scan in `string()` is: every byte in the set is ASCII, and UTF-8 keeps an
+ASCII byte out of a multi-byte sequence, so a run that stops only on those begins and ends on a char
+boundary - which is what the per-character loop had been guaranteeing by decoding. JSON5's dialect
+matters for the boundary in the other direction: a control character is *legal* inside a
+single-quoted string, so it is not in that scanner's stop set and the run copies through it.
+
+Paired on 1.97.1, same session, alternating binaries, two repeats (which agreed to the instruction):
+
+| scenario | paired delta | why it is in this table |
+|:--|--:|:--|
+| `from_toml_medium` | -5.55% | the basic-string scanner |
+| `from_json5_medium` | -5.76% | the single-quoted twin |
+| `from_json_medium` | +0.00% | control: the double-quoted path was untouched |
+| `to_toml_medium` | -0.00% | control: the same crate's writer was untouched |
+
+A change of this shape is worth exactly one test per stop-set decision, and the two added are
+mutation-checked: dropping `forbidden_control` from TOML's stop set reddens
+`a_multibyte_run_is_copied_whole_and_the_bytes_that_ended_it_still_do` with `"a = "é\u{1}" parsed
+instead of rejecting`, and adding `b < 0x20` to JSON5's stop set reddens
+`json5_single_quoted_runs_stop_only_where_the_decoding_loop_stopped` at the arm that now says the
+scan stops on exactly these cases. Both mutations were reverted; neither test is decoration.
+
+The multiline basic-string twin is deliberately not in this change. Its run cannot be long: TOML 1.0
+line-ending normalisation and the backslash-continuation rule mean the scan has to stop at every
+line terminator anyway, and no scenario measures a multiline document, so there is no number to
+price it against.
+
+What the same profile says about the rest of the TOML reader, kept because it is the next question:
+`from_toml_medium` counts 169,449,833 instructions against `from_json_medium`'s 98,994,186 for the
+*same* document (both are `MEDIUM_YAML` rendered for that dialect), and its allocator row is 37.83%
+against JSON's 33.36%. The reason is structural and nameable - TOML parses into a `CowTable` /
+`TomlTable` model with `String` keys and per-pair annotations, then projects it into the hub AST in
+`cow_table_to_node`, so every key is allocated, hashed and dropped twice. That intermediate exists
+because TOML semantics ask for it (out-of-order `[a.b]` headers, implicit tables, duplicate-table
+rejection), so removing it is a design decision with a conformance surface, not an optimisation to
+smuggle in beside one - which is what this file says about the hub AST itself.
+
+One measurement trap, since it briefly sent me to fix a hash cost that was not there: bucketing a
+`callgrind_annotate` listing by function-name regex put TOML's hash row at 12.46%. The regex matched
+`sip|FxHash|Hasher`, and `Hasher` appears in `<indexmap::map::IndexMap<String, TomlTable,
+core::hash::BuildHasherDefault<..>>>::insert*` - the *type parameter* of the map's own methods, not
+digest work. TOML's real digest row is 3.33%, the same `FxHasher` the hub uses. A bucket is a
+question about names, so the only reading that counts is the list of names inside it: print the
+members, not the total. The probe that does this round's attribution was one-off scratch under
+`target/`; the third session to rebuild one is an argument for registering it as a tool, which is
+raised rather than smuggled into this change.

@@ -381,6 +381,24 @@ impl<'a> Parser<'a> {
         self.pos += 1;
         let mut out = String::new();
         loop {
+            // Bulk-copy the source run up to the next byte that needs a decision: the closing
+            // quote, an escape, or a line terminator (which this dialect forbids inside a
+            // single-line string). Each is ASCII, and UTF-8 keeps an ASCII byte out of a multi-byte
+            // sequence, so the run is whole code points at both ends and `self.pos` stays on a
+            // char boundary - the property the per-character loop below used to guarantee by
+            // decoding. Other control characters are legal content here, so they are not in the
+            // stop set and the run copies through them.
+            let start = self.pos;
+            while self.pos < self.s.len() {
+                let b = self.s[self.pos];
+                if b == b'\'' || b == b'\\' || b == b'\n' || b == b'\r' {
+                    break;
+                }
+                self.pos += 1;
+            }
+            if self.pos > start {
+                out.push_str(&self.text[start..self.pos]);
+            }
             let b = self.peek().ok_or_else(|| self.err("unterminated string"))?;
             match b {
                 b'\'' => {
@@ -416,19 +434,8 @@ impl<'a> Parser<'a> {
                 b'\n' | b'\r' => {
                     return Err(self.err("newline in single-quoted string"));
                 }
-                _ => {
-                    // Copy one whole character and advance by its UTF-8 length so
-                    // `self.pos` stays on a char boundary; the byte-wise
-                    // `floor_char_boundary` path could slice `text[pos-1..cut]`
-                    // from a mid-character offset and panic on lossy-decoded input.
-                    match self.text[self.pos..].chars().next() {
-                        Some(ch) => {
-                            out.push(ch);
-                            self.pos += ch.len_utf8();
-                        }
-                        None => return Err(self.err("unterminated string")),
-                    }
-                }
+                // The scan above stops on exactly these three cases.
+                _ => unreachable!(),
             }
         }
     }
@@ -1260,6 +1267,41 @@ mod tests {
         match &v {
             CustomNode::Scalar { value, .. } => assert_eq!(value.as_ref(), "a\nb"),
             other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn json5_single_quoted_runs_stop_only_where_the_decoding_loop_stopped() {
+        // The scanner bulk-copies up to the next byte that needs a decision. Multi-byte text must
+        // arrive as one slice, and the stop set must be the bytes it always was: a control
+        // character is legal content in this dialect, so the run copies *through* one, while a
+        // line terminator and the end of input still end the string as errors.
+        let obj = from_json5("{ 'a\\tb\u{1}c': 'héllo — 名前', 'd': '尾' }").unwrap();
+        let CustomNode::Mapping { pairs, .. } = &obj else {
+            unreachable!()
+        };
+        let got: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| match (k, v) {
+                (CustomNode::Scalar { value: k, .. }, CustomNode::Scalar { value: v, .. }) => {
+                    (k.to_string(), v.to_string())
+                }
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("a\tb\u{1}c".to_string(), "héllo — 名前".to_string()),
+                ("d".to_string(), "尾".to_string()),
+            ]
+        );
+
+        for bad in ["{'a': 'é", "{'a': 'é\n'}", "['尾"] {
+            assert!(
+                matches!(from_json5(bad), Err(ParseError::Syntax { .. })),
+                "{bad:?} parsed instead of rejecting"
+            );
         }
     }
 
