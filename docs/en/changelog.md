@@ -820,6 +820,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **Two readers copy the source run instead of decoding one character at a time.** — the JSON5
+  single-quoted scanner and the TOML single-line basic-string scanner were the last two readers
+  still calling `chars().next()` and `push(ch)` per code point where the double-quoted JSON scanner
+  had long since bulk-scanned to the next byte that needs a decision and copied the run. On the
+  gate's own harness a nine-character TOML value cost ~540 counted instructions. Paired on rustc
+  1.97.1, same tree, alternating binaries, two repeats agreeing to the instruction:
+  `from_toml_medium` −5.55%, `from_json5_medium` −5.76%, with `from_json_medium` +0.00% and
+  `to_toml_medium` −0.00% as the controls that say the change moved those two and only those two.
+  The stop sets are unchanged and each half is pinned by a mutation-checked test: TOML still rejects
+  a control character or a line terminator inside a basic string, JSON5 still *accepts* a control
+  character there, and both still reject unterminated input that ends after multi-byte text.
+  `docs/dev/perf.md` keeps the attribution that found it, the multiline twin this change
+  deliberately leaves alone, and the TOML reader's remaining structural cost — 169,449,833
+  instructions against JSON's 98,994,186 for the same document, because it builds an intermediate
+  table model before the hub AST — named as the next question, not as a closed one.
+
 - **The instruction-count floor moved down to the engine that earned it.** — the
   `Ir baseline refresh` workflow re-measured all twenty-one scenarios on the enforcing image
   (`github-runner ubuntu24`, rustc 1.97.1) once the node-map hasher was on `main`, and its artifact

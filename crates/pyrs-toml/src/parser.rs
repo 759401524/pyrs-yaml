@@ -847,6 +847,24 @@ impl<'a> Parser<'a> {
     fn scan_single_line_basic_content(&mut self) -> Result<String, ParseError> {
         let mut out = String::new();
         loop {
+            // Bulk-copy the source run up to the next byte that needs a decision. Every byte in
+            // that set is ASCII, and UTF-8 never hides an ASCII byte inside a multi-byte sequence,
+            // so the run begins and ends on a char boundary and `push_str` of a slice replaces a
+            // loop that decoded and pushed one code point at a time. Stepping by whole bytes, or
+            // stopping on a non-ASCII one, would put `self.pos` inside a character and make the
+            // next slice panic.
+            let start = self.pos;
+            while self.pos < self.s.len() {
+                let b = self.s[self.pos];
+                if b == b'"' || b == b'\\' || b == b'\n' || b == b'\r' || Self::forbidden_control(b)
+                {
+                    break;
+                }
+                self.pos += 1;
+            }
+            if self.pos > start {
+                out.push_str(&self.text[start..self.pos]);
+            }
             let b = self
                 .peek()
                 .ok_or_else(|| self.err("unterminated basic string"))?;
@@ -865,20 +883,9 @@ impl<'a> Parser<'a> {
                 c if Self::forbidden_control(c) => {
                     return Err(self.err("control character in basic string"));
                 }
-                _ => {
-                    // Copy one whole character and advance by its UTF-8 length so
-                    // `self.pos` always lands on a char boundary. The previous
-                    // byte-wise `floor_char_boundary` path could slice
-                    // `text[pos-1..cut]` from a mid-character offset and panic on
-                    // certain (lossy-decoded) inputs.
-                    match self.text[self.pos..].chars().next() {
-                        Some(ch) => {
-                            out.push(ch);
-                            self.pos += ch.len_utf8();
-                        }
-                        None => return Err(self.err("unterminated basic string")),
-                    }
-                }
+                // The scan above stops on exactly these four cases, so a byte that is none of
+                // them cannot be what `peek` just returned.
+                _ => unreachable!(),
             }
         }
     }
@@ -1756,6 +1763,49 @@ mod tests {
         // `\x` (width 2): one FEFF after the escape straddles the 2-byte window.
         let byte = "a = \"\\x\u{feff}\"";
         assert!(matches!(from_toml(byte), Err(ParseError::Syntax { .. })));
+    }
+
+    #[test]
+    fn a_multibyte_run_is_copied_whole_and_the_bytes_that_ended_it_still_do() {
+        // The basic-string scanner bulk-copies up to the next ASCII byte that needs a decision, so
+        // a run of multi-byte characters arrives as one slice - as the whole value, as the tail
+        // after an escape, and as the run that resumes right after one. The stop set is unchanged:
+        // a control character or DEL directly after multi-byte text, a line terminator, and the
+        // end of input are still clean rejections rather than content or a panic.
+        let src = "a = \"héllo — 名前\"\nb = \"\\u00e9尾\"\nc = \"é\\t\\ttab\"\n";
+        let ast = from_toml(src).unwrap();
+        let CustomNode::Mapping { pairs, .. } = &ast else {
+            panic!("{ast:?}");
+        };
+        let got: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| match (k, v) {
+                (CustomNode::Scalar { value: k, .. }, CustomNode::Scalar { value: v, .. }) => {
+                    (k.to_string(), v.to_string())
+                }
+                _ => panic!("expected scalar pair"),
+            })
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("a".to_string(), "héllo — 名前".to_string()),
+                ("b".to_string(), "é尾".to_string()),
+                ("c".to_string(), "é\t\ttab".to_string()),
+            ]
+        );
+
+        for bad in [
+            "a = \"é\u{1}\"",
+            "a = \"é\u{7f}\"",
+            "a = \"é\n\"",
+            "a = \"é",
+        ] {
+            assert!(
+                matches!(from_toml(bad), Err(ParseError::Syntax { .. })),
+                "{bad:?} parsed instead of rejecting"
+            );
+        }
     }
 
     /// Run `f` on a thread with a large stack so the recursion-limit tests
