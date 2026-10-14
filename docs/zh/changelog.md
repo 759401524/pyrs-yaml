@@ -236,6 +236,13 @@ status: new
 
 #### 变更
 
+- **`granit-parser` 1.3 → 2.0。** — 这次 major 升级经实测后落地：无需改动源码即可通过类型检查（被删
+  除的两个公开辅助函数 `found_tabs`、`has_valid_yaml_ws` 在 `crates/` 与 `python/` 中都没有引用）；
+  `cargo nextest run --workspace --exclude pyrs-yaml` 579 通过；
+  `uv run pytest tests/ -k "not numpy"` 2678 通过 / 10 跳过——关键在后者，因为注释、锚点与跨库合规这
+  些编译无法担保的层真跑过了；在门禁钉住的 rustc 1.97.1 上 `scripts/ir_gate.py` 以"全部场景在容差内"
+  结束（`to_python_medium` +0.26%、`from_json_medium` −0.00%）。`cargo tree` 确认图中确实是 v2.0.0。
+
 - **两个 mapping 键只在读取器判定的地方才是同一个键。** — 决定两个键在文本上是否冲突的规则
   `keys_collide_in_text` 只比较 scalar 的原始值，其余一概忽略：它把 `!a k:` 与 `!b k:` 当成一个键，
   把 `null:` 与 `'null':` 也当成一个键，可把输出的文本读回来的读取器在这两组里都保留两个条目（tag 是
