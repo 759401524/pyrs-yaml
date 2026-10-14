@@ -229,12 +229,19 @@ an argument conducted without one.
 Local wall clock cannot resolve a ~10 ns per-key delta; the gate can, and it does so
 with a measured line instead of a vibe. That line is 0.5%. Within one run, three samples of each
 scenario spread at most 0.002% on the engine channel (`parse_inline_merge`, 7,792 instructions out of
-451M) and at most 0.19% on the binding channel (`to_python_small`), and across jobs and hosts — with the
-glibc caps pinned, which is what makes the two comparable — the enforcing job agrees with a baseline
-generated elsewhere by at most 0.10%. What the old 2% was: the distance between a WSL-generated baseline
-and the same code measured on a runner, +1.45% on `serialize_block_scalars` — now explained as the ISA
-that glibc binds at start-up (the bullet above), which is why the caps are pinned rather than the line
-widened: a tolerance sized to absorb a host's CPUID flags would be a shrug, not a gate.
+451M) and at most 0.19% on the binding channel (`to_python_small`). Across jobs and hosts — with the
+glibc caps pinned, which is what makes the two comparable — the engine channel agrees with a baseline
+generated elsewhere by at most +0.05%: all twenty-one scenarios were re-measured on WSL2 against the
+artifact the refresh job had just produced for the same `main`, sixteen of them printing 0.00%
+(`serialize_medium` 32,648,867 against the runner's 32,648,850), and the run's verdict was
+`OK: every scenario within tolerance`. The binding channel is the exception, and it is wider than
+this paragraph used to claim by writing 0.10% for everything: the same host comparison reads +0.26%
+on `to_python_medium` and +0.19% on `to_python_small`, which is the size of that channel's own
+within-run spread rather than a property of the host. What the old 2% was: the distance between a
+WSL-generated baseline and the same code measured on a runner, +1.45% on `serialize_block_scalars` —
+now explained as the ISA that glibc binds at start-up (the bullet above), which is why the caps are
+pinned rather than the line widened: a tolerance sized to absorb a host's CPUID flags would be a
+shrug, not a gate.
 
 **The binding channel had to be widened before it could be gated.** At 500 iterations
 `to_python_small` came out 0.83% apart between two runs of one commit — more than the tolerance it
@@ -251,12 +258,16 @@ in a comment.
 refreshed baseline the enforcing job moved every scenario by at most 0.10%, so the band is essentially
 unused — which is not what an earlier version of this paragraph reported: in #299's measurement the same
 comparison spread from −2.35% (`parse_anchors`) to +1.61% (`serialize_anchors`), and in this branch's own
-first run `serialize_block_scalars` came in at +1.44% before the ISA was pinned. Drift of that kind is
+first run `serialize_block_scalars` came in at +1.44% before the ISA was pinned. That last scenario is
+now the cleanest single reading of the method: the same sources measured 12,288,634 on WSL2 against the
+refresh job's 12,288,686 — 0.0004% between two hosts, on the very scenario whose name carried the 1.45%
+figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — seventeen of them, since the binding harness joined and since each cross-format
-bridge grew its reader. `ir_gate.py --update --only <scenario>`
+from — twenty-one of them, since the binding harness joined and since each cross-format
+bridge grew its reader, and `tests/test_ir_baseline_workflow.py` now fails if this page's own count of
+them disagrees with the file it describes. `ir_gate.py --update --only <scenario>`
 merges into the committed file and refuses to write a baseline with a missing number, because the
 first version silently reduced the scenario set to the one it had measured. And the file has to be
 re-generable in full: its first committed version carried a hand-written `generated_by.note`
