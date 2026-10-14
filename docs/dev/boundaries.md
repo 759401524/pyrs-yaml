@@ -102,6 +102,15 @@ holds it - not a per-shape patch.
   (`former-crash-456176be.seed`); the whole spine, not its first stack, has to be taken
   (`former-crash-{f8525a9e,c9031de4}.seed`); and every stack clears a tag header in one round
   (`former-crash-{e6551c75,fbc8f2ae,8f7085b0,77a8039b}.seed`).
+  granit 2.0 also *accepts* an explicit key with nothing in it, which the writer cannot spell back:
+  `?`, `?` (trailing space), `?\t` and `?\n:\n` all parse to the mapping whose key is the null
+  scalar, and the only honest emission is the null pair `~: ~` — so those four converge in one
+  round while the `?` marker itself is lost, exactly as it is lost for a scalar explicit key
+  (`? a\n: b` → `a: b\n`). Ruled 2026-10-14: accepted rather than refused, because the pinned
+  parser decides what is valid YAML and this is a spelling change, not a data change — the document
+  re-reads to the same mapping and the second round equals the first. A key that cannot round-trip
+  without the marker keeps it: `? ?` emits the nested-explicit form `?\n  ~: ~\n:\n  ~`. Pinned by
+  `serializer::tests::a_degenerate_explicit_key_is_accepted_and_re_emits_the_null_pair`.
 - **Quoted text is not a comment.** `tail_line_has_note` asked whether a finished line "already has
   a `#`" by scanning raw bytes, so `"#": !-  # note` refused to host its own note - the predicate
   now walks the line with quote state and applies YAML's own space-before-`#` rule
