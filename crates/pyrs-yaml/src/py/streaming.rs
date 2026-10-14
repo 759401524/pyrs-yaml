@@ -224,16 +224,19 @@ impl YamlStream {
         }
     }
 
-    /// 核心循环：取下一事件。返回 `(StreamEvent, Span)` 或 None（EOF/错误）。
-    /// 在 `__next__` 内以 `py.detach(|| ...)` 调用。
-    fn next_event_impl(&mut self) -> Option<(StreamEvent, Span)> {
+    /// The core loop: pull the next event, or `None` at EOF or after an error.
+    ///
+    /// Called from `__next__` inside `py.detach`. The event detaches here as well, because the
+    /// incremental reader rotates the buffer a borrowed event would point into — a borrow of
+    /// `self` would outlive exactly the call that is allowed to move it.
+    fn next_event_impl(&mut self) -> Option<(StreamEvent<'static>, Span)> {
         let parser = self.parser.as_mut()?;
         loop {
             match parser.next_event() {
                 None => {
                     self.finished = true;
-                    // 解析器遇 reader 错误视为干净 EOF——错误存于共享槽，
-                    // 在此提取转为 pending_error（若尚未由扫描错误触发）。
+                    // A reader error reads as a clean EOF here: the message sits in the shared
+                    // slot and is lifted into `pending_error` (unless a scan error got there first).
                     self.pull_reader_error();
                     return None;
                 }
@@ -247,8 +250,8 @@ impl YamlStream {
                         event_to_stream_event(event, span, &mut self.anchor_map, &mut |id| {
                             Some(format!("anchor_{}", id))
                         });
-                    // D5: 文档级清空 —— 当前文档的 anchor 已全部消费完毕，
-                    // 在转换之后清空，下个文档从头注册。
+                    // D5: per-document reset — every anchor of this document has been consumed, so
+                    // clear after the conversion and let the next one register from scratch.
                     if matches!(
                         stream_event.as_ref().map(|e| &e.event_type),
                         Some(StreamEventType::DocumentEnd)
@@ -256,9 +259,9 @@ impl YamlStream {
                         self.anchor_map.clear();
                     }
                     if let Some(ev) = stream_event {
-                        return Some((ev, span));
+                        return Some((ev.into_owned(), span));
                     }
-                    // Event::Nothing → 继续循环
+                    // granit is `non_exhaustive`: an event this adapter does not map → keep pulling.
                 }
             }
         }

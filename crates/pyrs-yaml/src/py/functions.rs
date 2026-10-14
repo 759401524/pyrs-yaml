@@ -259,6 +259,12 @@ pub(crate) fn parse_stream(
                 .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
         })?;
 
+        // The iterator outlives this call and a `#[pyclass]` cannot borrow, so the stream detaches
+        // here — the one path that still copies every scalar out of the source. The `on_event`
+        // branch above does not: its events die inside the loop, so they only ever borrow.
+        let events: Vec<crate::parser::StreamEvent<'static>> =
+            events.into_iter().map(|event| event.into_owned()).collect();
+
         let iter = StreamIterator { events, index: 0 };
         Ok(iter.into_pyobject(py)?.into_any().unbind())
     }

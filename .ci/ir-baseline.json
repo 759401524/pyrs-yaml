@@ -1,7 +1,7 @@
 {
   "binaries": {
-    "pyrs-yaml-core/ir_gate": "0c8e1a403a963867",
-    "pyrs-yaml/ir_gate": "972ba1b6a457814d"
+    "pyrs-yaml-core/ir_gate": "7a8bbae66663c5c1",
+    "pyrs-yaml/ir_gate": "d027852912324681"
   },
   "generated_by": {
     "environment": "Linux 6.18.54.1-microsoft-standard-WSL2 (x86_64)",
@@ -25,7 +25,7 @@
     "serialize_block_scalars": 12288686,
     "serialize_medium": 32648850,
     "serialize_small": 4169906,
-    "stream_medium": 275227226,
+    "stream_medium": 249928334,
     "to_json5_medium": 23643043,
     "to_json_medium": 21278969,
     "to_jsonc_medium": 23079043,

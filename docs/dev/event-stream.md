@@ -190,8 +190,9 @@ Decision 2 is answered (maintainer, 2026-10-13): a multi-format `parse_stream` *
 users, in Python and in Rust. That is what makes the reordered step worth building - the tree-free
 reader is not an optimization of an internal detail but the advertised surface - and it settles that
 the Python-facing step carries stubs, the four doc locales and a matrix row rather than being cut as
-a non-goal. Decisions 3 and 4 (borrow versus own, and how TOML dotted keys are expressed) are still
-open, and each blocks the step that needs it.
+a non-goal. Decision 3 (borrow versus own) was answered on 2026-10-14 and is the change this
+document's last section prices; decision 4 (how TOML dotted keys are expressed) is still open and
+blocks the step that needs it.
 
 ## What this is not for
 
@@ -212,7 +213,44 @@ open, and each blocks the step that needs it.
 3. If B: does the neutral event **borrow** from the input (`&'a str`, which the replay test can
    drive from a single buffer) or keep owning `String`? Borrowing is the smaller-allocations answer
    and the harder-lifetimes one; today's `StreamReceiver` already keeps the source text alive
-   alongside its events (`stream.rs:86`), which suggests it is possible.
+   alongside its events (`yaml_text: &'a str`, `parser/stream.rs`), which suggests it is possible.
+   **Answered 2026-10-14 (maintainer): `Cow<'a, str>`.** Borrow the clean case, own the one a
+   decoder produced — granit hands the scalar over as exactly that, and moving it instead of copying
+   it is what the section below measures.
 4. If B: how are TOML dotted keys expressed — nested `MappingStart`/`MappingEnd` per level, matching
    the AST, or a flat key event with the source span? One sentence from you fixes what would
    otherwise be two implementations of the same question.
+
+## What the borrowed scalar is worth (2026-10-14, decision 3 landed)
+
+The ruling was `Cow<'a, str>`: move granit's own `Cow` into the event instead of copying it out with
+`value.to_string()`. `stream_medium` — the scenario #405 added *before* the change so that the gate
+would compute the gain rather than a sentence asserting it — reads 249,928,334 counted instructions
+against the committed 275,227,226: **−9.192%**, three samples identical to the instruction (spread
+0.000%). The same run measured all twenty-two scenarios; the largest movement anywhere else was
++0.202% (`parse_small`), which is inside the cross-host residual `AGENTS.md` sizes — these are WSL
+readings against values committed from the enforcing image, so the CI leg is the authoritative
+comparison — and the AST path is not reachable from this change at all.
+
+Two figures frame the path's size. The event stream now costs 249.9M counted instructions against
+`parse_medium`'s 321.8M on the same text, so a tree-free read is about 22% cheaper than building the
+node model where it used to be about 14.5%; and what the change removes is one allocation plus one
+`memcpy` of the value's bytes for every scalar in the document.
+
+Where the copy is still paid, and why that is the honest boundary rather than a leak:
+
+- The lazy `StreamIterator` handed back to Python owns its events, because a `#[pyclass]` cannot
+  carry a borrow. That branch detaches with `into_owned` at the boundary and pays what it always
+  paid.
+- The incremental reader (`YamlStream`) rotates the buffer a borrowed event points into, so it
+  detaches inside `next_event_impl`: a borrow of `self` there would outlive exactly the call that is
+  allowed to move it.
+- The `on_event` callback path pays nothing new. Its events die inside the loop, so they only ever
+  borrow, and the source's bytes reach Python's string without an intermediate Rust copy.
+
+The invariant is pinned by
+`parser::stream::tests::a_plain_scalar_borrows_the_source_and_a_decoded_one_owns_its_text`, which
+asserts that a plain scalar's bytes lie inside the source's range and that an escaped double-quoted
+value owns its own — granit delivers exactly that split, measured rather than assumed. Reintroducing
+the per-scalar copy fails that test by name, and the floor for `stream_medium` now sits at the lower
+number, so a regression on this path costs a red leg instead of living quietly.

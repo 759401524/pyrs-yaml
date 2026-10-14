@@ -22,7 +22,7 @@ pub struct StreamReceiver<'a> {
     /// Char-index to byte-offset table for non-ASCII input (`None` when ASCII,
     /// so a span char index is already a byte offset).
     char_offsets: Option<Vec<usize>>,
-    events: Vec<StreamEvent>,
+    events: Vec<StreamEvent<'a>>,
     pending_standalone_comment: Option<Comment>,
     anchors: HashMap<usize, String>,
     /// Maximum allowed nesting depth for mapping/sequence containers.
@@ -156,12 +156,12 @@ fn convert_tag(tag: Option<&granit_parser::Tag>) -> Option<Tag> {
 /// Contains no comment dependencies (those stay in `StreamReceiver::on_event`);
 /// anchor name injected via `resolve_anchor` callback. Returns `None` for
 /// non_exhaustive wildcard.
-pub fn event_to_stream_event<F>(
-    event: Event<'_>,
+pub fn event_to_stream_event<'a, F>(
+    event: Event<'a>,
     span: Span,
     anchor_map: &mut HashMap<usize, String>,
     resolve_anchor: &mut F,
-) -> Option<StreamEvent>
+) -> Option<StreamEvent<'a>>
 where
     F: FnMut(usize) -> Option<String>,
 {
@@ -184,12 +184,15 @@ where
             };
             // granit already delivers the decoded double-quoted value; a
             // second unescape here would decode `"\\n"`-style raw pairs wrong
-            // (see create_scalar in the tree parser).
-            let scalar_value = value.to_string();
+            // (see create_scalar in the tree parser). The `Cow` moves in rather
+            // than being copied out: a plain, quoted-without-escapes or block
+            // scalar is a slice of the source, and an escaped double-quoted one
+            // already owns the string granit decoded — either way this line used
+            // to allocate a second copy of every scalar in the document.
             let anchor = resolve_anchor_name(anchor_id, anchor_map, resolve_anchor);
             let tag_obj = convert_tag(tag.as_deref());
             StreamEventType::Scalar {
-                value: scalar_value,
+                value,
                 style: scalar_style,
                 anchor,
                 tag: tag_obj,
@@ -232,8 +235,8 @@ where
 
 /// Resolve and register an anchor name for a non-zero anchor id.
 ///
-/// `resolve_anchor` 返回 `None` 时表示无 anchor（名称来源耗尽），此时不注册，
-/// 与字符串路径 `next_anchor_name()` 的语义一致。
+/// A `None` from `resolve_anchor` means there is no anchor to name (the source ran out), so
+/// nothing is registered — the same reading the string path gives for `next_anchor_name()`.
 fn resolve_anchor_name<F>(
     anchor_id: usize,
     anchor_map: &mut HashMap<usize, String>,
@@ -263,7 +266,7 @@ where
 /// * `yaml` - The YAML content string.
 ///
 /// # Returns
-/// Success: a `Vec<StreamEvent>` representing the complete event stream.
+/// Success: a `Vec<StreamEvent>` borrowing `yaml`, representing the complete event stream.
 /// Failure: a `ParseError` with line/column information.
 ///
 /// # Examples
@@ -272,7 +275,7 @@ where
 /// let events = parse_stream("key: value").unwrap();
 /// assert!(!events.is_empty());
 /// ```
-pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, super::ParseError> {
+pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent<'_>>, super::ParseError> {
     parse_stream_with_options(yaml, 1000)
 }
 
@@ -283,12 +286,12 @@ pub fn parse_stream(yaml: &str) -> Result<Vec<StreamEvent>, super::ParseError> {
 /// * `max_depth` - Maximum allowed nesting depth for mapping/sequence containers.
 ///
 /// # Returns
-/// Success: a `Vec<StreamEvent>` representing the complete event stream.
+/// Success: a `Vec<StreamEvent>` borrowing `yaml`, representing the complete event stream.
 /// Failure: a `ParseError` with line/column information.
 pub fn parse_stream_with_options(
     yaml: &str,
     max_depth: usize,
-) -> Result<Vec<StreamEvent>, super::ParseError> {
+) -> Result<Vec<StreamEvent<'_>>, super::ParseError> {
     if pyrs_schema::is_yaml_blank_only(yaml) {
         return Ok(Vec::new());
     }
@@ -329,6 +332,50 @@ mod tests {
             events.last().unwrap().event_type,
             StreamEventType::StreamEnd
         ));
+    }
+
+    /// What the `stream_medium` scenario is priced against: a scalar that needs no decode carries
+    /// the source's own bytes, and `into_owned` is the step that crosses a boundary which cannot
+    /// hold the borrow. Reintroducing a per-scalar copy here fails this test by name.
+    #[test]
+    fn a_plain_scalar_borrows_the_source_and_a_decoded_one_owns_its_text() {
+        let src = "plain: 1\nquoted: \"a\\nb\"\n";
+        let source_range = src.as_ptr() as usize..src.as_ptr() as usize + src.len();
+        let events = parse_stream(src).unwrap();
+
+        let scalar_of = |wanted: &str| {
+            events.iter().find_map(|event| match &event.event_type {
+                StreamEventType::Scalar { value, .. } if &**value == wanted => Some(value),
+                _ => None,
+            })
+        };
+
+        let plain = scalar_of("plain").expect("the plain key is in the stream");
+        assert!(
+            matches!(plain, std::borrow::Cow::Borrowed(_)),
+            "a plain scalar must not be copied out of the source"
+        );
+        assert!(
+            source_range.contains(&(plain.as_ptr() as usize)),
+            "the borrowed scalar must point into the source it was parsed from"
+        );
+
+        // granit decodes an escaped double-quoted value, so that one owns its text already.
+        assert!(matches!(
+            scalar_of("a\nb").expect("the escaped value is in the stream"),
+            std::borrow::Cow::Owned(_)
+        ));
+
+        // Detaching keeps the text: what the `#[pyclass]` boundary needs and nothing else pays.
+        let owned: Vec<_> = events.into_iter().map(StreamEvent::into_owned).collect();
+        let detached = owned
+            .iter()
+            .find_map(|event| match &event.event_type {
+                StreamEventType::Scalar { value, .. } if &**value == "plain" => Some(value),
+                _ => None,
+            })
+            .expect("the key survives the detach");
+        assert!(matches!(detached, std::borrow::Cow::Owned(_)));
     }
 
     #[test]
