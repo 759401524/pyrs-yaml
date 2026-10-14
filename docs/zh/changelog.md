@@ -625,6 +625,13 @@ status: new
 
 #### 性能
 
+- **指令数地板下调到新引擎实测达到的位置。** — node-map hasher 进入 `main` 后，`Ir baseline refresh`
+  工作流在施测镜像（`github-runner ubuntu24`、rustc 1.97.1）上重新测量了全部 21 个场景，其产物现在
+  就是已提交的基线：`from_json_medium` 120,751,446 → 99,000,356（−18.01%）、`from_toml_medium`
+  −16.25%、`parse_anchors` −12.95%、`to_python_anchors` −11.17%，写入场景落在 +0.03%…−1.80% 之间。
+  地板若比实测高出 18%，门禁就等于默许 18% 的回退，所以"零回退"承诺如今以这些数字为准。数值并非
+  手抄，而是由施测镜像上的 `scripts/ir_gate.py --update` 写出的。
+
 - **节点映射在所有构建上都改用 FxHash 计算键哈希，不再只在 `no_std` 下。** — 开启 `std` 时
   `NodeMap` 就是 `IndexMap<K, V, std::hash::RandomState>`，所以往表里放一个映射键都要付
   SipHash-1-3 的代价：`callgrind` 测得从 `CustomNode::hash` 走到 `Hasher::write` 的自耗时

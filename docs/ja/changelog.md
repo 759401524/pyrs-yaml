@@ -720,6 +720,14 @@ status: new
 
 #### パフォーマンス
 
+- **命令数フロアを実測されたエンジンまで下げた。** — node-map のハッシュ関数が `main` に乗った時点で
+  `Ir baseline refresh` ワークフローが実施イメージ（`github-runner ubuntu24`、rustc 1.97.1）で全 21
+  シナリオを再測定し、その成果物がコミット済みのベースラインになった：`from_json_medium` 120,751,446
+  → 99,000,356（−18.01%）、`from_toml_medium` −16.25%、`parse_anchors` −12.95%、`to_python_anchors`
+  −11.17%、書き込み側は +0.03%…−1.80% の範囲。フロアが実測より 18% 高いままなら、ゲートは 18% の性能
+  劣化を黙って許すことになるので、劣化なしの約束はいまこの数値を指す。数値は手書きではなく、
+  ランナー上の `scripts/ir_gate.py --update` がファイルを書いた。
+
 - **ノードマップのキーハッシュをすべてのビルドで FxHash にした（`no_std` 限定ではなくなる）。** —
   `std` を有効にすると `NodeMap` は `IndexMap<K, V, std::hash::RandomState>` でした。そのため
   マップにキーを 1 つ置くたび SipHash-1-3 のコストが発生し、`callgrind` は `CustomNode::hash` から
