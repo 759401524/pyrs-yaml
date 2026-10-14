@@ -175,16 +175,23 @@ one comment line, count units, restore.
   `pyrs-toml` stayed fresh.
 
 So the YAML engine does not touch the TOML engine, and the hub's 7 is the price of the shared node
-model - both are what the split is supposed to buy. The surprise is the middle result: a change
-inside the YAML serializer pulled the JSON engine back in, which the closure table above says should
-be impossible (`pyrs-json` does not depend on `pyrs-yaml-core`). The likeliest cause is feature
-unification through `pyrs-ast` or `indexmap` - one crate built two ways in the same workspace
-directory invalidates the other consumer - but that is a hypothesis, not a result, and the two
-engines sharing a target directory is not controlled for either. The open question is therefore
-specific and cheap to settle: repeat the serializer probe with separate target directories per
-engine, and if the JSON recheck disappears the fix is a build-side convention, not an architecture
-change. Until then this file claims the closure table and the fan-out counts, and does not claim
-that editing one engine is free for the others.
+model - both are what the split is supposed to buy. The anomaly reported here in an earlier draft
+did not survive a controlled re-run. With one comment line added to
+`crates/pyrs-yaml-core/src/serializer.rs`, `cargo check -p pyrs-json -p pyrs-toml` re-checks **0**
+units both in an isolated `CARGO_TARGET_DIR` and in the shared `target/` directory - verified with
+the marker read back out of the file (count 1) and a warmed baseline of 0. So the reading that a
+YAML-engine edit pulled the JSON engine in was produced by the probe itself: the `cp`/`mv`
+round-trip used to restore the edited files bumped the mtimes of unrelated sources, and the recheck
+attributed to coupling was the probe's own residue. Engine isolation therefore holds as the closure
+table predicts, and the hub's 7 is the only real fan-out.
+
+Two traps this chased, both worth naming because they fabricate results rather than hiding them:
+`cargo check` prints `Checking`, so counting `Compiling` yields a convincing zero for every run; and
+on a shared-folder filesystem a lockfile cargo has just rewritten can still read back as the old
+version, so `cargo tree` - not the lock text - is the control that says which version was measured.
+
+This file therefore claims the closure table, the hub fan-out of 7, and that editing one
+engine costs the others nothing - each with the command that shows it.
 
 Two environment facts belong to this measurement because they wasted it first: `cargo +1.97.1` on
 the Windows host fails with `missing manifest in toolchain 1.97.1-x86_64-pc-windows-msvc` (that
