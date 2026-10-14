@@ -649,3 +649,40 @@ class TestSetPathRoot:
         rev0 = doc._revision()
         doc.set("$", 9)
         assert doc._revision() != rev0
+
+
+class TestKeyIdentityAcrossSpellings:
+    """Issue #336: a path addresses the key the reader resolves, not the spelling it saw."""
+
+    def test_editing_a_null_spelling_replaces_the_existing_entry(self):
+        doc = pyrs_yaml.parse("a: 1\n~: 2\n")
+        doc._set_path(["null"], 3)
+        out = doc.to_yaml()
+        assert out == "a: 1\n~: 3\n", out
+        # The old failure was an append: two lines whose keys the reader folds into one, which it
+        # then refuses outright as a duplicate key.
+        assert pyrs_yaml.parse(out).get("~") == 3
+
+    def test_a_capitalised_null_spelling_edits_the_same_entry(self):
+        doc = pyrs_yaml.parse("NULL: 1\n")
+        doc._set_path(["~"], 2)
+        assert doc.to_yaml() == "NULL: 2\n"
+
+    def test_a_quoted_string_key_is_not_the_null_key(self):
+        doc = pyrs_yaml.parse("'null': 1\n")
+        doc._set_path(["~"], 2)
+        out = doc.to_yaml()
+        assert len(out.strip().splitlines()) == 2, out
+        assert pyrs_yaml.parse(out).get("~") == 2
+
+    def test_a_quoted_key_that_names_a_null_stays_addressable(self):
+        # The writer quotes a key exactly when its bare form would fold, so the dump of {"NULL": 1}
+        # is `'NULL': 1`. A lookup that asked only the reader's fold would answer "null" for the
+        # segment NULL and refuse that entry - unreachable by any path. The CI property tier
+        # (test_property_editing.py) caught precisely that.
+        dumped = pyrs_yaml.safe_dump({"NULL": 1})
+        assert dumped == '"NULL": 1\n', dumped
+        doc = pyrs_yaml.parse(dumped)
+        assert doc.node().find("$.NULL").value == 1
+        doc._set_path(["NULL"], 2)
+        assert doc.to_yaml() == '"NULL": 2\n', doc.to_yaml()

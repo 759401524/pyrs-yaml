@@ -425,6 +425,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A path edit finds the key the reader means, not the spelling it met.** — `~`, `NULL` and a
+  `Null` node are one mapping key to the reader, and two scalars carrying different tags are two
+  keys, but the editing layer compared a key's *text* only. So setting `null` in a document holding
+  `~: 2` missed that entry and appended a second line - and the text handed back was one this
+  library's own reader refuses as `duplicate key: null` (#336). A path segment now resolves to what
+  the reader resolves the key to, so that edit becomes `~: 3` on one line, while the pairs that must
+  stay distinct do: a quoted `'null'` key is still its own entry, and `yes` is not null.
+
 - **The CLI test harness no longer panics when a refusal closes its stdin.** — `run_with_stdin`
   wrote the child's stdin and panicked on any error, but a CLI that refuses its arguments exits
   *before* it reads, so the write races the closed pipe: the same invocation passed locally and
