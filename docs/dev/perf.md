@@ -596,3 +596,49 @@ question about names, so the only reading that counts is the list of names insid
 members, not the total. The probe that does this round's attribution was one-off scratch under
 `target/`; the third session to rebuild one is an argument for registering it as a tool, which is
 raised rather than smuggled into this change.
+
+---
+
+## Two per-token calls that had nothing to do (2026-10-14)
+
+The same attribution that found the scanners put `Parser::ws` at 6.63% of `from_json_medium` and
+10.08% of `from_json5_medium`, on a fixture that contains **no whitespace at all**. That is not a
+scanning cost: `from_json_medium` spends 3,315 counted instructions there for ~90 calls, which is
+thirty-odd instructions of call and match-chain per question whose answer is "the next byte is not
+separation". The comment-attachment row was the same shape - `attach_pending` self-cost 3.23% on a
+document with no comments, because every key and every value meets it.
+
+Both now answer "nothing to do" without doing it. `ws` is an inlined guard over one small predicate,
+`at_separation`, and the loop moved to `ws_extended` unchanged; `attach_pending` returns on an empty
+list. The guard's byte sets are a *sound superset* of the loop's, in the direction that matters: if
+the loop would consume something, the guard says so. Over-calling is harmless - a high byte that
+turns out not to be JSON5 separation costs a call, never a position - and the direction is pinned by
+`the_whitespace_guard_never_declines_what_the_loop_would`, which asks both the same question for all
+128 ASCII bytes, five multi-byte separators plus one non-separator, three comment shapes and three
+dialects, and requires the same resulting position and pending-note count. Mutation-checked: making
+the guard answer `false` for `/` fails it with `left: (0, 0) right: (4, 1)` on `"//x\n1"` under
+JSONC, which is the under-call that would silently drop a comment. `attach_pending` needs no test of
+its own - skipping work for an empty list is correct whatever fills the list, and the JSONC comment
+tests already pin what a non-empty one does.
+
+Measured as three binaries from three commits of the same branch, so each guard carries its own
+number (paired, two repeats agreeing to the instruction):
+
+| scenario | previous change → +`ws` guard | +`attach_pending` guard |
+|:--|--:|--:|
+| `from_json_medium` | -4.33% | -1.56% |
+| `from_jsonc_medium` | -3.52% | -1.25% |
+| `from_json5_medium` | -4.49% | -1.40% |
+| `to_json_medium` | +0.00% | — |
+
+The writer is the control: it calls neither function. The `ws` row is larger than the ~2.5% the
+per-call arithmetic predicts; the likeliest reason is that inlining lets the callers keep `pos` live
+across the test instead of spilling it around a call, but that is an explanation this file has not
+measured, so it is offered as one and the number stands without it. The `attach_pending` row
+recovers about half of its 3.23% attribution, the rest being the `mem::take` at the two call sites,
+which stays because a comment slot has to be claimed before the value's separation is scanned.
+
+What that leaves in the same profile, in size order: the allocator (33.36% of `from_json_medium`,
+which this file has already shown to be the tree's own footprint rather than slack), the per-string
+`quoted_or_plain` decision (8.24%, and its own earlier entry reduced it from a full resolver to a
+table lookup), and `Parser::string` itself (9.17%). None of the three is a call that does nothing.
