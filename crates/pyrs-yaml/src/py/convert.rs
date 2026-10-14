@@ -8,7 +8,7 @@ use crate::parser::yaml::{Schema, YamlType};
 use crate::py::type_registry;
 
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyList};
+use pyo3::types::{PyBool, PyDict, PyList, PyTuple};
 use std::collections::{HashMap, HashSet};
 
 /// 格式化 i18n 错误消息（pub 以便 sibling modules 使用）。
@@ -186,20 +186,48 @@ fn node_to_pyobject_inner<'a>(
                     } if meta.tag().is_none() => {
                         dict.set_item(scalar_to_pyobject(py, value, style, schema)?, &val)?;
                     }
-                    CustomNode::Scalar { .. }
-                    | CustomNode::Null { .. }
-                    | CustomNode::Alias { .. } => {
+                    CustomNode::Scalar { .. } | CustomNode::Null { .. } => {
                         let k = resolve_alias_target(key, py, anchors, in_progress, schema)?;
                         if dict.set_item(k, &val).is_err() {
                             set_text_key(&dict, key, &val)?;
                         }
                     }
-                    // A complex key (a nested mapping or sequence) has no hashable
-                    // Python counterpart in this engine yet, and both reference libraries
-                    // refuse it (`ConstructorError`), so it keeps the previous stand-in
-                    // rather than being dropped. Named in ROADMAP as the remaining half of
-                    // key fidelity.
-                    _ => set_text_key(&dict, key, &val)?,
+                    // A sequence used as a key has a hashable Python form and ruamel.yaml uses
+                    // it: the top level becomes a tuple, so `? [1, 2]` reads back as
+                    // `{(1, 2): 'v'}`. Measured on 2026-10-14 against ruamel's safe loader, which
+                    // gives `(1, 2)` for `? [1, 2]` and `(1, 'x')` for `? [1, "x"]`, while
+                    // `? [[1], [2]]` and `? [{a: 1}]` stay refused by Python with its own
+                    // `unhashable type: 'list'` / `'dict'` - the same two errors ruamel produces,
+                    // because only the outer container is converted. PyYAML refuses all of them
+                    // (`ConstructorError`), so this is a documented divergence toward the more
+                    // informative library rather than a silent third behaviour.
+                    CustomNode::Sequence { items, .. } => {
+                        let mut parts = Vec::with_capacity(items.len());
+                        for item in items {
+                            parts.push(resolve_alias_target(
+                                item,
+                                py,
+                                anchors,
+                                in_progress,
+                                schema,
+                            )?);
+                        }
+                        dict.set_item(PyTuple::new(py, parts)?, &val)?;
+                    }
+                    // An alias in key position resolves to a node whose hashability is decided by
+                    // what it points at, and the two reference libraries disagree about it: PyYAML
+                    // raises `ConstructorError`, while ruamel's safe loader hands back an empty
+                    // tuple for `? *x` over a sequence anchor. Neither is a faithful reading, so
+                    // this engine refuses and says why, rather than picking a third answer or
+                    // inventing a key (which is what used to happen).
+                    CustomNode::Alias { .. } => return Err(unhashable_key_error(key)),
+                    // A nested mapping as a key has no hashable Python form and both reference
+                    // libraries refuse it - PyYAML and ruamel both raise `ConstructorError:
+                    // found unhashable key` for `? {a: 1}` and for `? ?`. It used to be replaced
+                    // by the node's Rust debug text, which is worse than either failure: the key
+                    // stops being the structure the reader parsed, and the stand-in is a plain
+                    // string, so it re-emits stably and the corruption looks like a fixed point.
+                    _ => return Err(unhashable_key_error(key)),
                 }
             }
             Ok(dict.into_any().unbind())
@@ -217,17 +245,37 @@ fn node_to_pyobject_inner<'a>(
     }
 }
 
-/// Put one pair in the dict under a stand-in key: the scalar's own text, or the debug
-/// form of a node that has no scalar text at all (a nested key).
+/// Put one pair in the dict under the key's own text.
 ///
-/// This is what keeps a mapping entry from being dropped: `set_item` fails on an
-/// unhashable object, and losing the pair silently is worse than a key the user can
-/// still see and re-read.
+/// Reached when `set_item` refused the resolved key. If the node is a scalar its source
+/// text is a real, if narrower, rendering of what the document wrote, and the pair is kept.
+/// Anything else has no scalar text to fall back to, and fabricating a key out of a debug
+/// dump would silently change the document, so it gets `unhashable_key_error` instead.
 fn set_text_key(dict: &Bound<'_, PyDict>, key: &CustomNode, value: &Py<PyAny>) -> PyResult<()> {
     match key {
         CustomNode::Scalar { value: text, .. } => dict.set_item(text.as_ref(), value),
-        _ => dict.set_item(format!("{key:?}"), value),
+        other => Err(unhashable_key_error(other)),
     }
+}
+
+/// The refusal for a key that has no hashable Python form.
+///
+/// The message names the shape and stops there. It deliberately does not promise that the
+/// document survives elsewhere: for a mapping or sequence key the AST does hold it and the
+/// writer does emit the `?` form (tested), but an alias used as a key is currently written as
+/// `null` by the serializer, which is a separate defect and not this boundary's business.
+fn unhashable_key_error(key: &CustomNode) -> pyo3::PyErr {
+    let shape = match key {
+        CustomNode::Mapping { .. } => "mapping",
+        CustomNode::Sequence { .. } => "sequence",
+        CustomNode::Alias { .. } => "alias, which resolves to a mapping or a sequence",
+        _ => "node",
+    };
+    YamlTypeError::new_err(format!(
+        "found unhashable key: the YAML key is a {shape}, which has no hashable Python form. \
+         PyYAML and ruamel.yaml raise at this same point. Read the document with parse() and \
+         work on the AST, or project it with to_json()/to_toml(), rather than asking for a dict."
+    ))
 }
 
 /// Expand an `Alias` node against the anchor table, guarding against

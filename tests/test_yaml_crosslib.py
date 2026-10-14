@@ -144,6 +144,61 @@ def test_pyyaml_loads_what_pyrs_dumps(src):
 # ── Documented deliberate divergences ────────────────────────────────────
 
 
+@pytest.mark.skipif(not _ruamel_available(), reason="ruamel.yaml not installed")
+@pytest.mark.parametrize(
+    ("src", "key"),
+    [
+        pytest.param("? [1, 2]\n: v\n", (1, 2), id="sequence-key"),
+        pytest.param('? [1, "x"]\n: v\n', (1, "x"), id="mixed-sequence-key"),
+    ],
+)
+def test_sequence_keys_agree_with_ruamel(src, key):
+    """A sequence in key position projects to the same tuple ruamel.yaml gives.
+
+    Measured rather than assumed on 2026-10-14: ruamel's safe loader converts the outer
+    container only, and this engine matches it item for item.
+    """
+    ours = pyrs_yaml.safe_load(src)
+    theirs = _ruamel.YAML(typ="safe").load(io.StringIO(src))
+    assert list(ours.keys()) == list(theirs.keys()) == [key]
+    assert ours == theirs
+
+
+@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
+def test_pyrs_projects_a_sequence_key_where_pyyaml_refuses_it():
+    """Deliberate divergence, toward the library that carries the data.
+
+    PyYAML constructs the key as a list and then `dict` refuses it, so
+    `? [1, 2]` is unreadable there even though the tuple form is hashable and
+    ruamel returns it. Producing `{(1, 2): 'v'}` loses nothing and is the
+    stricter-to-nothing choice, so it is pinned here instead of being left to
+    an argument.
+    """
+    with pytest.raises(pyyaml.constructor.ConstructorError):
+        pyyaml.safe_load("? [1, 2]\n: v\n")
+    assert pyrs_yaml.safe_load("? [1, 2]\n: v\n") == {(1, 2): "v"}
+
+
+@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
+@pytest.mark.parametrize(
+    "src",
+    [
+        pytest.param("? {a: 1}\n: v\n", id="mapping-key"),
+        pytest.param("? ?\n", id="empty-nested-key"),
+    ],
+)
+def test_a_mapping_key_is_refused_by_both_engines(src):
+    """Neither engine invents a key for a nested mapping; both refuse at the same boundary.
+
+    pyrs used to substitute the node's debug text, and because that stand-in is an ordinary
+    string it re-emitted, so the change reached the next document as if it had been intended.
+    """
+    with pytest.raises(pyyaml.constructor.ConstructorError):
+        pyyaml.safe_load(src)
+    with pytest.raises(TypeError, match="unhashable key"):
+        pyrs_yaml.safe_load(src)
+
+
 @pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
 def test_duplicate_keys_are_deliberately_rejected_by_pyrs():
     """Objective §Known Engine Boundaries / v0.11.5 audit: pyrs rejects

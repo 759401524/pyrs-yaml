@@ -150,6 +150,55 @@ class TestComplexKeys:
     def test_parses_explicit_key(self, yaml_str):
         assert "?" in pyrs_yaml.parse(yaml_str).to_yaml()
 
+    # The dict projection either carries the key or refuses it; it never invents one.
+    # A sequence key gets the form ruamel.yaml produces -- measured 2026-10-14, its safe
+    # loader gives `(1, 2)` for `? [1, 2]` and `(1, 'x')` for `? [1, "x"]`. Before this,
+    # such a key came back as the node's Rust debug text, which re-emitted stably, so the
+    # corruption looked like a round trip.
+
+    @pytest.mark.parametrize(
+        ("yaml_str", "expected"),
+        [
+            pytest.param("? [1, 2]\n: v\n", {(1, 2): "v"}, id="sequence-key"),
+            pytest.param('? [1, "x"]\n: v\n', {(1, "x"): "v"}, id="mixed-sequence-key"),
+        ],
+    )
+    def test_sequence_key_is_projected_as_a_tuple(self, yaml_str, expected):
+        assert pyrs_yaml.safe_load(yaml_str) == expected
+
+    @pytest.mark.parametrize(
+        "yaml_str",
+        [
+            pytest.param("? {a: 1}\n: v\n", id="mapping-key"),
+            pytest.param("? ?\n", id="empty-nested-key"),
+            pytest.param("a: &x [1, 2]\n? *x\n: v\n", id="alias-key"),
+        ],
+    )
+    def test_a_key_with_no_hashable_form_is_refused_not_replaced(self, yaml_str):
+        with pytest.raises(TypeError, match="unhashable key") as raised:
+            pyrs_yaml.safe_load(yaml_str)
+        assert "Mapping {" not in str(raised.value)
+        assert "Sequence {" not in str(raised.value)
+
+    def test_a_nested_sequence_key_keeps_pythons_own_refusal(self):
+        # Only the outer container becomes a tuple, exactly as ruamel does it, so a nested
+        # list is refused by Python rather than by a message this engine adds for it.
+        with pytest.raises(TypeError, match="unhashable type: 'list'"):
+            pyrs_yaml.safe_load("? [[1], [2]]\n: v\n")
+
+    @pytest.mark.parametrize(
+        "yaml_str",
+        [
+            pytest.param("? [1, 2]\n: v\n", id="sequence-key"),
+            pytest.param("? {a: 1}\n: v\n", id="mapping-key"),
+            pytest.param("? ?\n", id="empty-nested-key"),
+        ],
+    )
+    def test_the_ast_still_holds_the_key_the_document_wrote(self, yaml_str):
+        text = pyrs_yaml.parse(yaml_str).to_yaml()
+        assert "?" in text
+        assert pyrs_yaml.parse(text).to_yaml() == text
+
 
 class TestAnchorsAliases:
     """Test anchor and alias parsing"""

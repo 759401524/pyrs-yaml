@@ -502,6 +502,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A complex mapping key no longer reaches Python as the node's Rust debug text.** —
+  `safe_load("? ?")` handed back a dict whose key was `'Mapping { pairs: {Scalar { value: "~"…'`,
+  and `? [1, 2]` the same shape of string, because the conversion preferred a debug format over
+  dropping the pair. Neither choice was right: dropping loses an entry the document wrote, and the
+  invented key is an ordinary string, so it re-emits — the corruption then arrives in the next
+  document looking like a fixed point. Measured against the reference libraries on 2026-10-14 and
+  then split by shape: a sequence key becomes a tuple (`{(1, 2): 'v'}`, exactly what ruamel.yaml
+  produces, while PyYAML refuses it — a documented divergence toward the library that keeps the
+  data); a nested container is refused by Python's own `unhashable type: 'list'`, because only the
+  outer level converts; a mapping key and an alias key are refused here with a message naming the
+  shape. Scalar keys, including a tagged key whose constructor returns something unhashable, keep
+  their existing text fallback — that path was not broken and is unchanged. Eleven tests cover it,
+  mutation-checked: against the previous code all eleven fail while the other 173 in those two
+  files do not move. `ROADMAP.md` records the half this change found and did not paper over — an
+  alias in key position is still written back as `null: v`, which is a serializer gap, not a
+  projection question.
+
 - **A path edit finds the key the reader means, not the spelling it met.** — `~`, `NULL` and a
   `Null` node are one mapping key to the reader, and two scalars carrying different tags are two
   keys, but the editing layer compared a key's *text* only. So setting `null` in a document holding
