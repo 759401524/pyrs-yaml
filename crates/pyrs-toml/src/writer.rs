@@ -40,21 +40,22 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     // dropped on a TOML -> hub -> TOML round trip. Native TOML parses place
     // the first note on the first key instead, so this stays a no-op there.
     for c in node.leading_comments() {
-        let _ = writeln!(out, "# {}", c.text.trim());
+        write_note(&mut out, &c.text);
     }
     // A note the hub put on the root's inline slot has no `key = value` line to
     // ride, so it gets a line of its own — which is also where a TOML reader
     // reports a document-leading comment back from, keeping the round trip stable.
     if let Some(c) = node.comment().filter(|c| !c.standalone) {
-        let _ = writeln!(out, "# {}", c.text.trim());
+        write_note(&mut out, &c.text);
     }
     let mut sections: Vec<(String, &CustomNode, Option<&CustomNode>)> = Vec::new();
     let mut first_pair = true;
     for (k, v) in pairs {
-        let key_str = scalar_key(k)?;
         match v {
             CustomNode::Mapping { pairs: inner, .. } if !inner.is_empty() => {
-                sections.push((key_str, v, Some(k)));
+                // A section header is emitted after every top-level pair, so its name has to be
+                // held on to - the only key this writer materialises rather than appending.
+                sections.push((scalar_key(k)?, v, Some(k)));
             }
             other => {
                 // Design Q2: never emit a blank line before the very first
@@ -64,7 +65,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                     out.push('\n');
                 }
                 first_pair = false;
-                emit_pair(&mut out, k, other, &key_str)?;
+                emit_pair(&mut out, k, other)?;
             }
         }
     }
@@ -89,35 +90,49 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
             out.push('\n');
         }
         for c in leading {
-            let _ = writeln!(out, "# {}", c.text.trim());
+            write_note(&mut out, &c.text);
         }
         if leading.is_empty() {
             // Pre-#114 shape: the note rides the parent key's `comment` field.
             if let Some(c) = key_node.and_then(|k| k.comment()).filter(|c| c.standalone) {
-                let _ = writeln!(out, "# {}", c.text.trim());
+                write_note(&mut out, &c.text);
             }
         }
         let header_inline = tbl.comment();
         match header_inline {
             Some(c) if !c.standalone => {
-                let _ = writeln!(out, "[{name}] # {}", c.text.trim());
+                out.push('[');
+                out.push_str(name);
+                out.push_str("] # ");
+                out.push_str(c.text.trim());
+                out.push('\n');
             }
             _ => {
-                let _ = writeln!(out, "[{name}]");
+                out.push('[');
+                out.push_str(name);
+                out.push_str("]\n");
             }
         }
         let CustomNode::Mapping { pairs, .. } = tbl else {
             unreachable!("sections collected are mappings");
         };
         for (i, (k, v)) in pairs.iter().enumerate() {
-            let key_str = scalar_key(k)?;
             if i > 0 && v.blank_before() {
                 out.push('\n');
             }
-            emit_pair(&mut out, k, v, &key_str)?;
+            emit_pair(&mut out, k, v)?;
         }
     }
     Ok(out)
+}
+
+/// One standalone `# note` line. Pushed rather than `writeln!` because the document emitter writes
+/// one of these per comment line and `String as fmt::Write` costs a `Formatter` and a `write_str`
+/// call each time. Byte-identical to the macro it replaces.
+fn write_note(out: &mut String, text: &str) {
+    out.push_str("# ");
+    out.push_str(text.trim());
+    out.push('\n');
 }
 
 /// Emit one `key = value` line together with any leading (standalone) or
@@ -126,42 +141,60 @@ fn emit_pair(
     out: &mut String,
     key_node: &CustomNode,
     value_node: &CustomNode,
-    key_str: &str,
 ) -> Result<(), SerializeError> {
     // PR #114: the native parser puts leading notes into the dedicated
     // `leading_comments` list. The pre-#114 shape (a standalone note in
     // `comment`) still renders, so documents produced by the YAML path
     // or hand-built fixtures keep working.
     for c in key_node.leading_comments() {
-        let _ = writeln!(out, "# {}", c.text.trim());
+        write_note(out, &c.text);
     }
     if key_node.leading_comments().is_empty()
         && let Some(c) = key_node.comment().filter(|c| c.standalone)
     {
-        let _ = writeln!(out, "# {}", c.text.trim());
+        write_note(out, &c.text);
     }
-    let value_text = value_str(value_node)?;
+    push_scalar_key(out, key_node)?;
+    out.push_str(" = ");
+    write_value(out, value_node)?;
     if let Some(c) = value_node.comment()
         && !c.standalone
     {
-        let _ = writeln!(out, "{key_str} = {value_text} # {}", c.text.trim());
-    } else {
-        let _ = writeln!(out, "{key_str} = {value_text}");
+        out.push_str(" # ");
+        out.push_str(c.text.trim());
     }
+    out.push('\n');
     Ok(())
 }
 
-fn scalar_key(k: &CustomNode) -> Result<String, SerializeError> {
+/// Append a key's TOML spelling to `out`.
+fn push_scalar_key(out: &mut String, k: &CustomNode) -> Result<(), SerializeError> {
     match k {
-        CustomNode::Scalar { value, .. } => Ok(quote_key(value)),
+        CustomNode::Scalar { value, .. } => {
+            push_key(out, value);
+            Ok(())
+        }
         _ => Err(SerializeError::UnsupportedValue(
             "toml-keys-must-be-scalars",
         )),
     }
 }
 
-/// Emit a scalar's TOML spelling.
-fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
+/// The key of a section header, which outlives the loop that reads it and so needs to be owned.
+fn scalar_key(k: &CustomNode) -> Result<String, SerializeError> {
+    let mut name = String::new();
+    push_scalar_key(&mut name, k)?;
+    Ok(name)
+}
+
+/// Append a node's TOML spelling to `out`.
+///
+/// Writing into the caller's buffer rather than returning a `String` is the second half of the
+/// pair-emission change: every key and every value used to materialise a temporary of its own, and
+/// an array or inline table nested a `Vec` of those on top of it before joining and copying the
+/// result again. The allocation, not the scan, is what cost - the same lesson `write_basic_body`
+/// records.
+fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError> {
     match node {
         CustomNode::Scalar {
             value, style, meta, ..
@@ -185,7 +218,8 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                                 "toml-timestamp-malformed",
                             ));
                         }
-                        return Ok(value.to_string());
+                        out.push_str(value);
+                        return Ok(());
                     }
                     _ => return Err(SerializeError::UnsupportedValue("toml-timestamp-malformed")),
                 }
@@ -207,17 +241,21 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                 (ScalarStyle::Plain, YamlType::Null) => Err(SerializeError::UnsupportedValue(
                     "toml-cannot-represent-null",
                 )),
-                (ScalarStyle::Plain, YamlType::Bool(b)) => Ok(b.to_string()),
+                (ScalarStyle::Plain, YamlType::Bool(b)) => {
+                    out.push_str(if b { "true" } else { "false" });
+                    Ok(())
+                }
                 // Fidelity pass-through: when the plain scalar's textual
                 // form is already a valid TOML integer literal (`0xDEAD`,
                 // `-0`, plain decimal), emit it verbatim. Otherwise fall
                 // back to the canonical `i64` rendering.
                 (ScalarStyle::Plain, YamlType::Int(i)) => {
                     if is_toml_int_literal(value) {
-                        Ok(value.to_string())
+                        out.push_str(value);
                     } else {
-                        Ok(i.to_string())
+                        let _ = write!(out, "{i}");
                     }
+                    Ok(())
                 }
                 // Same rule for floats: an exponent spelling (`1e10`) or
                 // an `inf`/`nan` form the source produced is passed
@@ -225,28 +263,39 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                 // `fmt_toml_float`.
                 (ScalarStyle::Plain, YamlType::Float(f)) => {
                     if is_toml_float_literal(value) {
-                        Ok(value.to_string())
+                        out.push_str(value);
                     } else {
-                        Ok(fmt_toml_float(f))
+                        out.push_str(&fmt_toml_float(f));
                     }
+                    Ok(())
                 }
                 // PR #132: a multi-line string (projected as a YAML literal
                 // block) is re-emitted as a TOML `"""` basic block so the
                 // multi-line shape survives the hub instead of degrading to
                 // an escaped single line. The block value already carries its
                 // trailing newlines, so reconstruction needs only the value.
-                (ScalarStyle::Literal, _) => Ok(quote_multiline(value)),
+                (ScalarStyle::Literal, _) => {
+                    push_multiline(out, value);
+                    Ok(())
+                }
                 // Everything else is text: quoted scalars verbatim, plain
                 // strings resolved-to-Str.
-                _ => Ok(quote_basic(value)),
+                _ => {
+                    push_quoted(out, value);
+                    Ok(())
+                }
             }
         }
         CustomNode::Sequence { items, .. } => {
-            let mut parts = Vec::with_capacity(items.len());
-            for it in items {
-                parts.push(value_str(it)?);
+            out.push('[');
+            for (i, it) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_value(out, it)?;
             }
-            Ok(format!("[{}]", parts.join(", ")))
+            out.push(']');
+            Ok(())
         }
         CustomNode::Mapping { pairs, .. } => {
             // PR #119: an inline table whose members carry interior
@@ -260,19 +309,19 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                 !k.leading_comments().is_empty() || v.comment().is_some_and(|c| !c.standalone)
             });
             if decorated {
-                let mut out = String::from("{\n");
+                out.push_str("{\n");
                 let count = pairs.len();
                 for (idx, (k, v)) in pairs.iter().enumerate() {
                     for c in k.leading_comments() {
-                        out.push_str(&format!("  # {}\n", c.text.trim()));
+                        out.push_str("  # ");
+                        out.push_str(c.text.trim());
+                        out.push('\n');
                     }
-                    let key_str = scalar_key(k)?;
-                    let val = value_str(v)?;
-                    let trail = v
-                        .comment()
-                        .filter(|c| !c.standalone)
-                        .map(|c| c.text.trim().to_string());
                     let last = idx + 1 == count;
+                    out.push_str("  ");
+                    push_scalar_key(out, k)?;
+                    out.push_str(" = ");
+                    write_value(out, v)?;
                     // A `#` runs to end of line, so the only member line a note can
                     // legitimately finish is the document's last one: `a = 1 # n,` is not
                     // TOML at all (measured: the reader rejects it), and writing the note
@@ -281,30 +330,37 @@ fn value_str(node: &CustomNode) -> Result<String, SerializeError> {
                     // never settled (proptest `prop_toml_writer_is_fixed_point`, 20 000
                     // cases). Anywhere but last, the note gets its own line after the
                     // member, which is the position the reader reports it from.
-                    match trail {
+                    match v.comment().filter(|c| !c.standalone).map(|c| c.text.trim()) {
                         Some(text) if last => {
-                            out.push_str(&format!("  {key_str} = {val} # {text}\n"));
+                            out.push_str(" # ");
+                            out.push_str(text);
                         }
                         Some(text) => {
-                            out.push_str(&format!("  {key_str} = {val},\n"));
-                            out.push_str(&format!("  # {text}\n"));
+                            out.push_str(",\n  # ");
+                            out.push_str(text);
                         }
                         None => {
-                            let sep = if last { "" } else { "," };
-                            out.push_str(&format!("  {key_str} = {val}{sep}\n"));
+                            if !last {
+                                out.push(',');
+                            }
                         }
                     }
+                    out.push('\n');
                 }
                 out.push('}');
-                Ok(out)
             } else {
-                let mut parts = Vec::with_capacity(pairs.len());
-                for (k, v) in pairs {
-                    let key_str = scalar_key(k)?;
-                    parts.push(format!("{key_str} = {}", value_str(v)?));
+                out.push('{');
+                for (i, (k, v)) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    push_scalar_key(out, k)?;
+                    out.push_str(" = ");
+                    write_value(out, v)?;
                 }
-                Ok(format!("{{{}}}", parts.join(", ")))
+                out.push('}');
             }
+            Ok(())
         }
         CustomNode::Null { .. } => Err(SerializeError::UnsupportedValue(
             "toml-cannot-represent-null",
@@ -326,11 +382,18 @@ fn fmt_toml_float(f: f64) -> String {
     }
 }
 
-fn quote_key(s: &str) -> String {
+/// Append a key to `out`: bare when every byte allows it, quoted otherwise. The byte scan and the
+/// character scan agree because a multi-byte sequence is made of bytes >= 0x80, none of which is
+/// alphanumeric, `_` or `-`.
+fn push_key(out: &mut String, s: &str) {
     let bare = !s.is_empty()
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
-    if bare { s.to_string() } else { quote_basic(s) }
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if bare {
+        out.push_str(s);
+    } else {
+        push_quoted(out, s);
+    }
 }
 
 /// Bytes a single-line basic string may not contain raw: the C0 codes and DEL (which
@@ -347,12 +410,11 @@ const fn forbidden_multi_line(b: u8) -> bool {
     matches!(b, 0x00..=0x08 | 0x0b..=0x1f | 0x7f | b'"' | b'\\')
 }
 
-fn quote_basic(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
+/// Append `"s"` as a single-line basic string to `out`.
+fn push_quoted(out: &mut String, s: &str) {
     out.push('"');
-    write_basic_body(s, &mut out);
+    write_basic_body(s, out);
     out.push('"');
-    out
 }
 
 /// Append `s` to `out` as the body of a single-line basic string.
@@ -405,8 +467,8 @@ fn write_basic_body(s: &str, out: &mut String) {
 /// with a newline gets a spare one emitted first; and every `"` is escaped so a
 /// run of quotes can never prematurely close the block. Real newlines and tabs
 /// are kept literal; `\r` and other control chars are escaped.
-fn quote_multiline(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 8);
+/// Append `value` to `out` as a multi-line basic string.
+fn push_multiline(out: &mut String, value: &str) {
     out.push_str("\"\"\"");
     if value.starts_with('\n') {
         out.push('\n');
@@ -422,7 +484,7 @@ fn quote_multiline(value: &str) -> String {
                 '\t' => out.push('\t'),
                 '\r' => out.push_str("\\r"),
                 c if (c as u32) < 0x20 || c == '\u{7f}' => {
-                    // Same set as `quote_basic`: a multi-line basic string is still a basic string, so
+                    // Same set as `push_quoted`: a multi-line basic string is still a basic string, so
                     // DEL is forbidden raw there too.
                     let _ = write!(out, "\\u{:04X}", c as u32);
                 }
@@ -431,7 +493,6 @@ fn quote_multiline(value: &str) -> String {
         }
     }
     out.push_str("\"\"\"");
-    out
 }
 
 fn is_valid_toml_datetime(s: &str) -> bool {
@@ -503,6 +564,21 @@ mod tests {
     use super::*;
     use crate::from_toml;
 
+    // The two quotiers asked for as values rather than as appends. Production writes straight into
+    // the document buffer - that is the whole point of them - so only the assertions need a String
+    // back, and building it here keeps a test-only path out of the shipped code.
+    fn quoted(s: &str) -> String {
+        let mut out = String::new();
+        push_quoted(&mut out, s);
+        out
+    }
+
+    fn multiline(value: &str) -> String {
+        let mut out = String::new();
+        push_multiline(&mut out, value);
+        out
+    }
+
     #[test]
     fn the_bulk_path_and_the_loop_escape_identically_over_every_byte() {
         // A second implementation, written from the TOML grammar rather than from this module, so the
@@ -532,11 +608,7 @@ mod tests {
         for b in 0u32..=0xff {
             let c = char::from_u32(b).expect("every byte is a Unicode scalar when widened");
             let s = c.to_string();
-            assert_eq!(
-                quote_basic(&s),
-                reference(&s),
-                "byte {b:#04x} escaped wrong"
-            );
+            assert_eq!(quoted(&s), reference(&s), "byte {b:#04x} escaped wrong");
         }
 
         // Multi-line: the predicate claims a tab and a newline may stay literal. Check that claim
@@ -547,7 +619,7 @@ mod tests {
             !literal.bytes().any(forbidden_multi_line),
             "predicate rejects legal literal content"
         );
-        assert_eq!(quote_multiline(literal), format!("\"\"\"{literal}\"\"\""));
+        assert_eq!(multiline(literal), format!("\"\"\"{literal}\"\"\""));
         let needs_crlf = "a\r\nb";
         assert!(
             needs_crlf.bytes().any(forbidden_multi_line),
@@ -556,7 +628,7 @@ mod tests {
         // The asymmetry is the point: a multi-line body may keep a newline literal, so only the CR is
         // escaped. (An earlier draft of this assertion demanded an escaped newline too, and was wrong
         // - the code was not.)
-        assert_eq!(quote_multiline(needs_crlf), "\"\"\"a\\r\nb\"\"\"");
+        assert_eq!(multiline(needs_crlf), "\"\"\"a\\r\nb\"\"\"");
     }
 
     /// The scalar text of the single value in a decoded one-key table, for comparing a round trip
@@ -598,7 +670,7 @@ mod tests {
             "mixed \"q\"\ttab\u{7f}",
             "",
         ] {
-            let one = quote_basic(value);
+            let one = quoted(value);
             let back = crate::from_toml(&format!("k = {one}\n"))
                 .unwrap_or_else(|e| panic!("{value:?} -> {one:?} rejected: {e}"));
             assert_eq!(
@@ -606,7 +678,7 @@ mod tests {
                 value,
                 "basic round trip broke for {value:?}: {one:?}"
             );
-            let multi = quote_multiline(value);
+            let multi = multiline(value);
             let back = crate::from_toml(&format!("k = {multi}\n"))
                 .unwrap_or_else(|e| panic!("{value:?} -> {multi:?} rejected: {e}"));
             assert_eq!(
