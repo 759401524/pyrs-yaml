@@ -7,7 +7,11 @@ use crate::py::stream_events::stream_event_to_py_dict;
 #[pyclass]
 /// YAML event stream iterator, yielding parsed events one by one.
 pub(crate) struct StreamIterator {
-    pub(crate) events: Vec<StreamEvent>,
+    // The events own their text: a `#[pyclass]` cannot carry a borrow of the source, so this is
+    // the one stream path that detaches (see `py::functions::parse_stream`). It is a plain comment
+    // rather than a doc comment because a pyclass's docstring is the published contract — the
+    // committed `.pyi` carries it, and `check_stub_drift.py` compares what users see.
+    pub(crate) events: Vec<StreamEvent<'static>>,
     pub(crate) index: usize,
 }
 

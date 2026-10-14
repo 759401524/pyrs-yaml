@@ -919,6 +919,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The event stream borrows its scalar text, and the gate priced the move at −9.192%.** —
+  `StreamEventType::Scalar` owned a `String` copied out of granit's own `Cow`: one allocation plus
+  one `memcpy` of the value's bytes for every scalar in a document. The maintainer ruled
+  `Cow<'a, str>` on 2026-10-14, and the scenario that could argue with the ruling was added first
+  (#405), so the number here is computed rather than asserted: `stream_medium` reads 249,928,334
+  counted instructions against the committed 275,227,226, three samples identical to the instruction
+  (spread 0.000%). The same run moved nothing else by more than +0.202% — the cross-host residual
+  this repository already sizes, the readings being WSL against values committed from the enforcing
+  image — and the AST path is not reachable from the change at all. A tree-free read now costs about
+  22% less than building the node model on the same text, where the gap was 14.5%. Where the copy is
+  still paid is stated rather than hidden: the lazy `StreamIterator` and the incremental
+  `YamlStream` each detach at a boundary that cannot hold a borrow (a `#[pyclass]` carries no
+  lifetime, and the chunked reader rotates the buffer an event points into), so only the `on_event`
+  callback path pays nothing new.
+  `parser::stream::tests::a_plain_scalar_borrows_the_source_and_a_decoded_one_owns_its_text` pins
+  the split — a plain scalar's bytes lie inside the source's range, an escaped double-quoted value
+  owns its own — so restoring the copy fails by name, and `stream_medium`'s floor moved down to the
+  new number.
+
 - **The instruction-count floor moved down to the engine that earned it.** — four optimization PRs
   landed between refreshes, and the committed baseline had not followed them. The `Ir baseline
   refresh` workflow re-measured all twenty-one scenarios on the enforcing image (`github-runner
