@@ -137,3 +137,39 @@ an artifact (`ce106ccc` was seeded only once (n) made it pass). An oracle that r
 is worse than none - the note-survival probe was fixed three times before it was trusted. And an
 inferred cost is not a reason to defer: the deferred spine walk was refused by a sentence nobody had
 measured, and the measurement reversed it.
+
+## What the split actually buys, counted (2026-10-14)
+
+The architecture pillar claims two things for the crate matrix - fine-grained dependency
+introduction, and lower incremental compile cost. One of them is now measured and the other is not,
+and this section records the difference rather than letting the second claim ride on the first.
+
+**Dependency closure, measured.** `cargo tree -p <crate> -e normal --prefix none`, unique crate
+names, on `main` at `27031d12`:
+
+| crate a consumer can depend on alone | crates pulled in |
+|:--|--:|
+| `pyrs-schema` | 1 |
+| `pyrs-ast` | 10 |
+| `pyrs-event` | 11 |
+| `pyrs-json` (JSON + JSONC + JSON5) | 12 |
+| `pyrs-toml` | 12 |
+| `pyrs-yaml-core` | 75 |
+
+So a project that only needs to read JSON5 carries twelve crates, not seventy-five: the YAML
+engine's parser, its schema resolver, `granit-parser`, `rust-i18n`, `regex`, `proptest`-adjacent
+machinery and the PyO3 stack are simply not in that graph. That is the fine-grained claim, and
+`AGENTS.md`'s `no_std` story is the same graph proved a second way - the `no_std` job builds
+`pyrs-ast`, `pyrs-event`, `pyrs-schema`, `pyrs-json` and `pyrs-toml` for `thumbv7em-none-eabi`, a
+target with no std at all, so those closures cannot be reaching `std` anywhere.
+
+**Incremental cost, not measured.** The obvious experiment - edit one file, count what recompiles -
+was attempted on this tree and produced `0 units rebuilt` in every case, because the edit never
+reached the file: the append was inside a nested shell quote that ate it, and cargo's fingerprint
+correctly saw an unchanged tree. A zero that came from a broken probe is not a result, and the claim
+stays open. What a correct probe has to do: change file *contents* (a real comment line, verified by
+reading the file back), warm the full workspace once so nothing rebuilds for being unseen, then
+count `Compiling` lines for `cargo check -p pyrs-json -p pyrs-toml` after touching
+`crates/pyrs-yaml-core/src/serializer.rs` - the isolation number the table above predicts, zero -
+and after touching `crates/pyrs-ast/src/ast.rs` for the hub's fan-out. Until those two numbers
+exist, this file's claim is the closure table, not a rebuild time.
