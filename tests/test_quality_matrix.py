@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -322,6 +323,68 @@ def test_property_probe_finds_the_real_properties(matrix, measured):
         "prop_toml_writer_is_fixed_point",
     ):
         assert any(name.endswith(f"::{prop}") for name in names), prop
+
+
+def test_a_property_that_filters_its_own_samples_is_named(matrix, tmp_path):
+    """The guard is the finding, so the probe must not read a plain property as silent.
+
+    Written against the way the tier hid a lost mapping key: seven properties draw a tree, ask a
+    helper for its re-parse, and assert only `if let Some(..)`. A detector matching any mention of
+    `try_roundtrip` would instead have named the file that *defines* the helper - a count of files,
+    not a measurement of assertions.
+    """
+    src = tmp_path / "crates" / "demo" / "src"
+    src.mkdir(parents=True)
+    (src / "pbt.rs").write_text(
+        "fn try_roundtrip(node: &Node) -> Option<Node> {\n"
+        "    None\n"
+        "}\n"
+        "fn prop_guarded(node in arb()) {\n"
+        "    if let Some(parsed) = try_roundtrip(&node) {\n"
+        "        assert!(same(node, parsed));\n"
+        "    }\n"
+        "}\n"
+        "fn prop_asserts(node in arb()) {\n"
+        '    let parsed = try_roundtrip(&node).expect("round trips");\n'
+        "    assert!(same(node, parsed));\n"
+        "}\n"
+        "fn prop_untouched(node in arb()) {\n"
+        "    assert!(parses(node));\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    found = matrix.conditional_property_assertions(root=tmp_path)
+    assert found == ["crates/demo/src/pbt.rs::prop_guarded"], found
+
+
+def test_the_conditional_guard_hole_bites_in_both_directions(matrix, monkeypatch):
+    """Counting properties measures the wrong quantity, and closing the guard must close the hole."""
+    real = matrix.conditional_property_assertions()
+    assert "crates/pyrs-yaml-core/src/pbt.rs::prop_roundtrip" in real, sorted(real)
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("property-tier", "conditional-assert") in holes, sorted(holes)
+
+    monkeypatch.setattr(matrix, "conditional_property_assertions", lambda root=None: [])
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("property-tier", "conditional-assert") not in holes, sorted(holes)
+
+
+def test_the_page_states_the_counts_the_probe_measures(measured):
+    """A number on the page is a measurement claim, so the measurement has to agree with it.
+
+    The sentence written here first said 7 of 23, and PR #410 landed the property that made the
+    total 24 - the rot this row describes, reproduced inside the row that reports it. Pinning the
+    phrase to the probe is what keeps a tier that grows from leaving the page behind.
+    """
+    text = DOC_PATH.read_text(encoding="utf-8")
+    claimed = {(int(guarded), int(total)) for guarded, total in re.findall(r"(\d+) of the (\d+) properties", text)}
+    measured_pair = (
+        len(measured["property_conditional_assertions"]),
+        measured["property_function_count"],
+    )
+    assert claimed == {measured_pair}, (
+        f"QUALITY_MATRIX.md claims {sorted(claimed)}, the probe measures {measured_pair[0]} of {measured_pair[1]}"
+    )
 
 
 def test_the_perf_coverage_probe_describes_a_real_boundary(matrix, monkeypatch):

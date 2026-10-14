@@ -262,6 +262,33 @@ def property_functions() -> list[str]:
     return sorted(names)
 
 
+_GUARDED_ASSERT = re.compile(r"if let Some\([^=]*=\s*try_[a-z0-9_]+\(")
+
+
+def conditional_property_assertions(root: Path | None = None) -> list[str]:
+    """`prop_*` functions whose assertion only runs when a `try_*` helper returned `Some`.
+
+    A body written `if let Some(parsed) = try_roundtrip(&node) { prop_assert!(...) }` states nothing
+    about the samples the helper declined, so the property's coverage is whatever survives the filter.
+    That is not hypothetical: measured 2026-10-14 on `crates/pyrs-yaml-core/src/pbt.rs`, the round-trip
+    helper filtered 3423 of 4000 drawn trees, and the tree-changing defect that hid behind it emitted a
+    mapping one entry shorter than the one it was given.
+
+    Each slice runs from one `fn prop_` header to the next, so a guard belongs to the function it is
+    written in and the helper definitions between properties cannot be mistaken for one.
+    """
+    base = root or REPO
+    found: list[str] = []
+    for rs in sorted((base / "crates").rglob("*.rs")):
+        text = read(rs)
+        headers = list(re.finditer(r"\bfn (prop_[a-z0-9_]+)\s*\(", text))
+        for index, match in enumerate(headers):
+            end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
+            if _GUARDED_ASSERT.search(text[match.start() : end]):
+                found.append(f"{rs.relative_to(base).as_posix()}::{match.group(1)}")
+    return sorted(found)
+
+
 DOCS_LOCALES = ("en", "ja", "ko", "zh")
 
 
@@ -435,6 +462,7 @@ def measure() -> dict:
     bench_scenarios = sorted({name for names in channels.values() for name in names})
     baseline_scenarios = ir_scenarios_in_baseline()
     props = property_functions()
+    guarded_props = conditional_property_assertions()
 
     hygiene_path = WORKFLOWS / "hygiene.yml"
     skip_match = re.search(r"SKIP: ([A-Za-z0-9,_-]+)", read(hygiene_path)) if hygiene_path.exists() else None
@@ -477,6 +505,16 @@ def measure() -> dict:
                 "property-tier",
                 "default-case-count",
                 "every CI run uses proptest's default case count, so low-frequency shapes never surface",
+            ]
+        )
+
+    if guarded_props:
+        holes.append(
+            [
+                "property-tier",
+                "conditional-assert",
+                "a property that asserts only inside `if let Some(_) = try_*(..)` states nothing about "
+                "the samples its helper filtered away, so the tier's coverage is what survives the filter",
             ]
         )
 
@@ -660,6 +698,7 @@ def measure() -> dict:
         "ir_scenarios_baseline": baseline_scenarios,
         "property_function_count": len(props),
         "property_functions": props,
+        "property_conditional_assertions": guarded_props,
         "artifact_paths": {"scanned": len(declared), "missing": sum(1 for _p, ok in declared if not ok)},
         "changelog_entry_counts": [f"{name}={counts}" for name, counts in sorted(mirrors.items())],
         "route_parity_tests": route_parity,
@@ -681,6 +720,7 @@ SUMMARY_KEYS = (
     "ir_scenario_channels",
     "ir_scenarios_baseline",
     "property_function_count",
+    "property_conditional_assertions",
     "route_parity_tests",
     "changelog_entry_counts",
 )

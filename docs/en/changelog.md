@@ -19,6 +19,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The defence matrix now measures how strongly a property asserts, not only how many there are.**
+  — `property_functions()` counted 24 `prop_*` functions, and that count is what the page offered as
+  the property tier's coverage. `conditional_property_assertions()` reads each body for a guard of
+  the shape `if let Some(_) = try_*(..)` and found 7 of the 24 asserting only inside it: those
+  properties state nothing about the samples their own helper declined to return. The rate behind
+  the guard was measured rather than argued — 4000 trees drawn from `arb_custom_node()`, compared
+  with their re-parse, left **3423 filtered and 0 unparseable** — and that is the mechanism by which
+  a writer emitting `null: v` for a document's `? *x` key, a mapping one entry shorter than the tree
+  it was given, stayed green while the tier ran (PR #410 fixed the writer; this is why nothing saw
+  it). The blind spot is registered as `property-tier:conditional-assert` with its checkable exit
+  named, listed in `QUALITY_MATRIX.md`, and pinned in both directions: the hole disappears when the
+  guard list is empty, the page test pins its own sentence to the two measured counts, and on a
+  fixture tree the detector names only the guarded function — not the file that *defines* the
+  helper, which a "does the text mention `try_roundtrip`" probe would have reported as coverage.
+
 - **A Python run now refuses to speak for a binary older than the sources on disk.** —
   `python/pyrs_yaml/` holds whichever extension was built there last, so a `pytest` run after
   `jj edit` or `jj rebase` can silently test another branch's engine, and the result looks like an
