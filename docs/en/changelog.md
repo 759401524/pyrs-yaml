@@ -286,6 +286,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **Two mapping keys are the same key only where the reader says so.** — the rule that decides
+  whether two keys collide in text, `keys_collide_in_text`, compared a scalar's raw value and
+  ignored the rest: it called `!a k:` and `!b k:` one key, and `null:` and `'null':` one key, while
+  the reader that gets the emitted text back keeps both entries in each pair (a tag is part of the
+  line, and a plain `null` resolves to a null key where the quoted spelling stays a string). The
+  rule is the model the writer's fold is about to be built on, so an over-eager model would have
+  folded away two entries the document can hold. It now compares tags, and treats a plain null
+  spelling and its quoted twin as different keys — plain spellings that resolve to a boolean or a
+  number are not exempt, because there the reader really does compare text. The pinned table holding
+  the rule beside the writer and the reader it models grows from 15 classes to 18.
+
 - **A `CustomNode` is 144 bytes, not 208.** — half a node used to be its `NodeMeta`: 128 of 208
   bytes, five `Option` slots, and that size sits on the hot path of every reader — written when a
   node is built, copied whenever a node moves, and checked field by field when the tree is dropped
