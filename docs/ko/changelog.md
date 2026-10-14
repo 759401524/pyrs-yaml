@@ -747,6 +747,27 @@ status: new
 
 #### 성능
 
+- **YAML 라이터가 노드마다 같은 비용을 두 가지 형태로 내고 있었다.** — 같은 프로파일의 두 줄이 문서
+  하나를 좌우했다: `write_plain_scalar`와 `write_scalar_for_key`가 `serialize_medium`의 9.21%와
+  9.29%를 쓰고 그 아래 패턴 탐색에 약 10%, `write_indent`가 8.10%였다. 앞의 것은
+  `needs_double_quoted` 한 함수가 "이 토큰을 plain으로 낼 수 있나"를 같은 텍스트에 `contains` 네 번,
+  `chars().any` 두 번, `starts_with` 열여섯 번으로 답한 것인데, 이제는 바이트 한 번의 훑기이고, 같은
+  훑기가 0x80 이상 바이트를 봤을 때만 문자 쪽 판정(NBSP, BOM, C1 제어, YAML 비문자)을 다시 부른다 -
+  UTF-8에서는 그것들이 다른 문자 안에 숨지 않기 때문이다. 그 논거는 `pyrs-schema`의 `needs_quotes`가
+  이미 쓰고 있었고 라이터 쪽만 따라오지 못했다. 뒤의 것은 너비로-index하는 `Vec<String>` 캐시였다 -
+  줄마다 길이 검사, 깊이가 늘어날 때마다 `resize`, 너비마다 `" ".repeat` 확보, 표 항목을 빌려 복사 -
+  가 상수 64칸 공간 줄의 슬라이스로 바뀌었다. 고정한 것 은 속도가 아니라 동치다:
+  `needs_double_quoted_agrees_with_the_scan_for_every_code_point`는 여섯 번 훑는 형태를 기준으로
+  남겨 둘에 같은 질문을 던지고, U+10000 미만 모든 코드 포인트에 다섯 자리(혼자·맨 앞·맨 뒤·안쪽·공백
+  곁)에서 확인하며, 평면을 걸어 별면 표본과 비문자도 본다. 이건 첫 판의 실수를 혼자 잡아냈다.
+  끝부분이 `!saw_high_byte || …`여서 순수 ASCII 문자열에 전부 따옴표를 붙였고, 기준 구현이
+  `"a b"`에서 다른 어떤 테스트보다 먼저 어긋남을 보여줬다. `b == b':'`를 바이트 판정에서 빼면 동치
+  테스트와 `prop_output_always_parses`가 같이 빨개진다. rustc 1.97.1에서 같은 브랜치 세 커밋으로 세
+  바이너리를 만들어 짝을 맞춰 재측정(두 번 반복이 명령어 단위까지 일치): 바이트 훑기가
+  `serialize_anchors` -28.01%, `serialize_medium` -18.09%, `serialize_block_scalars` -13.05%,
+  들여쓰기 표가 `serialize_medium` -8.20%, `serialize_block` -10.82%, `serialize_small` -29.81%,
+  합쳐서 `serialize_medium` -24.81%. 대조군 `parse_medium`은 +0.00%(둘 다 호출하지 않는다).
+
 - **TOML 라이터가 내보내는 모든 조각마다 임시 객체를 확보하는 일을 그만뒀다.** — `to_toml_medium`은
   53,218,850개 명령어를 셌는데 같은 문서의 `to_json_medium`은 21,283,040개였다. 출력하는 모든 줄이
   `writeln!`을 지나고, 모든 키와 값이 각각 `String`이 된 뒤 문서 버퍼에 복사되며, 배열과 인라인

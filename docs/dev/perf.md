@@ -704,3 +704,62 @@ the size-estimate walk cancels the saving and a fixed reserve regresses small do
 the integer fallback, which format through `core::fmt` because they mean it. The larger number is
 still the reader: `from_toml_medium` counts 160,049,672 against `from_json_medium`'s 93,234,186,
 which is the intermediate table model this file names above and has not touched.
+
+---
+
+## The YAML writer asked the same question twice per node, in two different ways (2026-10-14)
+
+Two rows of the same profile owned the cost of writing one YAML document. `write_plain_scalar` and
+`write_scalar_for_key` were 9.21% and 9.29% of `serialize_medium`, with ~10% more in the
+`is_contained_in` / `try_fold` rows under them, and `write_indent` was 8.10%.
+
+The first belonged to one function: `needs_double_quoted`, which answered "can this token go out
+plain?" with four `contains`, two `chars().any` and sixteen `starts_with` - twenty-two passes over
+the same text, most looking at characters the first pass had already looked at. It is now one byte
+pass. A byte below 0x80 settles the whole ASCII question at once - the C0 controls and DEL are what
+`char::is_control` means for seven bits, and `:` and `#` are the two embedded characters that end or
+comment a plain token - and the leading test reads one byte instead of walking sixteen characters.
+A byte at or above 0x80 answers nothing by itself; it records that the character-level half has to
+run, because NBSP, the BOM, a C1 control and a YAML non-character can only arrive from there. UTF-8
+never hides one of those bytes inside another character, which is the same reason `pyrs-schema`'s
+`needs_quotes` was given this shape a day earlier: the writer's copy had not caught up.
+
+The second was a cache. `write_indent` kept a `Vec<String>` indexed by width - a length test per
+line, a `resize` on the first line at a new depth, a `" ".repeat` allocating one string per distinct
+width, then a borrow of the entry to copy. The job is a slice of a run of spaces, so it is a
+constant 64-column table sliced to width, with `repeat_n` for the indentation deeper than that which
+no measured document reaches.
+
+The claim is equivalence, not "faster and the tests passed", so the six-scan form is kept in the
+test module as a reference and asked the same question as the fast path over every code point below
+U+10000 in five positions - alone, leading, trailing, interior, beside a space - plus a stride
+through the astral planes and the non-characters explicitly.
+`needs_double_quoted_agrees_with_the_scan_for_every_code_point` caught the mistake in the first
+version on its own: the tail read `!saw_high_byte || …`, which quoted every plain ASCII string, and
+the reference disagreed on `"a b"` before any other test ran. Mutating `b == b':'` out of the byte
+test reddens it and `prop_output_always_parses` together, so both the exactness and the round-trip
+property are load-bearing. The indent table needs no test of its own: `" ".repeat(width)` and
+`&SPACES[..width]` are the same bytes by construction, and every serialization test in the suite
+reads them back.
+
+Paired on rustc 1.97.1, three binaries from three commits of one branch, two repeats agreeing to the
+instruction, so each step carries its own number:
+
+| scenario | byte pass | + indent table | total |
+|:--|--:|--:|--:|
+| `serialize_anchors` | -28.01% | | |
+| `serialize_medium` | -18.09% | -8.20% | **-24.81%** |
+| `serialize_block` | | -10.82% | |
+| `serialize_block_scalars` | -13.05% | | |
+| `serialize_small` | | -29.81% | |
+| `parse_medium` (control) | +0.00% | | |
+
+The anchor row moves most under the byte pass because it holds the most scalars per output byte;
+`serialize_small` moves most under the indent table because a small document is nearly all
+indentation-per-line relative to its scalars. The control is the reader of the same fixture, which
+calls neither function.
+
+What is left in the same profile: `serialize_node_internal` at 13.77% is the dispatch itself, which
+is the node model this file has already ruled out rewriting, and `memcmp` at 6.63% is the writer's
+own `remaining`-width bookkeeping for line folding - both named so the next reader does not
+rediscover them as low fruit.
