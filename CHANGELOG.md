@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A Python run now refuses to speak for a binary older than the sources on disk.** —
+  `python/pyrs_yaml/` holds whichever extension was built there last, so a `pytest` run after
+  `jj edit` or `jj rebase` can silently test another branch's engine, and the result looks like an
+  answer: this repository has been misled three times in one session that way, which is why
+  AGENTS.md tells the reader to rebuild after moving the working copy. That obligation was prose.
+  `tests/test_extension_freshness.py` compares the loaded native module against every file compiled
+  into it — each crate's `src` tree and the Cargo manifests — and names the offenders and the
+  rebuild command instead of leaving a bisect. Two decisions keep it honest rather than noisy:
+  modules a crate root declares under `#[cfg(test)]` are excluded, derived from those declarations
+  rather than kept as a list (editing a property test and re-running Python needs no rebuild, and a
+  list would rot into excluding nothing), and an extension installed outside the working copy is
+  skipped with a reason, because these sources did not build it. Verified by mutation: one stray
+  file under a crate's `src` tree reddens the run and names itself, and removing it returns green.
+
 - **The instruction gate measures the event path now, so the scalar-ownership ruling has a number to
   be argued with.** — Nothing on the gate ever entered `parse_stream`: every `parse_*` scenario
   builds an AST, and so does every bridge scenario. The maintainer ruled on 2026-10-14 that the
