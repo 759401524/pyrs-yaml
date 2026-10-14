@@ -801,6 +801,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The instruction-count floor moved down to the engine that earned it.** — the
+  `Ir baseline refresh` workflow re-measured all twenty-one scenarios on the enforcing image
+  (`github-runner ubuntu24`, rustc 1.97.1) once the node-map hasher was on `main`, and its artifact
+  is now the committed baseline: `from_json_medium` 120,751,446 → 99,000,356 (−18.01%),
+  `from_toml_medium` −16.25%, `parse_anchors` −12.95%, `to_python_anchors` −11.17%, with the write
+  scenarios inside +0.03%…−1.80%. A floor left 18% above the engine is a gate that tolerates an 18%
+  regression in silence, so the zero-regression promise now refers to these numbers. No value here
+  was transcribed by hand; `scripts/ir_gate.py --update` wrote the file on the runner.
+
 - **The node map hashes its keys with FxHash on every build, not only under `no_std`.** — with
   `std` on, `NodeMap` was `IndexMap<K, V, std::hash::RandomState>`, so putting one mapping key in
   the table cost SipHash-1-3: `callgrind` measures 10,214,000 self instructions over 180,000 calls

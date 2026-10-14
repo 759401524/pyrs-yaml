@@ -729,6 +729,14 @@ status: new
 
 #### 성능
 
+- **명령어 수 기준선을 실제로 측정된 엔진까지 내렸다.** — node-map 해셔가 `main`에 오른 뒤
+  `Ir baseline refresh` 워크플로가 적용 이미지(`github-runner ubuntu24`, rustc 1.97.1)에서 21개
+  시나리오를 다시 측정했고, 그 산출물이 커밋된 기준선이 됐다: `from_json_medium`
+  120,751,446 → 99,000,356 (−18.01%), `from_toml_medium` −16.25%, `parse_anchors` −12.95%,
+  `to_python_anchors` −11.17%, 쓰기 시나리오는 +0.03%…−1.80% 범위. 기준선이 실측보다 18% 높게 남으면
+  게이트는 18% 성능 후퇴를 묵인하게 되므로, 후퇴 없음 약속은 이제 이 수치를 가리킨다. 수치를 손으로
+  옮겨 적지 않았고, 러너에서 `scripts/ir_gate.py --update`가 파일을 썼다.
+
 - **노드 맵의 키 해시를 모든 빌드에서 FxHash로 바꿨다(`no_std` 전용이 아니게 됐다).** — `std`를
   켜면 `NodeMap`은 `IndexMap<K, V, std::hash::RandomState>`였으므로, 맵에 키를 하나 넣을 때마다
   SipHash-1-3 비용을 치렀다. `callgrind`는 `CustomNode::hash`에서 `Hasher::write`로 이어지는 자체
