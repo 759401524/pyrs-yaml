@@ -803,9 +803,7 @@ impl Serializer {
                     if i > 0 {
                         s.output.push_str(", ");
                     }
-                    s.write_scalar_for_key(key, true);
-                    s.output.push_str(": ");
-                    s.serialize_flow_value(value, depth + 1)?;
+                    s.write_flow_pair(key, value, depth)?;
                 }
                 Ok(())
             },
@@ -1097,13 +1095,18 @@ impl Serializer {
         depth: usize,
     ) -> Result<(), SerializeError> {
         self.pair_line_start = self.output.len();
-        // Check if key is a complex key (mapping or sequence)
-        let is_complex_key = matches!(
+        // Keys that cannot be spelled compactly: a mapping or a sequence body needs the `?`
+        // indicator, and so does an alias — `*x: v` is refused by this engine's own reader
+        // ("simple key expected ':'"), and ruamel.yaml's scanner raises on it from 0.19 while
+        // 0.18.16 reads it as an empty-tuple key (both measured). The marker is the only form
+        // that reads the same everywhere, and the durable refusal is ours, not theirs.
+        let alias_key = matches!(key, CustomNode::Alias { .. });
+        let explicit_key_marker = matches!(
             key,
-            CustomNode::Mapping { .. } | CustomNode::Sequence { .. }
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. } | CustomNode::Alias { .. }
         );
 
-        if is_complex_key {
+        if explicit_key_marker {
             // Complex key: use ? indicator. A standalone note on the key
             // must precede the `?` marker — serializing the key body
             // mid-line would emit the comment *after* `? ` (spelling
@@ -1157,14 +1160,25 @@ impl Serializer {
             }
             self.write_indent(indent_width);
             self.output.push('?');
-            self.output.push('\n');
-            // The key body lives on its own lines one step deeper than the
-            // `?` marker. Starting it mid-line (`? A: …`) pinned the node's
-            // first column to the `? ` width while every following line used
-            // indent_width, splitting multi-pair / nested keys across two
-            // incompatible indents that could not re-parse.
-            let body_indent = indent_width + self.indent_mapping;
-            self.serialize_node_internal(key, body_indent, body_indent, false, depth + 1)?;
+            if let CustomNode::Alias { name } = key {
+                // Two tokens fit on the marker line, and that is how the source spelled it. An
+                // indented body would be legal but would invent a shape the reader never had, so
+                // the alias stays on the `?` line and its value may follow `: ` inline.
+                self.output.push(' ');
+                self.output.push('*');
+                self.output.push_str(name);
+                self.trailing_note_slot_open = true;
+                self.output.push('\n');
+            } else {
+                self.output.push('\n');
+                // The key body lives on its own lines one step deeper than the
+                // `?` marker. Starting it mid-line (`? A: …`) pinned the node's
+                // first column to the `? ` width while every following line used
+                // indent_width, splitting multi-pair / nested keys across two
+                // incompatible indents that could not re-parse.
+                let body_indent = indent_width + self.indent_mapping;
+                self.serialize_node_internal(key, body_indent, body_indent, false, depth + 1)?;
+            }
         } else {
             // Simple key
             // Handle standalone comments before the key (every note in the stack,
@@ -1183,7 +1197,7 @@ impl Serializer {
             self.write_scalar_for_key(key, false);
         }
 
-        if is_complex_key {
+        if explicit_key_marker {
             // The key body always ended its line (`serialize_node_internal`
             // terminates with `\n`), so the value marker needs its own line
             // aligned with the `?` indicator — pushing `:` bare would land it
@@ -1211,7 +1225,7 @@ impl Serializer {
                 ..
             }
         ) && !Self::is_empty_container(value))
-            || is_complex_key
+            || (explicit_key_marker && !alias_key)
             || (value.leading_comment().is_some() && !Self::is_empty_container(value))
         {
             // Write a block container's anchor/tag after the colon: only
@@ -1269,7 +1283,7 @@ impl Serializer {
         // value keeps priority when it carries a note of its own — one line has one
         // trailing slot — and complex keys are left alone, their notes travel with
         // the `?` body.
-        if !is_complex_key && value.comment().is_none() && self.output.ends_with('\n') {
+        if !explicit_key_marker && value.comment().is_none() && self.output.ends_with('\n') {
             let key_note = match key {
                 CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
                     .comment()
@@ -1705,6 +1719,28 @@ impl Serializer {
     }
 
     /// 在 flow 上下文中序列化值（不追加换行符）。
+    /// Write one pair of a flow mapping: `key: value`, or `? *x : value` for an alias key.
+    ///
+    /// Both flow writers route through here so the marker rule lives once — it is the same rule
+    /// the block path applies in `write_mapping_pair`, and the compact `*x: v` is refused when
+    /// read back (`simple key expected ':'`), while `{? *x : v}` is measured readable.
+    fn write_flow_pair(
+        &mut self,
+        key: &CustomNode,
+        value: &CustomNode,
+        depth: usize,
+    ) -> Result<(), SerializeError> {
+        if let CustomNode::Alias { name } = key {
+            self.output.push_str("? *");
+            self.output.push_str(name);
+            self.output.push_str(" : ");
+        } else {
+            self.write_scalar_for_key(key, true);
+            self.output.push_str(": ");
+        }
+        self.serialize_flow_value(value, depth + 1)
+    }
+
     fn serialize_flow_value(
         &mut self,
         node: &CustomNode,
@@ -1767,9 +1803,7 @@ impl Serializer {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.write_scalar_for_key(key, true);
-                    self.output.push_str(": ");
-                    self.serialize_flow_value(value, depth + 1)?;
+                    self.write_flow_pair(key, value, depth)?;
                 }
                 self.output.push('}');
             }
@@ -3130,6 +3164,40 @@ mod tests {
                 "not a fixed point in one round: {one:?} -> {again:?}"
             );
         }
+    }
+
+    /// An alias in key position is a node the writer must spell, not one it may resolve away. The
+    /// compact spelling `*x: v` is refused by this engine's own reader ("simple key expected ':'"),
+    /// so the explicit marker is the only form that survives being read back here; ruamel.yaml
+    /// agrees from 0.19 and read the compact form as an empty-tuple key on 0.18.16, which is why
+    /// the version-scoped note lives in the cross-library test rather than in this rule.
+    #[test]
+    fn an_alias_key_is_written_with_the_explicit_marker_and_reads_back() {
+        let src = "a: &x [1, 2]\n? *x\n: v\n";
+        let one = to_yaml(&parse_core(src));
+        assert_eq!(
+            one, src,
+            "the alias key must survive as an alias, not as `null`"
+        );
+        let again = to_yaml(&parse_core(&one));
+        assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+    }
+
+    /// The same node in a flow container, where the writer has no marker line to lean on. What
+    /// must hold either way is that the emitted text re-reads into the tree it came from: an
+    /// alias key resolved away is a different document, and dropped to `null` is a shorter one.
+    #[test]
+    fn an_alias_key_in_a_flow_mapping_reads_back_as_the_same_tree() {
+        let src = "{a: &x [1, 2], ? *x : v}\n";
+        let node = parse_core(src);
+        let one = to_yaml(&node);
+        assert_eq!(
+            parse_core(&one),
+            node,
+            "alias key lost in one round: {one:?}"
+        );
+        let again = to_yaml(&parse_core(&one));
+        assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
     }
 
     /// Each pair of a multi-pair compact item owns its own line, so each key note has to

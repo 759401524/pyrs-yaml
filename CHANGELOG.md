@@ -507,6 +507,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An alias used as a mapping key is written back instead of dropped to `null`.** — with
+  `a: &x [1, 2]` and a key of `? *x`, the writer re-emitted `null: v`: the complex-key test in
+  `write_mapping_pair` covered a mapping or a sequence node, so an alias fell through to the
+  plain-key path and resolved to nothing — a different mapping, one entry shorter than the tree that
+  produced it. The compact `*x: v` was not an available spelling, which is what the open-items row
+  had claimed: this engine's reader refuses it (`simple key expected ':'`), so the writer carries
+  the `?` marker — on the marker line in block style (`? *x`) and inside the braces of a flow
+  mapping (`{? *x : v}`), and both load alike in every ruamel.yaml the lock resolves — 0.18.16 on
+  the Python 3.8 legs, 0.19.1 elsewhere, where its scanner does raise on the compact form. A blanket
+  claim about that scanner reddened the 3.8 legs and was replaced by measuring both versions. Why no
+  tier saw the loss: the AST strategy never builds a mapping keyed by an alias, and the round-trip
+  property *filters* a mismatching tree instead of failing it, so the changed shape was dropped
+  rather than reported. `pbt::tests::prop_alias_key_survives_the_round_trip` builds the shape and
+  asserts unconditionally; reverting the writer's predicate fails that property and the block unit
+  test — 2 of 344, nothing else — and the Python tier pins the emission byte for byte plus ruamel's
+  read of it.
+
 - **The unhashable-key refusal stopped pointing at two routes that refuse it too.** — the message
   that came in with the complex-key projection told the reader to project the document with
   `to_json()` or `to_toml()`. Measured on this tree, a complex key raises in both: the JSON writer

@@ -164,6 +164,35 @@ def test_sequence_keys_agree_with_ruamel(src, key):
     assert ours == theirs
 
 
+@pytest.mark.skipif(not _ruamel_available(), reason="ruamel.yaml not installed")
+def test_ruamel_reads_the_alias_key_we_write():
+    """The alias-key emission is written for other readers, not only for our own round trip.
+
+    Both ruamel versions in `uv.lock` — 0.18.16 for the Python 3.8 legs, 0.19.1 for the rest — load
+    what we write and hand back an empty tuple for an alias key, which is the same reason this
+    engine refuses the dict projection instead of inventing one (see
+    `test_a_key_with_no_hashable_form_is_refused_not_replaced`).
+
+    The compact `*x: v` is not the same story across versions, and that was measured after this
+    test reddened the 3.8 legs with a blanket claim: 0.18.16 reads it as an empty-tuple key,
+    0.19.1's scanner raises `while scanning a simple key`, and this engine's own reader has always
+    refused it (`simple key expected ':'`). The refusal below is therefore scoped to the versions
+    that have it; the durable fact is that only the marker form reads alike everywhere.
+    """
+    ours = pyrs_yaml.parse("a: &x [1, 2]\n? *x\n: v\n").to_yaml()
+    theirs = _ruamel.YAML(typ="safe").load(io.StringIO(ours))
+    assert list(theirs.keys()) == ["a", ()]
+
+    ours_flow = pyrs_yaml.parse("{a: &x [1, 2], ? *x : v}\n").to_yaml()
+    theirs_flow = _ruamel.YAML(typ="safe").load(io.StringIO(ours_flow))
+    assert list(theirs_flow.keys()) == ["a", ()]
+
+    ruamel_minor = tuple(int(part) for part in _ruamel.__version__.split(".")[:2])
+    if ruamel_minor >= (0, 19):
+        with pytest.raises(_ruamel.scanner.ScannerError):
+            _ruamel.YAML(typ="safe").load(io.StringIO("a: &x [1, 2]\n*x: v\n"))
+
+
 @pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
 def test_pyrs_projects_a_sequence_key_where_pyyaml_refuses_it():
     """Deliberate divergence, toward the library that carries the data.

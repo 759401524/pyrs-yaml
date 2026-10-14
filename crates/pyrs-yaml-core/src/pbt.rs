@@ -129,6 +129,26 @@ mod tests {
             })
     }
 
+    /// Documents that put an alias in key position, in both container styles, with the anchor
+    /// always defined before the reference so every source here is legal YAML. `extra` adds an
+    /// unrelated pair, so a key that is resolved away shows up as a shorter mapping rather than
+    /// hiding behind a duplicate. Nothing else in this tier reaches the shape: `arb_custom_node`
+    /// never builds a mapping keyed by an `Alias`, and `try_roundtrip` *drops* a mismatching tree
+    /// instead of failing it.
+    fn arb_alias_key_source() -> impl Strategy<Value = String> {
+        (0u8..3, any::<bool>(), any::<bool>()).prop_map(|(body, flow, extra)| {
+            let filler_block = if extra { "k1: v1\n" } else { "" };
+            let filler_flow = if extra { "k1: v1, " } else { "" };
+            match body {
+                0 if flow => format!("{{a: &x [1, 2], {}? *x : v}}\n", filler_flow),
+                0 => format!("a: &x [1, 2]\n{}? *x\n: v\n", filler_block),
+                1 if flow => format!("{{a: &x {{p: q}}, {}? *x : v}}\n", filler_flow),
+                1 => format!("a: &x {{p: q}}\n{}? *x\n: v\n", filler_block),
+                _ => format!("a: &x plain\n{}? *x\n: v\n", filler_block),
+            }
+        })
+    }
+
     proptest! {
         #[test]
         fn prop_roundtrip(node in arb_custom_node()) {
@@ -152,6 +172,30 @@ mod tests {
                 "serialized output failed to re-parse: {yaml:?} -> {:?}",
                 reparsed.err()
             );
+        }
+
+        /// An alias written in key position must come back as that alias. Unconditional on
+        /// purpose: the tier's `try_roundtrip` filters a mismatching tree away rather than
+        /// reporting it, which is precisely how the writer dropping `? *x` to `null: v` stayed
+        /// invisible — the tree changed shape, so the property never asserted anything about it.
+        #[test]
+        fn prop_alias_key_survives_the_round_trip(src in arb_alias_key_source()) {
+            let before = parse_with_options(&src, true, Schema::Core, 1000, false)
+                .unwrap_or_else(|e| panic!("{src:?} should parse: {e}"));
+            let emitted = to_yaml(&before);
+            prop_assert!(
+                emitted.contains("*x"),
+                "the alias key was resolved away: {src:?} -> {emitted:?}\n{}",
+                yaml_diff(&src, &emitted)
+            );
+            let after = parse_with_options(&emitted, true, Schema::Core, 1000, false)
+                .unwrap_or_else(|e| panic!("{emitted:?} should re-parse: {e}"));
+            prop_assert!(
+                nodes_equal_ignore_meta(&before, &after),
+                "alias key changed the tree: {src:?} -> {emitted:?}\n{}",
+                yaml_diff(&src, &emitted)
+            );
+            prop_assert_eq!(emitted, to_yaml(&after), "not a fixed point");
         }
 
         #[test]
