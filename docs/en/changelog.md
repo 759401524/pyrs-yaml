@@ -820,6 +820,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Performance
 
+- **The TOML writer stopped allocating a temporary for everything it emitted.** — `to_toml_medium`
+  counted 53,218,850 instructions against `to_json_medium`'s 21,283,040 for the *same* document:
+  every line went through `writeln!`, every key and every value was a `String` of its own before
+  being copied into the document, and an array or inline table built a `Vec<String>` to join,
+  formatted that, then copied it again. Measured as three binaries from three commits of one branch,
+  so each step carries its own number: the document emitter pushes instead of formatting (-19.00%),
+  and `quote_key`/`quote_basic`/`quote_multiline`/`value_str` became
+  `push_key`/`push_quoted`/`push_multiline`/`write_value` appending into the caller's buffer
+  (-33.27%) - -45.95% together, 53,218,850 down to about 28,761,000 counted instructions, with
+  `from_toml_medium` -0.15%, `serialize_medium` +0.01% and `to_json_medium` +0.00% as controls that
+  call none of it. The claim is byte-identity, not merely correctness, and tests cannot make it:
+  they assert what the output should be, not that it is unchanged. Both trees therefore ran over
+  every TOML document in the repository - 712 distinct inputs (777 valid `toml-test` files plus the
+  fuzz corpus and seeds, de-duplicated by content hash), routed TOML -> hub AST -> TOML with a
+  second pass to catch text that only moves on re-emission - and agreed exactly: 242 emitted
+  documents, every SHA-256 matching, the same error class per rejection, the same 9 shapes that are
+  not fixed points, zero differing records. What makes a differential mean something is checking
+  that the "before" tree lacked the new helpers before trusting its output (grep: 0 occurrences),
+  since two identical trees pass for the same reason a no-op would. `quote_key` is gone;
+  `quote_basic` and `quote_multiline` live on as `quoted` and `multiline` inside the test module,
+  because an assertion wants a value back and shipped code does not. `docs/dev/perf.md` keeps the
+  attribution, the arithmetic, and what the writer still spends.
+
 - **The JSON reader stopped paying for two calls that had nothing to do.** — attribution on
   `from_json_medium` found `Parser::ws` at 6.63% of the scenario on a fixture with *no whitespace at
   all*: roughly ninety calls per parse, thirty-odd instructions each, for a question whose answer is

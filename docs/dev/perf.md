@@ -642,3 +642,65 @@ What that leaves in the same profile, in size order: the allocator (33.36% of `f
 which this file has already shown to be the tree's own footprint rather than slack), the per-string
 `quoted_or_plain` decision (8.24%, and its own earlier entry reduced it from a full resolver to a
 table lookup), and `Parser::string` itself (9.17%). None of the three is a call that does nothing.
+
+---
+
+## The TOML writer formatted every line and allocated every piece (2026-10-14)
+
+Attributing the writers, after the reader work, found the same shape of cost in `pyrs-toml`'s
+emitter and a much larger one. `to_toml_medium` counted 53,218,850 instructions against
+`to_json_medium`'s 21,283,040 for the *same* document - the writer was 2.5x the writer it was
+supposed to resemble. Its rows: `scalar_key` 10.03%, `String as fmt::Write::write_str` 7.64%,
+`core::fmt::write` 5.54%, `emit_pair` 6.10%, `quote_basic` 4.98%, `value_str` 3.81%, allocator
+28.65%. The formatter rows are one cause and the allocator rows another: every emitted line went
+through `writeln!`, and every key and every value was a `String` of its own before being copied into
+the document - an array or an inline table allocated a `Vec` of those and joined them, then
+formatted that, then copied it again.
+
+Both were measured separately, on three binaries from three commits of one branch:
+
+| step | scenario | paired delta |
+|:--|:--|--:|
+| `writeln!` -> `push_str` in the document emitter | `to_toml_medium` | -19.00% |
+| keys and values written into the buffer | `to_toml_medium` | -33.27% |
+| both together | `to_toml_medium` | **-45.95%** |
+| control (reader, untouched path) | `from_toml_medium` | -0.15% |
+| control (YAML writer) | `serialize_medium` | +0.01% |
+| control (JSON writer) | `to_json_medium` | +0.00% |
+
+53,218,850 -> 43,104,898 -> ~28,761,000 counted instructions, repeats agreeing to the instruction
+(the last figure is the paired ratio applied to the measured one - `pair.py` prints the base and the
+delta, not both absolutes). The `quote_basic`/`quote_multiline` String-returning helpers became
+`push_quoted`/`push_multiline` appending to the caller's buffer, `quote_key` became `push_key`,
+`value_str` became `write_value`, and the sequence and inline-table paths stopped materialising a
+`Vec<String>` to join - the one remaining owned key is a section header's name, which is genuinely
+held across the loop that reads it. `quote_key` is gone; the other two live on as `quoted` and
+`multiline` inside the test module, because an assertion wants a value back and shipped code does
+not.
+
+Byte-identity is the claim that matters for a writer, and the tests cannot make it: they assert what
+the output should be, not that it is unchanged. So the differential ran both trees over every TOML
+document in the repository - 777 valid `toml-test` files plus the fuzz corpus and seeds,
+deduplicated by content hash to 712 inputs - routed `TOML -> hub AST -> TOML` so the bytes compared
+are the writer's own, with a second pass through the reader to catch text that only moves on
+re-emission.
+
+- 242 inputs produce text on both trees; every one of the 242 SHA-256 digests matches.
+- Every rejection raises the same error class with the same message prefix on both trees.
+- 9 inputs are not fixed points - identically the same 9 on both trees, so a pre-existing property
+  of those shapes rather than something this introduced.
+- Zero differing records out of 712.
+
+The check that makes the comparison mean anything: the "before" tree was built from the parent
+commit and grepped for the new helpers (0 occurrences) before its output was trusted, because a
+differential between two identical trees passes for exactly the same reason it would pass if nothing
+had changed.
+
+What the same profile leaves, named with its number: the output buffer's growth is 10.7% of
+`to_json_medium` (`realloc` + `_int_realloc` + `finish_grow`), and this file has already priced that
+answer twice - capacity preallocation measured ~11% on a 150 KB document and was rejected because
+the size-estimate walk cancels the saving and a fixed reserve regresses small documents.
+`to_toml_medium` is now 28.8M against JSON's 21.3M, and the gap that remains is `fmt_toml_float` and
+the integer fallback, which format through `core::fmt` because they mean it. The larger number is
+still the reader: `from_toml_medium` counts 160,049,672 against `from_json_medium`'s 93,234,186,
+which is the intermediate table model this file names above and has not touched.
