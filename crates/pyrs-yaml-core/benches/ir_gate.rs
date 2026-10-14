@@ -42,8 +42,8 @@ use pyrs_yaml_core::bench_inputs::{
     ANCHOR_YAML, BLOCK_SCALAR_YAML, BLOCK_STYLE_YAML, MEDIUM_JSON, MEDIUM_JSON5, MEDIUM_JSONC,
     MEDIUM_TOML, MEDIUM_YAML, MERGE_INLINE_YAML, SMALL_YAML,
 };
-use pyrs_yaml_core::parser::parse;
 use pyrs_yaml_core::parser::yaml::Schema;
+use pyrs_yaml_core::parser::{parse, parse_stream};
 use pyrs_yaml_core::serializer::to_yaml;
 
 /// Fixed for every run and every machine.
@@ -79,6 +79,13 @@ enum Work {
     ToJsonc,
     /// The hub AST rendered as JSON5.
     ToJson5,
+    /// The event stream path: text read into `Vec<StreamEvent>` instead of an AST. The
+    /// vocabulary's scalar text was owned `String` at the time this scenario was added, and the
+    /// maintainer ruled it should borrow (`Cow<'a, str>`, owning only what an escape decoded).
+    /// That is a claim about allocations on a path no other scenario enters - `parse_*` builds
+    /// nodes, the bridges build nodes too - so the ruling needed a number of its own before and
+    /// after, not an argument. Nothing measured `parse_stream` until now.
+    Stream,
 }
 
 /// Every scenario the gate measures. Names mirror `yaml_bench.rs` where an
@@ -130,6 +137,10 @@ fn scenarios() -> Vec<(&'static str, &'static str, Work)> {
         ("from_json5_medium", MEDIUM_JSON5, Work::FromJson5),
         ("to_jsonc_medium", MEDIUM_YAML, Work::ToJsonc),
         ("to_json5_medium", MEDIUM_YAML, Work::ToJson5),
+        // The event path over the same fixture the AST scenarios read, so the two are comparable:
+        // `parse_medium` is 321,836,091 counted instructions building nodes here, and whatever
+        // this reports is the price of the *other* shape the same text can take.
+        ("stream_medium", MEDIUM_YAML, Work::Stream),
     ]
 }
 
@@ -226,6 +237,30 @@ fn main() {
                     // Deliberately not a newer accessor, so the gate keeps
                     // compiling against whatever is on `main`.
                     acc += usize::from(std::hint::black_box(&node).comment().is_some());
+                }
+                acc
+            }
+        }
+        Work::Stream => {
+            if setup_only {
+                std::hint::black_box(src);
+                0
+            } else {
+                let mut acc = 0usize;
+                for index in 0..ITERATIONS {
+                    let events = std::hint::black_box(parse_stream(std::hint::black_box(src)))
+                        .unwrap_or_else(|error| {
+                            // A stream that started failing would still loop and still report a
+                            // smaller number, which this one-sided gate reads as a speedup.
+                            eprintln!(
+                                "{name} iteration {index}: {error} - the fixture no longer reaches \
+                                 the path being measured"
+                            );
+                            std::process::exit(3);
+                        });
+                    // Structural count, not text length: it is what keeps every event alive to
+                    // this point, so the receiver cannot be optimised out of existing.
+                    acc += std::hint::black_box(&events).len();
                 }
                 acc
             }

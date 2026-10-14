@@ -1,10 +1,10 @@
 {
   "binaries": {
-    "pyrs-yaml-core/ir_gate": "8a249a9411638daa",
-    "pyrs-yaml/ir_gate": "ebb5095187c45032"
+    "pyrs-yaml-core/ir_gate": "0c8e1a403a963867",
+    "pyrs-yaml/ir_gate": "972ba1b6a457814d"
   },
   "generated_by": {
-    "environment": "github-runner ubuntu24, image 20261004.327.1",
+    "environment": "Linux 6.18.54.1-microsoft-standard-WSL2 (x86_64)",
     "note": "Written by `scripts/ir_gate.py --update`; no value in this file is transcribed. The reasoning behind the tolerance, and the measurements that sized it, are in QUALITY_MATRIX.md section 2.",
     "repeats": 3,
     "rustc": "1.97.1",
@@ -25,6 +25,7 @@
     "serialize_block_scalars": 12288686,
     "serialize_medium": 32648850,
     "serialize_small": 4169906,
+    "stream_medium": 275227226,
     "to_json5_medium": 23643043,
     "to_json_medium": 21278969,
     "to_jsonc_medium": 23079043,

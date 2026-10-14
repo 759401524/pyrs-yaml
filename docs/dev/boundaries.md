@@ -103,7 +103,8 @@ holds it - not a per-shape patch.
   (`former-crash-{f8525a9e,c9031de4}.seed`); and every stack clears a tag header in one round
   (`former-crash-{e6551c75,fbc8f2ae,8f7085b0,77a8039b}.seed`).
   granit 2.0 also *accepts* an explicit key with nothing in it, which the writer cannot spell back:
-  `?`, `?` (trailing space), `?\t` and `?\n:\n` all parse to the mapping whose key is the null
+  a bare `?`, a `?` followed by a space, a `?` followed by a tab and `?\n:\n` all parse to
+  the mapping whose key is the null
   scalar, and the only honest emission is the null pair `~: ~` — so those four converge in one
   round while the `?` marker itself is lost, exactly as it is lost for a scalar explicit key
   (`? a\n: b` → `a: b\n`). Ruled 2026-10-14: accepted rather than refused, because the pinned
