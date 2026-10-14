@@ -358,10 +358,11 @@ net negative on 1.97.1. `NodeMeta { comment, decor: Box<_>, source_range, fideli
 with `Fidelity { anchor, tag }` takes the struct from 128 to **64** bytes and `CustomNode` from 208
 to **144** in the default `std` build - the feature split swaps the node map's hasher (`RandomState`
 for `std`, the crate's own fixed-seed `FxHasher` otherwise), and on that path the node lands at
-**128**; the `no_std` CI job found that by reddening on a tripwire that pinned 144 alone.
-The test `node_layout_is_part_of_the_hot_path_contract` pins all four numbers, so the table above
-cannot rot silently. The paired run (2,000 iterations minus `--setup-only`, `m197.bin` vs the
-retuned binary):
+**128**; the `no_std` CI job found that by reddening on a tripwire that pinned 144 alone. The test
+`node_layout_is_part_of_the_hot_path_contract` pins all four numbers, so the table above cannot rot
+silently. (Pinning four numbers did not last: the section at the end of this file unifies the
+hasher, and the node is 128 on both sides now.) The paired run (2,000 iterations minus
+`--setup-only`, `m197.bin` vs the retuned binary):
 
 | scenario | paired delta on rustc 1.97.1 |
 |:--|--:|
@@ -444,3 +445,73 @@ needed (`CustomNode::key_identity`, `KeyIdentity`) is merged and independent of 
 PR #383 - so the edit-layer fold will not have to re-derive it.
 
 ---
+
+## The node map was hashing its keys with SipHash (2026-10-14)
+
+The profile the file carried forward was two changes old, so it was re-measured on the merged
+layout before choosing a target. Same method as the section above it: `callgrind` over the gate's
+own harness, `GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX512F,-AVX2,-AVX,-SSE4_2,-POPCOUNT`, loop cost =
+full run minus `--setup-only`, rustc 1.97.1. Shares of the loop, three repeats, spread below
+0.01%:
+
+| cost centre | `from_json_medium` | `parse_medium` |
+|:--|--:|--:|
+| libc allocator (`_int_free`, `_int_malloc`, `malloc`, `free`) | 29.10% | 9.46% |
+| hash (`Hasher::write`, all of it SipHash) | 13.11% | 8.64% |
+| copy (`__memcpy_avx_unaligned_erms`) | 6.67% | 8.05% |
+| teardown (`drop_glue<CustomNode>`, `Arc<str>::drop_slow`) | 4.73% | 2.51% |
+
+Two numbers moved since the old table: `memcpy` is 7.88% to 6.67% because the node it copies got
+smaller, and the allocator's 30.3% is still the largest single share. The one nobody had priced is
+the hash row: `<core::hash::sip::Hasher<Sip13Rounds> as Hasher>::write` self-costs 10,214,000
+instructions, **8.98% of the JSON read path**, and the caller edge is a single line -
+
+```text
+10,214,000 ( 8.98%)  < ???:<pyrs_ast::ast::CustomNode as core::hash::Hash>::hash::<std::hash::random::DefaultHasher> (180,000x)
+```
+
+180,000 calls over 2,000 iterations is 90 key hashes per parse, which is the fixture's mapping keys
+and nothing else: `NodeMap` under the `std` feature was `IndexMap<K, V, std::hash::RandomState>`,
+and `RandomState` is SipHash-1-3. The `no_std` side already used the crate's own fixed-seed FxHash.
+So the default build paid a cryptographic-per-message hash to place a key in a short-lived table,
+and the split meant the two feature sets were not even the same node (144 bytes against 128).
+
+Unifying both sides on `FxHasher` is the whole change. Paired on 1.97.1, three repeats, same
+session, alternating binaries:
+
+| scenario | paired delta |
+|:--|--:|
+| `from_json_medium` | -12.75% |
+| `parse_medium` | -4.95% |
+| `to_json_medium` | +0.11% |
+
+The repeats of one pair agreed to the instruction (`from_json_medium` fx: 98,994,200 three times),
+and -12.75% is roughly what the 8.98% attribution plus the smaller node predicts: the write path
+hashes nothing, so `to_json_medium` is a copy-and-allocator scenario and moved by its noise.
+
+What it cost to land, because the number is not zero: every place that spelled a node-keyed map as
+`IndexMap<CustomNode, CustomNode>` was silently asking for `RandomState`, so ~40 sites across
+`pyrs-yaml-core`, `pyrs-yaml-cli` and the bindings had to name `NodeMap` instead - which is the
+same fix the `no_std` build already needed and never got, since nothing but `pyrs-ast`,
+`pyrs-event`, `pyrs-schema`, `pyrs-json` and `pyrs-toml` is built for the bare-metal target. A
+custom hasher also drops indexmap's `From<[(K, V); N]>` impl, so two test sites became
+`.into_iter().collect()`.
+
+Nothing in the API can tell a SipHash table from an FxHash one - both look up the same keys - so the
+choice is pinned by a test that hashes a key twice, once through the map's own hasher and once
+through `FxHasher`, and compares the digests:
+`the_node_map_hashes_with_the_crates_own_hasher_whatever_the_features_say`. Mutation-checked, as the
+file asks: putting `std::hash::RandomState` back on the std side reddens it on that side and passes
+on the other, which is exactly the asymmetry this change removed.
+
+The trade-off is HashDoS, and it is now the whole build's, not embedded's: a document written to
+collide can degrade a node map to linear probing. The reasoning that accepted it for `no_std`
+extends - the keys come from a file the caller chose, the tables die with the tree, and
+`IndexMap` keeps insertion order so a collision costs probes, not changed output - and it is
+recorded on `NodeMap` rather than left implicit.
+
+Cheapest remaining targets in the same profile, in order: the hash row is not finished, because
+this crate's `FxHasher::write` still folds one byte per round - rustc-hash reads eight at a time,
+and 90 keys per parse is where that shows. Then `memcpy` at 6.67% and 8.05%, which is the node
+model the file has already ruled out rewriting. Allocator churn stays the biggest number and the
+least actionable.

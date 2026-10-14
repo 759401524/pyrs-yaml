@@ -12,9 +12,8 @@ pub use crate::editing::{
     normalize_index, path_nodes, precompute, regenerate_region_text, region_unit,
 };
 
-use crate::ast::CustomNode;
+use crate::ast::{CustomNode, NodeMap};
 use crate::parser::yaml::compute_line_offsets;
-use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::ops::Range;
 
@@ -48,7 +47,7 @@ pub fn set_path(
 
     if matches!(node, CustomNode::Null { .. }) {
         *node = CustomNode::Mapping {
-            pairs: IndexMap::new(),
+            pairs: NodeMap::default(),
             flow_style: false,
             meta: Default::default(),
         };
@@ -339,7 +338,7 @@ fn set_path_create_missing(
         let Segment::Key(k) = seg else {
             return Err("create-needs-mapping".to_string());
         };
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(CustomNode::plain_scalar(k.as_ref()), nested);
         nested = CustomNode::plain_mapping(pairs);
     }

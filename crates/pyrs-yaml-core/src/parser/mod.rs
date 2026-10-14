@@ -6,12 +6,11 @@ pub use crate::parser::stream::{
     StreamEvent, StreamEventType, parse_stream, parse_stream_with_options,
 };
 
-use crate::ast::{Comment, CustomNode, NodeMeta, ScalarStyle, Tag};
+use crate::ast::{Comment, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};
 use crate::parser::yaml::Schema;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
-use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Arc;
@@ -547,7 +546,7 @@ struct AstReceiver<'a> {
 enum ParseState {
     /// Building a mapping
     Mapping {
-        pairs: IndexMap<CustomNode, CustomNode>,
+        pairs: NodeMap<CustomNode, CustomNode>,
         current_key: Box<Option<CustomNode>>,
         /// Scalar-key values already seen, tracked by content so YAML's
         /// "keys are their value" identity is enforced: `key`, `key # c` and
@@ -1342,7 +1341,7 @@ impl<'a> AstReceiver<'a> {
         };
         let guard = self.flow_guard(flow_style, &span);
         self.stack.push(ParseState::Mapping {
-            pairs: IndexMap::new(),
+            pairs: NodeMap::default(),
             current_key: Box::new(None),
             seen_value_keys: std::collections::HashSet::new(),
             null_key: None,

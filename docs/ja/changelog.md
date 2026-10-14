@@ -712,6 +712,19 @@ status: new
 
 #### パフォーマンス
 
+- **ノードマップのキーハッシュをすべてのビルドで FxHash にした（`no_std` 限定ではなくなる）。** —
+  `std` を有効にすると `NodeMap` は `IndexMap<K, V, std::hash::RandomState>` でした。そのため
+  マップにキーを 1 つ置くたび SipHash-1-3 のコストが発生し、`callgrind` は `CustomNode::hash` から
+  `Hasher::write` へ到る自己コスト 10,214,000 命令・180,000 回呼び出し（`from_json_medium` の
+  8.98%）を測定しました。feature の分岐はノードの大きささえ 144 バイトと 128 バイトに分けていた。
+  両側とも crate 自身の固定シード `FxHasher` を名指しします。埋め込みビルドが以前から使っていた
+  ものです。ゲートが固定する rustc 1.97.1 での対測：`from_json_medium` −12.75%、`parse_medium`
+  −4.95%、`to_json_medium` +0.11%。`no_std` 側がすでに受け入れていたトレードオフはこれで全体の
+  ビルドのものになり、`NodeMap` のドキュメントに明かしました。HashDoS のランダム化はなくなるため、
+  衝突を狙って書かれた文書はノードマップを線形探索に落とし込みます。導入には `RandomState` を
+  黙って要求していた `IndexMap<CustomNode, CustomNode>` の約 40 か所を `NodeMap` に直す必要が
+  ありました。（詳細：docs/dev/perf.md「The node map was hashing its keys with SipHash」）
+
 - **スカラーレゾルバは何も削るものがないテキストのトリミングをやめました。** — JSON、TOML、YAML のす
   べてのスカラーは `resolve_core_type` に「これは数か語か」と尋ねますが、その返答が最初に行うのは、
   述語の両端走査で余白を取り除くことでした。1 回あたり 38 の命令を費やしますが、先頭や末尾が空白の文

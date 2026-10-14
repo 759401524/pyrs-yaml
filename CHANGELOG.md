@@ -784,6 +784,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- **The node map hashes its keys with FxHash on every build, not only under `no_std`.** — with
+  `std` on, `NodeMap` was `IndexMap<K, V, std::hash::RandomState>`, so putting one mapping key in
+  the table cost SipHash-1-3: `callgrind` measures 10,214,000 self instructions over 180,000 calls
+  reaching `Hasher::write` from `CustomNode::hash` — 8.98% of `from_json_medium` — and the feature
+  split even disagreed about the node's size (144 bytes against 128). Both sides now name the
+  crate's own fixed-seed `FxHasher`, which is what the embedded build has always used. Paired on
+  the compiler the gate pins (rustc 1.97.1): `from_json_medium` −12.75%, `parse_medium` −4.95%,
+  `to_json_medium` +0.11%. The trade-off the `no_std` side had already accepted is now the whole
+  build's, and it is written on `NodeMap` rather than left implicit: no HashDoS randomisation, so
+  a document written to collide degrades a node map to linear probes. Landing it also meant naming
+  `NodeMap` at the ~40 sites that spelled `IndexMap<CustomNode, CustomNode>` and so asked for
+  `RandomState` without saying so — the same fix the `no_std` split had always needed. (details:
+  docs/dev/perf.md "The node map was hashing its keys with SipHash")
+
 - **The scalar resolvers stopped trimming text that had nothing to trim.** — every JSON, TOML and
   YAML scalar asks `resolve_core_type` "is this a number or a word?", and the first thing that
   answer did was strip edge separation with a two-ended predicate walk: 38 counted instructions per

@@ -571,7 +571,7 @@ mod tests {
         };
         value.to_string()
     }
-    use pyrs_ast::ast::{Comment, NodeMap};
+    use pyrs_ast::ast::Comment;
 
     // The YAML-source round-trip (`parse -> to_toml -> from_toml`) needs the
     // YAML parser and lives in `pyrs-yaml-core` `src/integration/toml_family.rs`.
@@ -931,14 +931,22 @@ mod tests {
             text: "n".into(),
             standalone: false,
         });
-        let inner = CustomNode::plain_mapping(NodeMap::from([
-            (CustomNode::plain_scalar("b"), b),
-            (CustomNode::plain_scalar("c"), CustomNode::plain_scalar("2")),
-        ]));
-        let root = CustomNode::plain_mapping(NodeMap::from([(
-            CustomNode::plain_scalar("t"),
-            CustomNode::plain_sequence(vec![inner]),
-        )]));
+        let inner = CustomNode::plain_mapping(
+            [
+                (CustomNode::plain_scalar("b"), b),
+                (CustomNode::plain_scalar("c"), CustomNode::plain_scalar("2")),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let root = CustomNode::plain_mapping(
+            [(
+                CustomNode::plain_scalar("t"),
+                CustomNode::plain_sequence(vec![inner]),
+            )]
+            .into_iter()
+            .collect(),
+        );
 
         let out = to_toml(&root).unwrap();
         assert_eq!(

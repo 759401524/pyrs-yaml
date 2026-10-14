@@ -3,7 +3,6 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt;
-#[cfg(not(feature = "std"))]
 use core::hash::BuildHasherDefault;
 use core::hash::{Hash, Hasher};
 use core::mem;
@@ -18,24 +17,30 @@ use indexmap::IndexMap;
 /// Aliasing the hasher here keeps a single node-map type on both sides of the
 /// feature split, and keeps every downstream `indexmap::IndexMap::new()`
 /// spelled against node keys compiling unchanged.
-#[cfg(feature = "std")]
-pub type NodeMap<K, V> = IndexMap<K, V, std::hash::RandomState>;
-
-/// `no_std` counterpart of [`NodeMap`]. `RandomState` needs entropy only std
-/// can source, so embedded builds get a fixed-seed FxHash instead: no HashDoS
-/// randomisation, which is the documented trade-off for dragging std into an
-/// image just to seed a table.
-#[cfg(not(feature = "std"))]
+///
+/// The hasher is the crate's own FxHash on both sides, and that is a measured
+/// choice, not a convenience: over the gate's `from_json_medium` the std build
+/// spent 8.98% of its instructions inside `Hasher::write` reached from
+/// `CustomNode::hash` (180 000 calls, `callgrind`, see `docs/dev/perf.md`), and
+/// replacing `std::hash::RandomState` with this type took that scenario -12.75%
+/// and `parse_medium` -4.95%. One hasher also removes the layout difference the
+/// split used to cause: a node is 128 bytes whichever feature set is on.
+///
+/// The trade-off is HashDoS: a fixed seed means a document crafted to collide
+/// can degrade a node map to linear probes. This is what the `no_std` build has
+/// always accepted — no entropy to seed a table there, and no attacker model
+/// for an image that parses its own config — and the same reasoning now covers
+/// std: keys come from a file the caller chose to read, the tables are short
+/// lived, and `IndexMap` keeps insertion order, so a collision costs probing,
+/// not a changed output.
 pub type NodeMap<K, V> = IndexMap<K, V, BuildHasherDefault<FxHasher>>;
 
-/// FxHash (rustc-hash) over `u64`, sized for `no_std` map keys.
-#[cfg(not(feature = "std"))]
+/// FxHash (rustc-hash) over `u64`, sized for node-map keys.
 #[derive(Default, Clone, Copy)]
 pub struct FxHasher {
     hash: u64,
 }
 
-#[cfg(not(feature = "std"))]
 impl FxHasher {
     const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
 
@@ -45,7 +50,6 @@ impl FxHasher {
     }
 }
 
-#[cfg(not(feature = "std"))]
 impl Hasher for FxHasher {
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
@@ -1838,17 +1842,32 @@ mod tests {
     use alloc::{format, vec::Vec};
 
     #[test]
+    fn the_node_map_hashes_with_the_crates_own_hasher_whatever_the_features_say() {
+        // docs/dev/perf.md prices what the default hasher costs on the read path - 10,214,000
+        // counted instructions, 8.98% of `from_json_medium`, over 180,000 key hashes - so a map
+        // that quietly went back to `RandomState` is a measured regression, not a style choice.
+        // This is the only place the choice is observable: nothing else in the API can tell a
+        // SipHash table from an FxHash one, because both look up the same keys.
+        let map: NodeMap<CustomNode, u8> = NodeMap::default();
+        use core::hash::BuildHasher as _;
+        let key = CustomNode::plain_scalar("a_key_long_enough_to_feed_more_than_one_round");
+        let via_fx = BuildHasherDefault::<FxHasher>::default().hash_one(&key);
+        assert_eq!(
+            map.hasher().hash_one(&key),
+            via_fx,
+            "the node map is not hashing with FxHasher on this side of the feature split"
+        );
+    }
+
+    #[test]
     fn node_layout_is_part_of_the_hot_path_contract() {
         // docs/dev/perf.md prices the node size three times over (default-write, memcpy, drop walk),
         // so a change to this layout is a change to a measured number, not an implementation detail.
         assert_eq!(core::mem::size_of::<Fidelity>(), 72);
         assert_eq!(core::mem::size_of::<NodeMeta>(), 64);
-        // The metadata half is the same either way; the content half is not, because the `std`
-        // feature split swaps the node map's hasher (RandomState for the default build, fixed-seed
-        // FxHash for `default-features = false`), and that is 16 bytes of the node.
-        #[cfg(feature = "std")]
-        assert_eq!(core::mem::size_of::<CustomNode>(), 144);
-        #[cfg(not(feature = "std"))]
+        // One hasher on both sides of the feature split means one layout: the node map used to be
+        // 16 bytes wider under `std` (RandomState) than under `no_std` (fixed-seed FxHash), and
+        // that difference was 144 against 128.
         assert_eq!(core::mem::size_of::<CustomNode>(), 128);
     }
 

@@ -4,7 +4,7 @@
 //! Python-specific segment parsing is in `crate::py::editing`.
 
 use crate::ast::CustomNode;
-use indexmap::IndexMap;
+use crate::ast::NodeMap;
 use std::borrow::Cow;
 
 /// ```
@@ -46,7 +46,7 @@ pub fn key_eq(a: &CustomNode, b: &CustomNode) -> bool {
 }
 
 pub fn mapping_get_mut<'a>(
-    pairs: &'a mut IndexMap<CustomNode, CustomNode>,
+    pairs: &'a mut NodeMap<CustomNode, CustomNode>,
     key: &CustomNode,
 ) -> Option<&'a mut CustomNode> {
     let idx = pairs.iter().position(|(k, _)| key_eq(k, key))?;
@@ -54,7 +54,7 @@ pub fn mapping_get_mut<'a>(
 }
 
 pub fn mapping_key_index(
-    pairs: &IndexMap<CustomNode, CustomNode>,
+    pairs: &NodeMap<CustomNode, CustomNode>,
     key: &CustomNode,
 ) -> Option<usize> {
     pairs.iter().position(|(k, _)| key_eq(k, key))
@@ -81,8 +81,8 @@ pub use crate::error::NavigateError;
 /// use pyrs_yaml_core::ast::CustomNode;
 /// use pyrs_yaml_core::editing::{navigate, Segment, key_eq};
 /// use std::borrow::Cow;
-/// use indexmap::IndexMap;
-/// let mut pairs = IndexMap::new();
+/// use pyrs_yaml_core::ast::NodeMap;
+/// let mut pairs = NodeMap::default();
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
 /// let node = CustomNode::Mapping { pairs, flow_style: false, meta: Default::default() };
 /// let segs = [Segment::Key(Cow::Borrowed("a"))];
@@ -121,8 +121,8 @@ pub fn navigate<'a>(
 /// use pyrs_yaml_core::ast::CustomNode;
 /// use pyrs_yaml_core::editing::{navigate_mut, navigate, Segment, key_eq};
 /// use std::borrow::Cow;
-/// use indexmap::IndexMap;
-/// let mut pairs = IndexMap::new();
+/// use pyrs_yaml_core::ast::NodeMap;
+/// let mut pairs = NodeMap::default();
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
 /// let mut node = CustomNode::Mapping { pairs, flow_style: false, meta: Default::default() };
 /// let segs = [Segment::Key(Cow::Borrowed("a"))];
@@ -215,7 +215,7 @@ mod tests {
             (mk_scalar("a"), mk_scalar("1")),
             (mk_scalar("b"), mk_scalar("2")),
         ];
-        let map: IndexMap<CustomNode, CustomNode> = pairs.into_iter().collect();
+        let map: NodeMap<CustomNode, CustomNode> = pairs.into_iter().collect();
         assert_eq!(mapping_key_index(&map, &mk_scalar("a")), Some(0));
         assert_eq!(mapping_key_index(&map, &mk_scalar("b")), Some(1));
     }
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn test_mapping_key_index_not_found() {
         let pairs = vec![(mk_scalar("a"), mk_scalar("1"))];
-        let map: IndexMap<CustomNode, CustomNode> = pairs.into_iter().collect();
+        let map: NodeMap<CustomNode, CustomNode> = pairs.into_iter().collect();
         assert_eq!(mapping_key_index(&map, &mk_scalar("x")), None);
     }
 
