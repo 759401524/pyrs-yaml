@@ -651,6 +651,19 @@ status: new
 
 #### 性能
 
+- **指令数地板降到了配得上它的引擎。** — 四次优化 PR 在两次刷新之间合了进来，而已提交的基线并没有跟
+  上。`Ir baseline refresh` 作业在执行门禁的镜像上重测了全部 21 个场景（`github-runner ubuntu24`，镜
+  像 20261004.327.1，rustc 1.97.1——与基线本来记录的工具链相同，所以动的是数字而不是编译器），其产物
+  原样提交：`to_toml_medium` 53,218,877 → 28,763,688（−45.95%）、`serialize_anchors` −30.25%、
+  `serialize_small` −29.83%、`serialize_block` −26.42%、`serialize_medium` −24.81%（32,648,850）、
+  `serialize_block_scalars` −21.99%；读取侧 `from_json5_medium` −11.17%、`from_toml_medium` −7.29%、
+  `from_json_medium` −5.82%、`from_jsonc_medium` −4.72%。没有任何场景上抬超过 0.10%——方向反着动的七
+  个都在解析与绑定路径上，且都在该文件自己声明的 0.5% 线内。地板比引擎高 46% 等于门禁默许 46% 的回
+  退，而这正是零回退承诺要防的失败。同一批运行也量出了本地测量可信到什么程度：源码完全相同时，WSL 读
+  `serialize_medium` 为 32,648,888，镜像为 32,648,850（+0.0001%）；`to_python_medium` 为 386,665,602
+  对 385,871,983（+0.21%）。所以 `ir-baseline.yml` 引用的 +1.45% 跨镜像差在纯 Rust 那侧已经合上，剩
+  下的在链接 CPython 的那侧。这里的数字没有一个是人手誊写的。
+
 - **YAML 写入器对每个节点用两种方式使用同样的开销。** — 同一份 profile 里有两行主导一次文档输出：
   `write_plain_scalar` 与 `write_scalar_for_key` 各占 `serialize_medium` 的 9.21% 与 9.29%，底下还有
   约 10% 花在模式扫描上；`write_indent` 占 8.10%。前者是一个函数 `needs_double_quoted`，在同一段文本
