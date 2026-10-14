@@ -621,6 +621,64 @@ impl Hash for NodeMeta {
     }
 }
 
+/// Whether the writer would emit this scalar in the plain spelling the reader resolves to null:
+/// `~`, or `null` in any case. The empty string is deliberately absent - an empty plain key in
+/// source reads as null, but the writer quotes it (`"": v`), so it stays a string key.
+fn null_spelling(style: &ScalarStyle, value: &Arc<str>) -> bool {
+    *style == ScalarStyle::Plain && (value.as_ref() == "~" || value.eq_ignore_ascii_case("null"))
+}
+
+/// What a reader sees when it decides whether two mapping keys are the same key.
+///
+/// The node map already refuses two entries whose keys are equal `CustomNode`s, so a document can
+/// only hold two keys that differ in metadata the reader ignores: the style of a scalar, a comment,
+/// a source range. Those are exactly the pairs that reach the reader as one key - or as an error -
+/// and this enum names that coarser identity so a writer can fold on it. Borrowed rather than
+/// owned, because a fold is per key on the serialize path.
+///
+/// The classes are the reader's, not the text's: `parser/mod.rs` tracks untagged scalar keys by
+/// value, skips tagged ones, and folds null and merge keys by resolved identity.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum KeyIdentity<'a> {
+    /// A key the reader resolves to null: the `Null` variant, or a plain `~` / `null` spelling in
+    /// any case. The spelling is absent on purpose - `NULL:` and `~:` are one key. When a tag is
+    /// present the reader stops folding, so `(!E, anchor)` distinguishes two lines and a bare null
+    /// carries no anchor of its own.
+    ///
+    /// `(tag, anchor)` for a key the reader resolves to null — the `Null` variant or
+    /// a plain scalar spelled `~` or `null` in any case — and `None` for anything the
+    /// reader keeps as its own key.
+    ///
+    /// The empty string is deliberately absent: an empty plain *key* in source reads
+    /// as null, but the writer will not emit one — it quotes it (`"": v`) so an AST
+    /// holding an empty-string key stays the string key it was written as.
+    ///
+    /// `Null` carries no text of its own: the writer emits the word `null` for it,
+    /// so a null cannot be told from another null, nor from a plain scalar spelled
+    /// like one. A note rides the *line* rather than the key, so it separates
+    /// nothing; the reader then folds the two lines into one entry and reports the
+    /// second key as a duplicate (property tier at 20 000 cases: `!E null: A  # 0`
+    /// beside `!E null: a`).
+    ///
+    /// An anchor is only consulted once a tag is present. Measured, not assumed: a
+    /// mapping does hold one bare null key whatever anchors ride it — `&a null: one`
+    /// and `&b null: two` re-read as a single entry — while a tag takes the key out
+    /// of the null fold and the reader then compares whole nodes, so `&a !E null`
+    /// and `&b !E null` stay two keys.
+    Null(Option<&'a Tag>, Option<&'a str>),
+    /// An untagged scalar's text, which is what the reader tracks: `k:` and `'k':` are one key,
+    /// style never reaching its decision. A tagged scalar is not here, because the reader skips
+    /// tagged keys in that track and leaves the pair to the node map's own equality.
+    Text(&'a Arc<str>),
+    /// An empty mapping key: `{}:` twice is one key, however the two were spelled.
+    EmptyMapping,
+    /// An empty sequence key, for the same reason.
+    EmptySequence,
+    /// Everything else - a tagged non-null scalar, a non-empty container, an alias. Compared as
+    /// nodes, which is what the map itself does, so no two of these are ever the same key here.
+    Other(&'a CustomNode),
+}
+
 /// Custom AST node with full metadata for round-trip support
 #[derive(Debug, Clone, Eq)]
 pub enum CustomNode {
@@ -1317,6 +1375,31 @@ impl CustomNode {
         }
     }
 
+    /// The identity a reader uses to decide whether this key is the same key as another one.
+    ///
+    /// See `KeyIdentity` for the classes and why they are coarser than `CustomNode`'s equality.
+    pub fn key_identity(&self) -> KeyIdentity<'_> {
+        match self {
+            CustomNode::Scalar {
+                value, style, meta, ..
+            } if meta.tag().is_none() && !null_spelling(style, value) => KeyIdentity::Text(value),
+            // A tagged scalar that is not a null spelling: the reader keeps it apart from any
+            // other key the map can hold, so the fold must not merge it either.
+            CustomNode::Scalar { style, value, .. } if !null_spelling(style, value) => {
+                KeyIdentity::Other(self)
+            }
+            CustomNode::Null { meta } | CustomNode::Scalar { meta, .. } => {
+                let tag = meta.tag();
+                // A bare null key carries no anchor of its own: `&a null:` and `&b null:` are both
+                // just `~:` to the reader. A tag stops that folding, so it carries the anchor.
+                KeyIdentity::Null(tag, if tag.is_some() { meta.anchor() } else { None })
+            }
+            CustomNode::Sequence { items, .. } if items.is_empty() => KeyIdentity::EmptySequence,
+            CustomNode::Mapping { pairs, .. } if pairs.is_empty() => KeyIdentity::EmptyMapping,
+            other => KeyIdentity::Other(other),
+        }
+    }
+
     /// Get the scalar style of a `Scalar` node. Returns `None` for non-scalar variants.
     pub fn scalar_style(&self) -> Option<ScalarStyle> {
         match self {
@@ -1534,61 +1617,9 @@ pub mod proptest_strategies {
     /// is a hand-maintained model of two other components, and every gap between
     /// them has shown up first as a random property-tier failure.
     pub fn keys_collide_in_text(a: &CustomNode, b: &CustomNode) -> bool {
-        // Checked first because the reader decides on the *resolved* key, not the
-        // spelling: `NULL:` and `null:` are two different texts that still fold
-        // onto one null key, so neither can carry a mapping of its own.
-        if let (Some(x), Some(y)) = (null_key_identity(a), null_key_identity(b)) {
-            return x == y;
-        }
-        if let (CustomNode::Scalar { value: va, .. }, CustomNode::Scalar { value: vb, .. }) = (a, b)
-        {
-            return va == vb;
-        }
-        let empty_of_kind = |n: &CustomNode, seq: bool| match n {
-            CustomNode::Sequence { items, .. } => seq && items.is_empty(),
-            CustomNode::Mapping { pairs, .. } => !seq && pairs.is_empty(),
-            _ => false,
-        };
-        empty_of_kind(a, true) && empty_of_kind(b, true)
-            || empty_of_kind(a, false) && empty_of_kind(b, false)
-    }
-
-    /// `(tag, anchor)` for a key the reader resolves to null — the `Null` variant or
-    /// a plain scalar spelled `~` or `null` in any case — and `None` for anything the
-    /// reader keeps as its own key.
-    ///
-    /// The empty string is deliberately absent: an empty plain *key* in source reads
-    /// as null, but the writer will not emit one — it quotes it (`"": v`) so an AST
-    /// holding an empty-string key stays the string key it was written as.
-    ///
-    /// `Null` carries no text of its own: the writer emits the word `null` for it,
-    /// so a null cannot be told from another null, nor from a plain scalar spelled
-    /// like one. A note rides the *line* rather than the key, so it separates
-    /// nothing; the reader then folds the two lines into one entry and reports the
-    /// second key as a duplicate (property tier at 20 000 cases: `!E null: A  # 0`
-    /// beside `!E null: a`).
-    ///
-    /// An anchor is only consulted once a tag is present. Measured, not assumed: a
-    /// mapping does hold one bare null key whatever anchors ride it — `&a null: one`
-    /// and `&b null: two` re-read as a single entry — while a tag takes the key out
-    /// of the null fold and the reader then compares whole nodes, so `&a !E null`
-    /// and `&b !E null` stay two keys.
-    fn null_key_identity(node: &CustomNode) -> Option<(Option<&Tag>, Option<&str>)> {
-        let meta = match node {
-            CustomNode::Null { meta } => meta,
-            CustomNode::Scalar {
-                value, style, meta, ..
-            } if *style == ScalarStyle::Plain
-                && (value.as_ref() == "~" || value.eq_ignore_ascii_case("null")) =>
-            {
-                meta
-            }
-            _ => return None,
-        };
-        Some(match (meta.tag(), meta.anchor()) {
-            (None, _) => (None, None),
-            (Some(tag), anchor) => (Some(tag), anchor),
-        })
+        // One model, not two branches that can drift: the classes are spelled out on
+        // `KeyIdentity`, and the writer's fold reads that same identity.
+        a.key_identity() == b.key_identity()
     }
 
     fn arb_sequence(inner: BoxedStrategy<CustomNode>) -> impl Strategy<Value = CustomNode> {

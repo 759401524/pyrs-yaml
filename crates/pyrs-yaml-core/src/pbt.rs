@@ -531,6 +531,43 @@ mod tests {
             // The writer quotes an empty plain key (`"": v`) instead of emitting the
             // null spelling the reader would fold, so a tilde key keeps its own entry.
             ("a tilde and an empty key", plain("~"), plain(""), true),
+            // A tag is part of the emitted line, so `!a k:` and `!b k:` re-read as two
+            // entries: the reader's value-collision track deliberately skips tagged keys.
+            (
+                "two scalars, same text, different tags",
+                scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
+                scalar("k", ScalarStyle::Plain, Some(("!", "b"))),
+                true,
+            ),
+            (
+                "two scalars, same text, same tag",
+                scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
+                scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
+                false,
+            ),
+            // A tagged key is outside the reader's text track (`parser/mod.rs` skips tagged
+            // scalars there), so two spellings of one tagged text re-read as two entries: measured,
+            // `!a k: one` + `!a 'k': two` comes back with both.
+            (
+                "a tagged scalar, plain and quoted",
+                scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
+                scalar("k", ScalarStyle::SingleQuoted, Some(("!", "a"))),
+                true,
+            ),
+            // `null:` reads as a null key and `'null':` as the string, so the reader keeps
+            // both; `true:` and `'true':` both reach the reader's text track and collide.
+            (
+                "a plain null spelling and its quoted twin",
+                plain("null"),
+                scalar("null", ScalarStyle::SingleQuoted, None),
+                true,
+            ),
+            (
+                "a plain boolean spelling and its quoted twin",
+                plain("true"),
+                scalar("true", ScalarStyle::SingleQuoted, None),
+                false,
+            ),
             // --- identical: the reader must refuse or fold, never keep both ---
             (
                 "two tagged nulls, one carrying a note",
@@ -583,7 +620,7 @@ mod tests {
         ];
         let distinguishable = cases.iter().filter(|(_, _, _, keepable)| *keepable).count();
         assert_eq!(
-            distinguishable, 8,
+            distinguishable, 11,
             "the table must keep a real share of its classes on each side"
         );
 
