@@ -9,6 +9,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The instruction-count gate can now say *where* a scenario's instructions go.** — every
+  optimization round in `docs/dev/perf.md` began from the same throwaway probe: build the release
+  benchmark unstripped, run it under callgrind twice, subtract `--setup-only`, rank the functions.
+  `python scripts/ir_gate.py --profile serialize_medium` is that probe registered (`--top N` widens
+  the table, and a scenario name this tree does not build is refused with the list it does). The two
+  bugs the scratch versions had are now tests: reading the callgrind event file by hand summed
+  8,854,254 instructions for a run whose own summary said 4,506,831 and attributed nearly all of
+  them to `?`, so the tool parses `callgrind_annotate`'s table instead; and bucketing rows by a
+  regex over function names once put TOML's hash cost at 12.46% because `Hasher` matched the *type
+  parameter* of `IndexMap<…, BuildHasherDefault<…>>::insert*` rather than any digest work — so rows
+  print exactly as named, never grouped, and `tests/test_ir_profile.py` asserts that. The gate's
+  binary ships stripped, which profiles as `0x000000000006cc10'2` where it should read
+  `write_plain_scalar`, so the flag keeps symbols itself; that changes the artifact's bytes and none
+  of the measured code, and the pass/fail path is untouched — `--profile` prints and exits 0.
+
 - **The `no_std` job now runs the host tests of every foundation crate.** — it built all five for
   `thumbv7em-none-eabi` but tested only `pyrs-ast` and `pyrs-schema`, so 112 host tests that exist
   under `default-features = false` (58 in `pyrs-json`, 54 in `pyrs-toml`) had never run on the path

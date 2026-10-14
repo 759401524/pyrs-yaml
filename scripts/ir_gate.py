@@ -209,8 +209,8 @@ def digest_of(exe: str) -> str:
     return hashlib.sha256(pathlib.Path(exe).read_bytes()).hexdigest()[:16]
 
 
-def callgrind_total(exe: str, args: list[str]) -> int:
-    """Run `exe args` under callgrind and return the process-wide Ir total."""
+def _callgrind_text(exe: str, args: list[str]) -> str:
+    """Run `exe args` under callgrind and hand back the event file."""
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "cg.out"
         res = run(
@@ -228,8 +228,12 @@ def callgrind_total(exe: str, args: list[str]) -> int:
         )
         if res.returncode != 0:
             sys.exit(f"valgrind failed on {args}:\n{res.stderr[-1500:]}")
-        text = out.read_text(encoding="utf-8", errors="replace")
-    totals = re.findall(r"^summary:\s+(\d+)", text, re.MULTILINE)
+        return out.read_text(encoding="utf-8", errors="replace")
+
+
+def callgrind_total(exe: str, args: list[str]) -> int:
+    """The process-wide Ir total of one callgrind run."""
+    totals = re.findall(r"^summary:\s+(\d+)", _callgrind_text(exe, args), re.MULTILINE)
     if not totals:
         sys.exit(f"no callgrind summary for {args}")
     return int(totals[-1])
@@ -241,6 +245,62 @@ def loop_instructions(exe: str, scenario: str) -> int:
     full = callgrind_total(exe, [scenario])
     setup = callgrind_total(exe, [scenario, "--setup-only"])
     return full - setup
+
+
+# `callgrind_annotate` prints one row per function: self cost, its share in parentheses, then the
+# name with the object file in brackets. An earlier version of this parser read the event file
+# directly and got it wrong in a way only a comparison against the run's own `summary:` line shows -
+# a hand-written record reader has to reimplement callgrind's compressed position and call-cost
+# attribution, and its output summed 8.8M instructions against a 4.5M total. So the format is
+# somebody else's job and the reading of the table is ours.
+_ANNOTATION_ROW = re.compile(r"^\s*(?P<cost>[\d,]+)\s+\(\s*[\d.]+%\)\s+(?P<name>\S.*?)\s*(?:\[.*\])?$")
+
+
+def parse_annotation(text: str) -> dict[str, int]:
+    """Self instructions per function, from the rows of a `callgrind_annotate` table."""
+    per: dict[str, int] = {}
+    for line in text.splitlines():
+        if "PROGRAM TOTALS" in line:
+            continue
+        match = _ANNOTATION_ROW.match(line)
+        if not match:
+            continue
+        name = match["name"]
+        per[name] = per.get(name, 0) + int(match["cost"].replace(",", ""))
+    return per
+
+
+def callgrind_functions(exe: str, args: list[str]) -> tuple[int, dict[str, int]]:
+    """The process-wide Ir total of one run, and self Ir per function."""
+    text = _callgrind_text(exe, args)
+    totals = re.findall(r"^summary:\s+(\d+)", text, re.MULTILINE)
+    if not totals:
+        sys.exit(f"no callgrind summary for {args}")
+    ann = run(
+        ["callgrind_annotate", "--threshold=100.0", "/dev/stdin"],
+        input=text,
+        capture_output=True,
+    )
+    if ann.returncode != 0:
+        sys.exit(f"callgrind_annotate failed ({ann.returncode}); the profile cannot be read.\n{ann.stderr[-500:]}")
+    return int(totals[-1]), parse_annotation(ann.stdout)
+
+
+def profile_scenario(exe: str, scenario: str, top: int) -> None:
+    """Print the ranked self cost of one scenario's loop, full minus setup-only."""
+    full_total, full = callgrind_functions(exe, [scenario])
+    setup_total, setup = callgrind_functions(exe, [scenario, "--setup-only"])
+    loop = max(full_total - setup_total, 1)
+    rows = sorted(((cost - setup.get(name, 0), name) for name, cost in full.items()), reverse=True)
+    print(f"=== {scenario}: loop {loop:,} instr (full {full_total:,} - setup {setup_total:,})")
+    for cost, name in rows[:top]:
+        if cost > 0:
+            print(f"  {100.0 * cost / loop:5.2f}%  {cost:>12,}  {name[:96]}")
+    print(
+        "  functions are printed as named, never grouped by a pattern over the name: that is what"
+        " manufactured a 12.46% 'hash' row for TOML (docs/dev/perf.md), 'Hasher' matching the type"
+        " parameter of IndexMap<.., BuildHasherDefault<..>>::insert* rather than any digest work."
+    )
 
 
 def loop_samples(exe: str, scenario: str, repeats: int) -> list:
@@ -353,6 +413,23 @@ def main() -> int:
     )
     ap.add_argument("--report-only", action="store_true", help="print measurements, never fail")
     ap.add_argument(
+        "--profile",
+        action="append",
+        default=[],
+        metavar="SCENARIO",
+        help=(
+            "rank the functions inside a scenario by self instructions instead of comparing against"
+            " the baseline; the loop cost is still full minus --setup-only, so what is printed is"
+            " the measured work and not the harness around it"
+        ),
+    )
+    ap.add_argument(
+        "--top",
+        type=int,
+        default=12,
+        help="how many rows --profile prints (default 12)",
+    )
+    ap.add_argument(
         "--accept-drift",
         action="append",
         default=[],
@@ -372,6 +449,13 @@ def main() -> int:
         ),
     )
     args = ap.parse_args()
+
+    if args.profile:
+        # A profile of a stripped binary reads `0x000000000006cc10'2` where it should read
+        # `write_plain_scalar`, which is a table of addresses and not an attribution. Keeping the
+        # symbols changes the bytes of the artifact and none of the measured code, so it is set here
+        # rather than asked of whoever runs the tool.
+        os.environ["CARGO_PROFILE_RELEASE_STRIP"] = "false"
 
     # One build per harness, one scenario -> binary map across both. A scenario name is unique by
     # convention (`to_python_*` on the binding side), and a collision would silently measure the wrong
@@ -400,6 +484,16 @@ def main() -> int:
     toolchain = rustc_banner()
     env_note = ", ".join(f"{key}={value}" for key, value in sorted(MEASUREMENT_ENV.items()))
     print(f"measurement env: {env_note}")
+
+    if args.profile:
+        unknown = [s for s in args.profile if s not in exes]
+        if unknown:
+            sys.exit(
+                f"--profile names no scenario of this tree: {', '.join(unknown)}. Known: {', '.join(sorted(exes))}"
+            )
+        for name in args.profile:
+            profile_scenario(exes[name], name, args.top)
+        return 0
 
     # A repeated measurement is part of the baseline's provenance, not a local knob: comparing a
     # single sample against a max-of-3 envelope (or the reverse) silently changes what the tolerance
