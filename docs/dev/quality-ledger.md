@@ -4797,6 +4797,44 @@ included), `cargo test --all --no-default-features` 618,
 at [26, 12, 39, 8]), and `check_doc_wrapping.py --fix` over the changelogs and `docs/dev/perf.md` -
 the wrapping gate reddened a first attempt at this section, which is exactly what it is for.
 
+### (cx) Two oracle tests, two bugs in the fix for #336 (2026-10-14)
+
+`(cv)` said the control for "costs nothing" is a build with the addition deleted. `(cw)` said the
+control has to run on the compiler the gate pins. This is the same discipline applied to a
+*correctness* change, and it earned its keep twice in one sitting.
+
+The change: fold the keys the reader resolves alike, so `to_yaml` never emits text its own reader
+refuses or silently shortens (#336, ruled: fold on write). The price is in `docs/dev/perf.md` -
++12-34% on the serialize scenarios, structural rather than incidental, so the branch
+(`yaml-writer-key-fold-336`) is shelved with its numbers instead of re-baselining the floor.
+
+What the tests did on the way there:
+
+- the pinned key-rule table (`the_key_rule_agrees_with_the_writer_and_the_reader`) is an oracle
+  because it writes each pair with the real writer and re-reads it with the real reader. Growing it
+  from 15 classes to 19 found the hand-maintained model wrong twice (a tag does distinguish keys; a
+  plain `null` spelling and its quoted twin are not one key), and then found a bug inside the
+  refactor that was meant to fix it: tagged scalars routed through the null class, which claimed
+  `!a k` and `!a 'k'` were one key when the measured round trip returned two. The model and the
+  author disagreed, and the reader was the referee.
+- the fold's own note-ordering test was written to pin determinism - re-homed notes must arrive in
+  document order, because walking a `HashMap` would emit them differently per process. It failed,
+  and the failure was not about order: a pair folded twice had its first entry's notes attached to
+  the intermediate entry, which was itself about to be dropped, so two of three notes vanished from
+  the document. A test aimed at one property caught a silent data-loss defect in the same line of
+  code.
+
+Both are recorded because the tempting shortcut was available at each step: the rule could have been
+kept as prose branches that "obviously" match the reader, and the note order could have been
+declared fine and left to a fuzz run to notice.
+
+The boundary that survived is asserted, not commented: a pair whose dropped entry carries an anchor
+is left out of the fold, because a node holds one anchor and a dropped value's anchor cannot be
+re-pointed without changing what its aliases resolve to - folding there would trade a short line for
+a dangling reference, which the engine promises never to emit. The reader solves the same problem by
+inlining orphaned uses (`parser::repair_orphaned_anchors`); a writer that sees one mapping at a time
+cannot.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
