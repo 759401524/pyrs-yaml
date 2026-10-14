@@ -17,6 +17,20 @@ status: new
 
 #### 추가
 
+- **명령어 수 게이트가 시나리오의 명령어가 어디로 가는지 말할 수 있다.** — `docs/dev/perf.md`의 모든
+  최적화 라운드는 같은 일회성 프로브에서 시작했다. strip 전의 release 벤치를 만들고 callgrind를 두
+  번 돌려 `--setup-only`를 빼고 함수별로 순위 매기는 일이었다.
+  `python scripts/ir_gate.py --profile serialize_medium`은 그 프로브를 등록한 도구다(`--top N`으로
+  표를 넓히고, 이 트리가 만들지 않는 시나리오 이름은 실제로 만드는 목록과 함께 거부한다). 초안
+  버전이 밟은 두 버그는 이제 테스트다. callgrind 이벤트 파일을 손으로 읽으면 summary가 4,506,831이라
+  적은 실행에 8,854,254를 쌓고 거의 전부 `?`로 돌렸으므로, 이 도구는 `callgrind_annotate` 표를 읽는
+  쪽으로 했다. 함수명 정규식으로 갈래를 지르면 `Hasher`가 `IndexMap<…, BuildHasherDefault<…>>`
+  메서드의 *타입 인자*에 걸려 TOML의 해시 비용이 12.46%가 된 적이 있으므로, 각 줄은 원 이름 그대로
+  출력하고 합치지 않는다 — `tests/test_ir_profile.py`가 그것을 확인한다. 게이트 바이너리는 strip되어
+  있어 profile이 `write_plain_scalar` 자리에서 `0x000000000006cc10'2`를 뽑아내므로, 이 플래그가
+  스스로 기호를 남긴다. 바뀌는 것은 산출물의 바이트이지 재는 코드가 아니고, 성공·판정 경로에는
+  손대지 않는다 — `--profile`은 찍고 0으로 끝난다.
+
 - **`no_std` 잡드가 기반 crate 모두의 호스트 테스트를 돌린다.** — `thumbv7em-none-eabi` 빌드는 다섯
   crate를 전부 했는데 테스트는 `pyrs-ast` 와 `pyrs-schema` 만 해서, `default-features = false`에서
   존재하는 112개 호스트 테스트(`pyrs-json` 58개, `pyrs-toml` 54개)가 스스로 지원한다고 말하는

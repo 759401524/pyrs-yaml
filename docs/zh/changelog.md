@@ -19,6 +19,17 @@ status: new
 
 #### 新增
 
+- **指令数门禁现在能说明一个场景的指令去了哪里。** — `docs/dev/perf.md` 里每一轮优化都始于同一个一次
+  性探针：构建未 strip 的 release 基准，在 callgrind 下跑两遍，减去 `--setup-only`，再按函数排名。
+  `python scripts/ir_gate.py --profile serialize_medium` 就是把那个探针登记成工具（`--top N` 加宽表
+  格，本树并不构建的场景名会被拒绝，并列出它真正构建的那些）。草稿版本踩过的两个坑如今是测试：手工解
+  析 callgrind 事件文件，为一场 summary 自身写着 4,506,831 的运行累计出 8,854,254 条指令，且几乎全归
+  到 `?`，所以这个工具改为解析 `callgrind_annotate` 的表格；按函数名正则分桶曾把 TOML 的哈希成本报成
+  12.46%，因为 `Hasher` 命中的是 `IndexMap<…, BuildHasherDefault<…>>::insert*` 的*类型参数*而不是任
+  何摘要计算——于是每一行都按原名打印、绝不归并，`tests/test_ir_profile.py` 断言这一点。门禁的二进制
+  是 strip 过的，profile 出来是 `0x000000000006cc10'2` 而非 `write_plain_scalar`，所以该旗标自行保留
+  符号；这改变的是产物字节而非被测代码，判定路径也未被触碰——`--profile` 打印后以 0 退出。
+
 - **`no_std` 作业现在会跑每个基础 crate 的宿主测试。** — 该作业为 `thumbv7em-none-eabi` 构建全部
   五个 crate，却只测试 `pyrs-ast` 与 `pyrs-schema`，于是 `default-features = false` 下已有的 112 个
   宿主测试（`pyrs-json` 58 个、`pyrs-toml` 54 个）从未在它们声称支持的路径上跑过；而

@@ -593,9 +593,9 @@ One measurement trap, since it briefly sent me to fix a hash cost that was not t
 core::hash::BuildHasherDefault<..>>>::insert*` - the *type parameter* of the map's own methods, not
 digest work. TOML's real digest row is 3.33%, the same `FxHasher` the hub uses. A bucket is a
 question about names, so the only reading that counts is the list of names inside it: print the
-members, not the total. The probe that does this round's attribution was one-off scratch under
-`target/`; the third session to rebuild one is an argument for registering it as a tool, which is
-raised rather than smuggled into this change.
+members, not the total. The probe that did this round's attribution was one-off scratch under
+`target/` when this was written; it is `scripts/ir_gate.py --profile` now, described at the end of
+this file.
 
 ---
 
@@ -763,3 +763,52 @@ What is left in the same profile: `serialize_node_internal` at 13.77% is the dis
 is the node model this file has already ruled out rewriting, and `memcmp` at 6.63% is the writer's
 own `remaining`-width bookkeeping for line folding - both named so the next reader does not
 rediscover them as low fruit.
+
+---
+
+## The attribution probe is a gate flag now (2026-10-14)
+
+Every round above began from the same throwaway: build the release benchmark unstripped, run it
+under callgrind twice (once with `--setup-only`), subtract, rank the functions. A third session
+rebuilding that by hand is an argument for registering it, so it is
+`scripts/ir_gate.py --profile SCENARIO` now — `--top N` widens the table, and a scenario name this
+tree does not build is refused with the list it does build.
+
+Measured on the tree that has all four rounds above in it:
+
+```text
+=== serialize_medium: loop 32,648,888 instr (full 33,131,280 - setup 482,392)
+  18.32%     5,980,000  <pyrs_yaml_core::serializer::Serializer>::serialize_node_internal'2
+  13.38%     4,368,000  pyrs_yaml_core::serializer::write_plain_scalar
+  12.36%     4,034,000  <pyrs_yaml_core::serializer::Serializer>::write_scalar_for_key
+  10.73%     3,504,000  <pyrs_yaml_core::serializer::Serializer>::write_mapping_pair'2
+   5.83%     1,902,000  <pyrs_yaml_core::serializer::Serializer>::write_indent
+```
+
+(Names shortened here; the tool prints them with the object file in front, which is `???:` for
+code the binary carries and `./malloc/…` for libc.)
+
+Three things about reading it, since each is a way the scratch version got someone wrong:
+
+- **`callgrind_annotate` parses the event file, and the tool parses that.** A hand-written record
+  reader has to reimplement callgrind's compressed positions and call-cost attribution. The first
+  cut of this one summed 8,854,254 instructions for a run whose own `summary:` line said
+  4,506,831, and put nearly all of them under `?`. `tests/test_ir_profile.py` holds the row parser
+  down to three cases: one row is one function, two rows for one name are one function, and no row
+  is ever grouped with another by a pattern over its name.
+- **Rows are printed as named, so one function can occupy two.** `write_mapping_pair` appears at
+  10.73% and again at 3.36%, the second under callgrind's `'2` disambiguation of two symbols with
+  the same name. They are not merged: merging by stripping a suffix is the `Hasher`-regex mistake
+  in a different font — a question about names dressed as a measurement. Add them by hand if the
+  question is about the function, and see what the row list says before doing it.
+- **Symbols are not free to forget.** The gate's own binary is stripped, and a profile of a
+  stripped binary reads `0x000000000006cc10'2` where it should read `write_plain_scalar` — a table
+  of addresses, not an attribution. `--profile` sets `CARGO_PROFILE_RELEASE_STRIP=false` for itself,
+  which changes the artifact's bytes and none of the measured code, so the numbers the baseline
+  compares are still the same instructions.
+
+Nothing here gates anything. `--profile` prints and exits 0; the pass/fail path is untouched, and
+the environment the gate needs is the environment the profile needs (valgrind, `callgrind_annotate`,
+and on this box WSL with a `PYO3_PYTHON` plus a link path to that interpreter's `lib`, because the
+binding harness is built for the `to_python_*` scenarios whether or not anyone profiles one — a
+profile that refuses to build for a linker flag is the gate's own failure, not the flag's).
