@@ -156,6 +156,23 @@ names, on `main` at `27031d12`:
 | `pyrs-toml` | 12 |
 | `pyrs-yaml-core` | 75 |
 
+A qualifier the first draft lacked, because the table over-reads: `cargo tree -e normal` counts the
+closure a consumer *builds*, not what ends up linked. Part of `pyrs-yaml-core`'s 75 is host-only.
+The concrete case is a second `granit-parser`, 1.3.0, arriving through
+
+```text
+granit-parser v1.3.0 <- serde-saphyr <- rust-i18n-support (feature "codegen")
+  <- rust-i18n-macro (proc-macro) <- rust-i18n <- pyrs-yaml-core
+```
+
+`rust_i18n::i18n!("src/i18n/locales")` (`crates/pyrs-yaml-core/src/lib.rs:27`) parses the locale
+YAML at compile time, and `rust-i18n-macro` requests `rust-i18n-support/codegen` unconditionally, so
+that parser is neither dead weight nor removable by a narrower feature selection - and a
+proc-macro's dependencies are host artifacts loaded by rustc, not something the wheel or the `pyq`
+binary links. What it does cost is compile time, which is a real column of this pillar but a
+different one, and the honest form of the claim is: twelve crates to build for a JSON5 consumer
+against seventy-five for the YAML engine, of which some build only.
+
 So a project that only needs to read JSON5 carries twelve crates, not seventy-five: the YAML
 engine's parser, its schema resolver, `granit-parser`, `rust-i18n`, `regex`, `proptest`-adjacent
 machinery and the PyO3 stack are simply not in that graph. That is the fine-grained claim, and
