@@ -19,17 +19,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
-- **The empty explicit key the parser accepts is now a documented, tested shape.** — `?`, `?` and
-  `?\t` are documents under the pinned parser, not errors: each parses to the mapping whose key is
-  the null scalar, and because the writer has no marker for an *empty* explicit key, the only honest
-  emission is `~: ~`. The source's spelling is lost while its data is not — `? a\n: b` comes back
-  compact as `a: b\n` for the same reason — and only a key that cannot round-trip without the marker
-  keeps one (`? ?` emits the nested-explicit `?\n  ~: ~\n:\n  ~`). Ruled 2026-10-14: accepted rather
-  than refused, because the pinned parser decides what is valid YAML and refusing would have this
-  library reject input the `yaml-test-suite` accepts.
-  `serializer::tests::a_degenerate_explicit_key_is_accepted_and_re_emits_the_null_pair` now asserts
-  the exact re-emitted form of six such inputs and that each is a fixed point after one round, and
-  `docs/dev/boundaries.md` records it beside the other explicit-key families.
+- **The instruction gate measures the event path now, so the scalar-ownership ruling has a number to
+  be argued with.** — Nothing on the gate ever entered `parse_stream`: every `parse_*` scenario
+  builds an AST, and so does every bridge scenario. The maintainer ruled on 2026-10-14 that the
+  neutral event should borrow its scalar text (`Cow<'a, str>`, owning only what an escape decoded),
+  which is a claim about allocations — so the scenario comes first and the code change follows it:
+  `stream_medium` reads `MEDIUM_YAML` through `parse_stream` two thousand times and counts the
+  events it gets, baselining at 275,227,226 counted instructions against `parse_medium`'s
+  321,836,091 for the same text, with three samples agreeing to the instruction (spread 0.000%).
+  Taking the number before the change is what makes the gate compute the gain instead of a sentence
+  asserting it. `QUALITY_MATRIX.md` section 2's scenario count moved to twenty-two with it, and the
+  prose-count test added today failed first and correctly — the drift it now prevents is exactly the
+  kind this change would otherwise have introduced silently.
+
+- **The empty explicit key the parser accepts is now a documented, tested shape.** — a bare `?`, a
+  `?` followed by a space and a `?` followed by a tab are documents under the pinned parser, not
+  errors: each parses to the mapping whose key is the null scalar, and because the writer has no
+  marker for an *empty* explicit key, the only honest emission is `~: ~`. The source's spelling is
+  lost while its data is not — `? a\n: b` comes back compact as `a: b\n` for the same reason — and
+  only a key that cannot round-trip without the marker keeps one (`? ?` emits the nested-explicit
+  `?\n  ~: ~\n:\n  ~`). Ruled 2026-10-14: accepted rather than refused, because the pinned parser
+  decides what is valid YAML and refusing would have this library reject input the `yaml-test-suite`
+  accepts. `serializer::tests::a_degenerate_explicit_key_is_accepted_and_re_emits_the_null_pair` now
+  asserts the exact re-emitted form of six such inputs and that each is a fixed point after one
+  round, and `docs/dev/boundaries.md` records it beside the other explicit-key families.
 
 - **A prose count in the defence matrix is now checked against the file it describes.** —
   `QUALITY_MATRIX.md` section 2 said the baseline carried "seventeen" scenarios while

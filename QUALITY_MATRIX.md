@@ -265,8 +265,10 @@ figure. Drift of that kind is
 not noise; each time it was a property of the method that has now been closed. Three things follow, and
 all three have now happened. `.github/workflows/ir-baseline.yml` regenerates the numbers
 with the steps the enforcing job uses, which is where every value in `.ci/ir-baseline.json` comes
-from — twenty-one of them, since the binding harness joined and since each cross-format
-bridge grew its reader, and `tests/test_ir_baseline_workflow.py` now fails if this page's own count of
+from — twenty-two of them, since the binding harness joined, since each cross-format
+bridge grew its reader, and since the event path got a number of its own (`stream_medium`, added to
+price the scalar-ownership ruling in `docs/dev/event-stream.md` rather than argue it), and
+`tests/test_ir_baseline_workflow.py` now fails if this page's own count of
 them disagrees with the file it describes. `ir_gate.py --update --only <scenario>`
 merges into the committed file and refuses to write a baseline with a missing number, because the
 first version silently reduced the scenario set to the one it had measured. And the file has to be
