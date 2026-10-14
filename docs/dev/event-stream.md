@@ -4,8 +4,9 @@ Status: **ruled - option B, adopted 2026-10-13; step A (`pyrs-event`) merged as 
 (JSON producer) measured, priced and shelved the same day; decision 2 answered the same day - a
 multi-format `parse_stream` is promised to Python and Rust users.** The objective lists `事件流` as
 a core abstraction to be split into its own crate, alongside the AST. The AST half is done; the
-event-stream half is this document. Decisions 3 and 4 at the bottom are still open, and each one
-blocks the step that needs it.
+event-stream half is this document. Decisions 3 and 4 were both answered on 2026-10-14, so the list
+at the bottom is empty; what the next step waits on is the tree-free reader that the 2026-10-13
+ruling put in front of the producers, not a question for the maintainer.
 
 Every claim below is from reading the tree at `14196dc9` (2026-10-13), except the measurement
 section, which reads `bdc60d74`. File and line numbers are given so a reviewer can check them rather
@@ -158,10 +159,21 @@ grammar:
   would carry the tax permanently, for an output that has no consumer yet. This document's "Not a
   performance play" section said the event layer must be measured, not assumed cheap - it was, and
   it is not, at this step.
-- A second, tree-free tokenizer walk would cost the AST path nothing, and would put ~300-400 lines
-  of the JSON5/JSONC dialect gates (hex integers, signed `Infinity`, leading-dot forms, identifier
-  keys, comment slots) in two places, each needing its own edge-case tests. The
-  fold-the-stream-and-compare-to-the-tree test catches divergence only on inputs it touches.
+- A second, tree-free tokenizer walk would cost the AST path nothing. The estimate written here
+  first — "~300-400 lines of the JSON5/JSONC dialect gates in two places" — was an argument, not a
+  count, and the count puts it in the wrong bucket. Sorting `crates/pyrs-json/src/parser.rs`'s
+  functions by whether their signature names `CustomNode`: 18 functions and 407 lines never do
+  (`ws_extended`, `string`, `single_quoted_string`, `unicode_escape` and `hex4`, `identifier_key`
+  and `at_identifier_start`, the JSON5 gates, the position and error helpers), so a second walk
+  calls them as they stand; 7 functions and 241 lines do (`value`, `value_inner`, `object`, `array`,
+  `quoted_or_plain`, `attach_pending`, `flush_pending`), and those are what it re-writes; `number`
+  (105 lines) is the one leaf returning a node, so it is the only split. The dialect gates stay
+  single-authored. What a second walk duplicates is the *policy* — the dispatch is where a
+  standalone note claims the key's slot rather than the value's, where `attach_pending` orders two
+  notes against one node, and where a duplicate key takes the last value and the first position —
+  and two walks answer those three questions twice, while the
+  fold-the-stream-and-compare-to-the-tree test catches the divergence only on inputs it touches.
+  That is the reason to reorder, and it does not need the line count to carry it.
 - The tax exists because the traversal still builds a tree. When `to_events` stops building one -
   which is the streaming-reader half of the Python-facing step, and the only consumer that has ever
   been named for this vocabulary - there is no tree path left to tax and the producer is free by
@@ -191,8 +203,9 @@ users, in Python and in Rust. That is what makes the reordered step worth buildi
 reader is not an optimization of an internal detail but the advertised surface - and it settles that
 the Python-facing step carries stubs, the four doc locales and a matrix row rather than being cut as
 a non-goal. Decision 3 (borrow versus own) was answered on 2026-10-14 and is the change this
-document's last section prices; decision 4 (how TOML dotted keys are expressed) is still open and
-blocks the step that needs it.
+document's last section prices, and decision 4 (how TOML dotted keys are expressed) was answered the
+same day. Nothing in plan B waits on a maintainer now: what the next step waits on is the tree-free
+reader that the 2026-10-13 ruling reordered it behind.
 
 ## What this is not for
 
@@ -204,7 +217,10 @@ blocks the step that needs it.
 - **Not a Python-visible change until the last step of B**, so no `.pyi` regeneration or stub-drift
   work before then.
 
-## Decisions this document needs from the maintainer
+## Decisions this document needed from the maintainer
+
+All four are answered, and each answer is recorded in place with its date — a question resolved in a
+conversation and left out of the document is a question that gets asked again.
 
 1. **B or C.** (A only as B's first PR.)
 2. If B: is a multi-format `parse_stream` a *promised user-facing capability* (Python and Rust), or
@@ -219,7 +235,13 @@ blocks the step that needs it.
    it is what the section below measures.
 4. If B: how are TOML dotted keys expressed — nested `MappingStart`/`MappingEnd` per level, matching
    the AST, or a flat key event with the source span? One sentence from you fixes what would
-   otherwise be two implementations of the same question.
+   otherwise be two implementations of the same question. **Answered 2026-10-14 (maintainer): nested
+   `MappingStart`/`MappingEnd` per level.** The vocabulary then carries one shape for "a mapping",
+   so `from_events` replays a dotted key into the same tree the AST path builds, and the consumer
+   never re-derives nesting out of a span. The flat answer would have made a dotted key a second
+   key-spelling that every reader of the stream — the replay test and the Python-facing
+   `parse_stream` both — would have had to special-case. Source fidelity stays where the vocabulary
+   already puts it, on the span each event carries, not in the event's shape.
 
 ## What the borrowed scalar is worth (2026-10-14, decision 3 landed)
 
