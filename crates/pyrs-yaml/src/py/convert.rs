@@ -260,10 +260,11 @@ fn set_text_key(dict: &Bound<'_, PyDict>, key: &CustomNode, value: &Py<PyAny>) -
 
 /// The refusal for a key that has no hashable Python form.
 ///
-/// The message names the shape and stops there. It deliberately does not promise that the
-/// document survives elsewhere: for a mapping or sequence key the AST does hold it and the
-/// writer does emit the `?` form (tested), but an alias used as a key is currently written as
-/// `null` by the serializer, which is a separate defect and not this boundary's business.
+/// The message names the shape and the one route that works. It deliberately does not offer the
+/// other projections as escapes, because they refuse here too — measured on this tree: `to_json()`
+/// raises `json-object-key` and `to_toml()` raises `toml-keys-must-be-scalars`. For a mapping or
+/// sequence key the AST does hold it and the writer emits the `?` form (tested), but an alias used
+/// as a key is written as `null`, which is a separate defect and not this boundary's business.
 fn unhashable_key_error(key: &CustomNode) -> pyo3::PyErr {
     let shape = match key {
         CustomNode::Mapping { .. } => "mapping",
@@ -273,8 +274,8 @@ fn unhashable_key_error(key: &CustomNode) -> pyo3::PyErr {
     };
     YamlTypeError::new_err(format!(
         "found unhashable key: the YAML key is a {shape}, which has no hashable Python form. \
-         PyYAML and ruamel.yaml raise at this same point. Read the document with parse() and \
-         work on the AST, or project it with to_json()/to_toml(), rather than asking for a dict."
+         PyYAML and ruamel.yaml raise at this same point. Read the document with parse() and work \
+         on the AST; to_json() and to_toml() refuse this key as well."
     ))
 }
 

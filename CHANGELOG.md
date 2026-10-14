@@ -507,6 +507,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The unhashable-key refusal stopped pointing at two routes that refuse it too.** — the message
+  that came in with the complex-key projection told the reader to project the document with
+  `to_json()` or `to_toml()`. Measured on this tree, a complex key raises in both: the JSON writer
+  answers `json-object-key` and the TOML one `toml-keys-must-be-scalars`. So the advice led to two
+  more errors rather than an exit, and it contradicted the function's own comment, which says the
+  message names the shape and stops there. The text now states the one route that works — read it
+  with `parse()` and keep the key on the AST — and says plainly that the other projections refuse
+  this key as well. `tests/test_parse.py` pins both halves, so a reintroduced recommendation fails.
+  Which inputs raise is unchanged, and the wrong wording never reached a release.
+
 - **A complex mapping key no longer reaches Python as the node's Rust debug text.** —
   `safe_load("? ?")` handed back a dict whose key was `'Mapping { pairs: {Scalar { value: "~"…'`,
   and `? [1, 2]` the same shape of string, because the conversion preferred a debug format over
