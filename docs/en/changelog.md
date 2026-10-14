@@ -19,6 +19,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The `no_std` job now runs the host tests of every foundation crate.** — it built all five for
+  `thumbv7em-none-eabi` but tested only `pyrs-ast` and `pyrs-schema`, so 112 host tests that exist
+  under `default-features = false` (58 in `pyrs-json`, 54 in `pyrs-toml`) had never run on the path
+  they claim to support, and `cargo test --no-default-features -p pyrs-toml` did not even compile: a
+  recursion-limit case spawns a thread to get a 16 MiB stack, and a thread is not available without
+  std. That case is now `#[cfg(feature = "std")]`, with the reason and what the `no_std` side is
+  left without written where the gate can be read; the guard it tests is `alloc`-only logic and the
+  same code still runs there. Building for a bare-metal target proves the code links; only the tests
+  prove it works, and now they run. (`AGENTS.md`'s no_std claim is measured, not asserted.)
+
 - **`pyrs-event`: the document event vocabulary is its own crate.** — the second core abstraction
   the architecture pillar names beside the AST. `StreamEvent` and its eleven variants moved out of
   `crates/pyrs-yaml-core/src/parser/stream.rs` into a `#![no_std]` + `alloc` crate that depends only

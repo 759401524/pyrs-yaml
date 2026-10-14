@@ -17,6 +17,16 @@ status: new
 
 #### 추가
 
+- **`no_std` 잡드가 기반 crate 모두의 호스트 테스트를 돌린다.** — `thumbv7em-none-eabi` 빌드는 다섯
+  crate를 전부 했는데 테스트는 `pyrs-ast` 와 `pyrs-schema` 만 해서, `default-features = false`에서
+  존재하는 112개 호스트 테스트(`pyrs-json` 58개, `pyrs-toml` 54개)가 스스로 지원한다고 말하는
+  경로에서 한 번도 실행되지 않았다. 게다가 `cargo test --no-default-features -p pyrs-toml`은
+  컴파일조차 되지 않았다. 중첩 제한 사례가 16 MiB 스택을 받으려 스레드를 띄우는데, 스레드는 std 없이
+  존재하지 않는다. 그 사례는 `#[cfg(feature = "std")]`가 되었고, 이유와 `no_std` 쪽에서 무엇을
+  잃는지는 게이트를 읽으면 보이는 위치에 적었다. 검증하는 깊이 가드 자체는 `alloc` 전용 로직이라
+  `no_std`에서도 같은 코드가 돈다. 베어메탈 빌드는 링크만 증명하고 동작은 테스트가 증명하며, 이제 그
+  테스트가 돈다.
+
 - **`pyrs-event`: 문서 이벤트 어휘를 독립 크레이트로 만들었습니다.** — AST 와 나란한, 아키텍처
   기둥이 지정한 두 번째 핵심 추상입니다. `StreamEvent` 와 그 열한 가지 변형을
   `crates/pyrs-yaml-core/src/parser/stream.rs` 에서 옮겨 `#![no_std]` + `alloc` 이고 `pyrs-ast` 만
