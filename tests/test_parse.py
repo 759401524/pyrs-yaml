@@ -210,6 +210,19 @@ class TestComplexKeys:
         assert "?" in text
         assert pyrs_yaml.parse(text).to_yaml() == text
 
+    def test_an_alias_key_is_written_back_instead_of_dropped_to_null(self):
+        # The writer used to resolve an alias key away, so `? *x` + `: v` came back as `null: v` —
+        # a different mapping, one entry shorter than the tree that produced it. The compact
+        # `*x: v` is not an available alternative: this engine's reader refuses it ("simple key
+        # expected ':'") and so does ruamel.yaml, which is why the marker form is what we emit,
+        # in block style on the marker line and inside `{ ? *x : v }` for a flow mapping.
+        block = "a: &x [1, 2]\n? *x\n: v\n"
+        assert pyrs_yaml.parse(block).to_yaml() == block
+        flow = "{a: &x [1, 2], ? *x : v}\n"
+        assert pyrs_yaml.parse(flow).to_yaml() == flow
+        # The name of the failure, spelled out: the key must not survive as a null scalar.
+        assert "null:" not in pyrs_yaml.parse(block).to_yaml()
+
 
 class TestAnchorsAliases:
     """Test anchor and alias parsing"""
