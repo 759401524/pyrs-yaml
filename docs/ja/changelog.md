@@ -17,6 +17,17 @@ status: new
 
 #### 追加
 
+- **`no_std` ジョブが基盤クレートすべてのホストテストを実行するようになった。** —
+  `thumbv7em-none-eabi` 向けビルドは 5 クレート全部を行っていたが、テストしていたのは
+  `pyrs-ast` と `pyrs-schema` だけで、`default-features = false` で存在する 112 件のホストテスト
+  （`pyrs-json` に 58、`pyrs-toml` に 54）は、サポートを主張する経路で一度も実行されていなかった。
+  さらに `cargo test --no-default-features -p pyrs-toml` はコンパイルすらしない状態だった。
+  ネスト制限のケースが 16 MiB スタックを得るためにスレッドを起動しており、スレッドは std なしでは
+  使えないからだ。そのケースは `#[cfg(feature = "std")]` になり、理由と `no_std` 側で失われるものを
+  ゲートを読めば分かる場所に書き込んだ。検証している深さガード自体は `alloc` のみのロジックで、
+  同じコードが `no_std` でも動く。ベアメタルターゲット向けのビルドはリンクを示すだけで、動くことを
+  示すのはテストであり、いまはそれが走る。
+
 - **`pyrs-event`：文書イベント語彙を独立 crate にしました。** — AST と並ぶ、アーキテクチャの柱が挙げ
   る二つ目の核心抽象です。`StreamEvent` とその 11 の変数を
   `crates/pyrs-yaml-core/src/parser/stream.rs` から移し、`#![no_std]` + `alloc` で `pyrs-ast` のみに

@@ -19,6 +19,14 @@ status: new
 
 #### 新增
 
+- **`no_std` 作业现在会跑每个基础 crate 的宿主测试。** — 该作业为 `thumbv7em-none-eabi` 构建全部
+  五个 crate，却只测试 `pyrs-ast` 与 `pyrs-schema`，于是 `default-features = false` 下已有的 112 个
+  宿主测试（`pyrs-json` 58 个、`pyrs-toml` 54 个）从未在它们声称支持的路径上跑过；而
+  `cargo test --no-default-features -p pyrs-toml` 甚至编译不过：嵌套深度限制用例为了拿到 16 MiB
+  栈要起线程，而线程在 `no_std` 下不存在。该用例现在标了 `#[cfg(feature = "std")]`，并把原因与
+  `no_std` 侧因此少了什么写在能读到门禁的地方；被测的深度守卫本身是 `alloc` 逻辑，同样的代码在
+  `no_std` 下照旧运行。为裸机目标构建只证明能链接，能证明可用的是测试，而现在它们会跑。
+
 - **`pyrs-event`：文档事件词汇表成为独立 crate。** — 这是架构支柱中与 AST 并列的第二个核心抽象。
   `StreamEvent` 及其十一个变体从 `crates/pyrs-yaml-core/src/parser/stream.rs` 移入一个
   `#![no_std]` + `alloc` 的 crate，只依赖 `pyrs-ast`——为的是共享 `ScalarStyle` 与 `Tag`，让事件流与

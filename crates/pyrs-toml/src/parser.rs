@@ -1764,6 +1764,13 @@ mod tests {
     /// overflows the small default stack before the guard can fire; production
     /// callers (main thread / the maturin extension) have an 8 MiB stack, so
     /// the guard is the real backstop there. The oversized thread mirrors that.
+    ///
+    /// A thread is a `std` object, so these two cases - and only these - exist on
+    /// one side of the feature split. The depth guard itself is `alloc`-only logic
+    /// and the same code runs under `default-features = false`; what the `no_std`
+    /// side does not get here is a *stack* to overflow, which is why it cannot be
+    /// the thing under test.
+    #[cfg(feature = "std")]
     fn on_big_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
         std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
@@ -1773,6 +1780,7 @@ mod tests {
             .expect("big-stack thread panicked")
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn deep_nesting_errors_instead_of_overflowing_the_stack() {
         // Regression for the TOML analogue of the #166 YAML merge stack
@@ -1790,6 +1798,7 @@ mod tests {
         });
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn within_depth_budget_parses() {
         // Comfortably within the 1000 budget: a 500-deep array parses on a
