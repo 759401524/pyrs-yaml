@@ -8,7 +8,7 @@
 //! right node wins with its style and comments intact.
 
 use pyrs_json::key_text;
-use pyrs_yaml_core::ast::{CustomNode, ScalarStyle};
+use pyrs_yaml_core::ast::{CustomNode, NodeMap, ScalarStyle};
 use pyrs_yaml_core::parser::yaml::{Schema, YamlType};
 
 /// Sequence policy for [`merge`].
@@ -88,10 +88,7 @@ fn key_label(key: &CustomNode) -> String {
     key_text(key).unwrap_or_else(|_| "<complex-key>".to_string())
 }
 
-fn find<'a>(
-    pairs: &'a indexmap::IndexMap<CustomNode, CustomNode>,
-    want: &str,
-) -> Option<&'a CustomNode> {
+fn find<'a>(pairs: &'a NodeMap<CustomNode, CustomNode>, want: &str) -> Option<&'a CustomNode> {
     pairs
         .iter()
         .find(|(k, _)| key_label(k) == want)

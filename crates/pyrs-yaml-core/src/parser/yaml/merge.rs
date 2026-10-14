@@ -1,4 +1,4 @@
-use crate::ast::{Comment, CustomNode, ScalarStyle};
+use crate::ast::{Comment, CustomNode, NodeMap, ScalarStyle};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
@@ -19,7 +19,7 @@ pub fn resolve_merge_keys(node: &mut CustomNode) {
         return;
     }
     // First, collect all anchor names and their mappings
-    let mut anchors: HashMap<String, IndexMap<CustomNode, CustomNode>> = HashMap::new();
+    let mut anchors: HashMap<String, NodeMap<CustomNode, CustomNode>> = HashMap::new();
     collect_anchor_mappings(node, &mut anchors);
 
     // Then, resolve merge keys. `path` carries the anchor names whose expansion
@@ -87,7 +87,7 @@ fn is_merge_key(key: &CustomNode) -> bool {
 /// Recursively resolve merge keys in a node
 fn resolve_merges_recursive(
     node: &mut CustomNode,
-    anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
+    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
     depth: usize,
 ) {
@@ -111,7 +111,7 @@ fn resolve_merges_recursive(
 /// Used for resolving merge keys (`<<`).
 fn collect_anchor_mappings(
     node: &CustomNode,
-    anchors: &mut HashMap<String, IndexMap<CustomNode, CustomNode>>,
+    anchors: &mut HashMap<String, NodeMap<CustomNode, CustomNode>>,
 ) {
     match node {
         CustomNode::Mapping { pairs, meta, .. } => {
@@ -153,8 +153,8 @@ type AnchoredPairs = Vec<(String, CustomNode, CustomNode)>;
 
 /// Resolve merge keys in a mapping
 fn resolve_mapping_merges(
-    pairs: &mut IndexMap<CustomNode, CustomNode>,
-    anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
+    pairs: &mut NodeMap<CustomNode, CustomNode>,
+    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &mut Vec<String>,
     depth: usize,
 ) {
@@ -311,7 +311,7 @@ fn resolve_mapping_merges(
                     }
                 })
                 .map(|(key, (_source, value))| (key, value))
-                .collect::<IndexMap<CustomNode, CustomNode>>(),
+                .collect(),
         );
     }
 
@@ -340,7 +340,7 @@ fn resolve_mapping_merges(
 /// key, so the merge filter and the duplicate detector can never disagree about
 /// which pairs may coexist.
 fn owns_owning_key(
-    pairs: &IndexMap<CustomNode, CustomNode>,
+    pairs: &NodeMap<CustomNode, CustomNode>,
     merge_index: Option<usize>,
     key: &CustomNode,
 ) -> bool {
@@ -379,8 +379,8 @@ fn same_emitted_key(a: &CustomNode, b: &CustomNode) -> bool {
 /// it is pulling in its own ancestor.
 fn collect_merge_data(
     merge_value: &CustomNode,
-    pairs: &IndexMap<CustomNode, CustomNode>,
-    anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
+    pairs: &NodeMap<CustomNode, CustomNode>,
+    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &[String],
     depth: usize,
 ) -> AnchoredPairs {
@@ -452,8 +452,8 @@ fn clear_source_ranges(node: &mut CustomNode) {
 
 /// Collect merged pairs from an inline mapping used directly as a merge value.
 fn collect_inline_pairs(
-    source: &IndexMap<CustomNode, CustomNode>,
-    pairs: &IndexMap<CustomNode, CustomNode>,
+    source: &NodeMap<CustomNode, CustomNode>,
+    pairs: &NodeMap<CustomNode, CustomNode>,
     result: &mut AnchoredPairs,
 ) {
     for (key, value) in source {
@@ -471,8 +471,8 @@ fn collect_inline_pairs(
 /// Collect merged pairs from a single anchor reference.
 fn collect_merged_pairs_for_anchor(
     name: &str,
-    pairs: &IndexMap<CustomNode, CustomNode>,
-    anchors: &HashMap<String, IndexMap<CustomNode, CustomNode>>,
+    pairs: &NodeMap<CustomNode, CustomNode>,
+    anchors: &HashMap<String, NodeMap<CustomNode, CustomNode>>,
     path: &[String],
     depth: usize,
     result: &mut AnchoredPairs,
@@ -523,9 +523,9 @@ fn collect_merged_pairs_for_anchor(
 /// Remove the merge key, insert the merged pairs in the slot the merge key occupied,
 /// and re-home the comments `orphans` carries onto the entry the merge contributed.
 fn insert_merged_pairs(
-    pairs: &mut IndexMap<CustomNode, CustomNode>,
+    pairs: &mut NodeMap<CustomNode, CustomNode>,
     merge_index: Option<usize>,
-    merged_pairs: IndexMap<CustomNode, CustomNode>,
+    merged_pairs: NodeMap<CustomNode, CustomNode>,
     orphans: Vec<Comment>,
 ) {
     // Merged pairs land where the `<<:` stood, not at the front of the map. Removing
@@ -571,7 +571,7 @@ mod tests {
         CustomNode::plain_scalar(value)
     }
 
-    fn get_mapping(node: &CustomNode) -> &IndexMap<CustomNode, CustomNode> {
+    fn get_mapping(node: &CustomNode) -> &NodeMap<CustomNode, CustomNode> {
         match node {
             CustomNode::Mapping { pairs, .. } => pairs,
             _ => panic!("expected Mapping"),

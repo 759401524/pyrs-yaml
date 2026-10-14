@@ -17,7 +17,7 @@
 
 extern crate alloc;
 // `#![no_std]` drops `std` from the extern prelude, so the std-only
-// `RandomState` node-map hasher needs it named explicitly.
+// `std::error::Error` impls need it named explicitly.
 #[cfg(feature = "std")]
 extern crate std;
 

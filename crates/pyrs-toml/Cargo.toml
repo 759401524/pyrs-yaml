@@ -18,8 +18,8 @@ pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", default-features = false 
 pyrs-schema = { path = "../pyrs-schema", version = "0.17.0" }
 
 [features]
-# `std` is on by default so existing consumers keep the exact
-# `IndexMap<K, V, RandomState>` node-map type; `no_std` users opt out with
-# `default-features = false` (CI gate: the `no-std-check` job).
+# `std` is on by default for the host test harness; `no_std` users opt out
+# with `default-features = false` (CI gate: the `no-std-check` job). The node
+# map is the same fixed-seed type on both sides.
 default = ["std"]
 std = ["indexmap/std", "pyrs-ast/std"]

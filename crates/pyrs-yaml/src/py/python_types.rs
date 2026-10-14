@@ -6,12 +6,11 @@ use super::type_registry;
 
 #[cfg(feature = "numpy")]
 use super::ndarray::ndarray_to_node;
-use crate::ast::CustomNode;
+use crate::ast::{CustomNode, NodeMap};
 
 use crate::parser::yaml::schema::needs_quotes;
 use crate::parser::yaml::schema::resolve_core_type;
 use crate::parser::yaml::types::YamlType;
-use indexmap::IndexMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytesMethods, PyDict, PyInt, PyList, PyString, PyStringMethods};
@@ -62,7 +61,7 @@ pub(crate) fn pyobject_to_node(py: Python, obj: &Py<PyAny>) -> PyResult<CustomNo
     }
 
     if let Ok(dict) = obj.cast::<PyDict>() {
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         for (key, value) in dict.iter() {
             let key_node = if let Ok(key_str) = key.cast::<PyString>() {
                 let text = py_string_to_arc(key_str)?;

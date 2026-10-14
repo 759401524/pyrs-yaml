@@ -290,9 +290,10 @@ jobs:
           -p pyrs-json
           -p pyrs-toml
 
-      # The hasher differs across the feature split (std: RandomState, no_std:
-      # fixed-seed FxHash), so the unit tests are the only thing that proves
-      # map lookups still agree with the node Hash/Eq impls on that path.
+      # The node map is one fixed-seed FxHash on both sides of the feature split
+      # now, so these tests are what prove map lookups still agree with the
+      # node Hash/Eq impls once std is off - and that no layout or ordering
+      # difference survived the unification.
       - name: Run no_std unit tests on the host
         run: cargo test --locked --no-default-features -p pyrs-ast -p pyrs-schema
 

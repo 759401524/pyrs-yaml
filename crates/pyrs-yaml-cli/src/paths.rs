@@ -1,7 +1,7 @@
 //! JSONPath-lite selectors: `$`, dot keys, bracket keys/indices, wildcards.
 //! Segment model mirrors the `Node.find_first` semantics of the Python API.
 
-use pyrs_yaml_core::ast::CustomNode;
+use pyrs_yaml_core::ast::{CustomNode, NodeMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Seg {
@@ -280,10 +280,7 @@ fn descend<'a>(
                         v
                     }
                     None if create_missing => {
-                        pairs.insert(
-                            scalar_key(k),
-                            CustomNode::plain_mapping(indexmap::IndexMap::new()),
-                        );
+                        pairs.insert(scalar_key(k), CustomNode::plain_mapping(NodeMap::default()));
                         let (_, v) = pairs.last_mut().expect("just inserted");
                         v
                     }

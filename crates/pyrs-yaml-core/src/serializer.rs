@@ -1,7 +1,6 @@
-use crate::ast::{Chomping, Comment, CustomNode, NodeMeta, ScalarStyle, Tag};
+use crate::ast::{Chomping, Comment, CustomNode, NodeMap, NodeMeta, ScalarStyle, Tag};
 use crate::error::{DepthError, SerializeError};
 use crate::parser::yaml::schema::core_type_is_non_string;
-use indexmap::IndexMap;
 
 /// 块标量头部的两项指示符，作为一组传递，避免在 `write_scalar` 及其下游
 /// 逐层加参数。
@@ -54,8 +53,8 @@ impl Default for SerializeOptions {
 /// ```
 /// use pyrs_yaml_core::ast::CustomNode;
 /// use pyrs_yaml_core::serializer::to_yaml;
-/// use indexmap::IndexMap;
-/// let mut pairs = IndexMap::new();
+/// use pyrs_yaml_core::ast::NodeMap;
+/// let mut pairs = NodeMap::default();
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
 /// let node = CustomNode::Mapping {
 ///     pairs,
@@ -74,8 +73,8 @@ pub fn to_yaml(node: &CustomNode) -> String {
 /// ```
 /// use pyrs_yaml_core::ast::CustomNode;
 /// use pyrs_yaml_core::serializer::{to_yaml_with_options, SerializeOptions};
-/// use indexmap::IndexMap;
-/// let mut pairs = IndexMap::new();
+/// use pyrs_yaml_core::ast::NodeMap;
+/// let mut pairs = NodeMap::default();
 /// pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
 /// let node = CustomNode::Mapping {
 ///     pairs,
@@ -771,7 +770,7 @@ impl Serializer {
     /// renderer, pair separator, and block iteration differ.
     fn write_mapping_node(
         &mut self,
-        pairs: &IndexMap<CustomNode, CustomNode>,
+        pairs: &NodeMap<CustomNode, CustomNode>,
         meta: &NodeMeta,
         flow_style: bool,
         indent_width: usize,
@@ -786,7 +785,7 @@ impl Serializer {
         // crash-8f7085b0 for the marker-spine half). See [`lift_first_entry_notes`].
         let (stripped_map, preamble_notes) =
             lift_first_entry_notes(pairs, meta, flow_style, in_value_context);
-        let pairs: &IndexMap<CustomNode, CustomNode> = stripped_map.as_ref().unwrap_or(pairs);
+        let pairs: &NodeMap<CustomNode, CustomNode> = stripped_map.as_ref().unwrap_or(pairs);
         let preamble_notes = preamble_notes.as_deref();
         let sk = ContainerSkeleton {
             empty: pairs.is_empty(),
@@ -2109,12 +2108,12 @@ fn writes_block_header(meta: &NodeMeta, flow_style: bool, in_value_context: bool
 /// `seq_item_value_with_standalone_comment_is_not_compacted`) passes both ways, so
 /// the blast radius was inferred rather than observed and the fear was unfounded.
 fn lift_first_entry_notes(
-    pairs: &IndexMap<CustomNode, CustomNode>,
+    pairs: &NodeMap<CustomNode, CustomNode>,
     meta: &NodeMeta,
     flow_style: bool,
     in_value_context: bool,
 ) -> (
-    Option<IndexMap<CustomNode, CustomNode>>,
+    Option<NodeMap<CustomNode, CustomNode>>,
     Option<Vec<Comment>>,
 ) {
     if !writes_block_header(meta, flow_style, in_value_context) {
@@ -2343,7 +2342,6 @@ pub fn is_short_alphanumeric(value: &str) -> bool {
 mod tests {
     use super::*;
     use crate::ast::Tag;
-    use indexmap::IndexMap;
     use std::sync::Arc;
 
     #[test]
@@ -3428,7 +3426,7 @@ mod tests {
         let key = CustomNode::plain_scalar("key");
         let value = CustomNode::plain_scalar("value");
 
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(key, value);
 
         let node = CustomNode::Mapping {
@@ -3452,7 +3450,7 @@ mod tests {
         };
         let value = CustomNode::plain_scalar("value");
 
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(key, value);
 
         let node = CustomNode::Mapping {
@@ -3518,7 +3516,7 @@ mod tests {
     /// second line's own 2 leading spaces as content.
     #[test]
     fn explicit_block_indent_indicator_round_trips() {
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(
             CustomNode::plain_scalar("yaml"),
             literal_scalar_with_indent("[1, 2, 3]  \n  \n", 2),
@@ -3560,7 +3558,7 @@ mod tests {
         if let CustomNode::Scalar { chomping, .. } = &mut node {
             *chomping = Chomping::Strip;
         }
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(CustomNode::plain_scalar("a"), node);
         let mapping = CustomNode::Mapping {
             pairs,
@@ -3577,12 +3575,12 @@ mod tests {
     /// header over a column-4 body, and the reader would believe the header.
     #[test]
     fn explicit_block_indent_is_relative_to_parent_line() {
-        let mut inner = IndexMap::new();
+        let mut inner = NodeMap::default();
         inner.insert(
             CustomNode::plain_scalar("b"),
             literal_scalar_with_indent("x\ny", 4),
         );
-        let mut outer = IndexMap::new();
+        let mut outer = NodeMap::default();
         outer.insert(
             CustomNode::plain_scalar("a"),
             CustomNode::Mapping {
@@ -3604,7 +3602,7 @@ mod tests {
     /// (it would pin a value the source never expressed).
     #[test]
     fn block_scalar_without_indicator_keeps_derived_indent() {
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(CustomNode::plain_scalar("b"), literal_scalar("x\ny"));
         let node = CustomNode::Mapping {
             pairs,
@@ -3617,9 +3615,9 @@ mod tests {
 
     #[test]
     fn nested_literal_block_scalar_body_follows_parent_indent() {
-        let mut inner = IndexMap::new();
+        let mut inner = NodeMap::default();
         inner.insert(CustomNode::plain_scalar("b"), literal_scalar("x\ny"));
-        let mut outer = IndexMap::new();
+        let mut outer = NodeMap::default();
         outer.insert(
             CustomNode::plain_scalar("a"),
             CustomNode::Mapping {
@@ -3650,7 +3648,7 @@ mod tests {
 
     #[test]
     fn compact_dash_literal_block_scalar_body_indents_past_key() {
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(CustomNode::plain_scalar("b"), literal_scalar("x\ny"));
         let seq = CustomNode::Sequence {
             items: vec![CustomNode::Mapping {
@@ -3678,7 +3676,7 @@ mod tests {
 
     #[test]
     fn plain_scalar_with_edge_spaces_is_quoted() {
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(
             CustomNode::plain_scalar("k"),
             CustomNode::plain_scalar(" %"),
@@ -3719,7 +3717,7 @@ mod tests {
 
     #[test]
     fn seq_item_value_with_standalone_comment_is_not_compacted() {
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(
             CustomNode::plain_scalar("0"),
             CustomNode::Null {
@@ -3746,7 +3744,7 @@ mod tests {
         let inner = CustomNode::plain_scalar("leaf");
         let mut current = inner;
         for _ in 0..200 {
-            let mut m = IndexMap::<CustomNode, CustomNode>::new();
+            let mut m = NodeMap::default();
             m.insert(CustomNode::plain_scalar("a"), current);
             current = CustomNode::plain_mapping(m);
         }
@@ -3768,14 +3766,14 @@ mod tests {
 
     #[test]
     fn test_serialize_indent_mapping() {
-        let mut inner = IndexMap::new();
+        let mut inner = NodeMap::default();
         inner.insert(CustomNode::plain_scalar("b"), CustomNode::plain_scalar("1"));
         let inner_map = CustomNode::Mapping {
             pairs: inner,
             flow_style: false,
             meta: Default::default(),
         };
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(CustomNode::plain_scalar("a"), inner_map);
         let node = CustomNode::Mapping {
             pairs,
@@ -3816,7 +3814,7 @@ mod tests {
 
     #[test]
     fn test_serialize_indent_offset() {
-        let mut pairs = IndexMap::new();
+        let mut pairs = NodeMap::default();
         pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
         let node = CustomNode::Mapping {
             pairs,
@@ -3947,7 +3945,7 @@ mod tests {
     #[test]
     fn notes_above_an_empty_container_all_survive() {
         let mut node = CustomNode::Mapping {
-            pairs: IndexMap::new(),
+            pairs: NodeMap::default(),
             flow_style: false,
             meta: NodeMeta::default(),
         };

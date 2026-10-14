@@ -15,7 +15,7 @@ pub mod verbs;
 
 use clap::{Parser, Subcommand};
 use pyrs_toml as toml;
-use pyrs_yaml_core::ast::CustomNode;
+use pyrs_yaml_core::ast::{CustomNode, NodeMap};
 use pyrs_yaml_core::editing::Segment;
 use pyrs_yaml_core::editing::plan;
 use pyrs_yaml_core::parser::yaml::Schema;
@@ -936,9 +936,9 @@ pub fn ini_to_node(src: &str) -> Result<CustomNode, Box<dyn std::error::Error>> 
             .1
             .push((k.trim().to_string(), v.trim().to_string()));
     }
-    let mut map: indexmap::IndexMap<CustomNode, CustomNode> = indexmap::IndexMap::new();
+    let mut map: NodeMap<CustomNode, CustomNode> = NodeMap::default();
     for (name, pairs) in sections {
-        let mut vals: indexmap::IndexMap<CustomNode, CustomNode> = indexmap::IndexMap::new();
+        let mut vals: NodeMap<CustomNode, CustomNode> = NodeMap::default();
         for (k, v) in pairs {
             vals.insert(
                 CustomNode::double_quoted_scalar(k),

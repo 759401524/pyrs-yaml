@@ -22,14 +22,14 @@ proptest = { version = "1.5", optional = true }
 
 [features]
 # `std` is on by default so that every existing consumer keeps the exact
-# `IndexMap<K, V, RandomState>` node-map type it already wrote; `no_std` users
-# opt out with `default-features = false` and get the fixed-seed hasher below.
-# Note the asymmetry with `thiserror`: that one stays opt-in because enabling
-# `std` there only adds impls, never changes a type.
+# `std::error::Error` impls it already wrote; `no_std` users opt out with
+# `default-features = false`. The node map no longer depends on this: one
+# fixed-seed hasher serves both sides of the split (see `ast::NodeMap`), so
+# enabling `std` adds impls and never changes a type.
 default = ["std"]
 # Turning this on re-enables `thiserror/std` (std::error::Error impls) and
-# `indexmap/std` (RandomState + DefaultRandomState). Cargo unifies features
-# across the whole graph, so a std crate that pulls in pyrs-ast while some
-# sibling enables `indexmap/std` still agrees on the node-map type.
+# `indexmap/std`. Cargo unifies features across the whole graph, and the
+# node-map type is named with its hasher either way, so no crate can end up
+# with two different `NodeMap`s.
 std = ["thiserror/std", "indexmap/std"]
 test-strategy = ["dep:proptest"]

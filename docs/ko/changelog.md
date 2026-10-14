@@ -722,6 +722,18 @@ status: new
 
 #### 성능
 
+- **노드 맵의 키 해시를 모든 빌드에서 FxHash로 바꿨다(`no_std` 전용이 아니게 됐다).** — `std`를
+  켜면 `NodeMap`은 `IndexMap<K, V, std::hash::RandomState>`였으므로, 맵에 키를 하나 넣을 때마다
+  SipHash-1-3 비용을 치렀다. `callgrind`는 `CustomNode::hash`에서 `Hasher::write`로 이어지는 자체
+  비용 10,214,000 명령·180,000 호출(`from_json_medium`의 8.98%)을 측정했고, 기능 플래그 분기는
+  노드 크기까지 144바이트와 128바이트로 갈라 썼다. 이제 양쪽 모두 crate 고유의 고정 종자
+  `FxHasher`를 명시한다 — 내장 빌드가 언제나 쓰던 것이다. 게이트가 고정하는 rustc 1.97.1에서 짝을
+  지어 재측정했다: `from_json_medium` −12.75%, `parse_medium` −4.95%, `to_json_medium` +0.11%.
+  `no_std` 쪽이 이미 감수했던 절충은 이제 전체 빌드의 것이며 `NodeMap` 문서에 명시했다. HashDoS
+  무작위화가 사라지므로 충돌을 노리고 만든 문서는 노드 맵을 선형 탐색으로 떨어뜨린다. 도입하려면
+  `RandomState`를 몰래 요구하던 `IndexMap<CustomNode, CustomNode>` 약 40곳을 `NodeMap`으로 고쳐
+  적어야 했다. (자세히: docs/dev/perf.md "The node map was hashing its keys with SipHash")
+
 - **스칼라 리졸버가 잘라낼 것이 없는 텍스트를 더 이상 정리하지 않습니다.** — 모든 JSON, TOML, YAML
   스칼라는 `resolve_core_type` 에게 "숫자인가 단어인가" 라고 묻고, 그 답이 먼저 하는 일은 술어
   양방향 순회로 앞뒤 구분 문자를 지우는 것이었습니다. 호출마다 38 개의 계산된 명령을 쓰지만, 앞이나

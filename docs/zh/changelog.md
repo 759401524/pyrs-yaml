@@ -619,6 +619,18 @@ status: new
 
 #### 性能
 
+- **节点映射在所有构建上都改用 FxHash 计算键哈希，不再只在 `no_std` 下。** — 开启 `std` 时
+  `NodeMap` 就是 `IndexMap<K, V, std::hash::RandomState>`，所以往表里放一个映射键都要付
+  SipHash-1-3 的代价：`callgrind` 测得从 `CustomNode::hash` 走到 `Hasher::write` 的自耗时
+  10,214,000 条指令、180,000 次调用——占 `from_json_medium` 的 8.98%——而特性开关的分歧甚至让节点
+  大小都不一致（144 字节对 128）。两侧现在都明确指向本 crate 自带、定种子的 `FxHasher`，即嵌入式
+  构建一直使用的那个。在门禁钉住的 rustc 1.97.1 上配对复测：`from_json_medium` −12.75%、
+  `parse_medium` −4.95%、`to_json_medium` +0.11%。`no_std` 一侧早已接受的取舍如今属于整个构建，
+  并写进 `NodeMap` 的文档而不再含糊：没有 HashDoS 随机化，因此刻意制造碰撞的文档会让节点映射退化
+  为线性探测。落地它还必须把约 40 处写成 `IndexMap<CustomNode, CustomNode>`——也就是没说出口就要了
+  `RandomState`——的调用点改为指名 `NodeMap`。（详见 docs/dev/perf.md「The node map was hashing
+  its keys with SipHash」）
+
 - **标量解析器不再裁剪本就没有空白的文本。** — 每个 JSON、TOML 与 YAML 标量都要问
   `resolve_core_type` “这是数字还是一个词？”，而这个答案做的第一件事是用一次双端谓词遍历去掉首尾分隔
   字符：每次调用 38 条计数指令，而这些字符串几乎从不以空白开头或结尾；YAML 1.1 标量更要把这笔开销付
