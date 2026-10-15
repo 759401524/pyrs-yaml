@@ -651,11 +651,22 @@ class TestRootInlineTableSpelling:
         src = "[p]\na = 1\n"
         assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(src)) == src
 
-    def test_a_note_on_its_own_line_inside_the_braces_is_still_lost(self):
-        # Recorded, not claimed fixed: the hub's YAML writer has no slot for a flow member's
-        # own-line leading note, so the note is dropped while every value survives. Pinning the
-        # loss is what keeps the boundary visible to the next change instead of tacit.
+    def test_a_note_on_its_own_line_inside_the_braces_survives(self):
+        # This test pinned the loss until the writer learned to read the slot the hub hands the
+        # note over in: a note that ends a flow member's key line belongs to the KEY there, and
+        # `to_toml` looked only at the key's own-line list and the value's inline note, so the text
+        # went out with the note gone. It now gets its own line above the member - the position the
+        # TOML reader reports notes from - which keeps the note and settles in one round.
         src = "p = {\n  a = 1, # inner\n  b = 2,\n}\n"
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
-        assert out == "p = {a = 1, b = 2}\n", out
+        assert out == "p = {\n  a = 1,\n  # inner\n  b = 2\n}\n", out
         assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out, "one round is the fixed point"
+
+    def test_a_note_above_the_first_member_of_an_inline_table_keeps_its_text(self):
+        # The same slot from the nested position, where the compact single-line form used to
+        # swallow the note whole: here the source text is its own first emission.
+        src = "arr = [{\n  # lead n\n  a = 1\n}]\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert out == src, out
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out, "one round is the fixed point"

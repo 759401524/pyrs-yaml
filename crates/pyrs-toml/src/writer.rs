@@ -319,13 +319,25 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             // compact single-line form so 1.0-compatible output is
             // unchanged.
             let decorated = pairs.iter().any(|(k, v)| {
-                !k.leading_comments().is_empty() || v.comment().is_some_and(|c| !c.standalone)
+                !k.leading_comments().is_empty()
+                    || k.comment().is_some_and(|c| !c.standalone)
+                    || v.comment().is_some_and(|c| !c.standalone)
             });
             if decorated {
                 out.push_str("{\n");
                 let count = pairs.len();
                 for (idx, (k, v)) in pairs.iter().enumerate() {
                     for c in k.leading_comments() {
+                        out.push_str("  # ");
+                        out.push_str(c.text.trim());
+                        out.push('\n');
+                    }
+                    // A note that ended its key's line reaches this writer on the key's *inline*
+                    // slot - that is how the hub hands it over, because there a note finishing the
+                    // key's line belongs to the key. TOML has no slot that reports a key's inline
+                    // note back, so the note takes its own line above the member: the position the
+                    // TOML reader reports a note from. Measured, the second emission is identical.
+                    if let Some(c) = k.comment().filter(|c| !c.standalone) {
                         out.push_str("  # ");
                         out.push_str(c.text.trim());
                         out.push('\n');
@@ -1064,6 +1076,41 @@ mod tests {
         assert_eq!(
             out, "t = [{\n  b = 1,\n  # n\n  c = 2\n}]\n",
             "the note did not get its own line: {out}"
+        );
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn a_note_on_the_key_line_of_an_inline_member_is_written() {
+        // The shape the hub hands over, measured: `arr = [{\n  # n\n  a = 1\n}]` goes to YAML as
+        // `arr:\n  - {a: # n\n     1}` because a note that ends the key's line belongs to the key
+        // there, and comes back with `n` on the KEY node's inline slot. That slot is the one this
+        // writer never read - it looked at the key's leading list and the value's inline slot - so
+        // the note vanished on the second hop: `arr = [{a = 1}]`.
+        //
+        // A note's own line above the member is where the TOML reader reports it from, so emitting
+        // it there settles in one hop even though the slot it arrives in has no TOML counterpart.
+        let mut key = CustomNode::plain_scalar("a");
+        key.set_comment(Comment {
+            text: "n".into(),
+            standalone: false,
+        });
+        let inner =
+            CustomNode::plain_mapping([(key, CustomNode::plain_scalar("1"))].into_iter().collect());
+        let root = CustomNode::plain_mapping(
+            [(
+                CustomNode::plain_scalar("t"),
+                CustomNode::plain_sequence(vec![inner]),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        let out = to_toml(&root).unwrap();
+        assert_eq!(
+            out, "t = [{\n  # n\n  a = 1\n}]\n",
+            "the note did not survive: {out}"
         );
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");

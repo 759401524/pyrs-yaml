@@ -588,6 +588,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A note on an inline table member's key line is written, not skipped.** — `to_toml` read two
+  slots for a member's note: the key's own-line list and the value's inline comment. The hub hands a
+  flow member's note over on the *key's* inline slot, because there a note that ends the key's line
+  belongs to the key, so it matched neither slot and went out dropped: an inline table whose first
+  member is preceded by a note line came back as one compact line with the note gone. The asymmetry
+  was the tell — a note on the value's line survived both hops. #428 recorded that loss and pinned
+  it rather than claiming it closed; this closes it. TOML has no slot that reports a key's inline
+  note back, so the note takes its own line above the member, where the TOML reader reports notes
+  from: measured, the second emission is byte-identical, and the two pytest cases that pinned the
+  loss now pin the survival. — (details: quality-ledger (do))
+
 - **A root-level inline table is no longer rewritten into a section header.** — `to_toml`
   classified any non-empty mapping at the document root as a section, ignoring the `flow_style` bit
   its own reader had just set. `p = { a = 1 } # t` came back as a `[p]` header with a body, which is
