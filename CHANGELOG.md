@@ -603,8 +603,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   end of whatever the builder consumed last in this container. Measured: the property tier is clean
   at 20 000 cases where three narrower text or context readings each left residuals, and the unit
   pin shows the text-only scan answering `w` against the windowed scan's `v`. The event-stream
-  reader keeps the old reading, because its builder tracks no container state, so this closes the
-  tree path - details: quality-ledger (dr)
+  reader takes the same bound from one monotone number: the end of the most recent non-empty span -
+  granit writes a block container's own start and its `End` as empty spans that name no text that
+  really ended, so fencing there would cut the next node off from its own `&` (details:
+  quality-ledger (dr))
 
 - **A comment inside a multi-line TOML array belongs to its element.** — the array scanner skipped
   a `#` line and threw the text away, so `arr = [⏎ # lead⏎ 1⏎]`, `arr = [⏎ 1 # trail⏎]` and the note

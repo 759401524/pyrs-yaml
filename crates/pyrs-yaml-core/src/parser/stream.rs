@@ -1,5 +1,5 @@
 use crate::ast::{Comment, ScalarStyle, Tag};
-use crate::parser::yaml::anchor_name_before;
+use crate::parser::yaml::anchor_name_within;
 use granit_parser::{
     Event, Parser as SaphyrParser, ScalarStyle as SaphyrScalarStyle, Span, SpannedEventReceiver,
 };
@@ -25,6 +25,20 @@ pub struct StreamReceiver<'a> {
     events: Vec<StreamEvent<'a>>,
     pending_standalone_comment: Option<Comment>,
     anchors: HashMap<usize, String>,
+    /// The byte this reader has seen text end at, which is the floor the anchor-name recovery may not
+    /// read below.
+    ///
+    /// It is a single monotone number rather than the tree's per-container tally because that is all
+    /// the bound needs: granit reports a node's span, so the most recent non-empty span end is behind
+    /// this node's own text, and an `&` further left belongs to something already read - whichever
+    /// quoting or comment reading the line suggests (quality-ledger (dr)). Empty spans are not folded
+    /// in: that is how granit writes both a block container's own start and its `End` event, which sits
+    /// on the token that *follows* the container (`map_end 23..23` between `k2: v2` and `next: 3`), so
+    /// folding one would fence the next sibling out of its own `&` and turn a rename into a lost anchor.
+    /// The tree reaches the same bound by another route: for a block container it computes the node's
+    /// end as the greatest child end, and only a flow's `End` span end counts - which is what skipping
+    /// empty spans reproduces.
+    window_floor: usize,
     /// Maximum allowed nesting depth for mapping/sequence containers.
     max_depth: usize,
     /// Number of currently open mapping/sequence containers.
@@ -42,6 +56,7 @@ impl<'a> StreamReceiver<'a> {
             events: Vec::new(),
             pending_standalone_comment: None,
             anchors: HashMap::new(),
+            window_floor: 0,
             max_depth,
             depth: 0,
             max_depth_exceeded: false,
@@ -66,6 +81,14 @@ impl<'a> StreamReceiver<'a> {
         match &self.char_offsets {
             None => span.start.index(),
             Some(t) => t[span.start.index()],
+        }
+    }
+
+    /// Byte offset of a span's end char index, the same table read forwards.
+    fn byte_end_of(&self, span: &Span) -> usize {
+        match &self.char_offsets {
+            None => span.end.index(),
+            Some(t) => t[span.end.index()],
         }
     }
 }
@@ -123,13 +146,23 @@ impl<'a> SpannedEventReceiver<'a> for StreamReceiver<'a> {
 
         let byte_start = self.byte_start_of(&span);
         let yaml = self.yaml_text;
+        // The floor is read before this event's own span is folded in: it is where the text *behind*
+        // this node ended, which is what a `Start` event of an anchored container needs in order to be
+        // named from its parent's window, as `begin_container` does on the tree path.
+        let floor = self.window_floor;
         let Some(stream_event) =
             event_to_stream_event(event, span, &mut self.anchors, &mut |_id| {
-                anchor_name_before(yaml, byte_start)
+                anchor_name_within(yaml, byte_start, Some(floor))
             })
         else {
             return; // non_exhaustive wildcard
         };
+        if span.start.index() != span.end.index() {
+            let end = self.byte_end_of(&span);
+            if end > self.window_floor {
+                self.window_floor = end;
+            }
+        }
 
         // emit_pending_comment timing: all events except StreamStart emit pending
         // comment before themselves. Scalar does NOT emit pending (inline comments
@@ -845,5 +878,114 @@ mod tests {
     fn test_stream_max_depth_ok() {
         let events = parse_stream_with_options("{a: {a: {a: {a: 1}}}}", 5).unwrap();
         assert!(!events.is_empty());
+    }
+
+    /// The (dr) skew, at the reader that had no window: on this document the events named the flow
+    /// value after the `&` written *inside* the preceding quoted key, because the recovery read left
+    /// across the whole line and that line's quote state was skewed by the plain key `$,"` before it.
+    /// Each node is now named only from its own window, so the events say what granit attached.
+    #[test]
+    fn an_event_names_its_anchor_from_its_own_window() {
+        let s = r#"$,": {&k "<-&w #q": &v "x"}"#;
+        let events = parse_stream(s).unwrap();
+        let anchor_of = |wanted: &str| {
+            events.iter().find_map(|event| match &event.event_type {
+                StreamEventType::Scalar { value, anchor, .. } if &**value == wanted => {
+                    Some(anchor.clone())
+                }
+                _ => None,
+            })
+        };
+        assert_eq!(anchor_of("x"), Some(Some("v".to_string())));
+        assert_eq!(anchor_of("<-&w #q"), Some(Some("k".to_string())));
+    }
+
+    /// An anchored node whose window the tally must not fence it out of: the anchor is written to
+    /// the *left* of the span granit reports, so a container's end may only be taken from a flow's
+    /// own bracket - a block `End` event sits on the token that follows, and fencing there would
+    /// drop the next sibling's name. Every anchor here survives, on both lines.
+    #[test]
+    fn a_block_containers_end_never_fences_the_next_anchors() {
+        let s = "top:\n  &a1 k1: &v1 v1\n  &a2 k2: &v2 v2\n&nx next: &nv 3\n";
+        let events = parse_stream(s).unwrap();
+        let named: Vec<Option<String>> = events
+            .iter()
+            .filter_map(|event| match &event.event_type {
+                StreamEventType::Scalar { anchor, .. } => Some(anchor.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                None,
+                Some("a1".to_string()),
+                Some("v1".to_string()),
+                Some("a2".to_string()),
+                Some("v2".to_string()),
+                Some("nx".to_string()),
+                Some("nv".to_string()),
+            ]
+        );
+    }
+
+    /// The invariant the two readers must keep: on one text they name the same nodes with the same
+    /// names, in the same order. A table rather than a generated tree because each shape is the one
+    /// the recovery has to survive and says which - and because a reader that quietly disagrees with
+    /// the other is exactly what no single-reader round-trip can see.
+    #[test]
+    fn the_tree_and_the_events_name_the_same_anchors() {
+        use crate::ast::CustomNode;
+        use crate::parser::yaml::Schema;
+
+        fn collect(node: &CustomNode, out: &mut Vec<String>) {
+            if let Some(name) = node.anchor() {
+                out.push(name.to_string());
+            }
+            match node {
+                CustomNode::Mapping { pairs, .. } => {
+                    for (key, value) in pairs {
+                        collect(key, out);
+                        collect(value, out);
+                    }
+                }
+                CustomNode::Sequence { items, .. } => {
+                    for item in items {
+                        collect(item, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for doc in [
+            r#"$,": {&k "<-&w #q": &v "x"}"#,
+            "\"q k\": &qv 1\nx: &y 2 # &z\n",
+            "\"#h\": &ha 1\n&hb k: &hc 2\n",
+            "flow: [&fa 1, \"#&,\": &fb 2]\n",
+            "&root key: 1\nplain: &p 2\n",
+            "- &a1 one\n- &a2 two\n",
+            "top: &seq\n  - &i 1\n",
+            "a: &map {p: &q 1, r: &s 2}\n",
+            "&x m: &y\n  deep: &z 1\n",
+            "k: &n\n",
+            "l: &b |\n  body\n",
+            "m: &outer {in: &inner [1, 2]}\n",
+        ] {
+            let tree = crate::parser::parse(doc, Schema::Core).expect("the table parses");
+            let mut from_tree = Vec::new();
+            collect(&tree, &mut from_tree);
+            let from_events: Vec<String> = parse_stream(doc)
+                .expect("the same text streams")
+                .iter()
+                .filter_map(|event| match &event.event_type {
+                    StreamEventType::Scalar { anchor, .. }
+                    | StreamEventType::MappingStart { anchor, .. }
+                    | StreamEventType::SequenceStart { anchor, .. } => anchor.clone(),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(from_tree, from_events, "the readers disagree on {doc:?}");
+        }
     }
 }

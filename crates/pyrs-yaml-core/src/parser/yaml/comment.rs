@@ -117,8 +117,8 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
 /// from one line, quality-ledger (dr)) and asking "is this `&` inside the node's own start" (which
 /// the event answers exactly).
 ///
-/// `None` leaves the text-only reading, for callers that have no container state - the event-stream
-/// path - and it is what [`anchor_name_before`] does.
+/// `None` leaves the unbounded, text-only reading, which is what [`anchor_name_before`] does. Both
+/// readers now carry a floor, so only the pins below pass `None` - to show what the window buys.
 pub fn anchor_name_within(yaml: &str, byte_start: usize, floor: Option<usize>) -> Option<String> {
     let bytes = yaml.as_bytes();
     let b = byte_start.min(yaml.len());

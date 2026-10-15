@@ -131,6 +131,23 @@ class TestStreamEventFields:
         assert ev["anchor"] is not None
         assert ev["tag"] == "!tag"
 
+    def test_flow_anchors_are_named_from_their_own_node(self):
+        """The event reader named a node after an `&` written inside its neighbour.
+
+        `$,"` is a plain key, so its comma is the key's own text - read as a member separator it opens
+        a quoted region at the quote after it and skews every quote state on the line: the `#` in the
+        next member's quoted key reads as a comment, that member's own anchor is skipped as comment
+        text, and the `&` written *inside* the key becomes the name. Both readers now bound the search
+        by the node's own window - quality-ledger (dr).
+        """
+        src = '$,": {&k "<-&w #q": &v "x"}'
+        events = list(pyrs_yaml.parse_stream(src))
+        named = {e["value"]: e["anchor"] for e in events if e["type"] == "scalar"}
+        assert named["<-&w #q"] == "k"
+        assert named["x"] == "v", "not the `&` written inside the preceding key"
+        emitted = pyrs_yaml.parse(src).to_yaml()
+        assert "&k" in emitted and "&v" in emitted
+
     def test_multiple_document_event_structure(self):
         yaml = "---\na: 1\n---\nb: 2\n"
         events = list(pyrs_yaml.YAML().load_stream(io.StringIO(yaml)))

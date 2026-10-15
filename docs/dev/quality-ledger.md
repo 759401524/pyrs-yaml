@@ -5586,6 +5586,40 @@ the tree path does not, and the same skew can still rename an anchor for a calle
 Closing it means carrying the same floor there - the event spans are already in hand, only the
 last-child-end tally is missing - and the unit pin above is the oracle it will be judged against.
 
+The second reader carries it now, and by a cheaper route than the tree, because it has no
+`ParseState` to read a tally off: `StreamReceiver::window_floor` is one monotone `usize` - the end
+of the most recent *non-empty* span granit reported - and a node's own `&name` lies between that and
+its own span start. Skipping empty spans is what makes one number enough, and it is a measured
+property of the events rather than a trick: dumping spans shows both a block container's own start
+and its `End` event are empty spans (`map_end 23..23` sitting between `k2: v2` and `next: 3`), so an
+empty span names no text that really ended, and folding one would fence the next sibling out of its
+own `&` - turning a rename into a lost anchor. The tree reaches the same bound by the other route:
+greatest child end for a block container, closing bracket only for a flow.
+`a_block_containers_end_never_fences_the_next_anchors` pins the overshoot by naming every anchor in
+a two-line block document, `the_tree_and_the_events_name_the_same_anchors` asks twelve shapes of the
+two readers together, and at the Python boundary `test_flow_anchors_are_named_from_their_own_node`
+reads the reproducing document through both `parse_stream` and `parse`. Measured: the event test
+answers `v`, and handed back an unbounded floor it answers `w` - the mutation was run, and under it
+the table fails too.
+
+The price is on the record because four shapes of it were measured. Per-event bookkeeping put
+`stream_medium` at +1.76% over its floor against the 0.50% tolerance; folding the classification
+into the match that already counts depth - the cheaper-looking form - measured *worse*, +2.08%,
+refuting the idea that a second dispatch was the cost; and gating the tally on the text containing a
+`&` byte, which the fixture's does not, still cost +1.39%, because that gate is a whole pass over
+the text per parse. What passes is one field, one index comparison, no per-event classification and
+no scan: +0.48%, a marginal pass that the next floor refresh should re-measure rather than trust.
+
+A second defence was built, measured, and thrown away. An agreement *property* - draw a tree, emit
+it, require the two readers to name the same nodes - passed the tier, and it passes the mutation
+too: with the event floor handed back as unbounded it reported ok at `PROPTEST_CASES=20000`. No draw
+in that run made the two readers part ways, so the property asserted nothing about the case it was
+written for. That is the same luck the tree defect needed - the tier found it at 20 000 cases, and
+each of three narrower readings left a *different* residual - and this file's own answer to that
+pattern is the notation corpus: ask the shape by name.
+`the_tree_and_the_events_name_the_same_anchors` is a table for exactly that reason, and the mutation
+above is what makes it a measured claim rather than a hunch.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
