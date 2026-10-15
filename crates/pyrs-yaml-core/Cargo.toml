@@ -32,7 +32,7 @@ ir-gate = []
 pyrs-json = { path = "../pyrs-json", version = "0.17.0" }
 pyrs-toml = { path = "../pyrs-toml", version = "0.17.0" }
 proptest = "1.5"
-similar = "2"
+similar = "3"
 pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", features = ["test-strategy"] }
 
 # Instruction-count gate. `harness = false` because the measurement is a fixed

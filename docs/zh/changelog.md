@@ -318,6 +318,13 @@ status: new
 
 #### 变更
 
+- **测试层的差异渲染器升到了 `similar` 3.2.0。** — 这个 crate 只是
+  `pyrs-yaml-core` 的 `[dev-dependencies]` 条目，全部调用点是三个测试辅助函数——
+  往返断言失败时打印期望值与实际值的文本差异（`pbt.rs`、`serializer.rs`、
+  `splice.rs`），所以没有任何对外发布的代码路径链接它。用到的 API 只有
+  `TextDiff::from_lines`，它跨过了这个 major：core 的 377 个测试（含属性测试层）
+  在 3.2.0 上原样通过。
+
 - **CI 现在会对每个刚以无 std 构建过的 crate 重新检查其 std 构建。** — `no_std` 作业的最后一步只点了
   五个基础 crate 中的两个，所以另外三个即使带 `std` 编译不过，这条检查也照样是绿的：特性拆分只被证明
   了一个方向。如今重查点名五个（本机实测 `cargo check --locked` 五者干净通过），而
