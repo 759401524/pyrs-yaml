@@ -5667,14 +5667,18 @@ Two remedies were implemented and both were measured away.
    own below the block is read back as the leading note of the node that ended it - crash-11ced252's
    finding, restated for a different reason.
 
-What survives the attempts is the question. A container's note has to land on the line a reader
-*reports a container's note from*, and the branch already knows that answer at depth
-(`note_line_above(body_start)`); what it does not know is the column-0 case, where the fallback
-today is a bare trailing line. The shape is pinned by
-`a_key_note_over_a_block_body_moves_on_the_second_round`
-(`crates/pyrs-yaml-core/tests/settles_in_two_rounds.rs`), which asserts the migration so that a
-real fix turns it red by name. Its two inputs live in that test rather than in `fuzz/seeds/`,
-because a seed there is replayed by the fuzz gate and this one still fails it.
+The third remedy holds, and it is narrower than the question implied. `write_pair` still asks the
+value - but only where the value cannot be the one using the slot: a scalar or null whose body
+starts below (a leading note is what forces that break) leaves the pair line's trailing slot free,
+so the key's note rides it in the first round and the second parse reports the same tree. Both
+measured exclusions live in the predicate, not in a comment:
+`matches!(value, Scalar { .. } | Null { .. })`, because a container written below turns
+`<<:  # note` over a flow body into a null merge key, and `!pending_line_is_last()`, because a
+tag-only line is still open. Measured: 632 Rust tests, 26 property tests at 20 000 cases, and the
+fuzz harness green over both inputs - which is what let them join `fuzz/seeds/` beside the other
+former crashes. The test that had recorded the drift,
+`crates/pyrs-yaml-core/tests/settles_in_one_round.rs`, now requires the fixed point, and shorting
+the new arm out by hand turns it red with the two-round text.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
