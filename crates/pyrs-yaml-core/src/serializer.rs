@@ -1402,7 +1402,19 @@ impl Serializer {
                 _ => None,
             };
             if let Some(text) = key_note {
-                if value.comment().is_none() && self.output.ends_with('\n') {
+                // The question is the pair line's slot, not the value's note. A scalar whose body
+                // starts below - a leading note forces that - leaves the pair line free, so the key's
+                // note can ride it, and asking the value instead made the note move on the second
+                // round (quality-ledger (ds)). Two measured exclusions: a container written below
+                // turns `<<:  # note` over a flow body into a null merge key (6 properties at
+                // 20 000 cases), and a pending tag-only line is still open, so a comment there is
+                // read as the value's leading note.
+                let body_below_leaves_the_line = key_note_at.is_some()
+                    && matches!(value, CustomNode::Scalar { .. } | CustomNode::Null { .. })
+                    && !self.pending_line_is_last();
+                if (body_below_leaves_the_line || value.comment().is_none())
+                    && self.output.ends_with('\n')
+                {
                     let fallback = key_note_at.unwrap_or(self.output.len() - 1);
                     let at = self
                         .note_slot_on_pair_line(own_line_start)

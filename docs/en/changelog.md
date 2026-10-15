@@ -19,16 +19,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
-- **A pin records the drift the fixed-point contract cannot fix yet
-  (`crates/pyrs-yaml-core/tests/settles_in_two_rounds.rs`)** — libFuzzer's `yaml_roundtrip` reached
-  a document whose emission needs a second round: round one parks the document's note on the block
-  body's last line, granit spans a node through the break that ends its own line, and the re-read
-  reports that note as the value's - which flips `write_pair`'s answer about who owns the line's
-  trailing slot and hoists the key's note above the pair. Nothing is lost, so no other tier sees it.
-  Two remedies were implemented and measured away, six properties at 20 000 cases each, both
-  residuals in quality-ledger (ds); this lands as a pin because a half-fix would freeze one shape
-  and break another. The test asserts the drift, so the day the placement rule is repaired it goes
-  red by name and must be rewritten to require the fixed point.
+- **Named shapes must settle in one round (`crates/pyrs-yaml-core/tests/settles_in_one_round.rs`)**
+  — the fuzz tier's fixed-point contract asked of shapes libFuzzer reached and `cargo fuzz tmin`
+  minimized, rather than only of whatever a bounded fuzz budget happens to explore: a change to a
+  note-placement rule now breaks a named test instead of an unlucky draw. Quality-ledger (ds)
+  records the two remedies that were measured away before the one that holds.
 
 - **A notation corpus asks every writer the question its own reader answers.** — the defect #432
   fixed was a writer's bare-token predicate asking a cheaper question than the reader's grammar, and
@@ -613,6 +608,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   none of the exception types. — (details: quality-ledger (be))
 
 #### Fixed
+
+- **A key's note over a block body no longer moves on the second round** — the writer parked the
+  document's own note on the body's last line, and granit spans a node through the break that ends
+  its own line, so the re-read reported that note as the value's and `write_pair` answered its slot
+  question the other way: the first emission rode the pair line, the second hoisted the key's note
+  above the pair. `write_pair` now asks the line where the value cannot be using it - a scalar or
+  null body that starts below leaves the trailing slot free - and keeps the two exclusions the
+  measurements named: a container written below turns `<<:  # note` over a flow body into a null
+  merge key, and a pending tag-only line is still open. Measured: both crash shapes are fixed points
+  in one round, 632 Rust tests, 26 property tests at 20 000 cases, and the fuzz harness green over
+  both, which is what let them join `fuzz/seeds/` — details: quality-ledger (ds)
 
 - **An anchored node inside a flow no longer takes its name from another node's text.** — the
   recovery that reads `&name` back out of the source scanned left across the whole line, so a plain
