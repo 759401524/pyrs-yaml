@@ -2006,6 +2006,18 @@ and so did the empty container's single inline slot, which dropped the rest of a
   emitted by the YAML flow writer at all — measured with a SINGLE note (`t = {` `# i1` `a = 1 }` →
   `t: {a: 1}`), so it is pre-existing, not a side effect of the list work, and it needs a decision
   about how a flow collection renders member comments.
+  **Closed 2026-10-15, and the decision is the maintainer's:** a flow member's note is written as a
+  line-end comment, which is the single slot this engine's reader hands back to a member (measured
+  over eight spellings — a note on its own line inside the braces is swallowed by the reader, so it
+  cannot be preserved as its own line there), and a member carrying more than one note sends its
+  container to block style, where every note keeps a line. Two residuals were measured on the way
+  and are *not* claimed closed: an inline note attached to a **block** mapping key is still dropped
+  (`null: " "  # A` keeps the value's note and loses the key's — the flow path writes it, the block
+  path has one slot per line and no rule for which note wins), and a note whose text is only blanks
+  has no spelling any reader keeps, so it is now written nowhere rather than settling on a second
+  round. Both are pinned by tests: `a_note_on_a_flow_member_is_written_and_reads_back`,
+  `two_notes_on_one_flow_member_send_the_container_to_block`,
+  `a_blank_note_is_written_nowhere_and_leaves_the_line_alone`.
 
 The scheduled loop is proven end-to-end: each `workflow_dispatch`/cron run fuzzes the four surfaces
 and, on a crash, uploads the minimized artifact for triage (findings #226/#227 were surfaced and

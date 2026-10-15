@@ -149,6 +149,72 @@ mod tests {
         })
     }
 
+    /// Every note text the tree carries, in document order (a mapping's key before its value). Both
+    /// sides of the flow-note comparison come from parsing text, so what each holds is already what
+    /// the reader can keep — the assertion is between two readings, not between a tree and a hope.
+    fn note_texts(node: &crate::ast::CustomNode) -> Vec<String> {
+        let mut out = Vec::new();
+        collect_note_texts(node, &mut out);
+        out
+    }
+
+    fn collect_note_texts(node: &crate::ast::CustomNode, out: &mut Vec<String>) {
+        use crate::ast::CustomNode as N;
+        if let Some(inline) = node.comment().filter(|c| !c.standalone) {
+            out.push(inline.text.to_string());
+        }
+        out.extend(node.leading_comments().iter().map(|c| c.text.to_string()));
+        match node {
+            N::Mapping { pairs, .. } => {
+                for (k, v) in pairs.iter() {
+                    collect_note_texts(k, out);
+                    collect_note_texts(v, out);
+                }
+            }
+            N::Sequence { items, .. } => {
+                for item in items.iter() {
+                    collect_note_texts(item, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Sources that put a note on a member of a flow collection — every spelling the writer has to
+    /// answer: a value's note, a key's, a sequence item's, the second pair of three, a flow
+    /// container under a block key, under a block dash, nested in another flow container, carrying
+    /// an anchor, and one pair holding both slots.
+    ///
+    /// The note text is drawn from the forms that have broken comment handling before: a `#` and a
+    /// quote inside the text, the block terminator `*/`, blanks at each end (which the reader
+    /// drops), a no-break space (which YAML does not), and a leading `-`.
+    fn arb_flow_note_source() -> impl Strategy<Value = String> {
+        let text = prop::sample::select(vec![
+            "A",
+            "note 7",
+            "two words",
+            "  padded  ",
+            "#hash",
+            "*/term",
+            "q\"uote",
+            "\u{a0}nbsp",
+            "- dash",
+            "x: y",
+            "a # b",
+        ]);
+        (0usize..9, text).prop_map(|(shape, note)| match shape {
+            0 => format!("{{A: x  # {note}\n}}\n"),
+            1 => format!("{{A: # {note}\n  x}}\n"),
+            2 => format!("[x  # {note}\n]\n"),
+            3 => format!("k: {{A: x  # {note}\n}}\n"),
+            4 => format!("- {{A: x  # {note}\n}}\n"),
+            5 => format!("{{A: [x  # {note}\n]}}\n"),
+            6 => format!("{{A: x  # {note}\n, B: 2}}\n"),
+            7 => format!("&anc {{A: x  # {note}\n}}\n"),
+            _ => format!("{{A: # {note}\n  x  # {note}V\n}}\n"),
+        })
+    }
+
     proptest! {
         #[test]
         fn prop_roundtrip(node in arb_custom_node()) {
@@ -196,6 +262,31 @@ mod tests {
                 yaml_diff(&src, &emitted)
             );
             prop_assert_eq!(emitted, to_yaml(&after), "not a fixed point");
+        }
+
+        /// The flow writer used to answer a member's note with no note at all: `{A: x  # V}` reads
+        /// into a tree that keeps the note and wrote `{A: x}`, so the note existed only in memory.
+        /// Every shape here is one this engine's reader is measured to hand back to a member, so the
+        /// assertion needs no filter — each note in the source must reach the text, come back on
+        /// re-read, and the emission must equal its own second round. Written as a source strategy
+        /// rather than over `arb_custom_node()` because the generated trees scatter notes across the
+        /// block path too, whose separate gap `docs/dev/quality-ledger.md` records: a property that
+        /// rejects most of its samples to stay green is the blind spot PR #412 registered.
+        #[test]
+        fn prop_flow_member_note_survives_the_round_trip(src in arb_flow_note_source()) {
+            let before = parse_with_options(&src, true, Schema::Core, 1000, false)
+                .unwrap_or_else(|e| panic!("{:?} should parse: {e}", src));
+            let emitted = to_yaml(&before);
+            let after = parse_with_options(&emitted, true, Schema::Core, 1000, false)
+                .unwrap_or_else(|e| panic!("{:?} -> {:?} should re-parse: {e}", src, emitted));
+            prop_assert_eq!(
+                note_texts(&before),
+                note_texts(&after),
+                "a flow member note was dropped or moved: {:?} -> {:?}",
+                src,
+                emitted
+            );
+            prop_assert_eq!(&emitted, &to_yaml(&after), "not a fixed point: {:?}", emitted);
         }
 
         #[test]

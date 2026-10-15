@@ -223,6 +223,36 @@ class TestComplexKeys:
         # The name of the failure, spelled out: the key must not survive as a null scalar.
         assert "null:" not in pyrs_yaml.parse(block).to_yaml()
 
+    def test_a_note_on_a_flow_member_is_written_and_not_dropped(self):
+        # The flow writer used to answer a member's note with no note at all: `{A: x  # V}` read
+        # into a tree that kept `V` and wrote `{A: x}`, so the note lived only in memory and
+        # whoever read the text next never saw it. A flow member owns exactly one slot — the
+        # line-end comment this engine's reader hands back to that member — and a `#` closes its
+        # line, so the rest of the pair continues one column deeper than the bracket: at column 0 a
+        # value under `- {` or `k: {` is a wrongly indented flow continuation.
+        for src, expected in [
+            ("{A: x  # V\n}\n", "{A: x  # V\n }\n"),
+            ("{A: # K\n  x}\n", "{A: # K\n x}\n"),
+            ("[x  # V\n]\n", "[x  # V\n ]\n"),
+            ("{A: 1, B: x  # V\n}\n", "{A: 1, B: x  # V\n }\n"),
+            ("{A: x  # U\n, B: 2}\n", "{A: x  # U\n , B: 2}\n"),
+            ("k:\n  {A: x  # V\n  }\n", "k: {A: x  # V\n    }\n"),
+            ("- {A: x  # V\n}\n", "- {A: x  # V\n   }\n"),
+            ("{A: [x  # V\n]}\n", "{A: [x  # V\n     ]}\n"),
+        ]:
+            emitted = pyrs_yaml.parse(src).to_yaml()
+            assert emitted == expected, src
+            assert pyrs_yaml.parse(emitted).to_yaml() == expected, src
+
+    def test_a_container_key_in_a_flow_mapping_keeps_its_marker(self):
+        # `write_scalar_for_key` has nothing to say about a mapping or a sequence, so the pair came
+        # back keyed by `null` — the corruption PR #410 closed for an alias key, in the sibling
+        # branch of the same call. The marker form is measured readable here and by ruamel.
+        for src in ["{? {} : v}\n", "{? {A: 1} : v}\n", "{? [1, 2] : v}\n"]:
+            emitted = pyrs_yaml.parse(src).to_yaml()
+            assert "? " in emitted, src
+            assert pyrs_yaml.parse(emitted).to_yaml() == emitted, src
+
 
 class TestAnchorsAliases:
     """Test anchor and alias parsing"""

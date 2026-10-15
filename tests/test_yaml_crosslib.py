@@ -193,6 +193,36 @@ def test_ruamel_reads_the_alias_key_we_write():
             _ruamel.YAML(typ="safe").load(io.StringIO("a: &x [1, 2]\n*x: v\n"))
 
 
+@pytest.mark.skipif(not _ruamel_available(), reason="ruamel.yaml not installed")
+def test_ruamel_reads_the_flow_member_notes_we_write():
+    """The flow-note emission is written for other readers, and the two gaps are named separately.
+
+    Measured against the ruamel in `uv.lock`: a value's or an item's note survives its own
+    round trip here (`{A: x  # V\n }` loads and re-dumps with `# V`), which is the shape this
+    engine's writer used to drop. A *key's* note does not — ruamel reads `{A: # K\n x}` and writes
+    `{A: x}` — so the slot we now fill is one ruamel leaves empty, and the assertion below pins
+    that asymmetry rather than pretending the libraries agree. PyYAML is the syntax check: it
+    parses every emission here without a scanner error.
+    """
+    for src in ["{A: x  # V\n}\n", "[x  # V\n]\n", "{A: # K\n  x}\n", "{? {} : v}\n"]:
+        emitted = pyrs_yaml.parse(src).to_yaml()
+        loaded = _ruamel.YAML(typ="rt").load(io.StringIO(emitted))
+        buf = io.StringIO()
+        _ruamel.YAML(typ="rt").dump(loaded, buf)
+        assert loaded is not None, src
+        if "# K" in emitted:
+            assert "# K" not in buf.getvalue(), "ruamel now keeps key notes: update this claim"
+        elif "# V" in emitted:
+            assert "# V" in buf.getvalue(), f"ruamel dropped the note: {emitted!r} -> {buf.getvalue()!r}"
+
+
+@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
+def test_pyyaml_accepts_every_flow_note_emission():
+    for src in ["{A: x  # V\n}\n", "{A: # K\n  x}\n", "[x  # V\n]\n", "{? {} : v}\n", "{? [1, 2] : v}\n"]:
+        emitted = pyrs_yaml.parse(src).to_yaml()
+        list(pyyaml.parse(emitted))
+
+
 @pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
 def test_pyrs_projects_a_sequence_key_where_pyyaml_refuses_it():
     """Deliberate divergence, toward the library that carries the data.

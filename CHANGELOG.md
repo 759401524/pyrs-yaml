@@ -10,9 +10,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **The defence matrix now measures how strongly a property asserts, not only how many there are.**
-  — `property_functions()` counted 24 `prop_*` functions, and that count is what the page offered as
+  — `property_functions()` counted 25 `prop_*` functions, and that count is what the page offered as
   the property tier's coverage. `conditional_property_assertions()` reads each body for a guard of
-  the shape `if let Some(_) = try_*(..)` and found 7 of the 24 asserting only inside it: those
+  the shape `if let Some(_) = try_*(..)` and found 7 of the 25 asserting only inside it: those
   properties state nothing about the samples their own helper declined to return. The rate behind
   the guard was measured rather than argued — 4000 trees drawn from `arb_custom_node()`, compared
   with their re-parse, left **3423 filtered and 0 unparseable** — and that is the mechanism by which
@@ -521,6 +521,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   none of the exception types. — (details: quality-ledger (be))
 
 ### Fixed
+
+- **A note on a member of a flow collection is written, not dropped.** — `{A: x  # V}` read into a
+  tree that kept `V` and re-emitted `{A: x}`: the reader offers each flow member one slot, the
+  line-end comment it attaches to that member, and the flow writer used none of them, so the note
+  lived only in memory and whoever read the text next never saw it. Measured over 4020 drawn trees,
+  1650 of them first differed on a comment. A note now continues one column deeper than the bracket
+  that opened it (`- {A: x  # V` then `}`), because `#` closes its line and a value at column 0
+  under `- {` or `k: {` reads as a wrongly indented flow continuation — eight spellings measured
+  readable and their own fixed point. A member carrying two notes has no second slot, so its
+  container goes block and every note keeps its own line (maintainer ruling, 2026-10-14). The same
+  call answered a second question: a mapping or a sequence used as a key inside a flow mapping came
+  back keyed by `null` — the sibling of the alias-key loss PR #410 closed — and keeps its `?` marker
+  now (`{? {}: v}`), which ruamel reads as an empty-mapping key. Note text is emitted the way the
+  reader hands it back, blanks at either end gone and a note left with nothing to say written
+  nowhere, so the first emission is canonical rather than settling on a second round.
 
 - **An alias used as a mapping key is written back instead of dropped to `null`.** — with
   `a: &x [1, 2]` and a key of `? *x`, the writer re-emitted `null: v`: the complex-key test in
