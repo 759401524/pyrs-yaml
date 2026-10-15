@@ -2338,11 +2338,19 @@ mod tests {
         );
         assert_eq!(two, one, "the borrowed slot must be a fixed point");
 
-        // One line has one trailing slot: a value with a note of its own keeps it,
-        // so the key note can never overwrite or duplicate it.
+        // One line has one trailing slot. The value keeps it, and the key's note goes above
+        // the pair — where a reader reports it back to that same key (measured: `a: 1` +
+        // `# K` + `b: 2  # V` re-reads with `K` on `b`), so neither note is lost.
         let src = "? a # kn\n: b # vv\n";
         let one = crate::serializer::to_yaml(&parse(src, YamlSchema::Core).expect("parses"));
-        assert_eq!(one, "a: b  # vv\n", "the value's own note wins");
+        assert_eq!(
+            one, "# kn\na: b  # vv\n",
+            "the value keeps its slot, the key gets a line of its own"
+        );
+        let two = crate::serializer::to_yaml(
+            &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
+        );
+        assert_eq!(two, one, "the promoted note line must be a fixed point");
     }
 
     /// A note granit reports in a *container's* inline slot has to be written where the

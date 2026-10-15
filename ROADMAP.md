@@ -77,12 +77,11 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: two items the measurement found and no change has made yet
+### Open: one item the measurement found and no change has made yet
 
 | #    | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Layer                                       | Priority |
 | :--- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------ | :------: |
 | 1    | **What should the writer do with a mapping whose keys the reader cannot tell apart?** - found while attributing the property tier's `DuplicateKey("null")` failure. The node map keys a mapping by the whole node, so `!E null` carrying a note and a bare `!E null` sit side by side, `to_yaml` writes one text for both, and the document re-reads either as a duplicate key or as one line shorter than the tree that produced it - silently in three of the six measured classes (ledger (br)). The generator no longer builds such a mapping, and a 15-class table pins its rule against the writer and the reader. The product question is what is left: fold on write the way the reader folds, report it through `to_yaml_with_options`, or declare the invariant and leave the hand-built path unsupervised (issue #336)                                                        | Rust (`pyrs-yaml-core` serializer)          |    🟠    |
-| 2    | **Which note owns a block pair's one line-end slot?** - found while shrinking a property over 4000 generated trees, the same run that produced the flow-member fix in this cycle. A block mapping's key can carry an inline note and so can its value, but `key: value  # one` has one slot: the writer gives it to the value and the key's note disappears (`null: " "  # A` re-reads with no note on the key). The flow path now answers the same question by spending a line break (`{A: # K` / `x`), which is measured readable; a block pair could do the same, but it changes the shape of every pinned comment-on-a-pair emission and the ledger's crash history says a placement rule is only worth having once it has been measured against the reader's own normalisation. The options are to give the key the line it ends and the value the next, to keep the value's claim and report the loss through `to_yaml_with_options`, or to declare an inline note on a block key unsupported at the reader boundary | Rust (`pyrs-yaml-core` serializer) |    🟠    |
 
 Both were found by measuring rather than by review. The first is written up in the entry that came
 out of the property tier (ledger (br)). The stub item that used to open this table shipped in this
@@ -111,6 +110,15 @@ pattern containing both quote characters serialised into text the parser rejecte
 through `from_dict`, the library's own round-trip writer, which is also the general lesson - inside
 a round-trip library, converting data to text is the writer's job, never a hand-built one (ledger
 (bp)).
+
+The line-end-slot question the removed row asked is answered, and the answer is the one the flow
+path already spends: a line break. Measured against the reader first, as that row insisted - a
+comment line written directly above a key that is not the mapping's first belongs to *that key*
+(`a: 1` + `# K` + `b: 2  # V` re-reads with `K` on `b`), so only a first pair hands its key's note
+up to the container. The value keeps the trailing slot it needs and the key's note goes above the
+pair when the slot is taken, which is why no pinned comment-on-a-pair emission changed shape: only
+the collision case does. Over 4000 generated trees, notes that never reached the emitted text fell
+from 907 to 257 and the block-key class of them from 707 to 34 (ledger (db)).
 
 The rulings that used to sit here are shipped. Whether `mapping_of` / `sequence_of` should assert
 their container: they do, and the language gained the words to say so (`type: map` / `type: seq`,
