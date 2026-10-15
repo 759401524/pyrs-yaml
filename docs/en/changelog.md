@@ -539,6 +539,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A quote that opens no node cannot hide a comment.** — #421 taught the anchor-name scan to ignore
+  a `#` inside quotes, and it trusted any quote after a blank to open such a region. A plain key's
+  own apostrophe (`a '`) therefore opened a phantom string whose close sat inside the comment, the
+  real comment opener went unseen, and a `&` written in that comment became the node's anchor name:
+  the value came back as `&*~=9VjQq=8`, an alias spelling no anchor can hold. A quoted node begins a
+  token, so the scan now asks which token precedes the quote — a boundary, or the anchor or tag
+  property the node follows.
+
 - **A nested container's note is written above its own line, never below its body.** — the writer's
   last resort for a container's inline note was a bare comment line at that container's indent, and
   the reader spans a node only through the break that ends the node's *own* line: deeper than column

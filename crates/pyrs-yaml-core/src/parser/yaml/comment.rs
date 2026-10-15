@@ -169,6 +169,43 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
     None
 }
 
+/// Whether the quote at `at` opens a quoted node on this line.
+///
+/// Being after a blank is not enough: a plain scalar's text can end in an apostrophe
+/// (`a ': &m6 >-4  # it's`), and a region started there swallows the `#` that really opens
+/// the comment. A quoted node *begins* a token, so what precedes it has to be a boundary -
+/// the line start, a value or flow indicator, or the anchor/tag property it follows.
+fn opens_quoted_node(bytes: &[u8], line: usize, at: usize) -> bool {
+    let mut before = at;
+    while before > line && matches!(bytes[before - 1], b' ' | b'\t') {
+        before -= 1;
+    }
+    if before == line {
+        return true;
+    }
+    if matches!(bytes[before - 1], b',' | b'[' | b'{') {
+        return true;
+    }
+    // A value or explicit-key indicator opens a node only across a blank: `- 'x'` and `k: 'x'` do,
+    // while the `?` inside a plain key (`A?': &x >-2  # o'k &evil`) is that key's own text.
+    if matches!(bytes[before - 1], b':' | b'?' | b'-') {
+        return before != at;
+    }
+    // A node also follows its own properties, where what precedes the quote is an anchor or a
+    // tag and ends in its name or suffix (`&x 'v'`, `!!str "v"`), so the token decides, not the
+    // character - and the token stops at a flow indicator, not at the bracket it lives in.
+    let mut start = before - 1;
+    while start > line
+        && !matches!(
+            bytes[start - 1],
+            b' ' | b'\t' | b'[' | b']' | b'{' | b'}' | b',' | b':'
+        )
+    {
+        start -= 1;
+    }
+    matches!(bytes[start], b'&' | b'!')
+}
+
 /// True when a comment starts on `byte`'s line before `byte` itself, which makes
 /// `byte` comment text rather than node syntax.
 ///
@@ -182,9 +219,11 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
 /// (The claim this had no reachable form - `&anchor` always precedes its own value -
 /// holds for a node's properties and not for a node after another node.)
 ///
-/// Quotes are only tracked where a scalar can begin, after a node-start boundary:
-/// granit's grammar lets an anchor *name* carry `"` (`&"q` is the name `"q`), and
-/// treating that as a string opener would hide a real comment.
+/// Quotes are only tracked where a scalar can begin, and a quote begins a scalar only at a
+/// node-start boundary: granit's grammar lets an anchor *name* carry `"` (`&"q` is the name
+/// `"q`), and a plain key's text can end in an apostrophe (`a ':`). Reading either of those as
+/// a string opener hides a real comment, which costs more than the case it guards - the `&`
+/// written inside that comment then becomes the node's anchor name.
 fn comment_opens_before_on_line(bytes: &[u8], byte: usize) -> bool {
     let mut line = 0usize;
     for at in (0..byte).rev() {
@@ -216,10 +255,7 @@ fn comment_opens_before_on_line(bytes: &[u8], byte: usize) -> bool {
                 }
             }
             _ => {
-                if (marker == b'\'' || marker == b'"')
-                    && (at == line
-                        || matches!(bytes[at - 1], b' ' | b'\t' | b',' | b':' | b'[' | b'{'))
-                {
+                if (marker == b'\'' || marker == b'"') && opens_quoted_node(bytes, line, at) {
                     quote = Some(marker);
                 } else if marker == b'#' && (at == line || matches!(bytes[at - 1], b' ' | b'\t')) {
                     return true;
@@ -298,6 +334,39 @@ mod tests {
                 "{src}"
             );
         }
+    }
+
+    /// An apostrophe inside a plain scalar is not a quoted node.
+    ///
+    /// #421 made this scan skip a `#` that sits inside quotes, and it trusted any quote after a
+    /// space to open such a region. So the apostrophe ending a plain key (`a ': &m6 >-4  # it's`)
+    /// opened a phantom string whose closing apostrophe sat *inside the comment*, the real `#`
+    /// was never seen, and a `&` written in the comment became the node's anchor name. The
+    /// round-trip tier named that shape as an anchor coming back as `*~=9VjQq=8` - an alias
+    /// spelling, a name no anchor can hold - and it is the writer's own emitted text, so the
+    /// document it produced renamed the node rather than losing a style bit.
+    #[test]
+    fn anchor_name_before_reads_a_lone_apostrophe_as_text() {
+        let src = "a ': &m6 >-4  # \":})!,\"Hab*5^Z|B':^<-&*~=9VjQq=8\n     Hz<V\n";
+        assert_eq!(
+            anchor_name_before(src, src.find("Hz<V").expect("the block body is there")),
+            Some("m6".to_string())
+        );
+    }
+
+    /// An apostrophe that closes a question mark is not a quoted node either.
+    ///
+    /// The token rule admits a boundary character, and `?` is one - the explicit-key indicator -
+    /// but `?` only separates when a blank follows it. A plain key like `A?'` puts the apostrophe
+    /// directly against the `?`, and opening a region there hides the comment that follows: the
+    /// same misread as the plain-apostrophe case, one character class over.
+    #[test]
+    fn anchor_name_before_reads_a_quote_after_a_question_mark_as_text() {
+        let src = "A?': &x >-2  # o'k &evil\n  body\n";
+        assert_eq!(
+            anchor_name_before(src, src.find("body").expect("the block body is there")),
+            Some("x".to_string())
+        );
     }
 
     /// The name run ends at a flow indicator, not swallowing the flow opener.
