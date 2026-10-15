@@ -5057,6 +5057,31 @@ by the fact that the old oracle happened to ignore it. Those two labels belong t
 work, not to this change — they are recorded here because the *reason* each one is a normalization
 is already measured, which is the test the eventual whitelist has to pass.
 
+### (de) A slot remembered as "the last header written" is not a slot on this pair's line (2026-10-15)
+
+`(db)`'s fix put a key's note on the block header line, so the writer began recording
+`block_header_break` whenever it wrote one. The record is global to the emission - *the last header
+written anywhere* - and the consumer asked only whether a body line followed. For a pair whose value
+is a container that question returns yes about someone else's line: the inner pair writes its own
+header after the outer one started, and the outer key's note was inserted into it.
+
+```text
+A: >  # a-5  # %note        before   (header split, two comments merged, body orphaned)
+       ]$$2.RzM*yl>          ->        "misplaced bracket at line 6 column 8"
+```
+
+The emitted document stopped parsing. Nothing local saw it: `cargo nextest run --all` executes the
+tier at its default case count and the shape needs a key with an inline note, a container value, a
+nested pair with an inline note *and* a folded block carrying an indentation indicator. The 20k-case
+`property tier (20k cases)` leg on CI walked into it on the next sample. The rule now reads: take
+the header slot only while no line break separates it from the start of the pair's own line -
+`note_slot_on_pair_line`, pinned by `a_key_note_never_rides_a_nested_pairs_header_line` (red on the
+pre-fix build, on the fourth assertion: the note is back on `" ":` where it belongs).
+
+The process lesson is the reason this entry exists: a writer change in a note-placement path is not
+gated by an ordinary local tier run, and the elevated count is cheap to ask for -
+`PROPTEST_CASES=20000 cargo test -p pyrs-yaml-core`. CI has always run it; the local loop did not.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

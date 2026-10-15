@@ -530,6 +530,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A key's note rides only its own pair's line, never a nested header.** — #419 taught the writer
+  to place a key's note on a block scalar's header line when the value is a block scalar, but the
+  position it consulted was "the last block header written", wherever in the document that was. A
+  pair whose value is a *container* writes its own pairs after that header, so an outer key's note
+  landed inside a nested pair's header line: `A: >` + `# a` + `-5` splits the header, merges the
+  two comments, and leaves a body no block declares - the emitted text no longer parsed at all. The
+  property tier's 20k-case run found it (`misplaced bracket`); the slot is now taken only while the
+  header line and the pair line are the same line.
+
 - **An anchor keeps its own name past a `#` that only looks like a comment.** — the reader recovers
   an anchor's display name by scanning left from the node the parser pointed at, refusing every `&`
   that sits after a comment-opening `#` on that line. The guard also treated a `#` *inside a quoted
