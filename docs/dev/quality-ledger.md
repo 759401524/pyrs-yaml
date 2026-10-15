@@ -5469,6 +5469,51 @@ the std re-check stops covering what the two no_std steps cover. The guard was s
 the pre-fix step text restored, it fails naming the three crates, and the helper that decides has
 its own negative case so the reading logic is exercised on a synthetic body too.
 
+### (dq) The array scanner skipped comments and threw the text away (2026-10-15)
+
+PR #434 closed the note that ends an inline-table member's key line; the same question asked of
+arrays had a blunter answer. `skip_array_ws` matched `Some(b'#')` and called `take_comment()`,
+discarding the result, and `TomlValue::Array` was a `Vec<TomlValue>` with no place to put it.
+Measured at the shipped boundary before the change, all three positions lost their note:
+
+| source | out of TOML, before | out of TOML, now |
+| :-- | :-- | :-- |
+| `arr = [` + own-line note + `1]` | `arr = [1]` | note on its own line above `1` |
+| `arr = [` + `1 # trail` + `]` | `arr = [1]` | `arr = [` / `1 # trail` / `]` |
+| `arr = [` + `1, # between` + `2]` | `arr = [1, 2]` | `# between` above `2` |
+| `arr = [1, 2]` | `arr = [1, 2]` | unchanged |
+
+An element now carries the same `KVAnnotations` a member does - leading notes on the element's own
+lines, the note that ended its line as its trailing one - and the writer's array branch mirrors the
+inline table's: a decorated array goes multi-line, and a note may only finish the last element's
+line, because `1 # x,` is not TOML and a note written after the comma would be reported by the
+reader as the next element's leading note, which is exactly where the writer therefore puts it.
+Measured: the second emission is byte-identical for all three shapes, and the hub's YAML leg needs
+no change (it already had a place for a sequence item's own-line note).
+
+One position remains open and is pinned rather than hidden: a comment line between the last
+element's comma and `]` has no element to own it and no line to end, so it is still dropped
+(`test_a_note_after_the_last_comma_has_no_element_to_own_it`). Closing it means giving the array
+node itself a trailing note slot, which is the AST-shape question #434's slot ruling keeps out of
+scope.
+
+Tiers: Rust owns the attribution and the fixed point
+(`an_array_element_note_takes_its_own_line_and_settles`,
+`an_array_without_notes_keeps_the_compact_form`); Python owns the caller-visible promise
+(`tests/test_toml.py::TestArrayElementNotes`).
+
+The ask is not free, and the instruction-count gate priced it. The first version asked each element
+with `leading_comments()` and `comment()` - two view lookups, each dereferencing the boxed decor -
+and `to_toml_medium` measured 28,923,748 against a floor of 28,771,649: +0.53% on a 0.50% tolerance,
+with the scenario's binary digest differing from the baseline build, so the movement was code and
+not host. Asking `has_notes` first - two inline discriminants, no deref - for the elements that have
+nothing to report brought the same scenario to 28,897,722, +0.44%, inside the line;
+`from_toml_medium` moved +0.29% for the element annotations the reader now builds, which the
+tolerance absorbs. Two things follow and both are recorded rather than smoothed over: the branch's
+outlining and its cheap filter landed in one measurement, so the gate prices the pair, not either
+half; and 0.44% of a 0.50% band is little headroom, so the next writer-side fidelity ask on this
+scenario is a reason to refresh the floor on the enforcing image, never to widen the line.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

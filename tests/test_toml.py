@@ -670,3 +670,37 @@ class TestRootInlineTableSpelling:
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
         assert out == src, out
         assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out, "one round is the fixed point"
+
+
+class TestArrayElementNotes:
+    def test_a_note_inside_a_multiline_array_comes_back_on_its_own_line(self):
+        # Three places a `#` can sit in a multi-line array: above an element, at the end of the last
+        # element's line, and between an element's comma and the next element. The middle case is the
+        # one the reader reports as the *following* element's note, so that is where the writer puts
+        # it and the text is its own second emission. Measured: all three came back as `arr = [1]`
+        # before the element notes existed, so each shape here is a regression guard.
+        for src, want in [
+            ("arr = [\n  # lead\n  1\n]\n", "arr = [\n  # lead\n  1\n]\n"),
+            ("arr = [\n  1 # trail\n]\n", "arr = [\n  1 # trail\n]\n"),
+            ("arr = [\n  1, # between\n  2\n]\n", "arr = [\n  1,\n  # between\n  2\n]\n"),
+        ]:
+            out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+            assert out == want, f"{src} -> {out}"
+            assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+            again = pyrs_yaml.to_toml(pyrs_yaml.from_toml(out))
+            assert again == out, f"not a fixed point: {out} -> {again}"
+
+    def test_an_array_without_notes_is_still_one_line(self):
+        # The control: the multi-line form is a consequence of a note, not a writer preference.
+        src = "arr = [1, 2]\n"
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(src)) == src
+
+    def test_a_note_after_the_last_comma_has_no_element_to_own_it(self):
+        # Recorded, not claimed fixed: a comment line between the last element's comma and `]` has
+        # no element after it, and an element's line is the only thing a note can end. The values
+        # survive; the note does not. Pinning it keeps the boundary visible to the next change
+        # instead of tacit - the same way #428 recorded the inline-table one that #434 closed.
+        src = "arr = [\n  1,\n  # ownerless\n]\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert out == "arr = [1]\n", out
+        assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
