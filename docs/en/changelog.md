@@ -407,6 +407,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The test tier's diff renderer moved to `similar` 3.2.0.** — the crate is a `pyrs-yaml-core`
+  `[dev-dependencies]` entry and its only call sites are the three test helpers that print an
+  expected/actual text diff when a round-trip assertion fails (`pbt.rs`, `serializer.rs`,
+  `splice.rs`), so no shipped path links it. `TextDiff::from_lines` is the one API used, and it
+  survived the major: all 377 core tests, property tier included, pass unmodified on 3.2.0.
+
 - **CI re-checks the std build of every crate it just built without std.** — the `no_std` job's last
   step named two of the five foundation crates, so the other three were free to stop compiling with
   `std` while the leg stayed green: the feature split was proven in one direction only. The re-check
