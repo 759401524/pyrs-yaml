@@ -686,3 +686,23 @@ class TestKeyIdentityAcrossSpellings:
         assert doc.node().find("$.NULL").value == 1
         doc._set_path(["NULL"], 2)
         assert doc.to_yaml() == '"NULL": 2\n', doc.to_yaml()
+
+    def test_two_spellings_of_one_key_fold_at_the_boundary_not_in_the_writer(self):
+        # Issue #336, ruled: the boundary that resolves a key is the edit layer, so a caller
+        # cannot reach the two-lines-one-key text through `__setitem__` either. The writer is
+        # deliberately not where that is checked - the pass costs +31…33% on the serialize
+        # scenarios (docs/dev/perf.md) - and what a hand-built Rust map still produces is pinned
+        # by serializer::the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one.
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc["~"] = 1
+        doc["null"] = 2
+        assert doc.to_yaml() == "a: 1\n~: 2\n", doc.to_yaml()
+
+        # The first spelling is kept, the last value wins, and a third spelling adds no line.
+        doc = pyrs_yaml.parse("a: 1\n")
+        doc["null"] = 1
+        doc["~"] = 2
+        doc["NULL"] = 3
+        out = doc.to_yaml()
+        assert out == "a: 1\nnull: 3\n", out
+        assert pyrs_yaml.parse(out).to_dict() == {"a": 1, None: 3}

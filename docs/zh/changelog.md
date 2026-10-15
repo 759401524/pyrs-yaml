@@ -19,6 +19,17 @@ status: new
 
 #### 新增
 
+- **读取器会解析成同一个键的映射，写入器该怎么处理，如今已定案，并且两侧都被钉住。** — #336 问的是：
+  一个映射里既有带注释的 `!E null`，又有裸的 `!E null`，`to_yaml` 应该怎么办。写入时折叠这一对曾经实
+  现并量过价：五个 `serialize_*` 场景从 +31.481% 到 +33.655%，`parse_small` 一动不动，而门禁只容
+  0.50%（`docs/dev/perf.md`）；报告它同样要遍历每个映射的每个键，所以两者都不该放在写入路径上，放在
+  那里也没必要。真正解析键的边界，是调用方会走到的那一层：`doc["~"] = 1` 之后再 `doc["null"] = 2` 只
+  写出 `~: 2` 一行，重读时只有一个 null 键——先出现的拼写保留，最后写入的值生效
+  （`tests/test_edit.py::TestKeyIdentityAcrossSpellings`）。直接用 Rust 构造的 `NodeMap` 仍然写出两
+  行，把它们当作重复键拒绝、或返回比树少一项结果的，是读取器；这个形状现在是被钉住的，而不是推断出来
+  的（`serializer::the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one`）。行为没有
+  改变 ——新增的只有 `#[cfg(test)]`、文档，以及 `ROADMAP.md` 里那张空的未决事项表。
+
 - **防线矩阵现在度量一条属性究竟断言了多强，而不只是数它有几条。** — `property_functions()` 数出 25
   个 `prop_*` 函数，而页面一直把这个数目当作属性层的覆盖率。`conditional_property_assertions()` 逐个
   读取函数体，找 `if let Some(_) = try_*(..)` 这类守卫，在 25 条里找到 7 条：这些属性对自己的辅助函
