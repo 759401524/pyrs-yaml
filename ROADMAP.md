@@ -154,6 +154,16 @@ or closes it. An item may not stay in this section once it ships.
 
 ---
 
+## Review Notes 2026-10-16 (the weight of the message catalog)
+
+| Item | Decision | Rationale |
+|:-----|:---------|:----------|
+| `rust-i18n` as the error-message backend | **Defer, with the price on the record** | Measured on this tree over `cargo metadata`'s resolved graph, following normal edges only and treating a proc-macro crate's subtree as build-time: the wheel reaches **113** crates, and cutting the single `rust-i18n` edge leaves **67** - so **46** crates are compiled and linked for the catalog alone (a second `granit-parser` 1.3.0, `toml`, `serde`/`serde_json`/`serde-saphyr`, `globwalk`/`globset`/`ignore`, `encoding_rs`, `crossbeam-*`), and **58** more sit on the build side. `rust-i18n` 4.2.4 offers two optional features (`load-path`, `log-miss-tr`) and neither removes any of that, because the cone is non-optional. No byte share is claimed for the 3,845,632-byte `.pyd`: symbol attribution needs `cargo-bloat`, which is not a project tool, so this row prices the graph and stops there. |
+| Replacing it | **Not scoped** | The surface is 421 `t!(..)` call sites over four catalog files (`en`, `ja-JP`, `ko-KR`, `zh-CN`). The minimum substitute is a compile-time key table with the same `%{key}` placeholders plus the env/`locale` detection already written here - and the locale-parity gates would be rewritten against the new shape, since today they read YAML. That is work of the same order as the note-slot line (dj)-(dq), bought against a benefit that still has no number in bytes or instructions. Revisit when a wheel-size or import-time budget is written down first. |
+| The earlier ruling on the second `granit-parser` | **Standing, and not overturned here** | That finding was about the *build* graph; this one walks the *link* graph and finds `granit-parser 1.3.0` reached by a normal edge through `rust-i18n-support`. The two agree only if the crate is dead-stripped before the binary is written, which is exactly the claim a graph walk cannot make. Closing this row needs a symbol-level measurement, not another dependency tree. |
+
+---
+
 ## Review Notes 2026-08-15 (v0.14.1 milestone)
 
 | Item | Decision | Rationale |
