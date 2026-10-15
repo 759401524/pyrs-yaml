@@ -5514,6 +5514,62 @@ outlining and its cheap filter landed in one measurement, so the gate prices the
 half; and 0.44% of a 0.50% band is little headroom, so the next writer-side fidelity ask on this
 scenario is a reason to refresh the floor on the enforcing image, never to widen the line.
 
+### (dr) A plain scalar's comma opened a quoted region, and three remedies moved the defect
+
+(2026-10-16)
+
+PR #435's `msrv-check` leg reported a new residual (`job 116457142637`, run 38745242334):
+`anchor at $."$,\""#0."<-&wa #s4qr/"#0: Some("_s9_smQyB6v-5_--__t__kMKg7NbiE3xq") -> Some("wa")`,
+normalizations `{PlainRequoted, BlockRestyled, NoteRehomed}`. It was reproduced locally by
+rebuilding the shrunk tree field by field, and the mechanism is one branch of `opens_quoted_node`:
+the test "the byte before the quote is a comma, so the token after it is a node" is unconditional.
+In *block* context a comma is plain-scalar text. The writer emits the plain key `$,"` as `$,":` -
+legal, since `ns-plain-char` allows `"` anywhere but the first position, and granit reads that key
+back correctly - and the region opened at its quote skews every quote state after it on the line:
+the `#` inside the next member's quoted key becomes a comment opener, that member's own `&_s9_…` is
+rejected as comment text, and `&wa`, sitting inside the key at a `-` boundary, is returned as the
+name. No value changes; the anchor name does, which is what orphans every alias to it.
+
+The shape is `$,": {&i "<-&wa #q/": &v "x"}` written out - one line without the writer's flow
+continuation is not enough, because the recovery only runs for nodes granit gives an empty span at.
+
+Three remedies were implemented and measured, and all three were thrown away. The first two read
+only the text of the line; the third asks the parser:
+
+1. Track flow depth along the line and let a comma separate only inside it. The reported shape is
+   fixed - the scanner answers `v`, the tree settles - and `PROPTEST_CASES=20000` then fails three
+   properties, e.g. `anchor at $.<Sequence>#0[key][0].<Null>#2[key]: Some("_--9G51e") ->
+   Some("_1-i_zY___OF-2-8FS")`. A flow opened on an *earlier* line leaves no opener on the
+   continuation line, where the comma genuinely separates members.
+2. Also count a comma at the line's first non-blank byte as a separator, which is how the writer
+   continues a flow. Still three failures at 20k, a different shape: `anchor at $.\"a\"#0.\" #\"#1:
+   Some("lmd-eL_YfH_-x2A-yU__g") -> Some("F-3-_Ksef7_-qoj_5c_u")`.
+
+Each run recorded shrunk inputs in `proptest-regressions/pbt.txt`; those seeds went back with the
+experiments, because a seed that names code no longer in the tree is a claim nothing checks.
+
+A third remedy was then implemented, the one that asks the parser instead of the text:
+`anchor_name_before` gained a sibling taking `flow: Option<bool>`, `parser/mod.rs` added
+`inside_flow()` reading `ParseState`'s `flow_style` off the top of its container stack, and a comma
+counted as a separator only inside a flow - including one an earlier line opened, which is precisely
+the case the line cannot see. The event-stream path, which tracks no container style, was left on
+`None` and so on today's permissive reading, to keep the two readers from diverging quietly. It also
+failed the tier: 20 000 cases produced `anchor at $[1][0]: Some("R") -> Some("I7r-zg__T-jm_-")` and
+`anchor at $.<Mapping>#0[key]." #[["#1: Some("K_3N-6__hx_t-1G-_Nzn8-v1") -> None` - the second an
+anchor *lost*, through a quoted key holding `#[`. Three text or context narrowings, three different
+residuals; each one trades a shape.
+
+What survives the attempts is the diagnosis and the shape of a fix that does not guess: bound the
+search by spans. granit points the recovery at a node with an event span, so the name can only be
+sought between the previous event's span end and this node's span start - the position-isolation
+rule this file already states for the name *run*, applied to the window instead. That removes every
+line-level question about quotes, commas and comments from the recovery path, and it is the next
+attempt, not a fourth narrowing.
+
+Nothing is pinned here, and that is deliberate: every candidate so far reproduces the defect in one
+shape and breaks it in another, so a test would freeze a half-fix. The counter-examples are recorded
+so the next attempt starts from them.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
