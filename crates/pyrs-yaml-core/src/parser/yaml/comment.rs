@@ -103,13 +103,31 @@ fn is_valid_anchor_char(c: char) -> bool {
 ///   `byte_start` is on the content line, and the nearest boundary `&` to its
 ///   left is still that header anchor.
 pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
+    anchor_name_within(yaml, byte_start, None)
+}
+
+/// The same recovery, told where the node's own text may begin.
+///
+/// `floor` is the byte offset the parser has already consumed: the end of the previous node in this
+/// container, or of the key whose value this node is. granit's event span says the node starts at
+/// `byte_start`, and nothing between `floor` and there belongs to any other node - so an `&` left of
+/// `floor` cannot be this node's anchor, whichever quoting or comment reading the line suggests.
+/// That makes the window the authority rather than a text guess, which is the difference between
+/// asking "is this `&` inside a quoted region" (a plain scalar's `,` and `"` make that undecidable
+/// from one line, quality-ledger (dr)) and asking "is this `&` inside the node's own start" (which
+/// the event answers exactly).
+///
+/// `None` leaves the text-only reading, for callers that have no container state - the event-stream
+/// path - and it is what [`anchor_name_before`] does.
+pub fn anchor_name_within(yaml: &str, byte_start: usize, floor: Option<usize>) -> Option<String> {
     let bytes = yaml.as_bytes();
     let b = byte_start.min(yaml.len());
+    let floor = floor.unwrap_or(0).min(b);
     // `&` is 0x26 and can never be a UTF-8 continuation byte (those are
     // 0x80..=0xBF), so a byte scan locates candidate starts without risking a
     // split multibyte sequence; the maximal name run is then read as chars.
     let mut i = b;
-    while i > 0 {
+    while i > floor {
         i -= 1;
         if bytes[i] != b'&' {
             continue;
@@ -148,7 +166,7 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
         // the anchor was renamed on re-read and every alias pointing at the old name
         // was orphaned (libFuzzer `yaml_roundtrip` crash-68adf94c — the same class as
         // crash-04fddeb8, whose `# &l` shape this still refuses).
-        if comment_opens_before_on_line(bytes, i) {
+        if comment_opens_before_on_line(bytes, i, floor) {
             continue;
         }
         let name: String = yaml[i + 1..]
@@ -238,7 +256,7 @@ fn opens_quoted_node(bytes: &[u8], line: usize, at: usize) -> bool {
 /// `"q`), and a plain key's text can end in an apostrophe (`a ':`). Reading either of those as
 /// a string opener hides a real comment, which costs more than the case it guards - the `&`
 /// written inside that comment then becomes the node's anchor name.
-fn comment_opens_before_on_line(bytes: &[u8], byte: usize) -> bool {
+fn comment_opens_before_on_line(bytes: &[u8], byte: usize, floor: usize) -> bool {
     let mut line = 0usize;
     for at in (0..byte).rev() {
         if matches!(bytes[at], b'\n' | b'\r') {
@@ -246,6 +264,9 @@ fn comment_opens_before_on_line(bytes: &[u8], byte: usize) -> bool {
             break;
         }
     }
+    // Inside a node's own window there is no earlier text to read: a `#` left of the window belongs
+    // to whatever came before, and the window's own `&` was the parser's candidate anyway.
+    let line = line.max(floor);
     let mut quote: Option<u8> = None;
     let mut at = line;
     while at < byte {
@@ -529,17 +550,17 @@ mod tests {
         let b = s.find("~: ~").expect("content present");
         assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
         assert!(
-            comment_opens_before_on_line(s.as_bytes(), s.find("&?").expect("comment amp")),
+            comment_opens_before_on_line(s.as_bytes(), s.find("&?").expect("comment amp"), 0),
             "the ampersand inside the comment body is comment text"
         );
         assert!(
-            !comment_opens_before_on_line(s.as_bytes(), s.find("&b").expect("real anchor")),
+            !comment_opens_before_on_line(s.as_bytes(), s.find("&b").expect("real anchor"), 0),
             "the real anchor precedes any comment on its line"
         );
         // A `#` embedded in a plain scalar opens nothing.
         let plain = "k: x#y &a v\n";
         assert!(
-            !comment_opens_before_on_line(plain.as_bytes(), plain.find("&a").expect("anchor")),
+            !comment_opens_before_on_line(plain.as_bytes(), plain.find("&a").expect("anchor"), 0),
             "a mid-token `#` is not a comment opener"
         );
     }
@@ -682,5 +703,26 @@ mod tests {
                 "drift for {input:?}: {once:?}"
             );
         }
+    }
+
+    /// The window is what makes the answer exact, and this is the shape that proves it.
+    ///
+    /// `$,"` is a plain key, so its comma is the key's own text - but read as a member separator, it
+    /// opens a quoted region at the quote after it and every quote state on the line is skewed from
+    /// there: the `#` inside the next member's quoted key becomes a comment opener, that member's own
+    /// `&v` is skipped as comment text, and the `&` written *inside* the key is returned as the name.
+    /// The text-only scan still answers `w`; bounded by the node's own window - where the previous
+    /// node, the key, ended - it answers `v`, the name granit attached.
+    #[test]
+    fn a_nodes_own_window_names_its_anchor_past_a_plain_key_comma() {
+        let s = r#"$,": {&k "<-&w #q": &v "x"}"#;
+        let at = s.find("&v ").expect("the value's anchor") + "&v ".len();
+        let floor = s.find(r#"": &"#).expect("the key closes before the value") + 1;
+        assert_eq!(anchor_name_before(s, at), Some("w".to_string()));
+        assert_eq!(
+            anchor_name_within(s, at, Some(floor)),
+            Some("v".to_string()),
+            "the window must reach the anchor the event pointed at"
+        );
     }
 }

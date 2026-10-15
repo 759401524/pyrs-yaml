@@ -5514,7 +5514,7 @@ outlining and its cheap filter landed in one measurement, so the gate prices the
 half; and 0.44% of a 0.50% band is little headroom, so the next writer-side fidelity ask on this
 scenario is a reason to refresh the floor on the enforcing image, never to widen the line.
 
-### (dr) A plain scalar's comma opened a quoted region, and three remedies moved the defect
+### (dr) A plain scalar's comma opened a quoted region, and the fourth remedy closes it
 
 (2026-10-16)
 
@@ -5566,9 +5566,25 @@ rule this file already states for the name *run*, applied to the window instead.
 line-level question about quotes, commas and comments from the recovery path, and it is the next
 attempt, not a fourth narrowing.
 
-Nothing is pinned here, and that is deliberate: every candidate so far reproduces the defect in one
-shape and breaks it in another, so a test would freeze a half-fix. The counter-examples are recorded
-so the next attempt starts from them.
+Nothing was pinned by those three, and that was deliberate: each reproduces the defect in one shape
+and breaks it in another, so a test would freeze a half-fix. The counter-examples are recorded so
+the next attempt starts from them.
+
+The next attempt did, and the fourth remedy is the one that holds: stop asking the text.
+`anchor_name_within` takes a `floor` - the end of the node the builder consumed most recently in
+this container, which is a mapping's pending key, else its last pair's value, else a sequence's last
+item - and the recovery scans left from `byte_start` only down to there, with the comment test
+clamped to the same floor. Nothing left of the window is this node's text, so no reading of a comma,
+a quote or a `#` is ever asked of it. Measured: 371 lib tests, the property tier clean at
+`PROPTEST_CASES=20000` where each of the three narrowings left 2-3 residuals, and
+`a_nodes_own_window_names_its_anchor_past_a_plain_key_comma` pins both halves - on that document the
+text-only scan still answers `w`, the windowed one answers `v`.
+
+What it leaves open is the second reader. `stream.rs` calls the text-only entry, because its builder
+tracks no container style and so has no floor to pass: the event stream keeps today's reading while
+the tree path does not, and the same skew can still rename an anchor for a caller of `parse_stream`.
+Closing it means carrying the same floor there - the event spans are already in hand, only the
+last-child-end tally is missing - and the unit pin above is the oracle it will be judged against.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
