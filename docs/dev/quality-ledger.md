@@ -5253,6 +5253,38 @@ documentation - so the instruction-count floor was left alone rather than re-cla
 table in `ROADMAP.md` is now empty, which is what that section says it is for: an item leaves the
 moment a change ships the decision.
 
+### (dk) The flow indicator has to begin a token as well (2026-10-15)
+
+The 20 000-case tier named the third shape of the family (dd) and (dg) opened - and it named it
+while an unrelated pull request was in CI, which is the point of an elevated draw:
+`!!t /[": &Ilr |-8  # &m^fake` came back anchored as `m^/=.*/f?-6?~w`$'$z^b8`, a `&` written
+*inside* the comment.
+
+The rule #425 shipped admitted a quote as a node opener after a blank, `:`, `?`, `-`, `,`, `[` or
+`{`. Only the bracket over-admits here: `/["` is a plain scalar whose own text holds a `[`, so its
+`"` was read as opening a quoted node, the region never closed, the `#` that really opens the
+comment was scored as region content, and the recovery took the comment's `&` as the name. Renaming
+an anchor is not a style loss - every alias to the real name points at nothing in the document the
+engine then re-emits.
+
+The rule now asks a *bracket* to begin a token and leaves a *comma* alone. The first cut asked both,
+and the tier caught that over-tightening inside the same change: in `0: [a, " #", &ANCH null  # n ]`
+the comma sits right after a bare member (`a,`), so requiring the indicator itself to begin a token
+read the member's `"` as plain text and its `#` as a real comment opener - the node's own anchor
+came back `None`, and the re-emission dropped it. `prop_roundtrip` and
+`prop_style_setting_roundtrip` both drew that shape at 20 000 cases on the branch carrying the
+bracket fix.
+
+A member separator always opens the node after it; only a bracket can be ordinary scalar content, so
+only a bracket takes the token test. Each red check was done by deleting the condition rather than
+trusting the test's name: `anchor_name_before_reads_a_bracket_inside_a_plain_key_as_text` reports
+`left: Some("m^fake")` without the bracket test, and
+`anchor_name_before_reads_a_quoted_hash_after_a_member_comma_as_region_text` loses `&ANCH` without
+the comma clause - the two shapes pull in opposite directions, which is what a single rule has to
+tell apart. 620 Rust tests, and the elevated tier at 20 000 cases is 26 passed / 0 failed on the
+refined rule against three failing properties on the first cut. Nothing is left open from this
+entry.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
