@@ -1449,10 +1449,10 @@ impl Serializer {
                 // Compact key column is dash indent + `- ` (== indent_sequence
                 // for the default 2-step); a block body hangs off that line.
                 let key_base = indent_width + self.indent_sequence;
-                // The first pair shares the dash line, so its own start is the dash;
-                // later pairs begin at their own indent.
+                // The first pair shares the dash line, so its own start is that line —
+                // everything after the last break written so far. Later pairs begin here.
                 let own_line_start = if pi == 0 {
-                    self.pair_line_start
+                    self.output.rfind('\n').map_or(0, |k| k + 1)
                 } else {
                     self.output.len()
                 };
@@ -1465,6 +1465,15 @@ impl Serializer {
                         }
                     }
                     self.write_indent(key_base);
+                } else if key.has_notes() {
+                    // The first pair has no line of its own to put notes on - it shares the
+                    // dash - so they go above the item's line. `write_mapping_pair` prints a
+                    // simple key's notes for every pair; this loop only printed them from the
+                    // second one on, which is how `- null: 'x'` lost a `# 2` the key carried.
+                    for comment in key.leading_comments() {
+                        let text = comment.text.to_string();
+                        self.note_line_above(own_line_start, &text);
+                    }
                 }
                 self.block_header_break = None;
                 self.write_scalar_for_key(key, false);
@@ -4359,6 +4368,60 @@ mod tests {
     /// Measured against the reader: a note line written directly above a key that is not
     /// the mapping's first belongs to **that key**, so the pair line's single trailing
     /// slot is not the only place a key's note can live.
+    /// A key carrying a standalone note of its own.
+    fn noted_key(key: CustomNode) -> CustomNode {
+        let mut key = key;
+        key.set_comment(crate::ast::Comment {
+            text: "2".into(),
+            standalone: true,
+        });
+        key
+    }
+
+    /// The compact sequence form prints the first key's notes on no line at all.
+    ///
+    /// `write_mapping_pair` puts a simple key's leading notes above the pair, and the compact
+    /// `- key: value` loop does the same for every pair *but the first* — that one shares the
+    /// dash line, so nothing ever printed its notes. The shape the shrinker minimised to is a
+    /// `null` key over a one-space value: `- null: " "`, the key's `# 2` gone. Same for a
+    /// scalar key, and it is why the round-trip tier still cannot assert unconditionally.
+    #[test]
+    fn a_standalone_note_above_a_compact_first_key_reaches_the_document() {
+        for key in [
+            noted_key(CustomNode::Null {
+                meta: Default::default(),
+            }),
+            noted_key(CustomNode::plain_scalar("a")),
+        ] {
+            let mut pairs = NodeMap::default();
+            pairs.insert(key, CustomNode::quoted_scalar("x"));
+            let node = CustomNode::Sequence {
+                items: vec![CustomNode::Mapping {
+                    pairs,
+                    flow_style: false,
+                    meta: Default::default(),
+                }],
+                flow_style: false,
+                meta: Default::default(),
+            };
+            let out = assert_reparses(&node);
+            assert!(out.contains("# 2"), "the key's note vanished: {out:?}");
+            // A note promoted to a line has to settle on the first emission: the reader hands a
+            // line above a mapping's first pair to the mapping, and the writer prints a
+            // container's notes above it too, so the shape must not keep moving.
+            let again = crate::parser::parse_with_options(
+                &out,
+                true,
+                crate::parser::yaml::Schema::Core,
+                1000,
+                false,
+            )
+            .expect("re-parse");
+            let twice = to_yaml(&again);
+            assert_eq!(twice, out, "second emission drifted: {out:?} -> {twice:?}");
+        }
+    }
+
     #[test]
     fn a_key_note_with_no_room_on_the_pair_line_is_written_above_it() {
         let mut key = CustomNode::plain_scalar("b");

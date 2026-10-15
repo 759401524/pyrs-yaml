@@ -5018,6 +5018,38 @@ caller-visible promise — both notes present, neither duplicated, the rewrite t
 `tests/test_fidelity.py::TestFidelity::test_both_notes_of_a_pair_survive_the_rewrite` under
 `pytest`. Both were red before the writer change.
 
+### (dc) The residual was one loss per 4000 trees, and the instrument that said 257 was the thing wrong (2026-10-15)
+
+`(db)` reported 257 notes still absent from the emitted text. That number measured the wrong
+predicate: it asked whether the note's **raw** text appears in the document, so a note of `" "` was
+judged lost (no comment carries padding) while a note of `"x"` sitting inside some scalar's text was
+judged kept. Re-asking with "the note's trimmed text appears in the document at all, blank texts
+exempt", the residual over the same 4000 trees was **3** — and shrinking found a minimal tree for
+the largest of them:
+
+```text
+tree     Sequence[ Mapping[ Null(key, standalone note "2") : " " ] ]
+emitted  - null: " "                 # the key's note, gone
+```
+
+The cause was a copy that stopped one line short: `write_mapping_pair` prints a simple key's leading
+notes above its pair, and the compact `- key: value` loop repeats that for every pair **but the
+first** — the first shares the dash line and has no line of its own, so nothing printed its key's
+notes. They now go above the item's line. One Rust test per key shape (`null` and a plain scalar),
+red before the fix on the exact emitted text.
+
+After that case closed, the measured residual is **1 loss in 4000 trees**: a standalone note on a
+block mapping value. It is named here rather than absorbed, and it is the last thing between
+`property-tier:conditional-assert` and an unconditional round-trip assertion — with one caveat the
+re-measurement made plain: the tolerance has to be stated over *trimmed* note text, because padding
+around a comment marker is not content any reader can recover, and a predicate that ignores that
+audits the writer for a thing writers cannot do.
+
+| predicate over 4000 trees | (db) | this pass |
+|:--------------------------|-----:|----------:|
+| raw note text absent from the document | 257 | — |
+| trimmed note text absent, blank texts exempt | 3 | 1 |
+
 ### (dd) The classifier refused to guess, and the guess it refused was a bug in the reader (2026-10-15)
 
 The round-trip tier's silent filter is being replaced by a classifier: each difference between a
