@@ -323,7 +323,8 @@ class YamlDocument:
         """
     def version(self, /) -> str:
         """
-        Return the YAML version string.
+        Return the YAML version: the one the document's `%YAML` directive declared, or this
+        reader's own version when the source declares none.
         """
 
     def append(self, path: "str", value: "Any") -> "None": ...

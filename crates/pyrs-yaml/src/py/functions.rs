@@ -49,8 +49,8 @@ pub(crate) fn parse_file(
     let schema_enum = parse_schema(schema)?;
     let schema_clone = schema_enum.clone();
     let content = crate::py::read_file_to_string(path)?;
-    let mut ast = py.detach(|| {
-        crate::parser::parse_with_options(
+    let parsed = py.detach(|| {
+        crate::parser::parse_document(
             &content,
             true,
             schema_clone,
@@ -59,9 +59,10 @@ pub(crate) fn parse_file(
         )
         .map_err(|e| parse_error_to_py_err(e, &content, max_depth))
     })?;
+    let mut ast = parsed.node;
     resolve_tags(&mut ast, py)?;
     let source: std::sync::Arc<str> = std::sync::Arc::from(content);
-    Ok(YamlDocument::new(ast, schema_enum, source))
+    Ok(YamlDocument::new(ast, schema_enum, source, parsed.version))
 }
 
 #[pyfunction]
@@ -77,8 +78,8 @@ pub(crate) fn parse_all_docs(
 ) -> PyResult<Vec<YamlDocument>> {
     let schema_enum = parse_schema(schema)?;
     let schema_clone = schema_enum.clone();
-    let asts = py.detach(|| {
-        crate::parser::parse_all_with_options(
+    let docs = py.detach(|| {
+        crate::parser::parse_all_documents(
             yaml,
             resolve_merges,
             schema_clone,
@@ -88,9 +89,9 @@ pub(crate) fn parse_all_docs(
         .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     let source: std::sync::Arc<str> = std::sync::Arc::from(yaml);
-    Ok(asts
+    Ok(docs
         .into_iter()
-        .map(|ast| YamlDocument::new(ast, schema_enum.clone(), source.clone()))
+        .map(|doc| YamlDocument::new(doc.node, schema_enum.clone(), source.clone(), doc.version))
         .collect())
 }
 

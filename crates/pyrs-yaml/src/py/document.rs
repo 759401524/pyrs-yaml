@@ -73,16 +73,31 @@ pub(crate) fn serialize_document(
 }
 
 impl YamlDocument {
+    /// What a document reports when its source carries no `%YAML` directive: this reader's own
+    /// version, which is the answer the API has always given.
+    const DEFAULT_VERSION: &'static str = "1.2";
+
     /// Uniform constructor for a freshly parsed document: all entries start
     /// at revision 0 with splice eligibility uncomputed. Every parse entry
     /// point (`parse`, `parse_file`, `parse_all_docs`, `YAML` variants) must
     /// go through here so derived state stays in sync.
-    pub(crate) fn new(ast: CustomNode, schema: Schema, source: Arc<str>) -> Self {
+    ///
+    /// `version` is what the document's `%YAML` directive declared, and `None` means the source
+    /// declared nothing. A document without a directive is reported as this reader's own version:
+    /// the alternative — `Optional[str]` and `None`, as PyYAML spells it — would widen a shipped
+    /// `-> str` and break every caller that compares to it, while the value it would carry means
+    /// "unset" rather than "not 1.2".
+    pub(crate) fn new(
+        ast: CustomNode,
+        schema: Schema,
+        source: Arc<str>,
+        version: Option<String>,
+    ) -> Self {
         YamlDocument {
             ast,
             schema,
             source: Some(source),
-            version: "1.2".to_string(),
+            version: version.unwrap_or_else(|| Self::DEFAULT_VERSION.to_string()),
             revision: 0,
             source_dirty: false,
             splice: None,
@@ -96,7 +111,7 @@ impl YamlDocument {
     /// [`ensure_splice`], so `splice` starts `None`.
     #[allow(dead_code)] // pub but struct is not pub — used by benches (separate crate)
     pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
-        YamlDocument::new(ast, crate::parser::yaml::Schema::Core, source)
+        YamlDocument::new(ast, crate::parser::yaml::Schema::Core, source, None)
     }
 
     /// Lazily compute splice eligibility on first edit. `splice_checked`
@@ -874,7 +889,8 @@ impl YamlDocument {
         self.revision
     }
 
-    /// Return the YAML version string.
+    /// Return the YAML version: the one the document's `%YAML` directive declared, or this
+    /// reader's own version when the source declares none.
     fn version(&self) -> &str {
         &self.version
     }
@@ -888,11 +904,14 @@ impl YamlDocument {
         })?;
         let schema_enum = parse_schema(schema)?;
         let schema_clone = schema_enum.clone();
-        let new_ast = py.detach(|| {
-            crate::parser::parse_with_options(source, resolve_merges, schema_clone, 1000, false)
+        let reparsed = py.detach(|| {
+            crate::parser::parse_document(source, resolve_merges, schema_clone, 1000, false)
                 .map_err(|e| parse_error_to_py_err(e, source, 1000))
         })?;
-        self.ast = new_ast;
+        self.ast = reparsed.node;
+        self.version = reparsed
+            .version
+            .unwrap_or_else(|| Self::DEFAULT_VERSION.to_string());
         self.schema = schema_enum;
         self.splice = None;
         self.splice_checked = false;
@@ -1203,8 +1222,8 @@ pub(crate) fn parse_document(
 
     let schema_enum = parse_schema(schema)?;
     let schema_clone = schema_enum.clone();
-    let mut ast = py.detach(|| {
-        crate::parser::parse_with_options(
+    let parsed = py.detach(|| {
+        crate::parser::parse_document(
             &yaml_str,
             resolve_merges,
             schema_clone,
@@ -1213,9 +1232,10 @@ pub(crate) fn parse_document(
         )
         .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
     })?;
+    let mut ast = parsed.node;
     resolve_tags(&mut ast, py)?;
     let source: Arc<str> = Arc::from(yaml_str);
-    Ok(YamlDocument::new(ast, schema_enum, source))
+    Ok(YamlDocument::new(ast, schema_enum, source, parsed.version))
 }
 
 pub(crate) fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) -> PyResult<()> {
