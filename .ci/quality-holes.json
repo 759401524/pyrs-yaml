@@ -16,7 +16,7 @@
   {
    "id": "property-tier:conditional-assert",
    "opened": "2026-10-14",
-   "why": "7 of the 24 properties assert only inside `if let Some(_) = try_roundtrip(..)`, so every sample the helper filters out is never asserted about; measured on 2026-10-14 the filter discarded 3423 of 4000 drawn trees",
+   "why": "7 of the 25 properties assert only inside `if let Some(_) = try_roundtrip(..)`, so every sample the helper filters out is never asserted about; measured on 2026-10-14 the filter discarded 3423 of 4000 drawn trees",
    "exit": "`python scripts/quality_matrix.py --holes` stops printing property-tier:conditional-assert, which happens when no `prop_*` body guards its assertion on an Option-returning helper - each mismatch is then either asserted or named in an enumerated set of tolerated normalizations, so the whitelist is capped rather than open-ended"
   }
  ]

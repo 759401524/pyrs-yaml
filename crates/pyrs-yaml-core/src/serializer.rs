@@ -478,9 +478,11 @@ impl Serializer {
     /// conventions: `standalone_slot()` normalises so a TOML-origin node's
     /// leading note lands on the same line as its `{}`.
     fn output_empty_node_comment(&mut self, meta: &NodeMeta) {
-        if let Some(c) = empty_slot_notes(meta).0 {
+        if let Some(c) = empty_slot_notes(meta).0
+            && note_is_writable(c)
+        {
             self.output.push_str("  # ");
-            self.output.push_str(&c.text);
+            self.output.push_str(note_text_to_write(&c.text));
             self.trailing_note_slot_open = false;
         } else {
             self.trailing_note_slot_open = true;
@@ -570,10 +572,13 @@ impl Serializer {
     /// round; writing the value's own null text first — `k: !- ~` — keeps the note where
     /// the AST has it and settles at once (crash-c5b367d3).
     fn write_note_line(&mut self, indent_width: usize, text: &str) {
+        if note_text_to_write(text).is_empty() {
+            return;
+        }
         self.close_pending_tag_line();
         self.write_indent(indent_width);
         self.output.push_str("# ");
-        self.output.push_str(text);
+        self.output.push_str(note_text_to_write(text));
         self.output.push('\n');
         // A note line has used its trailing slot, and a following note cannot
         // share it.
@@ -749,10 +754,11 @@ impl Serializer {
         let mut noted = false;
         if let Some(c) = meta.comment()
             && !c.standalone
+            && note_is_writable(c)
             && !block_body
         {
             self.output.push_str("  # ");
-            self.output.push_str(&c.text);
+            self.output.push_str(note_text_to_write(&c.text));
             noted = true;
         }
         // The slot is used up by this scalar's own note, and neither a block
@@ -776,6 +782,15 @@ impl Serializer {
         depth: usize,
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
+        // A flow mapping that carries a note it cannot spell goes block rather than dropping the
+        // note: inside the braces each member owns one line-end slot, so a second note — or a
+        // container holding one further down — has no room while any ancestor stays in flow
+        // (maintainer ruling, 2026-10-14). Asked only when the node claims flow style, so a block
+        // document still pays nothing here.
+        let flow_style = flow_style
+            && pairs
+                .iter()
+                .all(|(k, v)| notes_have_flow_spelling(k) && notes_have_flow_spelling(v));
         // A note stack riding the first entry cannot stay *below* this node's own
         // anchor/tag header line: granit reports a note in that position as the
         // tagged node's leading comment, so the next round moves it above the
@@ -798,12 +813,12 @@ impl Serializer {
         };
         self.write_container_node(
             &sk,
-            |s| {
+            |s, flow_column| {
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     if i > 0 {
                         s.output.push_str(", ");
                     }
-                    s.write_flow_pair(key, value, depth)?;
+                    s.write_flow_pair(key, value, depth, flow_column)?;
                 }
                 Ok(())
             },
@@ -846,6 +861,9 @@ impl Serializer {
         depth: usize,
         in_value_context: bool,
     ) -> Result<(), SerializeError> {
+        // Same rule as a flow mapping: an item note the braces cannot hold sends the sequence to
+        // block style rather than being dropped.
+        let flow_style = flow_style && items.iter().all(notes_have_flow_spelling);
         // Same lift as a block mapping's first key: a note under a `&a` / `!tag`
         // header line re-reads as the sequence's own leading comment.
         let (stripped_items, preamble_notes) =
@@ -863,12 +881,12 @@ impl Serializer {
         };
         self.write_container_node(
             &sk,
-            |s| {
+            |s, flow_column| {
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {
                         s.output.push_str(", ");
                     }
-                    s.serialize_flow_value(item, depth + 1)?;
+                    s.write_flow_item(item, depth, flow_column)?;
                 }
                 Ok(())
             },
@@ -896,7 +914,7 @@ impl Serializer {
     fn write_container_node(
         &mut self,
         sk: &ContainerSkeleton<'_>,
-        flow: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
+        flow: impl FnOnce(&mut Self, usize) -> Result<(), SerializeError>,
         block_sorted: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
         block: impl FnOnce(&mut Self) -> Result<(), SerializeError>,
     ) -> Result<(), SerializeError> {
@@ -926,15 +944,21 @@ impl Serializer {
                 self.write_anchor_tag(meta);
             }
             self.output.push(open);
+            // The column a member note's continuation must land on: one past this bracket, read off
+            // the line as written (a container that starts its own line and one that follows `k: `
+            // or `- ` both get their own column).
+            let flow_column = self.column_after_open();
             if !empty {
-                flow(self)?;
+                flow(self, flow_column)?;
             }
             self.output.push(close);
             if empty {
                 self.output_empty_node_comment(meta);
-            } else if let Some(c) = meta.inline_slot() {
+            } else if let Some(c) = meta.inline_slot()
+                && note_is_writable(c)
+            {
                 self.output.push_str("  # ");
-                self.output.push_str(&c.text);
+                self.output.push_str(note_text_to_write(&c.text));
                 self.trailing_note_slot_open = false;
             } else {
                 self.trailing_note_slot_open = true;
@@ -977,6 +1001,7 @@ impl Serializer {
 
             if let Some(c) = meta.comment()
                 && !c.standalone
+                && note_is_writable(c)
             {
                 // A note in a container's *inline* slot has to land on a line the reader
                 // reports inline notes from, and for most shapes that is the line the block
@@ -1003,7 +1028,7 @@ impl Serializer {
                 {
                     self.output.pop();
                     self.output.push_str("  # ");
-                    self.output.push_str(&c.text);
+                    self.output.push_str(note_text_to_write(&c.text));
                     self.output.push('\n');
                     self.trailing_note_slot_open = false;
                 } else {
@@ -1028,9 +1053,10 @@ impl Serializer {
         self.output.push_str("null");
         if let Some(c) = meta.comment()
             && !c.standalone
+            && note_is_writable(c)
         {
             self.output.push_str("  # ");
-            self.output.push_str(&c.text);
+            self.output.push_str(note_text_to_write(&c.text));
             self.trailing_note_slot_open = false;
         } else {
             self.trailing_note_slot_open = true;
@@ -1525,7 +1551,7 @@ impl Serializer {
             // `|`/`>` would be absorbed into the block content on re-read
             // (libFuzzer `yaml_roundtrip` crash-cfb3fa83).
             self.output.push_str("  # ");
-            self.output.push_str(text);
+            self.output.push_str(note_text_to_write(text));
         }
     }
 
@@ -1718,7 +1744,23 @@ impl Serializer {
         }
     }
 
-    /// 在 flow 上下文中序列化值（不追加换行符）。
+    /// A member's note inside a flow container, written on the line the member ends.
+    ///
+    /// `#` closes its line, so the rest of the pair starts on the next one at `flow_column` — the
+    /// column just past the bracket that opened this container. Measured: the reader accepts any
+    /// column for a closing bracket or a following `, `, but refuses a *value* at column 0 when the
+    /// container opened mid-line (`k: {` / `- {`), which is "wrongly indented flow collection
+    /// continuation". One deeper than the bracket satisfies every context, including a block item
+    /// whose dash already owns the shallower columns.
+    fn write_flow_note(&mut self, gap: &str, note: &Comment, flow_column: usize) {
+        self.output.push_str(gap);
+        self.output.push_str("# ");
+        self.output.push_str(note_text_to_write(&note.text));
+        self.output.push('\n');
+        self.write_indent(flow_column);
+        self.trailing_note_slot_open = false;
+    }
+
     /// Write one pair of a flow mapping: `key: value`, or `? *x : value` for an alias key.
     ///
     /// Both flow writers route through here so the marker rule lives once — it is the same rule
@@ -1729,16 +1771,60 @@ impl Serializer {
         key: &CustomNode,
         value: &CustomNode,
         depth: usize,
+        flow_column: usize,
     ) -> Result<(), SerializeError> {
-        if let CustomNode::Alias { name } = key {
-            self.output.push_str("? *");
-            self.output.push_str(name);
-            self.output.push_str(" : ");
-        } else {
-            self.write_scalar_for_key(key, true);
-            self.output.push_str(": ");
+        // Read through the note's own slot first: the reader attaches a note that ends the key's
+        // line to the key, so a key note cannot be written after the value.
+        let key_note = flow_member_note(key);
+        match key {
+            CustomNode::Alias { name } => {
+                self.output.push_str("? *");
+                self.output.push_str(name);
+                // The space before the colon belongs to the marker form: `*x:` reads back as an
+                // alias named `x:`, which resolves to no anchor at all.
+                self.output.push_str(" :");
+            }
+            CustomNode::Mapping { .. } | CustomNode::Sequence { .. } => {
+                self.output.push_str("? ");
+                self.serialize_flow_value(key, depth + 1)?;
+                self.output.push(':');
+            }
+            other => {
+                self.write_scalar_for_key(other, true);
+                self.output.push(':');
+            }
         }
-        self.serialize_flow_value(value, depth + 1)
+        match key_note {
+            Some(note) => self.write_flow_note(" ", note, flow_column),
+            None => self.output.push(' '),
+        }
+        self.serialize_flow_value(value, depth + 1)?;
+        if let Some(note) = flow_member_note(value) {
+            self.write_flow_note("  ", note, flow_column);
+        }
+        Ok(())
+    }
+
+    /// Write one element of a flow sequence, with the note its slot can still hold.
+    fn write_flow_item(
+        &mut self,
+        item: &CustomNode,
+        depth: usize,
+        flow_column: usize,
+    ) -> Result<(), SerializeError> {
+        self.serialize_flow_value(item, depth + 1)?;
+        if let Some(note) = flow_member_note(item) {
+            self.write_flow_note("  ", note, flow_column);
+        }
+        Ok(())
+    }
+
+    /// Column just past the bracket that was written last, i.e. where a line broken by a member
+    /// note has to continue. Read off the buffer's current line, so a container that begins its own
+    /// line and one that follows `k: ` or `- ` both land one deeper than their bracket.
+    fn column_after_open(&self) -> usize {
+        let line_start = self.output.rfind('\n').map_or(0, |i| i + 1);
+        self.output.len() - line_start
     }
 
     fn serialize_flow_value(
@@ -1799,11 +1885,12 @@ impl Serializer {
                     self.write_anchor_tag(meta);
                 }
                 self.output.push('{');
+                let flow_column = self.column_after_open();
                 for (i, (key, value)) in pairs.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.write_flow_pair(key, value, depth)?;
+                    self.write_flow_pair(key, value, depth, flow_column)?;
                 }
                 self.output.push('}');
             }
@@ -1812,11 +1899,12 @@ impl Serializer {
                     self.write_anchor_tag(meta);
                 }
                 self.output.push('[');
+                let flow_column = self.column_after_open();
                 for (i, item) in items.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.serialize_flow_value(item, depth + 1)?;
+                    self.write_flow_item(item, depth, flow_column)?;
                 }
                 self.output.push(']');
             }
@@ -2141,6 +2229,65 @@ fn empty_slot_notes(meta: &NodeMeta) -> (Option<&Comment>, &[Comment]) {
 /// has the parent pre-emit the header, so neither is affected.
 fn writes_block_header(meta: &NodeMeta, flow_style: bool, in_value_context: bool) -> bool {
     !flow_style && !in_value_context && (meta.anchor().is_some() || meta.tag().is_some())
+}
+
+/// What a note's text looks like on the line: the reader hands a comment back without its
+/// surrounding blanks, so a writer that keeps them emits a line whose re-read differs and the
+/// document settles only on its second round (`{a: A  #  A }` reads back as `A`, which re-emits as
+/// `# A`). Every site that puts a note on a line goes through here, flow and block alike, so one
+/// rule answers it once and the first emission is already canonical.
+fn note_text_to_write(text: &str) -> &str {
+    text.trim_matches(pyrs_schema::is_yaml_blank)
+}
+
+/// Whether a note still has something to say once its blanks are gone. A comment of only blanks has
+/// only spaces has no spelling this engine's reader keeps - `#  ` comes back as no comment at
+/// all - so writing one makes the next round differ, and the canonical emission writes none.
+/// Every site that can put a note on a line asks this, so the answer stays in one place.
+fn note_is_writable(note: &Comment) -> bool {
+    !note_text_to_write(&note.text).is_empty()
+}
+
+/// The one note slot a flow member has: this engine's reader attaches a note inside the braces to
+/// the member whose line it ends, and only there — measured over eight spellings, and the reason a
+/// note that owns its own line in the tree is written as a line-end note here.
+///
+/// Reading the two slots through `inline_slot` / `standalone_slot` keeps one answer with
+/// `NodeMeta::standalone_slice`: a note can live in either convention, and a writer that peeked at
+/// only one of them would call a decorated member note-free.
+fn flow_member_note(node: &CustomNode) -> Option<&Comment> {
+    node.comment()
+        .filter(|c| !c.standalone)
+        .or_else(|| node.leading_comments().first())
+        .filter(|note| note_is_writable(note))
+}
+
+/// Whether a member carries more notes than flow context can hold. A second note has no slot, and
+/// silently dropping one is the loss this path used to commit for every member note.
+///
+/// `leading_comments` is the normalised standalone view — it already reports a note carried in the
+/// legacy `comment` slot — so counting it next to the inline slot cannot double-count one.
+fn member_overflows_flow(node: &CustomNode) -> bool {
+    usize::from(node.comment().is_some_and(|c| !c.standalone)) + node.leading_comments().len() > 1
+}
+
+/// Whether every note below `node` has a spelling inside a flow collection.
+///
+/// A flow collection can only nest flow collections, so one member with two notes — or a container
+/// holding one further down — has no representation while an ancestor stays in braces, and the
+/// outermost such container is the one that must go block. The container's *own* note is not this
+/// function's business: `write_container_node` already writes it after the closing bracket.
+fn notes_have_flow_spelling(node: &CustomNode) -> bool {
+    if member_overflows_flow(node) {
+        return false;
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => pairs
+            .iter()
+            .all(|(k, v)| notes_have_flow_spelling(k) && notes_have_flow_spelling(v)),
+        CustomNode::Sequence { items, .. } => items.iter().all(notes_have_flow_spelling),
+        _ => true,
+    }
 }
 
 /// Lift a block mapping's first-entry leading-note stack above the anchor/tag
@@ -3198,6 +3345,172 @@ mod tests {
         );
         let again = to_yaml(&parse_core(&one));
         assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+    }
+
+    /// A note that ends a flow member's line is the one slot this engine's reader hands back to
+    /// that member, measured over eight spellings: the value's note after the value, the key's
+    /// note after the `:` (which forces the value onto the next line), an item's note after the
+    /// item. Before this the writer answered none of them — the AST kept the note, `{A: x}` came
+    /// out without it, and the note was gone for whoever read the text back.
+    #[test]
+    fn a_note_on_a_flow_member_is_written_and_reads_back() {
+        for (src, expected) in [
+            ("{A: x  # V\n}\n", "{A: x  # V\n }\n"),
+            ("{A: # K\n  x}\n", "{A: # K\n x}\n"),
+            ("[x  # V\n]\n", "[x  # V\n ]\n"),
+            ("{A: 1, B: x  # V\n}\n", "{A: 1, B: x  # V\n }\n"),
+            ("{A: x  # U\n, B: 2}\n", "{A: x  # U\n , B: 2}\n"),
+        ] {
+            let node = parse_core(src);
+            let one = to_yaml(&node);
+            assert_eq!(one, expected, "flow note emission for {src:?}");
+            assert_eq!(
+                parse_core(&one),
+                node,
+                "the note or the member changed shape on re-read: {one:?}"
+            );
+            let again = to_yaml(&parse_core(&one));
+            assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+        }
+    }
+
+    /// A member note forces a line break, so the pair's continuation must not start at column 0
+    /// when the container itself began mid-line: the reader reports `wrongly indented flow
+    /// collection continuation` for that, both under a `k:` and under a `- `. The writer indents
+    /// one past the bracket it wrote, which is measured to satisfy every context.
+    #[test]
+    fn a_flow_member_note_continues_deeper_than_the_block_that_holds_it() {
+        for (src, expected) in [
+            ("k:\n  {A: x  # V\n  }\n", "k: {A: x  # V\n    }\n"),
+            ("- {A: x  # V\n}\n", "- {A: x  # V\n   }\n"),
+            ("{A: [x  # V\n]}\n", "{A: [x  # V\n     ]}\n"),
+        ] {
+            let node = parse_core(src);
+            let one = to_yaml(&node);
+            assert_eq!(one, expected, "continuation column for {src:?}");
+            let again = to_yaml(&parse_core(&one));
+            assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+        }
+    }
+
+    /// A note the reader never hands to a flow member is a note the braces cannot hold: two on one
+    /// member, and the second has no slot. Such a container goes block, where every note keeps its
+    /// own line — the same answer the block path already gives.
+    #[test]
+    fn two_notes_on_one_flow_member_send_the_container_to_block() {
+        let mut value = CustomNode::plain_scalar("x");
+        value.push_leading_comment(Comment {
+            text: "L1".into(),
+            standalone: true,
+        });
+        value.push_leading_comment(Comment {
+            text: "L2".into(),
+            standalone: true,
+        });
+        value.set_comment(Comment {
+            text: "T".into(),
+            standalone: false,
+        });
+        let mut pairs = NodeMap::default();
+        pairs.insert(CustomNode::plain_scalar("A"), value);
+        let flow = CustomNode::Mapping {
+            pairs,
+            flow_style: true,
+            meta: NodeMeta::default(),
+        };
+        let one = to_yaml(&flow);
+        assert_eq!(one, "A:\n  # L1\n  # L2\n  x  # T\n");
+        for text in ["L1", "L2", "T"] {
+            assert!(one.contains(text), "note {text} missing from {one:?}");
+        }
+        let again = to_yaml(&parse_core(&one));
+        assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+    }
+
+    /// The other half of what the shrinking probe surfaced: a container used as a key inside a
+    /// flow mapping. `write_scalar_for_key` has nothing to say about a mapping or a sequence, so
+    /// the pair came back keyed by `null` — the same corruption PR #410 closed for an alias key,
+    /// in the sibling branch of the same call. The marker form is measured readable for all three
+    /// container shapes.
+    #[test]
+    fn a_container_key_in_a_flow_mapping_keeps_its_marker() {
+        for src in ["{? {} : v}\n", "{? {A: 1} : v}\n", "{? [1, 2] : v}\n"] {
+            let node = parse_core(src);
+            let one = to_yaml(&node);
+            assert!(one.contains("? "), "explicit-key marker dropped: {one:?}");
+            assert_eq!(
+                parse_core(&one),
+                node,
+                "container key lost in one round: {src:?} -> {one:?}"
+            );
+            let again = to_yaml(&parse_core(&one));
+            assert_eq!(again, one, "not a fixed point: {one:?} -> {again:?}");
+        }
+    }
+
+    /// A comment whose whole text is whitespace is not a note this engine's reader keeps: the line
+    /// is a marker plus blanks, and the tree comes back with nothing attached. Recorded because the
+    /// flow-note property in `pbt.rs` excludes exactly this case — an exclusion with no measurement
+    /// beside it is where a blind spot goes back to sleep.
+    #[test]
+    fn a_comment_of_only_whitespace_is_not_a_note_the_reader_keeps() {
+        fn carries_a_note(node: &CustomNode) -> bool {
+            let own = node.comment().is_some() || !node.leading_comments().is_empty();
+            own || match node {
+                CustomNode::Mapping { pairs, .. } => pairs
+                    .iter()
+                    .any(|(k, v)| carries_a_note(k) || carries_a_note(v)),
+                CustomNode::Sequence { items, .. } => items.iter().any(carries_a_note),
+                _ => false,
+            }
+        }
+        for src in ["{a: 1  #  \n}\n", "a: 1  #  \n", "[1  # \n]\n"] {
+            let node = parse_core(src);
+            assert!(
+                !carries_a_note(&node),
+                "a whitespace-only note survived: {src:?}"
+            );
+        }
+    }
+
+    /// A comment's trailing blanks are not part of its text: the reader hands `A ` back as `A`, and
+    /// a comment of only blanks as no comment at all — in block style exactly as in flow, which is
+    /// why the flow property normalizes the same way instead of the writer trying to fight it.
+    #[test]
+    fn a_comments_trailing_blanks_are_not_part_of_its_text() {
+        let node = parse_core("a: 1  # A \n");
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            panic!("expected a mapping");
+        };
+        let (_, value) = pairs.iter().next().unwrap_or_else(|| panic!("no pair"));
+        let text = value
+            .comment()
+            .map(|c| c.text.to_string())
+            .unwrap_or_else(|| "<none>".to_string());
+        assert_eq!(text, "A", "trailing blank kept in the comment text");
+    }
+
+    /// A note whose whole text is blanks has no spelling this reader keeps, so the canonical
+    /// emission writes none: `null  # ` re-reads as no note at all, and a second round would then
+    /// differ from the first. Flow and block answer it the same way, from one rule.
+    #[test]
+    fn a_blank_note_is_written_nowhere_and_leaves_the_line_alone() {
+        let build = |flow: bool| {
+            let mut value = CustomNode::plain_scalar("x");
+            value.set_comment(Comment {
+                text: " ".into(),
+                standalone: false,
+            });
+            let mut pairs = NodeMap::default();
+            pairs.insert(CustomNode::plain_scalar("A"), value);
+            CustomNode::Mapping {
+                pairs,
+                flow_style: flow,
+                meta: NodeMeta::default(),
+            }
+        };
+        assert_eq!(to_yaml(&build(true)), "{A: x}\n");
+        assert_eq!(to_yaml(&build(false)), "A: x\n");
     }
 
     /// Each pair of a multi-pair compact item owns its own line, so each key note has to
