@@ -150,12 +150,25 @@ struct Serializer {
     pair_line_start: usize,
 }
 
-/// Chomping actually written for a block scalar. A Clip-chomped value whose
-/// content carries trailing blank lines cannot round-trip as Clip: granit's
-/// Clip read strips every trailing line that ends with a newline, so the only
-/// header form that re-reads to the same value at any position is Keep
-/// (`+`) — libFuzzer `yaml_roundtrip` crash-c18cb1fd. The promotion is a
-/// pure emit-side normalization: the AST keeps its parsed `Clip`.
+/// Chomping actually written for a block scalar: the claim is honored wherever a header can spell it.
+///
+/// The three indicators say how much of the body's line-break tail survives a read - `|-` none, `|`
+/// exactly one, `|+` all of them. Two claims have no header at all: `Clip` and `Keep` each hand back at
+/// least one trailing break, so claimed for a value that ends in none they would *invent a byte*. Those are
+/// the claims this rule corrects, to `Strip`. `Strip` is never corrected in the other direction, even when
+/// the value ends in a break: `-` exists, and asking for it is exactly the edit a caller means -
+/// `set_chomping("strip")` on a clipped value is a request that the next read drop that break, and deriving
+/// `|` back would overrule a header the user just set.
+///
+/// The `Clip` promotions stay as they were, and they are the same kind of case: a value ending in blank
+/// lines cannot round-trip as Clip at any position, because granit's Clip read strips every trailing line
+/// that ends with a newline, so `+` is the only header that re-reads to the same value (libFuzzer
+/// `yaml_roundtrip` crash-c18cb1fd).
+///
+/// Measured through the property tier's mismatch taxonomy: honoring `Clip` for a value without a trailing
+/// break wrote `|\n  abc\n`, which reads back as `abc\n` - 255 of 4000 drawn trees, each one a value of
+/// length N read as length N+1. The pinned block fixtures all carried a trailing `\n` in their values, which
+/// is how the rule went untested.
 ///
 /// `no_content_line` is the caller's already-computed `first_text_line.is_empty()`: the
 /// body holds no line with text in it, so it is either empty or made of nothing but
@@ -184,11 +197,13 @@ fn effective_chomping(value: &str, chomping: &Chomping, no_content_line: bool) -
     if value.is_empty() {
         return Chomping::Clip;
     }
-    if matches!(chomping, Chomping::Clip) && (value.ends_with("\n\n") || no_content_line) {
-        Chomping::Keep
-    } else {
-        *chomping
+    if matches!(chomping, Chomping::Clip) && (no_content_line || value.ends_with("\n\n")) {
+        return Chomping::Keep;
     }
+    if matches!(chomping, Chomping::Clip | Chomping::Keep) && !value.ends_with('\n') {
+        return Chomping::Strip;
+    }
+    *chomping
 }
 
 /// Whether a node can be serialized inline on the same line as a mapping
@@ -2760,6 +2775,71 @@ mod tests {
         }
     }
 
+    /// A block scalar whose text ends without a break keeps its text.
+    ///
+    /// Clip *denotes* one trailing line break, so writing `|` for the value `abc` re-reads as
+    /// `abc\n` — the document invents a byte the tree never held. The only faithful header for such a
+    /// body is `|-`, which is what `effective_chomping` now derives. Found by the property tier's
+    /// mismatch taxonomy: 255 of 4000 drawn trees, and every one of them the same shape — a value of
+    /// length N read back as length N+1 ending in a break. The pinned block tests all carry a trailing
+    /// `\n` in their fixture values, which is why none of them ever reached it.
+    #[test]
+    fn a_block_scalar_without_a_trailing_break_keeps_its_text() {
+        for style in [ScalarStyle::Literal, ScalarStyle::Folded] {
+            for value in ["abc", "a\nb", "line one\nline two"] {
+                let node = CustomNode::Scalar {
+                    value: Arc::from(value),
+                    style,
+                    chomping: Chomping::Clip,
+                    block_indent: None,
+                    meta: Default::default(),
+                };
+                let emitted = to_yaml(&node);
+                let again = crate::parser::parse(&emitted, pyrs_schema::types::Schema::Core)
+                    .unwrap_or_else(|error| panic!("{style:?} {value:?}: must re-parse: {error}"));
+                assert_eq!(
+                    block_value(&again),
+                    value,
+                    "{style:?} clip for {value:?} wrote {emitted:?}"
+                );
+            }
+        }
+    }
+
+    /// A `Strip` claim survives even when the value ends in a break.
+    ///
+    /// The other direction from the rule above is *not* corrected, and the difference is whether the claim
+    /// can be spelled at all: `|-` exists, and choosing it is exactly the edit a caller means when it sets
+    /// the header to strip - the next read drops the break. Deriving it back to `|` would overrule a header
+    /// the user just set, so the derivation stops at the claims no header can express. Pinned here as well
+    /// as at the Python boundary, where `set_chomping("strip")` on a clipped value is the same promise.
+    #[test]
+    fn a_strip_claim_survives_a_value_that_ends_in_a_break() {
+        assert_eq!(
+            effective_chomping("abc\n", &Chomping::Strip, false),
+            Chomping::Strip
+        );
+        for style in [ScalarStyle::Literal, ScalarStyle::Folded] {
+            let node = CustomNode::Scalar {
+                value: Arc::from("abc\n"),
+                style,
+                chomping: Chomping::Strip,
+                block_indent: None,
+                meta: Default::default(),
+            };
+            let emitted = to_yaml(&node);
+            let indicator = match style {
+                ScalarStyle::Literal => "|-",
+                ScalarStyle::Folded => ">-",
+                other => panic!("not a block style: {other:?}"),
+            };
+            assert!(
+                emitted.contains(indicator),
+                "{style:?} strip claim wrote {emitted:?}, expected {indicator:?} in it"
+            );
+        }
+    }
+
     #[test]
     fn a_note_after_a_tag_only_value_settles_in_one_round() {
         // libFuzzer `yaml_roundtrip`, crash-cf49fe85: a block mapping's own inline note
@@ -4124,7 +4204,7 @@ mod tests {
             meta: Default::default(),
         };
         let out = assert_reparses(&node);
-        assert_yaml_eq!("a:\n  b: |4\n      x\n      y\n", &out);
+        assert_yaml_eq!("a:\n  b: |-4\n      x\n      y\n", &out);
     }
 
     /// No indicator in, no indicator out: the writer must not invent one
@@ -4139,7 +4219,7 @@ mod tests {
             meta: Default::default(),
         };
         let out = assert_reparses(&node);
-        assert_yaml_eq!("b: |\n  x\n  y\n", &out);
+        assert_yaml_eq!("b: |-\n  x\n  y\n", &out);
     }
 
     #[test]
@@ -4161,7 +4241,7 @@ mod tests {
             meta: Default::default(),
         };
         let out = assert_reparses(&node);
-        assert_yaml_eq!("a:\n  b: |\n    x\n    y\n", &out);
+        assert_yaml_eq!("a:\n  b: |-\n    x\n    y\n", &out);
     }
 
     #[test]
@@ -4172,7 +4252,7 @@ mod tests {
             meta: Default::default(),
         };
         let out = assert_reparses(&seq);
-        assert_yaml_eq!("- |\n  x\n  y\n", &out);
+        assert_yaml_eq!("- |-\n  x\n  y\n", &out);
     }
 
     #[test]
@@ -4189,7 +4269,7 @@ mod tests {
             meta: Default::default(),
         };
         let out = assert_reparses(&seq);
-        assert_yaml_eq!("- b: |\n    x\n    y\n", &out);
+        assert_yaml_eq!("- b: |-\n    x\n    y\n", &out);
     }
 
     #[test]

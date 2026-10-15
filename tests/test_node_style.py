@@ -114,6 +114,20 @@ class TestNodeChomping:
         with pytest.raises(pyrs_yaml.YamlEditError):
             Node(doc).find("$.key").set_chomping("bogus")
 
+    def test_a_clipped_block_whose_text_ends_without_a_break_is_stripped(self):
+        """Asking for clip on a body that has no trailing break does not give it one.
+
+        `|` *denotes* one trailing line break, so writing it for `line1\nline2` re-reads as
+        `line1\nline2\n` - a byte the document invents. The writer keeps the header the body can actually
+        carry (`|-`), so the value survives the round trip. The instruction is expressible the other way
+        (`set_chomping("strip")` above drops a break on purpose), which is why only this direction is
+        corrected.
+        """
+        doc = pyrs_yaml.parse("key: |-\n  line1\n  line2\n")
+        Node(doc).find("$.key").set_chomping("clip")
+        assert doc.to_yaml() == "key: |-\n  line1\n  line2\n"
+        assert pyrs_yaml.safe_load(doc.to_yaml())["key"] == "line1\nline2"
+
 
 class TestNodeStyleErrors:
     def test_edit_alias_error(self):
