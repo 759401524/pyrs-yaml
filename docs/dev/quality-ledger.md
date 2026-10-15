@@ -5347,6 +5347,34 @@ because the elevated draw is orthogonal to the change it is testing. Rust owns t
 (`a_number_the_json5_reader_refuses_is_not_emitted_bare`, red on `00.` before the fix); the
 property keeps the whole spelling space covered, and the unit test names the pair.
 
+### (dn) The question a writer asks its own reader, asked from a table (2026-10-15)
+
+The defect behind PR #432 was found by a draw, not by a check: `prop_json5_output_reparses` built
+`00.` among 20 000
+
+generated trees and only then did anyone ask whether `is_json5_number`'s question - "digits, then a
+dot" - is the question `from_json5` answers. Random draws are the right tool for shapes nobody
+thought of; they are the wrong tool for a spelling list that is already known, because the next
+disagreement waits for a lucky draw too.
+
+So the corpus is now asked directly.
+`every_dialect_reads_back_what_it_writes_for_the_notation_corpus` (pyrs-json) runs 24 notations a
+YAML plain scalar can carry - JSON's own forms, the JSON5-only spellings #120 admits, notations
+strict JSON must normalise, and non-numbers - against all three dialect writers, and
+`to_toml_reads_back_what_it_writes_for_the_notation_corpus` (pyrs-toml) asks the same of 18
+spellings. A writer refusing a value passes: that is a stated reason, not a loss. What fails is text
+its own reader rejects.
+
+Measured that the tests bite rather than decorate: weakening `json5_integer_part` back to the loose
+predicate fails the JSON family corpus at
+
+```text
+json5 wrote "[00.]" for the spelling "00.", which its own reader refuses
+```
+
+and the TOML corpus passes on the spellings its sweep had already shown to read back (`01`, `001`,
+`+7`, `1_000`, `0o17`), so it records a boundary rather than asserting a hope.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

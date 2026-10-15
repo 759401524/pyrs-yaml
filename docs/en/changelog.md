@@ -19,6 +19,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **A notation corpus asks every writer the question its own reader answers.** — the defect #432
+  fixed was a writer's bare-token predicate asking a cheaper question than the reader's grammar, and
+  the property tier found it only because 20 000 draws happened to build `00.`. Two table-driven
+  tests now ask that question of every notation a YAML plain scalar can carry - 24 spellings across
+  JSON, JSONC and JSON5, 18 across TOML - so the next disagreement names the spelling and the
+  dialect instead of arriving as a random failure. Measured to bite: weakening `json5_integer_part`
+  back to "digits then a dot" fails the corpus at `json5 wrote "[00.]" for the spelling "00."`. —
+  (details: quality-ledger (dn))
+
 - **The writer's stance on a mapping its own reader resolves as one key is now a ruling, with both
   halves pinned.** — issue #336 asked what `to_yaml` should do when a mapping holds `!E null`
   carrying a note beside a bare `!E null`. Folding the pair on write was built and priced: from
