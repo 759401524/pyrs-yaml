@@ -50,6 +50,15 @@ the gate naming its line instead of shipping as an unusable artifact.
    declarations cannot go stale; `EXPECTED_EXCEPTION_CLASSES` is the tripwire for an exception appearing or
    disappearing, and an unimportable extension exits 2 instead of quietly producing a thinner contract.
 
+5. `attached_member_block` declares what no generator can see: the members `python/pyrs_yaml/__init__.py` puts
+   onto the extension's classes at import time. maturin introspects the compiled module before the package has
+   run, so the artifact `py.typed` advertises described a class the runtime only offers after it - measured with
+   mypy 2.4.0 against the installed package, `document.node()` named a member that existed in no artifact, and
+   `pyrs_yaml.parse()` answered `Any` because the wrapper dropped the binding's `-> YamlDocument`. The
+   declarations are read from the compiled module's own classes (`vars()`, so an inherited `add_note` is not a
+   member), signatures and docstrings included, and a member the package does not annotate is an error rather
+   than a written `Any`. `EXPECTED_ATTACHED_MEMBERS` is the same kind of tripwire as item 4's count.
+
 Usage:
     uv run maturin generate-stubs --out target/stubs
     python scripts/check_stub_drift.py            # verify only
@@ -64,8 +73,10 @@ import argparse
 import ast
 import builtins
 import difflib
+import inspect
 import re
 import sys
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -103,6 +114,20 @@ EXPECTED_EXCEPTION_CLASSES = 10
 
 EXCEPTION_SUFFIXES = ("Error", "Exception")
 EXCEPTION_ALIASES = ("YamlTagSkip",)
+
+# The public members `python/pyrs_yaml/__init__.py` attaches to a native class after import. The generator
+# introspects the built module at a moment the package has not run, so it cannot see them and the shipped
+# contract declared a class the runtime does not offer: measured with mypy 2.4.0 against the installed
+# package, `document.node("a")` named a member no artifact declares. Like the exception types these are read
+# from the live package - here from `vars()` of each class the generator wrote, so an inherited `add_note` is
+# not mistaken for a member of the error types - and `EXPECTED_ATTACHED_MEMBERS` is the tripwire that makes an
+# attached member appearing or disappearing a review rather than a silent re-narrowing of the contract.
+EXPECTED_ATTACHED_MEMBERS = 12
+
+# Annotation names the attached members use that no `typing` import can supply, mapped to the module they live
+# in spelled relative to the package the stub ships inside. A name outside this map is left to
+# `add_typing_imports`, which fails the run when nothing can name it.
+ATTACHED_MEMBER_MODULES = {"Node": ".node", "MergedView": ".merged_view"}
 
 # Measured on the pinned generator: two docstring lines contain a backslash, both written by maturin
 # 1.14.1 straight out of the Rust doc comment. A third site or a fixed upstream changes the count, and
@@ -296,6 +321,25 @@ def order_by_base(entries: list[tuple[str, str, str]]) -> list[tuple[str, str, s
     return ordered
 
 
+def package_namespace():
+    """The installed package the derivation reads its live contract from.
+
+    Raises:
+        StubInputError: when the built extension cannot be imported. Both the exception declarations and the
+            attached members are read from the running object, and a route that skipped them because the build
+            was absent would ship a typing contract narrower than the bindings - which is the state this file
+            exists to prevent, so it is an error (exit 2) rather than a shorter file.
+    """
+    try:
+        import pyrs_yaml
+    except ImportError as error:
+        raise StubInputError(
+            f"cannot import pyrs_yaml to read its live contract ({error}); the committed stub is only "
+            "derivable while the built extension is importable - run `uv run maturin develop` first"
+        ) from error
+    return pyrs_yaml
+
+
 def extension_exceptions() -> list[tuple[str, str, str]]:
     """The extension's exported exception types, as `(name, base, docstring)`, ordered and deterministic.
 
@@ -309,13 +353,7 @@ def extension_exceptions() -> list[tuple[str, str, str]]:
         One triple per exported error type, ordered so that a base declared inside the set precedes the
         class that inherits from it, which is what makes the appended declarations parse.
     """
-    try:
-        import pyrs_yaml
-    except ImportError as error:
-        raise StubInputError(
-            f"cannot import pyrs_yaml to read its exception types ({error}); the committed stub is only "
-            "derivable while the built extension is importable - run `uv run maturin develop` first"
-        ) from error
+    pyrs_yaml = package_namespace()
 
     found = []
     for name in dir(pyrs_yaml):
@@ -358,6 +396,184 @@ def exception_block(text: str) -> tuple[str, int]:
             lines.append("    ...")
         lines.append("")
     return "\n".join(lines) + "\n", len(entries)
+
+
+def literal_spelling(value: object) -> str:
+    """Render a parameter default the way the generator writes one - a Python literal in double quotes.
+
+    Anything this function cannot express as a literal becomes `...`, which is what a stub already says when
+    it states a default without naming it; the value itself is the package's business, not the contract's.
+    """
+    if value is None:
+        return "None"
+    if isinstance(value, bool):
+        return "True" if value else "False"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return "..."
+
+
+def annotation_names(spelling: str) -> set[str]:
+    """The free names one annotation spells, so the caller can make every one of them importable."""
+    try:
+        expression = ast.parse(spelling, mode="eval")
+    except SyntaxError as error:
+        raise StubInputError(
+            f"the annotation {spelling!r} is not an expression ({error}); refusing to "
+            "write it into the public contract as a broken forward reference"
+        ) from error
+    return {node.id for node in ast.walk(expression) if isinstance(node, ast.Name)}
+
+
+def annotation_spelling(annotation: object, member: str) -> str:
+    """The source spelling of one annotation, as the stub must write it.
+
+    Raises:
+        StubInputError: when the package stated no annotation, or spells it as an object this route cannot
+            name. Either would land in the shipped contract as a type nobody declared, and a guessed `Any` is
+            how a member stops being checkable without anyone noticing.
+    """
+    if annotation is inspect.Parameter.empty:
+        raise StubInputError(
+            f"{member} has a parameter or return the package does not annotate; the route refuses to write "
+            "`Any` into the public contract for a type nobody declared"
+        )
+    if isinstance(annotation, str):
+        return annotation.strip()
+    name = getattr(annotation, "__name__", None)
+    if isinstance(name, str):
+        return name
+    raise StubInputError(f"the route cannot spell {member}'s annotation {annotation!r} as stub source")
+
+
+def member_declaration(name: str, function: object) -> tuple[list[str], set[str]]:
+    """One method declaration for a class body, plus the free annotation names the caller must import.
+
+    Args:
+        name: the attribute the package attaches.
+        function: the live callable behind it, whose signature is the contract being declared.
+
+    Returns:
+        The indented lines of the declaration - a one-line `def ...: ...` when the member carries no docstring,
+        the generator's own shape when it does - and the names its annotations reference.
+
+    Raises:
+        StubInputError: for a parameter shape this route has not measured. Every attached member takes plain
+            keyword-capable arguments today, so a `*args`, keyword-only or positional-only parameter is a new
+            shape to look at, not something to guess a spelling for.
+    """
+    signature = inspect.signature(function)  # type: ignore[arg-type]
+    pieces = ["self"]
+    referenced: set[str] = set()
+    for parameter in signature.parameters.values():
+        if parameter.name == "self":
+            continue
+        if parameter.kind is not inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            raise StubInputError(
+                f"{name} declares a {parameter.kind.name.lower()} parameter ({parameter.name}); this route "
+                "writes only the plain positional parameters every attached member has used so far"
+            )
+        text = parameter.name
+        if parameter.annotation is not inspect.Parameter.empty:
+            spelling = annotation_spelling(parameter.annotation, f"{name}()")
+            referenced.update(annotation_names(spelling))
+            text += ': "' + spelling.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        if parameter.default is not inspect.Parameter.empty:
+            text += " = " + literal_spelling(parameter.default)
+        pieces.append(text)
+    returns = annotation_spelling(signature.return_annotation, f"{name}()")
+    referenced.update(annotation_names(returns))
+    header = f'    def {name}({", ".join(pieces)}) -> "{returns}":'
+    docstring = (getattr(function, "__doc__", "") or "").strip()
+    if not docstring:
+        return [header + " ..."], referenced
+    body = [header, '        """']
+    body += [("        " + row).replace("\\", "\\\\") for row in docstring.splitlines()]
+    body.append('        """')
+    return [line.rstrip() for line in body], referenced
+
+
+def add_package_imports(text: str, referenced: set[str]) -> str:
+    """Merge the relative imports the attached annotations need into the file's import block."""
+    needed = [
+        f"from {ATTACHED_MEMBER_MODULES[name]} import {name}"
+        for name in sorted(referenced)
+        if name in ATTACHED_MEMBER_MODULES
+    ]
+    if not needed:
+        return text
+    lines = text.split("\n")
+    typing_line = next((n for n, line in enumerate(lines) if line.startswith("from typing import ")), None)
+    insert_at = (
+        typing_line
+        if typing_line is not None
+        else next((n for n, line in enumerate(lines) if line.startswith(("from ", "import "))), 0)
+    )
+    lines[insert_at + 1 : insert_at + 1] = needed
+    return "\n".join(lines)
+
+
+def attached_member_block(text: str) -> tuple[str, int]:
+    """Declare inside each generated class the public members the package attaches to it after import.
+
+    `python/pyrs_yaml/__init__.py` puts `node`, `merged`, `set` and the rest onto the extension's classes at
+    import time. maturin's generator introspects the built module before that has happened, so the artifact
+    `py.typed` advertises described a class the runtime offers only after the package runs. The names,
+    parameters, defaults, return types and docstrings are read from the live class here, so the declarations
+    cannot go stale, and `EXPECTED_ATTACHED_MEMBERS` is the tripwire for one appearing or disappearing.
+
+    Only a class the compiled module itself exports is a candidate - measured on the built extension,
+    `pyrs_yaml.pyrs_yaml` holds `YamlDocument`, `YAML`, `YamlStream` and `StreamIterator`, while `Node` lives in
+    `pyrs_yaml.node`. Reading that namespace rather than the package's re-exports is what keeps a Python-level
+    class of the same name from having its members injected into a generated class it has nothing to do with.
+
+    Returns:
+        The stub text with one declaration per attached member, inserted into its own class body (the
+        generator's indentation, alphabetical like the rest of a class), plus the count the caller checks.
+        Members inherited from `object` or `BaseException` are not declarations: `vars()` of the class is asked,
+        not `dir()`, which is why an `add_note` is never mistaken for a member of the error types.
+
+    Raises:
+        StubInputError: when the package is not importable, when it exposes no compiled module to read the
+            generated classes from, or when a member's signature cannot be spelled.
+    """
+    package = package_namespace()
+    compiled = getattr(package, TRACKED.stem, None)
+    if not isinstance(compiled, types.ModuleType):
+        raise StubInputError(
+            f"{package.__name__} exposes no `{TRACKED.stem}` submodule, so the derivation cannot tell which "
+            "classes the generator introspected and refuses to attach members to a class by name alone"
+        )
+    insertions: list[tuple[int, list[str]]] = []
+    declared = 0
+    referenced: set[str] = set()
+    for node in ast.parse(text).body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        live = getattr(compiled, node.name, None)
+        if not isinstance(live, type):
+            continue
+        written = {method.name for method in node.body if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        lines: list[str] = []
+        for attribute in sorted(vars(live)):
+            if attribute.startswith("_") or attribute in written:
+                continue
+            member = getattr(live, attribute)
+            if not callable(member):
+                continue
+            rendered, names = member_declaration(attribute, member)
+            referenced |= names
+            lines.extend(["", *rendered])
+            declared += 1
+        if lines:
+            insertions.append((max(int(method.end_lineno or 0) for method in node.body), lines))
+    for last_line, lines in sorted(insertions, key=lambda item: item[0], reverse=True):
+        rows = text.split("\n")
+        rows[last_line:last_line] = lines
+        text = "\n".join(rows)
+    return add_package_imports(text, referenced), declared
 
 
 def verify_parses(text: str, origin: str) -> str | None:
@@ -420,6 +636,15 @@ def derived_text(generated: str) -> tuple[str, list[str]]:
             "without escaping, so a new line is a new unparseable site and a disappeared one "
             "is an upstream fix; either way review EXPECTED_DOCSTRING_ESCAPES instead of "
             "trusting the rewrite."
+        )
+    text, attached = attached_member_block(text)
+    if attached != EXPECTED_ATTACHED_MEMBERS:
+        problems.append(
+            f"attached member declarations: wrote {attached} method(s), expected "
+            f"{EXPECTED_ATTACHED_MEMBERS}. These are read from the live classes because maturin 1.14.1 "
+            "introspects the extension before python/pyrs_yaml/__init__.py has attached anything to it; a "
+            "count change means a member was added to or taken off a public class, and the contract a "
+            "checker reads has to be re-derived either way."
         )
     text, exceptions = exception_block(text)
     if exceptions != EXPECTED_EXCEPTION_CLASSES:

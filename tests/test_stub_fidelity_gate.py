@@ -182,6 +182,9 @@ def test_the_count_is_a_tripwire_not_a_preference(checker, monkeypatch):
     """
     monkeypatch.setattr(checker, "FIDELITY_FIXES", ())
     monkeypatch.setattr(checker, "EXPECTED_RUST_TYPE_SITES", 0)
+    # Switched off for the same reason as the fidelity fixes: this snippet declares no class the compiled
+    # module exports, so the attach rule would report a count problem for the wrong subject.
+    monkeypatch.setattr(checker, "attached_member_block", lambda text: (text, checker.EXPECTED_ATTACHED_MEMBERS))
     _, problems = checker.derived_text(GENERATED)
     assert not problems, problems
     three_sites = (
@@ -247,6 +250,7 @@ def test_derived_text_reports_the_spelling_count_and_refuses_unfixable_names(che
     """Both new transforms are wired into the route, with their counts enforced."""
     monkeypatch.setattr(checker, "FIDELITY_FIXES", ())
     monkeypatch.setattr(checker, "exception_block", lambda text: (text, checker.EXPECTED_EXCEPTION_CLASSES))
+    monkeypatch.setattr(checker, "attached_member_block", lambda text: (text, checker.EXPECTED_ATTACHED_MEMBERS))
     monkeypatch.setattr(checker, "EXPECTED_DOCSTRING_ESCAPES", 0)
     monkeypatch.setattr(checker, "EXPECTED_RUST_TYPE_SITES", 9)
     _, problems = checker.derived_text('def f(x: "u32") -> None: ...\n')
@@ -269,3 +273,143 @@ def test_the_committed_stub_is_valid_python():
     ]
     assert any("`json.dumps`' `\\uXXXX` escapes" in line for line in sentences), len(sentences)
     assert any("`\\u` escapes" in line for line in sentences), len(sentences)
+
+
+def fake_package(**native_members: object) -> types.ModuleType:
+    """A stand-in `pyrs_yaml` whose compiled submodule exports exactly the given classes.
+
+    The route reads candidates from `getattr(pyrs_yaml, "pyrs_yaml")` - the module the stub describes - so the
+    fake nests the native namespace inside the package the way the real one does.
+    """
+    native = types.ModuleType("pyrs_yaml.pyrs_yaml")
+    for name, member in native_members.items():
+        setattr(native, name, member)
+    package = types.ModuleType("pyrs_yaml")
+    package.pyrs_yaml = native  # type: ignore[attr-defined]
+    return package
+
+
+def test_attached_members_are_declared_inside_the_class_the_generator_wrote(checker, monkeypatch):
+    """The signature the package attaches becomes the declaration the checker reads, defaults included.
+
+    `set` keeps its default, `node` keeps its return type, the docstring survives, and the annotation that
+    names `Node` gains the relative import the wheel can resolve - all four were invisible to a checker before
+    the route derived them.
+    """
+
+    class Node: ...  # named so the annotation is a real name; the route reads its source spelling
+
+    def set_value(self, path: str, value: object, create_missing: bool = False) -> None:
+        """Set one value at `path`."""
+
+    def node(self) -> Node: ...
+
+    document = type("Document", (), {"set": set_value, "node": node})
+    monkeypatch.setitem(sys.modules, "pyrs_yaml", fake_package(Document=document))
+
+    generated = "from typing import Any\n\n\nclass Document:\n    def existing(self) -> None: ...\n"
+    text, count = checker.attached_member_block(generated)
+    assert count == 2, text
+    assert '    def set(self, path: "str", value: "object", create_missing: "bool" = False) -> "None":' in text, text
+    assert "Set one value at" in text, text
+    assert '    def node(self) -> "Node": ...' in text, text
+    assert "from .node import Node" in text, text
+    ast.parse(text)
+
+
+def test_an_unannotated_attached_member_refuses_to_become_any(checker, monkeypatch):
+    """A member the package never typed is reported, not written into the contract as `Any`.
+
+    This is the shape `merged` had: attached with no annotation at all, so a name-only rule would have shipped
+    `-> Any` and every checker would have agreed to it. The refusal is the point - the package states the type
+    or the artifact says nothing.
+    """
+
+    def merged(self): ...
+
+    document = type("Document", (), {"merged": merged})
+    monkeypatch.setitem(sys.modules, "pyrs_yaml", fake_package(Document=document))
+    with pytest.raises(checker.StubInputError, match="does not annotate"):
+        checker.attached_member_block("class Document:\n    def existing(self) -> None: ...\n")
+
+
+def test_a_member_inherited_from_a_base_is_not_declared_as_own(checker, monkeypatch):
+    """`vars()` of the class, not `dir()`: an inherited `add_note` is the base's contract.
+
+    Measured on the error types - `dir()` lists `add_note` and `with_traceback` for every one of them, so a rule
+    that walked the MRO would have declared them for classes that never mention a base's methods.
+    """
+
+    class Base:
+        def helper(self) -> None: ...
+
+    document = type("Document", (Base,), {})
+    monkeypatch.setitem(sys.modules, "pyrs_yaml", fake_package(Document=document))
+    text, count = checker.attached_member_block("class Document:\n    def existing(self) -> None: ...\n")
+    assert (count, text.endswith("...\n")) == (0, True), text
+
+
+def test_a_python_level_class_of_the_same_name_is_left_alone(checker, monkeypatch):
+    """Only a class the compiled module exports is a candidate, and a name match is not enough.
+
+    Found while writing the rule: the derivation given a snippet declaring `class Node` attached the package's
+    Python `Node` - forty-one members - to a generated class it has nothing to do with, because the names were
+    equal. Reading the compiled namespace is what keeps the two apart.
+    """
+    package = fake_package()
+    package.Node = type("Node", (), {"value": lambda self: None})  # a re-export, not a generated class
+    monkeypatch.setitem(sys.modules, "pyrs_yaml", package)
+    generated = "class Node:\n    ...\n"
+    text, count = checker.attached_member_block(generated)
+    assert (count, text) == (0, generated), text
+
+
+def test_a_package_without_a_compiled_submodule_stops_the_derivation(checker, monkeypatch):
+    """No native namespace means no way to tell which generated class is which, so the route says so."""
+    package = types.ModuleType("pyrs_yaml")
+    monkeypatch.setitem(sys.modules, "pyrs_yaml", package)
+    with pytest.raises(checker.StubInputError, match="exposes no"):
+        checker.attached_member_block("class Document:\n    ...\n")
+
+
+def test_an_unexpected_attached_count_is_a_problem_not_a_rewrite(checker, monkeypatch):
+    """The declared count is a tripwire: a member attached or removed has to be looked at."""
+    monkeypatch.setattr(checker, "attached_member_block", lambda text: (text, 13))
+    monkeypatch.setattr(checker, "EXPECTED_DOCSTRING_ESCAPES", 0)
+    _, problems = checker.derived_text("x: int = 0\n")
+    assert any(f"expected {checker.EXPECTED_ATTACHED_MEMBERS}" in problem for problem in problems), problems
+
+
+def test_the_shipped_stub_declares_the_members_the_package_attaches():
+    """The artifact in the tree, read the way a checker reads it: `YamlDocument` names what you can call.
+
+    ROADMAP row 1 was this assertion failing - twelve members attached at import, none of them in the file
+    `py.typed` advertises - so it is pinned against the committed artifact rather than only against the route
+    that derives it.
+    """
+    source = STUB.read_text(encoding="utf-8").replace("\r\n", "\n")
+    tree = ast.parse(source)
+    document = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "YamlDocument")
+    declared = {m.name for m in document.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    attached = {
+        "node",
+        "find",
+        "walk",
+        "scalars",
+        "merged",
+        "set",
+        "set_many",
+        "insert",
+        "append",
+        "delete",
+        "rename",
+        "sort_keys",
+    }
+    assert attached <= declared, sorted(attached - declared)
+    for spelling in (
+        '    def node(self) -> "Node": ...',
+        '    def walk(self) -> "Iterator[Node]": ...',
+        '    def scalars(self) -> "Iterator[Node]": ...',
+        '    def merged(self) -> "MergedView": ...',
+    ):
+        assert spelling in source, spelling

@@ -482,6 +482,27 @@ status: new
 
 #### 修正
 
+- **同梱される型契約が、パッケージが実際に渡すクラスを書くようになった。** —
+  `python/pyrs_yaml/pyrs_yaml.pyi` は extension から生成されるのに対し、
+  `python/pyrs_yaml/__init__.py` は import の後に `node`、`find`、`walk`、`scalars`、`merged`、
+  `set`、`set_many`、`insert`、`append`、`delete`、`rename`、`sort_keys` を `YamlDocument` へ取り付
+  ける。だからこの 12 のメンバは実行時にはあるのに、チェッカーが読む成果物にはひとつも無かった。イン
+  ストール済みパッケージへ mypy 2.4.0 を走らせて測ると、`document.node` は stub が一度も宣言していな
+  いメンバを指している。最初のドミノはその一段上にあった — `parse` と `parse_file` の公開ラッパーが
+  `-> Any`、`parse_all_docs` が `list[Any]` と注釈づけられ、binding 自身の `YamlDocument` を消してい
+  た。ユーザーが最初に呼ぶ入口から、どのチェッカーもそのクラスに到達できない。症状の出た場所それぞれ
+  で直した: ラッパーには正直な戻り値の型、stub には宣言済みの調停ルール — コンパイル済み module のク
+  ラスから引数・既定値・docstring をそのまま読み出して書き込み、`EXPECTED_ATTACHED_MEMBERS` で個数を
+  数える。だからメンバが増減することはレビュー事件になり、契約が黙って狭くなることはない。パッケージ
+  が注釈をつけていないメンバは `Any` として書かれる代わりに導出を止める。型チェックの gate も、stub
+  が import する兄弟モジュールを一時パッケージへコピーするようになった — `.pyi` だけを置いた一時パッ
+  ケージでは、どの wheel にも入っているファイルを `import-not-found` と報告していた。`Node` と
+  `MergedView` はもともとこの穴に含まれていない — `py.typed` のパッケージが持つ Python モジュールな
+  のでチェッカーはソースを読む。未解決項目の表はこの点で穴を大きく書きすぎていた。いまチェッカーとオ
+  ブジェクトは同じ判定をする: `document.node("a")` はチェック時に `Too many arguments`、実行時には従
+  来どおり `TypeError`。12 の宣言を消すと
+  `test_the_stub_declares_every_public_member_of_a_class_it_names` が 12 件を名指しで赤くなる。
+
 - **flow 収集要素のコメントは捨てられずに書き出される。** — `{A: x  # V}` はツリーでは `V` を保つの
   に書き戻すと `{A: x}` だった。reader は flow の要素ごとに 1 つの枠、その行末コメントしか渡さないの
   に、flow 側の書き出しはその枠をひとつも使わなかった。つまり注釈はメモリにしか存在せず、テキストを

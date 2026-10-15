@@ -531,6 +531,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The shipped typing contract describes the class the package offers.** —
+  `python/pyrs_yaml/pyrs_yaml.pyi` is generated from the extension, while
+  `python/pyrs_yaml/__init__.py` attaches `node`, `find`, `walk`, `scalars`, `merged`, `set`,
+  `set_many`, `insert`, `append`, `delete`, `rename` and `sort_keys` to `YamlDocument` after import,
+  so those twelve members lived in the runtime and in no artifact a checker reads: measured with
+  mypy 2.4.0 against the installed package, `document.node` named a member the stub never declared.
+  The first domino sat one layer above it — the public wrappers of `parse` and `parse_file` were
+  annotated `-> Any`, and `parse_all_docs -> list[Any]`, erasing the binding's own `YamlDocument`,
+  so no checker reached the class through the entry point users call first. Each half is repaired
+  where it lives: honest return types on the wrappers, and a declared reconciliation that reads the
+  members off the compiled module's classes (parameters, defaults and docstrings included) and
+  writes them into the stub, counted against `EXPECTED_ATTACHED_MEMBERS` so a member appearing or
+  disappearing is a review rather than a silently narrower contract. A member the package does not
+  annotate stops the derivation instead of gaining a written `Any`, and the type-check gate now
+  ships the sibling modules the stub imports — a scratch package holding only the `.pyi` had been
+  reporting `import-not-found` for files every wheel contains. `Node` and `MergedView` were never in
+  the hole, being Python modules a `py.typed` package already types, which is where the
+  open-questions row overstated it. Checker and object now agree on the call the runtime always
+  rejected: `document.node("a")` is a `Too many arguments` error at check time and the `TypeError`
+  it has always raised. Delete the twelve declarations and
+  `test_the_stub_declares_every_public_member_of_a_class_it_names` reddens naming all twelve.
+
 - **A note on a member of a flow collection is written, not dropped.** — `{A: x  # V}` read into a
   tree that kept `V` and re-emitted `{A: x}`: the reader offers each flow member one slot, the
   line-end comment it attaches to that member, and the flow writer used none of them, so the note

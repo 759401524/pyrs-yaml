@@ -16,7 +16,7 @@ Example:
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Callable, Dict, Literal, TypeVar, overload
+from typing import Any, Callable, Dict, Iterator, Literal, TypeVar, overload
 
 from typing_extensions import TypeAlias, TypedDict, TypeGuard
 
@@ -288,7 +288,7 @@ def parse(
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
-) -> Any:
+) -> YamlDocument:
     return _parse(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
@@ -297,7 +297,7 @@ def parse_file(
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
-) -> Any:
+) -> YamlDocument:
     return _parse_file(path, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
@@ -307,7 +307,7 @@ def parse_all_docs(
     schema: str | _SchemaDict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
-) -> list[Any]:
+) -> list[YamlDocument]:
     return _parse_all_docs(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
 
 
@@ -336,20 +336,20 @@ def read_markdown_str(
 
 
 # Monkey-patch YamlDocument with node() and find() methods
-def _yaml_document_node(self: Any) -> Any:
+def _yaml_document_node(self: YamlDocument) -> Node:
     return Node(self)
 
 
-def _yaml_document_find(self: Any, path: str) -> Any:
+def _yaml_document_find(self: YamlDocument, path: str) -> Node | list[Node]:
     return Node(self).find(path)
 
 
-def _yaml_document_walk(self: Any) -> Any:
+def _yaml_document_walk(self: YamlDocument) -> Iterator[Node]:
     for path in self._walk_paths():
         yield Node(self, path)
 
 
-def _yaml_document_scalars(self: Any) -> Any:
+def _yaml_document_scalars(self: YamlDocument) -> Iterator[Node]:
     for path in self._scalar_paths():
         yield Node(self, path)
 
@@ -360,7 +360,7 @@ YamlDocument.walk = _yaml_document_walk  # ty: ignore[unresolved-attribute]
 YamlDocument.scalars = _yaml_document_scalars  # ty: ignore[unresolved-attribute]
 
 
-def _yaml_document_merged(self):
+def _yaml_document_merged(self: YamlDocument) -> MergedView:
     return MergedView(self)
 
 
