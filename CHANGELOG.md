@@ -530,6 +530,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A block mapping key's inline note survives a value that holds the pair's slot.** —
+  `key: value  # one` has one trailing slot, and when both the key and the value claimed it the
+  writer gave the slot to the value and the key's note disappeared: `? a # kn` + `: b # vv` emitted
+  `a: b  # vv`. The note now spends a line break, the way the flow path has been spending one. That
+  placement was measured before it was chosen: a comment line written directly above a key that is
+  not the mapping's first belongs to **that key**, so `a: 1` + `# K` + `b: 2  # V` re-reads with `K`
+  on `b` and the note keeps its owner; only a first pair hands its key's note up to the container,
+  and the text survives either way. The compact `- a: 1` form and the block-scalar body carried the
+  same hole and close with it. Over 4000 generated trees, notes that never reached the emitted text
+  fell from 907 to 257, and the block-key class of them from 707 to 34.
+
 - **A block scalar no longer loses its value when its header moves line or takes a note.** —
   an indentation indicator counts columns from the *parent node*, and PyYAML, ruamel and this
   engine's own reader all agree on that (measured over `a: |2`, `- |2` and `? k` spellings). The

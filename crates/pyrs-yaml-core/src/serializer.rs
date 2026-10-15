@@ -597,7 +597,14 @@ impl Serializer {
     /// the node that owns it: `: !` CR `#U` CR `... #-` settles as
     /// `# -` / `~:` / `  # U` / `  ! `, where the note stays the root mapping's own.
     fn note_line_above_last_pair(&mut self, text: &str) {
-        let at = self.pair_line_start.min(self.output.len());
+        let at = self.pair_line_start;
+        self.note_line_above(at, text);
+    }
+
+    /// Write `text` as a comment line above the line that starts at `at`, at that line's
+    /// own indent.
+    fn note_line_above(&mut self, at: usize, text: &str) {
+        let at = at.min(self.output.len());
         let indent: String = self.output[at..]
             .chars()
             .take_while(|c| *c == ' ')
@@ -1164,6 +1171,7 @@ impl Serializer {
         depth: usize,
     ) -> Result<(), SerializeError> {
         self.pair_line_start = self.output.len();
+        let own_line_start = self.pair_line_start;
         self.block_header_break = None;
         // Keys that cannot be spelled compactly: a mapping or a sequence body needs the `?`
         // indicator, and so does an alias — `*x: v` is refused by this engine's own reader
@@ -1356,7 +1364,7 @@ impl Serializer {
         // value keeps priority when it carries a note of its own — one line has one
         // trailing slot — and complex keys are left alone, their notes travel with
         // the `?` body.
-        if !explicit_key_marker && value.comment().is_none() && self.output.ends_with('\n') {
+        if !explicit_key_marker {
             let key_note = match key {
                 CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
                     .comment()
@@ -1365,9 +1373,18 @@ impl Serializer {
                 _ => None,
             };
             if let Some(text) = key_note {
-                let fallback = key_note_at.unwrap_or(self.output.len() - 1);
-                let at = self.note_slot_above_block_body().unwrap_or(fallback);
-                self.insert_note_at(at, &format!("  # {text}"));
+                if value.comment().is_none() && self.output.ends_with('\n') {
+                    let fallback = key_note_at.unwrap_or(self.output.len() - 1);
+                    let at = self.note_slot_above_block_body().unwrap_or(fallback);
+                    self.insert_note_at(at, &format!("  # {text}"));
+                } else {
+                    // One line, one trailing slot. A note line above the pair is not a
+                    // fallback of convenience: measured against the reader, a comment line
+                    // written directly above a key belongs to that key, so the note keeps
+                    // its owner instead of disappearing (`a: 1` + `# K` + `b: 2  # V` reads
+                    // back with `K` on `b`).
+                    self.note_line_above(own_line_start, &text);
+                }
             }
         }
 
@@ -1419,6 +1436,13 @@ impl Serializer {
                 // Compact key column is dash indent + `- ` (== indent_sequence
                 // for the default 2-step); a block body hangs off that line.
                 let key_base = indent_width + self.indent_sequence;
+                // The first pair shares the dash line, so its own start is the dash;
+                // later pairs begin at their own indent.
+                let own_line_start = if pi == 0 {
+                    self.pair_line_start
+                } else {
+                    self.output.len()
+                };
                 if pi > 0 {
                     // Same slot rule as `write_mapping_pair`: every note in the stack, in
                     // source order, on a line of its own at the pair's indent.
@@ -1451,14 +1475,15 @@ impl Serializer {
                     }
                     _ => None,
                 };
-                if let Some(note) = key_note
-                    && value.comment().is_none()
-                    && self.output.ends_with('\n')
-                {
-                    let at = self
-                        .note_slot_above_block_body()
-                        .unwrap_or(self.output.len() - 1);
-                    self.insert_note_at(at, &format!("  # {}", note.text));
+                if let Some(note) = key_note {
+                    if value.comment().is_none() && self.output.ends_with('\n') {
+                        let at = self
+                            .note_slot_above_block_body()
+                            .unwrap_or(self.output.len() - 1);
+                        self.insert_note_at(at, &format!("  # {}", note.text));
+                    } else {
+                        self.note_line_above(own_line_start, &note.text);
+                    }
                 }
             }
         } else if !Self::is_empty_container(item)
@@ -4316,6 +4341,120 @@ mod tests {
     /// `"   "`. The emitted document therefore changed the value the tree held.
     /// Found by the property tier's residue attribution: 434 of 4000 drawn trees,
     /// every one of them this same two-column shift.
+    /// A note line above the pair's own line, at the pair's indent.
+    ///
+    /// Measured against the reader: a note line written directly above a key that is not
+    /// the mapping's first belongs to **that key**, so the pair line's single trailing
+    /// slot is not the only place a key's note can live.
+    #[test]
+    fn a_key_note_with_no_room_on_the_pair_line_is_written_above_it() {
+        let mut key = CustomNode::plain_scalar("b");
+        key.set_comment(crate::ast::Comment {
+            text: "K".into(),
+            standalone: false,
+        });
+        let mut value = CustomNode::plain_scalar("2");
+        value.set_comment(crate::ast::Comment {
+            text: "V".into(),
+            standalone: false,
+        });
+        let mut pairs = NodeMap::default();
+        pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
+        pairs.insert(key, value);
+        let node = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert!(out.contains("# K"), "the key note vanished: {out:?}");
+        assert!(out.contains("# V"), "the value note vanished: {out:?}");
+
+        // And it stayed the key's own: the note is not merely present in the text.
+        let reparsed = crate::parser::parse_with_options(
+            &out,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        )
+        .expect("re-parse");
+        let CustomNode::Mapping { pairs, .. } = &reparsed else {
+            panic!("unexpected shape: {reparsed:?}");
+        };
+        let owned = pairs
+            .iter()
+            .find(|(k, _)| matches!(k, CustomNode::Scalar { value, .. } if &**value == "b"))
+            .expect("`b` survived the round trip");
+        let notes: Vec<String> = owned
+            .0
+            .leading_comments()
+            .iter()
+            .map(|c| c.text.to_string())
+            .collect();
+        assert_eq!(
+            notes,
+            vec!["K".to_string()],
+            "the note moved off its key: {out:?}"
+        );
+    }
+
+    /// The same collision on the first pair of a mapping, where the reader gives the note
+    /// line to the container rather than the key: the text still has to reach the document.
+    #[test]
+    fn a_first_pair_key_note_with_no_room_still_reaches_the_text() {
+        let mut key = CustomNode::plain_scalar("a");
+        key.set_comment(crate::ast::Comment {
+            text: "K".into(),
+            standalone: false,
+        });
+        let mut value = CustomNode::plain_scalar("1");
+        value.set_comment(crate::ast::Comment {
+            text: "V".into(),
+            standalone: false,
+        });
+        let mut pairs = NodeMap::default();
+        pairs.insert(key, value);
+        let node = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert!(out.contains("# K"), "the key note vanished: {out:?}");
+        assert!(out.contains("# V"), "the value note vanished: {out:?}");
+    }
+
+    /// The compact sequence form hand-rolls the same pair line, and drops the same note.
+    #[test]
+    fn a_compact_item_key_note_with_no_room_is_written_above_it() {
+        let mut key = CustomNode::plain_scalar("b");
+        key.set_comment(crate::ast::Comment {
+            text: "K".into(),
+            standalone: false,
+        });
+        let mut value = CustomNode::plain_scalar("2");
+        value.set_comment(crate::ast::Comment {
+            text: "V".into(),
+            standalone: false,
+        });
+        let mut pairs = NodeMap::default();
+        pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"));
+        pairs.insert(key, value);
+        let node = CustomNode::Sequence {
+            items: vec![CustomNode::Mapping {
+                pairs,
+                flow_style: false,
+                meta: Default::default(),
+            }],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert!(out.contains("# K"), "the key note vanished: {out:?}");
+        assert!(out.contains("# V"), "the value note vanished: {out:?}");
+    }
+
     #[test]
     fn an_own_line_block_header_measures_its_indicator_from_the_parent() {
         let node = own_line_literal(" ");

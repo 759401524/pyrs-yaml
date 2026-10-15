@@ -4986,6 +4986,38 @@ its next step is that note slot, not a looser oracle. The probe that produced th
 throwaway by design: a `TestRunner` over `arb_custom_node()` in `pbt.rs`, counters panicked at the
 end, then removed.
 
+### (db) The slot question was answered by measuring the reader first, and 673 notes came back (2026-10-15)
+
+`(da)` left one number as the next step: 707 note occurrences sat on a block mapping key and never
+reached the emitted text. `ROADMAP.md` row 2 had named the possible rulings and insisted on the
+precondition — "a placement rule is only worth having once it has been measured against the reader's
+own normalisation". The measurement is three documents read into the AST: `a: 1` + `# K` +
+`b: 2  # V` reports `K` in **key `b`'s** `decor.leading_comments`, while the same line above a
+mapping's first pair belongs to the mapping. So the flow path's answer — spend a line break — keeps
+the owner for every pair but the first, and a relocation that preserves the text beats a drop in
+either case.
+
+The rule as shipped: the value keeps the pair's trailing slot when it needs it, and the key's note
+goes above the pair when the slot is taken. Nothing else changed shape, which is why the pinned
+comment-on-a-pair fixtures stayed put and exactly one existing assertion moved:
+`a_note_trailing_a_key_survives` had pinned `"a: b  # vv\n"` for `? a # kn` + `: b # vv` — the loss
+recorded as expected text. It now pins `"# kn\na: b  # vv\n"`, plus the fixed point.
+
+| measured over 4000 generated trees | before | after |
+|:-----------------------------------|-------:|------:|
+| notes that never reach the emitted text | 907 | 257 |
+| … of them on a block mapping key | 707 | 34 |
+
+Trees that still lose at least one note: 244 of 4000. The remaining 257 are spread evenly over
+key/value/item/root in both block and flow spellings — the signature of several distinct causes
+rather than one, so they are left unattributed here rather than closed on a guess.
+
+The layer split moved with the claim, not with the convenience: the *ownership* assertion has to be
+Rust, because no path in the bindings addresses a key node (`cargo nextest`, 610 tests now), and the
+caller-visible promise — both notes present, neither duplicated, the rewrite text-stable — is
+`tests/test_fidelity.py::TestFidelity::test_both_notes_of_a_pair_survive_the_rewrite` under
+`pytest`. Both were red before the writer change.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
