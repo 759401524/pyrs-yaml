@@ -1092,6 +1092,48 @@ mod tests {
         assert!(out.contains("b = 2"), "{out}");
     }
 
+    /// The same structural question the JSON family asks (`writer.rs::
+    /// every_dialect_reads_back_what_it_writes_for_the_notation_corpus`), for the other
+    /// source-fidelity writer in the matrix: a plain scalar carrying a notation TOML cannot spell
+    /// must be normalised or refused, never emitted as text `from_toml` rejects.
+    #[test]
+    fn to_toml_reads_back_what_it_writes_for_the_notation_corpus() {
+        for spelling in [
+            "0",
+            "-0",
+            "01",
+            "001",
+            "+7",
+            "1_000",
+            "0o17",
+            "0x1F",
+            "0b10",
+            "1e3",
+            "1.2e+3",
+            ".5",
+            "5.",
+            "2024-01-01",
+            "1:2",
+            "~",
+            "TRUE",
+            "",
+        ] {
+            let root = CustomNode::plain_mapping(
+                [(
+                    CustomNode::plain_scalar("a"),
+                    CustomNode::plain_scalar(spelling),
+                )]
+                .into_iter()
+                .collect(),
+            );
+            let Ok(text) = to_toml(&root) else { continue };
+            assert!(
+                crate::from_toml(&text).is_ok(),
+                "TOML wrote {text:?} for the spelling {spelling:?}, which its own reader refuses"
+            );
+        }
+    }
+
     #[test]
     fn preserves_trailing_inline_comment_on_kv() {
         // Fidelity #109: `key = val # comment` retains the same-line note.

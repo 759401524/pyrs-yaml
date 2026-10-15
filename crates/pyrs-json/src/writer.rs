@@ -921,6 +921,68 @@ mod tests {
         assert_eq!(to_json5_text(&node).unwrap(), "5.");
     }
 
+    /// The question #432 answers, asked of a list instead of a draw: whatever a writer emits for a
+    /// notation a YAML plain scalar can hold must read back in its own dialect.
+    /// `prop_json5_output_reparses` caught `00.` only because 20 000 cases happened to build it;
+    /// this corpus asks every spelling of all three dialects on every run, so the next
+    /// disagreement names itself. A writer may refuse a value - that is a stated reason, not a
+    /// loss - but it may not emit text its own reader rejects.
+    #[test]
+    fn every_dialect_reads_back_what_it_writes_for_the_notation_corpus() {
+        const SPELLINGS: &[&str] = &[
+            "0",
+            "-0",
+            "0.",
+            "5.",
+            "00.",
+            "007.",
+            "-00.",
+            ".5",
+            "1e3",
+            "1.2e+3",
+            "5.e2",
+            "0x1F",
+            "+0x1F",
+            "+7",
+            "0o17",
+            "08",
+            "1_0",
+            "~",
+            "null",
+            "TRUE",
+            "false",
+            "2024-01-01",
+            "1:2",
+            "",
+        ];
+        for spelling in SPELLINGS {
+            let node = CustomNode::plain_sequence(vec![CustomNode::plain_scalar(*spelling)]);
+            // One dialect's question: what its writer produced, and whether its reader takes it.
+            type DialectCheck = (
+                &'static str,
+                Result<String, SerializeError>,
+                fn(&str) -> bool,
+            );
+            let checks: [DialectCheck; 3] = [
+                ("json", to_json_text(&node), |t| from_json(t).is_ok()),
+                ("jsonc", to_jsonc_text(&node), |t| {
+                    crate::from_jsonc(t).is_ok()
+                }),
+                ("json5", to_json5_text(&node), |t| {
+                    crate::from_json5(t).is_ok()
+                }),
+            ];
+            for (dialect, written, reads) in checks {
+                let Ok(text) = written else { continue };
+                assert!(
+                    reads(&text),
+                    "{dialect} wrote {text:?} for the spelling {spelling:?}, \
+                     which its own reader refuses"
+                );
+            }
+        }
+    }
+
     #[test]
     fn json5_infinity_is_written_from_the_value_not_from_a_word() {
         // #312's writer half. The hub carries YAML's own float spelling, so the dialect's token has to
