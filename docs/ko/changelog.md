@@ -377,6 +377,13 @@ status: new
 
 #### 변경
 
+- **CI가 std 없이 쌓은 모든 crate의 std 빌드를 다시 검사합니다.** — `no_std` 잡의 마지막 단계는 기초
+  crate 다섯 중 둘만 적어 두었습니다. 나머지는 `std`와 함께 깨져도 그 항목은 초록으로 남았으니, 기능
+  분리가 한 방향으로만 증명된 셈입니다. 이제 다섯을 적습니다(이 자리에서 `cargo check --locked`가
+  다섯 모두 깨끗이 통과함을 실측). `tests/test_no_std_gate.py`는 workflow 본문에서 두 단계의 crate
+  목록을 읽어 멀어지는 것을 거부합니다. 고치기 전 단계 문구를 되돌리면 세 crate를 지목해 빨개짐을
+  확인했습니다. — (자세히: quality-ledger (dp))
+
 - **스텁 생성기를 maturin 1.15.0 으로, 의도적이고 실측한 뒤 옮겼습니다.** — 버전을 고정하는 이유는
   `python/pyrs_yaml/pyrs_yaml.pyi` 가 한 정해진 버전에서 만들어지고 `scripts/check_stub_drift.py` 의
   규칙이 그 출력을 설명하기 때문입니다. 따라서 maturin 이동은 그 자체로 변경이어야 하고,

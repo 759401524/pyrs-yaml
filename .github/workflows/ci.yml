@@ -310,9 +310,18 @@ jobs:
 
       # Re-enabling `std` must not have been "achieved" by deleting the
       # no_std path, so assert the default (std) configuration still compiles
-      # for the same bare-metal-shaped code path.
+      # for the same bare-metal-shaped code path. It is the same five crates the two steps above
+      # cover, because a re-check that lists fewer crates than it just tested without std proves
+      # the feature split only in one direction; `tests/test_no_std_gate.py` fails if the two lists
+      # drift. Measured on this tree: all five compile with default features.
       - name: Build with the default std feature
-        run: cargo check --locked -p pyrs-ast -p pyrs-schema
+        run: >
+          cargo check --locked
+          -p pyrs-ast
+          -p pyrs-event
+          -p pyrs-schema
+          -p pyrs-json
+          -p pyrs-toml
 
   test:
     needs: [build, changes, matrix-plan]
