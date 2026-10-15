@@ -626,3 +626,36 @@ class TestDatetimeOffsetRange:
     )
     def test_valid_offsets_still_parse(self, src):
         assert isinstance(pyrs_yaml.load_toml(src)["d"], datetime.datetime)
+
+
+class TestRootInlineTableSpelling:
+    """A root-level inline table keeps the inline form through the hub.
+
+    `to_toml` classified any non-empty mapping at the document root as a section, so
+    `p = { a = 1 } # t` came back as a `[p]` header plus body lines: the note left the pair line,
+    and a plain sibling key moved ahead of it because TOML wants a table's plain keys before its
+    sub-table headers. Nested and array-position inline tables already kept their form, which is
+    what made the asymmetry visible.
+    """
+
+    def test_a_root_inline_table_keeps_its_form_and_the_sibling_order(self):
+        src = "p = { a = 1, b = 2 } # tail\nq = 2\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        # Padding inside the braces is normalised; the form and the order are not rewritten.
+        assert out == "p = {a = 1, b = 2} # tail\nq = 2\n", out
+        assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(out)) == out, "one round is the fixed point"
+
+    def test_a_section_still_reads_as_a_section(self):
+        # The control: the reader's own bit decides, not a writer preference for one spelling.
+        src = "[p]\na = 1\n"
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(src)) == src
+
+    def test_a_note_on_its_own_line_inside_the_braces_is_still_lost(self):
+        # Recorded, not claimed fixed: the hub's YAML writer has no slot for a flow member's
+        # own-line leading note, so the note is dropped while every value survives. Pinning the
+        # loss is what keeps the boundary visible to the next change instead of tacit.
+        src = "p = {\n  a = 1, # inner\n  b = 2,\n}\n"
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert out == "p = {a = 1, b = 2}\n", out
+        assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)

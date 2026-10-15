@@ -2053,12 +2053,13 @@ mod tests {
     #[test]
     fn the_fence_reaches_values_inside_a_container() {
         // The projection is one function, so an array or inline-table member
-        // gets the same answer as a top-level pair. (The inline table itself
-        // re-emits as a `[section]` - a writer choice this change does not
-        // touch - so the fixed point is asserted on the second emission.)
+        // gets the same answer as a top-level pair. The inline table keeps the
+        // inline form: a reader marks `inline = { .. }` flow and only a `[inline]`
+        // header block, so the first emission is already the fixed point rather
+        // than the second one after a rewrite to a section.
         let src = "arr = [0b10, 0x1F]\ninline = { b = 0b11, d = 7 }\n";
         let once = crate::to_toml(&from_toml(src).unwrap()).unwrap();
-        assert_eq!(once, "arr = [0b10, 0x1F]\n[inline]\nb = 0b11\nd = 7\n");
+        assert_eq!(once, "arr = [0b10, 0x1F]\ninline = {b = 0b11, d = 7}\n");
         assert_eq!(once, crate::to_toml(&from_toml(&once).unwrap()).unwrap());
     }
 

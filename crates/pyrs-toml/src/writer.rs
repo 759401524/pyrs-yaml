@@ -52,9 +52,22 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     let mut first_pair = true;
     for (k, v) in pairs {
         match v {
-            CustomNode::Mapping { pairs: inner, .. } if !inner.is_empty() => {
+            CustomNode::Mapping {
+                pairs: inner,
+                flow_style,
+                ..
+            } if !inner.is_empty() && !flow_style => {
                 // A section header is emitted after every top-level pair, so its name has to be
                 // held on to - the only key this writer materialises rather than appending.
+                //
+                // `flow_style` is the source's own answer to "is this a section?": a reader that saw
+                // `p = { a = 1 }` marks the mapping flow, and only a reader that saw `[p]` leaves it
+                // block. Ignoring that bit rewrote every root-level inline table as a header, which
+                // is not a style change but a shape change - the TOML grammar makes a header's plain
+                // keys precede it, so siblings moved (`p = { a = 1 } # t` + `q = 2` came back as
+                // `q = 2` then `[p]`), the note re-homed from the pair line to the header line, and
+                // one TOML round through the hub was not stable. Nested and array-position inline
+                // tables already kept their form, because they reach `emit_pair`.
                 sections.push((scalar_key(k)?, v, Some(k)));
             }
             other => {
@@ -930,6 +943,33 @@ mod tests {
     }
 
     #[test]
+    fn a_root_level_inline_table_keeps_its_form_and_its_siblings_order() {
+        // Measured before this was fixed: `[p] # t\na = 1\n` for the first case, and
+        // `q = 2\n[p]\na = 1\n` for the second. The root classification looked only at "is this
+        // value a non-empty mapping", so a source inline table was promoted to a section header -
+        // which moves its note off the pair line and, because the grammar wants a table's plain
+        // keys before its sub-table headers, pushes a sibling key ahead of it.
+        let out = to_toml(&from_toml("p = { a = 1 } # t\n").unwrap()).unwrap();
+        assert_eq!(
+            out, "p = {a = 1} # t\n",
+            "the note left the pair line: {out}"
+        );
+
+        // The padding inside the braces is normalised on the first emission (`{ a = 1 }` writes
+        // `{a = 1}`), which is spelling, not shape; what used to be lost is the shape itself.
+        let src = "p = { a = 1 }\nq = 2\n";
+        let out = to_toml(&from_toml(src).unwrap()).unwrap();
+        assert_eq!(out, "p = {a = 1}\nq = 2\n", "a sibling key moved: {out}");
+        let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+        assert_eq!(out, again, "not a fixed point: {again}");
+
+        // The control: a source that reads as a header still writes as one, so this is the reader's
+        // `flow_style` bit doing the work and not the writer preferring one spelling.
+        let src = "[p]\na = 1\n";
+        assert_eq!(to_toml(&from_toml(src).unwrap()).unwrap(), src);
+    }
+
+    #[test]
     fn preserves_inline_table_interior_leading_comments() {
         // PR #119: a `# ...` on its own line above an inline-table member
         // is no longer discarded. The top-level writer promotes a
@@ -956,7 +996,7 @@ mod tests {
             keys[1].leading_comment().map(|c| &*c.text).unwrap(),
             "lead b"
         );
-        // Emit preserves both notes (in the promoted section form), and a
+        // Emit preserves both notes, in the inline form the source used, and a
         // second parse + emit is byte-stable (idempotent normalisation).
         let out = to_toml(&ast).unwrap();
         assert!(out.contains("# lead a"), "leading a lost: {out}");
@@ -967,19 +1007,19 @@ mod tests {
 
     #[test]
     fn a_note_between_two_inline_members_keeps_its_own_line() {
-        // What this pins is the *promotion* path (#119): a decorated top-level inline table
-        // becomes a `[a]` section, and a note line that sits between two members keeps its own
-        // line across that move. It is not the guard for the placement rule below - its input
-        // parses the note as the *following* key's leading comment, so the trailing-note branch
-        // never runs here, and withdrawing that rule leaves this test green. Measured, not
-        // assumed: the attribution run said so.
+        // What this pins is that a note line sitting between two members of a decorated top-level
+        // inline table keeps its own line, and that the emission is a fixed point. It is not the
+        // guard for the placement rule below - its input parses the note as the *following* key's
+        // leading comment, so the trailing-note branch never runs here, and withdrawing that rule
+        // leaves this test green. Measured, not assumed: the attribution run said so.
+        //
+        // It used to pin a `[a]` section as well, because the root classification ignored
+        // `flow_style` and promoted every decorated top-level inline table. That rewrite is gone,
+        // so the strongest form holds instead: the text is its own first emission.
         let src = "a = {\n  b = 1,\n  # n\n  c = 2\n}\n";
         let ast = from_toml(src).unwrap();
         let out = to_toml(&ast).unwrap();
-        assert_eq!(
-            out, "[a]\nb = 1\n# n\nc = 2\n",
-            "note moved off its own line: {out}"
-        );
+        assert_eq!(out, src, "note moved off its own line: {out}");
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");
     }
@@ -1082,14 +1122,13 @@ mod tests {
         // the writer emits the compact single-line `{ ... }` shape
         // because the AST preserves `flow_style: true` for a
         // non-section inline mapping. Values and insertion order match
-        // the source.
+        // the source. The assertion used to be two `contains` checks, which the
+        // old root-level promotion to `[tbl]` satisfied; the shape is what this
+        // test is about, so the shape is what it pins.
         let src = "tbl = {\n  a = 1,\n  b = 2,\n}\n";
         let ast = from_toml(src).unwrap();
-        // Sanity: the writer accepts the tree without error and the
-        // members are visible somewhere in the output.
         let out = to_toml(&ast).unwrap();
-        assert!(out.contains("a = 1"), "{out}");
-        assert!(out.contains("b = 2"), "{out}");
+        assert_eq!(out, "tbl = {a = 1, b = 2}\n", "not the inline form: {out}");
     }
 
     /// The same structural question the JSON family asks (`writer.rs::
