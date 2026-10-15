@@ -318,6 +318,12 @@ status: new
 
 #### 变更
 
+- **CI 现在会对每个刚以无 std 构建过的 crate 重新检查其 std 构建。** — `no_std` 作业的最后一步只点了
+  五个基础 crate 中的两个，所以另外三个即使带 `std` 编译不过，这条检查也照样是绿的：特性拆分只被证明
+  了一个方向。如今重查点名五个（本机实测 `cargo check --locked` 五者干净通过），而
+  `tests/test_no_std_gate.py` 会从 workflow 文本里读出两个步骤的 crate 列表并拒绝它们分叉——把修复前
+  的步骤文本放回去就能让这条门禁点名三个 crate 而变红。—（详情：quality-ledger (dp)）
+
 - **桩生成器刻意升到了 maturin 1.15.0，并且是先量的。** — 钉住版本是因为
   `python/pyrs_yaml/pyrs_yaml.pyi` 由某一个确定的版本生成，而 `scripts/check_stub_drift.py` 里的规则
   描述的就是那一版的输出；所以移动 maturin 必须是一次独立的变更，`tests/test_docs_config_gate.py`

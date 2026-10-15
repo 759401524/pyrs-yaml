@@ -5453,6 +5453,22 @@ alone - the multi-line form stays and the note vanishes, so the test pins the pl
 the layout. Python owns the caller-visible promise: the case (dj) pinned as a loss is replaced by
 two that pin the survival and the one-round fixed point.
 
+### (dp) A gate that checks the split in one direction is a half gate (2026-10-15)
+
+The `no-std-check` job builds five foundation crates for `thumbv7em-none-eabi`, runs their tests on
+the host with `--no-default-features`, and then re-checks the default (std) configuration "so
+re-enabling `std` must not have been achieved by deleting the no_std path" - but that last step
+listed `pyrs-ast` and `pyrs-schema` only. `pyrs-event`, `pyrs-json` and `pyrs-toml` could stop
+compiling with std and the leg would stay green, which is the same class of hole the job's own
+comment says it is closing: a check whose coverage silently narrowed to a subset of what it names.
+
+Measured first, because widening a job that cannot compile is not a fix: `cargo check --locked` over
+all five crates with default features finished clean on this tree. The step now names the five, and
+`tests/test_no_std_gate.py` reads each step's `-p <crate>` set out of the workflow text and fails if
+the std re-check stops covering what the two no_std steps cover. The guard was seen to bite: with
+the pre-fix step text restored, it fails naming the three crates, and the helper that decides has
+its own negative case so the reading logic is exercised on a synthetic body too.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

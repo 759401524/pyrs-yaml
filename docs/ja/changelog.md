@@ -369,6 +369,13 @@ status: new
 
 #### 変更
 
+- **CI が std なしでビルドした各 crate の std ビルドも再検査します。** — `no_std` ジョブの最後の一段
+  は基礎 crate 五つのうち二つしか挙げておらず、残り三つは `std` 付きで壊れてもその脚は緑のままでし
+  た。特性の分割が一方向からしか証明されていなかったのです。いまは五つを挙げます（この場で
+  `cargo check --locked` が五つともきれいに通ることを実測）。`tests/test_no_std_gate.py` は workflow
+  の本文から二つの段の crate 一覧を読み取り、ずれ出すことを拒否します。直前のステップの本文を戻す
+  と、三つの crate を名指して紅になることを確認済みです。—（詳細：quality-ledger (dp)）
+
 - **スタブ生成器を maturin 1.15.0 へ、意図的かつ実測で移しました。** — ピンが存在するのは
   `python/pyrs_yaml/pyrs_yaml.pyi` がひとつの確定バージョンで生成され、`scripts/check_stub_drift.py`
   の規則がその出力を記述しているからです。つまり maturin の移動は独立した変更であり、
