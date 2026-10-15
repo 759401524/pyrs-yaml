@@ -551,13 +551,22 @@ fn is_json5_number(text: &str) -> bool {
         return !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit());
     }
     if let Some(int) = body.strip_suffix('.') {
-        return !int.is_empty() && int.bytes().all(|b| b.is_ascii_digit());
+        return json5_integer_part(int);
     }
     // leading `+` on an otherwise-strict JSON number (e.g. `+7`, `+1.5`).
     if text.starts_with('+') && is_json_number(body) {
         return true;
     }
     false
+}
+
+/// The integer part JSON5's grammar accepts before a trailing dot: a lone `0`, or a digit other
+/// than `0` followed by digits. `00.` is what the elevated tier drew in
+/// `prop_json5_output_reparses` - a YAML plain scalar can be spelled that way while no JSON5
+/// reader accepts it, and asking only "digits, then a dot" emitted text our own reader refused.
+fn json5_integer_part(int: &str) -> bool {
+    (!int.is_empty() && int.bytes().all(|b| b.is_ascii_digit()))
+        && (int.len() == 1 || !int.starts_with('0'))
 }
 
 /// Emit a JSON5 single-quoted string. Only reached under `Mode::Json5`
@@ -891,6 +900,26 @@ mod tests {
     // engine-level scenario and lives in `pyrs-yaml-core`
     // `src/integration/json_family.rs`; this crate must not reach back into
     // the YAML parser.
+
+    #[test]
+    fn a_number_the_json5_reader_refuses_is_not_emitted_bare() {
+        // The elevated tier drew `[[00.] …]` in `prop_json5_output_reparses`. The bare-token test
+        // asked only "digits, then a dot", but JSON5's integer part is `0` or `[1-9]` followed by
+        // digits, so `from_json5` refuses `00.` and the writer had emitted text its own reader
+        // rejects. A spelling the dialect cannot hold now resolves through the schema instead:
+        // the value survives, only the source form is given up.
+        for src in ["00.", "007.", "-00.", "0."] {
+            let text = to_json5_text(&CustomNode::plain_scalar(src)).unwrap();
+            assert!(
+                crate::from_json5(&text).is_ok(),
+                "{src} came back as {text}, which the reader refuses"
+            );
+        }
+        // The legal neighbour keeps its source spelling - the fix is about the integer part, not
+        // about the trailing dot.
+        let node = crate::from_json5("5.").unwrap();
+        assert_eq!(to_json5_text(&node).unwrap(), "5.");
+    }
 
     #[test]
     fn json5_infinity_is_written_from_the_value_not_from_a_word() {

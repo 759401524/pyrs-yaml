@@ -579,6 +579,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The JSON5 writer no longer emits a number its own reader refuses.** — the bare-token test
+  asked only "digits, then a dot", so a plain scalar spelled `00.` went out verbatim. JSON5 has no
+  such integer part: it is a lone `0` or a non-zero digit then digits, so `from_json5` rejects the
+  text this library had just written, and `prop_json5_output_reparses` drew exactly that shape at
+  20 000 cases. A spelling the dialect cannot hold now resolves through the schema like every other
+  non-JSON notation does, which keeps the value and gives up only the source form; the legal `5.`
+  still round-trips verbatim. — (details: quality-ledger (dm))
+
 - **A container key's own note separates nothing, and the key-identity model had not been told.** —
   `KeyIdentity` classified every non-empty container and every tagged scalar as `Other`, compared as
   nodes, on the reasoning that the node map keeps two such keys apart. The map does; the *text* does

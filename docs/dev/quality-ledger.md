@@ -5324,6 +5324,29 @@ subject, so that change rebases onto this one. Measured after: 620 Rust tests, p
 writer or serialiser moved, and none of the 22 committed scenarios reaches the edit layer's key
 comparison, so CI's `Instruction-count baseline` leg is what would notice if that were wrong.
 
+### (dm) The writer's bare-token question was cheaper than the reader's grammar (2026-10-15)
+
+`is_json5_number` decided whether a plain scalar could be emitted without quotes by asking
+"digits, then a dot". The JSON5 reader asks a stricter question: an integer part is `0` or
+`[1-9]\d*`. The two questions disagree on `00.`, and a YAML plain scalar is free to be spelled that
+way - so the writer emitted `[[00.] /* … */]` and `prop_json5_output_reparses` failed at 20 000
+cases on text this library's own reader rejects.
+
+| spelling | emitted bare before | re-parses | emitted now |
+| :-- | :-- | :-- | :-- |
+| `00.` | yes | no | resolved value |
+| `007.` | yes | no | resolved value |
+| `5.` | yes | yes | still `5.` |
+| `0.` | yes | yes | still `0.` |
+
+The fix is the integer part, not the dot: `json5_integer_part` is what the grammar says, and a
+spelling the dialect cannot hold falls through to the schema resolution that every other
+non-JSON notation already uses, which keeps the value and gives up only the source form. The tier
+that found it was the one #428 was sitting on - a JSON5 defect, in a TOML pull request, found
+because the elevated draw is orthogonal to the change it is testing. Rust owns the token rule
+(`a_number_the_json5_reader_refuses_is_not_emitted_bare`, red on `00.` before the fix); the
+property keeps the whole spelling space covered, and the unit test names the pair.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
