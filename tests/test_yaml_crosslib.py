@@ -223,6 +223,30 @@ def test_pyyaml_accepts_every_flow_note_emission():
         list(pyyaml.parse(emitted))
 
 
+@pytest.mark.skipif(not _ruamel_available(), reason="ruamel.yaml not installed")
+@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
+def test_the_references_read_the_block_bodies_we_write():
+    """A block scalar's body keeps its bytes when its header moves line or takes a note.
+
+    Two emissions used to change the value they carried, for every reader alike:
+
+    * an indentation indicator counts columns from the *parent node*, so a header pushed
+      onto its own line by a leading note still measures from the pair line — laying the
+      body under the header instead made the re-read value two spaces longer;
+    * a simple key's note has no slot before its `:`, and "ride the end of the line"
+      meant the end of the block's *last body line*, where `#` is content, not comment.
+
+    The claim pinned here is the one a serializer has to be able to make: the document we
+    hand back decodes, in all three engines, to the value the tree held.
+    """
+    for src in ["- \n  a:\n    # A\n    |-2\n       \n", "? a  # n\n: |-\n  abc\n"]:
+        emitted = pyrs_yaml.parse(src).to_yaml()
+        ours = pyrs_yaml.safe_load(emitted)
+        assert ours == pyrs_yaml.safe_load(src), src
+        assert ours == pyyaml.safe_load(emitted), emitted
+        assert ours == _ruamel_safe(emitted), emitted
+
+
 @pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
 def test_pyrs_projects_a_sequence_key_where_pyyaml_refuses_it():
     """Deliberate divergence, toward the library that carries the data.

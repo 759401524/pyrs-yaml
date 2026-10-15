@@ -148,6 +148,14 @@ struct Serializer {
     /// line (see `note_line_above_last_pair`), and "above" means the start of the entry
     /// that ended the block — which only the writer of that entry knows.
     pair_line_start: usize,
+    /// Offset of the line break that ended the block header written for the entry in
+    /// progress, or `None` while no block header is on the go.
+    ///
+    /// Below a `|`/`>` header every line is content, so a note appended at the tail of
+    /// such a value re-reads as bytes of the string, not as a comment. The header line
+    /// is the only slot in that entry a reader reports a comment from, and only the
+    /// block writer knows where it ended.
+    block_header_break: Option<usize>,
 }
 
 /// Chomping actually written for a block scalar: the claim is honored wherever a header can spell it.
@@ -347,6 +355,7 @@ impl Serializer {
             trailing_note_slot_open: false,
             pending_tag_insert_at: None,
             pair_line_start: 0,
+            block_header_break: None,
         }
     }
 
@@ -545,6 +554,25 @@ impl Serializer {
             *pending += text.len();
         }
         self.output.insert_str(at, text);
+    }
+
+    /// Remember the break that ended the block header just written.
+    ///
+    /// The header's line is the last place in the entry where a `#` is a comment:
+    /// every line below it is content, and a note appended there re-reads as bytes
+    /// of the value. Recorded here because only this writer knows where the header
+    /// ended; see `note_slot_above_block_body`.
+    fn record_block_header_break(&mut self) {
+        self.block_header_break = self.output.len().checked_sub(1);
+    }
+
+    /// The slot a note may take when the entry so far runs past a block header.
+    ///
+    /// `None` while the header line is still the last line written, because then the
+    /// writer's tail *is* that line and the ordinary placement already works.
+    fn note_slot_above_block_body(&self) -> Option<usize> {
+        let header_break = self.block_header_break?;
+        (header_break + 1 < self.output.len()).then_some(header_break)
     }
 
     /// True while the line just finished is the pending tag-only line: its scalar text was
@@ -1136,6 +1164,7 @@ impl Serializer {
         depth: usize,
     ) -> Result<(), SerializeError> {
         self.pair_line_start = self.output.len();
+        self.block_header_break = None;
         // Keys that cannot be spelled compactly: a mapping or a sequence body needs the `?`
         // indicator, and so does an alias — `*x: v` is refused by this engine's own reader
         // ("simple key expected ':'"), and ruamel.yaml's scanner raises on it from 0.19 while
@@ -1306,7 +1335,10 @@ impl Serializer {
             self.output.push('\n');
             key_note_at = Some(self.output.len() - 1);
             let child_indent = indent_width + self.indent_mapping;
-            self.serialize_node_internal(value, child_indent, child_indent, true, depth + 1)?;
+            // The header lands on its own line, but a block scalar's indentation
+            // indicator is still measured from the pair, as every reader does —
+            // `block_base` is that parent column, not `child_indent`.
+            self.serialize_node_internal(value, child_indent, indent_width, true, depth + 1)?;
         } else {
             self.output.push(' ');
             // Inline value: the header shares the `key:` line, so a block
@@ -1333,7 +1365,8 @@ impl Serializer {
                 _ => None,
             };
             if let Some(text) = key_note {
-                let at = key_note_at.unwrap_or(self.output.len() - 1);
+                let fallback = key_note_at.unwrap_or(self.output.len() - 1);
+                let at = self.note_slot_above_block_body().unwrap_or(fallback);
                 self.insert_note_at(at, &format!("  # {text}"));
             }
         }
@@ -1396,6 +1429,7 @@ impl Serializer {
                     }
                     self.write_indent(key_base);
                 }
+                self.block_header_break = None;
                 self.write_scalar_for_key(key, false);
                 self.output.push(':');
                 self.output.push(' ');
@@ -1421,7 +1455,9 @@ impl Serializer {
                     && value.comment().is_none()
                     && self.output.ends_with('\n')
                 {
-                    let at = self.output.len() - 1;
+                    let at = self
+                        .note_slot_above_block_body()
+                        .unwrap_or(self.output.len() - 1);
                     self.insert_note_at(at, &format!("  # {}", note.text));
                 }
             }
@@ -1445,7 +1481,9 @@ impl Serializer {
             // once the note has come up to the dash line too.
             self.output.push('\n');
             let child_indent = indent_width + self.indent_sequence;
-            self.serialize_node_internal(item, child_indent, child_indent, false, depth + 1)?;
+            // As for the mapping value above: the indicator a block scalar on this
+            // line carries is relative to the dash, not to the item's own column.
+            self.serialize_node_internal(item, child_indent, indent_width, false, depth + 1)?;
         } else {
             // For simple items (including flow-style containers),
             // they go on the same line as the dash. Don't pass
@@ -1610,6 +1648,7 @@ impl Serializer {
         };
         self.write_block_header('|', header, &chomping);
         self.output.push('\n');
+        self.record_block_header_break();
         self.write_base_indent(value, block_base, indent);
     }
 
@@ -1654,6 +1693,7 @@ impl Serializer {
         };
         self.write_block_header('>', header, &chomping);
         self.output.push('\n');
+        self.record_block_header_break();
         let mut rest = value;
         let mut started = false;
         loop {
@@ -4220,6 +4260,158 @@ mod tests {
         };
         let out = assert_reparses(&node);
         assert_yaml_eq!("b: |-\n  x\n  y\n", &out);
+    }
+
+    /// The block scalar's parent, reached through a sequence item whose mapping
+    /// value was pushed onto its own line by a leading note.
+    fn own_line_literal(value: &str) -> CustomNode {
+        let mut scalar = CustomNode::quoted_scalar(value);
+        scalar.set_scalar_style(ScalarStyle::Literal);
+        scalar.set_comment(crate::ast::Comment {
+            text: "A".into(),
+            standalone: true,
+        });
+        let mut pairs = NodeMap::default();
+        pairs.insert(CustomNode::plain_scalar("a"), scalar);
+        CustomNode::Sequence {
+            items: vec![CustomNode::Mapping {
+                pairs,
+                flow_style: false,
+                meta: Default::default(),
+            }],
+            flow_style: false,
+            meta: Default::default(),
+        }
+    }
+
+    fn own_line_value_text(out: &str) -> String {
+        let reparsed = crate::parser::parse_with_options(
+            out,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        )
+        .expect("re-parse");
+        let CustomNode::Sequence { items, .. } = &reparsed else {
+            panic!("unexpected shape: {reparsed:?}");
+        };
+        let CustomNode::Mapping { pairs, .. } = &items[0] else {
+            panic!("expected a block mapping item: {reparsed:?}");
+        };
+        let Some(CustomNode::Scalar { value, .. }) = pairs.get(&CustomNode::plain_scalar("a"))
+        else {
+            panic!("missing `a` in {out:?}");
+        };
+        value.as_ref().to_string()
+    }
+
+    /// A block scalar pushed onto its own line by a leading note still takes its
+    /// indentation indicator from the **parent node**, not from the header line.
+    ///
+    /// Here the pair sits at column 2 and the header at column 4. The writer
+    /// invented `|-2` for the value `" "` and then laid the body out at
+    /// `header(4) + 2`, but the reader — granit, PyYAML and ruamel alike, all
+    /// measured on this shape — strips `parent(2) + 2 = 4` columns and hands back
+    /// `"   "`. The emitted document therefore changed the value the tree held.
+    /// Found by the property tier's residue attribution: 434 of 4000 drawn trees,
+    /// every one of them this same two-column shift.
+    #[test]
+    fn an_own_line_block_header_measures_its_indicator_from_the_parent() {
+        let node = own_line_literal(" ");
+        let out = assert_reparses(&node);
+        assert_eq!(own_line_value_text(&out), " ", "{out:?}");
+    }
+
+    /// The same rule when the indicator came from the source rather than from the
+    /// writer: `|4` under a header at column 4 means content at `parent(2) + 4`.
+    #[test]
+    fn an_own_line_block_header_keeps_a_source_indicator_parent_relative() {
+        let mut scalar = literal_scalar_with_indent("x", 4);
+        scalar.set_comment(crate::ast::Comment {
+            text: "A".into(),
+            standalone: true,
+        });
+        let mut pairs = NodeMap::default();
+        pairs.insert(CustomNode::plain_scalar("a"), scalar);
+        let node = CustomNode::Sequence {
+            items: vec![CustomNode::Mapping {
+                pairs,
+                flow_style: false,
+                meta: Default::default(),
+            }],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        let out = assert_reparses(&node);
+        assert_eq!(own_line_value_text(&out), "x", "{out:?}");
+    }
+
+    /// A block scalar's body has to survive the key's note.
+    ///
+    /// A simple key's inline note has no slot between the key and its `:`, so the
+    /// writer rides it on "the pair line, at the end" — and when the value is a
+    /// block scalar that end is its **last body line**, where `#` is not a comment.
+    /// The note therefore became content: `- a: |-` + `    a  # a` re-read the value
+    /// as `"a  # a"`, inventing bytes the tree never held. Found by the property
+    /// tier's residue attribution, and the shape the tier had been filtering. The
+    /// note now rides the header line, where a reader hands it to the value and the
+    /// body keeps its bytes.
+    fn key_note_over_block_scalar(compact: bool) -> CustomNode {
+        let mut key = CustomNode::plain_scalar("a");
+        key.set_comment(crate::ast::Comment {
+            text: "n".into(),
+            standalone: false,
+        });
+        let mut pairs = NodeMap::default();
+        pairs.insert(key, literal_scalar("abc"));
+        let mapping = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: Default::default(),
+        };
+        if compact {
+            CustomNode::Sequence {
+                items: vec![mapping],
+                flow_style: false,
+                meta: Default::default(),
+            }
+        } else {
+            mapping
+        }
+    }
+
+    fn block_value_of(out: &str) -> String {
+        let reparsed = crate::parser::parse_with_options(
+            out,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        )
+        .expect("re-parse");
+        let root = match &reparsed {
+            CustomNode::Sequence { items, .. } => &items[0],
+            other => other,
+        };
+        let CustomNode::Mapping { pairs, .. } = root else {
+            panic!("expected a block mapping: {reparsed:?}");
+        };
+        let Some(CustomNode::Scalar { value, .. }) = pairs.get(&CustomNode::plain_scalar("a"))
+        else {
+            panic!("missing `a` in {out:?}");
+        };
+        value.as_ref().to_string()
+    }
+
+    #[test]
+    fn a_key_note_rides_the_block_header_not_the_body() {
+        for compact in [false, true] {
+            let node = key_note_over_block_scalar(compact);
+            let out = assert_reparses(&node);
+            assert_eq!(block_value_of(&out), "abc", "{out:?}");
+            assert!(out.contains("# n"), "the note vanished: {out:?}");
+        }
     }
 
     #[test]

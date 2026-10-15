@@ -530,6 +530,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A block scalar no longer loses its value when its header moves line or takes a note.** —
+  an indentation indicator counts columns from the *parent node*, and PyYAML, ruamel and this
+  engine's own reader all agree on that (measured over `a: |2`, `- |2` and `? k` spellings). The
+  writer counted from the header line instead — the same column, until a value is pushed onto a
+  line of its own, which a leading note does — and then the body sat two columns deeper than the
+  number on the header claimed, so every reader took those columns as content: the value `" "`
+  came back `"   "`. The second shape is the same class: a simple key's inline note has no
+  spelling before its `:`, so the writer rides it at the end of the pair line, and for a block
+  value that end is the last *body* line, where `#` is content — a noted key over `|-` emitted
+  `abc  # n` and read back `"abc  # n"`, three bytes the tree never held. Both came out of
+  attributing the property tier's filtered mismatches per node position: 434 of 4000 drawn trees
+  carried the shift, and after the two fixes none do. The note now rides the header line, where a
+  reader hands it to the value.
+
 - **A block scalar no longer invents the trailing break its header denotes.** —
   `key: |-\n  line1\n  line2\n` reads as `line1\nline2`; ask that node for clip
   (`set_chomping("clip")`, or hand the writer a tree whose `Clip` value ends in no break) and it
