@@ -17,6 +17,7 @@ import importlib.util
 import pathlib
 import subprocess
 import sys
+import types
 
 import pytest
 
@@ -240,3 +241,61 @@ def test_the_gate_catches_the_artifact_that_was_broken(tmp_path):
         assert len(findings) >= 3, (checker, findings)
     if ran == 0:
         pytest.skip("neither checker is installed here; the stub-drift CI job runs both")
+
+
+def test_relative_imports_are_read_from_the_tree_not_by_pattern(gate):
+    """The sibling modules a stub needs are collected from its syntax, docstring prose excluded.
+
+    The first version of this scan was a regular expression over the whole file, and a docstring that said
+    ``from .node import Node`` would have asked the scratch package to ship a module nothing imports.
+    """
+    snippet = 'from .node import Node\n\n\nclass C:\n    """\n    Write `from .phantom import X` here.\n    """\n'
+    assert gate.relative_import_modules(snippet) == ["node"]
+
+
+def test_the_scratch_package_ships_the_modules_the_stub_imports(gate, tmp_path, monkeypatch):
+    """A scratch package without the wheel's own modules reports the directory, not the artifact.
+
+    Measured on the first run after the attach rule landed: mypy answered `import-not-found` for
+    `pyrs_yaml.node` against a package holding only the stub - a finding about this scratch directory, exactly
+    the kind of red that teaches someone to widen the filter instead of fixing the model.
+    """
+    stub = tmp_path / "pyrs_yaml.pyi"
+    with (tmp_path / "node.py").open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("class Node:\n    value: object\n")
+    with stub.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write('from .node import Node\n\n\ndef make() -> "Node": ...\n')
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setattr(gate, "PACKAGE", tmp_path)
+    gate.run("mypy", stub, work)  # the checker itself may be absent; the copy is what is asserted
+    assert (work / "pyrs_yaml" / "node.py").is_file(), "the stub's sibling module was not copied in"
+
+
+def test_a_stub_that_imports_a_module_the_package_lacks_is_not_a_pass(gate, tmp_path, monkeypatch):
+    """`import-not-found` for a module the package does not have is a defect to name, never a clean run."""
+    stub = tmp_path / "pyrs_yaml.pyi"
+    with stub.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write('from .nosuchmodule import X\n\n\ndef make() -> "X": ...\n')
+    empty = tmp_path / "package"
+    empty.mkdir()
+    monkeypatch.setattr(gate, "PACKAGE", empty)
+    work = tmp_path / "work"
+    work.mkdir()
+    with pytest.raises(gate.PackageSourceError, match="nosuchmodule"):
+        gate.run("mypy", stub, work)
+
+
+def test_the_unreadable_stub_exits_two_rather_than_blaming_the_checker(gate, tmp_path, monkeypatch):
+    """Exit 2 is "the check could not run": a stub that is not Python is reported as such.
+
+    The availability probe is stubbed because neither checker is a project dependency: the claim here is about
+    which exit code a broken artifact earns, and a test that skipped whenever mypy was absent would not say so.
+    """
+    stub = tmp_path / "pyrs_yaml.pyi"
+    with stub.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("def broken(\n")
+    monkeypatch.setattr(
+        gate.subprocess, "run", lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="", stderr="")
+    )
+    assert gate.main(["check_stub_types", "--stub", str(stub)]) == 2, "an unparsable stub must not read as a pass"

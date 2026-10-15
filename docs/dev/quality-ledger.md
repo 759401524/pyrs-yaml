@@ -4847,6 +4847,55 @@ a dangling reference, which the engine promises never to emit. The reader solves
 inlining orphaned uses (`parser::repair_orphaned_anchors`); a writer that sees one mapping at a time
 cannot.
 
+### (cy) The stub describes the extension; somebody had to describe the package (2026-10-15)
+
+`ROADMAP.md` row 1 asked which artefact `python/pyrs_yaml/pyrs_yaml.pyi` is the contract *of*, and
+named three routes. Answering it needed a measurement rather than a preference, and the measurement
+moved the question: mypy 2.4.0, run against the installed package, answered
+`reveal_type(pyrs_yaml.parse("a: 1"))` with `Any`. The stub was not the first thing missing - the
+public Python layer was. `__init__.py` re-exports the binding's `parse` through a wrapper annotated
+`-> Any`, so no checker ever reached `YamlDocument`, and every question about its members was
+unreachable through the entry point users call first.
+
+What the two artefacts actually disagree on, counted rather than estimated: twelve public members
+(`node`, `find`, `walk`, `scalars`, `merged`, `set`, `set_many`, `insert`, `append`, `delete`,
+`rename`, `sort_keys`) exist on `YamlDocument` only after the package imports, because they are
+assigned onto the class at lines 357-378, and maturin 1.14.1 introspects the compiled module before
+that has happened. `Node` and `MergedView` were *not* in the same hole, which is where the row's
+wording overreached: they are Python modules under `py.typed`, so a checker reads their members from
+source. The gap is specifically the class the extension owns and the package edits.
+
+The route taken is the declared reconciliation, plus the honest wrapper annotations it depends on.
+Members are read from the compiled module's classes with `vars()` (not `dir()`), signature and
+docstring included, and inserted into the class body the generator wrote;
+`EXPECTED_ATTACHED_MEMBERS = 12` is the same kind of tripwire the exception block uses, an
+unannotated member is an error rather than a written `Any`, and a parameter shape the route has not
+measured - keyword-only, `*args`, positional-only besides `self` - stops the run instead of
+inventing a spelling. Moving the members behind the extension boundary was rejected on the spot:
+they return `Node` and `MergedView`, which are Python objects, so the binding would have to grow a
+Python-level class to answer a typing question.
+
+Two traps, both found by running things, worth the record because both looked like the artifact's
+fault:
+
+- `scripts/check_stub_types.py` builds a scratch package holding *only* the stub, so
+  `from .node import Node` came back `import-not-found` - a finding about the directory, not about
+  the wheel, and precisely the kind of red that teaches someone to widen the filter. The gate now
+  copies in the sibling modules the stub itself imports, read out of its syntax tree, and a stub
+  naming a module the package lacks is exit 2: the wheel would ship a contract that references
+  something it does not contain.
+- Matching a class by name let a synthetic `class Node` in the generator's output collect the
+  *package's* Python `Node` - forty-one members injected into a class the extension never wrote.
+  Candidates now come from the compiled module's namespace, which is what "the generator could have
+  seen" means.
+
+The check that the fix is load-bearing rather than cosmetic: `document.node("a")` is now an error at
+check time (`Too many arguments for "node"`), which is what the runtime has always said
+(`_yaml_document_node() takes 1 positional argument but 2 were given`) - the checker and the object
+agree for the first time. Deleting the twelve declarations from the committed stub turns
+`test_the_stub_declares_every_public_member_of_a_class_it_names` red naming all twelve, and the
+wrapper predicate run over `__init__.py` at `HEAD` names `parse` and `parse_file`.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

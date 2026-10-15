@@ -32,6 +32,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import pathlib
 import re
 import shutil
@@ -41,16 +42,20 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STUB = ROOT / "python" / "pyrs_yaml" / "pyrs_yaml.pyi"
+PACKAGE = ROOT / "python" / "pyrs_yaml"
 
 # A user-side snippet that touches each part of the contract that was broken: a call whose parameter was
-# spelled `u32`, an annotation referencing an unimported `Callable`, and an exception class from the
-# declarations the route appends (ledger (bf)).
+# spelled `u32`, an annotation referencing an unimported `Callable`, an exception class from the declarations
+# the route appends (ledger (bf)), and a member from the declarations it attaches (ROADMAP row 1).
 USER_SNIPPET = """import pyrs_yaml
 
 document = pyrs_yaml.parse("a: 1")
 reveal_type(document)
 pyrs_yaml.register_tag("x", None, 1)
 pyrs_yaml.parse_stream("a: 1", None)
+reveal_type(document.node("a"))
+document.set("a", 2)
+reveal_type(document.walk())
 
 try:
     pyrs_yaml.parse("[")
@@ -61,6 +66,29 @@ except pyrs_yaml.YamlParseError as error:
 # Rules that mean "this file does not describe a checkable type". Kept narrow on purpose: ty's other findings
 # are strictness opinions about generator output, listed in docs/dev/quality-ledger.md (bg).
 TY_CORRECTNESS_RULES = ("unresolved-reference", "invalid-syntax-in-forward-annotation", "invalid-syntax")
+
+
+class PackageSourceError(RuntimeError):
+    """The scratch package cannot be made to match the stub.
+
+    Raised instead of reporting a finding: a stub that imports a module the package does not have is a real
+    defect, but "mypy cannot find it" is an answer about this scratch directory, and a gate that folds the two
+    together reads as a clean run on the machine that never built the missing file. Exit code 2 says the check
+    could not run.
+    """
+
+
+def relative_import_modules(text: str) -> list[str]:
+    """The sibling module names a stub imports from inside its own package.
+
+    Read from the syntax tree rather than a regular expression, because the same shape appears inside
+    docstrings, and a docstring is not an import.
+    """
+    modules = []
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module:
+            modules.append(node.module)
+    return sorted(set(modules))
 
 
 def parse_findings(output: str, stub_name: str = "pyrs_yaml.pyi") -> list[str]:
@@ -100,11 +128,28 @@ def vacuous(output: str) -> bool:
 
 
 def run(checker: str, stub: pathlib.Path, work: pathlib.Path) -> tuple[list[str], str, int]:
-    """Materialise the scratch package the way a user's tooling sees it, and ask the checker about it."""
+    """Materialise the scratch package the way a user's tooling sees it, and ask the checker about it.
+
+    The stub's own package-relative imports are copied in from the real package, because the wheel ships those
+    modules beside the stub: leaving them out makes the checker report `import-not-found` against our artifact
+    for a file the user does have, which is a finding about this scratch directory rather than about the stub.
+
+    Raises:
+        PackageSourceError: when the stub imports a sibling module the package does not contain.
+    """
     package = work / "pyrs_yaml"
     package.mkdir(parents=True, exist_ok=True)
     shutil.copy2(stub, package / "pyrs_yaml.pyi")
     (package / "py.typed").write_text("", encoding="utf-8")
+    for module in relative_import_modules(stub.read_text(encoding="utf-8")):
+        source = PACKAGE / f"{module}.py"
+        if not source.is_file():
+            raise PackageSourceError(
+                f"{stub.name} imports `.{module}` but the package has no {module}.py; a wheel whose typing "
+                "contract references a module it does not ship is a defect, and a checker that cannot find it "
+                "is not the way to report one"
+            )
+        shutil.copy2(source, package / f"{module}.py")
 
     if checker == "mypy":
         (package / "__init__.py").write_text("from .pyrs_yaml import *\n", encoding="utf-8")
@@ -168,7 +213,13 @@ def main(argv: list[str]) -> int:
 
     work = pathlib.Path(tempfile.mkdtemp(prefix="stub-types-"))
     try:
-        findings, output, code = run(args.checker, args.stub, work)
+        try:
+            findings, output, code = run(args.checker, args.stub, work)
+        except (PackageSourceError, SyntaxError) as error:
+            # A stub that is not Python at all lands here too: the scratch package cannot be built from it, so
+            # the check could not run - which is exit 2, not the 1 that means "the checker blamed our file".
+            print(f"ERROR: {error}", file=sys.stderr)
+            return 2
         if vacuous(output):
             print("ERROR: the checker examined no files; that is not a pass", file=sys.stderr)
             print("  " + output.strip().splitlines()[-1][:160], file=sys.stderr)

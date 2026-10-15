@@ -491,6 +491,27 @@ status: new
 
 #### 수정
 
+- **동봉되는 타입 계약이 패키지가 실제로 건네는 클래스를 쓴다.** —
+  `python/pyrs_yaml/pyrs_yaml.pyi`는 확장 모듈에서 생성되는데 `python/pyrs_yaml/__init__.py`는
+  불러오기가 끝난 뒤에
+  `node`·`find`·`walk`·`scalars`·`merged`·`set`·`set_many`·`insert`·`append`·`delete`·
+  `rename`·`sort_keys`를 `YamlDocument`에 붙인다. 그래서 이 열두 구성원은 실행 시간에는 있으나
+  검사기가 읽는 산출물에는 하나도 없었다. 설치된 패키지에 mypy 2.4.0을 세워 재면 `document.node`은
+  stub이 한 번도 선언하지 않은 구성원을 가리켰다. 첫 도미노는 그 한 층 위에 있었다 — 공개 감싸기
+  `parse`와 `parse_file`은 `-> Any`, `parse_all_docs`는 `list[Any]`으로 적혀 있어 binding 스스로
+  밝힌 `YamlDocument`를 지워 버렸고, 어느 검사기도 사용자가 먼저 부르는 입구에서 그 클래스에 닿을 수
+  없었다. 증세가 나온 자리마다에서 고쳤다: 감싸기에는 정직한 반환 타입, stub에는 선언된 조정 규칙 —
+  컴파일된 모듈의 클래스에서 인자와 기본값과 docstring을 그대로 읽어 쓰고
+  `EXPECTED_ATTACHED_MEMBERS`로 개수를 센다. 따라서 구성원이 늘거나 줄면 검토 사건이 되고 계약이
+  말없이 좁아지지는 않는다. 패키지에 타입이 적히지 않은 구성원은 `Any`로 채워지는 대신 유도를
+  멈춘다. 타입 검사 관문도 stub이 불러오는 같은 패키지의 모듈을 임시 패키지에 담게 됐다 — `.pyi`만
+  두던 임시 패키지는 모든 wheel이 포함하는 파일을 `import-not-found`로 보고했다. `Node`와
+  `MergedView`는 애초에 이 구멍에 들지 않았다 — `py.typed` 패키지의 Python 모듈이라 검사기가 소스를
+  읽기 때문이다. 미해결 항목 표는 이 대목에서 구멍을 지나치게 크게 적었다. 이제 검사기와 객체가 같은
+  판단을 한다: `document.node("a")`은 검사 때 `Too many arguments`, 실행 때는 언제나처럼
+  `TypeError`. 열두 선언을 지우면 `test_the_stub_declares_every_public_member_of_a_class_it_names`가
+  열두 개를 이름 찍어 빨개진다.
+
 - **flow 집합 구성원의 주석은 떨구지 않고 쓴다.** — `{A: x  # V}`를 읽은 트리는 `V`를 지켰지만 다시
   내보내면 `{A: x}`였다. 독자는 flow 구성원마다 자리 하나, 그 줄 끝 주석만 넘겨주는데 flow 쪽 쓰기
   계층은 그 자리를 하나도 쓰지 않았다. 곧 주석은 메모리에만 존재했고 텍스트를 읽은 다음 사람은 두 번

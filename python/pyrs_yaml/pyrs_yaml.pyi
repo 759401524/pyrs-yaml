@@ -5,7 +5,9 @@ pyrs-yaml: high-performance YAML parsing with perfect round-trip support.
 """
 
 from _typeshed import Incomplete
-from typing import Any, Callable, final
+from typing import Any, Callable, Iterator, final
+from .merged_view import MergedView
+from .node import Node
 
 @final
 class StreamIterator:
@@ -323,6 +325,39 @@ class YamlDocument:
         """
         Return the YAML version string.
         """
+
+    def append(self, path: "str", value: "Any") -> "None": ...
+
+    def delete(self, path: "str") -> "None": ...
+
+    def find(self, path: "str") -> "Node | list[Node]": ...
+
+    def insert(self, path: "str", index: "int", value: "Any") -> "None": ...
+
+    def merged(self) -> "MergedView": ...
+
+    def node(self) -> "Node": ...
+
+    def rename(self, path: "str", new_key: "str") -> "None": ...
+
+    def scalars(self) -> "Iterator[Node]": ...
+
+    def set(self, path: "str", value: "Any", create_missing: "bool" = False) -> "None": ...
+
+    def set_many(self, pairs: "dict[str, Any]") -> "None":
+        """
+        Set multiple values at once (single splice burst).
+
+            Paths may include wildcards (``$.items[*].active``); every matching node
+            is set. Accepts ``{"path": value, ...}``.
+        """
+
+    def sort_keys(self, path: "str" = "$") -> "None":
+        """
+        Sort the mapping keys at ``path`` (default root) in place.
+        """
+
+    def walk(self) -> "Iterator[Node]": ...
 
 @final
 class YamlStream:

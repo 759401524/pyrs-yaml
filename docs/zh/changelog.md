@@ -413,6 +413,22 @@ status: new
 
 #### 修复
 
+- **随包发布的类型契约开始描述运行时那个类。** — `python/pyrs_yaml/pyrs_yaml.pyi` 由扩展生成，而
+  `python/pyrs_yaml/__init__.py` 是在导入之后才把 `node`、`find`、`walk`、`scalars`、`merged`、
+  `set`、`set_many`、`insert`、`append`、`delete`、`rename`、`sort_keys` 挂到 `YamlDocument` 上，这
+  十二个成员因此只活在运行时，检查器要读的那份文件里一个都没有：用 mypy 2.4.0 对着已安装的包实测，
+  `document.node` 指的是一个类型存根从未声明的成员。第一块多米诺骨牌压在上一层 —— `parse` 与
+  `parse_file` 的公共包装被标注成 `-> Any`，`parse_all_docs` 被标注成 `list[Any]`，把绑定自己写明的
+  `YamlDocument` 抹掉了，于是检查器从用户最先调用的入口根本走不到那个类。两半各在它所属处修好：包装
+  给出诚实的返回类型，另加一条已声明的调和规则 —— 从编译模块的类上读出成员（参数、默认值与 docstring
+  一律照抄）写进类型存根，并按 `EXPECTED_ATTACHED_MEMBERS` 计数，让成员的增减成为一次复核，而不是一
+  份悄悄变窄的契约。包自己没有标注的成员会让推导停下来，而不是被写成 `Any`；类型检查门禁如今也会把存
+  根自身 import 的同级模块一起放进临时包 —— 只装一个 `.pyi` 的临时包此前会把每个 wheel 都含有的文件
+  报成 `import-not-found`。`Node` 与 `MergedView` 从来不在这个洞里，它们是 `py.typed` 包自带的
+  Python 模块，检查器本就读其源码 —— 待办表在这一处把缺口说大了。检查器与对象如今对这调用意见一致：
+  `document.node("a")` 在检查时报「参数过多」，在运行时也一如往常抛 `TypeError`。删掉那十二条声明，
+  `test_the_stub_declares_every_public_member_of_a_class_it_names` 会点名全部十二项而变红。
+
 - **流式集合成员的注释会被写出去，而不是丢掉。** — `{A: x  # V}` 读进来的树里留着 `V`，再产出时却是
   `{A: x}`：读者给每个流式成员只留一个槽位，也就是挂在它行尾的那条注释，而流式写入器一个都没用上 ——
   注释只活在内存里，下一个读文本的人再也看不见它。在 4020 棵抽样树上量过：其中 1650 棵最先的差异就落
