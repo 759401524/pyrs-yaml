@@ -80,7 +80,10 @@ import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GENERATED = ROOT / "target" / "stubs" / "pyrs_yaml.pyi"
+# maturin 1.15.0 writes `--out <dir>/pyrs_yaml/pyrs_yaml.pyi` (the package directory layout it
+# adopted for stub generation); 1.14.1 wrote the file straight into `--out`. The command in
+# AGENTS.md is unchanged, so only this path moves with the generator.
+GENERATED = ROOT / "target" / "stubs" / "pyrs_yaml" / "pyrs_yaml.pyi"
 TRACKED = ROOT / "python" / "pyrs_yaml" / "pyrs_yaml.pyi"
 
 # Anchored on the generator's exact output so a real signature change stops

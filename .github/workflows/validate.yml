@@ -86,7 +86,7 @@ jobs:
   # Costs one debug Rust build plus a locked env sync on validate-triggering PRs;
   # the `build` job in ci.yml already spends more than that per OS.
   #
-  # windows-latest, deliberately: maturin 1.14.1 generates stubs by importing the
+  # windows-latest, deliberately: the pinned maturin generates stubs by importing the
   # freshly built extension from an isolated interpreter, and that route does not
   # work on Linux here. Measured, not assumed — on WSL (same locked maturin, same
   # uv.lock, Python 3.12) the sequence fails with "Failed to introspect the built
