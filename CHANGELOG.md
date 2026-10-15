@@ -594,6 +594,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An anchored node inside a flow no longer takes its name from another node's text.** — the
+  recovery that reads `&name` back out of the source scanned left across the whole line, so a plain
+  key holding a comma and a quote (`$,":`) skewed every quote state after it: the `#` inside the
+  next member's quoted key read as a comment, that member's own anchor was skipped as comment text,
+  and the `&` written *inside* the key became the name. The second dump therefore renamed the anchor
+  and orphaned every alias pointing at it. The search is now bounded by the node's own window - the
+  end of whatever the builder consumed last in this container. Measured: the property tier is clean
+  at 20 000 cases where three narrower text or context readings each left residuals, and the unit
+  pin shows the text-only scan answering `w` against the windowed scan's `v`. The event-stream
+  reader keeps the old reading, because its builder tracks no container state, so this closes the
+  tree path - details: quality-ledger (dr)
+
 - **A comment inside a multi-line TOML array belongs to its element.** — the array scanner skipped
   a `#` line and threw the text away, so `arr = [⏎ # lead⏎ 1⏎]`, `arr = [⏎ 1 # trail⏎]` and the note
   between an element's comma and the next element all came back as one compact line with the comment

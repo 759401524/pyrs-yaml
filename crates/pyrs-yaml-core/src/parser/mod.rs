@@ -15,7 +15,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Arc;
 use yaml::{
-    BlockHeader, anchor_name_before, compute_line_offsets, detect_block_header, resolve_merge_keys,
+    BlockHeader, anchor_name_within, compute_line_offsets, detect_block_header, resolve_merge_keys,
 };
 
 /// Return true if a mapping key *resolves to null*: a `Null` node, or an
@@ -1261,6 +1261,30 @@ impl<'a> AstReceiver<'a> {
         self.push_node(node);
     }
 
+    /// Where the node being anchored can begin: the end of everything the builder has already
+    /// placed in its container.
+    ///
+    /// A mapping's pending key, or its last pair's value, or a sequence's last item - whichever the
+    /// parser consumed most recently ends before this node's own text, so an `&` left of that point
+    /// belongs to another node, however the line's quoting reads. `byte_start` is the upper bound
+    /// granit already gave; this is the lower one.
+    fn anchor_window(&self, byte_start: usize) -> usize {
+        let previous = match self.stack.last() {
+            Some(ParseState::Mapping {
+                current_key, pairs, ..
+            }) => match current_key.as_ref() {
+                Some(key) => Some(key),
+                None => pairs.iter().next_back().map(|(_, value)| value),
+            },
+            Some(ParseState::Sequence { items, .. }) => items.last(),
+            None => None,
+        };
+        previous
+            .and_then(CustomNode::source_range)
+            .map(|range| range.end.min(byte_start))
+            .unwrap_or(0)
+    }
+
     /// Recover the `&name` granit attached to an anchored node by reading it
     /// back at the node's own source location (`byte_start` = byte offset of the
     /// event span start). granit only surfaces the numeric `anchor_id`, not the
@@ -1273,7 +1297,11 @@ impl<'a> AstReceiver<'a> {
         if anchor_id == 0 {
             return None;
         }
-        let mut name = anchor_name_before(self.yaml_text, byte_start)?;
+        let mut name = anchor_name_within(
+            self.yaml_text,
+            byte_start,
+            Some(self.anchor_window(byte_start)),
+        )?;
         // Same ingest-side rule already applied to comment text: an anchor is
         // emitted as a bare `&name`, a position with no escape syntax, so a code
         // point that cannot appear inside a document - U+FEFF is restricted to the
