@@ -1084,10 +1084,80 @@ mod tests {
                 sequence_key(&[]),
                 false,
             ),
+            // --- the containers and tagged scalars the node map tells apart ---
+            (
+                "a flow sequence and its block twin",
+                crate::ast::CustomNode::Sequence {
+                    items: vec![plain("a")],
+                    flow_style: true,
+                    meta: crate::ast::NodeMeta::default(),
+                },
+                sequence_key(&["a"]),
+                true,
+            ),
+            (
+                "two mappings whose note rides an inner key",
+                mapping_key(&[("z", "1")]),
+                {
+                    let mut pairs = NodeMap::default();
+                    let mut key = plain("z");
+                    key.set_comment(crate::ast::Comment {
+                        text: "deep".into(),
+                        standalone: false,
+                    });
+                    pairs.insert(key, plain("1"));
+                    crate::ast::CustomNode::plain_mapping(pairs)
+                },
+                true,
+            ),
+            (
+                "a sequence of one null and an empty sequence",
+                crate::ast::CustomNode::Sequence {
+                    items: vec![null(None, None, None)],
+                    flow_style: false,
+                    meta: crate::ast::NodeMeta::default(),
+                },
+                sequence_key(&[]),
+                true,
+            ),
+            (
+                "a tagged scalar and its noted twin",
+                scalar("k", ScalarStyle::Plain, Some(("!", "a"))),
+                {
+                    let mut noted = scalar("k", ScalarStyle::Plain, Some(("!", "a")));
+                    noted.set_comment(crate::ast::Comment {
+                        text: "n".into(),
+                        standalone: false,
+                    });
+                    noted
+                },
+                false,
+            ),
+            (
+                "two sequences of one null, one carrying a note",
+                crate::ast::CustomNode::Sequence {
+                    items: vec![null(None, None, None)],
+                    flow_style: false,
+                    meta: crate::ast::NodeMeta::default(),
+                },
+                crate::ast::CustomNode::Sequence {
+                    items: vec![null(None, None, None)],
+                    flow_style: false,
+                    meta: {
+                        let mut meta = crate::ast::NodeMeta::default();
+                        meta.set_comment(crate::ast::Comment {
+                            text: "n".into(),
+                            standalone: true,
+                        });
+                        meta
+                    },
+                },
+                false,
+            ),
         ];
         let distinguishable = cases.iter().filter(|(_, _, _, keepable)| *keepable).count();
         assert_eq!(
-            distinguishable, 11,
+            distinguishable, 14,
             "the table must keep a real share of its classes on each side"
         );
 
