@@ -358,15 +358,19 @@ def test_a_property_that_filters_its_own_samples_is_named(matrix, tmp_path):
 
 
 def test_the_conditional_guard_hole_bites_in_both_directions(matrix, monkeypatch):
-    """Counting properties measures the wrong quantity, and closing the guard must close the hole."""
+    """Counting properties measures the wrong quantity, and a closed guard must read as closed."""
     real = matrix.conditional_property_assertions()
-    assert "crates/pyrs-yaml-core/src/pbt.rs::prop_roundtrip" in real, sorted(real)
-    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
-    assert ("property-tier", "conditional-assert") in holes, sorted(holes)
-
-    monkeypatch.setattr(matrix, "conditional_property_assertions", lambda root=None: [])
+    assert real == [], sorted(real)
     holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
     assert ("property-tier", "conditional-assert") not in holes, sorted(holes)
+
+    monkeypatch.setattr(
+        matrix,
+        "conditional_property_assertions",
+        lambda root=None: ["crates/pyrs-yaml-core/src/pbt.rs::prop_roundtrip"],
+    )
+    holes = {(kind, name) for kind, name, _why in matrix.measure()["holes"]}
+    assert ("property-tier", "conditional-assert") in holes, sorted(holes)
 
 
 def test_the_page_states_the_counts_the_probe_measures(measured):

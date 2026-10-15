@@ -17,29 +17,373 @@ mod tests {
             .to_string()
     }
 
-    fn try_roundtrip(node: &crate::ast::CustomNode) -> Option<crate::ast::CustomNode> {
-        let yaml = to_yaml(node);
-        let parsed = parse_with_options(&yaml, true, Schema::Core, 1000, false).ok()?;
-        if nodes_equal_ignore_meta(node, &parsed) {
-            Some(parsed)
-        } else {
-            let yaml2 = to_yaml(&parsed);
-            eprintln!("round-trip mismatch:\n{}", yaml_diff(&yaml, &yaml2));
-            None
+    /// The normalizations a serialize → parse cycle is entitled to perform, each named.
+    ///
+    /// Seven properties used to assert only inside `if let Some(parsed) = try_roundtrip(..)`, a
+    /// helper that *declined* 3433 of 4000 drawn trees. Declining is not tolerating: the filter
+    /// states nothing about the majority it drops, and it lets a new difference join the accepted
+    /// set quietly. The list below is closed and every entry has a reason; anything the cycle
+    /// changes that the list cannot name is reported by [`roundtrip_residuals`] as a failure, which
+    /// is what caps the whitelist (`property-tier:conditional-assert`'s exit criterion).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Normalization {
+        /// A `Null` leaf has no spelling in granit's AST: `null`, `~` and an empty token all come
+        /// back as a Plain scalar, so the variant itself cannot survive the cycle.
+        NullToken,
+        /// Plain text that is not legal as a plain scalar (a leading `-`, a `#` mid-token, edge
+        /// spaces) is quoted by the writer. The content is identical; only the spelling moved.
+        PlainRequoted,
+        /// A block scalar re-reads in another style, or with the chomping / indentation indicator
+        /// corrected: `effective_chomping` rewrites only claims no header can spell, and the body
+        /// is what survives - which is the whole claim of ledger (cz) and (da).
+        BlockRestyled,
+        /// An empty block container has no block spelling, so `{}` / `[]` is what reads back.
+        EmptyContainerFlow,
+        /// A flow container whose subtree carries a note is written on lines, because a note ends
+        /// its line: the container then re-reads as block. The layout is forced by the engine's own
+        /// documented rule (`two_notes_on_one_flow_member_send_the_container_to_block`), and every
+        /// entry inside survives - which is what the precondition below checks.
+        NoteForcesBlockLayout,
+        /// A block container that sits inside a flow collection has no block spelling there: `{a:
+        /// {b: c}}` cannot carry a body, so the writer inlines it and the reader reports flow. The
+        /// style bit is unavoidable at that position - the same reason (and the same kind of claim)
+        /// as the empty container's `{}` above - while every entry inside keeps its value and order.
+        InlineContainerFlow,
+        /// A comment's padding around the `#` marker, and which node the reader files a standalone
+        /// note on, are the reader's normalisation: no reference library recovers a padded text,
+        /// and a line above a mapping's first key belongs to the mapping (measured in (db)).
+        NoteRehomed,
+    }
+
+    /// Whether a Plain token reads as null under the schema, as the reader does.
+    fn null_token(value: &str) -> bool {
+        value.is_empty() || value == "~" || value.eq_ignore_ascii_case("null")
+    }
+
+    fn variant_name(node: &crate::ast::CustomNode) -> &'static str {
+        use crate::ast::CustomNode as N;
+        match node {
+            N::Scalar { .. } => "Scalar",
+            N::Mapping { .. } => "Mapping",
+            N::Sequence { .. } => "Sequence",
+            N::Null { .. } => "Null",
+            N::Alias { .. } => "Alias",
         }
+    }
+
+    fn excerpt(value: &str) -> String {
+        let cut: String = value.chars().take(40).collect();
+        format!("{cut:?}")
+    }
+
+    /// Whether any node in this subtree carries a note: the precondition that makes a
+    /// flow-to-block relayout the engine's documented rule rather than an unexplained change.
+    fn carries_note(node: &crate::ast::CustomNode) -> bool {
+        use crate::ast::CustomNode as N;
+        if node.has_notes() {
+            return true;
+        }
+        match node {
+            N::Mapping { pairs, .. } => pairs
+                .iter()
+                .any(|(k, v)| carries_note(k) || carries_note(v)),
+            N::Sequence { items, .. } => items.iter().any(carries_note),
+            _ => false,
+        }
+    }
+
+    /// Pair two trees by position, naming every difference the list explains and reporting the
+    /// rest. Note slots are not compared here - they are [`note_reach`]'s business, because a note
+    /// that survives on a different node is not data loss while a note that never reaches the
+    /// document is.
+    fn diff_trees(
+        a: &crate::ast::CustomNode,
+        b: &crate::ast::CustomNode,
+        path: &str,
+        in_flow: bool,
+        labels: &mut std::collections::BTreeSet<Normalization>,
+        residual: &mut Vec<String>,
+    ) {
+        use crate::ast::{Chomping, CustomNode as N, ScalarStyle};
+        use Normalization::*;
+        if a.anchor() != b.anchor() {
+            residual.push(format!(
+                "anchor at {path}: {:?} -> {:?}",
+                a.anchor(),
+                b.anchor()
+            ));
+        }
+        if a.tag() != b.tag() {
+            residual.push(format!("tag at {path}: {:?} -> {:?}", a.tag(), b.tag()));
+        }
+        if a.comment() != b.comment() {
+            labels.insert(NoteRehomed);
+        }
+        match (a, b) {
+            (
+                N::Scalar {
+                    value: va,
+                    style: sa,
+                    chomping: ca,
+                    block_indent: ia,
+                    ..
+                },
+                N::Scalar {
+                    value: vb,
+                    style: sb,
+                    chomping: cb,
+                    block_indent: ib,
+                    ..
+                },
+            ) => {
+                if va != vb {
+                    residual.push(format!(
+                        "value at {path}: {} -> {}",
+                        excerpt(va),
+                        excerpt(vb)
+                    ));
+                    return;
+                }
+                if sa != sb {
+                    if *sa == ScalarStyle::Plain
+                        && matches!(sb, ScalarStyle::SingleQuoted | ScalarStyle::DoubleQuoted)
+                    {
+                        labels.insert(PlainRequoted);
+                    } else {
+                        labels.insert(BlockRestyled);
+                    }
+                }
+                if ca != cb || ia != ib {
+                    labels.insert(BlockRestyled);
+                }
+            }
+            (N::Null { .. }, N::Null { .. }) => {}
+            (
+                N::Null { .. },
+                N::Scalar {
+                    value,
+                    style: ScalarStyle::Plain,
+                    chomping: Chomping::Clip,
+                    block_indent: None,
+                    ..
+                },
+            )
+            | (
+                N::Scalar {
+                    value,
+                    style: ScalarStyle::Plain,
+                    chomping: Chomping::Clip,
+                    block_indent: None,
+                    ..
+                },
+                N::Null { .. },
+            ) if null_token(value) => {
+                labels.insert(NullToken);
+            }
+            (
+                N::Mapping {
+                    pairs: pa,
+                    flow_style: fa,
+                    ..
+                },
+                N::Mapping {
+                    pairs: pb,
+                    flow_style: fb,
+                    ..
+                },
+            ) => {
+                if fa != fb {
+                    if pa.is_empty() && pb.is_empty() {
+                        labels.insert(EmptyContainerFlow);
+                    } else if *fa && carries_note(a) {
+                        labels.insert(NoteForcesBlockLayout);
+                    } else if *fb && !*fa && in_flow {
+                        labels.insert(InlineContainerFlow);
+                    } else {
+                        residual.push(format!("container style at {path}: flow {fa} -> {fb}"));
+                    }
+                }
+                if pa.len() != pb.len() {
+                    residual.push(format!(
+                        "entry count at {path}: {} -> {}",
+                        pa.len(),
+                        pb.len()
+                    ));
+                    return;
+                }
+                for (i, ((ka, va), (kb, vb))) in pa.iter().zip(pb.iter()).enumerate() {
+                    let name = match ka {
+                        N::Scalar { value, .. } => excerpt(value),
+                        other => format!("<{}>", variant_name(other)),
+                    };
+                    let here = format!("{path}.{name}#{i}");
+                    let child_flow = *fa || in_flow;
+                    diff_trees(
+                        ka,
+                        kb,
+                        &format!("{here}[key]"),
+                        child_flow,
+                        labels,
+                        residual,
+                    );
+                    diff_trees(va, vb, &here, child_flow, labels, residual);
+                }
+            }
+            (
+                N::Sequence {
+                    items: ia,
+                    flow_style: fa,
+                    ..
+                },
+                N::Sequence {
+                    items: ib,
+                    flow_style: fb,
+                    ..
+                },
+            ) => {
+                if fa != fb {
+                    if ia.is_empty() && ib.is_empty() {
+                        labels.insert(EmptyContainerFlow);
+                    } else if *fa && carries_note(a) {
+                        labels.insert(NoteForcesBlockLayout);
+                    } else if *fb && !*fa && in_flow {
+                        labels.insert(InlineContainerFlow);
+                    } else {
+                        residual.push(format!("container style at {path}: flow {fa} -> {fb}"));
+                    }
+                }
+                if ia.len() != ib.len() {
+                    residual.push(format!(
+                        "entry count at {path}: {} -> {}",
+                        ia.len(),
+                        ib.len()
+                    ));
+                    return;
+                }
+                for (i, (xa, xb)) in ia.iter().zip(ib.iter()).enumerate() {
+                    diff_trees(
+                        xa,
+                        xb,
+                        &format!("{path}[{i}]"),
+                        *fa || in_flow,
+                        labels,
+                        residual,
+                    );
+                }
+            }
+            (x, y) => residual.push(format!(
+                "shape at {path}: {} -> {}",
+                variant_name(x),
+                variant_name(y)
+            )),
+        }
+    }
+
+    /// Every note the tree carries has to reach the document.
+    ///
+    /// Compared over trimmed text, because padding after the marker is not content any reader
+    /// recovers; a note that is blank once trimmed has nothing a comment can carry, so it is exempt
+    /// rather than tolerated silently.
+    fn note_reach(node: &crate::ast::CustomNode, emitted: &str) -> Vec<String> {
+        let mut missing = Vec::new();
+        collect_notes(node, emitted, &mut missing);
+        missing
+    }
+
+    fn collect_notes(node: &crate::ast::CustomNode, emitted: &str, missing: &mut Vec<String>) {
+        use crate::ast::CustomNode as N;
+        for text in node
+            .comment()
+            .map(|c| vec![c.text.to_string()])
+            .unwrap_or_default()
+            .into_iter()
+            .chain(node.leading_comments().iter().map(|c| c.text.to_string()))
+        {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() && !emitted.contains(trimmed) {
+                missing.push(format!("note never reached the document: {text:?}"));
+            }
+        }
+        match node {
+            N::Mapping { pairs, .. } => {
+                for (k, v) in pairs {
+                    collect_notes(k, emitted, missing);
+                    collect_notes(v, emitted, missing);
+                }
+            }
+            N::Sequence { items, .. } => {
+                for i in items {
+                    collect_notes(i, emitted, missing);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Classify one serialize → parse cycle: which named normalizations it used, and what it
+    /// changed that none of them explains.
+    fn roundtrip_residuals(
+        before: &crate::ast::CustomNode,
+        after: &crate::ast::CustomNode,
+        emitted: &str,
+    ) -> (std::collections::BTreeSet<Normalization>, Vec<String>) {
+        let mut labels = std::collections::BTreeSet::new();
+        let mut residual = note_reach(before, emitted);
+        diff_trees(before, after, "$", false, &mut labels, &mut residual);
+        (labels, residual)
+    }
+
+    /// The same cycle, reported the way the old helper did it - now as an assertion the property
+    /// makes rather than a filter it hides behind.
+    fn roundtrip(node: &crate::ast::CustomNode) -> (String, crate::ast::CustomNode) {
+        let yaml = to_yaml(node);
+        let parsed =
+            parse_with_options(&yaml, true, Schema::Core, 1000, false).expect("output re-parses");
+        (yaml, parsed)
     }
 
     /// Key *content* bytes for order-property comparisons, deliberately
     /// ignoring serialized spelling: a flow-unsafe plain token (`0[`) re-reads
-    /// as the same string under a quoted style, and `null` normalizes between
-    /// the Null variant and a resolved scalar — round-trip-equivalent trees
-    /// must not differ in *order* on those style shifts.
+    /// as the same string under a quoted style, `null` normalizes between
+    /// the Null variant and a resolved scalar, and a container key's flow/block
+    /// bit is the reader's choice at that position - `InlineContainerFlow` below.
+    /// Round-trip-equivalent trees must not differ in *order* on those shifts, so
+    /// this encodes the entries themselves, kind-tagged and in order, rather than
+    /// the text the writer happens to emit for them.
     fn key_content(k: &crate::ast::CustomNode) -> Vec<u8> {
-        match k {
-            crate::ast::CustomNode::Scalar { value, .. } => value.as_bytes().to_vec(),
-            crate::ast::CustomNode::Null { .. } => b"null".to_vec(),
-            other => to_yaml(other).into_bytes(),
+        fn into(node: &crate::ast::CustomNode, out: &mut Vec<u8>) {
+            use crate::ast::CustomNode as N;
+            match node {
+                N::Scalar { value, .. } if null_token(value) => out.push(b'n'),
+                N::Scalar { value, .. } => {
+                    out.push(b's');
+                    out.extend(value.as_bytes());
+                }
+                N::Null { .. } => out.push(b'n'),
+                N::Mapping { pairs, .. } => {
+                    out.push(b'M');
+                    for (key, value) in pairs {
+                        into(key, out);
+                        into(value, out);
+                    }
+                    out.push(b'}');
+                }
+                N::Sequence { items, .. } => {
+                    out.push(b'L');
+                    for item in items {
+                        into(item, out);
+                    }
+                    out.push(b']');
+                }
+                N::Alias { name } => {
+                    out.push(b'a');
+                    out.extend(name.as_bytes());
+                }
+            }
         }
+        let mut out = Vec::new();
+        into(k, &mut out);
+        out
     }
 
     /// Recursively apply random scalar style / chomping / flow style to every
@@ -218,9 +562,13 @@ mod tests {
     proptest! {
         #[test]
         fn prop_roundtrip(node in arb_custom_node()) {
-            if let Some(parsed) = try_roundtrip(&node) {
-                prop_assert!(nodes_equal_ignore_meta(&node, &parsed));
-            }
+            let (yaml, parsed) = roundtrip(&node);
+            let (labels, residual) = roundtrip_residuals(&node, &parsed, &yaml);
+            prop_assert!(
+                residual.is_empty(),
+                "unexplained round-trip change: {residual:?}\nnormalizations used: {labels:?}\n{}",
+                yaml_diff(&yaml, &to_yaml(&parsed))
+            );
         }
 
         /// Text-level re-parseability: every AST the builder can produce must
@@ -325,9 +673,12 @@ mod tests {
             )
         ) {
             deep_apply_styles(&mut node, style, chomp, flow);
-            if let Some(parsed) = try_roundtrip(&node) {
-                prop_assert!(nodes_equal_ignore_meta(&node, &parsed));
-            }
+            let (yaml, parsed) = roundtrip(&node);
+            let (labels, residual) = roundtrip_residuals(&node, &parsed, &yaml);
+            prop_assert!(
+                residual.is_empty(),
+                "a styled tree changed beyond the named list: {residual:?} (used {labels:?})"
+            );
         }
 
         /// Serializing the result of a round-trip produces an AST-equivalent (not
@@ -335,13 +686,17 @@ mod tests {
         /// flow spelling on the first re-serialize, and stays stable after.
         #[test]
         fn prop_idempotent(node in arb_custom_node()) {
-            if let Some(parsed) = try_roundtrip(&node) {
+            let (yaml, parsed) = roundtrip(&node);
+            let (_, first) = roundtrip_residuals(&node, &parsed, &yaml);
+            prop_assert!(first.is_empty(), "first cycle unexplained: {first:?}");
+            {
                 let once = to_yaml(&parsed);
                 let twice_parsed = parse_with_options(&once, true, Schema::Core, 1000, false)
                     .expect("re-parse of normalized output must succeed");
+                let (_, second) = roundtrip_residuals(&parsed, &twice_parsed, &once);
                 prop_assert!(
-                    nodes_equal_ignore_meta(&parsed, &twice_parsed),
-                    "output not stable after first normalization"
+                    second.is_empty(),
+                    "output not stable after first normalization: {second:?}"
                 );
             }
         }
@@ -349,7 +704,9 @@ mod tests {
         /// Mapping key order survives the serialize → parse cycle.
         #[test]
         fn prop_mapping_order_preserved(node in arb_custom_node()) {
-            if let Some(parsed) = try_roundtrip(&node) {
+            // Asserted on, never filtered: the cycle below runs for every sample.
+            let parsed = roundtrip(&node).1;
+            {
                 fn key_order(n: &crate::ast::CustomNode) -> Vec<Vec<u8>> {
                     match n {
                         crate::ast::CustomNode::Mapping { pairs, .. } => pairs
@@ -365,48 +722,51 @@ mod tests {
             }
         }
 
-        /// Flow mappings inside the tree keep their entry order as well.
-        /// (Only flow mappings whose entries survive the round-trip are
-        /// compared; an empty block mapping normalizes to `{}` and reads back
-        /// as a flow mapping, which is covered by the order-shape equality.)
+        /// Mappings nested anywhere in the tree keep their entry order too.
+        /// Collected by position, not by style bit: whether a container reads back
+        /// as flow is the reader's normalization (`InlineContainerFlow`, named in
+        /// `(da)`), so counting the flow mappings would make a style shift look
+        /// like an order change. Each mapping's key order is compared at its own
+        /// path, and an empty container still contributes nothing.
         #[test]
         fn prop_flow_order_preserved(node in arb_custom_node()) {
-            if let Some(parsed) = try_roundtrip(&node) {
-                fn flow_key_orders(n: &crate::ast::CustomNode) -> Vec<Vec<Vec<u8>>> {
-                    let mut out = Vec::new();
-                    if let crate::ast::CustomNode::Mapping {
-                        pairs,
-                        flow_style: true,
-                        ..
-                    } = n
-                        && !pairs.is_empty()
-                    {
-                        out.push(
-                            pairs
-                                .keys()
-                                .map(key_content)
-                                .collect(),
-                        );
-                    }
+            // Asserted on, never filtered: the cycle below runs for every sample.
+            let parsed = roundtrip(&node).1;
+            {
+                fn mapping_key_orders(
+                    n: &crate::ast::CustomNode,
+                    path: &str,
+                    out: &mut Vec<(String, Vec<u8>)>,
+                ) {
+                    use crate::ast::CustomNode as N;
                     match n {
-                        crate::ast::CustomNode::Mapping { pairs, .. } => {
-                            for (k, v) in pairs {
-                                out.extend(flow_key_orders(k));
-                                out.extend(flow_key_orders(v));
+                        N::Mapping { pairs, .. } => {
+                            if !pairs.is_empty() {
+                                let mut order = Vec::new();
+                                for key in pairs.keys() {
+                                    order.extend(key_content(key));
+                                    order.push(0);
+                                }
+                                out.push((path.to_string(), order));
+                            }
+                            for (i, (key, value)) in pairs.iter().enumerate() {
+                                mapping_key_orders(key, &format!("{path}[{i}]k"), out);
+                                mapping_key_orders(value, &format!("{path}[{i}]v"), out);
                             }
                         }
-                        crate::ast::CustomNode::Sequence { items, .. } => {
-                            for i in items {
-                                out.extend(flow_key_orders(i));
+                        N::Sequence { items, .. } => {
+                            for (i, item) in items.iter().enumerate() {
+                                mapping_key_orders(item, &format!("{path}[{i}]"), out);
                             }
                         }
                         _ => {}
                     }
-                    out
                 }
-                let a = flow_key_orders(&node);
-                let b = flow_key_orders(&parsed);
-                prop_assert_eq!(a, b, "flow mapping order changed");
+                let mut a = Vec::new();
+                let mut b = Vec::new();
+                mapping_key_orders(&node, "$", &mut a);
+                mapping_key_orders(&parsed, "$", &mut b);
+                prop_assert_eq!(a, b, "mapping key order changed");
             }
         }
 
@@ -415,44 +775,14 @@ mod tests {
         /// must survive).
         #[test]
         fn prop_comment_preserved(node in arb_custom_node()) {
-            // Only block containers' comments round-trip reliably; flow nodes
-            // have comments normalized away by the strategy.
-            fn comment_texts(n: &crate::ast::CustomNode) -> Vec<String> {
-                match n {
-                    crate::ast::CustomNode::Scalar { meta, .. }
-                    | crate::ast::CustomNode::Mapping { meta, .. }
-                    | crate::ast::CustomNode::Sequence { meta, .. }
-                    | crate::ast::CustomNode::Null { meta, .. } => {
-                        let mut v = meta
-                            .comment()
-                            .map(|c| vec![c.text.to_string()])
-                            .unwrap_or_default();
-                        match n {
-                            crate::ast::CustomNode::Mapping { pairs, .. } => {
-                                for (k, vv) in pairs {
-                                    v.extend(comment_texts(k));
-                                    v.extend(comment_texts(vv));
-                                }
-                            }
-                            crate::ast::CustomNode::Sequence { items, .. } => {
-                                for i in items {
-                                    v.extend(comment_texts(i));
-                                }
-                            }
-                            _ => {}
-                        }
-                        v
-                    }
-                    _ => vec![],
-                }
-            }
-            if let Some(parsed) = try_roundtrip(&node) {
-                let a = comment_texts(&node);
-                let b = comment_texts(&parsed);
-                for (orig, back) in a.iter().zip(b.iter()) {
-                    prop_assert_eq!(orig, back, "comment text changed");
-                }
-            }
+            // Which node owns a note is the reader's normalisation (measured in ledger (db)); that
+            // a note reaches the document at all is not. Positional equality would charge the
+            // engine for a thing the reference libraries do too, so this asserts the claim the
+            // tier can honestly make about every sample, and the classifier owns the rest.
+            let yaml = to_yaml(&node);
+            let missing = note_reach(&node, &yaml);
+            prop_assert!(missing.is_empty(), "notes lost: {missing:?}
+    in {yaml:?}");
         }
 
         /// Tag preservation on round-trip.
@@ -487,7 +817,9 @@ mod tests {
                     _ => vec![],
                 }
             }
-            if let Some(parsed) = try_roundtrip(&node) {
+            // Asserted on, never filtered: the cycle below runs for every sample.
+            let parsed = roundtrip(&node).1;
+            {
                 let a = tag_texts(&node);
                 let b = tag_texts(&parsed);
                 prop_assert_eq!(a, b, "tags changed after round-trip");

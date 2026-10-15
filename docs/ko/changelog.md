@@ -354,6 +354,19 @@ status: new
 
 #### 변경
 
+- **왕복 속성 층은 차이를 모두 이름 지어 필터 뒤에 숨지 않는다.** — 25개 속성 중 일곱은
+  `if let Some(parsed) = try_roundtrip(&node)` 안에서만 주장했으므로 자체 헬퍼가 되돌리기를 거부한
+  표본은 결코 말해지지 않았다. 실측으로 그 필터는 뽑은 4000개 트리 중 3423개를 버렸다.
+  `try_roundtrip`은 사라졌고, 모든 왕복은 허용 가능한 정규화의 열거 목록 - `NullToken`,
+  `PlainRequoted`, `BlockRestyled`, `EmptyContainerFlow`, `NoteRehomed`, `NoteForcesBlockLayout`,
+  `InlineContainerFlow` - 으로 분류되며 목록이 이름을 지을 수 없는 차이는 속성을 실패시킨다.
+  이것이 #418부터 #422 그리고 #424 뒤에 있던 기록자와 읽기의 결함을 표면으로 끌어냈고, 각각 자기
+  테스트로 고정했다. 그리고 `property-tier:conditional-assert`를 닫는다: 프로브는 빈 가드 목록을
+  재고, `.ci/quality-holes.json`은 비었으며, `QUALITY_MATRIX.md`의 행은 닫힌 채로 남는다. 두 순서
+  속성은 필터로 되돌리지 않고 주장을 고쳤다 — 키는 직렬화된 텍스트가 아니라 형표시된 항목으로
+  비교하고, 맵핑 순서는 위치별로 비교한다. 컨테이너가 flow로 읽혀 돌아오는지는 읽기의 정규화이지
+  순서의 사실이 아니므로.
+
 - **태어 문법이 PyO3 바인딩에서 떠나고, 그 테스트는 더 이상 libpython을 필요로 하지 않는다.** —
   `!!int`, `!!float`, `!!binary`의 어휘 해석은 `crates/pyrs-yaml/src/py/tags.rs`에 있었기에 그 여섯
   개의 테스트는 libpython을 링크했다. 이들이 부르는 함수는 `&str`만 받아 Rust 값을 반환하는데도,
