@@ -19,6 +19,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **A pin records the drift the fixed-point contract cannot fix yet
+  (`crates/pyrs-yaml-core/tests/settles_in_two_rounds.rs`)** — libFuzzer's `yaml_roundtrip` reached
+  a document whose emission needs a second round: round one parks the document's note on the block
+  body's last line, granit spans a node through the break that ends its own line, and the re-read
+  reports that note as the value's - which flips `write_pair`'s answer about who owns the line's
+  trailing slot and hoists the key's note above the pair. Nothing is lost, so no other tier sees it.
+  Two remedies were implemented and measured away, six properties at 20 000 cases each, both
+  residuals in quality-ledger (ds); this lands as a pin because a half-fix would freeze one shape
+  and break another. The test asserts the drift, so the day the placement rule is repaired it goes
+  red by name and must be rewritten to require the fixed point.
+
 - **A notation corpus asks every writer the question its own reader answers.** — the defect #432
   fixed was a writer's bare-token predicate asking a cheaper question than the reader's grammar, and
   the property tier found it only because 20 000 draws happened to build `00.`. Two table-driven
