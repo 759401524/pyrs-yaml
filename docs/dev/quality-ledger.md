@@ -5730,6 +5730,61 @@ now share with the `\n` spelling. Gates on the change: 633 Rust tests, 26 proper
 and the harness replaying all 74 seeds with `-runs=0` - 5529 inputs counting the local machine
 corpus, zero crashes.
 
+### (du) The declared version arrived and was dropped one line from the source of truth
+
+`YamlDocument.version()` answered `1.2` for every document. Measured before the change:
+`%YAML 1.1`, `%YAML 1.2`, `%YAML 1.3` and a document carrying no directive all reported `1.2`, and
+`parse_all_docs` reported it per document regardless of what each header said.
+
+The information was not missing from the stream: granit 2.0 hands both the explicit-marker flag and
+the declared version in `Event::DocumentStart(bool, Option<YamlVersion>)`. The tree builder matched
+that event with `(..)` and used one arm only to clear a flag, and the event path mapped it to a bare
+`StreamEventType::DocumentStart`. The reader therefore knew the version and threw it away one line
+from the source of truth, leaving the layer above free to answer with its own.
+
+Reporting is the scope, and the shape was ruled rather than assumed: `-> str` stays, because
+widening to `Optional[str]` to spell "unset" would break every caller comparing to a shipped string,
+so a document that declares nothing reports this reader's own version; and the writer does not
+re-emit the directive, because carrying it through emission needs a document-level slot in the AST,
+which is a structure change and was declined for now. `parser::parse_document` and
+`parser::parse_all_documents` return `ParsedDocument { node, version }` beside each other - per
+document, since a stream may declare a different version in each header - and `parse_with_options` /
+`parse_all_with_options` are now thin wrappers over the same internals, so no existing caller's
+semantics moved.
+
+What the change deliberately does *not* mean: `%YAML 1.1` does not select the 1.1 resolver. The
+schema profile does (`schema="1.1"`, the legacy-boolean lexemes and their tests), and a directive is
+not a feature gate - pinned so (`test_a_directive_does_not_change_resolution`: `flag: yes` stays the
+string under the Core schema however the header declares). Version-driven resolution therefore stays
+an open item, and so does the emission half.
+
+The `%TAG` half of the same question is a different mechanism and it already works: granit resolves
+the handle during the parse, so `%TAG !u! tag:yaml.org,2002:` plus `!u!str x` reads as the standard
+string tag and emits `u: !!str x`. Measured, and pinned as
+`test_a_tag_handle_is_expanded_not_carried`: the tag's meaning survives, the local spelling of the
+handle does not, because the directive line is not re-emitted either. That is the same declined
+scope seen from the tag side, not a silent loss.
+
+No tier could see the old answer: `tests/` held no `%YAML` fixture at all, the compliance suite asks
+how scalars resolve rather than what the document reports about itself, and the fuzz harness is
+indifferent by construction - the writer never emits a directive, so no input it round-trips carries
+one. The defence is now the three core tests (`a_declared_version_is_reported_as_declared`,
+`each_document_of_a_stream_reports_its_own_version`,
+`a_declared_version_survives_a_document_with_no_content` - the last because a comment-only document
+never fires `DocumentEnd`, which is where the per-document pairing happens) and the Python class
+`tests/test_parse.py::TestYamlDirective`, which covers declaration, the undeclared default,
+per-document answers, `reparse()`, the resolution boundary and the non-emission boundary.
+
+Measured on the change: the declared version reports itself for all three declarations; a stream
+declares per document (`1.1` then `1.2` across an explicit `...`); `to_yaml()` of a declared
+document emits `a: 1\n` and reads back as `1.2`. Reverting the one line that records the directive -
+back to dropping the `Event::DocumentStart` argument - reddens exactly those three core tests and
+leaves 633 green, which is the check that the new tests measure the reporting and not the refactor.
+Gates: 636 Rust tests, 26 property tests at 20 000 cases, 2799 Python tests on a fresh build,
+clippy across all targets, `prek run --all-files`, and the stub route - the regenerated
+`python/pyrs_yaml/pyrs_yaml.pyi` differs only in the `version()` docstring, which is what
+`check_stub_drift.py` then reconciles.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

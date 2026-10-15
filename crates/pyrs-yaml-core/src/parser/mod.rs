@@ -230,17 +230,55 @@ pub fn parse_with_options(
     max_depth: usize,
     allow_duplicate_keys: bool,
 ) -> Result<CustomNode, ParseError> {
+    Ok(parse_document(
+        yaml,
+        resolve_merges,
+        schema,
+        max_depth,
+        allow_duplicate_keys,
+    )?
+    .node)
+}
+
+/// A parsed document together with the version its `%YAML` directive declared.
+#[derive(Debug, Clone)]
+pub struct ParsedDocument {
+    /// The document tree, exactly as [`parse_with_options`] returns it.
+    pub node: CustomNode,
+    /// What a `%YAML` directive declared, e.g. `"1.1"`, or `None` when the document carries none.
+    /// Reporting is the whole contract: the reader resolves a document the same way whatever its
+    /// directive says, and the writer does not re-emit the directive.
+    pub version: Option<String>,
+}
+
+/// Parse one document and report the directive that arrived with it.
+///
+/// The layer above [`parse`] answers "which version is this document" with the reader's own
+/// version, hardcoded, so a stream declaring `%YAML 1.1` and one declaring nothing both answered
+/// `1.2`. granit hands the declared version over in `Event::DocumentStart`; this is the seam that
+/// carries it out.
+pub fn parse_document(
+    yaml: &str,
+    resolve_merges: bool,
+    schema: impl Into<Schema>,
+    max_depth: usize,
+    allow_duplicate_keys: bool,
+) -> Result<ParsedDocument, ParseError> {
     let _schema = schema.into();
     // Handle empty YAML - by YAML's own vocabulary. `str::trim` is Unicode-based
     // and also strips NBSP, which the reader treats as an ordinary scalar
     // character, so trimming with it turned a NBSP-only document into `null`
     // (libFuzzer `yaml_roundtrip` crash-512814).
     if pyrs_schema::is_yaml_blank_only(yaml) {
-        return Ok(CustomNode::plain_null());
+        return Ok(ParsedDocument {
+            node: CustomNode::plain_null(),
+            version: None,
+        });
     }
 
-    let receiver = load_ast(yaml, max_depth, allow_duplicate_keys, false)?;
+    let mut receiver = load_ast(yaml, max_depth, allow_duplicate_keys, false)?;
     let has_merge_key = receiver.has_merge_key;
+    let version = receiver.document_version.take();
 
     // Get the parsed node (handle empty documents, and a document that carried
     // nothing but comments).
@@ -251,7 +289,7 @@ pub fn parse_with_options(
         resolve_merge_keys(&mut node);
     }
 
-    Ok(node)
+    Ok(ParsedDocument { node, version })
 }
 
 /// 解析包含多个 YAML 文档的字符串（以 `---` 分隔），支持 `resolve_merges` 选项。
@@ -280,31 +318,64 @@ pub fn parse_all_with_options(
     max_depth: usize,
     allow_duplicate_keys: bool,
 ) -> Result<Vec<CustomNode>, ParseError> {
-    let _schema = _schema.into();
+    Ok(parse_all_documents(
+        yaml,
+        resolve_merges,
+        _schema,
+        max_depth,
+        allow_duplicate_keys,
+    )?
+    .into_iter()
+    .map(|doc| doc.node)
+    .collect())
+}
+
+/// 解析多文档流，并报告每个文档各自的 `%YAML` 指令。
+///
+/// A stream may declare a different version per document, so the answer travels with each
+/// document rather than collapsing to the first one.
+pub fn parse_all_documents(
+    yaml: &str,
+    resolve_merges: bool,
+    schema: impl Into<Schema>,
+    max_depth: usize,
+    allow_duplicate_keys: bool,
+) -> Result<Vec<ParsedDocument>, ParseError> {
+    let _schema = schema.into();
     // Handle empty YAML (same YAML-blank rule as `parse`; see crash-512814).
     if pyrs_schema::is_yaml_blank_only(yaml) {
         return Ok(Vec::new());
     }
 
-    let receiver = load_ast(yaml, max_depth, allow_duplicate_keys, true)?;
+    let mut receiver = load_ast(yaml, max_depth, allow_duplicate_keys, true)?;
     let has_merge_key = receiver.has_merge_key;
 
     if receiver.documents.is_empty() {
         // Single document — return as-is, notes included.
+        let version = receiver.document_version.take();
         let mut node = receiver.finish_document();
         if resolve_merges && has_merge_key {
             resolve_merge_keys(&mut node);
         }
-        return Ok(vec![node]);
+        return Ok(vec![ParsedDocument { node, version }]);
     }
 
-    let mut results = receiver.documents;
+    let results = std::mem::take(&mut receiver.documents);
+    let versions = std::mem::take(&mut receiver.document_versions);
+    let mut docs: Vec<ParsedDocument> = results
+        .into_iter()
+        .enumerate()
+        .map(|(index, node)| ParsedDocument {
+            node,
+            version: versions.get(index).cloned().flatten(),
+        })
+        .collect();
     if resolve_merges && has_merge_key {
-        for node in &mut results {
-            resolve_merge_keys(node);
+        for doc in &mut docs {
+            resolve_merge_keys(&mut doc.node);
         }
     }
-    Ok(results)
+    Ok(docs)
 }
 
 /// Convert saphyr tag to our Tag format
@@ -506,6 +577,13 @@ struct AstReceiver<'a> {
     collect_documents: bool,
     /// Completed documents (for multi-doc parsing)
     documents: Vec<CustomNode>,
+    /// The version the current document's `%YAML` directive declared, `None` when it declared
+    /// none. granit hands this in `Event::DocumentStart` and it used to be dropped there, which
+    /// left every caller to answer the same question with the reader's own version.
+    document_version: Option<String>,
+    /// `document_version` for each finished document, parallel to `documents`. A stream may
+    /// declare a different version per document, so the pairing is kept, not collapsed.
+    document_versions: Vec<Option<String>>,
     /// Current anchor ID to name mapping
     anchors: std::collections::HashMap<usize, String>,
     /// Standalone notes seen so far that have not met a node yet, in source
@@ -615,6 +693,8 @@ impl<'a> AstReceiver<'a> {
             result: None,
             collect_documents: true,
             documents: Vec::new(),
+            document_version: None,
+            document_versions: Vec::new(),
             anchors: std::collections::HashMap::new(),
             comment_stack: Vec::new(),
             pending_standalone_comment: Vec::new(),
@@ -1102,7 +1182,10 @@ impl<'a> SpannedEventReceiver<'a> for AstReceiver<'a> {
     fn on_event(&mut self, event: Event<'a>, span: Span) {
         match event {
             Event::StreamStart | Event::StreamEnd => {}
-            Event::DocumentStart(..) => self.document_ended = false,
+            Event::DocumentStart(_, version) => {
+                self.document_ended = false;
+                self.document_version = version.map(|v| format!("{}.{}", v.major, v.minor));
+            }
             Event::DocumentEnd => self.on_document_end(),
             Event::Scalar(value, style, anchor_id, tag) => {
                 self.on_scalar_event(&value, &style, anchor_id, tag, span);
@@ -1137,6 +1220,7 @@ impl<'a> AstReceiver<'a> {
             && let Some(doc) = self.result.take()
         {
             self.documents.push(doc);
+            self.document_versions.push(self.document_version.take());
         }
     }
 
@@ -1595,6 +1679,62 @@ impl<'a> AstReceiver<'a> {
 mod tests {
     use super::*;
     use crate::parser::yaml::YamlSchema;
+
+    /// `%YAML` declares the document's version and granit reports it in `Event::DocumentStart`.
+    /// The AST path used to drop that argument, which left the layer above free to answer every
+    /// document — declared or not — with the reader's own version.
+    #[test]
+    fn a_declared_version_is_reported_as_declared() {
+        for (src, want) in [
+            ("%YAML 1.1\n---\na: 1\n", Some("1.1")),
+            ("%YAML 1.2\n---\na: 1\n", Some("1.2")),
+            ("%YAML 1.3\n---\na: 1\n", Some("1.3")),
+            ("a: 1\n", None),
+        ] {
+            let parsed =
+                parse_document(src, true, YamlSchema::Core, 1000, false).expect("input parses");
+            assert_eq!(parsed.version.as_deref(), want, "{src:?}");
+            assert_eq!(
+                parsed.node,
+                parse(src, YamlSchema::Core).expect("the same input parses twice"),
+                "reporting the directive must not change the tree"
+            );
+        }
+    }
+
+    /// Each document of a stream carries its own version, so the answers travel per document:
+    /// neither collapsed onto the first one, and the second document's `None` below is not
+    /// inherited from the first.
+    #[test]
+    fn each_document_of_a_stream_reports_its_own_version() {
+        for (src, want) in [
+            ("%YAML 1.1\n---\na: 1\n---\nb: 2\n", vec![Some("1.1"), None]),
+            (
+                "%YAML 1.1\n---\na: 1\n...\n%YAML 1.2\n---\nb: 2\n",
+                vec![Some("1.1"), Some("1.2")],
+            ),
+        ] {
+            let docs = parse_all_documents(src, true, YamlSchema::Core, 1000, false)
+                .expect("the pinned stream parses");
+            let versions: Vec<Option<&str>> = docs.iter().map(|d| d.version.as_deref()).collect();
+            assert_eq!(versions, want, "{src:?}");
+        }
+    }
+
+    /// A document that carries nothing but comments never fires `DocumentEnd`, so its version
+    /// cannot be paired at a document boundary — it is still what the header declared.
+    #[test]
+    fn a_declared_version_survives_a_document_with_no_content() {
+        let parsed = parse_document(
+            "%YAML 1.1\n---\n# only a note\n",
+            true,
+            YamlSchema::Core,
+            1000,
+            false,
+        )
+        .expect("a comment-only document parses");
+        assert_eq!(parsed.version.as_deref(), Some("1.1"), "{parsed:?}");
+    }
 
     /// The folded entry's comment survives the null-key fold. `: &b #*<CR>:` lost
     /// `# *` together with the entry the fold removed, leaving `~: ~` — and the fold

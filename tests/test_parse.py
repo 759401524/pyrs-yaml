@@ -123,6 +123,45 @@ class TestTags:
         assert tag in pyrs_yaml.parse(yaml_str).to_yaml()
 
 
+class TestYamlDirective:
+    """`version()` reports what the source's `%YAML` directive declared.
+
+    Every document used to answer the reader's own version, declared or not, because the AST
+    path dropped the directive granit handed over. Reporting is the whole change: the schema
+    profile decides how a scalar resolves, not the directive, and the writer does not re-emit
+    it, so `to_yaml()` of a declared document reads back as undeclared.
+    """
+
+    @pytest.mark.parametrize("declared", ["1.1", "1.2", "1.3"])
+    def test_declared_version_is_reported(self, declared):
+        doc = pyrs_yaml.parse(f"%YAML {declared}\n---\na: 1\n")
+        assert doc.version() == declared
+
+    def test_undeclared_document_keeps_the_readers_own_version(self):
+        assert pyrs_yaml.parse("a: 1\n").version() == "1.2"
+
+    def test_a_directive_does_not_change_resolution(self):
+        assert pyrs_yaml.parse("%YAML 1.1\n---\nflag: yes\n").get("flag") == "yes"
+
+    def test_each_document_of_a_stream_has_its_own_version(self):
+        docs = pyrs_yaml.parse_all_docs("%YAML 1.1\n---\na: 1\n...\n%YAML 1.2\n---\nb: 2\n")
+        assert [doc.version() for doc in docs] == ["1.1", "1.2"]
+
+    def test_reparse_reports_the_directive_too(self):
+        doc = pyrs_yaml.parse("%YAML 1.1\n---\na: 1\n")
+        doc.reparse()
+        assert doc.version() == "1.1"
+
+    def test_the_directive_is_not_re_emitted(self):
+        emitted = pyrs_yaml.parse("%YAML 1.1\n---\na: 1\n").to_yaml()
+        assert emitted == "a: 1\n"
+        assert pyrs_yaml.parse(emitted).version() == "1.2"
+
+    def test_a_tag_handle_is_expanded_not_carried(self):
+        emitted = pyrs_yaml.parse("%TAG !u! tag:yaml.org,2002:\n---\nu: !u!str x\n").to_yaml()
+        assert emitted == "u: !!str x\n"
+
+
 class TestBlockScalars:
     """Test block scalar parsing"""
 

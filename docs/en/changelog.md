@@ -609,6 +609,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **`version()` reports the document's `%YAML` directive instead of the reader's own version** —
+  granit hands the declared version to the parse in `Event::DocumentStart` and the AST path dropped
+  that argument, so a document declaring `1.1`, `1.2` or `1.3` — and one declaring nothing — all
+  answered `1.2`. `parser::parse_document` and `parser::parse_all_documents` now return the
+  directive beside the node and the document layer reports it: a stream answers per document, and
+  `reparse()` re-reads it. Measured: each declared version reports itself, an undeclared document
+  still reports `1.2` (this reader's own version, keeping the shipped `-> str` rather than widening
+  to `Optional[str]` for a value that would mean "unset"), and a directive changes no resolution —
+  `%YAML 1.1` under the Core schema keeps `yes` a string. Reporting is the scope: the writer does
+  not re-emit the directive, so `to_yaml()` of a declared document reads back as undeclared, and
+  carrying it through emission would need a document-level slot in the AST — ruled out for now.
+  Details: quality-ledger (du)
+
 - **A note that follows a CR-only break no longer changes owner on the second round** — the line
   test that decides whether a trailing note belongs to the node before it or the node after it
   scanned the gap for `\n` alone, so a document broken only by `\r` read as one long line and every

@@ -145,8 +145,8 @@ impl YAML {
         let schema_enum = parse_schema(&self.schema)?;
         let schema_clone = schema_enum.clone();
         let content = crate::py::read_file_to_string(path)?;
-        let ast = py.detach(|| {
-            crate::parser::parse_with_options(
+        let parsed = py.detach(|| {
+            crate::parser::parse_document(
                 &content,
                 resolve_merges,
                 schema_clone,
@@ -156,7 +156,12 @@ impl YAML {
             .map_err(|e| parse_error_to_py_err(e, &content, self.max_depth))
         })?;
         let source: Arc<str> = Arc::from(content);
-        Ok(YamlDocument::new(ast, schema_enum, source))
+        Ok(YamlDocument::new(
+            parsed.node,
+            schema_enum,
+            source,
+            parsed.version,
+        ))
     }
 
     /// Parse multi-document YAML and return a list of `YamlDocument`.
@@ -165,8 +170,8 @@ impl YAML {
         let resolve_merges = self.yaml_type == "rt" || self.yaml_type == "full";
         let schema_enum = parse_schema(&self.schema)?;
         let schema_clone = schema_enum.clone();
-        let asts = py.detach(|| {
-            crate::parser::parse_all_with_options(
+        let docs = py.detach(|| {
+            crate::parser::parse_all_documents(
                 yaml,
                 resolve_merges,
                 schema_clone,
@@ -176,9 +181,11 @@ impl YAML {
             .map_err(|e| parse_error_to_py_err(e, yaml, self.max_depth))
         })?;
         let source: Arc<str> = Arc::from(yaml);
-        Ok(asts
+        Ok(docs
             .into_iter()
-            .map(|ast| YamlDocument::new(ast, schema_enum.clone(), source.clone()))
+            .map(|doc| {
+                YamlDocument::new(doc.node, schema_enum.clone(), source.clone(), doc.version)
+            })
             .collect())
     }
 
