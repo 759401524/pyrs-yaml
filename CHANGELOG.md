@@ -530,6 +530,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An anchor keeps its own name past a `#` that only looks like a comment.** — the reader recovers
+  an anchor's display name by scanning left from the node the parser pointed at, refusing every `&`
+  that sits after a comment-opening `#` on that line. The guard also treated a `#` *inside a quoted
+  scalar* as a comment, on the belief that no anchor can follow a quoted value on the same line -
+  true of a block pair, false inside a flow collection: `{a: &x "x # y", b: &y 2}` re-read `b` as
+  `&x`, so two nodes came back sharing one name and every `*y` alias pointed at nothing. The scan
+  now tracks quoting - `''` inside single quotes, a backslash inside double, and a quote counting
+  only where a scalar may begin, because granit's name grammar lets an anchor name itself hold a
+  `"`. The class it belongs to is the round-trip tier's: 11 anchor-name changes per 4000 generated
+  trees, and this is the shape the reporter minimises to.
+
 - **A block mapping key's inline note survives a value that holds the pair's slot.** —
   `key: value  # one` has one trailing slot, and when both the key and the value claimed it the
   writer gave the slot to the value and the key's note disappeared: `? a # kn` + `: b # vv` emitted

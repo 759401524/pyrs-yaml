@@ -227,3 +227,21 @@ class TestNodeMetadataErrors:
         node.set_anchor("k1")
         with pytest.raises(pyrs_yaml.YamlDocumentError):
             _ = node.anchor
+
+
+def test_a_flow_anchor_keeps_its_own_name_past_a_quoted_hash():
+    """`{a: &x "x # y", b: &y 2}` must not hand `b` the name `x`.
+
+    The reader recovers an anchor's display name by scanning left from the node granit pointed to,
+    and it refused every `&` that sits after a `#` opening a comment on that line - including a `#`
+    inside a quoted scalar. In a flow collection a node really does follow a quoted scalar on the
+    same line, so the recovery skipped `&y` and returned the *previous* anchor's name: the
+    re-emitted document carried one name for two nodes, and every `*y` alias pointed at nothing.
+    """
+    doc = pyrs_yaml.parse('{a: &x "x # y", b: &y 2}')
+    assert doc.find("$.a").anchor == "x"
+    assert doc.find("$.b").anchor == "y"
+    emitted = doc.to_yaml()
+    assert emitted.count("&x") == 1, emitted
+    assert emitted.count("&y") == 1, emitted
+    assert pyrs_yaml.parse(emitted).find("$.b").anchor == "y"

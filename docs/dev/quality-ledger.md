@@ -5018,6 +5018,45 @@ caller-visible promise — both notes present, neither duplicated, the rewrite t
 `tests/test_fidelity.py::TestFidelity::test_both_notes_of_a_pair_survive_the_rewrite` under
 `pytest`. Both were red before the writer change.
 
+### (dd) The classifier refused to guess, and the guess it refused was a bug in the reader (2026-10-15)
+
+The round-trip tier's silent filter is being replaced by a classifier: each difference between a
+tree and its re-read gets a name (`NullToken`, `PlainRequoted`, `BlockRestyled`,
+`EmptyContainerFlow`, `NoteRehomed`, …) or the property fails. That is `(da)`'s design put into
+code, and the first thing it did was refuse to name a class it could not justify: an anchor whose
+name comes back *different*. 11 per 4000 trees, all with `dup-in-tree=false`, so `(dc)` left them
+open.
+
+Refusing is what the whitelist is for. Shrinking the class produced
+
+```text
+{a: &x "x # y", b: &y 2}     ->   {a: &x "x # y", b: &x 2}
+```
+
+and the cause was in the reader's own documentation. `anchor_name_before` recovers a name by
+scanning left and skips any `&` that follows a comment-opening `#` on the line, with a recorded
+exception: "A quoted `#` earlier on the line is the one shape this would over-refuse, and it has
+**no reachable form**: node properties (`&anchor`, `!tag`) always precede the node value, so nothing
+that granit can mark as an anchor ever follows a quoted scalar on the same line." The premise is
+true of a node's own properties and false of a *node after another node* — which is exactly what a
+flow collection is. So `b`'s anchor was skipped over, the scan reached `&x`, and the engine
+re-emitted a document where two nodes share one name and every `*y` alias points at nothing: not a
+lost style bit but a corrupted object graph, and the Python-level claim is pinned as
+`tests/test_node_metadata.py::test_a_flow_anchor_keeps_its_own_name_past_a_quoted_hash` (red against
+the pre-fix build: `{'a': 'x', 'b': 'x'}`).
+
+The line scan now tracks quoting (`''` in single, backslash in double), with one restraint learned
+from the tests around it: a quote counts only where a scalar may begin, because granit's anchor-name
+grammar lets a *name itself* hold a `"` (`&"q` is the name `"q`), and treating that as a string
+opener would hide real comments. 611 Rust tests, 2775 Python.
+
+The instrument earned its keep twice over: the same classifier named `NoteForcesBlockLayout` and
+`InlineContainerFlow` for the two container relayouts the tier used to swallow, each justified by
+the position that forces it (a note ends its line; a block body cannot live inside `{}`) rather than
+by the fact that the old oracle happened to ignore it. Those two labels belong to the classifier
+work, not to this change — they are recorded here because the *reason* each one is a normalization
+is already measured, which is the test the eventual whitelist has to pass.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

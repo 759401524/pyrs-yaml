@@ -173,11 +173,18 @@ pub fn anchor_name_before(yaml: &str, byte_start: usize) -> Option<String> {
 /// `byte` comment text rather than node syntax.
 ///
 /// YAML opens a comment at a `#` in the first column or after a blank, so a `#`
-/// embedded in a scalar (`x#y`) does not count and cannot hide an anchor. A quoted
-/// `#` earlier on the line is the one shape this would over-refuse, and it has no
-/// reachable form: node properties (`&anchor`, `!tag`) always precede the node
-/// value, so nothing that granit can mark as an anchor ever follows a quoted
-/// scalar on the same line.
+/// embedded in a scalar (`x#y`) does not count and cannot hide an anchor. The `#`
+/// must be found *outside* quoting: inside `{a: &x "x # y", b: &y 2}` the first half
+/// of the line is a quoted scalar, and a flow collection puts the second anchor after
+/// it on the same line. Reading that `#` as a comment opener made the recovery skip
+/// `&y` and return the previous node's name, so `b` came back anchored as `x` and the
+/// re-emitted document carried one anchor name twice - orphaning every alias to `&y`.
+/// (The claim this had no reachable form - `&anchor` always precedes its own value -
+/// holds for a node's properties and not for a node after another node.)
+///
+/// Quotes are only tracked where a scalar can begin, after a node-start boundary:
+/// granit's grammar lets an anchor *name* carry `"` (`&"q` is the name `"q`), and
+/// treating that as a string opener would hide a real comment.
 fn comment_opens_before_on_line(bytes: &[u8], byte: usize) -> bool {
     let mut line = 0usize;
     for at in (0..byte).rev() {
@@ -186,8 +193,42 @@ fn comment_opens_before_on_line(bytes: &[u8], byte: usize) -> bool {
             break;
         }
     }
-    (line..byte)
-        .any(|at| bytes[at] == b'#' && (at == line || matches!(bytes[at - 1], b' ' | b'\t')))
+    let mut quote: Option<u8> = None;
+    let mut at = line;
+    while at < byte {
+        let marker = bytes[at];
+        match quote {
+            Some(b'\'') => {
+                if marker == b'\'' {
+                    // `''` is an escaped quote inside a single-quoted scalar.
+                    if at + 1 < byte && bytes[at + 1] == b'\'' {
+                        at += 1;
+                    } else {
+                        quote = None;
+                    }
+                }
+            }
+            Some(b'"') => {
+                if marker == b'\\' {
+                    at += 1;
+                } else if marker == b'"' {
+                    quote = None;
+                }
+            }
+            _ => {
+                if (marker == b'\'' || marker == b'"')
+                    && (at == line
+                        || matches!(bytes[at - 1], b' ' | b'\t' | b',' | b':' | b'[' | b'{'))
+                {
+                    quote = Some(marker);
+                } else if marker == b'#' && (at == line || matches!(bytes[at - 1], b' ' | b'\t')) {
+                    return true;
+                }
+            }
+        }
+        at += 1;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -235,6 +276,28 @@ mod tests {
             anchor_name_before("key: &\"q value", after_anchor("key: &\"q value", "&\"q")),
             Some("\"q".to_string())
         );
+    }
+
+    /// A flow collection puts an anchor after a quoted scalar on the same line, and the `#`
+    /// inside that scalar is content, not a comment.
+    ///
+    /// The line scan used to read it as a comment opener, so the recovery walked past `&y` and
+    /// handed back the *previous* anchor's name: `b` re-read as `x`, and re-emitting the document
+    /// wrote one anchor name twice, orphaning every alias to `&y`. Found while classifying the
+    /// round-trip tier's filtered mismatches (11 anchor-name changes per 4000 trees).
+    #[test]
+    fn anchor_name_before_reads_past_a_quoted_hash_in_flow() {
+        for src in [
+            "{a: &x \"x # y\", b: &y 2}",
+            "{a: &x 'x # y', b: &y 2}",
+            "[&x \" #\", &y 2]",
+        ] {
+            assert_eq!(
+                anchor_name_before(src, after_anchor(src, "&y")),
+                Some("y".to_string()),
+                "{src}"
+            );
+        }
     }
 
     /// The name run ends at a flow indicator, not swallowing the flow opener.
