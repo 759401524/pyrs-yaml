@@ -1045,6 +1045,11 @@ impl Serializer {
                 return Ok(());
             }
 
+            // Where this container's own block begins, before any preamble line is written:
+            // the line starting here is the last line a note of this container may sit above
+            // without splitting a tag line from the body it tags.
+            let body_start = self.output.len();
+
             if !in_value_context && (meta.anchor().is_some() || meta.tag().is_some()) {
                 for note in preamble_note.unwrap_or_default() {
                     self.write_note_line(indent_width, &note.text);
@@ -1092,6 +1097,19 @@ impl Serializer {
                     self.output.push_str(note_text_to_write(&c.text));
                     self.output.push('\n');
                     self.trailing_note_slot_open = false;
+                } else if indent_width > 0 {
+                    // A note line of its own below the body is only reported back to this
+                    // container when the container starts at column 0, because granit spans a
+                    // node through the break that ends *its own* line: written deeper than that,
+                    // the note sits on the far side of the range, homes on whatever follows, and
+                    // the next emission loses it (crash-0e1c4378 is the same drift one shape over;
+                    // `a_block_scalar_body_never_borrows_the_containers_note` pins the column-0
+                    // case, where the line is the document's tail). Above the line this container's
+                    // own block starts on is where the reader files a container's note, so that is
+                    // where it goes - and it is the same placement `note_line_above_last_pair`
+                    // measures for a pending tag line.
+                    let at = self.output[..body_start].rfind('\n').map_or(0, |k| k + 1);
+                    self.note_line_above(at, &c.text);
                 } else {
                     self.write_note_line(indent_width, &c.text);
                 }
@@ -4582,6 +4600,134 @@ mod tests {
             out.lines()
                 .any(|line| line.starts_with("\" \":") && line.contains("# a")),
             "the key note belongs to its own pair line: {out:?}"
+        );
+    }
+
+    /// The same rule with no block scalar in sight.
+    ///
+    /// The reader's span, not the body's style, is what decides this: a nested container's
+    /// note line written below its last entry lands outside the span, so the shape here is a
+    /// sequence item carrying a note over a single `null` entry that has a note of its own -
+    /// the tier minimized to it after the block-scalar case closed, which is why the rule is
+    /// stated by indent rather than by "the tail is a block body".
+    #[test]
+    fn a_nested_container_note_is_written_above_its_own_line() {
+        let mut entry = CustomNode::Null {
+            meta: Default::default(),
+        };
+        entry.set_comment(crate::ast::Comment {
+            text: "0".into(),
+            standalone: false,
+        });
+        let mut item = CustomNode::Sequence {
+            items: vec![entry],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        item.set_comment(crate::ast::Comment {
+            text: "$".into(),
+            standalone: false,
+        });
+        let mut root = CustomNode::Sequence {
+            items: vec![
+                item,
+                CustomNode::Sequence {
+                    items: vec![],
+                    flow_style: false,
+                    meta: Default::default(),
+                },
+            ],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        root.set_comment(crate::ast::Comment {
+            text: "0".into(),
+            standalone: false,
+        });
+
+        let once = assert_reparses(&root);
+        let parsed = crate::parser::parse_with_options(
+            &once,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        )
+        .expect("the first emission re-parses");
+        let twice = assert_reparses(&parsed);
+        assert!(
+            twice.contains('$'),
+            "the container note vanished on the second emission: {once:?} -> {twice:?}"
+        );
+        assert_eq!(
+            once, twice,
+            "the emission needs a second round to settle: {once:?} -> {twice:?}"
+        );
+    }
+
+    /// A sequence item whose subtree ends in a block scalar, carrying a note of its own,
+    /// plus a sibling that ends the outer sequence, and a note on that outer sequence.
+    fn noted_item_over_block_body() -> CustomNode {
+        let mut body = CustomNode::quoted_scalar("A");
+        body.set_scalar_style(ScalarStyle::Literal);
+        body.set_chomping(crate::ast::Chomping::Strip);
+        let mut item = CustomNode::Sequence {
+            items: vec![body],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        item.set_comment(crate::ast::Comment {
+            text: "$".into(),
+            standalone: false,
+        });
+        let mut root = CustomNode::Sequence {
+            items: vec![
+                item,
+                CustomNode::Sequence {
+                    items: vec![],
+                    flow_style: false,
+                    meta: Default::default(),
+                },
+            ],
+            flow_style: false,
+            meta: Default::default(),
+        };
+        root.set_comment(crate::ast::Comment {
+            text: "0".into(),
+            standalone: false,
+        });
+        root
+    }
+
+    /// The shape the round-trip tier named last: 1 tree in ~20 000.
+    ///
+    /// A container's own note falls back to a bare comment line at that container's indent
+    /// when its tail line cannot host one, and for an item whose body is a block scalar that
+    /// line lands *below* the body. The reader files a note line below a block with the node
+    /// that ended the block - the same fact `note_line_above_last_pair` records for a pending
+    /// tag line - so the container had already lost `$` by the time the second emission ran,
+    /// and the text "settled" by dropping it. Survival and the fixed point are asserted
+    /// together on purpose: a placement that loses the note is also stable.
+    #[test]
+    fn a_container_note_below_a_block_body_survives_the_second_emission() {
+        let node = noted_item_over_block_body();
+        let once = assert_reparses(&node);
+        let parsed = crate::parser::parse_with_options(
+            &once,
+            true,
+            crate::parser::yaml::Schema::Core,
+            1000,
+            false,
+        )
+        .expect("the first emission re-parses");
+        let twice = assert_reparses(&parsed);
+        assert!(
+            twice.contains('$'),
+            "the item note vanished on the second emission: {once:?} -> {twice:?}"
+        );
+        assert_eq!(
+            once, twice,
+            "the emission needs a second round to settle: {once:?} -> {twice:?}"
         );
     }
 

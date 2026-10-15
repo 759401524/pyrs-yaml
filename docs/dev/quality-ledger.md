@@ -5114,6 +5114,37 @@ The process lesson is the reason this entry exists: a writer change in a note-pl
 gated by an ordinary local tier run, and the elevated count is cheap to ask for -
 `PROPTEST_CASES=20000 cargo test -p pyrs-yaml-core`. CI has always run it; the local loop did not.
 
+### (df) The first candidate placement was refused by a test that already existed (2026-10-15)
+
+`(de)` left one note family unexplained, and the tier minimized it to a sequence item carrying a
+note over a `|-` body. The obvious fix was the slot `(db)` had opened for keys - ride the block
+header, the last line on which a `#` is a comment - and it was written, and it made the new test
+green.
+
+It was refused by a test that predated the bug.
+`parser::tests::a_block_scalar_body_never_borrows_the_containers_note` pins that a note on the
+header line is read back as the *value's* comment, and its sibling at the same level pins the other
+half: a note line below a block is read back as the leading note of the node that ended the block
+(crash-11ced252). Taking the header slot therefore did not place the container's note anywhere near
+the container - it moved it onto the wrong node and kept the text.
+
+What the two pinned facts leave is placement by indent, and the second shrunk shape said so: the
+same loss with no block scalar in sight (`- - null` under a note, the item note gone), which is why
+the rule reads `indent_width > 0` and not "the tail is a block body". Below the body is kept where
+the reader reports the note back to the container - column 0, where that line is the document's
+tail - and moved above the container's own line everywhere else, through the same `note_line_above`
+machinery `note_line_above_last_pair` measures for a pending tag line.
+
+Both shapes are pinned with survival *and* the fixed point asserted together, because a placement
+that loses the note is also stable: losing it is exactly what the equality alone would have
+accepted. The anchor `body_start` is captured before the preamble line is written, so a note can
+never be inserted between a container's tag line and the body it tags.
+
+615 Rust tests at this change; the two shapes above are the last note residuals the classifier
+named, and with them closed it named none in the note family - measured at `PROPTEST_CASES=20000` on
+the stack that also carries the reader-side anchor fix below, where the tier is 26 passed / 0
+failed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

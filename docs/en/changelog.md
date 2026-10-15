@@ -539,6 +539,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A nested container's note is written above its own line, never below its body.** — the writer's
+  last resort for a container's inline note was a bare comment line at that container's indent, and
+  the reader spans a node only through the break that ends the node's *own* line: deeper than column
+  0 the note fell outside the span, was filed with the line that follows it, and the second emission
+  lost it. The round-trip tier minimized to `- - |-` with a body under it, then to the same loss
+  with no block scalar in sight, so the rule is stated by indent. Column 0 keeps the old placement,
+  where the note line is the document's tail and the reader does report the note back to the
+  container.
+
 - **A key's note rides only its own pair's line, never a nested header.** — #419 taught the writer
   to place a key's note on a block scalar's header line when the value is a block scalar, but the
   position it consulted was "the last block header written", wherever in the document that was. A
