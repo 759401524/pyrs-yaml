@@ -46,3 +46,31 @@ fn a_key_note_over_a_block_body_settles_in_one_round() {
         );
     }
 }
+
+/// A note that follows a CR-only line break belongs to the item after it, not the container
+/// before it.
+///
+/// `line_break_between` - the test that decides whether a trailing note binds backwards or
+/// carries forward - scanned the gap for `\n` alone, so a document broken only by `\r` read as
+/// one long line. The note bound back onto the mapping, the writer homed a container note by
+/// its own rule, and the re-read gave the same text to the pair's value, so the first emission
+/// was not the fixed point; the fuzz tier reports exactly that as drift. The break vocabulary
+/// is now the one granit splits lines on, and the last assertion is the sharper oracle: the two
+/// spellings of one document ingest to one emission.
+#[test]
+fn a_note_after_a_cr_only_break_annotates_the_item_that_follows() {
+    let cr = "!-\r\r\r- :\r\r\r\r- #-";
+    let one = emit(cr);
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+    assert_eq!(
+        one.matches("# ").count(),
+        1,
+        "the shape carries one note; a migrated note is still a note, so idempotence alone \
+         cannot tell a move from a copy: {one:?}"
+    );
+    let lf = emit(&cr.replace('\r', "\n"));
+    assert_eq!(
+        one, lf,
+        "a document differs from its LF spelling only in how its lines break: {one:?} vs {lf:?}"
+    );
+}

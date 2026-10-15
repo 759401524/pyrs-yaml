@@ -600,6 +600,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A note that follows a CR-only break no longer changes owner on the second round** — the line
+  test that decides whether a trailing note belongs to the node before it or the node after it
+  scanned the gap for `\n` alone, so a document broken only by `\r` read as one long line and every
+  note after a break bound backwards onto the previous container. `!-\r\r\r- :\r\r\r\r- #-` is the
+  same document as a `\n` spelling the fuzz tier had already settled in one round, and it needed two
+  emissions: the first wrote its item in block form, the second in the compact `- key: value` form.
+  `line_break_between` now asks for either break - the set granit splits lines on, which the comment
+  scanner, the scalar trim and the blank trim already use. Measured as an A/B over the three shapes
+  in this family and both spellings of each: every emission is byte-identical, and only the ingest
+  slot moved, from the container's inline note to its leading one, which is what the `\n` spelling
+  always produced. Measured: 633 Rust tests, 26 property tests at 20 000 cases, and the input
+  archived as `fuzz/seeds/yaml_roundtrip/cr-only-break-note-ownership.seed` and pinned by
+  `settles_in_one_round::a_note_after_a_cr_only_break_annotates_the_item_that_follows` — details:
+  quality-ledger (dt)
+
 - **A key's note over a block body no longer moves on the second round** — the writer parked the
   document's own note on the body's last line, and granit spans a node through the break that ends
   its own line, so the re-read reported that note as the value's and `write_pair` answered its slot

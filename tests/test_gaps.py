@@ -321,6 +321,15 @@ class TestUnicodeAndSpecial:
         assert doc.get("key") == "value"
         assert doc.get("list") == ["a", "b"]
 
+    def test_cr_only_line_endings(self):
+        # The reader used to see only "\n" when it decided whether a note trails the node
+        # before it or annotates the one after, so a "\r"-broken document homed its notes
+        # a line too early and needed a second emission to settle.
+        cr = "!-\r\r\r- :\r\r\r\r- #-"
+        one = pyrs_yaml.parse(cr).to_yaml()
+        assert pyrs_yaml.parse(one).to_yaml() == one
+        assert one == pyrs_yaml.parse(cr.replace("\r", "\n")).to_yaml()
+
     def test_duplicate_keys_last_wins(self):
         doc = pyrs_yaml.parse("key: first\nkey: second", allow_duplicate_keys=True)
         assert doc.get("key") == "second"
