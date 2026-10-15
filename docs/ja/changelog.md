@@ -346,6 +346,13 @@ status: new
 
 #### 変更
 
+- **タグ文法が PyO3 バインディングから離れ、そのテストは libpython を必要としなくなった。** —
+  `!!int`、`!!float`、`!!binary` の字句解釈は `crates/pyrs-yaml/src/py/tags.rs` にあったので、その 6
+  本のテストは libpython をリンクしていた。呼び出す関数は `&str` を受けて Rust の値を返すだけなの
+  に、Cargo の lib 依存は test target にも及び、`pyo3` は `extension-module` 無しで宣言されている。
+  文法は `pyrs_yaml_core::tagged` へ移り、Python 不要のレーンは 526 本から 532 本に増えたが
+  workspace 合計は 604 のままだ。バインディングには値を `Py<PyAny>` に変える部分だけが残る。
+
 - **`granit-parser` 1.3 → 2.0.** — major の引き上げを実測のうえ適用した。ソース変更なしで型検査が
   通る（削除された公開ヘルパー `found_tabs` と `has_valid_yaml_ws` は
   `crates/` にも `python/` にも参照がない）。`cargo nextest run --workspace --exclude pyrs-yaml` は

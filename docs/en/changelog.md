@@ -383,6 +383,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Changed
 
+- **The tag grammar left the PyO3 binding, and its tests no longer need libpython.** — `!!int`,
+  `!!float` and `!!binary` lexical reading lived in `crates/pyrs-yaml/src/py/tags.rs`, so its six
+  tests linked libpython although every function they call takes `&str` and returns a Rust value:
+  Cargo's lib dependencies apply to a test target too, and `pyo3` is declared without
+  `extension-module`. The grammar is now `pyrs_yaml_core::tagged`, which took the Python-free lane
+  from 526 to 532 passing tests while the workspace total held at 604. The binding keeps only what
+  turns a value into a `Py<PyAny>`.
+
 - **`granit-parser` 1.3 → 2.0.** — the major bump needed no source change (neither removed public
   helper, `found_tabs` nor `has_valid_yaml_ws`, is referenced anywhere in `crates/` or `python/`),
   `cargo nextest run --workspace --exclude pyrs-yaml` reports 579 passed,
