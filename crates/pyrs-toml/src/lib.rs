@@ -92,7 +92,10 @@ pub(crate) enum TomlValue {
     /// `Some(kind)` for offset date-time (`Z` suffix or `±HH:MM` offset);
     /// `None` for local variants.
     Datetime(String, Option<&'static str>),
-    Array(Vec<TomlValue>),
+    /// An element carries its own notes, as a member of an inline table does: `leading` is the
+    /// comment lines above it, `trailing` the one that ended its line. An array without comments
+    /// still uses the same shape with empty annotations.
+    Array(Vec<(TomlValue, KVAnnotations)>),
     InlineTable(Vec<(String, TomlValue, KVAnnotations)>),
 }
 
@@ -329,7 +332,27 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
             }),
         },
         TomlValue::Array(v) => CustomNode::Sequence {
-            items: v.into_iter().map(toml_value_to_node).collect(),
+            items: v
+                .into_iter()
+                .map(|(val, anns)| {
+                    // An element's notes ride the same two slots a pair's do: own-line notes on the
+                    // element's leading list, the one that ended its line on its inline comment.
+                    let mut node = toml_value_to_node(val);
+                    for text in anns.leading {
+                        node.push_leading_comment(pyrs_ast::ast::Comment {
+                            text: alloc::sync::Arc::from(text),
+                            standalone: true,
+                        });
+                    }
+                    if let Some(text) = anns.trailing {
+                        node.set_comment(pyrs_ast::ast::Comment {
+                            text: alloc::sync::Arc::from(text),
+                            standalone: false,
+                        });
+                    }
+                    node
+                })
+                .collect(),
             flow_style: false,
             meta: NodeMeta::default(),
         },

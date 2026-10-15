@@ -200,6 +200,61 @@ fn scalar_key(k: &CustomNode) -> Result<String, SerializeError> {
     Ok(name)
 }
 
+/// Whether an array element owns a note the TOML spelling has to show.
+///
+/// `has_notes` first: it answers from two inline discriminants and never dereferences the boxed
+/// decor, which is the whole point for the common case of an undecorated array - the compact form
+/// then costs one such test per element instead of two view lookups.
+fn element_has_note(item: &CustomNode) -> bool {
+    item.has_notes()
+        && (!item.leading_comments().is_empty() || item.comment().is_some_and(|c| !c.standalone))
+}
+
+/// Append a noted array as one element per line.
+///
+/// Its own fn because it is the rare shape of a hot branch: [`write_value`] already carries the
+/// scalar, inline-table and compact-array arms, and a forty-line note layout does not belong in the
+/// one recursive writer every node passes through.
+fn write_notated_array(out: &mut String, items: &[CustomNode]) -> Result<(), SerializeError> {
+    out.push_str("[\n");
+    for (i, it) in items.iter().enumerate() {
+        for c in it.leading_comments() {
+            out.push_str("  # ");
+            out.push_str(c.text.trim());
+            out.push('\n');
+        }
+        out.push_str("  ");
+        write_value(out, it)?;
+        // The last element's line is the only one a note may finish: `1 # x,` is not TOML at all,
+        // and a note written after the comma is reported by the reader as the *next* element's
+        // leading note - so that placement moved the comment on every round and the text never
+        // settled. Anywhere but last, the note gets its own line after the element, which is where
+        // the reader hands it to the next one.
+        match it
+            .comment()
+            .filter(|c| !c.standalone)
+            .map(|c| c.text.trim())
+        {
+            Some(text) if i + 1 == items.len() => {
+                out.push_str(" # ");
+                out.push_str(text);
+            }
+            Some(text) => {
+                out.push_str(",\n  # ");
+                out.push_str(text);
+            }
+            None => {
+                if i + 1 != items.len() {
+                    out.push(',');
+                }
+            }
+        }
+        out.push('\n');
+    }
+    out.push(']');
+    Ok(())
+}
+
 /// Append a node's TOML spelling to `out`.
 ///
 /// Writing into the caller's buffer rather than returning a `String` is the second half of the
@@ -300,6 +355,12 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
             }
         }
         CustomNode::Sequence { items, .. } => {
+            // An element carrying a note forces the array onto several lines, for the reason #119
+            // recorded for inline tables: `#` runs to end of line, so a comment cannot live inside
+            // `[1, 2]`. Undecorated arrays keep the compact form, so 1.0 output is unchanged.
+            if items.iter().any(element_has_note) {
+                return write_notated_array(out, items);
+            }
             out.push('[');
             for (i, it) in items.iter().enumerate() {
                 if i > 0 {
@@ -1114,6 +1175,34 @@ mod tests {
         );
         let again = to_toml(&from_toml(&out).unwrap()).unwrap();
         assert_eq!(out, again, "the emission is not a fixed point: {again}");
+    }
+
+    #[test]
+    fn an_array_element_note_takes_its_own_line_and_settles() {
+        // The three places a note can sit on a multi-line array, measured: before an element, at
+        // the end of the last element's line, and between an element's comma and the next element.
+        // The middle case is the one the reader reports as the *following* element's leading note,
+        // which is where the writer puts it, so the second emission is the same text.
+        for (src, want) in [
+            ("arr = [\n  # lead\n  1\n]\n", "arr = [\n  # lead\n  1\n]\n"),
+            ("arr = [\n  1 # trail\n]\n", "arr = [\n  1 # trail\n]\n"),
+            (
+                "arr = [\n  1, # between\n  2\n]\n",
+                "arr = [\n  1,\n  # between\n  2\n]\n",
+            ),
+        ] {
+            let out = to_toml(&from_toml(src).unwrap()).unwrap();
+            assert_eq!(out, want, "the note did not come back for {src:?}");
+            let again = to_toml(&from_toml(&out).unwrap()).unwrap();
+            assert_eq!(out, again, "not a fixed point: {out:?} -> {again:?}");
+        }
+    }
+
+    #[test]
+    fn an_array_without_notes_keeps_the_compact_form() {
+        // The control for the rule above: nothing decorated, nothing reformatted.
+        let out = to_toml(&from_toml("arr = [1, 2]\n").unwrap()).unwrap();
+        assert_eq!(out, "arr = [1, 2]\n");
     }
 
     #[test]

@@ -1074,7 +1074,7 @@ impl<'a> Parser<'a> {
 
     fn parse_array(&mut self) -> Result<TomlValue, ParseError> {
         self.expect_byte(b'[', "expected `[`")?;
-        let mut items = Vec::new();
+        let mut items: Vec<(TomlValue, KVAnnotations)> = Vec::new();
         loop {
             self.skip_array_ws();
             if self.peek() == Some(b']') {
@@ -1084,8 +1084,20 @@ impl<'a> Parser<'a> {
             if self.eof() {
                 return Err(self.err("unterminated array"));
             }
+            // Own-line comments collected before the element are its leading notes - the same
+            // attribution `parse_inline_table` gives a member, because `#` runs to end of line and
+            // the reader can only report a comment from the line that ends it.
+            let leading = core::mem::take(&mut self.pending_inline_comment);
             let v = self.parse_value()?;
-            items.push(v);
+            let trailing = self.same_line_comment();
+            items.push((
+                v,
+                KVAnnotations {
+                    leading,
+                    trailing,
+                    blank_before: false,
+                },
+            ));
             self.skip_array_ws();
             if self.peek() == Some(b',') {
                 self.pos += 1;
@@ -1099,13 +1111,32 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// A `#` comment still on the current line, without crossing a newline: the one that belongs to
+    /// the value just parsed rather than to the element that follows it.
+    fn same_line_comment(&mut self) -> Option<String> {
+        let mut at = self.pos;
+        while matches!(self.byte_at(at), Some(b' ') | Some(b'\t')) {
+            at += 1;
+        }
+        if self.byte_at(at) != Some(b'#') {
+            return None;
+        }
+        self.pos = at;
+        Some(self.take_comment())
+    }
+
     fn skip_array_ws(&mut self) {
         loop {
             match self.peek() {
                 Some(b' ') | Some(b'\t') | Some(b'\n') => self.pos += 1,
                 Some(b'\r') if self.byte_at(self.pos + 1) == Some(b'\n') => self.pos += 2,
                 Some(b'#') => {
-                    self.take_comment();
+                    // Collected rather than discarded: an array element's note has to reach the AST
+                    // for `to_toml` to put it back, which is what #119 did for inline-table members
+                    // and #434 for a member's key line. A comment left over when `]` arrives still
+                    // has no owner - see the pinned boundary in `writer::tests`.
+                    let note = self.take_comment();
+                    self.pending_inline_comment.push(note);
                 }
                 _ => return,
             }

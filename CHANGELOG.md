@@ -594,6 +594,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A comment inside a multi-line TOML array belongs to its element.** — the array scanner skipped
+  a `#` line and threw the text away, so `arr = [⏎ # lead⏎ 1⏎]`, `arr = [⏎ 1 # trail⏎]` and the note
+  between an element's comma and the next element all came back as one compact line with the comment
+  gone. An element now carries the same two annotations an inline-table member does, and an array
+  holding one is written across lines with each note where the reader reports it from - measured:
+  the second emission is byte-identical, and an undecorated array still emits on one line. A note
+  after the last comma has no element to own it and is pinned as still lost.
+  — (details: quality-ledger (dq))
+
 - **A note on an inline table member's key line is written, not skipped.** — `to_toml` read two
   slots for a member's note: the key's own-line list and the value's inline comment. The hub hands a
   flow member's note over on the *key's* inline slot, because there a note that ends the key's line
