@@ -119,9 +119,12 @@ def test_the_upgrade_did_not_move_the_stub_generator():
     the rules that reconcile that generator's output with this repository's declarations. A dependency
     bump that silently moves maturin moves the expected stub too, which shows up as a code change
     inside a documentation pull request - the failure this test exists to make loud instead of quiet.
+    The pin is 1.15.0, moved deliberately: its stub output is byte-identical to 1.14.1's on this tree,
+    and the only reconciliation change was the `--out` layout, which 1.15.0 writes as a package
+    directory.
     """
     versions = locked_versions()
-    assert versions["maturin"] == "1.14.1", (
+    assert versions["maturin"] == "1.15.0", (
         f"maturin moved to {versions['maturin']}; regenerate python/pyrs_yaml/pyrs_yaml.pyi on the "
         "route AGENTS.md declares and update check_stub_drift.py's reconciliation rules in the same "
         "change"

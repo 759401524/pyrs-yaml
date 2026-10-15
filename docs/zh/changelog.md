@@ -311,6 +311,15 @@ status: new
 
 #### 变更
 
+- **桩生成器刻意升到了 maturin 1.15.0，并且是先量的。** — 钉住版本是因为
+  `python/pyrs_yaml/pyrs_yaml.pyi` 由某一个确定的版本生成，而 `scripts/check_stub_drift.py` 里的规则
+  描述的就是那一版的输出；所以移动 maturin 必须是一次独立的变更，`tests/test_docs_config_gate.py`
+  正是为了让悄悄的移动变红而存在的。在本仓库实测：1.15.0 生成的桩与 1.14.1 逐字节相同（608 行，
+  漂移检查器也说已提交的文件本就符合再生成路径），因此没有任何规则或期望计数需要改。唯一移动的是
+  生成器的写出位置：`--out` 现在收到的是 `target/stubs/pyrs_yaml/pyrs_yaml.pyi`，而不再是
+  `target/stubs/pyrs_yaml.pyi`，这正是 `GENERATED` 那条路径。采纳它是为了上游对 `abi3t` 的
+  `PyModExport` 入口检查修复——那正是本项目 `abi3t` 与 cp314t wheel 的构建路径。
+
 - **往返属性层给每个差异命名，不再躲在过滤器后面。** — 25 个属性里有七个过去只在
   `if let Some(parsed) = try_roundtrip(&node)` 内部断言，于是它们自己的辅助函数拒绝返回的样本从未被
   谈起；实测那道过滤丢掉了 4000 棵抽取树里的 3423 棵。`try_roundtrip` 现已删除：每次往返都按一份可容
