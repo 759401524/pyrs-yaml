@@ -300,6 +300,12 @@ status: new
 
 #### 变更
 
+- **标签语法搬出 PyO3 绑定 crate，它的测试也不再需要 libpython。** — `!!int`、`!!float`、`!!binary`
+  的词法读取原先在 `crates/pyrs-yaml/src/py/tags.rs`，于是那六个测试被链上 libpython，尽管它们调用的
+  函数只收 `&str` 并返回 Rust 值：Cargo 的 lib 依赖同样作用于 test target，而 PyO3 声明没开
+  `extension-module`。这套语法现在是 `pyrs_yaml_core::tagged`，Python 无关那道从 526 个通过测试涨到
+  532 个，workspace 总数仍是 604。绑定侧只留下把值变成 `Py<PyAny>` 的那部分。
+
 - **`granit-parser` 1.3 → 2.0。** — 这次 major 升级经实测后落地：无需改动源码即可通过类型检查（被删
   除的两个公开辅助函数 `found_tabs`、`has_valid_yaml_ws` 在 `crates/` 与 `python/` 中都没有引用）；
   `cargo nextest run --workspace --exclude pyrs-yaml` 579 通过；

@@ -354,6 +354,13 @@ status: new
 
 #### 변경
 
+- **태어 문법이 PyO3 바인딩에서 떠나고, 그 테스트는 더 이상 libpython을 필요로 하지 않는다.** —
+  `!!int`, `!!float`, `!!binary`의 어휘 해석은 `crates/pyrs-yaml/src/py/tags.rs`에 있었기에 그 여섯
+  개의 테스트는 libpython을 링크했다. 이들이 부르는 함수는 `&str`만 받아 Rust 값을 반환하는데도,
+  Cargo의 lib 의존성은 test 대상에도 적용되고 `pyo3`는 `extension-module` 없이 선언돼 있다. 문법은
+  이제 `pyrs_yaml_core::tagged`에 있고, Python이 필요 없는 계층은 통과 시험이 526개에서 532개로
+  늘었으나 workspace 합계는 604 그대로다. 바인딩에는 값을 `Py<PyAny>`로 바꾸는 부분만 남는다.
+
 - **`granit-parser` 1.3 → 2.0.** — major 올림을 실측 후 적용했다. 소스 변경 없이 타입 체킹이
   통과한다(지워진 공개 헬퍼 `found_tabs`와 `has_valid_yaml_ws` 모두 `crates/`와
   `python/` 어디에서도 참조되지 않습니다). `cargo nextest run --workspace --exclude pyrs-yaml`은 579
