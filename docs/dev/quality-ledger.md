@@ -5253,6 +5253,45 @@ documentation - so the instruction-count floor was left alone rather than re-cla
 table in `ROADMAP.md` is now empty, which is what that section says it is for: an item leaves the
 moment a change ships the decision.
 
+### (dj) The root loop asked what the value was, not what the source wrote (2026-10-15)
+
+`to_toml`'s root pass asked one question of every pair: is the value a non-empty mapping? If so it
+went to the section list. `flow_style` - the bit this crate's own reader sets for `p = { a = 1 }`
+and leaves clear for `[p]` - was bound in the pattern and never read.
+
+Measured through the Python hub on the build before the fix:
+
+```text
+p = { a = 1, b = 2 } # tail   ->  [p] # tail + body        (and not a fixed point on the second round)
+p = { a = 1 }  with q = 2     ->  q = 2, then [p], then a = 1
+p = { a = 1 } under [s]       ->  stays inline
+arr = [{ a = 1 }]             ->  stays inline
+```
+
+The move of `q` is not cosmetic. TOML wants a table's plain keys before its sub-table headers, so
+promoting a root value to a header forces its siblings ahead of it, and the note that sat on the
+pair line travels to the header line with it. The `[s]` case is the proof that the writer already
+had the information: a nested inline table kept its form because it reached `emit_pair`, and only
+the root classification ignored the bit.
+
+Four tests had been pinning the promotion, and two of them did it by asserting the header text -
+`a_note_between_two_inline_members_keeps_its_own_line` and the parser's
+`the_fence_reaches_values_inside_a_container`, whose own comment called the rewrite "a writer choice
+this change does not touch". A third, `to_toml_emits_multiline_inline_table_as_single_line`, stated
+the single-line shape as its intent and then asserted two `contains` checks, which a section header
+satisfies; the fourth carried the claim only in a comment. All four now assert the inline form, and
+the one whose purpose was the shape is asserted *on* the shape.
+
+Not claimed: a note on its own line inside the braces still does not survive the hub
+(`p = { a = 1, # inner ... }` comes back as `p = {a = 1, ...}`) because the YAML writer has no slot
+for a flow member's own-line leading note - the boundary the flow-note decision recorded. It is
+pinned as a loss (`test_a_note_on_its_own_line_inside_the_braces_is_still_lost`) rather than left
+tacit.
+
+Measured after: 619 Rust tests, 2779 Python. The instruction floor is not re-claimed here: the
+change moves one root mapping from a path that materialises the section name to one that appends, so
+CI's `Instruction-count baseline` leg on `to_toml_medium` is the check, not this entry.
+
 ### (dk) The flow indicator has to begin a token as well (2026-10-15)
 
 The 20 000-case tier named the third shape of the family (dd) and (dg) opened - and it named it

@@ -579,6 +579,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A root-level inline table is no longer rewritten into a section header.** — `to_toml`
+  classified any non-empty mapping at the document root as a section, ignoring the `flow_style` bit
+  its own reader had just set. `p = { a = 1 } # t` came back as a `[p]` header with a body, which is
+  not a style choice but a shape change: TOML wants a table's plain keys before its sub-table
+  headers, so a sibling key moved ahead of it and the note left the pair line for the header.
+  Nested and array-position inline tables already kept their form, so the asymmetry was the tell.
+  One TOML round is now the fixed point, and the tests that had pinned the promotion - two of them
+  asserting the header text this fix no longer produces - now pin the inline form. A note on its own
+  line inside the braces is still dropped by the hub, and that loss is pinned rather than claimed
+  closed. — (details: quality-ledger (dj))
+
 - **The JSON5 writer no longer emits a number its own reader refuses.** — the bare-token test
   asked only "digits, then a dot", so a plain scalar spelled `00.` went out verbatim. JSON5 has no
   such integer part: it is a lone `0` or a non-zero digit then digits, so `from_json5` rejects the
