@@ -300,6 +300,17 @@ status: new
 
 #### 变更
 
+- **往返属性层给每个差异命名，不再躲在过滤器后面。** — 25 个属性里有七个过去只在
+  `if let Some(parsed) = try_roundtrip(&node)` 内部断言，于是它们自己的辅助函数拒绝返回的样本从未被
+  谈起；实测那道过滤丢掉了 4000 棵抽取树里的 3423 棵。`try_roundtrip` 现已删除：每次往返都按一份可容
+  忍归一化的枚举清单来归类 - `NullToken`、`PlainRequoted`、`BlockRestyled`、`EmptyContainerFlow`、
+  `NoteRehomed`、`NoteForcesBlockLayout`、`InlineContainerFlow` - 清单说不出名字的就让属性失败。正是
+  它揭出了 #418 到 #422 以及 #424 背后的写器与读取器缺陷，每个都用自己的测试钉住；它也关闭了
+  `property-tier:conditional-assert`：探针量到空的守卫清单，`.ci/quality-holes.json` 已空，
+  `QUALITY_MATRIX.md` 那一行以"已关闭"留存。两个顺序属性是改了主张而不是退回过滤 - 键按带类型标签的
+  条目比较而不再比较序列化文本，映射顺序按位置比较，因为容器回读成 flow 与否是读取器的归一化，不是顺
+  序事实。
+
 - **标签语法搬出 PyO3 绑定 crate，它的测试也不再需要 libpython。** — `!!int`、`!!float`、`!!binary`
   的词法读取原先在 `crates/pyrs-yaml/src/py/tags.rs`，于是那六个测试被链上 libpython，尽管它们调用的
   函数只收 `&str` 并返回 Rust 值：Cargo 的 lib 依赖同样作用于 test target，而 PyO3 声明没开

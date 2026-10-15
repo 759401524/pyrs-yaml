@@ -374,6 +374,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The round-trip tier names every difference instead of hiding behind a filter.** — seven of the
+  25 properties used to assert only inside `if let Some(parsed) = try_roundtrip(&node)`, so the
+  samples their own helper declined were never spoken about; measured, the filter discarded 3423 of
+  4000 drawn trees. `try_roundtrip` is gone: every cycle is classified against an enumerated list of
+  tolerable normalizations - `NullToken`, `PlainRequoted`, `BlockRestyled`, `EmptyContainerFlow`,
+  `NoteRehomed`, `NoteForcesBlockLayout`, `InlineContainerFlow` - and a difference the list cannot
+  name fails the property. That is what surfaced the writer and reader defects behind #418
+  through #422 and #424, each pinned by its own test, and it closes
+  `property-tier:conditional-assert`: the probe measures an empty guard list,
+  `.ci/quality-holes.json` is empty, and the row in `QUALITY_MATRIX.md` stands as closed. The two
+  order properties were re-claimed rather than re-filtered - a key compares as kind-tagged entries
+  instead of serialized text, and mapping order compares per position, because whether a container
+  reads back as flow is the reader's normalization and not an order fact.
+
 - **The tag grammar left the PyO3 binding, and its tests no longer need libpython.** — `!!int`,
   `!!float` and `!!binary` lexical reading lived in `crates/pyrs-yaml/src/py/tags.rs`, so its six
   tests linked libpython although every function they call takes `&str` and returns a Rust value:

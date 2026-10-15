@@ -346,6 +346,19 @@ status: new
 
 #### 変更
 
+- **往返層は差異ごとに名前を付け、フィルタの後ろに隠れない。** — 25 個の性質のうち七個は
+  `if let Some(parsed) = try_roundtrip(&node)` の内側でしか主張しておらず、自前のヘルパーが返さなか
+  った標本は一度も語られなかった。実測でこのフィルタは 4000 本のツリーのうち 3423 本を捨てていた。
+  `try_roundtrip` は消え、毎回の一往復は許容できる正規化の列挙リスト - `NullToken`、
+  `PlainRequoted`、`BlockRestyled`、`EmptyContainerFlow`、`NoteRehomed`、`NoteForcesBlockLayout`、
+  `InlineContainerFlow` - で分類され、リストが名付けられない差異は性質を失敗させる。これが #418 か
+  ら #422、および #424 の背後にある書器と読み手の欠陥を表面に出し、それぞれ独自のテストで固定した。
+  そして `property-tier:conditional-assert` を閉じる：プローブは空のガードリストを計測し、
+  `.ci/quality-holes.json` は空で、`QUALITY_MATRIX.md` の行は閉じたまま残る。二つの順序性質はフィル
+  タに戻さず主張を作り直した - キーはシリアライズ済みテキストではなく型付きの条目で比べ、マッピング
+  順序は位置ごとに比べる。コンテナが flow として読み戻されるかは何者の正規化であって順序の事実ではな
+  い。
+
 - **タグ文法が PyO3 バインディングから離れ、そのテストは libpython を必要としなくなった。** —
   `!!int`、`!!float`、`!!binary` の字句解釈は `crates/pyrs-yaml/src/py/tags.rs` にあったので、その 6
   本のテストは libpython をリンクしていた。呼び出す関数は `&str` を受けて Rust の値を返すだけなの
