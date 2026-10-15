@@ -9,7 +9,7 @@ status: new
 `pyrs_yaml` 모듈의 전체 API 참조입니다.
 
 !!! tip "버전 호환성"
-    pyrs-yaml은 ABI3 휠로 빌드되어 Python 3.8부터 3.15까지 단일 휠로 지원합니다.
+    pyrs-yaml은 ABI3 휠로 빌드되어 Python 3.9부터 3.15까지 단일 휠로 지원합니다.
 
 ## :material-code-braces: 코어 함수
 

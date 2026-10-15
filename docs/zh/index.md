@@ -20,7 +20,7 @@ status: new
 
 - :material-check-decagram: YAML 1.2 合规
 - :material-package-variant-closed: ABI3 Wheel
-- :material-numeric: Python 3.8–3.15
+- :material-numeric: Python 3.9–3.15
 - :material-language-python: 类型注解
 - :material-lightning-bolt: 自由线程就绪
 
@@ -46,7 +46,7 @@ status: new
 - :material-check-decagram: **YAML 1.2 合规** — 由 granit-parser 驱动（YAML 测试套件通过率 99.75%，405/406）
 - :material-swap-horizontal: **PyYAML 兼容** — 可直接替换，提供 `safe_load` / `safe_dump` API
 - :material-language-python: **类型提示** — PEP 561 合规，提供完整的 `.pyi` 存根文件
-- :material-package-variant-closed: **ABI3 Wheel** — 单个 wheel 支持 Python 3.8–3.15
+- :material-package-variant-closed: **ABI3 Wheel** — 单个 wheel 支持 Python 3.9–3.15
 - :material-translate: **国际化错误** — `set_language("zh-CN")` 支持双语错误报告
 - :material-numeric: **NumPy ndarray** — 将任意维度的 `numpy.ndarray` 序列化为 YAML，零拷贝 Rust 调度
 

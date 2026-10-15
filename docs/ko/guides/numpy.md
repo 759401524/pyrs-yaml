@@ -7,7 +7,7 @@ status: new
 ---
 
 !!! warning "프리-스레디드 빌드는 NumPy 미포함"
-    프리-스레디드(cp314t) 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다. GIL 빌드(Python 3.8–3.15)에서는 전체 ndarray 직렬화를 지원합니다.
+    프리-스레디드(cp314t) 빌드에서 `numpy.ndarray`에 `safe_dump`를 호출하면 `YamlTypeError`가 발생합니다. GIL 빌드(Python 3.9–3.15)에서는 전체 ndarray 직렬화를 지원합니다.
 
 NumPy 배열을 YAML 리스트로 직렬화합니다. 제로 복사 Rust 처리를 지원합니다.
 

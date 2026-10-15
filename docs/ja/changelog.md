@@ -15,6 +15,20 @@ status: new
 
 ### [Unreleased]
 
+### Changed
+
+- **バインディング層を PyO3 0.30 へ上げ、サポートする Python の下限も 3.9 へ動きました。** — 0.30 は
+  `abi3-py38` を features から外した（最も低い安定 ABI 段階は `abi3-py39`）ため、公開されるホイール
+  は `cp39-abi3` になり、`requires-python` は `>=3.9` を読みます。採用前の実測：バインディング層は
+  PyO3 0.30.1 + rust-numpy 0.30.0 に対してソース変更なしでコンパイルし、
+  `cargo clippy --all --all-targets -- -D warnings` はクリーン、core の 690 件と Python の 2918 件の
+  テストが通り、`maturin generate-stubs` と `scripts/check_stub_drift.py` はコミット済みの `.pyi` が
+  動いていないと報告します——宣言された契約は動きませんでした。動くのは下限を名指す全ての場所です：
+  `pyproject.toml` の classifiers 一覧（CI 行列はそこから導出）、`scripts/ci_matrix_plan.py` の
+  `MIN_VERSION`、`matrix-verdict` の脚、`publish.yml` の三つの脚、
+  `tests/test_scripts_import_on_supported_python.py`（このカタログは 3.9 で初めて出た 4 つの API を
+  失う）、そして README と四つのロケール文書にある下限の記述すべて。
+
 ### [v0.18.0] — 2026-10-17
 
 <details markdown="1">

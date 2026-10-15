@@ -20,7 +20,7 @@ status: new
 
 - :material-check-decagram: YAML 1.2 準拠
 - :material-package-variant-closed: ABI3 ホイール
-- :material-numeric: Python 3.8–3.15
+- :material-numeric: Python 3.9–3.15
 - :material-language-python: 型ヒント
 - :material-lightning-bolt: フリースレッド対応
 
@@ -46,7 +46,7 @@ status: new
 - :material-check-decagram: **YAML 1.2 準拠** — granit-parser 駆動（YAML テストスイート 99.75% 合格率、405/406）
 - :material-swap-horizontal: **PyYAML 互換** — `safe_load` / `safe_dump` API で直接置換可能
 - :material-language-python: **型ヒント** — PEP 561 準拠、完全な `.pyi` スタブファイル
-- :material-package-variant-closed: **ABI3 ホイール** — 単一ホイールで Python 3.8–3.15 に対応
+- :material-package-variant-closed: **ABI3 ホイール** — 単一ホイールで Python 3.9–3.15 に対応
 - :material-translate: **国際化エラー** — `set_language("ja-JP")` でバイリンガルエラーレポート
 - :material-numeric: **NumPy ndarray** — 任意次元の `numpy.ndarray` をゼロコピー Rust ディスパッチでシリアライズ
 

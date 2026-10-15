@@ -7,7 +7,7 @@ status: new
 ---
 
 !!! warning "フリースレッドビルドは NumPy 非対応"
-    フリースレッド（GIL なし）ビルドでは NumPy 統合が含まれないため、`numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します。GIL ビルド（Python 3.8–3.15）では完全な ndarray シリアライズが利用できます。
+    フリースレッド（GIL なし）ビルドでは NumPy 統合が含まれないため、`numpy.ndarray` に `safe_dump` を呼ぶと `YamlTypeError` が発生します。GIL ビルド（Python 3.9–3.15）では完全な ndarray シリアライズが利用できます。
 
 NumPy 配列を YAML リストにシリアライズします。ゼロコピー Rust 処理に対応。
 

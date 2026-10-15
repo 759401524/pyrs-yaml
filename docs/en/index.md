@@ -20,7 +20,7 @@ status: new
 
 - :material-check-decagram: YAML 1.2 Compliant
 - :material-package-variant-closed: ABI3 Wheel
-- :material-numeric: Python 3.8–3.15
+- :material-numeric: Python 3.9–3.15
 - :material-language-python: Typed
 - :material-lightning-bolt: Free-threaded ready
 
@@ -46,7 +46,7 @@ Most Python YAML libraries sacrifice either performance or fidelity. pyrs-yaml d
 - :material-check-decagram: **YAML 1.2 Compliant** — powered by granit-parser (99.75% YAML Test Suite pass rate, 405/406)
 - :material-swap-horizontal: **PyYAML Compatible** — drop-in replacement with `safe_load` / `safe_dump` API
 - :material-language-python: **Type Hints** — PEP 561 compliant with full `.pyi` stubs
-- :material-package-variant-closed: **ABI3 Wheel** — single wheel works across Python 3.8–3.15
+- :material-package-variant-closed: **ABI3 Wheel** — single wheel works across Python 3.9–3.15
 - :material-translate: **i18n Errors** — `set_language("zh-CN")` for bilingual error reporting
 - :material-numeric: **NumPy ndarray** — serialize `numpy.ndarray` of any dimension with zero-copy Rust dispatch
 

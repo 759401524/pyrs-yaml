@@ -511,7 +511,7 @@ jobs:
 
   # The cross product, kept. Every (OS, interpreter) cell the suite tier does not run still installs the
   # wheel that cell would actually download and executes one round trip through each dialect, because the
-  # claim being tested here is the one `docs/en/installation.md` makes: a single abi3 wheel from 3.8 to
+  # claim being tested here is the one `docs/en/installation.md` makes: a single abi3 wheel from 3.9 to
   # 3.15 on three platforms. That claim is per-cell and cheap to check, and it is the part of the old 24-cell
   # matrix that was not already covered by another cell - the suite, by contrast, runs the same 2 500
   # assertions in every one of them. Measured cost of a leg without the suite is the setup the suite tier
@@ -550,7 +550,7 @@ jobs:
       # Import, then a round trip per format family: YAML with a comment and an anchor, the three JSON
       # dialects, and TOML - through the shipped module, not a test helper. It lives in `scripts/` on
       # purpose: a `python -c` program inside a YAML plain scalar is not valid YAML (`a: 1` reads as a
-      # mapping, measured on this job's first draft), and every `scripts/*.py` is imported by the 3.8 leg
+      # mapping, measured on this job's first draft), and every `scripts/*.py` is imported by the 3.9 leg
       # so this cannot quietly become 3.9-only syntax.
       - name: Exercise every dialect
         run: python scripts/wheel_smoke.py
@@ -582,9 +582,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.8"
+          python-version: "3.9"
 
-      # 3.8 on purpose: the fan-in is the job that must never be the one that breaks, so it runs on
+      # 3.9 on purpose: the fan-in is the job that must never be the one that breaks, so it runs on
       # the floor of the supported range as well, and `scripts/check_matrix_verdict.py` carries the
       # lazy annotations that makes necessary.
       - name: Verdict over every leg

@@ -17,6 +17,18 @@ status: new
 
 ### [Unreleased]
 
+### Changed
+
+- **绑定层升到 PyO3 0.30，支持的 Python 下限随之升到 3.9。** — 0.30 删掉了 `abi3-py38` 特性（它最低
+  的稳定 ABI 档是 `abi3-py39`），所以发布的 wheel 变成 `cp39-abi3`，`requires-python` 写成 `>=3.9`。
+  采纳前实测：绑定层对着 PyO3 0.30.1 + rust-numpy 0.30.0 无需改源码即可编译，`cargo clippy --all
+  --all-targets -- -D warnings` 干净，690 个 Rust 与 2918 个 Python 测试通过，而
+  `maturin generate-stubs` 与 `scripts/check_stub_drift.py` 报告已提交的 `.pyi` 一字未动——声明的契约
+  没有移动。移动的是所有点名下限的地方：`pyproject.toml` 的 classifiers 列表（CI 矩阵由它推导）、
+  `scripts/ci_matrix_plan.py` 的 `MIN_VERSION`、`matrix-verdict` 那条腿、`publish.yml` 的三条腿、
+  `tests/test_scripts_import_on_supported_python.py`（它的清单因此失去四个 3.9 才有的 API），以及
+  README 与四种语言文档里每一处对下限的声明。
+
 ### [v0.18.0] — 2026-10-17
 
 <details markdown="1">

@@ -1,6 +1,6 @@
 """Every `scripts/*.py` must import on the interpreter that runs this test.
 
-The matrix in `ci.yml` installs Python 3.8 through 3.14 and runs `tests/` on each, but until now no
+The matrix in `ci.yml` installs the declared floor through the declared top and runs `tests/` on each, but until now no
 test *imported* a checker, so the checkers' own compatibility was only ever exercised on the
 interpreters that happen to execute them - the hook environment and two CI jobs on 3.12/3.14. That
 let a real defect sit in `scripts/check_changelog_mirrors.py` since the file was written: a
@@ -14,7 +14,7 @@ generalises that accident to the whole directory, so the class cannot recur sile
 that no gate's test happens to load.
 
 Runtime calls into a checker used to be this module's blind spot, named here as unfinished work: an
-API that exists only on a newer Python (`str.removeprefix`, 3.9) fails only when the function runs,
+API that exists only on a newer Python (`zip(strict=)`, 3.10) fails only when the function runs,
 which is why the coupling gate's own tests had to keep executing its functions - they are what failed
 on 3.8 for the second bug in this pair. It cost a full matrix run again in October 2026, when three
 tests written against 3.13 reached for `Path.write_text(..., newline=)`, a keyword 3.10 added, and
@@ -33,7 +33,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = sorted((REPO_ROOT / "scripts").glob("*.py"))
-FLOOR = (3, 8)
+FLOOR = (3, 9)
 
 # Call shapes that raise at runtime - not import time - on an interpreter older than the version
 # listed. Syntax is out of scope: a `match` statement or a `X | Y` annotation already fails to
@@ -45,15 +45,11 @@ FLOOR = (3, 8)
 # collides with the code it polices is worse than no pattern, because the fix is an exemption and the
 # exemptions outlive the API. Measured here, `\.walk\(\)` answered seven findings for this project's
 # own `walk()` verb on a document node (so `Path.walk`, 3.12, is absent), and `@override\b` found the
-# `typing_extensions.override` shim this repository standardises on - legal on 3.8, so the entry
+# `typing_extensions.override` shim this repository standardises on - legal on the floor, so the entry
 # below names the import that actually breaks instead of the identifier that is everywhere.
 TOO_NEW_FOR_THE_FLOOR = [
     (r"\.write_text\([^)]*\bnewline=", "Path.write_text with the newline keyword", (3, 10)),
     (r"\.read_text\([^)]*\bnewline=", "Path.read_text with the newline keyword", (3, 13)),
-    (r"\.removeprefix\(|\.removesuffix\(", "str.removeprefix / str.removesuffix", (3, 9)),
-    (r"\bis_relative_to\(", "Path.is_relative_to", (3, 9)),
-    (r"\brandbytes\(", "random.randbytes", (3, 9)),
-    (r"\bfunctools\.cache\b", "the functools.cache decorator", (3, 9)),
     (r"\bzip\([^)]*\bstrict=", "zip with the strict keyword", (3, 10)),
     (r"\.bit_count\(", "int.bit_count", (3, 10)),
     (r"\bdatetime\.UTC\b", "the datetime.UTC alias", (3, 11)),
@@ -127,16 +123,16 @@ def test_script_imports_on_this_interpreter(path: Path):
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)  # a 3.8-incompatible annotation raises here
+    spec.loader.exec_module(module)  # an annotation the floor cannot evaluate raises here
     assert hasattr(module, "__file__")
 
 
-def test_the_supported_floor_is_actually_3_8():
+def test_the_supported_floor_is_actually_3_9():
     """The premise of the two tests above, taken from the packaging metadata rather than memory."""
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'requires-python\s*=\s*"([^"]+)"', pyproject)
     assert match, "no requires-python in pyproject.toml"
-    assert "3.8" in match.group(1), f"this test's premise changed: {match.group(1)}"
+    assert "3.9" in match.group(1), f"this test's premise changed: {match.group(1)}"
     declared = tuple(int(part) for part in re.search(r"(\d+)\.(\d+)", match.group(1)).groups())
     assert declared == FLOOR, f"FLOOR says {FLOOR}, the metadata says {declared}"
 
@@ -144,7 +140,7 @@ def test_the_supported_floor_is_actually_3_8():
 # The runtime half of the same question, which the two tests above cannot see: an API the floor's
 # interpreter has never heard of raises when the function runs, not when the module is imported.
 # Scanned over the shipped package as well as the scripts, because a 3.10-only keyword argument in
-# `python/pyrs_yaml/` is a crash a user on 3.8 would hit, not a red test.
+# `python/pyrs_yaml/` is a crash a user on the floor would hit, not a red test.
 
 CORPUS = sorted(list(SCRIPTS) + list((REPO_ROOT / "tests").glob("*.py")) + list((REPO_ROOT / "python").rglob("*.py")))
 

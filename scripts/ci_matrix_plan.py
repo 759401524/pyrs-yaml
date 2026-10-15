@@ -32,8 +32,8 @@ exactly once, so the same edit fails the plan instead of switching a gate off.
 `--event` chooses the tier. The output is a JSON array of matrix `include` entries, one per leg, and
 `tests/test_ci_matrix_plan.py` is what keeps these rules from rotting.
 
-Python 3.8 is the floor of the supported range and `tests/test_scripts_import_on_supported_python.py`
-imports this file on it, so the annotations stay lazy and no 3.9+ stdlib call appears.
+Python 3.9 is the floor of the supported range and `tests/test_scripts_import_on_supported_python.py`
+imports this file on it, so the annotations stay lazy and no call younger than that floor appears.
 
 Usage:
     python scripts/ci_matrix_plan.py --check
@@ -62,7 +62,7 @@ COVERAGE_VERSION = "3.12"
 COMPLIANCE_VERSION = "3.14"
 
 CLASSIFIER = re.compile(r'^\s*"Programming Language :: Python :: (3\.\d+)",\s*$')
-MIN_VERSION = "3.8"
+MIN_VERSION = "3.9"
 
 
 def _key(version: str) -> tuple:

@@ -20,7 +20,7 @@ status: new
 
 - :material-check-decagram: YAML 1.2 준수
 - :material-package-variant-closed: ABI3 휠
-- :material-numeric: Python 3.8–3.15
+- :material-numeric: Python 3.9–3.15
 - :material-language-python: 타입 힌트
 - :material-lightning-bolt: 프리-스레디드 지원
 
@@ -46,7 +46,7 @@ status: new
 - :material-check-decagram: **YAML 1.2 준수** — granit-parser 기반 (YAML 테스트 스위트 99.75% 통과율, 405/406)
 - :material-swap-horizontal: **PyYAML 호환** — `safe_load` / `safe_dump` API로 직접 교체 가능
 - :material-language-python: **타입 힌트** — PEP 561 준수, 완전한 `.pyi` 스텁 파일
-- :material-package-variant-closed: **ABI3 휠** — 단일 휠로 Python 3.8–3.15 지원
+- :material-package-variant-closed: **ABI3 휠** — 단일 휠로 Python 3.9–3.15 지원
 - :material-translate: **국제화 오류** — `set_language("ko-KR")`로 이중 언어 오류 보고
 - :material-numeric: **NumPy ndarray** — 모든 차원의 `numpy.ndarray`를 제로 복사 Rust 디스패치로 직렬화
 
