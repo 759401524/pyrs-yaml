@@ -5145,6 +5145,75 @@ named, and with them closed it named none in the note family - measured at `PROP
 the stack that also carries the reader-side anchor fix below, where the tier is 26 passed / 0
 failed.
 
+### (dg) A quote after a blank is not necessarily a quoted node (2026-10-15)
+
+The classifier's last named residual was an anchor coming back as another token's text -
+`anchor at $."a '"#0: Some("m6") -> Some("*~=9VjQq=8")`. The name it produced is an alias spelling,
+the shape of a bug rather than of a style shift, and the emitted line explains it:
+
+```text
+a ': &m6 >-4  # ":})!,"Hab*5^Z|B':^<-&*~=9VjQq=8
+```
+
+The left-scan that #421 widened ignores a `#` inside quotes, and its rule was positional: a quote at
+a scalar-start position opens a region. Being after a blank is not being at a scalar start. The
+apostrophe that ends the plain key `a '` is followed by a blank, so it opened a region whose close
+was the apostrophe inside the comment; the real `#` between them stopped being a comment opener, and
+the `&` written in the comment became the anchor name. The tier named it about once per 20 000 trees
+because it takes a comment text holding both an apostrophe and an `&` - the generator's own
+vocabulary, and the writer emitted the line.
+
+The rule that survives both pinned cases is the token, not the character: a quoted node begins one,
+so the scan walks back over blanks and asks what begins the token before the quote - a boundary
+(`:`, `,`, `[`, `{`, `?`, `-`) or a property (`&`, `!`) - and only then treats the quote as an
+opener. Two half-versions were refused by #421's own test on the way: reading the single character
+before the quote lost `{a: &x "x # y", b: &y 2}`, because the token there ends in the anchor's name,
+and stopping the walk only at blanks walked straight through the `[` of `[&x " #", &y 2]`. The
+pinned case has to stay green while the new one turns red; that is what makes it a test rather than
+a preference.
+
+616 Rust tests, with `anchor_name_before_reads_a_lone_apostrophe_as_text` red before the change
+(`left: Some("*~=9VjQq=8"), right: Some("m6")`). The class did not end there: a later 20 000-case
+draw named a second shape, `A?': &x >-2  # o'k &evil`, where the apostrophe sits directly against a
+`?` - and `?` is on the boundary list because it is the explicit-key indicator. A boundary opens a
+node only across a blank, so the rule reads the blank as well as the character, and
+`anchor_name_before_reads_a_quote_after_a_question_mark_as_text` pins the case it was blind to
+(`left: Some("evil"), right: Some("x")` before that half-step).
+
+### (dh) Replacing the filter was the debugging, not the cleanup (2026-10-15)
+
+`property-tier:conditional-assert` was registered with an exit that named its own condition: no
+`prop_*` body may guard its assertion on an `Option`-returning helper, and every mismatch is either
+asserted or named. Deleting `try_roundtrip` was therefore the instrument, not the tidying. The
+changes it forced are the record: a block scalar whose value was corrupted, a key note that lost its
+pair's slot, a renamed anchor, a nested header that swallowed a note, a compact dash line that
+printed no first key, and a container note that survived only until the second emission - #418
+through #422, #424 and the two fixes stacked with them.
+
+A named normalization has to say why the reader cannot do otherwise, or the hole is back with a
+label on it. `NullToken` is a resolution fact (`~`, `null` and the empty token all read as null);
+`PlainRequoted` and `BlockRestyled` are the writer choosing a spelling the value survives;
+`EmptyContainerFlow` and `InlineContainerFlow` are positions with no block spelling at all;
+`NoteForcesBlockLayout` and `NoteRehomed` are the measured placements of (db) and (dd). The last two
+were not inherited from what the old oracle stayed silent about - each was argued from the position
+that forces it, which is the only test that separates a normalization from an excuse.
+
+The two order properties needed a different call, and it is the one worth writing down: they were
+not guarding too much data, they were claiming the wrong thing. A key compared as `to_yaml(key)`
+made a flow/block shift on a container key an *order* change, and collecting flow mappings by their
+style bit made a block container that must read back as flow change the number of flow mappings.
+Both are style facts the classifier already names. The claims are now stronger and honest - a key
+compares as kind-tagged entries, and every mapping keeps its key order at its own path, root and
+nested, flow and block alike - so a bit the reader decides can no longer pass for a lost order.
+
+Measured after: 26 properties with an empty guard list, 617 Rust tests, and the elevated tier at 26
+passed / 0 failed on 20 000 cases - stated as draws, because the first green draw was not the end of
+it. A later 20 000-case run of the same tier named the `A?'` shape that (dg) records, and only after
+the reader carried both quote rules did a draw come up empty. No seeds were committed for those
+runs: `proptest-regressions/pbt.txt` is the file this change inherited, and every shape the
+classifier minimized to is pinned by a named test instead - a replayed seed that no test explains is
+a second oracle nobody maintains.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
@@ -5217,7 +5286,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-##### v0.11.6 — "numpy-free free-threaded wheel" (target: Q3 2026)
+###### v0.11.6 — "numpy-free free-threaded wheel" (target: Q3 2026)
 
 > Ship `cp314t` (free-threaded) wheels built with `--no-default-features` so rust-numpy is excluded
 > entirely. Current free-threaded wheels compile the numpy feature (default) but runtime-probe it
@@ -5235,7 +5304,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-##### v0.11.7 — "CI signal hygiene" (target: Q3 2026)
+###### v0.11.7 — "CI signal hygiene" (target: Q3 2026)
 
 > Replace the deliberately-failing `stub-build-check` CI job with static assertions that pass when
 > the repo is correct (green CI), fail only on regression. Track `rust-numpy` free-threaded support
@@ -5250,7 +5319,7 @@ maintained fork. Unchanged — item 4 needed no fork because the audit surfaced 
 
 ---
 
-##### v0.12.0 — "Competitive Response" (target: Q3 2026)
+###### v0.12.0 — "Competitive Response" (target: Q3 2026)
 
 > Respond to `yaml-edit` competitor features with a fast, round-trip-preserving editing story. D3
 > ships the create-missing path write; D4 adds Rust-backed AST traversal.
