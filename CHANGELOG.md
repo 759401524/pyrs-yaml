@@ -522,6 +522,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A block scalar no longer invents the trailing break its header denotes.** —
+  `key: |-\n  line1\n  line2\n` reads as `line1\nline2`; ask that node for clip
+  (`set_chomping("clip")`, or hand the writer a tree whose `Clip` value ends in no break) and it
+  wrote `|`, which *denotes* one trailing break, so the document came back a byte longer than the
+  tree that produced it. `effective_chomping` now corrects only the claims no header can spell -
+  `Clip` and `Keep` for a value without a trailing break become `Strip` - and leaves a `Strip` claim
+  alone, because `-` is expressible and asking for it is the edit the caller means;
+  `test_set_chomping_strip` pins that other direction. Found through the property tier's mismatch
+  taxonomy over 4000 drawn trees: 255 of them, and every one the same shape - a value of length N
+  read back as length N+1. The pinned block fixtures all ended their values in `\n`, which is how
+  the rule stayed uncovered across five writer revisions of byte-exact assertions; those five now
+  carry `|-`/`|-4`, which is the spelling the body actually carries.
+
 - **The shipped typing contract describes the class the package offers.** —
   `python/pyrs_yaml/pyrs_yaml.pyi` is generated from the extension, while
   `python/pyrs_yaml/__init__.py` attaches `node`, `find`, `walk`, `scalars`, `merged`, `set`,

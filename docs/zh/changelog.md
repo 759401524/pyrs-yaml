@@ -413,6 +413,15 @@ status: new
 
 #### 修复
 
+- **块标量不再凭空补上它表头所表示的行尾换行。** — `key: |-\n  line1\n  line2\n` 读出来是
+  `line1\nline2`；跟这个节点要 clip（`set_chomping("clip")`，或交给写器一个 `Clip` 但值不以换行结尾
+  的树），它写出的是 `|` —— 而 `|` *表示*一个行尾换行，于是文本比产生它的树多回一个字节。
+  `effective_chomping` 如今只纠正没有哪种表头能拼出的那类声明：值不带行尾换行时，`Clip`/`Keep` 改为
+  `Strip`；`Strip` 声明照旧保留，因为 `-` 可表达，而选它正是调用方要的编辑
+  （`test_set_chomping_strip` 钉住那一个方向）。来源是属性层的失配分类学：抽 4000 棵树里 255 棵是这
+  一类，且形状全同 —— 长度 N 的值读回 N+1。钉死的块标量样本的值都以 `\n` 结尾，所以字节级断言换过五
+  代也没碰到它；那五处现在写 `|-`/`|-4`，那才是正文实际带的拼法。
+
 - **随包发布的类型契约开始描述运行时那个类。** — `python/pyrs_yaml/pyrs_yaml.pyi` 由扩展生成，而
   `python/pyrs_yaml/__init__.py` 是在导入之后才把 `node`、`find`、`walk`、`scalars`、`merged`、
   `set`、`set_many`、`insert`、`append`、`delete`、`rename`、`sort_keys` 挂到 `YamlDocument` 上，这

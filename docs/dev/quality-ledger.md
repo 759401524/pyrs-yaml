@@ -4896,6 +4896,47 @@ agree for the first time. Deleting the twelve declarations from the committed st
 `test_the_stub_declares_every_public_member_of_a_class_it_names` red naming all twelve, and the
 wrapper predicate run over `__init__.py` at `HEAD` names `parse` and `parse_file`.
 
+### (cz) The mismatch taxonomy said *which* round trips fail, and one row was a byte the writer invented (2026-10-15)
+
+`(cx)` counted the property tier's rejections; `(cs)`-era work established the guard as the thing
+that hides them. Classifying what the guard declines is a different instrument, and this is what it
+said over 4000 trees drawn from `arb_custom_node()`, each serialized and re-read: **0 refused to
+parse**, 651-626 passed the strict equality, and the rest fell into five shapes.
+
+| count | first conjunct the equality refuses | reading |
+|------:|:------------------------------------|:--------|
+| ~1174 | a note the equality compares in the inline slot, text still present elsewhere in the tree | the oracle's slot model is narrower than the engine's note placement |
+| ~506 | a note whose text is nowhere in the re-read tree | real loss, to be attributed before it is normalized |
+| 884 | `Literal`/`Folded` re-read as `DoubleQuoted` | the writer's content-driven fallback, not yet stated as a normalization |
+| 551 | a block container re-read as flow | same shape of question, container side |
+| 255 | a block scalar's **value** differs, style preserved | a byte invented or dropped - not a normalization at all |
+
+The last row is the one a taxonomy exists to catch, and it had one cause: `effective_chomping`
+honored the node's claimed indicator, but `Clip` *denotes* one trailing line break. A `Clip` value
+with no trailing break (`abc`) was therefore written `|\n  abc\n` and read back as `abc\n` - the
+document one byte longer than the tree that produced it. Every one of the 255 was that shape: length
+N read as N+1. Fixing it raised the next question, which is where the boundary belongs: `Strip`
+claimed for a value that *does* end in a break is also inconsistent, but `-` is expressible and
+asking for it is precisely the edit `set_chomping("strip")` means, so the correction applies only to
+claims no header can spell (`Clip`/`Keep` over a breakless value, plus the two documented `Clip`
+promotions). A Python-visible case settles it: `key: |-\n  line1\n  line2\n` asked for clip now
+stays `|-` and re-reads as the same text, while `test_set_chomping_strip` still gets its `|-`.
+
+Five byte-exact writer assertions had to move (`|` → `|-`, `|4` → `|-4`), which is the honest cost
+of a rule that was never covered: the pinned block fixtures all ended their fixture values in `\n`,
+so five generations of writer changes exercised the correct half of the table and never the
+invented-byte half. Recorded for the tier discipline, because the split mattered here: the
+writer-internal claim lives in `serializer.rs` tests (run by `cargo nextest`, no Python needed), and
+the promise a user can reach lives in `tests/test_node_style.py` (run by `pytest`) - 526 Rust tests
+and 2756 Python tests respectively, neither one standing in for the other.
+
+Two things this measurement exposes but does not fix, so they are named rather than absorbed. The
+equality compares only `NodeMeta::comment()`, so a note the reader files in the leading-comment
+stack reads as lost even when its text survives; and `arb_node_meta()` never populates `decor` at
+all, which is why the tier has never asserted a standalone note round-trips. Both belong to the
+conditional-assert hole: an oracle that disagrees with the engine about where a note lives cannot be
+made unconditional by deleting its guard.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
