@@ -5620,6 +5620,62 @@ pattern is the notation corpus: ask the shape by name.
 `the_tree_and_the_events_name_the_same_anchors` is a table for exactly that reason, and the mutation
 above is what makes it a measured claim rather than a hunch.
 
+### (ds) A container's note parked on a descendant's line costs the emission a round
+
+(2026-10-16)
+
+A 240-second local `cargo fuzz run yaml_roundtrip` (WSL, nightly, target dir on the Linux
+filesystem) reached `<<: #*&
+
+## &&*
+
+ ..f!ny#*&
+
+## &:`, which `cargo fuzz tmin` minimized to 14
+
+bytes as `: #*&
+
+##
+
+ .
+
+## &`. Both fail one assertion: `to_yaml` output must be a fixed point
+
+Neither loses data - the emission converges on its second round and is stable from there - and that
+is why no other tier sees it. The property tier compares tree to tree across one cycle, and
+`note_survival` asks whether a note appears, not whether it stays put.
+
+The mechanism is an ownership handoff the writer performs on itself. `write_pair` asks whether the
+*value* owns a note before letting the key's note ride the pair line ("one line, one trailing
+slot"). In the first round the value owns nothing - the document holds the trailing `# &` - so the
+key's note takes the pair line and the writer parks the document's note on the body's last line. But
+granit spans a node through the break that ends its own line, so the re-read reports that note as
+the value's, and the same question now answers the other way: the second emission hoists the key's
+note above the pair.
+
+Two remedies were implemented and both were measured away.
+
+1. Ask about the line instead of the value: the key's note rides the pair line whenever the value's
+   body starts below it (`key_note_at.is_some()`). Both pinned shapes settle in one round, and at
+   `PROPTEST_CASES=20000` six properties failed on one shape each time - a plain `<<` key carrying a
+   comment - reporting `value at $."<<"#0[key]: "<<" -> "null"` and
+   `entry count at $."<<"#0: 1 -> 3`: riding a merge key's line stops the reader treating
+   it as a merge. Narrowed to spare a pending tag-only line as well (`pending_line_is_last()`), the
+   same six failures remained.
+2. Repair the handoff instead: park a container's note only on a tail line that starts at that
+   container's own column. The same six properties failed, because the note written as a line of its
+   own below the block is read back as the leading note of the node that ended it - crash-11ced252's
+   finding, restated for a different reason.
+
+What survives the attempts is the question. A container's note has to land on the line a reader
+*reports a container's note from*, and the branch already knows that answer at depth
+(`note_line_above(body_start)`); what it does not know is the column-0 case, where the fallback
+today is a bare trailing line. The shape is pinned by
+`a_key_note_over_a_block_body_moves_on_the_second_round`
+(`crates/pyrs-yaml-core/tests/settles_in_two_rounds.rs`), which asserts the migration so that a
+real fix turns it red by name. Its two inputs live in that test rather than in `fuzz/seeds/`,
+because a seed there is replayed by the fuzz gate and this one still fails it.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
