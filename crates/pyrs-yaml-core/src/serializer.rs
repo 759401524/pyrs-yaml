@@ -5193,4 +5193,80 @@ mod tests {
         assert!(out.contains('\u{10a09b}'), "multibyte char lost: {out:?}");
         assert!(out.contains("yyy"), "wrapped output incomplete: {out:?}");
     }
+
+    /// Issue #336, ruled: the write path does not look for keys its reader resolves alike.
+    ///
+    /// Folding such a pair — or refusing it — needs a pass over every key of every mapping, and
+    /// that was measured rather than estimated: +31…33% on the five `serialize_*` scenarios on the
+    /// branch that tried it (`docs/dev/perf.md`), structural rather than incidental, so no
+    /// implementation of it fits the committed 0.5% floor. The boundary that already touches each
+    /// key once is the edit layer, and it does resolve by identity: see
+    /// `tests/test_edit.py::TestKeyIdentityAcrossSpellings` and the construction case pinned with
+    /// this ruling. What stays unsupervised is a caller who builds a `NodeMap` by hand.
+    ///
+    /// So this test pins the shape of that unsupervised path instead of a fix: the writer writes
+    /// both lines and the reader is the one that refuses them, or answers with one entry. Anyone who
+    /// later folds at emission, or reports it, must edit this test and say what moved the price.
+    #[test]
+    fn the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one() {
+        use crate::parser::yaml::Schema;
+        use crate::parser::{ParseError, parse_with_options};
+
+        let nul = |tag: Option<&str>, comment: Option<&str>| {
+            let mut meta = NodeMeta::default();
+            if let Some(t) = tag {
+                meta.set_tag(Tag::primary(t));
+            }
+            if let Some(c) = comment {
+                meta.set_comment(Comment {
+                    text: c.into(),
+                    standalone: false,
+                });
+            }
+            CustomNode::Null { meta }
+        };
+        let plain = |value: &str| CustomNode::Scalar {
+            value: value.into(),
+            style: ScalarStyle::Plain,
+            chomping: Chomping::Clip,
+            block_indent: None,
+            meta: NodeMeta::default(),
+        };
+        let two = |a: CustomNode, b: CustomNode| {
+            let mut pairs = NodeMap::default();
+            // Distinct values, so a dropped entry shows up as a lost line rather than an overwrite.
+            pairs.insert(a, plain("one"));
+            pairs.insert(b, plain("two"));
+            CustomNode::plain_mapping(pairs)
+        };
+
+        // Row 1 of the issue's table: the pair the property tier minimised to.
+        let text = to_yaml(&two(nul(Some("E"), Some("0")), nul(Some("E"), None)));
+        assert_eq!(
+            text.lines().count(),
+            2,
+            "the writer folded a line it was ruled not to fold: {text:?}"
+        );
+        let err = parse_with_options(&text, true, Schema::Core, 1000, false)
+            .expect_err("two `!E null` keys are the shape the reader refuses");
+        assert!(
+            matches!(err, ParseError::DuplicateKey(_)),
+            "expected a duplicate-key refusal, got {err}"
+        );
+
+        // Row 2: a null node beside a plain `null` reads as one key without saying so, and the
+        // document that comes back is one entry shorter than the tree that produced it.
+        let text = to_yaml(&two(nul(None, None), plain("null")));
+        assert_eq!(
+            text.lines().count(),
+            2,
+            "the writer dropped a line: {text:?}"
+        );
+        let CustomNode::Mapping { pairs: read, .. } =
+            parse_with_options(&text, true, Schema::Core, 1000, false).expect("re-parses")
+        else {
+            panic!("{text:?} did not re-read as a mapping");
+        };
+        assert_eq!(read.len(), 1, "the silent shortening, as ruled: {text:?}");
+    }
 }

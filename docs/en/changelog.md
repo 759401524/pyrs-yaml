@@ -19,6 +19,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The writer's stance on a mapping its own reader resolves as one key is now a ruling, with both
+  halves pinned.** — issue #336 asked what `to_yaml` should do when a mapping holds `!E null`
+  carrying a note beside a bare `!E null`. Folding the pair on write was built and priced: from
+  +31.481% to +33.655% on the five `serialize_*` scenarios with `parse_small` unmoved, against a
+  floor that admits 0.50% (`docs/dev/perf.md`), and reporting it needs the same pass over every key
+  of every mapping — so neither belongs on the write path, and neither is needed there. The boundary
+  that resolves a key is the one a caller reaches: `doc["~"] = 1` then `doc["null"] = 2` writes the
+  single line `~: 2` and re-reads with one null key, the first spelling kept and the last value
+  winning (`tests/test_edit.py::TestKeyIdentityAcrossSpellings`). A `NodeMap` built directly in Rust
+  emits both lines, and the reader is the part that refuses them as a duplicate or answers one entry
+  shorter; that shape is pinned rather than inferred
+  (`serializer::the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one`). No behaviour
+  changed — the additions are `#[cfg(test)]`, documentation, and an empty open-item table in
+  `ROADMAP.md`.
+
 - **The defence matrix now measures how strongly a property asserts, not only how many there are.**
   — `property_functions()` counted 25 `prop_*` functions, and that count is what the page offered as
   the property tier's coverage. `conditional_property_assertions()` reads each body for a guard of

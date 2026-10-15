@@ -5214,6 +5214,45 @@ runs: `proptest-regressions/pbt.txt` is the file this change inherited, and ever
 classifier minimized to is pinned by a named test instead - a replayed seed that no test explains is
 a second oracle nobody maintains.
 
+### (di) The last open item was closed by a price, and the price had already been paid (2026-10-15)
+
+`ROADMAP.md` carried one row: what the writer should do with a mapping whose keys its own reader
+resolves as one entry (issue #336, opened by `(br)`). Three options were written there, and two of
+them turned out to be the same bill.
+
+Folding on write was not a hypothesis but a branch, and `docs/dev/perf.md` keeps its numbers:
++33.655% `serialize_anchors`, +32.585% `serialize_medium`, +31.801% `serialize_block`, +31.481%
+`serialize_small`, +12.529% `serialize_block_scalars`, paired on the gate's pinned toolchain against
+the same tree with the switch off, and `parse_small` unmoved at +0.000%. The tax is per key, a key
+line costs about 55 counted instructions, so the fourteen instructions any "look at every key before
+writing this mapping" check spends is a third of the scenario - and the record already said no
+implementation of it lands inside the 0.50% tolerance. Reporting the pair instead of folding it
+needs *that same pass*: the identity of every key of every mapping, computed to compare against the
+others. That is an inference from a shared premise, not a fresh measurement, and it is written here
+as an inference.
+
+The option that costs nothing is where the guarantee already sits. A key is resolved where a caller
+puts it in - the edit layer - and that layer compares by `key_identity`, so the shape cannot be
+built through the Python boundary. Measured on the build this change pins:
+
+```text
+parse("a: 1\n")["~"] = 1;            ["null"] = 2          ->  "a: 1\n~: 2\n"
+parse("a: 1\n")["null"] = 1; ["~"] = 2; ["NULL"] = 3       ->  "a: 1\nnull: 3\n"
+```
+
+The first spelling survives, the last value wins, one line is written, and the document re-reads
+with one null key. Paths reached the same conclusion in `(br)`'s follow-up; what was missing was the
+sentence saying the *writer* is not where the check goes, and a test that stops someone from putting
+it there on a hunch.
+
+So the ruling is the third option, executable on both sides of the tier split.
+`TestKeyIdentityAcrossSpellings::test_two_spellings_of_one_key_fold_at_the_boundary_not_in_the_writer` is the caller-visible promise. `the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one` pins the unsupervised shape: a hand-built `NodeMap` still emits two lines, and the reader is the one that refuses them as a duplicate key or answers with one entry fewer. Whoever folds or reports at emission has to edit that test and say what moved the price.
+
+Measured after: 618 Rust tests, and no code path changed - the additions are `#[cfg(test)]` and
+documentation - so the instruction-count floor was left alone rather than re-claimed. The open-item
+table in `ROADMAP.md` is now empty, which is what that section says it is for: an item leaves the
+moment a change ships the decision.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

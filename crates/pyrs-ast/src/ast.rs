@@ -1382,6 +1382,15 @@ impl CustomNode {
     /// The identity a reader uses to decide whether this key is the same key as another one.
     ///
     /// See `KeyIdentity` for the classes and why they are coarser than `CustomNode`'s equality.
+    ///
+    /// A mapping built by hand must not hold two keys of one identity. The writer emits both
+    /// lines and its own reader then either refuses the document as a duplicate or answers with
+    /// fewer entries than the tree handed it; that is a ruling, not a gap. Checking at emission
+    /// costs a pass over every key of every mapping - measured at +31…33% on the `serialize_*`
+    /// scenarios, see `docs/dev/perf.md` - and the boundary callers actually reach, the edit
+    /// layer, resolves keys by this identity. The two halves are pinned by
+    /// `pbt::tests::the_key_rule_agrees_with_the_writer_and_the_reader` and by
+    /// `serializer::the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one`.
     pub fn key_identity(&self) -> KeyIdentity<'_> {
         match self {
             CustomNode::Scalar {

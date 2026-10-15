@@ -77,14 +77,21 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Open: one item the measurement found and no change has made yet
+### Closed: the last item this section carried
 
-| #    | Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Layer                                       | Priority |
-| :--- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------ | :------: |
-| 1    | **What should the writer do with a mapping whose keys the reader cannot tell apart?** - found while attributing the property tier's `DuplicateKey("null")` failure. The node map keys a mapping by the whole node, so `!E null` carrying a note and a bare `!E null` sit side by side, `to_yaml` writes one text for both, and the document re-reads either as a duplicate key or as one line shorter than the tree that produced it - silently in three of the six measured classes (ledger (br)). The generator no longer builds such a mapping, and a 15-class table pins its rule against the writer and the reader. The product question is what is left: fold on write the way the reader folds, report it through `to_yaml_with_options`, or declare the invariant and leave the hand-built path unsupervised (issue #336)                                                        | Rust (`pyrs-yaml-core` serializer)          |    🟠    |
+The one item that opened this section closed with a ruling rather than a fold: the writer keeps its
+silence about a mapping whose keys its own reader resolves as one entry. Both options that would
+have made it loud cost a pass over every key of every mapping, and that price was measured, not
+estimated - +31…33% on the five `serialize_*` scenarios on the branch that tried it
+(`docs/dev/perf.md`) - against a floor that admits 0.50%. The guarantee is where the cost is not:
+the edit layer, which touches each key once, resolves a key by the identity the reader uses, so `~`,
+`null` and `NULL` cannot both reach the text (`tests/test_edit.py::TestKeyIdentityAcrossSpellings`),
+and what a hand-built `NodeMap` still produces is pinned as the shape it is
+(`serializer::the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one`). The generator
+has refused to build the shape since the entry that came out of the property tier recorded it
+(ledger (br)), and the ruling itself is (di).
 
-Both were found by measuring rather than by review. The first is written up in the entry that came
-out of the property tier (ledger (br)). The stub item that used to open this table shipped in this
+The stub item that used to sit in this section shipped in this
 cycle, and measuring it moved the question it asked: `python/pyrs_yaml/pyrs_yaml.pyi` was not the
 first thing missing, because `parse` was re-exported through a wrapper annotated `-> Any` and no
 checker reached `YamlDocument` at all; the class gap was twelve attached members, not thirteen, and

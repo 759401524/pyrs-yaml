@@ -17,6 +17,21 @@ status: new
 
 #### 추가
 
+- **자체 리더가 하나의 키로 해석하는 매핑에서 기록기가 어떻게 할지를 결정하고, 양쪽을 시험으로
+  고정했 습니다.** — #336 은 주석이 달린 `!E null` 과 비어 있는 `!E null` 을 나란히 둔 매핑에서
+  `to_yaml` 이 어떻게 해야 하는지를 물었습니다. 기록할 때 짝을 접는 변경은 구현되었고 비용도 잰
+  상태였습니다. 다섯 개의 `serialize_*` 장에서 +31.481% 에서 +33.655%, `parse_small` 은 움직이지
+  않았는데 기준선은 0.50% 만 허용합니다 (`docs/dev/perf.md`). 알리는 일도 모든 매핑의 모든 키를 넘는
+  같은 통과 처리를 요구하므로, 둘 다 기록 경로에 놓을 자리가 없고 놓을 필요도 없습니다. 키를
+  해석하는 경계는 호출자가 지나는 곳입니다. `doc["~"] = 1` 뒤에 `doc["null"] = 2` 를 하면 `~: 2` 한
+  줄만 쓰이고, 다시 읽으면 null 키는 하나입니다 — 먼저 나온 표기가 남고 마지막 값이 이깁니다
+  (`tests/test_edit.py::TestKeyIdentityAcrossSpellings`). Rust 에서 `NodeMap` 을 직접 만들면 두 줄이
+  그대 로 나가지만, 그것을 중복으로 거부하거나 트리보다 항목이 하나 줄어든 결과로 답하는 쪽은
+  리더입니다. 이 형태는 짐작이 아니라 고정입니다
+  (`serializer::the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one`). 동작은
+  바뀌지 않 았습니다 — 추가된 것은 `#[cfg(test)]` 와 문서, 그리고 `ROADMAP.md` 의 비게 된 미결
+  표입니다.
+
 - **방어 매트릭스는 속성이 몇 개인지가 얼마나 단언하는지를 잰다.** — `property_functions()`는
   `prop_*`를 25개 세었고, 문서는 그 수를 속성 층의 커버리지로 보고해 왔다.
   `conditional_property_assertions()`는 각 본문을 읽어 `if let Some(_) = try_*(..)` 형태의 가드를
