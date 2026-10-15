@@ -559,6 +559,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `"`. The class it belongs to is the round-trip tier's: 11 anchor-name changes per 4000 generated
   trees, and this is the shape the reporter minimises to.
 
+- **The compact `- key: value` form prints the first key's own notes.** — `write_mapping_pair`
+  writes a simple key's leading notes above its pair, and the compact sequence loop copied that rule
+  for every pair *except* the first, because the first shares the dash line and has no line of its
+  own: `- null: " "` came back with the key's `# 2` gone. Those notes now go above the item's line.
+  Found by shrinking the property tier's residual note losses down to the smallest tree that still
+  loses one; with that case closed, the measured losses over 4000 generated trees are one per 4000 —
+  a standalone note on a block value, named in the ledger rather than absorbed.
+
 - **A block mapping key's inline note survives a value that holds the pair's slot.** —
   `key: value  # one` has one trailing slot, and when both the key and the value claimed it the
   writer gave the slot to the value and the key's note disappeared: `? a # kn` + `: b # vv` emitted
