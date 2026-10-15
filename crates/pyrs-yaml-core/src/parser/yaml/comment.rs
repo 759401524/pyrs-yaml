@@ -183,8 +183,22 @@ fn opens_quoted_node(bytes: &[u8], line: usize, at: usize) -> bool {
     if before == line {
         return true;
     }
-    if matches!(bytes[before - 1], b',' | b'[' | b'{') {
+    if bytes[before - 1] == b',' {
+        // A comma separates flow members, so whatever precedes the comma, the token after it is a
+        // node: in `[a, " #", &x ~]` the `#` is quoted content and the anchor past it stands.
         return true;
+    }
+    if matches!(bytes[before - 1], b'[' | b'{') {
+        // A bracket opens a node only where the bracket itself begins a token. `/[": &a v` is a
+        // plain key whose text holds a `[`, so its `"` is content; reading that bracket as a flow
+        // opener started a region that never closed, swallowed the `#` behind it, and handed the
+        // `&` written inside the comment back as the node's anchor name.
+        let open = before - 1;
+        return open == line
+            || matches!(
+                bytes[open - 1],
+                b' ' | b'\t' | b'\n' | b'\r' | b',' | b'[' | b'{' | b']' | b'}' | b':'
+            );
     }
     // A value or explicit-key indicator opens a node only across a blank: `- 'x'` and `k: 'x'` do,
     // while the `?` inside a plain key (`A?': &x >-2  # o'k &evil`) is that key's own text.
@@ -446,6 +460,53 @@ mod tests {
         let s = "'a\\': &b v\n";
         let b = s.find(" v").unwrap();
         assert_eq!(anchor_name_before(s, b), Some("b".to_string()));
+    }
+
+    /// A bracket inside a plain key's text is not a flow opener.
+    ///
+    /// #425 admitted a quote as a node opener after a flow indicator, and `[` is the one that
+    /// over-admits: `/[": &a v` is a plain key whose text holds a bracket, so its `"` opened a
+    /// region that never closed, the `#` behind it was read as region content rather than a comment
+    /// opener, and the `&` written in the comment came back as the node's anchor name - renaming
+    /// the anchor and orphaning every alias to it. The bracket now has to begin a token itself.
+    #[test]
+    fn anchor_name_before_reads_a_bracket_inside_a_plain_key_as_text() {
+        let src = "!!t /[\": &Ilr |-8  # &m^fake\n   body\n";
+        assert_eq!(
+            anchor_name_before(src, src.find("body").expect("the block body is there")),
+            Some("Ilr".to_string()),
+            "the bracket inside the key opened a phantom string: {src}"
+        );
+    }
+
+    /// A comma between flow members does open the node after it, bracket rule notwithstanding.
+    ///
+    /// The same guard, tightened the other way: in `[a, " #", &x ~  # n]` the quoted member holds a
+    /// `#`, and the comma that precedes it sits right after a bare token (`a,`), so requiring the
+    /// indicator itself to begin a token read the `"` as plain-scalar content, the `#` as a real
+    /// comment opener, and the node's own anchor as comment text - the anchor came back `None` and
+    /// the re-emitted document dropped it. A member separator always opens, a bracket only when it
+    /// starts a token.
+    #[test]
+    fn anchor_name_before_reads_a_quoted_hash_after_a_member_comma_as_region_text() {
+        let src = "0: [a, \" #\", &ANCH null  # n\n  ]\n";
+        assert_eq!(
+            anchor_name_before(src, src.find("null").expect("the anchored node is there")),
+            Some("ANCH".to_string()),
+            "the member comma was not read as a node boundary: {src}"
+        );
+        // And the document as a whole keeps it across a round trip through the reader.
+        let again = crate::serializer::to_yaml(
+            &crate::parser::parse_with_options(
+                src,
+                true,
+                crate::parser::yaml::Schema::Core,
+                1000,
+                false,
+            )
+            .expect("the emitted form re-parses"),
+        );
+        assert!(again.contains("&ANCH"), "the anchor was dropped: {again}");
     }
 
     /// A block scalar's anchor sits on the header line while granit reports the

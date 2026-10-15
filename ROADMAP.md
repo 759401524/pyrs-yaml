@@ -77,7 +77,7 @@ review; when it ships, its table moves to the engineering record and its entries
 `CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
 ends the ledger instead, and only the release index above remembers the versions.
 
-### Closed: the last item this section carried
+### Closed: two rulings, both of them found by measuring
 
 The one item that opened this section closed with a ruling rather than a fold: the writer keeps its
 silence about a mapping whose keys its own reader resolves as one entry. Both options that would

@@ -570,6 +570,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A bracket inside a plain key no longer opens a quoted region.** — the third member of the
+  family #421 and #425 opened. The tier's 20 000-case draw produced `!!t /[": &Ilr |-8  # &m^fake`,
+  a key whose own text holds a `[`. #425 admitted a quote as a node opener after a flow indicator,
+  so that `"` opened a region which never closed, the real `#` was scored as region content, and the
+  `&` written inside the comment came back as the node's anchor name - renaming the anchor and
+  orphaning every alias that pointed at it. A bracket now opens a node only when it begins a token
+  itself, which is exactly what separates a flow collection from a plain key whose text happens to
+  hold a bracket; the comma between flow members keeps opening one whatever precedes it, because
+  `[a, " #", &x ~]` quotes its `#` and the anchor past it must stand.
+  — (details: quality-ledger (dk))
+
 - **A quote that opens no node cannot hide a comment.** — #421 taught the anchor-name scan to ignore
   a `#` inside quotes, and it trusted any quote after a blank to open such a region. A plain key's
   own apostrophe (`a '`) therefore opened a phantom string whose close sat inside the comment, the
