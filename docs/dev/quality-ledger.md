@@ -4937,6 +4937,55 @@ all, which is why the tier has never asserted a standalone note round-trips. Bot
 conditional-assert hole: an oracle that disagrees with the engine about where a note lives cannot be
 made unconditional by deleting its guard.
 
+### (da) A stated tolerance turned the blind spot into a short list, and the list named two corruptions (2026-10-15)
+
+`(cz)` classified what the round-trip guard declines. Its finding was that almost nothing is
+classifiable while the oracle itself disagrees with the engine: the guard filtered **3433 of 4000**
+trees, and a note-position difference travelled with 3336 of them. So the experiment was to write
+the tolerance *as a predicate* and re-measure — accept any restyling of a scalar whose value is
+unchanged, accept `Null` ↔ a plain null token, accept an empty container's flow spelling, accept a
+note that moves owner or sheds padding, and refuse everything else. Over the same 4000 trees:
+**3004 clean, 996 with residue** — a filter rate of 25%, down from 86%, with no guard deleted. The
+residue, measured before the two fixes below:
+
+| residue, by node position | count | what it is |
+|:--------------------------|------:|:-----------|
+| a key's note never reaches the text | 707 | `property-tier`'s share of the open block-key-note hole |
+| a note never reaches the text (value/item/flow/root) | 200 | same hole, other sites |
+| a block scalar's **value** changes | 434 | not a normalization: the writer's body column |
+| a note's text differs by padding | 302 | statable, and statted rather than guessed |
+| an anchor name changes | 11 | rare, unattributed, `dup-in-tree=false` on every case |
+
+Two of those rows were fixed in the same pass, and both were value corruption rather than style:
+
+- **An indentation indicator is parent-relative.** Measured on `a: |2`, `- |2`, `? a`, and their
+  comment-pushed spellings: PyYAML, ruamel and this engine's own reader all strip
+  `parent + indicator`. The writer stripped `header line + indicator`, which is the same column
+  until a leading note pushes the value onto a line of its own — then the body landed two columns
+  deep of the number printed on the header, and the extra columns came back as content (`" "`
+  re-read `"   "`). 434 of 4000 trees, all of them the same two-column shift.
+- **A block body cannot hold a comment.** A simple key's inline note has no spelling before its
+  `:`, so the writer rode it at "the end of the pair line"; for a block value that end is the last
+  *body* line, where `#` is content — `abc` came back `abc  # n`. The note now rides the header
+  line, which is the one line in that entry a reader reports a comment from, so the value keeps
+  its bytes and the note survives as the value's own.
+
+Attribution stayed in its own layer, as `(cz)` set it: the writer-internal claims are
+`serializer.rs` tests under `cargo nextest` (607 now), and the promise a caller can reach — that
+the text we emit decodes, in all three engines, to the value the tree held — is
+`tests/test_yaml_crosslib.py::test_the_references_read_the_block_bodies_we_write` under `pytest`
+(2773). Each was proven by mutation in both directions: with the parent-relative base reverted the
+two own-line Rust tests and the crosslib test redden with `'     '` vs `'   '` named, and the
+key-note test stays green; reverting only the note slot does the opposite.
+
+What the predicate experiment does *not* settle is the hole itself. Re-measured with both fixes in,
+the residue is **827 trees and no value corruption**: 907 note occurrences still never reach the
+text, 707 of them on a block mapping key — the placement the writer has no spelling for, which is
+where the tier's conditional guard still lives. So `property-tier:conditional-assert` stays open and
+its next step is that note slot, not a looser oracle. The probe that produced these numbers was
+throwaway by design: a `TestRunner` over `arb_custom_node()` in `pbt.rs`, counters panicked at the
+end, then removed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
