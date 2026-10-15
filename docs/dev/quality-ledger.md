@@ -5414,6 +5414,45 @@ json5 wrote "[00.]" for the spelling "00.", which its own reader refuses
 and the TOML corpus passes on the spellings its sweep had already shown to read back (`01`, `001`,
 `+7`, `1_000`, `0o17`), so it records a boundary rather than asserting a hope.
 
+### (do) The hub hands the note over in a slot the TOML writer never read (2026-10-15)
+
+(dj) recorded this loss without claiming it closed: an inline table member's own-line note went
+through the hub and came back gone. The reason is a slot mismatch across three components, and each
+of them was right on its own:
+
+| hop | where the note lives | what that component does with it |
+| :-- | :-- | :-- |
+| TOML reader | the member key's leading list (`parser.rs`, then `lib.rs`) | the crate's own writer emits it (`writer.rs:preserves_nested_inline_table_interior_comment`) |
+| hub's YAML leg | written inline after the key, `{a: # lead n` | correct for YAML: a note ending the key's line is the key's |
+| YAML reader, back | the key's **inline** comment | correct again, by the same rule |
+| TOML writer | - | read the key's *leading* list and the value's inline slot, so nothing matched and the text fell out |
+
+Measured at the shipped boundary, both directions: `arr = [{
+
+## lead n
+
+  a = 1}]` came back as
+`arr = [{a = 1}]` while the trailing-note twin came back intact - the asymmetry that made the shape
+worth naming. TOML has no slot that reports a key's inline note, so the writer cannot echo the slot
+it received; it writes the note on its own line above the member, which is where the TOML reader
+reports a note from, and the emission settles in one hop: `p = {
+ a = 1, # inner
+ b = 2
+}` now
+returns `p = {
+  a = 1,
+
+## inner
+
+  b = 2
+}` and the second round is byte-identical.
+
+Rust owns the slot rule and the idempotence
+(`a_note_on_the_key_line_of_an_inline_member_is_written`), red-checked by withdrawing the emission
+alone - the multi-line form stays and the note vanishes, so the test pins the placement rather than
+the layout. Python owns the caller-visible promise: the case (dj) pinned as a loss is replaced by
+two that pin the survival and the one-round fixed point.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
