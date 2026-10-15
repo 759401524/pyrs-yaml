@@ -575,6 +575,17 @@ impl Serializer {
         (header_break + 1 < self.output.len()).then_some(header_break)
     }
 
+    /// The block-header slot, but only while that header *is* the pair's own line.
+    ///
+    /// `block_header_break` names the last block header written anywhere, and a container value
+    /// writes its own pairs after it: taken unconditionally, an outer key's note landed in a
+    /// nested pair's header line, splitting `>-5` around the comment it inserted.
+    fn note_slot_on_pair_line(&self, own_line_start: usize) -> Option<usize> {
+        let header_break = self.note_slot_above_block_body()?;
+        let own_line = self.output.get(own_line_start..header_break)?;
+        (!own_line.contains('\n')).then_some(header_break)
+    }
+
     /// True while the line just finished is the pending tag-only line: its scalar text was
     /// never written, so anything appended after it belongs to that value on re-read.
     fn pending_line_is_last(&self) -> bool {
@@ -1375,7 +1386,9 @@ impl Serializer {
             if let Some(text) = key_note {
                 if value.comment().is_none() && self.output.ends_with('\n') {
                     let fallback = key_note_at.unwrap_or(self.output.len() - 1);
-                    let at = self.note_slot_above_block_body().unwrap_or(fallback);
+                    let at = self
+                        .note_slot_on_pair_line(own_line_start)
+                        .unwrap_or(fallback);
                     self.insert_note_at(at, &format!("  # {text}"));
                 } else {
                     // One line, one trailing slot. A note line above the pair is not a
@@ -1478,7 +1491,7 @@ impl Serializer {
                 if let Some(note) = key_note {
                     if value.comment().is_none() && self.output.ends_with('\n') {
                         let at = self
-                            .note_slot_above_block_body()
+                            .note_slot_on_pair_line(own_line_start)
                             .unwrap_or(self.output.len() - 1);
                         self.insert_note_at(at, &format!("  # {}", note.text));
                     } else {
@@ -4453,6 +4466,60 @@ mod tests {
         let out = assert_reparses(&node);
         assert!(out.contains("# K"), "the key note vanished: {out:?}");
         assert!(out.contains("# V"), "the value note vanished: {out:?}");
+    }
+
+    /// A key's note may ride only its own pair's line.
+    ///
+    /// `block_header_break` records the last block header the writer put down - anywhere. The slot
+    /// rule took it without asking whose line that was, so for a pair whose value is a *container*
+    /// the outer key's note was inserted into a **nested** pair's header line: two comments merged
+    /// into one text, and with an indentation indicator the header was commented away entirely,
+    /// leaving a body no block declares. The shape the property tier minimized to - a key `" "`
+    /// carrying a note over a mapping whose last value is a folded block - does not re-parse at
+    /// all (`misplaced bracket`).
+    #[test]
+    fn a_key_note_never_rides_a_nested_pairs_header_line() {
+        let mut folded = CustomNode::quoted_scalar("]$$2.RzM*yl>");
+        folded.set_scalar_style(ScalarStyle::Folded);
+        if let CustomNode::Scalar {
+            block_indent, meta, ..
+        } = &mut folded
+        {
+            *block_indent = Some(5);
+            meta.set_comment(crate::ast::Comment {
+                text: "%note".into(),
+                standalone: false,
+            });
+        }
+        let mut inner = NodeMap::default();
+        inner.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar(" "));
+        let mut key_a = CustomNode::plain_scalar("A");
+        key_a.set_comment(crate::ast::Comment {
+            text: "%inner".into(),
+            standalone: false,
+        });
+        inner.insert(key_a, folded);
+        let mut outer_key = CustomNode::plain_scalar(" ");
+        outer_key.set_comment(crate::ast::Comment {
+            text: "a".into(),
+            standalone: false,
+        });
+        let mut outer = NodeMap::default();
+        outer.insert(outer_key, CustomNode::plain_mapping(inner));
+        let node = CustomNode::plain_mapping(outer);
+
+        let out = assert_reparses(&node);
+        assert!(out.contains("# a"), "the key note vanished: {out:?}");
+        assert!(out.contains("# %note"), "the block note vanished: {out:?}");
+        assert!(
+            !out.contains("# a  #") && !out.contains("# a >"),
+            "two notes were merged onto one header line: {out:?}"
+        );
+        assert!(
+            out.lines()
+                .any(|line| line.starts_with("\" \":") && line.contains("# a")),
+            "the key note belongs to its own pair line: {out:?}"
+        );
     }
 
     #[test]
