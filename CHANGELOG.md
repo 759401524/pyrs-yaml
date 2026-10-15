@@ -570,6 +570,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A container key's own note separates nothing, and the key-identity model had not been told.** —
+  `KeyIdentity` classified every non-empty container and every tagged scalar as `Other`, compared as
+  nodes, on the reasoning that the node map keeps two such keys apart. The map does; the *text* does
+  not, and the property tier drew the pair nobody could name: `? - null` written twice, one carrying
+  a note, emits two identical explicit-key blocks and re-reads as `duplicate key: Sequence { .. }`,
+  so `prop_idempotent` failed at "output re-parses". Measured one pair at a time, a note riding the
+  key node separates nothing, while the key's spelling (`[a]` against `- a`) and its content do -
+  exactly the way the reader compares them. The model now says that in classes
+  (`Tagged { text, tag, style }`, `Sequence { items, flow, tag }`, `Mapping { pairs, flow, tag }`,
+  with hand-written equality and hashing), `Other` is reduced to what those classes do not cover,
+  and the generator refuses the pairs its reader would refuse - one expression for both, because
+  what a reader resolves and what a caller may build must not be two models. The pin table grew five
+  classes, each with the reader's measured outcome on both sides.
+  — (details: quality-ledger (dl))
+
 - **A bracket inside a plain key no longer opens a quoted region.** — the third member of the
   family #421 and #425 opened. The tier's 20 000-case draw produced `!!t /[": &Ilr |-8  # &m^fake`,
   a key whose own text holds a `[`. #425 admitted a quote as a node opener after a flow indicator,

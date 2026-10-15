@@ -642,7 +642,7 @@ fn null_spelling(style: &ScalarStyle, value: &Arc<str>) -> bool {
 ///
 /// The classes are the reader's, not the text's: `parser/mod.rs` tracks untagged scalar keys by
 /// value, skips tagged ones, and folds null and merge keys by resolved identity.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub enum KeyIdentity<'a> {
     /// A key the reader resolves to null: the `Null` variant, or a plain `~` / `null` spelling in
     /// any case. The spelling is absent on purpose - `NULL:` and `~:` are one key. When a tag is
@@ -674,13 +674,149 @@ pub enum KeyIdentity<'a> {
     /// style never reaching its decision. A tagged scalar is not here, because the reader skips
     /// tagged keys in that track and leaves the pair to the node map's own equality.
     Text(&'a Arc<str>),
+    /// A tagged scalar: the reader leaves the pair to node equality, and node equality asks the
+    /// tag, the value and the style - but not a note riding the key line. Measured both ways:
+    /// `!a k` beside `!a 'k'` comes back as two keys, while `!!a k: one` beside
+    /// `!!a k: two  # n` re-reads as `duplicate key: k`.
+    Tagged {
+        text: &'a Arc<str>,
+        tag: Option<&'a Tag>,
+        style: ScalarStyle,
+    },
+    /// A non-empty sequence key, told apart by what it holds and by the spelling the source used:
+    /// `[a]` and a block `- a` come back as two keys (measured), while a note riding the key itself
+    /// separates nothing - `? - null` written twice, one carrying a note, re-reads as a duplicate.
+    Sequence {
+        items: &'a [CustomNode],
+        flow: bool,
+        tag: Option<&'a Tag>,
+    },
+    /// A non-empty mapping key, for the same reason, compared entry by entry in written order.
+    Mapping {
+        pairs: &'a NodeMap<CustomNode, CustomNode>,
+        flow: bool,
+        tag: Option<&'a Tag>,
+    },
     /// An empty mapping key: `{}:` twice is one key, however the two were spelled.
     EmptyMapping,
     /// An empty sequence key, for the same reason.
     EmptySequence,
-    /// Everything else - a tagged non-null scalar, a non-empty container, an alias. Compared as
-    /// nodes, which is what the map itself does, so no two of these are ever the same key here.
+    /// Anything the classes above do not cover - an alias in key position, today. Compared as
+    /// nodes, which is how the map itself tells two of them apart.
     Other(&'a CustomNode),
+}
+
+impl PartialEq for KeyIdentity<'_> {
+    /// Structural and recursive through a container's children: two containers of one content are
+    /// one key however each was annotated, because a note never reaches the key text the reader
+    /// compares. Flow spelling is not ignored - measured, `[a]` and `- a` stay two keys.
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Null(tag1, anchor1), Self::Null(tag2, anchor2)) => {
+                tag1 == tag2 && anchor1 == anchor2
+            }
+            (Self::Text(a), Self::Text(b)) => a == b,
+            (
+                Self::Tagged {
+                    text: t1,
+                    tag: g1,
+                    style: s1,
+                },
+                Self::Tagged {
+                    text: t2,
+                    tag: g2,
+                    style: s2,
+                },
+            ) => t1 == t2 && g1 == g2 && s1 == s2,
+            (Self::EmptyMapping, Self::EmptyMapping)
+            | (Self::EmptySequence, Self::EmptySequence) => true,
+            (
+                Self::Sequence {
+                    items: i1,
+                    flow: f1,
+                    tag: g1,
+                },
+                Self::Sequence {
+                    items: i2,
+                    flow: f2,
+                    tag: g2,
+                },
+            ) => {
+                f1 == f2
+                    && g1 == g2
+                    && i1.len() == i2.len()
+                    && i1.iter().zip(i2.iter()).all(|(a, b)| a == b)
+            }
+            (
+                Self::Mapping {
+                    pairs: p1,
+                    flow: f1,
+                    tag: g1,
+                },
+                Self::Mapping {
+                    pairs: p2,
+                    flow: f2,
+                    tag: g2,
+                },
+            ) => {
+                f1 == f2
+                    && g1 == g2
+                    && p1.len() == p2.len()
+                    && p1.iter().zip(p2.iter()).all(|(a, b)| a == b)
+            }
+            (Self::Other(a), Self::Other(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for KeyIdentity<'_> {}
+
+impl core::hash::Hash for KeyIdentity<'_> {
+    /// Each arm mixes its discriminant first, so the classes cannot collide on shared children.
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Null(tag, anchor) => {
+                0u8.hash(state);
+                tag.hash(state);
+                anchor.hash(state);
+            }
+            Self::Text(text) => {
+                1u8.hash(state);
+                text.hash(state);
+            }
+            Self::Tagged { text, tag, style } => {
+                2u8.hash(state);
+                text.hash(state);
+                tag.hash(state);
+                style.hash(state);
+            }
+            Self::EmptyMapping => 3u8.hash(state),
+            Self::EmptySequence => 4u8.hash(state),
+            Self::Sequence { items, flow, tag } => {
+                5u8.hash(state);
+                flow.hash(state);
+                tag.hash(state);
+                items.len().hash(state);
+                for item in items.iter() {
+                    item.hash(state);
+                }
+            }
+            Self::Mapping { pairs, flow, tag } => {
+                6u8.hash(state);
+                flow.hash(state);
+                tag.hash(state);
+                pairs.len().hash(state);
+                for pair in pairs.iter() {
+                    pair.hash(state);
+                }
+            }
+            Self::Other(node) => {
+                7u8.hash(state);
+                node.hash(state);
+            }
+        }
+    }
 }
 
 /// Custom AST node with full metadata for round-trip support
@@ -1396,11 +1532,13 @@ impl CustomNode {
             CustomNode::Scalar {
                 value, style, meta, ..
             } if meta.tag().is_none() && !null_spelling(style, value) => KeyIdentity::Text(value),
-            // A tagged scalar that is not a null spelling: the reader keeps it apart from any
-            // other key the map can hold, so the fold must not merge it either.
-            CustomNode::Scalar { style, value, .. } if !null_spelling(style, value) => {
-                KeyIdentity::Other(self)
-            }
+            CustomNode::Scalar {
+                value, style, meta, ..
+            } if !null_spelling(style, value) => KeyIdentity::Tagged {
+                text: value,
+                tag: meta.tag(),
+                style: *style,
+            },
             CustomNode::Null { meta } | CustomNode::Scalar { meta, .. } => {
                 let tag = meta.tag();
                 // A bare null key carries no anchor of its own: `&a null:` and `&b null:` are both
@@ -1409,6 +1547,24 @@ impl CustomNode {
             }
             CustomNode::Sequence { items, .. } if items.is_empty() => KeyIdentity::EmptySequence,
             CustomNode::Mapping { pairs, .. } if pairs.is_empty() => KeyIdentity::EmptyMapping,
+            CustomNode::Sequence {
+                items,
+                flow_style,
+                meta,
+            } => KeyIdentity::Sequence {
+                items,
+                flow: *flow_style,
+                tag: meta.tag(),
+            },
+            CustomNode::Mapping {
+                pairs,
+                flow_style,
+                meta,
+            } => KeyIdentity::Mapping {
+                pairs,
+                flow: *flow_style,
+                tag: meta.tag(),
+            },
             other => KeyIdentity::Other(other),
         }
     }

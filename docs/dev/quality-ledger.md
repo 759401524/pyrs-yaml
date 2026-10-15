@@ -5285,6 +5285,45 @@ tell apart. 620 Rust tests, and the elevated tier at 20 000 cases is 26 passed /
 refined rule against three failing properties on the first cut. Nothing is left open from this
 entry.
 
+### (dl) The map keeps two container keys apart; the text never did (2026-10-15)
+
+`KeyIdentity` routed every non-empty container and every tagged scalar to `Other`, "compared as
+nodes, which is what the map itself does, so no two of these are ever the same key here". The node
+map is not what decides, though: the *written text* is, and the property tier drew the shape the
+model could not speak about - `? - null` twice, one of them carrying a note on the key node. Two
+identical explicit-key blocks go out; `duplicate key: Sequence { .. }` comes back, and
+`prop_idempotent` fails at "output re-parses".
+
+Each candidate pair was measured rather than argued, by emitting it and reading it back:
+
+| pair of keys | model said | reader did |
+| :-- | :-- | :-- |
+| two sequences of one null, one carrying a note | distinguishable | duplicate key |
+| a tagged scalar and its noted twin | distinguishable | duplicate key |
+| a flow sequence and its block twin | distinguishable | two entries |
+| two mappings whose note rides an inner key | distinguishable | two entries |
+| a sequence of one null and an empty sequence | distinguishable | two entries |
+
+A note riding the key node reaches the line, not the key; spelling and content reach the key. So the
+classes now say it: `Tagged { text, tag, style }`, `Sequence { items, flow, tag }` and
+`Mapping { pairs, flow, tag }`, with equality and hashing written by hand and containers compared by
+whole-node equality of what they hold - which is the reader's own comparison, not a re-derivation of
+it. `Other` is what those classes do not cover.
+
+The consequence for the tier is the reason this is one model rather than two: the generator's rule
+is the same `a.key_identity() == b.key_identity()` expression, so the pair the reader refuses is the
+pair the generator will not build, and the edit layer addresses by the same identity. The pin table
+grew the five classes above with the reader's measured outcome on each side (14 distinguishable, 11
+colliding), because every gap between the rule and the reader has so far surfaced first as a random
+property-tier failure - (br) built the model for that reason and (dk) is the third time it has paid.
+
+The pair is committed as a replay seed (`cc 05c7a606b5a5…`), taken from the run that recorded it on
+TOML pull request #428 while that change sat in CI: its elevated tier failed here, not on its own
+subject, so that change rebases onto this one. Measured after: 620 Rust tests, pyrs-yaml-core's 20
+000-case tier 370 passed / 0 failed. The instruction floor is not re-claimed: nothing in the reader,
+writer or serialiser moved, and none of the 22 committed scenarios reaches the edit layer's key
+comparison, so CI's `Instruction-count baseline` leg is what would notice if that were wrong.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
