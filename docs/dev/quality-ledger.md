@@ -5680,6 +5680,56 @@ former crashes. The test that had recorded the drift,
 `crates/pyrs-yaml-core/tests/settles_in_one_round.rs`, now requires the fixed point, and shorting
 the new arm out by hand turns it red with the two-round text.
 
+### (dt) A note-homing line test that could not see a CR
+
+`!-\r\r\r- :\r\r\r\r- #-` - the CR-only spelling of a document the fuzz tier had already settled in
+one round with `\n` breaks - reached its fixed point only on the second emission. Round one wrote
+`!- \n- \n  ~: ~  # -\n- ~\n` and round two `- ~: ~  # -`, the compact dash form: the same note,
+homed by a different rule, because the two parses disagreed about who owns it.
+
+The disagreement is not in the writer. (ds) left `write_pair` asking the line's slot, and it answers
+correctly for the tree it is handed; what differed was the tree.
+`AstReceiver::attach_inline_comment` decides whether a `Placement::Right` note trails the node
+before it or annotates the node after it by calling `line_break_between`, which scanned the gap for
+`b'\n'` alone. A document broken only by `\r` therefore read as one long line, every note after a
+break bound backwards onto the previous container, and the container's note went through the (ds)
+route - written inline, re-read as something else's - which is exactly the two-round shape (ds) had
+just closed from the other side. The blank trim two lines above already treats `\r` as blank, and
+`scalar.rs` and the comment scanner already accept `\r` as a break, so this was the one place in the
+note-homing path that did not.
+
+The predicate now asks for either break, which is the vocabulary granit splits lines on. Measured as
+an A/B over the three shapes in this family - `former-crash-7eb273bc.seed`,
+`former-crash-9733643a.seed` and `:\t!-\r... #-o\n`, both spellings of each - every emission is
+byte-identical before and after; only the ingest slot moved, from the container's inline
+`meta.comment` to its `leading_comments`, which is what the `\n` spelling always produced. Two pins
+recorded the CR-blind slot and were updated to the common one:
+`a_containers_inline_note_after_a_text_less_value_settles_at_once` (its name stays, because the
+ledger and `serializer.rs` cite it as the history of the inline reading) now also asserts that a
+document and its LF spelling emit the same text, and
+`a_note_above_a_pending_tag_line_keeps_its_owner` asserts the leading slot on both seeds. The
+routing that (ds) shipped for a container note held inline is untouched and still serves the shapes
+that genuinely arrive that way.
+
+Two tiers cannot see this class, which is why the defence is a seed and a named test. The property
+tier draws trees and the writer emits `\n`, so a CR-only byte sequence is unreachable there -
+`pbt.rs` holds no `\r` at all, which is the check behind that claim; `note_survival` asks only
+whether a note appears, and a migrated note appears. The fuzz harness is the tier that reads raw
+bytes, so the input is archived as
+`fuzz/seeds/yaml_roundtrip/cr-only-break-note-ownership.seed` and replayed by the PR gate, and
+`crates/pyrs-yaml-core/tests/settles_in_one_round.rs` names it -
+`a_note_after_a_cr_only_break_annotates_the_item_that_follows`, which also counts the notes so a
+copy cannot pass as a move and requires the CR and LF spellings of the document to emit one text.
+`tests/test_gaps.py::TestUnicodeAndSpecial::test_cr_only_line_endings` asks the same question
+through the public API.
+
+Shorting the arm out by hand (`gap.contains(&b'\n')`) reddens exactly three tests and leaves 630
+green: the new pin, reporting the round-two text, and the two pins updated above, on the slot they
+now share with the `\n` spelling. Gates on the change: 633 Rust tests, 26 property tests at
+20 000 cases, 2790 Python tests on a fresh build, clippy across all targets, `prek run --all-files`,
+and the harness replaying all 74 seeds with `-runs=0` - 5529 inputs counting the local machine
+corpus, zero crashes.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

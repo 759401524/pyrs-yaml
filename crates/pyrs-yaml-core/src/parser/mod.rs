@@ -673,7 +673,7 @@ impl<'a> AstReceiver<'a> {
         }
     }
 
-    /// True when a `\n` separates the candidate node's end from the comment,
+    /// True when a line break separates the candidate node's end from the comment,
     /// i.e. the comment is on a strictly later line.
     ///
     /// Only the gap between the two is scanned, so this stays `O(distance)`;
@@ -686,7 +686,7 @@ impl<'a> AstReceiver<'a> {
         let bytes = text.as_bytes();
         // A block collection's span runs through the line break that ends its own
         // line, so `node_end` can already sit on the *next* line and the gap it
-        // produces holds no `\n` even though the note is on later text. Back over
+        // produces holds no break even though the note is on later text. Back over
         // the blanks the span swallowed before looking for the break: `b:` /
         // ` ?` (span `4..6`) / `? #i` otherwise looked same-line, the note landed
         // as the nested mapping's trailing comment, the writer spilled it inside
@@ -697,10 +697,16 @@ impl<'a> AstReceiver<'a> {
         while end > 0 && matches!(bytes[end - 1], b' ' | b'\t' | b'\r' | b'\n') {
             end -= 1;
         }
+        // The break is `\n`, `\r\n` or a lone `\r` - the set granit splits lines on,
+        // which the blank trim above already knows. Reading only `\n` called
+        // `- :\r- #-` same-line, so its note bound back onto the mapping instead of
+        // carrying to the item that follows; the writer then placed a container note by
+        // its own rule, the re-read handed the same note to the pair's value, and the
+        // document needed two rounds to settle.
         comment_byte > end
             && bytes
                 .get(end..comment_byte.min(bytes.len()))
-                .is_some_and(|gap| gap.contains(&b'\n'))
+                .is_some_and(|gap| gap.iter().any(|b| *b == b'\n' || *b == b'\r'))
     }
 
     /// Record a trailing (`Placement::Right`) note.
@@ -2394,6 +2400,13 @@ mod tests {
     /// some point in this family's history: writing the note below the block settles and
     /// re-parents it to the value (crash-11ced252), and closing the tag line plus a note
     /// line oscillates outright (crash-cf49fe85's neighbour).
+    ///
+    /// The name records where the note used to arrive - the inline slot - and the ingest
+    /// assertion below now expects the leading one, because `line_break_between` reads a
+    /// lone `\r` as the break granit already treats it as. The CR spelling of this document
+    /// and its `\n` spelling then land in the same slot, which is what the last assertion
+    /// measures; the text either way is unchanged, and the writer's route for a note the
+    /// container holds inline still serves the shapes that genuinely arrive there.
     #[test]
     fn a_containers_inline_note_after_a_text_less_value_settles_at_once() {
         let src = ":\t!-\r... #-o\n";
@@ -2407,9 +2420,15 @@ mod tests {
             "one pair: the empty key and its tagged value"
         );
         assert!(
-            meta.comment()
-                .is_some_and(|c| !c.standalone && c.text.as_ref() == "-o"),
-            "granit reports the note as the mapping's own inline slot: {node:?}"
+            meta.comment().is_none(),
+            "a note that follows a break is not the container's inline slot: {node:?}"
+        );
+        assert!(
+            node.leading_comments()
+                .iter()
+                .any(|c| c.text.as_ref() == "-o"),
+            "the container owns the note as its leading note, the slot its LF spelling \
+             reports: {node:?}"
         );
         let (_, value) = pairs.iter().next().expect("the pair");
         assert!(
@@ -2426,6 +2445,13 @@ mod tests {
             one.matches('#').count(),
             1,
             "the note is moved, not duplicated: {one:?}"
+        );
+        assert_eq!(
+            crate::serializer::to_yaml(
+                &parse(&src.replace('\r', "\n"), YamlSchema::Core).expect("the LF spelling parses")
+            ),
+            one,
+            "one document, two ways to break its lines: {one:?} is not how the LF spelling reads"
         );
         let again = parse(&one, YamlSchema::Core).expect("emitted document re-parses");
         let CustomNode::Mapping { pairs, .. } = &again else {

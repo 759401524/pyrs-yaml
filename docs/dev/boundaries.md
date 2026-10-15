@@ -93,6 +93,16 @@ holds it - not a per-shape patch.
   `pyrs_schema::is_yaml_blank`; the JSON-family resolvers keep Unicode whitespace on purpose,
   because JSON5 treats it as structural. Seeded as `former-crash-{e92ce66f,512814,b44481b2}.seed`,
   with crash-a1516147 and crash-79fef575 subsumed by the same per-form tag encoder.
+- **Line break set.** `line_break_between`, the test that decides whether a trailing note belongs to
+  the node before it or the one after, scanned the gap for `\n` while granit splits lines on `\n`,
+  `\r\n` and a lone `\r`. A CR-only document therefore read as one long line, every note after a
+  break bound backwards onto the previous container, and that container's emission settled only on
+  the second round. Seeded as `cr-only-break-note-ownership.seed` and pinned by
+  `settles_in_one_round::a_note_after_a_cr_only_break_annotates_the_item_that_follows`, which also
+  requires a document and its LF spelling to emit one text. The comment scanner, the scalar trim and
+  this function's own blank trim already asked for both bytes; the one remaining `\n`-only table is
+  `scan_yaml`'s line offsets, which serve only the splice layout gate, and that gate returns false
+  for any text containing `\r`.
 - **Explicit-key markers.** A note that trailed a marker-only line is reported one level shallower
   than it was recorded, so the writer bubbles it up the first-pair-key spine
   (`former-crash-ac5d9043.seed`, minimised 8 bytes); a note riding the entry *after* a marker needed

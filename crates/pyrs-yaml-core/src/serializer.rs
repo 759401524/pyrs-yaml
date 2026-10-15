@@ -3853,12 +3853,18 @@ mod tests {
     }
 
     /// libFuzzer `yaml_roundtrip` crash-7eb273bc (24 bytes) and crash-9733643a (27 bytes),
-    /// each minimised to 13. A root mapping owns a note in its inline slot while its only
-    /// value is a tag-only scalar that has a leading note of its own; the container's note
+    /// each minimised to 13. A root mapping owns a note that sits on the line after its only
+    /// value - a tag-only scalar that has a leading note of its own; the container's note
     /// used to be appended to that pending tag line, where the reader hands it to the value,
     /// so the second emission moved it. Asserted on both properties, because the earlier
     /// single-line spelling traded one for the other: it settles, but the key ends up
     /// owning a note the container was given.
+    ///
+    /// Both inputs break their lines with `\r`, so the ingest slot is the container's leading
+    /// one now - what a `\n` spelling of the same document always gave, and the slot the
+    /// emission is re-read into. `meta.comment()` holding the note was the CR-blind reading,
+    /// and the writer had to route it; see
+    /// `a_containers_inline_note_after_a_text_less_value_settles_at_once` for that history.
     #[test]
     fn a_note_above_a_pending_tag_line_keeps_its_owner() {
         for (name, raw) in [
@@ -3876,12 +3882,16 @@ mod tests {
             let CustomNode::Mapping { meta, .. } = &tree else {
                 panic!("{name}: {src:?} is not a mapping");
             };
-            let note = meta
-                .comment()
-                .filter(|c| !c.standalone)
-                .expect("the container owns the note inline at the start")
-                .text
-                .clone();
+            assert!(
+                meta.comment().is_none(),
+                "{name}: {src:?} breaks its lines with a CR, and a break separates the note \
+                 from the container's inline slot"
+            );
+            let note = tree
+                .leading_comments()
+                .first()
+                .map(|c| c.text.clone())
+                .expect("the container owns the note as its leading note at the start");
             let one = to_yaml(&tree);
             assert!(
                 one.starts_with("# "),
