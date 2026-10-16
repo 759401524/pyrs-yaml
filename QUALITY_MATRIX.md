@@ -64,7 +64,11 @@ not only on the fuzz schedule. The third tier of the same pair sits at the Pytho
 `tests/test_streaming.py::TestMultiFormatStream` asks, per format, that one verb produces the one
 vocabulary — which quote forms a format keeps, which fields stay `None` because that format has nothing
 to say about them, that the verdict text is the tree route's, and that the default call is still YAML
-event for event.
+event for event. The vocabulary crate is measured by itself as well:
+`crates/pyrs-event/src/lib.rs` builds one event per variant and pins that cloning and `into_owned`
+carry every field, that a borrowed scalar and the same text owned are equal (the condition under which
+a replay comparison means anything), and that owning a comment moves the shared `Arc<str>` instead of
+copying it — with both failure modes produced by mutation before the tests were trusted.
 No writer is unsettled: 33 JSON dialect rounds from 14 seeds and 30 TOML rounds from 16,
 every one satisfying `once == twice`.
 `fmt_pbt`'s three writer fixed-point properties now hold at 20,000 cases, and two of them never

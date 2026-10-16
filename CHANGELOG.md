@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The event vocabulary now measures its own shape** — `pyrs-event` held the type every
+  producer reports and had tests only for `LineTable`, so the eleven-arm `into_owned` match it
+  depends on was gated by whichever variants the producers happened to emit. Three unit tests in
+  the crate now build one event of every variant and ask: that cloning and owning leave every
+  field and both positions alone (the way that match breaks is silently — an arm mapped to a
+  neighbour, or rebuilt without a field, still compiles); that a scalar borrowed from the source
+  and the same text owned compare equal, which is what makes the stream/tree replay comparisons
+  say something rather than nothing; and that owning a comment moves the shared `Arc<str>`
+  instead of copying it, which is the allocation claim decision 3 bought. Mutation-checked with
+  attribution: dropping `standalone` in the Comment arm reddens exactly the field test, and
+  replacing the moved `Arc` with a copy reddens exactly the pointer test. Test-only — no read
+  path is touched, so the instruction-count leg has no new claim to judge; `cargo nextest run
+  --all` 662 passed (3 new). — details: quality-ledger (eb).
+
 - **`parse_stream` describes a JSON, JSONC, JSON5 or TOML document too** — the last step of
   `docs/dev/event-stream.md`'s plan B is a keyword-only `format` on the verb that already streamed
   YAML (`parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")`), so one call shape

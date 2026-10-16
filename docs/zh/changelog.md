@@ -19,6 +19,16 @@ status: new
 
 #### 新增
 
+- **事件词汇表现在度量它自己的形状** — `pyrs-event` 握着每个生产者上报的那个类型，而它原先只有
+  `LineTable` 的测试，于是它所依赖的十一支 `into_owned` match，实际只被生产者恰好上报的那些变体把
+  关。现在 crate 内的三个单元测试把每个变体各造一个事件，然后追问：克隆与转成持有后，每个字段和行列
+  位置都原封不动（那支 match 坏掉的方式是无声的——一支映射到邻居，或重建时少带一个字段，都照样编
+  译）；从源码借来的标量与同样文本的持有形式相等，而这正是流/树重放比对有意义的条件；把注释转成持有
+  时移动的是共享的 `Arc<str>` 而不是复制它，这就是决议 3 换来的那条分配主张。突变检查并给出归因：在
+  Comment 分支丢掉 `standalone` 只让字段测试变红，把移动的 `Arc` 换成复制只让指针测试变红。纯测试——
+  不碰读取路径，所以指令数那道腿没有新的主张要判；`cargo nextest run --all` 662 通过（新增 3 个）。—
+  详情：quality-ledger (eb)。
+
 - **`parse_stream` 现在也能描述 JSON、JSONC、JSON5 或 TOML 文档** — `docs/dev/event-stream.md` 计划
   B 的最后一步，是给原本已经在流式读取 YAML 的那个动词加一个仅关键字参数 `format`
   （`parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")`），于是一种调用形状通向三
