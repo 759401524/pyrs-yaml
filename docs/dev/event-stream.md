@@ -524,6 +524,61 @@ first.
 instruction-count leg to judge; the numbers above come from reading the shipped boundary with
 `parse_stream`, recorded in the ledger entry that carries this decision.
 
+## What a YAML replay asks the vocabulary for (2026-10-16, decision 7 on the table)
+
+Decision 6's third criterion asks for a fold from events back to a tree. That fold exists for one
+grammar. `pyrs_json::from_events` is public, and two tiers guard it —
+`crates/pyrs-json/tests/events_replay.rs` on every `cargo nextest`, `json_events_replay` in the fuzz
+matrix. YAML has no such reader: the `from_events` at
+`crates/pyrs-yaml-core/src/parser/stream.rs:978` is a local `Vec<String>` inside
+`the_tree_and_the_events_name_the_same_anchors`, and grep finds exactly one definition of the name
+in the workspace. Porting it is not mechanical, and the reason belongs on the table before anyone
+writes one.
+
+**Three notation facts the YAML tree carries and the vocabulary does not.** `Mapping` and `Sequence`
+carry `flow_style`, `Scalar` carries `chomping` and `block_indent`. Two of the three take part in
+the node's identity: `ast.rs`'s `PartialEq` compares `flow_style` for a mapping and `chomping` for a
+scalar, and the `Hash` mirrors both. `block_indent` is the exception the `Hash` documents — `eq`
+ignores it — but the writer reads it, because auto-detecting it is lossy. A replay that cannot
+rebuild these builds a tree the engine calls a different document.
+
+**One of them the producer is handed and discards.** granit's `Event::MappingStart` and
+`Event::SequenceStart` both open with a `StructureStyle` — Flow or Block, named in the variant's own
+doc comment (`granit-parser-2.0.0/src/parser.rs:143,154`). YAML's adapter matches them with `_` in
+that position (`crates/pyrs-yaml-core/src/parser/stream.rs:234,243`). So a `flow: bool` on the two
+container events reports a fact the tokenizer already hands over, which is the same argument
+decision 6 makes for `owner`, not a second derivation of one.
+
+**Two of them the producer cannot have.** granit's `Event::Scalar` is
+`(value, style, anchor_id, tag)` and its `ScalarStyle` has exactly five cases —
+`Plain | SingleQuoted | DoubleQuoted | Literal | Folded` (`granit-parser-2.0.0/src/scanner.rs:33`) —
+naming neither chomping nor an indentation indicator. The tree route recovers both by probing the
+block header itself (`crates/pyrs-yaml-core/src/parser/yaml/scalar.rs`), a pass over the source the
+stream does not make. So `k: |`, `k: |-` and `k: |+` reach the vocabulary as one style, and no field
+added to `pyrs-event` changes that: closing the gap means the producer reads the source rather than
+the event, which is the thing step 2 of this sequence was built to stop.
+
+**What that does to the gate's vehicle.** The JSON replay is checked by asking the strict writer the
+same question of both trees. For YAML that sentence changes meaning: block and flow notation write
+different text for the same document, and a clipped and a stripped block scalar write different text
+too. A YAML replay therefore compares either through a route that normalises notation — which is not
+the writer the format ships — or as content identity with the notation slots deliberately emptied,
+which proves less than the JSON gate does and says so.
+
+**The question for the maintainer.** (a) Does `pyrs-event` grow `flow` on the two container events,
+accepting that JSON's producer would then report a field its grammar has no notion of, always false?
+(b) Is a YAML `from_events` worth building as the projection it can be — content, anchors, aliases,
+tags and positions, with `flow_style`, `chomping` and `block_indent` left at defaults — or does
+replay stay a claim about the grammars whose writer is notation-free? (c) Either answer changes what
+step 4 of this document proved: it showed the vocabulary is neutral for JSON and TOML-shaped for the
+rest, and a YAML fold that empties three slots restates the neutrality claim in narrower words
+rather than widening it.
+
+**Not measured here, and what that costs the reading.** This section changes no code, so the
+instruction-count leg has nothing to judge. The granit signatures and the five `ScalarStyle` cases
+are read from the vendored source and our own match arms, not from a runtime probe of a `|` against
+a `|-` — a probe needs the extension rebuilt, and the type surface settles the question either way.
+
 ## What this is not for
 
 - **Not a performance play.** `docs/dev/perf.md` prices the read path's dominant costs in hashing,
@@ -536,8 +591,9 @@ instruction-count leg to judge; the numbers above come from reading the shipped 
 
 ## Decisions this document needed from the maintainer
 
-All six are answered, and each answer is recorded in place with its date — a question resolved in a
-conversation and left out of the document is a question that gets asked again.
+Six are answered and the seventh is on the table below, each answer recorded in place with its date
+— a question resolved in a conversation and left out of the document is a question that gets asked
+again.
 
 1. **B or C.** (A only as B's first PR.)
 2. If B: is a multi-format `parse_stream` a *promised user-facing capability* (Python and Rust), or
@@ -573,6 +629,12 @@ conversation and left out of the document is a question that gets asked again.
    (maintainer): split it into two fields, and put the shape up for design review first** — the
    section "The note flag split" is that review. The answer available and declined: keep one boolean
    and register the loss as an accepted hole.
+7. Whether the vocabulary grows the notation facts a YAML replay needs — `flow` on the container
+   events, which its producer is handed today — and whether a replay is owed to YAML at all when two
+   of the three facts (chomping, indentation indicator) are not in granit's event surface. **Asked
+   2026-10-16; unanswered.** The section "What a YAML replay asks the vocabulary for" is the
+   finding, and it is on the table with decision 6 because that decision's fold criterion is what
+   made the question measurable.
 
 ## What the borrowed scalar is worth (2026-10-14, decision 3 landed)
 
