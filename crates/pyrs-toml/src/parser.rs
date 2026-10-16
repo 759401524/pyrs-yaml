@@ -83,7 +83,7 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
 /// `events`, which reports the same IR with the positions it carries. That is why the two routes
 /// cannot disagree about what is valid - one scanner decides, twice it is described - and it is the
 /// reason TOML's producer is not the second walk `pyrs-json` needed: the table rules below
-/// (`defined`, `dotted_defined`, array-of-tables tails) are heavy enough that re-deriving them in a
+/// (the reopen marker, the array-of-tables tails) are heavy enough that re-deriving them in a
 /// second pass would be two authored policies, which is what `docs/dev/event-stream.md` refuses.
 ///
 /// The second value is every own-line note no key or header claimed; the AST has no slot for those
@@ -99,13 +99,11 @@ pub(crate) fn parse_ir(
         depth: 0,
         root: CowTable::new(0, 0),
         current: Vec::new(),
-        defined: Vec::new(),
         pending_leading: Vec::new(),
         pending_blank: false,
         dialect,
         pending_inline_comment: Vec::new(),
         pending_comment_err: None,
-        dotted_defined: Vec::new(),
     };
     // TOML forbids a bare carriage return: every 0x0D must be part of a 0x0D0A
     // pair, in every context (line endings, comments, and inside strings - an
@@ -152,8 +150,6 @@ struct Parser<'a> {
     root: CowTable,
     /// Path of the active table (set by `[a.b]` or `[[a.b]]` headers).
     current: Vec<String>,
-    /// Explicit-header paths already opened. Reopening is a duplicate error.
-    defined: Vec<String>,
     /// The standalone `# ...` comments seen on lines of their own since the last
     /// pair or header, in source order. All of them are claimed by the next KV
     /// pair or table header as its leading notes: a stack of comment lines above a
@@ -177,12 +173,6 @@ struct Parser<'a> {
     /// deferred error because `take_comment` is infallible (toml-test
     /// `invalid/control/comment-*`). Surfaced by the document entry point.
     pending_comment_err: Option<ParseError>,
-    /// Absolute, dot-joined paths of tables created implicitly by a **dotted
-    /// key** (the `apple` in `apple.color = 1`). TOML marks such tables closed:
-    /// a later `[apple]`/`[fruit.apple]` header redefining them is invalid
-    /// (toml-test `invalid/table/duplicate-key-*`, `redefine-*`). Distinct from
-    /// header-ancestor implicit super-tables, which MAY be opened later.
-    dotted_defined: Vec<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -1515,19 +1505,14 @@ impl<'a> Parser<'a> {
                         ));
                     }
                     None => {
-                        // A dotted key creates intermediate tables that are
-                        // CLOSED: TOML forbids re-opening them with a later
-                        // `[header]`. Record the absolute path (current section
-                        // + the dotted prefix) so `register_header` can reject it.
-                        let mut abs: Vec<&str> = self.current.iter().map(|s| s.as_str()).collect();
-                        abs.extend(key[..=i].iter().map(|(name, _)| name.as_str()));
-                        let dotted_path = abs.join(".");
-                        if !self.dotted_defined.contains(&dotted_path) {
-                            self.dotted_defined.push(dotted_path);
-                        }
+                        // A dotted key creates intermediate tables that are CLOSED: TOML forbids
+                        // re-opening them with a later `[header]`. The marker sits on the table, so
+                        // no path text is registered anywhere - which is what keeps a dotted name
+                        // (`a."b.c"`) apart from the deeper path `a.b.c`, and one array element's
+                        // tables apart from its sibling's.
                         tbl.entries.insert(
                             seg.clone(),
-                            TomlTable::Implicit(CowTable::new(key_start, *seg_at)),
+                            TomlTable::Implicit(CowTable::new_closed(key_start, *seg_at)),
                         );
                         if let Some(TomlTable::Implicit(inner)) = tbl.entries.get_mut(seg.as_str())
                         {
@@ -1549,19 +1534,13 @@ impl<'a> Parser<'a> {
         blank_before: bool,
         at: usize,
     ) -> Result<(), ParseError> {
-        let joined = key_text(key);
-        if !is_array && self.defined.contains(&joined) {
-            return Err(self.err(&format!("duplicate table header `[{joined}]`")));
-        }
-        // A table created implicitly by a dotted key is CLOSED: no header (plain
-        // or array) may redefine it (toml-test invalid/table duplicate-key-* and
-        // redefine-*). Header-ancestor implicit super-tables are NOT in this set
-        // and may still be opened later.
-        if self.dotted_defined.contains(&joined) {
-            return Err(self.err(&format!(
-                "cannot redefine table `{joined}` created by a dotted key"
-            )));
-        }
+        // Both rules this function enforces - a header that reopens a table another header defined,
+        // and one that reopens a table a dotted key created - are read off the tree below, where each
+        // `CowTable` is one table and so already carries its own identity. Keying them by the
+        // dot-joined path text instead made `[a."b.c"]` a redefinition of `[a.b.c]`, and gave every
+        // element of `[[a.b]]` the first element's identity, which is what refused four valid
+        // documents of the official corpus. The text is built only where a rejection quotes it.
+        let joined = || key_text(key);
         let mut root = &mut self.root as *mut CowTable;
         for (i, (seg, seg_at)) in key.iter().enumerate() {
             let last = i + 1 == key.len();
@@ -1575,7 +1554,9 @@ impl<'a> Parser<'a> {
                                     self.err("cannot redefine a table as an array of tables")
                                 );
                             }
-                            return Err(self.err(&format!("duplicate key `{seg}`")));
+                            return Err(
+                                self.err(&format!("duplicate table header `[{}]`", joined()))
+                            );
                         }
                         root = inner as *mut CowTable;
                     }
@@ -1583,6 +1564,18 @@ impl<'a> Parser<'a> {
                         if last {
                             if is_array {
                                 return Err(self.err("cannot redefine a table as array"));
+                            }
+                            // A dotted key's table stays closed to a header that ends on it
+                            // (toml-test `invalid/table/duplicate-key-*`, `redefine-*`). Two
+                            // neighbouring cases are not this one and stay legal: passing through
+                            // such a table to define a deeper one, which is
+                            // `[fruit.apple.texture]` after `apple.color`, and opening a super-table
+                            // a header only implied, which is `valid/table/without-super.toml`.
+                            if inner.closed {
+                                return Err(self.err(&format!(
+                                    "cannot redefine table `[{}]` created by a dotted key",
+                                    joined()
+                                )));
                             }
                             // Snapshot the inner entries so we do not hold
                             // two mutable borrows of `tbl.entries` at once.
@@ -1596,10 +1589,10 @@ impl<'a> Parser<'a> {
                                     blank_before,
                                     at,
                                     key_at: *seg_at,
+                                    closed: false,
                                 }),
                             );
                             self.current = names(key);
-                            self.defined.push(joined);
                             return Ok(());
                         }
                         root = inner as *mut CowTable;
@@ -1619,6 +1612,7 @@ impl<'a> Parser<'a> {
                                 blank_before,
                                 at,
                                 key_at: *seg_at,
+                                closed: false,
                             });
                             let tail = list.last_mut().unwrap() as *mut CowTable;
                             root = tail;
@@ -1639,12 +1633,12 @@ impl<'a> Parser<'a> {
                                     blank_before,
                                     at,
                                     key_at: *seg_at,
+                                    closed: false,
                                 }];
                                 tbl.entries
                                     .insert(seg.clone(), TomlTable::ArrayOfTables(list));
-                                // current points to the newly pushed tail
+                                // current points to the newly pushed tail.
                                 self.current = names(key);
-                                self.defined.push(joined);
                                 return Ok(());
                             } else {
                                 tbl.entries.insert(
@@ -1656,6 +1650,7 @@ impl<'a> Parser<'a> {
                                         blank_before,
                                         at,
                                         key_at: *seg_at,
+                                        closed: false,
                                     }),
                                 );
                                 if let Some(TomlTable::Explicit(inner)) =
@@ -1678,9 +1673,6 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-        }
-        if !is_array {
-            self.defined.push(joined.clone());
         }
         self.current = names(key);
         Ok(())
@@ -2198,6 +2190,74 @@ mod tests {
         // The control that must keep working: a lone backslash at line end is a continuation.
         let continued = from_toml("a = \"\"\"x \\\n   b\"\"\"\n").unwrap();
         assert_eq!(scalar(child(&continued, "a")), "x b");
+    }
+
+    #[test]
+    fn a_deep_header_leaves_the_super_table_it_passed_through_open() {
+        // A header's walk only closes the table it names, never the ones it passes through, so the
+        // super-table `[x.y.z.w]` implied stays open: `[x]` below it is TOML 1.1's legal
+        // super-table re-opening, which is the corpus file `valid/table/without-super.toml`.
+        let ast = from_toml("[x.y.z.w]\nk = 1\n[x]\nj = 2\n").unwrap();
+        assert_eq!(parse_keys(&ast), vec!["x"]);
+        let x = child(&ast, "x");
+        assert_eq!(parse_keys(x), vec!["y", "j"]);
+    }
+
+    #[test]
+    fn a_key_whose_name_contains_a_dot_is_not_the_deeper_path() {
+        // `[a."b.c"]` and `[a.b.c]` join to the same text, which is how the header bookkeeping came
+        // to refuse one of them as a duplicate of the other — the same conflation the inline-table
+        // fix removed, in `[header]` form. `valid/table/names.toml` is the corpus case.
+        let ast = from_toml("[a.b.c]\nx = 1\n[a.\"b.c\"]\ny = 2\n").unwrap();
+        let a = child(&ast, "a");
+        assert_eq!(parse_keys(a), vec!["b", "b.c"]);
+        assert_eq!(parse_keys(child(a, "b")), vec!["c"]);
+        assert_eq!(scalar(child(child(a, "b.c"), "y")), "2");
+    }
+
+    #[test]
+    fn a_header_under_an_array_of_tables_belongs_to_the_element_it_was_written_in() {
+        // `[[a.b]]` / `[a.b.c]` twice is two tables, one per array element
+        // (`valid/table/array-table-array.toml`): the header walks into the element it was written
+        // under, so the sub-table it names belongs to that element and its sibling's of the same
+        // name is a different table. Writing it twice inside one element is the other half, and the
+        // duplicate TOML forbids.
+        let ast =
+            from_toml("[[a.b]]\n[a.b.c]\nd = \"val0\"\n[[a.b]]\n[a.b.c]\nd = \"val1\"\n").unwrap();
+        let a = child(&ast, "a");
+        let CustomNode::Sequence { items, .. } = child(a, "b") else {
+            panic!("`a.b` is not an array of tables");
+        };
+        assert_eq!(items.len(), 2);
+        for (i, item) in items.iter().enumerate() {
+            let c = child(item, "c");
+            assert_eq!(scalar(child(c, "d")), format!("val{i}"));
+        }
+        assert!(
+            matches!(
+                from_toml("[[a.b]]\n[a.b.c]\nd = 1\n[a.b.c]\ne = 2\n"),
+                Err(ParseError::Syntax { .. })
+            ),
+            "a repeated header inside one array element was accepted"
+        );
+    }
+
+    #[test]
+    fn a_table_a_dotted_key_created_stays_closed_to_a_later_header() {
+        // The first two are the bit on the table: `[fruit.apple.taste]` ends on a table a dotted key
+        // created, and the corpus insists it stays refused
+        // (`invalid/table/duplicate-key-05.toml`, `redefine-03.toml`). The third is the plain
+        // duplicate over a header's own table, refused by the walk reaching an `Explicit`.
+        for src in [
+            "[fruit]\napple.taste.sweet = true\n[fruit.apple.taste]\n",
+            "[t1]\nt2.t3.v = 0\n[t1.t2.t3]\n",
+            "[a.b.c]\nx = 1\n[a.b.c]\ny = 2\n",
+        ] {
+            assert!(
+                matches!(from_toml(src), Err(ParseError::Syntax { .. })),
+                "accepted: {src}"
+            );
+        }
     }
 
     #[test]

@@ -764,6 +764,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A table header is identified by the table it names, not by the text of its path** — the third
+  face of one defect class. `parse_inline_table` joined a dotted member into a single key (closed by
+  the change above), and `register_header` keyed its two bookkeeping sets - `defined` and
+  `dotted_defined` - by the dot-joined path, so `[a."b.c"]`, one key whose name contains a dot, read
+  as a re-definition of `[a.b.c]`, and every element of `[[a.b]]` got the same identity as the
+  first, so the second `[a.b.c]` was refused as a duplicate. Four valid documents paid for it:
+  `valid/table/names.toml`, `names-with-values`, `array-table-array` and
+  `valid/array/array-subtables`. The fix deletes the text. Each `CowTable` already *is* one table,
+  so a header's identity is the walk that reaches it, and the only state a table needs is the one
+  bit TOML adds: a table a **dotted key** created is closed to a header that ends on it, while a
+  header may still pass through it to a deeper table - `[fruit.apple.texture]` after `apple.color` -
+  or open a super-table another header only implied - `valid/table/without-super.toml`. Both
+  refusals read off the tree now, and the path text is built only where a rejection quotes it.
+  Measured: toml-test valid-decode **262/266 (98.50%) to 266/266 (100%)**, so that tier has no floor
+  any more - it asserts an empty failure list, the encoder gate's shape, and a future gap reddens it
+  by naming the file. The reject tier is untouched (491/511 here, 488/511 where the host's
+  `datetime` is what refuses the out-of-range hours). The same pass drops a per-header allocation
+  and a linear scan, and the instruction gate prices that: `from_toml_medium` **159,859,652 to
+  150,441,866, −5.89%** on the compiler the baseline pins, while `to_toml_medium` sits at +0.125% —
+  inside the line, as it should, the writer never consults what this removes. Eight tests: four Rust
+  (a deep header leaving its super-table open, a dotted name against the deeper path, per-element
+  identity with the same-element duplicate still refused, and the closed-table rules) and four
+  Python as a `TestTableIdentity` class. Attribution by mutation, one mechanism at a time: with the
+  closed guard dead, `a_table_a_dotted_key_created_stays_closed_to_a_later_header` is the only red
+  of 82; with the guard widened to refuse every implicit table, only
+  `a_deep_header_leaves_the_super_table_it_passed_through_open` is.
+
 - **A multi-line string keeps the quotes and the break at its end** — two scanner defects, both
   surfaced by the toml-test tier that PR #463 had just tightened enough to see. A literal multi-line
   string that ends in `'` is written with extra quotes ahead of the closing delimiter

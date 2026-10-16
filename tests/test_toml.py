@@ -739,3 +739,38 @@ class TestArrayElementNotes:
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
         assert out == "arr = [1]\n", out
         assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src)
+
+
+class TestTableIdentity:
+    """A table's identity is its segments, not the text they join to.
+
+    The header bookkeeping keyed `defined` and `dotted_defined` by the dot-joined path, so three
+    distinct TOML shapes shared one string: `[a."b.c"]` (a key whose name contains a dot) read as
+    `[a.b.c]`, and every element of `[[a.b]]` owned the same `[a.b.c]` as the first. Corpus cases
+    `valid/table/names.toml`, `names-with-values`, `array-table-array` and
+    `valid/array/array-subtables` were refused because of it, which is how the valid half of the
+    corpus stopped being a measure of the decoder. The rules TOML does enforce stay enforced: a
+    dotted key closes the table it created against a later header, and one header written twice in
+    the same element is still a duplicate.
+    """
+
+    def test_a_key_named_with_a_dot_is_not_the_deeper_path(self):
+        assert pyrs_yaml.load_toml('[a.b.c]\nx = 1\n[a."b.c"]\ny = 2\n') == {
+            "a": {"b": {"c": {"x": 1}}, "b.c": {"y": 2}}
+        }
+
+    def test_each_array_of_tables_element_owns_its_own_sub_table(self):
+        src = "[[a.b]]\n[a.b.c]\nd = 'v0'\n[[a.b]]\n[a.b.c]\nd = 'v1'\n"
+        assert pyrs_yaml.load_toml(src) == {"a": {"b": [{"c": {"d": "v0"}}, {"c": {"d": "v1"}}]}}
+
+    def test_a_super_table_may_still_be_defined_after_a_deep_header(self):
+        assert pyrs_yaml.load_toml("[x.y.z.w]\nk = 1\n[x]\nj = 2\n") == {"x": {"y": {"z": {"w": {"k": 1}}}, "j": 2}}
+
+    def test_what_toml_refuses_is_still_refused(self):
+        for src in (
+            "[fruit]\napple.taste.sweet = true\n[fruit.apple.taste]\n",
+            "[[a.b]]\n[a.b.c]\nd = 1\n[a.b.c]\ne = 2\n",
+            "[a.b.c]\nx = 1\n[a.b.c]\ny = 2\n",
+        ):
+            with pytest.raises(pyrs_yaml.YamlParseError):
+                pyrs_yaml.load_toml(src)
