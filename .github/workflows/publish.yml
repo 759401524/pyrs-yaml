@@ -31,9 +31,21 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.8"
+      # The compiler is the one `.ci/ir-baseline.json` records, so the wheels users install are the
+      # build the instruction-count floors describe. Before this, `maturin-action` defaulted every
+      # wheel to current `stable` while the gate measured a pinned compiler: the same source under
+      # `rustc 1.99.0` costs +6.4% counted instructions across the `serialize_*` family (measured
+      # 2026-10-16, one tree, one host, only the toolchain differing) while the floors said nothing
+      # about what shipped. `tests/test_publish_toolchain.py` fails if the pin and the baseline
+      # disagree, so moving the release compiler is a measured decision with a number attached, not
+      # a side effect of a runner image. `ci.yml` builds the same release-wheel recipe on three OSes
+      # with this pin, which is where the input gets exercised: `publish.yml` itself runs only on a
+      # tag push. The `sdist` step is deliberately not pinned — it packages source and compiles
+      # nothing, so there is no codegen for a compiler choice to describe.
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: false
@@ -52,6 +64,7 @@ jobs:
         if: ${{ matrix.platform.target == 'x86_64' }}
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i /opt/python/cp314-cp314t/bin/python
           sccache: false
@@ -120,6 +133,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: false
@@ -178,6 +192,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: false
@@ -188,6 +203,7 @@ jobs:
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t
           sccache: false
@@ -223,6 +239,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: false
@@ -232,6 +249,7 @@ jobs:
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t
           sccache: false
@@ -332,9 +350,10 @@ jobs:
           tool: cross
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
-          targets: ${{ matrix.platform.std }}
+          toolchain: 1.97.1
+          targets: ${ matrix.platform.std }
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -344,7 +363,9 @@ jobs:
       # `--release` plus a stripped profile keeps the attached asset small;
       # without `strip` the raw debug info dwarfs the executable itself.
       # NOTE: no `--out-dir`/`--artifact-dir` here — both are nightly-only on
-      # stable cargo, and every platform here runs the stable toolchain.
+      # stable cargo, which is why the toolchain above is a released version rather than a nightly
+      # one; every platform here builds with the same pinned compiler the wheel jobs use, so the
+      # CLI asset and the wheels are products of one codegen.
       - name: Build pyq
         run: >
           ${{ matrix.platform.container && 'cross' || 'cargo' }} build

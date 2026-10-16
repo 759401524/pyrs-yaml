@@ -9,6 +9,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The wheels users install are built by the compiler the floors were measured on** — `publish.yml`
+  passed no `rust-toolchain` to `maturin-action`, so every release wheel came from current `stable`
+  while `.ci/ir-baseline.json` records the compiler the instruction-count gate measures. Measured
+  2026-10-16 (one tree, one host, only the toolchain differing): against `rustc 1.97.1`,
+  `rustc 1.99.0` costs +6.35% counted instructions across the `serialize_*` family and +0.198%
+  summed over all 22 scenarios — the committed floors described a build nobody installs. The seven
+  wheel builds, the `pyq` CLI asset job and `ci.yml`'s release-wheel step now pass the recorded
+  version, the last one so the input is exercised on three OSes per pull request rather than for the
+  first time on a tag push; the `sdist` step stays unpinned because packaging source compiles
+  nothing. `tests/test_publish_toolchain.py` (five tests) fails if pin and baseline disagree in
+  either direction — a runner image moving `stable`, or a baseline refresh moving the pin. Not a
+  speed win and not sold as one: a floor has to describe the artifact, so that a codegen move
+  arrives as a decision with a number attached. Measured: the new test 5 passed, and drifting one
+  step to `1.99.0` reddened exactly the wheel-build test before being restored; both workflows
+  re-parse as YAML. Not measured: an actual Release run — `publish.yml` triggers on a tag and this
+  was deliberately not exercised by pushing one.
+
 - **A wide key costs its characters, in every format's stream** — the position a stream event
   carries is a line and a column counted in *characters*: JSON and TOML convert a byte offset with
   `pyrs_event::LineTable`, YAML reports the column granit's own marker carries, and the two

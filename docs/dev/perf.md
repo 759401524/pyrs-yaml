@@ -895,7 +895,7 @@ comparable, then, is the pinned ISA and the pinned compiler, not the exact build
 same digests disagreeing is not a reason to distrust the residual, and why the three scenarios that
 *are* noisy (`to_python_*`) are noisy for the reason `AGENTS.md` already gives: they link CPython.
 
-Two consequences, both acted on rather than noted.
+Three consequences, all acted on rather than noted.
 
 - **CI cannot be reddened by this.** `.github/workflows/codspeed.yml` reads
   `.ci/ir-baseline.json['toolchain']` and installs that compiler before it measures, and the refresh
@@ -907,6 +907,17 @@ Two consequences, both acted on rather than noted.
   with neither the warning nor the binary pairing, and the comparing path's `FAIL toolchain changed`
   reuses the same sentence instead of a second one. `tests/test_ir_gate_provenance.py` pins all of
   it, including that a same-version rebuild is *not* reported as a version change.
+- **What shipped was not what was measured.** `publish.yml` built every wheel through
+  `maturin-action`, whose `rust-toolchain` input defaults to current `stable`, so released artifacts
+  came from a compiler no measurement described while the floors were drawn on the pinned one. The
+  seven wheel builds, the `pyq` asset job and `ci.yml`'s release-wheel step now carry the recorded
+  version — the last one so that the input is exercised on three OSes per pull request rather than
+  for the first time on a tag push — and `tests/test_publish_toolchain.py` fails if pin and baseline
+  disagree (drifting one step was measured to redden exactly that test, and the `sdist` step stays
+  unpinned because an sdist compiles nothing). This is not a speed win: summed over all 22
+  scenarios, `rustc 1.99.0` reads +0.198% against `1.97.1` — +6.35% across the `serialize_*` family,
+  −0.004% everywhere else. The reason to pin is that a floor has to describe the artifact users
+  install, so that a codegen move arrives as a decision with a number attached instead of shipping.
 
 What this retires: the environment note used to tell a reader that a WSL number had once been +1.45%
 off the runner's on `serialize_block_scalars`. Measured here, that scenario is 7.71% *below* the

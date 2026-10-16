@@ -436,10 +436,17 @@ jobs:
           name: wheel-${{ matrix.os }}
           path: dist-test/*.whl
 
+      # The same recipe and the same compiler `publish.yml` ships, so the artifact the test jobs
+      # install is the artifact users download, and the pinned toolchain is exercised on three OSes
+      # per pull request rather than for the first time on a tag push. `maturin-action` takes the
+      # toolchain as its `rust-toolchain` input; if that name or value ever stops resolving, this
+      # leg fails instead of Release. `tests/test_publish_toolchain.py` keeps the pin equal to
+      # `.ci/ir-baseline.json`, which is the compiler the instruction-count floors were measured on.
       - name: Build release wheels (find-interpreter)
         uses: PyO3/maturin-action@v1
         with:
           command: build
+          rust-toolchain: 1.97.1
           args: --release --find-interpreter --out dist
 
       - name: Upload wheels
