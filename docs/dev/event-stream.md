@@ -10,8 +10,9 @@ re-authoring them in a second pass would be two policies; section "What the thir
 answered". Decision 2 was answered the same day - a multi-format `parse_stream` is promised to
 Python and Rust users.** The objective lists `事件流` as a core abstraction to be split into its own
 crate, alongside the AST. The AST half is done; the event-stream half is this document. Decisions 3
-and 4 were both answered on 2026-10-14, and decision 5 on 2026-10-16. What is left in order is the
-replay as a gate rather than a test, then the Python-facing surface.
+and 4 were both answered on 2026-10-14, and decision 5 on 2026-10-16. Step 4 - the replay as a gate
+rather than a test - is the section "What the replay gate answered" and the change that carries it.
+What is left in order after that is the Python-facing surface.
 
 Every claim below is from reading the tree at `14196dc9` (2026-10-13), except the measurement
 section, which reads `bdc60d74`. File and line numbers are given so a reviewer can check them rather
@@ -275,8 +276,44 @@ The instruction-count gate was not run here (this host has no valgrind), so the 
 split's effect on `from_json_*` is CI's `Instruction-count baseline` leg to judge, not a claim made
 in this file. The fold is a test-tier oracle and no public `from_events` exists yet: publishing it
 before the TOML producer has answered the same questions would freeze a shape that has one
-producer's assumptions in it. The Python-facing surface, the stubs and the four doc locales are the
-last step of plan B and were not touched.
+producer's assumptions in it. *(Superseded the next day: the TOML producer answered them, and step 3
+published the fold - see "What the replay gate answered".)* The Python-facing surface, the stubs and
+the four doc locales are the last step of plan B and were not touched.
+
+### What the replay gate answered (2026-10-16, step 4)
+
+`pyrs_json::from_events` is public, which is what the paragraph above asked for first: the TOML
+producer had to answer the same questions before a fold froze one producer's assumptions. It is also
+a validating reader now rather than a trusting one. A caller-supplied list can be empty, can close a
+container nothing opened, can carry an `Alias` or an anchor this producer never emits; each of those
+is a refusal with a diagnostic, not a panic and not a silent repair
+(`a_malformed_stream_is_refused_rather_than_guessed`, eight shapes).
+
+The gate is two tiers, the pairing `roundtrip_corpus.rs` already establishes: the fuzz target
+`fuzz/fuzz_targets/json_events_replay.rs` explores, and
+`crates/pyrs-json/tests/events_replay.rs` runs on every `cargo nextest`, so the invariant can fail a
+pull request - a sampler cannot. Both ask the same two questions per dialect: one verdict at one
+place (identical `ParseError` text, which carries the offset, so position is covered by the same
+assertion), and the same document through the strict writer plus the same note texts as a multiset.
+The corpus test measures itself: 13 seeds over 3 dialects drive 39 verdict pairs and replay 22
+accepted documents, with a floor under both counts so neither half can go vacuous on its own.
+
+What it found in its first 90 seconds of exploring, before it was merged:
+`{\n "a": 0,\n //{\n "a": 0,\n // "*  "* e\n}` - both walks accepted it, the stream reported two
+notes, the tree kept one. The lost note rode the key node of the repeated name, and the collapse
+that keeps the first pair drops that node, so a comment disappeared from JSONC and JSON5 output that
+was perfectly stable under every fixed-point oracle. PR #450 fixes it and keeps the input as a seed.
+
+The second finding is not a bug but a limit, and it is a second thing the vocabulary cannot say.
+`{"a" /* on the key */: /* on the value */ 1}` gives the tree two notes with `standalone: true` and
+gives the stream the same two notes with `standalone: false`. The flags do not contradict each
+other: two same-line notes cannot share the one inline slot, so #361's rule moves them to the
+leading list, and a leading-list note carries `standalone: true` - so in the tree the flag answers
+*which slot this note rides*, while the stream answers *whether the source gave it a line of its
+own*, which is what YAML's producer reports.
+`the_two_walks_answer_different_questions_with_standalone` pins both readings, and the gates compare
+note text and leave the flag out. A replay that rebuilds decorations - which is what the
+Python-facing step will be asked for - needs those to be two fields, not one boolean read two ways.
 
 ## What the third producer answered (2026-10-16, TOML)
 

@@ -19,6 +19,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **`pyrs_json::from_events` is public, and the two walks of a JSON document became a gate** — the
+  fold step 2 left in the test tier is now a reader of the shared vocabulary, and a validating one:
+  the lists no producer of this crate can emit (an empty stream, a close with nothing open, an
+  `Alias`, an anchored or tagged event, a block scalar) are refusals with a diagnostic rather than
+  guesses, eight shapes pinned. The gate runs in two tiers so the invariant can fail a pull request:
+  `fuzz/fuzz_targets/json_events_replay.rs` explores per dialect, while
+  `crates/pyrs-json/tests/events_replay.rs` replays a 13-file seed corpus over all three dialects on
+  every `cargo nextest` — 39 verdict pairs driven, 22 documents replayed, with a floor under both
+  counts so neither half can go vacuous alone. In its first 90 seconds of exploring it found a
+  duplicate JSON key dropping the comment its own node carried (fixed in #450, the input kept as a
+  seed), and it pinned a second thing the vocabulary cannot say: `Comment::standalone` answers
+  "which slot does this ride" in the tree and "did the source give it a line" in the stream, so the
+  comparisons match note text and leave that flag out. — details: quality-ledger (dz),
+  `docs/dev/event-stream.md`.
+
 - **TOML has a tree-free event stream, and it answers the fields the first producer left open** —
   `pyrs_toml::parse_stream` describes the same document `from_toml` builds. It is deliberately *not*
   the second scanning walk `pyrs-json` needed: TOML's table rules — which header may open which

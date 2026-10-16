@@ -1,0 +1,2 @@
+{"a" /* on the key */: /* on the value */ 1, // after a pair
+ "b": [/* inside a sequence */ 2]}

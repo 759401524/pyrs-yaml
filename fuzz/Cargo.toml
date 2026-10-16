@@ -18,6 +18,9 @@ pyrs-yaml-core = { path = "../crates/pyrs-yaml-core" }
 pyrs-json = { path = "../crates/pyrs-json" }
 pyrs-toml = { path = "../crates/pyrs-toml" }
 pyrs-schema = { path = "../crates/pyrs-schema" }
+# The replay target walks the tree that `pyrs-json` builds, so it names the node type
+# directly; every other target stays behind an engine's own API and never mentions it.
+pyrs-ast = { path = "../crates/pyrs-ast" }
 
 [[bin]]
 name = "parse_yaml"
@@ -72,6 +75,17 @@ bench = false
 [[bin]]
 name = "validate_schema"
 path = "fuzz_targets/validate_schema.rs"
+test = false
+doc = false
+bench = false
+
+# The JSON producer is a second walk over the same scanners, so it can disagree with the tree
+# route about a verdict, a position, or what a token reads as. `json_roundtrip` proves the writer
+# settles; nothing else proves the two readers describe the same document, and a corpus test only
+# asks the shapes someone thought of. This target asks arbitrary ones.
+[[bin]]
+name = "json_events_replay"
+path = "fuzz_targets/json_events_replay.rs"
 test = false
 doc = false
 bench = false

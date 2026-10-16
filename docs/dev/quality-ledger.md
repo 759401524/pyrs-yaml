@@ -6012,6 +6012,39 @@ rescued note reads beside the survivor, not where the input put it, because one 
 say "this note came from the pair that was collapsed away". `docs/dev/event-stream.md` carries the
 question as part of what the replay cannot express.
 
+### (dz) The replay became a gate, and its first ninety seconds of exploring found a lost note
+
+Step 4 of `docs/dev/event-stream.md` was "the replay as a gate rather than a test", and the word
+that carried the weight was *gate*: a fuzz target alone is a sampler, and this repository has
+already ruled that a sampler cannot block a merge. So `pyrs_json::from_events` left the test tier
+and became a public reader that refuses the lists no producer of this crate can emit - eight shapes,
+each with a diagnostic - and the same two questions are asked twice: once by
+`fuzz/fuzz_targets/json_events_replay.rs` over whatever libFuzzer evolves, once by
+`crates/pyrs-json/tests/events_replay.rs` over the 13-file corpus in `fuzz/seeds/json_events_replay`
+on every `cargo nextest`. The corpus test measures itself rather than trusting its own existence: 39
+verdict pairs driven and 22 documents replayed, with a floor under both counts, because a corpus of
+nothing but shared refusals would drive pairs while testing the replay not at all.
+
+The target compiled only after a real error was fixed (`match` arms must return the same type, and
+an `assert_eq!` arm returns `()`), which is worth stating because a fuzz target that does not
+compile rots silently - that is the reason `fuzz.yml` builds on every push to `fuzz/**`. Within
+ninety seconds of a local exploration window it produced `crash-dup-key-after-line-note.seed`: the
+tree and the stream agreed on the verdict and disagreed on the note count, and the reason was that a
+duplicate key collapses onto the first pair, dropping the incoming key node and the value it
+replaced along with any note either owned. Fixed in #450, seeded here, mutation-checked there.
+
+The gate also turned up a limit rather than a defect, and it is recorded in both places now:
+`Comment::standalone` answers which slot a note rides in the tree (the #361 migration marks the
+notes it moves as standalone) and whether the source gave the note a line in the stream. One
+boolean, two questions, so every two-walk comparison matches note text and leaves the flag out -
+pinned by `the_two_walks_answer_different_questions_with_standalone`, which is the test that makes a
+future unification visible instead of silent.
+
+Not measured: the discovery budget is one 90-second window on this host, and the CI tier that
+explores runs on the schedule, so the coverage claimed here is the corpus plus that window, not a
+search. Nothing in this change touches the read path, so the instruction-count leg has no new claim
+to judge.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
