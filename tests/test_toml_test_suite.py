@@ -20,26 +20,30 @@ string, and a run of newlines written literally into a single-line string - both
 forbidden by TOML and both rejected by this crate's own parser, so ``to_toml``
 was emitting text no one could read back.
 
-The decode threshold gates hold at the *measured* compliance of the current parser, and each is set
-one case below it rather than at a comfortable round number. Measured 2026-10-16 on the corpus CI
-clones: **262 of 266 valid documents decode to the tagged values TOML says (`98.50%`)**, so that floor
-is 0.984. The reject half is interpreter-dependent and the floor describes the worst leg: **491 of 511
-invalid documents are refused on CPython 3.8-3.13 (`96.09%`) but 488 of 511 on 3.14 and 3.15
-(`95.50%`)**, because three out-of-range times (`24:00:00`, in `datetime`, `local-datetime` and
-`local-time`) are rejected by the host's `datetime` constructor rather than by this parser, and a newer
-interpreter accepts the spelling — so that floor is 0.954, the 3.14/3.15 reading with one case of
-slack. The engine owning the temporal range check is the fix for that split, not a wider line.
+The decode gates hold at the *measured* compliance of the current parser. Measured 2026-10-16 on the
+corpus CI clones: **all 266 valid documents decode to the tagged values TOML says**, so that gate
+asserts an empty failure list rather than a percentage — it is the encoder gate's shape, earned here
+by closing three defect classes, and any new gap reddens it by naming the file. The reject half is
+interpreter-dependent and the floor describes the worst leg: **491 of 511 invalid documents are refused
+on CPython 3.8-3.13 (`96.09%`) but 488 of 511 on 3.14 and 3.15 (`95.50%`)**, because three out-of-range
+times (`24:00:00`, in `datetime`, `local-datetime` and `local-time`) are rejected by the host's
+`datetime` constructor rather than by this parser, and a newer interpreter accepts the spelling — so
+that floor is 0.954, the 3.14/3.15 reading with one case of slack. The engine owning the temporal range
+check is the fix for that split, not a wider line.
+
 The `0.85` these two gates used to carry was 22 cases of slack on the decode half and 57 on the reject
-half, which is how whole defect classes hid behind a green percentage: nine cases read `a = { x.y = 1 }`
-as one key whose text is `x.y` instead of the nested table the spec defines, and five more lost the
-quote run or the line break at the end of a multi-line string — `''''one quote''''` handed back
-`'one quote` without its tail, because the scanner closed the string at the FIRST `'''` match and threw
-the rest of the run away, and a basic string whose escaped backslash ends a line read as a line
-continuation, so the break the document asked to keep was eaten. Both are fixed, and the four decode
-gaps left are one cause: TOML 1.1 super-table re-opening refused by the header bookkeeping
-(`valid/table/names.toml`, `names-with-values`, `array-table-array`, `array/array-subtables`). Every
-gate names the failing cases in its message, so a regression points at a case rather than at a
-percentage.
+half, which is how whole defect classes hid behind a green percentage. Three of them are closed: nine
+cases read `a = { x.y = 1 }` as one key whose text is `x.y` instead of the nested table the spec
+defines; five lost the quote run or the line break at the end of a multi-line string, because the
+scanner closed the string at the FIRST `'''` match and threw the rest of the run away
+(`''''one quote''''` came back without its tail) and an escaped backslash ending a line read as a line
+continuation; and four refused valid documents because the header bookkeeping keyed a table by its
+dot-joined text, which made `[a."b.c"]` a duplicate of `[a.b.c]` and gave every element of `[[a.b]]`
+the same identity as the first. What the corpus still accepts that it should refuse is the `invalid/`
+list the assertion prints: sixteen files are the TOML 1.1 relaxations the default dialect takes on
+purpose (optional seconds, multi-line keys, line breaks and trailing commas inside inline tables), and
+four are strictness the engine does not yet police — a backslash-x byte escape in a basic string, and a
+run of more than two quotes before a multi-line delimiter.
 """
 
 import json
@@ -157,7 +161,7 @@ def _matches(expected, actual):
 
 
 def test_toml_test_valid_decodes_match():
-    """Valid TOML parses and decodes to the expected tagged values (measured 262/266)."""
+    """Every valid TOML document decodes to the expected tagged values (266 of 266)."""
     total = 0
     matched = 0
     failures: list[str] = []
@@ -176,9 +180,8 @@ def test_toml_test_valid_decodes_match():
             failures.append(f"{name}: decoded differs")
     assert total > 0, "no valid toml-test cases found"
     rate = matched / total
-    assert rate >= 0.984, (
-        f"valid decode-match rate {rate:.1%} ({matched}/{total}) below floor 98.4% (measured 262/266): {failures}"
-    )
+    assert not failures, f"valid decode failures ({len(failures)}/{total}):\n" + "\n".join(failures[:10])
+    assert rate == 1.0, f"valid decode-match rate {rate:.1%} ({matched}/{total}) below floor"
 
 
 def test_toml_test_invalid_rejected():

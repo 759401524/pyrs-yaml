@@ -185,6 +185,11 @@ pub(crate) struct CowTable {
     /// so without this every level of `[a.b.c]` would report the same position and the stream's
     /// events would no longer arrive in source order.
     pub(crate) key_at: usize,
+    /// True only for a table a **dotted key** created, which TOML closes to a later header that ends
+    /// on it. Carried on the table rather than recorded in a set of dot-joined paths, because the
+    /// path text answers two questions wrongly: `[a."b.c"]` joins to the same string as `[a.b.c]`,
+    /// and every element of `[[a.b]]` shares the first element's joined path.
+    pub(crate) closed: bool,
 }
 
 impl CowTable {
@@ -197,6 +202,16 @@ impl CowTable {
             blank_before: false,
             at,
             key_at,
+            closed: false,
+        }
+    }
+
+    /// The table a dotted key's prefix creates: open to deeper tables of its own, closed to a
+    /// header that ends on it.
+    pub(crate) fn new_closed(at: usize, key_at: usize) -> Self {
+        Self {
+            closed: true,
+            ..Self::new(at, key_at)
         }
     }
 }

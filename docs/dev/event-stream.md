@@ -70,8 +70,8 @@ The second producer is also where the design decisions actually live, e.g.:
   is part of the shared vocabulary or a format detail carried in the payload - the same question the
   TOML spelling below is, one layer up.
 - A TOML event has dotted keys, which are a mapping *written* in one line. The engine already tracks
-  which table levels a dotted key created implicitly (`pyrs-toml/src/parser.rs:164`, the
-  `dotted_defined` paths), so a stream that only emits `MappingStart`/`MappingEnd` would replay into
+  which table levels a dotted key created implicitly (the `closed` bit each `CowTable` carries in
+  `pyrs-toml/src/lib.rs`), so a stream that only emits `MappingStart`/`MappingEnd` would replay into
   the same AST and silently lose a fact the parser keeps. Either the event carries it, or the
   abstraction is smaller than the engine.
 - TOML's integer spelling (`0b10`, `0x1F`) survives to the hub as a tagged plain scalar (`(cp)` in
