@@ -62,7 +62,12 @@ DEPENDENCY_BUMPS = [
 
 
 def _load_gate():
-    spec = importlib.util.spec_from_file_location("check_changelog_coupling", GATE_PATH)
+    return _load(GATE_PATH, "check_changelog_coupling")
+
+
+def _load(path: Path, name: str):
+    """Import a `scripts/` module by path: they are scripts, not an installed package."""
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -166,8 +171,15 @@ def test_the_mirror_list_is_one_declaration_not_two(gate):
 def test_the_gate_is_wired_where_a_merge_can_be_blocked(gate):
     """A checker no CI step runs is prose. `quality_matrix.py`'s orphan-gate probe agrees."""
     workflow = (REPO_ROOT / ".github" / "workflows" / "hygiene.yml").read_text(encoding="utf-8")
-    assert "scripts/check_changelog_coupling.py --base" in workflow, "not invoked by any job"
+    assert "scripts/check_changelog_coupling.py" in workflow, "not invoked by any job"
+    assert "--base" in workflow
     assert "pull_request" in workflow
+    # Rule 3 has to be granted by author, or the exemption becomes a hole: anyone who names their
+    # branch like the bot would ship a bump with no note.
+    assert "--allow-lockfile-bumps" in workflow, "the bot's exemption is not wired"
+    assert "github.actor == 'dependabot[bot]'" in workflow, (
+        "the exemption must be conditional on the pull request's author, not unconditional"
+    )
 
 
 def test_base_mode_reads_a_real_diff(gate):
@@ -182,3 +194,56 @@ def test_cli_exit_codes(gate):
     assert gate.main(["--paths", *PR_296]) == 1
     assert gate.main(["--paths", *PR_296, *FIVE]) == 0
     assert gate.main(["--paths"]) == 0, "an empty changeset is not a violation"
+
+
+# ── rule 3: the dependency bot's lockfile exemption ────────────────────────────────
+
+LOCKFILE_BUMPS = [
+    ["Cargo.lock"],
+    ["uv.lock"],
+    ["Cargo.lock", "uv.lock"],
+    ["fuzz/Cargo.lock"],
+]
+
+
+@pytest.mark.parametrize("paths", LOCKFILE_BUMPS)
+def test_a_lockfile_only_bump_is_exempt_when_the_caller_says_so(gate, paths):
+    assert gate.findings(paths, allow_lockfile_bumps=True) == []
+
+
+@pytest.mark.parametrize("paths", LOCKFILE_BUMPS)
+def test_the_same_bump_needs_a_note_from_anyone_else(gate, paths):
+    """The flag is the exemption, so the default stays strict for the hook and for a human."""
+    assert len(gate.findings(paths)) == 1
+
+
+def test_a_bump_that_also_moves_code_still_owes_the_note(gate):
+    found = gate.findings(["Cargo.lock", "crates/pyrs-yaml-core/src/parser/mod.rs"], True)
+    assert len(found) == 1, found
+    assert "no release note" in found[0], found[0]
+
+
+def test_a_manifest_bump_is_not_a_lockfile_bump(gate):
+    """`Cargo.toml` states a range; moving a range is the decision this exemption is not for."""
+    assert len(gate.findings(["Cargo.toml", "Cargo.lock"], True)) == 1
+
+
+def test_the_exemption_does_not_reach_the_completeness_rule(gate):
+    """Rule 2 still bites: an exempt bump that carries one changelog must carry all five."""
+    found = gate.findings(["Cargo.lock", "CHANGELOG.md"], allow_lockfile_bumps=True)
+    assert len(found) == 1, found
+    assert "partial changelog update" in found[0], found[0]
+
+
+def test_the_cli_flag_reaches_the_decision(gate, capsys):
+    assert gate.main(["--paths", "Cargo.lock"]) == 1
+    assert gate.main(["--paths", "Cargo.lock", "--allow-lockfile-bumps"]) == 0
+    out = capsys.readouterr().out
+    assert "lockfile-only bump" in out, "the exemption has to be visible in the CI log"
+
+
+def test_lockfile_names_are_one_declaration_across_the_two_gates(gate):
+    """The bump needs both decisions to agree, or it either never merges or merges unannounced."""
+    merge = _load(REPO_ROOT / "scripts" / "dependency_merge_gate.py", "dependency_merge_gate")
+    allowed = {p.rsplit("/", 1)[-1] for p in merge.AUTOMERGE_ALLOWLIST}
+    assert set(gate.LOCKFILE_NAMES) <= allowed, gate.LOCKFILE_NAMES

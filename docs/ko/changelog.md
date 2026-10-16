@@ -17,6 +17,21 @@ status: new
 
 #### 추가
 
+- **의존성 업데이트가 일정에 따라 도착하고, 하나의 경계 안에서 스스로 병합됩니다** —
+  `.github/dependabot.yml`은 이제 `cargo`(워크스페이스와 `fuzz/`, 각자의 락파일), `uv`
+  (`pyproject.toml` + `uv.lock`), CI actions를 추적하고 매주 `main`을 대상으로 돕니다. 권한은 이미
+  사람을 막던 그 관문이 그대로입니다: 해당 head 커밋에서 `Test matrix (all legs)`가 `success`를
+  보고하는 것(`skipped`와 `cancelled`는 거절로 읽습니다). 판단은
+  `scripts/dependency_merge_gate.py`에 있고 실행은 `.github/workflows/deps-automerge.yml`가 합니다.
+  스스로 병합할 수 있는 것은 해석 결과의 이동뿐입니다 — `Cargo.lock`, `uv.lock`, `prek.toml`, action
+  pin. 매니페스트, 툴체인, 커밋된 타입 스텁은 사람 몫으로 남습니다. 그것들을 움직이면 봇이 이행할 수
+  없는 의무가 따라오기 때문입니다 (maturin 버전 잠금과 함께 바뀌어야 하는 스텁 대조 규칙, 파서
+  major의 실측 마이그레이션, 지원되는 인터프리터 하한). 그래서 PyO3 0.30+는 `python-floor` 레이블로
+  도착하고, 초록색 점검 하나가 실수로 Python 3.8을 내려놓지는 않습니다. `--admin`은 어디에도 쓰지
+  않습니다. CI가 봇에게 주는 락파일 면제 (`scripts/check_changelog_coupling.py`)가 병합 허용 목록과
+  같은 묶음을 가리킨다고 검증되어 있습니다. 어긋나면 어떤 업데이트는 초록이 될 수 없거나 예고 없이
+  main에 들어갑니다 — (세부 사항: quality-ledger (dv), `CONTRIBUTING.md`)
+
 - **이름을 지킨 모양은 한 라운드에 수렴해야 합니다
   (`crates/pyrs-yaml-core/tests/settles_in_one_round.rs`)** — fuzz 층의 정점 계약을 libFuzzer가 찾고
   `cargo fuzz tmin`으로 줄인 모양에 직접 물었고, 유한 예산의 탐색에 맡기지 않았습니다. 이제 노트
