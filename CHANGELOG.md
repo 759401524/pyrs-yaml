@@ -9,6 +9,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A local instruction-count reading now says which compiler built it** — `AGENTS.md` claimed the
+  cross-image residual had been re-measured on two scenarios; all twenty-two are measured now, on
+  one tree and one WSL host with only `RUSTUP_TOOLCHAIN` differing. On the baseline's pinned
+  `rustc 1.97.1` nothing is past the line — worst `to_python_medium` +0.1639%, and the nineteen
+  scenarios that do not link CPython inside ±0.003% — while the box's default `rustc 1.99.0` puts
+  five past it (`serialize_medium` +9.08%, `serialize_block` +8.86%, `serialize_small` +8.03%,
+  `serialize_anchors` +7.95%, `to_toml_medium` +3.55%) and moves `serialize_block_scalars` 7.71% the
+  other way. Both signs at that size is codegen, and the binary digests agree. CI never risked a
+  false red — `codspeed.yml` installs the toolchain the baseline records — but the run a contributor
+  does locally said nothing at all. `ir_gate.py` now prints a toolchain note whenever the recorded
+  banner and the current one disagree, naming both versions, that pair and the
+  `RUSTUP_TOOLCHAIN=<pin>` fix; the note also reaches `--report-only`, which used to print maxima
+  with neither it nor the binary pairing, and `FAIL toolchain changed` reuses that one sentence
+  instead of carrying a second. The environment note loses its hard-coded "+1.45% off on
+  `serialize_block_scalars`", which measures 0.00005% off on the pin. Table and reasoning:
+  `docs/dev/perf.md`; pinned by `tests/test_ir_gate_provenance.py` (four tests, including that a
+  same-version rebuild is not reported as a version change). Measured: the note printed on a real
+  WSL run in both paths. Not measured: instruction counts — no engine path moves, so the gate has no
+  new claim to judge.
+
 - **The event vocabulary's two generic jobs are property-tested** — `pyrs-event` turns a byte offset
   into a position and copies borrowed event text out of the source, and both were pinned only by
   chosen inputs. Two properties now state them over arbitrary documents (mixed one-, two-, three-
