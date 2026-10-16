@@ -992,10 +992,15 @@ impl<'a> Parser<'a> {
                 .ok_or_else(|| self.err("unterminated multiline string"))?;
             match b {
                 b'\\' => {
-                    // Line-ending backslash: trim trailing ws to a newline.
+                    // Line-ending backslash: trim trailing ws to a newline. An escaped one is a
+                    // content character and ends no line, so the test must not look past it:
+                    // `"""a \\` + break + `b"""` is `a \` + break + `b`, and reading the
+                    // continuation here swallowed the break the string had asked to keep.
                     let save = self.pos;
                     self.pos += 1;
-                    if matches!(self.peek(), Some(b'\n') | Some(b'\r')) || self.is_at_line_end_ws()
+                    if self.peek() != Some(b'\\')
+                        && (matches!(self.peek(), Some(b'\n') | Some(b'\r'))
+                            || self.is_at_line_end_ws())
                     {
                         // Skip spaces/tabs before newline
                         self.pos = save + 1;
@@ -1059,12 +1064,18 @@ impl<'a> Parser<'a> {
             let start = self.pos;
             loop {
                 if self.starts_with(b"'''") {
-                    let content = &self.text[start..self.pos];
-                    self.pos += 3;
-                    while self.peek() == Some(b'\'') {
-                        self.pos += 1;
+                    // The closing delimiter is the LAST three quotes of the run. A literal
+                    // multi-line string whose content ends in `'` is written with one or two
+                    // extra quotes ahead of it — `''''one quote''''` is `'one quote'` — and those
+                    // belong to the content. Slicing before the first match and then stepping over
+                    // the rest dropped exactly that tail, which is the gap `strip_extra_quotes` was
+                    // left documenting as "intentionally a no-op today".
+                    let mut end = self.pos + 3;
+                    while self.byte_at(end) == Some(b'\'') {
+                        end += 1;
                     }
-                    return Ok((strip_extra_quotes(content, true), true));
+                    self.pos = end;
+                    return Ok((self.text[start..end - 3].to_string(), true));
                 }
                 let b = self
                     .peek()
@@ -1684,13 +1695,6 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn strip_extra_quotes(content: &str, _multiline: bool) -> String {
-    // A `'''` terminator may be preceded by up to 2 `'` that belong to
-    // content; the caller advanced past them without adding to the string,
-    // so this hook is intentionally a no-op today but kept for symmetry.
-    content.to_string()
-}
-
 /// Lightweight validator the writer uses to guard tagged timestamps without
 /// pulling in the full parser context. Grammar follows TOML 1.0:
 /// `localDate`, `localTime`, `localDatetime` and offset `datetime`.
@@ -2073,6 +2077,14 @@ mod tests {
             .unwrap_or_else(|| panic!("no key `{name}` among {:?}", parse_keys(node)))
     }
 
+    /// The text a scalar node carries, for the string-form tests that ask what a scanner kept.
+    fn scalar(node: &CustomNode) -> String {
+        let CustomNode::Scalar { value, .. } = node else {
+            panic!("asked for a scalar where the tree has something else");
+        };
+        value.to_string()
+    }
+
     #[test]
     fn parses_basic_kv_and_tables() {
         let ast = from_toml("a = 1\nb = \"hi\"\n[tbl]\nc = true\nd = 3.14\n").unwrap();
@@ -2156,6 +2168,36 @@ mod tests {
             node = child(node, name);
         }
         assert_eq!(parse_keys(node), vec!["d"]);
+    }
+
+    #[test]
+    fn the_last_three_quotes_of_a_run_close_a_literal_multiline_string() {
+        // A literal multi-line string that ends in `'` is written with extra quotes ahead of the
+        // closing delimiter, and only the last three of the run close it: `''''one quote''''` is
+        // `'one quote'`, and the five-quote tail below is `''`. Slicing at the FIRST `'''` match
+        // and stepping over the rest ate that tail — the corpus files
+        // `valid/string/multiline-quotes` (`lit_one`) and `valid/string/raw-multiline`
+        // (`this-str-has-apostrophes`) were the evidence.
+        let one = from_toml("lit = ''''one quote''''\n").unwrap();
+        assert_eq!(scalar(child(&one, "lit")), "'one quote'");
+        let two = from_toml("lit = '''a'''''\n").unwrap();
+        assert_eq!(scalar(child(&two, "lit")), "a''");
+        // The control: a run of exactly three closes, and nothing is left to hand back.
+        let plain = from_toml("lit = '''a'''\n").unwrap();
+        assert_eq!(scalar(child(&plain, "lit")), "a");
+    }
+
+    #[test]
+    fn an_escaped_backslash_at_the_end_of_a_line_is_content_not_a_continuation() {
+        // `\\` is an escaped backslash, so the break that follows it belongs to the string; only an
+        // unescaped backslash at line end swallows the break and the indent after it. The old test
+        // looked one byte past the first backslash, saw the break behind the second one, and ate the
+        // newline — `valid/string/multiline`'s `escape-bs-1`.
+        let escaped = from_toml("a = \"\"\"x \\\\\nb\"\"\"\n").unwrap();
+        assert_eq!(scalar(child(&escaped, "a")), "x \\\nb");
+        // The control that must keep working: a lone backslash at line end is a continuation.
+        let continued = from_toml("a = \"\"\"x \\\n   b\"\"\"\n").unwrap();
+        assert_eq!(scalar(child(&continued, "a")), "x b");
     }
 
     #[test]

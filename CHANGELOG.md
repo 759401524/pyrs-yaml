@@ -755,6 +755,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A multi-line string keeps the quotes and the break at its end** — two scanner defects, both
+  surfaced by the toml-test tier that PR #463 had just tightened enough to see. A literal multi-line
+  string that ends in `'` is written with extra quotes ahead of the closing delimiter
+  (`''''one quote''''` is `'one quote'`); the scanner closed the string at the FIRST `'''` match and
+  then stepped over the rest of the run without adding it, so the tail quote vanished — `lit_one`,
+  `this-str-has-apostrophes` (two of them), the spec's own `str7`. The closing delimiter is now the
+  last three quotes of the run. The sibling defect is in the basic form: the line-continuation test
+  looked one byte past the first backslash, so an escaped backslash at the end of a line — `\` then
+  the break the document asked to keep — read as a continuation and the break was eaten
+  (`escape-bs-1`). Measured: toml-test valid-decode **257/266 → 262/266 (98.50%)**, the floor moves
+  to 0.984, and the encoder tier stays at **268/268** because the writer keeps both shapes, which is
+  why the round trip is asserted rather than assumed. Three tests added: two Rust (a run of three,
+  four and five quotes with its control; an escaped backslash with the continuation control) and one
+  Python (both through `load_toml`, plus the round trip). Attribution by mutation: reverting the
+  close reddens the Rust run test alone, reverting the continuation test reddens the
+  escaped-backslash one alone. The four decode gaps left are one cause, recorded as such in the
+  suite's module docstring: TOML 1.1 super-table re-opening. The no-op helper that had been
+  documenting the quote gap is gone.
+  Counted instructions, both binaries built in one WSL session on the compiler the floor pins: the
+  core `ir_gate` digest moved (`1d87e3fa40a58f54` to `70872d8a1212cba5`) while `from_toml_medium`
+  read the same 159,874,708 and `to_toml_medium` read four fewer (28,913,693 to 28,913,689,
+  -0.00001%), so the fix costs nothing on the read path and claims nothing either.
+
 - **A dotted key inside an inline table nests, as TOML defines it** —
   `animal = { type.name = "pug" }` is the spec's own example of the form, and it means
   `[animal.type]` with `name = "pug"`. `parse_inline_table` stored the dot-joined text as a single
