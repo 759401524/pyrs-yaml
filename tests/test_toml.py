@@ -516,13 +516,29 @@ class TestInlineTableCollision:
         "src,want",
         [
             ("a = { x = 1, y = 2 }", {"x": 1, "y": 2}),
-            ("a = { x.y = 1, x.z = 2 }", {"x.y": 1, "x.z": 2}),
+            ("a = { x.y = 1, x.z = 2 }", {"x": {"y": 1, "z": 2}}),
             ("a = { }", {}),
             ("a = { b = { c = 1 } }", {"b": {"c": 1}}),
         ],
     )
     def test_legal_inline_tables_still_load(self, src, want):
         assert pyrs_yaml.load_toml(src)["a"] == want
+
+    def test_a_dotted_inline_key_nests_and_a_quoted_one_does_not(self):
+        """`{ x.y = 1 }` is a path; `{ "x.y" = 1 }` is one name that contains a dot.
+
+        TOML's own inline-table example is `animal = { type.name = "pug" }`, and the spec says it
+        means `[animal.type]` with `name = "pug"`. Reading the dotted form as a single key whose
+        text is `type.name` did two things: it disagreed with the spec, and it collapsed the two
+        documents above onto one shape, so the reader could no longer tell them apart. The flat
+        projection was pinned here before it was understood; that pin is what this replaces.
+        """
+        assert pyrs_yaml.load_toml('animal = { type.name = "pug" }\n') == {"animal": {"type": {"name": "pug"}}}
+        assert pyrs_yaml.load_toml('animal = { "type.name" = "pug" }\n') == {"animal": {"type.name": "pug"}}
+        # The writer's shape for a nested inline table is its own (`{a = {b = 1}}`), and what the
+        # round trip promises is the data, exactly as `a.b.c = 1` at table level already promises it.
+        hub = pyrs_yaml.from_toml('animal = { type.name = "pug" }\n')
+        assert pyrs_yaml.load_toml(pyrs_yaml.to_toml(hub)) == {"animal": {"type": {"name": "pug"}}}
 
 
 class TestBareCarriageReturn:

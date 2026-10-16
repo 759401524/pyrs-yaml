@@ -20,11 +20,23 @@ string, and a run of newlines written literally into a single-line string - both
 forbidden by TOML and both rejected by this crate's own parser, so ``to_toml``
 was emitting text no one could read back.
 
-The decode threshold gates stay honest floors pinned to the *measured* compliance
-of the current parser, not aspirational 100% - they exist to stop regression, and
-the known gap categories (TOML 1.1 super-table re-opening, control-character and
-float-underscore strictness, inline-table duplicate keys) are tracked on the
-ROADMAP rather than silently excused.
+The decode threshold gates hold at the *measured* compliance of the current parser, and each is set
+one case below it rather than at a comfortable round number. Measured 2026-10-16 on the corpus CI
+clones: **257 of 266 valid documents decode to the tagged values TOML says (`96.62%`)**, so that floor
+is 0.966. The reject half is interpreter-dependent and the floor describes the worst leg: **491 of 511
+invalid documents are refused on CPython 3.8-3.13 (`96.09%`) but 488 of 511 on 3.14 and 3.15
+(`95.50%`)**, because three out-of-range times (`24:00:00`, in `datetime`, `local-datetime` and
+`local-time`) are rejected by the host's `datetime` constructor rather than by this parser, and a newer
+interpreter accepts the spelling — so that floor is 0.954, the 3.14/3.15 reading with one case of
+slack. The `0.85` these two gates used to carry was 22 cases of slack on the decode half and 57 on the
+reject half, which is how a whole defect class hid: nine cases read `a = { x.y = 1 }` as one key whose
+text is `x.y` instead of the nested table the spec defines — the seven `inline-table/key-dotted-*`
+files plus the spec's own `animal = { type.name = "pug" }` example in each version tree — and the suite
+kept printing a green percentage over it. The remaining nine decode gaps are two causes — TOML 1.1
+super-table re-opening refused by the header bookkeeping (4), and a multi-line string whose final quote
+run is eaten by the closing-delimiter scan (5). The engine owning the temporal range check is the fix
+for the split above, not a wider floor; both gates name the failing cases in their message, so a
+regression points at a case rather than at a percentage.
 """
 
 import json
@@ -142,25 +154,32 @@ def _matches(expected, actual):
 
 
 def test_toml_test_valid_decodes_match():
-    """Valid TOML parses and decodes to the expected tagged values (>=85%)."""
+    """Valid TOML parses and decodes to the expected tagged values (measured 257/266)."""
     total = 0
     matched = 0
+    failures: list[str] = []
     for toml, js in _iter_valid():
         total += 1
+        name = toml.relative_to(SUITE_DIR).as_posix()
         try:
             expected = _decode_expected(json.loads(js.read_text(encoding="utf-8")))
             actual = _encode_actual(pyrs_yaml.load_toml(toml.read_bytes().decode("utf-8")))
-        except Exception:
+        except Exception as exc:
+            failures.append(f"{name}: {type(exc).__name__}: {str(exc)[:70]}")
             continue
         if _matches(expected, actual):
             matched += 1
+        else:
+            failures.append(f"{name}: decoded differs")
     assert total > 0, "no valid toml-test cases found"
     rate = matched / total
-    assert rate >= 0.85, f"valid decode-match rate {rate:.1%} ({matched}/{total}) below floor 85%"
+    assert rate >= 0.966, (
+        f"valid decode-match rate {rate:.1%} ({matched}/{total}) below floor 96.6% (measured 257/266): {failures}"
+    )
 
 
 def test_toml_test_invalid_rejected():
-    """Invalid TOML is rejected rather than silently accepted (>=85%).
+    """Invalid TOML is rejected rather than silently accepted (488/511 on the newest interpreters).
 
     A document is "rejected" when loading raises - either a typed
     ``YamlParseError`` or any conversion-time error (a bare ``ValueError`` from
@@ -168,15 +187,21 @@ def test_toml_test_invalid_rejected():
     """
     total = 0
     rejected = 0
+    accepted: list[str] = []
     for toml in _iter_invalid():
         total += 1
         try:
             pyrs_yaml.load_toml(toml.read_bytes().decode("utf-8"))
         except Exception:
             rejected += 1
+        else:
+            accepted.append(toml.relative_to(SUITE_DIR).as_posix())
     assert total > 0, "no invalid toml-test cases found"
     rate = rejected / total
-    assert rate >= 0.85, f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 85%"
+    assert rate >= 0.954, (
+        f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 95.4% "
+        f"(488/511 on CPython 3.14+, 491/511 through 3.13): silently accepted {accepted}"
+    )
 
 
 def _tagged_to_python(node):

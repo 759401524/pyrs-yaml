@@ -1177,14 +1177,16 @@ impl<'a> Parser<'a> {
 
     fn parse_inline_table(&mut self) -> Result<TomlValue, ParseError> {
         self.expect_byte(b'{', "expected `{`")?;
-        let mut entries = Vec::new();
+        // Members are held as the paths that wrote them; `nest_inline` lays them into the tree
+        // those paths name once the whole `{ ... }` is read.
+        let mut entries: Vec<InlineMember> = Vec::new();
         // Segment paths already defined in this inline table, to detect dotted
         // key collisions (`a` vs `a.b`, `a.b` vs `a.b.c`) per TOML rules.
         let mut defined_paths: Vec<Vec<String>> = Vec::new();
         self.skip_inline_ws();
         if self.peek() == Some(b'}') {
             self.pos += 1;
-            return Ok(TomlValue::InlineTable(entries));
+            return Ok(TomlValue::InlineTable(Vec::new()));
         }
         loop {
             self.skip_inline_ws();
@@ -1223,9 +1225,8 @@ impl<'a> Parser<'a> {
                     named.join(".")
                 )));
             }
-            let joined_key = named.join(".");
-            defined_paths.push(named.clone());
-            entries.push((joined_key, v, anns));
+            defined_paths.push(named);
+            entries.push((key, v, anns));
             self.skip_inline_ws();
             if self.peek() == Some(b',') {
                 self.pos += 1;
@@ -1238,14 +1239,14 @@ impl<'a> Parser<'a> {
                     self.skip_inline_ws();
                     if self.peek() == Some(b'}') {
                         self.pos += 1;
-                        return Ok(TomlValue::InlineTable(entries));
+                        return Ok(TomlValue::InlineTable(nest_inline(entries)?));
                     }
                 }
                 continue;
             }
             if self.peek() == Some(b'}') {
                 self.pos += 1;
-                return Ok(TomlValue::InlineTable(entries));
+                return Ok(TomlValue::InlineTable(nest_inline(entries)?));
             }
             return Err(self.err("expected `,` or `}` in inline table"));
         }
@@ -1800,6 +1801,82 @@ fn key_text(key: &[(String, usize)]) -> String {
     names(key).join(".")
 }
 
+/// One member of an inline table exactly as the source wrote it: the key path it named (every
+/// segment with its own offset), its value, and the notes and offsets that belong to the member.
+type InlineMember = (Vec<(String, usize)>, TomlValue, KVAnnotations);
+/// The entries an inline table holds after its members' paths are laid down: a name, a value, and
+/// the annotations of the member that wrote it. This is the shape `TomlValue::InlineTable` owns.
+type InlineEntries = Vec<(String, TomlValue, KVAnnotations)>;
+
+/// Lay an inline table's members into the tree their key paths name.
+///
+/// A dotted key inside `{ ... }` is a path, not a name that happens to contain a dot: the spec's own
+/// `animal = { type.name = "pug" }` means `type` → `name`, and two members that share a prefix
+/// (`{ a.b = 1, a.c = 2 }`) share the one table that prefix names. Storing the dot-joined text as a
+/// single key instead collapsed `a = { x.y = 1 }` and `a = { "x.y" = 1 }` — documents with different
+/// data — onto one shape, and that is what cost the toml-test `inline-table/key-dotted-*` group. The
+/// traversal mirrors `register_kv`, which already nests a dotted key at table level.
+///
+/// An intermediate level exists only because a path created it, so it reports the offset of the
+/// segment that names it and begins its value at the next segment: the first byte the source really
+/// wrote inside it. `parse_inline_table` has already rejected a member that extends a path an earlier
+/// member ended on, so a name found here that is not a table is reported rather than overwritten.
+fn nest_inline(members: Vec<InlineMember>) -> Result<InlineEntries, ParseError> {
+    let mut out: InlineEntries = Vec::new();
+    for (path, value, mut anns) in members {
+        let (leaf, leaf_at) = match path.last() {
+            Some((name, at)) => (name.clone(), *at),
+            None => {
+                return Err(Parser::static_err(
+                    "empty key path in inline table",
+                    anns.key_at,
+                ));
+            }
+        };
+        // The name the AST stores is the last segment, and its offset is where that name begins —
+        // the same rule `register_kv` applies to a dotted key outside an inline table.
+        anns.key_at = leaf_at;
+        // Mutable-pointer traversal, for the reason `register_kv` names: a `&mut` reborrow of the
+        // nested `Vec` cannot be carried across the next level's search.
+        let mut level = &mut out as *mut InlineEntries;
+        for i in 0..path.len() - 1 {
+            let (seg, seg_at) = (path[i].0.as_str(), path[i].1);
+            unsafe {
+                let entries = &mut *level;
+                match entries.iter_mut().find(|(n, _, _)| n.as_str() == seg) {
+                    Some((_, TomlValue::InlineTable(children), _)) => {
+                        level = children as *mut InlineEntries;
+                    }
+                    Some(_) => {
+                        return Err(Parser::static_err(
+                            "dotted key path traverses a non-table value",
+                            seg_at,
+                        ));
+                    }
+                    None => {
+                        entries.push((
+                            seg.to_string(),
+                            TomlValue::InlineTable(Vec::new()),
+                            KVAnnotations {
+                                key_at: seg_at,
+                                value_at: path[i + 1].1,
+                                ..Default::default()
+                            },
+                        ));
+                        if let Some((_, TomlValue::InlineTable(children), _)) = entries.last_mut() {
+                            level = children as *mut InlineEntries;
+                        }
+                    }
+                }
+            }
+        }
+        unsafe {
+            (*level).push((leaf, value, anns));
+        }
+    }
+    Ok(out)
+}
+
 fn validate_date(s: &str) -> bool {
     let b = s.as_bytes();
     if b.len() < 10
@@ -1982,6 +2059,20 @@ mod tests {
             .collect()
     }
 
+    /// The value one key names inside a mapping. A dotted key's whole point is that its table sits
+    /// below the name, so these tests ask for a child by name and read as a failure whatever the
+    /// answer is not — a missing `type` under `animal` is the defect, not a `None` to branch on.
+    fn child<'a>(node: &'a CustomNode, name: &str) -> &'a CustomNode {
+        let CustomNode::Mapping { pairs, .. } = node else {
+            panic!("asked for `{name}` on a node that is not a mapping");
+        };
+        pairs
+            .iter()
+            .find(|(k, _)| matches!(k, CustomNode::Scalar { value, .. } if value.as_ref() == name))
+            .map(|(_k, v)| v)
+            .unwrap_or_else(|| panic!("no key `{name}` among {:?}", parse_keys(node)))
+    }
+
     #[test]
     fn parses_basic_kv_and_tables() {
         let ast = from_toml("a = 1\nb = \"hi\"\n[tbl]\nc = true\nd = 3.14\n").unwrap();
@@ -2027,6 +2118,75 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn an_inline_table_dotted_key_names_a_path_not_a_key_with_a_dot() {
+        // `animal = { type.name = "pug" }` is the TOML spec's own example of the form, and it is the
+        // shape `valid/spec-1.0.0/inline-table-0.toml` asserts. Keeping `type.name` as one key text
+        // instead of a table both disagreed with the spec and collapsed this document onto the shape
+        // of `animal = { "type.name" = "pug" }`, which says something different.
+        let ast = from_toml("animal = { type.name = \"pug\" }\n").unwrap();
+        let animal = child(&ast, "animal");
+        assert_eq!(parse_keys(animal), vec!["type"]);
+        assert_eq!(parse_keys(child(animal, "type")), vec!["name"]);
+    }
+
+    #[test]
+    fn sibling_dotted_members_of_an_inline_table_share_the_one_table_they_name() {
+        let ast = from_toml("t = { a.b = 1, x = 2, a.c = 3 }\n").unwrap();
+        let t = child(&ast, "t");
+        assert_eq!(parse_keys(t), vec!["a", "x"]);
+        assert_eq!(parse_keys(child(t, "a")), vec!["b", "c"]);
+    }
+
+    #[test]
+    fn a_quoted_dotted_key_stays_one_key() {
+        // The other half of the distinction the fix opens: quotes put the dot inside the name, so
+        // this document must stay one key and must not be read as the path it now spells.
+        let ast = from_toml("t = { \"a.b\" = 1 }\n").unwrap();
+        assert_eq!(parse_keys(child(&ast, "t")), vec!["a.b"]);
+    }
+
+    #[test]
+    fn a_deep_inline_dotted_key_nests_every_level_it_names() {
+        let ast = from_toml("t = { a.b.c.d = 1 }\n").unwrap();
+        let mut node = child(&ast, "t");
+        for name in ["a", "b", "c"] {
+            node = child(node, name);
+        }
+        assert_eq!(parse_keys(node), vec!["d"]);
+    }
+
+    #[test]
+    fn an_inline_table_still_refuses_a_member_that_extends_a_finished_path() {
+        // The nesting is built on top of this rejection: a level walked here is always one a dotted
+        // member opened, never an existing value the path would have to overwrite.
+        for src in [
+            "a = { x = 1, x.y = 2 }",
+            "a = { x.y = 1, x = 2 }",
+            "a = { x.y = 1, x.y.z = 2 }",
+            "a = { b = { c = 1 }, b.d = 2 }",
+        ] {
+            let outcome = from_toml(src);
+            assert!(
+                matches!(outcome, Err(ParseError::Syntax { .. })),
+                "{src} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_nested_inline_table_writes_back_and_reads_as_the_same_data() {
+        // The writer's own shape for the path it was handed (`a = {b = {c = 1}}`) differs from the
+        // source spelling, which is what `a.b.c = 1` at table level already does; the claim pinned
+        // here is that the data survives, because that is the claim the flat key used to break.
+        let src = "animal = { type.name = \"pug\" }\n";
+        let ast = from_toml(src).unwrap();
+        let text = crate::writer::to_toml(&ast).unwrap();
+        let back = from_toml(&text).unwrap();
+        assert_eq!(back, ast);
+        assert_eq!(parse_keys(child(&back, "animal")), vec!["type"]);
     }
 
     #[test]
