@@ -5836,6 +5836,66 @@ next Monday, the config is validated only by using documented keys and by Depend
 security-update toggle is a repository setting outside this file, and PR #438 remains the human path
 for the pyo3 floor until that decision is made.
 
+### (dw) The event vocabulary got its second producer, and it said what a JSON note cannot say
+
+`pyrs-event` has existed since PR #379 with exactly one producer - the YAML adapter - which is the
+reason `docs/dev/event-stream.md` refused to declare the vocabulary neutral until a second format
+had tried to fit it. Step 2 was attempted on 2026-10-13 in the shape of one traversal with two
+outputs and shelved when the gate measured +0.61…+1.05% on the three JSON read scenarios, with the
+control row (+1.60% with every emit call deleted) proving the price was threading a sink through the
+tree walk rather than producing events. What ships here is the shape that ruling asked for: a walk
+of its own.
+
+`pyrs_json::parse_stream` and `parse_stream_with_options` are the new surface. They reuse the
+scanners the AST route already trusts - `string`, `single_quoted_string`, `identifier_key`,
+`expect`, `ws`/`ws_extended`, the error helper - and build nothing else, so the tree traversal is
+untouched by the sink question. Three extractions keep one authored rule where two walks now need
+it: `number_source` is the grammar and reports the source slice, with `number` as the tree's wrapper
+(it allocates one fewer `String` per number than before), `hub_scalar` / `non_finite_spelling` holds
+the `.inf` / `-.inf` / `.nan` projection for both routes, and `single_quoted_node` is the JSON5
+style arm shared with the replay. `parser_from` builds the scanner so a dialect flag cannot reach
+one entry point and not the other.
+
+The second producer answered the questions the design doc listed, all of them by measurement rather
+than by argument. `anchor` and `tag` stay `None` and `Alias` never appears - a test walks a JSON5
+document with every dialect axis on to check it. `style` is the *source* spelling and the hub's
+storage style is a resolution the reader applies: a JSON5 `'k'` key is `SingleQuoted` in the stream
+and plain in the tree, which is the closed attempt's "style cannot be assumed per-position" finding
+with the mechanism named. A non-finite token arrives verbatim; the projection lives with the
+resolver. Positions are the producer's to carry - each event gets a 0-indexed line and a char column
+from one line table per document, computed the way `err` computes a diagnostic, which is the first
+finding made concrete: a stream knows where things are and the tree does not.
+
+The one thing the vocabulary cannot say is named instead of patched. `{"a": 1 /* x */, "b": 2}` and
+`{"a": 1, /* x */ "b": 2}` produce identical event shapes - value, note, next name - while the
+engine files the note on the value in the first and on the following key in the second, deciding by
+which side of the comma the note sat. Neither the note's position nor its `standalone` flag records
+that: a comma is not an event. So the replay is exact for comment-free documents, and once notes
+exist it is exact about every note's text (none invented, none dropped) but not about the slot. The
+exit criterion for step 3 and step 4 is now concrete: either the comment payload carries "the
+separator was crossed", or the stream reports the separator.
+
+A belief went with it. `NodeMeta`'s equality doc claimed `CustomNode`'s structural equality ignores
+decorations entirely; the replay reddened on two trees differing only by a `comment` slot, and the
+impl does compare that slot plus anchor and tag while leaving out the leading-note list and
+`source_range`. The sentence now describes the code.
+
+Measured on this change: `cargo clippy --all --all-targets -- -D warnings` clean, `cargo nextest run
+--all` 645 passed (70 in `pyrs-json`, nine of them new), `cargo check -p pyrs-json
+--no-default-features` clean with `pyrs-event` added as a `no_std` edge. The refusal table is 32
+inputs across the three dialects and each must yield the identical `ParseError` from both walks; the
+seed corpus (`fuzz/seeds/json_roundtrip`, 14 files × 3 dialects) replays 33 accepted documents and
+refuses the rest twice over with the same diagnostic.
+
+Not verified here, and not claimed: the instruction-count gate was not run (this host has no
+valgrind), so `from_json_*`'s movement from the `number_source` split is CI's
+`Instruction-count baseline` leg to judge. There is no public `from_events` - the fold lives in the
+test tier, and publishing it before TOML answers the same questions would freeze one producer's
+assumptions into the contract. No fuzz target spans the two walks yet; the seed corpus and the
+refusal table are the input such a target would use, and it is the next defence, not this one. The
+Python-facing surface, the stub and the four doc locales remain the last step of plan B and were not
+touched.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

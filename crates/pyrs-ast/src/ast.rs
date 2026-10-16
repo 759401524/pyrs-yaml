@@ -321,10 +321,12 @@ impl PartialEq for NodeMeta {
     /// assertion changes meaning. Every note participates at this level — two
     /// decorations differing only by a stacked second note are different
     /// metadata, because dropping that note was the defect the list exists to
-    /// prevent. (`CustomNode`'s own structural equality continues to ignore
-    /// decorations entirely, the #114 rule that keeps hand-built fixtures
-    /// matching parsed nodes and duplicate-key folding asking only what YAML
-    /// resolves.) `source_range` is still excluded.
+    /// prevent. `CustomNode`'s own structural equality is narrower than this impl: it
+    /// compares the inline `comment` slot, the anchor and the tag, and leaves out the
+    /// leading-note list and `source_range` — that exclusion is the #114 rule that
+    /// keeps a programmatically-built node matching a parsed one. Two trees that
+    /// differ only by a `comment` slot therefore do compare unequal (measured while
+    /// writing the JSON stream replay, which empties the slots it cannot place).
     fn eq(&self, other: &Self) -> bool {
         self.standalone_slice() == other.standalone_slice()
             && self.inline_slot() == other.inline_slot()

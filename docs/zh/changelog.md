@@ -19,6 +19,18 @@ status: new
 
 #### 新增
 
+- **JSON 如今有不建事件树的事件流（`pyrs_json::parse_stream`）** — 共享词汇表等来的就是第二个生产
+  者，这次它按 2026-10-13 的裁决成形：自己走一遍 AST 路径已在用的那些扫描器，于是没有任何 sink
+  被穿进建树的遍历，那份 +1.5% 的代价谁也不必再付。`pyrs-json` 新增一条 `no_std` 的 `pyrs-event`
+  依赖，每个事件都带上树给不出的行与列。九个测试记下第二种格式回答了什么：`anchor` 与 `tag` 恒
+  为空、`Alias` 从不出现；`style` 报告标量当初是怎么写的，所以 JSON5 的 `'k'` 键在流里是
+  `SingleQuoted`、在中枢里是 plain；非有限字面量原样到达，`.inf` 这层投影只住在 `hub_scalar` 一
+  处；32 个畸形文档与 14 份种子语料被两条遍历以同一个 `ParseError` 拒绝，33 个被接受的文档则回放
+  成直接解析器建出的那棵树。词汇表仍答不出的那一个问题被点名而非遮掩：`{"a": 1 /* x */, "b": 2}`
+  与 `{"a": 1, /* x */ "b": 2}` 产出完全相同的事件，而引擎把这条注释归给了不同的节点——所以回放定
+  位的是结构、值与每条注释的文本，不是那个槽位。— 详情：quality-ledger (dw)、
+  `docs/dev/event-stream.md`。
+
 - **依赖更新如今按计划到达，并在一条边界内自行合并** — `.github/dependabot.yml` 现已跟踪 `cargo`（工
   作区与 `fuzz/`，各有自己的锁文件）、`uv`（`pyproject.toml` + `uv.lock`）以及 CI actions，每周针对
   `main` 运行。权威仍是那道已经挡住人的门禁：`Test matrix (all legs)` 对该 head 提交报 `success`

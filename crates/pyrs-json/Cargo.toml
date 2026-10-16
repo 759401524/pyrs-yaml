@@ -19,6 +19,9 @@ indexmap = { version = "2.7", default-features = false }
 # those general categories. rustc's own lexer uses this same tiny crate.
 unicode-ident = "1"
 pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", default-features = false }
+# The event vocabulary the tree-free producer reports. `pyrs-event` is `no_std` + `alloc` and names
+# only `pyrs-ast` types, so this edge adds no engine to a downstream reader of the stream.
+pyrs-event = { path = "../pyrs-event", version = "0.17.0", default-features = false }
 pyrs-schema = { path = "../pyrs-schema", version = "0.17.0" }
 
 [features]

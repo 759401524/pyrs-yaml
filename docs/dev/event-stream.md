@@ -1,12 +1,14 @@
 # Format-neutral event stream — design and roadmap
 
 Status: **ruled - option B, adopted 2026-10-13; step A (`pyrs-event`) merged as PR #379; step 2
-(JSON producer) measured, priced and shelved the same day; decision 2 answered the same day - a
-multi-format `parse_stream` is promised to Python and Rust users.** The objective lists `事件流` as
-a core abstraction to be split into its own crate, alongside the AST. The AST half is done; the
-event-stream half is this document. Decisions 3 and 4 were both answered on 2026-10-14, so the list
-at the bottom is empty; what the next step waits on is the tree-free reader that the 2026-10-13
-ruling put in front of the producers, not a question for the maintainer.
+(JSON producer) measured, priced and shelved the same day in the shape that taxed the tree, and
+shipped on 2026-10-16 in the shape the ruling asked for: a tree-free second walk
+(`pyrs_json::parse_stream`), section "What the second walk answered". Decision 2 was answered the
+same day - a multi-format `parse_stream` is promised to Python and Rust users.** The objective
+lists `事件流` as a core abstraction to be split into its own crate, alongside the AST. The AST half
+is done; the event-stream half is this document. Decisions 3 and 4 were both answered on 2026-10-14,
+so the list at the bottom is empty. What is left in order is the TOML producer, the replay as a
+gate rather than a test, and only then the Python-facing surface.
 
 Every claim below is from reading the tree at `14196dc9` (2026-10-13), except the measurement
 section, which reads `bdc60d74`. File and line numbers are given so a reviewer can check them rather
@@ -206,6 +208,72 @@ a non-goal. Decision 3 (borrow versus own) was answered on 2026-10-14 and is the
 document's last section prices, and decision 4 (how TOML dotted keys are expressed) was answered the
 same day. Nothing in plan B waits on a maintainer now: what the next step waits on is the tree-free
 reader that the 2026-10-13 ruling reordered it behind.
+
+## What the second walk answered (2026-10-16, step 2 shipped tree-free)
+
+`pyrs_json::parse_stream` / `parse_stream_with_options` are the second producer, built the way the
+ruling ordered it: a walk of its own over the scanners the tree route already has, so nothing is
+threaded through the traversal that produces the AST. The +1.47…+1.60% the table above measured for
+a sink is not paid here because the sink does not exist here — the two walks share `string`,
+`single_quoted_string`, `number_source`, `identifier_key`, `expect`, `ws` and the error helper, and
+each builds its own output. `number` was split for exactly this reason: `number_source` is the
+grammar and reports the source slice, `number` is the tree's wrapper over it. The tree path now
+borrows the slice where it used to build a `String` per number, so the shared leaf is thinner than
+before rather than decorated with a second output.
+
+Nine tests in `crates/pyrs-json/src/parser.rs` hold the contract, and the shape of each answer is
+worth recording because step 3 (TOML) inherits them:
+
+- **`anchor`, `tag` and `Alias` are YAML's grammar, now measured rather than asserted.** A JSON
+  stream leaves both fields `None` on every event and never emits an alias; the test walks a JSON5
+  document with every dialect axis on so no shape is left unasked.
+- **`style` is the source spelling, and the hub's storage style is a resolution.** A `"…"` string
+  arrives `DoubleQuoted` even when `quoted_or_plain` later stores it plain; a JSON5 `'k'` key
+  arrives `SingleQuoted` even though the hub records identifier and single-quoted keys alike as
+  plain text (the closed attempt's third answer, now with the mechanism named). The fold in the test
+  tier is where `quoted_or_plain` runs, so one authored rule answers the question for both routes.
+- **A number's non-finite spelling belongs to the resolver.** The stream reports the token the
+  document wrote (`Infinity`, `-Infinity`, `NaN`); `non_finite_spelling` / `hub_scalar` is the one
+  place the `.inf` / `-.inf` / `.nan` projection lives, called by the tree walk and by the replay.
+- **Positions are the producer's to carry.** Each event gets granit-convention coordinates —
+  0-indexed line, column in characters from the line start, the same split `err` uses for a
+  diagnostic — from one line table per document. This is the closed attempt's first finding made
+  concrete: a stream knows where things are and the tree does not.
+- **Both walks refuse the same input at the same place.** 32 malformed documents across the three
+  dialects must produce the identical `ParseError` from either route, and the seed corpus
+  (`fuzz/seeds/json_roundtrip`, 14 files × 3 dialects) is asked the same question: 33 accepted
+  documents replay, the rest are refused twice over with the same diagnostic.
+
+### The one thing the vocabulary still cannot say
+
+`{"a": 1 /* x */, "b": 2}` and `{"a": 1, /* x */ "b": 2}` produce **identical** event shapes —
+value, then the note, then the next name — while the tree puts the note on the value in the first
+document and on the following key in the second. The engine decides by which side of the comma the
+note sat, and neither the note's position nor its `standalone` flag records that: the run that
+carried it started after the comma in one case and before it in the other, and a comma is not an
+event.
+
+So the replay is exact for comment-free documents and, once notes are in the document, it is exact
+about everything the stream reports — every note's text arrives, none is invented, none is dropped —
+but not about which node owns a same-line note. That is step 3's and step 4's problem to settle, and
+the two candidate answers are now concrete rather than open-ended: give the note a payload field for
+"the separator was crossed", or let the stream report JSON's separator. Naming the counterexample is
+`a_same_line_note_between_a_value_and_the_next_member_has_two_readings`.
+
+One belief went with this change. `NodeMeta`'s equality doc claimed `CustomNode`'s own structural
+equality ignores decorations entirely; it does not — the impl compares the inline `comment` slot,
+the anchor and the tag, and leaves out the leading-note list and `source_range`. The replay
+discovered it by failing on two trees that differed only by a note slot, and the doc now says what
+the code does.
+
+### What was not measured
+
+The instruction-count gate was not run here (this host has no valgrind), so the `number_source`
+split's effect on `from_json_*` is CI's `Instruction-count baseline` leg to judge, not a claim made
+in this file. The fold is a test-tier oracle and no public `from_events` exists yet: publishing it
+before the TOML producer has answered the same questions would freeze a shape that has one
+producer's assumptions in it. The Python-facing surface, the stubs and the four doc locales are the
+last step of plan B and were not touched.
 
 ## What this is not for
 

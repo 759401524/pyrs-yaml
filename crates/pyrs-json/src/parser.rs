@@ -16,11 +16,13 @@
 //!   and a document must contain exactly one value.
 
 use alloc::{
+    borrow::Cow,
     string::{String, ToString},
     vec::Vec,
 };
-use pyrs_ast::ast::{CustomNode, NodeMap};
+use pyrs_ast::ast::{CustomNode, NodeMap, ScalarStyle};
 use pyrs_ast::error::{DepthError, ParseError};
+use pyrs_event::{StreamEvent, StreamEventType};
 use pyrs_schema::schema::needs_quotes;
 use pyrs_schema::types::{Schema, YamlType};
 
@@ -125,19 +127,7 @@ pub fn from_json_with_options(
     text: &str,
     opts: JsonParseOptions,
 ) -> Result<CustomNode, ParseError> {
-    let mut p = Parser {
-        s: text.as_bytes(),
-        text,
-        pos: 0,
-        depth: 0,
-        max_depth: opts.max_depth,
-        allow_comments: opts.allow_comments,
-        allow_trailing_commas: opts.allow_trailing_commas,
-        allow_single_quoted: opts.allow_single_quoted,
-        allow_unquoted_keys: opts.allow_unquoted_keys,
-        allow_json5_numbers: opts.allow_json5_numbers,
-        pending_comment: Vec::new(),
-    };
+    let mut p = parser_from(text, opts);
     p.ws();
     // A file-leading note belongs to the root container itself, mirroring
     // the writer's `emit_root_leading` placement. Claim it from the slot
@@ -164,6 +154,26 @@ pub fn from_json_with_options(
     }
     p.flush_pending(&mut root);
     Ok(root)
+}
+
+/// The scanner for one document and one dialect — the same starting state for both readers.
+///
+/// The tree route and the stream route must begin identically, or a dialect flag that reaches one
+/// and not the other is a divergence no test will think to ask about.
+fn parser_from(text: &str, opts: JsonParseOptions) -> Parser<'_> {
+    Parser {
+        s: text.as_bytes(),
+        text,
+        pos: 0,
+        depth: 0,
+        max_depth: opts.max_depth,
+        allow_comments: opts.allow_comments,
+        allow_trailing_commas: opts.allow_trailing_commas,
+        allow_single_quoted: opts.allow_single_quoted,
+        allow_unquoted_keys: opts.allow_unquoted_keys,
+        allow_json5_numbers: opts.allow_json5_numbers,
+        pending_comment: Vec::new(),
+    }
 }
 
 struct Parser<'a> {
@@ -559,13 +569,7 @@ impl<'a> Parser<'a> {
                 // only path, so STRICT / JSONC never produce this) so
                 // `to_json5_text` can reproduce `'…'` rather than forcing
                 // every string double-quoted.
-                Ok(CustomNode::Scalar {
-                    value: s.into(),
-                    style: pyrs_ast::ast::ScalarStyle::SingleQuoted,
-                    chomping: pyrs_ast::ast::Chomping::Clip,
-                    block_indent: None,
-                    meta: pyrs_ast::ast::NodeMeta::default(),
-                })
+                Ok(single_quoted_node(s))
             }
             Some(b't') => {
                 self.expect("true", "expected literal `true`")?;
@@ -589,14 +593,16 @@ impl<'a> Parser<'a> {
             // `.inf` is the spelling that resolves to `f64::INFINITY` there, and the JSON5 writer
             // restores the dialect's token from the value. The other JSON5-only forms (`0x…`, `.5`,
             // `5.`, `+7`) stay verbatim because YAML already reads them as numbers.
+            // `hub_scalar` is the one place that spellings live, because the event stream reports
+            // the source token and replays through the same function.
             Some(b'+') | Some(b'.') if self.allow_json5_numbers => self.number(),
             Some(b'I') if self.allow_json5_numbers => {
                 self.expect("Infinity", "expected `Infinity`")?;
-                Ok(CustomNode::plain_scalar(".inf"))
+                Ok(hub_scalar("Infinity"))
             }
             Some(b'N') if self.allow_json5_numbers => {
                 self.expect("NaN", "expected `NaN`")?;
-                Ok(CustomNode::plain_scalar(".nan"))
+                Ok(hub_scalar("NaN"))
             }
             Some(b'-') | Some(b'0'..=b'9') => self.number(),
             _ => Err(self.err("expected a JSON value")),
@@ -695,6 +701,17 @@ impl<'a> Parser<'a> {
     /// The matched slice is kept verbatim as a plain scalar (no f64 round
     /// trip), which preserves arbitrary-precision integer and float text.
     fn number(&mut self) -> Result<CustomNode, ParseError> {
+        Ok(hub_scalar(self.number_source()?))
+    }
+
+    /// The same grammar, reporting the source slice instead of a node.
+    ///
+    /// This is the leaf the event stream needs: a number's text is the document's own bytes, and the
+    /// only spelling decision the engine makes is the non-finite projection (`hub_scalar`). Keeping
+    /// it here means the tree path and the stream path read one grammar and one projection rule,
+    /// which is what the replay test can then hold them to.
+    fn number_source(&mut self) -> Result<&'a str, ParseError> {
+        let text = self.text;
         let start = self.pos;
         let json5 = self.allow_json5_numbers;
         // Sign. STRICT / JSONC allow only `-`; JSON5 also allows `+`.
@@ -708,12 +725,7 @@ impl<'a> Parser<'a> {
         // float spelling - see `value_inner` for why the word cannot stay.
         if json5 && self.peek() == Some(b'I') {
             self.expect("Infinity", "expected `Infinity` after sign")?;
-            let negative = self.text[start..self.pos].starts_with('-');
-            return Ok(CustomNode::plain_scalar(if negative {
-                "-.inf"
-            } else {
-                ".inf"
-            }));
+            return Ok(&text[start..self.pos]);
         }
         // JSON5 hexadecimal integer: `0x` / `0X` followed by one or more
         // hex digits. The raw slice is preserved verbatim so #121's
@@ -731,9 +743,7 @@ impl<'a> Parser<'a> {
             if self.pos == ds {
                 return Err(self.err("expected hexadecimal digits in number"));
             }
-            return Ok(CustomNode::plain_scalar(
-                self.text[start..self.pos].to_string(),
-            ));
+            return Ok(&text[start..self.pos]);
         }
         // JSON5 leading-dot form: `.5` (no integer part). Under STRICT the
         // `.` branch below requires a preceding integer, so handle it here.
@@ -795,9 +805,7 @@ impl<'a> Parser<'a> {
                 self.pos += 1;
             }
         }
-        Ok(CustomNode::plain_scalar(
-            self.text[start..self.pos].to_string(),
-        ))
+        Ok(&text[start..self.pos])
     }
 
     /// Decode a quoted string; returns its content.
@@ -929,6 +937,39 @@ fn is_json5_ws(ch: char) -> bool {
     (ch.is_whitespace() && ch != '\u{85}') || ch == '\u{feff}'
 }
 
+/// The hub's own spelling for a JSON5 non-finite token, or `None` for any other text.
+///
+/// One table for both readers of the projection: the tree path applies it where it builds the
+/// scalar, and the event replay applies it to the plain scalar a stream reports, so the two cannot
+/// disagree about what `Infinity` becomes (see `value_inner` for why the source word cannot stay).
+fn non_finite_spelling(source: &str) -> Option<&'static str> {
+    match source {
+        "Infinity" | "+Infinity" => Some(".inf"),
+        "-Infinity" => Some("-.inf"),
+        "NaN" => Some(".nan"),
+        _ => None,
+    }
+}
+
+/// A JSON number or keyword as the hub carries it: the source text, except for the non-finite words.
+fn hub_scalar(source: &str) -> CustomNode {
+    CustomNode::plain_scalar(non_finite_spelling(source).unwrap_or(source))
+}
+
+/// A JSON5 single-quoted string as the hub carries it.
+///
+/// The style is the dialect's own (PR #121) so `to_json5_text` can reproduce `'…'`; unlike a
+/// double-quoted string it never goes through `quoted_or_plain`.
+fn single_quoted_node(value: String) -> CustomNode {
+    CustomNode::Scalar {
+        value: value.into(),
+        style: pyrs_ast::ast::ScalarStyle::SingleQuoted,
+        chomping: pyrs_ast::ast::Chomping::Clip,
+        block_indent: None,
+        meta: pyrs_ast::ast::NodeMeta::default(),
+    }
+}
+
 /// JSON strings land in the YAML-shaped AST without ever re-resolving: text that a plain YAML scalar
 /// would reinterpret is quoted (the same `needs_quotes` discipline the TOML spoke follows).
 ///
@@ -1023,6 +1064,392 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
         i -= 1;
     }
     i
+}
+
+// ---------------------------------------------------------------------------
+// The tree-free event stream
+// ---------------------------------------------------------------------------
+
+/// Byte offset of each line start, so an event position is a lookup plus one char count.
+///
+/// Lines break where the crate's own diagnostics break (`err` counts `\n`), which is what lets a
+/// stream event and the error for the same byte agree about where they sit.
+fn line_starts(text: &str) -> Vec<usize> {
+    let mut starts = Vec::with_capacity(8);
+    starts.push(0usize);
+    for (index, byte) in text.bytes().enumerate() {
+        if byte == b'\n' {
+            starts.push(index + 1);
+        }
+    }
+    starts
+}
+
+/// The 0-indexed (line, column) pair of a byte offset, the column counted in chars.
+fn line_col(text: &str, starts: &[usize], pos: usize) -> (usize, usize) {
+    let line = starts
+        .partition_point(|&start| start <= pos)
+        .saturating_sub(1);
+    let start = starts[line];
+    let cut = floor_char_boundary(text, pos.max(start));
+    (line, text[start..cut].chars().count())
+}
+
+/// Where each comment token inside `[from, to)` begins, in source order.
+fn comment_starts(text: &str, from: usize, to: usize) -> Vec<usize> {
+    let bytes = text.as_bytes();
+    let mut found = Vec::new();
+    let mut index = from;
+    while index + 1 < to {
+        if bytes[index] == b'/' {
+            if bytes[index + 1] == b'/' {
+                found.push(index);
+                index += 2;
+                while index < to && bytes[index] != b'\n' {
+                    index += 1;
+                }
+                continue;
+            }
+            if bytes[index + 1] == b'*' {
+                found.push(index);
+                index += 2;
+                while index + 1 < to && !(bytes[index] == b'*' && bytes[index + 1] == b'/') {
+                    index += 1;
+                }
+                index += 2;
+                continue;
+            }
+        }
+        index += 1;
+    }
+    found
+}
+
+/// The collector the stream walk writes into: the source, its line table, and the events so far.
+struct StreamOut<'a> {
+    text: &'a str,
+    starts: Vec<usize>,
+    events: Vec<StreamEvent<'a>>,
+}
+
+impl<'a> StreamOut<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            text,
+            starts: line_starts(text),
+            events: Vec::new(),
+        }
+    }
+
+    fn at(&mut self, pos: usize, event_type: StreamEventType<'a>) {
+        let (line, column) = line_col(self.text, &self.starts, pos);
+        self.events.push(StreamEvent {
+            event_type,
+            line,
+            column,
+        });
+    }
+
+    /// A scalar whose text is the source's own bytes: a number, a keyword, an identifier key.
+    fn plain(&mut self, from: usize, to: usize) {
+        let text = self.text;
+        self.at(
+            from,
+            StreamEventType::Scalar {
+                value: Cow::Borrowed(&text[from..to]),
+                style: ScalarStyle::Plain,
+                anchor: None,
+                tag: None,
+            },
+        );
+    }
+
+    /// A string whose text a decoder produced, reported with the style it was written in.
+    fn decoded(&mut self, pos: usize, value: String, style: ScalarStyle) {
+        self.at(
+            pos,
+            StreamEventType::Scalar {
+                value: Cow::Owned(value),
+                style,
+                anchor: None,
+                tag: None,
+            },
+        );
+    }
+
+    /// Report the notes one separation run carried, in source order, each at its own start.
+    ///
+    /// `ws_extended` records a note's text and whether it began on a line of its own, but not where
+    /// it began, and adding an offset to `PendingComment` would charge the tree path for a fact only
+    /// the stream asks for. The run is short and its grammar is one line of thought — whitespace plus
+    /// `//…` and `/*…*/` — so the starts are re-read here and paired with the records in order.
+    fn drain(&mut self, pending: &mut Vec<PendingComment>, run_start: usize, run_end: usize) {
+        if pending.is_empty() {
+            return;
+        }
+        let starts = comment_starts(self.text, run_start, run_end);
+        for (index, note) in pending.drain(..).enumerate() {
+            let pos = starts.get(index).copied().unwrap_or(run_end);
+            self.at(
+                pos,
+                StreamEventType::Comment {
+                    text: alloc::sync::Arc::from(note.text.as_str()),
+                    standalone: note.own_line,
+                },
+            );
+        }
+    }
+}
+
+/// Describe a JSON document as the events it is made of, without building the node model.
+///
+/// The stream is the shared `pyrs-event` vocabulary, so it has the shape the YAML engine already
+/// reports: `StreamStart` / `DocumentStart` around the value, one `DocumentEnd` / `StreamEnd` after
+/// it, `Scalar` / `MappingStart`-`MappingEnd` / `SequenceStart`-`SequenceEnd` for the nodes, and
+/// `Comment` for each note. `anchor` and `tag` are `None` throughout and `Alias` never appears —
+/// those are YAML's grammar, and this is the second producer that says so rather than a guess about
+/// the first.
+///
+/// Two reported facts are the source's own, not the hub's projection:
+///
+/// - `style` is how the scalar was *written*. A `"…"` string is `DoubleQuoted` even when the AST
+///   stores it plain because `quoted_or_plain` saw no need for quotes, and a JSON5 `'k'` key is
+///   `SingleQuoted` even though the hub records identifier and single-quoted keys alike as plain
+///   text. The event keeps the spelling; the reader of the stream decides what to store.
+/// - a JSON5 number arrives as its token (`Infinity`, `-Infinity`, `NaN`), while the tree stores the
+///   hub's `.inf` / `-.inf` / `.nan`. `hub_scalar` is the one function that makes that projection
+///   for both routes.
+///
+/// A number's text and a keyword's are the source slice; a string's is what the escapes decoded to.
+/// Errors are the same `ParseError` the tree route reports for the same input, at the same position,
+/// because both walks share the scanners and the dispatch order.
+pub fn parse_stream(text: &str) -> Result<Vec<StreamEvent<'_>>, ParseError> {
+    parse_stream_with_options(text, JsonParseOptions::STRICT)
+}
+
+/// Describe a JSON, JSONC or JSON5 document as events, with the dialect chosen by `opts`.
+pub fn parse_stream_with_options(
+    text: &str,
+    opts: JsonParseOptions,
+) -> Result<Vec<StreamEvent<'_>>, ParseError> {
+    let mut p = parser_from(text, opts);
+    let mut out = StreamOut::new(text);
+    out.at(0, StreamEventType::StreamStart);
+    out.at(0, StreamEventType::DocumentStart);
+    let before = p.pos;
+    p.ws();
+    out.drain(&mut p.pending_comment, before, p.pos);
+    p.stream_value(&mut out)?;
+    let before = p.pos;
+    p.ws();
+    out.drain(&mut p.pending_comment, before, p.pos);
+    if p.pos != p.s.len() {
+        return Err(p.err("trailing characters after the JSON value"));
+    }
+    out.at(p.pos, StreamEventType::DocumentEnd);
+    out.at(p.pos, StreamEventType::StreamEnd);
+    Ok(out.events)
+}
+
+impl<'a> Parser<'a> {
+    /// One nesting level of the stream walk, with the tree walk's budget and refusal.
+    fn stream_value(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+        self.depth += 1;
+        if self.depth > self.max_depth {
+            self.depth -= 1;
+            return Err(ParseError::MaxDepthExceeded(DepthError(self.max_depth)));
+        }
+        let descended = self.stream_value_inner(out);
+        self.depth -= 1;
+        descended
+    }
+
+    /// The dispatch of `value_inner`, reporting events instead of nodes.
+    fn stream_value_inner(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+        let token = self.pos;
+        match self.peek() {
+            Some(b'{') => self.stream_object(out),
+            Some(b'[') => self.stream_array(out),
+            Some(b'"') => {
+                let value = self.string()?;
+                out.decoded(token, value, ScalarStyle::DoubleQuoted);
+                Ok(())
+            }
+            Some(b'\'') if self.allow_single_quoted => {
+                let value = self.single_quoted_string()?;
+                out.decoded(token, value, ScalarStyle::SingleQuoted);
+                Ok(())
+            }
+            Some(b't') => {
+                self.expect("true", "expected literal `true`")?;
+                out.plain(token, self.pos);
+                Ok(())
+            }
+            Some(b'f') => {
+                self.expect("false", "expected literal `false`")?;
+                out.plain(token, self.pos);
+                Ok(())
+            }
+            Some(b'n') => {
+                self.expect("null", "expected literal `null`")?;
+                out.plain(token, self.pos);
+                Ok(())
+            }
+            Some(b'+') | Some(b'.') if self.allow_json5_numbers => self.stream_number(out),
+            Some(b'I') if self.allow_json5_numbers => {
+                self.expect("Infinity", "expected `Infinity`")?;
+                out.plain(token, self.pos);
+                Ok(())
+            }
+            Some(b'N') if self.allow_json5_numbers => {
+                self.expect("NaN", "expected `NaN`")?;
+                out.plain(token, self.pos);
+                Ok(())
+            }
+            Some(b'-') | Some(b'0'..=b'9') => self.stream_number(out),
+            _ => Err(self.err("expected a JSON value")),
+        }
+    }
+
+    /// The grammar is `number_source`; only the report differs from the tree walk.
+    fn stream_number(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+        let token = self.pos;
+        let spelling = self.number_source()?;
+        out.at(
+            token,
+            StreamEventType::Scalar {
+                value: Cow::Borrowed(spelling),
+                style: ScalarStyle::Plain,
+                anchor: None,
+                tag: None,
+            },
+        );
+        Ok(())
+    }
+
+    /// The dispatch of `object`, with every separation run reported as it is consumed.
+    fn stream_object(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+        let open = self.pos;
+        self.pos += 1; // '{'
+        out.at(
+            open,
+            StreamEventType::MappingStart {
+                anchor: None,
+                tag: None,
+            },
+        );
+        let before = self.pos;
+        self.ws();
+        out.drain(&mut self.pending_comment, before, self.pos);
+        if self.peek() == Some(b'}') {
+            let close = self.pos;
+            self.pos += 1;
+            out.at(close, StreamEventType::MappingEnd);
+            return Ok(());
+        }
+        loop {
+            let before = self.pos;
+            self.ws();
+            out.drain(&mut self.pending_comment, before, self.pos);
+            let token = self.pos;
+            if self.peek() == Some(b'"') {
+                let key = self.string()?;
+                out.decoded(token, key, ScalarStyle::DoubleQuoted);
+            } else if self.allow_single_quoted && self.peek() == Some(b'\'') {
+                let key = self.single_quoted_string()?;
+                out.decoded(token, key, ScalarStyle::SingleQuoted);
+            } else if self.allow_unquoted_keys && self.at_identifier_start() {
+                let key = self.identifier_key()?;
+                out.decoded(token, key, ScalarStyle::Plain);
+            } else {
+                return Err(self.err("expected a quoted object key"));
+            }
+            let before = self.pos;
+            self.ws();
+            out.drain(&mut self.pending_comment, before, self.pos);
+            self.expect(":", "expected `:` after the object key")?;
+            let before = self.pos;
+            self.ws();
+            out.drain(&mut self.pending_comment, before, self.pos);
+            self.stream_value(out)?;
+            let before = self.pos;
+            self.ws();
+            out.drain(&mut self.pending_comment, before, self.pos);
+            match self.peek() {
+                Some(b',') => {
+                    self.pos += 1;
+                    let before = self.pos;
+                    self.ws();
+                    out.drain(&mut self.pending_comment, before, self.pos);
+                    if self.allow_trailing_commas && self.peek() == Some(b'}') {
+                        let close = self.pos;
+                        self.pos += 1;
+                        out.at(close, StreamEventType::MappingEnd);
+                        return Ok(());
+                    }
+                }
+                Some(b'}') => {
+                    let close = self.pos;
+                    self.pos += 1;
+                    out.at(close, StreamEventType::MappingEnd);
+                    return Ok(());
+                }
+                _ => return Err(self.err("expected `,` or `}` in object")),
+            }
+        }
+    }
+
+    /// The dispatch of `array`, reported the same way.
+    fn stream_array(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
+        let open = self.pos;
+        self.pos += 1; // '['
+        out.at(
+            open,
+            StreamEventType::SequenceStart {
+                anchor: None,
+                tag: None,
+            },
+        );
+        let before = self.pos;
+        self.ws();
+        out.drain(&mut self.pending_comment, before, self.pos);
+        if self.peek() == Some(b']') {
+            let close = self.pos;
+            self.pos += 1;
+            out.at(close, StreamEventType::SequenceEnd);
+            return Ok(());
+        }
+        loop {
+            let before = self.pos;
+            self.ws();
+            out.drain(&mut self.pending_comment, before, self.pos);
+            self.stream_value(out)?;
+            let before = self.pos;
+            self.ws();
+            out.drain(&mut self.pending_comment, before, self.pos);
+            match self.peek() {
+                Some(b',') => {
+                    self.pos += 1;
+                    let before = self.pos;
+                    self.ws();
+                    out.drain(&mut self.pending_comment, before, self.pos);
+                    if self.allow_trailing_commas && self.peek() == Some(b']') {
+                        let close = self.pos;
+                        self.pos += 1;
+                        out.at(close, StreamEventType::SequenceEnd);
+                        return Ok(());
+                    }
+                }
+                Some(b']') => {
+                    let close = self.pos;
+                    self.pos += 1;
+                    out.at(close, StreamEventType::SequenceEnd);
+                    return Ok(());
+                }
+                _ => return Err(self.err("expected `,` or `]` in array")),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1822,5 +2249,591 @@ mod tests {
                 from_json5(src).err()
             );
         }
+    }
+
+    // --- the tree-free event stream -----------------------------------------
+
+    /// One event reduced to what a caller can compare: its kind, its text, and no position.
+    fn shape(event: &StreamEvent<'_>) -> String {
+        match &event.event_type {
+            StreamEventType::StreamStart => "stream-start".into(),
+            StreamEventType::StreamEnd => "stream-end".into(),
+            StreamEventType::DocumentStart => "document-start".into(),
+            StreamEventType::DocumentEnd => "document-end".into(),
+            StreamEventType::MappingStart { anchor, tag } => {
+                format!("mapping-start[{anchor:?},{tag:?}]")
+            }
+            StreamEventType::MappingEnd => "mapping-end".into(),
+            StreamEventType::SequenceStart { anchor, tag } => {
+                format!("sequence-start[{anchor:?},{tag:?}]")
+            }
+            StreamEventType::SequenceEnd => "sequence-end".into(),
+            StreamEventType::Scalar {
+                value,
+                style,
+                anchor,
+                tag,
+            } => {
+                assert!(
+                    anchor.is_none() && tag.is_none(),
+                    "a JSON scalar cannot own an anchor or a tag: {value}"
+                );
+                format!("scalar[{style:?}]={value}")
+            }
+            StreamEventType::Alias { name } => panic!("JSON has no alias: {name}"),
+            StreamEventType::Comment { text, standalone } => {
+                format!("comment[standalone={standalone}]={text}")
+            }
+        }
+    }
+
+    /// Replay a stream onto the node model: the same `NodeMap`, the same `quoted_or_plain`, the same
+    /// `hub_scalar` and the same single-quoted arm the tree walk uses, so a disagreement between the
+    /// two routes is a disagreement about the document rather than about a copy of a rule.
+    ///
+    /// `Comment` events are not placed: which node a same-line note rides is exactly what the stream
+    /// cannot report — `a_same_line_note_between_a_value_and_the_next_member_has_two_readings` names
+    /// that — so the replay compares the trees with their note slots emptied
+    /// (`undecorated`) and counts the notes themselves in
+    /// `the_stream_loses_and_invents_no_note`.
+    fn fold(events: &[StreamEvent<'_>]) -> CustomNode {
+        #[derive(Debug)]
+        enum Open {
+            Map(NodeMap<CustomNode, CustomNode>, Option<CustomNode>),
+            Seq(Vec<CustomNode>),
+        }
+        fn place(stack: &mut [Open], root: &mut Option<CustomNode>, node: CustomNode) {
+            match stack.last_mut() {
+                // Inside a mapping the scalars that are not containers arrive in pairs: name, value.
+                Some(Open::Map(pairs, name)) => match name.take() {
+                    None => *name = Some(node),
+                    Some(name) => {
+                        pairs.insert(name, node);
+                    }
+                },
+                Some(Open::Seq(items)) => items.push(node),
+                None => *root = Some(node),
+            }
+        }
+        let mut stack: Vec<Open> = Vec::new();
+        let mut root: Option<CustomNode> = None;
+        for event in events {
+            match &event.event_type {
+                StreamEventType::MappingStart { .. } => {
+                    stack.push(Open::Map(NodeMap::default(), None));
+                }
+                StreamEventType::SequenceStart { .. } => stack.push(Open::Seq(Vec::new())),
+                StreamEventType::MappingEnd => match stack.pop() {
+                    Some(Open::Map(pairs, _)) => {
+                        place(&mut stack, &mut root, CustomNode::plain_mapping(pairs))
+                    }
+                    other => panic!("a mapping closed where {other:?} was open"),
+                },
+                StreamEventType::SequenceEnd => match stack.pop() {
+                    Some(Open::Seq(items)) => {
+                        place(&mut stack, &mut root, CustomNode::plain_sequence(items))
+                    }
+                    other => panic!("a sequence closed where {other:?} was open"),
+                },
+                StreamEventType::Scalar { value, style, .. } => {
+                    // A mapping's name is the hub's plain-or-quoted text whatever it was written as
+                    // — an identifier, a `'k'` or a `"k"` all reach `quoted_or_plain` (the tree's
+                    // `object` does exactly this) — while a value keeps the spelling it arrived in.
+                    let as_name = matches!(stack.last(), Some(Open::Map(_, None)));
+                    let node = if as_name {
+                        quoted_or_plain(value.to_string())
+                    } else {
+                        match style {
+                            ScalarStyle::SingleQuoted => single_quoted_node(value.to_string()),
+                            ScalarStyle::DoubleQuoted => quoted_or_plain(value.to_string()),
+                            // The tree stores the word `null` as a null node, and every other plain
+                            // scalar as the hub's own spelling of the token.
+                            ScalarStyle::Plain => {
+                                if *value == "null" {
+                                    CustomNode::plain_null()
+                                } else {
+                                    hub_scalar(value)
+                                }
+                            }
+                            other => panic!("JSON never writes a scalar in {other:?}"),
+                        }
+                    };
+                    place(&mut stack, &mut root, node);
+                }
+                StreamEventType::Comment { .. }
+                | StreamEventType::StreamStart
+                | StreamEventType::StreamEnd
+                | StreamEventType::DocumentStart
+                | StreamEventType::DocumentEnd => {}
+                StreamEventType::Alias { name } => panic!("JSON has no alias: {name}"),
+            }
+        }
+        root.expect("a document's stream reports its root value")
+    }
+
+    /// The same tree with every note slot emptied.
+    ///
+    /// `CustomNode`'s equality does compare decorations — only `source_range` is excluded — so a
+    /// replay that cannot report which node owns a same-line note needs this to be asked about what
+    /// both routes do settle: structure, order, values and styles.
+    fn undecorated(node: &CustomNode) -> CustomNode {
+        match node {
+            CustomNode::Scalar {
+                value,
+                style,
+                chomping,
+                block_indent,
+                ..
+            } => CustomNode::Scalar {
+                value: value.clone(),
+                style: *style,
+                chomping: *chomping,
+                block_indent: *block_indent,
+                meta: pyrs_ast::ast::NodeMeta::default(),
+            },
+            CustomNode::Mapping {
+                pairs, flow_style, ..
+            } => CustomNode::Mapping {
+                pairs: pairs
+                    .iter()
+                    .map(|(name, value)| (undecorated(name), undecorated(value)))
+                    .collect(),
+                flow_style: *flow_style,
+                meta: pyrs_ast::ast::NodeMeta::default(),
+            },
+            CustomNode::Sequence {
+                items, flow_style, ..
+            } => CustomNode::Sequence {
+                items: items.iter().map(undecorated).collect(),
+                flow_style: *flow_style,
+                meta: pyrs_ast::ast::NodeMeta::default(),
+            },
+            other => other.clone(),
+        }
+    }
+
+    /// Every note a tree carries, as text and standalone flag, in node order.
+    fn tree_notes(node: &CustomNode, into: &mut Vec<(String, bool)>) {
+        if let Some(comment) = node.comment() {
+            into.push((comment.text.to_string(), comment.standalone));
+        }
+        for comment in node.leading_comments() {
+            into.push((comment.text.to_string(), comment.standalone));
+        }
+        match node {
+            CustomNode::Mapping { pairs, .. } => {
+                for (name, value) in pairs.iter() {
+                    tree_notes(name, into);
+                    tree_notes(value, into);
+                }
+            }
+            CustomNode::Sequence { items, .. } => {
+                for item in items {
+                    tree_notes(item, into);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn the_stream_reports_the_document_in_order() {
+        let text = "{\n \"a\": [1],\n \"b\": null\n}";
+        let events = parse_stream(text).expect("valid strict JSON");
+        let read: Vec<String> = events
+            .iter()
+            .map(|event| format!("{}@{}:{}", shape(event), event.line, event.column,))
+            .collect();
+        // Positions are the granit convention the crate's own diagnostics use: 0-indexed line,
+        // column counted in characters from the start of that line.
+        assert_eq!(
+            read,
+            [
+                "stream-start@0:0",
+                "document-start@0:0",
+                "mapping-start[None,None]@0:0",
+                "scalar[DoubleQuoted]=a@1:1",
+                "sequence-start[None,None]@1:6",
+                "scalar[Plain]=1@1:7",
+                "sequence-end@1:8",
+                "scalar[DoubleQuoted]=b@2:1",
+                "scalar[Plain]=null@2:6",
+                "mapping-end@3:0",
+                "document-end@3:1",
+                "stream-end@3:1",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_number_borrows_the_source_and_a_decoded_string_owns_its_text() {
+        let text = r#"{"n": 12345, "s": "a\u0062", "t": true}"#;
+        let events = parse_stream(text).expect("valid strict JSON");
+        // The scalar that follows a given name, reported the way the stream reports it.
+        let value_of = |name: &str| -> StreamEventType<'_> {
+            events
+                .iter()
+                .zip(events.iter().skip(1))
+                .find(|(key, _)| match &key.event_type {
+                    StreamEventType::Scalar { value, .. } => **value == *name,
+                    _ => false,
+                })
+                .map(|(_, value)| value.event_type.clone())
+                .unwrap_or_else(|| panic!("no member named {name} in the stream"))
+        };
+        let StreamEventType::Scalar {
+            value,
+            style: ScalarStyle::Plain,
+            ..
+        } = value_of("n")
+        else {
+            panic!("12345 must arrive as a plain scalar");
+        };
+        let Cow::Borrowed(number) = value else {
+            panic!("a number is the source's own bytes, not a decoded copy");
+        };
+        assert_eq!(number, "12345");
+        let StreamEventType::Scalar {
+            value,
+            style: ScalarStyle::Plain,
+            ..
+        } = value_of("t")
+        else {
+            panic!("true must arrive as a plain scalar");
+        };
+        let Cow::Borrowed(word) = value else {
+            panic!("a keyword is the source's own bytes");
+        };
+        assert_eq!(word, "true");
+        let StreamEventType::Scalar {
+            value,
+            style: ScalarStyle::DoubleQuoted,
+            ..
+        } = value_of("s")
+        else {
+            panic!("\"a\\u0062\" must arrive as a double-quoted scalar");
+        };
+        let Cow::Owned(decoded) = value else {
+            panic!("an escaped string has no single source slice to borrow");
+        };
+        assert_eq!(decoded, "ab");
+    }
+
+    #[test]
+    fn a_json_stream_carries_no_anchor_tag_or_alias_and_reports_every_dialect_shape() {
+        // JSON5 with each axis on, so no scalar form is left unasked.
+        let text =
+            "{a: 'k', /*note*/ b: [0x1F, .5, Infinity, -Infinity, NaN, +7, 5.], \"c\": {'d': 'e'}}";
+        let events = parse_stream_with_options(text, JsonParseOptions::JSON5).expect("valid JSON5");
+        let shapes: Vec<String> = events.iter().map(shape).collect();
+        assert!(
+            shapes
+                .iter()
+                .all(|line| !line.contains("Alias") && !line.contains("Some(")),
+            "the vocabulary's YAML-only fields must stay empty: {shapes:?}"
+        );
+        // The token is what the stream reports; `.inf` is the tree's projection of it.
+        assert!(shapes.contains(&"scalar[Plain]=Infinity".to_string()));
+        assert!(shapes.contains(&"scalar[Plain]=-Infinity".to_string()));
+        assert!(shapes.contains(&"scalar[Plain]=NaN".to_string()));
+        assert!(shapes.contains(&"scalar[Plain]=0x1F".to_string()));
+        // A key written as an identifier or in single quotes keeps its own spelling in the stream,
+        // which is the fact the hub discards.
+        assert!(shapes.contains(&"scalar[Plain]=a".to_string()));
+        assert!(shapes.contains(&"scalar[SingleQuoted]=k".to_string()));
+        assert!(shapes.contains(&"scalar[SingleQuoted]=d".to_string()));
+        assert!(shapes.contains(&"comment[standalone=false]=note".to_string()));
+    }
+
+    #[test]
+    fn the_stream_replays_the_tree_the_direct_parser_builds() {
+        // Documents with no note in them: the replay is exact, decorations included.
+        let plain: &[(JsonParseOptions, &str)] = &[
+            (JsonParseOptions::STRICT, "{}"),
+            (JsonParseOptions::STRICT, "[]"),
+            (JsonParseOptions::STRICT, "null"),
+            (JsonParseOptions::STRICT, "  1e3  "),
+            (
+                JsonParseOptions::STRICT,
+                r#"{"a":-0,"b":[1,2,{"c":"x"}],"d":null}"#,
+            ),
+            (JsonParseOptions::STRICT, r#"{"k":1,"k":2,"k":3}"#),
+            (
+                JsonParseOptions::STRICT,
+                r#"{"true":1,"1":"x","Infinity":2}"#,
+            ),
+            (
+                JsonParseOptions::STRICT,
+                r#"{"n":[0.5e-3,-1.0E+2],"s":"A","t":true}"#,
+            ),
+            (
+                JsonParseOptions::JSON5,
+                "{a: 'b', c: [Infinity, -0x1, .5, 5.]}",
+            ),
+            (JsonParseOptions::JSON5, "{'k':'v','k':'w'}"),
+            (JsonParseOptions::JSON5, "[1,2,]"),
+            (JsonParseOptions::JSON5, "{\"深\": \"刻\", é: 1}"),
+        ];
+        for (opts, text) in plain {
+            let tree = from_json_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must parse: {e}"));
+            let events = parse_stream_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must stream: {e}"));
+            assert_eq!(
+                fold(&events),
+                tree,
+                "the stream and the tree disagree about {text}"
+            );
+        }
+        // Documents carrying notes: the two routes agree on everything a stream can report — the
+        // slot a same-line note rides is the one thing it cannot.
+        let noted: &[(JsonParseOptions, &str)] = &[
+            (JsonParseOptions::JSONC, "{/*a*/}"),
+            (JsonParseOptions::JSONC, "{\"a\": /*b*/ 1}"),
+            (JsonParseOptions::JSONC, "[1 /* trailing */, 2]"),
+            (
+                JsonParseOptions::JSON5,
+                "{/*k*/ a: /*v*/ 'b' /*t*/, c: 1 // end\n}",
+            ),
+        ];
+        for (opts, text) in noted {
+            let tree = from_json_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must parse: {e}"));
+            let events = parse_stream_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must stream: {e}"));
+            assert_eq!(
+                undecorated(&fold(&events)),
+                undecorated(&tree),
+                "the stream and the tree disagree about {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn both_walks_refuse_the_same_input_at_the_same_place() {
+        let rejected: &[(JsonParseOptions, &str)] = &[
+            (JsonParseOptions::STRICT, ""),
+            (JsonParseOptions::STRICT, "   "),
+            (JsonParseOptions::STRICT, "{"),
+            (JsonParseOptions::STRICT, "}"),
+            (JsonParseOptions::STRICT, "["),
+            (JsonParseOptions::STRICT, "[,]"),
+            (JsonParseOptions::STRICT, "{,}"),
+            (JsonParseOptions::STRICT, "{\"a\"}"),
+            (JsonParseOptions::STRICT, "{\"a\":}"),
+            (JsonParseOptions::STRICT, "{\"a\":1,}"),
+            (JsonParseOptions::STRICT, "[1,2,]"),
+            (JsonParseOptions::STRICT, "01"),
+            (JsonParseOptions::STRICT, "-"),
+            (JsonParseOptions::STRICT, "1e"),
+            (JsonParseOptions::STRICT, "1 2"),
+            (JsonParseOptions::STRICT, "\"unterminated"),
+            (JsonParseOptions::STRICT, "\"\\q\""),
+            (JsonParseOptions::STRICT, "// line"),
+            (JsonParseOptions::STRICT, "/* block"),
+            (JsonParseOptions::STRICT, "Infinity"),
+            (JsonParseOptions::STRICT, "'single'"),
+            (JsonParseOptions::STRICT, "{a: 1}"),
+            (JsonParseOptions::JSONC, "{a: 1}"),
+            (JsonParseOptions::JSONC, "{'k': 1}"),
+            (JsonParseOptions::JSONC, "[1,]"),
+            (JsonParseOptions::JSONC, "0x1F"),
+            (JsonParseOptions::JSON5, "{\"a\": \"\\ud800\"}"),
+            (JsonParseOptions::JSON5, ".5e"),
+            (JsonParseOptions::JSON5, "-Infinityx"),
+            (JsonParseOptions::JSON5, "{\"a\": }}"),
+            (
+                JsonParseOptions {
+                    max_depth: 2,
+                    ..JsonParseOptions::STRICT
+                },
+                "[[[1]]]",
+            ),
+            (
+                JsonParseOptions {
+                    max_depth: 1,
+                    ..JsonParseOptions::JSON5
+                },
+                "{a: [1]}",
+            ),
+        ];
+        for (opts, text) in rejected {
+            let tree = from_json_with_options(text, *opts);
+            let stream = parse_stream_with_options(text, *opts);
+            match (tree, stream) {
+                (Err(first), Err(second)) => {
+                    assert_eq!(first, second, "{text} refused differently")
+                }
+                (Ok(_), Ok(_)) => panic!("{text} was expected to be refused"),
+                (tree, stream) => panic!(
+                    "{text}: the tree route said {:?} and the stream route said {:?}",
+                    tree.as_ref().map(|_| "ok"),
+                    stream.as_ref().map(|_| "ok")
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn the_stream_loses_and_invents_no_note() {
+        let noted: &[(JsonParseOptions, &str)] = &[
+            (JsonParseOptions::JSONC, "// above\n{}"),
+            (JsonParseOptions::JSONC, "{} // after"),
+            (JsonParseOptions::JSONC, "{\"a\": /*x*/ 1 /*y*/}"),
+            (
+                JsonParseOptions::JSONC,
+                "{\"a\": [\n  // line\n  1,\n  /* block */ 2\n] /* tail */}",
+            ),
+            (JsonParseOptions::JSONC, "[/* one */ /* two */ 1]"),
+            (
+                JsonParseOptions::JSON5,
+                "{/*k*/ a: /*v*/ 'b' /*t*/, c: 1 // end\n}",
+            ),
+            (JsonParseOptions::JSON5, "[1, /* between */ 2]"),
+        ];
+        for (opts, text) in noted {
+            let tree = from_json_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must parse: {e}"));
+            let mut kept = Vec::new();
+            tree_notes(&tree, &mut kept);
+            let mut from_tree: Vec<String> = kept.into_iter().map(|(text, _alone)| text).collect();
+            let mut from_stream: Vec<String> = parse_stream_with_options(text, *opts)
+                .unwrap_or_else(|e| panic!("{text} must stream: {e}"))
+                .iter()
+                .filter_map(|event| match &event.event_type {
+                    StreamEventType::Comment { text, .. } => Some(text.to_string()),
+                    _ => None,
+                })
+                .collect();
+            from_tree.sort();
+            from_stream.sort();
+            assert_eq!(
+                from_tree, from_stream,
+                "the notes the tree keeps and the notes the stream reports must be the same set of {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_note_reports_whether_it_began_on_a_line_of_its_own() {
+        // The flag is what the scanner saw, which is not always the flag the tree ends up recording:
+        // two same-line notes on one node are re-filed as leading notes (issue #361), and the stream
+        // keeps the reading the bytes gave.
+        let text = "{\n  // own line\n  \"a\": 1, /* same line */ \"b\": 2\n}";
+        let stream = parse_stream_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+        let notes: Vec<(String, bool)> = stream
+            .iter()
+            .filter_map(|event| match &event.event_type {
+                StreamEventType::Comment { text, standalone } => {
+                    Some((text.to_string(), *standalone))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            notes,
+            [
+                ("own line".to_string(), true),
+                ("same line".to_string(), false)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_same_line_note_between_a_value_and_the_next_member_has_two_readings() {
+        // Both documents produce the same events in the same order: the value, then the note, then
+        // the next name. The tree has to choose a slot, and it chooses by which side of the comma
+        // the note sat - a fact a note's own position cannot carry. This is what the shared
+        // vocabulary still cannot express, and the reason the replay compares structure and values
+        // and counts notes rather than placing them.
+        let before_comma = r#"{"a": 1 /* x */, "b": 2}"#;
+        let after_comma = r#"{"a": 1, /* x */ "b": 2}"#;
+        let shapes_of = |text: &str| -> Vec<String> {
+            parse_stream_with_options(text, JsonParseOptions::JSONC)
+                .expect("valid JSONC")
+                .iter()
+                .map(shape)
+                .collect()
+        };
+        assert_eq!(shapes_of(before_comma), shapes_of(after_comma));
+
+        // Which node each note landed on, as (owner, text, standalone).
+        let owners_of = |text: &str| -> Vec<(String, String, bool)> {
+            let tree = from_json_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+            let CustomNode::Mapping { pairs, .. } = tree else {
+                panic!("{text} is not a mapping");
+            };
+            let mut owners = Vec::new();
+            for (name, value) in pairs.iter() {
+                for (owner, node) in [("name", name), ("value", value)] {
+                    let mut kept = Vec::new();
+                    tree_notes(node, &mut kept);
+                    for (note, alone) in kept {
+                        owners.push((owner.to_string(), note, alone));
+                    }
+                }
+            }
+            owners
+        };
+        let only = |owner: &str| vec![(owner.to_string(), "x".to_string(), false)];
+        assert_eq!(owners_of(before_comma), only("value"));
+        assert_eq!(owners_of(after_comma), only("name"));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn the_seed_corpus_and_the_stream_agree_on_what_is_valid() {
+        // The same inputs the writer fixed point runs over, asked of the second walk: whatever the
+        // corpus holds, both routes must accept it together, refuse it together with the same
+        // diagnostic, and — when it parses — replay to the tree the direct parser built.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fuzz/seeds/json_roundtrip");
+        let mut paths: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap_or_else(|e| panic!("seed corpus missing at {}: {e}", dir.display()))
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.extension().is_some_and(|ext| ext == "seed"))
+            .collect();
+        paths.sort();
+        assert!(!paths.is_empty(), "the JSON seed corpus is empty");
+        let mut replayed = 0usize;
+        for path in paths {
+            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            for opts in [
+                JsonParseOptions::STRICT,
+                JsonParseOptions::JSONC,
+                JsonParseOptions::JSON5,
+            ] {
+                let tree = from_json_with_options(&text, opts);
+                let stream = parse_stream_with_options(&text, opts);
+                match (tree, stream) {
+                    (Ok(node), Ok(events)) => {
+                        assert_eq!(
+                            undecorated(&fold(&events)),
+                            undecorated(&node),
+                            "{} [{opts:?}]: the stream replays a different document",
+                            path.display()
+                        );
+                        replayed += 1;
+                    }
+                    (Err(first), Err(second)) => assert_eq!(
+                        first,
+                        second,
+                        "{} [{opts:?}]: the two routes refused differently",
+                        path.display()
+                    ),
+                    (tree, stream) => panic!(
+                        "{} [{opts:?}]: one route accepted and the other refused ({:?} / {:?})",
+                        path.display(),
+                        tree.is_ok(),
+                        stream.is_ok()
+                    ),
+                }
+            }
+        }
+        assert!(
+            replayed >= 25,
+            "the corpus only replayed {replayed} documents; it used to carry at least 25"
+        );
     }
 }
