@@ -755,6 +755,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An alias in key position reads as what its anchor holds** — `a: &b b` + `*b : a` builds
+  `{'a': 'b', 'b': 'a'}` for PyYAML, and the suite spells that same answer as the expected JSON of
+  E76Z and 26DV; this engine refused every alias key with `found unhashable key`, deciding by the
+  node's kind rather than by its target, which cost those two suite cases. The resolved form decides
+  now: an alias over a mapping or a sequence still refuses (PyYAML raises there too, measured on
+  this tree), and an alias with no anchor refuses rather than becoming a `None` key the document
+  never named. The compliance harness also stopped counting a correct parse as a failure —
+  `!!binary` has to load to `bytes` and `json.dumps` could not spell it, so 565N reported a "JSON
+  comparison error". The report is back at **405/406 (99.75%)**, the number `docs/en/features.md`
+  advertises, and that number is now enforced rather than printed: `test_compliance_report` replaced
+  its `rate >= 0.95` floor — twenty-one suite cases of slack, which is how the slide to 402 went
+  unnoticed — with `rate >= 0.995` plus "every failure must be `ZYU8`, the deliberate refusal".
+  Measured: `uv run pyrs-yaml compliance` reads 405/406 with `failed_tests` = `[ZYU8]`;
+  `uv run pytest tests/test_parse.py tests/test_yaml_crosslib.py tests/test_yaml_suite.py` 211
+  passed (3 new: the alias-key projection and its read-back, and the parser boundary where granit
+  rejects `*b: a` without the space that PyYAML accepts). Not measured: instruction counts, though
+  the leg still judges this branch — the plain-scalar key path is untouched, so no movement is
+  claimed and any movement would be an unexpected finding rather than an accepted one.
+
 - **A duplicate JSON key no longer takes its comment with it** — the map keeps the first key node
   and the last value, so a repeated name drops the incoming key and the value it replaced, and a
   note either of them owned used to be dropped with them: `{"a": 1 // first\n, "a": 2}` came back

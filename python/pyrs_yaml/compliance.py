@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from datetime import datetime
@@ -111,6 +112,19 @@ def compare_json(expected: str, actual: str) -> bool:
         return expected.strip() == actual.strip()
 
 
+def _json_default(value: Any) -> str:
+    """Spell a loaded value the way the suite's own JSON does, where the two differ in type.
+
+    `!!binary` has to construct to `bytes` — that is what PyYAML returns and what the tag means —
+    and `json.dumps` cannot serialise `bytes`, so 565N was reported as a suite failure caused by a
+    "JSON comparison error" when the parse and the value were both right. Base64 is the tag's own
+    text, so the comparison asks the question the suite asks.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        return base64.b64encode(bytes(value)).decode("ascii")
+    raise TypeError(f"no JSON spelling for a loaded {type(value).__name__}")
+
+
 def run_test(test: dict[str, Any]) -> dict[str, Any]:
     """Run a single test case"""
     result = {
@@ -153,7 +167,7 @@ def run_test(test: dict[str, Any]) -> dict[str, Any]:
     if test["json"]:
         try:
             actual_data = pyrs_yaml.safe_load(yaml_input)
-            actual_json = json.dumps(actual_data, sort_keys=True, indent=2)
+            actual_json = json.dumps(actual_data, sort_keys=True, indent=2, default=_json_default)
             result["json_match"] = compare_json(test["json"], actual_json)
         except Exception as e:
             result["error"] = f"JSON comparison error: {str(e)[:100]}"

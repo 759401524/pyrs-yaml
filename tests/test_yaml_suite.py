@@ -82,11 +82,22 @@ def test_yaml_suite_json_match():
 @pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
 @pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_compliance_report():
-    """Print compliance percentage to stdout."""
+    """The suite number the docs advertise, enforced rather than printed.
+
+    The floor used to be `rate >= 0.95`, which is 385/406 — twenty-one suite cases could rot
+    inside it, and three did: the alias-in-key refusal and the `!!binary` JSON comparison pulled
+    the report down to 402 while `docs/en/features.md` and `docs/en/index.md` still advertised
+    405 (99.75%). Nothing reddened, because no gate read the number the marketing page quotes.
+    So: a floor tight enough to notice a three-case slide, and every failure must be the one
+    refused on purpose. An exact `passed == 405` would not do — CI clones the suite's default
+    branch (`ci.yml`), so the case count is upstream's to change.
+    """
     report = compute_compliance()
-    msg = f"\nCompliance: {report['rate'] * 100:.1f}% ({report['passed']}/{report['total']} passed)"
+    msg = f"\nCompliance: {report['rate'] * 100:.2f}% ({report['passed']}/{report['total']} passed)"
     print(msg)
-    assert report["rate"] >= 0.95, f"Compliance too low: {report['rate'] * 100:.1f}%"
+    assert report["rate"] >= 0.995, f"Compliance too low: {report['rate'] * 100:.2f}%"
+    unexpected = [test["id"] for test in report["failed_tests"] if test["id"] != "ZYU8"]
+    assert not unexpected, f"suite cases refused that are not the deliberate refusal: {unexpected}"
 
 
 def test_compliance_report_version_is_dynamic():
