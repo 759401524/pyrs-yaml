@@ -755,6 +755,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A dotted key inside an inline table nests, as TOML defines it** —
+  `animal = { type.name = "pug" }` is the spec's own example of the form, and it means
+  `[animal.type]` with `name = "pug"`. `parse_inline_table` stored the dot-joined text as a single
+  key, so the reader handed back `{"type.name": "pug"}` — and, worse, read
+  `animal = { "type.name" = "pug" }` to exactly that same shape, so two documents with different
+  data became indistinguishable after the load. Members now keep the path they were written as and
+  `nest_inline` lays them into the tree that path names, sharing one intermediate table between
+  siblings (`{ a.b = 1, a.c = 2 }` → one `a` holding `b` and `c`), with every level reporting the
+  offset of the segment that names it — the rule `register_kv` already applies to a dotted key at
+  table level, which is why the two arms now agree. Measured: the toml-test valid-decode tier moves
+  **248/266 (93.23%) → 257/266 (96.62%)**, exactly the nine cases this cause owned (the seven
+  `inline-table/key-dotted-*` files plus the spec example in each version tree), while the encoder
+  tier stays at **268/268** — the writer's `{a = {b = 1}}` is not the source spelling, and
+  `tomllib`, CPython's reference decoder, reads it back as the same value, which is the promise that
+  tier makes. Those floors were the other half of the defect: `0.85` against a measured `93.2%` is
+  22 cases of slack on the decode half and 57 on the reject half, and that is how a nine-case class
+  hid behind a green percentage. Both now sit one case below what this tree achieves (`0.966` and
+  `0.954`) and name the failing cases in the message rather than only the rate. Six tests added:
+  five Rust (the spec example, a sibling merge around an interleaved plain key, the quoted key
+  staying one key, a four-segment path, and the write-back re-read) and one Python (`load_toml` on
+  both shapes plus the hub round trip). Attribution by mutation: replacing the nested push with the
+  old joined key reddens four of them, and the quoted-key control stays green because it is the case
+  that must not change. Counted instructions on the compiler the floor pins: `from_toml_medium`
+  reads +0.0094% and `to_toml_medium` +0.00017% over the committed baseline, inside the +0.1639%
+  worst host-to-host drift `docs/dev/perf.md` measured on identical sources, so no speed claim is
+  made in either direction.
+  The reject floor is the CPython 3.14/3.15 reading (488/511): three out-of-range times are refused
+  there by the host `datetime` rather than by this parser, and that split is a defect for the engine
+  to own, not a licence to widen the line.
+
 - **An alias in key position reads as what its anchor holds** — `a: &b b` + `*b : a` builds
   `{'a': 'b', 'b': 'a'}` for PyYAML, and the suite spells that same answer as the expected JSON of
   E76Z and 26DV; this engine refused every alias key with `found unhashable key`, deciding by the
