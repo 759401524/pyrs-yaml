@@ -885,6 +885,16 @@ a side like that; a code-generation change does. The binary digests say the same
 own vocabulary: `4fdb240b2e078d7c` on 1.99.0 against `2c4f20059f8d530c` on 1.97.1, so by
 `binary_pairing`'s rule the movement is code, and these numbers pair with no other run's.
 
+Read the other way, the pinned run is the stronger evidence, and it is worth stating precisely
+because it looks like a problem. Its digests are `2c4f20059f8d530c` and `6718eaba88f2d3bf`, while
+the baseline records `a7e3c34f86b81ae6` and `2972cd2647dedaad` — a WSL build is not the runner's
+build, so by the same `binary_pairing` rule the gate would call these bytes different code. And yet
+nineteen of the twenty-two scenarios reproduce the image's numbers to within ±0.003%, the worst
+non-binding move being `parse_block` at −0.0029%. What makes a counted-instruction measurement
+comparable, then, is the pinned ISA and the pinned compiler, not the exact build — which is why the
+same digests disagreeing is not a reason to distrust the residual, and why the three scenarios that
+*are* noisy (`to_python_*`) are noisy for the reason `AGENTS.md` already gives: they link CPython.
+
 Two consequences, both acted on rather than noted.
 
 - **CI cannot be reddened by this.** `.github/workflows/codspeed.yml` reads
