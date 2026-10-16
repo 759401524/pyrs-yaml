@@ -161,6 +161,7 @@ or closes it. An item may not stay in this section once it ships.
 | `rust-i18n` as the error-message backend | **Defer, with the price on the record** | Measured on this tree over `cargo metadata`'s resolved graph, following normal edges only and treating a proc-macro crate's subtree as build-time: the wheel reaches **113** crates, and cutting the single `rust-i18n` edge leaves **67** - so **46** crates are compiled and linked for the catalog alone (a second `granit-parser` 1.3.0, `toml`, `serde`/`serde_json`/`serde-saphyr`, `globwalk`/`globset`/`ignore`, `encoding_rs`, `crossbeam-*`), and **58** more sit on the build side. `rust-i18n` 4.2.4 offers two optional features (`load-path`, `log-miss-tr`) and neither removes any of that, because the cone is non-optional. No byte share is claimed for the 3,845,632-byte `.pyd`: symbol attribution needs `cargo-bloat`, which is not a project tool, so this row prices the graph and stops there. |
 | Replacing it | **Not scoped** | The surface is 421 `t!(..)` call sites over four catalog files (`en`, `ja-JP`, `ko-KR`, `zh-CN`). The minimum substitute is a compile-time key table with the same `%{key}` placeholders plus the env/`locale` detection already written here - and the locale-parity gates would be rewritten against the new shape, since today they read YAML. That is work of the same order as the note-slot line (dj)-(dq), bought against a benefit that still has no number in bytes or instructions. Revisit when a wheel-size or import-time budget is written down first. |
 | The earlier ruling on the second `granit-parser` | **Standing, and not overturned here** | That finding was about the *build* graph; this one walks the *link* graph and finds `granit-parser 1.3.0` reached by a normal edge through `rust-i18n-support`. The two agree only if the crate is dead-stripped before the binary is written, which is exactly the claim a graph walk cannot make. Closing this row needs a symbol-level measurement, not another dependency tree. |
+| The open question "replace `granit-parser` with a 100% YAML 1.2 compliant parser" | **Closed, not deferred** | The revisit rule was overdue on it: the item's own note says "Revisit v0.14.0" and four releases have shipped since, and no item may stay unchecked past two reviews. Its premise is gone rather than unproven — the recorded suite rate is 99.75% (405/406) with the single miss `ZYU8` a deliberate strictness rejection, and `docs/dev/quality-ledger.md` already states the rate is saturated, so more work on this axis buys no compliance. The gap that kept the option alive, eager-parse at 0.42x of `yaml-rs`, is measured in the same record to be the structural cost of strict compliance plus comment and span events — the fidelity this project sells, not slack an in-house scanner gets to drop. Reopening needs a measured premise: a prototype that keeps span and comment events and beats granit on the committed Ir scenarios. Until that probe is paid for, a 3-6 month rewrite is a bet, not a roadmap row. |
 
 ---
 
@@ -219,7 +220,7 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
 
 - [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix
   ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
-- [ ] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant
+- [x] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant
   Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C)
   ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser
   and incrementally fix to 100%. ⏸️ Deferred 2026-08-11 — granit migration just shipped in v0.13.0;
@@ -247,6 +248,10 @@ Tracked as open questions for future roadmap inclusion; not committed to any ver
       Rust unit test, so no future parser bump can hide this class behind the threshold. The
       parser-replacement question stays open (in-house scanner / upstream `9C9N` issue remain the
       only levers).
+    - **Closed 2026-10-16 under the revisit rule** — see the Review Notes row above: the
+      compliance premise is satisfied (99.75%, 405/406, the miss by design), and the perf
+      premise is explained as the cost of the fidelity this project sells. The `9C9N` and
+      flow-indent guards stay as the standing answer for parser swaps of any kind.
 - [x] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid
   free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime
   probe (`py.import("numpy").is_ok()`) auto-detect. Its v0.11.7 scope is now in
