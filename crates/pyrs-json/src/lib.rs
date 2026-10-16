@@ -38,8 +38,11 @@ mod writer;
 
 pub use parser::{
     DEFAULT_MAX_DEPTH, JsonParseOptions, from_json, from_json_with_max_depth,
-    from_json_with_options, from_json5, from_jsonc,
+    from_json_with_options, from_json5, from_jsonc, parse_stream, parse_stream_with_options,
 };
+// The event vocabulary lives in its own crate so a downstream reader can name it without pulling an
+// engine; the JSON producer reports it, and re-exports it here the way the YAML engine does.
+pub use pyrs_event::{StreamEvent, StreamEventType};
 pub use writer::{
     key_text, to_json_text, to_json_text_pretty, to_json5_text, to_json5_text_pretty,
     to_jsonc_text, to_jsonc_text_pretty,

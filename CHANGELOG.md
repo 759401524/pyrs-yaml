@@ -9,6 +9,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **JSON has a tree-free event stream (`pyrs_json::parse_stream`)** — the second producer the shared
+  vocabulary was waiting for, built as a walk of its own over the scanners the AST route uses, so no
+  sink is threaded through the tree traversal and the +1.5% the shared-traversal design cost stays
+  paid by nobody. `pyrs-json` gained a `no_std` edge on `pyrs-event`, and every event carries the
+  line and column the tree cannot. Nine tests record what a second format answers: `anchor` and
+  `tag` stay empty and `Alias` never appears; `style` reports how the scalar was written, so a JSON5
+  `'k'` key is `SingleQuoted` in the stream and plain in the hub; a non-finite token arrives
+  verbatim and `hub_scalar` is the one place the `.inf` projection lives; 32 malformed documents and
+  the 14-file seed corpus are refused identically by both walks, and the 33 accepted ones replay to
+  the tree the direct parser built. One question the vocabulary still cannot answer is named rather
+  than hidden: `{"a": 1 /* x */, "b": 2}` and `{"a": 1, /* x */ "b": 2}` produce the same events
+  while the engine files the note on different nodes, so the replay places structure, values and
+  every note's text — not the slot. — details: quality-ledger (dw), `docs/dev/event-stream.md`.
+
 - **Dependency updates arrive on a schedule and merge themselves inside one boundary** —
   `.github/dependabot.yml` now tracks `cargo` (the workspace and `fuzz/`, each with its own
   lockfile), `uv` (`pyproject.toml` + `uv.lock`) and the CI actions, weekly against `main`. The
