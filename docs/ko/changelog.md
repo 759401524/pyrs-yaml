@@ -17,6 +17,20 @@ status: new
 
 #### 추가
 
+- **긴 키는 모든 형식의 스트림에서 문자만큼의 열을 요구한다** — 이벤트가 담는 위치는 행 번호와
+  *문자*로 센 열이다. JSON과 TOML은 `pyrs_event::LineTable`로 바이트 오프셋을 변환하고, YAML은
+  granit 자체 마커가 가진 열을 그대로 보고한다. 두 변환은 서로 다른 크레이트에 살기 때문에, 세
+  생산자에게 같은 질문을 던 검사는 하나도 없었다. 이제 6개의 매개변수화 경계 검사가 그것을 한다 —
+  `yaml`, `json`, `toml` 각각에 CJK 키와 이모지 키 하나씩 — 기대 열은 손으로 쓰지 않고 Python
+  문자열에서 유도하며, 값이 소스의 문자수가 가리키는 자리에 있음을 확인한다. 변이로 귀인시키면
+  생산자가 갈라진다: `LineTable`이 바이트 길이를 되게 하면 JSON과 TOML의 4개 검사만 빨개지고
+  Rust의 두 층이 동행한다
+  (`a_line_table_reports_the_granit_convention_for_both_engine_dialects`,
+  `every_character_offset_is_the_position_of_its_own_character`). YAML 어댑터에서 `col()` 대신
+  `byte_offset()`을 읽히면 YAML의 2개 검사만 빨개진다. 둘 다 되돌렸다. 검사 전용: 어떤 엔진 경로도
+  건드리지 않았으므로 명령수 레그는 판단할 새로운 주장이 없다. 실측:
+  `uv run pytest tests/test_streaming.py` 37 통과(신규 6), 확장 최신화 게이트 포함 40.
+
 - **로컬 명령수 읽기가 어떤 컴파일러가 구축했음을 말해 준다** — `AGENTS.md`는 이미지 사이 잔차를 두
   시나리오에서 재측정했다고 적어 왔다. 이제는 22개 전부를 같은 트리와 같은 WSL 호스트에서
   `RUSTUP_TOOLCHAIN`만 바꿔서 쟀다. 기준선이 고정된 `rustc 1.97.1`에서는 허용선을 넘는 것이 없다 —

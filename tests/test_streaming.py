@@ -233,6 +233,29 @@ class TestMultiFormatStream:
         key = next(e for e in events if e["value"] == "a")
         assert (key["line"], key["column"]) == (1, 2)
 
+    @pytest.mark.parametrize(
+        "text,fmt",
+        [
+            ("日本語: 1\n", "yaml"),
+            ('"🎉": 1\n', "yaml"),
+            ('{"日本語": 1}\n', "json"),
+            ('{"🎉": 1}\n', "json"),
+            ('"日本語" = 1\n', "toml"),
+            ('"🎉" = 1\n', "toml"),
+        ],
+    )
+    def test_a_wide_key_costs_its_characters_not_its_bytes(self, text, fmt):
+        # Three producers, one convention: a column counts characters. JSON and TOML convert a byte
+        # offset with `pyrs_event::LineTable`, YAML reports the column granit's own marker carries,
+        # and the two conversions live in different crates -- so nothing but these cases asks all
+        # three the same question. A producer that started counting bytes would read +2 per CJK
+        # glyph and +3 per emoji, and every consumer of the stream would see a position that no
+        # longer matches the diagnostic the same engine prints. Parametrised rather than looped so
+        # one run names every producer that disagrees, not only the first.
+        events = list(pyrs_yaml.parse_stream(text, format=fmt))
+        value = next(e for e in events if e["type"] == "scalar" and e["value"] == "1")
+        assert (value["line"], value["column"]) == (0, text.splitlines()[0].index("1"))
+
     def test_jsonc_notes_ride_the_stream(self):
         skeleton = _skel('{\n  // head\n  "a": 1, /* tail */\n  "b": 2\n}\n', "jsonc")
         assert ("comment", "head", "standalone") in skeleton

@@ -19,6 +19,18 @@ status: new
 
 #### 新增
 
+- **宽键名在每个格式的事件流里都按字符计列** — 事件携带的位置是行号加一个按*字符*计的列：
+  JSON 与 TOML 用 `pyrs_event::LineTable` 换算字节偏移，YAML 直接报告 granit 自身标记的列，
+  而这两处换算位于不同的 crate，所以此前没有任何测试向三个生产者提出同一个问题。现在由六个
+  参数化边界用例提出——`yaml`、`json`、`toml` 各含一个中日韩键名与一个 emoji 键名——每个都断言
+  取值正落在源码字符数出的位置，期望列由 Python 字符串推导而非手写。变异归因，并且能区分生产者：
+  让 `LineTable` 返回字节长度，恰好使四个 JSON 与 TOML 用例变红，两层 Rust 也随之变红
+  （`a_line_table_reports_the_granit_convention_for_both_engine_dialects`、
+  `every_character_offset_is_the_position_of_its_own_character`）；在 YAML 适配器里把 `col()` 换成
+  `byte_offset()`，则恰好使两个 YAML 用例变红。两处均已还原。仅测试：没有触及任何引擎路径，
+  指令数门禁没有新的判断可做。实测：`uv run pytest tests/test_streaming.py` 37 通过（新增 6 个），
+  连同扩展新鲜度门禁为 40 通过。
+
 - **本地指令数读数现在会说明它是哪个编译器构建的** — `AGENTS.md` 原本声称跨镜像残差只在两个场景上复
   测过；现在 22 个场景全部复测，同一棵树、同一台 WSL 主机，只改变 `RUSTUP_TOOLCHAIN`。在基线钉住的
   `rustc 1.97.1` 上没有任何场景越过容差线——最差 `to_python_medium` +0.1639%，十九个不链接 CPython 的

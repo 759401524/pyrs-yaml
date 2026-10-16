@@ -17,6 +17,20 @@ status: new
 
 #### 追加
 
+- **幅の広いキーは、あらゆる形式のストリームで文字数の列として換算される** — イベントが担う
+  位置は行番号と*文字*で数えた列である。JSON と TOML は `pyrs_event::LineTable` でバイト偏移を
+  変換し、YAML は granit 自身のマーカーが持つ列をそのまま報告する。この二つの変換は別々のクレートに
+  住むため、三者に同じ問いを投げる検査は一つもなかった。いまは 6 個のパラメータ境界ケースがそれを
+  行う——`yaml`、`json`、`toml` ごとに CJK のキーと絵文字のキーを 1 個ずつ——いずれも期待列を
+  手打ちせず Python の文字列から導出し、値がソースの文字数が示す位置にあると主張する。変異による
+  帰属は生産者を区別できる：`LineTable` にバイト長を返させると JSON と TOML の 4 ケースだけが
+  赤くなり、Rust の 2 層も同道する
+  （`a_line_table_reports_the_granit_convention_for_both_engine_dialects`、
+  `every_character_offset_is_the_position_of_its_own_character`）。YAML のアダプタで `col()` の
+  代わりに `byte_offset()` を読ませると YAML の 2 ケースだけが赤くなる。どちらも戻した。検査のみ：
+  どのエンジン経路も触れていないため、命令数レッグは判断すべき新しい主張を持たない。実測:
+  `uv run pytest tests/test_streaming.py` が 37 合格（うち新規 6）、拡張鮮度ゲート込みで 40。
+
 - **ローカルの命令数読み取りが、どのコンパイラで構築されたかを告げるようになった** — `AGENTS.md` は
   ランナーイメージ間の残差を 2 シナリオで再測定済みだと書いていた。いまは 22 すべてを、同一ツリー・
   同一 WSL ホストで `RUSTUP_TOOLCHAIN` だけを変えて測った。ベースラインが固定した `rustc 1.97.1` で
