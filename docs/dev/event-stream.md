@@ -446,6 +446,84 @@ change (a second field), not a missing feature.
 `max_depth` is honoured by the two readers that carry the option and answers in two different types;
 TOML's limit is the intermediate representation's own. Details: quality-ledger (ea).
 
+## The note flag split (2026-10-16, decision 6 on the table)
+
+The ruling is: two fields instead of one boolean read two ways, and this section is the review that
+has to pass before code moves. What follows is measured first and proposed second.
+
+**The orders a producer actually emits** (read off the shipped boundary, three JSONC documents):
+
+| Source | Event order around the note |
+| --- | --- |
+| `{"a" /* k */: /* v */ 1}` | `scalar a`, `comment k`, `comment v`, `scalar 1` |
+| `{"a": 1 /* after */, "b": 2}` | `scalar a`, `scalar 1`, `comment after`, `scalar b` |
+| `// file` + `{"a": 1}` | `comment file`, `mapping_start`, … |
+
+The first row is the case that made the flag a lie: both notes are on a line of their own absence,
+the tree files them with `standalone: true` because two same-line notes cannot share the one inline
+slot (#361's rule moves them to the leading list), and the stream reports `standalone: false`
+because the source gave neither a line. The third row is the case where the two readings happen to
+agree, which is why a fixed-point oracle never caught this.
+
+**What ordering already carries, and what it cannot.** A note between a key and its value belongs to
+the key; a note on its own line before a key belongs to that key's leading slot; those two are
+readable from the sequence. The second row is not: a note after a value and before the next key is
+filed by the engine as the value's trailing note, and that is a *policy*, because the comma that
+ends the pair is not an event. So a stream that wants to rebuild decorations has to report the
+producer's placement answer rather than make every consumer re-derive a rule it cannot see.
+
+**The proposed shape.** `Comment` carries three facts instead of two:
+
+```rust
+Comment {
+    text: Arc<str>,
+    /// Whether the source gave this note a line of its own — the fact the flag answers today.
+    owns_line: bool,
+    /// Which construct the producer filed it under: the mapping or sequence it opens, the key that
+    /// follows, or the value just emitted.
+    owner: NoteOwner,
+}
+```
+
+`owns_line` keeps the meaning the stream already reports, so nothing a consumer reads today changes
+significance; `NoteOwner` is new, and it is the tree's own answer expressed in the vocabulary rather
+than a second source of truth. The producer already computes it — `attach_pending` and the
+`pending_comment` handoff in `pyrs-json` place every note by that rule today, and TOML's note slots
+are per-construct — so this is reporting, not re-deriving.
+
+**What it deliberately does not touch: the AST.** `pyrs-ast::Comment` keeps its two slots and its
+`standalone`, because the tree *is* the placement; the change is confined to `pyrs-event`, the two
+producers and YAML's adapter, which is where the information already exists but is currently
+compressed into one boolean. That is why this is not an architecture change to the node model.
+
+**Compatibility.** Adding a field to an enum variant is a breaking change for anyone constructing
+`StreamEventType` by hand, so it lands as a `pyrs-event` minor bump with the changelog entry saying
+so in those words; every in-tree producer and `from_events` are updated in the same change. The
+Python dict keeps `style: "standalone" | "inline"` as `owns_line` and gains one key, so no shipped
+Python behaviour moves. `AGENTS.md` lists an AST-structure change as Ask First and this is not one,
+but the vocabulary is the crate the objective names as a core abstraction, so the shape goes up here
+first.
+
+**Acceptance criteria — the change is not done until all four hold.**
+
+1. The exclusion disappears: `events_replay.rs` and `json_events_replay.rs` compare the full
+   `Comment` including both flags, and the note comparison is no longer "text only".
+2. A new invariant, per dialect: for every note the tree files on a node, the stream reports the
+   same `owns_line` and the same `owner` — pinned by extending
+   `the_two_walks_answer_different_questions_with_standalone` into a test that the two walks now
+   answer the *same* two questions.
+3. Rebuildability demonstrated rather than asserted: a fold from events back to a tree that
+   preserves note placement, in the test tier, round-tripping a JSONC document through the strict
+   writer to the same text the parser produced.
+4. Cost stated by the gate, not by a sentence: `from_jsonc_medium` (the scenario that carries
+   notes), `to_toml_medium` and `stream_medium` measured on the enforcing image, with the pre-agreed
+   answer if any moves past the tolerance — the smallest shape that reports the fact, not a wider
+   flag set.
+
+**Not measured here.** This section is a design and changes no code, so there is nothing for the
+instruction-count leg to judge; the numbers above come from reading the shipped boundary with
+`parse_stream`, recorded in the ledger entry that carries this decision.
+
 ## What this is not for
 
 - **Not a performance play.** `docs/dev/perf.md` prices the read path's dominant costs in hashing,
@@ -458,7 +536,7 @@ TOML's limit is the intermediate representation's own. Details: quality-ledger (
 
 ## Decisions this document needed from the maintainer
 
-All five are answered, and each answer is recorded in place with its date — a question resolved in a
+All six are answered, and each answer is recorded in place with its date — a question resolved in a
 conversation and left out of the document is a question that gets asked again.
 
 1. **B or C.** (A only as B's first PR.)
@@ -490,6 +568,11 @@ conversation and left out of the document is a question that gets asked again.
    second walk: `register_header` / `register_kv` own a policy (closed tables, re-opened ancestors,
    array tails) that no second copy of it can be trusted to keep, and a replay test would catch such
    a drift only on the inputs it happens to touch.
+6. Whether the note flag stays one boolean read two ways, or becomes two fields — the choice that
+   decides whether a consumer can rebuild decorations from a stream at all. **Answered 2026-10-16
+   (maintainer): split it into two fields, and put the shape up for design review first** — the
+   section "The note flag split" is that review. The answer available and declined: keep one boolean
+   and register the loss as an accepted hole.
 
 ## What the borrowed scalar is worth (2026-10-14, decision 3 landed)
 

@@ -6109,6 +6109,36 @@ answered (`anchor` and `Alias` stayed YAML's own, `tag` generalised to TOML's `!
 belong to the stream) and what remains open (the one-boolean-two-questions note flag).
 `cargo doc -p pyrs-event` builds, which checks the rewrite is at least readable.
 
+### (ec) Decision 6: the note flag becomes two facts, and the design goes up for review before any code
+
+The last limit the event-stream sequence kept naming is now ruled on: `Comment::standalone` answers
+*which slot does this note ride* in the tree and *did the source give it a line* in the stream, and
+one boolean cannot answer both. The maintainer's ruling (2026-10-16) is to split it into two fields
+and to put the shape up for design review first, declining the cheaper alternative of keeping one
+flag and registering the loss as an accepted hole. `docs/dev/event-stream.md` carries the review
+as "The note flag split".
+
+What was measured rather than argued is the event order a producer emits, because that is what
+decides the shape. Read off the shipped boundary: `{"a" /* k */: /* v */ 1}` reports `scalar a`,
+`comment k`, `comment v`, `scalar 1` — so a note between a key and its value is already readable
+from position; `{"a": 1 /* after */, "b": 2}` reports `comment after` between the value and the next
+key, and there position cannot decide, because the comma that closes the pair is not an event and
+the engine's choice is a policy the consumer cannot see. Hence the proposal: keep `owns_line` as the
+meaning the stream already reports and add an explicit owner answer, so a stream can rebuild
+decorations without every consumer re-deriving a rule.
+
+The boundary of the change is the point worth keeping: `pyrs-ast::Comment` does not move, because
+the tree already *is* the placement — the information is currently compressed into one boolean at
+the vocabulary and its producers, which is where it is recomputed. That makes this a `pyrs-event`
+shape change (breaking for hand-constructed variants, so a minor bump and a changelog line in those
+words) rather than the AST change `AGENTS.md` asks first about. Four acceptance criteria are written
+down with it: the note-text-only exclusion disappears from both replay tiers, the two walks agree on
+both facts, a fold demonstrating rebuildability lands in the test tier, and the cost is read from
+the gate on `from_jsonc_medium`, `to_toml_medium` and `stream_medium` rather than asserted.
+
+Not measured: nothing. This entry is a design ruling and a probe of the shipped surface; no code
+path changed, so the instruction-count leg has nothing to judge until the implementation PR exists.
+
 ### (ed) The vocabulary's two generic jobs are now tested over arbitrary input, not over hand-picked cases
 
 `pyrs-event` had a unit tier (#453) and two producer-side replay gates, but the two things it does
