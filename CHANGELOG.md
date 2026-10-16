@@ -646,6 +646,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A duplicate JSON key no longer takes its comment with it** — the map keeps the first key node
+  and the last value, so a repeated name drops the incoming key and the value it replaced, and a
+  note either of them owned used to be dropped with them: `{"a": 1 // first\n, "a": 2}` came back
+  without `first`, silently, for any JSONC or JSON5 document that carries a note on a pair a later
+  duplicate kills. The notes now move onto the pair that survived, and they are rebuilt by replaying
+  the one attachment rule over a scratch node rather than by restating it. The text order inside a
+  collapsed pair is not recoverable from a single slot, so a rescued note reads beside the survivor;
+  the second round writes the same text, which is what the fixed-point tier asks. A key that owns no
+  note - every key in the document the read gate measures - pays one branch, and a document without
+  a repeated key pays nothing else. Found by fuzzing the two walks of a JSON document against each
+  other (the replay target that does it lands in the change right after this one);
+  `a_duplicate_key_keeps_the_notes_its_own_nodes_carried` pins it, and it reddens when the migration
+  is removed.
+
 - **`version()` reports the document's `%YAML` directive instead of the reader's own version** —
   granit hands the declared version to the parse in `Event::DocumentStart` and the AST path dropped
   that argument, so a document declaring `1.1`, `1.2` or `1.3` — and one declaring nothing — all

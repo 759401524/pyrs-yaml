@@ -198,6 +198,65 @@ struct Parser<'a> {
     pending_comment: Vec<PendingComment>,
 }
 
+/// Every note a node carries, in the order the source wrote them: the notes above it, then the one
+/// that ended its line.
+///
+/// Only nodes the parser built reach this: it puts an own-line note on the leading list and a
+/// same-line note in the inline slot, never a standalone note in the slot the older hand-built
+/// shape used, which is the one case where the two views would report the same text twice.
+fn notes_of(node: &CustomNode) -> Vec<pyrs_ast::ast::Comment> {
+    let mut notes = node.leading_comments().to_vec();
+    if let Some(inline) = node.comment() {
+        notes.push(inline.clone());
+    }
+    notes
+}
+
+/// The notes the key node a duplicate name just destroyed owned.
+///
+/// Rebuilt by running the same `attach_pending` over a throwaway node rather than by restating its
+/// rule, because that rule - which note rides the leading list and which owns the inline slot,
+/// including the two-same-line-notes case #361 added - is what decided where they went in the first
+/// place. Costs one node and one list, and only a document with a repeated key pays it.
+fn collapsed_key_notes(pending: &[PendingComment]) -> Vec<pyrs_ast::ast::Comment> {
+    if pending.is_empty() {
+        return Vec::new();
+    }
+    let mut ghost = quoted_or_plain(String::new());
+    attach_pending(&mut ghost, pending);
+    notes_of(&ghost)
+}
+
+/// Hand the notes of a collapsed pair to the pair that survived.
+///
+/// `displaced` is the value the duplicate's own value replaced and `carried` holds what the dropped
+/// key node owned; the displaced notes came earlier in the source, so they lead. They append after
+/// whatever the survivor already carries - the text order of a collapsed pair is not recoverable
+/// from one slot - and the second round writes the list order the first produced, which is what the
+/// fixed point asks of it.
+fn park_notes(
+    pairs: &mut NodeMap<CustomNode, CustomNode>,
+    index: usize,
+    displaced: CustomNode,
+    carried: Vec<pyrs_ast::ast::Comment>,
+) {
+    let mut dead = notes_of(&displaced);
+    if dead.is_empty() && carried.is_empty() {
+        return;
+    }
+    dead.extend(carried);
+    let Some((_, value)) = pairs.get_index_mut(index) else {
+        return;
+    };
+    for note in dead {
+        if note.standalone || value.comment().is_some() {
+            value.push_leading_comment(note);
+        } else {
+            value.set_comment(note);
+        }
+    }
+}
+
 /// Record a stack of pending notes onto `node`: every standalone one appends to
 /// the node's leading list in source order, while a same-line trailing note keeps
 /// owning the single inline `comment` slot (unchanged from #112).
@@ -209,7 +268,7 @@ struct Parser<'a> {
 /// note and the writer's second round differed. All of them now go to the leading list, which holds
 /// any number and preserves source order. A lone same-line comment still owns the inline slot, so the
 /// nuance a human writes (`{"k": 1 // the port\n}`) is untouched.
-fn attach_pending(node: &mut CustomNode, pending: Vec<PendingComment>) {
+fn attach_pending(node: &mut CustomNode, pending: &[PendingComment]) {
     // Every key and every value meets this function, and in a document without comments the whole
     // job is discovering that the list is empty - which `from_json_medium` measured at 3.23% of its
     // counted instructions. The list can only be filled by the `Some(b'/')` arm of the separation
@@ -220,7 +279,7 @@ fn attach_pending(node: &mut CustomNode, pending: Vec<PendingComment>) {
     if pending.len() > 1 && pending.iter().filter(|pc| !pc.own_line).count() > 1 {
         for pc in pending {
             node.push_leading_comment(pyrs_ast::ast::Comment {
-                text: alloc::sync::Arc::from(pc.text),
+                text: alloc::sync::Arc::from(pc.text.as_str()),
                 standalone: true,
             });
         }
@@ -228,7 +287,7 @@ fn attach_pending(node: &mut CustomNode, pending: Vec<PendingComment>) {
     }
     for pc in pending {
         let comment = pyrs_ast::ast::Comment {
-            text: alloc::sync::Arc::from(pc.text),
+            text: alloc::sync::Arc::from(pc.text.as_str()),
             standalone: pc.own_line,
         };
         if pc.own_line {
@@ -417,7 +476,8 @@ impl<'a> Parser<'a> {
     /// a trailing inline note on the same line as its value. Same-line
     /// trailing notes keep using `comment` (unchanged from #112).
     fn flush_pending(&mut self, node: &mut CustomNode) {
-        attach_pending(node, core::mem::take(&mut self.pending_comment));
+        let pending = core::mem::take(&mut self.pending_comment);
+        attach_pending(node, &pending);
     }
 
     /// JSON5 single-quoted string. Same escape set as RFC 8259 basic
@@ -620,8 +680,9 @@ impl<'a> Parser<'a> {
         loop {
             self.ws();
             // Any comment consumed by the leading `ws()` is the key's
-            // standalone note; claim the slot before parsing the key so
-            // the value-side `ws()` below starts with a clean slate.
+            // standalone note; claim the slot here so the value-side `ws()` below starts with a
+            // clean slate, but attach it only after the insert - for a repeated name the node that
+            // survives is the first one, not this one.
             let key_pending = core::mem::take(&mut self.pending_comment);
             let key_str = if self.peek() == Some(b'"') {
                 self.string()?
@@ -633,15 +694,32 @@ impl<'a> Parser<'a> {
                 return Err(self.err("expected a quoted object key"));
             };
             let mut key_node = quoted_or_plain(key_str);
-            attach_pending(&mut key_node, key_pending);
+            // A key's notes arrive through `key_pending` and nowhere else, so an empty list already
+            // answers "this node owns nothing worth rescuing" without reading its slots.
+            attach_pending(&mut key_node, &key_pending);
             self.ws();
             self.expect(":", "expected `:` after the object key")?;
             self.ws();
             let mut value = self.value()?;
             self.ws();
             self.flush_pending(&mut value);
-            // duplicate keys: last value wins, first position kept
-            pairs.insert(key_node, value);
+            // Duplicate keys: last value wins, first position kept.
+            //
+            // Two nodes die in that collapse - the incoming key, since the map keeps the first, and
+            // the value the new one replaced - and a note either owned used to be dropped with it
+            // while the document still wrote it. A note-free key pays for reading two slots that are
+            // empty and nothing else: no second hash, since `insert_full` names the slot the key
+            // landed in for the price of the insert this route was doing anyway, and the keys
+            // themselves are immutable in the map, so what a duplicate cannot keep it hands on.
+            let (index, replaced) = pairs.insert_full(key_node, value);
+            if let Some(displaced) = replaced {
+                park_notes(
+                    &mut pairs,
+                    index,
+                    displaced,
+                    collapsed_key_notes(&key_pending),
+                );
+            }
             match self.peek() {
                 Some(b',') => {
                     self.pos += 1;
@@ -675,7 +753,7 @@ impl<'a> Parser<'a> {
             // the post-value flush below starts clean.
             let element_pending = core::mem::take(&mut self.pending_comment);
             let mut item = self.value()?;
-            attach_pending(&mut item, element_pending);
+            attach_pending(&mut item, &element_pending);
             self.ws();
             self.flush_pending(&mut item);
             items.push(item);
@@ -1430,6 +1508,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::to_jsonc_text;
     use pyrs_ast::ast::ScalarStyle;
     use pyrs_schema::types::Schema;
 
@@ -1598,6 +1677,23 @@ mod tests {
         assert_eq!(scalar_text(v0), "3");
         let (k1, _) = pairs.get_index(1).unwrap();
         assert!(k1.source_range().is_none()); // keys carry no ranges
+    }
+
+    #[test]
+    fn a_duplicate_key_keeps_the_notes_its_own_nodes_carried() {
+        // Found by `fuzz/fuzz_targets/json_events_replay.rs`: the collapse keeps the first key node
+        // and the last value, so the incoming key and the value it replaced are both dropped, and
+        // every note either owned used to be dropped with it. `first` rode the replaced value and
+        // `before the repeat` the incoming key; both must still reach the text.
+        let text = "{\n  \"a\": 1 // first\n,\n  // before the repeat\n  \"a\": 2\n}";
+        let tree = from_jsonc(text).expect("valid JSONC");
+        let written = to_jsonc_text(&tree).expect("writable");
+        assert!(written.contains("first"), "{written}");
+        assert!(written.contains("before the repeat"), "{written}");
+        // and the second round writes the same text, which is what every writer in this crate owes
+        let again = to_jsonc_text(&from_jsonc(&written).expect("its own output re-parses"))
+            .expect("writable");
+        assert_eq!(written, again);
     }
 
     #[test]
