@@ -13,7 +13,15 @@ crate, alongside the AST. The AST half is done; the event-stream half is this do
 and 4 were both answered on 2026-10-14, and decision 5 on 2026-10-16. Step 4 - the replay as a gate
 rather than a test - is the section "What the replay gate answered" and the change that carries it.
 Step 5 - the Python-facing surface - is the section "What the Python surface answered", shipped the
-same day: `parse_stream` reads JSON, JSONC, JSON5 and TOML as well as YAML. Plan B is complete.
+same day: `parse_stream` reads JSON, JSONC, JSON5 and TOML as well as YAML. So the *sequence* is
+complete, and it is worth separating that from what is not: the vocabulary's shape is still open.
+Step 4's gate answers one grammar — `pyrs_json::from_events` is the only replay reader in the
+workspace — and draft PR #454 puts two shape questions up for review: decision 6, splitting
+`Comment::standalone` into the two facts it currently answers, and decision 7, which records that a
+YAML replay cannot rebuild `chomping` or the block indentation indicator at all, because granit's
+`Event::Scalar` does not carry them and only its collection events hand over a notation the adapter
+discards. "The vocabulary is neutral" is therefore proven for JSON and questioned for YAML, which is
+the amount this document can honestly claim.
 
 Every claim below is from reading the tree at `14196dc9` (2026-10-13), except the measurement
 section, which reads `bdc60d74`. File and line numbers are given so a reviewer can check them rather

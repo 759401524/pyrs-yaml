@@ -68,13 +68,21 @@ event for event. The vocabulary crate is measured by itself as well:
 `crates/pyrs-event/src/lib.rs` builds one event per variant and pins that cloning and `into_owned`
 carry every field, that a borrowed scalar and the same text owned are equal (the condition under which
 a replay comparison means anything), and that owning a comment moves the shared `Arc<str>` instead of
-copying it — with both failure modes produced by mutation before the tests were trusted, and its two generic jobs — turning a byte offset into a position, and owning a
-borrowed event — now carry a property tier: arbitrary documents of mixed one-, two-, three- and
-four-byte characters must give every character offset its own `(line, column)`, must collapse the bytes
-inside a character onto that character's start, must never run backwards in byte order, and owning an
-event must change nothing but where its text lives. Removing the character-boundary clamp reddens the
-new property alongside the hand-written table test; zeroing a position inside `into_owned` reddens the
-ownership property. CI elevates both to 20,000 cases with the rest of the tier.
+copying it; both failure modes were produced by mutation before those tests were trusted. Its two
+generic jobs — turning a byte offset into a position, and owning a borrowed event — now carry a
+property tier too: arbitrary documents of mixed one-, two-, three- and four-byte characters must give
+every character offset its own `(line, column)`, must collapse the bytes inside a character onto that
+character's start, must never run backwards in byte order, and owning an event must change nothing but
+where its text lives. Removing the character-boundary clamp reddens the new property alongside the
+hand-written table test; zeroing a position inside `into_owned` reddens the ownership property. CI
+elevates both to 20,000 cases with the rest of the tier.
+The convention those offsets are written in is asked of all three producers at the boundary: a column
+counts characters, JSON and TOML convert a byte offset through `pyrs_event::LineTable` while YAML
+reports granit's own marker column, and `test_a_wide_key_costs_its_characters_not_its_bytes`
+(parametrised over a CJK key and an emoji key in `yaml`, `json` and `toml`) is the only place the three
+are asked the same question. It separates them by mutation: a `LineTable` that returns a byte length
+reddens exactly the four JSON and TOML cases, and reading `byte_offset()` in the YAML adapter reddens
+exactly the two YAML ones.
 No writer is unsettled: 33 JSON dialect rounds from 14 seeds and 30 TOML rounds from 16,
 every one satisfying `once == twice`.
 `fmt_pbt`'s three writer fixed-point properties now hold at 20,000 cases, and two of them never
