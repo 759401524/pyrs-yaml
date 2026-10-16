@@ -37,6 +37,20 @@ graph LR
 | エラーメッセージ | ソーススニペットなし | ソーススニペットあり |
 | 空入力 | `[stream_start, stream_end]` | `[]` |
 | タグハンドラ | 適用しない | 適用する (YAML.parse) |
+| フォーマット | YAML のみ | `yaml`、`json`、`jsonc`、`json5`、`toml` |
+
+### その他の形式
+
+`parse_stream` はキーワード限定の `format` を取り、JSON、JSONC、JSON5、TOML のドキュメントにも同じイベント dict を渡します。生産者はツリーを作らないあの組なので、採用か拒否かの判定は `load_json` や `load_toml` と同じ答えになります：
+
+```python title="ひとつの語彙を形式ごとに"
+from pyrs_yaml import parse_stream
+
+for event in parse_stream('{"a": [1, 2]}', format="json"):
+    print(event["type"], event["value"], event["style"])
+```
+
+その形式が何も言えないフィールドは `None` のままです。`anchor` と `alias` は YAML 固有で、TOML のリテラル `'…'` は基本文字列 `"…"` と同じ読みになります — どちらの引用符を使ったかは残らないためです。JSON と TOML のストリームは 1 つのドキュメントだけを運びます。
 
 ## リソース管理
 

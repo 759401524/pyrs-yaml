@@ -19,6 +19,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **`parse_stream` describes a JSON, JSONC, JSON5 or TOML document too** — the last step of
+  `docs/dev/event-stream.md`'s plan B is a keyword-only `format` on the verb that already streamed
+  YAML (`parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")`), so one call shape
+  now reaches three producers and no second vocabulary: the dicts keep the same seven keys, and a
+  field a format has nothing to say about stays `None`. `anchor` and `alias` remain YAML's own; a
+  TOML literal `'…'` reads the same as a basic `"…"` because which quote was typed is not kept, and
+  the tags a TOML document carries arrive as the hub spells them (`!timestamp`, `!!int`) rather than
+  as YAML's. The accept-or-refuse verdict is the tree route's verdict, from the same scanner, and
+  the two are compared in the test. The default is unchanged, so every existing call — positional
+  arguments included — gets the stream it got before, verified event for event. `max_depth` bounds
+  the two readers that carry the option (YAML answers `YamlMaxDepthError`, JSON a parse error);
+  TOML's limit is the intermediate representation's own. The stub is regenerated, the four API pages
+  and the streaming guide carry the new axis. Measured: `cargo nextest run --all` 659 passed,
+  `uv run pytest tests/` 2853 passed plus the 15 new boundary tests, mutation-checked by neutering
+  the JSON5 arm — which reddened exactly the two JSON5 tests by name. Not measured: the instruction
+  count, which this host cannot take without valgrind; the routing adds a match over producers
+  outside the measured hot path. — details: quality-ledger (ea), `docs/dev/event-stream.md`.
+
 - **`pyrs_json::from_events` is public, and the two walks of a JSON document became a gate** — the
   fold step 2 left in the test tier is now a reader of the shared vocabulary, and a validating one:
   the lists no producer of this crate can emit (an empty stream, a close with nothing open, an

@@ -17,6 +17,23 @@ status: new
 
 #### 追加
 
+- **`parse_stream` は JSON、JSONC、JSON5、TOML も記述するようになりました** —
+  `docs/dev/event-stream.md` の計画 B の最後の一步は、すでに YAML をストリーム化していた動詞にキーワ
+  ード限定の `format` を足すことです
+  （`parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")`）。ひとつの呼び出し形が三
+  人の生産者に届き、語彙は二つ目を持ちません。dict は同じ 7 キーのまま、その形式が何も言えないフィー
+  ルドは `None` です。`anchor` と `alias` は YAML 固有のまま残り、TOML のリテラル `'…'` は基本文字列
+  `"…"` と同じ読みになります（どちらの引用符かは保存されないため）。TOML が運ぶタグはハブの綴りで届
+  きます（`!timestamp`、`!!int`）— YAML の綴りではありません。採用か拒否かの判定はツリーを歩く経路と
+  同じで、同じスキャナーが答えるため、テストで両者を比較しています。既定値は変わらないので、既存の呼
+  び出しは位置引書きを含め、事件単位で前と同じストリームを受け取ります。`max_depth` はそのオプション
+  を持つ 2 つの読み手に効きます（YAML は `YamlMaxDepthError`、JSON はパースエラー）。TOML の入れ子上
+  限は中間表現自身のものです。スタブは再生成し、4 言語の API ページとストリーミングガイドに新しい軸
+  を書きました。実測: `cargo nextest run --all` 659 合格、`uv run pytest tests/` 2853 合格 + 境界テ
+  スト 15 件、変異検査として JSON5 の枝を strict に差し替えると JSON5 の 2 件だけが名前で赤くなりま
+  した。未実測: 命令数 — このホストに valgrind がなく、追加された match は計測中の熱路径の外にありま
+  す。— 詳細: quality-ledger (ea)、`docs/dev/event-stream.md`。
+
 - **`pyrs_json::from_events` が公開され、一つの JSON 文書の二本の走査がゲートになった** — step 2 が
   ティアに残した畳み込みは、いま共有語彙の読者であり、しかも検証する読み手だ。この crate のどの
   producer も発行できない列（空のストリーム、開いたものが無い close、`Alias`、アンカーやタグ付きのイ

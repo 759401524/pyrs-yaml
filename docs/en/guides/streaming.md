@@ -43,6 +43,24 @@ graph LR
 | Errors | No source snippet | Source snippet |
 | Empty input | `[stream_start, stream_end]` | `[]` |
 | Tag handlers | Not applied | Applied (YAML.parse) |
+| Formats | YAML only | `yaml`, `json`, `jsonc`, `json5`, `toml` |
+
+### Other formats
+
+`parse_stream` takes a keyword-only `format` and hands the same event dicts out for a JSON, JSONC,
+JSON5 or TOML document — the producers are the tree-free ones, so the accept-or-refuse verdict is the
+verdict `load_json` and `load_toml` give:
+
+```python title="One vocabulary, per format"
+from pyrs_yaml import parse_stream
+
+for event in parse_stream('{"a": [1, 2]}', format="json"):
+    print(event["type"], event["value"], event["style"])
+```
+
+Fields a format has nothing to say about stay `None`: `anchor` and `alias` are YAML's own, and a TOML
+literal `'…'` reads the same as a basic `"…"` because which quote was typed is not kept. A JSON or
+TOML stream carries exactly one document.
 
 ### Resource management
 

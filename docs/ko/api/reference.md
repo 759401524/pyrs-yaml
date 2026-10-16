@@ -468,13 +468,17 @@ YAML 테스트 스위트 통과율과 테스트별 결과를 반환합니다.
 
 ### `parse_stream()`
 
-YAML을 점진적으로 파싱하여 원시 이벤트 dict를 생성합니다.
+문서를 점진적으로 파싱하여 원시 이벤트 dict를 생성합니다.
 
 ```python
-parse_stream(yaml: str) -> StreamIterator
+parse_stream(
+    yaml: str | bytes, on_event=None, max_depth=1000, *, format="yaml"
+) -> StreamIterator | None
 ```
 
 각 단계마다 이벤트 dict를 생성하는 `StreamIterator`를 반환합니다. `YAML().load_stream()`(Python 값으로 해석)과 달리 원시 토큰 스트림을 노출합니다.
+
+`format`은 누가 이벤트를 만드는지 고릅니다 — `yaml`(기본), `json`, `jsonc`, `json5`, `toml`. 모든 생성자가 같은 어휘를 보고하므로 dict는 언제나 같은 일곱 키(`type`, `value`, `style`, `anchor`, `tag`, `line`, `column`)를 가집니다. 그 형식이 할 말이 없는 필드는 `None`으로 남습니다. `anchor`도 `alias`도 YAML 고유라 다른 형식에서는 나타나지 않고, TOML의 리터럴 `'…'`은 기본 문자열 `"…"`과 똑같이 읽힙니다 — 어떤 인용표를 쳤는지가 중간 표현식에 남지 않기 때문입니다. JSON이나 TOML 스트림은 문서 하나만 싣고, 승인 여부를 판정하는 스캐너는 트리를 가는 경로가 쓰는 그 스캐너와 같습니다.
 
 ### `YamlStream` { #yamlstream }
 

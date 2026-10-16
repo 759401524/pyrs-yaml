@@ -531,9 +531,19 @@ def parse_file(path: "str", schema: "str" = "core", max_depth: "int" = 1000, all
     Parse a YAML file and return an editable `YamlDocument`.
     """
 
-def parse_stream(yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000) -> "StreamIterator | None":
+def parse_stream(yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000, *, format: "str" = "yaml") -> "StreamIterator | None":
     """
     Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
+
+    `format` chooses the producer: `yaml` (the default), `json`, `jsonc`, `json5` or `toml`. Every
+    producer reports the one vocabulary, so the dicts keep the same seven keys and only the fields a
+    format has something to say about change. `style` is whatever that engine remembers: a JSON
+    string reads `double_quoted` and a JSON number `plain`, JSON5 adds `single_quoted`, and a TOML
+    literal `'…'` reads the same as a basic `"…"` because which quote was typed is not in its IR.
+    `anchor` and `alias` stay YAML's own and never appear elsewhere. `max_depth` bounds the YAML and
+    JSON readers, which carry that knob; TOML's nesting limit is the intermediate representation's
+    own. The accept/reject verdict is the same one the tree route reaches with the same detail,
+    because it is the same scanner: a document `load_json` refuses raises here too.
     """
 
 def read_markdown(path: "str", schema: "str" = "core", max_depth: "int" = 1000) -> "tuple[dict[Any, Any] | None, str]":

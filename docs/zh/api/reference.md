@@ -469,13 +469,17 @@ compliance_report() -> dict
 
 ### `parse_stream()`
 
-增量解析 YAML，产出原始事件字典。
+增量解析一份文档，产出原始事件字典。
 
 ```python
-parse_stream(yaml: str) -> StreamIterator
+parse_stream(
+    yaml: str | bytes, on_event=None, max_depth=1000, *, format="yaml"
+) -> StreamIterator | None
 ```
 
 返回一个 `StreamIterator`，每步产出一个事件字典。与 `YAML().load_stream()`（解析为 Python 值）不同，这暴露了原始令牌流。
+
+`format` 决定由哪个生产者来读：`yaml`（默认）、`json`、`jsonc`、`json5` 或 `toml`。所有生产者报告的都是同一套词汇表，因此字典始终是那七个键（`type`、`value`、`style`、`anchor`、`tag`、`line`、`column`）。某个格式无话可说的字段保持 `None`：`anchor` 是 YAML 自己的，`alias` 在其余格式里从不出现；TOML 的字面量 `'…'` 与基础串 `"…"` 读起来一样，因为用的是哪种引号并不留在中间表示里。JSON 或 TOML 的流只承载一个文档，而接受还是拒绝由同一个扫描器判定，与走树那条路给出的答复一致。
 
 ### `YamlStream` { #yamlstream }
 

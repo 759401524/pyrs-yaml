@@ -60,7 +60,11 @@ writers fails instead of passing vacuously. Two more deterministic replays of th
 corpus ask a different question — whether a document's event stream and its tree describe the
 same document (`crates/pyrs-toml/tests/event_stream.rs`, and the stream/tree parity cases in
 `crates/pyrs-json/src/parser.rs`) — so the event path is gated on every `cargo nextest` too,
-not only on the fuzz schedule.
+not only on the fuzz schedule. The third tier of the same pair sits at the Python boundary:
+`tests/test_streaming.py::TestMultiFormatStream` asks, per format, that one verb produces the one
+vocabulary — which quote forms a format keeps, which fields stay `None` because that format has nothing
+to say about them, that the verdict text is the tree route's, and that the default call is still YAML
+event for event.
 No writer is unsettled: 33 JSON dialect rounds from 14 seeds and 30 TOML rounds from 16,
 every one satisfying `once == twice`.
 `fmt_pbt`'s three writer fixed-point properties now hold at 20,000 cases, and two of them never

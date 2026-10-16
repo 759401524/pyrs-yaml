@@ -19,6 +19,20 @@ status: new
 
 #### 新增
 
+- **`parse_stream` 现在也能描述 JSON、JSONC、JSON5 或 TOML 文档** — `docs/dev/event-stream.md` 计划
+  B 的最后一步，是给原本已经在流式读取 YAML 的那个动词加一个仅关键字参数 `format`
+  （`parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")`），于是一种调用形状通向三
+  个生产者，而不需要第二套词汇表：字典仍是那七个键，某个格式无话可说的字段保持 `None`。`anchor` 与
+  `alias` 仍是 YAML 自己的；TOML 的字面量 `'…'` 与基础串 `"…"` 读起来一样，因为用的是哪种引号并不保
+  留；TOML 文档携带的标签按中枢的写法到达（`!timestamp`、`!!int`），而不是按 YAML 的。接受还是拒绝的
+  判定与走树那条路一致，因为那是同一个扫描器，测试里把两者做了比对。默认值没有变化，因此每一次既有调
+  用——包括位置参数写法——拿到的流与从前逐事件相同。`max_depth` 只约束携带该选项的两个读取器（YAML 报
+  `YamlMaxDepthError`，JSON 报解析错误）；TOML 的嵌套上限属于中间表示自己。桩文件已重新生成，四个语
+  言的 API 页与流式读取指南都写上了这条新轴。实测：`cargo nextest run --all` 659 通过，
+  `uv run pytest tests/` 2853 通过，另加 15 个新的边界测试，并做了突变检查——把 JSON5 那一支改成严格
+  档，恰好让两个 JSON5 测试按名字变红。未实测：指令数，这台主机没有 valgrind；这层路由是在被测量的热
+  路径之外对生产者做一次 match。— 详情：quality-ledger (ea)、`docs/dev/event-stream.md`。
+
 - **`pyrs_json::from_events` 成为公开 API，一份 JSON 文档的两条遍历从此成为一道门禁** — 第 2 步留在
   测试层的那个折叠，如今是共享词汇表的一个读者，而且会做校验：本 crate 的任何生产者都发不出的那些列
   表（空流、没有开就来的闭、`Alias`、带锚点或带标签的事件、块标量）都是带着诊断的拒绝，而不是猜测，

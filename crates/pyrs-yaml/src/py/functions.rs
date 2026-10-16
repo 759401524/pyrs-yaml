@@ -14,6 +14,7 @@ use crate::py::type_registry;
 
 use crate::YamlParseError;
 use crate::YamlSerializeError;
+use crate::YamlTypeError;
 
 #[pyfunction]
 #[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
@@ -226,22 +227,68 @@ pub(crate) fn safe_loads(
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000) -> "StreamIterator | None")]
+#[pyo3(signature = (yaml: "str | bytes", on_event: "Callable[[dict[str, Any]], bool] | None" = None, max_depth: "int" = 1000, *, format: "str" = "yaml") -> "StreamIterator | None")]
 /// Event-stream parsing. With `on_event` callback, consumes events and returns `None`. Otherwise returns a lazy `StreamIterator`.
+///
+/// `format` chooses the producer: `yaml` (the default), `json`, `jsonc`, `json5` or `toml`. Every
+/// producer reports the one vocabulary, so the dicts keep the same seven keys and only the fields a
+/// format has something to say about change. `style` is whatever that engine remembers: a JSON
+/// string reads `double_quoted` and a JSON number `plain`, JSON5 adds `single_quoted`, and a TOML
+/// literal `'…'` reads the same as a basic `"…"` because which quote was typed is not in its IR.
+/// `anchor` and `alias` stay YAML's own and never appear elsewhere. `max_depth` bounds the YAML and
+/// JSON readers, which carry that knob; TOML's nesting limit is the intermediate representation's
+/// own. The accept/reject verdict is the same one the tree route reaches with the same detail,
+/// because it is the same scanner: a document `load_json` refuses raises here too.
 pub(crate) fn parse_stream(
     py: Python,
     yaml: &Bound<'_, PyAny>,
     on_event: Option<Py<PyAny>>,
     max_depth: usize,
+    format: &str,
 ) -> PyResult<Py<PyAny>> {
     let yaml_str: String = crate::py::document::coerce_str_or_bytes(yaml)?;
 
-    if let Some(callback) = on_event {
-        let events = py.detach(|| {
+    let events: Vec<crate::parser::StreamEvent<'_>> = match format {
+        "yaml" => py.detach(|| {
             crate::parser::parse_stream_with_options(&yaml_str, max_depth)
                 .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
-        })?;
+        })?,
+        "json" | "jsonc" | "json5" => {
+            let dialect = match format {
+                "json" => pyrs_json::JsonParseOptions::STRICT,
+                "jsonc" => pyrs_json::JsonParseOptions::JSONC,
+                _ => pyrs_json::JsonParseOptions::JSON5,
+            };
+            let opts = pyrs_json::JsonParseOptions {
+                max_depth,
+                ..dialect
+            };
+            py.detach(|| {
+                pyrs_json::parse_stream_with_options(&yaml_str, opts).map_err(|e| {
+                    YamlParseError::new_err(format_i18n_error(
+                        "json-parse-error",
+                        &[("detail", &e.to_string())],
+                    ))
+                })
+            })?
+        }
+        "toml" => py.detach(|| {
+            pyrs_toml::parse_stream(&yaml_str).map_err(|e| {
+                YamlParseError::new_err(format_i18n_error(
+                    "toml-parse-error",
+                    &[("detail", &e.to_string())],
+                ))
+            })
+        })?,
+        other => {
+            return Err(YamlTypeError::new_err(format!(
+                "Unsupported format '{}'. Supported: yaml, json, jsonc, json5, toml",
+                other
+            )));
+        }
+    };
 
+    if let Some(callback) = on_event {
         Python::attach(|py| -> PyResult<()> {
             let cb = callback.bind(py);
             for event in &events {
@@ -255,11 +302,6 @@ pub(crate) fn parse_stream(
         })?;
         Ok(py.None())
     } else {
-        let events = py.detach(|| {
-            crate::parser::parse_stream_with_options(&yaml_str, max_depth)
-                .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
-        })?;
-
         // The iterator outlives this call and a `#[pyclass]` cannot borrow, so the stream detaches
         // here — the one path that still copies every scalar out of the source. The `on_event`
         // branch above does not: its events die inside the loop, so they only ever borrow.

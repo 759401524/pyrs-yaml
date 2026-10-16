@@ -12,7 +12,8 @@ Python and Rust users.** The objective lists `事件流` as a core abstraction t
 crate, alongside the AST. The AST half is done; the event-stream half is this document. Decisions 3
 and 4 were both answered on 2026-10-14, and decision 5 on 2026-10-16. Step 4 - the replay as a gate
 rather than a test - is the section "What the replay gate answered" and the change that carries it.
-What is left in order after that is the Python-facing surface.
+Step 5 - the Python-facing surface - is the section "What the Python surface answered", shipped the
+same day: `parse_stream` reads JSON, JSONC, JSON5 and TOML as well as YAML. Plan B is complete.
 
 Every claim below is from reading the tree at `14196dc9` (2026-10-13), except the measurement
 section, which reads `bdc60d74`. File and line numbers are given so a reviewer can check them rather
@@ -408,6 +409,34 @@ the spans from the IR and report positions only where the IR already has them, n
 floor. There is no `pyrs_toml::from_events`: a fold would re-derive a tree that both readers already
 agree on, whereas JSON's fold exists because its stream and its tree are built by two different
 walks.
+
+## What the Python surface answered (2026-10-16, step 5)
+
+`parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")` now picks the producer:
+`yaml`, `json`, `jsonc`, `json5` or `toml`. The maintainer ruling that shaped it was a choice
+between widening the one verb and adding per-format verbs; the document had promised "a multi-format
+`parse_stream`", and a second surface would have meant two places to keep honest, so the keyword
+won.
+
+The step is small because the vocabulary was already shared: both producers emit
+`pyrs_event::StreamEvent`, the same type YAML's stream emits, so the projection to Python dicts
+needed no new field and no new format's own type at the boundary. That is the neutrality claim of
+step A tested by use rather than by assertion. The default is unchanged and
+`tests/test_streaming.py` compares the two calls event for event, positional form included, since a
+widened signature is a compatibility event whether or not it looks like one.
+
+What users can now see for themselves is where the vocabulary stops being YAML's: `anchor` and
+`alias` are empty and absent outside YAML, a TOML literal and a basic string read alike, and TOML's
+tags arrive as the hub spells them (`!timestamp`, `!!int`). Two claims were corrected by measuring
+instead of by writing - the docstring first said a TOML string reads `plain` and the probe answered
+`double_quoted`, and the same probe showed the quoted `y` key is the hub's deliberate choice,
+matching the tree. The limit the replay gate named still stands and is now user-visible: a same-line
+note's owning node cannot be reconstructed from these dicts, because `Comment::standalone` answers
+two different questions in the two walks. Rebuilding decorations from a stream is therefore a shape
+change (a second field), not a missing feature.
+
+`max_depth` is honoured by the two readers that carry the option and answers in two different types;
+TOML's limit is the intermediate representation's own. Details: quality-ledger (ea).
 
 ## What this is not for
 
