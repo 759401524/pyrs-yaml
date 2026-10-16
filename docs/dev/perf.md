@@ -853,3 +853,59 @@ the TOML writer and the event stream, which the `AGENTS.md` residual does not co
 figure was measured between hosts and this is between runner images: the same order of size, on the
 two paths that moved. That is the honest amount being accepted here, recorded rather than rounded
 away.
+
+## The number a local run moves is the compiler, not the host (2026-10-16)
+
+`AGENTS.md` closed the previous section with a residual it had only measured on two scenarios, and
+said so. The whole table is now measured, and the answer is not the one the sentence predicted: the
+term that moves a local reading is the toolchain, and it is an order of magnitude larger than the
+tolerance.
+
+One tree (`main` at `9dc5d5fb`, after the property tier merged), one host (WSL2,
+`Linux 6.18.54.1-microsoft-standard-WSL2`), `--repeats 3`, the `MEASUREMENT_ENV` ISA pin unchanged —
+only `RUSTUP_TOOLCHAIN` differs. Residual is the largest of three samples against the floor the
+baseline commits, which was generated on the enforcing image by `rustc 1.97.1`.
+
+| Compiler | Past the 0.50% line | Worst upward move | Largest downward move | Spread of the nineteen non-binding scenarios |
+| --- | --- | --- | --- | --- |
+| `rustc 1.97.1` (the baseline's pin) | 0 of 22 | `to_python_medium` +0.1639% | `to_python_anchors` −0.2335% | −0.0029% … +0.0012% |
+| `rustc 1.99.0` (this box's default stable) | 5 of 22 | `serialize_medium` +9.0772% | — | `serialize_block_scalars` −7.7094% |
+
+The pinned reading is the cross-host residual the earlier sentence was reaching for: a WSL machine
+reproduces the enforcing image's floors to within 0.17%, and every scenario that does not link
+CPython agrees to three decimal places — 0.001% at worst, against a tolerance of 0.50%. The three
+binding scenarios are the only ones that move measurably, which is what `AGENTS.md` already says of
+them.
+
+The unpinned reading is a different phenomenon, and its shape is the evidence. Five scenarios are
+past the line — `serialize_medium` +9.08%, `serialize_block` +8.86%, `serialize_small` +8.03%,
+`serialize_anchors` +7.95%, `to_toml_medium` +3.55% — all YAML writers, and the sixth writer
+scenario in the same family, `serialize_block_scalars`, moves *down* 7.71%. Host noise does not pick
+a side like that; a code-generation change does. The binary digests say the same thing in the gate's
+own vocabulary: `4fdb240b2e078d7c` on 1.99.0 against `2c4f20059f8d530c` on 1.97.1, so by
+`binary_pairing`'s rule the movement is code, and these numbers pair with no other run's.
+
+Two consequences, both acted on rather than noted.
+
+- **CI cannot be reddened by this.** `.github/workflows/codspeed.yml` reads
+  `.ci/ir-baseline.json['toolchain']` and installs that compiler before it measures, and the refresh
+  job does the same unless told otherwise (the defect `tests/test_ir_baseline_workflow.py` pins).
+  The drift lives only on a machine whose default stable has moved past the pin.
+- **A local run now says so.** `scripts/ir_gate.py` prints a toolchain note when the recorded banner
+  and the current one disagree — naming both versions, the +9.1%/−7.7% pair above, and the
+  `RUSTUP_TOOLCHAIN=<pin>` fix — the note also reaches `--report-only`, which used to print maxima
+  with neither the warning nor the binary pairing, and the comparing path's `FAIL toolchain changed`
+  reuses the same sentence instead of a second one. `tests/test_ir_gate_provenance.py` pins all of
+  it, including that a same-version rebuild is *not* reported as a version change.
+
+What this retires: the environment note used to tell a reader that a WSL number had once been +1.45%
+off the runner's on `serialize_block_scalars`. Measured here, that scenario is 7.71% *below* the
+floor on the newer compiler and 0.00005% below it on the pinned one, so the figure was never a host
+term, and a note that quotes a number nobody can reproduce teaches the reader to distrust the wrong
+variable. The sentence now points at this section instead of carrying a number of its own.
+
+Not measured: no macOS or ARM reading — the table compares two compilers on one Linux userland, and
+the host term is pinned by `MEASUREMENT_ENV`, not by this experiment. And the +0.1639% on
+`to_python_medium` is one machine's largest of three; the CPython-linked scenarios are the ones
+`AGENTS.md` already calls noisy, and 0.060% of run-to-run spread on `to_python_anchors` in the same
+sitting is in the same range.
