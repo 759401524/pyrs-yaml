@@ -22,7 +22,7 @@ use alloc::{
 };
 use pyrs_ast::ast::{CustomNode, NodeMap, ScalarStyle};
 use pyrs_ast::error::{DepthError, ParseError};
-use pyrs_event::{StreamEvent, StreamEventType};
+use pyrs_event::{LineTable, StreamEvent, StreamEventType};
 use pyrs_schema::schema::needs_quotes;
 use pyrs_schema::types::{Schema, YamlType};
 
@@ -1070,31 +1070,6 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 // The tree-free event stream
 // ---------------------------------------------------------------------------
 
-/// Byte offset of each line start, so an event position is a lookup plus one char count.
-///
-/// Lines break where the crate's own diagnostics break (`err` counts `\n`), which is what lets a
-/// stream event and the error for the same byte agree about where they sit.
-fn line_starts(text: &str) -> Vec<usize> {
-    let mut starts = Vec::with_capacity(8);
-    starts.push(0usize);
-    for (index, byte) in text.bytes().enumerate() {
-        if byte == b'\n' {
-            starts.push(index + 1);
-        }
-    }
-    starts
-}
-
-/// The 0-indexed (line, column) pair of a byte offset, the column counted in chars.
-fn line_col(text: &str, starts: &[usize], pos: usize) -> (usize, usize) {
-    let line = starts
-        .partition_point(|&start| start <= pos)
-        .saturating_sub(1);
-    let start = starts[line];
-    let cut = floor_char_boundary(text, pos.max(start));
-    (line, text[start..cut].chars().count())
-}
-
 /// Where each comment token inside `[from, to)` begins, in source order.
 fn comment_starts(text: &str, from: usize, to: usize) -> Vec<usize> {
     let bytes = text.as_bytes();
@@ -1128,7 +1103,7 @@ fn comment_starts(text: &str, from: usize, to: usize) -> Vec<usize> {
 /// The collector the stream walk writes into: the source, its line table, and the events so far.
 struct StreamOut<'a> {
     text: &'a str,
-    starts: Vec<usize>,
+    lines: LineTable<'a>,
     events: Vec<StreamEvent<'a>>,
 }
 
@@ -1136,13 +1111,13 @@ impl<'a> StreamOut<'a> {
     fn new(text: &'a str) -> Self {
         Self {
             text,
-            starts: line_starts(text),
+            lines: LineTable::new(text),
             events: Vec::new(),
         }
     }
 
     fn at(&mut self, pos: usize, event_type: StreamEventType<'a>) {
-        let (line, column) = line_col(self.text, &self.starts, pos);
+        let (line, column) = self.lines.line_col(pos);
         self.events.push(StreamEvent {
             event_type,
             line,

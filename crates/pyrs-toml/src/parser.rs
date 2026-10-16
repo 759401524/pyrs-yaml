@@ -9,7 +9,7 @@
 //!
 //! [spec]: https://toml.io/en/v1.1.0
 
-use crate::{CowTable, KVAnnotations, TomlTable, TomlValue, cow_table_to_node};
+use crate::{CowTable, KVAnnotations, Note, TomlTable, TomlValue, cow_table_to_node};
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -60,12 +60,44 @@ pub fn from_toml_v1_0(src: &str) -> Result<CustomNode, ParseError> {
 
 /// Parse a TOML document selecting an explicit dialect.
 pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomNode, ParseError> {
+    let (root, leftover) = parse_ir(src, dialect)?;
+    let mut node = cow_table_to_node(root);
+    // A comment-only document has no key/table to consume the trailing
+    // standalone note, so `pending_leading` would be dropped and the writer
+    // fixed point (`# …\n` → re-parse → `` → ``) drifts to empty. When the
+    // root is otherwise empty, attach the leftover note to it so the sole
+    // `# …` line survives the round trip. Non-empty documents keep their
+    // notes on keys and leave document-trailing comments unattributed (the
+    // writer never emits those, so their fixed point is unaffected).
+    if matches!(&node, CustomNode::Mapping { pairs, .. } if pairs.is_empty()) {
+        for note in leftover {
+            node.push_leading_comment(note.into_comment(true));
+        }
+    }
+    Ok(node)
+}
+
+/// Run the scanner to the engine's own intermediate representation.
+///
+/// Both readers of a document start here: the AST projection above, and the event stream in
+/// `events`, which reports the same IR with the positions it carries. That is why the two routes
+/// cannot disagree about what is valid - one scanner decides, twice it is described - and it is the
+/// reason TOML's producer is not the second walk `pyrs-json` needed: the table rules below
+/// (`defined`, `dotted_defined`, array-of-tables tails) are heavy enough that re-deriving them in a
+/// second pass would be two authored policies, which is what `docs/dev/event-stream.md` refuses.
+///
+/// The second value is every own-line note no key or header claimed; the AST has no slot for those
+/// in a non-empty document, the event stream reports them where they sit.
+pub(crate) fn parse_ir(
+    src: &str,
+    dialect: TomlDialect,
+) -> Result<(CowTable, Vec<Note>), ParseError> {
     let mut p = Parser {
         s: src.as_bytes(),
         text: src,
         pos: 0,
         depth: 0,
-        root: CowTable::new(),
+        root: CowTable::new(0, 0),
         current: Vec::new(),
         defined: Vec::new(),
         pending_leading: Vec::new(),
@@ -107,23 +139,7 @@ pub fn from_toml_with_options(src: &str, dialect: TomlDialect) -> Result<CustomN
     if let Some(e) = p.pending_comment_err.take() {
         return Err(e);
     }
-    let mut node = cow_table_to_node(p.root);
-    // A comment-only document has no key/table to consume the trailing
-    // standalone note, so `pending_leading` would be dropped and the writer
-    // fixed point (`# …\n` → re-parse → `` → ``) drifts to empty. When the
-    // root is otherwise empty, attach the leftover note to it so the sole
-    // `# …` line survives the round trip. Non-empty documents keep their
-    // notes on keys and leave document-trailing comments unattributed (the
-    // writer never emits those, so their fixed point is unaffected).
-    if matches!(&node, CustomNode::Mapping { pairs, .. } if pairs.is_empty()) {
-        for text in core::mem::take(&mut p.pending_leading) {
-            node.push_leading_comment(pyrs_ast::ast::Comment {
-                text: alloc::sync::Arc::from(text.as_str()),
-                standalone: true,
-            });
-        }
-    }
-    Ok(node)
+    Ok((p.root, core::mem::take(&mut p.pending_leading)))
 }
 
 struct Parser<'a> {
@@ -144,7 +160,7 @@ struct Parser<'a> {
     /// key is ordinary input, and the `Option<String>` this replaces overwrote all
     /// but the last — a silent loss the writer could never show, because the
     /// shortened output round-tripped perfectly.
-    pending_leading: Vec<String>,
+    pending_leading: Vec<Note>,
     /// True once `skip_all_blank` has crossed at least one blank line
     /// since the last real pair / header / EOF. Claimed by the next pair
     /// or header as its `blank_before` hint so the writer can reproduce
@@ -156,7 +172,7 @@ struct Parser<'a> {
     /// own, in source order. All of them are claimed by the next member as its
     /// leading notes (PR #119 interior-comment fidelity, list-ified with the
     /// stacked-comment fix).
-    pending_inline_comment: Vec<String>,
+    pending_inline_comment: Vec<Note>,
     /// First forbidden control-character found inside a comment body, held as a
     /// deferred error because `take_comment` is infallible (toml-test
     /// `invalid/control/comment-*`). Surfaced by the document entry point.
@@ -216,7 +232,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn take_comment(&mut self) -> String {
+    fn take_comment(&mut self) -> Note {
+        let hash = self.pos;
         self.pos += 1; // consume '#'
         let start = self.pos;
         while !self.eof() && self.peek() != Some(b'\n') && self.peek() != Some(b'\r') {
@@ -237,7 +254,10 @@ impl<'a> Parser<'a> {
                 self.pending_comment_err = Some(self.err_at("control character in comment", off));
             }
         }
-        self.text[start..self.pos].trim().to_string()
+        Note {
+            text: self.text[start..self.pos].trim().to_string(),
+            at: hash,
+        }
     }
 
     fn skip_all_blank(&mut self) {
@@ -299,7 +319,7 @@ impl<'a> Parser<'a> {
     /// and one line ending. Errors on any other trailing byte. The inline
     /// comment (if any) is returned so `parse_line` can attach it as the
     /// pair's trailing annotation.
-    fn finish_line(&mut self) -> Result<Option<String>, ParseError> {
+    fn finish_line(&mut self) -> Result<Option<Note>, ParseError> {
         self.skip_spaces();
         let inline = if self.peek() == Some(b'#') {
             Some(self.take_comment())
@@ -378,12 +398,15 @@ impl<'a> Parser<'a> {
         }
         self.pos += 1;
         self.skip_spaces();
+        let value_at = self.pos;
         let value = self.parse_value()?;
         let trailing = self.finish_line()?;
         let anns = KVAnnotations {
             leading,
             trailing,
             blank_before: blank,
+            key_at: key_start,
+            value_at,
         };
         self.register_kv(&key, value, anns, key_start)
     }
@@ -394,6 +417,7 @@ impl<'a> Parser<'a> {
         // travels through the same route to mark the section's blank separator.
         let leading = core::mem::take(&mut self.pending_leading);
         let blank = core::mem::take(&mut self.pending_blank);
+        let header_at = self.pos;
         self.expect_byte(b'[', "expected `[`")?;
         let is_array = self.peek() == Some(b'[');
         if is_array {
@@ -415,12 +439,15 @@ impl<'a> Parser<'a> {
             None
         };
         self.consume_line_ending()?;
-        self.register_header(&key, is_array, comment, leading, blank)
+        self.register_header(&key, is_array, comment, leading, blank, header_at)
     }
 
     // ------ keys -------------------------------------------------------------
 
-    fn parse_key_path(&mut self) -> Result<Vec<String>, ParseError> {
+    /// One key path as the document wrote it: every segment paired with the offset of its first
+    /// byte, because a header line names a whole path and a stream that reports only where the line
+    /// begins cannot put its events in source order.
+    fn parse_key_path(&mut self) -> Result<Vec<(String, usize)>, ParseError> {
         let mut parts = vec![self.parse_key_segment()?];
         loop {
             self.skip_spaces();
@@ -434,14 +461,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_key_segment(&mut self) -> Result<String, ParseError> {
+    fn parse_key_segment(&mut self) -> Result<(String, usize), ParseError> {
         // Keys are never multi-line; the `multiline` flag from the string
         // scanners is discarded here.
-        match self.peek() {
-            Some(b'"') => self.parse_basic_string_content().map(|(s, _)| s),
-            Some(b'\'') => self.parse_literal_string().map(|(s, _)| s),
-            _ => self.parse_bare_key(),
-        }
+        let at = self.pos;
+        let name = match self.peek() {
+            Some(b'"') => self.parse_basic_string_content().map(|(s, _)| s)?,
+            Some(b'\'') => self.parse_literal_string().map(|(s, _)| s)?,
+            _ => self.parse_bare_key()?,
+        };
+        Ok((name, at))
     }
 
     fn parse_bare_key(&mut self) -> Result<String, ParseError> {
@@ -1088,6 +1117,7 @@ impl<'a> Parser<'a> {
             // attribution `parse_inline_table` gives a member, because `#` runs to end of line and
             // the reader can only report a comment from the line that ends it.
             let leading = core::mem::take(&mut self.pending_inline_comment);
+            let value_at = self.pos;
             let v = self.parse_value()?;
             let trailing = self.same_line_comment();
             items.push((
@@ -1096,6 +1126,8 @@ impl<'a> Parser<'a> {
                     leading,
                     trailing,
                     blank_before: false,
+                    key_at: value_at,
+                    value_at,
                 },
             ));
             self.skip_array_ws();
@@ -1113,7 +1145,7 @@ impl<'a> Parser<'a> {
 
     /// A `#` comment still on the current line, without crossing a newline: the one that belongs to
     /// the value just parsed rather than to the element that follows it.
-    fn same_line_comment(&mut self) -> Option<String> {
+    fn same_line_comment(&mut self) -> Option<Note> {
         let mut at = self.pos;
         while matches!(self.byte_at(at), Some(b' ') | Some(b'\t')) {
             at += 1;
@@ -1161,33 +1193,38 @@ impl<'a> Parser<'a> {
             // member's leading note. PR #119 plumbs it through the IR
             // so `to_toml` can reproduce interior comments.
             let leading = core::mem::take(&mut self.pending_inline_comment);
+            let key_at = self.pos;
             let key = self.parse_key_path()?;
             self.skip_inline_ws();
             self.expect_byte(b'=', "expected `=` in inline table")?;
             self.skip_inline_ws();
+            let value_at = self.pos;
             let v = self.parse_value()?;
             let trailing = self.take_inline_trailing_comment();
             let anns = KVAnnotations {
                 leading,
                 trailing,
                 blank_before: false,
+                key_at,
+                value_at,
             };
             // toml-test strictness: inline tables reject a key that collides
             // with any already-defined path - equal, or one a prefix of the
             // other at segment boundaries (`a` then `a.b`, or `a.b` then
             // `a.b.c`). Valid sibling dotted keys (`{ a.b = 1, a.c = 2 }`) do
             // not collide because neither path is a prefix of the other.
+            let named = names(&key);
             let conflict = defined_paths
                 .iter()
-                .any(|q| q[..q.len().min(key.len())] == key[..q.len().min(key.len())]);
+                .any(|q| q[..q.len().min(named.len())] == named[..q.len().min(named.len())]);
             if conflict {
                 return Err(self.err(&format!(
                     "duplicate key `{}` in inline table",
-                    key.join(".")
+                    named.join(".")
                 )));
             }
-            let joined_key = key.join(".");
-            defined_paths.push(key.clone());
+            let joined_key = named.join(".");
+            defined_paths.push(named.clone());
             entries.push((joined_key, v, anns));
             self.skip_inline_ws();
             if self.peek() == Some(b',') {
@@ -1219,7 +1256,7 @@ impl<'a> Parser<'a> {
     /// `#`). Returns `None` once a newline or the `,` / `}` separator
     /// is reached, so an own-line comment stays pending for the next
     /// member's leading slot rather than being misfiled as trailing.
-    fn take_inline_trailing_comment(&mut self) -> Option<String> {
+    fn take_inline_trailing_comment(&mut self) -> Option<Note> {
         if self.dialect != TomlDialect::V1_1 {
             return None;
         }
@@ -1385,11 +1422,16 @@ impl<'a> Parser<'a> {
 
     fn register_kv(
         &mut self,
-        key: &[String],
+        key: &[(String, usize)],
         value: TomlValue,
-        anns: KVAnnotations,
+        mut anns: KVAnnotations,
         key_start: usize,
     ) -> Result<(), ParseError> {
+        // A dotted path names one key at its last segment, and that segment's offset is where the
+        // name the AST stores actually begins.
+        if let Some((_, at)) = key.last() {
+            anns.key_at = *at;
+        }
         if key.is_empty() {
             return Err(self.err_at("empty key path", key_start));
         }
@@ -1423,7 +1465,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        for (i, seg) in key.iter().enumerate() {
+        for (i, (seg, seg_at)) in key.iter().enumerate() {
             let last = i + 1 == key.len();
             unsafe {
                 let tbl = &mut *root_ptr;
@@ -1466,13 +1508,15 @@ impl<'a> Parser<'a> {
                         // `[header]`. Record the absolute path (current section
                         // + the dotted prefix) so `register_header` can reject it.
                         let mut abs: Vec<&str> = self.current.iter().map(|s| s.as_str()).collect();
-                        abs.extend(key[..=i].iter().map(|s| s.as_str()));
+                        abs.extend(key[..=i].iter().map(|(name, _)| name.as_str()));
                         let dotted_path = abs.join(".");
                         if !self.dotted_defined.contains(&dotted_path) {
                             self.dotted_defined.push(dotted_path);
                         }
-                        tbl.entries
-                            .insert(seg.clone(), TomlTable::Implicit(CowTable::new()));
+                        tbl.entries.insert(
+                            seg.clone(),
+                            TomlTable::Implicit(CowTable::new(key_start, *seg_at)),
+                        );
                         if let Some(TomlTable::Implicit(inner)) = tbl.entries.get_mut(seg.as_str())
                         {
                             root_ptr = inner as *mut CowTable;
@@ -1486,13 +1530,14 @@ impl<'a> Parser<'a> {
 
     fn register_header(
         &mut self,
-        key: &[String],
+        key: &[(String, usize)],
         is_array: bool,
-        comment: Option<String>,
-        leading: Vec<String>,
+        comment: Option<Note>,
+        leading: Vec<Note>,
         blank_before: bool,
+        at: usize,
     ) -> Result<(), ParseError> {
-        let joined = key.join(".");
+        let joined = key_text(key);
         if !is_array && self.defined.contains(&joined) {
             return Err(self.err(&format!("duplicate table header `[{joined}]`")));
         }
@@ -1506,7 +1551,7 @@ impl<'a> Parser<'a> {
             )));
         }
         let mut root = &mut self.root as *mut CowTable;
-        for (i, seg) in key.iter().enumerate() {
+        for (i, (seg, seg_at)) in key.iter().enumerate() {
             let last = i + 1 == key.len();
             unsafe {
                 let tbl = &mut *root;
@@ -1537,9 +1582,11 @@ impl<'a> Parser<'a> {
                                     comment: comment.clone(),
                                     leading: leading.clone(),
                                     blank_before,
+                                    at,
+                                    key_at: *seg_at,
                                 }),
                             );
-                            self.current = key.to_vec();
+                            self.current = names(key);
                             self.defined.push(joined);
                             return Ok(());
                         }
@@ -1558,6 +1605,8 @@ impl<'a> Parser<'a> {
                                 comment: comment.clone(),
                                 leading: leading.clone(),
                                 blank_before,
+                                at,
+                                key_at: *seg_at,
                             });
                             let tail = list.last_mut().unwrap() as *mut CowTable;
                             root = tail;
@@ -1576,11 +1625,13 @@ impl<'a> Parser<'a> {
                                     comment: comment.clone(),
                                     leading: leading.clone(),
                                     blank_before,
+                                    at,
+                                    key_at: *seg_at,
                                 }];
                                 tbl.entries
                                     .insert(seg.clone(), TomlTable::ArrayOfTables(list));
                                 // current points to the newly pushed tail
-                                self.current = key.to_vec();
+                                self.current = names(key);
                                 self.defined.push(joined);
                                 return Ok(());
                             } else {
@@ -1591,6 +1642,8 @@ impl<'a> Parser<'a> {
                                         comment: comment.clone(),
                                         leading: leading.clone(),
                                         blank_before,
+                                        at,
+                                        key_at: *seg_at,
                                     }),
                                 );
                                 if let Some(TomlTable::Explicit(inner)) =
@@ -1600,8 +1653,10 @@ impl<'a> Parser<'a> {
                                 }
                             }
                         } else {
-                            tbl.entries
-                                .insert(seg.clone(), TomlTable::Implicit(CowTable::new()));
+                            tbl.entries.insert(
+                                seg.clone(),
+                                TomlTable::Implicit(CowTable::new(at, *seg_at)),
+                            );
                             if let Some(TomlTable::Implicit(inner)) =
                                 tbl.entries.get_mut(seg.as_str())
                             {
@@ -1615,7 +1670,7 @@ impl<'a> Parser<'a> {
         if !is_array {
             self.defined.push(joined.clone());
         }
-        self.current = key.to_vec();
+        self.current = names(key);
         Ok(())
     }
 
@@ -1732,6 +1787,17 @@ impl DateTimeProbe {
             _ => false,
         }
     }
+}
+
+/// The names of a parsed key path, for the messages and the table bookkeeping that address a
+/// table by its dotted text rather than by where each segment sits.
+fn names(key: &[(String, usize)]) -> Vec<String> {
+    key.iter().map(|(name, _)| name.clone()).collect()
+}
+
+/// The same names as the dot-joined text a duplicate-key rejection quotes back.
+fn key_text(key: &[(String, usize)]) -> String {
+    names(key).join(".")
 }
 
 fn validate_date(s: &str) -> bool {

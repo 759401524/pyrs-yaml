@@ -56,7 +56,11 @@ different question with a different answer:
 (`crates/pyrs-json/tests/roundtrip_corpus.rs`, `crates/pyrs-toml/tests/roundtrip_corpus.rs`)
 replay the seed corpus on every `cargo nextest` — 33 rounds from 14 JSON seeds and 30 from
 16 TOML seeds, with a floor declared in each file so a corpus that stopped exercising the
-writers fails instead of passing vacuously.
+writers fails instead of passing vacuously. Two more deterministic replays of the same seed
+corpus ask a different question — whether a document's event stream and its tree describe the
+same document (`crates/pyrs-toml/tests/event_stream.rs`, and the stream/tree parity cases in
+`crates/pyrs-json/src/parser.rs`) — so the event path is gated on every `cargo nextest` too,
+not only on the fuzz schedule.
 No writer is unsettled: 33 JSON dialect rounds from 14 seeds and 30 TOML rounds from 16,
 every one satisfying `once == twice`.
 `fmt_pbt`'s three writer fixed-point properties now hold at 20,000 cases, and two of them never

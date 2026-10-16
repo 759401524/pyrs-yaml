@@ -3,12 +3,15 @@
 Status: **ruled - option B, adopted 2026-10-13; step A (`pyrs-event`) merged as PR #379; step 2
 (JSON producer) measured, priced and shelved the same day in the shape that taxed the tree, and
 shipped on 2026-10-16 in the shape the ruling asked for: a tree-free second walk
-(`pyrs_json::parse_stream`), section "What the second walk answered". Decision 2 was answered the
-same day - a multi-format `parse_stream` is promised to Python and Rust users.** The objective
-lists `事件流` as a core abstraction to be split into its own crate, alongside the AST. The AST half
-is done; the event-stream half is this document. Decisions 3 and 4 were both answered on 2026-10-14,
-so the list at the bottom is empty. What is left in order is the TOML producer, the replay as a
-gate rather than a test, and only then the Python-facing surface.
+(`pyrs_json::parse_stream`), section "What the second walk answered". Step 3 (TOML) shipped the same
+day as well, and it is *not* a second walk - `pyrs_toml::parse_stream` reads the intermediate
+representation the AST projection already builds, because TOML's table rules are heavy enough that
+re-authoring them in a second pass would be two policies; section "What the third producer
+answered". Decision 2 was answered the same day - a multi-format `parse_stream` is promised to
+Python and Rust users.** The objective lists `事件流` as a core abstraction to be split into its own
+crate, alongside the AST. The AST half is done; the event-stream half is this document. Decisions 3
+and 4 were both answered on 2026-10-14, and decision 5 on 2026-10-16. What is left in order is the
+replay as a gate rather than a test, then the Python-facing surface.
 
 Every claim below is from reading the tree at `14196dc9` (2026-10-13), except the measurement
 section, which reads `bdc60d74`. File and line numbers are given so a reviewer can check them rather
@@ -275,6 +278,100 @@ before the TOML producer has answered the same questions would freeze a shape th
 producer's assumptions in it. The Python-facing surface, the stubs and the four doc locales are the
 last step of plan B and were not touched.
 
+## What the third producer answered (2026-10-16, TOML)
+
+`pyrs_toml::parse_stream` and `parse_stream_with_dialect` are step 3, and they take the opposite
+route from step 2 on purpose. A second scanning pass was the right shape for JSON, where the whole
+grammar is one nested value; here the policy worth protecting is the table rules - which header may
+open which path, which dotted key closed a table against re-opening, where an array of tables gains
+a tail - authored once in `parser::register_kv` and `parser::register_header` over raw pointers into
+a `CowTable`. A second pass that reaches the same accept/reject verdicts would have to write that
+policy a second time, which is the divergence this document has refused twice already. So the events
+are read off the same intermediate representation the AST projection reads: the scanner runs once,
+one verdict stands, and two readers describe it. Accept/reject parity is then a property of the
+architecture, and it is still asked as a test (26 malformed documents across both grammar revisions,
+plus the 16-file seed corpus).
+
+Ruling first (maintainer, 2026-10-16, decision 5 below): pay the spans in the IR rather than
+duplicate the grammar, and let the instruction-count gate judge the price.
+
+What the plumbing cost, measured rather than estimated: `Note { text, at }` replaces a `String` per
+comment, `KVAnnotations` gained `key_at` and `value_at`, `CowTable` gained `at` and `key_at`, and
+`parse_key_path` reports each segment's offset because a header line names a whole path. The
+projection that decides a scalar's text, style and tag is now one function,
+`lib.rs::scalar_projection`, called both by `toml_value_to_node` and by the stream - TOML's twin of
+`hub_scalar`, so a spelling cannot mean two things to the two readers. `LineTable` moved into
+`pyrs-event` once a second producer needed it: the same conversion, one author, two producers and
+three tests of it.
+
+### What the arbitrations said (2026-10-16, decision 5's price paid in full)
+
+The first CI run of this shape (run 38840810436) reported one scenario over the floor:
+`from_toml_medium` at +1.48% against a 0.50% tolerance, 0.000% spread across its three samples.
+Decision 5 makes the gate the arbiter and names the fallback - drop the spans, do not widen the
+floor - so before dropping anything, the spans were priced on one host: `main` reads 159,941,362
+and this shape 161,987,153, +2,045,791 (+1.28%), while `to_toml_medium` moved +0.013% and
+`from_json_medium`, which TOML's IR cannot reach, +0.035%. Three numbers that agree on one thing:
+the tax was in *building* the document, not in carrying a wider record or in reading it back.
+
+Two hypotheses then died one measurement each. Narrowing the spans - `u32` offsets, `Arc<str>` for
+the note text, so the two records returned to the size `main` gives them - made it *worse*:
+166,341,862, +4.0%. And `ir_gate.py --profile from_toml_medium` does not show the map insertion
+moving at all between `main` and this change, which is what entry size would have changed. What
+does move is `__memcpy_avx_unaligned_erms`, +2,701,897 of the +2,045,791, together with the function
+under it: `scalar_projection` was written to borrow `&TomlValue` and to copy the scalar's text, and
+the tree route reads every scalar through it. A value the tree already owned was therefore cloned
+once per scalar. That is the regression; the spans were innocent.
+
+So the projection takes the value by value now. `toml_value_to_node` moves the text into the node
+exactly as it did before this change existed, and only the event producer - which borrows the IR and
+hands the text out as owned `Cow` anyway - pays a clone. Same host, same pinned ISA:
+**158,750,613**, below `main`'s 159,941,362 by 0.74%. Nothing was dropped from decision 5's shape
+and no floor was moved; what the gate caught was a copy the refactor should never have introduced,
+and the read path is cheaper than it was before the stream existed. Whether that lands under the
+recorded baseline is CI's `Instruction-count baseline` leg to say, on the image the baseline names;
+a WSL reading cannot claim it, and this file does not.
+
+The vocabulary's fields come back answered:
+
+- **`tag` is not YAML's private field.** A date-time arrives as `!timestamp` / `!date` / `!time` and
+  a binary integer as `!!int`, which is exactly what the tree stores. The field means "the type the
+  document states", so a second format fills it and nothing is renamed - the generalisation step 2
+  was designed to test, and it held.
+- **`anchor` stays empty and `Alias` is never emitted**, the second time that answer has now been
+  measured rather than declared.
+- **`style` reports what the engine kept, not what the document wrote.** A literal `'…'` and a basic
+  `"…"` both arrive `DoubleQuoted`, and `_`-grouped digits arrive canonicalised, because the IR does
+  not store either fact. JSON's stream does report the quote it saw; TOML's cannot. The same field
+  is therefore as informative as each engine's own memory, which is the honest limit of a producer
+  that refuses to re-scan.
+
+Two positions exist only in the stream, and both are shape facts about TOML:
+
+- A close event carries the offset of the construct it closes, because TOML never wrote an end token
+    - where a table ends is decided by the next header, which is not a fact the IR keeps.
+- A header names its table *inside* the brackets that open it, so a table's key event sits at a
+  larger offset than the `MappingStart` that follows it in structural order. The stream is in
+  structural order, which is the order YAML and JSON give too; byte order would need an end offset
+  the document never contained, and array-of-tables headers repeat a name that names one sequence,
+  so the name is reported once (as YAML does for a key whose value is a sequence of mappings).
+
+A third difference belongs to the AST, not the vocabulary: an own-line note that meets no key or
+header has no slot in the tree - the writer emits no such text, so `from_toml` discards it - while
+the stream reports it where it sits. `a_note_the_tree_has_no_slot_for_is_still_in_the_stream` pins
+both halves, including the comment-only document where the tree does keep it.
+
+Measured on this change: `cargo clippy --all --all-targets -- -D warnings` clean,
+`cargo nextest run --all` 655 passed (10 of them new: 8 in `crates/pyrs-toml/tests/event_stream.rs`,
+2 for `LineTable`), `cargo test --all --no-default-features` green,
+`cargo check --workspace --no-default-features` green. Not measured here: the instruction count,
+which this host cannot take (no valgrind), so the span plumbing's price on `from_toml_*` is CI's
+`Instruction-count baseline` leg to judge - and if it moves past the tolerance the answer is to drop
+the spans from the IR and report positions only where the IR already has them, not to widen the
+floor. There is no `pyrs_toml::from_events`: a fold would re-derive a tree that both readers already
+agree on, whereas JSON's fold exists because its stream and its tree are built by two different
+walks.
+
 ## What this is not for
 
 - **Not a performance play.** `docs/dev/perf.md` prices the read path's dominant costs in hashing,
@@ -287,7 +384,7 @@ last step of plan B and were not touched.
 
 ## Decisions this document needed from the maintainer
 
-All four are answered, and each answer is recorded in place with its date — a question resolved in a
+All five are answered, and each answer is recorded in place with its date — a question resolved in a
 conversation and left out of the document is a question that gets asked again.
 
 1. **B or C.** (A only as B's first PR.)
@@ -310,6 +407,15 @@ conversation and left out of the document is a question that gets asked again.
    key-spelling that every reader of the stream — the replay test and the Python-facing
    `parse_stream` both — would have had to special-case. Source fidelity stays where the vocabulary
    already puts it, on the span each event carries, not in the event's shape.
+5. Which shape TOML's producer takes, once it was clear that a second scanning walk would have to
+   re-author the table rules: a second walk like JSON's, spans recorded in the IR and projected from
+   it like the AST is, or a stream that reports no positions at all. **Answered 2026-10-16
+   (maintainer): spans in the IR, projected from it.** The read-path cost is allowed for on one
+   condition - the instruction-count gate arbitrates, and movement past the tolerance is answered
+   by dropping the spans, not by widening the floor. The alternative rejected on principle is the
+   second walk: `register_header` / `register_kv` own a policy (closed tables, re-opened ancestors,
+   array tails) that no second copy of it can be trusted to keep, and a replay test would catch such
+   a drift only on the inputs it happens to touch.
 
 ## What the borrowed scalar is worth (2026-10-14, decision 3 landed)
 
