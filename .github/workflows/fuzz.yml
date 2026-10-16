@@ -9,9 +9,11 @@
 # input in the backlog is unfixed, because it would redden unrelated PRs on
 # findings nobody has triaged yet. History: an earlier revision of this file made
 # discovery blocking on PRs too, and within two runs it surfaced three distinct
-# inputs (crash-1b01ac3f, fixed as #272; crash-a916de77 and crash-9b77aea4, open)
-# — each of which would have blocked every engine PR until its own root cause was
-# written. A discovered input returns to blocking duty the moment it is minimised,
+# inputs. Their status now, read off the ledger and the seed tier rather than from this
+# comment's own memory: crash-1b01ac3f is fixed (#272) and crash-9b77aea4 is fixed, minimised to
+# 15 bytes and seeded, so `-runs=0` replays it on every pull request; crash-a916de77's artifact
+# expired, its bytes are gone and its status is unverified, which is not the same claim as
+# "still open". A discovered input returns to blocking duty the moment it is minimised,
 # pinned and seeded: the seed tier is permanent, the sampler only finds.
 # Individual fixes keep their own PRs (one root cause, one PR).
 name: Fuzz

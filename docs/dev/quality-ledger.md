@@ -6078,6 +6078,37 @@ route and `scripts/check_stub_drift.py` reports no drift. Not measured: the inst
 this host cannot take without valgrind; the added work is a match over producers outside the
 measured hot path, so CI's leg is the arbiter.
 
+### (eb) The vocabulary crate is measured by itself, not only through the producers that use it
+
+`pyrs-event` holds the type every producer reports, and it had two tests — both about `LineTable`.
+That left the part the crate itself owns, the eleven-arm `into_owned` match, gated only by whichever
+variants the JSON and TOML producers happened to emit at the time: an arm that maps to a neighbour,
+or rebuilds a variant without one field, compiles, and a replay test only notices if it happens to
+walk that variant. Three tests now build one event per variant in the crate and ask the three
+questions the producers cannot answer for it.
+
+Cloning and owning leave every field and both positions alone — the equality is over the whole
+`StreamEvent`, so a dropped `standalone`, `anchor` or `tag` fails by naming the variant it came
+from. A scalar borrowed from the source and the same text owned compare equal: `Cow` is the decision
+3 ruling, and this is the sentence that makes the two-walk replays meaningful, because a borrowed
+and an owned form that disagreed would let a passing replay say nothing. Owning a comment moves the
+shared `Arc<str>` rather than copying it — the allocation claim is now a pointer identity, and a
+change that quietly copies here fails that test alone.
+
+Attribution was checked by mutating, not by reading: dropping `standalone` in the Comment arm
+reddens exactly `owning_a_stream_keeps_every_field_of_every_variant`, and replacing the moved `Arc`
+with `Arc::from(&*text)` reddens exactly
+`owning_a_comment_moves_the_shared_text_rather_than_copying_it`. Both were reverted.
+`cargo nextest run --all` 662 passed (3 new). Test-only: no read path is touched, so the
+instruction-count leg has no new claim to judge, and this entry sits after (ea) once PR #452 lands.
+
+The crate's own header still said "the producers do not exist yet" and listed steps 2-4 as future
+work — true when step A merged, false now. It is rewritten to say what the two producers actually
+answered (`anchor` and `Alias` stayed YAML's own, `tag` generalised to TOML's `!timestamp` and
+`!!int`, `style` reports whatever the engine remembers, close-event offsets and structural order
+belong to the stream) and what remains open (the one-boolean-two-questions note flag).
+`cargo doc -p pyrs-event` builds, which checks the rewrite is at least readable.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

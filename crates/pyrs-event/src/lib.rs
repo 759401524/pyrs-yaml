@@ -5,24 +5,27 @@
 //! It sits beside `pyrs-ast` - the node model - and,
 //! like it, is `no_std` + `alloc` and free of any format engine's own types.
 //!
-//! ## What this crate is, at this step
+//! ## What this crate is now
 //!
-//! The shape here is YAML's, moved verbatim out of `crates/pyrs-yaml-core/src/parser/stream.rs`.
-//! That is deliberate: a neutral vocabulary has to be designed against more than one producer, and
-//! the producers do not exist yet. The sequence this step belongs to is recorded in
-//! `docs/dev/event-stream.md`:
+//! The shape is YAML's, moved verbatim out of `crates/pyrs-yaml-core/src/parser/stream.rs`, and the
+//! sequence that had to prove it was neutral rather than merely renamed is finished: `pyrs-json`
+//! walks its own scanner into these events, `pyrs-toml` projects them from the intermediate
+//! representation its AST route already builds, a fuzz target plus a deterministic seed corpus
+//! replay both walks against the tree on every `cargo nextest`, and one Python-facing verb reads all
+//! three formats. So the fields below are answered by two producers rather than asserted.
 //!
-//! 1. **this crate**, holding the type, with the YAML adapter left where it is and re-exporting -
-//!    no behaviour change, so the instruction-count gate proves the move cost nothing.
-//! 2. a JSON producer, which is the first thing that says which fields are shared and which are a
-//!    format's payload.
-//! 3. a TOML producer, same question again.
-//! 4. a replay property test - events fed back through one reader must rebuild the AST the direct
-//!    parsers build - because that is the only test that can show the vocabulary is neutral rather
-//!    than merely renamed.
+//! What that measured: `anchor` and `Alias` stayed YAML's own — the other two never emit them, and
+//! `tag` turned out to generalise, because TOML arrives with `!timestamp` / `!date` / `!time` and
+//! `!!int`, exactly what its tree stores. `style` reports whatever a given engine remembers, which
+//! is why a TOML literal and a basic string read alike. Positions are the producer's to carry: a
+//! close event's offset exists in the stream and nowhere else, and a header's key precedes the
+//! `MappingStart` it opens.
 //!
-//! So a field like `anchor`, `tag` or `Alias` is not a claim that JSON has anchors; it is YAML's
-//! grammar still visible, and step 2 is where it either generalises or moves into a payload.
+//! One limit is still open and is measured rather than argued: `Comment::standalone` answers *which
+//! slot this note rides* in the tree and *whether the source gave it a line* in the stream, so a
+//! same-line note's owning node cannot be rebuilt from these events. Rebuilding decorations from a
+//! stream needs two fields, not one boolean read two ways — `docs/dev/event-stream.md` carries that
+//! as the step that follows this one.
 
 #![no_std]
 
@@ -216,6 +219,7 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn a_line_table_reports_the_granit_convention_for_both_engine_dialects() {
@@ -242,5 +246,162 @@ mod tests {
         let accent = text.find('é').unwrap();
         assert_eq!(table.line_col(accent), (1, 0));
         assert_eq!(table.line_col(accent + 1), (1, 0));
+    }
+
+    /// The vocabulary has no constructor of its own, so a test builds the record directly.
+    fn event<'a>(line: usize, column: usize, event_type: StreamEventType<'a>) -> StreamEvent<'a> {
+        StreamEvent {
+            event_type,
+            line,
+            column,
+        }
+    }
+
+    /// One event of every variant, built once so the two tests below ask the same question of all
+    /// eleven arms of `into_owned` rather than of whichever variants a producer happens to emit.
+    fn one_of_every_variant<'a>() -> Vec<StreamEvent<'a>> {
+        let tag = Tag::local("str");
+        vec![
+            event(0, 0, StreamEventType::StreamStart),
+            event(0, 9, StreamEventType::StreamEnd),
+            event(0, 0, StreamEventType::DocumentStart),
+            event(0, 9, StreamEventType::DocumentEnd),
+            event(
+                0,
+                3,
+                StreamEventType::Scalar {
+                    value: Cow::Borrowed("plain"),
+                    style: ScalarStyle::Plain,
+                    anchor: Some(String::from("a")),
+                    tag: Some(tag.clone()),
+                },
+            ),
+            event(
+                1,
+                0,
+                StreamEventType::Scalar {
+                    value: Cow::Owned(String::from("decoded")),
+                    style: ScalarStyle::DoubleQuoted,
+                    anchor: None,
+                    tag: None,
+                },
+            ),
+            event(
+                1,
+                2,
+                StreamEventType::MappingStart {
+                    anchor: Some(String::from("m")),
+                    tag: Some(tag.clone()),
+                },
+            ),
+            event(1, 8, StreamEventType::MappingEnd),
+            event(
+                2,
+                2,
+                StreamEventType::SequenceStart {
+                    anchor: None,
+                    tag: Some(tag),
+                },
+            ),
+            event(2, 8, StreamEventType::SequenceEnd),
+            event(
+                3,
+                0,
+                StreamEventType::Alias {
+                    name: String::from("m"),
+                },
+            ),
+            event(
+                4,
+                0,
+                StreamEventType::Comment {
+                    text: Arc::from("note"),
+                    standalone: true,
+                },
+            ),
+        ]
+    }
+
+    #[test]
+    fn owning_a_stream_keeps_every_field_of_every_variant() {
+        // `into_owned` is an eleven-arm match, so the way it breaks is silently: an arm that maps to
+        // a neighbouring variant, or one that rebuilds a variant without a field, still compiles.
+        // Neither producer nor reader can see that; equality on the whole event can.
+        let events = one_of_every_variant();
+        for event in &events {
+            assert_eq!(
+                event,
+                &event.clone(),
+                "{:?} is not a faithful clone",
+                event.event_type
+            );
+        }
+        let owned: Vec<StreamEvent<'static>> = events
+            .clone()
+            .into_iter()
+            .map(StreamEvent::into_owned)
+            .collect();
+        assert_eq!(events.len(), owned.len());
+        for (before, after) in events.iter().zip(owned.iter()) {
+            assert_eq!(before, after, "owning changed {:?}", before.event_type);
+            assert_eq!(before.line, after.line);
+            assert_eq!(before.column, after.column);
+        }
+    }
+
+    #[test]
+    fn a_borrowed_scalar_and_its_copy_out_of_the_source_are_the_same_event() {
+        // The replay gates compare an event that borrowed the source against one that owns its text;
+        // that comparison is only meaningful if `Cow` answers equal for the two. Pinned here rather
+        // than assumed, because a vocabulary whose borrowed and owned forms disagreed would make a
+        // passing replay test say nothing.
+        let borrowed = event(
+            0,
+            3,
+            StreamEventType::Scalar {
+                value: Cow::Borrowed("plain"),
+                style: ScalarStyle::Plain,
+                anchor: None,
+                tag: None,
+            },
+        );
+        let owned = event(
+            0,
+            3,
+            StreamEventType::Scalar {
+                value: Cow::Owned(String::from("plain")),
+                style: ScalarStyle::Plain,
+                anchor: None,
+                tag: None,
+            },
+        );
+        assert_eq!(borrowed, owned);
+        assert_eq!(borrowed.clone().into_owned(), owned);
+    }
+
+    #[test]
+    fn owning_a_comment_moves_the_shared_text_rather_than_copying_it() {
+        // A note's text is `Arc<str>` precisely so that detaching at the Python boundary costs a
+        // reference-count bump; the claim is this pointer identity, and a change that copies here
+        // would still pass every round-trip test above.
+        let text: Arc<str> = Arc::from("note");
+        let event = event(
+            0,
+            0,
+            StreamEventType::Comment {
+                text: Arc::clone(&text),
+                standalone: false,
+            },
+        );
+        let owned = event.into_owned();
+        let StreamEventType::Comment {
+            text: owned_text,
+            standalone,
+        } = owned.event_type
+        else {
+            panic!("owning a comment stopped being a comment");
+        };
+        assert!(Arc::ptr_eq(&text, &owned_text));
+        assert!(!standalone);
     }
 }
