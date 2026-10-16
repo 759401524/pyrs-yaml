@@ -9,6 +9,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A wide key costs its characters, in every format's stream** — the position a stream event
+  carries is a line and a column counted in *characters*: JSON and TOML convert a byte offset with
+  `pyrs_event::LineTable`, YAML reports the column granit's own marker carries, and the two
+  conversions live in different crates, so nothing asked the three producers the same question. Six
+  parametrised boundary cases now do — a CJK key and an emoji key, in `yaml`, `json` and `toml` —
+  each asserting the value sits where the source's characters count it, with the expected column
+  derived from the Python string rather than typed. Attribution by mutation, and it separates the
+  producers: making `LineTable` return a byte length reddens exactly the four JSON and TOML cases,
+  and both Rust tiers with them
+  (`a_line_table_reports_the_granit_convention_for_both_engine_dialects`,
+  `every_character_offset_is_the_position_of_its_own_character`), while reading `byte_offset()`
+  instead of `col()` in YAML's adapter reddens exactly the two YAML cases. Both reverted. Test-only:
+  no engine path is touched, so the instruction-count leg has no new claim to judge. Measured:
+  `uv run pytest tests/test_streaming.py` 37 passed (6 new), 40 with the extension-freshness gate.
+
 - **A local instruction-count reading now says which compiler built it** — `AGENTS.md` claimed the
   cross-image residual had been re-measured on two scenarios; all twenty-two are measured now, on
   one tree and one WSL host with only `RUSTUP_TOOLCHAIN` differing. On the baseline's pinned
