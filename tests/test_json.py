@@ -89,6 +89,17 @@ class TestJsonDialects:
         for text in (after_value, above_key, after_key):
             assert pyrs_yaml.parse(text).to_yaml() == text
 
+    def test_duplicate_jsonc_key_keeps_both_notes(self):
+        # A repeated name keeps the first key node and the last value, so the incoming key and the
+        # value it replaced used to be dropped - and a note either of them owned went with them,
+        # which is output that is perfectly stable and one note short of the input.
+        src = '{\n  "a": 1 // first\n,\n  // before the repeat\n  "a": 2\n}'
+        projected = pyrs_yaml.from_jsonc(src)
+        assert "first" in projected, projected
+        assert "before the repeat" in projected, projected
+        assert pyrs_yaml.safe_load(projected) == {"a": 2}
+        assert pyrs_yaml.parse(projected).to_yaml() == projected
+
     def test_stacked_jsonc_comments_all_survive(self):
         # A member may be introduced by any number of comment lines. The parser
         # kept a single pending note, so `// a` vanished and only `// b` came

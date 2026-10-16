@@ -5980,6 +5980,38 @@ the projection stopped cloning scalars. No public `pyrs_toml::from_events` exist
 rebuild a tree that both readers already share an answer for, unlike JSON's, whose fold is the only
 place the two walks can be compared.
 
+### (dy) A fuzz gate found a note the JSON tree threw away with a duplicate key, and what it cost to fix
+
+`fuzz/fuzz_targets/json_events_replay.rs` asks the tree route and the event route of one JSON
+document the same questions. Its first 90 seconds of exploring produced
+`{\n "a": 0,\n //{\n "a": 0,\n // "*  "* e\n}`: both walks accepted it, the stream reported two
+notes and the tree kept one. The lost note rode the second `"a"`'s key node, and a repeated name
+collapses onto the first pair - so the incoming key and the value it replaced are both dropped, and
+anything they owned used to be dropped with them. Nothing in any earlier tier could see it: the
+writer forgets comment slots in strict JSON, so the fixed point held while text went missing from
+JSONC and JSON5 output.
+
+The rescue is `object()` handing the collapsed pair's notes to the pair that survived, and the shape
+took four measurements to settle because the read gate prices what this host does not show
+faithfully: five variants that execute near-identical instruction counts on the measured fixture
+read between +0.26% and +0.85% on `from_json_medium`, same binary settings, 0.000% spread within
+each run - the spread is code layout, not work. What was kept is the variant that does no work at
+all unless a name actually repeats: `attach_pending` now borrows its list, so the parser still holds
+the pending notes across `insert_full`, and a duplicate replays that one rule over a scratch node to
+recover what the dead key owned. `from_jsonc_medium`, the scenario that carries notes, moved +0.48%
+on this host; `from_json_medium` moved inside the noise band and CI's leg is the arbiter, which last
+read that scenario 1.40% below its recorded floor.
+
+Two rules this followed rather than reinvented: the placement logic is replayed, never restated, so
+the #361 two-same-line-notes case and the leading-versus-inline split cannot drift from the parser;
+and the regression test was mutation-checked before it was trusted - with the migration removed it
+fails, with the migration in place it and all 70 peers pass
+(`a_duplicate_key_keeps_the_notes_its_own_nodes_carried` in Rust,
+`test_duplicate_jsonc_key_keeps_both_notes` through the Python surface). The named residual: a
+rescued note reads beside the survivor, not where the input put it, because one slot cannot
+say "this note came from the pair that was collapsed away". `docs/dev/event-stream.md` carries the
+question as part of what the replay cannot express.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
