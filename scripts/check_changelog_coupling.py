@@ -8,6 +8,13 @@ Two rules, one reason:
    touch `CHANGELOG.md`. Otherwise the change ships unannounced.
 2. **Completeness.** If a changeset touches *any* of the five changelogs it must touch *all* five.
    `AGENTS.md`: "update root first, then translate into each locale. Never commit partial updates."
+3. **One exemption, and only for the bot.** `--allow-lockfile-bumps` clears rule 1 when every
+   trigger path is a lockfile - `Cargo.lock` or `uv.lock`, at any depth. A resolved-version move is
+   not a change the release notes describe, which is the same judgement that keeps
+   `.github/workflows/**` and `prek.toml` out of the trigger list below; the bump is decided by
+   `.github/dependabot.yml` and merged or refused by `scripts/dependency_merge_gate.py`. The flag is
+   off by default, and CI passes it only when the pull request's author is `dependabot[bot]`, so a
+   human who wants a bump to ship without a note still has to write the note.
 
 Neither rule was enforceable before this file. Measured consequence, one PR old: #296 landed
 `fuzz/fuzz_targets/*.rs`, two `roundtrip_corpus.rs` gates, a `fuzz.yml` matrix row and
@@ -79,6 +86,24 @@ TRIGGER_EXACT = (
 # deliberately absent from the trigger list: they are this gate's own bookkeeping, and a gate that
 # demands a release note every time the ledger of the ledger changes gets bypassed.
 
+# Lockfiles the dependency bot moves on its own. Their names are also the auto-merge allowlist in
+# `scripts/dependency_merge_gate.py`, and `tests/test_dependency_merge_gate.py` fails if the two
+# lists ever disagree: the same judgement - a resolved-version move is not a change the release
+# notes describe - must decide both, or a bump either merges silently or is told to write a note
+# nobody can write for it.
+LOCKFILE_NAMES = ("Cargo.lock", "uv.lock")
+
+
+def is_lockfile_bump(path: str) -> bool:
+    """Whether this trigger path is only a resolved-version move, at any depth in the workspace."""
+    name = normalise(path).replace("\\", "/").rsplit("/", 1)[-1]
+    return name in LOCKFILE_NAMES
+
+
+def dependency_only(triggers: list[str]) -> bool:
+    """A trigger set made of nothing but lockfiles, which is the exemption's whole scope."""
+    return bool(triggers) and all(is_lockfile_bump(p) for p in triggers)
+
 
 def normalise(path: str) -> str:
     path = path.replace("\\", "/")
@@ -93,13 +118,21 @@ def is_trigger(path: str) -> bool:
     return path.startswith(TRIGGER_PREFIXES) or path in TRIGGER_EXACT
 
 
-def findings(paths: list[str]) -> list[str]:
-    """Every way this path set violates the two rules, as one-line messages."""
+def findings(paths: list[str], allow_lockfile_bumps: bool = False) -> list[str]:
+    """Every way this path set violates the two rules, as one-line messages.
+
+    `allow_lockfile_bumps` is the dependency bot's exemption and nothing else: it is passed by CI
+    only when the pull request's author is the bot, so a human who wants a bump to ship without a
+    note has to write the note. Off by default, including for the commit hook, because the hook
+    cannot tell who is committing and the stricter reading is the one a local run should give.
+    """
     seen = {normalise(p) for p in paths}
     triggers = sorted(p for p in seen if is_trigger(p))
     present = [m for m in MIRRORS if m in seen]
 
     if triggers and not present:
+        if allow_lockfile_bumps and dependency_only(triggers):
+            return []
         return [
             "changeset moves the product but no release note: "
             f"{len(triggers)} trigger path(s) (first: {triggers[0]}), "
@@ -131,10 +164,11 @@ def staged_or_base(argv: list[str]) -> tuple[list[str], str]:
 
 def main(argv: list[str]) -> int:
     paths, how = staged_or_base(argv)
+    allow = "--allow-lockfile-bumps" in argv
     if not paths:
         print(f"OK: {how} listed no files, nothing to couple")
         return 0
-    found = findings(paths)
+    found = findings(paths, allow_lockfile_bumps=allow)
     if found:
         print(f"changelog coupling violated ({how}, {len(paths)} path(s)):")
         for line in found:
@@ -145,7 +179,9 @@ def main(argv: list[str]) -> int:
             "when a changelog is already in the diff, so it cannot see this."
         )
         return 1
-    print(f"OK: changelog coupling holds ({how}, {len(paths)} path(s))")
+    exempt = allow and dependency_only(sorted(p for p in paths if is_trigger(normalise(p))))
+    note = " (lockfile-only bump, exempt for the dependency bot)" if exempt else ""
+    print(f"OK: changelog coupling holds ({how}, {len(paths)} path(s)){note}")
     return 0
 
 

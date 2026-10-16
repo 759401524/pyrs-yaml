@@ -19,6 +19,18 @@ status: new
 
 #### 新增
 
+- **依赖更新如今按计划到达，并在一条边界内自行合并** — `.github/dependabot.yml` 现已跟踪 `cargo`（工
+  作区与 `fuzz/`，各有自己的锁文件）、`uv`（`pyproject.toml` + `uv.lock`）以及 CI actions，每周针对
+  `main` 运行。权威仍是那道已经挡住人的门禁：`Test matrix (all legs)` 对该 head 提交报 `success`
+  （`skipped` 与 `cancelled` 算作拒绝），判定写在 `scripts/dependency_merge_gate.py`，由
+  `.github/workflows/deps-automerge.yml` 执行。只有解析结果的变动会自行合并——`Cargo.lock`、
+  `uv.lock`、`prek.toml` 与 action 的 pin；清单、工具链或已提交的类型桩仍留在人手里，因为动它们会伴
+  随 bot 无法履行的义务（maturin 的版本锁与随之而来的桩对账规则、解析器大版本那份实测迁移、受支持的
+  解释器下限）。所以 PyO3 0.30+ 带着 `python-floor` 标签到达——一个绿色检查不会顺手放弃 Python 3.8。
+  全程没有 `--admin`。CI 给 bot 的锁文件豁免（`scripts/check_changelog_coupling.py`）被断言与合并白
+  名单指向同一批文件，因为两者一旦漂移，某个更新就会要么红着合不进、要么带着未声明的变更进入主干 —
+  详情：quality-ledger (dv)、`CONTRIBUTING.md`。
+
 - **具名形状必须一轮就收敛（`crates/pyrs-yaml-core/tests/settles_in_one_round.rs`）** — 把 fuzz 层的
   “定点”契约拿去问 libFuzzer 找到、`cargo fuzz tmin` 最小化过的形状，而不是只指望有限预算碰运气：注
   释放置规则一旦被改动，现在会按名字弄红一个具名测试，而不是某次偶然的抽样。quality-ledger (ds) 记下

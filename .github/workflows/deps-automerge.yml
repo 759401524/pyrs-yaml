@@ -1,0 +1,72 @@
+# Merge a dependency pull request once - and only once - the gate that can block a merge says so.
+#
+# Why `workflow_run` and not a check on the pull request: GitHub refuses to let a workflow merge a
+# pull request whose required checks come from *that same workflow's* run, and the required check
+# here is `Test matrix (all legs)`, produced by `ci.yml`. Triggering on that workflow finishing is
+# both the only shape that can merge and the only shape that merges on the verdict rather than on a
+# favourable subset of legs (`scripts/check_matrix_verdict.py` owns what the verdict means).
+#
+# The decision itself is not in here. `scripts/dependency_merge_gate.py` holds every rule - author,
+# labels, which paths may merge themselves, what a supported floor is - because those rules are
+# testable there (`--selftest`, `tests/test_dependency_merge_gate.py`) and a workflow block is not.
+name: Dependency auto-merge
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # One merge decision per head branch, and never cancel one mid-flight: cancelling between the
+  # verdict and the merge is how a bump ends up approved-but-unmerged with nobody watching.
+  group: deps-automerge-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Merge green resolution-only bumps
+    # `success` here is the CI workflow's own conclusion, which is the fan-in over every leg
+    # including the fuzz replay and the Ir floor. `skipped` and `cancelled` fall through to nothing:
+    # a workflow that did not run is not evidence.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # A `workflow_run` event carries no pull request number; the head commit does, and the API
+      # resolves one to the other. `gh` needs the token for both calls.
+      - name: Find the pull request this run belongs to
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          number=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/commits/${{ github.event.workflow_run.head_sha }}/pulls" \
+            --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            echo "No pull request owns ${{ github.event.workflow_run.head_sha }}; nothing to decide"
+          fi
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+
+      - name: Decide, and merge only what the rules allow
+        if: ${{ steps.pr.outputs.number != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        # Exit 1 is a refusal and a green step: leaving a bump for a human is the expected answer
+        # for a manifest range, a floor, or a label. Exit 2 is the run failing, because the data the
+        # decision needs could not be read.
+        run: |
+          set -o pipefail
+          python scripts/dependency_merge_gate.py --pr "${{ steps.pr.outputs.number }}" \
+            || { code=$?; [ "$code" -eq 1 ] && exit 0; exit "$code"; }

@@ -5785,6 +5785,57 @@ clippy across all targets, `prek run --all-files`, and the stub route - the rege
 `python/pyrs_yaml/pyrs_yaml.pyi` differs only in the `version()` docstring, which is what
 `check_stub_drift.py` then reconciles.
 
+### (dv) A dependency bump got a path to `main`, and the boundary where it stops having one
+
+`.github/dependabot.yml` tracked one ecosystem, `github-actions`. Cargo and uv updates - the two
+places this project pins versions that actually compile into the shipped artifact - were untracked,
+and nothing at all said what happens to a bot pull request once CI is done with it.
+
+Two facts shaped the policy more than any preference. First, a lockfile-only bump could not go
+green: `scripts/check_changelog_coupling.py` names `Cargo.lock` and `uv.lock` as triggers, so a
+resolution move with no release note is a violation by its own rule, and the script's header already
+records what happens when the gate blocks dependabot for no reason - "a gate that blocks dependabot
+gets bypassed". The fix is not an exception written in prose but rule 3, `--allow-lockfile-bumps`,
+granted by CI on `github.actor == 'dependabot[bot]'` only: the commit hook stays strict, and a human
+touching the same file still owes the note.
+
+Second, the merge has to be gated by the check that can already block a human. A pull-request-scoped
+workflow cannot merge the pull request whose required checks it is, so
+`.github/workflows/deps-automerge.yml` triggers on `workflow_run` for the `CI` workflow and calls
+`scripts/dependency_merge_gate.py`, which re-reads the conclusion of `Test matrix (all legs)` for
+that head commit rather than trusting a hand-passed verdict: `skipped`, `cancelled` and
+never-reported all read as refusals, the same reading `scripts/check_matrix_verdict.py` enforces for
+the fan-in job.
+
+The boundary is a resolution against a range. `Cargo.lock`, `uv.lock`, `fuzz/Cargo.lock`,
+`prek.toml` and the action pins merge themselves when the verdict is green. `Cargo.toml`,
+`pyproject.toml`, `rust-toolchain*` and the committed `pyrs_yaml.pyi` do not, because moving a
+declared range carries obligations a bot cannot discharge: the maturin lock travels with
+`scripts/check_stub_drift.py`'s reconciliation rules and a regenerated stub, a granit-parser major
+travels with a measured migration of spans and comment placement, and pyo3 >= 0.30 travels with the
+interpreter floor - the shipped wheels are `abi3-py38`, so its updates arrive under a `python-floor`
+label the gate refuses, and a green check cannot retire Python 3.8 as a side effect of somebody
+else's release. Nothing uses `--admin`: with `enforce_admins` on, that is the one road an unverified
+dependency can take onto `main`.
+
+No undocumented key is used, and the reason is the same as the reason for the verdict rule: a value
+the hosted schema rejects does not fail, it stops opening pull requests for that ecosystem, so the
+`versioning-strategy` that would express "resolve, do not widen" is left out and the boundary lives
+in the allowlist, where a test can read it.
+
+Measured on the change: rule 1 reddens `["Cargo.lock"]` without the flag and clears it with the flag
+(`tests/test_changelog_coupling_gate.py`, rule 3, 42 cases);
+`scripts/dependency_merge_gate.py --selftest` reports 15/15 fixtures as specified; the two lists -
+the exemption's and the allowlist's - are asserted to name the same files, and the
+`Test matrix (all legs)` string is asserted to be the same in `ci.yml`, the verdict script, the gate
+and the workflow, since a rename in one of them silently un-gates the others. 78 tests across the
+two files, plus the repository's Python tier.
+
+Not verified here, and deliberately not claimed: the hosted bot's own behaviour. Its first run is
+next Monday, the config is validated only by using documented keys and by Dependabot's own UI, the
+security-update toggle is a repository setting outside this file, and PR #438 remains the human path
+for the pyo3 floor until that decision is made.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

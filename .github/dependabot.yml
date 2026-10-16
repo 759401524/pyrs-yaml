@@ -1,10 +1,151 @@
+# Dependency updates for a colocated Rust + uv workspace.
+#
+# Three ecosystems, because that is how this repository actually pins things, and each entry states
+# the decision it is making. Two files finish the policy this one starts:
+# `scripts/dependency_merge_gate.py` decides which of these pull requests may merge themselves once
+# `Test matrix (all legs)` reports success (`.github/workflows/deps-automerge.yml` is the trigger),
+# and `scripts/check_changelog_coupling.py --allow-lockfile-bumps` is the release-note exemption they
+# need to go green at all. All three agree on one boundary: a **lockfile** move is a resolution and
+# merges itself, a **manifest** move changes what is supported and waits for a human.
+#
+# Every key below is one the hosted schema documents. That is deliberate rather than timid: a value
+# the schema rejects does not fail loudly, it stops updates for the ecosystem, which is the same
+# silent-failure shape this repository spends its gates on - a check that never reports is not a pass,
+# and a bot that never opens a pull request is not up to date. So the boundary that a
+# `versioning-strategy` key would express is enforced where it can be seen and tested instead: the
+# merge gate refuses any pull request whose changed files are not in its allowlist, and a manifest
+# edit is not in that list.
 version: 2
+
 updates:
-  - package-ecosystem: github-actions
-    directory: /
+  # ── the Rust workspace ─────────────────────────────────────────────────────────────
+  - package-ecosystem: cargo
+    directories:
+      - "/"
+      - "/fuzz"
+    target-branch: main
     schedule:
       interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: UTC
+    open-pull-requests-limit: 6
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+      include: scope
+    # A semver-compatible bump moves `Cargo.lock` and nothing else, which is the shape the merge gate
+    # can take all the way; a bump that has to widen a requirement opens `Cargo.toml` instead, and
+    # the gate stops there for a human. Conflicts are not resolved by hand: when the bot cannot
+    # re-resolve onto a moved `main` the pull request stays unmergeable, and
+    # `scripts/dependency_merge_gate.py` reads an unmergeable head as a refusal rather than as work
+    # to finish - a manually merged lockfile under a moved manifest is what the Ir floor cannot be
+    # trusted to read.
+    ignore:
+      # pyo3 moves the supported interpreter floor with it (0.30 requires 3.9; the shipped wheels are
+      # `abi3-py38`), so it is handled by its own entry below and never by the routine bump.
+      - dependency-name: pyo3
+      # A granit-parser major is a breaking change to the event vocabulary, not a version bump:
+      # 1.3 -> 2.0 was a measured migration of spans, comment placement and the directive events.
+      # Patch and minor updates still arrive; the major needs the migration priced first.
+      - dependency-name: granit-parser
+        update-types:
+          - version-update:semver-major
+    groups:
+      # Patch and minor bumps in one pull request: they cannot change what compiles against the
+      # declared ranges, and the CI verdict that gates them is per run, not per crate.
+      cargo-routine:
+        patterns:
+          - "*"
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+      # Major bumps stay one-per-pull-request so the refusal that follows (`Cargo.toml` is on the
+      # auto-merge refuse list) names exactly which dependency is asking for a decision.
+      cargo-major:
+        patterns:
+          - "*"
+        update-types:
+          - version-update:semver-major
+
+  # ── the binding layer's own version decision ───────────────────────────────────────
+  - package-ecosystem: cargo
+    directory: "/"
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: UTC
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - rust
+      # The stop label. `scripts/dependency_merge_gate.py` refuses anything carrying it, so a pyo3
+      # bump arrives as a question about Python 3.8 rather than as a green checkmark that answers it.
+      - python-floor
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    allow:
+      - dependency-name: pyo3
+
+  # ── the Python layer: pyproject.toml + uv.lock ─────────────────────────────────────
+  - package-ecosystem: uv
+    directory: "/"
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:15"
+      timezone: UTC
+    open-pull-requests-limit: 6
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+      include: scope
+    ignore:
+      # `AGENTS.md`: the lock holds maturin 1.14.1 because `python/pyrs_yaml/pyrs_yaml.pyi` is the
+      # artifact that version generates and `scripts/check_stub_drift.py`'s reconciliation rules
+      # describe it. Moving it means regenerating the stub and editing those rules in the same
+      # commit, which no bot can do; `tests/test_docs_config_gate.py` reddens if it moves silently.
+      - dependency-name: maturin
+      # The docs toolchain is pinned for the same kind of reason: the locked zensical publishes page
+      # metadata the site gate reads, and every mkdocstrings option key is checked against the
+      # installed handler's own fields. A bump is a deliberate re-read of both gates.
+      - dependency-name: zensical
+      - dependency-name: mkdocstrings-python
+    groups:
+      python-routine:
+        patterns:
+          - "*"
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+
+  # ── the CI itself ──────────────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:30"
+      timezone: UTC
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci)"
+      include: scope
     groups:
       actions:
-        patterns: ["*"]
+        patterns:
+          - "*"

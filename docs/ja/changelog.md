@@ -17,6 +17,21 @@ status: new
 
 #### 追加
 
+- **依存更新が定期的に届くようになり、一つの境界内で自らマージされます** — `.github/dependabot.yml`
+  は `cargo`（ワークスペースと `fuzz/`、それぞれ専用ロックファイル）、`uv`（`pyproject.toml` +
+  `uv.lock`）、CI actions を追跡し、毎週 `main` を対象に動きます。権限は人間を既に止めているあのゲー
+  トそのもの、つまりその head コミットでの `Test matrix (all legs)` の `success` で、判定は
+  `scripts/dependency_merge_gate.py`、実行は `.github/workflows/deps-automerge.yml` です（`skipped`
+  と `cancelled` は拒否として読みます）。自らマージできるのは解決結果の移動だけ — `Cargo.lock`、
+  `uv.lock`、`prek.toml`、action の pin。マニフェスト、ツールチェーン、コミット済みの型スタブは人間
+  側のままです。それらを動かすとなると bot が果たせない義務が伴うためで（maturin のバージョンロック
+  と随伴するスタブ照合則、パーサ major の実測マイグレーション、サポートするインタープリタの下限）、
+  だから PyO3 0.30+ は `python-floor` ラベル付きで届き、緑のチェックが Python 3.8 をうっかり手放すこ
+  とはありません。`--admin` はどこにも使いません。CI が bot に与えるロックファイル免除
+  （`scripts/check_changelog_coupling.py`）はマージ許可リストと同じ群を指すと検証されています。ズレ
+  が生じれば、更新は緑になれないか、告知なしに main に入るかのどちらかになります — 詳細：
+  quality-ledger (dv)、`CONTRIBUTING.md`。
+
 - **名指した形状は 1 ラウンドで収束しなければならない
   （`crates/pyrs-yaml-core/tests/settles_in_one_round.rs`）** — fuzz 段の定点契約を、libFuzzer が見
   つけて `cargo fuzz tmin` で最小化した形状に直接向き合わせ、有限予算の探索任せにしません。注釈配置

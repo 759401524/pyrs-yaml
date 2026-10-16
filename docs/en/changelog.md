@@ -19,6 +19,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **Dependency updates arrive on a schedule and merge themselves inside one boundary** —
+  `.github/dependabot.yml` now tracks `cargo` (the workspace and `fuzz/`, each with its own
+  lockfile), `uv` (`pyproject.toml` + `uv.lock`) and the CI actions, weekly against `main`. The
+  authority is the gate that already blocks a human: `Test matrix (all legs)` reporting `success`
+  for that head commit (`skipped` and `cancelled` are refusals), decided by
+  `scripts/dependency_merge_gate.py` and run by `.github/workflows/deps-automerge.yml`. Only a
+  resolution move merges itself — `Cargo.lock`, `uv.lock`, `prek.toml`, an action pin; a manifest, a
+  toolchain or the committed type stub stays with a human, because moving one carries obligations no
+  bot can discharge (the maturin lock and the stub reconciliation rules that go with it, a parser
+  major's measured migration, the supported interpreter floor). pyo3 0.30+ therefore arrives
+  labelled `python-floor` — a green check does not retire Python 3.8 as a side effect. No `--admin`
+  anywhere. The lockfile exemption CI grants the bot in `scripts/check_changelog_coupling.py` is
+  asserted to name the same files as the merge allowlist, since a drift between them leaves a bump
+  either unable to go green or merged unannounced — details: quality-ledger (dv), `CONTRIBUTING.md`.
+
 - **Named shapes must settle in one round (`crates/pyrs-yaml-core/tests/settles_in_one_round.rs`)**
   — the fuzz tier's fixed-point contract asked of shapes libFuzzer reached and `cargo fuzz tmin`
   minimized, rather than only of whatever a bounded fuzz budget happens to explore: a change to a

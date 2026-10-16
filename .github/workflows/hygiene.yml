@@ -76,7 +76,14 @@ jobs:
       # base commit is present for the `base...HEAD` range.
       - name: Changelog is coupled to the changeset, in all five mirrors
         if: ${{ github.event_name == 'pull_request' }}
-        run: python scripts/check_changelog_coupling.py --base ${{ github.event.pull_request.base.sha }}
+        # Rule 3 of the script: a lockfile-only bump is exempt, and the exemption is granted by
+        # author, so the dependency bot's resolution moves go green while a human touching the same
+        # file still owes the note. `scripts/dependency_merge_gate.py` holds the matching rule about
+        # which of those bumps may then merge themselves.
+        run: |
+          python scripts/check_changelog_coupling.py \
+            --base ${{ github.event.pull_request.base.sha }} \
+            ${{ github.actor == 'dependabot[bot]' && '--allow-lockfile-bumps' || '' }}
 
       - name: Run every hook over the repository
         # `--all-files`, not the default staged-files mode: this tree's commits are made by
