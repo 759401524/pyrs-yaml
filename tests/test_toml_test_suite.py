@@ -22,21 +22,24 @@ was emitting text no one could read back.
 
 The decode threshold gates hold at the *measured* compliance of the current parser, and each is set
 one case below it rather than at a comfortable round number. Measured 2026-10-16 on the corpus CI
-clones: **257 of 266 valid documents decode to the tagged values TOML says (`96.62%`)**, so that floor
-is 0.966. The reject half is interpreter-dependent and the floor describes the worst leg: **491 of 511
+clones: **262 of 266 valid documents decode to the tagged values TOML says (`98.50%`)**, so that floor
+is 0.984. The reject half is interpreter-dependent and the floor describes the worst leg: **491 of 511
 invalid documents are refused on CPython 3.8-3.13 (`96.09%`) but 488 of 511 on 3.14 and 3.15
 (`95.50%`)**, because three out-of-range times (`24:00:00`, in `datetime`, `local-datetime` and
 `local-time`) are rejected by the host's `datetime` constructor rather than by this parser, and a newer
 interpreter accepts the spelling — so that floor is 0.954, the 3.14/3.15 reading with one case of
-slack. The `0.85` these two gates used to carry was 22 cases of slack on the decode half and 57 on the
-reject half, which is how a whole defect class hid: nine cases read `a = { x.y = 1 }` as one key whose
-text is `x.y` instead of the nested table the spec defines — the seven `inline-table/key-dotted-*`
-files plus the spec's own `animal = { type.name = "pug" }` example in each version tree — and the suite
-kept printing a green percentage over it. The remaining nine decode gaps are two causes — TOML 1.1
-super-table re-opening refused by the header bookkeeping (4), and a multi-line string whose final quote
-run is eaten by the closing-delimiter scan (5). The engine owning the temporal range check is the fix
-for the split above, not a wider floor; both gates name the failing cases in their message, so a
-regression points at a case rather than at a percentage.
+slack. The engine owning the temporal range check is the fix for that split, not a wider line.
+The `0.85` these two gates used to carry was 22 cases of slack on the decode half and 57 on the reject
+half, which is how whole defect classes hid behind a green percentage: nine cases read `a = { x.y = 1 }`
+as one key whose text is `x.y` instead of the nested table the spec defines, and five more lost the
+quote run or the line break at the end of a multi-line string — `''''one quote''''` handed back
+`'one quote` without its tail, because the scanner closed the string at the FIRST `'''` match and threw
+the rest of the run away, and a basic string whose escaped backslash ends a line read as a line
+continuation, so the break the document asked to keep was eaten. Both are fixed, and the four decode
+gaps left are one cause: TOML 1.1 super-table re-opening refused by the header bookkeeping
+(`valid/table/names.toml`, `names-with-values`, `array-table-array`, `array/array-subtables`). Every
+gate names the failing cases in its message, so a regression points at a case rather than at a
+percentage.
 """
 
 import json
@@ -154,7 +157,7 @@ def _matches(expected, actual):
 
 
 def test_toml_test_valid_decodes_match():
-    """Valid TOML parses and decodes to the expected tagged values (measured 257/266)."""
+    """Valid TOML parses and decodes to the expected tagged values (measured 262/266)."""
     total = 0
     matched = 0
     failures: list[str] = []
@@ -173,8 +176,8 @@ def test_toml_test_valid_decodes_match():
             failures.append(f"{name}: decoded differs")
     assert total > 0, "no valid toml-test cases found"
     rate = matched / total
-    assert rate >= 0.966, (
-        f"valid decode-match rate {rate:.1%} ({matched}/{total}) below floor 96.6% (measured 257/266): {failures}"
+    assert rate >= 0.984, (
+        f"valid decode-match rate {rate:.1%} ({matched}/{total}) below floor 98.4% (measured 262/266): {failures}"
     )
 
 

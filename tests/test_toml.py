@@ -229,6 +229,25 @@ class TestMultilineStrings:
         out = self._roundtrip(src)
         assert pyrs_yaml.load_toml(out) == {"x": 'she said "hi"\nbye'}
 
+    def test_a_quote_run_at_the_end_of_a_multiline_string_stays_content(self):
+        """Only the last three quotes close the run, and an escaped backslash ends no line.
+
+        `lit_one` and `this-str-has-apostrophes` in the corpus end their content with `'` right
+        before the closing delimiter; slicing at the first `'''` match handed back the value without
+        that tail. The sibling case is the basic form: `\\` is an escaped backslash, so the break
+        after it belongs to the value, while a lone backslash at line end is the continuation that
+        swallows it. Both are asserted here with their round trip, because the writer has to be able
+        to say the value back.
+        """
+        assert pyrs_yaml.load_toml("lit = ''''one quote''''\n") == {"lit": "'one quote'"}
+        assert pyrs_yaml.load_toml("lit = '''a'''''\n") == {"lit": "a''"}
+        assert pyrs_yaml.load_toml('bs = """x \\\\\nb"""\n') == {"bs": "x \\\nb"}
+        # The control that must keep collapsing, or the fix has eaten the continuation instead.
+        assert pyrs_yaml.load_toml('cont = """x \\\n   b"""\n') == {"cont": "x b"}
+        for src in ("lit = ''''one quote''''\n", 'bs = """x \\\\\nb"""\n'):
+            out = self._roundtrip(src)
+            assert pyrs_yaml.load_toml(out) == pyrs_yaml.load_toml(src), (src, out)
+
     def test_roundtrip_is_idempotent(self):
         once = self._roundtrip('x = """a\nb\nc"""\n')
         twice = self._roundtrip(once)
