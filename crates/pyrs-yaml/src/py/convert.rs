@@ -214,13 +214,19 @@ fn node_to_pyobject_inner<'a>(
                         }
                         dict.set_item(PyTuple::new(py, parts)?, &val)?;
                     }
-                    // An alias in key position resolves to a node whose hashability is decided by
-                    // what it points at, and the two reference libraries disagree about it: PyYAML
-                    // raises `ConstructorError`, while ruamel's safe loader hands back an empty
-                    // tuple for `? *x` over a sequence anchor. Neither is a faithful reading, so
-                    // this engine refuses and says why, rather than picking a third answer or
-                    // inventing a key (which is what used to happen).
-                    CustomNode::Alias { .. } => return Err(unhashable_key_error(key)),
+                    // An alias in key position is decided by what it points at, not by the fact that
+                    // it is an alias. Measured against PyYAML on this tree: `a: &b b` + `*b: a`
+                    // constructs `{'a': 'b', 'b': 'a'}` — the suite spells the same answer as the
+                    // expected JSON of E76Z and 26DV — while `a: &x [1, 2]` + `? *x` raises
+                    // `ConstructorError` there too, because a list has no hashable form. So the
+                    // resolved object is tried, and the refusal below is what an unhashable target
+                    // (or an alias with no anchor, which must not become a `None` key) gets.
+                    CustomNode::Alias { name } if anchors.contains_key(name.as_str()) => {
+                        let k = resolve_alias_target(key, py, anchors, in_progress, schema)?;
+                        if dict.set_item(k, &val).is_err() {
+                            set_text_key(&dict, key, &val)?;
+                        }
+                    }
                     // A nested mapping as a key has no hashable Python form and both reference
                     // libraries refuse it - PyYAML and ruamel both raise `ConstructorError:
                     // found unhashable key` for `? {a: 1}` and for `? ?`. It used to be replaced
@@ -263,17 +269,21 @@ fn set_text_key(dict: &Bound<'_, PyDict>, key: &CustomNode, value: &Py<PyAny>) -
 /// The message names the shape and the one route that works. It deliberately does not offer the
 /// other projections as escapes, because they refuse here too — measured on this tree: `to_json()`
 /// raises `json-object-key` and `to_toml()` raises `toml-keys-must-be-scalars`. For a mapping or
-/// sequence key the AST does hold it and the writer emits the `?` form (tested), but an alias used
-/// as a key is written as `null`, which is a separate defect and not this boundary's business.
+/// sequence key the AST does hold it and the writer emits the `?` form (tested), and an alias key
+/// whose anchor is missing has nothing to resolve to, which is why the alias wording covers both
+/// shapes rather than claiming a target that may not exist.
 fn unhashable_key_error(key: &CustomNode) -> pyo3::PyErr {
     let shape = match key {
-        CustomNode::Mapping { .. } => "mapping",
-        CustomNode::Sequence { .. } => "sequence",
-        CustomNode::Alias { .. } => "alias, which resolves to a mapping or a sequence",
-        _ => "node",
+        CustomNode::Mapping { .. } => "a mapping",
+        CustomNode::Sequence { .. } => "a sequence",
+        CustomNode::Alias { .. } => {
+            "an alias whose resolved form is not a valid key \
+                                     (a mapping, a sequence, or no anchor at all)"
+        }
+        _ => "a node",
     };
     YamlTypeError::new_err(format!(
-        "found unhashable key: the YAML key is a {shape}, which has no hashable Python form. \
+        "found unhashable key: the YAML key is {shape}, which has no hashable Python form. \
          PyYAML and ruamel.yaml raise at this same point. Read the document with parse() and work \
          on the AST; to_json() and to_toml() refuse this key as well."
     ))

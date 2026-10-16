@@ -205,6 +205,21 @@ class TestComplexKeys:
     def test_sequence_key_is_projected_as_a_tuple(self, yaml_str, expected):
         assert pyrs_yaml.safe_load(yaml_str) == expected
 
+    def test_an_alias_key_is_decided_by_what_its_anchor_holds(self):
+        # `*b : a` resolves to the scalar 'b', which is a key like any other: PyYAML builds
+        # {'a': 'b', 'b': 'a'} for it, and the suite spells that answer as the expected JSON of
+        # E76Z (`&a a: &b b` + `*b : *a`) and of 26DV. Refusing every alias in key position decided
+        # by the node's kind instead of by its target, and cost those two suite cases; the
+        # sequence-anchored case below still refuses, because there the resolved form really is
+        # unhashable.
+        assert pyrs_yaml.safe_load("a: &b b\n*b : a\n") == {"a": "b", "b": "a"}
+        assert pyrs_yaml.safe_load("&a a: &b b\n*b : *a\n") == {"a": "b", "b": "a"}
+        # The writer keeps the alias as the key and normalises to the explicit form; what it emits
+        # reads back to the same mapping.
+        emitted = pyrs_yaml.parse("a: &b b\n*b : a\n").to_yaml()
+        assert emitted == "a: &b b\n? *b\n: a\n"
+        assert pyrs_yaml.safe_load(emitted) == {"a": "b", "b": "a"}
+
     @pytest.mark.parametrize(
         "yaml_str",
         [

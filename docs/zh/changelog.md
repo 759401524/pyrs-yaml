@@ -596,6 +596,21 @@ status: new
 
 #### 修复
 
+- **键位置的别名现在按其锚点所指来读取** — `a: &b b` 加 `*b : a` 在 PyYAML 里构造
+  `{'a': 'b', 'b': 'a'}`，套件里 E76Z 与 26DV 的期望 JSON 就是这个答案；本引擎此前对任何别名键都报
+  `found unhashable key`，按节点类型而非其目标判定，因此丢掉这两个套件用例。现在由解析后的形式决定：
+  指向映射或序列的别名仍然拒绝（实测 PyYAML 在同一处也 raise），没有锚点的别名也拒绝，而不是变成一个
+  文档从未写过的 `None` 键。合规工具也不再把手写正确的解析计为失败——`!!binary` 本应加载为 `bytes`，
+  而 `json.dumps` 无法表示它，于是 565N 被报成 "JSON comparison error"。报告回到 **405/406
+  (99.75%)**，也就是 `docs/en/features.md` 宣传的那个数字；如今它被强制而不只是被打印：
+  `test_compliance_report` 把原先 `rate >= 0.95` 的地板（二十一个用例的余量，正是这样滑到 402 却无人
+  察觉）换成 `rate >= 0.995`，并要求"每个失败都必须是 `ZYU8`，那个刻意的拒绝"。实测：
+  `uv run pyrs-yaml compliance` 为 405/406 且 `failed_tests` 就是 `[ZYU8]`；
+  `uv run pytest tests/test_parse.py tests/test_yaml_crosslib.py tests/test_yaml_suite.py` 211 通过
+  （新增 3 个：别名键投影与其读回，以及 granit 拒绝不带空格的 `*b: a` 而 PyYAML 接受这一解析器边
+  界）。未测：指令数——尽管该腿仍会裁决本分支；普通标量键路径未被改动，因此不声称任何位移，若出现位移
+  便是需要追查的意外而非可以默认的结果。
+
 - **重复的 JSON 键不再把它的注释一起带走** — 映射保留第一个键节点和最后一个值，所以一个重复的
   名字会丢掉后到的键以及被它替换掉的值，而这两个节点任一所拥有的注释也跟着一起被丢掉：
   `{"a": 1 // first

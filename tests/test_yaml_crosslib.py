@@ -283,6 +283,24 @@ def test_a_mapping_key_is_refused_by_both_engines(src):
 
 
 @pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
+def test_an_implicit_alias_key_without_a_space_is_the_parsers_boundary():
+    """`*b: a` — an alias key whose colon has no space before it — is a scanner question.
+
+    PyYAML reads it as `{'a': 'b', 'b': 'a'}`; granit refuses at scan time with
+    `simple key expected ':'`, and the suite spells its two alias-key cases with the space
+    (`*b : *a`), which both engines accept and which `test_parse.py`'s
+    `test_an_alias_key_is_decided_by_what_its_anchor_holds` pins. The parser is locked
+    (`AGENTS.md`), so this records the boundary rather than pretending it is the projection's: the
+    same document with `*b : a` reads identically here, so what differs is where a key may end, not
+    how an alias resolves.
+    """
+    assert pyyaml.safe_load("a: &b b\n*b: a\n") == {"a": "b", "b": "a"}
+    with pytest.raises(pyrs_yaml.YamlParseError, match="simple key expected"):
+        pyrs_yaml.safe_load("a: &b b\n*b: a\n")
+    assert pyrs_yaml.safe_load("a: &b b\n*b : a\n") == pyyaml.safe_load("a: &b b\n*b : a\n")
+
+
+@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
 def test_duplicate_keys_are_deliberately_rejected_by_pyrs():
     """Objective §Known Engine Boundaries / v0.11.5 audit: pyrs rejects
     duplicate keys where PyYAML silently accepts (last wins). Pinned as
