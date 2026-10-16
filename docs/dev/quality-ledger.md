@@ -6139,6 +6139,38 @@ the gate on `from_jsonc_medium`, `to_toml_medium` and `stream_medium` rather tha
 Not measured: nothing. This entry is a design ruling and a probe of the shipped surface; no code
 path changed, so the instruction-count leg has nothing to judge until the implementation PR exists.
 
+### (ef) Decision 7: what a YAML replay would ask of the vocabulary, and the two facts it cannot have
+
+The fold decision 6 promises exposed that step 4's replay gate covers one grammar.
+`pyrs_json::from_events` is public with a nextest tier and a fuzz tier; YAML has no such reader, and
+the only `from_events` in `pyrs-yaml-core` is a local variable inside
+`the_tree_and_the_events_name_the_same_anchors`. Porting it runs into three notation facts the tree
+carries and the stream does not: `flow_style` on a mapping or sequence, `chomping` and
+`block_indent` on a scalar. `PartialEq` compares the first two and the `Hash` mirrors them, so a
+replay that leaves them out rebuilds a node the engine calls a different document; `block_indent` is
+the field `eq` ignores and the writer still reads.
+
+The split between the three is the finding. granit hands the producer a collection's notation —
+`Event::MappingStart(StructureStyle, ..)` and `Event::SequenceStart(StructureStyle, ..)` — and
+`event_to_stream_event` matches both with `_` in that position, so `flow` is reporting, not
+re-deriving. granit's `Event::Scalar` carries no chomping and its `ScalarStyle` has five cases only,
+so `|`, `|-` and `|+` arrive as one style, and the tree route's `Chomping` comes from probing the
+block header in `parser/yaml/scalar.rs` — a pass over the source the stream does not make. Adding a
+field to `pyrs-event` cannot close that; only a producer that reads the source can, which is what
+the tree-free producer was built to stop being.
+
+Why the gate's vehicle changes with the format: the JSON replay compares the two trees through the
+strict writer, and for YAML the writer's text depends on exactly the notation the stream drops —
+block against flow, clipped against stripped. So a YAML fold is either a comparison through a
+normalising route that is not the shipped writer, or a content-identity check with the notation
+slots emptied, which proves less than the JSON gate.
+
+Not measured: nothing changed in code, so the instruction-count leg has no claim to judge. The
+granit signatures and the five style cases are read from the vendored source and our own match arms
+rather than probed at runtime; a `|` against `|-` probe needs the extension rebuilt and answers the
+same question. `docs/dev/event-stream.md` carries the finding and the three-part question as "What a
+YAML replay asks the vocabulary for".
+
 ### (ed) The vocabulary's two generic jobs are now tested over arbitrary input, not over hand-picked cases
 
 `pyrs-event` had a unit tier (#453) and two producer-side replay gates, but the two things it does
