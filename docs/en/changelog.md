@@ -19,6 +19,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **TOML has a tree-free event stream, and it answers the fields the first producer left open** —
+  `pyrs_toml::parse_stream` describes the same document `from_toml` builds. It is deliberately *not*
+  the second scanning walk `pyrs-json` needed: TOML's table rules — which header may open which
+  path, which dotted key closed one, where an array of tables gains a tail — are authored once in
+  `register_header` / `register_kv`, and a second pass would author them twice. So the events come
+  from the same intermediate representation the AST projection reads, and one scanner's verdict
+  stands for both readers (26 refusals × 2 dialects, plus the 16-file seed corpus, are still asked
+  as a test). The shared vocabulary gets its second-format answer on three fields: `tag` is not
+  YAML's after all — a date-time arrives as `!timestamp` / `!date` / `!time` and a binary integer as
+  `!!int`, exactly what the tree stores — `anchor` stays empty, and `style` reports only what the IR
+  keeps, so a literal `'…'` and a basic `"…"` arrive alike because which quote was typed is not
+  stored. Two positions exist in the stream and nowhere else: a close event carries the offset of
+  the construct it closes, since TOML never wrote an end, and a header's `[` sits before the name it
+  declares, so a table's key and its `MappingStart` are reported in structural order. The IR pays a
+  few `usize` per key, table and note; the instruction-count gate is the judge of that. — details:
+  quality-ledger (dx), `docs/dev/event-stream.md`.
+
 - **JSON has a tree-free event stream (`pyrs_json::parse_stream`)** — the second producer the shared
   vocabulary was waiting for, built as a walk of its own over the scanners the AST route uses, so no
   sink is threaded through the tree traversal and the +1.5% the shared-traversal design cost stays

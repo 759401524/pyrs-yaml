@@ -5896,6 +5896,90 @@ refusal table are the input such a target would use, and it is the next defence,
 Python-facing surface, the stub and the four doc locales remain the last step of plan B and were not
 touched.
 
+### (dx) TOML's producer reads the IR rather than re-scanning, and the vocabulary's fields come back answered
+
+Step 3 of `docs/dev/event-stream.md` was written down as "a TOML producer, same question again",
+with the shape problem stated as a guess: dotted keys, numeric spelling, comment slots.
+`pyrs_toml::parse_stream` now answers it, and the answer on the *shape* went the other way from
+JSON's on purpose.
+
+The maintainer ruling (2026-10-16, decision 5 in that document) chose spans recorded in the IR and
+projected from it over a second scanning walk, with the instruction-count gate as the arbiter of the
+price. The reason is the one this ledger has kept charging against: `register_header` /
+`register_kv` author TOML's table policy once - which header may open which path, which dotted key
+closed a table against re-opening, where an array of tables gains a tail - and a second pass that
+had to reach the same refusals would author it twice, with a replay test catching the drift only on
+inputs it happens to touch. So the scanner runs once, one verdict stands for both readers, and the
+accept/reject table (26 malformed documents × 2 grammar revisions) plus the seed corpus (16 files ×
+2 dialects) ask the question anyway rather than being trusted to be redundant.
+
+The plumbing is the cost of that choice, stated exactly: `Note { text, at }` replaces a bare
+`String` per comment, `KVAnnotations` gained `key_at` and `value_at`, `CowTable` gained `at` and
+`key_at`, and `parse_key_path` reports each segment's offset because a header line names a whole
+path and a stream that reported only the line's start could not keep its events in source order. One
+function, `lib.rs::scalar_projection`, now decides a scalar's text, style and tag for both readers -
+TOML's twin of `hub_scalar` - and `toml_value_to_node` builds its nodes from it, so the refactor is
+also the reason no scalar rule exists twice. `LineTable` moved into `pyrs-event` when a second
+producer needed the same byte-offset-to-line/column conversion; `pyrs-json` now uses it too, and
+three tests cover it including the multi-byte column and an offset inside a code point.
+
+What the arbiter then said, and what it was actually pricing (same day, run 38840810436): CI's
+`Instruction-count baseline` leg reported `from_toml_medium` at +1.48% against the 0.50% tolerance,
+0.000% spread over its three samples, and decision 5 names the fallback - drop the spans rather
+than widen the floor. Before dropping anything, the spans were measured on one host: `main`
+159,941,362 against this shape's 161,987,153 (+2,045,791, +1.28%), while `to_toml_medium` moved
++0.013% and `from_json_medium`, which TOML's IR cannot reach, +0.035%. Building the document was
+the taxed part - not carrying a wider record, and not reading it back. Two hypotheses then died one
+measurement each. Narrowing the spans to `u32` with `Arc<str>` note text, which returns both records
+to `main`'s size, read 166,341,862: +4.0%, worse. And `ir_gate.py --profile from_toml_medium` shows
+the map insertion rows unmoved between `main` and this change while
+`__memcpy_avx_unaligned_erms` carries +2,701,897 of the +2,045,791 total. The function under that
+copy is the answer: `scalar_projection` borrowed `&TomlValue` and copied each scalar's text, and the
+tree route reads *every* scalar through it, so a value the tree already owned was cloned once per
+scalar. The projection takes the value by value now - `toml_value_to_node` moves the text exactly as
+it did before this producer existed, and only the producer, which has to hand out owned text anyway,
+clones - reading 158,750,613 on the same host, 0.74% below `main`. No span was dropped and no floor
+was moved: the gate caught a copy the unification should never have introduced. Whether the shape
+lands under the recorded baseline is CI's leg to judge on the image that baseline names; a WSL
+reading cannot claim that, and this entry does not.
+
+What a second format settled in the vocabulary:
+
+- `tag` is not YAML's field. A date-time arrives as `!timestamp` / `!date` / `!time` and a binary
+  integer as `!!int` - the same statements the tree carries - so the field means "the type the
+  document states" and a second producer fills it without anything being renamed.
+- `anchor` is empty and `Alias` is never emitted, measured twice now.
+- `style` reports what the engine kept, not what the document wrote: a literal `'…'` and a basic
+  `"…"` both arrive `DoubleQuoted` and `_`-grouped digits arrive canonicalised, because the IR does
+  not store the quote kind. JSON's stream does keep its own spelling. A field is therefore as
+  informative as each engine's memory, which is the honest price of not re-scanning.
+
+Two positions exist only in the stream, and both say something about TOML rather than about the
+vocabulary: a close event carries the offset of the construct it closes (TOML wrote no end token -
+where a table ends is decided by the next header), and a header names its table inside the brackets
+that open it, so a table's key and its `MappingStart` are in structural order rather than byte
+order. The array-of-tables case settled the same way: a repeated header line names one sequence, so
+the key is reported once before the `SequenceStart`, matching both the tree and the shape YAML's own
+events give for a key whose value is a sequence of mappings. The first draft of the producer emitted
+the name per element and got a shape no reader could line up with the tree - caught by the corpus
+test, not by reading.
+
+One AST defect the comparison exposed rather than caused: an own-line note that meets no key or
+header has no slot in the tree, and `from_toml` discards it (the writer emits no such text), while
+the document wrote it. The stream reports it.
+`a_note_the_tree_has_no_slot_for_is_still_in_the_stream` pins that, together with the comment-only
+document where the tree does keep the note.
+
+Measured on this change: `cargo clippy --all --all-targets -- -D warnings` clean,
+`cargo nextest run --all` 655 passed (10 new), `cargo test --all --no-default-features` green,
+`cargo check --workspace --no-default-features` green. The instruction count was said here to be
+beyond this host, and that was wrong in both directions: WSL can run `ir_gate.py` (valgrind plus a
+`libpython3.12.so` the host's linker can find), and CI ran it whether or not this host could - the
+paragraph above records what both said, and the span plumbing's price turned out to be zero once
+the projection stopped cloning scalars. No public `pyrs_toml::from_events` exists: a fold would
+rebuild a tree that both readers already share an answer for, unlike JSON's, whose fold is the only
+place the two walks can be compared.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
