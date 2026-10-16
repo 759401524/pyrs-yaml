@@ -812,3 +812,44 @@ the environment the gate needs is the environment the profile needs (valgrind, `
 and on this box WSL with a `PYO3_PYTHON` plus a link path to that interpreter's `lib`, because the
 binding harness is built for the `to_python_*` scenarios whether or not anyone profiles one — a
 profile that refuses to build for a linker flag is the gate's own failure, not the flag's).
+
+## The floors were moved to the image that enforces them (2026-10-16)
+
+`AGENTS.md` states the number that matters for this gate is not the tolerance but the distance
+between a committed floor and what the tree actually costs. The 2026-10-14 refresh had found six
+writer scenarios sitting 22–46% below their floors and four readers 4.7–11.2% below, which means the
+gate had been waving through a regression the size of the whole TOML writer win. So the refresh
+workflow was dispatched on `main` at `d1436aff` (run 38857499407) and its artifact committed
+unedited: the toolchain came from the baseline (`rustc 1.97.1`, not the runner's `@stable`),
+`--repeats 3`, callgrind, `generated_by.environment = github-runner ubuntu24, image 20261012.334.1`.
+
+What moved, in counted instructions against the previous floors:
+
+| Direction | Scenarios | Movement |
+| --- | --- | --- |
+| Floors tightened (code is faster than the floor claimed) | `serialize_anchors`, `serialize_medium`, `serialize_small`, `serialize_block` | −0.89% … −1.50% |
+| Readers moved down | `from_json_medium`, `from_json5_medium`, `from_jsonc_medium`, `from_toml_medium` | −0.17% … −0.61% |
+| Essentially flat | `serialize_block_scalars`, `parse_inline_merge`, `parse_medium`, `parse_anchors`, `parse_block`, `to_python_medium` | ±0.05% |
+| Floors loosened | `to_python_anchors`, `parse_small`, `to_jsonc_medium`, `to_json_medium`, `to_python_small`, `to_json5_medium`, `stream_medium`, `to_toml_medium` | +0.12% … +0.49% |
+
+The gate refused nothing — every movement is inside the 0.50% line, so no `accept_drift` name was
+needed and none was passed. The four writer floors are now where the code is, which is the point of
+the channel: a regression on those paths costs a red leg instead of eating 20% of slack.
+
+**What a second run on the same image says.** The question left open above is whether an upward move
+is the code or the runner, so the refresh was dispatched a second time on `main` (run 38858719775,
+artifact `ir-baseline-34`, same pinned `rustc 1.97.1`, same image id `20261012.334.1`) and compared
+scenario by scenario with the committed file. Every movement reproduced: `to_toml_medium` measured
++0.494% again and `stream_medium` +0.478% again — identical to three decimals, not merely close —
+and the largest disagreement anywhere was 0.09 percentage points, on `to_python_small`, the
+CPython-linked scenario `AGENTS.md` already names as the noisy one.
+
+So those two floors were not loosened by run-to-run noise; they sit where this image repeatably puts
+them, and no code on those paths has moved since the 2026-10-14 numbers. Two consequences, stated as
+properties of the gate rather than as comfort. Run-to-run noise on the enforcing image is measured
+at ≤0.09pp, five times inside the 0.50% line, so a regression the size of the tolerance is still
+caught. And what is left unexplained is the *image step* — `20261004.327.1` → `20261012.334.1` — on
+the TOML writer and the event stream, which the `AGENTS.md` residual does not cover because that
+figure was measured between hosts and this is between runner images: the same order of size, on the
+two paths that moved. That is the honest amount being accepted here, recorded rather than rounded
+away.
