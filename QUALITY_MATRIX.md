@@ -68,7 +68,13 @@ event for event. The vocabulary crate is measured by itself as well:
 `crates/pyrs-event/src/lib.rs` builds one event per variant and pins that cloning and `into_owned`
 carry every field, that a borrowed scalar and the same text owned are equal (the condition under which
 a replay comparison means anything), and that owning a comment moves the shared `Arc<str>` instead of
-copying it — with both failure modes produced by mutation before the tests were trusted.
+copying it — with both failure modes produced by mutation before the tests were trusted, and its two generic jobs — turning a byte offset into a position, and owning a
+borrowed event — now carry a property tier: arbitrary documents of mixed one-, two-, three- and
+four-byte characters must give every character offset its own `(line, column)`, must collapse the bytes
+inside a character onto that character's start, must never run backwards in byte order, and owning an
+event must change nothing but where its text lives. Removing the character-boundary clamp reddens the
+new property alongside the hand-written table test; zeroing a position inside `into_owned` reddens the
+ownership property. CI elevates both to 20,000 cases with the rest of the tier.
 No writer is unsettled: 33 JSON dialect rounds from 14 seeds and 30 TOML rounds from 16,
 every one satisfying `once == twice`.
 `fmt_pbt`'s three writer fixed-point properties now hold at 20,000 cases, and two of them never

@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The event vocabulary's two generic jobs are property-tested** — `pyrs-event` turns a byte offset
+  into a position and copies borrowed event text out of the source, and both were pinned only by
+  chosen inputs. Two properties now state them over arbitrary documents (mixed one-, two-, three-
+  and four-byte characters: every offset answers its own character, every byte inside a wide
+  character collapses to its start, positions never run backwards, and past the end there is one
+  answer instead of a panic) and over arbitrary event fields (owning changes nothing but ownership,
+  and is idempotent). Mutation-checked: the identity clamp reddens the position property, a zeroed
+  line reddens the ownership property. CI elevates both to 20,000 cases on the leg it already has;
+  `cargo nextest run --all` 664 passed (2 new). — details: quality-ledger (ed), `QUALITY_MATRIX.md`.
+
 - **The event vocabulary now measures its own shape** — `pyrs-event` held the type every
   producer reports and had tests only for `LineTable`, so the eleven-arm `into_owned` match it
   depends on was gated by whichever variants the producers happened to emit. Three unit tests in

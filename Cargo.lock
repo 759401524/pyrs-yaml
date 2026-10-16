@@ -830,6 +830,7 @@ dependencies = [
 name = "pyrs-event"
 version = "0.17.0"
 dependencies = [
+ "proptest",
  "pyrs-ast",
 ]
 
