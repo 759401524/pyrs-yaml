@@ -37,6 +37,20 @@ graph LR
 | 오류 메시지 | 소스 스니펫 없음 | 소스 스니펫 있음 |
 | 빈 입력 | `[stream_start, stream_end]` | `[]` |
 | 태그 핸들러 | 적용하지 않음 | 적용함 (YAML.parse) |
+| 형식 | YAML만 | `yaml`, `json`, `jsonc`, `json5`, `toml` |
+
+### 다른 형식
+
+`parse_stream`은 키워드 전용 `format`을 받아 JSON, JSONC, JSON5, TOML 문서에도 같은 이벤트 dict를 내보냅니다. 생성자는 트리를 만들지 않는 그 쌍이므로, 승인 여부 판정은 `load_json`, `load_toml`이 주는 판정과 같습니다:
+
+```python title="형식마다 같은 어휘"
+from pyrs_yaml import parse_stream
+
+for event in parse_stream('{"a": [1, 2]}', format="json"):
+    print(event["type"], event["value"], event["style"])
+```
+
+그 형식이 할 말이 없는 필드는 `None`으로 남습니다. `anchor`와 `alias`는 YAML 고유이고, TOML의 리터럴 `'…'`은 기본 문자열 `"…"`과 똑같이 읽힙니다 — 어떤 인용표를 쳤는지가 남지 않기 때문입니다. JSON이나 TOML 스트림은 문서 하나만 싣습니다.
 
 ## 리소스 관리
 

@@ -37,6 +37,20 @@ graph LR
 | 错误消息 | 无源码片段 | 有源码片段 |
 | 空输入 | `[stream_start, stream_end]` | `[]` |
 | 标签处理器 | 不应用 | 应用 (YAML.parse) |
+| 格式 | 仅 YAML | `yaml`、`json`、`jsonc`、`json5`、`toml` |
+
+### 其他格式
+
+`parse_stream` 有一个仅关键字参数 `format`，对 JSON、JSONC、JSON5 或 TOML 文档给出同样的事件字典——生产者是不建事件树的那一对，所以接受还是拒绝的判定与 `load_json`、`load_toml` 一致：
+
+```python title="同一套词汇表，按格式产出"
+from pyrs_yaml import parse_stream
+
+for event in parse_stream('{"a": [1, 2]}', format="json"):
+    print(event["type"], event["value"], event["style"])
+```
+
+某个格式无话可说的字段保持 `None`：`anchor` 与 `alias` 是 YAML 自己的，TOML 的字面量 `'…'` 与基础串 `"…"` 读起来一样，因为用的是哪种引号并不留痕。JSON 或 TOML 的流只承载一个文档。
 
 ## 资源管理
 

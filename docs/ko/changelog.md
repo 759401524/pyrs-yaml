@@ -17,6 +17,23 @@ status: new
 
 #### 추가
 
+- **`parse_stream`이 JSON, JSONC, JSON5, TOML 문서도 서술합니다** — `docs/dev/event-stream.md` 계획
+  B의 마지막 단계는 이미 YAML을 스트림으로 읽던 그 동사에 키워드 전용 `format`을 더하는
+  것이었습니다(`parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")`). 하나의 호출
+  형태가 세 생성자에 닿고 어휘는 두 번째가 없습니다. dict는 같은 일곱 키를 유지하고, 그 형식이 할
+  말이 없는 필드는 `None`으로 남습니다. `anchor`와 `alias`는 YAML 고유의 것으로 남고, TOML의 리터럴
+  `'…'`은 기본 문자열 `"…"`과 똑같이 읽힙니다 — 어떤 인용표였는지가 보관되지 않기 때문입니다. TOML이
+  실어 오는 태그는 허브의 철자로 도착합니다(`!timestamp`, `!!int`) — YAML의 철자가 아니라. 승인·거부
+  판정은 트리를 가는 경로와 같고 같은 스캐너가 답하므로 두 경로를 테스트로 비교했습니다. 기본값은
+  그대로여서 기존 호출은 positional 인수를 포함해 이벤트 단위로 전과 같은 스트림을 받습니다.
+  `max_depth`는 그 선택지를 갖는 두 읽기 쪽에 적용됩니다(YAML은 `YamlMaxDepthError`, JSON은 파싱
+  오류). TOML의 중첩 한도는 중간 표현식 자기 것입니다. stub을 다시 생성했고, 네 언어 API 페이지와
+  스트리밍 안내에 새 축을 적었습니다. 실측: `cargo nextest run --all` 659 통과,
+  `uv run pytest tests/` 2853 통과에 경계 테스트 15건 추가, JSON5 가지를 strict으로 바꿔 변이
+  검사까지 마쳤습니다 — 정확히 JSON5 테스트 두 개만 이름으로 붉어졌습니다. 미측정: 명령수 — 이
+  호스트에 valgrind가 없고, 추가된 match는 측정 중인 열로 경로 바깥에 있습니다. — 상세:
+  quality-ledger (ea), `docs/dev/event-stream.md`.
+
 - **`pyrs_json::from_events`가 공개됐고, 한 JSON 문서의 두 순회가 게이트가 됐다** — step 2가 테스트
   계층에 남긴 접기는 이제 공유 어휘의 리더이며, 검증하는 리더다. 이 crate의 어떤 producer도 낼 수
   없는 목록(빈 스트림, 열린 것 없는 close, `Alias`, 앵커나 태그가 달린 이벤트, 블록 스칼라)는 추측이

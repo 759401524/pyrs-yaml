@@ -6045,6 +6045,39 @@ explores runs on the schedule, so the coverage claimed here is the corpus plus t
 search. Nothing in this change touches the read path, so the instruction-count leg has no new claim
 to judge.
 
+### (ea) The Python-facing verb reads every format, and what the boundary can now be asked to prove
+
+Step 5 of `docs/dev/event-stream.md` is the smallest of the five, and that is the point:
+`parse_stream` already emitted the vocabulary's dicts for YAML, and the two newer producers emit the
+very same `pyrs_event::StreamEvent`, so shipping the promise to Python was a keyword that picks a
+scanner — `parse_stream(text, on_event=None, max_depth=1000, *, format="yaml")` over `yaml`, `json`,
+`jsonc`, `json5`, `toml` — not a second surface to keep honest. The default is unchanged and a test
+says so event for event, positional form included, because a widened signature is a compatibility
+event whether or not it looks like one.
+
+What the boundary reports is the vocabulary's own honesty, now visible to users: `anchor` and
+`alias` stay YAML's; a TOML literal `'…'` reads the same as a basic `"…"` because which quote was
+typed is not kept; a TOML document's tags arrive spelled the way the hub spells them (`!timestamp`,
+`!!int`) rather than the way YAML would. One claim was written wrong and then measured before it
+shipped: the first draft of the docstring said a TOML string reads `plain`, and the probe answered
+`double_quoted` for both quote forms — the same pass also showed that a bare key named `y` is quoted
+on purpose, because YAML's reader would type it, and that the tree says the same thing, so the
+stream is faithful rather than surprising. The docstring now states what was measured.
+
+`max_depth` bounds only the two readers that carry the option, and the two answer with different
+types (`YamlMaxDepthError` for YAML, a parse error for JSON); TOML's nesting limit belongs to the
+intermediate representation. That asymmetry is documented at the verb rather than smoothed over,
+because inventing a TOML depth option would be a configurability the scanner does not have.
+
+Measured: `cargo clippy --all --all-targets -- -D warnings` clean; `cargo nextest run --all` 659
+passed; `uv run pytest tests/` 2853 passed, plus 15 new tests in `tests/test_streaming.py`'s
+`TestMultiFormatStream`; the routing is mutation-checked — replacing the JSON5 arm with strict
+reddened exactly `test_json5_reports_single_quoted_and_bare_forms_verbatim` and
+`test_the_dialects_stay_their_own_grammars`, then was reverted. The stub came from the regeneration
+route and `scripts/check_stub_drift.py` reports no drift. Not measured: the instruction count, which
+this host cannot take without valgrind; the added work is a match over producers outside the
+measured hot path, so CI's leg is the arbiter.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

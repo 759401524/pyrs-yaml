@@ -2,6 +2,8 @@
 
 import io
 
+import pytest
+
 import pyrs_yaml
 
 
@@ -176,3 +178,180 @@ class TestBlockScalarStyle:
         assert len(scalars) == 1
         assert scalars[0]["value"] == "hello\n"
         assert scalars[0]["style"] == "folded"
+
+
+def _skel(text, fmt):
+    """The `(type, value, style)` skeleton of a stream, positions left out on purpose."""
+    return [(event["type"], event["value"], event["style"]) for event in pyrs_yaml.parse_stream(text, format=fmt)]
+
+
+class TestMultiFormatStream:
+    """`parse_stream(format=...)`: the one vocabulary, produced per format.
+
+    These are the Python-side half of plan B's last step -- `docs/dev/event-stream.md`
+    "What the replay gate answered" names what the vocabulary can and cannot say, and the
+    Rust tier (`crates/pyrs-json/tests/events_replay.rs`) is where a stream is checked
+    against the tree. What is pinned here is the *boundary*: which producer answers, what a
+    projection of a foreign event dict looks like, and that the default stays YAML.
+    """
+
+    def test_json_events_keep_the_quote_the_source_typed(self):
+        # A JSON key and a JSON string value are quoted where a JSON number is not, so the
+        # stream can tell `{"a": "1"}` from `{"a": 1}` -- the tree loses that on the way to
+        # YAML, where both become the same plain scalar.
+        assert _skel('{"a": 1}', "json") == [
+            ("stream_start", None, None),
+            ("document_start", None, None),
+            ("mapping_start", None, None),
+            ("scalar", "a", "double_quoted"),
+            ("scalar", "1", "plain"),
+            ("mapping_end", None, None),
+            ("document_end", None, None),
+            ("stream_end", None, None),
+        ]
+
+    def test_json_nesting_shape(self):
+        assert [t for t, _v, _s in _skel('{"b": [2, {"c": "x"}]}', "json")] == [
+            "stream_start",
+            "document_start",
+            "mapping_start",
+            "scalar",
+            "sequence_start",
+            "scalar",
+            "mapping_start",
+            "scalar",
+            "scalar",
+            "mapping_end",
+            "sequence_end",
+            "mapping_end",
+            "document_end",
+            "stream_end",
+        ]
+
+    def test_positions_come_from_the_producer(self):
+        events = list(pyrs_yaml.parse_stream('{\n  "a": 1\n}', format="json"))
+        key = next(e for e in events if e["value"] == "a")
+        assert (key["line"], key["column"]) == (1, 2)
+
+    def test_jsonc_notes_ride_the_stream(self):
+        skeleton = _skel('{\n  // head\n  "a": 1, /* tail */\n  "b": 2\n}\n', "jsonc")
+        assert ("comment", "head", "standalone") in skeleton
+        assert ("comment", "tail", "inline") in skeleton
+
+    def test_json5_reports_single_quoted_and_bare_forms_verbatim(self):
+        # The number is the source's own spelling, not a canonicalised one: `.5` stays `.5`.
+        assert _skel("{name: 'Alice', n: .5,}", "json5") == [
+            ("stream_start", None, None),
+            ("document_start", None, None),
+            ("mapping_start", None, None),
+            ("scalar", "name", "plain"),
+            ("scalar", "Alice", "single_quoted"),
+            ("scalar", "n", "plain"),
+            ("scalar", ".5", "plain"),
+            ("mapping_end", None, None),
+            ("document_end", None, None),
+            ("stream_end", None, None),
+        ]
+
+    def test_toml_quoting_reports_what_the_ir_keeps(self):
+        # Which quote a TOML string used is not in the intermediate representation, so both forms
+        # arrive alike; a bare key arrives plain unless YAML's own reader would type it, in which
+        # case it is marked quoted so the projection re-reads as the same string.
+        scalars = [
+            (e["value"], e["style"])
+            for e in pyrs_yaml.parse_stream("a = 'lit'\nb = \"basic\"\ny = 1\n", format="toml")
+            if e["type"] == "scalar"
+        ]
+        assert scalars == [
+            ("a", "plain"),
+            ("lit", "double_quoted"),
+            ("b", "plain"),
+            ("basic", "double_quoted"),
+            ("y", "double_quoted"),
+            ("1", "plain"),
+        ]
+
+    def test_toml_tags_are_the_hub_tags_not_yamls_own(self):
+        tagged = {
+            (e["value"], e["tag"])
+            for e in pyrs_yaml.parse_stream("d = 1979-05-27T07:32:00Z\nb = 0b101\n", format="toml")
+            if e["type"] == "scalar"
+        }
+        assert ("1979-05-27T07:32:00Z", "!timestamp") in tagged
+        assert ("0b101", "!!int") in tagged
+
+    def test_toml_table_headers_open_in_structural_order(self):
+        # A header's `[` sits before the name it declares, so the key event precedes the
+        # MappingStart that the header opens -- the order the tree has and byte order does not.
+        types = [t for t, _v, _s in _skel("[s]\nx = 1\n", "toml")]
+        assert types.index("scalar") < types.index("mapping_end")
+        body = _skel("[s]\nx = 1\n", "toml")
+        assert body[body.index(("scalar", "s", "plain")) + 1] == ("mapping_start", None, None)
+
+    def test_anchor_and_alias_are_yamls_own(self):
+        for fmt, text in [("json", "{}"), ("jsonc", "{}"), ("json5", "{}"), ("toml", "x = 1\n")]:
+            events = list(pyrs_yaml.parse_stream(text, format=fmt))
+            assert all(e["anchor"] is None for e in events), fmt
+            assert "alias" not in [e["type"] for e in events], fmt
+        anchored = list(pyrs_yaml.parse_stream("a: &n 1\nb: *n\n", format="yaml"))
+        assert any(e["anchor"] == "n" for e in anchored)
+        assert "alias" in [e["type"] for e in anchored]
+
+    def test_default_format_stays_yaml(self):
+        text = "a: 1\nb: [2, {c: x}]\n"
+        assert list(pyrs_yaml.parse_stream(text)) == list(pyrs_yaml.parse_stream(text, format="yaml"))
+        # The three shipped positional arguments keep working unchanged.
+        assert list(pyrs_yaml.parse_stream(text, None, 1000)) == list(pyrs_yaml.parse_stream(text))
+
+    def test_bytes_are_accepted_for_every_format(self):
+        for fmt, text in [("json", b'{"a": 1}'), ("toml", b"x = 1\n"), ("yaml", b"a: 1\n")]:
+            kinds = [e["type"] for e in pyrs_yaml.parse_stream(text, format=fmt)]
+            assert "scalar" in kinds, fmt
+
+    def test_max_depth_bounds_the_readers_that_carry_it(self):
+        # JSON has a nesting limit of its own; the YAML reader has one too, and it answers with
+        # the dedicated depth type. TOML's limit is the IR's, so `max_depth` is documented as
+        # applying to the two readers that take the option.
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            list(pyrs_yaml.parse_stream("[[[1]]]", max_depth=2, format="json"))
+        with pytest.raises(pyrs_yaml.YamlMaxDepthError):
+            list(pyrs_yaml.parse_stream("a: [[1]]", max_depth=2, format="yaml"))
+        assert any(e["type"] == "scalar" for e in pyrs_yaml.parse_stream("[[[1]]]", format="json"))
+
+    def test_the_dialects_stay_their_own_grammars(self):
+        for fmt, text in [
+            ("json", '{"a": 1 // note\n}'),
+            ("json", "{'a': 1}"),
+            ("json", '{"a": 1,}'),
+            ("jsonc", "{a: 1}"),
+            ("jsonc", "{'a': 1}"),
+        ]:
+            with pytest.raises(pyrs_yaml.YamlParseError):
+                list(pyrs_yaml.parse_stream(text, format=fmt))
+        assert _skel('{\n  // ok\n  "a": 1\n}', "jsonc")[3] == ("comment", "ok", "standalone")
+        assert ("scalar", "Alice", "single_quoted") in _skel("{a: 'Alice'}", "json5")
+
+    def test_a_refusal_raises_what_the_tree_route_raises(self):
+        # One scanner answers both walks: the boundary must not invent a second verdict text.
+        for route, text in [(pyrs_yaml.load_json, "{"), (pyrs_yaml.load_toml, "x = ")]:
+            fmt = "json" if route is pyrs_yaml.load_json else "toml"
+            with pytest.raises(pyrs_yaml.YamlParseError) as tree:
+                route(text)
+            with pytest.raises(pyrs_yaml.YamlParseError) as stream:
+                list(pyrs_yaml.parse_stream(text, format=fmt))
+            assert str(tree.value) == str(stream.value)
+
+    def test_an_unknown_format_is_a_type_error_that_names_the_set(self):
+        with pytest.raises(pyrs_yaml.YamlTypeError, match="Supported: yaml, json, jsonc, json5, toml"):
+            pyrs_yaml.parse_stream("{}", format="xml")
+
+    def test_the_callback_branch_sees_the_same_events(self):
+        seen = []
+        out = pyrs_yaml.parse_stream('{"a": 1}', on_event=lambda e: seen.append(e) or True, format="json")
+        assert out is None
+        assert [e["type"] for e in seen] == [t for t, _v, _s in _skel('{"a": 1}', "json")]
+
+    def test_a_false_answer_stops_the_callback(self):
+        seen = []
+        pyrs_yaml.parse_stream('{"a": 1}', on_event=lambda e: seen.append(1) or False, format="json")
+        assert len(seen) == 1

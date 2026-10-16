@@ -487,13 +487,22 @@ Returns the YAML Test Suite pass rate and per-test results.
 
 #### `parse_stream()`
 
-Parse YAML incrementally, yielding raw event dicts.
+Parse a document incrementally, yielding raw event dicts.
 
 ```python
-parse_stream(yaml: str) -> StreamIterator
+parse_stream(
+    yaml: str | bytes, on_event=None, max_depth=1000, *, format="yaml"
+) -> StreamIterator | None
 ```
 
 Returns a `StreamIterator` yielding one event dict per step. Unlike `YAML().load_stream()` (which resolves into Python values), this exposes the raw token stream.
+
+`format` picks the producer — `yaml` (the default), `json`, `jsonc`, `json5` or `toml` — and every producer
+reports the one vocabulary, so the dicts keep the same seven keys (`type`, `value`, `style`, `anchor`, `tag`,
+`line`, `column`). A field a format has nothing to say about stays `None`: `anchor` is YAML's own and `alias`
+never appears elsewhere, and a TOML literal `'…'` reads the same as a basic `"…"` because which quote was
+typed is not kept. A JSON or TOML stream carries one document, and the accept-or-refuse verdict is the one the
+tree route gives, because it is the same scanner.
 
 #### `YamlStream` { #yamlstream }
 

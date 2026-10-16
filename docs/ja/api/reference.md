@@ -467,13 +467,17 @@ YAML テストスイートの合格率とテストごとの結果を返します
 
 ### `parse_stream()`
 
-YAML をインクリメンタルにパースし、生のイベント dict を生成します。
+ドキュメントをインクリメンタルにパースし、生のイベント dict を生成します。
 
 ```python
-parse_stream(yaml: str) -> StreamIterator
+parse_stream(
+    yaml: str | bytes, on_event=None, max_depth=1000, *, format="yaml"
+) -> StreamIterator | None
 ```
 
 各ステップで 1 つのイベント dict を生成する `StreamIterator` を返します。`YAML().load_stream()`（Python 値に解決される）とは異なり、生のトークンストリームを公開します。
+
+`format` はどの生産者が読むかを決めます — `yaml`（既定）、`json`、`jsonc`、`json5`、`toml`。どの生産者も同じ語彙を報告するので、dict は常に同じ 7 つのキー（`type`、`value`、`style`、`anchor`、`tag`、`line`、`column`）を持ちます。そのフォーマットが何も言えないフィールドは `None` のままです。`anchor` も `alias` も YAML 固有で、他の形式では現れません。TOML のリテラル `'…'` は基本文字列 `"…"` と同じ読みになります — どちらの引用符を使ったかは中間表現に残らないためです。JSON と TOML のストリームは 1 つのドキュメントだけを運び、採用か拒否かの判定はツリーを歩く経路と同じ答えになります。同じスキャナーが応えるからです。
 
 ### `YamlStream` { #yamlstream }
 
