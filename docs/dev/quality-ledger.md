@@ -6109,6 +6109,36 @@ answered (`anchor` and `Alias` stayed YAML's own, `tag` generalised to TOML's `!
 belong to the stream) and what remains open (the one-boolean-two-questions note flag).
 `cargo doc -p pyrs-event` builds, which checks the rewrite is at least readable.
 
+### (ed) The vocabulary's two generic jobs are now tested over arbitrary input, not over hand-picked cases
+
+`pyrs-event` had a unit tier (#453) and two producer-side replay gates, but the two things it does
+for *every* document — `LineTable::line_col` turning a byte offset into a position, and `into_owned`
+moving an event out of the source it borrows — were pinned by chosen offsets and chosen variants. A
+property tier now states them generically in the crate itself: arbitrary documents of up to five
+lines of multi-width characters must answer each character's offset with that character's own
+`(line, column)`, must collapse every byte inside a wide character onto its start, must be monotone
+in byte order, and must clamp past the end to one answer rather than panicking; and for seven
+representative variants with arbitrary text, style, anchor, note flag and positions, `into_owned`
+must change nothing but the text's ownership, must be idempotent, and must preserve both
+coordinates.
+
+The tier earns its place by what mutation found. Replacing the character-boundary clamp with the
+identity panics the new property at the slice it should never reach — `text[start..cut]` off a
+boundary — and the hand-written table test joins it, so both tiers guard the same class. Setting
+`line` to zero inside `into_owned` reddens `owning_an_event_changes_ownership_and_nothing_else`.
+Both mutations were reverted, and `proptest`'s `proptest-regressions/lib.txt` was deleted after each
+run rather than committed: it records the seed of a falsified build, which is not a case worth
+pinning.
+
+Mechanics worth keeping: `proptest = "1.5"` was already a workspace dependency, so this adds a
+`pyrs-event → proptest` lock edge rather than a new dependency, and CI's `property tier (20k cases)`
+leg runs `PROPTEST_CASES=20000 cargo test --workspace --locked`, which elevates these two properties
+with no case count hard-coded. `#![no_std]` costs one line — the test module names
+`proptest::prelude::*` and the crate's tests reach `std` the way `pyrs-ast`'s already do. Measured:
+`cargo nextest run --all` 664 passed (2 new), clippy clean at CI's scope, and the id `(ec)` belongs
+to PR #454's decision record — these letters mark the order the work was done, not the order it
+landed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

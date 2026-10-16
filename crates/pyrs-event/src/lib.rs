@@ -220,6 +220,7 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 mod tests {
     use super::*;
     use alloc::vec;
+    use proptest::prelude::*;
 
     #[test]
     fn a_line_table_reports_the_granit_convention_for_both_engine_dialects() {
@@ -403,5 +404,119 @@ mod tests {
         };
         assert!(Arc::ptr_eq(&text, &owned_text));
         assert!(!standalone);
+    }
+
+    proptest! {
+        /// Every character offset of an arbitrary document maps to that character's own line and
+        /// column, a producer that stops inside a code point gets the character's start rather than
+        /// a position before it, and the answer never runs backwards as the offset grows. The two
+        /// hand-picked tables above pin the convention; this is the statement that holds for every
+        /// line count and every mix of one-, two-, three- and four-byte characters.
+        #[test]
+        fn every_character_offset_is_the_position_of_its_own_character(
+            lines in prop::collection::vec(
+                prop::collection::vec(
+                    prop::char::any().prop_filter("a line break belongs to the separator", |c| {
+                        *c != '\u{a}'
+                    }),
+                    0..6,
+                ),
+                0..5,
+            ),
+        ) {
+            let lines: Vec<String> = lines.into_iter().map(|l| l.into_iter().collect()).collect();
+            let text = lines.join("\u{a}");
+            let table = LineTable::new(&text);
+
+            let mut offset = 0usize;
+            let mut previous: Option<(usize, usize)> = None;
+            for (line, content) in lines.iter().enumerate() {
+                for (column, ch) in content.chars().enumerate() {
+                    let position = table.line_col(offset);
+                    prop_assert_eq!(position, (line, column));
+                    for inner in 1..ch.len_utf8() {
+                        prop_assert_eq!(table.line_col(offset + inner), (line, column));
+                    }
+                    if let Some(earlier) = previous {
+                        prop_assert!(earlier <= position, "{earlier:?} then {position:?} is not monotone");
+                    }
+                    previous = Some(position);
+                    offset += ch.len_utf8();
+                }
+                if line + 1 < lines.len() {
+                    let end = table.line_col(offset);
+                    prop_assert_eq!(end.0, line);
+                    offset += 1;
+                }
+            }
+
+            // The end of the source, and anything past it, clamp to one answer rather than
+            // panicking: a producer that ran off the end still has to report somewhere.
+            prop_assert_eq!(table.line_col(text.len()), table.line_col(text.len() + 64));
+        }
+
+        /// Owning an event is a no-op on everything but where its text lives, and it is idempotent
+        /// — the boundary hands Python an owned stream, so the second `into_owned` is not a
+        /// hypothetical. Generalises the eleven hand-built variants to arbitrary field contents.
+        #[test]
+        fn owning_an_event_changes_ownership_and_nothing_else(
+            body in prop::collection::vec(prop::char::any(), 0..8),
+            borrowed in any::<bool>(),
+            positions in (any::<usize>(), any::<usize>()),
+            quoted in any::<bool>(),
+            anchored in any::<bool>(),
+            standalone in any::<bool>(),
+        ) {
+            let text: String = body.into_iter().collect();
+            let value = if borrowed {
+                alloc::borrow::Cow::Borrowed(text.as_str())
+            } else {
+                alloc::borrow::Cow::Owned(text.clone())
+            };
+            let style = if quoted {
+                ScalarStyle::DoubleQuoted
+            } else {
+                ScalarStyle::Plain
+            };
+            let anchor = anchored.then(|| text.clone());
+
+            let variants = alloc::vec![
+                StreamEventType::Scalar {
+                    value: value.clone(),
+                    style,
+                    anchor: anchor.clone(),
+                    tag: None,
+                },
+                StreamEventType::MappingStart {
+                    anchor,
+                    tag: Some(Tag::local("str")),
+                },
+                StreamEventType::SequenceStart {
+                    anchor: None,
+                    tag: None,
+                },
+                StreamEventType::Alias { name: text.clone() },
+                StreamEventType::Comment {
+                    text: Arc::from(text.as_str()),
+                    standalone,
+                },
+                StreamEventType::StreamStart,
+                StreamEventType::MappingEnd,
+            ];
+
+            for event_type in variants {
+                let event = StreamEvent {
+                    event_type,
+                    line: positions.0 % 64,
+                    column: positions.1 % 64,
+                };
+                prop_assert_eq!(&event, &event.clone());
+                let owned = event.clone().into_owned();
+                prop_assert_eq!(&event, &owned, "owning changed {:?}", event.event_type);
+                prop_assert_eq!(&owned, &owned.clone().into_owned(), "owning twice differs");
+                prop_assert_eq!(event.line, owned.line);
+                prop_assert_eq!(event.column, owned.column);
+            }
+        }
     }
 }

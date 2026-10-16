@@ -15,3 +15,10 @@ name = "pyrs_event"
 # from it cannot disagree about what a style or a tag is. `default-features = false` keeps the
 # dependency tree no_std-clean; feature unification gives `std` back wherever a std crate pulls it.
 pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", default-features = false }
+
+[dev-dependencies]
+# The property tier for the two jobs this crate owns generically: turning a byte offset into a
+# position, and owning a borrowed event. `proptest` is already in the workspace (pyrs-yaml-core uses
+# it), so this adds no new dependency to the project — only an edge in the lock file.
+proptest = "1.5"
+
