@@ -37,7 +37,7 @@ mod parser;
 mod writer;
 
 pub use parser::{
-    DEFAULT_MAX_DEPTH, JsonParseOptions, from_json, from_json_with_max_depth,
+    DEFAULT_MAX_DEPTH, JsonParseOptions, from_events, from_json, from_json_with_max_depth,
     from_json_with_options, from_json5, from_jsonc, parse_stream, parse_stream_with_options,
 };
 // The event vocabulary lives in its own crate so a downstream reader can name it without pulling an

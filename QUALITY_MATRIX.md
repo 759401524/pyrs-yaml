@@ -466,8 +466,11 @@ is done when its test is green, not when the change is merged.
   the test that compares them.
 - **P1-D, matrix spaces** (`done`): the route-parity table over the two YAML writers, and
   JSON/TOML round-trip fuzz targets with deterministic corpus halves that run on every
-  `cargo nextest`. Both closures came with a correction to how this document first
-  described the gap, recorded above rather than edited out.
+  `cargo nextest`. The JSON pair gained a third target of the same shape - `json_events_replay`
+  walks a document twice, through the tree and through the event stream, and asserts the two agree
+  on the verdict, on the document and on the notes - with its own seed corpus replayed by
+  `crates/pyrs-json/tests/events_replay.rs`. Both closures came with a correction to how this
+  document first described the gap, recorded above rather than edited out.
   Acceptance: every hole this item covered deleted from the registry, and the measurement
   agreeing with what is left.
 - **P2-F, Ir baseline breadth and provenance** (`done`): the `to_json`, `to_toml` and inline-merge

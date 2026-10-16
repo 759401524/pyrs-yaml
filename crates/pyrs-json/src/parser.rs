@@ -1304,6 +1304,163 @@ pub fn parse_stream_with_options(
     Ok(out.events)
 }
 
+/// A stream that does not describe one JSON document, in the shape the scanner's own refusals use.
+fn refuse(msg: &str) -> ParseError {
+    ParseError::Syntax {
+        message: format!("JSON event stream: {msg}"),
+        line: 0,
+        col: 0,
+    }
+}
+
+/// Rebuild a document's tree from the events [`parse_stream`] reports for it.
+///
+/// The second reader of the stream, and the reason the vocabulary can be checked rather than
+/// trusted: a mapping's name and value arrive as two scalars in document order, a `NodeMap` decides
+/// duplicates exactly as the tree walk's does, and the three resolution rules - `quoted_or_plain`
+/// for text, `hub_scalar` for a number or keyword, `single_quoted_node` for JSON5's own style - are
+/// the same functions the scanner calls, not a second copy of them.
+///
+/// Two things a JSON stream cannot carry, both of them the vocabulary's limits rather than this
+/// reader's:
+///
+/// - `Comment` events are not placed. The engine files a same-line note either on the value it
+///   follows or on the key that follows, deciding by which side of the comma the note sat, and a
+///   comma is no event - `a_same_line_note_between_a_value_and_the_next_member_has_two_readings`
+///   holds the two documents apart. `CustomNode`'s equality does compare the inline `comment` slot,
+///   so a caller comparing a replay against a tree has to empty the slots the stream cannot fill.
+/// - `anchor`, `tag` and `Alias` are YAML's grammar. A stream that carries them is not one this
+///   engine produced, and it is refused rather than silently dropped.
+///
+/// An empty stream, a second root value, a container closed with nothing open or with the wrong
+/// kind open, and a block scalar style JSON never writes are all refusals too: this is a public
+/// reader of a caller-supplied list, so it validates instead of trusting.
+pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError> {
+    enum Open {
+        Map(NodeMap<CustomNode, CustomNode>, Option<CustomNode>),
+        Seq(Vec<CustomNode>),
+    }
+    fn place(
+        stack: &mut [Open],
+        root: &mut Option<CustomNode>,
+        node: CustomNode,
+    ) -> Result<(), ParseError> {
+        match stack.last_mut() {
+            // Inside a mapping the scalars that are not containers arrive in pairs: name, value.
+            Some(Open::Map(pairs, name)) => match name.take() {
+                None => *name = Some(node),
+                Some(name) => {
+                    pairs.insert(name, node);
+                }
+            },
+            Some(Open::Seq(items)) => items.push(node),
+            None => {
+                if root.is_some() {
+                    return Err(refuse("a second root value in one stream"));
+                }
+                *root = Some(node);
+            }
+        }
+        Ok(())
+    }
+    fn close(
+        stack: &mut Vec<Open>,
+        root: &mut Option<CustomNode>,
+        mapping: bool,
+    ) -> Result<(), ParseError> {
+        let node = match stack.pop() {
+            Some(Open::Map(pairs, _)) if mapping => CustomNode::plain_mapping(pairs),
+            Some(Open::Seq(items)) if !mapping => CustomNode::plain_sequence(items),
+            Some(_) => {
+                return Err(refuse(
+                    "a container closed against the wrong kind of open frame",
+                ));
+            }
+            None => return Err(refuse("a container closed with nothing open")),
+        };
+        place(stack, root, node)
+    }
+    let mut stack: Vec<Open> = Vec::new();
+    let mut root: Option<CustomNode> = None;
+    for event in events {
+        match &event.event_type {
+            StreamEventType::MappingStart { anchor, tag } => {
+                if anchor.is_some() || tag.is_some() {
+                    return Err(refuse(
+                        "an anchored or tagged mapping is not JSON's to report",
+                    ));
+                }
+                stack.push(Open::Map(NodeMap::default(), None));
+            }
+            StreamEventType::SequenceStart { anchor, tag } => {
+                if anchor.is_some() || tag.is_some() {
+                    return Err(refuse(
+                        "an anchored or tagged sequence is not JSON's to report",
+                    ));
+                }
+                stack.push(Open::Seq(Vec::new()));
+            }
+            StreamEventType::MappingEnd => close(&mut stack, &mut root, true)?,
+            StreamEventType::SequenceEnd => close(&mut stack, &mut root, false)?,
+            StreamEventType::Scalar {
+                value,
+                style,
+                anchor,
+                tag,
+            } => {
+                if anchor.is_some() || tag.is_some() {
+                    return Err(refuse(
+                        "an anchored or tagged scalar is not JSON's to report",
+                    ));
+                }
+                // A mapping's name is the hub's plain-or-quoted text whatever spelling it arrived
+                // in - the tree's `object` calls `quoted_or_plain` on every key - while a value
+                // keeps the style it was written in.
+                let as_name = matches!(stack.last(), Some(Open::Map(_, None)));
+                let node = if as_name {
+                    quoted_or_plain(value.to_string())
+                } else {
+                    match style {
+                        ScalarStyle::SingleQuoted => single_quoted_node(value.to_string()),
+                        ScalarStyle::DoubleQuoted => quoted_or_plain(value.to_string()),
+                        // The tree stores the word `null` as a null node, and every other plain
+                        // scalar as the hub's own spelling of the token.
+                        ScalarStyle::Plain => {
+                            if *value == "null" {
+                                CustomNode::plain_null()
+                            } else {
+                                hub_scalar(value)
+                            }
+                        }
+                        other => {
+                            return Err(refuse(&format!(
+                                "JSON never writes a scalar in {other:?}"
+                            )));
+                        }
+                    }
+                };
+                place(&mut stack, &mut root, node)?;
+            }
+            StreamEventType::Alias { name } => {
+                return Err(refuse(&format!("JSON has no alias, and {name} was one")));
+            }
+            StreamEventType::Comment { .. } => {
+                // Not placed: which node a same-line note rides is the fact the stream cannot
+                // report, and the note texts themselves are counted by the tests that compare a
+                // stream with the document it came from.
+            }
+            StreamEventType::StreamStart
+            | StreamEventType::StreamEnd
+            | StreamEventType::DocumentStart
+            | StreamEventType::DocumentEnd => {}
+        }
+    }
+    if !stack.is_empty() {
+        return Err(refuse("the stream ended with a container still open"));
+    }
+    root.ok_or_else(|| refuse("a stream with no document in it"))
+}
+
 impl<'a> Parser<'a> {
     /// One nesting level of the stream walk, with the tree walk's budget and refusal.
     fn stream_value(&mut self, out: &mut StreamOut<'a>) -> Result<(), ParseError> {
@@ -2358,88 +2515,11 @@ mod tests {
         }
     }
 
-    /// Replay a stream onto the node model: the same `NodeMap`, the same `quoted_or_plain`, the same
-    /// `hub_scalar` and the same single-quoted arm the tree walk uses, so a disagreement between the
-    /// two routes is a disagreement about the document rather than about a copy of a rule.
-    ///
-    /// `Comment` events are not placed: which node a same-line note rides is exactly what the stream
-    /// cannot report — `a_same_line_note_between_a_value_and_the_next_member_has_two_readings` names
-    /// that — so the replay compares the trees with their note slots emptied
-    /// (`undecorated`) and counts the notes themselves in
-    /// `the_stream_loses_and_invents_no_note`.
+    /// Replay through the public reader. A stream this crate produced is well-formed by
+    /// construction, so a refusal here is the defect rather than a case to tolerate; the reader's
+    /// own refusals are tested by `a_malformed_stream_is_refused_rather_than_guessed`.
     fn fold(events: &[StreamEvent<'_>]) -> CustomNode {
-        #[derive(Debug)]
-        enum Open {
-            Map(NodeMap<CustomNode, CustomNode>, Option<CustomNode>),
-            Seq(Vec<CustomNode>),
-        }
-        fn place(stack: &mut [Open], root: &mut Option<CustomNode>, node: CustomNode) {
-            match stack.last_mut() {
-                // Inside a mapping the scalars that are not containers arrive in pairs: name, value.
-                Some(Open::Map(pairs, name)) => match name.take() {
-                    None => *name = Some(node),
-                    Some(name) => {
-                        pairs.insert(name, node);
-                    }
-                },
-                Some(Open::Seq(items)) => items.push(node),
-                None => *root = Some(node),
-            }
-        }
-        let mut stack: Vec<Open> = Vec::new();
-        let mut root: Option<CustomNode> = None;
-        for event in events {
-            match &event.event_type {
-                StreamEventType::MappingStart { .. } => {
-                    stack.push(Open::Map(NodeMap::default(), None));
-                }
-                StreamEventType::SequenceStart { .. } => stack.push(Open::Seq(Vec::new())),
-                StreamEventType::MappingEnd => match stack.pop() {
-                    Some(Open::Map(pairs, _)) => {
-                        place(&mut stack, &mut root, CustomNode::plain_mapping(pairs))
-                    }
-                    other => panic!("a mapping closed where {other:?} was open"),
-                },
-                StreamEventType::SequenceEnd => match stack.pop() {
-                    Some(Open::Seq(items)) => {
-                        place(&mut stack, &mut root, CustomNode::plain_sequence(items))
-                    }
-                    other => panic!("a sequence closed where {other:?} was open"),
-                },
-                StreamEventType::Scalar { value, style, .. } => {
-                    // A mapping's name is the hub's plain-or-quoted text whatever it was written as
-                    // — an identifier, a `'k'` or a `"k"` all reach `quoted_or_plain` (the tree's
-                    // `object` does exactly this) — while a value keeps the spelling it arrived in.
-                    let as_name = matches!(stack.last(), Some(Open::Map(_, None)));
-                    let node = if as_name {
-                        quoted_or_plain(value.to_string())
-                    } else {
-                        match style {
-                            ScalarStyle::SingleQuoted => single_quoted_node(value.to_string()),
-                            ScalarStyle::DoubleQuoted => quoted_or_plain(value.to_string()),
-                            // The tree stores the word `null` as a null node, and every other plain
-                            // scalar as the hub's own spelling of the token.
-                            ScalarStyle::Plain => {
-                                if *value == "null" {
-                                    CustomNode::plain_null()
-                                } else {
-                                    hub_scalar(value)
-                                }
-                            }
-                            other => panic!("JSON never writes a scalar in {other:?}"),
-                        }
-                    };
-                    place(&mut stack, &mut root, node);
-                }
-                StreamEventType::Comment { .. }
-                | StreamEventType::StreamStart
-                | StreamEventType::StreamEnd
-                | StreamEventType::DocumentStart
-                | StreamEventType::DocumentEnd => {}
-                StreamEventType::Alias { name } => panic!("JSON has no alias: {name}"),
-            }
-        }
-        root.expect("a document's stream reports its root value")
+        from_events(events).expect("a stream this crate wrote replays")
     }
 
     /// The same tree with every note slot emptied.
@@ -2849,6 +2929,144 @@ mod tests {
         let only = |owner: &str| vec![(owner.to_string(), "x".to_string(), false)];
         assert_eq!(owners_of(before_comma), only("value"));
         assert_eq!(owners_of(after_comma), only("name"));
+    }
+
+    #[test]
+    fn the_two_walks_answer_different_questions_with_standalone() {
+        // Two same-line notes introduce one value. The single inline slot cannot hold both, so
+        // #361 moves them to the node's leading list - and a leading-list note carries
+        // `standalone: true`, so in the tree the flag now means "this note rides the leading
+        // list". The stream reports what the scanner actually saw: neither note had a line to
+        // itself, so the flag means "own line" there. One boolean, two questions.
+        //
+        // Pinned rather than fixed because the tree's reading is load-bearing for the JSONC
+        // writer's placement of these notes, and the stream's is the source fact; the replay
+        // comparisons in this repository's gates therefore match note *text* and leave the flag
+        // out. See docs/dev/event-stream.md, "What the replay gate found".
+        let text = r#"{"a" /* on the key */: /* on the value */ 1}"#;
+        let tree = from_json_with_options(text, JsonParseOptions::JSONC).expect("valid JSONC");
+        let mut kept = Vec::new();
+        tree_notes(&tree, &mut kept);
+        kept.sort();
+        let mut reported: Vec<(String, bool)> =
+            parse_stream_with_options(text, JsonParseOptions::JSONC)
+                .expect("valid JSONC")
+                .iter()
+                .filter_map(|event| match &event.event_type {
+                    StreamEventType::Comment { text, standalone } => {
+                        Some((text.to_string(), *standalone))
+                    }
+                    _ => None,
+                })
+                .collect();
+        reported.sort();
+        assert_eq!(
+            kept,
+            vec![
+                ("on the key".to_string(), true),
+                ("on the value".to_string(), true)
+            ]
+        );
+        assert_eq!(
+            reported,
+            vec![
+                ("on the key".to_string(), false),
+                ("on the value".to_string(), false)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_malformed_stream_is_refused_rather_than_guessed() {
+        // `from_events` is a public reader of a caller-supplied list, so the shapes no producer of
+        // this crate can emit are refusals and not panics or silent repairs.
+        use pyrs_event::{StreamEvent, StreamEventType};
+
+        fn event(event_type: StreamEventType<'static>) -> StreamEvent<'static> {
+            StreamEvent {
+                event_type,
+                line: 0,
+                column: 0,
+            }
+        }
+        let scalar = |text: &str, style| {
+            event(StreamEventType::Scalar {
+                value: alloc::borrow::Cow::Owned(text.into()),
+                style,
+                anchor: None,
+                tag: None,
+            })
+        };
+        let mapping = |anchor: bool| {
+            event(StreamEventType::MappingStart {
+                anchor: anchor.then(|| "a".to_string()),
+                tag: None,
+            })
+        };
+        let plain = |text: &str| scalar(text, ScalarStyle::Plain);
+        let cases: Vec<(Vec<StreamEvent<'static>>, &str)> = vec![
+            (vec![], "no document"),
+            (vec![plain("1"), plain("2")], "a second root value"),
+            (
+                vec![event(StreamEventType::MappingEnd)],
+                "closed with nothing open",
+            ),
+            (
+                vec![
+                    mapping(false),
+                    event(StreamEventType::SequenceEnd),
+                    event(StreamEventType::MappingEnd),
+                ],
+                "closed against the wrong kind",
+            ),
+            (
+                vec![mapping(false), plain("k"), plain("v")],
+                "left open at the end",
+            ),
+            (
+                vec![scalar("x", ScalarStyle::Literal)],
+                "a block style JSON never writes",
+            ),
+            (
+                vec![event(StreamEventType::Alias { name: "a".into() })],
+                "an alias",
+            ),
+            (
+                vec![mapping(true), event(StreamEventType::MappingEnd)],
+                "an anchored mapping",
+            ),
+        ];
+        for (events, why) in cases {
+            let outcome = from_events(&events);
+            assert!(
+                matches!(outcome, Err(ParseError::Syntax { .. })),
+                "{why} was accepted as {outcome:?}"
+            );
+        }
+        // A well-formed stream of scalars, mappings and sequences round-trips through the reader,
+        // and a comment in the middle of one is carried without being placed.
+        let ok = vec![
+            event(StreamEventType::StreamStart),
+            event(StreamEventType::DocumentStart),
+            mapping(false),
+            plain("k"),
+            plain("1"),
+            event(StreamEventType::Comment {
+                text: alloc::sync::Arc::from("note"),
+                standalone: true,
+            }),
+            event(StreamEventType::MappingEnd),
+            event(StreamEventType::DocumentEnd),
+            event(StreamEventType::StreamEnd),
+        ];
+        assert_eq!(
+            fold(&ok),
+            CustomNode::plain_mapping(
+                vec![(quoted_or_plain("k".into()), CustomNode::plain_scalar("1"),)]
+                    .into_iter()
+                    .collect()
+            ),
+        );
     }
 
     #[cfg(feature = "std")]

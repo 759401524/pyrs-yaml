@@ -17,6 +17,19 @@ status: new
 
 #### 추가
 
+- **`pyrs_json::from_events`가 공개됐고, 한 JSON 문서의 두 순회가 게이트가 됐다** — step 2가 테스트
+  계층에 남긴 접기는 이제 공유 어휘의 리더이며, 검증하는 리더다. 이 crate의 어떤 producer도 낼 수
+  없는 목록(빈 스트림, 열린 것 없는 close, `Alias`, 앵커나 태그가 달린 이벤트, 블록 스칼라)는 추측이
+  아니라 진단을 갖춘 거부이고, 여덟 모양이 고정됐다. 불변식가 pull request를 실패시킬 수 있게
+  게이트는 두 계층으로 돈다. `fuzz/fuzz_targets/json_events_replay.rs`가 방언마다 탐색하고,
+  `crates/pyrs-json/tests/events_replay.rs`는 13개 시드 어료를 세 방언에서 모든 `cargo nextest`마다
+  재생한다 — 판정 쌍 39, 재생된 문서 22, 둘 다 조용히 비어돌지 않도록 각각에 하한이 있다. 처음
+  90초의 탐색에서 중복 JSON 키가 제 노드가 소유한 주석을 떨어뜨리는 결함을 찾았다 (#450에서 고쳤고
+  그 입력은 시드로 남긴다). 그리고 어휘가 답하지 못하는 두 번째 것도 고정했다:
+  `Comment::standalone`은 트리에선 "이 주석이 어느 슬롯에 올라타는가"를, 스트림에선 "원문이 그에게
+  한 줄을 주었는가"를 답하므로, 대조는 주석 텍스트만 보고 그 플래그은 뺀다. — 상세: quality-ledger
+  (dz), `docs/dev/event-stream.md`.
+
 - **TOML에도 트리를 만들지 않는 이벤트 스트림이 있고, 첫 생산자가 비워 둔 칸에 답합니다** —
   `pyrs_toml::parse_stream`은 `from_toml`이 짓는 것과 같은 문서를 설명합니다. `pyrs-json`이 필요로
   했던 두 번째 스캔 걸음은 일부러 택하지 않았습니다. TOML의 표 규칙(어느 헤더가 어떤 경로를 여는지,

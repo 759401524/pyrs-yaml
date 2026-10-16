@@ -1,0 +1,6 @@
+{
+  "a": 1,
+  /* spans
+     lines */
+  "b": 2 // and a final one
+}
