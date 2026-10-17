@@ -67,9 +67,41 @@ def test_the_baseline_records_a_compiler_version():
 
 def test_every_release_wheel_build_uses_the_recorded_compiler():
     wheel_steps = [s for s in maturin_steps(PUBLISH.read_text(encoding="utf-8")) if s.get("command") != "sdist"]
-    assert len(wheel_steps) == 7, f"publish.yml's wheel builds changed shape: {len(wheel_steps)} steps"
+    # Three free-threaded builds now sit beside the GIL ones: a cp314t wheel and a cp315-abi3t
+    # wheel on each of Linux x86_64, Windows (x64/x86/arm64) and macOS, plus the two on the
+    # native Linux arm64 job. The exact number is the tripwire: a new build that forgets the
+    # pin, or a deletion that silently drops a platform, both change it.
+    assert len(wheel_steps) == 12, f"publish.yml's wheel builds changed shape: {len(wheel_steps)} steps"
     for step in wheel_steps:
         assert step.get("rust-toolchain") == pin(), step
+
+
+def test_both_free_threaded_wheels_are_built_for_every_platform_that_ships_one():
+    """The docs promise free-threaded wheels for 3.14t and 3.15t; the matrix must produce both.
+
+    `abi3t-py315` starts at 3.15, so the two artifacts come from different interpreters and
+    neither substitutes for the other: a 3.14t interpreter cannot load the `cp315-abi3t` wheel,
+    and the abi3t artifact only exists when a 3.15 interpreter runs the build. Linux arm64 must
+    be a native runner because maturin executes the target interpreter for both builds, and
+    under qemu that exec fails with `Exec format error (os error 8)` - the reason the platform
+    had no free-threaded wheel. Reading the interpreter counts keeps the two host-interpreter
+    builds (windows, macos) distinct from the two image-interpreter builds (linux, arm64).
+    """
+    text = PUBLISH.read_text(encoding="utf-8")
+    args = [step.get("args", "") for step in maturin_steps(text)]
+    assert sum("/opt/python/cp314-cp314t/bin/python" in a for a in args) == 2, args
+    assert sum("/opt/python/cp315-cp315t/bin/python" in a for a in args) == 2, args
+    assert sum("-i python3.14t" in a for a in args) == 2, args
+    assert sum("-i python3.15t" in a for a in args) == 2, args
+    document = yaml.safe_load(text)
+    assert document["jobs"]["linux-arm64-free-threaded"]["runs-on"] == "ubuntu-24.04-arm", (
+        "the arm64 free-threaded legs must run natively; an x86_64 runner under qemu cannot "
+        "execute the target interpreter the build needs"
+    )
+    assert "linux-arm64-free-threaded" in document["jobs"]["release"]["needs"], (
+        "Release must wait for the arm64 free-threaded wheels; otherwise PyPI is published "
+        "without them while every job that ran is green"
+    )
 
 
 def test_the_sdist_step_is_deliberately_not_pinned():
