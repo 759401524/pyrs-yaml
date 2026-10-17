@@ -228,7 +228,7 @@ fn collapsed_key_notes(pending: &[PendingComment]) -> Vec<pyrs_ast::ast::Comment
     if pending.is_empty() {
         return Vec::new();
     }
-    let mut ghost = quoted_or_plain(String::new());
+    let mut ghost = quoted_or_plain(Cow::Borrowed(""));
     attach_pending(&mut ghost, pending);
     notes_of(&ghost)
 }
@@ -578,10 +578,13 @@ impl<'a> Parser<'a> {
     /// strings but delimited by `'`; the parser additionally honours the
     /// JSON5 line-continuation backslash rule (a trailing `\` before a
     /// newline swallows both).
-    fn single_quoted_string(&mut self) -> Result<String, ParseError> {
+    fn single_quoted_string(&mut self) -> Result<Cow<'a, str>, ParseError> {
         debug_assert_eq!(self.peek(), Some(b'\''));
         self.pos += 1;
-        let mut out = String::new();
+        let content = self.pos;
+        // `None` means the source has held no escape so far, so the body is still borrowable;
+        // the first escape materialises the decoded buffer with the literal run before it.
+        let mut out: Option<String> = None;
         loop {
             // Bulk-copy the source run up to the next byte that needs a decision: the closing
             // quote, an escape, or a line terminator (which this dialect forbids inside a
@@ -598,16 +601,27 @@ impl<'a> Parser<'a> {
                 }
                 self.pos += 1;
             }
-            if self.pos > start {
+            if self.pos > start
+                && let Some(out) = &mut out
+            {
                 out.push_str(&self.text[start..self.pos]);
             }
             let b = self.peek().ok_or_else(|| self.err("unterminated string"))?;
             match b {
                 b'\'' => {
+                    let end = self.pos;
                     self.pos += 1;
-                    return Ok(out);
+                    return Ok(match out {
+                        Some(out) => Cow::Owned(out),
+                        None => Cow::Borrowed(&self.text[content..end]),
+                    });
                 }
                 b'\\' => {
+                    let out = out.get_or_insert_with(|| {
+                        let mut decoded = String::with_capacity(self.pos - content + 8);
+                        decoded.push_str(&self.text[content..self.pos]);
+                        decoded
+                    });
                     self.pos += 1;
                     let e = self.peek().ok_or_else(|| self.err("unterminated escape"))?;
                     self.pos += 1;
@@ -624,7 +638,7 @@ impl<'a> Parser<'a> {
                         b'\n' | b'\r' => {
                             // JSON5 line continuation: nothing appended.
                         }
-                        b'u' => self.unicode_escape(&mut out)?,
+                        b'u' => self.unicode_escape(&mut *out)?,
                         // JSON5-only string escapes (allow_json5_numbers is
                         // true only for the JSON5 preset): vertical tab and
                         // NUL. Strict JSON / JSONC still reject them.
@@ -664,7 +678,7 @@ impl<'a> Parser<'a> {
     /// combining marks and connectors (Unicode `ID_Continue` plus `$`/`_`).
     /// PR #129 lifted the former ASCII-only limit to full Unicode via the
     /// `unicode-ident` tables, so e.g. `{ é: 1, 名: 2, हिन्दी: 3 }` parses.
-    fn identifier_key(&mut self) -> Result<String, ParseError> {
+    fn identifier_key(&mut self) -> Result<Cow<'a, str>, ParseError> {
         let start = self.pos;
         let first = self.text[start..]
             .chars()
@@ -682,7 +696,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             }
         }
-        Ok(self.text[start..self.pos].to_string())
+        Ok(Cow::Borrowed(&self.text[start..self.pos]))
     }
 
     fn eof_pos(&self) -> bool {
@@ -998,10 +1012,17 @@ impl<'a> Parser<'a> {
     }
 
     /// Decode a quoted string; returns its content.
-    fn string(&mut self) -> Result<String, ParseError> {
+    ///
+    /// A body with no escape is returned as a slice of the source: the AST holds an `Arc<str>`,
+    /// and building a `String` first made every scalar allocate twice (once for the decode, once
+    /// for the `Arc`) even when the source text was already the answer.
+    fn string(&mut self) -> Result<Cow<'a, str>, ParseError> {
         debug_assert_eq!(self.peek(), Some(b'"'));
         self.pos += 1; // skip opening quote
-        let mut out = String::new();
+        let content = self.pos;
+        // `None` means the source has held no escape so far, so the body is still borrowable;
+        // the first escape materialises the decoded buffer with the literal run before it.
+        let mut out: Option<String> = None;
         loop {
             // Bulk-scan literal characters until we hit a special byte.
             let start = self.pos;
@@ -1012,9 +1033,11 @@ impl<'a> Parser<'a> {
                 }
                 self.pos += 1;
             }
-            if self.pos > start {
-                // SAFETY: we only advanced over bytes that are not ASCII < 0x20,
-                // not " or \ — so UTF-8 sequences are preserved intact.
+            // SAFETY: we only advanced over bytes that are not ASCII < 0x20,
+            // not " or \ — so UTF-8 sequences are preserved intact.
+            if self.pos > start
+                && let Some(out) = &mut out
+            {
                 out.push_str(&self.text[start..self.pos]);
             }
             // Handle the stopping character.
@@ -1023,10 +1046,19 @@ impl<'a> Parser<'a> {
             };
             match b {
                 b'"' => {
+                    let end = self.pos;
                     self.pos += 1;
-                    return Ok(out);
+                    return Ok(match out {
+                        Some(out) => Cow::Owned(out),
+                        None => Cow::Borrowed(&self.text[content..end]),
+                    });
                 }
                 b'\\' => {
+                    let out = out.get_or_insert_with(|| {
+                        let mut decoded = String::with_capacity(self.pos - content + 8);
+                        decoded.push_str(&self.text[content..self.pos]);
+                        decoded
+                    });
                     self.pos += 1;
                     let e = self.peek().ok_or_else(|| self.err("unterminated escape"))?;
                     self.pos += 1;
@@ -1039,7 +1071,7 @@ impl<'a> Parser<'a> {
                         b'n' => out.push('\n'),
                         b'r' => out.push('\r'),
                         b't' => out.push('\t'),
-                        b'u' => self.unicode_escape(&mut out)?,
+                        b'u' => self.unicode_escape(&mut *out)?,
                         // JSON5-only escapes (see the single-quoted twin).
                         b'v' if self.allow_json5_numbers => out.push('\u{b}'),
                         b'0' if self.allow_json5_numbers => out.push('\0'),
@@ -1149,7 +1181,7 @@ fn hub_scalar(source: &str) -> CustomNode {
 ///
 /// The style is the dialect's own (PR #121) so `to_json5_text` can reproduce `'…'`; unlike a
 /// double-quoted string it never goes through `quoted_or_plain`.
-fn single_quoted_node(value: String) -> CustomNode {
+fn single_quoted_node(value: Cow<'_, str>) -> CustomNode {
     CustomNode::Scalar {
         value: value.into(),
         style: pyrs_ast::ast::ScalarStyle::SingleQuoted,
@@ -1177,7 +1209,7 @@ fn single_quoted_node(value: String) -> CustomNode {
 /// then dispatches on `-`, `+`, `.`, a digit, `I` or `N`, so anything else is a string by construction and the
 /// resolver would have said so. Strict JSON and JSONC keep identical output; they simply stop paying a full
 /// resolve for text that cannot be a number.
-fn quoted_or_plain(value: String) -> CustomNode {
+fn quoted_or_plain(value: Cow<'_, str>) -> CustomNode {
     if needs_quotes(&value)
         || (json5_could_be_typed(&value)
             && !matches!(Schema::Json5.resolve(&value), YamlType::Str(_)))
@@ -1329,11 +1361,11 @@ impl<'a> StreamOut<'a> {
     }
 
     /// A string whose text a decoder produced, reported with the style it was written in.
-    fn decoded(&mut self, pos: usize, value: String, style: ScalarStyle) {
+    fn decoded(&mut self, pos: usize, value: Cow<'a, str>, style: ScalarStyle) {
         self.at(
             pos,
             StreamEventType::Scalar {
-                value: Cow::Owned(value),
+                value,
                 style,
                 anchor: None,
                 tag: None,
@@ -1529,11 +1561,13 @@ pub fn from_events(events: &[StreamEvent<'_>]) -> Result<CustomNode, ParseError>
                 // keeps the style it was written in.
                 let as_name = matches!(stack.last(), Some(Open::Map(_, None)));
                 let node = if as_name {
-                    quoted_or_plain(value.to_string())
+                    quoted_or_plain(Cow::Borrowed(value.as_ref()))
                 } else {
                     match style {
-                        ScalarStyle::SingleQuoted => single_quoted_node(value.to_string()),
-                        ScalarStyle::DoubleQuoted => quoted_or_plain(value.to_string()),
+                        ScalarStyle::SingleQuoted => {
+                            single_quoted_node(Cow::Borrowed(value.as_ref()))
+                        }
+                        ScalarStyle::DoubleQuoted => quoted_or_plain(Cow::Borrowed(value.as_ref())),
                         // The tree stores the word `null` as a null node, and every other plain
                         // scalar as the hub's own spelling of the token.
                         ScalarStyle::Plain => {
@@ -2480,7 +2514,7 @@ mod tests {
         // `CustomNode`'s equality deliberately ignores style and notes (a noted key must still match a plain
         // one) and style is precisely what this function decides.
         for text in JSON5_CORPUS.split('|') {
-            let guarded = quoted_or_plain(text.to_string());
+            let guarded = quoted_or_plain(Cow::Borrowed(text));
             let unguarded =
                 if needs_quotes(text) || !matches!(Schema::Json5.resolve(text), YamlType::Str(_)) {
                     CustomNode::double_quoted_scalar(text.to_string())
@@ -2788,8 +2822,8 @@ mod tests {
     }
 
     #[test]
-    fn a_number_borrows_the_source_and_a_decoded_string_owns_its_text() {
-        let text = r#"{"n": 12345, "s": "a\u0062", "t": true}"#;
+    fn a_number_and_an_unescaped_string_borrow_while_a_decoded_string_owns_its_text() {
+        let text = r#"{"n": 12345, "s": "a\u0062", "t": true, "b": "plain"}"#;
         let events = parse_stream(text).expect("valid strict JSON");
         // The scalar that follows a given name, reported the way the stream reports it.
         let value_of = |name: &str| -> StreamEventType<'_> {
@@ -2839,6 +2873,18 @@ mod tests {
             panic!("an escaped string has no single source slice to borrow");
         };
         assert_eq!(decoded, "ab");
+        let StreamEventType::Scalar {
+            value,
+            style: ScalarStyle::DoubleQuoted,
+            ..
+        } = value_of("b")
+        else {
+            panic!("\"plain\" must arrive as a double-quoted scalar");
+        };
+        let Cow::Borrowed(plain) = value else {
+            panic!("a string with no escape is the source's own bytes");
+        };
+        assert_eq!(plain, "plain");
     }
 
     #[test]

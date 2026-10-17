@@ -75,8 +75,8 @@ struct Ceiling {
 // `.ci/ir-baseline.json`. `bytes` is the sum of requested sizes, with a reallocation charged at
 // its new size. Raising either number is a decision that must be explained in the change.
 const FROM_JSON_MEDIUM: Ceiling = Ceiling {
-    allocs: 74,
-    bytes: 9_675,
+    allocs: 48,
+    bytes: 9_444,
 };
 const TO_JSON_MEDIUM: Ceiling = Ceiling {
     allocs: 8,
