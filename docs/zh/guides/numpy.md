@@ -8,8 +8,8 @@ status: new
 
 将 NumPy 数组序列化为 YAML 列表，支持零拷贝 Rust 处理。
 
-!!! warning "自由线程构建不含 NumPy"
-    自由线程（cp314t）wheel 使用 `--no-default-features` 构建，因此不包含 NumPy 集成。在自由线程构建上对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`。
+!!! note "自由线程 wheel 包含 NumPy"
+    所有 wheel（GIL 与自由线程 cp314t）都编译了 NumPy 集成。NumPy 可导入时该集成自动激活；若未安装 NumPy，对 `numpy.ndarray` 调用 `safe_dump` 会抛出 `YamlTypeError`（值不是受支持类型）。
 
 ## 基本用法
 
