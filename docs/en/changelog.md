@@ -19,6 +19,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The quality matrix's inventory is measured, not transcribed** — §1's table read 509 Rust
+  tests, 1,216 Python test functions, 22 `prop_*` functions and 7 fuzz targets with 118 seeds
+  (60 former crashes), and §4 repeated the seed count, while the probe measured 688, 1,684, 25,
+  8 and 141 (66); the page's opening sentence promises the numbers cannot rot, but only the
+  property sentence had a gate behind it. `scripts/quality_matrix.py` now counts the archived
+  corpus out of `fuzz/seeds/**/*.seed`, `#[test]` out of `crates/`, and `def test_*` out of
+  `tests/`, and `test_the_test_matrix_rows_state_the_counts_the_probe_measures` pins every
+  number in the table and the §4 sentence to that probe. The gate bites in the measured
+  direction: the old page failed it, and adding this gate's own test moved the Python total from
+  1,684 to 1,685 - the drift the page now states.
+
 - **The JSON and TOML fuzz targets got an oracle that can fail** — every re-read in `parse_json`
   and `parse_toml` was `let _ =`, so "our own readers load our own writers' output" was a docstring
   with nothing checking it, and a writer that emitted a byte its own dialect rejects passed. Each
