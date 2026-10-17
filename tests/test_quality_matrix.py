@@ -391,6 +391,42 @@ def test_the_page_states_the_counts_the_probe_measures(measured):
     )
 
 
+def test_the_test_matrix_rows_state_the_counts_the_probe_measures(measured):
+    """Every number in the section-1 table is a claim about the tree, so the page is pinned to it.
+
+    The page's header promises the numbers cannot rot, but only the property sentence had a test
+    behind it: the table still read 509 Rust tests, 1,216 Python test functions, 22 ``prop_*``
+    functions and 7 fuzz targets with 118 seeds (60 former crashes) while the probe measured 688,
+    1,685, 25, 8 and 141 (66) - this test is itself counted, which is why the fix moved the Python
+    total by one; the section-4 sentence repeated the seed count.
+    """
+    text = DOC_PATH.read_text(encoding="utf-8")
+    unit = re.search(r"\| unit / integration \| ([\d,]+) Rust `#\[test\]`, ([\d,]+) Python test functions \|", text)
+    prop = re.search(r"\| property \| (\d+) `prop_\*` functions", text)
+    fuzz = re.search(r"\| fuzz \| (\d+) targets, (\d+) seeds of which (\d+) are `former-crash-\*` \|", text)
+    regress = re.search(r"former-crash-<hash>\.seed` \((\d+) of them\)", text)
+    assert unit and prop and fuzz and regress, "QUALITY_MATRIX.md no longer states every section-1 count"
+    claimed = (
+        int(unit.group(1).replace(",", "")),
+        int(unit.group(2).replace(",", "")),
+        int(prop.group(1)),
+        int(fuzz.group(1)),
+        int(fuzz.group(2)),
+        int(fuzz.group(3)),
+        int(regress.group(1)),
+    )
+    measured_counts = (
+        measured["rust_test_count"],
+        measured["python_test_function_count"],
+        measured["property_function_count"],
+        len(measured["fuzz_targets"]),
+        measured["fuzz_seed_count"],
+        measured["fuzz_former_crash_count"],
+        measured["fuzz_former_crash_count"],
+    )
+    assert claimed == measured_counts, f"QUALITY_MATRIX.md claims {claimed}, the probe measures {measured_counts}"
+
+
 def test_the_perf_coverage_probe_describes_a_real_boundary(matrix, monkeypatch):
     """The probe is a measurement, in both the open and the closed direction.
 

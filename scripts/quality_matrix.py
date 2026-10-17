@@ -133,6 +133,17 @@ def fuzz_crates() -> list[str]:
     return sorted(set(re.findall(r'^([a-z0-9-]+) = \{ path = "\.\./crates/', text, re.MULTILINE)))
 
 
+def fuzz_seed_inventory() -> dict:
+    """The archived corpus, counted from `fuzz/seeds/**/*.seed`.
+
+    Counted from the seeds rather than inferred from the targets: a target with no archived
+    input still runs, but the PR replay tier has nothing to replay for it, so the target
+    count alone would overstate what that tier can prove.
+    """
+    seeds = [path for path in (REPO / "fuzz" / "seeds").rglob("*.seed") if path.is_file()]
+    return {"seeds": len(seeds), "former_crash": sum("former-crash-" in path.name for path in seeds)}
+
+
 def engine_crates(fuzz_links: list[str]) -> list[str]:
     """The fuzzed crates that also own a writer, so a round trip exists to test."""
     found = []
@@ -252,6 +263,19 @@ def ir_bridges_absent(channels: dict) -> list[str]:
         if not halves:
             absent.append(fmt)
     return absent
+
+
+def rust_test_count() -> int:
+    """`#[test]` attributes under `crates/`, the quantity the page calls Rust tests."""
+    return sum(len(re.findall(r"^\s*#\[test\]", read(path), re.MULTILINE)) for path in (REPO / "crates").rglob("*.rs"))
+
+
+def python_test_functions() -> int:
+    """`def test_*` under `tests/`, before pytest's parametrisation multiplies them."""
+    return sum(
+        len(re.findall(r"^\s*(?:async )?def test_", read(path), re.MULTILINE))
+        for path in (REPO / "tests").rglob("*.py")
+    )
 
 
 def property_functions() -> list[str]:
@@ -463,6 +487,9 @@ def measure() -> dict:
     baseline_scenarios = ir_scenarios_in_baseline()
     props = property_functions()
     guarded_props = conditional_property_assertions()
+    seeds = fuzz_seed_inventory()
+    rust_tests = rust_test_count()
+    python_tests = python_test_functions()
 
     hygiene_path = WORKFLOWS / "hygiene.yml"
     skip_match = re.search(r"SKIP: ([A-Za-z0-9,_-]+)", read(hygiene_path)) if hygiene_path.exists() else None
@@ -690,6 +717,10 @@ def measure() -> dict:
         "engines_with_serializer": engines,
         "fuzz_targets": targets,
         "fuzz_ci_matrix": ci_targets,
+        "fuzz_seed_count": seeds["seeds"],
+        "fuzz_former_crash_count": seeds["former_crash"],
+        "rust_test_count": rust_tests,
+        "python_test_function_count": python_tests,
         "prek_hooks": hooks,
         "hooks_skipped_in_ci": skipped,
         "check_scripts": scripts,
@@ -713,6 +744,10 @@ SUMMARY_KEYS = (
     "engines_with_serializer",
     "fuzz_targets",
     "fuzz_ci_matrix",
+    "fuzz_seed_count",
+    "fuzz_former_crash_count",
+    "rust_test_count",
+    "python_test_function_count",
     "prek_hooks",
     "hooks_skipped_in_ci",
     "check_scripts",
