@@ -596,6 +596,20 @@ status: new
 
 #### 修复
 
+- **多行字符串装不下三个自身定界符** — PR #464 那条规则的另一半。既然结束定界符是一段引号里的最后三
+  个，它前面最多只能有两个；第三个等于把三个连续原始引号放进内容，而最先出现的这样一组正是闭合串的东
+  西。三份语料文件当时被当作合法读入：`invalid/string/multiline-quotes-01`（连跑六个）、
+  `literal-multiline-quotes-01`（六个）与 `-02`（二十个）。基本式只需要给贪心吸收加上界限：第三个引
+  号既不是内容也不是定界符，它会留在值行上成为尾随文本，由配对解析器拒掉，所以没有新增任何报错分支。
+  写入器本来就已封住这里——`forbidden_multi_line` 把每个 `"` 都标为禁用，因此含三个引号的值会以转义形
+  式写出并读得回来。实测：toml-test 无效档 **491/511 → 494/511（96.67%）**，并且拒绝档换了形状：
+  `DIALECT_ACCEPTED` 现在点名默认方言声明的十七个文件（可省秒 3、内联表换行与尾逗号 5、多行键 8、
+  TOML 1.1 字节转义 1），于是新出现的漏洞会按自己的路径把门禁弄红，引擎悄悄破坏的方言承诺也会，而不
+  再溜进百分比的余量里。同一趟还改正了该文件自己的 docstring：它把字节转义算成未把守的缺口，其实那是
+  门控——`from_toml_v1_0` 会拒绝它，`v1_0_rejects_escape_x_and_e` 钉住了这点。两个 Rust 测试各管一种
+  形式：放宽字面量式的连跑界限只让 `a_literal_multiline_string_cannot_hold_three_apostrophes` 变红，
+  把基本式的吸收改回无界只让 `a_basic_multiline_string_cannot_hold_three_quotes` 变红。
+
 - **时间范围的裁定权归解析器，不再归宿主解释器** — 拒绝半边的 toml-test 档在量引擎的同时也量了
   解释器。三个越界时间（`datetime`、`local-datetime`、`local-time` 里的 `24:00:00`）之所以被拒，
   只是因为 CPython 的 `datetime`/`time` 构造器抛出 `ValueError`，而 CPython 3.14+ 认得这个写法：同一

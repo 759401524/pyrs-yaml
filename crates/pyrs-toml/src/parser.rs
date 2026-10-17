@@ -970,8 +970,17 @@ impl<'a> Parser<'a> {
         loop {
             if self.starts_with(b"\"\"\"") {
                 self.pos += 3;
-                // Allow up to 2 more "s as content (greedy match rules).
-                while self.peek() == Some(b'"') {
+                // Up to two more `"` may sit before the closing delimiter as content:
+                // `""""one quote""""` is `"one quote"` and `"""""two quotes"""""` is `""two
+                // quotes""`. The bound is what refuses `invalid/string/multiline-quotes-01`
+                // (`"""6 quotes: """"""`): a third quote is not content and not delimiter, so it is
+                // left as trailing text on the value line and the pair parser rejects it. An
+                // escaped quote never joins the run - `push_basic_escape` consumed it - which is why
+                // `escaped = """lol\""""""` stays legal with the value `lol"""`.
+                for _ in 0..2 {
+                    if self.peek() != Some(b'"') {
+                        break;
+                    }
                     out.push('"');
                     self.pos += 1;
                 }
@@ -1063,6 +1072,16 @@ impl<'a> Parser<'a> {
                     let mut end = self.pos + 3;
                     while self.byte_at(end) == Some(b'\'') {
                         end += 1;
+                    }
+                    // At most two of that run may be content, because a third means the content
+                    // itself holds `'''` - which no literal multi-line string can contain, since the
+                    // first such triple is what closed it. `''''one quote''''` (run 4) and
+                    // `'''''two quotes'''''` (run 5) are valid; `invalid/string/
+                    // literal-multiline-quotes-01.toml` is a run of 6 and -02 a run of 20.
+                    if end - self.pos > 5 {
+                        return Err(
+                            self.err("three consecutive apostrophes in a multiline literal")
+                        );
                     }
                     self.pos = end;
                     return Ok((self.text[start..end - 3].to_string(), true));
@@ -2368,6 +2387,54 @@ mod tests {
             "d = 2006-01-01T00:59:00\n",
         ] {
             assert!(from_toml(src).is_ok(), "refused: {src}");
+        }
+    }
+
+    #[test]
+    fn a_literal_multiline_string_cannot_hold_three_apostrophes() {
+        // PR #464 made the closing delimiter the LAST three quotes of the run, which is what lets
+        // `''''one quote''''` read back with its tail. Seen from the other side, that same rule
+        // means at most two may precede it: a third would put `'''` in the content, and the first
+        // such triple is what closes the string. `invalid/string/literal-multiline-quotes-01` is a
+        // run of 6, `-02` a run of 20.
+        for src in [
+            "a = '''6 apostrophes: ''''''\n",
+            "a = '''15 apostrophes: ''''''''''''''''''\n",
+        ] {
+            assert!(
+                matches!(from_toml(src), Err(ParseError::Syntax { .. })),
+                "accepted: {src}"
+            );
+        }
+        for (src, want) in [
+            ("a = ''''one quote''''\n", "'one quote'"),
+            ("a = '''''two quotes'''''\n", "''two quotes''"),
+        ] {
+            let ast = from_toml(src).unwrap();
+            assert_eq!(scalar(child(&ast, "a")), want, "mis-split: {src}");
+        }
+    }
+
+    #[test]
+    fn a_basic_multiline_string_cannot_hold_three_quotes() {
+        // The same bound on the escaping form, and the escaped-quote case is what separates the two
+        // scanners: `\"` is consumed as an escape, so the run that follows it is shorter than the
+        // text suggests, and `escaped = """lol\""""""` (valid, value `lol"""`) must not be refused.
+        // `invalid/string/multiline-quotes-01` is `"""6 quotes: """"""`.
+        assert!(
+            matches!(
+                from_toml("a = \"\"\"6 quotes: \"\"\"\"\"\"\n"),
+                Err(ParseError::Syntax { .. })
+            ),
+            "accepted a run of six raw quotes"
+        );
+        for (src, want) in [
+            ("a = \"\"\"\"one quote\"\"\"\"\n", "\"one quote\""),
+            ("a = \"\"\"\"\"two quotes\"\"\"\"\"\n", "\"\"two quotes\"\""),
+            ("a = \"\"\"lol\\\"\"\"\"\"\"\n", "lol\"\"\""),
+        ] {
+            let ast = from_toml(src).unwrap();
+            assert_eq!(scalar(child(&ast, "a")), want, "mis-split: {src}");
         }
     }
 

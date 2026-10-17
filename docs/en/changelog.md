@@ -764,6 +764,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A multi-line string cannot hold three of its own delimiters** — the other half of PR #464's
+  rule. Since the closing delimiter is the LAST three quotes of the run, at most two may sit before
+  it: a third would put three raw quotes in the content, and the first such triple is what closes
+  the string. Three corpus files were read as valid - `invalid/string/multiline-quotes-01` (a run of
+  six), `literal-multiline-quotes-01` (six) and `-02` (twenty). The basic form needed only a bound
+  on the greedy absorb, because a third quote is neither content nor delimiter: it stays as trailing
+  text on the value line and the pair parser rejects it, so no new error branch was added. The
+  writer was already closed against this - `forbidden_multi_line` flags every `"`, so a value
+  holding three quotes is emitted escaped and reads back. Measured: toml-test invalid **491/511 →
+  494/511 (96.67%)**, and the reject gate changed shape: `DIALECT_ACCEPTED` now names the seventeen
+  files the default dialect declares (optional seconds 3, inline-table line breaks and the trailing
+  comma 5, multi-line keys 8, the TOML 1.1 byte escape 1), so a new hole reddens the gate by its own
+  path and a dialect promise the engine quietly broke reddens it too, instead of sliding inside a
+  percentage. The same pass corrects that file's own docstring, which had counted the byte escape as
+  an unpolicied gap
+    - it is gated, `from_toml_v1_0` refuses it and `v1_0_rejects_escape_x_and_e` pins that. Two Rust
+  tests, one per form: loosening the literal run bound reddens only
+  `a_literal_multiline_string_cannot_hold_three_apostrophes`, and making the basic absorb unbounded
+  again reddens only `a_basic_multiline_string_cannot_hold_three_quotes`.
+
 - **The time-of-day ranges are the parser's decision, not the host interpreter's** — the reject half
   of the toml-test tier had been measuring the interpreter as much as the engine. Three out-of-range
   times (`24:00:00`, in `datetime`, `local-datetime` and `local-time`) were refused only because
