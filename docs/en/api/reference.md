@@ -670,6 +670,7 @@ Rendered by `mkdocstrings` from the library's own docstrings and generated type 
         - load_json5
         - load_toml
         - load_ini
+        - to_toml
         - read_markdown
         - read_markdown_str
         - register_tag
@@ -682,6 +683,9 @@ Rendered by `mkdocstrings` from the library's own docstrings and generated type 
         - list_schemas
         - load_schema
         - compliance_report
+        - validate_against_registered_schema
+        - validate_against_schema
+        - validate_custom_types
         - CustomType
         - YamlStream
         - detect_language
