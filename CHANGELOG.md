@@ -107,6 +107,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   received `${`, `matrix.platform.std` and `}` as three literal target names and every `pyq` leg
   stopped at toolchain setup. The step passes `${{ matrix.platform.std }}` now, and
   `tests/test_publish_toolchain.py` fails if the form returns.
+- **The release's wheel tests get the tools the suite calls** — the wheel jobs run the whole suite
+  inside environments that carried neither `git` (the Alpine containers) nor `tomli-w` (every
+  leg), so nine repository gates and the script-import test failed after the wheels were built.
+  The container steps install `git` and mark the mounted checkout safe, `.ci/requirements-test.txt`
+  ships `tomli-w`, and `tests/test_publish_toolchain.py` fails if either input goes away.
 
 ### Performance
 

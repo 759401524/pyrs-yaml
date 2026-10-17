@@ -111,6 +111,11 @@ status: new
   rustup은 `${`, `matrix.platform.std`, `}`를 리터럴 타깃 이름 세 개로 받았고 모든 `pyq`
   레그가 툴체인 설정에서 멈췄다. 이제 단계는 `${{ matrix.platform.std }}`를 전달하며,
   형식이 되돌아가면 `tests/test_publish_toolchain.py`가 실패한다.
+- **릴리스의 wheel 테스트는 스위트가 쓰는 도구를 갖춘다** — wheel 작업은 빌드 후 전체
+  스위트를 실행하지만, 환경에는 `git`(Alpine 컨테이너)도 `tomli-w`(모든 레그)도 없어
+  9개의 저장소 게이트와 스크립트 가져오기 테스트가 wheel 빌드 후 실패했다. 컨테이너 단계는
+  `git`을 설치하고 마운트된 체크아웃을 안전으로 표시하며, `.ci/requirements-test.txt`는
+  `tomli-w`를 제공한다. 둘 중 하나가 사라지면 `tests/test_publish_toolchain.py`가 실패한다.
 
 #### 성능
 

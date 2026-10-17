@@ -20,6 +20,8 @@ import json
 import re
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE = REPO_ROOT / ".ci" / "ir-baseline.json"
 PUBLISH = REPO_ROOT / ".github" / "workflows" / "publish.yml"
@@ -96,3 +98,46 @@ def test_ci_builds_the_same_recipe_with_the_same_compiler():
     steps = [s for s in maturin_steps(CI.read_text(encoding="utf-8")) if "--find-interpreter" in s.get("args", "")]
     assert len(steps) == 1, steps
     assert steps[0].get("rust-toolchain") == pin(), steps[0]
+
+
+def test_every_containerised_suite_step_installs_the_tools_the_suite_calls():
+    """The wheel tests run the whole suite, which shells out to git and imports a docs dependency.
+
+    Both gaps were latent for the same reason: host runners already carry git, and `ci.yml`'s
+    `uv run` installs the dev group (tomli-w included), while the release steps install only
+    `.ci/requirements-test.txt` inside bare Alpine/Ubuntu containers. The first tag pushed after
+    the repository gates and the script-import test landed failed every wheel job with
+    `No module named 'tomli_w'` and nine `FileNotFoundError: git`. `publish.yml` cannot report
+    this before a tag exists, so the container steps' inputs are checked here instead.
+    """
+    document = yaml.safe_load(PUBLISH.read_text(encoding="utf-8"))
+    steps = [step for job in document["jobs"].values() for step in job.get("steps", [])]
+    # `run-on-arch` keeps its commands under `with.run`, so a step-level read would see no suite.
+    bodies = [(step, str(step.get("run", "")) + "\n" + str((step.get("with") or {}).get("run", ""))) for step in steps]
+    suite_steps = [(step, body) for step, body in bodies if "pytest tests/" in body]
+    container_steps = [
+        (step, body)
+        for step, body in suite_steps
+        if str(step.get("uses", "")).startswith("uraimo/run-on-arch-action") or "docker run" in body
+    ]
+    assert len(container_steps) == 3, [step.get("name") for step, _ in container_steps]
+
+    for step, body in container_steps:
+        action_inputs = step.get("with") or {}
+        install = str(action_inputs.get("install", ""))
+        # `run-on-arch` declares its packages under `install:`; the plain `docker run` step's apk
+        # line is inside `run`. Only the install command counts - a comment that names git is not
+        # an installation.
+        install_lines = install or "\n".join(
+            line for line in body.splitlines() if re.match(r"\s*(apk|apt-get)\b", line)
+        )
+        assert re.search(r"\bgit\b", install_lines), f"{step.get('name')}: install lacks git: {install_lines!r}"
+        assert re.search(r"^\s*git config --global --add safe\.directory", body, re.M), (
+            f"{step.get('name')}: the mounted checkout is not marked safe for the container's user"
+        )
+
+    requirements = (REPO_ROOT / ".ci" / "requirements-test.txt").read_text(encoding="utf-8")
+    assert re.search(r"^tomli-w\b", requirements, re.M), (
+        "build-docs.py imports tomli-w and the suite imports every script; the release test "
+        "environment installs this file, not the docs group"
+    )

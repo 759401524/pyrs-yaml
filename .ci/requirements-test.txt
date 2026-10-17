@@ -8,3 +8,6 @@ PyYAML>=6.0
 ruamel-yaml>=0.18.16
 jsonschema>=4.25.1; python_version >= "3.9"
 jsonschema>=4.18.0,<4.25.1; python_version < "3.9"
+# scripts/build-docs.py imports it, and tests/test_scripts_import_on_supported_python.py imports
+# that script on every interpreter that runs the suite; the docs group is not installed here.
+tomli-w>=1.0.0
