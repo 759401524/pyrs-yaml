@@ -755,6 +755,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A block scalar with no content line keeps the indicators its header wrote** — the header scan
+  is anchored to the scalar's own span, and granit spans a content-less block on the header's `|`
+  or `>` itself, so the backup walked past the `:` into the key and the sigil never entered the
+  scanned range. Measured through `Node(...).chomping`: `key: |-`, `key: >-`, `key: |+` and
+  `key: |2` with an empty body each recorded the default `Clip` with no indent, while
+  `effective_chomping`'s comment has been claiming that "the AST keeps whatever was parsed" for
+  exactly this shape. The emitted text is unchanged on purpose — `key: |-` still writes `key: |`,
+  because an empty body re-reads as Clip whatever the header says (libFuzzer crash-89d81d99,
+  crash-b5dcc38f) — so the reader now records the author's claim without giving up the fixed point.
+  Measured: 683 Rust tests (three new) and 2905 Python tests (five new) pass, clippy clean, 21 prek
+  hooks pass; Ir green with `serialize_block_scalars` -0.00%, and `parse_medium` +0.10% on a
+  fixture that holds no block scalar at all, so that scenario's path cannot include the new guard
+  and the move is this host's drift, not the change's cost. Attribution: deleting the guard reddens
+  the two header tests and the four parametrized Python cases while leaving green the test that a
+  *content* line beginning with a sigil is still not the header, and the one that pins writing
+  Clip for an empty body. `JEF9#1`/`K858#1` stay in the suite ledger, and their reason is now
+  stated as what the measurement showed: the corpus follows libyaml on how many breaks an all-empty
+  keep block holds, PyYAML answers as pyrs does, so that residual is a disagreement to rule on
+  rather than a reader bug.
+
 - **An alias binds the anchor in front of it, not the last one in the document** — the first entry
   of the ledger PR #471 named, and this closes it. `collect_anchors` filled one `name -> node` table
   before the projection walked anything, so a reused anchor name rewrote history: in YAML 1.2's own

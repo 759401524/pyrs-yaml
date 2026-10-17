@@ -201,6 +201,30 @@ pub fn detect_block_header(yaml: &str, content_start: usize) -> BlockHeader {
         }
     }
 
+    // A block scalar with **no content line** is given a span that starts on the header's own
+    // sigil, so the backup above walks past the `: ` between the key and the sigil and stops on the
+    // key — with no sigil in the scanned range, `strip: >-` reads as Clip and the round trip drops
+    // the author's indicator (measured: granit reports 7..11 for `"strip: >-\n\n"`, starting at the
+    // `>`; `"keep: |+\n\n"` and `"b: |2\n\n"` lose `+` and the indent the same way). So when the
+    // span starts on a sigil and that sigil is not the first byte of its own line, this *is* the
+    // header line: scan its indicators up to the line's end. A content line that merely begins with
+    // `|` or `>` is preceded by a line break, which the guard below leaves to the normal path.
+    if matches!(bytes.get(content_start), Some(b'|') | Some(b'>')) {
+        let mut prior = content_start;
+        while prior > 0 && matches!(bytes[prior - 1], b' ' | b'\t') {
+            prior -= 1;
+        }
+        if prior == 0 || !matches!(bytes[prior - 1], b'\n' | b'\r') {
+            let mut line_end = content_start + 1;
+            while line_end < bytes.len() && !matches!(bytes[line_end], b'\n' | b'\r') {
+                line_end += 1;
+            }
+            if let Some(header) = parse_block_header_tail(bytes, content_start + 1, line_end) {
+                return header;
+            }
+        }
+    }
+
     // Start of the header's physical line: just after the preceding line break
     // (granit's `\n`-only rule aside, we split on either break for byte truth).
     let line_start = (0..end)
@@ -265,6 +289,65 @@ mod tests {
             unescape_double_quoted("hello\\\n\u{a0}world"),
             "hello\u{a0}world"
         );
+    }
+
+    /// A block scalar whose body has no line of text is spanned on the header's own sigil, and the
+    /// backup that locates the header walked past the `: ` into the key — so the sigil was never in
+    /// the scanned range and every spelling read as Clip. The indicators are what this function
+    /// exists to recover, and `effective_chomping`'s comment already claims the AST keeps whatever
+    /// the source wrote; before this test that claim was false for exactly these inputs.
+    #[test]
+    fn a_header_with_no_content_line_still_reports_its_indicators() {
+        for (src, want) in [
+            ("a: |-\n\n", Chomping::Strip),
+            ("a: >-\n\n", Chomping::Strip),
+            ("a: |+\n\n", Chomping::Keep),
+            ("a: >+\n\n", Chomping::Keep),
+            ("a: |2\n\n", Chomping::Clip),
+            ("-\n  a: |-\n\n", Chomping::Strip),
+        ] {
+            let sigil = src.find(['|', '>']).expect("the source has a sigil");
+            assert_eq!(detect_block_header(src, sigil).chomping, want, "{src:?}");
+        }
+        // The indentation indicator rides on the same scan.
+        assert_eq!(detect_block_header("a: |2\n\n", 3).indent, Some(2));
+        assert_eq!(detect_block_header("a: |-2\n\n", 3).indent, Some(2));
+    }
+
+    /// A content line that merely begins with a sigil is not the header: its span starts a physical
+    /// line of its own, so the scan must keep walking back to the real header rather than read the
+    /// content's first byte as a sigil.
+    #[test]
+    fn a_content_line_beginning_with_a_sigil_is_not_the_header() {
+        let src = "a: |+\n |\n";
+        let content = src.rfind('|').expect("a second sigil, in the content");
+        assert_eq!(detect_block_header(src, content).chomping, Chomping::Keep);
+        let src = "a: |-\n  >x\n";
+        let content = src.rfind('>').expect("a sigil-shaped content byte");
+        assert_eq!(detect_block_header(src, content).chomping, Chomping::Strip);
+    }
+
+    /// The reader-level claim the two tests above support: the node the parse builds carries it.
+    #[test]
+    fn an_empty_block_scalar_node_keeps_the_chomping_it_was_written_with() {
+        use crate::ast::CustomNode;
+        use crate::parser::parse;
+        use crate::parser::yaml::Schema;
+        for (src, want) in [
+            ("a: |-\n\n", Chomping::Strip),
+            ("a: >+\n\n", Chomping::Keep),
+        ] {
+            let node = parse(src, Schema::Core).expect("valid");
+            let pairs = match &node {
+                CustomNode::Mapping { pairs, .. } => pairs,
+                other => panic!("expected a mapping, got {other:?}"),
+            };
+            let (_, value) = pairs.iter().next().expect("one pair");
+            match value {
+                CustomNode::Scalar { chomping, .. } => assert_eq!(chomping, &want, "{src:?}"),
+                other => panic!("expected a scalar value, got {other:?}"),
+            }
+        }
     }
 
     #[test]
