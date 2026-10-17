@@ -115,6 +115,12 @@ status: new
   すべての `pyq` レッグがツールチェーンのセットアップで停止した。ステップは現在
   `${{ matrix.platform.std }}` を渡し、形式が戻れば
   `tests/test_publish_toolchain.py` が失敗する。
+- **リリースの wheel テストはスイートが使うツールを手に入れる** — wheel ジョブはビルド後に
+  スイート全体を実行するが、環境には `git`（Alpine コンテナ）も `tomli-w`（すべてのレッグ）も
+  なかったため、9 つのリポジトリゲートとスクリプトインポートテストが wheel ビルド後に失敗した。
+  コンテナステップは `git` をインストールしてマウントされたチェックアウトを安全とマークし、
+  `.ci/requirements-test.txt` は `tomli-w` を出荷する。どちらかが消えれば
+  `tests/test_publish_toolchain.py` が失敗する。
 
 #### パフォーマンス
 

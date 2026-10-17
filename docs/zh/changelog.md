@@ -97,6 +97,11 @@ status: new
   `matrix.platform.std` 与 `}` 当作三个字面目标名，所有 `pyq` 任务都在工具链安装处停下。
   该步骤现在传入 `${{ matrix.platform.std }}`，形式一旦回退，
   `tests/test_publish_toolchain.py` 就会失败。
+- **发布 wheel 的测试环境会拿到套件用到的工具** — wheel 任务在构建完成后运行完整套件，
+  环境里却既没有 `git`（Alpine 容器），也没有 `tomli-w`（所有腿），于是九个仓库门禁与
+  脚本导入测试在 wheel 构建之后失败。容器步骤现在安装 `git` 并把挂载的 checkout 标记为
+  安全，`.ci/requirements-test.txt` 提供 `tomli-w`，两者任一消失
+  `tests/test_publish_toolchain.py` 都会失败。
 
 #### 性能
 
