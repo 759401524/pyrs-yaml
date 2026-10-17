@@ -1,6 +1,6 @@
 ---
 title: pyrs-yaml
-description: 高性能な Python YAML ライブラリ。完璧な Round-Trip サポートを備え、Rust と PyO3 で構築されています。
+description: 高性能な Python ライブラリ。YAML、TOML、JSON、JSONC、JSON5 に対応し、完璧な Round-Trip サポートを備え、Rust と PyO3 で構築されています。
 tags:
   - docs
 status: new
@@ -10,7 +10,7 @@ status: new
 
 ## pyrs-yaml
 
-**高性能な Python YAML ライブラリ、完璧な Round-Trip サポート、Rust と PyO3 で構築されています。**
+**高性能な Python ライブラリ。YAML、TOML、JSON、JSONC、JSON5 に対応し、完璧な Round-Trip サポートを備え、Rust と PyO3 で構築されています。**
 
 [:material-rocket-launch: クイックスタート :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
 [:material-code-braces: API リファレンス](api/reference.md){ .md-button }
