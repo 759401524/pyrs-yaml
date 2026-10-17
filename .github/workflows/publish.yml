@@ -51,22 +51,34 @@ jobs:
           sccache: false
           manylinux: auto
       # A GIL-enabled `cp38-abi3` wheel cannot be installed on a free-threaded
-      # interpreter (different ABI — PEP 803), and this build's `abi3t` wheel
-      # only starts at CPython 3.15 (`abi3t-py315`), so cp314t needs its own
-      # dedicated wheel. Windows and macOS already produce one from the host
-      # interpreter; here the manylinux image's own free-threaded build is
-      # reached directly. Restricted to x86_64: the aarch64 image *does*
-      # carry cp314t, but maturin must execute the target interpreter for a
+      # interpreter (different ABI — PEP 803). Two free-threaded artifacts
+      # cover the two version bands, both built from the image's own
+      # interpreters: `abi3t` starts at CPython 3.15 (`abi3t-py315`), so a
+      # 3.15 interpreter produces the `cp315-abi3t` wheel that covers 3.15t
+      # and later, while cp314t predates that ABI and needs a dedicated
+      # version-specific wheel. Restricted to x86_64: the aarch64 image *does*
+      # carry both, but maturin must execute the target interpreter for a
       # non-abi3 build, and under qemu-user on an x86_64 runner that exec
       # fails with `Exec format error (os error 8)` — proven by the first
-      # dispatch run. i686/s390x/ppc64le images carry no cp314t at all.
-      - name: Build free-threaded wheels
+      # dispatch run, and why the native `linux-arm64-free-threaded` job
+      # below exists. i686/s390x/ppc64le images carry no free-threaded
+      # interpreter at all.
+      - name: Build free-threaded wheel (cp314t)
         if: ${{ matrix.platform.target == 'x86_64' }}
         uses: PyO3/maturin-action@v1
         with:
           rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i /opt/python/cp314-cp314t/bin/python
+          sccache: false
+          manylinux: auto
+      - name: Build free-threaded wheel (cp315 abi3t)
+        if: ${{ matrix.platform.target == 'x86_64' }}
+        uses: PyO3/maturin-action@v1
+        with:
+          rust-toolchain: 1.97.1
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist -i /opt/python/cp315-cp315t/bin/python
           sccache: false
           manylinux: auto
       - name: Upload wheels
@@ -80,13 +92,25 @@ jobs:
       # interpreter cannot ever load, so it needs its own smoke run before it
       # can reach the Release. numpy stays excluded per the free-threaded test
       # policy.
-      - name: pytest (free-threaded)
+      - name: pytest (free-threaded 3.14t)
         if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
         shell: bash
         run: |
           set -e
           uv venv .venv-ft --python 3.14t
           source .venv-ft/bin/activate
+          uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
+          pytest tests/ -v -k "not numpy"
+      # The abi3t wheel is the only artifact a 3.15t interpreter can install,
+      # so this run proves both halves of the claim: the tag resolves, and the
+      # stable free-threaded ABI carries the suite.
+      - name: pytest (abi3t 3.15t)
+        if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
+        shell: bash
+        run: |
+          set -e
+          uv venv .venv-ft315 --python 3.15t
+          source .venv-ft315/bin/activate
           uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
           pytest tests/ -v -k "not numpy"
       - name: pytest
@@ -110,6 +134,58 @@ jobs:
           run: |
             set -e
             sh .ci/pytest-wheel.sh
+
+  # The `linux` job cross-builds under qemu on an x86_64 runner, and maturin
+  # must execute the target interpreter for a non-abi3 wheel: on the aarch64
+  # image that exec dies with `Exec format error (os error 8)`, which is why
+  # Linux arm64 had no free-threaded artifact at all. A native arm64 runner
+  # removes the emulation instead of removing the wheel. The GIL `cp38-abi3`
+  # aarch64 wheel keeps coming from the qemu job: an abi3 build needs no
+  # interpreter exec, and that path is already proven.
+  linux-arm64-free-threaded:
+    name: Linux arm64 free-threaded
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build free-threaded wheel (cp314t)
+        uses: PyO3/maturin-action@v1
+        with:
+          rust-toolchain: 1.97.1
+          args: --release --out dist -i /opt/python/cp314-cp314t/bin/python
+          sccache: false
+          manylinux: auto
+      - name: Build free-threaded wheel (cp315 abi3t)
+        uses: PyO3/maturin-action@v1
+        with:
+          rust-toolchain: 1.97.1
+          args: --release --out dist -i /opt/python/cp315-cp315t/bin/python
+          sccache: false
+          manylinux: auto
+      - name: Upload wheels
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheels-linux-arm64-free-threaded
+          path: dist
+      # Both interpreters install from the same `dist`: pip on 3.14t can only
+      # take the cp314t wheel, and pip on 3.15t can only take the abi3t one,
+      # so these two runs also prove the tags resolve the way the docs say.
+      - uses: astral-sh/setup-uv@v10.3.0
+      - name: pytest (free-threaded 3.14t)
+        shell: bash
+        run: |
+          set -e
+          uv venv .venv-ft --python 3.14t
+          source .venv-ft/bin/activate
+          uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
+          pytest tests/ -v -k "not numpy"
+      - name: pytest (abi3t 3.15t)
+        shell: bash
+        run: |
+          set -e
+          uv venv .venv-ft315 --python 3.15t
+          source .venv-ft315/bin/activate
+          uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
+          pytest tests/ -v -k "not numpy"
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
@@ -191,27 +267,60 @@ jobs:
         with:
           python-version: "3.14t"
           architecture: ${{ matrix.platform.python_arch }}
-      - name: Build free-threaded wheels
+      - name: Build free-threaded wheel (cp314t)
         uses: PyO3/maturin-action@v1
         with:
           rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t
           sccache: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15t"
+          architecture: ${{ matrix.platform.python_arch }}
+      - name: Build free-threaded wheel (cp315 abi3t)
+        uses: PyO3/maturin-action@v1
+        with:
+          rust-toolchain: 1.97.1
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist -i python3.15t
+          sccache: false
       - name: Upload wheels
         uses: actions/upload-artifact@v7
         with:
           name: wheels-windows-${{ matrix.platform.target }}
           path: dist
+      # The test venvs come after the upload: a network failure fetching uv
+      # must not cost the wheels the builds already produced. Whatever
+      # setup-python put on PATH is the interpreter `uv venv` creates from,
+      # so each free-threaded run tests the wheel its interpreter can
+      # actually install - re-selecting the interpreter here matters because
+      # the abi3t build above moved PATH to 3.15t.
       - uses: astral-sh/setup-uv@v10.3.0
-      - name: pytest
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14t"
+          architecture: ${{ matrix.platform.python_arch }}
+      - name: pytest (free-threaded 3.14t)
         shell: bash
         run: |
           set -e
-          uv venv .venv
-          source .venv/Scripts/activate
+          uv venv .venv-ft
+          source .venv-ft/Scripts/activate
           uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
-          pytest tests/ -v
+          pytest tests/ -v -k "not numpy"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15t"
+          architecture: ${{ matrix.platform.python_arch }}
+      - name: pytest (abi3t 3.15t)
+        shell: bash
+        run: |
+          set -e
+          uv venv .venv-ft315
+          source .venv-ft315/Scripts/activate
+          uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
+          pytest tests/ -v -k "not numpy"
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
@@ -237,26 +346,55 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14t"
-      - name: Build free-threaded wheels
+      - name: Build free-threaded wheel (cp314t)
         uses: PyO3/maturin-action@v1
         with:
           rust-toolchain: 1.97.1
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t
           sccache: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15t"
+      - name: Build free-threaded wheel (cp315 abi3t)
+        uses: PyO3/maturin-action@v1
+        with:
+          rust-toolchain: 1.97.1
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist -i python3.15t
+          sccache: false
       - name: Upload wheels
         uses: actions/upload-artifact@v7
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
+      # The test venvs come after the upload: a network failure fetching uv
+      # must not cost the wheels the builds already produced. Whatever
+      # setup-python put on PATH is the interpreter `uv venv` creates from,
+      # so each free-threaded run tests the wheel its interpreter can
+      # actually install - re-selecting the interpreter here matters because
+      # the abi3t build above moved PATH to 3.15t.
       - uses: astral-sh/setup-uv@v10.3.0
-      - name: pytest
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14t"
+      - name: pytest (free-threaded 3.14t)
         run: |
           set -e
-          uv venv .venv
-          source .venv/bin/activate
+          uv venv .venv-ft
+          source .venv-ft/bin/activate
           uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
-          pytest tests/ -v
+          pytest tests/ -v -k "not numpy"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15t"
+      - name: pytest (abi3t 3.15t)
+        run: |
+          set -e
+          uv venv .venv-ft315
+          source .venv-ft315/bin/activate
+          uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
+          pytest tests/ -v -k "not numpy"
 
   sdist:
     runs-on: ubuntu-latest
@@ -416,7 +554,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
-    needs: [linux, musllinux, windows, macos, sdist, pyq]
+    needs: [linux, linux-arm64-free-threaded, musllinux, windows, macos, sdist, pyq]
     permissions:
       # Use to sign the release artifacts
       id-token: write

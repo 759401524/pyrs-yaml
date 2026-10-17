@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Free-threaded wheels for Python 3.15t and Linux arm64** — the release now builds a
+  `cp315-abi3.abi3t` wheel for Windows, macOS and glibc Linux (x86_64 and arm64), so 3.15t and later
+  install a prebuilt artifact instead of compiling from source; Linux arm64 gains its `cp314t`
+  and `abi3t` wheels from a native arm64 runner, where the interpreter exec that qemu could not
+  perform is a native call. Each wheel is installed, and the suite run, on the interpreter it
+  targets.
+
 ### Fixed
 
 - **An alias-valued merge key keeps its inline note** — `<<: *d  # note` lost the note at ingest:
