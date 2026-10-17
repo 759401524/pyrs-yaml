@@ -112,6 +112,39 @@ def compare_json(expected: str, actual: str) -> bool:
         return expected.strip() == actual.strip()
 
 
+def json_documents(text: str) -> list[str]:
+    """Split a suite expectation into the JSON text of each document it carries.
+
+    A stream expectation is not one JSON value: the suite writes a multi-document input as
+    successive top-level values separated by a line break, and `json.loads` refuses the second
+    one ("Extra data"). Reading the whole field as a single value made every stream case
+    unjudgeable - eighteen of the suite's 267 JSON cases, all of which match once compared
+    document by document - while the percentage floor around them kept the gate green.
+    """
+    decoder = json.JSONDecoder()
+    parts: list[str] = []
+    idx = 0
+    while True:
+        while idx < len(text) and text[idx].isspace():
+            idx += 1
+        if idx >= len(text):
+            return parts
+        _, end = decoder.raw_decode(text, idx)
+        parts.append(text[idx:end])
+        idx = end
+
+
+def compare_json_stream(expected: str, actuals: list[str]) -> bool:
+    """Compare a stream expectation against one JSON spelling per loaded document."""
+    try:
+        expected_docs = json_documents(expected)
+    except ValueError:
+        return False
+    if len(expected_docs) != len(actuals):
+        return False
+    return all(compare_json(exp, act) for exp, act in zip(expected_docs, actuals))
+
+
 def _json_default(value: Any) -> str:
     """Spell a loaded value the way the suite's own JSON does, where the two differ in type.
 
@@ -166,9 +199,9 @@ def run_test(test: dict[str, Any]) -> dict[str, Any]:
     # Test 2: Compare JSON output (if expected)
     if test["json"]:
         try:
-            actual_data = pyrs_yaml.safe_load(yaml_input)
-            actual_json = json.dumps(actual_data, sort_keys=True, indent=2, default=_json_default)
-            result["json_match"] = compare_json(test["json"], actual_json)
+            docs = pyrs_yaml.safe_loads(yaml_input)
+            actual_json = [json.dumps(doc, sort_keys=True, indent=2, default=_json_default) for doc in docs]
+            result["json_match"] = compare_json_stream(test["json"], actual_json)
         except Exception as e:
             result["error"] = f"JSON comparison error: {str(e)[:100]}"
 

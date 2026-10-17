@@ -133,12 +133,27 @@ class TestNewFeature:
 
 ### YAML Test Suite Known Deviations
 
-The suite pass rate is gated at **95%** (see `test_compliance_report`). A small
-number of cases are intentionally not chased because rejecting them is
-spec-correct and matches reference parsers (notably PyYAML/libyaml):
+The suite is read by three named gates in `tests/test_yaml_suite.py` rather than by a percentage:
+every valid case must parse except the one refusal this project makes on purpose, no invalid case
+may parse, and every JSON comparison must match except a ledger of five cases, each recorded with
+its cause. `test_compliance_report` floors the report's own number at 99.5%. A small number of
+cases are intentionally not chased because rejecting them is spec-correct and matches reference
+parsers (notably PyYAML/libyaml):
+
+Cases are named the way the gates name them. A suite id is a *file*, and 18 of its 351 files carry
+more than one case, so a name also carries the case's position inside that file.
 
 | ID | Input | Why accepted as a deviation |
 |:---|:------|:----------------------------|
-| `ZYU8` | `%YAML 1.1 1.2` | Version directive with trailing content is **invalid** per the YAML 1.2 grammar (`ns-yaml-version ::= ns-dec-digit+ '.' ns-dec-digit+`). PyYAML rejects it too. The suite's own note says these directive variants are "not at all usefully valid" and that supporting them is not encouraged. |
+| `ZYU8#3` | `%YAML 1.1 1.2` | Version directive with trailing content is **invalid** per the YAML 1.2 grammar (`ns-yaml-version ::= ns-dec-digit+ '.' ns-dec-digit+`). PyYAML rejects it too. The suite's own note says these directive variants are "not at all usefully valid" and that supporting them is not encouraged. |
 
 All other suite cases pass (currently 405/406 = 99.75%).
+
+The JSON ledger is four open defects and one comparison difference, and an entry leaves it by the
+engine learning the rule, never by the set growing. The defects: an alias binds the *last* anchor of
+its name instead of the nearest preceding one (`3GZX#1`); a keep-chomped block whose content lines
+are all empty keeps one line break too many (`JEF9#1`, `K858#1`); and the non-specific tag `!` does
+not suppress implicit resolution, so `! 12` loads as an integer (`S4JQ#1`). The difference is
+spelling: the suite writes a `!!binary` node as the scalar's own source text, while the comparison
+writes the loaded bytes as canonical base64 (`565N#1`) - and both spellings construct the same 185
+bytes, which is what `test_binary_spellings_construct_the_same_bytes` pins.
