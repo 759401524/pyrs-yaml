@@ -15,6 +15,14 @@ status: new
 
 ### [Unreleased]
 
+### 変更
+
+- **aarch64 ホイールはネイティブ arm64 ランナーでビルド** — `publish.yml` の `linux` と
+  `musllinux` の aarch64 行を qemu 上の `ubuntu-22.04` から `ubuntu-24.04-arm` へ移し、glibc 行も
+  エミュレーションではなく `uv` でそのままテストスイートを実行します。s390x が唯一エミュレーション
+  でスイートを実行するホイール対象となり、`pyq` の aarch64 クロスビルド、armv7、ppc64le は
+  変更していません。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 追加

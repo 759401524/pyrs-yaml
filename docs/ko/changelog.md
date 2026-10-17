@@ -15,6 +15,13 @@ status: new
 
 ### [Unreleased]
 
+### 변경
+
+- **aarch64 휠은 네이티브 arm64 러너에서 빌드** — `publish.yml`의 `linux` 및 `musllinux` aarch64
+  행을 qemu 기반 `ubuntu-22.04`에서 `ubuntu-24.04-arm`으로 옮기고, glibc 행도 에뮬레이션 대신
+  `uv`로 그 자리에서 테스트 스위트를 실행합니다. s390x만 여전히 에뮬레이션으로 스위트를 실행하는
+  휠 대상이며, `pyq`의 aarch64 크로스 빌드, armv7, ppc64le는 변경하지 않았습니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

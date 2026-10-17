@@ -20,7 +20,7 @@ jobs:
             target: x86_64
           - runner: ubuntu-22.04
             target: x86
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04-arm
             target: aarch64
           - runner: ubuntu-22.04
             target: s390x
@@ -56,13 +56,10 @@ jobs:
       # interpreters: `abi3t` starts at CPython 3.15 (`abi3t-py315`), so a
       # 3.15 interpreter produces the `cp315-abi3t` wheel that covers 3.15t
       # and later, while cp314t predates that ABI and needs a dedicated
-      # version-specific wheel. Restricted to x86_64: the aarch64 image *does*
-      # carry both, but maturin must execute the target interpreter for a
-      # non-abi3 build, and under qemu-user on an x86_64 runner that exec
-      # fails with `Exec format error (os error 8)` — proven by the first
-      # dispatch run, and why the native `linux-arm64-free-threaded` job
-      # below exists. i686/s390x/ppc64le images carry no free-threaded
-      # interpreter at all.
+      # version-specific wheel. Restricted to x86_64 because i686/s390x/ppc64le
+      # images carry no free-threaded interpreter at all; the aarch64 artifacts
+      # come from the native `linux-arm64-free-threaded` job below, which exists
+      # because maturin must execute the target interpreter for a non-abi3 build.
       - name: Build free-threaded wheel (cp314t)
         if: ${{ matrix.platform.target == 'x86_64' }}
         uses: PyO3/maturin-action@v1
@@ -87,7 +84,6 @@ jobs:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
       - uses: astral-sh/setup-uv@v10.3.0
-        if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
       # The free-threaded wheel is exactly the artifact a normal-GIL test
       # interpreter cannot ever load, so it needs its own smoke run before it
       # can reach the Release. numpy stays excluded per the free-threaded test
@@ -114,7 +110,7 @@ jobs:
           uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
           pytest tests/ -v -k "not numpy"
       - name: pytest
-        if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
+        if: ${{ startsWith(matrix.platform.target, 'x86_64') || matrix.platform.target == 'aarch64' }}
         shell: bash
         run: |
           set -e
@@ -123,7 +119,7 @@ jobs:
           uv pip install -r .ci/requirements-test.txt pyrs-yaml --find-links dist --reinstall
           pytest tests/ -v
       - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
+        if: ${{ matrix.platform.target == 's390x' }}
         uses: uraimo/run-on-arch-action@v3
         with:
           arch: ${{ matrix.platform.target }}
@@ -135,13 +131,13 @@ jobs:
             set -e
             sh .ci/pytest-wheel.sh
 
-  # The `linux` job cross-builds under qemu on an x86_64 runner, and maturin
-  # must execute the target interpreter for a non-abi3 wheel: on the aarch64
-  # image that exec dies with `Exec format error (os error 8)`, which is why
-  # Linux arm64 had no free-threaded artifact at all. A native arm64 runner
-  # removes the emulation instead of removing the wheel. The GIL `cp38-abi3`
-  # aarch64 wheel keeps coming from the qemu job: an abi3 build needs no
-  # interpreter exec, and that path is already proven.
+  # The aarch64 wheel legs run on native arm64 runners. That is what lets the
+  # free-threaded job below exist at all: maturin must execute the target
+  # interpreter for a non-abi3 wheel, and under qemu-user on an x86_64 runner
+  # that exec dies with `Exec format error (os error 8)`. The `linux` and
+  # `musllinux` aarch64 abi3 legs use the same runners, leaving s390x as the
+  # only wheel suite that still runs under emulation (ppc64le builds without
+  # one, and neither has a hosted runner).
   linux-arm64-free-threaded:
     name: Linux arm64 free-threaded
     runs-on: ubuntu-24.04-arm
@@ -196,7 +192,7 @@ jobs:
             target: x86_64
           - runner: ubuntu-22.04
             target: x86
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04-arm
             target: aarch64
     steps:
       - uses: actions/checkout@v7
@@ -216,25 +212,16 @@ jobs:
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
+      # x86 (i686) is built but not executed. x86_64 and the native arm64 leg
+      # both run the same alpine image, so no qemu is involved.
       - name: pytest
-        if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
+        if: ${{ matrix.platform.target != 'x86' }}
         run: |
           set -e
           docker run --rm -v ${{ github.workspace }}:/io -w /io alpine:latest sh -c '
             apk add py3-pip py3-virtualenv git
             sh .ci/pytest-wheel.sh
           '
-      - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'x86') }}
-        uses: uraimo/run-on-arch-action@v3
-        with:
-          arch: ${{ matrix.platform.target }}
-          distro: alpine_latest
-          install: |
-            apk add py3-virtualenv py3-pip python3-dev gcc g++ build-base git
-          run: |
-            set -e
-            sh .ci/pytest-wheel.sh
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
