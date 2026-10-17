@@ -64,6 +64,7 @@ pub use parser::{TomlDialect, from_toml, from_toml_v1_0, from_toml_with_options}
 pub use pyrs_event::{StreamEvent, StreamEventType};
 pub use writer::to_toml;
 
+use alloc::borrow::Cow;
 use alloc::sync::Arc;
 use alloc::{
     string::{String, ToString},
@@ -90,19 +91,22 @@ pub(crate) enum TomlValue {
     /// or `'''…'''`). PR #132: it lets the projected `CustomNode` carry
     /// `ScalarStyle::Literal` so the multi-line shape survives the YAML hub
     /// and `to_toml` re-emits a `"""` block instead of an escaped single line.
-    String(String, bool),
+    /// The text is shared with the projected node rather than copied into it: the hub stores
+    /// scalars as `Arc<str>`, so an `Arc` here is what lets the tree route take the value without
+    /// a second allocation, and the scanner hands one over even for a string it had to decode.
+    String(Arc<str>, bool),
     Integer(i64, Option<Arc<str>>),
     Float(f64, Option<Arc<str>>),
     Boolean(bool),
     /// Full RFC 3339 text (offset/local date-time, local date, local time).
     /// `Some(kind)` for offset date-time (`Z` suffix or `±HH:MM` offset);
     /// `None` for local variants.
-    Datetime(String, Option<&'static str>),
+    Datetime(Arc<str>, Option<&'static str>),
     /// An element carries its own notes, as a member of an inline table does: `leading` is the
     /// comment lines above it, `trailing` the one that ended its line. An array without comments
     /// still uses the same shape with empty annotations.
     Array(Vec<(TomlValue, KVAnnotations)>),
-    InlineTable(Vec<(String, TomlValue, KVAnnotations)>),
+    InlineTable(Vec<(Arc<str>, TomlValue, KVAnnotations)>),
 }
 
 /// A TOML table entry: a concrete value, an implicit sub-table (created by
@@ -171,7 +175,7 @@ pub(crate) struct KVAnnotations {
 /// the header, in source order; `blank_before` records whether a blank
 /// line separated this section from the previous pair.
 pub(crate) struct CowTable {
-    pub(crate) entries: NodeMap<String, TomlTable>,
+    pub(crate) entries: NodeMap<Arc<str>, TomlTable>,
     pub(crate) comment: Option<Note>,
     pub(crate) leading: Vec<Note>,
     pub(crate) blank_before: bool,
@@ -278,7 +282,7 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
         };
         let key_style = toml_key_style(&k);
         let mut key = CustomNode::Scalar {
-            value: k.into(),
+            value: k,
             style: key_style,
             chomping: Chomping::Clip,
             block_indent: None,
@@ -322,10 +326,41 @@ pub(crate) fn cow_table_to_node(t: CowTable) -> CustomNode {
 /// `hub_scalar`.
 #[derive(Debug, Clone)]
 pub(crate) struct ScalarProjection {
-    pub(crate) text: String,
+    pub(crate) text: ScalarText,
     pub(crate) style: ScalarStyle,
     pub(crate) chomping: Chomping,
     pub(crate) tag: Option<Tag>,
+}
+
+/// Where a projected scalar's text lives, so neither reader pays for the other's shape.
+///
+/// The tree route stores `Arc<str>`, so text the IR already owns is handed over as it is - the
+/// scanner allocates that Arc once, and the node shares it. The event route outlives the IR and
+/// must return a `Cow<'_, str>` tied to the document, so it asks the same value for an owned
+/// string; only the `Static` arm can stay a borrow, and only because it is `'static`.
+#[derive(Debug, Clone)]
+pub(crate) enum ScalarText {
+    Shared(Arc<str>),
+    Static(&'static str),
+    Fresh(String),
+}
+
+impl ScalarText {
+    pub(crate) fn into_arc(self) -> Arc<str> {
+        match self {
+            ScalarText::Shared(text) => text,
+            ScalarText::Static(text) => Arc::from(text),
+            ScalarText::Fresh(text) => Arc::from(text),
+        }
+    }
+
+    pub(crate) fn into_cow<'a>(self) -> Cow<'a, str> {
+        match self {
+            ScalarText::Shared(text) => Cow::Owned(String::from(&*text)),
+            ScalarText::Static(text) => Cow::Borrowed(text),
+            ScalarText::Fresh(text) => Cow::Owned(text),
+        }
+    }
 }
 
 /// Project one non-container TOML value. A container has no single answer: it is reported by its
@@ -358,14 +393,13 @@ pub(crate) fn scalar_projection(value: TomlValue) -> ScalarProjection {
                 } else {
                     ScalarStyle::DoubleQuoted
                 },
-                text,
+                text: ScalarText::Shared(text),
                 chomping,
                 tag: None,
             }
         }
         TomlValue::Integer(number, source) => match source {
             Some(src) => {
-                let text: String = src.as_ref().into();
                 // A preserved spelling only survives the hub if YAML Core reads it back as the
                 // same type. `0b1010` does not - Core has no binary lexeme, so an untagged plain
                 // scalar re-resolves to a string. The tag states the type instead, which is the
@@ -373,7 +407,7 @@ pub(crate) fn scalar_projection(value: TomlValue) -> ScalarProjection {
                 // loader, `to_yaml`, `to_toml` and the JSON writers all ask the tag first, so one
                 // answer cannot drift from another.
                 let tag = if matches!(
-                    pyrs_schema::types::Schema::Core.resolve(&text),
+                    pyrs_schema::types::Schema::Core.resolve(&src),
                     pyrs_schema::types::YamlType::Int(_)
                 ) {
                     None
@@ -384,14 +418,14 @@ pub(crate) fn scalar_projection(value: TomlValue) -> ScalarProjection {
                     })
                 };
                 ScalarProjection {
-                    text,
+                    text: ScalarText::Shared(src),
                     style: ScalarStyle::Plain,
                     chomping: Chomping::Clip,
                     tag,
                 }
             }
             None => ScalarProjection {
-                text: number.to_string(),
+                text: ScalarText::Fresh(number.to_string()),
                 style: ScalarStyle::Plain,
                 chomping: Chomping::Clip,
                 tag: None,
@@ -401,21 +435,21 @@ pub(crate) fn scalar_projection(value: TomlValue) -> ScalarProjection {
             // An exponent spelling (`1e10`) is kept because YAML Core reads it back as a float;
             // otherwise the hub's own float text is used, which is where `.inf` and `.nan` live.
             text: match source {
-                Some(src) => src.as_ref().into(),
-                None => fmt_yaml_float(number),
+                Some(src) => ScalarText::Shared(src),
+                None => ScalarText::Fresh(fmt_yaml_float(number)),
             },
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             tag: None,
         },
         TomlValue::Boolean(flag) => ScalarProjection {
-            text: flag.to_string(),
+            text: ScalarText::Static(if flag { "true" } else { "false" }),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             tag: None,
         },
         TomlValue::Datetime(text, kind) => ScalarProjection {
-            text,
+            text: ScalarText::Shared(text),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
             // `date` and `time` keep their own tag because `datetime.fromisoformat` rejects a bare
@@ -457,7 +491,7 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
             for (k, val, anns) in v {
                 let key_style = toml_key_style(&k);
                 let mut key = CustomNode::Scalar {
-                    value: k.into(),
+                    value: k,
                     style: key_style,
                     chomping: Chomping::Clip,
                     block_indent: None,
@@ -491,7 +525,7 @@ pub(crate) fn toml_value_to_node(v: TomlValue) -> CustomNode {
                 tag,
             } = scalar_projection(other);
             CustomNode::Scalar {
-                value: text.into(),
+                value: text.into_arc(),
                 style,
                 chomping,
                 // TOML multi-line strings use `\` escapes, not a YAML block indentation indicator,

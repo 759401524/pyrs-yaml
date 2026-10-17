@@ -10,6 +10,8 @@
 //! [spec]: https://toml.io/en/v1.1.0
 
 use crate::{CowTable, KVAnnotations, Note, TomlTable, TomlValue, cow_table_to_node};
+use alloc::borrow::Cow;
+use alloc::sync::Arc;
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -149,7 +151,7 @@ struct Parser<'a> {
     depth: usize,
     root: CowTable,
     /// Path of the active table (set by `[a.b]` or `[[a.b]]` headers).
-    current: Vec<String>,
+    current: Vec<Arc<str>>,
     /// The standalone `# ...` comments seen on lines of their own since the last
     /// pair or header, in source order. All of them are claimed by the next KV
     /// pair or table header as its leading notes: a stack of comment lines above a
@@ -437,7 +439,7 @@ impl<'a> Parser<'a> {
     /// One key path as the document wrote it: every segment paired with the offset of its first
     /// byte, because a header line names a whole path and a stream that reports only where the line
     /// begins cannot put its events in source order.
-    fn parse_key_path(&mut self) -> Result<Vec<(String, usize)>, ParseError> {
+    fn parse_key_path(&mut self) -> Result<Vec<(Arc<str>, usize)>, ParseError> {
         let mut parts = vec![self.parse_key_segment()?];
         loop {
             self.skip_spaces();
@@ -451,19 +453,20 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_key_segment(&mut self) -> Result<(String, usize), ParseError> {
+    fn parse_key_segment(&mut self) -> Result<(Arc<str>, usize), ParseError> {
         // Keys are never multi-line; the `multiline` flag from the string
         // scanners is discarded here.
         let at = self.pos;
-        let name = match self.peek() {
-            Some(b'"') => self.parse_basic_string_content().map(|(s, _)| s)?,
-            Some(b'\'') => self.parse_literal_string().map(|(s, _)| s)?,
+        let name: Arc<str> = match self.peek() {
+            Some(b'"') => Arc::from(self.parse_basic_string_content()?.0.as_ref()),
+            Some(b'\'') => Arc::from(self.parse_literal_string()?.0.as_ref()),
             _ => self.parse_bare_key()?,
         };
         Ok((name, at))
     }
 
-    fn parse_bare_key(&mut self) -> Result<String, ParseError> {
+    fn parse_bare_key(&mut self) -> Result<Arc<str>, ParseError> {
+        let text = self.text;
         let start = self.pos;
         while matches!(
             self.peek(),
@@ -474,7 +477,7 @@ impl<'a> Parser<'a> {
         if self.pos == start {
             return Err(self.err("expected a bare, quoted, or dotted key"));
         }
-        Ok(self.text[start..self.pos].to_string())
+        Ok(Arc::from(&text[start..self.pos]))
     }
 
     // ------ values -----------------------------------------------------------
@@ -838,15 +841,15 @@ impl<'a> Parser<'a> {
 
     fn parse_literal_or_start_date(&mut self, _hint: Option<()>) -> Result<TomlValue, ParseError> {
         self.parse_literal_string()
-            .map(|(s, ml)| TomlValue::String(s, ml))
+            .map(|(s, ml)| TomlValue::String(Arc::from(s.as_ref()), ml))
     }
 
     fn parse_basic_string(&mut self, _prefix: &str) -> Result<TomlValue, ParseError> {
         self.parse_basic_string_content()
-            .map(|(s, ml)| TomlValue::String(s, ml))
+            .map(|(s, ml)| TomlValue::String(Arc::from(s.as_ref()), ml))
     }
 
-    fn parse_basic_string_content(&mut self) -> Result<(String, bool), ParseError> {
+    fn parse_basic_string_content(&mut self) -> Result<(Cow<'a, str>, bool), ParseError> {
         let ml = self.starts_with(b"\"\"\"");
         if ml {
             self.pos += 3;
@@ -863,8 +866,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn scan_single_line_basic_content(&mut self) -> Result<String, ParseError> {
-        let mut out = String::new();
+    fn scan_single_line_basic_content(&mut self) -> Result<Cow<'a, str>, ParseError> {
+        let text = self.text;
+        let start = self.pos;
+        // `None` while the value is still the one contiguous run of source bytes that began at
+        // `start`: the callers get it borrowed. The first escape decodes into `out`, and every
+        // later run is appended to it.
+        let mut out: Option<String> = None;
         loop {
             // Bulk-copy the source run up to the next byte that needs a decision. Every byte in
             // that set is ASCII, and UTF-8 never hides an ASCII byte inside a multi-byte sequence,
@@ -872,7 +880,7 @@ impl<'a> Parser<'a> {
             // loop that decoded and pushed one code point at a time. Stepping by whole bytes, or
             // stopping on a non-ASCII one, would put `self.pos` inside a character and make the
             // next slice panic.
-            let start = self.pos;
+            let run = self.pos;
             while self.pos < self.s.len() {
                 let b = self.s[self.pos];
                 if b == b'"' || b == b'\\' || b == b'\n' || b == b'\r' || Self::forbidden_control(b)
@@ -881,20 +889,27 @@ impl<'a> Parser<'a> {
                 }
                 self.pos += 1;
             }
-            if self.pos > start {
-                out.push_str(&self.text[start..self.pos]);
+            if let Some(s) = out.as_mut() {
+                s.push_str(&text[run..self.pos]);
             }
             let b = self
                 .peek()
                 .ok_or_else(|| self.err("unterminated basic string"))?;
             match b {
                 b'"' => {
+                    let end = self.pos;
                     self.pos += 1;
-                    return Ok(out);
+                    return Ok(match out {
+                        Some(s) => Cow::Owned(s),
+                        None => Cow::Borrowed(&text[start..end]),
+                    });
                 }
                 b'\\' => {
+                    // The closure runs only while `out` is still `None`, and the run above was
+                    // then not appended: the whole prefix is this one pending run.
+                    let s = out.get_or_insert_with(|| String::from(&text[start..self.pos]));
                     self.pos += 1;
-                    self.push_basic_escape(&mut out)?;
+                    self.push_basic_escape(s)?;
                 }
                 b'\n' | b'\r' => {
                     return Err(self.err("newline in single-line basic string"));
@@ -965,8 +980,15 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn scan_multiline_basic_content(&mut self) -> Result<String, ParseError> {
-        let mut out = String::new();
+    fn scan_multiline_basic_content(&mut self) -> Result<Cow<'a, str>, ParseError> {
+        let text = self.text;
+        let start = self.pos;
+        // Bytes before `run` are already in `out`; the run from `run` on has only been scanned, not
+        // copied. A character that needs no decision just advances `pos`, so a string with no
+        // escape is one borrowed slice and the runs between escapes are copied in bulk. `out`
+        // stays `None` until the first escape or line continuation materializes it.
+        let mut run = start;
+        let mut out: Option<String> = None;
         loop {
             if self.starts_with(b"\"\"\"") {
                 self.pos += 3;
@@ -981,10 +1003,18 @@ impl<'a> Parser<'a> {
                     if self.peek() != Some(b'"') {
                         break;
                     }
-                    out.push('"');
                     self.pos += 1;
                 }
-                return Ok(out);
+                // The last three quotes are the delimiter; the two this loop may have stepped over
+                // are content and already inside the run.
+                let end = self.pos - 3;
+                return Ok(match out {
+                    Some(mut s) => {
+                        s.push_str(&text[run..end]);
+                        Cow::Owned(s)
+                    }
+                    None => Cow::Borrowed(&text[start..end]),
+                });
             }
             let b = self
                 .peek()
@@ -997,6 +1027,8 @@ impl<'a> Parser<'a> {
                     // continuation here swallowed the break the string had asked to keep.
                     let save = self.pos;
                     self.pos += 1;
+                    let s = out.get_or_insert_with(String::new);
+                    s.push_str(&text[run..save]);
                     if self.peek() != Some(b'\\')
                         && (matches!(self.peek(), Some(b'\n') | Some(b'\r'))
                             || self.is_at_line_end_ws())
@@ -1007,10 +1039,10 @@ impl<'a> Parser<'a> {
                             self.pos += 1;
                         }
                     } else {
-                        self.pos = save;
-                        self.pos += 1;
-                        self.push_basic_escape(&mut out)?;
+                        self.pos = save + 1;
+                        self.push_basic_escape(s)?;
                     }
+                    run = self.pos;
                 }
                 b'\r' if self.byte_at(self.pos + 1) != Some(b'\n') => {
                     return Err(self.err("bare carriage return in multiline string"));
@@ -1019,15 +1051,11 @@ impl<'a> Parser<'a> {
                     return Err(self.err("control character in multiline string"));
                 }
                 _ => {
-                    // Copy one whole character and advance by its UTF-8 length so
-                    // `self.pos` stays on a char boundary; the byte-wise
-                    // `floor_char_boundary` path could slice `text[cur..cut]`
-                    // from a mid-character offset and panic on non-ASCII content.
-                    match self.text[self.pos..].chars().next() {
-                        Some(ch) => {
-                            out.push(ch);
-                            self.pos += ch.len_utf8();
-                        }
+                    // Advance by whole characters so `self.pos` stays on a char boundary; the
+                    // byte-wise `floor_char_boundary` path could slice `text[cur..cut]` from a
+                    // mid-character offset and panic on non-ASCII content.
+                    match text[self.pos..].chars().next() {
+                        Some(ch) => self.pos += ch.len_utf8(),
                         None => return Err(self.err("unterminated multi-line string")),
                     }
                 }
@@ -1054,7 +1082,8 @@ impl<'a> Parser<'a> {
         matches!(b, 0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x1F | 0x7F)
     }
 
-    fn parse_literal_string(&mut self) -> Result<(String, bool), ParseError> {
+    fn parse_literal_string(&mut self) -> Result<(Cow<'a, str>, bool), ParseError> {
+        let text = self.text;
         let ml = self.starts_with(b"'''");
         if ml {
             self.pos += 3;
@@ -1087,7 +1116,8 @@ impl<'a> Parser<'a> {
                         );
                     }
                     self.pos = end;
-                    return Ok((self.text[start..end - 3].to_string(), true));
+                    // A literal string decodes nothing, so it is always the source's own slice.
+                    return Ok((Cow::Borrowed(&text[start..end - 3]), true));
                 }
                 let b = self
                     .peek()
@@ -1115,9 +1145,9 @@ impl<'a> Parser<'a> {
                     return Err(self.err("control character in literal string"));
                 }
                 if b == b'\'' {
-                    let content = &self.text[start..self.pos];
+                    let content = &text[start..self.pos];
                     self.pos += 1;
-                    return Ok((content.to_string(), false));
+                    return Ok((Cow::Borrowed(content), false));
                 }
                 self.pos += 1;
             }
@@ -1205,7 +1235,7 @@ impl<'a> Parser<'a> {
         let mut entries: Vec<InlineMember> = Vec::new();
         // Segment paths already defined in this inline table, to detect dotted
         // key collisions (`a` vs `a.b`, `a.b` vs `a.b.c`) per TOML rules.
-        let mut defined_paths: Vec<Vec<String>> = Vec::new();
+        let mut defined_paths: Vec<Vec<Arc<str>>> = Vec::new();
         self.skip_inline_ws();
         if self.peek() == Some(b'}') {
             self.pos += 1;
@@ -1384,13 +1414,13 @@ impl<'a> Parser<'a> {
                     }
                     _ => {}
                 }
-                let text = self.text[start..self.pos].to_string();
+                let text = Arc::from(&self.text[start..self.pos]);
                 Ok(TomlValue::Datetime(text, None))
             } else {
                 // Date-only (no time component): tag `!date` so the load path
                 // uses `date.fromisoformat` and round-trips as a local date
                 // rather than a midnight `datetime`.
-                let text = self.text[start..self.pos].to_string();
+                let text = Arc::from(&self.text[start..self.pos]);
                 Ok(TomlValue::Datetime(text, Some("date")))
             }
         } else {
@@ -1398,7 +1428,7 @@ impl<'a> Parser<'a> {
             // uses `time.fromisoformat`; `datetime.fromisoformat` rejects a
             // bare `HH:MM:SS` with `Invalid isoformat string`.
             self.scan_time_body()?;
-            let text = self.text[start..self.pos].to_string();
+            let text = Arc::from(&self.text[start..self.pos]);
             Ok(TomlValue::Datetime(text, Some("time")))
         }
     }
@@ -1463,7 +1493,7 @@ impl<'a> Parser<'a> {
 
     fn register_kv(
         &mut self,
-        key: &[(String, usize)],
+        key: &[(Arc<str>, usize)],
         value: TomlValue,
         mut anns: KVAnnotations,
         key_start: usize,
@@ -1484,7 +1514,7 @@ impl<'a> Parser<'a> {
         for seg in &self.current {
             unsafe {
                 let tbl = &mut *root_ptr;
-                match tbl.entries.get_mut(seg.as_str()) {
+                match tbl.entries.get_mut(&**seg) {
                     Some(TomlTable::Explicit(inner)) | Some(TomlTable::Implicit(inner)) => {
                         root_ptr = inner as *mut CowTable;
                     }
@@ -1511,7 +1541,7 @@ impl<'a> Parser<'a> {
             unsafe {
                 let tbl = &mut *root_ptr;
                 if last {
-                    if tbl.entries.contains_key(seg.as_str()) {
+                    if tbl.entries.contains_key(&**seg) {
                         return Err(Parser::static_err(
                             &format!("duplicate key `{seg}`"),
                             key_start,
@@ -1521,7 +1551,7 @@ impl<'a> Parser<'a> {
                         .insert(seg.clone(), TomlTable::Value(value, anns));
                     return Ok(());
                 }
-                match tbl.entries.get_mut(seg.as_str()) {
+                match tbl.entries.get_mut(&**seg) {
                     Some(TomlTable::Implicit(inner)) => {
                         root_ptr = inner as *mut CowTable;
                     }
@@ -1553,8 +1583,7 @@ impl<'a> Parser<'a> {
                             seg.clone(),
                             TomlTable::Implicit(CowTable::new_closed(key_start, *seg_at)),
                         );
-                        if let Some(TomlTable::Implicit(inner)) = tbl.entries.get_mut(seg.as_str())
-                        {
+                        if let Some(TomlTable::Implicit(inner)) = tbl.entries.get_mut(&**seg) {
                             root_ptr = inner as *mut CowTable;
                         }
                     }
@@ -1566,7 +1595,7 @@ impl<'a> Parser<'a> {
 
     fn register_header(
         &mut self,
-        key: &[(String, usize)],
+        key: &[(Arc<str>, usize)],
         is_array: bool,
         comment: Option<Note>,
         leading: Vec<Note>,
@@ -1585,7 +1614,7 @@ impl<'a> Parser<'a> {
             let last = i + 1 == key.len();
             unsafe {
                 let tbl = &mut *root;
-                match tbl.entries.get_mut(seg.as_str()) {
+                match tbl.entries.get_mut(&**seg) {
                     Some(TomlTable::Explicit(inner)) => {
                         if last {
                             if is_array {
@@ -1693,7 +1722,7 @@ impl<'a> Parser<'a> {
                                     }),
                                 );
                                 if let Some(TomlTable::Explicit(inner)) =
-                                    tbl.entries.get_mut(seg.as_str())
+                                    tbl.entries.get_mut(&**seg)
                                 {
                                     root = inner as *mut CowTable;
                                 }
@@ -1703,9 +1732,7 @@ impl<'a> Parser<'a> {
                                 seg.clone(),
                                 TomlTable::Implicit(CowTable::new(at, *seg_at)),
                             );
-                            if let Some(TomlTable::Implicit(inner)) =
-                                tbl.entries.get_mut(seg.as_str())
-                            {
+                            if let Some(TomlTable::Implicit(inner)) = tbl.entries.get_mut(&**seg) {
                                 root = inner as *mut CowTable;
                             }
                         }
@@ -1834,21 +1861,21 @@ impl DateTimeProbe {
 /// The names of a parsed key path, for the messages that quote a table and for the `current`
 /// section the next header descends from. A table itself is addressed by walking to it, not by the
 /// text its segments join to.
-fn names(key: &[(String, usize)]) -> Vec<String> {
+fn names(key: &[(Arc<str>, usize)]) -> Vec<Arc<str>> {
     key.iter().map(|(name, _)| name.clone()).collect()
 }
 
 /// The same names as the dot-joined text a duplicate-key rejection quotes back.
-fn key_text(key: &[(String, usize)]) -> String {
+fn key_text(key: &[(Arc<str>, usize)]) -> String {
     names(key).join(".")
 }
 
 /// One member of an inline table exactly as the source wrote it: the key path it named (every
 /// segment with its own offset), its value, and the notes and offsets that belong to the member.
-type InlineMember = (Vec<(String, usize)>, TomlValue, KVAnnotations);
+type InlineMember = (Vec<(Arc<str>, usize)>, TomlValue, KVAnnotations);
 /// The entries an inline table holds after its members' paths are laid down: a name, a value, and
 /// the annotations of the member that wrote it. This is the shape `TomlValue::InlineTable` owns.
-type InlineEntries = Vec<(String, TomlValue, KVAnnotations)>;
+type InlineEntries = Vec<(Arc<str>, TomlValue, KVAnnotations)>;
 
 /// Lay an inline table's members into the tree their key paths name.
 ///
@@ -1882,10 +1909,10 @@ fn nest_inline(members: Vec<InlineMember>) -> Result<InlineEntries, ParseError> 
         // nested `Vec` cannot be carried across the next level's search.
         let mut level = &mut out as *mut InlineEntries;
         for i in 0..path.len() - 1 {
-            let (seg, seg_at) = (path[i].0.as_str(), path[i].1);
+            let (seg, seg_at) = (&*path[i].0, path[i].1);
             unsafe {
                 let entries = &mut *level;
-                match entries.iter_mut().find(|(n, _, _)| n.as_str() == seg) {
+                match entries.iter_mut().find(|(n, _, _)| &**n == seg) {
                     Some((_, TomlValue::InlineTable(children), _)) => {
                         level = children as *mut InlineEntries;
                     }
@@ -1897,7 +1924,7 @@ fn nest_inline(members: Vec<InlineMember>) -> Result<InlineEntries, ParseError> 
                     }
                     None => {
                         entries.push((
-                            seg.to_string(),
+                            Arc::from(seg),
                             TomlValue::InlineTable(Vec::new()),
                             KVAnnotations {
                                 key_at: seg_at,
