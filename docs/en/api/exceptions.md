@@ -22,7 +22,7 @@ classDiagram
     ValueError <|-- YamlTagError
     TypeError <|-- YamlTypeError
     Exception <|-- YamlDocumentError
-    Exception <|-- YamlTagSkip
+    YamlTagError <|-- YamlTagSkip
 ```
 
 ### YamlParseError
@@ -231,7 +231,7 @@ class YamlTagError(ValueError):
 
 ### YamlTagSkip
 
-Sentinel exception raised by a tag handler to skip a node. The parser moves to the next node instead of raising an error. This is not a real error — it is an intentional control-flow signal.
+Sentinel exception raised by a tag handler to pass the node to the next handler in the chain. When no handler accepts it, the node keeps its value from the source. This is not a real error — it is an intentional control-flow signal.
 
 !!! info "Control-flow sentinel"
     `YamlTagSkip` is not a real error. It is a signal for tag handlers
@@ -240,11 +240,11 @@ Sentinel exception raised by a tag handler to skip a node. The parser moves to t
     the default).
 
 ```python
-class YamlTagSkip(Exception):
-    """Tag handler skip sentinel (inherits from Exception)."""
+class YamlTagSkip(YamlTagError):
+    """Tag handler skip sentinel (inherits from YamlTagError)."""
 ```
 
-**Inherits from:** `Exception`
+**Inherits from:** `YamlTagError`
 
 **Example:**
 

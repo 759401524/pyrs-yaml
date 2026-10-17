@@ -20,7 +20,7 @@ classDiagram
     ValueError <|-- YamlTagError
     TypeError <|-- YamlTypeError
     Exception <|-- YamlDocumentError
-    Exception <|-- YamlTagSkip
+    YamlTagError <|-- YamlTagSkip
 ```
 
 ## YamlParseError
@@ -225,7 +225,7 @@ class YamlTagError(ValueError):
 
 ## YamlTagSkip
 
-태그 핸들러가 노드를 건너뛰기 위해 발생시키는 센티널 예외입니다. 오류를 발생시키는 대신 파서가 다음 노드로 이동합니다. 이는 실제 오류가 아닌 의도적인 제어 흐름 신호입니다.
+태그 핸들러가 노드를 체인의 다음 핸들러로 넘기기 위해 발생시키는 센티널 예외입니다. 어떤 핸들러도 받아들이지 않으면 노드는 소스의 원래 값을 유지합니다. 이는 실제 오류가 아닌 의도적인 제어 흐름 신호입니다.
 
 !!! info "제어 흐름 센티널"
     `YamlTagSkip`은 실제 오류가 아닙니다. 태그 핸들러가 체인의 다음 핸들러로
@@ -233,11 +233,11 @@ class YamlTagError(ValueError):
     제어가 다음 핸들러로 전달됩니다（또는 기본값으로 폴스루됩니다）。
 
 ```python
-class YamlTagSkip(Exception):
-    """태그 핸들러 스킵 센티널 (Exception 상속)."""
+class YamlTagSkip(YamlTagError):
+    """태그 핸들러 스킵 센티널 (YamlTagError 상속)."""
 ```
 
-**상속:** `Exception`
+**상속:** `YamlTagError`
 
 **예시:**
 

@@ -20,7 +20,7 @@ classDiagram
     ValueError <|-- YamlTagError
     TypeError <|-- YamlTypeError
     Exception <|-- YamlDocumentError
-    Exception <|-- YamlTagSkip
+    YamlTagError <|-- YamlTagSkip
 ```
 
 ## YamlParseError
@@ -225,18 +225,18 @@ class YamlTagError(ValueError):
 
 ## YamlTagSkip
 
-标签处理器抛出的哨兵异常，用于跳过节点。解析器会移到下一个节点而不是引发错误。这不是真正的错误，而是有意的控制流信号。
+标签处理器抛出的哨兵异常，用于将节点交给链中下一个处理器。若没有处理器接手，节点保持源码中的原值。这不是真正的错误，而是有意的控制流信号。
 
 !!! info "控制流哨兵"
     `YamlTagSkip` 不是真正的错误。它是标签处理器将控制权委托给链中下一个处理器的信号。
     从处理器中抛出它会将控制权传递给下一个处理器（或回退到默认行为）。
 
 ```python
-class YamlTagSkip(Exception):
-    """标签处理器跳过的哨兵异常（继承自 Exception）。"""
+class YamlTagSkip(YamlTagError):
+    """标签处理器跳过的哨兵异常（继承自 YamlTagError）。"""
 ```
 
-**继承自:** `Exception`
+**继承自:** `YamlTagError`
 
 **示例:**
 
