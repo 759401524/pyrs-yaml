@@ -616,13 +616,17 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlEditError` — 제자리 편집 오류 (`ValueError` 상속)
 - `YamlPathError` — YAML 경로 오류 (`ValueError` 상속)
 - `YamlDocumentError` — 오래된 `Node` 접근 오류 (`Exception` 상속)
+- `YamlDuplicateKeyError` — 중복 매핑 키 오류 (`ValueError` 상속)
+- `YamlMaxDepthError` — 최대 중첩 깊이 초과 (`ValueError` 상속)
+- `YamlTagError` — 태그 핸들러 오류 (`ValueError` 상속)
+- `YamlTagSkip` — 노드를 건너뛰는 제어 흐름 센티널 (`Exception` 상속)
 
 자세한 내용은 [예외](exceptions.md) 페이지를 참조하세요.
 
 ## :material-information: 버전
 
 ```python
-__version__ = "0.14.0"
+__version__ = "0.18.0"
 ```
 
 ## 자동 생성 API 참조
