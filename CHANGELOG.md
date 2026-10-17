@@ -14,6 +14,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pair's key, the slot the block writer emits it from, so the document round-trips unchanged; with
   merges resolved it re-homes onto the mapping's surviving entry.
 
+- **A key's inline note below a tag-only line keeps its owner** — when the pair's value carries a
+  note of its own, the key's note is written on a line above the pair; if the line above is a
+  value spelled as nothing but its tag (`k: !:`), the reader handed the note to that value and the
+  document settled only on its second emission. The writer now closes that line with the value's
+  own `~` first, working from an offset captured when the pair started (libFuzzer
+  `yaml_roundtrip` crash-08cf4fe4).
+
 ## [v0.18.0] — 2026-10-17
 
 <details markdown="1">
