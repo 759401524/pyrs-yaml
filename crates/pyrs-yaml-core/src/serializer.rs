@@ -518,12 +518,21 @@ impl Serializer {
     /// is still the last one written: if more than its own terminator has been appended
     /// since, the pending line is no longer adjacent to this note and must be left alone.
     fn close_pending_tag_line(&mut self) {
-        let Some(at) = self.pending_tag_insert_at.take() else {
+        let Some(at) = self.pending_tag_insert_at else {
             return;
         };
         if self.output[at..].matches('\n').count() > 1 {
+            self.pending_tag_insert_at = None;
             return;
         }
+        self.write_pending_null_text();
+    }
+
+    /// Write the pending value's null text, drop the marker, and report the bytes added.
+    fn write_pending_null_text(&mut self) -> usize {
+        let Some(at) = self.pending_tag_insert_at.take() else {
+            return 0;
+        };
         // `write_anchor_tag` already leaves one space after the tag, so asking for a
         // second one here produced `!-  ~`, which a re-read normalises to `!- ~` — and a
         // fixed point has to be spelled the way the reader spells it (caught by the
@@ -534,6 +543,51 @@ impl Serializer {
             " ~"
         };
         self.output.insert_str(at, text);
+        text.len()
+    }
+
+    /// Close a tag-only line captured before the current entry was written, when that
+    /// line is still the one directly above `line_start`, and report where the line
+    /// start moved to.
+    ///
+    /// `write_note_line` closes such a line while it is still the last one written, but
+    /// this is the other way a note line reaches the output: a simple key's inline note
+    /// that cannot ride its pair line is inserted *above* the pair after the pair has
+    /// been written. If the line above that pair is a pending tag-only value, the note
+    /// lands directly under it, and the reader hands it to that value instead — the note
+    /// then changes owner on the second round (`bg: !:` / `<<: #*b` / a value line
+    /// settles only its second emission).
+    ///
+    /// The marker has to be captured by the caller: every scalar write resets
+    /// `pending_tag_insert_at`, and the pair writes its key and value before this note
+    /// is placed, so the live field no longer names the line above. Two guards keep a
+    /// captured offset honest — the line must still end exactly at `line_start` (a note
+    /// line written in between already closed it), and its tail must still be empty or
+    /// only a comment (not an explicit `~` or other token).
+    fn close_captured_pending_line(&mut self, pending: Option<usize>, line_start: usize) -> usize {
+        let Some(at) = pending else {
+            return line_start;
+        };
+        if at >= line_start || self.output[at..line_start].matches('\n').count() != 1 {
+            return line_start;
+        }
+        let line_end = self.output[at..]
+            .find('\n')
+            .map_or(self.output.len(), |k| at + k);
+        let tail = self.output[at..line_end].trim_start_matches([' ', '\t']);
+        if !(tail.is_empty() || tail.starts_with('#')) {
+            return line_start;
+        }
+        let text = if self.output[..at].ends_with(' ') {
+            "~"
+        } else {
+            " ~"
+        };
+        if self.pending_tag_insert_at == Some(at) {
+            self.pending_tag_insert_at = None;
+        }
+        self.insert_note_at(at, text);
+        line_start + text.len()
     }
 
     /// Insert note text into output that has already been written, at `at`.
@@ -1199,6 +1253,9 @@ impl Serializer {
         indent_width: usize,
         depth: usize,
     ) -> Result<(), SerializeError> {
+        // Captured before the pair writes anything: writing the key and value resets
+        // `pending_tag_insert_at`, and the key's inline note is placed afterwards.
+        let pending_before = self.pending_tag_insert_at;
         self.pair_line_start = self.output.len();
         let own_line_start = self.pair_line_start;
         self.block_header_break = None;
@@ -1425,8 +1482,11 @@ impl Serializer {
                     // fallback of convenience: measured against the reader, a comment line
                     // written directly above a key belongs to that key, so the note keeps
                     // its owner instead of disappearing (`a: 1` + `# K` + `b: 2  # V` reads
-                    // back with `K` on `b`).
-                    self.note_line_above(own_line_start, &text);
+                    // back with `K` on `b`). A pending tag-only line directly above is the
+                    // exception that has to be closed first, or the note becomes that
+                    // value's leading note instead (`bg: !:` + `<<: #*b`).
+                    let above = self.close_captured_pending_line(pending_before, own_line_start);
+                    self.note_line_above(above, &text);
                 }
             }
         }
@@ -1476,6 +1536,9 @@ impl Serializer {
                 return Err(SerializeError::Internal("is_compact_item on non-mapping"));
             };
             for (pi, (key, value)) in pairs.iter().enumerate() {
+                // Captured before this pair writes anything; see
+                // `close_captured_pending_line`.
+                let pending_before = self.pending_tag_insert_at;
                 // Compact key column is dash indent + `- ` (== indent_sequence
                 // for the default 2-step); a block body hangs off that line.
                 let key_base = indent_width + self.indent_sequence;
@@ -1502,7 +1565,9 @@ impl Serializer {
                     // second one on, which is how `- null: 'x'` lost a `# 2` the key carried.
                     for comment in key.leading_comments() {
                         let text = comment.text.to_string();
-                        self.note_line_above(own_line_start, &text);
+                        let above =
+                            self.close_captured_pending_line(pending_before, own_line_start);
+                        self.note_line_above(above, &text);
                     }
                 }
                 self.block_header_break = None;
@@ -1534,7 +1599,9 @@ impl Serializer {
                             .unwrap_or(self.output.len() - 1);
                         self.insert_note_at(at, &format!("  # {}", note.text));
                     } else {
-                        self.note_line_above(own_line_start, &note.text);
+                        let above =
+                            self.close_captured_pending_line(pending_before, own_line_start);
+                        self.note_line_above(above, &note.text);
                     }
                 }
             }
@@ -3476,7 +3543,48 @@ mod tests {
         );
     }
 
-    /// A note that granit attaches to a simple key rides that pair's line, and
+    /// libFuzzer `yaml_roundtrip` crash-08cf4fe4 (46 bytes): a pair follows a
+    /// tag-only line and its key's inline note cannot ride the pair line (the value
+    /// carries one of its own), so the note is inserted *above* the pair — directly
+    /// under `bg: !:`. The scanner then reports it as `bg`'s value's leading note
+    /// and the figure settles only on the second emission. The note is placed after
+    /// the pair has been written, and every scalar write resets
+    /// `pending_tag_insert_at`, so the close has to work from an offset captured at
+    /// the pair's start (`close_captured_pending_line`) rather than the live field.
+    #[test]
+    fn a_key_note_below_a_pending_tag_only_line_keeps_its_owner() {
+        let raw = include_bytes!("../../../fuzz/seeds/yaml_roundtrip/former-crash-08cf4fe4.seed");
+        let src = std::str::from_utf8(raw).expect("seed is utf-8");
+        let node = parse_core(src);
+        let one = to_yaml(&node);
+        assert!(
+            one.contains("bg: !: ~"),
+            "the tag-only line is closed before the note line: {one:?}"
+        );
+        assert_eq!(
+            one.matches("# *b").count(),
+            1,
+            "the note appears exactly once: {one:?}"
+        );
+        let reparsed = parse_core(&one);
+        let CustomNode::Mapping { pairs, .. } = &reparsed else {
+            panic!("root is a mapping: {reparsed:#?}");
+        };
+        let (key, _) = pairs.iter().nth(1).expect("the crash input has two pairs");
+        assert_eq!(
+            key.leading_comments()
+                .iter()
+                .map(|c| c.text.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["*b"],
+            "the note still belongs to the `<<` key"
+        );
+        let again = to_yaml(&reparsed);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
     /// `write_mapping_pair` has a slot for it. The compact dash loop in
     /// `write_sequence_item` hand-rolls the same `key: value` line without that slot, so
     /// under a `- ` the note vanished on the *first* emission — silent data loss, not a
