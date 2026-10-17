@@ -31,10 +31,12 @@ fuzz_target!(|data: &[u8]| {
         let Ok(once) = to_toml(&node) else {
             continue; // typed rejection is a pass
         };
-        let reparsed = from_toml(&once)
-            .unwrap_or_else(|e| panic!("TOML writer output failed to re-parse: {e}\n---\n{once}\n---\n{text}"));
-        let twice = to_toml(&reparsed)
-            .unwrap_or_else(|e| panic!("TOML writer rejected its own re-parsed tree: {e}\n---\n{once}"));
+        let reparsed = from_toml(&once).unwrap_or_else(|e| {
+            panic!("TOML writer output failed to re-parse: {e}\n---\n{once}\n---\n{text}")
+        });
+        let twice = to_toml(&reparsed).unwrap_or_else(|e| {
+            panic!("TOML writer rejected its own re-parsed tree: {e}\n---\n{once}")
+        });
         assert_eq!(
             once, twice,
             "TOML serialization is not a fixed point:\nfirst:\n{once}\nsecond:\n{twice}"
