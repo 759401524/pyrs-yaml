@@ -1395,6 +1395,19 @@ impl<'a> Parser<'a> {
             return Err(self.err_at("invalid time-of-day", start));
         }
         self.pos += 5;
+        // Range, not only shape. The corpus asks for hour 00..=23 and minute 00..=59 in three
+        // separate files - `invalid/datetime/hour-over.toml`, `invalid/local-datetime/hour-over.toml`
+        // and `invalid/local-time/hour-over.toml`, each written as `24:00:00` - and the engine used
+        // to answer none of them: the scalar text was handed to the host's `datetime`/`time`
+        // constructor, which raised `ValueError` through CPython 3.13 and parses the spelling on
+        // 3.14+. Three invalid documents were therefore refused on some interpreters and accepted on
+        // others, so the reject rate measured the interpreter as much as the parser. Deciding here
+        // closes that split, and the seconds bound below is the corpus's own `second-over` (00..=60).
+        let hour = (self.s[start] - b'0') * 10 + (self.s[start + 1] - b'0');
+        let minute = (self.s[start + 3] - b'0') * 10 + (self.s[start + 4] - b'0');
+        if hour > 23 || minute > 59 {
+            return Err(self.err_at("time-of-day out of range", start));
+        }
         // Optional `:SS(.frac)?`. Under V1_0 its absence is an error.
         if self.peek() == Some(b':') {
             self.pos += 1;
@@ -1403,7 +1416,11 @@ impl<'a> Parser<'a> {
             {
                 return Err(self.err_at("invalid seconds in time-of-day", start));
             }
+            let second = (self.s[self.pos] - b'0') * 10 + (self.s[self.pos + 1] - b'0');
             self.pos += 2;
+            if second > 60 {
+                return Err(self.err_at("seconds out of range", start));
+            }
             if self.peek() == Some(b'.') {
                 self.pos += 1;
                 let fs = self.pos;
@@ -1750,7 +1767,7 @@ impl DateTimeProbe {
                 return false;
             }
             let sec: u32 = s[idx..idx + 2].parse().unwrap_or(99);
-            if sec > 62 {
+            if sec > 60 {
                 return false;
             }
             idx += 2;
@@ -1780,14 +1797,21 @@ impl DateTimeProbe {
                     && b[idx + 3] == b':'
                     && b[idx + 4].is_ascii_digit()
                     && b[idx + 5].is_ascii_digit()
+                    // The bounds the reader enforces on the same two pairs
+                    // (`invalid/datetime/offset-overflow-hour`,
+                    // `offset-overflow-minute`). Shape alone would let the writer emit `+24:00`,
+                    // which is text no reader takes back.
+                    && s[idx + 1..idx + 3].parse::<u32>().unwrap_or(99) <= 23
+                    && s[idx + 4..idx + 6].parse::<u32>().unwrap_or(99) <= 59
             }
             _ => false,
         }
     }
 }
 
-/// The names of a parsed key path, for the messages and the table bookkeeping that address a
-/// table by its dotted text rather than by where each segment sits.
+/// The names of a parsed key path, for the messages that quote a table and for the `current`
+/// section the next header descends from. A table itself is addressed by walking to it, not by the
+/// text its segments join to.
 fn names(key: &[(String, usize)]) -> Vec<String> {
     key.iter().map(|(name, _)| name.clone()).collect()
 }
@@ -2310,6 +2334,41 @@ mod tests {
     fn rejects_reopened_explicit_table() {
         let e = from_toml("[a]\n[a]\n").unwrap_err();
         assert!(format!("{e:?}").contains("duplicate table header"));
+    }
+
+    #[test]
+    fn the_time_of_day_ranges_are_decided_by_the_parser() {
+        // The corpus asks the same claim in three shapes - `invalid/datetime/hour-over`,
+        // `invalid/local-datetime/hour-over` and `invalid/local-time/hour-over`, each written as
+        // `24:00:00` - and the engine used to answer none of them: the scalar text went to the
+        // host's `datetime`/`time` constructor, which raised `ValueError` through CPython 3.13 and
+        // parses the spelling on 3.14+. Refusing them here is what makes the reject rate a property
+        // of the parser alone rather than of whichever interpreter loaded the document.
+        for src in [
+            "d = 2006-01-01T24:00:00-00:00\n",
+            "d = 2006-01-01T24:00:00\n",
+            "d = 24:00:00\n",
+            "d = 2006-01-01T00:60:00-00:00\n",
+            "d = 00:60:00\n",
+            "d = 2006-01-01T00:00:61-00:00\n",
+            "d = 00:00:61\n",
+        ] {
+            assert!(
+                matches!(from_toml(src), Err(ParseError::Syntax { .. })),
+                "accepted: {src}"
+            );
+        }
+        // One inside each bound stays legal, including the second field's leap-second allowance
+        // (`00-60` in the grammar comment). Which instant a `60` may sit at is a calendar rule the
+        // corpus does not test, so it is not policed here either.
+        for src in [
+            "d = 2006-01-01T23:59:59-00:00\n",
+            "d = 23:59:59\n",
+            "d = 00:00:60\n",
+            "d = 2006-01-01T00:59:00\n",
+        ] {
+            assert!(from_toml(src).is_ok(), "refused: {src}");
+        }
     }
 
     #[test]

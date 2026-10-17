@@ -1016,6 +1016,41 @@ mod tests {
     }
 
     #[test]
+    fn the_writer_refuses_the_time_ranges_the_reader_refuses() {
+        // The reader policed the time-of-day ranges while the probe policed only their shape, so an
+        // AST holding `24:00:00` or an offset of `+24:00` - text no TOML reader takes back - could
+        // still be emitted. Both halves now carry the same bounds, which is what the corpus files
+        // `invalid/datetime/offset-overflow-hour` and `offset-overflow-minute` describe. A legal
+        // document is parsed first and only then re-written, because the reader would refuse these
+        // spellings outright.
+        for (seed, spelling) in [
+            ("t = 17:45:00\n", "24:00:00"),
+            ("t = 17:45:00\n", "17:60:00"),
+            ("t = 17:45:00\n", "17:45:61"),
+            (
+                "d = 2020-01-02T03:04:05+09:00\n",
+                "2020-01-02T03:04:05+24:00",
+            ),
+            (
+                "d = 2020-01-02T03:04:05+09:00\n",
+                "2020-01-02T03:04:05+09:60",
+            ),
+        ] {
+            let mut doc = from_toml(seed).unwrap();
+            let CustomNode::Mapping { pairs, .. } = &mut doc else {
+                panic!("the seed document is not a table");
+            };
+            for (_, value) in pairs.iter_mut() {
+                let CustomNode::Scalar { value: text, .. } = value else {
+                    panic!("the seed value is not a scalar");
+                };
+                *text = alloc::sync::Arc::from(spelling);
+            }
+            assert!(to_toml(&doc).is_err(), "wrote {spelling}");
+        }
+    }
+
+    #[test]
     fn a_root_level_inline_table_keeps_its_form_and_its_siblings_order() {
         // Measured before this was fixed: `[p] # t\na = 1\n` for the first case, and
         // `q = 2\n[p]\na = 1\n` for the second. The root classification looked only at "is this

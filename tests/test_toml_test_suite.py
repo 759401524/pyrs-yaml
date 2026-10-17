@@ -23,14 +23,15 @@ was emitting text no one could read back.
 The decode gates hold at the *measured* compliance of the current parser. Measured 2026-10-16 on the
 corpus CI clones: **all 266 valid documents decode to the tagged values TOML says**, so that gate
 asserts an empty failure list rather than a percentage — it is the encoder gate's shape, earned here
-by closing three defect classes, and any new gap reddens it by naming the file. The reject half is
-interpreter-dependent and the floor describes the worst leg: **491 of 511 invalid documents are refused
-on CPython 3.8-3.13 (`96.09%`) but 488 of 511 on 3.14 and 3.15 (`95.50%`)**, because three out-of-range
-times (`24:00:00`, in `datetime`, `local-datetime` and `local-time`) are rejected by the host's
-`datetime` constructor rather than by this parser, and a newer interpreter accepts the spelling — so
-that floor is 0.954, the 3.14/3.15 reading with one case of slack. The engine owning the temporal range
-check is the fix for that split, not a wider line.
-
+by closing three defect classes, and any new gap reddens it by naming the file. The reject half used
+to be interpreter-dependent and its floor described the worst leg: **491 of 511 invalid documents
+were refused on CPython 3.8-3.13 (`96.09%`) but only 488 of 511 on 3.14 and 3.15 (`95.50%`)**,
+because three out-of-range times (`24:00:00`, in `datetime`, `local-datetime` and `local-time`) were
+rejected by the host's `datetime` constructor rather than by this parser, and a newer interpreter
+accepts the spelling. The engine owns that range check now - `scan_time_body` decides hour 00-23,
+minute 00-59 and second 00-60 - so every interpreter answers the same and the floor is **0.96**:
+491/511 with less than one case of slack, which is what makes a single silently accepted document
+redder than the percentage it hides.
 The `0.85` these two gates used to carry was 22 cases of slack on the decode half and 57 on the reject
 half, which is how whole defect classes hid behind a green percentage. Three of them are closed: nine
 cases read `a = { x.y = 1 }` as one key whose text is `x.y` instead of the nested table the spec
@@ -185,11 +186,13 @@ def test_toml_test_valid_decodes_match():
 
 
 def test_toml_test_invalid_rejected():
-    """Invalid TOML is rejected rather than silently accepted (488/511 on the newest interpreters).
+    """Invalid TOML is rejected rather than silently accepted (491 of 511 on every interpreter).
 
     A document is "rejected" when loading raises - either a typed
     ``YamlParseError`` or any conversion-time error (a bare ``ValueError`` from
-    the temporal plugin is still a rejection, not a silent accept).
+    the temporal plugin is still a rejection, not a silent accept). The time-of-day
+    ranges are no longer in that second group: ``scan_time_body`` refuses them, which
+    is why the count stopped depending on which interpreter ran the test.
     """
     total = 0
     rejected = 0
@@ -204,9 +207,10 @@ def test_toml_test_invalid_rejected():
             accepted.append(toml.relative_to(SUITE_DIR).as_posix())
     assert total > 0, "no invalid toml-test cases found"
     rate = rejected / total
-    assert rate >= 0.954, (
-        f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 95.4% "
-        f"(488/511 on CPython 3.14+, 491/511 through 3.13): silently accepted {accepted}"
+    assert rate >= 0.96, (
+        f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 96.0% "
+        f"(491/511, the reading every interpreter gives since `scan_time_body` took over the "
+        f"time-of-day range): silently accepted {accepted}"
     )
 
 

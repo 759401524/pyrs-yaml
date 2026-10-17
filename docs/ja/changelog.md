@@ -700,12 +700,27 @@ status: new
 
 #### 修正
 
+- **時刻の範囲はパーサが決める判定で、宿主解釈器の判定ではない** — 拒否半分の toml-test ティアは、エ
+  ンジンと同じだけ解釈器も測っていた。範囲外の時 3 件（`datetime`、`local-datetime`、`local-time` の
+  `24:00:00`）が拒否されていたのは CPython の `datetime`/`time` コンストラクタが `ValueError` を投げ
+  るからで、CPython 3.14+ はその綴りを受け付ける。同じコーパスが 3.8-3.13 の脚では 491/511 を拒否
+  し、3.14/3.15 では 488/511 しか拒否しなかった。`scan_time_body` は時 00-23、分 00-59、秒 00-60 を
+  自分で守る — コーパス自身のコメントが名乗る境界 — なのでどの解釈器も同じ答えを返し、拒否側のフロア
+  は **0.954 から 0.96** に動く（491/511、余裕は 1 ケース未満）。秒の境界は TOML の閏秒の余地を残
+  し、`60` がどの瞬間に置けるかは取り締まらない — コーパスにそれを問う例が無いからだ。書き手側の
+  `DateTimeProbe` は同じ形-only 規則を `62` 界で持っていたため、自身の読み手が拒否する `24:00:00` や
+  `+24:00` を出力し得た。いまは読み手と同じ数字を読み、`invalid/datetime/offset-overflow-hour` と
+  `offset-overflow-minute` の偏移界も含む。テスト 2 件:
+  `the_time_of_day_ranges_are_decided_by_the_parser`（三つの形で拒否される綴り 7 件、境界すれすれの
+  合法 4 件）と `the_writer_refuses_the_time_ranges_the_reader_refuses`。突然変異による帰属: 時分の
+  界、秒の界、probe の偏移界をそれぞれ緩めると、赤くなるのは毎回 1 件だけ。
+
 - **テーブルヘッダの身元は点連結パスの文字列ではなく、その名前が指すテーブルそのもの** — 同じ欠陥群
-  の三つ目の顔。`parse_inline_table` が点付きメンバーを単一キーに繋いでいたのは上の変更で塞いだ。
-  `register_header` は二つの登録集合 `defined` と `dotted_defined` を点連結パスを鍵にしていたため、
-  名前に点を含むキーひとつである `[a."b.c"]` が `[a.b.c]` の再定義と読まれ、`[[a.b]]` の各要素が先頭
-  と同じ身元を共用して二つ目の `[a.b.c]` が重複として拒否された。妥当な文書 4 件がその犠牲になった:
-  `valid/table/names.toml`、`names-with-values`、`array-table-array`、
+  の三つ目の顔。`parse_inline_table` が点付きメンバーを単一キーに繋いでいたのはPR #463 の変更で塞い
+  だ。`register_header` は二つの登録集合 `defined` と `dotted_defined` を点連結パスを鍵にしていたた
+  め、名前に点を含むキーひとつである `[a."b.c"]` が `[a.b.c]` の再定義と読まれ、`[[a.b]]` の各要素が
+  先頭と同じ身元を共用して二つ目の `[a.b.c]` が重複として拒否された。妥当な文書 4 件がその犠牲になっ
+  た: `valid/table/names.toml`、`names-with-values`、`array-table-array`、
   `valid/array/array-subtables`。修正はテキストを消すこと。各 `CowTable` それ自体が一つのテーブルな
   ので、ヘッダの身元はそこに到達する走査であり、テーブルが必要とする状態は TOML が足す 1 ビットだけ:
   **点付きキー**が作ったテーブルは、それで終わるヘッダに対して閉じる。ただしヘッダはそれを貫ってもう
