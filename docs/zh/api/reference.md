@@ -617,13 +617,17 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlEditError` — 就地编辑错误（继承自 `ValueError`）
 - `YamlPathError` — YAML 路径错误（继承自 `ValueError`）
 - `YamlDocumentError` — 过期的 `Node` 访问错误（继承自 `Exception`）
+- `YamlDuplicateKeyError` — 重复的映射键（继承自 `ValueError`）
+- `YamlMaxDepthError` — 超过最大嵌套深度（继承自 `ValueError`）
+- `YamlTagError` — 标签处理器错误（继承自 `ValueError`）
+- `YamlTagSkip` — 跳过节点的控制流哨兵（继承自 `Exception`）
 
 参见 [异常](exceptions.md) 页面了解完整详情。
 
 ## :material-information: 版本
 
 ```python
-__version__ = "0.14.0"
+__version__ = "0.18.0"
 ```
 
 ## 生成的 API 参考
