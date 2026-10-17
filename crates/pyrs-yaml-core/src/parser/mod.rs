@@ -852,11 +852,19 @@ impl<'a> AstReceiver<'a> {
                 current_key, pairs, ..
             }) => {
                 let current: &Option<CustomNode> = current_key;
-                let node = match current {
-                    Some(k) => Some(k),
-                    None => pairs.iter().next_back().map(|(_, v)| v),
-                };
-                node.and_then(CustomNode::source_range).cloned()
+                match current {
+                    Some(k) => k.source_range().cloned(),
+                    None => pairs.last().and_then(|(k, v)| {
+                        // An alias carries no range (and no metadata slot), but the
+                        // pair line is still the key's line: use it so a note on the
+                        // next line is carried forward instead of moving up here.
+                        if matches!(v, CustomNode::Alias { .. }) {
+                            k.source_range().cloned()
+                        } else {
+                            v.source_range().cloned()
+                        }
+                    }),
+                }
             }
             Some(ParseState::Sequence { items, .. }) => {
                 items.last().and_then(CustomNode::source_range).cloned()
@@ -895,7 +903,10 @@ impl<'a> AstReceiver<'a> {
         if let Some(top) = self.stack.last_mut() {
             match top {
                 ParseState::Mapping {
-                    current_key, pairs, ..
+                    current_key,
+                    pairs,
+                    flow_style,
+                    ..
                 } => {
                     // Attach to the last value if complete, or the current key
                     let target = if current_key.is_some() {
@@ -903,10 +914,34 @@ impl<'a> AstReceiver<'a> {
                     } else {
                         pairs.iter_mut().last().map(|(_, v)| v)
                     };
-                    if target.is_some() {
-                        Self::set_scalar_comment(target, comment);
-                        attached = true;
-                    } else if let Some(slot) = self.comment_stack.last_mut() {
+                    let target_is_alias = target
+                        .as_ref()
+                        .is_some_and(|n| matches!(n, CustomNode::Alias { .. }));
+                    let target_present = target.is_some();
+                    if let Some(node) = target {
+                        attached = Self::set_scalar_comment(Some(node), &comment);
+                    }
+                    if !attached
+                        && target_present
+                        && target_is_alias
+                        && current_key.is_none()
+                        && !*flow_style
+                    {
+                        // An alias has no metadata slot, so the note rides the
+                        // owning key — the only slot the writer can report it
+                        // from, and the one it already re-homes onto the pair
+                        // line. The pair is the map's last entry, so popping
+                        // and reinserting it preserves order.
+                        if let Some((mut key, value)) = pairs.pop() {
+                            Self::set_scalar_comment(Some(&mut key), &comment);
+                            pairs.insert(key, value);
+                            attached = true;
+                        }
+                    }
+                    if !attached
+                        && !target_present
+                        && let Some(slot) = self.comment_stack.last_mut()
+                    {
                         // Empty mapping `{}` — stash in the container's own slot
                         // (on_mapping_end attaches it to the node).
                         slot.push(comment);
@@ -915,9 +950,12 @@ impl<'a> AstReceiver<'a> {
                 }
                 ParseState::Sequence { items, .. } => {
                     if !items.is_empty() {
-                        Self::set_scalar_comment(items.last_mut(), comment);
-                        attached = true;
-                    } else if let Some(slot) = self.comment_stack.last_mut() {
+                        attached = Self::set_scalar_comment(items.last_mut(), &comment);
+                    }
+                    if !attached
+                        && items.is_empty()
+                        && let Some(slot) = self.comment_stack.last_mut()
+                    {
                         // Empty sequence `[]` — stash in the container's slot.
                         slot.push(comment);
                         attached = true;
@@ -925,19 +963,23 @@ impl<'a> AstReceiver<'a> {
                 }
             }
         } else if let Some(result) = &mut self.result {
-            Self::set_scalar_comment(Some(result), comment);
-            attached = true;
+            attached = Self::set_scalar_comment(Some(result), &comment);
         }
         attached
     }
 
-    /// Set the comment on a node if it's a Scalar with no existing comment.
-    fn set_scalar_comment(node: Option<&mut CustomNode>, comment: Comment) {
+    /// Set the comment on a node if it can hold one and has none. Returns
+    /// whether the note was actually attached: an alias has no metadata slot,
+    /// and reporting success without one used to drop the note silently.
+    fn set_scalar_comment(node: Option<&mut CustomNode>, comment: &Comment) -> bool {
         if let Some(node) = node
             && node.comment().is_none()
             && !matches!(node, CustomNode::Alias { .. })
         {
-            node.set_comment(comment);
+            node.set_comment(comment.clone());
+            true
+        } else {
+            false
         }
     }
 
@@ -2525,6 +2567,91 @@ mod tests {
             &parse(&one, YamlSchema::Core).expect("emitted document re-parses"),
         );
         assert_eq!(two, one, "the promoted note line must be a fixed point");
+    }
+
+    /// An alias carries no metadata slot, and the reader used to report success after
+    /// `set_comment` silently no-opped: `<<: *d  # note` lost the note at ingest, before any
+    /// writer rule could see it, and the stable-but-short emission kept the round-trip tier
+    /// quiet. The note now rides the pair's key — the slot the block writer already re-homes
+    /// onto the pair line — so the source tree keeps it and one round is the fixed point.
+    #[test]
+    fn an_alias_valued_merge_key_keeps_its_inline_note() {
+        let src = "d: &d {x: 1}\ns:\n  <<: *d  # keep me\n  y: 2\n";
+        let node = parse_with_options(src, false, YamlSchema::Core, 1000, false)
+            .expect("the unresolved-merge input parses");
+        let CustomNode::Mapping { pairs, .. } = &node else {
+            panic!("expected a root mapping, got {node:?}");
+        };
+        let CustomNode::Mapping { pairs: inner, .. } = pairs.values().nth(1).expect("the s pair")
+        else {
+            panic!("expected the merge target mapping, got {node:?}");
+        };
+        let (key, value) = inner.iter().next().expect("the merge pair");
+        assert!(
+            matches!(key, CustomNode::Scalar { meta, .. }
+                if meta.comment().is_some_and(|c| c.text.as_ref() == "keep me")),
+            "the note must ride the pair's key: an alias has no slot of its own"
+        );
+        assert!(
+            matches!(value, CustomNode::Alias { .. }),
+            "the value is still the alias: {value:?}"
+        );
+
+        let one = crate::serializer::to_yaml(&node);
+        assert_eq!(
+            one, src,
+            "the merge pair's inline note must be emitted where it was written"
+        );
+        assert_eq!(
+            one.matches('#').count(),
+            1,
+            "moved is fine, duplicated is not: {one:?}"
+        );
+        let two = crate::serializer::to_yaml(
+            &parse_with_options(&one, false, YamlSchema::Core, 1000, false)
+                .expect("the emitted document re-parses"),
+        );
+        assert_eq!(two, one, "one emission has to reach the fixed point");
+
+        // Resolving the merge consumes the pair; the note has to survive on the mapping it
+        // was merged into, where the merge layer re-homes the consumed pairs' notes.
+        let resolved = crate::serializer::to_yaml(
+            &parse(src, YamlSchema::Core).expect("the input parses with merges resolved"),
+        );
+        assert!(
+            resolved.contains("# keep me"),
+            "resolving the merge dropped the note: {resolved:?}"
+        );
+        let again = crate::serializer::to_yaml(
+            &parse(&resolved, YamlSchema::Core).expect("the resolved document re-parses"),
+        );
+        assert_eq!(again, resolved, "the resolved form must be a fixed point");
+    }
+
+    /// A note on the line after an alias value belongs to the node that follows. The
+    /// backwards candidate had no range to judge the break against (an alias carries none),
+    /// so the note looked same-line and was bound to a node that cannot hold it — and the
+    /// false success then dropped it. The pair line is the key's line, which restores the
+    /// break test for both the merge-key and the ordinary-key spelling.
+    #[test]
+    fn a_note_after_an_alias_value_annotates_the_item_that_follows() {
+        for (src, unresolved) in [
+            ("d: &d 1\ns:\n  k: *d\n  # carry me\n  next: 2\n", false),
+            ("d: &d {x: 1}\ns:\n  <<: *d\n  # carry me\n  y: 2\n", true),
+        ] {
+            let node = parse_with_options(src, !unresolved, YamlSchema::Core, 1000, false)
+                .expect("input parses");
+            let one = crate::serializer::to_yaml(&node);
+            assert_eq!(
+                one, src,
+                "the note must stay on the line it was written above"
+            );
+            let two = crate::serializer::to_yaml(
+                &parse_with_options(&one, !unresolved, YamlSchema::Core, 1000, false)
+                    .expect("the emitted document re-parses"),
+            );
+            assert_eq!(two, one, "one emission has to reach the fixed point");
+        }
     }
 
     /// A note granit reports in a *container's* inline slot has to be written where the
