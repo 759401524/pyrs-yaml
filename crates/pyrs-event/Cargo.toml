@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-event"
-version = "0.17.0"
+version = "0.18.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Document event vocabulary shared by the pyrs-yaml engine family"
@@ -14,7 +14,7 @@ name = "pyrs_event"
 # The event type names the node model's own `ScalarStyle` and `Tag`, so a stream and a tree built
 # from it cannot disagree about what a style or a tag is. `default-features = false` keeps the
 # dependency tree no_std-clean; feature unification gives `std` back wherever a std crate pulls it.
-pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", default-features = false }
+pyrs-ast = { path = "../pyrs-ast", version = "0.18.0", default-features = false }
 
 [dev-dependencies]
 # The property tier for the two jobs this crate owns generically: turning a byte offset into a

@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v0.18.0] — 2026-10-17
+
 ### Added
 
 - **The quality matrix's inventory is measured, not transcribed** — §1's table read 509 Rust
@@ -972,10 +974,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stream cases were matched or mismatched only by accident. `compliance.py` now splits the
   expectation one document at a time (`json_documents`) and judges it against `safe_loads`, which
   moves that leg to **262/267 (98.13%)** and leaves five cases the gate names with their causes:
-  four open defects — an alias binds the *last* anchor of its name instead of the nearest preceding
-  one (`3GZX`, where `collect_anchors` keeps one node per name), a keep-chomped block whose content
-  lines are all empty keeps one line break too many (`JEF9`, `K858`), and the non-specific tag `!`
-  does not suppress implicit resolution, so `! 12` loads as an integer (`S4JQ`) — and one spelling
+  four defects still open at that release — an alias binds the *last* anchor of its name instead
+  of the nearest preceding one (`3GZX`, where `collect_anchors` keeps one node per name), a
+  keep-chomped block whose content lines are all empty keeps one line break too many (`JEF9`,
+  `K858`), and the non-specific tag `!` does not suppress implicit resolution, so `! 12` loads as
+  an integer (`S4JQ`, closed in v0.18.0) — and one spelling
   difference that is not a defect: the suite writes a `!!binary` node as the scalar's own source
   text while the comparison writes the loaded bytes as canonical base64 (`565N`), and both spellings
   do construct the same 185 bytes, which `test_binary_spellings_construct_the_same_bytes` now pins.

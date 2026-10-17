@@ -42,6 +42,7 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 | Version | Date | Changelog |
 |---------|------|-----------|
+| v0.18.0 | 2026-10-17 | [CHANGELOG.md §[0.18.0]](CHANGELOG.md#0180---2026-10-17) |
 | v0.17.0 | 2026-10-01 | [CHANGELOG.md §[0.17.0]](CHANGELOG.md#0170---2026-10-01) |
 | v0.16.0 | 2026-10-01 | [CHANGELOG.md §[0.16.0]](CHANGELOG.md#0160---2026-10-01) |
 | v0.15.0 | 2026-08-19 | [CHANGELOG.md §[0.15.0]](CHANGELOG.md#0150---2026-08-19) |

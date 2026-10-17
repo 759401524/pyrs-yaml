@@ -16,6 +16,7 @@ A high-performance Python YAML library with perfect round-trip support, built wi
 ## Features
 
 - **YAML 1.2 compliant** - Uses granit-parser for full YAML 1.2 support with native comment preservation
+- **Five formats, one document tree** - Native TOML, JSON, JSONC and JSON5 readers (`load_*`, `from_*`) and writers (`to_toml`, `doc.to_json` / `to_jsonc` / `to_json5`) share the YAML document tree, keeping comments and source spellings wherever the target dialect can carry them
 - **Perfect Round-Trip** - Preserves comments, anchors, tags, chomping, scalar styles, and flow/block formatting
 - **In-Place Editing** - Edit parsed documents via JSONPath-style paths (`doc.set("$.a.b", v)`) or the `Node` tree API, without losing formatting
 - **High Performance** - Rust backend, 7× faster `safe_dump`/`from_dict` vs v0.10 (direct writer, no intermediate AST); fast-path `safe_load`/`safe_loads` skips anchor tracking when none present
@@ -381,11 +382,12 @@ frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text, max_depth=200)
 
 divan benchmarks in `crates/pyrs-yaml/benches/yaml_bench.rs` (Rust) + `pytest-codspeed` in `tests/test_benchmark_crosslib.py` (Python). See [benchmarks docs](docs/en/performance/benchmarks.md) for the full cross-library comparison against PyYAML and ruamel.yaml.
 
-**v0.11 highlights (vs v0.10):**
+**v0.18 highlights:**
 
-- `safe_dump` / `from_dict` / `dump_file` / `dump_iterable`: **7× faster** — direct writer eliminates intermediate `CustomNode` AST
-- `safe_load` / `safe_loads` / `to_dict`: **fast-path** — skips anchor tracking when input has no `&` characters
-- `resolve_core_type`: **first-byte dispatch** — non-numeric/boolean scalars return `Str` immediately
+- **TOML reader: one allocation per scalar, not two** — `from_toml_medium` 148 → 97 allocations and 16,362 → 15,612 bytes; the IR carries `Arc<str>` from the scanner onward
+- **JSON reader: unescaped strings borrow the source** — `from_json_medium` 74 → 48 allocations and 9,675 → 9,444 bytes; a quoted body is decoded only when an escape forces it
+- **Allocation ceilings on the hot paths** — `crates/pyrs-yaml-core/tests/alloc_gate.rs` pins six scenarios so a temporary per key cannot grow the working set unnoticed
+- **Instruction floors** — measured on the pinned `rustc 1.97.1` against the committed baseline: `from_toml_medium` −9.81%, `from_json_medium` −13.36%, `from_jsonc_medium` −11.28%, `from_json5_medium` −9.61%
 
 ## Development
 
