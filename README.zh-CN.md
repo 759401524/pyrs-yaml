@@ -15,6 +15,7 @@
 ## 特性
 
 - **YAML 1.2 合规** — 使用 granit-parser 实现完整 YAML 1.2 支持，原生保留注释
+- **五种格式，同一文档树** — 原生 TOML、JSON、JSONC、JSON5 读取器（`load_*`、`from_*`）与写入器（`to_toml`、`doc.to_json` / `to_jsonc` / `to_json5`）共享 YAML 文档树；只要目标方言能承载，注释与源码写法都会保留
 - **完美往返** — 保留注释、锚点、标签、chomping 指示符、标量样式和流式/块式格式
 - **就地编辑** — 通过 JSONPath 风格路径（`doc.set("$.a.b", v)`）或 `Node` 树 API 编辑已解析文档，不丢失格式
 - **高性能** — Rust 后端，`safe_dump`/`from_dict` 比 v0.10 快 7 倍（直接写入器，无中间 AST）；`safe_load`/`safe_loads` 快速路径在无锚点时跳过锚点追踪
@@ -380,11 +381,12 @@ frontmatter, content = pyrs_yaml.read_markdown_str(markdown_text, max_depth=200)
 
 divan 基准测试在 `crates/pyrs-yaml/benches/yaml_bench.rs`（Rust）+ `pytest-codspeed` 在 `tests/test_benchmark_crosslib.py`（Python）。完整跨库对比（与 PyYAML 和 ruamel.yaml）见[基准测试文档](docs/en/performance/benchmarks.md)。
 
-**v0.11 亮点（vs v0.10）：**
+**v0.18 亮点：**
 
-- `safe_dump` / `from_dict` / `dump_file` / `dump_iterable`：**快 7 倍** — 直接写入器消除中间 `CustomNode` AST
-- `safe_load` / `safe_loads` / `to_dict`：**快速路径** — 输入无 `&` 字符时跳过锚点追踪
-- `resolve_core_type`：**首字节分发** — 非数值/布尔标量立即返回 `Str`
+- **TOML 读取器：每个标量只分配一次，而非两次** — `from_toml_medium` 148 → 97 次分配、16,362 → 15,612 字节；IR 从扫描器起就携带 `Arc<str>`
+- **JSON 读取器：无转义字符串借用源文本** — `from_json_medium` 74 → 48 次分配、9,675 → 9,444 字节；只有遇到转义才解码引号内文本
+- **热路径的分配上限** — `crates/pyrs-yaml-core/tests/alloc_gate.rs` 钉住六个场景，防止每个键一个临时对象悄悄撑大工作集
+- **指令数地板** — 固定 `rustc 1.97.1` 上对已提交基线实测：`from_toml_medium` −9.81%、`from_json_medium` −13.36%、`from_jsonc_medium` −11.28%、`from_json5_medium` −9.61%
 
 ## 开发
 

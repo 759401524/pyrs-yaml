@@ -1,6 +1,6 @@
 [package]
 name = "pyrs-toml"
-version = "0.17.0"
+version = "0.18.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Native TOML 1.0/1.1 engine producing the shared pyrs-ast CustomNode — pure Rust, no Python dependencies"
@@ -14,11 +14,11 @@ name = "pyrs_toml"
 # `default-features = false` keeps the tree `no_std`-clean; the `std` feature
 # below re-enables `indexmap/std` so the node-map hasher matches `pyrs-ast`.
 indexmap = { version = "2.7", default-features = false }
-pyrs-ast = { path = "../pyrs-ast", version = "0.17.0", default-features = false }
-pyrs-schema = { path = "../pyrs-schema", version = "0.17.0" }
+pyrs-ast = { path = "../pyrs-ast", version = "0.18.0", default-features = false }
+pyrs-schema = { path = "../pyrs-schema", version = "0.18.0" }
 # The event vocabulary the tree-free producer reports. `pyrs-event` is `no_std` + `alloc` and names
 # only `pyrs-ast` types, so this edge adds no engine to a downstream reader of the stream.
-pyrs-event = { path = "../pyrs-event", version = "0.17.0", default-features = false }
+pyrs-event = { path = "../pyrs-event", version = "0.18.0", default-features = false }
 
 [features]
 # `std` is on by default for the host test harness; `no_std` users opt out
