@@ -26,7 +26,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use pyrs_json::{from_json, from_json5, from_jsonc, to_json5_text, to_jsonc_text, to_json_text};
+use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
 
 /// Assert that `$write`'s own output reads back, in the same dialect, to the same text.
 macro_rules! settled {

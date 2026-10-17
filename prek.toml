@@ -71,6 +71,19 @@ files = "\\.(rs|toml|lock)$"
 pass_filenames = false
 priority = "format"
 
+# `fuzz/` is its own Cargo workspace, not a member of the root one, so the hook above never
+# sees it and its targets drifted unnoticed. Measured as the two hooks ran side by side on
+# the same working copy: `cargo fmt` Passed while this one Failed, naming the files the root
+# workspace cannot reach.
+[[repos.hooks]]
+id = "cargo-fmt-fuzz"
+name = "cargo fmt (fuzz workspace)"
+language = "system"
+entry = "cargo fmt --manifest-path fuzz/Cargo.toml -- --check"
+files = "\\.(rs|toml|lock)$"
+pass_filenames = false
+priority = "format"
+
 [[repos.hooks]]
 id = "cargo-clippy"
 name = "cargo clippy"

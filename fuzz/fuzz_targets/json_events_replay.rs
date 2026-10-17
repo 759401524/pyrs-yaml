@@ -70,8 +70,9 @@ fuzz_target!(|data: &[u8]| {
                 stream.is_ok()
             ),
         };
-        let replay = from_events(&events)
-            .unwrap_or_else(|e| panic!("{dialect}: its own stream refused to replay {text:?}: {e}"));
+        let replay = from_events(&events).unwrap_or_else(|e| {
+            panic!("{dialect}: its own stream refused to replay {text:?}: {e}")
+        });
         match (to_json_text(&node), to_json_text(&replay)) {
             (Ok(once), Ok(twice)) => assert_eq!(
                 once, twice,

@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The `cargo fmt` gate now covers the fuzz workspace** — `fuzz/` is its own Cargo workspace, not
+  a member of the root one, so the `cargo-fmt` hook never saw its targets and their formatting
+  drifted unnoticed. A second hook, `cargo-fmt-fuzz`, runs
+  `cargo fmt --manifest-path fuzz/Cargo.toml -- --check`. Measured as both hooks ran on the same
+  working copy: `cargo fmt` Passed while the new one Failed, naming the files the root workspace
+  cannot reach. On a clean tree the new hook passes, and a two-space change to a fuzz target this
+  change does not format makes it fail again — the check is not decoration either.
+
 - **The JSON and TOML fuzz targets got an oracle that can fail** — every re-read in `parse_json`
   and `parse_toml` was `let _ =`, so "our own readers load our own writers' output" was a docstring
   with nothing checking it, and a writer that emitted a byte its own dialect rejects passed. Each
