@@ -58,8 +58,6 @@ JSON_MISMATCHES = frozenset(
         # indent indicator never reaching the AST — is closed on the reader side.
         "JEF9#1",
         "K858#1",  # the same rule, asked of a mapping rather than a sequence item
-        # The non-specific tag `!` does not suppress implicit resolution, so `! 12` loads as an int.
-        "S4JQ#1",
     }
 )
 
@@ -110,9 +108,10 @@ def test_yaml_suite_json_match():
     Most of that slack was the harness rather than the engine: a multi-document stream's
     expectation is several JSON values in one field, `json.loads` refused the second, and the
     comparison fell back to comparing text, so eighteen stream cases were never judged. Comparing
-    one document at a time (`json_documents`) moved the measurement from 244 to 262 of 267, and the
-    alias-binding fix that followed took it to 263. What remains is named in `JSON_MISMATCHES`
-    above with its cause: three open defects and one spelling difference pinned on its own.
+    one document at a time (`json_documents`) moved the measurement from 244 to 262 of 267, the
+    alias-binding fix took it to 263 and the non-specific-tag reading to 264. What remains is named
+    in `JSON_MISMATCHES` above with its cause: two open defects and one spelling difference pinned
+    on its own.
     """
     mismatched = set()
     for key, test in numbered_cases(load_test_cases(SUITE_DIR)):

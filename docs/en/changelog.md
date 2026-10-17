@@ -792,6 +792,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **A bare `!` states that a scalar takes no schema reading — an explicit 0.18.0 behavior
+  change** — closes the third entry of the ledger PR #471 named (`S4JQ`, YAML 1.2 spec Example
+  6.28). The projection resolved a `!`-tagged plain scalar through the document's schema as if it
+  carried no tag, so `! 12` loaded as the
+  integer 12; §6.8 leaves that node's tag as `!` and §10.5.2 restricts application resolution rules
+  to the `?` tag, which makes the scalar its own text. The rule went where the tag question is
+  already answered — `standard_tag_kind` in `pyrs-schema`, which `to_json`, `to_jsonc`, `to_json5`
+  and `to_toml` all read — plus one arm of `tagged_scalar` on the Python side, so a bridge cannot
+  drift from the loader again, and both spellings the tag reaches the AST in are recognised
+  (measured: the parser produces `handle:"" suffix:"!"`, a caller building one writes
+  `handle:"!" suffix:""`). Not free: PyYAML and ruamel both resolve `!` implicitly — measured on
+  this tree, each answers `12`, and ruamel has an open ticket (#573) — so this is a documented
+  divergence toward the specification, and `tests/test_cross_format_tags.py` records both answers
+  in one table. A plugin registered on the bare `!` no longer wins over the tag either, the way one
+  registered on `!!str` stopped winning in #335. Measured: suite JSON leg 263/267 → **264/267
+  (98.88%)** with `S4JQ#1` gone from `JSON_MISMATCHES`; 2910 Python tests (ten new) and 681 Rust
+  tests pass; Ir on the pinned compiler stayed green with `to_python_anchors` -0.03%. Attribution:
+  removing the Python arm reddens the loader tests and the suite gate while the bridge table stays
+  green; removing the schema guard reddens the bridge table while the loader stays green — the two
+  halves are pinned separately, which is the point of the table.
+
 - **The JSON reader no longer allocates every string twice** — the scanner decoded each quoted
   body into a `String` and then copied it into the AST's `Arc<str>`; when the body held no escape
   the decoded text *was* a slice of the source, so the first copy bought nothing. `string()`,

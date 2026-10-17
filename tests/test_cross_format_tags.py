@@ -30,6 +30,12 @@ CASES = [
     ("float-from-int-text", "v: !!float 1\n", {"v": 1.0}),
     ("null-word", "v: !!null ~\n", {"v": None}),
     ("verbatim-uri", "v: !<tag:yaml.org,2002:str> 1.20\n", {"v": "1.20"}),
+    # The non-specific tag is not a standard tag, but for a scalar it states the same thing:
+    # YAML 1.2 6.8 leaves the node's tag as `!` and 10.5.2 restricts application resolution
+    # rules to the `?` tag, so the scalar is its own text (spec Example 6.28, suite "S4JQ").
+    ("non-specific-over-number", "v: ! 1.20\n", {"v": "1.20"}),
+    ("non-specific-over-bool", "v: ! yes\n", {"v": "yes"}),
+    ("non-specific-over-null", "v: ! ~\n", {"v": "~"}),
 ]
 
 
@@ -131,3 +137,37 @@ class TestWhatIsDeliberatelyNotChanged:
         assert json.loads(pyrs_yaml.parse("v: 1.20\n").to_json()) == {"v": 1.2}
         assert json.loads(pyrs_yaml.parse("v: 0x1F\n").to_json()) == {"v": 31}
         assert json.loads(pyrs_yaml.parse("v: yes\n").to_json()) == {"v": "yes"}
+
+
+class TestTheNonSpecificTagIsReadTheSameEverywhere:
+    """The loader side of the rule the bridges above have to reproduce.
+
+    Suite case `S4JQ` / YAML 1.2 spec Example 6.28 is the corpus claim: `! 12` is the string
+    `"12"`. PyYAML and ruamel both resolve a `!`-tagged plain scalar implicitly and answer `12`,
+    so both readings are recorded rather than reconciled by silence - ruamel has an open ticket
+    for exactly this (#573). The divergence is toward the specification, and the price of taking
+    it is stated in the pull request rather than discovered by a user.
+    """
+
+    def test_a_bang_is_text_for_a_value_and_for_a_key(self):
+        assert pyrs_yaml.safe_load("- ! 12\n") == ["12"]
+        assert pyrs_yaml.safe_load("v: ! 12\n") == {"v": "12"}
+        assert pyrs_yaml.safe_load("! 12: a\n") == {"12": "a"}
+
+    def test_a_local_tag_with_a_suffix_is_still_the_authors_own(self):
+        """`!foo` names an application tag, not the non-specific one: nothing about it states a
+        type, so the schema resolves its text as it would for an untagged scalar."""
+        assert pyrs_yaml.safe_load("- !foo 12\n") == [12]
+        assert pyrs_yaml.safe_load("- ! 12\n") == ["12"]
+
+    def test_the_reading_survives_a_round_trip(self):
+        src = "v: ! 1.20\n"
+        doc = pyrs_yaml.parse(src)
+        assert doc.to_yaml() == src
+        assert pyrs_yaml.safe_load(doc.to_yaml()) == {"v": "1.20"}
+        assert json.loads(doc.to_json()) == {"v": "1.20"}
+
+    def test_pyyaml_still_resolves_the_non_specific_tag_implicitly(self):
+        yaml = pytest.importorskip("yaml")
+        assert yaml.safe_load("- ! 12\n") == [12]
+        assert pyrs_yaml.safe_load("- ! 12\n") == ["12"]
