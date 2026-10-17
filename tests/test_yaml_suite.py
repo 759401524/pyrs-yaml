@@ -50,9 +50,14 @@ JSON_MISMATCHES = frozenset(
         # suite spells a `!!binary` node as its source text, the comparison spells the same bytes
         # as canonical base64, and the two spellings differ by the block scalar's line breaks.
         "565N#1",
-        # A keep-chomped block whose content lines are all empty keeps one line break too many...
+        # How many breaks a keep-chomped block of only empty lines holds. Not a reader bug: the
+        # corpus follows libyaml here, and PyYAML answers exactly as pyrs does — measured
+        # 2026-10-17 on `- |+` (suite `'\n\n'`, PyYAML and pyrs `'\n\n\n\n'`). So this entry names
+        # a disagreement between the corpus and the reference libraries, which is a ruling, not a
+        # fix. What the engine *did* get wrong for these shapes — the empty body's chomping and
+        # indent indicator never reaching the AST — is closed on the reader side.
         "JEF9#1",
-        "K858#1",  # ...the same rule, asked of a mapping rather than a sequence item.
+        "K858#1",  # the same rule, asked of a mapping rather than a sequence item
         # The non-specific tag `!` does not suppress implicit resolution, so `! 12` loads as an int.
         "S4JQ#1",
     }

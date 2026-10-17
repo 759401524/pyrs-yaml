@@ -99,6 +99,31 @@ class TestNodeChomping:
         # plain scalar — chomping is still Some(Clip) on Scalar variants
         assert node.chomping == "clip"
 
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("key: |-\n\n", "strip"),
+            ("key: >-\n\n", "strip"),
+            ("key: |+\n\n", "keep"),
+            ("key: >+\n\n", "keep"),
+        ],
+        ids=["literal-strip", "folded-strip", "literal-keep", "folded-keep"],
+    )
+    def test_get_chomping_on_a_block_with_no_content_line(self, source, expected):
+        # granit spans a content-less block scalar on the header's own sigil, and the scan that
+        # recovers the indicators backed up past the `: ` into the key — so each spelling here read
+        # as "clip", and the AST did not keep what the source wrote.
+        assert Node(pyrs_yaml.parse(source)).find("$.key").chomping == expected
+
+    def test_a_content_less_block_is_still_written_with_the_safe_header(self):
+        """Recording the indicator is not the same as emitting it. `|-` and `|+` for an empty body
+        both re-read as the default, so writing either one drifts on the next round (libFuzzer
+        crash-89d81d99, crash-b5dcc38f). The three spellings denote the same empty value; the AST
+        keeps the claim the author made, the writer keeps the fixed point."""
+        doc = pyrs_yaml.parse("key: |-\n\n")
+        assert doc.to_yaml() == "key: |\n\n"
+        assert pyrs_yaml.parse(doc.to_yaml()).to_yaml() == "key: |\n\n"
+
     def test_set_chomping_strip(self):
         doc = pyrs_yaml.parse("key: |\n  line1\n  line2\n")
         Node(doc).find("$.key").set_chomping("strip")
