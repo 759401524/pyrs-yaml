@@ -386,7 +386,7 @@ divan 基准测试在 `crates/pyrs-yaml/benches/yaml_bench.rs`（Rust）+ `pytes
 - **TOML 读取器：每个标量只分配一次，而非两次** — `from_toml_medium` 148 → 97 次分配、16,362 → 15,612 字节；IR 从扫描器起就携带 `Arc<str>`
 - **JSON 读取器：无转义字符串借用源文本** — `from_json_medium` 74 → 48 次分配、9,675 → 9,444 字节；只有遇到转义才解码引号内文本
 - **热路径的分配上限** — `crates/pyrs-yaml-core/tests/alloc_gate.rs` 钉住六个场景，防止每个键一个临时对象悄悄撑大工作集
-- **指令数地板** — 固定 `rustc 1.97.1` 上对已提交基线实测：`from_toml_medium` −9.81%、`from_json_medium` −13.36%、`from_jsonc_medium` −11.28%、`from_json5_medium` −9.61%
+- **指令数地板** — 固定 `rustc 1.97.1` 上对已提交基线实测：`from_toml_medium` −9.80%、`from_json_medium` −13.37%、`from_jsonc_medium` −11.28%、`from_json5_medium` −9.61%
 
 ## 开发
 
