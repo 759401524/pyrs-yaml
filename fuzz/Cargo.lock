@@ -426,6 +426,7 @@ version = "0.17.0"
 dependencies = [
  "indexmap",
  "pyrs-ast",
+ "pyrs-event",
  "pyrs-schema",
 ]
 

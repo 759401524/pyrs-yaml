@@ -1306,6 +1306,32 @@ mod tests {
     /// every_dialect_reads_back_what_it_writes_for_the_notation_corpus`), for the other
     /// source-fidelity writer in the matrix: a plain scalar carrying a notation TOML cannot spell
     /// must be normalised or refused, never emitted as text `from_toml` rejects.
+    /// The prose promise both writer branches make — an undecorated inline table stays inside the
+    /// 1.0 grammar, and a note is the only thing that takes it out — checked rather than asserted,
+    /// because `fuzz/fuzz_targets/parse_toml.rs` now splits its oracle on exactly this.
+    #[test]
+    fn the_undecorated_1_0_promise_holds_and_a_note_is_what_leaves_it() {
+        let plain = crate::from_toml("inli.inli.0bt = \"n\"\n").unwrap();
+        let out = to_toml(&plain).unwrap();
+        assert_eq!(out, "[inli]\ninli = {0bt = \"n\"}\n");
+        crate::from_toml_v1_0(&out)
+            .expect("an undecorated inline table must stay 1.0-loadable: {out}");
+
+        // The same document with a note on the member: `#` runs to end of line, so the table has
+        // to break, and 1.0 forbids the break — the trade #119 made for comment survival.
+        let noted = crate::from_toml("inli.inli.0bt = \"n\" # e\n").unwrap();
+        let out = to_toml(&noted).unwrap();
+        assert!(
+            out.contains("{\n"),
+            "the note needs a line of its own: {out}"
+        );
+        crate::from_toml(&out).expect("the 1.1 reader is the gate a noted inline table answers to");
+        assert!(
+            crate::from_toml_v1_0(&out).is_err(),
+            "1.1 grammar is what the note buys: {out}"
+        );
+    }
+
     #[test]
     fn to_toml_reads_back_what_it_writes_for_the_notation_corpus() {
         for spelling in [
