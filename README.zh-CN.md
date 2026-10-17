@@ -10,7 +10,7 @@
 
 [![GitHub 分支](https://img.shields.io/github/forks/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml) [![GitHub 关注](https://img.shields.io/github/watchers/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml) [![GitHub 问题](https://img.shields.io/github/issues/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml)
 
-高性能 Python YAML 库，完美往返支持，基于 Rust 和 PyO3 构建。
+高性能 Python 库，支持 YAML、TOML、JSON、JSONC 与 JSON5，完美往返，基于 Rust 和 PyO3 构建。
 
 ## 特性
 
@@ -282,6 +282,8 @@ cfg.name  # "Alice"
 | 流式集合（`{}`、`[]`） | 保留 |
 | 块标量（`\|`、`>`） | 保留 |
 | 合并键（`<<: *alias`） | 解析（可通过 `resolve_merges=False` 关闭） |
+| **TOML / JSON / JSONC / JSON5** | **完整（读取、写入、往返；方言能承载的注释均保留）** |
+| **事件流** | **五种格式均支持 `parse_stream(format=...)`** |
 | **NumPy ndarray** | **完整（0 维到 N 维）** |
 | **JSON Schema 校验** | **完整** |
 | **异步 I/O** | **完整** |
@@ -317,6 +319,9 @@ def handler(event):
 
 
 iter = pyrs_yaml.parse_stream(yaml_str, on_event=handler, max_depth=1000)
+
+# 同一套事件词汇覆盖其余四种格式
+iter = pyrs_yaml.parse_stream(toml_text, on_event=handler, format="toml")
 
 # 转换为 YAML 字符串（带选项）
 yaml_str = doc.to_yaml()
@@ -367,6 +372,20 @@ yaml_str = pyrs_yaml.from_dict(data)
 
 # 将 JSON 转换为 YAML
 yaml_str = pyrs_yaml.from_json(json_str)
+
+# 将其余方言转换为 YAML
+yaml_str = pyrs_yaml.from_toml(toml_str)
+yaml_str = pyrs_yaml.from_jsonc(jsonc_str)
+yaml_str = pyrs_yaml.from_json5(json5_str)
+
+# 将其他方言解析为 Python 值
+data = pyrs_yaml.load_toml(toml_str)
+
+# 将文档导出为其他方言
+json_str = doc.to_json()
+jsonc_str = doc.to_jsonc()
+json5_str = doc.to_json5()
+toml_str = pyrs_yaml.to_toml(doc.to_yaml())
 
 # 导出到文件
 pyrs_yaml.dump_file(data, "output.yaml")
