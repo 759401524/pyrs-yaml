@@ -120,8 +120,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The release's wheel tests get the tools the suite calls** — the wheel jobs run the whole suite
   inside environments that carried neither `git` (the Alpine containers) nor `tomli-w` (every
   leg), so nine repository gates and the script-import test failed after the wheels were built.
-  The container steps install `git` and mark the mounted checkout safe, `.ci/requirements-test.txt`
-  ships `tomli-w`, and `tests/test_publish_toolchain.py` fails if either input goes away.
+  `.ci/requirements-test.txt` ships `tomli-w`, the container steps install `git`, and the suite
+  body is now `.ci/pytest-wheel.sh`, called by every container leg: embedding it in
+  `docker run ... sh -c '...'` ended at the apostrophe in a comment (`container's`), so Alpine ran
+  `apk add` and nothing else while the runner's toolcache Python ran `-m virtualenv`. The script
+  calls the venv's binaries by path because Alpine's `/bin/sh` has no `source`, and
+  `tests/test_publish_toolchain.py` fails if any of these inputs goes away.
 
 #### Performance
 

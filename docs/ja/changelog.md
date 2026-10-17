@@ -118,9 +118,12 @@ status: new
 - **リリースの wheel テストはスイートが使うツールを手に入れる** — wheel ジョブはビルド後に
   スイート全体を実行するが、環境には `git`（Alpine コンテナ）も `tomli-w`（すべてのレッグ）も
   なかったため、9 つのリポジトリゲートとスクリプトインポートテストが wheel ビルド後に失敗した。
-  コンテナステップは `git` をインストールしてマウントされたチェックアウトを安全とマークし、
-  `.ci/requirements-test.txt` は `tomli-w` を出荷する。どちらかが消えれば
-  `tests/test_publish_toolchain.py` が失敗する。
+  `.ci/requirements-test.txt` は `tomli-w` を出荷し、コンテナステップは `git` をインストールする。
+  スイート本体は `.ci/pytest-wheel.sh` に移り、すべてのコンテナレッグがこれを呼ぶ。以前は
+  `docker run ... sh -c '...'` に埋め込まれ、コメント中のアポストロフィ（`container's`）で引用が
+  終了したため、Alpine は `apk add` だけを実行し、残りはランナーの toolcache Python が実行した。
+  スクリプトは venv のバイナリをパスで直接呼ぶ。Alpine の `/bin/sh` に `source` はない。
+  これらの入力が消えれば `tests/test_publish_toolchain.py` が失敗する。
 
 #### パフォーマンス
 

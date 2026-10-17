@@ -109,12 +109,18 @@ def test_every_containerised_suite_step_installs_the_tools_the_suite_calls():
     the repository gates and the script-import test landed failed every wheel job with
     `No module named 'tomli_w'` and nine `FileNotFoundError: git`. `publish.yml` cannot report
     this before a tag exists, so the container steps' inputs are checked here instead.
+
+    The suite body is checked in as `.ci/pytest-wheel.sh` rather than embedded in the workflow:
+    the first repair kept it inside `docker run ... sh -c '...'`, and the apostrophe in the comment
+    `container's` closed the host shell's quote - Alpine ran `apk add` and nothing else, while the
+    runner's toolcache python3 ran `-m virtualenv` and failed. A body that cannot hold a comment is
+    not a body to keep, so each container leg is required to call the script.
     """
     document = yaml.safe_load(PUBLISH.read_text(encoding="utf-8"))
     steps = [step for job in document["jobs"].values() for step in job.get("steps", [])]
     # `run-on-arch` keeps its commands under `with.run`, so a step-level read would see no suite.
     bodies = [(step, str(step.get("run", "")) + "\n" + str((step.get("with") or {}).get("run", ""))) for step in steps]
-    suite_steps = [(step, body) for step, body in bodies if "pytest tests/" in body]
+    suite_steps = [(step, body) for step, body in bodies if ".ci/pytest-wheel.sh" in body or "pytest tests/" in body]
     container_steps = [
         (step, body)
         for step, body in suite_steps
@@ -132,9 +138,22 @@ def test_every_containerised_suite_step_installs_the_tools_the_suite_calls():
             line for line in body.splitlines() if re.match(r"\s*(apk|apt-get)\b", line)
         )
         assert re.search(r"\bgit\b", install_lines), f"{step.get('name')}: install lacks git: {install_lines!r}"
-        assert re.search(r"^\s*git config --global --add safe\.directory", body, re.M), (
-            f"{step.get('name')}: the mounted checkout is not marked safe for the container's user"
+        assert "virtualenv" in install_lines, (
+            f"{step.get('name')}: the script creates its venv with `python3 -m virtualenv`: {install_lines!r}"
         )
+        assert ".ci/pytest-wheel.sh" in body, (
+            f"{step.get('name')}: the suite body must be the checked-in script; an embedded "
+            "`sh -c '...'` body ends at the first apostrophe in a comment"
+        )
+
+    script = (REPO_ROOT / ".ci" / "pytest-wheel.sh").read_text(encoding="utf-8")
+    assert re.search(r"^git config --global --add safe\.directory", script, re.M), (
+        "the mounted checkout is not marked safe for the container's user"
+    )
+    assert re.search(r"^\.venv/bin/pytest tests/ -v$", script, re.M), (
+        "the script must run the whole suite against the installed wheel"
+    )
+    assert "source .venv" not in script, "Alpine's /bin/sh has no `source`; call the venv's binaries by path"
 
     requirements = (REPO_ROOT / ".ci" / "requirements-test.txt").read_text(encoding="utf-8")
     assert re.search(r"^tomli-w\b", requirements, re.M), (
