@@ -755,6 +755,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The YAML suite's JSON leg had never judged a stream** — `tests/test_yaml_suite.py` floored its
+  three legs at 95%/90%/80%, measured at 311/312, 94/94 and 244/267. The widest slack was the
+  harness, not the engine: a multi-document stream's expectation is several top-level JSON values in
+  one field, `json.loads` refuses the second, and `compare_json` fell back to comparing text — so 18
+  stream cases were matched or mismatched only by accident. `compliance.py` now splits the
+  expectation one document at a time (`json_documents`) and judges it against `safe_loads`, which
+  moves that leg to **262/267 (98.13%)** and leaves five cases the gate names with their causes:
+  four open defects — an alias binds the *last* anchor of its name instead of the nearest preceding
+  one (`3GZX`, where `collect_anchors` keeps one node per name), a keep-chomped block whose content
+  lines are all empty keeps one line break too many (`JEF9`, `K858`), and the non-specific tag `!`
+  does not suppress implicit resolution, so `! 12` loads as an integer (`S4JQ`) — and one spelling
+  difference that is not a defect: the suite writes a `!!binary` node as the scalar's own source
+  text while the comparison writes the loaded bytes as canonical base64 (`565N`), and both spellings
+  do construct the same 185 bytes, which `test_binary_spellings_construct_the_same_bytes` now pins.
+  Residuals are keyed by file *and* position (`ZYU8#3`), because a suite id names a file and 18 of
+  its 351 files carry more than one case — a set of ids would let one case start failing as another
+  in the same file stopped. The advertised number did not move (405/406): a JSON mismatch has never
+  set an error, so `test_compliance_report` was always reading refusals only. Measured: nine tests
+  pass, and the three reshaped gates were each mutated to fail and restored — emptying either named
+  set names `ZYU8#3` or all five residuals, inverting the rejection predicate names 94 cases.
+  `docs/{en,zh,ja,ko}/contributing/tests.md` carried the stale "gated at 95%" claim and now describe
+  the named gates and the ledger.
+
 - **A multi-line string cannot hold three of its own delimiters** — the other half of PR #464's
   rule. Since the closing delimiter is the LAST three quotes of the run, at most two may sit before
   it: a third would put three raw quotes in the content, and the first such triple is what closes
