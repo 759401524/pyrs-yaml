@@ -99,8 +99,11 @@ status: new
   `tests/test_publish_toolchain.py` 就会失败。
 - **发布 wheel 的测试环境会拿到套件用到的工具** — wheel 任务在构建完成后运行完整套件，
   环境里却既没有 `git`（Alpine 容器），也没有 `tomli-w`（所有腿），于是九个仓库门禁与
-  脚本导入测试在 wheel 构建之后失败。容器步骤现在安装 `git` 并把挂载的 checkout 标记为
-  安全，`.ci/requirements-test.txt` 提供 `tomli-w`，两者任一消失
+  脚本导入测试在 wheel 构建之后失败。`.ci/requirements-test.txt` 提供 `tomli-w`，容器步骤
+  安装 `git`，套件主体现在放在 `.ci/pytest-wheel.sh`，由每条容器腿调用：此前它内嵌在
+  `docker run ... sh -c '...'` 里，注释中的撇号（`container's`）提前结束了引用，Alpine 只
+  执行了 `apk add`，其余命令落到 runner 的 toolcache Python 上。脚本还按路径直接调用 venv
+  的可执行文件，因为 Alpine 的 `/bin/sh` 没有 `source`；上述任一输入消失，
   `tests/test_publish_toolchain.py` 都会失败。
 
 #### 性能

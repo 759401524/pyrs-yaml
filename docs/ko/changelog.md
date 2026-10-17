@@ -113,9 +113,13 @@ status: new
   형식이 되돌아가면 `tests/test_publish_toolchain.py`가 실패한다.
 - **릴리스의 wheel 테스트는 스위트가 쓰는 도구를 갖춘다** — wheel 작업은 빌드 후 전체
   스위트를 실행하지만, 환경에는 `git`(Alpine 컨테이너)도 `tomli-w`(모든 레그)도 없어
-  9개의 저장소 게이트와 스크립트 가져오기 테스트가 wheel 빌드 후 실패했다. 컨테이너 단계는
-  `git`을 설치하고 마운트된 체크아웃을 안전으로 표시하며, `.ci/requirements-test.txt`는
-  `tomli-w`를 제공한다. 둘 중 하나가 사라지면 `tests/test_publish_toolchain.py`가 실패한다.
+  9개의 저장소 게이트와 스크립트 가져오기 테스트가 wheel 빌드 후 실패했다.
+  `.ci/requirements-test.txt`는 `tomli-w`를 제공하고, 컨테이너 단계는 `git`을 설치한다.
+  스위트 본문은 이제 `.ci/pytest-wheel.sh`에 있으며 모든 컨테이너 레그가 이를 호출한다.
+  이전에는 `docker run ... sh -c '...'`에 포함되어 있었고, 주석의 아포스트로피(`container's`)가
+  인용을 끝내 Alpine은 `apk add`만 실행했으며 나머지는 러너의 toolcache Python이 실행했다.
+  스크립트는 venv 바이너리를 경로로 직접 호출한다. Alpine의 `/bin/sh`에는 `source`가 없다.
+  이 입력 중 하나라도 사라지면 `tests/test_publish_toolchain.py`가 실패한다.
 
 #### 성능
 
