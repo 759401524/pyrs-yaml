@@ -619,6 +619,15 @@ status: new
 
 #### 修复
 
+- **JSON 读取器不再把每个字符串分配两次** — 扫描器先把每个带引号的字符串体解码成 `String`，再复
+  制进 AST 的 `Arc<str>`；当字符串体不含转义时，解码结果本就是一截源码，第一次复制毫无收获。
+  `string()`、`single_quoted_string()` 与 `identifier_key()` 现在返回 `Cow<'a, str>`，在没有转义
+  时直接借用源码切片，只有遇到转义才物化解码缓冲区；事件流也改为报告这次借用，而不是一份已经做过
+  的解码结果。由新增的分配上限门禁实测：`from_json_medium` 从 74 次分配 / 9,675 字节降到 48 次 /
+  9,444 字节，上限已收紧到新读数。
+  `a_number_and_an_unescaped_string_borrow_while_a_decoded_string_owns_its_text` 钉住事件流契约
+  的两侧。含转义的字符串仍会解码进 owned 缓冲区、再复制进 `Arc`，与之前一致。
+
 - **热路径现在带着分配上限** — 两个现有性能门禁都只测时间：Ir 门禁数指令，CodSpeed 测墙钟，所以一个
   为每个键分配临时值、从而抬高工作集的 writer，可能让两者都不动。新增的
   `crates/pyrs-yaml-core/tests/alloc_gate.rs` 用包在 `System` 外的 `#[global_allocator]` 和线程本地

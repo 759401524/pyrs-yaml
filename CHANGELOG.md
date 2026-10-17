@@ -783,6 +783,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The JSON reader no longer allocates every string twice** — the scanner decoded each quoted
+  body into a `String` and then copied it into the AST's `Arc<str>`; when the body held no escape
+  the decoded text *was* a slice of the source, so the first copy bought nothing. `string()`,
+  `single_quoted_string()` and `identifier_key()` now return `Cow<'a, str>` and borrow the source
+  run until an escape forces a decoded buffer; the event stream reports that same borrow instead
+  of a decode that had already happened. Measured by the new allocation ceiling:
+  `from_json_medium` 74 → 48 allocations and 9,675 → 9,444 bytes, and the ceiling was tightened to
+  the new reading. `a_number_and_an_unescaped_string_borrow_while_a_decoded_string_owns_its_text`
+  pins both sides of the stream contract. An escaped string still decodes into an owned buffer and
+  is then copied into the `Arc`, exactly as before.
+
 - **The hot paths carry an allocation ceiling now** — both performance gates measure time: the Ir
   gate counts instructions and CodSpeed measures wall time, so a writer that allocates one
   temporary per key could grow the working set without moving either number. New

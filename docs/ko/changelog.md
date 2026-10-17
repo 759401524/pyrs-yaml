@@ -732,6 +732,17 @@ status: new
 
 #### 수정
 
+- **JSON 리더는 더 이상 모든 문자열을 두 번 할당하지 않는다** — 스캐너는 따옴표로 묶인 본문을
+  먼저 `String` 으로 디코드한 뒤 AST 의 `Arc<str>` 로 복사했다. 본문에 이스케이프가 없으면 디코드
+  결과는 소스의 슬라이스 그 자체이므로 첫 번째 복사는 아무것도 사지 못했다. `string()`,
+  `single_quoted_string()`, `identifier_key()` 는 이제 `Cow<'a, str>` 을 돌려주며, 이스케이프가
+  나올 때까지 소스 구간을 빌린다. 이벤트 스트림도 이미 수행한 디코드 결과가 아니라 이 대여를
+  보고한다. 새 할당 상한 게이트 실측: `from_json_medium` 은 74회 / 9,675 바이트에서 48회 /
+  9,444 바이트로 줄었고, 상한도 새 읽기값으로 조였다.
+  `a_number_and_an_unescaped_string_borrow_while_a_decoded_string_owns_its_text` 가 스트림
+  계약의 양쪽을 고정한다. 이스케이프가 있는 문자열은 이전과 같이 owned 버퍼로 디코드된 뒤
+  `Arc` 로 복사된다.
+
 - **핫 패스에 할당 상한이 생겼다** — 기존 성능 게이트는 둘 다 시간만 잰다. Ir 게이트는 명령 수를
   세고 CodSpeed 는 벽시계 시간을 재므로, 키마다 임시 값을 하나씩 할당해 작업 집합을 키우는 writer 도
   두 수치를 움직이지 않을 수 있다. 새 `crates/pyrs-yaml-core/tests/alloc_gate.rs` 는 `System` 을
