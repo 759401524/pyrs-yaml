@@ -375,6 +375,13 @@ pub enum TagKind {
 /// which is what `Node.set_tag` writes.
 #[must_use]
 pub fn standard_tag_kind(handle: &str, suffix: &str) -> Option<TagKind> {
+    // The non-specific tag `!` is not a standard tag, but for a scalar it does state a reading:
+    // YAML 1.2 §6.8 leaves the node's tag as `!` and §10.5.2 restricts application resolution rules
+    // to the `?` tag, so the scalar is its own text. Both spellings reach here — the empty-handle
+    // form the parser produces for a bare `!`, and the `!`-handle form a caller builds.
+    if (handle.is_empty() && suffix == "!") || (handle == "!" && suffix.is_empty()) {
+        return Some(TagKind::Str);
+    }
     let name: &str = if handle == "!!" {
         suffix
     } else if handle.is_empty() {
@@ -497,6 +504,18 @@ mod standard_tag_tests {
                 "{suffix} as a verbatim URI"
             );
         }
+    }
+
+    /// The non-specific tag `!` states a reading without naming a standard type: YAML 1.2 §6.8
+    /// leaves the node's tag as `!` and §10.5.2 restricts application resolution rules to the `?`
+    /// tag, so a `!`-tagged scalar is its own text. Both shapes the tag can reach the AST in spell
+    /// the same thing, and a local tag with a suffix is still not this one.
+    #[test]
+    fn the_non_specific_tag_states_a_string_reading() {
+        assert_eq!(standard_tag_kind("", "!"), Some(Str));
+        assert_eq!(standard_tag_kind("!", ""), Some(Str));
+        assert_eq!(standard_tag_kind("!", "foo"), None);
+        assert_eq!(standard_tag_kind("!local", ""), None);
     }
 
     /// A local tag is how the plugin system is addressed, so naming a standard type with it

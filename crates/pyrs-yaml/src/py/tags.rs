@@ -60,7 +60,14 @@ pub(crate) fn tagged_scalar(py: Python<'_>, tag: &str, text: &str) -> PyResult<O
         None => tag,
     };
     match name {
-        "!!str" | "tag:yaml.org,2002:str" => Ok(Some(PyString::new(py, text).into_any().unbind())),
+        // The non-specific tag `!` is not a standard tag, but for a scalar it states the same
+        // reading: YAML 1.2 §6.8 leaves the node's tag as `!` and §10.5.2 restricts application
+        // resolution rules to the `?` tag, so the scalar is its own text. Spec Example 6.28 and the
+        // suite's `S4JQ` spell it as a string; PyYAML and ruamel resolve it implicitly instead
+        // (measured on this tree), so the divergence is recorded rather than smoothed over.
+        "!!str" | "tag:yaml.org,2002:str" | "!" => {
+            Ok(Some(PyString::new(py, text).into_any().unbind()))
+        }
         "!!int" | "tag:yaml.org,2002:int" => tagged_int(py, text).map(Some),
         "!!float" | "tag:yaml.org,2002:float" => tagged_float(py, text).map(Some),
         "!!bool" | "tag:yaml.org,2002:bool" => tagged_bool(py, text).map(Some),

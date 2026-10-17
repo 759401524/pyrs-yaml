@@ -170,10 +170,12 @@ fn node_to_pyobject_inner<'a>(
         CustomNode::Scalar {
             value, style, meta, ..
         } => {
-            // An explicit standard tag states the type, so it is read first: the document's schema
+            // An explicit tag states the type, so it is read first: the document's schema
             // resolves `1.20` to a float and `aGk=` to a string, and both answers contradict the
-            // tag its author wrote. A plugin registered on one of these tags no longer wins over
-            // the tag itself - the standard reading is what both reference libraries apply.
+            // tag its author wrote. The non-specific `!` belongs to that rule rather than escaping
+            // it - it states that no schema reading applies, which for a scalar is its own text.
+            // A plugin registered on one of these tags no longer wins over the
+            // tag itself - the standard reading is what both reference libraries apply.
             if let Some(t) = meta.tag()
                 && let Some(tagged) = crate::py::tags::tagged_scalar(py, &t.to_string(), value)?
             {

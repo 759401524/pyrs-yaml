@@ -149,18 +149,22 @@ more than one case, so a name also carries the case's position inside that file.
 
 All other suite cases pass (currently 405/406 = 99.75%).
 
-The JSON ledger is three open defects and one comparison difference, and an entry leaves it by the
+The JSON ledger is two open defects and one comparison difference, and an entry leaves it by the
 engine learning the rule, never by the set growing. The defects: a keep-chomped block whose content
-lines are all empty keeps one line break too many (`JEF9#1`, `K858#1`); and the non-specific tag `!`
-does not suppress implicit resolution, so `! 12` loads as an integer (`S4JQ#1`). The difference is
-spelling: the suite writes a `!!binary` node as the scalar's own source text, while the comparison
-writes the loaded bytes as canonical base64 (`565N#1`) - and both spellings construct the same 185
-bytes, which is what `test_binary_spellings_construct_the_same_bytes` pins.
+lines are all empty keeps one line break too many (`JEF9#1`, `K858#1`). The difference is spelling:
+the suite writes a `!!binary` node as the scalar's own source text, while the comparison writes the
+loaded bytes as canonical base64 (`565N#1`) - and both spellings construct the same 185 bytes, which
+is what `test_binary_spellings_construct_the_same_bytes` pins.
 
-One entry has already left the ledger that way. An alias used to bind the *last* anchor of its name
-instead of the nearest preceding one, so the document in `3GZX` read `Bar` where the suite's own
-event tree and ruamel both read `Foo`. PyYAML is not the authority on that shape - its composer
-refuses a reused anchor name outright (`found duplicate anchor`) - which is why the reading agrees
-with the corpus and with the library that accepts it, and the divergence is pinned by
-`test_a_reused_anchor_name_is_read_and_not_refused`. The projection decides every binding by
-document order before it builds a single Python object.
+Two entries have left it that way. An alias used to bind the *last* anchor of its name instead of
+the nearest preceding one, so `3GZX` read `Bar` where the suite's own event tree and ruamel both
+read `Foo`; PyYAML refuses a reused anchor name outright (`found duplicate anchor`), so the corpus
+and the library that accepts it are the authority, and
+`test_a_reused_anchor_name_is_read_and_not_refused` pins the divergence. And a bare `!` used to be
+resolved by the schema like an untagged scalar, so `! 12` loaded as an integer: YAML 1.2 §6.8 leaves
+that node's tag as `!` and §10.5.2 restricts application resolution rules to the `?` tag, which
+makes the scalar its own text - what spec Example 6.28 and the suite both spell as `"12"`. Both
+Python libraries resolve it implicitly instead (ruamel has an open ticket, #573), so that
+divergence is recorded with both answers, and the loader together with `to_json`, `to_jsonc`,
+`to_json5` and `to_toml` is held to one answer by a single table in
+`tests/test_cross_format_tags.py`.
