@@ -73,79 +73,23 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 
 ## Planned
 
-Only work that has not been released belongs here. A milestone scope is written at a milestone
-review; when it ships, its table moves to the engineering record and its entries go to
-`CHANGELOG.md`, which is why the v0.11.3 - v0.12.0 scoping that used to sit in this section now
-ends the ledger instead, and only the release index above remembers the versions.
+No scope is open for v0.19.0. A milestone scope is written at a milestone review; when it ships,
+its entries move to `CHANGELOG.md` and its table to the ledger. Only an undecided choice with a
+live trigger belongs here.
 
-### Closed: two rulings, both of them found by measuring
+### Open decision
 
-The one item that opened this section closed with a ruling rather than a fold: the writer keeps its
-silence about a mapping whose keys its own reader resolves as one entry. Both options that would
-have made it loud cost a pass over every key of every mapping, and that price was measured, not
-estimated - +31…33% on the five `serialize_*` scenarios on the branch that tried it
-(`docs/dev/perf.md`) - against a floor that admits 0.50%. The guarantee is where the cost is not:
-the edit layer, which touches each key once, resolves a key by the identity the reader uses, so `~`,
-`null` and `NULL` cannot both reach the text (`tests/test_edit.py::TestKeyIdentityAcrossSpellings`),
-and what a hand-built `NodeMap` still produces is pinned as the shape it is
-(`serializer::the_write_path_keeps_both_lines_of_a_pair_its_reader_resolves_as_one`). The generator
-has refused to build the shape since the entry that came out of the property tier recorded it
-(ledger (br)), and the ruling itself is (di).
+| Item | State | Trigger to revisit |
+|:-----|:------|:-------------------|
+| `rust-i18n` as the error-message backend | Deferred 2026-10-16, price on record | A wheel-size or import-time budget is written down. The catalog alone compiles and links 46 crates (113 in the wheel graph, 67 without it); replacing it rewrites 421 `t!(..)` call sites and four locale-parity gates. The measurements are in the review note below. |
 
-The stub item that used to sit in this section shipped in this
-cycle, and measuring it moved the question it asked: `python/pyrs_yaml/pyrs_yaml.pyi` was not the
-first thing missing, because `parse` was re-exported through a wrapper annotated `-> Any` and no
-checker reached `YamlDocument` at all; the class gap was twelve attached members, not thirteen, and
-`Node` / `MergedView` were never in it, being Python modules a `py.typed` package already types. The
-answer is the declared reconciliation - the route reads the members off the compiled module's
-classes and writes them into the artifact - where (bo) recorded how the gap surfaced and (cy)
-records what it took to close it. The alias-key item that used to sit here — a mapping key written
-as an alias was emitted as `null`, dropping the entry the document had made — shipped in this cycle,
-and the row that described it here was wrong on a point of fact: the compact `*x: v` is not readable
-by this engine at all (`simple key expected ':'`), so the writer carries the `?` marker in both
-container styles rather than choosing between two readable spellings. ruamel.yaml was the part of
-that sentence worth keeping care about: its scanner raises from 0.19, while 0.18.16 — what `uv.lock`
-resolves for the Python 3.8 legs — reads the compact form as an empty-tuple key, and the blanket
-claim reddened those legs before both versions were measured. Its record is the changelog entry and
-`pbt::tests::prop_alias_key_survives_the_round_trip` — the first property in this tier that can
-build the shape, because the AST strategy never puts an alias in key position and `try_roundtrip`
-filters a mismatching tree away instead of failing it, which is how the loss went unreported while
-every tier above it was green.
+### Closed, recorded in the ledger
 
-The second of the two that used to sit in this table has since shipped: an inline dict schema
-carried only the sections the emitter knew about, so a `validate` section vanished silently and a
-pattern containing both quote characters serialised into text the parser rejected. The dict now goes
-through `from_dict`, the library's own round-trip writer, which is also the general lesson - inside
-a round-trip library, converting data to text is the writer's job, never a hand-built one (ledger
-(bp)).
-
-The line-end-slot question the removed row asked is answered, and the answer is the one the flow
-path already spends: a line break. Measured against the reader first, as that row insisted - a
-comment line written directly above a key that is not the mapping's first belongs to *that key*
-(`a: 1` + `# K` + `b: 2  # V` re-reads with `K` on `b`), so only a first pair hands its key's note
-up to the container. The value keeps the trailing slot it needs and the key's note goes above the
-pair when the slot is taken, which is why no pinned comment-on-a-pair emission changed shape: only
-the collision case does. Over 4000 generated trees, notes that never reached the emitted text fell
-from 907 to 257 and the block-key class of them from 707 to 34 (ledger (db)).
-
-The rulings that used to sit here are shipped. Whether `mapping_of` / `sequence_of` should assert
-their container: they do, and the language gained the words to say so (`type: map` / `type: seq`,
-and `map` / `seq` as member types). Scope decides the strength - a rule naming a path asserts that
-node, a pathless rule selects the nodes it can describe, and members are asserted either way. Found
-in the same function as the char-boundary crash that closed the `unwrap` audit (ledger (bj)); the
-seven passing shapes that made the ruling, the greedy `[*]` matcher it exposed, the
-two-checks-in-one-rule silent drop and the alias boundary it deliberately leaves are in the record
-(ledger (bm)).
-
-What the strict JSON writers should do with a non-finite float is shipped too: they refuse it, with
-the reason key `json-cannot-represent-non-finite`, because every substitute silently changes the
-value (ledger (bk)). `to_json5` remains the dialect that carries the value. What is *not* offered is
-a lenient `null`, because nothing has asked for a documented way to lose the value on purpose - if
-that demand appears, it arrives as an option with its own name rather than as a default.
-
-An item arrives in this section when measurement finds the engine has made a choice nobody decided,
-and leaves the moment a change ships the decision. That is why it stays short rather than growing
-into a second ledger: a ruling without an open item is a ruling someone has to re-derive.
+The rulings that used to sit here shipped: the writer keeps its silence on keys its reader
+collapses `(di)`; the stub reconciliation and the alias-key marker are `(bo)`, `(cy)` and `(br)`;
+the schema-container words, the non-finite-float refusal and line-slot ownership are `(bm)`,
+`(bk)` and `(db)`. Details live in [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md);
+re-deriving them here would make this file a second ledger.
 
 ### How the next scope is written
 
@@ -189,13 +133,6 @@ Milestone review of all Research & Exploration items per the revisit rule.
 
 ---
 
-**Deferred (not committed, revisit at each milestone review)**: Custom YAML 1.2 parser (evaluation
-deferred — granit migration just shipped, let it settle); numpy free-threaded re-enable (blocked on
-upstream rust-numpy). Tracked in Research & Exploration below with a revisit rule (see Review Notes
-2026-08-11).
-
----
-
 ## Where the engineering record lives
 
 This file is a plan. What was found, measured, refuted and gated lives in three development
@@ -204,7 +141,7 @@ asks no translations of them):
 
 | document | holds |
 |:---------|:------|
-| [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md) | the entry-by-entry record `(h)`-`(bg)`, the note-survival invariant, and the milestone scopes after they shipped |
+| [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md) | the entry-by-entry record from `(h)` onward, the note-survival invariant, and the milestone scopes after they shipped |
 | [`docs/dev/boundaries.md`](docs/dev/boundaries.md) | deliberate engine boundaries, and the fuzz findings by family |
 | [`docs/dev/perf.md`](docs/dev/perf.md) | the cross-library ranking snapshot and the Ir gate history |
 
@@ -213,66 +150,24 @@ are folded so the page reads as a list of releases rather than a wall of prose.
 
 ## Research & Exploration
 
-Tracked as open questions for future roadmap inclusion; not committed to any version.
+Open questions for future roadmaps; none is committed to a version.
 
 > **Revisit rule** (from Review Notes 2026-08-02): every milestone review must re-evaluate all
-> unchecked items below — promote, defer with reason, or close. No item stays unchecked for more
-> than two consecutive milestone reviews.
+> open items below — promote, defer with reason, or close. No item stays open for more than two
+> consecutive milestone reviews.
 
-- [x] **Free-threaded CPython support** — `Py_GIL_DISABLED` + full `gil_used = false` build matrix
-  ✅ Delivered in v0.10.0 (cp314t wheels on PyPI)
-- [x] **Custom YAML 1.2 parser** — evaluate replacing granit-parser with a 100% YAML 1.2 compliant
-  Rust parser. YAML 1.2 spec is ~80 pages with formal grammar; reference implementation libyaml (C)
-  ~15K lines. Estimated effort: 3-6 months for production quality. Alternative: fork granit-parser
-  and incrementally fix to 100%. ⏸️ Deferred 2026-08-11 — granit migration just shipped in v0.13.0;
-  let it settle. Revisit v0.14.0.
-    - **2026-09-26 in-tree experiment (rejected → keep 1.1.0)**: bumped granit-parser 1.1.0 → 1.3.0
-      (API-compatible, `cargo check` clean, nextest 205/205, pytest 1226 green) — but
-      yaml-test-suite compliance **regressed 405/406 → 404/406**: 1.3.0 wrongly *accepts* `9C9N`
-      (wrongly-indented flow sequence), violating the strictness posture pinned by the v0.11.5
-      audit. Any future parser swap/fork/uplift MUST re-run `tests/test_yaml_suite.py` + the `9C9N`
-      probe as a hard gate.
-    - **2026-09-26 follow-up (fork-uplift path closed too)**: benchmarked granit 1.3.0 on the
-      codspeed Rust bench channel — `parse_large` median regressed 26.8 → 29.7 µs with pathological
-      mean tails (up to 391 µs); only `parse_medium` slightly improved. So 1.3 offers no perf upside
-      to justify carrying the 9C9N fix in a fork. The residual eager-parse gap vs `yaml-rs` (0.42×)
-      is now *measured* to be the structural cost of strict compliance + comment/span events
-      (yaml_rs itself wrongly accepts `9C9N` and wrongly rejects `2JQS`). Remaining levers: an
-      in-house scanner (3-6 months) or an upstream issue for the 9C9N regression (probe repro
-      available).
-    - **2026-10-01 resolution (1.3.0 shipped + in-tree guard)**: granit-parser was nonetheless
-      bumped to 1.3.0 (PR #169) and the predicted `9C9N` regression materialized — the suite's ≥95%
-      threshold gate drowned `405/406 → 404/406` and it passed green CI. Fixed in-tree: the AST
-      receiver now rejects an under-indented multi-line flow continuation (`parser::mod` flow-indent
-      guard), restoring `405/406`. `9C9N` is pinned as a **per-case hard gate** on literal input
-      (`tests/test_yaml_suite.py::test_9c9n_wrongly_indented_flow_is_rejected`, no `skipif`) plus a
-      Rust unit test, so no future parser bump can hide this class behind the threshold. The
-      parser-replacement question stays open (in-house scanner / upstream `9C9N` issue remain the
-      only levers).
-    - **Closed 2026-10-16 under the revisit rule** — see the Review Notes row above: the
-      compliance premise is satisfied (99.75%, 405/406, the miss by design), and the perf
-      premise is explained as the cost of the fidelity this project sells. The `9C9N` and
-      flow-indent guards stay as the standing answer for parser swaps of any kind.
-- [x] **Numpy free-threaded re-enable** — when `rust-numpy` (PyO3/rust-numpy#476) lands solid
-  free-threaded support, remove `--no-default-features` from cp314t build lines and let the runtime
-  probe (`py.import("numpy").is_ok()`) auto-detect. Its v0.11.7 scope is now in
-  [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md). ✅ Closed 2026-08-15 —
-  rust-numpy v0.24.0+ supports free-threaded Python; v0.29.0 (already pinned) inherits support.
-  `--no-default-features` removed from cp314t build lines in `publish.yml`/`ci.yml`.
-- [x] **YAML Schema language** — dedicated schema definition format beyond JSON Schema ✅ Promoted
-  to v0.14.0 planning 2026-08-11
-- [x] **`yaml-edit` competitor analysis** — track their feature expansion; respond with
-  differentiator strategy ✅ Closed 2026-08-11 — passive tracking provides no value
-- [x] **Community plugins** — allow third-party Python modules to register custom node types ✅
-  Promoted to v0.14.0 planning 2026-08-11
-- [x] **`--no-default-features` build** — exclude `numpy` from wheel for free-threaded Python ✅
-  Committed in v0.11.6
+No item is open. The closed ones, each with its record:
 
-**Committed (moved from this list; each scope's table now ends
+- **Custom YAML 1.2 parser** — closed 2026-10-16: suite compliance is 99.75% (405/406, the miss a
+  deliberate strictness rejection) and the eager-parse gap is the measured cost of strictness plus
+  comment and span events. The `9C9N` and flow-indent guards remain the standing answer for any
+  parser swap; probes are `tests/test_yaml_suite.py`.
+- **Free-threaded CPython, numpy and `--no-default-features`** — shipped: the `gil_used = false`
+  matrix, cp314t wheels, and the flag removed once rust-numpy 0.24+ carried free-threaded support.
+- **YAML Schema language** — shipped in v0.14.0; `type: map` / `type: seq` arrived in v0.18.0.
+- **`yaml-edit` competitor analysis** — closed 2026-08-11: passive tracking has no value.
+- **Community plugins** — shipped in v0.14.0.
+
+**Committed and shipped**: v0.11.0 through v0.18.0. Each scope's table ends
 [`docs/dev/quality-ledger.md`](docs/dev/quality-ledger.md), and the release entries are in
-`CHANGELOG.md`)**: v0.11.0 (surgical serialization), v0.11.2
-(streaming parse, with v0.11.1); v0.11.3 (streaming write, with scoping, compliance reporting,
-line-offsets cache, publish pre-validation); v0.11.5 (parser robustness — audit closed empty,
-docs-only release, with strictness regression corpus `tests/test_strictness_audit.py`); v0.11.6
-(numpy-free free-threaded wheel); v0.11.7 (CI signal hygiene + numpy tracking); YAML Schema language
-(promoted 2026-08-11, v0.14.0 planning); Community plugins (promoted 2026-08-11, v0.14.0 planning).
+`CHANGELOG.md`.
