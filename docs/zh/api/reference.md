@@ -620,7 +620,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlDuplicateKeyError` — 重复的映射键（继承自 `ValueError`）
 - `YamlMaxDepthError` — 超过最大嵌套深度（继承自 `ValueError`）
 - `YamlTagError` — 标签处理器错误（继承自 `ValueError`）
-- `YamlTagSkip` — 跳过节点的控制流哨兵（继承自 `Exception`）
+- `YamlTagSkip` — 将节点交给下一个处理器的控制流哨兵（继承自 `YamlTagError`）
 
 参见 [异常](exceptions.md) 页面了解完整详情。
 

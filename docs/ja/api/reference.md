@@ -618,7 +618,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlDuplicateKeyError` — 重複マッピングキーエラー (`ValueError` を継承)
 - `YamlMaxDepthError` — 最大ネスト深度超過 (`ValueError` を継承)
 - `YamlTagError` — タグハンドラエラー (`ValueError` を継承)
-- `YamlTagSkip` — ノードをスキップする制御フローセンチネル (`Exception` を継承)
+- `YamlTagSkip` — ノードを次のハンドラへ渡す制御フローセンチネル (`YamlTagError` を継承)
 
 詳細は [例外](exceptions.md) ページを参照してください。
 

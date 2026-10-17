@@ -20,7 +20,7 @@ classDiagram
     ValueError <|-- YamlTagError
     TypeError <|-- YamlTypeError
     Exception <|-- YamlDocumentError
-    Exception <|-- YamlTagSkip
+    YamlTagError <|-- YamlTagSkip
 ```
 
 ## YamlParseError
@@ -225,7 +225,7 @@ class YamlTagError(ValueError):
 
 ## YamlTagSkip
 
-タグハンドラがノードをスキップするために送出するセンチネル例外。エラーを発生させる代わりに、パーサーは次のノードに移動します。これは実際のエラーではなく、意図的な制御フローシグナルです。
+タグハンドラがノードをチェーン内の次のハンドラに渡すために送出するセンチネル例外。どのハンドラも受け入れない場合、ノードはソースの元の値を保ちます。これは実際のエラーではなく、意図的な制御フローシグナルです。
 
 !!! info "制御フローセンチネル"
     `YamlTagSkip` は実際のエラーではありません。タグハンドラがチェーン内の次のハンドラに
@@ -233,11 +233,11 @@ class YamlTagError(ValueError):
     制御が次のハンドラに渡されます（またはデフォルトにフォールスルーします）。
 
 ```python
-class YamlTagSkip(Exception):
-    """タグハンドラスキップセンチネル（Exception を継承）。"""
+class YamlTagSkip(YamlTagError):
+    """タグハンドラスキップセンチネル（YamlTagError を継承）。"""
 ```
 
-**継承元:** `Exception`
+**継承元:** `YamlTagError`
 
 **例:**
 

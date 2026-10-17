@@ -619,7 +619,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlDuplicateKeyError` — 중복 매핑 키 오류 (`ValueError` 상속)
 - `YamlMaxDepthError` — 최대 중첩 깊이 초과 (`ValueError` 상속)
 - `YamlTagError` — 태그 핸들러 오류 (`ValueError` 상속)
-- `YamlTagSkip` — 노드를 건너뛰는 제어 흐름 센티널 (`Exception` 상속)
+- `YamlTagSkip` — 노드를 다음 핸들러로 넘기는 제어 흐름 센티널 (`YamlTagError` 상속)
 
 자세한 내용은 [예외](exceptions.md) 페이지를 참조하세요.
 

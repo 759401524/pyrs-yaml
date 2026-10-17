@@ -635,7 +635,7 @@ negotiate_language(user_locales: list[str], default: str = "en") -> str
 - `YamlDuplicateKeyError` — Duplicate mapping key detected (inherits from `ValueError`)
 - `YamlMaxDepthError` — Exceeded maximum nesting depth (inherits from `ValueError`)
 - `YamlTagError` — Invalid tag handler registration (inherits from `ValueError`)
-- `YamlTagSkip` — Sentinel raised by a tag handler to skip a node (inherits from `Exception`)
+- `YamlTagSkip` — Sentinel raised by a tag handler to pass a node down the handler chain (inherits from `YamlTagError`)
 
 See [Exceptions](exceptions.md) for full details.
 
