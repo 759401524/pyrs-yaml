@@ -12,7 +12,7 @@ status: new
 
 | :material-language-python: Requirement | Details |
 |---|---|
-| **Python** | ≥ 3.8 (CPython), including free-threaded 3.14t (prebuilt wheels) and 3.15t (source build) |
+| **Python** | ≥ 3.8 (CPython), including free-threaded 3.14t and 3.15t (prebuilt wheels) |
 | :material-monitor: **Platform** | Linux, macOS, Windows |
 | :material-hammer-wrench: **Build** | Rust toolchain (for source builds only) |
 
@@ -40,7 +40,7 @@ uv run --frozen maturin develop --release
 
 Free-threaded (no-GIL) builds for CPython 3.14t and 3.15t include the NumPy integration. When NumPy is installed in the environment, `safe_dump` / `from_dict` serialize `numpy.ndarray` values normally; when NumPy is absent, the integration is inert and calls fall through to the default object handler. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
 
-The stable ABI for free-threaded builds (`abi3t`) starts at 3.15, so 3.14t and 3.15t cannot share one wheel. The published free-threaded wheels are `cp314t` for Windows (x64/x86/arm64), macOS (x86_64/arm64) and Linux x86_64; PyPI has no prebuilt 3.15t wheel yet. CPython 3.15t is supported from a source build (`uv run --frozen maturin develop --release`), the path CI exercises.
+The stable ABI for free-threaded builds (`abi3t`) starts at 3.15, so 3.14t and 3.15t cannot share one wheel. The published free-threaded wheels are `cp314t` for 3.14t and `cp315-abi3.abi3t` for 3.15t and later, on Windows (x64/x86/arm64), macOS (x86_64/arm64) and Linux glibc (x86_64/arm64). musllinux and the remaining Linux architectures are supported from a source build (`uv run --frozen maturin develop --release`), the path CI exercises.
 
 !!! note "NumPy is auto-detected at runtime"
     The NumPy integration is compiled in on every wheel (GIL and free-threaded)

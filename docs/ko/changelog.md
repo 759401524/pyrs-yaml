@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.18.1] — 2026-10-17
+
 ### 추가
 
 - **Python 3.15t 및 Linux arm64용 프리-스레디드 휠** — 릴리스 매트릭스가 Windows, macOS, glibc

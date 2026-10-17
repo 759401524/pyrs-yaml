@@ -17,6 +17,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.18.1] — 2026-10-17
+
 ### 新增
 
 - **面向 Python 3.15t 与 Linux arm64 的自由线程 wheel** — 发布矩阵在 Windows、macOS 与 glibc

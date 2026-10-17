@@ -84,7 +84,7 @@ Commands: `fmt` / `get` / `set` / `delete` / `rename` / `move` / `append` / `ins
 
 ## Requirements
 
-- **Supported Python versions** (installing wheels): Python 3.8+ (CPython). GIL builds use one `cp38-abi3` wheel covering 3.8–3.15; free-threaded `cp314t` wheels are published for Windows, macOS and Linux x86_64, and free-threaded 3.15t is supported from a source build.
+- **Supported Python versions** (installing wheels): Python 3.8+ (CPython). GIL builds use one `cp38-abi3` wheel covering 3.8–3.15; free-threaded `cp314t` wheels and the 3.15t-and-later `cp315-abi3.abi3t` wheel are published for Windows (x64/x86/arm64), macOS (x86_64/arm64) and Linux glibc (x86_64/arm64). musllinux and the remaining Linux architectures build from source.
 - **Rust toolchain** (building from source only): Rust 1.96 or later (MSRV, edition 2024). This is above PyO3's own baseline (rustc 1.83+ for PyO3 0.29) and is chosen deliberately for std API headroom — it keeps current stable APIs (e.g. `assert_matches!`, stabilized in 1.96) available without waiting for a future MSRV bump. End users installing wheels never need Rust.
 
 ## Documentation
