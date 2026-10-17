@@ -6139,6 +6139,42 @@ with no case count hard-coded. `#![no_std]` costs one line — the test module n
 to PR #454's decision record — these letters mark the order the work was done, not the order it
 landed.
 
+### (ee) A percentage gate describes the worst leg; a named gate describes the truth
+
+Three TOML defects landed in one session (PRs #465, #466, #467) and all three had been invisible for
+the same reason: the tier that should have seen them was a *percentage*. Not a careless one — both
+floors had been re-set one case below the measured value, which is exactly the discipline this
+ledger asked for after the `0.85` era. The defect is that a percentage, however honestly measured,
+answers a different question than "does this document get what TOML says about it".
+
+Measured on the corpus CI clones. The decode tier stood at 262/266 with a 0.984 floor and the four
+gaps were one cause: a table was *identified by the text its segments join to*, so `[a."b.c"]` — one
+key whose name contains a dot — refused as a redefinition of `[a.b.c]`, and every element of
+`[[a.b]]` shared the first element's identity (PR #465). The reject tier stood at 491/511 on CPython
+3.8-3.13 but 488/511 on 3.14 and 3.15, with the floor pinned to the worst leg, because three
+out-of-range times were refused by the host's `datetime` constructor rather than by this parser and
+a newer interpreter accepts the spelling (PR #466). PR #467 then closed the last three
+accepted-invalid files — `invalid/string/multiline-quotes-01` (a run of six quotes before the
+closer) and `literal-multiline-quotes-01`/`-02` — and corrected the tier's own inventory, which had
+been counting a fourth: a backslash-x byte escape is dialect-gated (`from_toml_v1_0` refuses it, and
+`v1_0_rejects_escape_x_and_e` pins that), not unpolicied.
+
+Each closure removed slack instead of adding it. The decode gate now asserts an empty failure list;
+the reject gate asserts set equality against `DIALECT_ACCEPTED`, the seventeen `invalid/` files the
+default dialect *declares*. Neither can absorb a new defect because no number is left to absorb it
+into: a new hole reddens by its own path, and a dialect promise the engine quietly breaks reddens by
+its own path as well. The boundary the tier now states is about the dialect, not about the engine —
+and on every interpreter, since the set is identical across the 3.8-to-3.15 legs.
+
+Two of the three also moved the instruction gate, in opposite directions, and that is the other half
+of the lesson. Identifying a table by derived text cost +4.44% on `from_toml_medium` when computed
+per key and +41% when a walk precomputed every prefix; carrying the same state as one bit on the
+table fixed four valid documents and landed at −5.89% (159,859,652 → 150,441,866). The delimiter
+bound is free: the same 150,441,866, because the bench document holds no multi-line string — which
+is evidence about the priced path, not a licence to assume the rule costs nothing. The gate that
+counts instructions is what turns "correct" and "cheap" into one decision instead of a trade-off,
+and it is also the gate that says when a correct fix has been implemented expensively.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
