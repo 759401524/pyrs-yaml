@@ -792,6 +792,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **The hot paths carry an allocation ceiling now** — both performance gates measure time: the Ir
+  gate counts instructions and CodSpeed measures wall time, so a writer that allocates one
+  temporary per key could grow the working set without moving either number. New
+  `crates/pyrs-yaml-core/tests/alloc_gate.rs` counts heap allocations through a
+  `#[global_allocator]` wrapper over `System` with per-thread counters, warms each scenario once
+  so one-time initialisation is not charged, then measures a single run on the same `bench_inputs`
+  fixtures the instruction gate reads. Six ceilings are pinned to the 2026-10-17 measurement:
+  `from_json_medium` 74 allocations / 9,675 bytes, `to_json_medium` 8 / 1,048, `from_toml_medium`
+  148 / 16,362, `to_toml_medium` 12 / 1,208, `parse_medium` 67 / 24,512 and `serialize_medium`
+  7 / 1,016. Mutation checked: one `black_box(vec![0u8; 8])` added to `to_json_text` reddened the
+  gate with `to_json_medium made 9 allocations, 1 past the committed ceiling of 8`; removed, and
+  the gate is green.
+
 - **Two texts that described a tree this repository does not have are corrected** —
   `CONTRIBUTING.md`'s jj table told contributors to close a push with
   `jj git push --allow-new`, and jj 0.46 has no such flag: `jj git push --help` lists

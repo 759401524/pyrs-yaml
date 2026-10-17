@@ -726,6 +726,18 @@ status: new
 
 #### 修正
 
+- **ホットパスに割り当て上限が付いた** — 既存の性能ゲートはどちらも時間だけを測る。Ir ゲートは命令数
+  を数え、CodSpeed は実時間を測るので、キーごとに一時値を割り当てて作業セットを増やす writer でも、
+  どちらの数値も動かないことがある。新しい `crates/pyrs-yaml-core/tests/alloc_gate.rs` は `System`
+  を包む `#[global_allocator]` とスレッドローカルなカウンタでヒープ割り当てを数える。各シナリオを一
+  度ウォームアップして一度きりの初期化を測定から外し、その後の 1 回を測る。フィクスチャは命令ゲート
+  が読むのと同じ `bench_inputs` から取る。6 つの上限は 2026-10-17 の実測値に固定した：
+  `from_json_medium` 74 回 / 9,675 バイト、`to_json_medium` 8 / 1,048、`from_toml_medium` 148 /
+  16,362、`to_toml_medium` 12 / 1,208、`parse_medium` 67 / 24,512、`serialize_medium` 7 / 1,016。変
+  異で確認済み：`to_json_text` に `black_box(vec![0u8; 8])` を 1 つ足すと、ゲートはシナリオ名を添え
+  て赤くなる（`to_json_medium made 9 allocations, 1 past the committed ceiling of 8`）。取り除くと緑
+  に戻る。
+
 - **このリポジトリに存在しない木を説明していた 2 つの文章を修正** — `CONTRIBUTING.md` の jj 表はプッ
   シュの最後に `jj git push --allow-new` を実行するよう案内していたが、jj 0.46 にそのようなフラグは
   ない。`jj git push --help` が示すのは `--remote`、`-b/--bookmark`、`-t/--tag`、`--all`、
