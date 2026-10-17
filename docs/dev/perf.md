@@ -977,3 +977,38 @@ a cross-image artefact — the older framing, which absorbed the gap by carrying
 left in this file. And the refreshed floor cannot see PR #467 at all: the bench document holds no
 multi-line string, so the delimiter bound is priced by the corpus that judges it and by nothing
 else.
+
+## The TOML string path was not allocating twice either (2026-10-17)
+
+2026-10-13 closed that idea for the JSON reader (`The string path was not allocating twice`). The
+same idea came back for TOML a week later, because there the scanner genuinely does hand its text to
+a second function: `parse_basic_string_content` builds a `String`, the value lands in a `CowTable`,
+and `cow_table_to_node` puts it into the hub. The profile that reopened it is the one above - four
+allocator rows are 28.54% of `from_toml_medium`'s 150,441,807 loop instructions - and "the second
+copy is what the allocator measures" reads like the obvious explanation.
+
+It is wrong, and two independent checks say so.
+
+- **The code path already steals.** `scalar_projection` returns `text: String`, and the scalar
+  branch of `toml_value_to_node` writes `value: text.into()` — `Arc<str>::from(String)`, the
+  stealing conversion, whose precondition holds here for the same reason it held in JSON: the
+  escape-free scanner produces its `String` with `self.text[start..end].to_string()`, so
+  `capacity == len`. The escaped path builds by pushing and may carry slack, but that is glibc
+  handing out a rounded-up block, not a duplicated buffer.
+- **The control engine has no second function and pays the same.** `from_json_medium` was profiled
+  the same pinned compiler, same `MEASUREMENT_ENV`, same setup subtraction, and its `value()`
+  returns a `CustomNode` directly — no intermediate at all. Its four allocator rows are **29.49%**
+  of 92,673,499 instructions against TOML's 28.54%. A share that does not change when the alleged
+  duplication is absent was never measuring the duplication.
+
+What the pair does isolate is on the key side, not the value side: TOML builds a `String` per key
+segment in `parse_key_segment` (3.86%), inserts and clones those keys through
+`IndexMap<String, TomlTable>` (two rows, 7.95% together), and copies 5.81% of its instructions in
+`__memcpy_avx_unaligned_erms` where JSON copies 4.27%. That ~1.5pp gap is the honest size of the
+remaining candidate, and it is a key-path change — sharing or interning segment names instead of
+allocating one per level — not a string-value one.
+
+Not measured: no key-path prototype, so the 1.5pp is read off two profiles rather than demonstrated
+as recoverable. Recorded instead of done: no code changed. And the shape of the negative result is
+worth keeping — the cheapest test of a "remove the copy" hypothesis is a sibling engine that has no
+copy to remove, which costs one build and no refactor.
