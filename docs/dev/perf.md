@@ -930,3 +930,50 @@ the host term is pinned by `MEASUREMENT_ENV`, not by this experiment. And the +0
 `to_python_medium` is one machine's largest of three; the CPython-linked scenarios are the ones
 `AGENTS.md` already calls noisy, and 0.060% of run-to-run spread on `to_python_anchors` in the same
 sitting is in the same range.
+
+## The floor a win leaves behind (2026-10-17)
+
+`AGENTS.md` names the number that matters: the distance between a committed floor and what the tree
+actually costs, not the pass/fail of one run. PR #465 moved that distance on purpose and left the
+file behind. Identifying a table by walking to it rather than by the text its segments join to
+dropped one allocation and one linear scan per header, and the TOML read path fell from 159,859,652
+counted instructions to 150,441,866 on this box. The floor stayed at the old number, which is the
+failure mode the 2026-10-14 refresh was written against: a gate holding six percent of borrowed room
+waves through a regression as large as the win that created it.
+
+Run 38993563233 (`Ir baseline refresh`, run #35) measured the whole tree where the gate runs: image
+`20261012.334.1`, `rustc 1.97.1` read from the file rather than from `@stable`, callgrind,
+`--repeats 3`, binary digests `a2c048c502d87d0b` and `817e763c4a90d81c`. No scenario needed
+`accept_drift` — the guard refuses moves *up* past 0.5% and the largest one here is +0.048%.
+
+| scenario | floor | now | move |
+|:---------|------:|------:|-----:|
+| `from_toml_medium` | 159,859,652 | 150,444,810 | **−5.889%** |
+| `to_python_anchors` | 327,814,199 | 327,624,155 | −0.058% |
+| `serialize_small` | 4,111,919 | 4,109,924 | −0.049% |
+| `to_toml_medium` | 28,913,644 | 28,927,645 | +0.048% |
+| `stream_medium` | 251,122,390 | 251,226,398 | +0.041% |
+| `parse_inline_merge` | 363,892,231 | 364,008,341 | +0.032% |
+| the other 17 | — | — | −0.020% … +0.006% |
+
+Two readings of that table, and both are the point of the dispatch.
+
+- **The image and the pinned box agree where it counts.** WSL with `RUSTUP_TOOLCHAIN=1.97.1` read
+  `from_toml_medium` at 150,441,866; the enforcing image reads 150,444,810. That is 2,944
+  instructions, 0.0020% apart, on the scenario that moved most in the file — which demonstrates the
+  residual `AGENTS.md` says the ISA pinning closed, on the one case where a wrong answer would have
+  been visible in a six-percent floor rather than in noise.
+- **The writer moved, and not as a cost of the fix.** `to_toml_medium` loosens by 0.048%, ten times
+  inside the tolerance, and PR #465's own changelog entry says why: the writer never consults the
+  header bookkeeping the change removed. `stream_medium` and `parse_inline_merge` are YAML scenarios
+  no commit in this window touched, so they are the image's own repeat-to-repeat spread. That is
+  also why no second dispatch was asked for: the previous refresh ran one because two floors sat at
+  +0.494% and +0.478%, within a whisker of the line, and nothing here is within an order of
+  magnitude of it.
+
+What this retires, and what it cannot see. The tolerance is 0.5% and the numbers are the image's
+own, so a local reading six percent above `from_toml_medium` is now a regression report rather than
+a cross-image artefact — the older framing, which absorbed the gap by carrying 2%, has no residue
+left in this file. And the refreshed floor cannot see PR #467 at all: the bench document holds no
+multi-line string, so the delimiter bound is priced by the corpus that judges it and by nothing
+else.
