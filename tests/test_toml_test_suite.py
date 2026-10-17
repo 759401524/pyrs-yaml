@@ -29,9 +29,13 @@ were refused on CPython 3.8-3.13 (`96.09%`) but only 488 of 511 on 3.14 and 3.15
 because three out-of-range times (`24:00:00`, in `datetime`, `local-datetime` and `local-time`) were
 rejected by the host's `datetime` constructor rather than by this parser, and a newer interpreter
 accepts the spelling. The engine owns that range check now - `scan_time_body` decides hour 00-23,
-minute 00-59 and second 00-60 - so every interpreter answers the same and the floor is **0.96**:
-491/511 with less than one case of slack, which is what makes a single silently accepted document
-redder than the percentage it hides.
+minute 00-59 and second 00-60 - so every interpreter answers the same, and a second rule from the same
+scanner closes the last strictness gap: at most two quotes may sit before a multi-line closing
+delimiter, so the run of six that `invalid/string/multiline-quotes-01` writes is refused rather than
+read. That
+is **494 of 511 (`96.67%`)**, and the gate no longer carries a percentage at all: `DIALECT_ACCEPTED`
+names the seventeen files the default dialect declares, so a new hole reddens by its own path and a
+dialect promise the engine quietly breaks reddens too — the shape the decode and encoder gates have.
 The `0.85` these two gates used to carry was 22 cases of slack on the decode half and 57 on the reject
 half, which is how whole defect classes hid behind a green percentage. Three of them are closed: nine
 cases read `a = { x.y = 1 }` as one key whose text is `x.y` instead of the nested table the spec
@@ -40,11 +44,12 @@ scanner closed the string at the FIRST `'''` match and threw the rest of the run
 (`''''one quote''''` came back without its tail) and an escaped backslash ending a line read as a line
 continuation; and four refused valid documents because the header bookkeeping keyed a table by its
 dot-joined text, which made `[a."b.c"]` a duplicate of `[a.b.c]` and gave every element of `[[a.b]]`
-the same identity as the first. What the corpus still accepts that it should refuse is the `invalid/`
-list the assertion prints: sixteen files are the TOML 1.1 relaxations the default dialect takes on
-purpose (optional seconds, multi-line keys, line breaks and trailing commas inside inline tables), and
-four are strictness the engine does not yet police — a backslash-x byte escape in a basic string, and a
-run of more than two quotes before a multi-line delimiter.
+the same identity as the first. What the corpus still accepts is seventeen files, and every one of
+them is a TOML 1.1 relaxation the default dialect takes on purpose: optional seconds (three), line
+breaks and trailing commas inside inline tables (five), multi-line keys (eight) and the byte escape
+written with a backslash-x (one). None is an unpolicied hole — `from_toml_v1_0` refuses them and the
+`v1_0_rejects_*` tests name that gate — so the difference from the corpus is a declared dialect, not a
+missing check.
 """
 
 import json
@@ -73,6 +78,38 @@ def _iter_valid():
 
 def _iter_invalid():
     yield from sorted((SUITE_DIR / "invalid").rglob("*.toml"))
+
+
+# Every `invalid/` document the shipped default dialect accepts, named rather than counted. TOML 1.1
+# admits what this corpus forbids: optional seconds (three), line breaks and a trailing comma inside
+# an inline table (five), multi-line keys (eight) and the byte escape written with a backslash-x (one).
+# None is an unpolicied hole - `from_toml_v1_0` refuses all of them, and `v1_0_rejects_escape_x_and_e`,
+# `v1_0_rejects_missing_seconds`, `v1_0_rejects_trailing_comma_in_inline_table` and
+# `v1_1_accepts_multiline_inline_table` name the gate - so the list declares a dialect instead of
+# hiding a defect. Anything the reader accepts that is not on this list is a new hole, and it reddens
+# the gate by its own path; anything on the list that stops being accepted is a dialect promise the
+# engine quietly broke, and reddens it too.
+DIALECT_ACCEPTED = frozenset(
+    {
+        "invalid/datetime/no-secs.toml",
+        "invalid/inline-table/linebreak-01.toml",
+        "invalid/inline-table/linebreak-02.toml",
+        "invalid/inline-table/linebreak-03.toml",
+        "invalid/inline-table/linebreak-04.toml",
+        "invalid/inline-table/trailing-comma.toml",
+        "invalid/key/multiline-key-01.toml",
+        "invalid/key/multiline-key-02.toml",
+        "invalid/key/multiline-key-03.toml",
+        "invalid/key/multiline-key-04.toml",
+        "invalid/key/newline-04.toml",
+        "invalid/key/newline-05.toml",
+        "invalid/local-datetime/no-secs.toml",
+        "invalid/local-time/no-secs.toml",
+        "invalid/string/basic-byte-escapes.toml",
+        "invalid/table/multiline-key-01.toml",
+        "invalid/table/multiline-key-02.toml",
+    }
+)
 
 
 def _decode_expected(node):
@@ -186,13 +223,14 @@ def test_toml_test_valid_decodes_match():
 
 
 def test_toml_test_invalid_rejected():
-    """Invalid TOML is rejected rather than silently accepted (491 of 511 on every interpreter).
+    """Invalid TOML is rejected rather than silently accepted (494 of 511 on every interpreter).
 
     A document is "rejected" when loading raises - either a typed
     ``YamlParseError`` or any conversion-time error (a bare ``ValueError`` from
     the temporal plugin is still a rejection, not a silent accept). The time-of-day
-    ranges are no longer in that second group: ``scan_time_body`` refuses them, which
-    is why the count stopped depending on which interpreter ran the test.
+    ranges and the multi-line quote runs are no longer in that second group:
+    ``scan_time_body`` refuses them, which is why the count stopped depending on
+    which interpreter ran the test.
     """
     total = 0
     rejected = 0
@@ -206,11 +244,11 @@ def test_toml_test_invalid_rejected():
         else:
             accepted.append(toml.relative_to(SUITE_DIR).as_posix())
     assert total > 0, "no invalid toml-test cases found"
-    rate = rejected / total
-    assert rate >= 0.96, (
-        f"invalid rejection rate {rate:.1%} ({rejected}/{total}) below floor 96.0% "
-        f"(491/511, the reading every interpreter gives since `scan_time_body` took over the "
-        f"time-of-day range): silently accepted {accepted}"
+    accepted_set = frozenset(accepted)
+    assert accepted_set == DIALECT_ACCEPTED, (
+        f"{rejected}/{total} refused, but the dialect declares {len(DIALECT_ACCEPTED)} exceptions: "
+        f"newly accepted {sorted(accepted_set - DIALECT_ACCEPTED)}, "
+        f"now refused {sorted(DIALECT_ACCEPTED - accepted_set)}"
     )
 
 
