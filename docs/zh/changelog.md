@@ -610,6 +610,53 @@ status: new
 
 #### 修复
 
+- **首个映射条目的行内注释被提到读取器会报告它的那行头部之上** — 当根节点带有锚点或标签时，
+  `lift_first_entry_notes` 会把首个映射条目的注释移到头部行之上，因为重读会在那里报告它们，但它只
+  收集了键的 leading 列表。键的行内槽从未被读取，所以 libFuzzer `yaml_roundtrip` crash-8b98eb75
+  （`! #& #&` / `? #! #&` / `<<: #: #*b` …）第一次输出时把 `#: #*b` 留在 `!` 头部之下；重读把它
+  归到根节点，于是第二轮又把它提到头部之上，这不是不动点。提取现在读取两个槽，
+  `a_first_key_inline_note_under_a_header_settles_in_one_round` 按名钉住该输入；种子语料把它存为
+  `fuzz/seeds/yaml_roundtrip/former-crash-8b98eb75.seed`。实测：688 个 Rust 测试通过，
+  `note_survival` 仍接受每个种子。突变：把行内过滤器改成 `filter(|_| false)` 恰好让命名测试变红，
+  并打印出注释在两轮之间跨过头部；已还原。
+
+- **紧挨换行之前的转义是内容，不是续行** — `is_at_line_end_ws` 从 `self.pos + 1`（转义字母之后的
+  字节）开始扫描，于是后面跟换行的转义被当成了行尾反斜杠：`\r` 解码成字面 `r`，它的换行留在值里，
+  使写入器自己的 `"""x\r\ny"""` 重读成 `xr\ny`，到下一轮才稳定（libFuzzer `toml_roundtrip`
+  crash-60b1bd77）。扫描现在从转义字母本身开始，所以 `\r`、`\t` 和 `\\` 保留各自的字符，只有其余
+  部分是空白加换行的转义才算续行——规范里 `\` + 行尾空白 + 换行的形式因此仍然有效。
+  `an_escape_before_a_break_is_content_unless_nothing_follows_it` 钉住三种情况；输入归档为
+  `fuzz/seeds/toml_roundtrip/former-crash-60b1bd77.seed`。实测：688 个 Rust 测试与种子语料往返都
+  通过。突变：把扫描起点退回一个字节恰好让该测试变红；已还原。
+
+- **重复的 JSON 名字按名字折叠，即使键上带着注释** — 映射用节点相等判定重复，而解析出的 JSON 键除
+  行内注释槽之外的所有相等字段都来自它的文本，于是 `{"a": 0, // note` 后接 `"a": 1}` 保留了两位
+  `a` 成员。严格写入器把两个名字都写出来，重读却把它们折叠，所以它的输出不是不动点（libFuzzer
+  `json_events_replay` crash-51f2cdb1；JSON5 拼写的 `json_roundtrip` crash-0b0246f4）。`ws` 现在
+  统计它消费的同行注释；`object` 在入口记下该计数，并在关闭时于计数移动、或入口已有待挂注释时折叠
+  自己的映射（写在冒号与 `{` 之间的注释经那个槽到达首键，不经过本映射的 `ws`）。折叠把带注释的键当
+  作移动的一侧：名字的后续重复折进该名字的首位（取末值），没有后续重复的带注释条目折回更早的干净
+  条目，`park_notes` 接住每一个被顶替的注释。没有注释的对象不为每个键付查询，只在关闭时读两次计
+  数；逐键询问注释在 `from_json_medium` 上实测 +0.8%。命名测试
+  `a_duplicate_name_collapses_even_when_a_key_note_made_the_nodes_unequal` 与
+  `a_note_written_before_a_nested_map_still_collapses_its_repeat` 钉住两种单注释顺序、继承路径、
+  严格文本 `{"a":1,"b":2}` 及其下一轮；两个崩溃输入都归档在
+  `fuzz/seeds/json_events_replay/` 与 `fuzz/seeds/json_roundtrip/`。实测：688 个 Rust 测试与
+  2905 个 Python 测试通过，两个保存的工件经两道预言机回放干净；固定编译器上的 Ir 门禁读到
+  `from_json_medium` +0.08%、`from_json5_medium` +0.03%、`from_jsonc_medium` +0.50%——在本机距
+  0.5% 线还有 4,813 条指令。突变：强制关闭名字搜索会让新测试在其 `pairs.len() == 2` 断言处变红；
+  已还原。
+
+- **属性层比较的是 resolving reader 报告的树，而不是喂给它的指令** — `pbt.rs` 的每次往返都用
+  `resolve_merges: true` 读取：解析器会消费未加标签的普通 `<<` 对并把源映射折进父映射，而属性却把
+  读取结果与未经处理的生成样本相比。于是碰巧写出字面 `<<` 键的样本看起来像读取器丢掉了源映射的
+  标签（CI 种子 `8e067f67…`，`prop_tag_preserved` 在第 15,538 个用例后失败）。六个"写后比较"的属
+  性现在都从 `as_the_reader_sees` 出发，它对克隆应用 `resolve_merge_keys`，让期望值等于同一读取器
+  返回的树。写入器刻意不动：以 `resolve_merges=false` 解析出的树在那个键上带着真正的指令，给键加
+  引号会改变文档含义。种子已提交到 `crates/pyrs-yaml-core/proptest-regressions/pbt.txt`。突变：
+  把合成换成普通克隆会让 `prop_roundtrip` 与 `prop_tag_preserved` 在该种子上变红；已还原。实测：
+  六个受影响属性通过，整个属性模块（16 个测试）在 `PROPTEST_CASES=20000` 下通过，clippy 干净。
+
 - **没有内容行的块标量保留它头部写下的指示符** — 头部扫描锚在标量自己的 span 上，而 granit 给空块标
   量的 span 正落在头部的 `|` 或 `>` 上，于是回溯会越过 `:` 走进键里，sigil 从没进入被扫描的区间。用
   `Node(...).chomping` 实测：`key: |-`、`key: >-`、`key: |+`、`key: |2` 在空 body 下统统记成默认的

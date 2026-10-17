@@ -2468,16 +2468,36 @@ fn lift_first_entry_notes(
     let Some((first_key, first_value)) = pairs.get_index(0) else {
         return (None, None);
     };
+    // A simple key's inline note is written on its own line above the pair when the
+    // value keeps the line's trailing slot; under a `&a` / `!tag` header that line
+    // re-reads as the container's leading note, so it belongs in the same lift as
+    // the key's leading stack (libFuzzer `yaml_roundtrip` crash-8b98eb75: a `!`
+    // header over a first pair whose key carried `#: #*b`).
+    let first_key_inline = match first_key {
+        CustomNode::Scalar { meta, .. } | CustomNode::Null { meta, .. } => meta
+            .comment()
+            .filter(|c| !c.standalone)
+            .filter(|c| note_is_writable(c))
+            .cloned(),
+        _ => None,
+    };
     // Borrow before allocating. Taking the spine needs an owned key and a copy of
     // the map, and every anchored/tagged block container would pay both — even the
     // overwhelming majority that carry no note anywhere on the spine. Measured:
     // cloning unconditionally before this check cost `serialize_small` 16.7%
     // (7.7 -> 9.3 µs), `serialize_block` 12.6% and `serialize_medium` 10.5% on the
     // CodSpeed gate, which is what caught it.
-    if first_key.leading_comments().is_empty() && !spine_has_notes(first_key) {
+    if first_key.leading_comments().is_empty()
+        && first_key_inline.is_none()
+        && !spine_has_notes(first_key)
+    {
         return (None, None);
     }
     let mut notes = first_key.leading_comments().to_vec();
+    // Only the slot this lift actually read may be cleared: a container key's
+    // inline note is not collected here and must stay on the body copy.
+    let lifted_inline = first_key_inline.is_some();
+    notes.extend(first_key_inline);
     // `IndexMap` never hands out `&mut K`, so take the entry out, strip its
     // notes, and put it back where it was.
     let mut stripped = pairs.clone();
@@ -2486,6 +2506,9 @@ fn lift_first_entry_notes(
     // lifted lines now carry, so the body copy goes through it rather than
     // through a bare `remove_leading_comment`.
     let mut worked = strip_leading_comment(first_key);
+    if lifted_inline {
+        worked.remove_comment();
+    }
     notes.extend(hoist_marker_note(&mut worked));
     if notes.is_empty() {
         return (None, None);

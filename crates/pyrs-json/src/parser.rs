@@ -173,6 +173,7 @@ fn parser_from(text: &str, opts: JsonParseOptions) -> Parser<'_> {
         allow_unquoted_keys: opts.allow_unquoted_keys,
         allow_json5_numbers: opts.allow_json5_numbers,
         pending_comment: Vec::new(),
+        inline_comments: 0,
     }
 }
 
@@ -196,6 +197,11 @@ struct Parser<'a> {
     /// A list: a member or element may be introduced by any number of comment
     /// lines, and a single slot kept only the last of them.
     pending_comment: Vec<PendingComment>,
+    /// How many same-line comments `ws()` has consumed. `object` snapshots this on entry and folds
+    /// its own map on exit when the count moved: a key's same-line note is part of node equality,
+    /// so it can keep a repeated name from collapsing at insert time. Only the cold comment path
+    /// writes here, and a document without comments never changes the count.
+    inline_comments: usize,
 }
 
 /// Every note a node carries, in the order the source wrote them: the notes above it, then the one
@@ -227,6 +233,21 @@ fn collapsed_key_notes(pending: &[PendingComment]) -> Vec<pyrs_ast::ast::Comment
     notes_of(&ghost)
 }
 
+/// Whether two key nodes name the same member.
+///
+/// A parsed key node derives its style and every other equality field from its text; only the
+/// inline note slot can make two same-name keys unequal. The map's own collapse tests node
+/// equality, so without this predicate a note on one key kept a repeated name alive - and a
+/// re-read of the strict writer's output folded it, which is not a fixed point.
+fn same_key_name(a: &CustomNode, b: &CustomNode) -> bool {
+    match (a, b) {
+        (CustomNode::Scalar { value: left, .. }, CustomNode::Scalar { value: right, .. }) => {
+            left == right
+        }
+        _ => false,
+    }
+}
+
 /// Hand the notes of a collapsed pair to the pair that survived.
 ///
 /// `displaced` is the value the duplicate's own value replaced and `carried` holds what the dropped
@@ -254,6 +275,73 @@ fn park_notes(
         } else {
             value.set_comment(note);
         }
+    }
+}
+
+/// Collapse a repeated name inside one mapping after a key's note kept the two apart.
+///
+/// `insert_full` collapses on node equality and a key's same-line note is part of it, so a repeated
+/// name with one on either key stayed twice - the strict writer then emitted the name twice and a
+/// re-read folded it, which is not a fixed point. `object` runs this when a note reached one of its
+/// keys, which is a sound superset (a value's note also triggers it).
+///
+/// One side of every such split carries a note, so only noted keys are matched against the rest;
+/// clean keys are skipped with one slot read. The all-pairs scan this replaces was measured at 224
+/// instructions per `from_jsonc_medium` parse.
+fn collapse_noted_map(pairs: &mut NodeMap<CustomNode, CustomNode>) {
+    let mut index = 0;
+    while index < pairs.len() {
+        let noted = match pairs.get_index(index) {
+            Some((key, _)) => key.comment().is_some(),
+            None => break,
+        };
+        if !noted {
+            index += 1;
+            continue;
+        }
+        // Every later duplicate of this name folds into this entry - the name's first position -
+        // before the entry itself may fold back into an earlier one.
+        let later = (index + 1..pairs.len()).find(|&candidate| {
+            match (pairs.get_index(index), pairs.get_index(candidate)) {
+                (Some((first, _)), Some((other, _))) => same_key_name(first, other),
+                _ => false,
+            }
+        });
+        if let Some(later) = later {
+            let Some((key_node, value_node)) = pairs.shift_remove_index(later) else {
+                break;
+            };
+            let Some((_, slot)) = pairs.get_index_mut(index) else {
+                break;
+            };
+            let displaced = core::mem::replace(slot, value_node);
+            let carried = notes_of(&key_node);
+            park_notes(pairs, index, displaced, carried);
+            // Stay here: another duplicate of the same name may follow.
+            continue;
+        }
+        // No later duplicate, so this noted entry may belong to an earlier clean key.
+        let earlier = match pairs.get_index(index) {
+            Some((key, _)) => pairs
+                .keys()
+                .take(index)
+                .position(|seen| same_key_name(seen, key)),
+            None => break,
+        };
+        let Some(earlier) = earlier else {
+            index += 1;
+            continue;
+        };
+        let Some((key_node, value_node)) = pairs.shift_remove_index(index) else {
+            break;
+        };
+        let Some((_, slot)) = pairs.get_index_mut(earlier) else {
+            break;
+        };
+        let displaced = core::mem::replace(slot, value_node);
+        let carried = notes_of(&key_node);
+        park_notes(pairs, earlier, displaced, carried);
+        // The entry now at this index was never examined.
     }
 }
 
@@ -434,6 +522,9 @@ impl<'a> Parser<'a> {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
                         });
+                        if !own_line_seen {
+                            self.inline_comments += 1;
+                        }
                     } else {
                         self.pos = body_start;
                         loop {
@@ -458,6 +549,9 @@ impl<'a> Parser<'a> {
                             text: self.text[body_start..body_end].trim().to_string(),
                             own_line: own_line_seen,
                         });
+                        if !own_line_seen {
+                            self.inline_comments += 1;
+                        }
                         // A block comment does not consume the trailing
                         // newline; the next `ws()` iteration will pick it
                         // up and reset `own_line_seen` accordingly.
@@ -672,6 +766,10 @@ impl<'a> Parser<'a> {
     fn object(&mut self) -> Result<CustomNode, ParseError> {
         self.pos += 1; // '{'
         let mut pairs: NodeMap<CustomNode, CustomNode> = NodeMap::default();
+        let inline_seen = self.inline_comments;
+        // A note written between the colon and this `{` is consumed by the enclosing `ws()` and
+        // reaches the first key through the pending slot, so the counter above never moves.
+        let inherited_note = !self.pending_comment.is_empty();
         self.ws();
         if self.peek() == Some(b'}') {
             self.pos += 1;
@@ -711,6 +809,11 @@ impl<'a> Parser<'a> {
             // empty and nothing else: no second hash, since `insert_full` names the slot the key
             // landed in for the price of the insert this route was doing anyway, and the keys
             // themselves are immutable in the map, so what a duplicate cannot keep it hands on.
+            //
+            // Equality alone is not the test, though: a key's same-line note is part of node
+            // equality, so a repeated name with one on either key stays twice here. That is
+            // collapsed when this map closes, and only if a note reached one of its keys - asking
+            // about the note per key measured +0.8% on `from_json_medium`.
             let (index, replaced) = pairs.insert_full(key_node, value);
             if let Some(displaced) = replaced {
                 park_notes(
@@ -726,11 +829,19 @@ impl<'a> Parser<'a> {
                     self.ws();
                     if self.allow_trailing_commas && self.peek() == Some(b'}') {
                         self.pos += 1;
+                        if inherited_note || self.inline_comments != inline_seen {
+                            self.inline_comments = inline_seen;
+                            collapse_noted_map(&mut pairs);
+                        }
                         return Ok(CustomNode::plain_mapping(pairs));
                     }
                 }
                 Some(b'}') => {
                     self.pos += 1;
+                    if inherited_note || self.inline_comments != inline_seen {
+                        self.inline_comments = inline_seen;
+                        collapse_noted_map(&mut pairs);
+                    }
                     return Ok(CustomNode::plain_mapping(pairs));
                 }
                 _ => return Err(self.err("expected `,` or `}` in object")),
@@ -1854,6 +1965,65 @@ mod tests {
     }
 
     #[test]
+    fn a_duplicate_name_collapses_even_when_a_key_note_made_the_nodes_unequal() {
+        // Found by `fuzz/fuzz_targets/json_events_replay.rs` and `json_roundtrip.rs`: a same-line
+        // note on one key made the repeated name's nodes unequal, so both pairs survived - and the
+        // strict writer then emitted the name twice, which a re-read folds into one. The output was
+        // not a fixed point and the replay tree disagreed with the walk's.
+        for text in [
+            // the note introduces the second `a` (the artifact's shape)
+            "{\"a\": 0, // on the key\n  \"a\": 1,\n  \"b\": 2}",
+            // the note introduces the first `a`, and the repeat is clean
+            "{/* on the key */ \"a\": 0, \"a\": 1, \"b\": 2}",
+        ] {
+            let tree = from_jsonc(text).expect("valid JSONC");
+            let CustomNode::Mapping { pairs, .. } = &tree else {
+                unreachable!()
+            };
+            assert_eq!(pairs.len(), 2, "one `a` and one `b` for {text:?}");
+            let (key, value) = pairs.get_index(0).expect("first pair");
+            assert_eq!(scalar_text(key), "a");
+            assert_eq!(scalar_text(value), "1", "last value wins for {text:?}");
+            let written = to_jsonc_text(&tree).expect("writable");
+            assert!(written.contains("on the key"), "{written}");
+            let strict = crate::to_json_text(&tree).expect("writable");
+            assert_eq!(strict, r#"{"a":1,"b":2}"#, "{text:?}");
+            assert_eq!(
+                crate::to_json_text(&from_json(&strict).expect("its own output re-parses"))
+                    .expect("writable"),
+                strict
+            );
+        }
+    }
+
+    #[test]
+    fn a_note_written_before_a_nested_map_still_collapses_its_repeat() {
+        // The note sits between the colon and the `{`, so the outer `ws()` consumes it and this
+        // map's first key inherits it through the pending slot instead of its own `ws()`. The
+        // collapse trigger has to fire for that route too.
+        let text = "{\"outer\": /* on the key */ {\"a\": 0, \"a\": 1, \"b\": 2}}";
+        let tree = from_jsonc(text).expect("valid JSONC");
+        let CustomNode::Mapping { pairs, .. } = &tree else {
+            unreachable!()
+        };
+        let CustomNode::Mapping { pairs: inner, .. } = pairs.get_index(0).expect("outer pair").1
+        else {
+            unreachable!()
+        };
+        assert_eq!(inner.len(), 2, "one `a` and one `b`");
+        assert_eq!(scalar_text(inner.get_index(0).expect("first pair").1), "1");
+        assert!(
+            to_jsonc_text(&tree)
+                .expect("writable")
+                .contains("on the key")
+        );
+        assert_eq!(
+            crate::to_json_text(&tree).expect("writable"),
+            r#"{"outer":{"a":1,"b":2}}"#
+        );
+    }
+
+    #[test]
     fn strict_rejections() {
         for bad in [
             "",         // empty document
@@ -2007,6 +2177,7 @@ mod tests {
             allow_unquoted_keys: opts.allow_unquoted_keys,
             allow_json5_numbers: opts.allow_json5_numbers,
             pending_comment: Vec::new(),
+            inline_comments: 0,
         }
     }
 

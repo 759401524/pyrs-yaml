@@ -722,6 +722,61 @@ status: new
 
 #### 수정
 
+- **첫 매핑 항목의 인라인 note은 다시 읽기가 보고할 헤더 줄 위로 올라간다** — 루트에 앵커나 태그가
+  있으면 `lift_first_entry_notes`는 첫 매핑 항목의 note을 헤더 줄 위로 옮긴다. 다시 읽기가 그곳에
+  보고하기 때문이다. 그러나 모으는 것은 키의 leading 목록뿐이었다. 키의 인라인 슬롯은 읽히지 않아,
+  libFuzzer `yaml_roundtrip` crash-8b98eb75(`! #& #&` / `? #! #&` / `<<: #: #*b` …)는 첫 출력에
+  서 `#: #*b`를 `!` 헤더 아래에 남겼다. 다시 읽기는 그것을 루트에 귀속시키고 두 번째 라운드에서 헤
+  더 위로 올렸다 — 고정점이 아니다. 추출은 이제 두 슬롯을 모두 읽고,
+  `a_first_key_inline_note_under_a_header_settles_in_one_round`가 그 입력을 이름으로 고정한다. 시드
+  코퍼스는 이를 `fuzz/seeds/yaml_roundtrip/former-crash-8b98eb75.seed`로 보관한다. 실측: Rust 테스트
+  688개 통과, `note_survival`은 모든 시드를 여전히 받아들인다. 변형: 인라인 필터를
+  `filter(|_| false)`로 바꾸면 정확히 그 이름의 테스트가 빨개지고 note이 두 라운드 사이에 헤더를 넘
+  는 모습을 출력한다. 복원함.
+
+- **줄바꿈 바로 앞의 이스케이프는 내용이며 줄 연속이 아니다** — `is_at_line_end_ws`가
+  `self.pos + 1`(이스케이프 문자 다음 바이트)부터 스캔을 시작해서, 줄바꿈이 뒤따르는 이스케이프가 줄
+  끝 백슬래시로 간주됐다: `\r`은 리터럴 `r`로 디코드되고 그 줄바꿈은 값에 남아, 쓰기기 자신의
+  `"""x\r\ny"""`가 `xr\ny`로 다시 읽히고 다음 라운드에야 안정됐다(libFuzzer `toml_roundtrip`
+  crash-60b1bd77). 스캔은 이제 이스케이프 문자 자체에서 시작하므로 `\r`, `\t`, `\\`은 각자의 문자를
+  지키고, 나머지가 공백과 줄바꿈뿐인 이스케이프만 줄을 잇는다 — 명세의 `\` + 줄 끝 공백 + 줄바꿈 형
+  태는 그대로 동작한다. `an_escape_before_a_break_is_content_unless_nothing_follows_it`이 세 경우
+  를 고정하고, 입력은 `fuzz/seeds/toml_roundtrip/former-crash-60b1bd77.seed`로 보관했다. 실측: Rust
+  테스트 688개와 시드 코퍼스 왕복이 모두 통과한다. 변형: 스캔 시작을 한 바이트 되돌리면 정확히 그 테
+  스트가 빨개진다. 복원함.
+
+- **반복된 JSON 이름은 키에 note이 붙어 있어도 이름으로 접힌다** — 맵은 중복을 노드 등가로 판정하고,
+  해석된 JSON 키는 인라인 note 슬롯을 뺀 모든 등가 필드를 자기 텍스트에서 끌어오므로,
+  `{"a": 0, // note` 뒤의 `"a": 1}`은 `a` 멤버를 둘 지녔다. strict 쓰기기는 두 이름을 모두 출력했고
+  다시 읽기는 그것을 접었다 — 즉 출력은 고정점이 아니었다(libFuzzer `json_events_replay`
+  crash-51f2cdb1; JSON5 표기에서는 `json_roundtrip` crash-0b0246f4). `ws`는 이제 소비한 같은 줄
+  note을 세고, `object`는 입구에서 그 수를 기억해 두었다가 닫을 때 수가 움직였거나 입구에 이미 대기
+  note이 있었으면 자기 맵을 접는다(콜론과 이 `{` 사이의 note은 그 슬롯을 거쳐 첫 키에 도달하고 이
+  맵의 `ws`를 거치지 않는다). 접기는 note이 붙은 키를 움직이는 쪽으로 다룬다: 이름의 뒤 중복은 그
+  이름의 첫 자리로 접히고(값은 마지막), 뒤 중복이 없는 note 붙은 항목은 더 앞의 깨끗한 항목으로 접히
+  며, `park_notes`가 밀려난 note을 모두 떠맡는다. note이 없는 객체는 키별 질의를 지불하지 않고 닫을
+  때의 카운터 읽기 두 번만 지불한다 — 키마다 note을 묻는 것은 `from_json_medium`에서 +0.8%로 실측
+  됐다. 이름 있는 테스트 `a_duplicate_name_collapses_even_when_a_key_note_made_the_nodes_unequal`과
+  `a_note_written_before_a_nested_map_still_collapses_its_repeat`가 두 단일 note 순서, 상속 경로,
+  strict 텍스트 `{"a":1,"b":2}` 및 그다음 라운드를 고정한다. 두 크래시 입력은
+  `fuzz/seeds/json_events_replay/`와 `fuzz/seeds/json_roundtrip/`에 보관했다. 실측: Rust 테스트
+  688개와 Python 테스트 2905개가 통과하고, 저장한 두 산출물이 두 오라클로 replay되어 깨끗하다. 고정
+  컴파일러의 Ir 게이트는 `from_json_medium` +0.08%, `from_json5_medium` +0.03%,
+  `from_jsonc_medium` +0.50% — 이 호스트에서 0.5% 선까지 4,813개 명령이 남는다. 변형: 이름 검색을
+  강제로 끄면 새 테스트가 `pairs.len() == 2` 주장에서 빨개진다. 복원함.
+
+- **속성 계층은 먹인 지시문이 아니라 해석 리더가 돌려주는 트리를 비교한다** — `pbt.rs`의 모든 왕복은
+  `resolve_merges: true`로 읽는다. 태그 없는 평문 `<<` 쌍은 여기서 소비되어 원본 매핑이 부모로 접히
+  지만, 속성은 그 결과를 손대지 않은 생성 샘플과 비교했다. 그래서 우연히 리터럴 `<<` 키를 쓴 샘플은
+  리더가 원본 매핑의 태그를 잃은 것처럼 보였다(CI 시드 `8e067f67…`, `prop_tag_preserved`가 15,538번
+  째 케이스에서 실패). 쓰기와 비교를 하는 여섯 속성은 이제 `as_the_reader_sees`에서 시작한다. 이는
+  클론에 `resolve_merge_keys`를 적용해 기댓값을 같은 리더가 돌려주는 트리로 만든다. 쓰기기는 일부러
+  건드리지 않는다: `resolve_merges=false`로 해석한 트리는 그 키에 진짜 지시문을 지니므로, 인용부호를
+  붙이면 문서의 의미가 달라진다. 시드는 `crates/pyrs-yaml-core/proptest-regressions/pbt.txt`에
+  커밋했다. 변형: 합성을 평범한 클론으로 바꾸면 그 시드에서 `prop_roundtrip`과
+  `prop_tag_preserved`가 빨개진다. 복원함. 실측: 영향받는 여섯 속성이 통과하고, 속성 모듈
+  전체(16개 테스트)가 `PROPTEST_CASES=20000`에서 통과하며 clippy도 깨끗하다.
+
 - **내용 행이 없는 블록 스칼라는 헤더가 쓴 표지를 지닌다** — 헤더 찾기는 스칼라 자기 span에 묶여
   있는데, granit은 내용이 빈 블록의 span을 헤더의 `|`/`>` 그 자리에 놓는다. 그래서 거슬러 오름이
   `: `를 지나 키까지 가고 서명이 탐색 범위에 들어가지 못했다. `Node(...).chomping`으로 실측하면
