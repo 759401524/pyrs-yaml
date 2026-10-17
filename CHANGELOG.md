@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An alias-valued merge key keeps its inline note** — `<<: *d  # note` lost the note at ingest:
+  an alias has no metadata slot, and the reader reported the note attached anyway. It now rides the
+  pair's key, the slot the block writer emits it from, so the document round-trips unchanged; with
+  merges resolved it re-homes onto the mapping's surviving entry.
+
 ## [v0.18.0] — 2026-10-17
 
 <details markdown="1">
