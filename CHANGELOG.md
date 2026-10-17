@@ -755,31 +755,49 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The time-of-day ranges are the parser's decision, not the host interpreter's** — the reject half
+  of the toml-test tier had been measuring the interpreter as much as the engine. Three out-of-range
+  times (`24:00:00`, in `datetime`, `local-datetime` and `local-time`) were refused only because
+  CPython's `datetime`/`time` constructor raised `ValueError`, and CPython 3.14+ parses that
+  spelling: the same corpus produced 491/511 rejections on the 3.8-3.13 legs and 488/511 on the
+  3.14/3.15 legs. `scan_time_body` now enforces hour 00-23, minute 00-59 and second 00-60 — the
+  bounds the corpus's own comments name — so every interpreter answers the same, and the reject
+  floor moves **0.954 → 0.96** (491/511, less than one case of slack). The second bound keeps TOML's
+  leap-second allowance and does not police which instant a `60` may sit at, because no corpus case
+  asks. The writer's `DateTimeProbe` carried the same shape-only rule with a `62` bound, so it could
+  emit `24:00:00` and `+24:00` — text its own reader refuses; it now reads the numbers the reader
+  reads, including the offset bounds `invalid/datetime/offset-overflow-hour` and
+  `offset-overflow-minute` describe. Two tests: `the_time_of_day_ranges_are_decided_by_the_parser`
+  (seven refused spellings across the three shapes, four legal ones just inside the bounds) and
+  `the_writer_refuses_the_time_ranges_the_reader_refuses`. Attribution by mutation: loosening the
+  hour/minute bound, the seconds bound, or the probe's offset bounds reddens exactly one test each
+  and nothing else.
+
 - **A table header is identified by the table it names, not by the text of its path** — the third
   face of one defect class. `parse_inline_table` joined a dotted member into a single key (closed by
-  the change above), and `register_header` keyed its two bookkeeping sets - `defined` and
-  `dotted_defined` - by the dot-joined path, so `[a."b.c"]`, one key whose name contains a dot, read
-  as a re-definition of `[a.b.c]`, and every element of `[[a.b]]` got the same identity as the
-  first, so the second `[a.b.c]` was refused as a duplicate. Four valid documents paid for it:
-  `valid/table/names.toml`, `names-with-values`, `array-table-array` and
-  `valid/array/array-subtables`. The fix deletes the text. Each `CowTable` already *is* one table,
-  so a header's identity is the walk that reaches it, and the only state a table needs is the one
-  bit TOML adds: a table a **dotted key** created is closed to a header that ends on it, while a
-  header may still pass through it to a deeper table - `[fruit.apple.texture]` after `apple.color` -
-  or open a super-table another header only implied - `valid/table/without-super.toml`. Both
-  refusals read off the tree now, and the path text is built only where a rejection quotes it.
-  Measured: toml-test valid-decode **262/266 (98.50%) to 266/266 (100%)**, so that tier has no floor
-  any more - it asserts an empty failure list, the encoder gate's shape, and a future gap reddens it
-  by naming the file. The reject tier is untouched (491/511 here, 488/511 where the host's
-  `datetime` is what refuses the out-of-range hours). The same pass drops a per-header allocation
-  and a linear scan, and the instruction gate prices that: `from_toml_medium` **159,859,652 to
-  150,441,866, −5.89%** on the compiler the baseline pins, while `to_toml_medium` sits at +0.125% —
-  inside the line, as it should, the writer never consults what this removes. Eight tests: four Rust
-  (a deep header leaving its super-table open, a dotted name against the deeper path, per-element
-  identity with the same-element duplicate still refused, and the closed-table rules) and four
-  Python as a `TestTableIdentity` class. Attribution by mutation, one mechanism at a time: with the
-  closed guard dead, `a_table_a_dotted_key_created_stays_closed_to_a_later_header` is the only red
-  of 82; with the guard widened to refuse every implicit table, only
+  PR #463), and `register_header` keyed its two bookkeeping sets - `defined` and `dotted_defined` -
+  by the dot-joined path, so `[a."b.c"]`, one key whose name contains a dot, read as a re-definition
+  of `[a.b.c]`, and every element of `[[a.b]]` got the same identity as the first, so the second
+  `[a.b.c]` was refused as a duplicate. Four valid documents paid for it: `valid/table/names.toml`,
+  `names-with-values`, `array-table-array` and `valid/array/array-subtables`. The fix deletes the
+  text. Each `CowTable` already *is* one table, so a header's identity is the walk that reaches it,
+  and the only state a table needs is the one bit TOML adds: a table a **dotted key** created is
+  closed to a header that ends on it, while a header may still pass through it to a deeper table -
+  `[fruit.apple.texture]` after `apple.color` - or open a super-table another header only implied -
+  `valid/table/without-super.toml`. Both refusals read off the tree now, and the path text is built
+  only where a rejection quotes it. Measured: toml-test valid-decode **262/266 (98.50%) to 266/266
+  (100%)**, so that tier has no floor any more - it asserts an empty failure list, the encoder
+  gate's shape, and a future gap reddens it by naming the file. The reject tier is untouched
+  (491/511 here, 488/511 where the host's `datetime` is what refuses the out-of-range hours). The
+  same pass drops a per-header allocation and a linear scan, and the instruction gate prices that:
+  `from_toml_medium` **159,859,652 to 150,441,866, −5.89%** on the compiler the baseline pins, while
+  `to_toml_medium` sits at +0.125% — inside the line, as it should, the writer never consults what
+  this removes. Eight tests: four Rust (a deep header leaving its super-table open, a dotted name
+  against the deeper path, per-element identity with the same-element duplicate still refused, and
+  the closed-table rules) and four Python as a `TestTableIdentity` class. Attribution by mutation,
+  one mechanism at a time: with the closed guard dead,
+  `a_table_a_dotted_key_created_stays_closed_to_a_later_header` is the only red of 82; with the
+  guard widened to refuse every implicit table, only
   `a_deep_header_leaves_the_super_table_it_passed_through_open` is.
 
 - **A multi-line string keeps the quotes and the break at its end** — two scanner defects, both

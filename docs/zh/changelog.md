@@ -596,8 +596,21 @@ status: new
 
 #### 修复
 
+- **时间范围的裁定权归解析器，不再归宿主解释器** — 拒绝半边的 toml-test 档在量引擎的同时也量了
+  解释器。三个越界时间（`datetime`、`local-datetime`、`local-time` 里的 `24:00:00`）之所以被拒，
+  只是因为 CPython 的 `datetime`/`time` 构造器抛出 `ValueError`，而 CPython 3.14+ 认得这个写法：同一
+  份语料在 3.8-3.13 各条腿上是 491/511 拒绝，在 3.14/3.15 上只有 488/511。`scan_time_body` 现在自己
+  守住时 00-23、分 00-59、秒 00-60——正是语料自带注释写明的边界——于是每个解释器给同一个答案，拒绝
+  地板从 **0.954 抬到 0.96**（491/511，余量不足一个用例）。秒的界保留 TOML 的闰秒余地，不去管 `60`
+  可以落在哪一瞬间，因为语料没有用例问这件事。写入器一侧的 `DateTimeProbe` 原先只查形状、以 `62`
+  为界，所以它可能写出 `24:00:00` 与 `+24:00`——连它自己的读取器都不接受的文本；现在它读的就是读取器
+  用的那组数字，也包括 `invalid/datetime/offset-overflow-hour` 与 `offset-overflow-minute` 说的偏移
+  界。两个测试：`the_time_of_day_ranges_are_decided_by_the_parser`（三种形状下七个被拒写法，四个刚
+  好在界内的合法写法）与 `the_writer_refuses_the_time_ranges_the_reader_refuses`。突变归因：放宽时与
+  分的界、秒的界、或探针的偏移界，各自只让一个测试变红，其余一个都不动。
+
 - **表头的身份是它命名的那张表，不是路径拼出的文本** — 同一类缺陷的第三种表现。`parse_inline_table`
-  把点号成员拼成单个键（由上面那条变更修掉），而 `register_header` 的两张登记表 `defined` 与
+  把点号成员拼成单个键（由 PR #463 修掉），而 `register_header` 的两张登记表 `defined` 与
   `dotted_defined` 都以点连接的路径为键，于是 `[a."b.c"]`，一个名字里就带点的键，被读成对 `[a.b.c]`
   的重定义；`[[a.b]]` 的每个元素都与第一个共用同一身份，于是第二个 `[a.b.c]` 被当作重复而拒绝。四份
   有效文档为此付出代价：`valid/table/names.toml`、`names-with-values`、`array-table-array` 与
