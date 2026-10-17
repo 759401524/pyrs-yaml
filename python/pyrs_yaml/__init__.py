@@ -1,8 +1,10 @@
 """
-pyrs-yaml: High-performance Python YAML library with perfect round-trip support.
+pyrs-yaml: High-performance Python library for YAML, TOML, JSON, JSONC and JSON5
+with perfect round-trip support, built with Rust and PyO3.
 
-This module provides a Rust-backed YAML parser and serializer that preserves
-comments, anchors, tags, and formatting during round-trip conversions.
+This module provides Rust-backed parsers and serializers for all five formats,
+preserving comments, anchors, tags, and source formatting across round-trip
+conversions.
 
 Example:
     >>> import pyrs_yaml

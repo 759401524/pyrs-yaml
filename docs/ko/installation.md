@@ -62,7 +62,7 @@ uv run --frozen maturin develop --release
 import pyrs_yaml
 
 # Check version
-print(pyrs_yaml.__version__)  # e.g., "0.18.0"
+print(pyrs_yaml.__version__)
 
 # Quick smoke test
 doc = pyrs_yaml.parse("key: value")

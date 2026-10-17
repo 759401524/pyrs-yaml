@@ -1,7 +1,8 @@
 //! # pyrs-yaml
 //!
-//! Python YAML library with perfect round-trip support.
-//! Built on top of pyrs-yaml-core.
+//! High-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with
+//! perfect round-trip support.
+//! Built on top of pyrs-yaml-core, pyrs-json, and pyrs-toml.
 
 // Explicit re-exports from pyrs-yaml-core (no wildcard — each module must be
 // opted in to keep the public API surface intentional).
