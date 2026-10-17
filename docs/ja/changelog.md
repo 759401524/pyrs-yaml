@@ -726,6 +726,14 @@ status: new
 
 #### 修正
 
+- **このリポジトリに存在しない木を説明していた 2 つの文章を修正** — `CONTRIBUTING.md` の jj 表はプッ
+  シュの最後に `jj git push --allow-new` を実行するよう案内していたが、jj 0.46 にそのようなフラグは
+  ない。`jj git push --help` が示すのは `--remote`、`-b/--bookmark`、`-t/--tag`、`--all`、
+  `--tracked`、`--deleted` であり、手順は最後の一歩で失敗していた。
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` の `MIN_SEEDED_ROUNDS` の doc コメントは、別の段落の
+  断片が最初の文に混入しており、「床が 25 である理由」が読み取れなかった。文章のみの変更：コード経
+  路、アサーション、実測値は動かず、コメントは実測の 14 シード・33 ラウンドを今も記録している。
+
 - **整形ゲートが fuzz workspace を見るようになった** — `fuzz/Cargo.toml` は独自の `[workspace]` を
   宣言しているため、ルートの `cargo fmt -- --check` はメイン workspace だけを整形し、fuzz の
   ターゲットには届かない。2026-10-17 の実測：`cargo fmt --manifest-path fuzz/Cargo.toml -- --check`

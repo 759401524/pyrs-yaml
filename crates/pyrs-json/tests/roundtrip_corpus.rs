@@ -24,13 +24,12 @@ use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, 
 
 /// Lower bound on how many dialect rounds must reach the assertion.
 ///
-/// Measured when this file was written: 14 seeds driving 33 rounds; the floor
-/// is slack for a seed being retired, not a target to hit.
-/// assertion fail in the run that found them - a registered defect, not an exemption. The floor sits
-/// below that on purpose — it is slack for a seed being retired, not a target to hit — and
-/// a count under it would mean the corpus stopped carrying input the writers can act on at
-/// all. The silently-vacuous gate is what a floor exists to catch; the same reasoning is why
-/// `crates/pyrs-yaml-core/tests/note_survival.rs` declares one.
+/// Measured when this file was written: 14 seeds driving 33 rounds. Each seed is an input
+/// that made an assertion fail in the run that found it - a registered defect, not an
+/// exemption. The floor sits below that on purpose — it is slack for a seed being retired,
+/// not a target to hit — and a count under it would mean the corpus stopped carrying input
+/// the writers can act on at all. The silently-vacuous gate is what a floor exists to catch;
+/// the same reasoning is why `crates/pyrs-yaml-core/tests/note_survival.rs` declares one.
 const MIN_SEEDED_ROUNDS: usize = 25;
 
 fn seeds() -> Vec<(String, String)> {

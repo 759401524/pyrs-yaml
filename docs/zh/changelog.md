@@ -619,6 +619,13 @@ status: new
 
 #### 修复
 
+- **两处描述本仓库并不存在之树的文字已修正** — `CONTRIBUTING.md` 的 jj 表格让贡献者在推送末尾执行
+  `jj git push --allow-new`，而 jj 0.46 没有这个旗标：`jj git push --help` 列出的是 `--remote`、
+  `-b/--bookmark`、`-t/--tag`、`--all`、`--tracked` 与 `--deleted`，配方因此卡在最后一步。
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` 中 `MIN_SEEDED_ROUNDS` 的文档注释则把另一段的片段拼进
+  了自己的首句，使"地板为什么是 25"无法读通。仅改文字：没有代码路径、断言或实测数字变动，注释仍记录
+  实测的 14 个种子驱动 33 轮。
+
 - **格式化门禁现在看得见 fuzz workspace** — `fuzz/Cargo.toml` 声明了自己的 `[workspace]`，所以根目录
   的 `cargo fmt -- --check` 只格式化主 workspace，从不到达 fuzz 目标。2026-10-17 实测：
   `cargo fmt --manifest-path fuzz/Cargo.toml -- --check` 报出三个文件等待 rustfmt

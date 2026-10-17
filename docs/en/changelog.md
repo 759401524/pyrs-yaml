@@ -792,6 +792,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Fixed
 
+- **Two texts that described a tree this repository does not have are corrected** —
+  `CONTRIBUTING.md`'s jj table told contributors to close a push with
+  `jj git push --allow-new`, and jj 0.46 has no such flag: `jj git push --help` lists
+  `--remote`, `-b/--bookmark`, `-t/--tag`, `--all`, `--tracked` and `--deleted`, so the recipe
+  failed on its last step. The `MIN_SEEDED_ROUNDS` doc comment in
+  `crates/pyrs-json/tests/roundtrip_corpus.rs` carried a fragment of another paragraph spliced
+  into its first sentence, so the reason the floor is 25 could not be read. Prose only: no code
+  path, assertion or measured count moves, and the comment still records the measured 14 seeds
+  driving 33 rounds.
+
 - **The formatting gate now sees the fuzz workspace** — `fuzz/Cargo.toml` declares its own
   `[workspace]`, so `cargo fmt -- --check` at the root formats the main workspace and never reaches
   the fuzz targets. Measured 2026-10-17: `cargo fmt --manifest-path fuzz/Cargo.toml -- --check`

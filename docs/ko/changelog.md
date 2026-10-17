@@ -732,6 +732,14 @@ status: new
 
 #### 수정
 
+- **이 저장소에 없는 트리를 설명하던 두 문장을 바로잡았다** — `CONTRIBUTING.md`의 jj 표는 push
+  마지막 단계로 `jj git push --allow-new`를 실행하라고 안내했지만 jj 0.46에는 그런 플래그가 없다.
+  `jj git push --help`가 보여 주는 것은 `--remote`, `-b/--bookmark`, `-t/--tag`, `--all`,
+  `--tracked`, `--deleted`이며, 그 요리법은 마지막 단계에서 실패했다.
+  `crates/pyrs-json/tests/roundtrip_corpus.rs`의 `MIN_SEEDED_ROUNDS` doc 주석에는 다른 문단의 조각이
+  첫 문장에 끼어 있어 "바닥이 왜 25인지"를 읽을 수 없었다. 글만 바뀐다: 코드 경로, 어서션, 실측
+  수치는 움직이지 않으며 주석은 실측된 14개 시드가 33라운드를 구동한다는 사실을 여전히 기록한다.
+
 - **포맷 게이트가 이제 fuzz workspace 를 본다** — `fuzz/Cargo.toml` 이 자체 `[workspace]` 를
   선언하므로 루트의 `cargo fmt -- --check` 는 메인 workspace 만 포맷하고 fuzz 표적에는 닿지
   않는다. 2026-10-17 실측: `cargo fmt --manifest-path fuzz/Cargo.toml -- --check` 가 세 파일이
