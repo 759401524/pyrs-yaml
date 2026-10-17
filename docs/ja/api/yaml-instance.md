@@ -26,7 +26,7 @@ class YAML:
 ```python
 __init__(
     typ: str = "rt",
-    schema: str = "core",
+    schema: str | dict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
 ) -> None
@@ -37,7 +37,7 @@ __init__(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `typ` | `str` | `"rt"` | パーサータイプ。`"rt"`（ラウンドトリップ）、`"safe"`、`"full"` のいずれか。 |
-| `schema` | `str` | `"core"` | YAML スキーマ。`"core"`、`"yaml1.1"`、`"failsafe"`、`"json"` のいずれか。 |
+| `schema` | `str \| dict` | `"core"` | YAML スキーマ。`"core"`、`"yaml1.1"`、`"failsafe"`、`"json"`、またはインラインスキーマ dict（[YAML スキーマ言語](reference.md#yaml-schema-language) 参照）。 |
 | `max_depth` | `int` | `1000` | パース時の最大ネスト深さ。 |
 | `allow_duplicate_keys` | `bool` | `False` | 重複するマッピングキーを許可するかどうか。 |
 

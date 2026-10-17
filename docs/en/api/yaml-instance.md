@@ -26,7 +26,7 @@ Create a configured YAML parser instance.
 ```python
 __init__(
     typ: str = "rt",
-    schema: str = "core",
+    schema: str | dict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
 ) -> None
@@ -37,7 +37,7 @@ __init__(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `typ` | `str` | `"rt"` | Parser type. One of `"rt"` (round-trip), `"safe"`, `"full"`. |
-| `schema` | `str` | `"core"` | YAML schema. One of `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"`. |
+| `schema` | `str \| dict` | `"core"` | YAML schema. One of `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"`, or an inline schema dict (see [YAML Schema Language](reference.md#yaml-schema-language)). |
 | `max_depth` | `int` | `1000` | Maximum nesting depth for parsing. |
 | `allow_duplicate_keys` | `bool` | `False` | Whether to allow duplicate mapping keys. |
 
