@@ -15,6 +15,20 @@ status: new
 
 ### [Unreleased]
 
+### Changed
+
+- **바인딩 계층을 PyO3 0.30으로 올리고, 지원 Python 하한도 함께 3.9로 옮겼습니다.** — 0.30은
+  `abi3-py38` 기능을 지웠습니다(가장 낮은 안정 ABI 단계는 `abi3-py39`). 그래서 배포되는 휠은
+  `cp39-abi3`이 되고 `requires-python`은 `>=3.9`를 읽습니다. 채택 전에 쟀다: 바인딩 계층은 PyO3
+  0.30.1 + rust-numpy 0.30.0에 대해 소스를 고치지 않고도 빌드되고,
+  `cargo clippy --all --all-targets -- -D warnings`는 깨끗하며, Rust 690개와 Python 2918개 테스트가
+  통과하고, `maturin generate-stubs`와 `scripts/check_stub_drift.py`는 커밋된 `.pyi`가 그대로라고
+  보고한다 — 선언된 계약은 움직이지 않았다. 움직이는 곳은 하한을 지목하는 모든 자리다:
+  `pyproject.toml`의 classifiers 목록(CI 행렬이 여기서 파생), `scripts/ci_matrix_plan.py`의
+  `MIN_VERSION`, `matrix-verdict` 항목, `publish.yml`의 세 항목,
+  `tests/test_scripts_import_on_supported_python.py`(이 목록은 3.9에 처음 나온 API 네 개를 잃는다),
+  그리고 README와 네 언어 문서의 하한 서술 전부.
+
 ### [v0.18.0] — 2026-10-17
 
 <details markdown="1">

@@ -60,7 +60,7 @@ YAML을 *읽기*만 하고·파스의 마지막 속도가 필요하고·변경 �
 | **복잡한 키** | :material-check: | :material-check: | :material-check: |
 | **Round-trip 보존** | :material-check: | :material-close: | :material-check: |
 | **Python 바인딩** | :material-check: | :material-check: | :material-check: |
-| **ABI3 (py3.8+)** | :material-check: | :material-close: | :material-close: |
+| **ABI3 (py3.9+)** | :material-check: | :material-close: | :material-close: |
 | **Type stubs (.pyi)** | :material-check: | :material-check: | :material-close: |
 | **i18n 오류 메시지** | :material-check: | :material-close: | :material-close: |
 | **Rust 백엔드** | :material-check: | :material-close: | :material-close: |
@@ -74,7 +74,7 @@ YAML을 *읽기*만 하고·파스의 마지막 속도가 필요하고·변경 �
 - **Round-trip 보존이 중요합니다** — 주석, anchor, tag 보존
 - **PyYAML 호환성을 원합니다** — 즉시 교체 가능한 API
 - **Type hints가 필요합니다** — 완전한 `.pyi` stubs
-- **단일 wheel을 원합니다** — ABI3로 Python 3.8~3.15 지원
+- **단일 wheel을 원합니다** — ABI3로 Python 3.9~3.15 지원
 
 #### PyYAML을 선택할 때
 

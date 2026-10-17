@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "High-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with perfect round-trip support, built with Rust and PyO3"
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 keywords = ["yaml", "parser", "round-trip", "high-performance", "rust"]
 authors = [
     {name = "MuLong", email = "759401524@qq.com"}
@@ -20,7 +20,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

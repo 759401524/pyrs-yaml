@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.8"
+          python-version: "3.9"
       # The compiler is the one `.ci/ir-baseline.json` records, so the wheels users install are the
       # build the instruction-count floors describe. Before this, `maturin-action` defaulted every
       # wheel to current `stable` while the gate measured a pinned compiler: the same source under
@@ -50,7 +50,7 @@ jobs:
           args: --release --out dist
           sccache: false
           manylinux: auto
-      # A GIL-enabled `cp38-abi3` wheel cannot be installed on a free-threaded
+      # A GIL-enabled `cp39-abi3` wheel cannot be installed on a free-threaded
       # interpreter (different ABI — PEP 803), and this build's `abi3t` wheel
       # only starts at CPython 3.15 (`abi3t-py315`), so cp314t needs its own
       # dedicated wheel. Windows and macOS already produce one from the host
@@ -129,7 +129,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.8"
+          python-version: "3.9"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -235,7 +235,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.8"
+          python-version: "3.9"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:

@@ -83,7 +83,7 @@ def test_the_matrix_reads_its_versions_from_the_package_metadata() -> None:
     )
     versions = declared_versions()
     assert sorted(set(classifiers), key=lambda v: tuple(map(int, v.split(".")))) == versions
-    assert versions[0] == "3.8", "the floor of requires-python is what the 3.8 leg exists to test"
+    assert versions[0] == "3.9", "the floor of requires-python is what the 3.9 leg exists to test"
     assert "3.15" in versions
 
 
@@ -123,8 +123,8 @@ def test_the_boundary_versions_run_the_suite_on_every_os() -> None:
     """
     versions = declared_versions()
     boundaries = plan_owner.boundary_versions(versions)
-    assert set(boundaries) == {"3.8", versions[-1], plan_owner.COVERAGE_VERSION}, boundaries
-    assert boundaries[0] == "3.8", "the floor leads, because it is the cell the checkers break on"
+    assert set(boundaries) == {"3.9", versions[-1], plan_owner.COVERAGE_VERSION}, boundaries
+    assert boundaries[0] == "3.9", "the floor leads, because it is the cell the checkers break on"
     for version in boundaries:
         for os_name in plan_owner.OS_ALL:
             assert (os_name, version) in cells(pr_plan()), f"{os_name} lost the boundary version {version}"
@@ -196,24 +196,24 @@ def test_check_reports_a_lost_coverage_role() -> None:
 def test_check_reports_a_version_that_runs_nothing() -> None:
     """A dropped cell that leaves a version untested is named, not averaged away.
 
-    Removing ubuntu/3.9 from the grid is the edit a cost-cutting change makes happily; the version is
+    Removing ubuntu/3.10 from the grid is the edit a cost-cutting change makes happily; the version is
     still declared in `pyproject.toml`, and the only thing standing between that and silence is this
     rule.
     """
     versions = declared_versions()
-    kept = [leg for leg in plan_owner.plan("pull_request", versions) if leg["python-version"] != "3.9"]
-    assert ("ubuntu-latest", "3.9") not in cells(kept)
+    kept = [leg for leg in plan_owner.plan("pull_request", versions) if leg["python-version"] != "3.10"]
+    assert ("ubuntu-latest", "3.10") not in cells(kept)
     problems = plan_owner.check(versions, legs=kept, smoke=plan_owner.smoke_plan(versions))
-    assert any("3.9 runs no suite" in problem for problem in problems), problems
+    assert any("3.10 runs no suite" in problem for problem in problems), problems
 
 
 def test_check_reports_a_lost_boundary_cell_on_an_expensive_os() -> None:
     versions = declared_versions()
     legs = plan_owner.plan("pull_request", versions)
-    kept = [leg for leg in legs if (leg["os"], leg["python-version"]) != ("windows-latest", "3.8")]
+    kept = [leg for leg in legs if (leg["os"], leg["python-version"]) != ("windows-latest", "3.9")]
     assert len(kept) == len(legs) - 1
     problems = plan_owner.check(versions, legs=kept, smoke=plan_owner.smoke_plan(versions))
-    assert any(problem.startswith("windows-latest does not run the boundary version 3.8") for problem in problems), (
+    assert any(problem.startswith("windows-latest does not run the boundary version 3.9") for problem in problems), (
         problems
     )
 
@@ -254,7 +254,7 @@ def test_no_interpreter_version_is_hard_coded_in_the_test_matrix() -> None:
     matrix = job["strategy"]["matrix"]
     assert "include" in matrix and "python-version" not in matrix, matrix.keys()
     assert "fromJSON(needs.matrix-plan.outputs.suite-legs)" in str(matrix["include"])
-    assert 'python-version: ["3.8"' not in text, "a literal version list is back in ci.yml"
+    assert 'python-version: ["3.9"' not in text, "a literal version list is back in ci.yml"
 
 
 def test_the_gate_conditions_read_the_roles_not_the_cells() -> None:
@@ -328,8 +328,8 @@ def test_the_workflow_checks_the_plan_before_spending_legs() -> None:
 def test_the_pinned_versions_and_the_plan_agree() -> None:
     """The floor CI imports checkers on and the floor the package declares are the same fact.
 
-    `matrix-verdict` runs `check_matrix_verdict.py` on 3.8 on purpose - it is the job that must never be
-    the one that breaks - and that choice is only meaningful while 3.8 is still the declared floor.
+    `matrix-verdict` runs `check_matrix_verdict.py` on 3.9 on purpose - it is the job that must never be
+    the one that breaks - and that choice is only meaningful while 3.9 is still the declared floor.
     """
     verdict = workflow_document()["jobs"]["matrix-verdict"]
     pinned = [

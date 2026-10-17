@@ -188,7 +188,7 @@ graph TD
 
 | 크레이트 | 용도 |
 |---------|------|
-| **PyO3** | Python 바인딩 (`experimental-inspect`, `abi3-py38`, `abi3t` 포함) |
+| **PyO3** | Python 바인딩 (`experimental-inspect`, `abi3-py39`, `abi3t` 포함) |
 | **granit-parser** | YAML 1.2 호환 파싱 |
 | **IndexMap** | 키 유지를 위한 순서가 있는 해시 맵 |
 | **serde_json** | JSON ↔ YAML 변환 |

@@ -10,7 +10,7 @@ status: new
 
 ## 前提条件
 
-- **Python** ≥ 3.8 (CPython)
+- **Python** ≥ 3.9 (CPython)
 - **Rust** ≥ 1.70（通过 [rustup](https://rustup.rs/)）
 - **Git**
 - **uv**（推荐）或 **pip**

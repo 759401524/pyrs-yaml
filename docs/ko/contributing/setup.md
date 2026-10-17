@@ -10,7 +10,7 @@ pyrs-yaml에 기여하기 위한 환경을 설정합니다.
 
 ## 사전 요구사항
 
-- **Python** ≥ 3.8 (CPython)
+- **Python** ≥ 3.9 (CPython)
 - **Rust** ≥ 1.70 ([rustup](https://rustup.rs/) 경유)
 - **Git**
 - **uv** (권장) 또는 **pip**

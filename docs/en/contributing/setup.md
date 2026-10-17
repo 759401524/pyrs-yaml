@@ -12,7 +12,7 @@ Set up your environment to contribute to pyrs-yaml.
 
 ### Prerequisites
 
-- **Python** ≥ 3.8 (CPython)
+- **Python** ≥ 3.9 (CPython)
 - **Rust** ≥ 1.70 (via [rustup](https://rustup.rs/))
 - **Git**
 - **uv** (recommended) or **pip**

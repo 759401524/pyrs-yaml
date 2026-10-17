@@ -62,7 +62,7 @@ pyrs-yaml 是**同时保留往返 AST**（注释、锚点、标签与源码 span
 | **复杂键** | :material-check: | :material-check: | :material-check: |
 | **往返保留** | :material-check: | :material-close: | :material-check: |
 | **Python 绑定** | :material-check: | :material-check: | :material-check: |
-| **ABI3（py3.8+）** | :material-check: | :material-close: | :material-close: |
+| **ABI3（py3.9+）** | :material-check: | :material-close: | :material-close: |
 | **类型存根（.pyi）** | :material-check: | :material-check: | :material-close: |
 | **国际化错误消息** | :material-check: | :material-close: | :material-close: |
 | **Rust 后端** | :material-check: | :material-close: | :material-close: |
@@ -76,7 +76,7 @@ pyrs-yaml 是**同时保留往返 AST**（注释、锚点、标签与源码 span
 - **往返保留是核心需求** — 保留注释、锚点、标签
 - **需要 PyYAML 兼容性** — 即插即用 API
 - **需要类型提示** — 完整 `.pyi` 存根
-- **需要一个 wheel** — ABI3 兼容 Python 3.8–3.15
+- **需要一个 wheel** — ABI3 兼容 Python 3.9–3.15
 
 #### 选择 PyYAML 的场景
 

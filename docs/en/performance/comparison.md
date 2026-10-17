@@ -73,7 +73,7 @@ pure-Python alternatives above.
 | **Complex keys** | :material-check: | :material-check: | :material-check: |
 | **Round-trip preservation** | :material-check: | :material-close: | :material-check: |
 | **Python bindings** | :material-check: | :material-check: | :material-check: |
-| **ABI3 (py3.8+)** | :material-check: | :material-close: | :material-close: |
+| **ABI3 (py3.9+)** | :material-check: | :material-close: | :material-close: |
 | **Type stubs (.pyi)** | :material-check: | :material-check: | :material-close: |
 | **i18n error messages** | :material-check: | :material-close: | :material-close: |
 | **Rust backend** | :material-check: | :material-close: | :material-close: |
@@ -88,7 +88,7 @@ pure-Python alternatives above.
     - **Round-trip preservation is critical** — preserves comments, anchors, tags
     - **You want PyYAML compatibility** — drop-in replacement API
     - **You need type hints** — full `.pyi` stubs
-    - **You want a single wheel** — ABI3 works across Python 3.8–3.15
+    - **You want a single wheel** — ABI3 works across Python 3.9–3.15
 
 #### Choose PyYAML when
 

@@ -202,7 +202,7 @@ graph TD
 
 | Crate | Purpose |
 |-------|---------|
-| **PyO3** | Python bindings (with `experimental-inspect`, `abi3-py38`, `abi3t`) |
+| **PyO3** | Python bindings (with `experimental-inspect`, `abi3-py39`, `abi3t`) |
 | **granit-parser** | YAML 1.2 compliant parsing |
 | **IndexMap** | Ordered hash map for key preservation |
 | **serde_json** | JSON ↔ YAML conversion |

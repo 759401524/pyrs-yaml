@@ -7,6 +7,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The binding layer moved to PyO3 0.30, and the supported floor moved with it to Python 3.9.** —
+  0.30 drops the `abi3-py38` feature (its lowest stable-ABI tier is `abi3-py39`), so the published
+  wheel becomes `cp39-abi3` and `requires-python` reads `>=3.9`. Measured before adopting: the
+  binding layer compiles against PyO3 0.30.1 + rust-numpy 0.30.0 with no source change,
+  `cargo clippy --all --all-targets -- -D warnings` is clean, 690 Rust and 2918 Python tests pass,
+  and `maturin generate-stubs` plus `scripts/check_stub_drift.py` report the committed `.pyi`
+  unchanged - the declared contract did not move. What does move is everything that names the floor:
+  the classifier list `pyproject.toml` publishes (the CI matrix derives from it),
+  `scripts/ci_matrix_plan.py`'s `MIN_VERSION`, the `matrix-verdict` leg, three `publish.yml` legs,
+  `tests/test_scripts_import_on_supported_python.py` - whose catalogue loses the four APIs first
+  released in 3.9 - and every documented floor claim in README and the four locales.
+
 ## [v0.18.0] — 2026-10-17
 
 <details markdown="1">

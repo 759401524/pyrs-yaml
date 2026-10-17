@@ -60,7 +60,7 @@ YAML を*読む*のみ・パースの最後の一秒が重要・元の書式を�
 | **複合キー** | :material-check: | :material-check: | :material-check: |
 | **ラウンドトリップ保持** | :material-check: | :material-close: | :material-check: |
 | **Pythonバインディング** | :material-check: | :material-check: | :material-check: |
-| **ABI3（py3.8+）** | :material-check: | :material-close: | :material-close: |
+| **ABI3（py3.9+）** | :material-check: | :material-close: | :material-close: |
 | **型スタブ（.pyi）** | :material-check: | :material-check: | :material-close: |
 | **多言語エラーメッセージ** | :material-check: | :material-close: | :material-close: |
 | **Rustバックエンド** | :material-check: | :material-close: | :material-close: |
@@ -74,7 +74,7 @@ YAML を*読む*のみ・パースの最後の一秒が重要・元の書式を�
 - **ラウンドトリップ保持が重要** — コメント、アンカー、タグを保持
 - **PyYAML互換性が欲しい** — 差し替え可能なAPI
 - **型ヒントが必要** — 完全な`.pyi`スタブ
-- **単一wheelで配布したい** — ABI3はPython 3.8〜3.15全体で動作
+- **単一wheelで配布したい** — ABI3はPython 3.9〜3.15全体で動作
 
 ### PyYAMLを選ぶべき場合
 

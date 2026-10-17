@@ -12,7 +12,7 @@ Complete API reference for the `pyrs_yaml` module.
 
 !!! tip "Version compatibility"
     pyrs-yaml ships as an ABI3 wheel, so a single wheel works across Python
-    3.8–3.15 — no recompilation needed when upgrading Python.
+    3.9–3.15 — no recompilation needed when upgrading Python.
 
 ### :material-code-braces: Core Functions
 

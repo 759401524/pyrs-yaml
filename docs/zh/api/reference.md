@@ -9,7 +9,7 @@ status: new
 `pyrs_yaml` 模块的完整 API 参考。
 
 !!! tip "版本兼容"
-    pyrs-yaml 以 ABI3 wheel 格式构建，单个 wheel 支持 Python 3.8 到 3.15，无需重新编译。
+    pyrs-yaml 以 ABI3 wheel 格式构建，单个 wheel 支持 Python 3.9 到 3.15，无需重新编译。
 
 ## :material-code-braces: 核心函数
 

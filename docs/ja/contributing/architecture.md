@@ -181,7 +181,7 @@ graph TD
 
 | クレート | 目的 |
 |---------|------|
-| **PyO3** | Python バインディング（`experimental-inspect`、`abi3-py38`、`abi3t` 付き） |
+| **PyO3** | Python バインディング（`experimental-inspect`、`abi3-py39`、`abi3t` 付き） |
 | **granit-parser** | YAML 1.2 準拠パース |
 | **IndexMap** | キー順序保持用の順序付きハッシュマップ |
 | **serde_json** | JSON ↔ YAML 変換 |

@@ -19,7 +19,7 @@ use std::sync::Arc;
 /// 将 Python 字符串零拷贝借用后转 `Arc<str>`：`encode_utf8` 产出 UTF-8 `PyBytes`
 /// （单次分配），`Arc::from(&str)` 再拷贝一次 —— 共 2 次分配，与
 /// `extract::<String>`（内部即 `to_cow().into_owned()`）路径持平。
-/// 注：abi3-py38 下 `PyStringMethods::to_str` 被 cfg 禁用，借用必须走 `encode_utf8`。
+/// 注：abi3-py39 下 `PyStringMethods::to_str` 被 cfg 禁用，借用必须走 `encode_utf8`。
 pub(crate) fn py_string_to_arc(s: &Bound<'_, PyString>) -> PyResult<Arc<str>> {
     let bytes = s.encode_utf8()?;
     let text = std::str::from_utf8(bytes.as_bytes())
