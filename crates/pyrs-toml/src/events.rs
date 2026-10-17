@@ -265,13 +265,14 @@ impl<'a> Events<'a> {
                 self.at(at, StreamEventType::MappingEnd);
             }
             other => {
-                // The producer borrows the IR, so this is where the scalar's text is paid for: the
-                // event hands out owned text anyway (`Cow::Owned`), and the tree route moves it.
+                // The producer borrows the IR, so this is where the scalar's text is paid for -
+                // except for the literals that are `'static`, which the projection hands back
+                // borrowed and no reader has to own at all.
                 let projection = scalar_projection(other.clone());
                 self.at(
                     at,
                     StreamEventType::Scalar {
-                        value: Cow::Owned(projection.text),
+                        value: projection.text.into_cow(),
                         style: projection.style,
                         anchor: None,
                         tag: projection.tag,

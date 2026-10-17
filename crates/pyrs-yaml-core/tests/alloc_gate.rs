@@ -83,8 +83,8 @@ const TO_JSON_MEDIUM: Ceiling = Ceiling {
     bytes: 1_048,
 };
 const FROM_TOML_MEDIUM: Ceiling = Ceiling {
-    allocs: 148,
-    bytes: 16_362,
+    allocs: 97,
+    bytes: 15_612,
 };
 const TO_TOML_MEDIUM: Ceiling = Ceiling {
     allocs: 12,

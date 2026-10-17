@@ -813,6 +813,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   green; removing the schema guard reddens the bridge table while the loader stays green — the two
   halves are pinned separately, which is the point of the table.
 
+- **The TOML reader no longer allocates every scalar twice** — a string was copied out of the
+  document into a `String` and then copied again into the AST's `Arc<str>`, and a key paid the same
+  twice plus a clone into its map. The IR now carries `Arc<str>` from the scanner onward: an
+  unescaped basic string, a literal string and a datetime borrow the source run until an escape
+  forces a decoded buffer, which becomes the `Arc` directly; a key is built once as `Arc<str>` and
+  cloned by refcount thereafter. The new `ScalarText` splits the projection's text into `Shared`,
+  `Static` (a boolean borrows a `'static` literal) and `Fresh`, so the tree moves the `Arc` it is
+  handed while the event producer still returns a `Cow<'a, str>` that outlives the dropped IR.
+  Measured by the allocation ceiling: `from_toml_medium` 148 → 97 allocations and 16,362 → 15,612
+  bytes, the ceiling tightened to the new reading, and the other five scenarios did not move.
+  `a_multibyte_run_is_copied_whole_and_the_bytes_that_ended_it_still_do`
+  pins the single-line scanner's first escape, where the pending run is now materialised into the
+  buffer.
+
 - **The JSON reader no longer allocates every string twice** — the scanner decoded each quoted
   body into a `String` and then copied it into the AST's `Arc<str>`; when the body held no escape
   the decoded text *was* a slice of the source, so the first copy bought nothing. `string()`,

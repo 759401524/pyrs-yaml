@@ -634,6 +634,17 @@ status: new
   `to_python_anchors` -0.03%。突变归因：删掉 Python 分支只让加载器测试与套件门禁变红而桥接表保持绿；
   删掉 schema 里的守卫只让桥接表变红而加载器保持绿——两半各自被钉住，正是这张表的意义。
 
+- **TOML 读取器不再把每个标量分配两次** — 字符串先从文档复制进 `String`，再复制进 AST 的
+  `Arc<str>`；每个键还要付同样的两次复制，外加一次进映射的克隆。现在 IR 从扫描器起就持有
+  `Arc<str>`：无转义的基本字符串、字面量字符串与日期时间都借用源码区间，只有遇到转义才物化解码
+  缓冲区，并直接成为那个 `Arc`；键只构造一次 `Arc<str>`，之后按引用计数克隆。新的 `ScalarText`
+  把投影文本分为 `Shared`、`Static`（布尔借用 `'static` 字面量）与 `Fresh`，于是树侧直接移动拿到
+  的 `Arc`，而事件流生产者仍返回在 IR 销毁后依旧有效的 `Cow<'a, str>`。由分配上限门禁实测：
+  `from_toml_medium` 从 148 次分配 / 16,362 字节降到 97 次 / 15,612 字节，上限已收紧到新读数，
+  其余五个场景没有移动。
+  `a_multibyte_run_is_copied_whole_and_the_bytes_that_ended_it_still_do`
+  钉住单行扫描器的首个转义：待定区间现在会先整体物化进缓冲区。
+
 - **JSON 读取器不再把每个字符串分配两次** — 扫描器先把每个带引号的字符串体解码成 `String`，再复
   制进 AST 的 `Arc<str>`；当字符串体不含转义时，解码结果本就是一截源码，第一次复制毫无收获。
   `string()`、`single_quoted_string()` 与 `identifier_key()` 现在返回 `Cow<'a, str>`，在没有转义
