@@ -8,10 +8,10 @@ status: new
 
 ## NumPy ndarray Serialization Guide
 
-!!! warning "Free-threaded builds exclude NumPy"
-    On free-threaded (cp314t) wheels the `numpy` feature is disabled, so
-    `safe_dump` on a `numpy.ndarray` raises `YamlTypeError`. GIL builds
-    (Python 3.8–3.15) keep full ndarray serialization support.
+!!! note "Free-threaded wheels include NumPy"
+    All wheels, GIL and free-threaded (cp314t), compile in the `numpy` integration. It
+    activates when NumPy is importable; without NumPy, `safe_dump` on a `numpy.ndarray`
+    raises `YamlTypeError` because the value is not a recognized type.
 
 !!! note "Complex numbers"
     YAML has no native complex type. Complex numbers are serialized as

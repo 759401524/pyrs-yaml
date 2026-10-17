@@ -12,7 +12,7 @@ status: new
 
 | :material-language-python: Requirement | Details |
 |---|---|
-| **Python** | ≥ 3.8 (CPython), including free-threaded 3.14t and 3.15t |
+| **Python** | ≥ 3.8 (CPython), including free-threaded 3.14t (prebuilt wheels) and 3.15t (source build) |
 | :material-monitor: **Platform** | Linux, macOS, Windows |
 | :material-hammer-wrench: **Build** | Rust toolchain (for source builds only) |
 
@@ -24,7 +24,7 @@ The package is published on PyPI. Install with pip:
 pip install pyrs-yaml
 ```
 
-The package is built as an **ABI3 wheel**, meaning a single wheel works across Python 3.8 through 3.15 — no recompilation needed.
+GIL builds ship as a single **`cp38-abi3` wheel**, so one wheel works across Python 3.8 through 3.15 — no recompilation needed.
 
 ### Install from Source
 
@@ -38,9 +38,9 @@ uv run --frozen maturin develop --release
 
 ### Free-Threaded Python (cp314t and cp315t)
 
-Free-threaded (no-GIL) wheels for CPython 3.14t and 3.15t include the NumPy integration. When NumPy is installed in the environment, `safe_dump` / `from_dict` serialize `numpy.ndarray` values normally; when NumPy is absent, the integration is inert and calls fall through to the default object handler. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
+Free-threaded (no-GIL) builds for CPython 3.14t and 3.15t include the NumPy integration. When NumPy is installed in the environment, `safe_dump` / `from_dict` serialize `numpy.ndarray` values normally; when NumPy is absent, the integration is inert and calls fall through to the default object handler. GIL builds (Python 3.8–3.15) keep full ndarray serialization support.
 
-The two free-threaded wheels differ in how they are built, which is why both exist. The stable ABI for free-threaded builds (`abi3t`) starts at 3.15, so the `cp315t`-and-later case is covered by an ABI wheel; 3.14t predates that ABI and needs its own compiled wheel, so it is published as a version-specific artifact.
+The stable ABI for free-threaded builds (`abi3t`) starts at 3.15, so 3.14t and 3.15t cannot share one wheel. The published free-threaded wheels are `cp314t` for Windows (x64/x86/arm64), macOS (x86_64/arm64) and Linux x86_64; PyPI has no prebuilt 3.15t wheel yet. CPython 3.15t is supported from a source build (`uv run --frozen maturin develop --release`), the path CI exercises.
 
 !!! note "NumPy is auto-detected at runtime"
     The NumPy integration is compiled in on every wheel (GIL and free-threaded)
