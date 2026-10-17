@@ -112,6 +112,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The defence tier is measured end to end** — the quality matrix's counts come from the tree,
   the JSON and TOML fuzz targets assert that their own writers' output re-loads, PR-tier fuzzing
   is blocking, and allocation ceilings plus instruction floors sit on the hot paths.
+- **The release's `pyq` assets get the toolchain they ask for** — `publish.yml` wrote
+  `targets: ${ matrix.platform.std }`; a single brace is not a GitHub expression, so rustup
+  received `${`, `matrix.platform.std` and `}` as three literal target names and every `pyq` leg
+  stopped at toolchain setup. The step passes `${{ matrix.platform.std }}` now, and
+  `tests/test_publish_toolchain.py` fails if the form returns.
 
 #### Performance
 

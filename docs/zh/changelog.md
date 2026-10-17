@@ -92,6 +92,11 @@ status: new
   不再 panic。
 - **防线端到端可测量** — 质量矩阵的计数来自代码树，JSON/TOML fuzz 目标断言自家写入器的输出可
   重新加载，PR 级 fuzz 为阻塞门禁，分配上限与指令数地板覆盖热路径。
+- **`pyq` 发布任务的工具链步骤会收到矩阵目标** — `publish.yml` 曾写
+  `targets: ${ matrix.platform.std }`；单层花括号不是 GitHub 表达式，rustup 会把 `${`、
+  `matrix.platform.std` 与 `}` 当作三个字面目标名，所有 `pyq` 任务都在工具链安装处停下。
+  该步骤现在传入 `${{ matrix.platform.std }}`，形式一旦回退，
+  `tests/test_publish_toolchain.py` 就会失败。
 
 #### 性能
 

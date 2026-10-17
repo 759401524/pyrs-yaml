@@ -76,13 +76,18 @@ def test_the_sdist_step_is_deliberately_not_pinned():
     assert "rust-toolchain" not in sdist[0], "an sdist compiles nothing; a pin here would be noise"
 
 
-def test_the_cli_asset_build_stops_following_stable():
+def test_the_cli_asset_build_pins_its_compiler_and_matrix_target():
     text = PUBLISH.read_text(encoding="utf-8")
     assert "dtolnay/rust-toolchain@stable" not in text, (
         "`@stable` resolves to whatever the image ships: the release binary would be built by a "
         "compiler no measurement describes"
     )
     assert re.search(rf"dtolnay/rust-toolchain@master\s*\n\s*with:\s*\n\s*toolchain: {re.escape(pin())}\b", text)
+    # A single brace is not an expression: GitHub passes `${ matrix.platform.std }` through
+    # literally and rustup receives the three words `${`, `matrix.platform.std`, `}` as target
+    # names. PR CI never runs `publish.yml`, so this is the only place that can fail before a tag
+    # push does.
+    assert "targets: ${{ matrix.platform.std }}" in text
 
 
 def test_ci_builds_the_same_recipe_with_the_same_compiler():

@@ -353,7 +353,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.97.1
-          targets: ${ matrix.platform.std }
+          targets: ${{ matrix.platform.std }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
