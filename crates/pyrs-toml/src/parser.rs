@@ -1036,7 +1036,10 @@ impl<'a> Parser<'a> {
     }
 
     fn is_at_line_end_ws(&self) -> bool {
-        let mut i = self.pos + 1;
+        // `self.pos` is the escape letter: a letter with a break after it is still a
+        // content character (`\r`, `\t`), and starting one byte later read every
+        // single-character escape before a break as a line continuation.
+        let mut i = self.pos;
         while matches!(self.byte_at(i), Some(b' ' | b'\t')) {
             i += 1;
         }
@@ -2435,6 +2438,23 @@ mod tests {
         ] {
             let ast = from_toml(src).unwrap();
             assert_eq!(scalar(child(&ast, "a")), want, "mis-split: {src}");
+        }
+    }
+
+    #[test]
+    fn an_escape_before_a_break_is_content_unless_nothing_follows_it() {
+        // The continuation test starts at the escape letter, not one byte past it. Starting
+        // after the letter made every single-character escape at the end of a line look like
+        // a line-ending backslash: `\r` then a break decoded as a bare `r`, and the writer's
+        // own `"""x\r\ny"""` therefore re-read as `xr\ny` and settled only on the next round
+        // (libFuzzer `toml_roundtrip` crash-60b1bd77).
+        for (src, want) in [
+            ("a = \"\"\"x\\r\ny\"\"\"\n", "x\r\ny"),
+            ("a = \"\"\"x\\t\ny\"\"\"\n", "x\t\ny"),
+            ("a = \"\"\"x\\  \ny\"\"\"\n", "xy"),
+        ] {
+            let ast = from_toml(src).unwrap();
+            assert_eq!(scalar(child(&ast, "a")), want, "mis-read: {src}");
         }
     }
 

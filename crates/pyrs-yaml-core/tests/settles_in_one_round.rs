@@ -47,6 +47,26 @@ fn a_key_note_over_a_block_body_settles_in_one_round() {
     }
 }
 
+/// libFuzzer `yaml_roundtrip` crash-8b98eb75: the first mapping entry's inline note, under an
+/// anchor/tag header.
+///
+/// `lift_first_entry_notes` moved the first key's *leading* notes above the header line, where the
+/// reader reports them, but never read the key's inline slot. The `<<` key's note therefore stayed
+/// below the `!` bare-tag header, and the re-read - which reports that note on the root node -
+/// hoisted it above the header on the second round. The extraction now sees the inline slot too,
+/// so the first emission already places it where the next read will.
+#[test]
+fn a_first_key_inline_note_under_a_header_settles_in_one_round() {
+    let src = "! #& #&\n#e\n? #! #&\n#g: !:\t\n<<: #: #*b\n  ::e? #! #&\n#e\n? #!#&\n#e\n? #";
+    let one = emit(src);
+    assert!(one.contains("#*b"), "the note was dropped: {one:?}");
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
 /// A note that follows a CR-only line break belongs to the item after it, not the container
 /// before it.
 ///

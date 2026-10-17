@@ -342,6 +342,20 @@ mod tests {
         (yaml, parsed)
     }
 
+    /// The tree as the tier's resolving reader would report it. A plain untagged
+    /// `<<` pair is a parse-time merge directive, not a key that survives the
+    /// cycle: the reader consumes it and folds the source mapping in, so the
+    /// source's own tag/anchor belongs to the anchor, not to the synthesized
+    /// result. Comparing against the raw sample made that reader behaviour look
+    /// like writer data loss (CI seed `8e067f67…`, `prop_tag_preserved`), and the
+    /// writer must keep spelling `<<` plainly because a tree parsed with
+    /// `resolve_merges=false` carries a real directive there.
+    fn as_the_reader_sees(node: &crate::ast::CustomNode) -> crate::ast::CustomNode {
+        let mut composed = node.clone();
+        crate::parser::yaml::resolve_merge_keys(&mut composed);
+        composed
+    }
+
     /// Key *content* bytes for order-property comparisons, deliberately
     /// ignoring serialized spelling: a flow-unsafe plain token (`0[`) re-reads
     /// as the same string under a quoted style, `null` normalizes between
@@ -562,6 +576,7 @@ mod tests {
     proptest! {
         #[test]
         fn prop_roundtrip(node in arb_custom_node()) {
+            let node = as_the_reader_sees(&node);
             let (yaml, parsed) = roundtrip(&node);
             let (labels, residual) = roundtrip_residuals(&node, &parsed, &yaml);
             prop_assert!(
@@ -673,6 +688,7 @@ mod tests {
             )
         ) {
             deep_apply_styles(&mut node, style, chomp, flow);
+            let node = as_the_reader_sees(&node);
             let (yaml, parsed) = roundtrip(&node);
             let (labels, residual) = roundtrip_residuals(&node, &parsed, &yaml);
             prop_assert!(
@@ -686,6 +702,7 @@ mod tests {
         /// flow spelling on the first re-serialize, and stays stable after.
         #[test]
         fn prop_idempotent(node in arb_custom_node()) {
+            let node = as_the_reader_sees(&node);
             let (yaml, parsed) = roundtrip(&node);
             let (_, first) = roundtrip_residuals(&node, &parsed, &yaml);
             prop_assert!(first.is_empty(), "first cycle unexplained: {first:?}");
@@ -705,6 +722,7 @@ mod tests {
         #[test]
         fn prop_mapping_order_preserved(node in arb_custom_node()) {
             // Asserted on, never filtered: the cycle below runs for every sample.
+            let node = as_the_reader_sees(&node);
             let parsed = roundtrip(&node).1;
             {
                 fn key_order(n: &crate::ast::CustomNode) -> Vec<Vec<u8>> {
@@ -731,6 +749,7 @@ mod tests {
         #[test]
         fn prop_flow_order_preserved(node in arb_custom_node()) {
             // Asserted on, never filtered: the cycle below runs for every sample.
+            let node = as_the_reader_sees(&node);
             let parsed = roundtrip(&node).1;
             {
                 fn mapping_key_orders(
@@ -818,6 +837,7 @@ mod tests {
                 }
             }
             // Asserted on, never filtered: the cycle below runs for every sample.
+            let node = as_the_reader_sees(&node);
             let parsed = roundtrip(&node).1;
             {
                 let a = tag_texts(&node);

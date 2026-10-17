@@ -772,6 +772,68 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A first entry's inline note is lifted above the header the reader reports it under** — when the
+  root carries an anchor or tag, `lift_first_entry_notes` moves the first mapping entry's notes
+  above the header line, because that is where a re-read reports them, but it collected only the
+  key's leading list. The key's inline slot was never read, so libFuzzer `yaml_roundtrip`
+  crash-8b98eb75 (`! #& #&` / `? #! #&` / `<<: #: #*b` …) kept `#: #*b` below the `!` header on
+  the first emission; the re-read then attached it to the root and hoisted it above on the second,
+  which is not a fixed point. The extraction now reads both slots, and
+  `a_first_key_inline_note_under_a_header_settles_in_one_round` pins that input by name; the seed
+  corpus keeps it as `fuzz/seeds/yaml_roundtrip/former-crash-8b98eb75.seed`. Measured: 688 Rust
+  tests pass, `note_survival` still accepts every seed. Mutation: making the inline filter
+  `filter(|_| false)` reddens exactly the named test, printing the note crossing the header between
+  rounds; restored.
+
+- **An escape immediately before a break is content, not a line continuation** — `is_at_line_end_ws`
+  began its scan at `self.pos + 1`, the byte after the escape letter, so an escape followed by a
+  break was taken for a line-ending backslash: `\r` decoded as a literal `r` and its break stayed in
+  the value, which made the writer's own `"""x\r\ny"""` re-read as `xr\ny` and settle only on the
+  next round (libFuzzer `toml_roundtrip` crash-60b1bd77). The scan starts at the escape letter now,
+  so `\r`, `\t` and `\\` keep their character, and only an escape whose remainder is whitespace and
+  then a break continues the line — which keeps the spec's `\` + trailing spaces + break form
+  working. `an_escape_before_a_break_is_content_unless_nothing_follows_it` pins all three cases; the
+  input is archived as `fuzz/seeds/toml_roundtrip/former-crash-60b1bd77.seed`. Measured: the 688
+  Rust tests and the seed corpus round-trip both pass. Mutation: moving the scan start back one byte
+  reddens exactly that test; restored.
+
+- **A repeated JSON name collapses by name even when a note rides the key** — the map decides a
+  duplicate by node equality, and a parsed JSON key derives every equality field from its text
+  except the inline note slot, so `{"a": 0, // note` followed by `"a": 1}` kept two `a` members. The
+  strict writer emitted both names and the re-read folded them, so its output was not a fixed point
+  (libFuzzer `json_events_replay` crash-51f2cdb1; `json_roundtrip` crash-0b0246f4 for the JSON5
+  spelling). `ws` now counts the same-line notes it consumes; `object` snapshots that count on entry
+  and folds its own map at the close when the count moved, or when a note was already pending at
+  entry (a note written between the colon and this `{` reaches the first key through that slot, not
+  through this map's `ws`). The fold treats a noted key as the moving side: a later duplicate of
+  its name folds into the name's first position (last value wins), a noted entry with no later
+  duplicate folds back into an earlier clean one, and `park_notes` carries every displaced note. A
+  note-free object pays no per-key query, only two counter reads at the close; asking about the
+  note per key measured +0.8% on `from_json_medium`. The named tests
+  `a_duplicate_name_collapses_even_when_a_key_note_made_the_nodes_unequal` and
+  `a_note_written_before_a_nested_map_still_collapses_its_repeat` pin both one-note orders, the
+  inherited route, the strict text `{"a":1,"b":2}` and its next round; both crash inputs are
+  archived under `fuzz/seeds/json_events_replay/` and `fuzz/seeds/json_roundtrip/`. Measured: 688
+  Rust tests and 2905 Python tests pass, both saved artifacts replay clean through the two oracles,
+  and the Ir gate on the pinned compiler reads `from_json_medium` +0.08%, `from_json5_medium`
+  +0.03% and `from_jsonc_medium` +0.50% — inside its 0.5% line by 4,813 instructions on this host.
+  Mutation: forcing the name search off reddens the new test at its `pairs.len() == 2` assertion;
+  restored.
+
+- **The property tier compares the tree its resolving reader reports, not the directive that fed
+  it** — every cycle in `pbt.rs` reads with `resolve_merges: true`, which consumes a plain untagged
+  `<<` pair and folds its source mapping into the parent, but the properties compared that result
+  against the untouched generator sample. A sample that happened to spell a literal `<<` key
+  therefore looked like the reader had dropped the source mapping's tag (CI seed `8e067f67…`,
+  `prop_tag_preserved` after 15,538 cases). The six properties that write and compare now start
+  from `as_the_reader_sees`, which applies `resolve_merge_keys` to a clone, so the expectation is
+  what the same reader returns. The writer is deliberately untouched: a tree parsed with
+  `resolve_merges=false` carries a real directive at that key, and quoting it would change the
+  document's meaning. The seed is committed to `crates/pyrs-yaml-core/proptest-regressions/pbt.txt`.
+  Mutation: replacing the composition with a plain clone reddens `prop_roundtrip` and
+  `prop_tag_preserved` on that seed; restored. Measured: the six affected properties pass, the whole
+  property module (16 tests) passes at `PROPTEST_CASES=20000`, and clippy is clean.
+
 - **A block scalar with no content line keeps the indicators its header wrote** — the header scan
   is anchored to the scalar's own span, and granit spans a content-less block on the header's `|`
   or `>` itself, so the backup walked past the `:` into the key and the sigil never entered the
