@@ -71,16 +71,17 @@ files = "\\.(rs|toml|lock)$"
 pass_filenames = false
 priority = "format"
 
-# `fuzz/` is its own Cargo workspace, not a member of the root one, so the hook above never
-# sees it and its targets drifted unnoticed. Measured as the two hooks ran side by side on
-# the same working copy: `cargo fmt` Passed while this one Failed, naming the files the root
-# workspace cannot reach.
+# `fuzz/` declares its own `[workspace]`, so the hook above never reaches its targets: `cargo fmt`
+# at the root formats the main workspace only. Measured 2026-10-17: the targets added by 39b1b9eb
+# and 5f5262aa were unformatted while every gate stayed green. The manifest is in `files` because
+# the edition it declares is part of what rustfmt decides; a separate hook is needed because
+# `entry` is executed without a shell.
 [[repos.hooks]]
 id = "cargo-fmt-fuzz"
 name = "cargo fmt (fuzz workspace)"
 language = "system"
 entry = "cargo fmt --manifest-path fuzz/Cargo.toml -- --check"
-files = "\\.(rs|toml|lock)$"
+files = "^fuzz/.*(\\.rs|Cargo\\.toml)$"
 pass_filenames = false
 priority = "format"
 
