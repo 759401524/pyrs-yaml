@@ -17,14 +17,6 @@ status: new
 
 #### 追加
 
-- **`cargo fmt` ゲートが fuzz ワークスペースを覆うようになった** — `fuzz/` は独立した Cargo
-  ワークスペースでありルート側のメンバーではないため、`cargo-fmt` フックはそのターゲットを一度も
-  見ておらず、書式のドリフトは見過ごされていた。新しい `cargo-fmt-fuzz` フックが
-  `cargo fmt --manifest-path fuzz/Cargo.toml -- --check` を実行する。両方のフックを同じ作業コピーで
-  走らせて実測した：`cargo fmt` は Passed、新しいフックは Failed となり、ルートワークスペースから
-  届かないファイルを名指しした。きれいなツリーでは新フックは通り、この変更が整形しない fuzz
-  ターゲットに空白を 2 つ入れると再び失敗する——この検査も飾りではない。
-
 - **JSON と TOML の fuzzer 目標に、実際に失敗しうるオラクルが付いた** — `parse_json` と `parse_toml`
   ではすべての再読み込みが `let _ =` だったため、「自前のリーダーは自前のライターの出力を読み込め
   る」は検査のない説明文にすぎず、自分の方言が受け入れないバイトをライターが出しても通過していた。現
@@ -723,6 +715,16 @@ status: new
   言せず、例外型が一つも含まれないため。— (details: quality-ledger (be))
 
 #### 修正
+
+- **整形ゲートが fuzz workspace を見るようになった** — `fuzz/Cargo.toml` は独自の `[workspace]` を
+  宣言しているため、ルートの `cargo fmt -- --check` はメイン workspace だけを整形し、fuzz の
+  ターゲットには届かない。2026-10-17 の実測：`cargo fmt --manifest-path fuzz/Cargo.toml -- --check`
+  は 3 ファイルが rustfmt 待ちだと報告した（`json_events_replay.rs`、`json_roundtrip.rs`、
+  `toml_roundtrip.rs`、39b1b9eb と 5f5262aa が導入）。その間、すべてのゲートは緑のままだった。
+  新しい `cargo-fmt-fuzz` フックが `fuzz/**/*.rs` かマニフェストの変化時にその workspace を検査す
+  る。既存フックへ畳み込めないのは、`entry` がシェルを介さず実行されるため。
+  `tests/test_fuzz_format_gate.py` は各マニフェストから独立 workspace を導出し、フックの欠落で失敗
+  する——変異：新しいフックをルートのコマンドへ戻すと `['fuzz']` を伴って赤くなる。復元済み。
 
 - **最初のマッピング項目のインライン注釈は、再読が報告するヘッダ行の上へ持ち上げられる** — ルートが
   アンカーかタグを持つとき、`lift_first_entry_notes` は最初のマッピング項目の注釈をヘッダ行の上へ

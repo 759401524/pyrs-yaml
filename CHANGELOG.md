@@ -9,14 +9,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **The `cargo fmt` gate now covers the fuzz workspace** — `fuzz/` is its own Cargo workspace, not
-  a member of the root one, so the `cargo-fmt` hook never saw its targets and their formatting
-  drifted unnoticed. A second hook, `cargo-fmt-fuzz`, runs
-  `cargo fmt --manifest-path fuzz/Cargo.toml -- --check`. Measured as both hooks ran on the same
-  working copy: `cargo fmt` Passed while the new one Failed, naming the files the root workspace
-  cannot reach. On a clean tree the new hook passes, and a two-space change to a fuzz target this
-  change does not format makes it fail again — the check is not decoration either.
-
 - **The JSON and TOML fuzz targets got an oracle that can fail** — every re-read in `parse_json`
   and `parse_toml` was `let _ =`, so "our own readers load our own writers' output" was a docstring
   with nothing checking it, and a writer that emitted a byte its own dialect rejects passed. Each
@@ -779,6 +771,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   none of the exception types. — (details: quality-ledger (be))
 
 ### Fixed
+
+- **The formatting gate now sees the fuzz workspace** — `fuzz/Cargo.toml` declares its own
+  `[workspace]`, so `cargo fmt -- --check` at the root formats the main workspace and never reaches
+  the fuzz targets. Measured 2026-10-17: `cargo fmt --manifest-path fuzz/Cargo.toml -- --check`
+  reported three files awaiting rustfmt (`json_events_replay.rs`, `json_roundtrip.rs`,
+  `toml_roundtrip.rs`, introduced by 39b1b9eb and 5f5262aa) while every gate stayed green. A second
+  hook, `cargo-fmt-fuzz`, checks that workspace whenever a `fuzz/**/*.rs` file or its manifest
+  changes; it cannot be folded into the existing hook because `entry` runs without a shell.
+  `tests/test_fuzz_format_gate.py` derives every standalone workspace from the manifests and fails
+  if one lacks a hook — mutation: pointing the new hook back at the root command reddens it with
+  `['fuzz']`; restored.
 
 - **A first entry's inline note is lifted above the header the reader reports it under** — when the
   root carries an anchor or tag, `lift_first_entry_notes` moves the first mapping entry's notes

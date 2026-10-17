@@ -19,12 +19,6 @@ status: new
 
 #### 新增
 
-- **`cargo fmt` 门禁现在覆盖 fuzz 工作区** — `fuzz/` 是独立的 Cargo 工作区，不是根工作区的成员，
-  所以 `cargo-fmt` 钩子从未看到它的目标文件，格式漂移无人发现。新增的 `cargo-fmt-fuzz` 钩子运行
-  `cargo fmt --manifest-path fuzz/Cargo.toml -- --check`。实测两个钩子跑在同一份工作副本上时：
-  `cargo fmt` 通过，新钩子失败并点名根工作区够不到的文件。在干净的树上新钩子通过；对一个本改动不做
-  格式化的 fuzz 目标改两个空格，它又立刻失败——这项检查同样不是装饰。
-
 - **JSON 与 TOML 模糊测试目标拿到了一个真能失败的预言机** — `parse_json` 和 `parse_toml` 里每一次回
   读都是 `let _ =`，所以"我们自己的读取器能加载我们自己的写入器输出"只是一句没有检查支撑的文档字符
   串，写入器吐出自己方言无法接受的字节也能照样通过。现在每个目标都对着"能表达写入器所写内容"的读取器
@@ -615,6 +609,15 @@ status: new
   类型存根只声明了四个类，不含任何异常类型。— (details: quality-ledger (be))
 
 #### 修复
+
+- **格式化门禁现在看得见 fuzz workspace** — `fuzz/Cargo.toml` 声明了自己的 `[workspace]`，所以根目录
+  的 `cargo fmt -- --check` 只格式化主 workspace，从不到达 fuzz 目标。2026-10-17 实测：
+  `cargo fmt --manifest-path fuzz/Cargo.toml -- --check` 报出三个文件等待 rustfmt
+  （`json_events_replay.rs`、`json_roundtrip.rs`、`toml_roundtrip.rs`，由 39b1b9eb 与
+  5f5262aa 引入），而当时所有门禁都是绿的。新增的 `cargo-fmt-fuzz` 钩子在 `fuzz/**/*.rs` 或清单
+  变化时检查该 workspace；它无法并入既有钩子，因为 `entry` 不经 shell 执行。
+  `tests/test_fuzz_format_gate.py` 从各清单推导所有独立 workspace，缺钩子即失败——突变：把新钩子
+  指回根命令会让它以 `['fuzz']` 变红；已还原。
 
 - **首个映射条目的行内注释被提到读取器会报告它的那行头部之上** — 当根节点带有锚点或标签时，
   `lift_first_entry_notes` 会把首个映射条目的注释移到头部行之上，因为重读会在那里报告它们，但它只

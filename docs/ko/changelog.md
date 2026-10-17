@@ -17,14 +17,6 @@ status: new
 
 #### 추가
 
-- **`cargo fmt` 게이트가 이제 fuzz 워크스페이스까지 덮는다** — `fuzz/` 는 루트 워크스페이스의
-  멤버가 아닌 별도의 Cargo 워크스페이스이므로, `cargo-fmt` 훅은 그 표적들을 한 번도 보지 못했고
-  서식 드리프트는 그대로 지나갔다. 새 `cargo-fmt-fuzz` 훅이
-  `cargo fmt --manifest-path fuzz/Cargo.toml -- --check` 를 실행한다. 두 훅을 같은 작업 복사본에서
-  나란히 돌려 실측했다: `cargo fmt` 는 통과했고 새 훅은 실패하며 루트 워크스페이스가 닿지 못하는
-  파일을 지목했다. 깨끗한 트리에서는 새 훅이 통과하고, 이 변경이 정리하지 않는 fuzz 표적에 공백 두
-  칸을 넣으면 다시 실패한다 — 이 검사 또한 장식이 아니다.
-
 - **JSON 과 TOML 퍼징 표적에 실제로 실패할 수 있는 오라클이 붙었다** — `parse_json` 과 `parse_toml`
   의 모든 재읽기는 `let _ =` 였으므로 "우리 읽기기가 우리 쓰기기의 출력을 다시 부담 한다"는 문장은
   검사 없는 문서였고, 자기 방언이 받아들일 수 없는 바이트를 쓰기가 내놓아도 그대로 통과했다. 이제 각
@@ -729,6 +721,16 @@ status: new
   선언하고 예외 형식은 하나도 포함하지 않기 때문입니다. — (details: quality-ledger (be))
 
 #### 수정
+
+- **포맷 게이트가 이제 fuzz workspace 를 본다** — `fuzz/Cargo.toml` 이 자체 `[workspace]` 를
+  선언하므로 루트의 `cargo fmt -- --check` 는 메인 workspace 만 포맷하고 fuzz 표적에는 닿지
+  않는다. 2026-10-17 실측: `cargo fmt --manifest-path fuzz/Cargo.toml -- --check` 가 세 파일이
+  rustfmt 를 기다린다고 보고했고(`json_events_replay.rs`, `json_roundtrip.rs`,
+  `toml_roundtrip.rs`, 39b1b9eb 과 5f5262aa 가 도입), 그동안 모든 게이트는 초록이었다. 새
+  `cargo-fmt-fuzz` 훅이 `fuzz/**/*.rs` 나 매니페스트가 바뀔 때 그 workspace 를 검사한다. 기존 훅에
+  합칠 수 없는 이유는 `entry` 가 셸 없이 실행되기 때문이다.
+  `tests/test_fuzz_format_gate.py` 는 각 매니페스트에서 독립 workspace 를 도출해 훅이 없으면
+  실패한다 — 변이: 새 훅을 루트 명령으로 되돌리면 `['fuzz']` 와 함께 빨개진다. 복원함.
 
 - **첫 매핑 항목의 인라인 note은 다시 읽기가 보고할 헤더 줄 위로 올라간다** — 루트에 앵커나 태그가
   있으면 `lift_first_entry_notes`는 첫 매핑 항목의 note을 헤더 줄 위로 옮긴다. 다시 읽기가 그곳에
