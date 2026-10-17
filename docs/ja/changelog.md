@@ -15,6 +15,8 @@ status: new
 
 ### [Unreleased]
 
+### [v0.18.1] — 2026-10-17
+
 ### 追加
 
 - **Python 3.15t と Linux arm64 向けフリースレッドホイール** — リリースマトリクスが Windows、

@@ -17,6 +17,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### [Unreleased]
 
+### [v0.18.1] — 2026-10-17
+
 ### Added
 
 - **Free-threaded wheels for Python 3.15t and Linux arm64** — the release now builds a
