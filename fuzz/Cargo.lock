@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-ast"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "indexmap",
  "thiserror",
@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-event"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "pyrs-ast",
 ]
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-json"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "indexmap",
  "pyrs-ast",
@@ -418,11 +418,11 @@ dependencies = [
 
 [[package]]
 name = "pyrs-schema"
-version = "0.17.0"
+version = "0.18.0"
 
 [[package]]
 name = "pyrs-toml"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "indexmap",
  "pyrs-ast",
@@ -432,7 +432,7 @@ dependencies = [
 
 [[package]]
 name = "pyrs-yaml-core"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "granit-parser 2.0.0",
  "indexmap",
