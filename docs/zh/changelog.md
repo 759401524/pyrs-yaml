@@ -17,6 +17,13 @@ status: new
 
 ### [Unreleased]
 
+### 变更
+
+- **aarch64 wheel 改由原生 arm64 runner 构建** — `publish.yml` 的 `linux` 与 `musllinux` aarch64
+  行从 qemu 下的 `ubuntu-22.04` 迁到 `ubuntu-24.04-arm`，glibc 行也随之改为在原生环境通过 `uv`
+  运行测试套件。s390x 成为唯一仍在模拟环境下运行套件的 wheel 目标；`pyq` 的 aarch64 交叉构建、
+  armv7 与 ppc64le 均未改动。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

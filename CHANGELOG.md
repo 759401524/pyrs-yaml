@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The aarch64 wheel legs build on native arm64 runners** — `publish.yml`'s `linux` and
+  `musllinux` aarch64 rows move from `ubuntu-22.04` under qemu to `ubuntu-24.04-arm`, and the
+  glibc leg runs its suite there through `uv` instead of emulation. s390x is the only wheel suite
+  still emulated; the `pyq` aarch64 cross-build, armv7 and ppc64le are unchanged.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

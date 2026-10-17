@@ -158,7 +158,10 @@ def test_every_containerised_suite_step_installs_the_tools_the_suite_calls():
         for step, body in suite_steps
         if str(step.get("uses", "")).startswith("uraimo/run-on-arch-action") or "docker run" in body
     ]
-    assert len(container_steps) == 3, [step.get("name") for step, _ in container_steps]
+    # aarch64 is native now: `linux` runs its suite through uv on the arm
+    # runner, and `musllinux` shares one docker step between x86_64 and
+    # aarch64. s390x (run-on-arch) and that docker step are what remain.
+    assert len(container_steps) == 2, [step.get("name") for step, _ in container_steps]
 
     for step, body in container_steps:
         action_inputs = step.get("with") or {}
@@ -192,3 +195,21 @@ def test_every_containerised_suite_step_installs_the_tools_the_suite_calls():
         "build-docs.py imports tomli-w and the suite imports every script; the release test "
         "environment installs this file, not the docs group"
     )
+
+
+def test_a_job_that_runs_uv_installs_it_without_a_target_gate():
+    # The aarch64 migration moved a `uv venv` suite step onto a host whose `setup-uv` was still
+    # gated on x86_64, so the arm leg would have failed with `uv: command not found` on the first
+    # dispatch. Same blind spot as the container inputs above: `publish.yml` does not run on pull
+    # requests, so a tag push is where this would surface. An installer any target in the job may
+    # need cannot itself be target-gated.
+    document = yaml.safe_load(PUBLISH.read_text(encoding="utf-8"))
+    for name, job in document["jobs"].items():
+        steps = job.get("steps", [])
+        if not any(re.search(r"\buv (?:venv|pip)\b", str(step.get("run", ""))) for step in steps):
+            continue
+        installs = [step for step in steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@")]
+        assert installs, f"{name}: runs uv but never installs it"
+        assert any("if" not in step for step in installs), (
+            f"{name}: every setup-uv step carries an `if`, so a uv step on another target fails"
+        )
