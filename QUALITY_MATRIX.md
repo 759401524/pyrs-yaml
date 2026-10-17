@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 688 Rust `#[test]`, 1,685 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 689 Rust `#[test]`, 1,685 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 25 `prop_*` functions (proptest), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 8 targets, 141 seeds of which 66 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -110,7 +110,8 @@ that prints values caught in one run what three readings of test output did not.
 Blocking on every pull request, measured: `clippy` (with `--all-targets`, since this
 measurement), `cargo test --workspace`, the 20k-case property tier, MSRV
 check, `no_std` bare-metal build, pytest on 3 OSes × 7 Python versions, free-threaded
-pytest, coverage floor, CodSpeed (Rust + Python), the callgrind Ir gate, the fuzz seed
+pytest, coverage floor, CodSpeed (Rust + Python), the callgrind Ir gate, the medium hot paths'
+heap allocation ceilings (`crates/pyrs-yaml-core/tests/alloc_gate.rs`), the fuzz seed
 replay, changelog-mirror / localized-script-purity / release-guard / stub-drift, the changelog
 coupling check (`scripts/check_changelog_coupling.py`, evaluated on the pull request's file list
 because a version-header comparison cannot see a release note that was never written), and —

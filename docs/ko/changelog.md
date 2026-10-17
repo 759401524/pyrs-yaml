@@ -732,6 +732,17 @@ status: new
 
 #### 수정
 
+- **핫 패스에 할당 상한이 생겼다** — 기존 성능 게이트는 둘 다 시간만 잰다. Ir 게이트는 명령 수를
+  세고 CodSpeed 는 벽시계 시간을 재므로, 키마다 임시 값을 하나씩 할당해 작업 집합을 키우는 writer 도
+  두 수치를 움직이지 않을 수 있다. 새 `crates/pyrs-yaml-core/tests/alloc_gate.rs` 는 `System` 을
+  감싼 `#[global_allocator]` 와 스레드 로컬 카운터로 힙 할당을 센다. 각 시나리오를 한 번 예열해
+  일회성 초기화를 측정에서 빼고, 그다음 한 번의 실행을 잰다. 픽스처는 명령 게이트가 읽는 것과 같은
+  `bench_inputs` 에서 가져온다. 여섯 개 상한은 2026-10-17 실측값에 고정했다: `from_json_medium` 74
+  회 / 9,675 바이트, `to_json_medium` 8 / 1,048, `from_toml_medium` 148 / 16,362, `to_toml_medium`
+  12 / 1,208, `parse_medium` 67 / 24,512, `serialize_medium` 7 / 1,016. 변이 검증 완료:
+  `to_json_text` 에 `black_box(vec![0u8; 8])` 하나를 더하면 게이트가 시나리오 이름과 함께 빨개진다
+  (`to_json_medium made 9 allocations, 1 past the committed ceiling of 8`). 제거하면 다시 초록이다.
+
 - **이 저장소에 없는 트리를 설명하던 두 문장을 바로잡았다** — `CONTRIBUTING.md`의 jj 표는 push
   마지막 단계로 `jj git push --allow-new`를 실행하라고 안내했지만 jj 0.46에는 그런 플래그가 없다.
   `jj git push --help`가 보여 주는 것은 `--remote`, `-b/--bookmark`, `-t/--tag`, `--all`,

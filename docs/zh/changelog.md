@@ -619,6 +619,16 @@ status: new
 
 #### 修复
 
+- **热路径现在带着分配上限** — 两个现有性能门禁都只测时间：Ir 门禁数指令，CodSpeed 测墙钟，所以一个
+  为每个键分配临时值、从而抬高工作集的 writer，可能让两者都不动。新增的
+  `crates/pyrs-yaml-core/tests/alloc_gate.rs` 用包在 `System` 外的 `#[global_allocator]` 和线程本地
+  计数器来统计堆分配：每个场景先试跑一次，让一次性初始化不计入测量，再测单次运行；夹具取自指令门禁读
+  取的同一份 `bench_inputs`。六个上限钉在 2026-10-17 的实测值上：`from_json_medium` 74 次分配 /
+  9,675 字节，`to_json_medium` 8 / 1,048，`from_toml_medium` 148 / 16,362，`to_toml_medium` 12 /
+  1,208，`parse_medium` 67 / 24,512，`serialize_medium` 7 / 1,016。突变已验证：在 `to_json_text` 里
+  加一个 `black_box(vec![0u8; 8])` 会让门禁报红并带出场景名
+  `to_json_medium made 9 allocations, 1 past the committed ceiling of 8`；移除后转绿。
+
 - **两处描述本仓库并不存在之树的文字已修正** — `CONTRIBUTING.md` 的 jj 表格让贡献者在推送末尾执行
   `jj git push --allow-new`，而 jj 0.46 没有这个旗标：`jj git push --help` 列出的是 `--remote`、
   `-b/--bookmark`、`-t/--tag`、`--all`、`--tracked` 与 `--deleted`，配方因此卡在最后一步。
