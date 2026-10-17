@@ -387,7 +387,7 @@ divan benchmarks in `crates/pyrs-yaml/benches/yaml_bench.rs` (Rust) + `pytest-co
 - **TOML reader: one allocation per scalar, not two** — `from_toml_medium` 148 → 97 allocations and 16,362 → 15,612 bytes; the IR carries `Arc<str>` from the scanner onward
 - **JSON reader: unescaped strings borrow the source** — `from_json_medium` 74 → 48 allocations and 9,675 → 9,444 bytes; a quoted body is decoded only when an escape forces it
 - **Allocation ceilings on the hot paths** — `crates/pyrs-yaml-core/tests/alloc_gate.rs` pins six scenarios so a temporary per key cannot grow the working set unnoticed
-- **Instruction floors** — measured on the pinned `rustc 1.97.1` against the committed baseline: `from_toml_medium` −9.81%, `from_json_medium` −13.36%, `from_jsonc_medium` −11.28%, `from_json5_medium` −9.61%
+- **Instruction floors** — measured on the pinned `rustc 1.97.1` against the committed baseline: `from_toml_medium` −9.80%, `from_json_medium` −13.37%, `from_jsonc_medium` −11.28%, `from_json5_medium` −9.61%
 
 ## Development
 
