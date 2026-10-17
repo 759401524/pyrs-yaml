@@ -1,6 +1,6 @@
 ---
 title: pyrs-yaml
-description: Overview of pyrs-yaml, a high-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.
+description: Overview of pyrs-yaml, a high-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with perfect round-trip support, built with Rust and PyO3.
 tags:
   - docs
 status: new
@@ -10,7 +10,7 @@ status: new
 
 ## pyrs-yaml
 
-**High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.**
+**High-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with perfect round-trip support, built with Rust and PyO3.**
 
 [:material-rocket-launch: Get Started :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
 [:material-code-braces: Browse API Reference](api/reference.md){ .md-button }

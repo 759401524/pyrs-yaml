@@ -43,18 +43,18 @@ Python layer (flexible, ecosystem-friendly)          Rust layer (fast, safe, det
 | Version | Date | Changelog |
 |---------|------|-----------|
 | v0.18.0 | 2026-10-17 | [CHANGELOG.md §[0.18.0]](CHANGELOG.md#v0180--2026-10-17) |
-| v0.17.0 | 2026-10-01 | [CHANGELOG.md §[0.17.0]](CHANGELOG.md#0170---2026-10-01) |
-| v0.16.0 | 2026-10-01 | [CHANGELOG.md §[0.16.0]](CHANGELOG.md#0160---2026-10-01) |
-| v0.15.0 | 2026-08-19 | [CHANGELOG.md §[0.15.0]](CHANGELOG.md#0150---2026-08-19) |
-| v0.14.1 | 2026-08-15 | [CHANGELOG.md §[0.14.1]](CHANGELOG.md#0141---2026-08-15) |
-| v0.14.0 | 2026-08-14 | [CHANGELOG.md §[0.14.0]](CHANGELOG.md#0140---2026-08-14) |
-| v0.13.0 | 2026-08-10 | [CHANGELOG.md §[0.13.0]](CHANGELOG.md#0130---2026-08-10) |
-| v0.12.1 | 2026-08-06 | [CHANGELOG.md §[0.12.1]](CHANGELOG.md#0121---2026-08-06) |
+| v0.17.0 | 2026-10-01 | [CHANGELOG.md §[0.17.0]](CHANGELOG.md#v0170--2026-10-01) |
+| v0.16.0 | 2026-10-01 | [CHANGELOG.md §[0.16.0]](CHANGELOG.md#v0160--2026-10-01) |
+| v0.15.0 | 2026-08-19 | [CHANGELOG.md §[0.15.0]](CHANGELOG.md#v0150--2026-08-19) |
+| v0.14.1 | 2026-08-15 | [CHANGELOG.md §[0.14.1]](CHANGELOG.md#v0141--2026-08-15) |
+| v0.14.0 | 2026-08-14 | [CHANGELOG.md §[0.14.0]](CHANGELOG.md#v0140--2026-08-14) |
+| v0.13.0 | 2026-08-10 | [CHANGELOG.md §[0.13.0]](CHANGELOG.md#v0130--2026-08-10) |
+| v0.12.1 | 2026-08-06 | [CHANGELOG.md §[0.12.1]](CHANGELOG.md#v0121--2026-08-06) |
 | v0.11.7 | 2026-08-04 | [CHANGELOG.md §[0.11.7]](CHANGELOG.md#0117---2026-08-04) |
 | v0.11.6 | 2026-08-04 | [CHANGELOG.md §[0.11.6]](CHANGELOG.md#0116---2026-08-04) |
 | v0.11.5 | 2026-08-04 | [CHANGELOG.md §\[0.11.5\]](CHANGELOG.md#0115---2026-08-04) |
 | v0.11.4 | 2026-08-04 | [CHANGELOG.md §\[0.11.4\]](CHANGELOG.md#0114---2026-08-04) |
-| v0.11.3 | 2026-08-03 | [CHANGELOG.md §\[0.11.3\]](CHANGELOG.md#0113---streaming-write--process-hardening-target-q3-2026) |
+| v0.11.3 | 2026-08-03 | [CHANGELOG.md §\[0.11.3\]](CHANGELOG.md#0113---2026-08-03) |
 | v0.11.2 | 2026-08-03 | [CHANGELOG.md §\[0.11.2\]](CHANGELOG.md#0112---2026-08-03) |
 | v0.11.0 | 2026-08-02 | [CHANGELOG.md §\[0.11.0\]](CHANGELOG.md#0110---2026-08-02) |
 | v0.10.0 | 2026-08-01 | [CHANGELOG.md §\[0.10.0\]](CHANGELOG.md#0100---2026-08-01) |
@@ -145,8 +145,10 @@ asks no translations of them):
 | [`docs/dev/boundaries.md`](docs/dev/boundaries.md) | deliberate engine boundaries, and the fuzz findings by family |
 | [`docs/dev/perf.md`](docs/dev/perf.md) | the cross-library ranking snapshot and the Ir gate history |
 
-`CHANGELOG.md` cites them per entry as `(details: quality-ledger (xx))`, and its released versions
-are folded so the page reads as a list of releases rather than a wall of prose.
+`CHANGELOG.md` records what a user can observe; the derivation behind each entry lives in these
+documents, and released versions are folded so the page reads as a list of releases rather than a
+wall of prose. They are repository files, not site pages: the build reads `docs/<locale>`, so
+`docs/dev/` is reachable on GitHub but has no route on the deployed site.
 
 ## Research & Exploration
 

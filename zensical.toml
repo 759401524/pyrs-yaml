@@ -1,7 +1,7 @@
 [project]
 site_name = "pyrs-yaml"
 site_url = "https://759401524.github.io/pyrs-yaml/"
-site_description = "High-performance Python YAML library with perfect round-trip support, built with Rust and PyO3"
+site_description = "High-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with perfect round-trip support, built with Rust and PyO3"
 site_author = "MuLong <759401524@qq.com>"
 repo_url = "https://github.com/759401524/pyrs-yaml"
 repo_name = "759401524/pyrs-yaml"

@@ -1,6 +1,6 @@
 ---
 title: pyrs-yaml
-description: pyrs-yaml 高性能 Python YAML 库的首页，介绍核心特性和快速开始示例。
+description: pyrs-yaml 首页：高性能 Python 库，支持 YAML、TOML、JSON、JSONC 与 JSON5 五种格式，完美往返，基于 Rust 和 PyO3 构建。
 tags:
   - docs
 status: new
@@ -10,7 +10,7 @@ status: new
 
 ## pyrs-yaml
 
-**高性能 Python YAML 库，完美往返支持，基于 Rust 和 PyO3 构建。**
+**高性能 Python 库，支持 YAML、TOML、JSON、JSONC 与 JSON5，完美往返，基于 Rust 和 PyO3 构建。**
 
 [:material-rocket-launch: 开始使用 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
 [:material-code-braces: 浏览 API 参考](api/reference.md){ .md-button }

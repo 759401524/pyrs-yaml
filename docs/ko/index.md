@@ -1,6 +1,6 @@
 ---
 title: pyrs-yaml
-description: 높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨
+description: 높은 성능의 Python 라이브러리, YAML, TOML, JSON, JSONC, JSON5 지원, 완벽한 순환 지원, Rust 및 PyO3로 구축됨
 tags:
   - docs
 status: new
@@ -10,7 +10,7 @@ status: new
 
 ## pyrs-yaml
 
-**높은 성능의 Python YAML 라이브러리, 완벽한 순환 지원, Rust 및 PyO3로 구축됨**
+**높은 성능의 Python 라이브러리, YAML, TOML, JSON, JSONC, JSON5 지원, 완벽한 순환 지원, Rust 및 PyO3로 구축됨**
 
 [:material-rocket-launch: 시작하기 :material-arrow-right:](quick-start.md){ .md-button .md-button--primary }
 [:material-code-braces: API 참조](api/reference.md){ .md-button }
