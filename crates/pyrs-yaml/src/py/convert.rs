@@ -61,28 +61,57 @@ pub(crate) fn parse_schema(raw: &str) -> PyResult<Schema> {
     }
 }
 
-/// 递归遍历 AST，收集所有锚点到节点的映射，用于别名解析。
-pub(crate) fn collect_anchors<'a>(
+/// 递归遍历 AST，按文档顺序把每个别名绑到它前面最近的那个锚点。
+///
+/// An alias names an anchor, and a name may be defined more than once in one document. YAML
+/// resolves a reference to the **nearest preceding** definition, so
+/// `a: &x 1` / `b: *x` / `c: &x 2` / `d: *x` reads 1 then 2. One table keyed by name cannot say
+/// that: filling it in finishes before the walk starts, so every alias in the document sees the
+/// *last* definition — which is what suite case `3GZX` measured against PyYAML. Recording the
+/// binding while walking in document order answers that, and leaves the conversion walk free to
+/// build a pair's value before its key because the answer is already written down.
+///
+/// An alias with no preceding definition of its name is absent from the table, which is the same
+/// "no target" answer the projection already gave for a foreign or missing anchor; it now covers a
+/// forward reference too, which YAML does not allow.
+fn collect_anchor_targets<'a>(
     node: &'a CustomNode,
-    anchors: &mut HashMap<&'a str, &'a CustomNode>,
+    defined: &mut HashMap<&'a str, &'a CustomNode>,
+    targets: &mut HashMap<usize, &'a CustomNode>,
 ) {
     if let Some(name) = node.anchor() {
-        anchors.insert(name, node);
+        defined.insert(name, node);
+    }
+    if let CustomNode::Alias { name } = node {
+        if let Some(target) = defined.get(name.as_str()) {
+            targets.insert(node_addr(node), *target);
+        }
+        return;
     }
     match node {
         CustomNode::Mapping { pairs, .. } => {
             for (key, value) in pairs {
-                collect_anchors(key, anchors);
-                collect_anchors(value, anchors);
+                collect_anchor_targets(key, defined, targets);
+                collect_anchor_targets(value, defined, targets);
             }
         }
         CustomNode::Sequence { items, .. } => {
             for item in items {
-                collect_anchors(item, anchors);
+                collect_anchor_targets(item, defined, targets);
             }
         }
         _ => {}
     }
+}
+
+/// The identity an alias table is keyed by: the AST node itself, not its text.
+///
+/// Two `*x` nodes with the same name must be able to resolve apart, which is the whole point of
+/// binding by position, so the key has to be the node. `resolve_alias_target` already names a
+/// target node by address to guard reference cycles, and the tree is borrowed for the whole
+/// projection, so the addresses stay valid for as long as the table is read.
+fn node_addr(node: &CustomNode) -> usize {
+    std::ptr::addr_of!(*node) as usize
 }
 
 /// 将 `CustomNode` 转换为 Python 对象，解析别名引用（`*alias`）为实际值。
@@ -96,7 +125,7 @@ pub(crate) fn collect_anchors<'a>(
 pub(crate) fn node_to_pyobject_with_anchors<'a>(
     node: &'a CustomNode,
     py: Python,
-    anchors: &HashMap<&'a str, &'a CustomNode>,
+    anchors: &HashMap<usize, &'a CustomNode>,
     in_progress: &mut HashSet<usize>,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
@@ -133,7 +162,7 @@ fn scalar_to_pyobject(
 fn node_to_pyobject_inner<'a>(
     node: &'a CustomNode,
     py: Python,
-    anchors: &HashMap<&'a str, &'a CustomNode>,
+    anchors: &HashMap<usize, &'a CustomNode>,
     in_progress: &mut HashSet<usize>,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
@@ -221,7 +250,7 @@ fn node_to_pyobject_inner<'a>(
                     // `ConstructorError` there too, because a list has no hashable form. So the
                     // resolved object is tried, and the refusal below is what an unhashable target
                     // (or an alias with no anchor, which must not become a `None` key) gets.
-                    CustomNode::Alias { name } if anchors.contains_key(name.as_str()) => {
+                    CustomNode::Alias { .. } if anchors.contains_key(&node_addr(key)) => {
                         let k = resolve_alias_target(key, py, anchors, in_progress, schema)?;
                         if dict.set_item(k, &val).is_err() {
                             set_text_key(&dict, key, &val)?;
@@ -289,7 +318,7 @@ fn unhashable_key_error(key: &CustomNode) -> pyo3::PyErr {
     ))
 }
 
-/// Expand an `Alias` node against the anchor table, guarding against
+/// Expand an `Alias` node against the bindings the walk ordered, guarding against
 /// reference cycles with a path-scoped `in_progress` set.
 ///
 /// The guard is pushed only for the duration of the expansion, so sibling
@@ -299,17 +328,17 @@ fn unhashable_key_error(key: &CustomNode) -> pyo3::PyErr {
 fn resolve_alias_target<'a>(
     node: &'a CustomNode,
     py: Python,
-    anchors: &HashMap<&'a str, &'a CustomNode>,
+    anchors: &HashMap<usize, &'a CustomNode>,
     in_progress: &mut HashSet<usize>,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
-    let CustomNode::Alias { name } = node else {
+    let CustomNode::Alias { .. } = node else {
         return node_to_pyobject_inner(node, py, anchors, in_progress, schema);
     };
-    let Some(target) = anchors.get(name.as_str()) else {
+    let Some(target) = anchors.get(&node_addr(node)).copied() else {
         return Ok(py.None());
     };
-    let addr = std::ptr::addr_of!(*target) as usize;
+    let addr = node_addr(target);
     if !in_progress.insert(addr) {
         // Cycle: this anchor is already being expanded further up the
         // recursion path. Emit `None` so the walk terminates.
@@ -330,7 +359,7 @@ pub(crate) fn node_to_pyobject_simple(
     py: Python,
     schema: &Schema,
 ) -> PyResult<Py<PyAny>> {
-    let anchors: HashMap<&str, &CustomNode> = HashMap::new();
+    let anchors: HashMap<usize, &CustomNode> = HashMap::new();
     let mut in_progress: HashSet<usize> = HashSet::new();
     node_to_pyobject_with_anchors(node, py, &anchors, &mut in_progress, schema)
 }
@@ -346,10 +375,11 @@ pub(crate) fn node_to_pyobject_resolving_anchors(
     source_has_anchors: bool,
 ) -> PyResult<Py<PyAny>> {
     if source_has_anchors {
-        let mut anchors = HashMap::new();
-        collect_anchors(node, &mut anchors);
+        let mut defined = HashMap::new();
+        let mut targets = HashMap::new();
+        collect_anchor_targets(node, &mut defined, &mut targets);
         let mut in_progress = HashSet::new();
-        node_to_pyobject_with_anchors(node, py, &anchors, &mut in_progress, schema)
+        node_to_pyobject_with_anchors(node, py, &targets, &mut in_progress, schema)
     } else {
         node_to_pyobject_simple(node, py, schema)
     }

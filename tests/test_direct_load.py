@@ -74,6 +74,50 @@ class TestAliasParity:
         }
         assert y.safe_loads("a: &x 1\nb: *x\n") == [{"a": 1, "b": 1}]
 
+    def test_redefined_anchor_binds_each_alias_to_the_definition_before_it(self):
+        # Suite 3GZX, YAML 1.2 spec Example 7.1. The projection used to keep one node per anchor
+        # *name*, and filling that table finished before the walk started, so both aliases read
+        # `Bar`: a later definition rewrote what an earlier reference had already resolved to.
+        d = pyrs_yaml.safe_load(
+            "First occurrence: &anchor Foo\n"
+            "Second occurrence: *anchor\n"
+            "Override anchor: &anchor Bar\n"
+            "Reuse anchor: *anchor\n"
+        )
+        assert d == {
+            "First occurrence": "Foo",
+            "Second occurrence": "Foo",
+            "Override anchor": "Bar",
+            "Reuse anchor": "Bar",
+        }
+
+    def test_redefined_container_anchor_binds_by_position_too(self):
+        d = pyrs_yaml.safe_load("a: &p {v: 1}\nb: *p\nc: &p {v: 2}\nd: *p\n")
+        assert d == {"a": {"v": 1}, "b": {"v": 1}, "c": {"v": 2}, "d": {"v": 2}}
+
+    def test_replaying_a_container_does_not_re_register_its_anchors(self):
+        # Expanding `*outer` walks a subtree that carries `&x 1` a second time. A table filled
+        # *during* the conversion walk would redefine `x` at the alias's own position, and the
+        # `f` below would then read 1. Deciding every binding by document order, before the
+        # conversion starts, is what keeps this answer at 2.
+        src = "a: &outer {inner: &x 1}\nc: &x 2\nd: *x\ne: *outer\nf: *x\n"
+        d = pyrs_yaml.safe_load(src)
+        assert d["d"] == 2
+        assert d["f"] == 2
+        assert d["e"] == {"inner": 1}
+
+    def test_a_reused_anchor_name_is_read_and_not_refused(self):
+        # PyYAML is not the oracle for this shape: its composer raises `found duplicate anchor` at
+        # the second `&anchor`, so it never reaches a reading. Measured on this tree against the
+        # two that do: the suite's own event tree for `3GZX` spells both aliases against the
+        # definition in front of them, and ruamel reads the same values (with a
+        # `ReusedAnchorWarning`). pyrs reads the document the spec writes instead of refusing it.
+        yaml = pytest.importorskip("yaml")
+        src = "a: &p {v: 1}\nb: *p\nc: &p {v: 2}\nd: *p\n"
+        assert pyrs_yaml.safe_load(src) == {"a": {"v": 1}, "b": {"v": 1}, "c": {"v": 2}, "d": {"v": 2}}
+        with pytest.raises(yaml.composer.ComposerError):
+            yaml.safe_load(src)
+
 
 class TestAliasParityPyYaml:
     """Bit-for-bit agreement with PyYAML on non-cyclic alias documents.
