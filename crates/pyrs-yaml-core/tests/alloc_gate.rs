@@ -74,12 +74,30 @@ struct Ceiling {
 // Measured when this gate was written, 2026-10-17, with the compiler pinned by
 // `.ci/ir-baseline.json`. `bytes` is the sum of requested sizes, with a reallocation charged at
 // its new size. Raising either number is a decision that must be explained in the change.
-const FROM_JSON_MEDIUM: Ceiling = Ceiling { allocs: 74, bytes: 9_675 };
-const TO_JSON_MEDIUM: Ceiling = Ceiling { allocs: 8, bytes: 1_048 };
-const FROM_TOML_MEDIUM: Ceiling = Ceiling { allocs: 148, bytes: 16_362 };
-const TO_TOML_MEDIUM: Ceiling = Ceiling { allocs: 12, bytes: 1_208 };
-const PARSE_MEDIUM: Ceiling = Ceiling { allocs: 67, bytes: 24_512 };
-const SERIALIZE_MEDIUM: Ceiling = Ceiling { allocs: 7, bytes: 1_016 };
+const FROM_JSON_MEDIUM: Ceiling = Ceiling {
+    allocs: 74,
+    bytes: 9_675,
+};
+const TO_JSON_MEDIUM: Ceiling = Ceiling {
+    allocs: 8,
+    bytes: 1_048,
+};
+const FROM_TOML_MEDIUM: Ceiling = Ceiling {
+    allocs: 148,
+    bytes: 16_362,
+};
+const TO_TOML_MEDIUM: Ceiling = Ceiling {
+    allocs: 12,
+    bytes: 1_208,
+};
+const PARSE_MEDIUM: Ceiling = Ceiling {
+    allocs: 67,
+    bytes: 24_512,
+};
+const SERIALIZE_MEDIUM: Ceiling = Ceiling {
+    allocs: 7,
+    bytes: 1_016,
+};
 
 /// Measure one scenario after a warm-up, failing at the first ceiling it crosses.
 macro_rules! measured {
