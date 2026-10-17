@@ -76,7 +76,7 @@ This repository is a colocated jj/Git repository (`jj git init --colocate`): `.g
 | See what is in the current change | `jj diff --stat` |
 | Name a change | `jj describe -m "fix(yaml): ..."` (message rules unchanged) |
 | Retarget a branch pointer for pushing | `jj bookmark set fix/x -r @` |
-| Push (after prek) | `prek run --all-files; jj git push --allow-new` |
+| Push (after prek) | `prek run --all-files; jj git push --bookmark <name>` |
 | Fold a change into its parent | `jj squash` |
 | Rebase onto moved trunk | `jj rebase -d main@origin` |
 | Undo the last jj operation | `jj undo` |
