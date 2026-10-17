@@ -26,7 +26,7 @@ class YAML:
 ```python
 __init__(
     typ: str = "rt",
-    schema: str = "core",
+    schema: str | dict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
 ) -> None
@@ -37,7 +37,7 @@ __init__(
 | Parameter | Type | Default | 描述 |
 |-----------|------|---------|-------------|
 | `typ` | `str` | `"rt"` | 解析器类型。可选 `"rt"`（往返）、`"safe"`（安全）、`"full"`（完整）。 |
-| `schema` | `str` | `"core"` | YAML 模式。可选 `"core"`、`"yaml1.1"`、`"failsafe"`、`"json"`。 |
+| `schema` | `str \| dict` | `"core"` | YAML 模式。可选 `"core"`、`"yaml1.1"`、`"failsafe"`、`"json"`，或内联 schema dict（参见 [YAML Schema Language](reference.md#yaml-schema-language)）。 |
 | `max_depth` | `int` | `1000` | 解析的最大嵌套深度。 |
 | `allow_duplicate_keys` | `bool` | `False` | 是否允许重复的映射键。 |
 

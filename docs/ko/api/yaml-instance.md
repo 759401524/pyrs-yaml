@@ -26,7 +26,7 @@ class YAML:
 ```python
 __init__(
     typ: str = "rt",
-    schema: str = "core",
+    schema: str | dict = "core",
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
 ) -> None
@@ -37,7 +37,7 @@ __init__(
 | 매개변수 | 타입 | 기본값 | 설명 |
 |-----------|------|---------|-------------|
 | `typ` | `str` | `"rt"` | 파서 타입입니다. `"rt"`(라운드트립), `"safe"`, `"full"` 중 하나입니다. |
-| `schema` | `str` | `"core"` | YAML 스키마입니다. `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"` 중 하나입니다. |
+| `schema` | `str \| dict` | `"core"` | YAML 스키마입니다. `"core"`, `"yaml1.1"`, `"failsafe"`, `"json"` 중 하나, 또는 인라인 스키마 dict입니다 ([YAML 스키마 언어](reference.md#yaml-schema-language) 참조). |
 | `max_depth` | `int` | `1000` | 파싱을 위한 최대 중첩 깊이입니다. |
 | `allow_duplicate_keys` | `bool` | `False` | 중복 매핑 키를 허용할지 여부입니다. |
 
