@@ -46,9 +46,6 @@ DELIBERATE_REFUSALS = frozenset({"ZYU8#3"})
 # an entry leaves by teaching the engine the rule, never by adding a name to this set.
 JSON_MISMATCHES = frozenset(
     {
-        # An alias resolves to the last anchor of its name, not the nearest preceding one:
-        # `collect_anchors` keeps one node per name, so a redefined anchor rewrites history.
-        "3GZX#1",
         # Not a defect, and pinned below by `test_binary_spellings_construct_the_same_bytes`: the
         # suite spells a `!!binary` node as its source text, the comparison spells the same bytes
         # as canonical base64, and the two spellings differ by the block scalar's line breaks.
@@ -102,14 +99,15 @@ def test_yaml_suite_invalid_rejected():
 @pytest.mark.skipif(not Path(SUITE_DIR).exists(), reason="YAML Test Suite not found")
 @pytest.mark.skipif(not HAS_PYYAML, reason="PyYAML not installed")
 def test_yaml_suite_json_match():
-    """The five cases whose JSON disagrees, named — and no others.
+    """The cases whose JSON disagrees, named — and no others.
 
     The floor was `rate >= 80.0` over 267 JSON cases — fifty-three of slack around a measured 244.
     Most of that slack was the harness rather than the engine: a multi-document stream's
     expectation is several JSON values in one field, `json.loads` refused the second, and the
     comparison fell back to comparing text, so eighteen stream cases were never judged. Comparing
-    one document at a time (`json_documents`) moved the measurement to 262/267 and left exactly the
-    five causes above, four of them open defects and one a spelling difference pinned on its own.
+    one document at a time (`json_documents`) moved the measurement from 244 to 262 of 267, and the
+    alias-binding fix that followed took it to 263. What remains is named in `JSON_MISMATCHES`
+    above with its cause: three open defects and one spelling difference pinned on its own.
     """
     mismatched = set()
     for key, test in numbered_cases(load_test_cases(SUITE_DIR)):

@@ -755,6 +755,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An alias binds the anchor in front of it, not the last one in the document** — the first entry
+  of the ledger PR #471 named, and this closes it. `collect_anchors` filled one `name -> node` table
+  before the projection walked anything, so a reused anchor name rewrote history: in YAML 1.2's own
+  Example 7.1 (`3GZX`) both `*anchor` references read `Bar`, where the suite's event tree and ruamel
+  read `Foo` for the earlier one. The pre-pass now walks in document order and records, for each
+  alias *node*, the definition that stood in front of it, keyed by node address instead of by name —
+  two `*x` nodes sharing one name must be able to resolve apart. Deciding every binding before
+  building any Python object also keeps the conversion walk free to build a pair's value before its
+  key, and stops a replayed subtree from re-registering anything: `a: &outer {inner: &x 1}` /
+  `c: &x 2` / `d: *x` / `e: *outer` / `f: *x` reads 2 both times, which is what
+  `test_replaying_a_container_does_not_re_register_its_anchors` asks. PyYAML is not the oracle for
+  this shape — its composer raises `found duplicate anchor` and never reaches a reading — so the
+  divergence is pinned by a test that names both readings instead of smoothing it over. Measured:
+  the suite's JSON leg went 262/267 → 263/267 (98.50%) with `3GZX#1` gone from `JSON_MISMATCHES`;
+  2900 Python tests (four new) and 680 Rust tests pass; binding the *first* definition instead of
+  the nearest preceding one reddens exactly those four tests and the gate, and reversing the
+  pre-pass's walk order reddens 18. Ir on the pinned compiler stayed green:
+  `to_python_anchors` -0.05%, `to_python_medium` +0.16% — the figure this host already reported for
+  that anchor-free scenario on 2026-10-16, so no cost is attributable to the fix.
+
 - **The YAML suite's JSON leg had never judged a stream** — `tests/test_yaml_suite.py` floored its
   three legs at 95%/90%/80%, measured at 311/312, 94/94 and 244/267. The widest slack was the
   harness, not the engine: a multi-document stream's expectation is several top-level JSON values in
