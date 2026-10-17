@@ -19,6 +19,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 #### Added
 
+- **The JSON and TOML fuzz targets got an oracle that can fail** — every re-read in `parse_json`
+  and `parse_toml` was `let _ =`, so "our own readers load our own writers' output" was a docstring
+  with nothing checking it, and a writer that emitted a byte its own dialect rejects passed. Each
+  target now asserts loadability against the readers that can express what the writer wrote: strict
+  JSON under all three dialects, JSONC under JSONC and JSON5, JSON5 under JSON5 alone, and TOML
+  under the gate that read it — plus the 1.0 gate for a node that carries no note. The TOML target
+  fired within minutes, twice: `inli.inli.0bt = "n" # e` and `#\n  #\n[se.c]\nk = "v"   #x` both
+  reach the multi-line inline form PR #119 chose deliberately, and 1.0 cannot carry a comment inside
+  `{}`. So the assertion was sharpened to the promise the writer's own prose makes — undecorated
+  output stays 1.0-loadable, a note is what buys the 1.1 form — and both halves are now pinned in
+  Rust by `the_undecorated_1_0_promise_holds_and_a_note_is_what_leaves_it`; both inputs are archived
+  as seeds. The new assertions are not decoration: deleting `out.push('}')` from the compact JSON
+  object arm makes `parse_json.rs:40` panic on the first replayed seed (`{"I":9`), and the restore
+  left `git diff` empty for that file. Measured on a WSL nightly build with each target's seed
+  corpus replayed: `parse_toml` 3,731,530 runs in 121 s clean, `parse_json` 7,206,902 runs in 121 s
+  clean. Not measured: the other four targets, untouched here.
+
 - **The wheels users install are built by the compiler the floors were measured on** — `publish.yml`
   passed no `rust-toolchain` to `maturin-action`, so every release wheel came from current `stable`
   while `.ci/ir-baseline.json` records the compiler the instruction-count gate measures. Measured

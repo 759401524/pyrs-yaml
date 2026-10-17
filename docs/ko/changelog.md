@@ -17,6 +17,23 @@ status: new
 
 #### 추가
 
+- **JSON 과 TOML 퍼징 표적에 실제로 실패할 수 있는 오라클이 붙었다** — `parse_json` 과 `parse_toml`
+  의 모든 재읽기는 `let _ =` 였으므로 "우리 읽기기가 우리 쓰기기의 출력을 다시 부담 한다"는 문장은
+  검사 없는 문서였고, 자기 방언이 받아들일 수 없는 바이트를 쓰기가 내놓아도 그대로 통과했다. 이제 각
+  표적은 쓰기가 쓴 내용을 표현할 수 있는 읽기에게 그 출력이 load 되는지 요구한다. strict JSON 은 세
+  방언 모두에서, JSONC 는 JSONC 와 JSON5 에서, JSON5 는 JSON5 에서만, TOML 은 문서를 읽은
+  게이트에서, 그리고 note 이 없는 node 는 1.0 게이트에서도 확인한다. TOML 표적은 몇 분 안에 두 번
+  발화했다. `inli.inli.0bt = "n" # e` 와 `#\n  #\n[se.c]\nk = "v"   #x` 은 모두 PR #119 이
+  의도적으로 택한 여러 줄 인라인 표 형태에 닿는데, 1.0 은 `{}` 안에 주석을 둘 수 없다. 그래서 요구는
+  writer 스스로 문서로 약속한 범위 — 장식이 없는 출력은 1.0 으로 load 가능한 채로, note 이 1.1
+  형태를 산다 — 로 좁혔고, 양쪽 모두 Rust 쪽의
+  `the_undecorated_1_0_promise_holds_and_a_note_is_what_leaves_it` 으로 고정했으며 두 입력 모두 seed
+  로 보관했다. 새 요구는 장식이 아니다: 압축 JSON object 갈래에서 `out.push('}')` 을 지우면 처음으로
+  replay 되는 seed 에서 `parse_json.rs:40` 이 panic 하고 (`{"I":9`), 되돌린 뒤 그 파일의 `git diff`
+  는 비어 있었다. WSL nightly 빌드에서 각 표적의 seed corpus 를 replay 하며 측정했다. `parse_toml`
+  은 121 초에 3,731,530 회, `parse_json` 은 121 초에 7,206,902 회를 crash 없이 마쳤다. 측정하지 않은
+  것: 나머지 네 표적, 이번 변경에서 건드리지 않았다.
+
 - **사용자가 설치하는 wheel은 허용선을 잰 컴파일러로 구축된다** — `publish.yml`은 `maturin-action`에
   `rust-toolchain`을 넘기지 않아서, 모든 릴리스 wheel은 당시 `stable`로 만들어졌다. 반면
   `.ci/ir-baseline.json`은 명령수 게이트가 측정에 쓴 컴파일러를 기록한다. 2026-10-16 실측(같은 트리,
