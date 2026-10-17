@@ -11,7 +11,7 @@
 
 [![GitHub forks](https://img.shields.io/github/forks/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml) [![GitHub watchers](https://img.shields.io/github/watchers/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml) [![GitHub issues](https://img.shields.io/github/issues/759401524/pyrs-yaml)](https://github.com/759401524/pyrs-yaml)
 
-A high-performance Python YAML library with perfect round-trip support, built with Rust and PyO3.
+A high-performance Python library for YAML, TOML, JSON, JSONC and JSON5 with perfect round-trip support, built with Rust and PyO3.
 
 ## Features
 
@@ -283,6 +283,8 @@ cfg.name  # "Alice"
 | Flow collections (`{}`, `[]`) | Preserved |
 | Block scalars (`\|`, `>`) | Preserved |
 | Merge keys (`<<: *alias`) | Resolved (opt-out via `resolve_merges=False`) |
+| **TOML / JSON / JSONC / JSON5** | **Full (load, write, round-trip; comments kept wherever the dialect carries them)** |
+| **Event streams** | **All five formats via `parse_stream(format=...)`** |
 | **NumPy ndarray** | **Full (0-D through N-D)** |
 | **JSON Schema validation** | **Full** |
 | **Async I/O** | **Full** |
@@ -318,6 +320,9 @@ def handler(event):
 
 
 iter = pyrs_yaml.parse_stream(yaml_str, on_event=handler, max_depth=1000)
+
+# The same event vocabulary covers the other four formats
+iter = pyrs_yaml.parse_stream(toml_text, on_event=handler, format="toml")
 
 # Convert to YAML string (with options)
 yaml_str = doc.to_yaml()
@@ -368,6 +373,20 @@ yaml_str = pyrs_yaml.from_dict(data)
 
 # Convert JSON to YAML
 yaml_str = pyrs_yaml.from_json(json_str)
+
+# Convert the other dialects to YAML
+yaml_str = pyrs_yaml.from_toml(toml_str)
+yaml_str = pyrs_yaml.from_jsonc(jsonc_str)
+yaml_str = pyrs_yaml.from_json5(json5_str)
+
+# Parse another dialect into Python values
+data = pyrs_yaml.load_toml(toml_str)
+
+# Export a document to another dialect
+json_str = doc.to_json()
+jsonc_str = doc.to_jsonc()
+json5_str = doc.to_json5()
+toml_str = pyrs_yaml.to_toml(doc.to_yaml())
 
 # Dump to file
 pyrs_yaml.dump_file(data, "output.yaml")
