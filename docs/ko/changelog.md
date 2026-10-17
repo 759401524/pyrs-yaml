@@ -106,6 +106,11 @@ status: new
 - **방어 계층은 끝에서 끝까지 측정된다** — 품질 매트릭스의 수치는 트리에서 세고, JSON/TOML fuzz
   타깃은 자체 라이터 출력이 다시 로드됨을 단정하며, PR 단계 fuzz는 차단형이고, 할당 상한과 명령
   수 플로어가 핫 패스를 덮는다.
+- **릴리스의 `pyq` 자산은 매트릭스 타깃을 rustup에 전달한다** — `publish.yml`은
+  `targets: ${ matrix.platform.std }`라고 썼다. 단일 중괄호는 GitHub 표현식이 아니므로
+  rustup은 `${`, `matrix.platform.std`, `}`를 리터럴 타깃 이름 세 개로 받았고 모든 `pyq`
+  레그가 툴체인 설정에서 멈췄다. 이제 단계는 `${{ matrix.platform.std }}`를 전달하며,
+  형식이 되돌아가면 `tests/test_publish_toolchain.py`가 실패한다.
 
 #### 성능
 

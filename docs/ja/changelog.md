@@ -109,6 +109,12 @@ status: new
 - **防御層は端から端まで計測される** — 品質マトリクスの数値はツリーから数え、JSON/TOML の
   fuzz ターゲットは自らのライター出力が再読込できることを主張し、PR 段階の fuzz は
   ブロッキングで、割り当て上限と命令数フロアがホットパスを覆う。
+- **リリースの `pyq` 資産はマトリックスのターゲットを rustup に渡す** — `publish.yml` は
+  `targets: ${ matrix.platform.std }` と書いていた。単一の波括弧は GitHub の式ではないため、
+  rustup は `${`、`matrix.platform.std`、`}` を 3 つのリテラルなターゲット名として受け取り、
+  すべての `pyq` レッグがツールチェーンのセットアップで停止した。ステップは現在
+  `${{ matrix.platform.std }}` を渡し、形式が戻れば
+  `tests/test_publish_toolchain.py` が失敗する。
 
 #### パフォーマンス
 
