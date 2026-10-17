@@ -113,7 +113,8 @@ pub(crate) fn open_file(path: &str) -> PyResult<std::fs::File> {
 
 /// A Python module implemented in Rust.
 ///
-/// pyrs-yaml: high-performance YAML parsing with perfect round-trip support.
+/// pyrs-yaml: high-performance YAML, TOML, JSON, JSONC and JSON5 parsing with
+/// perfect round-trip support.
 #[pymodule(gil_used = false)]
 mod pyrs_yaml {
     // ---- exceptions ----

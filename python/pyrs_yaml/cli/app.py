@@ -15,7 +15,7 @@ from ._io import emit, fail, is_stdio, join_documents, load_document, load_docum
 
 app = App(
     name="pyrs-yaml",
-    help="High-performance YAML toolkit with perfect round-trip support.",
+    help=("High-performance YAML, TOML, JSON, JSONC and JSON5 toolkit with perfect round-trip support."),
     version=pyrs_yaml.__version__,
 )
 
