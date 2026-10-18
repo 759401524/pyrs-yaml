@@ -80,6 +80,16 @@ status: new
   플로우 부모에서도 다시 물으면서, 생성기가 책임져야 하는 방향만 지킨다: 규칙이 통과시킨 키 쌍은
   읽는 쪽에서도 남아야 한다.
 
+- **방어 매트릭스가 외부 권위를 측정합니다** — `scripts/quality_matrix.py`가 여섯 번째 열
+  `external authority`를 파생합니다. 그 방언에 `tests/test_*_suite.py`나
+  `tests/test_*_spec_table.py`가 있으면 `yes`입니다. 지금까지 형식별 표는 unit·property·fuzz·
+  parity 네 겹만 세어서, 이 저장소에서 가장 강한 `test_yaml_suite.py`, `test_json_test_suite.py`,
+  `test_toml_test_suite.py`, `test_json5_spec_table.py` 문지기들이 방어를 나열한 페이지에서
+  완전히 빠져 있었습니다. 세고 있던 parity는 구현 둘을 비교할 뿐입니다. `schema validation`은
+  `no`입니다 — 외부 권위가 그 규칙을 묻지 않으니까요. `tests/test_quality_matrix.py`는 이 열을
+  칸마다 단언하고 줄마다 파일 하나를 지목하므로, 파생에서 접미사가 빠지면 조용히 열이 사라지는
+  대신 테스트가 빨개집니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

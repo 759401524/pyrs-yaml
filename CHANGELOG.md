@@ -74,6 +74,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   re-asks its whole table under a flow parent, holding the one direction the generator is
   accountable to: a pair the rule lets through has to survive the reader.
 
+- **The defence matrix now measures its external authorities** — the per-format table in
+  `QUALITY_MATRIX.md` gains a sixth column, `external authority`, derived by
+  `scripts/quality_matrix.py`: `yes` when a `tests/test_*_suite.py` or
+  `tests/test_*_spec_table.py` exists for that dialect. Until now the table credited the unit,
+  property, fuzz and parity tiers only, so the strongest gates in the repository —
+  `test_yaml_suite.py`, `test_json_test_suite.py`, `test_toml_test_suite.py` and
+  `test_json5_spec_table.py` — were invisible on the page that lists the defences, while parity,
+  which compares two implementations, was credited as if it asked the grammar.
+  `schema validation` reads `no`, because nothing outside asks its rules.
+  `tests/test_quality_matrix.py` asserts the column cell-by-cell and names one file per row, so
+  dropping a suffix from the derivation reddens the test instead of quietly deleting a column.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

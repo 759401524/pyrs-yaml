@@ -208,6 +208,14 @@ def _leg_restricted(marker: str | None) -> bool:
     return "python_version" in marker or "platform_machine" in marker
 
 
+#: A test file that asks the format's own grammar, or an official suite's cases, against an authority
+#: this project does not own. Distinct from the cross-library parity column: parity compares two
+#: implementations and answers "do we agree", these answer "are we right", and only one of the two can
+#: find a syntax the reader never accepted - a path that does not exist has no second implementation to
+#: disagree with, and no property or fuzz oracle to fail.
+AUTHORITY_SUFFIXES = ("_suite.py", "_spec_table.py")
+
+
 def format_matrix() -> dict:
     """The per-format tier table, derived from the files that declare the defence.
 
@@ -258,6 +266,15 @@ def format_matrix() -> dict:
                     "marker": {name: _dependency_marker(name) for name in oracles},
                 }
 
+        # Which dialects have their grammar asked of an outside authority, derived from the file names
+        # so that adding one is measured rather than remembered. The JSON row counts
+        # `test_json5_spec_table.py` because that row covers the whole JSON family.
+        authority = sorted(
+            path.name
+            for path in (REPO / "tests").glob("test_*.py")
+            if fragment in path.name and path.name.endswith(AUTHORITY_SUFFIXES)
+        )
+
         rows[label] = {
             "unit": unit,
             "property_rust": len(rust_props),
@@ -265,6 +282,7 @@ def format_matrix() -> dict:
             "fuzz_parse": fuzz_parse,
             "fuzz_round_trip": fuzz_round,
             "cross_library": parity,
+            "authority": authority,
         }
     return rows
 
@@ -641,7 +659,8 @@ def format_verdict_lines(rows: dict) -> list:
         round_trip = "n/a" if label == "schema validation" else ("yes" if row["fuzz_round_trip"] else "no")
         lines.append(
             f"{label}: unit={'yes' if row['unit'] else 'no'} property={'yes' if property_yes else 'no'} "
-            f"fuzz-parse={'yes' if row['fuzz_parse'] else 'no'} round-trip={round_trip} parity={parity}"
+            f"fuzz-parse={'yes' if row['fuzz_parse'] else 'no'} round-trip={round_trip} "
+            f"parity={parity} authority={'yes' if row['authority'] else 'no'}"
         )
     return lines
 

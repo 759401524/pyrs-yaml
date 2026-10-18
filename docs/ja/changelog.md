@@ -81,6 +81,16 @@ status: new
   で、模型は `KeyIdentity` 一枚のまま。一致検査は同じ表をフローの親でもう一度問い直し、生成器が責任
   を持つ方向だけを守ります：規則が通した鍵の組は、読み込み側でも残っていなければなりません。
 
+- **防御マトリクスが外部の権威を測るようになります** — `scripts/quality_matrix.py` は 6 番目の列
+  `external authority` を導出します。ある方言に `tests/test_*_suite.py` か
+  `tests/test_*_spec_table.py` があれば `yes` です。これまで形式別表は unit・property・fuzz・
+  parity の四層しか数えておらず、この倉庫で最も強い `test_yaml_suite.py`、
+  `test_json_test_suite.py`、`test_toml_test_suite.py`、`test_json5_spec_table.py` の各門が、
+  防御を並べるページから完全に抜け落ちていました。数えていた parity は二つの実装を比べる
+  だけです。`schema validation` は `no` — 外部の権威がその規則を問わないためです。
+  `tests/test_quality_matrix.py` はこの列をマスごとに断言し、行ごとにファイルをひとつ名指すので、
+  導出から接尾辞が落ちると黙って列が消えるのではなくテストが赤くなります。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 追加
