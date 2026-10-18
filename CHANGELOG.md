@@ -260,6 +260,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is not the same case: it names the node without suppressing resolution, so `- &a3` is now written
   `- &a3 ~` (libFuzzer `edit_yaml` crash-07b6a10e).
 
+- **The TOML writer's dialect promise gained a property tier** — 1.1's one visible freedom is a
+  newline (and so a comment) inside an inline table, and nothing asked whether a tree that carries
+  no note was handed 1.0-readable text. `prop_toml_undecorated_output_loads_as_1_0`
+  (`crates/pyrs-yaml-core/src/fmt_pbt.rs`) now requires that a generated tree with no note anywhere
+  reloads under `from_toml_v1_0`, while
+  `an_undecorated_inline_table_writes_compact_and_loads_as_1_0` and
+  `the_1_0_reader_refuses_the_1_1_inline_table_freedom` (`crates/pyrs-toml/src/writer.rs`) pin the
+  inline-table arm by shape and its oracle premise. Measured: forcing the multi-line branch first
+  reddened only the named test and left 20 000 generated cases green, so the property's input gained
+  a strategy that always draws a document holding an inline table — the same mutation now reddens
+  the property in 0.01 s. A third property states the equality claim the tier was missing:
+  `prop_toml_roundtrip_preserves_the_tree` compares the tree before and after one round - values,
+  shape and order - and two value-dropping mutations reddened it (the text fixed point reddened in
+  both runs too, so this is the claim stated directly rather than a strictly stronger oracle). No
+  behaviour changed; the counts move to 720 Rust tests and 29 properties.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

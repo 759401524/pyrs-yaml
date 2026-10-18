@@ -72,6 +72,59 @@ fn toml_root_note_ok(node: &crate::ast::CustomNode) -> bool {
     )
 }
 
+/// Whether the tree carries no note anywhere — on a node, on a key, or in any
+/// descendant.
+///
+/// The TOML writer targets 1.1, which is the dialect that allows a newline (and so a comment) inside
+/// an inline table. A document with no note at all has no reason to need that freedom, and emitting
+/// one would be the writer choosing 1.1-only text where 1.0 text was available — a reader on 1.0
+/// would then refuse output this library produced. Blank-line hints are not filtered: blank lines
+/// between key-values and sections are legal in 1.0.
+fn toml_undecorated(node: &crate::ast::CustomNode) -> bool {
+    if node.comment().is_some() || !node.leading_comments().is_empty() {
+        return false;
+    }
+    match node {
+        crate::ast::CustomNode::Mapping { pairs, .. } => pairs.iter().all(|(k, v)| {
+            k.comment().is_none()
+                && k.leading_comments().is_empty()
+                && toml_undecorated(k)
+                && toml_undecorated(v)
+        }),
+        crate::ast::CustomNode::Sequence { items, .. } => items.iter().all(toml_undecorated),
+        _ => true,
+    }
+}
+
+/// Undecorated trees that are *certain* to contain an inline table.
+///
+/// `arb_node_meta` attaches a note to a node often enough that a multi-node tree with no note
+/// anywhere is rare, and the writer's compact inline-table arm was therefore reached almost never:
+/// forcing the multi-line branch left `prop_toml_undecorated_output_loads_as_1_0` green at 20 000
+/// generated cases while it reddened the named test in `pyrs-toml` immediately. These shapes close
+/// the hole by spelling the document as TOML text first — undecorated by construction, always
+/// holding `{ … }` — and handing the parsed tree to the property. The claim stays the writer's: a
+/// 1.0-shaped input must still come out as text a 1.0 reader accepts.
+fn arb_toml_inline_shapes() -> impl Strategy<Value = crate::ast::CustomNode> {
+    (
+        "[a-z][a-z0-9_]{0,6}",
+        prop::string::string_regex("[A-Za-z0-9 ]{0,8}").unwrap(),
+        any::<bool>(),
+        any::<bool>(),
+    )
+        .prop_filter_map("the TOML reader refused its own fixture", |v| {
+            let (key, value, nested, arrayed) = v;
+            let mut source = format!("{key} = {{ inner = \"{value}\" }}\n");
+            if nested {
+                source.push_str(&format!("deep = {{ mid = {{ leaf = \"{value}\" }} }}\n"));
+            }
+            if arrayed {
+                source.push_str("list = [ { a = 1 }, { b = 2 } ]\n");
+            }
+            toml::from_toml(&source).ok()
+        })
+}
+
 /// Config for the dialect properties: a wider budget for the domain filters.
 ///
 /// `json_object_domain` and `toml_root_note_ok` are carve-outs around shapes that have no
@@ -196,5 +249,94 @@ proptest! {
         let reparsed = toml::from_toml(&text)?;
         let text2 = toml::to_toml(&reparsed)?;
         prop_assert_eq!(text, text2, "TOML writer not idempotent on own output");
+    }
+
+    #[test]
+    fn prop_toml_undecorated_output_loads_as_1_0(
+        node in prop_oneof![arb_custom_node(), arb_toml_inline_shapes()],
+    ) {
+        prop_assume!(toml_undecorated(&node));
+        let Ok(text) = toml::to_toml(&node) else { return Ok(()) };
+        // The fixed point asks whether the writer settles; it says nothing about *which dialect* the
+        // settled text belongs to. A tree with no note anywhere has no claim on 1.1's freedom to put a
+        // newline inside an inline table, so text that 1.0 refuses is the writer taking a dialect it
+        // was not asked for — and a 1.0 reader would then not be able to open what we emitted.
+        //
+        // The second half of the input is measured, not decorative: with `arb_custom_node` alone,
+        // forcing the writer's multi-line inline-table branch left this property green at 20 000
+        // cases while it reddened `an_undecorated_inline_table_writes_compact_and_loads_as_1_0` in
+        // `pyrs-toml` at once — the general generator reaches a note-free `flow_style` mapping only
+        // occasionally. `arb_toml_inline_shapes` guarantees that arm, and the named test keeps the
+        // shape on the record.
+        let reloaded = toml::from_toml_v1_0(&text);
+        prop_assert!(
+            reloaded.is_ok(),
+            "an undecorated tree wrote text TOML 1.0 refuses ({:?}):\n{}",
+            reloaded.err().map(|e| e.to_string()),
+            text
+        );
+    }
+
+    #[test]
+    fn prop_toml_roundtrip_preserves_the_tree(
+        node in prop_oneof![arb_custom_node(), arb_toml_inline_shapes()],
+    ) {
+        prop_assume!(toml_root_note_ok(&node));
+        // What the two text-level properties cannot say: a document may settle byte-for-byte and still
+        // have lost a value, because both ask about the *text* and never about what came back. This is
+        // the equality claim the matrix's property row names as its blind spot ("invariants weaker than
+        // equality"), and it is the one that found the YAML losses. Scope: values, shape and order —
+        // style and metadata belong to the dialect and note tiers, so `toml_tree_diff` ignores them.
+        let Ok(text) = toml::to_toml(&node) else { return Ok(()) };
+        let back = toml::from_toml(&text)?;
+        if let Some(diff) = toml_tree_diff(&node, &back) {
+            prop_assert!(false, "TOML round trip changed the tree: {diff}\n--- emitted ---\n{text}");
+        }
+    }
+}
+
+/// The first value, shape or order a TOML round trip changed, ignoring style and metadata.
+fn toml_tree_diff(a: &crate::ast::CustomNode, b: &crate::ast::CustomNode) -> Option<String> {
+    use crate::ast::CustomNode as N;
+    fn kind(n: &crate::ast::CustomNode) -> &'static str {
+        match n {
+            N::Scalar { .. } => "scalar",
+            N::Mapping { .. } => "mapping",
+            N::Sequence { .. } => "sequence",
+            N::Alias { .. } => "alias",
+            N::Null { .. } => "null",
+        }
+    }
+    match (a, b) {
+        (N::Scalar { value: av, .. }, N::Scalar { value: bv, .. }) => {
+            (av != bv).then(|| format!("scalar text {av:?} -> {bv:?}"))
+        }
+        (N::Mapping { pairs: ap, .. }, N::Mapping { pairs: bp, .. }) => {
+            if ap.len() != bp.len() {
+                return Some(format!("mapping size {} -> {}", ap.len(), bp.len()));
+            }
+            for ((ak, av), (bk, bv)) in ap.iter().zip(bp.iter()) {
+                if let Some(d) = toml_tree_diff(ak, bk) {
+                    return Some(format!("key {d}"));
+                }
+                if let Some(d) = toml_tree_diff(av, bv) {
+                    return Some(format!("value {d}"));
+                }
+            }
+            None
+        }
+        (N::Sequence { items: ai, .. }, N::Sequence { items: bi, .. }) => {
+            if ai.len() != bi.len() {
+                return Some(format!("sequence size {} -> {}", ai.len(), bi.len()));
+            }
+            for (i, (x, y)) in ai.iter().zip(bi.iter()).enumerate() {
+                if let Some(d) = toml_tree_diff(x, y) {
+                    return Some(format!("item {i}: {d}"));
+                }
+            }
+            None
+        }
+        _ if kind(a) == kind(b) => None,
+        _ => Some(format!("{} -> {}", kind(a), kind(b))),
     }
 }
