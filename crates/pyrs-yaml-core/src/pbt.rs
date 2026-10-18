@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn the_key_rule_agrees_with_the_writer_and_the_reader() {
         use crate::ast::{Comment, NodeMap, ScalarStyle, Tag};
-        use pyrs_ast::ast::proptest_strategies::keys_collide_in_text;
+        use pyrs_ast::ast::proptest_strategies::{keys_collide_in_flow, keys_collide_in_text};
 
         let null = |tag: Option<(&str, &str)>, anchor: Option<&str>, note: Option<&str>| {
             let mut node = crate::ast::CustomNode::Null {
@@ -1181,6 +1181,50 @@ mod tests {
             "the table must keep a real share of its classes on each side"
         );
 
+        // The same pairs under a FLOW parent, judged by asking the writer and the reader rather
+        // than by restating a table: a flow parent cannot spell a block container at all, and
+        // that is the shape that took the property tier down at 20k cases (CI job
+        // 117575499211) - two keys the block parent tells apart came out as
+        // `{? [null]: A, ? [null]: B}`.
+        for (label, a, b) in cases.iter().map(|(l, a, b, _)| (l, a, b)) {
+            let mut pairs = NodeMap::default();
+            pairs.insert(a.clone(), plain("one"));
+            if pairs.insert(b.clone(), plain("two")).is_some() {
+                // The node map folds the pair before it can be emitted; the block pass below
+                // records that, and there is no text left to ask the reader about.
+                continue;
+            }
+            let node = crate::ast::CustomNode::Mapping {
+                pairs,
+                flow_style: true,
+                meta: crate::ast::NodeMeta::default(),
+            };
+            let yaml = to_yaml(&node);
+            let folded = keys_collide_in_flow(a, b);
+            // Only one direction has to be exact, because only one direction is loaded: a pair
+            // the rule lets through has to survive the reader. Over-folding costs a lost sample,
+            // never a broken tree - measured, `{!E null: # 0 one, !E null: two}` keeps two
+            // entries because a note landing in the flow text separates them, while the same
+            // note separates nothing in a block mapping, so the fold drops that sample here.
+            if folded {
+                continue;
+            }
+            match parse_with_options(&yaml, true, Schema::Core, 1000, false) {
+                Ok(crate::ast::CustomNode::Mapping { pairs: read, .. }) => assert_eq!(
+                    read.len(),
+                    2,
+                    "{label}: a flow parent emitted {yaml:?} and the rule says the keys are told \
+                     apart, but it re-read {} entries",
+                    read.len()
+                ),
+                Ok(other) => panic!("{label}: a flow parent re-read as {other:?}"),
+                Err(err) => panic!(
+                    "{label}: a flow parent refused {yaml:?} ({err}) while the fold rule says \
+                     the two are told apart"
+                ),
+            }
+        }
+
         for (label, a, b, keepable) in cases {
             assert_eq!(
                 keys_collide_in_text(&a, &b),
@@ -1216,5 +1260,48 @@ mod tests {
                 ),
             }
         }
+    }
+
+    #[test]
+    fn a_flow_parent_loses_the_block_twin_and_the_reader_is_right_to_refuse_it() {
+        // The tree behind a random property-tier failure (CI job 117575499211, 2026-10-18),
+        // kept as the shape the generator must stop building: a mapping holding two sequence
+        // keys that each wrap one `Null` variant, one block-styled and one flow-styled. Under a
+        // block parent the pair re-reads as two entries; under a flow parent there is no
+        // spelling for a block container, so both keys emit as `[null]` and the duplicate the
+        // reader refuses is not its mistake.
+        let null = crate::ast::CustomNode::Null {
+            meta: Default::default(),
+        };
+        let key = |flow: bool| crate::ast::CustomNode::Sequence {
+            items: vec![null.clone()],
+            flow_style: flow,
+            meta: Default::default(),
+        };
+        let parent = |flow: bool| {
+            let mut pairs = crate::ast::NodeMap::default();
+            pairs.insert(key(false), crate::ast::CustomNode::plain_scalar("A"));
+            pairs.insert(key(true), crate::ast::CustomNode::plain_scalar("B"));
+            crate::ast::CustomNode::Mapping {
+                pairs,
+                flow_style: flow,
+                meta: Default::default(),
+            }
+        };
+
+        let block = to_yaml(&parent(false));
+        match parse_with_options(&block, true, Schema::Core, 1000, false) {
+            Ok(crate::ast::CustomNode::Mapping { pairs: read, .. }) => {
+                assert_eq!(read.len(), 2, "{block:?} re-read as {read:?}");
+            }
+            other => panic!("{block:?} re-read as {other:?}"),
+        }
+
+        let flow = to_yaml(&parent(true));
+        assert_eq!(flow, "{? [null]: A, ? [null]: B}\n");
+        assert!(
+            parse_with_options(&flow, true, Schema::Core, 1000, false).is_err(),
+            "{flow:?} was read as one document"
+        );
     }
 }

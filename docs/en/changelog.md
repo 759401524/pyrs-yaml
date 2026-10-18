@@ -72,6 +72,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `pyjson5`, because a syntax the reader never accepted is invisible to the property and fuzz
   tiers, whose oracles can only compare paths that already exist.
 
+- **A flow mapping cannot spell a block key, and the generator no longer draws one** — a random
+  20k-case property-tier run went red on `{? [null]: A, ? [null]: B}`: a mapping holding the same
+  one-item sequence twice, spelled block once and flow once. Under a block parent that pair really
+  is two keys — `? - null` beside `? [null]` re-reads as two entries, measured — but inside `{...}`
+  a block container has no legal form, so the writer emits the flow token for both and the reader's
+  duplicate-key refusal is the correct answer. The tree was the generator's rather than a
+  document's: `arb_mapping` filtered its keys with a context-free rule. `keys_collide_in_flow`
+  folds both keys to the only spelling a flow parent allows before comparing them, normalizing a
+  copy so `KeyIdentity` stays the single model of what a spelling means, and the agreement pin now
+  re-asks its whole table under a flow parent, holding the one direction the generator is
+  accountable to: a pair the rule lets through has to survive the reader.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

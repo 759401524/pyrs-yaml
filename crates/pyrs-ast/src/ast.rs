@@ -1751,16 +1751,21 @@ pub mod proptest_strategies {
         )
             .prop_map(|(pairs, flow_style, meta)| {
                 let mut map = NodeMap::default();
+                // Which rule the keys must satisfy depends on the parent they are drawn for: a
+                // flow mapping can emit two keys that the block rule tells apart as one text
+                // (`flow_folded`), and the reader then refuses the second as a duplicate.
+                let collides = if flow_style {
+                    keys_collide_in_flow
+                } else {
+                    keys_collide_in_text
+                };
                 for (k, v) in pairs {
                     // Keys the YAML text cannot tell apart: same-kind empty
                     // containers (always `[]`/`{}` whatever their flow style or
                     // metadata), two scalars carrying the same text, or two
                     // spellings of null. IndexMap's Eq sees two keys either way, so
                     // keep the first to leave the generated AST re-parseable.
-                    if map
-                        .keys()
-                        .any(|existing| keys_collide_in_text(existing, &k))
-                    {
+                    if map.keys().any(|existing| collides(existing, &k)) {
                         continue;
                     }
                     map.insert(k, v);
@@ -1791,6 +1796,43 @@ pub mod proptest_strategies {
         // One model, not two branches that can drift: the classes are spelled out on
         // `KeyIdentity`, and the writer's fold reads that same identity.
         a.key_identity() == b.key_identity()
+    }
+
+    /// [`keys_collide_in_text`] asked of the keys of a **flow** mapping, where the parent's own
+    /// spelling takes options away from the child: fold both keys to the only form that context
+    /// allows (see [`flow_folded`]), and `? - null` beside `? [null]` is one key.
+    pub fn keys_collide_in_flow(a: &CustomNode, b: &CustomNode) -> bool {
+        let (a, b) = (flow_folded(a), flow_folded(b));
+        keys_collide_in_text(&a, &b)
+    }
+
+    /// A key spelled the only way a flow mapping can spell it: inside `{...}` a block container
+    /// has no legal form, so every container in the subtree goes out as flow tokens. Measured on
+    /// the tree the property tier drew at 20k samples - under a block parent the pair re-reads as
+    /// two entries, under a flow parent it emits `{? [null]: A, ? [null]: B}` and the reader
+    /// refuses the second as a duplicate, correctly. Normalizing a copy rather than writing a
+    /// parallel comparison keeps [`CustomNode::key_identity`] the single model of what a spelling
+    /// means, which is the point of the class in the first place.
+    fn flow_folded(node: &CustomNode) -> CustomNode {
+        match node {
+            CustomNode::Sequence { items, meta, .. } => CustomNode::Sequence {
+                items: items.iter().map(flow_folded).collect(),
+                flow_style: true,
+                meta: meta.clone(),
+            },
+            CustomNode::Mapping { pairs, meta, .. } => {
+                let mut folded = NodeMap::default();
+                for (key, value) in pairs {
+                    folded.insert(flow_folded(key), flow_folded(value));
+                }
+                CustomNode::Mapping {
+                    pairs: folded,
+                    flow_style: true,
+                    meta: meta.clone(),
+                }
+            }
+            other => other.clone(),
+        }
     }
 
     fn arb_sequence(inner: BoxedStrategy<CustomNode>) -> impl Strategy<Value = CustomNode> {
