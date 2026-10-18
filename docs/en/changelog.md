@@ -172,6 +172,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on every route. No behaviour changed; the gate is insurance against a dialect rule that reaches
   one direction of the pipe and not the other, which is the class two of the last three fixes were.
 
+- **A verbatim `!<tag:yaml.org,2002:X>` reaches the plugin registered as `!!X`** — YAML 1.2 §6.8
+  makes the two spellings one tag, and the loader already honoured both for the five tags it names
+  by hand (`!!str`, `!!int`, `!!float`, `!!bool`, `!!binary`). For every other name the plugin
+  registry is keyed on the rendered text, so the verbatim form fell through to schema resolution:
+  measured on the trunk of 2026-10-18, `!<tag:yaml.org,2002:widget> 7` ignored a plugin registered
+  as `!!widget` and loaded the integer `7`. The spelling the document used is tried first, so the
+  second look is paid for only on a miss, and a URI outside YAML's namespace keeps its current
+  reading — resolved as if the tag were absent, not raised.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

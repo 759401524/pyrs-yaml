@@ -33,6 +33,12 @@ def register():
     pyrs_yaml.register_type("!mytimestamp", MyTimestampType())
 ```
 
+**등록명의 표기도 계약에 포함됩니다.** `register_type("!x", ...)`는 로컬 태그 `!x`에,
+`register_type("!!x", ...)`는 YAML의 표준 태그에 응답합니다. 후자는 두 표기를 모두 받습니다.
+`!!x`와 완전 형식 `!<tag:yaml.org,2002:x>`은 YAML 1.2 §6.8에서 같은 태그의 두 표현이기 때문입니다.
+`tag:yaml.org,2002:` 밖의 URI는 YAML이 이름을 정하는 영역이 아니므로, 그 태그를 단 스칼라는 태그가
+없는 값과 같이 해석됩니다.
+
 ### API 참조
 
 | 함수 | 설명 |

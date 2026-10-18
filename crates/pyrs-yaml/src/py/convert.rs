@@ -24,13 +24,22 @@ fn try_custom_type(
     tag: &str,
     value: &Bound<'_, PyAny>,
 ) -> PyResult<Option<Py<PyAny>>> {
-    if let Some(handler) = type_registry::get(tag, py) {
-        let can_parse = handler
-            .call_method1(py, "can_parse", (value,))
-            .and_then(|r| r.extract::<bool>(py))?;
-        if can_parse {
-            return handler.call_method1(py, "from_yaml", (value,)).map(Some);
-        }
+    // The document's own spelling is tried first, and only a miss pays for the second look: a
+    // verbatim `!<tag:yaml.org,2002:X>` is the same tag as the `!!X` a plugin registers under, but
+    // the registry keys on the rendered text, so the verbatim form used to fall through to schema
+    // resolution for every tag `tags::tagged_scalar` does not name by hand.
+    let handler = type_registry::get(tag, py).or_else(|| {
+        let suffix = crate::py::tags::verbatim_standard_suffix(tag)?;
+        type_registry::get(&format!("!!{suffix}"), py)
+    });
+    let Some(handler) = handler else {
+        return Ok(None);
+    };
+    let can_parse = handler
+        .call_method1(py, "can_parse", (value,))
+        .and_then(|r| r.extract::<bool>(py))?;
+    if can_parse {
+        return handler.call_method1(py, "from_yaml", (value,)).map(Some);
     }
     Ok(None)
 }

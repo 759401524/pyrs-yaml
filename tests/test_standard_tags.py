@@ -185,6 +185,49 @@ class TestBytesWriteRoute:
         assert pyrs_yaml.safe_load(emitted) == {"a": "y", "b": "y"}
 
 
+class TestVerbatimTagSpelling:
+    """`!<tag:yaml.org,2002:X>` and `!!X` are one tag written two ways (YAML 1.2 §6.8).
+
+    The loader compared the verbatim spelling by hand for the five tags `tags::tagged_scalar` lists,
+    and the plugin registry is keyed on the rendered text - so every other standard tag lost the
+    verbatim form. Measured on the trunk of 2026-10-18: `!<tag:yaml.org,2002:timestamp> 2026-10-18`
+    loaded as the string while `!!timestamp 2026-10-18` loaded as a `date`.
+    """
+
+    class _Widget(pyrs_yaml.CustomType):
+        def from_yaml(self, value):
+            return f"widget:{value}"
+
+        def to_yaml(self, obj):
+            return str(obj).split(":", 1)[1]
+
+    def setup_method(self):
+        pyrs_yaml.register_type("!!widget", self._Widget())
+
+    def teardown_method(self):
+        from pyrs_yaml.plugins import _builtin
+
+        # `clear_type_handlers` empties the shared registry, so putting it back means both halves of
+        # what the package installs at import - the third-party names among them, or the suites that
+        # run after this one lose `!arrow` and `!ulid`.
+        pyrs_yaml.clear_type_handlers()
+        _builtin._register_builtins()
+        _builtin._register_third_party()
+
+    def test_one_registered_name_answers_both_spellings(self):
+        assert pyrs_yaml.safe_load("w: !!widget 7\n") == {"w": "widget:7"}
+        assert pyrs_yaml.safe_load("w: !<tag:yaml.org,2002:widget> 7\n") == {"w": "widget:7"}
+
+    def test_a_uri_from_another_namespace_is_still_left_alone(self):
+        # The rule this module keeps for unknown tags: no shorthand to trade in for, so the text is
+        # resolved as if the tag were absent rather than raised or turned into a string.
+        assert pyrs_yaml.safe_load("w: !<urn:example:widget> 7\n") == {"w": 7}
+
+    def test_the_standard_tag_the_loader_names_by_hand_still_answers_both(self):
+        assert pyrs_yaml.safe_load("b: !!binary aGk=\n") == {"b": b"hi"}
+        assert pyrs_yaml.safe_load("b: !<tag:yaml.org,2002:binary> aGk=\n") == {"b": b"hi"}
+
+
 class TestParityWithPyYAML:
     """The claim is not "we chose these readings", it is "these are what the reference answers are"."""
 
