@@ -6237,6 +6237,62 @@ rather than probed at runtime; a `|` against `|-` probe needs the extension rebu
 same question. `docs/dev/event-stream.md` carries the finding and the three-part question as "What a
 YAML replay asks the vocabulary for".
 
+### (eg) The edit layer got a fuzz tier, and it found the anchor's three doors before it was merged (2026-10-18)
+
+The defence matrix had a cell nobody had filled: eight targets, all of them handing the engine a
+*document*. Nothing drove a *change* to one - the region-splicing layer behind `doc.set()`,
+`doc.delete()` and the `pyq` verbs, which is the layer the round-trip promise is about. Its tests
+were named shapes plus `prop_style_setting_roundtrip` over generated trees, and a generated tree
+does not contain the shapes that broke this line before (a note under a tag-only line, a CR-only
+break, an alias in key position).
+
+`fuzz/fuzz_targets/edit_yaml.rs` takes `document NUL script`, collects the paths the reader actually
+reached so mutations land inside the document, applies one of twelve verbs per record, and then
+re-parses the emission, and checks the verb's own claim. Three claims came back red within the first
+minutes of running it, and they were the same invariant seen from three doors:
+
+- `set_anchor_path` renamed `&x` while `use: *x` stayed behind, emitting `base: &a0 1 / use: *x` -
+  refused by this library's own reader with `found unknown anchor` (`former-crash-3cc4245d.seed`);
+- the same orphan through `set_path` with `preserve_metadata: false`, which is how `move_path` and
+  `set_many_path` reach it: moving `$.use` onto `$.base` emitted `base: *x`;
+- and through `delete_path`, moving or deleting the node that *defines* a referenced anchor emitted
+  the alias alone (`former-crash-c59db74a.seed`).
+
+The engine already owned the rule - `with_metadata_from` keeps the document's anchor name when a
+value is replaced with its metadata, and `the_anchor_the_document_aliases_names_is_kept` says why -
+so this is not a new policy, it is the old one applied at the doors that bypassed it. Refusals are
+asked where the drop happens: one check at the head of `set_path`, one in `delete_path`, one in each
+anchor verb, all sharing `anchor-is-referenced`. Seven Rust rows and one Python row pin the three
+doors and the two cases that must *keep* working (a rename nothing refers to; deleting the alias
+itself).
+
+Both guards answer wider than the set of aliases that really dangle, and that is recorded rather
+than hidden: an alias binds the nearest preceding anchor of its name, so a rename a later `&x` would
+have kept alive, and a subtree holding both an anchor and its alias, are refused too. The trade is
+stated in the code - over-refusing costs the caller one more edit, under-refusing writes a file
+nothing can read. Making a rename *carry* its aliases (which is what ruamel's shared-anchor model
+does, and what an author typing a new name may expect) is a decision about the verb's meaning and
+stays open, as does the silent no-op of `sort_keys_path` on a non-mapping and the note that changes
+owner when a container is annotated.
+
+What the tier does not claim is in its header, and each omission has an input behind it: style
+equality (the writer's fallback is correct, and the property tier owns the question), sort equality
+on a scalar path, note ownership after an edit, and - the one that is a defect rather than a
+boundary - the fixed point. A flow member carrying both a tag and an inline note settles only on the
+second round: the first emission writes `a: !fuzz2   # fuzz 47`, the re-read hands the note to the
+mapping's own line, and the second emission moves the tag after it. That is the `(ds)`/`(dq)`
+species in a container the earlier fixes did not reach, and it is why
+`flow-tag-note-needs-two-rounds.seed` is replayed rather than asserted: a gate that reddens on an
+open defect gates nothing. Closing the flow attribution is the next change's job, and it inherits
+four committed inputs instead of a re-derivation - that seed, `container-note-changes-owner.seed`,
+`note-may-change-owner.seed`, and the sort case in the header.
+
+The workflow's header comment no longer counts the targets ("eight engine targets" was one change
+from being a lie about its own matrix); `tests/test_quality_matrix.py` continues to derive the list
+from `fuzz/Cargo.toml` and the `fuzz.yml` matrix, and reddens if either half moves alone. Counts
+moved with it: nine targets, 154 seeds of which 69 are former crashes, 712 Rust tests, 1,744 Python
+test functions.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

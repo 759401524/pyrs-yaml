@@ -22,9 +22,33 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 703 Rust `#[test]`, 1,743 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 712 Rust `#[test]`, 1,744 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 27 proptest properties (25 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 8 targets, 142 seeds of which 67 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 154 seeds of which 69 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+
+**The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
+parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
+verbs, the round-trip promise itself - had no fuzz tier and no property tier over arbitrary input.
+`fuzz/fuzz_targets/edit_yaml.rs` takes `document NUL script`, picks paths the reader really reached,
+and requires every accepted edit to re-parse, with the value it wrote readable at the
+place it claims to have written it. It paid for itself before it was committed: the
+first seed replay reached an anchor rename that emitted `base: &a0 1 / use: *x`, text this library's
+own reader refuses, and exploration reached two more doors over the same invariant (a `set` or `move`
+that drops a referenced anchor's definition, a `delete` of it). All three are now refused at the place
+the drop happens; `fuzz/seeds/edit_yaml/former-crash-{3cc4245d,c59db74a}.seed` replay them per PR.
+
+Three claims the target first made are not in it, and each was narrowed by a measurement rather than by
+taste. `sort_keys_path` answers "ok" for a path naming a scalar and changes nothing, so the ordering
+claim is asked only where the verb has work to do - whether the silent no-op should refuse instead is a
+question about a public error surface. And a note asked of a node does not always stay on that node:
+`set_comment` on a block sequence emits it on the last item's line (there is nowhere else in the text it
+could live) and one discovered shape handed a scalar's note over too, so `set-comment` is held here to
+re-parse and settle only. The third is not a boundary but an open defect: a flow member carrying both a tag and an inline note
+settles only on the second round - the first emission writes `a: !fuzz2   # fuzz 47`, the re-read hands
+the note to the mapping's line, and the next emission moves the tag after it. Asserting the fixed point
+would redden the tier on a known open defect, which gates nothing, so all three inputs are committed
+(`container-note-changes-owner.seed`, `note-may-change-owner.seed`,
+`flow-tag-note-needs-two-rounds.seed`) and the next reader inherits them instead of re-deriving them.
 
 Orthogonality, tested rather than asserted: the same three defect families that the recent
 fuzz tier found (comment attribution, empty-container spelling, nested merge application)
@@ -445,7 +469,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (67 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (69 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 

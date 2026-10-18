@@ -187,6 +187,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rows, the second recording the boundary that remains: a base name this engine cannot find still
   leaves no fallback, and refusing a typo'd name is a separate call about a public error surface.
 
+- **An edit that orphans an anchor is refused, not written** — on `base: &x 1` with `use: *x`,
+  renaming that anchor, replacing its node without carrying its metadata, and moving the definition
+  away all answered success and emitted a document whose only remaining reference names an anchor
+  nothing defines; this library's own reader refused `base: &a0 1 / use: *x` with
+  `found unknown anchor`. The rule was already in the engine — `with_metadata_from` keeps the
+  document's anchor name when a value is replaced with its metadata — and these three doors bypassed
+  it, so the question is now asked where the drop happens: at `set_path`, which `set_many_path` and
+  `move_path` share, at `delete_path`, and at the anchor verbs. The guard is wider than the set of
+  aliases that would really dangle: an alias binds the *nearest preceding* anchor of its name, so a
+  rename that a later `&x` would have kept alive, and a subtree holding both an anchor and the alias
+  naming it, are refused too. Over-refusing costs the caller one more edit; under-refusing writes a
+  file nothing can read. Making a rename carry its aliases is a decision about what the verb means,
+  and is recorded as one.
+
+- **The edit layer has a fuzz target of its own** — the workspace has nine targets now, and the
+  eight before it handed the engine a *document*; nothing drove a *change* to one, which is the
+  layer the round-trip promise is about. `fuzz_targets/edit_yaml.rs` reads `document NUL script`,
+  picks paths the reader really found, and requires every accepted edit to re-parse and to leave the
+  value it wrote where it says it wrote it — with removal claims stated per kind, because a key is
+  an identity while a sequence index is a position the next item shifts into. It reached the anchor
+  defect above on its first seed replay, again minutes into its first exploration, and reported
+  three shapes it records rather than asserts: a sort asked of a scalar answers "ok" and changes
+  nothing, a note asked of a node does not always stay on that node, and a flow member carrying a
+  tag and a note settles only on the second round - an open defect in the note's flow attribution,
+  committed as a seed so the fix inherits the input.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

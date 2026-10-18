@@ -89,3 +89,16 @@ path = "fuzz_targets/json_events_replay.rs"
 test = false
 doc = false
 bench = false
+
+# The edit verbs. Every target above hands the engine a document; none of them hands it a *change* to
+# a document, which is the layer that rewrites one region of the text and the layer the round-trip
+# promise is about. Its tests are named shapes, and a named shape cannot reach the combination that
+# breaks a splice - so this one takes `document NUL script`, picks paths the reader really found, and
+# requires each accepted edit to re-parse, to settle in one round, and to leave the value it wrote
+# where it says it wrote it.
+[[bin]]
+name = "edit_yaml"
+path = "fuzz_targets/edit_yaml.rs"
+test = false
+doc = false
+bench = false
