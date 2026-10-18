@@ -31,6 +31,15 @@ status: new
   측정한 모든 tip(`07f988fa`, `60f670d0`, `225cf373`)에서 주장은 성립했으므로, 여기서 닫는 것은 방어
   체계의 형태 결함이지 사고가 아닙니다.
 
+- **형식별 방어 표를 파생 측정으로 전환, 두 칸을 실측으로 정정** — `scripts/quality_matrix.py`가
+  방어를 선언하는 파일(fuzz 대상, `proptest!` 블록, 각 `test_*_crosslib.py`, `pyproject.toml`
+  의존 마커)에서 `QUALITY_MATRIX.md`의 형식 표를 계산하고 `tests/test_quality_matrix.py`가 각
+  칸을 고정합니다. 대조 결과 두 칸의 오차가 측정됐습니다: `schema validation`은 과소
+  보고였습니다(`validate_schema.rs`는 validate 전에 parse 하므로 `fuzz parse`는 `yes`), 그리고
+  property 계층은 25가 아니라 27입니다(기존 계산은 `prop_` 접두어를 요구해 산문 이름으로 선언된
+  `pyrs-event`의 속성 두 개가 빠져 있었습니다). parity 칸의 `partial`은 이제 인상이 아니라
+  oracle에 선언된 인터프리터·아키텍처 제약을 뜻합니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

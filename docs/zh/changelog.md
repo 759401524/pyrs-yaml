@@ -31,6 +31,14 @@ status: new
   `Test matrix (all legs)` 是否报告 `success`；答案不成立即拒绝。在所测得的每个尖兵（`07f988fa`、
   `60f670d0`、`225cf373`）上这句话都成立，所以关闭的是防线的形状缺陷，而不是一起事故。
 
+- **每格式防线表改为派生测量，并纠正两格错读** — `scripts/quality_matrix.py` 现在会依据声明防线
+  的文件（fuzz 目标、`proptest!` 块、各 `test_*_crosslib.py`，以及 `pyproject.toml` 里的依赖标
+  记）计算 `QUALITY_MATRIX.md` 的格式表，并由 `tests/test_quality_matrix.py` 逐格钉住。与之对账
+  后测得两处偏差：`schema validation` 被低估——`validate_schema.rs` 会先解析再校验，其
+  `fuzz parse` 应为 `yes`；属性层是 27 个而不是 25 个，因为旧的计数只认 `prop_` 前缀，而
+  `pyrs-event` 的两个属性用的是散文命名。parity 列的 `partial` 如今指 oracle 上声明的解释器或架
+  构限制，不再是主观印象。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

@@ -163,6 +163,112 @@ def roundtrip_target_for(crate: str, targets: list[str]) -> bool:
     return any("roundtrip" in target and family in target for target in targets)
 
 
+#: Each row of the per-format table: the crate that owns the engine, the name fragment that identifies
+#: the format inside a fuzz target, the cross-library module's file stem, and the name fragments that
+#: identify it inside a property function. Written as fragments that are then matched against the files,
+#: not as a table of results, so adding a target or a module moves the row instead of leaving a
+#: hand-copied cell behind. A property counts for a row when it lives in that crate or carries one of
+#: those fragments: the schema language is *owned* by `pyrs-yaml-core` (`parser/yaml/schema_language.rs`)
+#: while `pyrs-schema` holds the resolver, so attributing by directory alone would have read as
+#: "schema has no property tier" - the opposite error to the one it was written to catch.
+FORMAT_ROWS = (
+    ("YAML", "pyrs-yaml-core", "yaml", "yaml", ("yaml",)),
+    ("JSON / JSONC / JSON5", "pyrs-json", "json", "json", ("json",)),
+    ("TOML", "pyrs-toml", "toml", "toml", ("toml",)),
+    ("schema validation", "pyrs-schema", "schema", None, ("schema", "validate")),
+)
+
+#: An import in a cross-library module, mapped to the project dependency that has to be installed for
+#: it to run. `json` and `tomllib` are stdlib and answer for themselves.
+ORACLE_IMPORTS = {
+    "yaml": "PyYAML",
+    "ruamel.yaml": "ruamel.yaml",
+    "orjson": "orjson",
+    "pyjson5": "pyjson5",
+    "tomlkit": "tomlkit",
+}
+
+
+def _dependency_marker(package: str) -> str | None:
+    """The marker `pyproject.toml` puts on a package, or `None` when it is declared unconditionally."""
+    for match in re.finditer(rf'"({re.escape(package)}[^;"]*)(;([^"]*))?"', read(REPO / "pyproject.toml")):
+        return match.group(3).strip() if match.group(3) else None
+    return "undeclared"
+
+
+def _leg_restricted(marker: str | None) -> bool:
+    """Does this marker keep the oracle off some supported interpreter or architecture?
+
+    `partial` has to mean something measured: an unbounded dependency is installed on every leg, so the
+    parity comparison runs everywhere, while one carrying `python_version < '3.14'` or a
+    `platform_machine != ...` exclusion is absent - and its tests skipped - on those legs.
+    """
+    if not marker:
+        return False
+    return "python_version" in marker or "platform_machine" in marker
+
+
+def format_matrix() -> dict:
+    """The per-format tier table, derived from the files that declare the defence.
+
+    The point of deriving it is not tidiness. The hand-written table was wrong in two cells that only a
+    measurement finds: `schema validation` claimed no fuzz coverage while `validate_schema.rs` parses a
+    document and then walks it through `validate_node`, and the `property` column rested on a Rust-only
+    count of `prop_*` functions while the dialect rows are actually held up by the Python tier
+    (`tests/test_property_dialects.py`, 10 `@given` cases with stdlib `json`/`tomllib` and optional
+    `pyjson5` as external oracles).
+    """
+    targets = fuzz_targets()
+    props = property_functions()
+    crosslib_dir = REPO / "tests"
+    rows: dict[str, dict] = {}
+
+    for label, crate, fragment, crosslib_stem, prop_fragments in FORMAT_ROWS:
+        crate_dir = REPO / "crates" / crate
+        crate_tests = sorted(crate_dir.rglob("*.rs")) if crate_dir.is_dir() else []
+        unit = sum(len(re.findall(r"^\s*#\[test\]", read(path), re.MULTILINE)) for path in crate_tests)
+        rust_props = [
+            name
+            for name in props
+            if f"crates/{crate}/" in name or any(frag in name.split("::", 1)[1] for frag in prop_fragments)
+        ]
+
+        python_props = []
+        for path in sorted((REPO / "tests").glob("test_property*.py")):
+            text = read(path)
+            if "@given" in text and re.search(rf"(load|to|_){fragment}\b", text):
+                python_props.append(path.name)
+
+        fuzz_parse = sorted(name for name in targets if fragment in name and re.match(r"(parse|validate)", name))
+        fuzz_round = sorted(name for name in targets if fragment in name and "roundtrip" in name)
+
+        parity: dict = {"verdict": "n/a", "oracles": [], "restricted": []}
+        if crosslib_stem:
+            module = crosslib_dir / f"test_{crosslib_stem}_crosslib.py"
+            if module.exists():
+                imports = re.findall(
+                    r"^\s*import (yaml|ruamel\.yaml|orjson|pyjson5|tomlkit)", read(module), re.MULTILINE
+                )
+                oracles = sorted({ORACLE_IMPORTS.get(name, name) for name in imports})
+                restricted = sorted(name for name in oracles if _leg_restricted(_dependency_marker(name)))
+                parity = {
+                    "verdict": "partial" if restricted else "yes",
+                    "oracles": oracles,
+                    "restricted": restricted,
+                    "marker": {name: _dependency_marker(name) for name in oracles},
+                }
+
+        rows[label] = {
+            "unit": unit,
+            "property_rust": len(rust_props),
+            "property_python": python_props,
+            "fuzz_parse": fuzz_parse,
+            "fuzz_round_trip": fuzz_round,
+            "cross_library": parity,
+        }
+    return rows
+
+
 def check_scripts() -> list[str]:
     return sorted(p.name for p in (REPO / "scripts").glob("check_*.py"))
 
@@ -278,11 +384,62 @@ def python_test_functions() -> int:
     )
 
 
+def _closing_brace(text: str, open_index: int) -> int:
+    """The index of the brace that closes the one at `open_index`, or the end of the text."""
+    depth = 0
+    for index in range(open_index, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    return len(text)
+
+
+def _property_spans(text: str) -> list:
+    """`(offset, name)` for every proptest property in a file.
+
+    Two shapes count, because the repository uses both: a function whose name starts with `prop_`,
+    and a function declared inside a `proptest! { .. }` block whose header takes generated arguments and
+    opens its body straight away (`fn name(x in strategy) {`). The block's other functions are not
+    properties: a strategy helper returns (`-> impl Strategy`), and a function declared inside a
+    property's body returns too - which is how `key_order`, `mapping_key_orders` and `tag_texts` in
+    `crates/pyrs-yaml-core/src/pbt.rs` appear, and why counting every `fn` in the block measured 30
+    where the tier holds 27. Dropping the second shape entirely was the original error: it missed the
+    two properties in `crates/pyrs-event/src/lib.rs`, named in prose rather than with the prefix, so the
+    page reported 25 while the defence held 27. A tool that counts a naming convention measures the
+    convention, not the defence.
+    """
+    found = [(match.start(), match.group(1)) for match in re.finditer(r"\bfn (prop_[a-z0-9_]+)\s*\(", text)]
+    known = {offset for offset, _ in found}
+    for block in re.finditer(r"\bproptest\s*!\s*\{", text):
+        brace = text.index("{", block.start())
+        end = _closing_brace(text, brace)
+        # proptest requires `#[test]` on every property it generates, and that is what separates a
+        # property from the functions a property body declares inside it: `mapping_key_orders` in
+        # `crates/pyrs-yaml-core/src/pbt.rs` is a nested helper that takes three plain Rust arguments
+        # and returns unit, so neither "has parameters" nor "has no return type" excludes it, while the
+        # attribute does. Doc comments may sit between the attribute and the header.
+        pattern = re.compile(r"#\[test\]\s*(?:(?:///|[/*])[^\n]*\s*)*fn ([a-z0-9_]+)\(")
+        for match in pattern.finditer(text[block.start() : end]):
+            offset = block.start() + match.start()
+            name = match.group(1)
+            prop_match = re.search(r"\bfn " + re.escape(name) + r"\s*\(", text[offset:])
+            if prop_match is None:
+                continue
+            start = offset + prop_match.start()
+            if start not in known:
+                known.add(start)
+                found.append((start, name))
+    return sorted(found)
+
+
 def property_functions() -> list[str]:
     names = []
     for rs in sorted((REPO / "crates").rglob("*.rs")):
-        for match in re.finditer(r"fn (prop_[a-z0-9_]+)\(", read(rs)):
-            names.append(f"{rs.relative_to(REPO).as_posix()}::{match.group(1)}")
+        for _, name in _property_spans(read(rs)):
+            names.append(f"{rs.relative_to(REPO).as_posix()}::{name}")
     return sorted(names)
 
 
@@ -290,7 +447,7 @@ _GUARDED_ASSERT = re.compile(r"if let Some\([^=]*=\s*try_[a-z0-9_]+\(")
 
 
 def conditional_property_assertions(root: Path | None = None) -> list[str]:
-    """`prop_*` functions whose assertion only runs when a `try_*` helper returned `Some`.
+    """Property functions whose assertion only runs when a `try_*` helper returned `Some`.
 
     A body written `if let Some(parsed) = try_roundtrip(&node) { prop_assert!(...) }` states nothing
     about the samples the helper declined, so the property's coverage is whatever survives the filter.
@@ -298,18 +455,20 @@ def conditional_property_assertions(root: Path | None = None) -> list[str]:
     helper filtered 3423 of 4000 drawn trees, and the tree-changing defect that hid behind it emitted a
     mapping one entry shorter than the one it was given.
 
-    Each slice runs from one `fn prop_` header to the next, so a guard belongs to the function it is
-    written in and the helper definitions between properties cannot be mistaken for one.
+    Each slice runs from one property header to the next, over the same set `_property_spans` returns,
+    so a guard belongs to the function it is written in, the helper definitions between properties
+    cannot be mistaken for one, and a property named in prose inside a `proptest!` block is examined
+    like every other.
     """
     base = root or REPO
     found: list[str] = []
     for rs in sorted((base / "crates").rglob("*.rs")):
         text = read(rs)
-        headers = list(re.finditer(r"\bfn (prop_[a-z0-9_]+)\s*\(", text))
-        for index, match in enumerate(headers):
-            end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
-            if _GUARDED_ASSERT.search(text[match.start() : end]):
-                found.append(f"{rs.relative_to(base).as_posix()}::{match.group(1)}")
+        headers = _property_spans(text)
+        for index, (start, name) in enumerate(headers):
+            end = headers[index + 1][0] if index + 1 < len(headers) else len(text)
+            if _GUARDED_ASSERT.search(text[start:end]):
+                found.append(f"{rs.relative_to(base).as_posix()}::{name}")
     return sorted(found)
 
 
@@ -473,6 +632,20 @@ def timing_floors_unpaired(root: Path | None = None) -> list[str]:
     return out
 
 
+def format_verdict_lines(rows: dict) -> list:
+    """One rendered line per format, so `--json` consumers and the CLI see the same table."""
+    lines = []
+    for label, row in rows.items():
+        property_yes = bool(row["property_rust"]) or bool(row["property_python"])
+        parity = row["cross_library"]["verdict"]
+        round_trip = "n/a" if label == "schema validation" else ("yes" if row["fuzz_round_trip"] else "no")
+        lines.append(
+            f"{label}: unit={'yes' if row['unit'] else 'no'} property={'yes' if property_yes else 'no'} "
+            f"fuzz-parse={'yes' if row['fuzz_parse'] else 'no'} round-trip={round_trip} parity={parity}"
+        )
+    return lines
+
+
 def measure() -> dict:
     commands_by_workflow = workflow_commands()
     all_commands = " ".join(command for commands in commands_by_workflow.values() for command in commands)
@@ -486,6 +659,7 @@ def measure() -> dict:
     bench_scenarios = sorted({name for names in channels.values() for name in names})
     baseline_scenarios = ir_scenarios_in_baseline()
     props = property_functions()
+    formats = format_matrix()
     guarded_props = conditional_property_assertions()
     seeds = fuzz_seed_inventory()
     rust_tests = rust_test_count()
@@ -732,6 +906,8 @@ def measure() -> dict:
         "property_conditional_assertions": guarded_props,
         "artifact_paths": {"scanned": len(declared), "missing": sum(1 for _p, ok in declared if not ok)},
         "changelog_entry_counts": [f"{name}={counts}" for name, counts in sorted(mirrors.items())],
+        "format_matrix": formats,
+        "format_verdicts": format_verdict_lines(formats),
         "route_parity_tests": route_parity,
         "holes": sorted(holes),
     }
@@ -757,6 +933,7 @@ SUMMARY_KEYS = (
     "property_function_count",
     "property_conditional_assertions",
     "route_parity_tests",
+    "format_verdicts",
     "changelog_entry_counts",
 )
 

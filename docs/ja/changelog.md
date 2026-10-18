@@ -32,6 +32,16 @@ status: new
   します。測定したすべての tip（`07f988fa`、`60f670d0`、`225cf373`）で主張は成立していたため、閉じる
   のは防御の形の問題であり、インシデントではありません。
 
+- **形式別防御表を導出測量化、2 マスを実測で修正** — `scripts/quality_matrix.py` が
+  `QUALITY_MATRIX.md` の形式表を、fuzz ターゲット、`proptest!` ブロック、各
+  `test_*_crosslib.py` と `pyproject.toml` の依存マーカーから計算し、
+  `tests/test_quality_matrix.py` が各マスを固定します。突き合わせで 2 か所のズレが
+  出ました。`schema validation` の `fuzz parse` は `yes` が正解です
+  （`validate_schema.rs` は validate 前に parse する）で、従来の `no` は過小報告でした。
+  property 層も 27 であって 25 ではありません。旧計数は `prop_` 接頭辞を必須として
+  いたため、散文名で書かれた `pyrs-event` の 2 つが入っていませんでした。なお
+  `partial` は印象ではなく、oracle に宣言された制限を指します。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 追加
