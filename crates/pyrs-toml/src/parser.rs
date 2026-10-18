@@ -1417,9 +1417,10 @@ impl<'a> Parser<'a> {
                 let text = Arc::from(&self.text[start..self.pos]);
                 Ok(TomlValue::Datetime(text, None))
             } else {
-                // Date-only (no time component): tag `!date` so the load path
-                // uses `date.fromisoformat` and round-trips as a local date
-                // rather than a midnight `datetime`.
+                // Date-only (no time component): the kind keeps saying which shape the source had,
+                // and the projection gives it the same `!!timestamp` tag as a datetime - the text is
+                // what the load path forks on, so a date round-trips as a local date rather than a
+                // midnight `datetime`.
                 let text = Arc::from(&self.text[start..self.pos]);
                 Ok(TomlValue::Datetime(text, Some("date")))
             }
@@ -2496,13 +2497,15 @@ mod tests {
         };
         let tags: Vec<String> = pairs
             .iter()
-            .map(|(_, v)| v.tag().map(|t| t.suffix.clone()).unwrap_or_default())
+            .map(|(_, v)| v.tag().map(|t| t.to_string()).unwrap_or_default())
             .collect();
-        // Each temporal sub-shape carries the plugin tag it needs to decode:
-        // offset / local date-times use `timestamp`, date-only uses `date`,
-        // time-only uses `time` - routing them to `datetime`/`date`/`time`
-        // `fromisoformat` respectively instead of crashing on a bare time.
-        assert_eq!(tags, vec!["timestamp", "timestamp", "date", "time"]);
+        // A date and a datetime share YAML's one temporal tag and the load path forks on the text,
+        // so the three datetime shapes all arrive as `!!timestamp`; a bare time is the local
+        // exception, because `time.fromisoformat` needs naming and YAML defines no tag for it.
+        assert_eq!(
+            tags,
+            vec!["!!timestamp", "!!timestamp", "!!timestamp", "!time"]
+        );
     }
 
     #[test]

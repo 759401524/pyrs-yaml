@@ -179,7 +179,13 @@ status: new
   `!date` 与 `!timestamp` 保持注册并继续解析，旧版写出的文档仍读回原对象，带着本地标签读入的
   文档再写出时也原样保留——只有从 Python 对象新建的值才拿到标准标签。`!time` 仍是本地扩展：
   YAML 没有为纯时刻定义标签，PyYAML 甚至无法表示它。从 TOML 读入的值仍携带中枢标签
-  `!date`/`!timestamp`，那一部分要在 Rust 侧做同样的替换，另行提交。
+  `!date`/`!timestamp`，由下一条在 Rust 侧一并搬走。
+
+- **TOML 的日期与日期时间也用同一个标准标签进入中枢** — `crates/pyrs-toml/src/lib.rs` 的投影把
+  仅含日期的值标为 `!date`、日期时间标为 `!timestamp`，所以只是「读 TOML、写 YAML」这样经过一道的
+  文档，仍会带上上一条所说、Python 边界已不再写出的本地表记。现在两者都用 `!!timestamp`，读取时按
+  文本分叉，TOML 日期仍是 `date` 而不是零点的 `datetime`。这在 `parse_stream` 可见：TOML 时间值的
+  `tag` 字段现在是 `!!timestamp`。纯时刻仍保留 `!time`，`!date` 依旧可读。
 
 ### [v0.18.1] — 2026-10-17
 

@@ -224,8 +224,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   earlier version wrote still reads back as the same object, and a document that arrived with one
   is re-emitted with it unchanged - only objects built from Python take the standard tag. `!time`
   remains a local extension: YAML defines no tag for a bare time of day and PyYAML cannot
-  represent one. Values read from TOML still carry the hub tags `!date`/`!timestamp`; moving
-  those is the same change on the Rust side and lands separately.
+  represent one. The hub tag TOML's own values carry is moved by the entry below.
+
+- **TOML's dates and datetimes enter the hub under the same standard tag** — the projection in
+  `crates/pyrs-toml/src/lib.rs` tagged a date-only value `!date` and a date-time `!timestamp`, so a
+  document that merely passed through (load TOML, write YAML) left with the local spelling the
+  entry above stops writing at the Python boundary. Both now carry `!!timestamp` and the load path
+  forks on the text, so a TOML date still becomes a `date`, not a midnight `datetime`. It is
+  visible in `parse_stream`, whose `tag` field for a TOML temporal is now `!!timestamp`; a bare
+  time keeps `!time` as the one local temporal tag, and `!date` still reads.
 
 ## [v0.18.1] — 2026-10-17
 

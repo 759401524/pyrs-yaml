@@ -32,7 +32,7 @@
 //! | string          | Scalar style=DoubleQuoted (never re-resolved)     |
 //! | integer/float   | plain scalar, YAML float specials `.inf`/`.nan`   |
 //! | boolean         | plain `true`/`false`                              |
-//! | datetime        | plain RFC 3339 + `!timestamp` tag                 |
+//! | datetime        | plain RFC 3339 + `!!timestamp` (a bare time: `!time`) |
 //! | table           | Mapping (plain keys)                              |
 //! | array           | Sequence; inline tables become nested Mappings    |
 //!
@@ -452,11 +452,20 @@ pub(crate) fn scalar_projection(value: TomlValue) -> ScalarProjection {
             text: ScalarText::Shared(text),
             style: ScalarStyle::Plain,
             chomping: Chomping::Clip,
-            // `date` and `time` keep their own tag because `datetime.fromisoformat` rejects a bare
-            // `HH:MM:SS`; the tag is the load path's instruction, not a decoration.
-            tag: Some(Tag {
-                handle: "!".to_string(),
-                suffix: kind.unwrap_or("timestamp").to_string(),
+            // A date and a datetime share YAML's one temporal tag and the text says which, so both
+            // leave as `!!timestamp` - the spelling PyYAML and ruamel.yaml can construct. A bare
+            // `!time` stays local: `datetime.fromisoformat` rejects an `HH:MM:SS` text, so the tag is
+            // the load path's instruction, and YAML defines no tag for a time of day to trade it in.
+            tag: Some(if kind == Some("time") {
+                Tag {
+                    handle: "!".to_string(),
+                    suffix: "time".to_string(),
+                }
+            } else {
+                Tag {
+                    handle: "!!".to_string(),
+                    suffix: "timestamp".to_string(),
+                }
             }),
         },
         TomlValue::Array(_) | TomlValue::InlineTable(_) => {

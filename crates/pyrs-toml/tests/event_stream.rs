@@ -271,11 +271,11 @@ fn the_tag_field_carries_what_the_document_states() {
     let events = parse_stream_with_dialect(src, TomlDialect::V1_1).expect("valid TOML");
     let shape = event_shape(&events);
     assert!(
-        shape.contains(&"scalar[Plain]<!timestamp>2024-01-01T10:00:00Z".to_string()),
+        shape.contains(&"scalar[Plain]<!!timestamp>2024-01-01T10:00:00Z".to_string()),
         "{shape:?}"
     );
     assert!(
-        shape.contains(&"scalar[Plain]<!date>2024-01-01".to_string()),
+        shape.contains(&"scalar[Plain]<!!timestamp>2024-01-01".to_string()),
         "{shape:?}"
     );
     assert!(
