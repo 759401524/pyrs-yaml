@@ -735,6 +735,67 @@ mod tests {
     // YAML parser and lives in `pyrs-yaml-core` `src/integration/toml_family.rs`.
 
     #[test]
+    fn an_undecorated_inline_table_writes_compact_and_loads_as_1_0() {
+        // The compact form is what the writer owes a table that carries no note, and this is the arm
+        // the property tier reaches only when generation happens to draw a `flow_style` mapping
+        // without a note on it. So the shapes are named here: a table read from `{…}` text, an empty
+        // table, and a table nested in an array — each written back with no interior line break, and
+        // each loadable under the 1.0 reader. Forcing the multi-line branch reddens this test, which
+        // is what makes the claim a guard rather than a comment.
+        for source in [
+            "a = { b = 1 }\n",
+            "a = { b = 1, c = 2 }\n",
+            "a = {}\n",
+            "list = [ { b = 1 }, { c = 2 } ]\n",
+            "top = { mid = { deep = 1 } }\n",
+        ] {
+            let tree = crate::from_toml(source).unwrap_or_else(|e| panic!("{source:?}: {e}"));
+            let text = crate::to_toml(&tree).unwrap_or_else(|e| panic!("{source:?}: {e}"));
+            assert!(
+                !text.contains("{\n"),
+                "an undecorated table was written multi-line, which is 1.1 syntax:\n{text}"
+            );
+            crate::from_toml_v1_0(&text).unwrap_or_else(|e| {
+                panic!("1.0 refused the writer's own text for {source:?}: {e}\n{text}")
+            });
+        }
+    }
+
+    #[test]
+    fn the_1_0_reader_refuses_the_1_1_inline_table_freedom() {
+        // The premise of `prop_toml_undecorated_output_loads_as_1_0`: a newline inside an inline table
+        // is what TOML 1.1 added (the release lifted the multi-line-inline-table restriction, so a
+        // comment can live inside `{…}`), and our own 1.0 reader must refuse it — otherwise the
+        // dialect split is only a name and a 1.1-shaped document would load as 1.0 while nothing in
+        // the wild could. Both halves are asserted: 1.0 refuses, 1.1 accepts, and the single-line
+        // spelling — the one the writer owes an undecorated tree — loads under both.
+        let multiline = "a = {\n  b = 1,\n}\n";
+        assert!(
+            crate::from_toml_v1_0(multiline).is_err(),
+            "1.0 accepted a multi-line inline table, which is 1.1 syntax"
+        );
+        assert!(
+            crate::from_toml(multiline).is_ok(),
+            "1.1 refused its own syntax: {multiline}"
+        );
+        let commented = "a = { b = 1 # note\n }\n";
+        assert!(
+            crate::from_toml_v1_0(commented).is_err(),
+            "1.0 accepted a comment inside an inline table"
+        );
+        for spelling in ["a = { b = 1 }\n", "a = {}\n"] {
+            assert!(
+                crate::from_toml_v1_0(spelling).is_ok(),
+                "1.0 refused the compact inline table {spelling:?}"
+            );
+            assert!(
+                crate::from_toml(spelling).is_ok(),
+                "1.1 refused the compact inline table {spelling:?}"
+            );
+        }
+    }
+
+    #[test]
     fn the_two_quoting_forms_agree_with_their_readers() {
         // Both writers must produce text that reads back as the value it started with, for inputs on
         // both sides of every escaping boundary: quote, backslash, tab, newline, a run of newlines,

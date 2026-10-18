@@ -206,6 +206,18 @@ status: new
   的正文保留能稳定的 `''` 写法（#514）。锚点不是同一种情况：它只给节点命名、不抑制解析，所以
   `- &a3` 现在写成 `- &a3 ~`（crash-07b6a10e）。
 
+- **TOML 写入器的方言承诺补上了属性测试层** — 1.1 唯一可见的自由是行内表里可以换行（因而可以放注
+  释），而此前没有任何东西问过：一条注释都没有的树，是否被写成了 1.0 也能读的文本。
+  `prop_toml_undecorated_output_loads_as_1_0`（`crates/pyrs-yaml-core/src/fmt_pbt.rs`）现在要求任意
+  位置都没有 note 的生成树必须能被 `from_toml_v1_0` 重新载入；
+  `an_undecorated_inline_table_writes_compact_and_loads_as_1_0` 与
+  `the_1_0_reader_refuses_the_1_1_inline_table_freedom`（`crates/pyrs-toml/src/writer.rs`）则按具体
+  形状钉住行内表这条分支，并钉住它的判据前提。实测：强制走多行分支起初只让具名测试变红，20 000 个生
+  成用例仍判绿；因此给属性补上一条必定生成含行内表文档的策略，同一个突变现在 0.01 秒内就能让它变红。
+  第三条属性说出这层原先缺的等值断言：`prop_toml_roundtrip_preserves_the_tree` 比较一轮往返前后的树
+  ——值、形状与顺序；两个丢值的突变都让它变红（同两次运行里文本定点也红了，所以这是把断言直说，而非更
+  强的预言机）。行为未变；计数改为 720 个 Rust 测试与 29 条属性。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

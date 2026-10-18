@@ -6418,6 +6418,51 @@ same-session bisect: the flag hoist was not it (32 instructions of 32.5M), the b
 and the leg reported success, so no floor moved. The red is recorded as priced and cleared, not
 widened away.
 
+### (ek) The TOML dialect promise got a property tier, and a mutation showed what each tier reaches (2026-10-19)
+
+The measured matrix had TOML at two Rust properties against YAML's 25, and reading what those two
+asserted showed a gap that was not about quantity: `prop_toml_writer_is_fixed_point` asks whether
+the emission settles, and `prop_toml_output_reparses` asks whether it parses. Neither asks *which
+dialect* the settled text belongs to, although the writer targets 1.1 and the reader splits the
+dialects — `from_toml_v1_0` exists, and the 1.1 release's one visible freedom is a newline inside an
+inline table, which is what lets a comment live there. Nothing tested that an undecorated tree was
+handed 1.0 text.
+
+Three tiers, because the measurement said one of them was not enough:
+
+- `prop_toml_undecorated_output_loads_as_1_0` (`crates/pyrs-yaml-core/src/fmt_pbt.rs`) draws
+  generated trees, assumes the tree carries no note in any position (`toml_undecorated`, keys
+  included), and requires `from_toml_v1_0` to reload the emission. It holds at 20 000 cases.
+- `an_undecorated_inline_table_writes_compact_and_loads_as_1_0` and
+  `the_1_0_reader_refuses_the_1_1_inline_table_freedom` (`crates/pyrs-toml/src/writer.rs`) name the
+  shapes: five spellings of an inline table, each written compact and reloaded under 1.0; and the
+  oracle's own premise, that 1.0 refuses `a = {\n b = 1,\n}` while 1.1 accepts it.
+
+The mutation is the part worth keeping. Forcing the writer's `decorated` branch to always take the
+multi-line path reddened the named test immediately and left the property green at 20 000 cases: the
+property's filter wants a `flow_style` mapping that carries no note anywhere, and `arb_node_meta`
+attaches notes often enough that generation almost never produced one. That is a reachability fact
+about the generator, not a defence, so the property's input was widened — `arb_toml_inline_shapes`
+spells 1.0-shaped documents containing inline tables as text, parses them, and hands the trees to
+the same claim. Measured after the widening: the identical mutation reddens the property in 0.01 s
+and the clean tree passes. A green property that no mutation can redden is a number, not a guard.
+Registering a property whose oracle was itself unverified would have been the same mistake in the
+other direction, which is why the 1.0-refusal premise is a test and not a comment.
+
+The third property says what the two text tiers do not: `prop_toml_roundtrip_preserves_the_tree`
+compares the tree before and after one round — scalar text, mapping size and order, sequence size
+and order — while the fixed point only asks that the *text* stop moving. It holds over 2 000
+generated trees, so no value loss is known today. Its falsification was measured twice, and the
+second reading is the one that keeps the claim honest: dropping an array element (`.take(n-1)`, then
+`.take(1)`) reddened it with `value sequence size 2 -> 1`, and the text fixed point reddened in both
+runs too. So this is the equality the matrix's property row names as the tier's blind spot, stated
+directly — not an oracle strictly stronger than what was there, which is the sentence a later reader
+would otherwise undo.
+
+Counts moved with it: 720 Rust tests (from 716), 29 properties (from 27), TOML's unit row 88 → 90
+and its property row 2 → 4. No behaviour changed — `cargo nextest run --all` and the Python tier
+pass on the same emissions the gate measured before the change.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
