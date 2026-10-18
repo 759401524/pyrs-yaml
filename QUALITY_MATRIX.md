@@ -93,8 +93,13 @@ the writers emit rather than what the readers accept.
 It is deliberately not the
 parity column: parity compares two implementations and answers "do we agree", which cannot find a syntax
 neither side ever accepted - a path that does not exist has nothing to disagree with.
-`schema validation` reads `no`, because nothing outside asks its rules; that is the honest state of the
-row, and the one a future JSON Schema suite would change.
+`schema validation` reads `no`, and the reason is stronger than an untested corner: nothing of ours
+evaluates JSON Schema at all. `crates/pyrs-schema` is the scalar tag resolver its manifest declares (no
+AST, no parser, no regex, `no_std`), and `Document.validate()` imports the third-party `jsonschema`
+package to answer - `crates/pyrs-yaml/src/py/document.rs:1133-1147`, with `jsonschema` in the test
+dependency group. A suite run against that surface would certify a dependency, not this tree, which is
+why the cell stays `no` rather than gaining a green file. `docs/dev/json-schema-engine.md` is the design
+that would change the row; until it lands, `no` is the honest state.
 
 `partial` in the parity column is also measured, not judged: the column reads the oracles each
 `test_*_crosslib.py` imports and then reads how `pyproject.toml` declares them, so `partial` means a
