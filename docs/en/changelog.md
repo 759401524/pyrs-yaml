@@ -120,6 +120,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   spellings against the reference, and the two strict loaders are held to the RFC for the same
   bytes.
 
+- **The JSON writers gained a reader they do not own** — the write side of the family was checked
+  only against our own reader, and a fixed point is satisfied just as happily by an implementation
+  that is wrong twice the same way. `tests/test_json_writer_suite.py` now generates 1,500 trees,
+  emits each with `to_json`, `to_jsonc` and `to_json5`, and hands the document to Python's `json`
+  and to `pyjson5` — strangers that have never seen the encoder — requiring the value back to be the
+  tree that went in. Measured before it was pinned: 0 refusals, 0 value changes on all three
+  routes. It bites: making `write_json_string` emit a raw tab reddens both strict legs while the
+  JSON5 one stays green.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

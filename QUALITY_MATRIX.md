@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 700 Rust `#[test]`, 1,721 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 700 Rust `#[test]`, 1,723 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 27 proptest properties (25 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 8 targets, 142 seeds of which 67 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -58,8 +58,10 @@ the convention, not the defence; the rule is now the attribute, with the prefix 
 **The last column is the one this file used not to measure at all.** `external authority` is `yes` when
 a `tests/test_*_suite.py` or `tests/test_*_spec_table.py` exists for the dialect - a gate that asks the
 format's own grammar, or an official suite's cases, against something this repository does not own:
-`test_yaml_suite.py`, `test_json_test_suite.py`, `test_toml_test_suite.py`, and
-`test_json5_spec_table.py` for the JSON5 productions inside the JSON row. It is deliberately not the
+`test_yaml_suite.py`, `test_json_test_suite.py`, `test_toml_test_suite.py`,
+`test_json5_spec_table.py` for the JSON5 productions inside the JSON row, and
+`test_json_writer_suite.py` for what the three JSON writers emit rather than what they accept.
+It is deliberately not the
 parity column: parity compares two implementations and answers "do we agree", which cannot find a syntax
 neither side ever accepted - a path that does not exist has nothing to disagree with.
 `schema validation` reads `no`, because nothing outside asks its rules; that is the honest state of the
