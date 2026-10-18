@@ -90,6 +90,23 @@ ACCEPTS = [
     ("empty object and array in a document", "{a: [], b: {}}"),
 ]
 
+# A raw control byte is string content in JSON5: the dialect forbids only a line terminator inside
+# a quote, and `pyjson5` answers the same for either spelling. The table already credits the line
+# separator as raw content, and this repository's single-quoted scanner has always copied these
+# bytes through - it was the double-quoted one that stopped on every byte below 0x20, which is RFC
+# 8259 §7's rule rather than JSON5's. Each C0 byte is asked in both quote spellings, because one
+# dialect must not answer a string's content twice depending on which quote opened it.
+C0_CONTENT = [chr(cp) for cp in range(0x20) if cp not in (0x0A, 0x0D)]
+
+ACCEPTS += [
+    (
+        f"raw U+{ord(ch):04X} as {name} content",
+        "{a: " + quote + "x" + ch + "y" + quote + "}",
+    )
+    for name, quote in (("double-quoted", DQ), ("single-quoted", "'"))
+    for ch in C0_CONTENT
+]
+
 REJECTS = [
     ("leading-zero decimal", "{a: 01}"),
     ("two trailing commas", "[1, 2,,]"),
@@ -102,6 +119,10 @@ REJECTS = [
     ("surrogate half as an identifier escape", "{" + UESC + "D800: 1}"),
     ("bare lowercase nan", "{a: nan}"),
     ("unquoted key starting with a digit", "{1a: 2}"),
+    # The two line terminators a JSON5 string cannot hold: JSON5's own rule, and the reason the
+    # row above is a list of 30 rather than of 32.
+    ("raw LF inside a double-quoted string", "{a: " + DQ + "x\ny" + DQ + "}"),
+    ("raw CR inside a double-quoted string", "{a: " + DQ + "x\ry" + DQ + "}"),
 ]
 
 
@@ -116,6 +137,26 @@ def test_the_reference_rejects_and_pyrs_refuses_too(label, doc):
         pyjson5.loads(doc)
     with pytest.raises(pyrs_yaml.YamlParseError):
         pyrs_yaml.load_json5(doc)
+
+
+@pytest.mark.parametrize("loader", [pyrs_yaml.load_json, pyrs_yaml.load_jsonc])
+def test_the_strict_dialects_keep_every_c0_byte_forbidden(loader):
+    # The widening is a JSON5 rule, so it must not reach the other two: RFC 8259 §7 forbids every
+    # unescaped C0 byte, and all 32 of them - the two line terminators and the 30 the JSON5
+    # reader now takes - stay refused here.
+    for cp in range(0x20):
+        doc = '{"a": "x' + chr(cp) + 'y"}'
+        with pytest.raises(pyrs_yaml.YamlParseError):
+            loader(doc)
+
+
+def test_a_raw_control_byte_survives_the_tree_route_that_reads_it():
+    # `load_json5` decodes on the AST-free fast path and `from_json5` projects the same bytes into
+    # the hub's YAML, where a control character has to be quoted to survive. A dialect rule that
+    # reaches only one of the two readers is the drift this repository has been bitten by before.
+    doc = "{a: " + DQ + "x\ty" + DQ + "}"
+    assert pyrs_yaml.load_json5(doc) == {"a": "x\ty"}
+    assert pyrs_yaml.safe_load(pyrs_yaml.from_json5(doc)) == {"a": "x\ty"}
 
 
 def test_the_two_readers_of_one_dialect_agree_on_escaped_keys():
