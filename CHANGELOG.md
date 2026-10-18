@@ -99,6 +99,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tests/test_json_whitespace_scalar.py` sweeps the set in key and value position through the three
   dialects and asks `pyjson5` and `json` that the key is a string and not null.
 
+- **A JSON5 string can hold a raw control byte** — the double-quoted scanner stopped on every
+  byte below 0x20 and refused it, which is RFC 8259 §7's rule for strict JSON rather than JSON5's:
+  the dialect forbids only a line terminator inside a quote. A document holding a real tab was
+  therefore refused by `load_json5` while `pyjson5` read it, and this file's own single-quoted
+  string had always copied the same byte through — one dialect answering twice, decided by which
+  quote opened the string. The stop set is now the dialect's: JSON5 takes every C0 byte except CR
+  and LF, strict JSON and JSONC keep refusing all 32, and the JSON5 writer escapes what it read,
+  so the round trip is still one line. `tests/test_json5_spec_table.py` asks all 30 in both quote
+  spellings against the reference, and the two strict loaders are held to the RFC for the same
+  bytes.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

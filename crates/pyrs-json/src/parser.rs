@@ -1097,6 +1097,13 @@ impl<'a> Parser<'a> {
     /// A body with no escape is returned as a slice of the source: the AST holds an `Arc<str>`,
     /// and building a `String` first made every scalar allocate twice (once for the decode, once
     /// for the `Arc`) even when the source text was already the answer.
+    ///
+    /// What the body may hold unescaped is the dialect's question, not this scanner's. The scan
+    /// stops on the whole C0 range because one compare per byte is the cheap test, and the arm
+    /// below asks which of those bytes this dialect forbids: RFC 8259 §7 forbids every one of
+    /// them, JSON5 forbids only a line terminator - so a raw tab, NUL, vertical tab or form feed
+    /// is content there, which is what this file's own single-quoted string has always accepted,
+    /// and what `pyjson5` answers for the same text in either spelling.
     fn string(&mut self) -> Result<Cow<'a, str>, ParseError> {
         debug_assert_eq!(self.peek(), Some(b'"'));
         self.pos += 1; // skip opening quote
@@ -1167,6 +1174,18 @@ impl<'a> Parser<'a> {
                     }
                 }
                 0x00..=0x1f => {
+                    // The scan stopped here on one compare, which is the cheap question; this arm
+                    // asks the dialect's. JSON5 forbids only a line terminator, so every other
+                    // control byte is content: take it and keep scanning, and when the body has
+                    // held no escape yet, take it by leaving the source slice alone. Strict JSON
+                    // and JSONC fall through to the refusal they have always given.
+                    if self.allow_json5_numbers && b != b'\n' && b != b'\r' {
+                        if let Some(out) = &mut out {
+                            out.push(b as char);
+                        }
+                        self.pos += 1;
+                        continue;
+                    }
                     return Err(
                         self.err(&format!("unescaped control character U+{b:04X} in string"))
                     );
@@ -2228,6 +2247,41 @@ mod tests {
         // Strict JSON still rejects both.
         assert!(from_json("\"ab\\\ncd\"").is_err());
         assert!(from_json("\"it\\'s\"").is_err());
+    }
+
+    // The two spellings of a JSON5 string disagreed about a raw control byte: the single-quoted
+    // scanner copied through everything except CR and LF, while the double-quoted one stopped on
+    // every byte below 0x20 and refused it. JSON5's rule is the single-quoted one, and `pyjson5`
+    // answers the same way for either spelling, so this table asks all 32 C0 bytes in both quotes
+    // and names the two that stay refused. Strict JSON and JSONC keep RFC 8259 §7 for the same
+    // byte in the same place.
+    #[test]
+    fn a_json5_quoted_string_keeps_every_c0_byte_that_is_not_a_line_break() {
+        for cp in 0x00..0x20_u8 {
+            let raw = cp as char;
+            let is_break = cp == b'\n' || cp == b'\r';
+            for quote in ['"', '\''] {
+                let text = format!("{quote}a{raw}b{quote}");
+                match from_json5(&text) {
+                    Ok(CustomNode::Scalar { value, .. }) => {
+                        assert!(!is_break, "{text:?} is not one line");
+                        assert_eq!(&*value, format!("a{raw}b"), "{text:?}");
+                    }
+                    Ok(_) => unreachable!(),
+                    Err(_) => assert!(is_break, "{text:?} is content in JSON5"),
+                }
+            }
+            let strict = format!("\"a{raw}b\"");
+            assert!(from_json(&strict).is_err(), "{strict:?} must stay refused");
+            assert!(from_jsonc(&strict).is_err(), "{strict:?} must stay refused");
+        }
+
+        // What the JSON5 reader takes in it can write back: the JSON5 writer escapes the control
+        // byte, so the document that comes out is one line and holds the same text.
+        let node = from_json5("\"a\tb\"").expect("a raw tab is content in JSON5");
+        let written = crate::to_json5_text(&node).expect("writable");
+        let again = from_json5(&written).expect("its own output re-parses");
+        assert_eq!(scalar_text(&again), "a\tb");
     }
 
     #[test]
