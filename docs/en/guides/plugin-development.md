@@ -52,6 +52,12 @@ When pyrs-yaml is imported, it scans `pyrs_yaml.plugins` entry points and
 calls each registered callable. The callable receives no arguments and
 should call `register_type()` to register custom types.
 
+**The name's spelling is part of the contract.** `register_type("!x", ...)` answers the local tag
+`!x`, and `register_type("!!x", ...)` answers YAML's standard tag - where both spellings of that
+tag reach it, because `!!x` and the verbatim `!<tag:yaml.org,2002:x>` are one tag written two ways
+(YAML 1.2 §6.8). A URI outside `tag:yaml.org,2002:` is not YAML's to name, so a scalar carrying it
+keeps the reading an untagged scalar has.
+
 ### Creating a CustomType
 
 The `CustomType` base class provides four methods:

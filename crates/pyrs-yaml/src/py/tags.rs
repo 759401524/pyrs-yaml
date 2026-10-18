@@ -114,3 +114,21 @@ fn tagged_binary(py: Python<'_>, text: &str) -> PyResult<Py<PyAny>> {
     let bytes = base64_decode(text).ok_or_else(|| mismatch("!!binary", text))?;
     Ok(PyBytes::new(py, &bytes).into_any().unbind())
 }
+
+/// The suffix a verbatim standard tag names, or `None` for any other spelling.
+///
+/// YAML 1.2 §6.8 makes `!<tag:yaml.org,2002:binary>` and `!!binary` two spellings of one tag, and a
+/// plugin is registered under the shorthand. [`tagged_scalar`] can afford to compare the two by hand
+/// because it lists five tags; the registry is keyed on text, so every other standard tag lost the
+/// verbatim spelling. Measured on the trunk of 2026-10-18: `!!timestamp 2026-10-18` loaded as a
+/// `date` while `!<tag:yaml.org,2002:timestamp> 2026-10-18` loaded as the string.
+///
+/// A URI from another namespace returns `None`, which keeps the module's other standing rule: an
+/// unknown tag is forwarded untouched rather than turned into an error.
+pub(crate) fn verbatim_standard_suffix(tag: &str) -> Option<&str> {
+    let uri = tag
+        .strip_prefix("!<")?
+        .strip_suffix(">")?
+        .strip_prefix("tag:yaml.org,2002:")?;
+    (!uri.is_empty()).then_some(uri)
+}

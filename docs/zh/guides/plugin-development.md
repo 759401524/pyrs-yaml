@@ -42,6 +42,11 @@ def register():
 mytimestamp = "my_timestamp_plugin:register"
 ```
 
+**注册名的写法本身也是约定。** `register_type("!x", ...)` 应答的是本地标签 `!x`；
+`register_type("!!x", ...)` 应答的是 YAML 的标准标签，而该标签的两种写法都会落到它身上——
+`!!x` 与完整形式 `!<tag:yaml.org,2002:x>` 在 YAML 1.2 §6.8 里是同一个标签的两种写法。
+`tag:yaml.org,2002:` 之外的 URI 不由 YAML 命名，所以带它的标量仍按「无标签」解析。
+
 ### API 参考
 
 | 函数 | 说明 |
