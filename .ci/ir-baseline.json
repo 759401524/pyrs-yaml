@@ -1,7 +1,7 @@
 {
   "binaries": {
-    "pyrs-yaml-core/ir_gate": "d14a9fd7bdd09826",
-    "pyrs-yaml/ir_gate": "8489ceed4d2c5810"
+    "pyrs-yaml-core/ir_gate": "38e3deec0abada31",
+    "pyrs-yaml/ir_gate": "684d099574c1dad8"
   },
   "generated_by": {
     "environment": "github-runner ubuntu24, image 20261012.334.1",
@@ -11,28 +11,28 @@
     "tool": "callgrind"
   },
   "scenarios": {
-    "from_json5_medium": 87940567,
-    "from_json_medium": 80283839,
-    "from_jsonc_medium": 93836436,
-    "from_toml_medium": 135689857,
-    "parse_anchors": 274406440,
-    "parse_block": 134915355,
-    "parse_inline_merge": 364257878,
-    "parse_medium": 322364238,
-    "parse_small": 45892109,
-    "serialize_anchors": 26460476,
-    "serialize_block": 14335195,
-    "serialize_block_scalars": 12296717,
-    "serialize_medium": 32322875,
-    "serialize_small": 4135929,
-    "stream_medium": 251312348,
-    "to_json5_medium": 23739038,
-    "to_json_medium": 21351001,
-    "to_jsonc_medium": 23153038,
-    "to_python_anchors": 328229704,
-    "to_python_medium": 386764513,
-    "to_python_small": 56701786,
-    "to_toml_medium": 28939645
+    "from_json5_medium": 88215591,
+    "from_json_medium": 80285861,
+    "from_jsonc_medium": 93838460,
+    "from_toml_medium": 135689879,
+    "parse_anchors": 274225228,
+    "parse_block": 134792732,
+    "parse_inline_merge": 364009173,
+    "parse_medium": 322048725,
+    "parse_small": 45856067,
+    "serialize_anchors": 26460474,
+    "serialize_block": 14335191,
+    "serialize_block_scalars": 12296681,
+    "serialize_medium": 32322863,
+    "serialize_small": 4135925,
+    "stream_medium": 251312398,
+    "to_json5_medium": 23739065,
+    "to_json_medium": 21350987,
+    "to_jsonc_medium": 23153039,
+    "to_python_anchors": 327819217,
+    "to_python_medium": 386344954,
+    "to_python_small": 56499944,
+    "to_toml_medium": 28939646
   },
   "tolerance_hint": 0.005,
   "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
