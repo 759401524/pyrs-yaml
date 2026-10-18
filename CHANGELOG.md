@@ -49,6 +49,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `\x00`, the truncated and non-hex tails, and a malformed escape straddling a multibyte character;
   a pyjson5 parity test pins the acceptance and both narrower dialects' refusal.
 
+- **JSON5 escaped keys and every line terminator, plus the table that keeps them** — two
+  productions the same stub promised were still missing: a backslash-u escape inside an unquoted
+  key, which the ES5 `IdentifierName` grammar JSON5 inherits allows wherever an identifier
+  character may appear, and a backslash before CRLF, LS or PS inside a string. The continuation
+  gap was also a disagreement between the two scanners of one dialect — the CRLF form parsed in a
+  double-quoted string and failed in a single-quoted one. An escaped character is now taken as the
+  code point it stands for instead of being re-checked against `ID_Start`/`ID_Continue`, which is
+  what makes an escaped digit or dot a legal key while the literal character is not, and both
+  quote styles now share one terminator rule. The audit that found them is a gate as well:
+  `tests/test_json5_spec_table.py` compares 41 accepted and 11 rejected productions against
+  `pyjson5`, because a syntax the reader never accepted is invisible to the property and fuzz
+  tiers, whose oracles can only compare paths that already exist.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added
