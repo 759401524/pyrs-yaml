@@ -123,7 +123,7 @@ def test_format_bridges_keep_their_own_key_types():
     loaded = pyrs_yaml.load_toml('"1" = 2\n"" = 3\nport = 4\nyes = 5\n')
     assert loaded == {"1": 2, "": 3, "port": 4, "yes": 5}
     text = pyrs_yaml.safe_dump(loaded)
-    assert text == '"1": 2\n"": 3\nport: 4\nyes: 5\n'
+    assert text == '"1": 2\n"": 3\nport: 4\n"yes": 5\n'
     assert pyrs_yaml.safe_load(text) == loaded
     assert pyrs_yaml.load_json('{"1": 2, "": 3}') == {"1": 2, "": 3}
     assert pyrs_yaml.load_json5("{null: 1, 'x': 2}") == {"null": 1, "x": 2}

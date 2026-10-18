@@ -227,9 +227,12 @@ fn set_path_mapping_key(
                 }
                 None => (0, 0),
             };
-            let text = crate::serializer::pair_to_string(&key_node, &new_value, indent, ctx.depth)
+            // The probe above is only good for *finding* a spelling; a key the document does not
+            // hold yet is emitted, so its style comes from the conversion guard.
+            let new_key = named_key_node(k.as_ref());
+            let text = crate::serializer::pair_to_string(&new_key, &new_value, indent, ctx.depth)
                 .map_err(|e| e.to_string())?;
-            pairs.insert(key_node, new_value);
+            pairs.insert(new_key, new_value);
             Ok(DirtyUnit {
                 kind: DirtyKind::Insert { at, text },
                 eligible: ctx.eligible,
@@ -286,6 +289,27 @@ fn set_path_sequence_index(
     })
 }
 
+/// A key the caller named in a path, styled so it keeps the type that name resolved to.
+///
+/// `rename` and the segments `set(create_missing=True)` synthesize built a plain node from the
+/// `&str`, so the stored key was whatever a reader of the emitted document made of the spelling.
+/// A path segment is not a data string: issue #336 ruled that it addresses the key a reader
+/// *resolves*, so `$.~` names the null key and `$.42` the integer one, and those must stay plain —
+/// quoting them moves the entry to a different key. A YAML 1.1 spelling is the opposite case:
+/// `yes` resolves to the string here, to `true` in PyYAML and in this engine's own
+/// `schema="1.1"` profile, so plain emission loses the name the caller gave. Only that second half
+/// is asked of the guard, which is why this calls
+/// [`resolved_by_a_yaml_1_1_reader`](pyrs_schema::schema::resolved_by_a_yaml_1_1_reader) rather
+/// than [`needs_quotes`](pyrs_schema::schema::needs_quotes) as the conversion layer does. Node
+/// identity ignores style, so the duplicate-key check in `rename_path` is unaffected.
+fn named_key_node(name: &str) -> CustomNode {
+    if pyrs_schema::schema::resolved_by_a_yaml_1_1_reader(name) {
+        CustomNode::double_quoted_scalar(name.to_string())
+    } else {
+        CustomNode::plain_scalar(name.to_string())
+    }
+}
+
 /// `set_path` with `create_missing`: walk as deep as the path allows and
 /// synthesize the missing intermediate mappings as a single nested Insert at
 /// the end of the deepest existing mapping. Only key segments may be created;
@@ -339,11 +363,11 @@ fn set_path_create_missing(
             return Err("create-needs-mapping".to_string());
         };
         let mut pairs = NodeMap::default();
-        pairs.insert(CustomNode::plain_scalar(k.as_ref()), nested);
+        pairs.insert(named_key_node(k.as_ref()), nested);
         nested = CustomNode::plain_mapping(pairs);
     }
     let top_key = match &tail[0] {
-        Segment::Key(k) => CustomNode::plain_scalar(k.as_ref()),
+        Segment::Key(k) => named_key_node(k.as_ref()),
         Segment::Index(_) => return Err("create-needs-mapping".to_string()),
     };
     let path = path_nodes(node, &segments[..consumed]).map_err(|e| e.to_string())?;
@@ -580,7 +604,7 @@ pub fn rename_path(
             if !is_scalar {
                 return Err("cannot-rename-complex-key".to_string());
             }
-            let new_key_node = CustomNode::plain_scalar(new_key.to_string());
+            let new_key_node = named_key_node(new_key);
             if !key_eq(&new_key_node, &old_key_node)
                 && mapping_key_index(pairs, &new_key_node).is_some()
             {
