@@ -33,6 +33,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The claim held on every tip measured (`07f988fa`, `60f670d0`, `225cf373`), so this closes a hole
   in the shape of the defence, not an incident.
 
+- **The per-format defence table is derived, and two of its cells were wrong** —
+  `scripts/quality_matrix.py` now computes `QUALITY_MATRIX.md`'s format table from the files
+  that declare the defence (the fuzz targets, the `proptest!` blocks, each `test_*_crosslib.py`
+  and the dependency markers in `pyproject.toml`), and `tests/test_quality_matrix.py` pins every
+  cell. Measured against it, `schema validation` was under-reported — `validate_schema.rs`
+  parses before it validates, so its `fuzz parse` cell is `yes` — and the property tier is 27,
+  not 25, because the count demanded a `prop_` name while `pyrs-event`'s two properties are
+  named in prose. `partial` in the parity column now means a declared interpreter or
+  architecture bound on the oracle, not an impression.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

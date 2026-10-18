@@ -22,8 +22,8 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 693 Rust `#[test]`, 1,705 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
-| property | 25 `prop_*` functions (proptest), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
+| unit / integration | 693 Rust `#[test]`, 1,707 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| property | 27 proptest properties (25 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 8 targets, 142 seeds of which 67 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 Orthogonality, tested rather than asserted: the same three defect families that the recent
@@ -34,14 +34,33 @@ to *both* Rust tiers and only became visible when a Python test compared this en
 PyYAML and ruamel. Three tiers over one engine are not three defences: coverage is
 orthogonal only where a second implementation exists to disagree with.
 
-Per-format matrix, as measured:
+Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell against this table by
+`tests/test_quality_matrix.py` - which is how the two wrong cells below were found:
 
 | format | unit | property | fuzz parse | fuzz round trip | cross-library parity |
 | --- | --- | --- | --- | --- | --- |
 | YAML | yes | yes | yes | yes | yes |
 | JSON / JSONC / JSON5 | yes | yes | yes | yes | partial |
 | TOML | yes | yes | yes | yes | yes |
-| schema validation | yes | yes | no | n/a | n/a |
+| schema validation | yes | yes | yes | n/a | n/a |
+
+**The schema row's `fuzz parse` cell said `no` while the tree said `yes`.**
+`fuzz/fuzz_targets/validate_schema.rs` parses with `parse(document, Schema::Core)` and then walks the
+result through `validate_node`, so the schema path is fuzzed on both halves; it has no writer to
+round-trip, which is why the next column stays `n/a`. The cell understated the defence, and understating
+it is the dangerous direction - a reader could conclude the schema language is un-fuzzed.
+
+**The tier row's `25` was the other error.** Counting `fn prop_` names dropped the two properties in
+`crates/pyrs-event/src/lib.rs`, which `proptest!` declares with a `#[test]` attribute and a prose name
+rather than the prefix, so the property tier holds 27. A tool that counts a naming convention measures
+the convention, not the defence; the rule is now the attribute, with the prefix accepted as well.
+
+`partial` in the parity column is also measured, not judged: the column reads the oracles each
+`test_*_crosslib.py` imports and then reads how `pyproject.toml` declares them, so `partial` means a
+declared interpreter or architecture bound - `pyjson5` and `orjson` both carry
+`python_version >= '3.9' and python_version < '3.14'` and exclude armv7l, s390x and ppc64le, while
+`tomlkit` is unbounded, which is why TOML reads `yes` and the JSON family does not. On a leg where all
+three are installed the modules run in full: measured 198 cross-library assertions, 0 skipped.
 
 **What this row first said was wrong, and the correction is the interesting part.** It
 claimed a parse-only target cannot see a writer. Measured: `parse_json` calls
@@ -441,10 +460,17 @@ in its exit criterion.
 
 The question that filled it again on 2026-10-14 was about the tier itself: `property_functions()`
 counts properties, and a count is satisfied by a property that never asserts.
-`conditional_property_assertions()` therefore reads each `prop_*` body for a guard of the shape
-`if let Some(_) = try_*(..)` and reported seven of the 25 properties on the day it was registered; the round-trip classifier has since replaced that guard, and the probe now reports 0 of the 25 properties. Those are the measured
+`conditional_property_assertions()` therefore reads each property body for a guard of the shape
+`if let Some(_) = try_*(..)` and reported seven of the 25 properties on the day it was registered; the
+round-trip classifier has since replaced that guard, and the probe now reports 0 of the 27 properties.
+Those are the measured
 `property_conditional_assertions` and `property_function_count`, and the page test pins this sentence
-to them — the wording written here first said 7 of 23, and #414 landed the flow-note property that made it 25.
+to them — the wording written here first said 7 of 23, and #414 landed the flow-note property that made it
+25. It is 27 because the count demanded the `prop_` prefix, and the two properties in
+`crates/pyrs-event/src/lib.rs` are declared inside a `proptest!` block with prose names: they existed, ran
+in CI, and were not measured. The rule is now the `#[test]` attribute proptest requires, which also
+excludes the nested helpers (`key_order`, `mapping_key_orders`, `tag_texts`) that a naive "every `fn` in
+the block" rule counted - a first attempt measured 30 that way.
 The rate behind the guard was measured rather than argued: 3423 of 4000 drawn trees filtered, zero
 unparseable. So the row is not "the property tier is thin"; it is the specific, checkable statement
 that seven properties are silent on most of what they generate, which is the shape of the blind spot

@@ -402,7 +402,7 @@ def test_the_test_matrix_rows_state_the_counts_the_probe_measures(measured):
     """
     text = DOC_PATH.read_text(encoding="utf-8")
     unit = re.search(r"\| unit / integration \| ([\d,]+) Rust `#\[test\]`, ([\d,]+) Python test functions \|", text)
-    prop = re.search(r"\| property \| (\d+) `prop_\*` functions", text)
+    prop = re.search(r"\| property \| (\d+) proptest properties", text)
     fuzz = re.search(r"\| fuzz \| (\d+) targets, (\d+) seeds of which (\d+) are `former-crash-\*` \|", text)
     regress = re.search(r"former-crash-<hash>\.seed` \((\d+) of them\)", text)
     assert unit and prop and fuzz and regress, "QUALITY_MATRIX.md no longer states every section-1 count"
@@ -580,3 +580,48 @@ def test_site_rendering_reachability_is_read_off_the_workflows(matrix, tmp_path,
         "name: Preview\non:\n  pull_request:\njobs:\n  site:\n    steps:\n      - run: python scripts/build-docs.py\n",
     )
     assert matrix.renders_the_site() is True, "a PR-triggered render must be recognised"
+
+
+def test_the_per_format_table_is_the_derived_one(measured):
+    """Every cell of the per-format table is now computed, so the page and the computation must agree.
+
+    Deriving the rows is what found the two cells the prose had wrong, both in the direction that
+    understates the defence: `schema validation` read `fuzz parse: no` while
+    `fuzz/fuzz_targets/validate_schema.rs` parses with `parse(document, Schema::Core)` before it walks
+    the tree through `validate_node`, and the property tier counted `fn prop_*` names only, missing the
+    two `proptest!` properties `crates/pyrs-event/src/lib.rs` declares with a `#[test]` attribute and a
+    prose name.
+    """
+    text = DOC_PATH.read_text(encoding="utf-8")
+    cells = re.findall(
+        r"^\| (YAML|JSON / JSONC / JSON5|TOML|schema validation)"
+        r" \| (yes|no) \| (yes|no) \| (yes|no) \| (yes|no|n/a) \| (yes|no|partial|n/a) \|$",
+        text,
+        re.MULTILINE,
+    )
+    claimed = {label: (unit, prop, parse, trip, parity) for label, unit, prop, parse, trip, parity in cells}
+    assert len(claimed) == 4, f"the page no longer states all four format rows: {claimed}"
+
+    derived = {}
+    for line in measured["format_verdicts"]:
+        label, rest = line.split(": ", 1)
+        fields = dict(item.split("=", 1) for item in rest.split(" "))
+        derived[label] = (
+            fields["unit"],
+            fields["property"],
+            fields["fuzz-parse"],
+            fields["round-trip"],
+            fields["parity"],
+        )
+    assert claimed == derived, f"the page says {claimed}, the probe derives {derived}"
+
+
+def test_the_derived_table_is_not_vacuous(measured):
+    """A row whose fragments matched nothing would still print `no`s, so the inputs are pinned too."""
+    rows = measured["format_matrix"]
+    assert rows["YAML"]["unit"] > 0, rows["YAML"]
+    assert rows["schema validation"]["fuzz_parse"], "validate_schema.rs must count as fuzz coverage"
+    assert measured["property_function_count"] >= 27, "the two pyrs-event properties must be counted"
+    restricted = rows["JSON / JSONC / JSON5"]["cross_library"]["restricted"]
+    assert restricted, "the JSON family's `partial` has to be attributable to a declared marker"
+    assert not rows["TOML"]["cross_library"]["restricted"], "tomlkit is unbounded, so TOML reads `yes`"
