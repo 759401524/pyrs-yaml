@@ -83,6 +83,7 @@ live trigger belongs here.
 | Item | State | Trigger to revisit |
 |:-----|:------|:-------------------|
 | `rust-i18n` as the error-message backend | Deferred 2026-10-16, price on record | A wheel-size or import-time budget is written down. The catalog alone compiles and links 46 crates (113 in the wheel graph, 67 without it); replacing it rewrites 421 `t!(..)` call sites and four locale-parity gates. The measurements are in the review note below. |
+| A JSON Schema evaluator of our own, in a new `pyrs-json-schema` crate | Design submitted for review 2026-10-19 ([`docs/dev/json-schema-engine.md`](docs/dev/json-schema-engine.md), PR #517); no code. Undecided: the regex engine behind `pattern`, the public multi-error surface (`validate_all` vs an `errors=` keyword, and the value type), and whether the five-stage cut is the right one. | The review ruling lands, or a user needs `validate()` without installing the third-party `jsonschema` the method forwards to today (`crates/pyrs-yaml/src/py/document.rs:1133-1147`). The defence matrix's one empty authority cell (`schema validation`) closes only with stage 3, and no test can close it honestly before then. |
 
 ### Closed, recorded in the ledger
 
