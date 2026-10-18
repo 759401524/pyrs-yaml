@@ -245,6 +245,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   visible in `parse_stream`, whose `tag` field for a TOML temporal is now `!!timestamp`; a bare
   time keeps `!time` as the one local temporal tag, and `!date` still reads.
 
+- **A flow member whose value is a tag with no content keeps its note on the first round** —
+  `{a: !t }` spells its value as nothing, so a note written after the tag has no body to sit on:
+  the reader hands the note to the enclosing pair and the tag moves behind it, and the document
+  settles only on its second emission. Nothing is lost across the round, which is why no other
+  tier saw it. The writer now spells that empty body `''` when a note follows it — the same
+  decision that writes `~` for an empty value before a note (libFuzzer `edit_yaml`
+  crash-b23eed05).
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

@@ -94,3 +94,55 @@ fn a_note_after_a_cr_only_break_annotates_the_item_that_follows() {
         "a document differs from its LF spelling only in how its lines break: {one:?} vs {lf:?}"
     );
 }
+
+/// libFuzzer `edit_yaml` crash-b23eed05: a flow member whose value is a tag with no content.
+///
+/// Nothing was lost across the round, which is why no other tier saw it — the note simply changed
+/// owner. An empty plain scalar renders as nothing, so `{a: !t` is a tag-only entry, and a note
+/// written after it has no value on its line: the reader hands it to the enclosing pair, and the
+/// second emission moves the tag behind the note. `edit_yaml` reaches it by setting a tag and then a
+/// comment on the same member; the pinned text below is the tree it produced. The writer's remedy is
+/// the one it already uses for an empty null before a note — spell the body — so `{a: !t ''  # n`
+/// re-reads as the document it was written from and the first emission is the fixed point.
+#[test]
+fn a_tagged_empty_flow_member_with_a_note_settles_in_one_round() {
+    use pyrs_yaml_core::ast::{Comment, Tag};
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_comment_path, set_tag_path};
+    use std::borrow::Cow;
+
+    let src = "k: {a: !o }\n";
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    let path = [
+        Segment::Key(Cow::Borrowed("k")),
+        Segment::Key(Cow::Borrowed("a")),
+    ];
+    set_tag_path(&mut node, &path, Tag::local("t"), src, None).expect("the tag is set");
+    set_comment_path(
+        &mut node,
+        &path,
+        Comment {
+            text: "n".into(),
+            standalone: false,
+        },
+        src,
+        None,
+    )
+    .expect("the note is set");
+
+    let one = to_yaml(&node);
+    assert_eq!(
+        one, "k: {a: !t ''  # n\n    }\n",
+        "the note needs a spelled body to sit on"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+    assert_eq!(
+        to_yaml(&parse(&one, Schema::Core).expect("the emission re-parses")),
+        one,
+        "the settled text is not itself stable"
+    );
+}

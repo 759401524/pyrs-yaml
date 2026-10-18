@@ -16,32 +16,28 @@
 //! What this asserts, and each of these can fail:
 //!
 //! - an accepted edit emits text the parser accepts (the writer's own contract, as in `yaml_roundtrip`);
+//! - the emission is a *fixed point*: re-parsing it and serializing again gives the same bytes. An
+//!   edit whose text needs a second round to settle is the `(ds)`/`(dq)` species, caught per document
+//!   now rather than in a hand-written case;
 //! - `set` reads back the text it wrote at its path, `rename` finds the old name gone and the new one
 //!   present, `delete` and `move` find either the removed key unresolvable or - for a sequence item,
 //!   whose index is a position the next item shifts into - one item fewer in the parent, `insert` and
 //!   `append` find exactly one more item holding the written text at its index, `sort-keys` finds the
-//!   item shifts into. `sort-keys` finds the mapping's keys in the order the engine sorts them, and
-//!   `set-comment` is held to the two structural claims only - see the boundary below.
+//!   mapping's keys in the order the engine sorts them, and `set-comment` is held to the structural
+//!   claims only - see the boundary below.
 //!
-//! Two claims are narrower than they first look, and each was narrowed by a measurement rather than by
-//! taste. Sorting is asserted only where the verb has work to do: `sort_keys_path` answers "ok" for a
-//! path naming a scalar and changes nothing, which is a question about a refusal the CLI would show, not
-//! about emitted text. A note is followed only onto a node that has a line of its own: asked for on a
-//! block sequence, it lands on the last item's line and re-reads as that item's, because there is no
-//! other place in the text it could live; keeping it on the sequence would need a new emission position,
-//! so the claim is withheld rather than written as a permission. A note whose *owner* an edit deleted is
-//! not chased either - `note_survival.rs` owns the unmutated document.
+//! Three claims are narrower than they look, and each was narrowed by a measurement rather than by
+//! taste. Sorting is asked only where the verb has work to do: `sort_keys_path` answers "ok" for a
+//! path naming a scalar and changes nothing, which is a question about a refusal the CLI would show,
+//! not about emitted text. A note is followed only onto the line it was written on: asked for on a
+//! block sequence it lands on the last item's line and re-reads as that item's, because there is no
+//! other place in the text it could live, and exploration found a scalar shape doing the same;
+//! keeping it on the node would need a new emission position, so the claim is withheld rather than
+//! written as a permission. Style is the third: the writer refuses a style a text cannot carry (a
+//! block scalar cannot hold a trailing space) and that fallback is correct, so for style, flow, tag
+//! and anchor the claim here is only re-parse and settle, while `prop_style_setting_roundtrip` asks
+//! the equality question on trees where the answer is determined.
 //!
-//! Three claims are not made here, each for a measured reason. Style: the writer refuses a style a text
-//! cannot carry (a block scalar cannot hold a trailing space) and that fallback is correct, so for style,
-//! flow, tag and anchor the claim is only re-parse; `prop_style_setting_roundtrip` asks the equality
-//! question on trees where the answer is determined. And the fixed point - emit, re-parse, serialize
-//! again, compare bytes - is not asserted, because exploration found a shape where it does not hold: a
-//! flow member carrying both a tag and an inline note (`flow-tag-note-needs-two-rounds.seed`) emits
-//! `a: !fuzz2   # fuzz 47`, the re-read hands the note to the mapping's own line, and the second round
-//! moves the tag after it. That is the `(ds)`/`(dq)` species in a container the earlier fixes did not
-//! reach; the tier replays that input as a seed and says nothing about it, because a gate that reddens on
-//! an open defect gates nothing.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
@@ -479,6 +475,11 @@ fuzz_target!(|data: &[u8]| {
                 source,
             )
         });
+        let again = to_yaml(&reparsed);
+        assert_eq!(
+            emitted, again,
+            "edit_yaml: an edit's emission did not settle in one round\nfirst:\n{emitted}\nsecond:\n{again}\ninput:\n{source}"
+        );
         effect.check(&reparsed, &emitted, source);
 
         node = reparsed;
