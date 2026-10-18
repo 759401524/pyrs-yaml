@@ -190,8 +190,18 @@ ORACLE_IMPORTS = {
 
 
 def _dependency_marker(package: str) -> str | None:
-    """The marker `pyproject.toml` puts on a package, or `None` when it is declared unconditionally."""
-    for match in re.finditer(rf'"({re.escape(package)}[^;"]*)(;([^"]*))?"', read(REPO / "pyproject.toml")):
+    """The marker `pyproject.toml` puts on a package, or `None` when it is declared unconditionally.
+
+    Names are matched the way PEP 503 normalizes them - `-`, `_` and `.` are interchangeable and case
+    does not matter - because the import a test writes and the distribution a lock declares are two
+    different spellings of one thing. Measured before this: `ruamel.yaml` answered the import name,
+    the test group spells the requirement `ruamel-yaml`, and the miss was reported as `undeclared` -
+    the column that claims to read how a dependency is bounded instead reported an oracle that is
+    declared unconditionally as one that is not declared at all.
+    """
+    parts = [re.escape(part) for part in re.split(r"[-_.]+", package)]
+    pattern = '"(' + r"[-_.]+".join(parts) + r'[^;"]*)(;([^"]*))?"'
+    for match in re.finditer(pattern, read(REPO / "pyproject.toml"), re.IGNORECASE):
         return match.group(3).strip() if match.group(3) else None
     return "undeclared"
 

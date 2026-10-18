@@ -637,3 +637,14 @@ def test_the_derived_table_is_not_vacuous(measured):
     # for the JSON5 half of the JSON family.
     assert "test_json5_spec_table.py" in authority["JSON / JSONC / JSON5"], authority
     assert not authority["schema validation"], "a row with no outside authority has to say so"
+
+    # The parity column claims to read how `pyproject.toml` bounds each oracle, so every oracle a
+    # cross-library test imports has to be found there at all. `ruamel.yaml` is imported under that
+    # name and declared as `ruamel-yaml`; the miss used to answer `undeclared`, which reads as
+    # "not declared" about a dependency installed on every leg - the cell understated the defence.
+    markers = {
+        oracle: marker for row in rows.values() for oracle, marker in row["cross_library"].get("marker", {}).items()
+    }
+    assert markers, "the parity column measured nothing"
+    assert "undeclared" not in markers.values(), sorted(markers)
+    assert markers["ruamel.yaml"] is None, markers

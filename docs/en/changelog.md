@@ -181,6 +181,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   second look is paid for only on a miss, and a URI outside YAML's namespace keeps its current
   reading — resolved as if the tag were absent, not raised.
 
+- **The parity column now recognises an oracle it declares under another name** — the probe
+  reads how `pyproject.toml` bounds each cross-library oracle and matched the literal import
+  name: `ruamel.yaml` is imported that way and declared as `ruamel-yaml`, so the
+  lookup answered `undeclared` and the YAML row reported an oracle installed on every supported leg
+  as one the project never declared. The lookup normalises `-`, `_`, `.` and case the way PEP 503
+  does, and `tests/test_quality_matrix.py` now refuses any `undeclared` marker, so an oracle the
+  probe loses track of fails the run instead of misreporting itself.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

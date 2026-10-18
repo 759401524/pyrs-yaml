@@ -140,6 +140,12 @@ status: new
   自己的写法查，只有落空才多一次前缀判断；不属于 YAML 命名空间的 URI 读法不变——按「无标签」解析，
   不抛错。
 
+- **对拍列现在能认出以另一个名字声明的参考实现** — `scripts/quality_matrix.py` 读取
+  `pyproject.toml` 给每个跨库参考实现加的边界，却按导入名的字面量匹配：导入写作 `ruamel.yaml`，
+  声明写作 `ruamel-yaml`，于是查表回答 `undeclared`，YAML 行就把每个平台都会装的参考实现报成项目
+  从未声明。查表现在按 PEP 503 归一 `-`、`_`、`.` 与大小写，且 `tests/test_quality_matrix.py` 会拒绝
+  任何 `undeclared` 读数——探针跟丢某个参考实现时要失败，而不是报错它自己。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增
