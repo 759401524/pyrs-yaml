@@ -146,6 +146,13 @@ status: new
   从未声明。查表现在按 PEP 503 归一 `-`、`_`、`.` 与大小写，且 `tests/test_quality_matrix.py` 会拒绝
   任何 `undeclared` 读数——探针跟丢某个参考实现时要失败，而不是报错它自己。
 
+- **省略 `extends` 的 schema 现在按文档所说的默认值解析** — `extends` 可选，
+  `docs/zh/guides/custom-schema.md` 写明默认是 `core`；但解析器只在键存在且值为空时才取 Core。
+  整个键缺失的 schema 没有基础解析器，于是每个标量都被当成它自己的文本，判定结果两个方向都无声地
+  反过来：`type: int` 拒绝 `port: 80`（报错写着 `expected int but got Str("80")`），而 `type: str`
+  照单全收。钉住旧默认值的那条 Rust 用例现在拆成两条，第二条记录仍存的边界：本引擎找不到的基础
+  名字依然退化为「无回退」，而是否拒绝写错的名字是关于公开错误面的另一个决定。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增
