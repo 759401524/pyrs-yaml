@@ -123,14 +123,32 @@ pub fn core_type_is_non_string(value: &str) -> bool {
 ///
 /// Quoting is required when the value resolves to a non-string type under the
 /// core schema (bool/int/float/null — e.g. `"true"`, `"42"`, `"null"`, `"~"`,
-/// `""`, `"0x1F"`, `".inf"`), or when raw emission would be ambiguous or
-/// invalid YAML (leading/trailing whitespace, control characters).
+/// `""`, `"0x1F"`, `".inf"`), when a reader that follows the YAML 1.1 type
+/// repository resolves it to one of those anyway
+/// (see [`resolved_by_a_yaml_1_1_reader`]), or when raw emission would be
+/// ambiguous or invalid YAML (leading/trailing whitespace, control characters).
 ///
 /// This is the conversion-layer guard used by `pyobject_to_node` and the
-/// direct writer so that Python strings round-trip losslessly. It intentionally
-/// stays bound to [`resolve_core_type`] so the two can never drift.
+/// direct writer so that Python strings round-trip losslessly — losslessly for
+/// *whoever reads the document*, which is a wider set than this engine's core
+/// profile.
+///
+/// The 1.1 question costs what asking it costs, and that is measured rather than assumed.
+/// Against a base control run in the same session on `390b150e`, `from_json_medium` reads
+/// +576,000 counted instructions over its 2,000 iterations — +288 per document, +0.72% — and
+/// `from_jsonc_medium` +0.61%, `from_json5_medium` +0.45%. Three shapes were priced to find out
+/// whether any of it is avoidable: a first-byte gate in front of the callee (the same number, to
+/// the instruction), `#[inline(never)]` on the callee (+124,000 *worse*, because the candidates
+/// then pay a real call), and `#[inline]` on this function (again the same number). What is left is
+/// the work itself: one byte compare for a scalar that cannot begin a 1.1 lexeme, which is what
+/// almost every scalar is.
 pub fn needs_quotes(value: &str) -> bool {
     if core_type_is_non_string(value) {
+        return true;
+    }
+    // The core schema is the question this engine's own reader asks. It is not the only question a
+    // document meets: see [`resolved_by_a_yaml_1_1_reader`].
+    if resolved_by_a_yaml_1_1_reader(value) {
         return true;
     }
     if value.starts_with(' ') || value.ends_with(' ') {
@@ -166,6 +184,111 @@ pub fn needs_quotes(value: &str) -> bool {
         }
     }
     false
+}
+
+/// Whether a reader that follows the YAML 1.1 type repository resolves this text to a
+/// non-string while [`core_type_is_non_string`] answers "string".
+///
+/// Exported for the edit layer, which needs this half alone: see
+/// `pyrs_yaml_core::editing::plan::named_key_node`.
+///
+/// `needs_quotes` used to ask the core schema alone, and that is the right question for a
+/// document this engine reads back — not the whole question for a document anyone else reads.
+/// PyYAML's default loader and ruamel's safe loader both apply the 1.1 / `tag:yaml.org,2002`
+/// table, so a string core leaves plain arrives there as a number, a bool or a date. Measured
+/// on this tree before the fix: `from_dict({"v": "1_000"})` emitted `v: 1_000` and both readers
+/// returned the integer `1000`; likewise `yes`, `0b101`, `+0x1f` and `1990-06-23`, in key
+/// position as well as value position, on the Python route and on the JSON→YAML route. `y` and
+/// `n` are not in PyYAML's table but are in the spec's, and this engine's own `schema="1.1"`
+/// reader resolves them — the pair disagreed with itself.
+///
+/// Over-quoting costs only style, so each family here is the *shape* the 1.1 table accepts
+/// rather than a parser for it: `a_b` stays plain because no numeric lexeme may begin with a
+/// letter, `0x` stays plain because the base families need a digit after the prefix, and `0x1f`
+/// stays plain because core already types it — this function answers "what does 1.1 add?", which
+/// is what the edit layer asks on its own. A sexagesimal int (`190:20:30`) is deliberately absent:
+/// its colon already forces quoting one layer below, measured on both routes.
+pub fn resolved_by_a_yaml_1_1_reader(value: &str) -> bool {
+    // The same whitelist inversion [`resolve_core_type`] uses: every lexeme this function knows
+    // begins with one of these bytes, so a text that starts elsewhere pays one compare.
+    let first = value.as_bytes().first().copied().unwrap_or(0);
+    match first {
+        b'y' | b'Y' | b'n' | b'N' | b'o' | b'O' => is_legacy_bool(value),
+        b'0'..=b'9' | b'+' | b'-' | b'.' => is_legacy_number_or_timestamp(value),
+        _ => false,
+    }
+}
+
+/// The `tag:yaml.org,2002:bool` rows the core schema does not already quote: 1.1 spells true
+/// six ways and false six, and the engine's own `schema="1.1"` profile resolves all of them.
+fn is_legacy_bool(value: &str) -> bool {
+    matches!(
+        value,
+        "y" | "Y"
+            | "yes"
+            | "Yes"
+            | "YES"
+            | "n"
+            | "N"
+            | "no"
+            | "No"
+            | "NO"
+            | "on"
+            | "On"
+            | "ON"
+            | "off"
+            | "Off"
+            | "OFF"
+    )
+}
+
+/// The 1.1 numeric spellings core misses, and the date-only form of `tag:yaml.org,2002:timestamp`.
+fn is_legacy_number_or_timestamp(value: &str) -> bool {
+    // `_` is allowed between the digits of a 1.1 int or float, so `1_000` is the integer 1000
+    // and `1_0.0` is the float 10.0 — but only inside a token made of digits, `_` and one dot.
+    if value.contains('_') {
+        let body = strip_sign(value);
+        if body.len() > 1
+            && body
+                .bytes()
+                .all(|b| b.is_ascii_digit() || b == b'_' || b == b'.')
+        {
+            return true;
+        }
+    }
+    // A base prefix after an optional sign. `0b` is unknown to core in either spelling; `0x` and
+    // `0o` are known unsigned, so only the signed form is a gap here — and the sign is what makes
+    // `+0x1f` an integer to a 1.1 reader while core leaves it the text.
+    let body = strip_sign(value);
+    let signed = body.len() != value.len();
+    if body.len() > 2 && body.as_bytes()[0] == b'0' {
+        match body.as_bytes()[1] {
+            b'b' | b'B' => return true,
+            b'x' | b'X' | b'o' | b'O' if signed => return true,
+            _ => {}
+        }
+    }
+    is_date_only_timestamp(value)
+}
+
+/// `YYYY-MM-DD`, the one timestamp spelling a 1.1 reader resolves without a time part; every
+/// longer form carries a `:` or a space and is quoted for that reason already.
+fn is_date_only_timestamp(value: &str) -> bool {
+    let b = value.as_bytes();
+    b.len() == 10
+        && b[..4].iter().all(u8::is_ascii_digit)
+        && b[4] == b'-'
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[7] == b'-'
+        && b[8..].iter().all(u8::is_ascii_digit)
+}
+
+/// Drop a leading `+` or `-`, which is one byte by construction in UTF-8.
+fn strip_sign(value: &str) -> &str {
+    match value.as_bytes().first() {
+        Some(b'+') | Some(b'-') => &value[1..],
+        _ => value,
+    }
 }
 
 /// The character-level half of [`needs_quotes`]: what a plain scalar cannot carry.
@@ -767,6 +890,112 @@ mod tests {
             checked, 25,
             "the Unicode White_Space set the rule has to cover changed"
         );
+    }
+
+    // The 1.1 half of the guard. Each row is measured against PyYAML's default loader and
+    // ruamel's safe loader in `tests/test_yaml_writer_suite.py`; this pins the predicate that
+    // answers for them, and pins that the core schema alone leaves all of them plain — which is
+    // exactly the fact the clause exists to override. A text that core already resolves would
+    // pass the test for the wrong reason.
+    #[test]
+    fn a_1_1_reader_resolves_these_while_core_leaves_them_plain() {
+        for text in [
+            "y",
+            "Y",
+            "yes",
+            "Yes",
+            "YES",
+            "n",
+            "N",
+            "no",
+            "No",
+            "NO",
+            "on",
+            "On",
+            "ON",
+            "off",
+            "Off",
+            "OFF",
+            "1_000",
+            "0_0",
+            "1_",
+            "1__0",
+            "8_0",
+            "1_0.0",
+            ".5_",
+            "-1_0",
+            "+1_0",
+            "0b101",
+            "0b1",
+            "0B101",
+            "+0b1",
+            "-0b1",
+            "+0x1f",
+            "-0x1f",
+            "+0o17",
+            "-0o17",
+            "2026-10-18",
+            "1990-06-23",
+            "0001-01-01",
+            "9999-12-31",
+        ] {
+            assert!(
+                resolved_by_a_yaml_1_1_reader(text),
+                "{text:?} is typed by a 1.1 reader"
+            );
+            assert!(needs_quotes(text), "{text:?} must not be emitted plain");
+        }
+    }
+
+    #[test]
+    fn the_clause_fires_only_on_the_families_it_knows() {
+        for text in [
+            "",
+            "a",
+            "plain",
+            "database",
+            "a_b",
+            "_1",
+            "1x",
+            "0x",
+            "0b",
+            "0o",
+            "2026-10",
+            "20261018",
+            "2026-1-2",
+            "2026-10-18x",
+            "1990-06-2",
+            "1-2",
+            "-",
+            "--",
+            "y_",
+            "no1",
+            "often",
+            "off-color",
+            "2026-10-18 09:30",
+        ] {
+            assert!(
+                !resolved_by_a_yaml_1_1_reader(text),
+                "{text:?} is not one of the 1.1 families"
+            );
+        }
+        // The sexagesimal rows are a 1.1 family this clause does not cover: `12:00` is the
+        // integer 720 to PyYAML. They are absent because a plain scalar carrying a colon is
+        // refused one layer below — asserted on the emitted document, not here, because
+        // `needs_quotes` itself has no colon rule.
+        for text in ["12:00", "190:20:30", "1:30"] {
+            assert!(!resolved_by_a_yaml_1_1_reader(text), "{text:?}");
+        }
+        // Where core already answers, it quotes — the new clause is not what carries these,
+        // and the assertion records that the two halves do not overlap by accident. The
+        // base-prefixed forms do overlap (`0x1f` is a hex int to core and a signed-prefix hex
+        // to 1.1), which is harmless: both say "quote", and quoting is idempotent.
+        for text in ["true", "42", "null", ".inf"] {
+            assert!(
+                !resolved_by_a_yaml_1_1_reader(text) && core_type_is_non_string(text),
+                "{text:?} belongs to the core half"
+            );
+        }
     }
 
     // The guard that skips `trim_matches` reads the first and last *byte*, so it is checked

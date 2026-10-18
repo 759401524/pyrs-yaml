@@ -157,7 +157,8 @@ def test_set_create_missing(capsys, monkeypatch):
     feed_stdin(monkeypatch, "a: 1\n")
     run("set", "-", "$.x.y", "new", "--create-missing")
     out = capsys.readouterr().out
-    assert "x:" in out and "y: new" in out
+    # `y` is a YAML 1.1 bool word, so the created key carries quotes to stay the name it was given.
+    assert "x:" in out and '"y": new' in out
 
 
 def test_set_inplace_and_comment_preserved(tmp_path):

@@ -119,6 +119,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   routes. It bites: making `write_json_string` emit a raw tab reddens both strict legs while the
   JSON5 one stays green.
 
+- **A YAML string spelled the way 1.1 spells a number arrived as a number** —
+  `safe_dump({"v": "1_000"})` emitted `v: 1_000`, and PyYAML and ruamel both handed back the
+  integer 1000. Same for `8_0`, `0b101`, `+0x1f`, for the legacy bool words `yes`/`on`/`off`/`y`
+  and for the date-only timestamp `1990-06-23`, which comes back as `datetime.date`. Twenty-six
+  spellings per route, in key position as well as value, on the Python route and on the JSON→YAML
+  one. The quoting guard asked only `resolve_core_type`, which is this engine's own 1.2 core
+  reader, and every one of those spellings is a string there; a reader on the YAML 1.1 type
+  repository types them, and so does this engine's own `schema="1.1"` profile for `y` and `yes` —
+  the writer and one of the profiles disagreed about the same token. The guard now asks the 1.1
+  table as a second question over four families: the bool words core does not list, `_` inside a
+  numeric, a base prefix core cannot see (`0b`, and `0x`/`0o` behind a sign), and `YYYY-MM-DD`.
+  Quoting is the safe side of the error — a quoted scalar is never resolved — so each family is
+  the shape the table accepts rather than a parser: `a_b`, `0x` and `2026-10` stay plain, and
+  `12:00` needs none of this because a colon already refuses plain emission one layer below.
+  Output changes only for these spellings: `1_000` now writes as `"1_000"`.
+
+- **The YAML writers gained a reader they do not own** — `tests/test_yaml_writer_suite.py` emits
+  through `safe_dump`, `from_json` and the edit layer and hands each document to PyYAML and to
+  ruamel.yaml, requiring the value back to be the one that went in; 400 generated trees per route
+  and every legacy lexeme in key and value position. Measured after the fix: 0 refusals and 0
+  value changes on all three routes, which is what `QUALITY_MATRIX.md` now credits the YAML row
+  for beside the official-suite reader gate. The edit layer is held to a narrower rule than the
+  data routes, and the file pins both halves: a path segment *addresses* the key a reader resolves
+  (issue #336), so `$.~` and `$.42` must keep their plain fold, while a name that would lose its
+  type between the two profiles — `rename("$.v", "yes")` wrote a key that reads `true` — is quoted.
+  Temporal objects stay outside: `!date` is a local tag a SafeLoader has no constructor for, so the
+  strangers refuse that document rather than change a value, which is a boundary of the tag design.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

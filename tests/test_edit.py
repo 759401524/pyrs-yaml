@@ -56,7 +56,8 @@ class TestSetPath:
     def test_set_create_missing_keeps_existing_content(self):
         doc = pyrs_yaml.parse("a: 1  # keep\nb:\n  x: 1\n")
         doc._set_path(["b", "y"], 2, True)
-        assert doc.to_yaml() == "a: 1  # keep\nb:\n  x: 1\n  y: 2\n"
+        # `y` is a YAML 1.1 bool word: the created key is quoted so it stays the name the path gave.
+        assert doc.to_yaml() == 'a: 1  # keep\nb:\n  x: 1\n  "y": 2\n'
 
     def test_splice_offsets_cached_on_first_edit(self):
         """Multiple edits on a default-layout doc preserve round-trip (splice cache)."""
