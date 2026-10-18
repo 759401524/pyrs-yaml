@@ -640,10 +640,12 @@ impl<'a> Parser<'a> {
                         }
                         b'u' => self.unicode_escape(&mut *out)?,
                         // JSON5-only string escapes (allow_json5_numbers is
-                        // true only for the JSON5 preset): vertical tab and
-                        // NUL. Strict JSON / JSONC still reject them.
+                        // true only for the JSON5 preset): vertical tab, NUL
+                        // and the two-digit hex escape. Strict JSON / JSONC
+                        // still reject them.
                         b'v' if self.allow_json5_numbers => out.push('\u{b}'),
                         b'0' if self.allow_json5_numbers => out.push('\0'),
+                        b'x' if self.allow_json5_numbers => self.x_escape(&mut *out)?,
                         _ => return Err(self.err("invalid escape sequence")),
                     }
                 }
@@ -1075,6 +1077,7 @@ impl<'a> Parser<'a> {
                         // JSON5-only escapes (see the single-quoted twin).
                         b'v' if self.allow_json5_numbers => out.push('\u{b}'),
                         b'0' if self.allow_json5_numbers => out.push('\0'),
+                        b'x' if self.allow_json5_numbers => self.x_escape(&mut *out)?,
                         b'\'' if self.allow_json5_numbers => out.push('\''),
                         b'\n' | b'\r' if self.allow_json5_numbers => {
                             // JSON5 line continuation: a backslash
@@ -1146,6 +1149,33 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
         }
+    }
+
+    /// The JSON5 `\xHH` escape: exactly two hex digits, so its range is U+0000..=U+00FF.
+    ///
+    /// Accumulated digit by digit instead of `from_str_radix` over a slice, because that call accepts
+    /// a leading sign - `u8::from_str_radix("+1", 16)` is `Ok(1)` - which would make `\x+1` a valid
+    /// escape when the spec allows only hex digits. `hex4` cannot be reused: four digits can land on a
+    /// surrogate, and two cannot.
+    fn x_escape(&mut self, out: &mut String) -> Result<(), ParseError> {
+        if self.pos + 2 > self.s.len() {
+            return Err(self.err("truncated \\x escape"));
+        }
+        let mut value = 0u8;
+        for _ in 0..2 {
+            // `peek` cannot be None here, and every accepted byte is ASCII, so the `as char` lands
+            // on the same code point the source spelled.
+            let digit = self
+                .peek()
+                .filter(u8::is_ascii_hexdigit)
+                .and_then(|b| (b as char).to_digit(16))
+                .ok_or_else(|| self.err("invalid hex digits in \\x escape"))?;
+            value = value * 16 + digit as u8;
+            self.pos += 1;
+        }
+        // Two hex digits are at most 0xFF and all of U+0000..=U+00FF are Unicode scalars.
+        out.push(value as char);
+        Ok(())
     }
 }
 
@@ -2138,6 +2168,40 @@ mod tests {
         // Strict JSON rejects both.
         assert!(from_json(r#""a\vb""#).is_err());
         assert!(from_json(r#""a\0b""#).is_err());
+    }
+
+    #[test]
+    fn json5_supports_the_two_digit_hex_escape() {
+        // The spec's EscapeSequence list includes `\x` followed by exactly two hex digits, so a
+        // decoded value never leaves U+0000..=U+00FF. Found by reading the spec against the
+        // reference: pyjson5 gives `{'a': 'A'}` for `{a: '\x41'}` while this reader reported
+        // "invalid escape sequence" - although `\v`, `\0` and the line continuation were here.
+        assert_eq!(scalar_text(&from_json5(r#""A\x7eZ""#).unwrap()), "A~Z");
+        assert_eq!(scalar_text(&from_json5(r#"'caf\xE9'"#).unwrap()), "café");
+        // Exactly two digits: a third hex-looking character is ordinary text, not part of it.
+        assert_eq!(scalar_text(&from_json5(r#""\x410""#).unwrap()), "A0");
+        // Control characters arrive as characters, not as the line break they spell.
+        assert_eq!(scalar_text(&from_json5(r#""a\x0Ab""#).unwrap()), "a\nb");
+        assert_eq!(scalar_text(&from_json5(r#""a\x00b""#).unwrap()), "a\0b");
+        // The digits are accumulated one byte at a time because `from_str_radix` accepts a leading
+        // sign, which would make `\x+1` a valid escape; and the tail cases are typed rejections.
+        assert!(from_json5(r#""\x+1""#).is_err());
+        assert!(from_json5(r#""\x4""#).is_err());
+        assert!(from_json5(r#""\xZZ""#).is_err());
+        assert!(from_json5("\"\\x").is_err());
+        // A malformed escape straddling a multibyte character must not reach a char-boundary
+        // slice - the sibling of the #153 crashes that `hex4` documents.
+        assert!(from_json5("\"\\xé").is_err());
+        // Neither strict JSON nor JSONC unlocks it.
+        assert!(from_json(r#""\x41""#).is_err());
+        assert!(from_jsonc(r#""\x41""#).is_err());
+        // The decoded value writes back as JSON5 that this reader accepts, and it settles.
+        let once = crate::to_json5_text(&from_json5(r#""A\x7eZ""#).unwrap()).unwrap();
+        assert_eq!(scalar_text(&from_json5(&once).unwrap()), "A~Z");
+        assert_eq!(
+            crate::to_json5_text(&from_json5(&once).unwrap()).unwrap(),
+            once
+        );
     }
 
     #[test]

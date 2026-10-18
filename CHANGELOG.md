@@ -39,6 +39,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   named in prose. `partial` in the parity column now means a declared interpreter or
   architecture bound on the oracle, not an impression.
 
+- **JSON5 `\xHH` escapes parse — the reader had every other JSON5 escape** — `load_json5` and
+  `from_json5` accepted `\v`, `\0` and the line continuation but rejected `\x` followed by two hex
+  digits, which the JSON5 escape set includes, while the shipped stub already said `load_json5`
+  "Accepts the full JSON5 grammar". Measured against the reference: pyjson5 gives `{'a': 'A'}` for
+  `{a: '\x41'}` and pyrs reported "invalid escape sequence". The two digits are now accumulated one
+  byte at a time — `from_str_radix` would accept a leading `+`, making `\x+1` a valid escape — and
+  strict JSON and JSONC keep rejecting the form. Rust tests pin both quote styles, `\x0A` and
+  `\x00`, the truncated and non-hex tails, and a malformed escape straddling a multibyte character;
+  a pyjson5 parity test pins the acceptance and both narrower dialects' refusal.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added
