@@ -236,13 +236,18 @@ assert isinstance(doc.get("when"), datetime)
 # Dump: Python object → tagged scalar
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out contains: ts: !timestamp 2026-08-11T10:30:00
+# out contains: !!timestamp 2026-08-11T10:30:00
 ```
 
 **Built-in plugins** (registered at import time):
-`!timestamp` → `datetime`, `!date` → `datetime.date`, `!time` → `datetime.time`,
+`!!timestamp` → `datetime` / `datetime.date` (the text decides which),
+`!time` → `datetime.time`,
 `!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!!binary` → `bytes`,
 `!regex` → `re.Pattern`, `!set` → `str`
+
+The local `!timestamp` and `!date` spellings are still read, so documents written by earlier
+versions keep their types; `!!timestamp` is what dumps emit because it is the one tag every
+other YAML reader knows.
 
 **Optional third-party plugins** (auto-registered when the library is installed):
 `!duration` → `pendulum.Duration`, `!arrow` → `arrow.Arrow`, `!ulid` → `ulid.ULID`

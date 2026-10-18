@@ -18,14 +18,21 @@ pyrs-yaml ships with built-in plugins registered at import time:
 
 | Tag | Python type | Description |
 |-----|-------------|-------------|
-| :material-clock-outline: `!timestamp` | `datetime` | ISO 8601 datetime round-trip |
-| :material-calendar: `!date` | `datetime.date` | ISO 8601 date (no time) |
-| :material-clock: `!time` | `datetime.time` | ISO 8601 time (no date) |
+| :material-clock-outline: `!!timestamp` | `datetime` / `datetime.date` | ISO 8601 timestamp; the text decides which — a date-only text is a `date` |
+| :material-clock: `!time` | `datetime.time` | ISO 8601 time (no date); a local extension, YAML defines no tag for a bare time |
+| :material-calendar: `!date` | `datetime.date` | the local spelling `!!timestamp` replaced when writing — still read |
+| :material-clock-outline: `!timestamp` | `datetime` | the local spelling `!!timestamp` replaced when writing — still read |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID string ↔ object |
 | :material-decimal: `!decimal` | `decimal.Decimal` | Arbitrary-precision decimal |
 | :material-binary: `!!binary` | `bytes` | Base64-encoded binary data; the local `!binary` spelling is still read |
 | :material-language-python: `!regex` | `re.Pattern` | Compiled regex pattern |
 | :material-format-list-bulleted: `!set` | `str` | YAML set (unkeyed mapping) — experimental, no round-trip serialization |
+
+`tag:yaml.org,2002:timestamp` is the only temporal tag YAML defines, and it covers both a date and a
+datetime, so `safe_dump()` writes it for both. The two local spellings above are what this library
+wrote before that: a local tag has no constructor outside it, so PyYAML and ruamel.yaml both answered
+such a document with `ConstructorError` and the value could not be read back at all. They stay
+registered because documents this library already wrote carry them.
 
 ### Creating a Custom Type
 
@@ -82,12 +89,13 @@ The tag `!timestamp` triggers `from_yaml()` which returns a `datetime`.
 ```python title="Dump a Python object"
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out contains: ts: !timestamp 2026-08-11T10:30:00
+# out contains: !!timestamp 2026-08-11T10:30:00
 ```
 
 `safe_dump()` checks each value against registered types. When a `datetime`
-object is found, `TimestampType.to_yaml()` is called and the output includes
-the `!timestamp` tag.
+object is found, the standard tag is written — `!!timestamp`, the one other YAML
+readers construct — and the text decides on the read side whether it names a
+`date` or a `datetime`.
 
 ### API Reference
 
