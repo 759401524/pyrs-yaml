@@ -57,7 +57,7 @@ toml_text = pyrs_yaml.to_toml("name: app\ncount: 3\nnested:\n  a: 1\n  b: two\n"
 
 !!! note "日付と時刻"
 
-    TOML の datetime は内蔵 `!timestamp` プラグイン経由で本物の
+    TOML の datetime は内蔵 `!!timestamp` プラグイン経由で本物の
     `datetime.datetime` として届きます:
 
     ```python
@@ -72,7 +72,7 @@ TOML で表現できない YAML 構造は、黙ってデータを落とす代わ
 
 - null 値（TOML に null は存在しない）
 - 非テーブルのドキュメント（ルートがスカラーや配列）
-- アンカー / エイリアス、および `!timestamp` 以外のタグ
+- アンカー / エイリアス、および `!!timestamp` 以外のタグ
 - 非スカラーのマップキー
 
 ## INI

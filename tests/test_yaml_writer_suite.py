@@ -283,6 +283,22 @@ def test_a_stranger_reads_the_temporal_we_emitted(reader, value):
     assert back == {"v": value}, f"{reader}: {document!r} came back as {back!r}, not {value!r}"
 
 
+def test_a_toml_document_written_back_as_yaml_is_still_readable_by_a_stranger():
+    # The hub invents a temporal tag in two places: from a Python object, and from a TOML date or
+    # date-time. Both have to land on the standard spelling, or a document that merely passes through
+    # on its way to YAML is unreadable again. A bare time is left out of the source: it has no
+    # standard tag to aim at, and it is the one shape that still makes both strangers refuse.
+    source = "d = 2026-10-18\ndt = 2026-10-18T09:30:00Z\n"
+    document = pyrs_yaml.safe_dump(pyrs_yaml.load_toml(source))
+    expected = {
+        "d": dt.date(2026, 10, 18),
+        "dt": dt.datetime(2026, 10, 18, 9, 30, tzinfo=dt.timezone.utc),
+    }
+    assert "!!timestamp" in document, document
+    for name, read in STRANGERS.items():
+        assert read(document) == expected, f"{name}: {document!r} came back as {read(document)!r}"
+
+
 def test_the_bare_time_stays_the_local_extension_it_admits_being():
     # YAML defines no tag for a time of day - PyYAML cannot even represent one, so `!time` is written
     # as what it is instead of dressed up as a standard tag no reader would resolve.

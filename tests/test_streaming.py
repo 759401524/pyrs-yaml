@@ -300,7 +300,7 @@ class TestMultiFormatStream:
             for e in pyrs_yaml.parse_stream("d = 1979-05-27T07:32:00Z\nb = 0b101\n", format="toml")
             if e["type"] == "scalar"
         }
-        assert ("1979-05-27T07:32:00Z", "!timestamp") in tagged
+        assert ("1979-05-27T07:32:00Z", "!!timestamp") in tagged
         assert ("0b101", "!!int") in tagged
 
     def test_toml_table_headers_open_in_structural_order(self):

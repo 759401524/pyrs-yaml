@@ -57,7 +57,7 @@ toml_text = pyrs_yaml.to_toml("name: app\ncount: 3\nnested:\n  a: 1\n  b: two\n"
 
 !!! note "날짜/시각"
 
-    TOML datetime은 내장 `!timestamp` 플러그인을 거쳐 진짜
+    TOML datetime은 내장 `!!timestamp` 플러그인을 거쳐 진짜
     `datetime.datetime` 객체가 됩니다:
 
     ```python
@@ -72,7 +72,7 @@ TOML로 표현할 수 없는 YAML 구조는 데이터를 몰래 잃는 대신 �
 
 - null 값(TOML에는 null이 없음)
 - 테이블이 아닌 문서(루트가 스칼라나 배열)
-- 앵커 / 별칭, 그리고 `!timestamp` 이외의 태그
+- 앵커 / 별칭, 그리고 `!!timestamp` 이외의 태그
 - 비스칼라 맵 키
 
 ## INI

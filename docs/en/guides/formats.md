@@ -58,7 +58,7 @@ toml_text = pyrs_yaml.to_toml("name: app\ncount: 3\nnested:\n  a: 1\n  b: two\n"
 !!! note "Datetimes"
 
     TOML datetimes arrive as real `datetime.datetime` objects through the
-    built-in `!timestamp` plugin:
+    built-in `!!timestamp` plugin:
 
     ```python
     pyrs_yaml.load_toml("when = 2026-01-02T03:04:05Z\n")
@@ -72,7 +72,7 @@ messages instead of silently losing data:
 
 - null values (TOML has no null)
 - non-table documents (scalars or arrays at the root)
-- anchors / aliases and tags other than `!timestamp`
+- anchors / aliases and tags other than `!!timestamp`
 - non-scalar mapping keys
 
 ## INI

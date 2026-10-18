@@ -30,8 +30,8 @@
 //!
 //! ## What it cannot report, and why each answer is the vocabulary's, not TOML's
 //!
-//! - `tag` turns out not to be YAML's private field. A date-time arrives as `!timestamp` / `!date` /
-//!   `!time` and a binary integer as `!!int` - exactly what the AST carries - so the field means
+//! - `tag` turns out not to be YAML's private field. A date-time arrives as `!!timestamp` and a bare
+//!   time as `!time`, a binary integer as `!!int` - exactly what the AST carries - so the field means
 //!   "the type the document states", and a second format fills it without anything being renamed.
 //! - `anchor` stays empty and `Alias` is never emitted, the same answer JSON gave: those are YAML's
 //!   grammar.

@@ -15,8 +15,8 @@
 //! three formats. So the fields below are answered by two producers rather than asserted.
 //!
 //! What that measured: `anchor` and `Alias` stayed YAML's own — the other two never emit them, and
-//! `tag` turned out to generalise, because TOML arrives with `!timestamp` / `!date` / `!time` and
-//! `!!int`, exactly what its tree stores. `style` reports whatever a given engine remembers, which
+//! `tag` turned out to generalise, because TOML arrives with `!!timestamp` / `!time` and `!!int`,
+//! exactly what its tree stores. `style` reports whatever a given engine remembers, which
 //! is why a TOML literal and a basic string read alike. Positions are the producer's to carry: a
 //! close event's offset exists in the stream and nowhere else, and a header's key precedes the
 //! `MappingStart` it opens.

@@ -55,7 +55,7 @@ toml_text = pyrs_yaml.to_toml("name: app\ncount: 3\nnested:\n  a: 1\n  b: two\n"
 
 !!! note "日期时间"
 
-    TOML datetime 经内建 `!timestamp` 插件直接成为真正的
+    TOML datetime 经内建 `!!timestamp` 插件直接成为真正的
     `datetime.datetime` 对象：
 
     ```python
@@ -70,7 +70,7 @@ TOML 无法表达部分 YAML 结构；以下情况抛出带稳定消息的 `Valu
 
 - null 值（TOML 没有 null）
 - 非表格文档（根节点是标量或数组）
-- 锚点 / 别名，以及 `!timestamp` 之外的 tag
+- 锚点 / 别名，以及 `!!timestamp` 之外的 tag
 - 非标量映射键
 
 ## INI
