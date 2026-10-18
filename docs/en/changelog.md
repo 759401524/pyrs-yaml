@@ -224,6 +224,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tag and a note settles only on the second round - an open defect in the note's flow attribution,
   committed as a seed so the fix inherits the input.
 
+- **A `date` or `datetime` now leaves the YAML writer under the tag every reader knows** —
+  `safe_dump()` wrote `!date` and `!timestamp`, and a local tag has no constructor outside this
+  library. Measured on the trunk of 2026-10-18: `yaml.safe_load` and `ruamel.yaml` both answered
+  such a document with `ConstructorError`, so the value was not mistyped, it was unrecoverable.
+  Both objects now leave as `!!timestamp` (`tag:yaml.org,2002:timestamp`), the one temporal tag
+  YAML defines, which those readers resolve to a `date` for a date-only text and a `datetime` for
+  anything with a time part; this reader makes the same fork, so what a stranger can type, we type
+  identically. `!date` and `!timestamp` stay registered and keep resolving, so a document an
+  earlier version wrote still reads back as the same object, and a document that arrived with one
+  is re-emitted with it unchanged - only objects built from Python take the standard tag. `!time`
+  remains a local extension: YAML defines no tag for a bare time of day and PyYAML cannot
+  represent one. Values read from TOML still carry the hub tags `!date`/`!timestamp`; moving
+  those is the same change on the Rust side and lands separately.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

@@ -427,7 +427,7 @@ assert isinstance(doc.get("when"), datetime)
 # 导出：Python 对象 → 带标签的标量
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out 包含：ts: !timestamp 2026-08-11T10:30:00
+# out 包含：!!timestamp 2026-08-11T10:30:00
 ```
 
 | 方法 | 描述 |

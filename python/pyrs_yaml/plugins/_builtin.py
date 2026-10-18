@@ -78,6 +78,46 @@ class DateType(CustomType):
 
 
 @final
+class StandardTimestampType(CustomType):
+    """`!!timestamp` — the standard tag for a date and for a datetime alike.
+
+    `tag:yaml.org,2002:timestamp` is the only temporal tag YAML defines, and the text decides which
+    Python type it names: a date-only text is a ``date``, anything carrying a time part is a
+    ``datetime``. That is what PyYAML and ruamel.yaml both do when they read it, and what they have
+    always done.
+
+    It is registered because the local spellings do not travel. Measured on the trunk of 2026-10-18:
+    ``safe_dump`` wrote ``!date``/``!timestamp``, and ``yaml.safe_load`` and ``ruamel.yaml`` both
+    answered that document with ``ConstructorError`` — a local tag has no constructor, so the value
+    was not merely mistyped, it was unrecoverable by any other reader. Registering the standard name
+    last makes it the one dumps choose (the registry walks registration order backwards), exactly as
+    `!!binary` does, and the same handler then reads it back.
+
+    The local `!date` and `!timestamp` names stay registered because documents this library already
+    wrote carry them, and a name that stops resolving would turn a spelling fix into data loss. The
+    text work is delegated to `TimestampType`, whose `t`/`z` and fractional-second canonicalization is
+    what makes the whole spelling set parse on the 3.8 floor.
+    """
+
+    python_type = date
+
+    def __init__(self) -> None:
+        self._datetime = TimestampType()
+
+    @override
+    def from_yaml(self, value: str) -> Any:
+        # A date-only text has no time separator in it; anything with `T`/`t`, a space or a colon is
+        # a datetime, and `TimestampType` already parses every spelling of those.
+        if any(c in value for c in "Tt :"):
+            return self._datetime.from_yaml(value)
+        return date.fromisoformat(value)
+
+    @override
+    def to_yaml(self, obj: Any) -> str:
+        return obj.isoformat()
+
+
+@final
 class TimeType(CustomType):
     """`!time` — serialize/deserialize `datetime.time` objects."""
 
@@ -253,6 +293,10 @@ def _register_builtins():
     register_type("!!binary", BinaryType())
     register_type("!regex", RegexType())
     register_type("!set", SetType())
+    # Last of the builtins: the temporal objects are matched by isinstance, so this name has to be
+    # the one the backwards walk reaches first for both `date` and `datetime`. Third-party plugins
+    # register after it and keep their own objects.
+    register_type("!!timestamp", StandardTimestampType())
 
 
 def _register_third_party():

@@ -17,8 +17,9 @@ pyrs-yaml 内置了在导入时自动注册的插件：
 
 | 标签 | Python 类型 | 说明 |
 |-----|-------------|------|
-| :material-clock-outline: `!timestamp` | `datetime` | ISO 8601 日期时间往返 |
-| :material-calendar: `!date` | `datetime.date` | ISO 8601 日期（不含时间） |
+| :material-clock-outline: `!!timestamp` | `datetime` / `datetime.date` | ISO 8601 时间戳；由文本决定是哪一种，仅含日期的文本是 `date`。`safe_dump()` 对两者都写这个标准标签 |
+| :material-calendar: `!date` | `datetime.date` | 早期版本写出的本地拼写，现由 `!!timestamp` 取代；仍可读取——本地标签在本库之外没有构造函数 |
+| :material-clock-outline: `!timestamp` | `datetime` | 早期版本写出的本地拼写，现由 `!!timestamp` 取代；仍可读取 |
 | :material-clock: `!time` | `datetime.time` | ISO 8601 时间（不含日期） |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID 字符串 ↔ 对象 |
 | :material-decimal: `!decimal` | `decimal.Decimal` | 任意精度十进制数 |
@@ -77,7 +78,7 @@ assert isinstance(val, datetime)
 ```python title="转储 Python 对象"
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out 包含: ts: !timestamp 2026-08-11T10:30:00
+# out 包含: !!timestamp 2026-08-11T10:30:00
 ```
 
 ### API 参考

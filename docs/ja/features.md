@@ -188,11 +188,11 @@ assert isinstance(doc.get("when"), datetime)
 # ダンプ: Python オブジェクト → タグ付きスカラー
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out contains: ts: !timestamp 2026-08-11T10:30:00
+# out contains: !!timestamp 2026-08-11T10:30:00
 ```
 
 **組み込みプラグイン**（インポート時に登録）:
-`!timestamp` → `datetime`、`!date` → `datetime.date`、`!time` → `datetime.time`、
+`!!timestamp` → `datetime` と `datetime.date`（テキストが決めます）、`!time` → `datetime.time`、
 `!uuid` → `uuid.UUID`、`!decimal` → `decimal.Decimal`、`!!binary` → `bytes`、
 `!regex` → `re.Pattern`、`!set` → `str`
 

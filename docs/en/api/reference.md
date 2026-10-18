@@ -416,9 +416,12 @@ class CustomType:
 - `to_yaml(obj)` — Convert a Python object to a YAML string (dump)
 - `validate(obj)` — Validate a Python object's type and value
 
-Built-in plugins include `!timestamp` (maps to `datetime`), `!date` (`datetime.date`),
+Built-in plugins include `!!timestamp` (`datetime` and `datetime.date` — the text decides which),
 `!time` (`datetime.time`), `!uuid` (`uuid.UUID`), `!decimal` (`decimal.Decimal`),
-`!!binary` (bytes, base64-encoded; the local `!binary` is still read), `!regex` (`re.Pattern`), and `!set`.
+`!!binary` (bytes, base64-encoded; the local `!binary` is still read), `!regex` (`re.Pattern`), and
+`!set`. The local `!timestamp` and `!date` tags are still read, so documents written by earlier
+versions keep their types; dumps use the standard tag because a local tag has no constructor in any
+other reader.
 
 #### `register_type()`
 

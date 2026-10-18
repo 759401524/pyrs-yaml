@@ -18,8 +18,9 @@ pyrs-yaml にはインポート時に自動登録される組み込みプラグ�
 
 | タグ | Python 型 | 説明 |
 |-----|----------|------|
-| :material-clock-outline: `!timestamp` | `datetime` | ISO 8601 日時のラウンドトリップ |
-| :material-calendar: `!date` | `datetime.date` | ISO 8601 日付（時刻なし） |
+| :material-clock-outline: `!!timestamp` | `datetime` / `datetime.date` | ISO 8601 のタイムスタンプ。日付のみのテキストなら `date`、そうでなければ `datetime` |
+| :material-calendar: `!date` | `datetime.date` | 以前の版が書き出していたローカル表記。現在は `!!timestamp` が代わり、読み取りだけ残します |
+| :material-clock-outline: `!timestamp` | `datetime` | 以前の版が書き出していたローカル表記。現在は `!!timestamp` が代わり、読み取りだけ残します |
 | :material-clock: `!time` | `datetime.time` | ISO 8601 時刻（日付なし） |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID 文字列 ↔ オブジェクト |
 | :material-decimal: `!decimal` | `decimal.Decimal` | 任意精度の小数 |
@@ -76,7 +77,7 @@ assert isinstance(val, datetime)
 ```python title="Python オブジェクトのダンプ"
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out に含まれる: ts: !timestamp 2026-08-11T10:30:00
+# out に含まれる: !!timestamp 2026-08-11T10:30:00
 ```
 
 ### API リファレンス

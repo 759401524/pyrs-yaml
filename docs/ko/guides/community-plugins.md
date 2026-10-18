@@ -18,8 +18,9 @@ pyrs-yaml에는 임포트 시 자동 등록되는 내장 플러그인이 포함�
 
 | 태그 | Python 타입 | 설명 |
 |-----|-------------|------|
-| :material-clock-outline: `!timestamp` | `datetime` | ISO 8601 일시 라운드트립 |
-| :material-calendar: `!date` | `datetime.date` | ISO 8601 날짜(시간 없음) |
+| :material-clock-outline: `!!timestamp` | `datetime` / `datetime.date` | ISO 8601 타임스탬프. 날짜만 적혀 있으면 `date`, 그 외에는 `datetime` |
+| :material-calendar: `!date` | `datetime.date` | 이전 버전이 쓰던 로컬 표기. 지금은 `!!timestamp`가 대신하고 읽기만 남습니다 |
+| :material-clock-outline: `!timestamp` | `datetime` | 이전 버전이 쓰던 로컬 표기. 지금은 `!!timestamp`가 대신하고 읽기만 남습니다 |
 | :material-clock: `!time` | `datetime.time` | ISO 8601 시간(날짜 없음) |
 | :material-binary: `!uuid` | `uuid.UUID` | UUID 문자열 ↔ 객체 |
 | :material-decimal: `!decimal` | `decimal.Decimal` | 임의 정밀도 십진수 |
@@ -76,7 +77,7 @@ assert isinstance(val, datetime)
 ```python title="Python 객체 덤프"
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out에 포함: ts: !timestamp 2026-08-11T10:30:00
+# out에 포함: !!timestamp 2026-08-11T10:30:00
 ```
 
 ### API 참조

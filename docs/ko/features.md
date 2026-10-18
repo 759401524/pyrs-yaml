@@ -190,11 +190,11 @@ assert isinstance(doc.get("when"), datetime)
 # 덤프: Python 객체 → 태그가 지정된 스칼라
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out contains: ts: !timestamp 2026-08-11T10:30:00
+# out contains: !!timestamp 2026-08-11T10:30:00
 ```
 
 **내장 플러그인** (import 시 등록):
-`!timestamp` → `datetime`, `!date` → `datetime.date`, `!time` → `datetime.time`,
+`!!timestamp` → `datetime`와 `datetime.date`(텍스트가 정합니다), `!time` → `datetime.time`,
 `!uuid` → `uuid.UUID`, `!decimal` → `decimal.Decimal`, `!!binary` → `bytes`,
 `!regex` → `re.Pattern`, `!set` → `str`
 

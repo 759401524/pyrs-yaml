@@ -426,7 +426,7 @@ assert isinstance(doc.get("when"), datetime)
 # 덤프: Python 객체 → 태그된 스칼라
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out에 포함됨: ts: !timestamp 2026-08-11T10:30:00
+# out에 포함됨: !!timestamp 2026-08-11T10:30:00
 ```
 
 | 메서드 | 설명 |

@@ -1,7 +1,7 @@
 """Test built-in plugins (enriched set)."""
 
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -39,17 +39,46 @@ def test_builtin_plugins_dump_roundtrip():
         "dec": Decimal("3.14159"),
     }
     out = pyrs_yaml.safe_dump(data)
-    assert "!timestamp" in out, out
-    assert "!date" in out, out
-    assert "!time" in out, out
-    assert "!uuid" in out, out
-    assert "!decimal" in out, out
+    # The tag text is the contract with every other reader, so it is asserted as spelled rather than
+    # as a substring: `!!timestamp` for both the date and the datetime, and `!time` stays local
+    # because YAML defines no tag for a bare time of day.
+    assert "!!timestamp 2026-08-11T10:30:00" in out, out
+    assert "!!timestamp 2026-08-11" in out, out
+    assert "!time 10:30:00" in out, out
+    assert "!uuid 550e8400-e29b-41d4-a716-446655440000" in out, out
+    assert "!decimal 3.14159" in out, out
+    assert "!date" not in out, out
     doc = pyrs_yaml.parse(out)
     assert isinstance(doc.get("ts"), datetime)
-    assert isinstance(doc.get("d"), date)
+    # A date read back as a midnight datetime would still satisfy `isinstance(..., date)`, so the
+    # date branch is pinned by what it is not.
+    assert isinstance(doc.get("d"), date) and not isinstance(doc.get("d"), datetime)
     assert isinstance(doc.get("t"), time)
     assert isinstance(doc.get("u"), uuid.UUID)
     assert isinstance(doc.get("dec"), Decimal)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("!!timestamp 2026-08-11", date(2026, 8, 11)),
+        ("!!timestamp 2026-08-11T10:30:00", datetime(2026, 8, 11, 10, 30)),
+        ("!!timestamp 2026-08-11 10:30:00", datetime(2026, 8, 11, 10, 30)),
+        ("!!timestamp 2026-08-11t10:30:00z", datetime(2026, 8, 11, 10, 30, tzinfo=timezone.utc)),
+        (
+            "!!timestamp 2026-08-11T10:30:00+08:00",
+            datetime(2026, 8, 11, 10, 30, tzinfo=timezone(timedelta(hours=8))),
+        ),
+        ("!!timestamp 2026-08-11T10:30:00.123456789", datetime(2026, 8, 11, 10, 30, 0, 123456)),
+    ],
+)
+def test_the_standard_tag_resolves_the_way_the_standard_readers_do(text, expected):
+    # PyYAML and ruamel.yaml both hand back a `date` for a date-only text and a `datetime` for
+    # anything with a time part, so this reader has to make the same fork or one document means two
+    # things depending on who reads it.
+    got = pyrs_yaml.safe_load(f"v: {text}\n")["v"]
+    assert got == expected, f"{text} resolved to {got!r}"
+    assert isinstance(got, type(expected)), f"{text} resolved to a {type(got).__name__}"
 
 
 def test_binary_plugin_roundtrip():

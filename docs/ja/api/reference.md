@@ -425,7 +425,7 @@ assert isinstance(doc.get("when"), datetime)
 # ダンプ：Python オブジェクト → タグ付きスカラー
 data = {"ts": datetime(2026, 8, 11, 10, 30)}
 out = pyrs_yaml.safe_dump(data)
-# out には次が含まれる：ts: !timestamp 2026-08-11T10:30:00
+# out には次が含まれる：!!timestamp 2026-08-11T10:30:00
 ```
 
 | メソッド | 説明 |

@@ -19,12 +19,16 @@ reader resolves, so `$.~` is the null key and `$.42` the integer one and both mu
 Only the spellings that lose their type between the two profiles are quoted there, which is what
 the two tables below are for.
 
-Temporal objects stay outside the forest on purpose. `safe_dump({"v": date(2026, 10, 18)})` emits
-a `!date` tag, and a SafeLoader has no constructor for a local tag, so both strangers refuse the
-document outright rather than change a value. That is a boundary of the tag design, not a drift in
-the quoting rule, and widening it is a different change.
+Temporals are the family this gate was most needed for and the one the forest cannot carry. Until
+the `!!timestamp` registration, `safe_dump({"v": date(2026, 10, 18)})` emitted the local `!date`
+tag, and a SafeLoader has no constructor for a local tag, so both strangers refused the document
+outright - not a mistyped value, an unrecoverable one. The rows at the bottom of this file emit the
+temporal objects and read them back through both strangers. `!time` is the deliberate exception:
+YAML defines no tag for a bare time of day, so that one stays a local extension.
 """
 
+import datetime as dt
+import io
 import json
 import random
 
@@ -249,6 +253,49 @@ def test_our_own_two_profiles_read_the_document_as_the_strangers_do(text):
 def test_the_guard_does_not_quote_what_no_reader_types(text):
     assert pyrs_yaml.safe_dump({"v": text}) == f"v: {text}\n"
     assert pyrs_yaml.safe_dump({text: 1}) == f"{text}: 1\n"
+
+
+TEMPORALS = [
+    dt.date(2026, 10, 18),
+    dt.datetime(2026, 10, 18, 9, 30),
+    dt.datetime(2026, 10, 18, 9, 30, 0, 123456),
+    dt.datetime(2026, 10, 18, 9, 30, tzinfo=dt.timezone(dt.timedelta(hours=8))),
+    dt.datetime(2026, 10, 18, 9, 30, tzinfo=dt.timezone.utc),
+]
+
+STRANGERS = {
+    "PyYAML": lambda text: yaml.safe_load(text),
+    "ruamel.yaml": lambda text: ruamel.yaml.YAML(typ="safe").load(io.StringIO(text)),
+}
+
+
+@pytest.mark.parametrize("value", TEMPORALS)
+@pytest.mark.parametrize("reader", list(STRANGERS))
+def test_a_stranger_reads_the_temporal_we_emitted(reader, value):
+    # A tag is the author's claim about the type of the text under it, so the tag we invent for a
+    # Python temporal has to be the one every other reader already knows. Measured before this row
+    # existed: both strangers answered `safe_dump({"v": date(...)})` with ConstructorError, because
+    # the local `!date` spelling has no constructor outside this library - the value was not
+    # mistyped, it was unrecoverable.
+    document = pyrs_yaml.safe_dump({"v": value})
+    assert "!!timestamp" in document, document
+    back = STRANGERS[reader](document)
+    assert back == {"v": value}, f"{reader}: {document!r} came back as {back!r}, not {value!r}"
+
+
+def test_the_bare_time_stays_the_local_extension_it_admits_being():
+    # YAML defines no tag for a time of day - PyYAML cannot even represent one, so `!time` is written
+    # as what it is instead of dressed up as a standard tag no reader would resolve.
+    document = pyrs_yaml.safe_dump({"v": dt.time(9, 30)})
+    assert document == "v:\n  !time 09:30:00\n"
+    assert pyrs_yaml.safe_load(document) == {"v": dt.time(9, 30)}
+
+
+def test_a_tag_a_document_arrived_with_is_not_rewritten_on_the_way_out():
+    # This change gives a tag to objects that had no text to preserve. A document that came in with
+    # the legacy spelling keeps it, so the fix cannot quietly restyle somebody's file.
+    text = "v: !date 2026-10-18\n"
+    assert pyrs_yaml.parse(text).to_yaml() == text
 
 
 def test_the_forest_carries_the_lexemes_this_gate_names():
