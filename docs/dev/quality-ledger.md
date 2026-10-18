@@ -6328,6 +6328,48 @@ nine targets. The two narrowed claims that stay out of the target - sorting a sc
 note whose owner an edit deleted - are still (eg)'s boundaries, and the `set_comment` ownership
 question is still #113's ruling to make.
 
+### (ei) The dash line took back its own note (2026-10-18)
+
+The discovery window (420s over `edit_yaml`, run on #514's tree) found `crash-61474da6`, and the
+shape under it needed no fuzzer to state: `- a: 1`, `set_comment` on `root[0]`. The first emission
+was `- \n  a: 1  # in`, the re-read filed the note with the pair that ends the block, and the second
+emission compacted it back to `- a: 1  # in`. Text moved; nothing was lost; the only claim broken
+was the fixed point (eh) had just restored.
+
+The cause was a permission, not a placement. `is_compact_item` asked the item mapping for
+`is_identity_clean()` — no comment, no anchor, no tag — so a note the item owned pushed the whole
+mapping off the dash line. And the dash line was exactly where the reader reports that note from, so
+the break bought nothing and cost the round: `-` then a block is how a *pair's* note is spelled,
+and the pair's note is what the re-read produced.
+
+A note alone no longer disqualifies the compact line; an anchor or a tag still does. The compact
+branch writes the item's own inline note itself, taking the last pair line's trailing slot when it
+is open and, when the pair has claimed YAML's one slot per line, a note line above the dash — the
+two places the reader hands a note back to this item. Five shapes were measured before and after:
+`- a: 1`, `- a: 1` with the value also noted, `- a: 1 / b: 2` with the last value noted, the fuzz
+input's `- :` (a null key, which is what the fuzzer minimised), and a two-item sequence with one
+note each. All five now settle in one round, and the `- {}` / `- ~` controls that already settled
+are untouched.
+
+`is_compact_item` is shared with the splice layer on purpose — the manifest comment says the writer
+and the splicer must never disagree — so widening it widens both together, and the check that the
+widening cost nothing is the suite: 715 Rust tests pass, including
+`every_note_in_the_seed_corpus_survives_one_emission` and the compact-dash note rows. No test had
+pinned the old break, because the old break was only ever reachable through the edit layer, and the
+note gates ask whether the text survived, not which line it sat on.
+
+Two named rows in `crates/pyrs-yaml-core/src/serializer.rs` hold the two placements
+(`a_note_on_a_block_sequence_item_rides_its_dash_line`,
+`an_item_note_with_no_room_on_the_dash_line_goes_above_it`), the input is committed as
+`fuzz/seeds/edit_yaml/former-crash-61474da6.seed` for the PR tier's `-runs=0` replay (measured: 13
+seeds replayed against this tree, `#14 DONE`, no crash), and #514's fixed-point assertion is what
+caught it.
+
+What this does not decide is #113. `- a: 1  # in` re-reads the note as the *pair's*; the emission is
+now a fixed point, but the owner still moved, and the tier therefore still withholds the ownership
+claim. A note that stays with the node the call named needs a position the reader reports it back
+from — that is a decision about the writer's contract, not a seed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

@@ -242,6 +242,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   decision that writes `~` for an empty value before a note (libFuzzer `edit_yaml`
   crash-b23eed05).
 
+- **A note on a block sequence item keeps the dash line** — an item mapping whose note is set
+  through the edit layer had no slot on the `-` line, so the writer pushed the whole mapping onto
+  its own lines; the reader then filed the note with the pair that ends the block and the next
+  emission compacted the line back, so the text took two rounds to settle. The compact line now
+  carries the item's note (`- a: 1  # n`), and when the pair line has already claimed YAML's one
+  trailing slot the note moves above the dash (`# n` then `- a: 1  # m`) — both spellings are
+  fixed points (libFuzzer `edit_yaml` crash-61474da6).
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added
