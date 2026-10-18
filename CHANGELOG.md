@@ -250,6 +250,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   trailing slot the note moves above the dash (`# n` then `- a: 1  # m`) — both spellings are
   fixed points (libFuzzer `edit_yaml` crash-61474da6).
 
+- **An empty plain scalar is spelled as the null it resolves to** — a scalar with no text and no
+  properties rendered as nothing, and the reader does not hand the same node back from an empty
+  line: `k:` and `-` both re-read as a null whose own spelling is `~`, so the first emission settled
+  only on the second round (libFuzzer `edit_yaml` crash-63749496, reached from `- >` with its style
+  set to plain). The writer now writes the null text wherever the body would be empty — nested
+  value, root value, sequence item, flow pair value, flow item. A tagged empty is left alone: the
+  tag suppresses resolution, so its body keeps the `''` spelling that settles it (#514). An anchor
+  is not the same case: it names the node without suppressing resolution, so `- &a3` is now written
+  `- &a3 ~` (libFuzzer `edit_yaml` crash-07b6a10e).
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

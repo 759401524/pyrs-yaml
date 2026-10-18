@@ -6370,6 +6370,54 @@ now a fixed point, but the owner still moved, and the tier therefore still withh
 claim. A note that stays with the node the call named needs a position the reader reports it back
 from — that is a decision about the writer's contract, not a seed.
 
+### (ej) An empty body is written as the null it resolves to (2026-10-18)
+
+(eg) handed over one open defect, (eh) closed it, and the restored fixed-point claim immediately
+found the next two: `crash-61474da6`, a block sequence item whose note pushed its mapping off the
+dash line (ledger (ei), PR #515), then `crash-63749496` — document `- >`, set the folded style to
+plain, and the emission is `-` with nothing after the dash. Re-read, that is a null; the null's own
+spelling is `- ~`; the text needed a second round.
+
+Measuring the shape rather than the input showed the hole was not the dash's. `k: `, `k:\n  a: `,
+`{a: }` and `[ ]`'s empty member all write nothing for a `Scalar { value: "", style: Plain }` with
+no tag and no anchor, and in every one of those positions the reader hands back a null whose text is
+`~`. The scalar writer is where the answer belongs: an empty plain body is now written as `~`, at
+one shared guard used by the block route (`write_scalar_node`) and the flow route
+(`serialize_flow_value`).
+
+A tagged empty is deliberately outside the rule. A tag suppresses schema resolution, so the *text*
+is what has to survive and `~` would change it — that is the case (eh) settled on `''`, and the
+guard is why `spell_empty_flow_body` now asks for a tag before spelling a body: with `~` written by
+the shared guard, spelling `''` as well would emit `~ ''`. An anchor was left out of the rule for
+the same reason one line of prose, and the window found that mistake a minute into its next run:
+`crash-07b6a10e` is `- &a3 `, the same empty body with a name on it. An anchor names a node and
+suppresses nothing — `&a3` and `&a3 ~` are the same null — so the guard asks only about the tag,
+and the pinned test carries the anchored shape as its sixth case.
+
+Measured across five positions before the writer changed and pinned after it:
+`an_empty_plain_scalar_settles_as_the_null_text` (in `settles_in_one_round.rs`) drives `- >`,
+`k: >`, `k:\n  a: >`, `k: {a: ''}` and `k: ['']` through `set_scalar_style_path(Plain)` and asserts
+each emission text and its fixed point — `- ~`, `k: ~`, `k:\n  a: ~`, `k: {a: ~}`, `k: [~]`. Nothing
+else in the tree changed its mind: 716 Rust tests and the whole Python tier pass, and the only
+Python failure while the work was in progress was the matrix's own count assertion waiting for the
+numbers below. The crash input is committed as `fuzz/seeds/edit_yaml/former-crash-63749496.seed` and
+the PR tier replays the 15 seeds of `edit_yaml` with `-runs=0` (`#16 DONE`, no crash).
+
+Counts moved with it: 716 Rust tests, 157 seeds of which 73 are former crashes, nine targets, 23
+Unreleased entries per changelog mirror. The claim that found all three of these is the one (eg)
+took out and (eh) put back — a withheld assertion finds nothing, which is the whole argument for
+keeping the fixed point asserted and closing what it names.
+
+The instruction-count leg caught this one, and it took a control to read. CI's own two runs — trunk
+and the PR head, one baseline, the enforcing image — put the four block-style writer scenarios at
++0.62…0.66%, and the fix writes no bytes at all on those fixtures. `docs/dev/perf.md` carries the
+same-session bisect: the flag hoist was not it (32 instructions of 32.5M), the branch is worth
++0.06% against a no-op control, and the single `~` write costs 0.65% when it sits before
+`write_scalar` and nothing when it sits after. The reworked head then read
++0.05/+0.12/+0.33/+0.05/+0.03% on the image — each below trunk's own reading of the same scenarios —
+and the leg reported success, so no floor moved. The red is recorded as priced and cleared, not
+widened away.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

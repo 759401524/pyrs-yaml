@@ -850,13 +850,18 @@ impl Serializer {
         if meta.anchor().is_some() || meta.tag().is_some() {
             self.write_anchor_tag(meta);
         }
-        // A value that renders as nothing but its tag leaves the line "pending": the
-        // scanner has seen no scalar text, so a note line written next is reported as
-        // this value's leading note whichever node the note belonged to. Recorded here
-        // so the next note line can close the line first (`… !- ~`) — the only fix that
-        // keeps the note's owner; see `close_pending_tag_line`.
-        self.pending_tag_insert_at =
-            if value.is_empty() && matches!(style, ScalarStyle::Plain) && meta.tag().is_some() {
+        // An empty plain scalar renders as nothing, and an empty line does not read back as the same
+        // node: `k: ` and `- ` both re-read as a null whose own spelling is `~`, so writing nothing
+        // cost a round (libFuzzer `edit_yaml` crash-63749496; crash-07b6a10e is the same body with an
+        // anchor on it, and an anchor names a node without suppressing resolution). A tag is the
+        // opposite case — it suppresses resolution, so the text has to survive and the body is spelled
+        // `''` by `spell_empty_flow_body` instead.
+        // A value that renders as nothing but its tag leaves the line "pending": the scanner has seen
+        // no scalar text, so a note line written next is reported as this value's leading note
+        // whichever node the note belonged to. Recorded here so the next note line can close the line
+        // first (`… !- ~`) — the only fix that keeps the note's owner; see `close_pending_tag_line`.
+        self.pending_tag_insert_at = if value.is_empty() && matches!(style, ScalarStyle::Plain) {
+            if meta.tag().is_some() {
                 // Issue #339: `write_anchor_tag` left a separator for content that never comes, so
                 // the line ended on a space (`n: !!null `, and worse, `n: !!null   # c` with a
                 // trailing note). Dropped here rather than popped at the terminator: this is the
@@ -870,9 +875,25 @@ impl Serializer {
                 Some(self.output.len())
             } else {
                 None
-            };
+            }
+        } else {
+            None
+        };
         let line_start = self.output.len();
         self.write_scalar(value, style, block, self.width, block_base);
+        // The null text is written after the scalar, and that ordering is measured, not stylistic:
+        // the same single write placed ahead of `write_scalar` costs the block-style writer scenarios
+        // +0.62…0.65% (`serialize_medium` 32,570,893 against trunk's 32,370,862) on documents holding
+        // no empty scalar at all, while here it reads 32,360,862 — below the tree with no such branch
+        // (`docs/dev/perf.md`). Asking the emptiness question twice is what keeps it there: hoisting
+        // `value.is_empty() && matches!(style, Plain)` into a boolean above the branch so it is asked
+        // once reads 32,690,872, a full percentage point worse.
+        if self.pending_tag_insert_at.is_none()
+            && value.is_empty()
+            && matches!(style, ScalarStyle::Plain)
+        {
+            self.output.push('~');
+        }
         let block_body = matches!(style, ScalarStyle::Literal | ScalarStyle::Folded);
         let mut noted = false;
         if let Some(c) = meta.comment()
@@ -2047,15 +2068,19 @@ impl Serializer {
     /// second round is the drift `edit_yaml` catches as "an edit's emission did not settle"; measured,
     /// `{a: !t   # n` re-reads as `{a: # n` + `!t }` while `{a: !t ''  # n` re-reads as the tree it
     /// came from. The empty scalar keeps its value either way — `''` is the same text written
-    /// quoted — so the spelling is decided by what the line has to hold, the same way an empty null
-    /// is written `~` rather than nothing when a note follows it.
+    /// quoted — so the spelling is decided by what the line has to hold.
+    ///
+    /// Only for a node whose tag suppresses resolution. Without one the body was already spelled by
+    /// the scalar writers' own empty-plain branch, and asking this twice would write `~ ''`.
     fn spell_empty_flow_body(&mut self, value: &CustomNode) {
         if let CustomNode::Scalar {
             value: text,
             style: ScalarStyle::Plain,
+            meta,
             ..
         } = value
             && text.is_empty()
+            && meta.tag().is_some()
         {
             self.output.push_str("''");
         }
@@ -2104,6 +2129,12 @@ impl Serializer {
             } => {
                 if meta.anchor().is_some() || meta.tag().is_some() {
                     self.write_anchor_tag(meta);
+                }
+                // The same hole an empty plain scalar leaves after a dash or a colon, answered the
+                // same way — asked before the downgrade, which is about a style the text can carry.
+                if value.is_empty() && matches!(style, ScalarStyle::Plain) && meta.tag().is_none() {
+                    self.output.push('~');
+                    return Ok(());
                 }
                 // A block scalar (`|` / `>`) cannot live inside a flow
                 // collection — its body needs a dedicated, deeper-indented
