@@ -1048,3 +1048,61 @@ So: when a pull request moves `to_python_small` near the line, re-measure with `
 a parent-commit control from the same session and read the median beside the max. A movement that
 shows in both, on the pinned compiler, is code. One that shows only in the maximum of a bigger
 sample is the band.
+
+## Where one character wrote 0.6% of the YAML writer (2026-10-18)
+
+PR #516 makes an empty plain scalar write the null text `~` instead of nothing. Its CI head was
+green on `Test matrix (all legs)` and red on the instruction-count leg: against the committed floor
+the four block-style writer scenarios read +0.73%, +0.77%, +1.02%, +0.72%, while `main` one commit
+earlier read +0.10%, +0.15%, +0.36%, +0.06%. Two runs of one workflow on the enforcing image, so the
+pair is directly comparable: `serialize_medium` 32,370,918 on trunk, 32,570,924 on the PR head. A
+uniform +0.62…0.65% over four shapes of the same document is a per-scalar constant, and the fix's
+whole diff is six lines inside the scalar writer.
+
+Two hypotheses were tested and one survived. Both trees were built in one session on one host (WSL2,
+`rustc 1.97.1`, the baseline's ISA pin), swapping only `crates/pyrs-yaml-core/src/serializer.rs`,
+and every scenario below came back with `spread 0.000%` over its three samples.
+
+| variant | `serialize_small` | `serialize_medium` |
+|:--|--:|--:|
+| trunk (`main`) | 4,139,896 | 32,370,862 |
+| flag hoisted out of the short-circuit | — | 32,570,894 |
+| same branch, no write in it (control) | 4,141,896 | 32,390,862 |
+| `output.push('~')` before `write_scalar` | 4,165,896 | 32,570,893 |
+| `output.push('~')` after `write_scalar` | 4,137,896 | 32,360,862 |
+| the same, with the test hoisted into a boolean | 4,181,896 | 32,690,872 |
+
+- **The hoisted `meta.tag()` was not it.** Reading the boxed fidelity slot for every scalar instead
+  of only for the empty ones moved `serialize_medium` by 32 instructions of 32.5M. The cost was
+  already there, so that "obvious" regression was a wrong guess written down and then refuted.
+- **The branch is almost free.** The control keeps the nested condition and deletes the write:
+  +20,000 of 32.4M, +0.06%.
+- **The write's position is the whole cost.** The same one character, in the same never-taken
+  branch, reads 32,570,893 before `write_scalar` and 32,360,862 after it — 210,000 instructions,
+  0.65%, on a document that contains no empty scalar at all. `--profile serialize_medium` agrees:
+  every function's self count is identical between the two trees except `serialize_node_internal`,
+  which carries the inlined scalar writer, at 6,134,000 against 5,932,000.
+
+The reading is the two positions; what follows is the story that fits them, not a probed fact about
+LLVM. The buffer mutation ahead of the call lands between the writer's two statements that need to
+know where the line starts and what the line holds, so the state it cached about `self.output` is
+invalid at the point the call wants it; after the call the buffer was going to be mutated anyway, so
+there is nothing left to invalidate. What is certain is the arithmetic, and it is enough: a fix that
+changes no bytes on the measured fixtures can still cost 0.6% by where its write sits.
+
+- **Computing the test once is the expensive choice.** Sharing the
+  `value.is_empty() && matches!(style, Plain)` answer between the branch and the write — one boolean
+  instead of asking the same question twice — reads 32,690,872, which is +1.01% over the version
+  that asks it twice and +0.99% over a tree with no fix at all. Both readings are whole files rather
+  than an isolated instruction pattern, so the mechanism is not pinned down; the number is. The
+  shape the reuse-instinct prefers is the one that costs a percentage point, so the change ships the
+  row above it, which asks the same question twice and pays nothing.
+
+So the procedure for an instruction-count red on a correctness pull request is: pair the head
+against its own trunk commit in one session, then bisect the shape with a no-op control before
+believing any explanation — and before asking for a floor refresh. The two channels then agree: the
+enforcing image read this head at `serialize_small` +0.05%, `serialize_medium` +0.12%,
+`serialize_block` +0.33%, `serialize_block_scalars` +0.05%, `serialize_anchors` +0.03% — each
+*below* the same image's reading of trunk one commit earlier (+0.10%, +0.15%, +0.36%, +0.06%) — and
+its `serialize_medium` sample (32,360,953) is 86 instructions from the local one. The leg reported
+success and no floor moved.

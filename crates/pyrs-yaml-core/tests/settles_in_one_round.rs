@@ -146,3 +146,55 @@ fn a_tagged_empty_flow_member_with_a_note_settles_in_one_round() {
         "the settled text is not itself stable"
     );
 }
+
+/// libFuzzer `edit_yaml` crash-63749496: a scalar with no text and no properties.
+///
+/// An empty plain scalar renders as nothing, and the reader does not hand the same node back from
+/// an empty line: `k: ` and `- ` both re-read as a null whose own spelling is `~`, so the first
+/// emission was one round short of a fixed point. The route the fuzzer reached was a folded item
+/// whose style was set to plain; the hole was in the scalar writer itself, so every shape that
+/// renders empty — nested value, root value, sequence item, flow pair value, flow item — is asked
+/// here, each pinned to the text the reader answers with. A tagged empty is deliberately not in
+/// this table: the tag suppresses resolution, so its body is spelled `''` instead, and
+/// `a_tagged_empty_flow_member_with_a_note_settles_in_one_round` holds that one.
+#[test]
+fn an_empty_plain_scalar_settles_as_the_null_text() {
+    use pyrs_yaml_core::ast::ScalarStyle;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_anchor_path, set_scalar_style_path};
+    use std::borrow::Cow;
+
+    let k = || Segment::Key(Cow::Borrowed("k"));
+    let a = || Segment::Key(Cow::Borrowed("a"));
+    for (src, path, expected) in [
+        ("- >\n", vec![Segment::Index(0)], "- ~\n"),
+        ("k: >\n", vec![k()], "k: ~\n"),
+        ("k:\n  a: >\n", vec![k(), a()], "k:\n  a: ~\n"),
+        ("k: {a: ''}\n", vec![k(), a()], "k: {a: ~}\n"),
+        ("k: ['']\n", vec![k(), Segment::Index(0)], "k: [~]\n"),
+    ] {
+        let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+        set_scalar_style_path(&mut node, &path, ScalarStyle::Plain, src, None)
+            .expect("the style is set");
+        let one = to_yaml(&node);
+        assert_eq!(one, expected, "the empty body has to be spelled: {src:?}");
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+
+    let src = "- >\n";
+    let path = [Segment::Index(0)];
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    set_scalar_style_path(&mut node, &path, ScalarStyle::Plain, src, None)
+        .expect("the style is set");
+    set_anchor_path(&mut node, &path, "a3", src, None).expect("the anchor is set");
+    let one = to_yaml(&node);
+    assert_eq!(
+        one, "- &a3 ~\n",
+        "an anchor names the node, it does not change what the node resolves to: {one:?}"
+    );
+    assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
+}
