@@ -295,9 +295,15 @@ pub(crate) fn line_has_comment_marker(line: &[u8]) -> bool {
 }
 
 /// Whether a block mapping can be emitted in the compact `- key: value`
-/// sequence-item form: no metadata, non-empty, all keys simple scalars and
+/// sequence-item form: no anchor and no tag, non-empty, all keys simple scalars and
 /// all values inlineable. Mirrors the guard used by `write_sequence_item`;
 /// shared so the splice layer and the serializer can never drift.
+///
+/// A note the item itself carries does not disqualify it. The dash line's own break is
+/// what the reader reports the note from, so `- a: 1  # n` and `# n` above the dash both
+/// re-read as this item's note, while `- ` + a block starting on the next line re-reads as
+/// the *pair's* - and the next emission then takes the compact form, so the text moved
+/// (libFuzzer `edit_yaml` crash-61474da6: `- \n  a: 1  # n` then `- a: 1  # n`).
 pub fn is_compact_item(node: &CustomNode) -> bool {
     matches!(
         node,
@@ -306,7 +312,9 @@ pub fn is_compact_item(node: &CustomNode) -> bool {
             meta,
             flow_style: false,
             ..
-        } if meta.is_identity_clean()
+        } if meta.anchor().is_none()
+            && meta.tag().is_none()
+            && meta.comment().is_none_or(|c| !c.standalone)
             && !pairs.is_empty()
             && pairs.iter().all(|(k, v)| {
                 !matches!(k, CustomNode::Mapping { .. } | CustomNode::Sequence { .. })
@@ -1524,15 +1532,18 @@ impl Serializer {
                 self.write_note_line(indent_width, &comment.text);
             }
         }
+        // Where the dash line begins, after any note lines written above it: an item's own
+        // inline note that cannot claim the tail slot goes here, one line up.
+        let dash_line_start = self.output.len();
         self.write_indent(indent_width);
         self.output.push_str("- ");
 
         if compact {
             // Compact form: `- key: value` with subsequent keys
             // indented to align under the first key. Only when the
-            // mapping carries no metadata and every key/value can
+            // mapping carries no anchor or tag and every key/value can
             // share the dash line.
-            let CustomNode::Mapping { pairs, .. } = item else {
+            let CustomNode::Mapping { pairs, meta, .. } = item else {
                 return Err(SerializeError::Internal("is_compact_item on non-mapping"));
             };
             for (pi, (key, value)) in pairs.iter().enumerate() {
@@ -1603,6 +1614,29 @@ impl Serializer {
                             self.close_captured_pending_line(pending_before, own_line_start);
                         self.note_line_above(above, &note.text);
                     }
+                }
+            }
+            // The item's own inline note has two homes the reader reports it back from: the
+            // tail slot of the last pair line, or — when the pair loop claimed that slot — a
+            // line of its own above the dash. What has no home is the break *after* the dash:
+            // `- \n  a: 1  # n` re-reads the note as the pair's, and the next emission takes
+            // the compact line, so the text moved (libFuzzer `edit_yaml` crash-61474da6).
+            if let Some(c) = meta
+                .comment()
+                .filter(|c| !c.standalone)
+                .filter(|c| note_is_writable(c))
+            {
+                if self.trailing_note_slot_open
+                    && self.output.ends_with('\n')
+                    && !self.tail_line_has_note()
+                {
+                    self.output.pop();
+                    self.output.push_str("  # ");
+                    self.output.push_str(note_text_to_write(&c.text));
+                    self.output.push('\n');
+                    self.trailing_note_slot_open = false;
+                } else {
+                    self.note_line_above(dash_line_start, &c.text);
                 }
             }
         } else if !Self::is_empty_container(item)
@@ -4137,6 +4171,63 @@ mod tests {
             ),
         ]));
         assert_eq!(one, "- a: 1\n", "the compact form is untouched: {one:?}");
+    }
+
+    /// A note carried by the item mapping itself had no slot on the dash line, so the mapping
+    /// was pushed onto its own lines — and a note written after a block is filed by the reader
+    /// with the pair that ends it, so the next emission compacted the line back and the text
+    /// moved: `- \n  a: 1  # in` then `- a: 1  # in` (libFuzzer `edit_yaml` crash-61474da6,
+    /// reached by a `set_comment` on `root[0]`). The compact line is where that note belongs.
+    #[test]
+    fn a_note_on_a_block_sequence_item_rides_its_dash_line() {
+        let mut item = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("1"))]
+                .into_iter()
+                .collect(),
+        );
+        item.set_comment(Comment {
+            text: "in".into(),
+            standalone: false,
+        });
+
+        let one = to_yaml(&CustomNode::plain_sequence(vec![item]));
+        assert_eq!(one, "- a: 1  # in\n", "the note has a dash line to sit on");
+        assert_eq!(
+            to_yaml(&parse_core(&one)),
+            one,
+            "not a fixed point: {one:?}"
+        );
+    }
+
+    /// One YAML line has one trailing note, so when the pair line has claimed its slot the
+    /// item's note takes the only other place the reader reports it back from: a line above
+    /// the dash. Written inside the block instead it re-reads as the enclosing sequence's, and
+    /// the next emission moves it up — the same second round as the single-pair shape, one
+    /// branch over (`- \n  # in\n  a: 1  # vn` measured against `# in\n- a: 1  # vn`).
+    #[test]
+    fn an_item_note_with_no_room_on_the_dash_line_goes_above_it() {
+        let mut value = CustomNode::plain_scalar("1");
+        value.set_comment(Comment {
+            text: "vn".into(),
+            standalone: false,
+        });
+        let mut item = CustomNode::plain_mapping(
+            [(CustomNode::plain_scalar("a"), value)]
+                .into_iter()
+                .collect(),
+        );
+        item.set_comment(Comment {
+            text: "in".into(),
+            standalone: false,
+        });
+
+        let one = to_yaml(&CustomNode::plain_sequence(vec![item]));
+        assert_eq!(one, "# in\n- a: 1  # vn\n", "both notes keep their line");
+        assert_eq!(
+            to_yaml(&parse_core(&one)),
+            one,
+            "not a fixed point: {one:?}"
+        );
     }
 
     /// A note that trails a *simple key* rode whatever line had just been

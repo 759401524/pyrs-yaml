@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 713 Rust `#[test]`, 1,749 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 715 Rust `#[test]`, 1,749 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 27 proptest properties (25 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 154 seeds of which 70 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 155 seeds of which 71 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -35,8 +35,8 @@ place it claims to have written it. It paid for itself before it was committed: 
 first seed replay reached an anchor rename that emitted `base: &a0 1 / use: *x`, text this library's
 own reader refuses, and exploration reached two more doors over the same invariant (a `set` or `move`
 that drops a referenced anchor's definition, a `delete` of it). All three are now refused at the place
-the drop happens; `fuzz/seeds/edit_yaml/former-crash-{3cc4245d,c59db74a,b23eed05}.seed` replay them per
-PR.
+the drop happens; the four inputs that found them —
+`fuzz/seeds/edit_yaml/former-crash-{3cc4245d,c59db74a,b23eed05,61474da6}.seed` — replay per PR.
 
 Three claims the target first made are not in it, and each was narrowed by a measurement rather than by
 taste. `sort_keys_path` answers "ok" for a path naming a scalar and changes nothing, so the ordering
@@ -473,7 +473,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (70 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (71 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 
