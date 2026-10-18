@@ -29,7 +29,12 @@ status: new
   何路径能让它失败。`scripts/check_main_provenance.py` 现在把这句话拆成三个问题向 API 提出：这个提交
   由哪个 pull request 产生、推送的树是否属于该 pull request 的某棵提交树、承载它的提交上
   `Test matrix (all legs)` 是否报告 `success`；答案不成立即拒绝。在所测得的每个尖兵（`07f988fa`、
-  `60f670d0`、`225cf373`）上这句话都成立，所以关闭的是防线的形状缺陷，而不是一起事故。
+  `60f670d0`、`225cf373`）上，关于内容的这句断言都成立，所以缺陷在防线的形状。但防线自身第一次
+  跑上 trunk 就红了一次，原因是读法而不是内容，修法与本次改动一并落地：一个提交可以同时携带该
+  检查名的多条记录，API 并不按完成先后排列，而本 workflow 的判定作业只在 `pull_request` 事件下
+  运行，所以一次 `workflow_dispatch` 会在真正的结论旁边留下一条 `skipped`。把最后一行当成答案，
+  就是把一次"没有判定"当成拒绝。`newest_verdict` 丢弃那些什么都没判定的记录，再按作业结束时间
+  排序；于是 `fddcc76e` 通过，七个祖先仍各自因为一条确实存在的结论而被拒绝。
 
 - **每格式防线表改为派生测量，并纠正两格错读** — `scripts/quality_matrix.py` 现在会依据声明防线
   的文件（fuzz 目标、`proptest!` 块、各 `test_*_crosslib.py`，以及 `pyproject.toml` 里的依赖标

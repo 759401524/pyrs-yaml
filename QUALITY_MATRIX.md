@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 693 Rust `#[test]`, 1,707 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 693 Rust `#[test]`, 1,710 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 27 proptest properties (25 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 8 targets, 142 seeds of which 67 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -239,7 +239,9 @@ review habit:
   pins the wiring in both directions, and eight mutants (the echo restored, any verdict counting as
   green, head-only equality instead of tree membership, the `pull-requests: read` scope dropped, an
   unattributed push passing, the `workflow_dispatch` arm removed, the first check-run attempt read
-  instead of the newest, the step's `GH_TOKEN` renamed away) each reddened exactly one test. The dispatch
+  instead of the newest, the step's `GH_TOKEN` renamed away) each reddened exactly one test on that
+  reading - the ordering mutant reddens three of the 19 now, because the fix below added two more
+  tests that read the same rule. The dispatch
   arm is there because a job that can only ever run on `push` cannot be exercised before the merge that
   first runs it, and it paid for itself on its first use: the dispatched run reported the API call
   exiting 4 with "To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment
@@ -248,14 +250,27 @@ review habit:
   first and only run, so it would have been red from arrival and the argument for the dispatch arm would
   have been a lesson in why not to ship an untested job. It cannot block anything either:
   `matrix-verdict` deliberately does not wait on this job, asserted rather than assumed. The
-  newest-attempt rule is the one that was wrong on the first draft - reading the first row would keep
-  refusing a tip whose red attempt had since been made green, a false red on trunk, and the sibling
-  `scripts/dependency_merge_gate.py` already reads `last`. The tree rule is membership rather than
-  equality with the head because a rebase can drop an empty tail commit, and the tip's tree is then an
-  earlier commit's; replaying the checker over `main`'s last 18 commits showed why the *tip* is the thing
-  to judge - eight refusals, every one an ancestor of a push tip, including seven intermediate heads of
-  the eleven-commit #483 rebase that were red at the time and were later fixed by the push that became
-  the tip.
+  newest-attempt rule was the wrongest part of it, and it took a merge to find out: reading the *last
+  row* of the response is not reading the newest attempt. `522b0aac` carries two records of the required
+  name - pull request #493's `success`, finished 2026-10-18T01:03:44Z, and the `skipped` a
+  `workflow_dispatch` run of the same workflow left on that sha, finished 01:00:39Z - and the response
+  lists them oldest-last. The `skipped` is not a verdict either: `matrix-verdict` is gated on
+  `github.event_name == 'pull_request'`, so dispatching this workflow on a pull request's own branch
+  records an absence beside the real answer for as long as that sha exists. `main`'s first push after
+  this gate landed (`fddcc76e`) was refused by that reading - a false red on trunk, the exact failure the
+  sentence above was written to prevent, produced by the gate's first run on trunk. `newest_verdict`
+  drops the records that judged nothing (`skipped`, a run with no conclusion) and sorts what remains by
+  the time the job finished, so the response order is nothing anyone can lean on; the selftest reads nine
+  such record sets, and three mutants (the filter dropped, `skipped` counted as a verdict, the sort
+  reversed) each reddened two or three of the 19 tests. A dispatch still cannot manufacture a green: only
+  a pull request run can report `success` for this name, and a tip whose only record is a `skipped`
+  refuses as `never reported`. Replayed over `main`'s last 18 commits after the fix, the tip passes and
+  seven ancestors refuse - six intermediate heads of the eleven-commit #483 rebase whose newest attempt
+  was `failure`, and #487's first commit `c1d984e0`, which carries no record of the name at all. The tree
+  rule is membership rather than equality with the head because a rebase can drop an empty tail commit,
+  and the tip's tree is then an earlier commit's. `scripts/dependency_merge_gate.py` reads `last` of the
+  same response and carries the same shape; it is named rather than fixed here, because nothing dispatches
+  this workflow on a Dependabot head, so no absence can yet sit beside its verdict.
 
 The strongest evidence that a hook tier is not decoration came from its own author: the five
 files written while building this matrix came out of the editor as CRLF, and

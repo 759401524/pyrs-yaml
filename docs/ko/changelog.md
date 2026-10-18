@@ -28,8 +28,14 @@ status: new
   `scripts/check_main_provenance.py`는 이제 그 문장의 세 가지 질문을 API에 던집니다 — 이 커밋을 만든
   pull request는 무엇인가, 푸시된 트리가 그 pull request의 커밋 트리 중 하나인가, 그것을 담은
   커밋에서 `Test matrix (all legs)`가 `success`를 보고했는가 — 그리고 성립하지 않으면 거부합니다.
-  측정한 모든 tip(`07f988fa`, `60f670d0`, `225cf373`)에서 주장은 성립했으므로, 여기서 닫는 것은 방어
-  체계의 형태 결함이지 사고가 아닙니다.
+  측정한 모든 tip(`07f988fa`, `60f670d0`, `225cf373`)에서 내용에 관한 주장은 성립했으므로, 결함은
+  방어 체계의 형태에 있었습니다. 그런데 이 문지기 자체가 trunk에서 처음 실행될 때 잘못된 이유로
+  빨개졌고, 그 수정도 이번 변경에 함께 들어갑니다 — 하나의 커밋은 그 검사 이름의 기록을 여러 개
+  가질 수 있고, API는 완료 순서로 나열하지 않으며, 이 workflow의 판단 작업은 `pull_request`에서만
+  실행되므로 `workflow_dispatch`는 진짜 판단 옆에 `skipped`를 남깁니다. 마지막 행을 답으로 읽은
+  것은 그 부재를 거절으로 다루는 것이었습니다. `newest_verdict`은 아무것도 판단하지 않은 기록을
+  버리고 나머지를 작업 종료 시각으로 정렬하므로, `fddcc76e`는 통과하고 일곱 조상은 실제로
+  존재하는 판단 때문에 계속 거부됩니다.
 
 - **형식별 방어 표를 파생 측정으로 전환, 두 칸을 실측으로 정정** — `scripts/quality_matrix.py`가
   방어를 선언하는 파일(fuzz 대상, `proptest!` 블록, 각 `test_*_crosslib.py`, `pyproject.toml`

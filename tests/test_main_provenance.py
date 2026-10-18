@@ -161,7 +161,8 @@ def test_one_green_among_two_associated_pull_requests_is_enough(gate):
 def test_the_selftest_covers_the_shapes_without_network(gate, capsys):
     assert gate.selftest() == 0
     out = capsys.readouterr().out
-    assert f"{len(gate.SELFTEST)}/{len(gate.SELFTEST)} shapes answered correctly" in out
+    assert f"{len(gate.SELFTEST)}/{len(gate.SELFTEST)} decision shapes answered correctly" in out
+    assert f"{len(gate.VERDICT_SHAPES)}/{len(gate.VERDICT_SHAPES)} verdict shapes read correctly" in out
 
 
 def test_the_script_stays_loadable_on_the_interpreter_floor_it_runs_on():
@@ -177,13 +178,8 @@ def test_the_script_stays_loadable_on_the_interpreter_floor_it_runs_on():
     assert "from __future__ import annotations" in text
 
 
-def test_the_newest_attempt_of_the_required_check_decides(gate, monkeypatch):
-    """A re-run appends a check-run rather than replacing it, so the last row is the verdict.
-
-    Read the first instead and a tip whose red attempt was later made green keeps being refused - a
-    false red on `main`, the one thing a trunk gate may not produce. Stubbed at `_gh`, the single place
-    this module speaks to the API, so the ordering rule is tested without a network call.
-    """
+def _stub_api(gate, monkeypatch, records):
+    """Point `collect`'s only network seam at a fixed set of `Test matrix (all legs)` records."""
 
     def fake_gh(repo, path, *extra):
         if path.endswith("/pulls"):
@@ -191,10 +187,65 @@ def test_the_newest_attempt_of_the_required_check_decides(gate, monkeypatch):
         if path.startswith("pulls/500/commits"):
             return [f"{'1' * 40}\t{'a' * 40}"]
         if "check-runs" in path:
-            return ["failure", "success"]
+            return list(records)
         raise AssertionError(f"unexpected api path {path}")
 
     monkeypatch.setattr(gate, "_gh", fake_gh)
-    candidates = gate.collect("owner/repo", "0" * 40, "a" * 40)
+    return gate.collect("owner/repo", "0" * 40, "a" * 40)
+
+
+#: `522b0aac`'s two records of the required check, copied from the API response on 2026-10-18: the
+#: verdict pull request #493 earned, and the `skipped` a `workflow_dispatch` run of the same workflow
+#: left on the same sha. `ci.yml` gates its verdict job on `github.event_name == 'pull_request'`, so
+#: the second is not a judgement of the content - it is a record that no judgement was made.
+GREEN_ROW = "2026-10-18T01:03:44Z\t117549775531\tsuccess"
+DISPATCH_ROW = "2026-10-18T01:00:39Z\t117549241560\tskipped"
+OLDER_RED_ROW = "2026-10-18T01:00:00Z\t10\tfailure"
+NEWER_GREEN_ROW = "2026-10-18T02:00:00Z\t11\tsuccess"
+
+
+def test_the_newest_attempt_of_the_required_check_decides(gate, monkeypatch):
+    """A re-run appends a check-run rather than replacing it, so the newest one is the verdict.
+
+    Read the oldest instead and a tip whose red attempt was later made green keeps being refused - a
+    false red on `main`, the one thing a trunk gate may not produce.
+    """
+    candidates = _stub_api(gate, monkeypatch, [OLDER_RED_ROW, NEWER_GREEN_ROW])
     assert [c.verdict for c in candidates] == ["success"], candidates
     assert gate.decide("0" * 40, "a" * 40, tuple(candidates)) == []
+
+
+def test_a_dispatched_run_does_not_unjudge_a_green_commit(gate, monkeypatch):
+    """The false red this file was written against: `main`'s `fddcc76e` refused a verified tip.
+
+    The API returns the pull request's `success` *before* the dispatch run's `skipped`, so a reader
+    taking the final line read the older record and called content the merge gate judged green
+    unverified. The rule is the newest attempt, and a `skipped` is the absence of an attempt.
+    """
+    candidates = _stub_api(gate, monkeypatch, [GREEN_ROW, DISPATCH_ROW])
+    assert [c.verdict for c in candidates] == ["success"], candidates
+    assert gate.decide("0" * 40, "a" * 40, tuple(candidates)) == []
+
+
+def test_the_verdict_read_does_not_depend_on_the_response_order(gate, monkeypatch):
+    """Nothing documents the order, so the reading must not rest on it: same rows, reversed.
+
+    Dropping the sort and keeping the position makes this red while the test above stays green, which
+    is the difference between "the newest attempt decides" and "whatever GitHub happened to list last".
+    """
+    candidates = _stub_api(gate, monkeypatch, [DISPATCH_ROW, GREEN_ROW])
+    assert [c.verdict for c in candidates] == ["success"], candidates
+    candidates = _stub_api(gate, monkeypatch, [NEWER_GREEN_ROW, OLDER_RED_ROW])
+    assert [c.verdict for c in candidates] == ["success"], candidates
+
+
+def test_a_dispatched_run_cannot_make_an_unjudged_commit_green(gate, monkeypatch):
+    """Dropping `skipped` must not become a green: only a pull request run can report `success` here.
+
+    A tip whose only record of the required check came from a dispatch has never been judged, and the
+    gate has to say so - the direction this fix must not leak in.
+    """
+    candidates = _stub_api(gate, monkeypatch, [DISPATCH_ROW])
+    assert [c.verdict for c in candidates] == ["never reported"], candidates
+    reasons = gate.decide("0" * 40, "a" * 40, tuple(candidates))
+    assert len(reasons) == 1 and "never reported" in reasons[0], reasons

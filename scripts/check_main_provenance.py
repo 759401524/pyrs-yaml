@@ -23,6 +23,10 @@ So this asks the three questions the sentence contains, cheapest first:
    weaker claim than verified content: the tree can match a head whose verdict was cancelled, skipped,
    or never reported. `Test matrix (all legs)` is the one name branch protection requires, so it is the
    one conclusion that settles the question, and `scripts/check_matrix_verdict.py` is what produced it.
+   Reading that conclusion is its own rule, and the first version of this file got it wrong: a commit can
+   carry several records of one check name - one per workflow run that included it - the API does not
+   return them in the order they finished, and only some of them are attempts. `newest_verdict` is what
+   question 3 now asks; the shape that motivated it is recorded there with its timestamps.
 
 The question is asked of the pushed tip, which is what a `push` event carries. That distinction was
 measured rather than assumed: replaying this checker over `main`'s last 18 commits refused eight of them,
@@ -58,6 +62,13 @@ REQUIRED_CHECK = "Test matrix (all legs)"
 
 class GateError(Exception):
     """The question could not be asked - which is not the same as asking it and being refused."""
+
+
+#: A record with one of these conclusions is not an answer to "did the merge gate judge this green":
+#: `skipped` is what GitHub writes for a job whose `if` excluded it, and `""` is a job that has not
+#: concluded. Neither attempted a verdict, so `newest_verdict` drops both rather than letting one
+#: overwrite the attempt that was made.
+NON_ATTEMPTS = ("", "skipped")
 
 
 class Candidate(NamedTuple):
@@ -119,6 +130,38 @@ def _gh(repo: str, path: str, *extra: str) -> list:
     raise GateError(f"{' '.join(cmd[2:4])} exited {proc.returncode}: {error}")
 
 
+def newest_verdict(rows: tuple[str, ...]) -> str:
+    """The conclusion of the newest verdict the merge gate reached about one commit.
+
+    Args:
+        rows: one record per check run named `REQUIRED_CHECK` on that commit, as
+            `completed_at<TAB>job id<TAB>conclusion`, in whatever order the API returned them.
+
+    Two of the first version's assumptions were measured to be wrong on the first trunk push this gate
+    judged. `main`'s `fddcc76e` (pull request #493 rebased) refused with "the content matches, the green
+    does not", and the commit carries two records of the required name: the pull request's own verdict
+    `success`, finished 2026-10-18T01:03:44Z (job 117549775531), and the `skipped` left by a
+    `workflow_dispatch` run of the same workflow on the same sha, finished 2026-10-18T01:00:39Z (job
+    117549241560). The response lists them oldest-last, so reading the final line read the older record;
+    and `skipped` was treated as a verdict when it is the absence of one - this workflow gates its verdict
+    job on `github.event_name == 'pull_request'`, so any dispatch of the same workflow leaves one beside
+    the real answer, forever. Sorting the attempts by completion time and dropping the non-attempts fixes
+    both, and keeps a dispatch from manufacturing a green: only a pull request run can report `success`
+    for this name.
+
+    """
+    attempts = []
+    for row in rows:
+        completed_at, _, rest = row.partition("\t")
+        job_id, _, conclusion = rest.partition("\t")
+        if conclusion not in NON_ATTEMPTS:
+            attempts.append((completed_at, int(job_id), conclusion))
+    if not attempts:
+        return "never reported"
+    attempts.sort()
+    return attempts[-1][2]
+
+
 def collect(repo: str, push_sha: str, push_tree: str) -> list:
     """The associated pull requests' commits, with the merge gate's conclusion for the matching ones."""
     candidates = []
@@ -134,16 +177,14 @@ def collect(repo: str, push_sha: str, push_tree: str) -> list:
             sha, _, tree = row.partition("\t")
             verdict = None
             if tree == push_tree:
-                conclusions = _gh(
+                records = _gh(
                     repo,
                     f"commits/{sha}/check-runs",
                     "--jq",
-                    f'.check_runs[] | select(.name == "{REQUIRED_CHECK}") | .conclusion // "never reported"',
+                    f'.check_runs[] | select(.name == "{REQUIRED_CHECK}") '
+                    '| [.completed_at // "", .id, .conclusion // ""] | @tsv',
                 )
-                # The newest attempt decides, same convention as `scripts/dependency_merge_gate.py`:
-                # a re-run appends rather than replaces, so reading the first entry would let an
-                # attempt that has since been made green keep refusing a tip that is verified.
-                verdict = conclusions[-1] if conclusions else "never reported"
+                verdict = newest_verdict(tuple(records))
             candidates.append(Candidate(pr=pr, sha=sha, tree=tree, verdict=verdict))
     return candidates
 
@@ -195,8 +236,56 @@ SELFTEST = (
 )
 
 
+#: The records `newest_verdict` must sort out, as (name, rows, expected conclusion). The first two
+#: are `522b0aac`'s real pair - the pull request's `success` and a `workflow_dispatch` run's `skipped` -
+#: in the order the API returned them and reversed, because the order is not a rule anyone can rely on.
+VERDICT_SHAPES = (
+    (
+        "a dispatch's skipped listed after the pull request's success",
+        ("2026-10-18T01:03:44Z\t117549775531\tsuccess", "2026-10-18T01:00:39Z\t117549241560\tskipped"),
+        "success",
+    ),
+    (
+        "the same pair listed the other way round",
+        ("2026-10-18T01:00:39Z\t117549241560\tskipped", "2026-10-18T01:03:44Z\t117549775531\tsuccess"),
+        "success",
+    ),
+    (
+        "a red attempt a re-run made green, newest last",
+        ("2026-10-18T01:00:00Z\t10\tfailure", "2026-10-18T02:00:00Z\t11\tsuccess"),
+        "success",
+    ),
+    (
+        "a red attempt a re-run made green, newest first",
+        ("2026-10-18T02:00:00Z\t11\tsuccess", "2026-10-18T01:00:00Z\t10\tfailure"),
+        "success",
+    ),
+    (
+        "a green attempt a re-run made red",
+        ("2026-10-18T01:00:00Z\t10\tsuccess", "2026-10-18T02:00:00Z\t11\tfailure"),
+        "failure",
+    ),
+    (
+        "a green attempt a re-run made red, newest first",
+        ("2026-10-18T02:00:00Z\t11\tfailure", "2026-10-18T01:00:00Z\t10\tsuccess"),
+        "failure",
+    ),
+    (
+        "only the skipped a dispatch left",
+        ("2026-10-18T01:00:39Z\t117549241560\tskipped",),
+        "never reported",
+    ),
+    (
+        "a run still going beside the finished verdict",
+        ("\t12\t", "2026-10-18T01:03:44Z\t117549775531\tsuccess"),
+        "success",
+    ),
+    ("no record of the required name at all", (), "never reported"),
+)
+
+
 def selftest() -> int:
-    """Exercise `decide` with no network, and fail if a shape answers the wrong way."""
+    """Exercise `decide` and `newest_verdict` with no network, and fail if a shape answers wrongly."""
     failures = 0
     for name, tree, candidates, expected in SELFTEST:
         reasons = decide(f"{'0' * 40}", tree, candidates)
@@ -205,8 +294,16 @@ def selftest() -> int:
         for line in reasons:
             print(f"     {line}")
         failures += 0 if ok else 1
-    print(f"{len(SELFTEST) - failures}/{len(SELFTEST)} shapes answered correctly")
-    return 1 if failures else 0
+    print(f"{len(SELFTEST) - failures}/{len(SELFTEST)} decision shapes answered correctly")
+
+    verdict_failures = 0
+    for name, rows, expected in VERDICT_SHAPES:
+        got = newest_verdict(rows)
+        ok = got == expected
+        print(f"{'ok  ' if ok else 'FAIL'} {name}: {got!r}, expected {expected!r}")
+        verdict_failures += 0 if ok else 1
+    print(f"{len(VERDICT_SHAPES) - verdict_failures}/{len(VERDICT_SHAPES)} verdict shapes read correctly")
+    return 1 if failures or verdict_failures else 0
 
 
 def main(argv: list) -> int:

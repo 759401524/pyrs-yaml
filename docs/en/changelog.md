@@ -30,8 +30,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   asks that sentence's three questions against the API — which pull request produced the commit,
   whether the pushed tree is one of that pull request's commit trees, and whether
   `Test matrix (all legs)` reported `success` for the commit carrying it — and refuses otherwise.
-  The claim held on every tip measured (`07f988fa`, `60f670d0`, `225cf373`), so this closes a hole
-  in the shape of the defence, not an incident.
+  The content claim held on every tip measured (`07f988fa`, `60f670d0`, `225cf373`), so the hole
+  was in the shape of the defence. The gate's own first trunk run then went red for the wrong
+  reason, and the fix is part of the same change: a commit can carry several records of that check
+  name, the API does not list them oldest-first, and a `workflow_dispatch` run of this workflow
+  leaves a `skipped` beside the pull request's real verdict — its verdict job only runs on
+  `pull_request`. Reading the last row read that absence as a refusal. `newest_verdict` drops the
+  records that judged nothing and sorts the rest by the time each job finished, so `fddcc76e`
+  passes and seven ancestors still refuse, each for a verdict that exists.
 
 - **The per-format defence table is derived, and two of its cells were wrong** —
   `scripts/quality_matrix.py` now computes `QUALITY_MATRIX.md`'s format table from the files
