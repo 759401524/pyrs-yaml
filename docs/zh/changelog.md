@@ -78,6 +78,16 @@ status: new
   `tests/test_quality_matrix.py` 逐格断言该列、逐行列出一个文件，所以从派生里丢掉一个后缀会让
   测试变红，而不是悄悄少掉一列。
 
+- **全是 Unicode 空白的 JSON 字符串保住了自己的值** — 键只有 U+2028 时，`load_json5` 答
+  `{None: 1}`，而 `load_json` 与 `load_jsonc` 给出字符串，`pyjson5` 也站在它们一边。中枢把解出的
+  JSON 字符串存成 YAML 标量，除非 `needs_quotes` 要求否则就是平文；而 JSON 解析器对平文标量按
+  Unicode 规则裁剪——`resolve_json_type` 是有意留着 `str::trim` 的，因为 JSON5 的结构空白确实这么宽——
+  于是首尾是非 ASCII 空白的文本会丢掉那个字符，整段只是它的文本被解析成 null。加引号的规则原本只认识
+  ASCII 空格和 NBSP，现在它认识全部 25 个 Unicode `White_Space` 码点的双端，两张表就此不再打架。这个
+  判断放在字节扫描本就会走到的字符路径上：文本含非 ASCII 字节才会到那里，所以纯 ASCII 的文本一分也没
+  有多付。`tests/test_json_whitespace_scalar.py` 会把这套码点在键与值两个位置过三种方言，并请
+  `pyjson5` 与 `json` 确认那是字符串而不是 null。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

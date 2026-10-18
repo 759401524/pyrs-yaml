@@ -2313,6 +2313,50 @@ mod tests {
     }
 
     #[test]
+    fn json5_does_not_hand_the_reader_a_string_it_would_trim_away() {
+        // The JSON5 projection resolves a plain scalar through `resolve_json_type`, which trims
+        // with Unicode rules, so a string whose text starts or ends with a non-ASCII space went
+        // out plain and came back as something else - `load_json5` answered `{None: 1}` for a
+        // quoted U+2028 key. The character is built from its code point, and the escape from two
+        // pieces, so no tool rewrites the sequence under test.
+        let space = char::from_u32(0x2028).unwrap();
+        let esc = concat!("\\", "u");
+        let doc = alloc::format!("{{ a: \"{esc}2028{esc}0041\" }}");
+        let CustomNode::Mapping { pairs, .. } = &from_json5(&doc).unwrap() else {
+            unreachable!()
+        };
+        let (_, value) = pairs.iter().next().unwrap();
+        let CustomNode::Scalar {
+            value: text, style, ..
+        } = value
+        else {
+            unreachable!()
+        };
+        assert_eq!(*style, ScalarStyle::DoubleQuoted, "quoted in, quoted out");
+        let chars: alloc::vec::Vec<char> = text.chars().collect();
+        assert_eq!(chars, alloc::vec![space, 'A']);
+
+        // The value that is nothing but such a character is the shape that became null.
+        let only = alloc::format!("{{ a: \"{esc}2028\" }}");
+        let CustomNode::Mapping { pairs, .. } = &from_json5(&only).unwrap() else {
+            unreachable!()
+        };
+        let (_, value) = pairs.iter().next().unwrap();
+        let CustomNode::Scalar {
+            value: text, style, ..
+        } = value
+        else {
+            unreachable!()
+        };
+        assert!(
+            !matches!(style, ScalarStyle::Plain),
+            "{text:?} went out plain"
+        );
+        assert_eq!(text.chars().count(), 1);
+        assert_eq!(text.chars().next().unwrap(), space);
+    }
+
+    #[test]
     fn json5_accepts_escaped_characters_in_an_unquoted_key() {
         // JSON5's Identifier is ES5 `IdentifierName`, which allows a UnicodeEscapeSequence in any
         // identifier position and does not re-validate what it decodes to. The reference agrees:

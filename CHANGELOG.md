@@ -86,6 +86,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tests/test_quality_matrix.py` asserts the column cell-by-cell and names one file per row, so
   dropping a suffix from the derivation reddens the test instead of quietly deleting a column.
 
+- **A JSON string of nothing but a Unicode space kept its value** — `load_json5` answered
+  `{None: 1}` for a document whose key is U+2028 alone, while `load_json` and `load_jsonc` gave back
+  the string and `pyjson5` agreed with them. The hub stores a decoded JSON string as a YAML scalar,
+  plain unless `needs_quotes` says otherwise, and the JSON resolver trims a plain scalar with
+  Unicode rules — `resolve_json_type` keeps `str::trim` deliberately, because JSON5's structural
+  whitespace really is that wide — so a text beginning or ending with a non-ASCII space lost that
+  character and a text made only of one resolved to null. The quoting rule knew ASCII space and
+  NBSP; it now knows both ends of all 25 Unicode `White_Space` code points, which is where the two
+  tables stop disagreeing. It is asked on the character path the byte pass already reaches for any
+  text holding a non-ASCII byte, so a text that is pure ASCII pays nothing.
+  `tests/test_json_whitespace_scalar.py` sweeps the set in key and value position through the three
+  dialects and asks `pyjson5` and `json` that the key is a string and not null.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added
