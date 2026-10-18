@@ -46,6 +46,17 @@ status: new
   `pyrs-event`의 속성 두 개가 빠져 있었습니다). parity 칸의 `partial`은 이제 인상이 아니라
   oracle에 선언된 인터프리터·아키텍처 제약을 뜻합니다.
 
+- **JSON5 `\xHH` escapes를 해석합니다 — 나머지 JSON5 escapes는 이미 있었습니다** —
+  `load_json5`와 `from_json5`는 `\v`, `\0`, 줄 연속은 받아들였지만, JSON5 escape 집합에
+  속하는 `\x` + 16진수 두 자리는 거부했습니다. 동봉된 stub은 이미 `load_json5`에 대해
+  "Accepts the full JSON5 grammar"라고 이미 공언한 상태였습니다. 참조 구현과 대조한 실측에서
+  pyjson5는 `{a: '\x41'}`에 `{'a': 'A'}`를 주는데 pyrs는 "invalid escape sequence"를
+  반환했습니다. 두 자리는 1바이트씩 누적하는 방식으로 바꿨습니다 — `from_str_radix`는 앞의
+  `+`를 통과시켜 `\x+1`이 유효한 escape가 되어버립니다 — 엄격한 JSON과 JSONC는 계속
+  거부합니다. Rust 테스트는 두 종류의 인용부호, `\x0A`와 `\x00`, 잘리거나 16진수가 아닌
+  뒷부분, 멀티바이트 문자를 넘는 잘못된 escape를 고정하고, pyjson5 대조 테스트는 수락과
+  더 좁은 방언 두 개의 거부를 고정합니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

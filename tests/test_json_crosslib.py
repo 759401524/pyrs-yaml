@@ -87,6 +87,19 @@ def test_jsonc_is_stricter_than_json5_about_single_quoted_keys():
     assert pyrs_yaml.load_json5(doc) == pyjson5.loads(doc)
 
 
+def test_json5_hex_escape_is_accepted_and_does_not_leak_into_the_narrower_dialects():
+    # The JSON5 escape set includes `\x` followed by exactly two hex digits. The reader had `\v`,
+    # `\0` and the line continuation but not this one, so `load_json5` rejected a document the
+    # reference accepts while its own docstring promised "the full JSON5 grammar".
+    doc = r"{a: '\x41', b: " + r'"c\x7ed"}'
+    assert pyrs_yaml.load_json5(doc) == pyjson5.loads(doc) == {"a": "A", "b": "c~d"}
+    # Strict JSON and JSONC share the scanner and must keep rejecting it.
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        pyrs_yaml.load_jsonc(r'{"a": "\x41"}')
+    with pytest.raises(pyrs_yaml.YamlParseError):
+        pyrs_yaml.load_json(r'{"a": "\x41"}')
+
+
 # ── orjson as a strict-JSON oracle (better than json.loads) ────────────────
 # The stdlib `json.loads` is NOT a perfect RFC 8259 oracle — under its default
 # `allow_nan=True` it accepts the three non-standard literals `NaN` /
