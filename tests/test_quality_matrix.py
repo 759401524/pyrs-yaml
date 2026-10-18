@@ -595,11 +595,15 @@ def test_the_per_format_table_is_the_derived_one(measured):
     text = DOC_PATH.read_text(encoding="utf-8")
     cells = re.findall(
         r"^\| (YAML|JSON / JSONC / JSON5|TOML|schema validation)"
-        r" \| (yes|no) \| (yes|no) \| (yes|no) \| (yes|no|n/a) \| (yes|no|partial|n/a) \|$",
+        r" \| (yes|no) \| (yes|no) \| (yes|no) \| (yes|no|n/a) \| (yes|no|partial|n/a)"
+        r" \| (yes|no) \|$",
         text,
         re.MULTILINE,
     )
-    claimed = {label: (unit, prop, parse, trip, parity) for label, unit, prop, parse, trip, parity in cells}
+    claimed = {
+        label: (unit, prop, parse, trip, parity, authority)
+        for label, unit, prop, parse, trip, parity, authority in cells
+    }
     assert len(claimed) == 4, f"the page no longer states all four format rows: {claimed}"
 
     derived = {}
@@ -612,6 +616,7 @@ def test_the_per_format_table_is_the_derived_one(measured):
             fields["fuzz-parse"],
             fields["round-trip"],
             fields["parity"],
+            fields["authority"],
         )
     assert claimed == derived, f"the page says {claimed}, the probe derives {derived}"
 
@@ -625,3 +630,10 @@ def test_the_derived_table_is_not_vacuous(measured):
     restricted = rows["JSON / JSONC / JSON5"]["cross_library"]["restricted"]
     assert restricted, "the JSON family's `partial` has to be attributable to a declared marker"
     assert not rows["TOML"]["cross_library"]["restricted"], "tomlkit is unbounded, so TOML reads `yes`"
+    authority = {label: row["authority"] for label, row in rows.items()}
+    assert authority["YAML"] == ["test_yaml_suite.py"], authority
+    assert authority["TOML"] == ["test_toml_test_suite.py"], authority
+    # Both suffixes have to be live: the official-suite one for three rows, the production-table one
+    # for the JSON5 half of the JSON family.
+    assert "test_json5_spec_table.py" in authority["JSON / JSONC / JSON5"], authority
+    assert not authority["schema validation"], "a row with no outside authority has to say so"

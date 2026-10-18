@@ -69,6 +69,15 @@ status: new
   许的拼写，折叠的是副本，`KeyIdentity` 仍是唯一模型；一致性门禁现在也用整张表在流父节点下重问一遍，
   只守生成器必须负责的那个方向：规则放过的键对，必须能被读取器保住。
 
+- **防线矩阵现在测量它的外部权威** — `scripts/quality_matrix.py` 派生出第六列
+  `external authority`：当某方言存在 `tests/test_*_suite.py` 或 `tests/test_*_spec_table.py`
+  时记为 `yes`。此前每格式表只承认 unit、property、fuzz 与 parity 四层，于是仓库里最强的几道门
+  —— `test_yaml_suite.py`、`test_json_test_suite.py`、`test_toml_test_suite.py` 与
+  `test_json5_spec_table.py` —— 在这张罗列防线的页面上完全隐身，而被记为功劳的 parity 只是在
+  比较两个实现。`schema validation` 记 `no`，因为没有外部权威去问它的规则。
+  `tests/test_quality_matrix.py` 逐格断言该列、逐行列出一个文件，所以从派生里丢掉一个后缀会让
+  测试变红，而不是悄悄少掉一列。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

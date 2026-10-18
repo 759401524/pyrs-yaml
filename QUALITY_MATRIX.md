@@ -37,12 +37,12 @@ orthogonal only where a second implementation exists to disagree with.
 Per-format matrix, derived by `format_matrix()` and asserted cell-by-cell against this table by
 `tests/test_quality_matrix.py` - which is how the two wrong cells below were found:
 
-| format | unit | property | fuzz parse | fuzz round trip | cross-library parity |
-| --- | --- | --- | --- | --- | --- |
-| YAML | yes | yes | yes | yes | yes |
-| JSON / JSONC / JSON5 | yes | yes | yes | yes | partial |
-| TOML | yes | yes | yes | yes | yes |
-| schema validation | yes | yes | yes | n/a | n/a |
+| format | unit | property | fuzz parse | fuzz round trip | cross-library parity | external authority |
+| --- | --- | --- | --- | --- | --- | --- |
+| YAML | yes | yes | yes | yes | yes | yes |
+| JSON / JSONC / JSON5 | yes | yes | yes | yes | partial | yes |
+| TOML | yes | yes | yes | yes | yes | yes |
+| schema validation | yes | yes | yes | n/a | n/a | no |
 
 **The schema row's `fuzz parse` cell said `no` while the tree said `yes`.**
 `fuzz/fuzz_targets/validate_schema.rs` parses with `parse(document, Schema::Core)` and then walks the
@@ -54,6 +54,16 @@ it is the dangerous direction - a reader could conclude the schema language is u
 `crates/pyrs-event/src/lib.rs`, which `proptest!` declares with a `#[test]` attribute and a prose name
 rather than the prefix, so the property tier holds 27. A tool that counts a naming convention measures
 the convention, not the defence; the rule is now the attribute, with the prefix accepted as well.
+
+**The last column is the one this file used not to measure at all.** `external authority` is `yes` when
+a `tests/test_*_suite.py` or `tests/test_*_spec_table.py` exists for the dialect - a gate that asks the
+format's own grammar, or an official suite's cases, against something this repository does not own:
+`test_yaml_suite.py`, `test_json_test_suite.py`, `test_toml_test_suite.py`, and
+`test_json5_spec_table.py` for the JSON5 productions inside the JSON row. It is deliberately not the
+parity column: parity compares two implementations and answers "do we agree", which cannot find a syntax
+neither side ever accepted - a path that does not exist has nothing to disagree with.
+`schema validation` reads `no`, because nothing outside asks its rules; that is the honest state of the
+row, and the one a future JSON Schema suite would change.
 
 `partial` in the parity column is also measured, not judged: the column reads the oracles each
 `test_*_crosslib.py` imports and then reads how `pyproject.toml` declares them, so `partial` means a
