@@ -1012,3 +1012,39 @@ Not measured: no key-path prototype, so the 1.5pp is read off two profiles rathe
 as recoverable. Recorded instead of done: no code changed. And the shape of the negative result is
 worth keeping — the cheapest test of a "remove the copy" hypothesis is a sibling engine that has no
 copy to remove, which costs one build and no refactor.
+
+## The width of the band `to_python_small` is drawn from (2026-10-18)
+
+The open question was how much of that scenario's near-tolerance reading is the host. Measured: one
+binary, one session, one box (WSL2, `rustc 1.97.1`, the ISA pin the baseline records unchanged),
+`--only to_python_small --repeats 9`, nine callgrind samples of identical bytes — 56,507,825,
+56,539,957, 56,565,344, 56,567,233, 56,595,698, 56,612,182, 56,645,182, 56,656,063, 56,749,142.
+Spread 0.425%, median 56,595,698, against a tolerance of 0.50%.
+
+Two things follow, and both are about reading the guard rather than about the code.
+
+- **The band nearly fills the line on this host.** Nine samples of a binary that the committed floor
+  was drawn from keep a maximum 0.425% above their own minimum, so a change touching nothing on the
+  `to_python` path can read up to roughly +0.25% from sampling alone. Three readings of this
+  scenario today, on code whose difference from it is one predicate, came out +0.35%, +0.23% and
+  +0.14% against the then-committed floor; that is the band this section is about, not a
+  regression. It is why every claim in this file now compares against a base control built from the
+  parent commit in the same session.
+- **The repeat count is part of the comparison, not a precision knob.** Against the same
+  `0cea1256` floor (`to_python_small` 56,613,975, generated as a largest-of-3 on the image), this
+  binary read *below* the floor with three repeats (56,577,476, −0.06%) and *above* it with nine
+  (56,749,142, +0.24%). `--repeats` larger than `generated_by.repeats` widens the kept maximum by
+  construction; treating that as "a more accurate measurement of the same quantity" turns sampling
+  into a regression.
+
+What was deliberately not done. The tolerance stays 0.50%: the band belongs to one scenario on one
+host, and the 2026-10-16 image comparison in this file found this same scenario agreeing to 0.09
+percentage points, so the line is not the wrong part. No median-of-N for it either — the committed
+value is the *largest* sample on purpose (`scripts/ir_gate.py`: "normal variation cannot exceed its
+own envelope"), and a median floor would let ordinary variation trip the guard. No per-scenario
+tolerance, which would be a second number to defend for every future change.
+
+So: when a pull request moves `to_python_small` near the line, re-measure with `--repeats 3` against
+a parent-commit control from the same session and read the median beside the max. A movement that
+shows in both, on the pinned compiler, is code. One that shows only in the maximum of a bigger
+sample is the band.
