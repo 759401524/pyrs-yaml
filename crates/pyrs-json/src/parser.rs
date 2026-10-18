@@ -623,6 +623,11 @@ impl<'a> Parser<'a> {
                         decoded
                     });
                     self.pos += 1;
+                    if self.line_continuation() {
+                        // The continuation contributes nothing to the decoded text. This scanner is
+                        // JSON5-only, so unlike the double-quoted twin it needs no preset guard.
+                        continue;
+                    }
                     let e = self.peek().ok_or_else(|| self.err("unterminated escape"))?;
                     self.pos += 1;
                     match e {
@@ -635,9 +640,6 @@ impl<'a> Parser<'a> {
                         b'n' => out.push('\n'),
                         b'r' => out.push('\r'),
                         b't' => out.push('\t'),
-                        b'\n' | b'\r' => {
-                            // JSON5 line continuation: nothing appended.
-                        }
                         b'u' => self.unicode_escape(&mut *out)?,
                         // JSON5-only string escapes (allow_json5_numbers is
                         // true only for the JSON5 preset): vertical tab, NUL
@@ -659,11 +661,15 @@ impl<'a> Parser<'a> {
     }
 
     /// True when the code point at `self.pos` can start a JSON5 identifier
-    /// name: an ASCII `A-Z a-z _ $` or any Unicode `ID_Start` (PR #129). Used
-    /// only as a cheap dispatch guard; `identifier_key` re-checks exactly.
+    /// name: an ASCII `A-Z a-z _ $`, any Unicode `ID_Start` (PR #129), or the
+    /// backslash that opens an escape in the identifier position. Used only as
+    /// a cheap dispatch guard; `identifier_key` re-checks exactly.
     fn at_identifier_start(&self) -> bool {
         match self.peek() {
             Some(b'A'..=b'Z' | b'a'..=b'z' | b'_' | b'$') => true,
+            // Only the JSON5 preset reaches an identifier position with a backslash in it; strict
+            // JSON / JSONC have no unquoted keys to escape in, so the guard cannot widen them.
+            Some(b'\\') => self.allow_json5_numbers,
             // A lead byte means a multi-byte code point begins here; it is a
             // valid start only if it is Unicode `ID_Start`. A non-boundary
             // position falls through to `false`.
@@ -675,11 +681,59 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// JSON5 identifier key (unquoted). The first code point is an ASCII
-    /// `A-Z a-z _ $` or any Unicode `ID_Start`; continuation adds digits,
-    /// combining marks and connectors (Unicode `ID_Continue` plus `$`/`_`).
-    /// PR #129 lifted the former ASCII-only limit to full Unicode via the
-    /// `unicode-ident` tables, so e.g. `{ é: 1, 名: 2, हिन्दी: 3 }` parses.
+    /// One identifier character, either a literal code point or a backslash-u escape, where `first`
+    /// says which position in the name it is. `Ok(None)` means the next character is not part of the
+    /// identifier, which is how `identifier_key` ends.
+    ///
+    /// The asymmetry is the ES5 grammar JSON5 inherits: a *literal* start must be `ID_Start` and a
+    /// literal continuation `ID_Continue`, while an *escaped* character needs no such check at all -
+    /// `IdentifierStart :: ... | backslash UnicodeEscapeSequence` accepts any scalar, so an escaped
+    /// digit, an escaped dot and an escaped space are all legal keys and decode to `1`, `.` and ` `,
+    /// while an escaped surrogate half and a truncated escape are rejected. Only the JSON5 preset
+    /// takes this path, because the dialects without unquoted keys never reach it.
+    fn ident_char(&mut self, first: bool) -> Result<Option<char>, ParseError> {
+        if self.allow_json5_numbers && self.peek() == Some(b'\\') {
+            let at = self.pos;
+            self.pos += 1;
+            if self.peek() != Some(b'u') {
+                // Leave the backslash in place: the caller's error names the key position, and a
+                // half-consumed escape would move where that points.
+                self.pos = at;
+                return Err(self.err("only a backslash-u escape is valid in an identifier key"));
+            }
+            self.pos += 1;
+            let code = self.hex4()?;
+            let Some(ch) = char::from_u32(code) else {
+                return Err(self.err("identifier escape is not a Unicode scalar value"));
+            };
+            return Ok(Some(ch));
+        }
+        let Some(ch) = self.text[self.pos..].chars().next() else {
+            return Ok(None);
+        };
+        let valid = ch == '$'
+            || ch == '_'
+            || (first && unicode_ident::is_xid_start(ch))
+            || (!first && unicode_ident::is_xid_continue(ch));
+        if !valid {
+            return Ok(None);
+        }
+        self.pos += ch.len_utf8();
+        Ok(Some(ch))
+    }
+
+    /// JSON5 identifier key (unquoted); `ident_char` holds the character rule. PR #129 lifted the
+    /// former ASCII-only limit to full Unicode via the `unicode-ident` tables, so e.g.
+    /// `{ é: 1, 名: 2, हिन्दी: 3 }` parses, and the escape path is what adds escaped
+    /// keys on top of that.
+    ///
+    /// The plain run is the loop it was before escapes existed, and that is measured rather than
+    /// stylistic: checking for a backslash on every character cost +7.18% on `from_json5_medium` at
+    /// the Ir gate, while `from_json_medium` and `from_jsonc_medium` - which share the string scanner
+    /// and its escape arms but not this loop - moved by -0.07%. So the escape is looked for only
+    /// where the loop stops. Then both handoffs moved onto branches a plain key already takes: a
+    /// leading backslash is not `ID_Start`, so the entry test lives in the branch that rejects it,
+    /// and that second split is the difference between +2.54% and +0.32% on the same scenario.
     fn identifier_key(&mut self) -> Result<Cow<'a, str>, ParseError> {
         let start = self.pos;
         let first = self.text[start..]
@@ -687,6 +741,12 @@ impl<'a> Parser<'a> {
             .next()
             .ok_or_else(|| self.err("expected an identifier key"))?;
         if !(first == '$' || first == '_' || unicode_ident::is_xid_start(first)) {
+            // A backslash is not `ID_Start`, so an escaped key is taken on the branch that already
+            // rejects it. Checked here rather than as an extra test before the loop, because that
+            // order makes every plain key pay one branch for a spelling it never sees.
+            if self.allow_json5_numbers && first == '\\' {
+                return self.escaped_identifier_tail("");
+            }
             return Err(self.err("expected an identifier key"));
         }
         self.pos += first.len_utf8();
@@ -695,10 +755,29 @@ impl<'a> Parser<'a> {
                 Some(ch) if ch == '$' || ch == '_' || unicode_ident::is_xid_continue(ch) => {
                     self.pos += ch.len_utf8();
                 }
+                // A key that keeps going through an escape cannot be a slice of the source.
+                Some('\\') if self.allow_json5_numbers => {
+                    return self.escaped_identifier_tail(&self.text[start..self.pos]);
+                }
                 _ => break,
             }
         }
         Ok(Cow::Borrowed(&self.text[start..self.pos]))
+    }
+
+    /// The general path for a key containing at least one escape. `prefix` is the literal run already
+    /// validated, empty when the key begins with the backslash; `out.is_empty()` is therefore the
+    /// "is this the first character" test. Rare by construction, so it decodes one character at a
+    /// time and owns its text - the borrowed form above cannot express a decoded escape.
+    fn escaped_identifier_tail(&mut self, prefix: &str) -> Result<Cow<'a, str>, ParseError> {
+        let mut out = String::from(prefix);
+        while let Some(ch) = self.ident_char(out.is_empty())? {
+            out.push(ch);
+        }
+        if out.is_empty() {
+            return Err(self.err("expected an identifier key"));
+        }
+        Ok(Cow::Owned(out))
     }
 
     fn eof_pos(&self) -> bool {
@@ -1062,6 +1141,11 @@ impl<'a> Parser<'a> {
                         decoded
                     });
                     self.pos += 1;
+                    if self.allow_json5_numbers && self.line_continuation() {
+                        // Strict JSON / JSONC fall through to the one-byte arms and reject a
+                        // backslash before a newline, exactly as before this helper existed.
+                        continue;
+                    }
                     let e = self.peek().ok_or_else(|| self.err("unterminated escape"))?;
                     self.pos += 1;
                     match e {
@@ -1079,15 +1163,6 @@ impl<'a> Parser<'a> {
                         b'0' if self.allow_json5_numbers => out.push('\0'),
                         b'x' if self.allow_json5_numbers => self.x_escape(&mut *out)?,
                         b'\'' if self.allow_json5_numbers => out.push('\''),
-                        b'\n' | b'\r' if self.allow_json5_numbers => {
-                            // JSON5 line continuation: a backslash
-                            // immediately before a line terminator removes
-                            // both. Normalise CRLF so the trailing LF is
-                            // not mistaken for an unescaped newline.
-                            if e == b'\r' && self.peek() == Some(b'\n') {
-                                self.pos += 1;
-                            }
-                        }
                         _ => return Err(self.err("invalid escape sequence")),
                     }
                 }
@@ -1148,6 +1223,38 @@ impl<'a> Parser<'a> {
                 out.push(c);
                 Ok(())
             }
+        }
+    }
+
+    /// JSON5's `LineContinuation`: a backslash immediately before a LineTerminator removes both.
+    /// Returns `true` when it consumed one, so the caller continues the string from the next byte.
+    ///
+    /// The spec's LineTerminator set is LF, CR, CRLF, LS (U+2028) and PS (U+2029). A byte-level arm
+    /// that reads only the terminator's first byte got two of these wrong: `\<CRLF>` swallowed the CR
+    /// and left the LF as a raw newline inside a single-line string - which the scanners then reject,
+    /// so the *single-quoted* path failed on input the *double-quoted* path accepted - and LS/PS were
+    /// unreachable at the byte level at all. Matching the whole terminator is what closes both.
+    fn line_continuation(&mut self) -> bool {
+        match self.peek() {
+            Some(b'\n') => {
+                self.pos += 1;
+                true
+            }
+            Some(b'\r') => {
+                self.pos += 1;
+                if self.peek() == Some(b'\n') {
+                    self.pos += 1;
+                }
+                true
+            }
+            Some(0xE2)
+                if self.s.get(self.pos + 1) == Some(&0x80)
+                    && matches!(self.s.get(self.pos + 2), Some(&0xA8) | Some(&0xA9)) =>
+            {
+                self.pos += 3;
+                true
+            }
+            _ => false,
         }
     }
 
@@ -2168,6 +2275,91 @@ mod tests {
         // Strict JSON rejects both.
         assert!(from_json(r#""a\vb""#).is_err());
         assert!(from_json(r#""a\0b""#).is_err());
+    }
+
+    #[test]
+    fn json5_line_continuation_covers_every_line_terminator_in_both_quote_styles() {
+        // The spec's LineTerminator set is LF, CR, CRLF, LS and PS, and a continuation removes the
+        // backslash plus the whole terminator. Reading only the terminator's first byte left the
+        // single-quoted path rejecting `\<CRLF>` that the double-quoted path accepted - the two
+        // scanners of one dialect disagreeing is the defect this closes.
+        const TERMINATORS: [(&str, &str); 5] = [
+            ("LF", "\n"),
+            ("CR", "\r"),
+            ("CRLF", "\r\n"),
+            ("LS", "\u{2028}"),
+            ("PS", "\u{2029}"),
+        ];
+        for (name, terminator) in TERMINATORS {
+            let single = format!("'x\\{terminator}y'");
+            let double = format!("\"x\\{terminator}y\"");
+            assert_eq!(
+                scalar_text(&from_json5(&single).unwrap()),
+                "xy",
+                "{name} continuation, single-quoted"
+            );
+            assert_eq!(
+                scalar_text(&from_json5(&double).unwrap()),
+                "xy",
+                "{name} continuation, double-quoted"
+            );
+        }
+        // Strict JSON has no line continuation: the backslash-terminator pair stays a rejection, and
+        // the guard that removed the byte-level arm must not have widened it.
+        assert!(from_json("\"x\\\ny\"").is_err());
+        assert!(from_jsonc("\"x\\\r\ny\"").is_err());
+        // A terminator still ends the document's string when it is not escaped.
+        assert!(from_json5("'x\ny'").is_err());
+    }
+
+    #[test]
+    fn json5_accepts_escaped_characters_in_an_unquoted_key() {
+        // JSON5's Identifier is ES5 `IdentifierName`, which allows a UnicodeEscapeSequence in any
+        // identifier position and does not re-validate what it decodes to. The reference agrees:
+        // the escaped forms of a digit, a dollar sign and a dot are all legal keys, even though the
+        // literal characters could not start an identifier.
+        //
+        // The escape is spelled in two pieces because `ESC` plus four digits is the very sequence
+        // under test, and a source file that writes it directly is hard to tell apart from the
+        // document the reader must accept.
+        const ESC: &str = concat!("\\", "u");
+        let keys = |node: &CustomNode| -> Vec<String> {
+            match node {
+                CustomNode::Mapping { pairs, .. } => pairs.keys().map(scalar_text).collect(),
+                other => panic!("expected a mapping, got {other:?}"),
+            }
+        };
+        let escaped_key = |digits: &str| format!("{{{ESC}{digits}: 1}}");
+
+        assert_eq!(keys(&from_json5(&escaped_key("0061")).unwrap()), vec!["a"]);
+        assert_eq!(keys(&from_json5(&escaped_key("0031")).unwrap()), vec!["1"]);
+        assert_eq!(keys(&from_json5(&escaped_key("0024")).unwrap()), vec!["$"]);
+        assert_eq!(keys(&from_json5(&escaped_key("002E")).unwrap()), vec!["."]);
+        // An escape mid-name, and a name that mixes literal and escaped characters.
+        assert_eq!(
+            keys(&from_json5(&format!("{{a{ESC}0062: 1}}")).unwrap()),
+            vec!["ab"]
+        );
+        assert_eq!(
+            keys(&from_json5(&format!("{{{ESC}0041b: 1}}")).unwrap()),
+            vec!["Ab"]
+        );
+        // Not a Unicode scalar, fewer than four digits, and escapes that are not identifier escapes.
+        assert!(from_json5(&escaped_key("D800")).is_err());
+        assert!(from_json5(&escaped_key("00")).is_err());
+        assert!(from_json5(&format!("{{{ESC}{{41}}: 1}}")).is_err());
+        assert!(from_json5(r"{\x41: 1}").is_err());
+        // The narrower dialects have no unquoted keys, so an escaped key is not a way in.
+        assert!(from_jsonc(&escaped_key("0061")).is_err());
+        assert!(from_json(&escaped_key("0061")).is_err());
+        // Whatever the writer makes of a decoded key, the reader reads it back as the same map, and
+        // the second emission does not move - the fixed point the round-trip tier insists on.
+        let once = crate::to_json5_text(&from_json5(&escaped_key("002E")).unwrap()).unwrap();
+        assert_eq!(keys(&from_json5(&once).unwrap()), vec!["."]);
+        assert_eq!(
+            crate::to_json5_text(&from_json5(&once).unwrap()).unwrap(),
+            once
+        );
     }
 
     #[test]
