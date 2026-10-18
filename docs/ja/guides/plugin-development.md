@@ -33,6 +33,12 @@ def register():
     pyrs_yaml.register_type("!mytimestamp", MyTimestampType())
 ```
 
+**登録名の表記も契約の一部です。** `register_type("!x", ...)` はローカルタグ `!x` に答え、
+`register_type("!!x", ...)` は YAML の標準タグに答えます。後者は二つの表記の両方を受け付けます。
+`!!x` と完全形の `!<tag:yaml.org,2002:x>` は YAML 1.2 §6.8 で同じタグの二つの書き方だからです。
+`tag:yaml.org,2002:` の外側の URI は YAML が名付けられるものではないため、それを付いたスカラーは
+タグなしと同じ読み方を保ちます。
+
 ### API リファレンス
 
 | 関数 | 説明 |
