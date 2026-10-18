@@ -6293,6 +6293,41 @@ from `fuzz/Cargo.toml` and the `fuzz.yml` matrix, and reddens if either half mov
 moved with it: nine targets, 154 seeds of which 69 are former crashes, 712 Rust tests, 1,744 Python
 test functions.
 
+### (eh) The flow member whose note had no body to sit on, closed at the writer (2026-10-18)
+
+(eg) left one defect open and named it: a flow member carrying both a tag and an inline note settled
+only on the second round. The trigger is two verbs on one path - `k: {a: !o }`, then set the tag,
+then set the note. The first emission is `k: {a: !t   # n`, the re-read hands the note to the
+enclosing pair because the value's line holds nothing but its tag, and the second emission moves the
+tag behind that note. No value, key or note is lost anywhere in the round, which is why the
+note-survival gate, the round-trip target and the property tier all passed over it: the only claim
+violated is the fixed point, and the tier that asserts it had that claim withheld.
+
+The writer already owned the answer in block context - `close_captured_pending_line` spells a
+tag-only line as `~` before a note is written, and (ds)/(dq) carry why - but nothing reached the
+flow route, where `serialize_flow_value` writes an empty plain scalar as nothing at all.
+`spell_empty_flow_body` now makes the same decision where a member's note is written, spelling the
+empty body `''`; `{a: !t ''  # n` re-reads as the tree it came from, and the first emission is the
+fixed point. `''` rather than `~` because the node is a scalar, not a null, and the quoting keeps
+its text.
+
+Measured before the remedy was written, because the risk was a body spelled twice: `{a: }` reaches
+the writer as a null and still emits `{a: ~  # n`, `null` still emits `{a: null  # n`, and a string
+forced to `ScalarStyle::Plain` emits `{a: ''  # n` - all three settle in one round, and none of them
+grew a second body. The helper fires only where the line carried nothing, so no shape that was
+already stable changed.
+
+Three tiers hold it now. `crates/pyrs-yaml-core/tests/settles_in_one_round.rs` names the shape and
+pins the text, because a bounded fuzz budget can miss a rare drift for a run. The input `(eg)`
+committed as `flow-tag-note-needs-two-rounds.seed` is now `former-crash-b23eed05.seed`, so the PR
+tier replays it with `-runs=0` and a regression cannot re-open it silently (measured: 12 seed
+inputs replayed, `DONE`, no crash). And the claim `(eg)` took out of
+`fuzz/fuzz_targets/edit_yaml.rs` is back: an accepted edit's emission must re-parse and serialize to
+the same bytes. Counts moved with it - 713 Rust tests, 154 seeds of which 70 are former crashes,
+nine targets. The two narrowed claims that stay out of the target - sorting a scalar path, and a
+note whose owner an edit deleted - are still (eg)'s boundaries, and the `set_comment` ownership
+question is still #113's ruling to make.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

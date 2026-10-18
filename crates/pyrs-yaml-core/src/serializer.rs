@@ -1999,9 +1999,32 @@ impl Serializer {
         }
         self.serialize_flow_value(value, depth + 1)?;
         if let Some(note) = flow_member_note(value) {
+            self.spell_empty_flow_body(value);
             self.write_flow_note("  ", note, flow_column);
         }
         Ok(())
+    }
+
+    /// Spell a member's body when the text just written left nothing on the line.
+    ///
+    /// A plain scalar with empty text renders as nothing, so a tag in front of it makes the member a
+    /// *tag-only* entry — and a note written after that has no value to attach to on the line: the
+    /// reader hands it to the enclosing pair, and the next emission moves the tag behind it. That
+    /// second round is the drift `edit_yaml` catches as "an edit's emission did not settle"; measured,
+    /// `{a: !t   # n` re-reads as `{a: # n` + `!t }` while `{a: !t ''  # n` re-reads as the tree it
+    /// came from. The empty scalar keeps its value either way — `''` is the same text written
+    /// quoted — so the spelling is decided by what the line has to hold, the same way an empty null
+    /// is written `~` rather than nothing when a note follows it.
+    fn spell_empty_flow_body(&mut self, value: &CustomNode) {
+        if let CustomNode::Scalar {
+            value: text,
+            style: ScalarStyle::Plain,
+            ..
+        } = value
+            && text.is_empty()
+        {
+            self.output.push_str("''");
+        }
     }
 
     /// Write one element of a flow sequence, with the note its slot can still hold.
@@ -2013,6 +2036,7 @@ impl Serializer {
     ) -> Result<(), SerializeError> {
         self.serialize_flow_value(item, depth + 1)?;
         if let Some(note) = flow_member_note(item) {
+            self.spell_empty_flow_body(item);
             self.write_flow_note("  ", note, flow_column);
         }
         Ok(())
