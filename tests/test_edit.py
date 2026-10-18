@@ -454,10 +454,19 @@ class TestAliasAndMerge:
         with pytest.raises(pyrs_yaml.YamlEditError):
             doc.set("$.prod.a", 5)
 
-    def test_delete_anchored_node_tolerated(self):
+    def test_delete_anchored_node_refused_while_an_alias_names_it(self):
+        """The behaviour this row used to pin was the defect: the delete succeeded and the emission
+        kept `copy: *defaults`, naming an anchor nothing defines. `edit_yaml` found it, so the refusal
+        is now the pinned behaviour and the document is left exactly as it was."""
         doc = pyrs_yaml.parse("defaults: &defaults\n  a: 1\ncopy: *defaults\n")
-        doc.delete("$.defaults")
-        assert "defaults" not in doc.to_dict()
+        before = doc.to_yaml()
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.delete("$.defaults")
+        assert doc.to_yaml() == before
+        # Removing the reference instead is always allowed - the anchor still has its definition.
+        doc.delete("$.copy")
+        assert "copy" not in doc.to_dict()
+        assert doc.to_yaml() == "defaults: &defaults\n  a: 1\n"
 
 
 class TestEditAtomicity:

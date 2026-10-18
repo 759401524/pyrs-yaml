@@ -1,4 +1,6 @@
-# Continuous fuzzing of the eight engine targets. The finding pipeline this
+# Continuous fuzzing of every target the fuzz workspace declares — the matrix below and
+# `fuzz/Cargo.toml` are the two halves, and `tests/test_quality_matrix.py` reddens if one moves
+# without the other. The finding pipeline this
 # enforces: crash -> minimized artifact (uploaded below) -> regression test in
 # the owning crate -> seed added under fuzz/seeds/ -> fix.
 # Two tiers, split by what each can promise. `pull_request` replays every
@@ -74,7 +76,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [parse_yaml, yaml_roundtrip, parse_json, json_roundtrip, parse_toml, toml_roundtrip,
-                 validate_schema, json_events_replay]
+                 validate_schema, json_events_replay, edit_yaml]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7

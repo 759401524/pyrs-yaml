@@ -162,6 +162,15 @@ class TestNodeAnchor:
         Node(doc).find("$.key").remove_anchor()
         assert doc.to_yaml() == "key: value\n"
 
+    def test_an_edit_that_orphans_an_alias_is_refused(self):
+        """The boundary shows the refusal as an error, not as unreadable text."""
+        doc = pyrs_yaml.parse("base: &x 1\nuse: *x\n")
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            Node(doc).find("$.base").remove_anchor()
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            Node(doc).find("$.base").delete()
+        assert doc.to_yaml() == "base: &x 1\nuse: *x\n"
+
     def test_anchor_mapping(self):
         doc = pyrs_yaml.parse("key: value")
         Node(doc).find("$.key").set_anchor("k1")

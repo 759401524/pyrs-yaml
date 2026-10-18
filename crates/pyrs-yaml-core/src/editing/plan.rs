@@ -42,6 +42,19 @@ pub fn set_path(
     if segments.is_empty() {
         return set_path_root(node, new_value, source);
     }
+    // One invariant, checked where the drop happens rather than per verb: a replacement that does not
+    // carry the replaced node's metadata also carries its anchor away, and an anchor is a name the rest
+    // of the document points at. Measured on `base: &x 1\nuse: *x`: setting `$.base` (or moving `$.use`
+    // onto it, which is one `set_path` call with `preserve_metadata: false`) emitted `base: *x` - a
+    // document whose only remaining reference names an anchor that no longer exists, refused by this
+    // library's own reader. `move_path` and `set_many_path` reach it through here, so the guard is
+    // written once.
+    if !preserve_metadata
+        && let Some(previous) = anchor_at(node, segments)
+        && any_alias_names(node, previous)
+    {
+        return Err("anchor-is-referenced".to_string());
+    }
     let offsets = resolve_line_offsets(line_offsets, source);
     let line_offsets: &[usize] = &offsets;
 
@@ -525,6 +538,23 @@ pub fn delete_path(
     if segments.is_empty() {
         return Err("edit-error".to_string());
     }
+    // The same invariant the anchor verbs ask, from the other side of the door: an anchor defined
+    // inside the subtree about to be removed may be the only thing some alias points at, and the
+    // emitted document would then name an anchor nothing defines. `move_path` reaches it through here
+    // as well, because its second half is a delete - measured on `base: &x 1\nuse: *x`, moving
+    // `$.base` elsewhere emitted `use: *x` alone, text this library's own reader refuses.
+    //
+    // The answer is deliberately wider than the set of aliases that really dangle. A subtree holding
+    // both an anchor and the alias that names it is safe to remove, and this refuses that too:
+    // deciding it needs the document order of a tree that is about to change, and over-refusing costs
+    // the caller one more edit while under-refusing writes a file nothing can read.
+    if let Ok(target) = crate::editing::navigate(node, segments) {
+        let mut defined = Vec::new();
+        anchors_in(target, &mut defined);
+        if defined.iter().any(|name| any_alias_names(node, name)) {
+            return Err("anchor-is-referenced".to_string());
+        }
+    }
     let (parent_segments, last) = segments.split_at(segments.len() - 1);
     let last = &last[0];
     let (eligible, compact_override) =
@@ -857,7 +887,67 @@ pub fn remove_tag_path(
     })
 }
 
+/// Whether any alias in this document names `anchor`.
+///
+/// An alias is a reference the node being edited cannot see, so a verb that changes or deletes an
+/// anchor name has to ask the whole tree. Key positions are walked too: an alias can be a key
+/// (`*defaults: 1`), and renaming the anchor it points at breaks that line as surely as a value.
+fn any_alias_names(node: &CustomNode, anchor: &str) -> bool {
+    match node {
+        CustomNode::Alias { name } => name == anchor,
+        CustomNode::Mapping { pairs, .. } => pairs
+            .iter()
+            .any(|(key, value)| any_alias_names(key, anchor) || any_alias_names(value, anchor)),
+        CustomNode::Sequence { items, .. } => {
+            items.iter().any(|item| any_alias_names(item, anchor))
+        }
+        _ => false,
+    }
+}
+
+/// The anchor name of the node at `segments`, if it carries one.
+fn anchor_at<'a>(node: &'a CustomNode, segments: &[Segment<'_>]) -> Option<&'a str> {
+    crate::editing::navigate(node, segments).ok()?.anchor()
+}
+
+/// The anchor names a subtree defines, at any depth and in key positions too.
+fn anchors_in(node: &CustomNode, into: &mut Vec<String>) {
+    if let Some(name) = node.anchor() {
+        into.push(name.to_string());
+    }
+    match node {
+        CustomNode::Mapping { pairs, .. } => {
+            for (key, value) in pairs.iter() {
+                anchors_in(key, into);
+                anchors_in(value, into);
+            }
+        }
+        CustomNode::Sequence { items, .. } => {
+            for item in items {
+                anchors_in(item, into);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Set the anchor name on the node at `segments`.
+///
+/// Renaming a name the document already refers to is refused, for the reason [`with_metadata_from`]
+/// states about replacing a value: an anchor is a name the rest of the document points at, and the
+/// alias is not rewritten by this call. Measured before the guard: on `base: &x 1\nuse: *x`, setting
+/// the anchor to `a0` emitted `base: &a0 1\nuse: *x`, text this library's own reader refuses with
+/// `found unknown anchor` - a `set` that turned a readable document into an unreadable one, which the
+/// `edit_yaml` target now catches per document (`fuzz/seeds/edit_yaml/former-crash-3cc4245d.seed`).
+///
+/// The guard is deliberately wider than the set of aliases that would really dangle. An alias binds
+/// the *nearest preceding* anchor of its name, so when a second `&x` follows this node, a rename here
+/// keeps that alias readable and this call refuses it anyway. Over-refusing costs the caller one more
+/// edit; under-refusing writes a document nothing can read. Making the rename carry its aliases -
+/// which is what an author typing a new name may want - is a feature decision about the verb's meaning,
+/// not a bug fix, and it is recorded as one.
+///
+/// [`with_metadata_from`]: crate::editing::metadata::with_metadata_from
 pub fn set_anchor_path(
     node: &mut CustomNode,
     segments: &[Segment<'_>],
@@ -865,18 +955,32 @@ pub fn set_anchor_path(
     source: &str,
     line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
+    if let Some(previous) = anchor_at(node, segments)
+        && previous != name
+        && any_alias_names(node, previous)
+    {
+        return Err("anchor-is-referenced".to_string());
+    }
     apply_metadata_path(node, segments, source, line_offsets, |n| {
         n.set_anchor(name.to_string());
     })
 }
 
 /// Remove the anchor on the node at `segments`.
+///
+/// Refused under the same condition as [`set_anchor_path`]: with an alias naming it, removal leaves
+/// the emitted document pointing at a name that is no longer defined anywhere.
 pub fn remove_anchor_path(
     node: &mut CustomNode,
     segments: &[Segment<'_>],
     source: &str,
     line_offsets: Option<&[usize]>,
 ) -> Result<DirtyUnit, String> {
+    if let Some(previous) = anchor_at(node, segments)
+        && any_alias_names(node, previous)
+    {
+        return Err("anchor-is-referenced".to_string());
+    }
     apply_metadata_path(node, segments, source, line_offsets, |n| {
         n.remove_anchor();
     })
@@ -1052,4 +1156,140 @@ pub fn set_many_path(
         units.push(unit);
     }
     Ok(units)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse;
+    use crate::parser::yaml::Schema;
+    use crate::serializer::to_yaml;
+
+    fn segments(key: &str) -> Vec<Segment<'static>> {
+        vec![Segment::Key(Cow::Owned(key.to_string()))]
+    }
+
+    /// The shape `edit_yaml` found: the verb succeeded, and the text it wrote named an anchor that
+    /// was no longer defined. A `set` that produces an unreadable document is not a partial success,
+    /// so the refusal happens before the tree is touched and the document is left exactly as it was.
+    #[test]
+    fn renaming_an_anchor_an_alias_names_is_refused_and_changes_nothing() {
+        let source = "base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = set_anchor_path(&mut node, &segments("base"), "a0", source, None)
+            .expect_err("a rename nothing refers to must still be refused");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source, "a refusal must not touch the tree");
+    }
+
+    /// Removal breaks the same reference in the same way, so it asks the same question.
+    #[test]
+    fn removing_an_anchor_an_alias_names_is_refused() {
+        let source = "base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = remove_anchor_path(&mut node, &segments("base"), source, None)
+            .expect_err("an anchored name the document points at cannot be taken away");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source);
+    }
+
+    /// An alias is a reference whatever position it sits in: `? *x` reads the anchor as a key, and a
+    /// rename would orphan it just as surely as the value case. The spelling is the explicit-key
+    /// marker, which is what the engine's own alias-key tests use (`a: &x [1, 2]\n? *x\n: v`).
+    #[test]
+    fn an_alias_in_key_position_counts_as_a_reference() {
+        let source = "a: &x [1, 2]\n? *x\n: v\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = set_anchor_path(&mut node, &segments("a"), "z", source, None)
+            .expect_err("a key alias is still a reference");
+        assert_eq!(error, "anchor-is-referenced");
+    }
+
+    /// The same rename, one step further: an anchor nothing points at is the caller's to change.
+    #[test]
+    fn renaming_an_anchor_nothing_refers_to_still_renames() {
+        let source = "key: &old value\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        set_anchor_path(&mut node, &segments("key"), "new", source, None)
+            .expect("no alias names `old`, so the rename is the caller's to make");
+        assert_eq!(to_yaml(&node), "key: &new value\n");
+    }
+
+    /// The class is not about one verb. `set_path` with `preserve_metadata: false` drops the replaced
+    /// node's metadata, and a name the document points at must not go that way quietly either.
+    #[test]
+    fn replacing_a_referenced_anchor_without_metadata_is_refused() {
+        let source = "base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = set_path(
+            &mut node,
+            &segments("base"),
+            CustomNode::plain_scalar("2"),
+            false,
+            source,
+            None,
+            false,
+        )
+        .expect_err("the emitted `use: *x` would name an anchor that no longer exists");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source);
+    }
+
+    /// The other side of the same call: with its metadata carried over, `with_metadata_from` keeps the
+    /// document's anchor name, the reference stays alive, and the edit is the caller's to make.
+    #[test]
+    fn replacing_a_referenced_anchor_with_metadata_keeps_the_name() {
+        let source = "base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        set_path(
+            &mut node,
+            &segments("base"),
+            CustomNode::plain_scalar("2"),
+            true,
+            source,
+            None,
+            false,
+        )
+        .expect("a replacement that keeps the metadata keeps the anchor with it");
+        let emitted = to_yaml(&node);
+        assert_eq!(emitted, "base: &x 2\nuse: *x\n");
+        parse(&emitted, Schema::Core).expect("the emission still parses");
+    }
+
+    /// `move_path` is one `set_path` call over a cloned subtree, so the guard it inherits is the same.
+    #[test]
+    fn moving_onto_a_referenced_anchor_is_refused() {
+        let source = "base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = move_path(&mut node, &segments("use"), &segments("base"), source, None)
+            .expect_err("the move would overwrite the anchor its own payload names");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source);
+    }
+
+    /// The third door: removing the node that *defines* a referenced anchor orphans the alias.
+    /// Measured on the same fixture, moving `$.base` away emitted `use: *x` alone - a document naming
+    /// an anchor nothing defines, refused by this library's own reader.
+    #[test]
+    fn deleting_the_definition_of_a_referenced_anchor_is_refused() {
+        let source = "base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = delete_path(&mut node, &segments("base"), source, None)
+            .expect_err("the alias would outlive the anchor it names");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source);
+    }
+
+    /// The guard is about the definition, not about every node that mentions the name: deleting the
+    /// alias leaves the anchor and the document intact.
+    #[test]
+    fn deleting_the_alias_itself_is_allowed() {
+        let source = "base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        delete_path(&mut node, &segments("use"), source, None)
+            .expect("nothing refers to the node being removed");
+        let emitted = to_yaml(&node);
+        assert_eq!(emitted, "base: &x 1\n");
+        parse(&emitted, Schema::Core).expect("the emission still parses");
+    }
 }
