@@ -24,6 +24,13 @@ status: new
   运行测试套件。s390x 成为唯一仍在模拟环境下运行套件的 wheel 目标；`pyq` 的 aarch64 交叉构建、
   armv7 与 ppc64le 均未改动。
 
+- **`main` 合并后的作业开始证明它过去只是打印的结论** — trunk 上唯一为代码变更运行的作业，只用一句
+  `echo` 断言"推送尖兵的同一棵树早已作为 pull request 通过完整 CI 矩阵"，既没有东西测量它，也没有任
+  何路径能让它失败。`scripts/check_main_provenance.py` 现在把这句话拆成三个问题向 API 提出：这个提交
+  由哪个 pull request 产生、推送的树是否属于该 pull request 的某棵提交树、承载它的提交上
+  `Test matrix (all legs)` 是否报告 `success`；答案不成立即拒绝。在所测得的每个尖兵（`07f988fa`、
+  `60f670d0`、`225cf373`）上这句话都成立，所以关闭的是防线的形状缺陷，而不是一起事故。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

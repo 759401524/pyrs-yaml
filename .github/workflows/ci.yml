@@ -40,13 +40,43 @@ jobs:
   # and status badge current for the push event itself.
   main-gate:
     name: main (verified on PR)
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    # `push` to `main` is the judgement that matters. `workflow_dispatch` is here because this is the
+    # only job a code change gets on trunk and a job that can only ever run on `push` cannot be tested
+    # before the merge that makes it run - and this repository's own record says a push-only or tag-only
+    # job is not trustworthy until it has been dispatched once. Dispatching a branch answers honestly
+    # ("this sha is not the content a merge gate judged"), which is a useful answer to ask for, and it
+    # cannot block anything: `matrix-verdict` deliberately does not wait on this job, so a red here is a
+    # report to whoever asked, never a refusal of a pull request.
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      - name: Record what this run stands for
-        run: |
-          echo "push sha ${{ github.sha }} is the rebased tip whose identical tree already"
-          echo "passed the full CI matrix as a pull request; skipping the duplicate spend."
+      # This job used to be four lines of `echo` asserting that the pushed tip's "identical tree
+      # already passed the full CI matrix", and the heavy legs below trusted it - so the only trunk
+      # job a code change receives could not fail, which is the definition of a report rather than a
+      # gate. `scripts/check_main_provenance.py` asks the assertion's three questions against the API
+      # (which pull request produced this commit, does its tree match one of that pull request's
+      # commits, did `Test matrix (all legs)` say `success` for that commit) and refuses otherwise.
+      # The claim held on every tip measured - `07f988fa`, `60f670d0`, `225cf373` all match a green
+      # head - which is why the hole is that nothing was asking, not that unverified content shipped.
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.8"
+
+      - name: Prove this tip is content the merge gate judged
+        env:
+          # Measured by the dispatch this arm exists for: a job's `permissions:` mints `GITHUB_TOKEN`,
+          # but `gh` reads `GH_TOKEN`, and without it the call exited 4 with "To use GitHub CLI in a
+          # GitHub Actions workflow, set the GH_TOKEN environment variable" - which the script correctly
+          # reports as "cannot ask" (exit 2). On a push to `main` that run would have been the job's
+          # first and only one, so the gate would have started life red.
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/check_main_provenance.py
 
   # The interpreter grid is planned rather than written out, by `scripts/ci_matrix_plan.py`. The
   # version list comes from `pyproject.toml`'s classifiers, so the matrix cannot drift away from the
