@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 693 Rust `#[test]`, 1,692 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 693 Rust `#[test]`, 1,705 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 25 `prop_*` functions (proptest), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 8 targets, 142 seeds of which 67 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -117,7 +117,7 @@ coupling check (`scripts/check_changelog_coupling.py`, evaluated on the pull req
 because a version-header comparison cannot see a release note that was never written), and —
 as of this document — the `prek` hook set over the whole tree (`hygiene.yml`).
 
-Six blind spots were found by measuring, not by reasoning. One had already done damage in
+Seven blind spots were found by measuring, not by reasoning. One had already done damage in
 `main`; the others were caught before merging, which is the difference between a gate and a
 review habit:
 
@@ -199,8 +199,44 @@ review habit:
   `scripts/check_matrix_verdict.py` refuses `skipped`/`cancelled` rather than reading them as
   agreement. It waits on **every** job in `ci.yml` - 11 of them, not the 3 it started with - and
   `tests/test_matrix_verdict_gate.py` compares that list against the jobs declared in the file, so
-  a job added without widening the fan-in reddens the suite. The remaining half is outside a pull request - the name has to be added to branch
-  protection - so this row is the honest state: closed in software, open in configuration.
+  a job added without widening the fan-in reddens the suite. The half outside a pull request is closed
+  too: re-reading `gh api repos/<repo>/branches/main/protection` for this revision returns
+  `strict: true`, `contexts: ["Test matrix (all legs)"]` and `enforce_admins: true`, so the name this
+  document said still had to be added has been added. **The row above it was wrong at the time it was
+  written and right about the software half; what it kept asserting was the configuration half, which
+  had since moved.** That is the same failure this file exists to catch - a reading recorded once and
+  then read as if it were still being taken - and it is why the reading is quoted with its revision.
+- **The only job that runs on `main` for a code change asserted its premise in an `echo`.** Every heavy
+  leg is gated behind `github.event_name != 'push'`, and `main-gate` explained why that is honest: the
+  pushed tip's "identical tree already passed the full CI matrix as a pull request; skipping the
+  duplicate spend." An `echo` cannot fail, so the claim - not the measurement - was the trunk's defence.
+  The claim held everywhere it was checked: `07f988fa` carries pull request #492's head tree
+  (`7b24405da569…`), and the tips `60f670d0` and `225cf373` each carry a head tree whose
+  `Test matrix (all legs)` conclusion is `success`. So this is a hole in the shape of the defence, not
+  an incident. `scripts/check_main_provenance.py` now asks the assertion's three questions against the
+  API - which pull request produced this commit (`GET /commits/{sha}/pulls`, whose answer can be *none*),
+  whether the pushed tree is one of that pull request's commit trees, and whether the required check
+  said `success` for the commit that carries it - and refuses otherwise; `tests/test_main_provenance.py`
+  pins the wiring in both directions, and eight mutants (the echo restored, any verdict counting as
+  green, head-only equality instead of tree membership, the `pull-requests: read` scope dropped, an
+  unattributed push passing, the `workflow_dispatch` arm removed, the first check-run attempt read
+  instead of the newest, the step's `GH_TOKEN` renamed away) each reddened exactly one test. The dispatch
+  arm is there because a job that can only ever run on `push` cannot be exercised before the merge that
+  first runs it, and it paid for itself on its first use: the dispatched run reported the API call
+  exiting 4 with "To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment
+  variable" - a job's `permissions:` mints `GITHUB_TOKEN`, which `gh` does not read - and the script
+  answered honestly with exit 2, "could not ask". On a push to `main` that would have been the gate's
+  first and only run, so it would have been red from arrival and the argument for the dispatch arm would
+  have been a lesson in why not to ship an untested job. It cannot block anything either:
+  `matrix-verdict` deliberately does not wait on this job, asserted rather than assumed. The
+  newest-attempt rule is the one that was wrong on the first draft - reading the first row would keep
+  refusing a tip whose red attempt had since been made green, a false red on trunk, and the sibling
+  `scripts/dependency_merge_gate.py` already reads `last`. The tree rule is membership rather than
+  equality with the head because a rebase can drop an empty tail commit, and the tip's tree is then an
+  earlier commit's; replaying the checker over `main`'s last 18 commits showed why the *tip* is the thing
+  to judge - eight refusals, every one an ancestor of a push tip, including seven intermediate heads of
+  the eleven-commit #483 rebase that were red at the time and were later fixed by the push that became
+  the tip.
 
 The strongest evidence that a hook tier is not decoration came from its own author: the five
 files written while building this matrix came out of the editor as CRLF, and

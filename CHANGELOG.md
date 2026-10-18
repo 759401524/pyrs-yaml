@@ -14,6 +14,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   glibc leg runs its suite there through `uv` instead of emulation. s390x is the only wheel suite
   still emulated; the `pyq` aarch64 cross-build, armv7 and ppc64le are unchanged.
 
+- **`main`'s post-merge job now proves the claim it used to print** — the only job trunk runs for a
+  code change asserted in an `echo` that the pushed tip's "identical tree already passed the full CI
+  matrix", with nothing measuring it and no path that could fail. `scripts/check_main_provenance.py`
+  asks that sentence's three questions against the API — which pull request produced the commit,
+  whether the pushed tree is one of that pull request's commit trees, and whether
+  `Test matrix (all legs)` reported `success` for the commit carrying it — and refuses otherwise.
+  The claim held on every tip measured (`07f988fa`, `60f670d0`, `225cf373`), so this closes a hole
+  in the shape of the defence, not an incident.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added
