@@ -136,6 +136,15 @@ pub fn needs_quotes(value: &str) -> bool {
     if value.starts_with(' ') || value.ends_with(' ') {
         return true;
     }
+    // The same rule at the other end of the alphabet, asked on the character path below. The
+    // reader trims with `str::trim`, which is Unicode (see the module note above), so a plain
+    // scalar that starts or ends with a non-ASCII space loses it - and a text that is *nothing
+    // but* such a character resolves to null. Measured on `load_json5`: a quoted key spelled
+    // U+2028 came back as `None` while U+0020 and U+00A0 were already safe, because the ASCII
+    // check above knew about U+0020 only. It lives in `text_holds_an_unemittable_char` rather
+    // than here because a non-ASCII edge is itself a non-ASCII byte, so every text that could
+    // answer that question already reaches it - and an ASCII key or value pays nothing.
+    //
     // One byte pass settles the ASCII case, which is almost every text the bridges
     // see: a byte below 0x20 or DEL is exactly what `char::is_control` means for
     // ASCII, `is_yaml_noncharacter` needs a code point ending in `FFFE`/`FFFF`
@@ -164,6 +173,17 @@ fn text_holds_an_unemittable_char(value: &str) -> bool {
     if value
         .chars()
         .any(|c| c.is_control() || is_yaml_noncharacter(c))
+    {
+        return true;
+    }
+    // A non-ASCII space that `needs_quotes`' ASCII check cannot see. The reader trims with Unicode
+    // rules, so a plain scalar that opens or closes with one loses it and a text that is nothing
+    // but one resolves to null. Only the two ends are asked, because trimming never reaches what
+    // is in the middle; every whitespace code point at both ends is what
+    // `needs_quotes_covers_every_whitespace_code_point_at_both_ends` sweeps.
+    let mut edges = value.chars();
+    if edges.next().is_some_and(char::is_whitespace)
+        || edges.next_back().is_some_and(char::is_whitespace)
     {
         return true;
     }
@@ -713,6 +733,40 @@ mod tests {
             }
         }
         assert_eq!(disagreements, 0, "code points disagree, first: {first:?}");
+    }
+
+    // The same question from the other side. `resolve_json_type` trims with Unicode rules, so a
+    // plain scalar whose first or last code point is whitespace resolves to something other than
+    // its text, and a text that is *nothing but* such a character resolves to null. Measured as
+    // `load_json5` answering `{None: 1}` for a quoted U+2028 key while strict JSON and JSONC kept
+    // the string. Every whitespace code point is asked in three positions: alone, at the front
+    // and at the back, because only the ends are what trimming can reach.
+    #[test]
+    fn needs_quotes_covers_every_whitespace_code_point_at_both_ends() {
+        let mut checked = 0usize;
+        for cp in 0..=0x10FFFF_u32 {
+            let Some(c) = char::from_u32(cp) else {
+                continue;
+            };
+            if !c.is_whitespace() {
+                continue;
+            }
+            checked += 1;
+            for text in [
+                alloc::string::String::from(c),
+                alloc::format!("{c}a"),
+                alloc::format!("a{c}"),
+            ] {
+                assert!(
+                    needs_quotes(&text),
+                    "{text:?} would be trimmed by the reader"
+                );
+            }
+        }
+        assert_eq!(
+            checked, 25,
+            "the Unicode White_Space set the rule has to cover changed"
+        );
     }
 
     // The guard that skips `trim_matches` reads the first and last *byte*, so it is checked
