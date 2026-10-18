@@ -170,6 +170,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   second look is paid for only on a miss, and a URI outside YAML's namespace keeps its current
   reading — resolved as if the tag were absent, not raised.
 
+- **A schema that omits `extends` resolves the way its documentation says** — `extends` is optional
+  and `docs/en/guides/custom-schema.md` states its default as `core`, but the parser only reached
+  Core when the key was present with an empty value. A schema that left the key out carried no base
+  resolver, which typed every scalar as its own text, and both directions of the verdict inverted
+  without complaint: `type: int` refused `port: 80` - the error said `expected int but got
+  Str("80")` - and `type: str` accepted it. The Rust row that pinned the old default is now two
+  rows, the second recording the boundary that remains: a base name this engine cannot find still
+  leaves no fallback, and refusing a typo'd name is a separate call about a public error surface.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

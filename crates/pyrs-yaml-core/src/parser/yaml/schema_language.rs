@@ -377,7 +377,13 @@ pub fn parse_schema_yaml(yaml: &str) -> Result<RuleResolver, ParseError> {
         });
     };
 
-    let mut extends: Option<Schema> = None;
+    // The documented default. Written as the initial value rather than as a fall-through in
+    // `parse_extends`, because that arm also answers a name the registry does not know, and an
+    // author who typed `extends: cored` must not silently get Core - left as it was, a schema with
+    // no `extends` key resolved every scalar to a string, so `type: int` refused `port: 80` and
+    // `type: str` accepted it. Measured on the trunk of 2026-10-18 in the error text itself:
+    // `$.port: expected int but got Str("5")`.
+    let mut extends: Option<Schema> = Some(Schema::Core);
     let mut rules: Vec<Rule> = Vec::new();
     let mut validate_rules: Vec<ValidateRule> = Vec::new();
 
@@ -1119,14 +1125,28 @@ rules:
     }
 
     #[test]
-    fn test_invalid_extends() {
-        let yaml = "name: bad\nrules:\n  - pattern: ^x$\n    type: int\n";
+    fn an_absent_extends_resolves_under_the_documented_default() {
+        let yaml = "name: plain\nrules:\n  - pattern: ^x$\n    type: int\n";
         let resolver = parse_schema_yaml(yaml).expect("parse schema");
-        // No extends specified — defaults to no fallback
+        // `extends` is optional and documented as defaulting to Core. It used to fall through to no
+        // fallback at all, which typed every scalar as its own text, so a `type: int` rule refused
+        // the integers it named - visible in the error this made: `expected int but got Str("5")`.
         assert_eq!(
             resolve(&resolver, "hello"),
             YamlType::Str(Cow::Borrowed("hello"))
         );
+        assert!(matches!(resolve(&resolver, "80"), YamlType::Int(80)));
+    }
+
+    #[test]
+    fn an_extends_name_nobody_knows_is_not_silently_replaced_by_the_default() {
+        let yaml = "name: typo\nextends: cored\nrules: []\n";
+        let resolver = parse_schema_yaml(yaml).expect("parse schema");
+        // The recorded boundary: a declared base this engine cannot find leaves no fallback, which
+        // resolves every scalar as its own text. Refusing the name outright is a decision about a
+        // public error surface and is not made here; the point of this row is that the default above
+        // cannot be reached by a typo.
+        assert_eq!(resolve(&resolver, "80"), YamlType::Str(Cow::Borrowed("80")));
     }
 
     // --- shape assertions -------------------------------------------------------
