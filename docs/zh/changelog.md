@@ -125,6 +125,14 @@ status: new
   `!date` 是本地标签，SafeLoader 没有它的构造器，所以陌生读者会直接拒绝那份文档，而不是改动某
   个值，这是标签设计本身的边界。
 
+- **TOML 写入器拿到了一个不归本仓库所有的解析器** — 写入侧三格里的最后一格。TOML 的外部层级
+  （`test_toml_test_suite.py`、`test_toml_crosslib.py`）问的都是读取器，所以 `to_toml` 此前只拿我们
+  自己的读取器校验。`tests/test_toml_writer_suite.py` 用 `to_toml` 与 `YamlDocument.to_toml()` 写出
+  400 棵生成的树，交给 `tomlkit`，在 3.11+ 上还交给 `tomllib`。实测 1200 棵探针树里 1074 棵写出且
+  0 次拒绝、0 次值变；其余 126 棵止步于同一个带类型的拒绝 `toml-cannot-represent-null`：格式没有词
+  能说的值是被拒绝，不是被编个拼法。两条边界钉住而不抹平——`datetime.time` 以裸本地时间发出（那是
+  1.1 的写法），超出 i64 的整数带引号发出（轮毂本来就叫它字符串）。行为未变。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

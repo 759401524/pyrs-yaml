@@ -632,7 +632,7 @@ def test_the_derived_table_is_not_vacuous(measured):
     assert not rows["TOML"]["cross_library"]["restricted"], "tomlkit is unbounded, so TOML reads `yes`"
     authority = {label: row["authority"] for label, row in rows.items()}
     assert authority["YAML"] == ["test_yaml_suite.py", "test_yaml_writer_suite.py"], authority
-    assert authority["TOML"] == ["test_toml_test_suite.py"], authority
+    assert authority["TOML"] == ["test_toml_test_suite.py", "test_toml_writer_suite.py"], authority
     # Both suffixes have to be live: the official-suite one for three rows, the production-table one
     # for the JSON5 half of the JSON family.
     assert "test_json5_spec_table.py" in authority["JSON / JSONC / JSON5"], authority

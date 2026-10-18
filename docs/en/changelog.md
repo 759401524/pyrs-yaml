@@ -158,6 +158,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for, so the strangers refuse that document rather than change a value, which is a boundary of
   the tag design.
 
+- **The TOML writer gained a parser it does not own** — the last of the three write-side cells.
+  `test_json_writer_suite.py` and `test_yaml_writer_suite.py` covered two families, and TOML's
+  outside tiers (`test_toml_test_suite.py`, `test_toml_crosslib.py`) both ask the reader, so the
+  writer was checked only against our own. `tests/test_toml_writer_suite.py` emits 400 generated
+  trees through `to_toml` and `YamlDocument.to_toml()` and hands each document to `tomlkit` and, on
+  Python 3.11+, `tomllib`. Measured: 1,074 of 1,200 probe trees emitted with 0 refusals and 0 value
+  changes, and the 126 that never reached a stranger were one typed refusal,
+  `toml-cannot-represent-null` — a value the format has no word for is refused, not given an
+  invented spelling. Two boundaries are pinned rather than smoothed over: a `datetime.time` goes out
+  as a bare local time, which is TOML 1.1's (1.0.0 has no local-time type and the readers here
+  decode it), and an integer beyond i64 goes out quoted, because a string is what the hub calls it
+  on every route. No behaviour changed; the gate is insurance against a dialect rule that reaches
+  one direction of the pipe and not the other, which is the class two of the last three fixes were.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

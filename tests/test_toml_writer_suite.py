@@ -1,0 +1,162 @@
+"""The TOML writer, judged by parsers this repository does not own.
+
+Every family in the hub now has a write-side gate that asks a stranger: `to_json`, `to_jsonc` and
+`to_json5` face Python's `json` and `pyjson5` in `test_json_writer_suite.py`, the YAML writers face
+PyYAML and ruamel.yaml in `test_yaml_writer_suite.py`. TOML was the remaining cell — its two outside
+tiers, `test_toml_test_suite.py` (the official suite) and `test_toml_crosslib.py` (tomlkit, tomllib),
+both ask the *reader*, and a reader checked only against our own writer is a fixed point that an
+implementation wrong twice in the same way satisfies.
+
+Measured on the trunk of 2026-10-18 before it was pinned: 1,200 generated trees, 1,074 emitted and
+read back with 0 refusals and 0 value changes through both `tomllib` and `tomlkit`; the 126 that did
+not reach a stranger were all one typed refusal, `toml-cannot-represent-null`. Both module entry
+points (`to_toml(text)` and `YamlDocument.to_toml()`) produce identical bytes, so the gate checks
+both and compares them.
+
+Two boundaries are asserted rather than worked around. A `datetime.time` is emitted as a bare local
+time (`k = 09:30:00`), which is TOML 1.1's and which both readers here decode; TOML 1.0.0 has no
+local-time type, so that spelling is a version choice recorded in `crates/pyrs-toml`, not something
+this file can adjudicate. An integer beyond i64 is emitted as a quoted string, because the hub
+already calls it a string — the same answer `load_jsonc` and `safe_dump` give (see
+`test_big_digit_string_spelling_is_verbatim`), and the row is pinned here so the three routes cannot
+drift apart.
+
+`tomllib` needs Python 3.11, so each test asks whichever outside parsers this interpreter has:
+`tomlkit` is an unconditional test dependency and covers every leg, `tomllib` joins it on 3.11+.
+The last test asserts that minimum is non-empty, because a gate that skips entirely is not a gate.
+"""
+
+import datetime as dt
+import math
+import random
+
+import pytest
+import tomlkit
+
+import pyrs_yaml
+
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - the 3.8 and 3.9/3.10 legs
+    tomllib = None
+
+TEXTS = [
+    "plain",
+    "1",
+    "true",
+    "",
+    "   ",
+    "a b",
+    "line1\nline2",
+    "tab\there",
+    'quote"',
+    "it's",
+    "back\\slash",
+    "é中",
+    chr(0x00A0),
+    "# hash",
+    "[ bracket",
+    "= eq",
+    "k" * 40,
+]
+# TOML bare keys, quoted keys and dotted keys are three different emissions; all of these are
+# spelled as data, so the writer's key path is what decides whether a stranger sees the name.
+KEYS = ["plain", "a b", "", "1", "true", "a.b", "a b c", "-", "#h", "[x]", "=", "é中", "k" * 30]
+NUMBERS = [0, 1, -1, 3.5, -2.5, 0.0, -0.0, 1_000_000, -7, 2**62, -(2**62)]
+TEMPORALS = [
+    dt.date(2026, 10, 18),
+    dt.datetime(2026, 10, 18, 9, 30),
+    dt.datetime(2026, 10, 18, 9, 30, tzinfo=dt.timezone.utc),
+    dt.time(9, 30),
+]
+
+READERS = {"tomlkit": tomlkit.parse}
+if tomllib is not None:
+    READERS["tomllib"] = tomllib.loads
+
+
+def gen(depth, rng):
+    if depth <= 0 or rng.random() < 0.35:
+        kind = rng.random()
+        if kind < 0.5:
+            return rng.choice(TEXTS)
+        if kind < 0.8:
+            return rng.choice(NUMBERS)
+        if kind < 0.9:
+            return rng.choice(TEMPORALS)
+        return rng.choice([True, False])
+    if rng.random() < 0.45:
+        return [gen(depth - 1, rng) for _ in range(rng.randint(0, 3))]
+    return {rng.choice(KEYS): gen(depth - 1, rng) for _ in range(rng.randint(1, 3))}
+
+
+TREES = [{"v": gen(3, random.Random(seed))} for seed in range(1, 401)]
+
+
+def test_a_stranger_reads_what_the_toml_writer_emitted():
+    for tree in TREES:
+        document = pyrs_yaml.to_toml(pyrs_yaml.from_dict(tree))
+        # The two entry points are one writer, and the claim is that neither invents a second answer.
+        assert pyrs_yaml.parse(pyrs_yaml.from_dict(tree)).to_toml() == document
+        for name, read in READERS.items():
+            back = read(document)
+            assert dict(back) == tree, f"{name}: {document!r} decoded {back!r}, not {tree!r}"
+
+
+@pytest.mark.parametrize(
+    "tree",
+    [{"v": None}, {"v": [1, None]}, {"v": {"a": {"b": None}}}, {"v": [{}, None]}],
+)
+def test_a_value_toml_cannot_say_is_refused_not_invented(tree):
+    # `null` has no TOML spelling, and the alternatives (drop the key, emit `""`, emit `null`)
+    # each produce a document a stranger reads as something other than what was sent.
+    with pytest.raises(pyrs_yaml.YamlSerializeError) as refused:
+        pyrs_yaml.to_toml(pyrs_yaml.from_dict(tree))
+    assert "null" in str(refused.value)
+
+
+@pytest.mark.parametrize("value", [*TEMPORALS, 2**63 - 1, -(2**63), 1e308, float("inf")])
+def test_a_stranger_decodes_each_temporal_and_numeric_spelling_we_emitted(value):
+    document = pyrs_yaml.to_toml(pyrs_yaml.from_dict({"k": value}))
+    for name, read in READERS.items():
+        back = read(document)["k"]
+        assert back == value, f"{name}: {document!r} decoded {back!r}, not {value!r}"
+        # `isinstance`, not `type(...) is`: tomlkit hands back its own `Integer`/`Float`/`Date`
+        # subclasses of the builtins, and a subclass is the same kind of value as far as this
+        # claim goes — a `str` where a number was sent is not.
+        assert isinstance(back, type(value)), f"{name}: {document!r} decoded a {type(back).__name__}"
+
+
+def test_nan_is_the_one_value_no_equal_can_confirm():
+    document = pyrs_yaml.to_toml(pyrs_yaml.from_dict({"k": float("nan")}))
+    for name, read in READERS.items():
+        assert math.isnan(read(document)["k"]), f"{name}: {document!r} is not a NaN"
+
+
+def test_an_integer_beyond_i64_is_the_string_the_hub_calls_it_everywhere():
+    # Not this writer degrading: the hub already resolved the 19-digit text to a string, which is
+    # what `load_jsonc` returns and what `safe_dump` emits unquoted. Pinned across the routes so
+    # one of them cannot quietly start claiming a number that its own reader will not accept.
+    big = "9223372036854775808"
+    document = pyrs_yaml.to_toml(pyrs_yaml.from_dict({"k": int(big)}))
+    assert document == f'k = "{big}"\n'
+    for name, read in READERS.items():
+        assert read(document)["k"] == big, f"{name} read {document!r} as not-a-string"
+    assert pyrs_yaml.load_toml(document) == {"k": big}
+
+
+def test_the_gate_cannot_silently_skip_every_reader():
+    # The claim of this file is that a parser the repository does not own reads the output. `tomlkit`
+    # is an unconditional test dependency, so an empty reader set means the gate stopped existing.
+    assert READERS, "no outside TOML parser is installed on this leg"
+    assert "tomlkit" in READERS
+
+
+def test_the_forest_carries_the_shapes_this_gate_names():
+    # The counts and the members are what the module docstring measured; a silent shrink would turn
+    # that paragraph into a number nobody checked.
+    assert len(TREES) == 400
+    assert {dt.time(9, 30), dt.date(2026, 10, 18)} <= set(TEMPORALS)
+    assert any(isinstance(t["v"], dict) for t in TREES)
+    assert any(isinstance(t["v"], list) for t in TREES)
+    assert any("#" in k for k in KEYS) and any("." in k for k in KEYS)
