@@ -17,6 +17,16 @@ status: new
 
 ### 変更
 
+- **行列が導出できない残存項目を記録する第 2 の登録簿** — `.ci/quality-holes.json` は
+  `scripts/quality_matrix.py` が導出できる穴しか記述できないため、空の一覧が「残存なし」と読まれてい
+  ましたが、理解したうえで意図的に残した挙動は存在します。表ヘッダー行に留まれない TOML の表ヘッダー
+  注釈、`set_comment` がコンテナの最後の子ノードに置く注釈、存在しないパスが例外を送出する一方でスカ
+  ラーパスが `None` を返す `sort_keys` です。新しい `.ci/known-residuals.json` は各項目に再現テスト
+  のノード id、担当層、検査可能な終了条件を登録し、固定したテストは `@pytest.mark.known_residual` を
+  持ち、`tests/test_known_residuals.py` は両方向で失敗します——生きた再現のない登録項目、または登録項
+  目のないマーク付き再現です。いずれかを修正すると特徴づけテストが赤くなり、同じ変更で登録項目を削除
+  せざるを得ません。
+
 - **aarch64 ホイールはネイティブ arm64 ランナーでビルド** — `publish.yml` の `linux` と
   `musllinux` の aarch64 行を qemu 上の `ubuntu-22.04` から `ubuntu-24.04-arm` へ移し、glibc 行も
   エミュレーションではなく `uv` でそのままテストスイートを実行します。s390x が唯一エミュレーション

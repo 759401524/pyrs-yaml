@@ -17,6 +17,16 @@ status: new
 
 ### 변경
 
+- **매트릭스가 도출할 수 없는 잔여 항목을 기록하는 두 번째 등록부** — `.ci/quality-holes.json`은
+  `scripts/quality_matrix.py`가 도출할 수 있는 구멍만 기술할 수 있어, 빈 목록이 "잔여 없음"으로
+  읽혔지만 이해하고 의도적으로 남겨 둔 동작은 존재합니다. 표 헤더 줄에 머물 수 없는 TOML 표 헤더
+  주석, `set_comment`가 컨테이너의 마지막 자식 노드에 두는 주석, 존재하지 않는 경로는 예외를
+  던지지만 스칼라 경로는 `None`을 반환하는 `sort_keys`입니다. 새 `.ci/known-residuals.json`은 각
+  항목에 재현 테스트의 노드 id, 담당 계층, 검사 가능한 종료 조건을 등록하고, 고정된 테스트는
+  `@pytest.mark.known_residual`을 가지며, `tests/test_known_residuals.py`는 양방향으로
+  실패합니다——살아 있는 재현이 없는 등록 항목, 또는 등록 항목이 없는 마커 달린 재현입니다. 하나를
+  고치면 특징화 테스트가 빨간색이 되어 같은 변경에서 등록 항목을 제거하도록 강제합니다.
+
 - **aarch64 휠은 네이티브 arm64 러너에서 빌드** — `publish.yml`의 `linux` 및 `musllinux` aarch64
   행을 qemu 기반 `ubuntu-22.04`에서 `ubuntu-24.04-arm`으로 옮기고, glibc 행도 에뮬레이션 대신
   `uv`로 그 자리에서 테스트 스위트를 실행합니다. s390x만 여전히 에뮬레이션으로 스위트를 실행하는

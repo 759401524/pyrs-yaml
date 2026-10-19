@@ -19,6 +19,14 @@ status: new
 
 ### 变更
 
+- **第二份登记表记录矩阵无法测量的残留** —
+  `.ci/quality-holes.json` 只能描述 `scripts/quality_matrix.py` 可推导的缺口，因此它的空列表被读成
+  "没有残留"，而实际仍有被理解、刻意搁置的行为：无法留在表头行的 TOML 表头注释、`set_comment`
+  落在容器最后一个子节点上的注释，以及缺失路径会抛错而标量路径返回 `None` 的 `sort_keys`。新增的
+  `.ci/known-residuals.json` 为每条残留登记复现用的节点 id、归属层与可检查的退出条件；被钉住的测试带
+  `@pytest.mark.known_residual`，`tests/test_known_residuals.py` 双向失败——登记项没有存活复现，或有
+  标记的复现没有登记项。修复任一条都会让其特征化测试变红，从而迫使同一改动删除该登记项。
+
 - **aarch64 wheel 改由原生 arm64 runner 构建** — `publish.yml` 的 `linux` 与 `musllinux` aarch64
   行从 qemu 下的 `ubuntu-22.04` 迁到 `ubuntu-24.04-arm`，glibc 行也随之改为在原生环境通过 `uv`
   运行测试套件。s390x 成为唯一仍在模拟环境下运行套件的 wheel 目标；`pyq` 的 aarch64 交叉构建、

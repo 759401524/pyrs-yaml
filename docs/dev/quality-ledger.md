@@ -6875,6 +6875,36 @@ signatures (`schema` -> `str | None`, the new flag), and both mypy and ty passed
 
 Counts: 735 Rust tests (from 735), 1,779 Python test functions, 41 Unreleased entries per mirror.
 
+### (es) The registry could say "no measured holes" but not "what we know we left open" (2026-10-19)
+
+`.ci/quality-holes.json` reached an empty list, and the empty list was true about what
+`scripts/quality_matrix.py` measures - and false about what the tree still carries. Three
+residuals were measured, understood and deliberately open, and none has a hole kind the probe
+can emit: a TOML table-header note that keeps its text and its table but not its line;
+`set_comment(..., standalone=False)` on a container, whose note the writer parks on the last
+child's line so the re-read gives it that child as owner (the reason `edit_yaml` withholds the
+ownership claim and (ei) left #113 open); and `sort_keys` on a scalar path, which answers
+`None` while a missing path raises `YamlEditError: missing-path`. "No measured holes" then
+read as "no residuals", the same false assurance the matrix exists to remove.
+
+`.ci/known-residuals.json` is the second registry, and `tests/test_known_residuals.py` is its
+gate. Each entry names a pytest node id, the layer that owns the fix, and a checkable exit;
+the test at that id carries `@pytest.mark.known_residual(<id>)` and asserts today's
+behaviour. The pair fails in three directions - an entry whose repro is gone or marked with
+another id, a marked repro with no entry, and a marker pytest would never collect - and a fix
+reddens the characterization test itself, which forces the entry and the marker out in the
+same change. That is the both-directions discipline `.ci/quality-holes.json` applies, for
+residuals the probe cannot see.
+
+Mutation evidence: deleting the `api:sort-keys-scalar-path-noop` entry while its repro stayed
+marked reddened `test_every_marked_repro_is_registered` on that exact node id; the file
+restored and the gate green again. The three pins were run before they were registered:
+`a: 1\nb: 2\n` and `- a\n- b\n` each emit the note on the last child's line, `sort_keys`
+answers `None` for `$.a` and raises for `$.missing`, and `to_toml(from_toml(...))` still
+relocates `[sec] # note`.
+
+Counts: 735 Rust tests, 1,791 Python test functions, 42 Unreleased entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

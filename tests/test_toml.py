@@ -316,6 +316,7 @@ class TestSectionHeaderCommentBoundary:
     declined. See ROADMAP.md "Known engine boundaries".
     """
 
+    @pytest.mark.known_residual("engine:container-inline-note-position")
     def test_header_inline_comment_is_relocated_not_dropped(self):
         src = "a = 1\n\n[sec] # note\nx = 1\n"
         out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
