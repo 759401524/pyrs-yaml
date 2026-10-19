@@ -362,6 +362,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mapping's note stays above the pair that ended its block, because that is where a pair's note
   is read back.
 
+- **The benchmark #522 broke now asserts its contract in the suite that runs** — the
+  `Python benchmarks` leg went red on `806811c5` on `assert '[server]' in ...` while the required
+  `Test matrix (all legs)` reported success. #522 makes a root table that sits before a later root
+  pair go inline, so the fixture's `[server]` header is no longer the emission; the assertion was
+  describing the pre-#522 spelling, not a property of the document. It now lives in the normal
+  suite (`tests/test_toml.py::TestToToml::test_benchmark_fixture_roundtrips_by_values_and_order`),
+  because benchmark modules are deselected without `--codspeed`. Reloading the emission catches a
+  lost or altered key; comparing the root key list catches the order, and swapping two emitted root
+  lines keeps the first comparison equal while flipping the second. The benchmark body is back to
+  the measured call alone.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

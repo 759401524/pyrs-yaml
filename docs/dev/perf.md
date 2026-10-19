@@ -1106,3 +1106,37 @@ enforcing image read this head at `serialize_small` +0.05%, `serialize_medium` +
 *below* the same image's reading of trunk one commit earlier (+0.10%, +0.15%, +0.36%, +0.06%) — and
 its `serialize_medium` sample (32,360,953) is 86 instructions from the local one. The leg reported
 success and no floor moved.
+
+## The leg outside the verdict caught a shape change (2026-10-19)
+
+`Python benchmarks` went red on trunk at `806811c5` (the merged #522) and stayed red on the next
+head, while the three commits behind it (`d3fa3d92`, `5753b1e6`, `05a7446f`) all read green on the
+same leg. Job 117935026394 names it in one line:
+`tests/test_benchmark_api.py::test_to_toml - assert '[server]' in ...`.
+
+The fixture is `[server]` + `[database]` + `[database.pool]` + fifty `[[items]]` blocks. #522 made a
+root table that sits before a later root pair go inline, because keeping the mapping's order is what
+TOML's own ordering rule leaves open; an array of tables reaches the writer as a sequence, so it
+counts as that later pair, and `server` and `database` are emitted as inline tables. Nothing was
+lost: on this tree `tomllib.loads(to_toml(from_toml(src)))` equals `tomllib.loads(src)` and the key
+list matches the source's, so the failure is the assertion, which was describing the pre-#522
+spelling rather than a property of the emitted document.
+
+The assertion now asks the two things the writer promises, and the pair is measured rather than
+assumed. Reloading the emission and comparing values catches a lost or altered key; comparing the
+reloaded key list catches the order. Swapping two emitted root lines by hand keeps the first
+comparison equal and flips the second, so neither assert is decoration and neither is a spelling
+test.
+
+It also lives in the normal suite now
+(`tests/test_toml.py::TestToToml::test_benchmark_fixture_roundtrips_by_values_and_order`), not in
+the benchmark body: this module is deselected unless `--codspeed` is passed, so a correctness
+assertion here is invisible to every ordinary run and to the required check. The benchmark body is
+back to the measured call, with the TOML-to-YAML setup outside it.
+
+What is named rather than fixed: `Test matrix (all legs)` — the single required check — reported
+`success` on both heads while this leg was red, because the benchmark legs are not in the matrix. A
+regression the benchmark channel is the only one positioned to see therefore cannot block a merge,
+and the red arrives on trunk instead of stopping it. Whether to put that leg in the verdict or
+register the gap as a measured hole is a ruling about the gate, not about this test, and it is left
+as a question with the evidence above attached.

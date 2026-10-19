@@ -284,6 +284,15 @@ status: new
   归档在那里，`lift_first_item_notes` 也一直依赖这个位置；映射的注释仍写在结束其块的键值对之上，
   因为读取器就在那里读回一对的注释。
 
+- **被 #522 打破的基准现在在常规测试套件里断言契约** — `Python benchmarks` 腿在 `806811c5` 上因
+  `assert '[server]' in ...` 变红，而必需的 `Test matrix (all legs)` 仍报告成功。#522 让位于后续
+  根级键值对之前的根表内联输出，因此夹具的 `[server]` 表头不再是输出内容；原断言描述的是 #522
+  之前的拼写，而不是文档应有的性质。断言现在位于常规套件
+  （`tests/test_toml.py::TestToToml::test_benchmark_fixture_roundtrips_by_values_and_order`），
+  因为基准模块在不带 `--codspeed` 时会被取消选择。重新加载输出可捕获丢失或改变的键，比较根键
+  列表可捕获顺序；交换输出的两条根行会让第一个比较保持相等、第二个翻转。基准体恢复为仅包含
+  被测调用。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增
