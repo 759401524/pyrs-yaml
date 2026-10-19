@@ -144,7 +144,15 @@ pub(crate) fn dump_iterable(
             writer.flush(py)?;
             return Err(e);
         }
-        if !first || explicit_start {
+        // A document that re-emits its `%YAML` directive carries the `---` that
+        // opens it, so no separator may precede it: a directive after another
+        // document needs the previous document's explicit `...` end marker
+        // instead, which granit (like the spec) requires before a directive.
+        if buf.starts_with("%YAML ") {
+            if !first {
+                writer.write(py, "...\n")?;
+            }
+        } else if !first || explicit_start {
             writer.write(py, "---\n")?;
         }
         first = false;

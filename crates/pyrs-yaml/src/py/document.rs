@@ -10,7 +10,8 @@ use crate::serializer::{SerializeOptions, to_yaml_with_options};
 use crate::splice::SpliceState;
 
 use crate::py::convert::{
-    format_i18n_error, node_to_pyobject_resolving_anchors, node_to_pyobject_simple, parse_schema,
+    directive_to_emit, format_i18n_error, negotiate_schema, node_to_pyobject_resolving_anchors,
+    node_to_pyobject_simple, parse_schema,
 };
 use crate::py::editing;
 use crate::py::editing::segment_py::SegmentExt;
@@ -35,6 +36,13 @@ pub struct YamlDocument {
     pub(crate) schema: Schema,
     pub(crate) source: Option<Arc<str>>,
     pub(crate) version: String,
+    /// The `%YAML` directive to write ahead of this document's body, or `None` when the
+    /// source declared nothing or the declaration was not honoured. Set only by the
+    /// negotiation path, so every existing document keeps emitting the body alone.
+    pub(crate) emit_version: Option<String>,
+    /// Whether this document's `%YAML` declaration drove resolution. Kept so `reparse`
+    /// can renegotiate the same way without the caller repeating the flag.
+    pub(crate) honor_version_directive: bool,
     pub(crate) revision: u64, // bumped on every mutation (Node invalidation)
     pub(crate) source_dirty: bool, // lazy source re-serialization flag
     /// Segment-splice accumulator for default-layout documents; `None`
@@ -47,6 +55,25 @@ pub struct YamlDocument {
     pub(crate) snapshot: Vec<DocumentSnapshot>,
 }
 
+/// Put a declared `%YAML` directive ahead of an emitted body. `explicit_start` says the body
+/// already carries its `---`; otherwise the directive has to bring its own. A body that
+/// already begins with a directive (the splice path can keep the source's prefix) is left
+/// alone so the line cannot be duplicated.
+fn with_directive(text: String, version: &str, explicit_start: bool) -> String {
+    if text.starts_with("%YAML ") {
+        return text;
+    }
+    let mut out = String::with_capacity(text.len() + version.len() + 15);
+    out.push_str("%YAML ");
+    out.push_str(version);
+    out.push('\n');
+    if !explicit_start {
+        out.push_str("---\n");
+    }
+    out.push_str(&text);
+    out
+}
+
 /// Serialize a document's AST with the given options, flushing any pending
 /// splice edits first. Shared by `to_yaml_with_options` and streaming
 /// write. The serialize itself runs detached from the GIL.
@@ -56,7 +83,8 @@ pub(crate) fn serialize_document(
     options: &SerializeOptions,
 ) -> PyResult<String> {
     doc.flush_source(py)?;
-    py.detach(|| to_yaml_with_options(&doc.ast, options))
+    let text = py
+        .detach(|| to_yaml_with_options(&doc.ast, options))
         .map_err(|e| {
             if e.to_string().contains("max depth exceeded") {
                 YamlMaxDepthError::new_err(format_i18n_error(
@@ -69,7 +97,11 @@ pub(crate) fn serialize_document(
                     &[("detail", &e.to_string())],
                 ))
             }
-        })
+        })?;
+    Ok(match doc.emit_version.as_deref() {
+        Some(version) => with_directive(text, version, options.explicit_start),
+        None => text,
+    })
 }
 
 impl YamlDocument {
@@ -92,12 +124,16 @@ impl YamlDocument {
         schema: Schema,
         source: Arc<str>,
         version: Option<String>,
+        emit_version: Option<String>,
+        honor_version_directive: bool,
     ) -> Self {
         YamlDocument {
             ast,
             schema,
             source: Some(source),
             version: version.unwrap_or_else(|| Self::DEFAULT_VERSION.to_string()),
+            emit_version,
+            honor_version_directive,
             revision: 0,
             source_dirty: false,
             splice: None,
@@ -111,7 +147,14 @@ impl YamlDocument {
     /// [`ensure_splice`], so `splice` starts `None`.
     #[allow(dead_code)] // pub but struct is not pub — used by benches (separate crate)
     pub fn from_ast(ast: CustomNode, source: Arc<str>) -> Self {
-        YamlDocument::new(ast, crate::parser::yaml::Schema::Core, source, None)
+        YamlDocument::new(
+            ast,
+            crate::parser::yaml::Schema::Core,
+            source,
+            None,
+            None,
+            false,
+        )
     }
 
     /// Lazily compute splice eligibility on first edit. `splice_checked`
@@ -276,7 +319,10 @@ impl YamlDocument {
                         ))
                     })?,
             };
-            self.source = Some(Arc::from(new_yaml));
+            self.source = Some(Arc::from(match self.emit_version.as_deref() {
+                Some(version) => with_directive(new_yaml, version, false),
+                None => new_yaml,
+            }));
             self.splice = None;
             self.source_dirty = false;
         }
@@ -319,7 +365,7 @@ impl YamlDocument {
             indent_sequence: indent_sequence.unwrap_or(indent_size),
             indent_offset: indent_offset.unwrap_or(0),
         };
-        to_yaml_with_options(&self.ast, &options).map_err(|e| {
+        let text = to_yaml_with_options(&self.ast, &options).map_err(|e| {
             if e.to_string().contains("max depth exceeded") {
                 YamlMaxDepthError::new_err(format_i18n_error(
                     "max-depth-exceeded",
@@ -331,6 +377,10 @@ impl YamlDocument {
                     &[("detail", &e.to_string())],
                 ))
             }
+        })?;
+        Ok(match self.emit_version.as_deref() {
+            Some(version) => with_directive(text, version, explicit_start),
+            None => text,
         })
     }
 
@@ -896,23 +946,36 @@ impl YamlDocument {
     }
 
     /// Reparse the current source, optionally changing merge behavior and schema.
-    #[pyo3(signature = (resolve_merges: "bool" = true, schema: "str" = "core") -> "None")]
-    fn reparse(&mut self, py: Python, resolve_merges: bool, schema: &str) -> PyResult<()> {
+    ///
+    /// `honor_version_directive=None` keeps the document's current negotiation
+    /// setting; passing `False` stops honouring a declared `%YAML` version.
+    #[pyo3(signature = (resolve_merges: "bool" = true, schema: "str | None" = None, honor_version_directive: "bool | None" = None) -> "None")]
+    fn reparse(
+        &mut self,
+        py: Python,
+        resolve_merges: bool,
+        schema: Option<&str>,
+        honor_version_directive: Option<bool>,
+    ) -> PyResult<()> {
         self.flush_source(py)?;
         let source = self.source.as_ref().ok_or_else(|| {
             YamlTypeError::new_err(format_i18n_error("no-source-to-reparse", &[]))
         })?;
-        let schema_enum = parse_schema(schema)?;
-        let schema_clone = schema_enum.clone();
+        let honor = honor_version_directive.unwrap_or(self.honor_version_directive);
+        let explicit = schema.map(parse_schema).transpose()?;
+        let parse_schema_value = explicit.clone().unwrap_or(Schema::Core);
         let reparsed = py.detach(|| {
-            crate::parser::parse_document(source, resolve_merges, schema_clone, 1000, false)
+            crate::parser::parse_document(source, resolve_merges, parse_schema_value, 1000, false)
                 .map_err(|e| parse_error_to_py_err(e, source, 1000))
         })?;
-        self.ast = reparsed.node;
+        let declared = reparsed.version.as_deref();
+        self.schema = negotiate_schema(explicit, declared, honor);
+        self.emit_version = directive_to_emit(honor, declared, &self.schema);
+        self.honor_version_directive = honor;
         self.version = reparsed
             .version
             .unwrap_or_else(|| Self::DEFAULT_VERSION.to_string());
-        self.schema = schema_enum;
+        self.ast = reparsed.node;
         self.splice = None;
         self.splice_checked = false;
         Ok(())
@@ -1214,28 +1277,39 @@ pub(crate) fn parse_document(
     py: Python,
     yaml: &Bound<'_, PyAny>,
     resolve_merges: bool,
-    schema: &str,
+    schema: Option<&str>,
     max_depth: usize,
     allow_duplicate_keys: bool,
+    honor_version_directive: bool,
 ) -> PyResult<YamlDocument> {
     let yaml_str: String = coerce_str_or_bytes(yaml)?;
 
-    let schema_enum = parse_schema(schema)?;
-    let schema_clone = schema_enum.clone();
+    let explicit = schema.map(parse_schema).transpose()?;
+    let parse_schema_value = explicit.clone().unwrap_or(Schema::Core);
     let parsed = py.detach(|| {
         crate::parser::parse_document(
             &yaml_str,
             resolve_merges,
-            schema_clone,
+            parse_schema_value,
             max_depth,
             allow_duplicate_keys,
         )
         .map_err(|e| parse_error_to_py_err(e, &yaml_str, max_depth))
     })?;
+    let declared = parsed.version.as_deref();
+    let effective = negotiate_schema(explicit, declared, honor_version_directive);
+    let emit_version = directive_to_emit(honor_version_directive, declared, &effective);
     let mut ast = parsed.node;
     resolve_tags(&mut ast, py)?;
     let source: Arc<str> = Arc::from(yaml_str);
-    Ok(YamlDocument::new(ast, schema_enum, source, parsed.version))
+    Ok(YamlDocument::new(
+        ast,
+        effective,
+        source,
+        parsed.version,
+        emit_version,
+        honor_version_directive,
+    ))
 }
 
 pub(crate) fn resolve_tags(node: &mut crate::ast::CustomNode, py: Python<'_>) -> PyResult<()> {

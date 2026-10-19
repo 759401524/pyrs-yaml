@@ -202,13 +202,15 @@ def _schema_to_yaml(schema: _SchemaDict) -> str:
     return from_dict(ordered)
 
 
-def _coerce_schema(schema: str | _SchemaDict) -> str:
+def _coerce_schema(schema: str | _SchemaDict | None) -> str | None:
     """Return a schema name string, registering inline dict schemas.
 
-    Accepts either a schema name (str) or an inline schema definition (dict).
-    Inline dicts are serialized to YAML, registered under a deterministic name
-    derived from their payload, and the name is returned.
+    Accepts either a schema name (str), an inline schema definition (dict), or
+    `None` meaning "no explicit schema": the document then resolves under an
+    honoured `%YAML` declaration, or Core when the flag is off.
     """
+    if schema is None:
+        return None
     if isinstance(schema, str):
         return schema
     if _is_schema_dict(schema):
@@ -255,11 +257,18 @@ class YAML(metaclass=_YAMLMetaclass):
     def __init__(
         self,
         typ: Literal["rt", "safe", "full"] = "rt",
-        schema: str | _SchemaDict = "core",
+        schema: str | _SchemaDict | None = None,
         max_depth: int = 1000,
         allow_duplicate_keys: bool = False,
+        honor_version_directive: bool = False,
     ) -> None:
-        self._impl = _YAML(typ, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+        self._impl = _YAML(
+            typ,
+            _coerce_schema(schema),
+            max_depth,
+            allow_duplicate_keys,
+            honor_version_directive,
+        )
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._impl, name)
@@ -268,49 +277,86 @@ class YAML(metaclass=_YAMLMetaclass):
 # Module-level functions with schema support — wrap to accept dict
 def safe_load(
     yaml: str,
-    schema: str | _SchemaDict = "core",
+    schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
+    honor_version_directive: bool = False,
 ) -> dict[Any, Any] | list[Any]:
-    return _safe_load(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    return _safe_load(
+        yaml,
+        _coerce_schema(schema),
+        max_depth,
+        allow_duplicate_keys,
+        honor_version_directive,
+    )
 
 
 def safe_loads(
     yaml: str,
-    schema: str | _SchemaDict = "core",
+    schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
+    honor_version_directive: bool = False,
 ) -> list[dict[Any, Any] | list[Any]]:
-    return _safe_loads(yaml, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    return _safe_loads(
+        yaml,
+        _coerce_schema(schema),
+        max_depth,
+        allow_duplicate_keys,
+        honor_version_directive,
+    )
 
 
 def parse(
     yaml: str | bytes,
     resolve_merges: bool = True,
-    schema: str | _SchemaDict = "core",
+    schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
+    honor_version_directive: bool = False,
 ) -> YamlDocument:
-    return _parse(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    return _parse(
+        yaml,
+        resolve_merges,
+        _coerce_schema(schema),
+        max_depth,
+        allow_duplicate_keys,
+        honor_version_directive,
+    )
 
 
 def parse_file(
     path: str,
-    schema: str | _SchemaDict = "core",
+    schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
+    honor_version_directive: bool = False,
 ) -> YamlDocument:
-    return _parse_file(path, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    return _parse_file(
+        path,
+        _coerce_schema(schema),
+        max_depth,
+        allow_duplicate_keys,
+        honor_version_directive,
+    )
 
 
 def parse_all_docs(
     yaml: str,
     resolve_merges: bool = True,
-    schema: str | _SchemaDict = "core",
+    schema: str | _SchemaDict | None = None,
     max_depth: int = 1000,
     allow_duplicate_keys: bool = False,
+    honor_version_directive: bool = False,
 ) -> list[YamlDocument]:
-    return _parse_all_docs(yaml, resolve_merges, _coerce_schema(schema), max_depth, allow_duplicate_keys)
+    return _parse_all_docs(
+        yaml,
+        resolve_merges,
+        _coerce_schema(schema),
+        max_depth,
+        allow_duplicate_keys,
+        honor_version_directive,
+    )
 
 
 def read_markdown(

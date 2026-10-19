@@ -70,6 +70,47 @@ pub(crate) fn parse_schema(raw: &str) -> PyResult<Schema> {
     }
 }
 
+/// The schema profile a `%YAML` declaration names. Only 1.1 has a distinct profile in this
+/// reader; every other accepted declaration resolves as Core (YAML 1.2).
+pub(crate) fn schema_for_declared_version(version: &str) -> Schema {
+    if version == "1.1" {
+        Schema::Yaml1_1
+    } else {
+        Schema::Core
+    }
+}
+
+/// Pick the schema that governs one document: an explicitly requested schema wins, then an
+/// opted-in `%YAML` declaration, then this reader's default (Core). The declaration is only
+/// consulted when `honor_version_directive` is set, so leaving the flag off keeps every
+/// existing caller's resolution unchanged.
+pub(crate) fn negotiate_schema(
+    explicit: Option<Schema>,
+    declared: Option<&str>,
+    honor_version_directive: bool,
+) -> Schema {
+    if let Some(schema) = explicit {
+        return schema;
+    }
+    match declared {
+        Some(version) if honor_version_directive => schema_for_declared_version(version),
+        _ => Schema::Core,
+    }
+}
+
+/// The `%YAML` directive to re-emit, if any. A directive is re-emitted only when the document
+/// was resolved under the profile it declares: writing `%YAML 1.1` over values resolved as
+/// Core would make the emitted text claim a meaning it does not have.
+pub(crate) fn directive_to_emit(
+    honor_version_directive: bool,
+    declared: Option<&str>,
+    effective: &Schema,
+) -> Option<String> {
+    let version = declared?;
+    (honor_version_directive && schema_for_declared_version(version) == *effective)
+        .then(|| version.to_string())
+}
+
 /// 递归遍历 AST，按文档顺序把每个别名绑到它前面最近的那个锚点。
 ///
 /// An alias names an anchor, and a name may be defined more than once in one document. YAML

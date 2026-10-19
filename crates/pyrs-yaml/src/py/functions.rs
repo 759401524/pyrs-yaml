@@ -3,7 +3,9 @@
 use pyo3::prelude::*;
 
 use crate::YamlValidateError;
-use crate::py::convert::{format_i18n_error, node_to_pyobject_simple, parse_schema};
+use crate::py::convert::{
+    directive_to_emit, format_i18n_error, negotiate_schema, node_to_pyobject_simple, parse_schema,
+};
 use crate::py::direct_dump::direct_dump;
 use crate::py::document::{YamlDocument, parse_document, resolve_tags};
 use crate::py::parse_error_to_py_err;
@@ -17,15 +19,20 @@ use crate::YamlSerializeError;
 use crate::YamlTypeError;
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
+#[pyo3(signature = (yaml: "str | bytes", resolve_merges: "bool" = true, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "YamlDocument")]
 /// Parse a YAML string (str or bytes) and return an editable `YamlDocument`.
+///
+/// With `honor_version_directive=True` a document that declares `%YAML 1.1` is
+/// resolved under the YAML 1.1 profile and re-emits the directive. An explicit
+/// `schema` always wins over the declaration.
 pub(crate) fn parse(
     py: Python,
     yaml: &Bound<'_, PyAny>,
     resolve_merges: bool,
-    schema: &str,
+    schema: Option<&str>,
     max_depth: usize,
     allow_duplicate_keys: bool,
+    honor_version_directive: bool,
 ) -> PyResult<YamlDocument> {
     parse_document(
         py,
@@ -34,56 +41,73 @@ pub(crate) fn parse(
         schema,
         max_depth,
         allow_duplicate_keys,
+        honor_version_directive,
     )
 }
 
 #[pyfunction]
-#[pyo3(signature = (path: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "YamlDocument")]
+#[pyo3(signature = (path: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "YamlDocument")]
 /// Parse a YAML file and return an editable `YamlDocument`.
 pub(crate) fn parse_file(
     py: Python,
     path: &str,
-    schema: &str,
+    schema: Option<&str>,
     max_depth: usize,
     allow_duplicate_keys: bool,
+    honor_version_directive: bool,
 ) -> PyResult<YamlDocument> {
-    let schema_enum = parse_schema(schema)?;
-    let schema_clone = schema_enum.clone();
+    let explicit = schema.map(parse_schema).transpose()?;
+    let parse_schema_value = explicit
+        .clone()
+        .unwrap_or(crate::parser::yaml::Schema::Core);
     let content = crate::py::read_file_to_string(path)?;
     let parsed = py.detach(|| {
         crate::parser::parse_document(
             &content,
             true,
-            schema_clone,
+            parse_schema_value,
             max_depth,
             allow_duplicate_keys,
         )
         .map_err(|e| parse_error_to_py_err(e, &content, max_depth))
     })?;
+    let declared = parsed.version.as_deref();
+    let effective = negotiate_schema(explicit, declared, honor_version_directive);
+    let emit_version = directive_to_emit(honor_version_directive, declared, &effective);
     let mut ast = parsed.node;
     resolve_tags(&mut ast, py)?;
     let source: std::sync::Arc<str> = std::sync::Arc::from(content);
-    Ok(YamlDocument::new(ast, schema_enum, source, parsed.version))
+    Ok(YamlDocument::new(
+        ast,
+        effective,
+        source,
+        parsed.version,
+        emit_version,
+        honor_version_directive,
+    ))
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[YamlDocument]")]
+#[pyo3(signature = (yaml: "str", resolve_merges: "bool" = true, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "list[YamlDocument]")]
 /// Parse a multi-document YAML stream and return all `YamlDocument` objects.
 pub(crate) fn parse_all_docs(
     py: Python,
     yaml: &str,
     resolve_merges: bool,
-    schema: &str,
+    schema: Option<&str>,
     max_depth: usize,
     allow_duplicate_keys: bool,
+    honor_version_directive: bool,
 ) -> PyResult<Vec<YamlDocument>> {
-    let schema_enum = parse_schema(schema)?;
-    let schema_clone = schema_enum.clone();
+    let explicit = schema.map(parse_schema).transpose()?;
+    let parse_schema_value = explicit
+        .clone()
+        .unwrap_or(crate::parser::yaml::Schema::Core);
     let docs = py.detach(|| {
         crate::parser::parse_all_documents(
             yaml,
             resolve_merges,
-            schema_clone,
+            parse_schema_value,
             max_depth,
             allow_duplicate_keys,
         )
@@ -92,47 +116,70 @@ pub(crate) fn parse_all_docs(
     let source: std::sync::Arc<str> = std::sync::Arc::from(yaml);
     Ok(docs
         .into_iter()
-        .map(|doc| YamlDocument::new(doc.node, schema_enum.clone(), source.clone(), doc.version))
+        .map(|doc| {
+            let declared = doc.version.as_deref();
+            let effective = negotiate_schema(explicit.clone(), declared, honor_version_directive);
+            let emit_version = directive_to_emit(honor_version_directive, declared, &effective);
+            YamlDocument::new(
+                doc.node,
+                effective,
+                source.clone(),
+                doc.version,
+                emit_version,
+                honor_version_directive,
+            )
+        })
         .collect())
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "dict[Any, Any] | list[Any]")]
+#[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "dict[Any, Any] | list[Any]")]
 /// Parse YAML into a Python dict/list, resolving anchors and merges.
+///
+/// `honor_version_directive=True` lets an explicit `%YAML 1.1` declaration pick
+/// the resolution profile; an explicit `schema` still wins.
 pub(crate) fn safe_load(
     py: Python,
     yaml: &str,
-    schema: &str,
+    schema: Option<&str>,
     max_depth: usize,
     allow_duplicate_keys: bool,
+    honor_version_directive: bool,
 ) -> PyResult<Py<PyAny>> {
-    let schema_enum = parse_schema(schema)?;
+    let explicit = schema.map(parse_schema).transpose()?;
+    let direct_schema = explicit
+        .clone()
+        .unwrap_or(crate::parser::yaml::Schema::Core);
     // P3 fast path: one-pass event → Python materialization for value-only
     // documents; anything outside its surface (anchors/tags/merges/…)
-    // falls through to the AST pipeline unchanged.
-    match crate::py::direct_load::try_direct_load(
-        py,
-        yaml,
-        &schema_enum,
-        max_depth,
-        allow_duplicate_keys,
-    ) {
-        crate::py::direct_load::DirectOutcome::Done(v) => return Ok(v),
-        crate::py::direct_load::DirectOutcome::Fail(e) => {
-            return Err(parse_error_to_py_err(e, yaml, max_depth));
+    // falls through to the AST pipeline unchanged. A declared `%YAML` version
+    // is only known after parsing, so honouring directives uses the AST path.
+    if !honor_version_directive {
+        match crate::py::direct_load::try_direct_load(
+            py,
+            yaml,
+            &direct_schema,
+            max_depth,
+            allow_duplicate_keys,
+        ) {
+            crate::py::direct_load::DirectOutcome::Done(v) => return Ok(v),
+            crate::py::direct_load::DirectOutcome::Fail(e) => {
+                return Err(parse_error_to_py_err(e, yaml, max_depth));
+            }
+            crate::py::direct_load::DirectOutcome::Bail => {}
         }
-        crate::py::direct_load::DirectOutcome::Bail => {}
     }
-    let schema_clone = schema_enum.clone();
-    let mut ast = py.detach(|| {
-        crate::parser::parse_with_options(yaml, true, schema_clone, max_depth, allow_duplicate_keys)
+    let parsed = py.detach(|| {
+        crate::parser::parse_document(yaml, true, direct_schema, max_depth, allow_duplicate_keys)
             .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
+    let effective = negotiate_schema(explicit, parsed.version.as_deref(), honor_version_directive);
+    let mut ast = parsed.node;
     resolve_tags(&mut ast, py)?;
     crate::py::convert::node_to_pyobject_resolving_anchors(
         &ast,
         py,
-        &schema_enum,
+        &effective,
         yaml.bytes().any(|b| b == b'&'),
     )
 }
@@ -175,23 +222,32 @@ pub fn bench_to_python(yaml: &str) -> Result<usize, pyo3::PyErr> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false) -> "list[dict[Any, Any] | list[Any]]")]
+#[pyo3(signature = (yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = false, honor_version_directive: "bool" = false) -> "list[dict[Any, Any] | list[Any]]")]
 /// Parse a multi-document YAML stream into a list of dicts/lists.
+///
+/// Each document negotiates its own `%YAML` declaration when
+/// `honor_version_directive=True`; an explicit `schema` wins for every one.
 pub(crate) fn safe_loads(
     py: Python,
     yaml: &str,
-    schema: &str,
+    schema: Option<&str>,
     max_depth: usize,
     allow_duplicate_keys: bool,
+    honor_version_directive: bool,
 ) -> PyResult<Vec<Py<PyAny>>> {
-    let schema_enum = parse_schema(schema)?;
+    let explicit = schema.map(parse_schema).transpose()?;
+    let direct_schema = explicit
+        .clone()
+        .unwrap_or(crate::parser::yaml::Schema::Core);
     // Single-document streams take the direct path (multi-doc bails back to
-    // the AST pipeline); empty input mirrors parse_all's empty list.
-    if !yaml.trim().is_empty() {
+    // the AST pipeline); empty input mirrors parse_all's empty list. A
+    // declared version is only known after parsing, so honouring it skips the
+    // direct path.
+    if !honor_version_directive && !yaml.trim().is_empty() {
         match crate::py::direct_load::try_direct_load(
             py,
             yaml,
-            &schema_enum,
+            &direct_schema,
             max_depth,
             allow_duplicate_keys,
         ) {
@@ -202,24 +258,28 @@ pub(crate) fn safe_loads(
             crate::py::direct_load::DirectOutcome::Bail => {}
         }
     }
-    let schema_clone = schema_enum.clone();
-    let asts = py.detach(|| {
-        crate::parser::parse_all_with_options(
+    let docs = py.detach(|| {
+        crate::parser::parse_all_documents(
             yaml,
             true,
-            schema_clone,
+            direct_schema,
             max_depth,
             allow_duplicate_keys,
         )
         .map_err(|e| parse_error_to_py_err(e, yaml, max_depth))
     })?;
     let has_anchors = yaml.bytes().any(|b| b == b'&');
-    asts.iter()
-        .map(|ast| {
+    docs.iter()
+        .map(|doc| {
+            let effective = negotiate_schema(
+                explicit.clone(),
+                doc.version.as_deref(),
+                honor_version_directive,
+            );
             crate::py::convert::node_to_pyobject_resolving_anchors(
-                ast,
+                &doc.node,
                 py,
-                &schema_enum,
+                &effective,
                 has_anchors,
             )
         })
