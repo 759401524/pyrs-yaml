@@ -19,6 +19,14 @@ status: new
 
 ### 变更
 
+- **Rust 基准集开始测量 TOML、JSON 与 1.1 档位** — CodSpeed 的 Rust 腿此前只跑一个文件，
+  其中每个用例都是 YAML 文本输入、YAML 或 Python 输出，因此本树增长最多的两个引擎、以及决定
+  纯量标量语义的 1.1 档位都没有墙钟序列。`crates/pyrs-yaml/benches/yaml_bench.rs` 新增六个
+  基准：`from_toml_medium`/`to_toml_medium`、`from_json_medium`/`to_json_medium`、
+  `resolve_yaml11_type_many` 与 `needs_quotes_over_scalars`。四个格式基准读取指令数门禁所用的
+  `bench_inputs` 文档，并沿用 Ir 场景名，使墙钟变化与指令数变化可按同一对数字阅读。地板不动：
+  CodSpeed 继续负责排名，零回退判定仍归 `.ci/ir-baseline.json`。
+
 - **MSRV 任务安装它声称要测试的 MSRV** — `msrv-check` 安装的是
   `dtolnay/rust-toolchain@stable`，因此在当前 stable 上编译整个工作区，并把它当作最低版本：
   清单中的 `rust-version = "1.96"` 只记录地板而不强制执行，需要 1.97 的依赖会通过该任务，

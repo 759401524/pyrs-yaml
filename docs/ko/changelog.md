@@ -17,6 +17,16 @@ status: new
 
 ### 변경
 
+- **Rust 벤치마크가 TOML, JSON, 1.1 리졸버를 측정합니다** — CodSpeed의 Rust 레그는 모든 사례가
+  YAML 입력에 YAML 또는 Python 출력인 파일 하나만 실행했기에, 이 트리에서 가장 크게 성장한 두
+  엔진과 플레인 스칼라의 의미를 결정하는 프로파일에는 월클록 계열이 없었습니다.
+  `crates/pyrs-yaml/benches/yaml_bench.rs`에 6개 벤치마크를 추가합니다:
+  `from_toml_medium`/`to_toml_medium`, `from_json_medium`/`to_json_medium`,
+  `resolve_yaml11_type_many`, `needs_quotes_over_scalars`. 네 개의 포맷 벤치마크는 명령 수
+  게이트가 측정하는 `bench_inputs` 문서를 읽고 Ir 시나리오와 같은 이름을 가져, 월클록 변화와
+  명령 수 변화를 한 쌍으로 읽을 수 있습니다. 바닥은 움직이지 않습니다: CodSpeed는 순위를 맡고,
+  제로 회귀 판정은 `.ci/ir-baseline.json`에 남습니다.
+
 - **MSRV 작업이 테스트한다고 말하는 MSRV를 설치합니다** — `msrv-check`는
   `dtolnay/rust-toolchain@stable`을 설치해 현재 stable에서 워크스페이스를 컴파일하고 그것을 최소
   버전이라고 불렀습니다. 매니페스트의 `rust-version = "1.96"`은 하한을 기록할 뿐 강제하지 않으므로,

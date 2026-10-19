@@ -17,6 +17,16 @@ status: new
 
 ### 変更
 
+- **Rust ベンチマークは TOML・JSON・1.1 リゾルバを測るようになりました** — CodSpeed の Rust
+  レッグは、全ケースが YAML 入力・YAML または Python 出力の 1 ファイルだけを実行していたため、
+  このツリーが最も成長した 2 つのエンジンと、プレーンスカラーの意味を決めるプロファイルには
+  ウォールクロックの系列がありませんでした。`crates/pyrs-yaml/benches/yaml_bench.rs` に 6 つの
+  ベンチを追加します：`from_toml_medium`/`to_toml_medium`、`from_json_medium`/`to_json_medium`、
+  `resolve_yaml11_type_many`、`needs_quotes_over_scalars`。4 つのフォーマットベンチは命令数
+  ゲートが測る `bench_inputs` の文書を読み、Ir シナリオと同じ名前を持つため、ウォールクロックの
+  変動と命令数の変動を 1 組として読めます。床は動きません：CodSpeed はランキングを担い、
+  ゼロ回帰の判定は `.ci/ir-baseline.json` に残ります。
+
 - **MSRV ジョブは、テストすると名乗る MSRV をインストールします** — `msrv-check` は
   `dtolnay/rust-toolchain@stable` をインストールしていたため、現在の stable でワークスペースを
   コンパイルし、それを最小バージョンと呼んでいました。マニフェストの `rust-version = "1.96"` は

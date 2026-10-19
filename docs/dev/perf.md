@@ -1171,3 +1171,29 @@ reported 0.000% spread for every scenario. The local WSL reading of `to_toml_med
 pattern recorded above, not the number a floor takes. Both harness digests moved with the refresh
 because trunk advanced since the previous floor; the committed `.ci/ir-baseline.json` is the
 artifact byte for byte.
+
+## The Rust bench set reached the ranking channel's blind spots (2026-10-19)
+
+`codspeed.yml` runs two legs, and the Rust one has been green the whole time: `cargo codspeed
+build && cargo codspeed run` over `crates/pyrs-yaml/benches/yaml_bench.rs`, simulation mode, the
+report posted as `CodSpeed Performance Analysis`. Green is not the same as covering. Everything the
+file measured was YAML text in, YAML or Python out; the two spokes this engine has grown most since
+
+- TOML and JSON - and the resolver that decides what a plain scalar *means*, were invisible to it,
+so the channel that answers "is this slower than last week" had never seen them move.
+
+Six benches close that: `resolve_yaml11_type_many` (30 texts over the 1.1 profile, the shapes the
+profile was completed for) and `needs_quotes_over_scalars` (the quoting predicate every plain scalar
+pays), then `from_toml_medium`/`to_toml_medium` and `from_json_medium`/`to_json_medium`. The two
+writer benches read `pyrs_yaml_core::bench_inputs::MEDIUM_TOML` / `MEDIUM_JSON` and the same
+`bench_inputs` documents the Ir harness measures, which is the standing rule (`AGENTS.md`: one copy
+of a fixture, two harnesses), and their names match the Ir scenarios on purpose - a reader comparing
+a wall-clock movement with an instruction-count movement should be looking at the same pair of
+numbers. Measured on this box with `cargo bench --bench yaml_bench`: `from_toml_medium` 4.199 µs and
+`to_toml_medium` 699.9 ns per call.
+
+What this does not change is the enforcement layer. CodSpeed keeps ranking and the trend; the
+zero-regression verdict stays with `.ci/ir-baseline.json` and `scripts/ir_gate.py`, because a
+wall-clock number on shared runners is not reproducible below ~10% (the record is
+`docs/dev/perf.md`'s own history and `AGENTS.md`). A new bench is a new thing the ranking channel
+can see moving; it is not a new gate, and none of these six has a floor.
