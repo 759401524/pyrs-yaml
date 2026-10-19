@@ -287,6 +287,54 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   both runs too, so this is the claim stated directly rather than a strictly stronger oracle). No
   behaviour changed; the counts move to 720 Rust tests and 29 properties.
 
+- **The edit tier now judges what an edited document exports** — a hub document is what
+  `doc.to_toml()`, `doc.to_json5()` and the CLI's TOML/JSON output write, so "edit, then export" is
+  the route a user takes, and every tier before this one had only handed those writers a *reader's*
+  tree: `toml_roundtrip` and `json_roundtrip` never see a tree the splice layer rewrote.
+  `edit_yaml.rs` now writes each settled tree in every dialect, compact and pretty alike, and asks
+  the two questions those targets already ask — the dialect's own reader must accept the text, and
+  its second emission must be the same bytes. A dialect that refuses the tree is a pass, because
+  TOML has no top-level scalar and strict JSON refuses a non-finite float. The edit verbs stay
+  YAML-only by design (`crates/pyrs-toml/src/lib.rs` says so), so this is one target asking seven
+  exporters, not seven edit targets. The same two questions went into `json_roundtrip` for the three
+  pretty JSON spellings, which that tier had never asked of text nobody chose to generate.
+
+- **A `set` that replaces a container no longer drops a referenced anchor defined inside it** — the
+  guard at `set_path` asked only about the replaced node's own anchor, and that node carried none:
+  its child did. `preserve_metadata: true` copies exactly the replaced node's own properties, so
+  writing over the mapping deleted the only definition of `x` and left `use: *x` naming nothing —
+  text this library's own reader refuses (libFuzzer `edit_yaml` crash-fbd364b3). `delete_path` had
+  already been given the wider, subtree-shaped answer through `anchors_in`, so the same question is
+  now asked at this door and refuses with the same `anchor-is-referenced` reason, leaving the tree
+  untouched.
+
+- **A note written on a tag-only sequence item keeps that line** — `- !fuzz2` spells its value as
+  nothing, so a note set after the tag had no body to sit on: the reader filed it as the item's
+  leading note and the next emission wrote it as a line of its own above the dash, so the text moved
+  on the second round although nothing was lost (libFuzzer `edit_yaml` crash-3dd60cad). The writer
+  now closes the pending tag line before an inline note, exactly as it already does before a note
+  line, and the item is written `- !fuzz2 ~  # fuzz 47`.
+
+- **A signed zero reaches TOML as the zero TOML reads back** — the integer pass-through keeps a
+  plain scalar's own spelling when that spelling is legal TOML, and `-0` is legal text. But TOML has
+  no negative zero: `ist = -0` re-reads as `0`, so the second emission moved. A fixed point is
+  spelled the way the reader spells it, so a signed zero writes as `0` while the radix spellings the
+  reader really does keep (`0xDEAD`, `0b1`) pass through unchanged (libFuzzer `edit_yaml`
+  crash-917e103b).
+
+- **An emptied block sequence keeps its dash line** — removing the last item of a block sequence
+  leaves the flow flag behind, and the compactness rule vetoed a compactness the emission does not
+  have: an empty container has no block form, so it is always spelled `[]` on the key's line. The
+  first emission was `-\n  t: []`, the reader answered `- t: []`, and the text moved on the second
+  round with nothing lost (libFuzzer `edit_yaml` crash-a58caa38).
+
+- **A JSON string spelled with a long integer keeps its quotes across the hub** — the Core resolver
+  answers `Str` for a digit run too long to fit an `i64`, while JSON puts no bound on an integer
+  literal, so `"9999999999999999999"` projected as a plain scalar and `to_json` wrote it back as a
+  number: `load_json` kept a string and one trip through the hub made it an integer. The projection
+  now asks JSON's own number grammar before writing a string plain, which is the question the writer
+  will ask of it (libFuzzer `json_roundtrip` crash-09341b75).
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

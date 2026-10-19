@@ -26,11 +26,14 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use pyrs_json::{from_json, from_json5, from_jsonc, to_json_text, to_json5_text, to_jsonc_text};
+use pyrs_json::{
+    from_json, from_json5, from_jsonc, to_json_text, to_json_text_pretty, to_json5_text,
+    to_json5_text_pretty, to_jsonc_text, to_jsonc_text_pretty,
+};
 
 /// Assert that `$write`'s own output reads back, in the same dialect, to the same text.
 macro_rules! settled {
-    ($dialect:expr, $input:expr, $node:expr, $parse:path, $write:path) => {{
+    ($dialect:expr, $input:expr, $node:expr, $parse:path, $write:expr) => {{
         if let Ok(once) = $write($node) {
             match $parse(&once) {
                 Ok(reparsed) => match $write(&reparsed) {
@@ -68,5 +71,17 @@ fuzz_target!(|data: &[u8]| {
         settled!("json", text, &node, from_json, to_json_text);
         settled!("jsonc", text, &node, from_jsonc, to_jsonc_text);
         settled!("json5", text, &node, from_json5, to_json5_text);
+        // The pretty spellings are separate code paths, and they are what `doc.to_json(indent)` and
+        // the CLI's `--pretty` write. `prop_pretty_json_writers_are_fixed_points` asks the same
+        // question of generated trees; this asks it of text nobody chose to generate.
+        settled!("json (pretty)", text, &node, from_json, |n| {
+            to_json_text_pretty(n, 2)
+        });
+        settled!("jsonc (pretty)", text, &node, from_jsonc, |n| {
+            to_jsonc_text_pretty(n, 2)
+        });
+        settled!("json5 (pretty)", text, &node, from_json5, |n| {
+            to_json5_text_pretty(n, 2)
+        });
     }
 });

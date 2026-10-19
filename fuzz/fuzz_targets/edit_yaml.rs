@@ -24,7 +24,12 @@
 //!   whose index is a position the next item shifts into - one item fewer in the parent, `insert` and
 //!   `append` find exactly one more item holding the written text at its index, `sort-keys` finds the
 //!   mapping's keys in the order the engine sorts them, and `set-comment` is held to the structural
-//!   claims only - see the boundary below.
+//!   claims only - see the boundary below;
+//! - the settled tree is also what the other spokes write. Each of `to_toml`, `to_json_text`,
+//!   `to_jsonc_text` and `to_json5_text` is handed that tree, and its text must re-read in its own
+//!   dialect and survive a second emission. `toml_roundtrip` and `json_roundtrip` make those two
+//!   claims about a *reader's* tree; this is the composition the CLI's TOML/JSON output and
+//!   `doc.to_toml()` reach after an edit, which no tier had asked about.
 //!
 //! Three claims are narrower than they look, and each was narrowed by a measurement rather than by
 //! taste. Sorting is asked only where the verb has work to do: `sort_keys_path` answers "ok" for a
@@ -41,7 +46,12 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
+use pyrs_json::{
+    from_json, from_json5, from_jsonc, to_json_text, to_json_text_pretty, to_json5_text,
+    to_json5_text_pretty, to_jsonc_text, to_jsonc_text_pretty,
+};
 use pyrs_schema::types::Schema;
+use pyrs_toml::{from_toml, to_toml};
 use pyrs_yaml_core::ast::{Comment, CustomNode, ScalarStyle, Tag};
 use pyrs_yaml_core::editing::plan::{
     append_path, delete_path, insert_path, move_path, rename_path, set_anchor_path,
@@ -219,6 +229,64 @@ fn scalar_text(node: &CustomNode) -> Option<&str> {
         CustomNode::Scalar { value, .. } => Some(value),
         _ => None,
     }
+}
+
+/// The tree an edit left behind, handed to the spokes a hub document exports through.
+///
+/// The composition is product-reachable - the CLI runs a plan verb and then writes TOML or JSON, and
+/// `YamlDocument` exposes `set` beside `to_toml` - but every tier before this one asked a *reader's*
+/// tree: `toml_roundtrip` and `json_roundtrip` never see a tree the splice layer rewrote. The two
+/// claims are the ones those targets already make, dialect by dialect: text the format's own reader
+/// refuses, or text that still moves on the second emission. A typed refusal is a pass, because TOML
+/// has no top-level scalar and strict JSON refuses a non-finite float.
+///
+/// A macro rather than a table of `(reader, writer)` pairs for the reason `json_roundtrip` gives: each
+/// function is its own `fn` item type, and coercing them to a shared pointer would name the node and
+/// error types the engines keep behind their re-exports.
+fn export_settles(tree: &CustomNode, input: &str) {
+    macro_rules! spoke {
+        ($dialect:expr, $write:expr, $read:path) => {
+            if let Ok(once) = $write(tree) {
+                match $read(&once) {
+                    Ok(back) => match $write(&back) {
+                        Ok(twice) => assert_eq!(
+                            once, twice,
+                            "edit_yaml: an edited tree wrote {} that did not settle in one round\nfirst:\n{}\nsecond:\n{}\ninput:\n{}",
+                            $dialect, once, twice, input
+                        ),
+                        Err(error) => fail(
+                            &format!(
+                                "an edited tree's {} re-read as a tree its writer refuses",
+                                $dialect
+                            ),
+                            error.to_string(),
+                            &once,
+                            input,
+                        ),
+                    },
+                    Err(error) => fail(
+                        &format!(
+                            "an edited tree wrote {} its own reader refused",
+                            $dialect
+                        ),
+                        error.to_string(),
+                        &once,
+                        input,
+                    ),
+                }
+            }
+        };
+    }
+    spoke!("TOML", to_toml, from_toml);
+    spoke!("strict JSON", to_json_text, from_json);
+    spoke!("JSONC", to_jsonc_text, from_jsonc);
+    spoke!("JSON5", to_json5_text, from_json5);
+    // The pretty spellings are the ones `doc.to_json(indent)` and the CLI's `--pretty` write, and
+    // they are separate code paths: `prop_pretty_json_writers_are_fixed_points` asks the same two
+    // questions of generated trees, and an edited tree reaches them through no other tier.
+    spoke!("JSON (pretty)", |t| to_json_text_pretty(t, 2), from_json);
+    spoke!("JSONC (pretty)", |t| to_jsonc_text_pretty(t, 2), from_jsonc);
+    spoke!("JSON5 (pretty)", |t| to_json5_text_pretty(t, 2), from_json5);
 }
 
 /// Every path the reader reached, so a mutation lands on a node that exists.
@@ -481,6 +549,7 @@ fuzz_target!(|data: &[u8]| {
             "edit_yaml: an edit's emission did not settle in one round\nfirst:\n{emitted}\nsecond:\n{again}\ninput:\n{source}"
         );
         effect.check(&reparsed, &emitted, source);
+        export_settles(&reparsed, source);
 
         node = reparsed;
         text = emitted;

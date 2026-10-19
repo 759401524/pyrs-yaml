@@ -315,10 +315,18 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
                 }
                 // Fidelity pass-through: when the plain scalar's textual
                 // form is already a valid TOML integer literal (`0xDEAD`,
-                // `-0`, plain decimal), emit it verbatim. Otherwise fall
+                // plain decimal), emit it verbatim. Otherwise fall
                 // back to the canonical `i64` rendering.
+                //
+                // A signed zero is the exception inside the literal set: TOML has no negative zero,
+                // so `a = -0` re-reads as the integer `0` and the second emission moved
+                // (libFuzzer `edit_yaml` crash-917e103b). Radix spellings survive a read because the
+                // reader keeps their text; a redundant sign on zero is not one of them, and a fixed
+                // point has to be spelled the way the reader spells it.
                 (ScalarStyle::Plain, YamlType::Int(i)) => {
-                    if is_toml_int_literal(value) {
+                    let signed_zero = value.starts_with(['+', '-'])
+                        && value[1..].chars().all(|digit| digit == '0');
+                    if is_toml_int_literal(value) && !signed_zero {
                         out.push_str(value);
                     } else {
                         let _ = write!(out, "{i}");
@@ -663,6 +671,23 @@ mod tests {
         let mut out = String::new();
         push_multiline(&mut out, value);
         out
+    }
+
+    /// TOML has no signed zero: `a = -0` is legal text whose value is `0`. The integer pass-through
+    /// kept the spelling it was handed, so a tree read from `-0` wrote `-0` again and a tree whose
+    /// text came from the hub's `-0` (YAML `-0`, libFuzzer `edit_yaml` crash-917e103b) wrote text that
+    /// re-read as `0` and moved on the second emission. A fixed point is spelled the way the reader
+    /// spells it, so a signed zero is written as the plain zero.
+    #[test]
+    fn a_signed_zero_is_written_as_the_zero_the_reader_spells_back() {
+        for text in ["a = -0\n", "a = +0\n"] {
+            let ast = from_toml(text).expect("a signed zero is legal TOML");
+            let once = to_toml(&ast).expect("an integer in a root table writes");
+            assert_eq!(once, "a = 0\n", "{text} must be written as it reads back");
+            let back = from_toml(&once).expect("the emission re-reads");
+            let twice = to_toml(&back).expect("and re-writes");
+            assert_eq!(once, twice, "not a fixed point: {once:?} -> {twice:?}");
+        }
     }
 
     #[test]
