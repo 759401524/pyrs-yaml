@@ -327,3 +327,55 @@ fn the_roots_own_note_settles_in_one_round() {
         );
     }
 }
+
+/// A mapping whose block ends inside a nested sequence has no pair line of its own at the tail:
+/// the last line belongs to one of the sequence's items. `write_mapping_pair` left
+/// `pair_line_start` pointing there, so the mapping's note was written above that item's dash -
+/// where the reader hands it to the item's value, and the second emission spelled the value as a
+/// continuation (`- \n    # fuzz 35\n    !a`) instead of the first one's line. The pair now
+/// restores its own start on the way out, so the note lands above the pair that ended the
+/// mapping's block and the first emission is the fixed point. The note's *owner* still moves,
+/// which is #113's ruling; what is asserted here is the text.
+#[test]
+fn a_mapping_note_over_a_nested_sequence_settles_in_one_round() {
+    use pyrs_yaml_core::ast::Comment;
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::set_comment_path;
+    use std::sync::Arc;
+
+    let path: [Segment; 0] = [];
+    for (src, expected) in [
+        ("ss:\n  - !a\n  - !a\n", "# fuzz 35\nss:\n  - !a\n  - !a\n"),
+        (
+            "a: 1\nss:\n  - !a\n  - !a\n",
+            "a: 1\n# fuzz 35\nss:\n  - !a\n  - !a\n",
+        ),
+        (
+            "ss:\n  - !a\n  - !a\nz: 2\n",
+            "ss:\n  - !a\n  - !a\nz: 2  # fuzz 35\n",
+        ),
+    ] {
+        let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+        set_comment_path(
+            &mut node,
+            &path,
+            Comment {
+                text: Arc::from("fuzz 35"),
+                standalone: false,
+            },
+            src,
+            None,
+        )
+        .expect("the root takes a note");
+        let one = to_yaml(&node);
+        assert_eq!(
+            one, expected,
+            "the mapping's note has a pinned line: {src:?}"
+        );
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}

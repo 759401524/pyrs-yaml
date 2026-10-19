@@ -1539,6 +1539,13 @@ impl Serializer {
             }
         }
 
+        // The field's reader, `note_line_above_last_pair`, runs one level up after this
+        // pair returns: a block value (a sequence item especially) writes its own starts
+        // into the field, so restoring the pair's line on the way out keeps an enclosing
+        // mapping's note above the pair that ended *its* block rather than a descendant's
+        // dash line, where the reader hands the note to that descendant (ledger (ep)).
+        self.pair_line_start = own_line_start;
+
         Ok(())
     }
 

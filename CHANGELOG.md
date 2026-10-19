@@ -394,6 +394,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `from_toml_medium` by −3.00%; the largest upward move was `serialize_block` +0.32%, and every
   scenario repeated within a 0.000% spread. `.ci/ir-baseline.json` is that artifact unedited.
 
+- **A mapping note over a nested sequence settles in one round** — the note attached to a mapping
+  whose block ended inside a nested sequence was written above the last item's dash line, where the
+  reader reports it as that item's leading note: `ss:\n  - !a\n  # fuzz 35\n  - !a\n` re-read as
+  `ss:\n  - \n    # fuzz 35\n    !a\n  - !a\n`, so the first emission was not a fixed point. The
+  writer's `pair_line_start` field, which places a container's own inline note, was left pointing at
+  the sequence item because a block value writes its own starts into the field; each pair now
+  restores its own line before returning, so the note lands above the pair that ended the mapping's
+  block. The note's owner still moves — the ruling on `set_comment` for a container leaves that as
+  it is — but the text settles in one round, pinned over three shapes
+  (`a_mapping_note_over_a_nested_sequence_settles_in_one_round`).
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added
