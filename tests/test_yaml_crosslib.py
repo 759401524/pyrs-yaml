@@ -325,3 +325,62 @@ def test_yaml_11_legacy_booleans_are_schema_scoped():
     assert pyrs_yaml.safe_load(src)["a"] == "yes"
     # pyrs yaml1.1 schema: resolves to bool like PyYAML.
     assert pyrs_yaml.safe_load(src, schema="yaml1.1")["a"] is True
+
+
+@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
+@pytest.mark.parametrize(
+    "text",
+    [
+        "1_000",
+        "5__2",
+        "1__",
+        "1000_",
+        "0_0",
+        "-1_0",
+        "1_0.5",
+        ".5_",
+        "0_07",
+        "0b101",
+        "0b1_0",
+        "+0b11",
+        "-0b101",
+        "+0x1f",
+        "-0x1f",
+        "0x_1f",
+        "+.inf",
+        "017",
+        "-017",
+        "_1000",
+        "0B11",
+        "1_0e5",
+        "1e5_",
+        "1_f",
+        "+inf",
+        "+nan",
+        "+yes",
+    ],
+)
+def test_the_yaml_11_profile_agrees_with_pyyaml_on_the_numeric_families(text):
+    """`schema="yaml1.1"` is judged by PyYAML's loader, the reference that table describes.
+
+    Every row is the answer both engines give for the same text; the families this profile
+    deliberately does not take are pinned by the divergence test below rather than left out."""
+    src = f"a: {text}\n"
+    assert pyrs_yaml.safe_load(src, schema="yaml1.1")["a"] == pyyaml.safe_load(src)["a"]
+
+
+@pytest.mark.skipif(pyyaml is None, reason="PyYAML not installed")
+def test_the_yaml_11_divergences_from_pyyaml_are_named_not_hidden():
+    """Three measured differences, each a decision rather than an accident.
+
+    `0o17` and `+0o17`: this profile is Core *plus*, and `0o` is a 1.2 Core prefix PyYAML's 1.1 table
+    never had, so the additive profile types what PyYAML reads as text. `190:20:30`: sexagesimal, out
+    of scope by the same note the writer clause carries (its colon forces quoting one layer below).
+    `1990-06-23`: a date is `datetime.date` to PyYAML and text here, because untagged text stays text
+    under the temporal-tag ruling."""
+    assert pyrs_yaml.safe_load("a: 0o17\n", schema="yaml1.1")["a"] == 15
+    assert pyyaml.safe_load("a: 0o17\n")["a"] == "0o17"
+    assert pyrs_yaml.safe_load("a: 190:20:30\n", schema="yaml1.1")["a"] == "190:20:30"
+    assert pyyaml.safe_load("a: 190:20:30\n")["a"] == 685230
+    assert pyrs_yaml.safe_load("a: 1990-06-23\n", schema="yaml1.1")["a"] == "1990-06-23"
+    assert str(pyyaml.safe_load("a: 1990-06-23\n")["a"]) == "1990-06-23"

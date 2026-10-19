@@ -323,6 +323,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now asks JSON's own number grammar before writing a string plain, which is the question the writer
   will ask of it (libFuzzer `json_roundtrip` crash-09341b75).
 
+- **The `schema="1.1"` profile resolves the numeric families 1.1 defines** — `1_000` is the integer
+  1000, `0b101` is 5, `+0x1f` is 31, `+.inf` is infinity and `017` is 15, each the answer PyYAML's
+  loader gives the same text. The profile used to add only the legacy booleans to Core, while the
+  writer clause #504 had been quoting these families for a reader this engine did not have — so
+  `schema="1.1"` disagreed with the engine's own quoting rule. Timestamps and sexagesimal stay text
+  (the temporal-tag ruling keeps untagged text text; a colon already forces quoting one layer
+  below), and `0o17` stays typed here while PyYAML reads it as text, because the profile is Core
+  *plus* and `0o` is a Core prefix.
+
+- **A string that only a 1.1 reader types is no longer emitted plain** — `0x_1f` is 31 to PyYAML and
+  text to Core, and the clause answering "would a 1.1 reader type this?" checked underscores only on
+  decimal tokens, so the Python string `"0x_1f"` went out plain and came back a number. The gap was
+  found by a new invariant test that asks, of every text this profile types, that `needs_quotes`
+  agrees.
+
+- **The TOML writer's section header stopped materialising its key** — `to_toml` collected each
+  root table's header text into a `String` of its own before writing it after every top-level pair,
+  while the section list already carried the key node; the header arm can append through
+  `push_scalar_key` exactly as a pair line does. That was the writer's only materialised key:
+  `to_toml_medium` reads 26,741,057 counted instructions against its 28,939,722 floor, -7.60%, one
+  allocation and one copy fewer per header.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

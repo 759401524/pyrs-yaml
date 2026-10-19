@@ -6579,6 +6579,114 @@ corrected. Task #121 holds it, and its input is deliberately not in `fuzz/seeds/
 replays every seed with `-runs=0`, so a still-failing seed would block every pull request until the
 fix lands — the (eg) precedent, withhold the claim or fix it, never commit a red seed.
 
+### (em) A profile that quoted what its own reader could not type (2026-10-19)
+
+The clause that #504 put in front of every plain scalar says: if a reader following the YAML 1.1
+type repository would resolve this text to a number or a bool, quote it, because a string that
+leaves plain comes back typed. The clause knew `1_000`, `0b101`, `+0x1f`, `+.inf` and `1990-06-23`.
+The engine's own `schema="1.1"` reader knew the legacy booleans and whatever Core already typed, and
+nothing else — so the pair answered different questions about the same spelling, and the direction
+of the disagreement was the one the clause exists to prevent: read `a: 0b101` under 1.1, get the
+string `"0b101"`, write it back, and the clause quotes it, because a 1.1 reader would type it. The
+text moved on a round trip that asked one profile the whole way. The clause's own comment named
+`y`/`n` as the case where "the pair disagreed with itself"; this was the same species with four more
+families in it.
+
+`resolve_yaml11_type` now resolves them. Every row is the answer PyYAML's default loader gives the
+same text, and `tests/test_yaml_crosslib.py` compares the two engines row by row rather than
+trusting the spec prose: `_` between digits (`1_000` 1000, `5__2` 52, `1__` 1, `1000_` 1000, `1_0.5`
+10.5, `.5_` 0.5, `_1000` still text because a token may not open with one); a binary int (`0b101` 5,
+`0b1_0` 2, `+0b11` 3, and `0B11` text, since the spec and PyYAML both spell binary with a lower-case
+`b`); a sign in front of a body Core types (`+0x1f` 31, `-0x1f` -31, `+.inf` infinity — the signed
+word needs the dot, so `+inf` and `+nan` stay text); and underscores attached to a base prefix
+(`0x_1f` 31).
+
+The fourth family is the one this change found on the way, and it is the only place the profile
+*overrides* Core instead of adding to it: YAML 1.1 reads a leading zero as octal, 1.2 Core dropped
+that rule, so `017` is 15 to PyYAML and 17 to the core chain this profile delegates to. The task
+that opened this line had recorded "legacy octal already resolves", and the measurement behind it
+was `007` — a spelling where octal and decimal agree. Seven years of masked examples, found by
+asking for a row the two readings differ on.
+
+The gap that came out of the same work is on the quoting side, and the test that caught it is the
+invariant `whatever_the_1_1_profile_types_is_never_emitted_plain`: for every text the profile types,
+`needs_quotes` must agree. `0x_1f` reddened it before the clause was widened — the clause checked
+underscores only on decimal tokens, so an unsigned base-prefixed spelling with an underscore went
+out plain and came back a number to PyYAML. That row is now a claim in both directions: the reader
+types it, the writer quotes it.
+
+What is deliberately *not* here, each named rather than left unstated. Sexagesimal (`190:20:30`,
+685230 to PyYAML) stays text, for the reason the clause already carried: a colon forces quoting one
+layer below, so the family cannot reach a plain scalar anyway. Timestamps (`1990-06-23`, a `date` to
+PyYAML) stay text, because the temporal-tag ruling keeps untagged text text and a read path that
+invented temporal objects from plain words would reopen it. `0o17` and `+0o17` are typed here and
+read as text by PyYAML — the profile is Core *plus*, and `0o` is a Core prefix 1.1 never had; the
+parity test asserts that difference instead of hiding it. And the `i64` bound is unchanged:
+`1_000_000_000_000_000_000_000` is a big integer to PyYAML and text here, as every too-long run
+already was.
+
+The price was measured on the same host, same pinned `rustc 1.97.1`, same session, trunk's
+`schema.rs` swapped in and out: `from_toml_medium` read 135,668,882 on trunk, 137,874,882 (+1.61%)
+with the first version of this change, 136,212,882 (+0.39%) at the pushed head. Two steps moved it
+back. The first version asked `resolve_yaml11_number` for every text the 1.1 half of
+`plain_text_is_typed` was asked about, and that function opened by scanning the token for `_` — one
+pass over every key of every document, most of which start on a letter. A whitelist inversion of the
+kind `resolve_core_type` already uses fixed most of it (+1.61% → +0.62%); putting the byte compare
+in the *caller*, so `plain_text_is_typed` keeps getting an inlinable wrapper instead of a call into
+a grown function, took the rest (+0.62% → +0.39%).
+
+A third step, found by asking what the pair actually needs, took the scenario *below* its floor:
+`plain_text_is_typed` asked core and then asked `resolve_yaml11_type`, and the 1.1 chain ends in
+core, so every scalar core had already called a string ran core's whole chain a second time to reach
+the same answer. Splitting the profile into "core, then the lexemes 1.1 adds" (`yaml11_lexemes`)
+asks core once, and keeping the grown callee out-of-line leaves the wrapper inlinable: 136,212,882
+(+0.39%) → 132,008,882 (−2.71%) → 131,612,882 (−3.00%) against the floor of 135,689,929, one
+session, the file swapped between runs. What the split could break is the pair itself — the two
+forms answer the same question exactly because the fallthrough is core — and that is now a swept
+claim, not a reading of the source:
+`the_pair_and_its_decomposition_answer_the_same_for_every_short_token` walks every token of length ≤
+4 over a sixteen-character alphabet chosen to reach both chains, and it reddens when the 1.1 half is
+dropped from the predicate.
+
+`to_toml_medium` is recorded because two readings of it were wrong. It reads +0.69% on this box
+against a +0.39% control, which first looked like a cost of this change and then like a placement
+artifact; the per-function A/B says which. One session, symbols build, trunk's file swapped in and
+out: every named function's self count is byte-identical (`push_scalar_key` 4,644,000,
+`resolve_core_type` 1,628,000, `numeric_tail` 1,036,000) and the whole movement sits in
+`<i64>::from_ascii_radix` (+88,000) — whose only caller chain in the run is
+`write_value → Schema::resolve → resolve_core_type → numeric_tail → from_ascii_radix`, core's own
+decimal parse, and `callgrind_annotate` finds no `yaml11` node anywhere in the tree. Same calls,
+more executed bytes: the file grew, everything downstream of it moved, and an alignment padding in a
+hot loop counts as instructions. The reading was then checked where it counts, and the enforcing
+image read the same +0.69% (`FAIL to_toml_medium: +0.69% over baseline (tolerance 0.50%)` on head
+`855b1916`) where the previous head had read +0.30% on the very same floor. Two hosts agreeing is
+not a reason to widen a line — `docs/dev/perf.md` measures the WSL-vs-image residual at ±0.003% for
+nineteen scenarios on one tree — it is a number to pay.
+
+The payment came from the writer's own account, and it was worth taking. `to_toml` collected every
+root table's header text into a `String` of its own before the section pass wrote it, while the
+section list already carried the key node — the header arm appends through `push_scalar_key` exactly
+as a pair line does. Dropping the writer's only materialised key takes `to_toml_medium` to
+26,741,057 counted instructions against the 28,939,722 floor, −7.60%: one allocation, one grow, one
+copy and one free per header, which is what the profile's `finish_grow`, `_int_free` and
+`__memcpy_avx_unaligned_erms` share was made of. `from_toml_medium` holds at −3.01%,
+`to_json_medium` at +0.14%, and the gate reports
+`OK: every scenario within tolerance of the committed baseline`.
+
+What the new gap costs is stated rather than glossed: a floor 7.6% below the tree is the same hole
+the 2026-10-14 refresh was written about, only on the other side of the line — the band the gate
+waves through has just widened by that much. The `to_toml_medium` floor needs a deliberate refresh
+on the enforcing image (the `Ir baseline refresh` workflow), and that is its own change, not a line
+moved beside a correctness fix.
+
+Reachability, one mutant: asking `resolve_yaml11_number("")` — a token no family can match — reddens
+`the_1_1_profile_resolves_the_numeric_families_a_1_1_reader_types` and
+`whatever_the_1_1_profile_types_is_never_emitted_plain`. The negative control
+(`the_1_1_profile_leaves_the_families_it_does_not_claim_as_text`) stays green under it, which is the
+correct result for a test whose whole claim is that nothing happens; its own mutant is a family
+added back. Counts: 730 Rust tests (from 726), 1,754 Python test functions, 33 Unreleased entries
+per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

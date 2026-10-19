@@ -222,7 +222,7 @@ class TestFailsafeSchema:
 
 
 class TestYaml11Schema:
-    """YAML 1.1 — adds legacy boolean lexemes."""
+    """YAML 1.1 — adds the legacy boolean lexemes and the numeric families Core cannot see."""
 
     @pytest.mark.parametrize(
         "yaml_str,key",
@@ -294,6 +294,84 @@ class TestYaml11Schema:
     )
     def test_parses_infinity(self, yaml_str, key, expected):
         assert pyrs_yaml.parse(yaml_str, schema="yaml1.1").get(key) == expected
+
+    @pytest.mark.parametrize(
+        "yaml_str,key,expected",
+        [
+            ("a: 1_000", "a", 1000),
+            ("b: 5__2", "b", 52),
+            ("c: 1000_", "c", 1000),
+            ("d: -1_0", "d", -10),
+            ("e: 1_0.5", "e", 10.5),
+            ("f: 0b101", "f", 5),
+            ("g: +0b11", "g", 3),
+            ("h: -0b101", "h", -5),
+            ("i: 0b1_0", "i", 2),
+            ("j: +0x1f", "j", 31),
+            ("k: -0x1f", "k", -31),
+            ("l: 0x_1f", "l", 31),
+            ("m: +0o17", "m", 15),
+            ("n: +.inf", "n", float("inf")),
+            ("o: 017", "o", 15),
+            ("p: 01_7", "p", 15),
+        ],
+        ids=[
+            "underscore-int",
+            "double-underscore",
+            "trailing-underscore",
+            "underscore-negative",
+            "underscore-float",
+            "binary",
+            "binary-plus",
+            "binary-minus",
+            "binary-underscore",
+            "hex-plus",
+            "hex-minus",
+            "hex-underscore",
+            "octal-plus",
+            "inf-plus",
+            "leading-zero-octal",
+            "octal-underscore",
+        ],
+    )
+    def test_parses_the_numeric_families_1_1_adds(self, yaml_str, key, expected):
+        """Each row is the answer PyYAML's default loader gives the same text."""
+        assert pyrs_yaml.parse(yaml_str, schema="yaml1.1").get(key) == expected
+
+    @pytest.mark.parametrize(
+        "yaml_str,key,text",
+        [
+            ("a: _1000", "a", "_1000"),
+            ("b: 0B11", "b", "0B11"),
+            ("c: 1_0e5", "c", "1_0e5"),
+            ("d: +inf", "d", "+inf"),
+            ("e: +nan", "e", "+nan"),
+            ("f: 190:20:30", "f", "190:20:30"),
+            ("g: 1990-06-23", "g", "1990-06-23"),
+        ],
+        ids=[
+            "leading-underscore",
+            "capital-b",
+            "underscore-exponent",
+            "inf-without-dot",
+            "nan-with-sign",
+            "sexagesimal",
+            "date",
+        ],
+    )
+    def test_leaves_the_families_it_does_not_claim_as_text(self, yaml_str, key, text):
+        assert pyrs_yaml.parse(yaml_str, schema="yaml1.1").get(key) == text
+
+    def test_the_numeric_families_are_still_text_under_core(self):
+        """The profile is opt-in: what 1.1 adds must not reach the default answer."""
+        for yaml_str, key, text in [
+            ("a: 1_000", "a", "1_000"),
+            ("b: 0b101", "b", "0b101"),
+            ("c: +0x1f", "c", "+0x1f"),
+            ("d: 0x_1f", "d", "0x_1f"),
+        ]:
+            assert pyrs_yaml.parse(yaml_str, schema="yaml.org,2002").get(key) == text
+            assert pyrs_yaml.parse(yaml_str).get(key) == text
 
 
 class TestSchemaAliases:

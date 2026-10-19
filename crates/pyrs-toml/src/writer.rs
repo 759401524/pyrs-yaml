@@ -48,7 +48,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
     if let Some(c) = node.comment().filter(|c| !c.standalone) {
         write_note(&mut out, &c.text);
     }
-    let mut sections: Vec<(String, &CustomNode, Option<&CustomNode>)> = Vec::new();
+    let mut sections: Vec<(&CustomNode, &CustomNode)> = Vec::new();
     let mut first_pair = true;
     for (k, v) in pairs {
         match v {
@@ -57,8 +57,10 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                 flow_style,
                 ..
             } if !inner.is_empty() && !flow_style => {
-                // A section header is emitted after every top-level pair, so its name has to be
-                // held on to - the only key this writer materialises rather than appending.
+                // A section header is emitted after every top-level pair, so the key and its table
+                // are held on to rather than written here. The name is *not* materialised: the
+                // header arms below append the key through `push_scalar_key`, the same writer every
+                // pair line uses, so this is the one place the section pass used to allocate.
                 //
                 // `flow_style` is the source's own answer to "is this a section?": a reader that saw
                 // `p = { a = 1 }` marks the mapping flow, and only a reader that saw `[p]` leaves it
@@ -68,7 +70,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                 // `q = 2` then `[p]`), the note re-homed from the pair line to the header line, and
                 // one TOML round through the hub was not stable. Nested and array-position inline
                 // tables already kept their form, because they reach `emit_pair`.
-                sections.push((scalar_key(k)?, v, Some(k)));
+                sections.push((k, v));
             }
             other => {
                 // Design Q2: never emit a blank line before the very first
@@ -82,7 +84,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
             }
         }
     }
-    for (idx, (name, tbl, key_node)) in sections.iter().enumerate() {
+    for (idx, (key_node, tbl)) in sections.iter().enumerate() {
         // PR #114 places the section header's leading notes on the child
         // mapping's own list, freeing the parent key slot
         // for future use and letting a header carry BOTH its leading stack and
@@ -94,7 +96,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         } else if let Some(c) = tbl.comment().filter(|c| c.standalone) {
             core::slice::from_ref(c)
         } else {
-            key_node.map(|k| k.leading_comments()).unwrap_or_default()
+            key_node.leading_comments()
         };
         // Blank line before a section separator acts like the KV rule:
         // skip it for the first section if any top-level pairs already
@@ -107,7 +109,7 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         }
         if leading.is_empty() {
             // Pre-#114 shape: the note rides the parent key's `comment` field.
-            if let Some(c) = key_node.and_then(|k| k.comment()).filter(|c| c.standalone) {
+            if let Some(c) = key_node.comment().filter(|c| c.standalone) {
                 write_note(&mut out, &c.text);
             }
         }
@@ -115,14 +117,14 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         match header_inline {
             Some(c) if !c.standalone => {
                 out.push('[');
-                out.push_str(name);
+                push_scalar_key(&mut out, key_node)?;
                 out.push_str("] # ");
                 out.push_str(c.text.trim());
                 out.push('\n');
             }
             _ => {
                 out.push('[');
-                out.push_str(name);
+                push_scalar_key(&mut out, key_node)?;
                 out.push_str("]\n");
             }
         }
@@ -191,13 +193,6 @@ fn push_scalar_key(out: &mut String, k: &CustomNode) -> Result<(), SerializeErro
             "toml-keys-must-be-scalars",
         )),
     }
-}
-
-/// The key of a section header, which outlives the loop that reads it and so needs to be owned.
-fn scalar_key(k: &CustomNode) -> Result<String, SerializeError> {
-    let mut name = String::new();
-    push_scalar_key(&mut name, k)?;
-    Ok(name)
 }
 
 /// Whether an array element owns a note the TOML spelling has to show.
