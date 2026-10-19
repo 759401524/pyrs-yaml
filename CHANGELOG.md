@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Rust benchmark set now measures TOML, JSON and the 1.1 resolver** — the CodSpeed Rust leg
+  ran one file in which every case was YAML text in, YAML or Python out, so the two engines this
+  tree has grown most since and the profile that decides what a plain scalar means had no
+  wall-clock series. Six benches join `crates/pyrs-yaml/benches/yaml_bench.rs`:
+  `from_toml_medium`/`to_toml_medium`, `from_json_medium`/`to_json_medium`,
+  `resolve_yaml11_type_many` and `needs_quotes_over_scalars`. The four format benches read the
+  `bench_inputs` documents the instruction gate measures, and carry the Ir scenarios' names so a
+  wall-clock move and an instruction-count move can be read as one pair. No floor moves: CodSpeed
+  keeps ranking and the zero-regression verdict stays with `.ci/ir-baseline.json`.
+
 - **The MSRV job installs the MSRV it claims to test** — `msrv-check` installed
   `dtolnay/rust-toolchain@stable`, so it compiled the workspace on current stable and called that
   the minimum: `rust-version = "1.96"` documents a floor without enforcing one, and a dependency

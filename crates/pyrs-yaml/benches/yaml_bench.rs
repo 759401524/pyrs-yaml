@@ -264,6 +264,127 @@ fn resolve_core_type_many(bencher: divan::Bencher) {
     });
 }
 
+// ── The two paths the last three changes moved, and the two spokes with no bench at all ──
+
+/// The 1.1 profile over the same sample plus the families only it resolves. `resolve_core_type_many`
+/// above is the sole resolver CodSpeed saw, so #520's change to this one reported as untouched.
+#[divan::bench]
+fn resolve_yaml11_type_many(bencher: divan::Bencher) {
+    let scalars = [
+        "hello",
+        "server",
+        "database",
+        "localhost",
+        "item_001",
+        "alpha",
+        "test",
+        "true",
+        "false",
+        "null",
+        "42",
+        "-17",
+        "3.14",
+        "0x1F",
+        "0o17",
+        "2024-01-01",
+        "10.0.0.1",
+        "postgres",
+        "verbose",
+        "stdout",
+        "1234567890123",
+        "1_000",
+        "5__2",
+        "0b101",
+        "+0x1f",
+        "017",
+        "+.inf",
+        "_1000",
+        "1e5_",
+        "0x_1f",
+    ];
+    bencher.bench(|| {
+        let mut n = 0usize;
+        for s in scalars {
+            if matches!(
+                pyrs_yaml::parser::yaml::schema::resolve_yaml_type(s, YamlSchema::Yaml1_1),
+                pyrs_yaml::parser::yaml::types::YamlType::Str(_)
+            ) {
+                n += 1;
+            }
+        }
+        n
+    });
+}
+
+/// The write-side quoting guard, on its own. It is asked per Python string on the dump route —
+/// Core first, then the 1.1 clause — and until now it only ever reached CodSpeed inside a
+/// whole-document `serialize_*`, where its cost is one branch among thousands.
+#[divan::bench]
+fn needs_quotes_over_scalars(bencher: divan::Bencher) {
+    let scalars = [
+        "hello",
+        "server",
+        "localhost",
+        "item_001",
+        "alpha",
+        "true",
+        "42",
+        "-17",
+        "3.14",
+        "0x1F",
+        "2024-01-01",
+        "10.0.0.1",
+        "postgres",
+        "stdout",
+        "1_000",
+        "0b101",
+        "+0x1f",
+        "0x_1f",
+        "+.inf",
+        "_1000",
+        "1e5_",
+        "",
+        " ",
+        "line\nbreak",
+    ];
+    bencher.bench(|| {
+        let mut n = 0usize;
+        for s in scalars {
+            if pyrs_yaml::parser::yaml::schema::needs_quotes(s) {
+                n += 1;
+            }
+        }
+        n
+    });
+}
+
+/// TOML read + hub projection. Neither spoke had a CodSpeed-visible bench, so #519's signed-zero
+/// emission and the projection cost any resolver change adds here were both unreported. Same
+/// documents as the instruction-count gate - `pyrs_yaml_core::bench_inputs`, never a second fixture.
+#[divan::bench]
+fn from_toml_medium() -> CustomNode {
+    pyrs_toml::from_toml(pyrs_yaml_core::bench_inputs::MEDIUM_TOML).unwrap()
+}
+
+#[divan::bench]
+fn to_toml_medium(bencher: divan::Bencher) {
+    let node = from_toml_medium();
+    bencher.bench(|| pyrs_toml::to_toml(&node).unwrap());
+}
+
+/// The JSON spoke, same reason: #519's long-integer string fix lives in the projection this runs,
+/// and `to_json_text` is the writer that decided the question had to be asked of JSON's grammar.
+#[divan::bench]
+fn from_json_medium() -> CustomNode {
+    pyrs_json::from_json(pyrs_yaml_core::bench_inputs::MEDIUM_JSON).unwrap()
+}
+
+#[divan::bench]
+fn to_json_medium(bencher: divan::Bencher) {
+    let node = from_json_medium();
+    bencher.bench(|| pyrs_json::to_json_text(&node).unwrap());
+}
+
 // ── Serialize benchmarks (setup separate from measurement) ──
 
 #[divan::bench]
