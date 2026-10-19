@@ -235,6 +235,18 @@ def test_every_matrix_leg_is_reachable_from_the_fan_in():
     assert producing <= waited, f"matrix producers outside the fan-in: {sorted(producing - waited)}"
 
 
+def test_the_instruction_count_gate_is_a_leg_and_exists_once():
+    """A gate in another workflow is invisible to `toJSON(needs)`; #522's red leg proved the shape.
+
+    The count gate runs in `ci.yml` so the verdict reads it, and it exists in one place: a copy left
+    in `codspeed.yml` would keep reporting a result no merge decision consumes.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "scripts/ir_gate.py" in job_body(text, "ir"), "the ci.yml `ir` job does not run the gate"
+    codspeed = (REPO_ROOT / ".github" / "workflows" / "codspeed.yml").read_text(encoding="utf-8")
+    assert "ir" not in job_names(codspeed), "the count gate is duplicated outside the fan-in"
+
+
 def test_the_checker_stays_loadable_on_the_supported_floor(gate):
     """The fan-in runs on 3.8; annotations that 3.8 evaluates at import time would break the gate."""
     text = GATE_PATH.read_text(encoding="utf-8")
