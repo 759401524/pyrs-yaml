@@ -345,6 +345,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `to_toml_medium` reads 26,741,057 counted instructions against its 28,939,722 floor, -7.60%, one
   allocation and one copy fewer per header.
 
+- **A root table that TOML cannot place after its pairs keeps its position inline** — TOML admits
+  no root key/value after a root table header, so `to_toml` wrote every section after every pair and
+  the mapping's order did not survive the round trip: a tree with `0` holding a table and then `a`
+  came back as `a`, `0`. The generator reached it at the 20 000-case property tier
+  (`prop_toml_roundtrip_preserves_the_tree`); such a table is now written inline, at its own place,
+  while every order a parsed document can carry keeps the header form.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

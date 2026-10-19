@@ -49,8 +49,19 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
         write_note(&mut out, &c.text);
     }
     let mut sections: Vec<(&CustomNode, &CustomNode)> = Vec::new();
+    // TOML puts every root key/value before any root table header, so a table the tree places
+    // ahead of a later pair cannot keep its header form without moving that pair's key ahead of it
+    // - which is what the round trip did to the mapping's order (proptest
+    // `prop_toml_roundtrip_preserves_the_tree` at 20 000 cases: `0` holding a table and then `a`
+    // came back as `a`, `0`). Such a table is written inline, at its own position. A document
+    // parsed from TOML never reaches this, because header text already lists its pairs first.
+    let is_section = |v: &CustomNode| {
+        matches!(v, CustomNode::Mapping { pairs, flow_style, .. }
+            if !pairs.is_empty() && !flow_style)
+    };
+    let last_pair = pairs.iter().rposition(|(_, v)| !is_section(v));
     let mut first_pair = true;
-    for (k, v) in pairs {
+    for (idx, (k, v)) in pairs.iter().enumerate() {
         match v {
             CustomNode::Mapping {
                 pairs: inner,
@@ -70,7 +81,15 @@ pub fn to_toml(node: &CustomNode) -> Result<String, SerializeError> {
                 // `q = 2` then `[p]`), the note re-homed from the pair line to the header line, and
                 // one TOML round through the hub was not stable. Nested and array-position inline
                 // tables already kept their form, because they reach `emit_pair`.
-                sections.push((k, v));
+                if last_pair.is_some_and(|later| later > idx) {
+                    if !first_pair && v.blank_before() {
+                        out.push('\n');
+                    }
+                    first_pair = false;
+                    emit_pair(&mut out, k, v)?;
+                } else {
+                    sections.push((k, v));
+                }
             }
             other => {
                 // Design Q2: never emit a blank line before the very first
@@ -978,6 +997,54 @@ mod tests {
         assert!(
             title_idx < srv_idx,
             "sections must follow top-level: {text}"
+        );
+    }
+
+    /// The tree's order outranks a section header's placement. TOML admits no root key/value after
+    /// a root table header, so a table the tree lists ahead of a later pair cannot keep the header
+    /// form without that pair's key moving ahead of it - which is what the round trip used to do:
+    /// `0` holding a table and then `a` came back as `a`, `0`
+    /// (`prop_toml_roundtrip_preserves_the_tree`, 20 000 generated cases). Such a table goes out
+    /// inline, at its own position. Every order TOML can spell with headers - which is every order
+    /// a parsed document has - still gets the form above.
+    #[test]
+    fn a_section_before_a_pair_keeps_the_order_by_going_inline() {
+        let mut table = pyrs_ast::ast::NodeMap::default();
+        table.insert(CustomNode::plain_scalar("A"), CustomNode::plain_scalar("a"));
+        let mut pairs = pyrs_ast::ast::NodeMap::default();
+        pairs.insert(
+            CustomNode::plain_scalar("0"),
+            CustomNode::Mapping {
+                pairs: table,
+                flow_style: false,
+                meta: pyrs_ast::ast::NodeMeta::default(),
+            },
+        );
+        pairs.insert(CustomNode::plain_scalar("a"), CustomNode::plain_scalar("b"));
+        let node = CustomNode::Mapping {
+            pairs,
+            flow_style: false,
+            meta: pyrs_ast::ast::NodeMeta::default(),
+        };
+
+        let text = to_toml(&node).expect("the tree writes");
+        assert_eq!(text, "0 = {A = \"a\"}\na = \"b\"\n", "{text:?}");
+        let back = from_toml(&text).expect("the text reads");
+        let CustomNode::Mapping { pairs: keys, .. } = &back else {
+            panic!("a table root reads back as a mapping");
+        };
+        let names: Vec<String> = keys
+            .iter()
+            .map(|(k, _)| match k {
+                CustomNode::Scalar { value, .. } => value.to_string(),
+                _ => panic!("a scalar key was expected"),
+            })
+            .collect();
+        assert_eq!(names, ["0", "a"], "the key order survives: {text:?}");
+        assert_eq!(
+            to_toml(&back).expect("writes twice"),
+            text,
+            "not a fixed point"
         );
     }
 
