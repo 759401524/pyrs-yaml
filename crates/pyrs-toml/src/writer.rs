@@ -337,10 +337,15 @@ fn write_value(out: &mut String, node: &CustomNode) -> Result<(), SerializeError
                 // (libFuzzer `edit_yaml` crash-917e103b). Radix spellings survive a read because the
                 // reader keeps their text; a redundant sign on zero is not one of them, and a fixed
                 // point has to be spelled the way the reader spells it.
-                (ScalarStyle::Plain, YamlType::Int(i)) => {
-                    let signed_zero = value.starts_with(['+', '-'])
-                        && value[1..].chars().all(|digit| digit == '0');
-                    if is_toml_int_literal(value) && !signed_zero {
+                // A tagged integer is an integer whatever quotes the YAML emitter
+                // needed: the projection tags `-1_000` because Core cannot read it,
+                // and a leading `-` makes the emitter quote the text. An untagged
+                // quoted scalar stays a string - quoting is how YAML says "this is
+                // text", so `"42"` must not become an int here.
+                (_, YamlType::Int(i))
+                    if tag_kind.is_some() || matches!(style, ScalarStyle::Plain) =>
+                {
+                    if is_toml_int_literal(value) {
                         out.push_str(value);
                     } else {
                         let _ = write!(out, "{i}");
@@ -609,40 +614,59 @@ fn is_valid_toml_datetime(s: &str) -> bool {
     crate::parser::DateTimeProbe.check_all(s)
 }
 
-/// Whether the plain scalar text is already a legal TOML integer
-/// literal (decimal, `0x` hex, `0o` octal, `0b` binary, with optional
-/// leading `-`). Used by the writer to decide whether to pass through
-/// verbatim instead of re-rendering from `i64`.
+/// Whether the plain scalar text is a legal TOML integer literal: decimal
+/// with an optional `+`/`-`, or an unsigned `0x` hex / `0o` octal / `0b`
+/// binary form, with `_` allowed only between digits. Used by the writer to
+/// decide whether to pass through verbatim instead of re-rendering from
+/// `i64`. A signed zero is not a literal here: TOML has no negative zero, so
+/// `-0`/`+0` re-read as `0` and the fixed point has to be spelled the way
+/// the reader spells it.
 fn is_toml_int_literal(text: &str) -> bool {
-    let (sign_rest, signed) = match text.strip_prefix('-') {
-        Some(rest) => (rest, true),
-        None => (text, false),
+    let bytes = text.as_bytes();
+    let (signed, body) = match bytes {
+        [b'+' | b'-', rest @ ..] => (true, rest),
+        _ => (false, bytes),
     };
-    let _ = signed;
-    // Reject `+` prefix and empty remainder.
-    if sign_rest.is_empty() || sign_rest.starts_with('+') {
+    let Some(&first) = body.first() else {
         return false;
-    }
-    // Radix-prefixed forms: YAML Core parses these too, so the AST
-    // value can carry them and we want to preserve the spelling.
-    if sign_rest.len() > 2 {
-        let (prefix, digits) = (&sign_rest[..2], &sign_rest[2..]);
-        let radix_ok = match prefix {
-            "0x" => !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_hexdigit()),
-            "0o" => !digits.is_empty() && digits.bytes().all(|b| matches!(b, b'0'..=b'7')),
-            "0b" => !digits.is_empty() && digits.bytes().all(|b| matches!(b, b'0' | b'1')),
-            _ => false,
+    };
+    // A radix prefix is unsigned in TOML: `signed-int` only ever wraps a
+    // decimal, so `-0x1f` is not an integer.
+    if body.len() > 2 && first == b'0' {
+        let radix: Option<fn(u8) -> bool> = match body[1] {
+            b'x' => Some(|b: u8| b.is_ascii_hexdigit()),
+            b'o' => Some(|b: u8| matches!(b, b'0'..=b'7')),
+            b'b' => Some(|b: u8| matches!(b, b'0' | b'1')),
+            _ => None,
         };
-        if radix_ok {
-            return true;
+        if let Some(is_digit) = radix {
+            return !signed && digits_with_underscores(&body[2..], is_digit);
         }
     }
-    // Plain decimal: every char is `[0-9]` and either single-digit or
-    // not starting with `0` (TOML 1.0 disallows leading zeros).
-    if sign_rest.bytes().all(|b| b.is_ascii_digit()) {
-        return sign_rest.len() == 1 || !sign_rest.starts_with('0');
+    // Plain decimal: no leading zero unless the integer part is exactly `0`
+    // (`0_1` cleans to `01`, which TOML refuses).
+    digits_with_underscores(body, |b| b.is_ascii_digit())
+        && (body.len() == 1 || first != b'0')
+        && !(signed && body.iter().all(|&b| b == b'0'))
+}
+
+/// TOML's `underscore` rule: `_` may separate digits but may not lead,
+/// trail or double up, because each `_` must sit between two digits.
+fn digits_with_underscores(bytes: &[u8], is_digit: fn(u8) -> bool) -> bool {
+    let mut last_was_digit = false;
+    for &b in bytes {
+        if b == b'_' {
+            if !last_was_digit {
+                return false;
+            }
+            last_was_digit = false;
+        } else if is_digit(b) {
+            last_was_digit = true;
+        } else {
+            return false;
+        }
     }
-    false
+    last_was_digit
 }
 
 /// Whether the plain scalar text is a legal TOML float spelling that we
@@ -1052,16 +1076,16 @@ mod tests {
     fn preserves_radix_integer_source_spelling() {
         // Fidelity #108: radix integers round-trip with their original prefix +
         // case intact, binary included — `0b` rides the hub under a `!!int` tag,
-        // which every writer has honoured since (bu). Underscore separators are
-        // still stripped: TOML's own literal grammar rejects them, so a source
-        // spelling containing one could only ever canonicalise.
+        // which every writer has honoured since (bu). Underscore separators are a
+        // legal TOML spelling between digits and are kept too.
         for (src, expected) in [
             ("v = 0xDEADBEEF\n", "v = 0xDEADBEEF\n"),
             ("v = 0o755\n", "v = 0o755\n"),
             ("v = -31\n", "v = -31\n"),
-            ("v = 0xFF_FF\n", "v = 0xFFFF\n"),
+            ("v = 0xFF_FF\n", "v = 0xFF_FF\n"),
+            ("v = 0o1_7\n", "v = 0o1_7\n"),
             ("v = 0b101\n", "v = 0b101\n"),
-            ("v = 0b1101_0110\n", "v = 0b11010110\n"),
+            ("v = 0b1101_0110\n", "v = 0b1101_0110\n"),
         ] {
             let ast = from_toml(src).unwrap();
             let text = to_toml(&ast).unwrap();
@@ -1093,15 +1117,51 @@ mod tests {
     }
 
     #[test]
-    fn canonicalises_underscore_separators_and_plus_signs() {
-        // Deliberate divergence: underscore separators and explicit `+`
-        // signs are NOT in YAML Core's numeric grammar, so we canonicalise
-        // them to plain decimal (matches #107 behaviour). Users who want
-        // the spelling preserved should switch to a TOML-native editor.
-        let ast = from_toml("a = 1_000\nb = +42\n").unwrap();
-        let text = to_toml(&ast).unwrap();
-        assert!(text.contains("a = 1000"), "{text}");
-        assert!(text.contains("b = 42"), "{text}");
+    fn preserves_decimal_underscore_separators_and_plus_signs() {
+        // Both are legal TOML spellings (twelve months of `boundaries.md`
+        // claimed otherwise). The parser now records the token text, so the
+        // writer's literal gate has to accept the same grammar it emits.
+        for src in [
+            "a = 1_000\n",
+            "a = +42\n",
+            "a = -1_000\n",
+            "a = 5_349_221\n",
+            "a = +9_223_372_036_854_775_807\n",
+        ] {
+            let ast = from_toml(src).unwrap();
+            let text = to_toml(&ast).unwrap();
+            assert_eq!(text, src, "decimal fidelity lost on {src:?}");
+            assert_eq!(
+                to_toml(&from_toml(&text).unwrap()).unwrap(),
+                text,
+                "not a fixed point on {src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise() {
+        let pair = |node: CustomNode| {
+            CustomNode::plain_mapping(
+                [(CustomNode::plain_scalar("a"), node)]
+                    .into_iter()
+                    .collect(),
+            )
+        };
+        // Untagged quoted `42` is YAML's way of saying "text", so it stays one.
+        assert_eq!(
+            to_toml(&pair(CustomNode::quoted_scalar("42"))).unwrap(),
+            "a = \"42\"\n"
+        );
+        // The projection tags `-1_000` because Core cannot read it, and the
+        // leading `-` makes the YAML emitter quote the text. The tag is
+        // authoritative: the TOML writer must still emit an integer.
+        let mut tagged = CustomNode::quoted_scalar("-1_000");
+        tagged.set_tag(pyrs_ast::ast::Tag {
+            handle: "!!".to_string(),
+            suffix: "int".to_string(),
+        });
+        assert_eq!(to_toml(&pair(tagged)).unwrap(), "a = -1_000\n");
     }
 
     #[test]

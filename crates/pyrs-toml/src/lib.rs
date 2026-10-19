@@ -401,14 +401,16 @@ pub(crate) fn scalar_projection(value: TomlValue) -> ScalarProjection {
         TomlValue::Integer(number, source) => match source {
             Some(src) => {
                 // A preserved spelling only survives the hub if YAML Core reads it back as the
-                // same type. `0b1010` does not - Core has no binary lexeme, so an untagged plain
-                // scalar re-resolves to a string. The tag states the type instead, which is the
-                // route the spoke declined while the bridges still read text alone; since (bu) the
-                // loader, `to_yaml`, `to_toml` and the JSON writers all ask the tag first, so one
-                // answer cannot drift from another.
+                // same integer. `0b1010` and `1_000` do not - Core has no binary lexeme and no
+                // underscore separator - so an untagged plain scalar re-resolves to a string.
+                // The tag states the type instead, which is the route the spoke declined while
+                // the bridges still read text alone; since (bu) the loader, `to_yaml`, `to_toml`
+                // and the JSON writers all ask the tag first, so one answer cannot drift from
+                // another. Hex, octal and a signed decimal need no tag: Core resolves them to
+                // the same integer.
                 let tag = if matches!(
                     pyrs_schema::types::Schema::Core.resolve(&src),
-                    pyrs_schema::types::YamlType::Int(_)
+                    pyrs_schema::types::YamlType::Int(n) if n == number
                 ) {
                     None
                 } else {

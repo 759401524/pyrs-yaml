@@ -417,6 +417,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it is — but the text settles in one round, pinned over three shapes
   (`a_mapping_note_over_a_nested_sequence_settles_in_one_round`).
 
+- **A TOML integer keeps the spelling it was written with** — `1_000`, `+5`, `-1_000` and the
+  radix forms lost their source text on the way through the hub: the parser cleaned the token before
+  recording it, so `to_toml(from_toml("a = 1_000"))` came back as `a = 1000`. Both separators and an
+  explicit sign are legal TOML (`underscored` and `signed-int` in the ABNF), so the loss was in the
+  recording, not in the grammar. The parser now keeps the token text whole; the projection tags a
+  spelling only when YAML Core resolves a different value (`0x1f` and `+5` stay untagged, while
+  `1_000`, `0b1101_0110` and `-1_000` carry `!!int`), and the writer's literal gate accepts the same
+  grammar it emits. A tagged integer is authoritative over the quotes the YAML emitter needed for a
+  leading `-`; an untagged quoted `"42"` stays a string. Values are unchanged and agree with
+  `tomllib`; pinned by `TestIntegerSpellingFidelity`,
+  `decimal_spellings_reach_the_hub_word_for_word` and
+  `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise`.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

@@ -494,7 +494,7 @@ class TestBinaryIntegerFidelity:
         "src,want",
         [
             ("b = 0b1010\n", "b = 0b1010\n"),
-            ("b = 0b1101_0110\n", "b = 0b11010110\n"),
+            ("b = 0b1101_0110\n", "b = 0b1101_0110\n"),
             ("b = 0b0\n", "b = 0b0\n"),
         ],
     )
@@ -518,6 +518,59 @@ class TestBinaryIntegerFidelity:
         deliberate limit described before this change.
         """
         assert pyrs_yaml.safe_load("b: 0b1010\n") == {"b": "0b1010"}
+
+
+class TestIntegerSpellingFidelity:
+    """Audit O4: every legal TOML integer spelling survives the hub.
+
+    The parser records the token text whenever it differs from canonical decimal. The
+    projection adds `!!int` only where YAML Core would not read the same text as the same
+    integer, so `+5` and `0x1f` stay untagged while `1_000`, `0o1_7` and `0b` carry the
+    tag. `boundaries.md` used to claim underscores and `+` were canonicalised because
+    TOML's grammar rejects them; both are legal TOML 1.0 spellings.
+    """
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "a = 1_000\n",
+            "a = +5\n",
+            "a = 0o1_7\n",
+            "a = 0b1101_0110\n",
+            "a = 0x1f\n",
+            "a = -1_000\n",
+            "a = 5_349_221\n",
+        ],
+    )
+    def test_toml_to_toml_keeps_the_spelling_and_settles_in_one_round(self, src):
+        emitted = pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))
+        assert emitted == src
+        assert pyrs_yaml.to_toml(pyrs_yaml.from_toml(emitted)) == src
+
+    @pytest.mark.parametrize(
+        "src,want",
+        [
+            ("a = 1_000\n", 1000),
+            ("a = +5\n", 5),
+            ("a = 0o1_7\n", 15),
+            ("a = 0b1101_0110\n", 214),
+            ("a = 0x1f\n", 31),
+        ],
+    )
+    def test_value_is_the_same_for_load_and_tomllib(self, src, want):
+        tomllib = pytest.importorskip("tomllib")
+        assert pyrs_yaml.load_toml(src) == {"a": want}
+        assert tomllib.loads(src) == {"a": want}
+        assert tomllib.loads(pyrs_yaml.to_toml(pyrs_yaml.from_toml(src))) == {"a": want}
+
+    def test_the_hub_states_the_type_only_where_core_cannot(self):
+        # YAML Core reads a signed decimal, hex and octal back to the same integer;
+        # it has no binary lexeme and no underscore separator.
+        assert pyrs_yaml.from_toml("a = +5\n") == "a: +5\n"
+        assert pyrs_yaml.from_toml("a = 0x1f\n") == "a: 0x1f\n"
+        assert pyrs_yaml.from_toml("a = 1_000\n") == "a: !!int 1_000\n"
+        assert pyrs_yaml.from_toml("a = 0o1_7\n") == "a: !!int 0o1_7\n"
+        assert pyrs_yaml.from_toml("a = 0b1101_0110\n") == "a: !!int 0b1101_0110\n"
 
 
 class TestInlineTableCollision:

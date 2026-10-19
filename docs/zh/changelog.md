@@ -317,6 +317,16 @@ status: new
   注释的归属仍会移动——容器上 `set_comment` 的裁定维持不变——但文本在一轮内稳定，并由
   `a_mapping_note_over_a_nested_sequence_settles_in_one_round` 以三种形状钉住。
 
+- **TOML 整数保留书写时的拼写** — `1_000`、`+5`、`-1_000` 以及各进制形式在经由中枢时丢失了源码
+  文本：解析器在记录前清洗了 token，`to_toml(from_toml("a = 1_000"))` 因此返回 `a = 1000`。
+  分隔符与显式正号都是合法的 TOML（ABNF 中的 `underscored` 与 `signed-int`），丢失发生在记录
+  环节而非语法。解析器现在完整保留 token 文本；仅当 YAML Core 解析出不同的值时，投影才添加
+  标签（`0x1f` 与 `+5` 保持无标签，`1_000`、`0b1101_0110`、`-1_000` 携带 `!!int`），写入器的
+  字面量判定也接受它自身输出的同一套语法。带标签的整数优先于 YAML 发射器因前导 `-` 而加的
+  引号；无标签的带引号 `"42"` 仍是字符串。取值不变，并与 `tomllib` 一致；由
+  `TestIntegerSpellingFidelity`、`decimal_spellings_reach_the_hub_word_for_word` 与
+  `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise` 钉住。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

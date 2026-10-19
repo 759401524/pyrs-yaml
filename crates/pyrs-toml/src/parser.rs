@@ -551,6 +551,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_signed_numeric(&mut self, positive: bool) -> Result<TomlValue, ParseError> {
+        let token_start = self.pos;
         self.pos += 1;
         match self.peek() {
             Some(b'i') if !positive => {
@@ -581,7 +582,7 @@ impl<'a> Parser<'a> {
                 if self.starts_with(b"0x") || self.starts_with(b"0o") || self.starts_with(b"0b") {
                     return Err(self.err("radix-prefixed integer cannot carry a sign"));
                 }
-                let v = self.parse_decimal_numeric_body(!positive)?;
+                let v = self.parse_decimal_numeric_body(!positive, token_start)?;
                 Ok(v)
             }
             _ => Err(self.err("expected a signed numeric value")),
@@ -623,7 +624,7 @@ impl<'a> Parser<'a> {
         if self.looks_like_time_prefix() {
             return self.parse_datetime();
         }
-        self.parse_decimal_numeric_body(false)
+        self.parse_decimal_numeric_body(false, self.pos)
     }
 
     fn looks_like_datetime_prefix(&self) -> bool {
@@ -658,7 +659,11 @@ impl<'a> Parser<'a> {
         self.dialect == TomlDialect::V1_1
     }
 
-    fn parse_decimal_numeric_body(&mut self, negative: bool) -> Result<TomlValue, ParseError> {
+    fn parse_decimal_numeric_body(
+        &mut self,
+        negative: bool,
+        token_start: usize,
+    ) -> Result<TomlValue, ParseError> {
         // The sign travels with the digits on purpose: TOML's i64 range is
         // asymmetric (`-2^63 ..= 2^63-1`), so a magnitude-then-negate flow
         // rejects or overflows the legal minimum `-9223372036854775808`
@@ -670,8 +675,10 @@ impl<'a> Parser<'a> {
         // `-01`, `01.5`); only a bare `0` (optionally followed by `.`/`e`) is
         // legal. Checked on the integer run before the float markers below.
         {
-            let digits = self.text[num_start..self.pos].replace('_', "");
-            if digits.len() > 1 && digits.starts_with('0') {
+            let mut significant = self.text[num_start..self.pos]
+                .bytes()
+                .filter(|&b| b != b'_');
+            if significant.next() == Some(b'0') && significant.next().is_some() {
                 return Err(self.err_at("leading zeros in decimal integer", num_start));
             }
         }
@@ -690,27 +697,34 @@ impl<'a> Parser<'a> {
             self.scan_optional_exponent(true, num_start)?;
             return self.emit_float(num_start, negative);
         }
-        // Emit integer if no float marker. The source text carries the
-        // digits (plus any leading `-`/`+` handled upstream).
-        let text = &self.text[num_start..self.pos];
-        let cleaned = text.replace('_', "");
-        let spelling = if negative {
-            format!("-{cleaned}")
+        // Emit integer if no float marker. `token_start` reaches back over
+        // the sign (when there is one), so the source text is the whole
+        // token: an explicit `+` and `_` separators are legal TOML spellings
+        // and are kept verbatim rather than folded into the canonical
+        // decimal rendering.
+        let raw = &self.text[token_start..self.pos];
+        let underscored = raw.as_bytes().contains(&b'_');
+        let cleaned = if underscored {
+            alloc::borrow::Cow::Owned(raw.replace('_', ""))
         } else {
-            cleaned
+            alloc::borrow::Cow::Borrowed(raw)
         };
-        let value: i64 = spelling
+        let value: i64 = cleaned
             .parse()
             .map_err(|_| self.err_at("integer out of range or malformed", num_start))?;
-        // Preserve `-0` verbatim because YAML Core reads `-0` back as
-        // `Int(0)` and we can round-trip the sign; every other decimal
-        // form either matches `i64::to_string()` (no work needed) or
-        // contains `_`/`+` which we canonicalize away.
-        let source: Option<alloc::sync::Arc<str>> = if text == "-0" {
-            Some(alloc::sync::Arc::from(text))
-        } else {
-            None
-        };
+        // Only a spelling that differs from `i64`'s rendering needs recording;
+        // the projection turns the text into the hub scalar either way. On the
+        // text this parser accepts that is exactly an underscore, an explicit
+        // `+`, or a signed zero (`-0`/`+0`): leading zeros are refused above,
+        // so every other decimal spelling is already canonical. A signed zero
+        // must keep its sign in the hub; the TOML writer canonicalises it back
+        // to `0` because TOML has no negative zero.
+        let source: Option<alloc::sync::Arc<str>> =
+            if underscored || raw.starts_with('+') || raw == "-0" {
+                Some(alloc::sync::Arc::from(raw))
+            } else {
+                None
+            };
         Ok(TomlValue::Integer(value, source))
     }
 
@@ -817,15 +831,12 @@ impl<'a> Parser<'a> {
         }
         i64::from_str_radix(&cleaned, radix)
             .map(|v| {
-                // Preserve the prefix + digits spelling, but strip `_`
-                // separators: neither the hub's plain scalar nor the writer's
-                // TOML-literal gate accepts them, so an underscored spelling
-                // could only ever canonicalise — strip it here and keep the
-                // `to_yaml -> load_toml -> to_toml` text continuous.
-                let digits_no_underscores = raw.replace('_', "");
-                let mut src = String::with_capacity(prefix_str.len() + digits_no_underscores.len());
+                // Keep the prefix + digits spelling exactly, `_` separators
+                // included: TOML allows an underscore between digits, and the
+                // writer's own literal gate accepts the underscored form.
+                let mut src = String::with_capacity(prefix_str.len() + raw.len());
                 src.push_str(prefix_str);
-                src.push_str(&digits_no_underscores);
+                src.push_str(raw);
                 (v, alloc::sync::Arc::from(src))
             })
             .map_err(|_| self.err_at("prefixed integer out of range", start))
@@ -2583,6 +2594,40 @@ mod tests {
         );
         assert_eq!(observed("o = 0o755\n"), ("0o755".to_string(), None));
         assert_eq!(observed("d = 42\n"), ("42".to_string(), None));
+    }
+
+    #[test]
+    fn decimal_spellings_reach_the_hub_word_for_word() {
+        // `_` and an explicit `+` are legal TOML, so the token text is kept. The
+        // hub states the type only when YAML Core would not read the same text as
+        // the same integer: `+5` and `0x1f` resolve on their own, `1_000` and a
+        // signed radix do not.
+        let observed = |src: &str| -> (String, Option<(String, String)>) {
+            let ast = from_toml(src).unwrap();
+            let CustomNode::Mapping { pairs, .. } = &ast else {
+                unreachable!()
+            };
+            let (_, v) = pairs.iter().next().unwrap();
+            let CustomNode::Scalar { value, .. } = v else {
+                unreachable!()
+            };
+            (
+                value.to_string(),
+                v.tag().map(|t| (t.handle.clone(), t.suffix.clone())),
+            )
+        };
+        let int = || Some(("!!".to_string(), "int".to_string()));
+        assert_eq!(observed("v = +5\n"), ("+5".to_string(), None));
+        assert_eq!(observed("v = 0x1f\n"), ("0x1f".to_string(), None));
+        assert_eq!(observed("v = 1_000\n"), ("1_000".to_string(), int()));
+        assert_eq!(observed("v = -1_000\n"), ("-1_000".to_string(), int()));
+        assert_eq!(observed("v = 0o1_7\n"), ("0o1_7".to_string(), int()));
+        assert_eq!(
+            observed("v = 0b1101_0110\n"),
+            ("0b1101_0110".to_string(), int())
+        );
+        // A canonical decimal has no text to preserve.
+        assert_eq!(observed("v = 1000\n"), ("1000".to_string(), None));
     }
 
     #[test]
