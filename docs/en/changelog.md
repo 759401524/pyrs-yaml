@@ -364,6 +364,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`prop_toml_roundtrip_preserves_the_tree`); such a table is now written inline, at its own place,
   while every order a parsed document can carry keeps the header form.
 
+- **A sequence's own note keeps its dash line** — a note the edit layer attaches to a
+  *container* was written above the line that ended that container's block. When the container
+  is a sequence, the line that ends it is one of its items' own dash lines, and granit reports a
+  note written below a dash line as that item's leading note — so the second emission moved the
+  text off the sequence and into its item (`edit_yaml` crash-08b30707: `?ss:` over two tagged
+  empty items). A sequence's note now goes above the sequence's first line, which is where the
+  reader files a sequence's own note and what `lift_first_item_notes` already relies on, while a
+  mapping's note stays above the pair that ended its block, because that is where a pair's note
+  is read back.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added

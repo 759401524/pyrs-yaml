@@ -1178,7 +1178,18 @@ impl Serializer {
                 // tail line cannot host one for other reasons (a block-scalar body, a wrapped
                 // continuation, or a slot already used).
                 if self.pending_line_is_last() {
-                    self.note_line_above_last_pair(&c.text);
+                    if sk.open == '[' {
+                        // A sequence has no pair line: the line that ended its block is an item's
+                        // own dash line, and a note above that is re-read as the item's (or its
+                        // value's) leading note, not the sequence's - the shape libFuzzer
+                        // crash-08b30707 costs a second round. Above the block's first line is
+                        // where the reader files a sequence's own note, which is what
+                        // `lift_first_item_notes` already relies on.
+                        let at = self.output[..body_start].rfind('\n').map_or(0, |k| k + 1);
+                        self.note_line_above(at, &c.text);
+                    } else {
+                        self.note_line_above_last_pair(&c.text);
+                    }
                 } else if self.trailing_note_slot_open
                     && self.output.ends_with('\n')
                     && !self.tail_line_has_note()

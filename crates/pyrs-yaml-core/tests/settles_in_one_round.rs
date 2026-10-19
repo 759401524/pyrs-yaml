@@ -273,3 +273,57 @@ fn an_empty_plain_scalar_settles_as_the_null_text() {
     );
     assert_eq!(emit(&one), one, "not a fixed point in one round: {one:?}");
 }
+
+/// libFuzzer `edit_yaml` does reach the root: the empty path navigates to the document node, so a
+/// tag and a note are both verbs the edit layer accepts there.
+///
+/// A root sequence has no line of its own to host a note — its first line is a tag line and its last
+/// belongs to its last item, and granit spans a node through the break that ends its own line. The
+/// first emission used to park the note on that item's dash line, the re-read filed it as the item's
+/// own, and the second emission moved it above the block: `!fuzz0 \n- !a\n# fuzz 11\n- !a\n` became
+/// `# fuzz 11\n!fuzz0 \n- !a\n- !a\n`, one round short of a fixed point. `write_container_node` now
+/// asks whether the pending line is the block's last and, for a sequence, writes the note above the
+/// block's first line — where `lift_first_item_notes` already reads a sequence's own note from. The
+/// shapes whose last line does carry a scalar body keep the inline slot and settle by staying put;
+/// there the note's owner moves to that item, which is the quality-ledger (eo) ruling, so the table
+/// pins the text rather than the ownership.
+#[test]
+fn the_roots_own_note_settles_in_one_round() {
+    use pyrs_yaml_core::ast::{Comment, Tag};
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_comment_path, set_tag_path};
+    use std::sync::Arc;
+
+    let path: [Segment; 0] = [];
+    for (src, expected) in [
+        ("- !a\n- !a\n", "# fuzz 11\n!fuzz0 \n- !a\n- !a\n"),
+        ("!a\n- x\n", "!fuzz0 \n- x  # fuzz 11\n"),
+        (
+            "- &b\n- !a\n- k: v\n",
+            "!fuzz0 \n- &b ~\n- !a\n- k: v  # fuzz 11\n",
+        ),
+    ] {
+        let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+        set_tag_path(&mut node, &path, Tag::local("fuzz0"), src, None)
+            .expect("the root takes a tag");
+        let note = "fuzz 11";
+        set_comment_path(
+            &mut node,
+            &path,
+            Comment {
+                text: Arc::from(note),
+                standalone: false,
+            },
+            src,
+            None,
+        )
+        .expect("the root takes a note");
+        let one = to_yaml(&node);
+        assert_eq!(one, expected, "the root's note has a pinned line: {src:?}");
+        let again = emit(&one);
+        assert_eq!(
+            again, one,
+            "not a fixed point in one round: {one:?} -> {again:?}"
+        );
+    }
+}
