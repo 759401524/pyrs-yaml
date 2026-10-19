@@ -10,6 +10,7 @@ import json
 import pytest
 
 import pyrs_yaml
+from tests.data.yaml_samples import BENCHMARK_CONFIG_TOML
 
 
 @pytest.fixture(autouse=True)
@@ -139,6 +140,17 @@ class TestToToml:
         t = pyrs_yaml.to_toml('n: "42"\n')
         assert 'n = "42"' in t
         assert pyrs_yaml.load_toml(t) == {"n": "42"}
+
+    def test_benchmark_fixture_roundtrips_by_values_and_order(self):
+        # The CodSpeed input is also a contract fixture. A root table followed by
+        # a later root pair goes inline (#522), so what the writer promises is the
+        # values and the key order, not the header spelling; the benchmark module
+        # is deselected without --codspeed, so the assertion lives here.
+        expected = pyrs_yaml.load_toml(BENCHMARK_CONFIG_TOML)
+        out = pyrs_yaml.to_toml(pyrs_yaml.from_toml(BENCHMARK_CONFIG_TOML))
+        reloaded = pyrs_yaml.load_toml(out)
+        assert reloaded == expected
+        assert list(reloaded) == list(expected)
 
 
 class TestDocumentToToml:

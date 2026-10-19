@@ -249,10 +249,11 @@ def test_load_toml(benchmark):
 
 def test_to_toml(benchmark):
     # Setup (TOML -> YAML) is outside the measured call; this times only the
-    # YAML -> TOML writer (node_to_toml hot path).
+    # YAML -> TOML writer (node_to_toml hot path). The fixture's contract is
+    # asserted in tests/test_toml.py, which the normal suite runs: a correctness
+    # check in this module is deselected unless --codspeed is passed.
     yaml_str = pyrs_yaml.from_toml(CONFIG_TOML)
-    result = benchmark(pyrs_yaml.to_toml, yaml_str)
-    assert "[server]" in result
+    benchmark(pyrs_yaml.to_toml, yaml_str)
 
 
 # ── hot-spot samples (objective pillar 2.5) ──
