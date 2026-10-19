@@ -6760,11 +6760,43 @@ ends inside a nested sequence still fails to settle: `ss:\n  - !a\n  # fuzz 35\n
 back as `ss:\n  - \n    # fuzz 35\n    !a\n  - !a\n`, because the reader cannot report the note
 on the mapping and hands it to an item. #113 ruled that this ownership movement stays as it is and
 that no new emission position should be added, and that ruling is about a mapping's note, so the
-branch stops at the sequence half. Whether the non-settling *text* is covered by the same ruling is
-an open question with a twelve-byte repro, and it stays recorded here.
+branch stops at the sequence half. Whether the non-settling *text* is covered by the same ruling was
+an open question with a twelve-byte repro; (ep) answers it below - the ownership stays, the text
+settles.
 
 Counts: 163 seeds, 79 of them `former-crash-*` (`QUALITY_MATRIX.md`'s fuzz row), 732 Rust tests on
 this base (after #520 and #522), 35 Unreleased entries per changelog mirror.
+
+### (ep) A pair restores its own line before it returns (2026-10-19)
+
+(eo) left the text half of a mapping note open: `ss:\n  - !a\n  # fuzz 35\n  - !a\n` re-read as
+`ss:\n  - \n    # fuzz 35\n    !a\n  - !a\n`, so the first emission was not a fixed point. The
+note's owner moves either way, and #113 ruled that movement stays; what the round-trip contract
+does not allow is the text moving with it.
+
+The mechanism is one shared field. `note_line_above_last_pair` reads `pair_line_start` when a
+*container's* own inline note is placed - the enclosing writer calls it after the body - and
+`write_mapping_pair` sets that field at the pair's start. A block value then writes its own starts
+into the same field: `write_sequence_item` sets it at every item, so after the last pair's nested
+sequence the field names the last item's dash line, not the pair. The mapping's note went above
+that dash, the reader reported it as the item's leading note, and the next emission spelled the
+item's value as a continuation - the text moved.
+
+The fix restores the field before a pair returns, so after the last pair it names the line that
+ended the mapping's block. Only the mapping branch is affected: a sequence's note is placed above
+its own first line (`body_start`), which is the placement (eo) measured and this change leaves
+alone. `a_mapping_note_over_a_nested_sequence_settles_in_one_round` pins three shapes - the mapping
+is the root's only pair, another pair follows it, and a later pair lets the note ride the last pair
+line - asserting the emitted text and one round for each. Removing the store reddens it and no
+other test (`cargo nextest run -p pyrs-yaml-core -E 'test(a_mapping_note_over_a_nested_sequence)'`:
+1 failed, 416 skipped, the message carrying `left: "ss:\n  - !a\n  # fuzz 35\n  - !a\n"`);
+restoring it is 417 passed, and the property tier's 17 properties pass at
+`PROPTEST_CASES=20000`. The added store is on every mapping pair, so it was priced: on this WSL
+host with the baseline's pinned `rustc 1.97.1`, `serialize_medium` reads 32,448,886 against its
+32,376,895 floor, +0.22% and inside the 0.50% tolerance; the enforcing-image CI leg remains the
+authority, as `binaries:` in the run names these bytes as code.
+
+Counts: 733 Rust tests (from 732), 1,759 Python test functions, 39 Unreleased entries per mirror.
 
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
