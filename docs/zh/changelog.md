@@ -293,6 +293,13 @@ status: new
   列表可捕获顺序；交换输出的两条根行会让第一个比较保持相等、第二个翻转。基准体恢复为仅包含
   被测调用。
 
+- **指令数门禁现在属于合并判定的一部分** — `Instruction-count baseline` 作业原本位于
+  `.github/workflows/codspeed.yml`，而 `Test matrix (all legs)` 只汇总 `ci.yml` 的作业，因此它的
+  结果只是一份报告：#522 弄红的 `Python benchmarks` 腿登上了 trunk，必需检查却是绿的；Ir 门禁
+  同样可能如此。该作业原样迁入 `ci.yml`，与其他重型腿一样由 `changes` 分类决定是否运行；
+  `matrix-verdict` 现在等待它，性能回退才会拒绝合并，而不是到 trunk 上才被发现。两个 CodSpeed
+  作业继续留在 `codspeed.yml` 作为参考：低于 10% 的墙钟噪声适合排名，不适合作为合并决策。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

@@ -122,7 +122,8 @@ proved flaky on shared CI runners (macOS especially) and are tracked in CodSpeed
   benchmark set (CodSpeed's own report flags "Different runtime environments detected"). The same
   change measured **+6.18% instructions** in `callgrind` on one machine, and after removing
   redundant per-node comment-view lookups it measured **+2.57%** — a 58% recovery the gate never
-  displayed. So `scripts/ir_gate.py` + `.ci/ir-baseline.json` now run in `codspeed.yml`: same-binary
+  displayed. So `scripts/ir_gate.py` + `.ci/ir-baseline.json` now run in `ci.yml` as the `ir` leg of
+  the merge verdict: same-binary
   subtraction (a setup-only pass is subtracted out, because callgrind counts the whole process),
   fixed iteration counts (an auto-tuned sample count would make the total machine-dependent — the
   exact property being removed), 2% tolerance (calibrated: the same code measured +1.45% apart
@@ -897,7 +898,7 @@ same digests disagreeing is not a reason to distrust the residual, and why the t
 
 Three consequences, all acted on rather than noted.
 
-- **CI cannot be reddened by this.** `.github/workflows/codspeed.yml` reads
+- **CI cannot be reddened by this.** `.github/workflows/ci.yml` reads
   `.ci/ir-baseline.json['toolchain']` and installs that compiler before it measures, and the refresh
   job does the same unless told otherwise (the defect `tests/test_ir_baseline_workflow.py` pins).
   The drift lives only on a machine whose default stable has moved past the pin.
@@ -1134,9 +1135,11 @@ the benchmark body: this module is deselected unless `--codspeed` is passed, so 
 assertion here is invisible to every ordinary run and to the required check. The benchmark body is
 back to the measured call, with the TOML-to-YAML setup outside it.
 
-What is named rather than fixed: `Test matrix (all legs)` — the single required check — reported
-`success` on both heads while this leg was red, because the benchmark legs are not in the matrix. A
-regression the benchmark channel is the only one positioned to see therefore cannot block a merge,
-and the red arrives on trunk instead of stopping it. Whether to put that leg in the verdict or
-register the gap as a measured hole is a ruling about the gate, not about this test, and it is left
-as a question with the evidence above attached.
+What was named rather than fixed here has since been ruled on. `Test matrix (all legs)` — the single
+required check — reported `success` on both heads while this leg was red, because the benchmark legs
+are not in the matrix, and the red arrived on trunk instead of stopping it. The ruling splits the
+question in two. Benchmark *correctness* belongs to the normal suite, which is where the assertion
+now lives, so the matrix already judges it and the benchmark channel is not asked to. The
+instruction-count gate is now a leg of the matrix itself (`ci.yml`'s `ir` job), because it repeats
+to ~0.001% on one binary and answers a merge question. The two CodSpeed jobs stay advisory in
+`codspeed.yml`: their sub-10% noise makes a red worth investigating, not a merge decision.

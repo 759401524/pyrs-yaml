@@ -79,7 +79,7 @@ HARNESSES = (("pyrs-yaml-core", "ir_gate"), ("pyrs-yaml", "ir_gate"))
 #
 # What is left is a difference that correlated perfectly with the *job* and with nothing else: eight
 # runs of the refresh job, on two images, cached and uncached, all reported 15,792,8xx-15,792,9xx, and
-# two runs of the enforcing job in `codspeed.yml` reported 16,020,942 and 16,020,915 - while every other
+# two runs of the enforcing job (then in `codspeed.yml`, now `ci.yml`) reported 16,020,942 and 16,020,915 - while every other
 # scenario agreed between the two jobs to within 0.08%. Inside each job the number was stable to
 # ~30 instructions, so this was not noise. The cause was found with `build_exe`'s binary hashes: both
 # jobs measured the *same* bytes (`a0386c17b5f1ef38`), the same valgrind and compiler, on hosts whose
@@ -346,7 +346,7 @@ def toolchain_note(recorded: str | None, current: str) -> str | None:
     past it - `serialize_medium` +9.08%, `serialize_block` +8.86%, `to_toml_medium` +3.55% - and moved
     `serialize_block_scalars` the other way, -7.71%. A residual with both signs and that size is
     codegen, not a slow host. The enforcing job installs the pin out of the baseline
-    (`.github/workflows/codspeed.yml`), so a local run on another toolchain answers a question the
+    (`.github/workflows/ci.yml`), so a local run on another toolchain answers a question the
     gate never asks; `docs/dev/perf.md` carries the table.
     """
     if not recorded or recorded == current:

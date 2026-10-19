@@ -111,7 +111,7 @@ the baseline's pinned `rustc 1.97.1` nothing is past the line (worst `to_python_
 nineteen non-binding scenarios inside ±0.003%, so the pinned-ISA recipe did close the +1.45% figure),
 while the box's default `rustc 1.99.0` puts five past it — `serialize_medium` +9.08%,
 `serialize_block_scalars` −7.71% in the other direction, and different binary digests. CI is immune
-(`codspeed.yml` installs the baseline's `toolchain` before measuring); a local run is not, so pin it —
+(`ci.yml`'s `ir` job installs the baseline's `toolchain` before measuring); a local run is not, so pin it —
 `RUSTUP_TOOLCHAIN=$(python -c "import json;print(json.load(open('.ci/ir-baseline.json'))['toolchain'].split()[1])")`
 — and note that `ir_gate.py --only` takes exactly one complete scenario name (it filters by
 `s in args.only`, so a comma list silently matches nothing).

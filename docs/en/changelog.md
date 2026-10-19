@@ -385,6 +385,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lines keeps the first comparison equal while flipping the second. The benchmark body is back to
   the measured call alone.
 
+- **The instruction-count gate is now part of the merge verdict** — the `Instruction-count baseline`
+  job lived in `.github/workflows/codspeed.yml`, but `Test matrix (all legs)` fans in over
+  `ci.yml`'s jobs only, so its result was a report: #522's red `Python benchmarks` leg reached
+  trunk while the required check was green, and the Ir gate could have followed it. The job moves
+  to `ci.yml` unchanged and runs on the same `changes` classification as the other heavy legs;
+  `matrix-verdict` now waits on it, so a performance regression refuses a merge instead of arriving
+  on trunk. The two CodSpeed jobs stay advisory in `codspeed.yml`: sub-10% wall-time noise makes
+  them a ranking channel, not a merge decision.
+
 ### [v0.18.1] — 2026-10-17
 
 ### Added
