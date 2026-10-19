@@ -258,15 +258,26 @@ fn is_legacy_number_or_timestamp(value: &str) -> bool {
     }
     // A base prefix after an optional sign. `0b` is unknown to core in either spelling; `0x` and
     // `0o` are known unsigned, so only the signed form is a gap here — and the sign is what makes
-    // `+0x1f` an integer to a 1.1 reader while core leaves it the text.
+    // `+0x1f` an integer to a 1.1 reader while core leaves it the text. An underscore is the other
+    // gap: 1.1's table admits `_` between the digits of every base (`0x_1f` is 31 to PyYAML), and
+    // core's `from_str_radix` rejects it, so the unsigned token is plain text here and a number
+    // there.
     let body = strip_sign(value);
     let signed = body.len() != value.len();
     if body.len() > 2 && body.as_bytes()[0] == b'0' {
         match body.as_bytes()[1] {
             b'b' | b'B' => return true,
-            b'x' | b'X' | b'o' | b'O' if signed => return true,
+            b'x' | b'X' | b'o' | b'O' if signed || body.contains('_') => return true,
             _ => {}
         }
+    }
+    // A sign in front of an inf word is a 1.1 float (`+.inf`), which core's word list does not
+    // carry and `resolve_yaml11_type` now does. The other signed bodies need no row here: a signed
+    // decimal or legacy octal already parses through core (`"+5".parse::<i64>()` succeeds), and a
+    // signed base prefix is answered by the branch above. A word list, not a second resolve, because
+    // this runs for every plain scalar whose first byte is `+` or `-` on the write path.
+    if signed && matches!(body, ".inf" | ".Inf" | ".INF") {
+        return true;
     }
     is_date_only_timestamp(value)
 }
@@ -430,11 +441,25 @@ fn parse_json5_hex(trimmed: &str) -> Option<i64> {
 
 /// Resolve a plain scalar as YAML 1.1.
 ///
-/// Same as Core plus legacy boolean lexemes (yes/No/ON/off/y/N/...).
-/// The legacy words are matched first; everything else (null spellings,
-/// 1.2 bools, inf/nan, octal/hex, numbers) is delegated to the core
+/// Same as Core plus legacy boolean lexemes (yes/No/ON/off/y/N/...) and plus the numeric spellings
+/// 1.1 adds and Core cannot see ([`resolve_yaml11_number`]). The legacy words are matched first;
+/// everything else (null spellings, 1.2 bools, inf/nan, octal/hex, numbers) is delegated to the core
 /// chain so the two can never drift.
 pub fn resolve_yaml11_type(value: &str) -> YamlType<'_> {
+    match yaml11_lexemes(value) {
+        Some(typed) => typed,
+        None => resolve_core_type(value),
+    }
+}
+
+/// The types the 1.1 table gives that the core chain leaves as text: the legacy boolean lexemes
+/// and the numeric families [`resolve_yaml11_number`] knows.
+///
+/// This is the whole of what 1.1 adds, and both routes that need the pair ask it the same way —
+/// [`resolve_yaml11_type`] falls through to core when it answers `None`, and
+/// [`plain_text_is_typed`] asks core first, so neither pays core's chain twice for one scalar. The
+/// answer is `Option` rather than a bool because the profile has to return the resolved type.
+fn yaml11_lexemes(value: &str) -> Option<YamlType<'static>> {
     let trimmed = crate::trim_yaml_blank(value);
 
     // YAML 1.1 legacy booleans
@@ -444,10 +469,126 @@ pub fn resolve_yaml11_type(value: &str) -> YamlType<'_> {
         _ => None,
     };
     if let Some(b) = legacy_bool {
-        return YamlType::Bool(b);
+        return Some(YamlType::Bool(b));
     }
 
-    resolve_core_type(value)
+    // The 1.1-only numeric lexemes are asked only when the first byte can start one, and the
+    // compare lives here rather than in the callee so the wrappers that ask this pair keep getting
+    // an inlinable call: `plain_text_is_typed` asks it for every key the hub projects, and most of
+    // them open on a letter.
+    if matches!(
+        trimmed.as_bytes().first(),
+        Some(b'0'..=b'9') | Some(b'.') | Some(b'+') | Some(b'-')
+    ) {
+        return resolve_yaml11_number(trimmed);
+    }
+    None
+}
+/// The numeric spellings a YAML 1.1 reader types and the core chain leaves as text.
+///
+/// Four families, each measured against PyYAML's default loader: `_` between the digits of an int
+/// or float (`1_000` is 1000, `1_0.5` is 10.5, and `_1000` stays text because a token may not open
+/// with an underscore); a binary int `0b…` (with the spec's lower-case `b` only — PyYAML leaves
+/// `0B11` text too); a sign in front of a body core already types, which is what makes `+0x1f`,
+/// `-0x1f`, `+017` and `+.inf` numbers to 1.1 while core reads them as strings; and the leading-zero
+/// octal (`017` is 15 to 1.1 and 17 to 1.2 Core, the one place this profile overrides core rather
+/// than adding to it). The writer clause
+/// [`resolved_by_a_yaml_1_1_reader`] has quoted the first three since #504, precisely because a 1.1
+/// reader types them; the reader was the half that had not caught up, which made `schema="1.1"`
+/// disagree with the engine's own quoting rule.
+///
+/// Sexagesimal (`190:20:30`) is deliberately absent, as it is from the clause: its colon already
+/// forces quoting one layer below. Timestamps are absent for a different reason - the profile is
+/// Core *plus*, and a plain date reaching `YamlType::Timestamp` would make untagged text a temporal
+/// object, which is the ruling the temporal-tag work settled. `0b` and a signed body answer through
+/// the same `i64` bound the core chain uses, so a run too long for it stays text here as it does
+/// there; that is a documented divergence from PyYAML's arbitrary-precision int, not a new one.
+/// Precondition: the caller has already refused a token that cannot start one of these lexemes
+/// Precondition: the caller has already refused a token that cannot start one of these lexemes
+/// (see the byte gate in [`yaml11_lexemes`]).
+#[inline(never)]
+fn resolve_yaml11_number(trimmed: &str) -> Option<YamlType<'static>> {
+    let (negative, body) = match trimmed.as_bytes().first() {
+        Some(b'-') => (true, &trimmed[1..]),
+        Some(b'+') => (false, &trimmed[1..]),
+        _ => (false, trimmed),
+    };
+    let signed = body.len() != trimmed.len();
+    // An unsigned token with no underscore is the core chain's own question, except for `0b` and for
+    // a leading-zero octal, neither of which core answers the way 1.1 does.
+    if !signed && !body.contains('_') && !body.starts_with("0b") && !is_leading_zero_octal(body) {
+        return None;
+    }
+
+    if let Some(digits) = body.strip_prefix("0b") {
+        return resolve_yaml11_radix(digits, 2, negative);
+    }
+    // `0x`/`0X`/`0o` are families core already reads unsigned, so they only reach here behind a sign
+    // or an underscore. `0B` is spelled nowhere but here: the spec and PyYAML both use a lower-case
+    // `b` for binary, so `0B11` stays text in this profile as it does in PyYAML's loader.
+    for (prefix, radix) in [("0x", 16u32), ("0X", 16), ("0o", 8), ("0O", 8)] {
+        if let Some(digits) = body.strip_prefix(prefix) {
+            return resolve_yaml11_radix(digits, radix, negative);
+        }
+    }
+    // `[-+]?\.(inf|Inf|INF)` is 1.1's float row and core's word list has no signed `+` form, so
+    // `+.inf` is this profile's question to answer. The `nan` spellings keep no sign there: a
+    // not-a-number has no direction, and PyYAML's table says the same.
+    if signed && matches!(body, ".inf" | ".Inf" | ".INF") {
+        return match resolve_core_type(body) {
+            YamlType::Float(f) => Some(YamlType::Float(if negative { -f } else { f })),
+            _ => None,
+        };
+    }
+
+    // Decimal, float and legacy octal: digits, underscores and at most one dot, opening on a digit
+    // or a dot, holding at least one digit, and carrying no exponent - PyYAML's table admits no
+    // underscore inside one. The cleaned text is then core's question, so a leading zero still means
+    // what core says it means and this profile adds no second answer for the same spelling.
+    let decimal_shape = !body.is_empty()
+        && !matches!(body.as_bytes()[0], b'_')
+        && body
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b == b'_' || b == b'.')
+        && body.bytes().any(|b| b.is_ascii_digit())
+        && !body.bytes().any(|b| b == b'e' || b == b'E');
+    if !decimal_shape {
+        return None;
+    }
+    let clean: String = body.chars().filter(|c| *c != '_').collect();
+    // 1.1 reads a leading zero as octal and 1.2 Core dropped that rule: `017` is 15 to PyYAML's
+    // loader, 17 to the core chain. This is the one place the profile overrides core rather than
+    // adding to it - and overriding is the point of asking for 1.1.
+    if is_leading_zero_octal(&clean) {
+        let value = i64::from_str_radix(&clean, 8).ok()?;
+        return Some(YamlType::Int(if negative { -value } else { value }));
+    }
+    match resolve_core_type(&clean) {
+        YamlType::Int(n) => Some(YamlType::Int(if negative { -n } else { n })),
+        YamlType::Float(f) => Some(YamlType::Float(if negative { -f } else { f })),
+        _ => None,
+    }
+}
+
+/// `0[0-7]+`, the octal spelling YAML 1.1 carries. A lone `0` is not one (zero is zero in both
+/// profiles), and a digit above `7` leaves the family - `08` is not an octal anywhere.
+fn is_leading_zero_octal(body: &str) -> bool {
+    body.len() > 1 && body.starts_with('0') && body.bytes().all(|b| b.is_ascii_digit() && b <= b'7')
+}
+
+/// A base-prefixed 1.1 integer: the digits may carry underscores between them, and the value is
+/// bounded by the same `i64` the core chain uses.
+fn resolve_yaml11_radix(digits: &str, radix: u32, negative: bool) -> Option<YamlType<'static>> {
+    if digits.is_empty()
+        || !digits
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return None;
+    }
+    let clean: String = digits.chars().filter(|c| *c != '_').collect();
+    let value = i64::from_str_radix(&clean, radix).ok()?;
+    Some(YamlType::Int(if negative { -value } else { value }))
 }
 
 /// Public dispatcher: resolve a plain scalar according to the given schema.
@@ -474,8 +615,10 @@ pub fn resolve_yaml_type(value: &str, schema: YamlSchema) -> YamlType<'_> {
 /// 1.1, so it has to be quoted too. Quoting a key that did not need it is harmless;
 /// leaving one that did unquoted is a type change.
 pub fn plain_text_is_typed(text: &str) -> bool {
-    !matches!(resolve_core_type(text), YamlType::Str(_))
-        || !matches!(resolve_yaml11_type(text), YamlType::Str(_))
+    // One core chain and one set of lexemes 1.1 adds: asking `resolve_yaml11_type` after core
+    // already answered "string" would run core's whole chain a second time to reach the same
+    // conclusion. The pair is exactly what that fallthrough distinguishes.
+    !matches!(resolve_core_type(text), YamlType::Str(_)) || yaml11_lexemes(text).is_some()
 }
 
 // ---------------------------------------------------------------------------
@@ -947,6 +1090,111 @@ mod tests {
         }
     }
 
+    /// The numeric families the 1.1 profile added, each row measured against PyYAML's default loader
+    /// on this tree (`1_000` 1000, `5__2` 52, `1__` 1, `1000_` 1000, `1_0.5` 10.5, `.5_` 0.5, `0b101`
+    /// 5, `0b1_0` 2, `+0b11` 3, `-0b101` -5, `0x_1f` 31, `+0x1f` 31, `-0x1f` -31, `+017` 15,
+    /// `01_7` 15, `0_07` 7, `+.inf` inf). `017` is left to the answer the core chain already gives,
+    /// so the sign row asserts the *pair* rather than a second number: this profile types a signed
+    /// body exactly when it types the unsigned one.
+    #[test]
+    fn the_1_1_profile_resolves_the_numeric_families_a_1_1_reader_types() {
+        for (text, want) in [
+            ("1_000", YamlType::Int(1_000)),
+            ("5__2", YamlType::Int(52)),
+            ("1__", YamlType::Int(1)),
+            ("1000_", YamlType::Int(1000)),
+            ("0_0", YamlType::Int(0)),
+            ("-1_0", YamlType::Int(-10)),
+            ("+1_0", YamlType::Int(10)),
+            ("1_0.0", YamlType::Float(10.0)),
+            (".5_", YamlType::Float(0.5)),
+            ("0b101", YamlType::Int(5)),
+            ("0b1", YamlType::Int(1)),
+            ("0b1_0", YamlType::Int(2)),
+            ("+0b11", YamlType::Int(3)),
+            ("-0b101", YamlType::Int(-5)),
+            ("0x_1f", YamlType::Int(31)),
+            ("+0x1f", YamlType::Int(31)),
+            ("-0x1f", YamlType::Int(-31)),
+            ("+0o17", YamlType::Int(15)),
+            ("-0o17", YamlType::Int(-15)),
+            ("017", YamlType::Int(15)),
+            ("-017", YamlType::Int(-15)),
+            ("01_7", YamlType::Int(15)),
+            ("+.inf", YamlType::Float(f64::INFINITY)),
+        ] {
+            assert_eq!(resolve_yaml11_type(text), want, "{text:?}");
+        }
+        // A sign does not decide the question twice: the profile types `+017` exactly when it types
+        // `017`, whatever the core chain's leading-zero rule answers.
+        for (plain, plus) in [
+            ("017", "+017"),
+            ("007", "+007"),
+            ("0", "+0"),
+            ("1_0", "+1_0"),
+            ("0x1f", "+0x1f"),
+        ] {
+            assert_eq!(
+                matches!(resolve_yaml11_type(plus), YamlType::Str(_)),
+                matches!(resolve_yaml11_type(plain), YamlType::Str(_)),
+                "{plus} and {plain} resolve the same way"
+            );
+        }
+    }
+
+    /// The families this profile deliberately does not take: the shapes PyYAML leaves as text, and
+    /// the two families the rulings put elsewhere (sexagesimal, timestamps).
+    #[test]
+    fn the_1_1_profile_leaves_the_families_it_does_not_claim_as_text() {
+        for text in [
+            "_1000", // a token may not open with an underscore
+            "1_0e5", // no underscore inside an exponent
+            "1e5_",
+            "1_f",  // `f` is not a decimal digit
+            "0B11", // binary is spelled with a lower-case b
+            "-0B11",
+            "0b",
+            "0b2",
+            "+",
+            "-",
+            "_",
+            "._",
+            "+yes",
+            "+no",
+            "+inf", // 1.1's row is `[-+]?\.(inf|Inf|INF)`: the dot is part of it
+            "+nan",
+            "+.nan",                         // a not-a-number has no direction, signed or not
+            "190:20:30",  // sexagesimal: its colon forces quoting one layer below
+            "1990-06-23", // timestamps: untagged text stays text, per the temporal-tag ruling
+            "1_000_000_000_000_000_000_000", // past the i64 bound the core chain uses
+        ] {
+            assert!(
+                matches!(resolve_yaml11_type(text), YamlType::Str(_)),
+                "{text:?} must stay text under 1.1"
+            );
+        }
+    }
+
+    /// The direction that is not safe: text the profile types but the writer emits plain. Every row
+    /// of the resolver's own table has to answer this, or `schema="1.1"` would read back a number
+    /// where the document said a string (the #106 class, one layer closer to home).
+    #[test]
+    fn whatever_the_1_1_profile_types_is_never_emitted_plain() {
+        for text in [
+            "1_000", "5__2", "1__", "1000_", "-1_0", "+1_0", "1_0.0", ".5_", "0b101", "0b1_0",
+            "+0b11", "-0b101", "0x_1f", "+0x1f", "-0x1f", "+0o17", "+.inf", "y", "off",
+        ] {
+            assert!(
+                !matches!(resolve_yaml11_type(text), YamlType::Str(_)),
+                "{text:?} is typed by this profile"
+            );
+            assert!(
+                needs_quotes(text),
+                "{text:?} would be re-typed by a 1.1 reader"
+            );
+        }
+    }
+
     #[test]
     fn the_clause_fires_only_on_the_families_it_knows() {
         for text in [
@@ -1126,6 +1374,30 @@ mod tests {
                 !plain_text_is_typed(text),
                 "{text:?} is a string under both"
             );
+        }
+    }
+
+    /// The pair is what `plain_text_is_typed` answers, and it asks it as "core, then the lexemes 1.1
+    /// adds" rather than "core, then 1.1" — because 1.1's chain ends in core, so the second form ran
+    /// core's whole chain twice for every scalar core already called a string. This sweeps every short
+    /// token over an alphabet that reaches both chains and asserts the decomposition answers the pair:
+    /// a family added to `resolve_yaml11_type` without adding it to `yaml11_lexemes` reddens here.
+    #[test]
+    fn the_pair_and_its_decomposition_answer_the_same_for_every_short_token() {
+        const ALPHA: &[u8] = b"01789._+-bxoeyn ";
+        let mut buf = [b'0'; 4];
+        for len in 0..=buf.len() {
+            for idx in 0..ALPHA.len().pow(len as u32) {
+                let mut rest = idx;
+                for slot in buf[..len].iter_mut() {
+                    *slot = ALPHA[rest % ALPHA.len()];
+                    rest /= ALPHA.len();
+                }
+                let text = core::str::from_utf8(&buf[..len]).unwrap();
+                let pair = !matches!(resolve_core_type(text), YamlType::Str(_))
+                    || !matches!(resolve_yaml11_type(text), YamlType::Str(_));
+                assert_eq!(plain_text_is_typed(text), pair, "{text:?}");
+            }
         }
     }
 
