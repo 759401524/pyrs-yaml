@@ -6905,6 +6905,34 @@ relocates `[sec] # note`.
 
 Counts: 735 Rust tests, 1,791 Python test functions, 42 Unreleased entries per mirror.
 
+### (et) The MSRV job installed `stable`, so nothing tested the declared floor (2026-10-19)
+
+Every workspace crate declares `rust-version = "1.96"`, and `ci.yml`'s `msrv-check` job exists to
+hold that claim. Since f6b590b3 (2026-08-16) the job installed
+`dtolnay/rust-toolchain@stable`: it compiled the workspace on whatever stable the runner image
+carried, and its name described a floor no command had tested. `rust-version` documents a minimum;
+Cargo does not enforce it downward, so the only way to know 1.96 still works is to build with it.
+A dependency needing 1.97 would have passed the job and failed at a user's install, and no other
+leg would have caught it - `Test matrix (all legs)` consumed the job's green result.
+
+Before changing the pin, the floor was measured on this tree rather than assumed:
+`cargo +1.96.0 check --workspace --locked` and `cargo +1.96.0 test --workspace --locked` both
+exit 0, so the declaration is true today. The job now installs `1.96`, the version all eight
+crates declare, and `tests/test_msrv_gate.py` pins both directions: one test reads the workspace
+members out of the root manifest and refuses a missing or disagreeing `rust-version`, another
+compares the effective toolchain named by the workflow step (action ref or `with.toolchain`) with
+that declaration, and a third refuses an installer with no `cargo check`/`cargo test` behind it.
+The fan-in wiring was already exact - `test_the_fan_in_waits_on_every_job_in_the_workflow` covers
+`msrv-check` - so the missing piece was the toolchain, not the reachability.
+
+Mutation evidence. Restoring `dtolnay/rust-toolchain@stable` reddened
+`test_the_msrv_job_installs_the_declared_floor` with `msrv-check installs 'stable', and the crates
+declare '1.96'`. Moving `crates/pyrs-ast/Cargo.toml` to `1.97` reddened both the manifest test
+(naming the seven crates at 1.96 and the one at 1.97) and the pin test; both files were restored
+and the three tests run green.
+
+Counts: 735 Rust tests, 1,794 Python test functions, 43 Unreleased entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

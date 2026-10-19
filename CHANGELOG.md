@@ -9,6 +9,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The MSRV job installs the MSRV it claims to test** — `msrv-check` installed
+  `dtolnay/rust-toolchain@stable`, so it compiled the workspace on current stable and called that
+  the minimum: `rust-version = "1.96"` documents a floor without enforcing one, and a dependency
+  needing 1.97 would have passed the job and failed at a user's install. The step now pins the
+  `1.96` all eight crates declare, and `tests/test_msrv_gate.py` fails in both directions — a
+  workflow pin that moves away from the manifests, or a manifest that moves away from the pin.
+  The floor was measured before the pin changed: `cargo +1.96.0 check --workspace --locked` and
+  `cargo +1.96.0 test --workspace --locked` both pass on this tree.
+
 - **A second registry records the residuals the matrix cannot measure** —
   `.ci/quality-holes.json` can only describe a hole `scripts/quality_matrix.py` can derive, so its
   empty list read as "no residual" while understood, deliberately open behaviour remained: a TOML
