@@ -29,7 +29,7 @@ class YAML:
     """
     Configured YAML parser instance (rt / safe / full).
     """
-    def __new__(cls, /, typ: "str" = "rt", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> YAML:
+    def __new__(cls, /, typ: "str" = "rt", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> YAML:
         """
         Create a YAML instance; `typ` can be `rt`/`safe`/`full`.
         """
@@ -255,9 +255,12 @@ class YamlDocument:
         Access a value by top-level mapping key, returning `default` if not found.
         Path-based access is available via `find()` / `node()`.
         """
-    def reparse(self, /, resolve_merges: "bool" = True, schema: "str" = "core") -> "None":
+    def reparse(self, /, resolve_merges: "bool" = True, schema: "str | None" = None, honor_version_directive: "bool | None" = None) -> "None":
         """
         Reparse the current source, optionally changing merge behavior and schema.
+
+        `honor_version_directive=None` keeps the document's current negotiation
+        setting; passing `False` stops honouring a declared `%YAML` version.
         """
     def root_type(self, /) -> str:
         """
@@ -517,17 +520,21 @@ def negotiate_language(user_locales: "list[str]", default: "str" = "en") -> "str
     Negotiate a language from user locale list and default.
     """
 
-def parse(yaml: "str | bytes", resolve_merges: "bool" = True, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "YamlDocument":
+def parse(yaml: "str | bytes", resolve_merges: "bool" = True, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "YamlDocument":
     """
     Parse a YAML string (str or bytes) and return an editable `YamlDocument`.
+
+    With `honor_version_directive=True` a document that declares `%YAML 1.1` is
+    resolved under the YAML 1.1 profile and re-emits the directive. An explicit
+    `schema` always wins over the declaration.
     """
 
-def parse_all_docs(yaml: "str", resolve_merges: "bool" = True, schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "list[YamlDocument]":
+def parse_all_docs(yaml: "str", resolve_merges: "bool" = True, schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "list[YamlDocument]":
     """
     Parse a multi-document YAML stream and return all `YamlDocument` objects.
     """
 
-def parse_file(path: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "YamlDocument":
+def parse_file(path: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "YamlDocument":
     """
     Parse a YAML file and return an editable `YamlDocument`.
     """
@@ -597,14 +604,20 @@ def safe_dump(data: "dict[str, Any] | list[Any]") -> "str":
     Serialize a Python dict/list to a YAML string.
     """
 
-def safe_load(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "dict[Any, Any] | list[Any]":
+def safe_load(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "dict[Any, Any] | list[Any]":
     """
     Parse YAML into a Python dict/list, resolving anchors and merges.
+
+    `honor_version_directive=True` lets an explicit `%YAML 1.1` declaration pick
+    the resolution profile; an explicit `schema` still wins.
     """
 
-def safe_loads(yaml: "str", schema: "str" = "core", max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False) -> "list[dict[Any, Any] | list[Any]]":
+def safe_loads(yaml: "str", schema: "str | None" = None, max_depth: "int" = 1000, allow_duplicate_keys: "bool" = False, honor_version_directive: "bool" = False) -> "list[dict[Any, Any] | list[Any]]":
     """
     Parse a multi-document YAML stream into a list of dicts/lists.
+
+    Each document negotiates its own `%YAML` declaration when
+    `honor_version_directive=True`; an explicit `schema` wins for every one.
     """
 
 def set_language(lang: "str") -> "None":

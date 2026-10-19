@@ -1,5 +1,6 @@
 """Core YAML parsing tests — parsing only (no serialization)."""
 
+import io
 import math
 
 import pytest
@@ -160,6 +161,122 @@ class TestYamlDirective:
     def test_a_tag_handle_is_expanded_not_carried(self):
         emitted = pyrs_yaml.parse("%TAG !u! tag:yaml.org,2002:\n---\nu: !u!str x\n").to_yaml()
         assert emitted == "u: !!str x\n"
+
+
+class TestYamlVersionNegotiation:
+    """Opt-in `%YAML` negotiation: the declaration picks the profile and is re-emitted.
+
+    The default is unchanged — Core resolution and no directive in the output.
+    The flag turns a declaration into a reading rule, and the writer then keeps
+    the emitted text self-describing so a Core reader cannot silently retype it.
+    """
+
+    DECLARED = "%YAML 1.1\n---\nflag: yes\noctal: 012\n"
+
+    def test_the_flag_off_keeps_core_resolution(self):
+        assert pyrs_yaml.parse(self.DECLARED).get("flag") == "yes"
+
+    def test_the_flag_resolves_a_declared_11_document_as_11(self):
+        doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
+        assert doc.get("flag") is True
+        assert doc.to_dict() == {"flag": True, "octal": 10}
+
+    def test_safe_load_honours_the_declaration(self):
+        assert pyrs_yaml.safe_load(self.DECLARED, honor_version_directive=True) == {
+            "flag": True,
+            "octal": 10,
+        }
+
+    def test_an_explicit_schema_wins_over_the_declaration(self):
+        assert pyrs_yaml.safe_load(self.DECLARED, schema="core", honor_version_directive=True) == {
+            "flag": "yes",
+            "octal": 12,
+        }
+
+    def test_an_explicit_11_schema_needs_no_declaration(self):
+        assert pyrs_yaml.safe_load("flag: yes\n", schema="yaml1.1") == {"flag": True}
+
+    @pytest.mark.parametrize("version", ["1.2", "1.3"])
+    def test_a_non_11_declaration_resolves_as_core(self, version):
+        doc = pyrs_yaml.parse(f"%YAML {version}\n---\nflag: yes\n", honor_version_directive=True)
+        assert doc.get("flag") == "yes"
+
+    def test_an_undeclared_document_resolves_as_core(self):
+        doc = pyrs_yaml.parse("flag: yes\n", honor_version_directive=True)
+        assert doc.get("flag") == "yes"
+        assert doc.to_yaml() == "flag: yes\n"
+
+    def test_the_emitted_text_carries_the_directive(self):
+        doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
+        emitted = doc.to_yaml()
+        assert emitted.startswith("%YAML 1.1\n---\n")
+        assert pyrs_yaml.parse(emitted, honor_version_directive=True).get("flag") is True
+
+    def test_explicit_start_does_not_double_the_marker(self):
+        doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
+        assert doc.to_yaml_with_options(2, True).startswith("%YAML 1.1\n---\nflag:")
+
+    def test_an_edited_document_keeps_its_directive(self):
+        doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
+        doc.set("$.added", 1)
+        emitted = doc.to_yaml()
+        assert emitted.startswith("%YAML 1.1\n---\n")
+        assert "added: 1\n" in emitted
+
+    def test_reparse_keeps_the_documents_negotiation(self):
+        doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
+        doc.reparse()
+        assert doc.get("flag") is True
+        assert doc.to_yaml().startswith("%YAML 1.1\n")
+
+    def test_reparse_can_override_the_declaration(self):
+        doc = pyrs_yaml.parse(self.DECLARED, honor_version_directive=True)
+        doc.reparse(schema="core")
+        assert doc.get("flag") == "yes"
+        assert not doc.to_yaml().startswith("%YAML ")
+
+    def test_safe_loads_negotiates_each_document(self):
+        stream = "%YAML 1.1\n---\nflag: yes\n---\nflag: yes\n"
+        assert pyrs_yaml.safe_loads(stream, honor_version_directive=True) == [
+            {"flag": True},
+            {"flag": "yes"},
+        ]
+
+    def test_parse_all_docs_emits_each_documents_own_directive(self):
+        stream = "%YAML 1.1\n---\nflag: yes\n---\nflag: yes\n"
+        docs = pyrs_yaml.parse_all_docs(stream, honor_version_directive=True)
+        assert [doc.get("flag") for doc in docs] == [True, "yes"]
+        assert [doc.to_yaml().splitlines()[0] for doc in docs] == ["%YAML 1.1", "flag: yes"]
+
+    def test_the_configured_instance_honours_the_declaration(self):
+        instance = pyrs_yaml.YAML(honor_version_directive=True)
+        assert instance.safe_load(self.DECLARED)["flag"] is True
+        assert instance.parse(self.DECLARED).to_yaml().startswith("%YAML 1.1\n")
+
+    def test_streaming_write_separates_documents_once(self):
+        docs = pyrs_yaml.parse_all_docs(
+            "%YAML 1.1\n---\nflag: yes\n---\nflag: yes\n",
+            honor_version_directive=True,
+        )
+        sink = io.StringIO()
+        pyrs_yaml.YAML().dump_stream(sink, docs)
+        emitted = sink.getvalue()
+        assert emitted.count("---\n") == 2
+        assert emitted.startswith("%YAML 1.1\n---\n")
+        replayed = pyrs_yaml.parse_all_docs(emitted, honor_version_directive=True)
+        assert [doc.get("flag") for doc in replayed] == [True, "yes"]
+
+    def test_a_mid_stream_directive_is_closed_with_an_explicit_end(self):
+        docs = pyrs_yaml.parse_all_docs(
+            "flag: yes\n...\n%YAML 1.1\n---\nflag: yes\n",
+            honor_version_directive=True,
+        )
+        sink = io.StringIO()
+        pyrs_yaml.YAML().dump_stream(sink, docs)
+        emitted = sink.getvalue()
+        assert emitted == "flag: yes\n...\n%YAML 1.1\n---\nflag: yes\n"
+        replayed = pyrs_yaml.parse_all_docs(emitted, honor_version_directive=True)
+        assert [doc.get("flag") for doc in replayed] == ["yes", True]
 
 
 class TestBlockScalars:

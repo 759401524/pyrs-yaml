@@ -114,7 +114,7 @@ class TestSchemaLanguage:
         with pytest.raises(TypeError, match=match):
             pyrs_yaml.safe_load("a: 1", schema=[1, 2, 3])
         with pytest.raises(TypeError, match=match):
-            pyrs_yaml.parse_file("dummy.yaml", schema=None)
+            pyrs_yaml.parse_file("dummy.yaml", schema=42)
 
     def test_parse_schema_yaml_invalid_yaml(self):
         """Invalid YAML string raises YamlParseError, not silent suppression."""

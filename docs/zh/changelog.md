@@ -327,6 +327,17 @@ status: new
   `TestIntegerSpellingFidelity`、`decimal_spellings_reach_the_hub_word_for_word` 与
   `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise` 钉住。
 
+- **显式 `%YAML` 版本按需生效，输出也如实声明** — 文档头部过去只由 `version()` 报告、读取端并不
+  理会，因此 `%YAML 1.1` 仍按 Core 解析，指令也在输出中丢失。现在向 `parse`、`parse_file`、
+  `parse_all_docs`、`safe_load`、`safe_loads` 或 `YAML(...)` 传入
+  `honor_version_directive=True` 后，`1.1` 声明会选择 YAML 1.1 档位（`flag: yes` 读作 `True`，
+  `012` 读作 `10`）；`1.2`、`1.3` 与未声明的文档仍按 Core 解析，显式 `schema` 优先于声明。
+  开启标志时，被采信的声明会在其 `---` 之前重新发射为 `%YAML <version>`——编辑之后与
+  `reparse()` 之后同样如此——Core 读取端因此不会悄然重判文本的类型；流中后续文档的声明前会补上
+  语法要求的 `...` 结束标记。默认行为不变（标志关闭、按 Core 解析、输出不含指令）；
+  `schema` 的默认值改为 `None`，以区分“未指定”与“显式 Core”。由
+  `TestYamlVersionNegotiation` 钉住。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

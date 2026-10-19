@@ -6838,6 +6838,43 @@ Mutation evidence: recording `cleaned` instead of `raw` reddens
 
 Counts: 735 Rust tests (from 733), 1,762 Python test functions, 40 Unreleased entries per mirror.
 
+### (er) A declared version picks the profile, and the writer keeps the declaration that chose it (2026-10-19)
+
+(du) measured the reporting half and ruled version-driven resolution plus emission out of scope.
+This change supplies both behind a flag, default off, so no existing caller's resolution or output
+moved: `honor_version_directive=True` on `parse`, `parse_file`, `parse_all_docs`, `safe_load`,
+`safe_loads`, `YAML(...)` and `YamlDocument.reparse` lets a `%YAML 1.1` declaration select the
+YAML 1.1 profile (`flag: yes` -> `True`, `012` -> `10`), while `1.2`, `1.3` and an undeclared
+document stay on Core. Explicit `schema` wins; `schema` now defaults to `None` so "not given" and
+"explicitly Core" are different states rather than the same string.
+
+The core reader still ignores the schema - `parse_document` has always reported the declared
+version beside the tree - so negotiation is a post-parse decision on that report, not a second
+parse. The one path that had to be rerouted is P3's direct-load fast path, which converts while
+reading and cannot know the declaration before conversion; it is skipped only when the flag is on.
+Emission is derived from the same rule that resolved the document: emit the declared version only
+when the effective profile is the one that declaration maps to, so `%YAML 1.2` is re-emitted over
+Core values while a declaration is never written over values it did not govern. `with_directive`
+prepends `%YAML v` and, unless the caller already asked for an explicit start, the `---` that
+opens the document.
+
+The stream writer held the one interaction no single-document test could see: `dump_iterable`
+writes its own `---` between documents. Skipping that separator whenever the buffer starts with
+`%YAML` is right for a leading declaration and wrong for a later one - granit requires an
+explicit `...`, refusing `flag: yes\n---\n%YAML 1.1\n---\nflag: yes\n` with "missing explicit
+document end marker before directive". The writer now emits `...` before a directive-bearing
+document that is not first; the emitted
+`flag: yes\n...\n%YAML 1.1\n---\nflag: yes\n` replays as `['yes', True]`.
+
+Mutation evidence. Forcing the negotiation guard false (always Core) reddens 10 of the 17 tests
+the class held at that point and leaves the flag-off, explicit-schema, non-1.1 and undeclared pins
+green - the shape of the compatibility claim. Replacing the stream's `...` with `---` reddens
+`test_a_mid_stream_directive_is_closed_with_an_explicit_end` on the exact text
+(`left: "flag: yes\n---\n%YAML 1.1\n---\nflag: yes\n"`). The stub route regenerated the seven
+signatures (`schema` -> `str | None`, the new flag), and both mypy and ty passed the result.
+
+Counts: 735 Rust tests (from 735), 1,779 Python test functions, 41 Unreleased entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

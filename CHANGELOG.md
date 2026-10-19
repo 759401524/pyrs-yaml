@@ -418,6 +418,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `decimal_spellings_reach_the_hub_word_for_word` and
   `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise`.
 
+- **A declared `%YAML` version is honoured on request, and the output says so** — a document's
+  header used to be reported by `version()` and ignored by the reader, so `%YAML 1.1` resolved
+  under Core and the directive was dropped from the output. Passing
+  `honor_version_directive=True` to `parse`, `parse_file`, `parse_all_docs`, `safe_load`,
+  `safe_loads` or `YAML(...)` now lets a `1.1` declaration select the YAML 1.1 profile
+  (`flag: yes` reads `True`, `012` reads `10`); `1.2`, `1.3` and an undeclared document still
+  resolve under Core, and an explicit `schema` wins over the declaration. With the flag on, an
+  honoured declaration is re-emitted as `%YAML <version>` before its `---` — after edits and
+  `reparse()` too — so a Core reader cannot silently retype the text; a later declaration in a
+  stream is preceded by the `...` end marker the grammar requires. The default is unchanged
+  (flag off, Core resolution, no directive in the output); `schema` now defaults to `None` so
+  "not given" and "explicitly Core" are distinguishable. Pinned by
+  `TestYamlVersionNegotiation`.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

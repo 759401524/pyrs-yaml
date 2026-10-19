@@ -387,6 +387,18 @@ status: new
   `TestIntegerSpellingFidelity`, `decimal_spellings_reach_the_hub_word_for_word`,
   `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise` 로 고정합니다.
 
+- **선언된 `%YAML` 버전은 요청 시 존중되며 출력에도 명시됩니다** — 문서 헤더는 그동안
+  `version()`으로 보고될 뿐 리더가 무시했기 때문에 `%YAML 1.1`도 Core로 해석되었고 지시어는
+  출력에서 사라졌습니다. `parse`, `parse_file`, `parse_all_docs`, `safe_load`, `safe_loads`,
+  `YAML(...)`에 `honor_version_directive=True`를 전달하면 `1.1` 선언이 YAML 1.1 프로파일을
+  선택합니다(`flag: yes`는 `True`, `012`는 `10`). `1.2`, `1.3` 및 선언이 없는 문서는 여전히
+  Core로 해석되며, 명시적 `schema`가 선언보다 우선합니다. 플래그가 켜지면 채택된 선언이 `---`
+  앞에 `%YAML <version>`으로 다시 출력되고(편집 후와 `reparse()` 후에도), Core 리더가 텍스트를
+  조용히 다른 타입으로 읽지 못하게 합니다. 스트림에서 뒤따르는 문서의 선언 앞에는 문법이 요구하는
+  `...` 종료 표식이 붙습니다. 기본 동작은 그대로입니다(플래그 꺼짐, Core 해석, 출력에 지시어 없음).
+  `schema`의 기본값은 `None`이 되어 "지정하지 않음"과 "명시적 Core"를 구분합니다.
+  `TestYamlVersionNegotiation`으로 고정합니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

@@ -395,6 +395,18 @@ status: new
   `TestIntegerSpellingFidelity`、`decimal_spellings_reach_the_hub_word_for_word`、
   `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise` で固定しています。
 
+- **宣言された `%YAML` バージョンは要求時に尊重され、出力にも明記されます** — 文書ヘッダーは
+  これまで `version()` が報告するだけでリーダーは無視していたため、`%YAML 1.1` も Core で解決され、
+  ディレクティブは出力から失われていました。`parse`、`parse_file`、`parse_all_docs`、
+  `safe_load`、`safe_loads`、`YAML(...)` に `honor_version_directive=True` を渡すと、
+  `1.1` 宣言が YAML 1.1 プロファイルを選択します（`flag: yes` は `True`、`012` は `10`）。
+  `1.2`、`1.3`、宣言のない文書は引き続き Core で解決され、明示的な `schema` は宣言より優先されます。
+  フラグ有効時、採用された宣言は `---` の前に `%YAML <version>` として再出力され（編集後や
+  `reparse()` 後も同様）、Core リーダーがテキストを黙って型変換しないようにします。ストリーム内で
+  後続する文書の宣言前には、文法が要求する `...` 終端マーカーが付きます。既定の動作は不変です
+  （フラグ無効、Core 解決、出力にディレクティブなし）。`schema` の既定値は `None` になり、
+  「未指定」と「明示的な Core」を区別できます。`TestYamlVersionNegotiation` で固定しています。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 追加
