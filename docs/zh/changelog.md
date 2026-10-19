@@ -19,6 +19,14 @@ status: new
 
 ### 变更
 
+- **MSRV 任务安装它声称要测试的 MSRV** — `msrv-check` 安装的是
+  `dtolnay/rust-toolchain@stable`，因此在当前 stable 上编译整个工作区，并把它当作最低版本：
+  清单中的 `rust-version = "1.96"` 只记录地板而不强制执行，需要 1.97 的依赖会通过该任务，
+  却在用户安装时失败。该步骤现在钉住全部八个 crate 声明的 `1.96`，
+  `tests/test_msrv_gate.py` 双向把关——工作流的钉扎偏离清单，或清单偏离钉扎，都会失败。
+  改钉之前先实测了地板本身：`cargo +1.96.0 check --workspace --locked` 与
+  `cargo +1.96.0 test --workspace --locked` 在本树上均通过。
+
 - **第二份登记表记录矩阵无法测量的残留** —
   `.ci/quality-holes.json` 只能描述 `scripts/quality_matrix.py` 可推导的缺口，因此它的空列表被读成
   "没有残留"，而实际仍有被理解、刻意搁置的行为：无法留在表头行的 TOML 表头注释、`set_comment`
