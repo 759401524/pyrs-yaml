@@ -1368,12 +1368,64 @@ fn single_quoted_node(value: Cow<'_, str>) -> CustomNode {
 fn quoted_or_plain(value: Cow<'_, str>) -> CustomNode {
     if needs_quotes(&value)
         || (json5_could_be_typed(&value)
-            && !matches!(Schema::Json5.resolve(&value), YamlType::Str(_)))
+            && (json_number_text(&value)
+                || !matches!(Schema::Json5.resolve(&value), YamlType::Str(_))))
     {
         CustomNode::double_quoted_scalar(value)
     } else {
         CustomNode::plain_scalar(value)
     }
+}
+
+/// Whether the text is a number in JSON's own grammar.
+///
+/// The two grammars disagree at the edges: the resolvers answer `Str` for an integer spelling
+/// outside their parse - `"9999999999999999999"`, nineteen digits, is a string to them - while JSON
+/// puts no bound on an integer literal. Projecting such a string as a plain scalar therefore let the
+/// JSON writer hand the same text back as a *number*: `load_json` kept `str`, and one trip through
+/// the hub changed what the document meant (libFuzzer `json_roundtrip` crash-09341b75). Asking the
+/// JSON grammar is the sound form of the question "will a reader type this", and it is a byte walk
+/// asked only of text the first-byte guard already let through - the resolver itself costs +14%
+/// unasked, per the note above.
+fn json_number_text(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut i = usize::from(bytes.first() == Some(&b'-'));
+    // int = 0 / [1-9][0-9]* - JSON allows no leading zero and no `+`.
+    match bytes.get(i) {
+        Some(&b'0') => i += 1,
+        Some(byte) if byte.is_ascii_digit() => {
+            while matches!(bytes.get(i), Some(byte) if byte.is_ascii_digit()) {
+                i += 1;
+            }
+        }
+        _ => return false,
+    }
+    // frac = *( "." 1*DIGIT ) - a point has to be followed by a digit.
+    if bytes.get(i) == Some(&b'.') {
+        i += 1;
+        let digits = i;
+        while matches!(bytes.get(i), Some(byte) if byte.is_ascii_digit()) {
+            i += 1;
+        }
+        if i == digits {
+            return false;
+        }
+    }
+    // exp = ( "e" / "E" ) [ "-" / "+" ] 1*DIGIT
+    if matches!(bytes.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        if matches!(bytes.get(i), Some(b'-' | b'+')) {
+            i += 1;
+        }
+        let digits = i;
+        while matches!(bytes.get(i), Some(byte) if byte.is_ascii_digit()) {
+            i += 1;
+        }
+        if i == digits {
+            return false;
+        }
+    }
+    i == bytes.len()
 }
 
 /// Whether `text` can resolve to anything other than a string under the JSON5 profile.
@@ -2364,6 +2416,40 @@ mod tests {
         assert!(from_jsonc("\"x\\\r\ny\"").is_err());
         // A terminator still ends the document's string when it is not escaped.
         assert!(from_json5("'x\ny'").is_err());
+    }
+
+    /// A JSON string spelled like an integer past the resolvers' parse keeps its quotes.
+    ///
+    /// Core answers `Str` for a digit run too long to fit an `i64`, and JSON puts no bound on an
+    /// integer literal, so a projection that wrote it plain turned a `str` into a number on the way
+    /// back out (libFuzzer `json_roundtrip` crash-09341b75).
+    #[test]
+    fn a_string_too_long_for_the_resolver_still_leaves_as_a_string() {
+        let big = "\"9999999999999999999\"";
+        let node = from_json(big).expect("a quoted digit run is a JSON string");
+        let CustomNode::Scalar { style, .. } = &node else {
+            unreachable!()
+        };
+        assert_eq!(*style, ScalarStyle::DoubleQuoted, "quoted in, quoted out");
+        assert_eq!(
+            crate::to_json_text(&node).expect("a string root writes"),
+            big,
+            "and it leaves as the string it was"
+        );
+        // The predicate claims JSON's number grammar, so it is asked of that grammar's edges.
+        for (text, is_number) in [
+            ("0", true),
+            ("00", false),
+            ("-1", true),
+            ("+1", false),
+            ("1e5", true),
+            ("1.5e-3", true),
+            ("1.", false),
+            ("9999999999999999999", true),
+            ("1_0", false),
+        ] {
+            assert_eq!(json_number_text(text), is_number, "{text}");
+        }
     }
 
     #[test]

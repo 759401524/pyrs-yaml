@@ -147,6 +147,81 @@ fn a_tagged_empty_flow_member_with_a_note_settles_in_one_round() {
     );
 }
 
+/// libFuzzer `edit_yaml` crash-3dd60cad: the same tag-only line, one position further - a block
+/// sequence item.
+///
+/// `- !o` renders an item whose value is nothing, so a note written after its tag has no body to sit
+/// on: the reader files it as the item's *leading* note and the writer spells a leading note on the
+/// first item as a line of its own above the dash. The first emission `- !fuzz2  # fuzz 47` came back
+/// as `# fuzz 47\n- !fuzz2` - nothing lost, one round short of a fixed point. The mapping side of this
+/// line has an answer (`close_pending_tag_line`); the item side did not.
+#[test]
+fn a_tagged_empty_sequence_item_with_a_note_settles_in_one_round() {
+    use pyrs_yaml_core::ast::{Comment, Tag};
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::{set_comment_path, set_tag_path};
+
+    let src = "- !o\n";
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    let path = [Segment::Index(0)];
+    set_tag_path(&mut node, &path, Tag::local("fuzz2"), src, None).expect("the tag is set");
+    set_comment_path(
+        &mut node,
+        &path,
+        Comment {
+            text: "fuzz 47".into(),
+            standalone: false,
+        },
+        src,
+        None,
+    )
+    .expect("the note is set");
+
+    let one = to_yaml(&node);
+    assert_eq!(
+        one, "- !fuzz2 ~  # fuzz 47\n",
+        "the note needs a spelled body to sit on, here and in a flow member alike"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
+/// libFuzzer `edit_yaml` crash-a58caa38: an edit that empties a block sequence leaves its flag behind.
+///
+/// An empty container has no block form, so the writer always spells it `[]` on the key's line - the
+/// compactness rule was vetoing a compactness the emission does not have - and the reader answers `[]`
+/// with the flow flag set. The first emission was `-\n  t: []`, and the second pulled the mapping up
+/// under the dash.
+#[test]
+fn an_emptied_block_sequence_keeps_the_dash_line() {
+    use pyrs_yaml_core::editing::Segment;
+    use pyrs_yaml_core::editing::plan::delete_path;
+    use std::borrow::Cow;
+
+    let src = "- t:\n  - \n";
+    let mut node = parse(src, Schema::Core).expect("the pinned input parses");
+    let path = [
+        Segment::Index(0),
+        Segment::Key(Cow::Borrowed("t")),
+        Segment::Index(0),
+    ];
+    delete_path(&mut node, &path, src, None).expect("the last item is removed");
+
+    let one = to_yaml(&node);
+    assert_eq!(
+        one, "- t: []\n",
+        "an empty container is spelled on the key's line"
+    );
+    let again = emit(&one);
+    assert_eq!(
+        again, one,
+        "not a fixed point in one round: {one:?} -> {again:?}"
+    );
+}
+
 /// libFuzzer `edit_yaml` crash-63749496: a scalar with no text and no properties.
 ///
 /// An empty plain scalar renders as nothing, and the reader does not hand the same node back from

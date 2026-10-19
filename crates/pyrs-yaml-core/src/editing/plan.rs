@@ -55,6 +55,26 @@ pub fn set_path(
     {
         return Err("anchor-is-referenced".to_string());
     }
+    // The wider half of the same invariant, asked at the door `set` walks through. `preserve_metadata`
+    // carries the replaced node's own anchor onto the new value; nothing can carry a definition from
+    // *inside* the subtree that value replaces, because the new value never had it. Measured on
+    // `: abase: &x 1\nuse: *x` (libFuzzer `edit_yaml` crash-fbd364b3): setting the path whose node is
+    // the mapping holding `abase: &x 1` - a node carrying no anchor of its own - emitted
+    // `~: v0\nuse: *x`, and this library's own reader refused it with `found unknown anchor`. The
+    // over-refusal `delete_path` accepts is accepted here for the same reason: a subtree that holds
+    // both an anchor and the alias naming it is safe to write, and this refuses it too, because
+    // deciding that needs the document order of a tree that is about to change.
+    if let Ok(target) = crate::editing::navigate(node, segments) {
+        let mut defined = Vec::new();
+        anchors_in(target, &mut defined);
+        let own = target.anchor();
+        if defined
+            .iter()
+            .any(|name| Some(name.as_str()) != own && any_alias_names(node, name))
+        {
+            return Err("anchor-is-referenced".to_string());
+        }
+    }
     let offsets = resolve_line_offsets(line_offsets, source);
     let line_offsets: &[usize] = &offsets;
 
@@ -1254,6 +1274,47 @@ mod tests {
         let emitted = to_yaml(&node);
         assert_eq!(emitted, "base: &x 2\nuse: *x\n");
         parse(&emitted, Schema::Core).expect("the emission still parses");
+    }
+
+    /// The hole `preserve_metadata` cannot cover: the anchor is not on the node being replaced, it is
+    /// one level *inside* it, so the copy has nothing to carry and the alias is orphaned anyway. Found
+    /// by `edit_yaml` (crash-fbd364b3) on `: abase: &x 1\nuse: *x`, written here as the plain shape of
+    /// the same tree: the path names a mapping with no anchor of its own.
+    #[test]
+    fn replacing_a_container_that_holds_a_referenced_anchor_is_refused() {
+        let source = "a:\n  base: &x 1\nuse: *x\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        let error = set_path(
+            &mut node,
+            &segments("a"),
+            CustomNode::plain_scalar("2"),
+            true,
+            source,
+            None,
+            false,
+        )
+        .expect_err("`a: 2` would delete the only definition of the anchor `use: *x` names");
+        assert_eq!(error, "anchor-is-referenced");
+        assert_eq!(to_yaml(&node), source, "a refusal must not touch the tree");
+    }
+
+    /// The guard is about a reference, not about the presence of an anchor: nothing points at the
+    /// nested name here, so replacing the container is the caller's to make.
+    #[test]
+    fn replacing_a_container_whose_anchor_nothing_refers_to_is_allowed() {
+        let source = "a:\n  base: &x 1\n";
+        let mut node = parse(source, Schema::Core).expect("the fixture parses");
+        set_path(
+            &mut node,
+            &segments("a"),
+            CustomNode::plain_scalar("2"),
+            true,
+            source,
+            None,
+            false,
+        )
+        .expect("no alias names `x`, so the nested anchor is not a reference");
+        assert_eq!(to_yaml(&node), "a: 2\n");
     }
 
     /// `move_path` is one `set_path` call over a cloned subtree, so the guard it inherits is the same.

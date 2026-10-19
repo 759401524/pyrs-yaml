@@ -217,21 +217,23 @@ fn effective_chomping(value: &str, chomping: &Chomping, no_content_line: bool) -
 /// Whether a node can be serialized inline on the same line as a mapping
 /// key's colon (compact sequence item form): scalars, nulls, aliases, and
 /// flow-style containers all end with a newline of their own.
+///
+/// An empty container counts as inlineable whatever flag it carries, because there is no block form
+/// for it to take: `write_container_node` always spells it `[]` / `{}` on the key's line, so a
+/// `flow_style: false` left by an edit that emptied the last of its items was vetoing a compactness
+/// the emission does not have. The reader answers `[]` with `flow_style: true`, so the first round
+/// broke the fixed point and the second moved the mapping up under the dash (libFuzzer `edit_yaml`
+/// crash-a58caa38).
 fn inlineable_value(v: &CustomNode) -> bool {
-    matches!(
-        v,
-        CustomNode::Scalar { .. }
-            | CustomNode::Null { .. }
-            | CustomNode::Alias { .. }
-            | CustomNode::Mapping {
-                flow_style: true,
-                ..
-            }
-            | CustomNode::Sequence {
-                flow_style: true,
-                ..
-            }
-    )
+    match v {
+        CustomNode::Scalar { .. } | CustomNode::Null { .. } | CustomNode::Alias { .. } => true,
+        CustomNode::Mapping {
+            pairs, flow_style, ..
+        } => *flow_style || pairs.is_empty(),
+        CustomNode::Sequence {
+            items, flow_style, ..
+        } => *flow_style || items.is_empty(),
+    }
 }
 
 /// Shared shape parameters for the mapping/sequence container skeleton
@@ -901,6 +903,12 @@ impl Serializer {
             && note_is_writable(c)
             && !block_body
         {
+            // A note needs a body to sit on. While this line is still tag-only (`- !fuzz2`), the
+            // reader has no scalar for the note to belong to, files it as the item's leading note,
+            // and the next emission spells that above the dash (libFuzzer `edit_yaml`
+            // crash-3dd60cad). Same close `write_note_line` applies before a note line, applied to
+            // the inline slot: `- !fuzz2 ~  # n` re-reads with the note on the item it was written for.
+            self.close_pending_tag_line();
             self.output.push_str("  # ");
             self.output.push_str(note_text_to_write(&c.text));
             noted = true;

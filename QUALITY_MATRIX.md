@@ -22,9 +22,9 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 720 Rust `#[test]`, 1,749 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 726 Rust `#[test]`, 1,749 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
-| fuzz | 9 targets, 157 seeds of which 73 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
+| fuzz | 9 targets, 162 seeds of which 78 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
 **The ninth target drives a *change*, not a document.** The eight before it hand the engine text to
 parse or a tree to write; the layer that rewrites one region of a document - `doc.set()`, the `pyq`
@@ -37,6 +37,27 @@ own reader refuses, and exploration reached two more doors over the same invaria
 that drops a referenced anchor's definition, a `delete` of it). All three are now refused at the place
 the drop happens; the four inputs that found them —
 `fuzz/seeds/edit_yaml/former-crash-{3cc4245d,c59db74a,b23eed05,61474da6,63749496,07b6a10e}.seed` — replay per PR.
+
+**That target now also asks the export.** A hub document is what `doc.to_toml()`, `doc.to_json5()` and
+the CLI's TOML/JSON output write, so "edit, then export" is product-reachable, and every tier before it
+had only handed those writers a *reader's* tree: `toml_roundtrip` and `json_roundtrip` never see a tree
+the splice layer rewrote. `edit_yaml.rs` writes the settled tree in every spelling a hub document exports as - TOML, strict JSON,
+JSONC, JSON5 and the three pretty variants - and requires that dialect's own reader to accept it and its
+second emission to be the same bytes; a dialect refusing the tree is a pass, because TOML has no
+top-level scalar and strict JSON refuses a non-finite float. The edit verbs stay YAML-only by design -
+`crates/pyrs-toml/src/lib.rs` states it - which is why this is one target asking seven exporters rather
+than seven edit targets. Four windows found four defects: a `set` that replaced a container dropped an
+anchor defined *inside* that container (`former-crash-fbd364b3.seed`); a note written on a tag-only
+sequence item settled only on the second round (`former-crash-3dd60cad.seed`); a signed zero reached TOML
+as text the reader spells back differently (`former-crash-917e103b.seed`); and an emptied block sequence
+vetoed a compactness its own emission does not have (`former-crash-a58caa38.seed`). Each is fixed where
+it happens and pinned by a named Rust test. The same two questions went into `json_roundtrip` for its
+three pretty spellings, and that target's window found the family's fifth defect on the *compact* `json`
+claim - a string of 119 digits is a string to the resolver but a number to JSON's grammar, so it went
+out plain and came back numeric (`former-crash-09341b75.seed`). The pretty spokes have proved they run
+(a mutation that makes only the pretty writer emit text its reader refuses reddens
+`json (pretty) writer output failed to re-parse` over the seed corpus) but have not yet produced a defect
+of their own.
 
 Three claims the target first made are not in it, and each was narrowed by a measurement rather than by
 taste. `sort_keys_path` answers "ok" for a path naming a scalar and changes nothing, so the ordering
@@ -473,7 +494,7 @@ high once a signal existed; the signals were the bottleneck.
 ### 4. Regression protection
 
 What a closed defect leaves behind, per the discipline this repository already runs: a
-minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (73 of them), a named
+minimised seed under `fuzz/seeds/**/former-crash-<hash>.seed` (78 of them), a named
 regression test in the owning crate, mutation attribution showing that withdrawing the fix
 reddens exactly that test, and a changelog entry in all five mirrors.
 

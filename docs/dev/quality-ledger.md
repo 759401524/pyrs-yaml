@@ -6463,6 +6463,122 @@ Counts moved with it: 720 Rust tests (from 716), 29 properties (from 27), TOML's
 and its property row 2 → 4. No behaviour changed — `cargo nextest run --all` and the Python tier
 pass on the same emissions the gate measured before the change.
 
+### (el) An edited document was asked what it exports, and the answer was two defects (2026-10-19)
+
+The edit tier judged the emission of the document, never the text another spoke writes from it. The
+first premise — give JSON and TOML their own edit targets — was refuted before any code: the plan
+verbs are YAML-only by design (`crates/pyrs-toml/src/lib.rs` says so in its header), `YamlDocument`
+carries no format field, and neither `pyrs_json` nor `pyrs-toml` exports an editing API. What *is*
+reachable is the hub route: the CLI runs a plan verb and then `to_toml`
+(`crates/pyrs-yaml-cli/src/lib.rs:641`), and `doc.set(...)` sits beside `doc.to_toml()` /
+`doc.to_json5()` on the same object. So the claim went into `edit_yaml.rs` as `export_settles`,
+which hands the settled tree to each of the seven export spellings and asks the two questions
+`toml_roundtrip` and `json_roundtrip` already ask — the dialect's own reader must accept the text,
+and its second emission must be the same bytes. A dialect refusing the tree is a pass, because TOML
+has no top-level scalar and strict JSON refuses a non-finite float.
+
+The first discovery window (420 s over `edit_yaml`, corpus replayed first: 16 seeds, `#17 DONE`, no
+crash) found `crash-fbd364b3`. The input is `: abase: &x 1\nuse: *x` with a three-record script
+whose third record is a plain `set` on the path `["~"]`; the emission was `~: v0\nuse: *x`, which
+this library's reader refuses with `found unknown anchor`. The guard at `set_path` had asked only
+whether the *replaced node* carried an anchor an alias named — and that node carried none, its child
+did — while `preserve_metadata: true` copies exactly the replaced node's own properties, so nothing
+could carry a definition from inside the subtree away. `delete_path` had already been given the
+wider, subtree-shaped answer through `anchors_in`; `set_path` had not. Asking the same question at
+that door refuses the edit with the same `anchor-is-referenced` reason and leaves the tree
+untouched. Measured both ways: removing the new block reddens
+`replacing_a_container_that_holds_a_referenced_anchor_is_refused` and nothing else, and the pair
+test `replacing_a_container_whose_anchor_nothing_refers_to_is_allowed` shows the guard is about a
+reference, not about the presence of an anchor.
+
+The second window found `crash-3dd60cad`: `- !o` with a tag set to `fuzz2` and then a note, emitting
+`- !fuzz2  # fuzz 47` and re-reading it back as `# fuzz 47` above `- !fuzz2`. Nothing was lost, so
+no other tier saw it; the fixed point broke because a note written inline after a still-pending tag
+line has no body to sit on, and the reader hands such a line's note to whatever follows. The writer
+already closes that line before a *note line* (`close_pending_tag_line`, (eh)/(ej)); the inline
+branch did not call it. Now it does, the item is written `- !fuzz2 ~  # fuzz 47`, and the pinned
+test is the first assertion of that text. Removing the call reddens only `settles_in_one_round`'s
+new case — every other pinned emission in the family, and `note_survival` over the whole seed
+corpus, stayed green, so no existing spelling moved.
+
+Then the same branch found a second one, and this one was the export claim's own. `-0` is legal TOML
+text, so the integer pass-through wrote it verbatim; but TOML has no negative zero, `ist = -0`
+re-reads as the integer `0`, and the second emission moved. The writer's own comment had named `-0`
+as an intended pass-through case, which is how the defect survived every tier that only ever asked
+value equality: the value is the same, only the text is not a fixed point. A signed zero is now
+written as `0`, while the radix spellings the reader really does preserve (`0xDEAD`, `0b1`) still
+pass through (`a_signed_zero_is_written_as_the_zero_the_reader_spells_back`, crash-917e103b).
+
+A third window found the fourth defect, in YAML again and in the same family as (ei). Removing the
+last item of a block sequence leaves `flow_style: false` on the now-empty container, and
+`inlineable_value` required the flag for any container, so the item mapping was pushed off the dash
+line. But an empty container has no block form at all: the writer always spells it `[]` on the key's
+line, so the rule was vetoing a compactness the emission does not have. The reader answers `[]` with
+the flag set, and the text moved: `-\n  t: []` became `- t: []`. Emptiness now counts as inlineable
+(`an_emptied_block_sequence_keeps_the_dash_line`, crash-a58caa38). Four windows, four defects, and
+the window that closed each one kept finding the next.
+
+The same two questions went into the other half of the pair. `json_roundtrip` asked its three
+compact writers, while `prop_pretty_json_writers_are_fixed_points` asked the pretty ones of
+*generated* trees — so the text `doc.to_json(indent)` and the CLI's `--pretty` produce was the one
+spelling no fuzz tier had ever read back. Three spokes joined the three. That window's first crash
+stopped at the compact `json` claim (`fuzz_targets/json_roundtrip.rs:71`), and what it found was the
+projection's, not a writer's: the input is a JSON5 single-quoted string of 119 digits;
+`Schema::Json5` answers `Str` for a digit run that will not fit an `i64`, so `quoted_or_plain`
+stored it plain; `write_plain` then asks `is_json_number`, which is JSON's grammar and puts no bound
+on an integer literal, and handed the same bytes back unquoted. First emission `"12…9"`, second
+`12…9` — one trip through the hub had turned a `str` into a number. The sound form of the question
+is the one the writer will ask, so the projection asks it first: a byte walk over RFC 8259's number
+grammar, reached only past the first-byte guard, because asking the resolver unconditionally
+measured +14.24% on this path (`from_json_medium`) and that price is why the guard exists at all.
+
+The three new spokes were then checked for the same thing, and the answer is asymmetric and written
+down as it is: no pretty spelling has produced a defect, so what proves they run is a mutation of
+the pretty path alone. Appending one stray comma inside `to_json_text_pretty` reddens
+`json (pretty) writer output failed to re-parse` at line 77 over the committed seeds; restoring it
+byte-for-byte replays all 17 `DONE`. A claim that only *its author's* defect can redden is the
+number this repository distrusts, so each spoke is reported with whichever of the two it has
+actually paid for.
+
+The instruction-count leg read the same bytes as the tree that shipped #516: `serialize_small`
+4,137,896, `serialize_medium` 32,360,862, `serialize_block` 14,383,162, `serialize_block_scalars`
+12,302,661 on the pinned compiler, and the run reported
+`OK: every scenario within tolerance of the committed baseline`. That is what the shape predicts:
+the fixtures carry no tag-only line followed by a note, so the new call only ever reaches its early
+return. Re-measured after the two writer rules changed, the same leg read `serialize_medium`
+32,360,898 and `serialize_block` 14,383,198 - thirty-six instructions, +0.0001% against a floor of
+0.50% - and again reported `OK`, because widening `inlineable_value` costs one field test on a
+container that already asked for it. A third reading, taken after the JSON projection started asking
+the writer's question first, moved `from_json_medium` from 80,859,913 to 80,863,858 — +0.00% against
+the same floor, with all six JSON-family scenarios inside ±0.00% and the run again reporting `OK`.
+The byte walk sits behind the first-byte guard the +14.24% measurement put there, so it is asked
+only of text that could already have been a number.
+
+Counts moved with it: 726 Rust tests (from 720), 162 seeds of which 78 are former crashes (from
+157/73), nine targets, 30 Unreleased entries per changelog mirror. The property tier stays at the 29
+that #518 raised it to, and the two new refusals join the six seeds (eg) named, because a claim that
+cannot fail is a number, not a guard.
+
+The new claim was checked for reachability before it was believed, and the first probe was wrong in
+a way worth writing down. The mutation was a TOML writer that emits `a = MUTANT` for any tagged
+scalar - invalid text its reader refuses - and the input `(ek)` had just closed did *not* redden it,
+because that document's root is a sequence and `to_toml` has no top-level form for one, so the TOML
+branch never ran. Replaying the whole `edit_yaml` corpus and seeds (1,247 inputs) under the same
+mutation reddened the first claim the new code makes,
+`an edited tree wrote TOML its own reader refused`, over `[k10]\na = MUTANT`. Restoring the writer
+byte-for-byte and rebuilding leaves those same 1,247 inputs `DONE`, no crash.
+
+What the widened `edit_yaml` window found and this section does *not* claim to close is the fifth
+shape, `crash-08b30707`: the document `\n?ss:\n-   !a :s:\n-   !a \n` with a three-byte script. The
+first emission puts the note at column 2 after the first item's line, the re-read files it inside
+the second item's continuation, and the next emission writes `- \n    # fuzz 35\n    !a` — nothing
+lost, the text not a fixed point. Fix 2 above covers a note on an item's *own* tag-only line; this
+note sits in the gap *between* two of them, which is `pending_tag_insert_at` /
+`close_pending_tag_line` / `trailing_note_slot_open` argued together rather than one of them
+corrected. Task #121 holds it, and its input is deliberately not in `fuzz/seeds/`: the PR tier
+replays every seed with `-runs=0`, so a still-failing seed would block every pull request until the
+fix lands — the (eg) precedent, withhold the claim or fix it, never commit a red seed.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
