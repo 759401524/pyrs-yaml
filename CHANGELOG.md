@@ -382,6 +382,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on trunk. The two CodSpeed jobs stay advisory in `codspeed.yml`: sub-10% wall-time noise makes
   them a ranking channel, not a merge decision.
 
+- **The Ir gate now refuses a floor the tree has outgrown** — the gate read one edge of the
+  baseline: a scenario past the tolerance failed, while a floor far above what the tree now does
+  was accepted silently, so the accepted slack widened every time the engine got faster. The
+  2026-10-14 refresh had found six writer floors 22–46% below their tree and four readers
+  4.7–11.2% below. `scripts/ir_gate.py` now reads both: a scenario more than 2% below its floor
+  warns as `FLOOR_STALE`, more than 5% fails, and the failure names the refresh dispatch instead
+  of `--update`, which would move the floor to the local host. The first enforcing-image refresh
+  under the rule (run 39242949404, artifact `ir-baseline-39`) needed no `accept_drift` and moved
+  `to_toml_medium` by −7.12% — accepted by the old gate, refused by the new one — and
+  `from_toml_medium` by −3.00%; the largest upward move was `serialize_block` +0.32%, and every
+  scenario repeated within a 0.000% spread. `.ci/ir-baseline.json` is that artifact unedited.
+
 ## [v0.18.1] — 2026-10-17
 
 ### Added

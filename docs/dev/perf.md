@@ -1143,3 +1143,31 @@ now lives, so the matrix already judges it and the benchmark channel is not aske
 instruction-count gate is now a leg of the matrix itself (`ci.yml`'s `ir` job), because it repeats
 to ~0.001% on one binary and answers a merge question. The two CodSpeed jobs stay advisory in
 `codspeed.yml`: their sub-10% noise makes a red worth investigating, not a merge decision.
+
+## The gate's lower edge had no check at all (2026-10-19)
+
+`ir_gate.py` compared one side of the baseline. A scenario that grew past the tolerance failed; a
+floor that sat *above* what the tree now does was never a verdict, so however much the engine
+outgrew a floor, the gate kept accepting that much headroom as normal. The 2026-10-14 refresh
+measured what that accumulated into: six writer scenarios 22–46% below their floor and four readers
+4.7–11.2% below, drift from four optimization PRs landing between refreshes. Re-tuning the
+tolerance would have hidden it rather than fixed it — the missing comparison was the defect.
+
+The comparing path now reads both edges. `floor_staleness` returns two lists: a scenario more than
+2% below its committed floor is named as `FLOOR_STALE` in the log and the run continues, and more
+than 5% below is a failure — a floor a twentieth out of date is no longer called a baseline. Growth
+stays `drift_report`'s question, and a scenario missing from either side is skipped, because "not
+in baseline" is already its own report. The failure text points at the dispatch job, not at
+`--update`: a local re-baseline would move the floor to this host, which is the drift the rule
+exists to stop.
+
+The first dispatch under the rule (run 39242949404, artifact `ir-baseline-39`) needed no
+`--accept-drift` and moved one scenario past the new line in each direction: `to_toml_medium`
+28,939,722 → 26,879,029, −7.12%, which the old gate accepted and the new one would have failed;
+`from_toml_medium` 135,689,929 → 131,611,879, −3.00%, the warning side. Every other scenario stayed
+inside +0.33% upward (`serialize_block`, the largest move) and −0.005% downward, and the run
+reported 0.000% spread for every scenario. The local WSL reading of `to_toml_medium` was
+26,741,057 — 0.51% under the image's number in the cheaper direction, which is the pinned-compiler
+pattern recorded above, not the number a floor takes. Both harness digests moved with the refresh
+because trunk advanced since the previous floor; the committed `.ci/ir-baseline.json` is the
+artifact byte for byte.

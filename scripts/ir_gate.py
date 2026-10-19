@@ -98,6 +98,16 @@ HARNESSES = (("pyrs-yaml-core", "ir_gate"), ("pyrs-yaml", "ir_gate"))
 # believing a regression.
 DEFAULT_TOLERANCE = 0.005
 
+# The tolerance guards the upper edge of the baseline. The lower edge had no check at all: a floor
+# that stops describing the tree leaves the gate accepting however much the engine outgrew it, and the
+# 2026-10-14 refresh found exactly that - six writer scenarios 22-46% below their floor and four
+# readers 4.7-11.2% below, accumulated while optimizations landed between refreshes. Warn at 2% so
+# drift is named while it is still small, and fail at 5% so a floor a twentieth out of date is no
+# longer called a baseline. The remedy is the enforcing image, not a local `--update`: a local number
+# moves the floor to this host (see `docs/dev/perf.md`).
+STALE_WARN = 0.02
+STALE_FAIL = 0.05
+
 # Environment every measured process runs under, to make the count belong to the code instead of to
 # the hypervisor. Two jobs in this repository ran the *same* binary (sha256 `a0386c17b5f1ef38`, printed
 # by `build_exe`), the same valgrind 3.22.0, the same pinned rustc 1.97.1, the same `nproc`, on hosts
@@ -400,6 +410,32 @@ def binary_pairing(recorded: dict[str, str] | None, current: dict[str, str]) -> 
     return lines
 
 
+def floor_staleness(
+    baseline: dict[str, int], measured: dict[str, int]
+) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
+    """Scenarios whose committed floor sits more than `STALE_WARN` above what the tree does now.
+
+    Returns `(warned, failed)`: the first is named in the log and the run continues, the second joins
+    the failures. Growth is not this function's question - `drift_report` and the comparing loop own
+    the upper edge - and a scenario cheaper by less than the warning line is absent from both lists. A
+    scenario missing from either side is skipped: "not in baseline" is already the caller's report, and
+    two verdicts for one absence read as two problems.
+    """
+    warned: list[tuple[str, float]] = []
+    failed: list[tuple[str, float]] = []
+    for name in sorted(baseline):
+        base = baseline[name]
+        now = measured.get(name)
+        if now is None or base <= 0:
+            continue
+        below = (base - now) / base
+        if below > STALE_WARN:
+            (failed if below > STALE_FAIL else warned).append((name, below))
+    warned.sort(key=lambda pair: pair[1], reverse=True)
+    failed.sort(key=lambda pair: pair[1], reverse=True)
+    return warned, failed
+
+
 def drift_report(before: dict[str, int], final: dict[str, int], line: float) -> list[str]:
     """The scenarios `--update` would move *up* past the line the baseline itself enforces.
 
@@ -415,8 +451,9 @@ def drift_report(before: dict[str, int], final: dict[str, int], line: float) -> 
     into a filed environment defect - see `binary_pairing`, which names the bytes on every run now.
 
     Only growth counts: a scenario that gets cheaper is the point of the project, and refusing to record
-    an improvement would just discourage updating. Returned strings lead with the scenario name, because the
-    caller keys `--accept-drift` off that first field.
+    an improvement would just discourage updating. A large improvement is still a stale floor, but that is
+    the comparing path's question (`floor_staleness`), not this guard's. Returned strings lead with the
+    scenario name, because the caller keys `--accept-drift` off that first field.
     """
     report: list[str] = []
     for name, now in final.items():
@@ -649,9 +686,29 @@ def main() -> int:
         if growth > tol:
             failures.append(f"{s}: +{growth:.2%} over baseline (tolerance {tol:.2%})")
 
+    warned, stale = floor_staleness(ref["scenarios"], measured)
+    for s, below in warned:
+        print(
+            f"  warn: FLOOR_STALE {s}: {measured[s]:,} is {below:.2%} below the committed floor"
+            f" ({ref['scenarios'][s]:,}); the gate is accepting that much slack until a refresh"
+        )
+    for s, below in stale:
+        failures.append(
+            f"FLOOR_STALE {s}: {measured[s]:,} is {below:.2%} below the committed floor"
+            f" ({ref['scenarios'][s]:,}), past the {STALE_FAIL:.0%} line - the baseline no longer"
+            " describes this tree"
+        )
+
     if failures:
         print("\n" + "\n".join(f"FAIL  {f}" for f in failures))
-        print("\nIf this change is intended, re-baseline deliberately:\n  python scripts/ir_gate.py --update")
+        if stale:
+            print(
+                "\nA stale floor is refreshed on the enforcing image, not on this host:\n"
+                "  gh workflow run 'Ir baseline refresh' --ref <branch>\n"
+                "and the .ci/ir-baseline.json it uploads is committed as its own change."
+            )
+        if any(not f.startswith("FLOOR_STALE") for f in failures):
+            print("\nIf this change is intended, re-baseline deliberately:\n  python scripts/ir_gate.py --update")
         return 1
     print("OK: every scenario within tolerance of the committed baseline")
     return 0
