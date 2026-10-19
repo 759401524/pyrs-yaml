@@ -362,6 +362,15 @@ status: new
   `schema` 的默认值改为 `None`，以区分“未指定”与“显式 Core”。由
   `TestYamlVersionNegotiation` 钉住。
 
+- **基准测试页面现在如实描述所用的测量方式** — `codspeed.yml` 自加入起就一直以
+  `mode: simulation` 运行，但 `AGENTS.md` 与四份本地化基准/特性页都写着“WallTime 模式”。现在
+  页面明确说明模拟模式统计指令数，毫秒表格标注为 2026-08-17 在单台机器上记录的墙钟读数，而非
+  CodSpeed 输出。中规模夹具实为 687 B，不是约 500 B；Rust 表格标注为
+  `pyrs_yaml_core::bench_inputs` 上的 `cargo codspeed` 模拟腿，其 "small" 文档为 19 B，而
+  Python 表格使用 95 B，同名行不可直接比较。特性矩阵中 PyYAML 的锚点/别名、显式标签与合并键
+  改勾（按 6.0.3 实测），类型存根行按各包实际内容标注：PyYAML 无，ryaml 与 yaml_edit 有。
+  ABI3 行改为真实地板 py3.8+。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 新增

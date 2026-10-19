@@ -9,22 +9,22 @@ status: new
 ## 基准测试
 
 !!! note "基准测试环境"
-    以下基准测试通过 CodSpeed CI（`pytest-codspeed`，WallTime 模式）测得，绝对时间可能因硬件而异，但相对加速比在不同硬件上保持一致。
+    CodSpeed CI 以 **模拟（simulation）** 模式运行（`mode: simulation`），统计的是指令数而非墙钟时间。下表的毫秒数字是 2026-08-17 在单台机器上记录的墙钟读数，不是 CodSpeed 的输出，此后未重新测量。加速比仅供参考，会随解释器、硬件与文档而变化。
 
-pyrs-yaml 的性能基准测试，通过 CodSpeed CI（`pytest-codspeed`，WallTime 模式）测量。
+pyrs-yaml 的性能基准测试。CodSpeed 的模拟数据用于追踪相对趋势；下文的墙钟表格是来自单台机器的历史读数。
 
 ### 方法论
 
 - **工具：** divan（Rust）+ `pytest-codspeed`（Python）
-- **轮次：** WallTime 模式，自适应采样（Python），100+ 次采样（Rust）
-- **指标：** 中位数时间（Python，毫秒），平均时间（Rust，微秒）
+- **轮次：** CI 运行 CodSpeed 模拟模式；Python 表格是墙钟读数，不是模拟输出
+- **指标：** 毫秒（Python，墙钟）、微秒（Rust，模拟链路）
 
 ### 解析性能
 
 | YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | 相比 PyYAML 加速 |
 |-----------|-----------|--------|-------------|------------------|
 | 小 (~100 B) | 0.18 ms | 3.8 ms | 8.8 ms | **21×** |
-| 中 (~500 B) | 0.56 ms | 24.2 ms | 56.1 ms | **43×** |
+| 中 (~690 B) | 0.56 ms | 24.2 ms | 56.1 ms | **43×** |
 | 大 (~2 KB) | 1.5 ms | 57.7 ms | 127.9 ms | **38×** |
 
 ### 序列化性能
@@ -32,7 +32,7 @@ pyrs-yaml 的性能基准测试，通过 CodSpeed CI（`pytest-codspeed`，WallT
 | YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | 相比 PyYAML 加速 |
 |-----------|-----------|--------|-------------|------------------|
 | 小 (~100 B) | 0.04 ms | 2.2 ms | 4.9 ms | **55×** |
-| 中 (~500 B) | 0.08 ms | 12.6 ms | 28.1 ms | **159×** |
+| 中 (~690 B) | 0.08 ms | 12.6 ms | 28.1 ms | **159×** |
 | 大 (~2 KB) | 0.17 ms | 30.2 ms | 63.1 ms | **177×** |
 
 ### 往返性能
@@ -40,14 +40,14 @@ pyrs-yaml 的性能基准测试，通过 CodSpeed CI（`pytest-codspeed`，WallT
 | YAML 大小 | pyrs-yaml | PyYAML | ruamel.yaml | 相比 PyYAML 加速 |
 |-----------|-----------|--------|-------------|------------------|
 | 小 (~100 B) | 0.22 ms | 6.0 ms[^1] | 13.7 ms[^1] | **28×** |
-| 中 (~500 B) | 0.63 ms | 36.8 ms[^1] | 84.2 ms[^1] | **59×** |
+| 中 (~690 B) | 0.63 ms | 36.8 ms[^1] | 84.2 ms[^1] | **59×** |
 | 大 (~2 KB) | 1.6 ms | 87.9 ms[^1] | 191.0 ms[^1] | **55×** |
 
 [^1]: PyYAML/ruamel 的往返时间为同一基准测试中解析与序列化时间之和的估算值。
 
 ### Rust 侧基准测试（divan）
 
-在 Rust 层面测量（无 Python 开销）：
+由 Rust 的 CodSpeed 链路（`cargo codspeed`，模拟模式）测得：这些是插桩时间，不是原生墙钟时间。夹具来自 `pyrs_yaml_core::bench_inputs`，其中 "small" 文档为 19 B，不是 Python 表格使用的 95 B 文档，因此同名行不可直接比较。
 
 | 操作 | 时间 |
 |------|------|
@@ -70,13 +70,15 @@ pyrs-yaml 的性能基准测试，通过 CodSpeed CI（`pytest-codspeed`，WallT
 
 1. :material-trending-up: **pyrs-yaml 解析比 PyYAML 快 21–43 倍、序列化快 55–177 倍**
 2. :material-trending-up: **pyrs-yaml 解析比 ruamel.yaml 快 48–100 倍、序列化快 123–371 倍**，同时提供相同的往返特性
-3. :material-bolt: **Rust 侧解析极快** — 小文档解析仅需约 86 µs
-4. :material-bolt: **序列化在所有尺寸下均快速** — 小文档序列化仅需约 8 µs
+3. :material-bolt: **Rust 侧解析**没有 Python 调用开销；模拟链路按操作拆解解析成本
+4. :material-bolt: **序列化**在同一模拟链路中始终低于解析成本
 5. :material-chart-line: **速度优势在所有文档尺寸下均保持**
 
 ### 说明
 
-- 基准测试通过 CodSpeed CI 测量；绝对时间可能因硬件而异
-- 相对加速比（×N）在不同硬件上保持一致
+- Python 表格：2026-08-17 记录的墙钟读数，不是 CodSpeed 模拟输出
+- CodSpeed CI 以模拟模式运行并报告指令数，用于追踪相对趋势
+- 加速比仅供参考，会随解释器、硬件与文档大小而变化
 - PyYAML 基准测试使用 `safe_load`/`safe_dump`（相同安全保证）
 - ruamel.yaml 基准测试使用默认设置
+- Python 夹具为 95 B / 687 B / 1949 B（`tests/data/yaml_samples.py`）

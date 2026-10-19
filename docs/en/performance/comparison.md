@@ -65,16 +65,16 @@ pure-Python alternatives above.
 | **YAML 1.2 compliance** | :material-check: | :material-check: | :material-check: |
 | **Comments (standalone)** | :material-check: | :material-close: | :material-check: |
 | **Comments (inline)** | :material-check: | :material-close: | :material-check: |
-| **Anchors/aliases** | :material-check: | :material-close: | :material-check: |
-| **Tags (explicit)** | :material-check: | :material-close: | :material-check: |
+| **Anchors/aliases** | :material-check: | :material-check: | :material-check: |
+| **Tags (explicit)** | :material-check: | :material-check: | :material-check: |
 | **Block scalars** | :material-check: | :material-check: | :material-check: |
 | **Flow collections** | :material-check: | :material-check: | :material-check: |
-| **Merge keys (<<)** | :material-check: | :material-close: | :material-check: |
+| **Merge keys (<<)** | :material-check: | :material-check: | :material-check: |
 | **Complex keys** | :material-check: | :material-check: | :material-check: |
 | **Round-trip preservation** | :material-check: | :material-close: | :material-check: |
 | **Python bindings** | :material-check: | :material-check: | :material-check: |
 | **ABI3 (py3.8+)** | :material-check: | :material-close: | :material-close: |
-| **Type stubs (.pyi)** | :material-check: | :material-check: | :material-close: |
+| **Type stubs (.pyi)** | :material-check: | :material-close: | :material-close: |
 | **i18n error messages** | :material-check: | :material-close: | :material-close: |
 | **Rust backend** | :material-check: | :material-close: | :material-close: |
 | **Performance** | :material-rocket-launch: Fastest | :material-snail: Slow | :material-snail: Slow |

@@ -52,16 +52,16 @@ YAML을 *읽기*만 하고·파스의 마지막 속도가 필요하고·변경 �
 | **YAML 1.2 준수** | :material-check: | :material-check: | :material-check: |
 | **주석 (standalone)** | :material-check: | :material-close: | :material-check: |
 | **주석 (inline)** | :material-check: | :material-close: | :material-check: |
-| **Anchor/alias** | :material-check: | :material-close: | :material-check: |
-| **Tag (explicit)** | :material-check: | :material-close: | :material-check: |
+| **Anchor/alias** | :material-check: | :material-check: | :material-check: |
+| **Tag (explicit)** | :material-check: | :material-check: | :material-check: |
 | **Block scalar** | :material-check: | :material-check: | :material-check: |
 | **Flow collection** | :material-check: | :material-check: | :material-check: |
-| **Merge key (<<)** | :material-check: | :material-close: | :material-check: |
+| **Merge key (<<)** | :material-check: | :material-check: | :material-check: |
 | **복잡한 키** | :material-check: | :material-check: | :material-check: |
 | **Round-trip 보존** | :material-check: | :material-close: | :material-check: |
 | **Python 바인딩** | :material-check: | :material-check: | :material-check: |
 | **ABI3 (py3.8+)** | :material-check: | :material-close: | :material-close: |
-| **Type stubs (.pyi)** | :material-check: | :material-check: | :material-close: |
+| **Type stubs (.pyi)** | :material-check: | :material-close: | :material-close: |
 | **i18n 오류 메시지** | :material-check: | :material-close: | :material-close: |
 | **Rust 백엔드** | :material-check: | :material-close: | :material-close: |
 | **성능** | :material-rocket-launch: 가장 빠름 | :material-snail: 느림 | :material-snail: 느림 |

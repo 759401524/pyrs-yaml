@@ -428,6 +428,17 @@ status: new
   `schema`의 기본값은 `None`이 되어 "지정하지 않음"과 "명시적 Core"를 구분합니다.
   `TestYamlVersionNegotiation`으로 고정합니다.
 
+- **벤치마크 페이지가 실제 사용하는 측정 방식을 표기합니다** — `codspeed.yml`은 추가된 때부터
+  `mode: simulation`으로 실행되었지만 `AGENTS.md`와 네 개 로케일의 벤치마크/기능 페이지는
+  "WallTime 모드"라고 적혀 있었습니다. 이제 페이지는 시뮬레이션이 명령 수를 센다고 밝히고,
+  밀리초 표는 2026-08-17에 한 대의 머신에서 기록한 실제 시간 측정값이며 CodSpeed 출력이 아니라고
+  명시합니다. 중간 크기 픽스처는 약 500 B가 아니라 687 B입니다. Rust 표는
+  `pyrs_yaml_core::bench_inputs`에 대한 `cargo codspeed` 시뮬레이션 레그임을 밝히고, "small"은
+  19 B로 Python 표의 95 B와 다르므로 같은 이름의 행은 비교할 수 없습니다. 기능 매트릭스에서
+  PyYAML의 앵커/별칭, 명시적 태그, 병합 키를 체크로 바꾸고(6.0.3에서 실측), 타입 스텁 행은 각
+  패키지의 실제 내용을 따릅니다: PyYAML 없음, ryaml과 yaml_edit 있음. ABI3 행은 실제 하한인
+  py3.8+를 적습니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

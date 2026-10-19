@@ -52,16 +52,16 @@ YAML を*読む*のみ・パースの最後の一秒が重要・元の書式を�
 | **YAML 1.2準拠** | :material-check: | :material-check: | :material-check: |
 | **コメント（スタンドアロン）** | :material-check: | :material-close: | :material-check: |
 | **コメント（インライン）** | :material-check: | :material-close: | :material-check: |
-| **アンカー/エイリアス** | :material-check: | :material-close: | :material-check: |
-| **タグ（明示的）** | :material-check: | :material-close: | :material-check: |
+| **アンカー/エイリアス** | :material-check: | :material-check: | :material-check: |
+| **タグ（明示的）** | :material-check: | :material-check: | :material-check: |
 | **ブロックスカラー** | :material-check: | :material-check: | :material-check: |
 | **フローコレクション** | :material-check: | :material-check: | :material-check: |
-| **マージキー（<<）** | :material-check: | :material-close: | :material-check: |
+| **マージキー（<<）** | :material-check: | :material-check: | :material-check: |
 | **複合キー** | :material-check: | :material-check: | :material-check: |
 | **ラウンドトリップ保持** | :material-check: | :material-close: | :material-check: |
 | **Pythonバインディング** | :material-check: | :material-check: | :material-check: |
 | **ABI3（py3.8+）** | :material-check: | :material-close: | :material-close: |
-| **型スタブ（.pyi）** | :material-check: | :material-check: | :material-close: |
+| **型スタブ（.pyi）** | :material-check: | :material-close: | :material-close: |
 | **多言語エラーメッセージ** | :material-check: | :material-close: | :material-close: |
 | **Rustバックエンド** | :material-check: | :material-close: | :material-close: |
 | **パフォーマンス** | :material-rocket-launch: 最速 | :material-snail: 遅い | :material-snail: 遅い |

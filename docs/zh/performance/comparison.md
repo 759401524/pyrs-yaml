@@ -54,16 +54,16 @@ pyrs-yaml 是**同时保留往返 AST**（注释、锚点、标签与源码 span
 | **YAML 1.2 合规** | :material-check: | :material-check: | :material-check: |
 | **独立注释** | :material-check: | :material-close: | :material-check: |
 | **内联注释** | :material-check: | :material-close: | :material-check: |
-| **锚点/别名** | :material-check: | :material-close: | :material-check: |
-| **标签（显式）** | :material-check: | :material-close: | :material-check: |
+| **锚点/别名** | :material-check: | :material-check: | :material-check: |
+| **标签（显式）** | :material-check: | :material-check: | :material-check: |
 | **块标量** | :material-check: | :material-check: | :material-check: |
 | **流集合** | :material-check: | :material-check: | :material-check: |
-| **合并键（<<）** | :material-check: | :material-close: | :material-check: |
+| **合并键（<<）** | :material-check: | :material-check: | :material-check: |
 | **复杂键** | :material-check: | :material-check: | :material-check: |
 | **往返保留** | :material-check: | :material-close: | :material-check: |
 | **Python 绑定** | :material-check: | :material-check: | :material-check: |
 | **ABI3（py3.8+）** | :material-check: | :material-close: | :material-close: |
-| **类型存根（.pyi）** | :material-check: | :material-check: | :material-close: |
+| **类型存根（.pyi）** | :material-check: | :material-close: | :material-close: |
 | **国际化错误消息** | :material-check: | :material-close: | :material-close: |
 | **Rust 后端** | :material-check: | :material-close: | :material-close: |
 | **性能** | :material-rocket-launch: 最快 | :material-snail: 慢 | :material-snail: 慢 |
