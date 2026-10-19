@@ -6722,6 +6722,50 @@ back to green - the run that reddened on CI is the one the fix answers.
 
 Counts: 731 Rust tests (from 730), 1,754 Python test functions, 34 Unreleased entries per mirror.
 
+### (eo) A sequence's note kept its own line, not its item's dash (2026-10-19)
+
+The placement (ds) settled, and (dq) defended, says a container's inline note goes above the line
+that ended the container's block. That is right for a mapping: the line that ends a mapping's block
+is a pair's own line, so the note lands where the reader reports a pair's note, and #91 measured the
+alternatives - a note line below the block is re-read as the leading note of the node that ended it,
+and closing a pending tag line first hands the note to the value and starts an oscillation. A
+sequence has no pair line. The line that ends its block is one of its items' own dash lines, and a
+note written under a dash line is reported as *that item's* leading note. So a note the edit layer
+attaches to a sequence was emitted between the items and re-read inside one: `serialize(parse(x))`
+still differed from `serialize(x)` for a document the writer itself had just produced.
+
+libFuzzer's `edit_yaml` target found the shape and minimized it to 28 bytes - `?ss:` over two tagged
+empty items - and that input is now `fuzz/seeds/edit_yaml/former-crash-08b30707.seed`. The branch's
+first commit replays it clean (`Executed ... in 4 ms`, exit 0); with `serializer.rs` at trunk's
+content the same bytes die (`SUMMARY: libFuzzer: deadly signal`, exit 77), which is the proof the
+seed is the defect rather than a witness to it. The fix asks which container is speaking: a
+sequence's note now goes above the sequence's own first line, the place the reader files a
+sequence's leading note and the one `lift_first_item_notes` already relies on, while a mapping keeps
+the pair placement it has had since (ds). Nothing pinned moved - `cargo nextest run
+-p pyrs-yaml-core` is 416 passed with the settle tier's named fixed points among them - and all 21
+`edit_yaml` seeds replay `DONE`.
+
+The branch settles a second shape, one the edit verbs reach at the root: the empty path navigates to
+the document node, so `set_tag_path` and `set_comment_path` both answer for a root sequence, and a
+note asked there used to sit on the block's last dash line and move above it on the second
+emission: `!fuzz0 \n- !a\n# fuzz 11\n- !a\n` became
+`# fuzz 11\n!fuzz0 \n- !a\n- !a\n`. The fuzz tier found it
+through a one-line widening of the paths it collects; the widening was reverted and the discovery is
+pinned as `the_roots_own_note_settles_in_one_round` over three root shapes, because a table asks a
+shape every run while a bounded budget draws one. Reverting the sequence half of this fix reddens
+exactly that test and no other (416 run, 415 passed, 1 failed).
+
+What this does not fix is named rather than folded in. A note attached to a *mapping* whose block
+ends inside a nested sequence still fails to settle: `ss:\n  - !a\n  # fuzz 35\n  - !a\n` reads
+back as `ss:\n  - \n    # fuzz 35\n    !a\n  - !a\n`, because the reader cannot report the note
+on the mapping and hands it to an item. #113 ruled that this ownership movement stays as it is and
+that no new emission position should be added, and that ruling is about a mapping's note, so the
+branch stops at the sequence half. Whether the non-settling *text* is covered by the same ruling is
+an open question with a twelve-byte repro, and it stays recorded here.
+
+Counts: 163 seeds, 79 of them `former-crash-*` (`QUALITY_MATRIX.md`'s fuzz row), 732 Rust tests on
+this base (after #520 and #522), 35 Unreleased entries per changelog mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
