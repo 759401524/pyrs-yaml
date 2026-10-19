@@ -6687,6 +6687,41 @@ correct result for a test whose whole claim is that nothing happens; its own mut
 added back. Counts: 730 Rust tests (from 726), 1,754 Python test functions, 33 Unreleased entries
 per mirror.
 
+### (en) A TOML root table moved a pair's key ahead of it (2026-10-19)
+
+(#en assumes #521, written while this defect was still blocking its CI, re-letters to (eo).)
+
+TOML's grammar puts every root key/value before any root table header, so the writer collected the
+root's block mappings and emitted them after every pair - and a tree whose order did not already
+have that shape came back reordered. The property tier found it at 20 000 cases, not the fuzz tier:
+`prop_toml_roundtrip_preserves_the_tree` failed on `key scalar text "0" -> "a"` with the emitted
+text `a = "b"` then `[0]` then `A = "a"`. Reproduced on trunk by hand: the tree
+`0 -> {A -> "a"}, a -> "b"` round-trips to the order `a`, `0`. The *text* settled
+(`to_toml(from_toml(t)) == t`), which is why every fixed-point claim stayed green while the tree
+comparison did not.
+
+Why only a cross-format or edited tree can carry it: a document parsed from TOML already lists its
+pairs before its headers, so its order is expressible; a YAML or JSON document, or an `insert_path`
+that puts a table first, is free to hold the other order, and the hub's own promise is that a
+mapping is an ordered thing (`IndexMap`, and `sort-keys` exists because the order is meaning).
+
+The remedy chosen was to stop moving the key, not to stop moving the table: a root block mapping
+that has a root pair after it is written inline (`0 = {A = "a"}`), at its own position, because that
+is the only TOML spelling that keeps the order. A parsed document never takes that path, so the
+style promise #42 made - an inline table is not rewritten as a header, and a header is not rewritten
+as inline - holds for every tree whose order TOML can spell with headers. The refusal alternative
+(a new `cannot represent` error) was ruled out as a public error-surface change for a shape that has
+a faithful spelling, and narrowing the property was ruled out because the oracle, not the claim, is
+what found the bug.
+
+Pinned by `a_section_before_a_pair_keeps_the_order_by_going_inline` (the exact emission text, the
+key order after re-read, and the fixed point). Reachability: with the new branch replaced by `None`,
+exactly that one test reddens and the other 82 in the crate pass, and
+`PROPTEST_CASES=20000 cargo test -p pyrs-yaml-core --release fmt_pbt` runs the four TOML properties
+back to green - the run that reddened on CI is the one the fix answers.
+
+Counts: 731 Rust tests (from 730), 1,754 Python test functions, 34 Unreleased entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the
