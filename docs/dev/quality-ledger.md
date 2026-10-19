@@ -6798,6 +6798,46 @@ authority, as `binaries:` in the run names these bytes as code.
 
 Counts: 733 Rust tests (from 732), 1,759 Python test functions, 39 Unreleased entries per mirror.
 
+### (eq) A TOML integer keeps the spelling it was written with (2026-10-19)
+
+(cp) kept a binary literal's `0b` text by tagging it `!!int`, but every other non-canonical integer
+spelling was still folded to decimal: `1_000`, `+5` and `0o1_7` re-read as `1000`, `5` and `15`.
+Underscores and an explicit `+` are legal TOML 1.0 spellings (`underscored` and `signed-int` in the
+ABNF), so `boundaries.md` saying "TOML's own literal grammar rejects them" was the wrong reason for
+a deliberate loss. The parser now records the whole token text whenever it differs from `i64`'s
+rendering - an underscore, a `+`, or a signed zero - and the projection keeps the tag rule from
+(cp): tag only where YAML Core resolves a different value, so `+5` and `0x1f` stay untagged and
+`1_000`/`0o1_7`/`0b1010` carry `!!int`.
+
+Two bridges had to learn the same grammar. The YAML emitter quotes a scalar that starts with `-`,
+so a tagged `-1_000` arrives at the TOML writer as a quoted scalar; the writer now lets a standard
+tag decide the type before quoting does, while an untagged `"42"` remains a string. Its integer
+gate accepts exactly what the writer emits: an optional decimal sign, an unsigned `0x`/`0o`/`0b`
+prefix, and `_` only between digits. A signed radix is refused by the reader (it is not a TOML
+integer at all), and a signed zero still writes as `0` because TOML has no negative zero.
+
+The first implementation cost instructions, and the gate named both halves separately:
+`to_toml_medium` +3.37% and `from_toml_medium` +1.80%, while the parent tree measured +0.00% on
+both scenarios with the baseline's pinned `rustc 1.97.1` (`to_toml_medium` 26,879,077 against
+26,879,029; `from_toml_medium` 131,612,905 against 131,611,879) - so the move was this change, not
+the host. A/B with only `writer.rs` restored to the parent isolated the writer half: +0.00% there
+and +1.80% remaining. The reader cost was `value.to_string()` per integer and a `replace('_', "")`
+for the leading-zero check; it now decides canonicality from the token shape and borrows the source
+when it holds no underscore. The writer's `split('_')` walk and separate signed-zero scan became
+one byte pass. Re-measured: `to_toml_medium` 26,827,051 (-0.19%) and `from_toml_medium`
+125,581,979 (-4.58%). The reader is now 4.58% below its floor, so the gate prints FLOOR_STALE until
+the enforcing-image "Ir baseline refresh" workflow rewrites the number; that refresh is a post-push
+step, not a local `--update`, because `--update` would rewrite `generated_by` for the 20 scenarios
+it did not measure.
+
+Mutation evidence: recording `cleaned` instead of `raw` reddens
+`decimal_spellings_reach_the_hub_word_for_word` (`left: ("1000", None)` against
+`("1_000", Some(("!!", "int")))`); dropping `tag_kind.is_some()` from the writer arm reddens
+`a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise` (`a = "-1_000"` against
+`a = -1_000`). Restoring either leaves the 94 `pyrs-toml` tests passing.
+
+Counts: 735 Rust tests (from 733), 1,762 Python test functions, 40 Unreleased entries per mirror.
+
 ### Shipped milestone scoping (v0.11.3 → v0.12.0)
 
 The planning tables `ROADMAP.md` carried after their milestones shipped. They stay because the

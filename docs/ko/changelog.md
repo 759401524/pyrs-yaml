@@ -375,6 +375,18 @@ status: new
   정착하며 `a_mapping_note_over_a_nested_sequence_settles_in_one_round`가 세 가지 형태로
   고정합니다.
 
+- **TOML 정수는 작성된 철자를 유지합니다** — `1_000`, `+5`, `-1_000` 및 각 기수 형식은
+  허브를 거치며 소스 텍스트를 잃었습니다. 파서가 기록 전에 토큰을 정리했기 때문에
+  `to_toml(from_toml("a = 1_000"))` 은 `a = 1000` 을 반환했습니다. 구분자와 명시적 부호는 모두
+  합법적인 TOML(ABNF의 `underscored` 와 `signed-int`)이므로 손실은 문법이 아니라 기록 단계에
+  있었습니다. 이제 파서는 토큰 텍스트를 그대로 보존하고, YAML Core가 다른 값을 해석할 때만
+  프로젝션이 태그를 붙입니다(`0x1f` 와 `+5` 는 태그 없음, `1_000`, `0b1101_0110`, `-1_000` 은
+  `!!int`). 라이터의 리터럴 판정도 자신이 출력하는 것과 같은 문법을 받아들입니다. 태그가 붙은
+  정수는 선행 `-` 때문에 YAML 이미터가 필요로 한 인용부호보다 우선하며, 태그 없는 인용부호
+  `"42"` 는 문자열로 남습니다. 값은 변하지 않고 `tomllib` 과 일치하며,
+  `TestIntegerSpellingFidelity`, `decimal_spellings_reach_the_hub_word_for_word`,
+  `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise` 로 고정합니다.
+
 ### [v0.18.1] — 2026-10-17
 
 ### 추가

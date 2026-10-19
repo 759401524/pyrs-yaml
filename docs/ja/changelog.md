@@ -383,6 +383,18 @@ status: new
   `set_comment` の裁定はそのままです）、テキストは 1 ラウンドで安定し、
   `a_mapping_note_over_a_nested_sequence_settles_in_one_round` が 3 つの形状で固定しています。
 
+- **TOML 整数は書かれたときの綴りを保ちます** — `1_000`、`+5`、`-1_000` および各基数形式は
+  ハブを通る際にソーステキストを失っていました。パーサーが記録前にトークンを整形していたため、
+  `to_toml(from_toml("a = 1_000"))` は `a = 1000` を返していました。区切り記号と明示的な符号は
+  どちらも合法な TOML（ABNF の `underscored` と `signed-int`）であり、損失は文法ではなく記録側に
+  ありました。パーサーはトークン全体を保持するようになり、YAML Core が異なる値を解決する場合に
+  だけ投影がタグを付けます（`0x1f` と `+5` はタグなし、`1_000`、`0b1101_0110`、`-1_000` は
+  `!!int` 付き）。ライターのリテラル判定も、出力するのと同じ文法を受け入れます。タグ付き整数は、
+  先頭の `-` のために YAML エミッターが必要とした引用符より優先され、タグなしの引用符付き `"42"`
+  は文字列のままです。値は変わらず `tomllib` と一致し、
+  `TestIntegerSpellingFidelity`、`decimal_spellings_reach_the_hub_word_for_word`、
+  `a_quoted_integer_stays_a_string_unless_a_tag_says_otherwise` で固定しています。
+
 ### [v0.18.1] — 2026-10-17
 
 ### 追加
