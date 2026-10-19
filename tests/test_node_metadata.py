@@ -58,6 +58,23 @@ class TestNodeComment:
         Node(doc).find("$[1]").set_comment("second")
         assert doc.to_yaml() == "- a\n- \n  # second\n  b\n"
 
+    @pytest.mark.known_residual("api:set-comment-container-owner")
+    def test_set_comment_on_a_container_lands_on_its_last_child(self):
+        """A container's inline note has no slot of its own, so it rides the last child.
+
+        #113's ruling: the writer parks the container's inline note on the body's last
+        line, and the re-read hands the note to that child. Pinned so giving the
+        container its own position reddens this test and forces the registry entry in
+        .ci/known-residuals.json out in the same change.
+        """
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        doc.node().set_comment("note", standalone=False)
+        assert doc.to_yaml() == "a: 1\nb: 2  # note\n"
+
+        seq = pyrs_yaml.parse("- a\n- b\n")
+        seq.node().set_comment("note", standalone=False)
+        assert seq.to_yaml() == "- a\n- b  # note\n"
+
     def test_comment_nested(self):
         doc = pyrs_yaml.parse("parent:\n  child: val")
         Node(doc).find("$.parent.child").set_comment("deep")

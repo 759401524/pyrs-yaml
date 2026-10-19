@@ -1,0 +1,43 @@
+{
+  "_comment": [
+    "Residuals the quality defence knows about and deliberately still carries.",
+    "Unlike .ci/quality-holes.json, whose entries scripts/quality_matrix.py must be able to",
+    "derive, these have no measured hole kind: each is a decision or an understood boundary,",
+    "so an empty holes registry used to read as 'no blind spots' while the behaviour remained.",
+    "Every entry names a live repro: a test carrying @pytest.mark.known_residual(<id>) that",
+    "asserts today's behaviour. tests/test_known_residuals.py fails when an entry has no live",
+    "repro, when a repro is marked with an unregistered id, and when a marker is malformed.",
+    "Fixing a residual reddens the characterization test itself, which forces the entry and",
+    "its marker out in the same change.",
+    "Fields: id = '<layer>:<name>'; repro = pytest node id of the pinning test; tier = the",
+    "layer that owns the fix (rust-core, binding, python-api); opened = date the residual was",
+    "registered; exit = the checkable state that removes it; why = one line of context.",
+    "QUALITY_MATRIX.md must name every id in its Known residuals section."
+  ],
+  "residuals": [
+    {
+      "id": "engine:container-inline-note-position",
+      "repro": "tests/test_toml.py::TestSectionHeaderCommentBoundary::test_header_inline_comment_is_relocated_not_dropped",
+      "tier": "rust-core",
+      "opened": "2026-10-19",
+      "exit": "to_toml(from_toml('[sec] # note\\nx = 1\\n')) writes the note on the header line itself; reaching it needs the hub to carry a container inline-note position, which the locked granit capture model does not offer today",
+      "why": "the note keeps its text and its table but not its line; values are lossless (docs/dev/boundaries.md)"
+    },
+    {
+      "id": "api:set-comment-container-owner",
+      "repro": "tests/test_node_metadata.py::TestNodeComment::test_set_comment_on_a_container_lands_on_its_last_child",
+      "tier": "binding",
+      "opened": "2026-10-19",
+      "exit": "set_comment(..., standalone=False) on a mapping or block sequence keeps the note on the container, at a position the reader reports back from, or refuses the call; the silent handoff to the last child ends",
+      "why": "the writer parks a container's inline note on the last child's line, so the re-read gives the note a different owner; the edit fuzz tier withholds the ownership claim (ledger (ei), #113)"
+    },
+    {
+      "id": "api:sort-keys-scalar-path-noop",
+      "repro": "tests/test_edit_api_deep.py::TestDocSortKeys::test_sort_keys_on_a_scalar_path_is_a_silent_noop",
+      "tier": "python-api",
+      "opened": "2026-10-19",
+      "exit": "sort_keys(path) whose path resolves to a scalar answers the way a missing path does (a typed refusal), or the no-op is stated in the shipped stub; the silent success with no effect ends",
+      "why": "a missing path raises YamlEditError missing-path, so a scalar path returning None is an inconsistency in the public error surface (QUALITY_MATRIX section 1)"
+    }
+  ]
+}

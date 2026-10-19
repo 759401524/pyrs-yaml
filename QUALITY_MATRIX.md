@@ -22,7 +22,7 @@ Measured inventory of the three tiers:
 
 | tier | artefacts | what it can prove | what it structurally cannot reach |
 | --- | --- | --- | --- |
-| unit / integration | 735 Rust `#[test]`, 1,779 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
+| unit / integration | 735 Rust `#[test]`, 1,791 Python test functions | a named shape behaves as documented | anything not named — the whole reason the other two tiers exist |
 | property | 29 proptest properties (27 named `prop_*`, 2 in `pyrs-event` named in prose), default 256 cases each | no crash + an invariant over a generated grammar | shapes outside the generator; invariants weaker than equality |
 | fuzz | 9 targets, 163 seeds of which 79 are `former-crash-*` | a historical crash cannot regress (PR tier replays seeds with `-runs=0`) | the discovery tier runs on a schedule, so a new shape is found weekly rather than per-PR |
 
@@ -74,6 +74,12 @@ which gates nothing, so the claim came out and the inputs stayed committed
 body `''`, the same decision that writes `~` for an empty value before a note, the fixed-point claim is
 back in the target, and the input that proved the drift is replayed as a former crash
 (`former-crash-b23eed05.seed`) rather than carried as an open one.
+
+The two boundaries that remain from that narrowing are not silent either:
+`api:sort-keys-scalar-path-noop` and `api:set-comment-container-owner` are registered in
+`.ci/known-residuals.json` with the tests that pin today's behaviour, because
+`quality_matrix.py` can only derive a hole a probe can see and these are decisions rather
+than derivable holes.
 
 Orthogonality, tested rather than asserted: the same three defect families that the recent
 fuzz tier found (comment attribution, empty-container spelling, nested merge application)
@@ -608,6 +614,23 @@ note placement defect hid, and whose closure needed both a writer fix and a wide
 budget, because at 20 000 cases two of the three properties were dying on the harness's own
 allowance rather than on an assertion — and `perf-coverage:binding-layer`, opened by measuring what
 the instrument compiles and closed by building the harness it named.
+
+### Known residuals
+
+`scripts/quality_matrix.py` can only register a hole it can derive, so `.ci/quality-holes.json`
+reads `*none measured*` while understood, deliberately open behaviour remains. Those are
+registered in `.ci/known-residuals.json` instead, each with the test that pins today's
+behaviour, the layer that owns the fix, and a checkable exit. `tests/test_known_residuals.py`
+fails when an entry has no live repro or a marked repro has no entry, and fixing the behaviour
+reddens the characterization test itself, which forces the marker and the entry out in the same
+change. This is a registry of decisions, not a second measurement: none of these is a shape the
+matrix is blind to.
+
+| residual | owner | why it is still open | exit |
+| --- | --- | --- | --- |
+| `engine:container-inline-note-position` | hub / Rust core | a TOML `[sec] # note` keeps its text and its table but not its line: the hub has no container inline-note position, and adding one means changing the locked granit capture model ([boundaries](docs/dev/boundaries.md)) | `to_toml(from_toml("[sec] # note\nx = 1\n"))` writes the note on the header line |
+| `api:set-comment-container-owner` | binding writer | `set_comment(..., standalone=False)` on a container lands on the last child's line, and the re-read gives the note that child; the edit fuzz tier therefore withholds the ownership claim (ledger (ei), #113) | the container keeps the note at a position the reader reports back, or the call refuses |
+| `api:sort-keys-scalar-path-noop` | Python API | `sort_keys("$.a")` returns `None` for a scalar path while a missing path raises `YamlEditError`; the matrix narrowed its ordering claim to paths with work to do | the two path shapes answer alike, or the no-op is stated in the shipped stub |
 
 ### Improvement plan
 

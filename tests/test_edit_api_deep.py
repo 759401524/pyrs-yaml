@@ -1,5 +1,7 @@
 """Tests for deep editing API enhancements (path, find_first, sort_keys, move, value_eq, set_many)."""
 
+import pytest
+
 import pyrs_yaml
 
 
@@ -71,6 +73,21 @@ class TestDocSortKeys:
         doc = pyrs_yaml.parse("z: 1  # z-note\na: 2\n")
         doc.sort_keys()
         assert doc.to_yaml() == "a: 2\nz: 1  # z-note\n"
+
+    @pytest.mark.known_residual("api:sort-keys-scalar-path-noop")
+    def test_sort_keys_on_a_scalar_path_is_a_silent_noop(self):
+        """A scalar path answers None while a missing path refuses; pinned until ruled on.
+
+        The edit fuzz tier narrowed its ordering claim to paths with work to do because
+        of this shape. A fix either refuses a scalar path like a missing one or states
+        the no-op in the shipped stub; either reddens this pin and forces the registry
+        entry in .ci/known-residuals.json out.
+        """
+        doc = pyrs_yaml.parse("a: 1\nb: 2\n")
+        assert doc.sort_keys("$.a") is None
+        assert doc.to_yaml() == "a: 1\nb: 2\n"
+        with pytest.raises(pyrs_yaml.YamlEditError):
+            doc.sort_keys("$.missing")
 
 
 class TestNodeMove:

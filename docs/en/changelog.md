@@ -19,6 +19,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A second registry records the residuals the matrix cannot measure** —
+  `.ci/quality-holes.json` can only describe a hole `scripts/quality_matrix.py` can derive, so its
+  empty list read as "no residual" while understood, deliberately open behaviour remained: a TOML
+  table-header note that cannot keep its line, a container `set_comment` whose note lands on the
+  last child, and a scalar-path `sort_keys` that answers `None` while a missing path raises. The
+  new `.ci/known-residuals.json` registers each with a repro node id, an owner and a checkable
+  exit; the pinned test carries `@pytest.mark.known_residual`, and
+  `tests/test_known_residuals.py` fails in both directions — an entry with no live repro, or a
+  marked repro with no entry. Fixing one reddens its characterization test, which forces the
+  entry out in the same change.
+
 - **The aarch64 wheel legs build on native arm64 runners** — `publish.yml`'s `linux` and
   `musllinux` aarch64 rows move from `ubuntu-22.04` under qemu to `ubuntu-24.04-arm`, and the
   glibc leg runs its suite there through `uv` instead of emulation. s390x is the only wheel suite
