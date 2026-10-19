@@ -48,6 +48,32 @@ def test_a_rebuild_of_the_same_version_is_not_reported_as_a_version_change():
     assert "RUSTUP_TOOLCHAIN" not in note, "the pin was honoured; pointing at it again would mislead"
 
 
+def test_a_floor_the_tree_has_outgrown_is_reported_with_its_size():
+    warned, stale = _gate().floor_staleness(
+        {"cheap": 1_000_000, "grew": 1_000_000, "flat": 1_000_000},
+        {"cheap": 970_000, "grew": 1_010_000, "flat": 1_000_000},
+    )
+    assert warned == [("cheap", (1_000_000 - 970_000) / 1_000_000)]
+    assert stale == [], "3% is drift to name; the refusal line is 5%"
+
+
+def test_a_floor_five_percent_out_of_date_refuses_to_be_called_a_baseline():
+    warned, stale = _gate().floor_staleness(
+        {"near": 1_000_000, "far": 1_000_000},
+        {"near": 979_000, "far": 949_000},
+    )
+    assert [name for name, _ in warned] == ["near"], "2.1% is on the warning side"
+    assert [name for name, _ in stale] == ["far"], "5.1% is past the refusal line"
+
+
+def test_the_warning_line_is_a_boundary_and_a_missing_measurement_is_not_a_verdict():
+    warned, stale = _gate().floor_staleness(
+        {"exactly_two": 1_000_000, "not_measured": 1_000_000},
+        {"exactly_two": 980_000},
+    )
+    assert warned == [] and stale == []
+
+
 def test_the_run_time_note_no_longer_quotes_a_stale_residual():
     """The sentence this replaces named a host term that the same measurement now contradicts.
 

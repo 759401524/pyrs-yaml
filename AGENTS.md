@@ -114,7 +114,9 @@ while the box's default `rustc 1.99.0` puts five past it — `serialize_medium` 
 (`ci.yml`'s `ir` job installs the baseline's `toolchain` before measuring); a local run is not, so pin it —
 `RUSTUP_TOOLCHAIN=$(python -c "import json;print(json.load(open('.ci/ir-baseline.json'))['toolchain'].split()[1])")`
 — and note that `ir_gate.py --only` takes exactly one complete scenario name (it filters by
-`s in args.only`, so a comma list silently matches nothing).
+`s in args.only`, so a comma list silently matches nothing). The lower edge is a verdict too now: a
+scenario more than 2% below its floor warns, more than 5% fails as `FLOOR_STALE`, and the remedy is the
+dispatch job above rather than a local `--update`, which would move the floor to this host.
 - `#[pymodule_init]` is prohibited — use inline `mod` for module declaration
 - Branch protection requires exactly one check name, `Test matrix (all legs)`, and `enforce_admins` is on. `ci.yml` therefore triggers on **every** pull request: a `changes` job classifies it (`git diff` excluding `*.md` and `docs/**`), the heavy legs run only when that says code changed, and `docs-gates` always runs the documentation gates plus `scripts/build-docs.py --strict`. A required check that never reports is a deadlock, not a pass — measured on PR #319, a prose-only pull request that could not be merged by any contributor route. Never re-add `paths-ignore` for prose to `ci.yml`; if a leg must be conditional, gate it on `needs.changes.outputs.code` **and** declare `changes` in that job's `needs`, or GitHub resolves the reference to an empty string and skips it silently (`tests/test_matrix_verdict_gate.py` fails on that).
 - Mapping order requires `IndexMap<CustomNode, CustomNode>`, not `HashMap`
