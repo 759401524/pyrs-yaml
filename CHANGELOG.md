@@ -500,6 +500,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The `no_std` gate could only disagree with itself** - `tests/test_no_std_gate.py` compared the
+  crate lists in `ci.yml` against a set copied into the test, so a crate that gained `#![no_std]`
+  with no bare-metal build, or lost the attribute while still being built, kept the job green. The
+  set is read from the crate roots now. Two controls hold it: one runs the reader over synthetic
+  sources that tell the attribute apart from the sentences quoting it, the other refuses an empty
+  foundation, because empty matched against empty would have looked like a pass.
+
 - **A CLI-only edit demanded an extension rebuild that could not change it** - the
   freshness gate globbed every directory under `crates/` when deciding which files
   are compiled into the loaded module, so the standalone `pyq` crate counted as
