@@ -512,6 +512,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The `no_std` gate could only disagree with itself** - `tests/test_no_std_gate.py` compared the
+  crate lists in `ci.yml` against a set copied into the test, so a crate that gained `#![no_std]`
+  with no bare-metal build, or lost the attribute while still being built, kept the job green. The
+  set is read from the crate roots now. Two controls hold it: one runs the reader over synthetic
+  sources that tell the attribute apart from the sentences quoting it, the other refuses an empty
+  foundation, because empty matched against empty would have looked like a pass.
+
 - **An empty authority column was prose, not a measurement** - `QUALITY_MATRIX.md` said the schema
   surface has no outside reader to ask its rules, while `scripts/quality_matrix.py` could emit no
   hole for an empty authority column: `.ci/quality-holes.json` stayed at `holes: []`, which read as
