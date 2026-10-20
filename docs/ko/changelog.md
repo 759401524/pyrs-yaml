@@ -17,6 +17,17 @@ status: new
 
 ### 변경
 
+- **`partial` 대조 칸은 각주가 아니라 등록된 결함입니다** — 대조 열은 이미 각 `test_*_crosslib.py`의
+  oracle import와 `pyproject.toml`의 marker에서 판정을 도출합니다. `orjson`과 `pyjson5`가 모두
+  `python_version >= '3.9' and python_version < '3.14'`이고 armv7l/s390x/ppc64le를 제외하므로 JSON
+  계열은 `partial`로 읽힙니다. 페이지는 산문으로 설명했지만 대장은 침묵했기에 "JSON 계열에는 크로스
+  라이브러리 계층이 있다"는 문장이 이 패키지가 약속하는 3.8 레그에 대해 인용될 수 있었습니다. 그
+  레그에서는 모듈이 아무것도 import하지 않고 건너뛰며 198개 단언을 돌린 레그와 같은 초록을
+  보고합니다. `parity_gaps()`는 같은 도출에서 `parity-tier:json-jsonc-json5`를 발행하고,
+  `.ci/quality-holes.json`은 그것을 없애는 출구(`restricted`가 비어 있음, 같은 측정 방식)와 함께
+  기록합니다. 결함 id 슬러그는 레이블의 영문자와 숫자로만 만드므로 `JSON / JSONC / JSON5`가 아무도
+  읽지 못할 id가 될 수 없습니다.
+
 - **계층 표의 수는 그것을 검증하는 실측이 직접 씁니다** — 이 행은 이미 비교 테스트로 프로브에 묶여
   있어 오래된 숫자는 거짓이 아니라 빨간 실행이었습니다. 빠진 것은 알맞은 숫자를 *만드는*
   방법이었습니다. 그 격차로 PR #549의 14개 테스트 레그가 모두 빨개졌습니다. 새 테스트 파일이 Python
